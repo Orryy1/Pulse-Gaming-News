@@ -1,0 +1,41 @@
+{
+  "name": "pulse-gaming",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Automated gaming news pipeline with React dashboard",
+  "scripts": {
+    "start": "node server.js",
+    "hunt": "node run.js hunt",
+    "produce": "node run.js produce",
+    "schedule": "node run.js schedule",
+    "dev": "concurrently \"node server.js\" \"npx vite\"",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.80.0",
+    "axios": "^1.13.6",
+    "concurrently": "^9.2.1",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "fs-extra": "^11.3.4",
+    "lucide-react": "^0.344.0",
+    "node-cron": "^4.2.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.18",
+    "postcss": "^8.4.35",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5.5.3",
+    "vite": "^5.4.2"
+  }
+}

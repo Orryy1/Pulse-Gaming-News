@@ -1,0 +1,333 @@
+import { useState } from 'react';
+import { Image, Video, CheckCircle, ArrowUpRight, MessageSquare, RotateCcw, AlertTriangle, ClipboardCopy, Download } from 'lucide-react';
+import type { Story, CardStatus } from '../types/story';
+import FlairBadge from './FlairBadge';
+import CollapsibleSection from './CollapsibleSection';
+import Spinner from './Spinner';
+import ProgressBar from './ProgressBar';
+import ScheduleToggle from './ScheduleToggle';
+import PerformanceRow from './PerformanceRow';
+
+interface StoryCardProps {
+  story: Story;
+  status: CardStatus;
+  imageProgress: number;
+  videoProgress: number;
+  progressStage: string;
+  error?: string;
+  isRefreshingStats?: boolean;
+  onApprove: (id: string) => void;
+  onGenerateImage: (id: string) => void;
+  onGenerateVideo: (id: string) => void;
+  onScheduleChange: (id: string, time: string | null) => void;
+  onRetryPublish: (id: string) => void;
+  onDownloadVideo: (id: string) => void;
+  onRefreshStats: (id: string) => void;
+}
+
+function formatScore(score: number): string {
+  if (score >= 1000) return `${(score / 1000).toFixed(1)}k`;
+  return String(score);
+}
+
+const KNOWN_GAMES = [
+  'GTA 6', 'GTA VI', 'Elden Ring', 'Call of Duty', 'Halo', 'Zelda',
+  'Mario', 'Pokemon', 'Cyberpunk', 'Starfield', 'Diablo', 'Overwatch',
+  'Fortnite', 'Minecraft', 'Baldurs Gate', 'Final Fantasy', 'God of War',
+  'Spider-Man', 'Horizon', 'Fable', 'Elder Scrolls', 'Fallout',
+  'Red Dead', 'Assassins Creed', 'Mass Effect', 'Dragon Age',
+  'Xbox', 'PlayStation', 'Nintendo', 'Switch', 'Steam Deck', 'CS2',
+  'Counter-Strike', 'Valorant', 'Apex Legends', 'Destiny',
+];
+
+function extractGameName(title: string): string {
+  for (const game of KNOWN_GAMES) {
+    if (title.toLowerCase().includes(game.toLowerCase())) {
+      return game.replace(/[\s'-]/g, '');
+    }
+  }
+  const words = title.split(/\s+/).slice(0, 2);
+  return words.join('').replace(/[^a-zA-Z0-9]/g, '');
+}
+
+function buildMetadataBlock(story: Story): string {
+  const gameName = extractGameName(story.title);
+  const hashtag = `#${gameName}`;
+  const truncatedTitle = story.title.length > 80
+    ? story.title.slice(0, 77) + '...'
+    : story.title;
+
+  return `TITLE:
+${story.title}
+
+DESCRIPTION:
+${story.full_script}
+
+----
+${story.pinned_comment}
+
+----
+All leaks sourced from r/GamingLeaksAndRumours. Verified sources only.
+
+#GamingNews #GamingLeaks #GamingShorts #Shorts ${hashtag}
+
+---
+TAGS (paste into YouTube tags field):
+gaming news, gaming leaks, gaming shorts, verified leaks, gaming 2026, ${gameName.toLowerCase()}
+
+---
+TIKTOK CAPTION:
+${truncatedTitle} #GamingNews #GamingLeaks #GamingShorts ${hashtag} #Shorts`;
+}
+
+export default function StoryCard({
+  story,
+  status,
+  imageProgress,
+  videoProgress,
+  progressStage,
+  error,
+  isRefreshingStats,
+  onApprove,
+  onGenerateImage,
+  onGenerateVideo,
+  onScheduleChange,
+  onRetryPublish,
+  onDownloadVideo,
+  onRefreshStats,
+}: StoryCardProps) {
+  const [copied, setCopied] = useState(false);
+  const isApproved = status === 'approved';
+  const isGeneratingImage = status === 'generating-image';
+  const isGeneratingVideo = status === 'generating-video';
+  const isBusy = isGeneratingImage || isGeneratingVideo;
+  const hasError = status === 'error' || story.publish_status === 'failed';
+  const isPublishing = story.publish_status === 'publishing';
+
+  const handleCopyMetadata = () => {
+    navigator.clipboard.writeText(buildMetadataBlock(story));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div
+      className={`group relative overflow-hidden rounded-xl border transition-all duration-300 ${
+        isApproved
+          ? 'border-emerald-500/20 bg-[#1a2420]'
+          : hasError
+            ? 'border-red-500/20 bg-[#2a1f1f]'
+            : 'border-white/[0.06] bg-[#252b3b] hover:border-white/[0.12] hover:shadow-lg hover:shadow-black/20'
+      }`}
+    >
+      {isApproved && !hasError && (
+        <div className="absolute right-[-35px] top-[20px] z-10 rotate-45 bg-emerald-500 px-10 py-1 text-[10px] font-black tracking-[0.15em] text-white shadow-lg">
+          APPROVED
+        </div>
+      )}
+
+      <div className="p-4 sm:p-5">
+        <div className="mb-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <FlairBadge flair={story.flair} />
+            <span className="text-xs font-medium text-white/30">{story.subreddit}</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-white/25">
+            <ArrowUpRight size={12} />
+            <span className="font-mono font-semibold">{formatScore(story.score)}</span>
+          </div>
+        </div>
+
+        <h3 className="mb-2 text-[15px] font-bold leading-snug text-white/90">
+          {story.title}
+        </h3>
+
+        {story.top_comment && (
+          <div className="mb-1 flex items-start gap-2 rounded-lg bg-white/[0.03] px-3 py-2">
+            <MessageSquare size={12} className="mt-0.5 shrink-0 text-white/20" />
+            <p className="text-xs leading-relaxed text-white/35 line-clamp-2">
+              {story.top_comment}
+            </p>
+          </div>
+        )}
+
+        {(imageProgress > 0 || isGeneratingImage) && (
+          <ProgressBar progress={imageProgress} stage={progressStage} type="image" />
+        )}
+        {(videoProgress > 0 || isGeneratingVideo) && (
+          <ProgressBar progress={videoProgress} stage={progressStage} type="video" />
+        )}
+
+        {story.image_url && (
+          <div className="mt-2 flex items-center gap-1.5 text-[10px] font-semibold text-emerald-400/60">
+            <Image size={10} />
+            <span>Thumbnail generated</span>
+          </div>
+        )}
+        {story.video_url && (
+          <div className="mt-1 flex items-center gap-1.5 text-[10px] font-semibold text-emerald-400/60">
+            <Video size={10} />
+            <span>B-roll generated</span>
+          </div>
+        )}
+
+        {isApproved && (story.youtube_post_id || story.tiktok_post_id) && (
+          <PerformanceRow
+            youtubeViews={story.youtube_views}
+            tiktokViews={story.tiktok_views}
+            hasYoutubeId={!!story.youtube_post_id}
+            hasTiktokId={!!story.tiktok_post_id}
+            isRefreshing={!!isRefreshingStats}
+            onRefresh={() => onRefreshStats(story.id)}
+          />
+        )}
+      </div>
+
+      <CollapsibleSection title="VIEW SCRIPT">
+        <div className="space-y-3">
+          <ScriptBlock label="HOOK" text={story.hook} accent />
+          <ScriptBlock label="BODY" text={story.body} />
+          <ScriptBlock label="LOOP" text={story.loop} accent />
+
+          <div className="flex items-center gap-2">
+            <span className="rounded-md bg-white/5 px-2 py-1 text-[11px] font-semibold text-white/40">
+              {story.word_count} words
+            </span>
+          </div>
+
+          <div className="rounded-lg border border-[#39FF14]/15 bg-[#39FF14]/5 px-3 py-2.5">
+            <p className="mb-1 text-[10px] font-bold tracking-wider text-[#39FF14]/50">
+              SUGGESTED THUMBNAIL
+            </p>
+            <p className="text-sm font-bold text-[#39FF14]/80">
+              {story.suggested_thumbnail_text}
+            </p>
+          </div>
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="PINNED COMMENT">
+        <div className="rounded-lg bg-white/[0.03] px-3 py-2.5">
+          <p className="text-xs leading-relaxed text-white/50">{story.pinned_comment}</p>
+        </div>
+      </CollapsibleSection>
+
+      {hasError && (error || story.publish_error) && (
+        <div className="border-t border-red-500/10 px-4 py-3 sm:px-5">
+          <div className="flex items-start gap-2 rounded-lg bg-red-500/5 px-3 py-2">
+            <AlertTriangle size={12} className="mt-0.5 shrink-0 text-red-400" />
+            <p className="text-[11px] leading-relaxed text-red-400/80">
+              {error || story.publish_error}
+            </p>
+          </div>
+        </div>
+      )}
+
+      <div className="border-t border-white/5 p-3 sm:p-4">
+        <div className="mb-2 flex items-center justify-between">
+          <ScheduleToggle
+            scheduleTime={story.schedule_time}
+            onChange={(time) => onScheduleChange(story.id, time)}
+            disabled={isApproved || isBusy}
+          />
+          {isPublishing && (
+            <span className="flex items-center gap-1.5 text-[10px] font-semibold text-amber-400">
+              <Spinner /> PUBLISHING
+            </span>
+          )}
+          {story.publish_status === 'published' && (
+            <span className="text-[10px] font-semibold text-emerald-400">PUBLISHED</span>
+          )}
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            onClick={handleCopyMetadata}
+            className={`flex items-center justify-center gap-1.5 rounded-lg border px-3 py-3 text-[11px] font-semibold tracking-wider transition-all active:scale-[0.97] sm:py-2.5 ${
+              copied
+                ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
+                : 'border-white/[0.06] bg-white/[0.04] text-white/50 hover:border-white/10 hover:bg-white/[0.07] hover:text-white/70'
+            }`}
+          >
+            <ClipboardCopy size={14} />
+            <span className="hidden sm:inline">{copied ? 'COPIED!' : 'COPY META'}</span>
+          </button>
+
+          <button
+            onClick={() => onGenerateImage(story.id)}
+            disabled={isApproved || isBusy}
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-white/[0.06] bg-white/[0.04] px-3 py-3 text-[11px] font-semibold tracking-wider text-white/50 transition-all active:scale-[0.97] hover:border-white/10 hover:bg-white/[0.07] hover:text-white/70 disabled:cursor-not-allowed disabled:opacity-30 sm:py-2.5"
+          >
+            {isGeneratingImage ? <Spinner /> : <Image size={14} />}
+            {isGeneratingImage ? 'GENERATING...' : 'GEN IMAGE'}
+          </button>
+
+          <button
+            onClick={() => onGenerateVideo(story.id)}
+            disabled={isApproved || isBusy}
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-white/[0.06] bg-white/[0.04] px-3 py-3 text-[11px] font-semibold tracking-wider text-white/50 transition-all active:scale-[0.97] hover:border-white/10 hover:bg-white/[0.07] hover:text-white/70 disabled:cursor-not-allowed disabled:opacity-30 sm:py-2.5"
+          >
+            {isGeneratingVideo ? <Spinner /> : <Video size={14} />}
+            {isGeneratingVideo ? 'GENERATING...' : 'GEN VIDEO'}
+          </button>
+
+          {hasError ? (
+            <button
+              onClick={() => onRetryPublish(story.id)}
+              className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-3 text-[11px] font-bold tracking-wider text-red-400 transition-all active:scale-[0.97] hover:bg-red-500/20 sm:py-2.5"
+            >
+              <RotateCcw size={14} />
+              RETRY
+            </button>
+          ) : (
+            <button
+              onClick={() => onApprove(story.id)}
+              disabled={isApproved || isBusy}
+              className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-3 text-[11px] font-bold tracking-wider transition-all active:scale-[0.97] sm:py-2.5 ${
+                isApproved
+                  ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
+                  : 'border border-[#39FF14]/20 bg-[#39FF14]/10 text-[#39FF14] hover:bg-[#39FF14]/20 hover:shadow-[0_0_15px_rgba(57,255,20,0.1)] disabled:cursor-not-allowed disabled:opacity-30'
+              }`}
+            >
+              <CheckCircle size={14} />
+              {isApproved ? 'APPROVED' : 'APPROVE'}
+            </button>
+          )}
+        </div>
+
+        {isApproved && story.exported_path && (
+          <button
+            onClick={() => onDownloadVideo(story.id)}
+            className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-slate-500/20 bg-slate-600/30 px-3 py-2.5 text-[11px] font-bold tracking-wider text-white transition-all active:scale-[0.98] hover:bg-slate-600/50"
+          >
+            <Download size={14} />
+            DOWNLOAD VIDEO
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ScriptBlock({
+  label,
+  text,
+  accent = false,
+}: {
+  label: string;
+  text: string;
+  accent?: boolean;
+}) {
+  return (
+    <div>
+      <p
+        className={`mb-1 text-[10px] font-bold tracking-wider ${
+          accent ? 'text-[#39FF14]/40' : 'text-white/25'
+        }`}
+      >
+        {label}
+      </p>
+      <p className="text-xs leading-relaxed text-white/60">{text}</p>
+    </div>
+  );
+}

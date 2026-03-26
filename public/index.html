@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pulse Gaming // Command Centre</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #1E2330; margin: 0; font-family: 'Inter', system-ui, sans-serif; }
+    .neon { color: #39FF14; }
+    .neon-border { border-color: #39FF14; }
+    .neon-bg { background-color: #39FF14; color: #1E2330; }
+    .approved-banner {
+      position: absolute; top: 0; right: 0;
+      background: #39FF14; color: #1E2330; font-weight: 700; font-size: 12px;
+      padding: 4px 40px;
+      transform: rotate(45deg) translate(25%, -50%);
+      transform-origin: top right;
+      z-index: 10;
+    }
+    .spinner {
+      display: inline-block; width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: white; border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 50; flex-direction: column; gap: 16px;
+    }
+    .overlay .big-spinner {
+      width: 48px; height: 48px;
+      border: 4px solid rgba(57,255,20,0.3);
+      border-top-color: #39FF14; border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect, useCallback } = React;
+
+    const FLAIR_COLOURS = {
+      'verified': 'bg-green-600',
+      'highly likely': 'bg-yellow-600',
+      'rumour': 'bg-orange-600',
+    };
+
+    function getFlairClass(flair) {
+      const lower = (flair || '').toLowerCase();
+      for (const [key, cls] of Object.entries(FLAIR_COLOURS)) {
+        if (lower.includes(key)) return cls;
+      }
+      return 'bg-slate-600';
+    }
+
+    function StoryCard({ story, onApprove, onGenerateImage, onGenerateVideo }) {
+      const [scriptOpen, setScriptOpen] = useState(false);
+      const [commentOpen, setCommentOpen] = useState(false);
+      const [loading, setLoading] = useState({});
+      const [copied, setCopied] = useState(false);
+
+      async function handleAction(action, endpoint, body) {
+        setLoading(l => ({ ...l, [action]: true }));
+        try {
+          const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          await res.json();
+          if (action === 'approve') onApprove();
+          if (action === 'image') onGenerateImage();
+          if (action === 'video') onGenerateVideo();
+        } catch (e) {
+          console.error(e);
+        }
+        setLoading(l => ({ ...l, [action]: false }));
+      }
+
+      function copyMetadata() {
+        const meta = [
+          `Title: ${story.title}`,
+          `Description: ${story.full_script || ''}`,
+          `Tags: gaming news, ${story.content_pillar || ''}, ${story.subreddit || ''}`,
+          `TikTok Caption: ${story.hook || story.title}`,
+        ].join('\n\n');
+        navigator.clipboard.writeText(meta);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
+
+      return (
+        <div className="relative bg-slate-800 rounded-lg p-5 border border-slate-700 hover:border-slate-500 transition-colors">
+          {story.approved && <div className="approved-banner">APPROVED</div>}
+
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
+            <span className={`text-xs font-bold px-2 py-1 rounded ${getFlairClass(story.flair)} text-white`}>
+              {story.flair}
+            </span>
+            <span className="text-xs text-slate-400">r/{story.subreddit}</span>
+            <span className="text-xs text-slate-500">Score: {story.score}</span>
+          </div>
+
+          <h3 className="text-white font-bold text-lg mb-4 leading-tight">{story.title}</h3>
+
+          <button
+            onClick={() => setScriptOpen(!scriptOpen)}
+            className="text-sm text-slate-400 hover:text-white mb-2 block"
+          >
+            {scriptOpen ? 'Hide Script' : 'Show Script'}
+          </button>
+          {scriptOpen && (
+            <div className="bg-slate-900 rounded p-3 mb-3 text-sm space-y-2">
+              <p><span className="neon font-bold">HOOK:</span> <span className="text-white">{story.hook}</span></p>
+              <p><span className="neon font-bold">BODY:</span> <span className="text-slate-300">{story.body}</span></p>
+              <p><span className="neon font-bold">LOOP:</span> <span className="text-white">{story.loop}</span></p>
+              <p className="text-slate-500">Words: {story.word_count} | Pillar: {story.content_pillar}</p>
+            </div>
+          )}
+
+          <button
+            onClick={() => setCommentOpen(!commentOpen)}
+            className="text-sm text-slate-400 hover:text-white mb-3 block"
+          >
+            {commentOpen ? 'Hide Pinned Comment' : 'Show Pinned Comment'}
+          </button>
+          {commentOpen && (
+            <div className="bg-slate-900 rounded p-3 mb-3 text-sm text-slate-300">
+              {story.pinned_comment}
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={copyMetadata}
+              className="px-3 py-1.5 bg-slate-600 hover:bg-slate-500 text-white text-sm rounded font-medium transition-colors"
+            >
+              {copied ? 'Copied!' : 'COPY METADATA'}
+            </button>
+
+            <button
+              onClick={() => handleAction('image', '/api/generate-image', { id: story.id })}
+              disabled={loading.image}
+              className="px-3 py-1.5 bg-slate-600 hover:bg-slate-500 text-white text-sm rounded font-medium transition-colors disabled:opacity-50"
+            >
+              {loading.image ? <span className="spinner" /> : 'GENERATE IMAGE'}
+            </button>
+
+            <button
+              onClick={() => handleAction('video', '/api/generate-video', { id: story.id })}
+              disabled={loading.video}
+              className="px-3 py-1.5 bg-slate-600 hover:bg-slate-500 text-white text-sm rounded font-medium transition-colors disabled:opacity-50"
+            >
+              {loading.video ? <span className="spinner" /> : 'GENERATE VIDEO'}
+            </button>
+
+            {!story.approved && (
+              <button
+                onClick={() => handleAction('approve', '/api/approve', { id: story.id })}
+                disabled={loading.approve}
+                className="px-3 py-1.5 neon-bg hover:opacity-80 text-sm rounded font-bold transition-colors disabled:opacity-50"
+              >
+                {loading.approve ? <span className="spinner" /> : 'APPROVE'}
+              </button>
+            )}
+
+            {story.approved && story.exported_path && (
+              <a
+                href={`/api/download/${story.id}`}
+                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded font-medium transition-colors inline-block"
+              >
+                DOWNLOAD VIDEO
+              </a>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    function App() {
+      const [stories, setStories] = useState([]);
+      const [publishing, setPublishing] = useState(false);
+      const [pubStatus, setPubStatus] = useState('idle');
+
+      const fetchNews = useCallback(async () => {
+        try {
+          const res = await fetch('/api/news');
+          const data = await res.json();
+          // Sort: unapproved first
+          data.sort((a, b) => (a.approved === b.approved ? 0 : a.approved ? 1 : -1));
+          setStories(data);
+        } catch (e) {
+          console.error('Failed to fetch news:', e);
+        }
+      }, []);
+
+      useEffect(() => { fetchNews(); }, [fetchNews]);
+
+      async function handlePublish() {
+        setPublishing(true);
+        setPubStatus('starting...');
+        try {
+          await fetch('/api/publish', { method: 'POST' });
+          const poll = setInterval(async () => {
+            const res = await fetch('/api/publish-status');
+            const data = await res.json();
+            setPubStatus(data.status);
+            if (data.status === 'complete' || data.status === 'error') {
+              clearInterval(poll);
+              setTimeout(() => {
+                setPublishing(false);
+                fetchNews();
+              }, 1500);
+            }
+          }, 15000);
+        } catch (e) {
+          setPubStatus('error');
+          setTimeout(() => setPublishing(false), 2000);
+        }
+      }
+
+      const today = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+      const pending = stories.filter(s => !s.approved).length;
+
+      return (
+        <div className="min-h-screen">
+          {publishing && (
+            <div className="overlay">
+              <div className="big-spinner"></div>
+              <p className="neon text-xl font-bold">PUBLISHING PIPELINE RUNNING</p>
+              <p className="text-slate-400 text-sm">Status: {pubStatus}</p>
+            </div>
+          )}
+
+          <nav className="border-b border-slate-700 px-6 py-4 flex items-center justify-between flex-wrap gap-3">
+            <h1 className="neon text-xl font-bold tracking-wider">PULSE GAMING // COMMAND CENTRE</h1>
+            <div className="flex gap-2">
+              <button
+                onClick={fetchNews}
+                className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white text-sm rounded font-medium transition-colors"
+              >
+                Refresh
+              </button>
+              <button
+                onClick={handlePublish}
+                className="px-4 py-2 neon-bg hover:opacity-80 text-sm rounded font-bold transition-colors"
+              >
+                RUN PUBLISH
+              </button>
+            </div>
+          </nav>
+
+          <div className="px-6 py-3 text-slate-400 text-sm">
+            {today} | {stories.length} stories loaded | {pending} pending approval
+          </div>
+
+          <div className="px-6 pb-8 grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {stories.length === 0 && (
+              <div className="col-span-full text-center py-20">
+                <p className="text-slate-500 text-lg">No stories loaded</p>
+                <p className="text-slate-600 text-sm mt-2">Run: node run.js hunt</p>
+              </div>
+            )}
+            {stories.map(story => (
+              <StoryCard
+                key={story.id}
+                story={story}
+                onApprove={fetchNews}
+                onGenerateImage={fetchNews}
+                onGenerateVideo={fetchNews}
+              />
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>

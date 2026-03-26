@@ -1,0 +1,8 @@
+.env
+node_modules/
+output/
+dist/
+daily_news.json
+pending_news.json
+image_queue.json
+video_queue.json

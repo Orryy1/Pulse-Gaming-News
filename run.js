@@ -2,7 +2,7 @@ const cron = require('node-cron');
 const sendDiscord = require('./notify');
 const dotenv = require('dotenv');
 
-dotenv.config();
+dotenv.config({ override: true });
 
 async function runHunt() {
   console.log('[run] === HUNT MODE ===');

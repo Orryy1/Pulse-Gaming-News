@@ -3,7 +3,7 @@ const fs = require('fs-extra');
 const path = require('path');
 const dotenv = require('dotenv');
 
-dotenv.config();
+dotenv.config({ override: true });
 
 async function generateAudio() {
   console.log('[audio] Loading daily_news.json...');

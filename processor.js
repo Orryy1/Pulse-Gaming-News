@@ -2,7 +2,7 @@ const Anthropic = require('@anthropic-ai/sdk');
 const fs = require('fs-extra');
 const dotenv = require('dotenv');
 
-dotenv.config();
+dotenv.config({ override: true });
 
 const BANNED_STARTS = ['so', 'today', 'hey', 'welcome', 'in this'];
 const BANNED_LOOP_PHRASES = ['let me know in the comments'];
@@ -75,7 +75,11 @@ async function process_stories() {
           messages: [{ role: 'user', content: userMessage + extra }],
         });
 
-        const text = response.content[0].text.trim();
+        let text = response.content[0].text.trim();
+        // Strip markdown code fences if present
+        if (text.startsWith('```')) {
+          text = text.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+        }
         script = JSON.parse(text);
 
         const errors = validate(script);

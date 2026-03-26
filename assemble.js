@@ -6,7 +6,7 @@ const util = require('util');
 
 const execAsync = util.promisify(exec);
 
-dotenv.config();
+dotenv.config({ override: true });
 
 async function assemble() {
   console.log('[assemble] Loading daily_news.json...');

@@ -2,7 +2,7 @@ const axios = require('axios');
 const fs = require('fs-extra');
 const dotenv = require('dotenv');
 
-dotenv.config();
+dotenv.config({ override: true });
 
 const USER_AGENT = 'pulse-gaming-hunter/1.0 (personal use)';
 

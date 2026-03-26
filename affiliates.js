@@ -1,7 +1,7 @@
 const fs = require('fs-extra');
 const dotenv = require('dotenv');
 
-dotenv.config();
+dotenv.config({ override: true });
 
 const GAME_KEYWORDS = [
   'playstation', 'ps5', 'ps6', 'xbox', 'nintendo', 'switch', 'steam', 'deck',

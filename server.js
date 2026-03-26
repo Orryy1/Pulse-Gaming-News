@@ -5,7 +5,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const dotenv = require('dotenv');
 
-dotenv.config();
+dotenv.config({ override: true });
 
 const app = express();
 const PORT = process.env.PORT || 3001;

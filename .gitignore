@@ -6,3 +6,4 @@ daily_news.json
 pending_news.json
 image_queue.json
 video_queue.json
+tokens/

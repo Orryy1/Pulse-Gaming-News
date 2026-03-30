@@ -4,13 +4,48 @@ const dotenv = require('dotenv');
 
 dotenv.config({ override: true });
 
+/*
+  Pulse Gaming Pipeline v2 — Autonomous Operations
+
+  Modes:
+    hunt      — One-off Reddit + RSS fetch + script generation
+    produce   — Generate audio, images, assemble videos
+    publish   — Upload to YouTube, TikTok, Instagram
+    schedule  — Start autonomous cron scheduler (recommended)
+    full      — Run complete autonomous cycle once
+    approve   — Run auto-approval pass only
+
+  Autonomous Schedule (all times GMT):
+  ┌──────────┬──────────────────────────────────────────────────┐
+  │ Time     │ Action                                           │
+  ├──────────┼──────────────────────────────────────────────────┤
+  │ 06:00    │ Morning hunt — catch overnight US leaks          │
+  │ 10:00    │ Mid-morning hunt — embargo lifts, announcements  │
+  │ 14:00    │ Afternoon hunt — Nintendo Direct timing window   │
+  │ 17:00    │ Evening hunt — US morning announcements          │
+  │ 19:00    │ PUBLISH WINDOW — YouTube Shorts optimal time     │
+  │ 20:00    │ (staggered) TikTok upload                       │
+  │ 21:00    │ (staggered) Instagram Reels upload               │
+  │ 22:00    │ Late hunt — catch PS State of Play window        │
+  └──────────┴──────────────────────────────────────────────────┘
+
+  Research basis:
+  - Gaming announcements peak: 14:00 GMT (Nintendo), 17:00 GMT (embargoes),
+    22:00 GMT (PlayStation), 18:00 GMT (Xbox)
+  - Reddit leak surfacing peaks: 00:00-04:00 GMT (US evening)
+  - YouTube Shorts engagement peaks: 19:00 GMT (UK evening = 2PM ET)
+  - TikTok engagement peaks: 20:00 GMT
+  - Instagram Reels peaks: 21:00 GMT
+  - Friday is statistically the best day for short-form gaming content
+*/
+
 async function runHunt() {
   console.log('[run] === HUNT MODE ===');
 
   const hunt = require('./hunter');
   const process_stories = require('./processor');
 
-  console.log('[run] Step 1: Hunting Reddit...');
+  console.log('[run] Step 1: Multi-source hunting (Reddit + RSS)...');
   const stories = await hunt();
 
   console.log('[run] Step 2: Processing scripts...');
@@ -36,10 +71,10 @@ async function runProduce() {
   console.log('[run] Step 2: Audio generation...');
   await audio();
 
-  console.log('[run] Step 3: Image generation...');
+  console.log('[run] Step 3: Professional image generation...');
   await images();
 
-  console.log('[run] Step 4: Assembly...');
+  console.log('[run] Step 4: Video assembly (multi-image Ken Burns)...');
   await assemble();
 
   const fs = require('fs-extra');
@@ -54,33 +89,171 @@ async function runProduce() {
   console.log('[run] Produce complete');
 }
 
-function runSchedule() {
-  console.log('[run] === SCHEDULE MODE ===');
-  console.log('[run] Scheduler started, next hunt at 6:00 AM');
+async function runPublish() {
+  console.log('[run] === PUBLISH MODE ===');
 
+  const { publishToAllPlatforms } = require('./publisher');
+  const results = await publishToAllPlatforms();
+
+  const total = results.youtube.length + results.tiktok.length + results.instagram.length;
+  console.log(`[run] Published ${total} videos across all platforms`);
+}
+
+async function runFull() {
+  console.log('[run] === FULL AUTONOMOUS CYCLE ===');
+
+  const { fullAutonomousCycle } = require('./publisher');
+  await fullAutonomousCycle();
+}
+
+async function runApprove() {
+  console.log('[run] === AUTO-APPROVE MODE ===');
+
+  const { autoApprove } = require('./publisher');
+  const count = await autoApprove();
+  console.log(`[run] Auto-approved ${count} stories`);
+}
+
+function runSchedule() {
+  console.log('[run] ==========================================');
+  console.log('[run] PULSE GAMING AUTONOMOUS SCHEDULER v2');
+  console.log('[run] ==========================================');
+  console.log('[run] All times are GMT/UTC');
+  console.log('');
+
+  // --- HUNT CYCLES (4x daily at optimal news-breaking windows) ---
+
+  // 06:00 GMT — Morning hunt: catches overnight US leaks + Reddit activity
   cron.schedule('0 6 * * *', async () => {
-    console.log('[run] Scheduled hunt triggered');
+    console.log('[schedule] 06:00 GMT — Morning hunt');
     try {
       await runHunt();
+      const { autoApprove } = require('./publisher');
+      await autoApprove();
     } catch (err) {
-      console.log(`[run] Scheduled hunt error: ${err.message}`);
-      await sendDiscord(`**Pulse Gaming ERROR**\nScheduled hunt failed: ${err.message}`);
+      console.log(`[schedule] Morning hunt error: ${err.message}`);
+      await sendDiscord(`**ERROR** Morning hunt failed: ${err.message}`);
     }
-  });
+  }, { timezone: 'UTC' });
 
-  // Keep alive
-  console.log('[run] Process will stay alive for scheduled tasks. Press Ctrl+C to exit.');
+  // 10:00 GMT — Mid-morning: embargo lifts (typically 9AM-12PM ET = 14:00-17:00 GMT)
+  cron.schedule('0 10 * * *', async () => {
+    console.log('[schedule] 10:00 GMT — Mid-morning hunt');
+    try {
+      await runHunt();
+      const { autoApprove } = require('./publisher');
+      await autoApprove();
+    } catch (err) {
+      console.log(`[schedule] Mid-morning hunt error: ${err.message}`);
+    }
+  }, { timezone: 'UTC' });
+
+  // 14:00 GMT — Afternoon: Nintendo Direct window (2PM GMT), major announcements
+  cron.schedule('0 14 * * *', async () => {
+    console.log('[schedule] 14:00 GMT — Afternoon hunt (Nintendo/announcement window)');
+    try {
+      await runHunt();
+      const { autoApprove } = require('./publisher');
+      await autoApprove();
+    } catch (err) {
+      console.log(`[schedule] Afternoon hunt error: ${err.message}`);
+    }
+  }, { timezone: 'UTC' });
+
+  // 17:00 GMT — Evening: Xbox showcase window + US morning embargo lifts
+  cron.schedule('0 17 * * *', async () => {
+    console.log('[schedule] 17:00 GMT — Evening hunt (Xbox/embargo window)');
+    try {
+      await runHunt();
+      const { autoApprove } = require('./publisher');
+      await autoApprove();
+    } catch (err) {
+      console.log(`[schedule] Evening hunt error: ${err.message}`);
+    }
+  }, { timezone: 'UTC' });
+
+  // --- PRODUCE CYCLE (2x daily, before publish windows) ---
+
+  // 18:00 GMT — Produce all approved stories (1hr before YouTube publish)
+  cron.schedule('0 18 * * *', async () => {
+    console.log('[schedule] 18:00 GMT — Produce cycle');
+    try {
+      await runProduce();
+    } catch (err) {
+      console.log(`[schedule] Produce error: ${err.message}`);
+      await sendDiscord(`**ERROR** Produce cycle failed: ${err.message}`);
+    }
+  }, { timezone: 'UTC' });
+
+  // --- PUBLISH CYCLE (1x daily at optimal engagement window) ---
+
+  // 19:00 GMT — Publish to YouTube Shorts (peak engagement: 7PM GMT)
+  // TikTok and Instagram are staggered by the publisher module (+60min each)
+  cron.schedule('0 19 * * *', async () => {
+    console.log('[schedule] 19:00 GMT — PUBLISH WINDOW');
+    try {
+      if (process.env.AUTO_PUBLISH === 'true') {
+        await runPublish();
+      } else {
+        console.log('[schedule] AUTO_PUBLISH not enabled, skipping');
+        await sendDiscord('**Videos ready for upload** — Set AUTO_PUBLISH=true to enable autonomous posting');
+      }
+    } catch (err) {
+      console.log(`[schedule] Publish error: ${err.message}`);
+      await sendDiscord(`**ERROR** Publish cycle failed: ${err.message}`);
+    }
+  }, { timezone: 'UTC' });
+
+  // --- LATE NIGHT HUNT (catches PlayStation State of Play @ 10PM GMT) ---
+  cron.schedule('0 22 * * *', async () => {
+    console.log('[schedule] 22:00 GMT — Late hunt (PlayStation window)');
+    try {
+      await runHunt();
+      const { autoApprove } = require('./publisher');
+      await autoApprove();
+    } catch (err) {
+      console.log(`[schedule] Late hunt error: ${err.message}`);
+    }
+  }, { timezone: 'UTC' });
+
+  console.log('[schedule] Cron jobs registered:');
+  console.log('  06:00 UTC — Morning hunt (overnight US leaks)');
+  console.log('  10:00 UTC — Mid-morning hunt (embargo lifts)');
+  console.log('  14:00 UTC — Afternoon hunt (Nintendo Direct window)');
+  console.log('  17:00 UTC — Evening hunt (Xbox/embargo window)');
+  console.log('  18:00 UTC — Produce cycle (audio + images + video)');
+  console.log('  19:00 UTC — PUBLISH (YouTube → TikTok → Instagram)');
+  console.log('  22:00 UTC — Late hunt (PlayStation State of Play window)');
+  console.log('');
+  console.log(`[schedule] AUTO_PUBLISH: ${process.env.AUTO_PUBLISH === 'true' ? 'ENABLED' : 'DISABLED'}`);
+  console.log('[schedule] Process will stay alive. Press Ctrl+C to exit.');
+
+  // Run an immediate hunt on startup
+  (async () => {
+    console.log('[schedule] Running initial hunt on startup...');
+    try {
+      await runHunt();
+      const { autoApprove } = require('./publisher');
+      await autoApprove();
+      await sendDiscord('**Pulse Gaming Scheduler Started** — Running autonomously');
+    } catch (err) {
+      console.log(`[schedule] Initial hunt error: ${err.message}`);
+    }
+  })();
 }
 
 const mode = process.argv[2];
 
 if (!mode) {
-  console.log('Pulse Gaming Pipeline');
-  console.log('=====================');
+  console.log('Pulse Gaming Pipeline v2');
+  console.log('========================');
   console.log('Usage:');
-  console.log('  node run.js hunt      — Fetch Reddit stories and generate scripts');
+  console.log('  node run.js hunt      — Fetch Reddit + RSS stories and generate scripts');
   console.log('  node run.js produce   — Generate audio, images and assemble videos');
-  console.log('  node run.js schedule  — Start cron scheduler (hunt at 6 AM daily)');
+  console.log('  node run.js publish   — Upload to YouTube, TikTok, Instagram');
+  console.log('  node run.js full      — Run complete autonomous cycle once');
+  console.log('  node run.js approve   — Run auto-approval pass');
+  console.log('  node run.js schedule  — Start autonomous cron scheduler (24/7)');
   process.exit(0);
 }
 
@@ -92,6 +265,15 @@ if (!mode) {
         break;
       case 'produce':
         await runProduce();
+        break;
+      case 'publish':
+        await runPublish();
+        break;
+      case 'full':
+        await runFull();
+        break;
+      case 'approve':
+        await runApprove();
         break;
       case 'schedule':
         runSchedule();

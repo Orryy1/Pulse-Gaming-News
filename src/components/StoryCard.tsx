@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Image, Video, CheckCircle, ArrowUpRight, MessageSquare, RotateCcw, AlertTriangle, ClipboardCopy, Download } from 'lucide-react';
+import { Image, Video, CheckCircle, ArrowUpRight, MessageSquare, RotateCcw, AlertTriangle, ClipboardCopy, Download, Youtube, Music2, Instagram, Zap, Rss } from 'lucide-react';
 import type { Story, CardStatus } from '../types/story';
 import FlairBadge from './FlairBadge';
 import CollapsibleSection from './CollapsibleSection';
@@ -122,7 +122,7 @@ export default function StoryCard({
     >
       {isApproved && !hasError && (
         <div className="absolute right-[-35px] top-[20px] z-10 rotate-45 bg-emerald-500 px-10 py-1 text-[10px] font-black tracking-[0.15em] text-white shadow-lg">
-          APPROVED
+          {story.auto_approved ? 'AUTO' : 'APPROVED'}
         </div>
       )}
 
@@ -131,10 +131,22 @@ export default function StoryCard({
           <div className="flex items-center gap-2">
             <FlairBadge flair={story.flair} />
             <span className="text-xs font-medium text-white/30">{story.subreddit}</span>
+            {story.source_type === 'rss' && (
+              <span className="flex items-center gap-1 rounded-full bg-blue-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-blue-400/60">
+                <Rss size={8} /> RSS
+              </span>
+            )}
           </div>
-          <div className="flex items-center gap-1.5 text-xs text-white/25">
-            <ArrowUpRight size={12} />
-            <span className="font-mono font-semibold">{formatScore(story.score)}</span>
+          <div className="flex items-center gap-2 text-xs text-white/25">
+            {story.breaking_score != null && (
+              <span className="flex items-center gap-1 rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-bold text-amber-400/60">
+                <Zap size={8} /> {story.breaking_score}
+              </span>
+            )}
+            <div className="flex items-center gap-1">
+              <ArrowUpRight size={12} />
+              <span className="font-mono font-semibold">{formatScore(story.score)}</span>
+            </div>
           </div>
         </div>
 
@@ -180,6 +192,32 @@ export default function StoryCard({
             isRefreshing={!!isRefreshingStats}
             onRefresh={() => onRefreshStats(story.id)}
           />
+        )}
+
+        {/* Multi-platform publish status */}
+        {isApproved && (story.youtube_post_id || story.tiktok_post_id || story.instagram_media_id) && (
+          <div className="mt-2 flex items-center gap-2">
+            {story.youtube_post_id && (
+              <a
+                href={story.youtube_url || `https://youtube.com/shorts/${story.youtube_post_id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 rounded-full bg-red-500/10 px-2 py-0.5 text-[9px] font-semibold text-red-400/80 hover:bg-red-500/20 transition-colors"
+              >
+                <Youtube size={10} /> YT
+              </a>
+            )}
+            {story.tiktok_post_id && (
+              <span className="flex items-center gap-1 rounded-full bg-pink-500/10 px-2 py-0.5 text-[9px] font-semibold text-pink-400/80">
+                <Music2 size={10} /> TikTok
+              </span>
+            )}
+            {story.instagram_media_id && (
+              <span className="flex items-center gap-1 rounded-full bg-purple-500/10 px-2 py-0.5 text-[9px] font-semibold text-purple-400/80">
+                <Instagram size={10} /> Reel
+              </span>
+            )}
+          </div>
         )}
       </div>
 

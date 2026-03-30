@@ -4,7 +4,50 @@ const dotenv = require('dotenv');
 
 dotenv.config({ override: true });
 
-const USER_AGENT = 'pulse-gaming-hunter/1.0 (personal use)';
+const USER_AGENT = 'pulse-gaming-hunter/2.0 (personal use)';
+
+// --- Decode HTML entities from RSS feeds ---
+function decodeEntities(str) {
+  if (!str) return str;
+  const named = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', rsquo: '\u2019', lsquo: '\u2018', rdquo: '\u201D', ldquo: '\u201C', mdash: '\u2014', ndash: '\u2013', hellip: '\u2026' };
+  return str
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/&(\w+);/g, (full, name) => named[name] || full);
+}
+
+// --- Expanded subreddit list for maximum coverage ---
+const SUBREDDITS = [
+  'GamingLeaksAndRumours',
+  'PCMasterRace',
+  'Games',
+  'PS5',
+  'XboxSeriesX',
+  'NintendoSwitch',
+  'pcgaming',
+  'gaming',
+];
+
+// --- RSS feeds from major gaming outlets ---
+const RSS_FEEDS = [
+  { name: 'IGN', url: 'https://feeds.feedburner.com/ign/all' },
+  { name: 'GameSpot', url: 'https://www.gamespot.com/feeds/mashup/' },
+  { name: 'Eurogamer', url: 'https://www.eurogamer.net/feed' },
+  { name: 'PCGamer', url: 'https://www.pcgamer.com/rss/' },
+  { name: 'RockPaperShotgun', url: 'https://www.rockpapershotgun.com/feed' },
+  { name: 'Kotaku', url: 'https://kotaku.com/rss' },
+  { name: 'TheVergeGaming', url: 'https://www.theverge.com/games/rss/index.xml' },
+  { name: 'Polygon', url: 'https://www.polygon.com/rss/index.xml' },
+];
+
+// --- Keywords that indicate high-value breaking news ---
+const BREAKING_KEYWORDS = [
+  'announced', 'revealed', 'confirmed', 'leaked', 'exclusive',
+  'release date', 'trailer', 'gameplay', 'launch', 'delay',
+  'cancelled', 'acquisition', 'price', 'free', 'update',
+  'dlc', 'expansion', 'sequel', 'remaster', 'remake',
+  'ps6', 'xbox', 'nintendo', 'switch 2', 'gta 6', 'gta vi',
+];
 
 function similarity(a, b) {
   const wordsA = a.toLowerCase().split(/\s+/);
@@ -16,17 +59,54 @@ function similarity(a, b) {
   return intersection.length / union.size;
 }
 
+function scoreBreakingValue(title, score, numComments) {
+  let breakingScore = 0;
+  const lower = title.toLowerCase();
+
+  // Keyword matches
+  for (const kw of BREAKING_KEYWORDS) {
+    if (lower.includes(kw)) breakingScore += 15;
+  }
+
+  // Reddit engagement signals
+  breakingScore += Math.min(score / 10, 100);
+  breakingScore += Math.min(numComments / 5, 50);
+
+  return breakingScore;
+}
+
 async function fetchSubreddit(subreddit) {
-  const url = `https://www.reddit.com/r/${subreddit}/top.json?limit=50&t=day`;
-  console.log(`[hunter] Fetching: ${url}`);
+  const url = `https://www.reddit.com/r/${subreddit}/hot.json?limit=50`;
+  console.log(`[hunter] Fetching: r/${subreddit} (hot)`);
 
-  const response = await axios.get(url, {
-    headers: { 'User-Agent': USER_AGENT },
-    timeout: 15000,
-  });
+  try {
+    const response = await axios.get(url, {
+      headers: { 'User-Agent': USER_AGENT },
+      timeout: 15000,
+    });
+    const children = response.data?.data?.children || [];
+    return children.map(c => c.data);
+  } catch (err) {
+    console.log(`[hunter] Failed r/${subreddit}: ${err.message}`);
+    return [];
+  }
+}
 
-  const children = response.data?.data?.children || [];
-  return children.map(c => c.data);
+async function fetchSubredditNew(subreddit) {
+  const url = `https://www.reddit.com/r/${subreddit}/new.json?limit=25`;
+  console.log(`[hunter] Fetching: r/${subreddit} (new)`);
+
+  try {
+    const response = await axios.get(url, {
+      headers: { 'User-Agent': USER_AGENT },
+      timeout: 15000,
+    });
+    const children = response.data?.data?.children || [];
+    return children.map(c => c.data);
+  } catch (err) {
+    console.log(`[hunter] Failed r/${subreddit}/new: ${err.message}`);
+    return [];
+  }
 }
 
 async function fetchTopComment(subreddit, postId) {
@@ -42,88 +122,348 @@ async function fetchTopComment(subreddit, postId) {
       return commentListing[0].data.body.substring(0, 500);
     }
   } catch (err) {
-    console.log(`[hunter] Could not fetch top comment for ${postId}: ${err.message}`);
+    // Silently skip
   }
   return '';
 }
 
+// --- RSS feed parsing (lightweight XML extraction) ---
+async function fetchRSSFeed(feed) {
+  try {
+    const response = await axios.get(feed.url, {
+      headers: { 'User-Agent': USER_AGENT },
+      timeout: 15000,
+      responseType: 'text',
+    });
+
+    const xml = response.data;
+    const items = [];
+
+    // Simple XML extraction for <item> or <entry> blocks
+    const itemRegex = /<(?:item|entry)[\s>]([\s\S]*?)<\/(?:item|entry)>/gi;
+    let match;
+
+    while ((match = itemRegex.exec(xml)) !== null && items.length < 10) {
+      const block = match[1];
+
+      const titleMatch = block.match(/<title[^>]*>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/i);
+      const linkMatch = block.match(/<link[^>]*href="([^"]*)"[^>]*\/?>/i) ||
+                        block.match(/<link[^>]*>(.*?)<\/link>/i);
+      const pubDateMatch = block.match(/<(?:pubDate|published|updated)[^>]*>(.*?)<\/(?:pubDate|published|updated)>/i);
+      const descMatch = block.match(/<(?:description|summary|content)[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/(?:description|summary|content)>/i);
+
+      if (titleMatch) {
+        const title = decodeEntities(titleMatch[1].replace(/<[^>]*>/g, '').trim());
+        const link = linkMatch ? (linkMatch[1] || linkMatch[2] || '').trim() : '';
+        const pubDate = pubDateMatch ? pubDateMatch[1].trim() : '';
+        const desc = descMatch ? decodeEntities(descMatch[1].replace(/<[^>]*>/g, '').substring(0, 300).trim()) : '';
+
+        // Only include items from the last 24 hours
+        if (pubDate) {
+          const itemDate = new Date(pubDate);
+          const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+          if (itemDate < dayAgo) continue;
+        }
+
+        items.push({
+          title,
+          url: link,
+          source: feed.name,
+          description: desc,
+          timestamp: pubDate ? new Date(pubDate).toISOString() : new Date().toISOString(),
+        });
+      }
+    }
+
+    console.log(`[hunter] RSS ${feed.name}: ${items.length} items`);
+    return items;
+  } catch (err) {
+    console.log(`[hunter] RSS ${feed.name} failed: ${err.message}`);
+    return [];
+  }
+}
+
+// --- Image URL extraction from article pages ---
+async function fetchArticleImage(url) {
+  if (!url || url.includes('reddit.com')) return null;
+
+  try {
+    const response = await axios.get(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; PulseGaming/2.0)' },
+      timeout: 10000,
+      responseType: 'text',
+      maxRedirects: 3,
+    });
+
+    const html = response.data;
+
+    // Try og:image first (most reliable for article hero images)
+    const ogMatch = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i) ||
+                    html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["']/i);
+    if (ogMatch && ogMatch[1]) {
+      const imgUrl = ogMatch[1];
+      // Validate it's a real image URL
+      if (imgUrl.match(/\.(jpg|jpeg|png|webp)/i) || imgUrl.includes('image')) {
+        return imgUrl;
+      }
+    }
+
+    // Try twitter:image
+    const twMatch = html.match(/<meta[^>]*(?:name|property)=["']twitter:image["'][^>]*content=["']([^"']+)["']/i);
+    if (twMatch && twMatch[1]) return twMatch[1];
+
+    return null;
+  } catch (err) {
+    return null;
+  }
+}
+
+// --- Search for game key art / screenshots ---
+async function fetchGameImages(gameTitle) {
+  const images = [];
+
+  // Try Steam store search for game art
+  try {
+    const searchUrl = `https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(gameTitle)}&cc=gb&l=english`;
+    const response = await axios.get(searchUrl, {
+      headers: { 'User-Agent': USER_AGENT },
+      timeout: 8000,
+    });
+
+    const items = response.data?.items || [];
+    if (items.length > 0) {
+      const appId = items[0].id;
+      // Steam header image (460x215, high quality key art)
+      images.push({
+        url: `https://cdn.akamai.steamstatic.com/steam/apps/${appId}/header.jpg`,
+        type: 'key_art',
+        source: 'steam',
+      });
+      // Steam library hero (large, cinematic)
+      images.push({
+        url: `https://cdn.akamai.steamstatic.com/steam/apps/${appId}/library_hero.jpg`,
+        type: 'hero',
+        source: 'steam',
+      });
+      // Steam capsule (vertical, good for shorts)
+      images.push({
+        url: `https://cdn.akamai.steamstatic.com/steam/apps/${appId}/library_600x900.jpg`,
+        type: 'capsule',
+        source: 'steam',
+      });
+      // Screenshots
+      for (let i = 0; i < 4; i++) {
+        images.push({
+          url: `https://cdn.akamai.steamstatic.com/steam/apps/${appId}/ss_${i}.jpg`,
+          type: 'screenshot',
+          source: 'steam',
+        });
+      }
+    }
+  } catch (err) {
+    // Steam search failed, continue
+  }
+
+  return images;
+}
+
+// --- Company logo URLs (static, reliable CDN sources) ---
+const COMPANY_LOGOS = {
+  sony: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/05/PlayStation_logo_colour.svg/320px-PlayStation_logo_colour.svg.png',
+  playstation: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/05/PlayStation_logo_colour.svg/320px-PlayStation_logo_colour.svg.png',
+  microsoft: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/Xbox_logo_2012_cropped.svg/320px-Xbox_logo_2012_cropped.svg.png',
+  xbox: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/Xbox_logo_2012_cropped.svg/320px-Xbox_logo_2012_cropped.svg.png',
+  nintendo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0d/Nintendo.svg/320px-Nintendo.svg.png',
+  valve: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Valve_logo.svg/320px-Valve_logo.svg.png',
+  steam: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/83/Steam_icon_logo.svg/320px-Steam_icon_logo.svg.png',
+  ea: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0d/Electronic-Arts-Logo.svg/320px-Electronic-Arts-Logo.svg.png',
+  ubisoft: 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/78/Ubisoft_logo.svg/320px-Ubisoft_logo.svg.png',
+  rockstar: 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/53/Rockstar_Games_Logo.svg/320px-Rockstar_Games_Logo.svg.png',
+  bethesda: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/22/Bethesda_Game_Studios_logo.svg/320px-Bethesda_Game_Studios_logo.svg.png',
+  capcom: 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/ef/Capcom_logo.svg/320px-Capcom_logo.svg.png',
+  square_enix: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/af/Square_Enix_logo.svg/320px-Square_Enix_logo.svg.png',
+  activision: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b9/Activision_logo.svg/320px-Activision_logo.svg.png',
+  blizzard: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/23/Blizzard_Entertainment_Logo_2015.svg/320px-Blizzard_Entertainment_Logo_2015.svg.png',
+  cd_projekt: 'https://upload.wikimedia.org/wikipedia/en/thumb/6/68/CD_Projekt_logo.svg/320px-CD_Projekt_logo.svg.png',
+  fromsoftware: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/09/FromSoftware_logo.svg/320px-FromSoftware_logo.svg.png',
+  sega: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/4b/Sega_logo.svg/320px-Sega_logo.svg.png',
+  bandai_namco: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/Bandai_Namco_Entertainment_logo.svg/320px-Bandai_Namco_Entertainment_logo.svg.png',
+  konami: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/21/Konami_Logo.svg/320px-Konami_Logo.svg.png',
+};
+
+function detectCompany(title) {
+  const lower = title.toLowerCase();
+  for (const [key, url] of Object.entries(COMPANY_LOGOS)) {
+    if (lower.includes(key.replace('_', ' '))) {
+      return { name: key, logoUrl: url };
+    }
+  }
+  return null;
+}
+
+// --- Main hunt function ---
 async function hunt() {
-  console.log('[hunter] Starting Reddit hunt (public JSON API, no auth)...');
+  console.log('[hunter] === MULTI-SOURCE HUNT v2 ===');
+  console.log(`[hunter] Scanning ${SUBREDDITS.length} subreddits + ${RSS_FEEDS.length} RSS feeds`);
 
-  const subreddits = ['GamingLeaksAndRumours', 'PCMasterRace'];
   const includeRumours = process.env.INCLUDE_RUMOURS === 'true';
-  const allowedFlairs = ['Verified', 'Highly Likely'];
-  if (includeRumours) allowedFlairs.push('Rumour');
-
-  console.log(`[hunter] Fetching from: ${subreddits.join(', ')}`);
-  console.log(`[hunter] Allowed flairs: ${allowedFlairs.join(', ')}`);
+  const allowedFlairs = ['verified', 'highly likely'];
+  if (includeRumours) allowedFlairs.push('rumour');
 
   let allPosts = [];
 
-  for (const sub of subreddits) {
+  // --- Phase 1: Reddit (hot + new from key subreddits) ---
+  console.log('[hunter] Phase 1: Reddit scraping...');
+
+  for (const sub of SUBREDDITS) {
     try {
-      const posts = await fetchSubreddit(sub);
-      console.log(`[hunter] r/${sub}: ${posts.length} posts fetched`);
+      // Fetch hot posts
+      const hotPosts = await fetchSubreddit(sub);
 
-      for (const post of posts) {
+      // Also fetch new posts from leak-focused subs (catches breaking news faster)
+      let newPosts = [];
+      if (['GamingLeaksAndRumours', 'Games', 'PS5', 'XboxSeriesX', 'NintendoSwitch'].includes(sub)) {
+        await new Promise(r => setTimeout(r, 500));
+        newPosts = await fetchSubredditNew(sub);
+      }
+
+      const combined = [...hotPosts, ...newPosts];
+      const seenIds = new Set();
+
+      for (const post of combined) {
+        if (seenIds.has(post.id)) continue;
+        seenIds.add(post.id);
+
+        // For leak subreddits, filter by flair
         const flair = post.link_flair_text || '';
-        const matchesFlair = allowedFlairs.some(f => flair.toLowerCase().includes(f.toLowerCase()));
+        if (sub === 'GamingLeaksAndRumours') {
+          const matchesFlair = allowedFlairs.some(f => flair.toLowerCase().includes(f));
+          if (!matchesFlair) continue;
+        }
 
-        if (!matchesFlair) continue;
-
-        const topComment = await fetchTopComment(sub, post.id);
+        // For general subs, filter by minimum engagement + recency
+        if (!['GamingLeaksAndRumours'].includes(sub)) {
+          const postAge = (Date.now() - post.created_utc * 1000) / (1000 * 60 * 60);
+          if (postAge > 24) continue;
+          if (post.score < 100 && post.num_comments < 20) continue;
+        }
 
         allPosts.push({
           id: post.id,
-          title: post.title,
-          url: post.url,
+          title: decodeEntities(post.title),
+          url: `https://reddit.com${post.permalink}`,
           score: post.score,
-          flair: flair,
+          flair: flair || 'News',
           subreddit: sub,
-          top_comment: topComment,
+          top_comment: '',
           timestamp: new Date(post.created_utc * 1000).toISOString(),
           num_comments: post.num_comments || 0,
+          source_type: 'reddit',
+          thumbnail_url: (post.thumbnail && post.thumbnail.startsWith('http')) ? post.thumbnail : null,
+          article_url: (post.url && !post.url.includes('reddit.com')) ? post.url : null,
         });
-
-        // Small delay to be polite to Reddit's public API
-        await new Promise(r => setTimeout(r, 500));
       }
+
+      // Politeness delay between subreddits
+      await new Promise(r => setTimeout(r, 600));
     } catch (err) {
-      console.log(`[hunter] ERROR: Failed to fetch from r/${sub}: ${err.message}`);
+      console.log(`[hunter] ERROR r/${sub}: ${err.message}`);
     }
   }
 
-  console.log(`[hunter] Raw qualifying posts: ${allPosts.length}`);
+  console.log(`[hunter] Reddit: ${allPosts.length} qualifying posts`);
 
-  // Deduplicate by title similarity
-  const deduped = [];
-  for (const post of allPosts) {
-    const isDupe = deduped.some(existing => similarity(existing.title, post.title) > 0.6);
-    if (!isDupe) deduped.push(post);
+  // --- Phase 2: RSS feeds from gaming outlets ---
+  console.log('[hunter] Phase 2: RSS feeds...');
+
+  const rssResults = await Promise.allSettled(
+    RSS_FEEDS.map(feed => fetchRSSFeed(feed))
+  );
+
+  for (const result of rssResults) {
+    if (result.status !== 'fulfilled') continue;
+    for (const item of result.value) {
+      allPosts.push({
+        id: `rss_${Buffer.from(item.url || item.title).toString('base64').substring(0, 12)}`,
+        title: item.title,
+        url: item.url,
+        score: 50,
+        flair: 'News',
+        subreddit: item.source,
+        top_comment: item.description || '',
+        timestamp: item.timestamp,
+        num_comments: 0,
+        source_type: 'rss',
+        article_url: item.url,
+      });
+    }
   }
 
+  console.log(`[hunter] Total raw posts: ${allPosts.length}`);
+
+  // --- Deduplicate by title similarity ---
+  const deduped = [];
+  for (const post of allPosts) {
+    const isDupe = deduped.some(existing => similarity(existing.title, post.title) > 0.5);
+    if (!isDupe) deduped.push(post);
+  }
   console.log(`[hunter] After deduplication: ${deduped.length}`);
 
-  // Score and sort
-  deduped.sort((a, b) => (b.score + b.num_comments) - (a.score + a.num_comments));
+  // --- Score and rank by breaking news value ---
+  for (const post of deduped) {
+    post.breaking_score = scoreBreakingValue(post.title, post.score, post.num_comments);
+  }
+  deduped.sort((a, b) => b.breaking_score - a.breaking_score);
 
-  // Take top 5
-  const top5 = deduped.slice(0, 5);
+  // --- Take top 8 stories (more content = more chances to go viral) ---
+  const topStories = deduped.slice(0, 8);
+
+  // --- Enrich with images (parallel for speed) ---
+  console.log('[hunter] Phase 3: Enriching with images...');
+
+  await Promise.allSettled(topStories.map(async (story, i) => {
+    // Fetch top comment from Reddit posts
+    if (story.source_type === 'reddit' && !story.top_comment) {
+      story.top_comment = await fetchTopComment(story.subreddit, story.id);
+    }
+
+    // Fetch article hero image
+    if (story.article_url) {
+      story.article_image = await fetchArticleImage(story.article_url);
+    }
+
+    // Detect company and attach logo
+    const company = detectCompany(story.title);
+    if (company) {
+      story.company_name = company.name;
+      story.company_logo_url = company.logoUrl;
+    }
+
+    // Search for game screenshots/key art via Steam
+    const gameTitle = story.title.replace(/[^a-zA-Z0-9\s]/g, '').trim();
+    if (gameTitle.length > 3) {
+      story.game_images = await fetchGameImages(gameTitle);
+    }
+  }));
 
   const output = {
     timestamp: new Date().toISOString(),
-    stories: top5,
+    stories: topStories,
   };
 
   await fs.writeJson('pending_news.json', output, { spaces: 2 });
-  console.log(`[hunter] Saved ${top5.length} stories to pending_news.json`);
+  console.log(`[hunter] Saved ${topStories.length} stories to pending_news.json`);
   console.log('[hunter] Top stories:');
-  top5.forEach((s, i) => console.log(`  ${i + 1}. [${s.flair}] ${s.title} (score: ${s.score})`));
+  topStories.forEach((s, i) => console.log(`  ${i + 1}. [${s.flair}] (score:${s.breaking_score}) ${s.title}`));
 
-  return top5;
+  return topStories;
 }
 
 module.exports = hunt;
+module.exports.fetchArticleImage = fetchArticleImage;
+module.exports.fetchGameImages = fetchGameImages;
+module.exports.detectCompany = detectCompany;
+module.exports.COMPANY_LOGOS = COMPANY_LOGOS;
 
 if (require.main === module) {
   hunt().catch(err => {

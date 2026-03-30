@@ -3,6 +3,7 @@ const cors = require('cors');
 const fs = require('fs-extra');
 const path = require('path');
 const { spawn } = require('child_process');
+const cron = require('node-cron');
 const dotenv = require('dotenv');
 
 dotenv.config({ override: true });
@@ -71,6 +72,8 @@ app.get('/api/health', (req, res) => {
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
     hunterActive: !!hunterInterval,
+    autonomousMode: process.env.AUTO_PUBLISH === 'true',
+    schedulerActive: schedulerRunning,
   });
 });
 
@@ -153,6 +156,93 @@ app.get('/api/publish-status', (req, res) => {
   res.json(publishState);
 });
 
+// --- Full autonomous cycle endpoint ---
+app.post('/api/autonomous/run', async (req, res) => {
+  res.json({ status: 'started', message: 'Full autonomous cycle initiated' });
+
+  try {
+    const { fullAutonomousCycle } = require('./publisher');
+    await fullAutonomousCycle();
+  } catch (err) {
+    console.log(`[server] Autonomous cycle error: ${err.message}`);
+  }
+});
+
+// --- Auto-approve endpoint ---
+app.post('/api/autonomous/approve', async (req, res) => {
+  try {
+    const { autoApprove } = require('./publisher');
+    const count = await autoApprove();
+    res.json({ status: 'ok', approved: count });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Multi-platform publish endpoint ---
+app.post('/api/autonomous/publish', async (req, res) => {
+  res.json({ status: 'started', message: 'Multi-platform publish initiated' });
+
+  try {
+    const { publishToAllPlatforms } = require('./publisher');
+    await publishToAllPlatforms();
+  } catch (err) {
+    console.log(`[server] Multi-platform publish error: ${err.message}`);
+  }
+});
+
+// --- Autonomous status ---
+app.get('/api/autonomous/status', (req, res) => {
+  res.json({
+    autoPublish: process.env.AUTO_PUBLISH === 'true',
+    schedulerActive: schedulerRunning,
+    hunterActive: !!hunterInterval,
+    lastHuntRun: lastHunterRun.toISOString(),
+    nextHuntRun: hunterInterval ? new Date(lastHunterRun.getTime() + HUNTER_INTERVAL_MS).toISOString() : null,
+    schedule: {
+      hunts: ['06:00 UTC', '10:00 UTC', '14:00 UTC', '17:00 UTC', '22:00 UTC'],
+      produce: '18:00 UTC',
+      publish: '19:00 UTC (YT) → 20:00 UTC (TikTok) → 21:00 UTC (Insta)',
+    },
+    platforms: {
+      youtube: { configured: !!process.env.YOUTUBE_API_KEY },
+      tiktok: { configured: !!process.env.TIKTOK_CLIENT_KEY },
+      instagram: { configured: !!process.env.INSTAGRAM_ACCESS_TOKEN || !!process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID },
+    },
+  });
+});
+
+// --- Platform auth status ---
+app.get('/api/platforms/status', async (req, res) => {
+  const status = {
+    youtube: { authenticated: false, configured: false },
+    tiktok: { authenticated: false, configured: false },
+    instagram: { authenticated: false, configured: false },
+  };
+
+  // YouTube
+  try {
+    const ytTokenPath = path.join(__dirname, 'tokens', 'youtube_token.json');
+    status.youtube.configured = await fs.pathExists(path.join(__dirname, 'tokens', 'youtube_credentials.json'));
+    status.youtube.authenticated = await fs.pathExists(ytTokenPath);
+  } catch (err) { /* skip */ }
+
+  // TikTok
+  try {
+    status.tiktok.configured = !!process.env.TIKTOK_CLIENT_KEY;
+    status.tiktok.authenticated = await fs.pathExists(path.join(__dirname, 'tokens', 'tiktok_token.json'));
+  } catch (err) { /* skip */ }
+
+  // Instagram
+  try {
+    status.instagram.configured = !!process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID;
+    status.instagram.authenticated = !!process.env.INSTAGRAM_ACCESS_TOKEN ||
+      await fs.pathExists(path.join(__dirname, 'tokens', 'instagram_token.json'));
+  } catch (err) { /* skip */ }
+
+  res.json(status);
+});
+
 // --- Image/Video generation queues ---
 app.post('/api/generate-image', async (req, res) => {
   try {
@@ -170,7 +260,6 @@ app.post('/api/generate-image', async (req, res) => {
     console.log(`[server] Image queued: ${id}`);
     res.json({ status: 'generating', id });
 
-    // Broadcast initial progress
     broadcastProgress(id, 'image', 10, 'Queued for generation');
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -296,9 +385,10 @@ app.post('/api/stats/update', (req, res) => {
 });
 
 // --- Hunter endpoints ---
-const HUNTER_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const HUNTER_INTERVAL_MS = 3 * 60 * 60 * 1000; // every 3 hours
 let hunterInterval = null;
 let lastHunterRun = new Date(0);
+let schedulerRunning = false;
 
 async function runHunter() {
   console.log('[server] Running hunter cycle...');
@@ -322,11 +412,43 @@ async function runHunter() {
 
       // Merge newly processed stories with existing
       const processed = readNews();
-      // processed now contains only new stories; merge with existing
       if (existingStories.length > 0 && processed.length > 0) {
         const merged = [...processed, ...existingStories];
         writeNews(merged);
       }
+
+      // Auto-approve high-confidence stories
+      try {
+        const { autoApprove } = require('./publisher');
+        await autoApprove();
+      } catch (err) {
+        console.log(`[server] Auto-approve error: ${err.message}`);
+      }
+    }
+
+    // Send Discord notification with review link for pending stories
+    try {
+      const sendDiscord = require('./notify');
+      const allStories = readNews();
+      const pendingReview = allStories.filter(s => !s.approved);
+      if (pendingReview.length > 0) {
+        const dashUrl = process.env.RAILWAY_PUBLIC_URL || 'http://localhost:3001';
+        const storyList = pendingReview.slice(0, 8).map(s =>
+          `• [${s.flair}] (${s.breaking_score || 0}) ${s.title}`
+        ).join('\n');
+        await sendDiscord(
+          `**🔎 Hunt Complete** — ${newPosts.length} new stories\n` +
+          `**✅ Auto-approved**: ${allStories.filter(s => s.auto_approved).length}\n` +
+          `**⚠️ ${pendingReview.length} need your review:**\n` +
+          `${storyList}\n\n` +
+          `👉 ${dashUrl}`
+        );
+      } else if (newPosts.length > 0) {
+        const sendDiscord = require('./notify');
+        await sendDiscord(`**🔎 Hunt Complete** — ${newPosts.length} new stories (all auto-approved)`);
+      }
+    } catch (err) {
+      console.log(`[server] Discord notify error: ${err.message}`);
     }
 
     console.log(`[server] Hunter cycle complete: ${newPosts.length} new stories`);
@@ -348,14 +470,46 @@ app.post('/api/hunter/run', async (req, res) => {
   await runHunter();
 });
 
-function startHunter() {
+// --- Autonomous scheduler (built into server) ---
+function startAutonomousScheduler() {
   const hasKey = process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY !== 'placeholder';
-  if (hasKey) {
-    console.log('[server] Auto-hunter enabled. Running every 6 hours.');
-    runHunter();
-    hunterInterval = setInterval(runHunter, HUNTER_INTERVAL_MS);
-  } else {
-    console.log('[server] Auto-hunter disabled. Set ANTHROPIC_API_KEY to enable.');
+  if (!hasKey) {
+    console.log('[server] Autonomous scheduler disabled. Set ANTHROPIC_API_KEY to enable.');
+    return;
+  }
+
+  schedulerRunning = true;
+
+  // Hunt every 3 hours via setInterval
+  console.log('[server] Auto-hunter enabled. Running every 3 hours.');
+  runHunter();
+  hunterInterval = setInterval(runHunter, HUNTER_INTERVAL_MS);
+
+  // Cron-based produce + publish at optimal times
+  if (process.env.AUTO_PUBLISH === 'true') {
+    // 18:00 UTC — Produce all approved stories
+    cron.schedule('0 18 * * *', async () => {
+      console.log('[server-cron] 18:00 UTC — Auto-produce cycle');
+      try {
+        const { produce } = require('./publisher');
+        await produce();
+      } catch (err) {
+        console.log(`[server-cron] Produce error: ${err.message}`);
+      }
+    }, { timezone: 'UTC' });
+
+    // 19:00 UTC — Publish to all platforms
+    cron.schedule('0 19 * * *', async () => {
+      console.log('[server-cron] 19:00 UTC — Auto-publish cycle');
+      try {
+        const { publishToAllPlatforms } = require('./publisher');
+        await publishToAllPlatforms();
+      } catch (err) {
+        console.log(`[server-cron] Publish error: ${err.message}`);
+      }
+    }, { timezone: 'UTC' });
+
+    console.log('[server] Auto-publish enabled: produce at 18:00 UTC, publish at 19:00 UTC');
   }
 }
 
@@ -365,7 +519,6 @@ app.get('/{*splat}', (req, res) => {
   if (fs.existsSync(indexPath)) {
     res.sendFile(indexPath);
   } else {
-    // Fallback to public/index.html for dev without build
     const pubIndex = path.join(__dirname, 'public', 'index.html');
     if (fs.existsSync(pubIndex)) {
       res.sendFile(pubIndex);
@@ -376,8 +529,8 @@ app.get('/{*splat}', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`[server] Pulse Gaming Command Centre running on http://localhost:${PORT}`);
-  startHunter();
+  console.log(`[server] Pulse Gaming Command Centre v2 running on http://localhost:${PORT}`);
+  startAutonomousScheduler();
 });
 
 module.exports = { broadcastProgress };

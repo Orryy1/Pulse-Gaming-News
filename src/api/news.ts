@@ -1,4 +1,4 @@
-import type { AssetProgress } from '../types/story';
+import type { AssetProgress, AutonomousStatus, PlatformStatus } from '../types/story';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
@@ -107,6 +107,38 @@ export async function updateStoryStats(id: string, stats: { youtube_views?: numb
     body: JSON.stringify({ id, ...stats }),
   });
   if (!res.ok) throw new Error('Failed to update story stats');
+  return res.json();
+}
+
+// --- New autonomous endpoints ---
+
+export async function fetchAutonomousStatus(): Promise<AutonomousStatus> {
+  const res = await fetch(`${API_BASE}/api/autonomous/status`);
+  if (!res.ok) throw new Error('Failed to fetch autonomous status');
+  return res.json();
+}
+
+export async function fetchPlatformStatus(): Promise<PlatformStatus> {
+  const res = await fetch(`${API_BASE}/api/platforms/status`);
+  if (!res.ok) throw new Error('Failed to fetch platform status');
+  return res.json();
+}
+
+export async function triggerAutonomousCycle() {
+  const res = await fetch(`${API_BASE}/api/autonomous/run`, { method: 'POST' });
+  if (!res.ok) throw new Error('Failed to start autonomous cycle');
+  return res.json();
+}
+
+export async function triggerAutoApprove() {
+  const res = await fetch(`${API_BASE}/api/autonomous/approve`, { method: 'POST' });
+  if (!res.ok) throw new Error('Failed to run auto-approve');
+  return res.json();
+}
+
+export async function triggerMultiPlatformPublish() {
+  const res = await fetch(`${API_BASE}/api/autonomous/publish`, { method: 'POST' });
+  if (!res.ok) throw new Error('Failed to start multi-platform publish');
   return res.json();
 }
 

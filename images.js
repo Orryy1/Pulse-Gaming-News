@@ -1,6 +1,7 @@
 const { exec } = require('child_process');
 const fs = require('fs-extra');
 const path = require('path');
+const axios = require('axios');
 const dotenv = require('dotenv');
 const util = require('util');
 
@@ -8,25 +9,97 @@ const execAsync = util.promisify(exec);
 
 dotenv.config({ override: true });
 
-function buildSvg(title, thumbnailText, flair) {
-  const flairColour = flair === 'Verified' ? '#10B981' : flair === 'Highly Likely' ? '#F59E0B' : '#F97316';
-  const escapedTitle = title
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-  const escapedThumb = (thumbnailText || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+const OUTPUT_DIR = path.join('output', 'images');
+const CACHE_DIR = path.join('output', 'image_cache');
 
-  // Wrap title text manually (rough 30-char line breaks)
+// --- Download and cache an image from URL ---
+async function downloadImage(url, filename) {
+  const cachePath = path.join(CACHE_DIR, filename);
+  if (await fs.pathExists(cachePath)) return cachePath;
+
+  try {
+    const response = await axios.get(url, {
+      responseType: 'arraybuffer',
+      timeout: 15000,
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; PulseGaming/2.0)' },
+      maxRedirects: 5,
+    });
+
+    await fs.ensureDir(CACHE_DIR);
+    await fs.writeFile(cachePath, Buffer.from(response.data));
+
+    const stat = await fs.stat(cachePath);
+    if (stat.size < 1000) {
+      await fs.remove(cachePath);
+      return null;
+    }
+
+    console.log(`[images] Cached: ${filename} (${Math.round(stat.size / 1024)}KB)`);
+    return cachePath;
+  } catch (err) {
+    return null;
+  }
+}
+
+// --- Download the best available image for a story ---
+async function getBestImage(story) {
+  const images = [];
+
+  // Priority 1: Article hero image (og:image from the news source)
+  if (story.article_image) {
+    const ext = story.article_image.match(/\.(jpg|jpeg|png|webp)/i)?.[1] || 'jpg';
+    const cached = await downloadImage(story.article_image, `${story.id}_article.${ext}`);
+    if (cached) images.push({ path: cached, type: 'article_hero', priority: 100 });
+  }
+
+  // Priority 2: Steam key art / hero images
+  if (story.game_images && story.game_images.length > 0) {
+    for (const img of story.game_images) {
+      const safeName = `${story.id}_${img.type}_${img.source}.jpg`;
+      const cached = await downloadImage(img.url, safeName);
+      if (cached) {
+        const priority = img.type === 'capsule' ? 95 : img.type === 'hero' ? 90 : img.type === 'key_art' ? 85 : 70;
+        images.push({ path: cached, type: img.type, priority });
+      }
+      if (images.length >= 3) break;
+    }
+  }
+
+  // Priority 3: Reddit thumbnail
+  if (story.thumbnail_url) {
+    const cached = await downloadImage(story.thumbnail_url, `${story.id}_reddit_thumb.jpg`);
+    if (cached) images.push({ path: cached, type: 'reddit_thumb', priority: 40 });
+  }
+
+  // Priority 4: Company logo
+  if (story.company_logo_url) {
+    const cached = await downloadImage(story.company_logo_url, `${story.id}_logo.png`);
+    if (cached) images.push({ path: cached, type: 'company_logo', priority: 30 });
+  }
+
+  // Sort by priority (highest first)
+  images.sort((a, b) => b.priority - a.priority);
+  return images;
+}
+
+// --- Build professional SVG composite with real images embedded ---
+function buildProSvg(title, thumbnailText, flair, heroImageBase64, logoImageBase64, hasHero) {
+  const flairColour = flair.toLowerCase().includes('verified') ? '#10B981'
+    : flair.toLowerCase().includes('highly likely') ? '#F59E0B'
+    : flair.toLowerCase().includes('rumour') ? '#F97316'
+    : '#3B82F6';
+
+  const escapedTitle = title
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const escapedThumb = (thumbnailText || '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+  // Word wrap for title
   const words = escapedTitle.split(' ');
   const lines = [];
   let current = '';
   for (const word of words) {
-    if ((current + ' ' + word).length > 28 && current) {
+    if ((current + ' ' + word).length > 24 && current) {
       lines.push(current);
       current = word;
     } else {
@@ -35,72 +108,146 @@ function buildSvg(title, thumbnailText, flair) {
   }
   if (current) lines.push(current);
 
-  const titleLines = lines.slice(0, 4).map((line, i) =>
-    `<tspan x="540" dy="${i === 0 ? 0 : 62}">${line}</tspan>`
+  const titleLines = lines.slice(0, 3).map((line, i) =>
+    `<tspan x="540" dy="${i === 0 ? 0 : 72}">${line}</tspan>`
   ).join('');
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920">
+  // Hero image section (if we have a real image)
+  const heroSection = hasHero ? `
+    <!-- Hero game image (blurred background fill) -->
+    <image href="data:image/jpeg;base64,${heroImageBase64}" x="-100" y="0" width="1280" height="1920"
+           preserveAspectRatio="xMidYMid slice" opacity="0.3" filter="url(#blur)"/>
+
+    <!-- Hero image (centred, crisp) -->
+    <image href="data:image/jpeg;base64,${heroImageBase64}" x="40" y="180" width="1000" height="563"
+           preserveAspectRatio="xMidYMid meet" clip-path="url(#heroClip)"/>
+
+    <!-- Hero image border glow -->
+    <rect x="40" y="180" width="1000" height="563" rx="16" fill="none"
+          stroke="#39FF14" stroke-width="2" opacity="0.4"/>
+  ` : `
+    <!-- No hero image — use enhanced gradient background -->
+    <rect x="40" y="180" width="1000" height="563" rx="16" fill="#0d1a2e" opacity="0.6"/>
+    <rect x="40" y="180" width="1000" height="563" rx="16" fill="none"
+          stroke="#39FF14" stroke-width="1" opacity="0.2"/>
+  `;
+
+  // Company logo section
+  const logoSection = logoImageBase64 ? `
+    <image href="data:image/png;base64,${logoImageBase64}" x="440" y="780" width="200" height="80"
+           preserveAspectRatio="xMidYMid meet" opacity="0.8"/>
+  ` : '';
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+       width="1080" height="1920" viewBox="0 0 1080 1920">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#0a1628"/>
-      <stop offset="50%" stop-color="#1E2330"/>
-      <stop offset="100%" stop-color="#0a1628"/>
+      <stop offset="0%" stop-color="#020810"/>
+      <stop offset="40%" stop-color="#0a1628"/>
+      <stop offset="100%" stop-color="#020810"/>
+    </linearGradient>
+    <linearGradient id="bottomFade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="transparent"/>
+      <stop offset="100%" stop-color="#020810"/>
     </linearGradient>
     <filter id="glow">
-      <feGaussianBlur stdDeviation="8" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
+    <filter id="blur">
+      <feGaussianBlur stdDeviation="20"/>
+    </filter>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#000" flood-opacity="0.7"/>
+    </filter>
+    <clipPath id="heroClip">
+      <rect x="40" y="180" width="1000" height="563" rx="16"/>
+    </clipPath>
   </defs>
 
-  <!-- Background -->
+  <!-- Base background -->
   <rect width="1080" height="1920" fill="url(#bg)"/>
 
-  <!-- Scanlines -->
+  ${heroSection}
+
+  <!-- Gradient fade over hero bottom -->
+  <rect x="0" y="500" width="1080" height="300" fill="url(#bottomFade)"/>
+
+  <!-- Scanlines (brand signature) -->
   <pattern id="scanlines" patternUnits="userSpaceOnUse" width="1080" height="4">
     <rect width="1080" height="3" fill="transparent"/>
     <rect width="1080" height="1" y="3" fill="rgba(0,0,0,0.15)"/>
   </pattern>
   <rect width="1080" height="1920" fill="url(#scanlines)"/>
 
-  <!-- Accent lines -->
-  <rect x="80" y="300" width="4" height="200" fill="#39FF14" opacity="0.3"/>
-  <rect x="996" y="1400" width="4" height="200" fill="#39FF14" opacity="0.3"/>
+  <!-- Breaking news banner -->
+  <rect x="0" y="100" width="1080" height="60" fill="#39FF14" opacity="0.12"/>
+  <rect x="0" y="100" width="1080" height="2" fill="#39FF14" opacity="0.6"/>
+  <rect x="0" y="158" width="1080" height="2" fill="#39FF14" opacity="0.3"/>
+  <text x="540" y="140" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
+        font-size="20" font-weight="800" letter-spacing="8" fill="#39FF14" opacity="0.9">BREAKING</text>
 
-  <!-- Glow circle -->
-  <circle cx="540" cy="700" r="300" fill="#39FF14" opacity="0.03" filter="id(glow)"/>
+  ${logoSection}
 
   <!-- Flair badge -->
-  <rect x="390" y="500" width="300" height="44" rx="22" fill="${flairColour}" opacity="0.15"/>
-  <rect x="390" y="500" width="300" height="44" rx="22" fill="none" stroke="${flairColour}" stroke-width="1.5" opacity="0.4"/>
-  <circle cx="420" cy="522" r="6" fill="${flairColour}"/>
-  <text x="540" y="530" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="18" font-weight="700" letter-spacing="2" fill="${flairColour}">${flair.toUpperCase()}</text>
+  <rect x="340" y="880" width="400" height="52" rx="26" fill="${flairColour}" opacity="0.15"/>
+  <rect x="340" y="880" width="400" height="52" rx="26" fill="none"
+        stroke="${flairColour}" stroke-width="1.5" opacity="0.5"/>
+  <circle cx="375" cy="906" r="7" fill="${flairColour}"/>
+  <text x="540" y="914" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
+        font-size="20" font-weight="700" letter-spacing="3" fill="${flairColour}">${(flair || 'NEWS').toUpperCase()}</text>
 
-  <!-- Main thumbnail text -->
-  <text x="540" y="720" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="88" font-weight="900" fill="#39FF14" filter="url(#glow)" letter-spacing="-1">${escapedThumb}</text>
+  <!-- Main headline text (large, attention-grabbing) -->
+  <text x="540" y="1020" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
+        font-size="82" font-weight="900" fill="#39FF14" filter="url(#glow)"
+        letter-spacing="-2">${escapedThumb}</text>
 
-  <!-- Title -->
-  <text x="540" y="920" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="48" font-weight="700" fill="rgba(255,255,255,0.85)">
+  <!-- Story title -->
+  <text x="540" y="1160" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
+        font-size="52" font-weight="700" fill="rgba(255,255,255,0.9)" filter="url(#shadow)">
     ${titleLines}
   </text>
 
-  <!-- Bottom bar -->
-  <rect x="0" y="1760" width="1080" height="160" fill="rgba(0,0,0,0.6)"/>
-  <rect x="0" y="1760" width="1080" height="2" fill="#39FF14" opacity="0.4"/>
-  <text x="540" y="1840" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="28" font-weight="700" letter-spacing="6" fill="#39FF14" opacity="0.7">PULSE GAMING</text>
-  <text x="540" y="1880" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="16" font-weight="500" letter-spacing="3" fill="rgba(255,255,255,0.3)">VERIFIED GAMING LEAKS DAILY</text>
+  <!-- Accent design elements -->
+  <rect x="60" y="1400" width="960" height="1" fill="#39FF14" opacity="0.15"/>
+  <rect x="60" y="300" width="3" height="200" fill="#39FF14" opacity="0.2"/>
+  <rect x="1017" y="1400" width="3" height="200" fill="#39FF14" opacity="0.2"/>
+
+  <!-- Bottom bar (branded) -->
+  <rect x="0" y="1750" width="1080" height="170" fill="rgba(0,0,0,0.75)"/>
+  <rect x="0" y="1750" width="1080" height="3" fill="#39FF14" opacity="0.5"/>
+
+  <!-- Pulse Gaming branding -->
+  <circle cx="440" cy="1835" r="4" fill="#39FF14"/>
+  <text x="540" y="1845" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
+        font-size="32" font-weight="800" letter-spacing="8" fill="#39FF14" opacity="0.85">PULSE GAMING</text>
+  <text x="540" y="1885" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
+        font-size="15" font-weight="500" letter-spacing="4" fill="rgba(255,255,255,0.35)">VERIFIED GAMING NEWS \u2022 DAILY</text>
+
+  <!-- Live indicator dot -->
+  <circle cx="70" cy="120" r="6" fill="#ff0033">
+    <animate attributeName="opacity" values="1;0.3;1" dur="2s" repeatCount="indefinite"/>
+  </circle>
+  <text x="90" y="126" font-family="Inter,system-ui,sans-serif" font-size="14"
+        font-weight="700" letter-spacing="2" fill="#ff0033" opacity="0.8">LIVE</text>
 </svg>`;
 }
 
+// --- Fallback SVG (no downloaded images available) ---
+function buildFallbackSvg(title, thumbnailText, flair) {
+  return buildProSvg(title, thumbnailText, flair, null, null, false);
+}
+
 async function generateImages() {
-  console.log('[images] Loading daily_news.json...');
+  console.log('[images] === Professional Image Pipeline v2 ===');
 
   if (!await fs.pathExists('daily_news.json')) {
     console.log('[images] ERROR: daily_news.json not found. Run processor first.');
     return;
   }
+
+  await fs.ensureDir(OUTPUT_DIR);
+  await fs.ensureDir(CACHE_DIR);
 
   const stories = await fs.readJson('daily_news.json');
   const toProcess = stories.filter(s => s.approved === true && !s.image_path);
@@ -108,21 +255,56 @@ async function generateImages() {
   console.log(`[images] ${toProcess.length} stories need image generation`);
 
   for (const story of toProcess) {
-    console.log(`[images] Generating thumbnail for: ${story.title}`);
+    console.log(`[images] Processing: ${story.title}`);
 
-    const svg = buildSvg(story.title, story.suggested_thumbnail_text, story.flair);
-    const svgPath = path.join('output', 'images', `${story.id}.svg`);
-    const pngPath = path.join('output', 'images', `${story.id}.png`);
-    await fs.ensureDir(path.dirname(svgPath));
+    // Download best available images
+    const availableImages = await getBestImage(story);
+    console.log(`[images] Found ${availableImages.length} images for ${story.id}`);
 
-    // Save SVG and convert to PNG via sharp
+    // Read hero image as base64 for SVG embedding
+    let heroBase64 = null;
+    let logoBase64 = null;
+
+    const heroImg = availableImages.find(i => ['article_hero', 'capsule', 'hero', 'key_art', 'screenshot'].includes(i.type));
+    if (heroImg) {
+      try {
+        const buf = await fs.readFile(heroImg.path);
+        heroBase64 = buf.toString('base64');
+      } catch (err) {
+        console.log(`[images] Could not read hero image: ${err.message}`);
+      }
+    }
+
+    const logoImg = availableImages.find(i => i.type === 'company_logo');
+    if (logoImg) {
+      try {
+        const buf = await fs.readFile(logoImg.path);
+        logoBase64 = buf.toString('base64');
+      } catch (err) {
+        // Skip logo
+      }
+    }
+
+    // Build SVG with real images
+    const svg = buildProSvg(
+      story.title,
+      story.suggested_thumbnail_text,
+      story.flair,
+      heroBase64,
+      logoBase64,
+      !!heroBase64
+    );
+
+    const svgPath = path.join(OUTPUT_DIR, `${story.id}.svg`);
+    const pngPath = path.join(OUTPUT_DIR, `${story.id}.png`);
     await fs.writeFile(svgPath, svg, 'utf-8');
 
+    // Convert SVG to PNG via Sharp
     try {
       const sharp = require('sharp');
       await sharp(Buffer.from(svg))
         .resize(1080, 1920)
-        .png()
+        .png({ quality: 95 })
         .toFile(pngPath);
       story.image_path = pngPath;
       const stat = await fs.stat(pngPath);
@@ -131,6 +313,9 @@ async function generateImages() {
       console.log(`[images] PNG conversion failed, using SVG: ${err.message}`);
       story.image_path = svgPath;
     }
+
+    // Store all image paths for the video assembly to use
+    story.downloaded_images = availableImages.map(i => ({ path: i.path, type: i.type }));
   }
 
   await fs.writeJson('daily_news.json', stories, { spaces: 2 });

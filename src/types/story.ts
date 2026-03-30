@@ -3,7 +3,7 @@ export interface Story {
   title: string;
   url: string;
   score: number;
-  flair: 'Verified' | 'Highly Likely' | 'Rumour';
+  flair: string;
   subreddit: string;
   top_comment: string;
   hook: string;
@@ -15,6 +15,8 @@ export interface Story {
   pinned_comment: string;
   timestamp: string;
   approved: boolean;
+  auto_approved?: boolean;
+  num_comments?: number;
   image_url?: string;
   video_url?: string;
   audio_path?: string;
@@ -24,11 +26,19 @@ export interface Story {
   publish_error?: string;
   publish_status?: 'idle' | 'publishing' | 'published' | 'failed';
   youtube_post_id?: string;
+  youtube_url?: string;
   tiktok_post_id?: string;
+  tiktok_status?: string;
+  instagram_media_id?: string;
   youtube_views?: number;
   tiktok_views?: number;
   content_pillar?: string;
   affiliate_url?: string;
+  source_type?: 'reddit' | 'rss';
+  breaking_score?: number;
+  article_image?: string;
+  company_name?: string;
+  downloaded_images?: Array<{ path: string; type: string }>;
 }
 
 export type CardStatus =
@@ -52,4 +62,28 @@ export interface StoryCardState {
   videoProgress: number;
   progressStage: string;
   error?: string;
+}
+
+export interface AutonomousStatus {
+  autoPublish: boolean;
+  schedulerActive: boolean;
+  hunterActive: boolean;
+  lastHuntRun: string;
+  nextHuntRun: string | null;
+  schedule: {
+    hunts: string[];
+    produce: string;
+    publish: string;
+  };
+  platforms: {
+    youtube: { configured: boolean };
+    tiktok: { configured: boolean };
+    instagram: { configured: boolean };
+  };
+}
+
+export interface PlatformStatus {
+  youtube: { authenticated: boolean; configured: boolean };
+  tiktok: { authenticated: boolean; configured: boolean };
+  instagram: { authenticated: boolean; configured: boolean };
 }

@@ -23,23 +23,8 @@ dotenv.config({ override: true });
 function shouldAutoApprove(story) {
   const flair = (story.flair || '').toLowerCase();
 
-  // Always auto-approve verified stories from the leak subreddit
-  if (flair.includes('verified') && story.subreddit === 'GamingLeaksAndRumours') {
-    return true;
-  }
-
-  // Auto-approve high-engagement verified/highly likely stories
-  if (flair.includes('verified') || flair.includes('highly likely')) {
-    if (story.score >= 500 || story.num_comments >= 50) return true;
-    if (story.breaking_score >= 80) return true;
-  }
-
-  // Auto-approve high-engagement RSS stories (major outlets)
-  if (story.source_type === 'rss' && story.breaking_score >= 60) {
-    return true;
-  }
-
-  return false;
+  // Auto-approve everything — fully autonomous pipeline, no manual gate
+  return true;
 }
 
 // --- Run auto-approval pass ---

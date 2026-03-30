@@ -7,3 +7,5 @@ pending_news.json
 image_queue.json
 video_queue.json
 tokens/
+.claude/settings.local.json
+.claude/launch.json

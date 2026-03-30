@@ -10,9 +10,26 @@ const CREDENTIALS_PATH = path.join(__dirname, 'tokens', 'youtube_credentials.jso
 
 // --- OAuth2 client setup ---
 async function getAuthClient() {
-  if (!await fs.pathExists(CREDENTIALS_PATH)) {
+  // Support env vars for cloud deployment (Railway)
+  const clientId = process.env.YOUTUBE_CLIENT_ID;
+  const clientSecret = process.env.YOUTUBE_CLIENT_SECRET;
+  const refreshToken = process.env.YOUTUBE_REFRESH_TOKEN;
+
+  let client_id, client_secret, redirect_uri;
+
+  if (await fs.pathExists(CREDENTIALS_PATH)) {
+    const credentials = await fs.readJson(CREDENTIALS_PATH);
+    const inst = credentials.installed || credentials.web || {};
+    client_id = inst.client_id;
+    client_secret = inst.client_secret;
+    redirect_uri = inst.redirect_uris?.[0] || 'http://localhost';
+  } else if (clientId && clientSecret) {
+    client_id = clientId;
+    client_secret = clientSecret;
+    redirect_uri = 'http://localhost';
+  } else {
     throw new Error(
-      `YouTube credentials not found at ${CREDENTIALS_PATH}.\n` +
+      `YouTube credentials not found.\n` +
       'Set up OAuth2: https://console.cloud.google.com/apis/credentials\n' +
       '1. Create OAuth 2.0 Client ID (Desktop app)\n' +
       '2. Download JSON → save as tokens/youtube_credentials.json\n' +
@@ -20,21 +37,13 @@ async function getAuthClient() {
     );
   }
 
-  const credentials = await fs.readJson(CREDENTIALS_PATH);
-  const { client_id, client_secret, redirect_uris } = credentials.installed || credentials.web || {};
+  const oauth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uri);
 
-  const oauth2Client = new google.auth.OAuth2(
-    client_id,
-    client_secret,
-    redirect_uris?.[0] || 'http://localhost:3001/oauth/youtube/callback'
-  );
-
-  // Load saved token
+  // Load token from file or env var
   if (await fs.pathExists(TOKEN_PATH)) {
     const token = await fs.readJson(TOKEN_PATH);
     oauth2Client.setCredentials(token);
 
-    // Auto-refresh if expired
     if (token.expiry_date && Date.now() > token.expiry_date - 60000) {
       console.log('[youtube] Refreshing expired token...');
       const { credentials: newToken } = await oauth2Client.refreshAccessToken();
@@ -43,6 +52,10 @@ async function getAuthClient() {
       oauth2Client.setCredentials(newToken);
     }
 
+    return oauth2Client;
+  } else if (refreshToken) {
+    console.log('[youtube] Using refresh token from env...');
+    oauth2Client.setCredentials({ refresh_token: refreshToken });
     return oauth2Client;
   }
 

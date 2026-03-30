@@ -17,160 +17,140 @@ async function getAudioDuration(audioPath) {
     );
     return parseFloat(stdout.trim()) || 50;
   } catch (err) {
-    return 50; // default 50s for a Short
+    return 50;
   }
 }
 
-// --- Build a multi-image video with Ken Burns, lower thirds and transitions ---
-function buildMultiImageCommand(story, images, audioPath, outputPath, duration) {
-  // If we only have the thumbnail image, use enhanced single-image mode
-  if (images.length <= 1) {
-    return buildSingleImageCommand(story, images[0] || story.image_path, audioPath, outputPath);
+// --- Split script into TikTok-style caption phrases (2-4 words each) ---
+function splitIntoPhrases(script) {
+  if (!script) return [];
+  const words = script.split(/\s+/).filter(w => w.length > 0);
+  const phrases = [];
+  let i = 0;
+  while (i < words.length) {
+    const chunkSize = words[i].length > 8 ? 2 : (words[i].length > 5 ? 3 : 4);
+    const phrase = words.slice(i, i + chunkSize).join(' ');
+    phrases.push(phrase);
+    i += chunkSize;
   }
+  return phrases;
+}
 
-  // Calculate time per image segment
-  const segmentDuration = Math.max(3, Math.floor(duration / images.length));
+// --- Format seconds to ASS timestamp (H:MM:SS.cc) ---
+function assTime(seconds) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  return `${h}:${String(m).padStart(2, '0')}:${s.toFixed(2).padStart(5, '0')}`;
+}
+
+// --- Generate ASS subtitle file with TikTok-style captions ---
+async function generateSubtitles(story, duration, outputDir) {
+  const phrases = splitIntoPhrases(story.full_script || story.hook || '');
+  if (phrases.length === 0) return null;
+
+  const phraseTime = duration / phrases.length;
+
+  const events = phrases.map((phrase, i) => {
+    const start = assTime(i * phraseTime);
+    const end = assTime((i + 1) * phraseTime);
+    // Clean text for ASS format
+    const clean = phrase.replace(/\\/g, '').replace(/\{/g, '').replace(/\}/g, '');
+    return `Dialogue: 0,${start},${end},Caption,,0,0,0,,${clean}`;
+  }).join('\n');
+
+  const ass = `[Script Info]
+Title: Pulse Gaming Captions
+ScriptType: v4.00+
+WrapStyle: 0
+ScaledBorderAndShadow: yes
+YCbCr Matrix: TV.709
+PlayResX: 1080
+PlayResY: 1920
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Caption,Arial,72,&H00FFFFFF,&H000000FF,&H00000000,&HB4000000,-1,0,0,0,100,100,0,0,3,4,0,5,60,60,460,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+${events}
+`;
+
+  const assPath = path.join(outputDir, `${story.id}.ass`);
+  await fs.writeFile(assPath, ass);
+  return assPath;
+}
+
+// --- Build filter graph and command (returns { filterGraph, command }) ---
+function buildVideoCommand(images, audioPath, assPath, filterScriptPath, outputPath, duration) {
   const inputs = [];
-  const filterParts = [];
 
-  // Input: all images + audio
+  // Use downloaded real images as fullscreen backgrounds
+  const segmentDuration = Math.max(4, Math.floor(duration / images.length));
+
   for (let i = 0; i < images.length; i++) {
-    inputs.push(`-loop 1 -t ${segmentDuration} -i "${images[i]}"`);
+    inputs.push(`-loop 1 -t ${segmentDuration} -i "${images[i].replace(/\\/g, '/')}"`);
   }
-  inputs.push(`-i "${audioPath}"`);
-
+  inputs.push(`-i "${audioPath.replace(/\\/g, '/')}"`);
   const audioIdx = images.length;
 
-  // Build filter for each image: scale + Ken Burns (alternating zoom directions)
+  const filterParts = [];
+
+  // Each image: scale to cover 1080x1920, Ken Burns zoom
   for (let i = 0; i < images.length; i++) {
     const zoomIn = i % 2 === 0;
     const zoomExpr = zoomIn
-      ? `z='min(zoom+0.0008,1.15)'`   // slow zoom in
-      : `z='if(eq(on,1),1.15,max(zoom-0.0008,1.0))'`; // slow zoom out
+      ? `z=min(zoom+0.0006\\,1.12)`
+      : `z=if(eq(on\\,1)\\,1.12\\,max(zoom-0.0006\\,1.0))`;
 
-    const xPan = i % 3 === 0 ? `x='iw/2-(iw/zoom/2)'` :
-                 i % 3 === 1 ? `x='(iw-iw/zoom)*on/${segmentDuration * 30}'` :
-                               `x='(iw-iw/zoom)*(1-on/${segmentDuration * 30})'`;
+    const xPan = i % 3 === 0 ? `x=iw/2-(iw/zoom/2)` :
+                 i % 3 === 1 ? `x=(iw-iw/zoom)*on/${segmentDuration * 30}` :
+                               `x=(iw-iw/zoom)*(1-on/${segmentDuration * 30})`;
 
     filterParts.push(
       `[${i}:v]scale=1080:1920:force_original_aspect_ratio=increase,` +
       `crop=1080:1920,` +
-      `zoompan=${zoomExpr}:${xPan}:y='ih/2-(ih/zoom/2)':` +
+      `zoompan=${zoomExpr}:${xPan}:y=ih/2-(ih/zoom/2):` +
       `d=${segmentDuration * 30}:s=1080x1920:fps=30,` +
-      `format=yuv420p[v${i}]`
+      `format=yuv420p,setsar=1[v${i}]`
     );
   }
 
-  // Concatenate all segments
-  const concatInputs = images.map((_, i) => `[v${i}]`).join('');
-  filterParts.push(`${concatInputs}concat=n=${images.length}:v=1:a=0[base]`);
+  // Concatenate if multiple images
+  if (images.length > 1) {
+    const concatInputs = images.map((_, i) => `[v${i}]`).join('');
+    filterParts.push(`${concatInputs}concat=n=${images.length}:v=1:a=0[base]`);
+  } else {
+    filterParts.push(`[v0]copy[base]`);
+  }
 
-  // Add text overlays
-  const escapeFFmpeg = (text) => {
-    return (text || '')
-      .replace(/\\/g, '\\\\\\\\')
-      .replace(/'/g, "'\\\\\\''")
-      .replace(/:/g, '\\\\:')
-      .replace(/%/g, '%%');
-  };
-
-  const hookText = escapeFFmpeg((story.hook || '').substring(0, 100));
-  const titleText = escapeFFmpeg((story.suggested_thumbnail_text || '').substring(0, 50));
-  const flairText = escapeFFmpeg((story.flair || 'NEWS').toUpperCase());
-  const brandText = escapeFFmpeg('PULSE GAMING');
-
-  // Lower third overlay + hook text + brand watermark
+  // Darken slightly for text readability, then burn in ASS subtitles
+  const assPathFixed = assPath.replace(/\\/g, '/').replace(/:/g, '\\\\:');
   filterParts.push(
-    `[base]` +
-    // Dark gradient at bottom for lower third
-    `drawbox=x=0:y=ih-280:w=iw:h=280:color=black@0.65:t=fill,` +
-    // Neon accent line
-    `drawbox=x=0:y=ih-280:w=iw:h=3:color=0x39FF14@0.8:t=fill,` +
-    // Breaking flair badge (top left)
-    `drawbox=x=30:y=30:w=220:h=44:color=0x39FF14@0.2:t=fill,` +
-    `drawtext=text='${flairText}':fontsize=20:fontcolor=0x39FF14:` +
-    `x=70:y=42:borderw=1:bordercolor=black,` +
-    // Live indicator
-    `drawtext=text='\\\\u25CF':fontsize=16:fontcolor=0xff0033:x=40:y=42,` +
-    // Title text (bottom third, large)
-    `drawtext=text='${titleText}':fontsize=56:fontcolor=white:` +
-    `x=(w-text_w)/2:y=h-220:borderw=3:bordercolor=black,` +
-    // Hook text (first 4 seconds, mid-screen attention grabber)
-    `drawtext=text='${hookText}':fontsize=48:fontcolor=white:` +
-    `x=(w-text_w)/2:y=h-150:enable='lt(t,4)':` +
-    `box=1:boxcolor=black@0.5:boxborderw=12,` +
-    // Brand watermark (bottom right, subtle)
-    `drawtext=text='${brandText}':fontsize=18:fontcolor=0x39FF14@0.5:` +
-    `x=w-text_w-30:y=h-40:borderw=1:bordercolor=black@0.3` +
-    `[outv]`
+    `[base]eq=brightness=-0.06:saturation=1.2,` +
+    `ass=${assPathFixed}[outv]`
   );
 
-  const filter = filterParts.join(';\n');
+  const filterGraph = filterParts.join(';\n');
+  const filterScriptFixed = filterScriptPath.replace(/\\/g, '/');
 
-  return [
+  const command = [
     'ffmpeg -y',
     inputs.join(' '),
-    '-filter_complex',
-    `"${filter}"`,
+    `-filter_complex_script "${filterScriptFixed}"`,
     `-map "[outv]" -map ${audioIdx}:a`,
-    '-c:v libx264 -crf 21 -preset medium -tune stillimage',
-    '-c:a aac -b:a 192k',
-    '-r 30 -shortest',
-    `-movflags +faststart "${outputPath}"`,
-  ].join(' ');
-}
-
-// --- Single image fallback (enhanced version of original) ---
-function buildSingleImageCommand(story, imagePath, audioPath, outputPath) {
-  const escapeFFmpeg = (text) => {
-    return (text || '')
-      .replace(/\\/g, '\\\\\\\\')
-      .replace(/'/g, "'\\\\\\''")
-      .replace(/:/g, '\\\\:')
-      .replace(/%/g, '%%');
-  };
-
-  const hookText = escapeFFmpeg((story.hook || '').substring(0, 100));
-  const titleText = escapeFFmpeg((story.suggested_thumbnail_text || '').substring(0, 50));
-  const flairText = escapeFFmpeg((story.flair || 'NEWS').toUpperCase());
-  const brandText = escapeFFmpeg('PULSE GAMING');
-
-  return [
-    'ffmpeg -y',
-    `-loop 1 -i "${imagePath}"`,
-    `-i "${audioPath}"`,
-    '-filter_complex',
-    `"[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,` +
-    `zoompan=z='min(zoom+0.0005,1.1)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':` +
-    `d=1:s=1080x1920:fps=30,format=yuv420p,` +
-    // Lower third
-    `drawbox=x=0:y=ih-280:w=iw:h=280:color=black@0.65:t=fill,` +
-    `drawbox=x=0:y=ih-280:w=iw:h=3:color=0x39FF14@0.8:t=fill,` +
-    // Flair badge
-    `drawbox=x=30:y=30:w=220:h=44:color=0x39FF14@0.2:t=fill,` +
-    `drawtext=text='${flairText}':fontsize=20:fontcolor=0x39FF14:` +
-    `x=70:y=42:borderw=1:bordercolor=black,` +
-    // Title
-    `drawtext=text='${titleText}':fontsize=56:fontcolor=white:` +
-    `x=(w-text_w)/2:y=h-220:borderw=3:bordercolor=black,` +
-    // Hook
-    `drawtext=text='${hookText}':fontsize=48:fontcolor=white:` +
-    `x=(w-text_w)/2:y=h-150:enable='lt(t,4)':` +
-    `box=1:boxcolor=black@0.5:boxborderw=12,` +
-    // Brand
-    `drawtext=text='${brandText}':fontsize=18:fontcolor=0x39FF14@0.5:` +
-    `x=w-text_w-30:y=h-40:borderw=1:bordercolor=black@0.3` +
-    `[outv]"`,
-    `-map "[outv]" -map 1:a`,
     '-c:v libx264 -crf 21 -preset medium',
     '-c:a aac -b:a 192k',
     '-r 30 -shortest',
     `-movflags +faststart "${outputPath}"`,
   ].join(' ');
+
+  return { filterGraph, command };
 }
 
 async function assemble() {
-  console.log('[assemble] === Professional Video Assembly v2 ===');
+  console.log('[assemble] === Professional Video Assembly v3 ===');
 
   if (!await fs.pathExists('daily_news.json')) {
     console.log('[assemble] ERROR: daily_news.json not found.');
@@ -196,59 +176,82 @@ async function assemble() {
       skipped++;
       continue;
     }
-    if (!await fs.pathExists(story.image_path)) {
-      console.log(`[assemble] WARNING: Image missing for ${story.id}, skipping`);
-      skipped++;
-      continue;
-    }
 
     const outputPath = path.join('output', 'final', `${story.id}.mp4`);
     await fs.ensureDir(path.dirname(outputPath));
 
-    // Get audio duration for segment timing
     const duration = await getAudioDuration(story.audio_path);
 
-    // Collect all available images for this story
-    const allImages = [];
-
-    // Main thumbnail image always first
-    allImages.push(story.image_path);
-
-    // Add downloaded real images (article heroes, game art, screenshots)
+    // Collect real downloaded images (NOT the composite thumbnail)
+    const realImages = [];
     if (story.downloaded_images && story.downloaded_images.length > 0) {
       for (const img of story.downloaded_images) {
         if (img.path && await fs.pathExists(img.path) && img.type !== 'company_logo') {
-          allImages.push(img.path);
+          realImages.push(img.path);
         }
       }
     }
 
-    // Remove duplicates
-    const uniqueImages = [...new Set(allImages)].slice(0, 6);
+    // If no real images, use composite thumbnail
+    const images = realImages.length > 0 ? realImages :
+                   (await fs.pathExists(story.image_path) ? [story.image_path] : []);
 
-    console.log(`[assemble] Rendering ${story.id} with ${uniqueImages.length} images (${Math.round(duration)}s)`);
+    if (images.length === 0) {
+      console.log(`[assemble] WARNING: No images for ${story.id}, skipping`);
+      skipped++;
+      continue;
+    }
 
-    const cmd = buildMultiImageCommand(story, uniqueImages, story.audio_path, outputPath, duration);
+    // Generate ASS subtitle file
+    const subsDir = path.join('output', 'subs');
+    await fs.ensureDir(subsDir);
+    const assPath = await generateSubtitles(story, duration, subsDir);
+
+    console.log(`[assemble] Rendering ${story.id}: ${images.length} images + captions (${Math.round(duration)}s)`);
+
+    // Write filter graph to file to avoid shell quoting issues
+    const filterScriptPath = path.join('output', 'subs', `${story.id}_filter.txt`);
+    const { filterGraph, command: cmd } = buildVideoCommand(
+      images, story.audio_path, assPath, filterScriptPath, outputPath, duration
+    );
+    await fs.writeFile(filterScriptPath, filterGraph);
 
     try {
-      await execAsync(cmd, { timeout: 180000 });
+      await execAsync(cmd, { timeout: 300000, maxBuffer: 10 * 1024 * 1024 });
       story.exported_path = outputPath;
       rendered++;
 
       const stat = await fs.stat(outputPath);
       console.log(`[assemble] Exported: ${outputPath} (${Math.round(stat.size / 1024 / 1024)}MB)`);
     } catch (err) {
-      console.log(`[assemble] Multi-image failed for ${story.id}, trying single image...`);
+      console.log(`[assemble] ASS render failed for ${story.id}: ${err.stderr?.substring(err.stderr.length - 300) || err.message.substring(0, 300)}`);
+      console.log(`[assemble] Trying drawtext fallback...`);
 
-      // Fallback to single image
+      // Fallback: simple video without captions using filter_complex_script
       try {
-        const fallbackCmd = buildSingleImageCommand(story, story.image_path, story.audio_path, outputPath);
-        await execAsync(fallbackCmd, { timeout: 120000 });
+        const fallbackFilter =
+          `[0:v]scale=1080:1920:force_original_aspect_ratio=increase,` +
+          `crop=1080:1920,` +
+          `zoompan=z=min(zoom+0.0005\\,1.1):x=iw/2-(iw/zoom/2):y=ih/2-(ih/zoom/2):` +
+          `d=1:s=1080x1920:fps=30,format=yuv420p[outv]`;
+        const fallbackFilterPath = path.join('output', 'subs', `${story.id}_fallback_filter.txt`);
+        await fs.writeFile(fallbackFilterPath, fallbackFilter);
+        const simpleCmd = [
+          'ffmpeg -y',
+          `-loop 1 -i "${images[0].replace(/\\/g, '/')}"`,
+          `-i "${story.audio_path.replace(/\\/g, '/')}"`,
+          `-filter_complex_script "${fallbackFilterPath.replace(/\\/g, '/')}"`,
+          `-map "[outv]" -map 1:a`,
+          '-c:v libx264 -crf 21 -preset medium',
+          '-c:a aac -b:a 192k -r 30 -shortest',
+          `-movflags +faststart "${outputPath}"`,
+        ].join(' ');
+        await execAsync(simpleCmd, { timeout: 180000 });
         story.exported_path = outputPath;
         rendered++;
-        console.log(`[assemble] Exported (single-image fallback): ${outputPath}`);
+        console.log(`[assemble] Exported (no captions fallback): ${outputPath}`);
       } catch (err2) {
-        console.log(`[assemble] ERROR rendering ${story.id}: ${err2.message}`);
+        console.log(`[assemble] ERROR rendering ${story.id}: ${err2.message.substring(0, 200)}`);
         skipped++;
       }
     }

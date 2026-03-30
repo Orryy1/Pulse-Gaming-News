@@ -109,45 +109,100 @@ async function exchangeCode(code) {
   return tokens;
 }
 
-// --- Build YouTube metadata ---
+// --- Build YouTube metadata (SEO-optimised for Shorts discovery) ---
 function buildMetadata(story) {
-  // Primary keyword stack in first 200 chars
-  const keywords = [
-    story.suggested_thumbnail_text,
-    story.content_pillar,
-    story.flair,
-    'gaming news',
-    'gaming leaks',
-    story.subreddit,
-  ].filter(Boolean).join(', ');
-
-  const description = [
-    `${keywords}\n`,
-    story.full_script ? story.full_script.substring(0, 300) : story.title,
-    '\n\n---',
-    `Source: r/${story.subreddit}`,
-    story.affiliate_url ? `\nCheck it out: ${story.affiliate_url}` : '',
-    '\n\n#gaming #gamingnews #gamingleaks #shorts #gamingcommunity',
-    '\n\nVerified gaming leaks and news, every single day.',
-    'Turn on notifications so you never miss a drop.',
-    '\n\nPulse Gaming — the signal in the noise.',
-  ].join('\n');
-
-  // Title: under 100 chars, include #Shorts
+  // Title: under 60 chars, primary keyword front-loaded, NO #Shorts in title
+  // Only ~40 chars visible on mobile — curiosity hook must land there
   let title = story.suggested_thumbnail_text || story.title;
-  if (title.length > 90) title = title.substring(0, 87) + '...';
-  if (!title.toLowerCase().includes('#shorts')) {
-    title = title + ' #Shorts';
-  }
+  // Strip any existing #Shorts from AI-generated titles
+  title = title.replace(/#\s*shorts?\s*/gi, '').trim();
+  if (title.length > 58) title = title.substring(0, 55) + '...';
 
+  // Description: 2-3 sentences reinforcing keyword + context
+  // First line = highest SEO weight (primary keyword, not duplicate of title)
+  // Hashtags at end (first 3 appear as clickable links above the title)
+  const gameName = extractGameName(story.title);
+  const platform = detectPlatform(story.title + ' ' + (story.body || ''));
+
+  const descLines = [];
+  // First line: keyword-rich summary (most SEO weight)
+  descLines.push(
+    story.full_script
+      ? story.full_script.substring(0, 150).replace(/\n/g, ' ').trim()
+      : story.title
+  );
+  descLines.push('');
+  // Context
+  if (story.affiliate_url) {
+    descLines.push(`Check it out: ${story.affiliate_url}`);
+    descLines.push('');
+  }
+  descLines.push('Verified gaming news and leaks, every single day.');
+  descLines.push('Subscribe and turn on notifications so you never miss a drop.');
+  descLines.push('');
+  descLines.push('Pulse Gaming — the signal in the noise.');
+  descLines.push('');
+  // Hashtags: 3-5 max, placed in description (not title)
+  // First 3 appear as clickable links above the title
+  const hashtags = ['#Shorts', '#GamingNews'];
+  if (gameName) hashtags.push(`#${gameName.replace(/[^a-zA-Z0-9]/g, '')}`);
+  if (platform) hashtags.push(`#${platform}`);
+  hashtags.push('#Gaming');
+  descLines.push(hashtags.slice(0, 5).join(' '));
+
+  const description = descLines.join('\n');
+
+  // Backend tags: game name, platforms, broad gaming terms
   const tags = [
-    'gaming', 'gaming news', 'game leaks', 'gaming leaks',
-    'ps5', 'xbox', 'nintendo', 'pc gaming', 'gaming shorts',
+    'gaming news', 'gaming leaks',
+    gameName, platform,
+    'youtube shorts', 'gaming shorts',
     story.flair, story.content_pillar,
-    ...(story.title.split(' ').filter(w => w.length > 3).slice(0, 5)),
+    ...(story.title.split(/\s+/).map(w => w.replace(/[^a-zA-Z0-9]/g, '')).filter(w => w.length > 3 && !/^(the|and|for|with|from|that|this|have|been|will|could|would)$/i.test(w)).slice(0, 5)),
   ].filter(Boolean);
 
   return { title, description, tags };
+}
+
+// --- Extract game name from title for hashtag ---
+function extractGameName(title) {
+  const patterns = [
+    /\b(GTA\s*\d+|Grand Theft Auto\s*\d*)/i,
+    /\b(Final Fantasy\s*\w*)/i, /\b(Zelda[\w\s]*)/i,
+    /\b(Mario[\w\s]*)/i, /\b(Call of Duty[\w\s]*)/i,
+    /\b(Halo[\w\s]*)/i, /\b(Fortnite)/i, /\b(Minecraft)/i,
+    /\b(Elden Ring)/i, /\b(Starfield)/i, /\b(Cyberpunk\s*\d*)/i,
+    /\b(Assassins? Creed[\w\s]*)/i, /\b(God of War[\w\s]*)/i,
+    /\b(Spider-?Man[\w\s]*)/i, /\b(Resident Evil\s*\d*)/i,
+    /\b(Pokemon|Pokémon[\w\s]*)/i, /\b(Doom[\w\s]*)/i,
+    /\b(Fallout\s*\d*)/i, /\b(Elder Scrolls[\w\s]*)/i,
+    /\b(Red Dead[\w\s]*)/i, /\b(Horizon[\w\s]*)/i,
+    /\b(Hogwarts Legacy)/i, /\b(Diablo\s*\d*)/i,
+    /\b(Overwatch\s*\d*)/i, /\b(Valorant)/i, /\b(Apex Legends)/i,
+    /\b(Monster Hunter[\w\s]*)/i, /\b(Death Stranding[\w\s]*)/i,
+    /\b(Metroid[\w\s]*)/i, /\b(Smash Bros[\w\s]*)/i,
+    /\b(Fable[\w\s]*)/i, /\b(Avowed)/i, /\b(Silksong)/i,
+    /\b(Hollow Knight[\w\s]*)/i, /\b(Persona\s*\d*)/i,
+    /\b(Metal Gear[\w\s]*)/i, /\b(Silent Hill[\w\s]*)/i,
+    /\b(Splinter Cell[\w\s]*)/i, /\b(BioShock[\w\s]*)/i,
+    /\b(Half-?Life\s*\d*)/i, /\b(Portal\s*\d*)/i,
+    /\b(Borderlands\s*\d*)/i, /\b(Dragon Age[\w\s]*)/i,
+    /\b(Mass Effect[\w\s]*)/i, /\b(Witcher\s*\d*)/i,
+  ];
+  for (const pat of patterns) {
+    const m = title.match(pat);
+    if (m) return m[1].trim();
+  }
+  return null;
+}
+
+// --- Detect platform from text for hashtag ---
+function detectPlatform(text) {
+  if (/\b(PS5|PlayStation\s*5|Sony)/i.test(text)) return 'PlayStation';
+  if (/\b(Xbox|Microsoft Gaming)/i.test(text)) return 'Xbox';
+  if (/\b(Nintendo|Switch\s*2|Switch)/i.test(text)) return 'Nintendo';
+  if (/\b(PC|Steam|Epic Games)/i.test(text)) return 'PCGaming';
+  return null;
 }
 
 // --- Upload a single video as YouTube Short ---

@@ -82,32 +82,67 @@ ${events}
   return assPath;
 }
 
-// --- Build filter graph and command (returns { filterGraph, command }) ---
-function buildVideoCommand(images, audioPath, assPath, filterScriptPath, outputPath, duration) {
-  const inputs = [];
+// --- Sanitize text for FFmpeg drawtext ---
+function sanitizeDrawtext(text, maxLen) {
+  if (!text) return '';
+  let clean = text
+    .replace(/'/g, '')
+    .replace(/\\/g, '')
+    .replace(/;/g, '')
+    .replace(/:/g, ' ')
+    .replace(/[^\x20-\x7E]/g, '')
+    .trim();
+  if (maxLen && clean.length > maxLen) {
+    clean = clean.substring(0, maxLen - 3) + '...';
+  }
+  return clean;
+}
 
-  // Use downloaded real images as fullscreen backgrounds
+// --- Flair badge colour ---
+function getFlairColor(flair) {
+  const f = (flair || '').toLowerCase();
+  if (f.includes('verified') || f.includes('confirmed')) return '0x00CC66';
+  if (f.includes('highly likely')) return '0x3399FF';
+  if (f.includes('rumour') || f.includes('rumor')) return '0xFFAA00';
+  if (f.includes('news')) return '0x6666FF';
+  return '0x888888';
+}
+
+// --- Build filter graph and command with broadcast overlays ---
+function buildVideoCommand(story, images, audioPath, assPath, filterScriptPath, outputPath, duration) {
+  const inputs = [];
+  const fontOpt = process.platform === 'win32' ? "font='Arial'" : "font='DejaVu Sans'";
   const segmentDuration = Math.max(4, Math.floor(duration / images.length));
 
+  // --- Inputs: background images ---
   for (let i = 0; i < images.length; i++) {
     inputs.push(`-loop 1 -t ${segmentDuration} -i "${images[i].replace(/\\/g, '/')}"`);
   }
-  inputs.push(`-i "${audioPath.replace(/\\/g, '/')}"`);
-  const audioIdx = images.length;
 
+  // PIP flash images (reuse 1-2 non-primary images as floating cards)
+  const pipImages = images.length >= 3 ? [images[1], images[2]] :
+                    images.length === 2 ? [images[1]] : [];
+  const pipStartIdx = images.length;
+  for (const img of pipImages) {
+    inputs.push(`-loop 1 -t 4 -i "${img.replace(/\\/g, '/')}"`);
+  }
+
+  // Audio (last input)
+  const audioIdx = images.length + pipImages.length;
+  inputs.push(`-i "${audioPath.replace(/\\/g, '/')}"`);
+
+  // --- Filter graph ---
   const filterParts = [];
 
-  // Each image: scale to cover 1080x1920, Ken Burns zoom
+  // Ken Burns zoom/pan per background image
   for (let i = 0; i < images.length; i++) {
     const zoomIn = i % 2 === 0;
     const zoomExpr = zoomIn
       ? `z=min(zoom+0.0006\\,1.12)`
       : `z=if(eq(on\\,1)\\,1.12\\,max(zoom-0.0006\\,1.0))`;
-
     const xPan = i % 3 === 0 ? `x=iw/2-(iw/zoom/2)` :
                  i % 3 === 1 ? `x=(iw-iw/zoom)*on/${segmentDuration * 30}` :
                                `x=(iw-iw/zoom)*(1-on/${segmentDuration * 30})`;
-
     filterParts.push(
       `[${i}:v]scale=1080:1920:force_original_aspect_ratio=increase,` +
       `crop=1080:1920,` +
@@ -117,20 +152,116 @@ function buildVideoCommand(images, audioPath, assPath, filterScriptPath, outputP
     );
   }
 
-  // Concatenate if multiple images
+  // Concatenate backgrounds
   if (images.length > 1) {
-    const concatInputs = images.map((_, i) => `[v${i}]`).join('');
-    filterParts.push(`${concatInputs}concat=n=${images.length}:v=1:a=0[base]`);
+    filterParts.push(`${images.map((_, i) => `[v${i}]`).join('')}concat=n=${images.length}:v=1:a=0[base]`);
   } else {
     filterParts.push(`[v0]copy[base]`);
   }
 
-  // Darken slightly for text readability, then burn in ASS subtitles
+  // --- PIP image cards (floating game art that pops in briefly) ---
+  let currentLabel = 'base';
+  if (pipImages.length > 0) {
+    for (let i = 0; i < pipImages.length; i++) {
+      filterParts.push(
+        `[${pipStartIdx + i}:v]scale=260:360:force_original_aspect_ratio=decrease,` +
+        `pad=280:380:10:10:color=white[pip${i}]`
+      );
+    }
+    const pipTimes = [
+      Math.max(3, Math.floor(duration * 0.2)),
+      Math.max(6, Math.floor(duration * 0.55)),
+    ];
+    for (let i = 0; i < pipImages.length; i++) {
+      const t = pipTimes[i];
+      const nextLabel = `ov${i}`;
+      const xPos = i % 2 === 0 ? 740 : 50;
+      const yPos = i % 2 === 0 ? 200 : 1350;
+      filterParts.push(
+        `[${currentLabel}][pip${i}]overlay=x=${xPos}:y=${yPos}:` +
+        `enable='between(t\\,${t}\\,${t + 3})'[${nextLabel}]`
+      );
+      currentLabel = nextLabel;
+    }
+  }
+
+  // --- Final chain: brightness + captions + broadcast overlays ---
   const assPathFixed = assPath.replace(/\\/g, '/').replace(/:/g, '\\\\:');
-  filterParts.push(
-    `[base]eq=brightness=-0.06:saturation=1.2,` +
-    `ass=${assPathFixed}[outv]`
+  const flair = sanitizeDrawtext(story.flair || 'NEWS', 20).toUpperCase();
+  const flairColor = getFlairColor(story.flair);
+  const source = sanitizeDrawtext(
+    story.subreddit ? `r/${story.subreddit}` : (story.source_type || 'News'), 35
   );
+
+  const chain = [];
+
+  // Darken for readability
+  chain.push('eq=brightness=-0.06:saturation=1.2');
+
+  // ASS captions (TikTok-style animated text)
+  chain.push(`ass=${assPathFixed}`);
+
+  // Flair badge — top left with coloured pill
+  chain.push(
+    `drawtext=text='  ${flair}  ':${fontOpt}:fontcolor=white:fontsize=38:` +
+    `box=1:boxcolor=${flairColor}@0.85:boxborderw=14:x=40:y=100`
+  );
+
+  // Red LIVE indicator — pulsing next to flair
+  chain.push(
+    `drawtext=text='  LIVE  ':${fontOpt}:fontcolor=white:fontsize=22:` +
+    `box=1:boxcolor=0xFF0033@0.9:boxborderw=8:x=40:y=55:` +
+    `enable='lt(mod(t\\,2)\\,1.4)'`
+  );
+
+  // Source subreddit — below flair
+  chain.push(
+    `drawtext=text='  ${source}  ':${fontOpt}:fontcolor=white@0.85:fontsize=26:` +
+    `box=1:boxcolor=black@0.5:boxborderw=8:x=40:y=175`
+  );
+
+  // Pulse Gaming watermark — bottom right
+  chain.push(
+    `drawtext=text='PULSE GAMING':${fontOpt}:fontcolor=white@0.35:fontsize=26:` +
+    `x=w-tw-40:y=h-55`
+  );
+
+  // Reddit top comment flash — appears for 5s mid-video
+  if (story.top_comment) {
+    const comment = sanitizeDrawtext(story.top_comment, 80);
+    if (comment.length > 10) {
+      const ct = Math.floor(duration * 0.4);
+      let line1 = comment;
+      let line2 = '';
+      if (comment.length > 40) {
+        const sp = comment.lastIndexOf(' ', 40);
+        line1 = comment.substring(0, sp > 0 ? sp : 40);
+        line2 = comment.substring(sp > 0 ? sp + 1 : 40);
+      }
+      // Header
+      chain.push(
+        `drawtext=text='  Top Comment  ':${fontOpt}:fontcolor=white:fontsize=24:` +
+        `box=1:boxcolor=0xFF4500@0.75:boxborderw=10:` +
+        `x=60:y=260:enable='between(t\\,${ct}\\,${ct + 5})'`
+      );
+      // Line 1
+      chain.push(
+        `drawtext=text='  ${line1}  ':${fontOpt}:fontcolor=white@0.9:fontsize=22:` +
+        `box=1:boxcolor=black@0.55:boxborderw=8:` +
+        `x=60:y=310:enable='between(t\\,${ct}\\,${ct + 5})'`
+      );
+      // Line 2 (if needed)
+      if (line2) {
+        chain.push(
+          `drawtext=text='  ${line2}  ':${fontOpt}:fontcolor=white@0.9:fontsize=22:` +
+          `box=1:boxcolor=black@0.55:boxborderw=8:` +
+          `x=60:y=352:enable='between(t\\,${ct}\\,${ct + 5})'`
+        );
+      }
+    }
+  }
+
+  filterParts.push(`[${currentLabel}]${chain.join(',\n')}[outv]`);
 
   const filterGraph = filterParts.join(';\n');
   const filterScriptFixed = filterScriptPath.replace(/\\/g, '/');
@@ -212,7 +343,7 @@ async function assemble() {
     // Write filter graph to file to avoid shell quoting issues
     const filterScriptPath = path.join('output', 'subs', `${story.id}_filter.txt`);
     const { filterGraph, command: cmd } = buildVideoCommand(
-      images, story.audio_path, assPath, filterScriptPath, outputPath, duration
+      story, images, story.audio_path, assPath, filterScriptPath, outputPath, duration
     );
     await fs.writeFile(filterScriptPath, filterGraph);
 

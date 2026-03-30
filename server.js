@@ -397,6 +397,7 @@ async function runHunter() {
   try {
     const hunt = require('./hunter');
     const process_stories = require('./processor');
+    const sendDiscord = require('./notify');
 
     const posts = await hunt();
     const existingStories = readNews();
@@ -416,44 +417,43 @@ async function runHunter() {
         const merged = [...processed, ...existingStories];
         writeNews(merged);
       }
-
-      // Auto-approve high-confidence stories
-      try {
-        const { autoApprove } = require('./publisher');
-        await autoApprove();
-      } catch (err) {
-        console.log(`[server] Auto-approve error: ${err.message}`);
-      }
     }
 
-    // Send Discord notification with review link for pending stories
+    // Auto-approve all stories
     try {
-      const sendDiscord = require('./notify');
-      const allStories = readNews();
-      const pendingReview = allStories.filter(s => !s.approved);
-      if (pendingReview.length > 0) {
-        const dashUrl = process.env.RAILWAY_PUBLIC_URL || 'http://localhost:3001';
-        const storyList = pendingReview.slice(0, 8).map(s =>
-          `• [${s.flair}] (${s.breaking_score || 0}) ${s.title}`
-        ).join('\n');
-        await sendDiscord(
-          `**🔎 Hunt Complete** — ${newPosts.length} new stories\n` +
-          `**✅ Auto-approved**: ${allStories.filter(s => s.auto_approved).length}\n` +
-          `**⚠️ ${pendingReview.length} need your review:**\n` +
-          `${storyList}\n\n` +
-          `👉 ${dashUrl}`
-        );
-      } else if (newPosts.length > 0) {
-        const sendDiscord = require('./notify');
-        await sendDiscord(`**🔎 Hunt Complete** — ${newPosts.length} new stories (all auto-approved)`);
-      }
+      const { autoApprove } = require('./publisher');
+      await autoApprove();
     } catch (err) {
-      console.log(`[server] Discord notify error: ${err.message}`);
+      console.log(`[server] Auto-approve error: ${err.message}`);
     }
 
-    console.log(`[server] Hunter cycle complete: ${newPosts.length} new stories`);
+    // Immediately produce assets for newly approved stories (audio + images + video)
+    const allStories = readNews();
+    const needProduce = allStories.filter(s => s.approved && (!s.audio_path || !s.image_path || !s.exported_path));
+    if (needProduce.length > 0) {
+      console.log(`[server] ${needProduce.length} stories need production — starting pipeline...`);
+      try {
+        const { produce } = require('./publisher');
+        await produce();
+        await sendDiscord(
+          `**Pulse Gaming Pipeline**\n` +
+          `Hunted ${newPosts.length} new stories, ${needProduce.length} produced into videos`
+        );
+      } catch (err) {
+        console.log(`[server] Produce error: ${err.message}`);
+        await sendDiscord(`**Produce Error**: ${err.message}`);
+      }
+    } else if (newPosts.length > 0) {
+      await sendDiscord(`**Hunt Complete** — ${newPosts.length} new stories (all already produced)`);
+    }
+
+    console.log(`[server] Hunter cycle complete: ${newPosts.length} new, ${needProduce.length} produced`);
   } catch (err) {
     console.log(`[server] Hunter error: ${err.message}`);
+    try {
+      const sendDiscord = require('./notify');
+      await sendDiscord(`**Hunt Error**: ${err.message}`);
+    } catch (e) { /* silent */ }
   }
 }
 
@@ -479,37 +479,40 @@ function startAutonomousScheduler() {
   }
 
   schedulerRunning = true;
+  const sendDiscord = require('./notify');
 
-  // Hunt every 3 hours via setInterval
+  // Hunt every 3 hours — each hunt also auto-approves and produces videos
   console.log('[server] Auto-hunter enabled. Running every 3 hours.');
+  console.log('[server] Each hunt: fetch → scripts → approve → audio → images → video');
   runHunter();
   hunterInterval = setInterval(runHunter, HUNTER_INTERVAL_MS);
 
-  // Cron-based produce + publish at optimal times
+  // 19:00 UTC — Publish to YouTube Shorts (peak engagement window)
+  // TikTok +60min, Instagram +60min (staggered by publisher module)
   if (process.env.AUTO_PUBLISH === 'true') {
-    // 18:00 UTC — Produce all approved stories
-    cron.schedule('0 18 * * *', async () => {
-      console.log('[server-cron] 18:00 UTC — Auto-produce cycle');
-      try {
-        const { produce } = require('./publisher');
-        await produce();
-      } catch (err) {
-        console.log(`[server-cron] Produce error: ${err.message}`);
-      }
-    }, { timezone: 'UTC' });
-
-    // 19:00 UTC — Publish to all platforms
     cron.schedule('0 19 * * *', async () => {
-      console.log('[server-cron] 19:00 UTC — Auto-publish cycle');
+      console.log('[server-cron] 19:00 UTC — PUBLISH WINDOW (YouTube → TikTok → Instagram)');
       try {
-        const { publishToAllPlatforms } = require('./publisher');
-        await publishToAllPlatforms();
+        // Final produce pass to catch any stragglers
+        const { produce, publishToAllPlatforms } = require('./publisher');
+        await produce();
+        const results = await publishToAllPlatforms();
+        const total = results.youtube.length + results.tiktok.length + results.instagram.length;
+        await sendDiscord(
+          `**Pulse Gaming Published**\n` +
+          `YouTube: ${results.youtube.length} | TikTok: ${results.tiktok.length} | Instagram: ${results.instagram.length}\n` +
+          `Total: ${total} Shorts posted`
+        );
       } catch (err) {
         console.log(`[server-cron] Publish error: ${err.message}`);
+        await sendDiscord(`**Publish Error**: ${err.message}`);
       }
     }, { timezone: 'UTC' });
 
-    console.log('[server] Auto-publish enabled: produce at 18:00 UTC, publish at 19:00 UTC');
+    console.log('[server] Auto-publish enabled: YouTube at 19:00 UTC → TikTok 20:00 → Instagram 21:00');
+  } else {
+    console.log('[server] AUTO_PUBLISH is off. Videos will be produced but not uploaded.');
+    console.log('[server] Set AUTO_PUBLISH=true in Railway env vars to enable.');
   }
 }
 

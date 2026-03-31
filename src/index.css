@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -11,7 +11,7 @@ html {
 }
 
 body {
-  background-color: #1E2330;
+  background-color: #0D0D0F;
   color: #ffffff;
 }
 
@@ -20,7 +20,7 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #1E2330;
+  background: #0D0D0F;
 }
 
 ::-webkit-scrollbar-thumb {
@@ -33,6 +33,6 @@ body {
 }
 
 ::selection {
-  background: rgba(57, 255, 20, 0.2);
+  background: rgba(255, 107, 26, 0.2);
   color: #ffffff;
 }

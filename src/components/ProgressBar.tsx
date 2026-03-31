@@ -17,7 +17,7 @@ export default function ProgressBar({ progress, stage, type }: ProgressBarProps)
         <span className="font-bold tracking-wider text-white/30">{label}</span>
         <span
           className={`font-medium ${
-            isError ? 'text-red-400' : isComplete ? 'text-[#39FF14]' : 'text-white/40'
+            isError ? 'text-red-400' : isComplete ? 'text-[#FF6B1A]' : 'text-white/40'
           }`}
         >
           {isError ? stage : isComplete ? 'Complete' : stage}
@@ -29,8 +29,8 @@ export default function ProgressBar({ progress, stage, type }: ProgressBarProps)
             isError
               ? 'bg-red-500'
               : isComplete
-                ? 'bg-[#39FF14]'
-                : 'bg-[#39FF14]/60'
+                ? 'bg-[#FF6B1A]'
+                : 'bg-[#FF6B1A]/60'
           }`}
           style={{ width: `${displayProgress}%` }}
         />

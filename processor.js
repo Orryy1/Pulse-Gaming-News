@@ -9,11 +9,9 @@ const BANNED_STARTS = ['so', 'today', 'hey', 'welcome', 'in this'];
 const BANNED_LOOP_PHRASES = ['let me know in the comments'];
 
 // --- Fetch source material for fact-checking ---
-// Tries: Reddit JSON (post body + linked article) → linked article page
 async function fetchSourceMaterial(story) {
   const parts = [];
 
-  // 1. Fetch Reddit post body and any linked article URL
   if (story.url && story.url.includes('reddit.com')) {
     try {
       const jsonUrl = story.url.replace(/\/$/, '') + '.json';
@@ -24,18 +22,15 @@ async function fetchSourceMaterial(story) {
       const listing = response.data;
       if (Array.isArray(listing) && listing[0]?.data?.children?.[0]?.data) {
         const post = listing[0].data.children[0].data;
-        // Get the self-text (post body)
         if (post.selftext) {
           parts.push(`REDDIT POST BODY:\n${post.selftext.substring(0, 1500)}`);
         }
-        // Get linked article URL (if it's a link post, not self post)
         if (post.url && !post.url.includes('reddit.com')) {
           const articleText = await fetchPageText(post.url);
           if (articleText) {
             parts.push(`LINKED ARTICLE (${post.url}):\n${articleText}`);
           }
         }
-        // Top comments for additional context
         if (listing[1]?.data?.children) {
           const topComments = listing[1].data.children
             .filter(c => c.data?.body)
@@ -52,7 +47,6 @@ async function fetchSourceMaterial(story) {
     }
   }
 
-  // 2. If story has a separate article URL, fetch that too
   if (story.article_url && !story.article_url.includes('reddit.com')) {
     const articleText = await fetchPageText(story.article_url);
     if (articleText) {
@@ -63,7 +57,6 @@ async function fetchSourceMaterial(story) {
   return parts.length > 0 ? parts.join('\n\n') : null;
 }
 
-// --- Fetch and extract text from a web page ---
 async function fetchPageText(url) {
   if (!url) return null;
   try {
@@ -92,7 +85,6 @@ async function fetchPageText(url) {
   }
 }
 
-// --- Search DuckDuckGo for current facts about a topic ---
 async function searchCurrentFacts(query) {
   try {
     const searchQuery = encodeURIComponent(query + ' 2026');
@@ -114,7 +106,6 @@ async function searchCurrentFacts(query) {
   }
 }
 
-// --- Build today's date string ---
 function getTodayString() {
   const d = new Date();
   const months = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -124,8 +115,8 @@ function getTodayString() {
 
 function validate(script) {
   const errors = [];
-  if (script.word_count < 120 || script.word_count > 150) {
-    errors.push(`Word count ${script.word_count} outside 120-150 range`);
+  if (script.word_count < 155 || script.word_count > 185) {
+    errors.push(`Word count ${script.word_count} outside 155-185 range`);
   }
   const hookLower = (script.hook || '').toLowerCase().trim();
   for (const banned of BANNED_STARTS) {
@@ -133,21 +124,60 @@ function validate(script) {
       errors.push(`Hook starts with banned word: "${banned}"`);
     }
   }
-  const loopLower = (script.loop || '').toLowerCase();
-  for (const phrase of BANNED_LOOP_PHRASES) {
-    if (loopLower.includes(phrase)) {
-      errors.push(`Loop contains banned phrase: "${phrase}"`);
-    }
+  // Validate classification exists
+  if (!script.classification || !['[LEAK]', '[RUMOR]', '[CONFIRMED]', '[BREAKING]'].includes(script.classification)) {
+    errors.push('Missing or invalid classification tag');
   }
   return errors;
 }
 
-function getContentPillar(flair) {
-  const f = flair.toLowerCase();
-  if (f.includes('verified')) return 'Confirmed Drop';
-  if (f.includes('highly likely')) return 'Source Breakdown';
-  if (f.includes('rumour')) return 'Rumour Watch';
+// --- Quality gate: score script 1-10 via second LLM call ---
+async function scoreScript(client, script, story) {
+  try {
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 150,
+      system: `You score YouTube Shorts scripts for a gaming news channel (1-10). Criteria:
+- Hook strength (does it grab attention in 2 seconds?)
+- Information density (facts per sentence, no filler)
+- Source credibility (does it cite sources?)
+- Pacing (punchy, no dead air, urgent tone)
+- CTA presence
+Reply with ONLY a JSON object: { "score": N, "reason": "one sentence" }`,
+      messages: [{
+        role: 'user',
+        content: `Score this script:\n${script.full_script}\n\nClassification: ${script.classification}\nStory: ${story.title}`,
+      }],
+    });
+
+    let text = response.content[0].text.trim();
+    if (text.startsWith('```')) {
+      text = text.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+    }
+    const result = JSON.parse(text);
+    return { score: result.score || 5, reason: result.reason || '' };
+  } catch (err) {
+    console.log(`[processor] Quality gate error: ${err.message}`);
+    return { score: 7, reason: 'scoring failed — accepting by default' };
+  }
+}
+
+function getContentPillar(classification) {
+  const c = (classification || '').toLowerCase();
+  if (c.includes('confirmed')) return 'Confirmed Drop';
+  if (c.includes('leak') || c.includes('breaking')) return 'Source Breakdown';
+  if (c.includes('rumor')) return 'Rumour Watch';
   return 'Confirmed Drop';
+}
+
+// --- Clean script text for TTS (strip markers) ---
+function cleanForTTS(text) {
+  if (!text) return '';
+  return text
+    .replace(/\[PAUSE\]/gi, '...')
+    .replace(/\[VISUAL:[^\]]*\]/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 async function process_stories() {
@@ -174,7 +204,7 @@ async function process_stories() {
   for (const story of stories) {
     console.log(`[processor] Scripting: ${story.title}`);
 
-    // --- Fact-checking: fetch source material + search for current info ---
+    // --- Fact-checking: fetch source material ---
     let sourceMaterial = null;
     let searchFacts = null;
 
@@ -190,30 +220,21 @@ async function process_stories() {
     }
 
     if (sourceMaterial) {
-      console.log(`[processor] Fetched source material (${sourceMaterial.length} chars) for verification`);
-    }
-    if (searchFacts) {
-      console.log(`[processor] Found search context (${searchFacts.length} chars)`);
+      console.log(`[processor] Fetched source material (${sourceMaterial.length} chars)`);
     }
 
-    // Build fact-check context
     const factContext = [];
-    if (sourceMaterial) {
-      factContext.push(sourceMaterial);
-    }
-    if (searchFacts) {
-      factContext.push(`ADDITIONAL SEARCH CONTEXT:\n${searchFacts}`);
-    }
+    if (sourceMaterial) factContext.push(sourceMaterial);
+    if (searchFacts) factContext.push(`ADDITIONAL SEARCH CONTEXT:\n${searchFacts}`);
 
-    // Enhanced system prompt with date + fact-checking
     const systemPrompt = baseSystemPrompt + `\n\nCRITICAL — DATE AND FACT-CHECKING RULES:
 Today's date is ${today}. You MUST follow these rules:
-1. NEVER reference dates in the past as if they are in the future. If a game was supposed to release in 2025 but it is now 2026, say it was delayed or has since been updated — do not say "coming in 2025".
+1. NEVER reference dates in the past as if they are in the future.
 2. Cross-reference the Reddit title against the SOURCE ARTICLE TEXT provided below. If the article contradicts the Reddit title, trust the article.
-3. If a claim cannot be verified from the provided sources, use hedging language: "reportedly", "according to sources", "if accurate".
-4. NEVER invent specific dates, prices, or statistics that are not in the source material.
+3. If a claim cannot be verified from the provided sources, use hedging language.
+4. NEVER invent specific dates, prices or statistics that are not in the source material.
 5. If the story references an old event or outdated information, update it to reflect the current situation as of ${today}.
-6. For game release dates: check if the date has already passed. If so, note the game has either released or been delayed — do not present a past date as upcoming.`;
+6. For game release dates: check if the date has already passed. If so, note the game has either released or been delayed.`;
 
     const userMessage = [
       `Story title: ${story.title}`,
@@ -227,22 +248,27 @@ Today's date is ${today}. You MUST follow these rules:
     ].filter(Boolean).join('\n');
 
     let script = null;
+    let qualityScore = null;
     let attempts = 0;
 
-    while (attempts < 2) {
+    while (attempts < 3) {
       attempts++;
       try {
-        const extra = attempts > 1 ? '\n\nIMPORTANT: Your previous script failed validation. Ensure word_count is between 120 and 150. Do not start the hook with So, Today, Hey, Welcome or In this. Do not include "let me know in the comments" in the loop.' : '';
+        let extra = '';
+        if (attempts === 2) {
+          extra = '\n\nIMPORTANT: Your previous script failed validation. Ensure word_count is 160-180. Include a classification tag. Do not start the hook with So, Today, Hey, Welcome or In this.';
+        } else if (attempts === 3) {
+          extra = '\n\nFINAL ATTEMPT: Produce a 170-word script with a strong hook, classification tag, and CTA. This is your last chance.';
+        }
 
         const response = await client.messages.create({
           model: 'claude-haiku-4-5-20251001',
-          max_tokens: 1000,
+          max_tokens: 1200,
           system: systemPrompt,
           messages: [{ role: 'user', content: userMessage + extra }],
         });
 
         let text = response.content[0].text.trim();
-        // Strip markdown code fences if present
         if (text.startsWith('```')) {
           text = text.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
         }
@@ -251,7 +277,7 @@ Today's date is ${today}. You MUST follow these rules:
         const errors = validate(script);
         if (errors.length > 0) {
           console.log(`[processor] Validation failed (attempt ${attempts}): ${errors.join(', ')}`);
-          if (attempts >= 2) {
+          if (attempts >= 3) {
             console.log('[processor] Using script despite validation issues');
           } else {
             script = null;
@@ -260,14 +286,27 @@ Today's date is ${today}. You MUST follow these rules:
         } else {
           console.log(`[processor] Script validated (${script.word_count} words)`);
         }
+
+        // Quality gate — score the script
+        if (script && attempts < 3) {
+          const gate = await scoreScript(client, script, story);
+          qualityScore = gate.score;
+          console.log(`[processor] Quality gate: ${gate.score}/10 — ${gate.reason}`);
+          if (gate.score < 7) {
+            console.log(`[processor] Script below quality threshold (${gate.score}/10), regenerating...`);
+            script = null;
+            continue;
+          }
+        }
         break;
       } catch (err) {
         console.log(`[processor] ERROR on attempt ${attempts}: ${err.message}`);
-        if (attempts >= 2) {
+        if (attempts >= 3) {
           script = {
+            classification: '[BREAKING]',
             hook: story.title,
             body: 'Script generation failed. Manual edit required.',
-            loop: 'More tomorrow.',
+            cta: 'Follow Pulse Gaming so you never miss a drop.',
             full_script: story.title,
             word_count: 0,
             suggested_thumbnail_text: story.title.substring(0, 40),
@@ -276,15 +315,20 @@ Today's date is ${today}. You MUST follow these rules:
       }
     }
 
+    // Clean script for TTS (remove [PAUSE] and [VISUAL] markers)
+    const ttsScript = cleanForTTS(script.full_script);
+
     const gameTitle = story.title.replace(/[^a-zA-Z0-9\s]/g, '').trim();
     const affiliateTag = process.env.AMAZON_AFFILIATE_TAG || 'placeholder';
     const affiliateUrl = `https://www.amazon.co.uk/s?k=${encodeURIComponent(gameTitle)}&tag=${affiliateTag}`;
-    const pinnedComment = `Check it out here: ${affiliateUrl} | Source: r/${story.subreddit} | Verified gaming leaks daily at 8AM and 6PM`;
+    const pinnedComment = `What do you think — legit or fake? Drop your take below 👇 | Check it out: ${affiliateUrl}`;
 
     const enrichedStory = {
       ...story,
       ...script,
-      content_pillar: getContentPillar(story.flair),
+      tts_script: ttsScript,
+      quality_score: qualityScore,
+      content_pillar: getContentPillar(script.classification),
       affiliate_url: affiliateUrl,
       pinned_comment: pinnedComment,
       approved: false,

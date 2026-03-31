@@ -114,14 +114,14 @@ export default function StoryCard({
     <div
       className={`group relative overflow-hidden rounded-xl border transition-all duration-300 ${
         isApproved
-          ? 'border-emerald-500/20 bg-[#1a2420]'
+          ? 'border-orange-500/20 bg-[#1a2420]'
           : hasError
             ? 'border-red-500/20 bg-[#2a1f1f]'
             : 'border-white/[0.06] bg-[#252b3b] hover:border-white/[0.12] hover:shadow-lg hover:shadow-black/20'
       }`}
     >
       {isApproved && !hasError && (
-        <div className="absolute right-[-35px] top-[20px] z-10 rotate-45 bg-emerald-500 px-10 py-1 text-[10px] font-black tracking-[0.15em] text-white shadow-lg">
+        <div className="absolute right-[-35px] top-[20px] z-10 rotate-45 bg-orange-500 px-10 py-1 text-[10px] font-black tracking-[0.15em] text-white shadow-lg">
           {story.auto_approved ? 'AUTO' : 'APPROVED'}
         </div>
       )}
@@ -171,13 +171,13 @@ export default function StoryCard({
         )}
 
         {story.image_url && (
-          <div className="mt-2 flex items-center gap-1.5 text-[10px] font-semibold text-emerald-400/60">
+          <div className="mt-2 flex items-center gap-1.5 text-[10px] font-semibold text-orange-400/60">
             <Image size={10} />
             <span>Thumbnail generated</span>
           </div>
         )}
         {story.video_url && (
-          <div className="mt-1 flex items-center gap-1.5 text-[10px] font-semibold text-emerald-400/60">
+          <div className="mt-1 flex items-center gap-1.5 text-[10px] font-semibold text-orange-400/60">
             <Video size={10} />
             <span>B-roll generated</span>
           </div>
@@ -233,11 +233,11 @@ export default function StoryCard({
             </span>
           </div>
 
-          <div className="rounded-lg border border-[#39FF14]/15 bg-[#39FF14]/5 px-3 py-2.5">
-            <p className="mb-1 text-[10px] font-bold tracking-wider text-[#39FF14]/50">
+          <div className="rounded-lg border border-[#FF6B1A]/15 bg-[#FF6B1A]/5 px-3 py-2.5">
+            <p className="mb-1 text-[10px] font-bold tracking-wider text-[#FF6B1A]/50">
               SUGGESTED THUMBNAIL
             </p>
-            <p className="text-sm font-bold text-[#39FF14]/80">
+            <p className="text-sm font-bold text-[#FF6B1A]/80">
               {story.suggested_thumbnail_text}
             </p>
           </div>
@@ -274,7 +274,7 @@ export default function StoryCard({
             </span>
           )}
           {story.publish_status === 'published' && (
-            <span className="text-[10px] font-semibold text-emerald-400">PUBLISHED</span>
+            <span className="text-[10px] font-semibold text-orange-400">PUBLISHED</span>
           )}
         </div>
 
@@ -283,7 +283,7 @@ export default function StoryCard({
             onClick={handleCopyMetadata}
             className={`flex items-center justify-center gap-1.5 rounded-lg border px-3 py-3 text-[11px] font-semibold tracking-wider transition-all active:scale-[0.97] sm:py-2.5 ${
               copied
-                ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
+                ? 'border-orange-500/20 bg-orange-500/10 text-orange-400'
                 : 'border-white/[0.06] bg-white/[0.04] text-white/50 hover:border-white/10 hover:bg-white/[0.07] hover:text-white/70'
             }`}
           >
@@ -323,8 +323,8 @@ export default function StoryCard({
               disabled={isApproved || isBusy}
               className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-3 text-[11px] font-bold tracking-wider transition-all active:scale-[0.97] sm:py-2.5 ${
                 isApproved
-                  ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
-                  : 'border border-[#39FF14]/20 bg-[#39FF14]/10 text-[#39FF14] hover:bg-[#39FF14]/20 hover:shadow-[0_0_15px_rgba(57,255,20,0.1)] disabled:cursor-not-allowed disabled:opacity-30'
+                  ? 'border border-orange-500/20 bg-orange-500/10 text-orange-400'
+                  : 'border border-[#FF6B1A]/20 bg-[#FF6B1A]/10 text-[#FF6B1A] hover:bg-[#FF6B1A]/20 hover:shadow-[0_0_15px_rgba(57,255,20,0.1)] disabled:cursor-not-allowed disabled:opacity-30'
               }`}
             >
               <CheckCircle size={14} />
@@ -360,7 +360,7 @@ function ScriptBlock({
     <div>
       <p
         className={`mb-1 text-[10px] font-bold tracking-wider ${
-          accent ? 'text-[#39FF14]/40' : 'text-white/25'
+          accent ? 'text-[#FF6B1A]/40' : 'text-white/25'
         }`}
       >
         {label}

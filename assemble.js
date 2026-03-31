@@ -8,6 +8,8 @@ const execAsync = util.promisify(exec);
 
 dotenv.config({ override: true });
 
+const brand = require('./brand');
+
 // --- Get audio duration via ffprobe ---
 async function getAudioDuration(audioPath) {
   try {
@@ -70,7 +72,7 @@ PlayResY: 1920
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Caption,Arial,72,&H00FFFFFF,&H000000FF,&H00000000,&HB4000000,-1,0,0,0,100,100,0,0,3,4,0,5,60,60,460,1
+Style: Caption,Arial,72,&H00F0F0F0,&H001A6BFF,&H00000000,&HB40D0D0F,-1,0,0,0,100,100,0,0,3,4,0,5,60,60,460,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -98,14 +100,9 @@ function sanitizeDrawtext(text, maxLen) {
   return clean;
 }
 
-// --- Flair badge colour ---
-function getFlairColor(flair) {
-  const f = (flair || '').toLowerCase();
-  if (f.includes('verified') || f.includes('confirmed')) return '0x00CC66';
-  if (f.includes('highly likely')) return '0x3399FF';
-  if (f.includes('rumour') || f.includes('rumor')) return '0xFFAA00';
-  if (f.includes('news')) return '0x6666FF';
-  return '0x888888';
+// --- Classification badge colour ---
+function getFlairColor(classification) {
+  return brand.classificationColour(classification).ffm;
 }
 
 // --- Build filter graph and command with broadcast overlays ---
@@ -187,16 +184,22 @@ function buildVideoCommand(story, images, audioPath, assPath, filterScriptPath, 
 
   // --- Final chain: brightness + captions + broadcast overlays ---
   const assPathFixed = assPath.replace(/\\/g, '/').replace(/:/g, '\\\\:');
-  const flair = sanitizeDrawtext(story.flair || 'NEWS', 20).toUpperCase();
-  const flairColor = getFlairColor(story.flair);
+  const classInfo = brand.classificationColour(story.classification || story.flair);
+  const flair = sanitizeDrawtext(classInfo.label, 20);
+  const flairColor = classInfo.ffm;
   const source = sanitizeDrawtext(
     story.subreddit ? `r/${story.subreddit}` : (story.source_type || 'News'), 35
   );
 
   const chain = [];
 
-  // Darken for readability
-  chain.push('eq=brightness=-0.06:saturation=1.2');
+  // Dark overlay + amber bottom gradient for readability
+  chain.push('eq=brightness=-0.08:saturation=1.2');
+
+  // Bottom amber gradient (15% opacity at bottom edge)
+  chain.push(
+    `drawbox=x=0:y=ih-300:w=iw:h=300:color=${brand.PRIMARY_FFM}@0.08:t=fill`
+  );
 
   // ASS captions (TikTok-style animated text)
   chain.push(`ass=${assPathFixed}`);
@@ -207,23 +210,29 @@ function buildVideoCommand(story, images, audioPath, assPath, filterScriptPath, 
     `box=1:boxcolor=${flairColor}@0.85:boxborderw=14:x=40:y=100`
   );
 
-  // Red LIVE indicator — pulsing next to flair
-  chain.push(
-    `drawtext=text='  LIVE  ':${fontOpt}:fontcolor=white:fontsize=22:` +
-    `box=1:boxcolor=0xFF0033@0.9:boxborderw=8:x=40:y=55:` +
-    `enable='lt(mod(t\\,2)\\,1.4)'`
-  );
-
-  // Source subreddit — below flair
+  // Source badge — beside flair pill
   chain.push(
     `drawtext=text='  ${source}  ':${fontOpt}:fontcolor=white@0.85:fontsize=26:` +
-    `box=1:boxcolor=black@0.5:boxborderw=8:x=40:y=175`
+    `box=1:boxcolor=${brand.MUTED_FFM}@0.6:boxborderw=8:x=40:y=155`
   );
 
-  // Pulse Gaming watermark — bottom right
+  // Lower brand bar — full width, charcoal at 85% opacity
   chain.push(
-    `drawtext=text='PULSE GAMING':${fontOpt}:fontcolor=white@0.35:fontsize=26:` +
-    `x=w-tw-40:y=h-55`
+    `drawbox=x=0:y=ih-100:w=iw:h=100:color=0x0D0D0F@0.85:t=fill`
+  );
+  // Amber accent line at top of lower bar
+  chain.push(
+    `drawbox=x=0:y=ih-100:w=iw:h=2:color=${brand.PRIMARY_FFM}@0.7:t=fill`
+  );
+  // PULSE GAMING text — left side of lower bar
+  chain.push(
+    `drawtext=text='PULSE GAMING':${fontOpt}:fontcolor=${brand.TEXT_FFM}@0.9:fontsize=28:` +
+    `x=60:y=h-65`
+  );
+  // Follow CTA — right side of lower bar
+  chain.push(
+    `drawtext=text='FOLLOW FOR DAILY LEAKS':${fontOpt}:fontcolor=${brand.MUTED_FFM}@0.6:fontsize=20:` +
+    `x=w-tw-60:y=h-58`
   );
 
   // Reddit top comment flash — appears for 5s mid-video
@@ -241,7 +250,7 @@ function buildVideoCommand(story, images, audioPath, assPath, filterScriptPath, 
       // Header
       chain.push(
         `drawtext=text='  Top Comment  ':${fontOpt}:fontcolor=white:fontsize=24:` +
-        `box=1:boxcolor=0xFF4500@0.75:boxborderw=10:` +
+        `box=1:boxcolor=${brand.PRIMARY_FFM}@0.75:boxborderw=10:` +
         `x=60:y=260:enable='between(t\\,${ct}\\,${ct + 5})'`
       );
       // Line 1

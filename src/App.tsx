@@ -59,7 +59,7 @@ function App() {
 
         {isLoading && stories.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-32">
-            <div className="mb-4 h-8 w-8 animate-spin rounded-full border-2 border-[#39FF14]/20 border-t-[#39FF14]" />
+            <div className="mb-4 h-8 w-8 animate-spin rounded-full border-2 border-[#FF6B1A]/20 border-t-[#FF6B1A]" />
             <p className="text-sm text-white/30">Loading stories...</p>
           </div>
         ) : stories.length === 0 ? (

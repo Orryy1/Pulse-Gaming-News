@@ -61,17 +61,17 @@ export default function Navbar({ onRefresh, isLoading, hasApproved, onPublish }:
         <div className="flex items-center justify-between py-3 sm:py-4">
           <div className="flex items-center gap-3">
             <div className="relative">
-              <div className="h-3 w-3 rounded-full bg-[#39FF14] shadow-[0_0_8px_#39FF14]" />
+              <div className="h-3 w-3 rounded-full bg-[#FF6B1A] shadow-[0_0_8px_#FF6B1A]" />
               {autoStatus?.autoPublish && (
-                <div className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-[#39FF14] animate-ping" />
+                <div className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-[#FF6B1A] animate-ping" />
               )}
             </div>
             <div>
-              <h1 className="text-xs font-bold tracking-[0.2em] text-[#39FF14] sm:text-lg">
+              <h1 className="text-xs font-bold tracking-[0.2em] text-[#FF6B1A] sm:text-lg">
                 PULSE GAMING <span className="text-white/30">//</span> COMMAND CENTRE
               </h1>
               {autoStatus?.autoPublish && (
-                <p className="text-[9px] font-semibold tracking-wider text-[#39FF14]/40">AUTONOMOUS MODE ACTIVE</p>
+                <p className="text-[9px] font-semibold tracking-wider text-[#FF6B1A]/40">AUTONOMOUS MODE ACTIVE</p>
               )}
             </div>
           </div>
@@ -114,7 +114,7 @@ export default function Navbar({ onRefresh, isLoading, hasApproved, onPublish }:
               disabled={hunterRunning}
               className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-[10px] font-semibold tracking-wider transition-all sm:text-xs ${
                 hunterActive
-                  ? 'border-[#39FF14]/15 bg-[#39FF14]/5 text-[#39FF14]/70 hover:bg-[#39FF14]/10'
+                  ? 'border-[#FF6B1A]/15 bg-[#FF6B1A]/5 text-[#FF6B1A]/70 hover:bg-[#FF6B1A]/10'
                   : 'border-white/10 bg-white/5 text-white/40 hover:text-white/60'
               } disabled:cursor-not-allowed disabled:opacity-40`}
               title={hunterActive ? 'Hunter active -- click to run now' : 'Hunter inactive -- click to run manually'}
@@ -122,14 +122,14 @@ export default function Navbar({ onRefresh, isLoading, hasApproved, onPublish }:
               <Radar size={12} className={hunterRunning ? 'animate-spin' : ''} />
               <span className="hidden sm:inline">{hunterRunning ? 'SCANNING...' : 'HUNTER'}</span>
               {hunterActive && (
-                <span className="h-1.5 w-1.5 rounded-full bg-[#39FF14] shadow-[0_0_4px_#39FF14]" />
+                <span className="h-1.5 w-1.5 rounded-full bg-[#FF6B1A] shadow-[0_0_4px_#FF6B1A]" />
               )}
             </button>
 
             <button
               onClick={onPublish}
               disabled={!hasApproved}
-              className="flex items-center gap-1.5 rounded-lg border border-[#39FF14]/25 bg-[#39FF14]/10 px-3 py-2 text-[10px] font-bold tracking-wider text-[#39FF14] transition-all hover:bg-[#39FF14]/20 hover:shadow-[0_0_12px_rgba(57,255,20,0.15)] disabled:cursor-not-allowed disabled:border-white/5 disabled:bg-white/[0.02] disabled:text-white/20 disabled:shadow-none sm:text-xs"
+              className="flex items-center gap-1.5 rounded-lg border border-[#FF6B1A]/25 bg-[#FF6B1A]/10 px-3 py-2 text-[10px] font-bold tracking-wider text-[#FF6B1A] transition-all hover:bg-[#FF6B1A]/20 hover:shadow-[0_0_12px_rgba(57,255,20,0.15)] disabled:cursor-not-allowed disabled:border-white/5 disabled:bg-white/[0.02] disabled:text-white/20 disabled:shadow-none sm:text-xs"
               title={hasApproved ? 'Publish all approved stories' : 'Approve at least one story first'}
             >
               <Rocket size={12} />
@@ -140,7 +140,7 @@ export default function Navbar({ onRefresh, isLoading, hasApproved, onPublish }:
             <button
               onClick={onRefresh}
               disabled={isLoading}
-              className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-semibold tracking-wider text-white/70 transition-all hover:border-[#39FF14]/30 hover:bg-[#39FF14]/10 hover:text-[#39FF14] disabled:cursor-not-allowed disabled:opacity-40 sm:px-4 sm:text-xs"
+              className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-semibold tracking-wider text-white/70 transition-all hover:border-[#FF6B1A]/30 hover:bg-[#FF6B1A]/10 hover:text-[#FF6B1A] disabled:cursor-not-allowed disabled:opacity-40 sm:px-4 sm:text-xs"
             >
               <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
               <span className="hidden sm:inline">REFRESH</span>
@@ -168,14 +168,14 @@ function PlatformDot({ icon, active, label }: { icon: React.ReactNode; active: b
     <div
       className={`flex items-center gap-1 rounded-full px-2 py-1 text-[9px] font-semibold ${
         active
-          ? 'bg-emerald-500/10 text-emerald-400/70'
+          ? 'bg-orange-500/10 text-orange-400/70'
           : 'bg-white/[0.03] text-white/20'
       }`}
       title={`${label}: ${active ? 'Connected' : 'Not connected'}`}
     >
       {icon}
       <span className="hidden lg:inline">{label}</span>
-      <span className={`h-1.5 w-1.5 rounded-full ${active ? 'bg-emerald-400' : 'bg-white/10'}`} />
+      <span className={`h-1.5 w-1.5 rounded-full ${active ? 'bg-orange-400' : 'bg-white/10'}`} />
     </div>
   );
 }

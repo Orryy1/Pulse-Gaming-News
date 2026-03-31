@@ -111,16 +111,17 @@ async function exchangeCode(code) {
 
 // --- Build YouTube metadata (SEO-optimised for Shorts discovery) ---
 function buildMetadata(story) {
-  // Title: under 60 chars, primary keyword front-loaded, NO #Shorts in title
-  // Only ~40 chars visible on mobile — curiosity hook must land there
-  let title = story.suggested_thumbnail_text || story.title;
-  // Strip any existing #Shorts from AI-generated titles
-  title = title.replace(/#\s*shorts?\s*/gi, '').trim();
-  if (title.length > 58) title = title.substring(0, 55) + '...';
+  const brand = require('./brand');
+  const classInfo = brand.classificationColour(story.classification || story.flair);
 
-  // Description: 2-3 sentences reinforcing keyword + context
-  // First line = highest SEO weight (primary keyword, not duplicate of title)
-  // Hashtags at end (first 3 appear as clickable links above the title)
+  // Title: prepend classification, under 60 chars, primary keyword front-loaded
+  let baseTitle = story.suggested_thumbnail_text || story.title;
+  baseTitle = baseTitle.replace(/#\s*shorts?\s*/gi, '').replace(/\[.*?\]\s*/g, '').trim();
+  const prefix = `[${classInfo.label}] `;
+  const maxTitleLen = 58 - prefix.length;
+  if (baseTitle.length > maxTitleLen) baseTitle = baseTitle.substring(0, maxTitleLen - 3) + '...';
+  const title = prefix + baseTitle;
+
   const gameName = extractGameName(story.title);
   const platform = detectPlatform(story.title + ' ' + (story.body || ''));
 
@@ -128,36 +129,35 @@ function buildMetadata(story) {
   // First line: keyword-rich summary (most SEO weight)
   descLines.push(
     story.full_script
-      ? story.full_script.substring(0, 150).replace(/\n/g, ' ').trim()
+      ? story.full_script.substring(0, 150).replace(/\n/g, ' ').replace(/\[.*?\]/g, '').trim()
       : story.title
   );
   descLines.push('');
-  // Context
   if (story.affiliate_url) {
     descLines.push(`Check it out: ${story.affiliate_url}`);
     descLines.push('');
   }
-  descLines.push('Verified gaming news and leaks, every single day.');
-  descLines.push('Subscribe and turn on notifications so you never miss a drop.');
+  descLines.push('Pulse Gaming — verified gaming news, leaks and rumours.');
+  descLines.push('Follow so you never miss a drop.');
   descLines.push('');
-  descLines.push('Pulse Gaming — the signal in the noise.');
-  descLines.push('');
-  // Hashtags: 3-5 max, placed in description (not title)
-  // First 3 appear as clickable links above the title
-  const hashtags = ['#Shorts', '#GamingNews'];
+  if (story.subreddit) {
+    descLines.push(`Source: r/${story.subreddit}`);
+    descLines.push('');
+  }
+  // Hashtags: 4-5, rotated — first 3 appear clickable above title
+  const hashtags = ['#Shorts', '#GamingNews', '#GamingLeaks'];
   if (gameName) hashtags.push(`#${gameName.replace(/[^a-zA-Z0-9]/g, '')}`);
   if (platform) hashtags.push(`#${platform}`);
-  hashtags.push('#Gaming');
-  descLines.push(hashtags.slice(0, 5).join(' '));
+  hashtags.push('#PulseGaming');
+  descLines.push(hashtags.slice(0, 6).join(' '));
 
   const description = descLines.join('\n');
 
-  // Backend tags: game name, platforms, broad gaming terms
   const tags = [
-    'gaming news', 'gaming leaks',
+    'gaming news', 'gaming leaks', 'gaming rumours', 'pulse gaming',
     gameName, platform,
     'youtube shorts', 'gaming shorts',
-    story.flair, story.content_pillar,
+    classInfo.label.toLowerCase(), story.content_pillar,
     ...(story.title.split(/\s+/).map(w => w.replace(/[^a-zA-Z0-9]/g, '')).filter(w => w.length > 3 && !/^(the|and|for|with|from|that|this|have|been|will|could|would)$/i.test(w)).slice(0, 5)),
   ].filter(Boolean);
 

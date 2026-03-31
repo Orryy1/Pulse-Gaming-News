@@ -59,27 +59,27 @@ export default function PublishOverlay({ onClose, onComplete }: PublishOverlayPr
         <div className="flex flex-col items-center text-center">
           {status === 'running' && (
             <>
-              <div className="mb-5 rounded-full bg-[#39FF14]/10 p-4">
-                <Loader2 size={32} className="animate-spin text-[#39FF14]" />
+              <div className="mb-5 rounded-full bg-[#FF6B1A]/10 p-4">
+                <Loader2 size={32} className="animate-spin text-[#FF6B1A]" />
               </div>
               <h2 className="mb-2 text-lg font-bold text-white/90">Publishing</h2>
               <p className="text-sm leading-relaxed text-white/40">{message}</p>
               <div className="mt-6 h-1 w-full overflow-hidden rounded-full bg-white/5">
-                <div className="h-full animate-pulse rounded-full bg-[#39FF14]/40" style={{ width: '60%' }} />
+                <div className="h-full animate-pulse rounded-full bg-[#FF6B1A]/40" style={{ width: '60%' }} />
               </div>
             </>
           )}
 
           {status === 'complete' && (
             <>
-              <div className="mb-5 rounded-full bg-emerald-500/10 p-4">
-                <CheckCircle size={32} className="text-emerald-400" />
+              <div className="mb-5 rounded-full bg-orange-500/10 p-4">
+                <CheckCircle size={32} className="text-orange-400" />
               </div>
               <h2 className="mb-2 text-lg font-bold text-white/90">Videos Queued for Posting</h2>
               <p className="text-sm leading-relaxed text-white/40">{message}</p>
               <button
                 onClick={onClose}
-                className="mt-6 w-full rounded-lg bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-400 transition-all hover:bg-emerald-500/20"
+                className="mt-6 w-full rounded-lg bg-orange-500/10 px-4 py-3 text-sm font-semibold text-orange-400 transition-all hover:bg-orange-500/20"
               >
                 DISMISS
               </button>

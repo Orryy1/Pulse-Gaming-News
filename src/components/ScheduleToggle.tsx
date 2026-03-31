@@ -53,7 +53,7 @@ export default function ScheduleToggle({ scheduleTime, onChange, disabled }: Sch
           value={inputValue}
           onChange={handleTimeChange}
           disabled={disabled}
-          className="rounded-md border border-white/[0.06] bg-white/[0.03] px-2 py-0.5 text-[10px] text-white/50 outline-none focus:border-[#39FF14]/30 disabled:cursor-not-allowed disabled:opacity-30"
+          className="rounded-md border border-white/[0.06] bg-white/[0.03] px-2 py-0.5 text-[10px] text-white/50 outline-none focus:border-[#FF6B1A]/30 disabled:cursor-not-allowed disabled:opacity-30"
         />
       )}
     </div>

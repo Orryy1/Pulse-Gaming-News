@@ -257,7 +257,7 @@ async function publishNextStory() {
   const story = ready[0];
   console.log(`[publisher] Publishing: "${story.title}" (score: ${story.breaking_score || story.score || 0})`);
 
-  const result = { title: story.title, youtube: false, tiktok: false, instagram: false };
+  const result = { title: story.title, youtube: false, tiktok: false, instagram: false, facebook: false, twitter: false };
 
   // YouTube
   try {
@@ -276,7 +276,7 @@ async function publishNextStory() {
   try {
     const { uploadShort: ttUpload } = require('./upload_tiktok');
     const ttResult = await ttUpload(story);
-    story.tiktok_post_id = ttResult.postId;
+    story.tiktok_post_id = ttResult.publishId;
     result.tiktok = true;
     console.log(`[publisher] TikTok: uploaded`);
   } catch (err) {
@@ -292,6 +292,28 @@ async function publishNextStory() {
     console.log(`[publisher] Instagram: uploaded`);
   } catch (err) {
     console.log(`[publisher] Instagram upload skipped: ${err.message}`);
+  }
+
+  // Facebook Reels
+  try {
+    const { uploadShort: fbUpload } = require('./upload_facebook');
+    const fbResult = await fbUpload(story);
+    story.facebook_post_id = fbResult.videoId;
+    result.facebook = true;
+    console.log(`[publisher] Facebook: uploaded`);
+  } catch (err) {
+    console.log(`[publisher] Facebook upload skipped: ${err.message}`);
+  }
+
+  // X/Twitter
+  try {
+    const { uploadShort: twUpload } = require('./upload_twitter');
+    const twResult = await twUpload(story);
+    story.twitter_post_id = twResult.tweetId;
+    result.twitter = true;
+    console.log(`[publisher] Twitter: uploaded`);
+  } catch (err) {
+    console.log(`[publisher] Twitter upload skipped: ${err.message}`);
   }
 
   // Save updated story

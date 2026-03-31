@@ -1,7 +1,16 @@
-# Pulse Gaming — AI Gaming News Pipeline v2
+# Pulse Gaming — AI News Shorts Empire v3
 
 ## Overview
-Fully autonomous pipeline that hunts Reddit + RSS feeds for verified gaming news, generates YouTube Shorts scripts via Claude, produces professional audio/image/video assets with real game art, and auto-publishes to YouTube Shorts, TikTok and Instagram Reels at research-backed optimal times.
+Multi-channel autonomous pipeline that hunts Reddit + RSS feeds for verified news, generates YouTube Shorts scripts via Claude, produces professional audio/image/video assets with real images, branded bumpers and broadcast overlays, and auto-publishes to 5 platforms (YouTube Shorts, TikTok, Instagram Reels, Facebook Reels, X/Twitter) at research-backed optimal times. Supports multiple channels via the `channels/` config system.
+
+## Multi-Channel Architecture
+Channel configs live in `channels/`. Each channel defines: brand palette, voice settings, content sources, classification system, system prompt and YouTube category. Set `CHANNEL=stacked` env var to switch channels.
+
+| Channel | Niche | Palette | Voice |
+|---------|-------|---------|-------|
+| `pulse-gaming` (default) | Gaming | Amber `#FF6B1A` | Male (pNInz6obpgDQGcFmaJgB) |
+| `stacked` | Finance | Green `#00C853` | Male deeper (ErXwobaYiN019PkySvjV) |
+| `the-signal` | Tech | Purple `#A855F7` | Female (EXAVITQu4vr4xnSDxMaL) |
 
 ## Cardinal Rules
 - British English throughout. No serial/Oxford comma.
@@ -164,6 +173,11 @@ All stored in `.env`, never committed:
 - `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `TIKTOK_REDIRECT_URI`
 - `INSTAGRAM_ACCESS_TOKEN`, `INSTAGRAM_BUSINESS_ACCOUNT_ID`
 - `YOUTUBE_API_KEY` (for stats fetching only; upload uses OAuth)
+- `FACEBOOK_PAGE_ID`, `FACEBOOK_PAGE_TOKEN`
+- `TWITTER_API_KEY`, `TWITTER_API_SECRET`, `TWITTER_ACCESS_TOKEN`, `TWITTER_ACCESS_SECRET`
+- `STACKED_VOICE_ID` (ElevenLabs voice for STACKED channel)
+- `SIGNAL_VOICE_ID` (ElevenLabs voice for THE SIGNAL channel)
+- `CHANNEL` (active channel: pulse-gaming | stacked | the-signal)
 - `PORT` (default 3001)
 
 ## Pipeline Modes

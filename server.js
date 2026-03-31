@@ -212,6 +212,8 @@ app.get('/api/autonomous/status', (req, res) => {
       youtube: { configured: !!process.env.YOUTUBE_API_KEY },
       tiktok: { configured: !!process.env.TIKTOK_CLIENT_KEY },
       instagram: { configured: !!process.env.INSTAGRAM_ACCESS_TOKEN || !!process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID },
+      facebook: { configured: !!process.env.FACEBOOK_PAGE_TOKEN },
+      twitter: { configured: !!process.env.TWITTER_API_KEY },
     },
   });
 });
@@ -514,8 +516,8 @@ function startAutonomousScheduler() {
           if (result) {
             await sendDiscord(
               `**Pulse Gaming Published** (${windowLabels[i]})\n` +
-              `📺 "${result.title}"\n` +
-              `YouTube: ${result.youtube ? '✅' : '⏭️'} | TikTok: ${result.tiktok ? '✅' : '⏭️'} | Instagram: ${result.instagram ? '✅' : '⏭️'}`
+              `"${result.title}"\n` +
+              `YT: ${result.youtube ? 'yes' : 'skip'} | TT: ${result.tiktok ? 'yes' : 'skip'} | IG: ${result.instagram ? 'yes' : 'skip'} | FB: ${result.facebook ? 'yes' : 'skip'} | X: ${result.twitter ? 'yes' : 'skip'}`
             );
           } else {
             console.log(`[server-cron] No unpublished stories ready for ${windowLabels[i]}`);
@@ -528,6 +530,21 @@ function startAutonomousScheduler() {
     });
 
     console.log('[server] Auto-publish enabled: 3x daily at 12:00/17:00/21:00 UTC (1PM/6PM/10PM BST)');
+
+    // Engagement passes — 30 minutes after each publish window
+    const engagementWindows = ['30 12 * * *', '30 17 * * *', '30 21 * * *'];
+    engagementWindows.forEach((cronExpr, i) => {
+      cron.schedule(cronExpr, async () => {
+        console.log(`[server-cron] ${windowLabels[i]} +30min — ENGAGEMENT PASS`);
+        try {
+          const { engageAll } = require('./engagement');
+          await engageAll();
+        } catch (err) {
+          console.log(`[server-cron] Engagement error: ${err.message}`);
+        }
+      }, { timezone: 'UTC' });
+    });
+    console.log('[server] Auto-engagement enabled: 30 min after each publish window');
   } else {
     console.log('[server] AUTO_PUBLISH is off. Videos will be produced but not uploaded.');
     console.log('[server] Set AUTO_PUBLISH=true in Railway env vars to enable.');

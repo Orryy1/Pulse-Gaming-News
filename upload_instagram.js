@@ -179,7 +179,12 @@ async function uploadAll() {
   return results;
 }
 
-module.exports = { uploadReel, uploadAll };
+// Alias for publisher.js compatibility
+async function uploadShort(story) {
+  return uploadReel(story);
+}
+
+module.exports = { uploadReel, uploadShort, uploadAll };
 
 if (require.main === module) {
   uploadAll().catch(err => {

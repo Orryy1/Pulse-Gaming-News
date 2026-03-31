@@ -226,7 +226,12 @@ async function uploadAll() {
   return results;
 }
 
-module.exports = { uploadVideo, uploadAll, generateAuthUrl, exchangeCode };
+// Alias for publisher.js compatibility
+async function uploadShort(story) {
+  return uploadVideo(story);
+}
+
+module.exports = { uploadVideo, uploadShort, uploadAll, generateAuthUrl, exchangeCode };
 
 if (require.main === module) {
   const cmd = process.argv[2];

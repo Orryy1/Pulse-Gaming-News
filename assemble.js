@@ -330,6 +330,18 @@ async function assemble() {
   }
 
   const stories = await fs.readJson('daily_news.json');
+  // Re-render if exported file is suspiciously small (< 500KB = likely broken bumper-only)
+  for (const s of stories) {
+    if (s.exported_path && await fs.pathExists(s.exported_path)) {
+      const stat = await fs.stat(s.exported_path);
+      if (stat.size < 500 * 1024) {
+        console.log(`[assemble] ${s.id}: exported file only ${Math.round(stat.size / 1024)}KB — re-rendering`);
+        await fs.remove(s.exported_path);
+        delete s.exported_path;
+      }
+    }
+  }
+
   const toProcess = stories.filter(s =>
     s.approved === true &&
     s.audio_path &&

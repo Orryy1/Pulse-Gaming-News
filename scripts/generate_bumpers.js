@@ -20,10 +20,25 @@ const OUTRO_PATH = path.join(BUMPER_DIR, 'outro.mp4');
 
 const fontOpt = process.platform === 'win32' ? "font='Arial'" : "font='DejaVu Sans'";
 
+async function hasAudioStream(filePath) {
+  try {
+    const { stdout } = await execAsync(
+      `ffprobe -v quiet -select_streams a -show_entries stream=codec_type -of csv=p=0 "${filePath}"`,
+      { timeout: 5000 }
+    );
+    return stdout.trim().length > 0;
+  } catch { return false; }
+}
+
 async function generateIntroBumper() {
   if (await fs.pathExists(INTRO_PATH)) {
-    console.log('[bumpers] Intro already exists, skipping');
-    return INTRO_PATH;
+    // Regenerate if bumper has no audio (concat breaks without it)
+    if (await hasAudioStream(INTRO_PATH)) {
+      console.log('[bumpers] Intro already exists, skipping');
+      return INTRO_PATH;
+    }
+    console.log('[bumpers] Intro missing audio track, regenerating...');
+    await fs.remove(INTRO_PATH);
   }
 
   console.log('[bumpers] Generating intro bumper (1.5s)...');
@@ -43,7 +58,8 @@ async function generateIntroBumper() {
       `x=(w-tw)/2:y=(h/2)+40:alpha='if(lt(t\\,0.6)\\,0\\,min((t-0.6)*3\\,1))'`,
   ].join(',\n');
 
-  const cmd = `ffmpeg -y -f lavfi -i "${filter}" -c:v libx264 -crf 18 -preset medium -r 30 -pix_fmt yuv420p -t 1.5 "${INTRO_PATH}"`;
+  // Include silent audio so concat demuxer works with main video (which has audio)
+  const cmd = `ffmpeg -y -f lavfi -i "${filter}" -f lavfi -i anullsrc=r=44100:cl=stereo -c:v libx264 -crf 18 -preset medium -r 30 -pix_fmt yuv420p -c:a aac -b:a 192k -shortest -t 1.5 "${INTRO_PATH}"`;
 
   await execAsync(cmd, { timeout: 30000 });
   console.log(`[bumpers] Intro saved: ${INTRO_PATH}`);
@@ -52,8 +68,12 @@ async function generateIntroBumper() {
 
 async function generateOutroBumper() {
   if (await fs.pathExists(OUTRO_PATH)) {
-    console.log('[bumpers] Outro already exists, skipping');
-    return OUTRO_PATH;
+    if (await hasAudioStream(OUTRO_PATH)) {
+      console.log('[bumpers] Outro already exists, skipping');
+      return OUTRO_PATH;
+    }
+    console.log('[bumpers] Outro missing audio track, regenerating...');
+    await fs.remove(OUTRO_PATH);
   }
 
   console.log('[bumpers] Generating outro bumper (1.5s)...');
@@ -72,7 +92,8 @@ async function generateOutroBumper() {
       `x=(w-tw)/2:y=(h/2)+40:alpha='if(gt(t\\,1.0)\\,max(1-(t-1.0)*3\\,0)\\,1)'`,
   ].join(',\n');
 
-  const cmd = `ffmpeg -y -f lavfi -i "${filter}" -c:v libx264 -crf 18 -preset medium -r 30 -pix_fmt yuv420p -t 1.5 "${OUTRO_PATH}"`;
+  // Include silent audio so concat demuxer works with main video (which has audio)
+  const cmd = `ffmpeg -y -f lavfi -i "${filter}" -f lavfi -i anullsrc=r=44100:cl=stereo -c:v libx264 -crf 18 -preset medium -r 30 -pix_fmt yuv420p -c:a aac -b:a 192k -shortest -t 1.5 "${OUTRO_PATH}"`;
 
   await execAsync(cmd, { timeout: 30000 });
   console.log(`[bumpers] Outro saved: ${OUTRO_PATH}`);

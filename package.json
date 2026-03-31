@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "description": "Automated gaming news pipeline with React dashboard",
   "scripts": {
-    "start": "node server.js",
+    "start": "node scripts/ensure-ffmpeg.js && node server.js",
     "hunt": "node run.js hunt",
     "produce": "node run.js produce",
     "schedule": "node run.js schedule",

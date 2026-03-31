@@ -5,18 +5,21 @@ const sendDiscord = require('./notify');
 dotenv.config({ override: true });
 
 /*
-  Autonomous Publisher — Staggered Multi-Platform Posting
+  Autonomous Publisher — 3x Daily Multi-Platform Posting
 
-  Research-backed optimal posting times (GMT):
-  - YouTube Shorts: 19:00 GMT (2 PM ET / 11 AM PT) — catches US afternoon + UK evening
-  - TikTok:         20:00 GMT (3 PM ET / 12 PM PT) — 1hr stagger after YT
-  - Instagram Reels: 21:00 GMT (4 PM ET / 1 PM PT) — catches US afternoon break + UK gaming prime
+  Optimal publish windows (all times UTC / BST):
+  - 12:00 UTC / 1:00 PM BST — lunch break + US morning (7-8am ET)
+  - 17:00 UTC / 6:00 PM BST — post-work peak + US noon
+  - 21:00 UTC / 10:00 PM BST — evening session + US afternoon (4-5pm ET)
+
+  Strategy: 1 Short per window = 3 Shorts/day (algorithm favours frequency)
 
   This module handles:
   1. Auto-approval of high-confidence stories
   2. Full produce pipeline (affiliates → audio → images → assembly)
-  3. Staggered multi-platform upload
-  4. Discord notifications at each stage
+  3. publishNextStory() — single-story publish for each window
+  4. publishToAllPlatforms() — batch publish (legacy/manual)
+  5. Discord notifications at each stage
 */
 
 // --- Auto-approval logic ---
@@ -236,10 +239,71 @@ async function publishOnlyCycle() {
   }
 }
 
+// --- Publish a single next-available story across all platforms ---
+// Used by the 3x daily publish windows to spread content through the day
+async function publishNextStory() {
+  const stories = await fs.readJson('daily_news.json');
+  const ready = stories.filter(s =>
+    s.approved && s.exported_path && !s.youtube_post_id
+  );
+
+  if (ready.length === 0) {
+    console.log('[publisher] No unpublished stories available');
+    return null;
+  }
+
+  // Pick the highest-scoring story first
+  ready.sort((a, b) => (b.breaking_score || b.score || 0) - (a.breaking_score || a.score || 0));
+  const story = ready[0];
+  console.log(`[publisher] Publishing: "${story.title}" (score: ${story.breaking_score || story.score || 0})`);
+
+  const result = { title: story.title, youtube: false, tiktok: false, instagram: false };
+
+  // YouTube
+  try {
+    const { uploadShort } = require('./upload_youtube');
+    const ytResult = await uploadShort(story);
+    story.youtube_post_id = ytResult.videoId;
+    story.youtube_url = ytResult.url;
+    story.publish_status = 'published';
+    result.youtube = true;
+    console.log(`[publisher] YouTube: ${ytResult.url}`);
+  } catch (err) {
+    console.log(`[publisher] YouTube upload failed: ${err.message}`);
+  }
+
+  // TikTok (no stagger — windows are already spread across the day)
+  try {
+    const { uploadShort: ttUpload } = require('./upload_tiktok');
+    const ttResult = await ttUpload(story);
+    story.tiktok_post_id = ttResult.postId;
+    result.tiktok = true;
+    console.log(`[publisher] TikTok: uploaded`);
+  } catch (err) {
+    console.log(`[publisher] TikTok upload skipped: ${err.message}`);
+  }
+
+  // Instagram
+  try {
+    const { uploadShort: igUpload } = require('./upload_instagram');
+    const igResult = await igUpload(story);
+    story.instagram_media_id = igResult.mediaId;
+    result.instagram = true;
+    console.log(`[publisher] Instagram: uploaded`);
+  } catch (err) {
+    console.log(`[publisher] Instagram upload skipped: ${err.message}`);
+  }
+
+  // Save updated story
+  await fs.writeJson('daily_news.json', stories, { spaces: 2 });
+  return result;
+}
+
 module.exports = {
   autoApprove,
   produce,
   publishToAllPlatforms,
+  publishNextStory,
   fullAutonomousCycle,
   publishOnlyCycle,
   shouldAutoApprove,

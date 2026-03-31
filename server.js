@@ -200,9 +200,13 @@ app.get('/api/autonomous/status', (req, res) => {
     lastHuntRun: lastHunterRun.toISOString(),
     nextHuntRun: hunterInterval ? new Date(lastHunterRun.getTime() + HUNTER_INTERVAL_MS).toISOString() : null,
     schedule: {
-      hunts: ['06:00 UTC', '10:00 UTC', '14:00 UTC', '17:00 UTC', '22:00 UTC'],
-      produce: '18:00 UTC',
-      publish: '19:00 UTC (YT) → 20:00 UTC (TikTok) → 21:00 UTC (Insta)',
+      hunts: 'Every 3 hours (auto-produces videos after each hunt)',
+      publish: [
+        '12:00 UTC / 1:00 PM BST — lunch break + US morning',
+        '17:00 UTC / 6:00 PM BST — post-work peak + US noon',
+        '21:00 UTC / 10:00 PM BST — evening session + US afternoon',
+      ],
+      strategy: '1 Short per window = 3 Shorts/day across all platforms',
     },
     platforms: {
       youtube: { configured: !!process.env.YOUTUBE_API_KEY },
@@ -487,29 +491,43 @@ function startAutonomousScheduler() {
   runHunter();
   hunterInterval = setInterval(runHunter, HUNTER_INTERVAL_MS);
 
-  // 19:00 UTC — Publish to YouTube Shorts (peak engagement window)
-  // TikTok +60min, Instagram +60min (staggered by publisher module)
+  // 3x daily publish windows — optimal for UK gaming audience + US overlap
+  // 12:00 UTC (1PM BST) — lunch break, US morning 7-8am ET
+  // 17:00 UTC (6PM BST) — post-work peak, US noon
+  // 21:00 UTC (10PM BST) — evening session, US afternoon 4-5pm ET
+  // Each window publishes ONE video across all platforms (spread content through the day)
   if (process.env.AUTO_PUBLISH === 'true') {
-    cron.schedule('0 19 * * *', async () => {
-      console.log('[server-cron] 19:00 UTC — PUBLISH WINDOW (YouTube → TikTok → Instagram)');
-      try {
-        // Final produce pass to catch any stragglers
-        const { produce, publishToAllPlatforms } = require('./publisher');
-        await produce();
-        const results = await publishToAllPlatforms();
-        const total = results.youtube.length + results.tiktok.length + results.instagram.length;
-        await sendDiscord(
-          `**Pulse Gaming Published**\n` +
-          `YouTube: ${results.youtube.length} | TikTok: ${results.tiktok.length} | Instagram: ${results.instagram.length}\n` +
-          `Total: ${total} Shorts posted`
-        );
-      } catch (err) {
-        console.log(`[server-cron] Publish error: ${err.message}`);
-        await sendDiscord(`**Publish Error**: ${err.message}`);
-      }
-    }, { timezone: 'UTC' });
+    const publishWindows = ['0 12 * * *', '0 17 * * *', '0 21 * * *'];
+    const windowLabels = ['12:00 UTC (1PM BST)', '17:00 UTC (6PM BST)', '21:00 UTC (10PM BST)'];
 
-    console.log('[server] Auto-publish enabled: YouTube at 19:00 UTC → TikTok 20:00 → Instagram 21:00');
+    publishWindows.forEach((cronExpr, i) => {
+      cron.schedule(cronExpr, async () => {
+        console.log(`[server-cron] ${windowLabels[i]} — PUBLISH WINDOW`);
+        try {
+          // Final produce pass to catch any stragglers
+          const { produce } = require('./publisher');
+          await produce();
+
+          // Publish ONE story per window (spread across the day for algorithm)
+          const { publishNextStory } = require('./publisher');
+          const result = await publishNextStory();
+          if (result) {
+            await sendDiscord(
+              `**Pulse Gaming Published** (${windowLabels[i]})\n` +
+              `📺 "${result.title}"\n` +
+              `YouTube: ${result.youtube ? '✅' : '⏭️'} | TikTok: ${result.tiktok ? '✅' : '⏭️'} | Instagram: ${result.instagram ? '✅' : '⏭️'}`
+            );
+          } else {
+            console.log(`[server-cron] No unpublished stories ready for ${windowLabels[i]}`);
+          }
+        } catch (err) {
+          console.log(`[server-cron] Publish error: ${err.message}`);
+          await sendDiscord(`**Publish Error** (${windowLabels[i]}): ${err.message}`);
+        }
+      }, { timezone: 'UTC' });
+    });
+
+    console.log('[server] Auto-publish enabled: 3x daily at 12:00/17:00/21:00 UTC (1PM/6PM/10PM BST)');
   } else {
     console.log('[server] AUTO_PUBLISH is off. Videos will be produced but not uploaded.');
     console.log('[server] Set AUTO_PUBLISH=true in Railway env vars to enable.');

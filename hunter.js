@@ -109,16 +109,15 @@ async function fetchSubredditNew(subreddit) {
   }
 }
 
-async function fetchTopComment(subreddit, postId) {
+async function fetchTopComments(subreddit, postId, count = 4) {
   try {
-    const url = `https://www.reddit.com/r/${subreddit}/comments/${postId}.json?limit=10&sort=top`;
+    const url = `https://www.reddit.com/r/${subreddit}/comments/${postId}.json?limit=20&sort=top`;
     const response = await axios.get(url, {
       headers: { 'User-Agent': USER_AGENT },
       timeout: 10000,
     });
 
     const commentListing = response.data?.[1]?.data?.children || [];
-    // Skip mod/automod/template comments — find the first real user comment
     const modPhrases = [
       'rumor alert', 'rumour alert', 'this post contains',
       'please read critically', 'manage expectations',
@@ -127,6 +126,7 @@ async function fetchTopComment(subreddit, postId) {
       'i am a bot', 'action was performed automatically',
       'megathread', 'please use the', 'weekly thread',
     ];
+    const results = [];
     for (const child of commentListing) {
       const c = child.data;
       if (!c || !c.body) continue;
@@ -135,15 +135,26 @@ async function fetchTopComment(subreddit, postId) {
       const author = (c.author || '').toLowerCase();
       if (author === 'automoderator' || author === 'automod' || author.includes('bot')) continue;
       if (c.body.length < 20) continue;
-      // Content-based filter: skip comments that read like mod templates
       const bodyLower = c.body.toLowerCase();
       if (modPhrases.some(phrase => bodyLower.includes(phrase))) continue;
-      return c.body.substring(0, 500);
+      results.push({
+        body: c.body.substring(0, 200),
+        author: c.author || 'Anonymous',
+        score: c.score || 0,
+      });
+      if (results.length >= count) break;
     }
+    return results;
   } catch (err) {
     // Silently skip
   }
-  return '';
+  return [];
+}
+
+// Backwards-compatible wrapper
+async function fetchTopComment(subreddit, postId) {
+  const comments = await fetchTopComments(subreddit, postId, 1);
+  return comments.length > 0 ? comments[0].body : '';
 }
 
 // --- RSS feed parsing (lightweight XML extraction) ---
@@ -469,9 +480,11 @@ async function hunt() {
   console.log('[hunter] Phase 3: Enriching with images...');
 
   await Promise.allSettled(topStories.map(async (story, i) => {
-    // Fetch top comment from Reddit posts
+    // Fetch top comments from Reddit posts (multiple for video overlays)
     if (story.source_type === 'reddit' && !story.top_comment) {
-      story.top_comment = await fetchTopComment(story.subreddit, story.id);
+      const comments = await fetchTopComments(story.subreddit, story.id, 8);
+      story.top_comment = comments.length > 0 ? comments[0].body : '';
+      story.reddit_comments = comments;
     }
 
     // Fetch article hero image (try article URL, then original Reddit link URL)

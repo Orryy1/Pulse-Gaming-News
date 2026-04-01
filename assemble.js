@@ -8,7 +8,57 @@ const execAsync = util.promisify(exec);
 
 dotenv.config({ override: true });
 
+const axios = require('axios');
 const brand = require('./brand');
+
+const MUSIC_CACHE = path.join('output', 'music');
+const MUSIC_VOLUME = 0.12; // 12% volume — subtle background
+
+// --- Generate or reuse background music via ElevenLabs ---
+async function ensureBackgroundMusic(duration) {
+  await fs.ensureDir(MUSIC_CACHE);
+
+  // Reuse cached music if within 30s of needed duration
+  const cached = (await fs.readdir(MUSIC_CACHE)).filter(f => f.endsWith('.mp3'));
+  for (const file of cached) {
+    const match = file.match(/trap_(\d+)s/);
+    if (match && Math.abs(parseInt(match[1]) - duration) < 30) {
+      return path.join(MUSIC_CACHE, file);
+    }
+  }
+
+  // Generate via ElevenLabs Music API
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    console.log('[assemble] Generating background music via ElevenLabs...');
+    const response = await axios({
+      method: 'POST',
+      url: 'https://api.elevenlabs.io/v1/music',
+      headers: {
+        'xi-api-key': apiKey,
+        'Content-Type': 'application/json',
+        'Accept': 'audio/mpeg',
+      },
+      data: {
+        prompt: 'dark minimal trap beat, subtle 808 bass, crisp hi-hats, gaming news tension, cinematic, atmospheric, no vocals',
+        duration_seconds: Math.min(Math.ceil(duration) + 5, 120),
+        force_instrumental: true,
+      },
+      responseType: 'arraybuffer',
+      timeout: 60000,
+    });
+
+    const musicPath = path.join(MUSIC_CACHE, `trap_${Math.ceil(duration)}s.mp3`);
+    await fs.writeFile(musicPath, Buffer.from(response.data));
+    console.log(`[assemble] Background music saved: ${musicPath}`);
+    return musicPath;
+  } catch (err) {
+    console.log(`[assemble] Music generation failed (non-fatal): ${err.message}`);
+    return null;
+  }
+}
 
 // --- Get audio duration via ffprobe ---
 async function getAudioDuration(audioPath) {
@@ -37,11 +87,14 @@ function splitIntoPhrases(script) {
   const phrases = [];
   let i = 0;
   while (i < words.length) {
-    // 1-3 words per phrase: short punchy karaoke style
     const chunkSize = words[i].length > 8 ? 1 : (words[i].length > 5 ? 2 : 3);
-    const phrase = words.slice(i, i + chunkSize).join(' ');
-    phrases.push(phrase);
-    i += chunkSize;
+    const chunk = [];
+    for (let j = 0; j < chunkSize && i + j < words.length; j++) {
+      chunk.push(words[i + j]);
+      if (/[.!?]$/.test(words[i + j])) { j++; break; }
+    }
+    phrases.push(chunk.join(' '));
+    i += chunk.length;
   }
   return phrases;
 }
@@ -94,18 +147,23 @@ async function generateSubtitles(story, duration, outputDir) {
     }
     if (wordChars.length > 0) words.push({ text: wordChars, start: wordStart, end: wordEnd });
 
-    // Group words into 1-3 word karaoke phrases
+    // Group words into 1-3 word karaoke phrases — break at sentence endings
     const phrases = [];
     let i = 0;
     while (i < words.length) {
       const chunkSize = words[i].text.length > 8 ? 1 : (words[i].text.length > 5 ? 2 : 3);
-      const chunk = words.slice(i, i + chunkSize);
+      const chunk = [];
+      for (let j = 0; j < chunkSize && i + j < words.length; j++) {
+        chunk.push(words[i + j]);
+        // If this word ends a sentence, stop the phrase here
+        if (/[.!?]$/.test(words[i + j].text)) { j++; break; }
+      }
       phrases.push({
         text: chunk.map(w => w.text).join(' '),
         start: chunk[0].start,
         end: chunk[chunk.length - 1].end,
       });
-      i += chunkSize;
+      i += chunk.length;
     }
 
     events = phrases.map(p => {
@@ -181,7 +239,7 @@ function getFlairColor(classification) {
 }
 
 // --- Build filter graph and command with broadcast overlays ---
-function buildVideoCommand(story, images, audioPath, assPath, filterScriptPath, outputPath, duration) {
+function buildVideoCommand(story, images, audioPath, assPath, filterScriptPath, outputPath, duration, musicPath) {
   const inputs = [];
   const fontOpt = process.platform === 'win32' ? "font='Arial'" : "font='DejaVu Sans'";
   const segmentDuration = Math.max(4, Math.floor(duration / images.length));
@@ -191,9 +249,14 @@ function buildVideoCommand(story, images, audioPath, assPath, filterScriptPath, 
     inputs.push(`-loop 1 -t ${segmentDuration} -i "${images[i].replace(/\\/g, '/')}"`);
   }
 
-  // Audio (last input)
+  // Audio inputs
   const audioIdx = images.length;
   inputs.push(`-i "${audioPath.replace(/\\/g, '/')}"`);
+  let musicIdx = -1;
+  if (musicPath) {
+    musicIdx = images.length + 1;
+    inputs.push(`-i "${musicPath.replace(/\\/g, '/')}"`);
+  }
 
   // --- Filter graph ---
   const filterParts = [];
@@ -291,17 +354,41 @@ function buildVideoCommand(story, images, audioPath, assPath, filterScriptPath, 
     `x=w-tw-60:y=h-58`
   );
 
-  // Reddit top comment flash — appears for 6s mid-video, full text with word wrap
-  if (story.top_comment) {
-    const comment = sanitizeDrawtext(story.top_comment, 300);
-    if (comment.length > 10) {
-      const ct = Math.floor(duration * 0.4);
-      // Word wrap into lines of ~38 chars
-      const words = comment.split(' ');
+  // Reddit comments — scattered throughout the video as semi-transparent overlays
+  const comments = story.reddit_comments || (story.top_comment ? [{ body: story.top_comment, author: 'Redditor', score: 0 }] : []);
+  if (comments.length > 0) {
+    // Spread comments evenly across the video (skip first/last 10%)
+    const count = Math.min(comments.length, 8);
+    const usable = 0.8; // 10%-90% of duration
+    const gap = usable / count;
+
+    // Alternate Y positions: top zone (above captions) and bottom zone (below captions, above brand bar)
+    // Captions sit at ~y=700-1000, so comments go y=180-350 (top) or y=1300-1550 (bottom)
+    const ySlots = [190, 1300, 240, 1350, 200, 1320, 250, 1370];
+
+    comments.slice(0, count).forEach((comment, ci) => {
+      const text = sanitizeDrawtext(comment.body, 500);
+      if (text.length < 10) return;
+      const author = sanitizeDrawtext(comment.author || 'Redditor', 25);
+      const score = comment.score || 0;
+      const ct = Math.floor(duration * (0.10 + ci * gap));
+      const showDur = 5;
+      const fadeDur = 0.4;
+      const yBase = ySlots[ci % ySlots.length];
+
+      // Fade + slide expressions:
+      // alpha: fade in over 0.4s, hold, fade out over 0.4s
+      // x: slide in from -20 to 40 over 0.4s then hold at 40
+      const alphaExpr = `if(lt(t-${ct}\\,${fadeDur})\\,(t-${ct})/${fadeDur}\\,if(gt(t-${ct}\\,${showDur - fadeDur})\\,(${showDur}-(t-${ct}))/${fadeDur}\\,1))`;
+      const slideX = `if(lt(t-${ct}\\,${fadeDur})\\,(-20+60*(t-${ct})/${fadeDur})\\,40)`;
+      const enableExpr = `between(t\\,${ct}\\,${ct + showDur})`;
+
+      // Word wrap into lines of ~30 chars — show ALL lines, no truncation
+      const words = text.split(' ');
       const lines = [];
       let current = '';
       for (const word of words) {
-        if ((current + ' ' + word).length > 38 && current) {
+        if ((current + ' ' + word).length > 30 && current) {
           lines.push(current);
           current = word;
         } else {
@@ -309,26 +396,43 @@ function buildVideoCommand(story, images, audioPath, assPath, filterScriptPath, 
         }
       }
       if (current) lines.push(current);
-      const displayLines = lines.slice(0, 6); // Max 6 lines
 
-      // Header
+      // Username + score header with fade + slide
+      const upvotes = score > 0 ? `  ${score} pts` : '';
       chain.push(
-        `drawtext=text='  Top Comment  ':${fontOpt}:fontcolor=white:fontsize=24:` +
-        `box=1:boxcolor=${brand.PRIMARY_FFM}@0.75:boxborderw=10:` +
-        `x=60:y=260:enable='between(t\\,${ct}\\,${ct + 6})'`
+        `drawtext=text='  u/${author}${upvotes}  ':${fontOpt}:fontcolor=${brand.PRIMARY_FFM}:fontsize=26:` +
+        `box=1:boxcolor=0x0D0D0F@0.70:boxborderw=10:` +
+        `alpha='${alphaExpr}':x='${slideX}':y=${yBase}:enable='${enableExpr}'`
       );
-      // Comment lines
-      displayLines.forEach((line, i) => {
+      // All comment text lines with same fade + slide
+      lines.forEach((line, li) => {
         chain.push(
-          `drawtext=text='  ${line}  ':${fontOpt}:fontcolor=white@0.9:fontsize=22:` +
-          `box=1:boxcolor=black@0.55:boxborderw=8:` +
-          `x=60:y=${310 + i * 42}:enable='between(t\\,${ct}\\,${ct + 6})'`
+          `drawtext=text='  ${line}  ':${fontOpt}:fontcolor=white:fontsize=24:` +
+          `box=1:boxcolor=0x0D0D0F@0.60:boxborderw=8:` +
+          `alpha='${alphaExpr}':x='${slideX}':y=${yBase + 40 + li * 40}:enable='${enableExpr}'`
         );
       });
-    }
+    });
   }
 
   filterParts.push(`[${currentLabel}]${chain.join(',\n')}[outv]`);
+
+  // Audio mixing: narration at full volume + music at low volume
+  let audioMapping;
+  if (musicIdx >= 0) {
+    filterParts.push(
+      `[${audioIdx}:a]volume=1.0[voice]`
+    );
+    filterParts.push(
+      `[${musicIdx}:a]volume=${MUSIC_VOLUME}[bgm]`
+    );
+    filterParts.push(
+      `[voice][bgm]amix=inputs=2:duration=shortest[outa]`
+    );
+    audioMapping = `-map "[outv]" -map "[outa]"`;
+  } else {
+    audioMapping = `-map "[outv]" -map ${audioIdx}:a`;
+  }
 
   const filterGraph = filterParts.join(';\n');
   const filterScriptFixed = filterScriptPath.replace(/\\/g, '/');
@@ -337,7 +441,7 @@ function buildVideoCommand(story, images, audioPath, assPath, filterScriptPath, 
     'ffmpeg -y',
     inputs.join(' '),
     `-filter_complex_script "${filterScriptFixed}"`,
-    `-map "[outv]" -map ${audioIdx}:a`,
+    audioMapping,
     '-c:v libx264 -crf 21 -preset medium',
     '-c:a aac -b:a 192k',
     '-r 30 -shortest',
@@ -452,12 +556,15 @@ async function assemble() {
     await fs.ensureDir(subsDir);
     const assPath = await generateSubtitles(story, duration, subsDir);
 
-    console.log(`[assemble] Rendering ${story.id}: ${images.length} images + captions (${Math.round(duration)}s)`);
+    // Generate or reuse background music
+    const musicPath = await ensureBackgroundMusic(duration);
+
+    console.log(`[assemble] Rendering ${story.id}: ${images.length} images + captions (${Math.round(duration)}s)${musicPath ? ' + music' : ''}`);
 
     // Write filter graph to file to avoid shell quoting issues
     const filterScriptPath = path.join('output', 'subs', `${story.id}_filter.txt`);
     const { filterGraph, command: cmd } = buildVideoCommand(
-      story, images, story.audio_path, assPath, filterScriptPath, outputPath, duration
+      story, images, story.audio_path, assPath, filterScriptPath, outputPath, duration, musicPath
     );
     await fs.writeFile(filterScriptPath, filterGraph);
 

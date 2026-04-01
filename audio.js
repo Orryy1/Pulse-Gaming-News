@@ -9,6 +9,8 @@ const execAsync = util.promisify(exec);
 
 dotenv.config({ override: true });
 
+const brand = require('./brand');
+
 const BUMPER_DURATION = 0; // bumpers removed — audio must hit 61s on its own
 const MIN_TOTAL_DURATION = 61; // TikTok Creator Rewards minimum
 
@@ -27,9 +29,11 @@ async function getAudioDuration(audioPath) {
 
 // --- Generate TTS audio via ElevenLabs ---
 async function generateTTS(text, outputPath) {
+  const voiceId = brand.voiceId || process.env.ELEVENLABS_VOICE_ID;
+  const voiceSettings = brand.voiceSettings || { stability: 0.20, similarity_boost: 0.80, style: 0.75, speaking_rate: 1.1 };
   const response = await axios({
     method: 'POST',
-    url: `https://api.elevenlabs.io/v1/text-to-speech/${process.env.ELEVENLABS_VOICE_ID}`,
+    url: `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
     headers: {
       'xi-api-key': process.env.ELEVENLABS_API_KEY,
       'Content-Type': 'application/json',
@@ -37,13 +41,8 @@ async function generateTTS(text, outputPath) {
     },
     data: {
       text,
-      model_id: 'eleven_multilingual_v2',
-      voice_settings: {
-        stability: 0.25,
-        similarity_boost: 0.85,
-        style: 0.65,
-        speaking_rate: 1.05,
-      },
+      model_id: brand.voiceModel || 'eleven_multilingual_v2',
+      voice_settings: voiceSettings,
     },
     responseType: 'arraybuffer',
   });

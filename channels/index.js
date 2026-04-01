@@ -50,6 +50,9 @@ function getActiveBrand() {
     CTA: ch.cta,
     FONT: 'Space Grotesk',
     FONT_FALLBACK: 'Inter',
+    voiceId: ch.voiceId,
+    voiceModel: ch.voiceModel,
+    voiceSettings: ch.voiceSettings,
   };
 }
 

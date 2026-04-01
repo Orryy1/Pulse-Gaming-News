@@ -72,7 +72,7 @@ PlayResY: 1920
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Caption,Arial,72,&H00F0F0F0,&H001A6BFF,&H00000000,&HB40D0D0F,-1,0,0,0,100,100,0,0,3,4,0,5,60,60,460,1
+Style: Caption,Arial,68,&H00F0F0F0,&H001A6BFF,&H00000000,&HB40D0D0F,-1,0,0,0,100,100,0,0,3,4,0,2,60,60,620,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -131,27 +131,40 @@ function buildVideoCommand(story, images, audioPath, assPath, filterScriptPath, 
   // --- Filter graph ---
   const filterParts = [];
 
-  // Ken Burns zoom/pan per background image
+  // Ken Burns zoom/pan per background image — vary crop position for visual variety
   for (let i = 0; i < images.length; i++) {
     const zoomIn = i % 2 === 0;
     const zoomExpr = zoomIn
-      ? `z=min(zoom+0.0006\\,1.12)`
-      : `z=if(eq(on\\,1)\\,1.12\\,max(zoom-0.0006\\,1.0))`;
+      ? `z=min(zoom+0.0008\\,1.15)`
+      : `z=if(eq(on\\,1)\\,1.15\\,max(zoom-0.0008\\,1.0))`;
+    // Vary crop focus: top, centre, bottom — so same-ish images still look different
+    const yPos = i % 3 === 0 ? `y=0` :
+                 i % 3 === 1 ? `y=(ih-oh)/2` :
+                               `y=ih-oh`;
     const xPan = i % 3 === 0 ? `x=iw/2-(iw/zoom/2)` :
                  i % 3 === 1 ? `x=(iw-iw/zoom)*on/${segmentDuration * 30}` :
                                `x=(iw-iw/zoom)*(1-on/${segmentDuration * 30})`;
     filterParts.push(
       `[${i}:v]scale=1080:1920:force_original_aspect_ratio=increase,` +
-      `crop=1080:1920,` +
+      `crop=1080:1920:0:${i % 3 === 0 ? '0' : i % 3 === 1 ? '(ih-oh)/2' : 'ih-oh'},` +
       `zoompan=${zoomExpr}:${xPan}:y=ih/2-(ih/zoom/2):` +
       `d=${segmentDuration * 30}:s=1080x1920:fps=30,` +
       `format=yuv420p,setsar=1[v${i}]`
     );
   }
 
-  // Concatenate backgrounds
+  // Concatenate backgrounds with crossfade transitions between segments
   if (images.length > 1) {
-    filterParts.push(`${images.map((_, i) => `[v${i}]`).join('')}concat=n=${images.length}:v=1:a=0[base]`);
+    // Use xfade for smooth transitions between image segments
+    let prevLabel = 'v0';
+    for (let i = 1; i < images.length; i++) {
+      const offset = i * segmentDuration - 0.5; // 0.5s crossfade
+      const outLabel = i === images.length - 1 ? 'base' : `xf${i}`;
+      filterParts.push(
+        `[${prevLabel}][v${i}]xfade=transition=fadeblack:duration=0.5:offset=${offset}[${outLabel}]`
+      );
+      prevLabel = outLabel;
+    }
   } else {
     filterParts.push(`[v0]copy[base]`);
   }
@@ -235,38 +248,40 @@ function buildVideoCommand(story, images, audioPath, assPath, filterScriptPath, 
     `x=w-tw-60:y=h-58`
   );
 
-  // Reddit top comment flash — appears for 5s mid-video
+  // Reddit top comment flash — appears for 6s mid-video, full text with word wrap
   if (story.top_comment) {
-    const comment = sanitizeDrawtext(story.top_comment, 80);
+    const comment = sanitizeDrawtext(story.top_comment, 300);
     if (comment.length > 10) {
       const ct = Math.floor(duration * 0.4);
-      let line1 = comment;
-      let line2 = '';
-      if (comment.length > 40) {
-        const sp = comment.lastIndexOf(' ', 40);
-        line1 = comment.substring(0, sp > 0 ? sp : 40);
-        line2 = comment.substring(sp > 0 ? sp + 1 : 40);
+      // Word wrap into lines of ~38 chars
+      const words = comment.split(' ');
+      const lines = [];
+      let current = '';
+      for (const word of words) {
+        if ((current + ' ' + word).length > 38 && current) {
+          lines.push(current);
+          current = word;
+        } else {
+          current = current ? current + ' ' + word : word;
+        }
       }
+      if (current) lines.push(current);
+      const displayLines = lines.slice(0, 6); // Max 6 lines
+
       // Header
       chain.push(
         `drawtext=text='  Top Comment  ':${fontOpt}:fontcolor=white:fontsize=24:` +
         `box=1:boxcolor=${brand.PRIMARY_FFM}@0.75:boxborderw=10:` +
-        `x=60:y=260:enable='between(t\\,${ct}\\,${ct + 5})'`
+        `x=60:y=260:enable='between(t\\,${ct}\\,${ct + 6})'`
       );
-      // Line 1
-      chain.push(
-        `drawtext=text='  ${line1}  ':${fontOpt}:fontcolor=white@0.9:fontsize=22:` +
-        `box=1:boxcolor=black@0.55:boxborderw=8:` +
-        `x=60:y=310:enable='between(t\\,${ct}\\,${ct + 5})'`
-      );
-      // Line 2 (if needed)
-      if (line2) {
+      // Comment lines
+      displayLines.forEach((line, i) => {
         chain.push(
-          `drawtext=text='  ${line2}  ':${fontOpt}:fontcolor=white@0.9:fontsize=22:` +
+          `drawtext=text='  ${line}  ':${fontOpt}:fontcolor=white@0.9:fontsize=22:` +
           `box=1:boxcolor=black@0.55:boxborderw=8:` +
-          `x=60:y=352:enable='between(t\\,${ct}\\,${ct + 5})'`
+          `x=60:y=${310 + i * 42}:enable='between(t\\,${ct}\\,${ct + 6})'`
         );
-      }
+      });
     }
   }
 

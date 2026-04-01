@@ -111,15 +111,24 @@ async function fetchSubredditNew(subreddit) {
 
 async function fetchTopComment(subreddit, postId) {
   try {
-    const url = `https://www.reddit.com/r/${subreddit}/comments/${postId}.json?limit=1`;
+    const url = `https://www.reddit.com/r/${subreddit}/comments/${postId}.json?limit=10&sort=top`;
     const response = await axios.get(url, {
       headers: { 'User-Agent': USER_AGENT },
       timeout: 10000,
     });
 
     const commentListing = response.data?.[1]?.data?.children || [];
-    if (commentListing.length > 0 && commentListing[0].data?.body) {
-      return commentListing[0].data.body.substring(0, 500);
+    // Skip mod/automod pinned comments — find the first real user comment
+    for (const child of commentListing) {
+      const c = child.data;
+      if (!c || !c.body) continue;
+      if (c.stickied) continue;
+      if (c.distinguished === 'moderator') continue;
+      const author = (c.author || '').toLowerCase();
+      if (author === 'automoderator' || author === 'automod' || author.includes('bot')) continue;
+      // Skip short template comments (mod rules, flairs, etc.)
+      if (c.body.length < 20) continue;
+      return c.body.substring(0, 500);
     }
   } catch (err) {
     // Silently skip

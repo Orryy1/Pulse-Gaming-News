@@ -33,10 +33,10 @@ module.exports = {
     return { hex: '#6B7280', ffm: '0x6B7280', label: 'NEWS' };
   },
 
-  // Voice
-  voiceId: process.env.ELEVENLABS_VOICE_ID || 'pNInz6obpgDQGcFmaJgB',
+  // Voice — Liam: young, energetic, warm — built for reels/shorts
+  voiceId: process.env.ELEVENLABS_VOICE_ID || 'TX3LPaxmHKxFdv7VOQHJ',
   voiceModel: 'eleven_multilingual_v2',
-  voiceSettings: { stability: 0.25, similarity_boost: 0.85, style: 0.65, speaking_rate: 1.05 },
+  voiceSettings: { stability: 0.20, similarity_boost: 0.80, style: 0.75, speaking_rate: 1.1 },
 
   // Content sources
   subreddits: [

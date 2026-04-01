@@ -118,7 +118,15 @@ async function fetchTopComment(subreddit, postId) {
     });
 
     const commentListing = response.data?.[1]?.data?.children || [];
-    // Skip mod/automod pinned comments — find the first real user comment
+    // Skip mod/automod/template comments — find the first real user comment
+    const modPhrases = [
+      'rumor alert', 'rumour alert', 'this post contains',
+      'please read critically', 'manage expectations',
+      'source reliability', 'reliability ratings',
+      'reminder:', 'this is a reminder', 'rule ', 'flair',
+      'i am a bot', 'action was performed automatically',
+      'megathread', 'please use the', 'weekly thread',
+    ];
     for (const child of commentListing) {
       const c = child.data;
       if (!c || !c.body) continue;
@@ -126,8 +134,10 @@ async function fetchTopComment(subreddit, postId) {
       if (c.distinguished === 'moderator') continue;
       const author = (c.author || '').toLowerCase();
       if (author === 'automoderator' || author === 'automod' || author.includes('bot')) continue;
-      // Skip short template comments (mod rules, flairs, etc.)
       if (c.body.length < 20) continue;
+      // Content-based filter: skip comments that read like mod templates
+      const bodyLower = c.body.toLowerCase();
+      if (modPhrases.some(phrase => bodyLower.includes(phrase))) continue;
       return c.body.substring(0, 500);
     }
   } catch (err) {

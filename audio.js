@@ -27,28 +27,36 @@ async function getAudioDuration(audioPath) {
   }
 }
 
-// --- Generate TTS audio via ElevenLabs ---
+// --- Generate TTS audio via ElevenLabs (with word-level timestamps) ---
 async function generateTTS(text, outputPath) {
   const voiceId = brand.voiceId || process.env.ELEVENLABS_VOICE_ID;
   const voiceSettings = brand.voiceSettings || { stability: 0.20, similarity_boost: 0.80, style: 0.75, speaking_rate: 1.1 };
   const response = await axios({
     method: 'POST',
-    url: `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
+    url: `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/with-timestamps`,
     headers: {
       'xi-api-key': process.env.ELEVENLABS_API_KEY,
       'Content-Type': 'application/json',
-      'Accept': 'audio/mpeg',
     },
     data: {
       text,
       model_id: brand.voiceModel || 'eleven_multilingual_v2',
       voice_settings: voiceSettings,
+      output_format: 'mp3_44100_128',
     },
-    responseType: 'arraybuffer',
   });
 
   await fs.ensureDir(path.dirname(outputPath));
-  await fs.writeFile(outputPath, Buffer.from(response.data));
+
+  // Response is JSON with base64 audio + word-level alignment
+  const audioBase64 = response.data.audio_base64;
+  await fs.writeFile(outputPath, Buffer.from(audioBase64, 'base64'));
+
+  // Save word timestamps for subtitle sync
+  const timestampsPath = outputPath.replace(/\.mp3$/, '_timestamps.json');
+  const alignment = response.data.alignment || {};
+  await fs.writeJson(timestampsPath, alignment, { spaces: 2 });
+
   return outputPath;
 }
 

@@ -23,14 +23,22 @@ async function getAudioDuration(audioPath) {
   }
 }
 
-// --- Split script into TikTok-style caption phrases (2-4 words each) ---
+// --- Split script into punchy karaoke phrases (1-3 words max) ---
 function splitIntoPhrases(script) {
   if (!script) return [];
-  const words = script.split(/\s+/).filter(w => w.length > 0);
+  // Strip [PAUSE], [VISUAL:...] and similar markers before splitting
+  const cleaned = script
+    .replace(/\[PAUSE\]/gi, '')
+    .replace(/\[VISUAL:[^\]]*\]/gi, '')
+    .replace(/\.\.\./g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const words = cleaned.split(/\s+/).filter(w => w.length > 0);
   const phrases = [];
   let i = 0;
   while (i < words.length) {
-    const chunkSize = words[i].length > 8 ? 2 : (words[i].length > 5 ? 3 : 4);
+    // 1-3 words per phrase: short punchy karaoke style
+    const chunkSize = words[i].length > 8 ? 1 : (words[i].length > 5 ? 2 : 3);
     const phrase = words.slice(i, i + chunkSize).join(' ');
     phrases.push(phrase);
     i += chunkSize;
@@ -46,20 +54,87 @@ function assTime(seconds) {
   return `${h}:${String(m).padStart(2, '0')}:${s.toFixed(2).padStart(5, '0')}`;
 }
 
-// --- Generate ASS subtitle file with TikTok-style captions ---
+// --- Generate ASS subtitle file with karaoke-style captions synced to audio ---
 async function generateSubtitles(story, duration, outputDir) {
-  const phrases = splitIntoPhrases(story.full_script || story.hook || '');
-  if (phrases.length === 0) return null;
+  // Try to load word-level timestamps from ElevenLabs
+  const timestampsPath = story.audio_path ? story.audio_path.replace(/\.mp3$/, '_timestamps.json') : null;
+  let wordTimestamps = null;
+  if (timestampsPath && await fs.pathExists(timestampsPath)) {
+    try {
+      wordTimestamps = await fs.readJson(timestampsPath);
+    } catch (e) { /* fall back to even spacing */ }
+  }
 
-  const phraseTime = duration / phrases.length;
+  let events;
 
-  const events = phrases.map((phrase, i) => {
-    const start = assTime(i * phraseTime);
-    const end = assTime((i + 1) * phraseTime);
-    // Clean text for ASS format
-    const clean = phrase.replace(/\\/g, '').replace(/\{/g, '').replace(/\}/g, '');
-    return `Dialogue: 0,${start},${end},Caption,,0,0,0,,${clean}`;
-  }).join('\n');
+  if (wordTimestamps && wordTimestamps.characters && wordTimestamps.character_start_times_seconds && wordTimestamps.character_end_times_seconds) {
+    // Build word list with precise start/end times from character-level data
+    const chars = wordTimestamps.characters;
+    const starts = wordTimestamps.character_start_times_seconds;
+    const ends = wordTimestamps.character_end_times_seconds;
+
+    // Group characters into words
+    const words = [];
+    let wordStart = null;
+    let wordEnd = null;
+    let wordChars = '';
+    for (let i = 0; i < chars.length; i++) {
+      if (chars[i] === ' ' || chars[i] === '\n') {
+        if (wordChars.length > 0) {
+          words.push({ text: wordChars, start: wordStart, end: wordEnd });
+          wordChars = '';
+          wordStart = null;
+          wordEnd = null;
+        }
+      } else {
+        if (wordStart === null) wordStart = starts[i];
+        wordEnd = ends[i];
+        wordChars += chars[i];
+      }
+    }
+    if (wordChars.length > 0) words.push({ text: wordChars, start: wordStart, end: wordEnd });
+
+    // Group words into 1-3 word karaoke phrases
+    const phrases = [];
+    let i = 0;
+    while (i < words.length) {
+      const chunkSize = words[i].text.length > 8 ? 1 : (words[i].text.length > 5 ? 2 : 3);
+      const chunk = words.slice(i, i + chunkSize);
+      phrases.push({
+        text: chunk.map(w => w.text).join(' '),
+        start: chunk[0].start,
+        end: chunk[chunk.length - 1].end,
+      });
+      i += chunkSize;
+    }
+
+    events = phrases.map(p => {
+      const clean = p.text
+        .replace(/\\/g, '').replace(/\{/g, '').replace(/\}/g, '')
+        .replace(/\[PAUSE\]/gi, '').replace(/\[VISUAL:[^\]]*\]/gi, '')
+        .toUpperCase().trim();
+      if (!clean) return null;
+      return `Dialogue: 0,${assTime(p.start)},${assTime(p.end)},Caption,,0,0,0,,{\\fscx120\\fscy120\\t(0,80,\\fscx100\\fscy100)}${clean}`;
+    }).filter(Boolean).join('\n');
+
+    console.log(`[assemble] Subtitles: ${phrases.length} phrases synced from word timestamps`);
+  } else {
+    // Fallback: even spacing
+    const phrases = splitIntoPhrases(story.full_script || story.hook || '');
+    if (phrases.length === 0) return null;
+    const phraseTime = duration / phrases.length;
+
+    events = phrases.map((phrase, i) => {
+      const start = assTime(i * phraseTime);
+      const end = assTime((i + 1) * phraseTime);
+      const clean = phrase
+        .replace(/\\/g, '').replace(/\{/g, '').replace(/\}/g, '')
+        .toUpperCase();
+      return `Dialogue: 0,${start},${end},Caption,,0,0,0,,{\\fscx120\\fscy120\\t(0,80,\\fscx100\\fscy100)}${clean}`;
+    }).join('\n');
+
+    console.log(`[assemble] Subtitles: ${phrases.length} phrases (evenly spaced — no timestamps file)`);
+  }
 
   const ass = `[Script Info]
 Title: Pulse Gaming Captions
@@ -72,7 +147,7 @@ PlayResY: 1920
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Caption,Arial,68,&H00F0F0F0,&H001A6BFF,&H00000000,&HB40D0D0F,-1,0,0,0,100,100,0,0,3,4,0,2,60,60,620,1
+Style: Caption,Impact,90,&H00FFFFFF,&H001A6BFF,&H00000000,&H80000000,-1,0,0,0,100,100,2,0,1,5,2,5,40,40,380,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -116,16 +191,8 @@ function buildVideoCommand(story, images, audioPath, assPath, filterScriptPath, 
     inputs.push(`-loop 1 -t ${segmentDuration} -i "${images[i].replace(/\\/g, '/')}"`);
   }
 
-  // PIP flash images (reuse 1-2 non-primary images as floating cards)
-  const pipImages = images.length >= 3 ? [images[1], images[2]] :
-                    images.length === 2 ? [images[1]] : [];
-  const pipStartIdx = images.length;
-  for (const img of pipImages) {
-    inputs.push(`-loop 1 -t 4 -i "${img.replace(/\\/g, '/')}"`);
-  }
-
   // Audio (last input)
-  const audioIdx = images.length + pipImages.length;
+  const audioIdx = images.length;
   inputs.push(`-i "${audioPath.replace(/\\/g, '/')}"`);
 
   // --- Filter graph ---
@@ -169,31 +236,7 @@ function buildVideoCommand(story, images, audioPath, assPath, filterScriptPath, 
     filterParts.push(`[v0]copy[base]`);
   }
 
-  // --- PIP image cards (floating game art that pops in briefly) ---
   let currentLabel = 'base';
-  if (pipImages.length > 0) {
-    for (let i = 0; i < pipImages.length; i++) {
-      filterParts.push(
-        `[${pipStartIdx + i}:v]scale=260:360:force_original_aspect_ratio=decrease,` +
-        `pad=280:380:10:10:color=white[pip${i}]`
-      );
-    }
-    const pipTimes = [
-      Math.max(3, Math.floor(duration * 0.2)),
-      Math.max(6, Math.floor(duration * 0.55)),
-    ];
-    for (let i = 0; i < pipImages.length; i++) {
-      const t = pipTimes[i];
-      const nextLabel = `ov${i}`;
-      const xPos = i % 2 === 0 ? 740 : 50;
-      const yPos = i % 2 === 0 ? 200 : 1350;
-      filterParts.push(
-        `[${currentLabel}][pip${i}]overlay=x=${xPos}:y=${yPos}:` +
-        `enable='between(t\\,${t}\\,${t + 3})'[${nextLabel}]`
-      );
-      currentLabel = nextLabel;
-    }
-  }
 
   // --- Final chain: brightness + captions + broadcast overlays ---
   const assPathFixed = assPath.replace(/\\/g, '/').replace(/:/g, '\\\\:');

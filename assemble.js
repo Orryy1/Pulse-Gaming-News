@@ -9,7 +9,6 @@ const execAsync = util.promisify(exec);
 dotenv.config({ override: true });
 
 const brand = require('./brand');
-const { ensureBumpers, INTRO_PATH, OUTRO_PATH } = require('./scripts/generate_bumpers');
 
 // --- Get audio duration via ffprobe ---
 async function getAudioDuration(audioPath) {
@@ -290,43 +289,12 @@ function buildVideoCommand(story, images, audioPath, assPath, filterScriptPath, 
   return { filterGraph, command };
 }
 
-// --- Concatenate intro + main + outro via FFmpeg concat demuxer ---
-async function concatWithBumpers(mainVideoPath, outputPath) {
-  const introExists = await fs.pathExists(INTRO_PATH);
-  const outroExists = await fs.pathExists(OUTRO_PATH);
-  if (!introExists && !outroExists) return mainVideoPath;
-
-  const concatListPath = outputPath.replace('.mp4', '_concat.txt');
-  const lines = [];
-  if (introExists) lines.push(`file '${INTRO_PATH.replace(/\\/g, '/')}'`);
-  lines.push(`file '${mainVideoPath.replace(/\\/g, '/')}'`);
-  if (outroExists) lines.push(`file '${OUTRO_PATH.replace(/\\/g, '/')}'`);
-
-  await fs.writeFile(concatListPath, lines.join('\n'));
-
-  const cmd = `ffmpeg -y -f concat -safe 0 -i "${concatListPath.replace(/\\/g, '/')}" -c copy -movflags +faststart "${outputPath}"`;
-  await execAsync(cmd, { timeout: 120000 });
-
-  // Clean up temp files
-  await fs.remove(concatListPath);
-  await fs.remove(mainVideoPath);
-
-  return outputPath;
-}
-
 async function assemble() {
-  console.log('[assemble] === Professional Video Assembly v4 ===');
+  console.log('[assemble] === Professional Video Assembly v5 ===');
 
   if (!await fs.pathExists('daily_news.json')) {
     console.log('[assemble] ERROR: daily_news.json not found.');
     return;
-  }
-
-  // Pre-generate bumpers (cached after first run)
-  try {
-    await ensureBumpers();
-  } catch (err) {
-    console.log(`[assemble] Bumper generation failed (non-fatal): ${err.message}`);
   }
 
   const stories = await fs.readJson('daily_news.json');
@@ -338,6 +306,14 @@ async function assemble() {
         console.log(`[assemble] ${s.id}: exported file only ${Math.round(stat.size / 1024)}KB — re-rendering`);
         await fs.remove(s.exported_path);
         delete s.exported_path;
+        // Clear publish IDs so the re-rendered video gets uploaded fresh
+        delete s.youtube_post_id;
+        delete s.youtube_url;
+        delete s.tiktok_post_id;
+        delete s.instagram_media_id;
+        delete s.facebook_post_id;
+        delete s.twitter_post_id;
+        delete s.publish_status;
       }
     }
   }
@@ -361,8 +337,7 @@ async function assemble() {
       continue;
     }
 
-    const finalPath = path.join('output', 'final', `${story.id}.mp4`);
-    const outputPath = path.join('output', 'final', `${story.id}_main.mp4`);
+    const outputPath = path.join('output', 'final', `${story.id}.mp4`);
     await fs.ensureDir(path.dirname(outputPath));
 
     const duration = await getAudioDuration(story.audio_path);
@@ -404,13 +379,11 @@ async function assemble() {
     try {
       await execAsync(cmd, { timeout: 300000, maxBuffer: 10 * 1024 * 1024 });
 
-      // Concatenate intro + main + outro
-      const withBumpers = await concatWithBumpers(outputPath, finalPath);
-      story.exported_path = withBumpers;
+      story.exported_path = outputPath;
       rendered++;
 
-      const stat = await fs.stat(withBumpers);
-      console.log(`[assemble] Exported: ${withBumpers} (${Math.round(stat.size / 1024 / 1024)}MB)`);
+      const stat = await fs.stat(outputPath);
+      console.log(`[assemble] Exported: ${outputPath} (${Math.round(stat.size / 1024 / 1024)}MB)`);
     } catch (err) {
       console.log(`[assemble] ASS render failed for ${story.id}: ${err.stderr?.substring(err.stderr.length - 300) || err.message.substring(0, 300)}`);
       console.log(`[assemble] Trying drawtext fallback...`);
@@ -435,10 +408,9 @@ async function assemble() {
           `-movflags +faststart "${outputPath}"`,
         ].join(' ');
         await execAsync(simpleCmd, { timeout: 180000 });
-        const withBumpers = await concatWithBumpers(outputPath, finalPath);
-        story.exported_path = withBumpers;
+        story.exported_path = outputPath;
         rendered++;
-        console.log(`[assemble] Exported (no captions fallback): ${withBumpers}`);
+        console.log(`[assemble] Exported (no captions fallback): ${outputPath}`);
       } catch (err2) {
         console.log(`[assemble] ERROR rendering ${story.id}: ${err2.message.substring(0, 200)}`);
         skipped++;

@@ -9,7 +9,7 @@ const execAsync = util.promisify(exec);
 
 dotenv.config({ override: true });
 
-const BUMPER_DURATION = 3.0; // intro (1.5s) + outro (1.5s)
+const BUMPER_DURATION = 0; // bumpers removed — audio must hit 61s on its own
 const MIN_TOTAL_DURATION = 61; // TikTok Creator Rewards minimum
 
 // --- Get audio duration via ffprobe ---

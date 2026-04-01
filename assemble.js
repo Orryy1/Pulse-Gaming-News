@@ -306,6 +306,9 @@ async function assemble() {
         console.log(`[assemble] ${s.id}: exported file only ${Math.round(stat.size / 1024)}KB — re-rendering`);
         await fs.remove(s.exported_path);
         delete s.exported_path;
+        // Clear image paths too so images.js re-downloads fresh copies
+        delete s.image_path;
+        delete s.downloaded_images;
         // Clear publish IDs so the re-rendered video gets uploaded fresh
         delete s.youtube_post_id;
         delete s.youtube_url;
@@ -343,7 +346,7 @@ async function assemble() {
     const duration = await getAudioDuration(story.audio_path);
 
     // Collect real downloaded images (NOT the composite thumbnail)
-    const realImages = [];
+    let realImages = [];
     if (story.downloaded_images && story.downloaded_images.length > 0) {
       for (const img of story.downloaded_images) {
         if (img.path && await fs.pathExists(img.path) && img.type !== 'company_logo') {
@@ -352,7 +355,31 @@ async function assemble() {
       }
     }
 
-    // If no real images, use composite thumbnail
+    // If cached image files are missing (e.g. container restarted) or never downloaded, fetch them now
+    if (realImages.length === 0 && (story.article_image || (story.game_images && story.game_images.length > 0) || story.thumbnail_url)) {
+      console.log(`[assemble] ${story.id}: cached images missing on disk, re-downloading...`);
+      try {
+        const getBestImage = require('./images_download');
+        const freshImages = await getBestImage(story);
+        story.downloaded_images = freshImages.map(i => ({ path: i.path, type: i.type }));
+        for (const img of freshImages) {
+          if (img.path && await fs.pathExists(img.path) && img.type !== 'company_logo') {
+            realImages.push(img.path);
+          }
+        }
+        if (realImages.length > 0) {
+          console.log(`[assemble] ${story.id}: re-downloaded ${realImages.length} images`);
+        }
+      } catch (dlErr) {
+        console.log(`[assemble] ${story.id}: re-download failed: ${dlErr.message}`);
+      }
+    }
+
+    if (realImages.length === 0) {
+      console.log(`[assemble] ${story.id}: using composite thumbnail (no real images available)`);
+    } else {
+      console.log(`[assemble] ${story.id}: using ${realImages.length} real images`);
+    }
     const images = realImages.length > 0 ? realImages :
                    (await fs.pathExists(story.image_path) ? [story.image_path] : []);
 

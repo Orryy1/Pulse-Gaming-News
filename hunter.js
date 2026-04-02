@@ -565,6 +565,7 @@ async function hunt() {
 module.exports = hunt;
 module.exports.fetchArticleImage = fetchArticleImage;
 module.exports.fetchGameImages = fetchGameImages;
+module.exports.fetchTopComments = fetchTopComments;
 module.exports.detectCompany = detectCompany;
 module.exports.COMPANY_LOGOS = COMPANY_LOGOS;
 

@@ -28,6 +28,29 @@ app.use((req, res, next) => {
 app.use(express.static(path.join(__dirname, 'dist')));
 app.use('/generated', express.static(PUBLIC_DIR));
 
+// --- Legal pages (required for TikTok/Instagram app review) ---
+app.get('/terms', (req, res) => {
+  res.send(`<!DOCTYPE html><html><head><title>Terms of Service - Pulse Gaming</title></head><body style="max-width:800px;margin:40px auto;font-family:sans-serif;padding:0 20px">
+<h1>Terms of Service</h1><p>Last updated: 2 April 2026</p>
+<p>By using Pulse Gaming's services you agree to these terms.</p>
+<h2>Use of Service</h2><p>Pulse Gaming provides automated gaming news content across YouTube, TikTok and Instagram. Content is generated from verified public sources and is intended for entertainment and informational purposes.</p>
+<h2>Content</h2><p>All content is sourced from publicly available news outlets, Reddit and RSS feeds. We do not claim ownership of third-party trademarks or intellectual property referenced in our coverage.</p>
+<h2>Disclaimer</h2><p>Content is provided as-is. We make reasonable efforts to verify information but cannot guarantee accuracy of all reporting. Rumour-tagged content is clearly labelled as unverified.</p>
+<h2>Contact</h2><p>For enquiries, reach us via our YouTube channel.</p>
+</body></html>`);
+});
+
+app.get('/privacy', (req, res) => {
+  res.send(`<!DOCTYPE html><html><head><title>Privacy Policy - Pulse Gaming</title></head><body style="max-width:800px;margin:40px auto;font-family:sans-serif;padding:0 20px">
+<h1>Privacy Policy</h1><p>Last updated: 2 April 2026</p>
+<p>Pulse Gaming respects your privacy.</p>
+<h2>Data Collection</h2><p>We do not collect personal data from viewers. Our application accesses public APIs (Reddit, RSS feeds, YouTube, TikTok, Instagram) to publish gaming news content. No user data is stored or processed.</p>
+<h2>Third-Party Services</h2><p>We use YouTube Data API, TikTok Content Posting API and Instagram Graph API solely for publishing our own content. We do not access or store any third-party user data through these APIs.</p>
+<h2>Cookies</h2><p>Our dashboard may use essential cookies for session management. No tracking or advertising cookies are used.</p>
+<h2>Contact</h2><p>For privacy enquiries, reach us via our YouTube channel.</p>
+</body></html>`);
+});
+
 // --- SSE for real-time progress ---
 const sseClients = new Map();
 

@@ -81,7 +81,7 @@ async function uploadReel(story) {
 
   // Step 1: Create media container
   const createResponse = await axios.post(
-    `https://graph.facebook.com/v19.0/${accountId}/media`,
+    `https://graph.instagram.com/v19.0/${accountId}/media`,
     {
       media_type: 'REELS',
       video_url: videoUrl,
@@ -104,7 +104,7 @@ async function uploadReel(story) {
 
     try {
       const statusResponse = await axios.get(
-        `https://graph.facebook.com/v19.0/${containerId}`,
+        `https://graph.instagram.com/v19.0/${containerId}`,
         {
           params: {
             fields: 'status_code,status',
@@ -131,7 +131,7 @@ async function uploadReel(story) {
 
   // Step 3: Publish the container
   const publishResponse = await axios.post(
-    `https://graph.facebook.com/v19.0/${accountId}/media_publish`,
+    `https://graph.instagram.com/v19.0/${accountId}/media_publish`,
     {
       creation_id: containerId,
       access_token: accessToken,

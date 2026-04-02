@@ -226,11 +226,15 @@ app.get('/api/platforms/status', async (req, res) => {
     instagram: { authenticated: false, configured: false },
   };
 
-  // YouTube
+  // YouTube — check both file-based and env var auth
   try {
     const ytTokenPath = path.join(__dirname, 'tokens', 'youtube_token.json');
-    status.youtube.configured = await fs.pathExists(path.join(__dirname, 'tokens', 'youtube_credentials.json'));
-    status.youtube.authenticated = await fs.pathExists(ytTokenPath);
+    const hasCredFile = await fs.pathExists(path.join(__dirname, 'tokens', 'youtube_credentials.json'));
+    const hasEnvCreds = !!(process.env.YOUTUBE_CLIENT_ID && process.env.YOUTUBE_CLIENT_SECRET);
+    status.youtube.configured = hasCredFile || hasEnvCreds;
+    const hasTokenFile = await fs.pathExists(ytTokenPath);
+    const hasEnvToken = !!process.env.YOUTUBE_REFRESH_TOKEN;
+    status.youtube.authenticated = hasTokenFile || hasEnvToken;
   } catch (err) { /* skip */ }
 
   // TikTok

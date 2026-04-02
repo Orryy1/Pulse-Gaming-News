@@ -186,6 +186,13 @@ function cleanForTTS(text) {
   return text
     .replace(/\[PAUSE\]/gi, '...')
     .replace(/\[VISUAL:[^\]]*\]/gi, '')
+    .replace(/\bAAA\b/g, 'Triple-A')
+    .replace(/\bDLC\b/g, 'D L C')
+    .replace(/\bFPS\b/g, 'F P S')
+    .replace(/\bRPG\b/g, 'R P G')
+    .replace(/\bNPC\b/g, 'N P C')
+    .replace(/\bUI\b/g, 'U I')
+    .replace(/\bIP\b/g, 'I P')
     .replace(/\s+/g, ' ')
     .trim();
 }

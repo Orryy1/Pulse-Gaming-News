@@ -34,10 +34,10 @@ module.exports = {
     return { hex: '#78909C', ffm: '0x78909C', label: 'MARKET' };
   },
 
-  // Voice — different from Pulse Gaming (deeper, authoritative)
+  // Voice — energetic, authoritative male (matches Shorts pacing)
   voiceId: process.env.STACKED_VOICE_ID || 'ErXwobaYiN019PkySvjV', // Antoni
   voiceModel: 'eleven_multilingual_v2',
-  voiceSettings: { stability: 0.35, similarity_boost: 0.80, style: 0.40, speaking_rate: 1.0 },
+  voiceSettings: { stability: 0.20, similarity_boost: 0.80, style: 0.70, speaking_rate: 1.1 },
 
   // Content sources — finance subreddits + RSS
   subreddits: [
@@ -68,6 +68,9 @@ module.exports = {
   // YouTube category
   youtubeCategory: '25', // News & Politics
   hashtags: ['#Shorts', '#Finance', '#StockMarket', '#Investing', '#STACKED'],
+
+  // Music prompt for background beat
+  musicPrompt: 'dark cinematic trap beat, deep bass, ticking clock tension, stock market urgency, minimal, atmospheric, no vocals',
 
   // System prompt for script generation
   systemPrompt: `You are the scriptwriter for STACKED, a YouTube Shorts channel delivering verified finance news, market moves and insider trades in 60 seconds.

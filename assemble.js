@@ -10,6 +10,7 @@ dotenv.config({ override: true });
 
 const axios = require('axios');
 const brand = require('./brand');
+const { getChannel } = require('./channels');
 
 const MUSIC_CACHE = path.join('output', 'music');
 const MUSIC_VOLUME = 0.12; // 12% volume — subtle background
@@ -42,7 +43,7 @@ async function ensureBackgroundMusic(duration) {
         'Accept': 'audio/mpeg',
       },
       data: {
-        prompt: 'dark minimal trap beat, subtle 808 bass, crisp hi-hats, gaming news tension, cinematic, atmospheric, no vocals',
+        prompt: getChannel().musicPrompt || 'dark minimal trap beat, subtle 808 bass, crisp hi-hats, cinematic, atmospheric, no vocals',
         duration_seconds: Math.min(Math.ceil(duration) + 5, 120),
         force_instrumental: true,
       },

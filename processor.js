@@ -5,6 +5,8 @@ const dotenv = require('dotenv');
 
 dotenv.config({ override: true });
 
+const { getChannel } = require('./channels');
+
 const BANNED_STARTS = ['so', 'today', 'hey', 'welcome', 'in this'];
 const BANNED_LOOP_PHRASES = ['let me know in the comments'];
 
@@ -113,7 +115,14 @@ function getTodayString() {
   return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-function validate(script) {
+// Channel-specific valid classifications
+const CHANNEL_CLASSIFICATIONS = {
+  'pulse-gaming': ['[LEAK]', '[RUMOR]', '[CONFIRMED]', '[BREAKING]'],
+  'stacked': ['[INSIDER]', '[RUMOR]', '[CONFIRMED]', '[BREAKING]', '[EARNINGS]', '[MARKET]'],
+  'the-signal': ['[LEAK]', '[RUMOR]', '[CONFIRMED]', '[BREAKING]', '[LAUNCH]', '[TECH]'],
+};
+
+function validate(script, channelId) {
   const errors = [];
   if (script.word_count < 155 || script.word_count > 185) {
     errors.push(`Word count ${script.word_count} outside 155-185 range`);
@@ -124,20 +133,21 @@ function validate(script) {
       errors.push(`Hook starts with banned word: "${banned}"`);
     }
   }
-  // Validate classification exists
-  if (!script.classification || !['[LEAK]', '[RUMOR]', '[CONFIRMED]', '[BREAKING]'].includes(script.classification)) {
+  // Validate classification exists (channel-aware)
+  const validClassifications = CHANNEL_CLASSIFICATIONS[channelId] || CHANNEL_CLASSIFICATIONS['pulse-gaming'];
+  if (!script.classification || !validClassifications.includes(script.classification)) {
     errors.push('Missing or invalid classification tag');
   }
   return errors;
 }
 
 // --- Quality gate: score script 1-10 via second LLM call ---
-async function scoreScript(client, script, story) {
+async function scoreScript(client, script, story, channel) {
   try {
     const response = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 150,
-      system: `You score YouTube Shorts scripts for a gaming news channel (1-10). Criteria:
+      system: `You score YouTube Shorts scripts for a ${channel.niche} news channel called ${channel.name} (1-10). Criteria:
 - Hook strength (does it grab attention in 2 seconds?)
 - Information density (facts per sentence, no filler)
 - Source credibility (does it cite sources?)
@@ -192,7 +202,11 @@ async function process_stories() {
   const stories = data.stories || [];
   console.log(`[processor] Processing ${stories.length} stories...`);
 
-  const baseSystemPrompt = await fs.readFile('system_prompt.txt', 'utf-8');
+  const channel = getChannel();
+  console.log(`[processor] Active channel: ${channel.name} (${channel.niche})`);
+
+  // Use channel's system prompt, fall back to file for backwards compatibility
+  const baseSystemPrompt = channel.systemPrompt || await fs.readFile('system_prompt.txt', 'utf-8');
   const today = getTodayString();
 
   const client = new Anthropic.default({
@@ -274,7 +288,7 @@ Today's date is ${today}. You MUST follow these rules:
         }
         script = JSON.parse(text);
 
-        const errors = validate(script);
+        const errors = validate(script, channel.id);
         if (errors.length > 0) {
           console.log(`[processor] Validation failed (attempt ${attempts}): ${errors.join(', ')}`);
           if (attempts >= 3) {
@@ -289,7 +303,7 @@ Today's date is ${today}. You MUST follow these rules:
 
         // Quality gate — score the script
         if (script && attempts < 3) {
-          const gate = await scoreScript(client, script, story);
+          const gate = await scoreScript(client, script, story, channel);
           qualityScore = gate.score;
           console.log(`[processor] Quality gate: ${gate.score}/10 — ${gate.reason}`);
           if (gate.score < 7) {
@@ -306,7 +320,7 @@ Today's date is ${today}. You MUST follow these rules:
             classification: '[BREAKING]',
             hook: story.title,
             body: 'Script generation failed. Manual edit required.',
-            cta: 'Follow Pulse Gaming so you never miss a drop.',
+            cta: channel.cta + '.',
             full_script: story.title,
             word_count: 0,
             suggested_thumbnail_text: story.title.substring(0, 40),

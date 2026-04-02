@@ -34,10 +34,10 @@ module.exports = {
     return { hex: '#6B7280', ffm: '0x6B7280', label: 'TECH' };
   },
 
-  // Voice — female voice, distinct from Pulse Gaming
+  // Voice — energetic female, punchy delivery (matches Shorts pacing)
   voiceId: process.env.SIGNAL_VOICE_ID || 'EXAVITQu4vr4xnSDxMaL', // Bella
   voiceModel: 'eleven_multilingual_v2',
-  voiceSettings: { stability: 0.30, similarity_boost: 0.80, style: 0.55, speaking_rate: 1.05 },
+  voiceSettings: { stability: 0.20, similarity_boost: 0.80, style: 0.70, speaking_rate: 1.1 },
 
   // Content sources — tech subreddits + RSS
   subreddits: [
@@ -68,6 +68,9 @@ module.exports = {
   // YouTube category
   youtubeCategory: '28', // Science & Technology
   hashtags: ['#Shorts', '#TechNews', '#AI', '#Technology', '#TheSignal'],
+
+  // Music prompt for background beat
+  musicPrompt: 'futuristic synth beat, digital glitch textures, subtle bass, tech news energy, cyberpunk minimal, atmospheric, no vocals',
 
   // System prompt for script generation
   systemPrompt: `You are the scriptwriter for THE SIGNAL, a YouTube Shorts channel delivering verified tech news, AI breakthroughs and product launches in 60 seconds.

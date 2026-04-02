@@ -137,26 +137,27 @@ function buildMetadata(story) {
     descLines.push(`Check it out: ${story.affiliate_url}`);
     descLines.push('');
   }
-  descLines.push('Pulse Gaming — verified gaming news, leaks and rumours.');
-  descLines.push('Follow so you never miss a drop.');
+  descLines.push(`${brand.CHANNEL_NAME} — ${brand.TAGLINE}`);
+  descLines.push(brand.CTA ? brand.CTA.replace(/^Follow /i, 'Follow ') : 'Follow so you never miss an update.');
   descLines.push('');
   if (story.subreddit) {
     descLines.push(`Source: r/${story.subreddit}`);
     descLines.push('');
   }
-  // Hashtags: 4-5, rotated — first 3 appear clickable above title
-  const hashtags = ['#Shorts', '#GamingNews', '#GamingLeaks'];
+  // Hashtags: from channel config + dynamic extras
+  const { getChannel } = require('./channels');
+  const channel = getChannel();
+  const hashtags = [...(channel.hashtags || ['#Shorts'])];
   if (gameName) hashtags.push(`#${gameName.replace(/[^a-zA-Z0-9]/g, '')}`);
   if (platform) hashtags.push(`#${platform}`);
-  hashtags.push('#PulseGaming');
   descLines.push(hashtags.slice(0, 6).join(' '));
 
   const description = descLines.join('\n');
 
   const tags = [
-    'gaming news', 'gaming leaks', 'gaming rumours', 'pulse gaming',
+    channel.niche + ' news', channel.name.toLowerCase(),
     gameName, platform,
-    'youtube shorts', 'gaming shorts',
+    'youtube shorts', channel.niche + ' shorts',
     classInfo.label.toLowerCase(), story.content_pillar,
     ...(story.title.split(/\s+/).map(w => w.replace(/[^a-zA-Z0-9]/g, '')).filter(w => w.length > 3 && !/^(the|and|for|with|from|that|this|have|been|will|could|would)$/i.test(w)).slice(0, 5)),
   ].filter(Boolean);
@@ -225,7 +226,7 @@ async function uploadShort(story) {
         title,
         description,
         tags,
-        categoryId: '20', // Gaming
+        categoryId: require('./channels').getChannel().youtubeCategory || '20',
         defaultLanguage: 'en',
         defaultAudioLanguage: 'en',
       },

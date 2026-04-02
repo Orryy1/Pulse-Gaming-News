@@ -93,8 +93,10 @@ async function generateAudio() {
 
         // Regenerate with a longer target
         const Anthropic = require('@anthropic-ai/sdk');
+        const { getChannel } = require('./channels');
+        const channel = getChannel();
         const client = new Anthropic.default({ apiKey: process.env.ANTHROPIC_API_KEY });
-        const basePrompt = await fs.readFile('system_prompt.txt', 'utf-8');
+        const basePrompt = channel.systemPrompt || await fs.readFile('system_prompt.txt', 'utf-8');
 
         const response = await client.messages.create({
           model: 'claude-haiku-4-5-20251001',

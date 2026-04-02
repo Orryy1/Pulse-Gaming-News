@@ -4,6 +4,8 @@ const dotenv = require('dotenv');
 
 dotenv.config({ override: true });
 
+const { getChannel } = require('./channels');
+
 const USER_AGENT = 'pulse-gaming-hunter/2.0 (personal use)';
 
 // --- Decode HTML entities from RSS feeds ---
@@ -16,37 +18,11 @@ function decodeEntities(str) {
     .replace(/&(\w+);/g, (full, name) => named[name] || full);
 }
 
-// --- Expanded subreddit list for maximum coverage ---
-const SUBREDDITS = [
-  'GamingLeaksAndRumours',
-  'PCMasterRace',
-  'Games',
-  'PS5',
-  'XboxSeriesX',
-  'NintendoSwitch',
-  'pcgaming',
-  'gaming',
-];
-
-// --- RSS feeds from major gaming outlets ---
-const RSS_FEEDS = [
-  { name: 'IGN', url: 'https://feeds.feedburner.com/ign/all' },
-  { name: 'GameSpot', url: 'https://www.gamespot.com/feeds/mashup/' },
-  { name: 'Eurogamer', url: 'https://www.eurogamer.net/feed' },
-  { name: 'PCGamer', url: 'https://www.pcgamer.com/rss/' },
-  { name: 'RockPaperShotgun', url: 'https://www.rockpapershotgun.com/feed' },
-  { name: 'Kotaku', url: 'https://kotaku.com/rss' },
-  { name: 'TheVergeGaming', url: 'https://www.theverge.com/games/rss/index.xml' },
-  { name: 'Polygon', url: 'https://www.polygon.com/rss/index.xml' },
-];
-
-// --- Keywords that indicate high-value breaking news ---
-const BREAKING_KEYWORDS = [
+// --- Default breaking keywords (used if channel doesn't define its own) ---
+const DEFAULT_BREAKING_KEYWORDS = [
   'announced', 'revealed', 'confirmed', 'leaked', 'exclusive',
   'release date', 'trailer', 'gameplay', 'launch', 'delay',
   'cancelled', 'acquisition', 'price', 'free', 'update',
-  'dlc', 'expansion', 'sequel', 'remaster', 'remake',
-  'ps6', 'xbox', 'nintendo', 'switch 2', 'gta 6', 'gta vi',
 ];
 
 function similarity(a, b) {
@@ -59,12 +35,12 @@ function similarity(a, b) {
   return intersection.length / union.size;
 }
 
-function scoreBreakingValue(title, score, numComments) {
+function scoreBreakingValue(title, score, numComments, breakingKeywords) {
   let breakingScore = 0;
   const lower = title.toLowerCase();
 
   // Keyword matches
-  for (const kw of BREAKING_KEYWORDS) {
+  for (const kw of breakingKeywords) {
     if (lower.includes(kw)) breakingScore += 15;
   }
 
@@ -361,7 +337,12 @@ function detectCompany(title) {
 
 // --- Main hunt function ---
 async function hunt() {
-  console.log('[hunter] === MULTI-SOURCE HUNT v2 ===');
+  const channel = getChannel();
+  const SUBREDDITS = channel.subreddits || [];
+  const RSS_FEEDS = channel.rssFeeds || [];
+  const BREAKING_KEYWORDS = channel.breakingKeywords || DEFAULT_BREAKING_KEYWORDS;
+
+  console.log(`[hunter] === MULTI-SOURCE HUNT v2 — ${channel.name} (${channel.niche}) ===`);
   console.log(`[hunter] Scanning ${SUBREDDITS.length} subreddits + ${RSS_FEEDS.length} RSS feeds`);
 
   const includeRumours = process.env.INCLUDE_RUMOURS === 'true';
@@ -378,9 +359,9 @@ async function hunt() {
       // Fetch hot posts
       const hotPosts = await fetchSubreddit(sub);
 
-      // Also fetch new posts from leak-focused subs (catches breaking news faster)
+      // Also fetch new posts from the first 5 subreddits (primary sources — catches breaking news faster)
       let newPosts = [];
-      if (['GamingLeaksAndRumours', 'Games', 'PS5', 'XboxSeriesX', 'NintendoSwitch'].includes(sub)) {
+      if (SUBREDDITS.indexOf(sub) < 5) {
         await new Promise(r => setTimeout(r, 500));
         newPosts = await fetchSubredditNew(sub);
       }
@@ -392,15 +373,16 @@ async function hunt() {
         if (seenIds.has(post.id)) continue;
         seenIds.add(post.id);
 
-        // For leak subreddits, filter by flair
+        // For the primary leak/rumour subreddit (first in list), filter by flair
         const flair = post.link_flair_text || '';
-        if (sub === 'GamingLeaksAndRumours') {
+        const isPrimarySub = SUBREDDITS.indexOf(sub) === 0;
+        if (isPrimarySub && channel.niche === 'gaming') {
           const matchesFlair = allowedFlairs.some(f => flair.toLowerCase().includes(f));
           if (!matchesFlair) continue;
         }
 
         // For general subs, filter by minimum engagement + recency
-        if (!['GamingLeaksAndRumours'].includes(sub)) {
+        if (!isPrimarySub) {
           const postAge = (Date.now() - post.created_utc * 1000) / (1000 * 60 * 60);
           if (postAge > 24) continue;
           if (post.score < 100 && post.num_comments < 20) continue;
@@ -469,7 +451,7 @@ async function hunt() {
 
   // --- Score and rank by breaking news value ---
   for (const post of deduped) {
-    post.breaking_score = scoreBreakingValue(post.title, post.score, post.num_comments);
+    post.breaking_score = scoreBreakingValue(post.title, post.score, post.num_comments, BREAKING_KEYWORDS);
   }
   deduped.sort((a, b) => b.breaking_score - a.breaking_score);
 

@@ -107,10 +107,13 @@ async function uploadVideo(story) {
 
   const fileSize = (await fs.stat(story.exported_path)).size;
 
-  // Build caption (TikTok max 2200 chars)
+  // Build caption (TikTok max 2200 chars) — channel-aware hashtags
+  const { getChannel } = require('./channels');
+  const channel = getChannel();
   let caption = story.suggested_thumbnail_text || story.title;
   if (caption.length > 100) caption = caption.substring(0, 97) + '...';
-  caption += ' #gaming #gamingnews #gamingleaks #gamingcommunity #viral';
+  const tags = (channel.hashtags || []).join(' ') + ' #viral #fyp';
+  caption += ' ' + tags;
 
   console.log(`[tiktok] Uploading: "${caption.substring(0, 60)}..."`);
 

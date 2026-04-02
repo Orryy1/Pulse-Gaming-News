@@ -5,6 +5,8 @@ const dotenv = require('dotenv');
 dotenv.config({ override: true });
 
 const { getChannel } = require('./channels');
+const { getTrendingTopics, getTrendingBoost } = require('./trending');
+const { getPerformanceBoost } = require('./analytics');
 
 const USER_AGENT = 'pulse-gaming-hunter/2.0 (personal use)';
 
@@ -35,7 +37,7 @@ function similarity(a, b) {
   return intersection.length / union.size;
 }
 
-function scoreBreakingValue(title, score, numComments, breakingKeywords) {
+function scoreBreakingValue(title, score, numComments, breakingKeywords, trendingTopics) {
   let breakingScore = 0;
   const lower = title.toLowerCase();
 
@@ -47,6 +49,11 @@ function scoreBreakingValue(title, score, numComments, breakingKeywords) {
   // Reddit engagement signals
   breakingScore += Math.min(score / 10, 100);
   breakingScore += Math.min(numComments / 5, 50);
+
+  // Trending topic boost (0-40 points)
+  if (trendingTopics && trendingTopics.length > 0) {
+    breakingScore += getTrendingBoost(title, trendingTopics);
+  }
 
   return breakingScore;
 }
@@ -489,9 +496,24 @@ async function hunt() {
   }
   console.log(`[hunter] After deduplication: ${deduped.length}`);
 
+  // --- Fetch trending topics for scoring boost ---
+  let trendingTopics = [];
+  try {
+    trendingTopics = await getTrendingTopics();
+  } catch (err) {
+    console.log(`[hunter] Trending topics fetch failed: ${err.message}`);
+  }
+
   // --- Score and rank by breaking news value ---
   for (const post of deduped) {
-    post.breaking_score = scoreBreakingValue(post.title, post.score, post.num_comments, BREAKING_KEYWORDS);
+    post.breaking_score = scoreBreakingValue(post.title, post.score, post.num_comments, BREAKING_KEYWORDS, trendingTopics);
+
+    // Historical performance boost (0-30 points) from analytics
+    const perfBoost = getPerformanceBoost(post.title, post.flair);
+    if (perfBoost > 0) {
+      post.breaking_score += perfBoost;
+      console.log(`[hunter] +${perfBoost} performance boost for: ${post.title.substring(0, 50)}...`);
+    }
   }
   deduped.sort((a, b) => b.breaking_score - a.breaking_score);
 

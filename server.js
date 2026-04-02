@@ -541,14 +541,29 @@ function startAutonomousScheduler() {
       cron.schedule(cronExpr, async () => {
         console.log(`[server-cron] ${windowLabels[i]} +30min — ENGAGEMENT PASS`);
         try {
-          const { engageAll } = require('./engagement');
-          await engageAll();
+          const { engageRecent } = require('./engagement');
+          await engageRecent();
         } catch (err) {
           console.log(`[server-cron] Engagement error: ${err.message}`);
         }
       }, { timezone: 'UTC' });
     });
     console.log('[server] Auto-engagement enabled: 30 min after each publish window');
+
+    // Analytics pass — twice daily, pulls YouTube stats and updates scoring history
+    const analyticsWindows = ['0 8 * * *', '0 20 * * *'];
+    analyticsWindows.forEach((cronExpr) => {
+      cron.schedule(cronExpr, async () => {
+        console.log('[server-cron] ANALYTICS PASS — pulling YouTube stats');
+        try {
+          const { runAnalytics } = require('./analytics');
+          await runAnalytics();
+        } catch (err) {
+          console.log(`[server-cron] Analytics error: ${err.message}`);
+        }
+      }, { timezone: 'UTC' });
+    });
+    console.log('[server] Analytics enabled: 2x daily at 08:00/20:00 UTC');
   } else {
     console.log('[server] AUTO_PUBLISH is off. Videos will be produced but not uploaded.');
     console.log('[server] Set AUTO_PUBLISH=true in Railway env vars to enable.');

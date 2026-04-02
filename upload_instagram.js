@@ -63,10 +63,13 @@ async function uploadReel(story) {
   const publicBaseUrl = process.env.RAILWAY_PUBLIC_URL || `http://localhost:${process.env.PORT || 3001}`;
   const videoUrl = `${publicBaseUrl}/api/download/${story.id}`;
 
-  // Build caption
+  // Build caption — channel-aware hashtags
+  const { getChannel } = require('./channels');
+  const channel = getChannel();
   let caption = story.suggested_thumbnail_text || story.title;
   caption += '\n\n' + (story.full_script || '').substring(0, 500);
-  caption += '\n\n#gaming #gamingnews #gamingleaks #gamingcommunity #gamingshorts #gamer #newgames';
+  const tags = (channel.hashtags || []).map(h => h.replace('#Shorts', '#reels')).join(' ');
+  caption += '\n\n' + tags + ' #viral #explore';
   if (story.affiliate_url) {
     caption += `\n\nLink in bio | Source: r/${story.subreddit}`;
   }

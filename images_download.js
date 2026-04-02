@@ -58,7 +58,7 @@ async function getBestImage(story) {
         const priority = img.type === 'capsule' ? 95 : img.type === 'hero' ? 90 : img.type === 'key_art' ? 85 : 70;
         images.push({ path: cached, type: img.type, priority });
       }
-      if (images.length >= 3) break;
+      if (images.length >= 5) break;
     }
   }
 

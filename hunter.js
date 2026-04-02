@@ -257,39 +257,79 @@ async function fetchGameImages(gameTitle) {
         type: 'capsule',
         source: 'steam',
       });
-      // Screenshots
-      for (let i = 0; i < 4; i++) {
-        images.push({
-          url: `https://cdn.akamai.steamstatic.com/steam/apps/${appId}/ss_${i}.jpg`,
-          type: 'screenshot',
-          source: 'steam',
-        });
-      }
+      // Fetch real screenshots via Steam app details API
+      try {
+        const detailsRes = await axios.get(
+          `https://store.steampowered.com/api/appdetails?appids=${appId}`,
+          { timeout: 8000, headers: { 'User-Agent': USER_AGENT } }
+        );
+        const appData = detailsRes.data?.[appId]?.data;
+        if (appData?.screenshots) {
+          for (const ss of appData.screenshots.slice(0, 4)) {
+            if (ss.path_full) {
+              images.push({ url: ss.path_full, type: 'screenshot', source: 'steam' });
+            }
+          }
+        }
+      } catch (err) { /* Steam details failed, no screenshots */ }
     }
   } catch (err) {
     // Steam search failed, continue
   }
 
-  // Fallback: Wikipedia page image for non-Steam games (Nintendo, console exclusives)
-  if (images.length === 0) {
+  // Fallback 2: RAWG.io — free game database with screenshots (no key needed for basic)
+  if (images.length < 3) {
+    try {
+      const rawgSearch = `https://api.rawg.io/api/games?search=${encodeURIComponent(gameTitle)}&page_size=1&key=`;
+      // RAWG allows keyless requests with lower rate limits
+      const rawgRes = await axios.get(rawgSearch, { timeout: 8000, headers: { 'User-Agent': USER_AGENT } });
+      const game = rawgRes.data?.results?.[0];
+      if (game) {
+        if (game.background_image) {
+          images.push({ url: game.background_image, type: 'hero', source: 'rawg' });
+        }
+        // Fetch screenshots for this game
+        if (game.slug) {
+          try {
+            const ssRes = await axios.get(
+              `https://api.rawg.io/api/games/${game.slug}/screenshots?key=`,
+              { timeout: 5000, headers: { 'User-Agent': USER_AGENT } }
+            );
+            for (const ss of (ssRes.data?.results || []).slice(0, 3)) {
+              if (ss.image) images.push({ url: ss.image, type: 'screenshot', source: 'rawg' });
+            }
+          } catch (err) { /* screenshots fetch failed */ }
+        }
+      }
+    } catch (err) { /* RAWG failed */ }
+  }
+
+  // Fallback 3: Wikipedia page image (good for Nintendo/console exclusives)
+  if (images.length < 2) {
     try {
       const wikiUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(gameTitle)}`;
       const wikiRes = await axios.get(wikiUrl, { timeout: 5000, headers: { 'User-Agent': USER_AGENT } });
       if (wikiRes.data?.thumbnail?.source) {
-        // Get the original (higher res) version
-        const thumbUrl = wikiRes.data.thumbnail.source;
-        const originalUrl = wikiRes.data.originalimage?.source || thumbUrl.replace(/\/\d+px-/, '/800px-');
+        const originalUrl = wikiRes.data.originalimage?.source || wikiRes.data.thumbnail.source.replace(/\/\d+px-/, '/800px-');
         images.push({ url: originalUrl, type: 'key_art', source: 'wikipedia' });
       }
     } catch (err) { /* Wikipedia fallback failed */ }
   }
 
-  // Fallback 2: Google custom search for game art (no API key needed for small volume)
+  // Fallback 4: Wikipedia with "(video game)" suffix (handles ambiguous titles)
+  if (images.length < 2) {
+    try {
+      const wikiUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(gameTitle + ' (video game)')}`;
+      const wikiRes = await axios.get(wikiUrl, { timeout: 5000, headers: { 'User-Agent': USER_AGENT } });
+      if (wikiRes.data?.originalimage?.source) {
+        images.push({ url: wikiRes.data.originalimage.source, type: 'key_art', source: 'wikipedia' });
+      }
+    } catch (err) { /* Wikipedia (video game) fallback failed */ }
+  }
+
+  // Fallback 5: DuckDuckGo instant answer
   if (images.length === 0) {
     try {
-      const searchTerm = `${gameTitle} game official key art`;
-      const gUrl = `https://www.google.com/search?q=${encodeURIComponent(searchTerm)}&tbm=isch&tbs=isz:l`;
-      // Use DuckDuckGo instant answer API instead (no key needed)
       const ddgUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(gameTitle + ' game')}&format=json&no_html=1`;
       const ddgRes = await axios.get(ddgUrl, { timeout: 5000, headers: { 'User-Agent': USER_AGENT } });
       if (ddgRes.data?.Image) {

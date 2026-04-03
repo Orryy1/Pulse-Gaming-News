@@ -66,7 +66,7 @@ function generateAuthUrl() {
     return;
   }
 
-  const redirectUri = encodeURIComponent(process.env.TIKTOK_REDIRECT_URI || 'http://localhost:3001/oauth/tiktok/callback');
+  const redirectUri = encodeURIComponent(process.env.TIKTOK_REDIRECT_URI || 'https://marvelous-curiosity-production.up.railway.app/auth/tiktok/callback');
   const scope = encodeURIComponent('user.info.basic,video.publish,video.upload');
 
   const url = `https://www.tiktok.com/v2/auth/authorize/?client_key=${clientKey}&scope=${scope}&response_type=code&redirect_uri=${redirectUri}`;
@@ -83,7 +83,7 @@ async function exchangeCode(code) {
     client_secret: process.env.TIKTOK_CLIENT_SECRET,
     code,
     grant_type: 'authorization_code',
-    redirect_uri: process.env.TIKTOK_REDIRECT_URI || 'http://localhost:3001/oauth/tiktok/callback',
+    redirect_uri: process.env.TIKTOK_REDIRECT_URI || 'https://marvelous-curiosity-production.up.railway.app/auth/tiktok/callback',
   });
 
   const tokenData = {

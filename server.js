@@ -56,6 +56,34 @@ app.get('/privacy', (req, res) => {
 </body></html>`);
 });
 
+// --- TikTok OAuth callback ---
+app.get('/auth/tiktok/callback', async (req, res) => {
+  const { code, error, error_description } = req.query;
+
+  if (error) {
+    console.log(`[tiktok] OAuth error: ${error} — ${error_description}`);
+    return res.status(400).send(`<h1>TikTok Auth Error</h1><p>${error}: ${error_description}</p>`);
+  }
+
+  if (!code) {
+    return res.status(400).send('<h1>Missing auth code</h1>');
+  }
+
+  try {
+    const { exchangeCode } = require('./upload_tiktok');
+    const tokenData = await exchangeCode(code);
+    console.log('[tiktok] OAuth callback: token saved successfully');
+    res.send(`<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:60px">
+      <h1 style="color:#00C853">TikTok Connected!</h1>
+      <p>Access token saved. Pulse Gaming can now publish to TikTok.</p>
+      <p>You can close this tab.</p>
+    </body></html>`);
+  } catch (err) {
+    console.log(`[tiktok] OAuth token exchange failed: ${err.message}`);
+    res.status(500).send(`<h1>Token Exchange Failed</h1><p>${err.message}</p>`);
+  }
+});
+
 // --- SSE for real-time progress ---
 const sseClients = new Map();
 

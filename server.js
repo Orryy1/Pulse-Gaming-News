@@ -51,6 +51,11 @@ app.get('/privacy', (req, res) => {
 </body></html>`);
 });
 
+// --- TikTok URL verification file ---
+app.get('/tiktokDw54Pk1WSkoF9szIQ4gVvLPUr0EmoATB.txt', (req, res) => {
+  res.type('text/plain').send('tiktok-developers-site-verification=Dw54Pk1WSkoF9szIQ4gVvLPUr0EmoATB');
+});
+
 // --- SSE for real-time progress ---
 const sseClients = new Map();
 

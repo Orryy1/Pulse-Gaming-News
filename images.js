@@ -21,6 +21,23 @@ function buildProSvg(title, thumbnailText, flair, heroImageBase64, logoImageBase
   const escapedThumb = (thumbnailText || '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
+  // Word-wrap headline text for the large orange title (max ~14 chars per line at font-size 82)
+  const thumbWords = escapedThumb.split(' ');
+  const thumbLines = [];
+  let thumbCurrent = '';
+  for (const word of thumbWords) {
+    if ((thumbCurrent + ' ' + word).length > 14 && thumbCurrent) {
+      thumbLines.push(thumbCurrent);
+      thumbCurrent = word;
+    } else {
+      thumbCurrent = thumbCurrent ? thumbCurrent + ' ' + word : word;
+    }
+  }
+  if (thumbCurrent) thumbLines.push(thumbCurrent);
+  const thumbTspans = thumbLines.slice(0, 3).map((line, i) =>
+    `<tspan x="540" dy="${i === 0 ? 0 : 88}">${line}</tspan>`
+  ).join('');
+
   // Word wrap for title
   const words = escapedTitle.split(' ');
   const lines = [];
@@ -117,20 +134,20 @@ function buildProSvg(title, thumbnailText, flair, heroImageBase64, logoImageBase
   ${logoSection}
 
   <!-- Flair badge -->
-  <rect x="340" y="880" width="400" height="52" rx="26" fill="${flairColour}" opacity="0.15"/>
-  <rect x="340" y="880" width="400" height="52" rx="26" fill="none"
+  <rect x="340" y="800" width="400" height="52" rx="26" fill="${flairColour}" opacity="0.15"/>
+  <rect x="340" y="800" width="400" height="52" rx="26" fill="none"
         stroke="${flairColour}" stroke-width="1.5" opacity="0.5"/>
-  <circle cx="375" cy="906" r="7" fill="${flairColour}"/>
-  <text x="540" y="914" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
+  <circle cx="375" cy="826" r="7" fill="${flairColour}"/>
+  <text x="540" y="834" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
         font-size="20" font-weight="700" letter-spacing="3" fill="${flairColour}">${flairLabel}</text>
 
-  <!-- Main headline text (large, attention-grabbing) -->
-  <text x="540" y="1020" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
+  <!-- Main headline text (large, word-wrapped) -->
+  <text x="540" y="920" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
         font-size="82" font-weight="900" fill="${brand.PRIMARY}" filter="url(#glow)"
-        letter-spacing="-2">${escapedThumb}</text>
+        letter-spacing="-2">${thumbTspans}</text>
 
   <!-- Story title -->
-  <text x="540" y="1160" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
+  <text x="540" y="1120" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
         font-size="52" font-weight="700" fill="rgba(255,255,255,0.9)" filter="url(#shadow)">
     ${titleLines}
   </text>

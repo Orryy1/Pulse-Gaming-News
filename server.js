@@ -24,6 +24,11 @@ app.use((req, res, next) => {
   next();
 });
 
+// --- TikTok URL verification file (must be before static middleware) ---
+app.get('/tiktokDw54Pk1WSkoF9szIQ4gVvLPUr0EmoATB.txt', (req, res) => {
+  res.type('text/plain').send('tiktok-developers-site-verification=Dw54Pk1WSkoF9szIQ4gVvLPUr0EmoATB');
+});
+
 // Serve Vite build from dist/
 app.use(express.static(path.join(__dirname, 'dist')));
 app.use('/generated', express.static(PUBLIC_DIR));
@@ -49,11 +54,6 @@ app.get('/privacy', (req, res) => {
 <h2>Cookies</h2><p>Our dashboard may use essential cookies for session management. No tracking or advertising cookies are used.</p>
 <h2>Contact</h2><p>For privacy enquiries, reach us via our YouTube channel.</p>
 </body></html>`);
-});
-
-// --- TikTok URL verification file ---
-app.get('/tiktokDw54Pk1WSkoF9szIQ4gVvLPUr0EmoATB.txt', (req, res) => {
-  res.type('text/plain').send('tiktok-developers-site-verification=Dw54Pk1WSkoF9szIQ4gVvLPUr0EmoATB');
 });
 
 // --- SSE for real-time progress ---

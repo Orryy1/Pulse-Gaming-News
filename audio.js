@@ -77,8 +77,15 @@ async function generateAudio() {
     console.log(`[audio] Generating audio for: ${story.title}`);
 
     try {
-      // Use cleaned TTS script (no [PAUSE]/[VISUAL] markers in raw form)
-      const ttsText = story.tts_script || story.full_script;
+      // Clean TTS script — remove markers and punctuation that causes vocal artifacts
+      const rawTTS = story.tts_script || story.full_script;
+      const ttsText = (rawTTS || '')
+        .replace(/\[PAUSE\]/gi, ', ')
+        .replace(/\[VISUAL:[^\]]*\]/gi, '')
+        .replace(/\.{2,}/g, '.')          // collapse ellipses to single period
+        .replace(/[*_~`#|]/g, '')         // strip markdown formatting
+        .replace(/\s+/g, ' ')
+        .trim();
       const outputPath = path.join('output', 'audio', `${story.id}.mp3`);
 
       await generateTTS(ttsText, outputPath);

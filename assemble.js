@@ -167,13 +167,16 @@ async function generateSubtitles(story, duration, outputDir) {
       i += chunk.length;
     }
 
-    events = phrases.map(p => {
+    events = phrases.map((p, idx) => {
       const clean = p.text
         .replace(/\\/g, '').replace(/\{/g, '').replace(/\}/g, '')
         .replace(/\[PAUSE\]/gi, '').replace(/\[VISUAL:[^\]]*\]/gi, '')
+        .replace(/[.]{2,}/g, '')          // remove ellipses that show as subtitle text
         .toUpperCase().trim();
-      if (!clean) return null;
-      return `Dialogue: 0,${assTime(p.start)},${assTime(p.end)},Caption,,0,0,0,,{\\fscx120\\fscy120\\t(0,80,\\fscx100\\fscy100)}${clean}`;
+      if (!clean || /^[^A-Z0-9]*$/.test(clean)) return null; // skip punctuation-only phrases
+      // End each phrase 0.05s early to prevent overlap flicker with next phrase
+      const end = (idx < phrases.length - 1) ? Math.max(p.start + 0.1, p.end - 0.05) : p.end;
+      return `Dialogue: 0,${assTime(p.start)},${assTime(end)},Caption,,0,0,0,,{\\fscx120\\fscy120\\t(0,80,\\fscx100\\fscy100)}${clean}`;
     }).filter(Boolean).join('\n');
 
     console.log(`[assemble] Subtitles: ${phrases.length} phrases synced from word timestamps`);
@@ -428,7 +431,7 @@ function buildVideoCommand(story, images, audioPath, assPath, filterScriptPath, 
       `[${musicIdx}:a]volume=${MUSIC_VOLUME}[bgm]`
     );
     filterParts.push(
-      `[voice][bgm]amix=inputs=2:duration=shortest[outa]`
+      `[voice][bgm]amix=inputs=2:duration=first[outa]`
     );
     audioMapping = `-map "[outv]" -map "[outa]"`;
   } else {

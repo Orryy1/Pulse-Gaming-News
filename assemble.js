@@ -445,7 +445,7 @@ function buildVideoCommand(story, images, audioPath, assPath, filterScriptPath, 
     audioMapping,
     '-c:v libx264 -crf 21 -preset medium',
     '-c:a aac -b:a 192k',
-    '-r 30 -shortest',
+    '-r 30 -shortest -t 59',
     `-movflags +faststart "${outputPath}"`,
   ].join(' ');
 
@@ -506,7 +506,8 @@ async function assemble() {
     const outputPath = path.join('output', 'final', `${story.id}.mp4`);
     await fs.ensureDir(path.dirname(outputPath));
 
-    const duration = await getAudioDuration(story.audio_path);
+    const rawDuration = await getAudioDuration(story.audio_path);
+    const duration = Math.min(rawDuration, 59); // YouTube Shorts max 60s — cap at 59 for safety
 
     // Collect real downloaded images (NOT the composite thumbnail)
     let realImages = [];
@@ -597,7 +598,7 @@ async function assemble() {
           `-filter_complex_script "${fallbackFilterPath.replace(/\\/g, '/')}"`,
           `-map "[outv]" -map 1:a`,
           '-c:v libx264 -crf 21 -preset medium',
-          '-c:a aac -b:a 192k -r 30 -shortest',
+          '-c:a aac -b:a 192k -r 30 -shortest -t 59',
           `-movflags +faststart "${outputPath}"`,
         ].join(' ');
         await execAsync(simpleCmd, { timeout: 180000 });

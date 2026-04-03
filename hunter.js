@@ -471,7 +471,7 @@ async function hunt() {
     if (result.status !== 'fulfilled') continue;
     for (const item of result.value) {
       allPosts.push({
-        id: `rss_${Buffer.from(item.url || item.title).toString('base64').substring(0, 12)}`,
+        id: `rss_${require('crypto').createHash('sha256').update(item.url || item.title).digest('hex').substring(0, 16)}`,
         title: item.title,
         url: item.url,
         score: 50,

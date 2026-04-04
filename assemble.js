@@ -15,25 +15,46 @@ const { getChannel } = require('./channels');
 const MUSIC_CACHE = path.join('output', 'music');
 const MUSIC_VOLUME = 0.12; // 12% volume — subtle background
 
-// --- Generate or reuse background music via ElevenLabs ---
+// --- Music library: pick a random track or generate a fresh one ---
 async function ensureBackgroundMusic(duration) {
   await fs.ensureDir(MUSIC_CACHE);
 
-  // Reuse cached music if within 30s of needed duration
-  const cached = (await fs.readdir(MUSIC_CACHE)).filter(f => f.endsWith('.mp3'));
-  for (const file of cached) {
-    const match = file.match(/trap_(\d+)s/);
-    if (match && Math.abs(parseInt(match[1]) - duration) < 30) {
-      return path.join(MUSIC_CACHE, file);
-    }
+  const channel = getChannel();
+  const channelId = channel.id || 'pulse-gaming';
+
+  // Find all cached tracks for this channel that fit the duration (within 30s)
+  const cached = (await fs.readdir(MUSIC_CACHE)).filter(f => f.endsWith('.mp3') && f.startsWith(channelId));
+  const suitable = cached.filter(f => {
+    const match = f.match(/_(\d+)s_/);
+    return match && Math.abs(parseInt(match[1]) - duration) < 30;
+  });
+
+  // If we have 3+ suitable tracks, randomly pick one (no new generation needed)
+  if (suitable.length >= 3) {
+    const pick = suitable[Math.floor(Math.random() * suitable.length)];
+    console.log(`[assemble] Music library: picked "${pick}" from ${suitable.length} tracks`);
+    return path.join(MUSIC_CACHE, pick);
   }
 
-  // Generate via ElevenLabs Music API
+  // Otherwise generate a fresh track using a random prompt variation
   const apiKey = process.env.ELEVENLABS_API_KEY;
-  if (!apiKey) return null;
+  if (!apiKey) {
+    // No API key — fall back to any existing track if available
+    if (suitable.length > 0) return path.join(MUSIC_CACHE, suitable[0]);
+    // Also check legacy naming (trap_XXs.mp3) for backwards compat
+    const legacy = cached.filter(f => f.match(/trap_(\d+)s/) && Math.abs(parseInt(f.match(/trap_(\d+)s/)[1]) - duration) < 30);
+    if (legacy.length > 0) return path.join(MUSIC_CACHE, legacy[0]);
+    return null;
+  }
+
+  const prompts = channel.musicPrompts || [channel.musicPrompt || 'dark minimal trap beat, subtle 808 bass, crisp hi-hats, cinematic, atmospheric, no vocals'];
+  // Pick a prompt we haven't used yet (based on index in filename), or random
+  const usedIndices = suitable.map(f => { const m = f.match(/_v(\d+)\.mp3$/); return m ? parseInt(m[1]) : -1; });
+  let promptIdx = prompts.findIndex((_, i) => !usedIndices.includes(i));
+  if (promptIdx === -1) promptIdx = Math.floor(Math.random() * prompts.length);
 
   try {
-    console.log('[assemble] Generating background music via ElevenLabs...');
+    console.log(`[assemble] Generating music track v${promptIdx} for ${channelId}...`);
     const response = await axios({
       method: 'POST',
       url: 'https://api.elevenlabs.io/v1/music',
@@ -43,7 +64,7 @@ async function ensureBackgroundMusic(duration) {
         'Accept': 'audio/mpeg',
       },
       data: {
-        prompt: getChannel().musicPrompt || 'dark minimal trap beat, subtle 808 bass, crisp hi-hats, cinematic, atmospheric, no vocals',
+        prompt: prompts[promptIdx],
         duration_seconds: Math.min(Math.ceil(duration) + 5, 120),
         force_instrumental: true,
       },
@@ -51,12 +72,14 @@ async function ensureBackgroundMusic(duration) {
       timeout: 60000,
     });
 
-    const musicPath = path.join(MUSIC_CACHE, `trap_${Math.ceil(duration)}s.mp3`);
+    const musicPath = path.join(MUSIC_CACHE, `${channelId}_${Math.ceil(duration)}s_v${promptIdx}.mp3`);
     await fs.writeFile(musicPath, Buffer.from(response.data));
-    console.log(`[assemble] Background music saved: ${musicPath}`);
+    console.log(`[assemble] New track saved: ${musicPath} (${suitable.length + 1} in library)`);
     return musicPath;
   } catch (err) {
     console.log(`[assemble] Music generation failed (non-fatal): ${err.message}`);
+    // Fall back to existing track
+    if (suitable.length > 0) return path.join(MUSIC_CACHE, suitable[0]);
     return null;
   }
 }

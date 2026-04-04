@@ -69,8 +69,18 @@ module.exports = {
   youtubeCategory: '28', // Science & Technology
   hashtags: ['#Shorts', '#TechNews', '#AI', '#Technology', '#TheSignal'],
 
-  // Music prompt for background beat
+  // Music prompts — varied pool for library generation
   musicPrompt: 'futuristic synth beat, digital glitch textures, subtle bass, tech news energy, cyberpunk minimal, atmospheric, no vocals',
+  musicPrompts: [
+    'futuristic synth beat, digital glitch textures, subtle bass, tech news energy, cyberpunk minimal, atmospheric, no vocals',
+    'ambient IDM beat, granular synthesis textures, clicking percussion, AI research lab atmosphere, no vocals',
+    'dark synthwave instrumental, pulsing arpeggios, analog warmth, silicon valley night drive, no vocals',
+    'glitchy breakbeat, chopped samples, deep reese bass, data stream aesthetic, digital chaos, no vocals',
+    'minimal ambient techno, soft kicks, shimmering pads, server room hum, clean futuristic, no vocals',
+    'neo-classical electronic, piano fragments over subtle beats, tech keynote gravitas, elegant innovation, no vocals',
+    'cyberpunk drum and bass, fast hi-hats, wobble bass, neon city tech news urgency, no vocals',
+    'lo-fi electronic ambient, tape saturation, gentle beats, late night coding session atmosphere, no vocals',
+  ],
 
   // System prompt for script generation
   systemPrompt: `You are the scriptwriter for THE SIGNAL, a YouTube Shorts channel delivering verified tech news, AI breakthroughs and product launches in 60 seconds.

@@ -69,8 +69,18 @@ module.exports = {
   youtubeCategory: '25', // News & Politics
   hashtags: ['#Shorts', '#Finance', '#StockMarket', '#Investing', '#STACKED'],
 
-  // Music prompt for background beat
+  // Music prompts — varied pool for library generation
   musicPrompt: 'dark cinematic trap beat, deep bass, ticking clock tension, stock market urgency, minimal, atmospheric, no vocals',
+  musicPrompts: [
+    'dark cinematic trap beat, deep bass, ticking clock tension, stock market urgency, minimal, atmospheric, no vocals',
+    'tense orchestral underscore, pizzicato strings, subtle ticking, financial suspense, boardroom drama, no vocals',
+    'minimal electronic beat, clean percussion, rising synth pads, market open energy, professional, no vocals',
+    'deep house influenced instrumental, steady four on floor, warm bass, confident trading floor vibe, no vocals',
+    'ambient piano and bass, sparse percussion, contemplative mood, wealth management atmosphere, no vocals',
+    'dark jazz hop beat, walking bass line, brushed snares, late night market analysis feel, no vocals',
+    'cinematic countdown beat, ticking percussion, building tension, earnings report suspense, dramatic, no vocals',
+    'minimal techno pulse, steady kick, filtered synths, algorithmic trading aesthetic, hypnotic, no vocals',
+  ],
 
   // System prompt for script generation
   systemPrompt: `You are the scriptwriter for STACKED, a YouTube Shorts channel delivering verified finance news, market moves and insider trades in 60 seconds.

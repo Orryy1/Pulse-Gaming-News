@@ -24,15 +24,26 @@ const TOKEN_PATH = path.join(__dirname, 'tokens', 'instagram_token.json');
 */
 
 async function getAccessToken() {
-  // Try env var first
-  if (process.env.INSTAGRAM_ACCESS_TOKEN) {
-    return process.env.INSTAGRAM_ACCESS_TOKEN;
-  }
-
-  // Then try saved token
+  // Try saved token first (may have been refreshed)
   if (await fs.pathExists(TOKEN_PATH)) {
     const tokenData = await fs.readJson(TOKEN_PATH);
+    // Auto-refresh if within 7 days of expiry
+    if (tokenData.expires_at && Date.now() > tokenData.expires_at - (7 * 24 * 60 * 60 * 1000)) {
+      console.log('[instagram] Token expiring soon, refreshing...');
+      try {
+        const refreshed = await refreshToken(tokenData.access_token);
+        return refreshed.access_token;
+      } catch (err) {
+        console.log(`[instagram] Refresh failed: ${err.message}, using existing token`);
+        return tokenData.access_token;
+      }
+    }
     return tokenData.access_token;
+  }
+
+  // Fall back to env var
+  if (process.env.INSTAGRAM_ACCESS_TOKEN) {
+    return process.env.INSTAGRAM_ACCESS_TOKEN;
   }
 
   throw new Error(
@@ -40,6 +51,43 @@ async function getAccessToken() {
     'Set INSTAGRAM_ACCESS_TOKEN in .env, or save token to tokens/instagram_token.json\n' +
     'Also set INSTAGRAM_BUSINESS_ACCOUNT_ID'
   );
+}
+
+async function refreshToken(currentToken) {
+  const response = await axios.get('https://graph.instagram.com/refresh_access_token', {
+    params: {
+      grant_type: 'ig_refresh_token',
+      access_token: currentToken,
+    },
+  });
+
+  const tokenData = {
+    access_token: response.data.access_token,
+    token_type: response.data.token_type,
+    expires_in: response.data.expires_in,
+    expires_at: Date.now() + (response.data.expires_in * 1000),
+    refreshed_at: new Date().toISOString(),
+  };
+
+  await fs.ensureDir(path.dirname(TOKEN_PATH));
+  await fs.writeJson(TOKEN_PATH, tokenData, { spaces: 2 });
+  console.log(`[instagram] Token refreshed, expires in ${Math.round(response.data.expires_in / 86400)} days`);
+  return tokenData;
+}
+
+// Save the initial env var token to disk so it can be refreshed later
+async function seedTokenFromEnv() {
+  if (!await fs.pathExists(TOKEN_PATH) && process.env.INSTAGRAM_ACCESS_TOKEN) {
+    const tokenData = {
+      access_token: process.env.INSTAGRAM_ACCESS_TOKEN,
+      expires_at: Date.now() + (55 * 24 * 60 * 60 * 1000), // assume ~55 days left
+      seeded_from_env: true,
+      seeded_at: new Date().toISOString(),
+    };
+    await fs.ensureDir(path.dirname(TOKEN_PATH));
+    await fs.writeJson(TOKEN_PATH, tokenData, { spaces: 2 });
+    console.log('[instagram] Seeded token from env var to tokens/instagram_token.json');
+  }
 }
 
 function getAccountId() {
@@ -76,6 +124,9 @@ async function uploadReel(story) {
 
   // Trim to Instagram's 2200 char limit
   if (caption.length > 2200) caption = caption.substring(0, 2197) + '...';
+
+  // Seed token from env on first run so auto-refresh can work
+  await seedTokenFromEnv();
 
   console.log(`[instagram] Uploading Reel: "${(story.suggested_thumbnail_text || story.title).substring(0, 50)}..."`);
 
@@ -187,7 +238,7 @@ async function uploadShort(story) {
   return uploadReel(story);
 }
 
-module.exports = { uploadReel, uploadShort, uploadAll };
+module.exports = { uploadReel, uploadShort, uploadAll, refreshToken, seedTokenFromEnv };
 
 if (require.main === module) {
   uploadAll().catch(err => {

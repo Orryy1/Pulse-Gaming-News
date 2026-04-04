@@ -624,6 +624,31 @@ function startAutonomousScheduler() {
     console.log('[server] AUTO_PUBLISH is off. Videos will be produced but not uploaded.');
     console.log('[server] Set AUTO_PUBLISH=true in Railway env vars to enable.');
   }
+
+  // Instagram token auto-refresh — every Monday at 03:00 UTC
+  cron.schedule('0 3 * * 1', async () => {
+    console.log('[server-cron] Instagram token refresh check...');
+    try {
+      const { seedTokenFromEnv, refreshToken } = require('./upload_instagram');
+      const fs2 = require('fs-extra');
+      const tokenPath = path.join(__dirname, 'tokens', 'instagram_token.json');
+      await seedTokenFromEnv();
+      if (await fs2.pathExists(tokenPath)) {
+        const tokenData = await fs2.readJson(tokenPath);
+        const daysLeft = Math.round((tokenData.expires_at - Date.now()) / (24 * 60 * 60 * 1000));
+        console.log(`[instagram] Token expires in ${daysLeft} days`);
+        if (daysLeft < 30) {
+          await refreshToken(tokenData.access_token);
+          console.log('[instagram] Token refreshed successfully');
+        } else {
+          console.log('[instagram] Token still fresh, no refresh needed');
+        }
+      }
+    } catch (err) {
+      console.log(`[instagram] Token refresh failed: ${err.message}`);
+    }
+  }, { timezone: 'UTC' });
+  console.log('[server] Instagram token auto-refresh: every Monday 03:00 UTC');
 }
 
 // --- SPA fallback ---

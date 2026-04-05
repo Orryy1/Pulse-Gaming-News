@@ -12,6 +12,11 @@ const axios = require('axios');
 const brand = require('./brand');
 const { getChannel } = require('./channels');
 
+const INTRO_CARD = path.join(__dirname, 'branding', 'intro_outro_card.png');
+const OUTRO_CARD = path.join(__dirname, 'branding', 'intro_outro_card.png');
+const INTRO_DURATION = 1.5; // seconds the intro card is visible
+const OUTRO_DURATION = 5;   // seconds before end to bring up outro card
+
 const MUSIC_CACHE = path.join('output', 'music');
 const MUSIC_VOLUME = 0.12; // 12% volume — subtle background
 const MAX_IMAGES = 4; // Cap input streams to prevent Railway memory exhaustion
@@ -143,6 +148,38 @@ function assTime(seconds) {
   return `${h}:${String(m).padStart(2, '0')}:${s.toFixed(2).padStart(5, '0')}`;
 }
 
+// --- Highlight key words in orange (TikTok-style) using ASS override tags ---
+// Brand accent in ASS BGR format: #FF6B1A → &H001A6BFF
+const HIGHLIGHT_COLOR = '\\c&H001A6BFF&';
+const HIGHLIGHT_WORDS = new Set([
+  // Numbers and money
+  'BILLION', 'MILLION', 'THOUSAND', '$', '£', '%',
+  // Emphasis words
+  'LEAKED', 'LEAK', 'CONFIRMED', 'BREAKING', 'EXCLUSIVE', 'REVEALED',
+  'SECRET', 'MASSIVE', 'HUGE', 'INSANE', 'OFFICIAL', 'BANNED',
+  'CANCELLED', 'DELAYED', 'FREE', 'DEAD', 'KILLED', 'LAUNCHED',
+  'RUMOR', 'RUMOUR', 'INSIDER', 'SOURCES', 'QUIETLY', 'ACCIDENTALLY',
+  // Brand
+  'PULSE', 'GAMING',
+  // Game/tech terms
+  'PS5', 'PS6', 'XBOX', 'NINTENDO', 'SWITCH', 'STEAM', 'PC',
+  'GPU', 'CPU', 'RTX', 'REMAKE', 'REMASTER', 'DLC', 'UPDATE',
+  'GTA', 'ZELDA', 'MARIO', 'HALO', 'FORTNITE', 'MINECRAFT',
+]);
+
+function highlightKeyWords(text) {
+  const words = text.split(' ');
+  const result = words.map(word => {
+    const stripped = word.replace(/[^A-Z0-9$£%]/g, '');
+    // Highlight if it's a key word, or contains a number/money symbol
+    if (HIGHLIGHT_WORDS.has(stripped) || /\d/.test(word) || /[$£%]/.test(word)) {
+      return `{${HIGHLIGHT_COLOR}}${word}{\\c&H00FFFFFF&}`;
+    }
+    return word;
+  });
+  return result.join(' ');
+}
+
 // --- Generate ASS subtitle file with karaoke-style captions synced to audio ---
 async function generateSubtitles(story, duration, outputDir) {
   // Try to load word-level timestamps from ElevenLabs
@@ -183,16 +220,36 @@ async function generateSubtitles(story, duration, outputDir) {
     }
     if (wordChars.length > 0) words.push({ text: wordChars, start: wordStart, end: wordEnd });
 
+    // Pre-merge word pairs that must stay together:
+    // "twenty" + "26" → "2026", "Pulse" + "Gaming" → "Pulse Gaming"
+    const mergedWords = [];
+    for (let mi = 0; mi < words.length; mi++) {
+      const stripped = words[mi].text.replace(/[^a-zA-Z]/g, '').toLowerCase();
+      if (stripped === 'twenty' && mi + 1 < words.length && /^\d{1,2}$/.test(words[mi + 1].text.replace(/[^0-9]/g, ''))) {
+        // Merge "twenty" + "26" → "2026" (keep any trailing punctuation from second word)
+        const digits = words[mi + 1].text.replace(/[^0-9]/g, '');
+        const trailing = words[mi + 1].text.replace(/[0-9]/g, '');
+        mergedWords.push({ text: `20${digits.padStart(2, '0')}${trailing}`, start: words[mi].start, end: words[mi + 1].end });
+        mi++; // skip next word
+      } else if (stripped === 'pulse' && mi + 1 < words.length && /^gaming/i.test(words[mi + 1].text.replace(/[^a-zA-Z]/g, ''))) {
+        // Merge "Pulse" + "Gaming" into single token
+        mergedWords.push({ text: words[mi].text + ' ' + words[mi + 1].text, start: words[mi].start, end: words[mi + 1].end });
+        mi++; // skip next word
+      } else {
+        mergedWords.push(words[mi]);
+      }
+    }
+
     // Group words into 1-3 word karaoke phrases — break at sentence endings
     const phrases = [];
     let i = 0;
-    while (i < words.length) {
-      const chunkSize = words[i].text.length > 8 ? 1 : (words[i].text.length > 5 ? 2 : 3);
+    while (i < mergedWords.length) {
+      const chunkSize = mergedWords[i].text.length > 8 ? 1 : (mergedWords[i].text.length > 5 ? 2 : 3);
       const chunk = [];
-      for (let j = 0; j < chunkSize && i + j < words.length; j++) {
-        chunk.push(words[i + j]);
+      for (let j = 0; j < chunkSize && i + j < mergedWords.length; j++) {
+        chunk.push(mergedWords[i + j]);
         // If this word ends a sentence, stop the phrase here
-        if (/[.!?]$/.test(words[i + j].text)) { j++; break; }
+        if (/[.!?]$/.test(mergedWords[i + j].text)) { j++; break; }
       }
       phrases.push({
         text: chunk.map(w => w.text).join(' '),
@@ -202,6 +259,22 @@ async function generateSubtitles(story, duration, outputDir) {
       i += chunk.length;
     }
 
+    // Find when CTA starts (last "follow" in the text) for top-aligned subtitles
+    const fullText = phrases.map(p => p.text).join(' ').toLowerCase();
+    const ctaWordIdx = fullText.lastIndexOf('follow');
+    let ctaStartTime = duration - OUTRO_DURATION;
+    if (ctaWordIdx >= 0) {
+      // Find which phrase contains the CTA
+      let charCount = 0;
+      for (const p of phrases) {
+        charCount += p.text.length + 1;
+        if (charCount > ctaWordIdx) {
+          ctaStartTime = p.start;
+          break;
+        }
+      }
+    }
+
     events = phrases.map((p, idx) => {
       const clean = p.text
         .replace(/\\/g, '').replace(/\{/g, '').replace(/\}/g, '')
@@ -209,9 +282,13 @@ async function generateSubtitles(story, duration, outputDir) {
         .replace(/[.]{2,}/g, '')          // remove ellipses that show as subtitle text
         .toUpperCase().trim();
       if (!clean || /^[^A-Z0-9]*$/.test(clean)) return null; // skip punctuation-only phrases
-      // End each phrase 0.05s early to prevent overlap flicker with next phrase
-      const end = (idx < phrases.length - 1) ? Math.max(p.start + 0.1, p.end - 0.05) : p.end;
-      return `Dialogue: 0,${assTime(p.start)},${assTime(end)},Caption,,0,0,0,,{\\fscx120\\fscy120\\t(0,80,\\fscx100\\fscy100)}${clean}`;
+      // End each phrase slightly early to prevent overlap flicker with next phrase
+      const end = (idx < phrases.length - 1) ? Math.max(p.start + 0.1, p.end - 0.08) : p.end;
+      // Highlight key words in orange (brand accent) — like TikTok style
+      const highlighted = highlightKeyWords(clean);
+      // Use top-aligned style during outro (when brand card is showing)
+      const style = p.start >= ctaStartTime ? 'CaptionTop' : 'Caption';
+      return `Dialogue: 0,${assTime(p.start)},${assTime(end)},${style},,0,0,0,,${highlighted}`;
     }).filter(Boolean).join('\n');
 
     console.log(`[assemble] Subtitles: ${phrases.length} phrases synced from word timestamps`);
@@ -227,7 +304,8 @@ async function generateSubtitles(story, duration, outputDir) {
       const clean = phrase
         .replace(/\\/g, '').replace(/\{/g, '').replace(/\}/g, '')
         .toUpperCase();
-      return `Dialogue: 0,${start},${end},Caption,,0,0,0,,{\\fscx120\\fscy120\\t(0,80,\\fscx100\\fscy100)}${clean}`;
+      const highlighted = highlightKeyWords(clean);
+      return `Dialogue: 0,${start},${end},Caption,,0,0,0,,${highlighted}`;
     }).join('\n');
 
     console.log(`[assemble] Subtitles: ${phrases.length} phrases (evenly spaced — no timestamps file)`);
@@ -244,7 +322,8 @@ PlayResY: 1920
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Caption,Impact,90,&H00FFFFFF,&H001A6BFF,&H00000000,&H80000000,-1,0,0,0,100,100,2,0,1,5,2,5,40,40,200,1
+Style: Caption,Impact,90,&H00FFFFFF,&H001A6BFF,&H00000000,&H80000000,-1,0,0,0,100,100,2,0,1,5,2,5,40,40,350,1
+Style: CaptionTop,Impact,90,&H00FFFFFF,&H001A6BFF,&H00000000,&H80000000,-1,0,0,0,100,100,2,0,1,5,2,8,40,40,120,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -302,6 +381,21 @@ function buildVideoCommand(story, images, audioPath, assPath, filterScriptPath, 
     inputs.push(`-i "${musicPath.replace(/\\/g, '/')}"`);
   }
 
+  // Intro/outro card inputs — must span full duration so overlay has frames available
+  let introIdx = -1;
+  let outroIdx = -1;
+  const hasIntroCard = fs.pathExistsSync(INTRO_CARD);
+  const hasOutroCard = fs.pathExistsSync(OUTRO_CARD);
+  const fullDur = Math.ceil(duration) + 2;
+  if (hasIntroCard) {
+    introIdx = inputs.length;
+    inputs.push(`-loop 1 -t ${fullDur} -i "${INTRO_CARD.replace(/\\/g, '/')}"`);
+  }
+  if (hasOutroCard) {
+    outroIdx = inputs.length;
+    inputs.push(`-loop 1 -t ${fullDur} -i "${OUTRO_CARD.replace(/\\/g, '/')}"`);
+  }
+
   // --- Filter graph ---
   const filterParts = [];
 
@@ -309,8 +403,8 @@ function buildVideoCommand(story, images, audioPath, assPath, filterScriptPath, 
   for (let i = 0; i < images.length; i++) {
     const zoomIn = i % 2 === 0;
     const zoomExpr = zoomIn
-      ? `z=min(zoom+0.0008\\,1.15)`
-      : `z=if(eq(on\\,1)\\,1.15\\,max(zoom-0.0008\\,1.0))`;
+      ? `z=min(zoom+0.0005\\,1.05)`
+      : `z=if(eq(on\\,1)\\,1.05\\,max(zoom-0.0005\\,1.0))`;
     // Vary crop focus: top, centre, bottom — so same-ish images still look different
     const yPos = i % 3 === 0 ? `y=0` :
                  i % 3 === 1 ? `y=(ih-oh)/2` :
@@ -357,52 +451,22 @@ function buildVideoCommand(story, images, audioPath, assPath, filterScriptPath, 
 
   const chain = [];
 
-  // Dark overlay + amber bottom gradient for readability
+  // Dark overlay for readability
   chain.push('eq=brightness=-0.08:saturation=1.2');
-
-  // Bottom amber gradient (15% opacity at bottom edge)
-  chain.push(
-    `drawbox=x=0:y=ih-300:w=iw:h=300:color=${brand.PRIMARY_FFM}@0.08:t=fill`
-  );
-
-  // ASS captions (TikTok-style animated text)
-  chain.push(`ass=${assPathFixed}`);
 
   // Flair badge — top left with coloured pill
   chain.push(
     `drawtext=text='  ${flair}  ':${fontOpt}:fontcolor=white:fontsize=38:` +
-    `box=1:boxcolor=${flairColor}@0.85:boxborderw=14:x=40:y=100`
+    `box=1:boxcolor=${flairColor}@0.85:boxborderw=14:x=40:y=60`
   );
 
-  // Source badge — beside flair pill
+  // Source badge — below flair pill with visible gap
   chain.push(
     `drawtext=text='  ${source}  ':${fontOpt}:fontcolor=white@0.85:fontsize=26:` +
-    `box=1:boxcolor=${brand.MUTED_FFM}@0.6:boxborderw=8:x=40:y=155`
+    `box=1:boxcolor=${brand.MUTED_FFM}@0.6:boxborderw=8:x=40:y=130`
   );
 
-  // Lower brand bar — full width, charcoal at 85% opacity
-  chain.push(
-    `drawbox=x=0:y=ih-100:w=iw:h=100:color=0x0D0D0F@0.85:t=fill`
-  );
-  // Amber accent line at top of lower bar
-  chain.push(
-    `drawbox=x=0:y=ih-100:w=iw:h=2:color=${brand.PRIMARY_FFM}@0.7:t=fill`
-  );
-  // Channel name — left side of lower bar
-  const channel = getChannel();
-  const channelName = sanitizeDrawtext(channel.name || 'PULSE GAMING', 25);
-  const channelCTA = sanitizeDrawtext(
-    channel.cta ? channel.cta.replace(/^Follow /i, 'FOLLOW ').toUpperCase() : 'FOLLOW FOR DAILY LEAKS', 40
-  );
-  chain.push(
-    `drawtext=text='${channelName}':${fontOpt}:fontcolor=${brand.TEXT_FFM}@0.9:fontsize=28:` +
-    `x=60:y=h-65`
-  );
-  // Follow CTA — right side of lower bar
-  chain.push(
-    `drawtext=text='${channelCTA}':${fontOpt}:fontcolor=${brand.MUTED_FFM}@0.6:fontsize=20:` +
-    `x=w-tw-60:y=h-58`
-  );
+  // Brand bar removed — intro/outro cards handle branding
 
   // Reddit comments — scattered throughout the video as semi-transparent overlays
   const comments = story.reddit_comments || (story.top_comment ? [{ body: story.top_comment, author: 'Redditor', score: 0 }] : []);
@@ -466,10 +530,55 @@ function buildVideoCommand(story, images, audioPath, assPath, filterScriptPath, 
   }
 
   if (chain.length > 0) {
-    filterParts.push(`[${currentLabel}]${chain.join(',\n')}[outv]`);
+    filterParts.push(`[${currentLabel}]${chain.join(',\n')}[mainv]`);
   } else {
-    // No remaining filters — just rename the current label to outv
-    filterParts.push(`[${currentLabel}]copy[outv]`);
+    filterParts.push(`[${currentLabel}]copy[mainv]`);
+  }
+
+  // --- Outro card overlay: fades in via alpha over ~1.2s ---
+  const outroStart = Math.max(0, duration - OUTRO_DURATION);
+  let videoLabel = 'mainv';
+  if (outroIdx >= 0) {
+    filterParts.push(
+      `[${outroIdx}:v]scale=1080:1920:force_original_aspect_ratio=decrease,` +
+      `pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=0x0D0D0F,` +
+      `format=yuva420p,` +
+      `fade=t=in:st=${outroStart}:d=1.2:alpha=1[outrocard]`
+    );
+    filterParts.push(
+      `[mainv][outrocard]overlay=0:0:format=auto[afteroutro]`
+    );
+    videoLabel = 'afteroutro';
+  }
+
+  // --- Bottom brand text: "PULSE GAMING" + "Never miss a beat" (hidden during intro+outro) ---
+  const brandEnable = `between(t\\,${INTRO_DURATION}\\,${outroStart})`;
+  filterParts.push(
+    `[${videoLabel}]` +
+    `drawtext=text='PULSE GAMING':${fontOpt}:fontcolor=${brand.PRIMARY_FFM}@0.7:fontsize=28:` +
+    `x=(w-tw)/2:y=h-80:enable='${brandEnable}',` +
+    `drawtext=text='Never miss a beat':${fontOpt}:fontcolor=${brand.MUTED_FFM}@0.5:fontsize=18:` +
+    `x=(w-tw)/2:y=h-48:enable='${brandEnable}'[afterlogo]`
+  );
+  videoLabel = 'afterlogo';
+
+  // --- ASS subtitles — on top of outro card so CaptionTop shows ---
+  filterParts.push(
+    `[${videoLabel}]ass=${assPathFixed}[afterass]`
+  );
+
+  // --- Intro card LAST — covers everything including subtitles during intro ---
+  if (introIdx >= 0) {
+    filterParts.push(
+      `[${introIdx}:v]scale=1080:1920:force_original_aspect_ratio=decrease,` +
+      `pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=0x0D0D0F,` +
+      `format=yuva420p,fade=t=out:st=0.8:d=0.7:alpha=1[introcard]`
+    );
+    filterParts.push(
+      `[afterass][introcard]overlay=0:0:format=auto:enable='lte(t\\,${INTRO_DURATION})'[outv]`
+    );
+  } else {
+    filterParts.push(`[afterass]copy[outv]`);
   }
 
   // Audio mixing: narration at full volume + music at low volume
@@ -560,7 +669,8 @@ async function assemble() {
     const outputPath = path.join('output', 'final', `${story.id}.mp4`);
     await fs.ensureDir(path.dirname(outputPath));
 
-    const duration = await getAudioDuration(story.audio_path);
+    const audioDuration = await getAudioDuration(story.audio_path);
+    const duration = audioDuration + 1; // 1s breathing room so CTA doesn't cut off abruptly
 
     // Collect real downloaded images (NOT the composite thumbnail)
     let realImages = [];
@@ -647,7 +757,7 @@ async function assemble() {
         fbFilterParts.push(
           `[0:v]scale=1080:1920:force_original_aspect_ratio=increase,` +
           `crop=1080:1920,` +
-          `zoompan=z=min(zoom+0.0005\\,1.1):x=iw/2-(iw/zoom/2):y=ih/2-(ih/zoom/2):` +
+          `zoompan=z=min(zoom+0.0005\\,1.05):x=iw/2-(iw/zoom/2):y=ih/2-(ih/zoom/2):` +
           `d=${totalFrames}:s=1080x1920:fps=30,` +
           `trim=duration=${Math.ceil(duration)},setpts=PTS-STARTPTS,format=yuv420p,setsar=1[base]`
         );
@@ -673,40 +783,21 @@ async function assemble() {
           story.subreddit ? `r/${story.subreddit}` : (story.source_type || 'News'), 35
         );
 
-        // Dark overlay + gradient
+        // Dark overlay
         fbChain.push('eq=brightness=-0.08:saturation=1.2');
-        fbChain.push(`drawbox=x=0:y=ih-300:w=iw:h=300:color=${brand.PRIMARY_FFM}@0.08:t=fill`);
+        // ASS subtitles applied after overlays (see below)
 
-        // ASS captions
-        if (assPath && await fs.pathExists(assPath)) {
-          const assFixed = assPath.replace(/\\/g, '/').replace(/:/g, '\\\\:');
-          fbChain.push(`ass=${assFixed}`);
-        }
-
-        // Flair badge
+        // Flair badge — moved higher
         fbChain.push(
           `drawtext=text='  ${flair}  ':${fontOpt}:fontcolor=white:fontsize=38:` +
-          `box=1:boxcolor=${flairColor}@0.85:boxborderw=14:x=40:y=100`
+          `box=1:boxcolor=${flairColor}@0.85:boxborderw=14:x=40:y=60`
         );
-        // Source badge
+        // Source badge — below flair with visible gap
         fbChain.push(
           `drawtext=text='  ${source}  ':${fontOpt}:fontcolor=white@0.85:fontsize=26:` +
-          `box=1:boxcolor=${brand.MUTED_FFM}@0.6:boxborderw=8:x=40:y=155`
+          `box=1:boxcolor=${brand.MUTED_FFM}@0.6:boxborderw=8:x=40:y=130`
         );
-        // Lower brand bar
-        fbChain.push(`drawbox=x=0:y=ih-100:w=iw:h=100:color=0x0D0D0F@0.85:t=fill`);
-        fbChain.push(`drawbox=x=0:y=ih-100:w=iw:h=2:color=${brand.PRIMARY_FFM}@0.7:t=fill`);
-        const fbChannel = getChannel();
-        const fbChannelName = sanitizeDrawtext(fbChannel.name || 'PULSE GAMING', 25);
-        const fbChannelCTA = sanitizeDrawtext(
-          fbChannel.cta ? fbChannel.cta.replace(/^Follow /i, 'FOLLOW ').toUpperCase() : 'FOLLOW FOR DAILY LEAKS', 40
-        );
-        fbChain.push(
-          `drawtext=text='${fbChannelName}':${fontOpt}:fontcolor=${brand.TEXT_FFM}@0.9:fontsize=28:x=60:y=h-65`
-        );
-        fbChain.push(
-          `drawtext=text='${fbChannelCTA}':${fontOpt}:fontcolor=${brand.MUTED_FFM}@0.6:fontsize=20:x=w-tw-60:y=h-58`
-        );
+        // Brand bar removed — intro/outro cards handle branding
 
         // Reddit comments with fade animations
         const comments = story.reddit_comments || (story.top_comment ? [{ body: story.top_comment, author: 'Redditor', score: 0 }] : []);
@@ -759,7 +850,58 @@ async function assemble() {
           });
         }
 
-        fbFilterParts.push(`[base]${fbChain.join(',\n')}[outv]`);
+        fbFilterParts.push(`[base]${fbChain.join(',\n')}[mainv]`);
+
+        // Intro/outro card overlays for fallback path
+        const fbFullDur = Math.ceil(duration) + 2;
+        let fbVideoLabel = 'mainv';
+        if (await fs.pathExists(INTRO_CARD)) {
+          const fbIntroIdx = fbInputs.length;
+          fbInputs.push(`-loop 1 -t ${fbFullDur} -i "${INTRO_CARD.replace(/\\/g, '/')}"`);
+          fbFilterParts.push(
+            `[${fbIntroIdx}:v]scale=1080:1920:force_original_aspect_ratio=decrease,` +
+            `pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=0x0D0D0F,` +
+            `format=yuva420p,fade=t=out:st=0.8:d=0.7:alpha=1[fbintro]`
+          );
+          fbFilterParts.push(
+            `[mainv][fbintro]overlay=0:0:format=auto:enable='lte(t\\,${INTRO_DURATION})'[afterintro]`
+          );
+          fbVideoLabel = 'afterintro';
+        }
+        const fbOutroStart = Math.max(0, duration - OUTRO_DURATION);
+        if (await fs.pathExists(OUTRO_CARD)) {
+          const fbOutroIdx = fbInputs.length;
+          fbInputs.push(`-loop 1 -t ${fbFullDur} -i "${OUTRO_CARD.replace(/\\/g, '/')}"`);
+          fbFilterParts.push(
+            `[${fbOutroIdx}:v]scale=1080:1920:force_original_aspect_ratio=decrease,` +
+            `pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=0x0D0D0F,` +
+            `format=yuva420p,colorchannelmixer=aa=0,` +
+            `fade=t=in:st=${fbOutroStart}:d=1.2:alpha=1[fboutro]`
+          );
+          fbFilterParts.push(
+            `[${fbVideoLabel}][fboutro]overlay=0:0:format=auto[aftercards]`
+          );
+          fbVideoLabel = 'aftercards';
+        }
+        // Logo watermark (hidden during outro)
+        if (await fs.pathExists(path.join(__dirname, 'branding', 'profile_picture.png'))) {
+          const fbLogoIdx = fbInputs.length;
+          fbInputs.push(`-loop 1 -t ${fbFullDur} -i "${path.join(__dirname, 'branding', 'profile_picture.png').replace(/\\/g, '/')}"`);
+          fbFilterParts.push(
+            `[${fbLogoIdx}:v]scale=80:80,format=yuva420p,colorchannelmixer=aa=0.4[fblogo]`
+          );
+          fbFilterParts.push(
+            `[${fbVideoLabel}][fblogo]overlay=(W-w)/2:H-100:format=auto:enable='lt(t\\,${fbOutroStart})'[afterlogo]`
+          );
+          fbVideoLabel = 'afterlogo';
+        }
+        // ASS subtitles LAST — on top of everything
+        if (assPath && await fs.pathExists(assPath)) {
+          const assFixed = assPath.replace(/\\/g, '/').replace(/:/g, '\\\\:');
+          fbFilterParts.push(`[${fbVideoLabel}]ass=${assFixed}[outv]`);
+        } else {
+          fbFilterParts.push(`[${fbVideoLabel}]copy[outv]`);
+        }
 
         // Audio mixing
         let fbAudioMapping;
@@ -786,6 +928,10 @@ async function assemble() {
           `-movflags +faststart "${outputPath}"`,
         ].join(' ');
         await execAsync(simpleCmd, { timeout: 600000, maxBuffer: 10 * 1024 * 1024 });
+
+        // Add intro/outro bumpers
+        await concatWithBumpers(outputPath, story.id);
+
         story.exported_path = outputPath;
         rendered++;
         console.log(`[assemble] Exported (single-image fallback with overlays): ${outputPath}`);

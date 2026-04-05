@@ -74,6 +74,41 @@ async function getBestImage(story) {
     if (cached) images.push({ path: cached, type: 'company_logo', priority: 30 });
   }
 
+  // Priority 5 (last resort): Google image search — only if no hero/article images found
+  const hasHero = images.some(i => ['article_hero', 'capsule', 'hero', 'key_art', 'screenshot'].includes(i.type));
+  if (!hasHero && story.title) {
+    try {
+      const searchQuery = encodeURIComponent(story.title.replace(/[^a-zA-Z0-9\s]/g, '').trim() + ' game');
+      const searchUrl = `https://www.google.com/search?q=${searchQuery}&tbm=isch&safe=active`;
+      const searchResp = await axios.get(searchUrl, {
+        timeout: 10000,
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' },
+        maxRedirects: 3,
+      });
+      // Extract image URLs from Google Images HTML response
+      const html = typeof searchResp.data === 'string' ? searchResp.data : '';
+      const imgMatches = html.match(/\["(https?:\/\/[^"]+\.(?:jpg|jpeg|png|webp)(?:\?[^"]*)?)",\d+,\d+\]/gi) || [];
+      let googleFound = 0;
+      for (const match of imgMatches.slice(0, 3)) {
+        const urlMatch = match.match(/"(https?:\/\/[^"]+)"/);
+        if (!urlMatch) continue;
+        const imgUrl = urlMatch[1];
+        // Skip tiny thumbnails and Google's own assets
+        if (imgUrl.includes('gstatic.com') || imgUrl.includes('google.com')) continue;
+        const ext = imgUrl.match(/\.(jpg|jpeg|png|webp)/i)?.[1] || 'jpg';
+        const cached = await downloadImage(imgUrl, `${story.id}_google_${googleFound}.${ext}`);
+        if (cached) {
+          images.push({ path: cached, type: 'screenshot', priority: 20 });
+          googleFound++;
+          console.log(`[images] Google image found for "${story.title.substring(0, 40)}..."`);
+          break; // One good image is enough
+        }
+      }
+    } catch (err) {
+      // Google search failed silently — not critical
+    }
+  }
+
   // Sort by priority (highest first)
   images.sort((a, b) => b.priority - a.priority);
   return images;

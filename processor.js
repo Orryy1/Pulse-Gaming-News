@@ -202,8 +202,9 @@ function getContentPillar(classification) {
 function cleanForTTS(text) {
   if (!text) return '';
   return text
-    .replace(/\[PAUSE\]/gi, '...')
+    .replace(/\[PAUSE\]/gi, ', ')
     .replace(/\[VISUAL:[^\]]*\]/gi, '')
+    .replace(/\.{2,}/g, '.')              // collapse ellipses to single period
     .replace(/\bAAA\b/g, 'Triple-A')
     .replace(/\bDLC\b/g, 'D L C')
     .replace(/\bFPS\b/g, 'F P S')
@@ -211,6 +212,8 @@ function cleanForTTS(text) {
     .replace(/\bNPC\b/g, 'N P C')
     .replace(/\bUI\b/g, 'U I')
     .replace(/\bIP\b/g, 'I P')
+    .replace(/\bPS6\b/g, 'P S 6')
+    .replace(/\bPS5\b/g, 'P S 5')
     .replace(/\s+/g, ' ')
     .trim();
 }

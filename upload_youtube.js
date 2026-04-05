@@ -127,11 +127,22 @@ function buildMetadata(story) {
 
   const descLines = [];
   // First line: keyword-rich summary (most SEO weight)
-  descLines.push(
-    story.full_script
-      ? story.full_script.substring(0, 150).replace(/\n/g, ' ').replace(/\[.*?\]/g, '').trim()
-      : story.title
-  );
+  // Use the full script but truncate at the nearest sentence boundary within 300 chars
+  if (story.full_script) {
+    const clean = story.full_script.replace(/\n/g, ' ').replace(/\[.*?\]/g, '').replace(/\s+/g, ' ').trim();
+    // Find the last sentence-ending punctuation within 300 chars
+    const cutoff = clean.substring(0, 300);
+    const lastSentence = cutoff.search(/[.!?]\s+(?=[A-Z])/);
+    if (lastSentence > 80) {
+      descLines.push(cutoff.substring(0, lastSentence + 1).trim());
+    } else {
+      // Fall back to last space within 300 chars
+      const lastSpace = cutoff.lastIndexOf(' ');
+      descLines.push(lastSpace > 80 ? cutoff.substring(0, lastSpace).trim() : cutoff.trim());
+    }
+  } else {
+    descLines.push(story.title);
+  }
   descLines.push('');
   if (story.affiliate_url) {
     descLines.push(`Check it out: ${story.affiliate_url}`);

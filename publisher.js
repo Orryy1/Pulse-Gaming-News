@@ -316,6 +316,29 @@ async function publishNextStory() {
     console.log(`[publisher] Twitter upload skipped: ${err.message}`);
   }
 
+  // Generate poll/engagement pinned comment based on classification
+  try {
+    const { generatePollComment, pinComment: pinEngagement } = require('./engagement');
+    const pollComment = await generatePollComment(story);
+    if (pollComment && story.youtube_post_id) {
+      const commentId = await pinEngagement(story.youtube_post_id, pollComment);
+      if (commentId) {
+        story.engagement_comment_id = commentId;
+        console.log(`[publisher] Engagement comment pinned: ${commentId}`);
+      }
+    }
+  } catch (err) {
+    console.log(`[publisher] Engagement comment skipped: ${err.message}`);
+  }
+
+  // Generate blog post for the published story
+  try {
+    const { generateAndSaveBlogPost } = require('./blog/generator');
+    await generateAndSaveBlogPost(story);
+  } catch (err) {
+    console.log('[publisher] Blog generation skipped: ' + err.message);
+  }
+
   // Save updated story
   await fs.writeJson('daily_news.json', stories, { spaces: 2 });
   return result;

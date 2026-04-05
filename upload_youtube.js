@@ -310,7 +310,91 @@ async function uploadAll() {
   return results;
 }
 
-module.exports = { uploadShort, uploadAll, generateAuthUrl, exchangeCode, getAuthClient };
+// --- Upload a longform compilation as a regular YouTube video (NOT a Short) ---
+async function uploadLongform(compilation) {
+  const auth = await getAuthClient();
+  const youtube = google.youtube({ version: 'v3', auth });
+  const brand = require('./brand');
+  const { getChannel } = require('./channels');
+  const channel = getChannel();
+
+  const videoPath = compilation.output_path || compilation.outputPath;
+  if (!videoPath || !await fs.pathExists(videoPath)) {
+    throw new Error(`Video file not found: ${videoPath}`);
+  }
+
+  // Title: "Gaming News Roundup — Week of April 5, 2026"
+  const titleDate = compilation.title_date || new Date().toLocaleDateString('en-GB', { month: 'long', day: 'numeric', year: 'numeric' });
+  const title = `${channel.niche.charAt(0).toUpperCase() + channel.niche.slice(1)} News Roundup — Week of ${titleDate}`;
+
+  // Description with chapter timestamps
+  const descLines = [];
+  descLines.push(`The biggest ${channel.niche} stories of the week, compiled and covered by ${channel.name}.`);
+  descLines.push('');
+
+  // Chapter timestamps
+  if (compilation.chapter_timestamps && compilation.chapter_timestamps.length > 0) {
+    for (const ch of compilation.chapter_timestamps) {
+      descLines.push(`${ch.time} ${ch.title}`);
+    }
+    descLines.push('');
+  }
+
+  descLines.push(`${brand.CHANNEL_NAME} — ${brand.TAGLINE}`);
+  descLines.push(brand.CTA ? brand.CTA : 'Subscribe so you never miss a roundup.');
+  descLines.push('');
+
+  const hashtags = (channel.hashtags || [])
+    .filter(h => !h.toLowerCase().includes('shorts'))
+    .slice(0, 5);
+  hashtags.push('#WeeklyRoundup');
+  descLines.push(hashtags.join(' '));
+
+  const description = descLines.join('\n');
+
+  const tags = [
+    channel.niche + ' news roundup', channel.name.toLowerCase(),
+    'weekly roundup', channel.niche + ' weekly',
+    channel.niche + ' news compilation',
+    'gaming news this week',
+  ].filter(Boolean);
+
+  console.log(`[youtube] Uploading longform: "${title}"`);
+
+  const response = await youtube.videos.insert({
+    part: ['snippet', 'status'],
+    requestBody: {
+      snippet: {
+        title,
+        description,
+        tags,
+        categoryId: channel.youtubeCategory || '20',
+        defaultLanguage: 'en',
+        defaultAudioLanguage: 'en',
+      },
+      status: {
+        privacyStatus: 'public',
+        selfDeclaredMadeForKids: false,
+        embeddable: true,
+      },
+    },
+    media: {
+      body: fs.createReadStream(videoPath),
+    },
+  });
+
+  const videoId = response.data.id;
+  const url = `https://youtube.com/watch?v=${videoId}`;
+  console.log(`[youtube] Longform uploaded: ${url}`);
+
+  return {
+    platform: 'youtube',
+    videoId,
+    url,
+  };
+}
+
+module.exports = { uploadShort, uploadAll, uploadLongform, generateAuthUrl, exchangeCode, getAuthClient };
 
 if (require.main === module) {
   const cmd = process.argv[2];

@@ -625,6 +625,35 @@ function startAutonomousScheduler() {
     console.log('[server] Set AUTO_PUBLISH=true in Railway env vars to enable.');
   }
 
+  // Weekly longform compilation — every Sunday at 14:00 UTC
+  cron.schedule('0 14 * * 0', async () => {
+    console.log('[server-cron] Sunday 14:00 UTC — WEEKLY COMPILATION');
+    try {
+      const { compileWeekly } = require('./weekly_compile');
+      const result = await compileWeekly();
+      if (result) {
+        weeklyCompilationState = {
+          status: 'complete',
+          last_compiled: new Date().toISOString(),
+          result,
+          error: null,
+        };
+        await sendDiscord(
+          `**Weekly Roundup Published**\n` +
+          `${result.story_count} stories, ${Math.round(result.duration_seconds / 60)} min\n` +
+          `${result.youtube_url || 'Upload pending'}`
+        );
+      } else {
+        weeklyCompilationState = { status: 'skipped', last_compiled: new Date().toISOString(), error: null };
+      }
+    } catch (err) {
+      console.log(`[server-cron] Weekly compilation error: ${err.message}`);
+      weeklyCompilationState = { status: 'error', last_compiled: null, error: err.message };
+      await sendDiscord(`**Weekly Roundup Error**: ${err.message}`);
+    }
+  }, { timezone: 'UTC' });
+  console.log('[server] Weekly compilation: Sunday 14:00 UTC');
+
   // Instagram token auto-refresh — every Monday at 03:00 UTC
   cron.schedule('0 3 * * 1', async () => {
     console.log('[server-cron] Instagram token refresh check...');
@@ -649,7 +678,240 @@ function startAutonomousScheduler() {
     }
   }, { timezone: 'UTC' });
   console.log('[server] Instagram token auto-refresh: every Monday 03:00 UTC');
+
+  // Blog rebuild — daily at 22:00 UTC (after last publish window)
+  cron.schedule('0 22 * * *', async () => {
+    console.log('[server-cron] 22:00 UTC — BLOG REBUILD');
+    try {
+      const { build } = require('./blog/build');
+      await build();
+      console.log('[server-cron] Blog rebuild complete');
+    } catch (err) {
+      console.log(`[server-cron] Blog rebuild error: ${err.message}`);
+    }
+  }, { timezone: 'UTC' });
+  console.log('[server] Blog rebuild: daily at 22:00 UTC');
+
+  // --- Breaking news watcher (continuous Reddit + RSS monitoring) ---
+  try {
+    const { startWatching } = require('./watcher');
+    const { queueBreaking } = require('./breaking_queue');
+
+    const emitter = startWatching();
+    emitter.on('breaking', (story) => {
+      console.log(`[server] Watcher detected breaking story: ${story.title}`);
+      queueBreaking(story);
+    });
+    console.log('[server] Breaking news watcher started (90s Reddit / 5min RSS polls)');
+  } catch (err) {
+    console.log(`[server] Watcher failed to start: ${err.message}`);
+  }
 }
+
+// --- Watcher endpoints (breaking news speed pipeline) ---
+app.get('/api/watcher/status', (req, res) => {
+  const { getStatus } = require('./watcher');
+  const { getQueueStatus } = require('./breaking_queue');
+  res.json({
+    watcher: getStatus(),
+    queue: getQueueStatus(),
+  });
+});
+
+app.post('/api/watcher/start', (req, res) => {
+  const { startWatching } = require('./watcher');
+  const { queueBreaking } = require('./breaking_queue');
+
+  const emitter = startWatching();
+  emitter.removeAllListeners('breaking'); // prevent duplicate listeners on restart
+  emitter.on('breaking', (story) => {
+    console.log(`[server] Watcher detected breaking story: ${story.title}`);
+    queueBreaking(story);
+  });
+
+  res.json({ status: 'started' });
+});
+
+app.post('/api/watcher/stop', (req, res) => {
+  const { stopWatching } = require('./watcher');
+  stopWatching();
+  res.json({ status: 'stopped' });
+});
+
+// --- Analytics dashboard endpoints ---
+
+app.get('/api/analytics/overview', async (req, res) => {
+  try {
+    const { loadHistory } = require('./analytics');
+    const history = await loadHistory();
+    const entries = history.entries || [];
+
+    if (entries.length === 0) {
+      return res.json({
+        totalVideos: 0,
+        totalViews: { youtube: 0, tiktok: 0, instagram: 0, combined: 0 },
+        bestPerformer: null,
+        avgVirality: 0,
+      });
+    }
+
+    let ytViews = 0, ttViews = 0, igViews = 0;
+    let bestEntry = null;
+    let viralitySum = 0;
+
+    for (const entry of entries) {
+      ytViews += entry.youtube_views || 0;
+      ttViews += entry.tiktok_views || 0;
+      igViews += entry.instagram_views || 0;
+      viralitySum += entry.virality_score || 0;
+
+      if (!bestEntry || (entry.virality_score || 0) > (bestEntry.virality_score || 0)) {
+        bestEntry = entry;
+      }
+    }
+
+    res.json({
+      totalVideos: entries.length,
+      totalViews: {
+        youtube: ytViews,
+        tiktok: ttViews,
+        instagram: igViews,
+        combined: ytViews + ttViews + igViews,
+      },
+      bestPerformer: bestEntry ? {
+        id: bestEntry.id,
+        title: bestEntry.title,
+        virality_score: bestEntry.virality_score,
+        total_views: (bestEntry.youtube_views || 0) + (bestEntry.tiktok_views || 0) + (bestEntry.instagram_views || 0),
+      } : null,
+      avgVirality: Math.round((viralitySum / entries.length) * 10) / 10,
+    });
+  } catch (err) {
+    console.log(`[server] Analytics overview error: ${err.message}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/analytics/topics', async (req, res) => {
+  try {
+    const { getTopPerformingTopics } = require('./analytics');
+    const topics = getTopPerformingTopics();
+    res.json(topics);
+  } catch (err) {
+    console.log(`[server] Analytics topics error: ${err.message}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/analytics/history', async (req, res) => {
+  try {
+    const { loadHistory } = require('./analytics');
+    const history = await loadHistory();
+    const entries = history.entries || [];
+
+    // Return most recent first, with optional limit via query param
+    const limit = parseInt(req.query.limit, 10) || 50;
+    const sorted = [...entries]
+      .sort((a, b) => new Date(b.updated_at || b.published_at || 0) - new Date(a.updated_at || a.published_at || 0))
+      .slice(0, limit);
+
+    res.json({
+      total: entries.length,
+      entries: sorted,
+    });
+  } catch (err) {
+    console.log(`[server] Analytics history error: ${err.message}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Blog static site ---
+app.use('/blog', express.static(path.join(__dirname, 'blog', 'dist')));
+
+// --- Engagement stats endpoint ---
+app.get('/api/engagement/stats', async (req, res) => {
+  try {
+    const statsPath = path.join(__dirname, 'engagement_stats.json');
+    if (await fs.pathExists(statsPath)) {
+      const stats = await fs.readJson(statsPath);
+      res.json(stats);
+    } else {
+      res.json({});
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Manual engagement pass endpoint ---
+app.post('/api/engagement/run', async (req, res) => {
+  res.json({ status: 'started', message: 'Engagement pass initiated' });
+
+  try {
+    const { engageRecent } = require('./engagement');
+    await engageRecent();
+  } catch (err) {
+    console.log(`[server] Engagement pass error: ${err.message}`);
+  }
+});
+
+// --- Blog rebuild endpoint ---
+app.post('/api/blog/rebuild', async (req, res) => {
+  res.json({ status: 'started', message: 'Blog rebuild initiated' });
+
+  try {
+    const { build } = require('./blog/build');
+    await build();
+    console.log('[server] Blog rebuild complete');
+  } catch (err) {
+    console.log(`[server] Blog rebuild error: ${err.message}`);
+  }
+});
+
+// --- Weekly compilation endpoints ---
+let weeklyCompilationState = { status: 'idle', last_compiled: null, error: null };
+
+app.post('/api/weekly/compile', async (req, res) => {
+  if (weeklyCompilationState.status === 'running') {
+    return res.json({ status: 'already running', message: 'Weekly compilation is already in progress' });
+  }
+
+  weeklyCompilationState = { status: 'running', started_at: new Date().toISOString(), error: null };
+  res.json({ status: 'started', message: 'Weekly compilation initiated' });
+
+  try {
+    const { compileWeekly } = require('./weekly_compile');
+    const result = await compileWeekly();
+    weeklyCompilationState = {
+      status: result ? 'complete' : 'skipped',
+      last_compiled: new Date().toISOString(),
+      result: result || null,
+      error: null,
+    };
+  } catch (err) {
+    console.log(`[server] Weekly compilation error: ${err.message}`);
+    weeklyCompilationState = {
+      status: 'error',
+      last_compiled: null,
+      error: err.message,
+    };
+  }
+});
+
+app.get('/api/weekly/status', async (req, res) => {
+  let compilationData = null;
+  try {
+    const compilationPath = path.join(__dirname, 'weekly_compilation.json');
+    if (await fs.pathExists(compilationPath)) {
+      compilationData = await fs.readJson(compilationPath);
+    }
+  } catch (err) { /* skip */ }
+
+  res.json({
+    ...weeklyCompilationState,
+    last_compilation: compilationData,
+  });
+});
 
 // --- SPA fallback ---
 app.get('/{*splat}', (req, res) => {

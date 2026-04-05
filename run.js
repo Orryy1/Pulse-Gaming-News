@@ -114,6 +114,62 @@ async function runApprove() {
   console.log(`[run] Auto-approved ${count} stories`);
 }
 
+function runWatch() {
+  console.log('[run] === WATCH MODE — CONTINUOUS BREAKING NEWS MONITOR ===');
+  console.log('[run] Polls Reddit /new every 90s, RSS every 5min');
+  console.log('[run] Breaking threshold: 120 | Velocity: 500 upvotes in 30 min');
+  console.log('[run] Press Ctrl+C to stop.');
+  console.log('');
+
+  const { startWatching } = require('./watcher');
+  const { queueBreaking, getQueueStatus } = require('./breaking_queue');
+
+  const emitter = startWatching();
+
+  emitter.on('breaking', async (story) => {
+    console.log(`[run] >>> BREAKING: ${story.title} (score: ${story.breaking_score})`);
+    const result = await queueBreaking(story);
+    if (result.queued) {
+      console.log(`[run] Queued at position ${result.position}`);
+    } else {
+      console.log(`[run] Not queued: ${result.reason}`);
+    }
+  });
+
+  // Periodic status log every 5 minutes
+  setInterval(() => {
+    const { getStatus } = require('./watcher');
+    const ws = getStatus();
+    const qs = getQueueStatus();
+    console.log(`[run] Watcher: ${ws.storiesChecked} checked, ${ws.breakingEmitted} breaking | Queue: ${qs.queueLength} pending, cooldown: ${qs.cooldownRemainingMin}min`);
+  }, 5 * 60 * 1000);
+}
+
+async function runWeekly() {
+  console.log('[run] === WEEKLY COMPILATION MODE ===');
+
+  const { compileWeekly } = require('./weekly_compile');
+  const result = await compileWeekly();
+
+  if (result) {
+    console.log(`[run] Weekly compilation complete: ${result.story_count} stories, ${Math.round(result.duration_seconds / 60)} minutes`);
+    if (result.youtube_url) {
+      console.log(`[run] YouTube: ${result.youtube_url}`);
+    }
+  } else {
+    console.log('[run] Weekly compilation skipped (not enough stories)');
+  }
+}
+
+async function runBlog() {
+  console.log('[run] === BLOG BUILD MODE ===');
+
+  const { build } = require('./blog/build');
+  await build();
+
+  console.log('[run] Blog build complete');
+}
+
 function runSchedule() {
   console.log('[run] ==========================================');
   console.log('[run] PULSE GAMING AUTONOMOUS SCHEDULER v2');
@@ -253,7 +309,10 @@ if (!mode) {
   console.log('  node run.js publish   — Upload to YouTube, TikTok, Instagram');
   console.log('  node run.js full      — Run complete autonomous cycle once');
   console.log('  node run.js approve   — Run auto-approval pass');
+  console.log('  node run.js watch     — Start breaking news watcher (continuous)');
+  console.log('  node run.js weekly    — Compile weekly longform roundup video');
   console.log('  node run.js schedule  — Start autonomous cron scheduler (24/7)');
+  console.log('  node run.js blog      — Rebuild static SEO blog from published stories');
   process.exit(0);
 }
 
@@ -275,8 +334,17 @@ if (!mode) {
       case 'approve':
         await runApprove();
         break;
+      case 'watch':
+        runWatch();
+        break;
+      case 'weekly':
+        await runWeekly();
+        break;
       case 'schedule':
         runSchedule();
+        break;
+      case 'blog':
+        await runBlog();
         break;
       default:
         console.log(`[run] Unknown mode: ${mode}`);

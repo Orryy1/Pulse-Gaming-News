@@ -25,6 +25,7 @@ dotenv.config({ override: true });
 
 const REPLY_LOG_PATH = path.join(__dirname, 'engagement_reply_log.json');
 const DAILY_NEWS_PATH = path.join(__dirname, 'daily_news.json');
+const ENGAGEMENT_STATS_PATH = path.join(__dirname, 'engagement_stats.json');
 
 // ---------- YouTube client ----------
 
@@ -312,11 +313,136 @@ async function smartReplyToTop(videoId) {
   }
 }
 
-// ---------- 4. Full engagement pass ----------
+// ---------- 4. Pinned comment rotation ----------
 
 /**
- * Fetch recent videos (last 48h) from daily_news.json and run
- * the full engagement suite: pin, heart, smart reply.
+ * After 24 hours, replace the pinned comment with a fresh one generated
+ * by Claude Haiku. Tracks rotation in the reply log (pinned_rotated: true).
+ */
+async function rotatePinnedComment(videoId, story) {
+  if (!videoId || !story) return null;
+
+  const log = await loadReplyLog();
+
+  // Check if already rotated today
+  if (log[videoId + '_rotated'] === todayISO()) {
+    console.log(`[engagement] Already rotated pin for ${videoId} today`);
+    return null;
+  }
+
+  // Only rotate if the video is at least 24h old
+  const publishTime = story.published_at || story.timestamp;
+  if (!publishTime) return null;
+  const ageMs = Date.now() - new Date(publishTime).getTime();
+  if (ageMs < 24 * 60 * 60 * 1000) return null;
+
+  try {
+    const Anthropic = require('@anthropic-ai/sdk');
+    const brand = require('./brand');
+    const channelName = brand.CHANNEL_NAME || 'Pulse Gaming';
+
+    const client = new Anthropic.default({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 150,
+      messages: [
+        {
+          role: 'user',
+          content:
+            `You are the community manager for ${channelName}, a YouTube gaming news channel. ` +
+            `Write a fresh pinned comment for a video titled "${story.title}". ` +
+            `The original comment was: "${(story.pinned_comment || '').substring(0, 200)}"\n\n` +
+            `Rules:\n` +
+            `- Under 200 characters\n` +
+            `- Reference the story topic\n` +
+            `- Ask a question to drive comments\n` +
+            `- Warm, British English tone\n` +
+            `- Include 1 emoji maximum\n` +
+            `- Just the comment text, nothing else`,
+        },
+      ],
+    });
+
+    const newComment = (response.content[0]?.text || '').trim();
+    if (!newComment) return null;
+
+    // Post the new pinned comment
+    const commentId = await pinComment(videoId, newComment);
+
+    if (commentId) {
+      // Track rotation in log
+      log[videoId + '_rotated'] = todayISO();
+      log[videoId + '_pinned_rotated'] = true;
+      await saveReplyLog(log);
+      console.log(`[engagement] Rotated pin on ${videoId}: "${newComment.substring(0, 60)}..."`);
+    }
+
+    return commentId;
+  } catch (err) {
+    console.log(`[engagement] rotatePinnedComment failed for ${videoId}: ${err.message}`);
+    return null;
+  }
+}
+
+// ---------- 5. Poll-style pinned comments ----------
+
+/**
+ * Generate a poll-format or engagement-format pinned comment based on
+ * the story's classification. Rumour/leak stories get a poll format;
+ * confirmed stories get a "drop your game" format.
+ */
+async function generatePollComment(story) {
+  if (!story) return null;
+
+  const classification = (story.classification || story.flair || '').toLowerCase();
+  const isRumourOrLeak = classification.includes('rumor') || classification.includes('rumour') || classification.includes('leak');
+
+  if (isRumourOrLeak) {
+    return `What's your take? \u{1F525} = Legit | \u{2744}\u{FE0F} = Fake | Reply with your prediction!`;
+  }
+
+  // Confirmed / verified / breaking — community engagement prompt
+  return `Drop your most-played game related to this news \u{1F447}`;
+}
+
+// ---------- 6. Engagement metrics tracking ----------
+
+/**
+ * Load the engagement stats file, returning a daily-keyed object.
+ */
+async function loadEngagementStats() {
+  if (await fs.pathExists(ENGAGEMENT_STATS_PATH)) {
+    return fs.readJson(ENGAGEMENT_STATS_PATH);
+  }
+  return {};
+}
+
+/**
+ * Record today's engagement metrics and persist to disk.
+ */
+async function recordEngagementStats(hearted, replies, pins) {
+  const stats = await loadEngagementStats();
+  const today = todayISO();
+
+  if (!stats[today]) {
+    stats[today] = { hearted: 0, replies: 0, pins: 0 };
+  }
+
+  stats[today].hearted += hearted;
+  stats[today].replies += replies;
+  stats[today].pins += pins;
+
+  await fs.writeJson(ENGAGEMENT_STATS_PATH, stats, { spaces: 2 });
+  console.log(`[engagement] Stats for ${today}: ${stats[today].hearted} hearts, ${stats[today].replies} replies, ${stats[today].pins} pins`);
+}
+
+// ---------- 7. Full engagement pass (extended to 7 days) ----------
+
+/**
+ * Fetch recent videos (last 7 days) from daily_news.json and run
+ * engagement. Full suite (pin + heart + reply) for first 48h,
+ * lighter touch (heart only) after 48h.
  */
 async function engageRecent() {
   if (!await fs.pathExists(DAILY_NEWS_PATH)) {
@@ -325,45 +451,78 @@ async function engageRecent() {
   }
 
   const stories = await fs.readJson(DAILY_NEWS_PATH);
-  const cutoff = Date.now() - (48 * 60 * 60 * 1000);
+  const now = Date.now();
+  const cutoff48h = now - (48 * 60 * 60 * 1000);
+  const cutoff7d = now - (7 * 24 * 60 * 60 * 1000);
 
   const recent = stories.filter(s => {
     if (!s.youtube_post_id) return false;
     if (s.publish_status !== 'published') return false;
-    // Check if published within last 48h
     const publishTime = s.published_at || s.engagement_last_run || s.timestamp;
-    if (publishTime && new Date(publishTime).getTime() < cutoff) return false;
+    if (publishTime && new Date(publishTime).getTime() < cutoff7d) return false;
     return true;
   });
 
-  console.log(`[engagement] ${recent.length} recent videos (last 48h) for engagement pass`);
+  console.log(`[engagement] ${recent.length} recent videos (last 7 days) for engagement pass`);
+
+  let totalHearted = 0;
+  let totalReplies = 0;
+  let totalPins = 0;
 
   for (const story of recent) {
     const videoId = story.youtube_post_id;
-    console.log(`[engagement] --- Processing ${videoId} ---`);
+    const publishTime = story.published_at || story.timestamp;
+    const isWithin48h = publishTime && new Date(publishTime).getTime() >= cutoff48h;
 
-    // 1. Pin comment if not already done
-    if (story.pinned_comment && !story.engagement_comment_id) {
-      const commentId = await pinComment(videoId, story.pinned_comment);
-      if (commentId) story.engagement_comment_id = commentId;
-    }
+    console.log(`[engagement] --- Processing ${videoId} (${isWithin48h ? 'full' : 'light'} mode) ---`);
 
-    // 2. Heart top 3 comments
-    try {
-      const hearted = await heartTopComments(videoId, 3);
-      story.engagement_hearts = (story.engagement_hearts || 0) + hearted;
-    } catch (err) {
-      console.log(`[engagement] Heart pass failed: ${err.message}`);
-    }
+    if (isWithin48h) {
+      // FULL engagement for first 48 hours: pin + heart + reply
 
-    // 3. Smart auto-reply (max 1 per video per day)
-    try {
-      const reply = await smartReplyToTop(videoId);
-      if (reply) {
-        story.engagement_replies = (story.engagement_replies || 0) + 1;
+      // 1. Pin comment if not already done
+      if (story.pinned_comment && !story.engagement_comment_id) {
+        const commentId = await pinComment(videoId, story.pinned_comment);
+        if (commentId) {
+          story.engagement_comment_id = commentId;
+          totalPins++;
+        }
       }
-    } catch (err) {
-      console.log(`[engagement] Smart reply failed: ${err.message}`);
+
+      // 2. Heart top 3 comments
+      try {
+        const hearted = await heartTopComments(videoId, 3);
+        story.engagement_hearts = (story.engagement_hearts || 0) + hearted;
+        totalHearted += hearted;
+      } catch (err) {
+        console.log(`[engagement] Heart pass failed: ${err.message}`);
+      }
+
+      // 3. Smart auto-reply (max 1 per video per day)
+      try {
+        const reply = await smartReplyToTop(videoId);
+        if (reply) {
+          story.engagement_replies = (story.engagement_replies || 0) + 1;
+          totalReplies++;
+        }
+      } catch (err) {
+        console.log(`[engagement] Smart reply failed: ${err.message}`);
+      }
+
+      // 4. Rotate pinned comment if older than 24h
+      try {
+        await rotatePinnedComment(videoId, story);
+      } catch (err) {
+        console.log(`[engagement] Pin rotation failed: ${err.message}`);
+      }
+    } else {
+      // LIGHT engagement after 48 hours: heart only
+      try {
+        const hearted = await heartTopComments(videoId, 2);
+        story.engagement_hearts = (story.engagement_hearts || 0) + hearted;
+        totalHearted += hearted;
+      } catch (err) {
+        console.log(`[engagement] Light heart pass failed: ${err.message}`);
+      }
     }
 
     story.engagement_last_run = new Date().toISOString();
@@ -374,7 +533,11 @@ async function engageRecent() {
 
   // Persist updates
   await fs.writeJson(DAILY_NEWS_PATH, stories, { spaces: 2 });
-  console.log('[engagement] Engagement pass complete');
+
+  // Record daily stats
+  await recordEngagementStats(totalHearted, totalReplies, totalPins);
+
+  console.log(`[engagement] Engagement pass complete — ${totalHearted} hearts, ${totalReplies} replies, ${totalPins} pins`);
 }
 
 // ---------- Exports ----------
@@ -383,6 +546,10 @@ module.exports = {
   pinComment,
   engageRecent,
   heartTopComments,
+  rotatePinnedComment,
+  generatePollComment,
+  loadEngagementStats,
+  recordEngagementStats,
   // Bonus exports for server/scheduler integration
   smartReplyToTop,
   getOwnChannelId,

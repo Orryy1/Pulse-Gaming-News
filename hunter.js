@@ -590,6 +590,9 @@ module.exports.fetchGameImages = fetchGameImages;
 module.exports.fetchTopComments = fetchTopComments;
 module.exports.detectCompany = detectCompany;
 module.exports.COMPANY_LOGOS = COMPANY_LOGOS;
+module.exports.scoreBreakingValue = scoreBreakingValue;
+module.exports.similarity = similarity;
+module.exports.fetchSubredditNew = fetchSubredditNew;
 
 if (require.main === module) {
   hunt().catch(err => {

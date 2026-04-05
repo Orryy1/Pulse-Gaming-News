@@ -623,7 +623,7 @@ async function assemble() {
     await fs.writeFile(filterScriptPath, filterGraph);
 
     try {
-      await execAsync(cmd, { timeout: 300000, maxBuffer: 10 * 1024 * 1024 });
+      await execAsync(cmd, { timeout: 600000, maxBuffer: 10 * 1024 * 1024 });
 
       story.exported_path = outputPath;
       rendered++;
@@ -783,7 +783,7 @@ async function assemble() {
           '-c:a aac -b:a 192k -r 30 -shortest',
           `-movflags +faststart "${outputPath}"`,
         ].join(' ');
-        await execAsync(simpleCmd, { timeout: 300000, maxBuffer: 10 * 1024 * 1024 });
+        await execAsync(simpleCmd, { timeout: 600000, maxBuffer: 10 * 1024 * 1024 });
         story.exported_path = outputPath;
         rendered++;
         console.log(`[assemble] Exported (single-image fallback with overlays): ${outputPath}`);

@@ -102,6 +102,10 @@ async function runProduce() {
   console.log('[run] Step 4: Video assembly (multi-image Ken Burns)...');
   await assemble();
 
+  console.log('[run] Step 5: Instagram Story images...');
+  const { generateStoryImages } = require('./images_story');
+  await generateStoryImages();
+
   const fs = require('fs-extra');
   let exportedPaths = [];
   if (await fs.pathExists('daily_news.json')) {

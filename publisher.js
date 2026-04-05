@@ -71,6 +71,10 @@ async function produce() {
   await images();
   await assemble();
 
+  // Generate Instagram Story images for each produced video
+  const { generateStoryImages } = require('./images_story');
+  await generateStoryImages();
+
   console.log('[publisher] Produce pipeline complete');
 }
 

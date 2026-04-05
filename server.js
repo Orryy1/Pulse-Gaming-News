@@ -377,6 +377,28 @@ app.post('/api/retry-publish', (req, res) => {
   res.json({ status: 'retrying', id });
 });
 
+// --- Story image download (for Instagram Stories) ---
+app.get('/api/story-image/:id', async (req, res) => {
+  try {
+    const stories = readNews();
+    const story = stories.find(s => s.id === req.params.id);
+    if (!story || !story.story_image_path) {
+      return res.status(404).json({ error: 'story image not found' });
+    }
+    const filePath = path.resolve(story.story_image_path);
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'file not found on disk' });
+    }
+    res.setHeader('Content-Type', 'image/png');
+    fs.createReadStream(filePath).pipe(res);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Serve story images directory for easy browsing
+app.use('/stories', express.static(path.join(__dirname, 'output', 'stories')));
+
 // --- Download ---
 app.get('/api/download/:id', async (req, res) => {
   try {

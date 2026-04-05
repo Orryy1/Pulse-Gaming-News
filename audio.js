@@ -80,11 +80,13 @@ async function generateAudio() {
       // Clean TTS script — remove markers and punctuation that causes vocal artifacts
       const rawTTS = story.tts_script || story.full_script;
       const ttsText = (rawTTS || '')
-        .replace(/\[PAUSE\]/gi, ', ')
+        .replace(/\[PAUSE\]/gi, '. ')     // period + space gives a natural pause without artifacts
         .replace(/\[VISUAL:[^\]]*\]/gi, '')
         .replace(/\.{2,}/g, '.')          // collapse ellipses to single period
         .replace(/[*_~`#|]/g, '')         // strip markdown formatting
+        .replace(/[^\x20-\x7E.,'!?;:\-()]/g, '') // strip non-ASCII chars that cause TTS glitches
         .replace(/\s+/g, ' ')
+        .replace(/\.\s*\./g, '.')         // collapse double periods from pause replacement
         .trim();
       const outputPath = path.join('output', 'audio', `${story.id}.mp3`);
 

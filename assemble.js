@@ -78,8 +78,18 @@ async function ensureBackgroundMusic(duration) {
     return musicPath;
   } catch (err) {
     console.log(`[assemble] Music generation failed (non-fatal): ${err.message}`);
-    // Fall back to existing track
+    // Fall back to existing channel track
     if (suitable.length > 0) return path.join(MUSIC_CACHE, suitable[0]);
+    // Fall back to any legacy track (trap_XXs.mp3, ambient_XXs.mp3)
+    const allCached = (await fs.readdir(MUSIC_CACHE)).filter(f => f.endsWith('.mp3'));
+    const legacy = allCached.filter(f => {
+      const m = f.match(/(\d+)s/);
+      return m && Math.abs(parseInt(m[1]) - duration) < 30;
+    });
+    if (legacy.length > 0) {
+      console.log(`[assemble] Using legacy track: ${legacy[0]}`);
+      return path.join(MUSIC_CACHE, legacy[0]);
+    }
     return null;
   }
 }
@@ -370,14 +380,19 @@ function buildVideoCommand(story, images, audioPath, assPath, filterScriptPath, 
   chain.push(
     `drawbox=x=0:y=ih-100:w=iw:h=2:color=${brand.PRIMARY_FFM}@0.7:t=fill`
   );
-  // PULSE GAMING text — left side of lower bar
+  // Channel name — left side of lower bar
+  const channel = getChannel();
+  const channelName = sanitizeDrawtext(channel.name || 'PULSE GAMING', 25);
+  const channelCTA = sanitizeDrawtext(
+    channel.cta ? channel.cta.replace(/^Follow /i, 'FOLLOW ').toUpperCase() : 'FOLLOW FOR DAILY LEAKS', 40
+  );
   chain.push(
-    `drawtext=text='PULSE GAMING':${fontOpt}:fontcolor=${brand.TEXT_FFM}@0.9:fontsize=28:` +
+    `drawtext=text='${channelName}':${fontOpt}:fontcolor=${brand.TEXT_FFM}@0.9:fontsize=28:` +
     `x=60:y=h-65`
   );
   // Follow CTA — right side of lower bar
   chain.push(
-    `drawtext=text='FOLLOW FOR DAILY LEAKS':${fontOpt}:fontcolor=${brand.MUTED_FFM}@0.6:fontsize=20:` +
+    `drawtext=text='${channelCTA}':${fontOpt}:fontcolor=${brand.MUTED_FFM}@0.6:fontsize=20:` +
     `x=w-tw-60:y=h-58`
   );
 
@@ -604,34 +619,164 @@ async function assemble() {
       const stat = await fs.stat(outputPath);
       console.log(`[assemble] Exported: ${outputPath} (${Math.round(stat.size / 1024 / 1024)}MB)`);
     } catch (err) {
-      console.log(`[assemble] ASS render failed for ${story.id}: ${err.stderr?.substring(err.stderr.length - 300) || err.message.substring(0, 300)}`);
-      console.log(`[assemble] Trying drawtext fallback...`);
+      const errDetail = err.stderr?.substring(err.stderr.length - 500) || err.message.substring(0, 500);
+      console.log(`[assemble] Main render failed for ${story.id}:\n${errDetail}`);
+      console.log(`[assemble] Trying single-image fallback with full overlays...`);
 
-      // Fallback: simple video without captions using filter_complex_script
+      // Fallback: single image but with ALL overlays (subtitles, branding, comments, music)
       try {
-        const fallbackFilter =
+        const fbFilterParts = [];
+        const fbInputs = [];
+        const totalFrames = Math.ceil(duration) * 30;
+
+        // Single image with proper Ken Burns zoom
+        fbInputs.push(`-loop 1 -t ${Math.ceil(duration) + 2} -i "${images[0].replace(/\\/g, '/')}"`);
+        fbFilterParts.push(
           `[0:v]scale=1080:1920:force_original_aspect_ratio=increase,` +
           `crop=1080:1920,` +
           `zoompan=z=min(zoom+0.0005\\,1.1):x=iw/2-(iw/zoom/2):y=ih/2-(ih/zoom/2):` +
-          `d=1:s=1080x1920:fps=30,format=yuv420p[outv]`;
+          `d=${totalFrames}:s=1080x1920:fps=30,format=yuv420p,setsar=1[base]`
+        );
+
+        // Audio input
+        const fbAudioIdx = 1;
+        fbInputs.push(`-i "${story.audio_path.replace(/\\/g, '/')}"`);
+
+        // Music input (if available)
+        let fbMusicIdx = -1;
+        if (musicPath && await fs.pathExists(musicPath)) {
+          fbMusicIdx = 2;
+          fbInputs.push(`-i "${musicPath.replace(/\\/g, '/')}"`);
+        }
+
+        // Build the same overlay chain as the main render
+        const fbChain = [];
+        const fontOpt = process.platform === 'win32' ? "font='Arial'" : "font='DejaVu Sans'";
+        const classInfo = brand.classificationColour(story.classification || story.flair);
+        const flair = sanitizeDrawtext(classInfo.label, 20);
+        const flairColor = classInfo.ffm;
+        const source = sanitizeDrawtext(
+          story.subreddit ? `r/${story.subreddit}` : (story.source_type || 'News'), 35
+        );
+
+        // Dark overlay + gradient
+        fbChain.push('eq=brightness=-0.08:saturation=1.2');
+        fbChain.push(`drawbox=x=0:y=ih-300:w=iw:h=300:color=${brand.PRIMARY_FFM}@0.08:t=fill`);
+
+        // ASS captions
+        if (assPath && await fs.pathExists(assPath)) {
+          const assFixed = assPath.replace(/\\/g, '/').replace(/:/g, '\\\\:');
+          fbChain.push(`ass=${assFixed}`);
+        }
+
+        // Flair badge
+        fbChain.push(
+          `drawtext=text='  ${flair}  ':${fontOpt}:fontcolor=white:fontsize=38:` +
+          `box=1:boxcolor=${flairColor}@0.85:boxborderw=14:x=40:y=100`
+        );
+        // Source badge
+        fbChain.push(
+          `drawtext=text='  ${source}  ':${fontOpt}:fontcolor=white@0.85:fontsize=26:` +
+          `box=1:boxcolor=${brand.MUTED_FFM}@0.6:boxborderw=8:x=40:y=155`
+        );
+        // Lower brand bar
+        fbChain.push(`drawbox=x=0:y=ih-100:w=iw:h=100:color=0x0D0D0F@0.85:t=fill`);
+        fbChain.push(`drawbox=x=0:y=ih-100:w=iw:h=2:color=${brand.PRIMARY_FFM}@0.7:t=fill`);
+        const fbChannel = getChannel();
+        const fbChannelName = sanitizeDrawtext(fbChannel.name || 'PULSE GAMING', 25);
+        const fbChannelCTA = sanitizeDrawtext(
+          fbChannel.cta ? fbChannel.cta.replace(/^Follow /i, 'FOLLOW ').toUpperCase() : 'FOLLOW FOR DAILY LEAKS', 40
+        );
+        fbChain.push(
+          `drawtext=text='${fbChannelName}':${fontOpt}:fontcolor=${brand.TEXT_FFM}@0.9:fontsize=28:x=60:y=h-65`
+        );
+        fbChain.push(
+          `drawtext=text='${fbChannelCTA}':${fontOpt}:fontcolor=${brand.MUTED_FFM}@0.6:fontsize=20:x=w-tw-60:y=h-58`
+        );
+
+        // Reddit comments with fade animations
+        const comments = story.reddit_comments || (story.top_comment ? [{ body: story.top_comment, author: 'Redditor', score: 0 }] : []);
+        if (comments.length > 0) {
+          const count = Math.min(comments.length, 6);
+          const usable = 0.8;
+          const gap = usable / count;
+          const ySlots = [190, 1300, 240, 1350, 200, 1320];
+
+          comments.slice(0, count).forEach((comment, ci) => {
+            const text = sanitizeDrawtext(comment.body, 500);
+            if (text.length < 10) return;
+            const author = sanitizeDrawtext(comment.author || 'Redditor', 25);
+            const score = comment.score || 0;
+            const ct = Math.floor(duration * (0.10 + ci * gap));
+            const showDur = 5;
+            const fadeDur = 0.4;
+            const yBase = ySlots[ci % ySlots.length];
+
+            const alphaExpr = `if(lt(t-${ct}\\,${fadeDur})\\,(t-${ct})/${fadeDur}\\,if(gt(t-${ct}\\,${showDur - fadeDur})\\,(${showDur}-(t-${ct}))/${fadeDur}\\,1))`;
+            const slideX = `if(lt(t-${ct}\\,${fadeDur})\\,(-20+60*(t-${ct})/${fadeDur})\\,40)`;
+            const enableExpr = `between(t\\,${ct}\\,${ct + showDur})`;
+
+            const words = text.split(' ');
+            const lines = [];
+            let current = '';
+            for (const word of words) {
+              if ((current + ' ' + word).length > 30 && current) {
+                lines.push(current);
+                current = word;
+              } else {
+                current = current ? current + ' ' + word : word;
+              }
+            }
+            if (current) lines.push(current);
+
+            const upvotes = score > 0 ? `  ${score} pts` : '';
+            fbChain.push(
+              `drawtext=text='  u/${author}${upvotes}  ':${fontOpt}:fontcolor=${brand.PRIMARY_FFM}:fontsize=26:` +
+              `box=1:boxcolor=0x0D0D0F@0.70:boxborderw=10:` +
+              `alpha='${alphaExpr}':x='${slideX}':y=${yBase}:enable='${enableExpr}'`
+            );
+            lines.forEach((line, li) => {
+              fbChain.push(
+                `drawtext=text='  ${line}  ':${fontOpt}:fontcolor=white:fontsize=24:` +
+                `box=1:boxcolor=0x0D0D0F@0.60:boxborderw=8:` +
+                `alpha='${alphaExpr}':x='${slideX}':y=${yBase + 40 + li * 40}:enable='${enableExpr}'`
+              );
+            });
+          });
+        }
+
+        fbFilterParts.push(`[base]${fbChain.join(',\n')}[outv]`);
+
+        // Audio mixing
+        let fbAudioMapping;
+        if (fbMusicIdx >= 0) {
+          fbFilterParts.push(`[${fbAudioIdx}:a]volume=1.0[voice]`);
+          fbFilterParts.push(`[${fbMusicIdx}:a]volume=${MUSIC_VOLUME}[bgm]`);
+          fbFilterParts.push(`[voice][bgm]amix=inputs=2:duration=first[outa]`);
+          fbAudioMapping = `-map "[outv]" -map "[outa]"`;
+        } else {
+          fbAudioMapping = `-map "[outv]" -map ${fbAudioIdx}:a`;
+        }
+
+        const fbFilterGraph = fbFilterParts.join(';\n');
         const fallbackFilterPath = path.join('output', 'subs', `${story.id}_fallback_filter.txt`);
-        await fs.writeFile(fallbackFilterPath, fallbackFilter);
+        await fs.writeFile(fallbackFilterPath, fbFilterGraph);
+
         const simpleCmd = [
           'ffmpeg -y',
-          `-loop 1 -i "${images[0].replace(/\\/g, '/')}"`,
-          `-i "${story.audio_path.replace(/\\/g, '/')}"`,
+          fbInputs.join(' '),
           `-filter_complex_script "${fallbackFilterPath.replace(/\\/g, '/')}"`,
-          `-map "[outv]" -map 1:a`,
+          fbAudioMapping,
           '-c:v libx264 -crf 21 -preset medium',
           '-c:a aac -b:a 192k -r 30 -shortest',
           `-movflags +faststart "${outputPath}"`,
         ].join(' ');
-        await execAsync(simpleCmd, { timeout: 180000 });
+        await execAsync(simpleCmd, { timeout: 300000, maxBuffer: 10 * 1024 * 1024 });
         story.exported_path = outputPath;
         rendered++;
-        console.log(`[assemble] Exported (no captions fallback): ${outputPath}`);
+        console.log(`[assemble] Exported (single-image fallback with overlays): ${outputPath}`);
       } catch (err2) {
-        console.log(`[assemble] ERROR rendering ${story.id}: ${err2.message.substring(0, 200)}`);
+        console.log(`[assemble] Fallback also failed for ${story.id}: ${err2.stderr?.substring(err2.stderr.length - 300) || err2.message.substring(0, 200)}`);
         skipped++;
       }
     }

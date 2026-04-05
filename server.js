@@ -576,8 +576,11 @@ function startAutonomousScheduler() {
   // Hunt every 3 hours — each hunt also auto-approves and produces videos
   console.log('[server] Auto-hunter enabled. Running every 3 hours.');
   console.log('[server] Each hunt: fetch → scripts → approve → audio → images → video');
-  runHunter();
-  hunterInterval = setInterval(runHunter, HUNTER_INTERVAL_MS);
+  // Delay first hunt by 30s to let server fully stabilise after deploy
+  setTimeout(() => {
+    runHunter();
+    hunterInterval = setInterval(runHunter, HUNTER_INTERVAL_MS);
+  }, 30000);
 
   // 3x daily publish windows — staggered for UK + US audience coverage
   // 07:00 UTC (8AM BST) — EU morning commute, catch UK/EU scrollers

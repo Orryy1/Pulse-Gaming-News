@@ -1,4 +1,5 @@
 const cron = require('node-cron');
+const fs = require('fs-extra');
 const sendDiscord = require('./notify');
 const dotenv = require('dotenv');
 
@@ -45,14 +46,38 @@ async function runHunt() {
   const hunt = require('./hunter');
   const process_stories = require('./processor');
 
+  // Load existing stories to preserve their state (approval, audio, video paths)
+  let existingStories = [];
+  if (await fs.pathExists('daily_news.json')) {
+    existingStories = await fs.readJson('daily_news.json');
+  }
+  const existingIds = new Set(existingStories.map(s => s.id));
+
   console.log('[run] Step 1: Multi-source hunting (Reddit + RSS)...');
   const stories = await hunt();
 
-  console.log('[run] Step 2: Processing scripts...');
-  await process_stories();
+  // Only process genuinely new stories
+  const newPosts = stories.filter(p => !existingIds.has(p.id));
+  console.log(`[run] ${stories.length} fetched, ${newPosts.length} new (${existingStories.length} existing preserved)`);
 
-  const titles = stories.map(s => `- ${s.title}`).join('\n');
-  await sendDiscord(`**Pulse Gaming Hunt Complete**\n${stories.length} stories found:\n${titles}`);
+  if (newPosts.length > 0) {
+    // Write only new posts for processor
+    await fs.writeJson('pending_news.json', { timestamp: new Date().toISOString(), stories: newPosts }, { spaces: 2 });
+
+    console.log('[run] Step 2: Processing scripts...');
+    await process_stories();
+
+    // Merge: newly processed stories + existing (preserves approval/production state)
+    const processed = await fs.readJson('daily_news.json');
+    const merged = [...processed, ...existingStories];
+    await fs.writeJson('daily_news.json', merged, { spaces: 2 });
+    console.log(`[run] Merged: ${processed.length} new + ${existingStories.length} existing = ${merged.length} total`);
+  } else {
+    console.log('[run] No new stories — skipping processor');
+  }
+
+  const titles = newPosts.map(s => `- ${s.title}`).join('\n');
+  await sendDiscord(`**Pulse Gaming Hunt Complete**\n${newPosts.length} new stories:\n${titles || '(none)'}`);
 
   console.log('[run] Hunt complete');
 }

@@ -359,7 +359,7 @@ Today's date is ${today}. You MUST follow these rules:
       content_pillar: getContentPillar(script.classification),
       affiliate_url: affiliateUrl,
       pinned_comment: pinnedComment,
-      approved: false,
+      approved: story.approved || false,
     };
 
     enriched.push(enrichedStory);

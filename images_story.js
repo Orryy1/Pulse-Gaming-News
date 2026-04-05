@@ -201,6 +201,20 @@ async function generateStoryImages() {
 
   await fs.writeJson('daily_news.json', stories, { spaces: 2 });
   console.log(`[stories] Generated ${toProcess.length} Story images`);
+
+  // Post each new Story image to Discord for approval
+  if (toProcess.length > 0) {
+    try {
+      const { postStoryForApproval } = require('./discord/auto_post');
+      for (const story of toProcess) {
+        if (story.story_image_path) {
+          await postStoryForApproval(story);
+        }
+      }
+    } catch (err) {
+      console.log(`[stories] Discord approval post skipped: ${err.message}`);
+    }
+  }
 }
 
 module.exports = { generateStoryImages, buildStorySvg };

@@ -214,8 +214,8 @@ async function postVideoUpload(story) {
     // Add platform links
     const links = [];
     if (story.youtube_url) links.push(`[YouTube](${story.youtube_url})`);
-    if (story.tiktok_post_id) links.push(`[TikTok](https://tiktok.com/@pulsegmg)`);
-    if (story.instagram_media_id) links.push(`[Instagram](https://instagram.com/pulsegmg)`);
+    if (story.tiktok_post_id) links.push(`[TikTok](https://tiktok.com/@pulsegamingnews)`);
+    if (story.instagram_media_id) links.push(`[Instagram](https://instagram.com/pulse.gmg)`);
 
     if (links.length > 0) {
       embed.addFields({ name: 'Watch On', value: links.join(' | '), inline: false });
@@ -234,4 +234,85 @@ async function postVideoUpload(story) {
   }
 }
 
-module.exports = { postNewStory, postVideoUpload };
+/**
+ * Post a Story image to Discord for approval before publishing to Instagram.
+ * Sends the image with Approve/Reject buttons to #video-drops.
+ */
+async function postStoryForApproval(story) {
+  try {
+    const client = await getClient();
+    if (!client) return null;
+
+    const fs = require('fs');
+    const path = require('path');
+    const { ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder } = require('discord.js');
+
+    const idMap = config.loadIdMap();
+    const channelId = idMap.channels && idMap.channels['video-drops'];
+
+    if (!channelId) {
+      console.error('[AutoPost] Channel "video-drops" not found in id_map.json.');
+      return null;
+    }
+
+    const channel = await client.channels.fetch(channelId).catch(() => null);
+    if (!channel) {
+      console.error('[AutoPost] Could not fetch video-drops channel.');
+      return null;
+    }
+
+    // Load Story image
+    const imagePath = story.story_image_path;
+    if (!imagePath || !fs.existsSync(imagePath)) {
+      console.log(`[AutoPost] No Story image for "${story.title}" — skipping approval post`);
+      return null;
+    }
+
+    const filename = path.basename(imagePath);
+    const attachment = new AttachmentBuilder(imagePath, { name: filename });
+
+    const embed = new EmbedBuilder()
+      .setColor(config.COLOURS.AMBER)
+      .setTitle(`Instagram Story: ${story.title || 'Untitled'}`)
+      .setDescription(
+        `${badge(story.flair)}\n\n` +
+        `**Approve or reject this Story image before it goes live.**\n\n` +
+        (story.hook ? `> ${story.hook}` : '')
+      )
+      .setImage(`attachment://${filename}`)
+      .addFields(
+        { name: 'Source', value: story.subreddit || story.source_type || 'Unknown', inline: true },
+        { name: 'Score', value: `${story.breaking_score || story.score || 0}`, inline: true },
+      )
+      .setFooter({ text: 'PULSE GAMING — Story Approval' })
+      .setTimestamp();
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`story-approve_${story.id}`)
+        .setLabel('Approve')
+        .setStyle(ButtonStyle.Success)
+        .setEmoji('✅'),
+      new ButtonBuilder()
+        .setCustomId(`story-reject_${story.id}`)
+        .setLabel('Reject')
+        .setStyle(ButtonStyle.Danger)
+        .setEmoji('❌'),
+    );
+
+    const msg = await channel.send({
+      content: '📸 **STORY IMAGE — Awaiting Approval**',
+      embeds: [embed],
+      files: [attachment],
+      components: [row],
+    });
+
+    console.log(`[AutoPost] Story approval posted for "${story.title}" to #video-drops`);
+    return msg;
+  } catch (err) {
+    console.error('[AutoPost] Failed to post Story for approval:', err.message);
+    return null;
+  }
+}
+
+module.exports = { postNewStory, postVideoUpload, postStoryForApproval };

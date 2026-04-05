@@ -14,6 +14,8 @@ const { getChannel } = require('./channels');
 
 const MUSIC_CACHE = path.join('output', 'music');
 const MUSIC_VOLUME = 0.12; // 12% volume — subtle background
+const MAX_IMAGES = 4; // Cap input streams to prevent Railway memory exhaustion
+const FFMPEG_THREADS = 2; // Limit FFmpeg threads to stay within container memory
 
 // --- Music library: pick a random track or generate a fresh one ---
 async function ensureBackgroundMusic(duration) {
@@ -277,6 +279,11 @@ function getFlairColor(classification) {
 
 // --- Build filter graph and command with broadcast overlays ---
 function buildVideoCommand(story, images, audioPath, assPath, filterScriptPath, outputPath, duration, musicPath) {
+  // Cap image count to prevent memory exhaustion on constrained containers
+  if (images.length > MAX_IMAGES) {
+    console.log(`[assemble] Capping images from ${images.length} to ${MAX_IMAGES} (memory guard)`);
+    images = images.slice(0, MAX_IMAGES);
+  }
   const inputs = [];
   const fontOpt = process.platform === 'win32' ? "font='Arial'" : "font='DejaVu Sans'";
   const segmentDuration = Math.max(4, Math.floor(duration / images.length));
@@ -485,11 +492,11 @@ function buildVideoCommand(story, images, audioPath, assPath, filterScriptPath, 
   const filterScriptFixed = filterScriptPath.replace(/\\/g, '/');
 
   const command = [
-    'ffmpeg -y',
+    `ffmpeg -y -threads ${FFMPEG_THREADS}`,
     inputs.join(' '),
     `-filter_complex_script "${filterScriptFixed}"`,
     audioMapping,
-    '-c:v libx264 -crf 21 -preset medium',
+    `-c:v libx264 -crf 21 -preset medium -threads ${FFMPEG_THREADS}`,
     '-c:a aac -b:a 192k',
     '-r 30 -shortest',
     `-movflags +faststart "${outputPath}"`,
@@ -768,11 +775,11 @@ async function assemble() {
         await fs.writeFile(fallbackFilterPath, fbFilterGraph);
 
         const simpleCmd = [
-          'ffmpeg -y',
+          `ffmpeg -y -threads ${FFMPEG_THREADS}`,
           fbInputs.join(' '),
           `-filter_complex_script "${fallbackFilterPath.replace(/\\/g, '/')}"`,
           fbAudioMapping,
-          '-c:v libx264 -crf 21 -preset medium',
+          `-c:v libx264 -crf 21 -preset medium -threads ${FFMPEG_THREADS}`,
           '-c:a aac -b:a 192k -r 30 -shortest',
           `-movflags +faststart "${outputPath}"`,
         ].join(' ');

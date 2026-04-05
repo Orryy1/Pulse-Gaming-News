@@ -392,6 +392,9 @@ app.get('/api/download/:id', async (req, res) => {
       return res.status(404).json({ error: 'file not found on disk' });
     }
 
+    const stat = fs.statSync(filePath);
+    res.setHeader('Content-Type', 'video/mp4');
+    res.setHeader('Content-Length', stat.size);
     res.setHeader('Content-Disposition', `attachment; filename=pulse-gaming-${req.params.id}.mp4`);
     const stream = fs.createReadStream(filePath);
     stream.pipe(res);

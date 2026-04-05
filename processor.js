@@ -355,6 +355,7 @@ Today's date is ${today}. You MUST follow these rules:
             full_script: story.title,
             word_count: 0,
             suggested_thumbnail_text: story.title.substring(0, 40),
+            suggested_title: story.title.substring(0, 60),
           };
         }
       }

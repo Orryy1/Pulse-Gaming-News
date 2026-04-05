@@ -114,8 +114,8 @@ function buildMetadata(story) {
   const brand = require('./brand');
   const classInfo = brand.classificationColour(story.classification || story.flair);
 
-  // Title: prepend classification, under 60 chars, primary keyword front-loaded
-  let baseTitle = story.suggested_thumbnail_text || story.title;
+  // Title: use LLM-generated curiosity gap title, fall back to thumbnail text or raw title
+  let baseTitle = story.suggested_title || story.suggested_thumbnail_text || story.title;
   baseTitle = baseTitle.replace(/#\s*shorts?\s*/gi, '').replace(/\[.*?\]\s*/g, '').trim();
   const prefix = `[${classInfo.label}] `;
   const maxTitleLen = 58 - prefix.length;

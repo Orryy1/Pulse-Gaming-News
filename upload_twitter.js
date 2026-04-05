@@ -188,7 +188,7 @@ async function uploadShort(story) {
 
   // Build tweet text (280 char limit)
   const classTag = (story.classification || '').replace(/[\[\]]/g, '');
-  let text = story.suggested_thumbnail_text || story.title;
+  let text = story.suggested_title || story.suggested_thumbnail_text || story.title;
   if (text.length > 200) text = text.substring(0, 197) + '...';
 
   const hashtags = '#GamingNews #GamingLeaks';

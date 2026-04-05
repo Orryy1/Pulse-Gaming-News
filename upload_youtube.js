@@ -134,7 +134,11 @@ function buildMetadata(story) {
   if (story.full_script) {
     const clean = story.full_script.replace(/\n/g, ' ').replace(/\[.*?\]/g, '').replace(/\s+/g, ' ').trim();
     const cutoff = clean.substring(0, 300);
-    const lastSentence = cutoff.search(/[.!?]\s+(?=[A-Z])/);
+    // Find the LAST sentence boundary within 300 chars (not the first)
+    let lastSentence = -1;
+    const re = /[.!?]\s+(?=[A-Z])/g;
+    let m;
+    while ((m = re.exec(cutoff)) !== null) lastSentence = m.index;
     if (lastSentence > 80) {
       descLines.push(cutoff.substring(0, lastSentence + 1).trim());
     } else {

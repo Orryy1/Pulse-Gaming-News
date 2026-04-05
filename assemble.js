@@ -323,6 +323,7 @@ function buildVideoCommand(story, images, audioPath, assPath, filterScriptPath, 
       `crop=1080:1920:0:${i % 3 === 0 ? '0' : i % 3 === 1 ? '(ih-oh)/2' : 'ih-oh'},` +
       `zoompan=${zoomExpr}:${xPan}:y=ih/2-(ih/zoom/2):` +
       `d=${segmentDuration * 30}:s=1080x1920:fps=30,` +
+      `trim=duration=${segmentDuration},setpts=PTS-STARTPTS,` +
       `format=yuv420p,setsar=1[v${i}]`
     );
   }
@@ -647,7 +648,8 @@ async function assemble() {
           `[0:v]scale=1080:1920:force_original_aspect_ratio=increase,` +
           `crop=1080:1920,` +
           `zoompan=z=min(zoom+0.0005\\,1.1):x=iw/2-(iw/zoom/2):y=ih/2-(ih/zoom/2):` +
-          `d=${totalFrames}:s=1080x1920:fps=30,format=yuv420p,setsar=1[base]`
+          `d=${totalFrames}:s=1080x1920:fps=30,` +
+          `trim=duration=${Math.ceil(duration)},setpts=PTS-STARTPTS,format=yuv420p,setsar=1[base]`
         );
 
         // Audio input

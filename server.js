@@ -939,6 +939,33 @@ app.get('/api/weekly/status', async (req, res) => {
   });
 });
 
+// --- Railway deploy webhook — forwards build/deploy failures to Discord ---
+app.post('/api/webhook/railway', async (req, res) => {
+  res.json({ ok: true });
+  try {
+    const sendDiscord = require('./notify');
+    const payload = req.body || {};
+    const status = payload.status || payload.type || 'unknown';
+    const service = payload.service?.name || payload.meta?.serviceName || 'Pulse Gaming';
+
+    if (['FAILED', 'CRASHED', 'REMOVED', 'BUILD_FAILED'].includes(status.toUpperCase()) ||
+        (payload.type === 'deploy' && payload.status === 'FAILED')) {
+      const error = payload.error || payload.meta?.error || 'No details provided';
+      await sendDiscord(
+        `**Railway Deploy FAILED**\n` +
+        `Service: ${service}\n` +
+        `Status: ${status}\n` +
+        `Error: ${error}\n\n` +
+        `Check Railway dashboard for details.`
+      );
+    } else if (status.toUpperCase() === 'SUCCESS' || status.toUpperCase() === 'DEPLOYED') {
+      await sendDiscord(`**Railway Deploy OK** — ${service} deployed successfully`);
+    }
+  } catch (err) {
+    console.log(`[server] Railway webhook error: ${err.message}`);
+  }
+});
+
 // --- SPA fallback ---
 app.get('/{*splat}', (req, res) => {
   const indexPath = path.join(__dirname, 'dist', 'index.html');

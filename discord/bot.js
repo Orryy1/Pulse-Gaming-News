@@ -4,6 +4,7 @@ dotenv.config({ path: require('path').join(__dirname, '..', '.env'), override: t
 const {
   Client, GatewayIntentBits, Collection, REST, Routes,
   EmbedBuilder, Events, Partials, ActivityType,
+  ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder,
 } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
@@ -332,6 +333,56 @@ async function assignLevelRoles(member, level) {
 // Slash command handler
 // ---------------------------------------------------------------------------
 client.on(Events.InteractionCreate, async (interaction) => {
+  // --- Button interactions (Story approval) ---
+  if (interaction.isButton()) {
+    const [action, storyId] = interaction.customId.split('_');
+    if (action === 'story-approve' || action === 'story-reject') {
+      try {
+        const fsExtra = require('fs-extra');
+        const newsPath = path.join(__dirname, '..', 'daily_news.json');
+        if (!fsExtra.pathExistsSync(newsPath)) {
+          return interaction.reply({ content: 'No stories found.', ephemeral: true });
+        }
+        const stories = fsExtra.readJsonSync(newsPath);
+        const story = stories.find(s => s.id === storyId);
+        if (!story) {
+          return interaction.reply({ content: `Story ${storyId} not found.`, ephemeral: true });
+        }
+
+        if (action === 'story-approve') {
+          story.story_approved = true;
+          story.story_approved_by = interaction.user.tag;
+          story.story_approved_at = new Date().toISOString();
+          fsExtra.writeJsonSync(newsPath, stories, { spaces: 2 });
+
+          const embed = EmbedBuilder.from(interaction.message.embeds[0])
+            .setColor(config.COLOURS.GREEN)
+            .setFooter({ text: `Approved by ${interaction.user.tag}` });
+          await interaction.update({
+            embeds: [embed],
+            components: [],
+          });
+        } else {
+          story.story_rejected = true;
+          story.story_rejected_by = interaction.user.tag;
+          fsExtra.writeJsonSync(newsPath, stories, { spaces: 2 });
+
+          const embed = EmbedBuilder.from(interaction.message.embeds[0])
+            .setColor(config.COLOURS.RED)
+            .setFooter({ text: `Rejected by ${interaction.user.tag}` });
+          await interaction.update({
+            embeds: [embed],
+            components: [],
+          });
+        }
+      } catch (err) {
+        console.error('[Bot] Story approval error:', err.message);
+        await interaction.reply({ content: `Error: ${err.message}`, ephemeral: true }).catch(() => {});
+      }
+    }
+    return;
+  }
+
   if (!interaction.isChatInputCommand()) return;
 
   // Built-in commands

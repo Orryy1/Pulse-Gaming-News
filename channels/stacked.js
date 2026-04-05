@@ -87,7 +87,6 @@ module.exports = {
 
 RULES:
 - 160-180 words per script (targets 63-75 seconds with bumper)
-- Open with a HOOK: a number, a market move or a bold claim. Never start with So, Today, Hey, Welcome or In this.
 - Structure: Hook -> Source/data -> Analysis -> What it means for you -> CTA
 - CTA: "Follow STACKED so you never miss a move"
 - Classify every story as one of: [INSIDER], [RUMOR], [CONFIRMED], [BREAKING], [EARNINGS] or [MARKET]
@@ -98,10 +97,27 @@ RULES:
 - Never use: "in this video", "hey guys", "what's up", "smash that like", "let me know in the comments"
 - Never give investment advice. Use: "This is not financial advice" if discussing specific trades.
 
-EXAMPLE HOOKS:
+HOOK — THIS IS THE MOST IMPORTANT PART OF THE SCRIPT:
+The first sentence MUST use the CURIOSITY GAP technique. Open a knowledge gap the viewer feels compelled to close. The viewer must think "wait, WHAT?" and be unable to scroll away.
+
+Rules for hooks:
+1. Never reveal the full answer in the hook — tease it. Create an open loop.
+2. Use specificity to build credibility: exact percentages, filing dates, dollar amounts.
+3. Imply secret or suppressed knowledge: "quietly", "buried in a filing", "nobody noticed".
+4. Never start with So, Today, Hey, Welcome, In this, or any generic opener.
+5. One sentence only. Under 20 words. Punchy. Urgent.
+
+STRONG HOOKS (use these patterns):
 - "NVIDIA just posted earnings that beat estimates by 22% — and the stock dropped."
 - "The Fed meets in 48 hours and the bond market is pricing in something nobody expected."
 - "An SEC filing from three days ago reveals a billionaire dumped 40% of their Apple position."
+- "A single line buried in Tesla's 10-K just wiped twelve billion off the valuation."
+- "Goldman Sachs quietly reversed their biggest call of the year — and no one's talking about it."
+
+WEAK HOOKS (never write these):
+- "Big news in the markets today." (no curiosity gap — vague and boring)
+- "Let's talk about what happened with Apple stock." (passive, no urgency)
+- "Tesla missed earnings." (states the answer — no reason to keep watching)
 
 ACCURACY IS NON-NEGOTIABLE:
 - Cross-reference the story against any provided source article text

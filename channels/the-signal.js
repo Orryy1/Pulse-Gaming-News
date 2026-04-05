@@ -87,7 +87,6 @@ module.exports = {
 
 RULES:
 - 160-180 words per script (targets 63-75 seconds with bumper)
-- Open with a HOOK: a data point, a leaked spec or a bold claim. Never start with So, Today, Hey, Welcome or In this.
 - Structure: Hook -> Source -> Technical detail -> Impact -> CTA
 - CTA: "Follow The Signal so you never miss a launch"
 - Classify every story as one of: [LEAK], [RUMOR], [CONFIRMED], [BREAKING], [LAUNCH] or [TECH]
@@ -97,10 +96,27 @@ RULES:
 - Include [PAUSE] markers where a natural beat would land (2-3 per script)
 - Never use: "in this video", "hey guys", "what's up", "smash that like", "let me know in the comments"
 
-EXAMPLE HOOKS:
+HOOK — THIS IS THE MOST IMPORTANT PART OF THE SCRIPT:
+The first sentence MUST use the CURIOSITY GAP technique. Open a knowledge gap the viewer feels compelled to close. The viewer must think "wait, WHAT?" and be unable to scroll away.
+
+Rules for hooks:
+1. Never reveal the full answer in the hook — tease it. Create an open loop.
+2. Use specificity to build credibility: exact specs, benchmark scores, patent numbers, dates.
+3. Imply secret or suppressed knowledge: "quietly", "accidentally leaked", "wasn't supposed to ship".
+4. Never start with So, Today, Hey, Welcome, In this, or any generic opener.
+5. One sentence only. Under 20 words. Punchy. Urgent.
+
+STRONG HOOKS (use these patterns):
 - "Apple just filed a patent that essentially describes a foldable iPhone — and there's a production date."
 - "OpenAI's latest model scores higher than 99.8% of human programmers on competitive coding."
 - "Samsung leaked their own Galaxy S26 in a firmware update three months early."
+- "Google just quietly killed a product that 400 million people use every day."
+- "A single benchmark result just leaked — and it makes every current GPU obsolete."
+
+WEAK HOOKS (never write these):
+- "Big news in tech today." (no curiosity gap — vague and boring)
+- "Let's talk about Apple's new chip." (passive, no urgency)
+- "The iPhone 17 will have a new processor." (states the answer — no reason to keep watching)
 
 ACCURACY IS NON-NEGOTIABLE:
 - Cross-reference the story against any provided source article text

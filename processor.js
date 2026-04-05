@@ -134,6 +134,22 @@ function validate(script, channelId) {
       errors.push(`Hook starts with banned word: "${banned}"`);
     }
   }
+  // Curiosity gap validation — hook must not be vague or give away the answer
+  const hookWords = (script.hook || '').split(/\s+/).length;
+  if (hookWords > 25) {
+    errors.push(`Hook too long (${hookWords} words) — must be under 25 words for punch`);
+  }
+  const weakPatterns = [
+    /^big news/i, /^breaking news/i, /^some news/i, /^here's what/i,
+    /^let's talk/i, /^did you know/i, /^you won't believe/i,
+    /^check this out/i, /^guess what/i,
+  ];
+  for (const pat of weakPatterns) {
+    if (pat.test(script.hook || '')) {
+      errors.push(`Hook uses weak/generic opener pattern — needs curiosity gap`);
+      break;
+    }
+  }
   // Validate classification exists (channel-aware)
   const validClassifications = CHANNEL_CLASSIFICATIONS[channelId] || CHANNEL_CLASSIFICATIONS['pulse-gaming'];
   if (!script.classification || !validClassifications.includes(script.classification)) {
@@ -148,12 +164,13 @@ async function scoreScript(client, script, story, channel) {
     const response = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 150,
-      system: `You score YouTube Shorts scripts for a ${channel.niche} news channel called ${channel.name} (1-10). Criteria:
-- Hook strength (does it grab attention in 2 seconds?)
-- Information density (facts per sentence, no filler)
-- Source credibility (does it cite sources?)
-- Pacing (punchy, no dead air, urgent tone)
-- CTA presence
+      system: `You score YouTube Shorts scripts for a ${channel.niche} news channel called ${channel.name} (1-10). Criteria (in priority order):
+- HOOK STRENGTH (40% of score): Does it use a CURIOSITY GAP? Does it open a knowledge gap that compels the viewer to keep watching? A hook that reveals the answer or is vague scores 1-3. A hook that creates genuine "wait, WHAT?" tension scores 8-10.
+- Information density (20%): facts per sentence, no filler
+- Source credibility (15%): does it cite sources?
+- Pacing (15%): punchy, no dead air, urgent tone
+- CTA presence (10%)
+A script with a weak hook can NEVER score above 5, regardless of how good the body is.
 Reply with ONLY a JSON object: { "score": N, "reason": "one sentence" }`,
       messages: [{
         role: 'user',

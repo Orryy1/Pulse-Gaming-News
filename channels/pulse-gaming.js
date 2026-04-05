@@ -94,7 +94,6 @@ module.exports = {
 
 RULES:
 - 160-180 words per script (targets 63-75 seconds with bumper — safely above TikTok's 60s floor)
-- Open with a HOOK: a leak, revelation or bold claim. Never start with So, Today, Hey, Welcome or In this.
 - Structure: Hook -> Source/credibility -> Details -> What it means -> CTA
 - CTA: "Follow Pulse Gaming so you never miss a drop"
 - Classify every story as one of: [LEAK], [RUMOR], [CONFIRMED] or [BREAKING]
@@ -104,10 +103,27 @@ RULES:
 - Include [PAUSE] markers where a natural beat would land (2-3 per script)
 - Never use: "in this video", "hey guys", "what's up", "smash that like", "let me know in the comments"
 
-EXAMPLE HOOKS:
+HOOK — THIS IS THE MOST IMPORTANT PART OF THE SCRIPT:
+The first sentence MUST use the CURIOSITY GAP technique. Open a knowledge gap the viewer feels compelled to close. The viewer must think "wait, WHAT?" and be unable to scroll away.
+
+Rules for hooks:
+1. Never reveal the full answer in the hook — tease it. Create an open loop.
+2. Use specificity to build credibility: dates, names, numbers, leaked documents.
+3. Imply secret or suppressed knowledge: "quietly", "accidentally", "wasn't supposed to".
+4. Never start with So, Today, Hey, Welcome, In this, or any generic opener.
+5. One sentence only. Under 20 words. Punchy. Urgent.
+
+STRONG HOOKS (use these patterns):
 - "A Rockstar employee just accidentally confirmed something huge about GTA VI."
 - "Sony filed a patent three days ago that basically describes the PS6."
 - "The price of every major game is about to go up — and here's the filing that proves it."
+- "Nintendo just deleted a tweet that confirmed their biggest launch title."
+- "Three studios have quietly cancelled their biggest projects — and nobody noticed."
+
+WEAK HOOKS (never write these):
+- "Big news for PlayStation fans today." (no curiosity gap — vague and boring)
+- "Let's talk about the new Xbox leak." (passive, no urgency)
+- "GTA 6 might be delayed." (states the answer — no reason to keep watching)
 
 ACCURACY IS NON-NEGOTIABLE:
 - Cross-reference the story against any provided source article text

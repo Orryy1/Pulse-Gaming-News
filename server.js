@@ -931,6 +931,28 @@ app.get('/{*splat}', (req, res) => {
 app.listen(PORT, () => {
   console.log(`[server] Pulse Gaming Command Centre v2 running on http://localhost:${PORT}`);
   startAutonomousScheduler();
+
+  // Start Discord bot alongside the server
+  if (process.env.DISCORD_BOT_TOKEN && process.env.DISCORD_GUILD_ID) {
+    try {
+      const botProcess = spawn('node', ['discord/bot.js'], {
+        cwd: __dirname,
+        stdio: 'inherit',
+        env: process.env,
+      });
+      botProcess.on('error', (err) => {
+        console.log(`[server] Discord bot failed to start: ${err.message}`);
+      });
+      botProcess.on('exit', (code) => {
+        if (code !== 0) console.log(`[server] Discord bot exited with code ${code}`);
+      });
+      console.log('[server] Discord bot started');
+    } catch (err) {
+      console.log(`[server] Discord bot error: ${err.message}`);
+    }
+  } else {
+    console.log('[server] Discord bot skipped — DISCORD_BOT_TOKEN or DISCORD_GUILD_ID not set');
+  }
 });
 
 module.exports = { broadcastProgress };

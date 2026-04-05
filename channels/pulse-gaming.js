@@ -69,9 +69,9 @@ module.exports = {
 
   // Social links (shown in every YouTube description)
   socials: {
-    tiktok: 'https://www.tiktok.com/@pulsegmg',
-    instagram: 'https://www.instagram.com/pulsegmg',
-    twitter: 'https://x.com/PulseGMG',
+    tiktok: 'https://www.tiktok.com/@pulsegamingnews',
+    instagram: 'https://www.instagram.com/pulse.gmg',
+    twitter: 'https://x.com/Pulse_GMG',
   },
 
   // Music prompts — varied pool for library generation (each video picks randomly)

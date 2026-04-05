@@ -1,0 +1,17 @@
+# Branding assets not needed at runtime
+branding/profile_picture.png
+branding/youtube_banner.png
+branding/twitter_banner.png
+branding/facebook_cover.png
+branding/discord_icon.png
+branding/email_header.png
+branding/shorts_thumbnail_bg.png
+branding/thumbnail_bg.png
+branding/highlight_*.png
+branding/logo_reveal.gif
+branding/logo_reveal.mp4
+
+# Keep these (used by pipeline):
+# branding/watermark.png — video assembly overlay
+# branding/intro_outro_card.png — bumper generation
+# branding/og_image.png — blog OG meta tag

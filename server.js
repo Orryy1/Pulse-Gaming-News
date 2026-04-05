@@ -983,6 +983,22 @@ app.get('/{*splat}', (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`[server] Pulse Gaming Command Centre v2 running on http://localhost:${PORT}`);
+
+  // Notify Discord on successful deploy (Railway restarts the process on each deploy)
+  (async () => {
+    try {
+      const sendDiscord = require('./notify');
+      const deployId = process.env.RAILWAY_DEPLOYMENT_ID || 'local';
+      const commitRef = process.env.RAILWAY_GIT_COMMIT_SHA?.substring(0, 7) || 'dev';
+      await sendDiscord(
+        `**Railway Deploy OK**\n` +
+        `Service: Pulse Gaming\n` +
+        `Commit: ${commitRef}\n` +
+        `Deploy: ${deployId}`
+      );
+    } catch (e) { /* silent */ }
+  })();
+
   startAutonomousScheduler();
 
   // Start Discord bot alongside the server

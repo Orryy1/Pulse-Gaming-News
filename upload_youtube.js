@@ -125,18 +125,19 @@ function buildMetadata(story) {
   const gameName = extractGameName(story.title);
   const platform = detectPlatform(story.title + ' ' + (story.body || ''));
 
+  const { getChannel } = require('./channels');
+  const channel = getChannel();
+
   const descLines = [];
-  // First line: keyword-rich summary (most SEO weight)
-  // Use the full script but truncate at the nearest sentence boundary within 300 chars
+
+  // --- Section 1: Keyword-rich summary (most SEO weight — first 200 chars indexed) ---
   if (story.full_script) {
     const clean = story.full_script.replace(/\n/g, ' ').replace(/\[.*?\]/g, '').replace(/\s+/g, ' ').trim();
-    // Find the last sentence-ending punctuation within 300 chars
     const cutoff = clean.substring(0, 300);
     const lastSentence = cutoff.search(/[.!?]\s+(?=[A-Z])/);
     if (lastSentence > 80) {
       descLines.push(cutoff.substring(0, lastSentence + 1).trim());
     } else {
-      // Fall back to last space within 300 chars
       const lastSpace = cutoff.lastIndexOf(' ');
       descLines.push(lastSpace > 80 ? cutoff.substring(0, lastSpace).trim() : cutoff.trim());
     }
@@ -144,24 +145,55 @@ function buildMetadata(story) {
     descLines.push(story.title);
   }
   descLines.push('');
+
+  // --- Section 2: Affiliate CTA ---
   if (story.affiliate_url) {
     descLines.push(`Check it out: ${story.affiliate_url}`);
     descLines.push('');
   }
+
+  // --- Section 3: Channel identity ---
   descLines.push(`${brand.CHANNEL_NAME} — ${brand.TAGLINE}`);
   descLines.push(brand.CTA ? brand.CTA.replace(/^Follow /i, 'Follow ') : 'Follow so you never miss an update.');
   descLines.push('');
-  if (story.subreddit) {
-    descLines.push(`Source: r/${story.subreddit}`);
+
+  // --- Section 4: Social links ---
+  const socials = channel.socials || {};
+  if (Object.keys(socials).length > 0) {
+    if (socials.tiktok) descLines.push(`TikTok: ${socials.tiktok}`);
+    if (socials.instagram) descLines.push(`Instagram: ${socials.instagram}`);
+    if (socials.twitter) descLines.push(`X/Twitter: ${socials.twitter}`);
+    if (socials.threads) descLines.push(`Threads: ${socials.threads}`);
     descLines.push('');
   }
-  // Hashtags: from channel config + dynamic extras
-  const { getChannel } = require('./channels');
-  const channel = getChannel();
+
+  // --- Section 5: Sources ---
+  const sourceLinks = [];
+  if (story.url && story.url.startsWith('http')) sourceLinks.push(story.url);
+  if (story.article_url && story.article_url.startsWith('http') && story.article_url !== story.url) {
+    sourceLinks.push(story.article_url);
+  }
+  if (sourceLinks.length > 0 || story.subreddit) {
+    descLines.push('======================');
+    descLines.push('Sources:');
+    if (story.subreddit) descLines.push(`r/${story.subreddit}`);
+    sourceLinks.forEach(link => descLines.push(link));
+    descLines.push('======================');
+    descLines.push('');
+  }
+
+  // --- Section 6: Hashtags (dynamic — company/game specific + channel defaults) ---
   const hashtags = [...(channel.hashtags || ['#Shorts'])];
   if (gameName) hashtags.push(`#${gameName.replace(/[^a-zA-Z0-9]/g, '')}`);
   if (platform) hashtags.push(`#${platform}`);
-  descLines.push(hashtags.slice(0, 6).join(' '));
+  // Add company hashtags from story detection
+  if (story.company_name) {
+    const companyTag = `#${story.company_name.replace(/[^a-zA-Z0-9]/g, '')}`;
+    if (!hashtags.some(h => h.toLowerCase() === companyTag.toLowerCase())) {
+      hashtags.push(companyTag);
+    }
+  }
+  descLines.push(hashtags.slice(0, 8).join(' '));
 
   const description = descLines.join('\n');
 

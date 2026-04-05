@@ -67,6 +67,13 @@ module.exports = {
   youtubeCategory: '20', // Gaming
   hashtags: ['#Shorts', '#GamingNews', '#GamingLeaks', '#PulseGaming'],
 
+  // Social links (shown in every YouTube description)
+  socials: {
+    tiktok: 'https://www.tiktok.com/@pulsegmg',
+    instagram: 'https://www.instagram.com/pulsegmg',
+    twitter: 'https://x.com/PulseGMG',
+  },
+
   // Music prompts — varied pool for library generation (each video picks randomly)
   musicPrompt: 'dark minimal trap beat, subtle 808 bass, crisp hi-hats, gaming news tension, cinematic, atmospheric, no vocals',
   musicPrompts: [

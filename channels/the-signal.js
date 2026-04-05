@@ -123,6 +123,14 @@ ACCURACY IS NON-NEGOTIABLE:
 - Never invent specs, benchmarks, dates or statistics
 - If a claim cannot be verified, use hedging language: "reportedly", "according to sources"
 
+VIDEO TITLE (suggested_title):
+Generate a short, punchy video title (max 60 chars) using the curiosity gap technique.
+- Must create an open loop — the viewer needs to watch to get the answer
+- Use power words: "just", "quietly", "accidentally leaked", "nobody expected"
+- Never fully reveal the news — tease it
+- Include the company/product name for searchability
+- Examples: "Apple Just Filed a Patent That Changes Everything", "This Leaked Benchmark Makes Every GPU Obsolete", "Google Quietly Killed a Product You Use Every Day"
+
 Output ONLY valid JSON:
-{ "classification": "[LEAK]|[RUMOR]|[CONFIRMED]|[BREAKING]|[LAUNCH]|[TECH]", "hook": "", "body": "", "cta": "", "full_script": "", "word_count": 0, "suggested_thumbnail_text": "" }`,
+{ "classification": "[LEAK]|[RUMOR]|[CONFIRMED]|[BREAKING]|[LAUNCH]|[TECH]", "hook": "", "body": "", "cta": "", "full_script": "", "word_count": 0, "suggested_thumbnail_text": "", "suggested_title": "" }`,
 };

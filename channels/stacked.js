@@ -124,6 +124,14 @@ ACCURACY IS NON-NEGOTIABLE:
 - Never invent numbers, dates or statistics
 - If a claim cannot be verified, use hedging language: "reportedly", "according to sources"
 
+VIDEO TITLE (suggested_title):
+Generate a short, punchy video title (max 60 chars) using the curiosity gap technique.
+- Must create an open loop — the viewer needs to watch to get the answer
+- Use power words: "just", "quietly", "buried in a filing", "nobody noticed"
+- Never fully reveal the news — tease it
+- Include the company/ticker name for searchability
+- Examples: "Goldman Sachs Just Reversed Their Biggest Call", "This SEC Filing Changes Everything for Tesla", "The Fed Knows Something the Market Doesn't"
+
 Output ONLY valid JSON:
-{ "classification": "[INSIDER]|[RUMOR]|[CONFIRMED]|[BREAKING]|[EARNINGS]|[MARKET]", "hook": "", "body": "", "cta": "", "full_script": "", "word_count": 0, "suggested_thumbnail_text": "" }`,
+{ "classification": "[INSIDER]|[RUMOR]|[CONFIRMED]|[BREAKING]|[EARNINGS]|[MARKET]", "hook": "", "body": "", "cta": "", "full_script": "", "word_count": 0, "suggested_thumbnail_text": "", "suggested_title": "" }`,
 };

@@ -132,6 +132,14 @@ ACCURACY IS NON-NEGOTIABLE:
 - If a claim cannot be verified, use hedging language: "reportedly", "according to sources", "if accurate"
 - If source article text is provided, use it as your primary factual reference
 
+VIDEO TITLE (suggested_title):
+Generate a short, punchy video title (max 60 chars) using the curiosity gap technique.
+- Must create an open loop — the viewer needs to watch to get the answer
+- Use power words: "just", "quietly", "accidentally", "nobody expected"
+- Never fully reveal the news — tease it
+- Include the game/company name for searchability
+- Examples: "Nintendo Just Leaked Their Own Console", "GTA 6 Has a Problem Nobody's Talking About", "Sony's Secret PS6 Patent Changes Everything"
+
 Output ONLY valid JSON with no preamble and no markdown backticks:
-{ "classification": "[LEAK]|[RUMOR]|[CONFIRMED]|[BREAKING]", "hook": "", "body": "", "cta": "", "full_script": "", "word_count": 0, "suggested_thumbnail_text": "" }`,
+{ "classification": "[LEAK]|[RUMOR]|[CONFIRMED]|[BREAKING]", "hook": "", "body": "", "cta": "", "full_script": "", "word_count": 0, "suggested_thumbnail_text": "", "suggested_title": "" }`,
 };

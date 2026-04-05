@@ -125,7 +125,7 @@ async function uploadReel(story) {
   // Build caption — channel-aware hashtags
   const { getChannel } = require('./channels');
   const channel = getChannel();
-  let caption = story.suggested_thumbnail_text || story.title;
+  let caption = story.suggested_title || story.suggested_thumbnail_text || story.title;
   caption += '\n\n' + (story.full_script || '').substring(0, 500);
   const tags = (channel.hashtags || []).map(h => h.replace('#Shorts', '#reels')).join(' ');
   caption += '\n\n' + tags + ' #viral #explore';

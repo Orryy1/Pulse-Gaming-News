@@ -110,7 +110,7 @@ async function uploadVideo(story) {
   // Build caption (TikTok max 2200 chars) — channel-aware hashtags
   const { getChannel } = require('./channels');
   const channel = getChannel();
-  let caption = story.suggested_thumbnail_text || story.title;
+  let caption = story.suggested_title || story.suggested_thumbnail_text || story.title;
   if (caption.length > 100) caption = caption.substring(0, 97) + '...';
   const tags = (channel.hashtags || []).join(' ') + ' #viral #fyp';
   caption += ' ' + tags;

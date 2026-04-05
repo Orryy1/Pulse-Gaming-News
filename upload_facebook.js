@@ -55,7 +55,7 @@ async function uploadReel(story) {
   const videoUrl = `${publicBaseUrl}/api/download/${story.id}`;
 
   // Build description
-  let description = story.suggested_thumbnail_text || story.title;
+  let description = story.suggested_title || story.suggested_thumbnail_text || story.title;
   description += '\n\n' + (story.full_script || '').substring(0, 300);
   description += '\n\n#gaming #gamingnews #gamingleaks #gamingcommunity #reels';
   if (description.length > 2000) description = description.substring(0, 1997) + '...';
@@ -98,7 +98,7 @@ async function uploadReel(story) {
     {
       upload_phase: 'finish',
       video_id: videoId,
-      title: (story.suggested_thumbnail_text || story.title || '').substring(0, 100),
+      title: (story.suggested_title || story.suggested_thumbnail_text || story.title || '').substring(0, 100),
       description,
       access_token: accessToken,
     }

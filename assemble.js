@@ -293,17 +293,8 @@ function buildVideoCommand(story, images, audioPath, assPath, filterScriptPath, 
     inputs.push(`-loop 1 -t ${segmentDuration} -i "${images[i].replace(/\\/g, '/')}"`);
   }
 
-  // Watermark input (if brand PNG exists)
-  const watermarkPath = path.join(__dirname, 'branding', 'watermark.png');
-  const hasWatermark = fs.existsSync(watermarkPath);
-  let watermarkIdx = -1;
-  if (hasWatermark) {
-    watermarkIdx = images.length;
-    inputs.push(`-i "${watermarkPath.replace(/\\/g, '/')}"`);
-  }
-
   // Audio inputs
-  const audioIdx = images.length + (hasWatermark ? 1 : 0);
+  const audioIdx = images.length;
   inputs.push(`-i "${audioPath.replace(/\\/g, '/')}"`);
   let musicIdx = -1;
   if (musicPath) {
@@ -411,20 +402,6 @@ function buildVideoCommand(story, images, audioPath, assPath, filterScriptPath, 
     `drawtext=text='${channelCTA}':${fontOpt}:fontcolor=${brand.MUTED_FFM}@0.6:fontsize=20:` +
     `x=w-tw-60:y=h-58`
   );
-
-  // Brand watermark overlay — bottom right, above brand bar, semi-transparent
-  if (hasWatermark) {
-    // End the drawtext chain, overlay watermark, then start new chain for comments
-    filterParts.push(`[${currentLabel}]${chain.join(',\n')}[pre_wm]`);
-    filterParts.push(
-      `[${watermarkIdx}:v]scale=60:60,format=rgba[wm]`
-    );
-    filterParts.push(
-      `[pre_wm][wm]overlay=x=W-80:y=H-170:format=auto[post_wm]`
-    );
-    currentLabel = 'post_wm';
-    chain.length = 0; // reset chain — remaining filters go on post_wm
-  }
 
   // Reddit comments — scattered throughout the video as semi-transparent overlays
   const comments = story.reddit_comments || (story.top_comment ? [{ body: story.top_comment, author: 'Redditor', score: 0 }] : []);
@@ -673,22 +650,14 @@ async function assemble() {
           `d=${totalFrames}:s=1080x1920:fps=30,format=yuv420p,setsar=1[base]`
         );
 
-<<<<<<< HEAD
-        // Watermark input (if exists)
-        let fbWatermarkIdx = -1;
-        if (hasWatermark) {
-          fbWatermarkIdx = 1;
-          fbInputs.push(`-i "${watermarkPath.replace(/\\/g, '/')}"`);
-        }
-
         // Audio input
-        const fbAudioIdx = 1 + (hasWatermark ? 1 : 0);
+        const fbAudioIdx = 1;
         fbInputs.push(`-i "${story.audio_path.replace(/\\/g, '/')}"`);
 
         // Music input (if available)
         let fbMusicIdx = -1;
         if (musicPath && await fs.pathExists(musicPath)) {
-          fbMusicIdx = fbAudioIdx + 1;
+          fbMusicIdx = 2;
           fbInputs.push(`-i "${musicPath.replace(/\\/g, '/')}"`);
         }
 
@@ -788,13 +757,7 @@ async function assemble() {
           });
         }
 
-        if (fbWatermarkIdx >= 0) {
-          fbFilterParts.push(`[base]${fbChain.join(',\n')}[pre_wm]`);
-          fbFilterParts.push(`[${fbWatermarkIdx}:v]scale=60:60,format=rgba[wm]`);
-          fbFilterParts.push(`[pre_wm][wm]overlay=x=W-80:y=H-170:format=auto[outv]`);
-        } else {
-          fbFilterParts.push(`[base]${fbChain.join(',\n')}[outv]`);
-        }
+        fbFilterParts.push(`[base]${fbChain.join(',\n')}[outv]`);
 
         // Audio mixing
         let fbAudioMapping;

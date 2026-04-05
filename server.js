@@ -126,6 +126,7 @@ function updateStory(id, updates) {
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
+    version: 'v2.1.0',
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
     hunterActive: !!hunterInterval,

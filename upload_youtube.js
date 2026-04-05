@@ -7,6 +7,25 @@ dotenv.config({ override: true });
 
 const TOKEN_PATH = path.join(__dirname, 'tokens', 'youtube_token.json');
 const CREDENTIALS_PATH = path.join(__dirname, 'tokens', 'youtube_credentials.json');
+const PLAYLIST_PATH = path.join(__dirname, 'tokens', 'youtube_playlists.json');
+
+// --- Playlist definitions ---
+const PLAYLIST_DEFS = [
+  { key: 'breaking', title: 'Breaking Gaming News', desc: 'The biggest breaking stories in gaming — delivered fast. Follow Pulse Gaming so you never miss a beat.' },
+  { key: 'leaks_rumours', title: 'Gaming Leaks & Rumours', desc: 'The latest gaming leaks, insider info and rumours — all in one place. Follow Pulse Gaming so you never miss a beat.' },
+  { key: 'confirmed', title: 'Confirmed Gaming News', desc: 'Verified, confirmed gaming news you can trust. Follow Pulse Gaming so you never miss a beat.' },
+  { key: 'all_shorts', title: 'All Pulse Gaming Shorts', desc: 'Every Pulse Gaming Short in one playlist. Sit back, hit play and catch up on everything. Follow Pulse Gaming so you never miss a beat.' },
+];
+
+// Map classification tags to playlist keys
+function getPlaylistKeys(classification) {
+  const c = (classification || '').toLowerCase();
+  const keys = ['all_shorts']; // every video goes here
+  if (c.includes('breaking')) keys.unshift('breaking');
+  else if (c.includes('leak') || c.includes('rumor') || c.includes('rumour')) keys.unshift('leaks_rumours');
+  else if (c.includes('confirmed')) keys.unshift('confirmed');
+  return keys;
+}
 
 // --- OAuth2 client setup ---
 async function getAuthClient() {
@@ -253,6 +272,105 @@ function detectPlatform(text) {
   return null;
 }
 
+// --- Ensure playlists exist on YouTube (creates if missing, caches IDs) ---
+async function ensurePlaylists(youtube) {
+  // Load cached playlist IDs
+  let cached = {};
+  if (await fs.pathExists(PLAYLIST_PATH)) {
+    cached = await fs.readJson(PLAYLIST_PATH);
+  }
+
+  // Check if all playlists are already cached
+  const allCached = PLAYLIST_DEFS.every(p => cached[p.key]);
+  if (allCached) return cached;
+
+  // Fetch existing playlists from channel to avoid duplicates
+  const existing = {};
+  try {
+    let pageToken = null;
+    do {
+      const res = await youtube.playlists.list({
+        part: ['snippet'],
+        mine: true,
+        maxResults: 50,
+        pageToken,
+      });
+      for (const item of res.data.items || []) {
+        existing[item.snippet.title] = item.id;
+      }
+      pageToken = res.data.nextPageToken;
+    } while (pageToken);
+  } catch (err) {
+    console.log(`[youtube] Could not list playlists: ${err.message}`);
+  }
+
+  // Create missing playlists
+  for (const def of PLAYLIST_DEFS) {
+    if (cached[def.key]) continue;
+
+    // Check if it already exists on the channel
+    if (existing[def.title]) {
+      cached[def.key] = existing[def.title];
+      console.log(`[youtube] Found existing playlist: ${def.title} (${existing[def.title]})`);
+      continue;
+    }
+
+    try {
+      const res = await youtube.playlists.insert({
+        part: ['snippet', 'status'],
+        requestBody: {
+          snippet: { title: def.title, description: def.desc },
+          status: { privacyStatus: 'public' },
+        },
+      });
+      cached[def.key] = res.data.id;
+      console.log(`[youtube] Created playlist: ${def.title} (${res.data.id})`);
+    } catch (err) {
+      console.log(`[youtube] Failed to create playlist "${def.title}": ${err.message}`);
+    }
+  }
+
+  await fs.ensureDir(path.dirname(PLAYLIST_PATH));
+  await fs.writeJson(PLAYLIST_PATH, cached, { spaces: 2 });
+  return cached;
+}
+
+// --- Add a video to playlists based on its classification ---
+async function addToPlaylists(youtube, videoId, classification) {
+  let playlists = {};
+  if (await fs.pathExists(PLAYLIST_PATH)) {
+    playlists = await fs.readJson(PLAYLIST_PATH);
+  }
+
+  const keys = getPlaylistKeys(classification);
+  const added = [];
+
+  for (const key of keys) {
+    const playlistId = playlists[key];
+    if (!playlistId) continue;
+
+    try {
+      await youtube.playlistItems.insert({
+        part: ['snippet'],
+        requestBody: {
+          snippet: {
+            playlistId,
+            resourceId: { kind: 'youtube#video', videoId },
+          },
+        },
+      });
+      added.push(key);
+    } catch (err) {
+      console.log(`[youtube] Failed to add to ${key} playlist: ${err.message}`);
+    }
+  }
+
+  if (added.length > 0) {
+    console.log(`[youtube] Added to playlists: ${added.join(', ')}`);
+  }
+  return added;
+}
+
 // --- Upload a single video as YouTube Short ---
 async function uploadShort(story) {
   const auth = await getAuthClient();
@@ -290,6 +408,14 @@ async function uploadShort(story) {
 
   const videoId = response.data.id;
   console.log(`[youtube] Uploaded: https://youtube.com/shorts/${videoId}`);
+
+  // Add to playlists based on classification
+  try {
+    await ensurePlaylists(youtube);
+    await addToPlaylists(youtube, videoId, story.classification);
+  } catch (err) {
+    console.log(`[youtube] Playlist assignment failed (non-critical): ${err.message}`);
+  }
 
   // Post pinned comment
   if (story.pinned_comment) {
@@ -441,12 +567,19 @@ async function uploadLongform(compilation) {
   };
 }
 
-module.exports = { uploadShort, uploadAll, uploadLongform, generateAuthUrl, exchangeCode, getAuthClient };
+module.exports = { uploadShort, uploadAll, uploadLongform, generateAuthUrl, exchangeCode, getAuthClient, ensurePlaylists, addToPlaylists };
 
 if (require.main === module) {
   const cmd = process.argv[2];
 
-  if (cmd === 'auth') {
+  if (cmd === 'playlists') {
+    (async () => {
+      const auth = await getAuthClient();
+      const youtube = google.youtube({ version: 'v3', auth });
+      const ids = await ensurePlaylists(youtube);
+      console.log('[youtube] Playlist IDs:', JSON.stringify(ids, null, 2));
+    })().catch(console.error);
+  } else if (cmd === 'auth') {
     generateAuthUrl().catch(console.error);
   } else if (cmd === 'token') {
     const code = process.argv[3];

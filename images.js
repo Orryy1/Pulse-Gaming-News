@@ -11,7 +11,7 @@ const OUTPUT_DIR = path.join('output', 'images');
 const CACHE_DIR = path.join('output', 'image_cache');
 
 // --- Build professional SVG composite with real images embedded ---
-function buildProSvg(title, thumbnailText, flair, heroImageBase64, logoImageBase64, hasHero, classification) {
+function buildProSvg(title, thumbnailText, flair, heroImageBase64, logoImageBase64, hasHero, classification, bgImageBase64) {
   const classInfo = brand.classificationColour(classification || flair);
   const flairColour = classInfo.hex;
   const flairLabel = classInfo.label;
@@ -82,6 +82,37 @@ function buildProSvg(title, thumbnailText, flair, heroImageBase64, logoImageBase
            preserveAspectRatio="xMidYMid meet" opacity="0.8"/>
   ` : '';
 
+  // When branded background is available, use a clean minimal layout
+  // When not, fall back to the full layout with gradient + hero sections
+  if (bgImageBase64) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+       width="1080" height="1920" viewBox="0 0 1080 1920">
+  <defs>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Branded background template -->
+  <image href="data:image/png;base64,${bgImageBase64}" x="0" y="0" width="1080" height="1920" preserveAspectRatio="xMidYMid slice"/>
+
+  <!-- Flair badge — centred in the glow -->
+  <rect x="340" y="620" width="400" height="52" rx="26" fill="${flairColour}" opacity="0.15"/>
+  <rect x="340" y="620" width="400" height="52" rx="26" fill="none"
+        stroke="${flairColour}" stroke-width="1.5" opacity="0.5"/>
+  <circle cx="375" cy="646" r="7" fill="${flairColour}"/>
+  <text x="540" y="654" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
+        font-size="20" font-weight="700" letter-spacing="3" fill="${flairColour}">${flairLabel}</text>
+
+  <!-- Main headline text — centred below badge, inside the glow -->
+  <text x="540" y="770" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
+        font-size="82" font-weight="900" fill="${brand.PRIMARY}" filter="url(#glow)"
+        letter-spacing="-2">${thumbTspans}</text>
+</svg>`;
+  }
+
+  // --- Full layout (no branded background) ---
   return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
        width="1080" height="1920" viewBox="0 0 1080 1920">
   <defs>
@@ -124,56 +155,20 @@ function buildProSvg(title, thumbnailText, flair, heroImageBase64, logoImageBase
   </pattern>
   <rect width="1080" height="1920" fill="url(#scanlines)"/>
 
-  <!-- Breaking news banner -->
-  <rect x="0" y="100" width="1080" height="60" fill="${brand.PRIMARY}" opacity="0.12"/>
-  <rect x="0" y="100" width="1080" height="2" fill="${brand.PRIMARY}" opacity="0.6"/>
-  <rect x="0" y="158" width="1080" height="2" fill="${brand.PRIMARY}" opacity="0.3"/>
-  <text x="540" y="140" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
-        font-size="20" font-weight="800" letter-spacing="8" fill="${brand.PRIMARY}" opacity="0.9">${flairLabel}</text>
-
   ${logoSection}
 
   <!-- Flair badge -->
-  <rect x="340" y="800" width="400" height="52" rx="26" fill="${flairColour}" opacity="0.15"/>
-  <rect x="340" y="800" width="400" height="52" rx="26" fill="none"
+  <rect x="340" y="620" width="400" height="52" rx="26" fill="${flairColour}" opacity="0.15"/>
+  <rect x="340" y="620" width="400" height="52" rx="26" fill="none"
         stroke="${flairColour}" stroke-width="1.5" opacity="0.5"/>
-  <circle cx="375" cy="826" r="7" fill="${flairColour}"/>
-  <text x="540" y="834" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
+  <circle cx="375" cy="646" r="7" fill="${flairColour}"/>
+  <text x="540" y="654" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
         font-size="20" font-weight="700" letter-spacing="3" fill="${flairColour}">${flairLabel}</text>
 
-  <!-- Main headline text (large, word-wrapped) -->
-  <text x="540" y="920" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
+  <!-- Main headline text -->
+  <text x="540" y="770" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
         font-size="82" font-weight="900" fill="${brand.PRIMARY}" filter="url(#glow)"
         letter-spacing="-2">${thumbTspans}</text>
-
-  <!-- Story title -->
-  <text x="540" y="1120" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
-        font-size="52" font-weight="700" fill="rgba(255,255,255,0.9)" filter="url(#shadow)">
-    ${titleLines}
-  </text>
-
-  <!-- Accent design elements -->
-  <rect x="60" y="1400" width="960" height="1" fill="${brand.PRIMARY}" opacity="0.15"/>
-  <rect x="60" y="300" width="3" height="200" fill="${brand.PRIMARY}" opacity="0.2"/>
-  <rect x="1017" y="1400" width="3" height="200" fill="${brand.PRIMARY}" opacity="0.2"/>
-
-  <!-- Bottom bar (branded) -->
-  <rect x="0" y="1750" width="1080" height="170" fill="rgba(0,0,0,0.75)"/>
-  <rect x="0" y="1750" width="1080" height="3" fill="${brand.PRIMARY}" opacity="0.5"/>
-
-  <!-- Pulse Gaming branding -->
-  <circle cx="440" cy="1835" r="4" fill="${brand.PRIMARY}"/>
-  <text x="540" y="1845" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
-        font-size="32" font-weight="800" letter-spacing="8" fill="${brand.PRIMARY}" opacity="0.85">PULSE GAMING</text>
-  <text x="540" y="1885" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
-        font-size="15" font-weight="500" letter-spacing="4" fill="${brand.MUTED}">VERIFIED LEAKS &amp; BREAKING NEWS // DAILY</text>
-
-  <!-- Live indicator dot -->
-  <circle cx="70" cy="120" r="6" fill="#ff0033">
-    <animate attributeName="opacity" values="1;0.3;1" dur="2s" repeatCount="indefinite"/>
-  </circle>
-  <text x="90" y="126" font-family="Inter,system-ui,sans-serif" font-size="14"
-        font-weight="700" letter-spacing="2" fill="#ff0033" opacity="0.8">LIVE</text>
 </svg>`;
 }
 
@@ -195,6 +190,16 @@ async function generateImages() {
 
   const stories = await fs.readJson('daily_news.json');
   const toProcess = stories.filter(s => s.approved === true && !s.image_path);
+
+  // Load branded thumbnail background once
+  const bgPath = path.join(__dirname, 'branding', 'shorts_thumbnail_bg.png');
+  let bgBase64 = null;
+  if (await fs.pathExists(bgPath)) {
+    try {
+      bgBase64 = (await fs.readFile(bgPath)).toString('base64');
+      console.log('[images] Using branded thumbnail background');
+    } catch (err) { /* fall back to gradient */ }
+  }
 
   console.log(`[images] ${toProcess.length} stories need image generation`);
 
@@ -229,7 +234,7 @@ async function generateImages() {
       }
     }
 
-    // Build SVG with real images
+    // Build SVG with real images + branded background
     const svg = buildProSvg(
       story.title,
       story.suggested_thumbnail_text,
@@ -237,7 +242,8 @@ async function generateImages() {
       heroBase64,
       logoBase64,
       !!heroBase64,
-      story.classification
+      story.classification,
+      bgBase64
     );
 
     const svgPath = path.join(OUTPUT_DIR, `${story.id}.svg`);

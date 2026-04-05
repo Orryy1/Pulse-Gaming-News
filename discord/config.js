@@ -45,9 +45,9 @@ module.exports = {
   // Socials
   SOCIALS: {
     YOUTUBE:   'https://youtube.com/@PulseGMG',
-    TIKTOK:    'https://tiktok.com/@pulsegmg',
-    INSTAGRAM: 'https://instagram.com/pulsegmg',
-    TWITTER:   'https://x.com/PulseGMG',
+    TIKTOK:    'https://tiktok.com/@pulsegamingnews',
+    INSTAGRAM: 'https://instagram.com/pulse.gmg',
+    TWITTER:   'https://x.com/Pulse_GMG',
   },
 
   // XP settings

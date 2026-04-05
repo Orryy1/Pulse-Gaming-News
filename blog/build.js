@@ -29,6 +29,14 @@ async function build() {
 
   await fs.ensureDir(DIST_DIR);
 
+  // Copy branding assets for OG image / static references
+  const brandingDir = path.join(__dirname, '..', 'branding');
+  const brandingDist = path.join(DIST_DIR, 'branding');
+  if (await fs.pathExists(brandingDir)) {
+    await fs.copy(brandingDir, brandingDist, { overwrite: true });
+    console.log('[blog-build] Copied branding assets to dist/branding/');
+  }
+
   // Load published stories
   if (!await fs.pathExists(DAILY_NEWS_PATH)) {
     console.log('[blog-build] No daily_news.json found — nothing to build');

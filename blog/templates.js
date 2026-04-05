@@ -140,6 +140,12 @@ ${imgTag}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escHtml(channelName)} — Gaming News Blog</title>
 <meta name="description" content="${escAttr(tagline)}">
+<meta property="og:title" content="${escAttr(channelName)} — Gaming News Blog">
+<meta property="og:description" content="${escAttr(tagline)}">
+<meta property="og:image" content="/branding/og_image.png">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="/branding/og_image.png">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:${BG};color:${TEXT};font-family:'Inter','Segoe UI',sans-serif;line-height:1.6;padding:0 16px}

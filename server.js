@@ -579,14 +579,14 @@ function startAutonomousScheduler() {
   runHunter();
   hunterInterval = setInterval(runHunter, HUNTER_INTERVAL_MS);
 
-  // 3x daily publish windows — optimal for UK gaming audience + US overlap
-  // 12:00 UTC (1PM BST) — lunch break, US morning 7-8am ET
-  // 17:00 UTC (6PM BST) — post-work peak, US noon
-  // 21:00 UTC (10PM BST) — evening session, US afternoon 4-5pm ET
+  // 3x daily publish windows — staggered for UK + US audience coverage
+  // 07:00 UTC (8AM BST) — EU morning commute, catch UK/EU scrollers
+  // 13:00 UTC (2PM BST) — US East Coast morning 8-9am ET, biggest gaming audience waking up
+  // 19:00 UTC (8PM BST) — UK evening peak + US afternoon 2-3pm ET, highest engagement
   // Each window publishes ONE video across all platforms (spread content through the day)
   if (process.env.AUTO_PUBLISH === 'true') {
-    const publishWindows = ['0 12 * * *', '0 17 * * *', '0 21 * * *'];
-    const windowLabels = ['12:00 UTC (1PM BST)', '17:00 UTC (6PM BST)', '21:00 UTC (10PM BST)'];
+    const publishWindows = ['0 7 * * *', '0 13 * * *', '0 19 * * *'];
+    const windowLabels = ['07:00 UTC (8AM BST)', '13:00 UTC (2PM BST)', '19:00 UTC (8PM BST)'];
 
     publishWindows.forEach((cronExpr, i) => {
       cron.schedule(cronExpr, async () => {
@@ -615,10 +615,10 @@ function startAutonomousScheduler() {
       }, { timezone: 'UTC' });
     });
 
-    console.log('[server] Auto-publish enabled: 3x daily at 12:00/17:00/21:00 UTC (1PM/6PM/10PM BST)');
+    console.log('[server] Auto-publish enabled: 3x daily at 07:00/13:00/19:00 UTC (8AM/2PM/8PM BST)');
 
     // Engagement passes — 30 minutes after each publish window
-    const engagementWindows = ['30 12 * * *', '30 17 * * *', '30 21 * * *'];
+    const engagementWindows = ['30 7 * * *', '30 13 * * *', '30 19 * * *'];
     engagementWindows.forEach((cronExpr, i) => {
       cron.schedule(cronExpr, async () => {
         console.log(`[server-cron] ${windowLabels[i]} +30min — ENGAGEMENT PASS`);

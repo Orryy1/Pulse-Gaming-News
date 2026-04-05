@@ -6,6 +6,7 @@ const dotenv = require('dotenv');
 dotenv.config({ override: true });
 
 const { getChannel } = require('./channels');
+const { getAnalyticsContext } = require('./analytics');
 
 const BANNED_STARTS = ['so', 'today', 'hey', 'welcome', 'in this'];
 const BANNED_LOOP_PHRASES = ['let me know in the comments'];
@@ -248,7 +249,13 @@ async function process_stories() {
     if (sourceMaterial) factContext.push(sourceMaterial);
     if (searchFacts) factContext.push(`ADDITIONAL SEARCH CONTEXT:\n${searchFacts}`);
 
-    const systemPrompt = baseSystemPrompt + `\n\nCRITICAL — DATE AND FACT-CHECKING RULES:
+    // Inject analytics performance insights if available
+    const analyticsContext = getAnalyticsContext();
+    const analyticsSection = analyticsContext
+      ? `\n\n${analyticsContext}\n`
+      : '';
+
+    const systemPrompt = baseSystemPrompt + analyticsSection + `\n\nCRITICAL — DATE AND FACT-CHECKING RULES:
 Today's date is ${today}. You MUST follow these rules:
 1. NEVER reference dates in the past as if they are in the future.
 2. Cross-reference the Reddit title against the SOURCE ARTICLE TEXT provided below. If the article contradicts the Reddit title, trust the article.
@@ -352,7 +359,7 @@ Today's date is ${today}. You MUST follow these rules:
       content_pillar: getContentPillar(script.classification),
       affiliate_url: affiliateUrl,
       pinned_comment: pinnedComment,
-      approved: false,
+      approved: story.approved || false,
     };
 
     enriched.push(enrichedStory);

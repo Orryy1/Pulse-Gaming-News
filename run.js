@@ -1,4 +1,5 @@
 const cron = require('node-cron');
+const fs = require('fs-extra');
 const sendDiscord = require('./notify');
 const dotenv = require('dotenv');
 
@@ -45,14 +46,38 @@ async function runHunt() {
   const hunt = require('./hunter');
   const process_stories = require('./processor');
 
+  // Load existing stories to preserve their state (approval, audio, video paths)
+  let existingStories = [];
+  if (await fs.pathExists('daily_news.json')) {
+    existingStories = await fs.readJson('daily_news.json');
+  }
+  const existingIds = new Set(existingStories.map(s => s.id));
+
   console.log('[run] Step 1: Multi-source hunting (Reddit + RSS)...');
   const stories = await hunt();
 
-  console.log('[run] Step 2: Processing scripts...');
-  await process_stories();
+  // Only process genuinely new stories
+  const newPosts = stories.filter(p => !existingIds.has(p.id));
+  console.log(`[run] ${stories.length} fetched, ${newPosts.length} new (${existingStories.length} existing preserved)`);
 
-  const titles = stories.map(s => `- ${s.title}`).join('\n');
-  await sendDiscord(`**Pulse Gaming Hunt Complete**\n${stories.length} stories found:\n${titles}`);
+  if (newPosts.length > 0) {
+    // Write only new posts for processor
+    await fs.writeJson('pending_news.json', { timestamp: new Date().toISOString(), stories: newPosts }, { spaces: 2 });
+
+    console.log('[run] Step 2: Processing scripts...');
+    await process_stories();
+
+    // Merge: newly processed stories + existing (preserves approval/production state)
+    const processed = await fs.readJson('daily_news.json');
+    const merged = [...processed, ...existingStories];
+    await fs.writeJson('daily_news.json', merged, { spaces: 2 });
+    console.log(`[run] Merged: ${processed.length} new + ${existingStories.length} existing = ${merged.length} total`);
+  } else {
+    console.log('[run] No new stories — skipping processor');
+  }
+
+  const titles = newPosts.map(s => `- ${s.title}`).join('\n');
+  await sendDiscord(`**Pulse Gaming Hunt Complete**\n${newPosts.length} new stories:\n${titles || '(none)'}`);
 
   console.log('[run] Hunt complete');
 }
@@ -112,6 +137,62 @@ async function runApprove() {
   const { autoApprove } = require('./publisher');
   const count = await autoApprove();
   console.log(`[run] Auto-approved ${count} stories`);
+}
+
+function runWatch() {
+  console.log('[run] === WATCH MODE — CONTINUOUS BREAKING NEWS MONITOR ===');
+  console.log('[run] Polls Reddit /new every 90s, RSS every 5min');
+  console.log('[run] Breaking threshold: 120 | Velocity: 500 upvotes in 30 min');
+  console.log('[run] Press Ctrl+C to stop.');
+  console.log('');
+
+  const { startWatching } = require('./watcher');
+  const { queueBreaking, getQueueStatus } = require('./breaking_queue');
+
+  const emitter = startWatching();
+
+  emitter.on('breaking', async (story) => {
+    console.log(`[run] >>> BREAKING: ${story.title} (score: ${story.breaking_score})`);
+    const result = await queueBreaking(story);
+    if (result.queued) {
+      console.log(`[run] Queued at position ${result.position}`);
+    } else {
+      console.log(`[run] Not queued: ${result.reason}`);
+    }
+  });
+
+  // Periodic status log every 5 minutes
+  setInterval(() => {
+    const { getStatus } = require('./watcher');
+    const ws = getStatus();
+    const qs = getQueueStatus();
+    console.log(`[run] Watcher: ${ws.storiesChecked} checked, ${ws.breakingEmitted} breaking | Queue: ${qs.queueLength} pending, cooldown: ${qs.cooldownRemainingMin}min`);
+  }, 5 * 60 * 1000);
+}
+
+async function runWeekly() {
+  console.log('[run] === WEEKLY COMPILATION MODE ===');
+
+  const { compileWeekly } = require('./weekly_compile');
+  const result = await compileWeekly();
+
+  if (result) {
+    console.log(`[run] Weekly compilation complete: ${result.story_count} stories, ${Math.round(result.duration_seconds / 60)} minutes`);
+    if (result.youtube_url) {
+      console.log(`[run] YouTube: ${result.youtube_url}`);
+    }
+  } else {
+    console.log('[run] Weekly compilation skipped (not enough stories)');
+  }
+}
+
+async function runBlog() {
+  console.log('[run] === BLOG BUILD MODE ===');
+
+  const { build } = require('./blog/build');
+  await build();
+
+  console.log('[run] Blog build complete');
 }
 
 function runSchedule() {
@@ -253,7 +334,10 @@ if (!mode) {
   console.log('  node run.js publish   — Upload to YouTube, TikTok, Instagram');
   console.log('  node run.js full      — Run complete autonomous cycle once');
   console.log('  node run.js approve   — Run auto-approval pass');
+  console.log('  node run.js watch     — Start breaking news watcher (continuous)');
+  console.log('  node run.js weekly    — Compile weekly longform roundup video');
   console.log('  node run.js schedule  — Start autonomous cron scheduler (24/7)');
+  console.log('  node run.js blog      — Rebuild static SEO blog from published stories');
   process.exit(0);
 }
 
@@ -275,8 +359,17 @@ if (!mode) {
       case 'approve':
         await runApprove();
         break;
+      case 'watch':
+        runWatch();
+        break;
+      case 'weekly':
+        await runWeekly();
+        break;
       case 'schedule':
         runSchedule();
+        break;
+      case 'blog':
+        await runBlog();
         break;
       default:
         console.log(`[run] Unknown mode: ${mode}`);

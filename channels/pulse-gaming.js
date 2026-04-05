@@ -67,8 +67,27 @@ module.exports = {
   youtubeCategory: '20', // Gaming
   hashtags: ['#Shorts', '#GamingNews', '#GamingLeaks', '#PulseGaming'],
 
-  // Music prompt for background beat
+  // Social links (shown in every YouTube description)
+  socials: {
+    tiktok: 'https://www.tiktok.com/@pulsegmg',
+    instagram: 'https://www.instagram.com/pulsegmg',
+    twitter: 'https://x.com/PulseGMG',
+  },
+
+  // Music prompts — varied pool for library generation (each video picks randomly)
   musicPrompt: 'dark minimal trap beat, subtle 808 bass, crisp hi-hats, gaming news tension, cinematic, atmospheric, no vocals',
+  musicPrompts: [
+    'dark minimal trap beat, subtle 808 bass, crisp hi-hats, gaming news tension, cinematic, atmospheric, no vocals',
+    'moody lo-fi trap instrumental, slow rolling 808s, vinyl crackle texture, late night gaming vibes, no vocals',
+    'cinematic dark drill beat, sliding 808 bass, sharp snares, urgent news energy, brooding pads, no vocals',
+    'ambient phonk beat, cowbell rhythm, reverb-heavy kicks, mysterious gaming atmosphere, drift aesthetic, no vocals',
+    'dark electronic beat, pulsing synth bass, tight percussion, esports broadcast energy, futuristic, no vocals',
+    'minimal boom-bap instrumental, dusty drum samples, deep sub bass, underground gaming feel, lo-fi warmth, no vocals',
+    'orchestral trap hybrid, epic strings underneath, 808 bass drops, dramatic gaming reveal tension, no vocals',
+    'dark UK drill beat, bouncing hi-hats, deep bass slides, gritty urban gaming news energy, no vocals',
+    'synthwave trap fusion, retro synth arpeggios, modern 808s, neon-lit gaming aesthetic, nostalgic yet fresh, no vocals',
+    'ambient industrial beat, metallic percussion, sub bass rumble, dystopian gaming atmosphere, tense and mechanical, no vocals',
+  ],
 
   // System prompt for script generation
   systemPrompt: `You are the scriptwriter for Pulse Gaming, a YouTube Shorts channel delivering verified gaming leaks, rumours and breaking news in 60 seconds.

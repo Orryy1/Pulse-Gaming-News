@@ -125,32 +125,79 @@ function buildMetadata(story) {
   const gameName = extractGameName(story.title);
   const platform = detectPlatform(story.title + ' ' + (story.body || ''));
 
+  const { getChannel } = require('./channels');
+  const channel = getChannel();
+
   const descLines = [];
-  // First line: keyword-rich summary (most SEO weight)
-  descLines.push(
-    story.full_script
-      ? story.full_script.substring(0, 150).replace(/\n/g, ' ').replace(/\[.*?\]/g, '').trim()
-      : story.title
-  );
+
+  // --- Section 1: Keyword-rich summary (most SEO weight — first 200 chars indexed) ---
+  if (story.full_script) {
+    const clean = story.full_script.replace(/\n/g, ' ').replace(/\[.*?\]/g, '').replace(/\s+/g, ' ').trim();
+    const cutoff = clean.substring(0, 300);
+    // Find the LAST sentence boundary within 300 chars (not the first)
+    let lastSentence = -1;
+    const re = /[.!?]\s+(?=[A-Z])/g;
+    let m;
+    while ((m = re.exec(cutoff)) !== null) lastSentence = m.index;
+    if (lastSentence > 80) {
+      descLines.push(cutoff.substring(0, lastSentence + 1).trim());
+    } else {
+      const lastSpace = cutoff.lastIndexOf(' ');
+      descLines.push(lastSpace > 80 ? cutoff.substring(0, lastSpace).trim() : cutoff.trim());
+    }
+  } else {
+    descLines.push(story.title);
+  }
   descLines.push('');
+
+  // --- Section 2: Affiliate CTA ---
   if (story.affiliate_url) {
     descLines.push(`Check it out: ${story.affiliate_url}`);
     descLines.push('');
   }
+
+  // --- Section 3: Channel identity ---
   descLines.push(`${brand.CHANNEL_NAME} — ${brand.TAGLINE}`);
   descLines.push(brand.CTA ? brand.CTA.replace(/^Follow /i, 'Follow ') : 'Follow so you never miss an update.');
   descLines.push('');
-  if (story.subreddit) {
-    descLines.push(`Source: r/${story.subreddit}`);
+
+  // --- Section 4: Social links ---
+  const socials = channel.socials || {};
+  if (Object.keys(socials).length > 0) {
+    if (socials.tiktok) descLines.push(`TikTok: ${socials.tiktok}`);
+    if (socials.instagram) descLines.push(`Instagram: ${socials.instagram}`);
+    if (socials.twitter) descLines.push(`X/Twitter: ${socials.twitter}`);
+    if (socials.threads) descLines.push(`Threads: ${socials.threads}`);
     descLines.push('');
   }
-  // Hashtags: from channel config + dynamic extras
-  const { getChannel } = require('./channels');
-  const channel = getChannel();
+
+  // --- Section 5: Sources ---
+  const sourceLinks = [];
+  if (story.url && story.url.startsWith('http')) sourceLinks.push(story.url);
+  if (story.article_url && story.article_url.startsWith('http') && story.article_url !== story.url) {
+    sourceLinks.push(story.article_url);
+  }
+  if (sourceLinks.length > 0 || story.subreddit) {
+    descLines.push('======================');
+    descLines.push('Sources:');
+    if (story.subreddit) descLines.push(`r/${story.subreddit}`);
+    sourceLinks.forEach(link => descLines.push(link));
+    descLines.push('======================');
+    descLines.push('');
+  }
+
+  // --- Section 6: Hashtags (dynamic — company/game specific + channel defaults) ---
   const hashtags = [...(channel.hashtags || ['#Shorts'])];
   if (gameName) hashtags.push(`#${gameName.replace(/[^a-zA-Z0-9]/g, '')}`);
   if (platform) hashtags.push(`#${platform}`);
-  descLines.push(hashtags.slice(0, 6).join(' '));
+  // Add company hashtags from story detection
+  if (story.company_name) {
+    const companyTag = `#${story.company_name.replace(/[^a-zA-Z0-9]/g, '')}`;
+    if (!hashtags.some(h => h.toLowerCase() === companyTag.toLowerCase())) {
+      hashtags.push(companyTag);
+    }
+  }
+  descLines.push(hashtags.slice(0, 8).join(' '));
 
   const description = descLines.join('\n');
 
@@ -310,7 +357,91 @@ async function uploadAll() {
   return results;
 }
 
-module.exports = { uploadShort, uploadAll, generateAuthUrl, exchangeCode, getAuthClient };
+// --- Upload a longform compilation as a regular YouTube video (NOT a Short) ---
+async function uploadLongform(compilation) {
+  const auth = await getAuthClient();
+  const youtube = google.youtube({ version: 'v3', auth });
+  const brand = require('./brand');
+  const { getChannel } = require('./channels');
+  const channel = getChannel();
+
+  const videoPath = compilation.output_path || compilation.outputPath;
+  if (!videoPath || !await fs.pathExists(videoPath)) {
+    throw new Error(`Video file not found: ${videoPath}`);
+  }
+
+  // Title: "Gaming News Roundup — Week of April 5, 2026"
+  const titleDate = compilation.title_date || new Date().toLocaleDateString('en-GB', { month: 'long', day: 'numeric', year: 'numeric' });
+  const title = `${channel.niche.charAt(0).toUpperCase() + channel.niche.slice(1)} News Roundup — Week of ${titleDate}`;
+
+  // Description with chapter timestamps
+  const descLines = [];
+  descLines.push(`The biggest ${channel.niche} stories of the week, compiled and covered by ${channel.name}.`);
+  descLines.push('');
+
+  // Chapter timestamps
+  if (compilation.chapter_timestamps && compilation.chapter_timestamps.length > 0) {
+    for (const ch of compilation.chapter_timestamps) {
+      descLines.push(`${ch.time} ${ch.title}`);
+    }
+    descLines.push('');
+  }
+
+  descLines.push(`${brand.CHANNEL_NAME} — ${brand.TAGLINE}`);
+  descLines.push(brand.CTA ? brand.CTA : 'Subscribe so you never miss a roundup.');
+  descLines.push('');
+
+  const hashtags = (channel.hashtags || [])
+    .filter(h => !h.toLowerCase().includes('shorts'))
+    .slice(0, 5);
+  hashtags.push('#WeeklyRoundup');
+  descLines.push(hashtags.join(' '));
+
+  const description = descLines.join('\n');
+
+  const tags = [
+    channel.niche + ' news roundup', channel.name.toLowerCase(),
+    'weekly roundup', channel.niche + ' weekly',
+    channel.niche + ' news compilation',
+    'gaming news this week',
+  ].filter(Boolean);
+
+  console.log(`[youtube] Uploading longform: "${title}"`);
+
+  const response = await youtube.videos.insert({
+    part: ['snippet', 'status'],
+    requestBody: {
+      snippet: {
+        title,
+        description,
+        tags,
+        categoryId: channel.youtubeCategory || '20',
+        defaultLanguage: 'en',
+        defaultAudioLanguage: 'en',
+      },
+      status: {
+        privacyStatus: 'public',
+        selfDeclaredMadeForKids: false,
+        embeddable: true,
+      },
+    },
+    media: {
+      body: fs.createReadStream(videoPath),
+    },
+  });
+
+  const videoId = response.data.id;
+  const url = `https://youtube.com/watch?v=${videoId}`;
+  console.log(`[youtube] Longform uploaded: ${url}`);
+
+  return {
+    platform: 'youtube',
+    videoId,
+    url,
+  };
+}
+
+module.exports = { uploadShort, uploadAll, uploadLongform, generateAuthUrl, exchangeCode, getAuthClient };
 
 if (require.main === module) {
   const cmd = process.argv[2];

@@ -1,0 +1,13 @@
+{
+  "name": "pulse-gaming-discord",
+  "version": "1.0.0",
+  "description": "PULSE GAMING Discord bot — Verified leaks. Every day.",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "setup": "node setup.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.0"
+  }
+}

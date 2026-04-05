@@ -32,6 +32,7 @@ app.get('/tiktokDw54Pk1WSkoF9szIQ4gVvLPUr0EmoATB.txt', (req, res) => {
 // Serve Vite build from dist/
 app.use(express.static(path.join(__dirname, 'dist')));
 app.use('/generated', express.static(PUBLIC_DIR));
+app.use('/branding', express.static(path.join(__dirname, 'branding')));
 
 // --- Legal pages (required for TikTok/Instagram app review) ---
 app.get('/terms', (req, res) => {

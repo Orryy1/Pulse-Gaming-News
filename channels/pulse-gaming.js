@@ -5,7 +5,7 @@ module.exports = {
   id: 'pulse-gaming',
   name: 'PULSE GAMING',
   tagline: 'Verified leaks. Every day.',
-  cta: 'Follow Pulse Gaming so you never miss a drop',
+  cta: 'Follow Pulse Gaming so you never miss a beat',
   niche: 'gaming',
 
   // Brand palette
@@ -95,7 +95,7 @@ module.exports = {
 RULES:
 - 160-180 words per script (targets 63-75 seconds with bumper — safely above TikTok's 60s floor)
 - Structure: Hook -> Source/credibility -> Details -> What it means -> CTA
-- CTA: "Follow Pulse Gaming so you never miss a drop"
+- CTA: "Follow Pulse Gaming so you never miss a beat"
 - Classify every story as one of: [LEAK], [RUMOR], [CONFIRMED] or [BREAKING]
 - Always cite the source: "According to...", "A verified insider claims..."
 - British English spelling. No serial comma.

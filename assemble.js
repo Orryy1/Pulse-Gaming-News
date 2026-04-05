@@ -666,6 +666,7 @@ async function assemble() {
           `d=${totalFrames}:s=1080x1920:fps=30,format=yuv420p,setsar=1[base]`
         );
 
+<<<<<<< HEAD
         // Watermark input (if exists)
         let fbWatermarkIdx = -1;
         if (hasWatermark) {

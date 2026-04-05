@@ -106,10 +106,21 @@ async function uploadReel(story) {
   }
 
   // Instagram requires a public URL for the video
-  // Option 1: Use RAILWAY_PUBLIC_URL if deployed
-  // Option 2: Use a pre-signed URL or temp file hosting
   const publicBaseUrl = process.env.RAILWAY_PUBLIC_URL || `http://localhost:${process.env.PORT || 3001}`;
   const videoUrl = `${publicBaseUrl}/api/download/${story.id}`;
+
+  // Verify the video is actually accessible at the public URL before telling Instagram to fetch it
+  try {
+    const probe = await axios.head(videoUrl, { timeout: 10000 });
+    const contentType = probe.headers['content-type'] || '';
+    const contentLength = parseInt(probe.headers['content-length'] || '0', 10);
+    if (contentLength < 100000) {
+      throw new Error(`Video file too small (${contentLength} bytes) — likely missing or corrupt`);
+    }
+    console.log(`[instagram] Video URL verified: ${contentLength} bytes, ${contentType}`);
+  } catch (err) {
+    throw new Error(`Video not accessible at ${videoUrl} — skipping Instagram upload (${err.message})`);
+  }
 
   // Build caption — channel-aware hashtags
   const { getChannel } = require('./channels');

@@ -21,7 +21,7 @@ const OUTRO_DURATION = 5;   // seconds before end to bring up outro card
 const MUSIC_CACHE = path.join('output', 'music');
 const CUSTOM_MUSIC_DIR = path.join(__dirname, 'audio', 'mastered');
 const MUSIC_VOLUME = 0.12; // 12% volume — subtle background
-const MAX_IMAGES = 4; // Cap input streams to prevent Railway memory exhaustion
+const MAX_IMAGES = 8; // More images = more visual variety in 60s+ videos
 const FFMPEG_THREADS = 2; // Limit FFmpeg threads to stay within container memory
 
 // --- Music library: use custom distributed tracks, fall back to ElevenLabs generation ---
@@ -783,8 +783,8 @@ async function assemble() {
       console.log(`[assemble] Exported: ${outputPath} (${Math.round(stat.size / 1024 / 1024)}MB)`);
     } catch (err) {
       const errDetail = err.stderr?.substring(err.stderr.length - 500) || err.message.substring(0, 500);
-      console.log(`[assemble] Main render failed for ${story.id}:\n${errDetail}`);
-      console.log(`[assemble] Trying single-image fallback with full overlays...`);
+      console.log(`[assemble] ⚠ Multi-image render FAILED for ${story.id} (${images.length} images, ${Math.round(duration)}s):\n${errDetail}`);
+      console.log(`[assemble] ⚠ Falling back to SINGLE IMAGE — video will be less engaging`);
 
       // Fallback: single image but with ALL overlays (subtitles, branding, comments, music)
       try {

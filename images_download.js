@@ -58,7 +58,7 @@ async function getBestImage(story) {
         const priority = img.type === 'capsule' ? 95 : img.type === 'hero' ? 90 : img.type === 'key_art' ? 85 : 70;
         images.push({ path: cached, type: img.type, priority });
       }
-      if (images.length >= 5) break;
+      if (images.length >= 10) break;
     }
   }
 
@@ -74,9 +74,8 @@ async function getBestImage(story) {
     if (cached) images.push({ path: cached, type: 'company_logo', priority: 30 });
   }
 
-  // Priority 5 (last resort): Google image search — only if no hero/article images found
-  const hasHero = images.some(i => ['article_hero', 'capsule', 'hero', 'key_art', 'screenshot'].includes(i.type));
-  if (!hasHero && story.title) {
+  // Priority 5: Google image search — supplement with more variety (especially for stories with few images)
+  if (images.length < 8 && story.title) {
     try {
       const searchQuery = encodeURIComponent(story.title.replace(/[^a-zA-Z0-9\s]/g, '').trim() + ' game');
       const searchUrl = `https://www.google.com/search?q=${searchQuery}&tbm=isch&safe=active`;
@@ -89,7 +88,7 @@ async function getBestImage(story) {
       const html = typeof searchResp.data === 'string' ? searchResp.data : '';
       const imgMatches = html.match(/\["(https?:\/\/[^"]+\.(?:jpg|jpeg|png|webp)(?:\?[^"]*)?)",\d+,\d+\]/gi) || [];
       let googleFound = 0;
-      for (const match of imgMatches.slice(0, 3)) {
+      for (const match of imgMatches.slice(0, 8)) {
         const urlMatch = match.match(/"(https?:\/\/[^"]+)"/);
         if (!urlMatch) continue;
         const imgUrl = urlMatch[1];
@@ -98,10 +97,10 @@ async function getBestImage(story) {
         const ext = imgUrl.match(/\.(jpg|jpeg|png|webp)/i)?.[1] || 'jpg';
         const cached = await downloadImage(imgUrl, `${story.id}_google_${googleFound}.${ext}`);
         if (cached) {
-          images.push({ path: cached, type: 'screenshot', priority: 20 });
+          images.push({ path: cached, type: 'screenshot', priority: 20 - googleFound });
           googleFound++;
-          console.log(`[images] Google image found for "${story.title.substring(0, 40)}..."`);
-          break; // One good image is enough
+          console.log(`[images] Google image ${googleFound}/3 found for "${story.title.substring(0, 40)}..."`);
+          if (googleFound >= 3) break;
         }
       }
     } catch (err) {

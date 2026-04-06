@@ -401,6 +401,17 @@ Today's date is ${today}. You MUST follow these rules:
   await db.saveStories(enriched);
   console.log(`[processor] Saved ${enriched.length} enriched stories`);
 
+  // Post new stories to Discord news channels
+  try {
+    const { postNewStory } = require('./discord/auto_post');
+    for (const story of enriched) {
+      await postNewStory(story);
+    }
+    console.log(`[processor] Discord: posted ${enriched.length} stories to news channels`);
+  } catch (err) {
+    console.log(`[processor] Discord news posting skipped: ${err.message}`);
+  }
+
   return enriched;
 }
 

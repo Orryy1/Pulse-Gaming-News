@@ -127,21 +127,28 @@ async function uploadReel(story) {
   console.log(`[instagram] Uploading Reel (${Math.round(fileSize / 1024)}KB): "${(story.suggested_thumbnail_text || story.title).substring(0, 50)}..."`);
 
   // Step 1: Create resumable upload session
-  const initResponse = await axios.post(
-    `https://graph.instagram.com/v19.0/${accountId}/media`,
-    {
-      media_type: 'REELS',
-      upload_type: 'resumable',
-      caption,
-      share_to_feed: true,
-      access_token: accessToken,
-    }
-  );
+  // Use graph.facebook.com (not graph.instagram.com) — required for resumable uploads
+  let initResponse;
+  try {
+    initResponse = await axios.post(
+      `https://graph.facebook.com/v21.0/${accountId}/media`,
+      {
+        media_type: 'REELS',
+        upload_type: 'resumable',
+        caption,
+        share_to_feed: true,
+        access_token: accessToken,
+      }
+    );
+  } catch (err) {
+    const errData = err.response?.data?.error || err.response?.data || err.message;
+    console.log(`[instagram] Container creation failed: ${JSON.stringify(errData)}`);
+    throw new Error(`Instagram container creation failed: ${JSON.stringify(errData)}`);
+  }
 
   const containerId = initResponse.data.id;
-  // The API returns a uri to rupload.facebook.com; fall back to constructing it if missing
-  const uploadUrl = initResponse.data.uri || `https://rupload.facebook.com/ig-api-upload/v19.0/${containerId}`;
-  console.log(`[instagram] Container created: ${containerId}`);
+  const uploadUrl = initResponse.data.uri || `https://rupload.facebook.com/ig-api-upload/v21.0/${containerId}`;
+  console.log(`[instagram] Container created: ${containerId}, upload URL: ${uploadUrl ? 'received' : 'fallback'}`);
 
   // Step 2: Upload video binary directly to the resumable upload URI
   await axios({
@@ -170,7 +177,7 @@ async function uploadReel(story) {
 
     try {
       const statusResponse = await axios.get(
-        `https://graph.instagram.com/v19.0/${containerId}`,
+        `https://graph.facebook.com/v21.0/${containerId}`,
         {
           params: {
             fields: 'status_code,status',
@@ -197,7 +204,7 @@ async function uploadReel(story) {
 
   // Step 4: Publish the container
   const publishResponse = await axios.post(
-    `https://graph.instagram.com/v19.0/${accountId}/media_publish`,
+    `https://graph.facebook.com/v21.0/${accountId}/media_publish`,
     {
       creation_id: containerId,
       access_token: accessToken,

@@ -280,6 +280,7 @@ async function generateSubtitles(story, duration, outputDir) {
         .replace(/\\/g, '').replace(/\{/g, '').replace(/\}/g, '')
         .replace(/\[PAUSE\]/gi, '').replace(/\[VISUAL:[^\]]*\]/gi, '')
         .replace(/[.]{2,}/g, '')          // remove ellipses that show as subtitle text
+        .replace(/^[,;:\s]+/, '')          // strip leading commas/punctuation from phrase
         .toUpperCase().trim();
       if (!clean || /^[^A-Z0-9]*$/.test(clean)) return null; // skip punctuation-only phrases
       // End each phrase slightly early to prevent overlap flicker with next phrase
@@ -303,6 +304,7 @@ async function generateSubtitles(story, duration, outputDir) {
       const end = assTime((i + 1) * phraseTime);
       const clean = phrase
         .replace(/\\/g, '').replace(/\{/g, '').replace(/\}/g, '')
+        .replace(/^[,;:\s]+/, '')          // strip leading commas/punctuation from phrase
         .toUpperCase();
       const highlighted = highlightKeyWords(clean);
       return `Dialogue: 0,${start},${end},Caption,,0,0,0,,${highlighted}`;
@@ -453,6 +455,11 @@ function buildVideoCommand(story, images, audioPath, assPath, filterScriptPath, 
 
   // Dark overlay for readability
   chain.push('eq=brightness=-0.08:saturation=1.2');
+
+  // Semi-transparent gradient bar at bottom for channel branding visibility
+  chain.push(
+    `drawbox=x=0:y=ih-200:w=iw:h=200:color=black@0.45:t=fill`
+  );
 
   // Flair badge — top left with coloured pill
   chain.push(
@@ -785,7 +792,13 @@ async function assemble() {
 
         // Dark overlay
         fbChain.push('eq=brightness=-0.08:saturation=1.2');
+
+        // Semi-transparent bar at bottom for channel branding visibility
+        fbChain.push(
+          `drawbox=x=0:y=ih-200:w=iw:h=200:color=black@0.45:t=fill`
+        );
         // ASS subtitles applied after overlays (see below)
+
 
         // Flair badge — moved higher
         fbChain.push(

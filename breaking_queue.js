@@ -13,7 +13,28 @@ const DATA_FILE = path.join(__dirname, 'daily_news.json');
 
 let lastPublishTime = 0;
 let processing = false;
+let initialized = false;
 const queue = [];
+
+// --- Restore lastPublishTime from disk so cooldown survives server restarts ---
+async function initCooldown() {
+  if (initialized) return;
+  initialized = true;
+  try {
+    const log = await readBreakingLog();
+    if (log.length > 0) {
+      const lastEntry = log[log.length - 1];
+      const lastTime = new Date(lastEntry.timestamp).getTime();
+      if (Date.now() - lastTime < COOLDOWN_MS) {
+        lastPublishTime = lastTime;
+        const remaining = Math.round((COOLDOWN_MS - (Date.now() - lastTime)) / 60000);
+        console.log(`[breaking] Restored cooldown from disk — ${remaining} min remaining`);
+      }
+    }
+  } catch (err) {
+    console.log(`[breaking] Could not restore cooldown: ${err.message}`);
+  }
+}
 
 // --- Read the breaking log from disk ---
 async function readBreakingLog() {
@@ -32,13 +53,30 @@ async function appendBreakingLog(entry) {
   await fs.writeJson(BREAKING_LOG, trimmed, { spaces: 2 });
 }
 
-// --- Check whether a story is a duplicate of something already in daily_news.json ---
+// --- Check whether a story is a duplicate or already published ---
 async function isDuplicate(story) {
   if (!await fs.pathExists(DATA_FILE)) return false;
 
   try {
     const existing = await fs.readJson(DATA_FILE);
     const stories = Array.isArray(existing) ? existing : [];
+
+    // Check by ID first (exact match)
+    const byId = stories.find(s => s.id === story.id);
+    if (byId) {
+      // If already published to any platform, definitely skip
+      if (byId.youtube_post_id || byId.tiktok_post_id || byId.instagram_media_id || byId.facebook_post_id || byId.twitter_post_id) {
+        console.log(`[breaking] Story ${story.id} already published — skipping`);
+        return true;
+      }
+      // If already has audio/video produced, skip (pipeline already ran)
+      if (byId.exported_path) {
+        console.log(`[breaking] Story ${story.id} already produced — skipping`);
+        return true;
+      }
+    }
+
+    // Fuzzy title match (catches same story from different sources)
     return stories.some(s => similarity(s.title, story.title) > 0.5);
   } catch (err) {
     console.log(`[breaking] Dedup check failed: ${err.message}`);
@@ -73,11 +111,13 @@ async function runFastPipeline(story) {
       return null;
     }
 
-    // Mark it as approved and breaking
+    // Mark it as approved and breaking — override classification so the
+    // thumbnail and video badge show "BREAKING" instead of the original flair
     newStory.approved = true;
     newStory.auto_approved = true;
     newStory.approved_at = new Date().toISOString();
     newStory.breaking_fast_track = true;
+    newStory.classification = '[BREAKING]';
 
     // Re-read daily_news in case other processes modified it, then merge
     const allStories = await fs.readJson(DATA_FILE).catch(() => []);
@@ -191,6 +231,7 @@ async function processQueue() {
 // --- Public API ---
 
 async function queueBreaking(story) {
+  await initCooldown();
   console.log(`[breaking] Received breaking story: ${story.title} (score: ${story.breaking_score})`);
 
   // Deduplicate against existing stories

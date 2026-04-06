@@ -324,7 +324,7 @@ PlayResY: 1920
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Caption,Impact,90,&H00FFFFFF,&H001A6BFF,&H00000000,&H80000000,-1,0,0,0,100,100,2,0,1,5,2,5,40,40,350,1
+Style: Caption,Impact,90,&H00FFFFFF,&H001A6BFF,&H00000000,&H80000000,-1,0,0,0,100,100,2,0,1,5,2,5,40,40,520,1
 Style: CaptionTop,Impact,90,&H00FFFFFF,&H001A6BFF,&H00000000,&H80000000,-1,0,0,0,100,100,2,0,1,5,2,8,40,40,120,1
 
 [Events]

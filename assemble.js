@@ -280,6 +280,7 @@ async function generateSubtitles(story, duration, outputDir) {
         .replace(/\\/g, '').replace(/\{/g, '').replace(/\}/g, '')
         .replace(/\[PAUSE\]/gi, '').replace(/\[VISUAL:[^\]]*\]/gi, '')
         .replace(/[.]{2,}/g, '')          // remove ellipses that show as subtitle text
+        .replace(/^[,;:\s]+/, '')          // strip leading commas/punctuation from phrase
         .toUpperCase().trim();
       if (!clean || /^[^A-Z0-9]*$/.test(clean)) return null; // skip punctuation-only phrases
       // End each phrase slightly early to prevent overlap flicker with next phrase
@@ -303,6 +304,7 @@ async function generateSubtitles(story, duration, outputDir) {
       const end = assTime((i + 1) * phraseTime);
       const clean = phrase
         .replace(/\\/g, '').replace(/\{/g, '').replace(/\}/g, '')
+        .replace(/^[,;:\s]+/, '')          // strip leading commas/punctuation from phrase
         .toUpperCase();
       const highlighted = highlightKeyWords(clean);
       return `Dialogue: 0,${start},${end},Caption,,0,0,0,,${highlighted}`;

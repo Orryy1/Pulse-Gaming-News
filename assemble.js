@@ -454,6 +454,11 @@ function buildVideoCommand(story, images, audioPath, assPath, filterScriptPath, 
   // Dark overlay for readability
   chain.push('eq=brightness=-0.08:saturation=1.2');
 
+  // Semi-transparent gradient bar at bottom for channel branding visibility
+  chain.push(
+    `drawbox=x=0:y=ih-200:w=iw:h=200:color=black@0.45:t=fill`
+  );
+
   // Flair badge — top left with coloured pill
   chain.push(
     `drawtext=text='  ${flair}  ':${fontOpt}:fontcolor=white:fontsize=38:` +
@@ -785,6 +790,11 @@ async function assemble() {
 
         // Dark overlay
         fbChain.push('eq=brightness=-0.08:saturation=1.2');
+
+        // Semi-transparent bar at bottom for channel branding visibility
+        fbChain.push(
+          `drawbox=x=0:y=ih-200:w=iw:h=200:color=black@0.45:t=fill`
+        );
         // ASS subtitles applied after overlays (see below)
 
         // Flair badge — moved higher

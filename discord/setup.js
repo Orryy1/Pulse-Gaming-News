@@ -73,61 +73,61 @@ const CATEGORIES = [
   {
     name: '📢 INFORMATION',
     channels: [
-      { name: 'rules',         type: ChannelType.GuildText, readOnly: true },
-      { name: 'announcements',  type: ChannelType.GuildText, readOnly: true },
-      { name: 'role-select',    type: ChannelType.GuildText, readOnly: true },
-      { name: 'welcome',        type: ChannelType.GuildText },
-      { name: 'level-ups',      type: ChannelType.GuildText },
+      { name: 'rules',         type: ChannelType.GuildText, readOnly: true, topic: 'Server rules — read before posting' },
+      { name: 'announcements',  type: ChannelType.GuildText, readOnly: true, topic: 'Channel updates, milestones and important news from the team' },
+      { name: 'role-select',    type: ChannelType.GuildText, readOnly: true, topic: 'React to pick your platform roles (PC, Xbox, PlayStation, Nintendo)' },
+      { name: 'welcome',        type: ChannelType.GuildText, topic: 'Say hello to new members as they join the community' },
+      { name: 'level-ups',      type: ChannelType.GuildText, topic: 'Automatic level-up announcements — earn XP by chatting and claiming /daily' },
     ],
   },
   {
     name: '🔥 NEWS FEED',
     channels: [
-      { name: 'breaking-news', type: ChannelType.GuildText, readOnly: true },
-      { name: 'leaks',         type: ChannelType.GuildText, readOnly: true },
-      { name: 'rumours',       type: ChannelType.GuildText, readOnly: true },
-      { name: 'confirmed',     type: ChannelType.GuildText, readOnly: true },
+      { name: 'breaking-news', type: ChannelType.GuildText, readOnly: true, topic: 'High-impact gaming news posted automatically by the Pulse bot' },
+      { name: 'leaks',         type: ChannelType.GuildText, readOnly: true, topic: 'Credible leaks and insider info — sources cited, take with a pinch of salt' },
+      { name: 'rumours',       type: ChannelType.GuildText, readOnly: true, topic: 'Unverified rumours — fun to speculate, not confirmed' },
+      { name: 'confirmed',     type: ChannelType.GuildText, readOnly: true, topic: 'Officially confirmed news — verified by publishers or developers' },
     ],
   },
   {
     name: '💬 COMMUNITY',
     channels: [
-      { name: 'general',       type: ChannelType.GuildText },
-      { name: 'gaming-talk',   type: ChannelType.GuildText },
-      { name: 'predictions',   type: ChannelType.GuildText },
-      { name: 'memes',         type: ChannelType.GuildText },
-      { name: 'introductions', type: ChannelType.GuildText },
+      { name: 'general',       type: ChannelType.GuildText, topic: 'Chat about anything gaming-related' },
+      { name: 'gaming-talk',   type: ChannelType.GuildText, topic: 'Deep dives into specific games, reviews and recommendations' },
+      { name: 'predictions',   type: ChannelType.GuildText, topic: 'Make predictions with /predict — earn 2x XP if you are right' },
+      { name: 'memes',         type: ChannelType.GuildText, topic: 'Gaming memes only — keep it clean' },
+      { name: 'introductions', type: ChannelType.GuildText, topic: 'New here? Tell us what you play and what platforms you are on' },
     ],
   },
   {
     name: '🏆 COMPETITIONS',
     channels: [
-      { name: 'giveaways',     type: ChannelType.GuildText },
-      { name: 'trivia',        type: ChannelType.GuildText },
-      { name: 'leaderboard',   type: ChannelType.GuildText },
-      { name: 'daily-streak',  type: ChannelType.GuildText },
+      { name: 'giveaways',     type: ChannelType.GuildText, topic: 'Active giveaways — react to enter, winners announced here' },
+      { name: 'trivia',        type: ChannelType.GuildText, topic: 'Gaming trivia challenges — use /trivia to play and earn 50 XP per correct answer' },
+      { name: 'leaderboard',   type: ChannelType.GuildText, topic: 'Top community members by XP — use /leaderboard to check rankings' },
+      { name: 'daily-streak',  type: ChannelType.GuildText, topic: 'Claim your daily XP with /daily — build streaks for bonus multipliers up to 5x' },
     ],
   },
   {
     name: '🎬 CONTENT',
     channels: [
-      { name: 'video-drops',      type: ChannelType.GuildText, readOnly: true },
-      { name: 'clip-submissions',  type: ChannelType.GuildText },
-      { name: 'suggestions',       type: ChannelType.GuildText },
+      { name: 'video-drops',      type: ChannelType.GuildText, readOnly: true, topic: 'New Pulse Gaming Shorts posted automatically when they go live' },
+      { name: 'clip-submissions',  type: ChannelType.GuildText, topic: 'Share your best gaming clips — might get featured on the channel' },
+      { name: 'suggestions',       type: ChannelType.GuildText, topic: 'Suggest topics, games or features you want to see covered' },
     ],
   },
   {
     name: '📊 FEEDBACK',
     channels: [
-      { name: 'polls',    type: ChannelType.GuildText },
-      { name: 'feedback', type: ChannelType.GuildText },
+      { name: 'polls',    type: ChannelType.GuildText, topic: 'Community polls — vote on what content comes next' },
+      { name: 'feedback', type: ChannelType.GuildText, topic: 'Tell us what is working and what is not — all feedback welcome' },
     ],
   },
   {
     name: '🔇 STAFF',
     channels: [
-      { name: 'mod-log',      type: ChannelType.GuildText, staffOnly: true },
-      { name: 'bot-commands', type: ChannelType.GuildText, staffOnly: true },
+      { name: 'mod-log',      type: ChannelType.GuildText, staffOnly: true, topic: 'Automated moderation log — bans, kicks, warnings' },
+      { name: 'bot-commands', type: ChannelType.GuildText, staffOnly: true, topic: 'Test bot commands here without spamming public channels' },
     ],
   },
 ];
@@ -261,11 +261,16 @@ client.once(Events.ClientReady, async () => {
           name: ch.name,
           type: ch.type,
           parent: category.id,
+          topic: ch.topic || undefined,
           permissionOverwrites: permOverwrites.length > 0 ? permOverwrites : undefined,
           reason: 'PULSE GAMING server setup',
         });
         console.log(`    Created channel: #${ch.name}`);
       } else {
+        // Update topic on existing channels
+        if (ch.topic && channel.topic !== ch.topic) {
+          await channel.setTopic(ch.topic).catch(() => {});
+        }
         console.log(`    Channel exists: #${ch.name}`);
         if (permOverwrites.length > 0) {
           await channel.permissionOverwrites.set(permOverwrites).catch(() => {});

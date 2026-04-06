@@ -370,6 +370,18 @@ async function publishNextStory() {
     console.log('[publisher] Blog generation skipped: ' + err.message);
   }
 
+  // Post to Discord channels (news feed + video drops)
+  try {
+    const { postNewStory, postVideoUpload } = require('./discord/auto_post');
+    await postNewStory(story);
+    if (result.youtube || result.tiktok || result.instagram) {
+      await postVideoUpload(story);
+    }
+    console.log(`[publisher] Discord: posted to news + video channels`);
+  } catch (err) {
+    console.log(`[publisher] Discord post skipped: ${err.message}`);
+  }
+
   // Save updated story
   await db.saveStories(stories);
   return result;

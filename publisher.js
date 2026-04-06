@@ -254,9 +254,12 @@ async function publishOnlyCycle() {
 // Used by the 3x daily publish windows to spread content through the day
 async function publishNextStory() {
   const stories = await db.getStories();
-  const ready = stories.filter(s =>
-    s.approved && s.exported_path && !s.youtube_post_id
-  );
+  const ready = stories.filter(s => {
+    if (!s.approved || !s.exported_path) return false;
+    // Ready if any platform still needs publishing
+    const published = [s.youtube_post_id, s.tiktok_post_id, s.instagram_media_id, s.facebook_post_id, s.twitter_post_id].filter(Boolean).length;
+    return published < 1; // Only pick stories that haven't been published to ANY platform yet
+  });
 
   if (ready.length === 0) {
     console.log('[publisher] No unpublished stories available');
@@ -268,7 +271,7 @@ async function publishNextStory() {
   const story = ready[0];
   console.log(`[publisher] Publishing: "${story.title}" (score: ${story.breaking_score || story.score || 0})`);
 
-  const result = { title: story.title, youtube: false, tiktok: false, instagram: false, facebook: false, twitter: false };
+  const result = { title: story.title, youtube: false, tiktok: false, instagram: false, facebook: false, twitter: false, errors: {} };
 
   // YouTube
   try {
@@ -277,7 +280,6 @@ async function publishNextStory() {
     story.youtube_post_id = ytResult.videoId;
     story.youtube_url = ytResult.url;
     story.youtube_published_at = new Date().toISOString();
-    story.publish_status = 'published';
     result.youtube = true;
     console.log(`[publisher] YouTube: ${ytResult.url}`);
 
@@ -288,6 +290,7 @@ async function publishNextStory() {
     }
   } catch (err) {
     console.log(`[publisher] YouTube upload failed: ${err.message}`);
+    result.errors.youtube = err.message;
   }
 
   // TikTok (no stagger — windows are already spread across the day)
@@ -299,6 +302,7 @@ async function publishNextStory() {
     console.log(`[publisher] TikTok: uploaded`);
   } catch (err) {
     console.log(`[publisher] TikTok upload skipped: ${err.message}`);
+    result.errors.tiktok = err.message;
   }
 
   // Instagram
@@ -310,6 +314,7 @@ async function publishNextStory() {
     console.log(`[publisher] Instagram: uploaded`);
   } catch (err) {
     console.log(`[publisher] Instagram upload skipped: ${err.message}`);
+    result.errors.instagram = err.message;
   }
 
   // Facebook Reels
@@ -321,6 +326,7 @@ async function publishNextStory() {
     console.log(`[publisher] Facebook: uploaded`);
   } catch (err) {
     console.log(`[publisher] Facebook upload skipped: ${err.message}`);
+    result.errors.facebook = err.message;
   }
 
   // X/Twitter
@@ -332,6 +338,16 @@ async function publishNextStory() {
     console.log(`[publisher] Twitter: uploaded`);
   } catch (err) {
     console.log(`[publisher] Twitter upload skipped: ${err.message}`);
+    result.errors.twitter = err.message;
+  }
+
+  // Set publish status based on results
+  const publishedCount = [result.youtube, result.tiktok, result.instagram, result.facebook, result.twitter].filter(Boolean).length;
+  if (publishedCount > 0) {
+    story.publish_status = publishedCount === 5 ? 'published' : 'partial';
+    story.published_at = new Date().toISOString();
+  } else {
+    story.publish_status = 'failed';
   }
 
   // Schedule first-hour engagement pass (5 min delay for comments to arrive)
@@ -372,19 +388,23 @@ async function publishNextStory() {
 
   // Post to Discord channels (news feed + video drops)
   try {
-    const { postNewStory, postVideoUpload, postStoryPoll } = require('./discord/auto_post');
+    const { postNewStory, postVideoUpload } = require('./discord/auto_post');
     await postNewStory(story);
     if (result.youtube || result.tiktok || result.instagram) {
       await postVideoUpload(story);
     }
-    await postStoryPoll(story);
-    console.log(`[publisher] Discord: posted to news + video + polls channels`);
+    console.log(`[publisher] Discord: posted to news + video channels`);
   } catch (err) {
     console.log(`[publisher] Discord post skipped: ${err.message}`);
   }
 
   // Save updated story
-  await db.saveStories(stories);
+  try {
+    await db.saveStories(stories);
+  } catch (err) {
+    console.log(`[publisher] CRITICAL: Failed to save story state after publishing: ${err.message}`);
+    captureException(err, { step: 'publishNextStory.saveStories', storyId: story.id });
+  }
   return result;
 }
 

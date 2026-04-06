@@ -13,6 +13,14 @@ const { getAnalyticsContext } = require('./analytics');
 const BANNED_STARTS = ['so', 'today', 'hey', 'welcome', 'in this'];
 const BANNED_LOOP_PHRASES = ['let me know in the comments'];
 
+const DEMONETIZATION_WORDS = ['killed', 'murder', 'suicide', 'rape', 'terrorist', 'massacre', 'genocide', 'slaughter'];
+
+function checkAdvertiserSafety(script) {
+  const text = (script.full_script || '').toLowerCase();
+  const found = DEMONETIZATION_WORDS.filter(w => text.includes(w));
+  return found;
+}
+
 // --- Fetch source material for fact-checking ---
 async function fetchSourceMaterial(story) {
   const parts = [];
@@ -156,6 +164,11 @@ function validate(script, channelId) {
   const validClassifications = CHANNEL_CLASSIFICATIONS[channelId] || CHANNEL_CLASSIFICATIONS['pulse-gaming'];
   if (!script.classification || !validClassifications.includes(script.classification)) {
     errors.push('Missing or invalid classification tag');
+  }
+  // Advertiser-safety check (warnings, not hard failures — gaming news may reference violence)
+  const unsafeWords = checkAdvertiserSafety(script);
+  if (unsafeWords.length > 0) {
+    errors.push(`Advertiser-safety warning: contains "${unsafeWords.join('", "')}"`);
   }
   return errors;
 }

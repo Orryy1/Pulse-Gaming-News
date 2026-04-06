@@ -17,6 +17,7 @@ const axios = require('axios');
 const dotenv = require('dotenv');
 const { withRetry } = require('./lib/retry');
 const { addBreadcrumb, captureException } = require('./lib/sentry');
+const { validateVideo } = require('./lib/validate');
 const db = require('./lib/db');
 
 dotenv.config({ override: true });
@@ -24,18 +25,18 @@ dotenv.config({ override: true });
 const TOKEN_PATH = path.join(__dirname, 'tokens', 'facebook_token.json');
 
 async function getAccessToken() {
-  if (process.env.FACEBOOK_PAGE_TOKEN) return process.env.FACEBOOK_PAGE_TOKEN;
-
+  // Try file first (may have refresh info)
   if (await fs.pathExists(TOKEN_PATH)) {
     const tokenData = await fs.readJson(TOKEN_PATH);
+    if (tokenData.expires_at && Date.now() > tokenData.expires_at) {
+      console.warn('[facebook] Token has EXPIRED. Uploads will fail until token is refreshed.');
+    } else if (tokenData.expires_at && Date.now() > tokenData.expires_at - (7 * 24 * 60 * 60 * 1000)) {
+      console.warn('[facebook] Token expiring within 7 days. Consider refreshing.');
+    }
     return tokenData.access_token;
   }
-
-  throw new Error(
-    'Facebook not authenticated.\n' +
-    'Set FACEBOOK_PAGE_TOKEN in .env, or save token to tokens/facebook_token.json\n' +
-    'Also set FACEBOOK_PAGE_ID'
-  );
+  if (process.env.FACEBOOK_PAGE_TOKEN) return process.env.FACEBOOK_PAGE_TOKEN;
+  throw new Error('Facebook not authenticated.');
 }
 
 function getPageId() {
@@ -51,9 +52,7 @@ async function uploadReel(story) {
     const accessToken = await getAccessToken();
     const pageId = getPageId();
 
-    if (!story.exported_path || !await fs.pathExists(story.exported_path)) {
-      throw new Error(`Video file not found: ${story.exported_path}`);
-    }
+    await validateVideo(story.exported_path, 'facebook');
 
     const publicBaseUrl = process.env.RAILWAY_PUBLIC_URL || `http://localhost:${process.env.PORT || 3001}`;
     const videoUrl = `${publicBaseUrl}/api/download/${story.id}`;
@@ -68,7 +67,7 @@ async function uploadReel(story) {
 
     // Step 1: Initiate Reel upload
     const initResponse = await axios.post(
-      `https://graph.facebook.com/v19.0/${pageId}/video_reels`,
+      `https://graph.facebook.com/v21.0/${pageId}/video_reels`,
       {
         upload_phase: 'start',
         access_token: accessToken,
@@ -97,8 +96,8 @@ async function uploadReel(story) {
     });
 
     // Step 3: Finish the upload and publish (published: true is required or it stays as draft)
-    await axios.post(
-      `https://graph.facebook.com/v19.0/${pageId}/video_reels`,
+    const finishResponse = await axios.post(
+      `https://graph.facebook.com/v21.0/${pageId}/video_reels`,
       {
         upload_phase: 'finish',
         video_id: videoId,
@@ -108,6 +107,11 @@ async function uploadReel(story) {
         access_token: accessToken,
       }
     );
+
+    // Verify the finish phase succeeded
+    if (finishResponse.data && finishResponse.data.success === false) {
+      throw new Error(`Facebook finish phase failed: ${JSON.stringify(finishResponse.data)}`);
+    }
 
     console.log(`[facebook] Reel published! Video ID: ${videoId}`);
 

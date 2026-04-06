@@ -31,6 +31,21 @@ async function downloadImage(url, filename) {
       return null;
     }
 
+    // Verify minimum dimensions — skip low-res images that look bad at 1080x1920
+    try {
+      const sharp = require('sharp');
+      const meta = await sharp(cachePath).metadata();
+      if (meta.width < 400 || meta.height < 400) {
+        console.log(`[images] Skipping low-res image: ${meta.width}x${meta.height}`);
+        await fs.remove(cachePath);
+        return null;
+      }
+    } catch (e) {
+      // If sharp can't read it, the image is probably corrupt
+      await fs.remove(cachePath);
+      return null;
+    }
+
     console.log(`[images] Cached: ${filename} (${Math.round(stat.size / 1024)}KB)`);
     return cachePath;
   } catch (err) {

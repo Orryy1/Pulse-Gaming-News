@@ -76,6 +76,8 @@ async function generateAudio() {
 
   for (const story of toProcess) {
     console.log(`[audio] Generating audio for: ${story.title}`);
+    let regenAttempts = 0;
+    const MAX_REGEN = 2;
 
     try {
       // Clean TTS script — remove markers and punctuation that causes vocal artifacts
@@ -108,8 +110,9 @@ async function generateAudio() {
       const totalDuration = audioDuration + BUMPER_DURATION;
       story.audio_duration = audioDuration;
 
-      if (totalDuration < MIN_TOTAL_DURATION) {
-        console.log(`[audio] WARNING: ${story.id} is ${totalDuration.toFixed(1)}s (need ${MIN_TOTAL_DURATION}s). Regenerating longer script...`);
+      if (totalDuration < MIN_TOTAL_DURATION && regenAttempts < MAX_REGEN) {
+        regenAttempts++;
+        console.log(`[audio] WARNING: ${story.id} is ${totalDuration.toFixed(1)}s (need ${MIN_TOTAL_DURATION}s). Regenerating longer script (attempt ${regenAttempts}/${MAX_REGEN})...`);
 
         // Regenerate with a longer target
         const Anthropic = require('@anthropic-ai/sdk');
@@ -159,6 +162,9 @@ async function generateAudio() {
           console.log(`[audio] Regen parse failed, keeping original: ${parseErr.message}`);
           story.duration_warning = true;
         }
+      } else if (totalDuration < MIN_TOTAL_DURATION) {
+        console.log(`[audio] WARNING: ${story.id} is ${totalDuration.toFixed(1)}s (need ${MIN_TOTAL_DURATION}s) but max regen attempts (${MAX_REGEN}) reached — accepting as-is`);
+        story.duration_warning = true;
       } else {
         console.log(`[audio] Duration OK: ${totalDuration.toFixed(1)}s`);
       }

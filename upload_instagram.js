@@ -4,6 +4,7 @@ const axios = require('axios');
 const dotenv = require('dotenv');
 const { withRetry } = require('./lib/retry');
 const { addBreadcrumb, captureException } = require('./lib/sentry');
+const { validateVideo } = require('./lib/validate');
 const db = require('./lib/db');
 
 dotenv.config({ override: true });
@@ -31,13 +32,17 @@ async function getAccessToken() {
   if (await fs.pathExists(TOKEN_PATH)) {
     const tokenData = await fs.readJson(TOKEN_PATH);
     // Auto-refresh if within 7 days of expiry
-    if (tokenData.expires_at && Date.now() > tokenData.expires_at - (7 * 24 * 60 * 60 * 1000)) {
+    if (tokenData.expires_at && tokenData.expires_at > 0 && Date.now() > tokenData.expires_at - (7 * 24 * 60 * 60 * 1000)) {
       console.log('[instagram] Token expiring soon, refreshing...');
       try {
         const refreshed = await refreshToken(tokenData.access_token);
         return refreshed.access_token;
       } catch (err) {
-        console.log(`[instagram] Refresh failed: ${err.message}, using existing token`);
+        // If token is actually expired (not just expiring soon), fail hard
+        if (tokenData.expires_at > 0 && Date.now() > tokenData.expires_at) {
+          throw new Error(`Instagram token expired and refresh failed: ${err.message}`);
+        }
+        console.warn(`[instagram] Refresh failed but token still valid: ${err.message}`);
         return tokenData.access_token;
       }
     }
@@ -106,9 +111,7 @@ async function uploadReel(story) {
     const accessToken = await getAccessToken();
     const accountId = getAccountId();
 
-    if (!story.exported_path || !await fs.pathExists(story.exported_path)) {
-      throw new Error(`Video file not found: ${story.exported_path}`);
-    }
+    await validateVideo(story.exported_path, 'instagram');
 
     // Build caption — channel-aware hashtags
     const { getChannel } = require('./channels');

@@ -96,30 +96,13 @@ function getAccountId() {
   return id;
 }
 
-// --- Upload a Reel to Instagram ---
+// --- Upload a Reel to Instagram via Resumable Upload (direct binary) ---
 async function uploadReel(story) {
   const accessToken = await getAccessToken();
   const accountId = getAccountId();
 
   if (!story.exported_path || !await fs.pathExists(story.exported_path)) {
     throw new Error(`Video file not found: ${story.exported_path}`);
-  }
-
-  // Instagram requires a public URL for the video
-  const publicBaseUrl = process.env.RAILWAY_PUBLIC_URL || `http://localhost:${process.env.PORT || 3001}`;
-  const videoUrl = `${publicBaseUrl}/api/download/${story.id}`;
-
-  // Verify the video is actually accessible at the public URL before telling Instagram to fetch it
-  try {
-    const probe = await axios.head(videoUrl, { timeout: 10000 });
-    const contentType = probe.headers['content-type'] || '';
-    const contentLength = parseInt(probe.headers['content-length'] || '0', 10);
-    if (contentLength < 100000) {
-      throw new Error(`Video file too small (${contentLength} bytes) — likely missing or corrupt`);
-    }
-    console.log(`[instagram] Video URL verified: ${contentLength} bytes, ${contentType}`);
-  } catch (err) {
-    throw new Error(`Video not accessible at ${videoUrl} — skipping Instagram upload (${err.message})`);
   }
 
   // Build caption — channel-aware hashtags
@@ -139,24 +122,44 @@ async function uploadReel(story) {
   // Seed token from env on first run so auto-refresh can work
   await seedTokenFromEnv();
 
-  console.log(`[instagram] Uploading Reel: "${(story.suggested_thumbnail_text || story.title).substring(0, 50)}..."`);
+  const videoBuffer = await fs.readFile(story.exported_path);
+  const fileSize = videoBuffer.length;
+  console.log(`[instagram] Uploading Reel (${Math.round(fileSize / 1024)}KB): "${(story.suggested_thumbnail_text || story.title).substring(0, 50)}..."`);
 
-  // Step 1: Create media container
-  const createResponse = await axios.post(
+  // Step 1: Create resumable upload session
+  const initResponse = await axios.post(
     `https://graph.instagram.com/v19.0/${accountId}/media`,
     {
       media_type: 'REELS',
-      video_url: videoUrl,
+      upload_type: 'resumable',
       caption,
       share_to_feed: true,
       access_token: accessToken,
     }
   );
 
-  const containerId = createResponse.data.id;
+  const containerId = initResponse.data.id;
+  const uploadUrl = initResponse.data.uri;
   console.log(`[instagram] Container created: ${containerId}`);
 
-  // Step 2: Wait for processing (Instagram needs to fetch and process the video)
+  // Step 2: Upload video binary directly to the resumable upload URI
+  await axios({
+    method: 'POST',
+    url: uploadUrl,
+    headers: {
+      'Authorization': `OAuth ${accessToken}`,
+      'offset': '0',
+      'file_size': fileSize.toString(),
+      'Content-Type': 'video/mp4',
+    },
+    data: videoBuffer,
+    maxContentLength: Infinity,
+    maxBodyLength: Infinity,
+  });
+
+  console.log(`[instagram] Binary upload complete`);
+
+  // Step 3: Wait for processing
   let status = 'IN_PROGRESS';
   let attempts = 0;
 
@@ -191,7 +194,7 @@ async function uploadReel(story) {
     throw new Error(`Instagram processing timed out (status: ${status})`);
   }
 
-  // Step 3: Publish the container
+  // Step 4: Publish the container
   const publishResponse = await axios.post(
     `https://graph.instagram.com/v19.0/${accountId}/media_publish`,
     {

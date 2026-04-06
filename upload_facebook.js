@@ -8,8 +8,7 @@
   4. Set env: FACEBOOK_PAGE_ID, FACEBOOK_PAGE_TOKEN
   5. Or save token to tokens/facebook_token.json
 
-  Facebook Reels require the video be hosted at a public URL
-  (same approach as Instagram — uses the Railway download endpoint).
+  Facebook Reels use a 3-step resumable upload (direct binary — no public URL needed).
 */
 
 const fs = require('fs-extra');
@@ -92,7 +91,7 @@ async function uploadReel(story) {
     maxBodyLength: Infinity,
   });
 
-  // Step 3: Finish the upload and publish
+  // Step 3: Finish the upload and publish (published: true is required or it stays as draft)
   await axios.post(
     `https://graph.facebook.com/v19.0/${pageId}/video_reels`,
     {
@@ -100,6 +99,7 @@ async function uploadReel(story) {
       video_id: videoId,
       title: (story.suggested_title || story.suggested_thumbnail_text || story.title || '').substring(0, 100),
       description,
+      published: true,
       access_token: accessToken,
     }
   );

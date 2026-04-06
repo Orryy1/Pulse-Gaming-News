@@ -139,7 +139,8 @@ async function uploadReel(story) {
   );
 
   const containerId = initResponse.data.id;
-  const uploadUrl = initResponse.data.uri;
+  // The API returns a uri to rupload.facebook.com; fall back to constructing it if missing
+  const uploadUrl = initResponse.data.uri || `https://rupload.facebook.com/ig-api-upload/v19.0/${containerId}`;
   console.log(`[instagram] Container created: ${containerId}`);
 
   // Step 2: Upload video binary directly to the resumable upload URI

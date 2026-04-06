@@ -111,11 +111,13 @@ async function runFastPipeline(story) {
       return null;
     }
 
-    // Mark it as approved and breaking
+    // Mark it as approved and breaking — override classification so the
+    // thumbnail and video badge show "BREAKING" instead of the original flair
     newStory.approved = true;
     newStory.auto_approved = true;
     newStory.approved_at = new Date().toISOString();
     newStory.breaking_fast_track = true;
+    newStory.classification = '[BREAKING]';
 
     // Re-read daily_news in case other processes modified it, then merge
     const allStories = await fs.readJson(DATA_FILE).catch(() => []);

@@ -799,6 +799,7 @@ async function assemble() {
         );
         // ASS subtitles applied after overlays (see below)
 
+
         // Flair badge — moved higher
         fbChain.push(
           `drawtext=text='  ${flair}  ':${fontOpt}:fontcolor=white:fontsize=38:` +

@@ -187,12 +187,12 @@ async function uploadShort(story) {
   }
 
   // Build tweet text (280 char limit)
-  const classTag = (story.classification || '').replace(/[\[\]]/g, '');
   let text = story.suggested_title || story.suggested_thumbnail_text || story.title;
-  if (text.length > 200) text = text.substring(0, 197) + '...';
+  text = text.replace(/\[.*?\]\s*/g, '').trim();
+  if (text.length > 220) text = text.substring(0, 217) + '...';
 
   const hashtags = '#GamingNews #GamingLeaks';
-  const tweetText = `${classTag ? `[${classTag}] ` : ''}${text}\n\n${hashtags}`;
+  const tweetText = `${text}\n\n${hashtags}`;
   const finalText = tweetText.length > 280 ? tweetText.substring(0, 277) + '...' : tweetText;
 
   console.log(`[twitter] Uploading video for: "${text.substring(0, 50)}..."`);

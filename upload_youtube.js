@@ -134,12 +134,11 @@ function buildMetadata(story) {
   const classInfo = brand.classificationColour(story.classification || story.flair);
 
   // Title: use LLM-generated curiosity gap title, fall back to thumbnail text or raw title
+  // No classification prefix — wastes characters and weakens curiosity gap hooks
   let baseTitle = story.suggested_title || story.suggested_thumbnail_text || story.title;
   baseTitle = baseTitle.replace(/#\s*shorts?\s*/gi, '').replace(/\[.*?\]\s*/g, '').trim();
-  const prefix = `[${classInfo.label}] `;
-  const maxTitleLen = 58 - prefix.length;
-  if (baseTitle.length > maxTitleLen) baseTitle = baseTitle.substring(0, maxTitleLen - 3) + '...';
-  const title = prefix + baseTitle;
+  if (baseTitle.length > 80) baseTitle = baseTitle.substring(0, 77) + '...';
+  const title = baseTitle;
 
   const gameName = extractGameName(story.title);
   const platform = detectPlatform(story.title + ' ' + (story.body || ''));

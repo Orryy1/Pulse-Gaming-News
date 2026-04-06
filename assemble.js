@@ -19,7 +19,7 @@ const INTRO_DURATION = 1.5; // seconds the intro card is visible
 const OUTRO_DURATION = 5;   // seconds before end to bring up outro card
 
 const MUSIC_CACHE = path.join('output', 'music');
-const CUSTOM_MUSIC_DIR = path.join(__dirname, 'audio');
+const CUSTOM_MUSIC_DIR = path.join(__dirname, 'audio', 'mastered');
 const MUSIC_VOLUME = 0.12; // 12% volume — subtle background
 const MAX_IMAGES = 4; // Cap input streams to prevent Railway memory exhaustion
 const FFMPEG_THREADS = 2; // Limit FFmpeg threads to stay within container memory

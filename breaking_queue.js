@@ -105,12 +105,13 @@ async function runFastPipeline(story) {
     await assemble();
 
     // Step 7: Publish (if AUTO_PUBLISH is on)
+    let publishResult = null;
     if (process.env.AUTO_PUBLISH === 'true') {
       console.log('[breaking] Step 5/5: Publishing to all platforms...');
       const { publishNextStory } = require('./publisher');
-      const result = await publishNextStory();
-      if (result) {
-        console.log(`[breaking] Published: YT=${result.youtube} TT=${result.tiktok} IG=${result.instagram}`);
+      publishResult = await publishNextStory();
+      if (publishResult) {
+        console.log(`[breaking] Published: YT=${publishResult.youtube} TT=${publishResult.tiktok} IG=${publishResult.instagram} FB=${publishResult.facebook} X=${publishResult.twitter}`);
       }
     } else {
       console.log('[breaking] Step 5/5: AUTO_PUBLISH off — skipping upload');
@@ -123,11 +124,15 @@ async function runFastPipeline(story) {
     // Discord notification
     try {
       const sendDiscord = require('./notify');
+      const platformStatus = publishResult
+        ? `YT: ${publishResult.youtube ? 'yes' : 'no'} | TT: ${publishResult.tiktok ? 'yes' : 'no'} | IG: ${publishResult.instagram ? 'yes' : 'no'} | FB: ${publishResult.facebook ? 'yes' : 'no'} | X: ${publishResult.twitter ? 'yes' : 'no'}`
+        : 'Publishing skipped';
       await sendDiscord(
         `**BREAKING NEWS — Fast Pipeline**\n` +
         `"${story.title}"\n` +
         `Score: ${story.breaking_score} | Trigger: ${story.breaking_trigger}\n` +
-        `Time to publish: ${elapsedSec}s`
+        `Time to publish: ${elapsedSec}s\n` +
+        platformStatus
       );
     } catch (err) { /* Discord notification is non-critical */ }
 

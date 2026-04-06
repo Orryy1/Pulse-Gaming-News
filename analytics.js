@@ -2,6 +2,7 @@ const fs = require('fs-extra');
 const path = require('path');
 const axios = require('axios');
 const dotenv = require('dotenv');
+const db = require('./lib/db');
 
 dotenv.config({ override: true });
 
@@ -10,28 +11,22 @@ const HISTORY_PATH = path.join(__dirname, 'analytics_history.json');
 const TIKTOK_TOKEN_PATH = path.join(__dirname, 'tokens', 'tiktok_tokens.json');
 const INSTAGRAM_TOKEN_PATH = path.join(__dirname, 'tokens', 'instagram_token.json');
 
-// --- Load / save helpers ---
+// --- Load / save helpers (delegated to db layer, feature-flagged) ---
 
 async function loadDailyNews() {
-  if (await fs.pathExists(DAILY_NEWS_PATH)) {
-    return fs.readJson(DAILY_NEWS_PATH);
-  }
-  return [];
+  return db.getStories();
 }
 
 async function saveDailyNews(stories) {
-  await fs.writeJson(DAILY_NEWS_PATH, stories, { spaces: 2 });
+  await db.saveStories(stories);
 }
 
 async function loadHistory() {
-  if (await fs.pathExists(HISTORY_PATH)) {
-    return fs.readJson(HISTORY_PATH);
-  }
-  return { entries: [], topicStats: {} };
+  return db.getAnalyticsHistory();
 }
 
 async function saveHistory(history) {
-  await fs.writeJson(HISTORY_PATH, history, { spaces: 2 });
+  await db.saveAnalyticsHistory(history);
 }
 
 // --- YouTube Data API v3 stats fetching ---

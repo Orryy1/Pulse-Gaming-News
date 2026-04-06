@@ -2,6 +2,7 @@ const cron = require('node-cron');
 const fs = require('fs-extra');
 const sendDiscord = require('./notify');
 const dotenv = require('dotenv');
+const db = require('./lib/db');
 
 dotenv.config({ override: true });
 
@@ -47,10 +48,7 @@ async function runHunt() {
   const process_stories = require('./processor');
 
   // Load existing stories to preserve their state (approval, audio, video paths)
-  let existingStories = [];
-  if (await fs.pathExists('daily_news.json')) {
-    existingStories = await fs.readJson('daily_news.json');
-  }
+  const existingStories = await db.getStories();
   const existingIds = new Set(existingStories.map(s => s.id));
 
   console.log('[run] Step 1: Multi-source hunting (Reddit + RSS)...');
@@ -68,9 +66,11 @@ async function runHunt() {
     await process_stories();
 
     // Merge: newly processed stories + existing (preserves approval/production state)
-    const processed = await fs.readJson('daily_news.json');
-    const merged = [...processed, ...existingStories];
-    await fs.writeJson('daily_news.json', merged, { spaces: 2 });
+    const processed = await db.getStories();
+    const processedIds = new Set(processed.map(s => s.id));
+    const toMerge = existingStories.filter(s => !processedIds.has(s.id));
+    const merged = [...processed, ...toMerge];
+    await db.saveStories(merged);
     console.log(`[run] Merged: ${processed.length} new + ${existingStories.length} existing = ${merged.length} total`);
   } else {
     console.log('[run] No new stories — skipping processor');
@@ -106,12 +106,9 @@ async function runProduce() {
   const { generateStoryImages } = require('./images_story');
   await generateStoryImages();
 
-  const fs = require('fs-extra');
   let exportedPaths = [];
-  if (await fs.pathExists('daily_news.json')) {
-    const stories = await fs.readJson('daily_news.json');
-    exportedPaths = stories.filter(s => s.exported_path).map(s => s.exported_path);
-  }
+  const stories = await db.getStories();
+  exportedPaths = stories.filter(s => s.exported_path).map(s => s.exported_path);
 
   await sendDiscord(`**Pulse Gaming Produce Complete**\n${exportedPaths.length} videos exported:\n${exportedPaths.join('\n')}`);
 

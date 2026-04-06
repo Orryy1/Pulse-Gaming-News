@@ -1,5 +1,6 @@
 const fs = require('fs-extra');
 const dotenv = require('dotenv');
+const db = require('./lib/db');
 
 dotenv.config({ override: true });
 
@@ -25,12 +26,11 @@ function extractProduct(title) {
 async function processAffiliates() {
   console.log('[affiliates] Loading daily_news.json...');
 
-  if (!await fs.pathExists('daily_news.json')) {
-    console.log('[affiliates] ERROR: daily_news.json not found.');
+  const stories = await db.getStories();
+  if (!stories.length) {
+    console.log('[affiliates] No stories found.');
     return;
   }
-
-  const stories = await fs.readJson('daily_news.json');
   const tag = process.env.AMAZON_AFFILIATE_TAG || 'placeholder';
 
   for (const story of stories) {
@@ -44,7 +44,7 @@ async function processAffiliates() {
     console.log(`[affiliates] ${story.id}: product="${product}"`);
   }
 
-  await fs.writeJson('daily_news.json', stories, { spaces: 2 });
+  await db.saveStories(stories);
   console.log(`[affiliates] Updated ${stories.length} stories`);
 }
 

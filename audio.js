@@ -4,6 +4,7 @@ const path = require('path');
 const dotenv = require('dotenv');
 const { exec } = require('child_process');
 const util = require('util');
+const db = require('./lib/db');
 
 const execAsync = util.promisify(exec);
 
@@ -68,7 +69,7 @@ async function generateAudio() {
     return;
   }
 
-  const stories = await fs.readJson('daily_news.json');
+  const stories = await db.getStories();
   const toProcess = stories.filter(s => s.approved === true && !s.audio_path);
 
   console.log(`[audio] ${toProcess.length} stories need audio generation`);
@@ -169,8 +170,8 @@ async function generateAudio() {
     }
   }
 
-  await fs.writeJson('daily_news.json', stories, { spaces: 2 });
-  console.log('[audio] daily_news.json updated');
+  await db.saveStories(stories);
+  console.log('[audio] Stories updated');
 }
 
 module.exports = generateAudio;

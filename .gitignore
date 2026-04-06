@@ -7,5 +7,8 @@ pending_news.json
 image_queue.json
 video_queue.json
 tokens/
+data/*.db
+data/*.db-wal
+data/*.db-shm
 .claude/settings.local.json
 .claude/launch.json

@@ -11,14 +11,16 @@ const TEXT = brand.TEXT || '#F0F0F0';
 
 /**
  * Full HTML page for an individual blog post.
- * @param {object} data — { title, slug, description, html, publishedAt, story }
+ * @param {object} data — { title, slug, description, html, publishedAt, seoKeywords, story }
  */
 function postTemplate(data) {
-  const { title, slug, description, html, publishedAt, story } = data;
+  const { title, slug, description, html, publishedAt, seoKeywords, story } = data;
   const ogImage = (story && story.article_image) || '';
   const youtubeUrl = (story && story.youtube_url) || '';
   const affiliateUrl = (story && story.affiliate_url) || '';
   const channelName = brand.CHANNEL_NAME || 'Pulse Gaming';
+  const baseUrl = process.env.RAILWAY_PUBLIC_URL || 'http://localhost:3001';
+  const flair = (story && (story.classification || story.flair)) || '';
 
   const youtubeEmbed = youtubeUrl
     ? (() => {
@@ -34,19 +36,61 @@ function postTemplate(data) {
     ? `<a href="${affiliateUrl}" class="cta-btn" target="_blank" rel="noopener noreferrer sponsored">Check it out on Amazon</a>`
     : '';
 
-  const jsonLd = JSON.stringify({
+  // Build enhanced Schema.org JSON-LD for NewsArticle
+  const jsonLdObj = {
     '@context': 'https://schema.org',
     '@type': 'NewsArticle',
+    mainEntityOfPage: {
+      '@type': 'WebPage',
+      '@id': `${baseUrl}/blog/${slug}.html`,
+    },
     headline: title,
+    description: description,
     datePublished: publishedAt,
-    author: { '@type': 'Organization', name: channelName },
+    dateModified: publishedAt,
+    author: { '@type': 'Organization', name: channelName, url: baseUrl },
     publisher: {
       '@type': 'Organization',
       name: channelName,
+      url: baseUrl,
+      logo: {
+        '@type': 'ImageObject',
+        url: `${baseUrl}/branding/logo.png`,
+      },
     },
-    description: description,
-    image: ogImage || undefined,
-  });
+  };
+
+  if (ogImage) {
+    jsonLdObj.image = {
+      '@type': 'ImageObject',
+      url: ogImage,
+    };
+  }
+
+  if (flair) {
+    jsonLdObj.articleSection = flair;
+  }
+
+  if (seoKeywords) {
+    jsonLdObj.keywords = seoKeywords;
+  }
+
+  if (youtubeUrl) {
+    const vidMatch = youtubeUrl.match(/(?:v=|shorts\/|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+    const vidId = vidMatch ? vidMatch[1] : '';
+    if (vidId) {
+      jsonLdObj.video = {
+        '@type': 'VideoObject',
+        name: title,
+        description: description,
+        thumbnailUrl: `https://img.youtube.com/vi/${vidId}/maxresdefault.jpg`,
+        embedUrl: `https://www.youtube.com/embed/${vidId}`,
+        uploadDate: publishedAt,
+      };
+    }
+  }
+
+  const jsonLd = JSON.stringify(jsonLdObj);
 
   return `<!DOCTYPE html>
 <html lang="en">

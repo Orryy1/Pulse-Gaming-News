@@ -1,3 +1,6 @@
+require("./lib/sentry").initSentry();
+const { sentryExpressMiddleware, setupErrorHandler } = require("./lib/sentry");
+
 const express = require('express');
 const cors = require('cors');
 const fs = require('fs-extra');
@@ -17,6 +20,10 @@ fs.ensureDirSync(PUBLIC_DIR);
 
 app.use(cors());
 app.use(express.json());
+
+// Sentry request handler (must be before routes)
+const sentryMw = sentryExpressMiddleware();
+app.use(sentryMw.requestHandler);
 
 // Request logger
 app.use((req, res, next) => {
@@ -95,6 +102,9 @@ function broadcastProgress(storyId, type, progress, stage) {
   }
 }
 
+// --- Database layer (feature-flagged via USE_SQLITE env var) ---
+const db = require('./lib/db');
+
 // --- Data helpers ---
 function readNews() {
   if (!fs.existsSync(DATA_FILE)) return [];
@@ -104,6 +114,12 @@ function readNews() {
 
 function writeNews(data) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
+  // When SQLite is enabled, keep the database in sync
+  if (db.useSqlite()) {
+    try { db.saveStories(data); } catch (err) {
+      console.log(`[server] SQLite sync error: ${err.message}`);
+    }
+  }
 }
 
 function findStory(id) {
@@ -564,7 +580,7 @@ app.post('/api/hunter/run', async (req, res) => {
 });
 
 // --- Autonomous scheduler (built into server) ---
-function startAutonomousScheduler() {
+async function startAutonomousScheduler() {
   const hasKey = process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY !== 'placeholder';
   if (!hasKey) {
     console.log('[server] Autonomous scheduler disabled. Set ANTHROPIC_API_KEY to enable.');
@@ -583,14 +599,21 @@ function startAutonomousScheduler() {
     hunterInterval = setInterval(runHunter, HUNTER_INTERVAL_MS);
   }, 30000);
 
-  // 3x daily publish windows — staggered for UK + US audience coverage
-  // 07:00 UTC (8AM BST) — EU morning commute, catch UK/EU scrollers
-  // 13:00 UTC (2PM BST) — US East Coast morning 8-9am ET, biggest gaming audience waking up
-  // 19:00 UTC (8PM BST) — UK evening peak + US afternoon 2-3pm ET, highest engagement
-  // Each window publishes ONE video across all platforms (spread content through the day)
+  // Data-driven publish windows — uses analytics history to find optimal hours.
+  // Falls back to 07:00/13:00/19:00 UTC when insufficient data.
   if (process.env.AUTO_PUBLISH === 'true') {
-    const publishWindows = ['0 7 * * *', '0 13 * * *', '0 19 * * *'];
-    const windowLabels = ['07:00 UTC (8AM BST)', '13:00 UTC (2PM BST)', '19:00 UTC (8PM BST)'];
+    const { getRecommendedSchedule, DEFAULT_SCHEDULE } = require('./optimal_timing');
+    let schedule;
+    try {
+      schedule = await getRecommendedSchedule();
+    } catch (err) {
+      console.log(`[server] Optimal timing analysis failed, using defaults: ${err.message}`);
+      schedule = DEFAULT_SCHEDULE;
+    }
+    console.log(`[server] Publish schedule confidence: ${schedule.confidence} (${schedule.dataPoints} data points)`);
+
+    const publishWindows = schedule.crons;
+    const windowLabels = schedule.labels;
 
     publishWindows.forEach((cronExpr, i) => {
       cron.schedule(cronExpr, async () => {
@@ -619,7 +642,7 @@ function startAutonomousScheduler() {
       }, { timezone: 'UTC' });
     });
 
-    console.log('[server] Auto-publish enabled: 3x daily at 07:00/13:00/19:00 UTC (8AM/2PM/8PM BST)');
+    console.log(`[server] Auto-publish enabled: ${publishWindows.length}x daily — ${windowLabels.join(' | ')}`);
 
     // Engagement passes — 30 minutes after each publish window
     const engagementWindows = ['30 7 * * *', '30 13 * * *', '30 19 * * *'];
@@ -635,6 +658,32 @@ function startAutonomousScheduler() {
       }, { timezone: 'UTC' });
     });
     console.log('[server] Auto-engagement enabled: 30 min after each publish window');
+
+    // First-hour engagement — every 15 minutes, catches videos published < 60 min ago
+    cron.schedule('*/15 * * * *', async () => {
+      try {
+        const fhNews = await fs.readJson(DATA_FILE).catch(() => []);
+        const now = Date.now();
+        const cutoff1h = now - (60 * 60 * 1000);
+
+        const firstHourVideos = fhNews.filter(s => {
+          if (!s.youtube_post_id || s.publish_status !== 'published') return false;
+          const publishTime = s.published_at || s.timestamp;
+          return publishTime && new Date(publishTime).getTime() >= cutoff1h;
+        });
+
+        if (firstHourVideos.length > 0) {
+          console.log(`[server-cron] First-hour engagement: ${firstHourVideos.length} video(s) in window`);
+          const { engageFirstHour } = require('./engagement');
+          for (const story of firstHourVideos) {
+            await engageFirstHour(story.youtube_post_id, story);
+          }
+        }
+      } catch (err) {
+        console.log(`[server-cron] First-hour engagement error: ${err.message}`);
+      }
+    }, { timezone: 'UTC' });
+    console.log('[server] First-hour engagement: every 15 min for videos < 60 min old');
 
     // Analytics pass — twice daily, pulls YouTube stats and updates scoring history
     const analyticsWindows = ['0 8 * * *', '0 20 * * *'];
@@ -684,6 +733,38 @@ function startAutonomousScheduler() {
   }, { timezone: 'UTC' });
   console.log('[server] Weekly compilation: Sunday 14:00 UTC');
 
+  // Monthly topic compilations — 1st of each month at 10:00 UTC
+  cron.schedule('0 10 1 * *', async () => {
+    console.log('[server-cron] 1st of month 10:00 UTC — MONTHLY TOPIC COMPILATIONS');
+    try {
+      const { identifyCompilableTopics, compileByTopic } = require('./weekly_compile');
+      const topics = await identifyCompilableTopics(30);
+      const top3 = topics.slice(0, 3);
+
+      if (top3.length === 0) {
+        console.log('[server-cron] No compilable topics found this month');
+        await sendDiscord('**Monthly Topic Compilations** — No topics with 4+ stories found. Skipping.');
+        return;
+      }
+
+      console.log(`[server-cron] Compiling top ${top3.length} topics: ${top3.map(t => t.keyword).join(', ')}`);
+      await sendDiscord(`**Monthly Topic Compilations** — Starting ${top3.length} compilations: ${top3.map(t => `"${t.keyword}" (${t.count} stories)`).join(', ')}`);
+
+      for (const topic of top3) {
+        try {
+          await compileByTopic(topic.keyword);
+        } catch (err) {
+          console.log(`[server-cron] Topic compilation failed for "${topic.keyword}": ${err.message}`);
+          await sendDiscord(`**Topic Compilation Error** ("${topic.keyword}"): ${err.message}`);
+        }
+      }
+    } catch (err) {
+      console.log(`[server-cron] Monthly topic compilations error: ${err.message}`);
+      await sendDiscord(`**Monthly Topic Compilations Error**: ${err.message}`);
+    }
+  }, { timezone: 'UTC' });
+  console.log('[server] Monthly topic compilations: 1st of month at 10:00 UTC');
+
   // Instagram token auto-refresh — every Monday at 03:00 UTC
   cron.schedule('0 3 * * 1', async () => {
     console.log('[server-cron] Instagram token refresh check...');
@@ -721,6 +802,20 @@ function startAutonomousScheduler() {
     }
   }, { timezone: 'UTC' });
   console.log('[server] Blog rebuild: daily at 22:00 UTC');
+
+  // Weekly timing re-analysis — Sunday midnight UTC
+  cron.schedule('0 0 * * 0', async () => {
+    console.log('[server-cron] Sunday 00:00 UTC — WEEKLY TIMING RE-ANALYSIS');
+    try {
+      const { getTimingReport } = require('./optimal_timing');
+      const report = await getTimingReport();
+      console.log('[server-cron] Timing report generated');
+      await sendDiscord('**Weekly Timing Report**\n' + report);
+    } catch (err) {
+      console.log(`[server-cron] Timing analysis error: ${err.message}`);
+    }
+  }, { timezone: 'UTC' });
+  console.log('[server] Weekly timing re-analysis: Sunday 00:00 UTC');
 
   // --- Breaking news watcher (continuous Reddit + RSS monitoring) ---
   try {
@@ -855,6 +950,23 @@ app.get('/api/analytics/history', async (req, res) => {
   }
 });
 
+// --- Optimal timing endpoint ---
+app.get('/api/analytics/optimal-timing', async (req, res) => {
+  try {
+    const { analyzeOptimalWindows, analyzeDayOfWeek, getRecommendedSchedule, getTimingReport } = require('./optimal_timing');
+    const [hours, days, schedule, report] = await Promise.all([
+      analyzeOptimalWindows(),
+      analyzeDayOfWeek(),
+      getRecommendedSchedule(),
+      getTimingReport(),
+    ]);
+    res.json({ hours, days, schedule, report });
+  } catch (err) {
+    console.log(`[server] Optimal timing error: ${err.message}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- Blog static site ---
 app.use('/blog', express.static(path.join(__dirname, 'blog', 'dist')));
 
@@ -943,6 +1055,56 @@ app.get('/api/weekly/status', async (req, res) => {
   });
 });
 
+// --- Topic compilation endpoints ---
+let topicCompilationState = { status: 'idle', topic: null, error: null };
+
+app.post('/api/compile/topic', async (req, res) => {
+  const { topic } = req.body;
+  if (!topic || typeof topic !== 'string' || !topic.trim()) {
+    return res.status(400).json({ error: 'topic string required' });
+  }
+
+  if (topicCompilationState.status === 'running') {
+    return res.json({ status: 'already running', topic: topicCompilationState.topic });
+  }
+
+  const topicName = topic.trim();
+  topicCompilationState = { status: 'running', topic: topicName, started_at: new Date().toISOString(), error: null };
+  res.json({ status: 'started', topic: topicName });
+
+  try {
+    const { compileByTopic } = require('./weekly_compile');
+    const result = await compileByTopic(topicName);
+    topicCompilationState = {
+      status: result ? 'complete' : 'skipped',
+      topic: topicName,
+      last_compiled: new Date().toISOString(),
+      result: result || null,
+      error: null,
+    };
+  } catch (err) {
+    console.log(`[server] Topic compilation error (${topicName}): ${err.message}`);
+    topicCompilationState = {
+      status: 'error',
+      topic: topicName,
+      last_compiled: null,
+      error: err.message,
+    };
+  }
+});
+
+app.get('/api/compile/topics', async (req, res) => {
+  try {
+    const { identifyCompilableTopics } = require('./weekly_compile');
+    const days = parseInt(req.query.days, 10) || 30;
+    const topics = await identifyCompilableTopics(days);
+    res.json({ days, topics });
+  } catch (err) {
+    console.log(`[server] Compilable topics error: ${err.message}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- Railway deploy webhook — forwards build/deploy failures to Discord ---
 app.post('/api/webhook/railway', async (req, res) => {
   res.json({ ok: true });
@@ -969,6 +1131,13 @@ app.post('/api/webhook/railway', async (req, res) => {
     console.log(`[server] Railway webhook error: ${err.message}`);
   }
 });
+
+// Sentry error handler (must be after all routes, before SPA fallback)
+if (sentryMw.errorHandler === '__sentry_v8__') {
+  setupErrorHandler(app);
+} else {
+  app.use(sentryMw.errorHandler);
+}
 
 // --- SPA fallback ---
 app.get('/{*splat}', (req, res) => {
@@ -1003,7 +1172,9 @@ app.listen(PORT, () => {
     } catch (e) { /* silent */ }
   })();
 
-  startAutonomousScheduler();
+  startAutonomousScheduler().catch(err => {
+    console.log(`[server] Autonomous scheduler startup error: ${err.message}`);
+  });
 
   // Start Discord bot alongside the server
   if (process.env.DISCORD_BOT_TOKEN && process.env.DISCORD_GUILD_ID) {

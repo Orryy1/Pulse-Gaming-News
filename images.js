@@ -1,6 +1,7 @@
 const fs = require('fs-extra');
 const path = require('path');
 const dotenv = require('dotenv');
+const db = require('./lib/db');
 
 dotenv.config({ override: true });
 
@@ -10,40 +11,53 @@ const getBestImage = require('./images_download');
 const OUTPUT_DIR = path.join('output', 'images');
 const CACHE_DIR = path.join('output', 'image_cache');
 
-// --- Build professional SVG composite with real images embedded ---
-function buildProSvg(title, thumbnailText, flair, heroImageBase64, logoImageBase64, hasHero, classification, bgImageBase64) {
-  const classInfo = brand.classificationColour(classification || flair);
-  const flairColour = classInfo.hex;
-  const flairLabel = classInfo.label;
+// --- Platform safe zone presets ---
+// Each platform overlays UI elements that obscure content in certain regions.
+// These offsets shift the flair badge and headline into the visible safe zone.
+const PLATFORM_SAFE_ZONES = {
+  // Default (YouTube Shorts) — no adjustment needed
+  default: {
+    flairY: 620,       // flair badge top Y
+    headlineY: 770,    // headline text baseline Y
+    heroY: 180,        // hero image top Y
+    heroHeight: 563,   // hero image height
+    logoY: 780,        // company logo Y
+    gradientY: 500,    // bottom fade gradient Y
+  },
+  // TikTok: 150px top safe zone (status bar, username), 200px bottom (action buttons, caption)
+  // Main content area: y=200 to y=1720
+  tiktok: {
+    flairY: 720,       // shifted down ~100px to clear TikTok username overlay
+    headlineY: 870,    // shifted down to match
+    heroY: 280,        // shifted down to clear top safe zone
+    heroHeight: 480,   // slightly shorter to fit within safe zone
+    logoY: 800,        // shifted down
+    gradientY: 540,    // adjusted for hero position
+  },
+  // Instagram Reels: 120px top safe zone (status bar), 300px bottom (caption area, action buttons)
+  // Main content area: y=170 to y=1620
+  instagram: {
+    flairY: 580,       // shifted up slightly — IG bottom zone is larger, so centre content higher
+    headlineY: 730,    // shifted up to keep headline well above the 300px bottom zone
+    heroY: 200,        // similar to default, IG top zone is smaller
+    heroHeight: 440,   // shorter to keep content out of the large bottom safe zone
+    logoY: 680,        // shifted up
+    gradientY: 440,    // adjusted for hero position
+  },
+};
 
-  const escapedTitle = title
+// --- Shared SVG building helpers ---
+function escapeXml(text) {
+  return (text || '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  const escapedThumb = (thumbnailText || '')
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
 
-  // Word-wrap headline text for the large orange title (max ~14 chars per line at font-size 82)
-  const thumbWords = escapedThumb.split(' ');
-  const thumbLines = [];
-  let thumbCurrent = '';
-  for (const word of thumbWords) {
-    if ((thumbCurrent + ' ' + word).length > 14 && thumbCurrent) {
-      thumbLines.push(thumbCurrent);
-      thumbCurrent = word;
-    } else {
-      thumbCurrent = thumbCurrent ? thumbCurrent + ' ' + word : word;
-    }
-  }
-  if (thumbCurrent) thumbLines.push(thumbCurrent);
-  const thumbTspans = thumbLines.slice(0, 3).map((line, i) =>
-    `<tspan x="540" dy="${i === 0 ? 0 : 88}">${line}</tspan>`
-  ).join('');
-
-  // Word wrap for title
-  const words = escapedTitle.split(' ');
+function wrapText(text, maxCharsPerLine) {
+  const words = text.split(' ');
   const lines = [];
   let current = '';
   for (const word of words) {
-    if ((current + ' ' + word).length > 24 && current) {
+    if ((current + ' ' + word).length > maxCharsPerLine && current) {
       lines.push(current);
       current = word;
     } else {
@@ -51,8 +65,28 @@ function buildProSvg(title, thumbnailText, flair, heroImageBase64, logoImageBase
     }
   }
   if (current) lines.push(current);
+  return lines;
+}
 
-  const titleLines = lines.slice(0, 3).map((line, i) =>
+// --- Build professional SVG composite with real images embedded ---
+// platform: 'default' | 'tiktok' | 'instagram' — adjusts safe zones
+function buildProSvg(title, thumbnailText, flair, heroImageBase64, logoImageBase64, hasHero, classification, bgImageBase64, platform) {
+  const safeZone = PLATFORM_SAFE_ZONES[platform] || PLATFORM_SAFE_ZONES.default;
+  const classInfo = brand.classificationColour(classification || flair);
+  const flairColour = classInfo.hex;
+  const flairLabel = classInfo.label;
+
+  const escapedTitle = escapeXml(title);
+  const escapedThumb = escapeXml(thumbnailText);
+
+  // Word-wrap headline text for the large orange title (max ~14 chars per line at font-size 82)
+  const thumbLines = wrapText(escapedThumb, 14);
+  const thumbTspans = thumbLines.slice(0, 3).map((line, i) =>
+    `<tspan x="540" dy="${i === 0 ? 0 : 88}">${line}</tspan>`
+  ).join('');
+
+  // Word wrap for title
+  const titleLines = wrapText(escapedTitle, 24).slice(0, 3).map((line, i) =>
     `<tspan x="540" dy="${i === 0 ? 0 : 72}">${line}</tspan>`
   ).join('');
 
@@ -63,24 +97,39 @@ function buildProSvg(title, thumbnailText, flair, heroImageBase64, logoImageBase
            preserveAspectRatio="xMidYMid slice" opacity="0.3" filter="url(#blur)"/>
 
     <!-- Hero image (centred, crisp) -->
-    <image href="data:image/jpeg;base64,${heroImageBase64}" x="40" y="180" width="1000" height="563"
+    <image href="data:image/jpeg;base64,${heroImageBase64}" x="40" y="${safeZone.heroY}" width="1000" height="${safeZone.heroHeight}"
            preserveAspectRatio="xMidYMid meet" clip-path="url(#heroClip)"/>
 
     <!-- Hero image border glow -->
-    <rect x="40" y="180" width="1000" height="563" rx="16" fill="none"
+    <rect x="40" y="${safeZone.heroY}" width="1000" height="${safeZone.heroHeight}" rx="16" fill="none"
           stroke="${brand.PRIMARY}" stroke-width="2" opacity="0.4"/>
   ` : `
     <!-- No hero image — use enhanced gradient background -->
-    <rect x="40" y="180" width="1000" height="563" rx="16" fill="#0d1a2e" opacity="0.6"/>
-    <rect x="40" y="180" width="1000" height="563" rx="16" fill="none"
+    <rect x="40" y="${safeZone.heroY}" width="1000" height="${safeZone.heroHeight}" rx="16" fill="#0d1a2e" opacity="0.6"/>
+    <rect x="40" y="${safeZone.heroY}" width="1000" height="${safeZone.heroHeight}" rx="16" fill="none"
           stroke="${brand.PRIMARY}" stroke-width="1" opacity="0.2"/>
   `;
 
   // Company logo section
   const logoSection = logoImageBase64 ? `
-    <image href="data:image/png;base64,${logoImageBase64}" x="440" y="780" width="200" height="80"
+    <image href="data:image/png;base64,${logoImageBase64}" x="440" y="${safeZone.logoY}" width="200" height="80"
            preserveAspectRatio="xMidYMid meet" opacity="0.8"/>
   ` : '';
+
+  // Flair badge SVG fragment — reused in both layouts
+  const flairBadge = `
+  <rect x="340" y="${safeZone.flairY}" width="400" height="52" rx="26" fill="${flairColour}" opacity="0.15"/>
+  <rect x="340" y="${safeZone.flairY}" width="400" height="52" rx="26" fill="none"
+        stroke="${flairColour}" stroke-width="1.5" opacity="0.5"/>
+  <circle cx="375" cy="${safeZone.flairY + 26}" r="7" fill="${flairColour}"/>
+  <text x="540" y="${safeZone.flairY + 34}" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
+        font-size="20" font-weight="700" letter-spacing="3" fill="${flairColour}">${flairLabel}</text>`;
+
+  // Headline SVG fragment — reused in both layouts
+  const headline = `
+  <text x="540" y="${safeZone.headlineY}" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
+        font-size="82" font-weight="900" fill="${brand.PRIMARY}" filter="url(#glow)"
+        letter-spacing="-2">${thumbTspans}</text>`;
 
   // When branded background is available, use a clean minimal layout
   // When not, fall back to the full layout with gradient + hero sections
@@ -97,18 +146,9 @@ function buildProSvg(title, thumbnailText, flair, heroImageBase64, logoImageBase
   <!-- Branded background template -->
   <image href="data:image/png;base64,${bgImageBase64}" x="0" y="0" width="1080" height="1920" preserveAspectRatio="xMidYMid slice"/>
 
-  <!-- Flair badge — centred in the glow -->
-  <rect x="340" y="620" width="400" height="52" rx="26" fill="${flairColour}" opacity="0.15"/>
-  <rect x="340" y="620" width="400" height="52" rx="26" fill="none"
-        stroke="${flairColour}" stroke-width="1.5" opacity="0.5"/>
-  <circle cx="375" cy="646" r="7" fill="${flairColour}"/>
-  <text x="540" y="654" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
-        font-size="20" font-weight="700" letter-spacing="3" fill="${flairColour}">${flairLabel}</text>
+  <!-- Flair badge — centred in the glow -->${flairBadge}
 
-  <!-- Main headline text — centred below badge, inside the glow -->
-  <text x="540" y="770" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
-        font-size="82" font-weight="900" fill="${brand.PRIMARY}" filter="url(#glow)"
-        letter-spacing="-2">${thumbTspans}</text>
+  <!-- Main headline text — centred below badge, inside the glow -->${headline}
 </svg>`;
   }
 
@@ -136,7 +176,7 @@ function buildProSvg(title, thumbnailText, flair, heroImageBase64, logoImageBase
       <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#000" flood-opacity="0.7"/>
     </filter>
     <clipPath id="heroClip">
-      <rect x="40" y="180" width="1000" height="563" rx="16"/>
+      <rect x="40" y="${safeZone.heroY}" width="1000" height="${safeZone.heroHeight}" rx="16"/>
     </clipPath>
   </defs>
 
@@ -146,7 +186,7 @@ function buildProSvg(title, thumbnailText, flair, heroImageBase64, logoImageBase
   ${heroSection}
 
   <!-- Gradient fade over hero bottom -->
-  <rect x="0" y="500" width="1080" height="300" fill="url(#bottomFade)"/>
+  <rect x="0" y="${safeZone.gradientY}" width="1080" height="300" fill="url(#bottomFade)"/>
 
   <!-- Scanlines (brand signature) -->
   <pattern id="scanlines" patternUnits="userSpaceOnUse" width="1080" height="4">
@@ -157,24 +197,24 @@ function buildProSvg(title, thumbnailText, flair, heroImageBase64, logoImageBase
 
   ${logoSection}
 
-  <!-- Flair badge -->
-  <rect x="340" y="620" width="400" height="52" rx="26" fill="${flairColour}" opacity="0.15"/>
-  <rect x="340" y="620" width="400" height="52" rx="26" fill="none"
-        stroke="${flairColour}" stroke-width="1.5" opacity="0.5"/>
-  <circle cx="375" cy="646" r="7" fill="${flairColour}"/>
-  <text x="540" y="654" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
-        font-size="20" font-weight="700" letter-spacing="3" fill="${flairColour}">${flairLabel}</text>
+  <!-- Flair badge -->${flairBadge}
 
-  <!-- Main headline text -->
-  <text x="540" y="770" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
-        font-size="82" font-weight="900" fill="${brand.PRIMARY}" filter="url(#glow)"
-        letter-spacing="-2">${thumbTspans}</text>
+  <!-- Main headline text -->${headline}
 </svg>`;
 }
 
+// --- Platform-specific SVG builders (delegate to buildProSvg with safe zone parameter) ---
+function buildTikTokSvg(title, thumbnailText, flair, heroImageBase64, logoImageBase64, hasHero, classification, bgImageBase64) {
+  return buildProSvg(title, thumbnailText, flair, heroImageBase64, logoImageBase64, hasHero, classification, bgImageBase64, 'tiktok');
+}
+
+function buildInstagramSvg(title, thumbnailText, flair, heroImageBase64, logoImageBase64, hasHero, classification, bgImageBase64) {
+  return buildProSvg(title, thumbnailText, flair, heroImageBase64, logoImageBase64, hasHero, classification, bgImageBase64, 'instagram');
+}
+
 // --- Fallback SVG (no downloaded images available) ---
-function buildFallbackSvg(title, thumbnailText, flair) {
-  return buildProSvg(title, thumbnailText, flair, null, null, false);
+function buildFallbackSvg(title, thumbnailText, flair, platform) {
+  return buildProSvg(title, thumbnailText, flair, null, null, false, null, null, platform);
 }
 
 async function generateImages() {
@@ -188,7 +228,7 @@ async function generateImages() {
   await fs.ensureDir(OUTPUT_DIR);
   await fs.ensureDir(CACHE_DIR);
 
-  const stories = await fs.readJson('daily_news.json');
+  const stories = await db.getStories();
   const toProcess = stories.filter(s => s.approved === true && !s.image_path);
 
   // Load branded thumbnail background once
@@ -265,12 +305,47 @@ async function generateImages() {
       story.image_path = svgPath;
     }
 
+    // --- Generate platform-specific thumbnail variants ---
+    const platformVariants = [
+      { platform: 'tiktok', suffix: '_tiktok', storyKey: 'tiktok_thumbnail_path' },
+      { platform: 'instagram', suffix: '_instagram', storyKey: 'instagram_thumbnail_path' },
+    ];
+
+    for (const variant of platformVariants) {
+      const variantSvg = buildProSvg(
+        story.title,
+        story.suggested_thumbnail_text,
+        story.flair,
+        heroBase64,
+        logoBase64,
+        !!heroBase64,
+        story.classification,
+        bgBase64,
+        variant.platform
+      );
+
+      const variantPngPath = path.join(OUTPUT_DIR, `${story.id}${variant.suffix}.png`);
+
+      try {
+        const sharp = require('sharp');
+        await sharp(Buffer.from(variantSvg))
+          .resize(1080, 1920)
+          .png({ quality: 95 })
+          .toFile(variantPngPath);
+        story[variant.storyKey] = variantPngPath;
+        const stat = await fs.stat(variantPngPath);
+        console.log(`[images] Saved ${variant.platform} variant: ${variantPngPath} (${Math.round(stat.size / 1024)}KB)`);
+      } catch (err) {
+        console.log(`[images] ${variant.platform} variant failed (non-fatal): ${err.message}`);
+      }
+    }
+
     // Store all image paths for the video assembly to use
     story.downloaded_images = availableImages.map(i => ({ path: i.path, type: i.type }));
   }
 
-  await fs.writeJson('daily_news.json', stories, { spaces: 2 });
-  console.log('[images] daily_news.json updated');
+  await db.saveStories(stories);
+  console.log('[images] Stories updated');
 }
 
 module.exports = generateImages;

@@ -1,6 +1,7 @@
 const fs = require('fs-extra');
 const path = require('path');
 const dotenv = require('dotenv');
+const db = require('./lib/db');
 
 dotenv.config({ override: true });
 
@@ -147,7 +148,7 @@ async function generateStoryImages() {
 
   await fs.ensureDir(OUTPUT_DIR);
 
-  const stories = await fs.readJson('daily_news.json');
+  const stories = await db.getStories();
   const toProcess = stories.filter(s =>
     s.approved === true && s.exported_path && !s.story_image_path
   );
@@ -199,7 +200,7 @@ async function generateStoryImages() {
     }
   }
 
-  await fs.writeJson('daily_news.json', stories, { spaces: 2 });
+  await db.saveStories(stories);
   console.log(`[stories] Generated ${toProcess.length} Story images`);
 
   // Post each new Story image to Discord for approval

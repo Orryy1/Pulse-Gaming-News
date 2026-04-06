@@ -1,0 +1,7 @@
+{
+  "competitors": [
+    { "name": "Example Gaming News", "channelId": "REPLACE_ME", "platform": "youtube" }
+  ],
+  "trackTopics": ["gta 6", "playstation", "xbox", "nintendo", "switch 2", "elder scrolls"],
+  "analysisWindowDays": 30
+}

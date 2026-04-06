@@ -2,6 +2,8 @@ const Anthropic = require('@anthropic-ai/sdk');
 const axios = require('axios');
 const fs = require('fs-extra');
 const dotenv = require('dotenv');
+const { addBreadcrumb, captureException } = require('./lib/sentry');
+const db = require('./lib/db');
 
 dotenv.config({ override: true });
 
@@ -244,6 +246,7 @@ async function process_stories() {
   const enriched = [];
 
   for (const story of stories) {
+    addBreadcrumb(`Processing story: ${story.title}`, 'processor');
     console.log(`[processor] Scripting: ${story.title}`);
 
     // --- Fact-checking: fetch source material ---
@@ -349,6 +352,7 @@ Today's date is ${today}. You MUST follow these rules:
         break;
       } catch (err) {
         console.log(`[processor] ERROR on attempt ${attempts}: ${err.message}`);
+        captureException(err, { step: 'scriptGeneration', storyId: story.id, attempt: attempts });
         if (attempts >= 3) {
           script = {
             classification: '[BREAKING]',
@@ -383,11 +387,19 @@ Today's date is ${today}. You MUST follow these rules:
       approved: story.approved || false,
     };
 
+    // Generate A/B title variants (non-blocking — if it fails, continue with single title)
+    try {
+      const { generateTitleVariants } = require('./ab_titles');
+      await generateTitleVariants(enrichedStory);
+    } catch (err) {
+      console.log(`[processor] A/B title variant generation skipped: ${err.message}`);
+    }
+
     enriched.push(enrichedStory);
   }
 
-  await fs.writeJson('daily_news.json', enriched, { spaces: 2 });
-  console.log(`[processor] Saved ${enriched.length} enriched stories to daily_news.json`);
+  await db.saveStories(enriched);
+  console.log(`[processor] Saved ${enriched.length} enriched stories`);
 
   return enriched;
 }

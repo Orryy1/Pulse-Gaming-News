@@ -1,16 +1,20 @@
 import { useState, useEffect } from 'react';
-import { RefreshCw, Radar, Rocket, Zap, Youtube, Music2, Instagram } from 'lucide-react';
+import { RefreshCw, Radar, Rocket, Zap, Youtube, Music2, Instagram, BarChart3, Newspaper } from 'lucide-react';
 import { fetchHunterStatus, triggerHunter, fetchAutonomousStatus, fetchPlatformStatus, triggerAutonomousCycle } from '../api/news';
 import type { AutonomousStatus, PlatformStatus } from '../types/story';
+
+type ActiveTab = 'stories' | 'analytics';
 
 interface NavbarProps {
   onRefresh: () => void;
   isLoading: boolean;
   hasApproved: boolean;
   onPublish: () => void;
+  activeTab: ActiveTab;
+  onTabChange: (tab: ActiveTab) => void;
 }
 
-export default function Navbar({ onRefresh, isLoading, hasApproved, onPublish }: NavbarProps) {
+export default function Navbar({ onRefresh, isLoading, hasApproved, onPublish, activeTab, onTabChange }: NavbarProps) {
   const [hunterActive, setHunterActive] = useState(false);
   const [hunterRunning, setHunterRunning] = useState(false);
   const [autoStatus, setAutoStatus] = useState<AutonomousStatus | null>(null);
@@ -74,6 +78,32 @@ export default function Navbar({ onRefresh, isLoading, hasApproved, onPublish }:
                 <p className="text-[9px] font-semibold tracking-wider text-[#FF6B1A]/40">AUTONOMOUS MODE ACTIVE</p>
               )}
             </div>
+          </div>
+
+          {/* Tab switcher */}
+          <div className="flex items-center gap-1 rounded-lg border border-white/[0.06] bg-white/[0.02] p-0.5">
+            <button
+              onClick={() => onTabChange('stories')}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[10px] font-bold tracking-wider transition-all sm:text-xs ${
+                activeTab === 'stories'
+                  ? 'bg-[#FF6B1A]/15 text-[#FF6B1A]'
+                  : 'text-white/30 hover:text-white/50'
+              }`}
+            >
+              <Newspaper size={12} />
+              <span className="hidden sm:inline">STORIES</span>
+            </button>
+            <button
+              onClick={() => onTabChange('analytics')}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[10px] font-bold tracking-wider transition-all sm:text-xs ${
+                activeTab === 'analytics'
+                  ? 'bg-[#FF6B1A]/15 text-[#FF6B1A]'
+                  : 'text-white/30 hover:text-white/50'
+              }`}
+            >
+              <BarChart3 size={12} />
+              <span className="hidden sm:inline">ANALYTICS</span>
+            </button>
           </div>
 
           <div className="flex items-center gap-2">

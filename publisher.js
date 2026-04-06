@@ -1,6 +1,8 @@
 const fs = require('fs-extra');
 const dotenv = require('dotenv');
 const sendDiscord = require('./notify');
+const { addBreadcrumb, captureException } = require('./lib/sentry');
+const db = require('./lib/db');
 
 dotenv.config({ override: true });
 
@@ -32,9 +34,9 @@ function shouldAutoApprove(story) {
 
 // --- Run auto-approval pass ---
 async function autoApprove() {
-  if (!await fs.pathExists('daily_news.json')) return 0;
+  const stories = await db.getStories();
+  if (!stories.length) return 0;
 
-  const stories = await fs.readJson('daily_news.json');
   let approved = 0;
 
   for (const story of stories) {
@@ -50,7 +52,7 @@ async function autoApprove() {
   }
 
   if (approved > 0) {
-    await fs.writeJson('daily_news.json', stories, { spaces: 2 });
+    await db.saveStories(stories);
     console.log(`[publisher] Auto-approved ${approved} stories`);
   }
 
@@ -136,13 +138,12 @@ async function fullAutonomousCycle() {
 
   try {
     // Step 1: Hunt for news
+    addBreadcrumb('Starting hunt for news', 'pipeline');
     console.log('[publisher] Step 1/4: Hunting for news...');
     const hunt = require('./hunter');
     const process_stories = require('./processor');
 
-    const existingStories = await fs.pathExists('daily_news.json')
-      ? await fs.readJson('daily_news.json')
-      : [];
+    const existingStories = await db.getStories();
     const existingIds = new Set(existingStories.map(s => s.id));
 
     const posts = await hunt();
@@ -157,10 +158,12 @@ async function fullAutonomousCycle() {
       await process_stories();
 
       // Merge new with existing
-      const processed = await fs.readJson('daily_news.json');
+      const processed = await db.getStories();
       if (existingStories.length > 0) {
-        const merged = [...processed, ...existingStories];
-        await fs.writeJson('daily_news.json', merged, { spaces: 2 });
+        const processedIds = new Set(processed.map(s => s.id));
+        const toMerge = existingStories.filter(s => !processedIds.has(s.id));
+        const merged = [...processed, ...toMerge];
+        await db.saveStories(merged);
       }
 
       await sendDiscord(`**🔎 Pulse Gaming Hunt Complete**\n${newPosts.length} new stories found`);
@@ -169,6 +172,7 @@ async function fullAutonomousCycle() {
     }
 
     // Step 2: Auto-approve
+    addBreadcrumb('Auto-approving stories', 'pipeline');
     console.log('[publisher] Step 2/4: Auto-approving high-confidence stories...');
     const approvedCount = await autoApprove();
 
@@ -177,7 +181,7 @@ async function fullAutonomousCycle() {
     }
 
     // Notify about stories needing manual review
-    const allStories = await fs.readJson('daily_news.json').catch(() => []);
+    const allStories = await db.getStories();
     const pendingReview = allStories.filter(s => !s.approved);
     if (pendingReview.length > 0) {
       const dashUrl = process.env.RAILWAY_PUBLIC_URL || 'http://localhost:3001';
@@ -192,11 +196,13 @@ async function fullAutonomousCycle() {
     }
 
     // Step 3: Produce (audio, images, video)
+    addBreadcrumb('Producing assets', 'pipeline');
     console.log('[publisher] Step 3/4: Producing assets...');
     await produce();
 
     // Step 4: Publish to all platforms
     if (process.env.AUTO_PUBLISH === 'true') {
+      addBreadcrumb('Publishing to all platforms', 'pipeline');
       console.log('[publisher] Step 4/4: Publishing to all platforms...');
       const results = await publishToAllPlatforms();
 
@@ -215,6 +221,7 @@ async function fullAutonomousCycle() {
     console.log(`[publisher] Autonomous cycle complete in ${elapsed}s`);
 
   } catch (err) {
+    captureException(err, { step: 'fullAutonomousCycle' });
     console.log(`[publisher] CYCLE ERROR: ${err.message}`);
     await sendDiscord(`**Pulse Gaming ERROR**\nAutonomous cycle failed: ${err.message}`);
   }
@@ -246,7 +253,7 @@ async function publishOnlyCycle() {
 // --- Publish a single next-available story across all platforms ---
 // Used by the 3x daily publish windows to spread content through the day
 async function publishNextStory() {
-  const stories = await fs.readJson('daily_news.json');
+  const stories = await db.getStories();
   const ready = stories.filter(s =>
     s.approved && s.exported_path && !s.youtube_post_id
   );
@@ -269,9 +276,16 @@ async function publishNextStory() {
     const ytResult = await uploadShort(story);
     story.youtube_post_id = ytResult.videoId;
     story.youtube_url = ytResult.url;
+    story.youtube_published_at = new Date().toISOString();
     story.publish_status = 'published';
     result.youtube = true;
     console.log(`[publisher] YouTube: ${ytResult.url}`);
+
+    // Schedule A/B title check 2 hours after publish
+    if (story.title_variants && story.title_variants.length > 1) {
+      story.title_check_at = Date.now() + (2 * 60 * 60 * 1000);
+      console.log(`[publisher] A/B title check scheduled for ${new Date(story.title_check_at).toISOString()}`);
+    }
   } catch (err) {
     console.log(`[publisher] YouTube upload failed: ${err.message}`);
   }
@@ -320,6 +334,19 @@ async function publishNextStory() {
     console.log(`[publisher] Twitter upload skipped: ${err.message}`);
   }
 
+  // Schedule first-hour engagement pass (5 min delay for comments to arrive)
+  if (story.youtube_post_id) {
+    setTimeout(async () => {
+      try {
+        const { engageFirstHour } = require('./engagement');
+        await engageFirstHour(story.youtube_post_id, story);
+      } catch (err) {
+        console.log(`[publisher] First-hour engagement failed: ${err.message}`);
+      }
+    }, 5 * 60 * 1000);
+    console.log(`[publisher] First-hour engagement scheduled for ${story.youtube_post_id} in 5 min`);
+  }
+
   // Generate poll/engagement pinned comment based on classification
   try {
     const { generatePollComment, pinComment: pinEngagement } = require('./engagement');
@@ -344,7 +371,7 @@ async function publishNextStory() {
   }
 
   // Save updated story
-  await fs.writeJson('daily_news.json', stories, { spaces: 2 });
+  await db.saveStories(stories);
   return result;
 }
 

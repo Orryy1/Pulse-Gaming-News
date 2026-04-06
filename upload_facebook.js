@@ -15,6 +15,9 @@ const fs = require('fs-extra');
 const path = require('path');
 const axios = require('axios');
 const dotenv = require('dotenv');
+const { withRetry } = require('./lib/retry');
+const { addBreadcrumb, captureException } = require('./lib/sentry');
+const db = require('./lib/db');
 
 dotenv.config({ override: true });
 
@@ -43,83 +46,86 @@ function getPageId() {
 
 // --- Upload a Reel to Facebook ---
 async function uploadReel(story) {
-  const accessToken = await getAccessToken();
-  const pageId = getPageId();
+  addBreadcrumb(`Facebook upload: ${story.title}`, 'upload');
+  return withRetry(async () => {
+    const accessToken = await getAccessToken();
+    const pageId = getPageId();
 
-  if (!story.exported_path || !await fs.pathExists(story.exported_path)) {
-    throw new Error(`Video file not found: ${story.exported_path}`);
-  }
-
-  const publicBaseUrl = process.env.RAILWAY_PUBLIC_URL || `http://localhost:${process.env.PORT || 3001}`;
-  const videoUrl = `${publicBaseUrl}/api/download/${story.id}`;
-
-  // Build description
-  let description = story.suggested_title || story.suggested_thumbnail_text || story.title;
-  description += '\n\n' + (story.full_script || '').substring(0, 300);
-  description += '\n\n#gaming #gamingnews #gamingleaks #gamingcommunity #reels';
-  if (description.length > 2000) description = description.substring(0, 1997) + '...';
-
-  console.log(`[facebook] Uploading Reel: "${(story.title || '').substring(0, 50)}..."`);
-
-  // Step 1: Initiate Reel upload
-  const initResponse = await axios.post(
-    `https://graph.facebook.com/v19.0/${pageId}/video_reels`,
-    {
-      upload_phase: 'start',
-      access_token: accessToken,
+    if (!story.exported_path || !await fs.pathExists(story.exported_path)) {
+      throw new Error(`Video file not found: ${story.exported_path}`);
     }
-  );
 
-  const videoId = initResponse.data.video_id;
-  const uploadUrl = initResponse.data.upload_url;
+    const publicBaseUrl = process.env.RAILWAY_PUBLIC_URL || `http://localhost:${process.env.PORT || 3001}`;
+    const videoUrl = `${publicBaseUrl}/api/download/${story.id}`;
 
-  // Step 2: Upload the video binary
-  const videoBuffer = await fs.readFile(story.exported_path);
-  const fileSize = videoBuffer.length;
+    // Build description
+    let description = story.suggested_title || story.suggested_thumbnail_text || story.title;
+    description += '\n\n' + (story.full_script || '').substring(0, 300);
+    description += '\n\n#gaming #gamingnews #gamingleaks #gamingcommunity #reels';
+    if (description.length > 2000) description = description.substring(0, 1997) + '...';
 
-  await axios({
-    method: 'POST',
-    url: uploadUrl,
-    headers: {
-      'Authorization': `OAuth ${accessToken}`,
-      'offset': '0',
-      'file_size': fileSize.toString(),
-      'Content-Type': 'application/octet-stream',
-    },
-    data: videoBuffer,
-    maxContentLength: Infinity,
-    maxBodyLength: Infinity,
-  });
+    console.log(`[facebook] Uploading Reel: "${(story.title || '').substring(0, 50)}..."`);
 
-  // Step 3: Finish the upload and publish (published: true is required or it stays as draft)
-  await axios.post(
-    `https://graph.facebook.com/v19.0/${pageId}/video_reels`,
-    {
-      upload_phase: 'finish',
-      video_id: videoId,
-      title: (story.suggested_title || story.suggested_thumbnail_text || story.title || '').substring(0, 100),
-      description,
-      published: true,
-      access_token: accessToken,
-    }
-  );
+    // Step 1: Initiate Reel upload
+    const initResponse = await axios.post(
+      `https://graph.facebook.com/v19.0/${pageId}/video_reels`,
+      {
+        upload_phase: 'start',
+        access_token: accessToken,
+      }
+    );
 
-  console.log(`[facebook] Reel published! Video ID: ${videoId}`);
+    const videoId = initResponse.data.video_id;
+    const uploadUrl = initResponse.data.upload_url;
 
-  return {
-    platform: 'facebook',
-    videoId,
-  };
+    // Step 2: Upload the video binary
+    const videoBuffer = await fs.readFile(story.exported_path);
+    const fileSize = videoBuffer.length;
+
+    await axios({
+      method: 'POST',
+      url: uploadUrl,
+      headers: {
+        'Authorization': `OAuth ${accessToken}`,
+        'offset': '0',
+        'file_size': fileSize.toString(),
+        'Content-Type': 'application/octet-stream',
+      },
+      data: videoBuffer,
+      maxContentLength: Infinity,
+      maxBodyLength: Infinity,
+    });
+
+    // Step 3: Finish the upload and publish (published: true is required or it stays as draft)
+    await axios.post(
+      `https://graph.facebook.com/v19.0/${pageId}/video_reels`,
+      {
+        upload_phase: 'finish',
+        video_id: videoId,
+        title: (story.suggested_title || story.suggested_thumbnail_text || story.title || '').substring(0, 100),
+        description,
+        published: true,
+        access_token: accessToken,
+      }
+    );
+
+    console.log(`[facebook] Reel published! Video ID: ${videoId}`);
+
+    return {
+      platform: 'facebook',
+      videoId,
+    };
+  }, { label: 'facebook upload' });
 }
 
 // --- Batch upload ---
 async function uploadAll() {
-  if (!await fs.pathExists('daily_news.json')) {
-    console.log('[facebook] No daily_news.json found');
+  const stories = await db.getStories();
+  if (!stories.length) {
+    console.log('[facebook] No stories found');
     return [];
   }
 
-  const stories = await fs.readJson('daily_news.json');
   const ready = stories.filter(s =>
     s.approved && s.exported_path && !s.facebook_post_id
   );
@@ -134,12 +140,13 @@ async function uploadAll() {
       results.push(result);
       await new Promise(r => setTimeout(r, 10000));
     } catch (err) {
+      captureException(err, { platform: 'facebook', storyId: story.id });
       console.log(`[facebook] Upload failed for ${story.id}: ${err.message}`);
       story.facebook_error = err.message;
     }
   }
 
-  await fs.writeJson('daily_news.json', stories, { spaces: 2 });
+  await db.saveStories(stories);
   console.log(`[facebook] ${results.length} reels uploaded`);
   return results;
 }

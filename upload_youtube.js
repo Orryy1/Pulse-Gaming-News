@@ -2,6 +2,9 @@ const fs = require('fs-extra');
 const path = require('path');
 const { google } = require('googleapis');
 const dotenv = require('dotenv');
+const { withRetry } = require('./lib/retry');
+const { addBreadcrumb, captureException } = require('./lib/sentry');
+const db = require('./lib/db');
 
 dotenv.config({ override: true });
 
@@ -133,9 +136,10 @@ function buildMetadata(story) {
   const brand = require('./brand');
   const classInfo = brand.classificationColour(story.classification || story.flair);
 
-  // Title: use LLM-generated curiosity gap title, fall back to thumbnail text or raw title
+  // Title: use A/B tested variant if available, else LLM-generated curiosity gap title
   // No classification prefix — wastes characters and weakens curiosity gap hooks
-  let baseTitle = story.suggested_title || story.suggested_thumbnail_text || story.title;
+  const { getBestTitle } = require('./ab_titles');
+  let baseTitle = getBestTitle(story);
   baseTitle = baseTitle.replace(/#\s*shorts?\s*/gi, '').replace(/\[.*?\]\s*/g, '').trim();
   if (baseTitle.length > 80) baseTitle = baseTitle.substring(0, 77) + '...';
   const title = baseTitle;
@@ -372,87 +376,90 @@ async function addToPlaylists(youtube, videoId, classification) {
 
 // --- Upload a single video as YouTube Short ---
 async function uploadShort(story) {
-  const auth = await getAuthClient();
-  const youtube = google.youtube({ version: 'v3', auth });
+  addBreadcrumb(`YouTube upload: ${story.title}`, 'upload');
+  return withRetry(async () => {
+    const auth = await getAuthClient();
+    const youtube = google.youtube({ version: 'v3', auth });
 
-  if (!story.exported_path || !await fs.pathExists(story.exported_path)) {
-    throw new Error(`Video file not found: ${story.exported_path}`);
-  }
+    if (!story.exported_path || !await fs.pathExists(story.exported_path)) {
+      throw new Error(`Video file not found: ${story.exported_path}`);
+    }
 
-  const { title, description, tags } = buildMetadata(story);
+    const { title, description, tags } = buildMetadata(story);
 
-  console.log(`[youtube] Uploading: "${title}"`);
+    console.log(`[youtube] Uploading: "${title}"`);
 
-  const response = await youtube.videos.insert({
-    part: ['snippet', 'status'],
-    requestBody: {
-      snippet: {
-        title,
-        description,
-        tags,
-        categoryId: require('./channels').getChannel().youtubeCategory || '20',
-        defaultLanguage: 'en',
-        defaultAudioLanguage: 'en',
+    const response = await youtube.videos.insert({
+      part: ['snippet', 'status'],
+      requestBody: {
+        snippet: {
+          title,
+          description,
+          tags,
+          categoryId: require('./channels').getChannel().youtubeCategory || '20',
+          defaultLanguage: 'en',
+          defaultAudioLanguage: 'en',
+        },
+        status: {
+          privacyStatus: 'public',
+          selfDeclaredMadeForKids: false,
+          embeddable: true,
+        },
       },
-      status: {
-        privacyStatus: 'public',
-        selfDeclaredMadeForKids: false,
-        embeddable: true,
+      media: {
+        body: fs.createReadStream(story.exported_path),
       },
-    },
-    media: {
-      body: fs.createReadStream(story.exported_path),
-    },
-  });
+    });
 
-  const videoId = response.data.id;
-  console.log(`[youtube] Uploaded: https://youtube.com/shorts/${videoId}`);
+    const videoId = response.data.id;
+    console.log(`[youtube] Uploaded: https://youtube.com/shorts/${videoId}`);
 
-  // Add to playlists based on classification
-  try {
-    await ensurePlaylists(youtube);
-    await addToPlaylists(youtube, videoId, story.classification);
-  } catch (err) {
-    console.log(`[youtube] Playlist assignment failed (non-critical): ${err.message}`);
-  }
-
-  // Post pinned comment
-  if (story.pinned_comment) {
+    // Add to playlists based on classification
     try {
-      const commentResponse = await youtube.commentThreads.insert({
-        part: ['snippet'],
-        requestBody: {
-          snippet: {
-            videoId,
-            topLevelComment: {
-              snippet: {
-                textOriginal: story.pinned_comment,
+      await ensurePlaylists(youtube);
+      await addToPlaylists(youtube, videoId, story.classification);
+    } catch (err) {
+      console.log(`[youtube] Playlist assignment failed (non-critical): ${err.message}`);
+    }
+
+    // Post pinned comment
+    if (story.pinned_comment) {
+      try {
+        const commentResponse = await youtube.commentThreads.insert({
+          part: ['snippet'],
+          requestBody: {
+            snippet: {
+              videoId,
+              topLevelComment: {
+                snippet: {
+                  textOriginal: story.pinned_comment,
+                },
               },
             },
           },
-        },
-      });
-      console.log(`[youtube] Pinned comment posted`);
-    } catch (err) {
-      console.log(`[youtube] Comment failed (non-critical): ${err.message}`);
+        });
+        console.log(`[youtube] Pinned comment posted`);
+      } catch (err) {
+        console.log(`[youtube] Comment failed (non-critical): ${err.message}`);
+      }
     }
-  }
 
-  return {
-    platform: 'youtube',
-    videoId,
-    url: `https://youtube.com/shorts/${videoId}`,
-  };
+    return {
+      platform: 'youtube',
+      videoId,
+      url: `https://youtube.com/shorts/${videoId}`,
+    };
+  }, { label: 'youtube upload' });
 }
 
 // --- Batch upload all ready stories ---
 async function uploadAll() {
-  if (!await fs.pathExists('daily_news.json')) {
-    console.log('[youtube] No daily_news.json found');
+  const stories = await db.getStories();
+  if (!stories.length) {
+    console.log('[youtube] No stories found');
     return [];
   }
 
-  const stories = await fs.readJson('daily_news.json');
   const ready = stories.filter(s =>
     s.approved && s.exported_path && !s.youtube_post_id
   );
@@ -472,12 +479,13 @@ async function uploadAll() {
       // Respect YouTube API quota (10000 units/day, upload = 1600 units)
       await new Promise(r => setTimeout(r, 5000));
     } catch (err) {
+      captureException(err, { platform: 'youtube', storyId: story.id });
       console.log(`[youtube] Upload failed for ${story.id}: ${err.message}`);
       story.publish_error = err.message;
     }
   }
 
-  await fs.writeJson('daily_news.json', stories, { spaces: 2 });
+  await db.saveStories(stories);
   console.log(`[youtube] ${results.length} videos uploaded`);
   return results;
 }

@@ -5,6 +5,7 @@ const path = require('path');
 const { exec } = require('child_process');
 const util = require('util');
 const dotenv = require('dotenv');
+const db = require('./lib/db');
 
 const execAsync = util.promisify(exec);
 
@@ -22,20 +23,14 @@ const COMPILATION_PATH = path.join(__dirname, 'weekly_compilation.json');
 const MIN_STORIES = 8;
 const MAX_STORIES = 12;
 
-// --- Load helpers ---
+// --- Load helpers (delegated to db layer, feature-flagged) ---
 
 async function loadDailyNews() {
-  if (await fs.pathExists(DAILY_NEWS_PATH)) {
-    return fs.readJson(DAILY_NEWS_PATH);
-  }
-  return [];
+  return db.getStories();
 }
 
 async function loadAnalyticsHistory() {
-  if (await fs.pathExists(HISTORY_PATH)) {
-    return fs.readJson(HISTORY_PATH);
-  }
-  return { entries: [], topicStats: {} };
+  return db.getAnalyticsHistory();
 }
 
 // --- Get audio duration via ffprobe ---
@@ -352,7 +347,299 @@ async function compileWeekly() {
   return compilationData;
 }
 
-module.exports = { compileWeekly };
+// --- Topic-based compilation functions ---
+
+/**
+ * Scan analytics_history.json for keywords that appear 4+ times in the last 30 days.
+ * Returns topic candidates sorted by count descending, each with keyword, count and avgVirality.
+ */
+async function identifyCompilableTopics(days = 30) {
+  const history = await loadAnalyticsHistory();
+  const entries = history.entries || [];
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+
+  // Filter entries to the time window
+  const recent = entries.filter(e => {
+    const ts = e.published_at || e.updated_at;
+    return ts && new Date(ts).getTime() >= cutoff;
+  });
+
+  // Count keyword occurrences across recent titles
+  const { extractKeywords } = require('./analytics');
+  const kwCounts = {};
+
+  for (const entry of recent) {
+    if (!entry.title) continue;
+    const keywords = extractKeywords(entry.title);
+    // Deduplicate per entry so one title doesn't inflate a keyword
+    const unique = [...new Set(keywords)];
+    for (const kw of unique) {
+      if (!kwCounts[kw]) {
+        kwCounts[kw] = { count: 0, totalVirality: 0, storyIds: [] };
+      }
+      kwCounts[kw].count += 1;
+      kwCounts[kw].totalVirality += entry.virality_score || 0;
+      kwCounts[kw].storyIds.push(entry.id);
+    }
+  }
+
+  // Filter to 4+ occurrences and compute average virality
+  const candidates = [];
+  for (const [keyword, data] of Object.entries(kwCounts)) {
+    if (data.count >= 4) {
+      candidates.push({
+        keyword,
+        count: data.count,
+        avgVirality: data.count > 0 ? Math.round((data.totalVirality / data.count) * 10) / 10 : 0,
+        storyIds: data.storyIds,
+      });
+    }
+  }
+
+  candidates.sort((a, b) => b.count - a.count || b.avgVirality - a.avgVirality);
+  console.log(`[topic-compile] Found ${candidates.length} compilable topics (4+ mentions in ${days} days)`);
+  return candidates;
+}
+
+/**
+ * Filter stories where title contains the topic keyword.
+ * Returns sorted by virality score descending.
+ */
+function selectTopicStories(stories, history, topic, days = 30) {
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  const topicLower = topic.toLowerCase();
+
+  // Build virality lookup from history
+  const viralityMap = {};
+  if (history && history.entries) {
+    for (const entry of history.entries) {
+      if (entry.virality_score) {
+        viralityMap[entry.id] = entry.virality_score;
+      }
+    }
+  }
+
+  // Filter to published stories matching the topic keyword within the time window
+  const matches = stories.filter(s => {
+    if (!s.youtube_post_id) return false;
+    if (!s.title || !s.title.toLowerCase().includes(topicLower)) return false;
+    const publishedAt = s.youtube_published_at || s.approved_at || s.timestamp;
+    if (!publishedAt) return false;
+    return new Date(publishedAt).getTime() >= cutoff;
+  });
+
+  // Rank by virality
+  const ranked = matches.map(s => ({
+    ...s,
+    rank_score: s.virality_score || viralityMap[s.id] || s.breaking_score || 0,
+  }));
+
+  ranked.sort((a, b) => b.rank_score - a.rank_score);
+
+  console.log(`[topic-compile] Topic "${topic}": ${ranked.length} matching stories in last ${days} days`);
+  return ranked;
+}
+
+/**
+ * Full topic compilation pipeline: select stories by topic, generate a topic-focused
+ * compilation script via Claude, then assemble the longform video.
+ */
+async function compileByTopic(topicName) {
+  console.log(`[topic-compile] === TOPIC COMPILATION: "${topicName}" ===`);
+
+  const channel = getChannel();
+  const dateRange = formatDateRange();
+
+  // 1. Load data sources
+  const [stories, history] = await Promise.all([
+    loadDailyNews(),
+    loadAnalyticsHistory(),
+  ]);
+
+  // 2. Select stories matching the topic
+  const topicStories = selectTopicStories(stories, history, topicName);
+  if (topicStories.length < 3) {
+    console.log(`[topic-compile] Aborting — only ${topicStories.length} stories for "${topicName}" (need at least 3)`);
+    await sendDiscord(`**Topic Compilation** — Not enough stories for "${topicName}" (${topicStories.length} found). Skipping.`);
+    return null;
+  }
+
+  // Cap at MAX_STORIES
+  const selected = topicStories.slice(0, MAX_STORIES);
+
+  // 3. Generate topic-specific compilation script
+  const script = await generateTopicCompilationScript(selected, topicName, dateRange, channel);
+
+  // 4. Generate TTS audio
+  const audioDir = path.join('output', 'audio');
+  await fs.ensureDir(audioDir);
+  const slug = topicName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+  const audioPath = path.join(audioDir, `topic_${slug}.mp3`);
+  await generateCompilationAudio(script.full_script, audioPath);
+
+  // 5. Get audio duration
+  const duration = await getAudioDuration(audioPath);
+  console.log(`[topic-compile] Audio duration: ${Math.round(duration)}s (~${Math.round(duration / 60)} minutes)`);
+
+  // 6. Build segments with image data
+  const segments = script.segments.map(seg => {
+    const storyObj = selected.find(s => s.id === seg.story_id);
+    return {
+      story_id: seg.story_id,
+      title: storyObj?.title || seg.story_id,
+      classification: storyObj?.classification || storyObj?.flair || 'NEWS',
+      transition: seg.transition,
+      expanded_body: seg.expanded_body,
+      images: storyObj?.downloaded_images || [],
+    };
+  });
+
+  // 7. Assemble the video
+  const outputDir = path.join('output', 'topics');
+  await fs.ensureDir(outputDir);
+  const outputPath = path.join(outputDir, `topic_${slug}_${new Date().toISOString().slice(0, 10)}.mp4`);
+
+  const compilation = {
+    stories: selected,
+    audioPath,
+    outputPath,
+    duration,
+    fullScript: script.full_script,
+    segments,
+    dateRange: dateRange.display,
+    channelName: channel.name,
+    intro: script.intro,
+    outro: script.outro,
+  };
+
+  await assembleLongform(compilation);
+
+  // 8. Upload if AUTO_PUBLISH is on
+  let uploadResult = null;
+  if (process.env.AUTO_PUBLISH === 'true') {
+    try {
+      const { uploadLongform } = require('./upload_youtube');
+      uploadResult = await uploadLongform({
+        ...compilation,
+        chapter_timestamps: script.chapter_timestamps,
+        word_count: script.word_count,
+        title_date: dateRange.titleDate,
+        topic: topicName,
+      });
+      console.log(`[topic-compile] Uploaded to YouTube: ${uploadResult.url}`);
+    } catch (err) {
+      console.log(`[topic-compile] YouTube upload failed: ${err.message}`);
+    }
+  }
+
+  // 9. Save compilation data
+  const compilationData = {
+    compiled_at: new Date().toISOString(),
+    topic: topicName,
+    date_range: dateRange,
+    story_count: selected.length,
+    story_ids: selected.map(s => s.id),
+    word_count: script.word_count,
+    duration_seconds: duration,
+    audio_path: audioPath,
+    output_path: outputPath,
+    chapter_timestamps: script.chapter_timestamps,
+    youtube_video_id: uploadResult?.videoId || null,
+    youtube_url: uploadResult?.url || null,
+  };
+
+  // Append to topic_compilations.json log
+  const topicCompilationsPath = path.join(__dirname, 'topic_compilations.json');
+  let existing = [];
+  if (await fs.pathExists(topicCompilationsPath)) {
+    existing = await fs.readJson(topicCompilationsPath);
+  }
+  existing.push(compilationData);
+  await fs.writeJson(topicCompilationsPath, existing, { spaces: 2 });
+
+  await sendDiscord(
+    `**Topic Compilation: "${topicName}"**\n` +
+    `${selected.length} stories, ${Math.round(duration / 60)} minutes\n` +
+    `${uploadResult ? `YouTube: ${uploadResult.url}` : 'Not uploaded (AUTO_PUBLISH off)'}`
+  );
+
+  console.log(`[topic-compile] === TOPIC COMPILATION COMPLETE: "${topicName}" ===`);
+  return compilationData;
+}
+
+/**
+ * Generate a topic-specific compilation script via Claude.
+ * Uses a prompt tailored to the topic rather than a generic weekly roundup.
+ */
+async function generateTopicCompilationScript(selectedStories, topicName, dateRange, channel) {
+  const client = new Anthropic.default({
+    apiKey: process.env.ANTHROPIC_API_KEY,
+  });
+
+  const storySummaries = selectedStories.map((s, i) => (
+    `${i + 1}. [${s.classification || s.flair || 'NEWS'}] "${s.title}" — ${(s.full_script || s.body || '').substring(0, 200)}`
+  )).join('\n');
+
+  const prompt = `You are the scriptwriter for ${channel.name}, a gaming news channel. Write a 10-15 minute topic compilation script focused specifically on "${topicName}". This is a deep-dive roundup covering everything that happened with "${topicName}" recently.
+
+DATE RANGE: ${dateRange.display}
+TOPIC FOCUS: ${topicName}
+
+STORIES (ranked by performance):
+${storySummaries}
+
+RULES:
+- British English, no serial comma
+- Documentary tone — measured, authoritative, conversational
+- Target 1500-2000 words total (approx 10-14 minutes at 140 WPM)
+- Frame this as a dedicated "${topicName}" roundup — not a general weekly recap
+- Open with why "${topicName}" has been dominating the news cycle
+- Each story segment should be 100-180 words (expanded from the original short)
+- Include smooth transition phrases that connect the stories thematically around "${topicName}"
+- Outro: summarise the state of "${topicName}" right now, what to watch for next, CTA to subscribe
+- Generate chapter timestamps (format: "M:SS Title") — the intro starts at 0:00
+- Estimate segment timing: intro ~30s, each story ~60-90s, outro ~20s
+
+Output ONLY valid JSON with no preamble and no markdown backticks:
+{
+  "intro": "string — the opening 2-3 sentences framing the ${topicName} deep-dive",
+  "segments": [
+    {
+      "story_id": "string — the story id",
+      "transition": "string — 1-2 sentence transition into this story",
+      "expanded_body": "string — 100-180 word expanded coverage of this story"
+    }
+  ],
+  "outro": "string — closing 2-3 sentences summarising ${topicName} outlook with subscribe CTA",
+  "chapter_timestamps": [
+    { "time": "0:00", "title": "Intro" },
+    { "time": "0:30", "title": "Story Title 1" }
+  ],
+  "full_script": "string — the complete narration text from intro through outro, all segments joined",
+  "word_count": 0
+}`;
+
+  console.log(`[topic-compile] Generating "${topicName}" compilation script via Claude...`);
+
+  const response = await client.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 4096,
+    system: `You are a professional scriptwriter for ${channel.name}, a ${channel.niche} news YouTube channel. You write topic-focused compilation scripts that provide deep, cohesive coverage of a single subject. British English throughout.`,
+    messages: [{ role: 'user', content: prompt }],
+  });
+
+  let text = response.content[0].text.trim();
+  if (text.startsWith('```')) {
+    text = text.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+  }
+
+  const script = JSON.parse(text);
+  console.log(`[topic-compile] Script generated: ${script.word_count} words, ${script.segments.length} segments`);
+
+  return script;
+}
+
+module.exports = { compileWeekly, identifyCompilableTopics, selectTopicStories, compileByTopic };
 
 if (require.main === module) {
   compileWeekly().catch(err => {

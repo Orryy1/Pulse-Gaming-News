@@ -2,6 +2,9 @@ const fs = require('fs-extra');
 const path = require('path');
 const axios = require('axios');
 const dotenv = require('dotenv');
+const { withRetry } = require('./lib/retry');
+const { addBreadcrumb, captureException } = require('./lib/sentry');
+const db = require('./lib/db');
 
 dotenv.config({ override: true });
 
@@ -98,136 +101,139 @@ function getAccountId() {
 
 // --- Upload a Reel to Instagram via Resumable Upload (direct binary) ---
 async function uploadReel(story) {
-  const accessToken = await getAccessToken();
-  const accountId = getAccountId();
+  addBreadcrumb(`Instagram upload: ${story.title}`, 'upload');
+  return withRetry(async () => {
+    const accessToken = await getAccessToken();
+    const accountId = getAccountId();
 
-  if (!story.exported_path || !await fs.pathExists(story.exported_path)) {
-    throw new Error(`Video file not found: ${story.exported_path}`);
-  }
+    if (!story.exported_path || !await fs.pathExists(story.exported_path)) {
+      throw new Error(`Video file not found: ${story.exported_path}`);
+    }
 
-  // Build caption — channel-aware hashtags
-  const { getChannel } = require('./channels');
-  const channel = getChannel();
-  let caption = story.suggested_title || story.suggested_thumbnail_text || story.title;
-  caption += '\n\n' + (story.full_script || '').substring(0, 500);
-  const tags = (channel.hashtags || []).map(h => h.replace('#Shorts', '#reels')).join(' ');
-  caption += '\n\n' + tags + ' #viral #explore';
-  if (story.affiliate_url) {
-    caption += `\n\nLink in bio | Source: r/${story.subreddit}`;
-  }
+    // Build caption — channel-aware hashtags
+    const { getChannel } = require('./channels');
+    const channel = getChannel();
+    let caption = story.suggested_title || story.suggested_thumbnail_text || story.title;
+    caption += '\n\n' + (story.full_script || '').substring(0, 500);
+    const tags = (channel.hashtags || []).map(h => h.replace('#Shorts', '#reels')).join(' ');
+    caption += '\n\n' + tags + ' #viral #explore';
+    if (story.affiliate_url) {
+      caption += `\n\nLink in bio | Source: r/${story.subreddit}`;
+    }
 
-  // Trim to Instagram's 2200 char limit
-  if (caption.length > 2200) caption = caption.substring(0, 2197) + '...';
+    // Trim to Instagram's 2200 char limit
+    if (caption.length > 2200) caption = caption.substring(0, 2197) + '...';
 
-  // Seed token from env on first run so auto-refresh can work
-  await seedTokenFromEnv();
+    // Seed token from env on first run so auto-refresh can work
+    await seedTokenFromEnv();
 
-  const videoBuffer = await fs.readFile(story.exported_path);
-  const fileSize = videoBuffer.length;
-  console.log(`[instagram] Uploading Reel (${Math.round(fileSize / 1024)}KB): "${(story.suggested_thumbnail_text || story.title).substring(0, 50)}..."`);
+    const videoBuffer = await fs.readFile(story.exported_path);
+    const fileSize = videoBuffer.length;
+    console.log(`[instagram] Uploading Reel (${Math.round(fileSize / 1024)}KB): "${(story.suggested_thumbnail_text || story.title).substring(0, 50)}..."`);
 
-  // Step 1: Create resumable upload session
-  // Use graph.facebook.com (not graph.instagram.com) — required for resumable uploads
-  let initResponse;
-  try {
-    initResponse = await axios.post(
-      `https://graph.facebook.com/v21.0/${accountId}/media`,
+    // Step 1: Create resumable upload session
+    // Use graph.facebook.com (not graph.instagram.com) — required for resumable uploads
+    let initResponse;
+    try {
+      initResponse = await axios.post(
+        `https://graph.facebook.com/v21.0/${accountId}/media`,
+        {
+          media_type: 'REELS',
+          upload_type: 'resumable',
+          caption,
+          share_to_feed: true,
+          access_token: accessToken,
+        }
+      );
+    } catch (err) {
+      const errData = err.response?.data?.error || err.response?.data || err.message;
+      console.log(`[instagram] Container creation failed: ${JSON.stringify(errData)}`);
+      throw new Error(`Instagram container creation failed: ${JSON.stringify(errData)}`);
+    }
+
+    const containerId = initResponse.data.id;
+    const uploadUrl = initResponse.data.uri || `https://rupload.facebook.com/ig-api-upload/v21.0/${containerId}`;
+    console.log(`[instagram] Container created: ${containerId}, upload URL: ${uploadUrl ? 'received' : 'fallback'}`);
+
+    // Step 2: Upload video binary directly to the resumable upload URI
+    await axios({
+      method: 'POST',
+      url: uploadUrl,
+      headers: {
+        'Authorization': `OAuth ${accessToken}`,
+        'offset': '0',
+        'file_size': fileSize.toString(),
+        'Content-Type': 'video/mp4',
+      },
+      data: videoBuffer,
+      maxContentLength: Infinity,
+      maxBodyLength: Infinity,
+    });
+
+    console.log(`[instagram] Binary upload complete`);
+
+    // Step 3: Wait for processing
+    let status = 'IN_PROGRESS';
+    let attempts = 0;
+
+    while (status === 'IN_PROGRESS' && attempts < 60) {
+      await new Promise(r => setTimeout(r, 10000));
+      attempts++;
+
+      try {
+        const statusResponse = await axios.get(
+          `https://graph.facebook.com/v21.0/${containerId}`,
+          {
+            params: {
+              fields: 'status_code,status',
+              access_token: accessToken,
+            },
+          }
+        );
+
+        status = statusResponse.data.status_code || 'IN_PROGRESS';
+        console.log(`[instagram] Processing check ${attempts}: ${status}`);
+
+        if (status === 'ERROR') {
+          throw new Error(`Instagram processing failed: ${JSON.stringify(statusResponse.data)}`);
+        }
+      } catch (err) {
+        if (err.message.includes('processing failed')) throw err;
+        console.log(`[instagram] Status check error: ${err.message}`);
+      }
+    }
+
+    if (status !== 'FINISHED') {
+      throw new Error(`Instagram processing timed out (status: ${status})`);
+    }
+
+    // Step 4: Publish the container
+    const publishResponse = await axios.post(
+      `https://graph.facebook.com/v21.0/${accountId}/media_publish`,
       {
-        media_type: 'REELS',
-        upload_type: 'resumable',
-        caption,
-        share_to_feed: true,
+        creation_id: containerId,
         access_token: accessToken,
       }
     );
-  } catch (err) {
-    const errData = err.response?.data?.error || err.response?.data || err.message;
-    console.log(`[instagram] Container creation failed: ${JSON.stringify(errData)}`);
-    throw new Error(`Instagram container creation failed: ${JSON.stringify(errData)}`);
-  }
 
-  const containerId = initResponse.data.id;
-  const uploadUrl = initResponse.data.uri || `https://rupload.facebook.com/ig-api-upload/v21.0/${containerId}`;
-  console.log(`[instagram] Container created: ${containerId}, upload URL: ${uploadUrl ? 'received' : 'fallback'}`);
+    const mediaId = publishResponse.data.id;
+    console.log(`[instagram] Published! Media ID: ${mediaId}`);
 
-  // Step 2: Upload video binary directly to the resumable upload URI
-  await axios({
-    method: 'POST',
-    url: uploadUrl,
-    headers: {
-      'Authorization': `OAuth ${accessToken}`,
-      'offset': '0',
-      'file_size': fileSize.toString(),
-      'Content-Type': 'video/mp4',
-    },
-    data: videoBuffer,
-    maxContentLength: Infinity,
-    maxBodyLength: Infinity,
-  });
-
-  console.log(`[instagram] Binary upload complete`);
-
-  // Step 3: Wait for processing
-  let status = 'IN_PROGRESS';
-  let attempts = 0;
-
-  while (status === 'IN_PROGRESS' && attempts < 60) {
-    await new Promise(r => setTimeout(r, 10000));
-    attempts++;
-
-    try {
-      const statusResponse = await axios.get(
-        `https://graph.facebook.com/v21.0/${containerId}`,
-        {
-          params: {
-            fields: 'status_code,status',
-            access_token: accessToken,
-          },
-        }
-      );
-
-      status = statusResponse.data.status_code || 'IN_PROGRESS';
-      console.log(`[instagram] Processing check ${attempts}: ${status}`);
-
-      if (status === 'ERROR') {
-        throw new Error(`Instagram processing failed: ${JSON.stringify(statusResponse.data)}`);
-      }
-    } catch (err) {
-      if (err.message.includes('processing failed')) throw err;
-      console.log(`[instagram] Status check error: ${err.message}`);
-    }
-  }
-
-  if (status !== 'FINISHED') {
-    throw new Error(`Instagram processing timed out (status: ${status})`);
-  }
-
-  // Step 4: Publish the container
-  const publishResponse = await axios.post(
-    `https://graph.facebook.com/v21.0/${accountId}/media_publish`,
-    {
-      creation_id: containerId,
-      access_token: accessToken,
-    }
-  );
-
-  const mediaId = publishResponse.data.id;
-  console.log(`[instagram] Published! Media ID: ${mediaId}`);
-
-  return {
-    platform: 'instagram',
-    mediaId,
-  };
+    return {
+      platform: 'instagram',
+      mediaId,
+    };
+  }, { label: 'instagram upload' });
 }
 
 // --- Batch upload all ready stories ---
 async function uploadAll() {
-  if (!await fs.pathExists('daily_news.json')) {
-    console.log('[instagram] No daily_news.json found');
+  const stories = await db.getStories();
+  if (!stories.length) {
+    console.log('[instagram] No stories found');
     return [];
   }
 
-  const stories = await fs.readJson('daily_news.json');
   const ready = stories.filter(s =>
     s.approved && s.exported_path && !s.instagram_media_id
   );
@@ -245,12 +251,13 @@ async function uploadAll() {
       // Rate limiting (Instagram is strict)
       await new Promise(r => setTimeout(r, 30000));
     } catch (err) {
+      captureException(err, { platform: 'instagram', storyId: story.id });
       console.log(`[instagram] Upload failed for ${story.id}: ${err.message}`);
       story.instagram_error = err.message;
     }
   }
 
-  await fs.writeJson('daily_news.json', stories, { spaces: 2 });
+  await db.saveStories(stories);
   console.log(`[instagram] ${results.length} reels uploaded`);
   return results;
 }

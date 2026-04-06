@@ -20,6 +20,7 @@ const { google } = require('googleapis');
 const fs = require('fs-extra');
 const path = require('path');
 const dotenv = require('dotenv');
+const db = require('./lib/db');
 
 dotenv.config({ override: true });
 
@@ -194,7 +195,7 @@ async function heartTopComments(videoId, count = 3) {
  * Generate a conversational reply to a comment using Claude Haiku.
  * Rules: under 100 chars, casual tone, channel-branded.
  */
-async function generateSmartReply(commentText, authorName) {
+async function generateSmartReply(commentText, authorName, storyContext) {
   try {
     const Anthropic = require('@anthropic-ai/sdk');
     const brand = require('./brand');
@@ -211,6 +212,9 @@ async function generateSmartReply(commentText, authorName) {
           content:
             `You are the community manager for ${channelName}, a YouTube gaming news channel. ` +
             `Reply to this comment from @${authorName}:\n"${commentText.substring(0, 300)}"\n\n` +
+            (storyContext
+              ? `Context about the video:\n- Title: ${storyContext.title || ''}\n- Key facts: ${(storyContext.body || storyContext.full_script || '').substring(0, 200)}\n- Classification: ${storyContext.flair || ''}\n\n`
+              : '') +
             `Rules:\n` +
             `- Under 100 characters total\n` +
             `- Casual, warm, British English tone\n` +
@@ -437,7 +441,154 @@ async function recordEngagementStats(hearted, replies, pins) {
   console.log(`[engagement] Stats for ${today}: ${stats[today].hearted} hearts, ${stats[today].replies} replies, ${stats[today].pins} pins`);
 }
 
-// ---------- 7. Full engagement pass (extended to 7 days) ----------
+// ---------- 7. First-hour aggressive engagement ----------
+
+const FIRST_HOUR_LOG_PATH = path.join(__dirname, 'engagement_first_hour_log.json');
+
+async function loadFirstHourLog() {
+  if (await fs.pathExists(FIRST_HOUR_LOG_PATH)) {
+    return fs.readJson(FIRST_HOUR_LOG_PATH);
+  }
+  return {}; // { videoId: { replies: ["commentId1", ...], count: 3 } }
+}
+
+async function saveFirstHourLog(log) {
+  await fs.writeJson(FIRST_HOUR_LOG_PATH, log, { spaces: 2 });
+}
+
+/**
+ * Aggressive first-hour engagement: fetch comments, find trending ones
+ * (2+ likes or questions), and reply to up to 3 with Claude-powered
+ * contextual replies. Max 5 replies per video total in first hour.
+ */
+async function engageFirstHour(videoId, story) {
+  if (!videoId) {
+    console.log('[engagement] engageFirstHour: missing videoId');
+    return { replies: 0, hearted: 0 };
+  }
+
+  console.log(`[engagement] First-hour engagement for ${videoId}`);
+
+  // Check first-hour reply log for rate limit (max 5 per video)
+  const fhLog = await loadFirstHourLog();
+  if (!fhLog[videoId]) {
+    fhLog[videoId] = { replies: [], count: 0 };
+  }
+  if (fhLog[videoId].count >= 5) {
+    console.log(`[engagement] First-hour limit reached for ${videoId} (${fhLog[videoId].count}/5)`);
+    return { replies: 0, hearted: 0 };
+  }
+
+  const remainingSlots = 5 - fhLog[videoId].count;
+  const maxReplies = Math.min(3, remainingSlots);
+
+  try {
+    const youtube = await getYouTubeClient();
+    const ownChannelId = await getOwnChannelId(youtube);
+
+    // Fetch recent comments sorted by relevance
+    const response = await youtube.commentThreads.list({
+      part: ['snippet'],
+      videoId,
+      maxResults: 20,
+      order: 'relevance',
+    });
+
+    const items = response.data.items || [];
+    if (items.length === 0) {
+      console.log(`[engagement] No comments yet on ${videoId}`);
+      return { replies: 0, hearted: 0 };
+    }
+
+    // Identify trending comments: 2+ likes or contains a question mark
+    const trendingComments = items.filter(item => {
+      const comment = item.snippet.topLevelComment;
+      const authorChannelId = comment.snippet.authorChannelId?.value;
+
+      // Skip our own comments
+      if (ownChannelId && authorChannelId === ownChannelId) return false;
+
+      // Skip comments we already replied to
+      if (fhLog[videoId].replies.includes(comment.id)) return false;
+
+      const likeCount = comment.snippet.likeCount || 0;
+      const text = comment.snippet.textDisplay || '';
+      const isQuestion = text.includes('?');
+
+      return likeCount >= 2 || isQuestion;
+    });
+
+    console.log(`[engagement] Found ${trendingComments.length} trending comments on ${videoId}`);
+
+    // Build story context for smarter replies
+    const storyContext = story ? {
+      title: story.title,
+      body: story.body || story.full_script,
+      flair: story.flair,
+    } : null;
+
+    let repliesMade = 0;
+    let heartsMade = 0;
+
+    // Heart all trending comments first
+    for (const item of trendingComments) {
+      const comment = item.snippet.topLevelComment;
+      try {
+        await youtube.comments.setModerationStatus({
+          id: comment.id,
+          moderationStatus: 'published',
+        });
+        heartsMade++;
+      } catch (err) {
+        // Non-critical
+      }
+    }
+
+    // Reply to up to maxReplies trending comments
+    for (const item of trendingComments) {
+      if (repliesMade >= maxReplies) break;
+
+      const comment = item.snippet.topLevelComment;
+      const authorName = comment.snippet.authorDisplayName;
+      const commentText = comment.snippet.textDisplay;
+
+      try {
+        const replyText = await generateSmartReply(commentText, authorName, storyContext);
+        if (!replyText) continue;
+
+        await youtube.comments.insert({
+          part: ['snippet'],
+          requestBody: {
+            snippet: {
+              parentId: comment.id,
+              textOriginal: replyText,
+            },
+          },
+        });
+
+        console.log(`[engagement] First-hour reply to @${authorName}: "${replyText}"`);
+
+        fhLog[videoId].replies.push(comment.id);
+        fhLog[videoId].count++;
+        repliesMade++;
+
+        // Rate limit between replies
+        await new Promise(r => setTimeout(r, 1500));
+      } catch (err) {
+        console.log(`[engagement] First-hour reply failed for ${comment.id}: ${err.message}`);
+      }
+    }
+
+    await saveFirstHourLog(fhLog);
+    console.log(`[engagement] First-hour complete for ${videoId}: ${repliesMade} replies, ${heartsMade} hearts`);
+    return { replies: repliesMade, hearted: heartsMade };
+  } catch (err) {
+    console.log(`[engagement] engageFirstHour failed for ${videoId}: ${err.message}`);
+    return { replies: 0, hearted: 0 };
+  }
+}
+
+// ---------- 8. Full engagement pass (extended to 7 days) ----------
 
 /**
  * Fetch recent videos (last 7 days) from daily_news.json and run
@@ -445,13 +596,13 @@ async function recordEngagementStats(hearted, replies, pins) {
  * lighter touch (heart only) after 48h.
  */
 async function engageRecent() {
-  if (!await fs.pathExists(DAILY_NEWS_PATH)) {
-    console.log('[engagement] No daily_news.json found');
+  const stories = await db.getStories();
+  if (!stories.length) {
+    console.log('[engagement] No stories found');
     return;
   }
-
-  const stories = await fs.readJson(DAILY_NEWS_PATH);
   const now = Date.now();
+  const cutoff1h = now - (60 * 60 * 1000);
   const cutoff48h = now - (48 * 60 * 60 * 1000);
   const cutoff7d = now - (7 * 24 * 60 * 60 * 1000);
 
@@ -472,9 +623,36 @@ async function engageRecent() {
   for (const story of recent) {
     const videoId = story.youtube_post_id;
     const publishTime = story.published_at || story.timestamp;
-    const isWithin48h = publishTime && new Date(publishTime).getTime() >= cutoff48h;
+    const publishTimeMs = publishTime ? new Date(publishTime).getTime() : 0;
+    const isWithinFirstHour = publishTimeMs >= cutoff1h;
+    const isWithin48h = publishTimeMs >= cutoff48h;
 
-    console.log(`[engagement] --- Processing ${videoId} (${isWithin48h ? 'full' : 'light'} mode) ---`);
+    const mode = isWithinFirstHour ? 'first-hour' : (isWithin48h ? 'full' : 'light');
+    console.log(`[engagement] --- Processing ${videoId} (${mode} mode) ---`);
+
+    // First-hour tier: aggressive multi-comment engagement
+    if (isWithinFirstHour) {
+      try {
+        const fhResult = await engageFirstHour(videoId, story);
+        totalHearted += fhResult.hearted;
+        totalReplies += fhResult.replies;
+      } catch (err) {
+        console.log(`[engagement] First-hour engagement failed: ${err.message}`);
+      }
+
+      // Also pin comment if not done yet
+      if (story.pinned_comment && !story.engagement_comment_id) {
+        const commentId = await pinComment(videoId, story.pinned_comment);
+        if (commentId) {
+          story.engagement_comment_id = commentId;
+          totalPins++;
+        }
+      }
+
+      story.engagement_last_run = new Date().toISOString();
+      await new Promise(r => setTimeout(r, 2000));
+      continue;
+    }
 
     if (isWithin48h) {
       // FULL engagement for first 48 hours: pin + heart + reply
@@ -532,7 +710,7 @@ async function engageRecent() {
   }
 
   // Persist updates
-  await fs.writeJson(DAILY_NEWS_PATH, stories, { spaces: 2 });
+  await db.saveStories(stories);
 
   // Record daily stats
   await recordEngagementStats(totalHearted, totalReplies, totalPins);
@@ -545,6 +723,7 @@ async function engageRecent() {
 module.exports = {
   pinComment,
   engageRecent,
+  engageFirstHour,
   heartTopComments,
   rotatePinnedComment,
   generatePollComment,

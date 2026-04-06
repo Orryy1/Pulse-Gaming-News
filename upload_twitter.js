@@ -17,6 +17,9 @@ const path = require('path');
 const crypto = require('crypto');
 const axios = require('axios');
 const dotenv = require('dotenv');
+const { withRetry } = require('./lib/retry');
+const { addBreadcrumb, captureException } = require('./lib/sentry');
+const db = require('./lib/db');
 
 dotenv.config({ override: true });
 
@@ -182,42 +185,45 @@ async function postTweet(text, mediaId) {
 
 // --- Upload a single video to X/Twitter ---
 async function uploadShort(story) {
-  if (!story.exported_path || !await fs.pathExists(story.exported_path)) {
-    throw new Error(`Video file not found: ${story.exported_path}`);
-  }
+  addBreadcrumb(`Twitter upload: ${story.title}`, 'upload');
+  return withRetry(async () => {
+    if (!story.exported_path || !await fs.pathExists(story.exported_path)) {
+      throw new Error(`Video file not found: ${story.exported_path}`);
+    }
 
-  // Build tweet text (280 char limit)
-  let text = story.suggested_title || story.suggested_thumbnail_text || story.title;
-  text = text.replace(/\[.*?\]\s*/g, '').trim();
-  if (text.length > 220) text = text.substring(0, 217) + '...';
+    // Build tweet text (280 char limit)
+    let text = story.suggested_title || story.suggested_thumbnail_text || story.title;
+    text = text.replace(/\[.*?\]\s*/g, '').trim();
+    if (text.length > 220) text = text.substring(0, 217) + '...';
 
-  const hashtags = '#GamingNews #GamingLeaks';
-  const tweetText = `${text}\n\n${hashtags}`;
-  const finalText = tweetText.length > 280 ? tweetText.substring(0, 277) + '...' : tweetText;
+    const hashtags = '#GamingNews #GamingLeaks';
+    const tweetText = `${text}\n\n${hashtags}`;
+    const finalText = tweetText.length > 280 ? tweetText.substring(0, 277) + '...' : tweetText;
 
-  console.log(`[twitter] Uploading video for: "${text.substring(0, 50)}..."`);
+    console.log(`[twitter] Uploading video for: "${text.substring(0, 50)}..."`);
 
-  // Upload media
-  const mediaId = await uploadMedia(story.exported_path);
+    // Upload media
+    const mediaId = await uploadMedia(story.exported_path);
 
-  // Post tweet
-  const tweet = await postTweet(finalText, mediaId);
-  console.log(`[twitter] Tweet posted: ${tweet.id}`);
+    // Post tweet
+    const tweet = await postTweet(finalText, mediaId);
+    console.log(`[twitter] Tweet posted: ${tweet.id}`);
 
-  return {
-    platform: 'twitter',
-    tweetId: tweet.id,
-  };
+    return {
+      platform: 'twitter',
+      tweetId: tweet.id,
+    };
+  }, { label: 'twitter upload' });
 }
 
 // --- Batch upload ---
 async function uploadAll() {
-  if (!await fs.pathExists('daily_news.json')) {
-    console.log('[twitter] No daily_news.json found');
+  const stories = await db.getStories();
+  if (!stories.length) {
+    console.log('[twitter] No stories found');
     return [];
   }
 
-  const stories = await fs.readJson('daily_news.json');
   const ready = stories.filter(s =>
     s.approved && s.exported_path && !s.twitter_post_id
   );
@@ -232,12 +238,13 @@ async function uploadAll() {
       results.push(result);
       await new Promise(r => setTimeout(r, 5000));
     } catch (err) {
+      captureException(err, { platform: 'twitter', storyId: story.id });
       console.log(`[twitter] Upload failed for ${story.id}: ${err.message}`);
       story.twitter_error = err.message;
     }
   }
 
-  await fs.writeJson('daily_news.json', stories, { spaces: 2 });
+  await db.saveStories(stories);
   console.log(`[twitter] ${results.length} tweets posted`);
   return results;
 }

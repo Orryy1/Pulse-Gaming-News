@@ -372,12 +372,13 @@ async function publishNextStory() {
 
   // Post to Discord channels (news feed + video drops)
   try {
-    const { postNewStory, postVideoUpload } = require('./discord/auto_post');
+    const { postNewStory, postVideoUpload, postStoryPoll } = require('./discord/auto_post');
     await postNewStory(story);
     if (result.youtube || result.tiktok || result.instagram) {
       await postVideoUpload(story);
     }
-    console.log(`[publisher] Discord: posted to news + video channels`);
+    await postStoryPoll(story);
+    console.log(`[publisher] Discord: posted to news + video + polls channels`);
   } catch (err) {
     console.log(`[publisher] Discord post skipped: ${err.message}`);
   }

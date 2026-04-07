@@ -95,6 +95,17 @@ async function generateAndSaveBlogPost(story) {
   const { postTemplate } = require('./templates');
 
   const postData = await generateBlogPost(story);
+
+  // Copy the story card image to blog/dist/images/ if available
+  if (story.story_image_path && await fs.pathExists(story.story_image_path)) {
+    const imagesDir = path.join(DIST_DIR, 'images');
+    await fs.ensureDir(imagesDir);
+    const destPath = path.join(imagesDir, `${postData.slug}.png`);
+    await fs.copy(story.story_image_path, destPath);
+    postData.storyImageSlug = postData.slug;
+    console.log(`[blog] Copied story card image to images/${postData.slug}.png`);
+  }
+
   const fullHtml = postTemplate(postData);
 
   await fs.ensureDir(DIST_DIR);

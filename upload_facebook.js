@@ -160,7 +160,60 @@ async function uploadShort(story) {
   return uploadReel(story);
 }
 
-module.exports = { uploadReel, uploadShort, uploadAll };
+// --- Upload a Story image to Facebook Stories ---
+async function uploadStoryImage(story) {
+  addBreadcrumb(`Facebook Story image upload: ${story.title}`, 'upload');
+  return withRetry(async () => {
+    const accessToken = await getAccessToken();
+    const pageId = getPageId();
+
+    if (!story.story_image_path || !await fs.pathExists(story.story_image_path)) {
+      throw new Error('Story image not found on disk');
+    }
+
+    console.log(`[facebook] Uploading Story image: "${(story.title || '').substring(0, 50)}..."`);
+
+    // Step 1: Upload the photo to the page (unpublished) so we get a photo_id
+    const imageBuffer = await fs.readFile(story.story_image_path);
+    const FormData = (await import('form-data')).default || require('form-data');
+    const form = new FormData();
+    form.append('source', imageBuffer, { filename: `${story.id}_story.png`, contentType: 'image/png' });
+    form.append('published', 'false');
+    form.append('access_token', accessToken);
+
+    const photoResponse = await axios.post(
+      `https://graph.facebook.com/v21.0/${pageId}/photos`,
+      form,
+      {
+        headers: form.getHeaders(),
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity,
+      }
+    );
+
+    const photoId = photoResponse.data.id;
+    console.log(`[facebook] Photo uploaded (unpublished): ${photoId}`);
+
+    // Step 2: Create the Story using the photo_id
+    const storyResponse = await axios.post(
+      `https://graph.facebook.com/v21.0/${pageId}/photo_stories`,
+      {
+        photo_id: photoId,
+        access_token: accessToken,
+      }
+    );
+
+    const storyId = storyResponse.data.id || storyResponse.data.post_id;
+    console.log(`[facebook] Story published! Story ID: ${storyId}`);
+
+    return {
+      platform: 'facebook_story',
+      storyId,
+    };
+  }, { label: 'facebook story upload' });
+}
+
+module.exports = { uploadReel, uploadShort, uploadAll, uploadStoryImage };
 
 if (require.main === module) {
   uploadAll().catch(err => {

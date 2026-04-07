@@ -14,8 +14,11 @@ const TEXT = brand.TEXT || '#F0F0F0';
  * @param {object} data — { title, slug, description, html, publishedAt, seoKeywords, story }
  */
 function postTemplate(data) {
-  const { title, slug, description, html, publishedAt, seoKeywords, story } = data;
-  const ogImage = (story && story.article_image) || '';
+  const { title, slug, description, html, publishedAt, seoKeywords, story, storyImageSlug } = data;
+  // Prefer the locally copied story card image for og:image if available
+  const ogImage = storyImageSlug
+    ? `/blog/images/${storyImageSlug}.png`
+    : ((story && story.article_image) || '');
   const youtubeUrl = (story && story.youtube_url) || '';
   const affiliateUrl = (story && story.affiliate_url) || '';
   const channelName = brand.CHANNEL_NAME || 'Pulse Gaming';

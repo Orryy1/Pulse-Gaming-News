@@ -573,7 +573,16 @@ async function uploadLongform(compilation) {
   };
 }
 
-module.exports = { uploadShort, uploadAll, uploadLongform, generateAuthUrl, exchangeCode, getAuthClient, ensurePlaylists, addToPlaylists };
+// --- Community post with image (placeholder) ---
+// The YouTube Data API v3 does NOT support creating Community posts.
+// This would need browser automation (e.g. Puppeteer) or a future API update.
+// Leaving as a no-op placeholder so the publisher can call it without errors.
+async function postCommunityImage(story) {
+  console.log(`[youtube] Community post not supported via API - would need manual posting or browser automation for: "${(story.title || '').substring(0, 50)}"`);
+  return null;
+}
+
+module.exports = { uploadShort, uploadAll, uploadLongform, postCommunityImage, generateAuthUrl, exchangeCode, getAuthClient, ensurePlaylists, addToPlaylists };
 
 if (require.main === module) {
   const cmd = process.argv[2];

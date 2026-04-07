@@ -270,7 +270,102 @@ async function uploadShort(story) {
   return uploadReel(story);
 }
 
-module.exports = { uploadReel, uploadShort, uploadAll, refreshToken, seedTokenFromEnv };
+// --- Upload a Story image to Instagram Stories ---
+async function uploadStoryImage(story) {
+  addBreadcrumb(`Instagram Story image upload: ${story.title}`, 'upload');
+  return withRetry(async () => {
+    const accessToken = await getAccessToken();
+    const accountId = getAccountId();
+
+    if (!story.story_image_path || !await fs.pathExists(story.story_image_path)) {
+      throw new Error('Story image not found on disk');
+    }
+
+    const publicBaseUrl = process.env.RAILWAY_PUBLIC_URL;
+    if (!publicBaseUrl) {
+      throw new Error('RAILWAY_PUBLIC_URL not set - Instagram needs a public URL to fetch the image');
+    }
+
+    const imageUrl = `${publicBaseUrl}/api/story-image/${story.id}`;
+    console.log(`[instagram] Uploading Story image: "${(story.title || '').substring(0, 50)}..."`);
+
+    // Seed token from env on first run so auto-refresh can work
+    await seedTokenFromEnv();
+
+    // Step 1: Create a Stories media container
+    let initResponse;
+    try {
+      initResponse = await axios.post(
+        `https://graph.facebook.com/v21.0/${accountId}/media`,
+        {
+          media_type: 'STORIES',
+          image_url: imageUrl,
+          access_token: accessToken,
+        }
+      );
+    } catch (err) {
+      const errData = err.response?.data?.error || err.response?.data || err.message;
+      throw new Error(`Instagram Story container creation failed: ${JSON.stringify(errData)}`);
+    }
+
+    const containerId = initResponse.data.id;
+    console.log(`[instagram] Story container created: ${containerId}`);
+
+    // Step 2: Wait for processing
+    let status = 'IN_PROGRESS';
+    let attempts = 0;
+
+    while (status === 'IN_PROGRESS' && attempts < 30) {
+      await new Promise(r => setTimeout(r, 5000));
+      attempts++;
+
+      try {
+        const statusResponse = await axios.get(
+          `https://graph.facebook.com/v21.0/${containerId}`,
+          {
+            params: {
+              fields: 'status_code,status',
+              access_token: accessToken,
+            },
+          }
+        );
+
+        status = statusResponse.data.status_code || 'IN_PROGRESS';
+        console.log(`[instagram] Story processing check ${attempts}: ${status}`);
+
+        if (status === 'ERROR') {
+          throw new Error(`Instagram Story processing failed: ${JSON.stringify(statusResponse.data)}`);
+        }
+      } catch (err) {
+        if (err.message.includes('processing failed')) throw err;
+        console.log(`[instagram] Story status check error: ${err.message}`);
+      }
+    }
+
+    if (status !== 'FINISHED') {
+      throw new Error(`Instagram Story processing timed out (status: ${status})`);
+    }
+
+    // Step 3: Publish the container
+    const publishResponse = await axios.post(
+      `https://graph.facebook.com/v21.0/${accountId}/media_publish`,
+      {
+        creation_id: containerId,
+        access_token: accessToken,
+      }
+    );
+
+    const mediaId = publishResponse.data.id;
+    console.log(`[instagram] Story published! Media ID: ${mediaId}`);
+
+    return {
+      platform: 'instagram_story',
+      mediaId,
+    };
+  }, { label: 'instagram story upload' });
+}
+
+module.exports = { uploadReel, uploadShort, uploadAll, uploadStoryImage, refreshToken, seedTokenFromEnv };
 
 if (require.main === module) {
   uploadAll().catch(err => {

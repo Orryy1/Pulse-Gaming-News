@@ -395,6 +395,42 @@ async function publishNextStory() {
     story.published_at = new Date().toISOString();
   }
 
+  // --- Story card image distribution (only on first publish, not retries) ---
+  if (!isRetry && story.story_image_path) {
+    // Instagram Stories
+    try {
+      const { uploadStoryImage: igStory } = require('./upload_instagram');
+      const igStoryResult = await igStory(story);
+      story.instagram_story_id = igStoryResult.mediaId;
+      console.log(`[publisher] Instagram Story: uploaded (${igStoryResult.mediaId})`);
+    } catch (err) {
+      console.log(`[publisher] Instagram Story upload failed: ${err.message}`);
+      result.errors.instagram_story = err.message;
+    }
+
+    // Facebook Stories
+    try {
+      const { uploadStoryImage: fbStory } = require('./upload_facebook');
+      const fbStoryResult = await fbStory(story);
+      story.facebook_story_id = fbStoryResult.storyId;
+      console.log(`[publisher] Facebook Story: uploaded (${fbStoryResult.storyId})`);
+    } catch (err) {
+      console.log(`[publisher] Facebook Story upload failed: ${err.message}`);
+      result.errors.facebook_story = err.message;
+    }
+
+    // Twitter/X image tweet
+    try {
+      const { postImageTweet } = require('./upload_twitter');
+      const twImgResult = await postImageTweet(story);
+      story.twitter_image_tweet_id = twImgResult.tweetId;
+      console.log(`[publisher] Twitter image tweet: posted (${twImgResult.tweetId})`);
+    } catch (err) {
+      console.log(`[publisher] Twitter image tweet failed: ${err.message}`);
+      result.errors.twitter_image = err.message;
+    }
+  }
+
   // Schedule first-hour engagement pass (only on first successful YT publish)
   if (story.youtube_post_id && !isRetry) {
     setTimeout(async () => {

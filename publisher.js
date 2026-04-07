@@ -386,14 +386,15 @@ async function publishNextStory() {
     console.log('[publisher] Blog generation skipped: ' + err.message);
   }
 
-  // Post to Discord channels (news feed + video drops)
+  // Post to Discord channels — video drops only (news already posted by processor.js)
   try {
-    const { postNewStory, postVideoUpload } = require('./discord/auto_post');
-    await postNewStory(story);
-    if (result.youtube || result.tiktok || result.instagram) {
+    const { postVideoUpload, postStoryPoll } = require('./discord/auto_post');
+    // Only post to #video-drops if we have an actual video URL to link
+    if (story.youtube_url || story.tiktok_post_id || story.instagram_media_id) {
       await postVideoUpload(story);
     }
-    console.log(`[publisher] Discord: posted to news + video channels`);
+    await postStoryPoll(story);
+    console.log(`[publisher] Discord: posted to video-drops + polls`);
   } catch (err) {
     console.log(`[publisher] Discord post skipped: ${err.message}`);
   }

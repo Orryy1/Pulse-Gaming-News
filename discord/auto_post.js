@@ -248,16 +248,17 @@ async function postStoryForApproval(story) {
     const { ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder } = require('discord.js');
 
     const idMap = config.loadIdMap();
-    const channelId = idMap.channels && idMap.channels['video-drops'];
+    // Story approvals go to #mod-log (staff), not #video-drops (public)
+    const channelId = idMap.channels && (idMap.channels['mod-log'] || idMap.channels['video-drops']);
 
     if (!channelId) {
-      console.error('[AutoPost] Channel "video-drops" not found in id_map.json.');
+      console.error('[AutoPost] Channel "mod-log" not found in id_map.json.');
       return null;
     }
 
     const channel = await client.channels.fetch(channelId).catch(() => null);
     if (!channel) {
-      console.error('[AutoPost] Could not fetch video-drops channel.');
+      console.error('[AutoPost] Could not fetch mod-log channel.');
       return null;
     }
 

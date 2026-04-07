@@ -220,13 +220,17 @@ async function generateSmartReply(commentText, authorName, storyContext) {
             `- Casual, warm, British English tone\n` +
             `- Encourage further discussion\n` +
             `- Never use emojis excessively (1 max)\n` +
+            `- Never use em dashes (—) anywhere in the reply\n` +
             `- Never be pushy or salesy\n` +
             `- Just the reply text, nothing else`,
         },
       ],
     });
 
-    const reply = (response.content[0]?.text || '').trim();
+    let reply = (response.content[0]?.text || '').trim();
+
+    // Strip em dashes — never allowed in auto-generated replies
+    reply = reply.replace(/\u2014/g, ',').replace(/\u2013/g, ',');
 
     // Enforce 100-char limit
     if (reply.length > 100) {
@@ -238,7 +242,7 @@ async function generateSmartReply(commentText, authorName, storyContext) {
     // Fallback to simple template
     const fallbacks = [
       `Cheers @${authorName}, solid take`,
-      `Good shout @${authorName} — thoughts on tomorrow's news?`,
+      `Good shout @${authorName}, thoughts on tomorrow's news?`,
       `@${authorName} appreciate you watching`,
     ];
     return fallbacks[Math.floor(Math.random() * fallbacks.length)];
@@ -362,14 +366,18 @@ async function rotatePinnedComment(videoId, story) {
             `- Reference the story topic\n` +
             `- Ask a question to drive comments\n` +
             `- Warm, British English tone\n` +
+            `- Never use em dashes (—) anywhere in the comment\n` +
             `- Include 1 emoji maximum\n` +
             `- Just the comment text, nothing else`,
         },
       ],
     });
 
-    const newComment = (response.content[0]?.text || '').trim();
+    let newComment = (response.content[0]?.text || '').trim();
     if (!newComment) return null;
+
+    // Strip em dashes — never allowed in auto-generated replies
+    newComment = newComment.replace(/\u2014/g, ',').replace(/\u2013/g, ',');
 
     // Post the new pinned comment
     const commentId = await pinComment(videoId, newComment);

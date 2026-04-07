@@ -155,7 +155,17 @@ async function postNewStory(story) {
       embed.addFields({ name: 'Breaking Score', value: `${story.breaking_score}/100`, inline: true });
     }
 
-    if (story.article_image) {
+    // Use story card image as the main embed image if available on disk
+    const fsCore = require('fs');
+    const pathCore = require('path');
+    let storyAttachment = null;
+    if (story.story_image_path && fsCore.existsSync(story.story_image_path)) {
+      const { AttachmentBuilder } = require('discord.js');
+      const storyFilename = pathCore.basename(story.story_image_path);
+      storyAttachment = new AttachmentBuilder(story.story_image_path, { name: storyFilename });
+      embed.setImage(`attachment://${storyFilename}`);
+    } else if (story.article_image) {
+      // Fall back to article image as thumbnail if no story card exists
       embed.setThumbnail(story.article_image);
     }
 
@@ -163,7 +173,9 @@ async function postNewStory(story) {
       embed.addFields({ name: '▶️ Watch', value: `[YouTube Short](${story.youtube_url})`, inline: false });
     }
 
-    const msg = await channel.send({ embeds: [embed] });
+    const sendOpts = { embeds: [embed] };
+    if (storyAttachment) sendOpts.files = [storyAttachment];
+    const msg = await channel.send(sendOpts);
     console.log(`[AutoPost] Posted story "${story.title}" to #${channelName}`);
     return msg;
   } catch (err) {

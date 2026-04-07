@@ -1,4 +1,4 @@
-// THE SIGNAL — Channel Configuration
+// THE SIGNAL,Channel Configuration
 // Tech news, AI breakthroughs, product launches and Silicon Valley insider moves
 
 module.exports = {
@@ -8,22 +8,22 @@ module.exports = {
   cta: 'Follow The Signal so you never miss a launch',
   niche: 'tech',
 
-  // Brand palette — Electric Purple/Cyan
+  // Brand palette,Electric Purple/Cyan
   colours: {
     PRIMARY: '#A855F7',         // Signal Purple
     PRIMARY_FFM: '0xA855F7',
     SECONDARY: '#08080C',       // Near Black
     TEXT: '#F0F0F0',            // Signal White
     TEXT_FFM: '0xF0F0F0',
-    ALERT: '#EC4899',           // Hot Pink — breaking/leaks
+    ALERT: '#EC4899',           // Hot Pink,breaking/leaks
     ALERT_FFM: '0xEC4899',
-    CONFIRMED: '#22D3EE',       // Cyan — confirmed
+    CONFIRMED: '#22D3EE',       // Cyan,confirmed
     CONFIRMED_FFM: '0x22D3EE',
     MUTED: '#6B7280',           // Cool Grey
     MUTED_FFM: '0x6B7280',
   },
 
-  // Classification system — tech-specific
+  // Classification system,tech-specific
   classificationColour(classification) {
     const c = (classification || '').toLowerCase();
     if (c.includes('leak')) return { hex: '#EC4899', ffm: '0xEC4899', label: 'LEAK' };
@@ -34,12 +34,12 @@ module.exports = {
     return { hex: '#6B7280', ffm: '0x6B7280', label: 'TECH' };
   },
 
-  // Voice — energetic female, punchy delivery (matches Shorts pacing)
+  // Voice,energetic female, punchy delivery (matches Shorts pacing)
   voiceId: process.env.SIGNAL_VOICE_ID || 'EXAVITQu4vr4xnSDxMaL', // Bella
   voiceModel: 'eleven_multilingual_v2',
   voiceSettings: { stability: 0.20, similarity_boost: 0.80, style: 0.70, speaking_rate: 1.1 },
 
-  // Content sources — tech subreddits + RSS
+  // Content sources,tech subreddits + RSS
   subreddits: [
     'technology', 'artificial', 'MachineLearning', 'gadgets',
     'apple', 'Android', 'programming', 'Futurology',
@@ -69,7 +69,7 @@ module.exports = {
   youtubeCategory: '28', // Science & Technology
   hashtags: ['#Shorts', '#TechNews', '#AI', '#Technology', '#TheSignal'],
 
-  // Music prompts — varied pool for library generation
+  // Music prompts,varied pool for library generation
   musicPrompt: 'futuristic synth beat, digital glitch textures, subtle bass, tech news energy, cyberpunk minimal, atmospheric, no vocals',
   musicPrompts: [
     'futuristic synth beat, digital glitch textures, subtle bass, tech news energy, cyberpunk minimal, atmospheric, no vocals',
@@ -96,27 +96,27 @@ RULES:
 - Include [PAUSE] markers where a natural beat would land (2-3 per script)
 - Never use: "in this video", "hey guys", "what's up", "smash that like", "let me know in the comments"
 
-HOOK — THIS IS THE MOST IMPORTANT PART OF THE SCRIPT:
+HOOK,THIS IS THE MOST IMPORTANT PART OF THE SCRIPT:
 The first sentence MUST use the CURIOSITY GAP technique. Open a knowledge gap the viewer feels compelled to close. The viewer must think "wait, WHAT?" and be unable to scroll away.
 
 Rules for hooks:
-1. Never reveal the full answer in the hook — tease it. Create an open loop.
+1. Never reveal the full answer in the hook. Tease it. Create an open loop.
 2. Use specificity to build credibility: exact specs, benchmark scores, patent numbers, dates.
 3. Imply secret or suppressed knowledge: "quietly", "accidentally leaked", "wasn't supposed to ship".
 4. Never start with So, Today, Hey, Welcome, In this, or any generic opener.
 5. One sentence only. Under 20 words. Punchy. Urgent.
 
 STRONG HOOKS (use these patterns):
-- "Apple just filed a patent that essentially describes a foldable iPhone — and there's a production date."
+- "Apple just filed a patent that essentially describes a foldable iPhone, and there's a production date."
 - "OpenAI's latest model scores higher than 99.8% of human programmers on competitive coding."
 - "Samsung leaked their own Galaxy S26 in a firmware update three months early."
 - "Google just quietly killed a product that 400 million people use every day."
-- "A single benchmark result just leaked — and it makes every current GPU obsolete."
+- "A single benchmark result just leaked, and it makes every current GPU obsolete."
 
 WEAK HOOKS (never write these):
-- "Big news in tech today." (no curiosity gap — vague and boring)
+- "Big news in tech today." (no curiosity gap, vague and boring)
 - "Let's talk about Apple's new chip." (passive, no urgency)
-- "The iPhone 17 will have a new processor." (states the answer — no reason to keep watching)
+- "The iPhone 17 will have a new processor." (states the answer, no reason to keep watching)
 
 ACCURACY IS NON-NEGOTIABLE:
 - Cross-reference the story against any provided source article text
@@ -125,9 +125,10 @@ ACCURACY IS NON-NEGOTIABLE:
 
 VIDEO TITLE (suggested_title):
 Generate a short, punchy video title (max 60 chars) using the curiosity gap technique.
-- Must create an open loop — the viewer needs to watch to get the answer
+- Must create an open loop: the viewer needs to watch to get the answer
 - Use power words: "just", "quietly", "accidentally leaked", "nobody expected"
-- Never fully reveal the news — tease it
+- Never fully reveal the news. Tease it
+- NEVER use em dashes in titles, hooks, body or any output
 - Include the company/product name for searchability
 - Examples: "Apple Just Filed a Patent That Changes Everything", "This Leaked Benchmark Makes Every GPU Obsolete", "Google Quietly Killed a Product You Use Every Day"
 

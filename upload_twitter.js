@@ -237,7 +237,94 @@ async function uploadAll() {
   return results;
 }
 
-module.exports = { uploadShort, uploadAll, uploadMedia, postTweet };
+// --- Upload a story card image as a tweet ---
+async function postImageTweet(story) {
+  addBreadcrumb(`Twitter image tweet: ${story.title}`, 'upload');
+  return withRetry(async () => {
+    if (!story.story_image_path || !await fs.pathExists(story.story_image_path)) {
+      throw new Error('Story image not found on disk');
+    }
+
+    // Build tweet text (280 char limit)
+    let text = story.suggested_title || story.suggested_thumbnail_text || story.title;
+    text = text.replace(/\[.*?\]\s*/g, '').trim();
+
+    // Append YouTube link if available
+    const link = story.youtube_url || '';
+    const hashtags = '#GamingNews #GamingLeaks';
+
+    // Budget characters: text + newlines + link + hashtags
+    const maxTextLen = 280 - 4 - hashtags.length - (link ? link.length + 1 : 0);
+    if (text.length > maxTextLen) text = text.substring(0, maxTextLen - 3) + '...';
+
+    let tweetText = text + '\n\n' + hashtags;
+    if (link) tweetText = text + '\n\n' + link + '\n' + hashtags;
+
+    if (tweetText.length > 280) tweetText = tweetText.substring(0, 277) + '...';
+
+    console.log(`[twitter] Uploading story image for: "${text.substring(0, 50)}..."`);
+
+    // Upload image via chunked media upload
+    const fileSize = (await fs.stat(story.story_image_path)).size;
+    const UPLOAD_URL = 'https://upload.twitter.com/1.1/media/upload.json';
+
+    // INIT for image
+    const initAuth = generateOAuthHeader('POST', UPLOAD_URL);
+    const initResponse = await axios.post(UPLOAD_URL, null, {
+      params: {
+        command: 'INIT',
+        total_bytes: fileSize,
+        media_type: 'image/png',
+        media_category: 'tweet_image',
+      },
+      headers: { Authorization: initAuth },
+    });
+
+    const mediaId = initResponse.data.media_id_string;
+    console.log(`[twitter] Image INIT: ${mediaId}`);
+
+    // APPEND - single chunk for images (typically under 5MB)
+    const fileBuffer = await fs.readFile(story.story_image_path);
+    const FormData = (await import('form-data')).default || require('form-data');
+    const form = new FormData();
+    form.append('command', 'APPEND');
+    form.append('media_id', mediaId);
+    form.append('segment_index', '0');
+    form.append('media_data', fileBuffer.toString('base64'));
+
+    const appendAuth = generateOAuthHeader('POST', UPLOAD_URL);
+    await axios.post(UPLOAD_URL, form, {
+      headers: {
+        Authorization: appendAuth,
+        ...form.getHeaders(),
+      },
+      maxContentLength: Infinity,
+      maxBodyLength: Infinity,
+    });
+
+    console.log(`[twitter] Image APPEND complete`);
+
+    // FINALIZE - no processing wait needed for images
+    const finalizeAuth = generateOAuthHeader('POST', UPLOAD_URL);
+    await axios.post(UPLOAD_URL, null, {
+      params: { command: 'FINALIZE', media_id: mediaId },
+      headers: { Authorization: finalizeAuth },
+    });
+
+    console.log(`[twitter] Image FINALIZE: ready`);
+
+    // Post tweet with image
+    const tweet = await postTweet(tweetText, mediaId);
+    console.log(`[twitter] Image tweet posted: ${tweet.id}`);
+
+    return {
+      platform: 'twitter_image',
+      tweetId: tweet.id,
+    };
+  }, { label: 'twitter image tweet' });
+}
+
+module.exports = { uploadShort, uploadAll, uploadMedia, postTweet, postImageTweet };
 
 if (require.main === module) {
   uploadAll().catch(err => {

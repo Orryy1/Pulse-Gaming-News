@@ -291,7 +291,7 @@ async function process_stories() {
       ? `\n\n${analyticsContext}\n`
       : '';
 
-    const systemPrompt = baseSystemPrompt + analyticsSection + `\n\nCRITICAL — DATE AND FACT-CHECKING RULES:
+    const systemPrompt = baseSystemPrompt + analyticsSection + `\n\nCRITICAL: DATE AND FACT-CHECKING RULES:
 Today's date is ${today}. You MUST follow these rules:
 1. NEVER reference dates in the past as if they are in the future.
 2. Cross-reference the Reddit title against the SOURCE ARTICLE TEXT provided below. If the article contradicts the Reddit title, trust the article.
@@ -337,6 +337,11 @@ Today's date is ${today}. You MUST follow these rules:
           text = text.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
         }
         script = JSON.parse(text);
+
+        // Strip em dashes from all generated content (obvious AI tell)
+        for (const key of ['hook', 'body', 'cta', 'full_script', 'suggested_title', 'suggested_thumbnail_text']) {
+          if (script[key]) script[key] = script[key].replace(/\u2014/g, ',').replace(/\u2013/g, ',');
+        }
 
         const errors = validate(script, channel.id);
         if (errors.length > 0) {
@@ -387,7 +392,7 @@ Today's date is ${today}. You MUST follow these rules:
     const gameTitle = story.title.replace(/[^a-zA-Z0-9\s]/g, '').trim();
     const affiliateTag = process.env.AMAZON_AFFILIATE_TAG || 'placeholder';
     const affiliateUrl = `https://www.amazon.co.uk/s?k=${encodeURIComponent(gameTitle)}&tag=${affiliateTag}`;
-    const pinnedComment = `What do you think — legit or fake? Drop your take below 👇 | Check it out: ${affiliateUrl}`;
+    const pinnedComment = `What do you think, legit or fake? Drop your take below 👇 | Check it out: ${affiliateUrl}`;
 
     const enrichedStory = {
       ...story,

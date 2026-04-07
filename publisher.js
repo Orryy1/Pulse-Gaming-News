@@ -254,104 +254,185 @@ async function publishOnlyCycle() {
 // Used by the 3x daily publish windows to spread content through the day
 async function publishNextStory() {
   const stories = await db.getStories();
+
+  // Find stories that still need publishing to at least one platform.
+  // This includes brand-new stories AND partially-published ones (e.g. YT succeeded but IG/FB failed).
   const ready = stories.filter(s => {
     if (!s.approved || !s.exported_path) return false;
-    // Ready if any platform still needs publishing
-    const published = [s.youtube_post_id, s.tiktok_post_id, s.instagram_media_id, s.facebook_post_id, s.twitter_post_id].filter(Boolean).length;
-    return published < 1; // Only pick stories that haven't been published to ANY platform yet
+    const platformsDone = [s.youtube_post_id, s.tiktok_post_id, s.instagram_media_id, s.facebook_post_id, s.twitter_post_id].filter(Boolean).length;
+    return platformsDone < 5;
   });
 
   if (ready.length === 0) {
-    console.log('[publisher] No unpublished stories available');
+    console.log('[publisher] No stories need publishing');
     return null;
   }
 
-  // Pick the highest-scoring story first
-  ready.sort((a, b) => (b.breaking_score || b.score || 0) - (a.breaking_score || a.score || 0));
+  // Prioritise: unpublished stories first (0 platforms), then partial, then by score
+  ready.sort((a, b) => {
+    const aDone = [a.youtube_post_id, a.tiktok_post_id, a.instagram_media_id, a.facebook_post_id, a.twitter_post_id].filter(Boolean).length;
+    const bDone = [b.youtube_post_id, b.tiktok_post_id, b.instagram_media_id, b.facebook_post_id, b.twitter_post_id].filter(Boolean).length;
+    if (aDone !== bDone) return aDone - bDone; // fewer platforms done = higher priority
+    return (b.breaking_score || b.score || 0) - (a.breaking_score || a.score || 0);
+  });
+
   const story = ready[0];
-  console.log(`[publisher] Publishing: "${story.title}" (score: ${story.breaking_score || story.score || 0})`);
+  const isRetry = !!(story.youtube_post_id || story.tiktok_post_id || story.instagram_media_id || story.facebook_post_id || story.twitter_post_id);
+  console.log(`[publisher] Publishing${isRetry ? ' (retry)' : ''}: "${story.title}" (score: ${story.breaking_score || story.score || 0})`);
 
   const result = { title: story.title, youtube: false, tiktok: false, instagram: false, facebook: false, twitter: false, errors: {} };
 
-  // YouTube
-  try {
-    const { uploadShort } = require('./upload_youtube');
-    const ytResult = await uploadShort(story);
-    story.youtube_post_id = ytResult.videoId;
-    story.youtube_url = ytResult.url;
-    story.youtube_published_at = new Date().toISOString();
+  // YouTube — skip if already published
+  if (story.youtube_post_id) {
     result.youtube = true;
-    console.log(`[publisher] YouTube: ${ytResult.url}`);
+    console.log(`[publisher] YouTube: already published (${story.youtube_post_id})`);
+  } else {
+    try {
+      const { uploadShort } = require('./upload_youtube');
+      const ytResult = await uploadShort(story);
+      story.youtube_post_id = ytResult.videoId;
+      story.youtube_url = ytResult.url;
+      story.youtube_published_at = new Date().toISOString();
+      result.youtube = true;
+      console.log(`[publisher] YouTube: ${ytResult.url}`);
 
-    // Schedule A/B title check 2 hours after publish
-    if (story.title_variants && story.title_variants.length > 1) {
-      story.title_check_at = Date.now() + (2 * 60 * 60 * 1000);
-      console.log(`[publisher] A/B title check scheduled for ${new Date(story.title_check_at).toISOString()}`);
+      if (story.title_variants && story.title_variants.length > 1) {
+        story.title_check_at = Date.now() + (2 * 60 * 60 * 1000);
+      }
+    } catch (err) {
+      console.log(`[publisher] YouTube upload failed: ${err.message}`);
+      story.youtube_error = err.message;
+      result.errors.youtube = err.message;
     }
-  } catch (err) {
-    console.log(`[publisher] YouTube upload failed: ${err.message}`);
-    result.errors.youtube = err.message;
   }
 
-  // TikTok (no stagger — windows are already spread across the day)
-  try {
-    const { uploadShort: ttUpload } = require('./upload_tiktok');
-    const ttResult = await ttUpload(story);
-    story.tiktok_post_id = ttResult.publishId;
+  // TikTok — skip if already published
+  if (story.tiktok_post_id) {
     result.tiktok = true;
-    console.log(`[publisher] TikTok: uploaded`);
-  } catch (err) {
-    console.log(`[publisher] TikTok upload skipped: ${err.message}`);
-    result.errors.tiktok = err.message;
+    console.log(`[publisher] TikTok: already published (${story.tiktok_post_id})`);
+  } else {
+    try {
+      const { uploadShort: ttUpload } = require('./upload_tiktok');
+      const ttResult = await ttUpload(story);
+      story.tiktok_post_id = ttResult.publishId;
+      story.tiktok_error = null;
+      result.tiktok = true;
+      console.log(`[publisher] TikTok: uploaded`);
+    } catch (err) {
+      console.log(`[publisher] TikTok upload failed: ${err.message}`);
+      story.tiktok_error = err.message;
+      result.errors.tiktok = err.message;
+    }
   }
 
-  // Instagram
-  try {
-    const { uploadShort: igUpload } = require('./upload_instagram');
-    const igResult = await igUpload(story);
-    story.instagram_media_id = igResult.mediaId;
+  // Instagram — skip if already published
+  if (story.instagram_media_id) {
     result.instagram = true;
-    console.log(`[publisher] Instagram: uploaded`);
-  } catch (err) {
-    console.log(`[publisher] Instagram upload skipped: ${err.message}`);
-    result.errors.instagram = err.message;
+    console.log(`[publisher] Instagram: already published (${story.instagram_media_id})`);
+  } else {
+    try {
+      const { uploadShort: igUpload } = require('./upload_instagram');
+      const igResult = await igUpload(story);
+      story.instagram_media_id = igResult.mediaId;
+      story.instagram_error = null;
+      result.instagram = true;
+      console.log(`[publisher] Instagram: uploaded`);
+    } catch (err) {
+      console.log(`[publisher] Instagram upload failed: ${err.message}`);
+      story.instagram_error = err.message;
+      result.errors.instagram = err.message;
+    }
   }
 
-  // Facebook Reels
-  try {
-    const { uploadShort: fbUpload } = require('./upload_facebook');
-    const fbResult = await fbUpload(story);
-    story.facebook_post_id = fbResult.videoId;
+  // Facebook Reels — skip if already published
+  if (story.facebook_post_id) {
     result.facebook = true;
-    console.log(`[publisher] Facebook: uploaded`);
-  } catch (err) {
-    console.log(`[publisher] Facebook upload skipped: ${err.message}`);
-    result.errors.facebook = err.message;
+    console.log(`[publisher] Facebook: already published (${story.facebook_post_id})`);
+  } else {
+    try {
+      const { uploadShort: fbUpload } = require('./upload_facebook');
+      const fbResult = await fbUpload(story);
+      story.facebook_post_id = fbResult.videoId;
+      story.facebook_error = null;
+      result.facebook = true;
+      console.log(`[publisher] Facebook: uploaded`);
+    } catch (err) {
+      console.log(`[publisher] Facebook upload failed: ${err.message}`);
+      story.facebook_error = err.message;
+      result.errors.facebook = err.message;
+    }
   }
 
-  // X/Twitter
-  try {
-    const { uploadShort: twUpload } = require('./upload_twitter');
-    const twResult = await twUpload(story);
-    story.twitter_post_id = twResult.tweetId;
+  // X/Twitter — skip if already published
+  if (story.twitter_post_id) {
     result.twitter = true;
-    console.log(`[publisher] Twitter: uploaded`);
-  } catch (err) {
-    console.log(`[publisher] Twitter upload skipped: ${err.message}`);
-    result.errors.twitter = err.message;
+    console.log(`[publisher] Twitter: already published (${story.twitter_post_id})`);
+  } else {
+    try {
+      const { uploadShort: twUpload } = require('./upload_twitter');
+      const twResult = await twUpload(story);
+      story.twitter_post_id = twResult.tweetId;
+      story.twitter_error = null;
+      result.twitter = true;
+      console.log(`[publisher] Twitter: uploaded`);
+    } catch (err) {
+      console.log(`[publisher] Twitter upload failed: ${err.message}`);
+      story.twitter_error = err.message;
+      result.errors.twitter = err.message;
+    }
   }
 
-  // Set publish status based on results
-  const publishedCount = [result.youtube, result.tiktok, result.instagram, result.facebook, result.twitter].filter(Boolean).length;
-  if (publishedCount > 0) {
-    story.publish_status = publishedCount === 5 ? 'published' : 'partial';
-    story.published_at = new Date().toISOString();
+  // Set publish status based on total platforms done (including previously successful ones)
+  const totalDone = [story.youtube_post_id, story.tiktok_post_id, story.instagram_media_id, story.facebook_post_id, story.twitter_post_id].filter(Boolean).length;
+  if (totalDone >= 5) {
+    story.publish_status = 'published';
+  } else if (totalDone > 0) {
+    story.publish_status = 'partial';
   } else {
     story.publish_status = 'failed';
   }
+  if (!story.published_at && totalDone > 0) {
+    story.published_at = new Date().toISOString();
+  }
 
-  // Schedule first-hour engagement pass (5 min delay for comments to arrive)
-  if (story.youtube_post_id) {
+  // --- Story card image distribution (only on first publish, not retries) ---
+  if (!isRetry && story.story_image_path) {
+    // Instagram Stories
+    try {
+      const { uploadStoryImage: igStory } = require('./upload_instagram');
+      const igStoryResult = await igStory(story);
+      story.instagram_story_id = igStoryResult.mediaId;
+      console.log(`[publisher] Instagram Story: uploaded (${igStoryResult.mediaId})`);
+    } catch (err) {
+      console.log(`[publisher] Instagram Story upload failed: ${err.message}`);
+      result.errors.instagram_story = err.message;
+    }
+
+    // Facebook Stories
+    try {
+      const { uploadStoryImage: fbStory } = require('./upload_facebook');
+      const fbStoryResult = await fbStory(story);
+      story.facebook_story_id = fbStoryResult.storyId;
+      console.log(`[publisher] Facebook Story: uploaded (${fbStoryResult.storyId})`);
+    } catch (err) {
+      console.log(`[publisher] Facebook Story upload failed: ${err.message}`);
+      result.errors.facebook_story = err.message;
+    }
+
+    // Twitter/X image tweet
+    try {
+      const { postImageTweet } = require('./upload_twitter');
+      const twImgResult = await postImageTweet(story);
+      story.twitter_image_tweet_id = twImgResult.tweetId;
+      console.log(`[publisher] Twitter image tweet: posted (${twImgResult.tweetId})`);
+    } catch (err) {
+      console.log(`[publisher] Twitter image tweet failed: ${err.message}`);
+      result.errors.twitter_image = err.message;
+    }
+  }
+
+  // Schedule first-hour engagement pass (only on first successful YT publish)
+  if (story.youtube_post_id && !isRetry) {
     setTimeout(async () => {
       try {
         const { engageFirstHour } = require('./engagement');
@@ -363,38 +444,44 @@ async function publishNextStory() {
     console.log(`[publisher] First-hour engagement scheduled for ${story.youtube_post_id} in 5 min`);
   }
 
-  // Generate poll/engagement pinned comment based on classification
-  try {
-    const { generatePollComment, pinComment: pinEngagement } = require('./engagement');
-    const pollComment = await generatePollComment(story);
-    if (pollComment && story.youtube_post_id) {
-      const commentId = await pinEngagement(story.youtube_post_id, pollComment);
-      if (commentId) {
-        story.engagement_comment_id = commentId;
-        console.log(`[publisher] Engagement comment pinned: ${commentId}`);
+  // Generate poll/engagement pinned comment (only on first publish, not retries)
+  if (!isRetry) {
+    try {
+      const { generatePollComment, pinComment: pinEngagement } = require('./engagement');
+      const pollComment = await generatePollComment(story);
+      if (pollComment && story.youtube_post_id) {
+        const commentId = await pinEngagement(story.youtube_post_id, pollComment);
+        if (commentId) {
+          story.engagement_comment_id = commentId;
+          console.log(`[publisher] Engagement comment pinned: ${commentId}`);
+        }
       }
+    } catch (err) {
+      console.log(`[publisher] Engagement comment skipped: ${err.message}`);
     }
-  } catch (err) {
-    console.log(`[publisher] Engagement comment skipped: ${err.message}`);
   }
 
-  // Generate blog post for the published story
-  try {
-    const { generateAndSaveBlogPost } = require('./blog/generator');
-    await generateAndSaveBlogPost(story);
-  } catch (err) {
-    console.log('[publisher] Blog generation skipped: ' + err.message);
+  // Generate blog post (only on first publish)
+  if (!isRetry) {
+    try {
+      const { generateAndSaveBlogPost } = require('./blog/generator');
+      await generateAndSaveBlogPost(story);
+    } catch (err) {
+      console.log('[publisher] Blog generation skipped: ' + err.message);
+    }
   }
 
-  // Post to Discord channels — video drops only (news already posted by processor.js)
+  // Post to Discord channels, video drops only (news already posted by processor.js)
   try {
     const { postVideoUpload, postStoryPoll } = require('./discord/auto_post');
-    // Only post to #video-drops if we have an actual video URL to link
-    if (story.youtube_url || story.tiktok_post_id || story.instagram_media_id) {
+    // Only post to #video-drops on first publish with an actual video URL
+    if (!isRetry && (story.youtube_url || story.tiktok_post_id || story.instagram_media_id)) {
       await postVideoUpload(story);
     }
-    await postStoryPoll(story);
-    console.log(`[publisher] Discord: posted to video-drops + polls`);
+    if (!isRetry) {
+      await postStoryPoll(story);
+    }
+    if (!isRetry) console.log(`[publisher] Discord: posted to video-drops + polls`);
   } catch (err) {
     console.log(`[publisher] Discord post skipped: ${err.message}`);
   }

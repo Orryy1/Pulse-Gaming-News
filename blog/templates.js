@@ -14,8 +14,11 @@ const TEXT = brand.TEXT || '#F0F0F0';
  * @param {object} data — { title, slug, description, html, publishedAt, seoKeywords, story }
  */
 function postTemplate(data) {
-  const { title, slug, description, html, publishedAt, seoKeywords, story } = data;
-  const ogImage = (story && story.article_image) || '';
+  const { title, slug, description, html, publishedAt, seoKeywords, story, storyImageSlug } = data;
+  // Prefer the locally copied story card image for og:image if available
+  const ogImage = storyImageSlug
+    ? `/blog/images/${storyImageSlug}.png`
+    : ((story && story.article_image) || '');
   const youtubeUrl = (story && story.youtube_url) || '';
   const affiliateUrl = (story && story.affiliate_url) || '';
   const channelName = brand.CHANNEL_NAME || 'Pulse Gaming';
@@ -97,7 +100,7 @@ function postTemplate(data) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escHtml(title)} — ${escHtml(channelName)}</title>
+<title>${escHtml(title)} | ${escHtml(channelName)}</title>
 <meta name="description" content="${escAttr(description)}">
 <meta property="og:title" content="${escAttr(title)}">
 <meta property="og:description" content="${escAttr(description)}">
@@ -182,9 +185,9 @@ ${imgTag}
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escHtml(channelName)} — Gaming News Blog</title>
+<title>${escHtml(channelName)} | Gaming News Blog</title>
 <meta name="description" content="${escAttr(tagline)}">
-<meta property="og:title" content="${escAttr(channelName)} — Gaming News Blog">
+<meta property="og:title" content="${escAttr(channelName)} | Gaming News Blog">
 <meta property="og:description" content="${escAttr(tagline)}">
 <meta property="og:image" content="/branding/og_image.png">
 <meta property="og:type" content="website">

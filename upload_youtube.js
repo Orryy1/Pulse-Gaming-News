@@ -4,6 +4,7 @@ const { google } = require('googleapis');
 const dotenv = require('dotenv');
 const { withRetry } = require('./lib/retry');
 const { addBreadcrumb, captureException } = require('./lib/sentry');
+const { validateVideo } = require('./lib/validate');
 const db = require('./lib/db');
 
 dotenv.config({ override: true });
@@ -381,9 +382,7 @@ async function uploadShort(story) {
     const auth = await getAuthClient();
     const youtube = google.youtube({ version: 'v3', auth });
 
-    if (!story.exported_path || !await fs.pathExists(story.exported_path)) {
-      throw new Error(`Video file not found: ${story.exported_path}`);
-    }
+    await validateVideo(story.exported_path, 'youtube');
 
     const { title, description, tags } = buildMetadata(story);
 

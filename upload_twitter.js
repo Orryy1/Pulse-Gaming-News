@@ -19,6 +19,7 @@ const axios = require('axios');
 const dotenv = require('dotenv');
 const { withRetry } = require('./lib/retry');
 const { addBreadcrumb, captureException } = require('./lib/sentry');
+const { validateVideo } = require('./lib/validate');
 const db = require('./lib/db');
 
 dotenv.config({ override: true });
@@ -75,13 +76,8 @@ async function uploadMedia(filePath) {
   const fileSize = (await fs.stat(filePath)).size;
   const UPLOAD_URL = 'https://upload.twitter.com/1.1/media/upload.json';
 
-  // INIT
-  const initAuth = generateOAuthHeader('POST', UPLOAD_URL, {
-    command: 'INIT',
-    total_bytes: fileSize.toString(),
-    media_type: 'video/mp4',
-    media_category: 'tweet_video',
-  });
+  // INIT — query params must NOT be included in OAuth signature
+  const initAuth = generateOAuthHeader('POST', UPLOAD_URL);
 
   const initResponse = await axios.post(UPLOAD_URL, null, {
     params: {
@@ -126,11 +122,8 @@ async function uploadMedia(filePath) {
 
   console.log(`[twitter] Media APPEND: ${segmentIndex} chunks uploaded`);
 
-  // FINALIZE
-  const finalizeAuth = generateOAuthHeader('POST', UPLOAD_URL, {
-    command: 'FINALIZE',
-    media_id: mediaId,
-  });
+  // FINALIZE — query params must NOT be included in OAuth signature
+  const finalizeAuth = generateOAuthHeader('POST', UPLOAD_URL);
 
   const finalizeResponse = await axios.post(UPLOAD_URL, null, {
     params: { command: 'FINALIZE', media_id: mediaId },
@@ -147,10 +140,7 @@ async function uploadMedia(filePath) {
     const waitSecs = processing.check_after_secs || 5;
     await new Promise(r => setTimeout(r, waitSecs * 1000));
 
-    const statusAuth = generateOAuthHeader('GET', UPLOAD_URL, {
-      command: 'STATUS',
-      media_id: mediaId,
-    });
+    const statusAuth = generateOAuthHeader('GET', UPLOAD_URL);
 
     const statusResponse = await axios.get(UPLOAD_URL, {
       params: { command: 'STATUS', media_id: mediaId },
@@ -187,9 +177,7 @@ async function postTweet(text, mediaId) {
 async function uploadShort(story) {
   addBreadcrumb(`Twitter upload: ${story.title}`, 'upload');
   return withRetry(async () => {
-    if (!story.exported_path || !await fs.pathExists(story.exported_path)) {
-      throw new Error(`Video file not found: ${story.exported_path}`);
-    }
+    await validateVideo(story.exported_path, 'twitter');
 
     // Build tweet text (280 char limit)
     let text = story.suggested_title || story.suggested_thumbnail_text || story.title;

@@ -4,6 +4,7 @@ const axios = require('axios');
 const dotenv = require('dotenv');
 const { withRetry } = require('./lib/retry');
 const { addBreadcrumb, captureException } = require('./lib/sentry');
+const { validateVideo } = require('./lib/validate');
 const db = require('./lib/db');
 
 dotenv.config({ override: true });
@@ -106,9 +107,7 @@ async function uploadVideo(story) {
   return withRetry(async () => {
     const accessToken = await getAccessToken();
 
-    if (!story.exported_path || !await fs.pathExists(story.exported_path)) {
-      throw new Error(`Video file not found: ${story.exported_path}`);
-    }
+    await validateVideo(story.exported_path, 'tiktok');
 
     const fileSize = (await fs.stat(story.exported_path)).size;
 
@@ -189,6 +188,14 @@ async function uploadVideo(story) {
       } catch (err) {
         console.log(`[tiktok] Status check failed: ${err.message}`);
       }
+    }
+
+    if (status === 'PROCESSING') {
+      console.warn(`[tiktok] Video still processing after ${attempts} checks — will be available later`);
+      // Don't throw — TikTok is slow. Return partial success.
+    }
+    if (status === 'FAILED') {
+      throw new Error(`TikTok publishing failed. Publish ID: ${publish_id}`);
     }
 
     return {

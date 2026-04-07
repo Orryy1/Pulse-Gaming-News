@@ -434,9 +434,11 @@ function buildVideoCommand(story, images, audioPath, assPath, filterScriptPath, 
   // Ken Burns zoom/pan per background image — vary crop position for visual variety
   for (let i = 0; i < images.length; i++) {
     const zoomIn = i % 2 === 0;
+    // Scale zoom increment based on segment duration: reach 15% zoom over the segment's frames
+    const zoomIncrement = Math.round(10000 * (0.15 / (segmentDuration * 30))) / 10000;
     const zoomExpr = zoomIn
-      ? `z=min(zoom+0.0005\\,1.05)`
-      : `z=if(eq(on\\,1)\\,1.05\\,max(zoom-0.0005\\,1.0))`;
+      ? `z=min(zoom+${zoomIncrement}\\,1.15)`
+      : `z=if(eq(on\\,1)\\,1.15\\,max(zoom-${zoomIncrement}\\,1.0))`;
     // Vary crop focus: top, centre, bottom — so same-ish images still look different
     const yPos = i % 3 === 0 ? `y=0` :
                  i % 3 === 1 ? `y=(ih-oh)/2` :
@@ -781,6 +783,12 @@ async function assemble() {
 
       const stat = await fs.stat(outputPath);
       console.log(`[assemble] Exported: ${outputPath} (${Math.round(stat.size / 1024 / 1024)}MB)`);
+
+      // Clean up temp files after successful assembly
+      const tempFiles = [filterScriptPath, assPath].filter(Boolean);
+      for (const f of tempFiles) {
+        try { await fs.remove(f); } catch (e) { /* ignore */ }
+      }
     } catch (err) {
       const errDetail = err.stderr?.substring(err.stderr.length - 500) || err.message.substring(0, 500);
       console.log(`[assemble] ⚠ Multi-image render FAILED for ${story.id} (${images.length} images, ${Math.round(duration)}s):\n${errDetail}`);
@@ -792,12 +800,13 @@ async function assemble() {
         const fbInputs = [];
         const totalFrames = Math.ceil(duration) * 30;
 
-        // Single image with proper Ken Burns zoom
+        // Single image with proper Ken Burns zoom — scale increment to reach 15% over full duration
+        const fbZoomIncrement = Math.round(10000 * (0.15 / totalFrames)) / 10000;
         fbInputs.push(`-loop 1 -t ${Math.ceil(duration) + 2} -i "${images[0].replace(/\\/g, '/')}"`);
         fbFilterParts.push(
           `[0:v]scale=1080:1920:force_original_aspect_ratio=increase,` +
           `crop=1080:1920,` +
-          `zoompan=z=min(zoom+0.0005\\,1.05):x=iw/2-(iw/zoom/2):y=ih/2-(ih/zoom/2):` +
+          `zoompan=z=min(zoom+${fbZoomIncrement}\\,1.15):x=iw/2-(iw/zoom/2):y=ih/2-(ih/zoom/2):` +
           `d=${totalFrames}:s=1080x1920:fps=30,` +
           `trim=duration=${Math.ceil(duration)},setpts=PTS-STARTPTS,format=yuv420p,setsar=1[base]`
         );

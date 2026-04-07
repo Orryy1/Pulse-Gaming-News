@@ -203,18 +203,10 @@ async function generateStoryImages() {
   await db.saveStories(stories);
   console.log(`[stories] Generated ${toProcess.length} Story images`);
 
-  // Post each new Story image to Discord for approval
+  // Story images are auto-approved — no Discord gate needed.
+  // Images are generated, saved, and ready for use immediately.
   if (toProcess.length > 0) {
-    try {
-      const { postStoryForApproval } = require('./discord/auto_post');
-      for (const story of toProcess) {
-        if (story.story_image_path) {
-          await postStoryForApproval(story);
-        }
-      }
-    } catch (err) {
-      console.log(`[stories] Discord approval post skipped: ${err.message}`);
-    }
+    console.log(`[stories] ${toProcess.length} Story images ready (auto-approved)`);
   }
 }
 

@@ -97,7 +97,7 @@ function postTemplate(data) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escHtml(title)} — ${escHtml(channelName)}</title>
+<title>${escHtml(title)} | ${escHtml(channelName)}</title>
 <meta name="description" content="${escAttr(description)}">
 <meta property="og:title" content="${escAttr(title)}">
 <meta property="og:description" content="${escAttr(description)}">
@@ -182,9 +182,9 @@ ${imgTag}
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escHtml(channelName)} — Gaming News Blog</title>
+<title>${escHtml(channelName)} | Gaming News Blog</title>
 <meta name="description" content="${escAttr(tagline)}">
-<meta property="og:title" content="${escAttr(channelName)} — Gaming News Blog">
+<meta property="og:title" content="${escAttr(channelName)} | Gaming News Blog">
 <meta property="og:description" content="${escAttr(tagline)}">
 <meta property="og:image" content="/branding/og_image.png">
 <meta property="og:type" content="website">

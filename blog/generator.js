@@ -50,7 +50,8 @@ async function generateBlogPost(story) {
           `- Write in a professional but accessible tone\n` +
           `- Reference sources where possible\n` +
           `- Structure with 2-3 subheadings\n` +
-          `- Do not use markdown formatting — output raw HTML using <p>, <h2>, <strong> tags\n\n` +
+          `- Do not use markdown formatting. Output raw HTML using <p>, <h2>, <strong> tags\n` +
+          `- NEVER use em dashes in any output\n\n` +
           `Output ONLY valid JSON with no preamble and no markdown backticks:\n` +
           `{ "article_html": "<p>...</p>", "meta_description": "...", "seo_keywords": "keyword1, keyword2, ..." }`,
       },

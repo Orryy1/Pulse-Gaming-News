@@ -525,49 +525,65 @@ async function hunt() {
 
   await Promise.allSettled(topStories.map(async (story, i) => {
     // Fetch top comments from Reddit posts (multiple for video overlays)
-    if (story.source_type === 'reddit' && !story.top_comment) {
-      const comments = await fetchTopComments(story.subreddit, story.id, 8);
-      story.top_comment = comments.length > 0 ? comments[0].body : '';
-      story.reddit_comments = comments;
+    try {
+      if (story.source_type === 'reddit' && !story.top_comment) {
+        const comments = await fetchTopComments(story.subreddit, story.id, 8);
+        story.top_comment = comments.length > 0 ? comments[0].body : '';
+        story.reddit_comments = comments;
+      }
+    } catch (err) {
+      console.log(`[hunter] Comment fetch failed for ${story.id}: ${err.message}`);
     }
 
     // Fetch article hero image (try article URL, then original Reddit link URL)
-    if (story.article_url) {
-      story.article_image = await fetchArticleImage(story.article_url);
-    }
-    if (!story.article_image && story.url && !story.url.includes('reddit.com/r/')) {
-      story.article_image = await fetchArticleImage(story.url);
+    try {
+      if (story.article_url) {
+        story.article_image = await fetchArticleImage(story.article_url);
+      }
+      if (!story.article_image && story.url && !story.url.includes('reddit.com/r/')) {
+        story.article_image = await fetchArticleImage(story.url);
+      }
+    } catch (err) {
+      console.log(`[hunter] Article image fetch failed for ${story.id}: ${err.message}`);
     }
 
     // Detect company and attach logo
-    const company = detectCompany(story.title);
-    if (company) {
-      story.company_name = company.name;
-      story.company_logo_url = company.logoUrl;
-    }
-
-    // Extract actual game name from title (strip leaker names, prefixes, meta text)
-    let gameTitle = story.title
-      .replace(/^[^:]+:\s*/i, '')                    // Strip "NateTheHate:" style prefixes
-      .replace(/reportedly|rumour|confirmed|leaked|says|claims|according to/gi, '')
-      .replace(/\b(remake|remaster|remastered|dlc|update|patch|sequel|prequel)\b/gi, '$1')
-      .replace(/\b(is|are|was|were|will|be|to|the|a|an|in|on|at|for|of|and|or|not)\b/gi, '')
-      .replace(/[^a-zA-Z0-9\s:'-]/g, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-    // Try to find known game titles within the cleaned text
-    const knownPatterns = gameTitle.match(/(?:[\w']+ ){0,4}[\w']+(?:\s*\d+)?/)?.[0] || gameTitle;
-    const searchTerm = knownPatterns.substring(0, 60).trim();
-    if (searchTerm.length > 3) {
-      story.game_images = await fetchGameImages(searchTerm);
-    }
-
-    // Fallback: if no game images found, try searching with just the key nouns
-    if (!story.game_images || story.game_images.length === 0) {
-      const fallback = story.title.match(/(?:Zelda|Mario|Halo|GTA|Final Fantasy|Ocarina|Star Fox|Pokemon|Elden Ring|God of War|Horizon|Spider.Man|Metroid|Call of Duty|Fortnite|Minecraft|Cyberpunk|Resident Evil|Silent Hill|Metal Gear|Dark Souls|Bloodborne|Sekiro|Breath of the Wild|Tears of the Kingdom|Baldur.s Gate|Diablo|Overwatch|Destiny|Assassin.s Creed|Far Cry|Watch Dogs|The Witcher|Red Dead|Uncharted|The Last of Us|Death Stranding|Ghost of Tsushima|Ratchet|Returnal|Demon.s Souls|Astro Bot|Gran Turismo|Forza|Flight Simulator|Starfield|Fallout|Elder Scrolls|Skyrim|Doom|Wolfenstein|Dishonored|Prey|Hitman|Tomb Raider|Devil May Cry|Monster Hunter|Dragon.s Dogma|Street Fighter|Tekken|Mortal Kombat|Kingdom Hearts|Persona|Xenoblade|Fire Emblem|Splatoon|Animal Crossing|Pikmin|Kirby|Donkey Kong|F-Zero|Kid Icarus|Bayonetta|Hollow Knight|Silksong|Nier|Yakuza|Sonic|Mega Man|Castlevania|Contra|Gradius|Bomberman|Suikoden|Chrono|Dragon Quest|Bravely|Octopath|Triangle Strategy|Live A Live|Valkyrie|Mana|SaGa|Romancing|Trials of Mana|World of|League of|Dota|Counter.Strike|Valorant|Apex Legends|PUBG|Warzone|Battlefield|Titanfall|Anthem|Mass Effect|Dragon Age|Jade Empire|Knights of the Old Republic|KOTOR|Jedi|Mandalorian|Clone Wars|PS[2-6]|Xbox|Switch\s*2?|PlayStation|Nintendo)/i);
-      if (fallback) {
-        story.game_images = await fetchGameImages(fallback[0]);
+    try {
+      const company = detectCompany(story.title);
+      if (company) {
+        story.company_name = company.name;
+        story.company_logo_url = company.logoUrl;
       }
+    } catch (err) {
+      console.log(`[hunter] Company detection failed for ${story.id}: ${err.message}`);
+    }
+
+    // Extract actual game name from title and fetch game images
+    try {
+      let gameTitle = story.title
+        .replace(/^[^:]+:\s*/i, '')                    // Strip "NateTheHate:" style prefixes
+        .replace(/reportedly|rumour|confirmed|leaked|says|claims|according to/gi, '')
+        .replace(/\b(remake|remaster|remastered|dlc|update|patch|sequel|prequel)\b/gi, '$1')
+        .replace(/\b(is|are|was|were|will|be|to|the|a|an|in|on|at|for|of|and|or|not)\b/gi, '')
+        .replace(/[^a-zA-Z0-9\s:'-]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      // Try to find known game titles within the cleaned text
+      const knownPatterns = gameTitle.match(/(?:[\w']+ ){0,4}[\w']+(?:\s*\d+)?/)?.[0] || gameTitle;
+      const searchTerm = knownPatterns.substring(0, 60).trim();
+      if (searchTerm.length > 3) {
+        story.game_images = await fetchGameImages(searchTerm);
+      }
+
+      // Fallback: if no game images found, try searching with just the key nouns
+      if (!story.game_images || story.game_images.length === 0) {
+        const fallback = story.title.match(/(?:Zelda|Mario|Halo|GTA|Final Fantasy|Ocarina|Star Fox|Pokemon|Elden Ring|God of War|Horizon|Spider.Man|Metroid|Call of Duty|Fortnite|Minecraft|Cyberpunk|Resident Evil|Silent Hill|Metal Gear|Dark Souls|Bloodborne|Sekiro|Breath of the Wild|Tears of the Kingdom|Baldur.s Gate|Diablo|Overwatch|Destiny|Assassin.s Creed|Far Cry|Watch Dogs|The Witcher|Red Dead|Uncharted|The Last of Us|Death Stranding|Ghost of Tsushima|Ratchet|Returnal|Demon.s Souls|Astro Bot|Gran Turismo|Forza|Flight Simulator|Starfield|Fallout|Elder Scrolls|Skyrim|Doom|Wolfenstein|Dishonored|Prey|Hitman|Tomb Raider|Devil May Cry|Monster Hunter|Dragon.s Dogma|Street Fighter|Tekken|Mortal Kombat|Kingdom Hearts|Persona|Xenoblade|Fire Emblem|Splatoon|Animal Crossing|Pikmin|Kirby|Donkey Kong|F-Zero|Kid Icarus|Bayonetta|Hollow Knight|Silksong|Nier|Yakuza|Sonic|Mega Man|Castlevania|Contra|Gradius|Bomberman|Suikoden|Chrono|Dragon Quest|Bravely|Octopath|Triangle Strategy|Live A Live|Valkyrie|Mana|SaGa|Romancing|Trials of Mana|World of|League of|Dota|Counter.Strike|Valorant|Apex Legends|PUBG|Warzone|Battlefield|Titanfall|Anthem|Mass Effect|Dragon Age|Jade Empire|Knights of the Old Republic|KOTOR|Jedi|Mandalorian|Clone Wars|PS[2-6]|Xbox|Switch\s*2?|PlayStation|Nintendo)/i);
+        if (fallback) {
+          story.game_images = await fetchGameImages(fallback[0]);
+        }
+      }
+    } catch (err) {
+      console.log(`[hunter] Game image fetch failed for ${story.id}: ${err.message}`);
     }
   }));
 

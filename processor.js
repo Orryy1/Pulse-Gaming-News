@@ -13,6 +13,14 @@ const { getAnalyticsContext } = require('./analytics');
 const BANNED_STARTS = ['so', 'today', 'hey', 'welcome', 'in this'];
 const BANNED_LOOP_PHRASES = ['let me know in the comments'];
 
+const DEMONETIZATION_WORDS = ['killed', 'murder', 'suicide', 'rape', 'terrorist', 'massacre', 'genocide', 'slaughter'];
+
+function checkAdvertiserSafety(script) {
+  const text = (script.full_script || '').toLowerCase();
+  const found = DEMONETIZATION_WORDS.filter(w => text.includes(w));
+  return found;
+}
+
 // --- Fetch source material for fact-checking ---
 async function fetchSourceMaterial(story) {
   const parts = [];
@@ -157,6 +165,11 @@ function validate(script, channelId) {
   if (!script.classification || !validClassifications.includes(script.classification)) {
     errors.push('Missing or invalid classification tag');
   }
+  // Advertiser-safety check (warnings, not hard failures — gaming news may reference violence)
+  const unsafeWords = checkAdvertiserSafety(script);
+  if (unsafeWords.length > 0) {
+    errors.push(`Advertiser-safety warning: contains "${unsafeWords.join('", "')}"`);
+  }
   return errors;
 }
 
@@ -278,7 +291,7 @@ async function process_stories() {
       ? `\n\n${analyticsContext}\n`
       : '';
 
-    const systemPrompt = baseSystemPrompt + analyticsSection + `\n\nCRITICAL — DATE AND FACT-CHECKING RULES:
+    const systemPrompt = baseSystemPrompt + analyticsSection + `\n\nCRITICAL: DATE AND FACT-CHECKING RULES:
 Today's date is ${today}. You MUST follow these rules:
 1. NEVER reference dates in the past as if they are in the future.
 2. Cross-reference the Reddit title against the SOURCE ARTICLE TEXT provided below. If the article contradicts the Reddit title, trust the article.
@@ -324,6 +337,11 @@ Today's date is ${today}. You MUST follow these rules:
           text = text.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
         }
         script = JSON.parse(text);
+
+        // Strip em dashes from all generated content (obvious AI tell)
+        for (const key of ['hook', 'body', 'cta', 'full_script', 'suggested_title', 'suggested_thumbnail_text']) {
+          if (script[key]) script[key] = script[key].replace(/\u2014/g, ',').replace(/\u2013/g, ',');
+        }
 
         const errors = validate(script, channel.id);
         if (errors.length > 0) {
@@ -374,7 +392,7 @@ Today's date is ${today}. You MUST follow these rules:
     const gameTitle = story.title.replace(/[^a-zA-Z0-9\s]/g, '').trim();
     const affiliateTag = process.env.AMAZON_AFFILIATE_TAG || 'placeholder';
     const affiliateUrl = `https://www.amazon.co.uk/s?k=${encodeURIComponent(gameTitle)}&tag=${affiliateTag}`;
-    const pinnedComment = `What do you think — legit or fake? Drop your take below 👇 | Check it out: ${affiliateUrl}`;
+    const pinnedComment = `What do you think, legit or fake? Drop your take below 👇 | Check it out: ${affiliateUrl}`;
 
     const enrichedStory = {
       ...story,

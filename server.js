@@ -627,10 +627,14 @@ async function startAutonomousScheduler() {
           const { publishNextStory } = require('./publisher');
           const result = await publishNextStory();
           if (result) {
+            const errorDetails = result.errors && Object.keys(result.errors).length > 0
+              ? '\n' + Object.entries(result.errors).map(([p, msg]) => `${p}: ${msg}`).join('\n')
+              : '';
             await sendDiscord(
               `**Pulse Gaming Published** (${windowLabels[i]})\n` +
               `"${result.title}"\n` +
-              `YT: ${result.youtube ? 'yes' : 'skip'} | TT: ${result.tiktok ? 'yes' : 'skip'} | IG: ${result.instagram ? 'yes' : 'skip'} | FB: ${result.facebook ? 'yes' : 'skip'} | X: ${result.twitter ? 'yes' : 'skip'}`
+              `YT: ${result.youtube ? 'yes' : 'FAIL'} | TT: ${result.tiktok ? 'yes' : 'FAIL'} | IG: ${result.instagram ? 'yes' : 'FAIL'} | FB: ${result.facebook ? 'yes' : 'FAIL'} | X: ${result.twitter ? 'yes' : 'FAIL'}` +
+              errorDetails
             );
           } else {
             console.log(`[server-cron] No unpublished stories ready for ${windowLabels[i]}`);

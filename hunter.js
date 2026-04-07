@@ -8,7 +8,64 @@ const { getChannel } = require('./channels');
 const { getTrendingTopics, getTrendingBoost } = require('./trending');
 const { getPerformanceBoost } = require('./analytics');
 
-const USER_AGENT = 'pulse-gaming-hunter/2.0 (personal use)';
+const USER_AGENT = 'pulse-gaming-hunter/2.0 (by /u/PulseGamingBot)';
+
+// --- Reddit OAuth token cache ---
+let redditToken = null;
+let redditTokenExpiry = 0;
+
+async function getRedditAccessToken() {
+  // Return cached token if still valid (with 60s buffer)
+  if (redditToken && Date.now() < redditTokenExpiry - 60000) {
+    return redditToken;
+  }
+
+  const clientId = process.env.REDDIT_CLIENT_ID;
+  const clientSecret = process.env.REDDIT_CLIENT_SECRET;
+
+  if (!clientId || !clientSecret || clientId === 'placeholder' || clientSecret === 'placeholder') {
+    console.log('[hunter] WARNING: Reddit credentials not configured, falling back to public API');
+    return null;
+  }
+
+  try {
+    const auth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+    const response = await axios.post(
+      'https://www.reddit.com/api/v1/access_token',
+      'grant_type=client_credentials',
+      {
+        headers: {
+          'Authorization': `Basic ${auth}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': USER_AGENT,
+        },
+        timeout: 10000,
+      }
+    );
+
+    redditToken = response.data.access_token;
+    redditTokenExpiry = Date.now() + (response.data.expires_in * 1000);
+    console.log('[hunter] Reddit OAuth token acquired');
+    return redditToken;
+  } catch (err) {
+    console.log(`[hunter] Reddit OAuth failed: ${err.message}`);
+    return null;
+  }
+}
+
+function getRedditHeaders(token) {
+  if (token) {
+    return {
+      'Authorization': `Bearer ${token}`,
+      'User-Agent': USER_AGENT,
+    };
+  }
+  return { 'User-Agent': USER_AGENT };
+}
+
+function getRedditBaseUrl(token) {
+  return token ? 'https://oauth.reddit.com' : 'https://www.reddit.com';
+}
 
 // --- Decode HTML entities from RSS feeds ---
 function decodeEntities(str) {
@@ -58,45 +115,112 @@ function scoreBreakingValue(title, score, numComments, breakingKeywords, trendin
   return breakingScore;
 }
 
-async function fetchSubreddit(subreddit) {
-  const url = `https://www.reddit.com/r/${subreddit}/hot.json?limit=50`;
-  console.log(`[hunter] Fetching: r/${subreddit} (hot)`);
+// --- Reddit RSS fallback (no auth needed, works when JSON API returns 403) ---
+async function fetchSubredditRSS(subreddit, sort = 'hot') {
+  const url = `https://www.reddit.com/r/${subreddit}/${sort}/.rss?limit=50`;
+  console.log(`[hunter] Fetching: r/${subreddit} (${sort}) [RSS fallback]`);
 
   try {
     const response = await axios.get(url, {
       headers: { 'User-Agent': USER_AGENT },
       timeout: 15000,
+      responseType: 'text',
     });
-    const children = response.data?.data?.children || [];
-    return children.map(c => c.data);
+
+    const xml = response.data;
+    const entries = [];
+    const entryRegex = /<entry>([\s\S]*?)<\/entry>/gi;
+    let match;
+
+    while ((match = entryRegex.exec(xml)) !== null) {
+      const block = match[1];
+
+      const titleMatch = block.match(/<title[^>]*>(.*?)<\/title>/i);
+      const linkMatch = block.match(/<link[^>]*href="([^"]*)"[^>]*\/?>/i);
+      const updatedMatch = block.match(/<updated>(.*?)<\/updated>/i);
+      const categoryMatch = block.match(/<category[^>]*term="([^"]*)"[^>]*\/?>/i);
+
+      if (!titleMatch) continue;
+
+      const title = decodeEntities(titleMatch[1].replace(/<[^>]*>/g, '').trim());
+      const permalink = linkMatch ? linkMatch[1].replace('https://www.reddit.com', '') : '';
+
+      // Extract post ID from permalink (/r/sub/comments/ID/...)
+      const idMatch = permalink.match(/\/comments\/([a-z0-9]+)\//);
+      const id = idMatch ? idMatch[1] : '';
+
+      const updated = updatedMatch ? updatedMatch[1] : '';
+      const flair = categoryMatch ? categoryMatch[1] : '';
+
+      entries.push({
+        id,
+        title,
+        permalink,
+        link_flair_text: flair,
+        score: 0, // RSS doesn't include score
+        num_comments: 0,
+        created_utc: updated ? Math.floor(new Date(updated).getTime() / 1000) : Math.floor(Date.now() / 1000),
+        url: `https://reddit.com${permalink}`,
+        thumbnail: null,
+      });
+    }
+
+    console.log(`[hunter] RSS fallback r/${subreddit}: ${entries.length} entries`);
+    return entries;
   } catch (err) {
-    console.log(`[hunter] Failed r/${subreddit}: ${err.message}`);
+    console.log(`[hunter] RSS fallback r/${subreddit} failed: ${err.message}`);
     return [];
   }
 }
 
-async function fetchSubredditNew(subreddit) {
-  const url = `https://www.reddit.com/r/${subreddit}/new.json?limit=25`;
-  console.log(`[hunter] Fetching: r/${subreddit} (new)`);
+async function fetchSubreddit(subreddit) {
+  const token = await getRedditAccessToken();
+  const base = getRedditBaseUrl(token);
+  const suffix = token ? '' : '.json';
+  const url = `${base}/r/${subreddit}/hot${suffix}?limit=50`;
+  console.log(`[hunter] Fetching: r/${subreddit} (hot)${token ? ' [OAuth]' : ' [public]'}`);
 
   try {
     const response = await axios.get(url, {
-      headers: { 'User-Agent': USER_AGENT },
+      headers: getRedditHeaders(token),
       timeout: 15000,
     });
     const children = response.data?.data?.children || [];
     return children.map(c => c.data);
   } catch (err) {
-    console.log(`[hunter] Failed r/${subreddit}/new: ${err.message}`);
-    return [];
+    console.log(`[hunter] Failed r/${subreddit} JSON: ${err.message}, trying RSS fallback...`);
+    return fetchSubredditRSS(subreddit, 'hot');
+  }
+}
+
+async function fetchSubredditNew(subreddit) {
+  const token = await getRedditAccessToken();
+  const base = getRedditBaseUrl(token);
+  const suffix = token ? '' : '.json';
+  const url = `${base}/r/${subreddit}/new${suffix}?limit=25`;
+  console.log(`[hunter] Fetching: r/${subreddit} (new)${token ? ' [OAuth]' : ' [public]'}`);
+
+  try {
+    const response = await axios.get(url, {
+      headers: getRedditHeaders(token),
+      timeout: 15000,
+    });
+    const children = response.data?.data?.children || [];
+    return children.map(c => c.data);
+  } catch (err) {
+    console.log(`[hunter] Failed r/${subreddit}/new JSON: ${err.message}, trying RSS fallback...`);
+    return fetchSubredditRSS(subreddit, 'new');
   }
 }
 
 async function fetchTopComments(subreddit, postId, count = 4) {
   try {
-    const url = `https://www.reddit.com/r/${subreddit}/comments/${postId}.json?limit=20&sort=top`;
+    const token = await getRedditAccessToken();
+    const base = getRedditBaseUrl(token);
+    const suffix = token ? '' : '.json';
+    const url = `${base}/r/${subreddit}/comments/${postId}${suffix}?limit=20&sort=top`;
     const response = await axios.get(url, {
-      headers: { 'User-Agent': USER_AGENT },
+      headers: getRedditHeaders(token),
       timeout: 10000,
     });
 

@@ -102,6 +102,7 @@ function postTemplate(data) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escHtml(title)} | ${escHtml(channelName)}</title>
 <meta name="description" content="${escAttr(description)}">
+<link rel="alternate" type="application/rss+xml" title="${escAttr(channelName)} RSS Feed" href="${escAttr(baseUrl)}/blog/rss.xml">
 <meta property="og:title" content="${escAttr(title)}">
 <meta property="og:description" content="${escAttr(description)}">
 ${ogImage ? `<meta property="og:image" content="${escAttr(ogImage)}">` : ''}
@@ -187,6 +188,7 @@ ${imgTag}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escHtml(channelName)} | Gaming News Blog</title>
 <meta name="description" content="${escAttr(tagline)}">
+<link rel="alternate" type="application/rss+xml" title="${escAttr(channelName)} RSS Feed" href="/blog/rss.xml">
 <meta property="og:title" content="${escAttr(channelName)} | Gaming News Blog">
 <meta property="og:description" content="${escAttr(tagline)}">
 <meta property="og:image" content="/branding/og_image.png">
@@ -253,23 +255,27 @@ ${urls}
  * @param {string} channelName
  */
 function rssTemplate(posts, baseUrl, channelName) {
-  const items = posts.map(p =>
-    `    <item>
+  const items = posts.map(p => {
+    const articleHtml = p.html || p.description || '';
+    return `    <item>
       <title>${escXml(p.title)}</title>
       <link>${escXml(baseUrl)}/blog/${p.slug}.html</link>
       <description>${escXml(p.description)}</description>
+      <content:encoded><![CDATA[${articleHtml}]]></content:encoded>
       <pubDate>${new Date(p.publishedAt).toUTCString()}</pubDate>
-      <guid>${escXml(baseUrl)}/blog/${p.slug}.html</guid>
-    </item>`
-  ).join('\n');
+      <guid isPermaLink="true">${escXml(baseUrl)}/blog/${p.slug}.html</guid>${p.storyImageSlug ? `
+      <enclosure url="${escXml(baseUrl)}/blog/images/${p.storyImageSlug}.png" type="image/png"/>` : ''}
+    </item>`;
+  }).join('\n');
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/">
   <channel>
     <title>${escXml(channelName)}</title>
     <link>${escXml(baseUrl)}/blog/</link>
-    <description>Gaming news, leaks and rumours</description>
+    <description>Gaming news, leaks and rumours from ${escXml(channelName)}</description>
     <language>en-gb</language>
+    <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
     <atom:link href="${escXml(baseUrl)}/blog/rss.xml" rel="self" type="application/rss+xml"/>
 ${items}
   </channel>

@@ -37,13 +37,21 @@ async function build() {
     console.log('[blog-build] Copied branding assets to dist/branding/');
   }
 
-  // Load published stories
-  if (!await fs.pathExists(DAILY_NEWS_PATH)) {
-    console.log('[blog-build] No daily_news.json found — nothing to build');
-    return;
+  // Load published stories from database (preferred) or JSON fallback
+  let stories;
+  try {
+    const db = require('../lib/db');
+    stories = await db.getStories();
+    console.log(`[blog-build] Loaded ${stories.length} stories from database`);
+  } catch (err) {
+    if (!await fs.pathExists(DAILY_NEWS_PATH)) {
+      console.log('[blog-build] No stories found, nothing to build');
+      return;
+    }
+    stories = await fs.readJson(DAILY_NEWS_PATH);
+    console.log(`[blog-build] Loaded ${stories.length} stories from daily_news.json`);
   }
 
-  const stories = await fs.readJson(DAILY_NEWS_PATH);
   const published = stories.filter(s => s.youtube_post_id);
 
   if (published.length === 0) {
@@ -70,12 +78,21 @@ async function build() {
       const existingPath = path.join(DIST_DIR, `${slug}.html`);
 
       if (await fs.pathExists(existingPath)) {
-        // Re-use existing — just track metadata for index/sitemap
+        // Re-use existing post, but read the article HTML for RSS content:encoded
+        let articleHtml = '';
+        try {
+          const raw = await fs.readFile(existingPath, 'utf-8');
+          const match = raw.match(/<article[^>]*>([\s\S]*?)<\/article>/);
+          if (match) articleHtml = match[1].trim();
+        } catch (e) { /* non-critical */ }
+
         allPostData.push({
           slug,
           title: story.title,
           description: story.suggested_thumbnail_text || story.title,
+          html: articleHtml,
           publishedAt: story.published_at || story.timestamp || new Date().toISOString(),
+          storyImageSlug: story.story_image_path ? slug : null,
           story,
         });
         continue;

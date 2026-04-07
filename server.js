@@ -18,8 +18,70 @@ const PUBLIC_DIR = path.join(__dirname, 'public', 'generated');
 
 fs.ensureDirSync(PUBLIC_DIR);
 
-app.use(cors());
+app.use(cors({
+  origin: process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',')
+    : [
+        'http://localhost:3001',
+        'http://localhost:5173',
+        process.env.RAILWAY_PUBLIC_URL,
+      ].filter(Boolean),
+  methods: ['GET', 'POST'],
+}));
 app.use(express.json());
+
+// Security headers
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
+
+// --- API authentication middleware ---
+function requireAuth(req, res, next) {
+  // Skip auth if no API_TOKEN configured (backwards compat for local dev)
+  const secret = process.env.API_TOKEN;
+  if (!secret) return next();
+
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (token !== secret) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  next();
+}
+
+// --- Rate limiting middleware ---
+const rateLimitMap = new Map();
+function rateLimit(maxRequests, windowMs) {
+  return (req, res, next) => {
+    const key = req.ip + req.path;
+    const now = Date.now();
+    const entry = rateLimitMap.get(key) || { count: 0, resetAt: now + windowMs };
+    if (now > entry.resetAt) {
+      entry.count = 0;
+      entry.resetAt = now + windowMs;
+    }
+    entry.count++;
+    rateLimitMap.set(key, entry);
+    if (entry.count > maxRequests) {
+      return res.status(429).json({ error: 'Too many requests' });
+    }
+    next();
+  };
+}
+
+// HTML escaping for safe inline rendering
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 // Sentry request handler (must be before routes)
 const sentryMw = sentryExpressMiddleware();
@@ -70,7 +132,7 @@ app.get('/auth/tiktok/callback', async (req, res) => {
 
   if (error) {
     console.log(`[tiktok] OAuth error: ${error} — ${error_description}`);
-    return res.status(400).send(`<h1>TikTok Auth Error</h1><p>${error}: ${error_description}</p>`);
+    return res.status(400).send(`<h1>TikTok Auth Error</h1><p>${escapeHtml(error)}: ${escapeHtml(error_description)}</p>`);
   }
 
   if (!code) {
@@ -88,17 +150,24 @@ app.get('/auth/tiktok/callback', async (req, res) => {
     </body></html>`);
   } catch (err) {
     console.log(`[tiktok] OAuth token exchange failed: ${err.message}`);
-    res.status(500).send(`<h1>Token Exchange Failed</h1><p>${err.message}</p>`);
+    res.status(500).send(`<h1>Token Exchange Failed</h1><p>${escapeHtml(err.message)}</p>`);
   }
 });
 
 // --- SSE for real-time progress ---
 const sseClients = new Map();
+const SSE_MAX_CLIENTS = 50;
+const SSE_IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
 function broadcastProgress(storyId, type, progress, stage) {
   const data = JSON.stringify({ storyId, type, progress, stage });
-  for (const [, res] of sseClients) {
-    res.write(`data: ${data}\n\n`);
+  for (const [clientId, client] of sseClients) {
+    try {
+      client.res.write(`data: ${data}\n\n`);
+    } catch (err) {
+      console.log(`[server] SSE write error for client ${clientId}, removing`);
+      sseClients.delete(clientId);
+    }
   }
 }
 
@@ -162,6 +231,10 @@ app.get('/api/news', (req, res) => {
 });
 
 app.get('/api/progress', (req, res) => {
+  if (sseClients.size >= SSE_MAX_CLIENTS) {
+    return res.status(503).json({ error: 'Too many SSE connections' });
+  }
+
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
@@ -170,14 +243,25 @@ app.get('/api/progress', (req, res) => {
   res.write('data: {"type":"connected"}\n\n');
 
   const clientId = Date.now().toString(36) + Math.random().toString(36).slice(2);
-  sseClients.set(clientId, res);
+
+  // Auto-close idle connections after 5 minutes
+  const idleTimeout = setTimeout(() => {
+    try {
+      res.write('data: {"type":"timeout"}\n\n');
+      res.end();
+    } catch (e) { /* already closed */ }
+    sseClients.delete(clientId);
+  }, SSE_IDLE_TIMEOUT_MS);
+
+  sseClients.set(clientId, { res, idleTimeout });
 
   req.on('close', () => {
+    clearTimeout(idleTimeout);
     sseClients.delete(clientId);
   });
 });
 
-app.post('/api/approve', (req, res) => {
+app.post('/api/approve', requireAuth, rateLimit(30, 60000), (req, res) => {
   try {
     const { id } = req.body;
     if (!id) return res.status(400).json({ error: 'id required' });
@@ -190,14 +274,15 @@ app.post('/api/approve', (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.log(`[server] ERROR approving: ${err.message}`);
-    res.status(500).json({ error: err.message });
+    console.error(`[server] Internal error: ${err.message}`);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // --- Publish pipeline ---
 let publishState = { status: 'idle', message: '' };
 
-app.post('/api/publish', (req, res) => {
+app.post('/api/publish', requireAuth, rateLimit(5, 60000), (req, res) => {
   if (publishState.status === 'running') {
     return res.json({ status: 'already running' });
   }
@@ -231,7 +316,7 @@ app.get('/api/publish-status', (req, res) => {
 });
 
 // --- Full autonomous cycle endpoint ---
-app.post('/api/autonomous/run', async (req, res) => {
+app.post('/api/autonomous/run', requireAuth, rateLimit(5, 60000), async (req, res) => {
   res.json({ status: 'started', message: 'Full autonomous cycle initiated' });
 
   try {
@@ -243,18 +328,19 @@ app.post('/api/autonomous/run', async (req, res) => {
 });
 
 // --- Auto-approve endpoint ---
-app.post('/api/autonomous/approve', async (req, res) => {
+app.post('/api/autonomous/approve', requireAuth, rateLimit(5, 60000), async (req, res) => {
   try {
     const { autoApprove } = require('./publisher');
     const count = await autoApprove();
     res.json({ status: 'ok', approved: count });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(`[server] Internal error: ${err.message}`);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // --- Multi-platform publish endpoint ---
-app.post('/api/autonomous/publish', async (req, res) => {
+app.post('/api/autonomous/publish', requireAuth, rateLimit(5, 60000), async (req, res) => {
   res.json({ status: 'started', message: 'Multi-platform publish initiated' });
 
   try {
@@ -328,7 +414,7 @@ app.get('/api/platforms/status', async (req, res) => {
 });
 
 // --- Image/Video generation queues ---
-app.post('/api/generate-image', async (req, res) => {
+app.post('/api/generate-image', requireAuth, rateLimit(30, 60000), async (req, res) => {
   try {
     const { id } = req.body;
     if (!id) return res.status(400).json({ error: 'id required' });
@@ -346,11 +432,12 @@ app.post('/api/generate-image', async (req, res) => {
 
     broadcastProgress(id, 'image', 10, 'Queued for generation');
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(`[server] Internal error: ${err.message}`);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-app.post('/api/generate-video', async (req, res) => {
+app.post('/api/generate-video', requireAuth, rateLimit(30, 60000), async (req, res) => {
   try {
     const { id } = req.body;
     if (!id) return res.status(400).json({ error: 'id required' });
@@ -368,12 +455,13 @@ app.post('/api/generate-video', async (req, res) => {
 
     broadcastProgress(id, 'video', 10, 'Queued for generation');
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(`[server] Internal error: ${err.message}`);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // --- Schedule ---
-app.post('/api/schedule', (req, res) => {
+app.post('/api/schedule', requireAuth, rateLimit(30, 60000), (req, res) => {
   const { id, scheduleTime } = req.body;
   if (!id) return res.status(400).json({ error: 'id required' });
 
@@ -384,7 +472,7 @@ app.post('/api/schedule', (req, res) => {
 });
 
 // --- Retry publish ---
-app.post('/api/retry-publish', (req, res) => {
+app.post('/api/retry-publish', requireAuth, rateLimit(5, 60000), (req, res) => {
   const { id } = req.body;
   if (!id) return res.status(400).json({ error: 'id required' });
 
@@ -403,13 +491,18 @@ app.get('/api/story-image/:id', async (req, res) => {
       return res.status(404).json({ error: 'story image not found' });
     }
     const filePath = path.resolve(story.story_image_path);
+    const allowedBase = path.resolve(__dirname, 'output');
+    if (!filePath.startsWith(allowedBase + path.sep) && filePath !== allowedBase) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: 'file not found on disk' });
     }
     res.setHeader('Content-Type', 'image/png');
     fs.createReadStream(filePath).pipe(res);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(`[server] ERROR serving story image: ${err.message}`);
+    res.status(500).json({ error: 'Failed to serve image' });
   }
 });
 
@@ -427,6 +520,10 @@ app.get('/api/download/:id', async (req, res) => {
     }
 
     const filePath = path.resolve(story.exported_path);
+    const allowedBase = path.resolve(__dirname, 'output');
+    if (!filePath.startsWith(allowedBase + path.sep) && filePath !== allowedBase) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: 'file not found on disk' });
     }
@@ -439,7 +536,7 @@ app.get('/api/download/:id', async (req, res) => {
     stream.pipe(res);
   } catch (err) {
     console.log(`[server] ERROR downloading: ${err.message}`);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Download failed' });
   }
 });
 
@@ -475,11 +572,12 @@ app.get('/api/stats/:postId', async (req, res) => {
     res.json({ views: 0, likes: 0, note: 'YouTube API integration pending' });
   } catch (err) {
     console.log(`[server] ERROR stats: ${err.message}`);
-    res.status(500).json({ error: err.message });
+    console.error(`[server] Internal error: ${err.message}`);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-app.post('/api/stats/update', (req, res) => {
+app.post('/api/stats/update', requireAuth, rateLimit(30, 60000), (req, res) => {
   const { id, youtube_views, tiktok_views } = req.body;
   if (!id) return res.status(400).json({ error: 'id required' });
 
@@ -574,7 +672,7 @@ app.get('/api/hunter/status', (req, res) => {
   });
 });
 
-app.post('/api/hunter/run', async (req, res) => {
+app.post('/api/hunter/run', requireAuth, rateLimit(5, 60000), async (req, res) => {
   res.json({ status: 'started' });
   await runHunter();
 });
@@ -847,7 +945,7 @@ app.get('/api/watcher/status', (req, res) => {
   });
 });
 
-app.post('/api/watcher/start', (req, res) => {
+app.post('/api/watcher/start', requireAuth, rateLimit(5, 60000), (req, res) => {
   const { startWatching } = require('./watcher');
   const { queueBreaking } = require('./breaking_queue');
 
@@ -861,7 +959,7 @@ app.post('/api/watcher/start', (req, res) => {
   res.json({ status: 'started' });
 });
 
-app.post('/api/watcher/stop', (req, res) => {
+app.post('/api/watcher/stop', requireAuth, rateLimit(5, 60000), (req, res) => {
   const { stopWatching } = require('./watcher');
   stopWatching();
   res.json({ status: 'stopped' });
@@ -917,7 +1015,8 @@ app.get('/api/analytics/overview', async (req, res) => {
     });
   } catch (err) {
     console.log(`[server] Analytics overview error: ${err.message}`);
-    res.status(500).json({ error: err.message });
+    console.error(`[server] Internal error: ${err.message}`);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -928,7 +1027,8 @@ app.get('/api/analytics/topics', async (req, res) => {
     res.json(topics);
   } catch (err) {
     console.log(`[server] Analytics topics error: ${err.message}`);
-    res.status(500).json({ error: err.message });
+    console.error(`[server] Internal error: ${err.message}`);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -950,7 +1050,8 @@ app.get('/api/analytics/history', async (req, res) => {
     });
   } catch (err) {
     console.log(`[server] Analytics history error: ${err.message}`);
-    res.status(500).json({ error: err.message });
+    console.error(`[server] Internal error: ${err.message}`);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -967,7 +1068,8 @@ app.get('/api/analytics/optimal-timing', async (req, res) => {
     res.json({ hours, days, schedule, report });
   } catch (err) {
     console.log(`[server] Optimal timing error: ${err.message}`);
-    res.status(500).json({ error: err.message });
+    console.error(`[server] Internal error: ${err.message}`);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -985,12 +1087,13 @@ app.get('/api/engagement/stats', async (req, res) => {
       res.json({});
     }
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(`[server] Internal error: ${err.message}`);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // --- Manual engagement pass endpoint ---
-app.post('/api/engagement/run', async (req, res) => {
+app.post('/api/engagement/run', requireAuth, rateLimit(5, 60000), async (req, res) => {
   res.json({ status: 'started', message: 'Engagement pass initiated' });
 
   try {
@@ -1002,7 +1105,7 @@ app.post('/api/engagement/run', async (req, res) => {
 });
 
 // --- Blog rebuild endpoint ---
-app.post('/api/blog/rebuild', async (req, res) => {
+app.post('/api/blog/rebuild', requireAuth, rateLimit(5, 60000), async (req, res) => {
   res.json({ status: 'started', message: 'Blog rebuild initiated' });
 
   try {
@@ -1017,7 +1120,7 @@ app.post('/api/blog/rebuild', async (req, res) => {
 // --- Weekly compilation endpoints ---
 let weeklyCompilationState = { status: 'idle', last_compiled: null, error: null };
 
-app.post('/api/weekly/compile', async (req, res) => {
+app.post('/api/weekly/compile', requireAuth, rateLimit(5, 60000), async (req, res) => {
   if (weeklyCompilationState.status === 'running') {
     return res.json({ status: 'already running', message: 'Weekly compilation is already in progress' });
   }
@@ -1062,7 +1165,7 @@ app.get('/api/weekly/status', async (req, res) => {
 // --- Topic compilation endpoints ---
 let topicCompilationState = { status: 'idle', topic: null, error: null };
 
-app.post('/api/compile/topic', async (req, res) => {
+app.post('/api/compile/topic', requireAuth, rateLimit(5, 60000), async (req, res) => {
   const { topic } = req.body;
   if (!topic || typeof topic !== 'string' || !topic.trim()) {
     return res.status(400).json({ error: 'topic string required' });
@@ -1105,12 +1208,13 @@ app.get('/api/compile/topics', async (req, res) => {
     res.json({ days, topics });
   } catch (err) {
     console.log(`[server] Compilable topics error: ${err.message}`);
-    res.status(500).json({ error: err.message });
+    console.error(`[server] Internal error: ${err.message}`);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // --- Railway deploy webhook — forwards build/deploy failures to Discord ---
-app.post('/api/webhook/railway', async (req, res) => {
+app.post('/api/webhook/railway', rateLimit(30, 60000), async (req, res) => {
   res.json({ ok: true });
   try {
     const sendDiscord = require('./notify');
@@ -1158,7 +1262,7 @@ app.get('/{*splat}', (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`[server] Pulse Gaming Command Centre v2 running on http://localhost:${PORT}`);
 
   // Notify Discord on successful deploy (Railway restarts the process on each deploy)
@@ -1202,5 +1306,20 @@ app.listen(PORT, () => {
     console.log('[server] Discord bot skipped — DISCORD_BOT_TOKEN or DISCORD_GUILD_ID not set');
   }
 });
+
+// --- Graceful shutdown ---
+function gracefulShutdown(signal) {
+  console.log(`[server] ${signal} received, shutting down gracefully...`);
+  server.close(() => {
+    console.log('[server] HTTP server closed');
+    process.exit(0);
+  });
+  setTimeout(() => {
+    console.error('[server] Forced shutdown after timeout');
+    process.exit(1);
+  }, 10000);
+}
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 module.exports = { broadcastProgress };

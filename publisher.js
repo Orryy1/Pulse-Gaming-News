@@ -471,7 +471,7 @@ async function publishNextStory() {
     }
   }
 
-  // Post to Discord channels -- video drops only (news already posted by processor.js)
+  // Post to Discord channels, video drops only (news already posted by processor.js)
   try {
     const { postVideoUpload, postStoryPoll } = require('./discord/auto_post');
     // Only post to #video-drops on first publish with an actual video URL

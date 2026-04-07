@@ -260,16 +260,17 @@ async function postStoryForApproval(story) {
     const { ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder } = require('discord.js');
 
     const idMap = config.loadIdMap();
-    const channelId = idMap.channels && idMap.channels['video-drops'];
+    // Story approvals go to #mod-log (staff), not #video-drops (public)
+    const channelId = idMap.channels && (idMap.channels['mod-log'] || idMap.channels['video-drops']);
 
     if (!channelId) {
-      console.error('[AutoPost] Channel "video-drops" not found in id_map.json.');
+      console.error('[AutoPost] Channel "mod-log" not found in id_map.json.');
       return null;
     }
 
     const channel = await client.channels.fetch(channelId).catch(() => null);
     if (!channel) {
-      console.error('[AutoPost] Could not fetch video-drops channel.');
+      console.error('[AutoPost] Could not fetch mod-log channel.');
       return null;
     }
 
@@ -327,4 +328,114 @@ async function postStoryForApproval(story) {
   }
 }
 
-module.exports = { postNewStory, postVideoUpload, postStoryForApproval };
+/**
+ * Post a poll to #polls based on a story.
+ * Generates a relevant question + 4 answer options from the story content.
+ */
+async function postStoryPoll(story) {
+  try {
+    const client = await getClient();
+    if (!client) return null;
+
+    const idMap = config.loadIdMap();
+    const channelId = idMap.channels && idMap.channels['polls'];
+
+    if (!channelId) {
+      console.error('[AutoPost] Channel "polls" not found in id_map.json.');
+      return null;
+    }
+
+    const channel = await client.channels.fetch(channelId).catch(() => null);
+    if (!channel) {
+      console.error('[AutoPost] Could not fetch polls channel.');
+      return null;
+    }
+
+    // Generate poll question and options from the story
+    const { question, options } = generatePollFromStory(story);
+
+    const { PollLayoutType } = require('discord.js');
+
+    const msg = await channel.send({
+      poll: {
+        question: { text: question },
+        answers: options.map(opt => ({ text: opt })),
+        duration: 24,
+        allowMultiselect: false,
+        layoutType: PollLayoutType.Default,
+      },
+    });
+
+    console.log(`[AutoPost] Poll posted for "${story.title}" to #polls`);
+    return msg;
+  } catch (err) {
+    console.error('[AutoPost] Failed to post poll:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Generate a poll question + 4 options from a story.
+ * Uses the story's flair, title and content to craft a relevant community question.
+ */
+function generatePollFromStory(story) {
+  const title = story.title || 'this news';
+  const flair = (story.flair || '').toLowerCase();
+
+  // Rumour stories — "Do you believe it?"
+  if (flair === 'rumour' || flair === 'rumor') {
+    return {
+      question: `${truncate(title, 280)} — Do you believe this rumour?`,
+      options: [
+        'Absolutely, it\'s happening',
+        'Probably true, good sources',
+        'Doubt it, seems fake',
+        'No way, total rubbish',
+      ],
+    };
+  }
+
+  // Leak stories — "How hyped are you?"
+  if (flair === 'highly likely') {
+    return {
+      question: `${truncate(title, 280)} — How hyped are you?`,
+      options: [
+        'Day one purchase',
+        'Interested, need to see more',
+        'Not for me but cool',
+        'Couldn\'t care less',
+      ],
+    };
+  }
+
+  // Confirmed/verified — "Your take?"
+  if (flair === 'verified' || flair === 'confirmed') {
+    return {
+      question: `${truncate(title, 280)} — Your reaction?`,
+      options: [
+        'Massive W, love this',
+        'Good news, cautiously optimistic',
+        'Meh, don\'t really care',
+        'This is an L, disappointed',
+      ],
+    };
+  }
+
+  // Default — general opinion
+  return {
+    question: `${truncate(title, 280)} — What do you think?`,
+    options: [
+      'Excited about this',
+      'Need more details first',
+      'Not sure how to feel',
+      'Not interested',
+    ],
+  };
+}
+
+function truncate(str, max) {
+  if (str.length <= max) return str;
+  return str.substring(0, max - 3) + '...';
+}
+
+module.exports = { postNewStory, postVideoUpload, postStoryForApproval, postStoryPoll };

@@ -233,6 +233,16 @@ function cleanForTTS(text) {
     .trim();
 }
 
+// --- Title similarity check (Jaccard) for cross-cycle dedup ---
+function titleSimilarity(a, b) {
+  if (!a || !b) return 0;
+  const wordsA = new Set(a.toLowerCase().split(/\s+/));
+  const wordsB = new Set(b.toLowerCase().split(/\s+/));
+  const intersection = [...wordsA].filter(w => wordsB.has(w));
+  const union = new Set([...wordsA, ...wordsB]);
+  return intersection.length / union.size;
+}
+
 async function process_stories() {
   console.log('[processor] Loading pending_news.json...');
 
@@ -242,8 +252,31 @@ async function process_stories() {
   }
 
   const data = await fs.readJson('pending_news.json');
-  const stories = data.stories || [];
+  let stories = data.stories || [];
   console.log(`[processor] Processing ${stories.length} stories...`);
+
+  // Cross-cycle dedup: check pending stories against existing daily_news.json
+  const existingStories = await db.getStories();
+  if (existingStories.length > 0) {
+    const before = stories.length;
+    stories = stories.filter(pending => {
+      // Check by ID
+      if (existingStories.some(e => e.id === pending.id)) {
+        console.log(`[processor] Dedup (ID match): ${pending.title}`);
+        return false;
+      }
+      // Check by title similarity (catches same story from different sources/IDs)
+      const similar = existingStories.find(e => titleSimilarity(e.title, pending.title) > 0.5);
+      if (similar) {
+        console.log(`[processor] Dedup (title match): "${pending.title}" ~ "${similar.title}"`);
+        return false;
+      }
+      return true;
+    });
+    if (before !== stories.length) {
+      console.log(`[processor] Dedup: filtered ${before - stories.length} duplicates, ${stories.length} remaining`);
+    }
+  }
 
   const channel = getChannel();
   console.log(`[processor] Active channel: ${channel.name} (${channel.niche})`);

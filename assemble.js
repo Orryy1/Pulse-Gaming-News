@@ -676,9 +676,8 @@ function buildVideoCommand(
     const usable = 0.8; // 10%-90% of duration
     const gap = usable / count;
 
-    // Alternate Y positions: top zone (above captions) and bottom zone (below captions, above brand bar)
-    // Captions sit at ~y=700-1000, so comments go y=180-350 (top) or y=1300-1550 (bottom)
-    const ySlots = [190, 1300, 240, 1350, 200, 1320, 250, 1370];
+    // All comments in top zone only (y=150-380) to avoid overlapping subtitles at bottom
+    const ySlots = [160, 200, 240, 280, 180, 220, 260, 300];
 
     comments.slice(0, count).forEach((comment, ci) => {
       const text = sanitizeDrawtext(comment.body, 500);
@@ -686,7 +685,7 @@ function buildVideoCommand(
       const author = sanitizeDrawtext(comment.author || "Redditor", 25);
       const score = comment.score || 0;
       const ct = Math.floor(duration * (0.1 + ci * gap));
-      const showDur = 5;
+      const showDur = 8;
       const fadeDur = 0.4;
       const yBase = ySlots[ci % ySlots.length];
 
@@ -1078,7 +1077,7 @@ async function assemble() {
           const count = Math.min(comments.length, 6);
           const usable = 0.8;
           const gap = usable / count;
-          const ySlots = [190, 1300, 240, 1350, 200, 1320];
+          const ySlots = [160, 200, 240, 280, 180, 220];
 
           comments.slice(0, count).forEach((comment, ci) => {
             const text = sanitizeDrawtext(comment.body, 500);
@@ -1086,7 +1085,7 @@ async function assemble() {
             const author = sanitizeDrawtext(comment.author || "Redditor", 25);
             const score = comment.score || 0;
             const ct = Math.floor(duration * (0.1 + ci * gap));
-            const showDur = 5;
+            const showDur = 8;
             const fadeDur = 0.4;
             const yBase = ySlots[ci % ySlots.length];
 

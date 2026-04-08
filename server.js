@@ -1164,6 +1164,22 @@ async function startAutonomousScheduler() {
   );
   console.log("[server] Weekly timing re-analysis: Sunday 00:00 UTC");
 
+  // Daily database backup - 04:00 UTC
+  cron.schedule(
+    "0 4 * * *",
+    async () => {
+      console.log("[server-cron] 04:00 UTC - DATABASE BACKUP");
+      try {
+        const { backupDatabase } = require("./lib/db_backup");
+        await backupDatabase();
+      } catch (err) {
+        console.log(`[server-cron] DB backup error: ${err.message}`);
+      }
+    },
+    { timezone: "UTC" },
+  );
+  console.log("[server] Database backup: daily at 04:00 UTC");
+
   // --- Breaking news watcher (continuous Reddit + RSS monitoring) ---
   try {
     const { startWatching } = require("./watcher");

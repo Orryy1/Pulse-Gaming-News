@@ -152,6 +152,7 @@ RULES:
 - Never use: "in this video", "hey guys", "what's up", "smash that like", "let me know in the comments"
 - NEVER give investment advice. NEVER use hype language: "moon", "rocket", "guaranteed", "huge gains", "100x".
 - Always include "This is not financial advice" somewhere in the script.
+- SENTENCE RHYTHM: Vary sentence length deliberately. Alternate between short punchy statements (3-8 words) and longer detailed sentences (15-25 words). Never write three consecutive sentences of similar length. This prevents AI detection and creates natural speech rhythm.
 
 HOOK (THE CONTRARIAN HOOK): THIS IS THE MOST IMPORTANT PART OF THE SCRIPT.
 The first sentence MUST challenge a popular market narrative or reveal a hidden data point. The viewer must think "wait, that contradicts everything I assumed" and be unable to scroll away.

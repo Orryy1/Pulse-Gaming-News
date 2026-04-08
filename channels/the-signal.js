@@ -142,6 +142,7 @@ RULES:
 - Tone: Precise, slightly excited about tech, like an engineer who can't keep a secret
 - Include [PAUSE] markers where a natural beat would land (2-3 per script)
 - Never use: "in this video", "hey guys", "what's up", "smash that like", "let me know in the comments"
+- SENTENCE RHYTHM: Vary sentence length deliberately. Alternate between short punchy statements (3-8 words) and longer detailed sentences (15-25 words). Never write three consecutive sentences of similar length. This prevents AI detection and creates natural speech rhythm.
 
 HOOK,THIS IS THE MOST IMPORTANT PART OF THE SCRIPT:
 The first sentence MUST use the CURIOSITY GAP technique. Open a knowledge gap the viewer feels compelled to close. The viewer must think "wait, WHAT?" and be unable to scroll away.

@@ -28,15 +28,38 @@ async function getAudioDuration(audioPath) {
   }
 }
 
+// --- Concatenate multiple MP3 files via ffmpeg ---
+async function concatAudioFiles(files, outputPath) {
+  const listPath = outputPath.replace(/\.mp3$/, "_concat.txt");
+  const listContent = files
+    .map((f) => `file '${f.replace(/\\/g, "/")}'`)
+    .join("\n");
+  await fs.writeFile(listPath, listContent);
+  try {
+    await execAsync(
+      `ffmpeg -y -f concat -safe 0 -i "${listPath.replace(/\\/g, "/")}" -c copy "${outputPath.replace(/\\/g, "/")}"`,
+      { timeout: 30000 },
+    );
+  } finally {
+    await fs.remove(listPath).catch(() => {});
+  }
+}
+
 // --- Generate TTS audio via ElevenLabs (with word-level timestamps) ---
-async function generateTTS(text, outputPath) {
+async function generateTTS(text, outputPath, rateOverride) {
   const voiceId = brand.voiceId || process.env.ELEVENLABS_VOICE_ID;
-  const voiceSettings = brand.voiceSettings || {
-    stability: 0.2,
-    similarity_boost: 0.8,
-    style: 0.75,
-    speaking_rate: 1.1,
-  };
+  const voiceSettings = Object.assign(
+    {},
+    brand.voiceSettings || {
+      stability: 0.2,
+      similarity_boost: 0.8,
+      style: 0.75,
+      speaking_rate: 1.1,
+    },
+  );
+  if (rateOverride !== undefined) {
+    voiceSettings.speaking_rate = rateOverride;
+  }
   const response = await axios({
     method: "POST",
     url: `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/with-timestamps`,
@@ -130,7 +153,93 @@ async function generateAudio() {
         .trim();
       const outputPath = path.join("output", "audio", `${story.id}.mp3`);
 
-      await generateTTS(ttsText, outputPath);
+      // Dynamic pacing: if story has separate hook/body/cta, generate each
+      // segment at a different speaking rate then concatenate
+      const baseRate = (brand.voiceSettings || {}).speaking_rate || 1.1;
+      if (story.hook && story.body && story.cta) {
+        const cleanSegment = (raw) =>
+          (raw || "")
+            .replace(/\[PAUSE\]/gi, ", ")
+            .replace(/\[VISUAL:[^\]]*\]/gi, "")
+            .replace(/\.{2,}/g, ".")
+            .replace(/[*_~`#|]/g, "")
+            .replace(/[\u201C\u201D]/g, '"')
+            .replace(/[\u2018\u2019]/g, "'")
+            .replace(/[\u2013\u2014]/g, " - ")
+            .replace(/(\w)-(\w)/g, "$1 $2")
+            .replace(/(\d{4})/g, (match) => {
+              const y = parseInt(match);
+              if (y >= 2000 && y <= 2009) {
+                const ones = [
+                  "",
+                  "one",
+                  "two",
+                  "three",
+                  "four",
+                  "five",
+                  "six",
+                  "seven",
+                  "eight",
+                  "nine",
+                ];
+                return y === 2000
+                  ? "two thousand"
+                  : `two thousand and ${ones[y - 2000]}`;
+              }
+              if (y >= 2010 && y <= 2099)
+                return `twenty ${match.slice(2, 4).replace(/^0/, "")}`;
+              return match;
+            })
+            .replace(/[^\x20-\x7E.,'!?;:\-()"/]/g, "")
+            .replace(/\s+/g, " ")
+            .replace(/\.\s*\./g, ".")
+            .replace(/\.\s*,/g, ",")
+            .replace(/,\s*,/g, ",")
+            .trim();
+
+        const segments = [
+          {
+            text: cleanSegment(story.hook),
+            rate: baseRate * 1.05,
+            label: "hook",
+          },
+          {
+            text: cleanSegment(story.body),
+            rate: baseRate * 0.95,
+            label: "body",
+          },
+          { text: cleanSegment(story.cta), rate: baseRate * 1.0, label: "cta" },
+        ].filter((s) => s.text.length > 0);
+
+        if (segments.length > 1) {
+          console.log(
+            `[audio] Dynamic pacing: ${segments.length} segments at rates [${segments.map((s) => s.rate.toFixed(2)).join(", ")}]`,
+          );
+          const segmentPaths = [];
+          for (const seg of segments) {
+            const segPath = path.join(
+              "output",
+              "audio",
+              `${story.id}_${seg.label}.mp3`,
+            );
+            await generateTTS(seg.text, segPath, seg.rate);
+            segmentPaths.push(segPath);
+          }
+          await concatAudioFiles(segmentPaths, outputPath);
+          // Clean up segment files
+          for (const sp of segmentPaths) {
+            await fs.remove(sp).catch(() => {});
+            await fs
+              .remove(sp.replace(/\.mp3$/, "_timestamps.json"))
+              .catch(() => {});
+          }
+        } else {
+          // Only one non-empty segment, use single call
+          await generateTTS(ttsText, outputPath);
+        }
+      } else {
+        await generateTTS(ttsText, outputPath);
+      }
 
       // Duration enforcement - check if video will clear 61s
       const audioDuration = await getAudioDuration(outputPath);

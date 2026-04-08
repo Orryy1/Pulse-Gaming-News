@@ -10,8 +10,8 @@
  *   await postVideoUpload(story);
  */
 
-const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
-const config = require('./config');
+const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
+const config = require("./config");
 
 let _client = null;
 let _ready = false;
@@ -23,16 +23,18 @@ let _ready = false;
 function getClient() {
   // If bot.js is already running, reuse its client
   try {
-    const bot = require('./bot');
+    const bot = require("./bot");
     if (bot.client && bot.client.isReady()) return Promise.resolve(bot.client);
-  } catch (e) { /* bot.js not loaded */ }
+  } catch (e) {
+    /* bot.js not loaded */
+  }
 
   // Create a lightweight client for posting only
   if (_client && _ready) return Promise.resolve(_client);
 
   if (_client) {
     return new Promise((resolve) => {
-      _client.once('ready', () => {
+      _client.once("ready", () => {
         _ready = true;
         resolve(_client);
       });
@@ -43,22 +45,24 @@ function getClient() {
   _ready = false;
 
   const promise = new Promise((resolve, reject) => {
-    _client.once('ready', () => {
+    _client.once("ready", () => {
       _ready = true;
-      console.log('[AutoPost] Discord client ready.');
+      console.log("[AutoPost] Discord client ready.");
       resolve(_client);
     });
-    _client.once('error', reject);
+    _client.once("error", reject);
   });
 
   const token = process.env.DISCORD_BOT_TOKEN || config.BOT_TOKEN;
   if (!token) {
-    console.error('[AutoPost] No DISCORD_BOT_TOKEN set. Skipping Discord post.');
+    console.error(
+      "[AutoPost] No DISCORD_BOT_TOKEN set. Skipping Discord post.",
+    );
     return Promise.resolve(null);
   }
 
   _client.login(token).catch((err) => {
-    console.error('[AutoPost] Failed to login:', err.message);
+    console.error("[AutoPost] Failed to login:", err.message);
   });
 
   return promise;
@@ -68,36 +72,40 @@ function getClient() {
  * Determine the correct news channel based on story flair/classification.
  */
 function getNewsChannel(story) {
-  const flair = (story.flair || '').toLowerCase();
-  const pillar = (story.content_pillar || '').toLowerCase();
+  const flair = (story.flair || "").toLowerCase();
+  const pillar = (story.content_pillar || "").toLowerCase();
   const breakingScore = story.breaking_score || 0;
 
   // High breaking score goes to #breaking-news
-  if (breakingScore >= 80) return 'breaking-news';
+  if (breakingScore >= 80) return "breaking-news";
 
   // Classification-based routing
-  if (flair === 'verified' || flair === 'confirmed' || pillar.includes('confirmed')) {
-    return 'confirmed';
+  if (
+    flair === "verified" ||
+    flair === "confirmed" ||
+    pillar.includes("confirmed")
+  ) {
+    return "confirmed";
   }
-  if (flair === 'highly likely' || pillar.includes('source breakdown')) {
-    return 'leaks';
+  if (flair === "highly likely" || pillar.includes("source breakdown")) {
+    return "leaks";
   }
-  if (flair === 'rumour' || flair === 'rumor' || pillar.includes('rumour')) {
-    return 'rumours';
+  if (flair === "rumour" || flair === "rumor" || pillar.includes("rumour")) {
+    return "rumours";
   }
 
   // Default to breaking-news for anything else
-  return 'breaking-news';
+  return "breaking-news";
 }
 
 /**
  * Map classification to embed colour.
  */
 function classColour(flair) {
-  const f = (flair || '').toLowerCase();
-  if (f === 'verified' || f === 'confirmed') return config.COLOURS.GREEN;
-  if (f === 'highly likely') return config.COLOURS.AMBER;
-  if (f === 'rumour' || f === 'rumor') return config.COLOURS.RED;
+  const f = (flair || "").toLowerCase();
+  if (f === "verified" || f === "confirmed") return config.COLOURS.GREEN;
+  if (f === "highly likely") return config.COLOURS.AMBER;
+  if (f === "rumour" || f === "rumor") return config.COLOURS.RED;
   return config.COLOURS.GREY;
 }
 
@@ -105,11 +113,11 @@ function classColour(flair) {
  * Build the classification badge text.
  */
 function badge(flair) {
-  const f = (flair || '').toLowerCase();
-  if (f === 'verified' || f === 'confirmed') return '✅ CONFIRMED';
-  if (f === 'highly likely') return '🔶 HIGHLY LIKELY';
-  if (f === 'rumour' || f === 'rumor') return '🔴 RUMOUR';
-  return '📰 NEWS';
+  const f = (flair || "").toLowerCase();
+  if (f === "verified" || f === "confirmed") return "✅ CONFIRMED";
+  if (f === "highly likely") return "🔶 HIGHLY LIKELY";
+  if (f === "rumour" || f === "rumor") return "🔴 RUMOUR";
+  return "📰 NEWS";
 }
 
 /**
@@ -125,7 +133,9 @@ async function postNewStory(story) {
     const channelId = idMap.channels && idMap.channels[channelName];
 
     if (!channelId) {
-      console.error(`[AutoPost] Channel "${channelName}" not found in id_map.json. Run setup.js first.`);
+      console.error(
+        `[AutoPost] Channel "${channelName}" not found in id_map.json. Run setup.js first.`,
+      );
       return null;
     }
 
@@ -137,32 +147,53 @@ async function postNewStory(story) {
 
     const embed = new EmbedBuilder()
       .setColor(classColour(story.flair))
-      .setTitle(story.title || 'Untitled Story')
+      .setTitle(story.title || "Untitled Story")
       .setURL(story.url || null)
       .setDescription(
         `${badge(story.flair)}\n\n` +
-        (story.hook ? `**${story.hook}**\n\n` : '') +
-        (story.body ? story.body.substring(0, 500) + (story.body.length > 500 ? '...' : '') : '')
+          (story.hook
+            ? `**${story.hook
+                .replace(/\[PAUSE\]/gi, "")
+                .replace(/\[VISUAL:[^\]]*\]/gi, "")
+                .trim()}**\n\n`
+            : "") +
+          (story.body
+            ? story.body
+                .replace(/\[PAUSE\]/gi, "")
+                .replace(/\[VISUAL:[^\]]*\]/gi, "")
+                .trim()
+                .substring(0, 500) + (story.body.length > 500 ? "..." : "")
+            : ""),
       )
       .addFields(
-        { name: 'Source', value: story.subreddit || story.source_type || 'Unknown', inline: true },
-        { name: 'Pillar', value: story.content_pillar || 'News', inline: true },
+        {
+          name: "Source",
+          value: story.subreddit || story.source_type || "Unknown",
+          inline: true,
+        },
+        { name: "Pillar", value: story.content_pillar || "News", inline: true },
       )
-      .setFooter({ text: 'PULSE GAMING - Verified leaks. Every day.' })
+      .setFooter({ text: "PULSE GAMING - Verified leaks. Every day." })
       .setTimestamp(story.timestamp ? new Date(story.timestamp) : new Date());
 
     if (story.breaking_score) {
-      embed.addFields({ name: 'Breaking Score', value: `${story.breaking_score}/100`, inline: true });
+      embed.addFields({
+        name: "Breaking Score",
+        value: `${story.breaking_score}/100`,
+        inline: true,
+      });
     }
 
     // Use story card image as the main embed image if available on disk
-    const fsCore = require('fs');
-    const pathCore = require('path');
+    const fsCore = require("fs");
+    const pathCore = require("path");
     let storyAttachment = null;
     if (story.story_image_path && fsCore.existsSync(story.story_image_path)) {
-      const { AttachmentBuilder } = require('discord.js');
+      const { AttachmentBuilder } = require("discord.js");
       const storyFilename = pathCore.basename(story.story_image_path);
-      storyAttachment = new AttachmentBuilder(story.story_image_path, { name: storyFilename });
+      storyAttachment = new AttachmentBuilder(story.story_image_path, {
+        name: storyFilename,
+      });
       embed.setImage(`attachment://${storyFilename}`);
     } else if (story.article_image) {
       // Fall back to article image as thumbnail if no story card exists
@@ -170,7 +201,11 @@ async function postNewStory(story) {
     }
 
     if (story.youtube_url) {
-      embed.addFields({ name: '▶️ Watch', value: `[YouTube Short](${story.youtube_url})`, inline: false });
+      embed.addFields({
+        name: "▶️ Watch",
+        value: `[YouTube Short](${story.youtube_url})`,
+        inline: false,
+      });
     }
 
     const sendOpts = { embeds: [embed] };
@@ -179,7 +214,7 @@ async function postNewStory(story) {
     console.log(`[AutoPost] Posted story "${story.title}" to #${channelName}`);
     return msg;
   } catch (err) {
-    console.error('[AutoPost] Failed to post story:', err.message);
+    console.error("[AutoPost] Failed to post story:", err.message);
     return null;
   }
 }
@@ -193,10 +228,12 @@ async function postVideoUpload(story) {
     if (!client) return null;
 
     const idMap = config.loadIdMap();
-    const channelId = idMap.channels && idMap.channels['video-drops'];
+    const channelId = idMap.channels && idMap.channels["video-drops"];
 
     if (!channelId) {
-      console.error('[AutoPost] Channel "video-drops" not found in id_map.json. Run setup.js first.');
+      console.error(
+        '[AutoPost] Channel "video-drops" not found in id_map.json. Run setup.js first.',
+      );
       return null;
     }
 
@@ -208,15 +245,26 @@ async function postVideoUpload(story) {
 
     const embed = new EmbedBuilder()
       .setColor(config.COLOURS.AMBER)
-      .setTitle(`🎬 New Video: ${story.title || 'Untitled'}`)
+      .setTitle(`🎬 New Video: ${story.title || "Untitled"}`)
       .setURL(story.youtube_url || null)
       .setDescription(
-        (story.hook ? `**${story.hook}**\n\n` : '') +
-        (story.body ? story.body.substring(0, 300) : '') +
-        '\n\n' +
-        `${badge(story.flair)}`
+        (story.hook
+          ? `**${story.hook
+              .replace(/\[PAUSE\]/gi, "")
+              .replace(/\[VISUAL:[^\]]*\]/gi, "")
+              .trim()}**\n\n`
+          : "") +
+          (story.body
+            ? story.body
+                .replace(/\[PAUSE\]/gi, "")
+                .replace(/\[VISUAL:[^\]]*\]/gi, "")
+                .trim()
+                .substring(0, 300)
+            : "") +
+          "\n\n" +
+          `${badge(story.flair)}`,
       )
-      .setFooter({ text: 'PULSE GAMING' })
+      .setFooter({ text: "PULSE GAMING" })
       .setTimestamp();
 
     if (story.article_image) {
@@ -226,22 +274,30 @@ async function postVideoUpload(story) {
     // Add platform links
     const links = [];
     if (story.youtube_url) links.push(`[YouTube](${story.youtube_url})`);
-    if (story.tiktok_post_id) links.push(`[TikTok](https://tiktok.com/@pulsegamingnews)`);
-    if (story.instagram_media_id) links.push(`[Instagram](https://instagram.com/pulse.gmg)`);
+    if (story.tiktok_post_id)
+      links.push(`[TikTok](https://tiktok.com/@pulsegamingnews)`);
+    if (story.instagram_media_id)
+      links.push(`[Instagram](https://instagram.com/pulse.gmg)`);
 
     if (links.length > 0) {
-      embed.addFields({ name: 'Watch On', value: links.join(' | '), inline: false });
+      embed.addFields({
+        name: "Watch On",
+        value: links.join(" | "),
+        inline: false,
+      });
     }
 
     const msg = await channel.send({
-      content: '🔔 **NEW VIDEO JUST DROPPED!**',
+      content: "🔔 **NEW VIDEO JUST DROPPED!**",
       embeds: [embed],
     });
 
-    console.log(`[AutoPost] Posted video upload for "${story.title}" to #video-drops`);
+    console.log(
+      `[AutoPost] Posted video upload for "${story.title}" to #video-drops`,
+    );
     return msg;
   } catch (err) {
-    console.error('[AutoPost] Failed to post video upload:', err.message);
+    console.error("[AutoPost] Failed to post video upload:", err.message);
     return null;
   }
 }
@@ -255,13 +311,20 @@ async function postStoryForApproval(story) {
     const client = await getClient();
     if (!client) return null;
 
-    const fs = require('fs');
-    const path = require('path');
-    const { ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder } = require('discord.js');
+    const fs = require("fs");
+    const path = require("path");
+    const {
+      ActionRowBuilder,
+      ButtonBuilder,
+      ButtonStyle,
+      AttachmentBuilder,
+    } = require("discord.js");
 
     const idMap = config.loadIdMap();
     // Story approvals go to #mod-log (staff), not #video-drops (public)
-    const channelId = idMap.channels && (idMap.channels['mod-log'] || idMap.channels['video-drops']);
+    const channelId =
+      idMap.channels &&
+      (idMap.channels["mod-log"] || idMap.channels["video-drops"]);
 
     if (!channelId) {
       console.error('[AutoPost] Channel "mod-log" not found in id_map.json.');
@@ -270,14 +333,16 @@ async function postStoryForApproval(story) {
 
     const channel = await client.channels.fetch(channelId).catch(() => null);
     if (!channel) {
-      console.error('[AutoPost] Could not fetch mod-log channel.');
+      console.error("[AutoPost] Could not fetch mod-log channel.");
       return null;
     }
 
     // Load Story image
     const imagePath = story.story_image_path;
     if (!imagePath || !fs.existsSync(imagePath)) {
-      console.log(`[AutoPost] No Story image for "${story.title}" - skipping approval post`);
+      console.log(
+        `[AutoPost] No Story image for "${story.title}" - skipping approval post`,
+      );
       return null;
     }
 
@@ -286,44 +351,54 @@ async function postStoryForApproval(story) {
 
     const embed = new EmbedBuilder()
       .setColor(config.COLOURS.AMBER)
-      .setTitle(`Instagram Story: ${story.title || 'Untitled'}`)
+      .setTitle(`Instagram Story: ${story.title || "Untitled"}`)
       .setDescription(
         `${badge(story.flair)}\n\n` +
-        `**Approve or reject this Story image before it goes live.**\n\n` +
-        (story.hook ? `> ${story.hook}` : '')
+          `**Approve or reject this Story image before it goes live.**\n\n` +
+          (story.hook ? `> ${story.hook}` : ""),
       )
       .setImage(`attachment://${filename}`)
       .addFields(
-        { name: 'Source', value: story.subreddit || story.source_type || 'Unknown', inline: true },
-        { name: 'Score', value: `${story.breaking_score || story.score || 0}`, inline: true },
+        {
+          name: "Source",
+          value: story.subreddit || story.source_type || "Unknown",
+          inline: true,
+        },
+        {
+          name: "Score",
+          value: `${story.breaking_score || story.score || 0}`,
+          inline: true,
+        },
       )
-      .setFooter({ text: 'PULSE GAMING - Story Approval' })
+      .setFooter({ text: "PULSE GAMING - Story Approval" })
       .setTimestamp();
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(`story-approve_${story.id}`)
-        .setLabel('Approve')
+        .setLabel("Approve")
         .setStyle(ButtonStyle.Success)
-        .setEmoji('✅'),
+        .setEmoji("✅"),
       new ButtonBuilder()
         .setCustomId(`story-reject_${story.id}`)
-        .setLabel('Reject')
+        .setLabel("Reject")
         .setStyle(ButtonStyle.Danger)
-        .setEmoji('❌'),
+        .setEmoji("❌"),
     );
 
     const msg = await channel.send({
-      content: '📸 **STORY IMAGE - Awaiting Approval**',
+      content: "📸 **STORY IMAGE - Awaiting Approval**",
       embeds: [embed],
       files: [attachment],
       components: [row],
     });
 
-    console.log(`[AutoPost] Story approval posted for "${story.title}" to #video-drops`);
+    console.log(
+      `[AutoPost] Story approval posted for "${story.title}" to #video-drops`,
+    );
     return msg;
   } catch (err) {
-    console.error('[AutoPost] Failed to post Story for approval:', err.message);
+    console.error("[AutoPost] Failed to post Story for approval:", err.message);
     return null;
   }
 }
@@ -338,7 +413,7 @@ async function postStoryPoll(story) {
     if (!client) return null;
 
     const idMap = config.loadIdMap();
-    const channelId = idMap.channels && idMap.channels['polls'];
+    const channelId = idMap.channels && idMap.channels["polls"];
 
     if (!channelId) {
       console.error('[AutoPost] Channel "polls" not found in id_map.json.');
@@ -347,19 +422,19 @@ async function postStoryPoll(story) {
 
     const channel = await client.channels.fetch(channelId).catch(() => null);
     if (!channel) {
-      console.error('[AutoPost] Could not fetch polls channel.');
+      console.error("[AutoPost] Could not fetch polls channel.");
       return null;
     }
 
     // Generate poll question and options from the story
     const { question, options } = generatePollFromStory(story);
 
-    const { PollLayoutType } = require('discord.js');
+    const { PollLayoutType } = require("discord.js");
 
     const msg = await channel.send({
       poll: {
         question: { text: question },
-        answers: options.map(opt => ({ text: opt })),
+        answers: options.map((opt) => ({ text: opt })),
         duration: 24,
         allowMultiselect: false,
         layoutType: PollLayoutType.Default,
@@ -369,7 +444,7 @@ async function postStoryPoll(story) {
     console.log(`[AutoPost] Poll posted for "${story.title}" to #polls`);
     return msg;
   } catch (err) {
-    console.error('[AutoPost] Failed to post poll:', err.message);
+    console.error("[AutoPost] Failed to post poll:", err.message);
     return null;
   }
 }
@@ -379,44 +454,44 @@ async function postStoryPoll(story) {
  * Uses the story's flair, title and content to craft a relevant community question.
  */
 function generatePollFromStory(story) {
-  const title = story.title || 'this news';
-  const flair = (story.flair || '').toLowerCase();
+  const title = story.title || "this news";
+  const flair = (story.flair || "").toLowerCase();
 
   // Rumour stories - "Do you believe it?"
-  if (flair === 'rumour' || flair === 'rumor') {
+  if (flair === "rumour" || flair === "rumor") {
     return {
       question: `${truncate(title, 280)} - Do you believe this rumour?`,
       options: [
-        'Absolutely, it\'s happening',
-        'Probably true, good sources',
-        'Doubt it, seems fake',
-        'No way, total rubbish',
+        "Absolutely, it's happening",
+        "Probably true, good sources",
+        "Doubt it, seems fake",
+        "No way, total rubbish",
       ],
     };
   }
 
   // Leak stories - "How hyped are you?"
-  if (flair === 'highly likely') {
+  if (flair === "highly likely") {
     return {
       question: `${truncate(title, 280)} - How hyped are you?`,
       options: [
-        'Day one purchase',
-        'Interested, need to see more',
-        'Not for me but cool',
-        'Couldn\'t care less',
+        "Day one purchase",
+        "Interested, need to see more",
+        "Not for me but cool",
+        "Couldn't care less",
       ],
     };
   }
 
   // Confirmed/verified - "Your take?"
-  if (flair === 'verified' || flair === 'confirmed') {
+  if (flair === "verified" || flair === "confirmed") {
     return {
       question: `${truncate(title, 280)} - Your reaction?`,
       options: [
-        'Massive W, love this',
-        'Good news, cautiously optimistic',
-        'Meh, don\'t really care',
-        'This is an L, disappointed',
+        "Massive W, love this",
+        "Good news, cautiously optimistic",
+        "Meh, don't really care",
+        "This is an L, disappointed",
       ],
     };
   }
@@ -425,17 +500,22 @@ function generatePollFromStory(story) {
   return {
     question: `${truncate(title, 280)} - What do you think?`,
     options: [
-      'Excited about this',
-      'Need more details first',
-      'Not sure how to feel',
-      'Not interested',
+      "Excited about this",
+      "Need more details first",
+      "Not sure how to feel",
+      "Not interested",
     ],
   };
 }
 
 function truncate(str, max) {
   if (str.length <= max) return str;
-  return str.substring(0, max - 3) + '...';
+  return str.substring(0, max - 3) + "...";
 }
 
-module.exports = { postNewStory, postVideoUpload, postStoryForApproval, postStoryPoll };
+module.exports = {
+  postNewStory,
+  postVideoUpload,
+  postStoryForApproval,
+  postStoryPoll,
+};

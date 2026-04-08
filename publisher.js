@@ -1,8 +1,8 @@
-const fs = require('fs-extra');
-const dotenv = require('dotenv');
-const sendDiscord = require('./notify');
-const { addBreadcrumb, captureException } = require('./lib/sentry');
-const db = require('./lib/db');
+const fs = require("fs-extra");
+const dotenv = require("dotenv");
+const sendDiscord = require("./notify");
+const { addBreadcrumb, captureException } = require("./lib/sentry");
+const db = require("./lib/db");
 
 dotenv.config({ override: true });
 
@@ -26,7 +26,7 @@ dotenv.config({ override: true });
 
 // --- Auto-approval logic ---
 function shouldAutoApprove(story) {
-  const flair = (story.flair || '').toLowerCase();
+  const flair = (story.flair || "").toLowerCase();
 
   // Auto-approve everything - fully autonomous pipeline, no manual gate
   return true;
@@ -47,7 +47,9 @@ async function autoApprove() {
       story.auto_approved = true;
       story.approved_at = new Date().toISOString();
       approved++;
-      console.log(`[publisher] Auto-approved: ${story.title} (score:${story.breaking_score}, flair:${story.flair})`);
+      console.log(
+        `[publisher] Auto-approved: ${story.title} (score:${story.breaking_score}, flair:${story.flair})`,
+      );
     }
   }
 
@@ -61,12 +63,12 @@ async function autoApprove() {
 
 // --- Full produce pipeline ---
 async function produce() {
-  console.log('[publisher] Running produce pipeline...');
+  console.log("[publisher] Running produce pipeline...");
 
-  const affiliates = require('./affiliates');
-  const audio = require('./audio');
-  const images = require('./images');
-  const assemble = require('./assemble');
+  const affiliates = require("./affiliates");
+  const audio = require("./audio");
+  const images = require("./images");
+  const assemble = require("./assemble");
 
   await affiliates();
   await audio();
@@ -74,21 +76,21 @@ async function produce() {
   await assemble();
 
   // Generate Instagram Story images for each produced video
-  const { generateStoryImages } = require('./images_story');
+  const { generateStoryImages } = require("./images_story");
   await generateStoryImages();
 
-  console.log('[publisher] Produce pipeline complete');
+  console.log("[publisher] Produce pipeline complete");
 }
 
 // --- Staggered multi-platform upload ---
 async function publishToAllPlatforms() {
-  console.log('[publisher] === Multi-Platform Publish ===');
+  console.log("[publisher] === Multi-Platform Publish ===");
 
   const results = { youtube: [], tiktok: [], instagram: [] };
 
   // YouTube Shorts (first priority)
   try {
-    const { uploadAll: ytUpload } = require('./upload_youtube');
+    const { uploadAll: ytUpload } = require("./upload_youtube");
     results.youtube = await ytUpload();
     console.log(`[publisher] YouTube: ${results.youtube.length} uploaded`);
   } catch (err) {
@@ -96,14 +98,14 @@ async function publishToAllPlatforms() {
   }
 
   // Wait 60 minutes before TikTok (staggered posting for algorithm)
-  if (process.env.STAGGER_UPLOADS !== 'false') {
-    console.log('[publisher] Waiting 60 min before TikTok upload...');
-    await new Promise(r => setTimeout(r, 60 * 60 * 1000));
+  if (process.env.STAGGER_UPLOADS !== "false") {
+    console.log("[publisher] Waiting 60 min before TikTok upload...");
+    await new Promise((r) => setTimeout(r, 60 * 60 * 1000));
   }
 
   // TikTok
   try {
-    const { uploadAll: ttUpload } = require('./upload_tiktok');
+    const { uploadAll: ttUpload } = require("./upload_tiktok");
     results.tiktok = await ttUpload();
     console.log(`[publisher] TikTok: ${results.tiktok.length} uploaded`);
   } catch (err) {
@@ -111,14 +113,14 @@ async function publishToAllPlatforms() {
   }
 
   // Wait another 60 minutes before Instagram
-  if (process.env.STAGGER_UPLOADS !== 'false') {
-    console.log('[publisher] Waiting 60 min before Instagram upload...');
-    await new Promise(r => setTimeout(r, 60 * 60 * 1000));
+  if (process.env.STAGGER_UPLOADS !== "false") {
+    console.log("[publisher] Waiting 60 min before Instagram upload...");
+    await new Promise((r) => setTimeout(r, 60 * 60 * 1000));
   }
 
   // Instagram Reels
   try {
-    const { uploadAll: igUpload } = require('./upload_instagram');
+    const { uploadAll: igUpload } = require("./upload_instagram");
     results.instagram = await igUpload();
     console.log(`[publisher] Instagram: ${results.instagram.length} uploaded`);
   } catch (err) {
@@ -131,49 +133,75 @@ async function publishToAllPlatforms() {
 // --- Full autonomous cycle: hunt → approve → produce → publish ---
 async function fullAutonomousCycle() {
   const startTime = Date.now();
-  console.log('[publisher] ========================================');
-  console.log('[publisher] FULL AUTONOMOUS CYCLE STARTED');
+  console.log("[publisher] ========================================");
+  console.log("[publisher] FULL AUTONOMOUS CYCLE STARTED");
   console.log(`[publisher] ${new Date().toISOString()}`);
-  console.log('[publisher] ========================================');
+  console.log("[publisher] ========================================");
 
   try {
     // Step 1: Hunt for news
-    addBreadcrumb('Starting hunt for news', 'pipeline');
-    console.log('[publisher] Step 1/4: Hunting for news...');
-    const hunt = require('./hunter');
-    const process_stories = require('./processor');
+    addBreadcrumb("Starting hunt for news", "pipeline");
+    console.log("[publisher] Step 1/4: Hunting for news...");
+    const hunt = require("./hunter");
+    const process_stories = require("./processor");
 
     const existingStories = await db.getStories();
-    const existingIds = new Set(existingStories.map(s => s.id));
+    const existingIds = new Set(existingStories.map((s) => s.id));
 
     const posts = await hunt();
-    const newPosts = posts.filter(p => !existingIds.has(p.id));
+    const newPosts = posts.filter((p) => {
+      if (existingIds.has(p.id)) return false;
+      // Title similarity check - catches same story from different sources/RSS IDs
+      const similar = existingStories.find((e) => {
+        if (!e.title || !p.title) return false;
+        const wordsA = new Set(e.title.toLowerCase().split(/\s+/));
+        const wordsB = new Set(p.title.toLowerCase().split(/\s+/));
+        const intersection = [...wordsA].filter((w) => wordsB.has(w));
+        const union = new Set([...wordsA, ...wordsB]);
+        return intersection.length / union.size > 0.5;
+      });
+      if (similar) {
+        console.log(
+          `[publisher] Dedup (title match): "${p.title}" ~ "${similar.title}"`,
+        );
+        return false;
+      }
+      return true;
+    });
 
     if (newPosts.length > 0) {
-      await fs.writeJson('pending_news.json', {
-        timestamp: new Date().toISOString(),
-        stories: newPosts,
-      }, { spaces: 2 });
+      await fs.writeJson(
+        "pending_news.json",
+        {
+          timestamp: new Date().toISOString(),
+          stories: newPosts,
+        },
+        { spaces: 2 },
+      );
 
       await process_stories();
 
       // Merge new with existing
       const processed = await db.getStories();
       if (existingStories.length > 0) {
-        const processedIds = new Set(processed.map(s => s.id));
-        const toMerge = existingStories.filter(s => !processedIds.has(s.id));
+        const processedIds = new Set(processed.map((s) => s.id));
+        const toMerge = existingStories.filter((s) => !processedIds.has(s.id));
         const merged = [...processed, ...toMerge];
         await db.saveStories(merged);
       }
 
-      await sendDiscord(`**🔎 Pulse Gaming Hunt Complete**\n${newPosts.length} new stories found`);
+      await sendDiscord(
+        `**🔎 Pulse Gaming Hunt Complete**\n${newPosts.length} new stories found`,
+      );
     } else {
-      console.log('[publisher] No new stories found');
+      console.log("[publisher] No new stories found");
     }
 
     // Step 2: Auto-approve
-    addBreadcrumb('Auto-approving stories', 'pipeline');
-    console.log('[publisher] Step 2/4: Auto-approving high-confidence stories...');
+    addBreadcrumb("Auto-approving stories", "pipeline");
+    console.log(
+      "[publisher] Step 2/4: Auto-approving high-confidence stories...",
+    );
     const approvedCount = await autoApprove();
 
     if (approvedCount > 0) {
@@ -182,54 +210,63 @@ async function fullAutonomousCycle() {
 
     // Notify about stories needing manual review
     const allStories = await db.getStories();
-    const pendingReview = allStories.filter(s => !s.approved);
+    const pendingReview = allStories.filter((s) => !s.approved);
     if (pendingReview.length > 0) {
-      const dashUrl = process.env.RAILWAY_PUBLIC_URL || 'http://localhost:3001';
-      const storyList = pendingReview.slice(0, 8).map(s =>
-        `• [${s.flair}] (${s.breaking_score || 0}) ${s.title}`
-      ).join('\n');
+      const dashUrl = process.env.RAILWAY_PUBLIC_URL || "http://localhost:3001";
+      const storyList = pendingReview
+        .slice(0, 8)
+        .map((s) => `• [${s.flair}] (${s.breaking_score || 0}) ${s.title}`)
+        .join("\n");
       await sendDiscord(
         `**⚠️ ${pendingReview.length} stories need your review**\n` +
-        `${storyList}\n\n` +
-        `👉 Review & approve: ${dashUrl}`
+          `${storyList}\n\n` +
+          `👉 Review & approve: ${dashUrl}`,
       );
     }
 
     // Step 3: Produce (audio, images, video)
-    addBreadcrumb('Producing assets', 'pipeline');
-    console.log('[publisher] Step 3/4: Producing assets...');
+    addBreadcrumb("Producing assets", "pipeline");
+    console.log("[publisher] Step 3/4: Producing assets...");
     await produce();
 
     // Step 4: Publish to all platforms
-    if (process.env.AUTO_PUBLISH === 'true') {
-      addBreadcrumb('Publishing to all platforms', 'pipeline');
-      console.log('[publisher] Step 4/4: Publishing to all platforms...');
+    if (process.env.AUTO_PUBLISH === "true") {
+      addBreadcrumb("Publishing to all platforms", "pipeline");
+      console.log("[publisher] Step 4/4: Publishing to all platforms...");
       const results = await publishToAllPlatforms();
 
-      const totalUploaded = results.youtube.length + results.tiktok.length + results.instagram.length;
+      const totalUploaded =
+        results.youtube.length +
+        results.tiktok.length +
+        results.instagram.length;
       await sendDiscord(
         `**Pulse Gaming Auto-Publish Complete**\n` +
-        `YouTube: ${results.youtube.length} | TikTok: ${results.tiktok.length} | Instagram: ${results.instagram.length}\n` +
-        `Total: ${totalUploaded} uploads across all platforms`
+          `YouTube: ${results.youtube.length} | TikTok: ${results.tiktok.length} | Instagram: ${results.instagram.length}\n` +
+          `Total: ${totalUploaded} uploads across all platforms`,
       );
     } else {
-      console.log('[publisher] Step 4/4: AUTO_PUBLISH not enabled, skipping uploads');
-      await sendDiscord('**Pulse Gaming Produce Complete** - Videos ready. Set AUTO_PUBLISH=true to enable uploads.');
+      console.log(
+        "[publisher] Step 4/4: AUTO_PUBLISH not enabled, skipping uploads",
+      );
+      await sendDiscord(
+        "**Pulse Gaming Produce Complete** - Videos ready. Set AUTO_PUBLISH=true to enable uploads.",
+      );
     }
 
     const elapsed = Math.round((Date.now() - startTime) / 1000);
     console.log(`[publisher] Autonomous cycle complete in ${elapsed}s`);
-
   } catch (err) {
-    captureException(err, { step: 'fullAutonomousCycle' });
+    captureException(err, { step: "fullAutonomousCycle" });
     console.log(`[publisher] CYCLE ERROR: ${err.message}`);
-    await sendDiscord(`**Pulse Gaming ERROR**\nAutonomous cycle failed: ${err.message}`);
+    await sendDiscord(
+      `**Pulse Gaming ERROR**\nAutonomous cycle failed: ${err.message}`,
+    );
   }
 }
 
 // --- Publish-only cycle (for the evening optimal posting window) ---
 async function publishOnlyCycle() {
-  console.log('[publisher] === PUBLISH-ONLY CYCLE ===');
+  console.log("[publisher] === PUBLISH-ONLY CYCLE ===");
 
   try {
     // Auto-approve any remaining stories
@@ -239,10 +276,15 @@ async function publishOnlyCycle() {
     await produce();
 
     // Publish
-    if (process.env.AUTO_PUBLISH === 'true') {
+    if (process.env.AUTO_PUBLISH === "true") {
       const results = await publishToAllPlatforms();
-      const total = results.youtube.length + results.tiktok.length + results.instagram.length;
-      await sendDiscord(`**Evening Publish Complete** - ${total} videos posted across platforms`);
+      const total =
+        results.youtube.length +
+        results.tiktok.length +
+        results.instagram.length;
+      await sendDiscord(
+        `**Evening Publish Complete** - ${total} videos posted across platforms`,
+      );
     }
   } catch (err) {
     console.log(`[publisher] Publish cycle error: ${err.message}`);
@@ -257,38 +299,76 @@ async function publishNextStory() {
 
   // Find stories that still need publishing to at least one platform.
   // This includes brand-new stories AND partially-published ones (e.g. YT succeeded but IG/FB failed).
-  const ready = stories.filter(s => {
+  const ready = stories.filter((s) => {
     if (!s.approved || !s.exported_path) return false;
-    const platformsDone = [s.youtube_post_id, s.tiktok_post_id, s.instagram_media_id, s.facebook_post_id, s.twitter_post_id].filter(Boolean).length;
+    const platformsDone = [
+      s.youtube_post_id,
+      s.tiktok_post_id,
+      s.instagram_media_id,
+      s.facebook_post_id,
+      s.twitter_post_id,
+    ].filter(Boolean).length;
     return platformsDone < 5;
   });
 
   if (ready.length === 0) {
-    console.log('[publisher] No stories need publishing');
+    console.log("[publisher] No stories need publishing");
     return null;
   }
 
   // Prioritise: unpublished stories first (0 platforms), then partial, then by score
   ready.sort((a, b) => {
-    const aDone = [a.youtube_post_id, a.tiktok_post_id, a.instagram_media_id, a.facebook_post_id, a.twitter_post_id].filter(Boolean).length;
-    const bDone = [b.youtube_post_id, b.tiktok_post_id, b.instagram_media_id, b.facebook_post_id, b.twitter_post_id].filter(Boolean).length;
+    const aDone = [
+      a.youtube_post_id,
+      a.tiktok_post_id,
+      a.instagram_media_id,
+      a.facebook_post_id,
+      a.twitter_post_id,
+    ].filter(Boolean).length;
+    const bDone = [
+      b.youtube_post_id,
+      b.tiktok_post_id,
+      b.instagram_media_id,
+      b.facebook_post_id,
+      b.twitter_post_id,
+    ].filter(Boolean).length;
     if (aDone !== bDone) return aDone - bDone; // fewer platforms done = higher priority
-    return (b.breaking_score || b.score || 0) - (a.breaking_score || a.score || 0);
+    return (
+      (b.breaking_score || b.score || 0) - (a.breaking_score || a.score || 0)
+    );
   });
 
   const story = ready[0];
-  const isRetry = !!(story.youtube_post_id || story.tiktok_post_id || story.instagram_media_id || story.facebook_post_id || story.twitter_post_id);
-  console.log(`[publisher] Publishing${isRetry ? ' (retry)' : ''}: "${story.title}" (score: ${story.breaking_score || story.score || 0})`);
+  const isRetry = !!(
+    story.youtube_post_id ||
+    story.tiktok_post_id ||
+    story.instagram_media_id ||
+    story.facebook_post_id ||
+    story.twitter_post_id
+  );
+  console.log(
+    `[publisher] Publishing${isRetry ? " (retry)" : ""}: "${story.title}" (score: ${story.breaking_score || story.score || 0})`,
+  );
 
-  const result = { title: story.title, youtube: false, tiktok: false, instagram: false, facebook: false, twitter: false, errors: {} };
+  const result = {
+    title: story.title,
+    youtube: false,
+    tiktok: false,
+    instagram: false,
+    facebook: false,
+    twitter: false,
+    errors: {},
+  };
 
   // YouTube - skip if already published
   if (story.youtube_post_id) {
     result.youtube = true;
-    console.log(`[publisher] YouTube: already published (${story.youtube_post_id})`);
+    console.log(
+      `[publisher] YouTube: already published (${story.youtube_post_id})`,
+    );
   } else {
     try {
-      const { uploadShort } = require('./upload_youtube');
+      const { uploadShort } = require("./upload_youtube");
       const ytResult = await uploadShort(story);
       story.youtube_post_id = ytResult.videoId;
       story.youtube_url = ytResult.url;
@@ -297,7 +377,7 @@ async function publishNextStory() {
       console.log(`[publisher] YouTube: ${ytResult.url}`);
 
       if (story.title_variants && story.title_variants.length > 1) {
-        story.title_check_at = Date.now() + (2 * 60 * 60 * 1000);
+        story.title_check_at = Date.now() + 2 * 60 * 60 * 1000;
       }
     } catch (err) {
       console.log(`[publisher] YouTube upload failed: ${err.message}`);
@@ -309,10 +389,12 @@ async function publishNextStory() {
   // TikTok - skip if already published
   if (story.tiktok_post_id) {
     result.tiktok = true;
-    console.log(`[publisher] TikTok: already published (${story.tiktok_post_id})`);
+    console.log(
+      `[publisher] TikTok: already published (${story.tiktok_post_id})`,
+    );
   } else {
     try {
-      const { uploadShort: ttUpload } = require('./upload_tiktok');
+      const { uploadShort: ttUpload } = require("./upload_tiktok");
       const ttResult = await ttUpload(story);
       story.tiktok_post_id = ttResult.publishId;
       story.tiktok_error = null;
@@ -328,10 +410,12 @@ async function publishNextStory() {
   // Instagram - skip if already published
   if (story.instagram_media_id) {
     result.instagram = true;
-    console.log(`[publisher] Instagram: already published (${story.instagram_media_id})`);
+    console.log(
+      `[publisher] Instagram: already published (${story.instagram_media_id})`,
+    );
   } else {
     try {
-      const { uploadShort: igUpload } = require('./upload_instagram');
+      const { uploadShort: igUpload } = require("./upload_instagram");
       const igResult = await igUpload(story);
       story.instagram_media_id = igResult.mediaId;
       story.instagram_error = null;
@@ -347,10 +431,12 @@ async function publishNextStory() {
   // Facebook Reels - skip if already published
   if (story.facebook_post_id) {
     result.facebook = true;
-    console.log(`[publisher] Facebook: already published (${story.facebook_post_id})`);
+    console.log(
+      `[publisher] Facebook: already published (${story.facebook_post_id})`,
+    );
   } else {
     try {
-      const { uploadShort: fbUpload } = require('./upload_facebook');
+      const { uploadShort: fbUpload } = require("./upload_facebook");
       const fbResult = await fbUpload(story);
       story.facebook_post_id = fbResult.videoId;
       story.facebook_error = null;
@@ -366,10 +452,12 @@ async function publishNextStory() {
   // X/Twitter - skip if already published
   if (story.twitter_post_id) {
     result.twitter = true;
-    console.log(`[publisher] Twitter: already published (${story.twitter_post_id})`);
+    console.log(
+      `[publisher] Twitter: already published (${story.twitter_post_id})`,
+    );
   } else {
     try {
-      const { uploadShort: twUpload } = require('./upload_twitter');
+      const { uploadShort: twUpload } = require("./upload_twitter");
       const twResult = await twUpload(story);
       story.twitter_post_id = twResult.tweetId;
       story.twitter_error = null;
@@ -383,13 +471,19 @@ async function publishNextStory() {
   }
 
   // Set publish status based on total platforms done (including previously successful ones)
-  const totalDone = [story.youtube_post_id, story.tiktok_post_id, story.instagram_media_id, story.facebook_post_id, story.twitter_post_id].filter(Boolean).length;
+  const totalDone = [
+    story.youtube_post_id,
+    story.tiktok_post_id,
+    story.instagram_media_id,
+    story.facebook_post_id,
+    story.twitter_post_id,
+  ].filter(Boolean).length;
   if (totalDone >= 5) {
-    story.publish_status = 'published';
+    story.publish_status = "published";
   } else if (totalDone > 0) {
-    story.publish_status = 'partial';
+    story.publish_status = "partial";
   } else {
-    story.publish_status = 'failed';
+    story.publish_status = "failed";
   }
   if (!story.published_at && totalDone > 0) {
     story.published_at = new Date().toISOString();
@@ -399,10 +493,12 @@ async function publishNextStory() {
   if (!isRetry && story.story_image_path) {
     // Instagram Stories
     try {
-      const { uploadStoryImage: igStory } = require('./upload_instagram');
+      const { uploadStoryImage: igStory } = require("./upload_instagram");
       const igStoryResult = await igStory(story);
       story.instagram_story_id = igStoryResult.mediaId;
-      console.log(`[publisher] Instagram Story: uploaded (${igStoryResult.mediaId})`);
+      console.log(
+        `[publisher] Instagram Story: uploaded (${igStoryResult.mediaId})`,
+      );
     } catch (err) {
       console.log(`[publisher] Instagram Story upload failed: ${err.message}`);
       result.errors.instagram_story = err.message;
@@ -410,10 +506,12 @@ async function publishNextStory() {
 
     // Facebook Stories
     try {
-      const { uploadStoryImage: fbStory } = require('./upload_facebook');
+      const { uploadStoryImage: fbStory } = require("./upload_facebook");
       const fbStoryResult = await fbStory(story);
       story.facebook_story_id = fbStoryResult.storyId;
-      console.log(`[publisher] Facebook Story: uploaded (${fbStoryResult.storyId})`);
+      console.log(
+        `[publisher] Facebook Story: uploaded (${fbStoryResult.storyId})`,
+      );
     } catch (err) {
       console.log(`[publisher] Facebook Story upload failed: ${err.message}`);
       result.errors.facebook_story = err.message;
@@ -421,10 +519,12 @@ async function publishNextStory() {
 
     // Twitter/X image tweet
     try {
-      const { postImageTweet } = require('./upload_twitter');
+      const { postImageTweet } = require("./upload_twitter");
       const twImgResult = await postImageTweet(story);
       story.twitter_image_tweet_id = twImgResult.tweetId;
-      console.log(`[publisher] Twitter image tweet: posted (${twImgResult.tweetId})`);
+      console.log(
+        `[publisher] Twitter image tweet: posted (${twImgResult.tweetId})`,
+      );
     } catch (err) {
       console.log(`[publisher] Twitter image tweet failed: ${err.message}`);
       result.errors.twitter_image = err.message;
@@ -433,24 +533,37 @@ async function publishNextStory() {
 
   // Schedule first-hour engagement pass (only on first successful YT publish)
   if (story.youtube_post_id && !isRetry) {
-    setTimeout(async () => {
-      try {
-        const { engageFirstHour } = require('./engagement');
-        await engageFirstHour(story.youtube_post_id, story);
-      } catch (err) {
-        console.log(`[publisher] First-hour engagement failed: ${err.message}`);
-      }
-    }, 5 * 60 * 1000);
-    console.log(`[publisher] First-hour engagement scheduled for ${story.youtube_post_id} in 5 min`);
+    setTimeout(
+      async () => {
+        try {
+          const { engageFirstHour } = require("./engagement");
+          await engageFirstHour(story.youtube_post_id, story);
+        } catch (err) {
+          console.log(
+            `[publisher] First-hour engagement failed: ${err.message}`,
+          );
+        }
+      },
+      5 * 60 * 1000,
+    );
+    console.log(
+      `[publisher] First-hour engagement scheduled for ${story.youtube_post_id} in 5 min`,
+    );
   }
 
   // Generate poll/engagement pinned comment (only on first publish, not retries)
   if (!isRetry) {
     try {
-      const { generatePollComment, pinComment: pinEngagement } = require('./engagement');
+      const {
+        generatePollComment,
+        pinComment: pinEngagement,
+      } = require("./engagement");
       const pollComment = await generatePollComment(story);
       if (pollComment && story.youtube_post_id) {
-        const commentId = await pinEngagement(story.youtube_post_id, pollComment);
+        const commentId = await pinEngagement(
+          story.youtube_post_id,
+          pollComment,
+        );
         if (commentId) {
           story.engagement_comment_id = commentId;
           console.log(`[publisher] Engagement comment pinned: ${commentId}`);
@@ -464,24 +577,28 @@ async function publishNextStory() {
   // Generate blog post (only on first publish)
   if (!isRetry) {
     try {
-      const { generateAndSaveBlogPost } = require('./blog/generator');
+      const { generateAndSaveBlogPost } = require("./blog/generator");
       await generateAndSaveBlogPost(story);
     } catch (err) {
-      console.log('[publisher] Blog generation skipped: ' + err.message);
+      console.log("[publisher] Blog generation skipped: " + err.message);
     }
   }
 
   // Post to Discord channels, video drops only (news already posted by processor.js)
   try {
-    const { postVideoUpload, postStoryPoll } = require('./discord/auto_post');
+    const { postVideoUpload, postStoryPoll } = require("./discord/auto_post");
     // Only post to #video-drops on first publish with an actual video URL
-    if (!isRetry && (story.youtube_url || story.tiktok_post_id || story.instagram_media_id)) {
+    if (
+      !isRetry &&
+      (story.youtube_url || story.tiktok_post_id || story.instagram_media_id)
+    ) {
       await postVideoUpload(story);
     }
     if (!isRetry) {
       await postStoryPoll(story);
     }
-    if (!isRetry) console.log(`[publisher] Discord: posted to video-drops + polls`);
+    if (!isRetry)
+      console.log(`[publisher] Discord: posted to video-drops + polls`);
   } catch (err) {
     console.log(`[publisher] Discord post skipped: ${err.message}`);
   }
@@ -490,8 +607,13 @@ async function publishNextStory() {
   try {
     await db.saveStories(stories);
   } catch (err) {
-    console.log(`[publisher] CRITICAL: Failed to save story state after publishing: ${err.message}`);
-    captureException(err, { step: 'publishNextStory.saveStories', storyId: story.id });
+    console.log(
+      `[publisher] CRITICAL: Failed to save story state after publishing: ${err.message}`,
+    );
+    captureException(err, {
+      step: "publishNextStory.saveStories",
+      storyId: story.id,
+    });
   }
   return result;
 }
@@ -507,15 +629,15 @@ module.exports = {
 };
 
 if (require.main === module) {
-  const mode = process.argv[2] || 'full';
+  const mode = process.argv[2] || "full";
 
-  if (mode === 'full') {
+  if (mode === "full") {
     fullAutonomousCycle().catch(console.error);
-  } else if (mode === 'publish') {
+  } else if (mode === "publish") {
     publishOnlyCycle().catch(console.error);
-  } else if (mode === 'approve') {
+  } else if (mode === "approve") {
     autoApprove().catch(console.error);
   } else {
-    console.log('Usage: node publisher.js [full|publish|approve]');
+    console.log("Usage: node publisher.js [full|publish|approve]");
   }
 }

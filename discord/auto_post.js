@@ -513,9 +513,116 @@ function truncate(str, max) {
   return str.substring(0, max - 3) + "...";
 }
 
+/**
+ * Pings the "Early Access" role in #video-drops when a new video is published.
+ * Creates an immediate engagement spike for the YouTube/TikTok algorithm.
+ * Awards "Double XP" mention to incentivise first 50 commenters.
+ */
+async function pingEarlyAccess(story, platforms) {
+  try {
+    const client = await getClient();
+    if (!client) return;
+
+    const idMap = config.loadIdMap();
+    const channelId = idMap.channels && idMap.channels["video-drops"];
+    if (!channelId) {
+      console.log(
+        "[discord] No video-drops channel configured for early access ping",
+      );
+      return;
+    }
+
+    const earlyAccessRoleId = idMap.roles && idMap.roles["early-access-role"];
+    const rolePing = earlyAccessRoleId
+      ? `<@&${earlyAccessRoleId}>`
+      : "**@Early Access**";
+
+    const platformLinks = [];
+    if (platforms.youtube) platformLinks.push(`YouTube: ${platforms.youtube}`);
+    if (platforms.tiktok) platformLinks.push(`TikTok: ${platforms.tiktok}`);
+    if (platforms.instagram)
+      platformLinks.push(`Instagram: ${platforms.instagram}`);
+
+    const channel = await client.channels.fetch(channelId);
+    await channel.send({
+      content:
+        `${rolePing} **NEW DROP** - First 50 comments get **Double XP**!\n\n` +
+        `**${story.suggested_title || story.title}**\n` +
+        `${story.hook || ""}\n\n` +
+        `${platformLinks.join("\n")}\n\n` +
+        `Watch, like and comment in the first hour to help us grow!`,
+      allowedMentions: { roles: earlyAccessRoleId ? [earlyAccessRoleId] : [] },
+    });
+
+    console.log("[discord] Early access ping sent to #video-drops");
+  } catch (err) {
+    console.log(`[discord] Early access ping failed: ${err.message}`);
+  }
+}
+
+/**
+ * Fetches recent poll results and generates hook suggestions based on community votes.
+ * Returns an array of { topic, hookSuggestion } objects for the processor to use.
+ */
+async function getPollResults() {
+  try {
+    const client = await getClient();
+    if (!client) return [];
+
+    const idMap = config.loadIdMap();
+    const pollChannelId = idMap.channels && idMap.channels["polls"];
+    if (!pollChannelId) return [];
+
+    const channel = await client.channels.fetch(pollChannelId);
+    const messages = await channel.messages.fetch({ limit: 10 });
+
+    const results = [];
+    for (const msg of messages.values()) {
+      if (!msg.poll) continue;
+
+      const poll = msg.poll;
+      const question = poll.question?.text || "";
+      const totalVotes =
+        poll.answers?.reduce((sum, a) => sum + (a.voteCount || 0), 0) || 0;
+
+      if (totalVotes < 5) continue; // Skip polls with too few votes
+
+      // Find the winning answer
+      const sorted = [...(poll.answers || [])].sort(
+        (a, b) => (b.voteCount || 0) - (a.voteCount || 0),
+      );
+      const winner = sorted[0];
+      const winnerText = winner?.text || "";
+      const winnerPct =
+        totalVotes > 0
+          ? Math.round(((winner?.voteCount || 0) / totalVotes) * 100)
+          : 0;
+
+      // Generate a hook based on the poll result
+      const hookSuggestion = `${winnerPct}% of our community ${winnerText.toLowerCase().includes("yes") || winnerText.toLowerCase().includes("real") ? "believes" : "thinks"} ${question.replace(/\?$/, "")}. Here is why ${winnerPct > 60 ? "they might be right" : "they could be wrong"}.`;
+
+      results.push({
+        question,
+        winnerText,
+        winnerPct,
+        totalVotes,
+        hookSuggestion,
+        messageId: msg.id,
+      });
+    }
+
+    return results;
+  } catch (err) {
+    console.log(`[discord] Poll results fetch failed: ${err.message}`);
+    return [];
+  }
+}
+
 module.exports = {
   postNewStory,
   postVideoUpload,
   postStoryForApproval,
   postStoryPoll,
+  pingEarlyAccess,
+  getPollResults,
 };

@@ -1,16 +1,28 @@
-const fs = require('fs-extra');
-const path = require('path');
+const fs = require("fs-extra");
+const path = require("path");
 
-const HISTORY_PATH = path.join(__dirname, 'analytics_history.json');
-const DAILY_NEWS_PATH = path.join(__dirname, 'daily_news.json');
+const HISTORY_PATH = path.join(__dirname, "analytics_history.json");
+const DAILY_NEWS_PATH = path.join(__dirname, "daily_news.json");
 
 const MIN_DATA_POINTS = 20;
-const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const DAY_NAMES = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+];
 
 const DEFAULT_SCHEDULE = {
-  crons: ['0 7 * * *', '0 13 * * *', '0 19 * * *'],
-  labels: ['07:00 UTC - default morning', '13:00 UTC - default afternoon', '19:00 UTC - default evening'],
-  confidence: 'low',
+  crons: ["0 7 * * *", "0 13 * * *", "0 19 * * *"],
+  labels: [
+    "07:00 UTC - default morning",
+    "13:00 UTC - default afternoon",
+    "19:00 UTC - default evening",
+  ],
+  confidence: "low",
   dataPoints: 0,
 };
 
@@ -21,7 +33,7 @@ const DEFAULT_SCHEDULE = {
  * by cross-referencing daily_news.json for published_at timestamps.
  */
 async function loadEnrichedEntries() {
-  if (!await fs.pathExists(HISTORY_PATH)) return [];
+  if (!(await fs.pathExists(HISTORY_PATH))) return [];
 
   const history = await fs.readJson(HISTORY_PATH);
   const entries = history.entries || [];
@@ -104,7 +116,7 @@ async function analyzeOptimalWindows() {
     };
   }
 
-  const hourBuckets = groupByKey(entries, e => e.publish_hour);
+  const hourBuckets = groupByKey(entries, (e) => e.publish_hour);
 
   // Edge case: all entries at same hour
   if (hourBuckets.length <= 1) {
@@ -113,7 +125,8 @@ async function analyzeOptimalWindows() {
       dataPoints: entries.length,
       singleHour: true,
       hours: hourBuckets,
-      message: 'All entries published at the same hour - insufficient variation to recommend changes.',
+      message:
+        "All entries published at the same hour - insufficient variation to recommend changes.",
     };
   }
 
@@ -144,20 +157,22 @@ async function analyzeDayOfWeek() {
     };
   }
 
-  const dayBuckets = groupByKey(entries, e => e.publish_day);
+  const dayBuckets = groupByKey(entries, (e) => e.publish_day);
 
   if (dayBuckets.length <= 1) {
     return {
       insufficient: false,
       dataPoints: entries.length,
       singleDay: true,
-      best: dayBuckets[0] ? { ...dayBuckets[0], name: DAY_NAMES[dayBuckets[0].key] } : null,
+      best: dayBuckets[0]
+        ? { ...dayBuckets[0], name: DAY_NAMES[dayBuckets[0].key] }
+        : null,
       worst: null,
-      days: dayBuckets.map(d => ({ ...d, name: DAY_NAMES[d.key] })),
+      days: dayBuckets.map((d) => ({ ...d, name: DAY_NAMES[d.key] })),
     };
   }
 
-  const withNames = dayBuckets.map(d => ({ ...d, name: DAY_NAMES[d.key] }));
+  const withNames = dayBuckets.map((d) => ({ ...d, name: DAY_NAMES[d.key] }));
 
   return {
     insufficient: false,
@@ -180,15 +195,15 @@ async function getRecommendedSchedule() {
     return { ...DEFAULT_SCHEDULE, dataPoints: entries.length };
   }
 
-  const hourBuckets = groupByKey(entries, e => e.publish_hour);
+  const hourBuckets = groupByKey(entries, (e) => e.publish_hour);
 
   // Need at least 2 distinct hours to make a recommendation
   if (hourBuckets.length < 2) {
     return {
       ...DEFAULT_SCHEDULE,
-      confidence: 'low',
+      confidence: "low",
       dataPoints: entries.length,
-      reason: 'All entries published at same hour - not enough variation.',
+      reason: "All entries published at same hour - not enough variation.",
     };
   }
 
@@ -196,11 +211,11 @@ async function getRecommendedSchedule() {
   const topHours = hourBuckets.slice(0, Math.min(3, hourBuckets.length));
 
   // Determine confidence based on data volume and spread
-  let confidence = 'medium';
+  let confidence = "medium";
   if (entries.length >= 50 && hourBuckets.length >= 4) {
-    confidence = 'high';
+    confidence = "high";
   } else if (entries.length < 30 || hourBuckets.length < 3) {
-    confidence = 'medium';
+    confidence = "medium";
   }
 
   // Check statistical significance - top hour should be meaningfully better
@@ -209,13 +224,13 @@ async function getRecommendedSchedule() {
     const bottomAvg = hourBuckets[hourBuckets.length - 1].avgVirality;
     // If difference is less than 10%, the signal is weak
     if (bottomAvg > 0 && (topAvg - bottomAvg) / bottomAvg < 0.1) {
-      confidence = confidence === 'high' ? 'medium' : 'low';
+      confidence = confidence === "high" ? "medium" : "low";
     }
   }
 
-  const crons = topHours.map(h => `0 ${h.key} * * *`);
-  const labels = topHours.map(h => {
-    const padded = String(h.key).padStart(2, '0');
+  const crons = topHours.map((h) => `0 ${h.key} * * *`);
+  const labels = topHours.map((h) => {
+    const padded = String(h.key).padStart(2, "0");
     return `${padded}:00 UTC - avg virality ${h.avgVirality} (${h.count} videos)`;
   });
 
@@ -239,44 +254,105 @@ async function getTimingReport() {
   ]);
 
   const lines = [];
-  lines.push('**Publish Timing Analysis**');
-  lines.push(`Data points: ${schedule.dataPoints} | Confidence: ${schedule.confidence}`);
-  lines.push('');
+  lines.push("**Publish Timing Analysis**");
+  lines.push(
+    `Data points: ${schedule.dataPoints} | Confidence: ${schedule.confidence}`,
+  );
+  lines.push("");
 
   // Hour analysis
   if (hourAnalysis.insufficient) {
-    lines.push(`**Hours:** Insufficient data (${hourAnalysis.dataPoints}/${hourAnalysis.required} needed)`);
+    lines.push(
+      `**Hours:** Insufficient data (${hourAnalysis.dataPoints}/${hourAnalysis.required} needed)`,
+    );
   } else if (hourAnalysis.singleHour) {
     lines.push(`**Hours:** ${hourAnalysis.message}`);
   } else {
-    lines.push('**Best Publish Hours (UTC):**');
+    lines.push("**Best Publish Hours (UTC):**");
     for (const h of hourAnalysis.hours) {
-      const padded = String(h.key).padStart(2, '0');
-      lines.push(`  ${padded}:00 - avg virality ${h.avgVirality} (${h.count} videos)`);
+      const padded = String(h.key).padStart(2, "0");
+      lines.push(
+        `  ${padded}:00 - avg virality ${h.avgVirality} (${h.count} videos)`,
+      );
     }
   }
 
-  lines.push('');
+  lines.push("");
 
   // Day analysis
   if (dayAnalysis.insufficient) {
-    lines.push(`**Days:** Insufficient data (${dayAnalysis.dataPoints}/${dayAnalysis.required} needed)`);
+    lines.push(
+      `**Days:** Insufficient data (${dayAnalysis.dataPoints}/${dayAnalysis.required} needed)`,
+    );
   } else if (dayAnalysis.singleDay) {
-    lines.push(`**Days:** All data from ${dayAnalysis.best?.name || 'one day'} - need more spread`);
+    lines.push(
+      `**Days:** All data from ${dayAnalysis.best?.name || "one day"} - need more spread`,
+    );
   } else {
-    lines.push(`**Best Day:** ${dayAnalysis.best.name} - avg virality ${dayAnalysis.best.avgVirality} (${dayAnalysis.best.count} videos)`);
-    lines.push(`**Worst Day:** ${dayAnalysis.worst.name} - avg virality ${dayAnalysis.worst.avgVirality} (${dayAnalysis.worst.count} videos)`);
+    lines.push(
+      `**Best Day:** ${dayAnalysis.best.name} - avg virality ${dayAnalysis.best.avgVirality} (${dayAnalysis.best.count} videos)`,
+    );
+    lines.push(
+      `**Worst Day:** ${dayAnalysis.worst.name} - avg virality ${dayAnalysis.worst.avgVirality} (${dayAnalysis.worst.count} videos)`,
+    );
   }
 
-  lines.push('');
+  lines.push("");
 
   // Active schedule
-  lines.push('**Active Schedule:**');
+  lines.push("**Active Schedule:**");
   for (const label of schedule.labels) {
     lines.push(`  ${label}`);
   }
 
-  return lines.join('\n');
+  return lines.join("\n");
+}
+
+/**
+ * Ghost slot strategy: post 20 minutes before competitors' peak hours.
+ * Loads competitor posting patterns and returns offset cron expressions.
+ */
+async function getGhostSlots() {
+  let competitorPatterns = {};
+  try {
+    const { analyzePostingPatterns } = require("./competitor_monitor");
+    competitorPatterns = await analyzePostingPatterns();
+  } catch (err) {
+    return { slots: [], reason: "Competitor data not available" };
+  }
+
+  // Aggregate peak hours across all competitors
+  const hourVotes = new Array(24).fill(0);
+  for (const pattern of Object.values(competitorPatterns)) {
+    for (const peak of pattern.peakHours || []) {
+      hourVotes[peak.hour] += peak.count;
+    }
+  }
+
+  // Find top 3 competitor peak hours
+  const competitorPeaks = hourVotes
+    .map((votes, hour) => ({ hour, votes }))
+    .filter((h) => h.votes > 0)
+    .sort((a, b) => b.votes - a.votes)
+    .slice(0, 3);
+
+  if (competitorPeaks.length === 0) {
+    return { slots: [], reason: "No competitor peak hours detected" };
+  }
+
+  // Ghost slots: 20 minutes before each competitor peak
+  const ghostSlots = competitorPeaks.map((peak) => {
+    const ghostMinute = 40; // :40 of the previous hour = 20 min before :00
+    const ghostHour = peak.hour === 0 ? 23 : peak.hour - 1;
+    return {
+      cron: `${ghostMinute} ${ghostHour} * * *`,
+      label: `${ghostHour}:${ghostMinute} UTC (ghost: 20min before competitor peak ${peak.hour}:00)`,
+      competitorHour: peak.hour,
+      competitorVotes: peak.votes,
+    };
+  });
+
+  return { slots: ghostSlots, competitorPeaks };
 }
 
 module.exports = {
@@ -284,5 +360,6 @@ module.exports = {
   analyzeDayOfWeek,
   getRecommendedSchedule,
   getTimingReport,
+  getGhostSlots,
   DEFAULT_SCHEDULE,
 };

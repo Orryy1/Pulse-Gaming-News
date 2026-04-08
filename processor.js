@@ -374,6 +374,65 @@ Reply with ONLY a JSON object: { "score": N, "reason": "one sentence" }`,
   }
 }
 
+/**
+ * Sonnet "Smart Editor" pass: uses a stronger model to polish the script
+ * for compliance, authority and natural language flow.
+ * Only runs on scripts that passed the quality gate (score >= 7).
+ */
+async function sonnetEditorPass(client, script, channel) {
+  try {
+    const isFinance = channel.id === "stacked";
+    const complianceRules = isFinance
+      ? '1) Remove any language that sounds like financial advice or a guarantee of returns. 2) Ensure the tone is cynical and professional. 3) Verify "This is not financial advice" appears in the script.'
+      : "1) Ensure the tone matches the channel persona. 2) Remove any filler words or generic phrasing.";
+
+    const response = await client.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 1200,
+      system: `You are an editor-in-chief reviewing a YouTube Shorts script for ${channel.name} (${channel.niche}). Your job is to tighten the writing WITHOUT changing the facts or structure.
+
+Rules:
+${complianceRules}
+3) Verify no serial commas are present. British English only.
+4) If the hook is weak, rewrite it using the Curiosity Gap technique.
+5) Ensure sentence lengths vary (mix short 3-8 word punches with 15-25 word details).
+6) Remove em dashes. Replace with commas or full stops.
+7) Keep the exact same classification tag and word count range (155-185).
+
+Reply with ONLY the edited JSON object in the same format as the input. No explanation.`,
+      messages: [
+        {
+          role: "user",
+          content: JSON.stringify(script),
+        },
+      ],
+    });
+
+    let text = response.content[0].text.trim();
+    if (text.startsWith("```")) {
+      text = text.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "");
+    }
+
+    const edited = JSON.parse(text);
+
+    // Preserve original classification if editor changed it
+    if (
+      script.classification &&
+      edited.classification !== script.classification
+    ) {
+      edited.classification = script.classification;
+    }
+
+    console.log(`[processor] Sonnet editor polished script`);
+    return edited;
+  } catch (err) {
+    console.log(
+      `[processor] Sonnet editor pass failed (non-fatal): ${err.message}`,
+    );
+    return script; // Return original on failure
+  }
+}
+
 function getContentPillar(classification) {
   const c = (classification || "").toLowerCase();
   if (c.includes("confirmed")) return "Confirmed Drop";
@@ -612,6 +671,26 @@ Today's date is ${today}. You MUST follow these rules:
             script = null;
             continue;
           }
+        }
+
+        // Sonnet editor pass - polish high-scoring scripts with a stronger model
+        if (script && qualityScore >= 7) {
+          script = await sonnetEditorPass(client, script, channel);
+          // Re-strip em dashes after editor pass
+          for (const key of [
+            "hook",
+            "body",
+            "cta",
+            "full_script",
+            "suggested_title",
+            "suggested_thumbnail_text",
+          ]) {
+            if (script[key])
+              script[key] = script[key]
+                .replace(/\u2014/g, ",")
+                .replace(/\u2013/g, ",");
+          }
+          sanitiseScript(script);
         }
         break;
       } catch (err) {

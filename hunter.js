@@ -10,6 +10,21 @@ const { getPerformanceBoost } = require("./analytics");
 
 const USER_AGENT = "pulse-gaming-hunter/2.0 (by /u/PulseGamingBot)";
 
+// Rotating browser-style User-Agents for non-OAuth requests (avoids bot detection)
+const BROWSER_USER_AGENTS = [
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0",
+];
+function randomUA() {
+  return BROWSER_USER_AGENTS[
+    Math.floor(Math.random() * BROWSER_USER_AGENTS.length)
+  ];
+}
+
 // --- Reddit OAuth token cache ---
 let redditToken = null;
 let redditTokenExpiry = 0;
@@ -67,7 +82,7 @@ function getRedditHeaders(token) {
       "User-Agent": USER_AGENT,
     };
   }
-  return { "User-Agent": USER_AGENT };
+  return { "User-Agent": randomUA() };
 }
 
 function getRedditBaseUrl(token) {
@@ -163,7 +178,7 @@ async function fetchSubredditRSS(subreddit, sort = "hot") {
 
   try {
     const response = await axios.get(url, {
-      headers: { "User-Agent": USER_AGENT },
+      headers: { "User-Agent": randomUA() },
       timeout: 15000,
       responseType: "text",
     });
@@ -342,7 +357,7 @@ async function fetchTopComment(subreddit, postId) {
 async function fetchRSSFeed(feed) {
   try {
     const response = await axios.get(feed.url, {
-      headers: { "User-Agent": USER_AGENT },
+      headers: { "User-Agent": randomUA() },
       timeout: 15000,
       responseType: "text",
     });
@@ -420,7 +435,7 @@ async function fetchArticleImage(url) {
 
   try {
     const response = await axios.get(url, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; PulseGaming/2.0)" },
+      headers: { "User-Agent": randomUA() },
       timeout: 10000,
       responseType: "text",
       maxRedirects: 3,
@@ -459,12 +474,13 @@ async function fetchArticleImage(url) {
 // --- Search for game key art / screenshots ---
 async function fetchGameImages(gameTitle) {
   const images = [];
+  const steamStats = {};
 
   // Try Steam store search for game art
   try {
     const searchUrl = `https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(gameTitle)}&cc=gb&l=english`;
     const response = await axios.get(searchUrl, {
-      headers: { "User-Agent": USER_AGENT },
+      headers: { "User-Agent": randomUA() },
       timeout: 8000,
     });
 
@@ -493,7 +509,7 @@ async function fetchGameImages(gameTitle) {
       try {
         const detailsRes = await axios.get(
           `https://store.steampowered.com/api/appdetails?appids=${appId}`,
-          { timeout: 8000, headers: { "User-Agent": USER_AGENT } },
+          { timeout: 8000, headers: { "User-Agent": randomUA() } },
         );
         const appData = detailsRes.data?.[appId]?.data;
         if (appData?.screenshots) {
@@ -526,6 +542,30 @@ async function fetchGameImages(gameTitle) {
             }
           }
         }
+        // Extract Steam review score and recommendation count for stat card overlays
+        if (appData?.recommendations?.total) {
+          steamStats.recommendations = appData.recommendations.total;
+        }
+        if (appData?.metacritic?.score) {
+          steamStats.metacriticScore = appData.metacritic.score;
+        }
+        // Steam appdetails includes review_score_desc (e.g. "Very Positive")
+        // and review_score (1-9 scale). We use the Steam review API for percentage.
+        try {
+          const reviewRes = await axios.get(
+            `https://store.steampowered.com/appreviews/${appId}?json=1&language=all&purchase_type=all&num_per_page=0`,
+            { timeout: 5000, headers: { "User-Agent": randomUA() } },
+          );
+          const summary = reviewRes.data?.query_summary;
+          if (summary && summary.total_reviews > 0) {
+            steamStats.reviewScore = Math.round(
+              (summary.total_positive / summary.total_reviews) * 100,
+            );
+            steamStats.playerCount = summary.total_reviews;
+          }
+        } catch (revErr) {
+          /* Steam reviews API failed, non-fatal */
+        }
       } catch (err) {
         /* Steam details failed, no screenshots */
       }
@@ -541,7 +581,7 @@ async function fetchGameImages(gameTitle) {
       // RAWG allows keyless requests with lower rate limits
       const rawgRes = await axios.get(rawgSearch, {
         timeout: 8000,
-        headers: { "User-Agent": USER_AGENT },
+        headers: { "User-Agent": randomUA() },
       });
       const game = rawgRes.data?.results?.[0];
       if (game) {
@@ -557,7 +597,7 @@ async function fetchGameImages(gameTitle) {
           try {
             const ssRes = await axios.get(
               `https://api.rawg.io/api/games/${game.slug}/screenshots?key=`,
-              { timeout: 5000, headers: { "User-Agent": USER_AGENT } },
+              { timeout: 5000, headers: { "User-Agent": randomUA() } },
             );
             for (const ss of (ssRes.data?.results || []).slice(0, 3)) {
               if (ss.image)
@@ -583,7 +623,7 @@ async function fetchGameImages(gameTitle) {
       const wikiUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(gameTitle)}`;
       const wikiRes = await axios.get(wikiUrl, {
         timeout: 5000,
-        headers: { "User-Agent": USER_AGENT },
+        headers: { "User-Agent": randomUA() },
       });
       if (wikiRes.data?.thumbnail?.source) {
         const originalUrl =
@@ -602,7 +642,7 @@ async function fetchGameImages(gameTitle) {
       const wikiUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(gameTitle + " (video game)")}`;
       const wikiRes = await axios.get(wikiUrl, {
         timeout: 5000,
-        headers: { "User-Agent": USER_AGENT },
+        headers: { "User-Agent": randomUA() },
       });
       if (wikiRes.data?.originalimage?.source) {
         images.push({
@@ -622,7 +662,7 @@ async function fetchGameImages(gameTitle) {
       const ddgUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(gameTitle + " game")}&format=json&no_html=1`;
       const ddgRes = await axios.get(ddgUrl, {
         timeout: 5000,
-        headers: { "User-Agent": USER_AGENT },
+        headers: { "User-Agent": randomUA() },
       });
       if (ddgRes.data?.Image) {
         images.push({ url: ddgRes.data.Image, type: "key_art", source: "ddg" });
@@ -632,6 +672,8 @@ async function fetchGameImages(gameTitle) {
     }
   }
 
+  // Attach Steam stats to the result for stat card overlays
+  images._steamStats = steamStats;
   return images;
 }
 
@@ -949,6 +991,12 @@ async function hunt() {
         const searchTerm = knownPatterns.substring(0, 60).trim();
         if (searchTerm.length > 3) {
           story.game_images = await fetchGameImages(searchTerm);
+          // Extract Steam stats for stat card overlays
+          if (story.game_images?._steamStats) {
+            const ss = story.game_images._steamStats;
+            if (ss.reviewScore) story.steam_review_score = ss.reviewScore;
+            if (ss.playerCount) story.steam_player_count = ss.playerCount;
+          }
         }
 
         // Fallback: if no game images found, try searching with just the key nouns
@@ -958,6 +1006,12 @@ async function hunt() {
           );
           if (fallback) {
             story.game_images = await fetchGameImages(fallback[0]);
+            // Extract Steam stats from fallback search
+            if (!story.steam_review_score && story.game_images?._steamStats) {
+              const ss = story.game_images._steamStats;
+              if (ss.reviewScore) story.steam_review_score = ss.reviewScore;
+              if (ss.playerCount) story.steam_player_count = ss.playerCount;
+            }
           }
         }
       } catch (err) {

@@ -372,8 +372,12 @@ async function generateImages() {
     // Convert SVG to PNG via Sharp
     try {
       const sharp = require("sharp");
+      // Subtle random variance to ensure unique file hashes (anti-fingerprinting)
+      const hueShift = Math.floor(Math.random() * 6); // 0-5 degrees
+      const brightnessMod = 0.98 + Math.random() * 0.04; // 0.98-1.02
       await sharp(Buffer.from(svg))
         .resize(1080, 1920)
+        .modulate({ hue: hueShift, brightness: brightnessMod })
         .png({ quality: 95 })
         .toFile(pngPath);
       story.image_path = pngPath;
@@ -420,8 +424,12 @@ async function generateImages() {
 
       try {
         const sharp = require("sharp");
+        // Subtle random variance to ensure unique file hashes (anti-fingerprinting)
+        const variantHueShift = Math.floor(Math.random() * 6); // 0-5 degrees
+        const variantBrightnessMod = 0.98 + Math.random() * 0.04; // 0.98-1.02
         await sharp(Buffer.from(variantSvg))
           .resize(1080, 1920)
+          .modulate({ hue: variantHueShift, brightness: variantBrightnessMod })
           .png({ quality: 95 })
           .toFile(variantPngPath);
         story[variant.storyKey] = variantPngPath;

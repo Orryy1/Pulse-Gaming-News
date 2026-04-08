@@ -1164,6 +1164,22 @@ async function startAutonomousScheduler() {
   );
   console.log("[server] Weekly timing re-analysis: Sunday 00:00 UTC");
 
+  // Daily database backup - 04:00 UTC
+  cron.schedule(
+    "0 4 * * *",
+    async () => {
+      console.log("[server-cron] 04:00 UTC - DATABASE BACKUP");
+      try {
+        const { backupDatabase } = require("./lib/db_backup");
+        await backupDatabase();
+      } catch (err) {
+        console.log(`[server-cron] DB backup error: ${err.message}`);
+      }
+    },
+    { timezone: "UTC" },
+  );
+  console.log("[server] Database backup: daily at 04:00 UTC");
+
   // --- Breaking news watcher (continuous Reddit + RSS monitoring) ---
   try {
     const { startWatching } = require("./watcher");
@@ -1635,11 +1651,31 @@ const server = app.listen(PORT, () => {
   }
 });
 
-// --- Graceful shutdown ---
+// --- Graceful shutdown: flush SQLite WAL and close connections ---
 function gracefulShutdown(signal) {
-  console.log(`[server] ${signal} received, shutting down gracefully...`);
+  console.log(`[server] ${signal} received. Shutting down gracefully...`);
+
+  // Stop the hunter interval
+  if (hunterInterval) {
+    clearTimeout(hunterInterval);
+    clearInterval(hunterInterval);
+    hunterInterval = null;
+  }
+
+  // Flush and close SQLite
+  try {
+    const db = require("./lib/db");
+    if (db.close) {
+      db.close();
+      console.log("[server] SQLite connections closed and WAL flushed");
+    }
+  } catch (err) {
+    console.log(`[server] DB close error: ${err.message}`);
+  }
+
   server.close(() => {
     console.log("[server] HTTP server closed");
+    console.log("[server] Graceful shutdown complete");
     process.exit(0);
   });
   setTimeout(() => {

@@ -547,20 +547,25 @@ function buildVideoCommand(
     images = images.slice(0, MAX_IMAGES);
   }
 
-  // Merge video clips into the visual sequence (replace middle image slots)
+  // Merge video clips into the visual sequence - hook-first strategy
+  // First clip goes to slot 0 (hook visual), second to middle for pattern interrupt
   const videoClips = (story.video_clips || []).filter((p) =>
     fs.pathExistsSync(p),
   );
   const isVideoSlot = new Array(images.length).fill(false);
   const visualPaths = [...images];
-  if (videoClips.length > 0 && images.length >= 3) {
-    // Replace slots in the middle of the sequence with video clips
-    for (let ci = 0; ci < videoClips.length && ci < 2; ci++) {
-      const slot = Math.min(1 + ci * 2, images.length - 2); // avoid first/last
-      visualPaths[slot] = videoClips[ci];
-      isVideoSlot[slot] = true;
+  if (videoClips.length > 0 && images.length >= 2) {
+    // First video clip = slot 0 (hook-first: start with gameplay, not a static image)
+    visualPaths[0] = videoClips[0];
+    isVideoSlot[0] = true;
+    console.log(`[assemble] Slot 0: using Steam trailer for hook-first visual`);
+    // Second clip (if available) goes to middle for pattern interrupt
+    if (videoClips.length > 1 && images.length >= 4) {
+      const midSlot = Math.floor(images.length / 2);
+      visualPaths[midSlot] = videoClips[1];
+      isVideoSlot[midSlot] = true;
       console.log(
-        `[assemble] Slot ${slot}: using Steam trailer clip instead of static image`,
+        `[assemble] Slot ${midSlot}: using second clip for mid-roll pattern interrupt`,
       );
     }
   }
@@ -702,6 +707,22 @@ function buildVideoCommand(
 
   // Brand bar removed - intro/outro cards handle branding
 
+  // Source attribution overlay for video clips (strengthens fair use as news commentary)
+  if (videoClips.length > 0) {
+    const company = sanitizeDrawtext(story.company_name || "Steam Store", 40);
+    // Show "Footage: [Source]" in bottom-left during video clip segments
+    for (let i = 0; i < visualPaths.length; i++) {
+      if (!isVideoSlot[i]) continue;
+      const clipStart = i * segmentDuration;
+      const clipEnd = clipStart + segmentDuration;
+      chain.push(
+        `drawtext=text='  Footage: ${company}  ':${fontOpt}:fontcolor=white@0.6:fontsize=20:` +
+          `box=1:boxcolor=black@0.4:boxborderw=6:x=40:y=ih-230:` +
+          `enable='between(t\\,${clipStart}\\,${clipEnd})'`,
+      );
+    }
+  }
+
   // Reddit comments - scattered throughout the video as semi-transparent overlays
   const comments =
     story.reddit_comments ||
@@ -786,13 +807,18 @@ function buildVideoCommand(
     videoLabel = "afteroutro";
   }
 
-  // --- Bottom brand text: "PULSE GAMING" + "Never miss a beat" (hidden during intro+outro) ---
+  // --- Bottom brand text: channel name + tagline (hidden during intro+outro) ---
   const brandEnable = `between(t\\,${INTRO_DURATION}\\,${outroStart})`;
+  const channelName = sanitizeDrawtext(brand.name || "PULSE GAMING", 30);
+  const channelTagline = sanitizeDrawtext(
+    brand.tagline || "Never miss a beat",
+    40,
+  );
   filterParts.push(
     `[${videoLabel}]` +
-      `drawtext=text='PULSE GAMING':${fontOpt}:fontcolor=${brand.PRIMARY_FFM}@0.7:fontsize=28:` +
+      `drawtext=text='${channelName}':${fontOpt}:fontcolor=${brand.PRIMARY_FFM}@0.7:fontsize=28:` +
       `x=(w-tw)/2:y=h-80:enable='${brandEnable}',` +
-      `drawtext=text='Never miss a beat':${fontOpt}:fontcolor=${brand.MUTED_FFM}@0.5:fontsize=18:` +
+      `drawtext=text='${channelTagline}':${fontOpt}:fontcolor=${brand.MUTED_FFM}@0.5:fontsize=18:` +
       `x=(w-tw)/2:y=h-48:enable='${brandEnable}'[afterlogo]`,
   );
   videoLabel = "afterlogo";

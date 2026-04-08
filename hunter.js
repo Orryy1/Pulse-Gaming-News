@@ -474,6 +474,7 @@ async function fetchArticleImage(url) {
 // --- Search for game key art / screenshots ---
 async function fetchGameImages(gameTitle) {
   const images = [];
+  const steamStats = {};
 
   // Try Steam store search for game art
   try {
@@ -540,6 +541,30 @@ async function fetchGameImages(gameTitle) {
               });
             }
           }
+        }
+        // Extract Steam review score and recommendation count for stat card overlays
+        if (appData?.recommendations?.total) {
+          steamStats.recommendations = appData.recommendations.total;
+        }
+        if (appData?.metacritic?.score) {
+          steamStats.metacriticScore = appData.metacritic.score;
+        }
+        // Steam appdetails includes review_score_desc (e.g. "Very Positive")
+        // and review_score (1-9 scale). We use the Steam review API for percentage.
+        try {
+          const reviewRes = await axios.get(
+            `https://store.steampowered.com/appreviews/${appId}?json=1&language=all&purchase_type=all&num_per_page=0`,
+            { timeout: 5000, headers: { "User-Agent": randomUA() } },
+          );
+          const summary = reviewRes.data?.query_summary;
+          if (summary && summary.total_reviews > 0) {
+            steamStats.reviewScore = Math.round(
+              (summary.total_positive / summary.total_reviews) * 100,
+            );
+            steamStats.playerCount = summary.total_reviews;
+          }
+        } catch (revErr) {
+          /* Steam reviews API failed, non-fatal */
         }
       } catch (err) {
         /* Steam details failed, no screenshots */
@@ -647,6 +672,8 @@ async function fetchGameImages(gameTitle) {
     }
   }
 
+  // Attach Steam stats to the result for stat card overlays
+  images._steamStats = steamStats;
   return images;
 }
 
@@ -964,6 +991,12 @@ async function hunt() {
         const searchTerm = knownPatterns.substring(0, 60).trim();
         if (searchTerm.length > 3) {
           story.game_images = await fetchGameImages(searchTerm);
+          // Extract Steam stats for stat card overlays
+          if (story.game_images?._steamStats) {
+            const ss = story.game_images._steamStats;
+            if (ss.reviewScore) story.steam_review_score = ss.reviewScore;
+            if (ss.playerCount) story.steam_player_count = ss.playerCount;
+          }
         }
 
         // Fallback: if no game images found, try searching with just the key nouns
@@ -973,6 +1006,12 @@ async function hunt() {
           );
           if (fallback) {
             story.game_images = await fetchGameImages(fallback[0]);
+            // Extract Steam stats from fallback search
+            if (!story.steam_review_score && story.game_images?._steamStats) {
+              const ss = story.game_images._steamStats;
+              if (ss.reviewScore) story.steam_review_score = ss.reviewScore;
+              if (ss.playerCount) story.steam_player_count = ss.playerCount;
+            }
           }
         }
       } catch (err) {

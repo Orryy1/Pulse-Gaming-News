@@ -24,6 +24,53 @@ const MUSIC_VOLUME = 0.12; // 12% volume - subtle background
 const MAX_IMAGES = 8; // More images = more visual variety in 60s+ videos
 const FFMPEG_THREADS = 2; // Limit FFmpeg threads to stay within container memory
 
+/**
+ * Generates a 15-second teaser cut from the full video.
+ * Takes the first 13s + 2s "Full story on YouTube" card.
+ * Used for TikTok growth strategy - drives traffic to YouTube.
+ */
+async function generateTeaser(story, fullVideoPath, outputDir) {
+  const teaserPath = path.join(outputDir, `${story.id}_teaser.mp4`);
+
+  // Skip if teaser already exists
+  if (await fs.pathExists(teaserPath)) {
+    const stat = await fs.stat(teaserPath);
+    if (stat.size > 50000) return teaserPath;
+  }
+
+  const fontOpt =
+    process.platform === "win32" ? "font='Arial'" : "font='DejaVu Sans'";
+
+  try {
+    // Take first 15s of the full video, overlay "Full story on YouTube" in last 3s
+    const cmd =
+      `ffmpeg -y -i "${fullVideoPath.replace(/\\/g, "/")}" -t 15 ` +
+      `-vf "drawtext=text='Full story on YouTube':${fontOpt}:fontcolor=white:fontsize=48:` +
+      `box=1:boxcolor=black@0.7:boxborderw=20:x=(w-tw)/2:y=(h-th)/2:` +
+      `enable='between(t,12,15)'" ` +
+      `-c:v libx264 -crf 23 -preset fast -c:a aac -b:a 128k ` +
+      `-map_metadata -1 -movflags +faststart "${teaserPath.replace(/\\/g, "/")}"`;
+
+    await execAsync(cmd, { timeout: 60000 });
+
+    const stat = await fs.stat(teaserPath);
+    if (stat.size < 50000) {
+      await fs.remove(teaserPath);
+      return null;
+    }
+
+    console.log(
+      `[assemble] Teaser cut: ${teaserPath} (${Math.round(stat.size / 1024)}KB)`,
+    );
+    return teaserPath;
+  } catch (err) {
+    console.log(
+      `[assemble] Teaser generation failed (non-fatal): ${err.message}`,
+    );
+    return null;
+  }
+}
+
 // --- Music library: use custom distributed tracks, fall back to ElevenLabs generation ---
 async function ensureBackgroundMusic(duration, story) {
   const channel = getChannel();
@@ -707,6 +754,25 @@ function buildVideoCommand(
 
   // Brand bar removed - intro/outro cards handle branding
 
+  // Stat card overlay - Steam review score and player count (if available)
+  if (story.steam_review_score || story.steam_player_count) {
+    const stats = [];
+    if (story.steam_review_score)
+      stats.push(`${story.steam_review_score}% Positive`);
+    if (story.steam_player_count)
+      stats.push(
+        `${Number(story.steam_player_count).toLocaleString()} Playing`,
+      );
+    const statText = sanitizeDrawtext(stats.join("  |  "), 50);
+
+    // Show stat card from 3s to 8s (during early body section)
+    chain.push(
+      `drawtext=text='  ${statText}  ':${fontOpt}:fontcolor=white:fontsize=24:` +
+        `box=1:boxcolor=0x0D0D0F@0.75:boxborderw=10:x=w-tw-40:y=130:` +
+        `enable='between(t\\,3\\,8)'`,
+    );
+  }
+
   // Source attribution overlay for video clips (strengthens fair use as news commentary)
   if (videoClips.length > 0) {
     const company = sanitizeDrawtext(story.company_name || "Steam Store", 40);
@@ -1052,6 +1118,18 @@ async function assemble() {
         `[assemble] Exported: ${outputPath} (${Math.round(stat.size / 1024 / 1024)}MB)`,
       );
 
+      // Generate 15s teaser cut for TikTok growth
+      try {
+        const teaserPath = await generateTeaser(
+          story,
+          outputPath,
+          path.dirname(outputPath),
+        );
+        if (teaserPath) story.teaser_path = teaserPath;
+      } catch (err) {
+        console.log(`[assemble] Teaser error (non-fatal): ${err.message}`);
+      }
+
       // Clean up temp files after successful assembly
       const tempFiles = [filterScriptPath, assPath].filter(Boolean);
       for (const f of tempFiles) {
@@ -1137,6 +1215,24 @@ async function assemble() {
             `box=1:boxcolor=${brand.MUTED_FFM}@0.6:boxborderw=8:x=40:y=130`,
         );
         // Brand bar removed - intro/outro cards handle branding
+
+        // Stat card overlay - Steam review score and player count (if available)
+        if (story.steam_review_score || story.steam_player_count) {
+          const stats = [];
+          if (story.steam_review_score)
+            stats.push(`${story.steam_review_score}% Positive`);
+          if (story.steam_player_count)
+            stats.push(
+              `${Number(story.steam_player_count).toLocaleString()} Playing`,
+            );
+          const statText = sanitizeDrawtext(stats.join("  |  "), 50);
+
+          fbChain.push(
+            `drawtext=text='  ${statText}  ':${fontOpt}:fontcolor=white:fontsize=24:` +
+              `box=1:boxcolor=0x0D0D0F@0.75:boxborderw=10:x=w-tw-40:y=130:` +
+              `enable='between(t\\,3\\,8)'`,
+          );
+        }
 
         // Reddit comments with fade animations
         const comments =
@@ -1297,6 +1393,20 @@ async function assemble() {
         console.log(
           `[assemble] Exported (single-image fallback with overlays): ${outputPath}`,
         );
+
+        // Generate 15s teaser cut for TikTok growth
+        try {
+          const teaserPath = await generateTeaser(
+            story,
+            outputPath,
+            path.dirname(outputPath),
+          );
+          if (teaserPath) story.teaser_path = teaserPath;
+        } catch (teaserErr) {
+          console.log(
+            `[assemble] Teaser error (non-fatal): ${teaserErr.message}`,
+          );
+        }
       } catch (err2) {
         console.log(
           `[assemble] Fallback also failed for ${story.id}: ${err2.stderr?.substring(err2.stderr.length - 300) || err2.message.substring(0, 200)}`,

@@ -15,8 +15,8 @@ const PLAYLIST_PATH = path.join(__dirname, 'tokens', 'youtube_playlists.json');
 
 // --- Playlist definitions ---
 const PLAYLIST_DEFS = [
-  { key: 'breaking', title: 'Breaking Gaming News', desc: 'The biggest breaking stories in gaming — delivered fast. Follow Pulse Gaming so you never miss a beat.' },
-  { key: 'leaks_rumours', title: 'Gaming Leaks & Rumours', desc: 'The latest gaming leaks, insider info and rumours — all in one place. Follow Pulse Gaming so you never miss a beat.' },
+  { key: 'breaking', title: 'Breaking Gaming News', desc: 'The biggest breaking stories in gaming - delivered fast. Follow Pulse Gaming so you never miss a beat.' },
+  { key: 'leaks_rumours', title: 'Gaming Leaks & Rumours', desc: 'The latest gaming leaks, insider info and rumours - all in one place. Follow Pulse Gaming so you never miss a beat.' },
   { key: 'confirmed', title: 'Confirmed Gaming News', desc: 'Verified, confirmed gaming news you can trust. Follow Pulse Gaming so you never miss a beat.' },
   { key: 'all_shorts', title: 'All Pulse Gaming Shorts', desc: 'Every Pulse Gaming Short in one playlist. Sit back, hit play and catch up on everything. Follow Pulse Gaming so you never miss a beat.' },
 ];
@@ -138,7 +138,7 @@ function buildMetadata(story) {
   const classInfo = brand.classificationColour(story.classification || story.flair);
 
   // Title: use A/B tested variant if available, else LLM-generated curiosity gap title
-  // No classification prefix — wastes characters and weakens curiosity gap hooks
+  // No classification prefix - wastes characters and weakens curiosity gap hooks
   const { getBestTitle } = require('./ab_titles');
   let baseTitle = getBestTitle(story);
   baseTitle = baseTitle.replace(/#\s*shorts?\s*/gi, '').replace(/\[.*?\]\s*/g, '').trim();
@@ -153,7 +153,7 @@ function buildMetadata(story) {
 
   const descLines = [];
 
-  // --- Section 1: Keyword-rich summary (most SEO weight — first 200 chars indexed) ---
+  // --- Section 1: Keyword-rich summary (most SEO weight - first 200 chars indexed) ---
   if (story.full_script) {
     const clean = story.full_script.replace(/\n/g, ' ').replace(/\[.*?\]/g, '').replace(/\s+/g, ' ').trim();
     const cutoff = clean.substring(0, 300);
@@ -180,7 +180,7 @@ function buildMetadata(story) {
   }
 
   // --- Section 3: Channel identity ---
-  descLines.push(`${brand.CHANNEL_NAME} — ${brand.TAGLINE}`);
+  descLines.push(`${brand.CHANNEL_NAME} - ${brand.TAGLINE}`);
   descLines.push(brand.CTA ? brand.CTA.replace(/^Follow /i, 'Follow ') : 'Follow so you never miss an update.');
   descLines.push('');
 
@@ -209,7 +209,7 @@ function buildMetadata(story) {
     descLines.push('');
   }
 
-  // --- Section 6: Hashtags (dynamic — company/game specific + channel defaults) ---
+  // --- Section 6: Hashtags (dynamic - company/game specific + channel defaults) ---
   const hashtags = [...(channel.hashtags || ['#Shorts'])];
   if (gameName) hashtags.push(`#${gameName.replace(/[^a-zA-Z0-9]/g, '')}`);
   if (platform) hashtags.push(`#${platform}`);
@@ -502,9 +502,9 @@ async function uploadLongform(compilation) {
     throw new Error(`Video file not found: ${videoPath}`);
   }
 
-  // Title: "Gaming News Roundup — Week of April 5, 2026"
+  // Title: "Gaming News Roundup - Week of April 5, 2026"
   const titleDate = compilation.title_date || new Date().toLocaleDateString('en-GB', { month: 'long', day: 'numeric', year: 'numeric' });
-  const title = `${channel.niche.charAt(0).toUpperCase() + channel.niche.slice(1)} News Roundup — Week of ${titleDate}`;
+  const title = `${channel.niche.charAt(0).toUpperCase() + channel.niche.slice(1)} News Roundup - Week of ${titleDate}`;
 
   // Description with chapter timestamps
   const descLines = [];
@@ -519,7 +519,7 @@ async function uploadLongform(compilation) {
     descLines.push('');
   }
 
-  descLines.push(`${brand.CHANNEL_NAME} — ${brand.TAGLINE}`);
+  descLines.push(`${brand.CHANNEL_NAME} - ${brand.TAGLINE}`);
   descLines.push(brand.CTA ? brand.CTA : 'Subscribe so you never miss a roundup.');
   descLines.push('');
 

@@ -49,7 +49,7 @@ Reply with ONLY a JSON array of 2 strings. No explanation.`,
 
     const variants = JSON.parse(text);
     if (!Array.isArray(variants) || variants.length < 2) {
-      console.log('[ab_titles] Invalid variant response — expected array of 2');
+      console.log('[ab_titles] Invalid variant response - expected array of 2');
       return;
     }
 
@@ -66,7 +66,7 @@ Reply with ONLY a JSON array of 2 strings. No explanation.`,
     cleanVariants.forEach((v, i) => console.log(`  [${i + 1}] ${v}`));
   } catch (err) {
     console.log(`[ab_titles] Variant generation failed: ${err.message}`);
-    // Non-blocking — story continues with original title
+    // Non-blocking - story continues with original title
   }
 }
 
@@ -83,12 +83,12 @@ function getBestTitle(story) {
 // --- Check views and swap title if underperforming ---
 async function checkAndSwapTitle(story) {
   if (!story.youtube_post_id) {
-    console.log(`[ab_titles] No YouTube post ID for story ${story.id} — skipping`);
+    console.log(`[ab_titles] No YouTube post ID for story ${story.id} - skipping`);
     return;
   }
 
   if (!story.title_variants || story.title_variants.length <= 1) {
-    console.log(`[ab_titles] No variants for story ${story.id} — skipping`);
+    console.log(`[ab_titles] No variants for story ${story.id} - skipping`);
     story.title_swap_checked = true;
     return;
   }
@@ -105,7 +105,7 @@ async function checkAndSwapTitle(story) {
   try {
     const apiKey = process.env.YOUTUBE_API_KEY;
     if (!apiKey || apiKey === 'placeholder') {
-      console.log('[ab_titles] YouTube API key not configured — skipping check');
+      console.log('[ab_titles] YouTube API key not configured - skipping check');
       story.title_swap_checked = true;
       return;
     }
@@ -151,11 +151,11 @@ async function checkAndSwapTitle(story) {
   console.log(`[ab_titles] Average views/hr across channel: ${avgViewsPerHour.toFixed(1)}`);
 
   if (viewsPerHour < avgViewsPerHour) {
-    // Underperforming — swap to next variant
+    // Underperforming - swap to next variant
     const nextIndex = currentIndex + 1;
     const newTitle = story.title_variants[nextIndex];
 
-    console.log(`[ab_titles] Underperforming — swapping to variant ${nextIndex}: "${newTitle}"`);
+    console.log(`[ab_titles] Underperforming - swapping to variant ${nextIndex}: "${newTitle}"`);
 
     try {
       const { getAuthClient } = require('./upload_youtube');
@@ -180,7 +180,7 @@ async function checkAndSwapTitle(story) {
       console.log(`[ab_titles] Title swap failed: ${err.message}`);
     }
   } else {
-    console.log(`[ab_titles] Title performing well — keeping current variant`);
+    console.log(`[ab_titles] Title performing well - keeping current variant`);
   }
 
   story.title_swap_checked = true;

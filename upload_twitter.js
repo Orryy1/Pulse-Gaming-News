@@ -76,7 +76,7 @@ async function uploadMedia(filePath) {
   const fileSize = (await fs.stat(filePath)).size;
   const UPLOAD_URL = 'https://upload.twitter.com/1.1/media/upload.json';
 
-  // INIT — query params must NOT be included in OAuth signature
+  // INIT - query params must NOT be included in OAuth signature
   const initAuth = generateOAuthHeader('POST', UPLOAD_URL);
 
   const initResponse = await axios.post(UPLOAD_URL, null, {
@@ -92,7 +92,7 @@ async function uploadMedia(filePath) {
   const mediaId = initResponse.data.media_id_string;
   console.log(`[twitter] Media INIT: ${mediaId}`);
 
-  // APPEND — upload in 5MB chunks
+  // APPEND - upload in 5MB chunks
   const CHUNK_SIZE = 5 * 1024 * 1024;
   const fileBuffer = await fs.readFile(filePath);
   let segmentIndex = 0;
@@ -122,7 +122,7 @@ async function uploadMedia(filePath) {
 
   console.log(`[twitter] Media APPEND: ${segmentIndex} chunks uploaded`);
 
-  // FINALIZE — query params must NOT be included in OAuth signature
+  // FINALIZE - query params must NOT be included in OAuth signature
   const finalizeAuth = generateOAuthHeader('POST', UPLOAD_URL);
 
   const finalizeResponse = await axios.post(UPLOAD_URL, null, {

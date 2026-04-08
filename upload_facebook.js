@@ -8,7 +8,7 @@
   4. Set env: FACEBOOK_PAGE_ID, FACEBOOK_PAGE_TOKEN
   5. Or save token to tokens/facebook_token.json
 
-  Facebook Reels use a 3-step resumable upload (direct binary — no public URL needed).
+  Facebook Reels use a 3-step resumable upload (direct binary - no public URL needed).
 */
 
 const fs = require('fs-extra');

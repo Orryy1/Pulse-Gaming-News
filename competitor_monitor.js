@@ -45,7 +45,7 @@ async function loadOurHistory() {
 async function fetchChannelVideos(channelId, maxResults = 50) {
   const apiKey = process.env.YOUTUBE_API_KEY;
   if (!apiKey || apiKey === 'placeholder') {
-    console.log('[competitor] No YOUTUBE_API_KEY configured — skipping fetch');
+    console.log('[competitor] No YOUTUBE_API_KEY configured - skipping fetch');
     return [];
   }
 
@@ -126,11 +126,11 @@ async function trackCompetitors() {
   const validCompetitors = competitors.filter(c => c.channelId && c.channelId !== 'REPLACE_ME');
 
   if (validCompetitors.length === 0) {
-    console.log('[competitor] No valid competitor channels configured — add channel IDs to competitor_config.json');
+    console.log('[competitor] No valid competitor channels configured - add channel IDs to competitor_config.json');
     return data;
   }
 
-  console.log(`[competitor] === COMPETITOR SCAN — ${validCompetitors.length} channels ===`);
+  console.log(`[competitor] === COMPETITOR SCAN - ${validCompetitors.length} channels ===`);
 
   const windowDays = config.analysisWindowDays || 30;
   const cutoffDate = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
@@ -361,7 +361,7 @@ async function generateReport() {
   lines.push('--- CONTENT GAPS (topics they cover, we don\'t) ---');
   if (gapAnalysis.gaps.length > 0) {
     for (const gap of gapAnalysis.gaps.slice(0, 10)) {
-      lines.push(`  "${gap.keyword}" — ${gap.videoCount} competitor videos, avg ${gap.avgViews.toLocaleString()} views`);
+      lines.push(`  "${gap.keyword}" - ${gap.videoCount} competitor videos, avg ${gap.avgViews.toLocaleString()} views`);
     }
   } else {
     lines.push('  No significant gaps identified (good coverage)');
@@ -372,7 +372,7 @@ async function generateReport() {
   lines.push('--- TRACKED TOPIC OPPORTUNITIES ---');
   if (gapAnalysis.opportunities.length > 0) {
     for (const opp of gapAnalysis.opportunities.slice(0, 5)) {
-      lines.push(`  "${opp.keyword}" — ${opp.videoCount} competitor videos, avg ${opp.avgViews.toLocaleString()} views`);
+      lines.push(`  "${opp.keyword}" - ${opp.videoCount} competitor videos, avg ${opp.avgViews.toLocaleString()} views`);
     }
   } else {
     lines.push('  No tracked topic matches found in competitor content');

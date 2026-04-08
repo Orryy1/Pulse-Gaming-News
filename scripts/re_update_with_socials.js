@@ -44,7 +44,7 @@ const ORRYY_SOCIALS = `Follow Orryy ❤️
 
 function parseTitle(title) {
   let artist = null, remixer = null, songTitle = null, featuredArtists = [];
-  const dashMatch = title.match(/^(.+?)\s*[-–—]\s*(.+)$/);
+  const dashMatch = title.match(/^(.+?)\s*[---]\s*(.+)$/);
   if (dashMatch) {
     artist = dashMatch[1].trim();
     const remainder = dashMatch[2].trim();
@@ -238,7 +238,7 @@ async function main() {
         console.error(`\n⚠️  Quota exceeded after ${count} re-updates.`);
         break;
       }
-      console.error(`✗ FAILED: ${video.title} — ${msg}`);
+      console.error(`✗ FAILED: ${video.title} - ${msg}`);
       await delay(2000);
     }
   }

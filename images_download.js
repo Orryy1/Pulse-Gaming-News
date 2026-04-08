@@ -31,7 +31,7 @@ async function downloadImage(url, filename) {
       return null;
     }
 
-    // Verify minimum dimensions — skip low-res images that look bad at 1080x1920
+    // Verify minimum dimensions - skip low-res images that look bad at 1080x1920
     try {
       const sharp = require('sharp');
       const meta = await sharp(cachePath).metadata();
@@ -89,7 +89,7 @@ async function getBestImage(story) {
     if (cached) images.push({ path: cached, type: 'company_logo', priority: 30 });
   }
 
-  // Priority 5: Google image search — supplement with more variety (especially for stories with few images)
+  // Priority 5: Google image search - supplement with more variety (especially for stories with few images)
   if (images.length < 8 && story.title) {
     try {
       const searchQuery = encodeURIComponent(story.title.replace(/[^a-zA-Z0-9\s]/g, '').trim() + ' game');
@@ -119,7 +119,7 @@ async function getBestImage(story) {
         }
       }
     } catch (err) {
-      // Google search failed silently — not critical
+      // Google search failed silently - not critical
     }
   }
 

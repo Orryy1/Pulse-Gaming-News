@@ -1,5 +1,5 @@
 /**
- * PULSE GAMING — Auto-post integration
+ * PULSE GAMING - Auto-post integration
  *
  * Called from the main pipeline's publisher.js after each upload.
  * Posts rich embeds to the correct Discord channel based on story classification.
@@ -148,7 +148,7 @@ async function postNewStory(story) {
         { name: 'Source', value: story.subreddit || story.source_type || 'Unknown', inline: true },
         { name: 'Pillar', value: story.content_pillar || 'News', inline: true },
       )
-      .setFooter({ text: 'PULSE GAMING — Verified leaks. Every day.' })
+      .setFooter({ text: 'PULSE GAMING - Verified leaks. Every day.' })
       .setTimestamp(story.timestamp ? new Date(story.timestamp) : new Date());
 
     if (story.breaking_score) {
@@ -277,7 +277,7 @@ async function postStoryForApproval(story) {
     // Load Story image
     const imagePath = story.story_image_path;
     if (!imagePath || !fs.existsSync(imagePath)) {
-      console.log(`[AutoPost] No Story image for "${story.title}" — skipping approval post`);
+      console.log(`[AutoPost] No Story image for "${story.title}" - skipping approval post`);
       return null;
     }
 
@@ -297,7 +297,7 @@ async function postStoryForApproval(story) {
         { name: 'Source', value: story.subreddit || story.source_type || 'Unknown', inline: true },
         { name: 'Score', value: `${story.breaking_score || story.score || 0}`, inline: true },
       )
-      .setFooter({ text: 'PULSE GAMING — Story Approval' })
+      .setFooter({ text: 'PULSE GAMING - Story Approval' })
       .setTimestamp();
 
     const row = new ActionRowBuilder().addComponents(
@@ -314,7 +314,7 @@ async function postStoryForApproval(story) {
     );
 
     const msg = await channel.send({
-      content: '📸 **STORY IMAGE — Awaiting Approval**',
+      content: '📸 **STORY IMAGE - Awaiting Approval**',
       embeds: [embed],
       files: [attachment],
       components: [row],
@@ -382,10 +382,10 @@ function generatePollFromStory(story) {
   const title = story.title || 'this news';
   const flair = (story.flair || '').toLowerCase();
 
-  // Rumour stories — "Do you believe it?"
+  // Rumour stories - "Do you believe it?"
   if (flair === 'rumour' || flair === 'rumor') {
     return {
-      question: `${truncate(title, 280)} — Do you believe this rumour?`,
+      question: `${truncate(title, 280)} - Do you believe this rumour?`,
       options: [
         'Absolutely, it\'s happening',
         'Probably true, good sources',
@@ -395,10 +395,10 @@ function generatePollFromStory(story) {
     };
   }
 
-  // Leak stories — "How hyped are you?"
+  // Leak stories - "How hyped are you?"
   if (flair === 'highly likely') {
     return {
-      question: `${truncate(title, 280)} — How hyped are you?`,
+      question: `${truncate(title, 280)} - How hyped are you?`,
       options: [
         'Day one purchase',
         'Interested, need to see more',
@@ -408,10 +408,10 @@ function generatePollFromStory(story) {
     };
   }
 
-  // Confirmed/verified — "Your take?"
+  // Confirmed/verified - "Your take?"
   if (flair === 'verified' || flair === 'confirmed') {
     return {
-      question: `${truncate(title, 280)} — Your reaction?`,
+      question: `${truncate(title, 280)} - Your reaction?`,
       options: [
         'Massive W, love this',
         'Good news, cautiously optimistic',
@@ -421,9 +421,9 @@ function generatePollFromStory(story) {
     };
   }
 
-  // Default — general opinion
+  // Default - general opinion
   return {
-    question: `${truncate(title, 280)} — What do you think?`,
+    question: `${truncate(title, 280)} - What do you think?`,
     options: [
       'Excited about this',
       'Need more details first',

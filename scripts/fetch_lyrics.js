@@ -25,7 +25,7 @@ const GENIUS_TOKEN = process.env.GENIUS_API_TOKEN;
 
 function parseTitle(title) {
   let artist = null, songTitle = null;
-  const dashMatch = title.match(/^(.+?)\s*[-–—]\s*(.+)$/);
+  const dashMatch = title.match(/^(.+?)\s*[---]\s*(.+)$/);
   if (dashMatch) {
     artist = dashMatch[1].trim();
     const remainder = dashMatch[2].trim();

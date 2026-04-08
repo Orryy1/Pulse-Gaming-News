@@ -122,7 +122,7 @@ module.exports = {
 
       const resultEmbed = new EmbedBuilder()
         .setColor(config.COLOURS.GREEN)
-        .setTitle('🎮 Gaming Trivia — Time\'s Up!')
+        .setTitle('🎮 Gaming Trivia - Time\'s Up!')
         .setDescription(`**${question.q}**\n\n✅ Correct answer: **${labels[question.answer]}. ${question.options[question.answer]}**\n\n${answered.size} player(s) answered.`)
         .setTimestamp();
 

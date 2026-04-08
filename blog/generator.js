@@ -14,7 +14,7 @@ const DIST_DIR = path.join(__dirname, 'dist');
 
 /**
  * Generate a blog post from a story object.
- * @param {object} story — standard story object from daily_news.json
+ * @param {object} story - standard story object from daily_news.json
  * @returns {{ html: string, slug: string, title: string, description: string, publishedAt: string }}
  */
 async function generateBlogPost(story) {
@@ -89,7 +89,7 @@ async function generateBlogPost(story) {
 /**
  * Generate a blog post and save it to blog/dist/.
  * @param {object} story
- * @returns {object} — the blog post data
+ * @returns {object} - the blog post data
  */
 async function generateAndSaveBlogPost(story) {
   const { postTemplate } = require('./templates');

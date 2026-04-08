@@ -151,7 +151,7 @@ module.exports = {
 
       const embed = new EmbedBuilder()
         .setColor(config.COLOURS.GREEN)
-        .setTitle(`🔮 Prediction #${predId} — Resolved!`)
+        .setTitle(`🔮 Prediction #${predId} - Resolved!`)
         .setDescription(
           `**${prediction.question}**\n\n` +
           `✅ Winning answer: **${prediction.options[winningOption]}**\n\n` +
@@ -181,7 +181,7 @@ module.exports = {
               p.bets.filter(b => b.option === 0).length,
               p.bets.filter(b => b.option === 1).length,
             ];
-            return `**#${p.id}** — ${p.question}\n` +
+            return `**#${p.id}** - ${p.question}\n` +
               `  1. ${p.options[0]} (${counts[0]} bets)\n` +
               `  2. ${p.options[1]} (${counts[1]} bets)\n` +
               `  Pool: ${pool} XP`;

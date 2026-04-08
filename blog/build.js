@@ -55,7 +55,7 @@ async function build() {
   const published = stories.filter(s => s.youtube_post_id);
 
   if (published.length === 0) {
-    console.log('[blog-build] No published stories found — nothing to build');
+    console.log('[blog-build] No published stories found - nothing to build');
     return;
   }
 

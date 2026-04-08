@@ -50,7 +50,7 @@ async function main() {
     return;
   }
 
-  console.log('Usage:\n  node scripts/orryy_auth.js auth    — get auth URL\n  node scripts/orryy_auth.js token CODE — exchange code for token');
+  console.log('Usage:\n  node scripts/orryy_auth.js auth    - get auth URL\n  node scripts/orryy_auth.js token CODE - exchange code for token');
 }
 
 main().catch(err => {

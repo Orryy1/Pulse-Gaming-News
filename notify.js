@@ -12,7 +12,7 @@ async function sendDiscord(message) {
       content: message.substring(0, 2000),
     });
   } catch (err) {
-    // Silently fail — Discord notifications are non-critical
+    // Silently fail - Discord notifications are non-critical
   }
 }
 

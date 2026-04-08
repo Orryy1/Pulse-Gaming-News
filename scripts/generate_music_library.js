@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
-  Generate Music Library — pre-generates a pool of varied background tracks
+  Generate Music Library - pre-generates a pool of varied background tracks
   per channel so each video sounds different.
 
   Usage:
@@ -57,14 +57,14 @@ async function generateForChannel(channel, apiKey, maxCount) {
   const prompts = channel.musicPrompts || [channel.musicPrompt];
   const count = maxCount || prompts.length;
 
-  console.log(`\n[music-library] ${channel.name} — generating ${count} tracks`);
+  console.log(`\n[music-library] ${channel.name} - generating ${count} tracks`);
 
   let generated = 0;
   for (let i = 0; i < count && i < prompts.length; i++) {
     try {
       await generateTrack(apiKey, channel.id, i, prompts[i], TARGET_DURATION);
       generated++;
-      // Rate limit — ElevenLabs can be touchy with rapid music generation
+      // Rate limit - ElevenLabs can be touchy with rapid music generation
       if (i < count - 1) {
         console.log('  [wait] 5s rate limit pause...');
         await new Promise(r => setTimeout(r, 5000));

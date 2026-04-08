@@ -1,4 +1,4 @@
-// Pulse Gaming — Breaking News Priority Queue
+// Pulse Gaming - Breaking News Priority Queue
 // Accepts stories from the watcher, deduplicates against daily_news.json,
 // and runs the fast pipeline: processor -> audio -> images -> assemble -> publish.
 // Enforces a 2-hour cooldown between breaking publishes.
@@ -28,7 +28,7 @@ async function initCooldown() {
       if (Date.now() - lastTime < COOLDOWN_MS) {
         lastPublishTime = lastTime;
         const remaining = Math.round((COOLDOWN_MS - (Date.now() - lastTime)) / 60000);
-        console.log(`[breaking] Restored cooldown from disk — ${remaining} min remaining`);
+        console.log(`[breaking] Restored cooldown from disk:${remaining} min remaining`);
       }
     }
   } catch (err) {
@@ -66,12 +66,12 @@ async function isDuplicate(story) {
     if (byId) {
       // If already published to any platform, definitely skip
       if (byId.youtube_post_id || byId.tiktok_post_id || byId.instagram_media_id || byId.facebook_post_id || byId.twitter_post_id) {
-        console.log(`[breaking] Story ${story.id} already published — skipping`);
+        console.log(`[breaking] Story ${story.id} already published:skipping`);
         return true;
       }
       // If already has audio/video produced, skip (pipeline already ran)
       if (byId.exported_path) {
-        console.log(`[breaking] Story ${story.id} already produced — skipping`);
+        console.log(`[breaking] Story ${story.id} already produced:skipping`);
         return true;
       }
     }
@@ -107,11 +107,11 @@ async function runFastPipeline(story) {
     const processed = await fs.readJson(DATA_FILE).catch(() => []);
     const newStory = processed.find(s => s.id === story.id);
     if (!newStory) {
-      console.log('[breaking] Processor did not produce a story — aborting');
+      console.log('[breaking] Processor did not produce a story:aborting');
       return null;
     }
 
-    // Mark it as approved and breaking — override classification so the
+    // Mark it as approved and breaking:override classification so the
     // thumbnail and video badge show "BREAKING" instead of the original flair
     newStory.approved = true;
     newStory.auto_approved = true;
@@ -154,7 +154,7 @@ async function runFastPipeline(story) {
         console.log(`[breaking] Published: YT=${publishResult.youtube} TT=${publishResult.tiktok} IG=${publishResult.instagram} FB=${publishResult.facebook} X=${publishResult.twitter}`);
       }
     } else {
-      console.log('[breaking] Step 5/5: AUTO_PUBLISH off — skipping upload');
+      console.log('[breaking] Step 5/5: AUTO_PUBLISH off:skipping upload');
     }
 
     const elapsedMs = Date.now() - startTime;
@@ -168,7 +168,7 @@ async function runFastPipeline(story) {
         ? `YT: ${publishResult.youtube ? 'yes' : 'no'} | TT: ${publishResult.tiktok ? 'yes' : 'no'} | IG: ${publishResult.instagram ? 'yes' : 'no'} | FB: ${publishResult.facebook ? 'yes' : 'no'} | X: ${publishResult.twitter ? 'yes' : 'no'}`
         : 'Publishing skipped';
       await sendDiscord(
-        `**BREAKING NEWS — Fast Pipeline**\n` +
+        `**BREAKING NEWS: Fast Pipeline**\n` +
         `"${story.title}"\n` +
         `Score: ${story.breaking_score} | Trigger: ${story.breaking_trigger}\n` +
         `Time to publish: ${elapsedSec}s\n` +
@@ -195,7 +195,7 @@ async function processQueue() {
   const sinceLastPublish = Date.now() - lastPublishTime;
   if (sinceLastPublish < COOLDOWN_MS && lastPublishTime > 0) {
     const waitMin = Math.round((COOLDOWN_MS - sinceLastPublish) / 60000);
-    console.log(`[breaking] Cooldown active — ${waitMin} min remaining. Queue size: ${queue.length}`);
+    console.log(`[breaking] Cooldown active:${waitMin} min remaining. Queue size: ${queue.length}`);
     return;
   }
 
@@ -237,14 +237,14 @@ async function queueBreaking(story) {
   // Deduplicate against existing stories
   const isDupe = await isDuplicate(story);
   if (isDupe) {
-    console.log('[breaking] Story is a duplicate of existing coverage — skipping');
+    console.log('[breaking] Story is a duplicate of existing coverage:skipping');
     return { queued: false, reason: 'duplicate' };
   }
 
   // Deduplicate against items already in the queue
   const inQueue = queue.some(s => similarity(s.title, story.title) > 0.5);
   if (inQueue) {
-    console.log('[breaking] Story is already queued — skipping');
+    console.log('[breaking] Story is already queued:skipping');
     return { queued: false, reason: 'already_queued' };
   }
 

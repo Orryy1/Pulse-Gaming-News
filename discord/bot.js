@@ -11,7 +11,7 @@ const path = require('path');
 const config = require('./config');
 
 // ---------------------------------------------------------------------------
-// XP Manager — stored in discord/data/xp.json
+// XP Manager - stored in discord/data/xp.json
 // ---------------------------------------------------------------------------
 class XpManager {
   constructor() {
@@ -426,7 +426,7 @@ async function handleLeaderboard(interaction) {
   const medals = ['🥇', '🥈', '🥉'];
   const lines = top.map((u, i) => {
     const prefix = i < 3 ? medals[i] : `**${i + 1}.**`;
-    return `${prefix} <@${u.id}> — Level ${u.level} (${u.xp.toLocaleString()} XP)`;
+    return `${prefix} <@${u.id}> - Level ${u.level} (${u.xp.toLocaleString()} XP)`;
   });
 
   const embed = new EmbedBuilder()
@@ -495,7 +495,7 @@ async function handleDaily(interaction) {
         ? `Come back tomorrow to increase your streak to **${result.streak + 1}x**!`
         : `You are at the maximum streak! Keep claiming daily to maintain it.`)
     )
-    .setFooter({ text: 'PULSE GAMING — Claim daily to keep your streak!' })
+    .setFooter({ text: 'PULSE GAMING - Claim daily to keep your streak!' })
     .setTimestamp();
 
   await interaction.reply({ embeds: [embed] });

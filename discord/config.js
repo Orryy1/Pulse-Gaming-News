@@ -4,7 +4,7 @@ const fs = require('fs');
 const DATA_DIR = path.join(__dirname, 'data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
-// Persistent channel/role ID map — written by setup.js, read by everything else
+// Persistent channel/role ID map - written by setup.js, read by everything else
 const ID_MAP_PATH = path.join(DATA_DIR, 'id_map.json');
 
 function loadIdMap() {

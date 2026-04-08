@@ -1,4 +1,4 @@
-// Brand Constants — backwards-compatible bridge to multi-channel system.
+// Brand Constants - backwards-compatible bridge to multi-channel system.
 // Existing code can still `require('./brand')` and get the active channel's brand.
 // New code should use `require('./channels').getChannel(id)` directly.
 

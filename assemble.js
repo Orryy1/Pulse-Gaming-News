@@ -862,6 +862,7 @@ function buildVideoCommand(
     `-c:v libx264 -crf 21 -preset medium -threads ${FFMPEG_THREADS}`,
     "-c:a aac -b:a 192k",
     "-r 30 -shortest",
+    "-map_metadata -1",
     `-movflags +faststart "${outputPath}"`,
   ].join(" ");
 

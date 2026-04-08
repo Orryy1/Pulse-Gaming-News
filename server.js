@@ -1635,11 +1635,31 @@ const server = app.listen(PORT, () => {
   }
 });
 
-// --- Graceful shutdown ---
+// --- Graceful shutdown: flush SQLite WAL and close connections ---
 function gracefulShutdown(signal) {
-  console.log(`[server] ${signal} received, shutting down gracefully...`);
+  console.log(`[server] ${signal} received. Shutting down gracefully...`);
+
+  // Stop the hunter interval
+  if (hunterInterval) {
+    clearTimeout(hunterInterval);
+    clearInterval(hunterInterval);
+    hunterInterval = null;
+  }
+
+  // Flush and close SQLite
+  try {
+    const db = require("./lib/db");
+    if (db.close) {
+      db.close();
+      console.log("[server] SQLite connections closed and WAL flushed");
+    }
+  } catch (err) {
+    console.log(`[server] DB close error: ${err.message}`);
+  }
+
   server.close(() => {
     console.log("[server] HTTP server closed");
+    console.log("[server] Graceful shutdown complete");
     process.exit(0);
   });
   setTimeout(() => {

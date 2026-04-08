@@ -1,5 +1,5 @@
 /*
-  Blog Templates — HTML template literal functions
+  Blog Templates - HTML template literal functions
   Dark theme matching brand palette. No external CSS/JS frameworks.
 */
 
@@ -11,7 +11,7 @@ const TEXT = brand.TEXT || '#F0F0F0';
 
 /**
  * Full HTML page for an individual blog post.
- * @param {object} data — { title, slug, description, html, publishedAt, seoKeywords, story }
+ * @param {object} data - { title, slug, description, html, publishedAt, seoKeywords, story }
  */
 function postTemplate(data) {
   const { title, slug, description, html, publishedAt, seoKeywords, story, storyImageSlug } = data;
@@ -150,8 +150,8 @@ ${affiliateCta}
 
 /**
  * Paginated index page listing all blog posts.
- * @param {Array} posts — array of { title, slug, description, publishedAt, story }
- * @param {number} page — current page (1-based)
+ * @param {Array} posts - array of { title, slug, description, publishedAt, story }
+ * @param {number} page - current page (1-based)
  * @param {number} totalPages
  */
 function indexTemplate(posts, page, totalPages) {
@@ -230,7 +230,7 @@ ${pagination}
 
 /**
  * Standard XML sitemap.
- * @param {Array} posts — array of { slug, publishedAt }
+ * @param {Array} posts - array of { slug, publishedAt }
  * @param {string} baseUrl
  */
 function sitemapTemplate(posts, baseUrl) {
@@ -250,7 +250,7 @@ ${urls}
 
 /**
  * RSS 2.0 feed.
- * @param {Array} posts — array of { title, slug, description, publishedAt }
+ * @param {Array} posts - array of { title, slug, description, publishedAt }
  * @param {string} baseUrl
  * @param {string} channelName
  */

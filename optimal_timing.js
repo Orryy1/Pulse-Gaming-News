@@ -9,7 +9,7 @@ const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
 
 const DEFAULT_SCHEDULE = {
   crons: ['0 7 * * *', '0 13 * * *', '0 19 * * *'],
-  labels: ['07:00 UTC — default morning', '13:00 UTC — default afternoon', '19:00 UTC — default evening'],
+  labels: ['07:00 UTC - default morning', '13:00 UTC - default afternoon', '19:00 UTC - default evening'],
   confidence: 'low',
   dataPoints: 0,
 };
@@ -113,7 +113,7 @@ async function analyzeOptimalWindows() {
       dataPoints: entries.length,
       singleHour: true,
       hours: hourBuckets,
-      message: 'All entries published at the same hour — insufficient variation to recommend changes.',
+      message: 'All entries published at the same hour - insufficient variation to recommend changes.',
     };
   }
 
@@ -188,7 +188,7 @@ async function getRecommendedSchedule() {
       ...DEFAULT_SCHEDULE,
       confidence: 'low',
       dataPoints: entries.length,
-      reason: 'All entries published at same hour — not enough variation.',
+      reason: 'All entries published at same hour - not enough variation.',
     };
   }
 
@@ -203,7 +203,7 @@ async function getRecommendedSchedule() {
     confidence = 'medium';
   }
 
-  // Check statistical significance — top hour should be meaningfully better
+  // Check statistical significance - top hour should be meaningfully better
   if (hourBuckets.length >= 2) {
     const topAvg = hourBuckets[0].avgVirality;
     const bottomAvg = hourBuckets[hourBuckets.length - 1].avgVirality;
@@ -216,7 +216,7 @@ async function getRecommendedSchedule() {
   const crons = topHours.map(h => `0 ${h.key} * * *`);
   const labels = topHours.map(h => {
     const padded = String(h.key).padStart(2, '0');
-    return `${padded}:00 UTC — avg virality ${h.avgVirality} (${h.count} videos)`;
+    return `${padded}:00 UTC - avg virality ${h.avgVirality} (${h.count} videos)`;
   });
 
   return {
@@ -252,7 +252,7 @@ async function getTimingReport() {
     lines.push('**Best Publish Hours (UTC):**');
     for (const h of hourAnalysis.hours) {
       const padded = String(h.key).padStart(2, '0');
-      lines.push(`  ${padded}:00 — avg virality ${h.avgVirality} (${h.count} videos)`);
+      lines.push(`  ${padded}:00 - avg virality ${h.avgVirality} (${h.count} videos)`);
     }
   }
 
@@ -262,10 +262,10 @@ async function getTimingReport() {
   if (dayAnalysis.insufficient) {
     lines.push(`**Days:** Insufficient data (${dayAnalysis.dataPoints}/${dayAnalysis.required} needed)`);
   } else if (dayAnalysis.singleDay) {
-    lines.push(`**Days:** All data from ${dayAnalysis.best?.name || 'one day'} — need more spread`);
+    lines.push(`**Days:** All data from ${dayAnalysis.best?.name || 'one day'} - need more spread`);
   } else {
-    lines.push(`**Best Day:** ${dayAnalysis.best.name} — avg virality ${dayAnalysis.best.avgVirality} (${dayAnalysis.best.count} videos)`);
-    lines.push(`**Worst Day:** ${dayAnalysis.worst.name} — avg virality ${dayAnalysis.worst.avgVirality} (${dayAnalysis.worst.count} videos)`);
+    lines.push(`**Best Day:** ${dayAnalysis.best.name} - avg virality ${dayAnalysis.best.avgVirality} (${dayAnalysis.best.count} videos)`);
+    lines.push(`**Worst Day:** ${dayAnalysis.worst.name} - avg virality ${dayAnalysis.worst.avgVirality} (${dayAnalysis.worst.count} videos)`);
   }
 
   lines.push('');

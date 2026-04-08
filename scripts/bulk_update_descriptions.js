@@ -70,7 +70,7 @@ function parseTitle(title) {
   let songTitle = null;
 
   // Try standard "Artist - Song (Remix info)" pattern
-  const dashMatch = title.match(/^(.+?)\s*[-–—]\s*(.+)$/);
+  const dashMatch = title.match(/^(.+?)\s*[---]\s*(.+)$/);
   if (dashMatch) {
     artist = dashMatch[1].trim();
     const remainder = dashMatch[2].trim();
@@ -393,7 +393,7 @@ async function main() {
 
     } catch (err) {
       const errorMsg = err.message || String(err);
-      console.error(`[${i + 1}/${allVideos.length}] ✗ FAILED: ${video.title} — ${errorMsg}`);
+      console.error(`[${i + 1}/${allVideos.length}] ✗ FAILED: ${video.title} - ${errorMsg}`);
       progress.failed.push({ videoId: video.videoId, title: video.title, error: errorMsg });
       failCount++;
       await saveProgress(progress);

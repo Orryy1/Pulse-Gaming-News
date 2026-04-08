@@ -1,6 +1,6 @@
 /*
   Generate branded intro/outro bumpers for Pulse Gaming videos.
-  Run once — bumpers are cached and reused for every video.
+  Run once - bumpers are cached and reused for every video.
 
   Intro (1.5s): Deep charcoal → amber flash → "PULSE GAMING" text fade in
   Outro (1.5s): "PULSE GAMING" + "FOLLOW FOR DAILY LEAKS" → fade to charcoal

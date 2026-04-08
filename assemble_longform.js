@@ -104,7 +104,7 @@ async function generateLongformSubtitles(compilation, outputDir) {
     }
     if (wordChars.length > 0) words.push({ text: wordChars, start: wordStart, end: wordEnd });
 
-    // Group into 4-6 word phrases (longer than shorts — suits landscape)
+    // Group into 4-6 word phrases (longer than shorts - suits landscape)
     const phrases = [];
     let idx = 0;
     while (idx < words.length) {
@@ -154,7 +154,7 @@ async function generateLongformSubtitles(compilation, outputDir) {
       return `Dialogue: 0,${start},${end},Caption,,0,0,0,,${clean}`;
     }).join('\n');
 
-    console.log(`[longform] Subtitles: ${phrases.length} phrases (evenly spaced — no timestamps file)`);
+    console.log(`[longform] Subtitles: ${phrases.length} phrases (evenly spaced - no timestamps file)`);
   }
 
   // Landscape ASS: bottom-centre, 50px font, no karaoke pop-in
@@ -356,7 +356,7 @@ async function assembleLongform(compilation) {
     const segDuration = Math.max(5, Math.floor(contentTime / segments.length));
 
     if (storyImages.length === 0) {
-      // No images — use a dark background with title text
+      // No images - use a dark background with title text
       inputs.push(`-f lavfi -t ${segDuration} -i "color=c=0x0D0D0F:s=1920x1080:r=30"`);
       const bgIdx = inputIdx++;
       filterParts.push(

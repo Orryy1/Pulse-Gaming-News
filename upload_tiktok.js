@@ -12,7 +12,7 @@ dotenv.config({ override: true });
 const TOKEN_PATH = path.join(__dirname, 'tokens', 'tiktok_token.json');
 
 /*
-  TikTok Content Posting API — Direct Post flow
+  TikTok Content Posting API - Direct Post flow
   Docs: https://developers.tiktok.com/doc/content-posting-api-get-started
 
   Setup:
@@ -111,7 +111,7 @@ async function uploadVideo(story) {
 
     const fileSize = (await fs.stat(story.exported_path)).size;
 
-    // Build caption (TikTok max 2200 chars) — channel-aware hashtags
+    // Build caption (TikTok max 2200 chars) - channel-aware hashtags
     const { getChannel } = require('./channels');
     const channel = getChannel();
     let caption = story.suggested_title || story.suggested_thumbnail_text || story.title;
@@ -191,8 +191,8 @@ async function uploadVideo(story) {
     }
 
     if (status === 'PROCESSING') {
-      console.warn(`[tiktok] Video still processing after ${attempts} checks — will be available later`);
-      // Don't throw — TikTok is slow. Return partial success.
+      console.warn(`[tiktok] Video still processing after ${attempts} checks - will be available later`);
+      // Don't throw - TikTok is slow. Return partial success.
     }
     if (status === 'FAILED') {
       throw new Error(`TikTok publishing failed. Publish ID: ${publish_id}`);

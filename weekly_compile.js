@@ -122,7 +122,7 @@ async function generateCompilationScript(selectedStories, dateRange) {
   });
 
   const storySummaries = selectedStories.map((s, i) => (
-    `${i + 1}. [${s.classification || s.flair || 'NEWS'}] "${s.title}" — ${(s.full_script || s.body || '').substring(0, 200)}`
+    `${i + 1}. [${s.classification || s.flair || 'NEWS'}] "${s.title}" - ${(s.full_script || s.body || '').substring(0, 200)}`
   )).join('\n');
 
   const prompt = `You are the scriptwriter for ${channel.name}, a gaming news channel. Write a 10-15 minute compilation script that weaves these ${selectedStories.length} stories together into a cohesive weekly roundup.
@@ -134,32 +134,32 @@ ${storySummaries}
 
 RULES:
 - British English, no serial comma
-- Documentary tone — measured, authoritative, conversational
+- Documentary tone - measured, authoritative, conversational
 - Target 1500-2000 words total (approx 10-14 minutes at 140 WPM)
 - Each story segment should be 100-180 words (expanded from the original short)
 - Include smooth transition phrases between segments
 - Intro: Welcome viewers, set the scene for the week
 - Outro: Wrap up, tease next week, CTA to subscribe
-- Generate chapter timestamps (format: "M:SS Title") — the intro starts at 0:00
+- Generate chapter timestamps (format: "M:SS Title") - the intro starts at 0:00
 - Each chapter starts roughly where that story's segment begins
 - Estimate segment timing: intro ~30s, each story ~60-90s, outro ~20s
 
 Output ONLY valid JSON with no preamble and no markdown backticks:
 {
-  "intro": "string — the opening 2-3 sentences",
+  "intro": "string - the opening 2-3 sentences",
   "segments": [
     {
-      "story_id": "string — the story id",
-      "transition": "string — 1-2 sentence transition into this story",
-      "expanded_body": "string — 100-180 word expanded coverage of this story"
+      "story_id": "string - the story id",
+      "transition": "string - 1-2 sentence transition into this story",
+      "expanded_body": "string - 100-180 word expanded coverage of this story"
     }
   ],
-  "outro": "string — closing 2-3 sentences with subscribe CTA",
+  "outro": "string - closing 2-3 sentences with subscribe CTA",
   "chapter_timestamps": [
     { "time": "0:00", "title": "Intro" },
     { "time": "0:30", "title": "Story Title 1" }
   ],
-  "full_script": "string — the complete narration text from intro through outro, all segments joined",
+  "full_script": "string - the complete narration text from intro through outro, all segments joined",
   "word_count": 0
 }`;
 
@@ -249,8 +249,8 @@ async function compileWeekly() {
   // 2. Select top stories
   const selectedStories = selectTopStories(stories, history);
   if (selectedStories.length < 3) {
-    console.log('[weekly] Aborting — not enough stories for a compilation');
-    await sendDiscord('**Weekly Roundup** — Not enough published stories this week. Skipping compilation.');
+    console.log('[weekly] Aborting - not enough stories for a compilation');
+    await sendDiscord('**Weekly Roundup** - Not enough published stories this week. Skipping compilation.');
     return null;
   }
 
@@ -316,7 +316,7 @@ async function compileWeekly() {
       console.log(`[weekly] YouTube upload failed: ${err.message}`);
     }
   } else {
-    console.log('[weekly] AUTO_PUBLISH is off — skipping YouTube upload');
+    console.log('[weekly] AUTO_PUBLISH is off - skipping YouTube upload');
   }
 
   // 9. Save compilation data
@@ -459,8 +459,8 @@ async function compileByTopic(topicName) {
   // 2. Select stories matching the topic
   const topicStories = selectTopicStories(stories, history, topicName);
   if (topicStories.length < 3) {
-    console.log(`[topic-compile] Aborting — only ${topicStories.length} stories for "${topicName}" (need at least 3)`);
-    await sendDiscord(`**Topic Compilation** — Not enough stories for "${topicName}" (${topicStories.length} found). Skipping.`);
+    console.log(`[topic-compile] Aborting - only ${topicStories.length} stories for "${topicName}" (need at least 3)`);
+    await sendDiscord(`**Topic Compilation** - Not enough stories for "${topicName}" (${topicStories.length} found). Skipping.`);
     return null;
   }
 
@@ -577,7 +577,7 @@ async function generateTopicCompilationScript(selectedStories, topicName, dateRa
   });
 
   const storySummaries = selectedStories.map((s, i) => (
-    `${i + 1}. [${s.classification || s.flair || 'NEWS'}] "${s.title}" — ${(s.full_script || s.body || '').substring(0, 200)}`
+    `${i + 1}. [${s.classification || s.flair || 'NEWS'}] "${s.title}" - ${(s.full_script || s.body || '').substring(0, 200)}`
   )).join('\n');
 
   const prompt = `You are the scriptwriter for ${channel.name}, a gaming news channel. Write a 10-15 minute topic compilation script focused specifically on "${topicName}". This is a deep-dive roundup covering everything that happened with "${topicName}" recently.
@@ -590,32 +590,32 @@ ${storySummaries}
 
 RULES:
 - British English, no serial comma
-- Documentary tone — measured, authoritative, conversational
+- Documentary tone - measured, authoritative, conversational
 - Target 1500-2000 words total (approx 10-14 minutes at 140 WPM)
-- Frame this as a dedicated "${topicName}" roundup — not a general weekly recap
+- Frame this as a dedicated "${topicName}" roundup - not a general weekly recap
 - Open with why "${topicName}" has been dominating the news cycle
 - Each story segment should be 100-180 words (expanded from the original short)
 - Include smooth transition phrases that connect the stories thematically around "${topicName}"
 - Outro: summarise the state of "${topicName}" right now, what to watch for next, CTA to subscribe
-- Generate chapter timestamps (format: "M:SS Title") — the intro starts at 0:00
+- Generate chapter timestamps (format: "M:SS Title") - the intro starts at 0:00
 - Estimate segment timing: intro ~30s, each story ~60-90s, outro ~20s
 
 Output ONLY valid JSON with no preamble and no markdown backticks:
 {
-  "intro": "string — the opening 2-3 sentences framing the ${topicName} deep-dive",
+  "intro": "string - the opening 2-3 sentences framing the ${topicName} deep-dive",
   "segments": [
     {
-      "story_id": "string — the story id",
-      "transition": "string — 1-2 sentence transition into this story",
-      "expanded_body": "string — 100-180 word expanded coverage of this story"
+      "story_id": "string - the story id",
+      "transition": "string - 1-2 sentence transition into this story",
+      "expanded_body": "string - 100-180 word expanded coverage of this story"
     }
   ],
-  "outro": "string — closing 2-3 sentences summarising ${topicName} outlook with subscribe CTA",
+  "outro": "string - closing 2-3 sentences summarising ${topicName} outlook with subscribe CTA",
   "chapter_timestamps": [
     { "time": "0:00", "title": "Intro" },
     { "time": "0:30", "title": "Story Title 1" }
   ],
-  "full_script": "string — the complete narration text from intro through outro, all segments joined",
+  "full_script": "string - the complete narration text from intro through outro, all segments joined",
   "word_count": 0
 }`;
 

@@ -34,7 +34,7 @@ async function saveHistory(history) {
 async function fetchYouTubeStats(videoIds) {
   const apiKey = process.env.YOUTUBE_API_KEY;
   if (!apiKey || apiKey === 'placeholder') {
-    console.log('[analytics] No YOUTUBE_API_KEY configured — skipping stats fetch');
+    console.log('[analytics] No YOUTUBE_API_KEY configured - skipping stats fetch');
     return {};
   }
 
@@ -89,13 +89,13 @@ async function loadTikTokToken() {
 async function fetchTikTokStats(postIds) {
   const token = await loadTikTokToken();
   if (!token) {
-    console.log('[analytics] No TikTok token available — skipping TikTok stats');
+    console.log('[analytics] No TikTok token available - skipping TikTok stats');
     return {};
   }
 
   const results = {};
 
-  // TikTok Content Posting API — query video info in batches of 20
+  // TikTok Content Posting API - query video info in batches of 20
   const batches = [];
   for (let i = 0; i < postIds.length; i += 20) {
     batches.push(postIds.slice(i, i + 20));
@@ -159,7 +159,7 @@ async function loadInstagramToken() {
 async function fetchInstagramStats(mediaIds) {
   const token = await loadInstagramToken();
   if (!token) {
-    console.log('[analytics] No Instagram token available — skipping Instagram stats');
+    console.log('[analytics] No Instagram token available - skipping Instagram stats');
     return {};
   }
 
@@ -229,13 +229,13 @@ function calculateViralityScore(stats, publishedAt) {
 
   const hoursLive = Math.max(1, (Date.now() - new Date(publishedAt).getTime()) / (1000 * 60 * 60));
 
-  // Views per hour — primary signal
+  // Views per hour - primary signal
   const viewsPerHour = stats.views / hoursLive;
 
-  // Like ratio — likes per view (typical good Shorts: 3-8%)
+  // Like ratio - likes per view (typical good Shorts: 3-8%)
   const likeRatio = stats.views > 0 ? stats.likes / stats.views : 0;
 
-  // Comment ratio — comments per view (typical good Shorts: 0.5-2%)
+  // Comment ratio - comments per view (typical good Shorts: 0.5-2%)
   const commentRatio = stats.views > 0 ? stats.comments / stats.views : 0;
 
   // Composite score (0-100 scale, can exceed for viral hits)
@@ -335,14 +335,14 @@ async function runAnalytics() {
   const history = await loadHistory();
 
   if (!stories.length) {
-    console.log('[analytics] No stories in daily_news.json — nothing to analyse');
+    console.log('[analytics] No stories in daily_news.json - nothing to analyse');
     return;
   }
 
   // Collect published stories across all platforms
   const publishedStories = stories.filter(s => s.youtube_post_id || s.tiktok_post_id || s.instagram_media_id);
   if (!publishedStories.length) {
-    console.log('[analytics] No published stories found — skipping stats fetch');
+    console.log('[analytics] No published stories found - skipping stats fetch');
     return;
   }
 
@@ -402,7 +402,7 @@ async function runAnalytics() {
     story.virality_score = calculateCombinedViralityScore(ytStats, ttStats, igStats, publishedAt);
 
     const totalViews = (ytStats?.views || 0) + (ttStats?.views || 0) + (igStats?.views || 0);
-    console.log(`[analytics] ${story.title.substring(0, 50)}... — total views: ${totalViews}, virality: ${story.virality_score}`);
+    console.log(`[analytics] ${story.title.substring(0, 50)}... - total views: ${totalViews}, virality: ${story.virality_score}`);
 
     // Archive to history (keyed by story id to avoid duplicates)
     const existingIdx = history.entries.findIndex(e => e.id === story.id);
@@ -519,7 +519,7 @@ function recencyWeightedAvg(entries, filterFn) {
  * Returns a score boost (0-30) based on how well similar topics have
  * historically performed. Designed to be added to breaking_score in hunter.js.
  *
- * Uses recency weighting — performance from the last 7 days counts 2x
+ * Uses recency weighting - performance from the last 7 days counts 2x
  * vs older data, so the system adapts to what is trending now.
  *
  * Scoring:
@@ -542,7 +542,7 @@ function getPerformanceBoost(title, flair) {
 
   let boost = 0;
 
-  // --- Keyword boost (up to 15) — recency-weighted from entries ---
+  // --- Keyword boost (up to 15) - recency-weighted from entries ---
   const titleKeywords = extractKeywords(title);
 
   if (entries.length >= 2) {
@@ -580,7 +580,7 @@ function getPerformanceBoost(title, flair) {
     }
   }
 
-  // --- Flair boost (up to 10) — recency-weighted ---
+  // --- Flair boost (up to 10) - recency-weighted ---
   if (flair && entries.length >= 2) {
     const flairLower = flair.toLowerCase();
     const flairEntries = entries.filter(e => (e.flair || '').toLowerCase() === flairLower);
@@ -669,7 +669,7 @@ function getAnalyticsContext() {
     }
   }
 
-  // Recent trend — last 7 days vs overall
+  // Recent trend - last 7 days vs overall
   const now = Date.now();
   const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
   const recentEntries = entries.filter(e => e.published_at && (now - new Date(e.published_at).getTime()) < SEVEN_DAYS);

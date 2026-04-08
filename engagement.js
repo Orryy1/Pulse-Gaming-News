@@ -4,8 +4,8 @@
   Automates YouTube community engagement to boost algorithm signals:
   1. Pin comment on new uploads (story.pinned_comment)
   2. Heart/like top comments on recent videos
-  3. Smart auto-reply via Claude Haiku — max 1 reply per video per day
-  4. engageRecent() — full pass over videos from last 48 hours
+  3. Smart auto-reply via Claude Haiku - max 1 reply per video per day
+  4. engageRecent() - full pass over videos from last 48 hours
 
   Scopes required: https://www.googleapis.com/auth/youtube
   (covers commentThreads.insert, comments.insert, comments.markAsSpam,
@@ -120,7 +120,7 @@ async function pinComment(videoId, text) {
  * The closest public action is liking the comment via the comment's
  * rating endpoint (comments.markAsSpam is unrelated). We use the
  * undocumented but functional approach of setting the viewer rating
- * to "like" while authenticated as the channel owner — YouTube then
+ * to "like" while authenticated as the channel owner - YouTube then
  * displays the creator heart in the UI.
  */
 async function heartTopComments(videoId, count = 3) {
@@ -154,7 +154,7 @@ async function heartTopComments(videoId, count = 3) {
       if (ownChannelId && authorChannelId === ownChannelId) continue;
 
       try {
-        // "like" the comment as channel owner — this triggers the creator heart
+        // "like" the comment as channel owner - this triggers the creator heart
         await youtube.comments.markAsSpam === undefined; // no-op check
         // Use the undocumented but working approach: set rating on the comment
         // via the low-level API. googleapis exposes this through comments resource.
@@ -162,7 +162,7 @@ async function heartTopComments(videoId, count = 3) {
           .comments.list({ part: ['id'], id: [comment.id] }); // warm-up, ensures auth
 
         // The actual heart: POST to set moderation status or use the like endpoint.
-        // YouTube v3 doesn't have comments.rate — the workaround is to call the
+        // YouTube v3 doesn't have comments.rate - the workaround is to call the
         // raw endpoint. For now, we use the best available: setModerationStatus
         // to 'published' which ensures visibility and signals engagement.
         await youtube.comments.setModerationStatus({
@@ -173,7 +173,7 @@ async function heartTopComments(videoId, count = 3) {
         console.log(`[engagement] Hearted comment by ${comment.snippet.authorDisplayName} on ${videoId}`);
         hearted++;
       } catch (err) {
-        // Non-critical — some comments may already be published
+        // Non-critical - some comments may already be published
         if (!err.message.includes('has already been published')) {
           console.log(`[engagement] Heart failed for ${comment.id}: ${err.message}`);
         }
@@ -220,7 +220,7 @@ async function generateSmartReply(commentText, authorName, storyContext) {
             `- Casual, warm, British English tone\n` +
             `- Encourage further discussion\n` +
             `- Never use emojis excessively (1 max)\n` +
-            `- Never use em dashes (—) anywhere in the reply\n` +
+            `- Never use em dashes (-) anywhere in the reply\n` +
             `- Never be pushy or salesy\n` +
             `- Just the reply text, nothing else`,
         },
@@ -229,7 +229,7 @@ async function generateSmartReply(commentText, authorName, storyContext) {
 
     let reply = (response.content[0]?.text || '').trim();
 
-    // Strip em dashes — never allowed in auto-generated replies
+    // Strip em dashes - never allowed in auto-generated replies
     reply = reply.replace(/\u2014/g, ',').replace(/\u2013/g, ',');
 
     // Enforce 100-char limit
@@ -256,7 +256,7 @@ async function generateSmartReply(commentText, authorName, storyContext) {
 async function smartReplyToTop(videoId) {
   if (!videoId) return null;
 
-  // Check reply log — max 1 per video per day
+  // Check reply log - max 1 per video per day
   const log = await loadReplyLog();
   if (log[videoId] === todayISO()) {
     console.log(`[engagement] Already replied to ${videoId} today, skipping`);
@@ -366,7 +366,7 @@ async function rotatePinnedComment(videoId, story) {
             `- Reference the story topic\n` +
             `- Ask a question to drive comments\n` +
             `- Warm, British English tone\n` +
-            `- Never use em dashes (—) anywhere in the comment\n` +
+            `- Never use em dashes (-) anywhere in the comment\n` +
             `- Include 1 emoji maximum\n` +
             `- Just the comment text, nothing else`,
         },
@@ -376,7 +376,7 @@ async function rotatePinnedComment(videoId, story) {
     let newComment = (response.content[0]?.text || '').trim();
     if (!newComment) return null;
 
-    // Strip em dashes — never allowed in auto-generated replies
+    // Strip em dashes - never allowed in auto-generated replies
     newComment = newComment.replace(/\u2014/g, ',').replace(/\u2013/g, ',');
 
     // Post the new pinned comment
@@ -414,7 +414,7 @@ async function generatePollComment(story) {
     return `What's your take? \u{1F525} = Legit | \u{2744}\u{FE0F} = Fake | Reply with your prediction!`;
   }
 
-  // Confirmed / verified / breaking — community engagement prompt
+  // Confirmed / verified / breaking - community engagement prompt
   return `Drop your most-played game related to this news \u{1F447}`;
 }
 
@@ -723,7 +723,7 @@ async function engageRecent() {
   // Record daily stats
   await recordEngagementStats(totalHearted, totalReplies, totalPins);
 
-  console.log(`[engagement] Engagement pass complete — ${totalHearted} hearts, ${totalReplies} replies, ${totalPins} pins`);
+  console.log(`[engagement] Engagement pass complete - ${totalHearted} hearts, ${totalReplies} replies, ${totalPins} pins`);
 }
 
 // ---------- Exports ----------

@@ -113,7 +113,7 @@ async function uploadReel(story) {
 
     await validateVideo(story.exported_path, 'instagram');
 
-    // Build caption — channel-aware hashtags
+    // Build caption - channel-aware hashtags
     const { getChannel } = require('./channels');
     const channel = getChannel();
     let caption = story.suggested_title || story.suggested_thumbnail_text || story.title;
@@ -135,7 +135,7 @@ async function uploadReel(story) {
     console.log(`[instagram] Uploading Reel (${Math.round(fileSize / 1024)}KB): "${(story.suggested_thumbnail_text || story.title).substring(0, 50)}..."`);
 
     // Step 1: Create resumable upload session
-    // Use graph.facebook.com (not graph.instagram.com) — required for resumable uploads
+    // Use graph.facebook.com (not graph.instagram.com) - required for resumable uploads
     let initResponse;
     try {
       initResponse = await axios.post(

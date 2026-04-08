@@ -20,7 +20,7 @@ const OUTRO_DURATION = 5;   // seconds before end to bring up outro card
 
 const MUSIC_CACHE = path.join('output', 'music');
 const CUSTOM_MUSIC_DIR = path.join(__dirname, 'audio', 'mastered');
-const MUSIC_VOLUME = 0.12; // 12% volume — subtle background
+const MUSIC_VOLUME = 0.12; // 12% volume - subtle background
 const MAX_IMAGES = 8; // More images = more visual variety in 60s+ videos
 const FFMPEG_THREADS = 2; // Limit FFmpeg threads to stay within container memory
 
@@ -270,7 +270,7 @@ async function generateSubtitles(story, duration, outputDir) {
       }
     }
 
-    // Group words into 1-3 word karaoke phrases — break at sentence endings
+    // Group words into 1-3 word karaoke phrases - break at sentence endings
     const phrases = [];
     let i = 0;
     while (i < mergedWords.length) {
@@ -315,7 +315,7 @@ async function generateSubtitles(story, duration, outputDir) {
       if (!clean || /^[^A-Z0-9]*$/.test(clean)) return null; // skip punctuation-only phrases
       // End each phrase slightly early to prevent overlap flicker with next phrase
       const end = (idx < phrases.length - 1) ? Math.max(p.start + 0.1, p.end - 0.08) : p.end;
-      // Highlight key words in orange (brand accent) — like TikTok style
+      // Highlight key words in orange (brand accent) - like TikTok style
       const highlighted = highlightKeyWords(clean);
       // Use top-aligned style during outro (when brand card is showing)
       const style = p.start >= ctaStartTime ? 'CaptionTop' : 'Caption';
@@ -340,7 +340,7 @@ async function generateSubtitles(story, duration, outputDir) {
       return `Dialogue: 0,${start},${end},Caption,,0,0,0,,${highlighted}`;
     }).join('\n');
 
-    console.log(`[assemble] Subtitles: ${phrases.length} phrases (evenly spaced — no timestamps file)`);
+    console.log(`[assemble] Subtitles: ${phrases.length} phrases (evenly spaced - no timestamps file)`);
   }
 
   const ass = `[Script Info]
@@ -413,7 +413,7 @@ function buildVideoCommand(story, images, audioPath, assPath, filterScriptPath, 
     inputs.push(`-i "${musicPath.replace(/\\/g, '/')}"`);
   }
 
-  // Intro/outro card inputs — must span full duration so overlay has frames available
+  // Intro/outro card inputs - must span full duration so overlay has frames available
   let introIdx = -1;
   let outroIdx = -1;
   const hasIntroCard = fs.pathExistsSync(INTRO_CARD);
@@ -431,7 +431,7 @@ function buildVideoCommand(story, images, audioPath, assPath, filterScriptPath, 
   // --- Filter graph ---
   const filterParts = [];
 
-  // Ken Burns zoom/pan per background image — vary crop position for visual variety
+  // Ken Burns zoom/pan per background image - vary crop position for visual variety
   for (let i = 0; i < images.length; i++) {
     const zoomIn = i % 2 === 0;
     // Scale zoom increment based on segment duration: reach 15% zoom over the segment's frames
@@ -439,7 +439,7 @@ function buildVideoCommand(story, images, audioPath, assPath, filterScriptPath, 
     const zoomExpr = zoomIn
       ? `z=min(zoom+${zoomIncrement}\\,1.15)`
       : `z=if(eq(on\\,1)\\,1.15\\,max(zoom-${zoomIncrement}\\,1.0))`;
-    // Vary crop focus: top, centre, bottom — so same-ish images still look different
+    // Vary crop focus: top, centre, bottom - so same-ish images still look different
     const yPos = i % 3 === 0 ? `y=0` :
                  i % 3 === 1 ? `y=(ih-oh)/2` :
                                `y=ih-oh`;
@@ -493,21 +493,21 @@ function buildVideoCommand(story, images, audioPath, assPath, filterScriptPath, 
     `drawbox=x=0:y=ih-200:w=iw:h=200:color=black@0.45:t=fill`
   );
 
-  // Flair badge — top left with coloured pill
+  // Flair badge - top left with coloured pill
   chain.push(
     `drawtext=text='  ${flair}  ':${fontOpt}:fontcolor=white:fontsize=38:` +
     `box=1:boxcolor=${flairColor}@0.85:boxborderw=14:x=40:y=60`
   );
 
-  // Source badge — below flair pill with visible gap
+  // Source badge - below flair pill with visible gap
   chain.push(
     `drawtext=text='  ${source}  ':${fontOpt}:fontcolor=white@0.85:fontsize=26:` +
     `box=1:boxcolor=${brand.MUTED_FFM}@0.6:boxborderw=8:x=40:y=130`
   );
 
-  // Brand bar removed — intro/outro cards handle branding
+  // Brand bar removed - intro/outro cards handle branding
 
-  // Reddit comments — scattered throughout the video as semi-transparent overlays
+  // Reddit comments - scattered throughout the video as semi-transparent overlays
   const comments = story.reddit_comments || (story.top_comment ? [{ body: story.top_comment, author: 'Redditor', score: 0 }] : []);
   if (comments.length > 0) {
     // Spread comments evenly across the video (skip first/last 10%)
@@ -536,7 +536,7 @@ function buildVideoCommand(story, images, audioPath, assPath, filterScriptPath, 
       const slideX = `if(lt(t-${ct}\\,${fadeDur})\\,(-20+60*(t-${ct})/${fadeDur})\\,40)`;
       const enableExpr = `between(t\\,${ct}\\,${ct + showDur})`;
 
-      // Word wrap into lines of ~30 chars — show ALL lines, no truncation
+      // Word wrap into lines of ~30 chars - show ALL lines, no truncation
       const words = text.split(' ');
       const lines = [];
       let current = '';
@@ -601,12 +601,12 @@ function buildVideoCommand(story, images, audioPath, assPath, filterScriptPath, 
   );
   videoLabel = 'afterlogo';
 
-  // --- ASS subtitles — on top of outro card so CaptionTop shows ---
+  // --- ASS subtitles - on top of outro card so CaptionTop shows ---
   filterParts.push(
     `[${videoLabel}]ass=${assPathFixed}[afterass]`
   );
 
-  // --- Intro card LAST — covers everything including subtitles during intro ---
+  // --- Intro card LAST - covers everything including subtitles during intro ---
   if (introIdx >= 0) {
     filterParts.push(
       `[${introIdx}:v]scale=1080:1920:force_original_aspect_ratio=decrease,` +
@@ -667,7 +667,7 @@ async function assemble() {
     if (s.exported_path && await fs.pathExists(s.exported_path)) {
       const stat = await fs.stat(s.exported_path);
       if (stat.size < 500 * 1024) {
-        console.log(`[assemble] ${s.id}: exported file only ${Math.round(stat.size / 1024)}KB — re-rendering`);
+        console.log(`[assemble] ${s.id}: exported file only ${Math.round(stat.size / 1024)}KB - re-rendering`);
         await fs.remove(s.exported_path);
         delete s.exported_path;
         // Clear image paths too so images.js re-downloads fresh copies
@@ -792,7 +792,7 @@ async function assemble() {
     } catch (err) {
       const errDetail = err.stderr?.substring(err.stderr.length - 500) || err.message.substring(0, 500);
       console.log(`[assemble] ⚠ Multi-image render FAILED for ${story.id} (${images.length} images, ${Math.round(duration)}s):\n${errDetail}`);
-      console.log(`[assemble] ⚠ Falling back to SINGLE IMAGE — video will be less engaging`);
+      console.log(`[assemble] ⚠ Falling back to SINGLE IMAGE - video will be less engaging`);
 
       // Fallback: single image but with ALL overlays (subtitles, branding, comments, music)
       try {
@@ -800,7 +800,7 @@ async function assemble() {
         const fbInputs = [];
         const totalFrames = Math.ceil(duration) * 30;
 
-        // Single image with proper Ken Burns zoom — scale increment to reach 15% over full duration
+        // Single image with proper Ken Burns zoom - scale increment to reach 15% over full duration
         const fbZoomIncrement = Math.round(10000 * (0.15 / totalFrames)) / 10000;
         fbInputs.push(`-loop 1 -t ${Math.ceil(duration) + 2} -i "${images[0].replace(/\\/g, '/')}"`);
         fbFilterParts.push(
@@ -842,17 +842,17 @@ async function assemble() {
         // ASS subtitles applied after overlays (see below)
 
 
-        // Flair badge — moved higher
+        // Flair badge - moved higher
         fbChain.push(
           `drawtext=text='  ${flair}  ':${fontOpt}:fontcolor=white:fontsize=38:` +
           `box=1:boxcolor=${flairColor}@0.85:boxborderw=14:x=40:y=60`
         );
-        // Source badge — below flair with visible gap
+        // Source badge - below flair with visible gap
         fbChain.push(
           `drawtext=text='  ${source}  ':${fontOpt}:fontcolor=white@0.85:fontsize=26:` +
           `box=1:boxcolor=${brand.MUTED_FFM}@0.6:boxborderw=8:x=40:y=130`
         );
-        // Brand bar removed — intro/outro cards handle branding
+        // Brand bar removed - intro/outro cards handle branding
 
         // Reddit comments with fade animations
         const comments = story.reddit_comments || (story.top_comment ? [{ body: story.top_comment, author: 'Redditor', score: 0 }] : []);
@@ -950,7 +950,7 @@ async function assemble() {
           );
           fbVideoLabel = 'afterlogo';
         }
-        // ASS subtitles LAST — on top of everything
+        // ASS subtitles LAST - on top of everything
         if (assPath && await fs.pathExists(assPath)) {
           const assFixed = assPath.replace(/\\/g, '/').replace(/:/g, '\\\\:');
           fbFilterParts.push(`[${fbVideoLabel}]ass=${assFixed}[outv]`);

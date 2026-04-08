@@ -1,5 +1,5 @@
 /**
- * PULSE GAMING — One-time Discord server setup
+ * PULSE GAMING - One-time Discord server setup
  *
  * Creates the entire server structure: categories, channels, roles, pinned messages.
  * Run once with:  node discord/setup.js
@@ -73,20 +73,20 @@ const CATEGORIES = [
   {
     name: '📢 INFORMATION',
     channels: [
-      { name: 'rules',         type: ChannelType.GuildText, readOnly: true, topic: 'Server rules — read before posting' },
+      { name: 'rules',         type: ChannelType.GuildText, readOnly: true, topic: 'Server rules - read before posting' },
       { name: 'announcements',  type: ChannelType.GuildText, readOnly: true, topic: 'Channel updates, milestones and important news from the team' },
       { name: 'role-select',    type: ChannelType.GuildText, readOnly: true, topic: 'React to pick your platform roles (PC, Xbox, PlayStation, Nintendo)' },
       { name: 'welcome',        type: ChannelType.GuildText, topic: 'Say hello to new members as they join the community' },
-      { name: 'level-ups',      type: ChannelType.GuildText, topic: 'Automatic level-up announcements — earn XP by chatting and claiming /daily' },
+      { name: 'level-ups',      type: ChannelType.GuildText, topic: 'Automatic level-up announcements - earn XP by chatting and claiming /daily' },
     ],
   },
   {
     name: '🔥 NEWS FEED',
     channels: [
       { name: 'breaking-news', type: ChannelType.GuildText, readOnly: true, topic: 'High-impact gaming news posted automatically by the Pulse bot' },
-      { name: 'leaks',         type: ChannelType.GuildText, readOnly: true, topic: 'Credible leaks and insider info — sources cited, take with a pinch of salt' },
-      { name: 'rumours',       type: ChannelType.GuildText, readOnly: true, topic: 'Unverified rumours — fun to speculate, not confirmed' },
-      { name: 'confirmed',     type: ChannelType.GuildText, readOnly: true, topic: 'Officially confirmed news — verified by publishers or developers' },
+      { name: 'leaks',         type: ChannelType.GuildText, readOnly: true, topic: 'Credible leaks and insider info - sources cited, take with a pinch of salt' },
+      { name: 'rumours',       type: ChannelType.GuildText, readOnly: true, topic: 'Unverified rumours - fun to speculate, not confirmed' },
+      { name: 'confirmed',     type: ChannelType.GuildText, readOnly: true, topic: 'Officially confirmed news - verified by publishers or developers' },
     ],
   },
   {
@@ -94,39 +94,39 @@ const CATEGORIES = [
     channels: [
       { name: 'general',       type: ChannelType.GuildText, topic: 'Chat about anything gaming-related' },
       { name: 'gaming-talk',   type: ChannelType.GuildText, topic: 'Deep dives into specific games, reviews and recommendations' },
-      { name: 'predictions',   type: ChannelType.GuildText, topic: 'Make predictions with /predict — earn 2x XP if you are right' },
-      { name: 'memes',         type: ChannelType.GuildText, topic: 'Gaming memes only — keep it clean' },
+      { name: 'predictions',   type: ChannelType.GuildText, topic: 'Make predictions with /predict - earn 2x XP if you are right' },
+      { name: 'memes',         type: ChannelType.GuildText, topic: 'Gaming memes only - keep it clean' },
       { name: 'introductions', type: ChannelType.GuildText, topic: 'New here? Tell us what you play and what platforms you are on' },
     ],
   },
   {
     name: '🏆 COMPETITIONS',
     channels: [
-      { name: 'giveaways',     type: ChannelType.GuildText, topic: 'Active giveaways — react to enter, winners announced here' },
-      { name: 'trivia',        type: ChannelType.GuildText, topic: 'Gaming trivia challenges — use /trivia to play and earn 50 XP per correct answer' },
-      { name: 'leaderboard',   type: ChannelType.GuildText, topic: 'Top community members by XP — use /leaderboard to check rankings' },
-      { name: 'daily-streak',  type: ChannelType.GuildText, topic: 'Claim your daily XP with /daily — build streaks for bonus multipliers up to 5x' },
+      { name: 'giveaways',     type: ChannelType.GuildText, topic: 'Active giveaways - react to enter, winners announced here' },
+      { name: 'trivia',        type: ChannelType.GuildText, topic: 'Gaming trivia challenges - use /trivia to play and earn 50 XP per correct answer' },
+      { name: 'leaderboard',   type: ChannelType.GuildText, topic: 'Top community members by XP - use /leaderboard to check rankings' },
+      { name: 'daily-streak',  type: ChannelType.GuildText, topic: 'Claim your daily XP with /daily - build streaks for bonus multipliers up to 5x' },
     ],
   },
   {
     name: '🎬 CONTENT',
     channels: [
       { name: 'video-drops',      type: ChannelType.GuildText, readOnly: true, topic: 'New Pulse Gaming Shorts posted automatically when they go live' },
-      { name: 'clip-submissions',  type: ChannelType.GuildText, topic: 'Share your best gaming clips — might get featured on the channel' },
+      { name: 'clip-submissions',  type: ChannelType.GuildText, topic: 'Share your best gaming clips - might get featured on the channel' },
       { name: 'suggestions',       type: ChannelType.GuildText, topic: 'Suggest topics, games or features you want to see covered' },
     ],
   },
   {
     name: '📊 FEEDBACK',
     channels: [
-      { name: 'polls',    type: ChannelType.GuildText, topic: 'Community polls — vote on what content comes next' },
-      { name: 'feedback', type: ChannelType.GuildText, topic: 'Tell us what is working and what is not — all feedback welcome' },
+      { name: 'polls',    type: ChannelType.GuildText, topic: 'Community polls - vote on what content comes next' },
+      { name: 'feedback', type: ChannelType.GuildText, topic: 'Tell us what is working and what is not - all feedback welcome' },
     ],
   },
   {
     name: '🔇 STAFF',
     channels: [
-      { name: 'mod-log',      type: ChannelType.GuildText, staffOnly: true, topic: 'Automated moderation log — bans, kicks, warnings' },
+      { name: 'mod-log',      type: ChannelType.GuildText, staffOnly: true, topic: 'Automated moderation log - bans, kicks, warnings' },
       { name: 'bot-commands', type: ChannelType.GuildText, staffOnly: true, topic: 'Test bot commands here without spamming public channels' },
     ],
   },
@@ -292,7 +292,7 @@ client.once(Events.ClientReady, async () => {
   if (rulesChannel) {
     const rulesEmbed = new EmbedBuilder()
       .setColor(config.COLOURS.AMBER)
-      .setTitle('📜 Server Rules — PULSE GAMING')
+      .setTitle('📜 Server Rules - PULSE GAMING')
       .setDescription(
         'Welcome to the PULSE GAMING community. Follow these rules to keep the server running smoothly.\n\n' +
 
@@ -327,7 +327,7 @@ client.once(Events.ClientReady, async () => {
 
         '*Rules are enforced at moderator discretion. Decisions are final.*'
       )
-      .setFooter({ text: 'PULSE GAMING — Verified leaks. Every day.' })
+      .setFooter({ text: 'PULSE GAMING - Verified leaks. Every day.' })
       .setTimestamp();
 
     const rulesMsg = await rulesChannel.send({ embeds: [rulesEmbed] });
@@ -345,10 +345,10 @@ client.once(Events.ClientReady, async () => {
       .setTitle('🎮 Select Your Platform')
       .setDescription(
         'React below to show which platform(s) you play on!\n\n' +
-        '🎮 — **PlayStation**\n' +
-        '🟢 — **Xbox**\n' +
-        '🍄 — **Nintendo**\n' +
-        '🖥️ — **PC Gamer**\n\n' +
+        '🎮 - **PlayStation**\n' +
+        '🟢 - **Xbox**\n' +
+        '🍄 - **Nintendo**\n' +
+        '🖥️ - **PC Gamer**\n\n' +
         '*You can select multiple. Remove your reaction to remove the role.*'
       )
       .setFooter({ text: 'PULSE GAMING' });
@@ -393,10 +393,10 @@ client.once(Events.ClientReady, async () => {
       .setDescription(
         'The top 10 most active members will appear here.\n\n' +
         '**How to earn XP:**\n' +
-        '> 💬 Chat in any channel — 15-25 XP per message (60s cooldown)\n' +
-        '> 📅 `/daily` — 100 XP base, up to 5x streak multiplier\n' +
-        '> 🎮 `/trivia` — 50 XP for correct answers\n' +
-        '> 🔮 `/predict` — Win 2x XP from prediction bets\n\n' +
+        '> 💬 Chat in any channel - 15-25 XP per message (60s cooldown)\n' +
+        '> 📅 `/daily` - 100 XP base, up to 5x streak multiplier\n' +
+        '> 🎮 `/trivia` - 50 XP for correct answers\n' +
+        '> 🔮 `/predict` - Win 2x XP from prediction bets\n\n' +
         '**Level Roles:**\n' +
         '> Level 5 → Regular\n' +
         '> Level 10 → Insider\n' +
@@ -423,11 +423,11 @@ client.once(Events.ClientReady, async () => {
       .setDescription(
         'Use `/daily` once per day to claim bonus XP!\n\n' +
         '**Streak Multipliers:**\n' +
-        '> Day 1 — 100 XP (1x)\n' +
-        '> Day 2 — 200 XP (2x)\n' +
-        '> Day 3 — 300 XP (3x)\n' +
-        '> Day 4 — 400 XP (4x)\n' +
-        '> Day 5+ — 500 XP (5x MAX)\n\n' +
+        '> Day 1 - 100 XP (1x)\n' +
+        '> Day 2 - 200 XP (2x)\n' +
+        '> Day 3 - 300 XP (3x)\n' +
+        '> Day 4 - 400 XP (4x)\n' +
+        '> Day 5+ - 500 XP (5x MAX)\n\n' +
         '*Miss a day and your streak resets to 1x!*'
       )
       .setFooter({ text: 'PULSE GAMING' });

@@ -7,20 +7,20 @@ const db = require('./lib/db');
 dotenv.config({ override: true });
 
 /*
-  Autonomous Publisher — 3x Daily Multi-Platform Posting
+  Autonomous Publisher - 3x Daily Multi-Platform Posting
 
   Optimal publish windows (all times UTC / BST):
-  - 12:00 UTC / 1:00 PM BST — lunch break + US morning (7-8am ET)
-  - 17:00 UTC / 6:00 PM BST — post-work peak + US noon
-  - 21:00 UTC / 10:00 PM BST — evening session + US afternoon (4-5pm ET)
+  - 12:00 UTC / 1:00 PM BST - lunch break + US morning (7-8am ET)
+  - 17:00 UTC / 6:00 PM BST - post-work peak + US noon
+  - 21:00 UTC / 10:00 PM BST - evening session + US afternoon (4-5pm ET)
 
   Strategy: 1 Short per window = 3 Shorts/day (algorithm favours frequency)
 
   This module handles:
   1. Auto-approval of high-confidence stories
   2. Full produce pipeline (affiliates → audio → images → assembly)
-  3. publishNextStory() — single-story publish for each window
-  4. publishToAllPlatforms() — batch publish (legacy/manual)
+  3. publishNextStory() - single-story publish for each window
+  4. publishToAllPlatforms() - batch publish (legacy/manual)
   5. Discord notifications at each stage
 */
 
@@ -28,7 +28,7 @@ dotenv.config({ override: true });
 function shouldAutoApprove(story) {
   const flair = (story.flair || '').toLowerCase();
 
-  // Auto-approve everything — fully autonomous pipeline, no manual gate
+  // Auto-approve everything - fully autonomous pipeline, no manual gate
   return true;
 }
 
@@ -214,7 +214,7 @@ async function fullAutonomousCycle() {
       );
     } else {
       console.log('[publisher] Step 4/4: AUTO_PUBLISH not enabled, skipping uploads');
-      await sendDiscord('**Pulse Gaming Produce Complete** — Videos ready. Set AUTO_PUBLISH=true to enable uploads.');
+      await sendDiscord('**Pulse Gaming Produce Complete** - Videos ready. Set AUTO_PUBLISH=true to enable uploads.');
     }
 
     const elapsed = Math.round((Date.now() - startTime) / 1000);
@@ -242,7 +242,7 @@ async function publishOnlyCycle() {
     if (process.env.AUTO_PUBLISH === 'true') {
       const results = await publishToAllPlatforms();
       const total = results.youtube.length + results.tiktok.length + results.instagram.length;
-      await sendDiscord(`**Evening Publish Complete** — ${total} videos posted across platforms`);
+      await sendDiscord(`**Evening Publish Complete** - ${total} videos posted across platforms`);
     }
   } catch (err) {
     console.log(`[publisher] Publish cycle error: ${err.message}`);
@@ -282,7 +282,7 @@ async function publishNextStory() {
 
   const result = { title: story.title, youtube: false, tiktok: false, instagram: false, facebook: false, twitter: false, errors: {} };
 
-  // YouTube — skip if already published
+  // YouTube - skip if already published
   if (story.youtube_post_id) {
     result.youtube = true;
     console.log(`[publisher] YouTube: already published (${story.youtube_post_id})`);
@@ -306,7 +306,7 @@ async function publishNextStory() {
     }
   }
 
-  // TikTok — skip if already published
+  // TikTok - skip if already published
   if (story.tiktok_post_id) {
     result.tiktok = true;
     console.log(`[publisher] TikTok: already published (${story.tiktok_post_id})`);
@@ -325,7 +325,7 @@ async function publishNextStory() {
     }
   }
 
-  // Instagram — skip if already published
+  // Instagram - skip if already published
   if (story.instagram_media_id) {
     result.instagram = true;
     console.log(`[publisher] Instagram: already published (${story.instagram_media_id})`);
@@ -344,7 +344,7 @@ async function publishNextStory() {
     }
   }
 
-  // Facebook Reels — skip if already published
+  // Facebook Reels - skip if already published
   if (story.facebook_post_id) {
     result.facebook = true;
     console.log(`[publisher] Facebook: already published (${story.facebook_post_id})`);
@@ -363,7 +363,7 @@ async function publishNextStory() {
     }
   }
 
-  // X/Twitter — skip if already published
+  // X/Twitter - skip if already published
   if (story.twitter_post_id) {
     result.twitter = true;
     console.log(`[publisher] Twitter: already published (${story.twitter_post_id})`);

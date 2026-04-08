@@ -144,10 +144,10 @@ function validate(script, channelId) {
       errors.push(`Hook starts with banned word: "${banned}"`);
     }
   }
-  // Curiosity gap validation — hook must not be vague or give away the answer
+  // Curiosity gap validation - hook must not be vague or give away the answer
   const hookWords = (script.hook || '').split(/\s+/).length;
   if (hookWords > 25) {
-    errors.push(`Hook too long (${hookWords} words) — must be under 25 words for punch`);
+    errors.push(`Hook too long (${hookWords} words) - must be under 25 words for punch`);
   }
   const weakPatterns = [
     /^big news/i, /^breaking news/i, /^some news/i, /^here's what/i,
@@ -156,7 +156,7 @@ function validate(script, channelId) {
   ];
   for (const pat of weakPatterns) {
     if (pat.test(script.hook || '')) {
-      errors.push(`Hook uses weak/generic opener pattern — needs curiosity gap`);
+      errors.push(`Hook uses weak/generic opener pattern - needs curiosity gap`);
       break;
     }
   }
@@ -165,7 +165,7 @@ function validate(script, channelId) {
   if (!script.classification || !validClassifications.includes(script.classification)) {
     errors.push('Missing or invalid classification tag');
   }
-  // Advertiser-safety check (warnings, not hard failures — gaming news may reference violence)
+  // Advertiser-safety check (warnings, not hard failures - gaming news may reference violence)
   const unsafeWords = checkAdvertiserSafety(script);
   if (unsafeWords.length > 0) {
     errors.push(`Advertiser-safety warning: contains "${unsafeWords.join('", "')}"`);
@@ -201,7 +201,7 @@ Reply with ONLY a JSON object: { "score": N, "reason": "one sentence" }`,
     return { score: result.score || 5, reason: result.reason || '' };
   } catch (err) {
     console.log(`[processor] Quality gate error: ${err.message}`);
-    return { score: 7, reason: 'scoring failed — accepting by default' };
+    return { score: 7, reason: 'scoring failed - accepting by default' };
   }
 }
 
@@ -356,11 +356,11 @@ Today's date is ${today}. You MUST follow these rules:
           console.log(`[processor] Script validated (${script.word_count} words)`);
         }
 
-        // Quality gate — score the script
+        // Quality gate - score the script
         if (script && attempts < 3) {
           const gate = await scoreScript(client, script, story, channel);
           qualityScore = gate.score;
-          console.log(`[processor] Quality gate: ${gate.score}/10 — ${gate.reason}`);
+          console.log(`[processor] Quality gate: ${gate.score}/10 - ${gate.reason}`);
           if (gate.score < 7) {
             console.log(`[processor] Script below quality threshold (${gate.score}/10), regenerating...`);
             script = null;
@@ -405,7 +405,7 @@ Today's date is ${today}. You MUST follow these rules:
       approved: story.approved || false,
     };
 
-    // Generate A/B title variants (non-blocking — if it fails, continue with single title)
+    // Generate A/B title variants (non-blocking - if it fails, continue with single title)
     try {
       const { generateTitleVariants } = require('./ab_titles');
       await generateTitleVariants(enrichedStory);

@@ -19,7 +19,7 @@ function buildStorySvg(title, flair, heroImageBase64, hasHero, classification) {
   const escapedTitle = title
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-  // Word-wrap title — wider layout for stories (max ~22 chars per line)
+  // Word-wrap title - wider layout for stories (max ~22 chars per line)
   const words = escapedTitle.split(' ');
   const lines = [];
   let current = '';
@@ -48,7 +48,7 @@ function buildStorySvg(title, flair, heroImageBase64, hasHero, classification) {
     <rect x="60" y="200" width="960" height="540" rx="20" fill="none"
           stroke="${brand.PRIMARY}" stroke-width="2" opacity="0.5"/>
   ` : `
-    <!-- No hero — gradient placeholder -->
+    <!-- No hero - gradient placeholder -->
     <rect x="60" y="200" width="960" height="540" rx="20" fill="#0d1a2e" opacity="0.5"/>
     <rect x="60" y="200" width="960" height="540" rx="20" fill="none"
           stroke="${brand.PRIMARY}" stroke-width="1" opacity="0.3"/>
@@ -90,7 +90,7 @@ function buildStorySvg(title, flair, heroImageBase64, hasHero, classification) {
   <!-- Gradient fade over hero -->
   <rect x="0" y="400" width="1080" height="400" fill="url(#heroFade)"/>
 
-  <!-- Flair badge — top of content area -->
+  <!-- Flair badge - top of content area -->
   <rect x="60" y="140" width="180" height="42" rx="21" fill="${flairColour}" opacity="0.9"/>
   <circle cx="85" cy="161" r="5" fill="white" opacity="0.9">
     <animate attributeName="opacity" values="1;0.3;1" dur="1.5s" repeatCount="indefinite"/>
@@ -203,7 +203,7 @@ async function generateStoryImages() {
   await db.saveStories(stories);
   console.log(`[stories] Generated ${toProcess.length} Story images`);
 
-  // Story images are auto-approved — no Discord gate needed.
+  // Story images are auto-approved - no Discord gate needed.
   // Images are generated, saved, and ready for use immediately.
   if (toProcess.length > 0) {
     console.log(`[stories] ${toProcess.length} Story images ready (auto-approved)`);

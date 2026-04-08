@@ -1,4 +1,4 @@
-// Pulse Gaming — Continuous Breaking News Watcher
+// Pulse Gaming - Continuous Breaking News Watcher
 // Polls Reddit /new and RSS feeds at high frequency, emitting events
 // when a story crosses the breaking threshold or gains velocity.
 
@@ -14,7 +14,7 @@ const BREAKING_THRESHOLD = 120;
 const VELOCITY_UPVOTES = 500;       // 500+ upvotes within first 30 min = breaking
 const VELOCITY_WINDOW_MS = 30 * 60 * 1000;
 
-const REDDIT_POLL_MS = 90 * 1000;   // 90 seconds — well within Reddit's 30 req/min limit
+const REDDIT_POLL_MS = 90 * 1000;   // 90 seconds - well within Reddit's 30 req/min limit
 const RSS_POLL_MS = 5 * 60 * 1000;  // 5 minutes
 
 class BreakingWatcher extends EventEmitter {
@@ -105,7 +105,7 @@ class BreakingWatcher extends EventEmitter {
             breakingKeywords, []
           );
 
-          // Velocity tracking — record first sighting, check acceleration later
+          // Velocity tracking - record first sighting, check acceleration later
           if (!this._velocityMap.has(post.id)) {
             this._velocityMap.set(post.id, {
               firstSeen: new Date(),
@@ -118,11 +118,11 @@ class BreakingWatcher extends EventEmitter {
             const gained = post.score - entry.firstScore;
 
             if (elapsed <= VELOCITY_WINDOW_MS && gained >= VELOCITY_UPVOTES) {
-              // Velocity breaking — even if raw score is below threshold
+              // Velocity breaking - even if raw score is below threshold
               if (!this._seenIds.has(`velocity_${post.id}`)) {
                 this._seenIds.add(`velocity_${post.id}`);
                 const story = this._buildStory(post, sub, bScore + 50, 'velocity');
-                console.log(`[watcher] VELOCITY BREAKING: +${gained} upvotes in ${Math.round(elapsed / 60000)} min — ${post.title.substring(0, 60)}`);
+                console.log(`[watcher] VELOCITY BREAKING: +${gained} upvotes in ${Math.round(elapsed / 60000)} min - ${post.title.substring(0, 60)}`);
                 this._breakingEmitted++;
                 this.emit('breaking', story);
               }
@@ -137,7 +137,7 @@ class BreakingWatcher extends EventEmitter {
             this._breakingEmitted++;
             this.emit('breaking', story);
           } else if (!this._seenIds.has(post.id)) {
-            // Mark as seen even if not breaking — prevents re-evaluation
+            // Mark as seen even if not breaking - prevents re-evaluation
             this._seenIds.add(post.id);
           }
         }
@@ -149,7 +149,7 @@ class BreakingWatcher extends EventEmitter {
       }
     }
 
-    // Prune velocity map — discard entries older than 1 hour to avoid memory leak
+    // Prune velocity map - discard entries older than 1 hour to avoid memory leak
     const cutoff = Date.now() - 60 * 60 * 1000;
     for (const [id, entry] of this._velocityMap) {
       if (entry.firstSeen.getTime() < cutoff) {

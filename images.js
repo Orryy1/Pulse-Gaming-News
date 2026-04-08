@@ -15,7 +15,7 @@ const CACHE_DIR = path.join('output', 'image_cache');
 // Each platform overlays UI elements that obscure content in certain regions.
 // These offsets shift the flair badge and headline into the visible safe zone.
 const PLATFORM_SAFE_ZONES = {
-  // Default (YouTube Shorts) — no adjustment needed
+  // Default (YouTube Shorts) - no adjustment needed
   default: {
     flairY: 620,       // flair badge top Y
     headlineY: 770,    // headline text baseline Y
@@ -37,7 +37,7 @@ const PLATFORM_SAFE_ZONES = {
   // Instagram Reels: 120px top safe zone (status bar), 300px bottom (caption area, action buttons)
   // Main content area: y=170 to y=1620
   instagram: {
-    flairY: 580,       // shifted up slightly — IG bottom zone is larger, so centre content higher
+    flairY: 580,       // shifted up slightly - IG bottom zone is larger, so centre content higher
     headlineY: 730,    // shifted up to keep headline well above the 300px bottom zone
     heroY: 200,        // similar to default, IG top zone is smaller
     heroHeight: 440,   // shorter to keep content out of the large bottom safe zone
@@ -69,7 +69,7 @@ function wrapText(text, maxCharsPerLine) {
 }
 
 // --- Build professional SVG composite with real images embedded ---
-// platform: 'default' | 'tiktok' | 'instagram' — adjusts safe zones
+// platform: 'default' | 'tiktok' | 'instagram' - adjusts safe zones
 function buildProSvg(title, thumbnailText, flair, heroImageBase64, logoImageBase64, hasHero, classification, bgImageBase64, platform) {
   const safeZone = PLATFORM_SAFE_ZONES[platform] || PLATFORM_SAFE_ZONES.default;
   const classInfo = brand.classificationColour(classification || flair);
@@ -104,7 +104,7 @@ function buildProSvg(title, thumbnailText, flair, heroImageBase64, logoImageBase
     <rect x="40" y="${safeZone.heroY}" width="1000" height="${safeZone.heroHeight}" rx="16" fill="none"
           stroke="${brand.PRIMARY}" stroke-width="2" opacity="0.4"/>
   ` : `
-    <!-- No hero image — use enhanced gradient background -->
+    <!-- No hero image - use enhanced gradient background -->
     <rect x="40" y="${safeZone.heroY}" width="1000" height="${safeZone.heroHeight}" rx="16" fill="#0d1a2e" opacity="0.6"/>
     <rect x="40" y="${safeZone.heroY}" width="1000" height="${safeZone.heroHeight}" rx="16" fill="none"
           stroke="${brand.PRIMARY}" stroke-width="1" opacity="0.2"/>
@@ -116,7 +116,7 @@ function buildProSvg(title, thumbnailText, flair, heroImageBase64, logoImageBase
            preserveAspectRatio="xMidYMid meet" opacity="0.8"/>
   ` : '';
 
-  // Flair badge SVG fragment — reused in both layouts
+  // Flair badge SVG fragment - reused in both layouts
   const flairBadge = `
   <rect x="340" y="${safeZone.flairY}" width="400" height="52" rx="26" fill="${flairColour}" opacity="0.15"/>
   <rect x="340" y="${safeZone.flairY}" width="400" height="52" rx="26" fill="none"
@@ -125,7 +125,7 @@ function buildProSvg(title, thumbnailText, flair, heroImageBase64, logoImageBase
   <text x="540" y="${safeZone.flairY + 34}" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
         font-size="20" font-weight="700" letter-spacing="3" fill="${flairColour}">${flairLabel}</text>`;
 
-  // Headline SVG fragment — reused in both layouts
+  // Headline SVG fragment - reused in both layouts
   const headline = `
   <text x="540" y="${safeZone.headlineY}" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
         font-size="82" font-weight="900" fill="${brand.PRIMARY}" filter="url(#glow)"
@@ -146,9 +146,9 @@ function buildProSvg(title, thumbnailText, flair, heroImageBase64, logoImageBase
   <!-- Branded background template -->
   <image href="data:image/png;base64,${bgImageBase64}" x="0" y="0" width="1080" height="1920" preserveAspectRatio="xMidYMid slice"/>
 
-  <!-- Flair badge — centred in the glow -->${flairBadge}
+  <!-- Flair badge - centred in the glow -->${flairBadge}
 
-  <!-- Main headline text — centred below badge, inside the glow -->${headline}
+  <!-- Main headline text - centred below badge, inside the glow -->${headline}
 </svg>`;
   }
 

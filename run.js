@@ -7,28 +7,28 @@ const db = require('./lib/db');
 dotenv.config({ override: true });
 
 /*
-  Pulse Gaming Pipeline v2 — Autonomous Operations
+  Pulse Gaming Pipeline v2 -Autonomous Operations
 
   Modes:
-    hunt      — One-off Reddit + RSS fetch + script generation
-    produce   — Generate audio, images, assemble videos
-    publish   — Upload to YouTube, TikTok, Instagram
-    schedule  — Start autonomous cron scheduler (recommended)
-    full      — Run complete autonomous cycle once
-    approve   — Run auto-approval pass only
+    hunt      -One-off Reddit + RSS fetch + script generation
+    produce   -Generate audio, images, assemble videos
+    publish   -Upload to YouTube, TikTok, Instagram
+    schedule  -Start autonomous cron scheduler (recommended)
+    full      -Run complete autonomous cycle once
+    approve   -Run auto-approval pass only
 
   Autonomous Schedule (all times GMT):
   ┌──────────┬──────────────────────────────────────────────────┐
   │ Time     │ Action                                           │
   ├──────────┼──────────────────────────────────────────────────┤
-  │ 06:00    │ Morning hunt — catch overnight US leaks          │
-  │ 10:00    │ Mid-morning hunt — embargo lifts, announcements  │
-  │ 14:00    │ Afternoon hunt — Nintendo Direct timing window   │
-  │ 17:00    │ Evening hunt — US morning announcements          │
-  │ 19:00    │ PUBLISH WINDOW — YouTube Shorts optimal time     │
+  │ 06:00    │ Morning hunt -catch overnight US leaks          │
+  │ 10:00    │ Mid-morning hunt -embargo lifts, announcements  │
+  │ 14:00    │ Afternoon hunt -Nintendo Direct timing window   │
+  │ 17:00    │ Evening hunt -US morning announcements          │
+  │ 19:00    │ PUBLISH WINDOW -YouTube Shorts optimal time     │
   │ 20:00    │ (staggered) TikTok upload                       │
   │ 21:00    │ (staggered) Instagram Reels upload               │
-  │ 22:00    │ Late hunt — catch PS State of Play window        │
+  │ 22:00    │ Late hunt -catch PS State of Play window        │
   └──────────┴──────────────────────────────────────────────────┘
 
   Research basis:
@@ -73,7 +73,7 @@ async function runHunt() {
     await db.saveStories(merged);
     console.log(`[run] Merged: ${processed.length} new + ${existingStories.length} existing = ${merged.length} total`);
   } else {
-    console.log('[run] No new stories — skipping processor');
+    console.log('[run] No new stories -skipping processor');
   }
 
   const titles = newPosts.map(s => `- ${s.title}`).join('\n');
@@ -141,7 +141,7 @@ async function runApprove() {
 }
 
 function runWatch() {
-  console.log('[run] === WATCH MODE — CONTINUOUS BREAKING NEWS MONITOR ===');
+  console.log('[run] === WATCH MODE -CONTINUOUS BREAKING NEWS MONITOR ===');
   console.log('[run] Polls Reddit /new every 90s, RSS every 5min');
   console.log('[run] Breaking threshold: 120 | Velocity: 500 upvotes in 30 min');
   console.log('[run] Press Ctrl+C to stop.');
@@ -205,9 +205,9 @@ function runSchedule() {
 
   // --- HUNT CYCLES (4x daily at optimal news-breaking windows) ---
 
-  // 06:00 GMT — Morning hunt: catches overnight US leaks + Reddit activity
+  // 06:00 GMT -Morning hunt: catches overnight US leaks + Reddit activity
   cron.schedule('0 6 * * *', async () => {
-    console.log('[schedule] 06:00 GMT — Morning hunt');
+    console.log('[schedule] 06:00 GMT -Morning hunt');
     try {
       await runHunt();
       const { autoApprove } = require('./publisher');
@@ -218,9 +218,9 @@ function runSchedule() {
     }
   }, { timezone: 'UTC' });
 
-  // 10:00 GMT — Mid-morning: embargo lifts (typically 9AM-12PM ET = 14:00-17:00 GMT)
+  // 10:00 GMT -Mid-morning: embargo lifts (typically 9AM-12PM ET = 14:00-17:00 GMT)
   cron.schedule('0 10 * * *', async () => {
-    console.log('[schedule] 10:00 GMT — Mid-morning hunt');
+    console.log('[schedule] 10:00 GMT -Mid-morning hunt');
     try {
       await runHunt();
       const { autoApprove } = require('./publisher');
@@ -230,9 +230,9 @@ function runSchedule() {
     }
   }, { timezone: 'UTC' });
 
-  // 14:00 GMT — Afternoon: Nintendo Direct window (2PM GMT), major announcements
+  // 14:00 GMT -Afternoon: Nintendo Direct window (2PM GMT), major announcements
   cron.schedule('0 14 * * *', async () => {
-    console.log('[schedule] 14:00 GMT — Afternoon hunt (Nintendo/announcement window)');
+    console.log('[schedule] 14:00 GMT -Afternoon hunt (Nintendo/announcement window)');
     try {
       await runHunt();
       const { autoApprove } = require('./publisher');
@@ -242,9 +242,9 @@ function runSchedule() {
     }
   }, { timezone: 'UTC' });
 
-  // 17:00 GMT — Evening: Xbox showcase window + US morning embargo lifts
+  // 17:00 GMT -Evening: Xbox showcase window + US morning embargo lifts
   cron.schedule('0 17 * * *', async () => {
-    console.log('[schedule] 17:00 GMT — Evening hunt (Xbox/embargo window)');
+    console.log('[schedule] 17:00 GMT -Evening hunt (Xbox/embargo window)');
     try {
       await runHunt();
       const { autoApprove } = require('./publisher');
@@ -256,9 +256,9 @@ function runSchedule() {
 
   // --- PRODUCE CYCLE (2x daily, before publish windows) ---
 
-  // 18:00 GMT — Produce all approved stories (1hr before YouTube publish)
+  // 18:00 GMT -Produce all approved stories (1hr before YouTube publish)
   cron.schedule('0 18 * * *', async () => {
-    console.log('[schedule] 18:00 GMT — Produce cycle');
+    console.log('[schedule] 18:00 GMT -Produce cycle');
     try {
       await runProduce();
     } catch (err) {
@@ -269,16 +269,16 @@ function runSchedule() {
 
   // --- PUBLISH CYCLE (1x daily at optimal engagement window) ---
 
-  // 19:00 GMT — Publish to YouTube Shorts (peak engagement: 7PM GMT)
+  // 19:00 GMT -Publish to YouTube Shorts (peak engagement: 7PM GMT)
   // TikTok and Instagram are staggered by the publisher module (+60min each)
   cron.schedule('0 19 * * *', async () => {
-    console.log('[schedule] 19:00 GMT — PUBLISH WINDOW');
+    console.log('[schedule] 19:00 GMT -PUBLISH WINDOW');
     try {
       if (process.env.AUTO_PUBLISH === 'true') {
         await runPublish();
       } else {
         console.log('[schedule] AUTO_PUBLISH not enabled, skipping');
-        await sendDiscord('**Videos ready for upload** — Set AUTO_PUBLISH=true to enable autonomous posting');
+        await sendDiscord('**Videos ready for upload** -Set AUTO_PUBLISH=true to enable autonomous posting');
       }
     } catch (err) {
       console.log(`[schedule] Publish error: ${err.message}`);
@@ -288,7 +288,7 @@ function runSchedule() {
 
   // --- LATE NIGHT HUNT (catches PlayStation State of Play @ 10PM GMT) ---
   cron.schedule('0 22 * * *', async () => {
-    console.log('[schedule] 22:00 GMT — Late hunt (PlayStation window)');
+    console.log('[schedule] 22:00 GMT -Late hunt (PlayStation window)');
     try {
       await runHunt();
       const { autoApprove } = require('./publisher');
@@ -299,13 +299,13 @@ function runSchedule() {
   }, { timezone: 'UTC' });
 
   console.log('[schedule] Cron jobs registered:');
-  console.log('  06:00 UTC — Morning hunt (overnight US leaks)');
-  console.log('  10:00 UTC — Mid-morning hunt (embargo lifts)');
-  console.log('  14:00 UTC — Afternoon hunt (Nintendo Direct window)');
-  console.log('  17:00 UTC — Evening hunt (Xbox/embargo window)');
-  console.log('  18:00 UTC — Produce cycle (audio + images + video)');
-  console.log('  19:00 UTC — PUBLISH (YouTube → TikTok → Instagram)');
-  console.log('  22:00 UTC — Late hunt (PlayStation State of Play window)');
+  console.log('  06:00 UTC -Morning hunt (overnight US leaks)');
+  console.log('  10:00 UTC -Mid-morning hunt (embargo lifts)');
+  console.log('  14:00 UTC -Afternoon hunt (Nintendo Direct window)');
+  console.log('  17:00 UTC -Evening hunt (Xbox/embargo window)');
+  console.log('  18:00 UTC -Produce cycle (audio + images + video)');
+  console.log('  19:00 UTC -PUBLISH (YouTube → TikTok → Instagram)');
+  console.log('  22:00 UTC -Late hunt (PlayStation State of Play window)');
   console.log('');
   console.log(`[schedule] AUTO_PUBLISH: ${process.env.AUTO_PUBLISH === 'true' ? 'ENABLED' : 'DISABLED'}`);
   console.log('[schedule] Process will stay alive. Press Ctrl+C to exit.');
@@ -317,7 +317,7 @@ function runSchedule() {
       await runHunt();
       const { autoApprove } = require('./publisher');
       await autoApprove();
-      await sendDiscord('**Pulse Gaming Scheduler Started** — Running autonomously');
+      await sendDiscord('**Pulse Gaming Scheduler Started** -Running autonomously');
     } catch (err) {
       console.log(`[schedule] Initial hunt error: ${err.message}`);
     }
@@ -330,15 +330,15 @@ if (!mode) {
   console.log('Pulse Gaming Pipeline v2');
   console.log('========================');
   console.log('Usage:');
-  console.log('  node run.js hunt      — Fetch Reddit + RSS stories and generate scripts');
-  console.log('  node run.js produce   — Generate audio, images and assemble videos');
-  console.log('  node run.js publish   — Upload to YouTube, TikTok, Instagram');
-  console.log('  node run.js full      — Run complete autonomous cycle once');
-  console.log('  node run.js approve   — Run auto-approval pass');
-  console.log('  node run.js watch     — Start breaking news watcher (continuous)');
-  console.log('  node run.js weekly    — Compile weekly longform roundup video');
-  console.log('  node run.js schedule  — Start autonomous cron scheduler (24/7)');
-  console.log('  node run.js blog      — Rebuild static SEO blog from published stories');
+  console.log('  node run.js hunt      -Fetch Reddit + RSS stories and generate scripts');
+  console.log('  node run.js produce   -Generate audio, images and assemble videos');
+  console.log('  node run.js publish   -Upload to YouTube, TikTok, Instagram');
+  console.log('  node run.js full      -Run complete autonomous cycle once');
+  console.log('  node run.js approve   -Run auto-approval pass');
+  console.log('  node run.js watch     -Start breaking news watcher (continuous)');
+  console.log('  node run.js weekly    -Compile weekly longform roundup video');
+  console.log('  node run.js schedule  -Start autonomous cron scheduler (24/7)');
+  console.log('  node run.js blog      -Rebuild static SEO blog from published stories');
   process.exit(0);
 }
 

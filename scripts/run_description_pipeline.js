@@ -6,9 +6,9 @@
  * 2. Re-update already-done videos with new artist socials
  *
  * Usage:
- *   node scripts/run_description_pipeline.js           — full pipeline
- *   node scripts/run_description_pipeline.js status     — show progress
- *   node scripts/run_description_pipeline.js preview    — preview next 3 descriptions
+ *   node scripts/run_description_pipeline.js           - full pipeline
+ *   node scripts/run_description_pipeline.js status     - show progress
+ *   node scripts/run_description_pipeline.js preview    - preview next 3 descriptions
  *
  * Run daily until all 585 videos are complete (~200/day due to YouTube quota).
  */

@@ -61,7 +61,7 @@ async function endGiveaway(client, giveaway) {
     const embed = new EmbedBuilder()
       .setColor(config.COLOURS.GREEN)
       .setTitle('🎉 Giveaway Ended!')
-      .setDescription(`**Prize:** ${giveaway.prize}\n\n${winners.length > 0 ? `**Winner(s):** ${winners.map(id => `<@${id}>`).join(', ')}` : 'No valid entries — no winners.'}`)
+      .setDescription(`**Prize:** ${giveaway.prize}\n\n${winners.length > 0 ? `**Winner(s):** ${winners.map(id => `<@${id}>`).join(', ')}` : 'No valid entries - no winners.'}`)
       .setFooter({ text: `${users.length} total entries` })
       .setTimestamp();
 
@@ -183,12 +183,12 @@ module.exports = {
         saveGiveaways(giveaways);
 
         if (winners.length > 0) {
-          await interaction.editReply(`🎉 New winner(s): ${winners.map(id => `<@${id}>`).join(', ')}! Congratulations — you won **${giveaway.prize}**!`);
+          await interaction.editReply(`🎉 New winner(s): ${winners.map(id => `<@${id}>`).join(', ')}! Congratulations - you won **${giveaway.prize}**!`);
         } else {
           await interaction.editReply('No valid entries to reroll from.');
         }
       } catch (err) {
-        await interaction.editReply('Failed to reroll — could not fetch the original message.');
+        await interaction.editReply('Failed to reroll - could not fetch the original message.');
       }
     }
   },

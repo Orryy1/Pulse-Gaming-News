@@ -72,7 +72,7 @@ module.exports = {
           const pct = totalVotes > 0 ? (r.votes / totalVotes * 100) : 0;
           const filled = Math.round(pct / 100 * barLength);
           const bar = '█'.repeat(filled) + '░'.repeat(barLength - filled);
-          return `${r.emoji} ${r.option}\n${bar}  ${r.votes} vote(s) — ${pct.toFixed(1)}%`;
+          return `${r.emoji} ${r.option}\n${bar}  ${r.votes} vote(s) - ${pct.toFixed(1)}%`;
         }).join('\n\n');
 
         const resultEmbed = new EmbedBuilder()

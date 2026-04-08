@@ -408,7 +408,7 @@ async function fetchGameImages(gameTitle) {
     // Steam search failed, continue
   }
 
-  // Fallback 2: RAWG.io — free game database with screenshots (no key needed for basic)
+  // Fallback 2: RAWG.io - free game database with screenshots (no key needed for basic)
   if (images.length < 3) {
     try {
       const rawgSearch = `https://api.rawg.io/api/games?search=${encodeURIComponent(gameTitle)}&page_size=1&key=`;
@@ -513,7 +513,7 @@ async function hunt() {
   const RSS_FEEDS = channel.rssFeeds || [];
   const BREAKING_KEYWORDS = channel.breakingKeywords || DEFAULT_BREAKING_KEYWORDS;
 
-  console.log(`[hunter] === MULTI-SOURCE HUNT v2 — ${channel.name} (${channel.niche}) ===`);
+  console.log(`[hunter] === MULTI-SOURCE HUNT v2 - ${channel.name} (${channel.niche}) ===`);
   console.log(`[hunter] Scanning ${SUBREDDITS.length} subreddits + ${RSS_FEEDS.length} RSS feeds`);
 
   const includeRumours = process.env.INCLUDE_RUMOURS === 'true';
@@ -530,7 +530,7 @@ async function hunt() {
       // Fetch hot posts
       const hotPosts = await fetchSubreddit(sub);
 
-      // Also fetch new posts from the first 5 subreddits (primary sources — catches breaking news faster)
+      // Also fetch new posts from the first 5 subreddits (primary sources - catches breaking news faster)
       let newPosts = [];
       if (SUBREDDITS.indexOf(sub) < 5) {
         await new Promise(r => setTimeout(r, 500));

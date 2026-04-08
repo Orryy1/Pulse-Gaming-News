@@ -131,7 +131,7 @@ app.get('/auth/tiktok/callback', async (req, res) => {
   const { code, error, error_description } = req.query;
 
   if (error) {
-    console.log(`[tiktok] OAuth error: ${error} — ${error_description}`);
+    console.log(`[tiktok] OAuth error: ${error} - ${error_description}`);
     return res.status(400).send(`<h1>TikTok Auth Error</h1><p>${escapeHtml(error)}: ${escapeHtml(error_description)}</p>`);
   }
 
@@ -362,9 +362,9 @@ app.get('/api/autonomous/status', (req, res) => {
     schedule: {
       hunts: 'Every 3 hours (auto-produces videos after each hunt)',
       publish: [
-        '12:00 UTC / 1:00 PM BST — lunch break + US morning',
-        '17:00 UTC / 6:00 PM BST — post-work peak + US noon',
-        '21:00 UTC / 10:00 PM BST — evening session + US afternoon',
+        '12:00 UTC / 1:00 PM BST - lunch break + US morning',
+        '17:00 UTC / 6:00 PM BST - post-work peak + US noon',
+        '21:00 UTC / 10:00 PM BST - evening session + US afternoon',
       ],
       strategy: '1 Short per window = 3 Shorts/day across all platforms',
     },
@@ -386,7 +386,7 @@ app.get('/api/platforms/status', async (req, res) => {
     instagram: { authenticated: false, configured: false },
   };
 
-  // YouTube — check both file-based and env var auth
+  // YouTube - check both file-based and env var auth
   try {
     const ytTokenPath = path.join(__dirname, 'tokens', 'youtube_token.json');
     const hasCredFile = await fs.pathExists(path.join(__dirname, 'tokens', 'youtube_credentials.json'));
@@ -638,7 +638,7 @@ async function runHunter() {
     const allStories = readNews();
     const needProduce = allStories.filter(s => s.approved && (!s.audio_path || !s.image_path || !s.exported_path));
     if (needProduce.length > 0) {
-      console.log(`[server] ${needProduce.length} stories need production — starting pipeline...`);
+      console.log(`[server] ${needProduce.length} stories need production - starting pipeline...`);
       try {
         const { produce } = require('./publisher');
         await produce();
@@ -651,7 +651,7 @@ async function runHunter() {
         await sendDiscord(`**Produce Error**: ${err.message}`);
       }
     } else if (newPosts.length > 0) {
-      await sendDiscord(`**Hunt Complete** — ${newPosts.length} new stories (all already produced)`);
+      await sendDiscord(`**Hunt Complete** - ${newPosts.length} new stories (all already produced)`);
     }
 
     console.log(`[server] Hunter cycle complete: ${newPosts.length} new, ${needProduce.length} produced`);
@@ -688,7 +688,7 @@ async function startAutonomousScheduler() {
   schedulerRunning = true;
   const sendDiscord = require('./notify');
 
-  // Hunt every 3 hours — each hunt also auto-approves and produces videos
+  // Hunt every 3 hours - each hunt also auto-approves and produces videos
   console.log('[server] Auto-hunter enabled. Running every 3 hours.');
   console.log('[server] Each hunt: fetch → scripts → approve → audio → images → video');
   // Delay first hunt by 30s to let server fully stabilise after deploy
@@ -697,7 +697,7 @@ async function startAutonomousScheduler() {
     hunterInterval = setInterval(runHunter, HUNTER_INTERVAL_MS);
   }, 30000);
 
-  // Data-driven publish windows — uses analytics history to find optimal hours.
+  // Data-driven publish windows - uses analytics history to find optimal hours.
   // Falls back to 07:00/13:00/19:00 UTC when insufficient data.
   if (process.env.AUTO_PUBLISH === 'true') {
     const { getRecommendedSchedule, DEFAULT_SCHEDULE } = require('./optimal_timing');
@@ -715,7 +715,7 @@ async function startAutonomousScheduler() {
 
     publishWindows.forEach((cronExpr, i) => {
       cron.schedule(cronExpr, async () => {
-        console.log(`[server-cron] ${windowLabels[i]} — PUBLISH WINDOW`);
+        console.log(`[server-cron] ${windowLabels[i]} - PUBLISH WINDOW`);
         try {
           // Final produce pass to catch any stragglers
           const { produce } = require('./publisher');
@@ -744,13 +744,13 @@ async function startAutonomousScheduler() {
       }, { timezone: 'UTC' });
     });
 
-    console.log(`[server] Auto-publish enabled: ${publishWindows.length}x daily — ${windowLabels.join(' | ')}`);
+    console.log(`[server] Auto-publish enabled: ${publishWindows.length}x daily - ${windowLabels.join(' | ')}`);
 
-    // Engagement passes — 30 minutes after each publish window
+    // Engagement passes - 30 minutes after each publish window
     const engagementWindows = ['30 7 * * *', '30 13 * * *', '30 19 * * *'];
     engagementWindows.forEach((cronExpr, i) => {
       cron.schedule(cronExpr, async () => {
-        console.log(`[server-cron] ${windowLabels[i]} +30min — ENGAGEMENT PASS`);
+        console.log(`[server-cron] ${windowLabels[i]} +30min - ENGAGEMENT PASS`);
         try {
           const { engageRecent } = require('./engagement');
           await engageRecent();
@@ -761,7 +761,7 @@ async function startAutonomousScheduler() {
     });
     console.log('[server] Auto-engagement enabled: 30 min after each publish window');
 
-    // First-hour engagement — every 15 minutes, catches videos published < 60 min ago
+    // First-hour engagement - every 15 minutes, catches videos published < 60 min ago
     cron.schedule('*/15 * * * *', async () => {
       try {
         const fhNews = await fs.readJson(DATA_FILE).catch(() => []);
@@ -787,11 +787,11 @@ async function startAutonomousScheduler() {
     }, { timezone: 'UTC' });
     console.log('[server] First-hour engagement: every 15 min for videos < 60 min old');
 
-    // Analytics pass — twice daily, pulls YouTube stats and updates scoring history
+    // Analytics pass - twice daily, pulls YouTube stats and updates scoring history
     const analyticsWindows = ['0 8 * * *', '0 20 * * *'];
     analyticsWindows.forEach((cronExpr) => {
       cron.schedule(cronExpr, async () => {
-        console.log('[server-cron] ANALYTICS PASS — pulling YouTube stats');
+        console.log('[server-cron] ANALYTICS PASS - pulling YouTube stats');
         try {
           const { runAnalytics } = require('./analytics');
           await runAnalytics();
@@ -806,9 +806,9 @@ async function startAutonomousScheduler() {
     console.log('[server] Set AUTO_PUBLISH=true in Railway env vars to enable.');
   }
 
-  // Weekly longform compilation — every Sunday at 14:00 UTC
+  // Weekly longform compilation - every Sunday at 14:00 UTC
   cron.schedule('0 14 * * 0', async () => {
-    console.log('[server-cron] Sunday 14:00 UTC — WEEKLY COMPILATION');
+    console.log('[server-cron] Sunday 14:00 UTC - WEEKLY COMPILATION');
     try {
       const { compileWeekly } = require('./weekly_compile');
       const result = await compileWeekly();
@@ -835,9 +835,9 @@ async function startAutonomousScheduler() {
   }, { timezone: 'UTC' });
   console.log('[server] Weekly compilation: Sunday 14:00 UTC');
 
-  // Monthly topic compilations — 1st of each month at 10:00 UTC
+  // Monthly topic compilations - 1st of each month at 10:00 UTC
   cron.schedule('0 10 1 * *', async () => {
-    console.log('[server-cron] 1st of month 10:00 UTC — MONTHLY TOPIC COMPILATIONS');
+    console.log('[server-cron] 1st of month 10:00 UTC - MONTHLY TOPIC COMPILATIONS');
     try {
       const { identifyCompilableTopics, compileByTopic } = require('./weekly_compile');
       const topics = await identifyCompilableTopics(30);
@@ -845,12 +845,12 @@ async function startAutonomousScheduler() {
 
       if (top3.length === 0) {
         console.log('[server-cron] No compilable topics found this month');
-        await sendDiscord('**Monthly Topic Compilations** — No topics with 4+ stories found. Skipping.');
+        await sendDiscord('**Monthly Topic Compilations** - No topics with 4+ stories found. Skipping.');
         return;
       }
 
       console.log(`[server-cron] Compiling top ${top3.length} topics: ${top3.map(t => t.keyword).join(', ')}`);
-      await sendDiscord(`**Monthly Topic Compilations** — Starting ${top3.length} compilations: ${top3.map(t => `"${t.keyword}" (${t.count} stories)`).join(', ')}`);
+      await sendDiscord(`**Monthly Topic Compilations** - Starting ${top3.length} compilations: ${top3.map(t => `"${t.keyword}" (${t.count} stories)`).join(', ')}`);
 
       for (const topic of top3) {
         try {
@@ -867,7 +867,7 @@ async function startAutonomousScheduler() {
   }, { timezone: 'UTC' });
   console.log('[server] Monthly topic compilations: 1st of month at 10:00 UTC');
 
-  // Instagram token auto-refresh — every Monday at 03:00 UTC
+  // Instagram token auto-refresh - every Monday at 03:00 UTC
   cron.schedule('0 3 * * 1', async () => {
     console.log('[server-cron] Instagram token refresh check...');
     try {
@@ -892,9 +892,9 @@ async function startAutonomousScheduler() {
   }, { timezone: 'UTC' });
   console.log('[server] Instagram token auto-refresh: every Monday 03:00 UTC');
 
-  // Blog rebuild — daily at 22:00 UTC (after last publish window)
+  // Blog rebuild - daily at 22:00 UTC (after last publish window)
   cron.schedule('0 22 * * *', async () => {
-    console.log('[server-cron] 22:00 UTC — BLOG REBUILD');
+    console.log('[server-cron] 22:00 UTC - BLOG REBUILD');
     try {
       const { build } = require('./blog/build');
       await build();
@@ -905,9 +905,9 @@ async function startAutonomousScheduler() {
   }, { timezone: 'UTC' });
   console.log('[server] Blog rebuild: daily at 22:00 UTC');
 
-  // Weekly timing re-analysis — Sunday midnight UTC
+  // Weekly timing re-analysis - Sunday midnight UTC
   cron.schedule('0 0 * * 0', async () => {
-    console.log('[server-cron] Sunday 00:00 UTC — WEEKLY TIMING RE-ANALYSIS');
+    console.log('[server-cron] Sunday 00:00 UTC - WEEKLY TIMING RE-ANALYSIS');
     try {
       const { getTimingReport } = require('./optimal_timing');
       const report = await getTimingReport();
@@ -1213,7 +1213,7 @@ app.get('/api/compile/topics', async (req, res) => {
   }
 });
 
-// --- Railway deploy webhook — forwards build/deploy failures to Discord ---
+// --- Railway deploy webhook - forwards build/deploy failures to Discord ---
 app.post('/api/webhook/railway', rateLimit(30, 60000), async (req, res) => {
   res.json({ ok: true });
   try {
@@ -1233,7 +1233,7 @@ app.post('/api/webhook/railway', rateLimit(30, 60000), async (req, res) => {
         `Check Railway dashboard for details.`
       );
     } else if (status.toUpperCase() === 'SUCCESS' || status.toUpperCase() === 'DEPLOYED') {
-      await sendDiscord(`**Railway Deploy OK** — ${service} deployed successfully`);
+      await sendDiscord(`**Railway Deploy OK** - ${service} deployed successfully`);
     }
   } catch (err) {
     console.log(`[server] Railway webhook error: ${err.message}`);
@@ -1303,7 +1303,7 @@ const server = app.listen(PORT, () => {
       console.log(`[server] Discord bot error: ${err.message}`);
     }
   } else {
-    console.log('[server] Discord bot skipped — DISCORD_BOT_TOKEN or DISCORD_GUILD_ID not set');
+    console.log('[server] Discord bot skipped - DISCORD_BOT_TOKEN or DISCORD_GUILD_ID not set');
   }
 });
 

@@ -10,6 +10,21 @@ const axios = require("axios");
 const CACHE_DIR = path.join("output", "image_cache");
 const VIDEO_CACHE_DIR = path.join("output", "video_cache");
 
+// Rotating browser-style User-Agents for download requests (avoids bot detection)
+const BROWSER_USER_AGENTS = [
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0",
+];
+function randomUA() {
+  return BROWSER_USER_AGENTS[
+    Math.floor(Math.random() * BROWSER_USER_AGENTS.length)
+  ];
+}
+
 // --- Download and cache a video clip from URL ---
 async function downloadVideoClip(url, filename) {
   const cachePath = path.join(VIDEO_CACHE_DIR, filename);
@@ -19,7 +34,7 @@ async function downloadVideoClip(url, filename) {
     const response = await axios.get(url, {
       responseType: "arraybuffer",
       timeout: 30000,
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; PulseGaming/2.0)" },
+      headers: { "User-Agent": randomUA() },
       maxRedirects: 5,
       maxContentLength: 50 * 1024 * 1024, // 50MB max
     });
@@ -51,7 +66,7 @@ async function downloadImage(url, filename) {
     const response = await axios.get(url, {
       responseType: "arraybuffer",
       timeout: 15000,
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; PulseGaming/2.0)" },
+      headers: { "User-Agent": randomUA() },
       maxRedirects: 5,
     });
 
@@ -155,10 +170,7 @@ async function getBestImage(story) {
       const searchUrl = `https://www.google.com/search?q=${searchQuery}&tbm=isch&safe=active`;
       const searchResp = await axios.get(searchUrl, {
         timeout: 10000,
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        },
+        headers: { "User-Agent": randomUA() },
         maxRedirects: 3,
       });
       // Extract image URLs from Google Images HTML response

@@ -1,15 +1,15 @@
-const fs = require('fs-extra');
-const path = require('path');
-const dotenv = require('dotenv');
-const db = require('./lib/db');
+const fs = require("fs-extra");
+const path = require("path");
+const dotenv = require("dotenv");
+const db = require("./lib/db");
 
 dotenv.config({ override: true });
 
-const brand = require('./brand');
-const getBestImage = require('./images_download');
+const brand = require("./brand");
+const getBestImage = require("./images_download");
 
-const OUTPUT_DIR = path.join('output', 'images');
-const CACHE_DIR = path.join('output', 'image_cache');
+const OUTPUT_DIR = path.join("output", "images");
+const CACHE_DIR = path.join("output", "image_cache");
 
 // --- Platform safe zone presets ---
 // Each platform overlays UI elements that obscure content in certain regions.
@@ -17,51 +17,54 @@ const CACHE_DIR = path.join('output', 'image_cache');
 const PLATFORM_SAFE_ZONES = {
   // Default (YouTube Shorts) - no adjustment needed
   default: {
-    flairY: 620,       // flair badge top Y
-    headlineY: 770,    // headline text baseline Y
-    heroY: 180,        // hero image top Y
-    heroHeight: 563,   // hero image height
-    logoY: 780,        // company logo Y
-    gradientY: 500,    // bottom fade gradient Y
+    flairY: 620, // flair badge top Y
+    headlineY: 770, // headline text baseline Y
+    heroY: 180, // hero image top Y
+    heroHeight: 563, // hero image height
+    logoY: 780, // company logo Y
+    gradientY: 500, // bottom fade gradient Y
   },
   // TikTok: 150px top safe zone (status bar, username), 200px bottom (action buttons, caption)
   // Main content area: y=200 to y=1720
   tiktok: {
-    flairY: 720,       // shifted down ~100px to clear TikTok username overlay
-    headlineY: 870,    // shifted down to match
-    heroY: 280,        // shifted down to clear top safe zone
-    heroHeight: 480,   // slightly shorter to fit within safe zone
-    logoY: 800,        // shifted down
-    gradientY: 540,    // adjusted for hero position
+    flairY: 720, // shifted down ~100px to clear TikTok username overlay
+    headlineY: 870, // shifted down to match
+    heroY: 280, // shifted down to clear top safe zone
+    heroHeight: 480, // slightly shorter to fit within safe zone
+    logoY: 800, // shifted down
+    gradientY: 540, // adjusted for hero position
   },
   // Instagram Reels: 120px top safe zone (status bar), 300px bottom (caption area, action buttons)
   // Main content area: y=170 to y=1620
   instagram: {
-    flairY: 580,       // shifted up slightly - IG bottom zone is larger, so centre content higher
-    headlineY: 730,    // shifted up to keep headline well above the 300px bottom zone
-    heroY: 200,        // similar to default, IG top zone is smaller
-    heroHeight: 440,   // shorter to keep content out of the large bottom safe zone
-    logoY: 680,        // shifted up
-    gradientY: 440,    // adjusted for hero position
+    flairY: 580, // shifted up slightly - IG bottom zone is larger, so centre content higher
+    headlineY: 730, // shifted up to keep headline well above the 300px bottom zone
+    heroY: 200, // similar to default, IG top zone is smaller
+    heroHeight: 440, // shorter to keep content out of the large bottom safe zone
+    logoY: 680, // shifted up
+    gradientY: 440, // adjusted for hero position
   },
 };
 
 // --- Shared SVG building helpers ---
 function escapeXml(text) {
-  return (text || '')
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return (text || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 function wrapText(text, maxCharsPerLine) {
-  const words = text.split(' ');
+  const words = text.split(" ");
   const lines = [];
-  let current = '';
+  let current = "";
   for (const word of words) {
-    if ((current + ' ' + word).length > maxCharsPerLine && current) {
+    if ((current + " " + word).length > maxCharsPerLine && current) {
       lines.push(current);
       current = word;
     } else {
-      current = current ? current + ' ' + word : word;
+      current = current ? current + " " + word : word;
     }
   }
   if (current) lines.push(current);
@@ -70,7 +73,17 @@ function wrapText(text, maxCharsPerLine) {
 
 // --- Build professional SVG composite with real images embedded ---
 // platform: 'default' | 'tiktok' | 'instagram' - adjusts safe zones
-function buildProSvg(title, thumbnailText, flair, heroImageBase64, logoImageBase64, hasHero, classification, bgImageBase64, platform) {
+function buildProSvg(
+  title,
+  thumbnailText,
+  flair,
+  heroImageBase64,
+  logoImageBase64,
+  hasHero,
+  classification,
+  bgImageBase64,
+  platform,
+) {
   const safeZone = PLATFORM_SAFE_ZONES[platform] || PLATFORM_SAFE_ZONES.default;
   const classInfo = brand.classificationColour(classification || flair);
   const flairColour = classInfo.hex;
@@ -81,17 +94,20 @@ function buildProSvg(title, thumbnailText, flair, heroImageBase64, logoImageBase
 
   // Word-wrap headline text for the large orange title (max ~14 chars per line at font-size 82)
   const thumbLines = wrapText(escapedThumb, 14);
-  const thumbTspans = thumbLines.slice(0, 3).map((line, i) =>
-    `<tspan x="540" dy="${i === 0 ? 0 : 88}">${line}</tspan>`
-  ).join('');
+  const thumbTspans = thumbLines
+    .slice(0, 3)
+    .map((line, i) => `<tspan x="540" dy="${i === 0 ? 0 : 88}">${line}</tspan>`)
+    .join("");
 
   // Word wrap for title
-  const titleLines = wrapText(escapedTitle, 24).slice(0, 3).map((line, i) =>
-    `<tspan x="540" dy="${i === 0 ? 0 : 72}">${line}</tspan>`
-  ).join('');
+  const titleLines = wrapText(escapedTitle, 24)
+    .slice(0, 3)
+    .map((line, i) => `<tspan x="540" dy="${i === 0 ? 0 : 72}">${line}</tspan>`)
+    .join("");
 
   // Hero image section (if we have a real image)
-  const heroSection = hasHero ? `
+  const heroSection = hasHero
+    ? `
     <!-- Hero game image (blurred background fill) -->
     <image href="data:image/jpeg;base64,${heroImageBase64}" x="-100" y="0" width="1280" height="1920"
            preserveAspectRatio="xMidYMid slice" opacity="0.3" filter="url(#blur)"/>
@@ -103,7 +119,8 @@ function buildProSvg(title, thumbnailText, flair, heroImageBase64, logoImageBase
     <!-- Hero image border glow -->
     <rect x="40" y="${safeZone.heroY}" width="1000" height="${safeZone.heroHeight}" rx="16" fill="none"
           stroke="${brand.PRIMARY}" stroke-width="2" opacity="0.4"/>
-  ` : `
+  `
+    : `
     <!-- No hero image - use enhanced gradient background -->
     <rect x="40" y="${safeZone.heroY}" width="1000" height="${safeZone.heroHeight}" rx="16" fill="#0d1a2e" opacity="0.6"/>
     <rect x="40" y="${safeZone.heroY}" width="1000" height="${safeZone.heroHeight}" rx="16" fill="none"
@@ -111,10 +128,12 @@ function buildProSvg(title, thumbnailText, flair, heroImageBase64, logoImageBase
   `;
 
   // Company logo section
-  const logoSection = logoImageBase64 ? `
+  const logoSection = logoImageBase64
+    ? `
     <image href="data:image/png;base64,${logoImageBase64}" x="440" y="${safeZone.logoY}" width="200" height="80"
            preserveAspectRatio="xMidYMid meet" opacity="0.8"/>
-  ` : '';
+  `
+    : "";
 
   // Flair badge SVG fragment - reused in both layouts
   const flairBadge = `
@@ -204,24 +223,74 @@ function buildProSvg(title, thumbnailText, flair, heroImageBase64, logoImageBase
 }
 
 // --- Platform-specific SVG builders (delegate to buildProSvg with safe zone parameter) ---
-function buildTikTokSvg(title, thumbnailText, flair, heroImageBase64, logoImageBase64, hasHero, classification, bgImageBase64) {
-  return buildProSvg(title, thumbnailText, flair, heroImageBase64, logoImageBase64, hasHero, classification, bgImageBase64, 'tiktok');
+function buildTikTokSvg(
+  title,
+  thumbnailText,
+  flair,
+  heroImageBase64,
+  logoImageBase64,
+  hasHero,
+  classification,
+  bgImageBase64,
+) {
+  return buildProSvg(
+    title,
+    thumbnailText,
+    flair,
+    heroImageBase64,
+    logoImageBase64,
+    hasHero,
+    classification,
+    bgImageBase64,
+    "tiktok",
+  );
 }
 
-function buildInstagramSvg(title, thumbnailText, flair, heroImageBase64, logoImageBase64, hasHero, classification, bgImageBase64) {
-  return buildProSvg(title, thumbnailText, flair, heroImageBase64, logoImageBase64, hasHero, classification, bgImageBase64, 'instagram');
+function buildInstagramSvg(
+  title,
+  thumbnailText,
+  flair,
+  heroImageBase64,
+  logoImageBase64,
+  hasHero,
+  classification,
+  bgImageBase64,
+) {
+  return buildProSvg(
+    title,
+    thumbnailText,
+    flair,
+    heroImageBase64,
+    logoImageBase64,
+    hasHero,
+    classification,
+    bgImageBase64,
+    "instagram",
+  );
 }
 
 // --- Fallback SVG (no downloaded images available) ---
 function buildFallbackSvg(title, thumbnailText, flair, platform) {
-  return buildProSvg(title, thumbnailText, flair, null, null, false, null, null, platform);
+  return buildProSvg(
+    title,
+    thumbnailText,
+    flair,
+    null,
+    null,
+    false,
+    null,
+    null,
+    platform,
+  );
 }
 
 async function generateImages() {
-  console.log('[images] === Professional Image Pipeline v2 ===');
+  console.log("[images] === Professional Image Pipeline v2 ===");
 
-  if (!await fs.pathExists('daily_news.json')) {
-    console.log('[images] ERROR: daily_news.json not found. Run processor first.');
+  if (!(await fs.pathExists("daily_news.json"))) {
+    console.log(
+      "[images] ERROR: daily_news.json not found. Run processor first.",
+    );
     return;
   }
 
@@ -229,16 +298,18 @@ async function generateImages() {
   await fs.ensureDir(CACHE_DIR);
 
   const stories = await db.getStories();
-  const toProcess = stories.filter(s => s.approved === true && !s.image_path);
+  const toProcess = stories.filter((s) => s.approved === true && !s.image_path);
 
   // Load branded thumbnail background once
-  const bgPath = path.join(__dirname, 'branding', 'shorts_thumbnail_bg.png');
+  const bgPath = path.join(__dirname, "branding", "shorts_thumbnail_bg.png");
   let bgBase64 = null;
   if (await fs.pathExists(bgPath)) {
     try {
-      bgBase64 = (await fs.readFile(bgPath)).toString('base64');
-      console.log('[images] Using branded thumbnail background');
-    } catch (err) { /* fall back to gradient */ }
+      bgBase64 = (await fs.readFile(bgPath)).toString("base64");
+      console.log("[images] Using branded thumbnail background");
+    } catch (err) {
+      /* fall back to gradient */
+    }
   }
 
   console.log(`[images] ${toProcess.length} stories need image generation`);
@@ -247,28 +318,36 @@ async function generateImages() {
     console.log(`[images] Processing: ${story.title}`);
 
     // Download best available images
-    const availableImages = await getBestImage(story);
-    console.log(`[images] Found ${availableImages.length} images for ${story.id}`);
+    const result = await getBestImage(story);
+    const availableImages = result.images || result;
+    const videoClips = result.videoClips || [];
+    console.log(
+      `[images] Found ${availableImages.length} images + ${videoClips.length} video clips for ${story.id}`,
+    );
 
     // Read hero image as base64 for SVG embedding
     let heroBase64 = null;
     let logoBase64 = null;
 
-    const heroImg = availableImages.find(i => ['article_hero', 'capsule', 'hero', 'key_art', 'screenshot'].includes(i.type));
+    const heroImg = availableImages.find((i) =>
+      ["article_hero", "capsule", "hero", "key_art", "screenshot"].includes(
+        i.type,
+      ),
+    );
     if (heroImg) {
       try {
         const buf = await fs.readFile(heroImg.path);
-        heroBase64 = buf.toString('base64');
+        heroBase64 = buf.toString("base64");
       } catch (err) {
         console.log(`[images] Could not read hero image: ${err.message}`);
       }
     }
 
-    const logoImg = availableImages.find(i => i.type === 'company_logo');
+    const logoImg = availableImages.find((i) => i.type === "company_logo");
     if (logoImg) {
       try {
         const buf = await fs.readFile(logoImg.path);
-        logoBase64 = buf.toString('base64');
+        logoBase64 = buf.toString("base64");
       } catch (err) {
         // Skip logo
       }
@@ -283,23 +362,25 @@ async function generateImages() {
       logoBase64,
       !!heroBase64,
       story.classification,
-      bgBase64
+      bgBase64,
     );
 
     const svgPath = path.join(OUTPUT_DIR, `${story.id}.svg`);
     const pngPath = path.join(OUTPUT_DIR, `${story.id}.png`);
-    await fs.writeFile(svgPath, svg, 'utf-8');
+    await fs.writeFile(svgPath, svg, "utf-8");
 
     // Convert SVG to PNG via Sharp
     try {
-      const sharp = require('sharp');
+      const sharp = require("sharp");
       await sharp(Buffer.from(svg))
         .resize(1080, 1920)
         .png({ quality: 95 })
         .toFile(pngPath);
       story.image_path = pngPath;
       const stat = await fs.stat(pngPath);
-      console.log(`[images] Saved: ${pngPath} (${Math.round(stat.size / 1024)}KB)`);
+      console.log(
+        `[images] Saved: ${pngPath} (${Math.round(stat.size / 1024)}KB)`,
+      );
     } catch (err) {
       console.log(`[images] PNG conversion failed, using SVG: ${err.message}`);
       story.image_path = svgPath;
@@ -307,8 +388,16 @@ async function generateImages() {
 
     // --- Generate platform-specific thumbnail variants ---
     const platformVariants = [
-      { platform: 'tiktok', suffix: '_tiktok', storyKey: 'tiktok_thumbnail_path' },
-      { platform: 'instagram', suffix: '_instagram', storyKey: 'instagram_thumbnail_path' },
+      {
+        platform: "tiktok",
+        suffix: "_tiktok",
+        storyKey: "tiktok_thumbnail_path",
+      },
+      {
+        platform: "instagram",
+        suffix: "_instagram",
+        storyKey: "instagram_thumbnail_path",
+      },
     ];
 
     for (const variant of platformVariants) {
@@ -321,37 +410,51 @@ async function generateImages() {
         !!heroBase64,
         story.classification,
         bgBase64,
-        variant.platform
+        variant.platform,
       );
 
-      const variantPngPath = path.join(OUTPUT_DIR, `${story.id}${variant.suffix}.png`);
+      const variantPngPath = path.join(
+        OUTPUT_DIR,
+        `${story.id}${variant.suffix}.png`,
+      );
 
       try {
-        const sharp = require('sharp');
+        const sharp = require("sharp");
         await sharp(Buffer.from(variantSvg))
           .resize(1080, 1920)
           .png({ quality: 95 })
           .toFile(variantPngPath);
         story[variant.storyKey] = variantPngPath;
         const stat = await fs.stat(variantPngPath);
-        console.log(`[images] Saved ${variant.platform} variant: ${variantPngPath} (${Math.round(stat.size / 1024)}KB)`);
+        console.log(
+          `[images] Saved ${variant.platform} variant: ${variantPngPath} (${Math.round(stat.size / 1024)}KB)`,
+        );
       } catch (err) {
-        console.log(`[images] ${variant.platform} variant failed (non-fatal): ${err.message}`);
+        console.log(
+          `[images] ${variant.platform} variant failed (non-fatal): ${err.message}`,
+        );
       }
     }
 
     // Store all image paths for the video assembly to use
-    story.downloaded_images = availableImages.map(i => ({ path: i.path, type: i.type }));
+    story.downloaded_images = availableImages.map((i) => ({
+      path: i.path,
+      type: i.type,
+    }));
+    // Store video clips for assembly (Steam trailers, gameplay footage)
+    if (videoClips.length > 0) {
+      story.video_clips = videoClips.map((c) => c.path);
+    }
   }
 
   await db.saveStories(stories);
-  console.log('[images] Stories updated');
+  console.log("[images] Stories updated");
 }
 
 module.exports = generateImages;
 
 if (require.main === module) {
-  generateImages().catch(err => {
+  generateImages().catch((err) => {
     console.log(`[images] ERROR: ${err.message}`);
     process.exit(1);
   });

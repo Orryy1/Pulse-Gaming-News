@@ -507,6 +507,25 @@ async function fetchGameImages(gameTitle) {
             }
           }
         }
+        // Extract trailer/gameplay video clips from Steam
+        if (appData?.movies) {
+          for (const movie of appData.movies.slice(0, 2)) {
+            const videoUrl =
+              movie.webm?.max ||
+              movie.webm?.["480"] ||
+              movie.mp4?.max ||
+              movie.mp4?.["480"];
+            if (videoUrl) {
+              images.push({
+                url: videoUrl,
+                type: movie.highlight ? "trailer" : "gameplay_clip",
+                source: "steam",
+                is_video: true,
+                thumbnail: movie.thumbnail,
+              });
+            }
+          }
+        }
       } catch (err) {
         /* Steam details failed, no screenshots */
       }

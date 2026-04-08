@@ -546,20 +546,49 @@ function buildVideoCommand(
     );
     images = images.slice(0, MAX_IMAGES);
   }
+
+  // Merge video clips into the visual sequence (replace middle image slots)
+  const videoClips = (story.video_clips || []).filter((p) =>
+    fs.pathExistsSync(p),
+  );
+  const isVideoSlot = new Array(images.length).fill(false);
+  const visualPaths = [...images];
+  if (videoClips.length > 0 && images.length >= 3) {
+    // Replace slots in the middle of the sequence with video clips
+    for (let ci = 0; ci < videoClips.length && ci < 2; ci++) {
+      const slot = Math.min(1 + ci * 2, images.length - 2); // avoid first/last
+      visualPaths[slot] = videoClips[ci];
+      isVideoSlot[slot] = true;
+      console.log(
+        `[assemble] Slot ${slot}: using Steam trailer clip instead of static image`,
+      );
+    }
+  }
+
   const inputs = [];
   const fontOpt =
     process.platform === "win32" ? "font='Arial'" : "font='DejaVu Sans'";
-  const segmentDuration = Math.max(4, Math.floor(duration / images.length));
+  const segmentDuration = Math.max(
+    4,
+    Math.floor(duration / visualPaths.length),
+  );
 
-  // --- Inputs: background images ---
-  for (let i = 0; i < images.length; i++) {
-    inputs.push(
-      `-loop 1 -t ${segmentDuration} -i "${images[i].replace(/\\/g, "/")}"`,
-    );
+  // --- Inputs: background images + video clips ---
+  for (let i = 0; i < visualPaths.length; i++) {
+    if (isVideoSlot[i]) {
+      // Video clip input - take first segmentDuration seconds
+      inputs.push(
+        `-t ${segmentDuration} -i "${visualPaths[i].replace(/\\/g, "/")}"`,
+      );
+    } else {
+      inputs.push(
+        `-loop 1 -t ${segmentDuration} -i "${visualPaths[i].replace(/\\/g, "/")}"`,
+      );
+    }
   }
 
   // Audio inputs
-  const audioIdx = images.length;
+  const audioIdx = visualPaths.length;
   inputs.push(`-i "${audioPath.replace(/\\/g, "/")}"`);
   let musicIdx = -1;
   if (musicPath) {
@@ -585,40 +614,49 @@ function buildVideoCommand(
   // --- Filter graph ---
   const filterParts = [];
 
-  // Ken Burns zoom/pan per background image - vary crop position for visual variety
-  for (let i = 0; i < images.length; i++) {
-    const zoomIn = i % 2 === 0;
-    // Scale zoom increment based on segment duration: reach 15% zoom over the segment's frames
-    const zoomIncrement =
-      Math.round(10000 * (0.15 / (segmentDuration * 30))) / 10000;
-    const zoomExpr = zoomIn
-      ? `z=min(zoom+${zoomIncrement}\\,1.15)`
-      : `z=if(eq(on\\,1)\\,1.15\\,max(zoom-${zoomIncrement}\\,1.0))`;
-    // Vary crop focus: top, centre, bottom - so same-ish images still look different
-    const yPos = i % 3 === 0 ? `y=0` : i % 3 === 1 ? `y=(ih-oh)/2` : `y=ih-oh`;
-    const xPan =
-      i % 3 === 0
-        ? `x=iw/2-(iw/zoom/2)`
-        : i % 3 === 1
-          ? `x=(iw-iw/zoom)*on/${segmentDuration * 30}`
-          : `x=(iw-iw/zoom)*(1-on/${segmentDuration * 30})`;
-    filterParts.push(
-      `[${i}:v]scale=1080:1920:force_original_aspect_ratio=increase,` +
-        `crop=1080:1920:0:${i % 3 === 0 ? "0" : i % 3 === 1 ? "(ih-oh)/2" : "ih-oh"},` +
-        `zoompan=${zoomExpr}:${xPan}:y=ih/2-(ih/zoom/2):` +
-        `d=${segmentDuration * 30}:s=1080x1920:fps=30,` +
-        `trim=duration=${segmentDuration},setpts=PTS-STARTPTS,` +
-        `format=yuv420p,setsar=1[v${i}]`,
-    );
+  // Ken Burns zoom/pan per background image, or scale+crop for video clips
+  for (let i = 0; i < visualPaths.length; i++) {
+    if (isVideoSlot[i]) {
+      // Video clip: scale to fill 1080x1920, trim to segment duration, no zoompan
+      filterParts.push(
+        `[${i}:v]scale=1080:1920:force_original_aspect_ratio=increase,` +
+          `crop=1080:1920:(iw-1080)/2:(ih-1920)/2,` +
+          `trim=duration=${segmentDuration},setpts=PTS-STARTPTS,` +
+          `fps=30,format=yuv420p,setsar=1[v${i}]`,
+      );
+    } else {
+      const zoomIn = i % 2 === 0;
+      // Scale zoom increment based on segment duration: reach 15% zoom over the segment's frames
+      const zoomIncrement =
+        Math.round(10000 * (0.15 / (segmentDuration * 30))) / 10000;
+      const zoomExpr = zoomIn
+        ? `z=min(zoom+${zoomIncrement}\\,1.15)`
+        : `z=if(eq(on\\,1)\\,1.15\\,max(zoom-${zoomIncrement}\\,1.0))`;
+      // Vary crop focus: top, centre, bottom - so same-ish images still look different
+      const xPan =
+        i % 3 === 0
+          ? `x=iw/2-(iw/zoom/2)`
+          : i % 3 === 1
+            ? `x=(iw-iw/zoom)*on/${segmentDuration * 30}`
+            : `x=(iw-iw/zoom)*(1-on/${segmentDuration * 30})`;
+      filterParts.push(
+        `[${i}:v]scale=1080:1920:force_original_aspect_ratio=increase,` +
+          `crop=1080:1920:0:${i % 3 === 0 ? "0" : i % 3 === 1 ? "(ih-oh)/2" : "ih-oh"},` +
+          `zoompan=${zoomExpr}:${xPan}:y=ih/2-(ih/zoom/2):` +
+          `d=${segmentDuration * 30}:s=1080x1920:fps=30,` +
+          `trim=duration=${segmentDuration},setpts=PTS-STARTPTS,` +
+          `format=yuv420p,setsar=1[v${i}]`,
+      );
+    }
   }
 
   // Concatenate backgrounds with crossfade transitions between segments
-  if (images.length > 1) {
-    // Use xfade for smooth transitions between image segments
+  if (visualPaths.length > 1) {
+    // Use xfade for smooth transitions between image/video segments
     let prevLabel = "v0";
-    for (let i = 1; i < images.length; i++) {
+    for (let i = 1; i < visualPaths.length; i++) {
       const offset = i * segmentDuration - 0.5; // 0.5s crossfade
-      const outLabel = i === images.length - 1 ? "base" : `xf${i}`;
+      const outLabel = i === visualPaths.length - 1 ? "base" : `xf${i}`;
       filterParts.push(
         `[${prevLabel}][v${i}]xfade=transition=fadeblack:duration=0.5:offset=${offset}[${outLabel}]`,
       );
@@ -892,7 +930,9 @@ async function assemble() {
       );
       try {
         const getBestImage = require("./images_download");
-        const freshImages = await getBestImage(story);
+        const result = await getBestImage(story);
+        const freshImages = result.images || result;
+        const freshClips = result.videoClips || [];
         story.downloaded_images = freshImages.map((i) => ({
           path: i.path,
           type: i.type,
@@ -905,6 +945,10 @@ async function assemble() {
           ) {
             realImages.push(img.path);
           }
+        }
+        // Store video clips for use in assembly
+        if (freshClips.length > 0) {
+          story.video_clips = freshClips.map((c) => c.path);
         }
         if (realImages.length > 0) {
           console.log(

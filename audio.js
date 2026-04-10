@@ -32,7 +32,7 @@ async function getAudioDuration(audioPath) {
 async function concatAudioFiles(files, outputPath) {
   const listPath = outputPath.replace(/\.mp3$/, "_concat.txt");
   const listContent = files
-    .map((f) => `file '${f.replace(/\\/g, "/")}'`)
+    .map((f) => `file '${path.basename(f)}'`)
     .join("\n");
   await fs.writeFile(listPath, listContent);
   try {

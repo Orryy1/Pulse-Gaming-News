@@ -122,13 +122,13 @@ async function generateAudio() {
         .replace(/[--]/g, " - ") // normalize dashes
         .replace(/(\w)-(\w)/g, "$1 $2") // split compound words (farrell-type, co-lead) to prevent TTS long pauses
         .replace(/\$(\d+(?:\.\d{1,2})?)\s*(billion|million|trillion)/gi, (_, n, unit) => `${n} ${unit.toLowerCase()} dollars`)
-        .replace(/\$(\d+(?:\.\d{1,2})?)/g, (_, n) => {
-          const num = parseFloat(n);
-          if (n.includes('.')) return `${n} dollars`;
-          return `${num} dollar${num === 1 ? '' : 's'}`;
-        })
-        .replace(/£(\d+(?:\.\d{1,2})?)/g, (_, n) => `${n} pounds`)
-        .replace(/€(\d+(?:\.\d{1,2})?)/g, (_, n) => `${n} euros`)
+        .replace(/\$(\d+)\.(\d{2})/g, (_, whole, cents) => `${whole} dollars ${parseInt(cents)}`)
+        .replace(/\$(\d+)\.(\d)/g, (_, whole, cents) => `${whole} dollars ${parseInt(cents)}0`)
+        .replace(/\$(\d+)/g, (_, n) => `${n} dollar${parseInt(n) === 1 ? '' : 's'}`)
+        .replace(/£(\d+)\.(\d{1,2})/g, (_, whole, pence) => `${whole} pounds ${parseInt(pence)}`)
+        .replace(/£(\d+)/g, (_, n) => `${n} pounds`)
+        .replace(/€(\d+)\.(\d{1,2})/g, (_, whole, cents) => `${whole} euros ${parseInt(cents)}`)
+        .replace(/€(\d+)/g, (_, n) => `${n} euros`)
         .replace(/(\d{4})/g, (match) => {
           // spell out years to prevent mispronunciation
           const y = parseInt(match);
@@ -176,13 +176,13 @@ async function generateAudio() {
             .replace(/[\u2013\u2014]/g, " - ")
             .replace(/(\w)-(\w)/g, "$1 $2")
             .replace(/\$(\d+(?:\.\d{1,2})?)\s*(billion|million|trillion)/gi, (_, n, unit) => `${n} ${unit.toLowerCase()} dollars`)
-            .replace(/\$(\d+(?:\.\d{1,2})?)/g, (_, n) => {
-              const num = parseFloat(n);
-              if (n.includes('.')) return `${n} dollars`;
-              return `${num} dollar${num === 1 ? '' : 's'}`;
-            })
-            .replace(/£(\d+(?:\.\d{1,2})?)/g, (_, n) => `${n} pounds`)
-            .replace(/€(\d+(?:\.\d{1,2})?)/g, (_, n) => `${n} euros`)
+            .replace(/\$(\d+)\.(\d{2})/g, (_, whole, cents) => `${whole} dollars ${parseInt(cents)}`)
+            .replace(/\$(\d+)\.(\d)/g, (_, whole, cents) => `${whole} dollars ${parseInt(cents)}0`)
+            .replace(/\$(\d+)/g, (_, n) => `${n} dollar${parseInt(n) === 1 ? '' : 's'}`)
+            .replace(/£(\d+)\.(\d{1,2})/g, (_, whole, pence) => `${whole} pounds ${parseInt(pence)}`)
+            .replace(/£(\d+)/g, (_, n) => `${n} pounds`)
+            .replace(/€(\d+)\.(\d{1,2})/g, (_, whole, cents) => `${whole} euros ${parseInt(cents)}`)
+            .replace(/€(\d+)/g, (_, n) => `${n} euros`)
             .replace(/(\d{4})/g, (match) => {
               const y = parseInt(match);
               if (y >= 2000 && y <= 2009) {
@@ -242,6 +242,46 @@ async function generateAudio() {
             segmentPaths.push(segPath);
           }
           await concatAudioFiles(segmentPaths, outputPath);
+
+          // Merge segment timestamps into a single combined file
+          // Each segment's timestamps start from 0, so offset by cumulative duration
+          const mergedChars = [];
+          const mergedStarts = [];
+          const mergedEnds = [];
+          let cumulativeOffset = 0;
+          for (const sp of segmentPaths) {
+            const tsPath = sp.replace(/\.mp3$/, "_timestamps.json");
+            if (await fs.pathExists(tsPath)) {
+              try {
+                const ts = await fs.readJson(tsPath);
+                if (ts.characters && ts.character_start_times_seconds && ts.character_end_times_seconds) {
+                  // Add a space separator between segments (except first)
+                  if (mergedChars.length > 0) {
+                    mergedChars.push(" ");
+                    mergedStarts.push(cumulativeOffset);
+                    mergedEnds.push(cumulativeOffset);
+                  }
+                  for (let i = 0; i < ts.characters.length; i++) {
+                    mergedChars.push(ts.characters[i]);
+                    mergedStarts.push(ts.character_start_times_seconds[i] + cumulativeOffset);
+                    mergedEnds.push(ts.character_end_times_seconds[i] + cumulativeOffset);
+                  }
+                }
+              } catch (e) { /* skip broken timestamp file */ }
+            }
+            // Get segment duration for offset calculation
+            const segDuration = await getAudioDuration(sp);
+            cumulativeOffset += segDuration;
+          }
+          if (mergedChars.length > 0) {
+            const combinedTsPath = outputPath.replace(/\.mp3$/, "_timestamps.json");
+            await fs.writeJson(combinedTsPath, {
+              characters: mergedChars,
+              character_start_times_seconds: mergedStarts,
+              character_end_times_seconds: mergedEnds,
+            }, { spaces: 2 });
+          }
+
           // Clean up segment files
           for (const sp of segmentPaths) {
             await fs.remove(sp).catch(() => {});

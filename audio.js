@@ -121,6 +121,14 @@ async function generateAudio() {
         .replace(/['']/g, "'") // normalize smart apostrophes
         .replace(/[--]/g, " - ") // normalize dashes
         .replace(/(\w)-(\w)/g, "$1 $2") // split compound words (farrell-type, co-lead) to prevent TTS long pauses
+        .replace(/\$(\d+(?:\.\d{1,2})?)\s*(billion|million|trillion)/gi, (_, n, unit) => `${n} ${unit.toLowerCase()} dollars`)
+        .replace(/\$(\d+(?:\.\d{1,2})?)/g, (_, n) => {
+          const num = parseFloat(n);
+          if (n.includes('.')) return `${n} dollars`;
+          return `${num} dollar${num === 1 ? '' : 's'}`;
+        })
+        .replace(/£(\d+(?:\.\d{1,2})?)/g, (_, n) => `${n} pounds`)
+        .replace(/€(\d+(?:\.\d{1,2})?)/g, (_, n) => `${n} euros`)
         .replace(/(\d{4})/g, (match) => {
           // spell out years to prevent mispronunciation
           const y = parseInt(match);
@@ -167,6 +175,14 @@ async function generateAudio() {
             .replace(/[\u2018\u2019]/g, "'")
             .replace(/[\u2013\u2014]/g, " - ")
             .replace(/(\w)-(\w)/g, "$1 $2")
+            .replace(/\$(\d+(?:\.\d{1,2})?)\s*(billion|million|trillion)/gi, (_, n, unit) => `${n} ${unit.toLowerCase()} dollars`)
+            .replace(/\$(\d+(?:\.\d{1,2})?)/g, (_, n) => {
+              const num = parseFloat(n);
+              if (n.includes('.')) return `${n} dollars`;
+              return `${num} dollar${num === 1 ? '' : 's'}`;
+            })
+            .replace(/£(\d+(?:\.\d{1,2})?)/g, (_, n) => `${n} pounds`)
+            .replace(/€(\d+(?:\.\d{1,2})?)/g, (_, n) => `${n} euros`)
             .replace(/(\d{4})/g, (match) => {
               const y = parseInt(match);
               if (y >= 2000 && y <= 2009) {

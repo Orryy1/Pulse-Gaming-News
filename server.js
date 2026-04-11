@@ -169,6 +169,161 @@ app.get("/auth/tiktok/callback", async (req, res) => {
   }
 });
 
+// --- Facebook + Instagram OAuth flow ---
+// Start: redirects to Facebook login with required permissions
+app.get("/auth/facebook", (req, res) => {
+  const appId = process.env.FACEBOOK_APP_ID;
+  if (!appId) {
+    return res.status(500).send("<h1>FACEBOOK_APP_ID not set in env</h1>");
+  }
+  const baseUrl = process.env.RAILWAY_PUBLIC_URL || `http://localhost:${PORT}`;
+  const redirectUri = `${baseUrl}/auth/facebook/callback`;
+  const scopes = "pages_manage_posts,pages_read_engagement,pages_show_list,instagram_basic,instagram_content_publish,publish_video";
+  const authUrl = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}&response_type=code`;
+  res.redirect(authUrl);
+});
+
+// Callback: exchanges code for long-lived token, saves FB + IG tokens
+app.get("/auth/facebook/callback", async (req, res) => {
+  const { code, error, error_description } = req.query;
+
+  if (error) {
+    console.log(`[facebook] OAuth error: ${error} - ${error_description}`);
+    return res.status(400).send(`<h1>Facebook Auth Error</h1><p>${escapeHtml(error)}: ${escapeHtml(error_description || "")}</p>`);
+  }
+
+  if (!code) {
+    return res.status(400).send("<h1>Missing auth code</h1>");
+  }
+
+  const appId = process.env.FACEBOOK_APP_ID;
+  const appSecret = process.env.FACEBOOK_APP_SECRET;
+  if (!appId || !appSecret) {
+    return res.status(500).send("<h1>FACEBOOK_APP_ID and FACEBOOK_APP_SECRET must be set</h1>");
+  }
+
+  try {
+    const axios = require("axios");
+    const baseUrl = process.env.RAILWAY_PUBLIC_URL || `http://localhost:${PORT}`;
+    const redirectUri = `${baseUrl}/auth/facebook/callback`;
+
+    // Step 1: Exchange code for short-lived user token
+    const tokenRes = await axios.get("https://graph.facebook.com/v21.0/oauth/access_token", {
+      params: {
+        client_id: appId,
+        client_secret: appSecret,
+        redirect_uri: redirectUri,
+        code,
+      },
+    });
+    const shortToken = tokenRes.data.access_token;
+
+    // Step 2: Exchange for long-lived user token
+    const longRes = await axios.get("https://graph.facebook.com/v21.0/oauth/access_token", {
+      params: {
+        grant_type: "fb_exchange_token",
+        client_id: appId,
+        client_secret: appSecret,
+        fb_exchange_token: shortToken,
+      },
+    });
+    const longLivedToken = longRes.data.access_token;
+
+    // Step 3: Get page token
+    const targetPageId = process.env.FACEBOOK_PAGE_ID;
+    let page = null;
+
+    // Try /me/accounts first
+    const pagesRes = await axios.get("https://graph.facebook.com/v21.0/me/accounts", {
+      params: { access_token: longLivedToken },
+    });
+    const pages = pagesRes.data.data || [];
+
+    if (targetPageId) {
+      page = pages.find((p) => p.id === targetPageId);
+      // If not found in list, query directly
+      if (!page) {
+        try {
+          const directRes = await axios.get(`https://graph.facebook.com/v21.0/${targetPageId}`, {
+            params: { fields: "id,name,access_token", access_token: longLivedToken },
+          });
+          page = directRes.data;
+        } catch (err) {
+          console.log(`[facebook] Direct page query failed: ${err.response?.data?.error?.message || err.message}`);
+        }
+      }
+    }
+
+    if (!page && pages.length > 0) {
+      page = pages[0];
+    }
+
+    if (!page || !page.access_token) {
+      const pageList = pages.map((p) => `${p.name} (${p.id})`).join(", ") || "none found";
+      return res.status(400).send(`<h1>No Page Token</h1><p>Pages found: ${escapeHtml(pageList)}</p><p>Set FACEBOOK_PAGE_ID in env to your page ID.</p>`);
+    }
+
+    const pageToken = page.access_token;
+    console.log(`[facebook] OAuth: got page token for ${page.name} (${page.id})`);
+
+    // Save Facebook token
+    const tokensDir = path.join(__dirname, "tokens");
+    await fs.ensureDir(tokensDir);
+    await fs.writeJson(path.join(tokensDir, "facebook_token.json"), {
+      access_token: pageToken,
+      page_id: page.id,
+      page_name: page.name,
+      expires_at: 0,
+      created_at: new Date().toISOString(),
+      note: "Page token from OAuth flow. Does not expire unless revoked.",
+    }, { spaces: 2 });
+
+    // Step 4: Get Instagram Business Account
+    let igAccountId = null;
+    try {
+      const igRes = await axios.get(`https://graph.facebook.com/v21.0/${page.id}`, {
+        params: { fields: "instagram_business_account", access_token: pageToken },
+      });
+      igAccountId = igRes.data?.instagram_business_account?.id;
+      if (igAccountId) {
+        await fs.writeJson(path.join(tokensDir, "instagram_token.json"), {
+          access_token: pageToken,
+          instagram_business_account_id: igAccountId,
+          expires_at: 0,
+          created_at: new Date().toISOString(),
+        }, { spaces: 2 });
+      }
+    } catch (err) {
+      console.log(`[facebook] IG account lookup failed: ${err.message}`);
+    }
+
+    // Update Railway env vars
+    const envUpdates = [`FACEBOOK_PAGE_TOKEN=${pageToken}`, `FACEBOOK_PAGE_ID=${page.id}`];
+    if (igAccountId) {
+      envUpdates.push(`INSTAGRAM_ACCESS_TOKEN=${pageToken}`, `INSTAGRAM_BUSINESS_ACCOUNT_ID=${igAccountId}`);
+    }
+
+    console.log(`[facebook] OAuth complete. Update Railway env:\n  ${envUpdates.join("\n  ")}`);
+
+    const sendDiscord = require("./notify");
+    await sendDiscord(`**Facebook + Instagram Re-authenticated**\nPage: ${page.name}\nIG: ${igAccountId || "not linked"}`).catch(() => {});
+
+    res.send(`<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:60px">
+      <h1 style="color:#00C853">Facebook + Instagram Connected!</h1>
+      <p>Page: <strong>${escapeHtml(page.name)}</strong></p>
+      <p>Instagram: <strong>${igAccountId || "Not linked"}</strong></p>
+      <hr style="margin:30px 0">
+      <p><strong>Update these Railway env vars to persist across deploys:</strong></p>
+      <pre style="text-align:left;background:#1a1a2e;color:#e8dcc8;padding:20px;border-radius:8px;display:inline-block">${envUpdates.join("\n")}</pre>
+      <p style="margin-top:20px">You can close this tab.</p>
+    </body></html>`);
+  } catch (err) {
+    const detail = err.response?.data?.error?.message || err.message;
+    console.log(`[facebook] OAuth failed: ${detail}`);
+    res.status(500).send(`<h1>Facebook Auth Failed</h1><p>${escapeHtml(detail)}</p>`);
+  }
+});
+
 // --- SSE for real-time progress ---
 const sseClients = new Map();
 const SSE_MAX_CLIENTS = 50;

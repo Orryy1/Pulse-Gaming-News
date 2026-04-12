@@ -121,9 +121,10 @@ async function getBestImage(story) {
       images.push({ path: cached, type: "article_hero", priority: 100 });
   }
 
-  // Priority 2: Steam key art / hero images
+  // Priority 2: Steam key art / hero images (from hunter-saved URLs)
   if (story.game_images && story.game_images.length > 0) {
     for (const img of story.game_images) {
+      if (img.is_video) continue; // video clips handled separately below
       const safeName = `${story.id}_${img.type}_${img.source}.jpg`;
       const cached = await downloadImage(img.url, safeName);
       if (cached) {
@@ -138,6 +139,113 @@ async function getBestImage(story) {
         images.push({ path: cached, type: img.type, priority });
       }
       if (images.length >= 10) break;
+    }
+  }
+
+  // Priority 2b: Direct Steam search fallback - if hunter didn't save game_images,
+  // extract game title from story title and search Steam directly
+  if (
+    images.filter((i) => i.type !== "article_hero").length === 0 &&
+    story.title
+  ) {
+    try {
+      // Extract likely game title from story title
+      const gameTitle = story.title
+        .replace(/^[^:]+:\s*/i, "")
+        .replace(
+          /reportedly|rumour|confirmed|leaked|says|claims|according to|has been|what are|your thoughts|out for|a week now/gi,
+          "",
+        )
+        .replace(
+          /\b(is|are|was|were|will|be|to|the|a|an|in|on|at|for|of|and|or|not|has|have|had|just|now|how|why|what|do|does)\b/gi,
+          "",
+        )
+        .replace(/[^a-zA-Z0-9\s:'-]/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+      const searchTerm = gameTitle.substring(0, 60).trim();
+
+      if (searchTerm.length > 3) {
+        console.log(
+          `[images] No pre-saved game images, searching Steam directly for: "${searchTerm}"`,
+        );
+        const searchUrl = `https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(searchTerm)}&cc=gb&l=english`;
+        const searchResp = await axios.get(searchUrl, {
+          timeout: 8000,
+          headers: { "User-Agent": randomUA() },
+        });
+        const items = searchResp.data?.items || [];
+        if (items.length > 0) {
+          const appId = items[0].id;
+          const steamName = items[0].name;
+          console.log(`[images] Steam match: "${steamName}" (app ${appId})`);
+
+          // Key art, hero, capsule
+          const steamUrls = [
+            {
+              url: `https://cdn.akamai.steamstatic.com/steam/apps/${appId}/header.jpg`,
+              type: "key_art",
+            },
+            {
+              url: `https://cdn.akamai.steamstatic.com/steam/apps/${appId}/library_hero.jpg`,
+              type: "hero",
+            },
+            {
+              url: `https://cdn.akamai.steamstatic.com/steam/apps/${appId}/library_600x900.jpg`,
+              type: "capsule",
+            },
+          ];
+          for (const s of steamUrls) {
+            const cached = await downloadImage(
+              s.url,
+              `${story.id}_${s.type}_steam_fallback.jpg`,
+            );
+            if (cached) {
+              images.push({
+                path: cached,
+                type: s.type,
+                priority:
+                  s.type === "capsule" ? 95 : s.type === "hero" ? 90 : 85,
+              });
+            }
+          }
+
+          // Fetch screenshots via app details
+          try {
+            const detailsRes = await axios.get(
+              `https://store.steampowered.com/api/appdetails?appids=${appId}`,
+              { timeout: 8000, headers: { "User-Agent": randomUA() } },
+            );
+            const appData = detailsRes.data?.[appId]?.data;
+            if (appData?.screenshots) {
+              let ssCount = 0;
+              for (const ss of appData.screenshots.slice(0, 4)) {
+                if (ss.path_full) {
+                  const cached = await downloadImage(
+                    ss.path_full,
+                    `${story.id}_screenshot_steam_${ssCount}.jpg`,
+                  );
+                  if (cached) {
+                    images.push({
+                      path: cached,
+                      type: "screenshot",
+                      priority: 70 - ssCount,
+                    });
+                    ssCount++;
+                  }
+                }
+              }
+              console.log(
+                `[images] Steam fallback: downloaded ${images.length} images for ${story.id}`,
+              );
+            }
+          } catch (detailErr) {
+            /* Steam details failed, non-fatal */
+          }
+        }
+      }
+    } catch (err) {
+      console.log(`[images] Steam direct search failed: ${err.message}`);
     }
   }
 

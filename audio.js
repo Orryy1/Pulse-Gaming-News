@@ -12,6 +12,104 @@ dotenv.config({ override: true });
 
 const brand = require("./brand");
 
+// --- Phonetic replacements for words TTS mispronounces ---
+const PHONETIC_MAP = {
+  abyss: "uh-biss",
+  cache: "cash",
+  segue: "seg-way",
+  genre: "zhon-ruh",
+  niche: "neesh",
+  epitome: "eh-pit-oh-mee",
+  albeit: "all-bee-it",
+  dequeue: "dee-queue",
+};
+
+// --- Clean text for TTS - shared logic ---
+function cleanForTTS(raw) {
+  return (
+    (raw || "")
+      .replace(/\[PAUSE\]/gi, ", ")
+      .replace(/\[VISUAL:[^\]]*\]/gi, "")
+      .replace(/\.{2,}/g, ".")
+      .replace(/[*_~`#|]/g, "")
+      .replace(/[\u200B-\u200F\u2028-\u202F\uFEFF]/g, "") // strip zero-width and invisible unicode
+      .replace(/[\u201C\u201D]/g, '"')
+      .replace(/[\u2018\u2019\u0060\u00B4]/g, "'")
+      .replace(/[\u2013\u2014]/g, " - ") // only en/em dashes get spaced out
+      // Version numbers: "1.03.00" -> "1 point 0 3 point 0 0"
+      .replace(/(\d+)\.(\d+)\.(\d+)/g, (_, a, b, c) => {
+        const spellDigits = (s) => s.split("").join(" ");
+        return `${a} point ${spellDigits(b)} point ${spellDigits(c)}`;
+      })
+      // Patch versions: "v1.2" or "V2.0"
+      .replace(/[vV](\d+)\.(\d+)/g, (_, a, b) => `version ${a} point ${b}`)
+      // Compound hyphenated words: join with space, no dash (prevents TTS pauses)
+      .replace(/(\w)-(\w)/g, "$1 $2")
+      // Currency
+      .replace(
+        /\$(\d+(?:\.\d{1,2})?)\s*(billion|million|trillion)/gi,
+        (_, n, unit) => `${n} ${unit.toLowerCase()} dollars`,
+      )
+      .replace(
+        /\$(\d+)\.(\d{2})/g,
+        (_, whole, cents) => `${whole} dollars ${parseInt(cents)}`,
+      )
+      .replace(
+        /\$(\d+)\.(\d)/g,
+        (_, whole, cents) => `${whole} dollars ${parseInt(cents)}0`,
+      )
+      .replace(
+        /\$(\d+)/g,
+        (_, n) => `${n} dollar${parseInt(n) === 1 ? "" : "s"}`,
+      )
+      .replace(
+        /£(\d+)\.(\d{1,2})/g,
+        (_, whole, pence) => `${whole} pounds ${parseInt(pence)}`,
+      )
+      .replace(/£(\d+)/g, (_, n) => `${n} pounds`)
+      .replace(
+        /€(\d+)\.(\d{1,2})/g,
+        (_, whole, cents) => `${whole} euros ${parseInt(cents)}`,
+      )
+      .replace(/€(\d+)/g, (_, n) => `${n} euros`)
+      // Years
+      .replace(/(\d{4})/g, (match) => {
+        const y = parseInt(match);
+        if (y >= 2000 && y <= 2009) {
+          const ones = [
+            "",
+            "one",
+            "two",
+            "three",
+            "four",
+            "five",
+            "six",
+            "seven",
+            "eight",
+            "nine",
+          ];
+          return y === 2000
+            ? "two thousand"
+            : `two thousand and ${ones[y - 2000]}`;
+        }
+        if (y >= 2010 && y <= 2099)
+          return `twenty ${match.slice(2, 4).replace(/^0/, "")}`;
+        return match;
+      })
+      // Phonetic replacements for mispronounced words
+      .replace(
+        new RegExp(`\\b(${Object.keys(PHONETIC_MAP).join("|")})\\b`, "gi"),
+        (match) => PHONETIC_MAP[match.toLowerCase()] || match,
+      )
+      .replace(/[^\x20-\x7E.,'!?;:\-()"/]/g, "")
+      .replace(/\s+/g, " ")
+      .replace(/\.\s*\./g, ".")
+      .replace(/\.\s*,/g, ",")
+      .replace(/,\s*,/g, ",")
+      .trim()
+  );
+}
+
 const BUMPER_DURATION = 0; // bumpers removed - audio must hit 61s on its own
 const MIN_TOTAL_DURATION = 61; // TikTok Creator Rewards minimum
 
@@ -31,9 +129,7 @@ async function getAudioDuration(audioPath) {
 // --- Concatenate multiple MP3 files via ffmpeg ---
 async function concatAudioFiles(files, outputPath) {
   const listPath = outputPath.replace(/\.mp3$/, "_concat.txt");
-  const listContent = files
-    .map((f) => `file '${path.basename(f)}'`)
-    .join("\n");
+  const listContent = files.map((f) => `file '${path.basename(f)}'`).join("\n");
   await fs.writeFile(listPath, listContent);
   try {
     await execAsync(
@@ -110,121 +206,27 @@ async function generateAudio() {
     const MAX_REGEN = 2;
 
     try {
-      // Clean TTS script - remove markers and punctuation that causes vocal artifacts
+      // Clean TTS script using shared cleaning function
       const rawTTS = story.tts_script || story.full_script;
-      const ttsText = (rawTTS || "")
-        .replace(/\[PAUSE\]/gi, ", ") // comma + space gives a natural pause without artifacts
-        .replace(/\[VISUAL:[^\]]*\]/gi, "")
-        .replace(/\.{2,}/g, ".") // collapse ellipses to single period
-        .replace(/[*_~`#|]/g, "") // strip markdown formatting
-        .replace(/[""]/g, '"') // normalize smart quotes
-        .replace(/['']/g, "'") // normalize smart apostrophes
-        .replace(/[--]/g, " - ") // normalize dashes
-        .replace(/(\w)-(\w)/g, "$1 $2") // split compound words (farrell-type, co-lead) to prevent TTS long pauses
-        .replace(/\$(\d+(?:\.\d{1,2})?)\s*(billion|million|trillion)/gi, (_, n, unit) => `${n} ${unit.toLowerCase()} dollars`)
-        .replace(/\$(\d+)\.(\d{2})/g, (_, whole, cents) => `${whole} dollars ${parseInt(cents)}`)
-        .replace(/\$(\d+)\.(\d)/g, (_, whole, cents) => `${whole} dollars ${parseInt(cents)}0`)
-        .replace(/\$(\d+)/g, (_, n) => `${n} dollar${parseInt(n) === 1 ? '' : 's'}`)
-        .replace(/£(\d+)\.(\d{1,2})/g, (_, whole, pence) => `${whole} pounds ${parseInt(pence)}`)
-        .replace(/£(\d+)/g, (_, n) => `${n} pounds`)
-        .replace(/€(\d+)\.(\d{1,2})/g, (_, whole, cents) => `${whole} euros ${parseInt(cents)}`)
-        .replace(/€(\d+)/g, (_, n) => `${n} euros`)
-        .replace(/(\d{4})/g, (match) => {
-          // spell out years to prevent mispronunciation
-          const y = parseInt(match);
-          if (y >= 2000 && y <= 2009) {
-            const ones = [
-              "",
-              "one",
-              "two",
-              "three",
-              "four",
-              "five",
-              "six",
-              "seven",
-              "eight",
-              "nine",
-            ];
-            return y === 2000
-              ? "two thousand"
-              : `two thousand and ${ones[y - 2000]}`;
-          }
-          if (y >= 2010 && y <= 2099)
-            return `twenty ${match.slice(2, 4).replace(/^0/, "")}`;
-          return match;
-        })
-        .replace(/[^\x20-\x7E.,'!?;:\-()"/]/g, "") // strip non-ASCII chars that cause TTS glitches
-        .replace(/\s+/g, " ")
-        .replace(/\.\s*\./g, ".") // collapse double periods
-        .replace(/\.\s*,/g, ",") // collapse period-comma artifacts
-        .replace(/,\s*,/g, ",") // collapse double commas
-        .trim();
+      const ttsText = cleanForTTS(rawTTS);
       const outputPath = path.join("output", "audio", `${story.id}.mp3`);
 
       // Dynamic pacing: if story has separate hook/body/cta, generate each
       // segment at a different speaking rate then concatenate
       const baseRate = (brand.voiceSettings || {}).speaking_rate || 1.1;
       if (story.hook && story.body && story.cta) {
-        const cleanSegment = (raw) =>
-          (raw || "")
-            .replace(/\[PAUSE\]/gi, ", ")
-            .replace(/\[VISUAL:[^\]]*\]/gi, "")
-            .replace(/\.{2,}/g, ".")
-            .replace(/[*_~`#|]/g, "")
-            .replace(/[\u201C\u201D]/g, '"')
-            .replace(/[\u2018\u2019]/g, "'")
-            .replace(/[\u2013\u2014]/g, " - ")
-            .replace(/(\w)-(\w)/g, "$1 $2")
-            .replace(/\$(\d+(?:\.\d{1,2})?)\s*(billion|million|trillion)/gi, (_, n, unit) => `${n} ${unit.toLowerCase()} dollars`)
-            .replace(/\$(\d+)\.(\d{2})/g, (_, whole, cents) => `${whole} dollars ${parseInt(cents)}`)
-            .replace(/\$(\d+)\.(\d)/g, (_, whole, cents) => `${whole} dollars ${parseInt(cents)}0`)
-            .replace(/\$(\d+)/g, (_, n) => `${n} dollar${parseInt(n) === 1 ? '' : 's'}`)
-            .replace(/£(\d+)\.(\d{1,2})/g, (_, whole, pence) => `${whole} pounds ${parseInt(pence)}`)
-            .replace(/£(\d+)/g, (_, n) => `${n} pounds`)
-            .replace(/€(\d+)\.(\d{1,2})/g, (_, whole, cents) => `${whole} euros ${parseInt(cents)}`)
-            .replace(/€(\d+)/g, (_, n) => `${n} euros`)
-            .replace(/(\d{4})/g, (match) => {
-              const y = parseInt(match);
-              if (y >= 2000 && y <= 2009) {
-                const ones = [
-                  "",
-                  "one",
-                  "two",
-                  "three",
-                  "four",
-                  "five",
-                  "six",
-                  "seven",
-                  "eight",
-                  "nine",
-                ];
-                return y === 2000
-                  ? "two thousand"
-                  : `two thousand and ${ones[y - 2000]}`;
-              }
-              if (y >= 2010 && y <= 2099)
-                return `twenty ${match.slice(2, 4).replace(/^0/, "")}`;
-              return match;
-            })
-            .replace(/[^\x20-\x7E.,'!?;:\-()"/]/g, "")
-            .replace(/\s+/g, " ")
-            .replace(/\.\s*\./g, ".")
-            .replace(/\.\s*,/g, ",")
-            .replace(/,\s*,/g, ",")
-            .trim();
-
         const segments = [
           {
-            text: cleanSegment(story.hook),
+            text: cleanForTTS(story.hook),
             rate: baseRate * 1.05,
             label: "hook",
           },
           {
-            text: cleanSegment(story.body),
+            text: cleanForTTS(story.body),
             rate: baseRate * 0.95,
             label: "body",
           },
-          { text: cleanSegment(story.cta), rate: baseRate * 1.0, label: "cta" },
+          { text: cleanForTTS(story.cta), rate: baseRate * 1.0, label: "cta" },
         ].filter((s) => s.text.length > 0);
 
         if (segments.length > 1) {
@@ -254,7 +256,11 @@ async function generateAudio() {
             if (await fs.pathExists(tsPath)) {
               try {
                 const ts = await fs.readJson(tsPath);
-                if (ts.characters && ts.character_start_times_seconds && ts.character_end_times_seconds) {
+                if (
+                  ts.characters &&
+                  ts.character_start_times_seconds &&
+                  ts.character_end_times_seconds
+                ) {
                   // Add a space separator between segments (except first)
                   if (mergedChars.length > 0) {
                     mergedChars.push(" ");
@@ -263,23 +269,36 @@ async function generateAudio() {
                   }
                   for (let i = 0; i < ts.characters.length; i++) {
                     mergedChars.push(ts.characters[i]);
-                    mergedStarts.push(ts.character_start_times_seconds[i] + cumulativeOffset);
-                    mergedEnds.push(ts.character_end_times_seconds[i] + cumulativeOffset);
+                    mergedStarts.push(
+                      ts.character_start_times_seconds[i] + cumulativeOffset,
+                    );
+                    mergedEnds.push(
+                      ts.character_end_times_seconds[i] + cumulativeOffset,
+                    );
                   }
                 }
-              } catch (e) { /* skip broken timestamp file */ }
+              } catch (e) {
+                /* skip broken timestamp file */
+              }
             }
             // Get segment duration for offset calculation
             const segDuration = await getAudioDuration(sp);
             cumulativeOffset += segDuration;
           }
           if (mergedChars.length > 0) {
-            const combinedTsPath = outputPath.replace(/\.mp3$/, "_timestamps.json");
-            await fs.writeJson(combinedTsPath, {
-              characters: mergedChars,
-              character_start_times_seconds: mergedStarts,
-              character_end_times_seconds: mergedEnds,
-            }, { spaces: 2 });
+            const combinedTsPath = outputPath.replace(
+              /\.mp3$/,
+              "_timestamps.json",
+            );
+            await fs.writeJson(
+              combinedTsPath,
+              {
+                characters: mergedChars,
+                character_start_times_seconds: mergedStarts,
+                character_end_times_seconds: mergedEnds,
+              },
+              { spaces: 2 },
+            );
           }
 
           // Clean up segment files
@@ -340,39 +359,7 @@ async function generateAudio() {
 
         try {
           const newScript = JSON.parse(text);
-          const newTTS = (newScript.full_script || "")
-            .replace(/\[PAUSE\]/gi, ", ")
-            .replace(/\[VISUAL:[^\]]*\]/gi, "")
-            .replace(/[""]/g, '"')
-            .replace(/['']/g, "'")
-            .replace(/[--]/g, " - ")
-            .replace(/(\w)-(\w)/g, "$1 $2")
-            .replace(/(\d{4})/g, (match) => {
-              const y = parseInt(match);
-              if (y >= 2000 && y <= 2009) {
-                const ones = [
-                  "",
-                  "one",
-                  "two",
-                  "three",
-                  "four",
-                  "five",
-                  "six",
-                  "seven",
-                  "eight",
-                  "nine",
-                ];
-                return y === 2000
-                  ? "two thousand"
-                  : `two thousand and ${ones[y - 2000]}`;
-              }
-              if (y >= 2010 && y <= 2099)
-                return `twenty ${match.slice(2, 4).replace(/^0/, "")}`;
-              return match;
-            })
-            .replace(/[^\x20-\x7E.,'!?;:\-()"/]/g, "")
-            .replace(/\s+/g, " ")
-            .trim();
+          const newTTS = cleanForTTS(newScript.full_script);
 
           await generateTTS(newTTS, outputPath);
           const newDuration = await getAudioDuration(outputPath);

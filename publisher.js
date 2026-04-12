@@ -103,13 +103,26 @@ async function publishToAllPlatforms() {
     await new Promise((r) => setTimeout(r, 60 * 60 * 1000));
   }
 
-  // TikTok
+  // TikTok - try official API first, fall back to browser automation
   try {
     const { uploadAll: ttUpload } = require("./upload_tiktok");
     results.tiktok = await ttUpload();
-    console.log(`[publisher] TikTok: ${results.tiktok.length} uploaded`);
+    console.log(`[publisher] TikTok: ${results.tiktok.length} uploaded (API)`);
   } catch (err) {
-    console.log(`[publisher] TikTok upload skipped: ${err.message}`);
+    console.log(
+      `[publisher] TikTok API failed: ${err.message}, trying browser fallback...`,
+    );
+    try {
+      const { uploadAll: ttBrowserUpload } = require("./upload_tiktok_browser");
+      results.tiktok = await ttBrowserUpload();
+      console.log(
+        `[publisher] TikTok: ${results.tiktok.length} uploaded (browser)`,
+      );
+    } catch (browserErr) {
+      console.log(
+        `[publisher] TikTok browser upload also failed: ${browserErr.message}`,
+      );
+    }
   }
 
   // Wait another 60 minutes before Instagram
@@ -399,11 +412,27 @@ async function publishNextStory() {
       story.tiktok_post_id = ttResult.publishId;
       story.tiktok_error = null;
       result.tiktok = true;
-      console.log(`[publisher] TikTok: uploaded`);
+      console.log(`[publisher] TikTok: uploaded (API)`);
     } catch (err) {
-      console.log(`[publisher] TikTok upload failed: ${err.message}`);
-      story.tiktok_error = err.message;
-      result.errors.tiktok = err.message;
+      console.log(
+        `[publisher] TikTok API failed: ${err.message}, trying browser fallback...`,
+      );
+      try {
+        const {
+          uploadShort: ttBrowserUpload,
+        } = require("./upload_tiktok_browser");
+        const ttResult = await ttBrowserUpload(story);
+        story.tiktok_post_id = ttResult.publishId;
+        story.tiktok_error = null;
+        result.tiktok = true;
+        console.log(`[publisher] TikTok: uploaded (browser)`);
+      } catch (browserErr) {
+        console.log(
+          `[publisher] TikTok browser also failed: ${browserErr.message}`,
+        );
+        story.tiktok_error = browserErr.message;
+        result.errors.tiktok = browserErr.message;
+      }
     }
   }
 

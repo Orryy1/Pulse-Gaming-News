@@ -390,17 +390,203 @@ async function generateSubtitles(story, duration, outputDir) {
     if (wordChars.length > 0)
       words.push({ text: wordChars, start: wordStart, end: wordEnd });
 
-    // Pre-merge word pairs that must stay together:
-    // "twenty" + "26" → "2026", "Pulse" + "Gaming" → "Pulse Gaming"
+    // Pre-merge word pairs and reverse TTS transforms for readable subtitles:
+    // "twenty" + "26" → "2026", "19" + "dollars" + "99" → "$19.99",
+    // "uh-biss" → "abyss", "version" + "1" + "point" + "2" → "v1.2"
+    const REVERSE_PHONETIC = {
+      "uh-biss": "abyss",
+      cash: null, // "cash" is a real word too, don't reverse
+      "seg-way": "segue",
+      "zhon-ruh": "genre",
+      neesh: "niche",
+      "eh-pit-oh-mee": "epitome",
+      "all-bee-it": "albeit",
+      "dee-queue": "dequeue",
+    };
+
     const mergedWords = [];
     for (let mi = 0; mi < words.length; mi++) {
-      const stripped = words[mi].text.replace(/[^a-zA-Z]/g, "").toLowerCase();
-      if (
+      const stripped = words[mi].text
+        .replace(/[^a-zA-Z0-9-]/g, "")
+        .toLowerCase();
+      const nextText =
+        mi + 1 < words.length
+          ? words[mi + 1].text.replace(/[^a-zA-Z0-9-]/g, "").toLowerCase()
+          : "";
+
+      // Reverse phonetic: "uh-biss" → "abyss"
+      if (REVERSE_PHONETIC[stripped]) {
+        const trailing = words[mi].text.replace(/[a-zA-Z-]/g, "");
+        mergedWords.push({
+          text: REVERSE_PHONETIC[stripped] + trailing,
+          start: words[mi].start,
+          end: words[mi].end,
+        });
+      }
+      // Currency: "19" + "dollars" + "99" → "$19.99"
+      else if (
+        /^\d+$/.test(stripped) &&
+        nextText === "dollars" &&
+        mi + 1 < words.length
+      ) {
+        const whole = stripped;
+        // Check if cents follow: "dollars" + "99"
+        if (
+          mi + 2 < words.length &&
+          /^\d{1,2}$/.test(words[mi + 2].text.replace(/[^0-9]/g, ""))
+        ) {
+          const cents = words[mi + 2].text.replace(/[^0-9]/g, "");
+          const trailing = words[mi + 2].text.replace(/[0-9]/g, "");
+          mergedWords.push({
+            text: `$${whole}.${cents.padStart(2, "0")}${trailing}`,
+            start: words[mi].start,
+            end: words[mi + 2].end,
+          });
+          mi += 2;
+        } else {
+          const trailing = words[mi + 1].text.replace(/[a-zA-Z]/g, "");
+          mergedWords.push({
+            text: `$${whole}${trailing}`,
+            start: words[mi].start,
+            end: words[mi + 1].end,
+          });
+          mi += 1;
+        }
+      }
+      // Currency: "19" + "dollar" (singular) → "$19"
+      else if (
+        /^\d+$/.test(stripped) &&
+        nextText === "dollar" &&
+        mi + 1 < words.length
+      ) {
+        const trailing = words[mi + 1].text.replace(/[a-zA-Z]/g, "");
+        mergedWords.push({
+          text: `$${stripped}${trailing}`,
+          start: words[mi].start,
+          end: words[mi + 1].end,
+        });
+        mi += 1;
+      }
+      // Pounds: "19" + "pounds" + "99" → "£19.99"
+      else if (
+        /^\d+$/.test(stripped) &&
+        nextText === "pounds" &&
+        mi + 1 < words.length
+      ) {
+        const whole = stripped;
+        if (
+          mi + 2 < words.length &&
+          /^\d{1,2}$/.test(words[mi + 2].text.replace(/[^0-9]/g, ""))
+        ) {
+          const pence = words[mi + 2].text.replace(/[^0-9]/g, "");
+          const trailing = words[mi + 2].text.replace(/[0-9]/g, "");
+          mergedWords.push({
+            text: `£${whole}.${pence.padStart(2, "0")}${trailing}`,
+            start: words[mi].start,
+            end: words[mi + 2].end,
+          });
+          mi += 2;
+        } else {
+          const trailing = words[mi + 1].text.replace(/[a-zA-Z]/g, "");
+          mergedWords.push({
+            text: `£${whole}${trailing}`,
+            start: words[mi].start,
+            end: words[mi + 1].end,
+          });
+          mi += 1;
+        }
+      }
+      // Euros: "19" + "euros" → "€19"
+      else if (
+        /^\d+$/.test(stripped) &&
+        nextText === "euros" &&
+        mi + 1 < words.length
+      ) {
+        const whole = stripped;
+        if (
+          mi + 2 < words.length &&
+          /^\d{1,2}$/.test(words[mi + 2].text.replace(/[^0-9]/g, ""))
+        ) {
+          const cents = words[mi + 2].text.replace(/[^0-9]/g, "");
+          const trailing = words[mi + 2].text.replace(/[0-9]/g, "");
+          mergedWords.push({
+            text: `€${whole}.${cents.padStart(2, "0")}${trailing}`,
+            start: words[mi].start,
+            end: words[mi + 2].end,
+          });
+          mi += 2;
+        } else {
+          const trailing = words[mi + 1].text.replace(/[a-zA-Z]/g, "");
+          mergedWords.push({
+            text: `€${whole}${trailing}`,
+            start: words[mi].start,
+            end: words[mi + 1].end,
+          });
+          mi += 1;
+        }
+      }
+      // Billion/million/trillion dollars: "5" + "billion" + "dollars" → "$5 billion"
+      else if (
+        /^\d+$/.test(stripped) &&
+        /^(billion|million|trillion)$/.test(nextText) &&
+        mi + 2 < words.length &&
+        /^dollars?$/.test(
+          words[mi + 2].text.replace(/[^a-zA-Z]/g, "").toLowerCase(),
+        )
+      ) {
+        const trailing = words[mi + 2].text.replace(/[a-zA-Z]/g, "");
+        mergedWords.push({
+          text: `$${stripped} ${nextText}${trailing}`,
+          start: words[mi].start,
+          end: words[mi + 2].end,
+        });
+        mi += 2;
+      }
+      // Version: "version" + "1" + "point" + "2" → "v1.2"
+      else if (
+        stripped === "version" &&
+        mi + 3 < words.length &&
+        /^\d+$/.test(nextText) &&
+        words[mi + 2].text.replace(/[^a-zA-Z]/g, "").toLowerCase() === "point"
+      ) {
+        const major = nextText;
+        const minor = words[mi + 3].text.replace(/[^0-9]/g, "");
+        const trailing = words[mi + 3].text.replace(/[0-9]/g, "");
+        mergedWords.push({
+          text: `v${major}.${minor}${trailing}`,
+          start: words[mi].start,
+          end: words[mi + 3].end,
+        });
+        mi += 3;
+      }
+      // Three-part version: "1" + "point" + "03" + "point" + "00" → "1.03.00"
+      else if (
+        /^\d+$/.test(stripped) &&
+        nextText === "point" &&
+        mi + 4 < words.length &&
+        words[mi + 3].text.replace(/[^a-zA-Z]/g, "").toLowerCase() === "point"
+      ) {
+        const a = stripped;
+        const b = words[mi + 2].text
+          .replace(/[^0-9\s]/g, "")
+          .replace(/\s/g, "");
+        const c = words[mi + 4].text
+          .replace(/[^0-9\s]/g, "")
+          .replace(/\s/g, "");
+        const trailing = words[mi + 4].text.replace(/[0-9\s]/g, "");
+        mergedWords.push({
+          text: `${a}.${b}.${c}${trailing}`,
+          start: words[mi].start,
+          end: words[mi + 4].end,
+        });
+        mi += 4;
+      }
+      // Year: "twenty" + "26" → "2026"
+      else if (
         stripped === "twenty" &&
         mi + 1 < words.length &&
         /^\d{1,2}$/.test(words[mi + 1].text.replace(/[^0-9]/g, ""))
       ) {
-        // Merge "twenty" + "26" → "2026" (keep any trailing punctuation from second word)
         const digits = words[mi + 1].text.replace(/[^0-9]/g, "");
         const trailing = words[mi + 1].text.replace(/[0-9]/g, "");
         mergedWords.push({
@@ -408,19 +594,60 @@ async function generateSubtitles(story, duration, outputDir) {
           start: words[mi].start,
           end: words[mi + 1].end,
         });
-        mi++; // skip next word
+        mi++;
+        // Year: "two" + "thousand" + "and" + "five" → "2005" (or just "two" + "thousand" → "2000")
+      } else if (
+        stripped === "two" &&
+        nextText === "thousand" &&
+        mi + 1 < words.length
+      ) {
+        const onesMap = {
+          one: 1,
+          two: 2,
+          three: 3,
+          four: 4,
+          five: 5,
+          six: 6,
+          seven: 7,
+          eight: 8,
+          nine: 9,
+        };
+        if (
+          mi + 3 < words.length &&
+          words[mi + 2].text.replace(/[^a-zA-Z]/g, "").toLowerCase() ===
+            "and" &&
+          onesMap[words[mi + 3].text.replace(/[^a-zA-Z]/g, "").toLowerCase()]
+        ) {
+          const yr =
+            2000 +
+            onesMap[words[mi + 3].text.replace(/[^a-zA-Z]/g, "").toLowerCase()];
+          const trailing = words[mi + 3].text.replace(/[a-zA-Z]/g, "");
+          mergedWords.push({
+            text: `${yr}${trailing}`,
+            start: words[mi].start,
+            end: words[mi + 3].end,
+          });
+          mi += 3;
+        } else {
+          const trailing = words[mi + 1].text.replace(/[a-zA-Z]/g, "");
+          mergedWords.push({
+            text: `2000${trailing}`,
+            start: words[mi].start,
+            end: words[mi + 1].end,
+          });
+          mi += 1;
+        }
       } else if (
         stripped === "pulse" &&
         mi + 1 < words.length &&
         /^gaming/i.test(words[mi + 1].text.replace(/[^a-zA-Z]/g, ""))
       ) {
-        // Merge "Pulse" + "Gaming" into single token
         mergedWords.push({
           text: words[mi].text + " " + words[mi + 1].text,
           start: words[mi].start,
           end: words[mi + 1].end,
         });
-        mi++; // skip next word
+        mi++;
       } else {
         mergedWords.push(words[mi]);
       }

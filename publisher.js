@@ -6,6 +6,9 @@ const db = require("./lib/db");
 
 dotenv.config({ override: true });
 
+// Publish lock - prevents concurrent publishNextStory() calls from creating duplicates
+let publishLock = false;
+
 /*
   Autonomous Publisher - 3x Daily Multi-Platform Posting
 
@@ -308,6 +311,21 @@ async function publishOnlyCycle() {
 // --- Publish a single next-available story across all platforms ---
 // Used by the 3x daily publish windows to spread content through the day
 async function publishNextStory() {
+  // Prevent concurrent publish calls from uploading the same story twice
+  if (publishLock) {
+    console.log("[publisher] Publish already in progress, skipping");
+    return null;
+  }
+  publishLock = true;
+
+  try {
+    return await _publishNextStoryInner();
+  } finally {
+    publishLock = false;
+  }
+}
+
+async function _publishNextStoryInner() {
   const stories = await db.getStories();
 
   // Find stories that still need publishing to at least one platform.
@@ -387,6 +405,8 @@ async function publishNextStory() {
       story.youtube_url = ytResult.url;
       story.youtube_published_at = new Date().toISOString();
       result.youtube = true;
+      // Save immediately so concurrent calls see this story as published
+      await db.saveStories(stories);
       console.log(`[publisher] YouTube: ${ytResult.url}`);
 
       if (story.title_variants && story.title_variants.length > 1) {

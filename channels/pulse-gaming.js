@@ -138,7 +138,7 @@ RULES:
 - CTA: "Follow Pulse Gaming so you never miss a beat"
 - Classify every story as one of: [LEAK], [RUMOR], [CONFIRMED] or [BREAKING]
 - Always cite the source: "According to...", "A verified insider claims..."
-- British English spelling. No serial comma.
+- British English spelling. No serial comma. All monetary values in US dollars ($), never pounds or quid.
 - Tone: Urgent, insider, slightly conspiratorial. Like a journalist, not a hype man
 - Include [PAUSE] markers where a natural beat would land (2-3 per script)
 - Never use: "in this video", "hey guys", "what's up", "smash that like", "let me know in the comments"

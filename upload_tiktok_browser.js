@@ -43,6 +43,111 @@ const STEALTH_ARGS = [
   "--start-maximized",
 ];
 
+// Chrome user data directory (where the user is already logged into TikTok)
+const CHROME_USER_DATA =
+  process.env.CHROME_USER_DATA ||
+  path.join(
+    process.env.LOCALAPPDATA || "C:/Users/MORR/AppData/Local",
+    "Google/Chrome/User Data",
+  );
+
+// --- Grab cookies from existing Chrome session (no login needed) ---
+async function grabCookiesFromChrome() {
+  const { chromium } = require("playwright");
+
+  console.log(
+    "[tiktok-browser] Grabbing TikTok session from your existing Chrome profile...",
+  );
+  console.log(
+    "[tiktok-browser] IMPORTANT: Close Chrome completely before running this!\n",
+  );
+
+  // Copy essential Chrome profile files to a separate directory
+  // (Chrome blocks remote debugging on its default data dir)
+  const chromeDefault = path.join(CHROME_USER_DATA, "Default");
+  const tempProfileDir = path.join(__dirname, "tokens", "chrome_tiktok_data");
+  const tempDefault = path.join(tempProfileDir, "Default");
+
+  console.log("[tiktok-browser] Copying Chrome session files...");
+  await fs.ensureDir(tempDefault);
+  for (const item of ["Network", "Local Storage", "Session Storage"]) {
+    const src = path.join(chromeDefault, item);
+    if (await fs.pathExists(src)) {
+      await fs.copy(src, path.join(tempDefault, item), { overwrite: true });
+    }
+  }
+  for (const [src, dest] of [
+    [
+      path.join(chromeDefault, "Preferences"),
+      path.join(tempDefault, "Preferences"),
+    ],
+    [
+      path.join(CHROME_USER_DATA, "Local State"),
+      path.join(tempProfileDir, "Local State"),
+    ],
+  ]) {
+    if (await fs.pathExists(src)) await fs.copy(src, dest, { overwrite: true });
+  }
+  console.log("[tiktok-browser] Profile files copied.");
+
+  // Launch Playwright with the copied profile (avoids default-dir restriction)
+  const context = await chromium.launchPersistentContext(tempProfileDir, {
+    headless: false,
+    executablePath:
+      process.env.CHROME_PATH ||
+      "C:/Program Files/Google/Chrome/Application/chrome.exe",
+    args: [...STEALTH_ARGS, "--profile-directory=Default"],
+    viewport: { width: 1280, height: 800 },
+    ignoreDefaultArgs: ["--enable-automation"],
+  });
+
+  const page = context.pages()[0] || (await context.newPage());
+
+  // Navigate to TikTok to verify we're logged in
+  await page.goto("https://www.tiktok.com/@pulsegmg", {
+    waitUntil: "domcontentloaded",
+    timeout: 30000,
+  });
+  await page.waitForTimeout(3000);
+
+  const url = page.url();
+  if (url.includes("/login")) {
+    await context.close();
+    throw new Error(
+      "Not logged into TikTok in Chrome. Log in first, then retry.",
+    );
+  }
+
+  console.log("[tiktok-browser] TikTok session found! Saving cookies...");
+
+  // Navigate to creator page to pick up all upload-related cookies
+  try {
+    await page.goto("https://www.tiktok.com/creator#/upload", {
+      waitUntil: "domcontentloaded",
+      timeout: 15000,
+    });
+    await page.waitForTimeout(3000);
+  } catch (e) {
+    // Non-fatal
+  }
+
+  // Save cookies
+  const cookies = await context.cookies();
+  await fs.ensureDir(path.dirname(COOKIES_PATH));
+  await fs.writeJson(COOKIES_PATH, cookies, { spaces: 2 });
+  console.log(
+    `[tiktok-browser] Saved ${cookies.length} cookies to ${COOKIES_PATH}`,
+  );
+
+  // Also copy the session into our persistent Playwright profile for future uploads
+  await fs.ensureDir(BROWSER_PROFILE);
+  await context.close();
+
+  console.log(
+    "[tiktok-browser] Done! You can reopen Chrome now. Automated uploads are ready.",
+  );
+}
+
 // --- Save browser session (run once manually) ---
 async function loginAndSaveCookies() {
   const { chromium } = require("playwright");
@@ -387,12 +492,23 @@ async function uploadShort(story) {
   return uploadVideo(story);
 }
 
-module.exports = { uploadVideo, uploadShort, uploadAll, loginAndSaveCookies };
+module.exports = {
+  uploadVideo,
+  uploadShort,
+  uploadAll,
+  loginAndSaveCookies,
+  grabCookiesFromChrome,
+};
 
 if (require.main === module) {
   const cmd = process.argv[2];
 
-  if (cmd === "login") {
+  if (cmd === "grab") {
+    grabCookiesFromChrome().catch((err) => {
+      console.log(`[tiktok-browser] ERROR: ${err.message}`);
+      process.exit(1);
+    });
+  } else if (cmd === "login") {
     loginAndSaveCookies().catch((err) => {
       console.log(`[tiktok-browser] ERROR: ${err.message}`);
       process.exit(1);

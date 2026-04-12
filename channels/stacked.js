@@ -145,7 +145,7 @@ RULES:
 - CTA: "This is not financial advice. Follow STACKED so you never miss a move."
 - Classify every story as one of: [INSIDER], [RUMOR], [CONFIRMED], [BREAKING], [EARNINGS] or [MARKET]
 - Always cite the source: "According to SEC filings...", "Bloomberg reports...", "buried in the 10-K..."
-- British English spelling. No serial comma.
+- British English spelling. No serial comma. All monetary values in US dollars ($), never pounds or quid.
 - Tone: Objective, sceptical, authoritative. Like a Bloomberg terminal notification, not a hype man.
 - Use professional vocabulary: "equity", "volatility", "arbitrage", "macroeconomic", "liquidity", "valuation".
 - Include [PAUSE] markers where a natural beat would land (2-3 per script)

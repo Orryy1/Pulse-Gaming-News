@@ -578,9 +578,28 @@ async function uploadAll() {
     return [];
   }
 
-  const ready = stories.filter(
-    (s) => s.approved && s.exported_path && !s.youtube_post_id,
-  );
+  // Build set of already-published titles for dedup
+  const publishedTitles = stories
+    .filter((s) => s.youtube_post_id)
+    .map((s) => (s.title || "").toLowerCase());
+
+  const ready = stories.filter((s) => {
+    if (!s.approved || !s.exported_path || s.youtube_post_id) return false;
+    // Title dedup: skip if a story with very similar title was already uploaded
+    const title = (s.title || "").toLowerCase();
+    const isDupe = publishedTitles.some((pt) => {
+      const wordsA = new Set(title.split(/\s+/));
+      const wordsB = new Set(pt.split(/\s+/));
+      const intersection = [...wordsA].filter((w) => wordsB.has(w));
+      const union = new Set([...wordsA, ...wordsB]);
+      return intersection.length / union.size > 0.6;
+    });
+    if (isDupe) {
+      console.log(`[youtube] Skipping dupe title: "${s.title}"`);
+      return false;
+    }
+    return true;
+  });
 
   console.log(`[youtube] ${ready.length} videos ready for upload`);
 

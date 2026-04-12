@@ -542,44 +542,88 @@ async function generateSubtitles(story, duration, outputDir) {
         });
         mi += 2;
       }
-      // Version: "version" + "1" + "point" + "2" → "v1.2"
+      // Version: "version" + digits + ("point" + digits)+ → "v1.0.3.00"
+      // Greedy: consumes all "point" + digit segments, handles TTS splitting digits
       else if (
         stripped === "version" &&
         mi + 3 < words.length &&
         /^\d+$/.test(nextText) &&
         words[mi + 2].text.replace(/[^a-zA-Z]/g, "").toLowerCase() === "point"
       ) {
-        const major = nextText;
-        const minor = words[mi + 3].text.replace(/[^0-9]/g, "");
-        const trailing = words[mi + 3].text.replace(/[0-9]/g, "");
+        let parts = [nextText];
+        let j = mi + 2; // points at first "point"
+        while (
+          j < words.length &&
+          words[j].text.replace(/[^a-zA-Z]/g, "").toLowerCase() === "point"
+        ) {
+          // Collect all consecutive digits after this "point"
+          let segment = "";
+          let k = j + 1;
+          while (
+            k < words.length &&
+            /^\d+$/.test(words[k].text.replace(/[^0-9]/g, ""))
+          ) {
+            segment += words[k].text.replace(/[^0-9]/g, "");
+            k++;
+          }
+          if (segment) {
+            parts.push(segment);
+            j = k; // advance past the digits
+          } else {
+            break;
+          }
+        }
+        const lastIdx = j - 1;
+        const trailing = words[lastIdx].text.replace(/[0-9]/g, "");
         mergedWords.push({
-          text: `v${major}.${minor}${trailing}`,
+          text: `v${parts.join(".")}${trailing}`,
           start: words[mi].start,
-          end: words[mi + 3].end,
+          end: words[lastIdx].end,
         });
-        mi += 3;
+        mi = lastIdx;
       }
-      // Three-part version: "1" + "point" + "03" + "point" + "00" → "1.03.00"
+      // Three-part version (no "version" prefix): digit + "point" + digits + "point" + digits
+      // Greedy: handles TTS splitting digits across words
       else if (
         /^\d+$/.test(stripped) &&
         nextText === "point" &&
         mi + 4 < words.length &&
-        words[mi + 3].text.replace(/[^a-zA-Z]/g, "").toLowerCase() === "point"
+        /point/i.test(words[mi + 3].text.replace(/[^a-zA-Z]/g, ""))
       ) {
-        const a = stripped;
-        const b = words[mi + 2].text
-          .replace(/[^0-9\s]/g, "")
-          .replace(/\s/g, "");
-        const c = words[mi + 4].text
-          .replace(/[^0-9\s]/g, "")
-          .replace(/\s/g, "");
-        const trailing = words[mi + 4].text.replace(/[0-9\s]/g, "");
-        mergedWords.push({
-          text: `${a}.${b}.${c}${trailing}`,
-          start: words[mi].start,
-          end: words[mi + 4].end,
-        });
-        mi += 4;
+        let parts = [stripped];
+        let j = mi + 1; // points at first "point"
+        while (
+          j < words.length &&
+          words[j].text.replace(/[^a-zA-Z]/g, "").toLowerCase() === "point"
+        ) {
+          let segment = "";
+          let k = j + 1;
+          while (
+            k < words.length &&
+            /^\d+$/.test(words[k].text.replace(/[^0-9]/g, ""))
+          ) {
+            segment += words[k].text.replace(/[^0-9]/g, "");
+            k++;
+          }
+          if (segment) {
+            parts.push(segment);
+            j = k;
+          } else {
+            break;
+          }
+        }
+        if (parts.length >= 3) {
+          const lastIdx = j - 1;
+          const trailing = words[lastIdx].text.replace(/[0-9]/g, "");
+          mergedWords.push({
+            text: `${parts.join(".")}${trailing}`,
+            start: words[mi].start,
+            end: words[lastIdx].end,
+          });
+          mi = lastIdx;
+        } else {
+          mergedWords.push(words[mi]);
+        }
       }
       // Year: "twenty" + "26" → "2026"
       else if (
@@ -926,12 +970,15 @@ function buildVideoCommand(
   // Concatenate backgrounds with crossfade transitions between segments
   if (visualPaths.length > 1) {
     // Use xfade for smooth transitions between image/video segments
+    // Each xfade eats 0.5s from the accumulated duration, so offset must account
+    // for all previous crossfades: offset = i * segmentDuration - i * xfadeDur
+    const xfadeDur = 0.5;
     let prevLabel = "v0";
     for (let i = 1; i < visualPaths.length; i++) {
-      const offset = i * segmentDuration - 0.5; // 0.5s crossfade
+      const offset = i * (segmentDuration - xfadeDur);
       const outLabel = i === visualPaths.length - 1 ? "base" : `xf${i}`;
       filterParts.push(
-        `[${prevLabel}][v${i}]xfade=transition=fadeblack:duration=0.5:offset=${offset}[${outLabel}]`,
+        `[${prevLabel}][v${i}]xfade=transition=fadeblack:duration=${xfadeDur}:offset=${offset.toFixed(2)}[${outLabel}]`,
       );
       prevLabel = outLabel;
     }
@@ -1010,30 +1057,31 @@ function buildVideoCommand(
     }
   }
 
-  // Reddit comments - scattered throughout the video as semi-transparent overlays
+  // Reddit comments - shown one at a time, never overlapping
   const comments =
     story.reddit_comments ||
     (story.top_comment
       ? [{ body: story.top_comment, author: "Redditor", score: 0 }]
       : []);
   if (comments.length > 0) {
-    // Spread comments evenly across the video (skip first/last 10%)
-    const count = Math.min(comments.length, 8);
-    const usable = 0.8; // 10%-90% of duration
-    const gap = usable / count;
+    // Max 4 comments to keep it clean, show one at a time with gaps between
+    const count = Math.min(comments.length, 4);
+    const showDur = 6;
+    const gapBetween = 2; // 2s gap between comments
+    const totalPerComment = showDur + gapBetween;
+    // Start after the hook (15% in), end before outro (85%)
+    const startTime = Math.floor(duration * 0.15);
+    const fadeDur = 0.4;
 
-    // All comments in top zone only (y=150-380) to avoid overlapping subtitles at bottom
-    const ySlots = [160, 200, 240, 280, 180, 220, 260, 300];
+    // Y position: below the flair badge + subreddit card (those sit at y~90-155)
+    const yBase = 220;
 
     comments.slice(0, count).forEach((comment, ci) => {
       const text = sanitizeDrawtext(comment.body, 500);
       if (text.length < 10) return;
       const author = sanitizeDrawtext(comment.author || "Redditor", 25);
       const score = comment.score || 0;
-      const ct = Math.floor(duration * (0.1 + ci * gap));
-      const showDur = 8;
-      const fadeDur = 0.4;
-      const yBase = ySlots[ci % ySlots.length];
+      const ct = startTime + ci * totalPerComment;
 
       // Fade + slide expressions:
       // alpha: fade in over 0.4s, hold, fade out over 0.4s
@@ -1442,27 +1490,27 @@ async function assemble() {
           );
         }
 
-        // Reddit comments with fade animations
+        // Reddit comments with fade animations - shown one at a time
         const comments =
           story.reddit_comments ||
           (story.top_comment
             ? [{ body: story.top_comment, author: "Redditor", score: 0 }]
             : []);
         if (comments.length > 0) {
-          const count = Math.min(comments.length, 6);
-          const usable = 0.8;
-          const gap = usable / count;
-          const ySlots = [160, 200, 240, 280, 180, 220];
+          const count = Math.min(comments.length, 4);
+          const showDur = 6;
+          const gapBetween = 2;
+          const totalPerComment = showDur + gapBetween;
+          const startTime = Math.floor(duration * 0.15);
+          const yBase = 220;
 
           comments.slice(0, count).forEach((comment, ci) => {
             const text = sanitizeDrawtext(comment.body, 500);
             if (text.length < 10) return;
             const author = sanitizeDrawtext(comment.author || "Redditor", 25);
             const score = comment.score || 0;
-            const ct = Math.floor(duration * (0.1 + ci * gap));
-            const showDur = 8;
+            const ct = startTime + ci * totalPerComment;
             const fadeDur = 0.4;
-            const yBase = ySlots[ci % ySlots.length];
 
             const alphaExpr = `if(lt(t-${ct}\\,${fadeDur})\\,(t-${ct})/${fadeDur}\\,if(gt(t-${ct}\\,${showDur - fadeDur})\\,(${showDur}-(t-${ct}))/${fadeDur}\\,1))`;
             const slideX = `if(lt(t-${ct}\\,${fadeDur})\\,(-20+60*(t-${ct})/${fadeDur})\\,40)`;

@@ -249,7 +249,102 @@ async function getBestImage(story) {
     }
   }
 
-  // Priority 3: Reddit thumbnail
+  // Priority 3: Scrape ALL images from article page (not just og:image)
+  // Gaming news articles are packed with inline screenshots
+  if (
+    images.length < 8 &&
+    (story.article_url || (story.url && !story.url.includes("reddit.com")))
+  ) {
+    const articleUrl = story.article_url || story.url;
+    try {
+      const articleResp = await axios.get(articleUrl, {
+        timeout: 10000,
+        headers: { "User-Agent": randomUA() },
+        responseType: "text",
+        maxRedirects: 3,
+      });
+      const html = typeof articleResp.data === "string" ? articleResp.data : "";
+
+      // Extract all large image URLs from the article HTML
+      const allImgUrls = new Set();
+
+      // og:image and twitter:image (may differ from article_image if that failed)
+      const metaImgs = html.matchAll(
+        /<meta[^>]*(?:property|name)=["'](?:og:image|twitter:image)["'][^>]*content=["']([^"']+)["']/gi,
+      );
+      for (const m of metaImgs) {
+        if (m[1]) allImgUrls.add(m[1]);
+      }
+
+      // <img> tags with src — skip icons, avatars, logos, ads
+      const imgTags = html.matchAll(/<img[^>]+src=["']([^"']+)["'][^>]*/gi);
+      for (const m of imgTags) {
+        const src = m[1];
+        if (!src || src.length < 20) continue;
+        // Skip tiny UI elements
+        if (
+          /avatar|icon|logo|badge|sprite|tracking|pixel|ad[_-]|doubleclick|googlesyndication/i.test(
+            src,
+          )
+        )
+          continue;
+        // Must look like an image
+        if (src.match(/\.(jpg|jpeg|png|webp)/i) || src.includes("/image")) {
+          // Resolve relative URLs
+          try {
+            const resolved = new URL(src, articleUrl).href;
+            allImgUrls.add(resolved);
+          } catch (e) {
+            if (src.startsWith("http")) allImgUrls.add(src);
+          }
+        }
+      }
+
+      // Also check srcset for high-res versions
+      const srcsets = html.matchAll(/srcset=["']([^"']+)["']/gi);
+      for (const m of srcsets) {
+        const entries = m[1].split(",").map((e) => e.trim());
+        // Pick the largest (last) entry
+        const last = entries[entries.length - 1];
+        const srcMatch = last?.match(/(https?:\/\/[^\s]+)/);
+        if (srcMatch) allImgUrls.add(srcMatch[1]);
+      }
+
+      // Deduplicate against already-downloaded article hero
+      const existingUrls = new Set();
+      if (story.article_image) existingUrls.add(story.article_image);
+
+      let articleImgCount = 0;
+      for (const imgUrl of allImgUrls) {
+        if (images.length >= 8) break;
+        if (existingUrls.has(imgUrl)) continue;
+        existingUrls.add(imgUrl);
+
+        const ext = imgUrl.match(/\.(jpg|jpeg|png|webp)/i)?.[1] || "jpg";
+        const cached = await downloadImage(
+          imgUrl,
+          `${story.id}_article_inline_${articleImgCount}.${ext}`,
+        );
+        if (cached) {
+          images.push({
+            path: cached,
+            type: "screenshot",
+            priority: 75 - articleImgCount,
+          });
+          articleImgCount++;
+        }
+      }
+      if (articleImgCount > 0) {
+        console.log(
+          `[images] Scraped ${articleImgCount} inline images from article for ${story.id}`,
+        );
+      }
+    } catch (err) {
+      // Article scrape failed, non-fatal
+    }
+  }
+
+  // Priority 4: Reddit thumbnail
   if (story.thumbnail_url) {
     const cached = await downloadImage(
       story.thumbnail_url,
@@ -259,7 +354,7 @@ async function getBestImage(story) {
       images.push({ path: cached, type: "reddit_thumb", priority: 40 });
   }
 
-  // Priority 4: Company logo
+  // Priority 5: Company logo
   if (story.company_logo_url) {
     const cached = await downloadImage(
       story.company_logo_url,
@@ -269,52 +364,153 @@ async function getBestImage(story) {
       images.push({ path: cached, type: "company_logo", priority: 30 });
   }
 
-  // Priority 5: Google image search - supplement with more variety (especially for stories with few images)
-  if (images.length < 8 && story.title) {
+  // Priority 6: Pexels free stock photos — reliable API, great for industry/generic stories
+  if (images.length < 6 && story.title && process.env.PEXELS_API_KEY) {
     try {
-      const searchQuery = encodeURIComponent(
-        story.title.replace(/[^a-zA-Z0-9\s]/g, "").trim() + " game",
+      // Build a smart search query from the story title
+      const pexelsQuery = story.title
+        .replace(/[^a-zA-Z0-9\s]/g, "")
+        .replace(
+          /\b(is|are|was|were|will|be|to|the|a|an|in|on|at|for|of|and|or|not|has|have|had|just|now)\b/gi,
+          "",
+        )
+        .replace(/\s+/g, " ")
+        .trim()
+        .split(" ")
+        .slice(0, 4)
+        .join(" ");
+
+      const pexelsResp = await axios.get(
+        `https://api.pexels.com/v1/search?query=${encodeURIComponent(pexelsQuery + " gaming")}&per_page=6&orientation=portrait`,
+        {
+          timeout: 8000,
+          headers: { Authorization: process.env.PEXELS_API_KEY },
+        },
       );
-      const searchUrl = `https://www.google.com/search?q=${searchQuery}&tbm=isch&safe=active`;
-      const searchResp = await axios.get(searchUrl, {
-        timeout: 10000,
-        headers: { "User-Agent": randomUA() },
-        maxRedirects: 3,
-      });
-      // Extract image URLs from Google Images HTML response
-      const html = typeof searchResp.data === "string" ? searchResp.data : "";
-      const imgMatches =
-        html.match(
-          /\["(https?:\/\/[^"]+\.(?:jpg|jpeg|png|webp)(?:\?[^"]*)?)",\d+,\d+\]/gi,
-        ) || [];
-      let googleFound = 0;
-      for (const match of imgMatches.slice(0, 8)) {
-        const urlMatch = match.match(/"(https?:\/\/[^"]+)"/);
-        if (!urlMatch) continue;
-        const imgUrl = urlMatch[1];
-        // Skip tiny thumbnails and Google's own assets
-        if (imgUrl.includes("gstatic.com") || imgUrl.includes("google.com"))
-          continue;
-        const ext = imgUrl.match(/\.(jpg|jpeg|png|webp)/i)?.[1] || "jpg";
+      const photos = pexelsResp.data?.photos || [];
+      let pexelsCount = 0;
+      for (const photo of photos) {
+        if (images.length >= 8) break;
+        // Use the large2x size — high quality, good for 1080p
+        const imgUrl =
+          photo.src?.large2x || photo.src?.large || photo.src?.original;
+        if (!imgUrl) continue;
         const cached = await downloadImage(
           imgUrl,
-          `${story.id}_google_${googleFound}.${ext}`,
+          `${story.id}_pexels_${pexelsCount}.jpg`,
         );
         if (cached) {
           images.push({
             path: cached,
             type: "screenshot",
-            priority: 20 - googleFound,
+            priority: 25 - pexelsCount,
           });
-          googleFound++;
-          console.log(
-            `[images] Google image ${googleFound}/3 found for "${story.title.substring(0, 40)}..."`,
-          );
-          if (googleFound >= 3) break;
+          pexelsCount++;
         }
       }
+      if (pexelsCount > 0) {
+        console.log(
+          `[images] Pexels: ${pexelsCount} stock photos for ${story.id}`,
+        );
+      }
     } catch (err) {
-      // Google search failed silently - not critical
+      // Pexels failed, non-fatal
+    }
+  }
+
+  // Priority 7: Unsplash free photos — no API key needed for small volumes (50/hr)
+  if (images.length < 6 && story.title) {
+    try {
+      const unsplashQuery = story.title
+        .replace(/[^a-zA-Z0-9\s]/g, "")
+        .trim()
+        .split(" ")
+        .slice(0, 3)
+        .join(" ");
+
+      const unsplashResp = await axios.get(
+        `https://unsplash.com/napi/search/photos?query=${encodeURIComponent(unsplashQuery + " gaming")}&per_page=5&orientation=portrait`,
+        {
+          timeout: 8000,
+          headers: { "User-Agent": randomUA() },
+        },
+      );
+      const results = unsplashResp.data?.results || [];
+      let unsplashCount = 0;
+      for (const photo of results) {
+        if (images.length >= 8) break;
+        const imgUrl = photo.urls?.regular || photo.urls?.full;
+        if (!imgUrl) continue;
+        const cached = await downloadImage(
+          imgUrl,
+          `${story.id}_unsplash_${unsplashCount}.jpg`,
+        );
+        if (cached) {
+          images.push({
+            path: cached,
+            type: "screenshot",
+            priority: 15 - unsplashCount,
+          });
+          unsplashCount++;
+        }
+      }
+      if (unsplashCount > 0) {
+        console.log(
+          `[images] Unsplash: ${unsplashCount} photos for ${story.id}`,
+        );
+      }
+    } catch (err) {
+      // Unsplash failed, non-fatal
+    }
+  }
+
+  // Priority 8: Bing Image Search scraping — more reliable from servers than Google
+  if (images.length < 6 && story.title) {
+    try {
+      const bingQuery = encodeURIComponent(
+        story.title.replace(/[^a-zA-Z0-9\s]/g, "").trim() + " game screenshot",
+      );
+      const bingUrl = `https://www.bing.com/images/search?q=${bingQuery}&qft=+filterui:imagesize-large&form=IRFLTR&first=1`;
+      const bingResp = await axios.get(bingUrl, {
+        timeout: 10000,
+        headers: { "User-Agent": randomUA() },
+        maxRedirects: 3,
+      });
+      const html = typeof bingResp.data === "string" ? bingResp.data : "";
+      // Bing embeds image URLs in murl attributes
+      const bingMatches = html.matchAll(
+        /murl&quot;:&quot;(https?:\/\/[^&]+)&quot;/gi,
+      );
+      let bingFound = 0;
+      const seenUrls = new Set(images.map((i) => i.path));
+      for (const match of bingMatches) {
+        if (images.length >= 8) break;
+        let imgUrl = match[1];
+        // Decode HTML entities
+        imgUrl = imgUrl.replace(/&amp;/g, "&");
+        if (seenUrls.has(imgUrl)) continue;
+        seenUrls.add(imgUrl);
+        // Skip low-quality sources
+        if (/avatar|icon|logo|badge|pixel/i.test(imgUrl)) continue;
+        const ext = imgUrl.match(/\.(jpg|jpeg|png|webp)/i)?.[1] || "jpg";
+        const cached = await downloadImage(
+          imgUrl,
+          `${story.id}_bing_${bingFound}.${ext}`,
+        );
+        if (cached) {
+          images.push({
+            path: cached,
+            type: "screenshot",
+            priority: 10 - bingFound,
+          });
+          bingFound++;
+        }
+      }
+      if (bingFound > 0) {
+        console.log(`[images] Bing: ${bingFound} images for ${story.id}`);
+      }
+    } catch (err) {
+      // Bing search failed, non-fatal
     }
   }
 

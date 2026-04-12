@@ -25,25 +25,24 @@ dotenv.config({ override: true });
 const TOKEN_PATH = path.join(__dirname, "tokens", "facebook_token.json");
 
 async function getAccessToken() {
-  // Try file first (may have refresh info)
+  // Prefer env var (persists across Railway deploys, token files get wiped)
+  if (process.env.FACEBOOK_PAGE_TOKEN) return process.env.FACEBOOK_PAGE_TOKEN;
+
+  // Fallback to token file (local dev)
   if (await fs.pathExists(TOKEN_PATH)) {
     const tokenData = await fs.readJson(TOKEN_PATH);
-    if (tokenData.expires_at && Date.now() > tokenData.expires_at) {
-      console.warn(
-        "[facebook] Token has EXPIRED. Uploads will fail until token is refreshed.",
-      );
-    } else if (
+    if (
       tokenData.expires_at &&
-      Date.now() > tokenData.expires_at - 7 * 24 * 60 * 60 * 1000
+      tokenData.expires_at > 0 &&
+      Date.now() > tokenData.expires_at
     ) {
-      console.warn(
-        "[facebook] Token expiring within 7 days. Consider refreshing.",
-      );
+      throw new Error("Facebook token has EXPIRED. Re-auth at /auth/facebook");
     }
     return tokenData.access_token;
   }
-  if (process.env.FACEBOOK_PAGE_TOKEN) return process.env.FACEBOOK_PAGE_TOKEN;
-  throw new Error("Facebook not authenticated.");
+  throw new Error(
+    "Facebook not authenticated. Set FACEBOOK_PAGE_TOKEN env var or re-auth at /auth/facebook",
+  );
 }
 
 function getPageId() {

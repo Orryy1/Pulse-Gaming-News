@@ -28,44 +28,26 @@ const TOKEN_PATH = path.join(__dirname, "tokens", "instagram_token.json");
 */
 
 async function getAccessToken() {
-  // Try saved token first (may have been refreshed)
-  if (await fs.pathExists(TOKEN_PATH)) {
-    const tokenData = await fs.readJson(TOKEN_PATH);
-    // Auto-refresh if within 7 days of expiry
-    if (
-      tokenData.expires_at &&
-      tokenData.expires_at > 0 &&
-      Date.now() > tokenData.expires_at - 7 * 24 * 60 * 60 * 1000
-    ) {
-      console.log("[instagram] Token expiring soon, refreshing...");
-      try {
-        const refreshed = await refreshToken(tokenData.access_token);
-        return refreshed.access_token;
-      } catch (err) {
-        // If token is actually expired (not just expiring soon), fail hard
-        if (tokenData.expires_at > 0 && Date.now() > tokenData.expires_at) {
-          throw new Error(
-            `Instagram token expired and refresh failed: ${err.message}`,
-          );
-        }
-        console.warn(
-          `[instagram] Refresh failed but token still valid: ${err.message}`,
-        );
-        return tokenData.access_token;
-      }
-    }
-    return tokenData.access_token;
-  }
-
-  // Fall back to env var
+  // Prefer env var (persists across Railway deploys, token files get wiped)
   if (process.env.INSTAGRAM_ACCESS_TOKEN) {
     return process.env.INSTAGRAM_ACCESS_TOKEN;
   }
 
+  // Fallback to token file (local dev)
+  if (await fs.pathExists(TOKEN_PATH)) {
+    const tokenData = await fs.readJson(TOKEN_PATH);
+    if (
+      tokenData.expires_at &&
+      tokenData.expires_at > 0 &&
+      Date.now() > tokenData.expires_at
+    ) {
+      throw new Error("Instagram token has EXPIRED. Re-auth at /auth/facebook");
+    }
+    return tokenData.access_token;
+  }
+
   throw new Error(
-    "Instagram not authenticated.\n" +
-      "Set INSTAGRAM_ACCESS_TOKEN in .env, or save token to tokens/instagram_token.json\n" +
-      "Also set INSTAGRAM_BUSINESS_ACCOUNT_ID",
+    "Instagram not authenticated. Set INSTAGRAM_ACCESS_TOKEN env var or re-auth at /auth/facebook",
   );
 }
 

@@ -25,34 +25,129 @@ dotenv.config({ override: true });
 const COOKIES_PATH = path.join(__dirname, "tokens", "tiktok_cookies.json");
 const UPLOAD_TIMEOUT = 120000; // 2 min max per upload
 
+// Persistent browser profile path - keeps login state between runs
+const BROWSER_PROFILE = path.join(
+  __dirname,
+  "tokens",
+  "tiktok_browser_profile",
+);
+
+// Anti-detection args to avoid TikTok bot detection
+const STEALTH_ARGS = [
+  "--disable-blink-features=AutomationControlled",
+  "--disable-features=IsolateOrigins,site-per-process",
+  "--no-sandbox",
+  "--disable-setuid-sandbox",
+  "--disable-infobars",
+  "--window-size=1280,800",
+  "--start-maximized",
+];
+
 // --- Save browser session (run once manually) ---
 async function loginAndSaveCookies() {
   const { chromium } = require("playwright");
 
   console.log("[tiktok-browser] Opening TikTok login page...");
   console.log(
-    "[tiktok-browser] Log in manually, then press Enter in this terminal.",
+    "[tiktok-browser] Use QR CODE login (scan with TikTok app) - most reliable.",
+  );
+  console.log(
+    "[tiktok-browser] Cookies will be saved automatically once login is detected.\n",
   );
 
-  const browser = await chromium.launch({ headless: false });
-  const context = await browser.newContext({
-    userAgent:
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  // Use persistent context so the browser profile is saved for future runs
+  await fs.ensureDir(BROWSER_PROFILE);
+  const context = await chromium.launchPersistentContext(BROWSER_PROFILE, {
+    headless: false,
+    executablePath:
+      process.env.CHROME_PATH ||
+      "C:/Program Files/Google/Chrome/Application/chrome.exe",
+    args: STEALTH_ARGS,
     viewport: { width: 1280, height: 800 },
+    userAgent:
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    ignoreDefaultArgs: ["--enable-automation"],
   });
 
-  const page = await context.newPage();
-  await page.goto("https://www.tiktok.com/login", { waitUntil: "networkidle" });
-
-  // Wait for user to log in
-  console.log("\n=== LOG IN TO TIKTOK IN THE BROWSER WINDOW ===");
-  console.log("Once logged in, press Enter here to save cookies...\n");
-
-  await new Promise((resolve) => {
-    process.stdin.once("data", resolve);
+  // Remove the automation indicator from navigator
+  const page = context.pages()[0] || (await context.newPage());
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "webdriver", { get: () => undefined });
+    window.chrome = { runtime: {} };
+    Object.defineProperty(navigator, "plugins", { get: () => [1, 2, 3, 4, 5] });
+    Object.defineProperty(navigator, "languages", {
+      get: () => ["en-GB", "en"],
+    });
   });
 
-  // Save cookies
+  await page.goto("https://www.tiktok.com/login", {
+    waitUntil: "domcontentloaded",
+    timeout: 30000,
+  });
+
+  // Auto-detect login: poll for indicators that the user is logged in
+  console.log(
+    "[tiktok-browser] Waiting for login (checking every 3s for up to 10 minutes)...",
+  );
+  console.log(
+    "[tiktok-browser] TIP: Click 'Use QR code' then scan with TikTok app on your phone.\n",
+  );
+  let loggedIn = false;
+  for (let attempt = 0; attempt < 200; attempt++) {
+    await page.waitForTimeout(3000);
+    try {
+      const url = page.url();
+      const notOnLogin = !url.includes("/login");
+      // After login TikTok redirects to the For You page
+      if (
+        notOnLogin &&
+        (url.includes("tiktok.com/foryou") ||
+          url === "https://www.tiktok.com/" ||
+          url.includes("tiktok.com/@"))
+      ) {
+        loggedIn = true;
+        console.log(
+          "[tiktok-browser] Login detected! (redirect from login page)",
+        );
+        break;
+      }
+      // Also check for sidebar elements
+      const hasUpload = await page
+        .locator('a[href*="/upload"], [data-e2e="upload-icon"]')
+        .first()
+        .isVisible({ timeout: 300 })
+        .catch(() => false);
+      if (hasUpload && notOnLogin) {
+        loggedIn = true;
+        console.log("[tiktok-browser] Login detected! (upload link visible)");
+        break;
+      }
+      if (attempt % 10 === 0 && attempt > 0) {
+        console.log(
+          `[tiktok-browser] Still waiting... (${attempt * 3}s elapsed)`,
+        );
+      }
+    } catch (e) {
+      // Page might be navigating
+    }
+  }
+
+  if (!loggedIn) {
+    console.log("[tiktok-browser] Timed out. Saving cookies anyway...");
+  }
+
+  // Navigate to creator page to ensure all creator-related cookies are set
+  try {
+    await page.goto("https://www.tiktok.com/creator#/upload", {
+      waitUntil: "domcontentloaded",
+      timeout: 15000,
+    });
+    await page.waitForTimeout(3000);
+  } catch (e) {
+    // Non-fatal
+  }
+
+  // Save cookies from persistent context
   const cookies = await context.cookies();
   await fs.ensureDir(path.dirname(COOKIES_PATH));
   await fs.writeJson(COOKIES_PATH, cookies, { spaces: 2 });
@@ -60,9 +155,9 @@ async function loginAndSaveCookies() {
     `[tiktok-browser] Saved ${cookies.length} cookies to ${COOKIES_PATH}`,
   );
 
-  await browser.close();
+  await context.close();
   console.log(
-    "[tiktok-browser] Done! Automated uploads will now use these cookies.",
+    "[tiktok-browser] Done! Browser profile saved for future automated uploads.",
   );
 }
 
@@ -70,9 +165,12 @@ async function loginAndSaveCookies() {
 async function uploadVideo(story) {
   addBreadcrumb(`TikTok browser upload: ${story.title}`, "upload");
 
-  if (!(await fs.pathExists(COOKIES_PATH))) {
+  // Check for persistent browser profile OR cookie file
+  const hasProfile = await fs.pathExists(BROWSER_PROFILE);
+  const hasCookies = await fs.pathExists(COOKIES_PATH);
+  if (!hasProfile && !hasCookies) {
     throw new Error(
-      "TikTok cookies not found. Run: node upload_tiktok_browser.js login",
+      "TikTok not authenticated. Run: node upload_tiktok_browser.js login",
     );
   }
 
@@ -81,7 +179,6 @@ async function uploadVideo(story) {
   }
 
   const { chromium } = require("playwright");
-  const cookies = await fs.readJson(COOKIES_PATH);
 
   // Build caption
   const { getChannel } = require("./channels");
@@ -94,44 +191,53 @@ async function uploadVideo(story) {
 
   console.log(`[tiktok-browser] Uploading: "${caption.substring(0, 60)}..."`);
 
-  const browser = await chromium.launch({
+  // Use persistent context (same profile as login) for session continuity
+  const context = await chromium.launchPersistentContext(BROWSER_PROFILE, {
     headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    executablePath:
+      process.env.CHROME_PATH ||
+      "C:/Program Files/Google/Chrome/Application/chrome.exe",
+    args: STEALTH_ARGS,
+    viewport: { width: 1280, height: 800 },
+    userAgent:
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    ignoreDefaultArgs: ["--enable-automation"],
   });
 
   try {
-    const context = await browser.newContext({
-      userAgent:
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-      viewport: { width: 1280, height: 800 },
+    const page = context.pages()[0] || (await context.newPage());
+
+    // Anti-detection
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, "webdriver", { get: () => undefined });
+      window.chrome = { runtime: {} };
     });
 
-    // Restore cookies
-    await context.addCookies(cookies);
-
-    const page = await context.newPage();
+    // Also restore cookie file if it exists (belt and suspenders)
+    if (hasCookies) {
+      try {
+        const cookies = await fs.readJson(COOKIES_PATH);
+        await context.addCookies(cookies);
+      } catch (e) {
+        // Non-fatal - persistent profile may already have cookies
+      }
+    }
 
     // Navigate to TikTok creator upload page
     await page.goto(
       "https://www.tiktok.com/creator#/upload?scene=creator_center",
-      {
-        waitUntil: "networkidle",
-        timeout: 30000,
-      },
+      { waitUntil: "domcontentloaded", timeout: 30000 },
     );
+    await page.waitForTimeout(3000);
 
-    // Check if we're logged in (redirect to login means cookies expired)
+    // Check if we're logged in
     if (page.url().includes("/login")) {
       throw new Error(
-        "TikTok cookies expired. Run: node upload_tiktok_browser.js login",
+        "TikTok session expired. Run: node upload_tiktok_browser.js login",
       );
     }
 
-    // Wait for the upload page to load
-    await page.waitForTimeout(3000);
-
     // Find the file input and upload the video
-    // TikTok's upload page has a hidden file input
     const fileInput = await page.locator('input[type="file"]').first();
     await fileInput.setInputFiles(path.resolve(story.exported_path));
 
@@ -139,54 +245,38 @@ async function uploadVideo(story) {
       "[tiktok-browser] Video file attached, waiting for processing...",
     );
 
-    // Wait for video to finish processing (the upload progress)
-    // TikTok shows a progress bar, then enables the post button
+    // Wait for video to be processed
     await page.waitForTimeout(5000);
-
-    // Wait for the video to be processed (look for the editor/preview to appear)
     try {
       await page.waitForSelector(
         '[class*="editor"], [class*="preview"], [data-e2e="upload-preview"]',
-        {
-          timeout: 60000,
-        },
+        { timeout: 60000 },
       );
     } catch (e) {
-      console.log(
-        "[tiktok-browser] Preview didn't appear, continuing anyway...",
-      );
+      console.log("[tiktok-browser] Preview didn't appear, continuing...");
     }
 
-    // Clear any existing caption and type our own
-    // TikTok uses a contenteditable div for the caption
+    // Enter caption
     const captionEditor = page
-      .locator(
-        '[contenteditable="true"], [data-e2e="caption-editor"], [class*="caption"] [contenteditable]',
-      )
+      .locator('[contenteditable="true"], [data-e2e="caption-editor"]')
       .first();
     try {
       await captionEditor.waitFor({ timeout: 15000 });
       await captionEditor.click();
-      // Select all and replace
       await page.keyboard.press("Control+a");
       await page.keyboard.press("Backspace");
       await page.waitForTimeout(500);
-      // Type caption in chunks to avoid TikTok's anti-bot detection
+      // Type with human-like delays
       for (const char of caption) {
-        await page.keyboard.type(char, { delay: 20 + Math.random() * 30 });
+        await page.keyboard.type(char, { delay: 15 + Math.random() * 25 });
       }
       console.log("[tiktok-browser] Caption entered");
     } catch (e) {
-      console.log(
-        "[tiktok-browser] Could not find caption editor, posting without caption edit",
-      );
+      console.log("[tiktok-browser] Caption editor not found, using default");
     }
 
-    // Wait for the Post button to become enabled
-    // TikTok's post button is disabled while video is still processing
+    // Click Post button
     await page.waitForTimeout(5000);
-
-    // Try multiple selectors for the Post button
     const postSelectors = [
       'button[data-e2e="post-button"]',
       'button:has-text("Post")',
@@ -200,18 +290,11 @@ async function uploadVideo(story) {
       try {
         const btn = page.locator(sel).first();
         if (await btn.isVisible({ timeout: 3000 })) {
-          // Wait for button to be enabled (not disabled)
-          await page.waitForTimeout(2000);
-          const isDisabled = await btn.isDisabled();
-          if (isDisabled) {
-            console.log(
-              "[tiktok-browser] Post button still disabled, waiting for video processing...",
-            );
-            // Wait up to 60 more seconds for processing
-            for (let i = 0; i < 12; i++) {
-              await page.waitForTimeout(5000);
-              if (!(await btn.isDisabled())) break;
-            }
+          // Wait for processing to finish (button enabled)
+          for (let i = 0; i < 12; i++) {
+            if (!(await btn.isDisabled())) break;
+            console.log("[tiktok-browser] Waiting for processing...");
+            await page.waitForTimeout(5000);
           }
           await btn.click();
           posted = true;
@@ -224,7 +307,6 @@ async function uploadVideo(story) {
     }
 
     if (!posted) {
-      // Take a screenshot for debugging
       const ssPath = path.join("output", `tiktok_debug_${story.id}.png`);
       await page.screenshot({ path: ssPath, fullPage: true });
       throw new Error(
@@ -232,10 +314,9 @@ async function uploadVideo(story) {
       );
     }
 
-    // Wait for upload to complete (success page or redirect)
     await page.waitForTimeout(10000);
 
-    // Check for success indicators
+    // Check success
     const pageContent = await page.content();
     const success =
       pageContent.includes("uploaded") ||
@@ -244,7 +325,7 @@ async function uploadVideo(story) {
       page.url().includes("manage") ||
       page.url().includes("creator");
 
-    // Save updated cookies (session may have been refreshed)
+    // Update saved cookies
     const freshCookies = await context.cookies();
     await fs.writeJson(COOKIES_PATH, freshCookies, { spaces: 2 });
 
@@ -258,7 +339,7 @@ async function uploadVideo(story) {
       status: success ? "SUCCESS" : "SUBMITTED",
     };
   } finally {
-    await browser.close();
+    await context.close();
   }
 }
 

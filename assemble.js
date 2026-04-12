@@ -13,9 +13,9 @@ const axios = require("axios");
 const brand = require("./brand");
 const { getChannel } = require("./channels");
 
-const INTRO_CARD = path.join(__dirname, "branding", "intro_outro_card.png");
+// Intro card REMOVED - first 1-2 seconds are critical for Shorts retention,
+// a branding card gives swipers a reason to leave before the hook lands
 const OUTRO_CARD = path.join(__dirname, "branding", "intro_outro_card.png");
-const INTRO_DURATION = 1.5; // seconds the intro card is visible
 const OUTRO_DURATION = 5; // seconds before end to bring up outro card
 
 const MUSIC_CACHE = path.join("output", "music");
@@ -648,16 +648,10 @@ function buildVideoCommand(
     inputs.push(`-i "${musicPath.replace(/\\/g, "/")}"`);
   }
 
-  // Intro/outro card inputs - must span full duration so overlay has frames available
-  let introIdx = -1;
+  // Outro card input - must span full duration so overlay has frames available
   let outroIdx = -1;
-  const hasIntroCard = fs.pathExistsSync(INTRO_CARD);
   const hasOutroCard = fs.pathExistsSync(OUTRO_CARD);
   const fullDur = Math.ceil(duration) + 2;
-  if (hasIntroCard) {
-    introIdx = inputs.length;
-    inputs.push(`-loop 1 -t ${fullDur} -i "${INTRO_CARD.replace(/\\/g, "/")}"`);
-  }
   if (hasOutroCard) {
     outroIdx = inputs.length;
     inputs.push(`-loop 1 -t ${fullDur} -i "${OUTRO_CARD.replace(/\\/g, "/")}"`);
@@ -873,8 +867,8 @@ function buildVideoCommand(
     videoLabel = "afteroutro";
   }
 
-  // --- Bottom brand text: channel name + tagline (hidden during intro+outro) ---
-  const brandEnable = `between(t\\,${INTRO_DURATION}\\,${outroStart})`;
+  // --- Bottom brand text: channel name + tagline (hidden during outro) ---
+  const brandEnable = `lt(t\\,${outroStart})`;
   const channelName = sanitizeDrawtext(brand.name || "PULSE GAMING", 30);
   const channelTagline = sanitizeDrawtext(
     brand.tagline || "Never miss a beat",
@@ -889,22 +883,9 @@ function buildVideoCommand(
   );
   videoLabel = "afterlogo";
 
-  // --- ASS subtitles - on top of outro card so CaptionTop shows ---
+  // --- ASS subtitles ---
   filterParts.push(`[${videoLabel}]ass=${assPathFixed}[afterass]`);
-
-  // --- Intro card LAST - covers everything including subtitles during intro ---
-  if (introIdx >= 0) {
-    filterParts.push(
-      `[${introIdx}:v]scale=1080:1920:force_original_aspect_ratio=decrease,` +
-        `pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=0x0D0D0F,` +
-        `format=yuva420p,fade=t=out:st=0.8:d=0.7:alpha=1[introcard]`,
-    );
-    filterParts.push(
-      `[afterass][introcard]overlay=0:0:format=auto:enable='lte(t\\,${INTRO_DURATION})'[outv]`,
-    );
-  } else {
-    filterParts.push(`[afterass]copy[outv]`);
-  }
+  filterParts.push(`[afterass]copy[outv]`);
 
   // Audio mixing: narration at full volume + music at low volume
   let audioMapping;
@@ -1291,24 +1272,9 @@ async function assemble() {
 
         fbFilterParts.push(`[base]${fbChain.join(",\n")}[mainv]`);
 
-        // Intro/outro card overlays for fallback path
+        // Outro card overlay for fallback path (intro card removed for retention)
         const fbFullDur = Math.ceil(duration) + 2;
         let fbVideoLabel = "mainv";
-        if (await fs.pathExists(INTRO_CARD)) {
-          const fbIntroIdx = fbInputs.length;
-          fbInputs.push(
-            `-loop 1 -t ${fbFullDur} -i "${INTRO_CARD.replace(/\\/g, "/")}"`,
-          );
-          fbFilterParts.push(
-            `[${fbIntroIdx}:v]scale=1080:1920:force_original_aspect_ratio=decrease,` +
-              `pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=0x0D0D0F,` +
-              `format=yuva420p,fade=t=out:st=0.8:d=0.7:alpha=1[fbintro]`,
-          );
-          fbFilterParts.push(
-            `[mainv][fbintro]overlay=0:0:format=auto:enable='lte(t\\,${INTRO_DURATION})'[afterintro]`,
-          );
-          fbVideoLabel = "afterintro";
-        }
         const fbOutroStart = Math.max(0, duration - OUTRO_DURATION);
         if (await fs.pathExists(OUTRO_CARD)) {
           const fbOutroIdx = fbInputs.length;

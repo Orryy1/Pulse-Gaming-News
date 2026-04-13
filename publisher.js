@@ -9,6 +9,16 @@ dotenv.config({ override: true });
 // Publish lock - prevents concurrent publishNextStory() calls from creating duplicates
 let publishLock = false;
 
+// Title similarity check (Jaccard > 0.5) - used for dedup across hunt + publish
+function titlesSimilar(a, b) {
+  if (!a || !b) return false;
+  const wordsA = new Set(a.toLowerCase().split(/\s+/));
+  const wordsB = new Set(b.toLowerCase().split(/\s+/));
+  const intersection = [...wordsA].filter((w) => wordsB.has(w));
+  const union = new Set([...wordsA, ...wordsB]);
+  return intersection.length / union.size > 0.5;
+}
+
 /*
   Autonomous Publisher - 3x Daily Multi-Platform Posting
 
@@ -165,23 +175,29 @@ async function fullAutonomousCycle() {
     const existingIds = new Set(existingStories.map((s) => s.id));
 
     const posts = await hunt();
+
+    const accepted = []; // Track titles accepted in this batch for within-batch dedup
     const newPosts = posts.filter((p) => {
       if (existingIds.has(p.id)) return false;
-      // Title similarity check - catches same story from different sources/RSS IDs
-      const similar = existingStories.find((e) => {
-        if (!e.title || !p.title) return false;
-        const wordsA = new Set(e.title.toLowerCase().split(/\s+/));
-        const wordsB = new Set(p.title.toLowerCase().split(/\s+/));
-        const intersection = [...wordsA].filter((w) => wordsB.has(w));
-        const union = new Set([...wordsA, ...wordsB]);
-        return intersection.length / union.size > 0.5;
-      });
+      // Check against existing stories in DB
+      const similar = existingStories.find((e) =>
+        titlesSimilar(e.title, p.title),
+      );
       if (similar) {
         console.log(
-          `[publisher] Dedup (title match): "${p.title}" ~ "${similar.title}"`,
+          `[publisher] Dedup (vs existing): "${p.title}" ~ "${similar.title}"`,
         );
         return false;
       }
+      // Check against other posts already accepted in THIS batch
+      const batchDupe = accepted.find((a) => titlesSimilar(a, p.title));
+      if (batchDupe) {
+        console.log(
+          `[publisher] Dedup (within batch): "${p.title}" ~ "${batchDupe}"`,
+        );
+        return false;
+      }
+      accepted.push(p.title);
       return true;
     });
 
@@ -391,11 +407,23 @@ async function _publishNextStoryInner() {
     errors: {},
   };
 
-  // YouTube - skip if already published
+  // YouTube - skip if already published or if a similar title was already uploaded
+  const ytTitleDupe = stories.find(
+    (s) =>
+      s.id !== story.id &&
+      s.youtube_post_id &&
+      titlesSimilar(s.title, story.title),
+  );
   if (story.youtube_post_id) {
     result.youtube = true;
     console.log(
       `[publisher] YouTube: already published (${story.youtube_post_id})`,
+    );
+  } else if (ytTitleDupe) {
+    result.youtube = true;
+    story.youtube_post_id = "DUPE_SKIPPED";
+    console.log(
+      `[publisher] YouTube: SKIPPED duplicate title ~ "${ytTitleDupe.title}"`,
     );
   } else {
     try {

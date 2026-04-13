@@ -475,6 +475,48 @@ async function uploadShort(story) {
 
       const { title, description, tags } = buildMetadata(story);
 
+      // YouTube-side dedup: check recent uploads for similar titles before uploading
+      try {
+        const ch = await youtube.channels.list({
+          part: ["contentDetails"],
+          mine: true,
+        });
+        const uploadsPlaylist =
+          ch.data.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
+        if (uploadsPlaylist) {
+          const recent = await youtube.playlistItems.list({
+            part: ["snippet"],
+            playlistId: uploadsPlaylist,
+            maxResults: 50,
+          });
+          const recentTitles = (recent.data.items || []).map(
+            (v) => v.snippet.title,
+          );
+          const titleWords = new Set(title.toLowerCase().split(/\s+/));
+          const dupe = recentTitles.find((rt) => {
+            const rtWords = new Set(rt.toLowerCase().split(/\s+/));
+            const inter = [...titleWords].filter((w) => rtWords.has(w));
+            const union = new Set([...titleWords, ...rtWords]);
+            return inter.length / union.size > 0.5;
+          });
+          if (dupe) {
+            console.log(
+              `[youtube] BLOCKED duplicate upload: "${title}" ~ "${dupe}"`,
+            );
+            return {
+              videoId: "DUPE_BLOCKED",
+              url: null,
+              blocked: true,
+              reason: `Similar to existing: "${dupe}"`,
+            };
+          }
+        }
+      } catch (err) {
+        console.log(
+          `[youtube] Dedup check failed (uploading anyway): ${err.message}`,
+        );
+      }
+
       console.log(`[youtube] Uploading: "${title}"`);
 
       const response = await youtube.videos.insert({

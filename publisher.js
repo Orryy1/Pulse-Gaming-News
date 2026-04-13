@@ -429,13 +429,20 @@ async function _publishNextStoryInner() {
     try {
       const { uploadShort } = require("./upload_youtube");
       const ytResult = await uploadShort(story);
-      story.youtube_post_id = ytResult.videoId;
-      story.youtube_url = ytResult.url;
-      story.youtube_published_at = new Date().toISOString();
+      if (ytResult.blocked) {
+        story.youtube_post_id = "DUPE_BLOCKED";
+        console.log(
+          `[publisher] YouTube: BLOCKED duplicate - ${ytResult.reason}`,
+        );
+      } else {
+        story.youtube_post_id = ytResult.videoId;
+        story.youtube_url = ytResult.url;
+        story.youtube_published_at = new Date().toISOString();
+        console.log(`[publisher] YouTube: ${ytResult.url}`);
+      }
       result.youtube = true;
       // Save immediately so concurrent calls see this story as published
-      await db.saveStories(stories);
-      console.log(`[publisher] YouTube: ${ytResult.url}`);
+      await db.upsertStory(story);
 
       if (story.title_variants && story.title_variants.length > 1) {
         story.title_check_at = Date.now() + 2 * 60 * 60 * 1000;
@@ -702,15 +709,15 @@ async function _publishNextStoryInner() {
     console.log(`[publisher] Discord post skipped: ${err.message}`);
   }
 
-  // Save updated story
+  // Save updated story (upsert to avoid wiping other stories)
   try {
-    await db.saveStories(stories);
+    await db.upsertStory(story);
   } catch (err) {
     console.log(
       `[publisher] CRITICAL: Failed to save story state after publishing: ${err.message}`,
     );
     captureException(err, {
-      step: "publishNextStory.saveStories",
+      step: "publishNextStory.upsertStory",
       storyId: story.id,
     });
   }

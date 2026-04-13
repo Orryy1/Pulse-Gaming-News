@@ -756,8 +756,13 @@ Today's date is ${today}. You MUST follow these rules:
     enriched.push(enrichedStory);
   }
 
-  await db.saveStories(enriched);
-  console.log(`[processor] Saved ${enriched.length} enriched stories`);
+  // Upsert each story individually to avoid wiping previously published stories.
+  // saveStories() deletes anything not in the array, which destroys youtube_post_id
+  // and other platform IDs from earlier cycles, causing duplicate uploads.
+  for (const story of enriched) {
+    await db.upsertStory(story);
+  }
+  console.log(`[processor] Saved ${enriched.length} enriched stories (upsert)`);
 
   // Post new stories to Discord news channels
   try {

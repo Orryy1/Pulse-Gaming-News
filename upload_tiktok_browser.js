@@ -43,46 +43,51 @@ const STEALTH_ARGS = [
   "--start-maximized",
 ];
 
-// Chrome user data directory (where the user is already logged into TikTok)
-const CHROME_USER_DATA =
+// Browser user data directory (Brave by default, override with CHROME_USER_DATA env)
+const BROWSER_USER_DATA =
   process.env.CHROME_USER_DATA ||
   path.join(
     process.env.LOCALAPPDATA || "C:/Users/MORR/AppData/Local",
-    "Google/Chrome/User Data",
+    "BraveSoftware/Brave-Browser/User Data",
   );
 
-// --- Grab cookies from existing Chrome session (no login needed) ---
+// Brave executable path (falls back to Chrome)
+const BROWSER_EXE =
+  process.env.CHROME_PATH ||
+  "C:/Program Files/BraveSoftware/Brave-Browser/Application/brave.exe";
+
+// --- Grab cookies from existing browser session (no login needed) ---
 async function grabCookiesFromChrome() {
   const { chromium } = require("playwright");
 
   console.log(
-    "[tiktok-browser] Grabbing TikTok session from your existing Chrome profile...",
+    "[tiktok-browser] Grabbing TikTok session from your Brave profile...",
   );
   console.log(
-    "[tiktok-browser] IMPORTANT: Close Chrome completely before running this!\n",
+    "[tiktok-browser] IMPORTANT: Close Brave completely before running this!\n",
   );
 
-  // Copy essential Chrome profile files to a separate directory
-  // (Chrome blocks remote debugging on its default data dir)
-  const chromeDefault = path.join(CHROME_USER_DATA, "Default");
-  const tempProfileDir = path.join(__dirname, "tokens", "chrome_tiktok_data");
+  // Copy essential browser profile files to a separate directory
+  // (Chromium-based browsers block remote debugging on their default data dir)
+  const browserDefault = path.join(BROWSER_USER_DATA, "Default");
+  const tempProfileDir = path.join(__dirname, "tokens", "brave_tiktok_data");
   const tempDefault = path.join(tempProfileDir, "Default");
 
-  console.log("[tiktok-browser] Copying Chrome session files...");
+  console.log("[tiktok-browser] Copying Brave session files...");
   await fs.ensureDir(tempDefault);
   for (const item of ["Network", "Local Storage", "Session Storage"]) {
-    const src = path.join(chromeDefault, item);
+    const src = path.join(browserDefault, item);
     if (await fs.pathExists(src)) {
       await fs.copy(src, path.join(tempDefault, item), { overwrite: true });
     }
   }
   for (const [src, dest] of [
     [
-      path.join(chromeDefault, "Preferences"),
+      path.join(browserDefault, "Preferences"),
       path.join(tempDefault, "Preferences"),
     ],
     [
-      path.join(CHROME_USER_DATA, "Local State"),
+      path.join(BROWSER_USER_DATA, "Local State"),
       path.join(tempProfileDir, "Local State"),
     ],
   ]) {
@@ -93,9 +98,7 @@ async function grabCookiesFromChrome() {
   // Launch Playwright with the copied profile (avoids default-dir restriction)
   const context = await chromium.launchPersistentContext(tempProfileDir, {
     headless: false,
-    executablePath:
-      process.env.CHROME_PATH ||
-      "C:/Program Files/Google/Chrome/Application/chrome.exe",
+    executablePath: BROWSER_EXE,
     args: [...STEALTH_ARGS, "--profile-directory=Default"],
     viewport: { width: 1280, height: 800 },
     ignoreDefaultArgs: ["--enable-automation"],
@@ -164,9 +167,7 @@ async function loginAndSaveCookies() {
   await fs.ensureDir(BROWSER_PROFILE);
   const context = await chromium.launchPersistentContext(BROWSER_PROFILE, {
     headless: false,
-    executablePath:
-      process.env.CHROME_PATH ||
-      "C:/Program Files/Google/Chrome/Application/chrome.exe",
+    executablePath: BROWSER_EXE,
     args: STEALTH_ARGS,
     viewport: { width: 1280, height: 800 },
     userAgent:
@@ -299,9 +300,7 @@ async function uploadVideo(story) {
   // Use persistent context (same profile as login) for session continuity
   const context = await chromium.launchPersistentContext(BROWSER_PROFILE, {
     headless: true,
-    executablePath:
-      process.env.CHROME_PATH ||
-      "C:/Program Files/Google/Chrome/Application/chrome.exe",
+    executablePath: BROWSER_EXE,
     args: STEALTH_ARGS,
     viewport: { width: 1280, height: 800 },
     userAgent:

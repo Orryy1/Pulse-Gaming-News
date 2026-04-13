@@ -85,6 +85,7 @@ async function uploadReel(story) {
       );
 
       // Step 1: Initiate Reel upload
+      console.log(`[facebook] Step 1/3: Initiating reel upload...`);
       const initResponse = await axios.post(
         `https://graph.facebook.com/v21.0/${pageId}/video_reels`,
         {
@@ -95,12 +96,21 @@ async function uploadReel(story) {
 
       const videoId = initResponse.data.video_id;
       const uploadUrl = initResponse.data.upload_url;
+      if (!videoId || !uploadUrl) {
+        throw new Error(
+          `Facebook init phase returned incomplete data: video_id=${videoId}, upload_url=${uploadUrl ? "present" : "MISSING"}, response=${JSON.stringify(initResponse.data)}`,
+        );
+      }
+      console.log(`[facebook] Step 1 OK: video_id=${videoId}`);
 
-      // Step 2: Upload the video binary
+      // Step 2: Upload the video binary (with 120s timeout)
       const videoBuffer = await fs.readFile(story.exported_path);
       const fileSize = videoBuffer.length;
+      console.log(
+        `[facebook] Step 2/3: Uploading ${Math.round(fileSize / 1024 / 1024)}MB binary to ${uploadUrl.substring(0, 60)}...`,
+      );
 
-      await axios({
+      const uploadResponse = await axios({
         method: "POST",
         url: uploadUrl,
         headers: {
@@ -112,9 +122,14 @@ async function uploadReel(story) {
         data: videoBuffer,
         maxContentLength: Infinity,
         maxBodyLength: Infinity,
+        timeout: 120000,
       });
+      console.log(
+        `[facebook] Step 2 OK: upload status ${uploadResponse.status}, data: ${JSON.stringify(uploadResponse.data).substring(0, 200)}`,
+      );
 
-      // Step 3: Finish the upload and publish (published: true is required or it stays as draft)
+      // Step 3: Finish the upload and publish
+      console.log(`[facebook] Step 3/3: Publishing reel...`);
       const finishResponse = await axios.post(
         `https://graph.facebook.com/v21.0/${pageId}/video_reels`,
         {
@@ -138,6 +153,9 @@ async function uploadReel(story) {
           `Facebook finish phase failed: ${JSON.stringify(finishResponse.data)}`,
         );
       }
+      console.log(
+        `[facebook] Step 3 response: ${JSON.stringify(finishResponse.data)}`,
+      );
 
       console.log(`[facebook] Reel published! Video ID: ${videoId}`);
 
@@ -148,6 +166,63 @@ async function uploadReel(story) {
     },
     { label: "facebook upload" },
   );
+}
+
+// --- URL-based Reel upload (fallback when binary upload fails) ---
+// Facebook fetches the video from our public server instead of us pushing the binary
+async function uploadReelViaUrl(story) {
+  addBreadcrumb(`Facebook URL upload: ${story.title}`, "upload");
+
+  const accessToken = await getAccessToken();
+  const pageId = getPageId();
+
+  const publicBaseUrl =
+    process.env.RAILWAY_PUBLIC_URL ||
+    `http://localhost:${process.env.PORT || 3001}`;
+  const videoUrl = `${publicBaseUrl}/api/download/${story.id}`;
+
+  let description =
+    story.suggested_title || story.suggested_thumbnail_text || story.title;
+  const cleanScript = (story.full_script || "")
+    .replace(/\[PAUSE\]/gi, "")
+    .replace(/\[VISUAL:[^\]]*\]/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  description += "\n\n" + cleanScript.substring(0, 300);
+  description += "\n\n#gaming #gamingnews #gamingleaks #gamingcommunity #reels";
+  if (description.length > 2000)
+    description = description.substring(0, 1997) + "...";
+
+  console.log(`[facebook] URL fallback: posting via ${videoUrl}`);
+
+  // Single-step: POST to /videos endpoint with file_url (simpler than 3-step Reels API)
+  const response = await axios.post(
+    `https://graph.facebook.com/v21.0/${pageId}/videos`,
+    {
+      file_url: videoUrl,
+      title: (
+        story.suggested_title ||
+        story.suggested_thumbnail_text ||
+        story.title ||
+        ""
+      ).substring(0, 100),
+      description,
+      access_token: accessToken,
+    },
+    { timeout: 180000 },
+  );
+
+  if (!response.data || !response.data.id) {
+    throw new Error(
+      `Facebook URL upload returned no ID: ${JSON.stringify(response.data)}`,
+    );
+  }
+
+  console.log(`[facebook] Video published via URL! ID: ${response.data.id}`);
+  return {
+    platform: "facebook",
+    videoId: response.data.id,
+  };
 }
 
 // --- Batch upload ---
@@ -253,7 +328,13 @@ async function uploadStoryImage(story) {
   );
 }
 
-module.exports = { uploadReel, uploadShort, uploadAll, uploadStoryImage };
+module.exports = {
+  uploadReel,
+  uploadReelViaUrl,
+  uploadShort,
+  uploadAll,
+  uploadStoryImage,
+};
 
 if (require.main === module) {
   uploadAll().catch((err) => {

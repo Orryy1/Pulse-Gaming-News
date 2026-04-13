@@ -485,8 +485,19 @@ async function _publishNextStoryInner() {
     );
   } else {
     try {
-      const { uploadShort: fbUpload } = require("./upload_facebook");
-      const fbResult = await fbUpload(story);
+      const {
+        uploadShort: fbUpload,
+        uploadReelViaUrl,
+      } = require("./upload_facebook");
+      let fbResult;
+      try {
+        fbResult = await fbUpload(story);
+      } catch (reelErr) {
+        console.log(
+          `[publisher] Facebook Reel binary upload failed: ${reelErr.message}, trying URL fallback...`,
+        );
+        fbResult = await uploadReelViaUrl(story);
+      }
       story.facebook_post_id = fbResult.videoId;
       story.facebook_error = null;
       result.facebook = true;

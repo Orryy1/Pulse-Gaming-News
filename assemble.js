@@ -525,18 +525,20 @@ async function generateSubtitles(story, duration, outputDir) {
           mi += 1;
         }
       }
-      // Billion/million/trillion dollars: "5" + "billion" + "dollars" → "$5 billion"
+      // Billion/million/trillion dollars: "3.2" + "million" + "dollars" → "$3.2 million"
       else if (
-        /^\d+$/.test(stripped) &&
+        /^[\d.]+$/.test(stripped) &&
         /^(billion|million|trillion)$/.test(nextText) &&
         mi + 2 < words.length &&
         /^dollars?$/.test(
           words[mi + 2].text.replace(/[^a-zA-Z]/g, "").toLowerCase(),
         )
       ) {
+        // Use original text to preserve decimals (stripped removes the ".")
+        const numText = words[mi].text.replace(/[^0-9.]/g, "");
         const trailing = words[mi + 2].text.replace(/[a-zA-Z]/g, "");
         mergedWords.push({
-          text: `$${stripped} ${nextText}${trailing}`,
+          text: `$${numText} ${nextText}${trailing}`,
           start: words[mi].start,
           end: words[mi + 2].end,
         });
@@ -680,6 +682,36 @@ async function generateSubtitles(story, duration, outputDir) {
             end: words[mi + 1].end,
           });
           mi += 1;
+        }
+      // GTA: "G" + "T" + "A" + optional "six"/"6" → "GTA" or "GTA VI"
+      else if (
+        stripped === "g" &&
+        mi + 2 < words.length &&
+        words[mi + 1].text.replace(/[^a-zA-Z]/g, "").toLowerCase() === "t" &&
+        words[mi + 2].text.replace(/[^a-zA-Z]/g, "").toLowerCase() === "a"
+      ) {
+        // Check if "six" or "6" follows (GTA VI / GTA 6)
+        if (
+          mi + 3 < words.length &&
+          /^(six|6)$/i.test(
+            words[mi + 3].text.replace(/[^a-zA-Z0-9]/g, "").toLowerCase(),
+          )
+        ) {
+          const trailing = words[mi + 3].text.replace(/[a-zA-Z0-9]/g, "");
+          mergedWords.push({
+            text: `GTA VI${trailing}`,
+            start: words[mi].start,
+            end: words[mi + 3].end,
+          });
+          mi += 3;
+        } else {
+          const trailing = words[mi + 2].text.replace(/[a-zA-Z]/g, "");
+          mergedWords.push({
+            text: `GTA${trailing}`,
+            start: words[mi].start,
+            end: words[mi + 2].end,
+          });
+          mi += 2;
         }
       } else if (
         stripped === "pulse" &&

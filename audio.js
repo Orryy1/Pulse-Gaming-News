@@ -31,6 +31,10 @@ function cleanForTTS(raw) {
       .replace(/\[PAUSE\]/gi, ", ")
       .replace(/\[VISUAL:[^\]]*\]/gi, "")
       .replace(/\.{2,}/g, ".")
+      // Ensure space after sentence-ending periods (LLM sometimes omits: "2026.The")
+      .replace(/\.([A-Z])/g, ". $1")
+      // Strip Reddit subreddit paths - TTS mangles "r/PS5"
+      .replace(/\br\/(\w+)/g, (_, sub) => `the ${sub} subreddit`)
       .replace(/[*_~`#|]/g, "")
       .replace(/[\u200B-\u200F\u2028-\u202F\uFEFF]/g, "") // strip zero-width and invisible unicode
       .replace(/[\u201C\u201D]/g, '"')
@@ -43,6 +47,10 @@ function cleanForTTS(raw) {
       })
       // Patch versions: "v1.2" or "V2.0"
       .replace(/[vV](\d+)\.(\d+)/g, (_, a, b) => `version ${a} point ${b}`)
+      // Game titles and acronyms - spell out for clear TTS pronunciation
+      .replace(/\bGTA\s*VI\b/gi, "G T A six")
+      .replace(/\bGTA\s*6\b/gi, "G T A six")
+      .replace(/\bGTA\b/g, "G T A")
       // Compound hyphenated words: join with space, no dash (prevents TTS pauses)
       .replace(/(\w)-(\w)/g, "$1 $2")
       // Currency

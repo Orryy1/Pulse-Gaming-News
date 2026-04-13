@@ -444,21 +444,30 @@ function getContentPillar(classification) {
 // --- Clean script text for TTS (strip markers) ---
 function cleanForTTS(text) {
   if (!text) return "";
-  return text
-    .replace(/\[PAUSE\]/gi, ", ")
-    .replace(/\[VISUAL:[^\]]*\]/gi, "")
-    .replace(/\.{2,}/g, ".") // collapse ellipses to single period
-    .replace(/\bAAA\b/g, "Triple-A")
-    .replace(/\bDLC\b/g, "D L C")
-    .replace(/\bFPS\b/g, "F P S")
-    .replace(/\bRPG\b/g, "R P G")
-    .replace(/\bNPC\b/g, "N P C")
-    .replace(/\bUI\b/g, "U I")
-    .replace(/\bIP\b/g, "I P")
-    .replace(/\bPS6\b/g, "P S 6")
-    .replace(/\bPS5\b/g, "P S 5")
-    .replace(/\s+/g, " ")
-    .trim();
+  return (
+    text
+      .replace(/\[PAUSE\]/gi, ", ")
+      .replace(/\[VISUAL:[^\]]*\]/gi, "")
+      .replace(/\.{2,}/g, ".") // collapse ellipses to single period
+      // Ensure space after sentence-ending periods (LLM sometimes omits: "2026.The")
+      .replace(/\.([A-Z])/g, ". $1")
+      // Strip Reddit subreddit paths - TTS mangles "r/PS5" into gibberish
+      .replace(/\br\/(\w+)/g, (_, sub) => `the ${sub} subreddit`)
+      .replace(/\bGTA\s*VI\b/gi, "G T A six")
+      .replace(/\bGTA\s*6\b/gi, "G T A six")
+      .replace(/\bGTA\b/g, "G T A")
+      .replace(/\bAAA\b/g, "Triple-A")
+      .replace(/\bDLC\b/g, "D L C")
+      .replace(/\bFPS\b/g, "F P S")
+      .replace(/\bRPG\b/g, "R P G")
+      .replace(/\bNPC\b/g, "N P C")
+      .replace(/\bUI\b/g, "U I")
+      .replace(/\bIP\b/g, "I P")
+      .replace(/\bPS6\b/g, "P S 6")
+      .replace(/\bPS5\b/g, "P S 5")
+      .replace(/\s+/g, " ")
+      .trim()
+  );
 }
 
 // --- Title similarity check (Jaccard) for cross-cycle dedup ---

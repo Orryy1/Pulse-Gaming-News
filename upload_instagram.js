@@ -179,21 +179,37 @@ async function uploadReel(story) {
       );
 
       // Step 2: Upload video binary directly to the resumable upload URI
-      await axios({
-        method: "POST",
-        url: uploadUrl,
-        headers: {
-          Authorization: `OAuth ${accessToken}`,
-          offset: "0",
-          file_size: fileSize.toString(),
-          "Content-Type": "video/mp4",
-        },
-        data: videoBuffer,
-        maxContentLength: Infinity,
-        maxBodyLength: Infinity,
-      });
-
-      console.log(`[instagram] Binary upload complete`);
+      console.log(
+        `[instagram] Step 2: Uploading ${Math.round(fileSize / 1024 / 1024)}MB binary to ${uploadUrl.substring(0, 60)}...`,
+      );
+      try {
+        const uploadResp = await axios({
+          method: "POST",
+          url: uploadUrl,
+          headers: {
+            Authorization: `OAuth ${accessToken}`,
+            offset: "0",
+            file_size: fileSize.toString(),
+            "Content-Type": "video/mp4",
+          },
+          data: videoBuffer,
+          maxContentLength: Infinity,
+          maxBodyLength: Infinity,
+          timeout: 120000,
+        });
+        console.log(`[instagram] Step 2 OK: status ${uploadResp.status}`);
+      } catch (uploadErr) {
+        const errBody =
+          uploadErr.response?.data?.error ||
+          uploadErr.response?.data ||
+          uploadErr.message;
+        console.log(
+          `[instagram] Step 2 FAILED (${uploadErr.response?.status}): ${JSON.stringify(errBody)}`,
+        );
+        throw new Error(
+          `Instagram binary upload failed (${uploadErr.response?.status}): ${JSON.stringify(errBody)}`,
+        );
+      }
 
       // Step 3: Wait for processing
       let status = "IN_PROGRESS";
@@ -287,6 +303,92 @@ async function uploadAll() {
   await db.saveStories(stories);
   console.log(`[instagram] ${results.length} reels uploaded`);
   return results;
+}
+
+// --- URL-based Reel upload (fallback when binary upload fails) ---
+// Instagram fetches the video from our public server
+async function uploadReelViaUrl(story) {
+  addBreadcrumb(`Instagram URL upload: ${story.title}`, "upload");
+
+  const accessToken = await getAccessToken();
+  const accountId = getAccountId();
+
+  const publicBaseUrl =
+    process.env.RAILWAY_PUBLIC_URL ||
+    `http://localhost:${process.env.PORT || 3001}`;
+  const videoUrl = `${publicBaseUrl}/api/download/${story.id}`;
+
+  const { getChannel } = require("./channels");
+  const channel = getChannel();
+  let caption =
+    story.suggested_title || story.suggested_thumbnail_text || story.title;
+  const cleanScript = (story.full_script || "")
+    .replace(/\[PAUSE\]/gi, "")
+    .replace(/\[VISUAL:[^\]]*\]/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  caption += "\n\n" + cleanScript.substring(0, 500);
+  const tags = (channel.hashtags || [])
+    .map((h) => h.replace("#Shorts", "#reels"))
+    .join(" ");
+  caption += "\n\n" + tags + " #viral #explore";
+  if (caption.length > 2200) caption = caption.substring(0, 2197) + "...";
+
+  console.log(`[instagram] URL fallback: creating container with ${videoUrl}`);
+
+  // Create container with video_url (Instagram fetches the video)
+  const initResponse = await axios.post(
+    `https://graph.facebook.com/v21.0/${accountId}/media`,
+    {
+      media_type: "REELS",
+      video_url: videoUrl,
+      caption,
+      share_to_feed: true,
+      access_token: accessToken,
+    },
+  );
+
+  const containerId = initResponse.data.id;
+  console.log(`[instagram] URL container created: ${containerId}`);
+
+  // Wait for processing
+  let status = "IN_PROGRESS";
+  let attempts = 0;
+  while (status === "IN_PROGRESS" && attempts < 60) {
+    await new Promise((r) => setTimeout(r, 10000));
+    attempts++;
+    try {
+      const statusResponse = await axios.get(
+        `https://graph.facebook.com/v21.0/${containerId}`,
+        {
+          params: { fields: "status_code,status", access_token: accessToken },
+        },
+      );
+      status = statusResponse.data.status_code || "IN_PROGRESS";
+      console.log(`[instagram] URL processing check ${attempts}: ${status}`);
+      if (status === "ERROR") {
+        throw new Error(
+          `Instagram URL processing failed: ${JSON.stringify(statusResponse.data)}`,
+        );
+      }
+    } catch (err) {
+      if (err.message.includes("processing failed")) throw err;
+    }
+  }
+
+  if (status !== "FINISHED") {
+    throw new Error(`Instagram URL processing timed out (status: ${status})`);
+  }
+
+  // Publish
+  const publishResponse = await axios.post(
+    `https://graph.facebook.com/v21.0/${accountId}/media_publish`,
+    { creation_id: containerId, access_token: accessToken },
+  );
+
+  const mediaId = publishResponse.data.id;
+  console.log(`[instagram] Published via URL! Media ID: ${mediaId}`);
+  return { platform: "instagram", mediaId };
 }
 
 // Alias for publisher.js compatibility
@@ -410,6 +512,7 @@ async function uploadStoryImage(story) {
 
 module.exports = {
   uploadReel,
+  uploadReelViaUrl,
   uploadShort,
   uploadAll,
   uploadStoryImage,

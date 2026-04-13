@@ -464,8 +464,19 @@ async function _publishNextStoryInner() {
     );
   } else {
     try {
-      const { uploadShort: igUpload } = require("./upload_instagram");
-      const igResult = await igUpload(story);
+      const {
+        uploadShort: igUpload,
+        uploadReelViaUrl: igUrlUpload,
+      } = require("./upload_instagram");
+      let igResult;
+      try {
+        igResult = await igUpload(story);
+      } catch (reelErr) {
+        console.log(
+          `[publisher] Instagram binary upload failed: ${reelErr.message}, trying URL fallback...`,
+        );
+        igResult = await igUrlUpload(story);
+      }
       story.instagram_media_id = igResult.mediaId;
       story.instagram_error = null;
       result.instagram = true;

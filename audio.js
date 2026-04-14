@@ -149,9 +149,16 @@ async function concatAudioFiles(files, outputPath) {
   }
 }
 
-// --- Generate TTS audio via ElevenLabs (with word-level timestamps) ---
+// --- Generate TTS audio - dispatches between ElevenLabs and local VoxCPM server ---
+//
+// Set TTS_PROVIDER=local in .env to route to the self-hosted server.
+// LOCAL_TTS_URL defaults to http://127.0.0.1:8765
+//
+// Both providers must return identical JSON:
+//   { audio_base64, alignment: { characters, character_start_times_seconds, character_end_times_seconds } }
 async function generateTTS(text, outputPath, rateOverride) {
-  const voiceId = brand.voiceId || process.env.ELEVENLABS_VOICE_ID;
+  const provider = (process.env.TTS_PROVIDER || "elevenlabs").toLowerCase();
+  const voiceId = brand.voiceId || process.env.ELEVENLABS_VOICE_ID || "default";
   const voiceSettings = Object.assign(
     {},
     brand.voiceSettings || {
@@ -164,28 +171,47 @@ async function generateTTS(text, outputPath, rateOverride) {
   if (rateOverride !== undefined) {
     voiceSettings.speaking_rate = rateOverride;
   }
+
+  const baseUrl =
+    provider === "local"
+      ? process.env.LOCAL_TTS_URL || "http://127.0.0.1:8765"
+      : "https://api.elevenlabs.io";
+
+  const headers =
+    provider === "local"
+      ? { "Content-Type": "application/json" }
+      : {
+          "xi-api-key": process.env.ELEVENLABS_API_KEY,
+          "Content-Type": "application/json",
+        };
+
+  const data = {
+    text,
+    voice_settings: voiceSettings,
+    output_format: "mp3_44100_128",
+  };
+  if (provider !== "local") {
+    data.model_id = brand.voiceModel || "eleven_multilingual_v2";
+  }
+
   const response = await axios({
     method: "POST",
-    url: `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/with-timestamps`,
-    headers: {
-      "xi-api-key": process.env.ELEVENLABS_API_KEY,
-      "Content-Type": "application/json",
-    },
-    data: {
-      text,
-      model_id: brand.voiceModel || "eleven_multilingual_v2",
-      voice_settings: voiceSettings,
-      output_format: "mp3_44100_128",
-    },
+    url: `${baseUrl}/v1/text-to-speech/${voiceId}/with-timestamps`,
+    headers,
+    data,
+    timeout: provider === "local" ? 120000 : 60000,
   });
 
   await fs.ensureDir(path.dirname(outputPath));
 
-  // Response is JSON with base64 audio + word-level alignment
   const audioBase64 = response.data.audio_base64;
+  if (!audioBase64) {
+    throw new Error(
+      `[audio] ${provider} returned no audio_base64 - check ${baseUrl} health`,
+    );
+  }
   await fs.writeFile(outputPath, Buffer.from(audioBase64, "base64"));
 
-  // Save word timestamps for subtitle sync
   const timestampsPath = outputPath.replace(/\.mp3$/, "_timestamps.json");
   const alignment = response.data.alignment || {};
   await fs.writeJson(timestampsPath, alignment, { spaces: 2 });

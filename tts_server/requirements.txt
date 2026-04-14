@@ -1,0 +1,21 @@
+# Core server
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+pydantic==2.10.3
+python-dotenv==1.0.1
+
+# Audio
+soundfile==0.12.1
+numpy<2.0
+pydub==0.25.1
+
+# VoxCPM 2 - install from git per official instructions
+# pip install git+https://github.com/OpenBMB/VoxCPM.git
+# (declared here as a comment so setup.bat installs it explicitly)
+
+# WhisperX for forced alignment (gives us word-level timestamps)
+whisperx==3.1.5
+
+# PyTorch with CUDA 12.1 - install separately via setup.bat for correct cuda build
+# torch==2.5.1
+# torchaudio==2.5.1

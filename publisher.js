@@ -456,12 +456,25 @@ async function _publishNextStoryInner() {
     }
   }
 
-  // TikTok - skip if already published
+  // TikTok - skip if already published or near-duplicate title already uploaded
+  const ttTitleDupe = stories.find(
+    (s) =>
+      s.id !== story.id &&
+      s.tiktok_post_id &&
+      s.tiktok_post_id !== "DUPE_SKIPPED" &&
+      titlesSimilar(s.title, story.title),
+  );
   if (story.tiktok_post_id) {
     result.tiktok = true;
     console.log(
       `[publisher] TikTok: already published (${story.tiktok_post_id})`,
     );
+  } else if (ttTitleDupe) {
+    story.tiktok_post_id = "DUPE_SKIPPED";
+    console.log(
+      `[publisher] TikTok: SKIPPED duplicate title ~ "${ttTitleDupe.title}"`,
+    );
+    await db.upsertStory(story);
   } else {
     try {
       const { uploadShort: ttUpload } = require("./upload_tiktok");
@@ -470,6 +483,7 @@ async function _publishNextStoryInner() {
       story.tiktok_error = null;
       result.tiktok = true;
       console.log(`[publisher] TikTok: uploaded (API)`);
+      await db.upsertStory(story);
     } catch (err) {
       console.log(
         `[publisher] TikTok API failed: ${err.message}, trying browser fallback...`,
@@ -483,6 +497,7 @@ async function _publishNextStoryInner() {
         story.tiktok_error = null;
         result.tiktok = true;
         console.log(`[publisher] TikTok: uploaded (browser)`);
+        await db.upsertStory(story);
       } catch (browserErr) {
         console.log(
           `[publisher] TikTok browser also failed: ${browserErr.message}`,
@@ -493,12 +508,25 @@ async function _publishNextStoryInner() {
     }
   }
 
-  // Instagram - skip if already published
+  // Instagram - skip if already published or near-duplicate title already uploaded
+  const igTitleDupe = stories.find(
+    (s) =>
+      s.id !== story.id &&
+      s.instagram_media_id &&
+      s.instagram_media_id !== "DUPE_SKIPPED" &&
+      titlesSimilar(s.title, story.title),
+  );
   if (story.instagram_media_id) {
     result.instagram = true;
     console.log(
       `[publisher] Instagram: already published (${story.instagram_media_id})`,
     );
+  } else if (igTitleDupe) {
+    story.instagram_media_id = "DUPE_SKIPPED";
+    console.log(
+      `[publisher] Instagram: SKIPPED duplicate title ~ "${igTitleDupe.title}"`,
+    );
+    await db.upsertStory(story);
   } else {
     try {
       const {
@@ -518,6 +546,7 @@ async function _publishNextStoryInner() {
       story.instagram_error = null;
       result.instagram = true;
       console.log(`[publisher] Instagram: uploaded`);
+      await db.upsertStory(story);
     } catch (err) {
       console.log(`[publisher] Instagram upload failed: ${err.message}`);
       story.instagram_error = err.message;
@@ -525,12 +554,25 @@ async function _publishNextStoryInner() {
     }
   }
 
-  // Facebook Reels - skip if already published
+  // Facebook Reels - skip if already published or near-duplicate title already uploaded
+  const fbTitleDupe = stories.find(
+    (s) =>
+      s.id !== story.id &&
+      s.facebook_post_id &&
+      s.facebook_post_id !== "DUPE_SKIPPED" &&
+      titlesSimilar(s.title, story.title),
+  );
   if (story.facebook_post_id) {
     result.facebook = true;
     console.log(
       `[publisher] Facebook: already published (${story.facebook_post_id})`,
     );
+  } else if (fbTitleDupe) {
+    story.facebook_post_id = "DUPE_SKIPPED";
+    console.log(
+      `[publisher] Facebook: SKIPPED duplicate title ~ "${fbTitleDupe.title}"`,
+    );
+    await db.upsertStory(story);
   } else {
     try {
       const {
@@ -550,6 +592,7 @@ async function _publishNextStoryInner() {
       story.facebook_error = null;
       result.facebook = true;
       console.log(`[publisher] Facebook: uploaded`);
+      await db.upsertStory(story);
     } catch (err) {
       console.log(`[publisher] Facebook upload failed: ${err.message}`);
       story.facebook_error = err.message;
@@ -557,12 +600,25 @@ async function _publishNextStoryInner() {
     }
   }
 
-  // X/Twitter - skip if already published
+  // X/Twitter - skip if already published or near-duplicate title already uploaded
+  const twTitleDupe = stories.find(
+    (s) =>
+      s.id !== story.id &&
+      s.twitter_post_id &&
+      s.twitter_post_id !== "DUPE_SKIPPED" &&
+      titlesSimilar(s.title, story.title),
+  );
   if (story.twitter_post_id) {
     result.twitter = true;
     console.log(
       `[publisher] Twitter: already published (${story.twitter_post_id})`,
     );
+  } else if (twTitleDupe) {
+    story.twitter_post_id = "DUPE_SKIPPED";
+    console.log(
+      `[publisher] Twitter: SKIPPED duplicate title ~ "${twTitleDupe.title}"`,
+    );
+    await db.upsertStory(story);
   } else {
     try {
       const { uploadShort: twUpload } = require("./upload_twitter");
@@ -571,6 +627,7 @@ async function _publishNextStoryInner() {
       story.twitter_error = null;
       result.twitter = true;
       console.log(`[publisher] Twitter: uploaded`);
+      await db.upsertStory(story);
     } catch (err) {
       console.log(`[publisher] Twitter upload failed: ${err.message}`);
       story.twitter_error = err.message;

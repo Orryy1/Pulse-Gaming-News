@@ -1,24 +1,30 @@
 """
 VoxCPM 2 wrapper.
 
-Loads the model once at startup, exposes a synth() function that returns
-raw float32 PCM at the model's native sample rate (48 kHz for VoxCPM 2).
+Loads the model once at startup, exposes synth() that returns a mono float32
+PCM array at the model's native 16 kHz sample rate.
 
-Two modes:
-  - reference cloning: if REF_VOICE_PATH is set, uses that audio as the
-    voice prompt
-  - voice design:      otherwise generates from a text prompt describing
-    the voice characteristics (VOICE_PROMPT)
+Voice modes:
+  - default (no reference): VoxCPM 2 picks a generic voice on each session.
+    Surprisingly listenable, useful for getting started without any setup.
+  - reference cloning (REF_VOICE_PATH set): the model conditions on the clip
+    so the output matches that timbre and prosody. 6-30 s of clean speech is
+    plenty. Do NOT use audio of an ElevenLabs stock voice as the reference -
+    that is a ToS violation.
 
-The pulse-gaming pipeline owns its reference voice (record yourself once,
-save to ./voices/main.wav). Do NOT use audio of an ElevenLabs stock voice
-as the reference - that is a ToS violation.
+Pacing: VoxCPM 2's default voice synthesizes at ~50 WPM, which is well below
+the 130-140 WPM Pulse Gaming targets. We post-process with librosa's phase
+vocoder (pitch-preserving) so we can stretch up to ~2.5x without chipmunk
+artifacts. The pipeline-supplied speaking_rate is multiplied by BASE_SPEED
+(env, default 1.0) so the operator can set a global pace floor.
 """
-import os
+
 import logging
+import os
 from pathlib import Path
 from typing import Optional
 
+import librosa
 import numpy as np
 import torch
 
@@ -26,24 +32,26 @@ log = logging.getLogger("voxcpm")
 
 
 class VoxCPMEngine:
-    SAMPLE_RATE = 48_000  # VoxCPM 2 native
+    SAMPLE_RATE = 16_000  # VoxCPM 2 AudioVAE native output
 
     def __init__(
         self,
         model_path: Optional[str] = None,
         ref_voice_path: Optional[str] = None,
-        voice_prompt: Optional[str] = None,
         device: str = "cuda",
+        # Accepted for API compatibility with the older voice-design wrapper;
+        # VoxCPM 2 does not expose a text voice prompt parameter so this is
+        # ignored (kept so server.py and .env stay unchanged).
+        voice_prompt: Optional[str] = None,  # noqa: ARG002
     ):
         self.device = device if torch.cuda.is_available() else "cpu"
-        self.ref_voice_path = ref_voice_path
-        self.voice_prompt = voice_prompt or (
-            "Confident British male news narrator, mid-30s, deep warm timbre, "
-            "energetic delivery, clear diction, slight gravel in lower register. "
-            "Pace is brisk but never rushed. Tone is authoritative and engaged."
-        )
+        self.ref_voice_path = ref_voice_path or None
         self._model = None
-        self._model_path = model_path or "openbmb/VoxCPM-2"
+        self._model_path = model_path or "openbmb/VoxCPM2"
+        # Multiplied with the per-call speaking_rate so the operator can set a
+        # global pace floor. VoxCPM 2 default voice ≈ 50 WPM, so 2.6x lands
+        # near 130 WPM (Pulse Gaming target). Sleep niches should set ~1.0-1.4.
+        self.base_speed = float(os.getenv("BASE_SPEED", "2.6"))
 
     def load(self):
         """Lazy-load model on first synth call."""
@@ -51,16 +59,12 @@ class VoxCPMEngine:
             return
 
         log.info(f"Loading VoxCPM 2 from {self._model_path} on {self.device}...")
-
-        # VoxCPM API per https://github.com/OpenBMB/VoxCPM
-        # The exact import surface may shift between releases - we wrap
-        # the load in a try block and surface a clear error.
         try:
             from voxcpm import VoxCPM
 
-            self._model = VoxCPM.from_pretrained(self._model_path)
-            if hasattr(self._model, "to"):
-                self._model = self._model.to(self.device)
+            # The VoxCPM library handles device placement internally via its
+            # device kwarg - .to() is not exposed and not needed.
+            self._model = VoxCPM.from_pretrained(self._model_path, device=self.device)
             log.info("VoxCPM 2 loaded.")
         except ImportError as e:
             raise RuntimeError(
@@ -75,7 +79,7 @@ class VoxCPMEngine:
         self,
         text: str,
         speaking_rate: float = 1.0,
-        seed: Optional[int] = None,
+        seed: Optional[int] = None,  # noqa: ARG002 - VoxCPM 2 has no seed param
     ) -> np.ndarray:
         """
         Generate speech for the given text.
@@ -85,49 +89,31 @@ class VoxCPMEngine:
         """
         self.load()
 
-        if seed is not None:
-            torch.manual_seed(seed)
-
-        # VoxCPM 2 inference call. The library exposes a `generate` method
-        # that takes text plus either a reference audio path or a voice
-        # description prompt.
         kwargs = {"text": text}
         if self.ref_voice_path and Path(self.ref_voice_path).exists():
-            kwargs["prompt_audio"] = self.ref_voice_path
+            kwargs["reference_wav_path"] = str(self.ref_voice_path)
             log.debug(f"Cloning from reference: {self.ref_voice_path}")
-        else:
-            kwargs["voice_description"] = self.voice_prompt
-            log.debug(f"Voice design: {self.voice_prompt[:60]}...")
 
-        # Speaking rate - VoxCPM exposes via temperature / cfg in some
-        # versions. We pass it through if the API supports it; otherwise
-        # we time-stretch in post.
-        if speaking_rate != 1.0:
-            kwargs["speaking_rate"] = speaking_rate
-
-        try:
-            output = self._model.generate(**kwargs)
-        except TypeError:
-            # API mismatch on speaking_rate - retry without it then
-            # apply post-hoc time-stretch
-            kwargs.pop("speaking_rate", None)
-            output = self._model.generate(**kwargs)
-            if speaking_rate != 1.0:
-                output = self._time_stretch(output, speaking_rate)
+        audio = self._model.generate(**kwargs)
 
         # Coerce to mono float32 numpy
-        if isinstance(output, torch.Tensor):
-            output = output.detach().cpu().float().numpy()
-        if output.ndim > 1:
-            output = output.mean(axis=0) if output.shape[0] < output.shape[1] else output.mean(axis=1)
-        return output.astype(np.float32)
+        if isinstance(audio, torch.Tensor):
+            audio = audio.detach().cpu().float().numpy()
+        if audio.ndim > 1:
+            audio = audio.mean(
+                axis=0 if audio.shape[0] < audio.shape[1] else 1
+            )
+        audio = audio.astype(np.float32)
+
+        effective_rate = speaking_rate * self.base_speed
+        if abs(effective_rate - 1.0) > 1e-3:
+            audio = self._time_stretch(audio, effective_rate)
+        return audio
 
     @staticmethod
     def _time_stretch(audio: np.ndarray, rate: float) -> np.ndarray:
-        """Naive time-stretch via resampling. Not pitch-preserving but
-        adequate for small rate adjustments (0.9 - 1.1)."""
-        if rate == 1.0:
+        """Pitch-preserving time-stretch via librosa's phase vocoder. Sounds
+        natural up to ~2.5x; beyond that artifacts become audible."""
+        if abs(rate - 1.0) < 1e-3 or len(audio) < 2:
             return audio
-        new_len = int(len(audio) / rate)
-        idx = np.linspace(0, len(audio) - 1, new_len).astype(np.int64)
-        return audio[idx]
+        return librosa.effects.time_stretch(audio, rate=rate).astype(np.float32)

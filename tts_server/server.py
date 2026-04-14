@@ -44,7 +44,6 @@ log = logging.getLogger("tts_server")
 
 # --- Config ---
 REF_VOICE_PATH = os.getenv("REF_VOICE_PATH")  # optional path to your reference clip
-VOICE_PROMPT = os.getenv("VOICE_PROMPT")      # optional voice description
 DEVICE = os.getenv("DEVICE", "cuda")
 HOST = os.getenv("HOST", "127.0.0.1")
 PORT = int(os.getenv("PORT", "8765"))
@@ -55,7 +54,6 @@ from aligner import Aligner
 
 engine = VoxCPMEngine(
     ref_voice_path=REF_VOICE_PATH,
-    voice_prompt=VOICE_PROMPT,
     device=DEVICE,
 )
 aligner = Aligner(language="en", device=DEVICE)
@@ -97,8 +95,8 @@ def health():
         "status": "ok",
         "model_loaded": engine._model is not None,
         "aligner_loaded": aligner._model is not None,
-        "ref_voice": REF_VOICE_PATH,
-        "voice_prompt": (VOICE_PROMPT or "")[:80],
+        "ref_voice": REF_VOICE_PATH or None,
+        "base_speed": engine.base_speed,
     }
 
 

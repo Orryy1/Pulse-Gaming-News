@@ -1,0 +1,9 @@
+venv/
+voices/
+*.log
+.env
+test_*.json
+test_*.mp3
+test_*.wav
+__pycache__/
+*.pyc

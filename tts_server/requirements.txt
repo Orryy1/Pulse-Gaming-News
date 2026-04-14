@@ -6,15 +6,25 @@ python-dotenv==1.0.1
 
 # Audio
 soundfile==0.12.1
-numpy<2.0
+# whisperx 3.3+ requires numpy>=2; older PyTorch wheels we use are also fine on numpy 2
+numpy>=2.0,<3.0
 pydub==0.25.1
+
+# PyAV (FFmpeg bindings) - whisperx -> faster-whisper pulls this in. Pinned to
+# a version with prebuilt cp311-win wheels so pip won't try to build from source
+# (which fails without FFmpeg dev libs installed system-wide). 13.x is the
+# range supported by faster-whisper >= 1.1.
+av==13.1.0
 
 # VoxCPM 2 - install from git per official instructions
 # pip install git+https://github.com/OpenBMB/VoxCPM.git
 # (declared here as a comment so setup.bat installs it explicitly)
 
 # WhisperX for forced alignment (gives us word-level timestamps)
-whisperx==3.1.5
+# 3.3+ pulls faster-whisper >= 1.1 which supports av 13 (3.1.5 was pinned to
+# faster-whisper 1.0.1 / av 11, which has no Windows cp311 wheels).
+whisperx==3.3.6
+faster-whisper>=1.1.0
 
 # PyTorch with CUDA 12.1 - install separately via setup.bat for correct cuda build
 # torch==2.5.1

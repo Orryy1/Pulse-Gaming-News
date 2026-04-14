@@ -12,17 +12,24 @@ cd /d "%~dp0"
 
 echo.
 echo === [1/6] Checking Python ===
-python --version >nul 2>&1
-if errorlevel 1 (
-    echo ERROR: Python not on PATH. Install Python 3.10 or 3.11 first.
-    exit /b 1
+REM Prefer 3.11 (best PyTorch wheel coverage), then 3.10, then fall back to default python
+set PYCMD=
+py -3.11 --version >nul 2>&1 && set PYCMD=py -3.11
+if "%PYCMD%"=="" py -3.10 --version >nul 2>&1 && set PYCMD=py -3.10
+if "%PYCMD%"=="" (
+    python --version >nul 2>&1
+    if errorlevel 1 (
+        echo ERROR: No suitable Python found. Install Python 3.10 or 3.11.
+        exit /b 1
+    )
+    set PYCMD=python
 )
-python --version
+%PYCMD% --version
 
 echo.
 echo === [2/6] Creating venv ===
 if not exist venv (
-    python -m venv venv
+    %PYCMD% -m venv venv
     if errorlevel 1 (
         echo ERROR: venv creation failed
         exit /b 1
@@ -45,6 +52,13 @@ if errorlevel 1 (
 
 echo.
 echo === [5/6] Installing server dependencies ===
+REM Install av first as binary-only - whisperx pulls it in but pip would otherwise
+REM try to compile it from source against system FFmpeg (which fails on Windows).
+pip install --only-binary=av av==13.1.0
+if errorlevel 1 (
+    echo ERROR: prebuilt av wheel install failed - check PyPI for cp311-win wheels
+    exit /b 1
+)
 pip install -r requirements.txt
 if errorlevel 1 (
     echo ERROR: requirements install failed

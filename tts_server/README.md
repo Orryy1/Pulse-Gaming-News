@@ -29,29 +29,33 @@ Drop-in replacement for ElevenLabs `with-timestamps`. Returns MP3 + character-le
 
 ## Voice Setup
 
-You have two options. **Do NOT use audio of an ElevenLabs stock voice as your reference clip - that is a ToS violation.**
+VoxCPM 2 has two modes. **Do NOT use audio of an ElevenLabs stock voice as your reference clip - that is a ToS violation.**
 
-### Option A: Voice Design (no reference needed)
+### Option A: Default voice (no setup)
 
-Edit `.env`:
+Leave `REF_VOICE_PATH` empty. VoxCPM 2 picks a generic voice on each session — surprisingly listenable, fine for getting started but it changes between server restarts so videos won't have a consistent presenter.
 
-```
-VOICE_PROMPT=Confident British male news narrator, mid-30s, deep warm timbre...
-REF_VOICE_PATH=
-```
-
-VoxCPM 2 generates a voice matching the description. Output is consistent across calls within a session.
-
-### Option B: Reference Cloning (your own voice)
+### Option B: Reference cloning (recommended for production)
 
 1. Record 6-30 seconds of yourself reading clearly, save as `voices/main.wav`
-2. Edit `.env`:
+2. In `.env`:
    ```
    REF_VOICE_PATH=./voices/main.wav
-   VOICE_PROMPT=
    ```
 
-The model clones your timbre, prosody and delivery from that single clip.
+The model clones your timbre, prosody and delivery from that one clip and stays consistent across all generations.
+
+### Pacing — BASE_SPEED
+
+VoxCPM 2's default voice synthesizes at ~50 WPM (sleep-content slow). Pulse Gaming targets 130-140 WPM, so we apply a global speedup with a pitch-preserving phase vocoder.
+
+```
+BASE_SPEED=2.6   # default - lands at ~140 WPM for Pulse Gaming
+BASE_SPEED=1.4   # ~70 WPM - Sleepy Stories style
+BASE_SPEED=1.0   # native - ~50 WPM
+```
+
+Per-segment pacing from the pipeline (e.g. hook 1.05x, body 0.95x) is multiplied on top, so the audio.js dynamic-pacing logic still works as intended.
 
 ## Run
 

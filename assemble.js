@@ -683,6 +683,7 @@ async function generateSubtitles(story, duration, outputDir) {
           });
           mi += 1;
         }
+      }
       // GTA: "G" + "T" + "A" + optional "six"/"6" → "GTA" or "GTA VI"
       else if (
         stripped === "g" &&

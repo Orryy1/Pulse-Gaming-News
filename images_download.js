@@ -532,6 +532,27 @@ async function getBestImage(story) {
     }
   }
 
+  // Fallback B-roll: IGDB / YouTube search for console exclusives + stories
+  // Steam couldn't match. Only fires when Steam returned no video clips.
+  if (videoClips.length === 0) {
+    try {
+      const { fetchFallbackBroll } = require("./fetch_broll");
+      const fallback = await fetchFallbackBroll(story);
+      for (const clip of fallback) {
+        videoClips.push({
+          path: clip.path,
+          type: "trailer",
+          source: clip.source,
+        });
+        if (videoClips.length >= 2) break;
+      }
+    } catch (err) {
+      console.log(
+        `[images] B-roll fallback failed (non-fatal): ${err.message}`,
+      );
+    }
+  }
+
   // Sort by priority (highest first)
   images.sort((a, b) => b.priority - a.priority);
   return { images, videoClips };

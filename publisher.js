@@ -434,13 +434,15 @@ async function _publishNextStoryInner() {
         console.log(
           `[publisher] YouTube: BLOCKED duplicate - ${ytResult.reason}`,
         );
+        result.youtube = false;
+        result.errors.youtube = `dupe-blocked: ${ytResult.reason}`;
       } else {
         story.youtube_post_id = ytResult.videoId;
         story.youtube_url = ytResult.url;
         story.youtube_published_at = new Date().toISOString();
         console.log(`[publisher] YouTube: ${ytResult.url}`);
+        result.youtube = true;
       }
-      result.youtube = true;
       // Save immediately so concurrent calls see this story as published
       await db.upsertStory(story);
 

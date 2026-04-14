@@ -169,7 +169,9 @@ async function uploadReel(story) {
 }
 
 // --- URL-based Reel upload (fallback when binary upload fails) ---
-// Facebook fetches the video from our public server instead of us pushing the binary
+// Uses the 3-step /video_reels API with a hosted file_url in step 2 so the
+// result is an actual Reel, not a feed post. The previous fallback wrote to
+// /videos which silently produced feed videos when the user expected Reels.
 async function uploadReelViaUrl(story) {
   addBreadcrumb(`Facebook URL upload: ${story.title}`, "upload");
 
@@ -193,13 +195,43 @@ async function uploadReelViaUrl(story) {
   if (description.length > 2000)
     description = description.substring(0, 1997) + "...";
 
-  console.log(`[facebook] URL fallback: posting via ${videoUrl}`);
+  console.log(`[facebook] URL fallback: posting Reel via ${videoUrl}`);
 
-  // Single-step: POST to /videos endpoint with file_url (simpler than 3-step Reels API)
-  const response = await axios.post(
-    `https://graph.facebook.com/v21.0/${pageId}/videos`,
-    {
+  // Step 1: init
+  const initResponse = await axios.post(
+    `https://graph.facebook.com/v21.0/${pageId}/video_reels`,
+    { upload_phase: "start", access_token: accessToken },
+  );
+  const videoId = initResponse.data.video_id;
+  const uploadUrl = initResponse.data.upload_url;
+  if (!videoId || !uploadUrl) {
+    throw new Error(
+      `Facebook init phase returned incomplete data: video_id=${videoId}, upload_url=${uploadUrl ? "present" : "MISSING"}`,
+    );
+  }
+
+  // Step 2: tell FB to fetch from URL instead of sending binary
+  const uploadResponse = await axios({
+    method: "POST",
+    url: uploadUrl,
+    headers: {
+      Authorization: `OAuth ${accessToken}`,
       file_url: videoUrl,
+    },
+    timeout: 180000,
+  });
+  if (uploadResponse.data && uploadResponse.data.success === false) {
+    throw new Error(
+      `Facebook Reel URL fetch failed: ${JSON.stringify(uploadResponse.data)}`,
+    );
+  }
+
+  // Step 3: finish/publish
+  const finishResponse = await axios.post(
+    `https://graph.facebook.com/v21.0/${pageId}/video_reels`,
+    {
+      upload_phase: "finish",
+      video_id: videoId,
       title: (
         story.suggested_title ||
         story.suggested_thumbnail_text ||
@@ -207,21 +239,20 @@ async function uploadReelViaUrl(story) {
         ""
       ).substring(0, 100),
       description,
+      published: true,
       access_token: accessToken,
     },
-    { timeout: 180000 },
   );
-
-  if (!response.data || !response.data.id) {
+  if (finishResponse.data && finishResponse.data.success === false) {
     throw new Error(
-      `Facebook URL upload returned no ID: ${JSON.stringify(response.data)}`,
+      `Facebook Reel finish phase failed: ${JSON.stringify(finishResponse.data)}`,
     );
   }
 
-  console.log(`[facebook] Video published via URL! ID: ${response.data.id}`);
+  console.log(`[facebook] Reel published via URL! ID: ${videoId}`);
   return {
     platform: "facebook",
-    videoId: response.data.id,
+    videoId,
   };
 }
 

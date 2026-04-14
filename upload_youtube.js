@@ -493,12 +493,87 @@ async function uploadShort(story) {
           const recentTitles = (recent.data.items || []).map(
             (v) => v.snippet.title,
           );
-          const titleWords = new Set(title.toLowerCase().split(/\s+/));
+          const STOPWORDS = new Set([
+            "the",
+            "a",
+            "an",
+            "is",
+            "are",
+            "was",
+            "were",
+            "be",
+            "been",
+            "being",
+            "has",
+            "have",
+            "had",
+            "do",
+            "does",
+            "did",
+            "will",
+            "would",
+            "could",
+            "should",
+            "may",
+            "might",
+            "must",
+            "can",
+            "and",
+            "or",
+            "but",
+            "if",
+            "then",
+            "so",
+            "to",
+            "of",
+            "in",
+            "on",
+            "at",
+            "by",
+            "for",
+            "with",
+            "from",
+            "as",
+            "this",
+            "that",
+            "these",
+            "those",
+            "it",
+            "its",
+            "new",
+            "now",
+            "just",
+            "officially",
+            "announced",
+            "announces",
+            "revealed",
+            "reveals",
+            "confirmed",
+            "confirms",
+            "gameplay",
+            "trailer",
+            "release",
+            "date",
+            "game",
+            "games",
+            "gaming",
+            "news",
+          ]);
+          const tokenize = (s) =>
+            new Set(
+              s
+                .toLowerCase()
+                .replace(/[^\w\s]/g, " ")
+                .split(/\s+/)
+                .filter((w) => w.length > 2 && !STOPWORDS.has(w)),
+            );
+          const titleWords = tokenize(title);
           const dupe = recentTitles.find((rt) => {
-            const rtWords = new Set(rt.toLowerCase().split(/\s+/));
+            const rtWords = tokenize(rt);
+            if (titleWords.size === 0 || rtWords.size === 0) return false;
             const inter = [...titleWords].filter((w) => rtWords.has(w));
             const union = new Set([...titleWords, ...rtWords]);
-            return inter.length / union.size > 0.5;
+            return inter.length / union.size > 0.75;
           });
           if (dupe) {
             console.log(

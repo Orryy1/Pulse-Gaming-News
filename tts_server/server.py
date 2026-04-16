@@ -207,6 +207,58 @@ def synth_with_timestamps(voice_id: str, req: TTSRequest):
     return _synth(voice_id, req)
 
 
+# --- Phase 8: unified inference boundary ---------------------------------
+# Single kind-dispatch endpoint the local-worker hits for any GPU job.
+# Routes through tts_server/infer_service.py which owns the handler
+# registry. Separate from /tts so the registry can grow (image, video,
+# ASR, etc.) without reshaping the core TTS contract.
+
+class InferRequest(BaseModel):
+    kind: str = Field(..., min_length=1, max_length=64)
+    params: dict = Field(default_factory=dict)
+    job_id: Optional[str] = None
+
+
+class InferResponse(BaseModel):
+    ok: bool
+    kind: str
+    job_id: Optional[str] = None
+    result: Optional[dict] = None
+    error: Optional[str] = None
+
+
+@app.get("/v1/infer/kinds")
+def infer_kinds():
+    """Introspection — what inference kinds does this worker support?"""
+    import infer_service  # noqa: WPS433
+
+    return {"kinds": infer_service.list_kinds()}
+
+
+@app.post("/v1/infer", response_model=InferResponse)
+def infer(req: InferRequest):
+    """
+    Generic GPU job entry point. Called by workers/local-worker.js when
+    it claims a job whose kind requires_gpu=1. Dispatches to the handler
+    registry in infer_service.py. Errors are captured and returned with
+    ok=False so the Node side can transition the job to 'fail' cleanly.
+    """
+    import infer_service  # noqa: WPS433
+
+    try:
+        result = infer_service.run(req.kind, req.params, job_id=req.job_id)
+        return InferResponse(ok=True, kind=req.kind, job_id=req.job_id, result=result)
+    except KeyError as e:
+        log.warning(f"unknown infer kind: {req.kind}")
+        raise HTTPException(404, str(e))
+    except ValueError as e:
+        log.warning(f"bad infer params for {req.kind}: {e}")
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        log.exception(f"infer failed: kind={req.kind}")
+        return InferResponse(ok=False, kind=req.kind, job_id=req.job_id, error=str(e))
+
+
 @app.post("/tts", response_model=TTSResponse)
 def synth_tts(req: TTSRequest):
     """Convenience alias — uses the env-default voice."""

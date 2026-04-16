@@ -297,7 +297,41 @@ function truncateResult(result) {
 
 // CLI: `node workers/local-worker.js`
 if (require.main === module) {
-  const worker = new LocalWorker();
+  // Phase 5: attach the power/idle gate by default on Windows. Disable
+  // with WORKER_IGNORE_POWER=1.
+  let isAllowed = null;
+  if (process.env.WORKER_IGNORE_POWER !== "1") {
+    try {
+      const { createGate } = require("../lib/power-gate");
+      const cloud = (
+        process.env.WORKER_CLOUD_URL || "http://127.0.0.1:3001"
+      ).replace(/\/$/, "");
+      const token = process.env.WORKER_TOKEN || process.env.API_TOKEN;
+      const workerId =
+        process.env.WORKER_ID || `local-${require("os").hostname()}`;
+      const reporter = async (kind, payload) => {
+        try {
+          await fetch(`${cloud}/api/workers/event`, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              ...(token ? { authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({ id: workerId, kind, payload }),
+          });
+        } catch {
+          /* tolerable: gate events are nice-to-have */
+        }
+      };
+      isAllowed = createGate({ reporter });
+    } catch (err) {
+      console.error(
+        `[local-worker] power gate disabled (load error): ${err.message}`,
+      );
+    }
+  }
+
+  const worker = new LocalWorker({ isAllowed });
   worker.start().catch((err) => {
     console.error(err);
     process.exit(1);

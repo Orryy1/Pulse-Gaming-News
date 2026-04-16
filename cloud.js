@@ -61,6 +61,19 @@ async function startServer() {
   const PUBLIC_URL =
     process.env.RAILWAY_PUBLIC_URL || `http://localhost:${PORT}`;
 
+  // --- Remote workers API (Phase 4: outbound-only polling from local box) ---
+  if (process.env.USE_SQLITE === "true") {
+    try {
+      const jobsApi = require("./lib/api/jobs-router");
+      app.use("/api", jobsApi.build());
+      console.log(
+        "[cloud] Remote workers API mounted under /api (jobs/*, workers/*)",
+      );
+    } catch (err) {
+      console.error(`[cloud] Failed to mount jobs API: ${err.message}`);
+    }
+  }
+
   // ===== Approval Page Endpoints =====
 
   // Serve candidate images

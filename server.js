@@ -129,6 +129,21 @@ app.use(express.static(path.join(__dirname, "dist")));
 app.use("/generated", express.static(PUBLIC_DIR));
 app.use("/branding", express.static(path.join(__dirname, "branding")));
 
+// --- Remote workers API (Phase 4: outbound-only polling from local box) ---
+// Mounted only when SQLite + the jobs queue are active. Safe no-op
+// otherwise so legacy deployments don't need to know the endpoints exist.
+if (process.env.USE_SQLITE === "true") {
+  try {
+    const jobsApi = require("./lib/api/jobs-router");
+    app.use("/api", jobsApi.build());
+    console.log(
+      "[server] Remote workers API mounted under /api (jobs/*, workers/*)",
+    );
+  } catch (err) {
+    console.error(`[server] Failed to mount jobs API: ${err.message}`);
+  }
+}
+
 // --- Legal pages (required for TikTok/Instagram app review) ---
 app.get("/terms", (req, res) => {
   res.send(`<!DOCTYPE html><html><head><title>Terms of Service - Pulse Gaming</title></head><body style="max-width:800px;margin:40px auto;font-family:sans-serif;padding:0 20px">

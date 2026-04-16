@@ -47,6 +47,25 @@ function shouldAutoApprove(story) {
 
 // --- Run auto-approval pass ---
 async function autoApprove() {
+  // Phase 6: swap the "everything passes" heuristic for the 100-point
+  // editorial rubric when the feature flag is on. The legacy path stays
+  // live so the existing JSON-backed pipeline keeps producing videos.
+  if (
+    process.env.USE_SCORING_ENGINE === "true" &&
+    process.env.USE_SQLITE === "true"
+  ) {
+    try {
+      const { runScoringPass } = require("./lib/decision-engine");
+      const repos = require("./lib/repositories").getRepos();
+      const summary = runScoringPass({ repos });
+      return summary.approved;
+    } catch (err) {
+      console.log(
+        `[publisher] scoring engine failed, falling back to heuristic: ${err.message}`,
+      );
+    }
+  }
+
   const stories = await db.getStories();
   if (!stories.length) return 0;
 

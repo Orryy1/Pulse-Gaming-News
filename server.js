@@ -1052,6 +1052,32 @@ async function startAutonomousScheduler() {
     return;
   }
 
+  // Phase 3: unified jobs queue (feature-flagged). When USE_JOB_QUEUE=true
+  // we bypass the legacy cron block below and drive everything through
+  // lib/scheduler.js -> lib/services/jobs-runner.js. The legacy path
+  // stays as the default so nothing changes for existing deployments
+  // until the flag is flipped.
+  if (process.env.USE_JOB_QUEUE === "true") {
+    try {
+      const bootstrap = require("./lib/bootstrap-queue");
+      await bootstrap.start({
+        workerId: `server-${require("os").hostname()}-${process.pid}`,
+        runScheduler: true,
+        runRunner: true,
+        autoSeed: true,
+      });
+      schedulerRunning = true;
+      console.log(
+        "[server] USE_JOB_QUEUE=true -> scheduler + runner started via bootstrap-queue",
+      );
+      return;
+    } catch (err) {
+      console.error(
+        `[server] bootstrap-queue failed, falling back to legacy cron: ${err.message}`,
+      );
+    }
+  }
+
   schedulerRunning = true;
   const sendDiscord = require("./notify");
 

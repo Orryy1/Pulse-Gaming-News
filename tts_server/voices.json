@@ -1,0 +1,19 @@
+{
+  "_description": "Map ElevenLabs voice_id → local VoxCPM config. Lets one server handle both Pulse Gaming (Liam) and Sleepy Stories (Christopher) without restart. Path is relative to tts_server/. If voice_id hits the server and is missing here, the server falls back to REF_VOICE_PATH env var (default voice mode).",
+
+  "TX3LPaxmHKxFdv7VOQHJ": {
+    "alias": "liam",
+    "channel": "pulse-gaming",
+    "ref_voice_path": "voices/pulse.wav",
+    "base_speed": 2.6,
+    "notes": "Liam — fast news delivery, 140 WPM target. 15s clone ref extracted from output/audio/1s4denn.mp3."
+  },
+
+  "G17SuINrv2H9FC6nvetn": {
+    "alias": "christopher",
+    "channel": "sleepy-stories",
+    "ref_voice_path": "voices/sleepy_christopher.wav",
+    "base_speed": 1.4,
+    "notes": "Christopher — calm documentary narration, 85-95 WPM target. Needs 15-30s clean clone ref (not yet extracted)."
+  }
+}

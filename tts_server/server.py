@@ -15,21 +15,30 @@ Endpoint contract (matches what audio.js expects from ElevenLabs):
       }
     }
 
-The voice_id path param is accepted but ignored (single-voice server -
-configure the voice via REF_VOICE_PATH or VOICE_PROMPT env vars).
+Multi-voice routing:
+  voice_id lookups are resolved against voices.json (see VOICES_CONFIG_PATH).
+  Each mapped voice_id gets its own VoxCPMEngine instance, lazy-loaded on first
+  request and cached for the life of the process. This lets one server handle
+  both Pulse Gaming (Liam) and Sleepy Stories (Christopher) without restart.
 
-Health: GET /health -> {"status": "ok", "model_loaded": bool}
+  Fallback: if a voice_id isn't in voices.json, the server uses the default
+  engine built from REF_VOICE_PATH / BASE_SPEED env vars. That keeps the old
+  single-voice contract working.
+
+Health: GET /health -> {"status": "ok", "voices": [...], "model_loaded": bool}
 
 Run: uvicorn server:app --host 127.0.0.1 --port 8765
 """
 import base64
 import io
+import json
 import logging
 import os
-from typing import Optional
+from pathlib import Path
+from typing import Dict, Optional
 
 import numpy as np
-import soundfile as sf
+import soundfile as sf  # noqa: F401 - kept for future direct WAV paths
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
@@ -43,20 +52,101 @@ logging.basicConfig(
 log = logging.getLogger("tts_server")
 
 # --- Config ---
-REF_VOICE_PATH = os.getenv("REF_VOICE_PATH")  # optional path to your reference clip
+REF_VOICE_PATH = os.getenv("REF_VOICE_PATH")  # fallback ref when voice_id isn't mapped
 DEVICE = os.getenv("DEVICE", "cuda")
 HOST = os.getenv("HOST", "127.0.0.1")
 PORT = int(os.getenv("PORT", "8765"))
+VOICES_CONFIG_PATH = os.getenv("VOICES_CONFIG_PATH", "voices.json")
 
-# --- Lazy-init engines (loaded on first request to keep startup fast) ---
+# --- Imports ---
 from voxcpm_engine import VoxCPMEngine
 from aligner import Aligner
 
-engine = VoxCPMEngine(
-    ref_voice_path=REF_VOICE_PATH,
-    device=DEVICE,
-)
+
+# --- Voice registry ---
+# voice_id -> { alias, ref_voice_path, base_speed, channel, ... }
+def _load_voices_map() -> Dict[str, dict]:
+    path = Path(VOICES_CONFIG_PATH)
+    if not path.is_absolute():
+        path = Path(__file__).parent / path
+    if not path.exists():
+        log.warning(f"voices.json not found at {path} — single-voice fallback only")
+        return {}
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            raw = json.load(fh)
+    except Exception as e:
+        log.error(f"Failed to parse {path}: {e}")
+        return {}
+    # Drop any underscore-prefixed metadata keys (like _description)
+    voices = {k: v for k, v in raw.items() if not k.startswith("_")}
+    log.info(f"Loaded {len(voices)} voice(s) from {path}: {[v.get('alias', vid) for vid, v in voices.items()]}")
+    return voices
+
+
+VOICES_MAP = _load_voices_map()
+
+# Shared aligner (language-agnostic enough for our stories, and it's not
+# cheap to double-load wav2vec2 into VRAM).
 aligner = Aligner(language="en", device=DEVICE)
+
+# Per-voice engine cache. Each VoxCPMEngine wraps one reference clip + base
+# speed. They're lazy-loaded on first request — loading all at startup would
+# fight for VRAM and slow cold start.
+_engine_cache: Dict[str, VoxCPMEngine] = {}
+
+
+def _resolve_ref_path(ref_path: Optional[str]) -> Optional[str]:
+    """Voices.json paths are relative to tts_server/. Resolve to absolute so
+    the engine can just read the file."""
+    if not ref_path:
+        return None
+    p = Path(ref_path)
+    if not p.is_absolute():
+        p = Path(__file__).parent / p
+    return str(p) if p.exists() else None
+
+
+def _get_engine(voice_id: str) -> VoxCPMEngine:
+    """Fetch or build the VoxCPMEngine for a voice_id."""
+    if voice_id in _engine_cache:
+        return _engine_cache[voice_id]
+
+    cfg = VOICES_MAP.get(voice_id)
+    if cfg is None:
+        # Unknown voice_id: fall back to env-var default (original behaviour).
+        # Cache under the special "__default__" key so we reuse it for any
+        # future unmapped voice_ids rather than rebuilding per-request.
+        if "__default__" not in _engine_cache:
+            log.info(f"voice_id={voice_id!r} not in voices.json — using env default (ref={REF_VOICE_PATH})")
+            eng = VoxCPMEngine(
+                ref_voice_path=_resolve_ref_path(REF_VOICE_PATH),
+                device=DEVICE,
+            )
+            _engine_cache["__default__"] = eng
+        _engine_cache[voice_id] = _engine_cache["__default__"]
+        return _engine_cache[voice_id]
+
+    ref = _resolve_ref_path(cfg.get("ref_voice_path"))
+    base_speed = float(cfg.get("base_speed", 1.0))
+    alias = cfg.get("alias", voice_id)
+    log.info(f"Loading engine for voice_id={voice_id!r} (alias={alias}, ref={ref}, base_speed={base_speed})")
+
+    # VoxCPMEngine reads BASE_SPEED from env at __init__ — override via a
+    # temporary env stamp so the instance picks up the per-voice value.
+    # (Cleaner than mutating private state of the engine.)
+    prev = os.environ.get("BASE_SPEED")
+    os.environ["BASE_SPEED"] = str(base_speed)
+    try:
+        eng = VoxCPMEngine(ref_voice_path=ref, device=DEVICE)
+    finally:
+        if prev is None:
+            os.environ.pop("BASE_SPEED", None)
+        else:
+            os.environ["BASE_SPEED"] = prev
+
+    _engine_cache[voice_id] = eng
+    return eng
 
 
 # --- Schemas ---
@@ -86,40 +176,53 @@ class TTSResponse(BaseModel):
 
 
 # --- App ---
-app = FastAPI(title="Pulse Gaming Local TTS", version="1.0.0")
+app = FastAPI(title="Pulse Gaming Local TTS", version="1.1.0")
 
 
 @app.get("/health")
 def health():
+    voices_listed = [
+        {
+            "voice_id": vid,
+            "alias": cfg.get("alias", vid),
+            "channel": cfg.get("channel"),
+            "base_speed": cfg.get("base_speed"),
+            "ref_resolved": _resolve_ref_path(cfg.get("ref_voice_path")) is not None,
+            "loaded": vid in _engine_cache,
+        }
+        for vid, cfg in VOICES_MAP.items()
+    ]
     return {
         "status": "ok",
-        "model_loaded": engine._model is not None,
+        "voices": voices_listed,
+        "default_ref_voice": REF_VOICE_PATH or None,
         "aligner_loaded": aligner._model is not None,
-        "ref_voice": REF_VOICE_PATH or None,
-        "base_speed": engine.base_speed,
+        "engine_count": len(_engine_cache),
     }
 
 
 @app.post("/v1/text-to-speech/{voice_id}/with-timestamps", response_model=TTSResponse)
 def synth_with_timestamps(voice_id: str, req: TTSRequest):
     """Match the ElevenLabs path so audio.js can swap base URLs only."""
-    return _synth(req)
+    return _synth(voice_id, req)
 
 
 @app.post("/tts", response_model=TTSResponse)
 def synth_tts(req: TTSRequest):
-    """Convenience alias."""
-    return _synth(req)
+    """Convenience alias — uses the env-default voice."""
+    return _synth("__default__", req)
 
 
-def _synth(req: TTSRequest) -> TTSResponse:
+def _synth(voice_id: str, req: TTSRequest) -> TTSResponse:
     text = req.text.strip()
     if not text:
         raise HTTPException(400, "text is empty")
 
     rate = (req.voice_settings.speaking_rate if req.voice_settings else None) or 1.0
 
-    log.info(f"Synth: '{text[:60]}...' (rate={rate})")
+    engine = _get_engine(voice_id)
+    alias = VOICES_MAP.get(voice_id, {}).get("alias", voice_id)
+    log.info(f"Synth [{alias}]: '{text[:60]}...' (rate={rate})")
 
     try:
         audio_f32 = engine.synth(text, speaking_rate=rate, seed=req.seed)

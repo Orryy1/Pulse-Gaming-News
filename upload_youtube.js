@@ -726,6 +726,20 @@ async function uploadAll() {
   for (const story of ready) {
     try {
       const result = await uploadShort(story);
+      // Mirror publisher.js: uploadShort returns { blocked: true, reason }
+      // when the remote dedupe check rejects the upload. The batch path
+      // used to treat that as success (videoId=undefined, then overwrote
+      // publish_status="published") which corrupted state. Now we stamp
+      // the sentinel and move on so analytics.js/stats endpoints can
+      // filter it out later.
+      if (result.blocked) {
+        console.log(
+          `[youtube] BLOCKED duplicate for ${story.id}: ${result.reason}`,
+        );
+        story.youtube_post_id = "DUPE_BLOCKED";
+        story.publish_error = `dupe-blocked: ${result.reason}`;
+        continue;
+      }
       story.youtube_post_id = result.videoId;
       story.youtube_url = result.url;
       story.publish_status = "published";

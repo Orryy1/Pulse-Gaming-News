@@ -1245,13 +1245,19 @@ async function assemble() {
         // Clear image paths too so images.js re-downloads fresh copies
         delete s.image_path;
         delete s.downloaded_images;
-        // Clear publish IDs so the re-rendered video gets uploaded fresh
+        // Clear publish IDs so the re-rendered video gets uploaded fresh.
+        // This must also include Story-card IDs — otherwise the Story block
+        // in publisher.js would see stale IDs and skip posting, OR (under
+        // the old !isRetry gate) see no Reels IDs and re-post a second time.
         delete s.youtube_post_id;
         delete s.youtube_url;
         delete s.tiktok_post_id;
         delete s.instagram_media_id;
         delete s.facebook_post_id;
         delete s.twitter_post_id;
+        delete s.instagram_story_id;
+        delete s.facebook_story_id;
+        delete s.twitter_image_tweet_id;
         delete s.publish_status;
       }
     }

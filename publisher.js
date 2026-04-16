@@ -654,45 +654,70 @@ async function _publishNextStoryInner() {
     story.published_at = new Date().toISOString();
   }
 
-  // --- Story card image distribution (only on first publish, not retries) ---
-  if (!isRetry && story.story_image_path) {
+  // --- Story card image distribution ---
+  // Each platform is gated on its own post-id field so a partial failure
+  // followed by a retry only re-tries the platforms that actually failed.
+  // The old `!isRetry` guard checked only Reels IDs which meant that when
+  // assemble.js cleared Reel IDs for a re-render, Stories got posted a
+  // second time with no idempotency check. Individual-field gates fix that.
+  if (story.story_image_path) {
     // Instagram Stories
-    try {
-      const { uploadStoryImage: igStory } = require("./upload_instagram");
-      const igStoryResult = await igStory(story);
-      story.instagram_story_id = igStoryResult.mediaId;
+    if (story.instagram_story_id) {
       console.log(
-        `[publisher] Instagram Story: uploaded (${igStoryResult.mediaId})`,
+        `[publisher] Instagram Story: already posted (${story.instagram_story_id})`,
       );
-    } catch (err) {
-      console.log(`[publisher] Instagram Story upload failed: ${err.message}`);
-      result.errors.instagram_story = err.message;
+    } else {
+      try {
+        const { uploadStoryImage: igStory } = require("./upload_instagram");
+        const igStoryResult = await igStory(story);
+        story.instagram_story_id = igStoryResult.mediaId;
+        console.log(
+          `[publisher] Instagram Story: uploaded (${igStoryResult.mediaId})`,
+        );
+      } catch (err) {
+        console.log(
+          `[publisher] Instagram Story upload failed: ${err.message}`,
+        );
+        result.errors.instagram_story = err.message;
+      }
     }
 
     // Facebook Stories
-    try {
-      const { uploadStoryImage: fbStory } = require("./upload_facebook");
-      const fbStoryResult = await fbStory(story);
-      story.facebook_story_id = fbStoryResult.storyId;
+    if (story.facebook_story_id) {
       console.log(
-        `[publisher] Facebook Story: uploaded (${fbStoryResult.storyId})`,
+        `[publisher] Facebook Story: already posted (${story.facebook_story_id})`,
       );
-    } catch (err) {
-      console.log(`[publisher] Facebook Story upload failed: ${err.message}`);
-      result.errors.facebook_story = err.message;
+    } else {
+      try {
+        const { uploadStoryImage: fbStory } = require("./upload_facebook");
+        const fbStoryResult = await fbStory(story);
+        story.facebook_story_id = fbStoryResult.storyId;
+        console.log(
+          `[publisher] Facebook Story: uploaded (${fbStoryResult.storyId})`,
+        );
+      } catch (err) {
+        console.log(`[publisher] Facebook Story upload failed: ${err.message}`);
+        result.errors.facebook_story = err.message;
+      }
     }
 
     // Twitter/X image tweet
-    try {
-      const { postImageTweet } = require("./upload_twitter");
-      const twImgResult = await postImageTweet(story);
-      story.twitter_image_tweet_id = twImgResult.tweetId;
+    if (story.twitter_image_tweet_id) {
       console.log(
-        `[publisher] Twitter image tweet: posted (${twImgResult.tweetId})`,
+        `[publisher] Twitter image tweet: already posted (${story.twitter_image_tweet_id})`,
       );
-    } catch (err) {
-      console.log(`[publisher] Twitter image tweet failed: ${err.message}`);
-      result.errors.twitter_image = err.message;
+    } else {
+      try {
+        const { postImageTweet } = require("./upload_twitter");
+        const twImgResult = await postImageTweet(story);
+        story.twitter_image_tweet_id = twImgResult.tweetId;
+        console.log(
+          `[publisher] Twitter image tweet: posted (${twImgResult.tweetId})`,
+        );
+      } catch (err) {
+        console.log(`[publisher] Twitter image tweet failed: ${err.message}`);
+        result.errors.twitter_image = err.message;
+      }
     }
   }
 

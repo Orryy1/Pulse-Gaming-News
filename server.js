@@ -42,9 +42,26 @@ app.use((req, res, next) => {
 });
 
 // --- API authentication middleware ---
+// Fail closed in production. If API_TOKEN isn't set on a Railway/Render deploy,
+// every "protected" mutation route (publish, approve, autonomous/run, etc.)
+// would otherwise be wide open to the internet. Local dev keeps the no-op
+// shortcut so nobody has to juggle a token when hacking on localhost.
+const IS_PRODUCTION =
+  process.env.NODE_ENV === "production" ||
+  !!process.env.RAILWAY_ENVIRONMENT ||
+  !!process.env.RAILWAY_PUBLIC_URL;
+if (IS_PRODUCTION && !process.env.API_TOKEN) {
+  console.error(
+    "[server] FATAL: API_TOKEN is required in production (NODE_ENV=production or RAILWAY_* set). Refusing to start.",
+  );
+  process.exit(1);
+}
+
 function requireAuth(req, res, next) {
-  // Skip auth if no API_TOKEN configured (backwards compat for local dev)
   const secret = process.env.API_TOKEN;
+  // Dev-only bypass: when API_TOKEN is unset AND we're not in production.
+  // In production the startup guard above already exited, so this branch
+  // never fires with a missing token.
   if (!secret) return next();
 
   const token = req.headers.authorization?.replace("Bearer ", "");
@@ -178,7 +195,8 @@ app.get("/auth/facebook", (req, res) => {
   }
   const baseUrl = process.env.RAILWAY_PUBLIC_URL || `http://localhost:${PORT}`;
   const redirectUri = `${baseUrl}/auth/facebook/callback`;
-  const scopes = "pages_manage_posts,pages_read_engagement,pages_show_list,instagram_basic,instagram_content_publish,publish_video";
+  const scopes =
+    "pages_manage_posts,pages_read_engagement,pages_show_list,instagram_basic,instagram_content_publish,publish_video";
   const authUrl = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}&response_type=code`;
   res.redirect(authUrl);
 });
@@ -189,7 +207,11 @@ app.get("/auth/facebook/callback", async (req, res) => {
 
   if (error) {
     console.log(`[facebook] OAuth error: ${error} - ${error_description}`);
-    return res.status(400).send(`<h1>Facebook Auth Error</h1><p>${escapeHtml(error)}: ${escapeHtml(error_description || "")}</p>`);
+    return res
+      .status(400)
+      .send(
+        `<h1>Facebook Auth Error</h1><p>${escapeHtml(error)}: ${escapeHtml(error_description || "")}</p>`,
+      );
   }
 
   if (!code) {
@@ -199,34 +221,43 @@ app.get("/auth/facebook/callback", async (req, res) => {
   const appId = process.env.FACEBOOK_APP_ID;
   const appSecret = process.env.FACEBOOK_APP_SECRET;
   if (!appId || !appSecret) {
-    return res.status(500).send("<h1>FACEBOOK_APP_ID and FACEBOOK_APP_SECRET must be set</h1>");
+    return res
+      .status(500)
+      .send("<h1>FACEBOOK_APP_ID and FACEBOOK_APP_SECRET must be set</h1>");
   }
 
   try {
     const axios = require("axios");
-    const baseUrl = process.env.RAILWAY_PUBLIC_URL || `http://localhost:${PORT}`;
+    const baseUrl =
+      process.env.RAILWAY_PUBLIC_URL || `http://localhost:${PORT}`;
     const redirectUri = `${baseUrl}/auth/facebook/callback`;
 
     // Step 1: Exchange code for short-lived user token
-    const tokenRes = await axios.get("https://graph.facebook.com/v21.0/oauth/access_token", {
-      params: {
-        client_id: appId,
-        client_secret: appSecret,
-        redirect_uri: redirectUri,
-        code,
+    const tokenRes = await axios.get(
+      "https://graph.facebook.com/v21.0/oauth/access_token",
+      {
+        params: {
+          client_id: appId,
+          client_secret: appSecret,
+          redirect_uri: redirectUri,
+          code,
+        },
       },
-    });
+    );
     const shortToken = tokenRes.data.access_token;
 
     // Step 2: Exchange for long-lived user token
-    const longRes = await axios.get("https://graph.facebook.com/v21.0/oauth/access_token", {
-      params: {
-        grant_type: "fb_exchange_token",
-        client_id: appId,
-        client_secret: appSecret,
-        fb_exchange_token: shortToken,
+    const longRes = await axios.get(
+      "https://graph.facebook.com/v21.0/oauth/access_token",
+      {
+        params: {
+          grant_type: "fb_exchange_token",
+          client_id: appId,
+          client_secret: appSecret,
+          fb_exchange_token: shortToken,
+        },
       },
-    });
+    );
     const longLivedToken = longRes.data.access_token;
 
     // Step 3: Get page token
@@ -234,9 +265,12 @@ app.get("/auth/facebook/callback", async (req, res) => {
     let page = null;
 
     // Try /me/accounts first
-    const pagesRes = await axios.get("https://graph.facebook.com/v21.0/me/accounts", {
-      params: { access_token: longLivedToken },
-    });
+    const pagesRes = await axios.get(
+      "https://graph.facebook.com/v21.0/me/accounts",
+      {
+        params: { access_token: longLivedToken },
+      },
+    );
     const pages = pagesRes.data.data || [];
 
     if (targetPageId) {
@@ -244,12 +278,20 @@ app.get("/auth/facebook/callback", async (req, res) => {
       // If not found in list, query directly
       if (!page) {
         try {
-          const directRes = await axios.get(`https://graph.facebook.com/v21.0/${targetPageId}`, {
-            params: { fields: "id,name,access_token", access_token: longLivedToken },
-          });
+          const directRes = await axios.get(
+            `https://graph.facebook.com/v21.0/${targetPageId}`,
+            {
+              params: {
+                fields: "id,name,access_token",
+                access_token: longLivedToken,
+              },
+            },
+          );
           page = directRes.data;
         } catch (err) {
-          console.log(`[facebook] Direct page query failed: ${err.response?.data?.error?.message || err.message}`);
+          console.log(
+            `[facebook] Direct page query failed: ${err.response?.data?.error?.message || err.message}`,
+          );
         }
       }
     }
@@ -259,68 +301,104 @@ app.get("/auth/facebook/callback", async (req, res) => {
     }
 
     if (!page || !page.access_token) {
-      const pageList = pages.map((p) => `${p.name} (${p.id})`).join(", ") || "none found";
-      return res.status(400).send(`<h1>No Page Token</h1><p>Pages found: ${escapeHtml(pageList)}</p><p>Set FACEBOOK_PAGE_ID in env to your page ID.</p>`);
+      const pageList =
+        pages.map((p) => `${p.name} (${p.id})`).join(", ") || "none found";
+      return res
+        .status(400)
+        .send(
+          `<h1>No Page Token</h1><p>Pages found: ${escapeHtml(pageList)}</p><p>Set FACEBOOK_PAGE_ID in env to your page ID.</p>`,
+        );
     }
 
     const pageToken = page.access_token;
-    console.log(`[facebook] OAuth: got page token for ${page.name} (${page.id})`);
+    console.log(
+      `[facebook] OAuth: got page token for ${page.name} (${page.id})`,
+    );
 
     // Save Facebook token
     const tokensDir = path.join(__dirname, "tokens");
     await fs.ensureDir(tokensDir);
-    await fs.writeJson(path.join(tokensDir, "facebook_token.json"), {
-      access_token: pageToken,
-      page_id: page.id,
-      page_name: page.name,
-      expires_at: 0,
-      created_at: new Date().toISOString(),
-      note: "Page token from OAuth flow. Does not expire unless revoked.",
-    }, { spaces: 2 });
+    await fs.writeJson(
+      path.join(tokensDir, "facebook_token.json"),
+      {
+        access_token: pageToken,
+        page_id: page.id,
+        page_name: page.name,
+        expires_at: 0,
+        created_at: new Date().toISOString(),
+        note: "Page token from OAuth flow. Does not expire unless revoked.",
+      },
+      { spaces: 2 },
+    );
 
     // Step 4: Get Instagram Business Account
     let igAccountId = null;
     try {
-      const igRes = await axios.get(`https://graph.facebook.com/v21.0/${page.id}`, {
-        params: { fields: "instagram_business_account", access_token: pageToken },
-      });
+      const igRes = await axios.get(
+        `https://graph.facebook.com/v21.0/${page.id}`,
+        {
+          params: {
+            fields: "instagram_business_account",
+            access_token: pageToken,
+          },
+        },
+      );
       igAccountId = igRes.data?.instagram_business_account?.id;
       if (igAccountId) {
-        await fs.writeJson(path.join(tokensDir, "instagram_token.json"), {
-          access_token: pageToken,
-          instagram_business_account_id: igAccountId,
-          expires_at: 0,
-          created_at: new Date().toISOString(),
-        }, { spaces: 2 });
+        await fs.writeJson(
+          path.join(tokensDir, "instagram_token.json"),
+          {
+            access_token: pageToken,
+            instagram_business_account_id: igAccountId,
+            expires_at: 0,
+            created_at: new Date().toISOString(),
+          },
+          { spaces: 2 },
+        );
       }
     } catch (err) {
       console.log(`[facebook] IG account lookup failed: ${err.message}`);
     }
 
-    // Update Railway env vars
-    const envUpdates = [`FACEBOOK_PAGE_TOKEN=${pageToken}`, `FACEBOOK_PAGE_ID=${page.id}`];
+    // Log env-var updates to server stdout ONLY — never echo tokens back to
+    // the browser. Any proxy, screen share, browser-history flush, or
+    // shoulder-surf would otherwise capture a non-expiring Page token with
+    // publish rights to both Facebook and Instagram. The token is already
+    // persisted to tokens/*.json above; the operator can pull it from there
+    // or from the server log when syncing Railway env.
+    const envUpdates = [
+      `FACEBOOK_PAGE_TOKEN=${pageToken}`,
+      `FACEBOOK_PAGE_ID=${page.id}`,
+    ];
     if (igAccountId) {
-      envUpdates.push(`INSTAGRAM_ACCESS_TOKEN=${pageToken}`, `INSTAGRAM_BUSINESS_ACCOUNT_ID=${igAccountId}`);
+      envUpdates.push(
+        `INSTAGRAM_ACCESS_TOKEN=${pageToken}`,
+        `INSTAGRAM_BUSINESS_ACCOUNT_ID=${igAccountId}`,
+      );
     }
-
-    console.log(`[facebook] OAuth complete. Update Railway env:\n  ${envUpdates.join("\n  ")}`);
+    console.log(
+      `[facebook] OAuth complete. Update Railway env (server-side log only):\n  ${envUpdates.join("\n  ")}`,
+    );
 
     const sendDiscord = require("./notify");
-    await sendDiscord(`**Facebook + Instagram Re-authenticated**\nPage: ${page.name}\nIG: ${igAccountId || "not linked"}`).catch(() => {});
+    await sendDiscord(
+      `**Facebook + Instagram Re-authenticated**\nPage: ${page.name}\nIG: ${igAccountId || "not linked"}\n\nNew tokens written to tokens/. Pull from server logs to sync Railway env.`,
+    ).catch(() => {});
 
     res.send(`<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:60px">
-      <h1 style="color:#00C853">Facebook + Instagram Connected!</h1>
+      <h1 style="color:#00C853">Facebook + Instagram Connected</h1>
       <p>Page: <strong>${escapeHtml(page.name)}</strong></p>
-      <p>Instagram: <strong>${igAccountId || "Not linked"}</strong></p>
+      <p>Instagram: <strong>${escapeHtml(igAccountId || "Not linked")}</strong></p>
       <hr style="margin:30px 0">
-      <p><strong>Update these Railway env vars to persist across deploys:</strong></p>
-      <pre style="text-align:left;background:#1a1a2e;color:#e8dcc8;padding:20px;border-radius:8px;display:inline-block">${envUpdates.join("\n")}</pre>
+      <p>Tokens saved server-side. Check the server log or Discord for the env-var sync instructions.</p>
       <p style="margin-top:20px">You can close this tab.</p>
     </body></html>`);
   } catch (err) {
     const detail = err.response?.data?.error?.message || err.message;
     console.log(`[facebook] OAuth failed: ${detail}`);
-    res.status(500).send(`<h1>Facebook Auth Failed</h1><p>${escapeHtml(detail)}</p>`);
+    res
+      .status(500)
+      .send(`<h1>Facebook Auth Failed</h1><p>${escapeHtml(detail)}</p>`);
   }
 });
 
@@ -795,6 +873,15 @@ app.get("/api/download/:id", async (req, res) => {
 app.get("/api/stats/:postId", async (req, res) => {
   try {
     const { platform } = req.query;
+    const postId = req.params.postId;
+
+    // Guard against sentinel values ("DUPE_BLOCKED" / "DUPE_SKIPPED") that the
+    // publisher writes into post-id fields when an upload was refused.
+    // Sending those to the real YouTube/TikTok APIs burns quota on a
+    // guaranteed 404 and surfaces "0 views" as if the video existed.
+    if (!postId || postId.startsWith("DUPE_")) {
+      return res.json({ views: 0, blocked: true });
+    }
 
     if (platform === "youtube") {
       const apiKey = process.env.YOUTUBE_API_KEY;
@@ -803,7 +890,7 @@ app.get("/api/stats/:postId", async (req, res) => {
       }
       try {
         const ytRes = await fetch(
-          `https://www.googleapis.com/youtube/v3/videos?part=statistics&id=${encodeURIComponent(req.params.postId)}&key=${encodeURIComponent(apiKey)}`,
+          `https://www.googleapis.com/youtube/v3/videos?part=statistics&id=${encodeURIComponent(postId)}&key=${encodeURIComponent(apiKey)}`,
         );
         if (ytRes.ok) {
           const ytData = await ytRes.json();

@@ -1674,6 +1674,107 @@ app.post(
   },
 );
 
+// --- Observability: queue stats, scoring digest, pack inventory ---
+// Gated behind USE_SQLITE so they don't crash on legacy deploys that
+// haven't run migrations. Each route hydrates repos lazily so we don't
+// pay the SQLite cost until an operator actually pulls the stats.
+app.get("/api/queue/stats", (req, res) => {
+  if (process.env.USE_SQLITE !== "true") {
+    return res.status(503).json({
+      error: "sqlite_disabled",
+      hint: "Set USE_SQLITE=true to enable queue observability",
+    });
+  }
+  try {
+    const { getQueueStats } = require("./lib/observability");
+    const repos = require("./lib/repositories").getRepos();
+    res.json(getQueueStats({ repos }));
+  } catch (err) {
+    console.error(`[server] /api/queue/stats error: ${err.message}`);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.get("/api/scoring/digest", (req, res) => {
+  if (process.env.USE_SQLITE !== "true") {
+    return res.status(503).json({ error: "sqlite_disabled" });
+  }
+  try {
+    const { getScoringDigest } = require("./lib/observability");
+    const repos = require("./lib/repositories").getRepos();
+    const hours = Math.max(1, Math.min(Number(req.query.hours) || 24, 7 * 24));
+    const channelId = req.query.channel || null;
+    res.json(getScoringDigest({ repos, sinceHours: hours, channelId }));
+  } catch (err) {
+    console.error(`[server] /api/scoring/digest error: ${err.message}`);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.post(
+  "/api/scoring/digest/post",
+  requireAuth,
+  rateLimit(5, 60 * 60 * 1000),
+  async (req, res) => {
+    if (process.env.USE_SQLITE !== "true") {
+      return res.status(503).json({ error: "sqlite_disabled" });
+    }
+    try {
+      const {
+        getScoringDigest,
+        buildScoringDigestMessage,
+      } = require("./lib/observability");
+      const repos = require("./lib/repositories").getRepos();
+      const hours = Math.max(
+        1,
+        Math.min(Number(req.query.hours) || 24, 7 * 24),
+      );
+      const summary = getScoringDigest({ repos, sinceHours: hours });
+      const message = buildScoringDigestMessage(summary);
+      const sendDiscord = require("./notify");
+      await sendDiscord(message);
+      res.json({ ok: true, scored: summary.scored });
+    } catch (err) {
+      console.error(`[server] scoring/digest/post error: ${err.message}`);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);
+
+app.get("/api/audio-packs", (req, res) => {
+  if (process.env.USE_SQLITE !== "true") {
+    return res.status(503).json({ error: "sqlite_disabled" });
+  }
+  try {
+    const audioIdentity = require("./lib/audio-identity");
+    const repos = require("./lib/repositories").getRepos();
+    const channelRegistry = require("./channels");
+    const channels = channelRegistry.listChannels().map((c) => c.id);
+    const packs = channels.map((channelId) => {
+      const pack = audioIdentity.describeChannelPack({ repos, channelId });
+      if (!pack) return { channel_id: channelId, pack: null };
+      return {
+        channel_id: channelId,
+        pack_id: pack.id,
+        pack_name: pack.name,
+        is_fallback: pack.id === audioIdentity.FALLBACK_PACK.id,
+        asset_count: pack.assets.length,
+        missing_on_disk: pack.assets.filter((a) => !a.exists).length,
+        assets: pack.assets.map((a) => ({
+          role: a.role,
+          filename: a.filename,
+          duration_ms: a.duration_ms,
+          exists: a.exists,
+        })),
+      };
+    });
+    res.json({ packs, generated_at: new Date().toISOString() });
+  } catch (err) {
+    console.error(`[server] /api/audio-packs error: ${err.message}`);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // --- Blog rebuild endpoint ---
 app.post(
   "/api/blog/rebuild",

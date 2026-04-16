@@ -6,7 +6,43 @@
   "bpm": 112,
   "key_signature": "Em",
   "license": "owned",
-  "_note": "Owned stems pending production. Drop .wav files into this directory and list them in `assets` to override the pulse-v1 fallback. Roles supported: intro, outro, bed_primary, bed_breaking, sting_verified, sting_rumour, sting_breaking, transition, bumper.",
+  "_note": "Stems generated via ElevenLabs Music API. Regenerate with scripts/generate_identity_stems.js --force --channels the-signal",
   "_target_voice": "EXAVITQu4vr4xnSDxMaL",
-  "assets": []
+  "assets": [
+    {
+      "role": "bed_breaking",
+      "filename": "bed_breaking.mp3",
+      "duration_ms": 60000,
+      "bytes": 960515,
+      "license": "owned"
+    },
+    {
+      "role": "bed_primary",
+      "filename": "bed_primary.mp3",
+      "duration_ms": 60000,
+      "bytes": 960515,
+      "license": "owned"
+    },
+    {
+      "role": "sting_breaking",
+      "filename": "sting_breaking.mp3",
+      "duration_ms": 10000,
+      "bytes": 160541,
+      "license": "owned"
+    },
+    {
+      "role": "sting_rumour",
+      "filename": "sting_rumour.mp3",
+      "duration_ms": 10000,
+      "bytes": 160541,
+      "license": "owned"
+    },
+    {
+      "role": "sting_verified",
+      "filename": "sting_verified.mp3",
+      "duration_ms": 10000,
+      "bytes": 160959,
+      "license": "owned"
+    }
+  ]
 }

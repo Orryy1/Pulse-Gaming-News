@@ -1,0 +1,12 @@
+{
+  "id": "stacked-v1",
+  "channel_id": "stacked",
+  "name": "Stacked v1",
+  "root_path": "channels/stacked/audio",
+  "bpm": 104,
+  "key_signature": "Am",
+  "license": "owned",
+  "_note": "Owned stems pending production. Drop .wav files into this directory and list them in `assets` to override the pulse-v1 fallback. Roles supported: intro, outro, bed_primary, bed_breaking, sting_verified, sting_rumour, sting_breaking, transition, bumper.",
+  "_target_voice": "ErXwobaYiN019PkySvjV",
+  "assets": []
+}

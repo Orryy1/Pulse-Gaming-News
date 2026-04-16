@@ -71,10 +71,91 @@ async function generateTeaser(story, fullVideoPath, outputDir) {
   }
 }
 
+// --- Phase 9: per-channel audio identity resolution ------------------
+// When the audio-identity registry is populated (USE_SQLITE + a synced
+// pack), pick bed + sting stems through the resolver so each channel
+// uses its own owned assets. Falls back to the legacy filesystem scan
+// if the registry is unavailable or returns null — both paths keep
+// working, which means the legacy JSON-backed pipeline is never broken
+// by a misconfigured pack.
+async function resolveIdentityStems(channelId, story) {
+  if (process.env.USE_SQLITE !== "true") return null;
+  try {
+    const audioIdentity = require("./lib/audio-identity");
+    const repos = require("./lib/repositories").getRepos();
+    const isBreaking = !!(
+      story &&
+      (story.classification === "[BREAKING]" ||
+        story.breaking_fast_track ||
+        (story.flair || "").toLowerCase() === "breaking")
+    );
+    const flair = (story && story.flair) || null;
+    const bed = audioIdentity.resolve({
+      repos,
+      channelId,
+      role: "bed",
+      breaking: isBreaking,
+    });
+    const sting = isBreaking
+      ? audioIdentity.resolve({
+          repos,
+          channelId,
+          role: "sting",
+          flair,
+          breaking: true,
+        })
+      : null;
+    return { bed, sting, isBreaking };
+  } catch (err) {
+    console.log(
+      `[assemble] audio-identity resolve failed, using legacy scan: ${err.message}`,
+    );
+    return null;
+  }
+}
+
 // --- Music library: use custom distributed tracks, fall back to ElevenLabs generation ---
 async function ensureBackgroundMusic(duration, story) {
   const channel = getChannel();
   const channelId = channel.id || "pulse-gaming";
+
+  // Priority 0 (Phase 9): resolve stems through the per-channel audio
+  // identity pack. When a bed is returned we honour it (and optionally
+  // prepend a sting); when nothing resolves we fall through to the
+  // legacy filesystem scan so the legacy JSON pipeline keeps working.
+  const identity = await resolveIdentityStems(channelId, story);
+  if (identity && identity.bed) {
+    const loopPath = identity.bed.abs_path;
+    if (identity.isBreaking && identity.sting && identity.sting.abs_path) {
+      const stingPath = identity.sting.abs_path;
+      const tempDir = path.join("output", "music", "temp");
+      await fs.ensureDir(tempDir);
+      const concatPath = path.join(tempDir, `breaking_${Date.now()}.wav`);
+      const listPath = path.join(tempDir, `concat_${Date.now()}.txt`);
+      await fs.writeFile(
+        listPath,
+        `file '${stingPath.replace(/\\/g, "/")}'\nfile '${loopPath.replace(/\\/g, "/")}'`,
+      );
+      try {
+        await execAsync(
+          `ffmpeg -y -f concat -safe 0 -i "${listPath.replace(/\\/g, "/")}" -t ${Math.ceil(duration) + 5} "${concatPath.replace(/\\/g, "/")}"`,
+          { timeout: 30000 },
+        );
+        console.log(
+          `[assemble] Breaking music: pack=${identity.sting.pack_id} sting=${identity.sting.filename} + bed=${identity.bed.filename}`,
+        );
+        return concatPath;
+      } catch (err) {
+        console.log(
+          `[assemble] Sting concat failed, using bed only: ${err.message}`,
+        );
+      }
+    }
+    console.log(
+      `[assemble] Pack music: pack=${identity.bed.pack_id} bed=${identity.bed.filename} (${channelId})`,
+    );
+    return loopPath;
+  }
 
   // Priority 1: Use custom royalty-earning tracks from audio/ directory
   if (await fs.pathExists(CUSTOM_MUSIC_DIR)) {

@@ -186,29 +186,269 @@ def _narrate_script(params: Dict[str, Any], workspace: Path) -> Dict[str, Any]:
 @register("compose_short")
 def _compose_short(params: Dict[str, Any], workspace: Path) -> Dict[str, Any]:
     """
-    Stub for now. The existing assemble.js path handles this in Node
-    via ffmpeg; this handler exists so the same job can be claimed by
-    the local worker when it's GPU-only (nvenc encode, etc.). Real
-    implementation will land in Phase 8.1 once we decide whether the
-    compose step stays in Node or moves here.
+    Compose a 1080x1920 vertical short from a narration MP3 and an
+    optional list of visuals. Falls back to a branded colour card when
+    no visuals are supplied so the handler always produces a playable
+    MP4 — better than failing on missing inputs.
+
+    Required params:
+        narration_path: absolute path to the narration MP3
+        kind:           teaser_short | story_short (drives the filename
+                        and the on-card label)
+
+    Optional params:
+        images:         list[str] — absolute image paths for Ken Burns
+                        (if empty, we synth a branded card)
+        channel:        channel id for colour accents (default pulse-gaming)
+        title:          overlay text on the card (default falls back to
+                        kind-appropriate copy)
+
+    Returns: { output_path: "/abs/<kind>.mp4", duration_s: float }
+
+    Note: deliberately uses libx264 (not NVENC) so this works on any
+    host the inference server runs on. When the local GPU worker
+    settles on a fixed NVIDIA box we can add a `use_nvenc` switch.
     """
+    narration_path = params.get("narration_path")
+    if not narration_path:
+        raise ValueError("compose_short requires params.narration_path")
+    np_path = Path(narration_path)
+    if not np_path.exists():
+        raise ValueError(f"narration not found at {narration_path}")
+
+    kind = params.get("kind") or "short"
+    channel = params.get("channel") or "pulse-gaming"
+    images = [p for p in (params.get("images") or []) if Path(p).exists()]
+    ffmpeg = _require_ffmpeg()
+
+    # --- Probe narration duration so the card loop matches ------------
+    try:
+        dur_out = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+             "-of", "csv=p=0", str(np_path)],
+            check=True, capture_output=True, text=True,
+        )
+        duration = float(dur_out.stdout.strip() or "0") or 40.0
+    except Exception:
+        duration = 40.0
+
+    # Cap to reasonable shorts length (YouTube Shorts is <= 60s, teaser
+    # targets ~45s). Pad by 0.5s so the outro card has room to breathe.
+    total = min(max(duration, 5.0), 90.0) + 0.5
+
+    # --- Per-channel accent colour for the card ------------------------
+    accents = {
+        "pulse-gaming": "0x0D0D0F:c1=0xFF6B1A",
+        "stacked": "0x0A0A0C:c1=0x00C853",
+        "the-signal": "0x0F0B1A:c1=0xA855F7",
+    }
+    bg_color, accent_dir = accents.get(channel, accents["pulse-gaming"]).split(":")
+    accent = accent_dir.split("=", 1)[1] if "=" in accent_dir else "0xFF6B1A"
+
+    # --- Label + title text -------------------------------------------
+    title = params.get("title")
+    if not title:
+        title = "WEEKLY ROUNDUP" if kind == "teaser_short" else "BREAKING"
+    # Sanitise for ffmpeg drawtext: strip quotes, colons and non-ASCII
+    safe_title = "".join(c for c in str(title)
+                         if 0x20 <= ord(c) < 0x7F and c not in ("'", ":", ";", "\\"))[:60]
+    kind_label = kind.replace("_", " ").upper()
+
+    out_path = workspace / f"{kind}.mp4"
+
+    # --- Build filter graph -------------------------------------------
+    # Two possible input shapes:
+    #   (a) No images -> one `color` source, branded drawtext overlay
+    #   (b) Images    -> Ken Burns on each, concat, drawtext overlay
+    inputs = []
+    filters = []
+
+    # Platform-agnostic font hint. drawtext falls back to libass's
+    # default if no font= is supplied, which is fine on Linux workers.
+    font_hint = ""
+    # Windows bundled Arial path (works when the server runs on Windows)
+    win_font = "C\\:/Windows/Fonts/arial.ttf"
+    if os.name == "nt" and Path("C:/Windows/Fonts/arial.ttf").exists():
+        font_hint = f":fontfile='{win_font}'"
+
+    if not images:
+        inputs.extend(["-f", "lavfi", "-t", f"{total:.2f}",
+                       "-i", f"color=c={bg_color}:s=1080x1920:r=30"])
+        # drawbox wants `iw`/`ih` for input frame dimensions — `w`/`h` is
+        # the box itself in current ffmpeg. drawtext still uses `w`/`h`
+        # for the frame and `tw`/`th` for the text metrics, which is
+        # the other way round — convention varies by filter.
+        filters.append(
+            f"[0:v]"
+            f"drawbox=x=0:y=ih/2-2:w=iw:h=4:color={accent}@0.8:t=fill,"
+            f"drawtext=text='{kind_label}'{font_hint}:fontcolor=0x{accent[2:]}:fontsize=56:"
+            f"x=(w-tw)/2:y=(h-th)/2-120,"
+            f"drawtext=text='{safe_title}'{font_hint}:fontcolor=0xF0F0F0:fontsize=72:"
+            f"x=(w-tw)/2:y=(h-th)/2-20,"
+            f"drawtext=text='{channel.upper()}'{font_hint}:fontcolor=0xF0F0F0@0.7:fontsize=38:"
+            f"x=(w-tw)/2:y=(h-th)/2+90[v]"
+        )
+    else:
+        per = max(2.5, total / len(images))
+        kb_labels = []
+        for i, img in enumerate(images):
+            inputs.extend(["-loop", "1", "-t", f"{per:.2f}", "-i", str(img)])
+            zoom = ("z=min(zoom+0.0008\\,1.12)"
+                    if i % 2 == 0
+                    else "z=if(eq(on\\,1)\\,1.12\\,max(zoom-0.0008\\,1.0))")
+            frames = int(per * 30)
+            filters.append(
+                f"[{i}:v]scale=1080:1920:force_original_aspect_ratio=increase,"
+                f"crop=1080:1920,zoompan={zoom}:x=iw/2-(iw/zoom/2):y=ih/2-(ih/zoom/2):"
+                f"d={frames}:s=1080x1920:fps=30,format=yuv420p,setsar=1[kb{i}]"
+            )
+            kb_labels.append(f"kb{i}")
+        filters.append(
+            "".join(f"[{l}]" for l in kb_labels)
+            + f"concat=n={len(kb_labels)}:v=1:a=0[bg]"
+        )
+        filters.append(
+            f"[bg]drawtext=text='{kind_label}'{font_hint}:fontcolor=0x{accent[2:]}:fontsize=44:"
+            f"box=1:boxcolor=0x0D0D0F@0.6:boxborderw=16:x=40:y=80,"
+            f"drawtext=text='{safe_title}'{font_hint}:fontcolor=0xF0F0F0:fontsize=56:"
+            f"box=1:boxcolor=0x0D0D0F@0.5:boxborderw=14:x=(w-tw)/2:y=h-260[v]"
+        )
+
+    # Narration input index (last)
+    audio_idx = len(images) if images else 1
+    inputs.extend(["-i", str(np_path)])
+
+    filter_graph = ";".join(filters)
+
+    cmd = [ffmpeg, "-y", *inputs,
+           "-filter_complex", filter_graph,
+           "-map", "[v]", "-map", f"{audio_idx}:a",
+           "-c:v", "libx264", "-preset", "medium", "-crf", "22",
+           "-c:a", "aac", "-b:a", "192k",
+           "-r", "30", "-shortest",
+           "-movflags", "+faststart",
+           str(out_path)]
+
+    log.info(f"[compose_short] rendering kind={kind} duration={total:.1f}s "
+             f"images={len(images)} -> {out_path}")
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        # Log the filter graph + full ffmpeg stderr so the caller can
+        # diagnose drawtext / path / codec issues. The returned tail is
+        # short so the Node side doesn't have to deal with a giant blob.
+        log.error(f"[compose_short] filter graph:\n{filter_graph}")
+        log.error(f"[compose_short] ffmpeg stderr:\n{proc.stderr}")
+        tail = (proc.stderr or "")[-600:]
+        raise RuntimeError(f"ffmpeg failed (rc={proc.returncode}): {tail}")
+
     return {
-        "deferred": True,
-        "reason": "compose_short handled by Node assemble.js for now",
-        "hints": {
-            "switch_to_python_when": "we adopt NVENC + FFmpegFilterComplex",
-        },
+        "output_path": str(out_path),
+        "duration_s": round(total, 2),
+        "kind": kind,
+        "source": "compose_short/ffmpeg-libx264",
     }
 
 
 @register("transcribe")
 def _transcribe(params: Dict[str, Any], workspace: Path) -> Dict[str, Any]:
-    """Stub — Whisper-large-v3 hookup comes later."""
+    """
+    Run local Whisper via faster-whisper. Returns the full transcript
+    plus segment-level timestamps, and writes an .srt alongside the
+    source audio for downstream subtitle workflows.
+
+    Required params:
+        audio_path: absolute path to an audio file (mp3/wav/m4a etc.)
+
+    Optional params:
+        model_size: tiny | base | small | medium | large-v3 (default base)
+        language:   ISO-639-1 hint (default: auto-detect)
+        beam_size:  decoding beam width (default 5)
+
+    If faster-whisper isn't installed, returns { deferred: true } with
+    an install hint so the job can be retried against the cloud API.
+    """
     audio_path = params.get("audio_path")
     if not audio_path:
         raise ValueError("transcribe requires params.audio_path")
+    ap = Path(audio_path)
+    if not ap.exists():
+        raise ValueError(f"audio not found at {audio_path}")
+
+    try:
+        from faster_whisper import WhisperModel  # type: ignore
+    except ImportError:
+        return {
+            "deferred": True,
+            "reason": "faster-whisper not installed in this venv",
+            "install_hint": "pip install faster-whisper",
+            "audio_path": str(ap),
+        }
+
+    model_size = params.get("model_size") or "base"
+    language = params.get("language")
+    beam_size = int(params.get("beam_size") or 5)
+    # Default to CPU so we don't blow up on hosts without cuDNN installed.
+    # The production GPU box can opt into CUDA via WHISPER_DEVICE=cuda.
+    device = os.getenv("WHISPER_DEVICE", "cpu")
+    compute_type = os.getenv(
+        "WHISPER_COMPUTE_TYPE",
+        "int8" if device == "cpu" else "default",
+    )
+
+    log.info(f"[transcribe] model={model_size} device={device} compute={compute_type} audio={ap}")
+    try:
+        model = WhisperModel(model_size, device=device, compute_type=compute_type)
+    except Exception as e:
+        # Fall back to CPU if CUDA init failed (missing cuDNN, OOM, etc.)
+        if device != "cpu":
+            log.warning(f"[transcribe] {device} failed ({e}); falling back to CPU")
+            device = "cpu"
+            compute_type = "int8"
+            model = WhisperModel(model_size, device=device, compute_type=compute_type)
+        else:
+            raise
+
+    seg_iter, info = model.transcribe(
+        str(ap),
+        language=language,
+        beam_size=beam_size,
+        vad_filter=True,
+    )
+    segments = []
+    for seg in seg_iter:
+        segments.append({
+            "start": round(seg.start, 3),
+            "end": round(seg.end, 3),
+            "text": seg.text.strip(),
+        })
+
+    # Write an SRT alongside the workspace for downstream pipelines.
+    srt_path = workspace / f"{ap.stem}.srt"
+    with srt_path.open("w", encoding="utf-8") as fh:
+        for i, seg in enumerate(segments, start=1):
+            fh.write(f"{i}\n{_srt_ts(seg['start'])} --> {_srt_ts(seg['end'])}\n{seg['text']}\n\n")
+
     return {
-        "deferred": True,
-        "reason": "local ASR not yet wired; route to OpenAI whisper API in the meantime",
-        "audio_path": audio_path,
+        "transcript": " ".join(s["text"] for s in segments).strip(),
+        "segments": segments,
+        "language": info.language,
+        "language_probability": round(info.language_probability, 3),
+        "duration_s": round(info.duration, 2),
+        "srt_path": str(srt_path),
+        "model_size": model_size,
+        "source": "transcribe/faster-whisper",
     }
+
+
+def _srt_ts(t: float) -> str:
+    """Format seconds as an SRT timestamp (HH:MM:SS,mmm)."""
+    if t < 0:
+        t = 0
+    h = int(t // 3600)
+    m = int((t % 3600) // 60)
+    s = int(t % 60)
+    ms = int(round((t - int(t)) * 1000))
+    if ms == 1000:
+        s += 1
+        ms = 0
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"

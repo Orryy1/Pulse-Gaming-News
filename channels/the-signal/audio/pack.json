@@ -1,0 +1,12 @@
+{
+  "id": "signal-v1",
+  "channel_id": "the-signal",
+  "name": "The Signal v1",
+  "root_path": "channels/the-signal/audio",
+  "bpm": 112,
+  "key_signature": "Em",
+  "license": "owned",
+  "_note": "Owned stems pending production. Drop .wav files into this directory and list them in `assets` to override the pulse-v1 fallback. Roles supported: intro, outro, bed_primary, bed_breaking, sting_verified, sting_rumour, sting_breaking, transition, bumper.",
+  "_target_voice": "EXAVITQu4vr4xnSDxMaL",
+  "assets": []
+}

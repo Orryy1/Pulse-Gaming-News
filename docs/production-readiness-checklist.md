@@ -30,7 +30,7 @@ Baseline: HEAD `d36e3c9` (10 commits past `main@d553411`).
 - [ ] ~14-day shadow log review — compare `[dedupe-shadow]` log lines against actual publisher.js decisions for mismatches
 - [ ] Phase 1 live verification — uvicorn cold-boot completes end-to-end at least once without the safetensors deadlock. Requires a py-spy dump of the hang first so we know what we're fixing.
 - [ ] Migration 011 applied in prod — column exists on `stories` table. **Auto-applied** if the migration runner runs at boot; verify via `node lib/migrate.js status`.
-- [ ] Phase 3B migrated — `discord_approve.js` approval flow uses `db.upsertStory` so Discord approvals survive the read flip. (The `cloud.js` half of this item is retired: cloud.js was deleted in Phase B and its `/approve/:id` redirect was absorbed into `server.js`.)
+- [x] Phase 3B migrated — `discord_approve.js` approval flow now persists via `db.upsertStory` through the `applyApproval` / `applyRejection` helpers. No direct `fs.readJson` / `fs.writeJson("daily_news.json", …)` left in that file. Covered by `tests/services/discord-approve-persistence.test.js`. (The `cloud.js` half of this item is already closed — cloud.js was deleted in Phase B and its `/approve/:id` redirect was absorbed into `server.js`.)
 
 ### Soft gates — can ship with risk-acknowledged
 

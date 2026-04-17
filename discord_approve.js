@@ -18,8 +18,59 @@ const path = require("path");
 const http = require("http");
 const os = require("os");
 const dotenv = require("dotenv");
+const db = require("./lib/db");
 
 dotenv.config({ override: true });
+
+/**
+ * Apply the operator's approval choice to a story and persist it via the
+ * canonical SQLite-backed path. Extracted from the `/api/approve` handler
+ * so the Phase C-aligned persistence behaviour has a testable surface
+ * without spinning up an HTTP server.
+ *
+ * Returns the updated story on success, or null if the id was not found.
+ * On error, throws — the HTTP layer catches and maps to a generic 400.
+ *
+ * Why this wraps db.upsertStory instead of a fs.writeJson:
+ *   - Under USE_SQLITE=true this becomes a single-row upsert on the
+ *     stories table (no full-file rewrite, no JSON growth footgun).
+ *   - Under USE_SQLITE!=true it falls back to the exact pre-patch
+ *     read-mutate-write-JSON behaviour via db.upsertStory's legacy
+ *     branch, so dev loops without a DB still work.
+ */
+async function applyApproval(
+  storyId,
+  { imageIndex, titleIndex } = {},
+  { dbHandle = db } = {},
+) {
+  if (!storyId) throw new Error("storyId required");
+  const story = await dbHandle.getStory(storyId);
+  if (!story) return null;
+
+  story.approved = true;
+  if (imageIndex !== undefined && story.candidate_images?.[imageIndex]) {
+    story.selected_image = story.candidate_images[imageIndex].path;
+    // Also set as primary background so the produce pipeline picks it up
+    // without the operator having to reselect.
+    story.background_images = [story.candidate_images[imageIndex].path];
+  }
+  if (titleIndex !== undefined && story.title_options?.[titleIndex]) {
+    story.selected_title = story.title_options[titleIndex];
+  }
+  await dbHandle.upsertStory(story);
+  return story;
+}
+
+/** Symmetric reject helper. See applyApproval for the persistence
+ * contract. */
+async function applyRejection(storyId, { dbHandle = db } = {}) {
+  if (!storyId) throw new Error("storyId required");
+  const story = await dbHandle.getStory(storyId);
+  if (!story) return null;
+  story.approved = false;
+  await dbHandle.upsertStory(story);
+  return story;
+}
 
 const WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
 const APPROVAL_PORT = parseInt(process.env.APPROVAL_PORT || "3002");
@@ -125,10 +176,16 @@ async function sendStoryToDiscord(story, index, baseUrl) {
  * Start the approval web server and send stories to Discord.
  */
 async function sendForApproval() {
-  console.log("[discord] Loading daily_news.json...");
+  console.log("[discord] Loading stories from canonical store...");
 
-  if (!(await fs.pathExists("daily_news.json"))) {
-    console.log("[discord] ERROR: daily_news.json not found.");
+  // Phase C: read via the canonical persistence surface. Under
+  // USE_SQLITE=true this hits the stories table directly; under JSON
+  // mode it falls back to daily_news.json exactly as before.
+  const stories = await db.getStories();
+  if (!Array.isArray(stories) || stories.length === 0) {
+    console.log(
+      "[discord] ERROR: no stories found (SQLite empty or daily_news.json missing).",
+    );
     return;
   }
 
@@ -151,7 +208,6 @@ async function sendForApproval() {
 
   console.log(`[discord] Approval page ready: ${baseUrl}`);
 
-  const stories = await fs.readJson("daily_news.json");
   const toSend = stories.filter((s) => s.full_script).slice(0, 10);
 
   console.log(`[discord] Sending ${toSend.length} stories to Discord...`);
@@ -214,44 +270,45 @@ async function startApprovalServer() {
       return;
     }
 
-    // API: Get all stories
+    // API: Get all stories — reads from the canonical persistence surface
+    // (SQLite when USE_SQLITE=true, daily_news.json as the dev fallback).
     if (pathname === "/api/stories") {
-      const data = await fs.readJson("daily_news.json");
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(data.filter((s) => s.full_script).slice(0, 10)));
+      try {
+        const data = await db.getStories();
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify(
+            (Array.isArray(data) ? data : [])
+              .filter((s) => s.full_script)
+              .slice(0, 10),
+          ),
+        );
+      } catch (err) {
+        console.error(`[approve] /api/stories failed: ${err.message}`);
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Internal error" }));
+      }
       return;
     }
 
-    // API: Approve a story
+    // API: Approve a story. Phase C: persists via db.upsertStory so
+    // SQLite is the durable record; legacy JSON writes are handled by
+    // the upsertStory fallback only when USE_SQLITE is off.
     if (pathname === "/api/approve" && req.method === "POST") {
       let body = "";
       req.on("data", (c) => (body += c));
       req.on("end", async () => {
         try {
           const { storyId, imageIndex, titleIndex } = JSON.parse(body);
-          const data = await fs.readJson("daily_news.json");
-          const story = data.find((s) => s.id === storyId);
+          const story = await applyApproval(storyId, {
+            imageIndex,
+            titleIndex,
+          });
           if (story) {
-            story.approved = true;
-            if (
-              imageIndex !== undefined &&
-              story.candidate_images?.[imageIndex]
-            ) {
-              story.selected_image = story.candidate_images[imageIndex].path;
-              // Also set as primary background
-              story.background_images = [
-                story.candidate_images[imageIndex].path,
-              ];
-            }
-            if (titleIndex !== undefined && story.title_options?.[titleIndex]) {
-              story.selected_title = story.title_options[titleIndex];
-            }
-            await fs.writeJson("daily_news.json", data, { spaces: 2 });
             console.log(
-              `[approve] ✅ Approved: ${story.title.substring(0, 50)}`,
+              `[approve] ✅ Approved: ${(story.title || "").substring(0, 50)}`,
             );
-
-            // Notify Discord
+            // Notify Discord (best-effort)
             try {
               await axios.post(WEBHOOK_URL, {
                 content: `✅ **Approved:** ${story.selected_title || story.title}`,
@@ -273,20 +330,17 @@ async function startApprovalServer() {
       return;
     }
 
-    // API: Reject a story
+    // API: Reject a story. Same persistence contract as approve.
     if (pathname === "/api/reject" && req.method === "POST") {
       let body = "";
       req.on("data", (c) => (body += c));
       req.on("end", async () => {
         try {
           const { storyId } = JSON.parse(body);
-          const data = await fs.readJson("daily_news.json");
-          const story = data.find((s) => s.id === storyId);
+          const story = await applyRejection(storyId);
           if (story) {
-            story.approved = false;
-            await fs.writeJson("daily_news.json", data, { spaces: 2 });
             console.log(
-              `[approve] ❌ Skipped: ${story.title.substring(0, 50)}`,
+              `[approve] ❌ Skipped: ${(story.title || "").substring(0, 50)}`,
             );
           }
           res.writeHead(200, { "Content-Type": "application/json" });
@@ -599,7 +653,12 @@ load();
 </html>`;
 }
 
-module.exports = { sendForApproval, startApprovalServer };
+module.exports = {
+  sendForApproval,
+  startApprovalServer,
+  applyApproval,
+  applyRejection,
+};
 
 if (require.main === module) {
   const mode = process.argv[2];

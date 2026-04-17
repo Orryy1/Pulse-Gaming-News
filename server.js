@@ -1116,12 +1116,20 @@ async function startAutonomousScheduler() {
     return;
   }
 
-  // Phase 3: unified jobs queue (feature-flagged). When USE_JOB_QUEUE=true
-  // we bypass the legacy cron block below and drive everything through
-  // lib/scheduler.js -> lib/services/jobs-runner.js. The legacy path
-  // stays as the default so nothing changes for existing deployments
-  // until the flag is flipped.
-  if (process.env.USE_JOB_QUEUE === "true") {
+  // Phase D: unified jobs queue is now the canonical dispatcher. The
+  // lib/dispatch-mode helper picks between `queue` (default, and the
+  // only mode reachable in production) and `legacy_dev` (explicit dev
+  // opt-out via USE_JOB_QUEUE=false). Bootstrap failure in production
+  // throws and refuses to start — no silent fall-through to the
+  // legacy cron registry, which was the 17-April duplicate-dispatch
+  // foot-gun.
+  const { resolveDispatchMode } = require("./lib/dispatch-mode");
+  const dispatch = resolveDispatchMode();
+  console.log(
+    `[server] dispatch mode=${dispatch.mode} strict=${dispatch.strict} reason=${dispatch.reason}`,
+  );
+
+  if (dispatch.mode === "queue") {
     try {
       const bootstrap = require("./lib/bootstrap-queue");
       await bootstrap.start({
@@ -1132,16 +1140,43 @@ async function startAutonomousScheduler() {
       });
       schedulerRunning = true;
       console.log(
-        "[server] USE_JOB_QUEUE=true -> scheduler + runner started via bootstrap-queue",
+        "[server] canonical scheduler up via bootstrap-queue (lib/scheduler.js + jobs-runner)",
       );
       return;
     } catch (err) {
+      if (dispatch.strict) {
+        // Production safety: legacy cron is NOT reachable from here.
+        // Refusing to start is preferable to silently arming a parallel
+        // dispatcher in-process.
+        console.error(
+          `[server] FATAL: bootstrap-queue failed in production — refusing to start legacy cron fallback. ` +
+            `Original error: ${err.message}`,
+        );
+        throw err;
+      }
       console.error(
-        `[server] bootstrap-queue failed, falling back to legacy cron: ${err.message}`,
+        `[server] bootstrap-queue failed in dev (${err.message}) — no scheduler will run this process. ` +
+          `Set USE_JOB_QUEUE=false to intentionally use the legacy cron block for local dev.`,
       );
+      return;
     }
   }
 
+  // dispatch.mode === 'legacy_dev' — explicit dev opt-in only. Never
+  // reached in production.
+  console.log(
+    "[server] WARNING: legacy in-process cron registry active (USE_JOB_QUEUE=false, dev only). " +
+      "This path is DEPRECATED — queue mode is canonical in production.",
+  );
+  await _registerLegacyDevCronRegistry();
+}
+
+// Quarantined pre-Phase-D cron registry. Do not call this from production
+// paths. Kept only as an escape hatch for local dev against the legacy
+// JSON pipeline (USE_SQLITE!=true). The contents below are unchanged
+// from the pre-Phase-D layout so diffs stay reviewable; future cleanup
+// can delete this block once nobody runs the JSON pipeline locally.
+async function _registerLegacyDevCronRegistry() {
   schedulerRunning = true;
   const sendDiscord = require("./notify");
 

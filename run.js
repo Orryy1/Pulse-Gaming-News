@@ -235,11 +235,18 @@ async function runSchedule() {
   console.log("[run] All times are GMT/UTC");
   console.log("");
 
-  // Phase 3 path: unified durable jobs queue behind USE_JOB_QUEUE flag.
-  // When enabled, this process runs both the cron dispatcher (which
-  // enqueues jobs) and a runner that claims and executes them. When off,
-  // the legacy cron registrations below run as-is.
-  if (process.env.USE_JOB_QUEUE === "true") {
+  // Phase D: canonical queue is the default. lib/dispatch-mode enforces
+  // that production always uses the queue (no legacy escape) and that
+  // bootstrap failure in prod throws rather than silently arming the
+  // legacy cron block below. USE_JOB_QUEUE=false in dev is the only
+  // way to reach the legacy registry.
+  const { resolveDispatchMode } = require("./lib/dispatch-mode");
+  const dispatch = resolveDispatchMode();
+  console.log(
+    `[run] dispatch mode=${dispatch.mode} strict=${dispatch.strict} reason=${dispatch.reason}`,
+  );
+
+  if (dispatch.mode === "queue") {
     try {
       const bootstrap = require("./lib/bootstrap-queue");
       await bootstrap.start({
@@ -248,17 +255,40 @@ async function runSchedule() {
         runRunner: true,
         autoSeed: true,
       });
-      console.log("[run] USE_JOB_QUEUE=true -> scheduler + runner started");
-      console.log("[run] (legacy cron registrations skipped)");
+      console.log(
+        "[run] canonical scheduler up via bootstrap-queue (lib/scheduler.js + jobs-runner)",
+      );
       console.log("[run] Press Ctrl+C to stop\n");
       return;
     } catch (err) {
+      if (dispatch.strict) {
+        console.error(
+          `[run] FATAL: bootstrap-queue failed in production — refusing to start legacy cron fallback. ` +
+            `Original error: ${err.message}`,
+        );
+        throw err;
+      }
       console.error(
-        `[run] bootstrap-queue failed, falling back to legacy cron: ${err.message}`,
+        `[run] bootstrap-queue failed in dev (${err.message}) — no scheduler will run. ` +
+          `Set USE_JOB_QUEUE=false to intentionally use the legacy cron block for local dev.`,
       );
+      return;
     }
   }
 
+  // dispatch.mode === 'legacy_dev' — explicit dev opt-in only. Never reached in production.
+  console.log(
+    "[run] WARNING: legacy in-process cron registry active (USE_JOB_QUEUE=false, dev only). " +
+      "This path is DEPRECATED — queue mode is canonical in production.",
+  );
+  await _registerLegacyDevCronRegistry();
+}
+
+// Quarantined pre-Phase-D cron registry. Do not call from production.
+// Kept as an escape hatch for dev work against the legacy JSON pipeline
+// (USE_SQLITE!=true). Contents unchanged from pre-Phase-D so diffs stay
+// small; future cleanup can delete once the JSON path is retired.
+async function _registerLegacyDevCronRegistry() {
   // --- HUNT CYCLES (4x daily at optimal news-breaking windows) ---
 
   // 06:00 GMT -Morning hunt: catches overnight US leaks + Reddit activity

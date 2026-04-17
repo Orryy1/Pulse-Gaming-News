@@ -487,7 +487,25 @@ function readNews() {
 }
 
 function writeNews(data) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), "utf-8");
+  // Defensive: JSON.stringify on a very large array can throw RangeError
+  // ("Invalid string length") when the serialised output exceeds V8's
+  // String::kMaxLength (~512MB). That's what killed the 2026-04-17 22:38
+  // hunt. The merge bug that caused the growth is now fixed in runHunter,
+  // but we also guard the write itself so any future runaway growth
+  // fails loudly with a clear message instead of a bare "Invalid string
+  // length" that takes hours to root-cause.
+  try {
+    const serialised = JSON.stringify(data, null, 2);
+    fs.writeFileSync(DATA_FILE, serialised, "utf-8");
+  } catch (err) {
+    const rowCount = Array.isArray(data) ? data.length : "n/a";
+    console.log(
+      `[server] writeNews: JSON serialisation failed (rows=${rowCount}, error=${err.message}). ` +
+        `SQLite remains the canonical store — JSON mirror skipped for this write.`,
+    );
+    // Fall through to SQLite sync below. Do NOT rethrow — the hunt
+    // pipeline should not die because the JSON mirror is too big.
+  }
   // When SQLite is enabled, keep the database in sync. This half of
   // the dual-write predates Phase 3A — the news (now) is that reads
   // are no longer JSON-only, so the sync direction finally matters
@@ -1028,10 +1046,18 @@ async function runHunter() {
       );
       await process_stories();
 
-      // Merge newly processed stories with existing
+      // Merge newly processed stories with existing. Dedup by id — without
+      // this, `processed` already contains the full post-processor state
+      // AND we append `existingStories` again, so the array doubles every
+      // hunt cycle. Over enough cycles JSON.stringify(merged) hits V8's
+      // String::kMaxLength and the hunt fails with "Invalid string length"
+      // (observed 2026-04-17 22:38 in #pulse-gaming notifications). The
+      // run.js flow already had this dedup — server.js just didn't.
       const processed = readNews();
       if (existingStories.length > 0 && processed.length > 0) {
-        const merged = [...processed, ...existingStories];
+        const processedIds = new Set(processed.map((s) => s.id));
+        const toMerge = existingStories.filter((s) => !processedIds.has(s.id));
+        const merged = [...processed, ...toMerge];
         writeNews(merged);
       }
     }

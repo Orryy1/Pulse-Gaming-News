@@ -105,6 +105,30 @@ aligner = Aligner(language="en", device=DEVICE)
 # fight for VRAM and slow cold start.
 _engine_cache: Dict[str, VoxCPMEngine] = {}
 
+# Service readiness state. Phase F stability patch addition: callers
+# (Node-side bootstrap-queue, workers/local-worker.js, operators) need a
+# way to distinguish "server process up, not ready for GPU work yet"
+# from "server up AND default engine loaded AND ready to synth". The
+# state transitions:
+#   init          — module imported, startup event hasn't fired
+#   warming       — PREWARM_ON_BOOT path has entered eng.load()
+#   ready         — /v1/infer can handle requests
+#   ready-skipped — PREWARM_ON_BOOT=false, first /v1/infer call will pay
+#                   the cold-start cost but the service technically
+#                   accepts requests now
+#   failed        — prewarm raised; the service still accepts requests
+#                   but callers should expect the first /v1/infer to
+#                   pay the cold-start (or hit the same failure)
+SERVICE_STATE: Dict[str, object] = {
+    "phase": "init",
+    "ready": False,
+    "warming": False,
+    "prewarm_voice_id": None,
+    "last_load_ms": None,
+    "last_error": None,
+    "boot_ts": None,
+}
+
 
 def _resolve_ref_path(ref_path: Optional[str]) -> Optional[str]:
     """Voices.json paths are relative to tts_server/. Resolve to absolute so
@@ -222,6 +246,8 @@ def _on_startup():
     call).
     """
     boot_ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    SERVICE_STATE["boot_ts"] = boot_ts
+    SERVICE_STATE["prewarm_voice_id"] = PREWARM_VOICE_ID
     log.info(
         f"[boot] pulse-gaming tts_server starting ts={boot_ts} "
         f"device={DEVICE} voices={len(VOICES_MAP)} prewarm_on_boot={PREWARM_ON_BOOT} "
@@ -232,9 +258,16 @@ def _on_startup():
             "[boot] prewarm skipped — set PREWARM_ON_BOOT=true to warm the "
             "default engine during startup"
         )
+        # Service is accepting requests, but the first /v1/infer will
+        # still pay the cold-start. Callers that want strict readiness
+        # should POST /v1/prewarm before dispatching jobs.
+        SERVICE_STATE["phase"] = "ready-skipped"
+        SERVICE_STATE["ready"] = True
         return
     try:
         log.info(f"[boot] prewarming voice_id={PREWARM_VOICE_ID}")
+        SERVICE_STATE["phase"] = "warming"
+        SERVICE_STATE["warming"] = True
         t0 = time.monotonic()
         eng = _get_engine(PREWARM_VOICE_ID)
         # VoxCPMEngine defers HuggingFace weight load to first synth(). Force
@@ -245,11 +278,23 @@ def _on_startup():
         if hasattr(eng, "load"):
             eng.load()
         dt_ms = int((time.monotonic() - t0) * 1000)
+        SERVICE_STATE["last_load_ms"] = dt_ms
+        SERVICE_STATE["phase"] = "ready"
+        SERVICE_STATE["ready"] = True
+        SERVICE_STATE["warming"] = False
         log.info(
             f"[boot] prewarm complete voice_id={PREWARM_VOICE_ID} "
             f"elapsed_ms={dt_ms} engine_count={len(_engine_cache)}"
         )
     except Exception as e:
+        SERVICE_STATE["phase"] = "failed"
+        SERVICE_STATE["warming"] = False
+        SERVICE_STATE["last_error"] = str(e)
+        # Service still accepts requests — callers can retry /v1/prewarm
+        # manually. "ready=True" here means "the HTTP server responds",
+        # not "GPU work will succeed". Distinguishing the two is why
+        # SERVICE_STATE.phase exists alongside SERVICE_STATE.ready.
+        SERVICE_STATE["ready"] = True
         log.exception(
             f"[boot] prewarm FAILED voice_id={PREWARM_VOICE_ID}: {e} — "
             "first /v1/infer call will pay the cold-start cost instead"
@@ -275,6 +320,17 @@ def health():
         "default_ref_voice": REF_VOICE_PATH or None,
         "aligner_loaded": aligner._model is not None,
         "engine_count": len(_engine_cache),
+        # Phase F readiness state. Callers that need to know whether the
+        # GPU engine is actually resident (as opposed to "HTTP responds")
+        # should read .phase and .ready together — see SERVICE_STATE
+        # comment in this file for the full state machine.
+        "phase": SERVICE_STATE["phase"],
+        "ready": SERVICE_STATE["ready"],
+        "warming": SERVICE_STATE["warming"],
+        "prewarm_voice_id": SERVICE_STATE["prewarm_voice_id"],
+        "last_load_ms": SERVICE_STATE["last_load_ms"],
+        "last_error": SERVICE_STATE["last_error"],
+        "boot_ts": SERVICE_STATE["boot_ts"],
     }
 
 
@@ -340,6 +396,9 @@ def prewarm(req: PrewarmRequest):
         reused = True
 
     t0 = time.monotonic()
+    prior_phase = SERVICE_STATE["phase"]
+    SERVICE_STATE["phase"] = "warming"
+    SERVICE_STATE["warming"] = True
     try:
         eng = _get_engine(voice_id)
         # Force eager weight load — VoxCPMEngine defers it to first synth()
@@ -347,9 +406,22 @@ def prewarm(req: PrewarmRequest):
         if hasattr(eng, "load"):
             eng.load()
     except Exception as e:
+        SERVICE_STATE["phase"] = "failed"
+        SERVICE_STATE["warming"] = False
+        SERVICE_STATE["last_error"] = str(e)
         log.exception(f"[prewarm] failed voice_id={voice_id}")
         raise HTTPException(500, f"prewarm failed: {e}")
     dt_ms = int((time.monotonic() - t0) * 1000)
+    # Only flip to "ready" if the prior phase wasn't something stronger
+    # (e.g. already ready from the boot prewarm) or weaker in a way
+    # that indicates the rest of the service is unhealthy.
+    SERVICE_STATE["phase"] = "ready"
+    SERVICE_STATE["ready"] = True
+    SERVICE_STATE["warming"] = False
+    SERVICE_STATE["last_load_ms"] = dt_ms
+    SERVICE_STATE["prewarm_voice_id"] = voice_id
+    SERVICE_STATE["last_error"] = None  # clear any prior failure
+    _ = prior_phase  # retained for debug/log extension
     log.info(
         f"[prewarm] voice_id={voice_id} reused={reused} elapsed_ms={dt_ms} "
         f"engine_count={len(_engine_cache)}"

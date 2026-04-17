@@ -583,8 +583,6 @@ async function _publishNextStoryInner() {
     (s) =>
       s.id !== story.id &&
       s.youtube_post_id &&
-      s.youtube_post_id !== "DUPE_SKIPPED" &&
-      s.youtube_post_id !== "DUPE_BLOCKED" &&
       titlesSimilar(s.title, story.title),
   );
   const ytPrior = getPlatformStatus({
@@ -670,8 +668,6 @@ async function _publishNextStoryInner() {
     (s) =>
       s.id !== story.id &&
       s.tiktok_post_id &&
-      s.tiktok_post_id !== "DUPE_SKIPPED" &&
-      s.tiktok_post_id !== "DUPE_BLOCKED" &&
       titlesSimilar(s.title, story.title),
   );
   const ttPrior = getPlatformStatus({
@@ -744,8 +740,6 @@ async function _publishNextStoryInner() {
     (s) =>
       s.id !== story.id &&
       s.instagram_media_id &&
-      s.instagram_media_id !== "DUPE_SKIPPED" &&
-      s.instagram_media_id !== "DUPE_BLOCKED" &&
       titlesSimilar(s.title, story.title),
   );
   const igPrior = getPlatformStatus({
@@ -812,8 +806,6 @@ async function _publishNextStoryInner() {
     (s) =>
       s.id !== story.id &&
       s.facebook_post_id &&
-      s.facebook_post_id !== "DUPE_SKIPPED" &&
-      s.facebook_post_id !== "DUPE_BLOCKED" &&
       titlesSimilar(s.title, story.title),
   );
   const fbPrior = getPlatformStatus({
@@ -880,8 +872,6 @@ async function _publishNextStoryInner() {
     (s) =>
       s.id !== story.id &&
       s.twitter_post_id &&
-      s.twitter_post_id !== "DUPE_SKIPPED" &&
-      s.twitter_post_id !== "DUPE_BLOCKED" &&
       titlesSimilar(s.title, story.title),
   );
   const twPrior = getPlatformStatus({

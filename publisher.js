@@ -838,21 +838,50 @@ async function _publishNextStoryInner() {
     }
   }
 
-  // Post to Discord channels, video drops only (news already posted by processor.js)
+  // Post to Discord channels, video drops only (news already posted by processor.js).
+  //
+  // Migration 012 replaces the old `!isRetry` derived-state guard with
+  // durable per-story markers so a re-render that clears platform ids
+  // cannot re-trigger #video-drops or #polls. isRetry is still used for
+  // the YouTube engagement pass / blog gen / pinned comment above — that
+  // logic is correctly "only on first successful publish" and doesn't
+  // have the re-render-resets-ids failure mode that Discord did.
   try {
     const { postVideoUpload, postStoryPoll } = require("./discord/auto_post");
-    // Only post to #video-drops on first publish with an actual video URL
-    if (
-      !isRetry &&
-      (story.youtube_url || story.tiktok_post_id || story.instagram_media_id)
-    ) {
-      await postVideoUpload(story);
+    const {
+      shouldPostVideoDrop,
+      shouldPostStoryPoll,
+      markVideoDropPosted,
+      markStoryPollPosted,
+    } = require("./lib/services/discord-post-gate");
+
+    let postedVideoDropNow = false;
+    if (shouldPostVideoDrop(story)) {
+      const msg = await postVideoUpload(story);
+      if (msg) {
+        markVideoDropPosted(story);
+        postedVideoDropNow = true;
+      }
     }
-    if (!isRetry) {
-      await postStoryPoll(story);
+
+    let postedPollNow = false;
+    if (shouldPostStoryPoll(story)) {
+      const pollMsg = await postStoryPoll(story);
+      if (pollMsg) {
+        markStoryPollPosted(story);
+        postedPollNow = true;
+      }
     }
-    if (!isRetry)
-      console.log(`[publisher] Discord: posted to video-drops + polls`);
+
+    if (postedVideoDropNow || postedPollNow) {
+      console.log(
+        `[publisher] Discord: video-drops=${postedVideoDropNow} poll=${postedPollNow}`,
+      );
+    } else {
+      console.log(
+        `[publisher] Discord: skipped (video_drop_marker=${!!story.discord_video_drop_posted_at} poll_marker=${!!story.discord_story_poll_posted_at})`,
+      );
+    }
   } catch (err) {
     console.log(`[publisher] Discord post skipped: ${err.message}`);
   }

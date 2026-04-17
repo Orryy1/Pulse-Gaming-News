@@ -21,8 +21,8 @@ test("runMigrations: applies every migration cleanly to fresh DB", () => {
   const db = new Database(":memory:");
   const res = runMigrations(db, { log: () => {} });
   assert.ok(
-    res.applied.length >= 11,
-    `expected >=11 migrations, got ${res.applied.length}`,
+    res.applied.length >= 12,
+    `expected >=12 migrations, got ${res.applied.length}`,
   );
   assert.equal(res.skipped.length, 0);
 
@@ -38,7 +38,7 @@ test("runMigrations: second run is a no-op (all skipped)", () => {
   runMigrations(db, { log: () => {} });
   const second = runMigrations(db, { log: () => {} });
   assert.equal(second.applied.length, 0);
-  assert.ok(second.skipped.length >= 11);
+  assert.ok(second.skipped.length >= 12);
 });
 
 test("migration 011: stories.source_url_hash column + index exist", () => {
@@ -117,4 +117,127 @@ test("after migration 011: publish-dedupe url-hash branch is active", () => {
   assert.equal(decision.decision, "block_dupe");
   assert.equal(decision.reason, "url-hash");
   assert.equal(decision.existing.external_id, "ig-orig");
+});
+
+test("migration 012: stories Discord marker columns + partial indexes exist", () => {
+  const db = new Database(":memory:");
+  runMigrations(db, { log: () => {} });
+
+  const cols = db
+    .prepare("SELECT name FROM pragma_table_info('stories')")
+    .all()
+    .map((r) => r.name);
+  assert.ok(
+    cols.includes("discord_video_drop_posted_at"),
+    `discord_video_drop_posted_at missing; got: ${cols.join(", ")}`,
+  );
+  assert.ok(
+    cols.includes("discord_story_poll_posted_at"),
+    `discord_story_poll_posted_at missing; got: ${cols.join(", ")}`,
+  );
+
+  const indexes = db
+    .prepare(
+      "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='stories'",
+    )
+    .all()
+    .map((r) => r.name);
+  assert.ok(indexes.includes("idx_stories_discord_video_drop"));
+  assert.ok(indexes.includes("idx_stories_discord_story_poll"));
+});
+
+test("migration 012 backfill: rows with real platform uploads get markers; DUPE_ rows do not", () => {
+  const db = new Database(":memory:");
+  // Apply only 001-011 first so we can seed data BEFORE migration 012 runs.
+  // That mirrors the real upgrade path: existing rows exist; migration 012
+  // has to decide who gets backfilled.
+  const fs = require("fs");
+  const path = require("path");
+  const migDir = path.join(__dirname, "..", "..", "db", "migrations");
+  const preFiles = fs
+    .readdirSync(migDir)
+    .filter((f) => /^0(0[1-9]|1[01])_.*\.sql$/.test(f))
+    .sort();
+  for (const f of preFiles) {
+    db.exec(fs.readFileSync(path.join(migDir, f), "utf8"));
+  }
+
+  // Seed four representative rows:
+  //  A) real YouTube upload — should be backfilled
+  //  B) only DUPE_ sentinels — should NOT be backfilled
+  //  C) totally unpublished — should NOT be backfilled
+  //  D) mix: real Instagram, DUPE_ YouTube — should be backfilled
+  db.prepare(
+    `INSERT INTO stories
+       (id, title, url, youtube_post_id, youtube_url, youtube_published_at, updated_at)
+     VALUES ('storyA', 'Real YT', 'https://ex.com/a',
+             'yt-real-1', 'https://youtu.be/yt-real-1',
+             '2026-04-10T12:00:00Z', '2026-04-10T12:00:00Z')`,
+  ).run();
+  db.prepare(
+    `INSERT INTO stories
+       (id, title, url, youtube_post_id, tiktok_post_id, instagram_media_id, updated_at)
+     VALUES ('storyB', 'All dupes', 'https://ex.com/b',
+             'DUPE_BLOCKED_yt', 'DUPE_BLOCKED_tt', 'DUPE_SKIPPED_ig',
+             '2026-04-11T12:00:00Z')`,
+  ).run();
+  db.prepare(
+    `INSERT INTO stories (id, title, url, updated_at)
+     VALUES ('storyC', 'Unpublished', 'https://ex.com/c', '2026-04-12T12:00:00Z')`,
+  ).run();
+  db.prepare(
+    `INSERT INTO stories
+       (id, title, url, instagram_media_id, youtube_post_id, published_at, updated_at)
+     VALUES ('storyD', 'Mix', 'https://ex.com/d',
+             'ig-real-99', 'DUPE_BLOCKED_yt',
+             '2026-04-13T12:00:00Z', '2026-04-13T12:00:00Z')`,
+  ).run();
+
+  // Now apply migration 012.
+  const m12 = fs.readFileSync(
+    path.join(migDir, "012_stories_discord_post_markers.sql"),
+    "utf8",
+  );
+  db.exec(m12);
+
+  const get = (id) =>
+    db
+      .prepare(
+        `SELECT id, discord_video_drop_posted_at, discord_story_poll_posted_at
+         FROM stories WHERE id = ?`,
+      )
+      .get(id);
+
+  const a = get("storyA");
+  assert.ok(
+    a.discord_video_drop_posted_at,
+    "storyA should have video-drop marker backfilled",
+  );
+  assert.ok(
+    a.discord_story_poll_posted_at,
+    "storyA should have story-poll marker backfilled",
+  );
+
+  const b = get("storyB");
+  assert.equal(
+    b.discord_video_drop_posted_at,
+    null,
+    "storyB (DUPE only) must NOT be backfilled for video-drop",
+  );
+  assert.equal(
+    b.discord_story_poll_posted_at,
+    null,
+    "storyB (DUPE only) must NOT be backfilled for story-poll",
+  );
+
+  const c = get("storyC");
+  assert.equal(c.discord_video_drop_posted_at, null);
+  assert.equal(c.discord_story_poll_posted_at, null);
+
+  const d = get("storyD");
+  assert.ok(
+    d.discord_video_drop_posted_at,
+    "storyD (real IG + DUPE YT) should be backfilled for video-drop",
+  );
+  assert.ok(d.discord_story_poll_posted_at);
 });

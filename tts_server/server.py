@@ -236,7 +236,14 @@ def _on_startup():
     try:
         log.info(f"[boot] prewarming voice_id={PREWARM_VOICE_ID}")
         t0 = time.monotonic()
-        _get_engine(PREWARM_VOICE_ID)
+        eng = _get_engine(PREWARM_VOICE_ID)
+        # VoxCPMEngine defers HuggingFace weight load to first synth(). Force
+        # the eager load here so PREWARM_ON_BOOT actually pays the cost now
+        # instead of at first real request. The Phase F drill found the
+        # shell-only prewarm returned in 0ms and left the next /v1/infer
+        # call to eat 3-5 minutes — defeating the entire point of the flag.
+        if hasattr(eng, "load"):
+            eng.load()
         dt_ms = int((time.monotonic() - t0) * 1000)
         log.info(
             f"[boot] prewarm complete voice_id={PREWARM_VOICE_ID} "
@@ -334,7 +341,11 @@ def prewarm(req: PrewarmRequest):
 
     t0 = time.monotonic()
     try:
-        _get_engine(voice_id)
+        eng = _get_engine(voice_id)
+        # Force eager weight load — VoxCPMEngine defers it to first synth()
+        # otherwise, and a shell-only prewarm doesn't help the runner at all.
+        if hasattr(eng, "load"):
+            eng.load()
     except Exception as e:
         log.exception(f"[prewarm] failed voice_id={voice_id}")
         raise HTTPException(500, f"prewarm failed: {e}")

@@ -19,6 +19,46 @@ function titlesSimilar(a, b) {
   return intersection.length / union.size > 0.5;
 }
 
+/**
+ * Phase 2C shadow check. Logs what lib/services/publish-dedupe would
+ * decide for (story, platform) without changing any behaviour. Gated
+ * on USE_CANONICAL_DEDUPE=shadow + USE_SQLITE=true. The idea is to run
+ * this in prod for a few days, compare "shadow said block" vs what the
+ * legacy code actually did, and only flip to active mode once the log
+ * record proves parity (or reveals a fixable mismatch).
+ *
+ * Never throws. Never mutates story or repos. Safe to call on every
+ * platform boundary. The whole block short-circuits when the flag is
+ * unset/off — zero cost in the default config.
+ */
+function shadowCanonicalDedupe(story, platform, stories) {
+  if (process.env.USE_CANONICAL_DEDUPE !== "shadow") return;
+  if (process.env.USE_SQLITE !== "true") return;
+  try {
+    const { getRepos } = require("./lib/repositories");
+    const { decidePublish } = require("./lib/services/publish-dedupe");
+    const repos = getRepos();
+    const decision = decidePublish(story, platform, repos, {
+      legacyStoriesArray: stories,
+    });
+    const existingRef = decision.existing
+      ? decision.existing.external_id ||
+        decision.existing.story_id_ref ||
+        decision.existing.story_id ||
+        "-"
+      : "-";
+    console.log(
+      `[dedupe-shadow] story=${story.id} platform=${platform} ` +
+        `decision=${decision.decision} reason=${decision.reason || "-"} ` +
+        `existing=${existingRef}`,
+    );
+  } catch (err) {
+    console.log(
+      `[dedupe-shadow] error story=${story.id} platform=${platform}: ${err.message}`,
+    );
+  }
+}
+
 /*
   Autonomous Publisher - 3x Daily Multi-Platform Posting
 
@@ -427,6 +467,7 @@ async function _publishNextStoryInner() {
   };
 
   // YouTube - skip if already published or if a similar title was already uploaded
+  shadowCanonicalDedupe(story, "youtube", stories);
   const ytTitleDupe = stories.find(
     (s) =>
       s.id !== story.id &&
@@ -476,6 +517,7 @@ async function _publishNextStoryInner() {
   }
 
   // TikTok - skip if already published or near-duplicate title already uploaded
+  shadowCanonicalDedupe(story, "tiktok", stories);
   const ttTitleDupe = stories.find(
     (s) =>
       s.id !== story.id &&
@@ -528,6 +570,7 @@ async function _publishNextStoryInner() {
   }
 
   // Instagram - skip if already published or near-duplicate title already uploaded
+  shadowCanonicalDedupe(story, "instagram_reel", stories);
   const igTitleDupe = stories.find(
     (s) =>
       s.id !== story.id &&
@@ -574,6 +617,7 @@ async function _publishNextStoryInner() {
   }
 
   // Facebook Reels - skip if already published or near-duplicate title already uploaded
+  shadowCanonicalDedupe(story, "facebook_reel", stories);
   const fbTitleDupe = stories.find(
     (s) =>
       s.id !== story.id &&
@@ -620,6 +664,7 @@ async function _publishNextStoryInner() {
   }
 
   // X/Twitter - skip if already published or near-duplicate title already uploaded
+  shadowCanonicalDedupe(story, "twitter_video", stories);
   const twTitleDupe = stories.find(
     (s) =>
       s.id !== story.id &&

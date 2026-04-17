@@ -2,10 +2,12 @@
 -- Worker registry for the hybrid cloud/local bridge (Phase 4/5 of the V4 brief).
 --
 -- Each physical host that processes jobs registers itself here. The cloud
--- API (cloud.js) surfaces /api/jobs/claim and /api/jobs/heartbeat endpoints;
--- the local worker daemon polls them. The cloud never pushes to the local
--- box — the local worker owns outbound connectivity so the user can keep
--- firewalls locked down.
+-- API (server.js, via lib/api/jobs-router) surfaces /api/jobs/claim and
+-- /api/jobs/heartbeat endpoints; the local worker daemon polls them. The
+-- cloud never pushes to the local box — the local worker owns outbound
+-- connectivity so the user can keep firewalls locked down.
+-- (Historical note: the jobs-router was mounted in cloud.js before Phase B.
+-- cloud.js was retired; server.js is the single canonical cloud entrypoint.)
 --
 -- Capabilities are a comma-separated tag list — the cloud filters the
 -- job pool by matching job.requires_gpu + job.kind against worker tags

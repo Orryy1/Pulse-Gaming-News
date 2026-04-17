@@ -129,6 +129,20 @@ app.use(express.static(path.join(__dirname, "dist")));
 app.use("/generated", express.static(PUBLIC_DIR));
 app.use("/branding", express.static(path.join(__dirname, "branding")));
 
+// Ported from the retired cloud.js (Phase B entrypoint unification).
+// discord_approve.js embeds `${base}/approve/${story.id}?token=...` in
+// Discord approval messages so mobile click-throughs land on the
+// approval dashboard. Preserve the redirect here so those links stay
+// live after cloud.js deletion. The token is forwarded unchanged; the
+// dashboard SPA reads it off the URL into sessionStorage.
+app.get("/approve/:id", (req, res) => {
+  const token = typeof req.query.token === "string" ? req.query.token : null;
+  const q = token
+    ? `?highlight=${encodeURIComponent(req.params.id)}&token=${encodeURIComponent(token)}`
+    : `?highlight=${encodeURIComponent(req.params.id)}`;
+  res.redirect("/" + q);
+});
+
 // --- Remote workers API (Phase 4: outbound-only polling from local box) ---
 // Mounted only when SQLite + the jobs queue are active. Safe no-op
 // otherwise so legacy deployments don't need to know the endpoints exist.

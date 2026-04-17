@@ -11,7 +11,7 @@ Baseline: HEAD `d36e3c9` (10 commits past `main@d553411`).
 | Phase                     | Mandate goal                              | State                                                          | Evidence                                                                                                                                                                                                                                    |
 | ------------------------- | ----------------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **A**                     | Grounded inventory + hardening plan       | ✅ Done                                                        | `docs/phase-a-inventory.md`, `docs/hardening-plan.md`                                                                                                                                                                                       |
-| **B**                     | Deployment entrypoint unification         | 🔴 Not started                                                 | `Dockerfile` still says `CMD cloud.js`, `railway.json` + `package.json` say `server.js`. NIXPACKS is the active builder so prod runs server.js, but the conflict remains a footgun.                                                         |
+| **B**                     | Deployment entrypoint unification         | ✅ Done                                                        | `cloud.js` deleted. `Dockerfile`, `railway.json`, `package.json start`, and `Procfile` all point at `server.js`. The Phase A note about a Docker/NIXPACKS entrypoint conflict is resolved — there is one canonical Node entrypoint.         |
 | **C**                     | JSON → SQLite cutover                     | 🟡 3A done (dashboard reads), 3B-E pending                     | `docs/phase-c-readwrite-map.md` — `server.js::readNews` now SQLite-first; `discord_approve.js` + `cloud.js` + 5 leaf uploaders still direct-JSON                                                                                            |
 | **D**                     | Scheduler / queue cutover                 | 🔴 Not started                                                 | Four parallel cron brains still coexist per inventory §2                                                                                                                                                                                    |
 | **E**                     | Scoring / decision cutover                | ✅ Done                                                        | `shouldAutoApprove()` deleted. `publisher.autoApprove()` always calls `runScoringPass`; prod + `USE_SQLITE!=true` throws; dev can opt-into a no-op via `USE_SCORING_ENGINE=false`. See `tests/services/auto-approve-cutover.test.js`.       |
@@ -30,12 +30,12 @@ Baseline: HEAD `d36e3c9` (10 commits past `main@d553411`).
 - [ ] ~14-day shadow log review — compare `[dedupe-shadow]` log lines against actual publisher.js decisions for mismatches
 - [ ] Phase 1 live verification — uvicorn cold-boot completes end-to-end at least once without the safetensors deadlock. Requires a py-spy dump of the hang first so we know what we're fixing.
 - [ ] Migration 011 applied in prod — column exists on `stories` table. **Auto-applied** if the migration runner runs at boot; verify via `node lib/migrate.js status`.
-- [ ] Phase 3B migrated — `discord_approve.js` + `cloud.js` approval flows use `db.upsertStory` so Discord approvals survive the read flip.
+- [ ] Phase 3B migrated — `discord_approve.js` approval flow uses `db.upsertStory` so Discord approvals survive the read flip. (The `cloud.js` half of this item is retired: cloud.js was deleted in Phase B and its `/approve/:id` redirect was absorbed into `server.js`.)
 
 ### Soft gates — can ship with risk-acknowledged
 
 - [ ] Phase D scheduler unification (mandate: currently 4 parallel cron brains can double-fire)
-- [ ] Phase B entrypoint cleanup (mandate: `cloud.js` is dead code in the Nixpacks path but Dockerfile still points at it)
+- [x] Phase B entrypoint cleanup — `cloud.js` deleted, Dockerfile CMD now `node server.js`, `/approve/:id` redirect ported into server.js.
 - [ ] Phase 3C/D/E remaining JSON migrations
 - [ ] `USE_CANONICAL_DEDUPE=active` flipped (can ship in shadow-only until log review passes)
 
@@ -60,8 +60,8 @@ All Phase-level rollbacks are **flag flips** — no code revert required for any
 2. **Sentinel perpetuation in `platform_posts.external_id`.** Migration 010 backfilled `DUPE_BLOCKED` into `external_id` despite the schema comment forbidding it. Migration 012 needed to scrub (`UPDATE platform_posts SET external_id=NULL, block_reason=COALESCE(block_reason, 'dupe-sentinel-migrated') WHERE status='blocked' AND external_id LIKE 'DUPE_%'`).
 3. **daily_news.json divergence from prod**: local dev file is 3 weeks stale. Prod is already on `USE_SQLITE=true` (confirmed by Pragmata incident). Do not trust the local JSON file for any verification — always query SQLite.
 4. ~~**`shouldAutoApprove() { return true }`** still the default path in `publisher.js:41-46`. Scoring engine only fires when `USE_SCORING_ENGINE=true` — flip lands in Phase E.~~ **Closed.** The legacy `shouldAutoApprove` helper and its for-loop are deleted. `publisher.autoApprove()` now always routes through `lib/decision-engine::runScoringPass`. In `NODE_ENV=production` with `USE_SQLITE!=true` it throws rather than silently approving. The `USE_SCORING_ENGINE` flag is now a dev-only escape (literal `false` opts into a logged no-op; any other value runs scoring). Covered by `tests/services/auto-approve-cutover.test.js`.
-5. **Parallel cron dispatchers**: `server.js` (11 crons), `run.js` (7 crons), `cloud.js` (1 cron), `lib/scheduler.js` (17 DB-backed schedules). Two of these running together double-fires publishes. Phase D target.
-6. **`cloud.js` dead-but-loaded-gun**: Nixpacks ignores the Dockerfile so `cloud.js` doesn't run in prod, but the Dockerfile still points at it. Any deploy-target switch (Docker on Render, local container) would activate it. Phase B target.
+5. **Parallel cron dispatchers**: `server.js` (11 crons), `run.js` (7 crons), `lib/scheduler.js` (17 DB-backed schedules). Two of these running together double-fires publishes. Phase D target. (The historical fourth dispatcher in `cloud.js` was retired in Phase B.)
+6. ~~**`cloud.js` dead-but-loaded-gun**: Nixpacks ignores the Dockerfile so `cloud.js` doesn't run in prod, but the Dockerfile still points at it.~~ **Closed in Phase B.** `cloud.js` deleted; Dockerfile `CMD` updated to `node server.js`; `/approve/:id` redirect ported into server.js.
 
 ## What to check after a Railway flag flip
 

@@ -14,3 +14,8 @@ data/*.db-wal
 data/*.db-shm
 .claude/settings.local.json
 .claude/launch.json
+tts_server/diag/
+tts_server/server.log
+tts_server/server.log.*
+tts_server/faulthandler.*.log
+tts_server/boot_state.json

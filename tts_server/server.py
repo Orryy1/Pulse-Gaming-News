@@ -30,14 +30,18 @@ Health: GET /health -> {"status": "ok", "voices": [...], "model_loaded": bool}
 Run: uvicorn server:app --host 127.0.0.1 --port 8765
 """
 import base64
+import faulthandler
 import io
 import json
 import logging
 import os
+import platform
+import sys
 import threading
 import time
+import uuid
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 import numpy as np
 import soundfile as sf  # noqa: F401 - kept for future direct WAV paths
@@ -52,6 +56,252 @@ logging.basicConfig(
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
 )
 log = logging.getLogger("tts_server")
+
+# --- Phase 1C forensics ---------------------------------------------------
+# Instrumentation only. The hang root cause is still unknown; these helpers
+# exist so the NEXT hang leaves better artefacts than the 2026-04-17 one.
+# See docs/inference-forensics-plan.md for the failure-mode table this
+# implements against.
+
+# Every process gets a short boot id. It appears in every breadcrumb line
+# and in /health so the Node side can detect restarts without relying on
+# pid (which gets reused).
+BOOT_ID = uuid.uuid4().hex[:8]
+BOOT_PID = os.getpid()
+BOOT_STARTED_MONO = time.monotonic()
+BOOT_STARTED_WALL = time.time()
+
+# Where diagnostic artefacts live. Defaults to tts_server/diag/ so they
+# sit next to server.log for easy zip-and-attach during incident response.
+BOOT_DIAG_DIR = Path(os.getenv("BOOT_DIAG_DIR", Path(__file__).parent / "diag"))
+try:
+    BOOT_DIAG_DIR.mkdir(parents=True, exist_ok=True)
+except Exception as _e:  # never let diag setup kill the server
+    log.warning(f"[forensics] could not create BOOT_DIAG_DIR={BOOT_DIAG_DIR}: {_e}")
+
+# faulthandler: when a native crash (SIGSEGV / SIGABRT / SIGFPE / SIGILL on
+# POSIX; SIGBREAK + SIGILL on Windows) hits, Python's default behaviour is
+# to die with no trace. faulthandler dumps all thread stacks to the chosen
+# file just before the process exits. Effectively zero runtime cost.
+_FAULT_LOG_PATH = BOOT_DIAG_DIR / f"faulthandler.{BOOT_ID}.log"
+try:
+    _fault_fp = open(_FAULT_LOG_PATH, "w", buffering=1, encoding="utf-8")
+    faulthandler.enable(file=_fault_fp, all_threads=True)
+    # Dump every 60s while the supervisor is warming — if the load thread
+    # wedges holding the GIL, this still fires from a C-level timer thread
+    # so we get a live stack trace of the hang without having to run py-spy.
+    # Cancelled when the supervisor flips phase='ready' or phase='failed'.
+    # The cancel is best-effort — worst case the file grows by one stack
+    # trace every minute until restart, which is cheap.
+    _fault_dump_every_s = int(os.getenv("BOOT_FAULT_DUMP_EVERY_S", "60"))
+    if _fault_dump_every_s > 0:
+        faulthandler.dump_traceback_later(
+            _fault_dump_every_s,
+            repeat=True,
+            file=_fault_fp,
+        )
+except Exception as _e:
+    log.warning(f"[forensics] faulthandler setup failed: {_e}")
+
+# Make Python's own stdout line-buffered. VoxCPM (and its deps) print
+# directly to stdout — that's how "Loading model from safetensors: ..."
+# ends up in server.log but "Loaded VoxCPM 2" doesn't if the process
+# dies first. Line buffering forces a flush on every newline so the
+# last print before a hang/crash reaches disk.
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+except Exception as _e:
+    log.warning(f"[forensics] stdout reconfigure failed: {_e}")
+
+
+def _atomic_write_json(path: Path, data: Dict[str, Any]) -> None:
+    """Write JSON via tmp+rename so a crash mid-write doesn't corrupt the
+    breadcrumb file. Best-effort — never raises."""
+    try:
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        tmp.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+        os.replace(tmp, path)
+    except Exception as e:
+        log.warning(f"[forensics] _atomic_write_json({path}) failed: {e}")
+
+
+def _vram_snapshot() -> Optional[Dict[str, int]]:
+    """Return allocated/reserved VRAM in bytes + free/total from the driver.
+    None if CUDA isn't usable. Best-effort; swallows every exception
+    because forensic hooks must never break the hot path."""
+    try:
+        import torch  # late import so non-CUDA dev machines don't pay this
+
+        if not torch.cuda.is_available():
+            return None
+        dev = torch.cuda.current_device()
+        free_b, total_b = torch.cuda.mem_get_info(dev)
+        return {
+            "device_index": int(dev),
+            "allocated_b": int(torch.cuda.memory_allocated(dev)),
+            "reserved_b": int(torch.cuda.memory_reserved(dev)),
+            "free_b": int(free_b),
+            "total_b": int(total_b),
+        }
+    except Exception as e:
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
+def _collect_versions() -> Dict[str, Any]:
+    """Gather dependency versions + platform info for the boot banner."""
+    info: Dict[str, Any] = {
+        "python": sys.version.split()[0],
+        "python_impl": platform.python_implementation(),
+        "platform": platform.platform(),
+        "executable": sys.executable,
+    }
+    for mod_name in ("torch", "torchaudio", "numpy", "safetensors", "voxcpm",
+                     "transformers", "fastapi", "uvicorn", "pydantic"):
+        try:
+            mod = __import__(mod_name)
+            info[mod_name] = getattr(mod, "__version__", "unknown")
+        except Exception as e:
+            info[mod_name] = f"!import: {type(e).__name__}: {e}"
+    # CUDA runtime info, conditional on torch being importable
+    try:
+        import torch  # noqa: WPS433
+
+        info["torch_cuda_available"] = bool(torch.cuda.is_available())
+        info["torch_cuda_version"] = getattr(torch.version, "cuda", None)
+        info["torch_cudnn_version"] = getattr(
+            getattr(torch.backends, "cudnn", None), "version", lambda: None
+        )()
+        if info["torch_cuda_available"]:
+            info["cuda_device_count"] = torch.cuda.device_count()
+            try:
+                props = torch.cuda.get_device_properties(0)
+                info["cuda_device_0"] = {
+                    "name": props.name,
+                    "total_memory_b": props.total_memory,
+                    "major": props.major,
+                    "minor": props.minor,
+                }
+            except Exception as e:
+                info["cuda_device_0"] = f"!props: {type(e).__name__}: {e}"
+    except Exception as e:
+        info["torch_probe_error"] = f"{type(e).__name__}: {e}"
+    return info
+
+
+# Single-slot mutable breadcrumb. Updated by _mark_phase; serialised to
+# BOOT_DIAG_DIR/boot_state.json on every update so a post-mortem has a
+# record of the last known phase even if the process died silently.
+BOOT_STATE: Dict[str, Any] = {
+    "boot_id": BOOT_ID,
+    "pid": BOOT_PID,
+    "started_wall": BOOT_STARTED_WALL,
+    "started_iso": time.strftime(
+        "%Y-%m-%dT%H:%M:%SZ", time.gmtime(BOOT_STARTED_WALL)
+    ),
+    "phase": "init",
+    "history": [],  # ordered (phase, monotonic_s, wall_s, wall_iso, vram, extra)
+    "faulthandler_log": str(_FAULT_LOG_PATH),
+    "versions": None,  # filled on first banner log
+}
+_BOOT_STATE_PATH = BOOT_DIAG_DIR / "boot_state.json"
+
+
+def _mark_phase(phase: str, **extra: Any) -> None:
+    """Record a phase transition. Appends to BOOT_STATE.history + flushes
+    to disk. Safe from any thread; BOOT_STATE mutations are GIL-protected
+    and the json write is atomic. Also emits a structured log line the
+    operator can grep: `[forensics] phase=<p> boot=<id> ...`."""
+    now_mono = time.monotonic() - BOOT_STARTED_MONO
+    now_wall = time.time()
+    vram = _vram_snapshot()
+    entry = {
+        "phase": phase,
+        "mono_s": round(now_mono, 3),
+        "wall_s": round(now_wall - BOOT_STARTED_WALL, 3),
+        "wall_iso": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now_wall)),
+        "vram": vram,
+        "extra": extra or None,
+    }
+    BOOT_STATE["phase"] = phase
+    BOOT_STATE["last_mono_s"] = entry["mono_s"]
+    BOOT_STATE["last_wall_iso"] = entry["wall_iso"]
+    # Detect wall-clock jumps (machine slept). If wall elapsed is
+    # significantly larger than monotonic elapsed between the last two
+    # marks, we almost certainly suspended.
+    hist = BOOT_STATE["history"]
+    if hist:
+        prev = hist[-1]
+        d_mono = entry["mono_s"] - prev["mono_s"]
+        d_wall = entry["wall_s"] - prev["wall_s"]
+        drift = d_wall - d_mono
+        entry["drift_s"] = round(drift, 3)
+        if drift > 5.0:
+            log.warning(
+                f"[forensics] clock drift detected between phases "
+                f"prev={prev['phase']} now={phase} drift_s={drift:.1f} "
+                "— machine may have slept mid-load"
+            )
+    hist.append(entry)
+    # Keep the on-disk breadcrumb bounded — last 64 phases is plenty.
+    if len(hist) > 64:
+        BOOT_STATE["history"] = hist[-64:]
+    _atomic_write_json(_BOOT_STATE_PATH, BOOT_STATE)
+    log.info(
+        f"[forensics] phase={phase} boot={BOOT_ID} mono_s={entry['mono_s']} "
+        f"vram={_fmt_vram(vram)} extra={extra or '-'}"
+    )
+
+
+def _fmt_vram(v: Optional[Dict[str, int]]) -> str:
+    if not v or "error" in v:
+        return str(v) if v else "none"
+    def _gb(x: int) -> str:
+        return f"{x / (1024 ** 3):.2f}GB"
+    return (
+        f"alloc={_gb(v['allocated_b'])} reserved={_gb(v['reserved_b'])} "
+        f"free={_gb(v['free_b'])}/{_gb(v['total_b'])}"
+    )
+
+
+def _emit_startup_banner() -> None:
+    """One-shot structured banner at server boot. Versions + env + device
+    properties. The single most useful artefact for post-mortem: 'what
+    was the world like at the moment we started loading?'"""
+    versions = _collect_versions()
+    BOOT_STATE["versions"] = versions
+    env_snapshot = {
+        k: os.getenv(k)
+        for k in (
+            "DEVICE", "PREWARM_ON_BOOT", "PREWARM_VOICE_ID",
+            "PREWARM_WATCHDOG_S", "BASE_SPEED", "REF_VOICE_PATH",
+            "HOST", "PORT", "LOG_LEVEL",
+            "BOOT_DIAG_DIR", "BOOT_FAULT_DUMP_EVERY_S",
+            # HuggingFace cache location affects first-time cold boot cost
+            "HF_HOME", "HUGGINGFACE_HUB_CACHE", "TRANSFORMERS_CACHE",
+            # CUDA selection
+            "CUDA_VISIBLE_DEVICES", "CUDA_DEVICE_ORDER",
+        )
+    }
+    BOOT_STATE["env"] = env_snapshot
+    _atomic_write_json(_BOOT_STATE_PATH, BOOT_STATE)
+    log.info(
+        f"[forensics] banner boot={BOOT_ID} pid={BOOT_PID} "
+        f"fault_log={_FAULT_LOG_PATH}"
+    )
+    log.info(f"[forensics] versions={json.dumps(versions, default=str)}")
+    log.info(f"[forensics] env={json.dumps(env_snapshot, default=str)}")
+    vram = _vram_snapshot()
+    log.info(f"[forensics] boot_vram={_fmt_vram(vram)}")
+
+
+# Emit banner immediately at import time (not inside the startup event)
+# so we have the versions snapshot even if FastAPI startup never fires.
+try:
+    _emit_startup_banner()
+    _mark_phase("module_imported")
+except Exception as _e:
+    log.warning(f"[forensics] banner emit failed: {_e}")
 
 # --- Config ---
 REF_VOICE_PATH = os.getenv("REF_VOICE_PATH")  # fallback ref when voice_id isn't mapped
@@ -185,16 +435,31 @@ def _run_engine_load_watchdogged(voice_id: str, watchdog_s: int) -> Dict[str, ob
     def _target() -> None:
         try:
             _heartbeat(f"load-begin:{voice_id}")
+            _mark_phase("load_begin", voice_id=voice_id)
             eng = _get_engine(voice_id)
+            _mark_phase("engine_resolved", voice_id=voice_id)
             # VoxCPMEngine defers the HF weight load to first synth().
             # Force it here so the prewarm actually pays the cost; the
             # observed safetensors deadlock happens inside this call.
             if hasattr(eng, "load"):
                 _heartbeat(f"engine-load-call:{voice_id}")
+                _mark_phase("engine_load_call", voice_id=voice_id)
+                # Flush stdout/stderr so any prints inside VoxCPM that
+                # precede the hang are on disk before we cross into
+                # potentially-blocking native code.
+                try:
+                    sys.stdout.flush()
+                    sys.stderr.flush()
+                except Exception:
+                    pass
                 eng.load()
+                _mark_phase("engine_load_return", voice_id=voice_id)
             _heartbeat(f"load-end:{voice_id}")
+            _mark_phase("load_end", voice_id=voice_id)
             result["status"] = "ok"
         except Exception as e:
+            _mark_phase("load_exception", voice_id=voice_id,
+                        error=f"{type(e).__name__}: {e}")
             result["status"] = "error"
             result["error"] = e
 
@@ -213,7 +478,20 @@ def _run_engine_load_watchdogged(voice_id: str, watchdog_s: int) -> Dict[str, ob
         # certainly in safetensors/torch native — killing from Python
         # would leave CUDA context in a bad state anyway. The supervisor
         # flags phase='failed' and leaves the thread orphaned; process
-        # restart is the only clean recovery.
+        # restart is the only clean recovery. faulthandler's periodic
+        # dump_traceback_later is still firing, so the stuck thread's
+        # stack will be captured in BOOT_DIAG_DIR/faulthandler.<boot>.log
+        # — that's the primary evidence for the next root-cause pass.
+        _mark_phase("watchdog_expired", voice_id=voice_id,
+                    watchdog_s=watchdog_s)
+        # One explicit dump right now too, so we don't have to wait up to
+        # the full BOOT_FAULT_DUMP_EVERY_S cadence to get a stack trace
+        # of the wedged thread.
+        try:
+            faulthandler.dump_traceback(file=_fault_fp, all_threads=True)
+            _fault_fp.flush()
+        except Exception:
+            pass
         result["status"] = "timeout"
         result["watchdog_s"] = watchdog_s
     return result
@@ -241,6 +519,15 @@ def _run_prewarm_supervisor(voice_id: str) -> None:
         SERVICE_STATE["warming"] = False
         SERVICE_STATE["last_load_ms"] = outcome["elapsed_ms"]
         SERVICE_STATE["last_error"] = None
+        _mark_phase("ready", voice_id=voice_id,
+                    elapsed_ms=outcome["elapsed_ms"])
+        # Cancel the periodic faulthandler dump — the dangerous window
+        # (load call) is over, further periodic stack dumps just bloat
+        # the fault log for no incident value.
+        try:
+            faulthandler.cancel_dump_traceback_later()
+        except Exception:
+            pass
         log.info(
             f"[boot] prewarm complete voice_id={voice_id} "
             f"elapsed_ms={outcome['elapsed_ms']} engine_count={len(_engine_cache)}"
@@ -473,6 +760,12 @@ def health():
         # the load is wedged in native code and the watchdog will fire.
         "last_heartbeat_ts": SERVICE_STATE["last_heartbeat_ts"],
         "watchdog_s": SERVICE_STATE["watchdog_s"],
+        # Phase 1C forensics. boot_id lets Node callers detect restarts
+        # cleanly (pid gets reused across crashes); diag_dir points ops
+        # at the breadcrumb + faulthandler artefacts for post-mortem.
+        "boot_id": BOOT_ID,
+        "pid": BOOT_PID,
+        "diag_dir": str(BOOT_DIAG_DIR),
     }
 
 

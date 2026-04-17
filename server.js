@@ -438,15 +438,46 @@ function broadcastProgress(storyId, type, progress, stage) {
 const db = require("./lib/db");
 
 // --- Data helpers ---
+//
+// Phase 3A persistence cutover: readNews now prefers SQLite when the
+// USE_SQLITE flag is on. Prior behaviour (always read from
+// daily_news.json) was the root cause of the divergent-reads bug
+// called out in docs/phase-a-inventory.md §3 — /api/approve mutations
+// written through writeNews kept the SQLite side in sync (see below),
+// but /api/news reads never looked at SQLite, so any story ingested
+// directly via the hunter's db.saveStories path was invisible to the
+// dashboard until the next writeNews() roll-up. With USE_SQLITE=true
+// the dashboard now sees the authoritative state.
+//
+// USE_SQLITE unset (or false) preserves the exact legacy behaviour:
+// read JSON file, return [] if missing.
 function readNews() {
-  if (!fs.existsSync(DATA_FILE)) return [];
-  const raw = fs.readFileSync(DATA_FILE, "utf-8");
-  return JSON.parse(raw);
+  try {
+    return db.getStoriesSync();
+  } catch (err) {
+    // Never let a dashboard read fail hard — if SQLite throws for any
+    // reason (db not open, migration half-applied), fall back to the
+    // legacy file path. The original version silently returned [] on
+    // JSON read errors; we preserve that forgiving contract.
+    console.log(
+      `[server] readNews: SQLite read failed (${err.message}); falling back to JSON`,
+    );
+    try {
+      if (!fs.existsSync(DATA_FILE)) return [];
+      const raw = fs.readFileSync(DATA_FILE, "utf-8");
+      return JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
 }
 
 function writeNews(data) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), "utf-8");
-  // When SQLite is enabled, keep the database in sync
+  // When SQLite is enabled, keep the database in sync. This half of
+  // the dual-write predates Phase 3A — the news (now) is that reads
+  // are no longer JSON-only, so the sync direction finally matters
+  // symmetrically.
   if (db.useSqlite()) {
     try {
       db.saveStories(data);

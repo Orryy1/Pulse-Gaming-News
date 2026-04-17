@@ -579,8 +579,15 @@ async function uploadShort(story) {
             console.log(
               `[youtube] BLOCKED duplicate upload: "${title}" ~ "${dupe}"`,
             );
+            // Cat B cleanup: videoId is null when blocked. Both current
+            // callers (publisher.js YouTube path, upload_youtube.js
+            // uploadAll batch) check `blocked === true` before reading
+            // videoId, so nobody consumes the value on this path — but
+            // returning `null` makes the contract explicit and means a
+            // future naive caller cannot accidentally persist a sentinel
+            // string as a platform external id.
             return {
-              videoId: "DUPE_BLOCKED",
+              videoId: null,
               url: null,
               blocked: true,
               reason: `Similar to existing: "${dupe}"`,

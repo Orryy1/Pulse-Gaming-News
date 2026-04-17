@@ -37,6 +37,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
@@ -85,8 +86,23 @@ def run(kind: str, params: Dict[str, Any], job_id: Optional[str] = None) -> Dict
     if handler is None:
         raise KeyError(f"no handler for kind={kind}; known: {list_kinds()}")
     workspace = _job_workspace(job_id)
-    log.info(f"[infer] kind={kind} job={job_id} ws={workspace}")
-    return handler(params, workspace)
+    log.info(f"[infer] kind={kind} job={job_id} ws={workspace} START")
+    t0 = time.monotonic()
+    try:
+        result = handler(params, workspace)
+    except Exception as e:
+        dt_ms = int((time.monotonic() - t0) * 1000)
+        log.exception(
+            f"[infer] TIMING kind={kind} job={job_id} phase=total "
+            f"elapsed_ms={dt_ms} status=error error={type(e).__name__}"
+        )
+        raise
+    dt_ms = int((time.monotonic() - t0) * 1000)
+    log.info(
+        f"[infer] TIMING kind={kind} job={job_id} phase=total "
+        f"elapsed_ms={dt_ms} status=ok"
+    )
+    return result
 
 
 # --- Shared helpers ------------------------------------------------------
@@ -149,11 +165,14 @@ def _narrate_script(params: Dict[str, Any], workspace: Path) -> Dict[str, Any]:
 
     part_paths = []
     manifest = []
+    t_synth = time.monotonic()
     for i, seg in enumerate(segments):
         text = seg.get("text") or ""
         if not text.strip():
             continue
+        t_seg = time.monotonic()
         resp = _synth(voice_id, TTSRequest(text=text, voice_settings=settings))
+        seg_ms = int((time.monotonic() - t_seg) * 1000)
         part_mp3 = workspace / f"part-{i:03d}.mp3"
         part_mp3.write_bytes(base64.b64decode(resp.audio_base64))
         part_paths.append(part_mp3)
@@ -162,6 +181,11 @@ def _narrate_script(params: Dict[str, Any], workspace: Path) -> Dict[str, Any]:
             "label": seg.get("label") or f"seg-{i}",
             "path": str(part_mp3),
         })
+        log.info(
+            f"[narrate_script] TIMING phase=synth seg={i} "
+            f"label={seg.get('label') or f'seg-{i}'} elapsed_ms={seg_ms}"
+        )
+    synth_total_ms = int((time.monotonic() - t_synth) * 1000)
 
     if not part_paths:
         raise ValueError("no non-empty segments to narrate")
@@ -171,11 +195,17 @@ def _narrate_script(params: Dict[str, Any], workspace: Path) -> Dict[str, Any]:
     list_file = workspace / "concat.txt"
     list_file.write_text("\n".join(f"file '{p.as_posix()}'" for p in part_paths))
     out_mp3 = workspace / "narration.mp3"
+    t_concat = time.monotonic()
     subprocess.run(
         [ffmpeg, "-y", "-f", "concat", "-safe", "0", "-i", str(list_file),
          "-c:a", "libmp3lame", "-b:a", "192k", str(out_mp3)],
         check=True,
         capture_output=True,
+    )
+    concat_ms = int((time.monotonic() - t_concat) * 1000)
+    log.info(
+        f"[narrate_script] TIMING phase=concat segs={len(part_paths)} "
+        f"synth_total_ms={synth_total_ms} concat_ms={concat_ms} out={out_mp3}"
     )
     return {
         "narration_path": str(out_mp3),
@@ -331,21 +361,32 @@ def _compose_short(params: Dict[str, Any], workspace: Path) -> Dict[str, Any]:
 
     log.info(f"[compose_short] rendering kind={kind} duration={total:.1f}s "
              f"images={len(images)} -> {out_path}")
+    t_render = time.monotonic()
     proc = subprocess.run(cmd, capture_output=True, text=True)
+    render_ms = int((time.monotonic() - t_render) * 1000)
     if proc.returncode != 0:
         # Log the filter graph + full ffmpeg stderr so the caller can
         # diagnose drawtext / path / codec issues. The returned tail is
         # short so the Node side doesn't have to deal with a giant blob.
         log.error(f"[compose_short] filter graph:\n{filter_graph}")
         log.error(f"[compose_short] ffmpeg stderr:\n{proc.stderr}")
+        log.error(
+            f"[compose_short] TIMING phase=render kind={kind} "
+            f"elapsed_ms={render_ms} status=error rc={proc.returncode}"
+        )
         tail = (proc.stderr or "")[-600:]
         raise RuntimeError(f"ffmpeg failed (rc={proc.returncode}): {tail}")
+    log.info(
+        f"[compose_short] TIMING phase=render kind={kind} "
+        f"elapsed_ms={render_ms} status=ok out={out_path}"
+    )
 
     return {
         "output_path": str(out_path),
         "duration_s": round(total, 2),
         "kind": kind,
         "source": "compose_short/ffmpeg-libx264",
+        "render_ms": render_ms,
     }
 
 

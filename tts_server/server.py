@@ -34,6 +34,7 @@ import io
 import json
 import logging
 import os
+import time
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -57,6 +58,15 @@ DEVICE = os.getenv("DEVICE", "cuda")
 HOST = os.getenv("HOST", "127.0.0.1")
 PORT = int(os.getenv("PORT", "8765"))
 VOICES_CONFIG_PATH = os.getenv("VOICES_CONFIG_PATH", "voices.json")
+# When true, load the __default__ engine during app startup so the first
+# real request doesn't pay the 3-5 min VoxCPM 2 cold-boot cost while the
+# Node-side runner counts down its timeout. Default off for dev
+# convenience (keeps uvicorn reloads snappy); production boots should set
+# PREWARM_ON_BOOT=true in the service env.
+PREWARM_ON_BOOT = os.getenv("PREWARM_ON_BOOT", "false").strip().lower() in (
+    "1", "true", "yes", "on",
+)
+PREWARM_VOICE_ID = os.getenv("PREWARM_VOICE_ID", "__default__")
 
 # --- Imports ---
 from voxcpm_engine import VoxCPMEngine
@@ -108,8 +118,17 @@ def _resolve_ref_path(ref_path: Optional[str]) -> Optional[str]:
 
 
 def _get_engine(voice_id: str) -> VoxCPMEngine:
-    """Fetch or build the VoxCPMEngine for a voice_id."""
+    """Fetch or build the VoxCPMEngine for a voice_id.
+
+    First-time calls for a voice_id pay the full cold-start cost:
+    HuggingFace weight fetch (cached after first time), VoxCPM 2 model
+    assemble, AudioVAE load, denoiser init. On a Windows box with cached
+    weights this is consistently 2-4 minutes; on a cold HF cache it can
+    be 10 minutes or more. The Phase F stability patch wraps each load
+    in timing logs so we can track regressions over time.
+    """
     if voice_id in _engine_cache:
+        log.info(f"[engine] reuse voice_id={voice_id!r} (cached)")
         return _engine_cache[voice_id]
 
     cfg = VOICES_MAP.get(voice_id)
@@ -118,11 +137,17 @@ def _get_engine(voice_id: str) -> VoxCPMEngine:
         # Cache under the special "__default__" key so we reuse it for any
         # future unmapped voice_ids rather than rebuilding per-request.
         if "__default__" not in _engine_cache:
-            log.info(f"voice_id={voice_id!r} not in voices.json — using env default (ref={REF_VOICE_PATH})")
+            log.info(
+                f"[engine] COLD_START voice_id={voice_id!r} -> __default__ "
+                f"(ref={REF_VOICE_PATH}) — loading VoxCPM 2, expect 2-5 min"
+            )
+            t0 = time.monotonic()
             eng = VoxCPMEngine(
                 ref_voice_path=_resolve_ref_path(REF_VOICE_PATH),
                 device=DEVICE,
             )
+            dt_ms = int((time.monotonic() - t0) * 1000)
+            log.info(f"[engine] LOADED voice_id=__default__ elapsed_ms={dt_ms}")
             _engine_cache["__default__"] = eng
         _engine_cache[voice_id] = _engine_cache["__default__"]
         return _engine_cache[voice_id]
@@ -130,7 +155,11 @@ def _get_engine(voice_id: str) -> VoxCPMEngine:
     ref = _resolve_ref_path(cfg.get("ref_voice_path"))
     base_speed = float(cfg.get("base_speed", 1.0))
     alias = cfg.get("alias", voice_id)
-    log.info(f"Loading engine for voice_id={voice_id!r} (alias={alias}, ref={ref}, base_speed={base_speed})")
+    log.info(
+        f"[engine] COLD_START voice_id={voice_id!r} alias={alias} ref={ref} "
+        f"base_speed={base_speed} — loading VoxCPM 2, expect 2-5 min"
+    )
+    t0 = time.monotonic()
 
     # VoxCPMEngine reads BASE_SPEED from env at __init__ — override via a
     # temporary env stamp so the instance picks up the per-voice value.
@@ -145,6 +174,8 @@ def _get_engine(voice_id: str) -> VoxCPMEngine:
         else:
             os.environ["BASE_SPEED"] = prev
 
+    dt_ms = int((time.monotonic() - t0) * 1000)
+    log.info(f"[engine] LOADED voice_id={voice_id!r} alias={alias} elapsed_ms={dt_ms}")
     _engine_cache[voice_id] = eng
     return eng
 
@@ -176,7 +207,46 @@ class TTSResponse(BaseModel):
 
 
 # --- App ---
-app = FastAPI(title="Pulse Gaming Local TTS", version="1.1.0")
+app = FastAPI(title="Pulse Gaming Local TTS", version="1.2.0")
+
+
+@app.on_event("startup")
+def _on_startup():
+    """Log a boot banner + optionally prewarm the default engine.
+
+    The banner gives ops a single grep target (`[boot]`) to confirm the
+    server is fresh and configured correctly. When PREWARM_ON_BOOT=true,
+    we load __default__ here so the first real /v1/infer call doesn't
+    eat the cold-start cost. The prewarm is best-effort — if it fails,
+    the server still serves requests (they'll just pay the cost on first
+    call).
+    """
+    boot_ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    log.info(
+        f"[boot] pulse-gaming tts_server starting ts={boot_ts} "
+        f"device={DEVICE} voices={len(VOICES_MAP)} prewarm_on_boot={PREWARM_ON_BOOT} "
+        f"prewarm_voice_id={PREWARM_VOICE_ID}"
+    )
+    if not PREWARM_ON_BOOT:
+        log.info(
+            "[boot] prewarm skipped — set PREWARM_ON_BOOT=true to warm the "
+            "default engine during startup"
+        )
+        return
+    try:
+        log.info(f"[boot] prewarming voice_id={PREWARM_VOICE_ID}")
+        t0 = time.monotonic()
+        _get_engine(PREWARM_VOICE_ID)
+        dt_ms = int((time.monotonic() - t0) * 1000)
+        log.info(
+            f"[boot] prewarm complete voice_id={PREWARM_VOICE_ID} "
+            f"elapsed_ms={dt_ms} engine_count={len(_engine_cache)}"
+        )
+    except Exception as e:
+        log.exception(
+            f"[boot] prewarm FAILED voice_id={PREWARM_VOICE_ID}: {e} — "
+            "first /v1/infer call will pay the cold-start cost instead"
+        )
 
 
 @app.get("/health")
@@ -233,6 +303,52 @@ def infer_kinds():
     import infer_service  # noqa: WPS433
 
     return {"kinds": infer_service.list_kinds()}
+
+
+class PrewarmRequest(BaseModel):
+    voice_id: Optional[str] = "__default__"
+
+
+@app.post("/v1/prewarm")
+def prewarm(req: PrewarmRequest):
+    """
+    Manually load a voice engine without dispatching a job.
+
+    The Node-side inference-client::prewarm() calls this during worker
+    boot (or from scripts/prewarm-infer.ps1) so the cold-start cost is
+    paid OUTSIDE the runner's timeout budget. Safe to call repeatedly —
+    a cached engine short-circuits immediately.
+
+    Returns:
+        voice_id      which id was warmed
+        loaded_ms     time to load (0 when already cached)
+        engine_count  total cached engines after this call
+        reused        true if the engine was already loaded before this call
+    """
+    voice_id = (req.voice_id or "__default__").strip()
+    reused = voice_id in _engine_cache
+    # Also catch the "__default__ already loaded, unmapped voice_id" case
+    # so we don't double-warm. _get_engine handles the mapping internally.
+    if not reused and voice_id not in VOICES_MAP and "__default__" in _engine_cache:
+        reused = True
+
+    t0 = time.monotonic()
+    try:
+        _get_engine(voice_id)
+    except Exception as e:
+        log.exception(f"[prewarm] failed voice_id={voice_id}")
+        raise HTTPException(500, f"prewarm failed: {e}")
+    dt_ms = int((time.monotonic() - t0) * 1000)
+    log.info(
+        f"[prewarm] voice_id={voice_id} reused={reused} elapsed_ms={dt_ms} "
+        f"engine_count={len(_engine_cache)}"
+    )
+    return {
+        "voice_id": voice_id,
+        "loaded_ms": dt_ms,
+        "engine_count": len(_engine_cache),
+        "reused": reused,
+    }
 
 
 @app.post("/v1/infer", response_model=InferResponse)

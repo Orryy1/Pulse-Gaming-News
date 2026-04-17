@@ -94,6 +94,46 @@ class LocalWorker {
     this.log(
       `[local-worker] ${this.workerId} starting cloud=${this.cloudUrl} kinds=${this.kinds || "all"} gpu=${this.gpu}`,
     );
+
+    // Phase 1B: same readiness gate the in-process bootstrap-queue runs.
+    // Without this, a remote GPU worker boots, claims a job, and then
+    // the job handler hits the dead inference service — burning one
+    // attempt per poll cycle. Wait for phase='ready' (or refuse to
+    // start when phase='failed') before we announce the worker as live.
+    if (this.gpu && process.env.INFER_WAIT_ON_BOOT !== "false") {
+      const inferenceClient = require("../lib/inference-client");
+      try {
+        this.log(
+          `[local-worker] ${this.workerId} — waiting for inference ready`,
+        );
+        const h = await inferenceClient.waitForReady({
+          acceptSkipped: process.env.INFER_ACCEPT_SKIPPED === "true",
+          log: (m) => this.log(m),
+          deadlineMs: Number(process.env.INFER_READY_DEADLINE_MS || 900_000),
+        });
+        this.log(
+          `[local-worker] inference ready phase=${h.phase} last_load_ms=${h.last_load_ms ?? "-"}`,
+        );
+      } catch (err) {
+        const isFailed =
+          err instanceof inferenceClient.InferFailedStateError ||
+          err?.name === "InferFailedStateError";
+        if (isFailed && process.env.INFER_ALLOW_FAILED_START !== "true") {
+          this.log(
+            `[local-worker] REFUSING to start — inference phase=failed ` +
+              `(${err.lastError || err.message}). Restart tts_server and ` +
+              `investigate, or set INFER_ALLOW_FAILED_START=true to override.`,
+          );
+          this.running = false;
+          throw err;
+        }
+        this.log(
+          `[local-worker] inference readiness wait FAILED: ${err.message}. ` +
+            `Claiming anyway — jobs will pay cold-start cost or fail.`,
+        );
+      }
+    }
+
     try {
       await this._fetch("/api/workers/register", {
         method: "POST",

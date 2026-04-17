@@ -116,9 +116,43 @@ Production or local equivalent:
 
 **Fix path:** either add the mapping to `voices.json` with a `ref_voice_path` pointing at the right clone ref, or make `PREWARM_VOICE_ID` match `ELEVENLABS_VOICE_ID`. The second is cheaper but coupled to the env var.
 
+## Phase 1B: watchdog + background prewarm (mitigation, not cure)
+
+The Phase F eager prewarm was synchronous inside the FastAPI `startup` event. Starlette runs sync startup handlers inline on the event loop, so a hang inside `eng.load()` blocked uvicorn from ever binding the listen socket — which is exactly the failure mode observed on 2026-04-17 (uvicorn never bound `:8765`, `/health` never reachable, no way for Node to tell "still loading" from "dead").
+
+Phase 1B changes what happens when the load hangs or crashes; it does **not** diagnose or prevent the underlying safetensors deadlock. Treat it as an escape valve, not a fix.
+
+### What changed
+
+- **Prewarm moved off the startup event.** `@app.on_event("startup")` now returns in ~1ms after spawning a daemon supervisor thread. Uvicorn binds `:8765` immediately; `/health` responds from the first request.
+- **Wall-clock watchdog (`PREWARM_WATCHDOG_S`, default 420s).** The supervisor starts a second daemon thread to run `eng.load()` and `.join()`s with a timeout. If the thread is still alive after `PREWARM_WATCHDOG_S`, the supervisor flips `SERVICE_STATE` to `phase='failed'` and logs `PREWARM_WATCHDOG_EXPIRED` with the PID, so the operator can `py-spy dump --pid <PID>` before restarting.
+- **`ready=False` on failed.** Previous code kept `ready=True` in the failed state ("the HTTP server still responds"), which misled `waitForReady` into polling forever. Now `ready` is `True` only for `phase='ready'` or `phase='ready-skipped'`.
+- **Load-thread heartbeat (`last_heartbeat_ts` in `/health`).** The supervisor stamps the state just before `eng.load()` and just after. An advancing `last_heartbeat_ts` during `phase='warming'` means the load is progressing; a frozen one with `phase='warming'` means it's wedged and the watchdog will trip.
+- **`/v1/prewarm` uses the same watchdog.** Manual prewarm via `scripts/prewarm-infer.ps1` now returns HTTP 504 with `PREWARM_WATCHDOG_EXPIRED` instead of blocking indefinitely.
+- **Node side hard-fails on `phase='failed'`.** `waitForReady` throws `InferFailedStateError` immediately when it sees `phase='failed'` — no more minutes-long polling loops against a dead service. Both `bootstrap-queue.js` and `workers/local-worker.js` refuse to start GPU runners when they hit that error, unless `INFER_ALLOW_FAILED_START=true` is set explicitly.
+
+### What Phase 1B does NOT do
+
+- **It does not kill the stuck load thread.** Python has no safe cross-platform thread-kill, and the blocked code is almost certainly holding a CUDA context. The thread stays alive; the process must be restarted.
+- **It does not recover inside a single process.** Once the watchdog has fired, `phase='failed'` sticks until process restart. Re-issuing `/v1/prewarm` won't retry the stuck thread; it's already gone.
+- **It does not diagnose the deadlock.** The root cause (suspected deadlock inside VoxCPM's AudioVAE → safetensors loader on Python 3.11 + torch weight-norm deprecation) is still unknown. The watchdog just stops the cascade of "hung server → runner claim → job-timeout → orphan" that used to follow.
+- **Next boot is not guaranteed to succeed.** The underlying deadlock is non-deterministic; a restart often passes (filesystem pagecache is warm) but can repeat. Incident response must still capture a `py-spy dump` while the first hung process is alive — that dump is the ONLY artefact that will move this from "mitigation" to "fix".
+
+### Incident-response addendum
+
+When `/health` reports `phase='failed' last_error='PREWARM_WATCHDOG_EXPIRED …'`:
+
+1. **Do NOT restart the process immediately.** The watchdog has already decided the load is dead, but the stuck thread is still in the old process. Grab a dump first:
+   ```
+   py-spy dump --pid <PID from the log line>
+   ```
+2. Save the dump alongside `tts_server/server.log` for post-mortem.
+3. Stop the uvicorn process and start it fresh with `PREWARM_ON_BOOT=true`.
+4. If the failure repeats twice in a row, boot with `PREWARM_ON_BOOT=false` and prewarm manually via `scripts/prewarm-infer.ps1` from an attended shell so you can watch for the hang interactively.
+
 ## What remains risky
 
-- **Safetensors-load deadlock (observed 2026-04-17 07:05 UTC).** After the eager-prewarm fix (commit `f76d1a5`), a clean uvicorn boot on the dev box (cached weights, GPU idle at launch) hung at `Loading model from safetensors:` with GPU util dropping from 100% → 0% and VRAM pinned at ~20.7 GB with zero log progress for 25+ minutes. No traceback, no error, no crash. Suspected deadlock inside VoxCPM's AudioVAE → safetensors loader path on Python 3.11 + torch weight-norm deprecation. Repro requires a cold process restart; second attempt often passes because the filesystem/OS pagecache is warm. **Mitigation before flipping PREWARM_ON_BOOT=true in prod:** wrap the engine load in a hard watchdog timer (e.g. 420s) that raises and logs `PREWARM_WATCHDOG_EXPIRED` so uvicorn at least moves to serving /health and the next PREWARM_ON_BOOT attempt has a chance to win. **Do not kill the hung uvicorn blindly during incident response** — capture a py-spy dump first (`py-spy dump --pid <pid>`) so we can diagnose the actual stall point.
+- **Safetensors-load deadlock root cause.** Mitigated but not fixed. Phase 1B stops the hang from cascading into stuck jobs, but the deadlock itself still occurs intermittently. Needs a `py-spy dump` capture + repro against a known-good VoxCPM/torch pairing before we can claim a real fix.
 - **Machine sleep.** Windows idle sleep will suspend uvicorn and the Node server. The Phase F work has a `lib/power-gate.js` module but UNVERIFIED whether it's wired into the worker. Track via Phase G tests.
 - **Second-voice cold-start.** If a narrate call comes in for a voice other than the prewarmed one, we pay cold-start again on that call. Mitigation: warm every voice in `voices.json` at boot via a loop in the startup event, gated on a `PREWARM_ALL_VOICES` env flag (not yet implemented).
 - **Cold HuggingFace cache.** A brand-new environment (new machine, CI runner, fresh Docker image) has no cached weights and the first prewarm can be 10+ minutes. Raise `-TimeoutSec` on the prewarm script and raise `INFER_TIMEOUT_MS` during the first boot, then drop back.
@@ -138,11 +172,16 @@ When the same failure class recurs:
 
 ## Feature flags touched
 
-| Flag                    | Default                 | Effect                                     |
-| ----------------------- | ----------------------- | ------------------------------------------ |
-| `INFER_TIMEOUT_MS`      | 600000                  | Cold-start-safe client timeout             |
-| `INFER_WARM_TIMEOUT_MS` | 120000                  | Post-prewarm callers                       |
-| `INFER_BASE_URL`        | `http://127.0.0.1:8765` | tts_server address                         |
-| `JOBS_ORPHAN_GRACE_MIN` | 10                      | Reap null-lease claims older than this     |
-| `PREWARM_ON_BOOT`       | `false`                 | Load default engine during uvicorn startup |
-| `PREWARM_VOICE_ID`      | `__default__`           | Which voice the boot prewarm loads         |
+| Flag                       | Default                 | Effect                                                                     |
+| -------------------------- | ----------------------- | -------------------------------------------------------------------------- |
+| `INFER_TIMEOUT_MS`         | 600000                  | Cold-start-safe client timeout                                             |
+| `INFER_WARM_TIMEOUT_MS`    | 120000                  | Post-prewarm callers                                                       |
+| `INFER_BASE_URL`           | `http://127.0.0.1:8765` | tts_server address                                                         |
+| `JOBS_ORPHAN_GRACE_MIN`    | 10                      | Reap null-lease claims older than this                                     |
+| `PREWARM_ON_BOOT`          | `false`                 | Load default engine during uvicorn startup                                 |
+| `PREWARM_VOICE_ID`         | `__default__`           | Which voice the boot prewarm loads                                         |
+| `PREWARM_WATCHDOG_S`       | 420                     | Hard wall-clock ceiling on `eng.load()`; phase flips to `failed` past this |
+| `INFER_WAIT_ON_BOOT`       | `true`                  | GPU runners block on `waitForReady` during boot (`false` skips)            |
+| `INFER_ACCEPT_SKIPPED`     | `false`                 | Treat `phase='ready-skipped'` as ready during `waitForReady`               |
+| `INFER_READY_DEADLINE_MS`  | 900000                  | Total budget for the runner's readiness wait                               |
+| `INFER_ALLOW_FAILED_START` | `false`                 | Override Phase 1B refusal to start a GPU runner when `phase='failed'`      |

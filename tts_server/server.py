@@ -34,6 +34,7 @@ import io
 import json
 import logging
 import os
+import threading
 import time
 from pathlib import Path
 from typing import Dict, Optional
@@ -67,6 +68,15 @@ PREWARM_ON_BOOT = os.getenv("PREWARM_ON_BOOT", "false").strip().lower() in (
     "1", "true", "yes", "on",
 )
 PREWARM_VOICE_ID = os.getenv("PREWARM_VOICE_ID", "__default__")
+# Phase 1B watchdog: hard wall-clock ceiling on a single eng.load() call.
+# When the thread running the load is still alive past this budget, the
+# service transitions to phase='failed' with last_error='PREWARM_WATCHDOG_EXPIRED'
+# so /health surfaces the deadlock instead of silently staying in 'warming'.
+# 420s = 7 min covers the observed 2-5 min cold-boot cost on cached weights
+# plus safetensors slowpaths, while still catching the ~25+ min deadlock
+# observed on 2026-04-17. See docs/inference-boot-procedure.md for the
+# failure mode this addresses.
+PREWARM_WATCHDOG_S = int(os.getenv("PREWARM_WATCHDOG_S", "420"))
 
 # --- Imports ---
 from voxcpm_engine import VoxCPMEngine
@@ -127,7 +137,147 @@ SERVICE_STATE: Dict[str, object] = {
     "last_load_ms": None,
     "last_error": None,
     "boot_ts": None,
+    # Phase 1B: last time the prewarm thread logged a heartbeat. Lets
+    # operators grep /health to tell "load in progress" from "load
+    # deadlocked and thread holding the GIL". Updated by the supervisor
+    # thread before/after each potentially-blocking call.
+    "last_heartbeat_ts": None,
+    # Phase 1B: watchdog budget reflected in /health so callers don't
+    # have to grep logs to know when phase='failed' will trip.
+    "watchdog_s": PREWARM_WATCHDOG_S,
 }
+
+# Phase 1B: a single-slot lock + handle so concurrent /v1/prewarm calls
+# don't race each other into two in-flight loads (which would just
+# compound the memory-pressure problem the safetensors deadlock seems to
+# exacerbate). Access is short — holders only consult/set the handle.
+_prewarm_lock = threading.Lock()
+_prewarm_thread: Optional[threading.Thread] = None
+
+
+def _heartbeat(tag: str) -> None:
+    """Stamp SERVICE_STATE so /health surfaces liveness for the prewarm
+    thread. Cheap and always called from the supervisor or load thread —
+    never from the main event loop."""
+    ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    SERVICE_STATE["last_heartbeat_ts"] = ts
+    log.info(f"[prewarm-heartbeat] tag={tag} ts={ts}")
+
+
+def _run_engine_load_watchdogged(voice_id: str, watchdog_s: int) -> Dict[str, object]:
+    """
+    Load the engine for `voice_id` in a daemon thread with a wall-clock
+    watchdog. Returns a dict with one of:
+      { "status": "ok",       "elapsed_ms": int }
+      { "status": "error",    "elapsed_ms": int, "error": Exception }
+      { "status": "timeout",  "elapsed_ms": int, "watchdog_s": int }
+
+    When status='timeout' the load thread may still be alive (Python
+    can't safely kill a thread stuck in native code); the caller must
+    treat this as unrecoverable within the current process and surface
+    PREWARM_WATCHDOG_EXPIRED to the operator. Subsequent calls short-
+    circuit on `__default__ in _engine_cache` if the stuck thread ever
+    finishes, but the state is untrustworthy until a restart.
+    """
+    result: Dict[str, object] = {"status": None, "elapsed_ms": 0, "error": None}
+    started = time.monotonic()
+
+    def _target() -> None:
+        try:
+            _heartbeat(f"load-begin:{voice_id}")
+            eng = _get_engine(voice_id)
+            # VoxCPMEngine defers the HF weight load to first synth().
+            # Force it here so the prewarm actually pays the cost; the
+            # observed safetensors deadlock happens inside this call.
+            if hasattr(eng, "load"):
+                _heartbeat(f"engine-load-call:{voice_id}")
+                eng.load()
+            _heartbeat(f"load-end:{voice_id}")
+            result["status"] = "ok"
+        except Exception as e:
+            result["status"] = "error"
+            result["error"] = e
+
+    th = threading.Thread(
+        target=_target,
+        name=f"voxcpm-load-{voice_id}",
+        daemon=True,
+    )
+    th.start()
+    th.join(watchdog_s)
+    result["elapsed_ms"] = int((time.monotonic() - started) * 1000)
+
+    if th.is_alive():
+        # We intentionally do NOT try to kill the thread. Python has no
+        # safe cross-platform thread-kill, and the stuck code is almost
+        # certainly in safetensors/torch native — killing from Python
+        # would leave CUDA context in a bad state anyway. The supervisor
+        # flags phase='failed' and leaves the thread orphaned; process
+        # restart is the only clean recovery.
+        result["status"] = "timeout"
+        result["watchdog_s"] = watchdog_s
+    return result
+
+
+def _run_prewarm_supervisor(voice_id: str) -> None:
+    """
+    Background supervisor. Transitions SERVICE_STATE through
+    warming -> ready | failed based on the watchdogged load outcome.
+    Called fire-and-forget from the startup event so uvicorn can bind
+    the port immediately instead of waiting for a potentially 5+ min
+    safetensors load.
+    """
+    SERVICE_STATE["phase"] = "warming"
+    SERVICE_STATE["warming"] = True
+    SERVICE_STATE["ready"] = False
+    SERVICE_STATE["last_error"] = None
+    _heartbeat(f"supervisor-start:{voice_id}")
+
+    outcome = _run_engine_load_watchdogged(voice_id, PREWARM_WATCHDOG_S)
+
+    if outcome["status"] == "ok":
+        SERVICE_STATE["phase"] = "ready"
+        SERVICE_STATE["ready"] = True
+        SERVICE_STATE["warming"] = False
+        SERVICE_STATE["last_load_ms"] = outcome["elapsed_ms"]
+        SERVICE_STATE["last_error"] = None
+        log.info(
+            f"[boot] prewarm complete voice_id={voice_id} "
+            f"elapsed_ms={outcome['elapsed_ms']} engine_count={len(_engine_cache)}"
+        )
+        return
+
+    if outcome["status"] == "timeout":
+        SERVICE_STATE["phase"] = "failed"
+        SERVICE_STATE["ready"] = False
+        SERVICE_STATE["warming"] = False
+        SERVICE_STATE["last_load_ms"] = None
+        SERVICE_STATE["last_error"] = (
+            f"PREWARM_WATCHDOG_EXPIRED voice_id={voice_id} "
+            f"watchdog_s={PREWARM_WATCHDOG_S} elapsed_ms={outcome['elapsed_ms']}"
+        )
+        log.error(
+            f"[boot] PREWARM_WATCHDOG_EXPIRED voice_id={voice_id} "
+            f"watchdog_s={PREWARM_WATCHDOG_S} elapsed_ms={outcome['elapsed_ms']} "
+            "— load thread still alive, likely stuck in safetensors/AudioVAE. "
+            "/health will now report phase=failed; uvicorn is still serving but "
+            "will NOT transition to ready without a process restart. "
+            f"Capture a py-spy dump BEFORE killing: py-spy dump --pid {os.getpid()}"
+        )
+        return
+
+    # outcome["status"] == "error"
+    err = outcome["error"]
+    SERVICE_STATE["phase"] = "failed"
+    SERVICE_STATE["ready"] = False
+    SERVICE_STATE["warming"] = False
+    SERVICE_STATE["last_load_ms"] = outcome["elapsed_ms"]
+    SERVICE_STATE["last_error"] = f"{type(err).__name__}: {err}"
+    log.error(
+        f"[boot] prewarm FAILED voice_id={voice_id} "
+        f"elapsed_ms={outcome['elapsed_ms']} error={type(err).__name__}: {err}",
+        exc_info=err,
+    )
 
 
 def _resolve_ref_path(ref_path: Optional[str]) -> Optional[str]:
@@ -236,22 +386,26 @@ app = FastAPI(title="Pulse Gaming Local TTS", version="1.2.0")
 
 @app.on_event("startup")
 def _on_startup():
-    """Log a boot banner + optionally prewarm the default engine.
+    """Log a boot banner + optionally schedule a background prewarm.
 
-    The banner gives ops a single grep target (`[boot]`) to confirm the
-    server is fresh and configured correctly. When PREWARM_ON_BOOT=true,
-    we load __default__ here so the first real /v1/infer call doesn't
-    eat the cold-start cost. The prewarm is best-effort — if it fails,
-    the server still serves requests (they'll just pay the cost on first
-    call).
+    Phase 1B change: the prewarm is now fire-and-forget in a supervisor
+    thread. Starlette runs sync startup handlers inline on the event
+    loop, so a blocking eng.load() here prevents uvicorn from ever
+    binding the listen socket — which is exactly the failure mode the
+    2026-04-17 incident exposed (uvicorn never bound :8765, /health
+    unreachable, no way for the Node side to distinguish 'still loading'
+    from 'dead'). Handing the load to a daemon thread lets the socket
+    come up immediately and gives the watchdog a place to fire.
     """
+    global _prewarm_thread
+
     boot_ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     SERVICE_STATE["boot_ts"] = boot_ts
     SERVICE_STATE["prewarm_voice_id"] = PREWARM_VOICE_ID
     log.info(
         f"[boot] pulse-gaming tts_server starting ts={boot_ts} "
         f"device={DEVICE} voices={len(VOICES_MAP)} prewarm_on_boot={PREWARM_ON_BOOT} "
-        f"prewarm_voice_id={PREWARM_VOICE_ID}"
+        f"prewarm_voice_id={PREWARM_VOICE_ID} prewarm_watchdog_s={PREWARM_WATCHDOG_S}"
     )
     if not PREWARM_ON_BOOT:
         log.info(
@@ -264,41 +418,23 @@ def _on_startup():
         SERVICE_STATE["phase"] = "ready-skipped"
         SERVICE_STATE["ready"] = True
         return
-    try:
-        log.info(f"[boot] prewarming voice_id={PREWARM_VOICE_ID}")
-        SERVICE_STATE["phase"] = "warming"
-        SERVICE_STATE["warming"] = True
-        t0 = time.monotonic()
-        eng = _get_engine(PREWARM_VOICE_ID)
-        # VoxCPMEngine defers HuggingFace weight load to first synth(). Force
-        # the eager load here so PREWARM_ON_BOOT actually pays the cost now
-        # instead of at first real request. The Phase F drill found the
-        # shell-only prewarm returned in 0ms and left the next /v1/infer
-        # call to eat 3-5 minutes — defeating the entire point of the flag.
-        if hasattr(eng, "load"):
-            eng.load()
-        dt_ms = int((time.monotonic() - t0) * 1000)
-        SERVICE_STATE["last_load_ms"] = dt_ms
-        SERVICE_STATE["phase"] = "ready"
-        SERVICE_STATE["ready"] = True
-        SERVICE_STATE["warming"] = False
-        log.info(
-            f"[boot] prewarm complete voice_id={PREWARM_VOICE_ID} "
-            f"elapsed_ms={dt_ms} engine_count={len(_engine_cache)}"
+
+    log.info(
+        f"[boot] scheduling background prewarm voice_id={PREWARM_VOICE_ID} "
+        f"watchdog_s={PREWARM_WATCHDOG_S} — startup returns immediately, "
+        "supervisor thread will flip phase to ready|failed"
+    )
+    SERVICE_STATE["phase"] = "warming"
+    SERVICE_STATE["warming"] = True
+    SERVICE_STATE["ready"] = False
+    with _prewarm_lock:
+        _prewarm_thread = threading.Thread(
+            target=_run_prewarm_supervisor,
+            args=(PREWARM_VOICE_ID,),
+            name="voxcpm-prewarm-supervisor",
+            daemon=True,
         )
-    except Exception as e:
-        SERVICE_STATE["phase"] = "failed"
-        SERVICE_STATE["warming"] = False
-        SERVICE_STATE["last_error"] = str(e)
-        # Service still accepts requests — callers can retry /v1/prewarm
-        # manually. "ready=True" here means "the HTTP server responds",
-        # not "GPU work will succeed". Distinguishing the two is why
-        # SERVICE_STATE.phase exists alongside SERVICE_STATE.ready.
-        SERVICE_STATE["ready"] = True
-        log.exception(
-            f"[boot] prewarm FAILED voice_id={PREWARM_VOICE_ID}: {e} — "
-            "first /v1/infer call will pay the cold-start cost instead"
-        )
+        _prewarm_thread.start()
 
 
 @app.get("/health")
@@ -331,6 +467,12 @@ def health():
         "last_load_ms": SERVICE_STATE["last_load_ms"],
         "last_error": SERVICE_STATE["last_error"],
         "boot_ts": SERVICE_STATE["boot_ts"],
+        # Phase 1B additions: watchdog budget + last heartbeat from the
+        # supervisor thread. `last_heartbeat_ts` advances while the load
+        # is progressing; if it stops advancing while phase='warming',
+        # the load is wedged in native code and the watchdog will fire.
+        "last_heartbeat_ts": SERVICE_STATE["last_heartbeat_ts"],
+        "watchdog_s": SERVICE_STATE["watchdog_s"],
     }
 
 
@@ -382,6 +524,11 @@ def prewarm(req: PrewarmRequest):
     paid OUTSIDE the runner's timeout budget. Safe to call repeatedly —
     a cached engine short-circuits immediately.
 
+    Phase 1B: the load itself runs under the same watchdog as the boot
+    prewarm. If the watchdog expires the endpoint returns 504 and
+    SERVICE_STATE flips to phase='failed', so Node-side waitForReady
+    can stop polling a dead service.
+
     Returns:
         voice_id      which id was warmed
         loaded_ms     time to load (0 when already cached)
@@ -395,42 +542,72 @@ def prewarm(req: PrewarmRequest):
     if not reused and voice_id not in VOICES_MAP and "__default__" in _engine_cache:
         reused = True
 
-    t0 = time.monotonic()
-    prior_phase = SERVICE_STATE["phase"]
+    if reused:
+        SERVICE_STATE["prewarm_voice_id"] = voice_id
+        log.info(
+            f"[prewarm] voice_id={voice_id} reused=True engine_count={len(_engine_cache)}"
+        )
+        return {
+            "voice_id": voice_id,
+            "loaded_ms": 0,
+            "engine_count": len(_engine_cache),
+            "reused": True,
+        }
+
     SERVICE_STATE["phase"] = "warming"
     SERVICE_STATE["warming"] = True
-    try:
-        eng = _get_engine(voice_id)
-        # Force eager weight load — VoxCPMEngine defers it to first synth()
-        # otherwise, and a shell-only prewarm doesn't help the runner at all.
-        if hasattr(eng, "load"):
-            eng.load()
-    except Exception as e:
+    SERVICE_STATE["ready"] = False
+    SERVICE_STATE["last_error"] = None
+    SERVICE_STATE["prewarm_voice_id"] = voice_id
+
+    outcome = _run_engine_load_watchdogged(voice_id, PREWARM_WATCHDOG_S)
+
+    if outcome["status"] == "timeout":
         SERVICE_STATE["phase"] = "failed"
+        SERVICE_STATE["ready"] = False
         SERVICE_STATE["warming"] = False
-        SERVICE_STATE["last_error"] = str(e)
-        log.exception(f"[prewarm] failed voice_id={voice_id}")
-        raise HTTPException(500, f"prewarm failed: {e}")
-    dt_ms = int((time.monotonic() - t0) * 1000)
-    # Only flip to "ready" if the prior phase wasn't something stronger
-    # (e.g. already ready from the boot prewarm) or weaker in a way
-    # that indicates the rest of the service is unhealthy.
+        SERVICE_STATE["last_load_ms"] = None
+        SERVICE_STATE["last_error"] = (
+            f"PREWARM_WATCHDOG_EXPIRED voice_id={voice_id} "
+            f"watchdog_s={PREWARM_WATCHDOG_S} elapsed_ms={outcome['elapsed_ms']}"
+        )
+        log.error(
+            f"[prewarm] PREWARM_WATCHDOG_EXPIRED voice_id={voice_id} "
+            f"watchdog_s={PREWARM_WATCHDOG_S} elapsed_ms={outcome['elapsed_ms']} — "
+            "load thread still alive; restart the process and capture "
+            f"py-spy dump --pid {os.getpid()} before the next attempt"
+        )
+        raise HTTPException(
+            504,
+            f"prewarm watchdog expired after {PREWARM_WATCHDOG_S}s — "
+            "load thread stuck, restart the service",
+        )
+
+    if outcome["status"] == "error":
+        err = outcome["error"]
+        SERVICE_STATE["phase"] = "failed"
+        SERVICE_STATE["ready"] = False
+        SERVICE_STATE["warming"] = False
+        SERVICE_STATE["last_load_ms"] = outcome["elapsed_ms"]
+        SERVICE_STATE["last_error"] = f"{type(err).__name__}: {err}"
+        log.exception(f"[prewarm] failed voice_id={voice_id}", exc_info=err)
+        raise HTTPException(500, f"prewarm failed: {err}")
+
+    dt_ms = outcome["elapsed_ms"]
     SERVICE_STATE["phase"] = "ready"
     SERVICE_STATE["ready"] = True
     SERVICE_STATE["warming"] = False
     SERVICE_STATE["last_load_ms"] = dt_ms
-    SERVICE_STATE["prewarm_voice_id"] = voice_id
-    SERVICE_STATE["last_error"] = None  # clear any prior failure
-    _ = prior_phase  # retained for debug/log extension
+    SERVICE_STATE["last_error"] = None
     log.info(
-        f"[prewarm] voice_id={voice_id} reused={reused} elapsed_ms={dt_ms} "
+        f"[prewarm] voice_id={voice_id} reused=False elapsed_ms={dt_ms} "
         f"engine_count={len(_engine_cache)}"
     )
     return {
         "voice_id": voice_id,
         "loaded_ms": dt_ms,
         "engine_count": len(_engine_cache),
-        "reused": reused,
+        "reused": False,
     }
 
 

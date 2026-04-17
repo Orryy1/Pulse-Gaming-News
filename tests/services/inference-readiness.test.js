@@ -21,6 +21,7 @@ const http = require("node:http");
 const {
   waitForReady,
   InferTimeoutError,
+  InferFailedStateError,
 } = require("../../lib/inference-client");
 
 /** Spin up a fake /health server that returns the payloads from the
@@ -128,6 +129,53 @@ test("waitForReady: acceptSkipped=false does NOT return on ready-skipped", async
           acceptSkipped: false,
         }),
       (err) => err instanceof InferTimeoutError,
+    );
+  } finally {
+    await close();
+  }
+});
+
+test("waitForReady: throws InferFailedStateError immediately when phase='failed'", async () => {
+  // Phase 1B: a service that has watchdog-expired (or whose load raised)
+  // sets phase='failed' and ready=false. waitForReady must bail fast
+  // instead of polling — the service is dead and no further polling will
+  // recover it without a restart.
+  const { baseUrl, close } = await fakeHealthServer([
+    {
+      phase: "failed",
+      ready: false,
+      warming: false,
+      engine_count: 0,
+      last_error:
+        "PREWARM_WATCHDOG_EXPIRED voice_id=__default__ watchdog_s=420 elapsed_ms=420123",
+      last_heartbeat_ts: "2026-04-17T09:01:12Z",
+    },
+  ]);
+  try {
+    const t0 = Date.now();
+    await assert.rejects(
+      () =>
+        waitForReady({
+          baseUrl,
+          deadlineMs: 10_000,
+          pollIntervalMs: 200,
+        }),
+      (err) => {
+        assert.ok(err instanceof InferFailedStateError);
+        assert.equal(err.name, "InferFailedStateError");
+        assert.ok(
+          /PREWARM_WATCHDOG_EXPIRED/.test(err.lastError || ""),
+          `expected last_error to carry watchdog string, got ${err.lastError}`,
+        );
+        assert.ok(err.health && err.health.phase === "failed");
+        return true;
+      },
+    );
+    // Should have bailed well before the deadline — no further polling
+    // after seeing phase='failed'.
+    assert.ok(
+      Date.now() - t0 < 1_500,
+      `expected fast-fail <1.5s, took ${Date.now() - t0}ms`,
     );
   } finally {
     await close();

@@ -1,15 +1,24 @@
 // Pulse Gaming - Breaking News Priority Queue
-// Accepts stories from the watcher, deduplicates against daily_news.json,
-// and runs the fast pipeline: processor -> audio -> images -> assemble -> publish.
-// Enforces a 2-hour cooldown between breaking publishes.
+// Accepts stories from the watcher, deduplicates against the canonical
+// story store (SQLite when USE_SQLITE=true, daily_news.json otherwise)
+// via lib/db, and runs the fast pipeline: processor -> audio -> images
+// -> assemble -> publish. Enforces a 2-hour cooldown between breaking
+// publishes.
+//
+// Phase 3C JSON-shrink cutover: dedup reads and the single-story upsert
+// at the end of the fast pipeline now go through db.getStory /
+// db.upsertStory instead of direct fs.readJson / fs.writeJson round
+// trips on daily_news.json. pending_news.json (processor inbox) stays
+// on direct JSON until Phase 3D — it's an ephemeral stage handoff, not
+// canonical state.
 
-const fs = require('fs-extra');
-const path = require('path');
-const { similarity } = require('./hunter');
+const fs = require("fs-extra");
+const path = require("path");
+const { similarity } = require("./hunter");
+const db = require("./lib/db");
 
-const COOLDOWN_MS = 2 * 60 * 60 * 1000;   // 2 hours between breaking publishes
-const BREAKING_LOG = path.join(__dirname, 'breaking_log.json');
-const DATA_FILE = path.join(__dirname, 'daily_news.json');
+const COOLDOWN_MS = 2 * 60 * 60 * 1000; // 2 hours between breaking publishes
+const BREAKING_LOG = path.join(__dirname, "breaking_log.json");
 
 let lastPublishTime = 0;
 let processing = false;
@@ -27,8 +36,12 @@ async function initCooldown() {
       const lastTime = new Date(lastEntry.timestamp).getTime();
       if (Date.now() - lastTime < COOLDOWN_MS) {
         lastPublishTime = lastTime;
-        const remaining = Math.round((COOLDOWN_MS - (Date.now() - lastTime)) / 60000);
-        console.log(`[breaking] Restored cooldown from disk:${remaining} min remaining`);
+        const remaining = Math.round(
+          (COOLDOWN_MS - (Date.now() - lastTime)) / 60000,
+        );
+        console.log(
+          `[breaking] Restored cooldown from disk:${remaining} min remaining`,
+        );
       }
     }
   } catch (err) {
@@ -54,60 +67,82 @@ async function appendBreakingLog(entry) {
 }
 
 // --- Check whether a story is a duplicate or already published ---
-async function isDuplicate(story) {
-  if (!await fs.pathExists(DATA_FILE)) return false;
-
+// Reads through the canonical persistence surface (SQLite when
+// USE_SQLITE=true, daily_news.json fallback otherwise). The old
+// direct-fs.readJson call diverged from canonical state once SQLite
+// went live in prod — Pragmata-class incident territory.
+//
+// Accepts an optional { dbHandle } for tests so the cutover has a
+// regression surface without touching real storage.
+async function isDuplicate(story, { dbHandle = db } = {}) {
+  let stories;
   try {
-    const existing = await fs.readJson(DATA_FILE);
-    const stories = Array.isArray(existing) ? existing : [];
-
-    // Check by ID first (exact match)
-    const byId = stories.find(s => s.id === story.id);
-    if (byId) {
-      // If already published to any platform, definitely skip
-      if (byId.youtube_post_id || byId.tiktok_post_id || byId.instagram_media_id || byId.facebook_post_id || byId.twitter_post_id) {
-        console.log(`[breaking] Story ${story.id} already published:skipping`);
-        return true;
-      }
-      // If already has audio/video produced, skip (pipeline already ran)
-      if (byId.exported_path) {
-        console.log(`[breaking] Story ${story.id} already produced:skipping`);
-        return true;
-      }
-    }
-
-    // Fuzzy title match (catches same story from different sources)
-    return stories.some(s => similarity(s.title, story.title) > 0.5);
+    stories = await dbHandle.getStories();
   } catch (err) {
-    console.log(`[breaking] Dedup check failed: ${err.message}`);
+    console.log(`[breaking] Dedup read failed: ${err.message}`);
     return false;
   }
+  if (!Array.isArray(stories) || stories.length === 0) return false;
+
+  // Check by ID first (exact match)
+  const byId = stories.find((s) => s.id === story.id);
+  if (byId) {
+    // If already published to any platform, definitely skip
+    if (
+      byId.youtube_post_id ||
+      byId.tiktok_post_id ||
+      byId.instagram_media_id ||
+      byId.facebook_post_id ||
+      byId.twitter_post_id
+    ) {
+      console.log(`[breaking] Story ${story.id} already published:skipping`);
+      return true;
+    }
+    // If already has audio/video produced, skip (pipeline already ran)
+    if (byId.exported_path) {
+      console.log(`[breaking] Story ${story.id} already produced:skipping`);
+      return true;
+    }
+  }
+
+  // Fuzzy title match (catches same story from different sources)
+  return stories.some((s) => similarity(s.title, story.title) > 0.5);
 }
 
 // --- Fast pipeline: process a single breaking story end-to-end ---
 async function runFastPipeline(story) {
   const startTime = Date.now();
-  console.log('[breaking] === FAST PIPELINE START ===');
+  console.log("[breaking] === FAST PIPELINE START ===");
   console.log(`[breaking] Story: ${story.title}`);
-  console.log(`[breaking] Score: ${story.breaking_score} | Trigger: ${story.breaking_trigger}`);
+  console.log(
+    `[breaking] Score: ${story.breaking_score} | Trigger: ${story.breaking_trigger}`,
+  );
 
   try {
     // Step 1: Write to pending_news.json for the processor
-    await fs.writeJson('pending_news.json', {
-      timestamp: new Date().toISOString(),
-      stories: [story],
-    }, { spaces: 2 });
+    await fs.writeJson(
+      "pending_news.json",
+      {
+        timestamp: new Date().toISOString(),
+        stories: [story],
+      },
+      { spaces: 2 },
+    );
 
     // Step 2: Script generation via processor
-    console.log('[breaking] Step 1/5: Generating script...');
-    const process_stories = require('./processor');
+    console.log("[breaking] Step 1/5: Generating script...");
+    const process_stories = require("./processor");
     await process_stories();
 
-    // Step 3: Merge the new story into daily_news.json (append, don't overwrite)
-    const processed = await fs.readJson(DATA_FILE).catch(() => []);
-    const newStory = processed.find(s => s.id === story.id);
+    // Step 3: Pull the processor's output for this story and upsert it
+    // as breaking. Canonical store (SQLite when USE_SQLITE=true) is the
+    // single source of truth — no more direct daily_news.json read /
+    // mutate / write round-trip. db.getStory + db.upsertStory handle
+    // both modes internally (surgical row upsert on SQLite, legacy
+    // JSON read-modify-write on dev-without-DB).
+    const newStory = await db.getStory(story.id);
     if (!newStory) {
-      console.log('[breaking] Processor did not produce a story:aborting');
+      console.log("[breaking] Processor did not produce a story:aborting");
       return null;
     }
 
@@ -117,44 +152,38 @@ async function runFastPipeline(story) {
     newStory.auto_approved = true;
     newStory.approved_at = new Date().toISOString();
     newStory.breaking_fast_track = true;
-    newStory.classification = '[BREAKING]';
+    newStory.classification = "[BREAKING]";
 
-    // Re-read daily_news in case other processes modified it, then merge
-    const allStories = await fs.readJson(DATA_FILE).catch(() => []);
-    const existingIdx = allStories.findIndex(s => s.id === newStory.id);
-    if (existingIdx >= 0) {
-      allStories[existingIdx] = newStory;
-    } else {
-      allStories.unshift(newStory);
-    }
-    await fs.writeJson(DATA_FILE, allStories, { spaces: 2 });
+    await db.upsertStory(newStory);
 
     // Step 4: Audio generation
-    console.log('[breaking] Step 2/5: Generating audio...');
-    const audio = require('./audio');
+    console.log("[breaking] Step 2/5: Generating audio...");
+    const audio = require("./audio");
     await audio();
 
     // Step 5: Image generation
-    console.log('[breaking] Step 3/5: Generating images...');
-    const images = require('./images');
+    console.log("[breaking] Step 3/5: Generating images...");
+    const images = require("./images");
     await images();
 
     // Step 6: Video assembly
-    console.log('[breaking] Step 4/5: Assembling video...');
-    const assemble = require('./assemble');
+    console.log("[breaking] Step 4/5: Assembling video...");
+    const assemble = require("./assemble");
     await assemble();
 
     // Step 7: Publish (if AUTO_PUBLISH is on)
     let publishResult = null;
-    if (process.env.AUTO_PUBLISH === 'true') {
-      console.log('[breaking] Step 5/5: Publishing to all platforms...');
-      const { publishNextStory } = require('./publisher');
+    if (process.env.AUTO_PUBLISH === "true") {
+      console.log("[breaking] Step 5/5: Publishing to all platforms...");
+      const { publishNextStory } = require("./publisher");
       publishResult = await publishNextStory();
       if (publishResult) {
-        console.log(`[breaking] Published: YT=${publishResult.youtube} TT=${publishResult.tiktok} IG=${publishResult.instagram} FB=${publishResult.facebook} X=${publishResult.twitter}`);
+        console.log(
+          `[breaking] Published: YT=${publishResult.youtube} TT=${publishResult.tiktok} IG=${publishResult.instagram} FB=${publishResult.facebook} X=${publishResult.twitter}`,
+        );
       }
     } else {
-      console.log('[breaking] Step 5/5: AUTO_PUBLISH off:skipping upload');
+      console.log("[breaking] Step 5/5: AUTO_PUBLISH off:skipping upload");
     }
 
     const elapsedMs = Date.now() - startTime;
@@ -163,26 +192,32 @@ async function runFastPipeline(story) {
 
     // Discord notification
     try {
-      const sendDiscord = require('./notify');
+      const sendDiscord = require("./notify");
       const platformStatus = publishResult
-        ? `YT: ${publishResult.youtube ? 'yes' : 'no'} | TT: ${publishResult.tiktok ? 'yes' : 'no'} | IG: ${publishResult.instagram ? 'yes' : 'no'} | FB: ${publishResult.facebook ? 'yes' : 'no'} | X: ${publishResult.twitter ? 'yes' : 'no'}`
-        : 'Publishing skipped';
+        ? `YT: ${publishResult.youtube ? "yes" : "no"} | TT: ${publishResult.tiktok ? "yes" : "no"} | IG: ${publishResult.instagram ? "yes" : "no"} | FB: ${publishResult.facebook ? "yes" : "no"} | X: ${publishResult.twitter ? "yes" : "no"}`
+        : "Publishing skipped";
       await sendDiscord(
         `**BREAKING NEWS: Fast Pipeline**\n` +
-        `"${story.title}"\n` +
-        `Score: ${story.breaking_score} | Trigger: ${story.breaking_trigger}\n` +
-        `Time to publish: ${elapsedSec}s\n` +
-        platformStatus
+          `"${story.title}"\n` +
+          `Score: ${story.breaking_score} | Trigger: ${story.breaking_trigger}\n` +
+          `Time to publish: ${elapsedSec}s\n` +
+          platformStatus,
       );
-    } catch (err) { /* Discord notification is non-critical */ }
+    } catch (err) {
+      /* Discord notification is non-critical */
+    }
 
     return { story: newStory, timeToPublish: elapsedMs };
   } catch (err) {
     console.log(`[breaking] Fast pipeline error: ${err.message}`);
     try {
-      const sendDiscord = require('./notify');
-      await sendDiscord(`**BREAKING PIPELINE ERROR**: ${err.message}\nStory: ${story.title}`);
-    } catch (e) { /* silent */ }
+      const sendDiscord = require("./notify");
+      await sendDiscord(
+        `**BREAKING PIPELINE ERROR**: ${err.message}\nStory: ${story.title}`,
+      );
+    } catch (e) {
+      /* silent */
+    }
     return null;
   }
 }
@@ -195,7 +230,9 @@ async function processQueue() {
   const sinceLastPublish = Date.now() - lastPublishTime;
   if (sinceLastPublish < COOLDOWN_MS && lastPublishTime > 0) {
     const waitMin = Math.round((COOLDOWN_MS - sinceLastPublish) / 60000);
-    console.log(`[breaking] Cooldown active:${waitMin} min remaining. Queue size: ${queue.length}`);
+    console.log(
+      `[breaking] Cooldown active:${waitMin} min remaining. Queue size: ${queue.length}`,
+    );
     return;
   }
 
@@ -232,20 +269,24 @@ async function processQueue() {
 
 async function queueBreaking(story) {
   await initCooldown();
-  console.log(`[breaking] Received breaking story: ${story.title} (score: ${story.breaking_score})`);
+  console.log(
+    `[breaking] Received breaking story: ${story.title} (score: ${story.breaking_score})`,
+  );
 
   // Deduplicate against existing stories
   const isDupe = await isDuplicate(story);
   if (isDupe) {
-    console.log('[breaking] Story is a duplicate of existing coverage:skipping');
-    return { queued: false, reason: 'duplicate' };
+    console.log(
+      "[breaking] Story is a duplicate of existing coverage:skipping",
+    );
+    return { queued: false, reason: "duplicate" };
   }
 
   // Deduplicate against items already in the queue
-  const inQueue = queue.some(s => similarity(s.title, story.title) > 0.5);
+  const inQueue = queue.some((s) => similarity(s.title, story.title) > 0.5);
   if (inQueue) {
-    console.log('[breaking] Story is already queued:skipping');
-    return { queued: false, reason: 'already_queued' };
+    console.log("[breaking] Story is already queued:skipping");
+    return { queued: false, reason: "already_queued" };
   }
 
   queue.push(story);
@@ -259,16 +300,22 @@ async function queueBreaking(story) {
 
 function getQueueStatus() {
   const sinceLastPublish = Date.now() - lastPublishTime;
-  const cooldownRemaining = lastPublishTime > 0 ? Math.max(0, COOLDOWN_MS - sinceLastPublish) : 0;
+  const cooldownRemaining =
+    lastPublishTime > 0 ? Math.max(0, COOLDOWN_MS - sinceLastPublish) : 0;
 
   return {
     queueLength: queue.length,
     processing,
-    lastPublishTime: lastPublishTime > 0 ? new Date(lastPublishTime).toISOString() : null,
+    lastPublishTime:
+      lastPublishTime > 0 ? new Date(lastPublishTime).toISOString() : null,
     cooldownRemainingMs: cooldownRemaining,
     cooldownRemainingMin: Math.round(cooldownRemaining / 60000),
-    queuedStories: queue.map(s => ({ id: s.id, title: s.title, score: s.breaking_score })),
+    queuedStories: queue.map((s) => ({
+      id: s.id,
+      title: s.title,
+      score: s.breaking_score,
+    })),
   };
 }
 
-module.exports = { queueBreaking, getQueueStatus };
+module.exports = { queueBreaking, getQueueStatus, isDuplicate };

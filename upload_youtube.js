@@ -696,13 +696,56 @@ async function uploadAll() {
     return [];
   }
 
-  // Build set of already-published titles for dedup
+  // Build set of already-published titles for dedup. Filter out legacy
+  // sentinel values (DUPE_BLOCKED / DUPE_SKIPPED) — they're not real
+  // publishes and their titles should NOT count as "already published"
+  // for the purposes of skipping new stories.
   const publishedTitles = stories
-    .filter((s) => s.youtube_post_id)
+    .filter(
+      (s) =>
+        s.youtube_post_id && !String(s.youtube_post_id).startsWith("DUPE_"),
+    )
     .map((s) => (s.title || "").toLowerCase());
 
+  // Sentinel-cleanup: load repos once so we can (a) skip stories that
+  // already have a blocked platform_posts row from a prior run and
+  // (b) record new blocks structurally instead of stamping DUPE_BLOCKED
+  // into story.youtube_post_id. The batch path is only reached via
+  // `node run.js publish` (CLI) so this is not production-hot, but
+  // cleaning it up removes the last known sentinel writer.
+  const {
+    recordPlatformBlock,
+    getPlatformStatus,
+  } = require("./lib/services/publish-block");
+  let pubRepos = null;
+  if (process.env.USE_SQLITE === "true") {
+    try {
+      pubRepos = require("./lib/repositories").getRepos();
+    } catch (err) {
+      console.log(`[youtube] repos unavailable: ${err.message}`);
+    }
+  }
+
   const ready = stories.filter((s) => {
-    if (!s.approved || !s.exported_path || s.youtube_post_id) return false;
+    if (!s.approved || !s.exported_path) return false;
+    if (s.youtube_post_id && !String(s.youtube_post_id).startsWith("DUPE_")) {
+      // Genuinely already published — skip.
+      return false;
+    }
+    // Structured prior-block check — skip stories that have a
+    // platform_posts row with status='blocked' so we don't burn an
+    // API call re-attempting them.
+    const prior = getPlatformStatus({
+      repos: pubRepos,
+      storyId: s.id,
+      platform: "youtube",
+    });
+    if (prior && prior.status === "blocked") {
+      console.log(
+        `[youtube] Skipping previously blocked: "${s.title}" (${prior.block_reason || "unknown"})`,
+      );
+      return false;
+    }
     // Title dedup: skip if a story with very similar title was already uploaded
     const title = (s.title || "").toLowerCase();
     const isDupe = publishedTitles.some((pt) => {
@@ -724,19 +767,29 @@ async function uploadAll() {
   const results = [];
 
   for (const story of ready) {
+    const storyChannelId = story.channel_id || process.env.CHANNEL || null;
     try {
       const result = await uploadShort(story);
-      // Mirror publisher.js: uploadShort returns { blocked: true, reason }
-      // when the remote dedupe check rejects the upload. The batch path
-      // used to treat that as success (videoId=undefined, then overwrote
-      // publish_status="published") which corrupted state. Now we stamp
-      // the sentinel and move on so analytics.js/stats endpoints can
-      // filter it out later.
+      // uploadShort returns { blocked: true, reason } when the remote
+      // dedupe check rejects the upload. The batch path used to stamp
+      // `story.youtube_post_id = "DUPE_BLOCKED"` for this, which
+      // polluted the denormalised column. Structured version: write
+      // a platform_posts row with status='blocked' and leave the
+      // stories column NULL unless we're in dev-without-SQLite mode.
       if (result.blocked) {
         console.log(
           `[youtube] BLOCKED duplicate for ${story.id}: ${result.reason}`,
         );
-        story.youtube_post_id = "DUPE_BLOCKED";
+        const blockResult = recordPlatformBlock({
+          repos: pubRepos,
+          storyId: story.id,
+          platform: "youtube",
+          reason: `remote-dupe: ${result.reason || "blocked"}`,
+          channelId: storyChannelId,
+        });
+        if (!blockResult.persisted) {
+          story.youtube_post_id = "DUPE_BLOCKED"; // legacy dev fallback only
+        }
         story.publish_error = `dupe-blocked: ${result.reason}`;
         continue;
       }

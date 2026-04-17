@@ -15,13 +15,15 @@ const INSTAGRAM_TOKEN_PATH = path.join(
   "instagram_token.json",
 );
 
-// Publisher writes sentinel values like "DUPE_BLOCKED" / "DUPE_SKIPPED" into
-// platform post-id fields to record "we tried and were refused" without
-// re-attempting. These MUST NOT be sent to the real platform APIs — they
-// will 400/404 and pollute stats. Anything that looks up a post by id should
-// run the id through `isRealPostId()` first.
+// Any id sent to YouTube/TikTok/Instagram stats APIs must be a real
+// platform id (non-empty string). Post-migration-013 the stories table
+// never stores "DUPE_BLOCKED" / "DUPE_SKIPPED" sentinels in the
+// denormalised <platform>_post_id columns — structured blocked/skipped
+// state lives in platform_posts (status='blocked', external_id=NULL)
+// instead. This helper is now a simple truthy-string check; the
+// historical sentinel filter is retired.
 function isRealPostId(id) {
-  return typeof id === "string" && id.length > 0 && !id.startsWith("DUPE_");
+  return typeof id === "string" && id.length > 0;
 }
 
 // --- Load / save helpers (delegated to db layer, feature-flagged) ---
@@ -475,9 +477,9 @@ async function runAnalytics() {
   }
 
   // Collect published stories across all platforms.
-  // `isRealPostId` filters out sentinel values like "DUPE_BLOCKED" that the
-  // publisher writes to record a refused upload — those are NOT real post
-  // ids and asking YouTube/TikTok/IG for their stats 404s every call.
+  // `isRealPostId` is a truthy-string guard; historical rows were
+  // scrubbed by migration 013 so the denormalised columns now contain
+  // either a real platform id or NULL.
   const publishedStories = stories.filter(
     (s) =>
       isRealPostId(s.youtube_post_id) ||

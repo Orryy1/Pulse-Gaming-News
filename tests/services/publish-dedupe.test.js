@@ -238,15 +238,20 @@ test("title-jaccard fallback: no URL present -> matches legacy array", () => {
   assert.equal(r.existing.story_id, "s-old");
 });
 
-test("title-jaccard fallback: DUPE_SKIPPED sentinel in legacy row is NOT a match", () => {
+test("title-jaccard fallback: NULL platform id in legacy row is NOT a match", () => {
+  // Post-migration-013 the denormalised <platform>_post_id columns are
+  // either a real id or NULL — historical DUPE_BLOCKED / DUPE_SKIPPED
+  // sentinel strings were scrubbed. This test pins the new invariant:
+  // a legacy row with a NULL platform id does NOT count as a prior
+  // publish for the title-jaccard fallback, so an incoming story with
+  // the same title still publishes.
   const db = makeDb();
   const incoming = { id: "s-new", title: "Same title exactly", url: "" };
-  // Legacy row has only a sentinel — shouldn't count as a real match
   const legacyStories = [
     {
       id: "s-old",
       title: "Same title exactly",
-      instagram_media_id: "DUPE_SKIPPED",
+      instagram_media_id: null,
     },
   ];
   const r = decidePublish(incoming, "instagram_reel", makeRepos(db), {

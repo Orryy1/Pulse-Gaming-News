@@ -77,9 +77,9 @@ async function loadPublishedStories() {
     }
   }
 
-  return stories.filter(
-    (s) => s.youtube_post_id && s.youtube_post_id !== "DUPE_BLOCKED",
-  );
+  // Post-migration-013 the denormalised column is either a real id or
+  // NULL; no need to filter sentinel strings anymore.
+  return stories.filter((s) => s.youtube_post_id);
 }
 
 // ---------- Reply log (deduplication) ----------

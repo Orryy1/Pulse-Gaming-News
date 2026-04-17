@@ -194,6 +194,51 @@ test("getPlatformStatus: returns the row when one exists, null otherwise", () =>
   assert.equal(miss, null);
 });
 
+test("publish-block covers every publisher.js platform key (tiktok, instagram_reel, facebook_reel, twitter_video) without sentinel pollution", () => {
+  // Pins the Task-1 cutover: each platform_key written from publisher.js
+  // produces a structured blocked row with external_id=NULL. If someone
+  // later adds a new platform to publisher.js and forgets to add it to
+  // platform_posts.PLATFORMS, this test will catch it (ensurePending
+  // will refuse an unknown platform).
+  const repos = makeRepos();
+  seedStory(repos.db, "pragmata");
+
+  const platforms = [
+    "tiktok",
+    "instagram_reel",
+    "facebook_reel",
+    "twitter_video",
+  ];
+  for (const platform of platforms) {
+    const out = recordPlatformBlock({
+      repos,
+      storyId: "pragmata",
+      platform,
+      reason: `title-skip: another pragmata story on ${platform}`,
+      log: () => {},
+    });
+    assert.equal(out.persisted, true, `${platform} must persist`);
+  }
+
+  const rows = repos.db
+    .prepare(
+      `SELECT platform, status, external_id, block_reason FROM platform_posts
+       WHERE story_id = 'pragmata'
+       ORDER BY platform`,
+    )
+    .all();
+  assert.equal(rows.length, 4, "exactly one row per platform");
+  for (const row of rows) {
+    assert.equal(row.status, "blocked");
+    assert.equal(
+      row.external_id,
+      null,
+      `${row.platform} external_id must be NULL`,
+    );
+    assert.ok(/^title-skip:/.test(row.block_reason));
+  }
+});
+
 test("no sentinel pollution: external_id never contains a DUPE_* string via this helper", () => {
   const repos = makeRepos();
   seedStory(repos.db, "s1");

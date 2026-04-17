@@ -553,30 +553,29 @@ async function _publishNextStoryInner() {
     errors: {},
   };
 
-  // Phase E-sentinel-cleanup: YouTube block/skip outcomes now persist to
-  // platform_posts as structured rows (status='blocked', block_reason=...)
-  // instead of polluting story.youtube_post_id with "DUPE_BLOCKED" /
-  // "DUPE_SKIPPED" sentinel strings. Readers that check the denormalised
-  // column still see the legacy shape from historical data — but new
-  // blocks do not contribute new sentinels.
-  //
-  // Other platforms (TT/IG/FB/X) and the batch uploader in upload_youtube.js
-  // still write sentinels. Cleaned up platform-by-platform so each change
-  // stays reviewable.
+  // Sentinel-cleanup cutover: block/skip outcomes for every platform in
+  // this function persist to platform_posts as structured rows
+  // (status='blocked', block_reason=<text>, external_id=NULL) instead of
+  // polluting story.<platform>_post_id with "DUPE_BLOCKED" / "DUPE_SKIPPED"
+  // sentinel strings. The denormalised columns stay NULL for new blocks;
+  // readers that still grep for sentinels only see them from historical
+  // pre-cutover data. The batch path in upload_youtube.js::uploadAll is
+  // the only remaining sentinel writer after this cutover (tracked by
+  // the follow-up inventory).
   const {
     recordPlatformBlock,
     getPlatformStatus,
   } = require("./lib/services/publish-block");
   const sqliteOn = process.env.USE_SQLITE === "true";
-  let ytRepos = null;
+  let pubRepos = null;
   if (sqliteOn) {
     try {
-      ytRepos = require("./lib/repositories").getRepos();
+      pubRepos = require("./lib/repositories").getRepos();
     } catch (err) {
-      console.log(`[publisher] YouTube: repos unavailable: ${err.message}`);
+      console.log(`[publisher] publish: repos unavailable: ${err.message}`);
     }
   }
-  const ytChannelId = story.channel_id || process.env.CHANNEL || null;
+  const pubChannelId = story.channel_id || process.env.CHANNEL || null;
 
   // YouTube - skip if already published or if a similar title was already uploaded
   shadowCanonicalDedupe(story, "youtube", stories);
@@ -589,7 +588,7 @@ async function _publishNextStoryInner() {
       titlesSimilar(s.title, story.title),
   );
   const ytPrior = getPlatformStatus({
-    repos: ytRepos,
+    repos: pubRepos,
     storyId: story.id,
     platform: "youtube",
   });
@@ -608,11 +607,11 @@ async function _publishNextStoryInner() {
   } else if (ytTitleDupe) {
     result.youtube = true;
     const blockResult = recordPlatformBlock({
-      repos: ytRepos,
+      repos: pubRepos,
       storyId: story.id,
       platform: "youtube",
       reason: `title-skip: ${ytTitleDupe.title}`,
-      channelId: ytChannelId,
+      channelId: pubChannelId,
     });
     if (!blockResult.persisted) {
       // Legacy fallback ONLY when platform_posts is unreachable (dev
@@ -630,11 +629,11 @@ async function _publishNextStoryInner() {
       const ytResult = await uploadShort(story);
       if (ytResult.blocked) {
         const blockResult = recordPlatformBlock({
-          repos: ytRepos,
+          repos: pubRepos,
           storyId: story.id,
           platform: "youtube",
           reason: `remote-dupe: ${ytResult.reason || "blocked"}`,
-          channelId: ytChannelId,
+          channelId: pubChannelId,
         });
         if (!blockResult.persisted) {
           story.youtube_post_id = "DUPE_BLOCKED"; // legacy dev fallback
@@ -672,17 +671,38 @@ async function _publishNextStoryInner() {
       s.id !== story.id &&
       s.tiktok_post_id &&
       s.tiktok_post_id !== "DUPE_SKIPPED" &&
+      s.tiktok_post_id !== "DUPE_BLOCKED" &&
       titlesSimilar(s.title, story.title),
   );
+  const ttPrior = getPlatformStatus({
+    repos: pubRepos,
+    storyId: story.id,
+    platform: "tiktok",
+  });
   if (story.tiktok_post_id) {
     result.tiktok = true;
     console.log(
       `[publisher] TikTok: already published (${story.tiktok_post_id})`,
     );
-  } else if (ttTitleDupe) {
-    story.tiktok_post_id = "DUPE_SKIPPED";
+  } else if (ttPrior && ttPrior.status === "blocked") {
+    result.tiktok = true;
     console.log(
-      `[publisher] TikTok: SKIPPED duplicate title ~ "${ttTitleDupe.title}"`,
+      `[publisher] TikTok: already blocked (${ttPrior.block_reason || "unknown"})`,
+    );
+  } else if (ttTitleDupe) {
+    const blockResult = recordPlatformBlock({
+      repos: pubRepos,
+      storyId: story.id,
+      platform: "tiktok",
+      reason: `title-skip: ${ttTitleDupe.title}`,
+      channelId: pubChannelId,
+    });
+    if (!blockResult.persisted) {
+      story.tiktok_post_id = "DUPE_SKIPPED"; // legacy dev fallback only
+    }
+    console.log(
+      `[publisher] TikTok: SKIPPED duplicate title ~ "${ttTitleDupe.title}" ` +
+        `(persisted=${blockResult.persisted})`,
     );
     await db.upsertStory(story);
   } else {
@@ -725,17 +745,38 @@ async function _publishNextStoryInner() {
       s.id !== story.id &&
       s.instagram_media_id &&
       s.instagram_media_id !== "DUPE_SKIPPED" &&
+      s.instagram_media_id !== "DUPE_BLOCKED" &&
       titlesSimilar(s.title, story.title),
   );
+  const igPrior = getPlatformStatus({
+    repos: pubRepos,
+    storyId: story.id,
+    platform: "instagram_reel",
+  });
   if (story.instagram_media_id) {
     result.instagram = true;
     console.log(
       `[publisher] Instagram: already published (${story.instagram_media_id})`,
     );
-  } else if (igTitleDupe) {
-    story.instagram_media_id = "DUPE_SKIPPED";
+  } else if (igPrior && igPrior.status === "blocked") {
+    result.instagram = true;
     console.log(
-      `[publisher] Instagram: SKIPPED duplicate title ~ "${igTitleDupe.title}"`,
+      `[publisher] Instagram: already blocked (${igPrior.block_reason || "unknown"})`,
+    );
+  } else if (igTitleDupe) {
+    const blockResult = recordPlatformBlock({
+      repos: pubRepos,
+      storyId: story.id,
+      platform: "instagram_reel",
+      reason: `title-skip: ${igTitleDupe.title}`,
+      channelId: pubChannelId,
+    });
+    if (!blockResult.persisted) {
+      story.instagram_media_id = "DUPE_SKIPPED"; // legacy dev fallback only
+    }
+    console.log(
+      `[publisher] Instagram: SKIPPED duplicate title ~ "${igTitleDupe.title}" ` +
+        `(persisted=${blockResult.persisted})`,
     );
     await db.upsertStory(story);
   } else {
@@ -772,17 +813,38 @@ async function _publishNextStoryInner() {
       s.id !== story.id &&
       s.facebook_post_id &&
       s.facebook_post_id !== "DUPE_SKIPPED" &&
+      s.facebook_post_id !== "DUPE_BLOCKED" &&
       titlesSimilar(s.title, story.title),
   );
+  const fbPrior = getPlatformStatus({
+    repos: pubRepos,
+    storyId: story.id,
+    platform: "facebook_reel",
+  });
   if (story.facebook_post_id) {
     result.facebook = true;
     console.log(
       `[publisher] Facebook: already published (${story.facebook_post_id})`,
     );
-  } else if (fbTitleDupe) {
-    story.facebook_post_id = "DUPE_SKIPPED";
+  } else if (fbPrior && fbPrior.status === "blocked") {
+    result.facebook = true;
     console.log(
-      `[publisher] Facebook: SKIPPED duplicate title ~ "${fbTitleDupe.title}"`,
+      `[publisher] Facebook: already blocked (${fbPrior.block_reason || "unknown"})`,
+    );
+  } else if (fbTitleDupe) {
+    const blockResult = recordPlatformBlock({
+      repos: pubRepos,
+      storyId: story.id,
+      platform: "facebook_reel",
+      reason: `title-skip: ${fbTitleDupe.title}`,
+      channelId: pubChannelId,
+    });
+    if (!blockResult.persisted) {
+      story.facebook_post_id = "DUPE_SKIPPED"; // legacy dev fallback only
+    }
+    console.log(
+      `[publisher] Facebook: SKIPPED duplicate title ~ "${fbTitleDupe.title}" ` +
+        `(persisted=${blockResult.persisted})`,
     );
     await db.upsertStory(story);
   } else {
@@ -819,17 +881,38 @@ async function _publishNextStoryInner() {
       s.id !== story.id &&
       s.twitter_post_id &&
       s.twitter_post_id !== "DUPE_SKIPPED" &&
+      s.twitter_post_id !== "DUPE_BLOCKED" &&
       titlesSimilar(s.title, story.title),
   );
+  const twPrior = getPlatformStatus({
+    repos: pubRepos,
+    storyId: story.id,
+    platform: "twitter_video",
+  });
   if (story.twitter_post_id) {
     result.twitter = true;
     console.log(
       `[publisher] Twitter: already published (${story.twitter_post_id})`,
     );
-  } else if (twTitleDupe) {
-    story.twitter_post_id = "DUPE_SKIPPED";
+  } else if (twPrior && twPrior.status === "blocked") {
+    result.twitter = true;
     console.log(
-      `[publisher] Twitter: SKIPPED duplicate title ~ "${twTitleDupe.title}"`,
+      `[publisher] Twitter: already blocked (${twPrior.block_reason || "unknown"})`,
+    );
+  } else if (twTitleDupe) {
+    const blockResult = recordPlatformBlock({
+      repos: pubRepos,
+      storyId: story.id,
+      platform: "twitter_video",
+      reason: `title-skip: ${twTitleDupe.title}`,
+      channelId: pubChannelId,
+    });
+    if (!blockResult.persisted) {
+      story.twitter_post_id = "DUPE_SKIPPED"; // legacy dev fallback only
+    }
+    console.log(
+      `[publisher] Twitter: SKIPPED duplicate title ~ "${twTitleDupe.title}" ` +
+        `(persisted=${blockResult.persisted})`,
     );
     await db.upsertStory(story);
   } else {

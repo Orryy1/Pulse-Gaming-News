@@ -553,33 +553,95 @@ async function _publishNextStoryInner() {
     errors: {},
   };
 
+  // Phase E-sentinel-cleanup: YouTube block/skip outcomes now persist to
+  // platform_posts as structured rows (status='blocked', block_reason=...)
+  // instead of polluting story.youtube_post_id with "DUPE_BLOCKED" /
+  // "DUPE_SKIPPED" sentinel strings. Readers that check the denormalised
+  // column still see the legacy shape from historical data — but new
+  // blocks do not contribute new sentinels.
+  //
+  // Other platforms (TT/IG/FB/X) and the batch uploader in upload_youtube.js
+  // still write sentinels. Cleaned up platform-by-platform so each change
+  // stays reviewable.
+  const {
+    recordPlatformBlock,
+    getPlatformStatus,
+  } = require("./lib/services/publish-block");
+  const sqliteOn = process.env.USE_SQLITE === "true";
+  let ytRepos = null;
+  if (sqliteOn) {
+    try {
+      ytRepos = require("./lib/repositories").getRepos();
+    } catch (err) {
+      console.log(`[publisher] YouTube: repos unavailable: ${err.message}`);
+    }
+  }
+  const ytChannelId = story.channel_id || process.env.CHANNEL || null;
+
   // YouTube - skip if already published or if a similar title was already uploaded
   shadowCanonicalDedupe(story, "youtube", stories);
   const ytTitleDupe = stories.find(
     (s) =>
       s.id !== story.id &&
       s.youtube_post_id &&
+      s.youtube_post_id !== "DUPE_SKIPPED" &&
+      s.youtube_post_id !== "DUPE_BLOCKED" &&
       titlesSimilar(s.title, story.title),
   );
+  const ytPrior = getPlatformStatus({
+    repos: ytRepos,
+    storyId: story.id,
+    platform: "youtube",
+  });
   if (story.youtube_post_id) {
     result.youtube = true;
     console.log(
       `[publisher] YouTube: already published (${story.youtube_post_id})`,
     );
+  } else if (ytPrior && ytPrior.status === "blocked") {
+    // Structured record from a prior attempt — treat as "already handled"
+    // so we don't re-run uploadShort and burn an API call.
+    result.youtube = true;
+    console.log(
+      `[publisher] YouTube: already blocked (${ytPrior.block_reason || "unknown"})`,
+    );
   } else if (ytTitleDupe) {
     result.youtube = true;
-    story.youtube_post_id = "DUPE_SKIPPED";
+    const blockResult = recordPlatformBlock({
+      repos: ytRepos,
+      storyId: story.id,
+      platform: "youtube",
+      reason: `title-skip: ${ytTitleDupe.title}`,
+      channelId: ytChannelId,
+    });
+    if (!blockResult.persisted) {
+      // Legacy fallback ONLY when platform_posts is unreachable (dev
+      // without SQLite). Keeps the old sentinel contract for the dev
+      // loop — never hit in production per dispatch-mode.
+      story.youtube_post_id = "DUPE_SKIPPED";
+    }
     console.log(
-      `[publisher] YouTube: SKIPPED duplicate title ~ "${ytTitleDupe.title}"`,
+      `[publisher] YouTube: SKIPPED duplicate title ~ "${ytTitleDupe.title}" ` +
+        `(persisted=${blockResult.persisted})`,
     );
   } else {
     try {
       const { uploadShort } = require("./upload_youtube");
       const ytResult = await uploadShort(story);
       if (ytResult.blocked) {
-        story.youtube_post_id = "DUPE_BLOCKED";
+        const blockResult = recordPlatformBlock({
+          repos: ytRepos,
+          storyId: story.id,
+          platform: "youtube",
+          reason: `remote-dupe: ${ytResult.reason || "blocked"}`,
+          channelId: ytChannelId,
+        });
+        if (!blockResult.persisted) {
+          story.youtube_post_id = "DUPE_BLOCKED"; // legacy dev fallback
+        }
         console.log(
-          `[publisher] YouTube: BLOCKED duplicate - ${ytResult.reason}`,
+          `[publisher] YouTube: BLOCKED duplicate - ${ytResult.reason} ` +
+            `(persisted=${blockResult.persisted})`,
         );
         result.youtube = false;
         result.errors.youtube = `dupe-blocked: ${ytResult.reason}`;

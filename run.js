@@ -151,8 +151,14 @@ async function runApprove() {
   console.log("[run] === AUTO-APPROVE MODE ===");
 
   const { autoApprove } = require("./publisher");
-  const count = await autoApprove();
-  console.log(`[run] Auto-approved ${count} stories`);
+  const summary = await autoApprove();
+  if (summary.skipped) {
+    console.log(`[run] Auto-approve skipped: ${summary.skipped}`);
+  } else {
+    console.log(
+      `[run] Scored ${summary.scored} — auto=${summary.approved} review=${summary.review} defer=${summary.defer} reject=${summary.reject}`,
+    );
+  }
 }
 
 function runWatch() {

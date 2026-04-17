@@ -650,8 +650,12 @@ app.post(
   async (req, res) => {
     try {
       const { autoApprove } = require("./publisher");
-      const count = await autoApprove();
-      res.json({ status: "ok", approved: count });
+      const summary = await autoApprove();
+      res.json({
+        status: "ok",
+        approved: summary.approved,
+        scoring: summary,
+      });
     } catch (err) {
       console.error(`[server] Internal error: ${err.message}`);
       res.status(500).json({ error: "Internal server error" });

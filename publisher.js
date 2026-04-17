@@ -78,59 +78,107 @@ function shadowCanonicalDedupe(story, platform, stories) {
 */
 
 // --- Auto-approval logic ---
-function shouldAutoApprove(story) {
-  const flair = (story.flair || "").toLowerCase();
+//
+// Prior to the Phase E cutover this module carried a `shouldAutoApprove()`
+// helper that returned `true` for every story, which — via the for-loop in
+// the old `autoApprove()` — quietly approved every hunted item in prod
+// whenever `USE_SCORING_ENGINE` wasn't flipped on. That legacy shortcut
+// is deleted. The 100-point editorial rubric in `lib/scoring.js` driven
+// by `lib/decision-engine::runScoringPass` is now the canonical and only
+// real approval path. `review`, `defer`, `reject` are persisted as
+// `story_scores.decision` rows and surfaced in the hunt summary.
+//
+// Production behaviour
+// --------------------
+//   NODE_ENV=production AND USE_SQLITE=true  ->  scoring runs, decisions
+//                                                apply. If scoring throws,
+//                                                autoApprove rethrows — we
+//                                                never silently approve.
+//   NODE_ENV=production AND USE_SQLITE!=true ->  hard error. The legacy
+//                                                JSON pipeline is not a
+//                                                trusted editorial gate.
+//
+// Non-production dev
+// ------------------
+//   USE_SCORING_ENGINE!='false' + USE_SQLITE=true  ->  same scoring path.
+//   USE_SCORING_ENGINE=='false'                    ->  explicit no-op
+//                                                      fallback. NOTHING
+//                                                      is approved. Use
+//                                                      this when running
+//                                                      unit/dev harness
+//                                                      without a DB.
+//   USE_SQLITE!=true + USE_SCORING_ENGINE!='false' ->  explicit no-op
+//                                                      fallback with a
+//                                                      loud warning.
+//
+// The no-op path ALWAYS returns a summary with skipped='reason', never
+// approves. This is the one durable guarantee the refactor provides.
+//
+// Options (all optional — production callers pass nothing):
+//   repos          inject a repositories bundle (tests use this to drive
+//                  the scoring pass against an in-memory SQLite handle
+//                  without touching the real repos singleton).
+//   env            override process.env during tests. Defaults to the
+//                  live process.env.
+async function autoApprove({ repos: injectedRepos, env = process.env } = {}) {
+  const isProd = env.NODE_ENV === "production";
+  const sqliteOn = env.USE_SQLITE === "true";
+  const scoringDisabled = env.USE_SCORING_ENGINE === "false";
 
-  // Auto-approve everything - fully autonomous pipeline, no manual gate
-  return true;
+  // Dev-only explicit opt-out. Must be set to literal 'false' — any other
+  // value (including unset) keeps scoring on. Never honoured in prod.
+  if (!isProd && scoringDisabled) {
+    console.log(
+      "[publisher] autoApprove: USE_SCORING_ENGINE=false in dev — no stories will be approved. " +
+        "Unset the flag or set it to 'true' to re-enable the scoring engine.",
+    );
+    return emptyScoringSummary("dev_scoring_disabled");
+  }
+
+  if (!sqliteOn && !injectedRepos) {
+    const msg =
+      "autoApprove requires USE_SQLITE=true — the legacy JSON approve-everything " +
+      "shortcut has been removed (Phase E cutover). " +
+      "See docs/production-cutover-playbook.md.";
+    if (isProd) {
+      throw new Error(`[publisher] ${msg}`);
+    }
+    console.log(
+      `[publisher] autoApprove: ${msg} Dev mode: returning empty summary without approving anything.`,
+    );
+    return emptyScoringSummary("dev_no_sqlite");
+  }
+
+  let repos = injectedRepos;
+  if (!repos) {
+    try {
+      repos = require("./lib/repositories").getRepos();
+    } catch (err) {
+      if (isProd) throw err;
+      console.log(
+        `[publisher] autoApprove: repositories unavailable (${err.message}) — dev mode no-op.`,
+      );
+      return emptyScoringSummary("dev_repos_unavailable");
+    }
+  }
+
+  const { runScoringPass } = require("./lib/decision-engine");
+  const summary = runScoringPass({ repos });
+  return summary;
 }
 
-// --- Run auto-approval pass ---
-async function autoApprove() {
-  // Phase 6: swap the "everything passes" heuristic for the 100-point
-  // editorial rubric when the feature flag is on. The legacy path stays
-  // live so the existing JSON-backed pipeline keeps producing videos.
-  if (
-    process.env.USE_SCORING_ENGINE === "true" &&
-    process.env.USE_SQLITE === "true"
-  ) {
-    try {
-      const { runScoringPass } = require("./lib/decision-engine");
-      const repos = require("./lib/repositories").getRepos();
-      const summary = runScoringPass({ repos });
-      return summary.approved;
-    } catch (err) {
-      console.log(
-        `[publisher] scoring engine failed, falling back to heuristic: ${err.message}`,
-      );
-    }
-  }
-
-  const stories = await db.getStories();
-  if (!stories.length) return 0;
-
-  let approved = 0;
-
-  for (const story of stories) {
-    if (story.approved) continue;
-
-    if (shouldAutoApprove(story)) {
-      story.approved = true;
-      story.auto_approved = true;
-      story.approved_at = new Date().toISOString();
-      approved++;
-      console.log(
-        `[publisher] Auto-approved: ${story.title} (score:${story.breaking_score}, flair:${story.flair})`,
-      );
-    }
-  }
-
-  if (approved > 0) {
-    await db.saveStories(stories);
-    console.log(`[publisher] Auto-approved ${approved} stories`);
-  }
-
-  return approved;
+// Shape that `runScoringPass` returns, plus a `skipped` reason for the
+// no-op paths. Callers can switch on `summary.skipped` if they care.
+function emptyScoringSummary(reason) {
+  return {
+    scored: 0,
+    approved: 0,
+    review: 0,
+    defer: 0,
+    reject: 0,
+    hardStopped: 0,
+    skipped: reason,
+  };
 }
 
 // --- Full produce pipeline ---
@@ -288,31 +336,70 @@ async function fullAutonomousCycle() {
       console.log("[publisher] No new stories found");
     }
 
-    // Step 2: Auto-approve
+    // Step 2: Auto-approve (scoring engine; see autoApprove() doc above).
     addBreadcrumb("Auto-approving stories", "pipeline");
-    console.log(
-      "[publisher] Step 2/4: Auto-approving high-confidence stories...",
-    );
-    const approvedCount = await autoApprove();
+    console.log("[publisher] Step 2/4: Running editorial scoring pass...");
+    const scoringSummary = await autoApprove();
 
-    if (approvedCount > 0) {
-      await sendDiscord(`**✅ Auto-Approved** ${approvedCount} stories`);
+    if (scoringSummary.skipped) {
+      await sendDiscord(
+        `**⚠️ Scoring skipped**: ${scoringSummary.skipped} — no stories approved this cycle.`,
+      );
+    } else if (scoringSummary.scored > 0) {
+      await sendDiscord(
+        `**🧠 Editorial pass**\n` +
+          `scored ${scoringSummary.scored} · ` +
+          `auto ${scoringSummary.approved} · ` +
+          `review ${scoringSummary.review} · ` +
+          `defer ${scoringSummary.defer} · ` +
+          `reject ${scoringSummary.reject}` +
+          (scoringSummary.hardStopped
+            ? ` · hard_stops ${scoringSummary.hardStopped}`
+            : ""),
+      );
     }
 
-    // Notify about stories needing manual review
-    const allStories = await db.getStories();
-    const pendingReview = allStories.filter((s) => !s.approved);
-    if (pendingReview.length > 0) {
-      const dashUrl = process.env.RAILWAY_PUBLIC_URL || "http://localhost:3001";
-      const storyList = pendingReview
-        .slice(0, 8)
-        .map((s) => `• [${s.flair}] (${s.breaking_score || 0}) ${s.title}`)
-        .join("\n");
-      await sendDiscord(
-        `**⚠️ ${pendingReview.length} stories need your review**\n` +
-          `${storyList}\n\n` +
-          `👉 Review & approve: ${dashUrl}`,
-      );
+    // Notify about stories needing human review. Previously this summed
+    // every unapproved story (including rejects + deferrals + never-scored
+    // noise). Post Phase E we join story_scores so only decision='review'
+    // rows surface — reject/defer don't need a human prompt.
+    if (!scoringSummary.skipped && scoringSummary.review > 0) {
+      try {
+        const repos = require("./lib/repositories").getRepos();
+        const reviewRows = repos.db
+          .prepare(
+            `SELECT s.id, s.title, s.flair, s.breaking_score,
+                    latest.total AS score_total
+             FROM stories s
+             JOIN (
+               SELECT story_id, MAX(scored_at) AS scored_at, decision, total
+               FROM story_scores
+               GROUP BY story_id
+             ) latest ON latest.story_id = s.id
+             WHERE latest.decision = 'review'
+               AND (s.approved IS NULL OR s.approved = 0)
+             ORDER BY latest.total DESC
+             LIMIT 8`,
+          )
+          .all();
+        if (reviewRows.length) {
+          const dashUrl =
+            process.env.RAILWAY_PUBLIC_URL || "http://localhost:3001";
+          const storyList = reviewRows
+            .map(
+              (s) =>
+                `• [${s.flair || "?"}] (rubric:${s.score_total}) ${s.title}`,
+            )
+            .join("\n");
+          await sendDiscord(
+            `**⚠️ ${scoringSummary.review} stories flagged for review**\n` +
+              `${storyList}\n\n` +
+              `👉 Review & approve: ${dashUrl}`,
+          );
+        }
+      } catch (err) {
+        console.log(`[publisher] review summary skipped (${err.message})`);
+      }
     }
 
     // Step 3: Produce (audio, images, video)
@@ -908,7 +995,6 @@ module.exports = {
   publishNextStory,
   fullAutonomousCycle,
   publishOnlyCycle,
-  shouldAutoApprove,
 };
 
 if (require.main === module) {

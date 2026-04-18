@@ -556,6 +556,49 @@ app.get("/api/health", (req, res) => {
   } catch (e) {
     /* retry module not loaded yet */
   }
+
+  // Build-time metadata. All read from Railway-injected env vars that
+  // are public by design (commit SHA, deployment id, environment name,
+  // project/service ids). No secrets are exposed — explicitly NOT
+  // including API_TOKEN, ANTHROPIC_API_KEY, DB paths, or any other
+  // credential-shaped var. The point of this block is post-deploy
+  // verification: `curl https://<host>/api/health | jq .build` lets
+  // an operator prove which commit is actually running without
+  // trawling Discord deploy banners.
+  const commitSha = process.env.RAILWAY_GIT_COMMIT_SHA || null;
+  const build = {
+    commit_sha: commitSha,
+    commit_short: commitSha ? commitSha.slice(0, 7) : null,
+    commit_message: process.env.RAILWAY_GIT_COMMIT_MESSAGE || null,
+    branch: process.env.RAILWAY_GIT_BRANCH || null,
+    deployment_id: process.env.RAILWAY_DEPLOYMENT_ID || null,
+    environment:
+      process.env.RAILWAY_ENVIRONMENT_NAME ||
+      process.env.RAILWAY_ENVIRONMENT ||
+      null,
+    project_id: process.env.RAILWAY_PROJECT_ID || null,
+    service_id: process.env.RAILWAY_SERVICE_ID || null,
+    node_env: process.env.NODE_ENV || null,
+  };
+
+  // Runtime feature flags that drive dispatch/persistence behaviour.
+  // Safely resolve dispatch mode without running the bootstrap path —
+  // resolveDispatchMode is pure (reads env only).
+  let dispatchMode = null;
+  try {
+    const { resolveDispatchMode } = require("./lib/dispatch-mode");
+    const d = resolveDispatchMode();
+    dispatchMode = { mode: d.mode, strict: d.strict, reason: d.reason };
+  } catch {
+    /* lib/dispatch-mode absent (pre-Phase-D code) — leave null */
+  }
+  const runtime = {
+    use_sqlite: process.env.USE_SQLITE === "true",
+    use_job_queue_explicit: process.env.USE_JOB_QUEUE || null,
+    auto_publish: process.env.AUTO_PUBLISH === "true",
+    dispatch: dispatchMode,
+  };
+
   res.json({
     status: "ok",
     version: "v2.2.0",
@@ -565,6 +608,8 @@ app.get("/api/health", (req, res) => {
     autonomousMode: process.env.AUTO_PUBLISH === "true",
     schedulerActive: schedulerRunning,
     circuitBreakers,
+    build,
+    runtime,
   });
 });
 

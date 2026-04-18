@@ -487,35 +487,47 @@ function readNews() {
 }
 
 function writeNews(data) {
-  // Defensive: JSON.stringify on a very large array can throw RangeError
-  // ("Invalid string length") when the serialised output exceeds V8's
-  // String::kMaxLength (~512MB). That's what killed the 2026-04-17 22:38
-  // hunt. The merge bug that caused the growth is now fixed in runHunter,
-  // but we also guard the write itself so any future runaway growth
-  // fails loudly with a clear message instead of a bare "Invalid string
-  // length" that takes hours to root-cause.
-  try {
-    const serialised = JSON.stringify(data, null, 2);
-    fs.writeFileSync(DATA_FILE, serialised, "utf-8");
-  } catch (err) {
-    const rowCount = Array.isArray(data) ? data.length : "n/a";
+  // Phase 3C hardening. Decision logic lives in
+  // lib/services/news-mirror so the branching has a unit-testable
+  // surface. Under USE_SQLITE=true (production), skip the JSON mirror
+  // entirely — it was the sole source of the recurring "Invalid
+  // string length" RangeError (17 Apr 22:38, 18 Apr 04:47).
+  const {
+    decideMirrorStrategy,
+    tryStringify,
+  } = require("./lib/services/news-mirror");
+  const { strategy } = decideMirrorStrategy(data, {
+    useSqlite: db.useSqlite(),
+  });
+  const rowCount = Array.isArray(data) ? data.length : "n/a";
+
+  if (strategy === "sqlite-only") {
     console.log(
-      `[server] writeNews: JSON serialisation failed (rows=${rowCount}, error=${err.message}). ` +
-        `SQLite remains the canonical store — JSON mirror skipped for this write.`,
+      `[server] writeNews: SQLite canonical — skipping JSON mirror (rows=${rowCount})`,
     );
-    // Fall through to SQLite sync below. Do NOT rethrow — the hunt
-    // pipeline should not die because the JSON mirror is too big.
-  }
-  // When SQLite is enabled, keep the database in sync. This half of
-  // the dual-write predates Phase 3A — the news (now) is that reads
-  // are no longer JSON-only, so the sync direction finally matters
-  // symmetrically.
-  if (db.useSqlite()) {
     try {
       db.saveStories(data);
     } catch (err) {
-      console.log(`[server] SQLite sync error: ${err.message}`);
+      console.log(`[server] writeNews: SQLite save error: ${err.message}`);
     }
+    return;
+  }
+
+  // Dev / legacy JSON path. Best-effort stringify; never throw.
+  const result = tryStringify(data);
+  if (!result.ok) {
+    console.log(
+      `[server] writeNews: JSON serialisation failed (rows=${result.rowCount}, error=${result.reason}). ` +
+        "Dev JSON mirror skipped for this write; stories are not persisted this cycle.",
+    );
+    return;
+  }
+  try {
+    fs.writeFileSync(DATA_FILE, result.serialised, "utf-8");
+  } catch (err) {
+    console.log(
+      `[server] writeNews: JSON writeFileSync failed (rows=${result.rowCount}, error=${err.message}).`,
+    );
   }
 }
 
@@ -1038,27 +1050,51 @@ async function runHunter() {
     const newPosts = posts.filter((p) => !existingIds.has(p.id));
 
     if (newPosts.length > 0) {
-      // Write new posts to pending_news.json for processor
-      await fs.writeJson(
-        "pending_news.json",
-        { timestamp: new Date().toISOString(), stories: newPosts },
-        { spaces: 2 },
-      );
+      // Write new posts to pending_news.json for processor. Guarded so
+      // a writeJson failure (disk, permissions, size) does not poison
+      // Discord with a raw RangeError.
+      try {
+        await fs.writeJson(
+          "pending_news.json",
+          { timestamp: new Date().toISOString(), stories: newPosts },
+          { spaces: 2 },
+        );
+      } catch (err) {
+        console.log(
+          `[server] runHunter: pending_news.json write failed (${err.message}). Skipping processor + merge this cycle.`,
+        );
+        return;
+      }
       await process_stories();
 
-      // Merge newly processed stories with existing. Dedup by id — without
-      // this, `processed` already contains the full post-processor state
-      // AND we append `existingStories` again, so the array doubles every
-      // hunt cycle. Over enough cycles JSON.stringify(merged) hits V8's
-      // String::kMaxLength and the hunt fails with "Invalid string length"
-      // (observed 2026-04-17 22:38 in #pulse-gaming notifications). The
-      // run.js flow already had this dedup — server.js just didn't.
-      const processed = readNews();
-      if (existingStories.length > 0 && processed.length > 0) {
-        const processedIds = new Set(processed.map((s) => s.id));
-        const toMerge = existingStories.filter((s) => !processedIds.has(s.id));
-        const merged = [...processed, ...toMerge];
-        writeNews(merged);
+      // Under USE_SQLITE=true (production) the processor has already
+      // upserted each story row directly into SQLite. The merge +
+      // writeNews round-trip is vestigial JSON-era dual-write
+      // behaviour: it re-serialises the entire stories set purely to
+      // refresh the JSON mirror. Skip it under SQLite — the mirror has
+      // no reader in prod and the big stringify was the sole source of
+      // the "Invalid string length" hunt failures (17 Apr 22:38,
+      // 18 Apr 04:47).
+      //
+      // Dev JSON mode (USE_SQLITE=false) still runs the merge because
+      // the JSON file is the canonical store there.
+      if (!db.useSqlite()) {
+        try {
+          const processed = readNews();
+          if (existingStories.length > 0 && processed.length > 0) {
+            const processedIds = new Set(processed.map((s) => s.id));
+            const toMerge = existingStories.filter(
+              (s) => !processedIds.has(s.id),
+            );
+            const merged = [...processed, ...toMerge];
+            writeNews(merged);
+          }
+        } catch (err) {
+          // Never fail a hunt over a JSON mirror problem.
+          console.log(
+            `[server] runHunter: legacy JSON merge failed (${err.message}). Continuing — canonical store is unaffected.`,
+          );
+        }
       }
     }
 

@@ -96,11 +96,11 @@ function extractProduct(title) {
 }
 
 async function processAffiliates() {
-  console.log("[affiliates] Loading daily_news.json...");
+  console.log("[affiliates] Loading stories from canonical store...");
 
   const stories = await db.getStories();
   if (!stories.length) {
-    console.log("[affiliates] No stories found.");
+    console.log("[affiliates] No stories in canonical store.");
     return;
   }
   const tag = process.env.AMAZON_AFFILIATE_TAG || "placeholder";

@@ -287,9 +287,13 @@ function buildFallbackSvg(title, thumbnailText, flair, platform) {
 async function generateImages() {
   console.log("[images] === Professional Image Pipeline v2 ===");
 
-  if (!(await fs.pathExists("daily_news.json"))) {
+  // Phase 3C JSON-shrink: replace the old daily_news.json pathExists
+  // check with a canonical-store emptiness check. SQLite-on prod may
+  // not have the JSON file at all, but does have stories.
+  const stories = await db.getStories();
+  if (!Array.isArray(stories) || stories.length === 0) {
     console.log(
-      "[images] ERROR: daily_news.json not found. Run processor first.",
+      "[images] ERROR: no stories in canonical store. Run processor first.",
     );
     return;
   }
@@ -297,7 +301,6 @@ async function generateImages() {
   await fs.ensureDir(OUTPUT_DIR);
   await fs.ensureDir(CACHE_DIR);
 
-  const stories = await db.getStories();
   const toProcess = stories.filter((s) => s.approved === true && !s.image_path);
 
   // Load branded thumbnail background once

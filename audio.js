@@ -220,16 +220,20 @@ async function generateTTS(text, outputPath, rateOverride) {
 }
 
 async function generateAudio() {
-  console.log("[audio] Loading daily_news.json...");
+  console.log("[audio] Loading stories from canonical store...");
 
-  if (!(await fs.pathExists("daily_news.json"))) {
+  // Phase 3C JSON-shrink: the old `fs.pathExists("daily_news.json")`
+  // precondition was a JSON-era assumption that wrongly fired in
+  // USE_SQLITE=true prod (where daily_news.json may be absent but
+  // SQLite has stories). Check the canonical source instead.
+  const stories = await db.getStories();
+  if (!Array.isArray(stories) || stories.length === 0) {
     console.log(
-      "[audio] ERROR: daily_news.json not found. Run processor first.",
+      "[audio] ERROR: no stories in canonical store. Run processor first.",
     );
     return;
   }
 
-  const stories = await db.getStories();
   const toProcess = stories.filter((s) => s.approved === true && !s.audio_path);
 
   console.log(`[audio] ${toProcess.length} stories need audio generation`);

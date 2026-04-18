@@ -1,14 +1,14 @@
-const fs = require('fs-extra');
-const path = require('path');
-const dotenv = require('dotenv');
-const db = require('./lib/db');
+const fs = require("fs-extra");
+const path = require("path");
+const dotenv = require("dotenv");
+const db = require("./lib/db");
 
 dotenv.config({ override: true });
 
-const brand = require('./brand');
+const brand = require("./brand");
 
-const OUTPUT_DIR = path.join('output', 'stories');
-const CACHE_DIR = path.join('output', 'image_cache');
+const OUTPUT_DIR = path.join("output", "stories");
+const CACHE_DIR = path.join("output", "image_cache");
 
 // --- Build Instagram Story SVG ---
 function buildStorySvg(title, flair, heroImageBase64, hasHero, classification) {
@@ -17,27 +17,32 @@ function buildStorySvg(title, flair, heroImageBase64, hasHero, classification) {
   const flairLabel = classInfo.label;
 
   const escapedTitle = title
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 
   // Word-wrap title - wider layout for stories (max ~22 chars per line)
-  const words = escapedTitle.split(' ');
+  const words = escapedTitle.split(" ");
   const lines = [];
-  let current = '';
+  let current = "";
   for (const word of words) {
-    if ((current + ' ' + word).length > 22 && current) {
+    if ((current + " " + word).length > 22 && current) {
       lines.push(current);
       current = word;
     } else {
-      current = current ? current + ' ' + word : word;
+      current = current ? current + " " + word : word;
     }
   }
   if (current) lines.push(current);
 
-  const titleTspans = lines.slice(0, 4).map((line, i) =>
-    `<tspan x="540" dy="${i === 0 ? 0 : 68}">${line}</tspan>`
-  ).join('');
+  const titleTspans = lines
+    .slice(0, 4)
+    .map((line, i) => `<tspan x="540" dy="${i === 0 ? 0 : 68}">${line}</tspan>`)
+    .join("");
 
-  const heroSection = hasHero ? `
+  const heroSection = hasHero
+    ? `
     <!-- Full bleed hero image (background) -->
     <image href="data:image/jpeg;base64,${heroImageBase64}" x="-200" y="0" width="1480" height="1920"
            preserveAspectRatio="xMidYMid slice" opacity="0.4" filter="url(#blur)"/>
@@ -47,7 +52,8 @@ function buildStorySvg(title, flair, heroImageBase64, hasHero, classification) {
            preserveAspectRatio="xMidYMid slice" clip-path="url(#heroClip)"/>
     <rect x="60" y="200" width="960" height="540" rx="20" fill="none"
           stroke="${brand.PRIMARY}" stroke-width="2" opacity="0.5"/>
-  ` : `
+  `
+    : `
     <!-- No hero - gradient placeholder -->
     <rect x="60" y="200" width="960" height="540" rx="20" fill="#0d1a2e" opacity="0.5"/>
     <rect x="60" y="200" width="960" height="540" rx="20" fill="none"
@@ -139,35 +145,41 @@ function buildStorySvg(title, flair, heroImageBase64, hasHero, classification) {
 }
 
 async function generateStoryImages() {
-  console.log('[stories] === Instagram Story Image Generator ===');
+  console.log("[stories] === Instagram Story Image Generator ===");
 
-  if (!await fs.pathExists('daily_news.json')) {
-    console.log('[stories] No daily_news.json found');
+  // Phase 3C JSON-shrink: read through canonical store rather than
+  // checking daily_news.json directly.
+  const stories = await db.getStories();
+  if (!Array.isArray(stories) || stories.length === 0) {
+    console.log("[stories] No stories in canonical store");
     return;
   }
 
   await fs.ensureDir(OUTPUT_DIR);
 
-  const stories = await db.getStories();
-  const toProcess = stories.filter(s =>
-    s.approved === true && s.exported_path && !s.story_image_path
+  const toProcess = stories.filter(
+    (s) => s.approved === true && s.exported_path && !s.story_image_path,
   );
 
   console.log(`[stories] ${toProcess.length} stories need Story images`);
 
   for (const story of toProcess) {
-    console.log(`[stories] Generating Story image: ${story.title.substring(0, 50)}...`);
+    console.log(
+      `[stories] Generating Story image: ${story.title.substring(0, 50)}...`,
+    );
 
     // Try to load hero image from cache
     let heroBase64 = null;
     if (story.downloaded_images && story.downloaded_images.length > 0) {
-      const heroImg = story.downloaded_images.find(i =>
-        ['article_hero', 'capsule', 'hero', 'key_art', 'screenshot'].includes(i.type)
+      const heroImg = story.downloaded_images.find((i) =>
+        ["article_hero", "capsule", "hero", "key_art", "screenshot"].includes(
+          i.type,
+        ),
       );
-      if (heroImg && await fs.pathExists(heroImg.path)) {
+      if (heroImg && (await fs.pathExists(heroImg.path))) {
         try {
           const buf = await fs.readFile(heroImg.path);
-          heroBase64 = buf.toString('base64');
+          heroBase64 = buf.toString("base64");
         } catch (err) {
           console.log(`[stories] Could not read hero image: ${err.message}`);
         }
@@ -179,18 +191,16 @@ async function generateStoryImages() {
       story.flair,
       heroBase64,
       !!heroBase64,
-      story.classification
+      story.classification,
     );
 
     const svgPath = path.join(OUTPUT_DIR, `${story.id}_story.svg`);
     const pngPath = path.join(OUTPUT_DIR, `${story.id}_story.png`);
-    await fs.writeFile(svgPath, svg, 'utf-8');
+    await fs.writeFile(svgPath, svg, "utf-8");
 
     try {
-      const sharp = require('sharp');
-      await sharp(Buffer.from(svg))
-        .png({ quality: 95 })
-        .toFile(pngPath);
+      const sharp = require("sharp");
+      await sharp(Buffer.from(svg)).png({ quality: 95 }).toFile(pngPath);
 
       story.story_image_path = pngPath;
       console.log(`[stories] Saved: ${pngPath}`);
@@ -206,14 +216,16 @@ async function generateStoryImages() {
   // Story images are auto-approved - no Discord gate needed.
   // Images are generated, saved, and ready for use immediately.
   if (toProcess.length > 0) {
-    console.log(`[stories] ${toProcess.length} Story images ready (auto-approved)`);
+    console.log(
+      `[stories] ${toProcess.length} Story images ready (auto-approved)`,
+    );
   }
 }
 
 module.exports = { generateStoryImages, buildStorySvg };
 
 if (require.main === module) {
-  generateStoryImages().catch(err => {
+  generateStoryImages().catch((err) => {
     console.log(`[stories] ERROR: ${err.message}`);
     process.exit(1);
   });

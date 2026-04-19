@@ -545,10 +545,14 @@ async function _publishNextStoryInner() {
 
   const result = {
     title: story.title,
+    // --- CORE (video) platforms: weigh in on overall status ---
+    // Each of these booleans becomes true ONLY on a successful
+    // Reel/Short upload to the respective platform. Card/image posts
+    // DO NOT flip these — they live on `result.fallbacks` below.
     youtube: false,
     tiktok: false,
-    instagram: false,
-    facebook: false,
+    instagram: false, // Instagram Reel
+    facebook: false, // Facebook Reel
     twitter: false,
     errors: {},
     // Structured skipped bucket for platforms that declined to run (e.g.
@@ -556,6 +560,17 @@ async function _publishNextStoryInner() {
     // the summary formatter renders these as "⏸ disabled" / "⏸ skipped"
     // rather than "FAIL", and they don't count against the overall status.
     skipped: {},
+    // --- FALLBACK / COMPLEMENTARY posts ---
+    // Static card / story image posts that post ALONGSIDE the Reel,
+    // independently of whether the Reel succeeded. These have lower
+    // reach than Reels and must not be counted as "Facebook success"
+    // when the actual Reel failed. Discord summary renders these on a
+    // separate "Fallbacks:" line; overall status ignores them.
+    fallbacks: {
+      facebook_card: false, // uploadStoryImage → /photo_stories
+      instagram_story: false, // Story image on IG
+      twitter_image: false, // Twitter image-tweet variant
+    },
   };
 
   // Sentinel-cleanup cutover: block/skip outcomes for every platform in
@@ -962,8 +977,9 @@ async function _publishNextStoryInner() {
   // assemble.js cleared Reel IDs for a re-render, Stories got posted a
   // second time with no idempotency check. Individual-field gates fix that.
   if (story.story_image_path) {
-    // Instagram Stories
+    // Instagram Stories (static card, NOT a Reel — fallback post)
     if (story.instagram_story_id) {
+      result.fallbacks.instagram_story = true;
       console.log(
         `[publisher] Instagram Story: already posted (${story.instagram_story_id})`,
       );
@@ -972,6 +988,7 @@ async function _publishNextStoryInner() {
         const { uploadStoryImage: igStory } = require("./upload_instagram");
         const igStoryResult = await igStory(story);
         story.instagram_story_id = igStoryResult.mediaId;
+        result.fallbacks.instagram_story = true;
         console.log(
           `[publisher] Instagram Story: uploaded (${igStoryResult.mediaId})`,
         );
@@ -983,8 +1000,9 @@ async function _publishNextStoryInner() {
       }
     }
 
-    // Facebook Stories
+    // Facebook Stories (static card, NOT a Reel — fallback post)
     if (story.facebook_story_id) {
+      result.fallbacks.facebook_card = true;
       console.log(
         `[publisher] Facebook Story: already posted (${story.facebook_story_id})`,
       );
@@ -993,6 +1011,7 @@ async function _publishNextStoryInner() {
         const { uploadStoryImage: fbStory } = require("./upload_facebook");
         const fbStoryResult = await fbStory(story);
         story.facebook_story_id = fbStoryResult.storyId;
+        result.fallbacks.facebook_card = true;
         console.log(
           `[publisher] Facebook Story: uploaded (${fbStoryResult.storyId})`,
         );
@@ -1004,6 +1023,7 @@ async function _publishNextStoryInner() {
 
     // Twitter/X image tweet
     if (story.twitter_image_tweet_id) {
+      result.fallbacks.twitter_image = true;
       console.log(
         `[publisher] Twitter image tweet: already posted (${story.twitter_image_tweet_id})`,
       );
@@ -1018,6 +1038,7 @@ async function _publishNextStoryInner() {
           );
         } else {
           story.twitter_image_tweet_id = twImgResult.tweetId;
+          result.fallbacks.twitter_image = true;
           console.log(
             `[publisher] Twitter image tweet: posted (${twImgResult.tweetId})`,
           );

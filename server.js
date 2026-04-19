@@ -592,11 +592,31 @@ app.get("/api/health", (req, res) => {
   } catch {
     /* lib/dispatch-mode absent (pre-Phase-D code) — leave null */
   }
+  // Resolved SQLite path + persistence-worry flag. After the
+  // 2026-04-19 "DB wipe on deploy" incident we expose the live path
+  // so the operator can verify post-deploy that it's on a persistent
+  // volume, not ephemeral container FS. `persistent_hint` is a best-
+  // guess based on whether the path falls outside /app/<repo>/ — it's
+  // a heuristic, not a guarantee.
+  let sqliteDbPath = null;
+  try {
+    sqliteDbPath = require("./lib/db").DB_PATH || null;
+  } catch {
+    /* lib/db absent in some contexts */
+  }
+  const sqliteDbPathLooksEphemeral =
+    !!sqliteDbPath &&
+    (sqliteDbPath.startsWith("/app/") ||
+      sqliteDbPath.includes(path.join(__dirname, "data") + path.sep) ||
+      sqliteDbPath === path.join(__dirname, "data", "pulse.db"));
+
   const runtime = {
     use_sqlite: process.env.USE_SQLITE === "true",
     use_job_queue_explicit: process.env.USE_JOB_QUEUE || null,
     auto_publish: process.env.AUTO_PUBLISH === "true",
     dispatch: dispatchMode,
+    sqlite_db_path: sqliteDbPath,
+    sqlite_db_path_looks_ephemeral: sqliteDbPathLooksEphemeral,
   };
 
   res.json({

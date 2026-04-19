@@ -182,6 +182,32 @@ app.get("/privacy", (req, res) => {
 });
 
 // --- TikTok OAuth callback ---
+// --- TikTok OAuth initiator ---
+// Gives the operator a one-click way to re-auth TikTok from the browser
+// after a deploy wipes /app/tokens/. Must be paired with a persistent
+// TIKTOK_TOKEN_PATH (e.g. /data/tokens/tiktok_token.json) otherwise the
+// next redeploy will wipe the token written by the callback handler.
+app.get("/auth/tiktok", (req, res) => {
+  try {
+    const { buildAuthorizeUrl } = require("./upload_tiktok");
+    const url = buildAuthorizeUrl();
+    // Deliberately log only the redirect_uri (public), not the client key
+    // (also public but noisy) and never the full URL with query string.
+    const redirectUri =
+      process.env.TIKTOK_REDIRECT_URI ||
+      "https://marvelous-curiosity-production.up.railway.app/auth/tiktok/callback";
+    console.log(`[tiktok] OAuth initiator: redirect=${redirectUri}`);
+    res.redirect(url);
+  } catch (err) {
+    console.log(`[tiktok] OAuth initiator error: ${err.message}`);
+    res
+      .status(500)
+      .send(
+        `<h1>TikTok auth not configured</h1><p>${escapeHtml(err.message)}</p>`,
+      );
+  }
+});
+
 app.get("/auth/tiktok/callback", async (req, res) => {
   const { code, error, error_description } = req.query;
 
@@ -850,12 +876,36 @@ app.get("/api/platforms/status", async (req, res) => {
     /* skip */
   }
 
-  // TikTok
+  // TikTok — read the resolved token path (TIKTOK_TOKEN_PATH override or
+  // local fallback) so this check stays truthful whether the token lives
+  // on the Railway volume or on dev's local disk. Only expose existence,
+  // expiry and the non-sensitive path — NEVER the token itself.
   try {
     status.tiktok.configured = !!process.env.TIKTOK_CLIENT_KEY;
-    status.tiktok.authenticated = await fs.pathExists(
-      path.join(__dirname, "tokens", "tiktok_token.json"),
-    );
+    const { resolveTokenPath } = require("./upload_tiktok");
+    const tokenPath = resolveTokenPath();
+    const exists = await fs.pathExists(tokenPath);
+    status.tiktok.token_path = tokenPath;
+    status.tiktok.token_file_exists = exists;
+    status.tiktok.authenticated = exists;
+    if (exists) {
+      try {
+        const tokenData = await fs.readJson(tokenPath);
+        // Only copy the public-safe timing metadata over.
+        if (tokenData && typeof tokenData.expires_at === "number") {
+          status.tiktok.expires_at = new Date(
+            tokenData.expires_at,
+          ).toISOString();
+          status.tiktok.expires_in_seconds = Math.max(
+            0,
+            Math.round((tokenData.expires_at - Date.now()) / 1000),
+          );
+        }
+      } catch {
+        /* token file corrupt; still report authenticated=false */
+        status.tiktok.authenticated = false;
+      }
+    }
   } catch (err) {
     /* skip */
   }

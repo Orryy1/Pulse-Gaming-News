@@ -1,15 +1,33 @@
-const fs = require('fs-extra');
-const path = require('path');
-const axios = require('axios');
-const dotenv = require('dotenv');
-const { withRetry } = require('./lib/retry');
-const { addBreadcrumb, captureException } = require('./lib/sentry');
-const { validateVideo } = require('./lib/validate');
-const db = require('./lib/db');
+const fs = require("fs-extra");
+const path = require("path");
+const axios = require("axios");
+const dotenv = require("dotenv");
+const { withRetry } = require("./lib/retry");
+const { addBreadcrumb, captureException } = require("./lib/sentry");
+const { validateVideo } = require("./lib/validate");
+const db = require("./lib/db");
 
 dotenv.config({ override: true });
 
-const TOKEN_PATH = path.join(__dirname, 'tokens', 'tiktok_token.json');
+const DEFAULT_TOKEN_PATH = path.join(__dirname, "tokens", "tiktok_token.json");
+
+/**
+ * Resolve the TikTok token file path.
+ *
+ * Production (Railway): TIKTOK_TOKEN_PATH=/data/tokens/tiktok_token.json —
+ * lives on the persistent volume so it survives deploys. Without this the
+ * token is wiped every redeploy (the /app filesystem is ephemeral) and
+ * TikTok publishing silently fails.
+ *
+ * Dev: falls back to tokens/tiktok_token.json alongside the repo.
+ *
+ * Resolved fresh on every call so tests can mutate process.env and so
+ * swapping Railway config doesn't require a restart.
+ */
+function resolveTokenPath() {
+  const override = (process.env.TIKTOK_TOKEN_PATH || "").trim();
+  return override || DEFAULT_TOKEN_PATH;
+}
 
 /*
   TikTok Content Posting API - Direct Post flow
@@ -20,23 +38,26 @@ const TOKEN_PATH = path.join(__dirname, 'tokens', 'tiktok_token.json');
   2. Create app → request "Content Posting API" scope
   3. Complete app review (required for direct posting)
   4. Set env: TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET
-  5. Run: node upload_tiktok.js auth → visit URL → get code
-  6. Run: node upload_tiktok.js token YOUR_CODE
+  5. (Railway) set TIKTOK_TOKEN_PATH=/data/tokens/tiktok_token.json so the
+     OAuth token survives deploys on the persistent volume.
+  6. Visit GET /auth/tiktok on the deployed server, complete consent.
+  7. Callback /auth/tiktok/callback writes the token to the resolved path.
 */
 
 async function getAccessToken() {
-  if (!await fs.pathExists(TOKEN_PATH)) {
+  const tokenPath = resolveTokenPath();
+  if (!(await fs.pathExists(tokenPath))) {
     throw new Error(
-      'TikTok not authenticated. Run: node upload_tiktok.js auth\n' +
-      'Requires TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET in .env'
+      "TikTok not authenticated. Visit /auth/tiktok on the server to re-auth.\n" +
+        "Requires TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET in env.",
     );
   }
 
-  const tokenData = await fs.readJson(TOKEN_PATH);
+  const tokenData = await fs.readJson(tokenPath);
 
   // Auto-refresh if expired
   if (tokenData.expires_at && Date.now() > tokenData.expires_at - 60000) {
-    console.log('[tiktok] Refreshing expired token...');
+    console.log("[tiktok] Refreshing expired token...");
     const refreshed = await refreshToken(tokenData.refresh_token);
     return refreshed.access_token;
   }
@@ -45,177 +66,208 @@ async function getAccessToken() {
 }
 
 async function refreshToken(refreshToken) {
-  const response = await axios.post('https://open.tiktokapis.com/v2/oauth/token/', {
-    client_key: process.env.TIKTOK_CLIENT_KEY,
-    client_secret: process.env.TIKTOK_CLIENT_SECRET,
-    grant_type: 'refresh_token',
-    refresh_token: refreshToken,
-  });
+  const response = await axios.post(
+    "https://open.tiktokapis.com/v2/oauth/token/",
+    {
+      client_key: process.env.TIKTOK_CLIENT_KEY,
+      client_secret: process.env.TIKTOK_CLIENT_SECRET,
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+    },
+  );
 
   const tokenData = {
     ...response.data,
-    expires_at: Date.now() + (response.data.expires_in * 1000),
+    expires_at: Date.now() + response.data.expires_in * 1000,
   };
 
-  await fs.ensureDir(path.dirname(TOKEN_PATH));
-  await fs.writeJson(TOKEN_PATH, tokenData, { spaces: 2 });
+  const tokenPath = resolveTokenPath();
+  await fs.ensureDir(path.dirname(tokenPath));
+  await fs.writeJson(tokenPath, tokenData, { spaces: 2 });
   return tokenData;
 }
 
-// --- Generate auth URL ---
-function generateAuthUrl() {
+// --- Build the TikTok OAuth authorise URL ---
+// Pure helper so the server's GET /auth/tiktok initiator and the CLI
+// `node upload_tiktok.js auth` path share one source of truth.
+function buildAuthorizeUrl() {
   const clientKey = process.env.TIKTOK_CLIENT_KEY;
   if (!clientKey) {
-    console.log('[tiktok] Set TIKTOK_CLIENT_KEY in .env first');
-    return;
+    throw new Error("TIKTOK_CLIENT_KEY not set");
   }
+  const redirectUri =
+    process.env.TIKTOK_REDIRECT_URI ||
+    "https://marvelous-curiosity-production.up.railway.app/auth/tiktok/callback";
+  const scope = "user.info.basic,video.publish,video.upload";
+  const qs = new URLSearchParams({
+    client_key: clientKey,
+    scope,
+    response_type: "code",
+    redirect_uri: redirectUri,
+  });
+  return `https://www.tiktok.com/v2/auth/authorize/?${qs.toString()}`;
+}
 
-  const redirectUri = encodeURIComponent(process.env.TIKTOK_REDIRECT_URI || 'https://marvelous-curiosity-production.up.railway.app/auth/tiktok/callback');
-  const scope = encodeURIComponent('user.info.basic,video.publish,video.upload');
-
-  const url = `https://www.tiktok.com/v2/auth/authorize/?client_key=${clientKey}&scope=${scope}&response_type=code&redirect_uri=${redirectUri}`;
-
-  console.log('[tiktok] Visit this URL to authorise:');
-  console.log(url);
-  console.log('\nThen run: node upload_tiktok.js token YOUR_CODE');
+// --- Generate auth URL (CLI use) ---
+function generateAuthUrl() {
+  try {
+    const url = buildAuthorizeUrl();
+    console.log("[tiktok] Visit this URL to authorise:");
+    console.log(url);
+    console.log("\nThen run: node upload_tiktok.js token YOUR_CODE");
+  } catch (err) {
+    console.log(`[tiktok] ${err.message}`);
+  }
 }
 
 // --- Exchange code for token ---
 async function exchangeCode(code) {
-  const response = await axios.post('https://open.tiktokapis.com/v2/oauth/token/', {
-    client_key: process.env.TIKTOK_CLIENT_KEY,
-    client_secret: process.env.TIKTOK_CLIENT_SECRET,
-    code,
-    grant_type: 'authorization_code',
-    redirect_uri: process.env.TIKTOK_REDIRECT_URI || 'https://marvelous-curiosity-production.up.railway.app/auth/tiktok/callback',
-  });
+  const response = await axios.post(
+    "https://open.tiktokapis.com/v2/oauth/token/",
+    {
+      client_key: process.env.TIKTOK_CLIENT_KEY,
+      client_secret: process.env.TIKTOK_CLIENT_SECRET,
+      code,
+      grant_type: "authorization_code",
+      redirect_uri:
+        process.env.TIKTOK_REDIRECT_URI ||
+        "https://marvelous-curiosity-production.up.railway.app/auth/tiktok/callback",
+    },
+  );
 
   const tokenData = {
     ...response.data,
-    expires_at: Date.now() + (response.data.expires_in * 1000),
+    expires_at: Date.now() + response.data.expires_in * 1000,
   };
 
-  await fs.ensureDir(path.dirname(TOKEN_PATH));
-  await fs.writeJson(TOKEN_PATH, tokenData, { spaces: 2 });
-  console.log('[tiktok] Token saved successfully!');
+  const tokenPath = resolveTokenPath();
+  await fs.ensureDir(path.dirname(tokenPath));
+  await fs.writeJson(tokenPath, tokenData, { spaces: 2 });
+  console.log(`[tiktok] Token saved to ${tokenPath}`);
   return tokenData;
 }
 
 // --- Upload video to TikTok ---
 async function uploadVideo(story) {
-  addBreadcrumb(`TikTok upload: ${story.title}`, 'upload');
-  return withRetry(async () => {
-    const accessToken = await getAccessToken();
+  addBreadcrumb(`TikTok upload: ${story.title}`, "upload");
+  return withRetry(
+    async () => {
+      const accessToken = await getAccessToken();
 
-    await validateVideo(story.exported_path, 'tiktok');
+      await validateVideo(story.exported_path, "tiktok");
 
-    const fileSize = (await fs.stat(story.exported_path)).size;
+      const fileSize = (await fs.stat(story.exported_path)).size;
 
-    // Build caption (TikTok max 2200 chars) - channel-aware hashtags
-    const { getChannel } = require('./channels');
-    const channel = getChannel();
-    let caption = story.suggested_title || story.suggested_thumbnail_text || story.title;
-    if (caption.length > 100) caption = caption.substring(0, 97) + '...';
-    const tags = (channel.hashtags || []).join(' ') + ' #viral #fyp';
-    caption += ' ' + tags;
+      // Build caption (TikTok max 2200 chars) - channel-aware hashtags
+      const { getChannel } = require("./channels");
+      const channel = getChannel();
+      let caption =
+        story.suggested_title || story.suggested_thumbnail_text || story.title;
+      if (caption.length > 100) caption = caption.substring(0, 97) + "...";
+      const tags = (channel.hashtags || []).join(" ") + " #viral #fyp";
+      caption += " " + tags;
 
-    console.log(`[tiktok] Uploading: "${caption.substring(0, 60)}..."`);
+      console.log(`[tiktok] Uploading: "${caption.substring(0, 60)}..."`);
 
-    // Step 1: Init upload
-    const initResponse = await axios.post(
-      'https://open.tiktokapis.com/v2/post/publish/video/init/',
-      {
-        post_info: {
-          title: caption,
-          privacy_level: 'PUBLIC_TO_EVERYONE',
-          disable_duet: false,
-          disable_comment: false,
-          disable_stitch: false,
+      // Step 1: Init upload
+      const initResponse = await axios.post(
+        "https://open.tiktokapis.com/v2/post/publish/video/init/",
+        {
+          post_info: {
+            title: caption,
+            privacy_level: "PUBLIC_TO_EVERYONE",
+            disable_duet: false,
+            disable_comment: false,
+            disable_stitch: false,
+          },
+          source_info: {
+            source: "FILE_UPLOAD",
+            video_size: fileSize,
+            chunk_size: fileSize,
+            total_chunk_count: 1,
+          },
         },
-        source_info: {
-          source: 'FILE_UPLOAD',
-          video_size: fileSize,
-          chunk_size: fileSize,
-          total_chunk_count: 1,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json; charset=UTF-8",
+          },
         },
-      },
-      {
+      );
+
+      const { publish_id, upload_url } = initResponse.data.data;
+
+      // Step 2: Upload video file
+      const videoBuffer = await fs.readFile(story.exported_path);
+      await axios.put(upload_url, videoBuffer, {
         headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json; charset=UTF-8',
+          "Content-Type": "video/mp4",
+          "Content-Length": fileSize,
+          "Content-Range": `bytes 0-${fileSize - 1}/${fileSize}`,
         },
-      }
-    );
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity,
+      });
 
-    const { publish_id, upload_url } = initResponse.data.data;
+      console.log(`[tiktok] Upload complete. Publish ID: ${publish_id}`);
 
-    // Step 2: Upload video file
-    const videoBuffer = await fs.readFile(story.exported_path);
-    await axios.put(upload_url, videoBuffer, {
-      headers: {
-        'Content-Type': 'video/mp4',
-        'Content-Length': fileSize,
-        'Content-Range': `bytes 0-${fileSize - 1}/${fileSize}`,
-      },
-      maxContentLength: Infinity,
-      maxBodyLength: Infinity,
-    });
+      // Step 3: Check publish status (TikTok processes async)
+      let status = "PROCESSING";
+      let attempts = 0;
 
-    console.log(`[tiktok] Upload complete. Publish ID: ${publish_id}`);
+      while (status === "PROCESSING" && attempts < 30) {
+        await new Promise((r) => setTimeout(r, 10000));
+        attempts++;
 
-    // Step 3: Check publish status (TikTok processes async)
-    let status = 'PROCESSING';
-    let attempts = 0;
-
-    while (status === 'PROCESSING' && attempts < 30) {
-      await new Promise(r => setTimeout(r, 10000));
-      attempts++;
-
-      try {
-        const statusResponse = await axios.post(
-          'https://open.tiktokapis.com/v2/post/publish/status/fetch/',
-          { publish_id },
-          {
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'Content-Type': 'application/json',
+        try {
+          const statusResponse = await axios.post(
+            "https://open.tiktokapis.com/v2/post/publish/status/fetch/",
+            { publish_id },
+            {
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                "Content-Type": "application/json",
+              },
             },
-          }
-        );
+          );
 
-        status = statusResponse.data.data?.status || 'UNKNOWN';
-        console.log(`[tiktok] Status check ${attempts}: ${status}`);
-      } catch (err) {
-        console.log(`[tiktok] Status check failed: ${err.message}`);
+          status = statusResponse.data.data?.status || "UNKNOWN";
+          console.log(`[tiktok] Status check ${attempts}: ${status}`);
+        } catch (err) {
+          console.log(`[tiktok] Status check failed: ${err.message}`);
+        }
       }
-    }
 
-    if (status === 'PROCESSING') {
-      console.warn(`[tiktok] Video still processing after ${attempts} checks - will be available later`);
-      // Don't throw - TikTok is slow. Return partial success.
-    }
-    if (status === 'FAILED') {
-      throw new Error(`TikTok publishing failed. Publish ID: ${publish_id}`);
-    }
+      if (status === "PROCESSING") {
+        console.warn(
+          `[tiktok] Video still processing after ${attempts} checks - will be available later`,
+        );
+        // Don't throw - TikTok is slow. Return partial success.
+      }
+      if (status === "FAILED") {
+        throw new Error(`TikTok publishing failed. Publish ID: ${publish_id}`);
+      }
 
-    return {
-      platform: 'tiktok',
-      publishId: publish_id,
-      status,
-    };
-  }, { label: 'tiktok upload' });
+      return {
+        platform: "tiktok",
+        publishId: publish_id,
+        status,
+      };
+    },
+    { label: "tiktok upload" },
+  );
 }
 
 // --- Batch upload all ready stories ---
 async function uploadAll() {
   const stories = await db.getStories();
   if (!stories.length) {
-    console.log('[tiktok] No stories found');
+    console.log("[tiktok] No stories found");
     return [];
   }
 
-  const ready = stories.filter(s =>
-    s.approved && s.exported_path && !s.tiktok_post_id
+  const ready = stories.filter(
+    (s) => s.approved && s.exported_path && !s.tiktok_post_id,
   );
 
   console.log(`[tiktok] ${ready.length} videos ready for upload`);
@@ -230,9 +282,9 @@ async function uploadAll() {
       results.push(result);
 
       // Rate limiting
-      await new Promise(r => setTimeout(r, 3000));
+      await new Promise((r) => setTimeout(r, 3000));
     } catch (err) {
-      captureException(err, { platform: 'tiktok', storyId: story.id });
+      captureException(err, { platform: "tiktok", storyId: story.id });
       console.log(`[tiktok] Upload failed for ${story.id}: ${err.message}`);
       story.tiktok_error = err.message;
     }
@@ -248,22 +300,30 @@ async function uploadShort(story) {
   return uploadVideo(story);
 }
 
-module.exports = { uploadVideo, uploadShort, uploadAll, generateAuthUrl, exchangeCode };
+module.exports = {
+  uploadVideo,
+  uploadShort,
+  uploadAll,
+  generateAuthUrl,
+  buildAuthorizeUrl,
+  exchangeCode,
+  resolveTokenPath,
+};
 
 if (require.main === module) {
   const cmd = process.argv[2];
 
-  if (cmd === 'auth') {
+  if (cmd === "auth") {
     generateAuthUrl();
-  } else if (cmd === 'token') {
+  } else if (cmd === "token") {
     const code = process.argv[3];
     if (!code) {
-      console.log('Usage: node upload_tiktok.js token YOUR_CODE');
+      console.log("Usage: node upload_tiktok.js token YOUR_CODE");
       process.exit(1);
     }
     exchangeCode(code).catch(console.error);
   } else {
-    uploadAll().catch(err => {
+    uploadAll().catch((err) => {
       console.log(`[tiktok] ERROR: ${err.message}`);
       process.exit(1);
     });

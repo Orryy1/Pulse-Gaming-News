@@ -24,6 +24,25 @@ const db = require("./lib/db");
 
 dotenv.config({ override: true });
 
+/**
+ * Twitter/X is an OPTIONAL publishing channel for Pulse Gaming.
+ * The free API tier cannot post videos (since Feb 2023) and the paid
+ * tiers start at $200/mo — so a 402 Payment Required is the normal
+ * outcome with default billing. This module treats Twitter as disabled
+ * unless TWITTER_ENABLED === "true" is set explicitly.
+ *
+ * When disabled:
+ *   - uploadShort + uploadAll short-circuit with a structured
+ *     `{ skipped: true, reason: "twitter_disabled" }` result
+ *   - no network calls are made (so no 402, no spurious Sentry noise)
+ *   - publisher.js routes the skipped result into result.skipped.twitter
+ *     rather than result.errors.twitter — the Discord summary then shows
+ *     "X ⏸ disabled" instead of "X FAIL".
+ */
+function twitterEnabled() {
+  return (process.env.TWITTER_ENABLED || "").toLowerCase() === "true";
+}
+
 // --- OAuth 1.0a signing ---
 function percentEncode(str) {
   return encodeURIComponent(str)
@@ -212,6 +231,13 @@ async function postTweet(text, mediaId) {
 
 // --- Upload a single video to X/Twitter ---
 async function uploadShort(story) {
+  if (!twitterEnabled()) {
+    console.log(
+      "[twitter] Skipped: TWITTER_ENABLED != true — X is optional, " +
+        "set TWITTER_ENABLED=true only when API billing is active.",
+    );
+    return { skipped: true, reason: "twitter_disabled", platform: "twitter" };
+  }
   addBreadcrumb(`Twitter upload: ${story.title}`, "upload");
   return withRetry(
     async () => {
@@ -252,6 +278,12 @@ async function uploadShort(story) {
 
 // --- Batch upload ---
 async function uploadAll() {
+  if (!twitterEnabled()) {
+    console.log(
+      "[twitter] Batch skipped: TWITTER_ENABLED != true (optional channel)",
+    );
+    return [];
+  }
   const stories = await db.getStories();
   if (!stories.length) {
     console.log("[twitter] No stories found");
@@ -268,6 +300,7 @@ async function uploadAll() {
   for (const story of ready) {
     try {
       const result = await uploadShort(story);
+      if (result && result.skipped) continue;
       story.twitter_post_id = result.tweetId;
       results.push(result);
       await new Promise((r) => setTimeout(r, 5000));
@@ -285,6 +318,16 @@ async function uploadAll() {
 
 // --- Upload a story card image as a tweet ---
 async function postImageTweet(story) {
+  if (!twitterEnabled()) {
+    console.log(
+      "[twitter] Image tweet skipped: TWITTER_ENABLED != true (optional)",
+    );
+    return {
+      skipped: true,
+      reason: "twitter_disabled",
+      platform: "twitter_image",
+    };
+  }
   addBreadcrumb(`Twitter image tweet: ${story.title}`, "upload");
   return withRetry(
     async () => {
@@ -395,6 +438,7 @@ module.exports = {
   uploadMedia,
   postTweet,
   postImageTweet,
+  twitterEnabled,
 };
 
 if (require.main === module) {

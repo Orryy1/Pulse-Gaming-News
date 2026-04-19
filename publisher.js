@@ -551,6 +551,11 @@ async function _publishNextStoryInner() {
     facebook: false,
     twitter: false,
     errors: {},
+    // Structured skipped bucket for platforms that declined to run (e.g.
+    // Twitter/X disabled via TWITTER_ENABLED=false). Distinct from errors:
+    // the summary formatter renders these as "⏸ disabled" / "⏸ skipped"
+    // rather than "FAIL", and they don't count against the overall status.
+    skipped: {},
   };
 
   // Sentinel-cleanup cutover: block/skip outcomes for every platform in
@@ -909,11 +914,21 @@ async function _publishNextStoryInner() {
     try {
       const { uploadShort: twUpload } = require("./upload_twitter");
       const twResult = await twUpload(story);
-      story.twitter_post_id = twResult.tweetId;
-      story.twitter_error = null;
-      result.twitter = true;
-      console.log(`[publisher] Twitter: uploaded`);
-      await db.upsertStory(story);
+      if (twResult && twResult.skipped) {
+        // Optional-channel short-circuit (e.g. TWITTER_ENABLED != true).
+        // Do not mark as success or failure — record the reason so the
+        // publish summary can render it as "⏸ disabled" instead of FAIL.
+        result.skipped.twitter = twResult.reason || "skipped";
+        console.log(
+          `[publisher] Twitter: skipped (${twResult.reason || "skipped"})`,
+        );
+      } else {
+        story.twitter_post_id = twResult.tweetId;
+        story.twitter_error = null;
+        result.twitter = true;
+        console.log(`[publisher] Twitter: uploaded`);
+        await db.upsertStory(story);
+      }
     } catch (err) {
       console.log(`[publisher] Twitter upload failed: ${err.message}`);
       story.twitter_error = err.message;
@@ -996,10 +1011,17 @@ async function _publishNextStoryInner() {
       try {
         const { postImageTweet } = require("./upload_twitter");
         const twImgResult = await postImageTweet(story);
-        story.twitter_image_tweet_id = twImgResult.tweetId;
-        console.log(
-          `[publisher] Twitter image tweet: posted (${twImgResult.tweetId})`,
-        );
+        if (twImgResult && twImgResult.skipped) {
+          result.skipped.twitter_image = twImgResult.reason || "skipped";
+          console.log(
+            `[publisher] Twitter image tweet skipped (${twImgResult.reason || "skipped"})`,
+          );
+        } else {
+          story.twitter_image_tweet_id = twImgResult.tweetId;
+          console.log(
+            `[publisher] Twitter image tweet: posted (${twImgResult.tweetId})`,
+          );
+        }
       } catch (err) {
         console.log(`[publisher] Twitter image tweet failed: ${err.message}`);
         result.errors.twitter_image = err.message;

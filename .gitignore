@@ -8,14 +8,42 @@ daily_news.json
 pending_news.json
 image_queue.json
 video_queue.json
+
+# --- Secret-bearing files (see docs/security-hygiene.md) ---
+# Local OAuth tokens, API tokens, deploy scripts. If any of these end
+# up committed, the corresponding secret MUST be rotated immediately.
 tokens/
-data/*.db
-data/*.db-wal
-data/*.db-shm
-.claude/settings.local.json
-.claude/launch.json
+.youtube_token*
+.github_token*
+.railway_token*
+railway_deploy.bat
+railway_deploy.sh
+railway_deploy.ps1
+# Windows-escaped filenames generated when a Windows path is accidentally
+# git-added (e.g. C:/Users/…/railway_deploy.bat becomes C + fullwidth-colon
+# + UsersMORRrailway_deploy.bat). Catch-all guard so this cannot recur.
+CUsersMORR*
+C*UsersMORR*
+*railway_deploy.bat
+
+# --- Local SQLite + lock files ---
+data/
+!data/.keep
+
+# --- Local diagnostics / logs ---
+*.log
 tts_server/diag/
 tts_server/server.log
 tts_server/server.log.*
 tts_server/faulthandler.*.log
 tts_server/boot_state.json
+tts_server/venv/
+
+# --- Local test assets that are never part of the app ---
+test_videos/
+test_imagen.jpg
+engagement_stats.json
+
+# --- Claude Code / editor local state ---
+.claude/settings.local.json
+.claude/launch.json

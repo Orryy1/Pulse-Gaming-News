@@ -28,6 +28,13 @@ const PHONETIC_MAP = {
 function cleanForTTS(raw) {
   return (
     (raw || "")
+      // 2026-04-19 fix (precedes the other transforms): paragraph /
+      // line separators (U+2028, U+2029) must become real spaces BEFORE
+      // the invisible-unicode stripper runs, otherwise the stripper
+      // consumes them with no replacement and later "rollout.Journalists"
+      // runs together. Same class of bug that shipped the Black Flag
+      // subtitles with ROLLOUT.JOURNALISTS joined.
+      .replace(/[\u2028\u2029]/g, " ")
       .replace(/\[PAUSE\]/gi, ", ")
       .replace(/\[VISUAL:[^\]]*\]/gi, "")
       .replace(/\.{2,}/g, ".")
@@ -36,7 +43,10 @@ function cleanForTTS(raw) {
       // Strip Reddit subreddit paths - TTS mangles "r/PS5"
       .replace(/\br\/(\w+)/g, (_, sub) => `the ${sub} subreddit`)
       .replace(/[*_~`#|]/g, "")
-      .replace(/[\u200B-\u200F\u2028-\u202F\uFEFF]/g, "") // strip zero-width and invisible unicode
+      // Zero-width / invisible unicode: strip silently. U+2028/U+2029 are
+      // handled above with a replacement space, so they stay out of the
+      // range here now.
+      .replace(/[\u200B-\u200F\u202A-\u202F\uFEFF]/g, "")
       .replace(/[\u201C\u201D]/g, '"')
       .replace(/[\u2018\u2019\u0060\u00B4]/g, "'")
       .replace(/[\u2013\u2014]/g, " - ") // only en/em dashes get spaced out

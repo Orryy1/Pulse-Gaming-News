@@ -25,6 +25,69 @@ function randomUA() {
   ];
 }
 
+// --- Build candidate Steam search terms from a story title ---
+//
+// Gaming headlines come in predictable shapes:
+//   "Tom Henderson on Black Flag remake: reveal set for April 23rd..."
+//   "THQ Nordic has 7 unannounced Switch 2 games on their site"
+//   "Horizon Zero Dawn Remastered leaked into April's PS Plus"
+//
+// The game name might be BEFORE the colon, AFTER the colon, or buried in
+// the middle of a longer sentence. Rather than guess one location and
+// throw away the rest, we build an ordered list of candidate search
+// strings and try each in turn against Steam's storesearch endpoint.
+// The first that returns a hit wins.
+//
+// Exported for unit testing in tests/services/steam-search-candidates.test.js.
+function buildSteamSearchCandidates(rawTitle) {
+  if (!rawTitle || typeof rawTitle !== "string") return [];
+
+  // Common leaker-attribution prefixes that bury the game name behind noise.
+  // "Tom Henderson on Black Flag" → start at "Black Flag".
+  const leakerPrefixRe =
+    /^(tom\s+henderson|billbil-kun|billbilkun|billbil\s+kun|jason\s+schreier|jeff\s+grubb|nate\s+the\s+hate|nibellion)\s+(?:on|says|reports|claims|leaks|hints)\s+/i;
+
+  const stopTokens = new RegExp(
+    "\\b(reportedly|rumour|rumor|confirmed|leaked|leak|says|claims|according|to|has|been|what|are|your|thoughts|out|for|a|week|now|insider|source|sources|reveal|reveals|revealed|release|date|embargo|lifts|embargoed|the|game|current-gen|current|gen|only|next|big|delayed|coming|soon|may|have|might|possibly|allegedly|locked|in|of|and|or|is|are|was|were|will|be|set|an|at|on|from|this|that|you|how|why|what|do|does|with|about|by)\\b",
+    "gi",
+  );
+
+  // Start from title minus leaker prefix.
+  const base = rawTitle.replace(leakerPrefixRe, "").trim();
+
+  // Candidate A: content BEFORE the first colon (e.g. "Black Flag remake").
+  // Candidate B: content AFTER the first colon (old behaviour, kept for
+  //   headlines like "Rumour: New Elder Scrolls leak").
+  // Candidate C: whole title (last resort).
+  const colonIdx = base.indexOf(":");
+  const rawCandidates = [];
+  if (colonIdx !== -1) {
+    rawCandidates.push(base.slice(0, colonIdx));
+    rawCandidates.push(base.slice(colonIdx + 1));
+  }
+  rawCandidates.push(base);
+
+  const clean = (s) =>
+    s
+      .replace(stopTokens, " ")
+      .replace(/[^a-zA-Z0-9\s:'-]/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .substring(0, 60)
+      .trim();
+
+  const seen = new Set();
+  const out = [];
+  for (const c of rawCandidates) {
+    const cleaned = clean(c);
+    if (cleaned.length > 3 && !seen.has(cleaned)) {
+      seen.add(cleaned);
+      out.push(cleaned);
+    }
+  }
+  return out;
+}
+
 // --- Download and cache a video clip from URL ---
 async function downloadVideoClip(url, filename) {
   const cachePath = path.join(VIDEO_CACHE_DIR, filename);
@@ -143,31 +206,27 @@ async function getBestImage(story) {
   }
 
   // Priority 2b: Direct Steam search fallback - if hunter didn't save game_images,
-  // extract game title from story title and search Steam directly
+  // extract game title from story title and search Steam directly.
+  //
+  // 2026-04-19 fix: the old extractor stripped EVERYTHING before the first
+  // colon via /^[^:]+:\s*/. That's wrong for titles like
+  //   "Tom Henderson on Black Flag remake: reveal set for April 23rd..."
+  // where the game name lives BEFORE the colon. It threw away "Black Flag"
+  // and sent Steam the post-colon noise "reveal set for April 23rd..."
+  // which matches nothing. Fix: build multiple candidate search terms
+  // (before-colon + after-colon + whole-title), try each in order, accept
+  // the first that returns a Steam hit.
   if (
     images.filter((i) => i.type !== "article_hero").length === 0 &&
     story.title
   ) {
     try {
-      // Extract likely game title from story title
-      const gameTitle = story.title
-        .replace(/^[^:]+:\s*/i, "")
-        .replace(
-          /reportedly|rumour|confirmed|leaked|says|claims|according to|has been|what are|your thoughts|out for|a week now/gi,
-          "",
-        )
-        .replace(
-          /\b(is|are|was|were|will|be|to|the|a|an|in|on|at|for|of|and|or|not|has|have|had|just|now|how|why|what|do|does)\b/gi,
-          "",
-        )
-        .replace(/[^a-zA-Z0-9\s:'-]/g, "")
-        .replace(/\s+/g, " ")
-        .trim();
-      const searchTerm = gameTitle.substring(0, 60).trim();
-
-      if (searchTerm.length > 3) {
+      const candidates = buildSteamSearchCandidates(story.title);
+      let matched = null;
+      for (const searchTerm of candidates) {
+        if (searchTerm.length <= 3) continue;
         console.log(
-          `[images] No pre-saved game images, searching Steam directly for: "${searchTerm}"`,
+          `[images] No pre-saved game images, searching Steam for: "${searchTerm}"`,
         );
         const searchUrl = `https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(searchTerm)}&cc=gb&l=english`;
         const searchResp = await axios.get(searchUrl, {
@@ -176,6 +235,14 @@ async function getBestImage(story) {
         });
         const items = searchResp.data?.items || [];
         if (items.length > 0) {
+          matched = { items, searchTerm };
+          break;
+        }
+      }
+
+      if (matched) {
+        const { items } = matched;
+        {
           const appId = items[0].id;
           const steamName = items[0].name;
           console.log(`[images] Steam match: "${steamName}" (app ${appId})`);
@@ -560,3 +627,4 @@ async function getBestImage(story) {
 
 module.exports = getBestImage;
 module.exports.downloadVideoClip = downloadVideoClip;
+module.exports.buildSteamSearchCandidates = buildSteamSearchCandidates;

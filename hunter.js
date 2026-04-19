@@ -717,10 +717,38 @@ const COMPANY_LOGOS = {
     "https://upload.wikimedia.org/wikipedia/commons/thumb/2/21/Konami_Logo.svg/320px-Konami_Logo.svg.png",
 };
 
-function detectCompany(title) {
-  const lower = title.toLowerCase();
+// --- Detect the publisher / platform holder referenced by a story ---
+//
+// 2026-04-19 fix: the old implementation used `lower.includes(key)` with
+// no word boundary. Key "ea" then matched "r**ea**l", "l**ea**k",
+// "id**ea**", etc. — any title containing those substrings got silently
+// tagged with the Electronic Arts logo. The 18:00 UTC publish of the
+// Tom Henderson Black Flag story went out with an EA logo because the
+// title contained "reveal" → included "ea". Fix: require word boundaries
+// around each company key, and also scan the hook/body so stories whose
+// title doesn't name the publisher can still match (e.g. when the
+// headline says "Black Flag remake" but the body says "Ubisoft confirms").
+//
+// Accepts either a string (legacy callers) or a story object with
+// { title, hook, body }. Returns { name, logoUrl } or null.
+function detectCompany(storyOrTitle) {
+  const haystackParts =
+    typeof storyOrTitle === "string"
+      ? [storyOrTitle]
+      : [
+          storyOrTitle?.title || "",
+          storyOrTitle?.hook || "",
+          storyOrTitle?.body || "",
+        ];
+  const lower = haystackParts.join(" ").toLowerCase();
   for (const [key, url] of Object.entries(COMPANY_LOGOS)) {
-    if (lower.includes(key.replace("_", " "))) {
+    const needle = key.replace("_", " ");
+    // Escape regex metacharacters then wrap in word boundaries. \b in JS
+    // regex treats hyphens / spaces / punctuation as word boundaries, so
+    // "cd projekt" matches "CD Projekt" in "...announced by CD Projekt Red...".
+    const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(`\\b${escaped}\\b`, "i");
+    if (re.test(lower)) {
       return { name: key, logoUrl: url };
     }
   }
@@ -952,9 +980,16 @@ async function hunt() {
         );
       }
 
-      // Detect company and attach logo
+      // Detect company and attach logo. Scan title + the highest-voted
+      // Reddit comment / RSS description so stories whose title doesn't
+      // name the publisher can still match on body context (e.g. the
+      // Tom Henderson Black Flag story whose title never says "Ubisoft"
+      // but whose top comments / body do).
       try {
-        const company = detectCompany(story.title);
+        const company = detectCompany({
+          title: story.title,
+          body: story.top_comment || "",
+        });
         if (company) {
           story.company_name = company.name;
           story.company_logo_url = company.logoUrl;

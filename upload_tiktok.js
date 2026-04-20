@@ -130,6 +130,22 @@ async function getAccessToken() {
 
   const tokenData = await fs.readJson(tokenPath);
 
+  // Defensive: an earlier bug (pre-fix) wrote TikTok's JSON-body error
+  // response to this file as a fake token with {error, error_description,
+  // log_id, expires_at}. Detect that shape and treat it as "not
+  // authenticated" so publish paths fail loudly instead of sending
+  // `undefined` as the bearer. This also covers any future drift where
+  // the on-disk record is missing the one field that actually matters.
+  if (
+    typeof tokenData.access_token !== "string" ||
+    tokenData.access_token.length < 8
+  ) {
+    throw new Error(
+      "TikTok token file present but has no access_token. Visit /auth/tiktok on the server to re-auth." +
+        (tokenData.error ? ` (previous error: ${tokenData.error})` : ""),
+    );
+  }
+
   // `expires_at` can be missing on tokens written by older code paths
   // (before the 2026-04-19 sandbox fix) OR corrupt (NaN serialised as
   // null by JSON.stringify). Coerce defensively and treat non-finite
@@ -164,22 +180,63 @@ async function getAccessToken() {
 }
 
 async function refreshToken(refreshToken) {
+  // TikTok v2 /oauth/token/ REQUIRES `application/x-www-form-urlencoded`
+  // per their API docs; any JSON-body POST comes back with a 200 OK that
+  // carries `{error:"invalid_request", error_description:"Only
+  // \`application/x-www-form-urlencoded\` is accepted as Content-Type."}`.
+  // Axios defaults to JSON for a plain object, so we build a
+  // URLSearchParams body explicitly and assert the response is a real
+  // token before touching disk.
+  const body = new URLSearchParams({
+    client_key: process.env.TIKTOK_CLIENT_KEY || "",
+    client_secret: process.env.TIKTOK_CLIENT_SECRET || "",
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+  });
   const response = await axios.post(
     "https://open.tiktokapis.com/v2/oauth/token/",
+    body.toString(),
     {
-      client_key: process.env.TIKTOK_CLIENT_KEY,
-      client_secret: process.env.TIKTOK_CLIENT_SECRET,
-      grant_type: "refresh_token",
-      refresh_token: refreshToken,
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
     },
   );
 
-  const tokenData = buildTokenRecord(response.data);
+  assertTokenResponse(response.data, "refresh");
 
+  const tokenData = buildTokenRecord(response.data);
   const tokenPath = resolveTokenPath();
   await fs.ensureDir(path.dirname(tokenPath));
   await fs.writeJson(tokenPath, tokenData, { spaces: 2 });
   return tokenData;
+}
+
+// --- Reject error-shaped OAuth responses before they ever hit disk ----
+// TikTok returns HTTP 200 on token-exchange/refresh errors and signals
+// failure in the body (`{error, error_description, log_id}`). Without an
+// explicit check, buildTokenRecord would happily spread the error keys
+// into a fake "token record" with a default expires_at, which is how
+// the /data file ended up holding {error:"invalid_request", ...}.
+// `flavor` tags the error so the callback page / heal log distinguishes
+// code-exchange failures from refresh failures.
+function assertTokenResponse(data, flavor) {
+  if (!data || typeof data !== "object") {
+    throw new Error(
+      `TikTok ${flavor} response had no JSON body — cannot save token.`,
+    );
+  }
+  if (data.error) {
+    // error_description is human-readable, safe to surface. We
+    // deliberately do NOT include `data` itself in the thrown error so
+    // no token-shaped field can leak if TikTok ever returns a mixed
+    // body.
+    const desc = data.error_description || "(no description)";
+    throw new Error(`TikTok ${flavor} rejected: ${data.error} — ${desc}`);
+  }
+  if (typeof data.access_token !== "string" || data.access_token.length < 8) {
+    throw new Error(
+      `TikTok ${flavor} response missing access_token — refusing to save.`,
+    );
+  }
 }
 
 // --- Build the TikTok OAuth authorise URL ---
@@ -217,21 +274,30 @@ function generateAuthUrl() {
 
 // --- Exchange code for token ---
 async function exchangeCode(code) {
+  // See refreshToken() for why this MUST be form-urlencoded. Sending JSON
+  // made TikTok return a 200 + `{error:"invalid_request"}` body which we
+  // then saved to /data/tokens/tiktok_token.json as a fake token — that's
+  // the bug this fix addresses.
+  const body = new URLSearchParams({
+    client_key: process.env.TIKTOK_CLIENT_KEY || "",
+    client_secret: process.env.TIKTOK_CLIENT_SECRET || "",
+    code: code || "",
+    grant_type: "authorization_code",
+    redirect_uri:
+      process.env.TIKTOK_REDIRECT_URI ||
+      "https://marvelous-curiosity-production.up.railway.app/auth/tiktok/callback",
+  });
   const response = await axios.post(
     "https://open.tiktokapis.com/v2/oauth/token/",
+    body.toString(),
     {
-      client_key: process.env.TIKTOK_CLIENT_KEY,
-      client_secret: process.env.TIKTOK_CLIENT_SECRET,
-      code,
-      grant_type: "authorization_code",
-      redirect_uri:
-        process.env.TIKTOK_REDIRECT_URI ||
-        "https://marvelous-curiosity-production.up.railway.app/auth/tiktok/callback",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
     },
   );
 
-  const tokenData = buildTokenRecord(response.data);
+  assertTokenResponse(response.data, "code exchange");
 
+  const tokenData = buildTokenRecord(response.data);
   const tokenPath = resolveTokenPath();
   await fs.ensureDir(path.dirname(tokenPath));
   await fs.writeJson(tokenPath, tokenData, { spaces: 2 });
@@ -408,6 +474,7 @@ module.exports = {
   resolveTokenPath,
   coerceExpiresIn,
   buildTokenRecord,
+  assertTokenResponse,
   DEFAULT_EXPIRES_IN_SECONDS,
 };
 

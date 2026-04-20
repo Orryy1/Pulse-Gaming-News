@@ -336,8 +336,13 @@ test("exchangeCode: string expires_in still produces numeric expires_at", async 
   const origPost = axios.post;
   axios.post = async () => ({
     data: {
-      access_token: "x",
-      refresh_token: "r",
+      // Realistic-length access_token — the 2026-04-20 fix added a
+      // min-length assertion to reject TikTok error bodies that have
+      // empty/short access_token values. Use a value long enough to
+      // pass that check while still keeping the test focused on
+      // expires_in string coercion.
+      access_token: "act.example12345Example12345Example",
+      refresh_token: "rft.example12345Example12345Example",
       expires_in: "86400", // string form
     },
   });

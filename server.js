@@ -14,9 +14,6 @@ dotenv.config({ override: true });
 const app = express();
 const PORT = process.env.PORT || 3001;
 const DATA_FILE = path.join(__dirname, "daily_news.json");
-const PUBLIC_DIR = path.join(__dirname, "public", "generated");
-
-fs.ensureDirSync(PUBLIC_DIR);
 
 app.use(
   cors({
@@ -144,7 +141,12 @@ app.get("/tiktokDw54Pk1WSkoF9szIQ4gVvLPUr0EmoATB.txt", (req, res) => {
 
 // Serve Vite build from dist/
 app.use(express.static(path.join(__dirname, "dist")));
-app.use("/generated", express.static(PUBLIC_DIR));
+// NOTE: /generated (public/generated) static mount removed 2026-04-21
+// after the Task 6 audit. The directory was empty in production and
+// nothing in the codebase ever wrote to it or fetched from it. Kept
+// off by default — if you need a public served dir for a future
+// asset, prefer a dedicated mount with a documented consumer and a
+// story-visibility gate where drafts are involved.
 app.use("/branding", express.static(path.join(__dirname, "branding")));
 
 // Ported from the retired cloud.js (Phase B entrypoint unification).

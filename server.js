@@ -880,30 +880,57 @@ app.get("/api/platforms/status", async (req, res) => {
   // local fallback) so this check stays truthful whether the token lives
   // on the Railway volume or on dev's local disk. Only expose existence,
   // expiry and the non-sensitive path — NEVER the token itself.
+  //
+  // Opportunistic self-heal (2026-04-19, commit d865c34 context): if the
+  // token file exists but is missing a numeric `expires_at`, invoke
+  // getAccessToken() so the self-heal path in upload_tiktok.js runs and
+  // rewrites the file with a proper expires_at. Gated on `?heal=true`
+  // so a routine health check doesn't burn a refresh every call, but
+  // operators can trigger the repair from a URL instead of waiting for
+  // the next publish window. Failures are swallowed and reported as
+  // `tiktok.heal_error` so the status shape stays stable.
   try {
     status.tiktok.configured = !!process.env.TIKTOK_CLIENT_KEY;
-    const { resolveTokenPath } = require("./upload_tiktok");
+    const { resolveTokenPath, getAccessToken } = require("./upload_tiktok");
     const tokenPath = resolveTokenPath();
-    const exists = await fs.pathExists(tokenPath);
+    let exists = await fs.pathExists(tokenPath);
     status.tiktok.token_path = tokenPath;
     status.tiktok.token_file_exists = exists;
     status.tiktok.authenticated = exists;
+
     if (exists) {
-      try {
-        const tokenData = await fs.readJson(tokenPath);
-        // Only copy the public-safe timing metadata over.
-        if (tokenData && typeof tokenData.expires_at === "number") {
-          status.tiktok.expires_at = new Date(
-            tokenData.expires_at,
-          ).toISOString();
-          status.tiktok.expires_in_seconds = Math.max(
-            0,
-            Math.round((tokenData.expires_at - Date.now()) / 1000),
-          );
+      // If caller passed ?heal=true, trigger getAccessToken BEFORE the
+      // file read below so the self-heal path can repair a legacy
+      // token (missing expires_at) in place.
+      if (String(req.query.heal).toLowerCase() === "true") {
+        try {
+          await getAccessToken();
+          status.tiktok.heal_attempted = true;
+        } catch (healErr) {
+          status.tiktok.heal_error = healErr.message;
         }
-      } catch {
-        /* token file corrupt; still report authenticated=false */
-        status.tiktok.authenticated = false;
+        // Re-check existence in case the heal failed destructively.
+        exists = await fs.pathExists(tokenPath);
+        status.tiktok.token_file_exists = exists;
+      }
+
+      if (exists) {
+        try {
+          const tokenData = await fs.readJson(tokenPath);
+          // Only copy the public-safe timing metadata over.
+          if (tokenData && typeof tokenData.expires_at === "number") {
+            status.tiktok.expires_at = new Date(
+              tokenData.expires_at,
+            ).toISOString();
+            status.tiktok.expires_in_seconds = Math.max(
+              0,
+              Math.round((tokenData.expires_at - Date.now()) / 1000),
+            );
+          }
+        } catch {
+          /* token file corrupt; still report authenticated=false */
+          status.tiktok.authenticated = false;
+        }
       }
     }
   } catch (err) {

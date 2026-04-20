@@ -399,6 +399,12 @@ module.exports = {
   generateAuthUrl,
   buildAuthorizeUrl,
   exchangeCode,
+  // Exported so server.js's `/api/platforms/status?heal=true` route can
+  // invoke the self-heal path in getAccessToken(). Missing from this
+  // list since commit 4e08301 which added the route but not the export,
+  // which is why every heal attempt returned `getAccessToken is not a
+  // function` instead of repairing legacy tokens.
+  getAccessToken,
   resolveTokenPath,
   coerceExpiresIn,
   buildTokenRecord,

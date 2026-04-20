@@ -189,9 +189,14 @@ async function produce() {
   const audio = require("./audio");
   const images = require("./images");
   const assemble = require("./assemble");
+  const { generateEntityMentions } = require("./entities");
 
   await affiliates();
   await audio();
+  // Entity extraction runs between audio (needs word-level timestamps)
+  // and assemble (consumes story.mentions to overlay faces at spoken
+  // moments). Safe to skip — assemble treats missing mentions as no-op.
+  await generateEntityMentions();
   await images();
   await assemble();
 

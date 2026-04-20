@@ -181,7 +181,12 @@ async function getBestImage(story) {
       `${story.id}_article.${ext}`,
     );
     if (cached)
-      images.push({ path: cached, type: "article_hero", priority: 100 });
+      images.push({
+        path: cached,
+        type: "article_hero",
+        priority: 100,
+        source: "article",
+      });
   }
 
   // Priority 2: Steam key art / hero images (from hunter-saved URLs)
@@ -199,7 +204,12 @@ async function getBestImage(story) {
               : img.type === "key_art"
                 ? 85
                 : 70;
-        images.push({ path: cached, type: img.type, priority });
+        images.push({
+          path: cached,
+          type: img.type,
+          priority,
+          source: "steam",
+        });
       }
       if (images.length >= 10) break;
     }
@@ -273,6 +283,7 @@ async function getBestImage(story) {
                 type: s.type,
                 priority:
                   s.type === "capsule" ? 95 : s.type === "hero" ? 90 : 85,
+                source: "steam",
               });
             }
           }
@@ -297,6 +308,7 @@ async function getBestImage(story) {
                       path: cached,
                       type: "screenshot",
                       priority: 70 - ssCount,
+                      source: "steam",
                     });
                     ssCount++;
                   }
@@ -397,6 +409,7 @@ async function getBestImage(story) {
             path: cached,
             type: "screenshot",
             priority: 75 - articleImgCount,
+            source: "article",
           });
           articleImgCount++;
         }
@@ -418,7 +431,12 @@ async function getBestImage(story) {
       `${story.id}_reddit_thumb.jpg`,
     );
     if (cached)
-      images.push({ path: cached, type: "reddit_thumb", priority: 40 });
+      images.push({
+        path: cached,
+        type: "reddit_thumb",
+        priority: 40,
+        source: "reddit",
+      });
   }
 
   // Priority 5: Company logo
@@ -428,7 +446,12 @@ async function getBestImage(story) {
       `${story.id}_logo.png`,
     );
     if (cached)
-      images.push({ path: cached, type: "company_logo", priority: 30 });
+      images.push({
+        path: cached,
+        type: "company_logo",
+        priority: 30,
+        source: "logo",
+      });
   }
 
   // Priority 6: Pexels free stock photos — reliable API, great for industry/generic stories
@@ -471,6 +494,7 @@ async function getBestImage(story) {
             path: cached,
             type: "screenshot",
             priority: 25 - pexelsCount,
+            source: "pexels",
           });
           pexelsCount++;
         }
@@ -517,6 +541,7 @@ async function getBestImage(story) {
             path: cached,
             type: "screenshot",
             priority: 15 - unsplashCount,
+            source: "unsplash",
           });
           unsplashCount++;
         }
@@ -569,6 +594,7 @@ async function getBestImage(story) {
             path: cached,
             type: "screenshot",
             priority: 10 - bingFound,
+            source: "bing",
           });
           bingFound++;
         }
@@ -620,9 +646,51 @@ async function getBestImage(story) {
     }
   }
 
-  // Sort by priority (highest first)
+  // Previously: pure priority sort. That stacked every Steam asset
+  // together (header → library_hero → capsule → 4 screenshots), and
+  // since they're all the same game the back half of the video looked
+  // like the same image on loop. We still want the highest-priority
+  // hero image FIRST (so the thumbnail reads well), but after that
+  // we interleave by source so consecutive visual slots don't share
+  // one game/article. Steam is capped at 2 per video when any other
+  // source is available.
   images.sort((a, b) => b.priority - a.priority);
-  return { images, videoClips };
+
+  const bySource = {};
+  for (const img of images) {
+    const src = img.source || "other";
+    (bySource[src] = bySource[src] || []).push(img);
+  }
+  const nonSteamSourceCount = Object.keys(bySource).filter(
+    (s) => s !== "steam",
+  ).length;
+  const steamCap = nonSteamSourceCount > 0 ? 2 : Infinity;
+  if (bySource.steam && bySource.steam.length > steamCap) {
+    bySource.steam = bySource.steam.slice(0, steamCap);
+  }
+
+  // Interleave: first the top-priority hero, then round-robin sources
+  // until every source bucket is empty.
+  const allRanked = Object.values(bySource)
+    .flat()
+    .sort((a, b) => b.priority - a.priority);
+  const ordered = [];
+  if (allRanked.length > 0) {
+    const first = allRanked[0];
+    ordered.push(first);
+    for (const k of Object.keys(bySource)) {
+      bySource[k] = bySource[k].filter((i) => i !== first);
+    }
+  }
+  while (Object.values(bySource).some((b) => b.length > 0)) {
+    for (const k of Object.keys(bySource)) {
+      const bucket = bySource[k];
+      if (bucket.length === 0) continue;
+      ordered.push(bucket.shift());
+    }
+  }
+
+  return { images: ordered, videoClips };
 }
 
 module.exports = getBestImage;

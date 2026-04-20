@@ -1011,11 +1011,16 @@ function buildVideoCommand(
   );
 
   // --- Inputs: background images + video clips ---
+  // Steam trailers and IGDB clips are often shorter than the segment
+  // duration. Without -stream_loop the ffmpeg input ends early and the
+  // resulting segment falls back to a black frame for the remainder,
+  // which is the "black section" viewers see near the start of videos
+  // whose hook slot is a 3s trailer cut. -stream_loop -1 on the video
+  // input loops the clip for as long as the filter graph needs.
   for (let i = 0; i < visualPaths.length; i++) {
     if (isVideoSlot[i]) {
-      // Video clip input - take first segmentDuration seconds
       inputs.push(
-        `-t ${segmentDuration} -i "${visualPaths[i].replace(/\\/g, "/")}"`,
+        `-stream_loop -1 -t ${segmentDuration} -i "${visualPaths[i].replace(/\\/g, "/")}"`,
       );
     } else {
       inputs.push(
@@ -1040,6 +1045,41 @@ function buildVideoCommand(
   if (hasOutroCard) {
     outroIdx = inputs.length;
     inputs.push(`-loop 1 -t ${fullDur} -i "${OUTRO_CARD.replace(/\\/g, "/")}"`);
+  }
+
+  // Entity portrait inputs — one input per unique image so we don't
+  // load the same photo twice when a name is mentioned multiple times.
+  // Each mention window becomes a term in the overlay's enable
+  // expression further down in the filter graph.
+  const mentions = Array.isArray(story.mentions)
+    ? story.mentions.filter(
+        (m) =>
+          m &&
+          m.image_path &&
+          typeof m.start === "number" &&
+          typeof m.end === "number" &&
+          fs.pathExistsSync(m.image_path),
+      )
+    : [];
+  const mentionInputs = []; // [{ imagePath, inputIdx, windows: [{start,end}] }]
+  const mentionPathToSlot = new Map();
+  for (const m of mentions) {
+    if (!mentionPathToSlot.has(m.image_path)) {
+      const slot = {
+        imagePath: m.image_path,
+        inputIdx: inputs.length,
+        windows: [],
+      };
+      mentionPathToSlot.set(m.image_path, slot);
+      mentionInputs.push(slot);
+      inputs.push(
+        `-loop 1 -t ${fullDur} -i "${m.image_path.replace(/\\/g, "/")}"`,
+      );
+    }
+    mentionPathToSlot.get(m.image_path).windows.push({
+      start: m.start,
+      end: m.end,
+    });
   }
 
   // --- Filter graph ---
@@ -1081,18 +1121,19 @@ function buildVideoCommand(
     }
   }
 
-  // Concatenate backgrounds with crossfade transitions between segments
+  // Concatenate backgrounds with crossfade transitions between segments.
+  // Previously used transition=fadeblack which dipped every cut to full
+  // black for 0.5s — compounded on top of the no-loop video bug above it
+  // made the first ~8 seconds feel flashy and broken. `dissolve` blends
+  // the two segments directly with no black flash between them.
   if (visualPaths.length > 1) {
-    // Use xfade for smooth transitions between image/video segments
-    // Each xfade eats 0.5s from the accumulated duration, so offset must account
-    // for all previous crossfades: offset = i * segmentDuration - i * xfadeDur
     const xfadeDur = 0.5;
     let prevLabel = "v0";
     for (let i = 1; i < visualPaths.length; i++) {
       const offset = i * (segmentDuration - xfadeDur);
       const outLabel = i === visualPaths.length - 1 ? "base" : `xf${i}`;
       filterParts.push(
-        `[${prevLabel}][v${i}]xfade=transition=fadeblack:duration=${xfadeDur}:offset=${offset.toFixed(2)}[${outLabel}]`,
+        `[${prevLabel}][v${i}]xfade=transition=dissolve:duration=${xfadeDur}:offset=${offset.toFixed(2)}[${outLabel}]`,
       );
       prevLabel = outLabel;
     }
@@ -1271,6 +1312,43 @@ function buildVideoCommand(
       `x=(w-tw)/2:y=h-48:enable='${brandEnable}'[afterlogo]`,
   );
   videoLabel = "afterlogo";
+
+  // --- Entity portrait overlays: show the person/game being named ---
+  // Inserted BEFORE the ASS subtitles so captions render on top of the
+  // portrait card. Each unique image is prepared once as a 360×480
+  // portrait tile with a thin brand-orange border, then overlaid at
+  // top-right with an `enable='between(t,s1,e1)+between(t,s2,e2)+...'`
+  // expression covering every mention window for that entity. A small
+  // pre-roll (0.3s) and trail (0.5s) around each spoken window keeps
+  // the portrait from snapping in/out mid-syllable.
+  //
+  // Hidden during the outro card reveal so the CTA isn't obscured.
+  for (const slot of mentionInputs) {
+    const portraitLabel = `face${slot.inputIdx}`;
+    filterParts.push(
+      `[${slot.inputIdx}:v]scale=360:480:force_original_aspect_ratio=decrease,` +
+        `pad=360:480:(ow-iw)/2:(oh-ih)/2:color=0x0D0D0F,` +
+        `drawbox=x=0:y=0:w=iw:h=ih:color=${brand.PRIMARY_FFM}@0.9:t=4,` +
+        `format=yuva420p[${portraitLabel}]`,
+    );
+    const enableExpr = slot.windows
+      .map(
+        (w) =>
+          `between(t\\,${Math.max(0, w.start - 0.3).toFixed(2)}\\,${Math.min(outroStart, w.end + 0.5).toFixed(2)})`,
+      )
+      .join("+");
+    const overlayOut = `afterface${slot.inputIdx}`;
+    filterParts.push(
+      `[${videoLabel}][${portraitLabel}]overlay=x=W-w-50:y=180:` +
+        `enable='${enableExpr}'[${overlayOut}]`,
+    );
+    videoLabel = overlayOut;
+  }
+  if (mentionInputs.length > 0) {
+    console.log(
+      `[assemble] ${story.id}: ${mentionInputs.length} entity portrait(s) overlaid across ${mentions.length} mention window(s)`,
+    );
+  }
 
   // --- ASS subtitles ---
   filterParts.push(`[${videoLabel}]ass=${assPathFixed}[afterass]`);

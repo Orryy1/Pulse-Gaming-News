@@ -168,22 +168,50 @@ async function generateStoryImages() {
       `[stories] Generating Story image: ${story.title.substring(0, 50)}...`,
     );
 
-    // Try to load hero image from cache
+    // Try to load hero image from cache.
+    // Preferred types first (article_hero → capsule → hero → key_art →
+    // screenshot → reddit_thumb) then fall through to ANY non-logo
+    // downloaded image. The previous strict whitelist silently fell
+    // through to a black placeholder whenever the available types
+    // didn't match, which is how movie/industry stories with only
+    // inline screenshots or reddit thumbnails ended up with no hero.
     let heroBase64 = null;
+    const preferredOrder = [
+      "article_hero",
+      "capsule",
+      "hero",
+      "key_art",
+      "screenshot",
+      "reddit_thumb",
+    ];
     if (story.downloaded_images && story.downloaded_images.length > 0) {
-      const heroImg = story.downloaded_images.find((i) =>
-        ["article_hero", "capsule", "hero", "key_art", "screenshot"].includes(
-          i.type,
-        ),
+      const candidates = story.downloaded_images.filter(
+        (i) => i.path && i.type !== "company_logo",
       );
-      if (heroImg && (await fs.pathExists(heroImg.path))) {
+      candidates.sort((a, b) => {
+        const ai = preferredOrder.indexOf(a.type);
+        const bi = preferredOrder.indexOf(b.type);
+        const av = ai === -1 ? 999 : ai;
+        const bv = bi === -1 ? 999 : bi;
+        return av - bv;
+      });
+      for (const heroImg of candidates) {
+        if (!(await fs.pathExists(heroImg.path))) continue;
         try {
           const buf = await fs.readFile(heroImg.path);
           heroBase64 = buf.toString("base64");
+          break;
         } catch (err) {
-          console.log(`[stories] Could not read hero image: ${err.message}`);
+          console.log(
+            `[stories] Could not read ${heroImg.type} (${heroImg.path}): ${err.message}`,
+          );
         }
       }
+    }
+    if (!heroBase64) {
+      console.log(
+        `[stories] ${story.id}: no hero image available (downloaded_images=${story.downloaded_images?.length || 0})`,
+      );
     }
 
     const svg = buildStorySvg(

@@ -157,6 +157,14 @@ async function uploadReel(story) {
         `[facebook] Step 3 response: ${JSON.stringify(finishResponse.data)}`,
       );
 
+      // Verify the reel actually published. Meta's /video_reels finish
+      // phase happily returns { success: true } even when the video is
+      // stuck in async processing or fails moderation — then the Page's
+      // Reels tab stays empty while our pipeline reports FB Reel ✅.
+      // Poll the video's upload_phase + status until we see the reel is
+      // actually ready & published, or bail with a descriptive error.
+      await verifyReelPublished(videoId, accessToken);
+
       console.log(`[facebook] Reel published! Video ID: ${videoId}`);
 
       return {
@@ -165,6 +173,62 @@ async function uploadReel(story) {
       };
     },
     { label: "facebook upload" },
+  );
+}
+
+// --- Poll a Reel's upload/publish status until it's actually live ---
+// Meta returns status.video_status ('ready' | 'processing' | 'error') and
+// status.publishing_phase.status ('published' | 'scheduled' | 'draft').
+// We consider the reel verified when video_status=ready AND the
+// publishing phase is 'published'. Anything else is treated as a failure
+// so the caller can retry rather than falsely marking FB Reel ✅.
+async function verifyReelPublished(videoId, accessToken) {
+  const maxAttempts = 24; // ~2 min at 5s intervals
+  let lastSnapshot = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    await new Promise((r) => setTimeout(r, 5000));
+    try {
+      const resp = await axios.get(
+        `https://graph.facebook.com/v21.0/${videoId}`,
+        {
+          params: {
+            fields: "status,published,permalink_url",
+            access_token: accessToken,
+          },
+          timeout: 15000,
+        },
+      );
+      lastSnapshot = resp.data;
+      const videoStatus = resp.data?.status?.video_status;
+      const publishStatus = resp.data?.status?.publishing_phase?.status;
+      const publishedFlag = resp.data?.published;
+      if (videoStatus === "error") {
+        throw new Error(
+          `Facebook Reel processing errored: ${JSON.stringify(resp.data)}`,
+        );
+      }
+      if (
+        videoStatus === "ready" &&
+        (publishStatus === "published" || publishedFlag === true)
+      ) {
+        console.log(
+          `[facebook] Reel verified live after ${attempt} poll(s): ${resp.data?.permalink_url || "(no permalink)"}`,
+        );
+        return;
+      }
+      console.log(
+        `[facebook] Reel verify ${attempt}/${maxAttempts}: video_status=${videoStatus || "?"} publish=${publishStatus || "?"}`,
+      );
+    } catch (err) {
+      if (err.message && err.message.startsWith("Facebook Reel processing"))
+        throw err;
+      console.log(
+        `[facebook] Reel verify poll ${attempt} error (will retry): ${err.message}`,
+      );
+    }
+  }
+  throw new Error(
+    `Facebook Reel did not go live within 2 min — last status: ${JSON.stringify(lastSnapshot)}`,
   );
 }
 
@@ -248,6 +312,11 @@ async function uploadReelViaUrl(story) {
       `Facebook Reel finish phase failed: ${JSON.stringify(finishResponse.data)}`,
     );
   }
+
+  // Same verify-after-publish guard as the binary upload path — see
+  // verifyReelPublished for why Meta's success:true isn't trustworthy
+  // without a second confirmation poll.
+  await verifyReelPublished(videoId, accessToken);
 
   console.log(`[facebook] Reel published via URL! ID: ${videoId}`);
   return {

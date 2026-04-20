@@ -182,53 +182,87 @@ async function uploadReel(story) {
 // We consider the reel verified when video_status=ready AND the
 // publishing phase is 'published'. Anything else is treated as a failure
 // so the caller can retry rather than falsely marking FB Reel ✅.
+// --- Decide whether a /{video_id} status snapshot means ready/published ---
+// Pulled out as a pure helper so we can unit-test the decision without
+// mocking axios. Returns one of:
+//   { outcome: "ready" }
+//   { outcome: "errored", reason: string }
+//   { outcome: "processing" }
+// `reason` is an enum-style tag (video_status, publish_status) — never
+// the raw Graph response, which can contain redirect URLs that embed
+// short-lived access codes we don't want in our own error messages.
+function interpretReelStatusSnapshot(data) {
+  const videoStatus = data && data.status && data.status.video_status;
+  const publishStatus =
+    data && data.status && data.status.publishing_phase
+      ? data.status.publishing_phase.status
+      : undefined;
+  const publishedFlag = data && data.published;
+  if (videoStatus === "error") {
+    return {
+      outcome: "errored",
+      reason: `video_status=error publish=${publishStatus || "(absent)"}`,
+    };
+  }
+  if (
+    videoStatus === "ready" &&
+    (publishStatus === "published" || publishedFlag === true)
+  ) {
+    return { outcome: "ready" };
+  }
+  return { outcome: "processing" };
+}
+
 async function verifyReelPublished(videoId, accessToken) {
   const maxAttempts = 24; // ~2 min at 5s intervals
-  let lastSnapshot = null;
+  let lastTags = { video_status: null, publish_status: null };
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     await new Promise((r) => setTimeout(r, 5000));
+    let resp;
     try {
-      const resp = await axios.get(
-        `https://graph.facebook.com/v21.0/${videoId}`,
-        {
-          params: {
-            fields: "status,published,permalink_url",
-            access_token: accessToken,
-          },
-          timeout: 15000,
+      resp = await axios.get(`https://graph.facebook.com/v21.0/${videoId}`, {
+        params: {
+          fields: "status,published,permalink_url",
+          access_token: accessToken,
         },
-      );
-      lastSnapshot = resp.data;
-      const videoStatus = resp.data?.status?.video_status;
-      const publishStatus = resp.data?.status?.publishing_phase?.status;
-      const publishedFlag = resp.data?.published;
-      if (videoStatus === "error") {
-        throw new Error(
-          `Facebook Reel processing errored: ${JSON.stringify(resp.data)}`,
-        );
-      }
-      if (
-        videoStatus === "ready" &&
-        (publishStatus === "published" || publishedFlag === true)
-      ) {
-        console.log(
-          `[facebook] Reel verified live after ${attempt} poll(s): ${resp.data?.permalink_url || "(no permalink)"}`,
-        );
-        return;
-      }
-      console.log(
-        `[facebook] Reel verify ${attempt}/${maxAttempts}: video_status=${videoStatus || "?"} publish=${publishStatus || "?"}`,
-      );
+        timeout: 15000,
+      });
     } catch (err) {
-      if (err.message && err.message.startsWith("Facebook Reel processing"))
-        throw err;
+      // Network flake / 5xx — keep polling. A Graph 4xx surfaces as
+      // err.response and is also retried; if the condition is real
+      // (e.g. token revoked) the whole window will time out and we'll
+      // throw below with a non-secret-bearing message.
       console.log(
         `[facebook] Reel verify poll ${attempt} error (will retry): ${err.message}`,
       );
+      continue;
     }
+    const verdict = interpretReelStatusSnapshot(resp.data);
+    const videoStatus = resp.data?.status?.video_status;
+    const publishStatus = resp.data?.status?.publishing_phase?.status;
+    lastTags = {
+      video_status: videoStatus || null,
+      publish_status: publishStatus || null,
+    };
+    if (verdict.outcome === "errored") {
+      throw new Error(`Facebook Reel processing errored: ${verdict.reason}`);
+    }
+    if (verdict.outcome === "ready") {
+      // permalink_url is safe to log — it's the public Reel URL.
+      console.log(
+        `[facebook] Reel verified live after ${attempt} poll(s): ${resp.data?.permalink_url || "(no permalink)"}`,
+      );
+      return;
+    }
+    console.log(
+      `[facebook] Reel verify ${attempt}/${maxAttempts}: video_status=${videoStatus || "?"} publish=${publishStatus || "?"}`,
+    );
   }
+  // Timeout: still processing past 2 min. Surface only the last safe
+  // status tags — no raw Graph response body, which could embed a
+  // transient CDN URL with an access code.
   throw new Error(
-    `Facebook Reel did not go live within 2 min — last status: ${JSON.stringify(lastSnapshot)}`,
+    `Facebook Reel did not go live within 2 min — last video_status=${lastTags.video_status || "(none)"} publish=${lastTags.publish_status || "(none)"}`,
   );
 }
 
@@ -434,6 +468,8 @@ module.exports = {
   uploadShort,
   uploadAll,
   uploadStoryImage,
+  // Exported for unit-testing the decision logic without mocking axios.
+  interpretReelStatusSnapshot,
 };
 
 if (require.main === module) {

@@ -1,5 +1,5 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
-import type { Story, CardStatus, AssetProgress } from '../types/story';
+import { useState, useCallback, useEffect, useRef } from "react";
+import type { Story, CardStatus, AssetProgress } from "../types/story";
 import {
   fetchStories,
   approveStory,
@@ -11,7 +11,7 @@ import {
   downloadVideo,
   fetchPostStats,
   updateStoryStats,
-} from '../api/news';
+} from "../api/news";
 
 interface StoryState {
   story: Story;
@@ -25,10 +25,10 @@ interface StoryState {
 function initState(story: Story): StoryState {
   return {
     story,
-    status: story.approved ? 'approved' : 'pending',
+    status: story.approved ? "approved" : "pending",
     imageProgress: 0,
     videoProgress: 0,
-    progressStage: '',
+    progressStage: "",
   };
 }
 
@@ -45,7 +45,7 @@ export function useStories() {
       const data = await fetchStories();
       setStories(data.map(initState));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load stories');
+      setError(err instanceof Error ? err.message : "Failed to load stories");
     } finally {
       setIsLoading(false);
     }
@@ -64,12 +64,18 @@ export function useStories() {
           const isError = data.progress < 0;
           const isComplete = data.progress >= 100;
 
-          if (data.type === 'image') {
+          if (data.type === "image") {
             return {
               ...s,
               imageProgress: data.progress,
               progressStage: data.stage,
-              status: isError ? 'error' : isComplete ? s.status === 'generating-image' ? 'pending' : s.status : s.status,
+              status: isError
+                ? "error"
+                : isComplete
+                  ? s.status === "generating-image"
+                    ? "pending"
+                    : s.status
+                  : s.status,
               error: isError ? data.stage : s.error,
             };
           } else {
@@ -77,11 +83,17 @@ export function useStories() {
               ...s,
               videoProgress: data.progress,
               progressStage: data.stage,
-              status: isError ? 'error' : isComplete ? s.status === 'generating-video' ? 'pending' : s.status : s.status,
+              status: isError
+                ? "error"
+                : isComplete
+                  ? s.status === "generating-video"
+                    ? "pending"
+                    : s.status
+                  : s.status,
               error: isError ? data.stage : s.error,
             };
           }
-        })
+        }),
       );
 
       if (data.progress >= 100) {
@@ -98,7 +110,9 @@ export function useStories() {
 
   const updateStatus = (id: string, status: CardStatus) => {
     setStories((prev) =>
-      prev.map((s) => (s.story.id === id ? { ...s, status, error: undefined } : s))
+      prev.map((s) =>
+        s.story.id === id ? { ...s, status, error: undefined } : s,
+      ),
     );
   };
 
@@ -106,12 +120,12 @@ export function useStories() {
     const storyState = stories.find((s) => s.story.id === id);
     const scheduleTime = storyState?.story.schedule_time;
 
-    updateStatus(id, 'approved');
+    updateStatus(id, "approved");
     try {
       await approveStory(id, scheduleTime);
       setTimeout(() => loadStories(), 2000);
     } catch {
-      updateStatus(id, 'pending');
+      updateStatus(id, "pending");
     }
   };
 
@@ -119,17 +133,29 @@ export function useStories() {
     setStories((prev) =>
       prev.map((s) =>
         s.story.id === id
-          ? { ...s, status: 'generating-image' as CardStatus, imageProgress: 5, progressStage: 'Queuing...', error: undefined }
-          : s
-      )
+          ? {
+              ...s,
+              status: "generating-image" as CardStatus,
+              imageProgress: 5,
+              progressStage: "Queuing...",
+              error: undefined,
+            }
+          : s,
+      ),
     );
     try {
       await generateImage(id);
     } catch {
       setStories((prev) =>
         prev.map((s) =>
-          s.story.id === id ? { ...s, status: 'error', error: 'Failed to start image generation' } : s
-        )
+          s.story.id === id
+            ? {
+                ...s,
+                status: "error",
+                error: "Failed to start image generation",
+              }
+            : s,
+        ),
       );
     }
   };
@@ -138,17 +164,29 @@ export function useStories() {
     setStories((prev) =>
       prev.map((s) =>
         s.story.id === id
-          ? { ...s, status: 'generating-video' as CardStatus, videoProgress: 5, progressStage: 'Queuing...', error: undefined }
-          : s
-      )
+          ? {
+              ...s,
+              status: "generating-video" as CardStatus,
+              videoProgress: 5,
+              progressStage: "Queuing...",
+              error: undefined,
+            }
+          : s,
+      ),
     );
     try {
       await generateVideo(id);
     } catch {
       setStories((prev) =>
         prev.map((s) =>
-          s.story.id === id ? { ...s, status: 'error', error: 'Failed to start video generation' } : s
-        )
+          s.story.id === id
+            ? {
+                ...s,
+                status: "error",
+                error: "Failed to start video generation",
+              }
+            : s,
+        ),
       );
     }
   };
@@ -156,8 +194,10 @@ export function useStories() {
   const handleScheduleChange = async (id: string, time: string | null) => {
     setStories((prev) =>
       prev.map((s) =>
-        s.story.id === id ? { ...s, story: { ...s.story, schedule_time: time || undefined } } : s
-      )
+        s.story.id === id
+          ? { ...s, story: { ...s.story, schedule_time: time || undefined } }
+          : s,
+      ),
     );
     try {
       await setSchedule(id, time);
@@ -170,9 +210,18 @@ export function useStories() {
     setStories((prev) =>
       prev.map((s) =>
         s.story.id === id
-          ? { ...s, status: 'approved', error: undefined, story: { ...s.story, publish_status: 'publishing', publish_error: undefined } }
-          : s
-      )
+          ? {
+              ...s,
+              status: "approved",
+              error: undefined,
+              story: {
+                ...s.story,
+                publish_status: "publishing",
+                publish_error: undefined,
+              },
+            }
+          : s,
+      ),
     );
     try {
       await retryPublish(id);
@@ -182,10 +231,19 @@ export function useStories() {
     }
   };
 
-  const [refreshingStatsId, setRefreshingStatsId] = useState<string | null>(null);
+  const [refreshingStatsId, setRefreshingStatsId] = useState<string | null>(
+    null,
+  );
 
   const handleDownloadVideo = (id: string) => {
-    downloadVideo(id);
+    // downloadVideo is now async (fetch+blob with Bearer — drafts
+    // require auth). Fire-and-forget; the fn surfaces its own
+    // operator-friendly messages on 401 / network errors via thrown
+    // Error, so we just log unhandled rejections rather than dropping
+    // them silently.
+    downloadVideo(id).catch((err) => {
+      console.error("[pulse] download failed:", err);
+    });
   };
 
   const handleRefreshStats = async (id: string) => {
@@ -199,22 +257,32 @@ export function useStories() {
       let tkViews = story.tiktok_views || 0;
 
       if (story.youtube_post_id) {
-        const yt = await fetchPostStats(story.youtube_post_id, 'youtube');
+        const yt = await fetchPostStats(story.youtube_post_id, "youtube");
         ytViews = yt.views;
       }
       if (story.tiktok_post_id) {
-        const tk = await fetchPostStats(story.tiktok_post_id, 'tiktok');
+        const tk = await fetchPostStats(story.tiktok_post_id, "tiktok");
         tkViews = tk.views;
       }
 
-      await updateStoryStats(id, { youtube_views: ytViews, tiktok_views: tkViews });
+      await updateStoryStats(id, {
+        youtube_views: ytViews,
+        tiktok_views: tkViews,
+      });
 
       setStories((prev) =>
         prev.map((s) =>
           s.story.id === id
-            ? { ...s, story: { ...s.story, youtube_views: ytViews, tiktok_views: tkViews } }
-            : s
-        )
+            ? {
+                ...s,
+                story: {
+                  ...s.story,
+                  youtube_views: ytViews,
+                  tiktok_views: tkViews,
+                },
+              }
+            : s,
+        ),
       );
     } catch {
       // silently fail
@@ -224,12 +292,12 @@ export function useStories() {
   };
 
   const sortedStories = [...stories].sort((a, b) => {
-    if (a.status === 'approved' && b.status !== 'approved') return 1;
-    if (a.status !== 'approved' && b.status === 'approved') return -1;
+    if (a.status === "approved" && b.status !== "approved") return 1;
+    if (a.status !== "approved" && b.status === "approved") return -1;
     return 0;
   });
 
-  const approvedCount = stories.filter((s) => s.status === 'approved').length;
+  const approvedCount = stories.filter((s) => s.status === "approved").length;
 
   return {
     stories: sortedStories,

@@ -60,14 +60,43 @@ export async function fetchPublishStatus() {
   return apiGet<unknown>("/api/publish-status");
 }
 
-export function downloadVideo(id: string) {
-  const url = `${API_BASE}/api/download/${encodeURIComponent(id)}`;
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `pulse-gaming-${id}.mp4`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+// Dashboard MP4 download.
+//
+// Before the 2026-04-20 artefact-route fix we used a plain <a
+// download> click which fires a browser navigation with no request
+// headers — so draft videos (story not yet publicly visible) would
+// 404 under the new Bearer gate. Switch to fetch+blob so the
+// Authorization header travels, then trigger the download via an
+// object URL. Keeps the same "click → file lands on disk" UX, just
+// via memory instead of a direct navigation.
+export async function downloadVideo(id: string) {
+  const { ensureToken, clearToken } = await import("./auth");
+  const token = ensureToken();
+  const res = await fetch(
+    `${API_BASE}/api/download/${encodeURIComponent(id)}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (res.status === 401) {
+    clearToken();
+    throw new Error(
+      "API token required or invalid. Try the download again and enter a fresh token.",
+    );
+  }
+  if (!res.ok) {
+    throw new Error(`Download failed (${res.status})`);
+  }
+  const blob = await res.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  try {
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    a.download = `pulse-gaming-${id}.mp4`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
 }
 
 export async function fetchPostStats(

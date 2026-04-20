@@ -1114,12 +1114,42 @@ app.post("/api/retry-publish", requireAuth, rateLimit(5, 60000), (req, res) => {
   res.json({ status: "retrying", id });
 });
 
+// --- Shared: has the operator supplied a valid Bearer API_TOKEN? ---
+// Non-throwing version of the requireAuth middleware, for routes that
+// want to gate access on WHETHER the caller is authenticated rather
+// than reject outright. Used by the draft-artefact routes below to
+// serve public artefacts unauthenticated but require Bearer for
+// drafts. Returns true for any authenticated request, or true in
+// dev when API_TOKEN is unset (same dev-bypass as requireAuth).
+function isAuthenticatedRequest(req) {
+  const secret = process.env.API_TOKEN;
+  if (!secret) return true; // dev bypass — mirrors requireAuth
+  const header = req.headers && req.headers.authorization;
+  if (typeof header !== "string") return false;
+  const token = header.replace(/^Bearer\s+/, "");
+  return token === secret;
+}
+
 // --- Story image download (for Instagram Stories) ---
+// Meta's servers fetch this during the Instagram/Facebook Story
+// upload (see upload_instagram.js::uploadStoryImage and
+// upload_facebook.js::uploadStoryImage). By the time either runs,
+// YouTube has already uploaded and `isPubliclyVisible` returns
+// true — so the unauthenticated fetch works for the legitimate
+// publish flow. Draft/queued/failed stories fall through to a 404
+// for unauthenticated callers so an attacker scraping story IDs
+// can't tell which drafts exist vs. which don't.
 app.get("/api/story-image/:id", async (req, res) => {
   try {
+    const { isPubliclyVisible } = require("./lib/public-story");
     const stories = readNews();
     const story = stories.find((s) => s.id === req.params.id);
-    if (!story || !story.story_image_path) {
+    // "Story exists but not live AND caller not authed" looks the
+    // same to the client as "story does not exist" — no enumeration.
+    if (!story || (!isPubliclyVisible(story) && !isAuthenticatedRequest(req))) {
+      return res.status(404).json({ error: "story image not found" });
+    }
+    if (!story.story_image_path) {
       return res.status(404).json({ error: "story image not found" });
     }
     const filePath = path.resolve(story.story_image_path);
@@ -1145,12 +1175,22 @@ app.get("/api/story-image/:id", async (req, res) => {
 app.use("/stories", express.static(path.join(__dirname, "output", "stories")));
 
 // --- Download ---
+// Same public-vs-draft gate as /api/story-image. IG/FB URL-fallback
+// uploaders (upload_instagram.js::uploadReelViaUrl,
+// upload_facebook.js::uploadReelViaUrl) fetch this during publish —
+// by that point YouTube has uploaded and isPubliclyVisible is true.
+// Draft MP4s are private to the operator (Bearer token) and look
+// like 404s to any unauthenticated scraper probing story IDs.
 app.get("/api/download/:id", async (req, res) => {
   try {
+    const { isPubliclyVisible } = require("./lib/public-story");
     const stories = readNews();
     const story = stories.find((s) => s.id === req.params.id);
 
-    if (!story || !story.exported_path) {
+    if (!story || (!isPubliclyVisible(story) && !isAuthenticatedRequest(req))) {
+      return res.status(404).json({ error: "video not found" });
+    }
+    if (!story.exported_path) {
       return res.status(404).json({ error: "video not found" });
     }
 

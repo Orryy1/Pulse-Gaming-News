@@ -29,6 +29,81 @@ function resolveTokenPath() {
   return override || DEFAULT_TOKEN_PATH;
 }
 
+// TikTok access tokens are documented as 24h lifetime. We use this as a
+// conservative fallback when TikTok's OAuth response omits or corrupts
+// `expires_in` (observed on the sandbox endpoint 2026-04-19). Never
+// raise this without evidence — it's better to refresh one cycle early
+// than let a stale token reach a publish job.
+const DEFAULT_EXPIRES_IN_SECONDS = 24 * 60 * 60;
+
+/**
+ * Parse a TikTok OAuth `expires_in` value defensively.
+ *
+ * Accepts:
+ *   - numbers (86400)
+ *   - numeric strings ("86400", "  86400  ")
+ *
+ * Returns null for anything else (undefined, null, "", "abc", NaN, 0,
+ * negatives) so callers can tell the difference between "TikTok said N
+ * seconds" and "TikTok didn't tell us".
+ *
+ * Exported for unit testing.
+ */
+function coerceExpiresIn(raw) {
+  if (typeof raw === "number") {
+    return Number.isFinite(raw) && raw > 0 ? raw : null;
+  }
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    const n = Number(trimmed);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+  return null;
+}
+
+/**
+ * Turn a TikTok OAuth response body into a stored token record with
+ * guaranteed numeric `expires_at` (epoch ms). Keeps every field TikTok
+ * returned (access_token, refresh_token, scope, open_id, etc.) and adds:
+ *
+ *   - `expires_at`            : number (epoch ms) — the critical field
+ *   - `refresh_expires_at`    : number (epoch ms) — only if TikTok
+ *                                returned `refresh_expires_in`
+ *
+ * Logs a single `[tiktok] WARNING: ...` line if TikTok omitted
+ * `expires_in` or returned something we can't parse. The log contains
+ * no token content.
+ *
+ * Exported for unit testing.
+ */
+function buildTokenRecord(apiResponseData, { now = Date.now() } = {}) {
+  const data =
+    apiResponseData && typeof apiResponseData === "object"
+      ? apiResponseData
+      : {};
+
+  const parsedExpires = coerceExpiresIn(data.expires_in);
+  const effectiveExpires = parsedExpires || DEFAULT_EXPIRES_IN_SECONDS;
+  if (parsedExpires == null) {
+    console.log(
+      `[tiktok] WARNING: OAuth response missing/invalid expires_in; ` +
+        `falling back to ${DEFAULT_EXPIRES_IN_SECONDS}s (${DEFAULT_EXPIRES_IN_SECONDS / 3600}h) default. ` +
+        `Token will be refreshed on schedule.`,
+    );
+  }
+
+  const record = { ...data };
+  record.expires_at = now + effectiveExpires * 1000;
+
+  const parsedRefresh = coerceExpiresIn(data.refresh_expires_in);
+  if (parsedRefresh != null) {
+    record.refresh_expires_at = now + parsedRefresh * 1000;
+  }
+
+  return record;
+}
+
 /*
   TikTok Content Posting API - Direct Post flow
   Docs: https://developers.tiktok.com/doc/content-posting-api-get-started
@@ -55,11 +130,34 @@ async function getAccessToken() {
 
   const tokenData = await fs.readJson(tokenPath);
 
-  // Auto-refresh if expired
-  if (tokenData.expires_at && Date.now() > tokenData.expires_at - 60000) {
-    console.log("[tiktok] Refreshing expired token...");
-    const refreshed = await refreshToken(tokenData.refresh_token);
-    return refreshed.access_token;
+  // `expires_at` can be missing on tokens written by older code paths
+  // (before the 2026-04-19 sandbox fix) OR corrupt (NaN serialised as
+  // null by JSON.stringify). Coerce defensively and treat non-finite
+  // values as "missing — try to self-heal".
+  const expiresAt = Number(tokenData.expires_at);
+  const hasValidExpiry = Number.isFinite(expiresAt);
+  const isExpiring = hasValidExpiry && Date.now() > expiresAt - 60000;
+  const needsHeal = !hasValidExpiry;
+
+  if ((needsHeal || isExpiring) && tokenData.refresh_token) {
+    console.log(
+      needsHeal
+        ? "[tiktok] Token file missing/invalid expires_at; refreshing to repair..."
+        : "[tiktok] Refreshing expired token...",
+    );
+    try {
+      const refreshed = await refreshToken(tokenData.refresh_token);
+      return refreshed.access_token;
+    } catch (err) {
+      // Real expiry with a failed refresh is unrecoverable — surface it.
+      if (!needsHeal) throw err;
+      // Legacy-token repair failed; best-effort return the stored
+      // access_token. Publishing will either succeed (if TikTok still
+      // honours the old token) or fail with a clear auth error.
+      console.log(
+        `[tiktok] Self-heal refresh failed (${err.message}); using stored access_token as-is.`,
+      );
+    }
   }
 
   return tokenData.access_token;
@@ -76,10 +174,7 @@ async function refreshToken(refreshToken) {
     },
   );
 
-  const tokenData = {
-    ...response.data,
-    expires_at: Date.now() + response.data.expires_in * 1000,
-  };
+  const tokenData = buildTokenRecord(response.data);
 
   const tokenPath = resolveTokenPath();
   await fs.ensureDir(path.dirname(tokenPath));
@@ -135,10 +230,7 @@ async function exchangeCode(code) {
     },
   );
 
-  const tokenData = {
-    ...response.data,
-    expires_at: Date.now() + response.data.expires_in * 1000,
-  };
+  const tokenData = buildTokenRecord(response.data);
 
   const tokenPath = resolveTokenPath();
   await fs.ensureDir(path.dirname(tokenPath));
@@ -308,6 +400,9 @@ module.exports = {
   buildAuthorizeUrl,
   exchangeCode,
   resolveTokenPath,
+  coerceExpiresIn,
+  buildTokenRecord,
+  DEFAULT_EXPIRES_IN_SECONDS,
 };
 
 if (require.main === module) {

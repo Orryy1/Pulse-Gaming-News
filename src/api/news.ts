@@ -4,6 +4,7 @@ import type {
   PlatformStatus,
 } from "../types/story";
 import { apiGet, apiGetAuthed, apiMutate } from "./http";
+import { getToken } from "./auth";
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
 
@@ -49,7 +50,8 @@ export async function triggerHunter() {
 }
 
 export async function fetchHunterStatus() {
-  return apiGet<{ active: boolean }>("/api/hunter/status");
+  // 2026-04-20 telemetry gate: /api/hunter/status now requires Bearer.
+  return apiGetAuthed<{ active: boolean }>("/api/hunter/status");
 }
 
 export async function triggerPublish() {
@@ -57,7 +59,7 @@ export async function triggerPublish() {
 }
 
 export async function fetchPublishStatus() {
-  return apiGet<unknown>("/api/publish-status");
+  return apiGetAuthed<unknown>("/api/publish-status");
 }
 
 // Dashboard MP4 download.
@@ -118,11 +120,11 @@ export async function updateStoryStats(
 // --- Autonomous endpoints ---
 
 export async function fetchAutonomousStatus(): Promise<AutonomousStatus> {
-  return apiGet<AutonomousStatus>("/api/autonomous/status");
+  return apiGetAuthed<AutonomousStatus>("/api/autonomous/status");
 }
 
 export async function fetchPlatformStatus(): Promise<PlatformStatus> {
-  return apiGet<PlatformStatus>("/api/platforms/status");
+  return apiGetAuthed<PlatformStatus>("/api/platforms/status");
 }
 
 export async function triggerAutonomousCycle() {
@@ -141,7 +143,18 @@ export function connectProgressStream(
   onProgress: (data: AssetProgress) => void,
   onError?: (err: Event) => void,
 ): EventSource {
-  const es = new EventSource(`${API_BASE}/api/progress`);
+  // /api/progress is gated on requireAuthHeaderOrQuery as of the
+  // 2026-04-20 telemetry lockdown. EventSource can't set headers, so
+  // the server also accepts `?token=` on this one endpoint. We read
+  // the token synchronously (no prompt — the SPA shouldn't open an
+  // unsolicited prompt the moment the page loads); if the operator
+  // hasn't entered one yet the stream just 401s and the hook's
+  // onError fires.
+  const token = getToken();
+  const url = token
+    ? `${API_BASE}/api/progress?token=${encodeURIComponent(token)}`
+    : `${API_BASE}/api/progress`;
+  const es = new EventSource(url);
   es.onmessage = (event) => {
     try {
       const data = JSON.parse(event.data);

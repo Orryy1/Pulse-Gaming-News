@@ -71,6 +71,24 @@ function requireAuth(req, res, next) {
   next();
 }
 
+// SSE variant: the browser EventSource API can't attach custom
+// headers, so for the one SSE endpoint we gate (/api/progress) we
+// also accept `?token=<API_TOKEN>` as a query param. Header is
+// preferred — the query path is a deliberate carve-out. Do NOT
+// reuse this for non-SSE routes; the Bearer header is the contract
+// everywhere else.
+function requireAuthHeaderOrQuery(req, res, next) {
+  const secret = process.env.API_TOKEN;
+  if (!secret) return next();
+  const headerToken = (req.headers.authorization || "").replace(
+    /^Bearer\s+/,
+    "",
+  );
+  const queryToken = typeof req.query.token === "string" ? req.query.token : "";
+  if (headerToken === secret || queryToken === secret) return next();
+  return res.status(401).json({ error: "Unauthorized" });
+}
+
 // --- Rate limiting middleware ---
 const rateLimitMap = new Map();
 function rateLimit(maxRequests, windowMs) {
@@ -745,7 +763,7 @@ app.get("/api/news/full", requireAuth, (req, res) => {
   }
 });
 
-app.get("/api/progress", (req, res) => {
+app.get("/api/progress", requireAuthHeaderOrQuery, (req, res) => {
   if (sseClients.size >= SSE_MAX_CLIENTS) {
     return res.status(503).json({ error: "Too many SSE connections" });
   }
@@ -832,7 +850,7 @@ app.post("/api/publish", requireAuth, rateLimit(5, 60000), (req, res) => {
   res.json({ status: "running" });
 });
 
-app.get("/api/publish-status", (req, res) => {
+app.get("/api/publish-status", requireAuth, (req, res) => {
   res.json(publishState);
 });
 
@@ -895,7 +913,7 @@ app.post(
 );
 
 // --- Autonomous status ---
-app.get("/api/autonomous/status", (req, res) => {
+app.get("/api/autonomous/status", requireAuth, (req, res) => {
   res.json({
     autoPublish: process.env.AUTO_PUBLISH === "true",
     schedulerActive: schedulerRunning,
@@ -928,7 +946,7 @@ app.get("/api/autonomous/status", (req, res) => {
 });
 
 // --- Platform auth status ---
-app.get("/api/platforms/status", async (req, res) => {
+app.get("/api/platforms/status", requireAuth, async (req, res) => {
   const status = {
     youtube: { authenticated: false, configured: false },
     tiktok: { authenticated: false, configured: false },
@@ -1412,7 +1430,7 @@ async function runHunter() {
   }
 }
 
-app.get("/api/hunter/status", (req, res) => {
+app.get("/api/hunter/status", requireAuth, (req, res) => {
   res.json({
     active: !!hunterInterval,
     lastRun: lastHunterRun.toISOString(),
@@ -1894,7 +1912,7 @@ async function _registerLegacyDevCronRegistry() {
 }
 
 // --- Watcher endpoints (breaking news speed pipeline) ---
-app.get("/api/watcher/status", (req, res) => {
+app.get("/api/watcher/status", requireAuth, (req, res) => {
   const { getStatus } = require("./watcher");
   const { getQueueStatus } = require("./breaking_queue");
   res.json({
@@ -1925,7 +1943,7 @@ app.post("/api/watcher/stop", requireAuth, rateLimit(5, 60000), (req, res) => {
 
 // --- Analytics dashboard endpoints ---
 
-app.get("/api/analytics/overview", async (req, res) => {
+app.get("/api/analytics/overview", requireAuth, async (req, res) => {
   try {
     const { loadHistory } = require("./analytics");
     const history = await loadHistory();
@@ -1988,7 +2006,7 @@ app.get("/api/analytics/overview", async (req, res) => {
   }
 });
 
-app.get("/api/analytics/topics", async (req, res) => {
+app.get("/api/analytics/topics", requireAuth, async (req, res) => {
   try {
     const { getTopPerformingTopics } = require("./analytics");
     const topics = getTopPerformingTopics();
@@ -2000,7 +2018,7 @@ app.get("/api/analytics/topics", async (req, res) => {
   }
 });
 
-app.get("/api/analytics/history", async (req, res) => {
+app.get("/api/analytics/history", requireAuth, async (req, res) => {
   try {
     const { loadHistory } = require("./analytics");
     const history = await loadHistory();
@@ -2028,7 +2046,7 @@ app.get("/api/analytics/history", async (req, res) => {
 });
 
 // --- Optimal timing endpoint ---
-app.get("/api/analytics/optimal-timing", async (req, res) => {
+app.get("/api/analytics/optimal-timing", requireAuth, async (req, res) => {
   try {
     const {
       analyzeOptimalWindows,
@@ -2054,7 +2072,7 @@ app.get("/api/analytics/optimal-timing", async (req, res) => {
 app.use("/blog", express.static(path.join(__dirname, "blog", "dist")));
 
 // --- Engagement stats endpoint ---
-app.get("/api/engagement/stats", async (req, res) => {
+app.get("/api/engagement/stats", requireAuth, async (req, res) => {
   try {
     const statsPath = path.join(__dirname, "engagement_stats.json");
     if (await fs.pathExists(statsPath)) {
@@ -2090,7 +2108,7 @@ app.post(
 // Gated behind USE_SQLITE so they don't crash on legacy deploys that
 // haven't run migrations. Each route hydrates repos lazily so we don't
 // pay the SQLite cost until an operator actually pulls the stats.
-app.get("/api/queue/stats", (req, res) => {
+app.get("/api/queue/stats", requireAuth, (req, res) => {
   if (process.env.USE_SQLITE !== "true") {
     return res.status(503).json({
       error: "sqlite_disabled",
@@ -2107,7 +2125,7 @@ app.get("/api/queue/stats", (req, res) => {
   }
 });
 
-app.get("/api/scoring/digest", (req, res) => {
+app.get("/api/scoring/digest", requireAuth, (req, res) => {
   if (process.env.USE_SQLITE !== "true") {
     return res.status(503).json({ error: "sqlite_disabled" });
   }
@@ -2153,7 +2171,7 @@ app.post(
   },
 );
 
-app.get("/api/audio-packs", (req, res) => {
+app.get("/api/audio-packs", requireAuth, (req, res) => {
   if (process.env.USE_SQLITE !== "true") {
     return res.status(503).json({ error: "sqlite_disabled" });
   }
@@ -2251,7 +2269,7 @@ app.post(
   },
 );
 
-app.get("/api/weekly/status", async (req, res) => {
+app.get("/api/weekly/status", requireAuth, async (req, res) => {
   let compilationData = null;
   try {
     const compilationPath = path.join(__dirname, "weekly_compilation.json");
@@ -2321,7 +2339,7 @@ app.post(
   },
 );
 
-app.get("/api/compile/topics", async (req, res) => {
+app.get("/api/compile/topics", requireAuth, async (req, res) => {
   try {
     const { identifyCompilableTopics } = require("./weekly_compile");
     const days = parseInt(req.query.days, 10) || 30;

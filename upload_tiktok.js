@@ -119,6 +119,98 @@ function buildTokenRecord(apiResponseData, { now = Date.now() } = {}) {
   7. Callback /auth/tiktok/callback writes the token to the resolved path.
 */
 
+// Read-only structural check of the on-disk TikTok token. Never
+// contacts TikTok, never burns a refresh, never logs token values.
+// Callers (the proactive auth-check job, /api/platforms/status) use
+// this to decide whether to alert or trigger a refresh.
+//
+// Return shape:
+//   { ok: boolean,
+//     reason: string — enum-style tag if !ok
+//     expires_at: number | null (epoch ms),
+//     expires_in_seconds: number | null,
+//     refresh_available: boolean,
+//     needs_reauth: boolean }
+//
+// `needs_reauth: true` means the operator must visit /auth/tiktok —
+// no refresh can save this state. `ok: false` with
+// needs_reauth: false means we can probably refresh our way out.
+async function inspectTokenStatus({ now = Date.now() } = {}) {
+  const tokenPath = resolveTokenPath();
+  if (!(await fs.pathExists(tokenPath))) {
+    return {
+      ok: false,
+      reason: "token_file_missing",
+      expires_at: null,
+      expires_in_seconds: null,
+      refresh_available: false,
+      needs_reauth: true,
+    };
+  }
+  let tokenData;
+  try {
+    tokenData = await fs.readJson(tokenPath);
+  } catch {
+    return {
+      ok: false,
+      reason: "token_file_unreadable",
+      expires_at: null,
+      expires_in_seconds: null,
+      refresh_available: false,
+      needs_reauth: true,
+    };
+  }
+  if (
+    typeof tokenData.access_token !== "string" ||
+    tokenData.access_token.length < 8
+  ) {
+    return {
+      ok: false,
+      reason: "access_token_missing",
+      expires_at: null,
+      expires_in_seconds: null,
+      refresh_available:
+        typeof tokenData.refresh_token === "string" &&
+        tokenData.refresh_token.length >= 8,
+      needs_reauth: true,
+    };
+  }
+  const expiresAt = Number(tokenData.expires_at);
+  const hasValidExpiry = Number.isFinite(expiresAt);
+  const refreshAvailable =
+    typeof tokenData.refresh_token === "string" &&
+    tokenData.refresh_token.length >= 8;
+  if (!hasValidExpiry) {
+    return {
+      ok: false,
+      reason: "expires_at_invalid",
+      expires_at: null,
+      expires_in_seconds: null,
+      refresh_available: refreshAvailable,
+      needs_reauth: !refreshAvailable,
+    };
+  }
+  const expiresInSeconds = Math.round((expiresAt - now) / 1000);
+  if (expiresInSeconds <= 0) {
+    return {
+      ok: false,
+      reason: "expired",
+      expires_at: expiresAt,
+      expires_in_seconds: expiresInSeconds,
+      refresh_available: refreshAvailable,
+      needs_reauth: !refreshAvailable,
+    };
+  }
+  return {
+    ok: true,
+    reason: "ok",
+    expires_at: expiresAt,
+    expires_in_seconds: expiresInSeconds,
+    refresh_available: refreshAvailable,
+    needs_reauth: false,
+  };
+}
+
 async function getAccessToken() {
   const tokenPath = resolveTokenPath();
   if (!(await fs.pathExists(tokenPath))) {
@@ -155,25 +247,31 @@ async function getAccessToken() {
   const isExpiring = hasValidExpiry && Date.now() > expiresAt - 60000;
   const needsHeal = !hasValidExpiry;
 
-  if ((needsHeal || isExpiring) && tokenData.refresh_token) {
+  if (needsHeal || isExpiring) {
+    if (!tokenData.refresh_token) {
+      // No refresh token on disk AND either expired or missing
+      // expires_at. Nothing we can do from here — the operator must
+      // complete /auth/tiktok. Previous code silently returned the
+      // (likely stale) access_token in this path; that produced
+      // false "heal_attempted: true" + "publish failed later" signals
+      // in production. Fail loudly instead so upstream callers (the
+      // proactive auth-check job, /api/platforms/status?heal=true)
+      // can surface the real state.
+      throw new Error(
+        "TikTok token cannot self-heal — no refresh_token on disk. Visit /auth/tiktok on the server to re-auth.",
+      );
+    }
     console.log(
       needsHeal
         ? "[tiktok] Token file missing/invalid expires_at; refreshing to repair..."
         : "[tiktok] Refreshing expired token...",
     );
-    try {
-      const refreshed = await refreshToken(tokenData.refresh_token);
-      return refreshed.access_token;
-    } catch (err) {
-      // Real expiry with a failed refresh is unrecoverable — surface it.
-      if (!needsHeal) throw err;
-      // Legacy-token repair failed; best-effort return the stored
-      // access_token. Publishing will either succeed (if TikTok still
-      // honours the old token) or fail with a clear auth error.
-      console.log(
-        `[tiktok] Self-heal refresh failed (${err.message}); using stored access_token as-is.`,
-      );
-    }
+    // Propagate refresh failure honestly. The previous silent-swallow
+    // for legacy tokens hid revoked/expired refresh_tokens behind a
+    // "heal_attempted: true" lie — see the 2026-04-20 incident where
+    // the heal returned success but the token was garbage.
+    const refreshed = await refreshToken(tokenData.refresh_token);
+    return refreshed.access_token;
   }
 
   return tokenData.access_token;
@@ -478,6 +576,8 @@ module.exports = {
   // which is why every heal attempt returned `getAccessToken is not a
   // function` instead of repairing legacy tokens.
   getAccessToken,
+  inspectTokenStatus,
+  refreshToken,
   resolveTokenPath,
   coerceExpiresIn,
   buildTokenRecord,

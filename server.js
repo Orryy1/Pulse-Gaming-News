@@ -970,62 +970,62 @@ app.get("/api/platforms/status", requireAuth, async (req, res) => {
     /* skip */
   }
 
-  // TikTok — read the resolved token path (TIKTOK_TOKEN_PATH override or
-  // local fallback) so this check stays truthful whether the token lives
-  // on the Railway volume or on dev's local disk. Only expose existence,
-  // expiry and the non-sensitive path — NEVER the token itself.
+  // TikTok status report — read-only structural check by default;
+  // `?heal=true` additionally invokes getAccessToken() which either
+  // refreshes (writing a new token file) or throws a clear reason.
   //
-  // Opportunistic self-heal (2026-04-19, commit d865c34 context): if the
-  // token file exists but is missing a numeric `expires_at`, invoke
-  // getAccessToken() so the self-heal path in upload_tiktok.js runs and
-  // rewrites the file with a proper expires_at. Gated on `?heal=true`
-  // so a routine health check doesn't burn a refresh every call, but
-  // operators can trigger the repair from a URL instead of waiting for
-  // the next publish window. Failures are swallowed and reported as
-  // `tiktok.heal_error` so the status shape stays stable.
+  // Honesty contract (upgraded 2026-04-20): getAccessToken no longer
+  // silently swallows refresh failures or returns a stale token on a
+  // dead refresh_token. If heal ran, `heal_attempted: true` with no
+  // `heal_error` means a successful refresh OR a still-valid token.
+  // If heal ran and failed, `heal_error` carries the actual reason
+  // (e.g. "TikTok token cannot self-heal — no refresh_token on disk"
+  // or a TikTok Graph error message). `authenticated: true` means
+  // "file present + access_token field populated" — for
+  // operationally-valid use the structured inspect fields below.
   try {
     status.tiktok.configured = !!process.env.TIKTOK_CLIENT_KEY;
-    const { resolveTokenPath, getAccessToken } = require("./upload_tiktok");
+    const {
+      resolveTokenPath,
+      getAccessToken,
+      inspectTokenStatus,
+    } = require("./upload_tiktok");
     const tokenPath = resolveTokenPath();
-    let exists = await fs.pathExists(tokenPath);
     status.tiktok.token_path = tokenPath;
-    status.tiktok.token_file_exists = exists;
-    status.tiktok.authenticated = exists;
 
-    if (exists) {
-      // If caller passed ?heal=true, trigger getAccessToken BEFORE the
-      // file read below so the self-heal path can repair a legacy
-      // token (missing expires_at) in place.
-      if (String(req.query.heal).toLowerCase() === "true") {
-        try {
-          await getAccessToken();
-          status.tiktok.heal_attempted = true;
-        } catch (healErr) {
-          status.tiktok.heal_error = healErr.message;
-        }
-        // Re-check existence in case the heal failed destructively.
-        exists = await fs.pathExists(tokenPath);
-        status.tiktok.token_file_exists = exists;
+    if (String(req.query.heal).toLowerCase() === "true") {
+      try {
+        await getAccessToken();
+        status.tiktok.heal_attempted = true;
+      } catch (healErr) {
+        // Surface the real reason — no more silent "heal_attempted: true"
+        // lies. Dashboards and the scheduled auth-check job can now
+        // distinguish "token refreshed" from "token is broken and needs
+        // /auth/tiktok".
+        status.tiktok.heal_error = healErr.message;
       }
+    }
 
-      if (exists) {
-        try {
-          const tokenData = await fs.readJson(tokenPath);
-          // Only copy the public-safe timing metadata over.
-          if (tokenData && typeof tokenData.expires_at === "number") {
-            status.tiktok.expires_at = new Date(
-              tokenData.expires_at,
-            ).toISOString();
-            status.tiktok.expires_in_seconds = Math.max(
-              0,
-              Math.round((tokenData.expires_at - Date.now()) / 1000),
-            );
-          }
-        } catch {
-          /* token file corrupt; still report authenticated=false */
-          status.tiktok.authenticated = false;
-        }
-      }
+    const inspect = await inspectTokenStatus();
+    status.tiktok.token_file_exists = inspect.reason !== "token_file_missing";
+    // `authenticated` retained for backward compat with callers who
+    // only look at that boolean (frontend Navbar dots, older tests).
+    // "authenticated" here means "the file exists and has an
+    // access_token field" — the richer `ok`/`needs_reauth` fields
+    // below are the operational truth.
+    status.tiktok.authenticated =
+      status.tiktok.token_file_exists &&
+      inspect.reason !== "access_token_missing";
+    status.tiktok.token_ok = inspect.ok;
+    status.tiktok.needs_reauth = inspect.needs_reauth;
+    if (inspect.reason && inspect.reason !== "ok") {
+      status.tiktok.reason = inspect.reason;
+    }
+    if (typeof inspect.expires_at === "number") {
+      status.tiktok.expires_at = new Date(inspect.expires_at).toISOString();
+    }
+    if (typeof inspect.expires_in_seconds === "number") {
+      status.tiktok.expires_in_seconds = inspect.expires_in_seconds;
     }
   } catch (err) {
     /* skip */

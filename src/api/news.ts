@@ -1,90 +1,62 @@
-import type { AssetProgress, AutonomousStatus, PlatformStatus } from '../types/story';
+import type {
+  AssetProgress,
+  AutonomousStatus,
+  PlatformStatus,
+} from "../types/story";
+import { apiGet, apiMutate } from "./http";
 
-const API_BASE = import.meta.env.VITE_API_URL || '';
+const API_BASE = import.meta.env.VITE_API_URL || "";
+
+// Mutating calls route through apiMutate so every POST attaches the
+// operator's API token. The 2026-04-20 audit found this wrapper was
+// missing: every dashboard action that hits a requireAuth route was
+// 401ing silently in production because the old code sent no
+// Authorization header. Do NOT inline `fetch()` POST/PUT/DELETE calls
+// in new code — use apiMutate so the auth contract stays consistent.
 
 export async function fetchStories() {
-  const res = await fetch(`${API_BASE}/api/news`);
-  if (!res.ok) throw new Error('Failed to fetch stories');
-  return res.json();
+  return apiGet<unknown>("/api/news");
 }
 
 export async function approveStory(id: string, scheduleTime?: string) {
-  const res = await fetch(`${API_BASE}/api/approve`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id, scheduleTime }),
-  });
-  if (!res.ok) throw new Error('Failed to approve story');
-  return res.json();
+  return apiMutate("/api/approve", { body: { id, scheduleTime } });
 }
 
 export async function generateImage(id: string) {
-  const res = await fetch(`${API_BASE}/api/generate-image`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id }),
-  });
-  if (!res.ok) throw new Error('Failed to queue image generation');
-  return res.json();
+  return apiMutate("/api/generate-image", { body: { id } });
 }
 
 export async function generateVideo(id: string) {
-  const res = await fetch(`${API_BASE}/api/generate-video`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id }),
-  });
-  if (!res.ok) throw new Error('Failed to queue video generation');
-  return res.json();
+  return apiMutate("/api/generate-video", { body: { id } });
 }
 
 export async function setSchedule(id: string, scheduleTime: string | null) {
-  const res = await fetch(`${API_BASE}/api/schedule`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id, scheduleTime }),
-  });
-  if (!res.ok) throw new Error('Failed to set schedule');
-  return res.json();
+  return apiMutate("/api/schedule", { body: { id, scheduleTime } });
 }
 
 export async function retryPublish(id: string) {
-  const res = await fetch(`${API_BASE}/api/retry-publish`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id }),
-  });
-  if (!res.ok) throw new Error('Failed to retry publish');
-  return res.json();
+  return apiMutate("/api/retry-publish", { body: { id } });
 }
 
 export async function triggerHunter() {
-  const res = await fetch(`${API_BASE}/api/hunter/run`, { method: 'POST' });
-  if (!res.ok) throw new Error('Failed to trigger hunter');
-  return res.json();
+  return apiMutate("/api/hunter/run");
 }
 
 export async function fetchHunterStatus() {
-  const res = await fetch(`${API_BASE}/api/hunter/status`);
-  if (!res.ok) throw new Error('Failed to fetch hunter status');
-  return res.json();
+  return apiGet<{ active: boolean }>("/api/hunter/status");
 }
 
 export async function triggerPublish() {
-  const res = await fetch(`${API_BASE}/api/publish`, { method: 'POST' });
-  if (!res.ok) throw new Error('Failed to start publish run');
-  return res.json();
+  return apiMutate("/api/publish");
 }
 
 export async function fetchPublishStatus() {
-  const res = await fetch(`${API_BASE}/api/publish-status`);
-  if (!res.ok) throw new Error('Failed to fetch publish status');
-  return res.json();
+  return apiGet<unknown>("/api/publish-status");
 }
 
 export function downloadVideo(id: string) {
   const url = `${API_BASE}/api/download/${encodeURIComponent(id)}`;
-  const a = document.createElement('a');
+  const a = document.createElement("a");
   a.href = url;
   a.download = `pulse-gaming-${id}.mp4`;
   document.body.appendChild(a);
@@ -92,59 +64,47 @@ export function downloadVideo(id: string) {
   a.remove();
 }
 
-export async function fetchPostStats(postId: string, platform: 'youtube' | 'tiktok') {
-  const res = await fetch(
-    `${API_BASE}/api/stats/${encodeURIComponent(postId)}?platform=${platform}`
+export async function fetchPostStats(
+  postId: string,
+  platform: "youtube" | "tiktok",
+) {
+  return apiGet<unknown>(
+    `/api/stats/${encodeURIComponent(postId)}?platform=${platform}`,
   );
-  if (!res.ok) throw new Error(`Failed to fetch ${platform} stats`);
-  return res.json();
 }
 
-export async function updateStoryStats(id: string, stats: { youtube_views?: number; tiktok_views?: number }) {
-  const res = await fetch(`${API_BASE}/api/stats/update`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id, ...stats }),
-  });
-  if (!res.ok) throw new Error('Failed to update story stats');
-  return res.json();
+export async function updateStoryStats(
+  id: string,
+  stats: { youtube_views?: number; tiktok_views?: number },
+) {
+  return apiMutate("/api/stats/update", { body: { id, ...stats } });
 }
 
-// --- New autonomous endpoints ---
+// --- Autonomous endpoints ---
 
 export async function fetchAutonomousStatus(): Promise<AutonomousStatus> {
-  const res = await fetch(`${API_BASE}/api/autonomous/status`);
-  if (!res.ok) throw new Error('Failed to fetch autonomous status');
-  return res.json();
+  return apiGet<AutonomousStatus>("/api/autonomous/status");
 }
 
 export async function fetchPlatformStatus(): Promise<PlatformStatus> {
-  const res = await fetch(`${API_BASE}/api/platforms/status`);
-  if (!res.ok) throw new Error('Failed to fetch platform status');
-  return res.json();
+  return apiGet<PlatformStatus>("/api/platforms/status");
 }
 
 export async function triggerAutonomousCycle() {
-  const res = await fetch(`${API_BASE}/api/autonomous/run`, { method: 'POST' });
-  if (!res.ok) throw new Error('Failed to start autonomous cycle');
-  return res.json();
+  return apiMutate("/api/autonomous/run");
 }
 
 export async function triggerAutoApprove() {
-  const res = await fetch(`${API_BASE}/api/autonomous/approve`, { method: 'POST' });
-  if (!res.ok) throw new Error('Failed to run auto-approve');
-  return res.json();
+  return apiMutate("/api/autonomous/approve");
 }
 
 export async function triggerMultiPlatformPublish() {
-  const res = await fetch(`${API_BASE}/api/autonomous/publish`, { method: 'POST' });
-  if (!res.ok) throw new Error('Failed to start multi-platform publish');
-  return res.json();
+  return apiMutate("/api/autonomous/publish");
 }
 
 export function connectProgressStream(
   onProgress: (data: AssetProgress) => void,
-  onError?: (err: Event) => void
+  onError?: (err: Event) => void,
 ): EventSource {
   const es = new EventSource(`${API_BASE}/api/progress`);
   es.onmessage = (event) => {

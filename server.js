@@ -1171,8 +1171,16 @@ app.get("/api/story-image/:id", async (req, res) => {
   }
 });
 
-// Serve story images directory for easy browsing
-app.use("/stories", express.static(path.join(__dirname, "output", "stories")));
+// NOTE: The former `app.use("/stories", express.static(output/stories))`
+// mount was removed on 2026-04-20 after the artefact-route audit —
+// it duplicated every file `/api/story-image/:id` now serves but
+// bypassed the draft-vs-published gate, so `/stories/<id>_story.png`
+// let anyone with a guessable story id pull the IG Story card for
+// an unpublished story. The only consumer was an internal "for easy
+// browsing" convenience; IG/FB uploaders, the dashboard, and every
+// grepable URL reference already go through /api/story-image/:id.
+// Do NOT re-add a public static mount over output/stories without
+// wiring it through the same `isPubliclyVisible + Bearer` gate.
 
 // --- Download ---
 // Same public-vs-draft gate as /api/story-image. IG/FB URL-fallback

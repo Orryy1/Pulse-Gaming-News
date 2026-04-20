@@ -190,9 +190,14 @@ app.get("/privacy", (req, res) => {
 app.get("/auth/tiktok", (req, res) => {
   try {
     const { buildAuthorizeUrl } = require("./upload_tiktok");
-    const url = buildAuthorizeUrl();
+    const { createState } = require("./lib/oauth-state");
+    // CSRF protection: mint a fresh state, bind it to this provider,
+    // and include it in the authorise URL. TikTok echoes it back on
+    // the callback where consumeState() validates single-use.
+    const state = createState("tiktok");
+    const url = buildAuthorizeUrl({ state });
     // Deliberately log only the redirect_uri (public), not the client key
-    // (also public but noisy) and never the full URL with query string.
+    // (also public but noisy), never the state, and never the full URL.
     const redirectUri =
       process.env.TIKTOK_REDIRECT_URI ||
       "https://marvelous-curiosity-production.up.railway.app/auth/tiktok/callback";
@@ -209,7 +214,7 @@ app.get("/auth/tiktok", (req, res) => {
 });
 
 app.get("/auth/tiktok/callback", async (req, res) => {
-  const { code, error, error_description } = req.query;
+  const { code, error, error_description, state } = req.query;
 
   if (error) {
     console.log(`[tiktok] OAuth error: ${error} - ${error_description}`);
@@ -220,13 +225,30 @@ app.get("/auth/tiktok/callback", async (req, res) => {
       );
   }
 
+  // CSRF guard: reject the callback before we even look at `code` if
+  // state is missing, expired, single-use-already-consumed, or bound
+  // to a different provider. We deliberately surface only a coarse
+  // reason — the operator can retry via /auth/tiktok; an attacker
+  // gets no useful signal about why their forged callback failed.
+  const { consumeState } = require("./lib/oauth-state");
+  const stateCheck = consumeState(state, "tiktok");
+  if (!stateCheck.ok) {
+    console.log(`[tiktok] OAuth state rejected: ${stateCheck.reason}`);
+    return res
+      .status(400)
+      .send(
+        `<h1>TikTok Auth Failed</h1>` +
+          `<p>State check failed (${escapeHtml(stateCheck.reason)}). Please restart from /auth/tiktok.</p>`,
+      );
+  }
+
   if (!code) {
     return res.status(400).send("<h1>Missing auth code</h1>");
   }
 
   try {
     const { exchangeCode } = require("./upload_tiktok");
-    const tokenData = await exchangeCode(code);
+    await exchangeCode(code);
     console.log("[tiktok] OAuth callback: token saved successfully");
     res.send(`<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:60px">
       <h1 style="color:#00C853">TikTok Connected!</h1>
@@ -252,13 +274,24 @@ app.get("/auth/facebook", (req, res) => {
   const redirectUri = `${baseUrl}/auth/facebook/callback`;
   const scopes =
     "pages_manage_posts,pages_read_engagement,pages_show_list,instagram_basic,instagram_content_publish,publish_video";
-  const authUrl = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}&response_type=code`;
+  // CSRF protection: mint a state bound to the "facebook" provider
+  // tag. Same single-use / TTL contract as the TikTok flow — see
+  // lib/oauth-state.js. URL-encode defensively even though hex tokens
+  // are URL-safe, to match the treatment of redirect_uri above.
+  const { createState } = require("./lib/oauth-state");
+  const state = createState("facebook");
+  const authUrl =
+    `https://www.facebook.com/v21.0/dialog/oauth?client_id=${appId}` +
+    `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+    `&scope=${scopes}` +
+    `&response_type=code` +
+    `&state=${encodeURIComponent(state)}`;
   res.redirect(authUrl);
 });
 
 // Callback: exchanges code for long-lived token, saves FB + IG tokens
 app.get("/auth/facebook/callback", async (req, res) => {
-  const { code, error, error_description } = req.query;
+  const { code, error, error_description, state } = req.query;
 
   if (error) {
     console.log(`[facebook] OAuth error: ${error} - ${error_description}`);
@@ -266,6 +299,21 @@ app.get("/auth/facebook/callback", async (req, res) => {
       .status(400)
       .send(
         `<h1>Facebook Auth Error</h1><p>${escapeHtml(error)}: ${escapeHtml(error_description || "")}</p>`,
+      );
+  }
+
+  // CSRF guard (mirrors TikTok callback). Runs before we burn a code
+  // exchange against Facebook Graph so a forged callback can't waste
+  // an app request either.
+  const { consumeState } = require("./lib/oauth-state");
+  const stateCheck = consumeState(state, "facebook");
+  if (!stateCheck.ok) {
+    console.log(`[facebook] OAuth state rejected: ${stateCheck.reason}`);
+    return res
+      .status(400)
+      .send(
+        `<h1>Facebook Auth Failed</h1>` +
+          `<p>State check failed (${escapeHtml(stateCheck.reason)}). Please restart from /auth/facebook.</p>`,
       );
   }
 

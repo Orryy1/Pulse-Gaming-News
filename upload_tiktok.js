@@ -242,7 +242,12 @@ function assertTokenResponse(data, flavor) {
 // --- Build the TikTok OAuth authorise URL ---
 // Pure helper so the server's GET /auth/tiktok initiator and the CLI
 // `node upload_tiktok.js auth` path share one source of truth.
-function buildAuthorizeUrl() {
+//
+// `state` is optional because the CLI flow is local-dev only (no
+// browser in the loop, no CSRF surface). The server initiator passes
+// a state minted by lib/oauth-state.js; omitting it keeps the CLI
+// path working unchanged.
+function buildAuthorizeUrl({ state } = {}) {
   const clientKey = process.env.TIKTOK_CLIENT_KEY;
   if (!clientKey) {
     throw new Error("TIKTOK_CLIENT_KEY not set");
@@ -251,12 +256,14 @@ function buildAuthorizeUrl() {
     process.env.TIKTOK_REDIRECT_URI ||
     "https://marvelous-curiosity-production.up.railway.app/auth/tiktok/callback";
   const scope = "user.info.basic,video.publish,video.upload";
-  const qs = new URLSearchParams({
+  const params = {
     client_key: clientKey,
     scope,
     response_type: "code",
     redirect_uri: redirectUri,
-  });
+  };
+  if (typeof state === "string" && state.length > 0) params.state = state;
+  const qs = new URLSearchParams(params);
   return `https://www.tiktok.com/v2/auth/authorize/?${qs.toString()}`;
 }
 

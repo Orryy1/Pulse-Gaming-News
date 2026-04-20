@@ -3,7 +3,7 @@ import type {
   AutonomousStatus,
   PlatformStatus,
 } from "../types/story";
-import { apiGet, apiMutate } from "./http";
+import { apiGet, apiGetAuthed, apiMutate } from "./http";
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
 
@@ -14,8 +14,14 @@ const API_BASE = import.meta.env.VITE_API_URL || "";
 // Authorization header. Do NOT inline `fetch()` POST/PUT/DELETE calls
 // in new code — use apiMutate so the auth contract stays consistent.
 
+// Dashboard needs the full editorial payload (scripts, hooks,
+// pinned comments, platform IDs, etc.) to render the approve/retry/
+// publish UI. /api/news was sanitised on 2026-04-20 to a minimal
+// public shape — the full shape now lives at /api/news/full behind
+// the Bearer token. If the operator hasn't entered their token yet,
+// apiGetAuthed prompts once just like apiMutate would.
 export async function fetchStories() {
-  return apiGet<unknown>("/api/news");
+  return apiGetAuthed<unknown>("/api/news/full");
 }
 
 export async function approveStory(id: string, scheduleTime?: string) {

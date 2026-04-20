@@ -34,6 +34,34 @@ export async function apiGet<T = unknown>(path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+// Authenticated GET — for operator-only endpoints that still use
+// the GET verb (e.g. /api/news/full, which is a read but returns
+// the full editorial payload). Mirrors apiMutate's auth handling:
+// ensureToken() prompts once, 401 clears + throws a clear operator
+// error, any error message is redacted before surfacing.
+export async function apiGetAuthed<T = unknown>(path: string): Promise<T> {
+  const token = ensureToken();
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch (err) {
+    const raw = err instanceof Error ? err.message : String(err);
+    throw new Error(redactToken(`GET ${path} failed: ${raw}`, token));
+  }
+  if (isAuthError(res)) {
+    clearToken();
+    throw new Error(
+      "API token required or invalid. Reload the page and enter a fresh token.",
+    );
+  }
+  if (!res.ok) {
+    throw new Error(redactToken(`GET ${path} failed (${res.status})`, token));
+  }
+  return (await res.json()) as T;
+}
+
 interface MutateOptions {
   method?: "POST" | "PUT" | "DELETE" | "PATCH";
   body?: unknown;

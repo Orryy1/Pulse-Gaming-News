@@ -707,13 +707,41 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+// Public, unauthenticated news feed. Returns ONLY:
+//   - stories that have actually gone live (YouTube URL exists)
+//   - a tiny whitelist of safe fields (title, source URL, timestamps,
+//     og:image, published YT URL) via lib/public-story.js
+//
+// The full editorial payload — scripts, hooks, pinned comments,
+// scoring internals, candidate image prompts, internal file paths,
+// Reddit comment authors, platform post IDs, view counters — is
+// served from /api/news/full which requires the Bearer API_TOKEN.
+// Dashboard should call /api/news/full. If you're adding a new
+// public widget that needs a field not in PUBLIC_FIELDS, add it
+// there — do NOT bypass the sanitizer.
 app.get("/api/news", (req, res) => {
+  try {
+    const stories = readNews();
+    const { sanitizeStoriesForPublic } = require("./lib/public-story");
+    res.json(sanitizeStoriesForPublic(stories));
+  } catch (err) {
+    console.log(`[server] ERROR reading news: ${err.message}`);
+    res.json([]);
+  }
+});
+
+// Authenticated full payload for the operator dashboard. Same shape
+// the unauthenticated endpoint used to return before the 2026-04-20
+// exposure audit. Gated on requireAuth so the raw editorial record
+// (scripts, scoring, internal paths, PII) stays behind the same
+// Bearer contract as the mutating routes.
+app.get("/api/news/full", requireAuth, (req, res) => {
   try {
     const stories = readNews();
     res.json(Array.isArray(stories) ? stories : []);
   } catch (err) {
-    console.log(`[server] ERROR reading news: ${err.message}`);
-    res.json([]);
+    console.log(`[server] ERROR reading full news: ${err.message}`);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 

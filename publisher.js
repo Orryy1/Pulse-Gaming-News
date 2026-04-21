@@ -513,8 +513,28 @@ async function _publishNextStoryInner() {
 
   // Find stories that still need publishing to at least one platform.
   // This includes brand-new stories AND partially-published ones (e.g. YT succeeded but IG/FB failed).
+  //
+  // Exclusions (2026-04-21 QA-fail deadlock fix):
+  //   - qa_failed === true      The pre-flight content / video QA
+  //                              refused to publish this story on a
+  //                              prior window. Without this skip, the
+  //                              same story would be re-selected every
+  //                              09/14/19 UTC window forever. The
+  //                              operator must re-run the processor /
+  //                              produce pipeline to regenerate the
+  //                              artefact and clear the flag.
+  //   - publish_status="failed" Either a fresh QA-fail (caught above)
+  //                              or an all-4-core upload fail from a
+  //                              prior window. Retrying on the same
+  //                              schedule just burns attempts — needs
+  //                              operator intervention.
+  // Partial stories (publish_status="partial" with 1-3 core ids)
+  // are NOT skipped — they legitimately retry only the missing
+  // platforms at the next window.
   const ready = stories.filter((s) => {
     if (!s.approved || !s.exported_path) return false;
+    if (s.qa_failed === true) return false;
+    if (s.publish_status === "failed") return false;
     const platformsDone = [
       s.youtube_post_id,
       s.tiktok_post_id,
@@ -621,11 +641,38 @@ async function _publishNextStoryInner() {
         console.log(
           `[publisher] content QA FAIL — refusing to publish: ${cqa.failures.join(", ")}`,
         );
+        // Persist qa_failed state BEFORE returning so the same story
+        // doesn't re-enter every future publish window (09/14/19 UTC).
+        // The selector at the top of this function skips qa_failed
+        // and publish_status="failed" rows, so this one write kills
+        // the retry loop until an operator re-runs the processor /
+        // produce to regenerate the offending artefact (script, mp4,
+        // etc.) and clear the flag.
+        story.qa_failed = true;
+        story.qa_failures = cqa.failures;
+        story.qa_warnings = (result.qa_warnings || []).concat(
+          cqa.warnings || [],
+        );
+        story.qa_failed_at = new Date().toISOString();
+        story.publish_status = "failed";
+        story.publish_error = `qa_blocked: ${cqa.failures[0] || "unknown"}`;
+        try {
+          await db.upsertStory(story);
+        } catch (persistErr) {
+          console.log(
+            `[publisher] CRITICAL: failed to persist content-QA fail state for ${story.id}: ${persistErr.message}`,
+          );
+          captureException(persistErr, {
+            step: "publishNextStory.content_qa_persist",
+            storyId: story.id,
+          });
+        }
         return {
           ...result,
           qa_failed: true,
           qa_failures: cqa.failures,
           qa_warnings: cqa.warnings || [],
+          publish_status: "failed",
         };
       }
     } catch (qaErr) {
@@ -646,11 +693,32 @@ async function _publishNextStoryInner() {
         console.log(
           `[publisher] video QA FAIL — refusing to publish: ${vqa.failures.join(", ")}`,
         );
+        // Same rationale as the content-QA branch above — persist the
+        // block before returning so the broken mp4 doesn't come back
+        // for another go at the next publish window.
+        story.qa_failed = true;
+        story.qa_failures = vqa.failures;
+        story.qa_warnings = result.qa_warnings || [];
+        story.qa_failed_at = new Date().toISOString();
+        story.publish_status = "failed";
+        story.publish_error = `qa_blocked: ${vqa.failures[0] || "unknown"}`;
+        try {
+          await db.upsertStory(story);
+        } catch (persistErr) {
+          console.log(
+            `[publisher] CRITICAL: failed to persist video-QA fail state for ${story.id}: ${persistErr.message}`,
+          );
+          captureException(persistErr, {
+            step: "publishNextStory.video_qa_persist",
+            storyId: story.id,
+          });
+        }
         return {
           ...result,
           qa_failed: true,
           qa_failures: vqa.failures,
           qa_warnings: result.qa_warnings || [],
+          publish_status: "failed",
         };
       }
       if (vqa.result === "skip") {

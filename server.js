@@ -2164,6 +2164,24 @@ app.get("/api/queue/stats", requireAuth, (req, res) => {
   }
 });
 
+// --- Scheduler plan (Task 9, 2026-04-21) -------------------------
+// Operator-facing list of every registered schedule with cron +
+// human-time + lane classification. Reads DEFAULT_SCHEDULES from
+// lib/scheduler (the source of truth the seeder applies to the
+// SQLite `schedules` table on deploy), so the endpoint stays
+// in-sync with what's actually registered on process start. No
+// secrets — just names, cron strings, lanes, priorities.
+app.get("/api/scheduler/plan", requireAuth, (req, res) => {
+  try {
+    const { DEFAULT_SCHEDULES } = require("./lib/scheduler");
+    const { buildSchedulerPlan } = require("./lib/services/scheduler-plan");
+    res.json(buildSchedulerPlan(DEFAULT_SCHEDULES));
+  } catch (err) {
+    console.error(`[server] /api/scheduler/plan error: ${err.message}`);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 app.get("/api/scoring/digest", requireAuth, (req, res) => {
   if (process.env.USE_SQLITE !== "true") {
     return res.status(503).json({ error: "sqlite_disabled" });

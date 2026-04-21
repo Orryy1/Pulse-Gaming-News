@@ -556,6 +556,64 @@ async function runAnalytics() {
 
     story.stats_fetched_at = new Date().toISOString();
 
+    // Append time-series rows to platform_metric_snapshots so the
+    // feedback-loop work (docs/analytics-feedback-loop.md) has real
+    // history to diff against. Kept best-effort — a broken repo
+    // must not block the analytics pass.
+    try {
+      const {
+        recordSnapshot,
+      } = require("./lib/repositories/platform_metric_snapshots");
+      const dbMod = require("./lib/db");
+      const dbHandle =
+        dbMod.useSqlite && dbMod.useSqlite() ? dbMod.getDb() : null;
+      if (dbHandle) {
+        const base = {
+          story_id: story.id,
+          channel_id: story.channel_id || undefined,
+          snapshot_at: story.stats_fetched_at,
+        };
+        if (ytStats) {
+          recordSnapshot(dbHandle, {
+            ...base,
+            platform: "youtube",
+            external_id: story.youtube_post_id,
+            views: ytStats.views,
+            likes: ytStats.likes,
+            comments: ytStats.comments,
+            raw_json: ytStats,
+          });
+        }
+        if (ttStats) {
+          recordSnapshot(dbHandle, {
+            ...base,
+            platform: "tiktok",
+            external_id: story.tiktok_post_id,
+            views: ttStats.views,
+            likes: ttStats.likes,
+            comments: ttStats.comments,
+            shares: ttStats.shares,
+            raw_json: ttStats,
+          });
+        }
+        if (igStats) {
+          recordSnapshot(dbHandle, {
+            ...base,
+            platform: "instagram",
+            external_id: story.instagram_media_id,
+            views: igStats.views,
+            likes: igStats.likes,
+            comments: igStats.comments,
+            raw_json: igStats,
+          });
+        }
+      }
+    } catch (snapErr) {
+      console.log(
+        `[analytics] metric snapshot write failed (non-fatal): ${snapErr.message}`,
+      );
+    }
+
     // Calculate combined virality score across all platforms
     const publishedAt = story.youtube_published_at || story.timestamp;
     story.virality_score = calculateCombinedViralityScore(

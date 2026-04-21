@@ -149,11 +149,23 @@ async function fetchSourceMaterial(story) {
 
 async function fetchPageText(url) {
   if (!url) return null;
+  // SSRF guard — the story.article_url / linked_url we're fed here
+  // comes from RSS/Reddit and is attacker-controllable. See
+  // lib/safe-url.js + docs/url-fetch-safety-audit.md for the full
+  // rationale. Reject non-http(s), localhost, RFC1918, cloud
+  // metadata addresses before hitting axios.
+  const { classifyOutboundUrl } = require("./lib/safe-url");
+  const safe = classifyOutboundUrl(url);
+  if (!safe.ok) {
+    console.log(`[processor] skipping unsafe page URL: ${safe.reason}`);
+    return null;
+  }
   try {
     const response = await axios.get(url, {
       timeout: 8000,
       headers: { "User-Agent": "Mozilla/5.0 (compatible; PulseGaming/1.0)" },
       maxRedirects: 3,
+      maxContentLength: 5 * 1024 * 1024, // 5MB cap on article HTML
     });
     const html = response.data;
     if (typeof html !== "string") return null;

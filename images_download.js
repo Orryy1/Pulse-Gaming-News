@@ -6,6 +6,7 @@
 const fs = require("fs-extra");
 const path = require("path");
 const axios = require("axios");
+const { classifyOutboundUrl } = require("./lib/safe-url");
 
 const CACHE_DIR = path.join("output", "image_cache");
 const VIDEO_CACHE_DIR = path.join("output", "video_cache");
@@ -93,6 +94,18 @@ async function downloadVideoClip(url, filename) {
   const cachePath = path.join(VIDEO_CACHE_DIR, filename);
   if (await fs.pathExists(cachePath)) return cachePath;
 
+  // SSRF guard — reject non-http(s), localhost, RFC1918, cloud
+  // metadata IPs before we let axios touch them. A malicious RSS
+  // feed or poisoned article page could otherwise point us at
+  // 169.254.169.254. See lib/safe-url.js + docs/url-fetch-safety-audit.md.
+  const safe = classifyOutboundUrl(url);
+  if (!safe.ok) {
+    console.log(
+      `[images] skipping unsafe video URL: ${safe.reason} (${filename})`,
+    );
+    return null;
+  }
+
   try {
     const response = await axios.get(url, {
       responseType: "arraybuffer",
@@ -125,12 +138,25 @@ async function downloadImage(url, filename) {
   const cachePath = path.join(CACHE_DIR, filename);
   if (await fs.pathExists(cachePath)) return cachePath;
 
+  // SSRF guard (same reasoning as downloadVideoClip). The article-
+  // inline scraper in getBestImage() iterates every <img> tag on a
+  // third-party article page — any one of those could be
+  // attacker-controlled.
+  const safe = classifyOutboundUrl(url);
+  if (!safe.ok) {
+    console.log(
+      `[images] skipping unsafe image URL: ${safe.reason} (${filename})`,
+    );
+    return null;
+  }
+
   try {
     const response = await axios.get(url, {
       responseType: "arraybuffer",
       timeout: 15000,
       headers: { "User-Agent": randomUA() },
-      maxRedirects: 5,
+      maxRedirects: 3,
+      maxContentLength: 20 * 1024 * 1024, // 20MB cap — images shouldn't be bigger
     });
 
     await fs.ensureDir(CACHE_DIR);
@@ -695,4 +721,5 @@ async function getBestImage(story) {
 
 module.exports = getBestImage;
 module.exports.downloadVideoClip = downloadVideoClip;
+module.exports.downloadImage = downloadImage;
 module.exports.buildSteamSearchCandidates = buildSteamSearchCandidates;

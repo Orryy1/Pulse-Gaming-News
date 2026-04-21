@@ -548,6 +548,42 @@ async function _publishNextStoryInner() {
     `[publisher] Publishing${isRetry ? " (retry)" : ""}: "${story.title}" (score: ${story.breaking_score || story.score || 0})`,
   );
 
+  // --- Pre-flight content QA --------------------------------------
+  // Conservative hard-fail gate: if the MP4 is missing, too small,
+  // or the script has an obvious render-breaking artefact (glued
+  // sentence token, missing body), refuse to upload and surface to
+  // Discord. Warn-level findings (long script, low entity overlay
+  // coverage, US time format) get logged and attached to the
+  // summary for operator visibility without blocking the publish.
+  // Never runs on retries — those stories were already published
+  // once, so the MP4 existence / script quality has been vetted.
+  if (!isRetry) {
+    try {
+      const { runContentQa } = require("./lib/services/content-qa");
+      const qa = await runContentQa(story);
+      if (qa.warnings && qa.warnings.length > 0) {
+        console.log(`[publisher] QA warnings: ${qa.warnings.join(", ")}`);
+        result.qa_warnings = qa.warnings;
+      }
+      if (qa.result === "fail") {
+        console.log(
+          `[publisher] QA FAIL — refusing to publish: ${qa.failures.join(", ")}`,
+        );
+        return {
+          ...result,
+          qa_failed: true,
+          qa_failures: qa.failures,
+          qa_warnings: qa.warnings,
+        };
+      }
+    } catch (qaErr) {
+      // QA module is best-effort — if it throws for any reason,
+      // log and proceed. A broken QA module must NEVER stop the
+      // daily publish cycle.
+      console.log(`[publisher] content-qa error (non-fatal): ${qaErr.message}`);
+    }
+  }
+
   const result = {
     title: story.title,
     // --- CORE (video) platforms: weigh in on overall status ---

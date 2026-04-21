@@ -2164,6 +2164,22 @@ app.get("/api/queue/stats", requireAuth, (req, res) => {
   }
 });
 
+// --- Pipeline backlog (Task 12, 2026-04-21) ----------------------
+// Operator-only. Returns counts + next-candidate + top-10 stuck
+// stories with blocking reasons. Used by the dashboard to answer
+// "why isn't my approved story publishing?" without shelling into
+// SQLite.
+app.get("/api/pipeline/backlog", requireAuth, (req, res) => {
+  try {
+    const stories = readNews();
+    const { buildPipelineBacklog } = require("./lib/services/pipeline-backlog");
+    res.json(buildPipelineBacklog(stories));
+  } catch (err) {
+    console.error(`[server] /api/pipeline/backlog error: ${err.message}`);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // --- Scheduler plan (Task 9, 2026-04-21) -------------------------
 // Operator-facing list of every registered schedule with cron +
 // human-time + lane classification. Reads DEFAULT_SCHEDULES from

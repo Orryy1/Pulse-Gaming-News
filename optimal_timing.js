@@ -15,12 +15,18 @@ const DAY_NAMES = [
   "Saturday",
 ];
 
+// Fallback schedule when analytics history is insufficient to compute
+// an optimal one. 2026-04-21 update: aligned to the canonical
+// lib/scheduler.js DEFAULT_SCHEDULES publish windows so the timing
+// report no longer contradicts the real cron. Previously these
+// labels said "07:00 / 13:00 / 19:00" which was legacy from before
+// cadence Task 3 shipped morning/afternoon/evening at 09/14/19 UTC.
 const DEFAULT_SCHEDULE = {
-  crons: ["0 7 * * *", "0 13 * * *", "0 19 * * *"],
+  crons: ["0 9 * * *", "0 14 * * *", "0 19 * * *"],
   labels: [
-    "07:00 UTC - default morning",
-    "13:00 UTC - default afternoon",
-    "19:00 UTC - default evening",
+    "09:00 UTC - default morning (canonical scheduler)",
+    "14:00 UTC - default afternoon (canonical scheduler)",
+    "19:00 UTC - default evening (canonical scheduler)",
   ],
   confidence: "low",
   dataPoints: 0,
@@ -299,8 +305,32 @@ async function getTimingReport() {
 
   lines.push("");
 
-  // Active schedule
-  lines.push("**Active Schedule:**");
+  // Active schedule — pulled from the canonical lib/scheduler.js
+  // rather than the analytics-derived recommendation, because the
+  // scheduler is the source of truth for what actually fires. The
+  // analytics-derived `schedule` is labelled as a separate section
+  // so a future data-driven cadence can replace the active one.
+  lines.push("**Active Schedule (canonical scheduler):**");
+  try {
+    const { DEFAULT_SCHEDULES } = require("./lib/scheduler");
+    const publishWindows = DEFAULT_SCHEDULES.filter((s) => s.kind === "publish")
+      .sort((a, b) => (a.cron_expr || "").localeCompare(b.cron_expr || ""))
+      .map((s) => {
+        const m = (s.cron_expr || "").match(/^(\d+)\s+(\d+)/);
+        const hh = m ? m[2].padStart(2, "0") : "??";
+        const mm = m ? m[1].padStart(2, "0") : "??";
+        return `  ${hh}:${mm} UTC — ${s.name}`;
+      });
+    for (const line of publishWindows) lines.push(line);
+  } catch (err) {
+    lines.push(
+      `  (scheduler snapshot unavailable: ${err.message} — showing legacy defaults below)`,
+    );
+    for (const label of schedule.labels) lines.push(`  ${label}`);
+  }
+
+  lines.push("");
+  lines.push("**Analytics-recommended schedule (for reference only):**");
   for (const label of schedule.labels) {
     lines.push(`  ${label}`);
   }

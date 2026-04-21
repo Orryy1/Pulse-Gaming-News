@@ -308,12 +308,88 @@ async function generateEntityMentions() {
   await db.saveStories(stories);
 }
 
+// --- Overlay QA: cap + opening-title guard -----------------------
+// Even when Wikipedia coughs up an image for every detected entity,
+// a 20-mention cold-open sequence turns the video into a collage.
+// Cap visible overlays per video and keep the opening title area
+// (first ~1.2s) free of corner portraits so the "Welcome to Pulse
+// Gaming" opener isn't fighting an Alex-Garland headshot from frame
+// zero. Exported so assemble.js and the unit tests both apply the
+// same rule.
+const DEFAULT_MAX_OVERLAYS_PER_VIDEO = 5;
+const DEFAULT_OVERLAY_MIN_START_SECONDS = 1.2; // clear the title bar
+
+/**
+ * Filter a per-story mentions[] list down to what assemble.js
+ * should actually overlay on the video. Preserves the earliest
+ * mention of each entity first (so every named person still
+ * appears at least once if possible), then fills up to
+ * `maxOverlays` with additional windows in time order.
+ *
+ * Pure / sync so tests don't need ffmpeg or the DB.
+ *
+ * @param {Array<{name:string,type:string,image_path?:string,start:number,end:number}>} mentions
+ * @param {{ maxOverlays?: number, minStart?: number, outroStart?: number }} [opts]
+ */
+function filterMentionsForOverlay(mentions, opts = {}) {
+  if (!Array.isArray(mentions)) return [];
+  const maxOverlays =
+    typeof opts.maxOverlays === "number"
+      ? opts.maxOverlays
+      : DEFAULT_MAX_OVERLAYS_PER_VIDEO;
+  const minStart =
+    typeof opts.minStart === "number"
+      ? opts.minStart
+      : DEFAULT_OVERLAY_MIN_START_SECONDS;
+  const outroStart =
+    typeof opts.outroStart === "number" ? opts.outroStart : Infinity;
+
+  // First pass: reject mentions missing an image, or that land in
+  // the opening-title buffer, or after the outro card starts.
+  const viable = mentions.filter((m) => {
+    if (!m || typeof m !== "object") return false;
+    if (!m.image_path) return false;
+    if (typeof m.start !== "number" || typeof m.end !== "number") return false;
+    if (m.start < minStart) return false;
+    if (m.start >= outroStart) return false;
+    return true;
+  });
+
+  // Second pass: prefer the FIRST mention of each distinct entity
+  // (so every person gets at least one overlay) before filling
+  // remaining slots with later mentions of the same entities.
+  // Build firsts[] and rest[] in time order, then take up to
+  // maxOverlays from firsts first, topping up from rest only if
+  // slots remain. This is what makes a 10×Alex, 2×Cailee, 1×Ben,
+  // 1×Nick script still get overlays for Cailee/Ben/Nick rather
+  // than five Alex shots in a row.
+  const firstByName = new Map();
+  const rest = [];
+  for (const m of [...viable].sort((a, b) => a.start - b.start)) {
+    if (!firstByName.has(m.name)) {
+      firstByName.set(m.name, m);
+    } else {
+      rest.push(m);
+    }
+  }
+  const firsts = [...firstByName.values()];
+  const selected = firsts.slice(0, maxOverlays);
+  const remaining = maxOverlays - selected.length;
+  if (remaining > 0) {
+    selected.push(...rest.slice(0, remaining));
+  }
+  return selected.sort((a, b) => a.start - b.start);
+}
+
 module.exports = {
   generateEntityMentions,
   extractEntities,
   fetchEntityImage,
   wordsFromCharacterTimestamps,
   findMentionWindows,
+  filterMentionsForOverlay,
+  DEFAULT_MAX_OVERLAYS_PER_VIDEO,
+  DEFAULT_OVERLAY_MIN_START_SECONDS,
 };
 
 if (require.main === module) {

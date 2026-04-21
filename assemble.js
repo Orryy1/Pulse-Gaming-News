@@ -1051,16 +1051,50 @@ function buildVideoCommand(
   // load the same photo twice when a name is mentioned multiple times.
   // Each mention window becomes a term in the overlay's enable
   // expression further down in the filter graph.
-  const mentions = Array.isArray(story.mentions)
-    ? story.mentions.filter(
-        (m) =>
-          m &&
-          m.image_path &&
-          typeof m.start === "number" &&
-          typeof m.end === "number" &&
-          fs.pathExistsSync(m.image_path),
-      )
-    : [];
+  //
+  // QA filtering (Task 11): cap visible overlays per video,
+  // suppress overlays during the opening title block, and keep the
+  // outro CTA clean. filterMentionsForOverlay preserves the FIRST
+  // mention of each distinct entity before filling remaining slots
+  // — so every named person still gets at least one overlay even
+  // when a single entity is mentioned 10 times.
+  const _outroStartForMentions = Math.max(
+    0,
+    (story.audio_duration || 50) - OUTRO_DURATION,
+  );
+  let mentions = [];
+  try {
+    const { filterMentionsForOverlay } = require("./entities");
+    mentions = filterMentionsForOverlay(story.mentions, {
+      outroStart: _outroStartForMentions,
+    }).filter((m) => fs.pathExistsSync(m.image_path));
+    if (
+      Array.isArray(story.mentions) &&
+      story.mentions.length > mentions.length
+    ) {
+      console.log(
+        `[assemble] ${story.id}: entity overlays filtered ${story.mentions.length} → ${mentions.length} (cap + opening-title + outro guards)`,
+      );
+    }
+  } catch (err) {
+    // filterMentionsForOverlay is pure and shouldn't throw, but if
+    // it does we fall back to the old "take every mention with a
+    // real file on disk" behaviour rather than drop overlays
+    // entirely.
+    console.log(
+      `[assemble] entity overlay filter failed (non-fatal): ${err.message}`,
+    );
+    mentions = Array.isArray(story.mentions)
+      ? story.mentions.filter(
+          (m) =>
+            m &&
+            m.image_path &&
+            typeof m.start === "number" &&
+            typeof m.end === "number" &&
+            fs.pathExistsSync(m.image_path),
+        )
+      : [];
+  }
   const mentionInputs = []; // [{ imagePath, inputIdx, windows: [{start,end}] }]
   const mentionPathToSlot = new Map();
   for (const m of mentions) {

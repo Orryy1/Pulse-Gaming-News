@@ -228,25 +228,41 @@ async function publishToAllPlatforms() {
     await new Promise((r) => setTimeout(r, 60 * 60 * 1000));
   }
 
-  // TikTok - try official API first, fall back to browser automation
+  // TikTok - try official API first. Browser fallback is off by
+  // default in production (Task 5) — see the per-story path below
+  // for the full rationale. Opt in via TIKTOK_BROWSER_FALLBACK=true
+  // from local dev only.
   try {
     const { uploadAll: ttUpload } = require("./upload_tiktok");
     results.tiktok = await ttUpload();
     console.log(`[publisher] TikTok: ${results.tiktok.length} uploaded (API)`);
   } catch (err) {
-    console.log(
-      `[publisher] TikTok API failed: ${err.message}, trying browser fallback...`,
-    );
-    try {
-      const { uploadAll: ttBrowserUpload } = require("./upload_tiktok_browser");
-      results.tiktok = await ttBrowserUpload();
+    const wantBrowserFallback =
+      (process.env.TIKTOK_BROWSER_FALLBACK || "").toLowerCase() === "true";
+    const safeMsg = String(err && err.message ? err.message : err)
+      .replace(/Bearer\s+[^\s"']+/gi, "Bearer <redacted>")
+      .replace(/access_token=[^\s&"']+/gi, "access_token=<redacted>");
+    if (!wantBrowserFallback) {
       console.log(
-        `[publisher] TikTok: ${results.tiktok.length} uploaded (browser)`,
+        `[publisher] TikTok API failed: ${safeMsg} (browser fallback disabled — set TIKTOK_BROWSER_FALLBACK=true to enable)`,
       );
-    } catch (browserErr) {
+    } else {
       console.log(
-        `[publisher] TikTok browser upload also failed: ${browserErr.message}`,
+        `[publisher] TikTok API failed: ${err.message}, trying browser fallback (TIKTOK_BROWSER_FALLBACK=true)...`,
       );
+      try {
+        const {
+          uploadAll: ttBrowserUpload,
+        } = require("./upload_tiktok_browser");
+        results.tiktok = await ttBrowserUpload();
+        console.log(
+          `[publisher] TikTok: ${results.tiktok.length} uploaded (browser)`,
+        );
+      } catch (browserErr) {
+        console.log(
+          `[publisher] TikTok browser upload also failed: ${browserErr.message}`,
+        );
+      }
     }
   }
 
@@ -806,25 +822,51 @@ async function _publishNextStoryInner() {
       console.log(`[publisher] TikTok: uploaded (API)`);
       await db.upsertStory(story);
     } catch (err) {
-      console.log(
-        `[publisher] TikTok API failed: ${err.message}, trying browser fallback...`,
-      );
-      try {
-        const {
-          uploadShort: ttBrowserUpload,
-        } = require("./upload_tiktok_browser");
-        const ttResult = await ttBrowserUpload(story);
-        story.tiktok_post_id = ttResult.publishId;
-        story.tiktok_error = null;
-        result.tiktok = true;
-        console.log(`[publisher] TikTok: uploaded (browser)`);
-        await db.upsertStory(story);
-      } catch (browserErr) {
+      // --- Browser fallback: off by default in production ---
+      //
+      // Task 5 (2026-04-21): the browser automation (Playwright
+      // logged into the TikTok web creator) is a legacy escape
+      // hatch from when the API was unreliable. In production it
+      // (a) hides the real API error from Discord, and (b)
+      // depends on a persistent Brave profile on /data that
+      // doesn't exist on fresh deploys. Surface the real API
+      // error by default; allow the fallback only when an
+      // operator explicitly opts in with
+      // TIKTOK_BROWSER_FALLBACK=true (typically local dev).
+      const wantBrowserFallback =
+        (process.env.TIKTOK_BROWSER_FALLBACK || "").toLowerCase() === "true";
+      if (!wantBrowserFallback) {
+        // Scrub any stray token/Bearer-shaped substring from the
+        // error before we hand it to Discord / platform_posts.
+        const safeMsg = String(err && err.message ? err.message : err)
+          .replace(/Bearer\s+[^\s"']+/gi, "Bearer <redacted>")
+          .replace(/access_token=[^\s&"']+/gi, "access_token=<redacted>");
         console.log(
-          `[publisher] TikTok browser also failed: ${browserErr.message}`,
+          `[publisher] TikTok API failed: ${safeMsg} (browser fallback disabled — set TIKTOK_BROWSER_FALLBACK=true to enable)`,
         );
-        story.tiktok_error = browserErr.message;
-        result.errors.tiktok = browserErr.message;
+        story.tiktok_error = safeMsg;
+        result.errors.tiktok = safeMsg;
+      } else {
+        console.log(
+          `[publisher] TikTok API failed: ${err.message}, trying browser fallback (TIKTOK_BROWSER_FALLBACK=true)...`,
+        );
+        try {
+          const {
+            uploadShort: ttBrowserUpload,
+          } = require("./upload_tiktok_browser");
+          const ttResult = await ttBrowserUpload(story);
+          story.tiktok_post_id = ttResult.publishId;
+          story.tiktok_error = null;
+          result.tiktok = true;
+          console.log(`[publisher] TikTok: uploaded (browser)`);
+          await db.upsertStory(story);
+        } catch (browserErr) {
+          console.log(
+            `[publisher] TikTok browser also failed: ${browserErr.message}`,
+          );
+          story.tiktok_error = browserErr.message;
+          result.errors.tiktok = browserErr.message;
+        }
       }
     }
   }

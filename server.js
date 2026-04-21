@@ -2070,6 +2070,43 @@ app.get("/api/analytics/optimal-timing", requireAuth, async (req, res) => {
   }
 });
 
+// --- Analytics digest (Task 8, 2026-04-21) -----------------------
+// Operator-only. Returns the N most recent published stories plus
+// the latest per-platform metric snapshot and (when available) a
+// delta from the previous snapshot. Reads from:
+//   - stories table for the shortlist
+//   - platform_metric_snapshots for the per-platform rows
+// No secret-bearing fields are emitted — raw_json is stripped by
+// the digest builder.
+app.get("/api/analytics/digest", requireAuth, async (req, res) => {
+  try {
+    const dbMod = require("./lib/db");
+    const { buildAnalyticsDigest } = require("./lib/services/analytics-digest");
+    const pmsRepo = require("./lib/repositories/platform_metric_snapshots");
+
+    const limitRaw = req.query.limit;
+    const limit =
+      typeof limitRaw === "string" && /^\d+$/.test(limitRaw)
+        ? Math.min(50, parseInt(limitRaw, 10))
+        : undefined;
+
+    const stories = readNews();
+    const dbHandle =
+      dbMod.useSqlite && dbMod.useSqlite() ? dbMod.getDb() : null;
+
+    const digest = buildAnalyticsDigest({
+      stories,
+      pmsRepo,
+      dbHandle,
+      limit,
+    });
+    res.json(digest);
+  } catch (err) {
+    console.log(`[server] /api/analytics/digest error: ${err.message}`);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // --- Blog static site ---
 app.use("/blog", express.static(path.join(__dirname, "blog", "dist")));
 

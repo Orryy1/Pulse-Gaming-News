@@ -1026,22 +1026,41 @@ async function _publishNextStoryInner() {
     }
   }
 
-  // Set publish status based on total platforms done (including previously successful ones)
-  const totalDone = [
+  // --- Set publish_status from CORE video-platform outcomes only ---
+  //
+  // Task 4 (2026-04-21): story.publish_status counts only the four
+  // core video platforms: YouTube, TikTok, Instagram Reel, Facebook
+  // Reel. Twitter/X is OPTIONAL — its free API can't post video,
+  // and the paid tier is expensive, so we gate it on
+  // TWITTER_ENABLED=true and a skipped Twitter must never keep a
+  // story in `partial` forever. Fallback cards (IG Story, FB Card,
+  // X image) post on their own block below and never affect
+  // publish_status either (they have materially lower reach than
+  // Reels and should not dress a failed Reel as a success).
+  //
+  // A post id that starts with "DUPE_" is the legacy sentinel from
+  // pre-2026-04-19 when the publisher wrote block-reason strings
+  // into the *_post_id columns. Not a real publish; must not count
+  // toward publish_status either.
+  function isRealPostId(id) {
+    return typeof id === "string" && id.length > 0 && !id.startsWith("DUPE_");
+  }
+  const coreIds = [
     story.youtube_post_id,
     story.tiktok_post_id,
     story.instagram_media_id,
     story.facebook_post_id,
-    story.twitter_post_id,
-  ].filter(Boolean).length;
-  if (totalDone >= 5) {
+  ];
+  const coreDone = coreIds.filter(isRealPostId).length;
+  const coreTotal = coreIds.length; // 4
+  if (coreDone >= coreTotal) {
     story.publish_status = "published";
-  } else if (totalDone > 0) {
+  } else if (coreDone > 0) {
     story.publish_status = "partial";
   } else {
     story.publish_status = "failed";
   }
-  if (!story.published_at && totalDone > 0) {
+  if (!story.published_at && coreDone > 0) {
     story.published_at = new Date().toISOString();
   }
 

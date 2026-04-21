@@ -548,42 +548,6 @@ async function _publishNextStoryInner() {
     `[publisher] Publishing${isRetry ? " (retry)" : ""}: "${story.title}" (score: ${story.breaking_score || story.score || 0})`,
   );
 
-  // --- Pre-flight content QA --------------------------------------
-  // Conservative hard-fail gate: if the MP4 is missing, too small,
-  // or the script has an obvious render-breaking artefact (glued
-  // sentence token, missing body), refuse to upload and surface to
-  // Discord. Warn-level findings (long script, low entity overlay
-  // coverage, US time format) get logged and attached to the
-  // summary for operator visibility without blocking the publish.
-  // Never runs on retries — those stories were already published
-  // once, so the MP4 existence / script quality has been vetted.
-  if (!isRetry) {
-    try {
-      const { runContentQa } = require("./lib/services/content-qa");
-      const qa = await runContentQa(story);
-      if (qa.warnings && qa.warnings.length > 0) {
-        console.log(`[publisher] QA warnings: ${qa.warnings.join(", ")}`);
-        result.qa_warnings = qa.warnings;
-      }
-      if (qa.result === "fail") {
-        console.log(
-          `[publisher] QA FAIL — refusing to publish: ${qa.failures.join(", ")}`,
-        );
-        return {
-          ...result,
-          qa_failed: true,
-          qa_failures: qa.failures,
-          qa_warnings: qa.warnings,
-        };
-      }
-    } catch (qaErr) {
-      // QA module is best-effort — if it throws for any reason,
-      // log and proceed. A broken QA module must NEVER stop the
-      // daily publish cycle.
-      console.log(`[publisher] content-qa error (non-fatal): ${qaErr.message}`);
-    }
-  }
-
   const result = {
     title: story.title,
     // --- CORE (video) platforms: weigh in on overall status ---
@@ -613,6 +577,76 @@ async function _publishNextStoryInner() {
       twitter_image: false, // Twitter image-tweet variant
     },
   };
+
+  // --- Pre-flight QA (content + video) -----------------------------
+  // Conservative hard-fail gate. Content QA catches metadata /
+  // script / caption issues (content-qa.js). Video QA catches
+  // render-level issues (video-qa.js — duration bounds, long black
+  // segments). Warnings from both are attached to the result for
+  // the Discord summary. Failures from either short-circuit the
+  // publish entirely. Never runs on retries — those stories were
+  // already published once, so the artefacts are known-good.
+  //
+  // Any throw from a QA helper is caught and logged — a broken QA
+  // helper must NEVER stop the daily publish cycle, and its failure
+  // is less bad than the unverified-but-publishable stories it
+  // would otherwise shield.
+  if (!isRetry) {
+    try {
+      const { runContentQa } = require("./lib/services/content-qa");
+      const cqa = await runContentQa(story);
+      if (cqa.warnings && cqa.warnings.length > 0) {
+        console.log(
+          `[publisher] content QA warnings: ${cqa.warnings.join(", ")}`,
+        );
+        result.qa_warnings = (result.qa_warnings || []).concat(cqa.warnings);
+      }
+      if (cqa.result === "fail") {
+        console.log(
+          `[publisher] content QA FAIL — refusing to publish: ${cqa.failures.join(", ")}`,
+        );
+        return {
+          ...result,
+          qa_failed: true,
+          qa_failures: cqa.failures,
+          qa_warnings: cqa.warnings || [],
+        };
+      }
+    } catch (qaErr) {
+      console.log(`[publisher] content-qa error (non-fatal): ${qaErr.message}`);
+    }
+    try {
+      const { runVideoQa } = require("./lib/services/video-qa");
+      const vqa = story.exported_path
+        ? await runVideoQa(story.exported_path)
+        : { result: "skip", reason: "no_exported_path" };
+      if (vqa.result === "warn" && Array.isArray(vqa.warnings)) {
+        console.log(
+          `[publisher] video QA warnings: ${vqa.warnings.join(", ")}`,
+        );
+        result.qa_warnings = (result.qa_warnings || []).concat(vqa.warnings);
+      }
+      if (vqa.result === "fail") {
+        console.log(
+          `[publisher] video QA FAIL — refusing to publish: ${vqa.failures.join(", ")}`,
+        );
+        return {
+          ...result,
+          qa_failed: true,
+          qa_failures: vqa.failures,
+          qa_warnings: result.qa_warnings || [],
+        };
+      }
+      if (vqa.result === "skip") {
+        // ffmpeg/ffprobe not installed or no exported_path — don't
+        // block, just note it. Most prod deploys have ffmpeg; dev
+        // boxes without it shouldn't be running the publisher.
+        console.log(`[publisher] video QA skipped: ${vqa.reason || "unknown"}`);
+      }
+    } catch (qaErr) {
+      console.log(`[publisher] video-qa error (non-fatal): ${qaErr.message}`);
+    }
+  }
 
   // Sentinel-cleanup cutover: block/skip outcomes for every platform in
   // this function persist to platform_posts as structured rows

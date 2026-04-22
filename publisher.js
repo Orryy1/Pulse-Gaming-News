@@ -508,6 +508,178 @@ async function publishNextStory() {
   }
 }
 
+// Multi-candidate publish fallback cap (2026-04-22).
+//
+// Before this change, a single stale `exported_path` pointing at an
+// already-deleted MP4 would burn the whole publish window: one
+// QA-fail → return → no upload → wait 5 hours for the next window.
+// Today (22 April) both 09:00 UTC and 14:00 UTC burned on the same
+// single-candidate semantics even after the QA-fail deadlock fix.
+//
+// The selector now iterates up to MAX_PUBLISH_CANDIDATES_PER_WINDOW
+// candidates; each QA-failing candidate is persisted and skipped,
+// and the first QA-passing candidate is what actually uploads. One
+// upload per window is still the rule — this cap is purely about
+// how many bad candidates we'll burn past before giving up.
+//
+// Cap rationale: 5 is enough to tolerate a handful of stale-pointer
+// stories in the backlog without risking a runaway QA loop on a
+// day where the hunter/processor has shipped many broken items.
+const MAX_PUBLISH_CANDIDATES_PER_WINDOW = 5;
+
+/**
+ * Count how many of the 5 tracked platform post ids the story has
+ * already acquired. Used by the candidate ordering (fewest-done
+ * first → highest priority) and by the `isRetry` check below.
+ */
+function countStoryPlatformsDone(s) {
+  return [
+    s.youtube_post_id,
+    s.tiktok_post_id,
+    s.instagram_media_id,
+    s.facebook_post_id,
+    s.twitter_post_id,
+  ].filter(Boolean).length;
+}
+
+function storyIsRetry(s) {
+  return !!(
+    s.youtube_post_id ||
+    s.tiktok_post_id ||
+    s.instagram_media_id ||
+    s.facebook_post_id ||
+    s.twitter_post_id
+  );
+}
+
+/**
+ * Persist a QA hard-fail on the story row and return the structured
+ * row suitable for the no-safe-candidate summary. Extracted so the
+ * multi-candidate loop can call the same persistence path on each
+ * failure without duplicating the store/notify invariants.
+ *
+ * The row:
+ *   story.qa_failed = true          → the selector's skip predicate
+ *   story.publish_status = "failed" → same (belt-and-braces)
+ *   story.publish_error  = "qa_blocked: <first reason>"
+ *   story.qa_failed_at   = now
+ *   story.qa_failures    = full failure list
+ *   story.qa_warnings    = full warning list (dedup'd via Set)
+ *
+ * The "source" argument ("content" / "video") is stored on the
+ * error message so Discord can render "content_qa_blocked" vs
+ * "video_qa_blocked" without inspecting the failures array.
+ */
+async function persistQaFail(story, { failures, warnings, source }) {
+  const reason = failures && failures.length > 0 ? failures[0] : "unknown";
+  story.qa_failed = true;
+  story.qa_failures = Array.isArray(failures) ? failures : [];
+  story.qa_warnings = Array.from(
+    new Set([].concat(Array.isArray(warnings) ? warnings : [])),
+  );
+  story.qa_failed_at = new Date().toISOString();
+  story.publish_status = "failed";
+  story.publish_error = `qa_blocked: ${reason}`;
+  try {
+    await db.upsertStory(story);
+  } catch (persistErr) {
+    console.log(
+      `[publisher] CRITICAL: failed to persist ${source}-QA fail state for ${story.id}: ${persistErr.message}`,
+    );
+    captureException(persistErr, {
+      step: `publishNextStory.${source}_qa_persist`,
+      storyId: story.id,
+    });
+  }
+  return {
+    id: story.id,
+    title: story.title,
+    reason,
+    source,
+    failures: story.qa_failures,
+  };
+}
+
+/**
+ * Run content-QA + video-QA against a candidate story. Returns
+ *
+ *   { pass: true,  warnings }
+ *   { pass: false, failures, warnings, source: "content" | "video" }
+ *
+ * Pure / side-effect-free — caller is responsible for persistence
+ * on fail and for deciding what to do with warnings on pass.
+ *
+ * QA helpers throwing is non-fatal: we log and treat as pass. A
+ * broken QA module must NEVER freeze the daily publish cycle —
+ * the operator gets the Discord summary either way.
+ */
+async function runPreflightQa(story) {
+  const warnings = [];
+
+  // Content QA — metadata + script + MP4 size / existence
+  try {
+    const { runContentQa } = require("./lib/services/content-qa");
+    const cqa = await runContentQa(story);
+    if (cqa.warnings && cqa.warnings.length > 0) {
+      console.log(
+        `[publisher] content QA warnings (${story.id}): ${cqa.warnings.join(", ")}`,
+      );
+      warnings.push(...cqa.warnings);
+    }
+    if (cqa.result === "fail") {
+      console.log(
+        `[publisher] content QA FAIL (${story.id}): ${cqa.failures.join(", ")}`,
+      );
+      return {
+        pass: false,
+        failures: cqa.failures,
+        warnings: warnings.slice(),
+        source: "content",
+      };
+    }
+  } catch (qaErr) {
+    console.log(
+      `[publisher] content-qa error for ${story.id} (non-fatal): ${qaErr.message}`,
+    );
+  }
+
+  // Video QA — duration + black-frame detection via ffprobe/ffmpeg
+  try {
+    const { runVideoQa } = require("./lib/services/video-qa");
+    const vqa = story.exported_path
+      ? await runVideoQa(story.exported_path)
+      : { result: "skip", reason: "no_exported_path" };
+    if (vqa.result === "warn" && Array.isArray(vqa.warnings)) {
+      console.log(
+        `[publisher] video QA warnings (${story.id}): ${vqa.warnings.join(", ")}`,
+      );
+      warnings.push(...vqa.warnings);
+    }
+    if (vqa.result === "fail") {
+      console.log(
+        `[publisher] video QA FAIL (${story.id}): ${vqa.failures.join(", ")}`,
+      );
+      return {
+        pass: false,
+        failures: vqa.failures,
+        warnings: warnings.slice(),
+        source: "video",
+      };
+    }
+    if (vqa.result === "skip") {
+      console.log(
+        `[publisher] video QA skipped for ${story.id}: ${vqa.reason || "unknown"}`,
+      );
+    }
+  } catch (qaErr) {
+    console.log(
+      `[publisher] video-qa error for ${story.id} (non-fatal): ${qaErr.message}`,
+    );
+  }
+
+  return { pass: true, warnings };
+}
+
 async function _publishNextStoryInner() {
   const stories = await db.getStories();
 
@@ -535,14 +707,7 @@ async function _publishNextStoryInner() {
     if (!s.approved || !s.exported_path) return false;
     if (s.qa_failed === true) return false;
     if (s.publish_status === "failed") return false;
-    const platformsDone = [
-      s.youtube_post_id,
-      s.tiktok_post_id,
-      s.instagram_media_id,
-      s.facebook_post_id,
-      s.twitter_post_id,
-    ].filter(Boolean).length;
-    return platformsDone < 5;
+    return countStoryPlatformsDone(s) < 5;
   });
 
   if (ready.length === 0) {
@@ -552,36 +717,81 @@ async function _publishNextStoryInner() {
 
   // Prioritise: unpublished stories first (0 platforms), then partial, then by score
   ready.sort((a, b) => {
-    const aDone = [
-      a.youtube_post_id,
-      a.tiktok_post_id,
-      a.instagram_media_id,
-      a.facebook_post_id,
-      a.twitter_post_id,
-    ].filter(Boolean).length;
-    const bDone = [
-      b.youtube_post_id,
-      b.tiktok_post_id,
-      b.instagram_media_id,
-      b.facebook_post_id,
-      b.twitter_post_id,
-    ].filter(Boolean).length;
-    if (aDone !== bDone) return aDone - bDone; // fewer platforms done = higher priority
+    const aDone = countStoryPlatformsDone(a);
+    const bDone = countStoryPlatformsDone(b);
+    if (aDone !== bDone) return aDone - bDone;
     return (
       (b.breaking_score || b.score || 0) - (a.breaking_score || a.score || 0)
     );
   });
 
-  const story = ready[0];
-  const isRetry = !!(
-    story.youtube_post_id ||
-    story.tiktok_post_id ||
-    story.instagram_media_id ||
-    story.facebook_post_id ||
-    story.twitter_post_id
-  );
+  // Multi-candidate loop. We'll walk up to
+  // MAX_PUBLISH_CANDIDATES_PER_WINDOW stories and take the first
+  // one that passes preflight QA. Each QA-failing candidate is
+  // persisted so it's skipped in all future windows too.
+  const candidates = ready.slice(0, MAX_PUBLISH_CANDIDATES_PER_WINDOW);
+  const qaSkipped = []; // structured {id, title, reason, source, failures}
+  let story = null;
+  let isRetry = false;
+  let preflightWarnings = [];
+
+  for (let i = 0; i < candidates.length; i++) {
+    const candidate = candidates[i];
+    const candidateIsRetry = storyIsRetry(candidate);
+    console.log(
+      `[publisher] Candidate ${i + 1}/${candidates.length}${candidateIsRetry ? " (retry)" : ""}: ` +
+        `"${candidate.title}" (score: ${candidate.breaking_score || candidate.score || 0})`,
+    );
+
+    if (candidateIsRetry) {
+      // Partial-retry stories bypass QA — they were already published
+      // once, so the artefacts are known-good. Take this candidate
+      // immediately.
+      story = candidate;
+      isRetry = true;
+      break;
+    }
+
+    const qa = await runPreflightQa(candidate);
+    if (qa.pass) {
+      story = candidate;
+      isRetry = false;
+      preflightWarnings = qa.warnings || [];
+      break;
+    }
+
+    // Hard-fail: persist and continue.
+    const skipped = await persistQaFail(candidate, {
+      failures: qa.failures,
+      warnings: qa.warnings,
+      source: qa.source,
+    });
+    qaSkipped.push(skipped);
+  }
+
+  if (!story) {
+    // No candidate in the first MAX passed QA. Return a structured
+    // no-safe-candidate result so the job handler / Discord summary
+    // can render "Skipped QA-failed candidates: N" with the top
+    // reason instead of a bland "skipped" / "unknown".
+    const top = qaSkipped[0] || null;
+    console.log(
+      `[publisher] No safe publish candidate passed QA (tried ${candidates.length}, skipped ${qaSkipped.length})`,
+    );
+    return {
+      no_safe_candidate: true,
+      qa_skipped_count: qaSkipped.length,
+      qa_skipped: qaSkipped,
+      top_reason: top
+        ? `${top.source}_qa: ${top.reason}`
+        : "no_candidates_eligible",
+      candidates_tried: candidates.length,
+    };
+  }
+
   console.log(
-    `[publisher] Publishing${isRetry ? " (retry)" : ""}: "${story.title}" (score: ${story.breaking_score || story.score || 0})`,
+    `[publisher] Publishing${isRetry ? " (retry)" : ""}: "${story.title}" ` +
+      `(score: ${story.breaking_score || story.score || 0}, qa_skipped_before=${qaSkipped.length})`,
   );
 
   const result = {
@@ -612,125 +822,13 @@ async function _publishNextStoryInner() {
       instagram_story: false, // Story image on IG
       twitter_image: false, // Twitter image-tweet variant
     },
+    // QA metadata — preflight warnings we didn't block on, and
+    // the count/list of earlier candidates we QA-skipped before
+    // landing on this one. renderPublishSummary surfaces both.
+    qa_warnings: preflightWarnings,
+    qa_skipped_count: qaSkipped.length,
+    qa_skipped: qaSkipped,
   };
-
-  // --- Pre-flight QA (content + video) -----------------------------
-  // Conservative hard-fail gate. Content QA catches metadata /
-  // script / caption issues (content-qa.js). Video QA catches
-  // render-level issues (video-qa.js — duration bounds, long black
-  // segments). Warnings from both are attached to the result for
-  // the Discord summary. Failures from either short-circuit the
-  // publish entirely. Never runs on retries — those stories were
-  // already published once, so the artefacts are known-good.
-  //
-  // Any throw from a QA helper is caught and logged — a broken QA
-  // helper must NEVER stop the daily publish cycle, and its failure
-  // is less bad than the unverified-but-publishable stories it
-  // would otherwise shield.
-  if (!isRetry) {
-    try {
-      const { runContentQa } = require("./lib/services/content-qa");
-      const cqa = await runContentQa(story);
-      if (cqa.warnings && cqa.warnings.length > 0) {
-        console.log(
-          `[publisher] content QA warnings: ${cqa.warnings.join(", ")}`,
-        );
-        result.qa_warnings = (result.qa_warnings || []).concat(cqa.warnings);
-      }
-      if (cqa.result === "fail") {
-        console.log(
-          `[publisher] content QA FAIL — refusing to publish: ${cqa.failures.join(", ")}`,
-        );
-        // Persist qa_failed state BEFORE returning so the same story
-        // doesn't re-enter every future publish window (09/14/19 UTC).
-        // The selector at the top of this function skips qa_failed
-        // and publish_status="failed" rows, so this one write kills
-        // the retry loop until an operator re-runs the processor /
-        // produce to regenerate the offending artefact (script, mp4,
-        // etc.) and clear the flag.
-        story.qa_failed = true;
-        story.qa_failures = cqa.failures;
-        story.qa_warnings = (result.qa_warnings || []).concat(
-          cqa.warnings || [],
-        );
-        story.qa_failed_at = new Date().toISOString();
-        story.publish_status = "failed";
-        story.publish_error = `qa_blocked: ${cqa.failures[0] || "unknown"}`;
-        try {
-          await db.upsertStory(story);
-        } catch (persistErr) {
-          console.log(
-            `[publisher] CRITICAL: failed to persist content-QA fail state for ${story.id}: ${persistErr.message}`,
-          );
-          captureException(persistErr, {
-            step: "publishNextStory.content_qa_persist",
-            storyId: story.id,
-          });
-        }
-        return {
-          ...result,
-          qa_failed: true,
-          qa_failures: cqa.failures,
-          qa_warnings: cqa.warnings || [],
-          publish_status: "failed",
-        };
-      }
-    } catch (qaErr) {
-      console.log(`[publisher] content-qa error (non-fatal): ${qaErr.message}`);
-    }
-    try {
-      const { runVideoQa } = require("./lib/services/video-qa");
-      const vqa = story.exported_path
-        ? await runVideoQa(story.exported_path)
-        : { result: "skip", reason: "no_exported_path" };
-      if (vqa.result === "warn" && Array.isArray(vqa.warnings)) {
-        console.log(
-          `[publisher] video QA warnings: ${vqa.warnings.join(", ")}`,
-        );
-        result.qa_warnings = (result.qa_warnings || []).concat(vqa.warnings);
-      }
-      if (vqa.result === "fail") {
-        console.log(
-          `[publisher] video QA FAIL — refusing to publish: ${vqa.failures.join(", ")}`,
-        );
-        // Same rationale as the content-QA branch above — persist the
-        // block before returning so the broken mp4 doesn't come back
-        // for another go at the next publish window.
-        story.qa_failed = true;
-        story.qa_failures = vqa.failures;
-        story.qa_warnings = result.qa_warnings || [];
-        story.qa_failed_at = new Date().toISOString();
-        story.publish_status = "failed";
-        story.publish_error = `qa_blocked: ${vqa.failures[0] || "unknown"}`;
-        try {
-          await db.upsertStory(story);
-        } catch (persistErr) {
-          console.log(
-            `[publisher] CRITICAL: failed to persist video-QA fail state for ${story.id}: ${persistErr.message}`,
-          );
-          captureException(persistErr, {
-            step: "publishNextStory.video_qa_persist",
-            storyId: story.id,
-          });
-        }
-        return {
-          ...result,
-          qa_failed: true,
-          qa_failures: vqa.failures,
-          qa_warnings: result.qa_warnings || [],
-          publish_status: "failed",
-        };
-      }
-      if (vqa.result === "skip") {
-        // ffmpeg/ffprobe not installed or no exported_path — don't
-        // block, just note it. Most prod deploys have ffmpeg; dev
-        // boxes without it shouldn't be running the publisher.
-        console.log(`[publisher] video QA skipped: ${vqa.reason || "unknown"}`);
-      }
-    } catch (qaErr) {
-      console.log(`[publisher] video-qa error (non-fatal): ${qaErr.message}`);
-    }
-  }
 
   // Sentinel-cleanup cutover: block/skip outcomes for every platform in
   // this function persist to platform_posts as structured rows
@@ -1256,7 +1354,11 @@ async function _publishNextStoryInner() {
 
   // Schedule first-hour engagement pass (only on first successful YT publish)
   if (story.youtube_post_id && !isRetry) {
-    setTimeout(
+    // .unref() so this 5-minute timer doesn't keep the Node event
+    // loop alive on its own — in production the Express server
+    // keeps the process up, and under test we want the publisher
+    // to return a Promise that actually settles the event loop.
+    const t = setTimeout(
       async () => {
         try {
           const { engageFirstHour } = require("./engagement");
@@ -1269,6 +1371,7 @@ async function _publishNextStoryInner() {
       },
       5 * 60 * 1000,
     );
+    if (t && typeof t.unref === "function") t.unref();
     console.log(
       `[publisher] First-hour engagement scheduled for ${story.youtube_post_id} in 5 min`,
     );

@@ -31,80 +31,54 @@ const SRC = fs.readFileSync(PUBLISHER_PATH, "utf8");
 
 // ---------- source-scan pins ----------
 
-test("publisher.js: content-QA fail branch persists qa_failed + publish_status=failed BEFORE returning", () => {
-  // Find the content-QA fail block. Anchor on the log line we emit
-  // for this specific failure so we're not matching the video-QA
-  // block or anything else.
-  const idx = SRC.indexOf("content QA FAIL — refusing to publish");
-  assert.ok(
-    idx > 0,
-    "content QA fail log line must exist as an anchor for this test",
-  );
-  // Take a generous window forward from the anchor — the block
-  // spans roughly 30 lines including persistence + return.
+test("publisher.js: persistQaFail helper writes qa_failed + publish_status=failed and awaits upsertStory", () => {
+  // Refactored 2026-04-22 into a reusable helper so the multi-
+  // candidate loop can persist every QA-failing candidate it
+  // walks past, not just the first one.
+  const idx = SRC.indexOf("async function persistQaFail(");
+  assert.ok(idx > 0, "persistQaFail helper must exist");
   const block = SRC.slice(idx, idx + 2500);
   assert.match(
     block,
     /story\.qa_failed\s*=\s*true/,
-    "content-QA fail block must set story.qa_failed = true",
+    "persistQaFail must set story.qa_failed = true",
   );
   assert.match(
     block,
     /story\.publish_status\s*=\s*["']failed["']/,
-    "content-QA fail block must set story.publish_status = 'failed'",
+    "persistQaFail must set story.publish_status = 'failed'",
   );
   assert.match(
     block,
     /story\.publish_error\s*=/,
-    "content-QA fail block must set story.publish_error",
+    "persistQaFail must set story.publish_error",
   );
   assert.match(
     block,
     /await\s+db\.upsertStory\(story\)/,
-    "content-QA fail block must persist via db.upsertStory before return",
-  );
-  // Ensure the upsertStory call is BEFORE the return (not after).
-  const returnIdx = block.indexOf("return {");
-  const upsertIdx = block.indexOf("db.upsertStory(story)");
-  assert.ok(
-    upsertIdx > 0 && upsertIdx < returnIdx,
-    "db.upsertStory must precede the return statement",
+    "persistQaFail must call db.upsertStory",
   );
 });
 
-test("publisher.js: video-QA fail branch persists qa_failed + publish_status=failed BEFORE returning", () => {
-  const idx = SRC.indexOf("video QA FAIL — refusing to publish");
-  assert.ok(
-    idx > 0,
-    "video QA fail log line must exist as an anchor for this test",
-  );
-  const block = SRC.slice(idx, idx + 2500);
+test("publisher.js: runPreflightQa runs content-QA then video-QA and returns structured pass/fail", () => {
+  const idx = SRC.indexOf("async function runPreflightQa(");
+  assert.ok(idx > 0, "runPreflightQa helper must exist");
+  const block = SRC.slice(idx, idx + 3500);
+  assert.match(block, /runContentQa/, "runPreflightQa must call content-QA");
+  assert.match(block, /runVideoQa/, "runPreflightQa must call video-QA");
   assert.match(
     block,
-    /story\.qa_failed\s*=\s*true/,
-    "video-QA fail block must set story.qa_failed = true",
-  );
-  assert.match(
-    block,
-    /story\.publish_status\s*=\s*["']failed["']/,
-    "video-QA fail block must set story.publish_status = 'failed'",
+    /source:\s*["']content["']/,
+    "content-QA fail result must tag source: 'content'",
   );
   assert.match(
     block,
-    /await\s+db\.upsertStory\(story\)/,
-    "video-QA fail block must persist via db.upsertStory before return",
-  );
-  const returnIdx = block.indexOf("return {");
-  const upsertIdx = block.indexOf("db.upsertStory(story)");
-  assert.ok(
-    upsertIdx > 0 && upsertIdx < returnIdx,
-    "video-QA fail: db.upsertStory must precede the return statement",
+    /source:\s*["']video["']/,
+    "video-QA fail result must tag source: 'video'",
   );
 });
 
 test("publisher.js: publishNextStory selector skips qa_failed and publish_status=failed", () => {
-  // Locate the selector block. Anchor on the specific comment we
-  // added for the fix so we're matching the right filter.
   const selectorIdx = SRC.indexOf(
     "Find stories that still need publishing to at least one platform",
   );
@@ -122,6 +96,31 @@ test("publisher.js: publishNextStory selector skips qa_failed and publish_status
   );
 });
 
+test("publisher.js: multi-candidate loop uses MAX_PUBLISH_CANDIDATES_PER_WINDOW cap and persists failures via persistQaFail", () => {
+  // Anchor on the constant declaration to make sure it exists with
+  // a concrete number (not inferred). 3 ≤ cap ≤ 10 is a sanity
+  // bound — anything smaller and a small backlog of stale stories
+  // exhausts the window, anything larger and a truly broken batch
+  // could burn the publish window on 20+ QA checks.
+  const m = SRC.match(/const\s+MAX_PUBLISH_CANDIDATES_PER_WINDOW\s*=\s*(\d+)/);
+  assert.ok(m, "MAX_PUBLISH_CANDIDATES_PER_WINDOW constant must exist");
+  const cap = parseInt(m[1], 10);
+  assert.ok(cap >= 3 && cap <= 10, `cap out of sensible range: ${cap}`);
+
+  // And the main loop must pull its slice from that constant.
+  assert.match(
+    SRC,
+    /ready\.slice\(0,\s*MAX_PUBLISH_CANDIDATES_PER_WINDOW\)/,
+    "multi-candidate loop must slice the ready list with the cap constant",
+  );
+  // No-safe-candidate return shape must include the fields the
+  // Discord summary consumes.
+  assert.match(SRC, /no_safe_candidate:\s*true/);
+  assert.match(SRC, /qa_skipped_count:/);
+  assert.match(SRC, /top_reason:/);
+  assert.match(SRC, /candidates_tried:/);
+});
+
 // ---------- integration: publishNextStory end-to-end ----------
 
 const PUBLISHER_RESOLVED = require.resolve("../../publisher.js");
@@ -132,6 +131,12 @@ const NOTIFY_RESOLVED = require.resolve("../../notify.js");
 const SENTRY_RESOLVED = require.resolve("../../lib/sentry.js");
 const PUBLISH_BLOCK_RESOLVED =
   require.resolve("../../lib/services/publish-block.js");
+const ENGAGEMENT_RESOLVED = require.resolve("../../engagement.js");
+const BLOG_RESOLVED = require.resolve("../../blog/generator.js");
+const DISCORD_AUTO_POST_RESOLVED =
+  require.resolve("../../discord/auto_post.js");
+const DISCORD_POST_GATE_RESOLVED =
+  require.resolve("../../lib/services/discord-post-gate.js");
 
 function stubModule(resolvedPath, exports) {
   require.cache[resolvedPath] = {
@@ -140,6 +145,43 @@ function stubModule(resolvedPath, exports) {
     loaded: true,
     exports,
   };
+}
+
+// Neutralise every downstream module publisher.js loads AFTER a
+// successful upload — engagement, blog, discord. Without these
+// stubs: engageFirstHour schedules a 5-min setTimeout that keeps
+// the Node event loop alive past test completion; Discord post-
+// gate + auto-post open real webhook connections; blog generator
+// writes files. Tests that go through a successful-publish path
+// would otherwise run to the 60s file-level timeout.
+function stubDownstreamPublisherDeps() {
+  stubModule(ENGAGEMENT_RESOLVED, {
+    async engageFirstHour() {},
+    async engageRecent() {},
+    async generatePollComment() {
+      return null;
+    },
+    async pinComment() {
+      return null;
+    },
+  });
+  stubModule(BLOG_RESOLVED, {
+    async generateAndSaveBlogPost() {},
+  });
+  stubModule(DISCORD_AUTO_POST_RESOLVED, {
+    async postVideoUpload() {
+      return null;
+    },
+    async postStoryPoll() {
+      return null;
+    },
+  });
+  stubModule(DISCORD_POST_GATE_RESOLVED, {
+    shouldPostVideoDrop: () => false,
+    shouldPostStoryPoll: () => false,
+    markVideoDropPosted: () => {},
+    markStoryPollPosted: () => {},
+  });
 }
 
 function clearPublisherCache() {
@@ -200,9 +242,97 @@ function setupMocks({ cqaResult, vqaResult, stories }) {
     getPlatformStatus: () => null,
   });
 
+  stubDownstreamPublisherDeps();
+
   // Track uploader calls — if QA-fail works, none of these should
   // ever get invoked. We intercept via require.cache of the module
   // paths the publisher imports lazily inside the function body.
+  for (const name of [
+    "upload_youtube",
+    "upload_tiktok",
+    "upload_instagram",
+    "upload_facebook",
+    "upload_twitter",
+  ]) {
+    const resolved = require.resolve(`../../${name}.js`);
+    stubModule(resolved, {
+      async uploadShort() {
+        uploaderCalls.push(name);
+        return { videoId: "should_not_be_called", url: "x" };
+      },
+      async uploadAll() {
+        uploaderCalls.push(name);
+        return [];
+      },
+      async uploadReelViaUrl() {
+        uploaderCalls.push(name);
+        return { videoId: "x" };
+      },
+      async uploadStoryImage() {
+        uploaderCalls.push(name);
+        return { mediaId: "x", storyId: "x" };
+      },
+      async postImageTweet() {
+        uploaderCalls.push(name);
+        return { tweetId: "x" };
+      },
+    });
+  }
+
+  clearPublisherCache();
+  return require("../../publisher.js");
+}
+
+// Variant of setupMocks where content-QA returns a per-story result
+// keyed by story.id. Used by multi-candidate tests that need "bad
+// story fails QA, next story passes" behaviour in a single test run.
+function setupMocksPerStory({ perStoryCqa, vqaResult, stories }) {
+  dbState = {
+    stories: stories.slice(),
+    upsertCalls: [],
+  };
+  uploaderCalls = [];
+
+  stubModule(NOTIFY_RESOLVED, async () => {});
+  stubModule(SENTRY_RESOLVED, {
+    addBreadcrumb: () => {},
+    captureException: () => {},
+  });
+  stubModule(DB_RESOLVED, {
+    async getStories() {
+      return dbState.stories.slice();
+    },
+    async upsertStory(story) {
+      dbState.upsertCalls.push({ ...story });
+      const idx = dbState.stories.findIndex((s) => s.id === story.id);
+      if (idx >= 0) dbState.stories[idx] = { ...story };
+      else dbState.stories.push({ ...story });
+    },
+    async saveStories(arr) {
+      dbState.stories = arr.slice();
+    },
+  });
+  stubModule(CQA_RESOLVED, {
+    async runContentQa(story) {
+      return (
+        perStoryCqa[story.id] || {
+          result: "pass",
+          failures: [],
+          warnings: [],
+        }
+      );
+    },
+  });
+  stubModule(VQA_RESOLVED, {
+    async runVideoQa() {
+      return vqaResult;
+    },
+  });
+  stubModule(PUBLISH_BLOCK_RESOLVED, {
+    recordPlatformBlock: () => ({ persisted: false }),
+    getPlatformStatus: () => null,
+  });
+
   for (const name of [
     "upload_youtube",
     "upload_tiktok",
@@ -268,11 +398,15 @@ test("publishNextStory: content-QA fail persists qa_failed=true + publish_status
 
   const result = await publishNextStory();
 
-  // Return value carries the QA-fail fingerprint.
-  assert.strictEqual(result.qa_failed, true);
-  assert.deepStrictEqual(result.qa_failures, [
-    "script_too_short (12 words, min 80)",
-  ]);
+  // Single-candidate QA fail now returns the multi-candidate
+  // "no safe candidate" shape (qa_skipped_count=1) because the
+  // publisher exhausted its cap without finding a clean story.
+  assert.strictEqual(result.no_safe_candidate, true);
+  assert.strictEqual(result.qa_skipped_count, 1);
+  assert.strictEqual(result.candidates_tried, 1);
+  assert.match(result.top_reason, /^content_qa:/);
+  assert.strictEqual(result.qa_skipped.length, 1);
+  assert.strictEqual(result.qa_skipped[0].source, "content");
 
   // State was persisted via db.upsertStory at least once.
   assert.ok(
@@ -333,7 +467,9 @@ test("publishNextStory: video-QA fail persists qa_failed=true + publish_status=f
   });
 
   const result = await publishNextStory();
-  assert.strictEqual(result.qa_failed, true);
+  assert.strictEqual(result.no_safe_candidate, true);
+  assert.match(result.top_reason, /^video_qa:/);
+  assert.strictEqual(result.qa_skipped[0].source, "video");
 
   const persisted = dbState.upsertCalls[dbState.upsertCalls.length - 1];
   assert.strictEqual(persisted.qa_failed, true);
@@ -345,6 +481,226 @@ test("publishNextStory: video-QA fail persists qa_failed=true + publish_status=f
     [],
     `no uploader should be called after video-QA fail, got: ${uploaderCalls.join(", ")}`,
   );
+});
+
+// ---------- multi-candidate fallback tests (2026-04-22) ----------
+//
+// Drive the publisher with a list of stubbed candidates where the
+// first N fail QA and one later candidate passes. Asserts:
+//   - earlier candidates are persisted qa_failed=true
+//   - only one upload happens (the passing candidate's)
+//   - result.qa_skipped_count reports how many were walked past
+//   - the cap stops the loop after MAX candidates even if more
+//     bad stories remain
+
+test("multi-candidate: first QA-fails, second passes — second uploads, qa_skipped_count=1", async () => {
+  const bad = {
+    id: "rss_bad",
+    title: "Stale mp4",
+    approved: true,
+    exported_path: "/tmp/bad.mp4",
+  };
+  const good = {
+    id: "rss_good",
+    title: "Healthy mp4",
+    approved: true,
+    exported_path: "/tmp/good.mp4",
+  };
+  // Stub content-QA: fail for `bad.id`, pass for `good.id`.
+  const { publishNextStory } = setupMocksPerStory({
+    perStoryCqa: {
+      rss_bad: {
+        result: "fail",
+        failures: ["exported_mp4_not_on_disk"],
+        warnings: [],
+      },
+      rss_good: { result: "pass", failures: [], warnings: [] },
+    },
+    vqaResult: { result: "pass", failures: [], warnings: [] },
+    stories: [bad, good],
+  });
+
+  const result = await publishNextStory();
+
+  // Bad story got persisted qa_failed=true
+  const badRow = dbState.stories.find((s) => s.id === "rss_bad");
+  assert.strictEqual(badRow.qa_failed, true);
+  assert.strictEqual(badRow.publish_status, "failed");
+
+  // Good story got published — result has the normal success shape
+  assert.strictEqual(result.no_safe_candidate, undefined);
+  assert.strictEqual(result.title, "Healthy mp4");
+  assert.strictEqual(result.qa_skipped_count, 1);
+  assert.ok(result.qa_skipped && result.qa_skipped.length === 1);
+  assert.strictEqual(result.qa_skipped[0].id, "rss_bad");
+
+  // Uploader WAS called (for the good story) — at least one core
+  // platform was attempted.
+  assert.ok(
+    uploaderCalls.length > 0,
+    "expected uploader calls for the passing candidate",
+  );
+});
+
+test("multi-candidate: 3 QA-fail candidates are all marked failed, no uploads", async () => {
+  const stories = [
+    {
+      id: "rss_a",
+      title: "A",
+      approved: true,
+      exported_path: "/tmp/a.mp4",
+    },
+    {
+      id: "rss_b",
+      title: "B",
+      approved: true,
+      exported_path: "/tmp/b.mp4",
+    },
+    {
+      id: "rss_c",
+      title: "C",
+      approved: true,
+      exported_path: "/tmp/c.mp4",
+    },
+  ];
+  const { publishNextStory } = setupMocks({
+    cqaResult: {
+      result: "fail",
+      failures: ["exported_mp4_not_on_disk"],
+      warnings: [],
+    },
+    vqaResult: { result: "pass", failures: [], warnings: [] },
+    stories,
+  });
+
+  const result = await publishNextStory();
+  assert.strictEqual(result.no_safe_candidate, true);
+  assert.strictEqual(result.qa_skipped_count, 3);
+  assert.strictEqual(result.candidates_tried, 3);
+
+  // Every story is now qa_failed=true
+  for (const id of ["rss_a", "rss_b", "rss_c"]) {
+    const row = dbState.stories.find((s) => s.id === id);
+    assert.strictEqual(
+      row.qa_failed,
+      true,
+      `${id} must be persisted qa_failed=true`,
+    );
+    assert.strictEqual(row.publish_status, "failed");
+  }
+  assert.deepStrictEqual(
+    uploaderCalls,
+    [],
+    "no uploader should fire when all candidates fail QA",
+  );
+});
+
+test("multi-candidate: cap stops the loop at MAX (5) even if more candidates exist", async () => {
+  // 7 candidates all fail — only the first 5 should be tried.
+  const stories = Array.from({ length: 7 }, (_, i) => ({
+    id: `rss_cap_${i}`,
+    title: `Cap ${i}`,
+    approved: true,
+    exported_path: `/tmp/c${i}.mp4`,
+  }));
+  const { publishNextStory } = setupMocks({
+    cqaResult: {
+      result: "fail",
+      failures: ["script_missing"],
+      warnings: [],
+    },
+    vqaResult: { result: "pass", failures: [], warnings: [] },
+    stories,
+  });
+
+  const result = await publishNextStory();
+  assert.strictEqual(result.no_safe_candidate, true);
+  assert.strictEqual(
+    result.candidates_tried,
+    5,
+    "cap must limit the walk to 5",
+  );
+  assert.strictEqual(result.qa_skipped_count, 5);
+
+  // The 6th and 7th stories were never touched — still not qa_failed.
+  const unSeen6 = dbState.stories.find((s) => s.id === "rss_cap_5");
+  const unSeen7 = dbState.stories.find((s) => s.id === "rss_cap_6");
+  assert.notStrictEqual(unSeen6.qa_failed, true);
+  assert.notStrictEqual(unSeen7.qa_failed, true);
+});
+
+test("multi-candidate: partial retry candidate is taken immediately (QA skipped, uploaders fire)", async () => {
+  // Partial retry: youtube already done, others missing. isRetry=true
+  // means QA is skipped (artefacts known-good from first publish).
+  const partial = {
+    id: "rss_partial_retry",
+    title: "Retry me",
+    approved: true,
+    exported_path: "/tmp/p.mp4",
+    publish_status: "partial",
+    youtube_post_id: "yt_real",
+    tiktok_post_id: null,
+    instagram_media_id: null,
+    facebook_post_id: null,
+  };
+  // Even if QA stub would fail, the retry path must not run it.
+  const { publishNextStory } = setupMocks({
+    cqaResult: {
+      result: "fail",
+      failures: ["WOULD_BLOCK_IF_CALLED"],
+      warnings: [],
+    },
+    vqaResult: { result: "pass", failures: [], warnings: [] },
+    stories: [partial],
+  });
+
+  const result = await publishNextStory();
+  // Not treated as no-safe-candidate — retry proceeds.
+  assert.strictEqual(result.no_safe_candidate, undefined);
+  assert.ok(uploaderCalls.length > 0, "retry must invoke uploaders");
+
+  // The partial story was NOT persisted as qa_failed — QA wasn't run.
+  const row = dbState.stories.find((s) => s.id === "rss_partial_retry");
+  assert.notStrictEqual(
+    row.qa_failed,
+    true,
+    "retry candidate must not be qa_failed",
+  );
+});
+
+test("multi-candidate: soft warnings on passing candidate do not block publish (classification audit)", async () => {
+  // Content-QA returns result="warn" (warnings but zero hard-fails).
+  // Publisher must treat this as pass and upload — the warnings
+  // get attached to result.qa_warnings for the Discord summary.
+  const story = {
+    id: "rss_warnings",
+    title: "Warn but ship",
+    approved: true,
+    exported_path: "/tmp/w.mp4",
+  };
+  const { publishNextStory } = setupMocks({
+    cqaResult: {
+      result: "warn",
+      failures: [],
+      warnings: [
+        "story_card_path_set_but_missing",
+        "entity_overlay_coverage_low",
+      ],
+    },
+    vqaResult: {
+      result: "warn",
+      failures: [],
+      warnings: ["opening_black (0.8s)"],
+    },
+    stories: [story],
+  });
+
+  const result = await publishNextStory();
+  assert.strictEqual(result.no_safe_candidate, undefined);
+  assert.ok(uploaderCalls.length > 0, "soft warnings must NOT block publish");
+  // Warnings from both QA passes are preserved for summary rendering.
+  assert.ok(Array.isArray(result.qa_warnings));
+  assert.ok(result.qa_warnings.length >= 2);
 });
 
 test("publishNextStory: QA-failed story is NOT re-selected on subsequent calls (deadlock fixed)", async () => {
@@ -368,34 +724,34 @@ test("publishNextStory: QA-failed story is NOT re-selected on subsequent calls (
     stories: [bad, good],
   });
 
-  // First call: picks bad, QA-fails it, persists qa_failed=true.
-  await publishNextStory();
+  // First call with multi-candidate fallback: both bad AND good go
+  // through QA in the SAME call because cqaResult is shared. Both
+  // fail → both marked qa_failed → no_safe_candidate.
+  const result = await publishNextStory();
+  assert.strictEqual(result.no_safe_candidate, true);
 
-  // Mutate the CQA stub to PASS for the retry so we can prove the
-  // selector picked `good` — but in reality, the bad story should
-  // be filtered out before it reaches the QA stub at all.
-  // We do this by re-stubbing content-qa and clearing the publisher
-  // cache. For simplicity, just assert bad is now qa_failed=true
-  // and was NOT the second pick.
   const badRow = dbState.stories.find((s) => s.id === "rss_broken");
-  assert.strictEqual(badRow.qa_failed, true);
+  assert.strictEqual(
+    badRow.qa_failed,
+    true,
+    "bad story should be persisted qa_failed=true",
+  );
   assert.strictEqual(badRow.publish_status, "failed");
-
-  // Second call — the QA stub still returns fail (same setup).
-  // If the selector were broken, it would pick bad again and
-  // try to QA-fail it a second time (idempotent but wrong). Here
-  // we pass a fresh content-qa that would fail, yet the selector
-  // has to skip the bad row entirely and land on `good` — which
-  // would then ALSO fail QA (both stubs return fail), but the
-  // important invariant is that both stories end up qa_failed,
-  // proving the selector advanced past bad.
-  await publishNextStory();
 
   const goodRow = dbState.stories.find((s) => s.id === "rss_good");
   assert.strictEqual(
     goodRow.qa_failed,
     true,
-    "second call should have selected `good` (not the already-failed `bad`)",
+    "good story (with same failing QA stub) should also be qa_failed after multi-candidate walk",
+  );
+
+  // Deadlock invariant: a subsequent call must skip both (selector
+  // filter on qa_failed === true).
+  const result2 = await publishNextStory();
+  assert.strictEqual(
+    result2,
+    null,
+    "subsequent call must find NO eligible story (both are qa_failed)",
   );
 });
 
@@ -492,11 +848,10 @@ test("selector: fully-published story is skipped (platformsDone === 5)", () => {
   assert.strictEqual(selectorFilter(fullyDone), false);
 });
 
-test("publishNextStory: QA-fail return shape includes publish_status='failed' for callers", async () => {
-  // The scheduled job handler inspects the result shape. Make
-  // sure publish_status="failed" is in the returned object as
-  // well, not just persisted — that way job summaries can render
-  // "QA blocked" rather than a bland "skipped".
+test("publishNextStory: no-safe-candidate return shape carries top_reason + qa_skipped for callers", async () => {
+  // The scheduled job handler / Discord renderer inspects this
+  // shape. Pin the contract — if any of these fields are renamed,
+  // the Discord summary will break.
   const story = {
     id: "rss_shape",
     title: "Return shape",
@@ -514,7 +869,12 @@ test("publishNextStory: QA-fail return shape includes publish_status='failed' fo
   });
 
   const result = await publishNextStory();
-  assert.strictEqual(result.qa_failed, true);
-  assert.strictEqual(result.publish_status, "failed");
-  assert.deepStrictEqual(result.qa_failures, ["script_missing"]);
+  assert.strictEqual(result.no_safe_candidate, true);
+  assert.strictEqual(result.qa_skipped_count, 1);
+  assert.strictEqual(result.candidates_tried, 1);
+  assert.match(result.top_reason, /^content_qa:\s*script_missing$/);
+  assert.ok(Array.isArray(result.qa_skipped));
+  assert.strictEqual(result.qa_skipped[0].id, "rss_shape");
+  assert.strictEqual(result.qa_skipped[0].source, "content");
+  assert.strictEqual(result.qa_skipped[0].reason, "script_missing");
 });

@@ -312,3 +312,122 @@ test("no summary when publishNextStory returned null result", () => {
   const s = renderPublishSummary(null);
   assert.equal(s, null);
 });
+
+// ---------- Multi-candidate fallback Discord summaries (2026-04-22) ----
+
+test("no-safe-candidate result renders failed summary with Top reason + Skipped count", () => {
+  // Every candidate in the window hit a QA hard-fail. Operator must
+  // see (a) that the window failed, (b) how many candidates were
+  // tried, (c) what broke them.
+  const result = {
+    no_safe_candidate: true,
+    candidates_tried: 3,
+    qa_skipped_count: 3,
+    top_reason: "content_qa: exported_mp4_not_on_disk",
+    qa_skipped: [
+      {
+        id: "a",
+        title: "Story A",
+        reason: "exported_mp4_not_on_disk",
+        source: "content",
+      },
+      {
+        id: "b",
+        title: "Story B",
+        reason: "exported_mp4_not_on_disk",
+        source: "content",
+      },
+      {
+        id: "c",
+        title: "Story C",
+        reason: "script_missing",
+        source: "content",
+      },
+    ],
+  };
+  const s = renderPublishSummary(result, { jobId: 999 });
+  assert.equal(s.status, "failed");
+  assert.match(s.message, /Pulse Gaming Publish Attempt/);
+  assert.match(s.message, /job #999/);
+  assert.match(s.message, /No safe publish candidate passed QA/);
+  assert.match(s.message, /Candidates tried: 3/);
+  assert.match(s.message, /Skipped QA-failed candidates: 3/);
+  assert.match(s.message, /Top reason: content_qa: exported_mp4_not_on_disk/);
+  assert.match(s.message, /Story A/);
+  assert.match(s.message, /Story B/);
+  assert.match(s.message, /Story C/);
+});
+
+test("successful publish with qa_skipped_count > 0 includes the skipped line", () => {
+  // First candidate QA-failed, second candidate published fine.
+  // Operator wants to know the window nearly burned.
+  const result = {
+    title: "Retro Raiders Remaster",
+    youtube: true,
+    tiktok: true,
+    instagram: true,
+    facebook: true,
+    twitter: false,
+    skipped: { twitter: "twitter_disabled" },
+    errors: {},
+    fallbacks: {},
+    qa_skipped_count: 1,
+    qa_skipped: [
+      {
+        id: "x",
+        title: "Stale mp4",
+        reason: "exported_mp4_not_on_disk",
+        source: "content",
+      },
+    ],
+  };
+  const s = renderPublishSummary(result, { jobId: 42 });
+  assert.equal(s.status, "ok");
+  assert.match(s.message, /Retro Raiders Remaster/);
+  assert.match(s.message, /Skipped QA-failed candidates: 1/);
+});
+
+test("successful publish with qa_skipped_count = 0 does NOT render the skipped line", () => {
+  const result = {
+    title: "Clean first pass",
+    youtube: true,
+    tiktok: true,
+    instagram: true,
+    facebook: true,
+    twitter: false,
+    skipped: { twitter: "twitter_disabled" },
+    errors: {},
+    fallbacks: {},
+    qa_skipped_count: 0,
+  };
+  const s = renderPublishSummary(result);
+  assert.equal(s.status, "ok");
+  assert.doesNotMatch(s.message, /Skipped QA-failed candidates/);
+});
+
+test("no-safe-candidate summary is still concise (no secrets, no full stack trace)", () => {
+  // Pin: the failed-candidates block shows up to 3 entries, titles
+  // are truncated to 80 chars, and no raw qa_failures arrays leak.
+  const longTitle = "A".repeat(200);
+  const result = {
+    no_safe_candidate: true,
+    candidates_tried: 5,
+    qa_skipped_count: 5,
+    top_reason: "content_qa: script_too_short (12 words, min 80)",
+    qa_skipped: Array.from({ length: 5 }, (_, i) => ({
+      id: `rss_${i}`,
+      title: longTitle,
+      reason: "script_too_short",
+      source: "content",
+    })),
+  };
+  const s = renderPublishSummary(result);
+  assert.equal(s.status, "failed");
+  // Only the first 3 titles should appear in the "Failed candidates" list.
+  const titleHits = (s.message.match(/A{80}/g) || []).length;
+  assert.equal(titleHits, 3, "summary must cap the displayed titles at 3");
+  // Individual titles are truncated to 80 chars — no 200-char run.
+  assert.doesNotMatch(s.message, /A{100}/);
+  // Under 2000 chars (Discord cap).
+  assert.ok(s.message.length < 2000);
+});

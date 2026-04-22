@@ -21,6 +21,7 @@ const { withRetry } = require("./lib/retry");
 const { addBreadcrumb, captureException } = require("./lib/sentry");
 const { validateVideo } = require("./lib/validate");
 const db = require("./lib/db");
+const mediaPaths = require("./lib/media-paths");
 
 dotenv.config({ override: true });
 
@@ -241,7 +242,12 @@ async function uploadShort(story) {
   addBreadcrumb(`Twitter upload: ${story.title}`, "upload");
   return withRetry(
     async () => {
-      await validateVideo(story.exported_path, "twitter");
+      // Resolve through media-paths so the MP4 is found under
+      // MEDIA_ROOT (persistent) when set, with repo-root fallback.
+      const exportedAbs =
+        (await mediaPaths.resolveExisting(story.exported_path)) ||
+        story.exported_path;
+      await validateVideo(exportedAbs, "twitter");
 
       // Build tweet text (280 char limit)
       let text =
@@ -261,7 +267,7 @@ async function uploadShort(story) {
       );
 
       // Upload media
-      const mediaId = await uploadMedia(story.exported_path);
+      const mediaId = await uploadMedia(exportedAbs);
 
       // Post tweet
       const tweet = await postTweet(finalText, mediaId);
@@ -331,10 +337,10 @@ async function postImageTweet(story) {
   addBreadcrumb(`Twitter image tweet: ${story.title}`, "upload");
   return withRetry(
     async () => {
-      if (
-        !story.story_image_path ||
-        !(await fs.pathExists(story.story_image_path))
-      ) {
+      const storyImageAbs = story.story_image_path
+        ? await mediaPaths.resolveExisting(story.story_image_path)
+        : null;
+      if (!storyImageAbs || !(await fs.pathExists(storyImageAbs))) {
         throw new Error("Story image not found on disk");
       }
 
@@ -364,7 +370,7 @@ async function postImageTweet(story) {
       );
 
       // Upload image via chunked media upload
-      const fileSize = (await fs.stat(story.story_image_path)).size;
+      const fileSize = (await fs.stat(storyImageAbs)).size;
       const UPLOAD_URL = "https://upload.twitter.com/1.1/media/upload.json";
 
       // INIT for image - query params MUST be in OAuth signature
@@ -384,7 +390,7 @@ async function postImageTweet(story) {
       console.log(`[twitter] Image INIT: ${mediaId}`);
 
       // APPEND - single chunk for images (typically under 5MB)
-      const fileBuffer = await fs.readFile(story.story_image_path);
+      const fileBuffer = await fs.readFile(storyImageAbs);
       const FormData =
         (await import("form-data")).default || require("form-data");
       const form = new FormData();

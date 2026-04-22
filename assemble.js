@@ -1475,10 +1475,18 @@ async function assemble() {
       continue;
     }
 
+    // DB stores the repo-relative path; the physical write target
+    // is resolved through media-paths so it lands under MEDIA_ROOT
+    // (e.g. /data/media) in production and on the ephemeral `output/`
+    // tree in local dev when MEDIA_ROOT is unset.
     const outputPath = path.join("output", "final", `${story.id}.mp4`);
-    await fs.ensureDir(path.dirname(outputPath));
+    const mediaPaths = require("./lib/media-paths");
+    const writeTargetPath = mediaPaths.writePath(outputPath);
+    await fs.ensureDir(path.dirname(writeTargetPath));
 
-    const audioDuration = await getAudioDuration(story.audio_path);
+    const audioPathAbs =
+      (await mediaPaths.resolveExisting(story.audio_path)) || story.audio_path;
+    const audioDuration = await getAudioDuration(audioPathAbs);
     const duration = audioDuration + 1; // 1s breathing room so CTA doesn't cut off abruptly
 
     // Collect real downloaded images (NOT the composite thumbnail)
@@ -1586,10 +1594,10 @@ async function assemble() {
     const { filterGraph, command: cmd } = buildVideoCommand(
       story,
       images,
-      story.audio_path,
+      audioPathAbs,
       assPath,
       filterScriptPath,
-      outputPath,
+      writeTargetPath,
       duration,
       musicPath,
     );
@@ -1598,10 +1606,12 @@ async function assemble() {
     try {
       await execAsync(cmd, { timeout: 600000, maxBuffer: 10 * 1024 * 1024 });
 
+      // DB gets the repo-relative path (unchanged contract);
+      // filesystem ops use the resolved absolute target.
       story.exported_path = outputPath;
       rendered++;
 
-      const stat = await fs.stat(outputPath);
+      const stat = await fs.stat(writeTargetPath);
       console.log(
         `[assemble] Exported: ${outputPath} (${Math.round(stat.size / 1024 / 1024)}MB)`,
       );
@@ -1610,8 +1620,8 @@ async function assemble() {
       try {
         const teaserPath = await generateTeaser(
           story,
-          outputPath,
-          path.dirname(outputPath),
+          writeTargetPath,
+          path.dirname(writeTargetPath),
         );
         if (teaserPath) story.teaser_path = teaserPath;
       } catch (err) {
@@ -1851,7 +1861,7 @@ async function assemble() {
           fbAudioMapping,
           `-c:v libx264 -crf 21 -preset medium -threads ${FFMPEG_THREADS}`,
           "-c:a aac -b:a 192k -r 30 -shortest",
-          `-movflags +faststart "${outputPath}"`,
+          `-movflags +faststart "${writeTargetPath}"`,
         ].join(" ");
         await execAsync(simpleCmd, {
           timeout: 600000,
@@ -1859,8 +1869,10 @@ async function assemble() {
         });
 
         // Add intro/outro bumpers
-        await concatWithBumpers(outputPath, story.id);
+        await concatWithBumpers(writeTargetPath, story.id);
 
+        // DB gets the repo-relative path (unchanged contract);
+        // filesystem ops use the resolved absolute target.
         story.exported_path = outputPath;
         rendered++;
         console.log(
@@ -1871,8 +1883,8 @@ async function assemble() {
         try {
           const teaserPath = await generateTeaser(
             story,
-            outputPath,
-            path.dirname(outputPath),
+            writeTargetPath,
+            path.dirname(writeTargetPath),
           );
           if (teaserPath) story.teaser_path = teaserPath;
         } catch (teaserErr) {

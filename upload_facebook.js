@@ -19,6 +19,7 @@ const { withRetry } = require("./lib/retry");
 const { addBreadcrumb, captureException } = require("./lib/sentry");
 const { validateVideo } = require("./lib/validate");
 const db = require("./lib/db");
+const mediaPaths = require("./lib/media-paths");
 
 dotenv.config({ override: true });
 
@@ -59,7 +60,12 @@ async function uploadReel(story) {
       const accessToken = await getAccessToken();
       const pageId = getPageId();
 
-      await validateVideo(story.exported_path, "facebook");
+      // Resolve the MP4 via media-paths so Facebook reads from
+      // MEDIA_ROOT (persistent) when set, with repo-root fallback.
+      const exportedAbs =
+        (await mediaPaths.resolveExisting(story.exported_path)) ||
+        story.exported_path;
+      await validateVideo(exportedAbs, "facebook");
 
       const publicBaseUrl =
         process.env.RAILWAY_PUBLIC_URL ||
@@ -104,7 +110,7 @@ async function uploadReel(story) {
       console.log(`[facebook] Step 1 OK: video_id=${videoId}`);
 
       // Step 2: Upload the video binary (with 120s timeout)
-      const videoBuffer = await fs.readFile(story.exported_path);
+      const videoBuffer = await fs.readFile(exportedAbs);
       const fileSize = videoBuffer.length;
       console.log(
         `[facebook] Step 2/3: Uploading ${Math.round(fileSize / 1024 / 1024)}MB binary to ${uploadUrl.substring(0, 60)}...`,
@@ -405,10 +411,12 @@ async function uploadStoryImage(story) {
       const accessToken = await getAccessToken();
       const pageId = getPageId();
 
-      if (
-        !story.story_image_path ||
-        !(await fs.pathExists(story.story_image_path))
-      ) {
+      // Resolve through media-paths — card may live under
+      // MEDIA_ROOT on Railway, repo-root in dev.
+      const storyImageAbs = story.story_image_path
+        ? await mediaPaths.resolveExisting(story.story_image_path)
+        : null;
+      if (!storyImageAbs || !(await fs.pathExists(storyImageAbs))) {
         throw new Error("Story image not found on disk");
       }
 
@@ -417,7 +425,7 @@ async function uploadStoryImage(story) {
       );
 
       // Step 1: Upload the photo to the page (unpublished) so we get a photo_id
-      const imageBuffer = await fs.readFile(story.story_image_path);
+      const imageBuffer = await fs.readFile(storyImageAbs);
       const FormData =
         (await import("form-data")).default || require("form-data");
       const form = new FormData();

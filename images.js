@@ -2,6 +2,7 @@ const fs = require("fs-extra");
 const path = require("path");
 const dotenv = require("dotenv");
 const db = require("./lib/db");
+const mediaPaths = require("./lib/media-paths");
 
 dotenv.config({ override: true });
 
@@ -298,8 +299,10 @@ async function generateImages() {
     return;
   }
 
-  await fs.ensureDir(OUTPUT_DIR);
-  await fs.ensureDir(CACHE_DIR);
+  // Resolve through media-paths so the output tree lands under
+  // MEDIA_ROOT on Railway (persistent) and under the repo in dev.
+  await fs.ensureDir(mediaPaths.writePath(OUTPUT_DIR));
+  await fs.ensureDir(mediaPaths.writePath(CACHE_DIR));
 
   const toProcess = stories.filter((s) => s.approved === true && !s.image_path);
 
@@ -339,7 +342,9 @@ async function generateImages() {
     );
     if (heroImg) {
       try {
-        const buf = await fs.readFile(heroImg.path);
+        const heroAbs =
+          (await mediaPaths.resolveExisting(heroImg.path)) || heroImg.path;
+        const buf = await fs.readFile(heroAbs);
         heroBase64 = buf.toString("base64");
       } catch (err) {
         console.log(`[images] Could not read hero image: ${err.message}`);
@@ -349,7 +354,9 @@ async function generateImages() {
     const logoImg = availableImages.find((i) => i.type === "company_logo");
     if (logoImg) {
       try {
-        const buf = await fs.readFile(logoImg.path);
+        const logoAbs =
+          (await mediaPaths.resolveExisting(logoImg.path)) || logoImg.path;
+        const buf = await fs.readFile(logoAbs);
         logoBase64 = buf.toString("base64");
       } catch (err) {
         // Skip logo
@@ -368,9 +375,14 @@ async function generateImages() {
       bgBase64,
     );
 
+    // DB stores the repo-relative path (unchanged contract). The
+    // physical write goes through media-paths so it lands under
+    // MEDIA_ROOT on Railway.
     const svgPath = path.join(OUTPUT_DIR, `${story.id}.svg`);
     const pngPath = path.join(OUTPUT_DIR, `${story.id}.png`);
-    await fs.writeFile(svgPath, svg, "utf-8");
+    const svgWriteAbs = mediaPaths.writePath(svgPath);
+    const pngWriteAbs = mediaPaths.writePath(pngPath);
+    await fs.writeFile(svgWriteAbs, svg, "utf-8");
 
     // Convert SVG to PNG via Sharp
     try {
@@ -382,9 +394,9 @@ async function generateImages() {
         .resize(1080, 1920)
         .modulate({ hue: hueShift, brightness: brightnessMod })
         .png({ quality: 95 })
-        .toFile(pngPath);
+        .toFile(pngWriteAbs);
       story.image_path = pngPath;
-      const stat = await fs.stat(pngPath);
+      const stat = await fs.stat(pngWriteAbs);
       console.log(
         `[images] Saved: ${pngPath} (${Math.round(stat.size / 1024)}KB)`,
       );
@@ -424,6 +436,7 @@ async function generateImages() {
         OUTPUT_DIR,
         `${story.id}${variant.suffix}.png`,
       );
+      const variantPngWriteAbs = mediaPaths.writePath(variantPngPath);
 
       try {
         const sharp = require("sharp");
@@ -434,9 +447,9 @@ async function generateImages() {
           .resize(1080, 1920)
           .modulate({ hue: variantHueShift, brightness: variantBrightnessMod })
           .png({ quality: 95 })
-          .toFile(variantPngPath);
+          .toFile(variantPngWriteAbs);
         story[variant.storyKey] = variantPngPath;
-        const stat = await fs.stat(variantPngPath);
+        const stat = await fs.stat(variantPngWriteAbs);
         console.log(
           `[images] Saved ${variant.platform} variant: ${variantPngPath} (${Math.round(stat.size / 1024)}KB)`,
         );

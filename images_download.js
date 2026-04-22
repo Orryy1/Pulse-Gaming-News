@@ -7,6 +7,7 @@ const fs = require("fs-extra");
 const path = require("path");
 const axios = require("axios");
 const { classifyOutboundUrl } = require("./lib/safe-url");
+const mediaPaths = require("./lib/media-paths");
 
 const CACHE_DIR = path.join("output", "image_cache");
 const VIDEO_CACHE_DIR = path.join("output", "video_cache");
@@ -91,8 +92,15 @@ function buildSteamSearchCandidates(rawTitle) {
 
 // --- Download and cache a video clip from URL ---
 async function downloadVideoClip(url, filename) {
+  // DB rows get the repo-relative path (unchanged contract).
+  // Physical writes go through media-paths so the cache lives on
+  // /data/media in production and under the repo in dev. Existence
+  // check looks in BOTH roots so we don't redownload a file that
+  // already exists on the old (legacy) repo-root location.
   const cachePath = path.join(VIDEO_CACHE_DIR, filename);
-  if (await fs.pathExists(cachePath)) return cachePath;
+  if (await mediaPaths.pathExists(cachePath)) {
+    return (await mediaPaths.resolveExisting(cachePath)) || cachePath;
+  }
 
   // SSRF guard — reject non-http(s), localhost, RFC1918, cloud
   // metadata IPs before we let axios touch them. A malicious RSS
@@ -115,18 +123,22 @@ async function downloadVideoClip(url, filename) {
       maxContentLength: 50 * 1024 * 1024, // 50MB max
     });
 
-    await fs.ensureDir(VIDEO_CACHE_DIR);
-    await fs.writeFile(cachePath, Buffer.from(response.data));
+    const videoCacheDirAbs = mediaPaths.writePath(VIDEO_CACHE_DIR);
+    await fs.ensureDir(videoCacheDirAbs);
+    const cacheWriteAbs = mediaPaths.writePath(cachePath);
+    await fs.writeFile(cacheWriteAbs, Buffer.from(response.data));
 
-    const stat = await fs.stat(cachePath);
+    const stat = await fs.stat(cacheWriteAbs);
     if (stat.size < 10000) {
-      await fs.remove(cachePath);
+      await fs.remove(cacheWriteAbs);
       return null;
     }
 
     console.log(
       `[images] Cached video: ${filename} (${Math.round(stat.size / 1024)}KB)`,
     );
+    // Return the repo-relative path so the DB and downstream
+    // consumers stay location-independent.
     return cachePath;
   } catch (err) {
     return null;
@@ -135,8 +147,12 @@ async function downloadVideoClip(url, filename) {
 
 // --- Download and cache an image from URL ---
 async function downloadImage(url, filename) {
+  // Same pattern as downloadVideoClip above — DB-relative paths,
+  // physical writes under MEDIA_ROOT when set.
   const cachePath = path.join(CACHE_DIR, filename);
-  if (await fs.pathExists(cachePath)) return cachePath;
+  if (await mediaPaths.pathExists(cachePath)) {
+    return (await mediaPaths.resolveExisting(cachePath)) || cachePath;
+  }
 
   // SSRF guard (same reasoning as downloadVideoClip). The article-
   // inline scraper in getBestImage() iterates every <img> tag on a
@@ -159,35 +175,38 @@ async function downloadImage(url, filename) {
       maxContentLength: 20 * 1024 * 1024, // 20MB cap — images shouldn't be bigger
     });
 
-    await fs.ensureDir(CACHE_DIR);
-    await fs.writeFile(cachePath, Buffer.from(response.data));
+    const cacheDirAbs = mediaPaths.writePath(CACHE_DIR);
+    await fs.ensureDir(cacheDirAbs);
+    const cacheWriteAbs = mediaPaths.writePath(cachePath);
+    await fs.writeFile(cacheWriteAbs, Buffer.from(response.data));
 
-    const stat = await fs.stat(cachePath);
+    const stat = await fs.stat(cacheWriteAbs);
     if (stat.size < 1000) {
-      await fs.remove(cachePath);
+      await fs.remove(cacheWriteAbs);
       return null;
     }
 
     // Verify minimum dimensions - skip low-res images that look bad at 1080x1920
     try {
       const sharp = require("sharp");
-      const meta = await sharp(cachePath).metadata();
+      const meta = await sharp(cacheWriteAbs).metadata();
       if (meta.width < 400 || meta.height < 400) {
         console.log(
           `[images] Skipping low-res image: ${meta.width}x${meta.height}`,
         );
-        await fs.remove(cachePath);
+        await fs.remove(cacheWriteAbs);
         return null;
       }
     } catch (e) {
       // If sharp can't read it, the image is probably corrupt
-      await fs.remove(cachePath);
+      await fs.remove(cacheWriteAbs);
       return null;
     }
 
     console.log(
       `[images] Cached: ${filename} (${Math.round(stat.size / 1024)}KB)`,
     );
+    // Return repo-relative path — DB portability across envs.
     return cachePath;
   } catch (err) {
     return null;

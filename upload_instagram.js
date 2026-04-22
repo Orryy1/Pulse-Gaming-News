@@ -6,6 +6,7 @@ const { withRetry } = require("./lib/retry");
 const { addBreadcrumb, captureException } = require("./lib/sentry");
 const { validateVideo } = require("./lib/validate");
 const db = require("./lib/db");
+const mediaPaths = require("./lib/media-paths");
 
 dotenv.config({ override: true });
 
@@ -112,7 +113,13 @@ async function uploadReel(story) {
       const accessToken = await getAccessToken();
       const accountId = getAccountId();
 
-      await validateVideo(story.exported_path, "instagram");
+      // Resolve the MP4 path through media-paths so the upload
+      // reads from MEDIA_ROOT (persistent) when set, with repo-
+      // root fallback for legacy rows.
+      const exportedAbs =
+        (await mediaPaths.resolveExisting(story.exported_path)) ||
+        story.exported_path;
+      await validateVideo(exportedAbs, "instagram");
 
       // Build caption - channel-aware hashtags
       const { getChannel } = require("./channels");
@@ -139,7 +146,7 @@ async function uploadReel(story) {
       // Seed token from env on first run so auto-refresh can work
       await seedTokenFromEnv();
 
-      const videoBuffer = await fs.readFile(story.exported_path);
+      const videoBuffer = await fs.readFile(exportedAbs);
       const fileSize = videoBuffer.length;
       console.log(
         `[instagram] Uploading Reel (${Math.round(fileSize / 1024)}KB): "${(story.suggested_thumbnail_text || story.title).substring(0, 50)}..."`,
@@ -404,9 +411,11 @@ async function uploadStoryImage(story) {
       const accessToken = await getAccessToken();
       const accountId = getAccountId();
 
+      // Resolve through media-paths — story card may live under
+      // MEDIA_ROOT on Railway or under the repo root in dev.
       if (
         !story.story_image_path ||
-        !(await fs.pathExists(story.story_image_path))
+        !(await mediaPaths.pathExists(story.story_image_path))
       ) {
         throw new Error("Story image not found on disk");
       }

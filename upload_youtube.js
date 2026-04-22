@@ -6,6 +6,7 @@ const { withRetry } = require("./lib/retry");
 const { addBreadcrumb, captureException } = require("./lib/sentry");
 const { validateVideo } = require("./lib/validate");
 const db = require("./lib/db");
+const mediaPaths = require("./lib/media-paths");
 
 dotenv.config({ override: true });
 
@@ -472,7 +473,11 @@ async function uploadShort(story) {
       const auth = await getAuthClient();
       const youtube = google.youtube({ version: "v3", auth });
 
-      await validateVideo(story.exported_path, "youtube");
+      // Resolve the MP4 path through media-paths so the YouTube
+      // uploader picks it up from MEDIA_ROOT (persistent volume)
+      // when set, with repo-root fallback for legacy DB rows.
+      const exportedAbs = await mediaPaths.resolveExisting(story.exported_path);
+      await validateVideo(exportedAbs || story.exported_path, "youtube");
 
       const { title, description, tags } = buildMetadata(story);
 
@@ -621,7 +626,7 @@ async function uploadShort(story) {
           },
         },
         media: {
-          body: fs.createReadStream(story.exported_path),
+          body: fs.createReadStream(exportedAbs || story.exported_path),
         },
       });
 
@@ -638,8 +643,14 @@ async function uploadShort(story) {
         );
       }
 
-      // Set custom thumbnail from story card image (or fall back to composite image)
-      const thumbPath = [story.story_image_path, story.image_path].find(
+      // Set custom thumbnail from story card image (or fall back to composite image).
+      // Each candidate resolves through media-paths so the file is
+      // found under MEDIA_ROOT when set.
+      const thumbCandidates = [story.story_image_path, story.image_path]
+        .filter(Boolean)
+        .map((p) => mediaPaths.resolveExistingSync(p))
+        .filter(Boolean);
+      const thumbPath = thumbCandidates.find(
         (p) => p && require("fs").existsSync(p),
       );
       if (thumbPath) {

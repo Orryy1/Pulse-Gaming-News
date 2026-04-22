@@ -5,6 +5,7 @@ const dotenv = require("dotenv");
 const { exec } = require("child_process");
 const util = require("util");
 const db = require("./lib/db");
+const mediaPaths = require("./lib/media-paths");
 
 const execAsync = util.promisify(exec);
 
@@ -146,16 +147,20 @@ async function getAudioDuration(audioPath) {
 
 // --- Concatenate multiple MP3 files via ffmpeg ---
 async function concatAudioFiles(files, outputPath) {
-  const listPath = outputPath.replace(/\.mp3$/, "_concat.txt");
+  // Resolve through media-paths so the list file + output land
+  // next to the segment mp3s the caller wrote via generateTTS
+  // (which now lives under MEDIA_ROOT in production).
+  const outputAbs = mediaPaths.writePath(outputPath);
+  const listAbs = outputAbs.replace(/\.mp3$/, "_concat.txt");
   const listContent = files.map((f) => `file '${path.basename(f)}'`).join("\n");
-  await fs.writeFile(listPath, listContent);
+  await fs.writeFile(listAbs, listContent);
   try {
     await execAsync(
-      `ffmpeg -y -f concat -safe 0 -i "${listPath.replace(/\\/g, "/")}" -c copy "${outputPath.replace(/\\/g, "/")}"`,
+      `ffmpeg -y -f concat -safe 0 -i "${listAbs.replace(/\\/g, "/")}" -c copy "${outputAbs.replace(/\\/g, "/")}"`,
       { timeout: 30000 },
     );
   } finally {
-    await fs.remove(listPath).catch(() => {});
+    await fs.remove(listAbs).catch(() => {});
   }
 }
 
@@ -212,7 +217,12 @@ async function generateTTS(text, outputPath, rateOverride) {
     timeout: provider === "local" ? 120000 : 60000,
   });
 
-  await fs.ensureDir(path.dirname(outputPath));
+  // outputPath is the repo-relative path the caller passes in
+  // (e.g. `output/audio/abc.mp3`). writeTarget is where it
+  // actually lands on disk — under MEDIA_ROOT in production,
+  // under the repo root in local dev.
+  const writeTarget = mediaPaths.writePath(outputPath);
+  await fs.ensureDir(path.dirname(writeTarget));
 
   const audioBase64 = response.data.audio_base64;
   if (!audioBase64) {
@@ -220,12 +230,15 @@ async function generateTTS(text, outputPath, rateOverride) {
       `[audio] ${provider} returned no audio_base64 - check ${baseUrl} health`,
     );
   }
-  await fs.writeFile(outputPath, Buffer.from(audioBase64, "base64"));
+  await fs.writeFile(writeTarget, Buffer.from(audioBase64, "base64"));
 
   const timestampsPath = outputPath.replace(/\.mp3$/, "_timestamps.json");
+  const timestampsWriteTarget = mediaPaths.writePath(timestampsPath);
   const alignment = response.data.alignment || {};
-  await fs.writeJson(timestampsPath, alignment, { spaces: 2 });
+  await fs.writeJson(timestampsWriteTarget, alignment, { spaces: 2 });
 
+  // Return the repo-relative path so callers and the DB continue
+  // to treat the story.audio_path field as location-independent.
   return outputPath;
 }
 
@@ -301,9 +314,10 @@ async function generateAudio() {
           let cumulativeOffset = 0;
           for (const sp of segmentPaths) {
             const tsPath = sp.replace(/\.mp3$/, "_timestamps.json");
-            if (await fs.pathExists(tsPath)) {
+            const tsAbs = (await mediaPaths.resolveExisting(tsPath)) || tsPath;
+            if (await fs.pathExists(tsAbs)) {
               try {
-                const ts = await fs.readJson(tsPath);
+                const ts = await fs.readJson(tsAbs);
                 if (
                   ts.characters &&
                   ts.character_start_times_seconds &&

@@ -2,6 +2,7 @@ const fs = require("fs-extra");
 const path = require("path");
 const dotenv = require("dotenv");
 const db = require("./lib/db");
+const mediaPaths = require("./lib/media-paths");
 
 dotenv.config({ override: true });
 
@@ -155,7 +156,11 @@ async function generateStoryImages() {
     return;
   }
 
-  await fs.ensureDir(OUTPUT_DIR);
+  // OUTPUT_DIR is the repo-relative base ("output/stories") that
+  // lands in DB rows. The physical target dir may live under
+  // MEDIA_ROOT on Railway — resolve it before ensuring.
+  const outputDirAbs = mediaPaths.writePath(OUTPUT_DIR);
+  await fs.ensureDir(outputDirAbs);
 
   const toProcess = stories.filter(
     (s) => s.approved === true && s.exported_path && !s.story_image_path,
@@ -196,9 +201,12 @@ async function generateStoryImages() {
         return av - bv;
       });
       for (const heroImg of candidates) {
-        if (!(await fs.pathExists(heroImg.path))) continue;
+        // Downloaded cache paths go through media-paths too —
+        // MEDIA_ROOT when set, repo-root fallback for legacy rows.
+        const heroAbs = await mediaPaths.resolveExisting(heroImg.path);
+        if (!heroAbs || !(await fs.pathExists(heroAbs))) continue;
         try {
-          const buf = await fs.readFile(heroImg.path);
+          const buf = await fs.readFile(heroAbs);
           heroBase64 = buf.toString("base64");
           break;
         } catch (err) {
@@ -222,13 +230,18 @@ async function generateStoryImages() {
       story.classification,
     );
 
+    // DB stores the repo-relative path (unchanged contract). The
+    // physical write target resolves through media-paths so it
+    // lands under MEDIA_ROOT (e.g. /data/media) when set.
     const svgPath = path.join(OUTPUT_DIR, `${story.id}_story.svg`);
     const pngPath = path.join(OUTPUT_DIR, `${story.id}_story.png`);
-    await fs.writeFile(svgPath, svg, "utf-8");
+    const svgWriteAbs = mediaPaths.writePath(svgPath);
+    const pngWriteAbs = mediaPaths.writePath(pngPath);
+    await fs.writeFile(svgWriteAbs, svg, "utf-8");
 
     try {
       const sharp = require("sharp");
-      await sharp(Buffer.from(svg)).png({ quality: 95 }).toFile(pngPath);
+      await sharp(Buffer.from(svg)).png({ quality: 95 }).toFile(pngWriteAbs);
 
       story.story_image_path = pngPath;
       console.log(`[stories] Saved: ${pngPath}`);

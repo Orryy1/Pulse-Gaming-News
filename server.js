@@ -1162,6 +1162,7 @@ function isAuthenticatedRequest(req) {
 app.get("/api/story-image/:id", async (req, res) => {
   try {
     const { isPubliclyVisible } = require("./lib/public-story");
+    const mediaPaths = require("./lib/media-paths");
     const stories = readNews();
     const story = stories.find((s) => s.id === req.params.id);
     // "Story exists but not live AND caller not authed" looks the
@@ -1172,12 +1173,21 @@ app.get("/api/story-image/:id", async (req, res) => {
     if (!story.story_image_path) {
       return res.status(404).json({ error: "story image not found" });
     }
-    const filePath = path.resolve(story.story_image_path);
-    const allowedBase = path.resolve(__dirname, "output");
-    if (
-      !filePath.startsWith(allowedBase + path.sep) &&
-      filePath !== allowedBase
-    ) {
+    // Resolve through media-paths: tries MEDIA_ROOT first, falls
+    // back to repo-root. Containment check below must accept BOTH
+    // bases as legitimate so a MEDIA_ROOT=/data/media config still
+    // passes the `output/` gate.
+    const filePath = await mediaPaths.resolveExisting(story.story_image_path);
+    const allowedBases = [
+      path.resolve(__dirname, "output"),
+      mediaPaths.getMediaRoot()
+        ? path.resolve(mediaPaths.getMediaRoot(), "output")
+        : null,
+    ].filter(Boolean);
+    const inAllowedBase = allowedBases.some(
+      (base) => filePath === base || filePath.startsWith(base + path.sep),
+    );
+    if (!inAllowedBase) {
       return res.status(403).json({ error: "Access denied" });
     }
     if (!fs.existsSync(filePath)) {
@@ -1212,6 +1222,7 @@ app.get("/api/story-image/:id", async (req, res) => {
 app.get("/api/download/:id", async (req, res) => {
   try {
     const { isPubliclyVisible } = require("./lib/public-story");
+    const mediaPaths = require("./lib/media-paths");
     const stories = readNews();
     const story = stories.find((s) => s.id === req.params.id);
 
@@ -1222,12 +1233,22 @@ app.get("/api/download/:id", async (req, res) => {
       return res.status(404).json({ error: "video not found" });
     }
 
-    const filePath = path.resolve(story.exported_path);
-    const allowedBase = path.resolve(__dirname, "output");
-    if (
-      !filePath.startsWith(allowedBase + path.sep) &&
-      filePath !== allowedBase
-    ) {
+    // Resolve through media-paths — same rationale as
+    // /api/story-image above. Containment check accepts BOTH the
+    // repo-root `output/` base and (if set) the MEDIA_ROOT `output/`
+    // base so a Railway config with a persistent volume still
+    // clears the sandbox gate.
+    const filePath = await mediaPaths.resolveExisting(story.exported_path);
+    const allowedBases = [
+      path.resolve(__dirname, "output"),
+      mediaPaths.getMediaRoot()
+        ? path.resolve(mediaPaths.getMediaRoot(), "output")
+        : null,
+    ].filter(Boolean);
+    const inAllowedBase = allowedBases.some(
+      (base) => filePath === base || filePath.startsWith(base + path.sep),
+    );
+    if (!inAllowedBase) {
       return res.status(403).json({ error: "Access denied" });
     }
     if (!fs.existsSync(filePath)) {

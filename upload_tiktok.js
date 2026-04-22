@@ -6,6 +6,7 @@ const { withRetry } = require("./lib/retry");
 const { addBreadcrumb, captureException } = require("./lib/sentry");
 const { validateVideo } = require("./lib/validate");
 const db = require("./lib/db");
+const mediaPaths = require("./lib/media-paths");
 
 dotenv.config({ override: true });
 
@@ -417,9 +418,15 @@ async function uploadVideo(story) {
     async () => {
       const accessToken = await getAccessToken();
 
-      await validateVideo(story.exported_path, "tiktok");
+      // Resolve MP4 via media-paths so TikTok reads from MEDIA_ROOT
+      // (persistent) when set, falling back to the repo-root
+      // `output/...` location for legacy rows.
+      const exportedAbs =
+        (await mediaPaths.resolveExisting(story.exported_path)) ||
+        story.exported_path;
+      await validateVideo(exportedAbs, "tiktok");
 
-      const fileSize = (await fs.stat(story.exported_path)).size;
+      const fileSize = (await fs.stat(exportedAbs)).size;
 
       // Build caption (TikTok max 2200 chars) - channel-aware hashtags
       const { getChannel } = require("./channels");
@@ -461,7 +468,7 @@ async function uploadVideo(story) {
       const { publish_id, upload_url } = initResponse.data.data;
 
       // Step 2: Upload video file
-      const videoBuffer = await fs.readFile(story.exported_path);
+      const videoBuffer = await fs.readFile(exportedAbs);
       await axios.put(upload_url, videoBuffer, {
         headers: {
           "Content-Type": "video/mp4",

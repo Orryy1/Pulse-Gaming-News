@@ -185,6 +185,19 @@ function emptyScoringSummary(reason) {
 async function produce() {
   console.log("[publisher] Running produce pipeline...");
 
+  // Pre-pass: self-heal stale path fields across all stories. If
+  // exported_path / audio_path / image_path / story_image_path are
+  // set but the file is gone (typical after a Railway redeploy
+  // before MEDIA_ROOT was configured), NULL the field so the
+  // appropriate stage below re-generates it. We DO NOT touch
+  // platform post ids — partial-retry semantics depend on them
+  // being preserved (otherwise we'd republish and create dup
+  // public posts).
+  //
+  // Runs once at the top of produce so every stage that follows
+  // sees a consistent "path set ⇔ file present" invariant.
+  await selfHealStaleMediaPaths();
+
   const affiliates = require("./affiliates");
   const audio = require("./audio");
   const images = require("./images");
@@ -205,6 +218,66 @@ async function produce() {
   await generateStoryImages();
 
   console.log("[publisher] Produce pipeline complete");
+}
+
+/**
+ * Self-heal stale media-path fields. Walks every story and, for
+ * each path field it stores, NULLs the field if the referenced
+ * file is missing on disk (resolved via lib/media-paths so
+ * MEDIA_ROOT is honoured). Platform post ids are intentionally
+ * NOT cleared — preserving them lets partial-retry logic only
+ * re-upload the platforms that actually need a fresh MP4.
+ *
+ * Exported for unit tests. Safe to call multiple times — it's a
+ * pure "path set but file missing → NULL" operation.
+ */
+async function selfHealStaleMediaPaths({ repos: _repos } = {}) {
+  const fs = require("fs-extra");
+  const mediaPaths = require("./lib/media-paths");
+  const stories = await db.getStories();
+  const fields = [
+    "exported_path",
+    "audio_path",
+    "image_path",
+    "story_image_path",
+  ];
+  let healed = 0;
+  for (const s of stories) {
+    let changed = false;
+    for (const field of fields) {
+      const val = s[field];
+      if (!val || typeof val !== "string") continue;
+      try {
+        const resolved = await mediaPaths.resolveExisting(val);
+        const exists = resolved ? await fs.pathExists(resolved) : false;
+        if (!exists) {
+          console.log(
+            `[self-heal] ${s.id}: ${field}=${val} missing on disk (checked ${resolved}) — clearing`,
+          );
+          s[field] = null;
+          changed = true;
+        }
+      } catch (err) {
+        console.log(
+          `[self-heal] ${s.id}: error checking ${field}=${val}: ${err.message}`,
+        );
+      }
+    }
+    if (changed) {
+      try {
+        await db.upsertStory(s);
+        healed++;
+      } catch (err) {
+        console.log(
+          `[self-heal] ${s.id}: failed to persist self-heal: ${err.message}`,
+        );
+      }
+    }
+  }
+  if (healed > 0) {
+    console.log(`[self-heal] cleared stale media paths on ${healed} stories`);
+  }
+  return { healed };
 }
 
 // --- Staggered multi-platform upload ---
@@ -796,31 +869,65 @@ async function _publishNextStoryInner() {
 
   const result = {
     title: story.title,
-    // --- CORE (video) platforms: weigh in on overall status ---
-    // Each of these booleans becomes true ONLY on a successful
-    // Reel/Short upload to the respective platform. Card/image posts
-    // DO NOT flip these — they live on `result.fallbacks` below.
+    // --- CORE (video) platforms: true iff a Reel/Short upload for
+    // this platform is now considered "done" — that includes both
+    // a fresh new upload AND an already-published state (partial
+    // retry). This flag feeds publish_status computation (the
+    // 4-core rule). It is NOT the signal for Discord rendering —
+    // Discord renders from result.platform_outcomes below.
     youtube: false,
     tiktok: false,
-    instagram: false, // Instagram Reel
-    facebook: false, // Facebook Reel
+    instagram: false,
+    facebook: false,
     twitter: false,
     errors: {},
-    // Structured skipped bucket for platforms that declined to run (e.g.
-    // Twitter/X disabled via TWITTER_ENABLED=false). Distinct from errors:
-    // the summary formatter renders these as "⏸ disabled" / "⏸ skipped"
-    // rather than "FAIL", and they don't count against the overall status.
     skipped: {},
-    // --- FALLBACK / COMPLEMENTARY posts ---
-    // Static card / story image posts that post ALONGSIDE the Reel,
-    // independently of whether the Reel succeeded. These have lower
-    // reach than Reels and must not be counted as "Facebook success"
-    // when the actual Reel failed. Discord summary renders these on a
-    // separate "Fallbacks:" line; overall status ignores them.
     fallbacks: {
-      facebook_card: false, // uploadStoryImage → /photo_stories
-      instagram_story: false, // Story image on IG
-      twitter_image: false, // Twitter image-tweet variant
+      facebook_card: false,
+      instagram_story: false,
+      twitter_image: false,
+    },
+    // --- TRUTHFUL PLATFORM OUTCOMES (2026-04-23 forensic audit) ---
+    //
+    // Before this field, `result.youtube = true` on a partial-retry
+    // story rendered `YT ✅` in Discord because the story already
+    // had a youtube_post_id from a previous window — the Discord
+    // operator couldn't tell a fresh upload from a 3-day-old one.
+    //
+    // platform_outcomes distinguishes every state the publisher
+    // walks through:
+    //
+    //   "new_upload"          — uploader was called this window,
+    //                           returned a fresh external id
+    //   "already_published"   — story row already had a post id
+    //                           from a prior window; we did NOT
+    //                           call the uploader
+    //   "duplicate_blocked"   — uploader refused (remote-dupe) or
+    //                           title-similarity pre-check blocked
+    //   "accepted_processing" — uploader returned an accepted/
+    //                           processing response without a final
+    //                           id (IG / FB Reel pending state)
+    //   "failed"              — uploader was called and threw
+    //   "skipped"             — optional platform declined (e.g.
+    //                           Twitter disabled) — never counts
+    //                           as failure or success
+    //   "not_attempted"       — no code path touched the platform
+    //                           (should not happen in steady state)
+    //
+    // lib/job-handlers.js::renderPublishSummary reads this map and
+    // renders per-platform glyphs accordingly. Status is derived
+    // from new_upload count — a window where every core platform
+    // is "already_published" produces NO new public post and now
+    // correctly renders `Status: no_new_post`.
+    platform_outcomes: {
+      youtube: "not_attempted",
+      tiktok: "not_attempted",
+      instagram: "not_attempted",
+      facebook: "not_attempted",
+      twitter: "not_attempted",
+      facebook_card: "not_attempted",
+      instagram_story: "not_attempted",
+      twitter_image: "not_attempted",
     },
     // QA metadata — preflight warnings we didn't block on, and
     // the count/list of earlier candidates we QA-skipped before
@@ -869,18 +976,19 @@ async function _publishNextStoryInner() {
   });
   if (story.youtube_post_id) {
     result.youtube = true;
+    result.platform_outcomes.youtube = "already_published";
     console.log(
       `[publisher] YouTube: already published (${story.youtube_post_id})`,
     );
   } else if (ytPrior && ytPrior.status === "blocked") {
-    // Structured record from a prior attempt — treat as "already handled"
-    // so we don't re-run uploadShort and burn an API call.
     result.youtube = true;
+    result.platform_outcomes.youtube = "duplicate_blocked";
     console.log(
       `[publisher] YouTube: already blocked (${ytPrior.block_reason || "unknown"})`,
     );
   } else if (ytTitleDupe) {
     result.youtube = true;
+    result.platform_outcomes.youtube = "duplicate_blocked";
     const blockResult = recordPlatformBlock({
       repos: pubRepos,
       storyId: story.id,
@@ -889,9 +997,6 @@ async function _publishNextStoryInner() {
       channelId: pubChannelId,
     });
     if (!blockResult.persisted) {
-      // Legacy fallback ONLY when platform_posts is unreachable (dev
-      // without SQLite). Keeps the old sentinel contract for the dev
-      // loop — never hit in production per dispatch-mode.
       story.youtube_post_id = "DUPE_SKIPPED";
     }
     console.log(
@@ -911,13 +1016,14 @@ async function _publishNextStoryInner() {
           channelId: pubChannelId,
         });
         if (!blockResult.persisted) {
-          story.youtube_post_id = "DUPE_BLOCKED"; // legacy dev fallback
+          story.youtube_post_id = "DUPE_BLOCKED";
         }
         console.log(
           `[publisher] YouTube: BLOCKED duplicate - ${ytResult.reason} ` +
             `(persisted=${blockResult.persisted})`,
         );
         result.youtube = false;
+        result.platform_outcomes.youtube = "duplicate_blocked";
         result.errors.youtube = `dupe-blocked: ${ytResult.reason}`;
       } else {
         story.youtube_post_id = ytResult.videoId;
@@ -925,8 +1031,8 @@ async function _publishNextStoryInner() {
         story.youtube_published_at = new Date().toISOString();
         console.log(`[publisher] YouTube: ${ytResult.url}`);
         result.youtube = true;
+        result.platform_outcomes.youtube = "new_upload";
       }
-      // Save immediately so concurrent calls see this story as published
       await db.upsertStory(story);
 
       if (story.title_variants && story.title_variants.length > 1) {
@@ -936,6 +1042,7 @@ async function _publishNextStoryInner() {
       console.log(`[publisher] YouTube upload failed: ${err.message}`);
       story.youtube_error = err.message;
       result.errors.youtube = err.message;
+      result.platform_outcomes.youtube = "failed";
     }
   }
 
@@ -954,15 +1061,18 @@ async function _publishNextStoryInner() {
   });
   if (story.tiktok_post_id) {
     result.tiktok = true;
+    result.platform_outcomes.tiktok = "already_published";
     console.log(
       `[publisher] TikTok: already published (${story.tiktok_post_id})`,
     );
   } else if (ttPrior && ttPrior.status === "blocked") {
     result.tiktok = true;
+    result.platform_outcomes.tiktok = "duplicate_blocked";
     console.log(
       `[publisher] TikTok: already blocked (${ttPrior.block_reason || "unknown"})`,
     );
   } else if (ttTitleDupe) {
+    result.platform_outcomes.tiktok = "duplicate_blocked";
     const blockResult = recordPlatformBlock({
       repos: pubRepos,
       storyId: story.id,
@@ -971,7 +1081,7 @@ async function _publishNextStoryInner() {
       channelId: pubChannelId,
     });
     if (!blockResult.persisted) {
-      story.tiktok_post_id = "DUPE_SKIPPED"; // legacy dev fallback only
+      story.tiktok_post_id = "DUPE_SKIPPED";
     }
     console.log(
       `[publisher] TikTok: SKIPPED duplicate title ~ "${ttTitleDupe.title}" ` +
@@ -985,6 +1095,7 @@ async function _publishNextStoryInner() {
       story.tiktok_post_id = ttResult.publishId;
       story.tiktok_error = null;
       result.tiktok = true;
+      result.platform_outcomes.tiktok = "new_upload";
       console.log(`[publisher] TikTok: uploaded (API)`);
       await db.upsertStory(story);
     } catch (err) {
@@ -1012,6 +1123,7 @@ async function _publishNextStoryInner() {
         );
         story.tiktok_error = safeMsg;
         result.errors.tiktok = safeMsg;
+        result.platform_outcomes.tiktok = "failed";
       } else {
         console.log(
           `[publisher] TikTok API failed: ${err.message}, trying browser fallback (TIKTOK_BROWSER_FALLBACK=true)...`,
@@ -1024,6 +1136,7 @@ async function _publishNextStoryInner() {
           story.tiktok_post_id = ttResult.publishId;
           story.tiktok_error = null;
           result.tiktok = true;
+          result.platform_outcomes.tiktok = "new_upload";
           console.log(`[publisher] TikTok: uploaded (browser)`);
           await db.upsertStory(story);
         } catch (browserErr) {
@@ -1032,6 +1145,7 @@ async function _publishNextStoryInner() {
           );
           story.tiktok_error = browserErr.message;
           result.errors.tiktok = browserErr.message;
+          result.platform_outcomes.tiktok = "failed";
         }
       }
     }
@@ -1052,15 +1166,18 @@ async function _publishNextStoryInner() {
   });
   if (story.instagram_media_id) {
     result.instagram = true;
+    result.platform_outcomes.instagram = "already_published";
     console.log(
       `[publisher] Instagram: already published (${story.instagram_media_id})`,
     );
   } else if (igPrior && igPrior.status === "blocked") {
     result.instagram = true;
+    result.platform_outcomes.instagram = "duplicate_blocked";
     console.log(
       `[publisher] Instagram: already blocked (${igPrior.block_reason || "unknown"})`,
     );
   } else if (igTitleDupe) {
+    result.platform_outcomes.instagram = "duplicate_blocked";
     const blockResult = recordPlatformBlock({
       repos: pubRepos,
       storyId: story.id,
@@ -1069,7 +1186,7 @@ async function _publishNextStoryInner() {
       channelId: pubChannelId,
     });
     if (!blockResult.persisted) {
-      story.instagram_media_id = "DUPE_SKIPPED"; // legacy dev fallback only
+      story.instagram_media_id = "DUPE_SKIPPED";
     }
     console.log(
       `[publisher] Instagram: SKIPPED duplicate title ~ "${igTitleDupe.title}" ` +
@@ -1094,12 +1211,14 @@ async function _publishNextStoryInner() {
       story.instagram_media_id = igResult.mediaId;
       story.instagram_error = null;
       result.instagram = true;
+      result.platform_outcomes.instagram = "new_upload";
       console.log(`[publisher] Instagram: uploaded`);
       await db.upsertStory(story);
     } catch (err) {
       console.log(`[publisher] Instagram upload failed: ${err.message}`);
       story.instagram_error = err.message;
       result.errors.instagram = err.message;
+      result.platform_outcomes.instagram = "failed";
     }
   }
 
@@ -1118,15 +1237,18 @@ async function _publishNextStoryInner() {
   });
   if (story.facebook_post_id) {
     result.facebook = true;
+    result.platform_outcomes.facebook = "already_published";
     console.log(
       `[publisher] Facebook: already published (${story.facebook_post_id})`,
     );
   } else if (fbPrior && fbPrior.status === "blocked") {
     result.facebook = true;
+    result.platform_outcomes.facebook = "duplicate_blocked";
     console.log(
       `[publisher] Facebook: already blocked (${fbPrior.block_reason || "unknown"})`,
     );
   } else if (fbTitleDupe) {
+    result.platform_outcomes.facebook = "duplicate_blocked";
     const blockResult = recordPlatformBlock({
       repos: pubRepos,
       storyId: story.id,
@@ -1135,7 +1257,7 @@ async function _publishNextStoryInner() {
       channelId: pubChannelId,
     });
     if (!blockResult.persisted) {
-      story.facebook_post_id = "DUPE_SKIPPED"; // legacy dev fallback only
+      story.facebook_post_id = "DUPE_SKIPPED";
     }
     console.log(
       `[publisher] Facebook: SKIPPED duplicate title ~ "${fbTitleDupe.title}" ` +
@@ -1160,12 +1282,14 @@ async function _publishNextStoryInner() {
       story.facebook_post_id = fbResult.videoId;
       story.facebook_error = null;
       result.facebook = true;
+      result.platform_outcomes.facebook = "new_upload";
       console.log(`[publisher] Facebook: uploaded`);
       await db.upsertStory(story);
     } catch (err) {
       console.log(`[publisher] Facebook upload failed: ${err.message}`);
       story.facebook_error = err.message;
       result.errors.facebook = err.message;
+      result.platform_outcomes.facebook = "failed";
     }
   }
 
@@ -1184,15 +1308,18 @@ async function _publishNextStoryInner() {
   });
   if (story.twitter_post_id) {
     result.twitter = true;
+    result.platform_outcomes.twitter = "already_published";
     console.log(
       `[publisher] Twitter: already published (${story.twitter_post_id})`,
     );
   } else if (twPrior && twPrior.status === "blocked") {
     result.twitter = true;
+    result.platform_outcomes.twitter = "duplicate_blocked";
     console.log(
       `[publisher] Twitter: already blocked (${twPrior.block_reason || "unknown"})`,
     );
   } else if (twTitleDupe) {
+    result.platform_outcomes.twitter = "duplicate_blocked";
     const blockResult = recordPlatformBlock({
       repos: pubRepos,
       storyId: story.id,
@@ -1201,7 +1328,7 @@ async function _publishNextStoryInner() {
       channelId: pubChannelId,
     });
     if (!blockResult.persisted) {
-      story.twitter_post_id = "DUPE_SKIPPED"; // legacy dev fallback only
+      story.twitter_post_id = "DUPE_SKIPPED";
     }
     console.log(
       `[publisher] Twitter: SKIPPED duplicate title ~ "${twTitleDupe.title}" ` +
@@ -1213,10 +1340,8 @@ async function _publishNextStoryInner() {
       const { uploadShort: twUpload } = require("./upload_twitter");
       const twResult = await twUpload(story);
       if (twResult && twResult.skipped) {
-        // Optional-channel short-circuit (e.g. TWITTER_ENABLED != true).
-        // Do not mark as success or failure — record the reason so the
-        // publish summary can render it as "⏸ disabled" instead of FAIL.
         result.skipped.twitter = twResult.reason || "skipped";
+        result.platform_outcomes.twitter = "skipped";
         console.log(
           `[publisher] Twitter: skipped (${twResult.reason || "skipped"})`,
         );
@@ -1224,6 +1349,7 @@ async function _publishNextStoryInner() {
         story.twitter_post_id = twResult.tweetId;
         story.twitter_error = null;
         result.twitter = true;
+        result.platform_outcomes.twitter = "new_upload";
         console.log(`[publisher] Twitter: uploaded`);
         await db.upsertStory(story);
       }
@@ -1231,6 +1357,7 @@ async function _publishNextStoryInner() {
       console.log(`[publisher] Twitter upload failed: ${err.message}`);
       story.twitter_error = err.message;
       result.errors.twitter = err.message;
+      result.platform_outcomes.twitter = "failed";
     }
   }
 
@@ -1282,6 +1409,7 @@ async function _publishNextStoryInner() {
     // Instagram Stories (static card, NOT a Reel — fallback post)
     if (story.instagram_story_id) {
       result.fallbacks.instagram_story = true;
+      result.platform_outcomes.instagram_story = "already_published";
       console.log(
         `[publisher] Instagram Story: already posted (${story.instagram_story_id})`,
       );
@@ -1291,6 +1419,7 @@ async function _publishNextStoryInner() {
         const igStoryResult = await igStory(story);
         story.instagram_story_id = igStoryResult.mediaId;
         result.fallbacks.instagram_story = true;
+        result.platform_outcomes.instagram_story = "new_upload";
         console.log(
           `[publisher] Instagram Story: uploaded (${igStoryResult.mediaId})`,
         );
@@ -1299,12 +1428,14 @@ async function _publishNextStoryInner() {
           `[publisher] Instagram Story upload failed: ${err.message}`,
         );
         result.errors.instagram_story = err.message;
+        result.platform_outcomes.instagram_story = "failed";
       }
     }
 
     // Facebook Stories (static card, NOT a Reel — fallback post)
     if (story.facebook_story_id) {
       result.fallbacks.facebook_card = true;
+      result.platform_outcomes.facebook_card = "already_published";
       console.log(
         `[publisher] Facebook Story: already posted (${story.facebook_story_id})`,
       );
@@ -1314,18 +1445,21 @@ async function _publishNextStoryInner() {
         const fbStoryResult = await fbStory(story);
         story.facebook_story_id = fbStoryResult.storyId;
         result.fallbacks.facebook_card = true;
+        result.platform_outcomes.facebook_card = "new_upload";
         console.log(
           `[publisher] Facebook Story: uploaded (${fbStoryResult.storyId})`,
         );
       } catch (err) {
         console.log(`[publisher] Facebook Story upload failed: ${err.message}`);
         result.errors.facebook_story = err.message;
+        result.platform_outcomes.facebook_card = "failed";
       }
     }
 
     // Twitter/X image tweet
     if (story.twitter_image_tweet_id) {
       result.fallbacks.twitter_image = true;
+      result.platform_outcomes.twitter_image = "already_published";
       console.log(
         `[publisher] Twitter image tweet: already posted (${story.twitter_image_tweet_id})`,
       );
@@ -1335,12 +1469,14 @@ async function _publishNextStoryInner() {
         const twImgResult = await postImageTweet(story);
         if (twImgResult && twImgResult.skipped) {
           result.skipped.twitter_image = twImgResult.reason || "skipped";
+          result.platform_outcomes.twitter_image = "skipped";
           console.log(
             `[publisher] Twitter image tweet skipped (${twImgResult.reason || "skipped"})`,
           );
         } else {
           story.twitter_image_tweet_id = twImgResult.tweetId;
           result.fallbacks.twitter_image = true;
+          result.platform_outcomes.twitter_image = "new_upload";
           console.log(
             `[publisher] Twitter image tweet: posted (${twImgResult.tweetId})`,
           );
@@ -1348,6 +1484,7 @@ async function _publishNextStoryInner() {
       } catch (err) {
         console.log(`[publisher] Twitter image tweet failed: ${err.message}`);
         result.errors.twitter_image = err.message;
+        result.platform_outcomes.twitter_image = "failed";
       }
     }
   }
@@ -1480,6 +1617,7 @@ module.exports = {
   publishNextStory,
   fullAutonomousCycle,
   publishOnlyCycle,
+  selfHealStaleMediaPaths,
 };
 
 if (require.main === module) {

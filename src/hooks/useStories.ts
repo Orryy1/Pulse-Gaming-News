@@ -291,19 +291,59 @@ export function useStories() {
     }
   };
 
-  const sortedStories = [...stories].sort((a, b) => {
-    if (a.status === "approved" && b.status !== "approved") return 1;
-    if (a.status !== "approved" && b.status === "approved") return -1;
-    return 0;
+  // 2026-04-23 dashboard truthfulness pass.
+  //
+  // Before this filter, every row in /api/news/full rendered as a
+  // card — including rows that the operator can't usefully act on
+  // from the review queue:
+  //
+  //   - publish_status="failed" (QA-blocked, the scoring/produce
+  //     stage must intervene, not the human)
+  //   - publish_status="published" (already fully shipped)
+  //   - classification in ("[DEFER]", "[REJECT]") (scoring
+  //     engine said no — an operator override path exists but
+  //     it's not the normal approval flow)
+  //
+  // Partial-retry rows (publish_status="partial") still render so
+  // the operator can track retry progress, but they're sorted
+  // AFTER pending-approval items and the APPROVE button is
+  // correctly disabled on them because story.approved is true.
+  //
+  // The filter is additive; we preserve the existing behaviour
+  // for every status that was previously rendered as actionable.
+  const HIDDEN_PUBLISH_STATUSES = new Set(["failed", "published"]);
+  const HIDDEN_CLASSIFICATIONS = new Set(["[DEFER]", "[REJECT]"]);
+  const visible = stories.filter((s) => {
+    const ps = s.story.publish_status || "";
+    if (HIDDEN_PUBLISH_STATUSES.has(ps)) return false;
+    const cls = (s.story as { classification?: string }).classification || "";
+    if (HIDDEN_CLASSIFICATIONS.has(cls)) return false;
+    return true;
   });
 
-  const approvedCount = stories.filter((s) => s.status === "approved").length;
+  const sortedStories = [...visible].sort((a, b) => {
+    // Pending-approval items (still actionable) first, so the
+    // operator's first scroll lands on stories they can approve.
+    // Partial-retry and already-approved rows bucket underneath.
+    if (a.status === "approved" && b.status !== "approved") return 1;
+    if (a.status !== "approved" && b.status === "approved") return -1;
+    // Within each bucket, sort by created_at DESC so newest is
+    // on top (matches DB order but is stable under frontend
+    // manipulation).
+    const aT = a.story.timestamp || "";
+    const bT = b.story.timestamp || "";
+    return bT.localeCompare(aT);
+  });
+
+  const approvedCount = visible.filter((s) => s.status === "approved").length;
+  const hiddenCount = stories.length - visible.length;
 
   return {
     stories: sortedStories,
     isLoading,
     error,
     approvedCount,
+    hiddenCount,
     refreshingStatsId,
     refresh: loadStories,
     handleApprove,

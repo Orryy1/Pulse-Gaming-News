@@ -758,6 +758,18 @@ app.get("/api/news", (req, res) => {
 app.get("/api/news/full", requireAuth, (req, res) => {
   try {
     const stories = readNews();
+    // 2026-04-23 dashboard truthfulness: cache-bust so the
+    // operator can't see a stale snapshot after a publish
+    // window fires. Without these headers, browser / CDN /
+    // service-worker caches were pinning /api/news/full for
+    // minutes at a time — which is how "Elden Ring still in
+    // review queue" looked stuck during today's audit.
+    res.setHeader(
+      "Cache-Control",
+      "no-store, no-cache, must-revalidate, max-age=0",
+    );
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
     res.json(Array.isArray(stories) ? stories : []);
   } catch (err) {
     console.log(`[server] ERROR reading full news: ${err.message}`);

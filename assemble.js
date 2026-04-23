@@ -1425,34 +1425,75 @@ async function assemble() {
     console.log("[assemble] No stories found.");
     return;
   }
-  // Re-render if exported file is suspiciously small (< 500KB = likely broken bumper-only)
+  // Pre-pass: self-heal stories whose exported_path is set but the
+  // MP4 is missing on disk, AND re-render stories whose MP4 is
+  // suspiciously small (< 500KB = likely broken bumper-only).
+  //
+  // MISSING-MP4 self-healing (2026-04-23):
+  //   When SQLite survived a redeploy that wiped the ephemeral
+  //   /app/output tree, story rows still point at an `output/final/
+  //   <id>.mp4` path that doesn't exist anywhere. Previously this
+  //   was invisible to assemble — `fs.pathExists` returned false,
+  //   the `if` above didn't enter, and the story sat in the backlog
+  //   forever with exported_path set. `publishNextStory` would then
+  //   pick it as a partial-retry candidate and fail TikTok upload
+  //   with "Video file not found".
+  //
+  //   Now we NULL `exported_path` so the main `toProcess` filter
+  //   below re-includes the story and produces a fresh MP4 on the
+  //   next produce cycle. Crucially we DO NOT clear platform post
+  //   ids — that would cause `publisher.js` to re-upload to
+  //   platforms that already have the story live and create
+  //   duplicate public posts. Partial-retry behaviour takes over:
+  //   existing YT/IG/FB IDs are preserved, only the missing
+  //   platforms retry against the freshly-rendered MP4.
+  //
+  // Path resolution goes through lib/media-paths so the check looks
+  // under MEDIA_ROOT (persistent volume) when set with a fallback
+  // to the legacy repo-root `output/...` location.
+  const mediaPaths = require("./lib/media-paths");
   for (const s of stories) {
-    if (s.exported_path && (await fs.pathExists(s.exported_path))) {
-      const stat = await fs.stat(s.exported_path);
-      if (stat.size < 500 * 1024) {
+    if (!s.exported_path) continue;
+    const resolved = await mediaPaths.resolveExisting(s.exported_path);
+    const exists = resolved ? await fs.pathExists(resolved) : false;
+    if (!exists) {
+      console.log(
+        `[assemble] ${s.id}: exported_path=${s.exported_path} MISSING on disk (checked ${resolved}), clearing field to force re-render (platform ids preserved)`,
+      );
+      s.exported_path = null;
+      try {
+        await db.upsertStory(s);
+      } catch (err) {
         console.log(
-          `[assemble] ${s.id}: exported file only ${Math.round(stat.size / 1024)}KB - re-rendering`,
+          `[assemble] ${s.id}: failed to persist exported_path=null: ${err.message}`,
         );
-        await fs.remove(s.exported_path);
-        delete s.exported_path;
-        // Clear image paths too so images.js re-downloads fresh copies
-        delete s.image_path;
-        delete s.downloaded_images;
-        // Clear publish IDs so the re-rendered video gets uploaded fresh.
-        // This must also include Story-card IDs — otherwise the Story block
-        // in publisher.js would see stale IDs and skip posting, OR (under
-        // the old !isRetry gate) see no Reels IDs and re-post a second time.
-        delete s.youtube_post_id;
-        delete s.youtube_url;
-        delete s.tiktok_post_id;
-        delete s.instagram_media_id;
-        delete s.facebook_post_id;
-        delete s.twitter_post_id;
-        delete s.instagram_story_id;
-        delete s.facebook_story_id;
-        delete s.twitter_image_tweet_id;
-        delete s.publish_status;
       }
+      continue;
+    }
+    const stat = await fs.stat(resolved);
+    if (stat.size < 500 * 1024) {
+      console.log(
+        `[assemble] ${s.id}: exported file only ${Math.round(stat.size / 1024)}KB - re-rendering`,
+      );
+      await fs.remove(resolved);
+      delete s.exported_path;
+      // Clear image paths too so images.js re-downloads fresh copies
+      delete s.image_path;
+      delete s.downloaded_images;
+      // Clear publish IDs so the re-rendered video gets uploaded fresh.
+      // This must also include Story-card IDs — otherwise the Story block
+      // in publisher.js would see stale IDs and skip posting, OR (under
+      // the old !isRetry gate) see no Reels IDs and re-post a second time.
+      delete s.youtube_post_id;
+      delete s.youtube_url;
+      delete s.tiktok_post_id;
+      delete s.instagram_media_id;
+      delete s.facebook_post_id;
+      delete s.twitter_post_id;
+      delete s.instagram_story_id;
+      delete s.facebook_story_id;
+      delete s.twitter_image_tweet_id;
+      delete s.publish_status;
     }
   }
 

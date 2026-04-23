@@ -1,289 +1,688 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Pulse Gaming // Command Centre</title>
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    body { background: #1E2330; margin: 0; font-family: 'Inter', system-ui, sans-serif; }
-    .neon { color: #39FF14; }
-    .neon-border { border-color: #39FF14; }
-    .neon-bg { background-color: #39FF14; color: #1E2330; }
-    .approved-banner {
-      position: absolute; top: 0; right: 0;
-      background: #39FF14; color: #1E2330; font-weight: 700; font-size: 12px;
-      padding: 4px 40px;
-      transform: rotate(45deg) translate(25%, -50%);
-      transform-origin: top right;
-      z-index: 10;
-    }
-    .spinner {
-      display: inline-block; width: 16px; height: 16px;
-      border: 2px solid rgba(255,255,255,0.3);
-      border-top-color: white; border-radius: 50%;
-      animation: spin 0.6s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.85);
-      display: flex; align-items: center; justify-content: center;
-      z-index: 50; flex-direction: column; gap: 16px;
-    }
-    .overlay .big-spinner {
-      width: 48px; height: 48px;
-      border: 4px solid rgba(57,255,20,0.3);
-      border-top-color: #39FF14; border-radius: 50%;
-      animation: spin 1s linear infinite;
-    }
-  </style>
-</head>
-<body>
-  <div id="root"></div>
-  <script type="text/babel">
-    const { useState, useEffect, useCallback } = React;
-
-    const FLAIR_COLOURS = {
-      'verified': 'bg-green-600',
-      'highly likely': 'bg-yellow-600',
-      'rumour': 'bg-orange-600',
-    };
-
-    function getFlairClass(flair) {
-      const lower = (flair || '').toLowerCase();
-      for (const [key, cls] of Object.entries(FLAIR_COLOURS)) {
-        if (lower.includes(key)) return cls;
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pulse Gaming // Command Centre</title>
+    <script
+      src="https://unpkg.com/react@18/umd/react.production.min.js"
+      crossorigin
+    ></script>
+    <script
+      src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"
+      crossorigin
+    ></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      body {
+        background: #1e2330;
+        margin: 0;
+        font-family: "Inter", system-ui, sans-serif;
       }
-      return 'bg-slate-600';
-    }
-
-    function StoryCard({ story, onApprove, onGenerateImage, onGenerateVideo }) {
-      const [scriptOpen, setScriptOpen] = useState(false);
-      const [commentOpen, setCommentOpen] = useState(false);
-      const [loading, setLoading] = useState({});
-      const [copied, setCopied] = useState(false);
-
-      async function handleAction(action, endpoint, body) {
-        setLoading(l => ({ ...l, [action]: true }));
-        try {
-          const res = await fetch(endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-          });
-          await res.json();
-          if (action === 'approve') onApprove();
-          if (action === 'image') onGenerateImage();
-          if (action === 'video') onGenerateVideo();
-        } catch (e) {
-          console.error(e);
+      .neon {
+        color: #39ff14;
+      }
+      .neon-border {
+        border-color: #39ff14;
+      }
+      .neon-bg {
+        background-color: #39ff14;
+        color: #1e2330;
+      }
+      .approved-banner {
+        position: absolute;
+        top: 0;
+        right: 0;
+        background: #39ff14;
+        color: #1e2330;
+        font-weight: 700;
+        font-size: 12px;
+        padding: 4px 40px;
+        transform: rotate(45deg) translate(25%, -50%);
+        transform-origin: top right;
+        z-index: 10;
+      }
+      .status-chip {
+        display: inline-block;
+        font-size: 10px;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 999px;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+      }
+      .chip-review {
+        background: #1f2937;
+        color: #9ca3af;
+      }
+      .chip-partial {
+        background: #78350f;
+        color: #fbbf24;
+      }
+      .chip-failed {
+        background: #7f1d1d;
+        color: #fca5a5;
+      }
+      .chip-published {
+        background: #14532d;
+        color: #86efac;
+      }
+      .chip-approved {
+        background: #3c2a00;
+        color: #ffd966;
+      }
+      .spinner {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        border-top-color: white;
+        border-radius: 50%;
+        animation: spin 0.6s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
         }
-        setLoading(l => ({ ...l, [action]: false }));
+      }
+      .overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.85);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 50;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .overlay .big-spinner {
+        width: 48px;
+        height: 48px;
+        border: 4px solid rgba(57, 255, 20, 0.3);
+        border-top-color: #39ff14;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+      .auth-box {
+        max-width: 480px;
+        margin: 40px auto;
+        padding: 24px;
+        background: #0f172a;
+        border: 1px solid #334155;
+        border-radius: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="text/babel">
+      // =================================================================
+      // Pulse Gaming Command Centre — legacy HTML entrypoint.
+      //
+      // This file is the production dashboard served from public/index.html
+      // by the server's SPA fallback when dist/index.html is absent (which
+      // is the normal state when Nixpacks doesn't produce a dist/ tree).
+      // The Vite src/ app is maintained in parallel; if dist/ starts
+      // landing on Railway, it'll take precedence via the express.static
+      // mount declared earlier in server.js.
+      //
+      // 2026-04-23 rewrite: point the dashboard at /api/news/full
+      // (authenticated) instead of the sanitised public /api/news. The
+      // public endpoint strips `approved`, `publish_status`, `hook`,
+      // `body`, `loop`, `word_count`, `content_pillar` and filters out
+      // every story that isn't `publicly_visible` — so the old UI only
+      // ever saw the 2 partial-retry stories with everything blank and
+      // `!story.approved` always truthy (APPROVE button green for both).
+      //
+      // Now we authenticate and see the full editorial payload, and we
+      // filter the dashboard down to truly actionable approval
+      // candidates.
+      // =================================================================
+
+      const { useState, useEffect, useCallback } = React;
+
+      const TOKEN_KEY = "pulse_api_token";
+
+      function getToken() {
+        try {
+          return localStorage.getItem(TOKEN_KEY) || "";
+        } catch {
+          return "";
+        }
+      }
+      function setToken(t) {
+        try {
+          localStorage.setItem(TOKEN_KEY, t);
+        } catch {}
+      }
+      function clearToken() {
+        try {
+          localStorage.removeItem(TOKEN_KEY);
+        } catch {}
       }
 
-      function copyMetadata() {
-        const meta = [
-          `Title: ${story.title}`,
-          `Description: ${story.full_script || ''}`,
-          `Tags: gaming news, ${story.content_pillar || ''}, ${story.subreddit || ''}`,
-          `TikTok Caption: ${story.hook || story.title}`,
-        ].join('\n\n');
-        navigator.clipboard.writeText(meta);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+      // Every mutating / authenticated fetch goes through this helper
+      // so the Bearer token is always attached and 401 responses clear
+      // the stored token cleanly.
+      async function authedFetch(url, opts = {}) {
+        const token = getToken();
+        const headers = {
+          ...(opts.headers || {}),
+          Authorization: `Bearer ${token}`,
+        };
+        if (opts.method && opts.method !== "GET" && !headers["Content-Type"]) {
+          headers["Content-Type"] = "application/json";
+        }
+        const res = await fetch(url, { ...opts, headers });
+        if (res.status === 401) {
+          clearToken();
+          window.location.reload();
+          throw new Error("unauthorised");
+        }
+        return res;
       }
 
-      return (
-        <div className="relative bg-slate-800 rounded-lg p-5 border border-slate-700 hover:border-slate-500 transition-colors">
-          {story.approved && <div className="approved-banner">APPROVED</div>}
+      const FLAIR_COLOURS = {
+        verified: "bg-green-600",
+        "highly likely": "bg-yellow-600",
+        rumour: "bg-orange-600",
+      };
 
-          <div className="flex items-center gap-2 mb-3 flex-wrap">
-            <span className={`text-xs font-bold px-2 py-1 rounded ${getFlairClass(story.flair)} text-white`}>
-              {story.flair}
+      function getFlairClass(flair) {
+        const lower = (flair || "").toLowerCase();
+        for (const [key, cls] of Object.entries(FLAIR_COLOURS)) {
+          if (lower.includes(key)) return cls;
+        }
+        return "bg-slate-600";
+      }
+
+      // Categorise a story into one of the operator-meaningful states.
+      // Used by both the approval-queue filter and the per-card status
+      // chip so the UI is self-consistent.
+      function categorise(story) {
+        if (!story) return "unknown";
+        if (story.publish_status === "failed") return "failed";
+        if (story.publish_status === "published") return "published";
+        if (story.publish_status === "partial") return "partial";
+        const cls = story.classification || "";
+        if (cls === "[DEFER]" || cls === "[REJECT]") return "deferred";
+        if (story.approved) return "approved";
+        return "review";
+      }
+
+      // Approval queue inclusion rule. An operator can only usefully
+      // approve stories in the `review` bucket. Anything else either
+      // already moved past approval (approved / partial / published)
+      // or was declined by the scoring engine (failed / deferred).
+      //
+      // If the operator WANTS to see non-review rows for retry-tracking
+      // or archival, the toolbar toggles `showAll` and this filter
+      // returns true for every story.
+      function isInApprovalQueue(story) {
+        return categorise(story) === "review";
+      }
+
+      // Approve button is only visible + enabled when the row is a
+      // genuine approval candidate. Everything else either hides the
+      // button or disables it with a truthful label.
+      function approveButtonState(story) {
+        const cat = categorise(story);
+        if (cat === "review")
+          return { show: true, disabled: false, label: "APPROVE" };
+        if (cat === "approved")
+          return { show: true, disabled: true, label: "APPROVED" };
+        // partial / published / failed / deferred — not an approve flow
+        return { show: false, disabled: true, label: "" };
+      }
+
+      function StatusChip({ story }) {
+        const cat = categorise(story);
+        const map = {
+          review: { cls: "chip-review", text: "review" },
+          partial: { cls: "chip-partial", text: "partial retry" },
+          failed: { cls: "chip-failed", text: "qa failed" },
+          published: { cls: "chip-published", text: "published" },
+          approved: { cls: "chip-approved", text: "approved — produced" },
+          deferred: {
+            cls: "chip-failed",
+            text: story.classification || "deferred",
+          },
+          unknown: { cls: "chip-review", text: "unknown" },
+        };
+        const info = map[cat] || map.unknown;
+        return <span className={"status-chip " + info.cls}>{info.text}</span>;
+      }
+
+      function ScriptBlock({ label, text, className }) {
+        const trimmed = (text || "").trim();
+        if (!trimmed) {
+          return (
+            <p>
+              <span className={"neon font-bold " + (className || "")}>
+                {label}:
+              </span>
+              <span className="text-slate-500 italic ml-2">
+                (not generated)
+              </span>
+            </p>
+          );
+        }
+        return (
+          <p>
+            <span className={"neon font-bold " + (className || "")}>
+              {label}:
             </span>
-            <span className="text-xs text-slate-400">r/{story.subreddit}</span>
-            <span className="text-xs text-slate-500">Score: {story.score}</span>
-          </div>
-
-          <h3 className="text-white font-bold text-lg mb-4 leading-tight">{story.title}</h3>
-
-          <button
-            onClick={() => setScriptOpen(!scriptOpen)}
-            className="text-sm text-slate-400 hover:text-white mb-2 block"
-          >
-            {scriptOpen ? 'Hide Script' : 'Show Script'}
-          </button>
-          {scriptOpen && (
-            <div className="bg-slate-900 rounded p-3 mb-3 text-sm space-y-2">
-              <p><span className="neon font-bold">HOOK:</span> <span className="text-white">{story.hook}</span></p>
-              <p><span className="neon font-bold">BODY:</span> <span className="text-slate-300">{story.body}</span></p>
-              <p><span className="neon font-bold">LOOP:</span> <span className="text-white">{story.loop}</span></p>
-              <p className="text-slate-500">Words: {story.word_count} | Pillar: {story.content_pillar}</p>
-            </div>
-          )}
-
-          <button
-            onClick={() => setCommentOpen(!commentOpen)}
-            className="text-sm text-slate-400 hover:text-white mb-3 block"
-          >
-            {commentOpen ? 'Hide Pinned Comment' : 'Show Pinned Comment'}
-          </button>
-          {commentOpen && (
-            <div className="bg-slate-900 rounded p-3 mb-3 text-sm text-slate-300">
-              {story.pinned_comment}
-            </div>
-          )}
-
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={copyMetadata}
-              className="px-3 py-1.5 bg-slate-600 hover:bg-slate-500 text-white text-sm rounded font-medium transition-colors"
-            >
-              {copied ? 'Copied!' : 'COPY METADATA'}
-            </button>
-
-            <button
-              onClick={() => handleAction('image', '/api/generate-image', { id: story.id })}
-              disabled={loading.image}
-              className="px-3 py-1.5 bg-slate-600 hover:bg-slate-500 text-white text-sm rounded font-medium transition-colors disabled:opacity-50"
-            >
-              {loading.image ? <span className="spinner" /> : 'GENERATE IMAGE'}
-            </button>
-
-            <button
-              onClick={() => handleAction('video', '/api/generate-video', { id: story.id })}
-              disabled={loading.video}
-              className="px-3 py-1.5 bg-slate-600 hover:bg-slate-500 text-white text-sm rounded font-medium transition-colors disabled:opacity-50"
-            >
-              {loading.video ? <span className="spinner" /> : 'GENERATE VIDEO'}
-            </button>
-
-            {!story.approved && (
-              <button
-                onClick={() => handleAction('approve', '/api/approve', { id: story.id })}
-                disabled={loading.approve}
-                className="px-3 py-1.5 neon-bg hover:opacity-80 text-sm rounded font-bold transition-colors disabled:opacity-50"
-              >
-                {loading.approve ? <span className="spinner" /> : 'APPROVE'}
-              </button>
-            )}
-
-            {story.approved && story.exported_path && (
-              <a
-                href={`/api/download/${story.id}`}
-                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded font-medium transition-colors inline-block"
-              >
-                DOWNLOAD VIDEO
-              </a>
-            )}
-          </div>
-        </div>
-      );
-    }
-
-    function App() {
-      const [stories, setStories] = useState([]);
-      const [publishing, setPublishing] = useState(false);
-      const [pubStatus, setPubStatus] = useState('idle');
-
-      const fetchNews = useCallback(async () => {
-        try {
-          const res = await fetch('/api/news');
-          const data = await res.json();
-          // Sort: unapproved first
-          data.sort((a, b) => (a.approved === b.approved ? 0 : a.approved ? 1 : -1));
-          setStories(data);
-        } catch (e) {
-          console.error('Failed to fetch news:', e);
-        }
-      }, []);
-
-      useEffect(() => { fetchNews(); }, [fetchNews]);
-
-      async function handlePublish() {
-        setPublishing(true);
-        setPubStatus('starting...');
-        try {
-          await fetch('/api/publish', { method: 'POST' });
-          const poll = setInterval(async () => {
-            const res = await fetch('/api/publish-status');
-            const data = await res.json();
-            setPubStatus(data.status);
-            if (data.status === 'complete' || data.status === 'error') {
-              clearInterval(poll);
-              setTimeout(() => {
-                setPublishing(false);
-                fetchNews();
-              }, 1500);
-            }
-          }, 15000);
-        } catch (e) {
-          setPubStatus('error');
-          setTimeout(() => setPublishing(false), 2000);
-        }
+            <span className="text-white ml-2">{trimmed}</span>
+          </p>
+        );
       }
 
-      const today = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-      const pending = stories.filter(s => !s.approved).length;
+      function StoryCard({ story, onRefresh }) {
+        const [scriptOpen, setScriptOpen] = useState(false);
+        const [commentOpen, setCommentOpen] = useState(false);
+        const [loading, setLoading] = useState({});
+        const [copied, setCopied] = useState(false);
 
-      return (
-        <div className="min-h-screen">
-          {publishing && (
-            <div className="overlay">
-              <div className="big-spinner"></div>
-              <p className="neon text-xl font-bold">PUBLISHING PIPELINE RUNNING</p>
-              <p className="text-slate-400 text-sm">Status: {pubStatus}</p>
-            </div>
-          )}
+        const hasAnyScript = Boolean(
+          (story.hook && story.hook.trim()) ||
+          (story.body && story.body.trim()) ||
+          (story.loop && story.loop.trim()) ||
+          (story.full_script && story.full_script.trim()),
+        );
+        const approveBtn = approveButtonState(story);
 
-          <nav className="border-b border-slate-700 px-6 py-4 flex items-center justify-between flex-wrap gap-3">
-            <h1 className="neon text-xl font-bold tracking-wider">PULSE GAMING // COMMAND CENTRE</h1>
-            <div className="flex gap-2">
-              <button
-                onClick={fetchNews}
-                className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white text-sm rounded font-medium transition-colors"
+        async function handleAction(action, endpoint, body) {
+          setLoading((l) => ({ ...l, [action]: true }));
+          try {
+            const res = await authedFetch(endpoint, {
+              method: "POST",
+              body: body ? JSON.stringify(body) : undefined,
+            });
+            await res.json();
+            if (onRefresh) onRefresh();
+          } catch (e) {
+            console.error(e);
+          }
+          setLoading((l) => ({ ...l, [action]: false }));
+        }
+
+        function copyMetadata() {
+          const meta = [
+            `Title: ${story.title}`,
+            `Description: ${story.full_script || ""}`,
+            `Tags: gaming news, ${story.content_pillar || ""}, ${story.subreddit || ""}`,
+            `TikTok Caption: ${story.hook || story.title}`,
+          ].join("\n\n");
+          navigator.clipboard.writeText(meta);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        }
+
+        return (
+          <div className="relative bg-slate-800 rounded-lg p-5 border border-slate-700 hover:border-slate-500 transition-colors">
+            {story.approved && <div className="approved-banner">APPROVED</div>}
+
+            <div className="flex items-center gap-2 mb-3 flex-wrap">
+              <span
+                className={`text-xs font-bold px-2 py-1 rounded ${getFlairClass(story.flair)} text-white`}
               >
-                Refresh
-              </button>
-              <button
-                onClick={handlePublish}
-                className="px-4 py-2 neon-bg hover:opacity-80 text-sm rounded font-bold transition-colors"
-              >
-                RUN PUBLISH
-              </button>
+                {story.flair || "—"}
+              </span>
+              <span className="text-xs text-slate-400">
+                {story.source_type === "rss"
+                  ? story.subreddit
+                  : "r/" + (story.subreddit || "")}
+              </span>
+              <span className="text-xs text-slate-500">
+                Score: {story.score || 0}
+              </span>
+              <StatusChip story={story} />
             </div>
-          </nav>
 
-          <div className="px-6 py-3 text-slate-400 text-sm">
-            {today} | {stories.length} stories loaded | {pending} pending approval
-          </div>
+            <h3 className="text-white font-bold text-lg mb-4 leading-tight">
+              {story.title}
+            </h3>
 
-          <div className="px-6 pb-8 grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {stories.length === 0 && (
-              <div className="col-span-full text-center py-20">
-                <p className="text-slate-500 text-lg">No stories loaded</p>
-                <p className="text-slate-600 text-sm mt-2">Run: node run.js hunt</p>
+            <button
+              onClick={() => setScriptOpen(!scriptOpen)}
+              className="text-sm text-slate-400 hover:text-white mb-2 block"
+            >
+              {scriptOpen ? "Hide Script" : "Show Script"}
+            </button>
+            {scriptOpen && (
+              <div className="bg-slate-900 rounded p-3 mb-3 text-sm space-y-2">
+                {!hasAnyScript && (
+                  <div className="rounded bg-red-900/40 border border-red-700 px-3 py-2">
+                    <p className="text-red-300 font-bold text-xs">
+                      NO SCRIPT AVAILABLE
+                    </p>
+                    <p className="text-red-200/80 text-xs mt-1">
+                      This story has no hook, body, loop, or full_script.
+                      Approving will hard-fail at content-qa before publish.
+                      Re-run processor before approving.
+                    </p>
+                  </div>
+                )}
+                {hasAnyScript && (
+                  <>
+                    <ScriptBlock label="HOOK" text={story.hook} />
+                    <ScriptBlock
+                      label="BODY"
+                      text={story.body}
+                      className="text-slate-300"
+                    />
+                    <ScriptBlock label="LOOP" text={story.loop} />
+                    <p className="text-slate-500">
+                      Words: {story.word_count || 0} | Pillar:{" "}
+                      {story.content_pillar || "—"}
+                    </p>
+                  </>
+                )}
               </div>
             )}
-            {stories.map(story => (
-              <StoryCard
-                key={story.id}
-                story={story}
-                onApprove={fetchNews}
-                onGenerateImage={fetchNews}
-                onGenerateVideo={fetchNews}
-              />
-            ))}
-          </div>
-        </div>
-      );
-    }
 
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<App />);
-  </script>
-</body>
+            <button
+              onClick={() => setCommentOpen(!commentOpen)}
+              className="text-sm text-slate-400 hover:text-white mb-3 block"
+            >
+              {commentOpen ? "Hide Pinned Comment" : "Show Pinned Comment"}
+            </button>
+            {commentOpen && (
+              <div className="bg-slate-900 rounded p-3 mb-3 text-sm text-slate-300">
+                {story.pinned_comment || (
+                  <span className="text-slate-500 italic">(none)</span>
+                )}
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={copyMetadata}
+                className="px-3 py-1.5 bg-slate-600 hover:bg-slate-500 text-white text-sm rounded font-medium transition-colors"
+              >
+                {copied ? "Copied!" : "COPY METADATA"}
+              </button>
+
+              {approveBtn.show && (
+                <button
+                  onClick={() =>
+                    !approveBtn.disabled &&
+                    handleAction("approve", "/api/approve", { id: story.id })
+                  }
+                  disabled={
+                    approveBtn.disabled || loading.approve || !hasAnyScript
+                  }
+                  title={
+                    !hasAnyScript
+                      ? "No script — re-run processor before approving"
+                      : ""
+                  }
+                  className={
+                    "px-3 py-1.5 text-sm rounded font-bold transition-colors " +
+                    (approveBtn.disabled || !hasAnyScript
+                      ? "bg-slate-700 text-slate-400 cursor-not-allowed"
+                      : "neon-bg hover:opacity-80")
+                  }
+                >
+                  {loading.approve ? (
+                    <span className="spinner" />
+                  ) : !hasAnyScript ? (
+                    "NO SCRIPT"
+                  ) : (
+                    approveBtn.label
+                  )}
+                </button>
+              )}
+
+              {story.approved && story.exported_path && (
+                <a
+                  href={`/api/download/${story.id}`}
+                  onClick={(e) => {
+                    // Authenticated download — fetch as blob so the
+                    // Bearer header travels, then open the object URL.
+                    e.preventDefault();
+                    authedFetch(`/api/download/${story.id}`)
+                      .then((r) => r.blob())
+                      .then((b) => {
+                        const url = URL.createObjectURL(b);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = `pulse-gaming-${story.id}.mp4`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      })
+                      .catch(console.error);
+                  }}
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded font-medium transition-colors inline-block"
+                >
+                  DOWNLOAD VIDEO
+                </a>
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      function AuthPrompt({ onSubmit }) {
+        const [value, setValue] = useState("");
+        return (
+          <div className="auth-box text-center">
+            <h1 className="neon text-xl font-bold mb-3 tracking-wider">
+              PULSE GAMING // COMMAND CENTRE
+            </h1>
+            <p className="text-slate-400 text-sm mb-5">
+              Enter your API token to view the full editorial queue.
+            </p>
+            <input
+              type="password"
+              className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded text-white text-sm mb-3"
+              placeholder="Bearer token"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+            />
+            <button
+              onClick={() => {
+                if (value.trim()) {
+                  setToken(value.trim());
+                  onSubmit();
+                }
+              }}
+              className="w-full neon-bg hover:opacity-80 px-4 py-2 text-sm rounded font-bold"
+            >
+              UNLOCK
+            </button>
+          </div>
+        );
+      }
+
+      function App() {
+        const [stories, setStories] = useState([]);
+        const [loadError, setLoadError] = useState(null);
+        const [authed, setAuthed] = useState(Boolean(getToken()));
+        const [publishing, setPublishing] = useState(false);
+        const [pubStatus, setPubStatus] = useState("idle");
+        const [showAll, setShowAll] = useState(false);
+
+        const fetchNews = useCallback(async () => {
+          if (!getToken()) return;
+          try {
+            const res = await authedFetch("/api/news/full");
+            if (!res.ok) throw new Error("HTTP " + res.status);
+            const data = await res.json();
+            setLoadError(null);
+            setStories(Array.isArray(data) ? data : []);
+          } catch (e) {
+            if (e && e.message !== "unauthorised") {
+              setLoadError(e.message || "fetch failed");
+              console.error("Failed to fetch news:", e);
+            }
+          }
+        }, []);
+
+        useEffect(() => {
+          if (authed) fetchNews();
+        }, [authed, fetchNews]);
+
+        async function handlePublish() {
+          setPublishing(true);
+          setPubStatus("starting...");
+          try {
+            await authedFetch("/api/publish", { method: "POST" });
+            const poll = setInterval(async () => {
+              try {
+                const res = await authedFetch("/api/publish-status");
+                const data = await res.json();
+                setPubStatus(data.status);
+                if (data.status === "complete" || data.status === "error") {
+                  clearInterval(poll);
+                  setTimeout(() => {
+                    setPublishing(false);
+                    fetchNews();
+                  }, 1500);
+                }
+              } catch {
+                // network blip — keep polling
+              }
+            }, 15000);
+          } catch (e) {
+            setPubStatus("error");
+            setTimeout(() => setPublishing(false), 2000);
+          }
+        }
+
+        if (!authed) {
+          return <AuthPrompt onSubmit={() => setAuthed(true)} />;
+        }
+
+        const approvalQueue = stories.filter(isInApprovalQueue);
+        const visible = showAll ? stories : approvalQueue;
+
+        // Sort: review (approval candidates) first by newest, then the rest.
+        const sorted = [...visible].sort((a, b) => {
+          const aq = isInApprovalQueue(a) ? 0 : 1;
+          const bq = isInApprovalQueue(b) ? 0 : 1;
+          if (aq !== bq) return aq - bq;
+          const aT = a.timestamp || a.created_at || "";
+          const bT = b.timestamp || b.created_at || "";
+          return bT.localeCompare(aT);
+        });
+
+        const today = new Date().toLocaleDateString("en-GB", {
+          weekday: "long",
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        });
+        const counts = {
+          review: stories.filter((s) => categorise(s) === "review").length,
+          approved: stories.filter((s) => categorise(s) === "approved").length,
+          partial: stories.filter((s) => categorise(s) === "partial").length,
+          failed: stories.filter((s) => categorise(s) === "failed").length,
+          published: stories.filter((s) => categorise(s) === "published")
+            .length,
+        };
+
+        return (
+          <div className="min-h-screen">
+            {publishing && (
+              <div className="overlay">
+                <div className="big-spinner"></div>
+                <p className="neon text-xl font-bold">
+                  PUBLISHING PIPELINE RUNNING
+                </p>
+                <p className="text-slate-400 text-sm">Status: {pubStatus}</p>
+              </div>
+            )}
+
+            <nav className="border-b border-slate-700 px-6 py-4 flex items-center justify-between flex-wrap gap-3">
+              <h1 className="neon text-xl font-bold tracking-wider">
+                PULSE GAMING // COMMAND CENTRE
+              </h1>
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  onClick={fetchNews}
+                  className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white text-sm rounded font-medium transition-colors"
+                >
+                  Refresh
+                </button>
+                <button
+                  onClick={() => setShowAll((v) => !v)}
+                  className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white text-sm rounded font-medium transition-colors"
+                >
+                  {showAll ? "Show approval queue only" : "Show all stories"}
+                </button>
+                <button
+                  onClick={handlePublish}
+                  disabled={publishing}
+                  className="px-4 py-2 neon-bg hover:opacity-80 text-sm rounded font-bold disabled:opacity-50"
+                >
+                  Publish now
+                </button>
+                <button
+                  onClick={() => {
+                    clearToken();
+                    window.location.reload();
+                  }}
+                  className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-400 text-xs rounded"
+                >
+                  Sign out
+                </button>
+              </div>
+            </nav>
+
+            <div className="px-6 py-3 text-slate-400 text-sm flex flex-wrap gap-4">
+              <span>{today}</span>
+              <span>· {stories.length} stories loaded</span>
+              <span>
+                · <span className="text-white">{counts.review}</span> pending
+                review
+              </span>
+              <span>· {counts.approved} approved</span>
+              <span>· {counts.partial} partial</span>
+              <span>· {counts.failed} qa_failed</span>
+              <span>· {counts.published} published</span>
+              {loadError && (
+                <span className="text-red-400">· load error: {loadError}</span>
+              )}
+            </div>
+
+            <div className="px-6 pb-8 grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {sorted.length === 0 && (
+                <div className="col-span-full text-center py-20">
+                  {stories.length === 0 ? (
+                    <>
+                      <p className="text-slate-500 text-lg">
+                        No stories loaded
+                      </p>
+                      <p className="text-slate-600 text-sm mt-2">
+                        Run hunter to ingest new stories.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-slate-400 text-lg">
+                        No stories currently require manual approval.
+                      </p>
+                      <p className="text-slate-600 text-sm mt-2">
+                        Toggle &quot;Show all stories&quot; to view the full
+                        pipeline state.
+                      </p>
+                    </>
+                  )}
+                </div>
+              )}
+              {sorted.map((story) => (
+                <StoryCard key={story.id} story={story} onRefresh={fetchNews} />
+              ))}
+            </div>
+          </div>
+        );
+      }
+
+      const root = ReactDOM.createRoot(document.getElementById("root"));
+      root.render(<App />);
+    </script>
+  </body>
 </html>

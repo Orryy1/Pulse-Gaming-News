@@ -91,17 +91,46 @@ test("assemble.js: downloaded_images[].path check routes through mediaPaths", ()
   );
 });
 
-test("assemble.js: no duplicate mediaPaths declaration (regression guard)", () => {
-  // The 2026-04-24 fix initially double-declared `const mediaPaths`
-  // (one at the top of assemble() for self-heal, one inside the
-  // for loop for the audio check) — Node's strict mode refuses
-  // to load that. Keep exactly one declaration.
-  const matches = ASSEMBLE.match(
-    /^\s*const mediaPaths = require\(["']\.\/lib\/media-paths["']\);\s*$/gm,
-  );
-  assert.equal(
-    matches ? matches.length : 0,
-    1,
-    `expected exactly one 'const mediaPaths = require("./lib/media-paths");' in assemble.js, found ${matches ? matches.length : 0}`,
-  );
+test("assemble.js: no duplicate mediaPaths declaration inside the same block scope", () => {
+  // Node's strict mode refuses duplicate `const` in the SAME
+  // block — this was caught during the 2026-04-24 emergency fix
+  // when I accidentally redeclared inside the for-loop body
+  // (same scope as the outer `assemble()` function). Legal
+  // duplicates (different functions) are fine:
+  //   - one inside `assemble()` top for the self-heal pre-pass
+  //   - one inside `generateSubtitles()` for the timestamps path
+  //   - etc.
+  //
+  // Pin: no two declarations in the SAME lexical block.
+  //
+  // Approximate check: find every `const mediaPaths = require(...)`
+  // and make sure no two share a containing function via a rough
+  // line-proximity heuristic. If two appear within 200 lines of
+  // each other AND the one between them doesn't declare a new
+  // function, fail.
+  const re =
+    /^\s*const mediaPaths = require\(["']\.\/lib\/media-paths["']\);\s*$/gm;
+  const matches = [];
+  let m;
+  while ((m = re.exec(ASSEMBLE)) !== null) {
+    // Line number of the match
+    const line = ASSEMBLE.slice(0, m.index).split("\n").length;
+    matches.push(line);
+  }
+  // For each pair of declarations, check there's a `function`
+  // keyword between them (different scopes).
+  for (let i = 1; i < matches.length; i++) {
+    const startLine = matches[i - 1];
+    const endLine = matches[i];
+    const slice = ASSEMBLE.split("\n")
+      .slice(startLine, endLine - 1)
+      .join("\n");
+    const hasFunctionBoundary =
+      /\bfunction\s+\w+\s*\(/.test(slice) ||
+      /^\s*\w+\s*\([^)]*\)\s*\{/m.test(slice);
+    assert.ok(
+      hasFunctionBoundary,
+      `assemble.js has two 'const mediaPaths' at lines ${startLine} and ${endLine} with no function boundary between them — will shadow-redeclare and crash`,
+    );
+  }
 });

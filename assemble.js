@@ -423,14 +423,31 @@ function highlightKeyWords(text) {
 
 // --- Generate ASS subtitle file with karaoke-style captions synced to audio ---
 async function generateSubtitles(story, duration, outputDir) {
-  // Try to load word-level timestamps from ElevenLabs
-  const timestampsPath = story.audio_path
+  // 2026-04-24 SUBTITLE DRIFT FIX.
+  //
+  // Word-level timestamps from ElevenLabs land at
+  // `output/audio/<id>_timestamps.json` — under MEDIA_ROOT in
+  // production. The old check called `fs.pathExists(timestampsPath)`
+  // against the raw relative path, which Node resolves against
+  // CWD=/app in the container. The file was always at
+  // `/data/media/output/audio/<id>_timestamps.json`, the check
+  // always returned false, and subtitle timing fell through to
+  // the "even spacing" synthetic timestamps — which drift 0.5-2s
+  // over a 60-70s Short because natural speech has variable pace.
+  //
+  // Same class of bug as the audio/image existence checks fixed
+  // in 0db8a4a. Route the check through lib/media-paths.
+  const mediaPaths = require("./lib/media-paths");
+  const timestampsRel = story.audio_path
     ? story.audio_path.replace(/\.mp3$/, "_timestamps.json")
     : null;
+  const timestampsAbs = timestampsRel
+    ? await mediaPaths.resolveExisting(timestampsRel)
+    : null;
   let wordTimestamps = null;
-  if (timestampsPath && (await fs.pathExists(timestampsPath))) {
+  if (timestampsAbs && (await fs.pathExists(timestampsAbs))) {
     try {
-      wordTimestamps = await fs.readJson(timestampsPath);
+      wordTimestamps = await fs.readJson(timestampsAbs);
     } catch (e) {
       /* fall back to even spacing */
     }
@@ -1408,6 +1425,14 @@ function buildVideoCommand(
     `-filter_complex_script "${filterScriptFixed}"`,
     audioMapping,
     `-c:v libx264 -crf 21 -preset medium -threads ${FFMPEG_THREADS}`,
+    // 2026-04-24: force 4:2:0 chroma + high profile + level 4.0 so
+    // Instagram Reels + Facebook Reels accept the output. Without
+    // an explicit pix_fmt flag, x264 autoselects High 4:4:4
+    // Predictive when ANY input (image or filter) carries alpha
+    // or full chroma — which our Sharp-rendered composites do.
+    // Meta decoders refuse anything above 4:2:0. YouTube transcodes
+    // server-side so it ignored the profile; Meta does not.
+    "-pix_fmt yuv420p -profile:v high -level:v 4.0",
     "-c:a aac -b:a 192k",
     "-r 30 -shortest",
     "-map_metadata -1",
@@ -1623,18 +1648,35 @@ async function assemble() {
         compositeImageAbs = resolved;
       }
     }
-    const images =
+    const rawImages =
       realImages.length > 0
         ? realImages
         : compositeImageAbs
           ? [compositeImageAbs]
           : [];
 
-    if (images.length === 0) {
+    if (rawImages.length === 0) {
       console.log(`[assemble] WARNING: No images for ${story.id}, skipping`);
       skipped++;
       continue;
     }
+
+    // 2026-04-24: subject-aware smart crop. Article og:images + Steam
+    // keyart typically arrive as 1920×1080 landscape. The legacy
+    // ffmpeg filter graph letterboxed them into 1080×1920 portrait —
+    // which meant a character's face landed in the top 20% of the
+    // frame with huge black bars, and the viewer's eye went to the
+    // middle (an arm / torso / background). Today's Ingrid Short is
+    // a textbook example. Route every image through Sharp's
+    // attention-based smart crop first; feeds ffmpeg a 1080×1920
+    // subject-centred JPEG so the scale+pad in the filter graph is
+    // effectively a no-op. `smartCropToReel` is cached + fail-safe
+    // (returns the original path if Sharp errors).
+    const { smartCropBatch } = require("./lib/image-crop");
+    const images = await smartCropBatch(rawImages);
+    console.log(
+      `[assemble] ${story.id}: smart-cropped ${images.length} images to 1080×1920`,
+    );
 
     // Generate ASS subtitle file
     const subsDir = path.join("output", "subs");
@@ -1923,6 +1965,9 @@ async function assemble() {
           `-filter_complex_script "${fallbackFilterPath.replace(/\\/g, "/")}"`,
           fbAudioMapping,
           `-c:v libx264 -crf 21 -preset medium -threads ${FFMPEG_THREADS}`,
+          // Meta-safe H.264 profile (same as primary branch) — IG
+          // Reels and FB Reels refuse High 4:4:4 Predictive.
+          "-pix_fmt yuv420p -profile:v high -level:v 4.0",
           "-c:a aac -b:a 192k -r 30 -shortest",
           `-movflags +faststart "${writeTargetPath}"`,
         ].join(" ");

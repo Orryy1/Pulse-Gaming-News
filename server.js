@@ -1171,12 +1171,19 @@ function isAuthenticatedRequest(req) {
 // publish flow. Draft/queued/failed stories fall through to a 404
 // for unauthenticated callers so an attacker scraping story IDs
 // can't tell which drafts exist vs. which don't.
-app.get("/api/story-image/:id", async (req, res) => {
+// Accept both `/api/story-image/:id` and `/api/story-image/:id.png`.
+// IG/FB Graph-API crawlers (error 2207052) reject URIs that don't
+// carry a recognised image extension, even when the HTTP response
+// Content-Type is correct. Stripping `.png` server-side lets us
+// construct uploader URLs with the extension while keeping the
+// canonical story id as the path parameter.
+app.get(/^\/api\/story-image\/([^/]+?)(?:\.png)?$/, async (req, res) => {
   try {
     const { isPubliclyVisible } = require("./lib/public-story");
     const mediaPaths = require("./lib/media-paths");
     const stories = readNews();
-    const story = stories.find((s) => s.id === req.params.id);
+    const rawId = req.params[0] || req.params.id;
+    const story = stories.find((s) => s.id === rawId);
     // "Story exists but not live AND caller not authed" looks the
     // same to the client as "story does not exist" — no enumeration.
     if (!story || (!isPubliclyVisible(story) && !isAuthenticatedRequest(req))) {
@@ -1231,12 +1238,19 @@ app.get("/api/story-image/:id", async (req, res) => {
 // by that point YouTube has uploaded and isPubliclyVisible is true.
 // Draft MP4s are private to the operator (Bearer token) and look
 // like 404s to any unauthenticated scraper probing story IDs.
-app.get("/api/download/:id", async (req, res) => {
+// Accept both `/api/download/:id` and `/api/download/:id.mp4`. Same
+// rationale as the story-image route above — Meta's Graph API fetcher
+// checks the URL extension to decide whether the endpoint returns a
+// video vs something else. Without `.mp4` in the path, IG Reel URL
+// fallback can land on the same 2207052-class error ("media URI
+// doesn't meet our requirements").
+app.get(/^\/api\/download\/([^/]+?)(?:\.mp4)?$/, async (req, res) => {
   try {
     const { isPubliclyVisible } = require("./lib/public-story");
     const mediaPaths = require("./lib/media-paths");
     const stories = readNews();
-    const story = stories.find((s) => s.id === req.params.id);
+    const rawId = req.params[0] || req.params.id;
+    const story = stories.find((s) => s.id === rawId);
 
     if (!story || (!isPubliclyVisible(story) && !isAuthenticatedRequest(req))) {
       return res.status(404).json({ error: "video not found" });
@@ -1270,9 +1284,14 @@ app.get("/api/download/:id", async (req, res) => {
     const stat = fs.statSync(filePath);
     res.setHeader("Content-Type", "video/mp4");
     res.setHeader("Content-Length", stat.size);
+    // IG/FB URL-fetch fallbacks dislike `attachment` disposition on
+    // video URLs — they want `inline` (or no disposition at all) so
+    // their crawler treats the response as a streamable video, not a
+    // file download. Dashboard download still works because the
+    // client-side fetch code wraps the response as a blob.
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename=pulse-gaming-${req.params.id}.mp4`,
+      `inline; filename="pulse-gaming-${rawId}.mp4"`,
     );
     const stream = fs.createReadStream(filePath);
     stream.pipe(res);

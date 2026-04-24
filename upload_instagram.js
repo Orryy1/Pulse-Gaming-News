@@ -323,7 +323,11 @@ async function uploadReelViaUrl(story) {
   const publicBaseUrl =
     process.env.RAILWAY_PUBLIC_URL ||
     `http://localhost:${process.env.PORT || 3001}`;
-  const videoUrl = `${publicBaseUrl}/api/download/${story.id}`;
+  // Include .mp4 suffix — IG/FB crawlers refuse URIs that don't
+  // carry a recognised video extension, even when Content-Type is
+  // correct (Graph error 2207052 / 2207076). Server-side route
+  // strips the extension and still finds the story by id.
+  const videoUrl = `${publicBaseUrl}/api/download/${story.id}.mp4`;
 
   const { getChannel } = require("./channels");
   const channel = getChannel();
@@ -427,7 +431,10 @@ async function uploadStoryImage(story) {
         );
       }
 
-      const imageUrl = `${publicBaseUrl}/api/story-image/${story.id}`;
+      // .png suffix — IG Graph API rejects URIs without a recognised
+      // image extension (error 2207052). The server route accepts
+      // both `/:id` and `/:id.png`.
+      const imageUrl = `${publicBaseUrl}/api/story-image/${story.id}.png`;
       console.log(
         `[instagram] Uploading Story image: "${(story.title || "").substring(0, 50)}..."`,
       );

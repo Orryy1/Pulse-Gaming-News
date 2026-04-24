@@ -70,7 +70,7 @@ async function uploadReel(story) {
       const publicBaseUrl =
         process.env.RAILWAY_PUBLIC_URL ||
         `http://localhost:${process.env.PORT || 3001}`;
-      const videoUrl = `${publicBaseUrl}/api/download/${story.id}`;
+      const videoUrl = `${publicBaseUrl}/api/download/${story.id}.mp4`;
 
       // Build description
       let description =
@@ -285,7 +285,7 @@ async function uploadReelViaUrl(story) {
   const publicBaseUrl =
     process.env.RAILWAY_PUBLIC_URL ||
     `http://localhost:${process.env.PORT || 3001}`;
-  const videoUrl = `${publicBaseUrl}/api/download/${story.id}`;
+  const videoUrl = `${publicBaseUrl}/api/download/${story.id}.mp4`;
 
   let description =
     story.suggested_title || story.suggested_thumbnail_text || story.title;

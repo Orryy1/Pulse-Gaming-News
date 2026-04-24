@@ -85,12 +85,27 @@ const db = new Database(DB_PATH);
 
 const bad = [];
 const good = [];
-const errored = [];
 
 for (const f of files) {
   const abs = path.join(FINAL_DIR, f);
+  let stSize = 0;
   try {
-    // ffprobe is tolerant of extra whitespace in the -of default output.
+    stSize = fsExtra.statSync(abs).size;
+  } catch {
+    // File vanished between readdir and stat — skip.
+    continue;
+  }
+  // Zero-byte / pathologically-small files are ffmpeg-crashed
+  // artefacts from produce cycles that bailed before writing any
+  // frames (today's 18:00 UTC produce_primary left 21 of these
+  // when the 4:4:4 encoder bug took it down). Treat as BAD so
+  // they get cleared alongside the wrong-chroma ones — they're
+  // useless and they hold exported_path hostage.
+  if (stSize < 1024) {
+    bad.push({ file: f, path: abs, pix_fmt: "(0-byte/corrupt)", size: stSize });
+    continue;
+  }
+  try {
     const out = execSync(
       `ffprobe -v error -select_streams v:0 -show_entries stream=pix_fmt -of default=nw=1:nk=1 "${abs}"`,
       { encoding: "utf8", timeout: 10000 },
@@ -98,30 +113,42 @@ for (const f of files) {
     if (out === "yuv420p") {
       good.push({ file: f, pix_fmt: out });
     } else {
-      bad.push({ file: f, pix_fmt: out, path: abs });
+      bad.push({ file: f, pix_fmt: out, path: abs, size: stSize });
     }
   } catch (err) {
-    errored.push({ file: f, error: err.message.slice(0, 100) });
+    // ffprobe refused the file — container header broken, codec
+    // unrecognised, etc. Treat same as zero-byte: unusable,
+    // sharply bad, must be cleared.
+    bad.push({
+      file: f,
+      pix_fmt: "(ffprobe-failed)",
+      path: abs,
+      size: stSize,
+      err: err.message.slice(0, 80),
+    });
   }
 }
 
 console.log("");
 console.log(`=== Summary ===`);
-console.log(`  good (yuv420p):     ${good.length}`);
-console.log(`  BAD (wrong chroma): ${bad.length}`);
-console.log(`  ffprobe errors:     ${errored.length}`);
+console.log(`  good (yuv420p):        ${good.length}`);
+console.log(`  BAD (to be cleaned):   ${bad.length}`);
+const byReason = bad.reduce((acc, b) => {
+  acc[b.pix_fmt] = (acc[b.pix_fmt] || 0) + 1;
+  return acc;
+}, {});
+for (const [r, n] of Object.entries(byReason)) {
+  console.log(`    - ${r.padEnd(22)} ${n}`);
+}
 console.log("");
 
 if (bad.length > 0) {
   console.log(`=== BAD MP4s to clean ===`);
   for (const b of bad) {
-    console.log(`  ${b.file.padEnd(40)}  pix_fmt=${b.pix_fmt}`);
+    const sizeStr =
+      b.size < 1024 ? `${b.size}B` : `${Math.round(b.size / 1024)}KB`;
+    console.log(`  ${b.file.padEnd(42)}  ${b.pix_fmt.padEnd(22)}  ${sizeStr}`);
   }
-}
-
-if (errored.length > 0) {
-  console.log(`=== ffprobe errors ===`);
-  for (const e of errored) console.log(`  ${e.file}: ${e.error}`);
 }
 
 if (DRY_RUN) {

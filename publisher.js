@@ -1282,8 +1282,13 @@ async function _publishNextStoryInner() {
       story.facebook_post_id = fbResult.videoId;
       story.facebook_error = null;
       result.facebook = true;
-      result.platform_outcomes.facebook = "new_upload";
-      console.log(`[publisher] Facebook: uploaded`);
+      // upload_facebook.js::uploadReel runs verifyReelPublished
+      // (polls /video_reels status until video_status=ready AND
+      // publishing_phase.status=published). A returned videoId
+      // therefore means the Reel is actually live, not merely
+      // accepted — promote to public_verified for Discord truth.
+      result.platform_outcomes.facebook = "public_verified";
+      console.log(`[publisher] Facebook: uploaded + verified live`);
       await db.upsertStory(story);
     } catch (err) {
       console.log(`[publisher] Facebook upload failed: ${err.message}`);

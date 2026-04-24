@@ -13,6 +13,58 @@ dotenv.config({ override: true });
 const DEFAULT_TOKEN_PATH = path.join(__dirname, "tokens", "tiktok_token.json");
 
 /**
+ * Pick the `privacy_level` we send to TikTok's Content Posting API.
+ *
+ * Background (2026-04-24): the live probe showed our init requests
+ * fail with error code
+ *   `unaudited_client_can_only_post_to_private_accounts`
+ * even though the token carries `video.publish` + `video.upload` +
+ * `user.info.basic` and `creator_info` returns full posting options
+ * (`PUBLIC_TO_EVERYONE`, 60min max duration, no restrictions). The
+ * 403 is app-level: until TikTok audits the Pulse Gaming app via
+ * developers.tiktok.com, EVERY `PUBLIC_TO_EVERYONE` init returns
+ * the same 403.
+ *
+ * Env var contract:
+ *
+ *   `TIKTOK_PRIVACY_LEVEL=PUBLIC_TO_EVERYONE` (default) — the
+ *     post-audit goal state. TikTok refuses this for unaudited
+ *     apps; keep this value for production once audit clears.
+ *
+ *   `TIKTOK_PRIVACY_LEVEL=SELF_ONLY` — diagnostic / audit-pending
+ *     workaround. Upload lands as a private draft in the creator's
+ *     TikTok inbox. Operator manually publishes from the TikTok
+ *     app if desired. Proves the end-to-end upload chain works.
+ *
+ *   `TIKTOK_PRIVACY_LEVEL=MUTUAL_FOLLOW_FRIENDS` — also accepted
+ *     by unaudited apps; visible only to the creator's followers.
+ *     Less useful than SELF_ONLY for most ops scenarios.
+ *
+ * Anything else falls back to the default and logs a warning so
+ * the operator doesn't silently ship a typo. Never trust the env
+ * var verbatim as a free-form string.
+ */
+const TIKTOK_ALLOWED_PRIVACY_LEVELS = new Set([
+  "PUBLIC_TO_EVERYONE",
+  "MUTUAL_FOLLOW_FRIENDS",
+  "FOLLOWER_OF_CREATOR", // rarely used but valid per Content Posting API docs
+  "SELF_ONLY",
+]);
+const TIKTOK_DEFAULT_PRIVACY_LEVEL = "PUBLIC_TO_EVERYONE";
+
+function resolveTikTokPrivacyLevel() {
+  const raw = (process.env.TIKTOK_PRIVACY_LEVEL || "").trim().toUpperCase();
+  if (!raw) return TIKTOK_DEFAULT_PRIVACY_LEVEL;
+  if (TIKTOK_ALLOWED_PRIVACY_LEVELS.has(raw)) return raw;
+  console.log(
+    `[tiktok] WARNING: TIKTOK_PRIVACY_LEVEL="${raw}" is not a recognised TikTok privacy level ` +
+      `(expected one of ${[...TIKTOK_ALLOWED_PRIVACY_LEVELS].join(", ")}). ` +
+      `Falling back to default ${TIKTOK_DEFAULT_PRIVACY_LEVEL}.`,
+  );
+  return TIKTOK_DEFAULT_PRIVACY_LEVEL;
+}
+
+/**
  * Resolve the TikTok token file path.
  *
  * Production (Railway): TIKTOK_TOKEN_PATH=/data/tokens/tiktok_token.json —
@@ -445,7 +497,16 @@ async function uploadVideo(story) {
         {
           post_info: {
             title: caption,
-            privacy_level: "PUBLIC_TO_EVERYONE",
+            privacy_level: (() => {
+              const lvl = resolveTikTokPrivacyLevel();
+              if (lvl !== TIKTOK_DEFAULT_PRIVACY_LEVEL) {
+                console.log(
+                  `[tiktok] privacy_level override active: ${lvl} ` +
+                    `(TIKTOK_PRIVACY_LEVEL env var). Default would be ${TIKTOK_DEFAULT_PRIVACY_LEVEL}.`,
+                );
+              }
+              return lvl;
+            })(),
             disable_duet: false,
             disable_comment: false,
             disable_stitch: false,
@@ -590,6 +651,12 @@ module.exports = {
   buildTokenRecord,
   assertTokenResponse,
   DEFAULT_EXPIRES_IN_SECONDS,
+  // Privacy-level resolver + constants — exported for tests and
+  // for any operator tooling that wants to read the live effective
+  // value without re-implementing the env-var contract.
+  resolveTikTokPrivacyLevel,
+  TIKTOK_ALLOWED_PRIVACY_LEVELS,
+  TIKTOK_DEFAULT_PRIVACY_LEVEL,
 };
 
 if (require.main === module) {

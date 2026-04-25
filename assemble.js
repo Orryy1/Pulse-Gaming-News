@@ -1661,21 +1661,21 @@ async function assemble() {
       continue;
     }
 
-    // 2026-04-24: subject-aware smart crop. Article og:images + Steam
-    // keyart typically arrive as 1920×1080 landscape. The legacy
-    // ffmpeg filter graph letterboxed them into 1080×1920 portrait —
-    // which meant a character's face landed in the top 20% of the
-    // frame with huge black bars, and the viewer's eye went to the
-    // middle (an arm / torso / background). Today's Ingrid Short is
-    // a textbook example. Route every image through Sharp's
-    // attention-based smart crop first; feeds ffmpeg a 1080×1920
-    // subject-centred JPEG so the scale+pad in the filter graph is
-    // effectively a no-op. `smartCropToReel` is cached + fail-safe
-    // (returns the original path if Sharp errors).
-    const { smartCropBatch } = require("./lib/image-crop");
-    const images = await smartCropBatch(rawImages);
+    // 2026-04-25 HOTFIX: smart-crop integration disabled. The Sharp
+    // mozjpeg output produces JPEGs whose chroma metadata ffmpeg's
+    // auto-inserted swscaler can't reconcile when stitched alongside
+    // PNG overlays — every multi-image render fails with
+    //   [auto_scale_N] Failed to configure output pad on auto_scale_N
+    //   Failed to inject frame into filter network: Resource temporarily unavailable
+    // and the produce cycle ends with 0 MP4s. Reverting to the original
+    // image paths restores yesterday's working multi-image renderer.
+    // The encoder fix (-pix_fmt yuv420p / High@4.0) is preserved and
+    // still solves the IG Reel 2207076 / FB Reel 422 chroma rejection.
+    // Smart-crop will return as a follow-up with proper local repro
+    // (PNG output + cache invalidation + e2e ffmpeg test).
+    const images = rawImages;
     console.log(
-      `[assemble] ${story.id}: smart-cropped ${images.length} images to 1080×1920`,
+      `[assemble] ${story.id}: using ${images.length} real images (smart-crop disabled — hotfix 2026-04-25)`,
     );
 
     // Generate ASS subtitle file
@@ -1773,9 +1773,18 @@ async function assemble() {
             `trim=duration=${Math.ceil(duration)},setpts=PTS-STARTPTS,format=yuv420p,setsar=1[base]`,
         );
 
-        // Audio input
+        // Audio input — resolve through media-paths so the absolute
+        // path under MEDIA_ROOT (e.g. /data/media/output/audio/...)
+        // is used. Without this, ffmpeg resolves `output/audio/<id>.mp3`
+        // against CWD (/app) and dies with "No such file or directory"
+        // — same bug class as the morning produce_morning failure
+        // fixed in commit 0db8a4a, but in the fallback code path that
+        // edit didn't cover. (2026-04-25 hotfix.)
         const fbAudioIdx = 1;
-        fbInputs.push(`-i "${story.audio_path.replace(/\\/g, "/")}"`);
+        const fbAudioPathAbs =
+          (await mediaPaths.resolveExisting(story.audio_path)) ||
+          story.audio_path;
+        fbInputs.push(`-i "${fbAudioPathAbs.replace(/\\/g, "/")}"`);
 
         // Music input (if available)
         let fbMusicIdx = -1;

@@ -195,15 +195,22 @@ test("smartCropToReel: handles null / non-string gracefully", async () => {
   assert.equal(await smartCropToReel(""), "");
 });
 
-test("assemble.js: smart-crop is invoked on images before the filter graph", () => {
-  assert.match(
+// 2026-04-25 hotfix: smart-crop integration ROLLED BACK because Sharp
+// mozjpeg output broke ffmpeg's multi-image filter graph (every render
+// failed with `auto_scale_N: Failed to configure output pad`). The
+// helper still exists in lib/image-crop.js; assemble.js just doesn't
+// call it. This test is inverted to PIN the rollback — it will fail
+// (as intended) when smart-crop is re-introduced, prompting the dev
+// to flip the assertion back to `match`.
+test("assemble.js: smart-crop is NOT invoked (rollback pin — 2026-04-25)", () => {
+  assert.doesNotMatch(
     ASSEMBLE_CODE,
     /smartCropBatch\(rawImages\)/,
-    "assemble.js must pipe rawImages through smartCropBatch before building filter graph",
+    "assemble.js must NOT call smartCropBatch until the chroma-metadata regression is fixed",
   );
-  assert.match(
+  assert.doesNotMatch(
     ASSEMBLE_CODE,
     /require\(["']\.\/lib\/image-crop["']\)/,
-    "assemble.js must import lib/image-crop",
+    "assemble.js must NOT import lib/image-crop until the smart-crop output is ffmpeg-safe",
   );
 });

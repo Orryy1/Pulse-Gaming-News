@@ -170,7 +170,7 @@ test("hookFactory.composeOpenerOverlay: hold ends at 2.6s, fade-out at 3.0s", ()
 
 // ---------- lib/caption-emphasis --------------------------------
 
-test("captionEmphasis.groupIntoPhrases: splits on punctuation", () => {
+test("captionEmphasis.groupIntoPhrases: splits on sentence-ending punctuation only", () => {
   const words = [
     { word: "The", start: 0, end: 0.3 },
     { word: "GTA", start: 0.3, end: 0.6 },
@@ -181,7 +181,26 @@ test("captionEmphasis.groupIntoPhrases: splits on punctuation", () => {
     { word: "real.", start: 2.0, end: 2.3 },
   ];
   const phrases = captionEmphasis.groupIntoPhrases(words);
-  assert.ok(phrases.length >= 2, "must split on commas / periods");
+  assert.ok(phrases.length >= 2, "must split on the period at the end");
+});
+
+test("captionEmphasis.groupIntoPhrases: does NOT break on colons in titles", () => {
+  // Regression for "Clair Obscur: Expedition 33" being shattered
+  // across two captions with a visible gap.
+  const words = [
+    { word: "Clair", start: 0, end: 0.3 },
+    { word: "Obscur:", start: 0.3, end: 0.7 },
+    { word: "Expedition", start: 0.7, end: 1.3 },
+    { word: "33", start: 1.3, end: 1.5 },
+  ];
+  const phrases = captionEmphasis.groupIntoPhrases(words);
+  // Should produce ONE phrase (only 4 words, no sentence end), or
+  // at most break by the WORDS_PER_PHRASE cap — not by the colon.
+  assert.equal(
+    phrases.length,
+    1,
+    "colon must not split mid-title; expected 1 phrase, got " + phrases.length,
+  );
 });
 
 test("captionEmphasis.isEmphasisWord: detects $5B, 47%, 2026, GTA", () => {
@@ -316,4 +335,180 @@ test("image-crop: smartCropToReel returns input when file doesn't exist", async 
     "/tmp/definitely-does-not-exist-quality-test.jpg",
   );
   assert.equal(out, "/tmp/definitely-does-not-exist-quality-test.jpg");
+});
+
+test("image-crop: VARIANT_STRATEGIES exposes 7 distinct crop strategies", () => {
+  assert.equal(imageCrop.VARIANT_STRATEGIES.length, 7);
+  assert.ok(imageCrop.VARIANT_STRATEGIES.includes("attention"));
+  assert.ok(imageCrop.VARIANT_STRATEGIES.includes("entropy"));
+  assert.ok(imageCrop.VARIANT_STRATEGIES.includes("north"));
+  assert.ok(imageCrop.VARIANT_STRATEGIES.includes("centre"));
+});
+
+test("image-crop: smartCropForCount returns exactly targetCount paths", async () => {
+  // Use non-existent paths so smart-crop fails fast and falls back
+  // to returning the input. We're testing the LENGTH + cycling
+  // logic, not the actual cropping.
+  const sources = ["/tmp/no_a.jpg", "/tmp/no_b.jpg"];
+  const out = await imageCrop.smartCropForCount(sources, 6);
+  assert.equal(out.length, 6);
+  // Entries should alternate between the two sources (round-robin):
+  // out[0]=a, out[1]=b, out[2]=a, out[3]=b, ...
+  for (let i = 0; i < 6; i++) {
+    assert.ok(out[i].includes(i % 2 === 0 ? "no_a" : "no_b"));
+  }
+});
+
+test("image-crop: smartCropForCount: empty inputs return empty array", async () => {
+  assert.deepEqual(await imageCrop.smartCropForCount([], 10), []);
+  assert.deepEqual(await imageCrop.smartCropForCount(["/tmp/a.jpg"], 0), []);
+});
+
+// ---------- lib/prl-overlays ------------------------------------
+
+const prl = require("../../lib/prl-overlays");
+
+test("prl: flairColour maps known classifications to brand colours", () => {
+  assert.equal(prl.flairColour("Confirmed"), "0x10B981");
+  assert.equal(prl.flairColour("Breaking"), "0xFF2D2D");
+  assert.equal(prl.flairColour("Rumour"), "0xF59E0B");
+  assert.equal(prl.flairColour("Trailer"), "0x8B5CF6");
+  // Unknown falls back to grey News
+  assert.equal(prl.flairColour("Whatever"), "0x6B7280");
+});
+
+test("prl.buildFlairBadge: emits drawtext + pulsing border drawbox", () => {
+  const out = prl.buildFlairBadge({
+    flair: "Breaking",
+    fontOpt: "font='Arial'",
+  });
+  assert.equal(out.length, 2);
+  assert.match(out[0], /drawtext=text=' {2}BREAKING {2}'/);
+  // Pulse is implemented as a periodic `enable` gate (drawbox
+  // does not support runtime alpha). On for 0.6s every 2s.
+  assert.match(out[1], /enable='lt\(mod\(t\\,2\)\\,0\.6\)'/);
+});
+
+test("prl.buildSourceBug: uses subreddit when present", () => {
+  const out = prl.buildSourceBug({
+    story: { subreddit: "GamingLeaksAndRumours" },
+    fontOpt: "font='Arial'",
+  });
+  assert.equal(out.length, 1);
+  assert.match(out[0], /r\/GamingLeaksAndRumours/);
+});
+
+test("prl.buildSourceBug: falls back to source_type when no subreddit", () => {
+  const out = prl.buildSourceBug({
+    story: { source_type: "rss", subreddit: null },
+    fontOpt: "font='Arial'",
+  });
+  assert.match(out[0], /text=' {2}rss {2}'/);
+});
+
+test("prl.buildStatCard: returns [] when no Steam metrics on story", () => {
+  const out = prl.buildStatCard({
+    story: { title: "no stats here" },
+    fontOpt: "font='Arial'",
+  });
+  assert.deepEqual(out, []);
+});
+
+test("prl.buildStatCard: emits one drawtext when stats present", () => {
+  const out = prl.buildStatCard({
+    story: { steam_review_score: 87, steam_player_count: 12345 },
+    fontOpt: "font='Arial'",
+    startS: 4,
+    durationS: 4,
+  });
+  assert.equal(out.length, 1);
+  // ffmpeg drawtext escapes % and , so "87% Positive" lands as
+  // "87\% Positive" and "12,345" as "12\,345" inside the text='...' arg
+  assert.match(out[0], /87\\% Positive/);
+  assert.match(out[0], /12\\,345 Playing/);
+  assert.match(out[0], /enable='between\(t\\,4\\,8\)'/);
+});
+
+test("prl.buildCommentSwoop: returns [] when no comment data", () => {
+  const out = prl.buildCommentSwoop({
+    story: { title: "no comments" },
+    fontOpt: "font='Arial'",
+  });
+  assert.deepEqual(out, []);
+});
+
+test("prl.buildCommentSwoop: emits card bg + stripe + handle + body", () => {
+  const out = prl.buildCommentSwoop({
+    story: {
+      top_comment: "This is going to flop hard, mark my words on this",
+      reddit_comments: [{ author: "GamerXX", body: "...", score: 547 }],
+    },
+    fontOpt: "font='Arial'",
+    startS: 12,
+    durationS: 6,
+  });
+  // Card bg + amber stripe + handle line + at least 1 body line
+  assert.ok(out.length >= 4);
+  // u/handle in the header
+  assert.ok(out.some((l) => l.includes("u/GamerXX")));
+  // Score visible
+  assert.ok(out.some((l) => l.includes("↑547")));
+});
+
+test("prl.buildHotTakeCard: uses story.loop as fallback text", () => {
+  const out = prl.buildHotTakeCard({
+    story: { loop: "And nobody saw this coming." },
+    fontOpt: "font='Arial'",
+    startS: 40,
+    durationS: 4,
+  });
+  assert.ok(out.length >= 3);
+  assert.ok(out.some((l) => l.includes("HOT TAKE")));
+});
+
+test("prl.buildPrlChain: full chain length grows with enabled options", () => {
+  const story = {
+    title: "GTA 6 leak",
+    flair: "Confirmed",
+    subreddit: "GamingLeaksAndRumours",
+    steam_review_score: 87,
+    steam_player_count: 12345,
+    top_comment: "This is huge",
+    reddit_comments: [{ author: "X", body: "huge", score: 100 }],
+    loop: "Stay tuned for more.",
+  };
+  const full = prl.buildPrlChain({
+    story,
+    fontOpt: "font='Arial'",
+    videoDuration: 60,
+  });
+  assert.ok(
+    full.length >= 8,
+    `expected ≥8 elements in full chain, got ${full.length}`,
+  );
+
+  const minimal = prl.buildPrlChain({
+    story,
+    fontOpt: "font='Arial'",
+    videoDuration: 60,
+    options: {
+      enableLowerThird: false,
+      enableBadge: false,
+      enableSourceBug: false,
+      enableStatCard: false,
+      enableCommentSwoop: false,
+      enableHotTake: false,
+    },
+  });
+  // Only the eq() polish remains
+  assert.equal(minimal.length, 1);
+  assert.match(minimal[0], /^eq=brightness/);
+});
+
+test("prl.ffEscape: escapes ffmpeg drawtext metacharacters", () => {
+  // Smart quotes preserved; literal apostrophe replaced; colon/comma escaped.
+  assert.equal(
+    prl.ffEscape("It's a 30%, 2-for-1: deal"),
+    "It’s a 30\\%\\, 2-for-1\\: deal",
+  );
 });

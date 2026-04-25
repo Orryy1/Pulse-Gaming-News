@@ -26,7 +26,7 @@ const path = require("node:path");
 const fs = require("fs-extra");
 const { execSync } = require("node:child_process");
 
-const { smartCropBatch } = require("../lib/image-crop");
+const { smartCropBatch, smartCropForCount } = require("../lib/image-crop");
 const { buildPerImageMotion, FPS } = require("../lib/motion");
 const {
   buildTransitionStrategy,
@@ -39,6 +39,7 @@ const {
 } = require("../lib/hook-factory");
 const { buildAss } = require("../lib/caption-emphasis");
 const { rankImagesByRelevance } = require("../lib/relevance");
+const { buildPrlChain } = require("../lib/prl-overlays");
 
 const ROOT = path.resolve(__dirname, "..");
 const TEST_OUT = path.join(ROOT, "test", "output");
@@ -192,21 +193,25 @@ function audioDuration(audioPath) {
 /**
  * Compose the full filter graph and ffmpeg command for `id`.
  */
-async function buildCommand({ id, story, fixture, duration, croppedImages }) {
-  const ranked = rankImagesByRelevance(croppedImages, story);
-  // Cap segments at 12 (5s minimum * 12 = 60s coverage). Real videos
-  // are 50–70s so this gives us comfortable headroom while ensuring
-  // we get more cuts than the legacy 8 max.
-  const segments = ranked.slice(0, Math.min(12, ranked.length));
+async function buildCommand({
+  id,
+  story,
+  fixture,
+  duration,
+  finalSegments,
+  prl = false,
+}) {
+  // PRL pacing: tighter segments. Default (non-PRL) keeps the v1
+  // values for the apples-to-apples comparison.
+  const minSeg = prl ? 2.6 : 3.5;
+  const maxSeg = prl ? 5.5 : 6.5;
+  const targetSegments = prl
+    ? Math.min(16, Math.max(10, Math.ceil(duration / 4.0)))
+    : Math.min(12, Math.max(8, Math.ceil(duration / 5.0)));
 
-  // Aim for ~5s per segment, capped at 12 segments for a 60-70s
-  // video. Pad by reusing the best images if we have fewer than
-  // targetSegments.
-  const targetSegments = Math.min(12, Math.max(8, Math.ceil(duration / 5.0)));
-  const finalSegments = [];
-  for (let i = 0; i < targetSegments; i++) {
-    finalSegments.push(segments[i % segments.length]);
-  }
+  // finalSegments is now PRE-RANKED + PRE-CROPPED at targetSegments
+  // length by the caller (which knows whether we're in PRL mode and
+  // sourced the right number of crops via smartCropForCount).
   const finalCount = finalSegments.length;
 
   // Effective coverage shrinks per edge — cuts add nothing, xfades
@@ -215,8 +220,8 @@ async function buildCommand({ id, story, fixture, duration, croppedImages }) {
   // doesn't clip the last sentence + outro dissolve.
   const totalShrink = (finalCount - 1) * 0.12;
   const finalDuration = Math.max(
-    3.5,
-    Math.min(6.5, (duration + totalShrink + 0.4) / finalCount),
+    minSeg,
+    Math.min(maxSeg, (duration + totalShrink + 0.4) / finalCount),
   );
 
   const inputs = [];
@@ -263,28 +268,43 @@ async function buildCommand({ id, story, fixture, duration, croppedImages }) {
   });
   filterParts.push(...transitionFilters);
 
-  // Opener overlay on top of [base]
+  let lastVideoLabel = "base";
+
+  // PRL overlay chain — sits BELOW the opener and BELOW the captions.
+  // Order matters: chain is comma-joined onto [base] producing
+  // [afterprl], which the opener and ass filter then build on top of.
+  if (prl) {
+    const prlChain = buildPrlChain({
+      story,
+      fontOpt: FONT_OPT,
+      videoDuration: duration,
+      outroStartS: null, // no outro card in the harness yet
+    });
+    if (prlChain.length) {
+      filterParts.push(`[${lastVideoLabel}]${prlChain.join(",")}[afterprl]`);
+      lastVideoLabel = "afterprl";
+    }
+  }
+
+  // Opener overlay (always — pure quality lift, additive)
   const opener = composeOpenerOverlay(story);
   const openerFilters = buildOpenerDrawtext(opener, {
     fontOpt: FONT_OPT,
     accentColor: ACCENT_COLOR,
   });
-
-  let lastVideoLabel = "base";
   if (openerFilters.length) {
-    filterParts.push(`[base]${openerFilters.join(",")}[afterhook]`);
+    filterParts.push(
+      `[${lastVideoLabel}]${openerFilters.join(",")}[afterhook]`,
+    );
     lastVideoLabel = "afterhook";
   }
 
-  // ASS subtitles. ffmpeg's ass filter parses `:` as option
-  // separators, so a Windows drive letter `C:` in the path
-  // breaks. Escaping with `\:` in the filter complex script
-  // doesn't reliably suppress this. Cleanest fix: pass a
-  // RELATIVE path. The harness invokes ffmpeg with cwd=ROOT, so
-  // `test/output/<id>_after.ass` resolves correctly without
-  // any colons in the filter.
+  // ASS subtitles. Relative path so ffmpeg's filter parser doesn't
+  // trip on the Windows drive-letter colon. The harness sets
+  // cwd=ROOT before invoking ffmpeg.
+  const tag = prl ? "prl" : "after";
   const assPathRel = path
-    .relative(ROOT, path.join(TEST_OUT, `${id}_after.ass`))
+    .relative(ROOT, path.join(TEST_OUT, `${id}_${tag}.ass`))
     .replace(/\\/g, "/");
   filterParts.push(`[${lastVideoLabel}]ass=${assPathRel}[outv]`);
 
@@ -301,10 +321,10 @@ async function buildCommand({ id, story, fixture, duration, croppedImages }) {
     audioMapping = `-map "[outv]" -map ${audioIdx}:a`;
   }
 
-  const filterScriptPath = path.join(TEST_OUT, `${id}_filter.txt`);
+  const filterScriptPath = path.join(TEST_OUT, `${id}_${tag}_filter.txt`);
   await fs.writeFile(filterScriptPath, filterParts.join(";\n"));
 
-  const outputPath = path.join(TEST_OUT, `after_${id}.mp4`);
+  const outputPath = path.join(TEST_OUT, `${tag}_${id}.mp4`);
 
   const command = [
     `ffmpeg -y -hide_banner -loglevel error`,
@@ -336,22 +356,41 @@ async function renderOne(id, opts = {}) {
   const fixture = await discoverFixture(id);
   const story = await loadStory(id);
   const duration = audioDuration(fixture.audioPath);
+  const prl = !!opts.prl;
+  const tag = prl ? "prl" : "after";
 
   console.log(
-    `[quality] ${id} duration=${duration.toFixed(2)}s images=${fixture.images.length}`,
+    `[quality] ${id} duration=${duration.toFixed(2)}s images=${fixture.images.length} mode=${tag}`,
   );
 
-  // 1. Smart-crop images
-  const cropped = await smartCropBatch(fixture.images.map((i) => i.path));
-  // Pair cropped paths back to fixture metadata so relevance ranking
-  // still has type/source.
-  const croppedImages = fixture.images.map((img, i) => ({
-    ...img,
-    path: cropped[i],
+  // 1. Decide segment count BEFORE cropping. PRL mode uses tighter
+  //    pacing → more segments → may need more crop variants from
+  //    the same source images.
+  const targetSegments = prl
+    ? Math.min(16, Math.max(10, Math.ceil(duration / 4.0)))
+    : Math.min(12, Math.max(8, Math.ceil(duration / 5.0)));
+
+  // 2. Rank source images by relevance, then ensure we have
+  //    `targetSegments` distinct crops via the multi-strategy
+  //    sharp helper. When unique sources < targetSegments, this
+  //    cycles cardinal positions / entropy / attention to keep
+  //    adjacent slots from being identical-looking.
+  const ranked = rankImagesByRelevance(fixture.images, story);
+  const croppedPaths = await smartCropForCount(
+    ranked.map((i) => i.path),
+    targetSegments,
+  );
+  // Pair the cropped paths back to metadata for downstream filters
+  // (file extension lookup, etc.). When a source is reused, repeat
+  // the corresponding metadata.
+  const finalSegments = croppedPaths.map((p, i) => ({
+    ...ranked[i % ranked.length],
+    path: p,
   }));
 
-  // 2. Build captions FIRST so any timestamps issue surfaces before
-  //    we sink time into ffmpeg.
+  // 3. Build captions. Same as before, but the .ass filename now
+  //    includes the mode tag so PRL and basic outputs don't
+  //    overwrite each other.
   let assContent;
   if (fixture.timestampsPath) {
     try {
@@ -361,9 +400,6 @@ async function renderOne(id, opts = {}) {
       else if (Array.isArray(data?.alignment?.words))
         words = data.alignment.words;
       else if (Array.isArray(data?.characters)) {
-        const { buildAss: _buildAss } = require("../lib/caption-emphasis");
-        const charsToWords = require("../lib/caption-emphasis").charsToWords;
-        // charsToWords isn't exported — inline the conversion.
         words = inlineCharsToWords(data);
       } else if (Array.isArray(data?.alignment?.characters)) {
         words = inlineCharsToWords(data.alignment);
@@ -381,12 +417,19 @@ async function renderOne(id, opts = {}) {
     );
     assContent = buildEvenSpacedAss(story, duration);
   }
-  const assPath = path.join(TEST_OUT, `${id}_after.ass`);
+  const assPath = path.join(TEST_OUT, `${id}_${tag}.ass`);
   await fs.writeFile(assPath, assContent);
 
-  // 3. Build the ffmpeg command
+  // 4. Build the ffmpeg command
   const { command, outputPath, finalCount, finalDuration, transitions } =
-    await buildCommand({ id, story, fixture, duration, croppedImages });
+    await buildCommand({
+      id,
+      story,
+      fixture,
+      duration,
+      finalSegments,
+      prl,
+    });
 
   if (opts.dryRun) {
     return { command, outputPath, finalCount, finalDuration, transitions };

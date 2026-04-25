@@ -1,14 +1,17 @@
 /**
  * tools/quality-test.js — orchestrator for `npm run quality:test`.
  *
- * Renders 3 representative local stories through the redesigned
- * pipeline (tools/quality-render.js), then ffprobes both the
- * NEW render (`test/output/after_<id>.mp4`) and the legacy
- * baseline (`output/final/<id>.mp4` if present), writes a
- * Markdown comparison report at `test/output/REPORT.md`.
+ * Renders 3 representative local stories TWICE through the
+ * redesigned pipeline:
  *
- * The script is purely local: no network, no DB writes, no
- * production touch.
+ *   1. v1 (basic redesign):     test/output/after_<id>.mp4
+ *   2. v2 (Premium Render Layer): test/output/prl_<id>.mp4
+ *
+ * Then ffprobes both + the legacy production baseline at
+ * `output/final/<id>.mp4` and writes a 3-way Markdown comparison
+ * report at `test/output/REPORT.md`.
+ *
+ * Purely local — no network, no DB writes, no production touch.
  */
 
 "use strict";
@@ -21,9 +24,6 @@ const { renderOne } = require("./quality-render");
 const ROOT = path.resolve(__dirname, "..");
 const TEST_OUT = path.join(ROOT, "test", "output");
 
-// Picked because each has audio + word-level timestamps + multiple
-// images already cached locally. Mix of CONFIRMED + Trailer to
-// stress different content shapes.
 const SAMPLES = ["1smsr12", "1sn9xhe", "1s4denn"];
 
 function ffprobeOrNull(file) {
@@ -71,6 +71,14 @@ function fmtKbps(bps) {
   return `${Math.round(bps / 1000)} kbps`;
 }
 
+async function renderSafely(id, opts) {
+  try {
+    return await renderOne(id, opts);
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
 async function main() {
   await fs.ensureDir(TEST_OUT);
 
@@ -80,27 +88,31 @@ async function main() {
   const results = [];
   for (const id of SAMPLES) {
     console.log(`\n--- ${id} ---`);
-    let r;
-    try {
-      r = await renderOne(id);
-    } catch (e) {
-      console.error(`[quality:test] ${id}: ${e.message}`);
-      r = { ok: false, error: e.message };
-    }
+    const basic = await renderSafely(id, { prl: false });
+    const prl = await renderSafely(id, { prl: true });
     const baselinePath = path.join(ROOT, "output", "final", `${id}.mp4`);
     const baseline = ffprobeOrNull(baselinePath);
-    const after = r?.ok ? ffprobeOrNull(r.outputPath) : null;
-    results.push({ id, baseline, after, render: r });
-    if (r?.ok) {
+    const basicProbe = basic?.ok ? ffprobeOrNull(basic.outputPath) : null;
+    const prlProbe = prl?.ok ? ffprobeOrNull(prl.outputPath) : null;
+    results.push({ id, baseline, basic, basicProbe, prl, prlProbe });
+
+    if (basic?.ok) {
       console.log(
-        `  ✓ ${id}: ${after?.duration?.toFixed(1)}s, ${fmtMB(after?.sizeBytes)}, ${fmtKbps(after?.bitrate)}, ${r.finalCount} segments, ${summariseTransitions(r.transitions)}`,
+        `  ✓ basic: ${basicProbe?.duration?.toFixed(1)}s, ${fmtMB(basicProbe?.sizeBytes)}, ${basic.finalCount} segments`,
       );
     } else {
-      console.log(`  ✗ ${id}: ${r?.error || "render failed"}`);
+      console.log(`  ✗ basic: ${basic?.error || "render failed"}`);
+    }
+    if (prl?.ok) {
+      console.log(
+        `  ✓ PRL:   ${prlProbe?.duration?.toFixed(1)}s, ${fmtMB(prlProbe?.sizeBytes)}, ${prl.finalCount} segments, ${summariseTransitions(prl.transitions)}`,
+      );
+    } else {
+      console.log(`  ✗ PRL:   ${prl?.error || "render failed"}`);
     }
   }
 
-  // Build the report.
+  // Build the 3-way report.
   const lines = [];
   lines.push(`# Pulse Gaming quality:test report`);
   lines.push(``);
@@ -109,96 +121,158 @@ async function main() {
   lines.push(``);
   lines.push(`Samples: ${SAMPLES.map((s) => `\`${s}\``).join(", ")}`);
   lines.push(``);
+  lines.push(`Three columns per story:`);
+  lines.push(``);
+  lines.push(
+    `- **Legacy** = \`output/final/<id>.mp4\` (production baseline, pre-545c622)`,
+  );
+  lines.push(
+    `- **v1 redesign** = \`test/output/after_<id>.mp4\` (basic redesign: smart-crop + motion presets + mixed transitions + hook overlay + caption emphasis)`,
+  );
+  lines.push(
+    `- **PRL** = \`test/output/prl_<id>.mp4\` (Premium Render Layer: tighter pacing, multi-strategy crops, badge with pulse, source bug, lower third with amber accent line, stat card, comment swoop, hot-take card)`,
+  );
+  lines.push(``);
 
   for (const r of results) {
     lines.push(`## ${r.id}`);
     lines.push(``);
-    if (r.render?.ok) {
+    if (r.basic?.ok) {
       lines.push(
-        `**Render: OK** (${r.render.elapsedMs} ms, ${r.render.finalCount} segments at ~${r.render.finalDuration.toFixed(2)}s each)`,
+        `**v1 render: OK** (${r.basic.elapsedMs} ms, ${r.basic.finalCount} segments at ~${r.basic.finalDuration.toFixed(2)}s)`,
       );
     } else {
-      lines.push(`**Render: FAILED** — ${r.render?.error || "unknown error"}`);
+      lines.push(`**v1 render: FAILED** — ${r.basic?.error}`);
+    }
+    if (r.prl?.ok) {
+      lines.push(
+        `**PRL render: OK** (${r.prl.elapsedMs} ms, ${r.prl.finalCount} segments at ~${r.prl.finalDuration.toFixed(2)}s)`,
+      );
+    } else {
+      lines.push(`**PRL render: FAILED** — ${r.prl?.error}`);
     }
     lines.push(``);
-    lines.push(`| Metric | Legacy baseline | Redesigned | Delta |`);
-    lines.push(`| ------ | --------------- | ---------- | ----- |`);
 
-    const b = r.baseline;
-    const a = r.after;
-    const row = (label, bv, av, fmt = (x) => String(x ?? "—")) => {
-      const bvs = fmt(bv);
-      const avs = fmt(av);
-      let delta = "—";
-      if (typeof bv === "number" && typeof av === "number") {
-        const d = av - bv;
-        delta = `${d >= 0 ? "+" : ""}${fmt === fmtMB ? fmtMB(d) : fmt === fmtKbps ? fmtKbps(d) : d.toFixed(1)}`;
-      }
-      lines.push(`| ${label} | ${bvs} | ${avs} | ${delta} |`);
+    lines.push(`| Metric | Legacy | v1 | PRL |`);
+    lines.push(`| ------ | ------ | -- | --- |`);
+    const row = (label, bv, v1v, prlv, fmt = (x) => String(x ?? "—")) => {
+      lines.push(`| ${label} | ${fmt(bv)} | ${fmt(v1v)} | ${fmt(prlv)} |`);
     };
-    row("Duration (s)", b?.duration, a?.duration, (x) => (x ?? 0).toFixed(2));
+    row(
+      "Duration (s)",
+      r.baseline?.duration,
+      r.basicProbe?.duration,
+      r.prlProbe?.duration,
+      (x) => (x == null ? "—" : Number(x).toFixed(2)),
+    );
     row(
       "Frame size",
-      b ? `${b.width}×${b.height}` : null,
-      a ? `${a.width}×${a.height}` : null,
+      r.baseline ? `${r.baseline.width}×${r.baseline.height}` : null,
+      r.basicProbe ? `${r.basicProbe.width}×${r.basicProbe.height}` : null,
+      r.prlProbe ? `${r.prlProbe.width}×${r.prlProbe.height}` : null,
     );
     row(
-      "Codec / profile",
-      b ? `${b.vcodec} / ${b.profile || "?"}` : null,
-      a ? `${a.vcodec} / ${a.profile || "?"}` : null,
+      "pix_fmt",
+      r.baseline?.pix_fmt,
+      r.basicProbe?.pix_fmt,
+      r.prlProbe?.pix_fmt,
     );
-    row("pix_fmt", b?.pix_fmt, a?.pix_fmt);
-    row("Bitrate", b?.bitrate, a?.bitrate, fmtKbps);
-    row("Size", b?.sizeBytes, a?.sizeBytes, fmtMB);
-    if (r.render?.ok) {
-      lines.push(
-        `| Segments (cuts) | ? (legacy used static 8) | ${r.render.finalCount} (~${r.render.finalDuration.toFixed(2)}s each) | — |`,
-      );
-      lines.push(
-        `| Transition mix | 7× dissolve@0.5s | ${summariseTransitions(r.render.transitions)} | — |`,
-      );
-    }
+    row(
+      "Profile",
+      r.baseline?.profile,
+      r.basicProbe?.profile,
+      r.prlProbe?.profile,
+    );
+    row(
+      "Bitrate",
+      r.baseline?.bitrate,
+      r.basicProbe?.bitrate,
+      r.prlProbe?.bitrate,
+      fmtKbps,
+    );
+    row(
+      "Size",
+      r.baseline?.sizeBytes,
+      r.basicProbe?.sizeBytes,
+      r.prlProbe?.sizeBytes,
+      fmtMB,
+    );
+    row("Segments", "8 (legacy fixed)", r.basic?.finalCount, r.prl?.finalCount);
+    row(
+      "Avg seg (s)",
+      "≈7-8",
+      r.basic?.finalDuration?.toFixed(2),
+      r.prl?.finalDuration?.toFixed(2),
+    );
+    row(
+      "Transition mix",
+      "7× dissolve@0.5s",
+      summariseTransitions(r.basic?.transitions),
+      summariseTransitions(r.prl?.transitions),
+    );
     lines.push(``);
   }
 
   lines.push(`---`);
   lines.push(``);
+  lines.push(`## What PRL adds on top of v1`);
+  lines.push(``);
+  lines.push(
+    `- **Tighter pacing**: target 10–16 segments at 2.6–5.5s instead of 8–12 at 3.5–6.5s`,
+  );
+  lines.push(
+    `- **Multi-strategy crops** when source images < target segments — different sharp.strategy per slot (attention / entropy / N/S/E/W/centre) so adjacent shots don't repeat the same crop`,
+  );
+  lines.push(
+    `- **Flair badge** with subtle pulse line (Confirmed=green, Breaking=red, Rumour=amber, Trailer=purple)`,
+  );
+  lines.push(`- **Source bug** below the badge with subreddit / publisher`);
+  lines.push(
+    `- **Lower third** with thin amber accent line above the channel name + tagline`,
+  );
+  lines.push(`- **Stat card** (timed pop-in, Steam % / players if available)`);
+  lines.push(
+    `- **Comment swoop** (Reddit top_comment slides in from right at ~12s)`,
+  );
+  lines.push(
+    `- **Hot-take card** (analysis blurb / loop string at ~videoEnd-18s)`,
+  );
+  lines.push(``);
   lines.push(`## How to inspect`);
   lines.push(``);
-  lines.push(`Renders are at \`test/output/after_<id>.mp4\`. Compare against`);
-  lines.push(
-    `\`output/final/<id>.mp4\` (legacy baseline). The redesign target`,
-  );
-  lines.push(`shapes:`);
+  lines.push(`Open all three files for one story side-by-side:`);
   lines.push(``);
-  lines.push(`- More cuts: target ≥10 segments per 60s (legacy was 8 max)`);
-  lines.push(
-    `- Faster transitions: mix of CUT (instant) + 0.22-0.30s dissolves`,
-  );
-  lines.push(`- Hook overlay: visible 0–3s, fades out by 3.0s`);
-  lines.push(
-    `- Caption emphasis: keywords (game names, money, dates) in amber + 1.15× scale`,
-  );
-  lines.push(`- Subtitle sync: anchored to ElevenLabs word timestamps`);
+  lines.push(`\`\`\``);
+  lines.push(`output/final/1smsr12.mp4         # Legacy production`);
+  lines.push(`test/output/after_1smsr12.mp4    # v1 redesign`);
+  lines.push(`test/output/prl_1smsr12.mp4      # PRL`);
+  lines.push(`\`\`\``);
   lines.push(``);
-  lines.push(`## What's NOT in the harness`);
+  lines.push(`## Known gaps in this harness`);
   lines.push(``);
   lines.push(
-    `The harness is intentionally minimal: it skips entity portraits,`,
+    `- TTS audio is from older ElevenLabs voice (not Liam) — these are`,
+  );
+  lines.push(`  cached fixture files. Production already uses Liam.`);
+  lines.push(
+    `- No intro / outro bumpers in the harness — production has them via`,
   );
   lines.push(
-    `Reddit comments, stat cards, intro/outro bumpers, and the teaser`,
+    `  \`concatWithBumpers\`. Adding to the harness is straightforward but`,
   );
-  lines.push(`cut. Those layers are independent of the core quality changes.`);
-  lines.push(`Once the core renders cleanly, those layers can be re-added in`);
-  lines.push(`assemble.js.`);
+  lines.push(`  the bumpers are unchanged across all three columns so the`);
+  lines.push(`  comparison stays fair without them.`);
+  lines.push(
+    `- No entity portrait pop-ins yet (production has them; not in PRL v1).`,
+  );
+  lines.push(`- No video clip slot yet (Steam / IGDB trailers).`);
 
   const reportPath = path.join(TEST_OUT, "REPORT.md");
   await fs.writeFile(reportPath, lines.join("\n"));
   console.log(`\nReport: ${reportPath}\n`);
 
-  const ok = results.filter((r) => r.render?.ok).length;
-  console.log(`Summary: ${ok}/${results.length} renders succeeded`);
+  const ok = results.filter((r) => r.basic?.ok && r.prl?.ok).length;
+  console.log(`Summary: ${ok}/${results.length} pairs succeeded`);
   process.exit(ok === results.length ? 0 : 1);
 }
 

@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        font-family: "Arial Black", "Inter", system-ui, sans-serif;
+      }
+      html,
+      body {
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        background: #0d0d0f;
+      }
+
+      /* ----- Backdrop ----- */
+      .backdrop {
+        position: absolute;
+        inset: 0;
+        background: url("assets/backdrop.jpg") center/cover no-repeat;
+        filter: blur(22px) brightness(0.55) saturate(0.45) contrast(1.08);
+        transform: scale(1.08);
+      }
+      .vignette-top {
+        position: absolute;
+        left: 0;
+        top: 0;
+        right: 0;
+        height: 380px;
+        background: linear-gradient(
+          to bottom,
+          rgba(0, 0, 0, 0.7),
+          rgba(0, 0, 0, 0)
+        );
+      }
+      .vignette-bot {
+        position: absolute;
+        left: 0;
+        bottom: 0;
+        right: 0;
+        height: 480px;
+        background: linear-gradient(
+          to top,
+          rgba(0, 0, 0, 0.7),
+          rgba(0, 0, 0, 0)
+        );
+      }
+
+      /* ----- Composition stage ----- */
+      .stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .accent-top,
+      .underline-bottom {
+        height: 3px;
+        background: #ff6b1a;
+        box-shadow: 0 0 24px rgba(255, 107, 26, 0.7);
+      }
+      .accent-top {
+        margin-bottom: 40px;
+      }
+      .underline-bottom {
+        margin-top: 36px;
+      }
+
+      .kicker {
+        font-size: 36px;
+        letter-spacing: 0.32em;
+        color: #ff6b1a;
+        text-transform: uppercase;
+        margin-bottom: 24px;
+        font-weight: 900;
+      }
+
+      .label {
+        font-size: 132px;
+        font-weight: 900;
+        color: #fff;
+        letter-spacing: -0.03em;
+        text-shadow:
+          0 4px 0 rgba(0, 0, 0, 0.6),
+          0 8px 24px rgba(0, 0, 0, 0.7),
+          0 0 64px rgba(255, 107, 26, 0.18);
+      }
+
+      .sublabel {
+        font-size: 30px;
+        letter-spacing: 0.36em;
+        color: rgba(255, 255, 255, 0.85);
+        text-transform: uppercase;
+        margin-top: 28px;
+        font-weight: 700;
+      }
+
+      /* ----- Brand line at bottom ----- */
+      .brand {
+        position: absolute;
+        bottom: 96px;
+        left: 0;
+        right: 0;
+        text-align: center;
+      }
+      .brand-line {
+        width: 200px;
+        height: 2px;
+        background: rgba(255, 107, 26, 0.65);
+        margin: 0 auto 18px;
+      }
+      .brand-name {
+        font-size: 28px;
+        letter-spacing: 0.28em;
+        color: #ff6b1a;
+        font-weight: 900;
+      }
+      .brand-tag {
+        font-size: 16px;
+        letter-spacing: 0.18em;
+        color: rgba(255, 255, 255, 0.5);
+        margin-top: 8px;
+        text-transform: uppercase;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="4.0"
+      data-width="1080"
+      data-height="1920"
+    >
+      <!--
+        The whole card is one clip running for the full 4s composition.
+        Timed reveals are handled by the GSAP timeline below.
+      -->
+      <div class="clip" data-start="0" data-duration="4.0" data-track-index="0">
+        <div class="backdrop"></div>
+        <div class="vignette-top"></div>
+        <div class="vignette-bot"></div>
+
+        <div class="stage">
+          <div id="accent-top" class="accent-top" style="width: 1px"></div>
+          <div id="kicker" class="kicker" style="opacity: 0">SOURCE</div>
+          <div
+            id="label"
+            class="label"
+            style="opacity: 0; transform: translateY(24px) scale(0.97)"
+          >
+            r/GAMES
+          </div>
+          <div
+            id="underline-bottom"
+            class="underline-bottom"
+            style="width: 1px"
+          ></div>
+          <div id="sublabel" class="sublabel" style="opacity: 0">
+            TRAILER
+          </div>
+        </div>
+
+        <!--
+          Brand block REMOVED — when this card composites into the
+          studio prototype, the PRL chain adds the channel lower-third
+          on top of every scene, so leaving the brand here produced
+          two PULSE GAMING + tagline pairs stacked at the bottom.
+          The PRL lower-third is the canonical brand placement.
+        -->
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({
+        paused: true,
+        defaults: { ease: "power3.out" },
+      });
+
+      // Animated reveal sequence:
+      //   0.00s — accent line draws across (1px → 720px) over 0.55s
+      //   0.20s — kicker SOURCE fades in over 0.4s
+      //   0.50s — label r/GAMES slides up + fades in over 0.65s
+      //   1.00s — bottom underline draws across over 0.55s
+      //   1.20s — sublabel fades in over 0.4s
+      //   (brand block removed — see HTML comment above)
+      tl.to(
+        "#accent-top",
+        { width: 720, duration: 0.55, ease: "power2.out" },
+        0,
+      )
+        .to("#kicker", { opacity: 1, duration: 0.4 }, 0.2)
+        .to(
+          "#label",
+          {
+            opacity: 1,
+            y: 0,
+            scale: 1,
+            duration: 0.65,
+          },
+          0.5,
+        )
+        .to(
+          "#underline-bottom",
+          { width: 720, duration: 0.55, ease: "power2.out" },
+          1.0,
+        )
+        .to("#sublabel", { opacity: 1, duration: 0.4 }, 1.2);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        font-family: "Arial Black", "Inter", system-ui, sans-serif;
+      }
+      html,
+      body {
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        background: #0d0d0f;
+      }
+
+      .backdrop {
+        position: absolute;
+        inset: 0;
+        background: url("assets/backdrop.jpg") center/cover no-repeat;
+        filter: blur(28px) brightness(0.4) saturate(0.5) contrast(1.1);
+        transform: scale(1.1);
+      }
+      .shade {
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(to bottom, rgba(0, 0, 0, 0.7), transparent 30%),
+          linear-gradient(to top, rgba(0, 0, 0, 0.78), transparent 32%),
+          rgba(0, 0, 0, 0.28);
+      }
+
+      .clip {
+        position: absolute;
+        inset: 0;
+      }
+
+      .stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 0 96px;
+      }
+
+      .frame-top,
+      .frame-bot {
+        position: absolute;
+        height: 4px;
+        background: #ff6b1a;
+        box-shadow: 0 0 28px rgba(255, 107, 26, 0.7);
+      }
+      .frame-top {
+        top: 360px;
+        left: 50%;
+        transform: translateX(-50%);
+      }
+      .frame-bot {
+        bottom: 360px;
+        left: 50%;
+        transform: translateX(-50%);
+      }
+
+      .step {
+        color: rgba(255, 107, 26, 0.95);
+        font-family: Consolas, monospace;
+        font-size: 24px;
+        letter-spacing: 0.4em;
+        margin-bottom: 24px;
+        opacity: 0;
+      }
+
+      .kicker {
+        color: #ffffff;
+        font-size: 38px;
+        font-weight: 900;
+        letter-spacing: 0.36em;
+        text-transform: uppercase;
+        margin-bottom: 36px;
+        opacity: 0;
+      }
+
+      .headline {
+        color: #ffffff;
+        font-size: 100px;
+        font-weight: 900;
+        line-height: 0.95;
+        letter-spacing: -0.04em;
+        text-align: center;
+        text-shadow:
+          0 5px 0 rgba(0, 0, 0, 0.6),
+          0 14px 36px rgba(0, 0, 0, 0.74),
+          0 0 80px rgba(255, 107, 26, 0.18);
+      }
+
+      .headline .word {
+        display: inline-block;
+        opacity: 0;
+        transform: translateY(36px) scale(0.96);
+      }
+
+      .arrow {
+        margin-top: 56px;
+        color: #ff6b1a;
+        font-size: 56px;
+        letter-spacing: 0.2em;
+        font-weight: 900;
+        opacity: 0;
+        text-shadow: 0 0 30px rgba(255, 107, 26, 0.55);
+      }
+
+      .cta {
+        margin-top: 28px;
+        color: rgba(255, 255, 255, 0.92);
+        font-size: 34px;
+        font-weight: 900;
+        letter-spacing: 0.42em;
+        text-transform: uppercase;
+        opacity: 0;
+      }
+
+      .pulse {
+        position: absolute;
+        bottom: 220px;
+        left: 0;
+        right: 0;
+        text-align: center;
+        color: rgba(255, 255, 255, 0.32);
+        font-family: Consolas, monospace;
+        font-size: 20px;
+        letter-spacing: 0.32em;
+        opacity: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="4.0"
+      data-width="1080"
+      data-height="1920"
+    >
+      <div class="clip" data-start="0" data-duration="4.0" data-track-index="0">
+        <div class="backdrop"></div>
+        <div class="shade"></div>
+
+        <div id="frame-top" class="frame-top" style="width: 1px"></div>
+        <div id="frame-bot" class="frame-bot" style="width: 1px"></div>
+
+        <div class="stage">
+          <div id="step" class="step">03 / TAKEAWAY</div>
+          <div id="kicker" class="kicker">THE BOTTOM LINE</div>
+
+          <div id="headline" class="headline">
+            <span class="word">WATCH</span>
+            <span class="word">THE</span>
+            <span class="word">FULL</span>
+            <span class="word">TRAILER</span>
+          </div>
+
+          <div id="arrow" class="arrow">▼ ▼ ▼</div>
+          <div id="cta" class="cta">FOLLOW FOR MORE</div>
+        </div>
+
+        <div id="pulse" class="pulse">PULSE GAMING</div>
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({
+        paused: true,
+        defaults: { ease: "power3.out" },
+      });
+
+      // Reveal sequence:
+      //  0.00  top frame line draws across
+      //  0.10  step "03 / TAKEAWAY" fades in
+      //  0.30  kicker fades in
+      //  0.55  headline words pop one by one
+      //  X     bottom frame line draws across
+      //  X+0.2 arrow + cta + pulse fade in
+      tl.to("#frame-top", { width: 760, duration: 0.5, ease: "power2.out" }, 0)
+        .to("#step", { opacity: 1, duration: 0.34 }, 0.1)
+        .to("#kicker", { opacity: 1, duration: 0.4 }, 0.3)
+        .to(
+          "#headline .word",
+          {
+            opacity: 1,
+            y: 0,
+            scale: 1,
+            duration: 0.5,
+            stagger: 0.08,
+            ease: "back.out(1.4)",
+          },
+          0.55,
+        )
+        .to(
+          "#frame-bot",
+          { width: 760, duration: 0.5, ease: "power2.out" },
+          1.0,
+        )
+        .to("#arrow", { opacity: 1, duration: 0.4 }, 1.4)
+        .to("#cta", { opacity: 1, duration: 0.4 }, 1.6)
+        .to("#pulse", { opacity: 1, duration: 0.4 }, 1.8);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

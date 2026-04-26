@@ -87,12 +87,19 @@ async function buildStoryQuoteCard({
   quoteText,
   attribution,
   kind = "trailer",
+  channelId = "pulse-gaming",
 }) {
   if (!storyId) throw new Error("storyId required");
   if (!quoteText) throw new Error("quoteText required");
   if (!attribution) throw new Error("attribution required");
 
-  const projectDir = path.join(ROOT, "experiments", `hf-quote-${storyId}`);
+  const isDefaultChannel = channelId === "pulse-gaming";
+  const channelSuffix = isDefaultChannel ? "" : `__${channelId}`;
+  const projectDir = path.join(
+    ROOT,
+    "experiments",
+    `hf-quote-${storyId}${channelSuffix}`,
+  );
   await fs.ensureDir(projectDir);
   await fs.ensureDir(path.join(projectDir, "assets"));
 
@@ -109,8 +116,8 @@ async function buildStoryQuoteCard({
   await fs.writeJson(
     path.join(projectDir, "meta.json"),
     {
-      id: `hf-quote-${storyId}`,
-      name: `hf-quote-${storyId}`,
+      id: path.basename(projectDir),
+      name: path.basename(projectDir),
       createdAt: new Date().toISOString(),
     },
     { spaces: 2 },
@@ -161,23 +168,34 @@ async function buildStoryQuoteCard({
     `$1${escapeHtml(attributionSub)}$2`,
   );
 
+  // Apply channel theme — replaces the brand colour throughout.
+  const {
+    applyThemeToHtml,
+    getChannelTheme,
+  } = require("../lib/studio/v2/channel-themes");
+  html = applyThemeToHtml(html, getChannelTheme(channelId));
+
   await fs.writeFile(path.join(projectDir, "index.html"), html);
 
   // Lint
-  console.log(`[quote-card] linting hf-quote-${storyId}…`);
+  const projectName = path.basename(projectDir);
+  console.log(`[quote-card] linting ${projectName}…`);
   execSync("npx hyperframes lint", { cwd: projectDir, stdio: "inherit" });
 
-  // Render
-  const outPath = path.join(TEST_OUT, `hf_quote_card_${storyId}.mp4`);
+  // Render — output namespaced by channel
+  const outPath = path.join(
+    TEST_OUT,
+    `hf_quote_card_${storyId}${channelSuffix}.mp4`,
+  );
   console.log(
-    `[quote-card] rendering hf-quote-${storyId} → ${path.relative(ROOT, outPath)}…`,
+    `[quote-card] rendering ${projectName} → ${path.relative(ROOT, outPath)}…`,
   );
   execSync(
     `npx hyperframes render . -o "${outPath.replace(/\\/g, "/")}" -f 30 -q standard`,
     { cwd: projectDir, stdio: "inherit" },
   );
 
-  return { outPath, projectDir, fontSize };
+  return { outPath, projectDir, fontSize, channelId };
 }
 
 async function main() {

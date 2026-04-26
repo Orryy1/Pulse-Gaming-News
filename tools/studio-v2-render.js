@@ -330,6 +330,7 @@ function applySceneGrammarV2({
   //    speed-ramp needs a real video source for the setpts envelope)
   //    just before the takeaway card, swap with a slow-in ramp.
   if (transforms.speedRamp !== false) {
+    let rampApplied = false;
     const takeawayIdx = out.findIndex(
       (s) => s.type === SCENE_TYPES.CARD_TAKEAWAY,
     );
@@ -352,8 +353,55 @@ function applySceneGrammarV2({
             atIdx: i,
             source: path.basename(cand.source),
           });
+          rampApplied = true;
           break;
         }
+      }
+    }
+
+    if (!rampApplied && transforms.forceClimaxRamp === true) {
+      const sourceUseCount = new Map();
+      for (const scene of out) {
+        if (!scene.source) continue;
+        sourceUseCount.set(scene.source, (sourceUseCount.get(scene.source) || 0) + 1);
+      }
+      for (const clip of mediaClips) {
+        if (!sourceUseCount.has(clip.path)) sourceUseCount.set(clip.path, 0);
+      }
+      const rampSource = [...sourceUseCount.entries()]
+        .filter(([src]) => /\.(mp4|mov|m4v|webm)$/i.test(src))
+        .sort((a, b) => a[1] - b[1])[0]?.[0];
+      const replaceIdx = (() => {
+        const end = takeawayIdx > 0 ? takeawayIdx - 1 : out.length - 1;
+        for (let i = end; i >= Math.max(3, end - 5); i--) {
+          const cand = out[i];
+          if (
+            cand?.source &&
+            (cand.type === SCENE_TYPES.CLIP_FRAME || cand.type === SCENE_TYPES.STILL) &&
+            !cand.type?.startsWith("card.")
+          ) {
+            return i;
+          }
+        }
+        return -1;
+      })();
+      if (rampSource && replaceIdx >= 0) {
+        const target = out[replaceIdx];
+        const ramp = buildSpeedRampScene({
+          slot: 0,
+          source: rampSource,
+          startInSourceS: 0.25,
+          duration: target.duration,
+          envelope: "fast-out",
+        });
+        out[replaceIdx] = ramp;
+        applied.push({
+          kind: "forced-climax-speed-ramp",
+          envelope: "fast-out",
+          atIdx: replaceIdx,
+          replaced: target.label || target.type,
+          source: path.basename(rampSource),
+        });
       }
     }
   }
@@ -428,12 +476,35 @@ function buildV2SceneFilter({ slot, scene, story, fontOpt }) {
   // V2 grammar scenes: rewrite their ffmpegFilter to use the
   // correct slot index. The grammar builders embed `[N:v]...` with
   // their own slot — replace it with the actual one.
+  let filter;
   if (scene.ffmpegFilter) {
-    return scene.ffmpegFilter
+    filter = scene.ffmpegFilter
       .replace(/^\[\d+:v\]/, `[${slot}:v]`)
       .replace(/\[v\d+\]$/, `[v${slot}]`);
+  } else {
+    filter = dispatchSceneFilter({ slot, scene, story, fontOpt });
   }
-  return dispatchSceneFilter({ slot, scene, story, fontOpt });
+
+  return enforceDeclaredSceneDuration({
+    filter,
+    slot,
+    duration: Number(scene.duration || 4),
+  });
+}
+
+function enforceDeclaredSceneDuration({ filter, slot, duration }) {
+  const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : 4;
+  const preLabel = `v${slot}_durpre`;
+  const rewritten = String(filter).replace(/\[v\d+\]$/, `[${preLabel}]`);
+  if (rewritten === filter) {
+    throw new Error(`v2 scene filter did not end with [v${slot}]`);
+  }
+  return [
+    rewritten,
+    `[${preLabel}]tpad=stop_mode=clone:stop_duration=${(
+      safeDuration + 1
+    ).toFixed(3)},trim=duration=${safeDuration},setpts=PTS-STARTPTS[v${slot}]`,
+  ].join(";");
 }
 
 async function main() {
@@ -565,11 +636,12 @@ async function main() {
     story: renderStory,
     mediaClips: media.clips,
     transforms: {
-      punch: process.env.STUDIO_V2_DISABLE_PUNCH !== "true",
-      freeze: process.env.STUDIO_V2_DISABLE_FREEZE !== "true",
-      speedRamp: process.env.STUDIO_V2_DISABLE_RAMP !== "true",
-    },
-  });
+        punch: process.env.STUDIO_V2_DISABLE_PUNCH !== "true",
+        freeze: process.env.STUDIO_V2_DISABLE_FREEZE !== "true",
+        speedRamp: process.env.STUDIO_V2_DISABLE_RAMP !== "true",
+        forceClimaxRamp: process.env.STUDIO_V2_FORCE_CLIMAX_RAMP === "true",
+      },
+    });
   const grammarApplied = v2Transform.applied;
   console.log(
     `       grammar v2: ${grammarApplied.length} transformation${grammarApplied.length === 1 ? "" : "s"} applied`,
@@ -586,6 +658,7 @@ async function main() {
     scenes: v2Transform.scenes,
     story: renderStory,
     root: ROOT,
+    channelId: process.env.CHANNEL || "pulse-gaming",
   });
   const scenes = lane.scenes;
   console.log(
@@ -687,7 +760,14 @@ async function main() {
   );
 
   const assRel = path.relative(ROOT, assPath).replace(/\\/g, "/");
-  filterParts.push(`[base]ass=${assRel}[outv]`);
+  const finalVideoDurationS = Number(audioDurationS.toFixed(3));
+  filterParts.push(
+    `[base]ass=${assRel},tpad=stop_mode=clone:stop_duration=${(
+      finalVideoDurationS + 1
+    ).toFixed(
+      3,
+    )},trim=duration=${finalVideoDurationS},setpts=PTS-STARTPTS[outv]`,
+  );
 
   // ---- ffmpeg invocation ----
   const allInputs = [...sceneInputs, ...audioInputs, ...sfxInputs];
@@ -762,6 +842,7 @@ async function main() {
     assPath,
     soundLayerPayload: soundLayer,
     realignedWords,
+    renderedDurationS: output.durationS,
     branch: currentBranch(),
   });
 

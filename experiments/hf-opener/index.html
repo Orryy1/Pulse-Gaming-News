@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        font-family: "Arial Black", "Inter", system-ui, sans-serif;
+      }
+      html,
+      body {
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        background: #0d0d0f;
+      }
+
+      .backdrop {
+        position: absolute;
+        inset: 0;
+        background: url("assets/backdrop.jpg") center/cover no-repeat;
+        filter: blur(0px) brightness(0.45) saturate(0.65) contrast(1.18);
+        transform: scale(1.04);
+      }
+
+      .vignette {
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(to bottom, rgba(0, 0, 0, 0.55), transparent 32%),
+          linear-gradient(to top, rgba(0, 0, 0, 0.7), transparent 38%),
+          radial-gradient(
+            ellipse at center,
+            transparent 40%,
+            rgba(0, 0, 0, 0.55) 100%
+          );
+      }
+
+      .clip {
+        position: absolute;
+        inset: 0;
+      }
+
+      .scanline {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background: repeating-linear-gradient(
+          to bottom,
+          rgba(255, 255, 255, 0.018) 0px,
+          rgba(255, 255, 255, 0.018) 1px,
+          transparent 1px,
+          transparent 3px
+        );
+        mix-blend-mode: overlay;
+      }
+
+      .stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 0 80px;
+      }
+
+      .live-bug {
+        position: absolute;
+        top: 88px;
+        left: 64px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 10px 22px 10px 18px;
+        background: rgba(0, 0, 0, 0.74);
+        border-left: 3px solid #ff3333;
+        backdrop-filter: blur(6px);
+        opacity: 0;
+      }
+      .live-dot {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: #ff3333;
+        box-shadow: 0 0 12px rgba(255, 51, 51, 0.7);
+      }
+      .live-text {
+        color: #ffffff;
+        font-size: 22px;
+        font-weight: 900;
+        letter-spacing: 0.32em;
+      }
+
+      .accent-bar {
+        position: absolute;
+        top: 540px;
+        left: 50%;
+        transform: translateX(-50%);
+        height: 4px;
+        background: #ff6b1a;
+        box-shadow: 0 0 30px rgba(255, 107, 26, 0.7);
+      }
+
+      .kicker {
+        position: absolute;
+        top: 600px;
+        left: 0;
+        right: 0;
+        text-align: center;
+        color: #ff6b1a;
+        font-size: 32px;
+        font-weight: 900;
+        letter-spacing: 0.4em;
+        opacity: 0;
+        text-transform: uppercase;
+      }
+
+      .hook {
+        position: absolute;
+        top: 720px;
+        left: 0;
+        right: 0;
+        text-align: center;
+        padding: 0 80px;
+      }
+      .hook .line {
+        display: block;
+        color: #ffffff;
+        font-size: 110px;
+        font-weight: 900;
+        line-height: 1;
+        letter-spacing: -0.025em;
+        margin: 0 0 14px 0;
+        text-shadow:
+          0 4px 0 rgba(0, 0, 0, 0.6),
+          0 12px 30px rgba(0, 0, 0, 0.78);
+        opacity: 0;
+        transform: translateY(36px);
+      }
+
+      .accent-bar-bottom {
+        position: absolute;
+        bottom: 540px;
+        left: 50%;
+        transform: translateX(-50%);
+        height: 4px;
+        background: #ff6b1a;
+        box-shadow: 0 0 30px rgba(255, 107, 26, 0.7);
+      }
+
+      .meta-row {
+        position: absolute;
+        bottom: 320px;
+        left: 0;
+        right: 0;
+        text-align: center;
+        opacity: 0;
+      }
+      .meta-source {
+        color: #ff6b1a;
+        font-size: 26px;
+        font-weight: 900;
+        letter-spacing: 0.36em;
+        margin-bottom: 10px;
+      }
+      .meta-tag {
+        color: rgba(255, 255, 255, 0.65);
+        font-family: Consolas, monospace;
+        font-size: 18px;
+        letter-spacing: 0.18em;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="2.4"
+      data-width="1080"
+      data-height="1920"
+    >
+      <div class="clip" data-start="0" data-duration="2.4" data-track-index="0">
+        <div class="backdrop"></div>
+        <div class="vignette"></div>
+        <div class="scanline"></div>
+
+        <div id="live-bug" class="live-bug">
+          <div class="live-dot"></div>
+          <div class="live-text">BREAKING</div>
+        </div>
+
+        <div id="accent-bar-top" class="accent-bar" style="width: 1px"></div>
+        <div id="kicker" class="kicker">PULSE GAMING</div>
+
+        <div class="hook">
+          <span id="line1" class="line">METRO 2039</span>
+          <span id="line2" class="line">IS REAL</span>
+        </div>
+
+        <div
+          id="accent-bar-bottom"
+          class="accent-bar-bottom"
+          style="width: 1px"
+        ></div>
+
+        <div id="meta-row" class="meta-row">
+          <div class="meta-source">REVEAL TRAILER</div>
+          <div class="meta-tag">TONIGHT — UNUSUALLY GRIM</div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({
+        paused: true,
+        defaults: { ease: "power3.out" },
+      });
+
+      // Reveal sequence:
+      //  0.00s — top accent bar draws across (1px → 540px)
+      //  0.10s — BREAKING bug fades in
+      //  0.20s — PULSE GAMING kicker fades in
+      //  0.40s — line 1 slides up + fades in
+      //  0.65s — line 2 slides up + fades in
+      //  0.95s — bottom accent bar draws across
+      //  1.10s — meta row fades in
+      //  1.50s — live-dot pulses (subtle blink loop)
+      tl.to(
+        "#accent-bar-top",
+        { width: 540, duration: 0.55, ease: "power2.out" },
+        0,
+      )
+        .to("#live-bug", { opacity: 1, duration: 0.34 }, 0.1)
+        .to("#kicker", { opacity: 1, duration: 0.34 }, 0.2)
+        .to(
+          "#line1",
+          { opacity: 1, y: 0, duration: 0.55, ease: "back.out(1.4)" },
+          0.4,
+        )
+        .to(
+          "#line2",
+          { opacity: 1, y: 0, duration: 0.55, ease: "back.out(1.4)" },
+          0.65,
+        )
+        .to(
+          "#accent-bar-bottom",
+          { width: 540, duration: 0.55, ease: "power2.out" },
+          0.95,
+        )
+        .to("#meta-row", { opacity: 1, duration: 0.34 }, 1.1);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

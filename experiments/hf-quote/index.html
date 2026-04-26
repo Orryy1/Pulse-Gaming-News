@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        font-family: "Arial Black", "Inter", system-ui, sans-serif;
+      }
+      html,
+      body {
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        background: #0d0d0f;
+      }
+
+      .backdrop {
+        position: absolute;
+        inset: 0;
+        background: url("assets/backdrop.jpg") center/cover no-repeat;
+        filter: blur(28px) brightness(0.42) saturate(0.45) contrast(1.1);
+        transform: scale(1.1);
+      }
+
+      .shade {
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(to bottom, rgba(0, 0, 0, 0.78), transparent 30%),
+          linear-gradient(to top, rgba(0, 0, 0, 0.74), transparent 32%),
+          rgba(0, 0, 0, 0.32);
+      }
+
+      .clip {
+        position: absolute;
+        inset: 0;
+      }
+
+      .stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 0 96px;
+      }
+
+      .quote-mark {
+        position: absolute;
+        top: 240px;
+        left: 80px;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: 360px;
+        line-height: 0.8;
+        color: rgba(255, 107, 26, 0.32);
+        font-weight: 900;
+        text-shadow: 0 0 60px rgba(255, 107, 26, 0.25);
+      }
+
+      .kicker {
+        color: #ff6b1a;
+        font-size: 30px;
+        font-weight: 900;
+        letter-spacing: 0.32em;
+        margin-bottom: 40px;
+      }
+
+      .quote {
+        color: #ffffff;
+        font-family: Georgia, "Times New Roman", serif;
+        font-style: italic;
+        font-weight: 700;
+        font-size: 76px;
+        line-height: 1.18;
+        letter-spacing: -0.005em;
+        text-align: center;
+        text-shadow:
+          0 6px 0 rgba(0, 0, 0, 0.55),
+          0 14px 36px rgba(0, 0, 0, 0.7);
+      }
+
+      .quote .word {
+        display: inline-block;
+        opacity: 0;
+        transform: translateY(18px);
+      }
+
+      .accent-line {
+        width: 1px;
+        height: 3px;
+        background: #ff6b1a;
+        box-shadow: 0 0 24px rgba(255, 107, 26, 0.7);
+        margin-top: 60px;
+      }
+
+      .attribution {
+        margin-top: 40px;
+        color: rgba(255, 255, 255, 0.85);
+        font-size: 30px;
+        font-weight: 800;
+        letter-spacing: 0.26em;
+        text-transform: uppercase;
+        opacity: 0;
+      }
+
+      .attribution-sub {
+        margin-top: 12px;
+        color: rgba(255, 255, 255, 0.55);
+        font-family: Consolas, monospace;
+        font-size: 22px;
+        letter-spacing: 0.04em;
+        opacity: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="4.5"
+      data-width="1080"
+      data-height="1920"
+    >
+      <div class="clip" data-start="0" data-duration="4.5" data-track-index="0">
+        <div class="backdrop"></div>
+        <div class="shade"></div>
+        <div id="quote-mark" class="quote-mark" style="opacity: 0">"</div>
+
+        <div class="stage">
+          <div id="kicker" class="kicker" style="opacity: 0">
+            FROM THE TRAILER
+          </div>
+
+          <div id="quote" class="quote">
+            <span class="word">Don&rsquo;t</span>
+            <span class="word">step</span>
+            <span class="word">on</span>
+            <span class="word">the</span>
+            <span class="word">flowers.</span>
+          </div>
+
+          <div id="accent-line" class="accent-line"></div>
+
+          <div id="attribution" class="attribution">METRO 2039</div>
+          <div id="attribution-sub" class="attribution-sub">
+            official reveal trailer
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({
+        paused: true,
+        defaults: { ease: "power3.out" },
+      });
+
+      // Reveal sequence:
+      //   0.00s  big quote mark fades + scales in
+      //   0.20s  kicker FROM THE TRAILER fades in
+      //   0.45s  words of the quote stagger up
+      //   X+0.4s accent line draws across (1px -> 540px)
+      //   X+0.7s attribution + sub fade in
+      tl.fromTo(
+        "#quote-mark",
+        { opacity: 0, x: -12, y: 12, scale: 0.94 },
+        {
+          opacity: 1,
+          x: 0,
+          y: 0,
+          scale: 1,
+          duration: 0.65,
+          ease: "power2.out",
+        },
+        0,
+      )
+        .to("#kicker", { opacity: 1, duration: 0.34 }, 0.2)
+        .to(
+          "#quote .word",
+          {
+            opacity: 1,
+            y: 0,
+            duration: 0.5,
+            stagger: 0.07,
+            ease: "power2.out",
+          },
+          0.45,
+        )
+        .to(
+          "#accent-line",
+          { width: 540, duration: 0.5, ease: "power2.out" },
+          1.15,
+        )
+        .to("#attribution", { opacity: 1, duration: 0.4 }, 1.4)
+        .to("#attribution-sub", { opacity: 1, duration: 0.36 }, 1.6);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

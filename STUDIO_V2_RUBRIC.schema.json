@@ -1,0 +1,219 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pulse-gaming.local/studio-v2-rubric.schema.json",
+  "title": "Studio Short Engine v2 — quality-gate report",
+  "type": "object",
+  "required": ["storyId", "generatedAt", "auto", "human", "verdict"],
+  "properties": {
+    "storyId": { "type": "string" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "branch": { "type": "string" },
+    "outputPath": { "type": "string" },
+    "auto": {
+      "type": "object",
+      "description": "Automatically measured criteria. Each entry has value + grade.",
+      "required": [
+        "hookWordCount",
+        "hookAiTells",
+        "spokenWPM",
+        "sourceDiversity",
+        "clipDominance",
+        "sceneVariety",
+        "maxStillRepeat",
+        "captionGapsOver2s",
+        "adjacentSameTypeCards",
+        "stockFillerCount",
+        "voicePathUsed",
+        "motionDensityPerMin",
+        "beatAwarenessRatio",
+        "sfxEventCount",
+        "bedDuckingDb"
+      ],
+      "properties": {
+        "hookWordCount": {
+          "type": "object",
+          "required": ["value", "grade"],
+          "properties": {
+            "value": { "type": "integer", "minimum": 0 },
+            "grade": { "enum": ["green", "amber", "red"] }
+          }
+        },
+        "hookAiTells": {
+          "type": "object",
+          "required": ["value", "grade"],
+          "properties": {
+            "value": { "type": "integer", "minimum": 0 },
+            "grade": { "enum": ["green", "amber", "red"] },
+            "matches": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "spokenWPM": {
+          "type": "object",
+          "required": ["value", "grade"],
+          "properties": {
+            "value": { "type": "number" },
+            "grade": { "enum": ["green", "amber", "red"] }
+          }
+        },
+        "sourceDiversity": {
+          "type": "object",
+          "required": ["value", "grade"],
+          "properties": {
+            "value": { "type": "number" },
+            "grade": { "enum": ["green", "amber", "red"] },
+            "uniqueSources": { "type": "integer" },
+            "totalScenes": { "type": "integer" }
+          }
+        },
+        "clipDominance": {
+          "type": "object",
+          "required": ["value", "grade"],
+          "properties": {
+            "value": { "type": "number" },
+            "grade": { "enum": ["green", "amber", "red"] },
+            "clipScenes": { "type": "integer" },
+            "totalScenes": { "type": "integer" }
+          }
+        },
+        "sceneVariety": {
+          "type": "object",
+          "required": ["value", "grade"],
+          "properties": {
+            "value": { "type": "integer" },
+            "grade": { "enum": ["green", "amber", "red"] },
+            "distinctTypes": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "maxStillRepeat": {
+          "type": "object",
+          "required": ["value", "grade"],
+          "properties": {
+            "value": { "type": "integer" },
+            "grade": { "enum": ["green", "amber", "red"] }
+          }
+        },
+        "captionGapsOver2s": {
+          "type": "object",
+          "required": ["value", "grade"],
+          "properties": {
+            "value": { "type": "integer" },
+            "grade": { "enum": ["green", "amber", "red"] },
+            "gaps": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "fromS": { "type": "number" },
+                  "toS": { "type": "number" }
+                }
+              }
+            }
+          }
+        },
+        "adjacentSameTypeCards": {
+          "type": "object",
+          "required": ["value", "grade"],
+          "properties": {
+            "value": { "type": "integer" },
+            "grade": { "enum": ["green", "amber", "red"] }
+          }
+        },
+        "stockFillerCount": {
+          "type": "object",
+          "required": ["value", "grade"],
+          "properties": {
+            "value": { "type": "integer" },
+            "grade": { "enum": ["green", "amber", "red"] }
+          }
+        },
+        "voicePathUsed": {
+          "type": "object",
+          "required": ["value", "grade"],
+          "properties": {
+            "value": {
+              "enum": [
+                "production",
+                "fresh-local",
+                "trimmed-local",
+                "demonic-clone-of-clone",
+                "unknown"
+              ]
+            },
+            "grade": { "enum": ["green", "amber", "red"] },
+            "voiceId": { "type": ["string", "null"] }
+          }
+        },
+        "motionDensityPerMin": {
+          "type": "object",
+          "required": ["value", "grade"],
+          "properties": {
+            "value": { "type": "number" },
+            "grade": { "enum": ["green", "amber", "red"] }
+          }
+        },
+        "beatAwarenessRatio": {
+          "type": "object",
+          "required": ["value", "grade"],
+          "properties": {
+            "value": { "type": "number" },
+            "grade": { "enum": ["green", "amber", "red"] },
+            "syllableMatches": { "type": "integer" },
+            "totalCuts": { "type": "integer" }
+          }
+        },
+        "sfxEventCount": {
+          "type": "object",
+          "required": ["value", "grade"],
+          "properties": {
+            "value": { "type": "integer" },
+            "grade": { "enum": ["green", "amber", "red"] }
+          }
+        },
+        "bedDuckingDb": {
+          "type": "object",
+          "required": ["value", "grade"],
+          "properties": {
+            "value": { "type": "number" },
+            "grade": { "enum": ["green", "amber", "red"] }
+          }
+        }
+      }
+    },
+    "human": {
+      "type": "object",
+      "description": "Pre-allocated checklist for human reviewer. Engine writes them all as null; reviewer ticks true/false.",
+      "properties": {
+        "hookStrength": { "type": ["boolean", "null"] },
+        "editRhythm": { "type": ["boolean", "null"] },
+        "cardPolish": { "type": ["boolean", "null"] },
+        "motionIntensity": { "type": ["boolean", "null"] },
+        "soundDesignFeel": { "type": ["boolean", "null"] },
+        "subjectFocus": { "type": ["boolean", "null"] },
+        "subtitleReadability": { "type": ["boolean", "null"] },
+        "slideshowRisk": { "type": ["boolean", "null"] },
+        "brandConsistency": { "type": ["boolean", "null"] },
+        "comparableToHumanEdit": { "type": ["boolean", "null"] }
+      }
+    },
+    "verdict": {
+      "type": "object",
+      "required": ["lane", "reasons"],
+      "properties": {
+        "lane": { "enum": ["pass", "downgrade", "reject"] },
+        "reasons": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "redTrips": { "type": "integer" },
+        "amberTrips": { "type": "integer" },
+        "greenHits": { "type": "integer" }
+      }
+    }
+  }
+}

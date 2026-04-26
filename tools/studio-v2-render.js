@@ -363,7 +363,10 @@ function applySceneGrammarV2({
       const sourceUseCount = new Map();
       for (const scene of out) {
         if (!scene.source) continue;
-        sourceUseCount.set(scene.source, (sourceUseCount.get(scene.source) || 0) + 1);
+        sourceUseCount.set(
+          scene.source,
+          (sourceUseCount.get(scene.source) || 0) + 1,
+        );
       }
       for (const clip of mediaClips) {
         if (!sourceUseCount.has(clip.path)) sourceUseCount.set(clip.path, 0);
@@ -377,7 +380,8 @@ function applySceneGrammarV2({
           const cand = out[i];
           if (
             cand?.source &&
-            (cand.type === SCENE_TYPES.CLIP_FRAME || cand.type === SCENE_TYPES.STILL) &&
+            (cand.type === SCENE_TYPES.CLIP_FRAME ||
+              cand.type === SCENE_TYPES.STILL) &&
             !cand.type?.startsWith("card.")
           ) {
             return i;
@@ -636,12 +640,12 @@ async function main() {
     story: renderStory,
     mediaClips: media.clips,
     transforms: {
-        punch: process.env.STUDIO_V2_DISABLE_PUNCH !== "true",
-        freeze: process.env.STUDIO_V2_DISABLE_FREEZE !== "true",
-        speedRamp: process.env.STUDIO_V2_DISABLE_RAMP !== "true",
-        forceClimaxRamp: process.env.STUDIO_V2_FORCE_CLIMAX_RAMP === "true",
-      },
-    });
+      punch: process.env.STUDIO_V2_DISABLE_PUNCH !== "true",
+      freeze: process.env.STUDIO_V2_DISABLE_FREEZE !== "true",
+      speedRamp: process.env.STUDIO_V2_DISABLE_RAMP !== "true",
+      forceClimaxRamp: process.env.STUDIO_V2_FORCE_CLIMAX_RAMP === "true",
+    },
+  });
   const grammarApplied = v2Transform.applied;
   console.log(
     `       grammar v2: ${grammarApplied.length} transformation${grammarApplied.length === 1 ? "" : "s"} applied`,
@@ -747,11 +751,20 @@ async function main() {
     TEST_OUT,
     `${STORY_ID}_studio_v2${OUTPUT_SUFFIX}.ass`,
   );
+  const channelTheme = (() => {
+    try {
+      const { getChannelTheme } = require("../lib/studio/v2/channel-themes");
+      return getChannelTheme(process.env.CHANNEL || "pulse-gaming");
+    } catch {
+      return null;
+    }
+  })();
   const assContent = buildKineticAss({
     story: renderStory,
     words: realignedWords,
     duration: audioDurationS,
     scriptText: editorial.scriptForCaption,
+    emphasisHex: channelTheme?.primary,
   });
   await fs.writeFile(assPath, assContent);
   const assDialogueCount = (assContent.match(/^Dialogue:/gm) || []).length;

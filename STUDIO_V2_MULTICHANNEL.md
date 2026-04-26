@@ -106,9 +106,21 @@ The channel registry already binds different ElevenLabs voices per channel:
 
 Because the v2 voice path reads from `brand.voiceId`, each channel render uses its OWN voice. The multi-channel run produces 3 actual voiced renders, not just 3 colour reskins.
 
+## Subtitle emphasis colour theming (NEW)
+
+`buildKineticAss({ ..., emphasisHex })` accepts a channel-specific
+emphasis hex. The orchestrator passes `channelTheme.primary` from
+`getChannelTheme(CHANNEL)`. The ASS header generator converts
+`#RRGGBB` → ASS BGR via `hexToAssBgr()` and emits a themed
+`PopEmphasis` style.
+
+Result: every emphasis word (years, money, percentages, story-derived
+proper nouns) pops in the channel's brand colour. The 3-up frame at
+~1.5s shows "Metro 2039" rendering in amber / green / purple
+respectively across the three channel renders.
+
 ## Limitations and follow-ups
 
-- **Subtitle emphasis colour is currently hardcoded amber** in `subtitle-layer-v2.js` ASS header (`PrimaryColour=&H001A6BFF`). The per-word kinetic captions stay Pulse-amber across all channel renders. To theme this, the ASS header generator needs to accept a channel theme and convert `theme.primary` into BGR hex. Not blocking — the captions are subtle and the HF cards carry the brand identity.
 - **The 3 voices land at slightly different durations** so the 3-up render's per-frame alignment isn't synchronous. That's a feature, not a bug — each channel's render is its own independent shippable artefact.
 - **Per-channel music beds not yet swapped.** The v2 sound layer uses `audio/Main Background Loop 1.wav` regardless of channel. Each channel's `musicPrompt` array in the registry hints at the desired vibe (gaming trap for Pulse, sleek finance for Stacked, futuristic synth for The Signal). Wiring per-channel music would need a second asset cache.
 - **Per-channel font choices not yet swapped.** All 3 channels use Arial Black / Inter currently. Stacked might want a tighter financial-press font, The Signal might want something more geometric/cybertech.

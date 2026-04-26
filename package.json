@@ -15,7 +15,12 @@
     "quality:test": "node tools/quality-test.js",
     "quality:render": "node tools/quality-render.js",
     "studio:v1:cards": "node tools/render-hyperframes-cards.js",
-    "studio:v1": "node tools/render-hyperframes-cards.js && node tools/studio-v1-render.js"
+    "studio:v1": "node tools/render-hyperframes-cards.js && node tools/studio-v1-render.js",
+    "studio:v2:qa": "node tools/studio-v2-forensic-qa.js",
+    "studio:v2:qa:compare": "node tools/studio-v2-forensic-compare.js",
+    "studio:v2:gauntlet": "node tools/studio-v2-gauntlet.js",
+    "studio:v2:compare-variants": "node tools/studio-v2-variant-compare.js",
+    "studio:v2:audio-master-ab": "node tools/studio-v2-audio-master-ab.js"
   },
   "keywords": [],
   "author": "",

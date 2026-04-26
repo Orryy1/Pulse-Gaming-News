@@ -21,6 +21,7 @@
         "sceneVariety",
         "maxStillRepeat",
         "captionGapsOver2s",
+        "durationIntegrity",
         "adjacentSameTypeCards",
         "stockFillerCount",
         "voicePathUsed",
@@ -113,6 +114,21 @@
                   "toS": { "type": "number" }
                 }
               }
+            }
+          }
+        },
+        "durationIntegrity": {
+          "type": "object",
+          "required": ["value", "grade"],
+          "properties": {
+            "value": { "type": "number" },
+            "grade": { "enum": ["green", "amber", "red"] },
+            "renderedDurationS": { "type": ["number", "null"] },
+            "audioDurationS": { "type": ["number", "null"] },
+            "assLastCueEndS": { "type": ["number", "null"] },
+            "failures": {
+              "type": "array",
+              "items": { "type": "string" }
             }
           }
         },

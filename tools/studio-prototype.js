@@ -259,6 +259,11 @@ function buildTakeawayCardFilter({ slot, duration, scene, fontOpt }) {
 }
 
 function dispatchSceneFilter({ slot, scene, story, fontOpt }) {
+  // Pre-rendered MP4 (e.g. from HyperFrames) takes precedence over
+  // any per-type filter — treat it as a clip-style input.
+  if (scene.prerenderedMp4) {
+    return buildClipFilter({ slot, duration: scene.duration });
+  }
   switch (scene.type) {
     case SCENE_TYPES.CLIP:
       return buildClipFilter({ slot, duration: scene.duration });
@@ -317,6 +322,9 @@ function dispatchSceneFilter({ slot, scene, story, fontOpt }) {
 function buildSceneInput(scene) {
   const dur = (scene.duration + 1).toFixed(2);
   const escape = (p) => p.replace(/\\/g, "/");
+  if (scene.prerenderedMp4) {
+    return `-t ${dur} -i "${escape(scene.prerenderedMp4)}"`;
+  }
   switch (scene.type) {
     case SCENE_TYPES.CLIP:
       return `-t ${dur} -i "${escape(scene.source)}"`;
@@ -450,16 +458,28 @@ async function main() {
   const story = await loadStory();
   if (!story) throw new Error(`no DB row for ${STORY_ID}`);
 
-  const audioPath = path.join(ROOT, "output", "audio", `${STORY_ID}.mp3`);
+  // Audio path can be overridden via STUDIO_AUDIO env var (used to
+  // swap in the VoxCPM/Liam regeneration). Defaults to the original
+  // cached fixture.
+  const audioStem = process.env.STUDIO_AUDIO || STORY_ID;
+  const audioPath = path.join(ROOT, "output", "audio", `${audioStem}.mp3`);
   const tsPath = path.join(
     ROOT,
     "output",
     "audio",
-    `${STORY_ID}_timestamps.json`,
+    `${audioStem}_timestamps.json`,
   );
   const musicPath = path.join(ROOT, "audio", "Main Background Loop 1.wav");
-  if (!(await fs.pathExists(audioPath))) throw new Error(`audio missing`);
+  if (!(await fs.pathExists(audioPath)))
+    throw new Error(`audio missing: ${audioPath}`);
   const audioDuration = ffprobeDuration(audioPath);
+
+  // Optional: HyperFrames-rendered card MP4s. When set, the
+  // dispatcher uses the pre-rendered video as a clip-style input
+  // instead of running the per-card ffmpeg filter chain.
+  const hfSourceCardPath = process.env.STUDIO_HF_SOURCE_CARD
+    ? path.resolve(ROOT, process.env.STUDIO_HF_SOURCE_CARD)
+    : null;
 
   const rawMedia = await discoverMedia();
   const media = await preprocessStills(rawMedia);
@@ -474,10 +494,25 @@ async function main() {
     audioDurationS: audioDuration,
     opts: { takeawayText: "WATCH THE FULL TRAILER", cta: "FOLLOW FOR MORE" },
   });
+  // 1b. If a HyperFrames source-card MP4 has been provided, attach
+  // it to the FIRST card.source scene as a pre-rendered video.
+  // The dispatcher routes scenes with prerenderedMp4 through the
+  // clip filter path instead of the per-card ffmpeg chain.
+  if (hfSourceCardPath && (await fs.pathExists(hfSourceCardPath))) {
+    const target = scenes.find((s) => s.type === SCENE_TYPES.CARD_SOURCE);
+    if (target) {
+      target.prerenderedMp4 = hfSourceCardPath;
+      console.log(
+        `[studio] using HyperFrames source-card: ${hfSourceCardPath}`,
+      );
+    }
+  }
+
   console.log(`[studio] composer produced ${scenes.length} scenes:`);
   for (const s of scenes) {
+    const tag = s.prerenderedMp4 ? " (HF)" : "";
     console.log(
-      `  - [${s.type.padEnd(15)}] ${s.label.padEnd(22)} ${s.duration.toFixed(2)}s`,
+      `  - [${s.type.padEnd(15)}] ${s.label.padEnd(22)} ${s.duration.toFixed(2)}s${tag}`,
     );
   }
   console.log(`[studio] metrics:`, JSON.stringify(metrics));
@@ -569,7 +604,8 @@ async function main() {
   // 9. Run ffmpeg
   const filterScript = path.join(TEST_OUT, `${STORY_ID}_studio_filter.txt`);
   await fs.writeFile(filterScript, filterParts.join(";\n"));
-  const outputPath = path.join(TEST_OUT, `studio_${STORY_ID}.mp4`);
+  const suffix = process.env.STUDIO_OUTPUT_SUFFIX || "";
+  const outputPath = path.join(TEST_OUT, `studio_${STORY_ID}${suffix}.mp4`);
   const cmd = [
     `ffmpeg -y -hide_banner -loglevel warning`,
     inputs.join(" "),

@@ -173,6 +173,12 @@ function buildSlate(paths) {
       type: "card",
       cardKind: "takeaway",
       text: "WATCH THE FULL TRAILER",
+      cta: "FOLLOW FOR MORE",
+      // Use the trailer's title-card frame as the moody backdrop
+      // (heavy blur + darken applied in the filter so the text
+      // still sits on a dark surface but with on-theme colour and
+      // texture, not flat black).
+      backgroundSource: paths.frame6,
       duration: 6.0,
       label: "scene_takeaway",
     },
@@ -236,25 +242,51 @@ function buildSceneFilter(scene, slot) {
   }
 
   if (type === "card") {
-    // Text-only takeaway card — black background with brand-amber
-    // accent line + big text. We synthesise this via the `color`
-    // filter source (no image input needed).
+    // Premium takeaway card. Backdrop is a heavily-blurred,
+    // darkened, desaturated trailer frame so the card stays
+    // moody + on-theme rather than flat black. On top:
+    //   - top + bottom amber accent lines (existing)
+    //   - small-caps kicker label ("TAKEAWAY")
+    //   - giant headline text with drop-shadow (rendered as TWO
+    //     drawtext layers — black offset 4px down, white on top —
+    //     to give weight without needing a blur filter on text)
+    //   - rounded amber CTA pill with arrow glyph + subtitle
+    //   - animated reveal: kicker fades 0–0.4s, headline 0.4–1.0s,
+    //     CTA 1.0–1.6s; arrow gently translates up after 1.6s
     const cardKind = scene.cardKind || "takeaway";
     const text = (scene.text || "").replace(/'/g, "’");
-    // We inject the card by using the `color` source as input N.
-    // The slot index maps to a CARD-typed input we pre-add to the
-    // ffmpeg `inputs` list as `-f lavfi -i color=c=0x0D0D0F:s=1080x1920:r=30 -t <d>`.
+    const cta = (scene.cta || "FOLLOW PULSE GAMING").replace(/'/g, "’");
+    const fadeIn = (start, dur = 0.4) =>
+      `alpha='if(lt(t\\,${start})\\,0\\,if(lt(t-${start}\\,${dur})\\,(t-${start})/${dur}\\,1))'`;
     return [
       `[${slot}:v]setrange=tv`,
-      `drawbox=x=0:y=h/2-150:w=iw:h=300:color=black@0.0:t=fill`,
-      // Top amber accent line
-      `drawbox=x=(w-600)/2:y=h/2-180:w=600:h=4:color=${ACCENT_COLOR}@0.95:t=fill`,
-      // Bottom amber accent line
-      `drawbox=x=(w-600)/2:y=h/2+180:w=600:h=4:color=${ACCENT_COLOR}@0.95:t=fill`,
-      // Label small caps
-      `drawtext=text='${cardKind.toUpperCase()}':${FONT_OPT}:fontcolor=${ACCENT_COLOR}:fontsize=28:x=(w-tw)/2:y=h/2-130`,
-      // Big text
-      `drawtext=text='${text}':${FONT_OPT}:fontcolor=white:fontsize=64:x=(w-tw)/2:y=h/2-30`,
+      // Backdrop: cover-fit the frame, then heavy blur + darken
+      `scale=1080:1920:force_original_aspect_ratio=increase`,
+      `crop=1080:1920:(iw-1080)/2:(ih-1920)/2`,
+      `boxblur=20:6`,
+      `eq=brightness=-0.35:saturation=0.55:contrast=1.05`,
+      // Subtle vignette via two drawboxes top/bottom — keeps centre
+      // bright enough for text contrast
+      `drawbox=x=0:y=0:w=iw:h=400:color=black@0.55:t=fill`,
+      `drawbox=x=0:y=h-500:w=iw:h=500:color=black@0.55:t=fill`,
+      // Top amber accent line (animated reveal — width grows 0–0.6s)
+      `drawbox=x=(w-1)/2:y=h/2-220:w='if(lt(t\\,0.6)\\,1+(700-1)*t/0.6\\,700)':h=3:color=${ACCENT_COLOR}@0.95:t=fill`,
+      // Bottom amber accent line (mirror)
+      `drawbox=x=(w-1)/2:y=h/2+200:w='if(lt(t\\,0.6)\\,1+(700-1)*t/0.6\\,700)':h=3:color=${ACCENT_COLOR}@0.95:t=fill`,
+      // Kicker label (TAKEAWAY) — fades 0–0.4s
+      `drawtext=text='${cardKind.toUpperCase()}':${FONT_OPT}:fontcolor=${ACCENT_COLOR}:fontsize=32:x=(w-tw)/2:y=h/2-170:${fadeIn(0, 0.4)}`,
+      // Headline shadow (black, +4px) — fades 0.4–1.0s
+      `drawtext=text='${text}':${FONT_OPT}:fontcolor=black@0.7:fontsize=78:x=(w-tw)/2+4:y=h/2-40+4:${fadeIn(0.4, 0.6)}`,
+      // Headline (white) — fades 0.4–1.0s
+      `drawtext=text='${text}':${FONT_OPT}:fontcolor=white:fontsize=78:x=(w-tw)/2:y=h/2-40:${fadeIn(0.4, 0.6)}`,
+      // CTA pill — single drawtext with coloured box. drawbox
+      // doesn't support runtime alpha so we use drawtext's box=1
+      // primitive with the alpha expression on the text itself.
+      // Leading/trailing spaces give pill padding.
+      `drawtext=text='   ${cta}   ':${FONT_OPT}:fontcolor=black:fontsize=32:x=(w-tw)/2:y=h/2+108:box=1:boxcolor=${ACCENT_COLOR}@0.95:boxborderw=18:${fadeIn(1.0, 0.6)}`,
+      // Animated upward chevron glyph above the CTA — gently
+      // floats from y=h/2+50 to y=h/2+30 over 0.8s, fades 1.6–2.0s
+      `drawtext=text='^':${FONT_OPT}:fontcolor=${ACCENT_COLOR}:fontsize=64:x=(w-tw)/2:y='h/2+50-15*sin(2*PI*(t-1.6)/1.5)':${fadeIn(1.6, 0.4)}`,
       trim,
       `format=yuv420p,setsar=1[v${slot}]`,
     ].join(",");
@@ -420,10 +452,19 @@ async function main() {
         `-t ${(scene.duration + 0.2).toFixed(2)} -i "${scene.source.replace(/\\/g, "/")}"`,
       );
     } else if (scene.type === "card") {
-      // Synthetic black background — fed to drawtext via lavfi.
-      inputs.push(
-        `-f lavfi -t ${(scene.duration + 1).toFixed(2)} -i color=c=0x0D0D0F:s=1080x1920:r=${FPS}`,
-      );
+      // If the card has a backgroundSource (a still image), feed it
+      // as a looped image input — the card filter will blur +
+      // darken it. Otherwise fall back to the lavfi color source
+      // for a flat-black backdrop.
+      if (scene.backgroundSource) {
+        inputs.push(
+          `-loop 1 -t ${(scene.duration + 1).toFixed(2)} -i "${scene.backgroundSource.replace(/\\/g, "/")}"`,
+        );
+      } else {
+        inputs.push(
+          `-f lavfi -t ${(scene.duration + 1).toFixed(2)} -i color=c=0x0D0D0F:s=1080x1920:r=${FPS}`,
+        );
+      }
     }
   }
   const audioIdx = inputs.length;

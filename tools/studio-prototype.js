@@ -576,7 +576,17 @@ async function main() {
     words = inlineCharsToWords(tsData);
   else if (Array.isArray(tsData?.alignment?.characters))
     words = inlineCharsToWords(tsData.alignment);
-  const scriptText = story?.full_script || story?.body || story?.hook || "";
+  // Run the editorial pass on the script BEFORE handing it to the
+  // caption builder — this matches the script that was actually
+  // sent to TTS, so realignment compares like-to-like. Previously
+  // the realigner saw the ORIGINAL script (with filler phrases)
+  // while timestamps came from the TIGHTENED script (filler
+  // stripped). The mismatch caused a 27s blackout in captions
+  // because the realigner desynced and emitted garbage.
+  const { tightenScript } = require("../lib/editorial");
+  const rawScript = story?.full_script || story?.body || story?.hook || "";
+  const tightened = tightenScript(rawScript, story);
+  const scriptText = tightened.scriptForCaption || rawScript;
   const assContent = buildAss({
     story,
     words,

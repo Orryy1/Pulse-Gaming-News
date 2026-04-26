@@ -913,6 +913,42 @@ async function main() {
   }));
   report.transitions = transitions;
 
+  // ---- SEO package (channel-aware upload metadata) ----
+  try {
+    const { buildSeoPackage } = require("../lib/studio/v2/seo-package");
+    const channelForSeo = channelTheme || {
+      channelId: "pulse-gaming",
+      channelName: "PULSE GAMING",
+    };
+    const seo = buildSeoPackage({
+      story: renderStory,
+      pkg,
+      scenes,
+      runtimeS: output.durationS,
+      channel: channelForSeo,
+    });
+    const seoPath = path.join(
+      TEST_OUT,
+      `${STORY_ID}_studio_v2${OUTPUT_SUFFIX}_seo.json`,
+    );
+    await fs.writeJson(seoPath, seo, { spaces: 2 });
+    report.seo = {
+      path: path.relative(ROOT, seoPath).replace(/\\/g, "/"),
+      title: seo.title,
+      titleLength: seo.title.length,
+      hashtagCount: seo.hashtags.length,
+      hasChapters: !!seo.chapters,
+      validationIssueCount: seo.validation.length,
+      validationReds: seo.validation.filter((v) => v.severity === "red").length,
+    };
+    console.log(
+      `[seo] package: title="${seo.title}" (${seo.title.length}c) · ${seo.hashtags.length} tags · ${seo.validation.length} validation flags`,
+    );
+  } catch (err) {
+    console.warn(`[seo] package generation failed: ${err.message}`);
+    report.seo = { error: err.message };
+  }
+
   const reportPath = path.join(
     TEST_OUT,
     `${STORY_ID}_studio_v2${OUTPUT_SUFFIX}_report.json`,

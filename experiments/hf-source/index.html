@@ -171,11 +171,13 @@
           </div>
         </div>
 
-        <div id="brand" class="brand" style="opacity: 0">
-          <div class="brand-line"></div>
-          <div class="brand-name">PULSE GAMING</div>
-          <div class="brand-tag">Never miss a beat</div>
-        </div>
+        <!--
+          Brand block REMOVED — when this card composites into the
+          studio prototype, the PRL chain adds the channel lower-third
+          on top of every scene, so leaving the brand here produced
+          two PULSE GAMING + tagline pairs stacked at the bottom.
+          The PRL lower-third is the canonical brand placement.
+        -->
       </div>
     </div>
 
@@ -192,7 +194,7 @@
       //   0.50s — label r/GAMES slides up + fades in over 0.65s
       //   1.00s — bottom underline draws across over 0.55s
       //   1.20s — sublabel fades in over 0.4s
-      //   1.60s — brand reveal fades in over 0.5s
+      //   (brand block removed — see HTML comment above)
       tl.to(
         "#accent-top",
         { width: 720, duration: 0.55, ease: "power2.out" },
@@ -214,8 +216,7 @@
           { width: 720, duration: 0.55, ease: "power2.out" },
           1.0,
         )
-        .to("#sublabel", { opacity: 1, duration: 0.4 }, 1.2)
-        .to("#brand", { opacity: 1, duration: 0.5 }, 1.6);
+        .to("#sublabel", { opacity: 1, duration: 0.4 }, 1.2);
 
       window.__timelines["main"] = tl;
     </script>

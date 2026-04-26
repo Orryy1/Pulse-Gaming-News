@@ -460,6 +460,9 @@ async function generateAudio() {
 
 module.exports = generateAudio;
 module.exports.getAudioDuration = getAudioDuration;
+module.exports.cleanForTTS = cleanForTTS;
+module.exports.generateTTS = generateTTS;
+module.exports.concatAudioFiles = concatAudioFiles;
 
 if (require.main === module) {
   generateAudio().catch((err) => {

@@ -13,7 +13,9 @@
     "preview": "vite preview",
     "test": "node --test \"tests/**/*.test.js\"",
     "quality:test": "node tools/quality-test.js",
-    "quality:render": "node tools/quality-render.js"
+    "quality:render": "node tools/quality-render.js",
+    "studio:v1:cards": "node tools/render-hyperframes-cards.js",
+    "studio:v1": "node tools/render-hyperframes-cards.js && node tools/studio-v1-render.js"
   },
   "keywords": [],
   "author": "",

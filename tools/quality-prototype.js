@@ -484,7 +484,11 @@ async function main() {
     words = inlineCharsToWords(tsData);
   else if (Array.isArray(tsData?.alignment?.characters))
     words = inlineCharsToWords(tsData.alignment);
-  const assContent = buildAss({ story, words, duration });
+  // Pass the original script text so digit-expansions ("twenty 39"
+  // / "twenty 19") get realigned back to their script form ("2039"
+  // / "2019") in the captions.
+  const scriptText = story?.full_script || story?.body || story?.hook || "";
+  const assContent = buildAss({ story, words, duration, scriptText });
   const assPath = path.join(TEST_OUT, `${STORY_ID}_proto.ass`);
   await fs.writeFile(assPath, assContent);
   const assRel = path.relative(ROOT, assPath).replace(/\\/g, "/");

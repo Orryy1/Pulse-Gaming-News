@@ -905,9 +905,7 @@ async function main() {
         })
       : null;
   if (heroPlan) {
-    console.log(
-      `       hero moments v2.1: ${heroPlan.momentCount} planned`,
-    );
+    console.log(`       hero moments v2.1: ${heroPlan.momentCount} planned`);
     for (const m of heroPlan.moments) {
       console.log(
         `         - ${m.type}@${m.targetTimestampS}s (${m.sceneType})`,
@@ -941,9 +939,18 @@ async function main() {
     filterParts.push(`[v0]copy[base]`);
   }
 
-  // ---- 10. Sound layer v2 ----
-  console.log("[10/11] building sound layer v2 (SFX + ducking)...");
-  const musicPath = path.join(ROOT, "audio", "Main Background Loop 1.wav");
+  // ---- 10. Sound layer v2 (audio-library-driven) ----
+  console.log("[10/11] building sound layer v2 (flair-keyed bed + SFX kit)...");
+  const { resolveAudioPlan } = require("../lib/studio/v2/audio-library");
+  const audioPlan = resolveAudioPlan({
+    story: renderStory,
+    scenes,
+    transitions,
+  });
+  const musicPath =
+    audioPlan.musicBed && audioPlan.musicBed.path
+      ? audioPlan.musicBed.path
+      : path.join(ROOT, "audio", "Main Background Loop 1.wav");
   const hasMusic = await fs.pathExists(musicPath);
 
   // Audio inputs land AFTER all scene inputs.
@@ -962,12 +969,17 @@ async function main() {
     voiceInputIdx,
     musicInputIdx,
     audioInputsBaseIdx,
+    audioPlan,
   });
   const sfxInputs = soundLayer.extraInputs;
   filterParts.push(...soundLayer.filterLines);
 
   console.log(
-    `       SFX cues: ${soundLayer.cueCount} · music: ${hasMusic ? "yes" : "no"} · sidechain ducking: yes`,
+    `       bed: ${audioPlan.decisions.bed} (vibe ${audioPlan.decisions.vibe}) · SFX cues: ${soundLayer.cueCount} (${Object.entries(
+      audioPlan.decisions.sfxBreakdown,
+    )
+      .map(([k, n]) => `${k}=${n}`)
+      .join(",")})`,
   );
 
   // ---- 11. Subtitle layer v2 ----

@@ -24,7 +24,10 @@
     "studio:v2:channel-readiness": "node tools/studio-v2-channel-readiness.js",
     "studio:v2:dossier": "node tools/studio-v2-qa-dossier.js",
     "studio:v2:compare-variants": "node tools/studio-v2-variant-compare.js",
-    "studio:v2:audio-master-ab": "node tools/studio-v2-audio-master-ab.js"
+    "studio:v2:audio-master-ab": "node tools/studio-v2-audio-master-ab.js",
+    "performance:digest": "node tools/performance-learning-digest.js",
+    "comments:digest": "node tools/comment-copilot-digest.js",
+    "tiktok:diagnose403": "node tools/tiktok-403-diagnosis.js"
   },
   "keywords": [],
   "author": "",

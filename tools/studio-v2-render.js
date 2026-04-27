@@ -74,6 +74,10 @@ const {
 } = require("../lib/studio/v2/sound-layer-v2");
 const { buildKineticAss } = require("../lib/studio/v2/subtitle-layer-v2");
 const { buildQualityReportV2 } = require("../lib/studio/v2/quality-gate-v2");
+const {
+  planHeroMomentsV21,
+  buildHeroMomentOverlayFilter,
+} = require("../lib/studio/v2/hero-moments-v21");
 
 const ROOT = path.resolve(__dirname, "..");
 const TEST_OUT = path.join(ROOT, "test", "output");
@@ -869,6 +873,26 @@ async function main() {
     `       cuts: ${transitions.length} · beat-aligned: ${beatAligned}/${transitions.length}`,
   );
 
+  const heroPlan =
+    process.env.STUDIO_V21_HERO === "true"
+      ? planHeroMomentsV21({
+          story: renderStory,
+          scenes,
+          transitions,
+          maxMoments: 3,
+        })
+      : null;
+  if (heroPlan) {
+    console.log(
+      `       hero moments v2.1: ${heroPlan.momentCount} planned`,
+    );
+    for (const m of heroPlan.moments) {
+      console.log(
+        `         - ${m.type}@${m.targetTimestampS}s (${m.sceneType})`,
+      );
+    }
+  }
+
   // ---- 9. Inputs + filter graph ----
   console.log("[9/11] building inputs + filter graph...");
   const sceneInputs = scenes.map(buildV2SceneInput);
@@ -953,8 +977,20 @@ async function main() {
 
   const assRel = path.relative(ROOT, assPath).replace(/\\/g, "/");
   const finalVideoDurationS = Number(audioDurationS.toFixed(3));
+  let videoForSubtitles = "base";
+  const heroOverlayFilter = heroPlan
+    ? buildHeroMomentOverlayFilter({
+        inputLabel: "base",
+        outputLabel: "heroBase",
+        plan: heroPlan,
+      })
+    : null;
+  if (heroOverlayFilter) {
+    filterParts.push(heroOverlayFilter);
+    videoForSubtitles = "heroBase";
+  }
   filterParts.push(
-    `[base]ass=${assRel},tpad=stop_mode=clone:stop_duration=${(
+    `[${videoForSubtitles}]ass=${assRel},tpad=stop_mode=clone:stop_duration=${(
       finalVideoDurationS + 1
     ).toFixed(
       3,
@@ -1100,6 +1136,20 @@ async function main() {
   };
   report.premiumLane = lane.premiumLane;
   report.grammarApplied = grammarApplied;
+  report.heroMoments = heroPlan
+    ? {
+        enabled: true,
+        momentCount: heroPlan.momentCount,
+        moments: heroPlan.moments,
+        overlayApplied: Boolean(heroOverlayFilter),
+        notes: heroPlan.notes,
+      }
+    : {
+        enabled: false,
+        momentCount: 0,
+        moments: [],
+        overlayApplied: false,
+      };
   report.beatAware = {
     cutCount: transitions.length,
     cutsAlignedWithin150ms: beatAligned,

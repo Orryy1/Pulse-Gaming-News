@@ -27,7 +27,8 @@
     "studio:v2:audio-master-ab": "node tools/studio-v2-audio-master-ab.js",
     "performance:digest": "node tools/performance-learning-digest.js",
     "comments:digest": "node tools/comment-copilot-digest.js",
-    "tiktok:diagnose403": "node tools/tiktok-403-diagnosis.js"
+    "tiktok:diagnose403": "node tools/tiktok-403-diagnosis.js",
+    "studio:creator-grade": "node tools/studio-creator-grade.js"
   },
   "keywords": [],
   "author": "",

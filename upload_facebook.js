@@ -212,7 +212,9 @@ function interpretReelStatusSnapshot(data) {
   }
   if (
     videoStatus === "ready" &&
-    (publishStatus === "published" || publishedFlag === true)
+    (publishStatus === "published" ||
+      publishStatus === "complete" ||
+      publishedFlag === true)
   ) {
     return { outcome: "ready" };
   }

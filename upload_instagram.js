@@ -11,6 +11,8 @@ const mediaPaths = require("./lib/media-paths");
 dotenv.config({ override: true });
 
 const TOKEN_PATH = path.join(__dirname, "tokens", "instagram_token.json");
+const INSTAGRAM_CONTAINER_STATUS_FIELDS =
+  "status_code,status,error_code,error_subcode,error_message";
 
 /*
   Instagram Reels via Facebook Graph API
@@ -103,6 +105,28 @@ function getAccountId() {
   const id = process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID;
   if (!id) throw new Error("INSTAGRAM_BUSINESS_ACCOUNT_ID not set in .env");
   return id;
+}
+
+function summariseInstagramContainerStatus(data) {
+  const status = data || {};
+  return {
+    status_code: status.status_code || null,
+    status: status.status || null,
+    error_code: status.error_code ?? null,
+    error_subcode: status.error_subcode ?? null,
+    error_message: status.error_message || null,
+  };
+}
+
+function formatInstagramContainerStatus(data) {
+  const status = summariseInstagramContainerStatus(data);
+  const parts = [`status_code=${status.status_code || "?"}`];
+  if (status.status) parts.push(`status=${status.status}`);
+  if (status.error_code !== null) parts.push(`error_code=${status.error_code}`);
+  if (status.error_subcode !== null)
+    parts.push(`error_subcode=${status.error_subcode}`);
+  if (status.error_message) parts.push(`error_message=${status.error_message}`);
+  return parts.join(" ");
 }
 
 // --- Upload a Reel to Instagram via Resumable Upload (direct binary) ---
@@ -231,14 +255,16 @@ async function uploadReel(story) {
             `https://graph.facebook.com/v21.0/${containerId}`,
             {
               params: {
-                fields: "status_code,status",
+                fields: INSTAGRAM_CONTAINER_STATUS_FIELDS,
                 access_token: accessToken,
               },
             },
           );
 
           status = statusResponse.data.status_code || "IN_PROGRESS";
-          console.log(`[instagram] Processing check ${attempts}: ${status}`);
+          console.log(
+            `[instagram] Processing check ${attempts}: ${formatInstagramContainerStatus(statusResponse.data)}`,
+          );
 
           if (status === "ERROR") {
             throw new Error(
@@ -372,11 +398,16 @@ async function uploadReelViaUrl(story) {
       const statusResponse = await axios.get(
         `https://graph.facebook.com/v21.0/${containerId}`,
         {
-          params: { fields: "status_code,status", access_token: accessToken },
+          params: {
+            fields: INSTAGRAM_CONTAINER_STATUS_FIELDS,
+            access_token: accessToken,
+          },
         },
       );
       status = statusResponse.data.status_code || "IN_PROGRESS";
-      console.log(`[instagram] URL processing check ${attempts}: ${status}`);
+      console.log(
+        `[instagram] URL processing check ${attempts}: ${formatInstagramContainerStatus(statusResponse.data)}`,
+      );
       if (status === "ERROR") {
         throw new Error(
           `Instagram URL processing failed: ${JSON.stringify(statusResponse.data)}`,
@@ -534,6 +565,9 @@ module.exports = {
   uploadStoryImage,
   refreshToken,
   seedTokenFromEnv,
+  INSTAGRAM_CONTAINER_STATUS_FIELDS,
+  formatInstagramContainerStatus,
+  summariseInstagramContainerStatus,
 };
 
 if (require.main === module) {

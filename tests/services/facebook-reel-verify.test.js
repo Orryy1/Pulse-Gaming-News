@@ -39,6 +39,17 @@ test("interpretReelStatusSnapshot: video_status=ready + published=true (no publi
   assert.deepStrictEqual(v, { outcome: "ready" });
 });
 
+test("interpretReelStatusSnapshot: video_status=ready + publish=complete → ready", () => {
+  const v = interpretReelStatusSnapshot({
+    status: {
+      video_status: "ready",
+      publishing_phase: { status: "complete" },
+    },
+    published: false,
+  });
+  assert.deepStrictEqual(v, { outcome: "ready" });
+});
+
 test("interpretReelStatusSnapshot: video_status=error → errored with enum-only reason", () => {
   const v = interpretReelStatusSnapshot({
     status: {

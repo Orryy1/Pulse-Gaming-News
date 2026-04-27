@@ -410,6 +410,85 @@ function applySceneGrammarV2({
     }
   }
 
+  // 4. Timeline card insertion (v2.1 — addresses the "visible
+  //    scene-variety" pass identified by the gauntlet).
+  //    Find the most-repeated still-source mid-slate (positions 30%-55%)
+  //    and replace ONE of its instances with a card.timeline scene.
+  //    The lane resolves the scene to the per-story HF timeline MP4
+  //    when present, otherwise to the ffmpeg fallback drawtext.
+  if (transforms.timeline !== false) {
+    // Count how many times each still source appears
+    const stillSources = new Map();
+    for (let i = 0; i < out.length; i++) {
+      const s = out[i];
+      if (
+        (s.type === SCENE_TYPES.CLIP_FRAME || s.type === SCENE_TYPES.STILL) &&
+        s.source
+      ) {
+        const id = String(s.source).replace(
+          /_smartcrop_v2(_[a-z]+)?\.jpe?g$/i,
+          ".jpg",
+        );
+        const arr = stillSources.get(id) || [];
+        arr.push(i);
+        stillSources.set(id, arr);
+      }
+    }
+    // Look for a still source used twice or more — replace the second
+    // instance with the timeline card. If no source is used twice,
+    // pick a single still in the 30-55% slot range.
+    const startPct = 0.3;
+    const endPct = 0.55;
+    let timelineIdx = -1;
+    for (const [, indices] of stillSources) {
+      if (indices.length < 2) continue;
+      // Take an instance in the mid-slate range
+      const candidate = indices.find(
+        (i) => i / out.length >= startPct && i / out.length <= endPct,
+      );
+      if (candidate !== undefined) {
+        timelineIdx = candidate;
+        break;
+      }
+    }
+    if (timelineIdx === -1) {
+      // No repeated stills — pick any still in the 30-55% range
+      for (let i = 0; i < out.length; i++) {
+        const pct = i / out.length;
+        if (pct < startPct || pct > endPct) continue;
+        const s = out[i];
+        if (s.type === SCENE_TYPES.CLIP_FRAME || s.type === SCENE_TYPES.STILL) {
+          timelineIdx = i;
+          break;
+        }
+      }
+    }
+    if (timelineIdx >= 0) {
+      const replaced = out[timelineIdx];
+      out[timelineIdx] = {
+        type: SCENE_TYPES.CARD_TIMELINE,
+        duration: replaced.duration,
+        label: "card_timeline",
+        backgroundSource: replaced.source || replaced.backgroundSource || null,
+        // The lane will fill prerenderedMp4 with the per-story HF
+        // render. If missing, the ffmpeg fallback in
+        // ffmpeg-scene-renderer.js handles rendering.
+        kicker: "WHAT WE KNOW",
+        heading: (story?.title || "")
+          .split(/\s+[-–—:|]\s+/)[0]
+          .toUpperCase()
+          .slice(0, 18),
+        bullets: ["Trailer live", "Personal story arc", "No date yet"],
+        cardKind: "timeline",
+      };
+      applied.push({
+        kind: "timeline-card",
+        atIdx: timelineIdx,
+        replaced: replaced.label || replaced.type,
+      });
+    }
+  }
+
   return { scenes: out, applied };
 }
 
@@ -814,6 +893,44 @@ async function main() {
     stdio: "inherit",
     maxBuffer: 80 * 1024 * 1024,
   });
+
+  // Optional loudnorm post-pass — gated by STUDIO_V2_LOUDNESS_TARGET.
+  // The gauntlet validated -16 LUFS as forensic-clean and +7.6 LU
+  // louder than the canonical -24 LUFS mix. -14 LUFS is too aggressive
+  // (audio recurrence warning) and is intentionally NOT supported here.
+  const loudnessTarget = process.env.STUDIO_V2_LOUDNESS_TARGET;
+  if (loudnessTarget) {
+    const target = Number(loudnessTarget);
+    if (!Number.isFinite(target) || target > -10 || target < -24) {
+      console.warn(
+        `[loudnorm] ignoring out-of-range STUDIO_V2_LOUDNESS_TARGET=${loudnessTarget} (must be between -24 and -10)`,
+      );
+    } else if (target === -14) {
+      console.warn(
+        "[loudnorm] -14 LUFS is blocked because the audio gauntlet flagged it as too aggressive (audio recurrence warning). Use -16 or above.",
+      );
+    } else {
+      const tmpPath = outputPath.replace(/\.mp4$/i, "_pre_loudnorm.mp4");
+      await fs.move(outputPath, tmpPath, { overwrite: true });
+      const tp = -1.5;
+      const lra = 11;
+      const cmd = [
+        "ffmpeg -y -hide_banner -loglevel warning",
+        `-i "${tmpPath.replace(/\\/g, "/")}"`,
+        "-map 0:v -map 0:a",
+        "-c:v copy",
+        `-c:a aac -b:a 192k`,
+        `-af "loudnorm=I=${target}:TP=${tp}:LRA=${lra}"`,
+        `-movflags +faststart "${outputPath.replace(/\\/g, "/")}"`,
+      ].join(" ");
+      console.log(
+        `[loudnorm] post-pass: target=${target} LUFS, TP=${tp} dBFS, LRA=${lra}`,
+      );
+      execSync(cmd, { cwd: ROOT, stdio: "inherit" });
+      await fs.remove(tmpPath).catch(() => {});
+    }
+  }
+
   const elapsedMs = Date.now() - renderStart;
 
   const probe = ffprobeJson(outputPath);

@@ -19,6 +19,8 @@
     "studio:v2:qa": "node tools/studio-v2-forensic-qa.js",
     "studio:v2:qa:compare": "node tools/studio-v2-forensic-compare.js",
     "studio:v2:gauntlet": "node tools/studio-v2-gauntlet.js",
+    "studio:v2:channel-readiness": "node tools/studio-v2-channel-readiness.js",
+    "studio:v2:dossier": "node tools/studio-v2-qa-dossier.js",
     "studio:v2:compare-variants": "node tools/studio-v2-variant-compare.js",
     "studio:v2:audio-master-ab": "node tools/studio-v2-audio-master-ab.js"
   },

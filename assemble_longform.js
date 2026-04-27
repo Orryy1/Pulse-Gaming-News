@@ -454,14 +454,36 @@ async function assembleLongform(compilation) {
     const segDuration = Math.max(5, Math.floor(contentTime / segments.length));
 
     if (storyImages.length === 0) {
-      // No images - use a dark background with title text
+      // No images - render a DESIGNED chapter card rather than a
+      // near-black colour solid with faint text.
+      //
+      // Previous behaviour produced "plain black screen" segments when
+      // a roundup story had no downloaded_images (most stories that
+      // were hunted but never put through the v1 produce pipeline).
+      // For a roundup with 6+ image-less stories that meant the entire
+      // video read as black.
+      //
+      // New fallback: dark backdrop + animated accent line + bold
+      // chapter number + full-opacity title + classification badge
+      // already drawn on the chapter card. Looks intentional, not empty.
       inputs.push(
         `-f lavfi -t ${segDuration} -i "color=c=0x0D0D0F:s=1920x1080:r=30"`,
       );
       const bgIdx = inputIdx++;
+      const segNumStr = String(si + 1).padStart(2, "0");
       filterParts.push(
         `[${bgIdx}:v]` +
-          `drawtext=text='${chTitle}':${fontOpt}:fontcolor=${textFFM}@0.5:fontsize=36:x=(w-tw)/2:y=(h-th)/2` +
+          // Centered accent rule above the title (static, 900px wide).
+          // Note: drawbox uses `ih` for input frame height — `h` here
+          // refers to the box's own height parameter.
+          `drawbox=x=(iw-900)/2:y=ih/2-160:w=900:h=4:color=${primaryFFM}@0.95:t=fill,` +
+          // Big chapter number indicator ("STORY 03") in primary colour.
+          // drawtext uses `h` for input frame height as expected.
+          `drawtext=text='STORY ${segNumStr}':${fontOpt}:fontcolor=${primaryFFM}:fontsize=36:x=(w-tw)/2:y=h/2-110,` +
+          // Full-opacity title at 60pt — actually readable now.
+          `drawtext=text='${chTitle}':${fontOpt}:fontcolor=${textFFM}:fontsize=60:x=(w-tw)/2:y=(h-th)/2:line_spacing=12,` +
+          // Centered accent rule below to bracket the title block.
+          `drawbox=x=(iw-900)/2:y=ih/2+120:w=900:h=4:color=${primaryFFM}@0.95:t=fill` +
           `[seg${si}]`,
       );
     } else {

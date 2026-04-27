@@ -78,6 +78,12 @@ const {
   planHeroMomentsV21,
   buildHeroMomentOverlayFilter,
 } = require("../lib/studio/v2/hero-moments-v21");
+const {
+  buildCreatorGradePlan,
+} = require("../lib/studio/creator-grade/orchestrator");
+const {
+  reorderMediaByVault,
+} = require("../lib/studio/creator-grade/clip-intelligence-vault");
 
 const ROOT = path.resolve(__dirname, "..");
 const TEST_OUT = path.join(ROOT, "test", "output");
@@ -748,6 +754,22 @@ async function main() {
     media,
   });
   media = await ensureTrailerFrames({ root: ROOT, storyId: STORY_ID, media });
+  let creatorGradePlan = null;
+  if (process.env.STUDIO_CREATOR_GRADE === "true") {
+    creatorGradePlan = buildCreatorGradePlan({
+      story,
+      media,
+      packageData: pkg,
+      runtimeS: null,
+    });
+    media = reorderMediaByVault(media, creatorGradePlan.vault);
+    console.log(
+      `       creator-grade vault: ${creatorGradePlan.vault.stats.acceptedAssets} accepted · ${creatorGradePlan.vault.stats.stockRejected} stock rejected`,
+    );
+    console.log(
+      `       creator-grade A/B: ${creatorGradePlan.abPlan.winner?.id || "none"} (${creatorGradePlan.abPlan.winner?.score ?? 0}/100)`,
+    );
+  }
   const mediaDiversity = rankSourceDiversity(media);
   const croppedMedia = await preprocessStills(media);
   console.log(
@@ -1150,6 +1172,43 @@ async function main() {
         moments: [],
         overlayApplied: false,
       };
+  if (creatorGradePlan) {
+    const refreshedCreatorGradePlan = buildCreatorGradePlan({
+      story: renderStory,
+      media,
+      packageData: pkg,
+      renderReport: report,
+      scenes,
+      runtimeS: output.durationS,
+    });
+    report.creatorGrade = {
+      verdict: refreshedCreatorGradePlan.verdict,
+      blockers: refreshedCreatorGradePlan.blockers,
+      vault: refreshedCreatorGradePlan.vault.stats,
+      visualQa: {
+        score: refreshedCreatorGradePlan.visualQa.score,
+        verdict: refreshedCreatorGradePlan.visualQa.verdict,
+        issueCount: refreshedCreatorGradePlan.visualQa.issues.length,
+      },
+      soundPlan: {
+        verdict: refreshedCreatorGradePlan.soundPlan.verdict,
+        cueCount: refreshedCreatorGradePlan.soundPlan.cueCount,
+      },
+      abWinner: refreshedCreatorGradePlan.abPlan.winner
+        ? {
+            id: refreshedCreatorGradePlan.abPlan.winner.id,
+            score: refreshedCreatorGradePlan.abPlan.winner.score,
+          }
+        : null,
+      alignmentCoverage: refreshedCreatorGradePlan.timeline.alignment.coverage,
+    };
+    const cgPath = path.join(
+      TEST_OUT,
+      `${STORY_ID}_creator_grade_render${OUTPUT_SUFFIX || ""}.json`,
+    );
+    await fs.writeJson(cgPath, refreshedCreatorGradePlan, { spaces: 2 });
+    report.creatorGrade.path = path.relative(ROOT, cgPath).replace(/\\/g, "/");
+  }
   report.beatAware = {
     cutCount: transitions.length,
     cutsAlignedWithin150ms: beatAligned,

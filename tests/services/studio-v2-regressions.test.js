@@ -11,6 +11,7 @@ const {
   gradeDurationIntegrity,
 } = require("../../lib/studio/v2/quality-gate-v2");
 const { buildSfxCueList } = require("../../lib/studio/v2/sound-layer-v2");
+const { resolveAudioPlan } = require("../../lib/studio/v2/audio-library");
 
 function tempAss(contents) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-v2-"));
@@ -126,4 +127,18 @@ test("v2 sound layer defaults to minimal SFX instead of every-cut repetition", (
     if (oldMode === undefined) delete process.env.STUDIO_V2_SFX_MODE;
     else process.env.STUDIO_V2_SFX_MODE = oldMode;
   }
+});
+
+test("v2 audio library uses tracked beds and leaves SFX to minimal fallback", () => {
+  const plan = resolveAudioPlan({
+    story: {
+      id: "story-1",
+      flair: "Verified",
+      breaking_score: 20,
+    },
+  });
+  assert.equal(plan.decisions.vibe, "verified");
+  assert.match(plan.musicBed.path, /Main Background Loop 2\.wav$/);
+  assert.deepEqual(plan.sfxCues, []);
+  assert.deepEqual(plan.decisions.sfxBreakdown, {});
 });

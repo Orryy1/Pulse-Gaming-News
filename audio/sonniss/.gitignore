@@ -1,0 +1,5 @@
+# Ignore everything under this directory EXCEPT the README and this file.
+# Sonniss bundles are 25-50 GB unzipped — never commit them.
+*
+!.gitignore
+!README.md

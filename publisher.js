@@ -1099,6 +1099,62 @@ async function _publishNextStoryInner() {
       console.log(`[publisher] TikTok: uploaded (API)`);
       await db.upsertStory(story);
     } catch (err) {
+      // --- Buffer fallback: cleanest path through TikTok audit ---
+      //
+      // Buffer (buffer.com) has completed TikTok's audit. When
+      // USE_BUFFER_TIKTOK=true and BUFFER_ACCESS_TOKEN is set, route
+      // the failed-direct-API job through Buffer's queue instead of
+      // surfacing the 403. This unblocks audit-pending TikTok
+      // posting without giving up direct API control once our own
+      // audit clears.
+      try {
+        const {
+          isEnabled: bufferEnabled,
+          publishToTiktokViaBuffer,
+        } = require("./lib/platforms/buffer-tiktok");
+        if (bufferEnabled()) {
+          console.log(
+            `[publisher] TikTok API failed (${(err && err.message) || err}), trying Buffer queue...`,
+          );
+          const exportedAbs =
+            (await mediaPaths.resolveExisting(story.exported_path)) ||
+            story.exported_path;
+          const captionTitle =
+            story.suggested_title ||
+            story.suggested_thumbnail_text ||
+            story.title;
+          const tags = (story.suggested_hashtags || []).concat([
+            "#Shorts",
+            "#fyp",
+            "#viral",
+          ]);
+          const bufferResult = await publishToTiktokViaBuffer({
+            videoPath: exportedAbs,
+            caption: String(captionTitle || "").slice(0, 1500),
+            hashtags: tags,
+          });
+          if (bufferResult.ok) {
+            story.tiktok_post_id = `buffer:${bufferResult.updateId}`;
+            story.tiktok_error = null;
+            result.tiktok = true;
+            result.platform_outcomes.tiktok = "new_upload_via_buffer";
+            console.log(
+              `[publisher] TikTok: queued via Buffer update ${bufferResult.updateId}`,
+            );
+            await db.upsertStory(story);
+            // Buffer succeeded — skip browser fallback entirely.
+            return result;
+          }
+          console.log(
+            `[publisher] Buffer not viable: ${bufferResult.reason}${bufferResult.note ? " — " + bufferResult.note : ""}`,
+          );
+        }
+      } catch (bufferErr) {
+        console.log(
+          `[publisher] Buffer fallback errored: ${bufferErr.message} — falling through to legacy paths`,
+        );
+      }
+
       // --- Browser fallback: off by default in production ---
       //
       // Task 5 (2026-04-21): the browser automation (Playwright

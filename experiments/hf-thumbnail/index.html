@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1280, height=720" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        font-family: "Arial Black", "Inter", system-ui, sans-serif;
+      }
+      html,
+      body {
+        width: 1280px;
+        height: 720px;
+        overflow: hidden;
+        background: #0d0d0f;
+      }
+
+      /* Backdrop: blurred subject art, dark + saturated for poster feel */
+      .backdrop {
+        position: absolute;
+        inset: 0;
+        background: url("assets/backdrop.jpg") center/cover no-repeat;
+        filter: blur(18px) brightness(0.4) saturate(0.6) contrast(1.18);
+        transform: scale(1.08);
+      }
+      .vignette {
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(
+            ellipse at 30% 50%,
+            rgba(255, 107, 26, 0.12) 0%,
+            transparent 55%
+          ),
+          linear-gradient(
+            90deg,
+            rgba(0, 0, 0, 0.7) 0%,
+            transparent 35%,
+            transparent 65%,
+            rgba(0, 0, 0, 0.5) 100%
+          ),
+          rgba(0, 0, 0, 0.18);
+      }
+
+      /* Big diagonal accent bar bottom-left, the brand mark */
+      .accent-block {
+        position: absolute;
+        left: -40px;
+        bottom: 60px;
+        width: 460px;
+        height: 8px;
+        background: #ff6b1a;
+        box-shadow: 0 0 32px rgba(255, 107, 26, 0.7);
+      }
+      .accent-block.top {
+        top: 60px;
+        bottom: auto;
+      }
+
+      /* Two-column layout: subject left, headline right */
+      .stage {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        grid-template-columns: 540px 1fr;
+        gap: 40px;
+        padding: 0 60px;
+        align-items: center;
+      }
+
+      /* LEFT — sharp game art / hero / face crop */
+      .subject {
+        width: 540px;
+        height: 540px;
+        background: url("assets/backdrop.jpg") center/cover no-repeat;
+        border: 4px solid #ff6b1a;
+        box-shadow:
+          0 24px 48px rgba(0, 0, 0, 0.65),
+          0 0 60px rgba(255, 107, 26, 0.32);
+      }
+
+      /* RIGHT — headline + flair badge + channel mark */
+      .headline-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        max-width: 600px;
+      }
+
+      .flair-badge {
+        align-self: flex-start;
+        padding: 10px 22px;
+        background: #ff6b1a;
+        color: #0d0d0f;
+        font-size: 22px;
+        font-weight: 900;
+        letter-spacing: 0.3em;
+        text-transform: uppercase;
+      }
+      .flair-badge.alert {
+        background: #ff2d2d;
+        color: #ffffff;
+      }
+      .flair-badge.confirm {
+        background: #22c55e;
+        color: #0d0d0f;
+      }
+
+      .headline {
+        color: #ffffff;
+        font-size: 84px;
+        font-weight: 900;
+        line-height: 0.95;
+        letter-spacing: -0.025em;
+        text-transform: uppercase;
+        text-shadow:
+          0 4px 0 rgba(0, 0, 0, 0.7),
+          0 14px 28px rgba(0, 0, 0, 0.78),
+          0 0 64px rgba(255, 107, 26, 0.18);
+      }
+      .headline .hl-accent {
+        color: #ff6b1a;
+      }
+
+      .sub-line {
+        color: rgba(255, 255, 255, 0.78);
+        font-size: 26px;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      /* Channel mark bottom-right */
+      .channel-mark {
+        position: absolute;
+        right: 60px;
+        bottom: 56px;
+        text-align: right;
+      }
+      .channel-name {
+        color: #ff6b1a;
+        font-size: 28px;
+        font-weight: 900;
+        letter-spacing: 0.32em;
+      }
+      .channel-tag {
+        color: rgba(255, 255, 255, 0.55);
+        font-size: 16px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        margin-top: 6px;
+        font-family: Consolas, monospace;
+      }
+
+      /* Subtle CRT scanline overlay for "broadcast" feel */
+      .scanline {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background: repeating-linear-gradient(
+          to bottom,
+          rgba(255, 255, 255, 0.018) 0px,
+          rgba(255, 255, 255, 0.018) 1px,
+          transparent 1px,
+          transparent 3px
+        );
+        mix-blend-mode: overlay;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="0.1"
+      data-width="1280"
+      data-height="720"
+    >
+      <div class="clip" data-start="0" data-duration="0.1" data-track-index="0">
+        <div class="backdrop"></div>
+        <div class="vignette"></div>
+        <div class="scanline"></div>
+
+        <div class="accent-block top"></div>
+        <div class="accent-block"></div>
+
+        <div class="stage">
+          <div id="subject" class="subject"></div>
+          <div class="headline-stack">
+            <div id="flair-badge" class="flair-badge">BREAKING</div>
+            <div id="headline" class="headline">METRO 2039 IS REAL</div>
+            <div id="sub-line" class="sub-line">
+              4A GAMES DROP REVEAL TRAILER
+            </div>
+          </div>
+        </div>
+
+        <div class="channel-mark">
+          <div class="channel-name">PULSE GAMING</div>
+          <div class="channel-tag">verified leaks. every day.</div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Static composition — single frame is fine. We register an empty
+      // timeline so HyperFrames is happy. The JPEG is captured at t=0.
+      window.__timelines = window.__timelines || {};
+      window.__timelines["main"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

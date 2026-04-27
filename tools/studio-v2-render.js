@@ -489,6 +489,105 @@ function applySceneGrammarV2({
     }
   }
 
+  // 5. AUTHORED variant transformations (gated by STUDIO_V2_AUTHORED=true).
+  //    Two narrow-scope improvements:
+  //
+  //    a) MID-VIDEO SCENE VARIETY: replace the redundant clip.frame
+  //       at slot 9 (or thereabouts) with a NEW punch slice drawn
+  //       from clip B's EARLY portion (~0.15× duration). Existing
+  //       punches use 0.4× and 0.65× offsets — early-clip content
+  //       is genuinely visually different from those slices.
+  //
+  //    b) PREMIUM AUTHORED MOMENT: tag the freeze-frame scene with
+  //       authored:true so the freeze-frame builder includes a 60ms
+  //       white shutter-snap flash at the freeze instant. Reads as
+  //       a deliberate "photo finish" beat rather than a still pause.
+  //
+  //    No new env-fanned features beyond the two above. No new
+  //    scene types. No architecture changes.
+  if (transforms.authored === true) {
+    // (a) Find a redundant mid-late clip.frame to replace with an
+    //     early-clip punch.
+    let varietyIdx = -1;
+    for (let i = out.length - 4; i >= Math.floor(out.length * 0.45); i--) {
+      const s = out[i];
+      if (
+        (s.type === SCENE_TYPES.CLIP_FRAME || s.type === SCENE_TYPES.STILL) &&
+        s.source
+      ) {
+        varietyIdx = i;
+        break;
+      }
+    }
+    if (varietyIdx >= 0) {
+      // Pick the LEAST-used clip source for the early-offset punch
+      const clipUseCount = new Map();
+      for (const c of mediaClips) clipUseCount.set(c.path, 0);
+      for (const s of out) {
+        if (s.source && clipUseCount.has(s.source)) {
+          clipUseCount.set(s.source, clipUseCount.get(s.source) + 1);
+        }
+      }
+      const earlyPunchSrc = [...clipUseCount.entries()].sort(
+        (a, b) => a[1] - b[1],
+      )[0]?.[0];
+      if (earlyPunchSrc) {
+        const clipDur = ffprobeDuration(earlyPunchSrc) || 5.0;
+        const sliceDur = Math.min(1.6, out[varietyIdx].duration / 2 + 0.2);
+        const startInSrc = Math.max(
+          0.2,
+          Math.min(clipDur - sliceDur - 0.2, clipDur * 0.15),
+        );
+        const earlyPunch = buildPunchScene({
+          slot: 0,
+          source: earlyPunchSrc,
+          startInSourceS: startInSrc,
+          duration: sliceDur,
+          fontOpt: FONT_OPT,
+        });
+        const replacedLabel = out[varietyIdx].label || out[varietyIdx].type;
+        out[varietyIdx] = earlyPunch;
+        applied.push({
+          kind: "authored-early-punch",
+          atIdx: varietyIdx,
+          source: path.basename(earlyPunchSrc),
+          startInSourceS: Number(startInSrc.toFixed(2)),
+          replaced: replacedLabel,
+        });
+      }
+    }
+
+    // (b) Rebuild the freeze-frame scene with authored:true so
+    //     buildFreezeFrameScene injects a 60ms white shutter flash
+    //     into its filter chain at the freeze instant. Source,
+    //     caption, duration are preserved from the original freeze.
+    for (let i = 0; i < out.length; i++) {
+      const fs = out[i];
+      if (
+        (fs.sceneType === "freeze-frame" || fs.type === "freeze-frame") &&
+        fs.source
+      ) {
+        const reauthored = buildFreezeFrameScene({
+          slot: 0,
+          source: fs.source,
+          startInSourceS: 0,
+          playInS: 0.6,
+          duration: fs.duration,
+          caption: fs.caption || "",
+          fontOpt: FONT_OPT,
+          authored: true,
+        });
+        out[i] = reauthored;
+        applied.push({
+          kind: "authored-freeze-shutter",
+          atIdx: i,
+          note: "60ms white flash at freeze instant",
+        });
+        break;
+      }
+    }
+  }
+
   return { scenes: out, applied };
 }
 
@@ -723,6 +822,7 @@ async function main() {
       freeze: process.env.STUDIO_V2_DISABLE_FREEZE !== "true",
       speedRamp: process.env.STUDIO_V2_DISABLE_RAMP !== "true",
       forceClimaxRamp: process.env.STUDIO_V2_FORCE_CLIMAX_RAMP === "true",
+      authored: process.env.STUDIO_V2_AUTHORED === "true",
     },
   });
   const grammarApplied = v2Transform.applied;

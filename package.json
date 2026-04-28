@@ -37,6 +37,12 @@
     "ops:platform:status": "node tools/platform-status.js",
     "media:inventory": "node tools/media-inventory-report.js",
     "format:release-radar": "node tools/monthly-release-radar.js",
+    "creative:visual-qa": "node tools/creative/run-visual-qa.js",
+    "creative:thumbnails": "node tools/creative/build-thumbnail-candidates.js",
+    "creative:release-radar": "node tools/creative/build-monthly-release-radar.js",
+    "intelligence:learning": "node tools/intelligence/run-learning-digest.js",
+    "intelligence:comments": "node tools/intelligence/run-comment-digest.js",
+    "intelligence:monetisation": "node tools/intelligence/run-monetisation-snapshot.js",
     "studio:creator-grade": "node tools/studio-creator-grade.js"
   },
   "keywords": [],

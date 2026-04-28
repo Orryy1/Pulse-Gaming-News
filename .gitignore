@@ -44,6 +44,16 @@ test_videos/
 test_imagen.jpg
 engagement_stats.json
 
+# --- Per-story HyperFrames experiment outputs (committed templates only) ---
+# Templates that ship with the repo: experiments/hf-thumbnail/, hf-quote/,
+# hf-takeaway/, hf-timeline/. Per-story instances built at runtime by
+# hf-thumbnail-builder.js et al. land in experiments/hf-thumbnail-<id>/
+# and must NOT be committed.
+experiments/hf-thumbnail-*/
+experiments/hf-timeline-*/
+experiments/hf-quote-*/
+experiments/hf-takeaway-*/
+
 # --- Claude Code / editor local state ---
 .claude/settings.local.json
 .claude/launch.json

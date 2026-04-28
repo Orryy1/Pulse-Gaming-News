@@ -190,8 +190,8 @@ async function appendFindings(findingsText, payload, daysWindow) {
   await fs.writeFile(FINDINGS_PATH, out);
 }
 
-async function main() {
-  const args = parseArgs(process.argv);
+async function main(argsIn) {
+  const args = argsIn || parseArgs(process.argv);
   console.log(
     `[analytics] window: ${args.days} days · dry=${args.dry ? "yes" : "no"}`,
   );
@@ -220,7 +220,12 @@ async function main() {
     await postDiscord(
       `⚠️ Analytics loop FAILED: ${err.message.slice(0, 300)}`,
     ).catch(() => {});
-    process.exit(1);
+    // Throw rather than process.exit so the in-process job runner
+    // records a failed job + retries on schedule rather than killing
+    // the entire worker process. The CLI wrapper at the bottom of
+    // this file converts the throw into an exit code 1 for direct
+    // `node tools/studio-v2-analytics-loop.js` invocations.
+    throw err;
   }
 
   await appendFindings(findings, payload, args.days);
@@ -255,6 +260,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  main,
   loadStories,
   summariseStory,
   buildPrompt,

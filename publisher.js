@@ -217,6 +217,23 @@ async function produce() {
   const { generateStoryImages } = require("./images_story");
   await generateStoryImages();
 
+  // Studio v2: build per-story YouTube thumbnails (1280×720 JPEG) for
+  // every approved+exported story that doesn't yet have one. Best-
+  // effort — failures are logged and skipped, the produce pipeline
+  // continues regardless. The JPEG path is stamped onto
+  // story.hf_thumbnail_path for upload_youtube.js to pick up via
+  // youtube.thumbnails.set.
+  try {
+    const {
+      buildThumbnailsForApprovedStories,
+    } = require("./lib/studio/v2/hf-thumbnail-builder");
+    await buildThumbnailsForApprovedStories();
+  } catch (err) {
+    console.log(
+      `[publisher] HF thumbnail batch errored (non-fatal): ${err.message}`,
+    );
+  }
+
   console.log("[publisher] Produce pipeline complete");
 }
 
@@ -240,6 +257,7 @@ async function selfHealStaleMediaPaths({ repos: _repos } = {}) {
     "audio_path",
     "image_path",
     "story_image_path",
+    "hf_thumbnail_path",
   ];
   let healed = 0;
   for (const s of stories) {

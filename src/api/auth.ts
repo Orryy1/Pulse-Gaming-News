@@ -107,9 +107,16 @@ export function ensureToken(): string {
       'API token required. Set window.pulseAuth.set("<token>") and retry.',
     );
   }
-  const raw = window.prompt(
-    "Pulse API token required for this action.\n\nPaste the API_TOKEN from the Railway environment:",
-  );
+  let raw: string | null;
+  try {
+    raw = window.prompt(
+      "Pulse API token required for this action.\n\nPaste the API_TOKEN from the Railway environment:",
+    );
+  } catch {
+    throw new Error(
+      'API token required. Open the dashboard with ?token=... or run window.pulseAuth.set("<token>") in DevTools and retry.',
+    );
+  }
   if (raw == null) {
     // Operator dismissed the prompt. Surface a specific error so the
     // UI layer doesn't render a generic "Failed to approve story".

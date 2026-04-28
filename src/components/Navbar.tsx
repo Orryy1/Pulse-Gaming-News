@@ -84,6 +84,7 @@ export default function Navbar({ onRefresh, isLoading, hasApproved, onPublish, a
           <div className="flex items-center gap-1 rounded-lg border border-white/[0.06] bg-white/[0.02] p-0.5">
             <button
               onClick={() => onTabChange('stories')}
+              aria-label="Stories"
               className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[10px] font-bold tracking-wider transition-all sm:text-xs ${
                 activeTab === 'stories'
                   ? 'bg-[#FF6B1A]/15 text-[#FF6B1A]'
@@ -95,6 +96,7 @@ export default function Navbar({ onRefresh, isLoading, hasApproved, onPublish, a
             </button>
             <button
               onClick={() => onTabChange('analytics')}
+              aria-label="Analytics"
               className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[10px] font-bold tracking-wider transition-all sm:text-xs ${
                 activeTab === 'analytics'
                   ? 'bg-[#FF6B1A]/15 text-[#FF6B1A]'
@@ -159,6 +161,7 @@ export default function Navbar({ onRefresh, isLoading, hasApproved, onPublish, a
             <button
               onClick={onPublish}
               disabled={!hasApproved}
+              aria-label="Produce approved stories"
               className="flex items-center gap-1.5 rounded-lg border border-[#FF6B1A]/25 bg-[#FF6B1A]/10 px-3 py-2 text-[10px] font-bold tracking-wider text-[#FF6B1A] transition-all hover:bg-[#FF6B1A]/20 hover:shadow-[0_0_12px_rgba(57,255,20,0.15)] disabled:cursor-not-allowed disabled:border-white/5 disabled:bg-white/[0.02] disabled:text-white/20 disabled:shadow-none sm:text-xs"
               title={hasApproved ? 'Publish all approved stories' : 'Approve at least one story first'}
             >
@@ -170,6 +173,7 @@ export default function Navbar({ onRefresh, isLoading, hasApproved, onPublish, a
             <button
               onClick={onRefresh}
               disabled={isLoading}
+              aria-label="Refresh stories"
               className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-semibold tracking-wider text-white/70 transition-all hover:border-[#FF6B1A]/30 hover:bg-[#FF6B1A]/10 hover:text-[#FF6B1A] disabled:cursor-not-allowed disabled:opacity-40 sm:px-4 sm:text-xs"
             >
               <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />

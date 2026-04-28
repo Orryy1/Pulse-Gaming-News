@@ -11,8 +11,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-
-const API_BASE = import.meta.env.VITE_API_URL || '';
+import { apiGetAuthed } from '../api/http';
 
 interface SummaryData {
   totalViews: number;
@@ -20,6 +19,20 @@ interface SummaryData {
   videosThisWeek: number;
   bestTopic: string | null;
   bestDay: string | null;
+}
+
+interface OverviewResponse {
+  totalVideos?: number;
+  totalViews?: {
+    youtube?: number;
+    tiktok?: number;
+    instagram?: number;
+    combined?: number;
+  };
+  bestPerformer?: {
+    title?: string;
+  } | null;
+  avgVirality?: number;
 }
 
 interface TopPerformer {
@@ -38,11 +51,38 @@ interface TopicBreakdown {
   avgVirality: number;
 }
 
+interface AnalyticsTopic {
+  name: string;
+  count: number;
+  avgVirality: number;
+}
+
+interface TopicsResponse {
+  flairs?: AnalyticsTopic[];
+  keywords?: AnalyticsTopic[];
+  pillars?: AnalyticsTopic[];
+}
+
 interface DailyTrend {
   date: string;
   avgViews: number;
   avgVirality: number;
   videos: number;
+}
+
+interface HistoryEntry {
+  id?: string;
+  title?: string;
+  youtube_views?: number;
+  tiktok_views?: number;
+  instagram_views?: number;
+  virality_score?: number;
+  updated_at?: string;
+  published_at?: string;
+}
+
+interface HistoryResponse {
+  entries?: HistoryEntry[];
 }
 
 function formatViews(n: number): string {
@@ -51,29 +91,115 @@ function formatViews(n: number): string {
   return String(n);
 }
 
+function totalEntryViews(entry: HistoryEntry): number {
+  return (
+    (entry.youtube_views || 0) +
+    (entry.tiktok_views || 0) +
+    (entry.instagram_views || 0)
+  );
+}
+
+function entryDate(entry: HistoryEntry): string | null {
+  const raw = entry.updated_at || entry.published_at || '';
+  if (!raw) return null;
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString().slice(0, 10);
+}
+
+function buildDailyTrends(entries: HistoryEntry[]): DailyTrend[] {
+  const byDate = new Map<string, { views: number; virality: number; videos: number }>();
+  for (const entry of entries) {
+    const date = entryDate(entry);
+    if (!date) continue;
+    const bucket = byDate.get(date) || { views: 0, virality: 0, videos: 0 };
+    bucket.views += totalEntryViews(entry);
+    bucket.virality += entry.virality_score || 0;
+    bucket.videos += 1;
+    byDate.set(date, bucket);
+  }
+  return [...byDate.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .slice(-30)
+    .map(([date, bucket]) => ({
+      date,
+      avgViews: Math.round(bucket.views / Math.max(1, bucket.videos)),
+      avgVirality: Math.round((bucket.virality / Math.max(1, bucket.videos)) * 10) / 10,
+      videos: bucket.videos,
+    }));
+}
+
+function videosPublishedThisWeek(entries: HistoryEntry[]): number {
+  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  return entries.filter((entry) => {
+    const raw = entry.updated_at || entry.published_at || '';
+    if (!raw) return false;
+    const time = new Date(raw).getTime();
+    return !Number.isNaN(time) && time >= sevenDaysAgo;
+  }).length;
+}
+
 export default function Analytics() {
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [topPerformers, setTopPerformers] = useState<TopPerformer[]>([]);
   const [topicBreakdown, setTopicBreakdown] = useState<TopicBreakdown[]>([]);
   const [dailyTrends, setDailyTrends] = useState<DailyTrend[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchAll() {
       setLoading(true);
+      setError(null);
       try {
-        const [sumRes, topRes, topicRes, trendRes] = await Promise.all([
-          fetch(`${API_BASE}/api/analytics/summary`),
-          fetch(`${API_BASE}/api/analytics/top-performers`),
-          fetch(`${API_BASE}/api/analytics/topic-breakdown`),
-          fetch(`${API_BASE}/api/analytics/daily-trends`),
+        const [overview, topics, history] = await Promise.all([
+          apiGetAuthed<OverviewResponse>('/api/analytics/overview'),
+          apiGetAuthed<TopicsResponse>('/api/analytics/topics'),
+          apiGetAuthed<HistoryResponse>('/api/analytics/history?limit=50'),
         ]);
-        setSummary(await sumRes.json());
-        setTopPerformers(await topRes.json());
-        setTopicBreakdown(await topicRes.json());
-        setDailyTrends(await trendRes.json());
+        const entries = Array.isArray(history.entries) ? history.entries : [];
+        const flairs = Array.isArray(topics.flairs) ? topics.flairs : [];
+        setSummary({
+          totalViews: overview.totalViews?.combined || 0,
+          avgVirality: overview.avgVirality || 0,
+          videosThisWeek: videosPublishedThisWeek(entries),
+          bestTopic: flairs[0]?.name || overview.bestPerformer?.title || null,
+          bestDay: null,
+        });
+        setTopPerformers(
+          [...entries]
+            .sort((a, b) => (b.virality_score || 0) - (a.virality_score || 0))
+            .slice(0, 10)
+            .map((entry, index) => ({
+              id: entry.id || `history-${index}`,
+              title: entry.title || 'Untitled upload',
+              youtube_views: entry.youtube_views || 0,
+              tiktok_views: entry.tiktok_views || 0,
+              instagram_views: entry.instagram_views || 0,
+              virality_score: entry.virality_score || 0,
+            })),
+        );
+        setTopicBreakdown(
+          flairs.map((topic) => ({
+            flair: topic.name,
+            count: topic.count,
+            totalViews: 0,
+            avgVirality: topic.avgVirality,
+          })),
+        );
+        setDailyTrends(buildDailyTrends(entries));
       } catch (err) {
-        console.error('Failed to fetch analytics', err);
+        setError(err instanceof Error ? err.message : 'Failed to load analytics');
+        setSummary({
+          totalViews: 0,
+          avgVirality: 0,
+          videosThisWeek: 0,
+          bestTopic: null,
+          bestDay: null,
+        });
+        setTopPerformers([]);
+        setTopicBreakdown([]);
+        setDailyTrends([]);
       } finally {
         setLoading(false);
       }
@@ -92,6 +218,12 @@ export default function Analytics() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8">
+      {error && (
+        <div className="mb-6 rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-300">
+          {error}
+        </div>
+      )}
+
       {/* Summary Cards */}
       <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <SummaryCard

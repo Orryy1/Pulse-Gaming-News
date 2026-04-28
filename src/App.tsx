@@ -1,15 +1,25 @@
-import { useState, useCallback } from "react";
+import { Suspense, lazy, useState, useCallback } from "react";
 import { AlertTriangle } from "lucide-react";
 import Navbar from "./components/Navbar";
 import StatusBar from "./components/StatusBar";
 import StoryCard from "./components/StoryCard";
 import PublishOverlay from "./components/PublishOverlay";
-import Analytics from "./pages/Analytics";
 import { useStories } from "./hooks/useStories";
 import { triggerPublish } from "./api/news";
 import { clearToken } from "./api/auth";
 
 type ActiveTab = "stories" | "analytics";
+
+const Analytics = lazy(() => import("./pages/Analytics"));
+
+function AnalyticsFallback() {
+  return (
+    <div className="flex flex-col items-center justify-center py-32">
+      <div className="mb-4 h-8 w-8 animate-spin rounded-full border-2 border-[#FF6B1A]/20 border-t-[#FF6B1A]" />
+      <p className="text-sm text-white/30">Loading analytics...</p>
+    </div>
+  );
+}
 
 function App() {
   const {
@@ -63,7 +73,9 @@ function App() {
 
       {activeTab === "analytics" ? (
         <main className="pt-4">
-          <Analytics />
+          <Suspense fallback={<AnalyticsFallback />}>
+            <Analytics />
+          </Suspense>
         </main>
       ) : (
         <main className="mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8">

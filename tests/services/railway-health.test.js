@@ -68,6 +68,24 @@ test("railway health fails on migration checksum errors", () => {
   assert.equal(report.hardFails[0].code, "migration_checksum_error");
 });
 
+test("railway health reports deprecations as advisories without changing verdict", () => {
+  const report = buildRailwayHealthReport({
+    expectedCommit: "abc123",
+    deployments: [{ id: "dep_1", status: "SUCCESS", meta: { commitHash: "abc123" } }],
+    health: { ok: true, status: 200, body: { status: "ok" } },
+    buildLogs: [
+      {
+        level: "info",
+        message: "npm warn deprecated node-domexception@1.0.0: Use native DOMException",
+      },
+    ],
+  });
+  assert.equal(report.verdict, "pass");
+  assert.equal(report.warnings.length, 0);
+  assert.equal(report.advisories.length, 1);
+  assert.equal(report.advisories[0].code, "build_advisory");
+});
+
 test("railway health fails when latest deployment commit is not local HEAD", () => {
   const report = buildRailwayHealthReport({
     expectedCommit: "local",

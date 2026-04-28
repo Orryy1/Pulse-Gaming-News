@@ -4,7 +4,7 @@ import type {
   PlatformStatus,
 } from "../types/story";
 import { apiGet, apiGetAuthed, apiMutate } from "./http";
-import { getToken } from "./auth";
+import { clearToken, ensureToken, getToken } from "./auth";
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
 
@@ -72,7 +72,6 @@ export async function fetchPublishStatus() {
 // object URL. Keeps the same "click → file lands on disk" UX, just
 // via memory instead of a direct navigation.
 export async function downloadVideo(id: string) {
-  const { ensureToken, clearToken } = await import("./auth");
   const token = ensureToken();
   const res = await fetch(
     `${API_BASE}/api/download/${encodeURIComponent(id)}`,

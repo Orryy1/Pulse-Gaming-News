@@ -26,20 +26,47 @@ test("interpretReelStatusSnapshot: video_status=ready + publish=published → re
     published: true,
     permalink_url: "https://fb.com/reel/xyz",
   });
-  assert.deepStrictEqual(v, { outcome: "ready" });
+  assert.strictEqual(v.outcome, "ready");
 });
 
-test("interpretReelStatusSnapshot: video_status=ready + published=true (no publishing_phase) → ready", () => {
-  // Meta sometimes only sets one of the two signals. Either is
-  // sufficient evidence the Reel is live.
+test("interpretReelStatusSnapshot: video_status=ready + published=true + permalink → ready (with permalink)", () => {
+  // Meta sometimes only sets one of the two signals. published=true
+  // is sufficient ONLY when accompanied by a real permalink_url —
+  // empirical regression 2026-04-28 showed Meta returns published=true
+  // for Reels that never reach the public Reels surface when the
+  // Page is ineligible.
   const v = interpretReelStatusSnapshot({
     status: { video_status: "ready" },
     published: true,
+    permalink_url: "https://www.facebook.com/reel/123456",
   });
-  assert.deepStrictEqual(v, { outcome: "ready" });
+  assert.strictEqual(v.outcome, "ready");
+  assert.strictEqual(v.permalinkUrl, "https://www.facebook.com/reel/123456");
 });
 
-test("interpretReelStatusSnapshot: video_status=ready + publish=complete → ready", () => {
+test("interpretReelStatusSnapshot: published=true with NO permalink → processing (Page-eligibility false positive guard)", () => {
+  // 2026-04-28 regression: Pulse Gaming Page reported FB Reel ✅
+  // verified for 3 publish jobs while the Reels tab stayed empty.
+  // Symptom of an ineligible Page: Meta returns published=true but
+  // never produces a permalink_url because the Reel never lands on
+  // the public Reels surface. Treat as processing so the verifier
+  // times out honestly instead of producing silent success.
+  const v = interpretReelStatusSnapshot({
+    status: { video_status: "ready" },
+    published: true,
+    permalink_url: null,
+  });
+  assert.strictEqual(v.outcome, "processing");
+});
+
+test("interpretReelStatusSnapshot: video_status=ready + publish=complete (no published flag) → processing (NOT ready)", () => {
+  // Empirical evidence (Pulse Gaming Page, 0 reels visible despite
+  // 3 publish summaries reporting verified) showed publishing_phase
+  // === 'complete' is NOT a true success. Meta returns it when the
+  // upload finished processing but the Reel was silently rejected
+  // by the Reels surface. Tightened criteria require either the
+  // explicit "published" phase OR (data.published === true AND a
+  // non-empty permalink_url).
   const v = interpretReelStatusSnapshot({
     status: {
       video_status: "ready",
@@ -47,7 +74,19 @@ test("interpretReelStatusSnapshot: video_status=ready + publish=complete → rea
     },
     published: false,
   });
-  assert.deepStrictEqual(v, { outcome: "ready" });
+  assert.strictEqual(v.outcome, "processing");
+});
+
+test("interpretReelStatusSnapshot: video_status=ready + publish=published → ready", () => {
+  const v = interpretReelStatusSnapshot({
+    status: {
+      video_status: "ready",
+      publishing_phase: { status: "published" },
+    },
+    published: true,
+    permalink_url: "https://www.facebook.com/reel/789",
+  });
+  assert.strictEqual(v.outcome, "ready");
 });
 
 test("interpretReelStatusSnapshot: video_status=error → errored with enum-only reason", () => {

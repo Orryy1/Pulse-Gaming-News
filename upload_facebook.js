@@ -204,26 +204,41 @@ function interpretReelStatusSnapshot(data) {
       ? data.status.publishing_phase.status
       : undefined;
   const publishedFlag = data && data.published;
+  const permalinkUrl = data && data.permalink_url;
   if (videoStatus === "error") {
     return {
       outcome: "errored",
       reason: `video_status=error publish=${publishStatus || "(absent)"}`,
     };
   }
+  // 2026-04-28: empirical evidence (Pulse Gaming Page, 3 publish jobs
+  // reported FB Reel ✅ verified, Reels tab shows "You haven't created
+  // any reels yet") shows that publishing_phase.status === "complete"
+  // is NOT a true success — Meta returns it when the upload finished
+  // processing but the Reel never reached the public Reels surface
+  // (typically because the Page hasn't met Reels eligibility, e.g. age
+  // / follower / verification gates). Tighten the success criteria to
+  // require either the explicit "published" phase OR data.published
+  // returning true AND a non-empty permalink_url. "complete" alone is
+  // now treated as still-processing, which lets the verifier time out
+  // honestly instead of producing a false success.
   if (
     videoStatus === "ready" &&
-    (publishStatus === "published" ||
-      publishStatus === "complete" ||
-      publishedFlag === true)
+    (publishStatus === "published" || (publishedFlag === true && permalinkUrl))
   ) {
-    return { outcome: "ready" };
+    return { outcome: "ready", permalinkUrl: permalinkUrl || null };
   }
   return { outcome: "processing" };
 }
 
 async function verifyReelPublished(videoId, accessToken) {
   const maxAttempts = 24; // ~2 min at 5s intervals
-  let lastTags = { video_status: null, publish_status: null };
+  let lastTags = {
+    video_status: null,
+    publish_status: null,
+    published: null,
+    permalink_url: null,
+  };
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     await new Promise((r) => setTimeout(r, 5000));
     let resp;
@@ -251,6 +266,8 @@ async function verifyReelPublished(videoId, accessToken) {
     lastTags = {
       video_status: videoStatus || null,
       publish_status: publishStatus || null,
+      published: resp.data?.published === true ? true : false,
+      permalink_url: resp.data?.permalink_url || null,
     };
     if (verdict.outcome === "errored") {
       throw new Error(`Facebook Reel processing errored: ${verdict.reason}`);
@@ -258,19 +275,25 @@ async function verifyReelPublished(videoId, accessToken) {
     if (verdict.outcome === "ready") {
       // permalink_url is safe to log — it's the public Reel URL.
       console.log(
-        `[facebook] Reel verified live after ${attempt} poll(s): ${resp.data?.permalink_url || "(no permalink)"}`,
+        `[facebook] Reel verified live after ${attempt} poll(s) videoId=${videoId}: ${resp.data?.permalink_url || "(no permalink)"}`,
       );
       return;
     }
     console.log(
-      `[facebook] Reel verify ${attempt}/${maxAttempts}: video_status=${videoStatus || "?"} publish=${publishStatus || "?"}`,
+      `[facebook] Reel verify ${attempt}/${maxAttempts} videoId=${videoId}: video_status=${videoStatus || "?"} publish=${publishStatus || "?"} published=${lastTags.published} permalink=${lastTags.permalink_url || "(none)"}`,
     );
   }
-  // Timeout: still processing past 2 min. Surface only the last safe
-  // status tags — no raw Graph response body, which could embed a
-  // transient CDN URL with an access code.
+  // Timeout: still processing past 2 min. Surface only the safe status
+  // tags — no raw Graph response body. Including the last permalink
+  // observation makes the difference between "Page eligibility blocked
+  // it" (no permalink ever) and "still processing" (permalink stable
+  // across polls but published flag never flipped).
   throw new Error(
-    `Facebook Reel did not go live within 2 min — last video_status=${lastTags.video_status || "(none)"} publish=${lastTags.publish_status || "(none)"}`,
+    `Facebook Reel did not go live within 2 min — videoId=${videoId} ` +
+      `last video_status=${lastTags.video_status || "(none)"} ` +
+      `publish=${lastTags.publish_status || "(none)"} ` +
+      `published=${lastTags.published} ` +
+      `permalink=${lastTags.permalink_url || "(none)"}`,
   );
 }
 

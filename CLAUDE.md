@@ -220,3 +220,28 @@ node server.js        — Dashboard + API + built-in autonomous scheduler
 - Never use advertiser-unfriendly language in titles/descriptions
 - Always validate script word count before accepting
 - Always check for missing audio/image before assembly
+
+## Codex Reviewer Boundaries
+
+Codex (codex-plugin-cc) is installed as an adversarial reviewer only. It is not a second production agent and must not be used as one.
+
+**Codex must not:**
+
+- Commit, push, force-push, or run `git rebase` (interactive or otherwise)
+- Modify any file under `db/migrations/` (migrations are immutable once written)
+- Alter `.env`, `.env.*`, anything under `tokens/`, or `.claude/settings.json`
+- Touch `channels/*/config.json` or any file containing API keys, OAuth tokens or voice IDs
+- Run the production pipeline (`node run.js publish`, `node run.js full`, scheduler start)
+- Auto-approve, auto-publish or otherwise bypass the human gate on `news.json` / `daily_news.json`
+
+**Codex output policy:**
+
+- Findings go in chat or a markdown report under `docs/codex-reviews/`, never directly in code
+- Code edits require explicit per-file user approval before any Edit/Write tool fires
+- `/codex:rescue` is the only command with mutation authority and must be invoked on an isolated branch (`codex/review-only` or a feature branch), never on `main` or the active production branch
+
+**Operating envelope:**
+
+- Default mode is read-only review (`/codex:adversarial-review`, `/codex:audit`)
+- Branch isolation is the primary defence; per-tool approval in `.claude/settings.json` is belt-and-braces
+- A failed Codex run never auto-retries with elevated permissions

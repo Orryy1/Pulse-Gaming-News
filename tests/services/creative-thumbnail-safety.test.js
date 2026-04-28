@@ -156,3 +156,15 @@ test("thumbnail-safety: selectThumbnailSubjectImage picks the highest scorer", (
   assert.ok(sel);
   assert.equal(sel.image.path, "/cache/keyart.jpg");
 });
+
+test("thumbnail-safety: workspace folder names do not create false game relevance", () => {
+  const story = { title: "Aurora Drift Beta" };
+  const r = classifyThumbnailImage(story, {
+    path: "C:/Users/MORR/gaming-studio/pulse-gaming/output/images/candidate_0.jpg",
+    type: "article_inline",
+    source: "article",
+  });
+
+  assert.equal(r.isGameAsset, false);
+  assert.equal(r.score < 50, true);
+});

@@ -63,6 +63,28 @@ test("thumbnail safety: game key art is preferred over article imagery", () => {
   assert.strictEqual(ranked[0].image.type, "key_art");
 });
 
+test("thumbnail safety: repo path name does not make a generic article image game art", () => {
+  const result = classifyThumbnailImage(story(), {
+    path: "C:/Users/MORR/gaming-studio/pulse-gaming/output/images/story/candidate_0.jpg",
+    type: "article_inline",
+    source: "article",
+  });
+
+  assert.strictEqual(result.isGameAsset, false);
+  assert.strictEqual(result.isPlatformAsset, false);
+  assert.ok(result.score < 50);
+});
+
+test("thumbnail safety: article-source screenshot type is not trusted by type alone", () => {
+  const result = classifyThumbnailImage(story(), {
+    path: "output/images/story/candidate_0.jpg",
+    type: "screenshot",
+    source: "article",
+  });
+
+  assert.strictEqual(result.isGameAsset, false);
+});
+
 test("thumbnail safety: platform/logo image is preferred when game art is absent", () => {
   const selected = selectThumbnailSubjectImage(story(), [
     {

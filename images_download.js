@@ -457,7 +457,7 @@ async function getBestImage(story) {
         if (cached) {
           images.push({
             path: cached,
-            type: "screenshot",
+            type: "article_inline",
             priority: 75 - articleImgCount,
             source: "article",
             url: imgUrl,

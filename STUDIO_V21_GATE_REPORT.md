@@ -1,9 +1,9 @@
 # Studio V2.1 Rejection Gate
 
-Generated: 2026-04-27T17:21:01.845Z
+Generated: 2026-04-28T06:30:11.904Z
 Candidate: 1sn9xhe:v21
-Final verdict: review
-Recommended next action: Do not promote automatically; review warnings and rendered proof.
+Final verdict: pass
+Recommended next action: Candidate is eligible for human visual review against canonical.
 
 ## Hard Fail Reasons
 
@@ -11,11 +11,12 @@ Recommended next action: Do not promote automatically; review warnings and rende
 
 ## Amber Warnings
 
-- beat_awareness_soft_drop: Beat-awareness slipped versus canonical.
+- None.
 
 ## Green Signals
 
 - audio_recurrence_pass
+- beat_awareness_preserved
 - duration_integrity_green
 - forensic_pass
 - gauntlet_score_preserved
@@ -53,7 +54,7 @@ Recommended next action: Do not promote automatically; review warnings and rende
 
 - scoreDrop: 0
 - sourceDiversityDelta: 0
-- beatAwarenessDelta: -0.14
+- beatAwarenessDelta: 0
 
 ## Hero Moments
 

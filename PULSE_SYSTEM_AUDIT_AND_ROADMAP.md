@@ -103,12 +103,15 @@ Evidence:
 - `upload_facebook.js` only treats a Reel as ready when publish is explicit or `published=true` plus a permalink exists
 - `complete` alone is treated as processing because live evidence showed false success
 - page-content probe exists at `tools/diagnostics/fb-page-content-probe.js`
+- read-only eligibility checker exists at `tools/diagnostics/fb-reels-eligibility-check.js`
+- fresh Graph check on 2026-04-28 showed `/videos=0`, `/video_reels=0`, `/posts=5`, valid Page token and `can_post=true`
 
 Next expected behaviour:
 
 - Discord should show Facebook Reel as paused/page-not-eligible, not a false success.
 - Facebook Card fallback should continue.
 - Only re-enable Reels after the read-only probe shows real visible Page videos/Reels.
+- Run `npm run facebook:reels:eligibility` with Railway env injection before changing `FACEBOOK_REELS_ENABLED`.
 
 ### Facebook Card
 
@@ -340,6 +343,7 @@ See:
 - `TIKTOK_OPERATOR_CHECKLIST.md`
 - `test/output/tiktok_403_diagnosis.md`
 - `test/output/tiktok_dispatch_manifest.md`
+- `test/output/facebook_reels_eligibility.md`
 
 ## Prioritised Next Actions
 
@@ -379,4 +383,3 @@ See:
 The system is healthier than it was, but it is not yet enterprise-grade.
 
 It is now substantially more observable and safer around the known platform failure modes. The biggest remaining bottleneck is source/media inventory, not another render flourish. Before the next deploy, GitHub auth should be fixed so GitHub and Railway do not drift. During the next publish window, watch Discord for platform-specific truthfulness: YouTube success, Facebook Reel paused not false-success, Facebook Card separate and Instagram Reel failures with real error codes.
-

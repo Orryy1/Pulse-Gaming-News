@@ -234,7 +234,96 @@ async function produce() {
     );
   }
 
+  // Session 2 — warn-only format-catalogue routing. For every
+  // approved+exported story, score the media inventory and surface
+  // the recommended format. We deliberately do NOT change render
+  // behaviour from this hook yet; the goal is to (a) populate
+  // observability so an operator can see which stories are being
+  // padded into Shorts when they should be Briefing items or blog-
+  // only, and (b) prove the classifier against real production
+  // stories before promoting it. Anything off here is informational
+  // — failures are non-fatal.
+  try {
+    await logFormatRecommendationsForApprovedStories();
+  } catch (err) {
+    console.log(
+      `[publisher] format-catalogue warn-only pass errored (non-fatal): ${err.message}`,
+    );
+  }
+
   console.log("[publisher] Produce pipeline complete");
+}
+
+async function logFormatRecommendationsForApprovedStories() {
+  const stories = await db.getStories();
+  if (!Array.isArray(stories) || stories.length === 0) return;
+  const targets = stories.filter((s) => s.approved === true && s.exported_path);
+  if (targets.length === 0) return;
+  const {
+    scoreStoryMediaInventory,
+  } = require("./lib/creative/media-inventory-scorer");
+  const { recommendRuntime } = require("./lib/creative/runtime-recommender");
+  const { selectFormatForStory } = require("./lib/creative/format-catalogue");
+
+  const counts = {
+    premium_video: 0,
+    standard_video: 0,
+    short_only: 0,
+    briefing_item: 0,
+    blog_only: 0,
+    reject_visuals: 0,
+  };
+  const downgrades = [];
+  for (const story of targets) {
+    let inv;
+    try {
+      inv = scoreStoryMediaInventory(story);
+    } catch (err) {
+      console.log(
+        `[publisher] inventory scorer errored for ${story.id} (non-fatal): ${err.message}`,
+      );
+      continue;
+    }
+    counts[inv.classification] = (counts[inv.classification] || 0) + 1;
+    const runtime = recommendRuntime(inv);
+    const fmt = selectFormatForStory(story, inv);
+    const fmtId = fmt?.format?.id || "unknown";
+    if (
+      inv.classification === "blog_only" ||
+      inv.classification === "reject_visuals" ||
+      inv.classification === "briefing_item"
+    ) {
+      downgrades.push({
+        id: story.id,
+        title: (story.title || "").slice(0, 80),
+        class: inv.classification,
+        recommended_format: fmtId,
+        should_render: runtime.shouldRender,
+        reasons: inv.classificationReasons,
+      });
+    }
+    console.log(
+      `[publisher] format-recommend ${story.id}: class=${inv.classification} ` +
+        `format=${fmtId} render=${runtime.shouldRender} ` +
+        `runtime=${runtime.runtimeSeconds ? `${runtime.runtimeSeconds.min}-${runtime.runtimeSeconds.max}s` : "n/a"}`,
+    );
+  }
+  console.log(
+    `[publisher] format-catalogue summary: ${Object.entries(counts)
+      .filter(([, n]) => n > 0)
+      .map(([k, n]) => `${k}=${n}`)
+      .join(" ")} (warn-only — no render change)`,
+  );
+  if (downgrades.length > 0) {
+    console.log(
+      `[publisher] format-catalogue downgrade candidates: ${downgrades.length} stories below standard_video bar`,
+    );
+    for (const d of downgrades.slice(0, 5)) {
+      console.log(
+        `[publisher]   - ${d.id} (${d.class}) → ${d.recommended_format}: ${d.reasons.join(", ")}`,
+      );
+    }
+  }
 }
 
 /**

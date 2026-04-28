@@ -8,6 +8,7 @@ const {
   parseRailwayJsonLines,
   redactSensitive,
   renderRailwayHealthMarkdown,
+  resolveExpectedCommit,
 } = require("../../lib/ops/railway-health");
 
 test("parseRailwayJsonLines tolerates Railway UTF-16-ish NUL output", () => {
@@ -75,6 +76,23 @@ test("railway health fails when latest deployment commit is not local HEAD", () 
   });
   assert.equal(report.verdict, "fail");
   assert.equal(report.hardFails[0].code, "deployment_commit_mismatch");
+});
+
+test("railway health expected commit can be overridden for deployed checks", () => {
+  assert.equal(
+    resolveExpectedCommit({
+      env: { RAILWAY_EXPECTED_COMMIT: "deployed_sha" },
+      gitHead: () => "local_sha",
+    }),
+    "deployed_sha",
+  );
+  assert.equal(
+    resolveExpectedCommit({
+      env: {},
+      gitHead: () => "local_sha",
+    }),
+    "local_sha",
+  );
 });
 
 test("railway health redacts secrets in report text", () => {

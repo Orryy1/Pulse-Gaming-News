@@ -10,6 +10,7 @@ const {
   buildRailwayHealthReport,
   parseRailwayJsonLines,
   renderRailwayHealthMarkdown,
+  resolveExpectedCommit,
 } = require("../lib/ops/railway-health");
 
 const ROOT = path.resolve(__dirname, "..");
@@ -120,7 +121,7 @@ async function main() {
     appLogs,
     buildLogs,
     httpLogs,
-    expectedCommit: gitHead(),
+    expectedCommit: resolveExpectedCommit({ gitHead }),
   });
 
   const jsonPath = path.join(OUTPUT_DIR, "railway_health_check.json");

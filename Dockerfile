@@ -1,4 +1,4 @@
-FROM node:20-slim
+FROM node:22-slim
 
 # Install FFmpeg for video assembly + yt-dlp for B-roll fallback downloads
 # (yt-dlp fetches short trailer clips from YouTube/IGDB when Steam has no trailer)
@@ -11,7 +11,7 @@ WORKDIR /app
 
 # Copy package files first for better caching
 COPY package.json package-lock.json* ./
-RUN npm install --production
+RUN npm install --omit=dev
 
 # Copy all source files
 COPY . .
@@ -22,9 +22,9 @@ RUN mkdir -p output/audio output/images output/final output/overlays
 # Expose the approval page + API port
 EXPOSE 3001
 
-# Start the unified server (handles API, approval page, and cron scheduler).
-# Must match package.json's `start` script and railway.json's startCommand —
-# there is one canonical Node entrypoint and it is server.js. The retired
+# Start the unified server (handles API, approval page and cron scheduler).
+# Must match package.json's `start` script and railway.json's startCommand.
+# There is one canonical Node entrypoint and it is server.js. The retired
 # cloud.js entrypoint was removed in Phase B of hardening/cutover. Do not
 # reintroduce a second entrypoint here.
 CMD ["node", "server.js"]

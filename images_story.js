@@ -3,6 +3,7 @@ const path = require("path");
 const dotenv = require("dotenv");
 const db = require("./lib/db");
 const mediaPaths = require("./lib/media-paths");
+const { rankThumbnailCandidates } = require("./lib/thumbnail-safety");
 
 dotenv.config({ override: true });
 
@@ -193,14 +194,20 @@ async function generateStoryImages() {
       const candidates = story.downloaded_images.filter(
         (i) => i.path && i.type !== "company_logo",
       );
-      candidates.sort((a, b) => {
-        const ai = preferredOrder.indexOf(a.type);
-        const bi = preferredOrder.indexOf(b.type);
-        const av = ai === -1 ? 999 : ai;
-        const bv = bi === -1 ? 999 : bi;
-        return av - bv;
-      });
-      for (const heroImg of candidates) {
+      const safeRanked = rankThumbnailCandidates(story, candidates).map(
+        (r) => r.image,
+      );
+      const orderedCandidates =
+        safeRanked.length > 0
+          ? safeRanked
+          : candidates.sort((a, b) => {
+              const ai = preferredOrder.indexOf(a.type);
+              const bi = preferredOrder.indexOf(b.type);
+              const av = ai === -1 ? 999 : ai;
+              const bv = bi === -1 ? 999 : bi;
+              return av - bv;
+            });
+      for (const heroImg of orderedCandidates) {
         // Downloaded cache paths go through media-paths too —
         // MEDIA_ROOT when set, repo-root fallback for legacy rows.
         const heroAbs = await mediaPaths.resolveExisting(heroImg.path);

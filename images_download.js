@@ -8,6 +8,7 @@ const path = require("path");
 const axios = require("axios");
 const { classifyOutboundUrl } = require("./lib/safe-url");
 const mediaPaths = require("./lib/media-paths");
+const { filterUnsafeImagesForRender } = require("./lib/thumbnail-safety");
 
 const CACHE_DIR = path.join("output", "image_cache");
 const VIDEO_CACHE_DIR = path.join("output", "video_cache");
@@ -215,7 +216,7 @@ async function downloadImage(url, filename) {
 
 // --- Download the best available images for a story ---
 async function getBestImage(story) {
-  const images = [];
+  let images = [];
 
   // Priority 1: Article hero image (og:image from the news source)
   if (story.article_image) {
@@ -231,6 +232,7 @@ async function getBestImage(story) {
         type: "article_hero",
         priority: 100,
         source: "article",
+        url: story.article_image,
       });
   }
 
@@ -254,6 +256,7 @@ async function getBestImage(story) {
           type: img.type,
           priority,
           source: "steam",
+          url: img.url,
         });
       }
       if (images.length >= 10) break;
@@ -329,6 +332,7 @@ async function getBestImage(story) {
                 priority:
                   s.type === "capsule" ? 95 : s.type === "hero" ? 90 : 85,
                 source: "steam",
+                url: s.url,
               });
             }
           }
@@ -354,6 +358,7 @@ async function getBestImage(story) {
                       type: "screenshot",
                       priority: 70 - ssCount,
                       source: "steam",
+                      url: ss.path_full,
                     });
                     ssCount++;
                   }
@@ -455,6 +460,7 @@ async function getBestImage(story) {
             type: "screenshot",
             priority: 75 - articleImgCount,
             source: "article",
+            url: imgUrl,
           });
           articleImgCount++;
         }
@@ -481,6 +487,7 @@ async function getBestImage(story) {
         type: "reddit_thumb",
         priority: 40,
         source: "reddit",
+        url: story.thumbnail_url,
       });
   }
 
@@ -496,6 +503,7 @@ async function getBestImage(story) {
         type: "company_logo",
         priority: 30,
         source: "logo",
+        url: story.company_logo_url,
       });
   }
 
@@ -540,6 +548,7 @@ async function getBestImage(story) {
             type: "screenshot",
             priority: 25 - pexelsCount,
             source: "pexels",
+            url: imgUrl,
           });
           pexelsCount++;
         }
@@ -587,6 +596,7 @@ async function getBestImage(story) {
             type: "screenshot",
             priority: 15 - unsplashCount,
             source: "unsplash",
+            url: imgUrl,
           });
           unsplashCount++;
         }
@@ -640,6 +650,7 @@ async function getBestImage(story) {
             type: "screenshot",
             priority: 10 - bingFound,
             source: "bing",
+            url: imgUrl,
           });
           bingFound++;
         }
@@ -689,6 +700,17 @@ async function getBestImage(story) {
         `[images] B-roll fallback failed (non-fatal): ${err.message}`,
       );
     }
+  }
+
+  const safety = filterUnsafeImagesForRender(story, images);
+  images = safety.images;
+  if (safety.rejected.length > 0) {
+    console.log(
+      `[images] Thumbnail safety rejected ${safety.rejected.length} image(s) for ${story.id}: ` +
+        safety.rejected
+          .map((r) => `${r.image?.path || "unknown"}=${r.reasons.join("+")}`)
+          .join(", "),
+    );
   }
 
   // Previously: pure priority sort. That stacked every Steam asset

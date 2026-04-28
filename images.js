@@ -8,6 +8,7 @@ dotenv.config({ override: true });
 
 const brand = require("./brand");
 const getBestImage = require("./images_download");
+const { selectThumbnailSubjectImage } = require("./lib/thumbnail-safety");
 
 const OUTPUT_DIR = path.join("output", "images");
 const CACHE_DIR = path.join("output", "image_cache");
@@ -335,11 +336,14 @@ async function generateImages() {
     let heroBase64 = null;
     let logoBase64 = null;
 
-    const heroImg = availableImages.find((i) =>
-      ["article_hero", "capsule", "hero", "key_art", "screenshot"].includes(
-        i.type,
-      ),
-    );
+    const safeSubject = selectThumbnailSubjectImage(story, availableImages);
+    const heroImg =
+      safeSubject?.image ||
+      availableImages.find((i) =>
+        ["capsule", "hero", "key_art", "screenshot", "article_hero"].includes(
+          i.type,
+        ),
+      );
     if (heroImg) {
       try {
         const heroAbs =
@@ -464,6 +468,9 @@ async function generateImages() {
     story.downloaded_images = availableImages.map((i) => ({
       path: i.path,
       type: i.type,
+      source: i.source,
+      thumbnail_safety_score: i.thumbnail_safety_score,
+      thumbnail_safety_warnings: i.thumbnail_safety_warnings,
     }));
     // Store video clips for assembly (Steam trailers, gameplay footage)
     if (videoClips.length > 0) {

@@ -664,16 +664,33 @@ async function uploadShort(story) {
       );
       if (thumbPath) {
         try {
-          await youtube.thumbnails.set({
-            videoId,
-            media: {
-              mimeType: thumbPath.endsWith(".jpg") ? "image/jpeg" : "image/png",
-              body: fs.createReadStream(thumbPath),
-            },
+          const { runThumbnailPreUploadQa } = require("./lib/thumbnail-safety");
+          const thumbQa = await runThumbnailPreUploadQa(story, {
+            selectedPath: thumbPath,
           });
-          console.log(
-            `[youtube] Custom thumbnail set from ${path.basename(thumbPath)}`,
-          );
+          if (thumbQa.result === "fail") {
+            console.log(
+              `[youtube] Custom thumbnail skipped by safety QA: ${thumbQa.failures.join(", ")}`,
+            );
+          } else {
+            if (thumbQa.warnings && thumbQa.warnings.length > 0) {
+              console.log(
+                `[youtube] Custom thumbnail QA warnings: ${thumbQa.warnings.join(", ")}`,
+              );
+            }
+            await youtube.thumbnails.set({
+              videoId,
+              media: {
+                mimeType: thumbPath.endsWith(".jpg")
+                  ? "image/jpeg"
+                  : "image/png",
+                body: fs.createReadStream(thumbPath),
+              },
+            });
+            console.log(
+              `[youtube] Custom thumbnail set from ${path.basename(thumbPath)}`,
+            );
+          }
         } catch (err) {
           console.log(
             `[youtube] Thumbnail upload failed (non-critical): ${err.message}`,

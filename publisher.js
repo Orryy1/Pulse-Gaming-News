@@ -258,6 +258,7 @@ async function selfHealStaleMediaPaths({ repos: _repos } = {}) {
     "image_path",
     "story_image_path",
     "hf_thumbnail_path",
+    "thumbnail_candidate_path",
   ];
   let healed = 0;
   for (const s of stories) {

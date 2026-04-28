@@ -245,6 +245,7 @@ async function uploadReel(story) {
       // Step 3: Wait for processing
       let status = "IN_PROGRESS";
       let attempts = 0;
+      let lastSummary = null;
 
       while (status === "IN_PROGRESS" && attempts < 60) {
         await new Promise((r) => setTimeout(r, 10000));
@@ -262,13 +263,14 @@ async function uploadReel(story) {
           );
 
           status = statusResponse.data.status_code || "IN_PROGRESS";
+          lastSummary = summariseInstagramContainerStatus(statusResponse.data);
           console.log(
             `[instagram] Processing check ${attempts}: ${formatInstagramContainerStatus(statusResponse.data)}`,
           );
 
           if (status === "ERROR") {
             throw new Error(
-              `Instagram processing failed: ${JSON.stringify(statusResponse.data)}`,
+              `Instagram processing failed: ${formatInstagramContainerStatus(statusResponse.data)}`,
             );
           }
         } catch (err) {
@@ -278,7 +280,10 @@ async function uploadReel(story) {
       }
 
       if (status !== "FINISHED") {
-        throw new Error(`Instagram processing timed out (status: ${status})`);
+        const tail = lastSummary
+          ? formatInstagramContainerStatus(lastSummary)
+          : `status_code=${status}`;
+        throw new Error(`Instagram processing timed out: ${tail}`);
       }
 
       // Step 4: Publish the container
@@ -391,6 +396,7 @@ async function uploadReelViaUrl(story) {
   // Wait for processing
   let status = "IN_PROGRESS";
   let attempts = 0;
+  let lastSummary = null;
   while (status === "IN_PROGRESS" && attempts < 60) {
     await new Promise((r) => setTimeout(r, 10000));
     attempts++;
@@ -405,12 +411,13 @@ async function uploadReelViaUrl(story) {
         },
       );
       status = statusResponse.data.status_code || "IN_PROGRESS";
+      lastSummary = summariseInstagramContainerStatus(statusResponse.data);
       console.log(
         `[instagram] URL processing check ${attempts}: ${formatInstagramContainerStatus(statusResponse.data)}`,
       );
       if (status === "ERROR") {
         throw new Error(
-          `Instagram URL processing failed: ${JSON.stringify(statusResponse.data)}`,
+          `Instagram URL processing failed: ${formatInstagramContainerStatus(statusResponse.data)}`,
         );
       }
     } catch (err) {
@@ -419,7 +426,10 @@ async function uploadReelViaUrl(story) {
   }
 
   if (status !== "FINISHED") {
-    throw new Error(`Instagram URL processing timed out (status: ${status})`);
+    const tail = lastSummary
+      ? formatInstagramContainerStatus(lastSummary)
+      : `status_code=${status}`;
+    throw new Error(`Instagram URL processing timed out: ${tail}`);
   }
 
   // Publish
@@ -498,6 +508,7 @@ async function uploadStoryImage(story) {
       // Step 2: Wait for processing
       let status = "IN_PROGRESS";
       let attempts = 0;
+      let lastSummary = null;
 
       while (status === "IN_PROGRESS" && attempts < 30) {
         await new Promise((r) => setTimeout(r, 5000));
@@ -508,20 +519,21 @@ async function uploadStoryImage(story) {
             `https://graph.facebook.com/v21.0/${containerId}`,
             {
               params: {
-                fields: "status_code,status",
+                fields: INSTAGRAM_CONTAINER_STATUS_FIELDS,
                 access_token: accessToken,
               },
             },
           );
 
           status = statusResponse.data.status_code || "IN_PROGRESS";
+          lastSummary = summariseInstagramContainerStatus(statusResponse.data);
           console.log(
-            `[instagram] Story processing check ${attempts}: ${status}`,
+            `[instagram] Story processing check ${attempts}: ${formatInstagramContainerStatus(statusResponse.data)}`,
           );
 
           if (status === "ERROR") {
             throw new Error(
-              `Instagram Story processing failed: ${JSON.stringify(statusResponse.data)}`,
+              `Instagram Story processing failed: ${formatInstagramContainerStatus(statusResponse.data)}`,
             );
           }
         } catch (err) {
@@ -531,9 +543,10 @@ async function uploadStoryImage(story) {
       }
 
       if (status !== "FINISHED") {
-        throw new Error(
-          `Instagram Story processing timed out (status: ${status})`,
-        );
+        const tail = lastSummary
+          ? formatInstagramContainerStatus(lastSummary)
+          : `status_code=${status}`;
+        throw new Error(`Instagram Story processing timed out: ${tail}`);
       }
 
       // Step 3: Publish the container

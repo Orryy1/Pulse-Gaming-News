@@ -29,6 +29,7 @@
     "comments:digest": "node tools/comment-copilot-digest.js",
     "tiktok:diagnose403": "node tools/tiktok-403-diagnosis.js",
     "tiktok:dispatch": "node tools/tiktok-dispatch-pack.js",
+    "facebook:reels:eligibility": "node tools/diagnostics/fb-reels-eligibility-check.js",
     "ops:railway:health": "node tools/railway-health-check.js",
     "ops:system:doctor": "node tools/system-doctor.js",
     "ops:queue:inspect": "node tools/queue-inspect.js",

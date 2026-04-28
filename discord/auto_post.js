@@ -10,7 +10,7 @@
  *   await postVideoUpload(story);
  */
 
-const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
+const { Client, Events, GatewayIntentBits, EmbedBuilder } = require("discord.js");
 const config = require("./config");
 
 let _client = null;
@@ -34,7 +34,7 @@ function getClient() {
 
   if (_client) {
     return new Promise((resolve) => {
-      _client.once("ready", () => {
+      _client.once(Events.ClientReady, () => {
         _ready = true;
         resolve(_client);
       });
@@ -45,7 +45,7 @@ function getClient() {
   _ready = false;
 
   const promise = new Promise((resolve, reject) => {
-    _client.once("ready", () => {
+    _client.once(Events.ClientReady, () => {
       _ready = true;
       console.log("[AutoPost] Discord client ready.");
       resolve(_client);

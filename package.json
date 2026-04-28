@@ -28,6 +28,7 @@
     "performance:digest": "node tools/performance-learning-digest.js",
     "comments:digest": "node tools/comment-copilot-digest.js",
     "tiktok:diagnose403": "node tools/tiktok-403-diagnosis.js",
+    "ops:railway:health": "node tools/railway-health-check.js",
     "studio:creator-grade": "node tools/studio-creator-grade.js"
   },
   "keywords": [],

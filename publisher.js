@@ -1399,11 +1399,29 @@ async function _publishNextStoryInner() {
     storyId: story.id,
     platform: "facebook_reel",
   });
+  // 2026-04-28: empirical evidence (Graph API probe via
+  // tools/diagnostics/fb-page-content-probe.js) confirmed that
+  // /{page_id}/videos and /{page_id}/video_reels both return ZERO
+  // entries despite 3 publish summaries reporting FB Reel ✅
+  // verified. Meta accepts the API request, returns happy-path
+  // responses, then silently rejects the Reel before it reaches
+  // any visible surface — a Page-eligibility gate for new pages.
+  // This env flag lets the operator pause FB Reel attempts until
+  // Meta enables Reels for the Page (default off until they prove
+  // a Reel actually appears under /video_reels).
+  const fbReelsEnabled = process.env.FACEBOOK_REELS_ENABLED === "true";
   if (story.facebook_post_id) {
     result.facebook = true;
     result.platform_outcomes.facebook = "already_published";
     console.log(
       `[publisher] Facebook: already published (${story.facebook_post_id})`,
+    );
+  } else if (!fbReelsEnabled) {
+    result.facebook = true;
+    result.platform_outcomes.facebook = "page_not_eligible";
+    console.log(
+      `[publisher] Facebook Reel: SKIPPED (FACEBOOK_REELS_ENABLED!=true) — ` +
+        `Page reels-eligibility gate must clear before re-enabling. FB Card fallback continues.`,
     );
   } else if (fbPrior && fbPrior.status === "blocked") {
     result.facebook = true;

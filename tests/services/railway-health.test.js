@@ -86,7 +86,7 @@ test("railway health reports deprecations as advisories without changing verdict
   assert.equal(report.advisories[0].code, "build_advisory");
 });
 
-test("railway health fails when latest deployment commit is not local HEAD", () => {
+test("railway health fails when an explicit expected deployment commit mismatches", () => {
   const report = buildRailwayHealthReport({
     expectedCommit: "local",
     deployments: [{ id: "dep_1", status: "SUCCESS", meta: { commitHash: "remote" } }],
@@ -107,6 +107,13 @@ test("railway health expected commit can be overridden for deployed checks", () 
   assert.equal(
     resolveExpectedCommit({
       env: {},
+      gitHead: () => "local_sha",
+    }),
+    null,
+  );
+  assert.equal(
+    resolveExpectedCommit({
+      env: { RAILWAY_HEALTH_EXPECT_LOCAL_COMMIT: "true" },
       gitHead: () => "local_sha",
     }),
     "local_sha",

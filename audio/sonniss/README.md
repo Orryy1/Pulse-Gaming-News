@@ -11,6 +11,11 @@ audio library indexes the files automatically next time the orchestrator runs.
    Royalty-Free License.
 2. Unzip into this directory. The full publisher tree is fine —
    `audio/sonniss/Boom Library — Cinematic Trailer Tools/...wav` works.
+   Alternative for large bundles: leave the unzipped bundle wherever you
+   downloaded it and create a Windows junction inside this directory
+   (e.g. `mklink /J GDC2024 "C:\Users\you\Downloads\Sonniss... GDC 2024..."`).
+   The indexer follows symlinks/junctions, so 25-50 GB stays out of the
+   working drive.
 3. Next time you run the orchestrator (or `node -e "require('./lib/studio/v2/audio-library').listAllSfx()"`),
    the library will print a one-line index summary:
 

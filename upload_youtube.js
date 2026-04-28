@@ -132,6 +132,14 @@ async function generateAuthUrl() {
       "https://www.googleapis.com/auth/youtube.upload",
       "https://www.googleapis.com/auth/youtube",
       "https://www.googleapis.com/auth/youtube.force-ssl",
+      // Read-only YouTube Analytics. Required by lib/intelligence/
+      // analytics-client real mode (AVD, AVP, retention curve, traffic
+      // source, Shorts feed source, subscribers per video). Without
+      // this scope the analytics client stays in fixture mode. The
+      // operator must re-run `node upload_youtube.js auth` once for
+      // the consent screen to add this to the existing token; existing
+      // tokens are not expanded automatically.
+      "https://www.googleapis.com/auth/yt-analytics.readonly",
     ],
   });
 

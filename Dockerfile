@@ -1,8 +1,17 @@
 FROM node:22-slim
 
-# Install FFmpeg for video assembly + yt-dlp for B-roll fallback downloads
-# (yt-dlp fetches short trailer clips from YouTube/IGDB when Steam has no trailer)
-RUN apt-get update && apt-get install -y ffmpeg curl ca-certificates python3 && \
+# Install FFmpeg, yt-dlp (B-roll fallback), and the headless-Chrome
+# shared libraries HyperFrames needs to render HF thumbnails server-side.
+# Without these, hyperframes' bundled chrome-headless-shell fails with
+# `libnss3.so: cannot open shared object file` on every produce, which
+# is what killed HF thumbnails 0% live in production after the f1a9e6b
+# wiring landed (see PULSE_DEFENSIVE_PRODUCTION_PASS.md §C).
+RUN apt-get update && apt-get install -y \
+      ffmpeg curl ca-certificates python3 \
+      libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
+      libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
+      libgbm1 libpango-1.0-0 libpangocairo-1.0-0 libcairo2 libasound2 \
+      fonts-liberation && \
     curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && \
     chmod a+rx /usr/local/bin/yt-dlp && \
     rm -rf /var/lib/apt/lists/*

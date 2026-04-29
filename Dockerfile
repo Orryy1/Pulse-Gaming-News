@@ -20,10 +20,14 @@ WORKDIR /app
 
 # Copy package files first for better caching
 COPY package.json package-lock.json* ./
-RUN npm install --omit=dev
+RUN npm install
 
 # Copy all source files
 COPY . .
+
+# Build the Vite dashboard inside the deployment image. Railway uses this
+# Dockerfile path, so railway.json's buildCommand is not the build authority.
+RUN npm run build && npm prune --omit=dev
 
 # Create output directories
 RUN mkdir -p output/audio output/images output/final output/overlays

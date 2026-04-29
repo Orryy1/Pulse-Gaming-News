@@ -177,3 +177,18 @@ test("scorer: counts trailer-extracted frames separately from clips", () => {
   assert.equal(r.counts.trailer_extracted_frames, 6);
   assert.equal(r.counts.official_trailer_clips, 0);
 });
+
+test("scorer: recognises legacy string clip paths", () => {
+  const r = scoreStoryMediaInventory(
+    story(
+      [],
+      [
+        "output/clips/official_trailer_steam.mp4",
+        "output/clips/gameplay_broll_001.mp4",
+      ],
+    ),
+  );
+  assert.equal(r.counts.official_trailer_clips, 1);
+  assert.equal(r.counts.gameplay_clips, 1);
+  assert.equal(r.counts.total_clips, 2);
+});

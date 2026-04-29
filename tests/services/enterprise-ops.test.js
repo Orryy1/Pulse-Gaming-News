@@ -8,7 +8,11 @@ const {
   renderPlatformStatusMarkdown,
 } = require("../../lib/ops/platform-status");
 const { buildDbBackupDryRun } = require("../../lib/ops/db-backup-dry-run");
-const { classifyStoryVisualInventory } = require("../../lib/media-inventory");
+const {
+  buildMediaInventoryReport,
+  classifyStoryVisualInventory,
+  renderMediaInventoryMarkdown,
+} = require("../../lib/media-inventory");
 const {
   ROUTE_ORDER,
   buildTikTokDispatchManifest,
@@ -175,6 +179,45 @@ test("media inventory downgrades weak visuals and rewards clip/game assets", () 
     video_clips: ["official_trailer_steam.mp4", "gameplay_trailer_steam.mp4"],
   });
   assert.strictEqual(strong.className, "premium_video");
+});
+
+test("media inventory report gives actionable next source work", () => {
+  const report = buildMediaInventoryReport([
+    {
+      id: "thin",
+      title: "Thin visual story",
+      url: "https://example.com/story",
+      downloaded_images: [],
+      video_clips: [],
+    },
+    {
+      id: "face",
+      title: "Unknown person story",
+      downloaded_images: [
+        {
+          path: "author-headshot.jpg",
+          type: "portrait",
+          source: "article",
+          role: "author",
+          human: true,
+        },
+      ],
+    },
+  ]);
+
+  assert.strictEqual(report.counts.blog_only, 1);
+  assert.strictEqual(report.counts.reject_visuals, 1);
+  assert.strictEqual(
+    report.items[0].nextBestAction,
+    "fetch_official_trailer_or_store_clip",
+  );
+  assert.ok(report.items[1].reasons.includes("unsafe_thumbnail_face"));
+  assert.ok(report.items[1].recommendations.includes("manual_editor_review_required"));
+
+  const md = renderMediaInventoryMarkdown(report);
+  assert.match(md, /Renderable as standalone video: 0/);
+  assert.match(md, /Next: fetch_official_trailer_or_store_clip/);
+  assert.match(md, /unsafeFaces=1/);
 });
 
 test("TikTok dispatch pack is upload-ready without posting", () => {

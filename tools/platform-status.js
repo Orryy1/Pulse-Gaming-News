@@ -2,7 +2,9 @@
 
 const fs = require("fs-extra");
 const path = require("node:path");
+require("dotenv").config({ override: true, quiet: true });
 const {
+  buildPlatformOperationalConfig,
   buildPlatformStatus,
   renderPlatformStatusMarkdown,
 } = require("../lib/ops/platform-status");
@@ -25,7 +27,11 @@ async function main() {
   } catch {
     platformPosts = [];
   }
-  const report = buildPlatformStatus({ stories, platformPosts });
+  const report = buildPlatformStatus({
+    stories,
+    platformPosts,
+    platformConfig: buildPlatformOperationalConfig(process.env),
+  });
   const jsonPath = path.join(OUT, "platform_status.json");
   const mdPath = path.join(OUT, "platform_status.md");
   await fs.writeJson(jsonPath, report, { spaces: 2 });

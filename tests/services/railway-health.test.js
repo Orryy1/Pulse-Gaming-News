@@ -139,6 +139,17 @@ test("railway health warns on failed or stale production queue jobs", () => {
         by_status: { failed: 1, pending: 2 },
         stale_claims: 1,
         oldest_pending_minutes: 140,
+        recent_failed: [
+          {
+            id: 99,
+            kind: "engage_first_hour",
+            story_id: "story1",
+            attempt_count: 3,
+            max_attempts: 3,
+            last_error: "Request had insufficient authentication scopes.",
+            updated_at: "2026-04-29T10:00:00.000Z",
+          },
+        ],
       },
       derivatives: { total: 0, by_status: {} },
     },
@@ -147,6 +158,39 @@ test("railway health warns on failed or stale production queue jobs", () => {
   assert.ok(report.warnings.some((w) => w.code === "queue_failed_jobs_present"));
   assert.ok(report.warnings.some((w) => w.code === "queue_stale_claims_present"));
   assert.ok(report.warnings.some((w) => w.code === "queue_old_pending_jobs"));
+
+  const md = renderRailwayHealthMarkdown(report);
+  assert.match(md, /recentFailed/);
+  assert.match(md, /engage_first_hour/);
+  assert.match(md, /insufficient authentication scopes/);
+});
+
+test("railway health redacts queue failed-job token-shaped errors", () => {
+  const md = renderRailwayHealthMarkdown(
+    buildRailwayHealthReport({
+      deployments: [{ id: "dep_1", status: "SUCCESS", meta: { commitHash: "abc123" } }],
+      health: { ok: true, status: 200, body: { status: "ok" } },
+      queueStats: {
+        jobs: {
+          total: 1,
+          by_status: { failed: 1 },
+          stale_claims: 0,
+          oldest_pending_minutes: null,
+          recent_failed: [
+            {
+              id: 10,
+              kind: "publish",
+              last_error: "Bearer abc.def.ghi access_token=supersecret",
+            },
+          ],
+        },
+        derivatives: { total: 0, by_status: {} },
+      },
+    }),
+  );
+  assert.doesNotMatch(md, /abc\.def\.ghi/);
+  assert.doesNotMatch(md, /supersecret/);
+  assert.match(md, /\[REDACTED\]/);
 });
 
 test("railway health treats missing local queue auth as advisory", () => {

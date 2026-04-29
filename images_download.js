@@ -91,6 +91,42 @@ function buildSteamSearchCandidates(rawTitle) {
   return out;
 }
 
+/**
+ * Pull up to N trailer URLs out of a Steam appdetails response payload.
+ *
+ * Steam serves each movie at multiple bitrates / containers:
+ *   { id, name, thumbnail,
+ *     webm: { "480": <url>, "max": <url> },
+ *     mp4:  { "480": <url>, "max": <url> },
+ *     highlight: bool }
+ *
+ * Preference order:
+ *   1. webm.max    (best quality, most efficient)
+ *   2. webm.480
+ *   3. mp4.max
+ *   4. mp4.480
+ *
+ * Returns [] when appData is null/undefined or has no movies.
+ *
+ * Pure / synchronous so it's easy to unit-test against canned Steam
+ * payloads without touching the network. Exported below.
+ */
+function extractSteamTrailerUrls(appData, max = 2) {
+  const out = [];
+  const movies = appData && Array.isArray(appData.movies) ? appData.movies : [];
+  for (const m of movies) {
+    if (out.length >= max) break;
+    if (!m || typeof m !== "object") continue;
+    const url =
+      (m.webm && (m.webm.max || m.webm["480"])) ||
+      (m.mp4 && (m.mp4.max || m.mp4["480"])) ||
+      null;
+    if (!url) continue;
+    out.push({ url, name: m.name || null });
+  }
+  return out;
+}
+
 // --- Download and cache a video clip from URL ---
 async function downloadVideoClip(url, filename) {
   // DB rows get the repo-relative path (unchanged contract).
@@ -217,6 +253,12 @@ async function downloadImage(url, filename) {
 // --- Download the best available images for a story ---
 async function getBestImage(story) {
   let images = [];
+  // Hoisted so the Steam search fallback (RSS-source path) can also
+  // contribute trailer clips, not just images. The legacy block at
+  // the bottom of this function still handles hunter-stamped
+  // `story.game_images` entries (Reddit path) and the IGDB/YouTube
+  // fetchFallbackBroll path.
+  const videoClips = [];
 
   // Priority 1: Article hero image (og:image from the news source)
   if (story.article_image) {
@@ -367,6 +409,34 @@ async function getBestImage(story) {
               console.log(
                 `[images] Steam fallback: downloaded ${images.length} images for ${story.id}`,
               );
+            }
+
+            // 2026-04-29: Steam appdetails also returns a `movies`
+            // array. The original fallback only consumed screenshots
+            // here, leaving RSS-sourced Steam-matched stories to fall
+            // through to the IGDB/YouTube b-roll path even though the
+            // exact official trailer was already at our fingertips.
+            // Pull up to 2 trailer URLs (webm preferred, mp4 fallback)
+            // so the renderer has real motion footage, not just stills.
+            const trailerUrls = extractSteamTrailerUrls(
+              appData,
+              2 - videoClips.length,
+            );
+            for (const t of trailerUrls) {
+              const ext = t.url.includes(".webm") ? "webm" : "mp4";
+              const safeName = `${story.id}_steam_trailer_${videoClips.length}.${ext}`;
+              const cached = await downloadVideoClip(t.url, safeName);
+              if (cached) {
+                videoClips.push({
+                  path: cached,
+                  type: "trailer",
+                  source: `steam_fallback:${items[0].name || appId}`,
+                });
+                console.log(
+                  `[images] Steam fallback trailer downloaded for ${story.id}`,
+                );
+              }
+              if (videoClips.length >= 2) break;
             }
           } catch (detailErr) {
             /* Steam details failed, non-fatal */
@@ -727,8 +797,11 @@ async function getBestImage(story) {
     }
   }
 
-  // Download video clips from Steam trailers
-  const videoClips = [];
+  // Download video clips from Steam trailers (hunter-stamped path:
+  // Reddit posts that hunter resolved against the Steam Store API).
+  // The Steam search fallback above (RSS path) already contributed
+  // up to 2 trailer clips when it matched, so this block only fires
+  // when the hunter pre-stamped game_images entries.
   if (story.game_images && story.game_images.length > 0) {
     for (const img of story.game_images) {
       if (!img.is_video) continue;
@@ -828,3 +901,4 @@ module.exports = getBestImage;
 module.exports.downloadVideoClip = downloadVideoClip;
 module.exports.downloadImage = downloadImage;
 module.exports.buildSteamSearchCandidates = buildSteamSearchCandidates;
+module.exports.extractSteamTrailerUrls = extractSteamTrailerUrls;

@@ -378,6 +378,63 @@ async function getBestImage(story) {
     }
   }
 
+  // Priority 2c: IGDB cover + screenshots fallback. Catches console
+  // exclusives, mobile, indie, and retro games Steam doesn't index. Only
+  // fires when Steam returned no gaming-source images yet (article_hero
+  // alone isn't enough — that's the thin-visual symptom we're fixing).
+  // Graceful no-op when TWITCH_CLIENT_ID / TWITCH_CLIENT_SECRET aren't
+  // provisioned — fetchIgdbImages returns [].
+  if (
+    images.filter((i) => i.source === "steam").length === 0 &&
+    images.filter((i) => i.type !== "article_hero").length === 0 &&
+    story.title &&
+    process.env.TWITCH_CLIENT_ID
+  ) {
+    try {
+      const { fetchIgdbImages } = require("./lib/igdb-images");
+      // Re-use the Steam search candidate builder — same problem
+      // (extract a real game name from a noisy news headline).
+      const candidates = buildSteamSearchCandidates(story.title);
+      let igdbImages = [];
+      for (const term of candidates) {
+        if (term.length <= 3) continue;
+        igdbImages = await fetchIgdbImages(term, { max: 5 });
+        if (igdbImages.length > 0) {
+          console.log(
+            `[images] IGDB match for "${term}": ${igdbImages.length} image(s) from "${igdbImages[0].game_name || "?"}"`,
+          );
+          break;
+        }
+      }
+      let igdbCount = 0;
+      for (const img of igdbImages) {
+        const ext = "jpg";
+        const safeName = `${story.id}_${img.type}_igdb_${igdbCount}.${ext}`;
+        const cached = await downloadImage(img.url, safeName);
+        if (cached) {
+          // Cover should outrank screenshots in the final ordering so
+          // it lands in the thumbnail-eligible hero slot.
+          const priority = img.type === "key_art" ? 88 : 70 - igdbCount;
+          images.push({
+            path: cached,
+            type: img.type,
+            priority,
+            source: "igdb",
+            url: img.url,
+          });
+          igdbCount++;
+        }
+      }
+      if (igdbCount > 0) {
+        console.log(
+          `[images] IGDB fallback: downloaded ${igdbCount} image(s) for ${story.id}`,
+        );
+      }
+    } catch (err) {
+      console.log(`[images] IGDB fallback failed: ${err.message}`);
+    }
+  }
+
   // Priority 3: Scrape ALL images from article page (not just og:image)
   // Gaming news articles are packed with inline screenshots
   if (

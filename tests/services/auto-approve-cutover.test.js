@@ -286,3 +286,60 @@ test("scoring pass is idempotent — running twice produces two audit rows, seco
   // after the 6h re-score window. Either is valid; never more than 2.
   assert.ok(rows.n >= 1 && rows.n <= 2, `expected 1-2 rows, got ${rows.n}`);
 });
+
+test("low script quality score blocks otherwise-auto stories from auto-approval", async () => {
+  const repos = makeRepos();
+  seedStory(repos.db, {
+    id: "low-script-quality",
+    title: "PlayStation confirms a major free games drop for May",
+    flair: "verified",
+    subreddit: "ign",
+    source_type: "rss",
+    score: 3000,
+    num_comments: 450,
+    breaking_score: 95,
+    article_image: "https://cdn/psplus.jpg",
+    game_images: JSON.stringify([
+      "https://steam/keyart.jpg",
+      "https://steam/screenshot.jpg",
+    ]),
+    hook: "PlayStation just made May's free games lineup impossible to ignore",
+    full_script:
+      "PlayStation has confirmed May's free games lineup, with a major headline title leading the month. " +
+      "The source is official and the timing matters because subscribers are deciding what to download next.",
+    quality_score: 6,
+    timestamp: new Date().toISOString(),
+  });
+
+  await autoApprove({
+    repos,
+    env: { NODE_ENV: "production", USE_SQLITE: "true" },
+  });
+
+  const scoreRow = repos.db
+    .prepare(
+      `SELECT decision, total, decision_reason, inputs FROM story_scores
+       WHERE story_id = 'low-script-quality'
+       ORDER BY scored_at DESC LIMIT 1`,
+    )
+    .get();
+
+  assert.equal(scoreRow.decision, "review");
+  assert.ok(
+    scoreRow.total >= 75,
+    `fixture should otherwise be auto-tier, got total=${scoreRow.total}`,
+  );
+  assert.match(scoreRow.decision_reason, /script_quality_score 6 below 7/);
+
+  const inputs = JSON.parse(scoreRow.inputs);
+  assert.equal(inputs.script_quality_score, 6);
+  assert.match(inputs.script_quality_auto_block, /below 7/);
+
+  const storyRow = repos.db
+    .prepare(
+      `SELECT approved, auto_approved FROM stories WHERE id = 'low-script-quality'`,
+    )
+    .get();
+  assert.equal(storyRow.approved, 0);
+  assert.equal(storyRow.auto_approved, 0);
+});

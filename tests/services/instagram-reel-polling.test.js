@@ -19,10 +19,12 @@ const SRC = fs.readFileSync(
   "utf8",
 );
 
-test("Instagram Reel polling requests Graph error fields", () => {
-  assert.equal(
+test("Instagram Reel polling requests accepted Graph container status fields", () => {
+  assert.equal(INSTAGRAM_CONTAINER_STATUS_FIELDS, "status_code,status");
+  assert.doesNotMatch(
     INSTAGRAM_CONTAINER_STATUS_FIELDS,
-    "status_code,status,error_code,error_subcode,error_message",
+    /error_code|error_subcode|error_message/,
+    "Graph rejects error_code/error_subcode/error_message as requested media container fields; detailed errors come from exception payload logging",
   );
   const occurrences = (
     SRC.match(/fields:\s*INSTAGRAM_CONTAINER_STATUS_FIELDS/g) || []

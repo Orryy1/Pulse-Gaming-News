@@ -13,6 +13,11 @@ dotenv.config({ override: true });
 const TOKEN_PATH = path.join(__dirname, "tokens", "instagram_token.json");
 const INSTAGRAM_CONTAINER_STATUS_FIELDS =
   "status_code,status,error_code,error_subcode,error_message";
+const SECRET_PATTERNS = [
+  /(Bearer\s+)[A-Za-z0-9._~+/-]+=*/gi,
+  /((?:ACCESS[_-]?TOKEN|TOKEN|CLIENT[_-]?SECRET|API[_-]?KEY)\s*[=:]\s*)[^\s,;}&]+/gi,
+  /([?&](?:access_token|token|client_secret|api_key)=)[^&\s]+/gi,
+];
 
 /*
   Instagram Reels via Facebook Graph API
@@ -127,6 +132,53 @@ function formatInstagramContainerStatus(data) {
     parts.push(`error_subcode=${status.error_subcode}`);
   if (status.error_message) parts.push(`error_message=${status.error_message}`);
   return parts.join(" ");
+}
+
+function redactInstagramLogValue(value) {
+  let text = String(value ?? "");
+  for (const pattern of SECRET_PATTERNS) {
+    text = text.replace(pattern, "$1[REDACTED]");
+  }
+  return text.length > 600 ? `${text.slice(0, 597)}...` : text;
+}
+
+function summariseInstagramGraphError(err) {
+  const graphError = err?.response?.data?.error || err?.response?.data || null;
+  const status = err?.response?.status || null;
+  const summary = {
+    http_status: status,
+    message: err?.message || null,
+    code: graphError?.code ?? graphError?.error_code ?? null,
+    error_subcode: graphError?.error_subcode ?? null,
+    type: graphError?.type || null,
+    fbtrace_id: graphError?.fbtrace_id || null,
+    graph_message:
+      graphError?.message || graphError?.error_message || graphError?.error || null,
+  };
+  if (!graphError || typeof graphError !== "object") {
+    summary.raw = graphError === null ? null : graphError;
+  }
+  return summary;
+}
+
+function formatInstagramStatusCheckError(err) {
+  const summary = summariseInstagramGraphError(err);
+  const parts = [];
+  if (summary.http_status) parts.push(`http_status=${summary.http_status}`);
+  if (summary.code !== null) parts.push(`code=${summary.code}`);
+  if (summary.error_subcode !== null)
+    parts.push(`error_subcode=${summary.error_subcode}`);
+  if (summary.type) parts.push(`type=${summary.type}`);
+  if (summary.graph_message) {
+    parts.push(`message=${redactInstagramLogValue(summary.graph_message)}`);
+  } else if (summary.message) {
+    parts.push(`message=${redactInstagramLogValue(summary.message)}`);
+  }
+  if (summary.fbtrace_id) parts.push(`fbtrace_id=${summary.fbtrace_id}`);
+  if (!parts.length && summary.raw !== undefined && summary.raw !== null) {
+    parts.push(`raw=${redactInstagramLogValue(JSON.stringify(summary.raw))}`);
+  }
+  return parts.join(" ") || redactInstagramLogValue(err?.message || err);
 }
 
 // --- Upload a Reel to Instagram via Resumable Upload (direct binary) ---
@@ -275,7 +327,9 @@ async function uploadReel(story) {
           }
         } catch (err) {
           if (err.message.includes("processing failed")) throw err;
-          console.log(`[instagram] Status check error: ${err.message}`);
+          console.log(
+            `[instagram] Status check error: ${formatInstagramStatusCheckError(err)}`,
+          );
         }
       }
 
@@ -422,6 +476,9 @@ async function uploadReelViaUrl(story) {
       }
     } catch (err) {
       if (err.message.includes("processing failed")) throw err;
+      console.log(
+        `[instagram] URL status check error: ${formatInstagramStatusCheckError(err)}`,
+      );
     }
   }
 
@@ -538,7 +595,9 @@ async function uploadStoryImage(story) {
           }
         } catch (err) {
           if (err.message.includes("processing failed")) throw err;
-          console.log(`[instagram] Story status check error: ${err.message}`);
+          console.log(
+            `[instagram] Story status check error: ${formatInstagramStatusCheckError(err)}`,
+          );
         }
       }
 
@@ -580,7 +639,10 @@ module.exports = {
   seedTokenFromEnv,
   INSTAGRAM_CONTAINER_STATUS_FIELDS,
   formatInstagramContainerStatus,
+  formatInstagramStatusCheckError,
+  redactInstagramLogValue,
   summariseInstagramContainerStatus,
+  summariseInstagramGraphError,
 };
 
 if (require.main === module) {

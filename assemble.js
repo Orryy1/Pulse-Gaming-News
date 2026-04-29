@@ -1769,6 +1769,45 @@ async function assemble() {
         : realImages.length < 3
           ? "thin_visuals_below_three"
           : null;
+
+    // 2026-04-29 follow-up: stamp render-lane metadata on every
+    // story so the publish summary, the dashboard and content-QA
+    // can answer "what did production actually render?" without
+    // grepping ffmpeg logs. Five fields:
+    //   render_lane               legacy_multi_image |
+    //                             legacy_single_image_fallback
+    //   distinct_visual_count     alias of qa_visual_count for
+    //                             external readability
+    //   outro_present             true if the OUTRO_CARD asset
+    //                             was attached to the filter graph
+    //   thumbnail_candidate_present  true if any of the YouTube
+    //                                  thumbnail-candidate paths
+    //                                  resolved to a file on disk
+    //   render_quality_class      premium | standard | fallback |
+    //                             reject — derived from inventory
+    // The lane defaults to legacy_multi_image; the fallback path
+    // updates it to legacy_single_image_fallback when the
+    // multi-image filter graph errors and the renderer drops
+    // through to the composite-only path. Studio V2 / clip-first /
+    // HyperFrames-for-MP4 are not in production today (Session 1
+    // §G); when they are, add the matching label here.
+    story.render_lane = "legacy_multi_image";
+    story.distinct_visual_count = realImages.length;
+    story.outro_present = await fs.pathExists(OUTRO_CARD);
+    story.thumbnail_candidate_present = !!(
+      story.hf_thumbnail_path ||
+      story.thumbnail_candidate_path ||
+      story.story_image_path ||
+      story.image_path
+    );
+    story.render_quality_class =
+      realImages.length >= 6
+        ? "premium"
+        : realImages.length >= 3
+          ? "standard"
+          : realImages.length >= 1
+            ? "fallback"
+            : "reject";
     // Same media-paths routing as audio + downloaded_images above.
     // story.image_path is a repo-relative string; resolve through
     // MEDIA_ROOT first, fall back to repo root.
@@ -1883,6 +1922,15 @@ async function assemble() {
       console.log(
         `[assemble] ⚠ Falling back to SINGLE IMAGE - video will be less engaging`,
       );
+
+      // Update render-lane stamp now that the multi-image path
+      // has actually failed and we are entering the composite-only
+      // fallback. Quality class drops to fallback because by
+      // definition the renderer is showing one static image —
+      // regardless of how many distinct visuals were available
+      // upstream, none of them survived the pipeline.
+      story.render_lane = "legacy_single_image_fallback";
+      story.render_quality_class = "fallback";
 
       // Fallback: single image but with ALL overlays (subtitles, branding, comments, music)
       try {

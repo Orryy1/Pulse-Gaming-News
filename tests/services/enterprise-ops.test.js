@@ -2,7 +2,11 @@ const { test } = require("node:test");
 const assert = require("node:assert");
 
 const { verifyMedia } = require("../../lib/ops/media-verify");
-const { buildPlatformStatus } = require("../../lib/ops/platform-status");
+const {
+  buildPlatformOperationalConfig,
+  buildPlatformStatus,
+  renderPlatformStatusMarkdown,
+} = require("../../lib/ops/platform-status");
 const { buildDbBackupDryRun } = require("../../lib/ops/db-backup-dry-run");
 const { classifyStoryVisualInventory } = require("../../lib/media-inventory");
 const {
@@ -53,9 +57,95 @@ test("platform status summarises story platform fields", () => {
       { id: "a", youtube_post_id: "yt1", youtube_url: "https://youtu.be/x" },
       { id: "b", tiktok_error: "403" },
     ],
+    platformConfig: {
+      youtube: { state: "enabled", reason: "core_upload_path" },
+      tiktok: { state: "enabled", reason: "direct_post_approved" },
+      instagram_reel: { state: "enabled", reason: "graph_credentials_present" },
+      facebook_reel: { state: "enabled", reason: "facebook_reels_enabled" },
+      twitter: { state: "enabled", reason: "x_video_enabled" },
+    },
   });
   assert.strictEqual(report.counts.youtube.published, 1);
   assert.strictEqual(report.counts.tiktok.failed, 1);
+});
+
+test("platform status separates blocked and disabled platforms from not-published work", () => {
+  const report = buildPlatformStatus({
+    stories: [
+      { id: "a", title: "A", youtube_post_id: "yt1", youtube_url: "https://youtu.be/x" },
+      { id: "b", title: "B" },
+    ],
+    platformConfig: {
+      youtube: { state: "enabled", reason: "core_upload_path" },
+      tiktok: { state: "blocked_external", reason: "tiktok_direct_post_app_review" },
+      instagram_reel: { state: "enabled", reason: "graph_credentials_present" },
+      facebook_reel: { state: "disabled", reason: "facebook_page_reels_gate" },
+      twitter: { state: "disabled", reason: "x_optional_disabled" },
+    },
+  });
+
+  assert.strictEqual(report.counts.youtube.published, 1);
+  assert.strictEqual(report.counts.youtube.not_published, 1);
+  assert.strictEqual(report.counts.tiktok.blocked_external, 2);
+  assert.strictEqual(report.counts.facebook_reel.disabled, 2);
+  assert.strictEqual(report.counts.twitter.disabled, 2);
+  assert.strictEqual(report.counts.instagram_reel.not_published, 2);
+});
+
+test("platform status uses platform_posts rows as the newest structured truth", () => {
+  const report = buildPlatformStatus({
+    stories: [{ id: "story1", title: "Story 1" }],
+    platformPosts: [
+      {
+        story_id: "story1",
+        platform: "facebook_reel",
+        status: "blocked",
+        block_reason: "page_not_eligible",
+      },
+    ],
+    platformConfig: {
+      youtube: { state: "enabled", reason: "core_upload_path" },
+      tiktok: { state: "blocked_external", reason: "tiktok_direct_post_app_review" },
+      instagram_reel: { state: "enabled", reason: "graph_credentials_present" },
+      facebook_reel: { state: "enabled", reason: "facebook_reels_enabled" },
+      twitter: { state: "disabled", reason: "x_optional_disabled" },
+    },
+  });
+
+  assert.strictEqual(report.recent[0].platforms.facebook_reel.status, "blocked");
+  assert.strictEqual(report.recent[0].platforms.facebook_reel.reason, "page_not_eligible");
+  assert.strictEqual(report.counts.facebook_reel.blocked, 1);
+});
+
+test("platform operational config reflects safe disabled/blocker defaults", () => {
+  const config = buildPlatformOperationalConfig({
+    INSTAGRAM_ACCESS_TOKEN: "present",
+    INSTAGRAM_BUSINESS_ACCOUNT_ID: "present",
+    FACEBOOK_REELS_ENABLED: "false",
+    TWITTER_ENABLED: "false",
+  });
+
+  assert.strictEqual(config.youtube.state, "enabled");
+  assert.strictEqual(config.instagram_reel.state, "enabled");
+  assert.strictEqual(config.tiktok.state, "blocked_external");
+  assert.strictEqual(config.facebook_reel.state, "disabled");
+  assert.strictEqual(config.twitter.state, "disabled");
+});
+
+test("platform status markdown includes operational state", () => {
+  const md = renderPlatformStatusMarkdown({
+    generatedAt: "2026-04-29T00:00:00.000Z",
+    storyCount: 1,
+    operational: {
+      tiktok: { state: "blocked_external", reason: "tiktok_direct_post_app_review" },
+    },
+    counts: {
+      tiktok: { blocked_external: 1 },
+    },
+  });
+
+  assert.match(md, /Operational State/);
+  assert.match(md, /tiktok: blocked_external \(tiktok_direct_post_app_review\)/);
 });
 
 test("DB backup dry run reports intended target without mutation", async () => {

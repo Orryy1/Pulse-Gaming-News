@@ -134,3 +134,11 @@ test("assemble.js: no duplicate mediaPaths declaration inside the same block sco
     );
   }
 });
+
+test("assemble.js: single-image fallback has no stale undefined bumper call", () => {
+  assert.doesNotMatch(
+    ASSEMBLE_CODE,
+    /concatWithBumpers\(/,
+    "assemble.js fallback must not call the removed concatWithBumpers helper; branding/outro is already in the filter graph",
+  );
+});

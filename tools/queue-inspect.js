@@ -7,15 +7,43 @@ const { inspectQueue, renderQueueInspectMarkdown } = require("../lib/ops/queue-i
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
 
+function isUnixVolumePathOnWindows(dbPath) {
+  return process.platform === "win32" && /^\/[^/\\]/.test(String(dbPath || ""));
+}
+
 async function main() {
   await fs.ensureDir(OUT);
   let report;
   try {
-    const db = require("../lib/db");
-    if (!db.useSqlite()) {
+    const dbModule = require("../lib/db");
+    if (!dbModule.useSqlite()) {
       report = { generatedAt: new Date().toISOString(), verdict: "skip", reason: "USE_SQLITE_not_enabled" };
+    } else if (isUnixVolumePathOnWindows(dbModule.DB_PATH)) {
+      report = {
+        generatedAt: new Date().toISOString(),
+        verdict: "skip",
+        reason: "railway_volume_path_not_local",
+        dbPath: dbModule.DB_PATH,
+      };
+    } else if (!(await fs.pathExists(dbModule.DB_PATH))) {
+      report = {
+        generatedAt: new Date().toISOString(),
+        verdict: "skip",
+        reason: "sqlite_db_missing",
+        dbPath: dbModule.DB_PATH,
+      };
     } else {
-      report = inspectQueue({ db: db.getDb() });
+      const Database = require("better-sqlite3");
+      const sqlite = new Database(dbModule.DB_PATH, { readonly: true, fileMustExist: true });
+      try {
+        report = {
+          ...inspectQueue({ db: sqlite }),
+          dbPath: dbModule.DB_PATH,
+          readOnly: true,
+        };
+      } finally {
+        sqlite.close();
+      }
     }
   } catch (err) {
     report = { generatedAt: new Date().toISOString(), verdict: "skip", reason: err.message };

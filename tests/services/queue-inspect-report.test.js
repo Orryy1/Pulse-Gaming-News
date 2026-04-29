@@ -62,6 +62,32 @@ test("queue inspect markdown explains unavailable SQLite skip states", () => {
   assert.match(md, /SQLite queue database is mounted and readable/);
 });
 
+test("queue inspect markdown explains missing SQLite files", () => {
+  const md = renderQueueInspectMarkdown({
+    generatedAt: "2026-04-28T00:00:00.000Z",
+    verdict: "skip",
+    reason: "sqlite_db_missing",
+    dbPath: "C:\\data\\pulse.db",
+  });
+
+  assert.match(md, /Reason: sqlite_db_missing/);
+  assert.match(md, /DB path: C:\\data\\pulse\.db/);
+  assert.match(md, /does not exist on this machine/);
+});
+
+test("queue inspect markdown explains Railway volume paths injected into Windows", () => {
+  const md = renderQueueInspectMarkdown({
+    generatedAt: "2026-04-28T00:00:00.000Z",
+    verdict: "skip",
+    reason: "railway_volume_path_not_local",
+    dbPath: "/data/pulse.db",
+  });
+
+  assert.match(md, /Reason: railway_volume_path_not_local/);
+  assert.match(md, /DB path: \/data\/pulse\.db/);
+  assert.match(md, /only valid inside the Railway container/);
+});
+
 test("queue inspect tolerates legacy schedules table without runtime columns", () => {
   const db = createQueueInspectDb(`
     CREATE TABLE schedules (

@@ -67,7 +67,7 @@ module.exports = {
     { name: "Kotaku", url: "https://kotaku.com/rss" },
     {
       name: "TheVergeGaming",
-      url: "https://www.theverge.com/games/rss/index.xml",
+      url: "https://www.theverge.com/rss/games/index.xml",
     },
     { name: "Polygon", url: "https://www.polygon.com/rss/index.xml" },
   ],

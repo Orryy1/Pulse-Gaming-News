@@ -1,6 +1,11 @@
 const axios = require('axios');
 
 const USER_AGENT = 'pulse-gaming-trending/1.0 (personal use)';
+const TRENDING_SOURCE_URLS = {
+  googleGaming: 'https://trends.google.com/trending/rss?geo=US&category=8',
+  googleGeneral: 'https://trends.google.com/trending/rss?geo=US',
+  redditGamingRising: 'https://www.reddit.com/r/gaming/rising.json?limit=25',
+};
 
 // --- Cache ---
 let cachedTopics = [];
@@ -19,7 +24,7 @@ function decodeEntities(str) {
 
 // --- Source 1: Google Trends gaming category RSS ---
 async function fetchGoogleTrendsGaming() {
-  const url = 'https://trends.google.com/trends/trendingsearches/daily/rss?geo=US&cat=8';
+  const url = TRENDING_SOURCE_URLS.googleGaming;
   try {
     const response = await axios.get(url, {
       headers: { 'User-Agent': USER_AGENT },
@@ -47,7 +52,7 @@ async function fetchGoogleTrendsGaming() {
 
 // --- Source 2: Google Trends general RSS ---
 async function fetchGoogleTrendsGeneral() {
-  const url = 'https://trends.google.com/trending/rss?geo=US';
+  const url = TRENDING_SOURCE_URLS.googleGeneral;
   try {
     const response = await axios.get(url, {
       headers: { 'User-Agent': USER_AGENT },
@@ -74,7 +79,7 @@ async function fetchGoogleTrendsGeneral() {
 
 // --- Source 3: Reddit r/gaming rising ---
 async function fetchRedditGamingRising() {
-  const url = 'https://www.reddit.com/r/gaming/rising.json?limit=25';
+  const url = TRENDING_SOURCE_URLS.redditGamingRising;
   try {
     const response = await axios.get(url, {
       headers: { 'User-Agent': USER_AGENT },
@@ -166,4 +171,4 @@ function getTrendingBoost(title, trendingTopics) {
   return finalBoost;
 }
 
-module.exports = { getTrendingTopics, getTrendingBoost };
+module.exports = { getTrendingTopics, getTrendingBoost, TRENDING_SOURCE_URLS };

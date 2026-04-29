@@ -7,12 +7,19 @@ const path = require("node:path");
 
 const {
   INSTAGRAM_CONTAINER_STATUS_FIELDS,
+  IG_REEL_PROCESSING_MAX_ATTEMPTS,
+  IG_REEL_PROCESSING_POLL_MS,
+  IG_STORY_PROCESSING_MAX_ATTEMPTS,
+  IG_STORY_PROCESSING_POLL_MS,
+  buildInstagramPendingProcessingTimeoutError,
   formatInstagramContainerStatus,
   formatInstagramStatusCheckError,
+  isInstagramPendingProcessingTimeout,
   redactInstagramLogValue,
   summariseInstagramContainerStatus,
   summariseInstagramGraphError,
 } = require("../../upload_instagram");
+const { renderPublishSummary } = require("../../lib/job-handlers");
 
 const SRC = fs.readFileSync(
   path.join(__dirname, "..", "..", "upload_instagram.js"),
@@ -60,14 +67,12 @@ test("formatInstagramContainerStatus includes error_code, error_subcode and erro
 test("Instagram timeout/ERROR messages preserve the last polled status fields", () => {
   // Defensive Production Pass: timeout used to drop the error fields
   // ("status: IN_PROGRESS"), making 2207076 et al. invisible in
-  // story.instagram_error. Both binary and URL paths now thread the
-  // last polled summary through formatInstagramContainerStatus before
-  // throwing.
-  const timeoutThrows = SRC.match(/processing timed out:[^"`'\n]*/g) || [];
-  assert.ok(
-    timeoutThrows.length >= 2,
-    `expected both binary and URL timeout messages to use the new "timed out: <fields>" form, got ${timeoutThrows.length}`,
-  );
+  // story.instagram_error. Pending processing now throws a typed
+  // pending_processing_timeout with the container/creation id and last
+  // polled status, so publisher.js can schedule a later verifier instead
+  // of starting a duplicate fallback upload.
+  assert.match(SRC, /pending_processing_timeout/);
+  assert.match(SRC, /buildInstagramPendingProcessingTimeoutError/);
   assert.match(SRC, /lastSummary\s*=\s*summariseInstagramContainerStatus/);
   // ERROR branch must not JSON.stringify the raw response any more —
   // every documented field is already covered by the formatter.
@@ -146,4 +151,66 @@ test("Instagram binary, URL and Story status-check catch blocks log formatted Gr
   );
   assert.doesNotMatch(SRC, /Status check error: \$\{err\.message\}/);
   assert.doesNotMatch(SRC, /Story status check error: \$\{err\.message\}/);
+});
+
+test("Instagram processing timeout is classified as pending_processing_timeout with container identity", () => {
+  assert.equal(IG_REEL_PROCESSING_MAX_ATTEMPTS, 60);
+  assert.equal(IG_REEL_PROCESSING_POLL_MS, 10000);
+  assert.equal(IG_STORY_PROCESSING_MAX_ATTEMPTS, 30);
+  assert.equal(IG_STORY_PROCESSING_POLL_MS, 5000);
+
+  const err = buildInstagramPendingProcessingTimeoutError({
+    containerId: "17890000000000000",
+    phase: "instagram_reel",
+    attempts: 60,
+    pollMs: 10000,
+    statusSummary: { status_code: "IN_PROGRESS", status: "Processing" },
+  });
+
+  assert.equal(err.code, "pending_processing_timeout");
+  assert.equal(err.pendingProcessing, true);
+  assert.equal(err.containerId, "17890000000000000");
+  assert.equal(err.creationId, "17890000000000000");
+  assert.equal(isInstagramPendingProcessingTimeout(err), true);
+  assert.match(err.message, /container_id=17890000000000000/);
+  assert.match(err.message, /creation_id=17890000000000000/);
+  assert.match(err.message, /status_code=IN_PROGRESS/);
+  assert.match(err.message, /verify_later=true/);
+});
+
+test("publish summary renders IG pending processing as pending, not generic failure", () => {
+  const summary = renderPublishSummary({
+    title: "Instagram pending",
+    youtube: true,
+    tiktok: true,
+    instagram: false,
+    facebook: false,
+    twitter: false,
+    errors: {
+      instagram:
+        "instagram_reel pending_processing_timeout: container_id=1789 status_code=IN_PROGRESS verify_later=true",
+      instagram_story:
+        "instagram_story pending_processing_timeout: container_id=1790 status_code=IN_PROGRESS verify_later=true",
+    },
+    skipped: { twitter: "twitter_disabled" },
+    fallbacks: {},
+    platform_outcomes: {
+      youtube: "new_upload",
+      tiktok: "new_upload",
+      instagram: "accepted_processing",
+      facebook: "page_not_eligible",
+      twitter: "skipped",
+      facebook_card: "new_upload",
+      instagram_story: "accepted_processing",
+      twitter_image: "not_attempted",
+    },
+  });
+
+  assert.equal(summary.status, "degraded");
+  assert.match(summary.message, /IG Reel/);
+  assert.match(summary.message, /pending_processing_timeout/);
+  assert.match(summary.message, /IG Story/);
+  assert.match(summary.message, /container_id=1790/);
+  assert.match(summary.message, /FB Reel/);
+  assert.match(summary.message, /page_not_eligible/);
 });

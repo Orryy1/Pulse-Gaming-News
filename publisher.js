@@ -1362,22 +1362,53 @@ async function _publishNextStoryInner() {
       const {
         uploadShort: igUpload,
         uploadReelViaUrl: igUrlUpload,
+        isInstagramPendingProcessingTimeout,
       } = require("./upload_instagram");
       let igResult;
       try {
         igResult = await igUpload(story);
       } catch (reelErr) {
+        if (isInstagramPendingProcessingTimeout(reelErr)) {
+          console.log(
+            `[publisher] Instagram Reel still processing after local wait: ${reelErr.message}. ` +
+              "Not starting URL fallback; schedule/read-only verify later.",
+          );
+          story.instagram_error = reelErr.message;
+          result.errors.instagram = reelErr.message;
+          result.platform_outcomes.instagram = "accepted_processing";
+          await db.upsertStory(story);
+          igResult = null;
+        } else {
         console.log(
           `[publisher] Instagram binary upload failed: ${reelErr.message}, trying URL fallback...`,
         );
-        igResult = await igUrlUpload(story);
+          try {
+            igResult = await igUrlUpload(story);
+          } catch (urlErr) {
+            if (isInstagramPendingProcessingTimeout(urlErr)) {
+              console.log(
+                `[publisher] Instagram URL Reel still processing after local wait: ${urlErr.message}. ` +
+                  "Not retrying; schedule/read-only verify later.",
+              );
+              story.instagram_error = urlErr.message;
+              result.errors.instagram = urlErr.message;
+              result.platform_outcomes.instagram = "accepted_processing";
+              await db.upsertStory(story);
+              igResult = null;
+            } else {
+              throw urlErr;
+            }
+          }
+        }
       }
-      story.instagram_media_id = igResult.mediaId;
-      story.instagram_error = null;
-      result.instagram = true;
-      result.platform_outcomes.instagram = "new_upload";
-      console.log(`[publisher] Instagram: uploaded`);
-      await db.upsertStory(story);
+      if (igResult) {
+        story.instagram_media_id = igResult.mediaId;
+        story.instagram_error = null;
+        result.instagram = true;
+        result.platform_outcomes.instagram = "new_upload";
+        console.log(`[publisher] Instagram: uploaded`);
+        await db.upsertStory(story);
+      }
     } catch (err) {
       console.log(`[publisher] Instagram upload failed: ${err.message}`);
       story.instagram_error = err.message;
@@ -1602,7 +1633,10 @@ async function _publishNextStoryInner() {
       );
     } else {
       try {
-        const { uploadStoryImage: igStory } = require("./upload_instagram");
+        const {
+          uploadStoryImage: igStory,
+          isInstagramPendingProcessingTimeout,
+        } = require("./upload_instagram");
         const igStoryResult = await igStory(story);
         story.instagram_story_id = igStoryResult.mediaId;
         result.fallbacks.instagram_story = true;
@@ -1615,7 +1649,10 @@ async function _publishNextStoryInner() {
           `[publisher] Instagram Story upload failed: ${err.message}`,
         );
         result.errors.instagram_story = err.message;
-        result.platform_outcomes.instagram_story = "failed";
+        result.platform_outcomes.instagram_story =
+          isInstagramPendingProcessingTimeout(err)
+            ? "accepted_processing"
+            : "failed";
       }
     }
 

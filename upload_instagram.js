@@ -15,6 +15,10 @@ const TOKEN_PATH = path.join(__dirname, "tokens", "instagram_token.json");
 // container fields. Poll accepted status fields and log detailed Graph error
 // payloads from failed responses via formatInstagramStatusCheckError().
 const INSTAGRAM_CONTAINER_STATUS_FIELDS = "status_code,status";
+const IG_REEL_PROCESSING_MAX_ATTEMPTS = 60;
+const IG_REEL_PROCESSING_POLL_MS = 10000;
+const IG_STORY_PROCESSING_MAX_ATTEMPTS = 30;
+const IG_STORY_PROCESSING_POLL_MS = 5000;
 const SECRET_PATTERNS = [
   /(Bearer\s+)[A-Za-z0-9._~+/-]+=*/gi,
   /((?:ACCESS[_-]?TOKEN|TOKEN|CLIENT[_-]?SECRET|API[_-]?KEY)\s*[=:]\s*)[^\s,;}&]+/gi,
@@ -134,6 +138,42 @@ function formatInstagramContainerStatus(data) {
     parts.push(`error_subcode=${status.error_subcode}`);
   if (status.error_message) parts.push(`error_message=${status.error_message}`);
   return parts.join(" ");
+}
+
+function buildInstagramPendingProcessingTimeoutError({
+  containerId,
+  phase = "instagram_reel",
+  attempts,
+  pollMs,
+  statusSummary,
+}) {
+  const status = summariseInstagramContainerStatus(statusSummary || {});
+  const err = new Error(
+    `${phase} pending_processing_timeout: ` +
+      `container_id=${containerId || "(unknown)"} ` +
+      `creation_id=${containerId || "(unknown)"} ` +
+      `attempts=${attempts || 0} poll_ms=${pollMs || 0} ` +
+      `${formatInstagramContainerStatus(status)} verify_later=true`,
+  );
+  err.name = "InstagramPendingProcessingTimeoutError";
+  err.code = "pending_processing_timeout";
+  err.pendingProcessing = true;
+  err.platform = phase;
+  err.containerId = containerId || null;
+  err.creationId = containerId || null;
+  err.attempts = attempts || 0;
+  err.pollMs = pollMs || 0;
+  err.status = status;
+  return err;
+}
+
+function isInstagramPendingProcessingTimeout(err) {
+  return (
+    err &&
+    (err.pendingProcessing === true ||
+      err.code === "pending_processing_timeout" ||
+      /\bpending_processing_timeout\b/.test(String(err.message || "")))
+  );
 }
 
 function redactInstagramLogValue(value) {
@@ -301,8 +341,8 @@ async function uploadReel(story) {
       let attempts = 0;
       let lastSummary = null;
 
-      while (status === "IN_PROGRESS" && attempts < 60) {
-        await new Promise((r) => setTimeout(r, 10000));
+      while (status === "IN_PROGRESS" && attempts < IG_REEL_PROCESSING_MAX_ATTEMPTS) {
+        await new Promise((r) => setTimeout(r, IG_REEL_PROCESSING_POLL_MS));
         attempts++;
 
         try {
@@ -336,10 +376,13 @@ async function uploadReel(story) {
       }
 
       if (status !== "FINISHED") {
-        const tail = lastSummary
-          ? formatInstagramContainerStatus(lastSummary)
-          : `status_code=${status}`;
-        throw new Error(`Instagram processing timed out: ${tail}`);
+        throw buildInstagramPendingProcessingTimeoutError({
+          containerId,
+          phase: "instagram_reel",
+          attempts,
+          pollMs: IG_REEL_PROCESSING_POLL_MS,
+          statusSummary: lastSummary || { status_code: status },
+        });
       }
 
       // Step 4: Publish the container
@@ -453,8 +496,8 @@ async function uploadReelViaUrl(story) {
   let status = "IN_PROGRESS";
   let attempts = 0;
   let lastSummary = null;
-  while (status === "IN_PROGRESS" && attempts < 60) {
-    await new Promise((r) => setTimeout(r, 10000));
+  while (status === "IN_PROGRESS" && attempts < IG_REEL_PROCESSING_MAX_ATTEMPTS) {
+    await new Promise((r) => setTimeout(r, IG_REEL_PROCESSING_POLL_MS));
     attempts++;
     try {
       const statusResponse = await axios.get(
@@ -485,10 +528,13 @@ async function uploadReelViaUrl(story) {
   }
 
   if (status !== "FINISHED") {
-    const tail = lastSummary
-      ? formatInstagramContainerStatus(lastSummary)
-      : `status_code=${status}`;
-    throw new Error(`Instagram URL processing timed out: ${tail}`);
+    throw buildInstagramPendingProcessingTimeoutError({
+      containerId,
+      phase: "instagram_reel_url",
+      attempts,
+      pollMs: IG_REEL_PROCESSING_POLL_MS,
+      statusSummary: lastSummary || { status_code: status },
+    });
   }
 
   // Publish
@@ -569,8 +615,8 @@ async function uploadStoryImage(story) {
       let attempts = 0;
       let lastSummary = null;
 
-      while (status === "IN_PROGRESS" && attempts < 30) {
-        await new Promise((r) => setTimeout(r, 5000));
+      while (status === "IN_PROGRESS" && attempts < IG_STORY_PROCESSING_MAX_ATTEMPTS) {
+        await new Promise((r) => setTimeout(r, IG_STORY_PROCESSING_POLL_MS));
         attempts++;
 
         try {
@@ -604,10 +650,13 @@ async function uploadStoryImage(story) {
       }
 
       if (status !== "FINISHED") {
-        const tail = lastSummary
-          ? formatInstagramContainerStatus(lastSummary)
-          : `status_code=${status}`;
-        throw new Error(`Instagram Story processing timed out: ${tail}`);
+        throw buildInstagramPendingProcessingTimeoutError({
+          containerId,
+          phase: "instagram_story",
+          attempts,
+          pollMs: IG_STORY_PROCESSING_POLL_MS,
+          statusSummary: lastSummary || { status_code: status },
+        });
       }
 
       // Step 3: Publish the container
@@ -640,6 +689,12 @@ module.exports = {
   refreshToken,
   seedTokenFromEnv,
   INSTAGRAM_CONTAINER_STATUS_FIELDS,
+  IG_REEL_PROCESSING_MAX_ATTEMPTS,
+  IG_REEL_PROCESSING_POLL_MS,
+  IG_STORY_PROCESSING_MAX_ATTEMPTS,
+  IG_STORY_PROCESSING_POLL_MS,
+  buildInstagramPendingProcessingTimeoutError,
+  isInstagramPendingProcessingTimeout,
   formatInstagramContainerStatus,
   formatInstagramStatusCheckError,
   redactInstagramLogValue,

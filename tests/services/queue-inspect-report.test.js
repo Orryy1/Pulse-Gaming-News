@@ -4,7 +4,11 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const Database = require("better-sqlite3");
 
-const { inspectQueue, renderQueueInspectMarkdown } = require("../../lib/ops/queue-inspect");
+const {
+  inspectQueue,
+  redactJobError,
+  renderQueueInspectMarkdown,
+} = require("../../lib/ops/queue-inspect");
 
 function createQueueInspectDb(scheduleSql) {
   const db = new Database(":memory:");
@@ -140,4 +144,53 @@ test("queue inspect preserves modern schedule timing columns when present", () =
   } finally {
     db.close();
   }
+});
+
+test("queue inspect redacts token-shaped failed job errors in JSON and Markdown", () => {
+  const db = createQueueInspectDb(`
+    CREATE TABLE schedules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      kind TEXT NOT NULL,
+      cron_expr TEXT NOT NULL,
+      enabled INTEGER DEFAULT 1
+    );
+    INSERT INTO schedules (name, kind, cron_expr, enabled)
+      VALUES ('publish_youtube', 'publish', '0 19 * * *', 1);
+  `);
+
+  try {
+    db.prepare(
+      `INSERT INTO jobs
+        (kind, status, priority, attempt_count, max_attempts, last_error, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      "publish",
+      "failed",
+      50,
+      3,
+      3,
+      "Graph failed Bearer abc.def.ghi access_token=supersecret",
+      "2026-04-29T12:00:00.000Z",
+    );
+
+    const report = inspectQueue({ db });
+    assert.equal(report.verdict, "review");
+    assert.doesNotMatch(report.failedJobs[0].last_error, /abc\.def\.ghi/);
+    assert.doesNotMatch(report.failedJobs[0].last_error, /supersecret/);
+    assert.match(report.failedJobs[0].last_error, /\[REDACTED\]/);
+    assert.doesNotMatch(report.recentJobs[0].last_error, /abc\.def\.ghi/);
+
+    const md = renderQueueInspectMarkdown(report);
+    assert.doesNotMatch(md, /abc\.def\.ghi/);
+    assert.doesNotMatch(md, /supersecret/);
+    assert.match(md, /\[REDACTED\]/);
+  } finally {
+    db.close();
+  }
+});
+
+test("redactJobError tolerates missing and malformed job rows", () => {
+  assert.equal(redactJobError(null), null);
+  assert.deepEqual(redactJobError({ id: 1 }), { id: 1, last_error: "" });
 });

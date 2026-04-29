@@ -104,6 +104,24 @@ test("railway health treats optional queue stats 401 http log as advisory", () =
   assert.ok(report.advisories.some((a) => a.code === "queue_stats_auth_advisory"));
 });
 
+test("railway health classifies node-cron missed executions explicitly", () => {
+  const report = buildRailwayHealthReport({
+    deployments: [{ id: "dep_1", status: "SUCCESS", meta: { commitHash: "abc123" } }],
+    health: { ok: true, status: 200, body: { status: "ok" } },
+    appLogs: [
+      {
+        level: "error",
+        message:
+          "[NODE-CRON] [WARN] missed execution at Wed Apr 29 2026 13:02:00 GMT+0000",
+      },
+    ],
+  });
+
+  assert.equal(report.verdict, "review");
+  assert.ok(report.warnings.some((w) => w.code === "scheduler_missed_execution"));
+  assert.ok(!report.warnings.some((w) => w.code === "logged_error_level"));
+});
+
 test("railway health includes clean authenticated queue stats as green signal", () => {
   const report = buildRailwayHealthReport({
     deployments: [{ id: "dep_1", status: "SUCCESS", meta: { commitHash: "abc123" } }],

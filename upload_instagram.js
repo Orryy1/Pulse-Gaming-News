@@ -11,8 +11,10 @@ const mediaPaths = require("./lib/media-paths");
 dotenv.config({ override: true });
 
 const TOKEN_PATH = path.join(__dirname, "tokens", "instagram_token.json");
-const INSTAGRAM_CONTAINER_STATUS_FIELDS =
-  "status_code,status,error_code,error_subcode,error_message";
+// Graph rejects error_code/error_subcode/error_message as requested media
+// container fields. Poll accepted status fields and log detailed Graph error
+// payloads from failed responses via formatInstagramStatusCheckError().
+const INSTAGRAM_CONTAINER_STATUS_FIELDS = "status_code,status";
 const SECRET_PATTERNS = [
   /(Bearer\s+)[A-Za-z0-9._~+/-]+=*/gi,
   /((?:ACCESS[_-]?TOKEN|TOKEN|CLIENT[_-]?SECRET|API[_-]?KEY)\s*[=:]\s*)[^\s,;}&]+/gi,

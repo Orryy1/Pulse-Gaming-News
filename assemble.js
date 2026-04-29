@@ -956,15 +956,117 @@ ${events}
   return assPath;
 }
 
+// --- HTML entity decode used by sanitizeDrawtext ---
+// 2026-04-29 incident: Reddit/RSS bodies arrive with HTML entities
+// (&pound;22.99, &amp;, &#x27;, &#163; etc.) and the previous
+// sanitizer dropped non-ASCII characters AFTER the entities
+// survived literal. So overlays rendered "&pound;22.99" verbatim
+// AND any properly-decoded `£` would be stripped down to `22.99`.
+//
+// We decode named + numeric entities first, then map common
+// Latin-1 supplement symbols to safe ASCII equivalents the
+// existing drawtext font definitely renders, then fall through
+// to the same `\x20-\x7E` strip. This keeps the ASCII-only
+// drawtext contract while making the displayed text correct.
+const HTML_NAMED_ENTITIES = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  nbsp: " ",
+  pound: "GBP ",
+  euro: "EUR ",
+  yen: "JPY ",
+  cent: "c",
+  copy: "(c)",
+  reg: "(R)",
+  trade: "(TM)",
+  hellip: "...",
+  ndash: "-",
+  mdash: " - ",
+  lsquo: "'",
+  rsquo: "'",
+  ldquo: '"',
+  rdquo: '"',
+  middot: ".",
+  bull: "*",
+  deg: " deg ",
+  plusmn: "+/-",
+  times: "x",
+  divide: "/",
+};
+
+const CHAR_ASCII_FALLBACK = {
+  "£": "GBP ", // £
+  "€": "EUR ", // €
+  "¥": "JPY ", // ¥
+  "¢": "c", // ¢
+  "©": "(c)", // ©
+  "®": "(R)", // ®
+  "™": "(TM)", // ™
+  "–": "-", // –
+  "—": " - ", // —
+  "‘": "'", // '
+  "’": "'", // '
+  "“": '"', // "
+  "”": '"', // "
+  "…": "...", // …
+  "•": "*", // •
+  "°": " deg ", // °
+  "±": "+/-", // ±
+  "×": "x", // ×
+  "÷": "/", // ÷
+  "·": ".", // ·
+  " ": " ", // nbsp
+};
+
+function decodeHtmlEntities(text) {
+  if (!text || typeof text !== "string") return text || "";
+  return text
+    .replace(/&#x([0-9a-fA-F]+);/g, (_m, hex) => {
+      const code = parseInt(hex, 16);
+      return Number.isFinite(code) ? String.fromCodePoint(code) : "";
+    })
+    .replace(/&#(\d+);/g, (_m, dec) => {
+      const code = parseInt(dec, 10);
+      return Number.isFinite(code) ? String.fromCodePoint(code) : "";
+    })
+    .replace(/&([a-zA-Z]+);/g, (m, name) => {
+      const k = name.toLowerCase();
+      return Object.prototype.hasOwnProperty.call(HTML_NAMED_ENTITIES, k)
+        ? HTML_NAMED_ENTITIES[k]
+        : m;
+    });
+}
+
+function asciiFallback(text) {
+  if (!text) return "";
+  let out = "";
+  for (const ch of text) {
+    out += Object.prototype.hasOwnProperty.call(CHAR_ASCII_FALLBACK, ch)
+      ? CHAR_ASCII_FALLBACK[ch]
+      : ch;
+  }
+  return out;
+}
+
 // --- Sanitize text for FFmpeg drawtext ---
 function sanitizeDrawtext(text, maxLen) {
   if (!text) return "";
-  let clean = text
+  // 1) decode HTML entities so &pound;22.99 becomes the right thing
+  // 2) map common non-ASCII symbols to safe ASCII fallbacks (£ -> GBP, etc)
+  // 3) strip remaining drawtext-hostile chars AND remaining non-ASCII
+  // 4) collapse whitespace + truncate
+  let clean = decodeHtmlEntities(String(text));
+  clean = asciiFallback(clean);
+  clean = clean
     .replace(/'/g, "")
     .replace(/\\/g, "")
     .replace(/;/g, "")
     .replace(/:/g, " ")
     .replace(/[^\x20-\x7E]/g, "")
+    .replace(/\s+/g, " ")
     .trim();
   if (maxLen && clean.length > maxLen) {
     clean = clean.substring(0, maxLen - 3) + "...";
@@ -1264,11 +1366,25 @@ function buildVideoCommand(
   }
 
   // Reddit comments - shown one at a time, never overlapping
-  const comments =
-    story.reddit_comments ||
-    (story.top_comment
-      ? [{ body: story.top_comment, author: "Redditor", score: 0 }]
-      : []);
+  //
+  // 2026-04-29 incident: this overlay used to fall back to a single
+  // synthetic comment built from `story.top_comment` with author
+  // hard-coded to "Redditor". For RSS-sourced stories that body is
+  // the publisher's own article excerpt, NOT a Reddit comment, so
+  // the overlay rendered an RSS blurb under a u/Redditor badge.
+  // Honesty gate: only render the Reddit-style overlay when the
+  // story is genuinely Reddit-sourced AND we have at least one
+  // real comment with a real author. Otherwise skip the overlay.
+  const isRedditCommentStory =
+    story.comment_source_type === "reddit_top_comment" ||
+    (Array.isArray(story.reddit_comments) && story.reddit_comments.length > 0);
+  const comments = isRedditCommentStory
+    ? Array.isArray(story.reddit_comments) && story.reddit_comments.length > 0
+      ? story.reddit_comments
+      : story.top_comment
+        ? [{ body: story.top_comment, author: "Redditor", score: 0 }]
+        : []
+    : [];
   if (comments.length > 0) {
     // Max 4 comments to keep it clean, show one at a time with gaps between
     const count = Math.min(comments.length, 4);
@@ -1638,6 +1754,21 @@ async function assemble() {
         `[assemble] ${story.id}: using ${realImages.length} real images`,
       );
     }
+
+    // 2026-04-29 incident: stamp visual-count metadata on the story
+    // BEFORE building the filter graph so downstream observability
+    // (Discord summary, dashboard, content-QA) can see how thin the
+    // inventory was even when the renderer fell through to a single
+    // composite. This is record-only tonight — the publish gate that
+    // blocks "fewer than N distinct visuals" will land in the next
+    // pass once we have a publish-cycle of evidence on the new field.
+    story.qa_visual_count = realImages.length;
+    story.qa_visual_warning =
+      realImages.length === 0
+        ? "no_real_images_used_composite"
+        : realImages.length < 3
+          ? "thin_visuals_below_three"
+          : null;
     // Same media-paths routing as audio + downloaded_images above.
     // story.image_path is a repo-relative string; resolve through
     // MEDIA_ROOT first, fall back to repo root.
@@ -1846,12 +1977,22 @@ async function assemble() {
           );
         }
 
-        // Reddit comments with fade animations - shown one at a time
-        const comments =
-          story.reddit_comments ||
-          (story.top_comment
-            ? [{ body: story.top_comment, author: "Redditor", score: 0 }]
-            : []);
+        // Reddit comments with fade animations - shown one at a time.
+        // Same honesty gate as the main render path: only show the
+        // u/Redditor overlay when the comment is genuinely from a
+        // Reddit fetch. RSS stories skip this overlay.
+        const fbIsRedditCommentStory =
+          story.comment_source_type === "reddit_top_comment" ||
+          (Array.isArray(story.reddit_comments) &&
+            story.reddit_comments.length > 0);
+        const comments = fbIsRedditCommentStory
+          ? Array.isArray(story.reddit_comments) &&
+            story.reddit_comments.length > 0
+            ? story.reddit_comments
+            : story.top_comment
+              ? [{ body: story.top_comment, author: "Redditor", score: 0 }]
+              : []
+          : [];
         if (comments.length > 0) {
           const count = Math.min(comments.length, 4);
           const showDur = 6;
@@ -2020,6 +2161,9 @@ async function assemble() {
 }
 
 module.exports = assemble;
+module.exports.sanitizeDrawtext = sanitizeDrawtext;
+module.exports.decodeHtmlEntities = decodeHtmlEntities;
+module.exports.asciiFallback = asciiFallback;
 
 if (require.main === module) {
   assemble().catch((err) => {

@@ -849,6 +849,13 @@ async function hunt() {
           flair: flair || "News",
           subreddit: sub,
           top_comment: "",
+          // 2026-04-29 incident: distinguish a real Reddit top comment
+          // from RSS feed descriptions so the comment overlay in
+          // assemble.js doesn't render an RSS blurb under a u/Redditor
+          // badge. Reddit posts START with no comment fetched; the
+          // enrichment phase below will set this to
+          // "reddit_top_comment" once fetchTopComments succeeds.
+          comment_source_type: "none",
           timestamp: new Date(post.created_utc * 1000).toISOString(),
           num_comments: post.num_comments || 0,
           source_type: "reddit",
@@ -891,7 +898,13 @@ async function hunt() {
         score: 50,
         flair: "News",
         subreddit: item.source,
+        // 2026-04-29 incident: RSS description is the publisher's own
+        // article excerpt, NOT a Reddit comment. Keep the body for
+        // downstream context (script generation reads it) but tag the
+        // source so the assemble.js comment overlay knows NOT to
+        // render it under a u/Redditor badge.
         top_comment: item.description || "",
+        comment_source_type: item.description ? "rss_description" : "none",
         timestamp: item.timestamp,
         num_comments: 0,
         source_type: "rss",
@@ -955,6 +968,13 @@ async function hunt() {
           const comments = await fetchTopComments(story.subreddit, story.id, 8);
           story.top_comment = comments.length > 0 ? comments[0].body : "";
           story.reddit_comments = comments;
+          // 2026-04-29 incident: only mark the comment-source as
+          // "reddit_top_comment" when we actually fetched at least one
+          // real comment. assemble.js consults this to decide whether
+          // to render the u/Redditor overlay or skip it.
+          if (comments.length > 0) {
+            story.comment_source_type = "reddit_top_comment";
+          }
         }
       } catch (err) {
         console.log(

@@ -17,10 +17,16 @@ const fs = require("fs-extra");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const OUT_DIR = path.join(ROOT, "test", "output", "visual-qa");
+const ASSET_DIR = path.join(OUT_DIR, "assets");
 
 const { evaluateStoryVisualQa, writeQaArtefacts } = require(
   path.join(ROOT, "lib", "creative", "visual-qa-gate"),
 );
+const {
+  buildThumbnailCandidatePng,
+  buildThumbnailContactSheet,
+} = require(path.join(ROOT, "lib", "thumbnail-candidate"));
+const { materialiseFixtureStory } = require("./fixture-assets");
 
 const FIXTURES = [
   {
@@ -238,8 +244,23 @@ const FIXTURES = [
 async function main() {
   await fs.ensureDir(OUT_DIR);
   const summary = [];
+  const contactSheetImages = [];
   for (const story of FIXTURES) {
-    const qa = evaluateStoryVisualQa(story);
+    const renderedStory = await materialiseFixtureStory(story, ASSET_DIR);
+    try {
+      const candidate = await buildThumbnailCandidatePng({
+        story: renderedStory,
+        outPath: path.join(OUT_DIR, `${story.id}_thumbnail_candidate.png`),
+      });
+      renderedStory.thumbnail_candidate_path = candidate.path;
+      renderedStory.thumbnail_safety_status = candidate.qa.result;
+      renderedStory.thumbnail_safety_warnings = candidate.qa.warnings;
+      contactSheetImages.push(candidate.path);
+    } catch (err) {
+      renderedStory.thumbnail_candidate_error = err.message;
+    }
+
+    const qa = evaluateStoryVisualQa(renderedStory);
     const { jsonPath, mdPath } = await writeQaArtefacts(qa, OUT_DIR);
     summary.push({
       id: story.id,
@@ -247,13 +268,19 @@ async function main() {
       classification: qa.inventory?.classification,
       failures: qa.failures,
       warnings: qa.warnings,
+      thumbnailCandidatePath: renderedStory.thumbnail_candidate_path || null,
+      thumbnailCandidateError: renderedStory.thumbnail_candidate_error || null,
       jsonPath: path.relative(ROOT, jsonPath),
       mdPath: path.relative(ROOT, mdPath),
     });
   }
+  const contactSheetPath = await buildThumbnailContactSheet({
+    images: contactSheetImages,
+    outPath: path.join(OUT_DIR, "contact_sheet.jpg"),
+  });
   await fs.writeFile(
     path.join(OUT_DIR, "summary.json"),
-    JSON.stringify(summary, null, 2),
+    JSON.stringify({ summary, contactSheetPath }, null, 2),
   );
   const indexLines = ["# Visual QA fixtures", ""];
   for (const s of summary) {
@@ -261,22 +288,29 @@ async function main() {
       `- ${s.id}: result=**${s.result}** class=${s.classification} (${s.mdPath})`,
     );
   }
+  if (contactSheetPath) {
+    indexLines.push("");
+    indexLines.push(`Contact sheet: ${path.relative(ROOT, contactSheetPath)}`);
+  }
   await fs.writeFile(
     path.join(OUT_DIR, "index.md"),
     indexLines.join("\n") + "\n",
   );
-  return summary;
+  return { summary, contactSheetPath };
 }
 
 if (require.main === module) {
   main()
-    .then((summary) => {
+    .then(({ summary, contactSheetPath }) => {
       console.log(
         `[visual-qa] processed ${summary.length} fixture(s): ` +
           summary
             .map((s) => `${s.id}=${s.result}/${s.classification}`)
             .join(", "),
       );
+      if (contactSheetPath) {
+        console.log(`[visual-qa] contact sheet: ${contactSheetPath}`);
+      }
     })
     .catch((err) => {
       console.error(`[visual-qa] FAILED: ${err.message}`);

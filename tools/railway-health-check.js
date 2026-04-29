@@ -78,6 +78,15 @@ function loadHealthUrl() {
   return `${clean}/api/health`;
 }
 
+function loadApiToken() {
+  const envPath = path.join(ROOT, ".env");
+  let parsed = {};
+  if (require("node:fs").existsSync(envPath)) {
+    parsed = dotenv.parse(require("node:fs").readFileSync(envPath));
+  }
+  return String(process.env.API_TOKEN || parsed.API_TOKEN || "").trim();
+}
+
 async function fetchHealth(url) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
@@ -98,6 +107,50 @@ async function fetchHealth(url) {
   }
 }
 
+async function fetchAuthenticatedJson(url, token) {
+  if (!token) {
+    return { ok: false, status: null, issue: "API_TOKEN not available locally; authenticated queue stats skipped." };
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const text = await res.text();
+    let body = null;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = { raw: text.slice(0, 300) };
+    }
+    return {
+      ok: res.ok,
+      status: res.status,
+      body,
+      issue: res.ok ? null : `HTTP ${res.status}`,
+    };
+  } catch (err) {
+    return { ok: false, status: null, issue: err.message || String(err) };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function queueStatsUrl(healthUrl) {
+  if (/\/api\/health$/i.test(healthUrl)) {
+    return healthUrl.replace(/\/api\/health$/i, "/api/queue/stats");
+  }
+  return `${String(healthUrl).replace(/\/$/, "")}/api/queue/stats`;
+}
+
+function shouldFetchQueueStats() {
+  return /^(1|true|yes)$/i.test(
+    String(process.env.RAILWAY_HEALTH_INCLUDE_QUEUE_STATS || "").trim(),
+  );
+}
+
 async function main() {
   await fs.ensureDir(OUTPUT_DIR);
 
@@ -113,11 +166,21 @@ async function main() {
   const httpLogs = parseRailwayJsonLines(
     runRailway(["logs", "--http", "--lines", "120", "--json"], { optional: true }),
   );
-  const health = await fetchHealth(loadHealthUrl());
+  const healthUrl = loadHealthUrl();
+  const health = await fetchHealth(healthUrl);
+  const queueFetch = shouldFetchQueueStats()
+    ? await fetchAuthenticatedJson(queueStatsUrl(healthUrl), loadApiToken())
+    : {
+        ok: false,
+        issue:
+          "queue stats opt-in disabled; set RAILWAY_HEALTH_INCLUDE_QUEUE_STATS=true with a valid local API_TOKEN to include it.",
+      };
 
   const report = buildRailwayHealthReport({
     deployments,
     health,
+    queueStats: queueFetch.ok ? queueFetch.body : null,
+    queueStatsIssue: queueFetch.ok ? null : queueFetch.issue,
     appLogs,
     buildLogs,
     httpLogs,

@@ -1985,9 +1985,6 @@ async function assemble() {
           maxBuffer: 10 * 1024 * 1024,
         });
 
-        // Add intro/outro bumpers
-        await concatWithBumpers(writeTargetPath, story.id);
-
         // DB gets the repo-relative path (unchanged contract);
         // filesystem ops use the resolved absolute target.
         story.exported_path = outputPath;

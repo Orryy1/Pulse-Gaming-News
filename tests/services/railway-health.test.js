@@ -165,6 +165,82 @@ test("railway health warns on failed or stale production queue jobs", () => {
   assert.match(md, /insufficient authentication scopes/);
 });
 
+test("railway health treats sampled pre-deploy queue failures as historical advisories", () => {
+  const report = buildRailwayHealthReport({
+    deployments: [
+      {
+        id: "dep_1",
+        status: "SUCCESS",
+        createdAt: "2026-04-29T11:00:00.000Z",
+        meta: { commitHash: "abc123" },
+      },
+    ],
+    health: { ok: true, status: 200, body: { status: "ok" } },
+    queueStats: {
+      jobs: {
+        total: 10,
+        by_status: { done: 9, failed: 1 },
+        stale_claims: 0,
+        oldest_pending_minutes: null,
+        recent_failed: [
+          {
+            id: 99,
+            kind: "studio_analytics_loop",
+            last_error: "Cannot open database because the directory does not exist",
+            updated_at: "2026-04-29T10:00:00.000Z",
+          },
+        ],
+      },
+      derivatives: { total: 0, by_status: {} },
+    },
+  });
+
+  assert.equal(report.verdict, "pass");
+  assert.equal(report.warnings.length, 0);
+  assert.ok(
+    report.advisories.some((a) => a.code === "queue_historical_failed_jobs_present"),
+  );
+  assert.ok(report.green.includes("queue_no_active_failed_jobs"));
+
+  const md = renderRailwayHealthMarkdown(report);
+  assert.match(md, /updated=2026-04-29T10:00:00\.000Z/);
+});
+
+test("railway health still reviews queue failures after the latest deployment", () => {
+  const report = buildRailwayHealthReport({
+    deployments: [
+      {
+        id: "dep_1",
+        status: "SUCCESS",
+        createdAt: "2026-04-29T11:00:00.000Z",
+        meta: { commitHash: "abc123" },
+      },
+    ],
+    health: { ok: true, status: 200, body: { status: "ok" } },
+    queueStats: {
+      jobs: {
+        total: 10,
+        by_status: { done: 9, failed: 1 },
+        stale_claims: 0,
+        oldest_pending_minutes: null,
+        recent_failed: [
+          {
+            id: 100,
+            kind: "publish",
+            last_error: "Graph API timeout",
+            updated_at: "2026-04-29T11:05:00.000Z",
+          },
+        ],
+      },
+      derivatives: { total: 0, by_status: {} },
+    },
+  });
+
+  assert.equal(report.verdict, "review");
+  assert.ok(report.warnings.some((w) => w.code === "queue_failed_jobs_present"));
+  assert.match(report.warnings[0].message, /after the latest deployment/);
+});
+
 test("railway health redacts queue failed-job token-shaped errors", () => {
   const md = renderRailwayHealthMarkdown(
     buildRailwayHealthReport({

@@ -40,7 +40,26 @@ const path = require("node:path");
 const fs = require("fs-extra");
 
 const ROOT = path.resolve(__dirname, "..");
-const FINDINGS_PATH = path.join(ROOT, "data", "analytics_findings.md");
+
+function getAnalyticsDbPath() {
+  const { resolveDbPath } = require("../lib/db");
+  return resolveDbPath();
+}
+
+function getFindingsPath() {
+  const override = (process.env.STUDIO_ANALYTICS_FINDINGS_PATH || "").trim();
+  if (override) {
+    return path.isAbsolute(override) ? override : path.resolve(ROOT, override);
+  }
+  return path.join(path.dirname(getAnalyticsDbPath()), "analytics_findings.md");
+}
+
+function displayPath(targetPath) {
+  const rel = path.relative(ROOT, targetPath);
+  return rel && !rel.startsWith("..") && !path.isAbsolute(rel)
+    ? rel
+    : targetPath;
+}
 
 function parseArgs(argv) {
   const args = { days: 14, dry: false };
@@ -51,9 +70,10 @@ function parseArgs(argv) {
   return args;
 }
 
-function loadStories(daysWindow) {
+function loadStories(daysWindow, opts = {}) {
   const Database = require("better-sqlite3");
-  const db = new Database(path.join(ROOT, "data", "pulse.db"), {
+  const dbPath = opts.dbPath || getAnalyticsDbPath();
+  const db = new Database(dbPath, {
     readonly: true,
   });
   // Stories with a YouTube id and published in the window
@@ -174,10 +194,11 @@ async function postDiscord(text) {
   }
 }
 
-async function appendFindings(findingsText, payload, daysWindow) {
-  await fs.ensureDir(path.dirname(FINDINGS_PATH));
-  const existing = (await fs.pathExists(FINDINGS_PATH))
-    ? await fs.readFile(FINDINGS_PATH, "utf8")
+async function appendFindings(findingsText, payload, daysWindow, opts = {}) {
+  const findingsPath = opts.findingsPath || getFindingsPath();
+  await fs.ensureDir(path.dirname(findingsPath));
+  const existing = (await fs.pathExists(findingsPath))
+    ? await fs.readFile(findingsPath, "utf8")
     : "# Pulse Gaming — analytics findings (rolling)\n\nAppended by `tools/studio-v2-analytics-loop.js` once daily. Most recent at top.\n\n";
   const date = new Date().toISOString().slice(0, 10);
   const header = `\n---\n\n# ${date} (${daysWindow}-day window, ${payload.length} stories)\n\n`;
@@ -187,7 +208,8 @@ async function appendFindings(findingsText, payload, daysWindow) {
     titleEnd >= 0 ? existing.slice(0, titleEnd + 2) : existing + "\n\n";
   const after = titleEnd >= 0 ? existing.slice(titleEnd + 2) : "";
   const out = before + header + findingsText + "\n" + after;
-  await fs.writeFile(FINDINGS_PATH, out);
+  await fs.writeFile(findingsPath, out);
+  return findingsPath;
 }
 
 async function main(argsIn) {
@@ -228,8 +250,8 @@ async function main(argsIn) {
     throw err;
   }
 
-  await appendFindings(findings, payload, args.days);
-  console.log(`[analytics] findings appended → ${FINDINGS_PATH}`);
+  const findingsPath = await appendFindings(findings, payload, args.days);
+  console.log(`[analytics] findings appended → ${findingsPath}`);
 
   // Discord summary: send a stripped-down version (Tomorrow's
   // recommendation only — the full file is for the operator dashboard).
@@ -242,7 +264,7 @@ async function main(argsIn) {
     "",
     reco ? `**Tomorrow:** ${reco}` : "(no actionable recommendation produced)",
     "",
-    `Full findings: \`data/analytics_findings.md\``,
+    `Full findings: \`${displayPath(findingsPath)}\``,
   ].join("\n");
   try {
     await postDiscord(summary);
@@ -264,4 +286,8 @@ module.exports = {
   loadStories,
   summariseStory,
   buildPrompt,
+  appendFindings,
+  getAnalyticsDbPath,
+  getFindingsPath,
+  displayPath,
 };

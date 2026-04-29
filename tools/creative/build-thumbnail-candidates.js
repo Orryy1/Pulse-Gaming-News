@@ -23,6 +23,7 @@ const fs = require("fs-extra");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const OUT_DIR = path.join(ROOT, "test", "output", "thumbnail-safety");
+const ASSET_DIR = path.join(OUT_DIR, "assets");
 
 const FIXTURE_STORIES = [
   {
@@ -179,6 +180,56 @@ function describeVerdict(qa) {
   return lines.join("\n");
 }
 
+function fixtureAssetName(storyId, fixturePath) {
+  const withoutScheme = String(fixturePath || "")
+    .replace(/^fixture:\/\//, "")
+    .replace(/\.(jpg|jpeg|png|webp)$/i, "");
+  return `${storyId}_${withoutScheme.replace(/[^a-z0-9]+/gi, "_")}.jpg`;
+}
+
+function fixtureColour(image) {
+  const blob = `${image?.source || ""} ${image?.type || ""} ${image?.path || ""}`.toLowerCase();
+  if (/steam|key_art|capsule|hero/.test(blob)) return "#244d75";
+  if (/logo|platform/.test(blob)) return "#23303a";
+  if (/pexels|unsplash|people|portrait|author|gravatar/.test(blob)) return "#4d3a3a";
+  return "#313744";
+}
+
+async function materialiseFixtureStory(story) {
+  const sharp = require("sharp");
+  await fs.ensureDir(ASSET_DIR);
+  const cloned = {
+    ...story,
+    downloaded_images: [],
+  };
+
+  for (const img of story.downloaded_images || []) {
+    if (!String(img.path || "").startsWith("fixture://")) {
+      cloned.downloaded_images.push(img);
+      continue;
+    }
+    const outPath = path.join(ASSET_DIR, fixtureAssetName(story.id, img.path));
+    if (!(await fs.pathExists(outPath))) {
+      await sharp({
+        create: {
+          width: 900,
+          height: 600,
+          channels: 3,
+          background: fixtureColour(img),
+        },
+      })
+        .jpeg({ quality: 88 })
+        .toFile(outPath);
+    }
+    cloned.downloaded_images.push({
+      ...img,
+      path: outPath,
+      original_fixture_path: img.path,
+    });
+  }
+  return cloned;
+}
+
 async function main() {
   await fs.ensureDir(OUT_DIR);
   const {
@@ -186,18 +237,30 @@ async function main() {
     classifyThumbnailImage,
     rankThumbnailCandidates,
   } = require(path.join(ROOT, "lib", "thumbnail-safety"));
+  const {
+    buildThumbnailCandidatePng,
+    buildThumbnailContactSheet,
+  } = require(path.join(ROOT, "lib", "thumbnail-candidate"));
 
   const indexLines = ["# Thumbnail safety fixtures", ""];
   const summary = [];
+  const contactSheetImages = [];
 
   for (const story of FIXTURE_STORIES) {
+    const renderedStory = await materialiseFixtureStory(story);
     const qa = await runThumbnailPreUploadQa(story);
+    const renderedQa = await runThumbnailPreUploadQa(renderedStory);
     const ranked = rankThumbnailCandidates(story, story.downloaded_images, {
       includeRejected: true,
     });
     const perCandidate = (story.downloaded_images || []).map((img) =>
       classifyThumbnailImage(story, img),
     );
+    const thumbnailCandidate = await buildThumbnailCandidatePng({
+      story: renderedStory,
+      outPath: path.join(OUT_DIR, `${story.id}_thumbnail_candidate.png`),
+    });
+    contactSheetImages.push(thumbnailCandidate.path);
 
     const verdictPath = path.join(OUT_DIR, `${story.id}.json`);
     await fs.writeFile(
@@ -206,6 +269,12 @@ async function main() {
         {
           story: { id: story.id, title: story.title, flair: story.flair },
           qa,
+          renderedQa,
+          thumbnailCandidate: {
+            path: thumbnailCandidate.path,
+            qa: thumbnailCandidate.qa,
+            subjectPath: thumbnailCandidate.subject?.path || null,
+          },
           ranked: ranked.map((r) => ({
             score: r.score,
             decision: r.decision,
@@ -223,26 +292,35 @@ async function main() {
     indexLines.push(`## ${story.id} — ${story.title}`);
     indexLines.push("");
     indexLines.push(describeVerdict(qa));
+    indexLines.push(`- thumbnail_candidate: ${thumbnailCandidate.path}`);
     indexLines.push("");
     summary.push({ id: story.id, result: qa.result, failures: qa.failures });
   }
 
+  const contactSheetPath = await buildThumbnailContactSheet({
+    images: contactSheetImages,
+    outPath: path.join(OUT_DIR, "contact_sheet.jpg"),
+  });
+
   await fs.writeFile(path.join(OUT_DIR, "index.md"), indexLines.join("\n"));
   await fs.writeFile(
     path.join(OUT_DIR, "summary.json"),
-    JSON.stringify(summary, null, 2),
+    JSON.stringify({ summary, contactSheetPath }, null, 2),
   );
 
-  return summary;
+  return { summary, contactSheetPath };
 }
 
 if (require.main === module) {
   main()
-    .then((summary) => {
+    .then(({ summary, contactSheetPath }) => {
       console.log(
         `[thumb-safety] processed ${summary.length} fixture(s): ` +
           summary.map((s) => `${s.id}=${s.result}`).join(", "),
       );
+      if (contactSheetPath) {
+        console.log(`[thumb-safety] contact sheet: ${contactSheetPath}`);
+      }
     })
     .catch((err) => {
       console.error(`[thumb-safety] FAILED: ${err.message}`);

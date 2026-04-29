@@ -84,6 +84,24 @@ test("thumbnail-safety: human image allowed when entity matches story", () => {
   assert.equal(r.namedPersonAllowed, true);
 });
 
+test("thumbnail-safety: non-person name metadata cannot allow a random face", () => {
+  const story = {
+    title: "Aurora Drift Beta Confirmed",
+    full_script: "Aurora Drift has a confirmed beta window.",
+  };
+  const r = classifyThumbnailImage(story, {
+    path: "/cache/aurora-drift-profile.jpg",
+    type: "portrait",
+    source: "article",
+    likely_human: true,
+    name: "Aurora Drift",
+  });
+
+  assert.equal(r.safeForThumbnail, false);
+  assert.equal(r.namedPersonAllowed, false);
+  assert.ok(r.reasons.includes("unsafe_thumbnail_face"));
+});
+
 test("thumbnail-safety: random portrait cannot become thumbnail candidate", () => {
   const story = { title: "Aurora Drift Beta" };
   const ranked = rankThumbnailCandidates(story, [

@@ -654,13 +654,16 @@ async function uploadShort(story) {
       // Set custom thumbnail. Priority chain:
       //   1. story.hf_thumbnail_path — Studio v2 HyperFrames thumbnail
       //      (1280×720 JPEG, exact YouTube spec, channel-themed)
-      //   2. story.story_image_path — legacy 1080×1920 Instagram Story
+      //   2. story.thumbnail_candidate_path — safety-first generated
+      //      1080×1920 frame when the HF thumbnail path is unavailable.
+      //   3. story.story_image_path — legacy 1080×1920 Instagram Story
       //      PNG. Wrong aspect for YT but YouTube auto-letterboxes.
-      //   3. story.image_path — legacy 1080×1920 composite image.
+      //   4. story.image_path — legacy 1080×1920 composite image.
       // Each candidate resolves through media-paths so the file is
       // found under MEDIA_ROOT when set.
       const thumbCandidates = [
         story.hf_thumbnail_path,
+        story.thumbnail_candidate_path,
         story.story_image_path,
         story.image_path,
       ]

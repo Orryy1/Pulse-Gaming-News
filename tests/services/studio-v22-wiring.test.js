@@ -50,6 +50,18 @@ test("buildThumbnailsForApprovedStories is exported", () => {
   assert.strictEqual(typeof hf.buildThumbnailsForApprovedStories, "function");
 });
 
+test("manual run.js produce path builds thumbnail candidates", () => {
+  const src = require("node:fs").readFileSync(
+    require("node:path").join(__dirname, "..", "..", "run.js"),
+    "utf8",
+  );
+  assert.match(
+    src,
+    /runProduce[\s\S]*?buildThumbnailsForApprovedStories/,
+    "run.js produce should build HF thumbnails and thumbnail_candidate_path like publisher.produce",
+  );
+});
+
 test("HF thumbnail builder still exposes the legacy single-story API", () => {
   // Don't break the operator-side `buildStoryThumbnail` entry point —
   // it's used by tools and ad-hoc scripts.
@@ -74,7 +86,7 @@ test("self-heal sweeps hf_thumbnail_path so a missing JPEG triggers rebuild", ()
 });
 
 // ── upload_youtube prefers hf_thumbnail_path ──────────────────────
-test("upload_youtube thumbnail candidate chain prefers hf_thumbnail_path", () => {
+test("upload_youtube thumbnail candidate chain prefers safety candidate before legacy cards", () => {
   const src = require("node:fs").readFileSync(
     require("node:path").join(__dirname, "..", "..", "upload_youtube.js"),
     "utf8",
@@ -87,12 +99,21 @@ test("upload_youtube thumbnail candidate chain prefers hf_thumbnail_path", () =>
   assert.ok(m, "could not locate thumbCandidates array literal");
   const fields = m[1];
   const hfIdx = fields.indexOf("hf_thumbnail_path");
+  const candidateIdx = fields.indexOf("thumbnail_candidate_path");
   const storyIdx = fields.indexOf("story_image_path");
   const imageIdx = fields.indexOf("image_path");
   assert.ok(hfIdx >= 0, "hf_thumbnail_path must appear in thumbCandidates");
   assert.ok(
-    hfIdx < storyIdx,
-    "hf_thumbnail_path must come before story_image_path in the candidate chain",
+    candidateIdx >= 0,
+    "thumbnail_candidate_path must appear in thumbCandidates",
+  );
+  assert.ok(
+    hfIdx < candidateIdx,
+    "hf_thumbnail_path must come before thumbnail_candidate_path",
+  );
+  assert.ok(
+    candidateIdx < storyIdx,
+    "thumbnail_candidate_path must come before story_image_path",
   );
   // image_path is checked last (story_image_path also contains the
   // substring "image_path", so we look for the final occurrence).

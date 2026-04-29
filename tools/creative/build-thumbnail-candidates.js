@@ -24,6 +24,7 @@ const fs = require("fs-extra");
 const ROOT = path.resolve(__dirname, "..", "..");
 const OUT_DIR = path.join(ROOT, "test", "output", "thumbnail-safety");
 const ASSET_DIR = path.join(OUT_DIR, "assets");
+const { materialiseFixtureStory } = require("./fixture-assets");
 
 const FIXTURE_STORIES = [
   {
@@ -180,56 +181,6 @@ function describeVerdict(qa) {
   return lines.join("\n");
 }
 
-function fixtureAssetName(storyId, fixturePath) {
-  const withoutScheme = String(fixturePath || "")
-    .replace(/^fixture:\/\//, "")
-    .replace(/\.(jpg|jpeg|png|webp)$/i, "");
-  return `${storyId}_${withoutScheme.replace(/[^a-z0-9]+/gi, "_")}.jpg`;
-}
-
-function fixtureColour(image) {
-  const blob = `${image?.source || ""} ${image?.type || ""} ${image?.path || ""}`.toLowerCase();
-  if (/steam|key_art|capsule|hero/.test(blob)) return "#244d75";
-  if (/logo|platform/.test(blob)) return "#23303a";
-  if (/pexels|unsplash|people|portrait|author|gravatar/.test(blob)) return "#4d3a3a";
-  return "#313744";
-}
-
-async function materialiseFixtureStory(story) {
-  const sharp = require("sharp");
-  await fs.ensureDir(ASSET_DIR);
-  const cloned = {
-    ...story,
-    downloaded_images: [],
-  };
-
-  for (const img of story.downloaded_images || []) {
-    if (!String(img.path || "").startsWith("fixture://")) {
-      cloned.downloaded_images.push(img);
-      continue;
-    }
-    const outPath = path.join(ASSET_DIR, fixtureAssetName(story.id, img.path));
-    if (!(await fs.pathExists(outPath))) {
-      await sharp({
-        create: {
-          width: 900,
-          height: 600,
-          channels: 3,
-          background: fixtureColour(img),
-        },
-      })
-        .jpeg({ quality: 88 })
-        .toFile(outPath);
-    }
-    cloned.downloaded_images.push({
-      ...img,
-      path: outPath,
-      original_fixture_path: img.path,
-    });
-  }
-  return cloned;
-}
-
 async function main() {
   await fs.ensureDir(OUT_DIR);
   const {
@@ -247,7 +198,7 @@ async function main() {
   const contactSheetImages = [];
 
   for (const story of FIXTURE_STORIES) {
-    const renderedStory = await materialiseFixtureStory(story);
+    const renderedStory = await materialiseFixtureStory(story, ASSET_DIR);
     const qa = await runThumbnailPreUploadQa(story);
     const renderedQa = await runThumbnailPreUploadQa(renderedStory);
     const ranked = rankThumbnailCandidates(story, story.downloaded_images, {

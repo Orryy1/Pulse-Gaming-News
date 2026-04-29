@@ -86,6 +86,101 @@ test("railway health reports deprecations as advisories without changing verdict
   assert.equal(report.advisories[0].code, "build_advisory");
 });
 
+test("railway health treats optional queue stats 401 http log as advisory", () => {
+  const report = buildRailwayHealthReport({
+    deployments: [{ id: "dep_1", status: "SUCCESS", meta: { commitHash: "abc123" } }],
+    health: { ok: true, status: 200, body: { status: "ok" } },
+    httpLogs: [
+      {
+        status: 401,
+        method: "GET",
+        path: "/api/queue/stats",
+        message: "",
+      },
+    ],
+  });
+  assert.equal(report.verdict, "pass");
+  assert.equal(report.warnings.length, 0);
+  assert.ok(report.advisories.some((a) => a.code === "queue_stats_auth_advisory"));
+});
+
+test("railway health includes clean authenticated queue stats as green signal", () => {
+  const report = buildRailwayHealthReport({
+    deployments: [{ id: "dep_1", status: "SUCCESS", meta: { commitHash: "abc123" } }],
+    health: { ok: true, status: 200, body: { status: "ok" } },
+    queueStats: {
+      jobs: {
+        total: 8,
+        by_status: { done: 8 },
+        stale_claims: 0,
+        oldest_pending_minutes: null,
+      },
+      derivatives: { total: 2, by_status: { rendered: 2 } },
+      generated_at: "2026-04-29T00:00:00.000Z",
+    },
+  });
+  assert.equal(report.verdict, "pass");
+  assert.equal(report.queue.checked, true);
+  assert.equal(report.queue.jobs.total, 8);
+  assert.ok(report.green.includes("queue_stats_ok"));
+
+  const md = renderRailwayHealthMarkdown(report);
+  assert.match(md, /## Queue/);
+  assert.match(md, /jobsTotal: 8/);
+});
+
+test("railway health warns on failed or stale production queue jobs", () => {
+  const report = buildRailwayHealthReport({
+    deployments: [{ id: "dep_1", status: "SUCCESS", meta: { commitHash: "abc123" } }],
+    health: { ok: true, status: 200, body: { status: "ok" } },
+    queueStats: {
+      jobs: {
+        total: 3,
+        by_status: { failed: 1, pending: 2 },
+        stale_claims: 1,
+        oldest_pending_minutes: 140,
+      },
+      derivatives: { total: 0, by_status: {} },
+    },
+  });
+  assert.equal(report.verdict, "review");
+  assert.ok(report.warnings.some((w) => w.code === "queue_failed_jobs_present"));
+  assert.ok(report.warnings.some((w) => w.code === "queue_stale_claims_present"));
+  assert.ok(report.warnings.some((w) => w.code === "queue_old_pending_jobs"));
+});
+
+test("railway health treats missing local queue auth as advisory", () => {
+  const report = buildRailwayHealthReport({
+    deployments: [{ id: "dep_1", status: "SUCCESS", meta: { commitHash: "abc123" } }],
+    health: { ok: true, status: 200, body: { status: "ok" } },
+    queueStatsIssue:
+      "API_TOKEN not available locally; authenticated queue stats skipped.",
+  });
+  assert.equal(report.verdict, "pass");
+  assert.equal(report.queue.checked, false);
+  assert.ok(report.advisories.some((a) => a.code === "queue_stats_not_checked"));
+});
+
+test("railway health treats queue stats auth failure as advisory", () => {
+  const report = buildRailwayHealthReport({
+    deployments: [{ id: "dep_1", status: "SUCCESS", meta: { commitHash: "abc123" } }],
+    health: { ok: true, status: 200, body: { status: "ok" } },
+    queueStatsIssue: "HTTP 401 auth failed",
+  });
+  assert.equal(report.verdict, "pass");
+  assert.ok(report.advisories.some((w) => w.code === "queue_stats_not_checked"));
+});
+
+test("railway health warns when queue stats endpoint fails server-side", () => {
+  const report = buildRailwayHealthReport({
+    deployments: [{ id: "dep_1", status: "SUCCESS", meta: { commitHash: "abc123" } }],
+    health: { ok: true, status: 200, body: { status: "ok" } },
+    queueStatsIssue: "HTTP 500",
+  });
+  assert.equal(report.verdict, "review");
+  assert.ok(report.warnings.some((w) => w.code === "queue_stats_not_checked"));
+});
+
 test("railway health fails when an explicit expected deployment commit mismatches", () => {
   const report = buildRailwayHealthReport({
     expectedCommit: "local",

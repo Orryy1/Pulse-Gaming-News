@@ -116,6 +116,16 @@ async function runProduce() {
   const { generateStoryImages } = require("./images_story");
   await generateStoryImages();
 
+  console.log("[run] Step 6: Thumbnail candidates...");
+  try {
+    const {
+      buildThumbnailsForApprovedStories,
+    } = require("./lib/studio/v2/hf-thumbnail-builder");
+    await buildThumbnailsForApprovedStories();
+  } catch (err) {
+    console.log(`[run] Thumbnail candidate batch failed (non-fatal): ${err.message}`);
+  }
+
   let exportedPaths = [];
   const stories = await db.getStories();
   exportedPaths = stories

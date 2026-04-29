@@ -126,6 +126,20 @@ test("thumbnail safety: entity-matched face allowed only when story is about tha
   assert.ok(related.warnings.includes("entity_matched_face_allowed"));
 });
 
+test("thumbnail safety: generic image name does not grant a face exemption", () => {
+  const result = classifyThumbnailImage(story(), {
+    path: "output/image_cache/metro_named_portrait.jpg",
+    type: "portrait",
+    source: "article",
+    human: true,
+    name: "Metro 2039",
+  });
+
+  assert.strictEqual(result.safeForThumbnail, false);
+  assert.ok(result.reasons.includes("unsafe_thumbnail_face"));
+  assert.strictEqual(result.namedPersonAllowed, false);
+});
+
 test("thumbnail QA fails when every available subject is an unsafe face", async () => {
   const qa = await runThumbnailPreUploadQa(
     story({

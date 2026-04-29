@@ -410,9 +410,11 @@ async function getBestImage(story) {
       for (const m of imgTags) {
         const src = m[1];
         if (!src || src.length < 20) continue;
-        // Skip tiny UI elements
+        // Skip tiny UI elements, social avatars and author/profile portraits.
+        // These can pass dimension checks but make YouTube Shorts thumbnails
+        // look like random people instead of gaming stories.
         if (
-          /avatar|icon|logo|badge|sprite|tracking|pixel|ad[_-]|doubleclick|googlesyndication/i.test(
+          /avatar|author|byline|contributor|staff|headshot|portrait|profile|userpic|user[_-]?photo|gravatar|icon|logo|badge|sprite|tracking|pixel|ad[_-]|doubleclick|googlesyndication/i.test(
             src,
           )
         )
@@ -637,8 +639,13 @@ async function getBestImage(story) {
         imgUrl = imgUrl.replace(/&amp;/g, "&");
         if (seenUrls.has(imgUrl)) continue;
         seenUrls.add(imgUrl);
-        // Skip low-quality sources
-        if (/avatar|icon|logo|badge|pixel/i.test(imgUrl)) continue;
+        // Skip low-quality sources and profile imagery before download.
+        if (
+          /avatar|author|byline|contributor|staff|headshot|portrait|profile|userpic|user[_-]?photo|gravatar|icon|logo|badge|pixel/i.test(
+            imgUrl,
+          )
+        )
+          continue;
         const ext = imgUrl.match(/\.(jpg|jpeg|png|webp)/i)?.[1] || "jpg";
         const cached = await downloadImage(
           imgUrl,

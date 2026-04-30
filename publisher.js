@@ -991,6 +991,11 @@ async function _publishNextStoryInner() {
           : null,
     outro_present:
       typeof story.outro_present === "boolean" ? story.outro_present : null,
+    // 2026-04-30: forensic stamp captured by assemble.js when the
+    // multi-image render graph errored out and the renderer dropped
+    // to single-image fallback. Surfaces in Discord summary so the
+    // operator can see WHY a render fell back, not just that it did.
+    render_fallback_reason: story.render_fallback_reason || null,
     // --- CORE (video) platforms: true iff a Reel/Short upload for
     // this platform is now considered "done" — that includes both
     // a fresh new upload AND an already-published state (partial

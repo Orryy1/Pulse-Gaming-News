@@ -1931,6 +1931,17 @@ async function assemble() {
       // upstream, none of them survived the pipeline.
       story.render_lane = "legacy_single_image_fallback";
       story.render_quality_class = "fallback";
+      // 2026-04-30 forensic stamp: capture the ffmpeg stderr tail so
+      // future fallbacks are diagnosable from the DB / control room
+      // instead of requiring Railway log archaeology. The earlier
+      // "Tales Of remaster" 10:03 UTC fallback rendered with 8
+      // visuals available but the multi-image graph crashed silently
+      // — operator only saw the lane label, not the cause.
+      story.render_fallback_reason = errDetail
+        ? String(errDetail).slice(-400)
+        : "unknown_ffmpeg_failure";
+      story.render_fallback_at = new Date().toISOString();
+      story.render_fallback_visual_count = images.length;
 
       // Fallback: single image but with ALL overlays (subtitles, branding, comments, music)
       try {

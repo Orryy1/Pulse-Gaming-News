@@ -505,6 +505,83 @@ async function getBestImage(story) {
     }
   }
 
+  // Priority 2d: Script-mentioned game enrichment.
+  //
+  // 2026-04-30 reported issue: a Take-Two story narration mentioned
+  // GTA, Red Dead, BioShock, Civilization, Borderlands, Mafia, NBA
+  // 2K, Max Payne — all with rich Steam + IGDB key art available —
+  // but the image pipeline only searched Steam ONCE against the
+  // article title (which doesn't match a single game) and fell
+  // through to repeat-image composites. This block extracts game
+  // titles directly from the script and fetches Steam/IGDB images
+  // for each. Capped at MAX_TITLES × MAX_PER_TITLE (5×3=15) extra
+  // image candidates, deduped by URL.
+  if (story.full_script || story.tts_script) {
+    try {
+      const {
+        enrichImagesFromScript,
+      } = require("./lib/script-game-enrichment");
+      const enrichment = await enrichImagesFromScript(story);
+      if (enrichment.titles.length > 0) {
+        console.log(
+          `[images] Script enrichment: detected ${enrichment.titles.length} game(s) (${enrichment.titles
+            .map((t) => t.name)
+            .join(", ")
+            .slice(0, 200)})`,
+        );
+      }
+      const seenUrls = new Set(images.map((i) => i.url).filter(Boolean));
+      let enrichCount = 0;
+      // Each game contributes up to MAX_PER_TITLE (3) images. To
+      // diversify the deck we round-robin through games rather than
+      // download all of game-1's images before starting game-2.
+      // image_urls is already in (game-1 capsule, hero, key_art,
+      // game-2 capsule, hero, key_art, ...) order from the
+      // enrichment helper; this loop preserves that ordering.
+      for (const img of enrichment.image_urls) {
+        if (images.length >= 12) break; // leave headroom for article scrape
+        if (img.url && seenUrls.has(img.url)) continue;
+        const ext = "jpg";
+        const safeName = `${story.id}_${img.type}_${img.source}_${img._entity?.replace(/\W+/g, "_") || "x"}.${ext}`;
+        const cached = await downloadImage(img.url, safeName);
+        if (cached) {
+          // Priority 80 — sits BELOW dedicated Steam fallback hits
+          // (capsule=95, hero=90) but ABOVE article inline (75) and
+          // generic screenshot (70-N). Decreases per-image so the
+          // first game's hero outranks the second game's screenshot.
+          const basePriority =
+            img.type === "key_art"
+              ? 88
+              : img.type === "hero"
+                ? 85
+                : img.type === "capsule"
+                  ? 92
+                  : 70;
+          images.push({
+            path: cached,
+            type: img.type,
+            priority: basePriority - Math.min(enrichCount, 10),
+            source: img.source,
+            url: img.url,
+            game_name: img.game_name || null,
+            entity: img._entity || null,
+          });
+          if (img.url) seenUrls.add(img.url);
+          enrichCount++;
+        }
+      }
+      if (enrichCount > 0) {
+        console.log(
+          `[images] Script enrichment: downloaded ${enrichCount} image(s) across ${enrichment.titles.length} game(s)`,
+        );
+      }
+    } catch (err) {
+      console.log(
+        `[images] Script enrichment failed (non-fatal): ${err.message}`,
+      );
+    }
+  }
+
   // Priority 3: Scrape ALL images from article page (not just og:image)
   // Gaming news articles are packed with inline screenshots
   if (

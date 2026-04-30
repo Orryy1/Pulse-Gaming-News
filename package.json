@@ -39,6 +39,7 @@
     "ops:control-room": "node tools/control-room.js",
     "ops:render-health": "node tools/render-health.js",
     "ops:reclassify": "node tools/reclassify-report.js",
+    "docs:doctor": "node tools/docs-doctor.js",
     "media:inventory": "node tools/media-inventory-report.js",
     "format:release-radar": "node tools/monthly-release-radar.js",
     "creative:visual-qa": "node tools/creative/run-visual-qa.js",

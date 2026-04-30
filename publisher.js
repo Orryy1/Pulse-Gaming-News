@@ -1083,6 +1083,69 @@ async function _publishNextStoryInner() {
   }
   const pubChannelId = story.channel_id || process.env.CHANNEL || null;
 
+  // 2026-04-30 audit P0 #2: Render contract evaluation.
+  // Compute the per-story contract verdict (premium/standard/fallback/
+  // reject) before kicking off any platform uploads. The verdict is
+  // stamped on the result so Discord summary, control room, and
+  // analytics all see the same truth.
+  //
+  // Hard reject (no MP4, no script, topicality reject, zero visuals,
+  // title hygiene fail) → refuse this window, mark skipped, emit a
+  // Discord summary with the reject reason. Stays additive — produce
+  // is unchanged.
+  //
+  // Below-floor (fallback when CONTRACT_FLOOR=standard, or anything
+  // below "premium" when CONTRACT_FLOOR=premium) → only blocked when
+  // BLOCK_BELOW_CONTRACT=true. Default-OFF, exactly the same release-
+  // valve pattern the audit suggested for BLOCK_THIN_VISUALS.
+  try {
+    const renderDecision = require("./lib/render-decision");
+    const decision = await renderDecision.decideForStory(story);
+    result.render_contract = decision.verdict;
+    result.render_contract_gate = decision.gate;
+    if (!decision.gate.allowed) {
+      console.log(
+        `[publisher] Render contract gate refused: ${decision.gate.reason}. ` +
+          `class=${decision.verdict.class}, missing=${(decision.verdict.missing || []).join(",")}, ` +
+          `reasons=${(decision.verdict.reasons || []).join(",")}`,
+      );
+      result.platform_outcomes = result.platform_outcomes || {};
+      result.skipped = result.skipped || {};
+      // Mark every core platform as skipped with the contract reason
+      // so the renderPublishSummary surfaces the gate uniformly.
+      for (const p of ["youtube", "tiktok", "instagram", "facebook"]) {
+        result.platform_outcomes[p] = "skipped";
+        result.skipped[p] = `contract_gate:${decision.verdict.class}`;
+      }
+      result.errors.contract = decision.gate.reason;
+      // Persist the verdict on the story so subsequent passes see it.
+      try {
+        story.render_contract_class = decision.verdict.class;
+        story.render_contract_blocked = true;
+        await db.upsertStory(story);
+      } catch (err) {
+        console.log(
+          `[publisher] contract upsert failed (non-fatal): ${err.message}`,
+        );
+      }
+      return result;
+    }
+    // Allowed — still stamp the class on the story for analytics.
+    try {
+      story.render_contract_class = decision.verdict.class;
+      story.render_contract_blocked = false;
+      await db.upsertStory(story);
+    } catch {
+      /* non-fatal */
+    }
+  } catch (err) {
+    // The contract module failing must not block production. Log and
+    // continue with the legacy publish path.
+    console.log(
+      `[publisher] render contract evaluation failed (non-fatal): ${err.message}`,
+    );
+  }
+
   // YouTube - skip if already published or if a similar title was already uploaded
   shadowCanonicalDedupe(story, "youtube", stories);
   const ytTitleDupe = stories.find(

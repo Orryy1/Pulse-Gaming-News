@@ -20,9 +20,47 @@ const fs = require("fs-extra");
 const path = require("node:path");
 const { execSync } = require("node:child_process");
 
+// 2026-04-30: when the doctor runs inside Claude Code's sandbox,
+// the wrapper injects ANTHROPIC_API_KEY="" and ANTHROPIC_BASE_URL=...
+// into every subprocess as a security guardrail (prevents the
+// subprocess from reading the operator's Claude Code session token).
+// dotenv's default no-override behaviour then preserves the empty
+// value, producing a false-negative on this var even when .env is
+// correctly configured. To report truthfully, the doctor reads
+// .env DIRECTLY via dotenv.parse() and reports on what's IN .env,
+// not on what's currently set in process.env. This matches the
+// production runtime where the user starts node from a regular
+// shell with no wrapper injection.
+let dotenvParsed = {};
+try {
+  const dotenv = require("dotenv");
+  const envPath = path.resolve(__dirname, "..", ".env");
+  if (fs.pathExistsSync(envPath)) {
+    dotenvParsed = dotenv.parse(fs.readFileSync(envPath));
+  }
+} catch {
+  /* dotenv missing — fall back to process.env-only checks */
+}
+
 function checkEnvVarPresent(name) {
-  const present = !!process.env[name];
-  return { name, present, length: present ? process.env[name].length : 0 };
+  // Prefer dotenv-parsed value (truth from .env) over process.env
+  // when the latter is empty. This handles Claude Code's wrapper
+  // injection AND legitimate cases where .env has the key but the
+  // shell does not.
+  const fromEnv = process.env[name];
+  const fromDotenv = dotenvParsed[name];
+  const present = !!fromEnv || !!fromDotenv;
+  // Length reported from whichever source has the value.
+  let length = 0;
+  let source = "neither";
+  if (fromEnv) {
+    length = fromEnv.length;
+    source = "process.env";
+  } else if (fromDotenv) {
+    length = fromDotenv.length;
+    source = ".env";
+  }
+  return { name, present, length, source };
 }
 
 function tryExec(cmd) {

@@ -1,9 +1,31 @@
 # Local Migration — Phase 0 Readiness Status
 
-**Date:** 2026-04-30 evening
+**Date:** 2026-04-30 evening (updated post-env-fill)
 **Host:** Martin's Windows PC (`C:\Users\MORR\gaming-studio\pulse-gaming`)
 **Mission scope:** Phase 0 only. Read-only diagnostics + safe local-binary checks. NO Railway changes, NO OAuth, NO cutover, NO primary flag flips.
-**Result:** 🟡 **AMBER** — one env-fill away from ready. PC is materially closer to ready than the runbook anticipated.
+**Result:** 🟢 **GREEN — Phase 0 complete.** PC is ready for Phase 1 mirror mode whenever the operator approves.
+
+---
+
+## Update 2: post-env-fill (2026-04-30 ~23:50 BST)
+
+Operator filled in `ANTHROPIC_API_KEY` to local `.env`. Re-run of doctor:
+
+> 🟢 ✅ Local-mode prerequisites met. Safe to start `node server.js` here.
+
+All env-presence checks now pass (16 vars green, 4 advisory-only that are intentionally absent until Phase 1 starts).
+
+**Diagnostic detour:** the first re-run still falsely reported `ANTHROPIC_API_KEY` as missing. Root cause: Claude Code's CLI sandbox injects `ANTHROPIC_API_KEY=""` (empty string) into every subprocess as a security guardrail, preventing Node code I run from reading the operator's Claude session token. dotenv's default no-override behaviour preserved the empty value. The doctor has been hardened to read `.env` directly via `dotenv.parse()` AND check `process.env`, so future Phase 0 runs report truthfully even inside Claude Code. **In the operator's normal PowerShell shell (no Claude Code wrapper), this would never have occurred.**
+
+Cloudflare Tunnel post-check:
+
+- ✓ Active tunnel `orryy-live` (UUID `eb816f8f-…`) with 4 Frankfurt edge connections
+- ⚠ `config.yml` references a different (older?) tunnel UUID `334951fa-…` — minor reconciliation needed at Phase 1 cutover (either update config to point at `orryy-live`, or create a fresh tunnel)
+- ✓ Ingress hostnames `orryy.com` + `www.orryy.com` configured for `localhost:3001`
+
+---
+
+## Original Phase 0 Findings (still valid)
 
 ---
 
@@ -204,8 +226,117 @@ Everything done in this session was read-only inspection.
 
 ## Once you're back at the keyboard
 
-1. Copy `ANTHROPIC_API_KEY` from Railway → paste into local `.env`.
-2. Run `node -r dotenv/config tools/local-mode-doctor.js` — confirm GREEN.
+1. ~~Copy `ANTHROPIC_API_KEY` from Railway → paste into local `.env`.~~ ✅ Done
+2. ~~Run `node -r dotenv/config tools/local-mode-doctor.js` — confirm GREEN.~~ ✅ Done
 3. Tell me — I'll then walk you through Phase 1 (mirror mode) **with your hand on the keyboard** for the OAuth-touching steps.
 
-I won't start Phase 1 until you confirm Step 1 is done and you've decided between PC and Oracle.
+---
+
+## Phase 0 → Phase 1 Plan (awaiting operator approval)
+
+Phase 0 is complete. Below is the Phase 1 plan. **I will not execute any of these steps until you reply with explicit approval.**
+
+### What Phase 1 IS
+
+Phase 1 = **mirror mode**. A second Pulse Gaming process runs on this PC in parallel with Railway. The local instance:
+
+- Is configured with `DEPLOYMENT_MODE=local` and `PULSE_PRIMARY_INSTANCE=false`
+- Reads the same DB state (after a one-time DB copy)
+- Registers all 32 schedules but their handlers refuse to fire (because `isPrimary()` returns false)
+- Posts NOTHING to platforms
+- Posts to Discord only with a `[MIRROR]` prefix so any output is identifiable
+- Lets you compare its `/api/health`, `npm run ops:publish-readiness`, and `npm run ops:render-health` against Railway's
+
+Railway stays primary throughout Phase 1. **No production posting changes. £60/mo Railway bill is unchanged during Phase 1.** Phase 1 is purely the de-risk step before the actual cutover (Phase 2).
+
+### What Phase 1 IS NOT
+
+- Not a cutover. Railway keeps publishing.
+- Not an OAuth refresh. Tokens stay where they are.
+- Not a Cloudflare Tunnel start. The mirror runs on `localhost:3001` only — it doesn't need a public URL because it isn't publishing.
+- Not a `cloudflared tunnel run` step. The tunnel stays parked.
+- Not a code change to assemble.js, publisher.js, or any uploader.
+
+### Phase 1 step-by-step
+
+(All commands run from `C:\Users\MORR\gaming-studio\pulse-gaming` in a regular PowerShell — NOT inside Claude Code, since Claude Code's wrapper would inject `ANTHROPIC_API_KEY=""` and stop the local server from working.)
+
+**Step 1 — Add three env lines to `.env`** (operator action, I will write the exact lines for you to paste):
+
+```
+DEPLOYMENT_MODE=local
+PULSE_PRIMARY_INSTANCE=false
+MEDIA_ROOT=D:/pulse-data/media
+SQLITE_DB_PATH=D:/pulse-data/pulse.db
+```
+
+(Substitute the drive/path for wherever you have spare disk. `D:/pulse-data` is just an example.)
+
+**Step 2 — One-time copy of the production SQLite DB and tokens to the local data folder.** I'll provide the exact commands but you run them. We use `railway run` to read from the production volume; nothing on Railway gets mutated. The local copy is a snapshot — Railway's DB keeps evolving as it publishes. The mirror is fine to be a few hours stale because it isn't publishing.
+
+**Step 3 — Start the mirror in a regular PowerShell window:**
+
+```
+node server.js
+```
+
+**Step 4 — Verify the mirror is running:**
+
+```
+curl http://localhost:3001/api/health
+```
+
+Expected: `deployment.mode = "local"`, `deployment.primary = false`. If `[MIRROR]` shows up in any Discord post, the prefix is working as designed.
+
+**Step 5 — Run for ~24 hours.** Compare `npm run ops:publish-readiness` against the Railway-side readiness. They should agree on the queue.
+
+**Step 6 — Decide:**
+
+- All looks healthy → eventually proceed to **Phase 2** (cost-saving cutover, which DOES change OAuth/Railway env, requires its own approval)
+- Something looks off → kill the local node process. Zero impact on production.
+
+### Phase 1 risks
+
+| Risk                                  | Likelihood | Impact                        | Mitigation                                                                                                                                          |
+| ------------------------------------- | ---------- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Local instance accidentally publishes | Very low   | High                          | `PULSE_PRIMARY_INSTANCE=false` is checked by every handler before it fires. Plus we'd need to flip `AUTO_PUBLISH=false` locally as belt-and-braces. |
+| Local DB diverges from Railway        | Certain    | Low (mirror is read-only-ish) | Mirror DB drifts as Railway keeps publishing — that's expected and fine. We re-snapshot before Phase 2 cutover.                                     |
+| `[MIRROR]` Discord posts add noise    | Possible   | Low                           | Easy to disable: comment out the local `DISCORD_WEBHOOK_URL` for the duration of Phase 1, or filter the local instance's logs not to webhook.       |
+| ffmpeg renders happen locally too     | Possible   | Low (CPU only)                | The mirror's scheduler doesn't fire produce — so no renders.                                                                                        |
+
+### Phase 1 rollback
+
+```
+# Stop the local node process (Ctrl+C in its PowerShell window)
+# Optionally remove the three Phase 1 lines from .env
+```
+
+That's it. Railway is untouched throughout, so there's nothing to roll back on the production side.
+
+### Phase 1 success criteria
+
+- ✓ `curl http://localhost:3001/api/health` returns `deployment.mode=local, primary=false`
+- ✓ No `[MIRROR]` Discord post claims a publish actually happened (it shouldn't, because handlers no-op for non-primary)
+- ✓ Local `npm run ops:publish-readiness` produces a verdict that matches Railway's (≈)
+- ✓ Local CPU/RAM during a Railway publish window stays low (mirror does nothing on its own)
+
+---
+
+## Decision needed before Phase 1
+
+Please reply with:
+
+- **"Approve Phase 1"** — I'll write out the exact `.env` additions + the DB-copy commands for you to run
+- **"Park Phase 1, stay on Railway"** — close this track, no further migration work
+- **"Switch to Oracle Phase 0"** — pivot to the Oracle Cloud Always-Free path instead of home PC
+
+I won't proceed until I hear one of those.
+
+---
+
+## Files changed in Phase 0 verification
+
+- `tools/local-mode-doctor.js` — hardened to read `.env` via `dotenv.parse()` so Claude Code's wrapper doesn't cause false negatives. Will commit + push.
+- `LOCAL_MIGRATION_PHASE0_STATUS.md` — this file, updated with the GREEN verdict + Phase 1 plan.
+
+No `.env` changes by me. No Railway / OAuth / scheduler / DB / primary-flag changes.

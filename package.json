@@ -36,6 +36,8 @@
     "ops:media:verify": "node tools/media-verify.js",
     "ops:db:backup-dry-run": "node tools/db-backup-dry-run.js",
     "ops:platform:status": "node tools/platform-status.js",
+    "ops:control-room": "node tools/control-room.js",
+    "ops:render-health": "node tools/render-health.js",
     "media:inventory": "node tools/media-inventory-report.js",
     "format:release-radar": "node tools/monthly-release-radar.js",
     "creative:visual-qa": "node tools/creative/run-visual-qa.js",

@@ -1843,7 +1843,53 @@ async function assemble() {
     // still solves the IG Reel 2207076 / FB Reel 422 chroma rejection.
     // Smart-crop will return as a follow-up with proper local repro
     // (PNG output + cache invalidation + e2e ffmpeg test).
-    const images = rawImages;
+    // 2026-04-30: pre-flight validation. Every input image gets
+    // opened with sharp before being added to the filter graph.
+    // Bad inputs (corrupt download, 0×0, sub-32px, sub-200B, file
+    // missing) are dropped; multi-image render proceeds with the
+    // survivors. This is the smallest root-cause fix for the
+    // 10:03 UTC Tales Of remaster fallback (8 visuals available
+    // → multi-image graph crashed silently). Without this, ONE bad
+    // image in a deck of 8 fails the entire filter network because
+    // every xfade depends on the previous segment.
+    let images = rawImages;
+    let preflightBad = [];
+    try {
+      const { validateImageBatch } = require("./lib/render-input-validation");
+      const r = await validateImageBatch(rawImages);
+      if (r.bad.length > 0) {
+        preflightBad = r.bad;
+        console.log(
+          `[assemble] ${story.id}: pre-flight dropped ${r.bad.length}/${rawImages.length} bad image(s): ${r.bad
+            .map((b) => `${b.path.split(/[\\/]/).pop()}=${b.reason}`)
+            .join(", ")
+            .slice(0, 280)}`,
+        );
+      }
+      // If validation drained the deck completely, fall back to the
+      // composite image if available — beats hard-skipping the
+      // story.
+      if (r.good.length === 0 && compositeImageAbs) {
+        images = [compositeImageAbs];
+        story.render_fallback_reason = `class=all_inputs_invalid | inputs_validated=${rawImages.length} | inputs_bad=${r.bad.length} | detail=using_composite_only`;
+        story.render_fallback_at = new Date().toISOString();
+      } else if (r.good.length === 0) {
+        console.log(
+          `[assemble] ${story.id}: ALL inputs invalid and no composite — skipping`,
+        );
+        skipped++;
+        continue;
+      } else {
+        images = r.good;
+      }
+    } catch (err) {
+      // Validation module failure is non-fatal; fall through with
+      // the original list and let the existing catch handle ffmpeg
+      // errors as before.
+      console.log(
+        `[assemble] ${story.id}: pre-flight validation errored (continuing): ${err.message}`,
+      );
+    }
     console.log(
       `[assemble] ${story.id}: using ${images.length} real images (smart-crop disabled — hotfix 2026-04-25)`,
     );
@@ -1933,13 +1979,29 @@ async function assemble() {
       story.render_quality_class = "fallback";
       // 2026-04-30 forensic stamp: capture the ffmpeg stderr tail so
       // future fallbacks are diagnosable from the DB / control room
-      // instead of requiring Railway log archaeology. The earlier
-      // "Tales Of remaster" 10:03 UTC fallback rendered with 8
-      // visuals available but the multi-image graph crashed silently
-      // — operator only saw the lane label, not the cause.
-      story.render_fallback_reason = errDetail
-        ? String(errDetail).slice(-400)
-        : "unknown_ffmpeg_failure";
+      // instead of requiring Railway log archaeology. Now upgraded
+      // with structured class classification so the operator can
+      // grep on a known enum (filter_graph_parse_error /
+      // input_decode_error / drawtext_error / etc) rather than
+      // 400 chars of raw stderr.
+      try {
+        const {
+          classifyFfmpegError,
+          buildFallbackReason,
+        } = require("./lib/render-input-validation");
+        const errClass = classifyFfmpegError(err.stderr || err.message || "");
+        story.render_fallback_reason = buildFallbackReason({
+          errorClass: errClass,
+          detail: errDetail,
+          inputsValidated: images.length,
+          inputsBad: preflightBad.length,
+        });
+      } catch {
+        // Module load failure → fall back to raw stderr tail
+        story.render_fallback_reason = errDetail
+          ? String(errDetail).slice(-400)
+          : "class=unknown_ffmpeg_failure";
+      }
       story.render_fallback_at = new Date().toISOString();
       story.render_fallback_visual_count = images.length;
 

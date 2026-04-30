@@ -42,6 +42,7 @@
     "docs:doctor": "node tools/docs-doctor.js",
     "ops:provenance": "node tools/provenance-report.js",
     "ops:render-contract": "node tools/render-contract-report.js",
+    "ops:publish-readiness": "node tools/publish-readiness.js",
     "media:inventory": "node tools/media-inventory-report.js",
     "format:release-radar": "node tools/monthly-release-radar.js",
     "creative:visual-qa": "node tools/creative/run-visual-qa.js",

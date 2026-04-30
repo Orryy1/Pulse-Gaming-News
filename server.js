@@ -483,29 +483,43 @@ app.get("/auth/facebook/callback", async (req, res) => {
       console.log(`[facebook] IG account lookup failed: ${err.message}`);
     }
 
-    // Log env-var updates to server stdout ONLY — never echo tokens back to
-    // the browser. Any proxy, screen share, browser-history flush, or
-    // shoulder-surf would otherwise capture a non-expiring Page token with
-    // publish rights to both Facebook and Instagram. The token is already
-    // persisted to tokens/*.json above; the operator can pull it from there
-    // or from the server log when syncing Railway env.
-    const envUpdates = [
-      `FACEBOOK_PAGE_TOKEN=${pageToken}`,
-      `FACEBOOK_PAGE_ID=${page.id}`,
-    ];
+    // 2026-04-29 audit P0 fix: NEVER log full token values. Production
+    // logs (Railway, Discord, screen-share, log aggregators) are not a
+    // secret store. Earlier code printed the full Page token alongside
+    // the env-var key; that token has publish rights to both Facebook
+    // and Instagram and does not expire on its own.
+    //
+    // New behaviour:
+    //   - tokens are persisted to tokens/*.json (existing path)
+    //   - server stdout logs only the variable NAMES that need updating
+    //     and a short fingerprint (first 6 + last 4 chars) for the
+    //     operator to verify the right token was written, never the
+    //     full secret
+    //   - the operator pulls the actual value from tokens/*.json
+    function fingerprint(secret) {
+      const s = String(secret || "");
+      if (s.length <= 12) return "(short)";
+      return `${s.slice(0, 6)}…${s.slice(-4)} (len=${s.length})`;
+    }
+    const envVarNames = ["FACEBOOK_PAGE_TOKEN", "FACEBOOK_PAGE_ID"];
     if (igAccountId) {
-      envUpdates.push(
-        `INSTAGRAM_ACCESS_TOKEN=${pageToken}`,
-        `INSTAGRAM_BUSINESS_ACCOUNT_ID=${igAccountId}`,
+      envVarNames.push(
+        "INSTAGRAM_ACCESS_TOKEN",
+        "INSTAGRAM_BUSINESS_ACCOUNT_ID",
       );
     }
     console.log(
-      `[facebook] OAuth complete. Update Railway env (server-side log only):\n  ${envUpdates.join("\n  ")}`,
+      `[facebook] OAuth complete. ` +
+        `Page=${page.id}, IG=${igAccountId || "(none)"}, ` +
+        `pageToken_fp=${fingerprint(pageToken)}. ` +
+        `Sync these Railway env vars from tokens/facebook_token.json + tokens/instagram_token.json: ` +
+        `${envVarNames.join(", ")}. ` +
+        `Token VALUES are intentionally not logged.`,
     );
 
     const sendDiscord = require("./notify");
     await sendDiscord(
-      `**Facebook + Instagram Re-authenticated**\nPage: ${page.name}\nIG: ${igAccountId || "not linked"}\n\nNew tokens written to tokens/. Pull from server logs to sync Railway env.`,
+      `**Facebook + Instagram Re-authenticated**\nPage: ${page.name}\nIG: ${igAccountId || "not linked"}\n\nNew tokens written to tokens/. Pull values from those files; logs only carry fingerprints.`,
     ).catch(() => {});
 
     res.send(`<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:60px">

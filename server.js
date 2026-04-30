@@ -1316,52 +1316,119 @@ app.get(/^\/api\/download\/([^/]+?)(?:\.mp4)?$/, async (req, res) => {
 });
 
 // --- Stats ---
-app.get("/api/stats/:postId", async (req, res) => {
-  try {
-    const { platform } = req.query;
-    const postId = req.params.postId;
+//
+// 2026-04-29 audit P1: this endpoint was previously open with no auth,
+// no rate limit, and no caching. A caller could pass arbitrary YouTube
+// IDs and burn through the daily YouTube Data API quota (10k units/day
+// for free key) in seconds. Hardening:
+//   1. requireAuth so only authenticated dashboard callers can hit it.
+//   2. rateLimit (60 / 60s) so a runaway frontend loop can't drain quota.
+//   3. In-process TTL cache (60s) keyed by (platform, postId) so a tab
+//      refresh / SSE retry doesn't fetch the same video twice in close
+//      succession.
+//
+// The cache is intentionally small and process-local. A larger cross-
+// process cache would need Redis; this surface only needs the
+// "don't-thrash" semantic.
+const STATS_CACHE = new Map();
+const STATS_CACHE_TTL_MS = 60 * 1000;
+const STATS_CACHE_MAX_ENTRIES = 1000;
 
-    // Guard against sentinel values ("DUPE_BLOCKED" / "DUPE_SKIPPED") that the
-    // publisher writes into post-id fields when an upload was refused.
-    // Sending those to the real YouTube/TikTok APIs burns quota on a
-    // guaranteed 404 and surfaces "0 views" as if the video existed.
-    if (!postId || postId.startsWith("DUPE_")) {
-      return res.json({ views: 0, blocked: true });
-    }
-
-    if (platform === "youtube") {
-      const apiKey = process.env.YOUTUBE_API_KEY;
-      if (!apiKey || apiKey === "placeholder") {
-        return res.json({ views: 0, note: "YouTube API key not configured" });
-      }
-      try {
-        const ytRes = await fetch(
-          `https://www.googleapis.com/youtube/v3/videos?part=statistics&id=${encodeURIComponent(postId)}&key=${encodeURIComponent(apiKey)}`,
-        );
-        if (ytRes.ok) {
-          const ytData = await ytRes.json();
-          const item = ytData.items?.[0];
-          return res.json({
-            views: item ? parseInt(item.statistics.viewCount, 10) || 0 : 0,
-          });
-        }
-      } catch (e) {
-        // fall through
-      }
-      return res.json({ views: 0 });
-    }
-
-    if (platform === "tiktok") {
-      return res.json({ views: 0 });
-    }
-
-    res.json({ views: 0, likes: 0, note: "YouTube API integration pending" });
-  } catch (err) {
-    console.log(`[server] ERROR stats: ${err.message}`);
-    console.error(`[server] Internal error: ${err.message}`);
-    res.status(500).json({ error: "Internal server error" });
+function cachedStatsGet(key) {
+  const hit = STATS_CACHE.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.at > STATS_CACHE_TTL_MS) {
+    STATS_CACHE.delete(key);
+    return null;
   }
-});
+  return hit.value;
+}
+
+function cachedStatsSet(key, value) {
+  if (STATS_CACHE.size >= STATS_CACHE_MAX_ENTRIES) {
+    // Naive eviction: clear the oldest 100 entries when full so a hot
+    // workload doesn't fill the Map indefinitely.
+    let evicted = 0;
+    for (const k of STATS_CACHE.keys()) {
+      STATS_CACHE.delete(k);
+      if (++evicted >= 100) break;
+    }
+  }
+  STATS_CACHE.set(key, { at: Date.now(), value });
+}
+
+app.get(
+  "/api/stats/:postId",
+  requireAuth,
+  rateLimit(60, 60000),
+  async (req, res) => {
+    try {
+      const { platform } = req.query;
+      const postId = req.params.postId;
+
+      // Guard against sentinel values ("DUPE_BLOCKED" / "DUPE_SKIPPED")
+      // that the publisher writes into post-id fields when an upload
+      // was refused. Sending those to the real YouTube/TikTok APIs
+      // burns quota on a guaranteed 404 and surfaces "0 views" as if
+      // the video existed.
+      if (!postId || postId.startsWith("DUPE_")) {
+        return res.json({ views: 0, blocked: true });
+      }
+
+      const cacheKey = `${platform || "default"}|${postId}`;
+      const cached = cachedStatsGet(cacheKey);
+      if (cached) {
+        return res.json({ ...cached, cached: true });
+      }
+
+      if (platform === "youtube") {
+        const apiKey = process.env.YOUTUBE_API_KEY;
+        if (!apiKey || apiKey === "placeholder") {
+          const out = { views: 0, note: "YouTube API key not configured" };
+          cachedStatsSet(cacheKey, out);
+          return res.json(out);
+        }
+        try {
+          const ytRes = await fetch(
+            `https://www.googleapis.com/youtube/v3/videos?part=statistics&id=${encodeURIComponent(postId)}&key=${encodeURIComponent(apiKey)}`,
+          );
+          if (ytRes.ok) {
+            const ytData = await ytRes.json();
+            const item = ytData.items?.[0];
+            const out = {
+              views: item ? parseInt(item.statistics.viewCount, 10) || 0 : 0,
+            };
+            cachedStatsSet(cacheKey, out);
+            return res.json(out);
+          }
+        } catch (e) {
+          // fall through
+        }
+        const out = { views: 0 };
+        cachedStatsSet(cacheKey, out);
+        return res.json(out);
+      }
+
+      if (platform === "tiktok") {
+        const out = { views: 0 };
+        cachedStatsSet(cacheKey, out);
+        return res.json(out);
+      }
+
+      const out = {
+        views: 0,
+        likes: 0,
+        note: "YouTube API integration pending",
+      };
+      cachedStatsSet(cacheKey, out);
+      res.json(out);
+    } catch (err) {
+      console.log(`[server] ERROR stats: ${err.message}`);
+      console.error(`[server] Internal error: ${err.message}`);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);
 
 app.post("/api/stats/update", requireAuth, rateLimit(30, 60000), (req, res) => {
   const { id, youtube_views, tiktok_views } = req.body;

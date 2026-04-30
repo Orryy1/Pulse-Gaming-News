@@ -977,6 +977,20 @@ async function _publishNextStoryInner() {
 
   const result = {
     title: story.title,
+    // --- Render-quality metadata for Discord summary (audit P1) ---
+    // Exposes the assemble.js-stamped fields so the operator sees per-
+    // publish render quality without diving into the DB. Falls back
+    // to "(unstamped)" for stories that pre-date 2026-04-29.
+    render_lane: story.render_lane || null,
+    render_quality_class: story.render_quality_class || null,
+    distinct_visual_count:
+      typeof story.distinct_visual_count === "number"
+        ? story.distinct_visual_count
+        : typeof story.qa_visual_count === "number"
+          ? story.qa_visual_count
+          : null,
+    outro_present:
+      typeof story.outro_present === "boolean" ? story.outro_present : null,
     // --- CORE (video) platforms: true iff a Reel/Short upload for
     // this platform is now considered "done" — that includes both
     // a fresh new upload AND an already-published state (partial
@@ -1379,9 +1393,9 @@ async function _publishNextStoryInner() {
           await db.upsertStory(story);
           igResult = null;
         } else {
-        console.log(
-          `[publisher] Instagram binary upload failed: ${reelErr.message}, trying URL fallback...`,
-        );
+          console.log(
+            `[publisher] Instagram binary upload failed: ${reelErr.message}, trying URL fallback...`,
+          );
           try {
             igResult = await igUrlUpload(story);
           } catch (urlErr) {

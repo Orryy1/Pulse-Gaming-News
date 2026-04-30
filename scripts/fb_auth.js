@@ -26,6 +26,17 @@ const dotenv = require("dotenv");
 
 dotenv.config({ override: true });
 
+// 2026-04-30 audit P0 (token-log sweep): never print full token values
+// to stdout. CLI output gets pasted into chat / screen-shared / saved
+// in shell history. Use a fingerprint (first 6 + last 4 + length)
+// instead so the operator can verify they're syncing the right token
+// without leaking the secret. Mirrors the server.js pattern.
+function tokenFingerprint(secret) {
+  const s = String(secret || "");
+  if (s.length <= 12) return "(short or absent)";
+  return `${s.slice(0, 6)}…${s.slice(-4)} (len=${s.length})`;
+}
+
 const FB_TOKEN_PATH = path.join(
   __dirname,
   "..",
@@ -165,8 +176,12 @@ async function exchangeForLongLived(shortToken) {
       console.log(`Instagram Business Account ID: ${igAccountId}`);
       console.log("\nUpdate .env on Railway:");
       console.log(`  FACEBOOK_PAGE_ID=${page.id}`);
-      console.log(`  FACEBOOK_PAGE_TOKEN=${pageToken}`);
-      console.log(`  INSTAGRAM_ACCESS_TOKEN=${pageToken}`);
+      console.log(
+        `  FACEBOOK_PAGE_TOKEN=<set from tokens/facebook_token.json> (fp=${tokenFingerprint(pageToken)})`,
+      );
+      console.log(
+        `  INSTAGRAM_ACCESS_TOKEN=<set from tokens/instagram_token.json> (fp=${tokenFingerprint(pageToken)})`,
+      );
       console.log(`  INSTAGRAM_BUSINESS_ACCOUNT_ID=${igAccountId}`);
     } else {
       console.log("\nNo Instagram Business account linked to this page.");
@@ -328,9 +343,13 @@ async function setupDirect(userToken) {
 
   console.log("\nUpdate .env / Railway with:");
   console.log(`  FACEBOOK_PAGE_ID=${page.id}`);
-  console.log(`  FACEBOOK_PAGE_TOKEN=${page.access_token}`);
+  console.log(
+    `  FACEBOOK_PAGE_TOKEN=<set from tokens/facebook_token.json> (fp=${tokenFingerprint(page.access_token)})`,
+  );
   if (igAccountId) {
-    console.log(`  INSTAGRAM_ACCESS_TOKEN=${page.access_token}`);
+    console.log(
+      `  INSTAGRAM_ACCESS_TOKEN=<set from tokens/instagram_token.json> (fp=${tokenFingerprint(page.access_token)})`,
+    );
     console.log(`  INSTAGRAM_BUSINESS_ACCOUNT_ID=${igAccountId}`);
   }
   console.log("\nDone.");

@@ -894,7 +894,80 @@ async function getBestImage(story) {
     }
   }
 
+  // 2026-04-30 audit P1 #2: asset provenance ledger.
+  // Persist a media_provenance row for every accepted asset, plus
+  // pixel-level signals (deduped via content_hash). Best-effort —
+  // recordDownload swallows its own errors and returns ok=false on
+  // transient failures so the produce loop keeps going.
+  try {
+    const provenance = require("./lib/media-provenance");
+    for (const img of ordered) {
+      try {
+        await provenance.recordDownload({
+          story_id: story.id,
+          channel_id: story.channel_id || null,
+          source_url: img.url || null,
+          source_type: classifyProvenanceSourceType(img),
+          file_path: img.path,
+          story_relevance_score:
+            typeof img.priority === "number"
+              ? Math.max(0, Math.min(1, img.priority / 100))
+              : null,
+          accepted: true,
+          raw_meta: {
+            type: img.type,
+            source: img.source,
+            priority: img.priority,
+          },
+        });
+      } catch (provErr) {
+        console.log(
+          `[images] provenance record failed (non-fatal): ${provErr.message}`,
+        );
+      }
+    }
+  } catch (err) {
+    // Module not loadable (USE_SQLITE off / migration not applied) —
+    // the produce loop is unaffected.
+    console.log(`[images] provenance module unavailable: ${err.message}`);
+  }
+
   return { images: ordered, videoClips };
+}
+
+/**
+ * Map an internal image entry (source + type) onto the enum used by
+ * media_provenance.source_type. Unknown combinations fall back to
+ * the catch-all "other" so the column is never null.
+ */
+function classifyProvenanceSourceType(img) {
+  if (!img) return "other";
+  const src = (img.source || "").toLowerCase();
+  const type = (img.type || "").toLowerCase();
+  if (src === "article" && type.includes("hero")) return "article_hero";
+  if (src === "article" && type.includes("inline")) return "article_inline";
+  if (src === "article") return "article_inline";
+  if (src === "steam") {
+    if (type === "capsule") return "steam_capsule";
+    if (type === "hero") return "steam_hero";
+    if (type === "key_art") return "steam_key_art";
+    if (type === "screenshot") return "steam_screenshot";
+    if (type === "trailer") return "steam_trailer";
+    return "steam_screenshot";
+  }
+  if (src === "igdb") {
+    if (type === "key_art") return "igdb_cover";
+    return "igdb_screenshot";
+  }
+  if (src === "logo" || type === "company_logo") return "company_logo";
+  if (src === "reddit" || type === "reddit_thumb") return "reddit_thumb";
+  if (src === "pexels") return "pexels";
+  if (src === "unsplash") return "unsplash";
+  if (src === "bing") return "bing";
+  if (src.startsWith("youtube") || src.startsWith("steam_fallback")) {
+    return "steam_trailer";
+  }
+  return "other";
 }
 
 module.exports = getBestImage;
@@ -902,3 +975,4 @@ module.exports.downloadVideoClip = downloadVideoClip;
 module.exports.downloadImage = downloadImage;
 module.exports.buildSteamSearchCandidates = buildSteamSearchCandidates;
 module.exports.extractSteamTrailerUrls = extractSteamTrailerUrls;
+module.exports.classifyProvenanceSourceType = classifyProvenanceSourceType;

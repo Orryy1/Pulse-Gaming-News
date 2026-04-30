@@ -8,6 +8,184 @@ const a = require("../../lib/intelligence/live-performance-analyst");
 // 2026-04-29: live continuous-analysis model. Pins the pure functions
 // (Welford update, feature extraction, candidate selection,
 // per-story analyse) and the env-gating contract on runLiveAnalystPass.
+// 2026-04-30: added collapseFanoutSignals + isFreshToNotify tests
+// (Discord report: same outlier was firing 5x per tick × every 30 min).
+
+// ── collapseFanoutSignals ─────────────────────────────────────────
+
+test("collapseFanoutSignals: 7 feature_kind signals for one outlier collapse to 1", () => {
+  const signals = [
+    {
+      story_id: "s1",
+      metric: "views",
+      signal_kind: "outlier_overperform",
+      severity: 2.6,
+    },
+    {
+      story_id: "s1",
+      metric: "views",
+      signal_kind: "outlier_overperform",
+      severity: 2.8,
+    },
+    {
+      story_id: "s1",
+      metric: "views",
+      signal_kind: "outlier_overperform",
+      severity: 2.5,
+    },
+    {
+      story_id: "s1",
+      metric: "views",
+      signal_kind: "outlier_overperform",
+      severity: 3.1,
+    },
+    {
+      story_id: "s1",
+      metric: "views",
+      signal_kind: "outlier_overperform",
+      severity: 2.4,
+    },
+    {
+      story_id: "s1",
+      metric: "views",
+      signal_kind: "outlier_overperform",
+      severity: 2.9,
+    },
+    {
+      story_id: "s1",
+      metric: "views",
+      signal_kind: "outlier_overperform",
+      severity: 2.7,
+    },
+  ];
+  const out = a.collapseFanoutSignals(signals);
+  assert.equal(out.length, 1);
+  // Strongest |severity| wins
+  assert.equal(out[0].severity, 3.1);
+});
+
+test("collapseFanoutSignals: keeps separate (story, metric, kind) tuples distinct", () => {
+  const signals = [
+    {
+      story_id: "s1",
+      metric: "views",
+      signal_kind: "outlier_overperform",
+      severity: 3,
+    },
+    {
+      story_id: "s1",
+      metric: "comments_per_view",
+      signal_kind: "outlier_overperform",
+      severity: 2.8,
+    },
+    {
+      story_id: "s1",
+      metric: "views",
+      signal_kind: "outlier_underperform",
+      severity: -2.5,
+    },
+    {
+      story_id: "s2",
+      metric: "views",
+      signal_kind: "outlier_overperform",
+      severity: 2.6,
+    },
+  ];
+  const out = a.collapseFanoutSignals(signals);
+  assert.equal(out.length, 4);
+});
+
+test("collapseFanoutSignals: keeps the most-negative for underperforms", () => {
+  const signals = [
+    {
+      story_id: "s1",
+      metric: "views",
+      signal_kind: "outlier_underperform",
+      severity: -2.6,
+    },
+    {
+      story_id: "s1",
+      metric: "views",
+      signal_kind: "outlier_underperform",
+      severity: -10.3,
+    },
+    {
+      story_id: "s1",
+      metric: "views",
+      signal_kind: "outlier_underperform",
+      severity: -3.1,
+    },
+  ];
+  const out = a.collapseFanoutSignals(signals);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].severity, -10.3);
+});
+
+test("collapseFanoutSignals: empty / null input returns empty array", () => {
+  assert.deepEqual(a.collapseFanoutSignals([]), []);
+  assert.deepEqual(a.collapseFanoutSignals(null), []);
+  assert.deepEqual(a.collapseFanoutSignals(undefined), []);
+});
+
+// ── isFreshToNotify ───────────────────────────────────────────────
+
+function fakeDb({ shouldFindRow = false, shouldThrow = false } = {}) {
+  return {
+    prepare(_sql) {
+      return {
+        get(...args) {
+          if (shouldThrow) throw new Error("table missing");
+          return shouldFindRow ? { 1: 1 } : undefined;
+        },
+      };
+    },
+  };
+}
+
+test("isFreshToNotify: no recent notify → fresh (true)", () => {
+  const fresh = a.isFreshToNotify({
+    db: fakeDb({ shouldFindRow: false }),
+    storyId: "s1",
+    metric: "views",
+    signalKind: "outlier_overperform",
+    windowHours: 12,
+  });
+  assert.equal(fresh, true);
+});
+
+test("isFreshToNotify: recent notify in window → not fresh (false)", () => {
+  const fresh = a.isFreshToNotify({
+    db: fakeDb({ shouldFindRow: true }),
+    storyId: "s1",
+    metric: "views",
+    signalKind: "outlier_overperform",
+    windowHours: 12,
+  });
+  assert.equal(fresh, false);
+});
+
+test("isFreshToNotify: missing args → fresh (assume yes)", () => {
+  assert.equal(a.isFreshToNotify({}), true);
+  assert.equal(a.isFreshToNotify({ db: fakeDb(), storyId: "s1" }), true);
+});
+
+test("isFreshToNotify: db throws → suppress (fail-safe, NOT fresh)", () => {
+  const fresh = a.isFreshToNotify({
+    db: fakeDb({ shouldThrow: true }),
+    storyId: "s1",
+    metric: "views",
+    signalKind: "outlier_overperform",
+    windowHours: 12,
+  });
+  assert.equal(fresh, false);
+});
+
+// ── NOTIFY_DEDUPE_HOURS export ───────────────────────────────────
+
+test("NOTIFY_DEDUPE_HOURS exported and >= 6 hours", () => {
+  assert.ok(typeof a.NOTIFY_DEDUPE_HOURS === "number");
+  assert.ok(a.NOTIFY_DEDUPE_HOURS >= 6);
+});
 
 // ── Welford ───────────────────────────────────────────────────────
 

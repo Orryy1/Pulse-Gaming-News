@@ -25,10 +25,18 @@ const PHONETIC_MAP = {
   dequeue: "dee-queue",
 };
 
+const { applyGamingPronunciation } = require("./lib/tts-pronunciation");
+
 // --- Clean text for TTS - shared logic ---
 function cleanForTTS(raw) {
+  // 2026-04-30 fix (Discord report): narrator pronounced "AAA" as
+  // letters "A. A. A." rather than industry-standard "Triple A".
+  // Apply gaming-specific pronunciation rewrites BEFORE the other
+  // transforms so subsequent regex passes see the already-rewritten
+  // text (e.g. so the abbreviation-stripper doesn't trip on "Triple A").
+  const pre = applyGamingPronunciation(raw || "");
   return (
-    (raw || "")
+    pre
       // 2026-04-19 fix (precedes the other transforms): paragraph /
       // line separators (U+2028, U+2029) must become real spaces BEFORE
       // the invisible-unicode stripper runs, otherwise the stripper

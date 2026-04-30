@@ -727,6 +727,18 @@ app.get("/api/health", (req, res) => {
     sqlite_db_path_looks_ephemeral: sqliteDbPathLooksEphemeral,
   };
 
+  // 2026-04-30: deployment-mode awareness. Lets the operator verify
+  // whether a given /api/health response is the Railway instance or
+  // a local PC during the cost-saving migration. No secrets exposed —
+  // only mode metadata (railway/local + primary flag + public URL).
+  let deployment = null;
+  try {
+    const dm = require("./lib/deployment-mode");
+    deployment = dm.summary();
+  } catch {
+    /* module absent in early-boot contexts */
+  }
+
   res.json({
     status: "ok",
     version: "v2.2.0",
@@ -738,6 +750,7 @@ app.get("/api/health", (req, res) => {
     circuitBreakers,
     build,
     runtime,
+    deployment,
   });
 });
 

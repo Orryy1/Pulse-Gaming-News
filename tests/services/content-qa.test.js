@@ -146,6 +146,66 @@ test("runContentQa: glued sentence in tts_script → fail", async () => {
   assert.ok(qa.failures.includes("glued_sentence_in_tts_script"));
 });
 
+test("runContentQa: damaged protected brand name in TTS script → fail", async () => {
+  const story = goodStory({
+    full_script: goodStory().full_script + " Pok\u00e9mon returns this month.",
+    tts_script: "Pokmon returns this month.",
+  });
+  const qa = await runContentQa(story, {
+    fs: fakeFs({ [story.exported_path]: { size: 5 * 1024 * 1024 } }),
+  });
+  assert.strictEqual(qa.result, "fail");
+  assert.ok(
+    qa.failures.some((f) =>
+      f.includes("brand_name:protected_name_damaged:Pok\u00e9mon:tts_script:Pokmon"),
+    ),
+    `got: ${qa.failures.join(", ")}`,
+  );
+});
+
+test("runContentQa: overlong audio duration hard-fails before publish", async () => {
+  const story = goodStory({ audio_duration: 125.86 });
+  const qa = await runContentQa(story, {
+    fs: fakeFs({ [story.exported_path]: { size: 5 * 1024 * 1024 } }),
+  });
+
+  assert.strictEqual(qa.result, "fail");
+  assert.ok(
+    qa.failures.some((f) => f.startsWith("audio_duration_too_long")),
+    `got: ${qa.failures.join(", ")}`,
+  );
+});
+
+test("runContentQa: pending Studio v2.1 render requires human visual review", async () => {
+  const story = goodStory({
+    render_engine: "studio-v21",
+    human_visual_review_required: true,
+    render_review_status: "pending",
+  });
+  const qa = await runContentQa(story, {
+    fs: fakeFs({ [story.exported_path]: { size: 5 * 1024 * 1024 } }),
+    env: { RENDER_ENGINE: "studio-v21" },
+  });
+  assert.strictEqual(qa.result, "fail");
+  assert.ok(
+    qa.failures.includes("human_visual_review_required:studio-v21"),
+    `got: ${qa.failures.join(", ")}`,
+  );
+});
+
+test("runContentQa: approved Studio v2.1 visual review is allowed through QA", async () => {
+  const story = goodStory({
+    render_engine: "studio-v21",
+    human_visual_review_required: true,
+    render_review_status: "approved",
+  });
+  const qa = await runContentQa(story, {
+    fs: fakeFs({ [story.exported_path]: { size: 5 * 1024 * 1024 } }),
+    env: { RENDER_ENGINE: "studio-v21" },
+  });
+  assert.strictEqual(qa.result, "pass", JSON.stringify(qa));
+});
+
 // ---------- warnings (don't block) ------------------------------
 
 test("runContentQa: American time format → warn, not fail", async () => {

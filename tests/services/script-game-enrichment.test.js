@@ -148,10 +148,15 @@ test("fetchImageUrlsForTitle: Steam hit returns capsule + hero + key_art", async
   assert.equal(out.length, 3);
   assert.equal(out[0].type, "capsule");
   assert.equal(out[0].source, "steam");
+  assert.equal(out[0].steam_app_id, "271590");
+  assert.equal(out[0].steam_app_title, "Grand Theft Auto V");
+  assert.equal(out[0].steam_matched_query, "Grand Theft Auto V");
   assert.match(out[0].url, /library_600x900\.jpg$/);
   assert.equal(out[1].type, "hero");
+  assert.equal(out[1].steam_app_title, "Grand Theft Auto V");
   assert.match(out[1].url, /library_hero\.jpg$/);
   assert.equal(out[2].type, "key_art");
+  assert.equal(out[2].steam_app_title, "Grand Theft Auto V");
   assert.match(out[2].url, /header\.jpg$/);
 });
 
@@ -189,6 +194,7 @@ test("fetchImageUrlsForTitle: Steam miss + IGDB hit returns IGDB images only", a
     max: 3,
   });
   assert.equal(out.length, 2);
+  assert.equal(out[0].igdb_title, "Bloodborne");
   assert.equal(out[0].source, "igdb");
 });
 

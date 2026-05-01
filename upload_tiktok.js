@@ -4,6 +4,7 @@ const axios = require("axios");
 const dotenv = require("dotenv");
 const { withRetry } = require("./lib/retry");
 const { addBreadcrumb, captureException } = require("./lib/sentry");
+const { getPublicUrl } = require("./lib/deployment-mode");
 const { validateVideo } = require("./lib/validate");
 const db = require("./lib/db");
 const mediaPaths = require("./lib/media-paths");
@@ -405,7 +406,7 @@ function buildAuthorizeUrl({ state } = {}) {
   }
   const redirectUri =
     process.env.TIKTOK_REDIRECT_URI ||
-    "https://marvelous-curiosity-production.up.railway.app/auth/tiktok/callback";
+    `${getPublicUrl()}/auth/tiktok/callback`;
   const scope = "user.info.basic,video.publish,video.upload";
   const params = {
     client_key: clientKey,
@@ -443,7 +444,7 @@ async function exchangeCode(code) {
     grant_type: "authorization_code",
     redirect_uri:
       process.env.TIKTOK_REDIRECT_URI ||
-      "https://marvelous-curiosity-production.up.railway.app/auth/tiktok/callback",
+      `${getPublicUrl()}/auth/tiktok/callback`,
   });
   const response = await axios.post(
     "https://open.tiktokapis.com/v2/oauth/token/",

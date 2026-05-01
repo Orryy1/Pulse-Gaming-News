@@ -9,6 +9,7 @@ dotenv.config({ override: true });
 const brand = require("./brand");
 const getBestImage = require("./images_download");
 const { selectThumbnailSubjectImage } = require("./lib/thumbnail-safety");
+const { applyProduceSelection } = require("./lib/produce-selection");
 
 const OUTPUT_DIR = path.join("output", "images");
 const CACHE_DIR = path.join("output", "image_cache");
@@ -305,7 +306,10 @@ async function generateImages() {
   await fs.ensureDir(mediaPaths.writePath(OUTPUT_DIR));
   await fs.ensureDir(mediaPaths.writePath(CACHE_DIR));
 
-  const toProcess = stories.filter((s) => s.approved === true && !s.image_path);
+  const toProcess = applyProduceSelection(
+    stories.filter((s) => s.approved === true && !s.image_path),
+    { stage: "images", log: console.log },
+  );
 
   // Load branded thumbnail background once
   const bgPath = path.join(__dirname, "branding", "shorts_thumbnail_bg.png");

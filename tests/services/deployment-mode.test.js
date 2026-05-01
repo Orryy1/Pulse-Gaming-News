@@ -97,6 +97,17 @@ test("getPublicUrl: RAILWAY_PUBLIC_URL wins over LOCAL_PUBLIC_URL", () => {
   );
 });
 
+test("getPublicUrl: LOCAL_PUBLIC_URL wins over RAILWAY_PUBLIC_URL in local mode", () => {
+  assert.equal(
+    dm.getPublicUrl({
+      DEPLOYMENT_MODE: "local",
+      RAILWAY_PUBLIC_URL: "https://x.up.railway.app",
+      LOCAL_PUBLIC_URL: "https://local.example",
+    }),
+    "https://local.example",
+  );
+});
+
 test("getPublicUrl: LOCAL_PUBLIC_URL wins when only it is set", () => {
   assert.equal(
     dm.getPublicUrl({ LOCAL_PUBLIC_URL: "https://pulse.your-domain.com" }),
@@ -171,6 +182,18 @@ test("summary: never includes secret values", () => {
   });
   const json = JSON.stringify(s);
   assert.ok(!json.includes("DO_NOT_LEAK"));
+});
+
+test("summary: redacts configured filesystem paths from public metadata", () => {
+  const s = dm.summary({
+    DEPLOYMENT_MODE: "local",
+    MEDIA_ROOT: "C:\\Users\\MORR\\pulse-media",
+    SQLITE_DB_PATH: "C:\\Users\\MORR\\pulse.db",
+  });
+  const json = JSON.stringify(s);
+  assert.ok(!json.includes("C:\\Users\\MORR"));
+  assert.equal(s.media_root, "(configured)");
+  assert.equal(s.sqlite_db_path, "(configured)");
 });
 
 // ── prefix ───────────────────────────────────────────────────────

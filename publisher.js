@@ -213,6 +213,33 @@ async function produce() {
   await images();
   await assemble();
 
+  // Studio v2.1 quality layer: explicit switch only. The legacy MP4
+  // remains the publishable artefact; v2.1 renders are sidecar
+  // candidates stamped with a human visual review hold. This lets us
+  // test the high-quality layer without accidentally pushing an
+  // experimental render into the normal platform queue.
+  try {
+    const {
+      isStudioV21BatchEnabled,
+      runStudioV21ReviewBatch,
+    } = require("./lib/studio/v2/studio-v21-review-batch");
+    if (isStudioV21BatchEnabled(process.env)) {
+      const limit = Number(process.env.STUDIO_V21_BATCH_LIMIT || 5);
+      const result = await runStudioV21ReviewBatch({
+        db,
+        limit,
+        env: process.env,
+      });
+      console.log(
+        `[publisher] Studio v2.1 review batch complete: candidates=${result.candidates.length}, results=${result.results.length}`,
+      );
+    }
+  } catch (err) {
+    console.log(
+      `[publisher] Studio v2.1 review batch errored (non-fatal): ${err.message}`,
+    );
+  }
+
   // Generate Instagram Story images for each produced video
   const { generateStoryImages } = require("./images_story");
   await generateStoryImages();
@@ -257,7 +284,11 @@ async function produce() {
 async function logFormatRecommendationsForApprovedStories() {
   const stories = await db.getStories();
   if (!Array.isArray(stories) || stories.length === 0) return;
-  const targets = stories.filter((s) => s.approved === true && s.exported_path);
+  const { applyProduceSelection } = require("./lib/produce-selection");
+  const targets = applyProduceSelection(
+    stories.filter((s) => s.approved === true && s.exported_path),
+    { stage: "format-catalogue", log: console.log },
+  );
   if (targets.length === 0) return;
   const {
     scoreStoryMediaInventory,
@@ -340,6 +371,7 @@ async function logFormatRecommendationsForApprovedStories() {
 async function selfHealStaleMediaPaths({ repos: _repos } = {}) {
   const fs = require("fs-extra");
   const mediaPaths = require("./lib/media-paths");
+  const { applyProduceSelection } = require("./lib/produce-selection");
   const stories = await db.getStories();
   const fields = [
     "exported_path",
@@ -350,7 +382,11 @@ async function selfHealStaleMediaPaths({ repos: _repos } = {}) {
     "thumbnail_candidate_path",
   ];
   let healed = 0;
-  for (const s of stories) {
+  const selectedStories = applyProduceSelection(stories, {
+    stage: "publisher:self-heal",
+    log: console.log,
+  });
+  for (const s of selectedStories) {
     let changed = false;
     for (const field of fields) {
       const val = s[field];
@@ -585,8 +621,8 @@ async function fullAutonomousCycle() {
           )
           .all();
         if (reviewRows.length) {
-          const dashUrl =
-            process.env.RAILWAY_PUBLIC_URL || "http://localhost:3001";
+          const { getPublicUrl } = require("./lib/deployment-mode");
+          const dashUrl = getPublicUrl();
           const storyList = reviewRows
             .map(
               (s) =>

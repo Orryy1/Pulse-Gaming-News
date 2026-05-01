@@ -4,10 +4,19 @@
 */
 
 const brand = require('../brand');
+const { normaliseAffiliateLinks } = require('../lib/affiliate-targeting');
 
 const ACCENT = brand.PRIMARY || '#FF6B1A';
 const BG = brand.SECONDARY || '#0D0D0F';
 const TEXT = brand.TEXT || '#F0F0F0';
+
+function escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
 
 /**
  * Full HTML page for an individual blog post.
@@ -20,7 +29,7 @@ function postTemplate(data) {
     ? `/blog/images/${storyImageSlug}.png`
     : ((story && story.article_image) || '');
   const youtubeUrl = (story && story.youtube_url) || '';
-  const affiliateUrl = (story && story.affiliate_url) || '';
+  const affiliateLinks = normaliseAffiliateLinks(story).slice(0, 4);
   const channelName = brand.CHANNEL_NAME || 'Pulse Gaming';
   const baseUrl = process.env.RAILWAY_PUBLIC_URL || 'http://localhost:3001';
   const flair = (story && (story.classification || story.flair)) || '';
@@ -35,8 +44,10 @@ function postTemplate(data) {
       })()
     : '';
 
-  const affiliateCta = affiliateUrl
-    ? `<a href="${affiliateUrl}" class="cta-btn" target="_blank" rel="noopener noreferrer sponsored">Check it out on Amazon</a>`
+  const affiliateCta = affiliateLinks.length
+    ? `<div class="affiliate-stack">${affiliateLinks
+        .map((link) => `<a href="${escapeHtml(link.url)}" class="cta-btn" target="_blank" rel="noopener noreferrer sponsored">${escapeHtml(link.label)}</a>`)
+        .join('')}</div>`
     : '';
 
   // Build enhanced Schema.org JSON-LD for NewsArticle
@@ -128,7 +139,8 @@ article p{margin-bottom:16px}
 article h2{font-size:20px;margin:28px 0 12px;color:${ACCENT}}
 .yt-embed{margin:24px 0;text-align:center}
 .yt-embed iframe{max-width:100%;border-radius:8px}
-.cta-btn{display:inline-block;margin:24px 0;padding:12px 28px;background:${ACCENT};color:#000;font-weight:700;border-radius:6px;font-size:15px}
+.affiliate-stack{display:flex;flex-wrap:wrap;gap:10px;margin:24px 0}
+.cta-btn{display:inline-block;padding:12px 18px;background:${ACCENT};color:#000;font-weight:700;border-radius:6px;font-size:15px}
 .cta-btn:hover{text-decoration:none;opacity:0.9}
 footer{margin-top:48px;padding:24px 0;border-top:1px solid #222;font-size:13px;color:#555;text-align:center}
 </style>

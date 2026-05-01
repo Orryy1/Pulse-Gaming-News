@@ -14,6 +14,7 @@ const {
   sourceId,
   STILL_TYPES,
   SCENE_TYPES,
+  CARD_TYPES,
 } = require("../../lib/scene-composer");
 
 test("studio editorial builds a tighter Metro 2039 script", () => {
@@ -26,6 +27,33 @@ test("studio editorial builds a tighter Metro 2039 script", () => {
   assert.equal(result.removedGenericCta, true);
   assert.ok(result.wordCount >= 120 && result.wordCount <= 150);
   assert.match(result.scriptForTTS, /twenty thirty-nine/);
+});
+
+test("studio editorial keeps Pokemon hooks complete and removes duplicate opening narration", () => {
+  const previousBudget = process.env.STUDIO_EDITORIAL_MAX_WORDS;
+  process.env.STUDIO_EDITORIAL_MAX_WORDS = "125";
+  try {
+    const result = editorial.buildStudioEditorial({
+      title:
+        "Mega Mewtwo's Pokémon Go debut finally announced and Go Fest Global is free for all players",
+      hook:
+        "Mega Mewtwo's finally coming to Pokémon Go, and Niantic just made a move nobody expected.",
+      full_script:
+        "Mega Mewtwo's finally coming to Pokémon Go, and Niantic just destroyed their entire paywall. According to Eurogamer, both Mega Mewtwo X and Y will debut during Go Fest 2026 on July 11th and 12th. That's the game's biggest annual celebration, and this year it's completely free. No premium ticket. No paywall. Every player gets access to the Special Research quest and the increased spawn rates that make legendary hunts actually worth your time. Niantic's decision to open Go Fest Global to all players signals a seismic shift in their monetisation strategy. They're recapturing players who walked away when ticket prices climbed into absurdity. Mega Mewtwo is the franchise's most iconic legendary. Dropping it behind a free event means millions will hunt.",
+    });
+
+    assert.equal(
+      result.hook,
+      "Mega Mewtwo is finally coming to Pokémon Go for free.",
+    );
+    assert.equal(result.hook.includes(" made a."), false);
+    assert.equal(result.body.startsWith("Mega Mewtwo's finally coming"), false);
+    assert.ok(result.wordCount <= 125);
+    assert.match(result.scriptForCaption, /Pokémon Go/);
+  } finally {
+    if (previousBudget === undefined) delete process.env.STUDIO_EDITORIAL_MAX_WORDS;
+    else process.env.STUDIO_EDITORIAL_MAX_WORDS = previousBudget;
+  }
 });
 
 test("media acquisition plans trailer slices and frame extraction", () => {
@@ -134,8 +162,178 @@ test("studio composer uses an editorial card instead of repeating a still", () =
     seen.set(id, (seen.get(id) || 0) + 1);
   }
   assert.equal([...seen.values()].some((count) => count > 1), false);
-  assert.ok(result.scenes.some((scene) => scene.label === "card_known_unknowns"));
+  assert.ok(
+    result.scenes.some((scene) =>
+      ["card_context", "card_timeline", "card_known_unknowns"].includes(scene.label),
+    ),
+  );
   assert.ok(result.scenes.some((scene) => scene.dateLabel === "NO DATE YET"));
+});
+
+test("studio composer does not pad thin media with repeated known-unknown cards", () => {
+  const mediaPlan = {
+    clips: [{ path: "clip-a.mp4" }, { path: "clip-b.mp4" }],
+    trailerFrames: [{ path: "frame-1.jpg" }],
+    articleHeroes: [],
+    publisherAssets: [],
+    stockFillers: [],
+  };
+  const result = composeStudioSlate({
+    story: {
+      title: "Pokemon Go Fest adds Mega Mewtwo",
+      subreddit: "Eurogamer",
+    },
+    media: mediaPlan,
+    audioDurationS: 76,
+    opts: { allowStockFiller: false },
+  });
+  const knownUnknowns = result.scenes.filter(
+    (scene) => scene.label === "card_known_unknowns",
+  );
+  const adjacentSameTypeCards = result.scenes.filter(
+    (scene, index) =>
+      index > 0 &&
+      scene.type === result.scenes[index - 1].type &&
+      scene.type.startsWith("card."),
+  );
+
+  assert.ok(result.scenes.length < 16);
+  assert.ok(knownUnknowns.length <= 1);
+  assert.equal(adjacentSameTypeCards.length, 0);
+  assert.ok(
+    result.scenes.every((scene) => scene.duration >= 3 && scene.duration <= 8),
+  );
+});
+
+test("studio composer rotates card backdrops across enriched still decks", () => {
+  const mediaPlan = {
+    clips: [],
+    trailerFrames: [],
+    articleHeroes: Array.from({ length: 10 }, (_, i) => ({
+      path: `verified-store-still-${i + 1}.jpg`,
+    })),
+    publisherAssets: [],
+    stockFillers: [],
+  };
+  const result = composeStudioSlate({
+    story: {
+      title: "GTA 6 owner passed on a sequel to a legacy franchise",
+      subreddit: "Games",
+    },
+    media: mediaPlan,
+    audioDurationS: 63,
+    opts: { allowStockFiller: false },
+  });
+  const cardBackdrops = result.scenes
+    .filter((scene) => CARD_TYPES.has(scene.type) && scene.backgroundSource)
+    .map((scene) => scene.backgroundSource);
+  const uniqueBackdrops = new Set(cardBackdrops);
+  const maxRepeat = Math.max(
+    0,
+    ...[...uniqueBackdrops].map(
+      (source) => cardBackdrops.filter((item) => item === source).length,
+    ),
+  );
+
+  assert.ok(uniqueBackdrops.size >= 4);
+  assert.ok(maxRepeat <= 2);
+});
+
+test("studio composer labels RSS source cards as publishers, not subreddits", () => {
+  const result = composeStudioSlate({
+    story: {
+      title: "GTA 6 owner passed on a sequel to a legacy franchise",
+      source_type: "rss",
+      subreddit: "GameSpot",
+    },
+    media: {
+      clips: [],
+      trailerFrames: [{ path: "gta-frame.jpg" }],
+      articleHeroes: [{ path: "gta-hero.jpg" }],
+      publisherAssets: [],
+      stockFillers: [],
+    },
+    audioDurationS: 63,
+    opts: { allowStockFiller: false },
+  });
+
+  const source = result.scenes.find((scene) => scene.label === "card_source");
+  assert.equal(source.sourceLabel, "GameSpot");
+});
+
+test("studio composer carries exact entity labels into visual scenes for in-image popups", () => {
+  const result = composeStudioSlate({
+    story: { title: "Take-Two legacy franchise story" },
+    audioDurationS: 61,
+    media: {
+      clips: [{ path: "gta-trailer.m3u8", entity: "GTA", sourceType: "steam_movie", mediaStartS: 28.5 }],
+      trailerFrames: [{ path: "red-dead-frame.jpg", entity: "Red Dead", sourceType: "official_trailer_frame" }],
+      articleHeroes: [{ path: "bioshock.jpg", entity: "BioShock", sourceType: "steam_header" }],
+      publisherAssets: [],
+      stockFillers: [],
+    },
+  });
+
+  const visualScenes = result.scenes.filter((scene) =>
+    [SCENE_TYPES.OPENER, SCENE_TYPES.CLIP, SCENE_TYPES.CLIP_FRAME, SCENE_TYPES.STILL].includes(scene.type),
+  );
+
+  assert.ok(visualScenes.some((scene) => scene.entity === "GTA"));
+  assert.ok(visualScenes.some((scene) => scene.entity === "Red Dead"));
+  assert.ok(visualScenes.some((scene) => scene.entity === "BioShock"));
+  assert.equal(visualScenes.find((scene) => scene.entity === "GTA").mediaStartS, 28.5);
+});
+
+test("studio composer does not present RSS excerpts as Reddit comments", () => {
+  const result = composeStudioSlate({
+    story: {
+      title: "GTA 6 owner passed on a sequel to a legacy franchise",
+      source_type: "rss",
+      subreddit: "GameSpot",
+      top_comment:
+        "Take-Two boss Strauss Zelnick has shared a story about passing on making a sequel.",
+    },
+    media: {
+      clips: [],
+      trailerFrames: [{ path: "gta-frame.jpg" }],
+      articleHeroes: [{ path: "gta-hero.jpg" }],
+      publisherAssets: [],
+      stockFillers: [],
+    },
+    audioDurationS: 63,
+    opts: { allowStockFiller: false },
+  });
+
+  assert.equal(
+    result.scenes.some((scene) => scene.type === SCENE_TYPES.CARD_QUOTE),
+    false,
+  );
+});
+
+test("studio composer avoids no-date release cards on non-release publisher stories", () => {
+  const result = composeStudioSlate({
+    story: {
+      title:
+        "GTA 6 Owner Passed On A Sequel To A Legacy Franchise, And We're Dying To Know Which One",
+      source_type: "rss",
+      subreddit: "GameSpot",
+      classification: "News",
+    },
+    media: {
+      clips: [],
+      trailerFrames: [{ path: "gta-frame.jpg" }, { path: "red-dead-frame.jpg" }],
+      articleHeroes: [{ path: "gta-hero.jpg" }, { path: "bioshock-hero.jpg" }],
+      publisherAssets: [],
+      stockFillers: [],
+    },
+    audioDurationS: 63,
+    opts: { allowStockFiller: false },
+  });
+
+  assert.equal(
+    result.scenes.some((scene) => scene.dateLabel === "NO DATE YET"),
+    false,
+  );
 });
 
 test("quality gate reports non-slideshow when clips and cards carry the edit", () => {

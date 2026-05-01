@@ -15,3 +15,28 @@ branding/logo_reveal.mp4
 # branding/watermark.png — video assembly overlay
 # branding/intro_outro_card.png — bumper generation
 # branding/og_image.png — blog OG meta tag
+
+# Local/runtime artefacts and secrets. Railway builds dependencies
+# remotely, so local caches, generated media and local env files must
+# never be uploaded with `railway up`.
+.env
+.env.*
+node_modules/
+output/
+dist/
+blog/dist/
+daily_news.json
+pending_news.json
+image_queue.json
+video_queue.json
+tokens/
+data/
+*.log
+tts_server/venv/
+tts_server/*.log
+tts_server/*.log.*
+tts_server/diag/
+tts_server/faulthandler.*.log
+tts_server/boot_state.json
+test/output/
+test_videos/

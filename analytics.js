@@ -980,6 +980,7 @@ module.exports = {
   getAnalyticsContext,
   calculateViralityScore,
   calculateCombinedViralityScore,
+  extractKeywords,
   fetchYouTubeStats,
   fetchTikTokStats,
   fetchInstagramStats,

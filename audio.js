@@ -2,14 +2,17 @@ const axios = require("axios");
 const fs = require("fs-extra");
 const path = require("path");
 const dotenv = require("dotenv");
-const { exec } = require("child_process");
+const { exec, execFile } = require("child_process");
 const util = require("util");
 const db = require("./lib/db");
 const mediaPaths = require("./lib/media-paths");
 
 const execAsync = util.promisify(exec);
+const execFileAsync = util.promisify(execFile);
 
-dotenv.config({ override: true });
+if (!/^(true|1|yes|on)$/i.test(String(process.env.PULSE_SKIP_DOTENV || ""))) {
+  dotenv.config({ override: true });
+}
 
 const brand = require("./brand");
 
@@ -26,6 +29,9 @@ const PHONETIC_MAP = {
 };
 
 const { applyGamingPronunciation } = require("./lib/tts-pronunciation");
+const { normaliseText } = require("./lib/text-hygiene");
+const { runBrandNameQa } = require("./lib/brand-name-qa");
+const { applyProduceSelection } = require("./lib/produce-selection");
 
 // --- Clean text for TTS - shared logic ---
 function cleanForTTS(raw) {
@@ -34,7 +40,8 @@ function cleanForTTS(raw) {
   // Apply gaming-specific pronunciation rewrites BEFORE the other
   // transforms so subsequent regex passes see the already-rewritten
   // text (e.g. so the abbreviation-stripper doesn't trip on "Triple A").
-  const pre = applyGamingPronunciation(raw || "");
+  const normalised = normaliseText(raw || "");
+  const pre = applyGamingPronunciation(normalised);
   return (
     pre
       // 2026-04-19 fix (precedes the other transforms): paragraph /
@@ -128,7 +135,10 @@ function cleanForTTS(raw) {
         new RegExp(`\\b(${Object.keys(PHONETIC_MAP).join("|")})\\b`, "gi"),
         (match) => PHONETIC_MAP[match.toLowerCase()] || match,
       )
-      .replace(/[^\x20-\x7E.,'!?;:\-()"/]/g, "")
+      // Preserve legitimate Unicode letters in brand/game names while
+      // still dropping emoji, symbols and control bytes that TTS may
+      // speak literally or leak into timestamp subtitles.
+      .replace(/[^\p{L}\p{M}\p{N}\p{P}\p{Sc}\p{Zs}\p{Sm}\t\r\n]/gu, "")
       .replace(/\s+/g, " ")
       .replace(/\.\s*\./g, ".")
       .replace(/\.\s*,/g, ",")
@@ -137,20 +147,85 @@ function cleanForTTS(raw) {
   );
 }
 
+function assertBrandNameQaForTts(story, fields) {
+  const qa = runBrandNameQa({
+    title: story?.title,
+    ...fields,
+  });
+  if (qa.warnings.length > 0) {
+    console.log(
+      `[audio] Brand-name QA warnings for ${story?.id || "story"}: ${qa.warnings.join(", ")}`,
+    );
+  }
+  if (qa.failures.length > 0) {
+    throw new Error(`brand_name_qa_failed:${qa.failures.join(",")}`);
+  }
+  return qa;
+}
+
+function selectRawTtsScript(story) {
+  const preferred =
+    typeof story?.tts_script === "string" ? story.tts_script.trim() : "";
+  const fallback =
+    typeof story?.full_script === "string" ? story.full_script.trim() : "";
+  if (!preferred) return fallback;
+
+  const preferredQa = runBrandNameQa({ tts_script: preferred });
+  if (preferredQa.failures.length === 0 && preferredQa.warnings.length === 0) {
+    return preferred;
+  }
+
+  if (fallback && fallback !== preferred) {
+    const fallbackQa = runBrandNameQa({ full_script: fallback });
+    if (fallbackQa.failures.length === 0 && fallbackQa.warnings.length === 0) {
+      console.log(
+        `[audio] ${story?.id || "story"}: cached tts_script failed brand-name QA; using clean full_script`,
+      );
+      return fallback;
+    }
+
+    if (
+      preferredQa.failures.length > 0 &&
+      fallbackQa.failures.length === 0
+    ) {
+      console.log(
+        `[audio] ${story?.id || "story"}: cached tts_script has protected-name damage; using safer full_script`,
+      );
+      return fallback;
+    }
+  }
+
+  return preferred;
+}
+
 const BUMPER_DURATION = 0; // bumpers removed - audio must hit 61s on its own
 const MIN_TOTAL_DURATION = 61; // TikTok Creator Rewards minimum
 
 // --- Get audio duration via ffprobe ---
 async function getAudioDuration(audioPath) {
   try {
-    const { stdout } = await execAsync(
-      `ffprobe -v quiet -show_entries format=duration -of csv=p=0 "${audioPath}"`,
+    const resolvedPath =
+      (await mediaPaths.resolveExisting(audioPath)) || mediaPaths.writePath(audioPath);
+    const { stdout } = await execFileAsync(
+      "ffprobe",
+      ["-v", "quiet", "-show_entries", "format=duration", "-of", "csv=p=0", resolvedPath],
       { timeout: 10000 },
     );
     return parseFloat(stdout.trim()) || 50;
   } catch (err) {
     return 50;
   }
+}
+
+function resolveTtsTimeoutMs(provider, env = process.env) {
+  if (String(provider || "").toLowerCase() === "local") {
+    const value = Number(
+      env.LOCAL_TTS_TIMEOUT_MS || env.STUDIO_V2_LOCAL_TTS_TIMEOUT_MS || 600000,
+    );
+    return Number.isFinite(value) && value > 0 ? value : 600000;
+  }
+  const remoteValue = Number(env.ELEVENLABS_TTS_TIMEOUT_MS || 60000);
+  return Number.isFinite(remoteValue) && remoteValue > 0 ? remoteValue : 60000;
 }
 
 // --- Concatenate multiple MP3 files via ffmpeg ---
@@ -222,7 +297,7 @@ async function generateTTS(text, outputPath, rateOverride) {
     url: `${baseUrl}/v1/text-to-speech/${voiceId}/with-timestamps`,
     headers,
     data,
-    timeout: provider === "local" ? 120000 : 60000,
+    timeout: resolveTtsTimeoutMs(provider),
   });
 
   // outputPath is the repo-relative path the caller passes in
@@ -265,7 +340,10 @@ async function generateAudio() {
     return;
   }
 
-  const toProcess = stories.filter((s) => s.approved === true && !s.audio_path);
+  const toProcess = applyProduceSelection(
+    stories.filter((s) => s.approved === true && !s.audio_path),
+    { stage: "audio", log: console.log },
+  );
 
   console.log(`[audio] ${toProcess.length} stories need audio generation`);
 
@@ -276,8 +354,13 @@ async function generateAudio() {
 
     try {
       // Clean TTS script using shared cleaning function
-      const rawTTS = story.tts_script || story.full_script;
+      const rawTTS = selectRawTtsScript(story);
       const ttsText = cleanForTTS(rawTTS);
+      let finalTtsScript = ttsText;
+      assertBrandNameQaForTts(story, {
+        full_script: story.full_script,
+        tts_script: ttsText,
+      });
       const outputPath = path.join("output", "audio", `${story.id}.mp3`);
 
       // Dynamic pacing: if story has separate hook/body/cta, generate each
@@ -297,6 +380,11 @@ async function generateAudio() {
           },
           { text: cleanForTTS(story.cta), rate: baseRate * 1.0, label: "cta" },
         ].filter((s) => s.text.length > 0);
+        assertBrandNameQaForTts(story, {
+          hook: segments.find((s) => s.label === "hook")?.text || "",
+          body: segments.find((s) => s.label === "body")?.text || "",
+          cta: segments.find((s) => s.label === "cta")?.text || "",
+        });
 
         if (segments.length > 1) {
           console.log(
@@ -361,7 +449,7 @@ async function generateAudio() {
               "_timestamps.json",
             );
             await fs.writeJson(
-              combinedTsPath,
+              mediaPaths.writePath(combinedTsPath),
               {
                 characters: mergedChars,
                 character_start_times_seconds: mergedStarts,
@@ -373,9 +461,9 @@ async function generateAudio() {
 
           // Clean up segment files
           for (const sp of segmentPaths) {
-            await fs.remove(sp).catch(() => {});
+            await fs.remove(mediaPaths.writePath(sp)).catch(() => {});
             await fs
-              .remove(sp.replace(/\.mp3$/, "_timestamps.json"))
+              .remove(mediaPaths.writePath(sp.replace(/\.mp3$/, "_timestamps.json")))
               .catch(() => {});
           }
         } else {
@@ -430,12 +518,16 @@ async function generateAudio() {
         try {
           const newScript = JSON.parse(text);
           const newTTS = cleanForTTS(newScript.full_script);
+          assertBrandNameQaForTts(story, {
+            full_script: newScript.full_script,
+            tts_script: newTTS,
+          });
 
           await generateTTS(newTTS, outputPath);
           const newDuration = await getAudioDuration(outputPath);
           story.audio_duration = newDuration;
           story.full_script = newScript.full_script;
-          story.tts_script = newTTS;
+          finalTtsScript = newTTS;
           story.word_count = newScript.word_count || story.word_count;
           console.log(
             `[audio] Regenerated: now ${(newDuration + BUMPER_DURATION).toFixed(1)}s`,
@@ -456,6 +548,7 @@ async function generateAudio() {
       }
 
       story.audio_path = outputPath;
+      story.tts_script = finalTtsScript;
       console.log(`[audio] Saved: ${outputPath}`);
     } catch (err) {
       console.log(`[audio] ERROR for ${story.id}: ${err.message}`);
@@ -471,6 +564,9 @@ module.exports.getAudioDuration = getAudioDuration;
 module.exports.cleanForTTS = cleanForTTS;
 module.exports.generateTTS = generateTTS;
 module.exports.concatAudioFiles = concatAudioFiles;
+module.exports.resolveTtsTimeoutMs = resolveTtsTimeoutMs;
+module.exports.assertBrandNameQaForTts = assertBrandNameQaForTts;
+module.exports.selectRawTtsScript = selectRawTtsScript;
 
 if (require.main === module) {
   generateAudio().catch((err) => {

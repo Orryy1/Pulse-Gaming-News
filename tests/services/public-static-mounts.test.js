@@ -82,7 +82,25 @@ test("server.js: still mounts the dashboard SPA (dist) and /branding", () => {
   );
   assert.match(
     src,
-    /app\.use\(\s*["']\/branding["']\s*,\s*express\.static/,
+    /app\.use\(\s*["']\/branding["']\s*,[\s\S]*?express\.static/,
     "/branding mount must remain (outgoing video composition uses these assets)",
+  );
+});
+
+test("server.js: /branding mount is restricted to public media assets", () => {
+  const guardStart = src.indexOf("const PUBLIC_BRANDING_EXTENSIONS");
+  const mountMatch = /app\.use\(\s*["']\/branding["']/.exec(src);
+  const mountIndex = mountMatch ? mountMatch.index : -1;
+  assert.notStrictEqual(guardStart, -1, "branding extension guard missing");
+  assert.notStrictEqual(mountIndex, -1, "branding mount missing");
+
+  const guardBlock = src.slice(guardStart, mountIndex);
+  assert.match(guardBlock, /function\s+requirePublicBrandingAsset/);
+  assert.doesNotMatch(guardBlock, /["']\.md["']/);
+  assert.doesNotMatch(guardBlock, /["']\.js["']/);
+  assert.doesNotMatch(guardBlock, /["']\.svg["']/);
+  assert.match(
+    codeNoComments,
+    /app\.use\(\s*["']\/branding["']\s*,\s*requirePublicBrandingAsset\s*,[\s\S]*?express\.static/,
   );
 });

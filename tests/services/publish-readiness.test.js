@@ -2,8 +2,11 @@
 
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 
 const pr = require("../../lib/ops/publish-readiness");
+const TOOL_PATH = path.resolve(__dirname, "..", "..", "tools", "publish-readiness.js");
 
 // 2026-04-30 mission: ops:publish-readiness must give one
 // GREEN/AMBER/RED verdict per pillar combination, never mutate
@@ -54,6 +57,11 @@ test("PILLAR_NAMES: includes the audit-flagged external blockers", () => {
 test("PILLAR_NAMES: includes the security + docs drift pillars", () => {
   assert.ok(pr.PILLAR_NAMES.includes("security_blockers"));
   assert.ok(pr.PILLAR_NAMES.includes("docs_drift"));
+});
+
+test("tools/publish-readiness.js loads .env for local operator runs", () => {
+  const src = fs.readFileSync(TOOL_PATH, "utf8");
+  assert.match(src, /require\(["']dotenv["']\)\.config\(\{\s*override:\s*true\s*\}\)/);
 });
 
 // ── formatPublishReadinessMarkdown ───────────────────────────────

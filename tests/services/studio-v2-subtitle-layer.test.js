@@ -1,0 +1,85 @@
+"use strict";
+
+const { test } = require("node:test");
+const assert = require("node:assert/strict");
+
+const { buildKineticAss, groupIntoPhrases } = require("../../lib/studio/v2/subtitle-layer-v2");
+
+function assIntervals(ass) {
+  return ass
+    .split("\n")
+    .filter((line) => line.startsWith("Dialogue:"))
+    .map((line) => {
+      const m = line.match(/Dialogue:\s*\d+,([^,]+),([^,]+),/);
+      assert.ok(m, `dialogue line has parseable times: ${line}`);
+      return m.slice(1).map((value) => {
+        const parts = value.split(":").map(Number.parseFloat);
+        return parts[0] * 3600 + parts[1] * 60 + parts[2];
+      });
+    });
+}
+
+test("buildKineticAss can skip script realignment for cached/non-editorial voice fixtures", () => {
+  const ass = buildKineticAss({
+    story: { title: "Test" },
+    words: [
+      { word: "twenty", start: 0, end: 0.25 },
+      { word: "twenty", start: 0.26, end: 0.55 },
+      { word: "six", start: 0.56, end: 0.8 },
+      { word: "arrives", start: 0.82, end: 1.1 },
+    ],
+    duration: 2,
+    scriptText: "2026 arrives",
+    realign: false,
+  });
+
+  assert.match(ass, /twenty/);
+  assert.match(ass, /six/);
+  assert.doesNotMatch(ass, /2026/);
+});
+
+test("buildKineticAss falls back to synthetic timings when TTS alignment has huge gaps", () => {
+  const scriptText = [
+    "Mega Mewtwo is finally coming to Pokemon Go.",
+    "The free Go Fest reveal means every player gets access.",
+    "Niantic is changing the event model.",
+  ].join(" ");
+  const ass = buildKineticAss({
+    story: { title: "Mega Mewtwo Pokemon Go" },
+    words: [
+      { word: "Mega", start: 4.1, end: 4.36 },
+      { word: "Mewtwo", start: 9.34, end: 9.75 },
+      { word: "is", start: 26.77, end: 26.87 },
+      { word: "finally", start: 53.41, end: 53.86 },
+    ],
+    duration: 12,
+    scriptText,
+    realign: true,
+  });
+
+  const intervals = assIntervals(ass);
+  assert.ok(intervals.length >= 4);
+  assert.doesNotMatch(ass, /\.\d{3},/);
+  for (let i = 1; i < intervals.length; i++) {
+    assert.ok(
+      intervals[i][0] - intervals[i - 1][1] <= 2,
+      `caption gap too large between intervals ${i - 1} and ${i}`,
+    );
+  }
+  assert.ok(intervals[intervals.length - 1][1] <= 12.1);
+});
+
+test("groupIntoPhrases caps creator subtitles at three words to avoid two-line blocks", () => {
+  const phrases = groupIntoPhrases([
+    { word: "Take-Two", start: 0, end: 0.2 },
+    { word: "killed", start: 0.21, end: 0.42 },
+    { word: "a", start: 0.43, end: 0.5 },
+    { word: "legacy", start: 0.51, end: 0.75 },
+    { word: "sequel.", start: 0.76, end: 1.0 },
+  ]);
+
+  assert.deepEqual(
+    phrases.map((phrase) => phrase.words.map((word) => word.word)),
+    [["Take-Two", "killed", "a"], ["legacy", "sequel."]],
+  );
+});

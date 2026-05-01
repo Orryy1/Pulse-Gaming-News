@@ -1,0 +1,289 @@
+"use strict";
+
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("fs-extra");
+const path = require("node:path");
+const os = require("node:os");
+
+const {
+  runControlledFrameExtraction,
+  renderControlledFrameExtractionWorkerMarkdown,
+} = require("../../lib/controlled-frame-extraction-worker");
+
+function framePlan(overrides = {}) {
+  return {
+    schema_version: 1,
+    story_id: "frame-worker-story",
+    title: "Take-Two story mentions GTA, Red Dead and BioShock",
+    frame_plan_readiness: "frame_plan_ready",
+    selected_references: [
+      {
+        order: 1,
+        provider: "steam",
+        source_type: "steam_movie",
+        source_url: "https://video.example/gta.m3u8",
+        entity: "GTA",
+        downloads_allowed: false,
+      },
+    ],
+    target_frames: [
+      {
+        source_url: "https://video.example/gta.m3u8",
+        source_type: "steam_movie",
+        entity: "GTA",
+        target_time_percent: 0.18,
+        downloads_allowed: false,
+        extraction_allowed: false,
+      },
+      {
+        source_url: "https://video.example/gta.m3u8",
+        source_type: "steam_movie",
+        entity: "GTA",
+        target_time_percent: 0.52,
+        downloads_allowed: false,
+        extraction_allowed: false,
+      },
+    ],
+    ...overrides,
+  };
+}
+
+function tempOutputRoot(name) {
+  return path.join(process.cwd(), "test", "output", "tmp-frame-worker", name);
+}
+
+async function cleanTempRoot(root) {
+  if (root.includes(`${path.sep}test${path.sep}output${path.sep}`)) {
+    await fs.remove(root);
+  }
+}
+
+test("controlled frame extraction defaults to dry-run and performs no writes", async () => {
+  const outputRoot = tempOutputRoot("dry-run");
+  await cleanTempRoot(outputRoot);
+  let extractorCalls = 0;
+
+  const report = await runControlledFrameExtraction([framePlan()], {
+    outputRoot,
+    extractor: async () => {
+      extractorCalls++;
+      throw new Error("extractor should not be called in dry-run");
+    },
+  });
+
+  assert.equal(report.mode, "dry_run");
+  assert.equal(report.summary.frames_would_extract, 2);
+  assert.equal(report.summary.frames_extracted, 0);
+  assert.equal(extractorCalls, 0);
+  assert.equal(await fs.pathExists(outputRoot), false);
+});
+
+test("controlled frame extraction apply-local writes only under test/output and records provenance", async () => {
+  const outputRoot = tempOutputRoot("apply-local");
+  await cleanTempRoot(outputRoot);
+
+  const report = await runControlledFrameExtraction([framePlan()], {
+    applyLocal: true,
+    outputRoot,
+    extractor: async ({ outputPath }) => {
+      await fs.ensureDir(path.dirname(outputPath));
+      await fs.writeFile(outputPath, Buffer.from("fake-frame"));
+      return { outputPath, stderr: "" };
+    },
+    inspectFrame: async (outputPath) => ({
+      local_path: outputPath,
+      file_size: 10,
+      content_hash: path.basename(outputPath).startsWith("001_") ? "hash-a" : "hash-b",
+      width: 1280,
+      height: 720,
+      thumbnail_safe: true,
+      likely_has_face: false,
+      black_frame: false,
+      blur_verdict: "pass",
+      verdict: "pass",
+      warnings: [],
+      failures: [],
+    }),
+  });
+
+  assert.equal(report.mode, "apply_local");
+  assert.equal(report.summary.frames_extracted, 2);
+  assert.equal(report.summary.frames_accepted, 2);
+  assert.ok(report.plans[0].frames.every((frame) => frame.local_path.startsWith(outputRoot)));
+  assert.ok(report.plans[0].provenance.every((entry) => entry.local_path.startsWith(outputRoot)));
+});
+
+test("controlled frame extraction rejects apply-local outside test/output", async () => {
+  await assert.rejects(
+    () =>
+      runControlledFrameExtraction([framePlan()], {
+        applyLocal: true,
+        outputRoot: path.join(os.tmpdir(), "pulse-frame-worker-outside"),
+      }),
+    /apply-local output must stay under test\/output/i,
+  );
+});
+
+test("controlled frame extraction rejects duplicate extracted hashes", async () => {
+  const outputRoot = tempOutputRoot("duplicates");
+  await cleanTempRoot(outputRoot);
+
+  const report = await runControlledFrameExtraction([framePlan()], {
+    applyLocal: true,
+    outputRoot,
+    extractor: async ({ outputPath }) => {
+      await fs.ensureDir(path.dirname(outputPath));
+      await fs.writeFile(outputPath, Buffer.from("fake-frame"));
+      return { outputPath };
+    },
+    inspectFrame: async (outputPath) => ({
+      local_path: outputPath,
+      file_size: 10,
+      content_hash: "same-hash",
+      width: 1280,
+      height: 720,
+      thumbnail_safe: true,
+      likely_has_face: false,
+      black_frame: false,
+      blur_verdict: "pass",
+      verdict: "pass",
+      warnings: [],
+      failures: [],
+    }),
+  });
+
+  assert.equal(report.summary.frames_extracted, 2);
+  assert.equal(report.summary.frames_accepted, 1);
+  assert.equal(report.summary.frames_rejected, 1);
+  assert.ok(report.plans[0].frames.some((frame) => frame.status === "rejected_duplicate"));
+});
+
+test("controlled frame extraction rejects unsafe face-like frames", async () => {
+  const outputRoot = tempOutputRoot("unsafe-face");
+  await cleanTempRoot(outputRoot);
+
+  const report = await runControlledFrameExtraction([framePlan()], {
+    applyLocal: true,
+    outputRoot,
+    extractor: async ({ outputPath }) => {
+      await fs.ensureDir(path.dirname(outputPath));
+      await fs.writeFile(outputPath, Buffer.from("fake-frame"));
+      return { outputPath };
+    },
+    inspectFrame: async (outputPath) => ({
+      local_path: outputPath,
+      file_size: 10,
+      content_hash: outputPath,
+      width: 1280,
+      height: 720,
+      thumbnail_safe: false,
+      likely_has_face: true,
+      black_frame: false,
+      blur_verdict: "pass",
+      verdict: "fail",
+      warnings: [],
+      failures: ["unsafe_face_like_frame"],
+    }),
+  });
+
+  assert.equal(report.summary.frames_accepted, 0);
+  assert.equal(report.summary.frames_rejected, 2);
+  assert.ok(report.plans[0].frames.every((frame) => frame.status === "rejected_qa"));
+});
+
+test("controlled frame extraction rejects official trailer title or rating cards", async () => {
+  const outputRoot = tempOutputRoot("rating-card");
+  await cleanTempRoot(outputRoot);
+
+  const report = await runControlledFrameExtraction([framePlan()], {
+    applyLocal: true,
+    outputRoot,
+    extractor: async ({ outputPath }) => {
+      await fs.ensureDir(path.dirname(outputPath));
+      await fs.writeFile(outputPath, Buffer.from("fake-frame"));
+      return { outputPath };
+    },
+    inspectFrame: async (outputPath) => ({
+      local_path: outputPath,
+      file_size: 10,
+      content_hash: outputPath,
+      width: 1280,
+      height: 720,
+      thumbnail_safe: true,
+      likely_has_face: false,
+      black_frame: false,
+      blur_verdict: "pass",
+      verdict: "pass",
+      warnings: [],
+      failures: [],
+      prescan: {
+        likely_is_logo: true,
+        text_overlay_likelihood: 0.39,
+        edge_density: 0.26,
+        saturation_mean: 0.26,
+      },
+    }),
+  });
+
+  assert.equal(report.summary.frames_accepted, 0);
+  assert.equal(report.summary.frames_rejected, 2);
+  assert.ok(report.plans[0].frames.every((frame) => frame.status === "rejected_qa"));
+  assert.ok(
+    report.plans[0].frames.every((frame) =>
+      frame.qa.failures.includes("title_or_rating_card_frame"),
+    ),
+  );
+});
+
+test("controlled frame extraction rejects low-detail official trailer frames", async () => {
+  const outputRoot = tempOutputRoot("low-detail");
+  await cleanTempRoot(outputRoot);
+
+  const report = await runControlledFrameExtraction([framePlan()], {
+    applyLocal: true,
+    outputRoot,
+    extractor: async ({ outputPath }) => {
+      await fs.ensureDir(path.dirname(outputPath));
+      await fs.writeFile(outputPath, Buffer.from("fake-frame"));
+      return { outputPath };
+    },
+    inspectFrame: async (outputPath) => ({
+      local_path: outputPath,
+      file_size: 10,
+      content_hash: outputPath,
+      width: 1280,
+      height: 720,
+      thumbnail_safe: true,
+      likely_has_face: false,
+      black_frame: false,
+      blur_verdict: "pass",
+      verdict: "pass",
+      warnings: [],
+      failures: [],
+      prescan: {
+        likely_is_logo: false,
+        text_overlay_likelihood: 0,
+        edge_density: 0.024,
+        saturation_mean: 0.16,
+      },
+    }),
+  });
+
+  assert.equal(report.summary.frames_accepted, 0);
+  assert.ok(
+    report.plans[0].frames.every((frame) =>
+      frame.qa.failures.includes("low_detail_official_frame"),
+    ),
+  );
+});
+
+test("controlled frame extraction report emits readable markdown", async () => {
+  const report = await runControlledFrameExtraction([framePlan()], { dryRun: true });
+  const markdown = renderControlledFrameExtractionWorkerMarkdown(report);
+
+  assert.doesNotThrow(() => JSON.parse(JSON.stringify(report)));
+  assert.match(markdown, /Controlled Local Frame Extraction Worker/);
+  assert.match(markdown, /frame-worker-story/);
+  assert.match(markdown, /dry_run/);
+});

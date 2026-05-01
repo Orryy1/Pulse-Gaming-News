@@ -103,6 +103,27 @@ test("findRecurringScheduledAudioClusters detects cut-synchronous repeated shape
   assert.equal(clusters[0].count, 6);
 });
 
+test("analyseAudioRecurrence ignores smooth repeated bed/voice shapes without transient hits", () => {
+  const sampleRate = 1000;
+  const samples = new Float32Array(sampleRate * 10);
+  const scheduledTimesS = [0, 1, 2, 3, 4, 5, 6];
+  for (const timeS of scheduledTimesS) {
+    const start = Math.round(timeS * sampleRate);
+    for (let i = 0; i < 450; i++) {
+      samples[start + i] = 0.2 * Math.sin((i / 450) * Math.PI * 8);
+    }
+  }
+  const result = analyseAudioRecurrence({
+    samples,
+    sampleRate,
+    declaredSfxCueCount: 1,
+    scheduledTimesS,
+  });
+  assert.equal(result.transientCandidateCount, 0);
+  assert.equal(result.worstScheduledCluster.count, 7);
+  assert.equal(result.verdict, "pass");
+});
+
 test("hammingDistance handles different length hashes", () => {
   assert.equal(hammingDistance("1010", "1010"), 0);
   assert.equal(hammingDistance("1010", "0011"), 2);

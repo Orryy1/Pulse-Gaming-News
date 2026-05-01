@@ -220,6 +220,27 @@ test("media inventory report gives actionable next source work", () => {
   assert.match(md, /unsafeFaces=1/);
 });
 
+test("media inventory report normalises public-facing story titles", () => {
+  const report = buildMediaInventoryReport([
+    {
+      id: "encoded",
+      title: "Hades II - Xbox &amp; PlayStation Trailer â€” Coming Soon",
+      url: "https://example.com/story",
+      downloaded_images: [],
+      video_clips: [],
+    },
+  ]);
+
+  assert.strictEqual(
+    report.items[0].title,
+    "Hades II - Xbox & PlayStation Trailer - Coming Soon",
+  );
+
+  const md = renderMediaInventoryMarkdown(report);
+  assert.match(md, /Xbox & PlayStation Trailer - Coming Soon/);
+  assert.doesNotMatch(md, /&amp;|â€”/);
+});
+
 test("TikTok dispatch pack is upload-ready without posting", () => {
   const pack = buildTikTokDispatchPack(
     {

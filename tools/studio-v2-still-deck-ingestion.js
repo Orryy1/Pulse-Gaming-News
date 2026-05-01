@@ -49,6 +49,9 @@ const {
   renderStillImageEnrichmentMarkdown,
   runStillImageEnrichment,
 } = require("../lib/still-image-enrichment");
+const {
+  officialTrailerFrameRejectReason,
+} = require("../lib/controlled-frame-extraction-worker");
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output", "studio-v2-still-deck");
@@ -389,26 +392,46 @@ async function resolveNarration({
 }
 
 function buildOfficialTrailerClipsFromFrameReport(frameReport, storyId, maxClips = 3) {
-  const clips = [];
-  const seen = new Set();
+  const bestBySource = new Map();
   for (const plan of Array.isArray(frameReport?.plans) ? frameReport.plans : []) {
     if (plan?.story_id !== storyId) continue;
     for (const frame of Array.isArray(plan.frames) ? plan.frames : []) {
       if (frame?.status !== "accepted") continue;
+      if (officialTrailerFrameRejectReason(frame, frame.qa || {})) continue;
       const sourceUrl = String(frame.source_url || "").trim();
-      if (!sourceUrl || seen.has(sourceUrl)) continue;
-      seen.add(sourceUrl);
-      clips.push({
-        path: sourceUrl,
+      if (!sourceUrl) continue;
+      const targetSeconds = Number(frame.target_time_seconds);
+      const current = bestBySource.get(sourceUrl);
+      if (
+        !current ||
+        (Number.isFinite(targetSeconds) ? targetSeconds : 0) >
+          (Number.isFinite(Number(current.target_time_seconds)) ? Number(current.target_time_seconds) : 0)
+      ) {
+        bestBySource.set(sourceUrl, frame);
+      }
+    }
+  }
+  return [...bestBySource.values()]
+    .slice(0, maxClips)
+    .map((frame) => {
+      const targetSeconds = Number(frame.target_time_seconds);
+      const mediaStartS = Number.isFinite(targetSeconds)
+        ? Number(Math.max(12, targetSeconds - 1.25).toFixed(2))
+        : 12;
+      return {
+        path: String(frame.source_url || "").trim(),
         source: "official-trailer-reference",
         sourceType: frame.source_type || "steam_movie",
         entity: frame.entity || null,
         durationS: 5,
-      });
-      if (clips.length >= maxClips) return clips;
-    }
-  }
-  return clips;
+        mediaStartS,
+        provenance: {
+          target_time_seconds: Number.isFinite(targetSeconds) ? targetSeconds : null,
+          frame_local_path: frame.local_path || null,
+          content_hash: frame.qa?.content_hash || null,
+        },
+      };
+    });
 }
 
 function buildPackageForQuality({ story, words }) {

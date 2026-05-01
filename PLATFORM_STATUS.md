@@ -1,6 +1,6 @@
 # Platform Status
 
-Generated from local reports on 2026-04-28.
+Generated from local reports on 2026-05-01.
 
 ## YouTube
 
@@ -14,14 +14,14 @@ Local platform report shows one recent story with a YouTube Shorts URL:
 
 ## Facebook Reel
 
-Status: needs live proof after success-condition fix.
+Status: disabled/page-gated until Meta exposes a visible public Reel signal.
 
 Required success interpretation:
 
-- `video_status=ready`
-- `publishing_phase.status=complete`
+- Graph processing completion alone is not enough.
+- Treat success as proven only when the API returns a published/permalink signal or a read-only page-content probe sees a visible Reel/video.
 
-Tests cover this path. A real platform cycle is still required before calling it fully proven.
+Current operational route: keep Facebook Card as the active fallback and report Facebook Reel as skipped/ineligible rather than failed code.
 
 ## Facebook Card
 

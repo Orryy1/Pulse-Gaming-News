@@ -111,17 +111,17 @@ Duplicate-post risk: low. The denormalised `<platform>_post_id` columns plus the
 
 Caveat: HF thumbnails are not actually generated on Railway (see §C) so the chain falls through to `story_image_path` every time. YouTube auto-letterboxes the 1080×1920 portrait. Functionally OK, visually sub-optimal.
 
-### Facebook Reel — green (already correct)
+### Facebook Reel — superseded by later Meta page-gate finding
 
-`upload_facebook.js:200-222` returns `outcome: "ready"` when `video_status === "ready"` AND any of:
+This historical section has been superseded by later read-only Graph evidence. Meta can report that processing finished while the Page still has no visible Reel/video record, so processing completion alone must not be reported as public success.
 
-- `publishing_phase.status === "published"`
-- `publishing_phase.status === "complete"` ← the case the prompt called out
-- `data.published === true`
+Current safe rule:
 
-Unit test exists at `tests/services/facebook-reel-verify.test.js:42` (`video_status=ready + publish=complete → ready`), and the file covers six other state combinations including the secret-redaction safety on the errored reason. **No fix needed.**
+- require a published/permalink signal, or
+- require a read-only Page content probe to show a visible Reel/video, or
+- keep Facebook Reel disabled/page-gated and use Facebook Card fallback.
 
-Timeout: 24 attempts × 5 s = 2 min ceiling. Timeout error message includes the last polled `video_status` and `publish_status` tags. Permalink is logged on success.
+The later tests in `tests/services/facebook-reel-verify.test.js` should be treated as the source of truth.
 
 ### Facebook Card — independent
 
@@ -259,7 +259,7 @@ Skipped:
 - Tests pass (903/903). Build passes.
 - Canonical produce path (assemble.js → ffmpeg) is unchanged.
 - Scheduler and queue are unchanged.
-- Facebook Reel `publish=complete` already supported with full unit-test coverage.
+- Facebook Reel processing completion is not public success; current code requires stronger proof.
 - Instagram Reel polling already captured all five Graph fields; this session improved error-message preservation only.
 
 ### Blockers before a clean deploy

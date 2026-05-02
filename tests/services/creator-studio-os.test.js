@@ -17,6 +17,22 @@ function trailer(path = "test/trailer.mp4") {
   return { type: "official_trailer", source: "youtube", path, title: "Official trailer" };
 }
 
+const FLASH_READY_SCRIPT = [
+  "Take-Two just made the weirdest legacy franchise call of the week.",
+  "The company says it passed on a sequel to one of its legacy franchises because the pitch was not strong enough.",
+  "That matters because Take-Two owns names that still make gaming audiences stop scrolling: GTA, Red Dead, BioShock, Mafia and Borderlands.",
+  "This is not a release-date reveal and it is not confirmation of a cancelled project.",
+  "It is a rare look at how the publisher decides what gets revived and what stays buried.",
+  "The interesting bit is the standard.",
+  "Take-Two is saying nostalgia alone is not enough.",
+  "If a sequel cannot clear the creative bar, even a famous logo does not save it.",
+  "That makes the mystery bigger, not smaller.",
+  "Was it BioShock, Midnight Club, Bully, Max Payne or something else entirely?",
+  "For players, the real takeaway is brutal.",
+  "A beloved franchise can still lose internally if the pitch feels average.",
+  "Follow Pulse Gaming so you never miss a beat.",
+].join(" ");
+
 function baseStory(overrides = {}) {
   return {
     id: "story-1",
@@ -132,6 +148,87 @@ test("Creator Studio OS routes premium media inventory to premium_short", () => 
   assert.equal(packet.render_contract.tiktok_60_second_eligibility, true);
 });
 
+test("Creator Studio OS assigns premium Shorts to the Pulse Flash Lane", () => {
+  const packet = buildProductionPacket(
+    baseStory({
+      id: "flash-lane",
+      title: "GTA 6 Owner Passed On A Sequel To A Legacy Franchise",
+      hook: "Take-Two just made the weirdest legacy franchise call of the week.",
+      full_script: FLASH_READY_SCRIPT,
+    }),
+  );
+
+  assert.equal(packet.format_lane_policy.lane_id, "pulse_flash_short");
+  assert.equal(packet.flash_lane_contract.lane_id, "pulse_flash_short");
+  assert.equal(packet.flash_lane_contract.next_action, "generate_approved_flash_lane_voice");
+  assert.equal(packet.flash_lane_contract.script.spoken_outro_required, true);
+  assert.equal(packet.format_lane_policy.runtime_target_seconds.min, 61);
+  assert.equal(packet.format_lane_policy.runtime_target_seconds.max, 75);
+  assert.equal(packet.format_lane_policy.caption_rules.max_words_per_punch, 3);
+  assert.equal(packet.format_lane_policy.render_rules.clip_dominance_target, 0.55);
+  assert.ok(packet.format_lane_policy.qa_gates.includes("approved_voice_required"));
+  assert.ok(packet.format_lane_policy.render_rules.visual_backbone.includes("game_footage"));
+});
+
+test("Creator Studio OS assigns release radar stories to the Pulse Briefing Lane", () => {
+  const packet = buildProductionPacket(
+    baseStory({
+      id: "briefing-lane",
+      title: "Subnautica 2 release date officially confirmed for PC and Xbox",
+      hook: "Subnautica 2 finally has a confirmed release window.",
+      body: "The official update confirms the release date detail for PC and Xbox players.",
+      full_script:
+        "Subnautica 2 finally has a confirmed release window. The official update confirms the release date detail for PC and Xbox players.",
+      flair: "Confirmed",
+      release_date: "2026-06-01",
+    }),
+  );
+
+  assert.equal(packet.format_route.verdict, "monthly_release_radar_item");
+  assert.equal(packet.format_lane_policy.lane_id, "pulse_briefing_longform");
+  assert.equal(packet.format_lane_policy.runtime_target_seconds.min, 360);
+  assert.equal(packet.format_lane_policy.runtime_target_seconds.max, 900);
+  assert.ok(packet.format_lane_policy.script_rules.includes("source_timeline"));
+  assert.ok(packet.format_lane_policy.render_rules.required_elements.includes("chapter_cards"));
+});
+
+test("Creator Studio OS keeps the shared intelligence layer under both lanes", () => {
+  const flash = buildProductionPacket(baseStory({ id: "shared-flash" }));
+  const briefing = buildProductionPacket(
+    baseStory({
+      id: "shared-briefing",
+      title: "Subnautica 2 release date officially confirmed for PC and Xbox",
+      flair: "Confirmed",
+      release_date: "2026-06-01",
+    }),
+  );
+
+  assert.equal(flash.format_lane_policy.shared_intelligence.source_pack, "fact_check_report");
+  assert.equal(briefing.format_lane_policy.shared_intelligence.source_pack, "fact_check_report");
+  assert.equal(flash.format_lane_policy.shared_intelligence.media_inventory, "media_inventory");
+  assert.equal(briefing.format_lane_policy.shared_intelligence.media_inventory, "media_inventory");
+  assert.notEqual(flash.format_lane_policy.lane_id, briefing.format_lane_policy.lane_id);
+});
+
+test("Creator Studio OS does not mark thin Flash Lane media as green", () => {
+  const packet = buildProductionPacket(
+    baseStory({
+      id: "thin-flash-lane",
+      downloaded_images: [
+        img("steam_capsule", "steam", "single.jpg"),
+        img("screenshot", "steam", "two.jpg"),
+        img("screenshot", "steam", "three.jpg"),
+      ],
+      video_clips: [],
+      thumbnail_candidate_path: "test/output/thin-thumb.jpg",
+    }),
+  );
+
+  assert.equal(packet.format_lane_policy.lane_id, "pulse_flash_short");
+  assert.notEqual(packet.format_lane_policy.readiness_colour, "GREEN");
+  assert.ok(packet.format_lane_policy.warnings.includes("flash_lane_needs_more_exact_subject_visuals"));
+});
+
 test("Creator Studio OS never labels RSS descriptions as Reddit comments", () => {
   const packet = buildProductionPacket(
     baseStory({
@@ -220,13 +317,22 @@ test("Creator Studio OS includes official motion and frame-plan readiness", () =
   assert.equal(packet.motion_acquisition.motion_readiness, "reference_ready_for_local_frame_plan");
   assert.equal(packet.motion_acquisition.existing_references.length, 3);
   assert.equal(packet.controlled_frame_plan.frame_plan_readiness, "frame_plan_ready");
-  assert.equal(packet.controlled_frame_plan.target_frames.length, 6);
+  assert.equal(packet.controlled_frame_plan.target_frames.length, 12);
+  assert.equal(
+    packet.controlled_frame_plan.exact_subject_motion_coverage.sampling_strategy,
+    "interleaved_non_intro_multi_probe_v3",
+  );
   assert.equal(packet.controlled_frame_plan.will_download, false);
 });
 
 test("Creator Studio OS emits valid JSON and readable Markdown", () => {
   const controlRoom = buildCreatorStudioControlRoom([
-    baseStory({ id: "green" }),
+    baseStory({
+      id: "green",
+      title: "GTA 6 Owner Passed On A Sequel To A Legacy Franchise",
+      hook: "Take-Two just made the weirdest legacy franchise call of the week.",
+      full_script: FLASH_READY_SCRIPT,
+    }),
     baseStory({
       id: "amber",
       downloaded_images: [img("steam_capsule", "steam", "single.jpg")],
@@ -245,6 +351,9 @@ test("Creator Studio OS emits valid JSON and readable Markdown", () => {
 
   assert.doesNotThrow(() => JSON.parse(JSON.stringify(controlRoom)));
   assert.match(markdown, /Pulse Creator Studio OS v1/);
+  assert.match(markdown, /lane/);
+  assert.match(markdown, /pulse_flash_short/);
+  assert.match(markdown, /generate_approved_flash_lane_voice/);
   assert.match(markdown, /motion/);
   assert.match(markdown, /frames/);
   assert.match(markdown, /green/);

@@ -336,6 +336,97 @@ test("studio composer avoids no-date release cards on non-release publisher stor
   );
 });
 
+test("studio composer builds a footage-led Flash Lane slate from official clip refs", () => {
+  const result = composeStudioSlate({
+    story: {
+      title:
+        "GTA 6 Owner Passed On A Sequel To A Legacy Franchise, And We're Dying To Know Which One",
+      source_type: "rss",
+      subreddit: "GameSpot",
+    },
+    media: {
+      clips: [
+        { path: "gta-trailer.m3u8", entity: "GTA", sourceType: "steam_movie", mediaStartS: 28.5 },
+        { path: "bioshock-trailer.m3u8", entity: "BioShock", sourceType: "steam_movie", mediaStartS: 24 },
+        { path: "red-dead-trailer.m3u8", entity: "Red Dead", sourceType: "steam_movie", mediaStartS: 30 },
+      ],
+      trailerFrames: [
+        { path: "gta-frame.jpg", entity: "GTA" },
+        { path: "bioshock-frame.jpg", entity: "BioShock" },
+        { path: "red-dead-frame.jpg", entity: "Red Dead" },
+      ],
+      articleHeroes: [{ path: "gta-hero.jpg", entity: "GTA", sourceType: "steam_header" }],
+      publisherAssets: [],
+      stockFillers: [],
+    },
+    audioDurationS: 63,
+    opts: { allowStockFiller: false, flashLane: true },
+  });
+
+  const actualClipScenes = result.scenes.filter(
+    (scene) =>
+      scene.type === SCENE_TYPES.CLIP ||
+      (scene.type === SCENE_TYPES.OPENER && scene.isClipBacked === true),
+  );
+  const clipRatio = actualClipScenes.length / result.scenes.length;
+  const mediaStarts = new Set(actualClipScenes.map((scene) => scene.mediaStartS));
+  const sourceCardIndex = result.scenes.findIndex((scene) => scene.type === SCENE_TYPES.CARD_SOURCE);
+  const coverStillScenes = result.scenes.filter(
+    (scene) => scene.type === SCENE_TYPES.STILL && /(?:header|hero|cover|capsule)/i.test(scene.sourceType || ""),
+  );
+  const maxClipSourceUse = Math.max(
+    0,
+    ...[...new Set(actualClipScenes.map((scene) => scene.source))].map(
+      (source) => actualClipScenes.filter((scene) => scene.source === source).length,
+    ),
+  );
+
+  assert.ok(result.scenes.length >= 12);
+  assert.ok(clipRatio >= 0.55, `expected Flash clip ratio >= .55, got ${clipRatio}`);
+  assert.ok(mediaStarts.size >= 4);
+  assert.ok(sourceCardIndex > 2, `expected Flash source card after hook section, got ${sourceCardIndex}`);
+  assert.equal(coverStillScenes.length, 0);
+  assert.ok(maxClipSourceUse <= 3, `expected no clip source over 3 uses, got ${maxClipSourceUse}`);
+  assert.ok(
+    result.scenes
+      .filter((scene) => CARD_TYPES.has(scene.type))
+      .every((scene) => scene.cardTreatment === "flash_lane"),
+  );
+});
+
+test("studio composer does not stretch too few Flash Lane clips past the reuse budget", () => {
+  const result = composeStudioSlate({
+    story: {
+      title: "GTA 6 Owner Passed On A Sequel To A Legacy Franchise",
+      source_type: "rss",
+      subreddit: "GameSpot",
+    },
+    media: {
+      clips: [
+        { path: "gta-trailer.m3u8", entity: "GTA", sourceType: "steam_movie", mediaStartS: 28.5 },
+        { path: "bioshock-trailer.m3u8", entity: "BioShock", sourceType: "steam_movie", mediaStartS: 24 },
+      ],
+      trailerFrames: [
+        { path: "gta-frame.jpg", entity: "GTA" },
+        { path: "bioshock-frame.jpg", entity: "BioShock" },
+        { path: "red-dead-frame.jpg", entity: "Red Dead" },
+      ],
+      articleHeroes: [{ path: "gta-hero.jpg", entity: "GTA" }],
+      publisherAssets: [],
+      stockFillers: [],
+    },
+    audioDurationS: 66,
+    opts: { allowStockFiller: false, flashLane: true },
+  });
+  const actualClipScenes = result.scenes.filter(
+    (scene) =>
+      scene.type === SCENE_TYPES.CLIP ||
+      (scene.type === SCENE_TYPES.OPENER && scene.isClipBacked === true),
+  );
+
+  assert.ok(actualClipScenes.length <= 6);
+});
+
 test("quality gate reports non-slideshow when clips and cards carry the edit", () => {
   const scenes = [
     { type: "opener", isClipBacked: true, source: "a.mp4" },

@@ -38,6 +38,8 @@ tts_server/server.log.*
 tts_server/faulthandler.*.log
 tts_server/boot_state.json
 tts_server/venv/
+tts_lab/chatterbox_venv/
+tts_lab/__pycache__/
 
 # --- Local test assets that are never part of the app ---
 test_videos/

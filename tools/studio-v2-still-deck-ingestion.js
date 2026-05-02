@@ -50,8 +50,22 @@ const {
   runStillImageEnrichment,
 } = require("../lib/still-image-enrichment");
 const {
-  officialTrailerFrameRejectReason,
-} = require("../lib/controlled-frame-extraction-worker");
+  buildOfficialTrailerClipsFromFrameReport,
+} = require("../lib/studio/v2/official-trailer-clip-refs");
+const {
+  assertNarrationAllowedForProof,
+  looksLikeLocalTtsPath,
+} = require("../lib/studio/v2/proof-render-safety");
+const {
+  assertFlashLaneProofReady,
+  buildFlashLaneProofPreflight,
+} = require("../lib/studio/v2/flash-lane-preflight");
+const {
+  recommendStudioV2Promotion,
+} = require("../lib/studio/v2/still-deck-promotion");
+const {
+  FLASH_LANE_DEFAULT_MAX_WORDS,
+} = require("../lib/studio/v2/flash-lane-production-contract");
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output", "studio-v2-still-deck");
@@ -69,6 +83,12 @@ const DEFAULT_FRAME_REPORT = path.join(
   "output",
   "controlled_frame_extraction_worker_apply_local.json",
 );
+const DEFAULT_SEGMENT_VALIDATION_REPORT = path.join(
+  ROOT,
+  "test",
+  "output",
+  "official_trailer_segment_validation_v1.json",
+);
 const PREFERRED = ["1szzhy9", "rss_4105cb7c837252c3"];
 const TARGET_RUNTIME_S = 61;
 const FONT_OPT =
@@ -82,10 +102,14 @@ function parseArgs(argv) {
     reportPath: null,
     applyLocal: false,
     frameReportPath: null,
+    segmentValidationReportPath: null,
+    noSegmentValidationReport: false,
     noFrameReport: false,
     noRender: false,
     withSoundDesign: false,
     allowSilentFixture: false,
+    allowFlashDiagnosticRender: false,
+    allowLocalVoiceDiagnostic: false,
     generateLocalTts: false,
     useOfficialTrailerClips: false,
     audioPath: null,
@@ -97,11 +121,16 @@ function parseArgs(argv) {
     if (arg === "--story") args.storyId = argv[++i] || null;
     else if (arg === "--report") args.reportPath = path.resolve(argv[++i] || "");
     else if (arg === "--frame-report") args.frameReportPath = path.resolve(argv[++i] || "");
+    else if (arg === "--segment-validation-report")
+      args.segmentValidationReportPath = path.resolve(argv[++i] || "");
+    else if (arg === "--no-segment-validation-report") args.noSegmentValidationReport = true;
     else if (arg === "--no-frame-report") args.noFrameReport = true;
     else if (arg === "--apply-local") args.applyLocal = true;
     else if (arg === "--no-render") args.noRender = true;
     else if (arg === "--with-sound-design") args.withSoundDesign = true;
     else if (arg === "--allow-silent-fixture") args.allowSilentFixture = true;
+    else if (arg === "--allow-flash-diagnostic-render") args.allowFlashDiagnosticRender = true;
+    else if (arg === "--allow-local-voice-diagnostic") args.allowLocalVoiceDiagnostic = true;
     else if (arg === "--generate-local-tts") args.generateLocalTts = true;
     else if (arg === "--use-official-trailer-clips") args.useOfficialTrailerClips = true;
     else if (arg === "--audio") args.audioPath = path.resolve(argv[++i] || "");
@@ -121,6 +150,8 @@ function printHelp() {
       "  --story <id>       Prefer one story id",
       "  --report <path>    still-enrichment report path; defaults to newest v1.5/v1.4/v1.1 output",
       "  --frame-report <path>  accepted local frame-extraction report; defaults to controlled worker apply-local output if present",
+      "  --segment-validation-report <path>  optional local segment validation report for official trailer clip refs",
+      "  --no-segment-validation-report  Ignore trailer segment validation reports",
       "  --no-frame-report  Ignore local frame-extraction reports",
       "  --apply-local      Download allowed still images to test/output only",
       "  --no-render        Build packages/reports without ffmpeg render",
@@ -130,6 +161,8 @@ function printHelp() {
       "  --generate-local-tts  Generate local TTS audio under test/output before rendering",
       "  --use-official-trailer-clips  Use official Steam/IGDB trailer references as local-only ffmpeg clip inputs",
       "  --allow-silent-fixture  Explicitly allow silent visual-only proof renders",
+      "  --allow-flash-diagnostic-render  Explicitly allow a proof render even when Flash Lane preflight blocks it",
+      "  --allow-local-voice-diagnostic  Explicitly allow unapproved local TTS in a local diagnostic render",
       "  --limit <n>        Number of selected stories to attempt, default 1",
       "",
       "This command is local-only. It does not mutate Railway, OAuth, production DB, scheduler, render defaults or publishing paths.",
@@ -147,6 +180,15 @@ function resolveFrameReportPath({ frameReportPath, noFrameReport }) {
   if (noFrameReport) return null;
   if (frameReportPath) return frameReportPath;
   return fs.pathExistsSync(DEFAULT_FRAME_REPORT) ? DEFAULT_FRAME_REPORT : null;
+}
+
+function resolveSegmentValidationReportPath({
+  segmentValidationReportPath,
+  noSegmentValidationReport,
+}) {
+  if (noSegmentValidationReport) return null;
+  if (segmentValidationReportPath) return segmentValidationReportPath;
+  return fs.pathExistsSync(DEFAULT_SEGMENT_VALIDATION_REPORT) ? DEFAULT_SEGMENT_VALIDATION_REPORT : null;
 }
 
 function parseJsonField(value) {
@@ -288,7 +330,8 @@ function buildRenderStory(story) {
     full_script: story.full_script || story.body || story.title,
   };
   const previousMaxWords = process.env.STUDIO_EDITORIAL_MAX_WORDS;
-  process.env.STUDIO_EDITORIAL_MAX_WORDS = process.env.STUDIO_EDITORIAL_MAX_WORDS || "125";
+  process.env.STUDIO_EDITORIAL_MAX_WORDS =
+    process.env.STUDIO_EDITORIAL_MAX_WORDS || String(FLASH_LANE_DEFAULT_MAX_WORDS);
   try {
     const editorial = buildStudioEditorial(base);
     const caption = ensureSpokenOutro(editorial.scriptForCaption || editorial.fullScript || base.full_script);
@@ -329,13 +372,14 @@ async function resolveNarration({
       throw new Error(`narration audio missing: ${audioPath}`);
     }
     const inferredTs = timestampsPath || audioPath.replace(/\.(mp3|wav|m4a)$/i, "_timestamps.json");
+    const suppliedLocalTts = looksLikeLocalTtsPath(audioPath);
     return {
       mode: "real_audio",
       audioPath,
       timestampsPath: (await fs.pathExists(inferredTs)) ? inferredTs : null,
       durationS: ffprobeDuration(audioPath),
-      provider: "external",
-      source: "provided-real-audio",
+      provider: suppliedLocalTts ? "local" : "external",
+      source: suppliedLocalTts ? "provided-local-tts-audio" : "provided-real-audio",
     };
   }
 
@@ -391,49 +435,6 @@ async function resolveNarration({
   };
 }
 
-function buildOfficialTrailerClipsFromFrameReport(frameReport, storyId, maxClips = 3) {
-  const bestBySource = new Map();
-  for (const plan of Array.isArray(frameReport?.plans) ? frameReport.plans : []) {
-    if (plan?.story_id !== storyId) continue;
-    for (const frame of Array.isArray(plan.frames) ? plan.frames : []) {
-      if (frame?.status !== "accepted") continue;
-      if (officialTrailerFrameRejectReason(frame, frame.qa || {})) continue;
-      const sourceUrl = String(frame.source_url || "").trim();
-      if (!sourceUrl) continue;
-      const targetSeconds = Number(frame.target_time_seconds);
-      const current = bestBySource.get(sourceUrl);
-      if (
-        !current ||
-        (Number.isFinite(targetSeconds) ? targetSeconds : 0) >
-          (Number.isFinite(Number(current.target_time_seconds)) ? Number(current.target_time_seconds) : 0)
-      ) {
-        bestBySource.set(sourceUrl, frame);
-      }
-    }
-  }
-  return [...bestBySource.values()]
-    .slice(0, maxClips)
-    .map((frame) => {
-      const targetSeconds = Number(frame.target_time_seconds);
-      const mediaStartS = Number.isFinite(targetSeconds)
-        ? Number(Math.max(12, targetSeconds - 1.25).toFixed(2))
-        : 12;
-      return {
-        path: String(frame.source_url || "").trim(),
-        source: "official-trailer-reference",
-        sourceType: frame.source_type || "steam_movie",
-        entity: frame.entity || null,
-        durationS: 5,
-        mediaStartS,
-        provenance: {
-          target_time_seconds: Number.isFinite(targetSeconds) ? targetSeconds : null,
-          frame_local_path: frame.local_path || null,
-          content_hash: frame.qa?.content_hash || null,
-        },
-      };
-    });
-}
-
 function buildPackageForQuality({ story, words }) {
   const hook = hookForQuality(story.hook || story.title);
   const tightened = cleanInlineText(story.full_script || story.body || story.title);
@@ -474,26 +475,26 @@ function sceneListForReport(scenes) {
     label: scene.label || null,
     duration: scene.duration,
     source: scene.source || scene.backgroundSource || scene.prerenderedMp4 || scene.statLabel || null,
+    mediaStartS: scene.mediaStartS ?? null,
     premiumLane: scene.premiumLane || null,
+    cardTreatment: scene.cardTreatment || null,
   }));
 }
 
-async function renderStillDeckVariant({
+async function buildFlashLaneRenderPreflight({
   story,
   media,
-  variant,
   outputDir,
-  withSoundDesign = false,
   allowSilentFixture = false,
+  allowLocalVoiceDiagnostic = false,
   generateLocalTts = false,
   audioPath = null,
   timestampsPath = null,
 }) {
-  await fs.ensureDir(outputDir);
   const renderStory = buildRenderStory(story);
   const narration = await resolveNarration({
     story: renderStory,
-    variant,
+    variant: "enriched",
     outputDir,
     audioPath,
     timestampsPath,
@@ -510,6 +511,7 @@ async function renderStillDeckVariant({
     audioDurationS: targetDurationS,
     opts: {
       allowStockFiller: false,
+      flashLane: true,
       takeawayText: "FOLLOW PULSE GAMING",
       cta: "NEVER MISS A BEAT",
     },
@@ -524,6 +526,95 @@ async function renderStillDeckVariant({
           sourceLabel: story.source_type || "NEWS",
         },
       ];
+  const report = buildFlashLaneProofPreflight({
+    narration,
+    scenes,
+    media,
+    scriptWordCount: countWords(renderStory.tts_script || renderStory.full_script || renderStory.body || renderStory.title),
+  });
+  return {
+    ...report,
+    narration: {
+      mode: narration.mode,
+      provider: narration.provider,
+      source: narration.source,
+      audioPath: narration.audioPath || null,
+      timestampsPath: narration.timestampsPath || null,
+      durationS: Number.isFinite(Number(narration.durationS))
+        ? Number(Number(narration.durationS).toFixed(3))
+        : null,
+    },
+    sceneList: sceneListForReport(scenes),
+  };
+}
+
+async function renderStillDeckVariant({
+  story,
+  media,
+  variant,
+  outputDir,
+  withSoundDesign = false,
+  allowSilentFixture = false,
+  allowFlashDiagnosticRender = false,
+  allowLocalVoiceDiagnostic = false,
+  generateLocalTts = false,
+  audioPath = null,
+  timestampsPath = null,
+}) {
+  await fs.ensureDir(outputDir);
+  const renderStory = buildRenderStory(story);
+  if (generateLocalTts) {
+    assertNarrationAllowedForProof(
+      {
+        mode: "real_audio",
+        provider: "local",
+        source: "local-production-voxcpm-path",
+      },
+      { allowSilentFixture, allowLocalVoiceDiagnostic },
+    );
+  }
+  const narration = await resolveNarration({
+    story: renderStory,
+    variant,
+    outputDir,
+    audioPath,
+    timestampsPath,
+    generateLocalTts,
+    allowSilentFixture,
+  });
+  assertNarrationAllowedForProof(narration, { allowSilentFixture, allowLocalVoiceDiagnostic });
+  const targetDurationS =
+    narration.mode === "real_audio" && Number.isFinite(narration.durationS)
+      ? narration.durationS
+      : TARGET_RUNTIME_S;
+  const composed = composeStudioSlate({
+    story: renderStory,
+    media,
+    audioDurationS: targetDurationS,
+    opts: {
+      allowStockFiller: false,
+      flashLane: variant === "enriched",
+      takeawayText: "FOLLOW PULSE GAMING",
+      cta: "NEVER MISS A BEAT",
+    },
+  });
+  const scenes = composed.scenes.length
+    ? composed.scenes
+    : [
+        {
+          type: SCENE_TYPES.CARD_SOURCE,
+          label: "card_source",
+          duration: TARGET_RUNTIME_S,
+          sourceLabel: story.source_type || "NEWS",
+        },
+      ];
+  const flashLanePreflight =
+    variant === "enriched"
+      ? assertFlashLaneProofReady(
+          { narration, scenes, media },
+          { allowDiagnosticRender: allowFlashDiagnosticRender },
+        )
+      : null;
   const transitions = buildCutTransitions(scenes);
   const durationS = sumDurations(scenes);
   const assPath = path.join(outputDir, `${story.id}_${variant}.ass`);
@@ -540,6 +631,8 @@ async function renderStillDeckVariant({
         words,
         duration: assDurationS,
         scriptText: renderStory.scriptForCaption || renderStory.full_script,
+        maxWordsPerPhrase: 2,
+        maxPhraseChars: 14,
       }),
       "utf8",
     );
@@ -650,6 +743,7 @@ async function renderStillDeckVariant({
     soundLayerPayload,
     realignedWords: words,
     renderedDurationS,
+    flashLanePreflight,
     branch: "local-still-deck-ingestion",
   });
   quality.runtime = {
@@ -673,6 +767,7 @@ async function renderStillDeckVariant({
         ? "Real narration audio was used for this local proof."
         : "Silent fixture audio was explicitly allowed for this local visual diagnostic.",
   };
+  if (flashLanePreflight) quality.flashLanePreflight = flashLanePreflight;
   const reportPath = path.join(outputDir, `${story.id}_${variant}_qa.json`);
   await fs.writeJson(reportPath, quality, { spaces: 2 });
   const forensic = await runForensicQa({
@@ -722,8 +817,9 @@ async function makeContactSheet(mp4Path, outPath) {
 function renderComparisonMarkdown(report) {
   const narration = report.narration || {};
   const motion = report.motion || {};
-  const narrationLine =
-    narration.mode === "real_audio"
+  const narrationLine = report.render_preflight_error
+    ? `- Narration/render was blocked before FFmpeg: ${report.render_preflight_error}`
+    : narration.mode === "real_audio"
       ? `- Real narration audio used (${narration.enriched_source || "unknown source"}); ElevenLabs was not called.`
       : "- Silent fixture audio was explicitly allowed for a visual-only diagnostic; not valid for pilot approval.";
   const mediaLine =
@@ -759,6 +855,33 @@ function renderComparisonMarkdown(report) {
   for (const row of report.metric_rows) {
     lines.push(`| ${row.metric} | ${row.baseline} | ${row.enriched} |`);
   }
+  if (report.render_preflight) {
+    lines.push("", "## Flash Lane Preflight", "");
+    lines.push(`- Verdict: ${report.render_preflight.verdict || "unknown"}`);
+    const blockers = Array.isArray(report.render_preflight.blockers)
+      ? report.render_preflight.blockers
+      : [];
+    const warnings = Array.isArray(report.render_preflight.warnings)
+      ? report.render_preflight.warnings
+      : [];
+    if (blockers.length) lines.push(`- Blockers: ${blockers.join(", ")}`);
+    if (warnings.length) lines.push(`- Warnings: ${warnings.join(", ")}`);
+    const metrics = report.render_preflight.metrics || {};
+    if (Object.keys(metrics).length) {
+      lines.push(
+        `- Runtime: ${metrics.narrationDurationS ?? "unknown"}s; spoken pace: ${metrics.spokenWpm ?? "unknown"} WPM; actual clip dominance: ${metrics.actualClipDominance ?? "unknown"}; card ratio: ${metrics.cardRatio ?? "unknown"}`,
+      );
+    }
+    if (report.render_preflight.narrationPlan) {
+      const plan = report.render_preflight.narrationPlan;
+      lines.push(
+        `- Narration plan: ${plan.recommendation}; target ${plan.targetRuntimeS?.[0] ?? "?"}-${plan.targetRuntimeS?.[1] ?? "?"}s, ${plan.targetWordRange?.[0] ?? "?"}-${plan.targetWordRange?.[1] ?? "?"} words at ${plan.idealWpmRange?.[0] ?? "?"}-${plan.idealWpmRange?.[1] ?? "?"} WPM`,
+      );
+      if (Array.isArray(plan.issues) && plan.issues.length) {
+        lines.push(`- Narration issues: ${plan.issues.join(", ")}`);
+      }
+    }
+  }
   lines.push("", "## Safety", "");
   lines.push("- Local-only proof.");
   lines.push(mediaLine);
@@ -780,11 +903,16 @@ async function main() {
   }
   args.reportPath = resolveReportPath(args.reportPath);
   args.frameReportPath = resolveFrameReportPath(args);
+  args.segmentValidationReportPath = resolveSegmentValidationReportPath(args);
   await fs.ensureDir(OUT);
   const dryReport = await fs.readJson(args.reportPath);
   const frameReport = args.frameReportPath && (await fs.pathExists(args.frameReportPath))
     ? await fs.readJson(args.frameReportPath)
     : null;
+  const segmentValidationReport =
+    args.segmentValidationReportPath && (await fs.pathExists(args.segmentValidationReportPath))
+      ? await fs.readJson(args.segmentValidationReportPath)
+      : null;
   const preferredStoryIds = args.storyId ? [args.storyId, ...PREFERRED] : PREFERRED;
   const selected = selectStillDeckPlan(dryReport, {
     storyId: args.storyId,
@@ -812,7 +940,10 @@ async function main() {
 
   const enrichedPackage = await buildStillDeckMediaPackage({ story, plan, frameReport });
   const officialClipRefs = args.useOfficialTrailerClips
-    ? buildOfficialTrailerClipsFromFrameReport(frameReport, story.id)
+    ? buildOfficialTrailerClipsFromFrameReport(frameReport, story.id, {
+        segmentValidationReport,
+        requireValidatedSegments: Boolean(segmentValidationReport),
+      })
     : [];
   if (officialClipRefs.length) {
     enrichedPackage.media.clips = officialClipRefs;
@@ -835,10 +966,42 @@ async function main() {
   let baselineRender = null;
   let enrichedRender = null;
   let comparison = null;
-  if (
+  const renderRequested =
     !args.noRender &&
-    (enrichedPackage.media.articleHeroes.length > 0 || enrichedPackage.media.trailerFrames.length > 0)
-  ) {
+    (enrichedPackage.media.articleHeroes.length > 0 || enrichedPackage.media.trailerFrames.length > 0);
+  let renderPreflight = null;
+  let renderPreflightBlocked = false;
+  let renderPreflightError = null;
+  if (renderRequested) {
+    try {
+      renderPreflight = await buildFlashLaneRenderPreflight({
+        story,
+        media: enrichedPackage.media,
+        outputDir: OUT,
+        allowSilentFixture: args.allowSilentFixture,
+        allowLocalVoiceDiagnostic: args.allowLocalVoiceDiagnostic,
+        generateLocalTts: args.generateLocalTts,
+        audioPath: args.audioPath,
+        timestampsPath: args.timestampsPath,
+      });
+      renderPreflightBlocked =
+        renderPreflight.verdict === "block" && !args.allowFlashDiagnosticRender;
+      if (renderPreflightBlocked) {
+        renderPreflightError = renderPreflight.blockers.join(", ");
+      }
+    } catch (err) {
+      renderPreflightBlocked = true;
+      renderPreflightError = err.message || String(err);
+      renderPreflight = {
+        verdict: "block",
+        blockers: [renderPreflightError],
+        warnings: [],
+        metrics: {},
+      };
+    }
+  }
+
+  if (renderRequested && (!renderPreflightBlocked || args.allowFlashDiagnosticRender)) {
     baselineRender = await renderStillDeckVariant({
       story,
       media: baselineMedia,
@@ -846,6 +1009,8 @@ async function main() {
       outputDir: OUT,
       withSoundDesign: args.withSoundDesign,
       allowSilentFixture: args.allowSilentFixture,
+      allowLocalVoiceDiagnostic: args.allowLocalVoiceDiagnostic,
+      allowFlashDiagnosticRender: args.allowFlashDiagnosticRender,
       generateLocalTts: args.generateLocalTts,
       audioPath: args.audioPath,
       timestampsPath: args.timestampsPath,
@@ -857,6 +1022,8 @@ async function main() {
       outputDir: OUT,
       withSoundDesign: args.withSoundDesign,
       allowSilentFixture: args.allowSilentFixture,
+      allowFlashDiagnosticRender: args.allowFlashDiagnosticRender,
+      allowLocalVoiceDiagnostic: args.allowLocalVoiceDiagnostic,
       generateLocalTts: args.generateLocalTts,
       audioPath: args.audioPath,
       timestampsPath: args.timestampsPath,
@@ -898,21 +1065,68 @@ async function main() {
   const frameReportUsed =
     Boolean(frameReport) && enrichedPackage.metrics.acceptedFrameCount + enrichedPackage.metrics.rejectedFrameCount > 0;
   const enrichedVoice = enrichedRender?.quality?.voice || {};
-  const realNarrationUsed = Boolean(enrichedVoice.audioPath);
+  const preflightNarration = renderPreflight?.narration || {};
+  const realNarrationUsed = Boolean(enrichedVoice.audioPath || preflightNarration.audioPath);
+  const enrichedVoiceSource = String(enrichedVoice.source || preflightNarration.source || "");
   const officialClipRefsUsed = Number(enrichedPackage.metrics.acceptedOfficialClipRefs || 0);
+  const renderAttempted = Boolean(baselineRender || enrichedRender);
+  const enrichedVoiceGate = enrichedRender?.quality?.auto?.voicePathUsed?.grade || null;
+  const renderRejected = enrichedRender?.quality?.verdict?.lane === "reject";
   const premiumBlockers = [
     officialClipRefsUsed > 0
       ? "official Steam trailer references add real motion but still need human visual approval"
       : frameReportUsed
         ? "official local frames improve motion variety but are not full trailer/video clips"
         : "no trailer/video clips in this phase",
-    realNarrationUsed
-      ? "local VoxCPM narration is present but remains amber until human-approved against the production ElevenLabs voice"
-      : "silent fixture audio is not valid for pilot approval",
+    realNarrationUsed && enrichedVoiceSource === "provided-real-audio"
+      ? "provided cached narration is present; runtime and render QA still decide pilot readiness"
+      : realNarrationUsed
+        ? "local narration is present but is blocked until human-approved against the production ElevenLabs voice"
+        : "silent fixture audio is not valid for pilot approval",
   ];
+  if (!renderAttempted) {
+    premiumBlockers.push("no MP4 render was attempted, so suitability is diagnostic only");
+  }
+  if (renderPreflightBlocked) {
+    premiumBlockers.push(
+      `Flash Lane preflight blocked render before FFmpeg: ${renderPreflight?.blockers?.join(", ")}`,
+    );
+  }
+  if (enrichedVoiceGate === "red") {
+    premiumBlockers.push("unapproved local TTS voice path blocks pilot approval");
+  }
+  if (renderRejected) {
+    premiumBlockers.push("render QA rejected the enriched proof");
+  }
   if (officialClipRefsUsed <= 0) {
     premiumBlockers.push("still images alone cannot prove premium motion quality");
   }
+  const studioV2Suitability = renderPreflightBlocked
+    ? "blocked_by_flash_lane_preflight"
+    : !renderAttempted
+    ? "diagnostic_only_not_render_verified"
+    : renderRejected || enrichedVoiceGate === "red"
+      ? "blocked_by_render_or_voice_qa"
+      : enrichedVisualCount >= 8 && enrichedPackage.metrics.distinctEntities >= 3
+        ? "studio_v2_60s_candidate_local_proof"
+        : enrichedVisualCount >= 3
+          ? "standard_short_candidate"
+          : "still_too_thin";
+  const promotionRecommendation = recommendStudioV2Promotion({
+    renderPreflightBlocked,
+    renderPreflight,
+    renderAttempted,
+    enrichedVoiceGate,
+    renderRejected,
+    visualImproved,
+  });
+  const visualOutput = renderPreflightBlocked
+    ? visualImproved
+      ? "package_improved_not_render_verified"
+      : "not_proven"
+    : visualImproved
+      ? "improved"
+      : "not_proven";
   const report = {
     schema_version: 1,
     report_title:
@@ -927,21 +1141,27 @@ async function main() {
     selected_from: rel(args.reportPath),
     frame_report_used: frameReportUsed,
     frame_report_path: args.frameReportPath ? rel(args.frameReportPath) : null,
+    segment_validation_report_used: Boolean(segmentValidationReport),
+    segment_validation_report_path: args.segmentValidationReportPath
+      ? rel(args.segmentValidationReportPath)
+      : null,
     apply_local_used: args.applyLocal,
     sound_design_used: args.withSoundDesign,
     narration: {
       mode: realNarrationUsed ? "real_audio" : "silent_fixture",
-      enriched_source: enrichedVoice.source || null,
-      enriched_audio_path: enrichedVoice.audioPath || null,
-      enriched_timestamps_path: enrichedVoice.timestampsPath || null,
+      enriched_source: enrichedVoice.source || preflightNarration.source || null,
+      enriched_audio_path: enrichedVoice.audioPath || preflightNarration.audioPath || null,
+      enriched_timestamps_path: enrichedVoice.timestampsPath || preflightNarration.timestampsPath || null,
+      durationS: preflightNarration.durationS || null,
     },
     motion: {
       official_clip_refs_used: officialClipRefsUsed,
       official_trailer_frames_used: Number(enrichedPackage.metrics.acceptedFrameCount || 0),
     },
-    render_attempted:
-      !args.noRender &&
-      (enrichedPackage.media.articleHeroes.length > 0 || enrichedPackage.media.trailerFrames.length > 0),
+    render_requested: renderRequested,
+    render_preflight: renderPreflight,
+    render_preflight_error: renderPreflightError,
+    render_attempted: renderAttempted,
     baseline_media: {
       source: "current_local_studio_discovery",
       diversity: baselineSummary,
@@ -988,18 +1208,10 @@ async function main() {
       },
     ],
     judgement: {
-      visual_output: visualImproved ? "improved" : "not_proven",
-      studio_v2_suitability:
-        enrichedVisualCount >= 8 && enrichedPackage.metrics.distinctEntities >= 3
-          ? "studio_v2_60s_candidate_local_proof"
-          : enrichedVisualCount >= 3
-            ? "standard_short_candidate"
-            : "still_too_thin",
+      visual_output: visualOutput,
+      studio_v2_suitability: studioV2Suitability,
       premium_blockers: premiumBlockers,
-      recommendation:
-        visualImproved
-          ? "keep local-only and test Studio V2 with enriched still decks on more stories"
-          : "wait for richer stills or trailer-frame enrichment before promotion",
+      recommendation: promotionRecommendation,
     },
     artefacts,
     safety: {

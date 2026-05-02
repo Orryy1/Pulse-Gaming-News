@@ -32,7 +32,7 @@ function framePlan(overrides = {}) {
         source_url: "https://video.example/gta.m3u8",
         source_type: "steam_movie",
         entity: "GTA",
-        target_time_percent: 0.18,
+        target_time_percent: 0.42,
         downloads_allowed: false,
         extraction_allowed: false,
       },
@@ -40,7 +40,7 @@ function framePlan(overrides = {}) {
         source_url: "https://video.example/gta.m3u8",
         source_type: "steam_movie",
         entity: "GTA",
-        target_time_percent: 0.52,
+        target_time_percent: 0.58,
         downloads_allowed: false,
         extraction_allowed: false,
       },
@@ -108,6 +108,9 @@ test("controlled frame extraction apply-local writes only under test/output and 
   });
 
   assert.equal(report.mode, "apply_local");
+  assert.equal(report.will_download_video, false);
+  assert.equal(report.will_retain_video, false);
+  assert.equal(report.will_fetch_source_for_frame, true);
   assert.equal(report.summary.frames_extracted, 2);
   assert.equal(report.summary.frames_accepted, 2);
   assert.ok(report.plans[0].frames.every((frame) => frame.local_path.startsWith(outputRoot)));
@@ -233,6 +236,60 @@ test("controlled frame extraction rejects official trailer title or rating cards
     report.plans[0].frames.every((frame) =>
       frame.qa.failures.includes("title_or_rating_card_frame"),
     ),
+  );
+});
+
+test("controlled frame extraction rejects early official trailer intro frames", async () => {
+  const outputRoot = tempOutputRoot("early-intro-frame");
+  await cleanTempRoot(outputRoot);
+
+  const report = await runControlledFrameExtraction([
+    framePlan({
+      target_frames: [
+        {
+          source_url: "https://video.example/gta.m3u8",
+          source_type: "steam_movie",
+          entity: "GTA",
+          target_time_percent: 0.18,
+          target_time_seconds: 10.8,
+          downloads_allowed: false,
+          extraction_allowed: false,
+        },
+      ],
+    }),
+  ], {
+    applyLocal: true,
+    outputRoot,
+    extractor: async ({ outputPath }) => {
+      await fs.ensureDir(path.dirname(outputPath));
+      await fs.writeFile(outputPath, Buffer.from("fake-frame"));
+      return { outputPath };
+    },
+    inspectFrame: async (outputPath) => ({
+      local_path: outputPath,
+      file_size: 10,
+      content_hash: outputPath,
+      width: 1280,
+      height: 720,
+      thumbnail_safe: true,
+      likely_has_face: false,
+      black_frame: false,
+      blur_verdict: "pass",
+      verdict: "pass",
+      warnings: [],
+      failures: [],
+      prescan: {
+        likely_is_logo: false,
+        text_overlay_likelihood: 0,
+        edge_density: 0.18,
+        saturation_mean: 0.32,
+      },
+    }),
+  });
+
+  assert.equal(report.summary.frames_accepted, 0);
+  assert.ok(
+    report.plans[0].frames[0].qa.failures.includes("early_trailer_intro_frame"),
   );
 });
 

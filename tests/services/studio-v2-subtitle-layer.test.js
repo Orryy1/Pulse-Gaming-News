@@ -3,7 +3,12 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { buildKineticAss, groupIntoPhrases } = require("../../lib/studio/v2/subtitle-layer-v2");
+const {
+  buildKineticAss,
+  buildWordPopDialogues,
+  groupIntoPhrases,
+  extractAssDialogueText,
+} = require("../../lib/studio/v2/subtitle-layer-v2");
 
 function assIntervals(ass) {
   return ass
@@ -80,6 +85,71 @@ test("groupIntoPhrases caps creator subtitles at three words to avoid two-line b
 
   assert.deepEqual(
     phrases.map((phrase) => phrase.words.map((word) => word.word)),
-    [["Take-Two", "killed", "a"], ["legacy", "sequel."]],
+    [["Take-Two", "killed"], ["a", "legacy", "sequel."]],
+  );
+});
+
+test("groupIntoPhrases splits long creator captions before they become two-line blocks", () => {
+  const phrases = groupIntoPhrases([
+    { word: "Developer", start: 0, end: 0.2 },
+    { word: "passion", start: 0.21, end: 0.42 },
+    { word: "has", start: 0.43, end: 0.5 },
+    { word: "become", start: 0.51, end: 0.75 },
+    { word: "a", start: 0.76, end: 0.85 },
+    { word: "hard", start: 0.86, end: 1.0 },
+    { word: "veto.", start: 1.01, end: 1.2 },
+  ]);
+
+  assert.deepEqual(
+    phrases.map((phrase) => phrase.words.map((word) => word.word)),
+    [["Developer"], ["passion", "has"], ["become", "a", "hard"], ["veto."]],
+  );
+  assert.ok(
+    phrases.every((phrase) => phrase.words.map((word) => word.word).join(" ").length <= 16),
+  );
+});
+
+test("buildWordPopDialogues uses hard spaces so short punches do not wrap", () => {
+  const dialogues = buildWordPopDialogues(
+    [
+      {
+        start: 0,
+        end: 1.2,
+        words: [
+          { word: "GTA", start: 0, end: 0.2 },
+          { word: "just", start: 0.21, end: 0.35 },
+          { word: "changed", start: 0.36, end: 0.6 },
+        ],
+      },
+    ],
+    new Set(["GTA"]),
+  );
+
+  assert.match(dialogues[0], /GTA\\h/);
+  assert.match(dialogues[0], /just\\h/);
+});
+
+test("buildKineticAss supports Flash captions capped at two-word punches", () => {
+  const ass = buildKineticAss({
+    story: { title: "GTA Red Dead BioShock" },
+    words: [
+      { word: "Developer", start: 0, end: 0.18 },
+      { word: "passion", start: 0.2, end: 0.38 },
+      { word: "has", start: 0.4, end: 0.52 },
+      { word: "become", start: 0.54, end: 0.72 },
+      { word: "a", start: 0.74, end: 0.86 },
+      { word: "hard", start: 0.88, end: 1.02 },
+      { word: "veto.", start: 1.04, end: 1.2 },
+    ],
+    duration: 3,
+    scriptText: "Developer passion has become a hard veto.",
+    maxWordsPerPhrase: 2,
+    maxPhraseChars: 14,
+  });
+
+  const captions = extractAssDialogueText(ass);
+  assert.ok(captions.length >= 4);
+  assert.ok(
+    captions.every((caption) => caption.replace(/\\h/g, " ").split(/\s+/).filter(Boolean).length <= 2),
   );
 });

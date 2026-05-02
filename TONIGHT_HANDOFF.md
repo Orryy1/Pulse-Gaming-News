@@ -452,6 +452,93 @@ Recommended next build:
 
 Build Asset Acquisition Pro v1.3: Exact Store App Verification. Store Steam/IGDB app ids, titles and matched query strings, then reject assets when the returned app title does not match the story subject.
 
+## Pulse Flash Lane + Trailer Segment Safety Update
+
+User review of `studio_v2_rss_5b3abe925b27a199_enriched.mp4` exposed the correct blocker: the proof metrics were too generous. The MP4 could still be silent, use an invalid/slow voice source, show rating/title cards and include weak frames while appearing locally "improved".
+
+Additional files changed:
+
+- `lib/format-lane-policy.js`
+- `lib/studio/v2/proof-render-safety.js`
+- `lib/studio/v2/flash-lane-preflight.js`
+- `lib/studio/v2/flash-lane-production-contract.js`
+- `lib/studio/v2/official-trailer-clip-refs.js`
+- `lib/studio/v2/subtitle-layer-v2.js`
+- `lib/scene-composer.js`
+- `lib/creator-studio-os.js`
+- `lib/controlled-frame-extraction-worker.js`
+- `tools/flash-lane-production-contract.js`
+- `tools/studio-v2-still-deck-ingestion.js`
+- `tests/services/flash-lane-production-contract.test.js`
+- `tests/services/official-trailer-clip-refs.test.js`
+- `tests/services/studio-v2-flash-lane-preflight.test.js`
+- `tests/services/studio-v2-proof-render-safety.test.js`
+- `tests/services/studio-v2-subtitle-layer.test.js`
+- `tests/services/studio-short-engine-v1.test.js`
+- `tests/services/creator-studio-os.test.js`
+- `STUDIO_V2_PROOF_RENDER_SAFETY_REPORT.md`
+- `STUDIO_V2_TRAILER_SEGMENT_SAFETY_REPORT.md`
+- `PULSE_FORMAT_LANES_V1_REPORT.md`
+
+Additional command:
+
+```bash
+npm run studio:v2:flash-contract
+```
+
+Useful forms:
+
+```bash
+npm run studio:v2:flash-contract -- --fixture
+npm run studio:v2:flash-contract -- --story STORY_ID
+npm run studio:v2:flash-contract -- --story STORY_ID --audio PATH_TO_MP3
+```
+
+Latest outputs:
+
+- `test/output/flash_lane_production_contract_fixture_flash_lane_story.json`
+- `test/output/flash_lane_production_contract_fixture_flash_lane_story.md`
+- `test/output/flash_lane_production_contract_rss_5b3abe925b27a199.json`
+- `test/output/flash_lane_production_contract_rss_5b3abe925b27a199.md`
+- updated `test/output/creator_studio_control_room.json`
+- updated `test/output/creator_studio_control_room.md`
+
+Key safety changes:
+
+- Pulse Flash Lane is now explicit: 61-75s, fast gaming TikTok/Shorts style, punch captions, game-footage backbone and approved voice required.
+- Pulse Briefing Lane is separate: 6-15 minute eventual weekly/monthly mini-documentary style with source timelines and chapter cards.
+- Creator Studio OS now includes `flash_lane_contract` and a `flash action` column.
+- Flash Lane proof renders are blocked before FFmpeg when narration is missing, unapproved, too slow, too long or too short.
+- The cached `rss_5b3abe925b27a199` narration is 118.025s and is blocked for Flash Lane.
+- Official trailer clip refs now start after accepted safe frames rather than trailer intros.
+- Official trailer clip refs now reject text-heavy rating/title cards, blur/low-detail warning frames and choose the highest-quality safe segment anchor rather than blindly taking the latest frame.
+- Subtitles are capped into shorter punch phrases to reduce two-line caption clutter.
+
+Fresh validation:
+
+- `node --test tests/services/creator-studio-os.test.js`: 16/16 pass
+- `node --test tests/services/creator-studio-os.test.js tests/services/flash-lane-production-contract.test.js tests/services/studio-v2-flash-lane-preflight.test.js tests/services/official-trailer-clip-refs.test.js tests/services/studio-v2-proof-render-safety.test.js`: 36/36 pass
+- `node --test tests/services/controlled-frame-extraction-worker.test.js tests/services/studio-v2-still-deck-ingestion.test.js tests/services/official-trailer-clip-refs.test.js`: 36/36 pass
+- `npm test`: 1,675/1,675 pass
+- `npm run build`: pass
+- `npm run ops:creator-studio -- --fixture`: pass
+- `npm run studio:v2:flash-contract -- --fixture`: pass
+
+Safety position:
+
+- no deployment;
+- no Railway variables changed;
+- no OAuth;
+- no production DB mutation;
+- no manual publish or produce;
+- no social posting;
+- no production renderer switch;
+- no hard production gates enabled.
+
+Recommended next build:
+
+Build Flash Lane Voice Workbench v1. It should generate or compare approved 61-75s narration candidates locally, reject demonic/low-pitch output automatically where measurable and require an explicit approved voice before any Studio V2 proof MP4 is allowed to look like a pilot candidate.
+
 ## Asset Acquisition Pro v1.3 Update
 
 Exact Store App Verification is implemented as a local/reporting readiness layer.
@@ -1109,3 +1196,345 @@ Key proof:
 Caveat:
 
 - This does not prove live voice quality because the proof used a silent visual fixture with local sound design.
+
+## Flash Lane Voice Workbench v1
+
+Built a local-only voice workbench for Flash Lane narration.
+
+Files:
+
+- `lib/studio/v2/flash-lane-voice-workbench.js`
+- `tools/flash-lane-voice-workbench.js`
+- `tests/services/flash-lane-voice-workbench.test.js`
+- `FLASH_LANE_VOICE_WORKBENCH_V1_REPORT.md`
+
+Command:
+
+```bash
+npm run studio:v2:voice-workbench
+```
+
+What it now checks:
+
+- 61-75s runtime.
+- Actual transcript WPM when timestamps exist.
+- Low/demonic voice risk via local pitch probing.
+- Loudness and true peak via FFmpeg ebur128.
+- Required spoken outro.
+- Local voice human-approval status.
+- Local-only output boundaries under `test/output`.
+
+Important proof:
+
+- Bad cached GTA audio was rejected: `D:\pulse-data\media\output\audio\rss_5b3abe925b27a199.mp3`
+- Best local candidate report: `test/output/flash-lane-voice-workbench-pitch210/flash_lane_voice_workbench_fixture_flash_lane_story.json`
+- Best local candidate MP3: `test/output/flash-lane-voice-workbench-pitch210/flash-lane-voice-workbench-assets/fixture_flash_lane_story_voxcpm2_1_9.mp3`
+
+Best local candidate metrics:
+
+- Runtime: 66.86s
+- Pace: 144.5 WPM
+- Median pitch: 92.05 Hz
+- Loudness: -16.9 LUFS
+- True peak: -1.7 dB
+- Spoken outro: present
+- Blockers: none
+- Remaining warning: local voice requires human approval
+
+Local post-processing used:
+
+```text
+rubberband=pitch=2.100,loudnorm=I=-16:TP=-1.5:LRA=11
+```
+
+Safety:
+
+- No deploy.
+- No Railway env changes.
+- No OAuth.
+- No production DB mutation.
+- No social posting.
+- No production voice switch.
+- No production renderer switch.
+
+Validation:
+
+- Focused Flash Lane suite: 30/30 pass.
+- Full `npm test`: 1,693/1,693 pass.
+- `npm run build`: pass.
+
+Remaining decision:
+
+- Martin should listen to the best local candidate before any Studio V2 pilot uses it.
+- Do not switch production voice without a separate approval memo.
+
+## Flash Lane Visual Safety Update
+
+The latest GTA/Take-Two Studio V2 proof is now intentionally blocked, not considered pilot-ready.
+
+Why:
+
+- supplied Flash Lane workbench audio is now classified as local TTS, not approved narration;
+- unapproved local TTS blocks proof render by default;
+- only `--allow-local-voice-diagnostic` can bypass it for local diagnostics;
+- the package has only two official clip references but planned nine actual clip scenes;
+- new Flash Lane preflight blocks excessive clip reuse with `flash_lane_clip_reuse_too_high`.
+
+Latest report:
+
+- `FLASH_LANE_VISUAL_SAFETY_UPDATE.md`
+- `test/output/studio-v2-still-deck/studio_v2_still_deck_report.json`
+
+Current blocked story:
+
+- `rss_5b3abe925b27a199`
+- blockers: `unapproved_local_tts_voice_path`, `flash_lane_clip_reuse_too_high`
+- narration duration: 66.857s
+- spoken pace: 141.8 WPM
+- official clip references: 2
+- actual clip scenes planned: 9
+- safe clip-scene budget: 6
+
+Validation:
+
+- Full `npm test`: 1,696/1,696 pass.
+- `npm run build`: pass.
+
+Safety:
+
+- No deploy.
+- No Railway env changes.
+- No OAuth.
+- No production DB mutation.
+- No social posting.
+- No production renderer switch.
+- No production voice switch.
+
+Recommended next build:
+
+Build Flash Lane Visual Director v1: footage-led scene planning, rating-card/logo-intro rejection, stronger HyperFrames-style cards, punchier captions and stricter visual coverage before any new Studio V2 pilot proof.
+
+## Flash Lane Visual Director v1
+
+Implemented the next local-only build.
+
+Files:
+
+- `lib/studio/v2/flash-lane-visual-director.js`
+- `tests/services/flash-lane-visual-director.test.js`
+- `FLASH_LANE_VISUAL_DIRECTOR_V1_REPORT.md`
+
+Behaviour:
+
+- 60+ second Flash Lane proofs now require at least three unique official clip sources.
+- Each clip source can support at most three scenes.
+- Clip anchors must start at or after 22s to reduce ratings/logo/title-card risk.
+- The composer no longer stretches two clips across a full minute.
+- Studio V2 captions split earlier so long captions are less likely to become two-line blocks.
+
+Current GTA/Take-Two preflight:
+
+- verdict: blocked before render
+- blockers: `unapproved_local_tts_voice_path`, `flash_lane_clip_dominance_below_target`, `flash_visual_requires_three_unique_clip_refs_for_60s`
+- warnings: `flash_visual_source_card_appears_too_early`, `flash_visual_cover_art_ratio_high`
+- official clip references: 2
+- unique clip sources: 2
+- actual clip dominance: 0.38
+- runtime: 66.857s
+- spoken pace: 141.8 WPM
+
+Latest generated local report:
+
+- `test/output/studio-v2-still-deck/studio_v2_still_deck_report.json`
+- `test/output/studio-v2-still-deck/studio_v2_still_deck_report.md`
+
+Focused validation:
+
+- Flash Lane Visual Director / preflight / clip refs / composer / subtitles: 43/43 pass.
+
+Full validation after Visual Director:
+
+- `npm test`: 1,701/1,701 pass.
+- `npm run build`: pass.
+
+## Flash Lane Card Treatment v1
+
+Implemented a local Studio V2 card treatment pass.
+
+Files:
+
+- `lib/scenes/source-card.js`
+- `lib/studio/ffmpeg-scene-renderer.js`
+- `tests/services/studio-v2-card-treatment.test.js`
+- `FLASH_LANE_CARD_TREATMENT_V1_REPORT.md`
+
+Behaviour:
+
+- Flash Lane source cards now use `SOURCE CHECK`, a stronger amber rail and a `PULSE VERIFIED` pill.
+- Flash Lane context/stat cards use a dedicated `MUST KNOW` treatment instead of the plain release-date fallback layout.
+- Flash Lane composed cards are tagged with `cardTreatment: flash_lane`.
+- Studio V2 still-deck reports now expose card treatment in scene lists.
+
+Current status:
+
+- Card styling is improved locally.
+- The GTA/Take-Two proof remains blocked before render because it still lacks enough unique footage and uses unapproved local TTS.
+
+Focused validation:
+
+- Card / Flash Lane targeted suite: 34/34 pass.
+
+Full validation after card treatment:
+
+- `npm test`: 1,705/1,705 pass.
+- `npm run build`: pass.
+
+## Controlled Frame Extraction v2 + Diagnostic Render
+
+Implemented the next local-only visual-quality pass.
+
+Files:
+
+- `lib/controlled-frame-extraction-plan.js`
+- `lib/controlled-frame-extraction-worker.js`
+- `lib/scene-composer.js`
+- `lib/scenes/source-card.js`
+- `lib/studio/ffmpeg-scene-renderer.js`
+- `lib/studio/v2/quality-gate-v2.js`
+- `lib/studio/v2/still-deck-promotion.js`
+- `tools/studio-v2-still-deck-ingestion.js`
+- `CONTROLLED_FRAME_EXTRACTION_V2_MULTI_SAMPLE_REPORT.md`
+
+Behaviour:
+
+- frame planning now uses `interleaved_multi_probe_v2`;
+- per story target frames increased from 8 to 12 by default;
+- sample points now cover 18%, 34%, 52%, 68% and 84%;
+- apply-local worker reports that it does not download or retain video files;
+- Flash Lane scene planning no longer uses any official clip source more than three times;
+- Flash Lane source cards are delayed past the hook section;
+- Flash Lane avoids cover-art stills when trailer frames are available;
+- FFmpeg Flash Lane card filters no longer use unsupported `drawbox alpha=`;
+- Studio V2 source-diversity QA now treats different trailer timestamp segments as distinct footage beats.
+
+Latest GTA/Take-Two local diagnostic render:
+
+- MP4: `test/output/studio-v2-still-deck/studio_v2_rss_5b3abe925b27a199_enriched.mp4`
+- contact sheet: `test/output/studio-v2-still-deck/rss_5b3abe925b27a199_enriched_contact_sheet.jpg`
+- QA: `test/output/studio-v2-still-deck/rss_5b3abe925b27a199_enriched_qa.json`
+- report: `test/output/studio-v2-still-deck/studio_v2_still_deck_report.md`
+
+Result:
+
+- render completed locally;
+- runtime: 68.8s;
+- source diversity: green, 15/16;
+- clip dominance: green, 0.88;
+- subtitles: pass;
+- forensic visual repeat pairs: 29 baseline -> 3 enriched;
+- only red QA trip: `voicePathUsed`, because the proof uses unapproved local TTS.
+
+Current verdict:
+
+- visually improved;
+- still not pilot-ready;
+- next blocker is approved 61-75s narration.
+
+Safety:
+
+- No deploy.
+- No Railway env changes.
+- No OAuth.
+- No production DB mutation.
+- No social posting.
+- No production renderer switch.
+- No production voice switch.
+- No retained video downloads.
+
+Validation:
+
+- Targeted frame/render/QA suites: 69/69 pass.
+- Full `npm test`: 1,710/1,710 pass.
+- `npm run build`: pass.
+## Flash Lane Quality Barrier, Segment Validator And Footage Backbone Update
+
+Local Studio V2 has been hardened after Martin's review of `studio_v2_rss_5b3abe925b27a199_enriched.mp4`.
+
+New/updated files from this pass:
+
+- `lib/studio/v2/official-trailer-segment-validator.js`
+- `tools/official-trailer-segment-validator.js`
+- `tests/services/official-trailer-segment-validator.test.js`
+- `lib/studio/v2/flash-lane-footage-backbone.js`
+- `tools/flash-lane-footage-backbone.js`
+- `tests/services/flash-lane-footage-backbone.test.js`
+- `lib/studio/v2/official-trailer-clip-refs.js`
+- `lib/studio/v2/flash-lane-visual-director.js`
+- `lib/studio/v2/quality-gate-v2.js`
+- `lib/studio/v2/subtitle-layer-v2.js`
+- `tools/studio-v2-still-deck-ingestion.js`
+- `FLASH_LANE_QUALITY_BARRIER_V1_REPORT.md`
+- `OFFICIAL_TRAILER_SEGMENT_VALIDATOR_V1_REPORT.md`
+- `FLASH_LANE_FOOTAGE_BACKBONE_V1_REPORT.md`
+- `.gitignore`
+
+Commands added:
+
+```bash
+npm run media:validate-trailer-segments
+npm run ops:validate-trailer-segments
+npm run studio:v2:footage-backbone
+npm run ops:flash-footage
+```
+
+Fresh local proof commands:
+
+```bash
+npm run media:plan-frames -- --story-id rss_5b3abe925b27a199
+npm run media:extract-frames -- --story-id rss_5b3abe925b27a199 --apply-local --max-frames-per-story 12
+npm run media:validate-trailer-segments -- --story rss_5b3abe925b27a199 --frame-report test/output/controlled_frame_extraction_worker_apply_local.json --apply-local
+npm run studio:v2:still-deck -- --story rss_5b3abe925b27a199 --frame-report test/output/controlled_frame_extraction_worker_apply_local.json --use-official-trailer-clips --segment-validation-report test/output/official_trailer_segment_validation_v1.json --audio test/output/flash-lane-voice-workbench-pitch210/flash-lane-voice-workbench-assets/fixture_flash_lane_story_voxcpm2_1_9.mp3 --timestamps test/output/flash-lane-voice-workbench-pitch210/flash-lane-voice-workbench-assets/fixture_flash_lane_story_voxcpm2_1_9_timestamps.json
+npm run studio:v2:footage-backbone -- --story rss_5b3abe925b27a199
+```
+
+Latest findings:
+
+- Refreshed frame extraction: 12 planned, 5 accepted, 7 rejected.
+- Segment validation: 2 segments checked, 1 validated, 1 rejected.
+- BioShock segment passed.
+- GTA segment blocked for `segment_contains_black_frame`.
+- Red Dead has no currently validated footage window.
+- Studio V2 proof is correctly blocked before FFmpeg render.
+- Footage Backbone verdict: `downgrade_to_standard_short`.
+
+Current blockers for a Flash Lane 60s proof:
+
+- `unapproved_local_tts_voice_path`
+- `flash_lane_requires_two_actual_clip_scenes`
+- `flash_lane_clip_dominance_below_target`
+- `flash_visual_requires_three_unique_clip_refs_for_60s`
+
+Validation:
+
+- `npm test`: 1,728/1,728 pass
+- `npm run build`: pass
+
+Safety position:
+
+- Local/report-only.
+- No Railway change.
+- No OAuth.
+- No production DB mutation.
+- No posting.
+- No production Studio V2 switch.
+- No hard production gate enabled.
+
+Auto-commit note:
+
+- Auto-commit was unsafe because the worktree includes unrelated generated media, branding files, reports, scratch scripts and local TTS lab files.
+- `.gitignore` now excludes `tts_lab/chatterbox_venv/` and `tts_lab/__pycache__/`, which removes the worst virtualenv noise.
+- A safe commit still needs curated staging, not `git add .`.
+
+Recommended next build:
+
+Build either `Flash Lane Footage Acquisition v1` to find at least three validated official footage windows per premium story, or `Standard Short Creator Overlay v1` so card-led Shorts can look intentionally TikTok-native without pretending they are premium footage-led Flash Lane renders.

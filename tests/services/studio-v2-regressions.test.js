@@ -67,6 +67,83 @@ test("v2 duration integrity passes when render covers voice and subtitle timelin
   assert.equal(result.grade, "green");
 });
 
+test("v2 quality report surfaces Flash Lane preflight blockers as hard quality failures", () => {
+  const assPath = tempAss(dialogue("0:00:01.00", "0:01:05.00", "story"));
+  const scenes = Array.from({ length: 10 }, (_, i) => ({
+    type: i < 7 ? "clip" : "card.stat",
+    source: `clip-${i % 3}.mp4`,
+    mediaStartS: 40 + i,
+    duration: 4,
+  }));
+
+  const report = buildQualityReportV2({
+    storyId: "flash-preflight-blocked",
+    outputPath: "test/output/flash-preflight-blocked.mp4",
+    pkg: {
+      hook: { chosen: { text: "GTA fans just got a confirmed production twist" } },
+      script: { tightened: Array.from({ length: 150 }, () => "word").join(" ") },
+    },
+    scenes,
+    transitions: [],
+    audioMeta: { provider: "elevenlabs", voiceId: "TX3LPaxmHKxFdv7VOQHJ" },
+    audioDurationS: 66,
+    assPath,
+    soundLayerPayload: { cueCount: 1, filterLines: ["sidechaincompress"] },
+    realignedWords: Array.from({ length: 150 }, (_, i) => ({
+      word: "word",
+      start: i * 0.35,
+      end: i * 0.35 + 0.2,
+    })),
+    renderedDurationS: 67,
+    flashLanePreflight: {
+      verdict: "block",
+      blockers: ["flash_visual_unvalidated_official_clip_segment"],
+      warnings: [],
+    },
+  });
+
+  assert.equal(report.auto.flashLanePreflight.grade, "red");
+  assert.equal(report.auto.flashLanePreflight.value, 1);
+  assert.equal(report.verdict.lane, "reject");
+  assert.ok(report.verdict.reasons.includes("Flash Lane preflight blocked"));
+});
+
+test("v2 source diversity treats different trailer offsets as distinct footage beats", () => {
+  const assPath = tempAss(dialogue("0:00:01.00", "0:00:02.00", "story"));
+  const scenes = [
+    { type: "opener", isClipBacked: true, source: "gta.m3u8", mediaStartS: 22.4 },
+    { type: "clip", source: "bioshock.m3u8", mediaStartS: 22 },
+    { type: "clip", source: "red-dead.m3u8", mediaStartS: 42.8 },
+    { type: "clip", source: "gta.m3u8", mediaStartS: 26.9 },
+    { type: "card.source", sourceLabel: "GameSpot" },
+    { type: "clip", source: "bioshock.m3u8", mediaStartS: 26.5 },
+    { type: "clip", source: "red-dead.m3u8", mediaStartS: 47.3 },
+    { type: "clip.frame", source: "gta-frame-18.jpg" },
+    { type: "clip.frame", source: "bioshock-frame-18.jpg" },
+    { type: "card.takeaway", label: "card_takeaway" },
+  ];
+
+  const report = buildQualityReportV2({
+    storyId: "flash-footage-beats",
+    outputPath: "test/output/flash-footage-beats.mp4",
+    pkg: {
+      hook: { chosen: { text: "Take-Two killed a legacy sequel" } },
+      script: { tightened: "word ".repeat(145) },
+    },
+    scenes,
+    transitions: [],
+    audioMeta: { source: "provided-real-audio", path: "D:/pulse-data/audio.mp3" },
+    audioDurationS: 66,
+    assPath,
+    soundLayerPayload: { cues: [], mix: { bedDuckingDb: 7 } },
+    realignedWords: [],
+    renderedDurationS: 67,
+  });
+
+  assert.equal(report.auto.sourceDiversity.grade, "green");
+  assert.equal(report.auto.sourceDiversity.uniqueSources, 10);
+});
+
 test("v2 quality report rejects truncated exports even when creative scores pass", () => {
   const assPath = tempAss(dialogue("0:00:54.52", "0:00:55.36", "survival."));
   const words = Array.from({ length: 20 }, (_, i) => ({

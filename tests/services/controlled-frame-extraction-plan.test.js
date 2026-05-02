@@ -57,8 +57,68 @@ test("Controlled Frame Extraction Plan selects frames across unique exact entiti
     plan.selected_references.map((item) => item.entity),
     ["GTA", "Red Dead", "BioShock"],
   );
-  assert.equal(plan.target_frames.length, 6);
+  assert.equal(plan.target_frames.length, 12);
   assert.ok(plan.target_frames.every((frame) => frame.downloads_allowed === false));
+});
+
+test("Controlled Frame Extraction Plan interleaves safe non-intro probe points across sources", () => {
+  const plan = buildControlledFrameExtractionPlan(motionPlan());
+  const firstSix = plan.target_frames.slice(0, 6).map((frame) => ({
+    entity: frame.entity,
+    percent: frame.target_time_percent,
+    sampleOrder: frame.sample_order,
+    strategy: frame.sampling_strategy,
+  }));
+
+  assert.deepEqual(firstSix, [
+    {
+      entity: "GTA",
+      percent: 0.42,
+      sampleOrder: 1,
+      strategy: "interleaved_non_intro_multi_probe_v3",
+    },
+    {
+      entity: "Red Dead",
+      percent: 0.42,
+      sampleOrder: 2,
+      strategy: "interleaved_non_intro_multi_probe_v3",
+    },
+    {
+      entity: "BioShock",
+      percent: 0.42,
+      sampleOrder: 3,
+      strategy: "interleaved_non_intro_multi_probe_v3",
+    },
+    {
+      entity: "GTA",
+      percent: 0.58,
+      sampleOrder: 4,
+      strategy: "interleaved_non_intro_multi_probe_v3",
+    },
+    {
+      entity: "Red Dead",
+      percent: 0.58,
+      sampleOrder: 5,
+      strategy: "interleaved_non_intro_multi_probe_v3",
+    },
+    {
+      entity: "BioShock",
+      percent: 0.58,
+      sampleOrder: 6,
+      strategy: "interleaved_non_intro_multi_probe_v3",
+    },
+  ]);
+  assert.ok(plan.target_frames.every((frame) => frame.target_time_percent >= 0.42));
+});
+
+test("Controlled Frame Extraction Plan supports a max target frame cap", () => {
+  const plan = buildControlledFrameExtractionPlan(motionPlan(), { maxTargetFrames: 5 });
+
+  assert.equal(plan.target_frames.length, 5);
+  assert.deepEqual(
+    plan.target_frames.map((frame) => `${frame.entity}:${frame.target_time_percent}`),
+    ["GTA:0.42", "Red Dead:0.42", "BioShock:0.42", "GTA:0.58", "Red Dead:0.58"],
+  );
 });
 
 test("Controlled Frame Extraction Plan caps repeated same-entity references", () => {

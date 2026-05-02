@@ -6,7 +6,7 @@ Generated: 2026-05-01
 
 Studio V2 still-deck ingestion now accepts a local frame-extraction report, maps accepted official trailer frames into the Studio V2 media package and can optionally use official Steam trailer references as local-only FFmpeg clip inputs.
 
-The current proof also requires explicit narration input. Silent fixture renders are now treated as visual diagnostics only and are rejected by the quality gate for pilot approval.
+The current proof also requires explicit narration input. Silent fixture renders are treated as visual diagnostics only and unapproved local TTS is now rejected by the quality gate for pilot approval.
 
 ## Local Proof
 
@@ -39,16 +39,16 @@ Outputs:
 The enriched Studio V2 package used:
 
 - accepted stills: 10
-- accepted official trailer frames: 5
-- official trailer references: 3
-- rejected official trailer frames: 1
+- accepted official trailer frames: 3
+- official trailer references: 2
+- rejected official trailer frames: 3
 - distinct entities: 3
 - unique scene sources: 14
 - runtime: 66.126s
-- voice: local VoxCPM, present, amber
-- QA lane: pass
+- voice: local VoxCPM, present, red/unapproved
+- QA lane: reject
 - forensic verdict: warn
-- visual repeat pairs: 1
+- visual repeat pairs: 0
 - subtitle verdict: pass
 - in-image entity popups: GTA, Red Dead, BioShock
 
@@ -59,10 +59,10 @@ Latest comparison:
 | Forensic verdict | fail | warn |
 | Fails | 1 | 0 |
 | Runtime | 40.00s | 66.126s |
-| Accepted trailer frames | 0 | 5 |
+| Accepted trailer frames | 0 | 3 |
 | Source diversity score | 84 | 100 |
 | Unique scene sources | 4 | 14 |
-| Visual repeat pairs | 29 | 1 |
+| Visual repeat pairs | 29 | 0 |
 
 ## Review Fixes
 
@@ -76,13 +76,17 @@ Latest comparison:
 - Visual scenes now carry exact entity labels into compact in-image popups.
 - The opener hook overlay is now a smaller timed plate instead of the old full-width black slab.
 - The generated report no longer claims the proof is silent or still-image-only.
+- Official trailer clips now seek from selected frame timestamps instead of starting at the beginning of the trailer.
+- Trailer title/rating-card frames are rejected.
+- Low-detail official trailer frames are rejected.
+- Unapproved local Studio V2 voices are now QA blockers.
 
 ## Remaining Blockers
 
-- The proof is local-only and still needs human visual review.
-- Forensic QA is `warn` because frame sampling found one possible repeated/black-frame pair.
+- The proof is local-only and currently blocked by QA.
 - FFmpeg emitted packet/NAL warnings while reading remote Steam HLS references; this must be hardened before production.
-- The local VoxCPM voice path is amber until it is consistently approved against the ElevenLabs production voice.
+- The local VoxCPM voice path is red until it is consistently approved against the ElevenLabs production voice.
+- Clip dominance is too low for the high-energy Shorts lane.
 - Cards still need stronger HyperFrames-style polish before a live pilot.
 
 ## Safety
@@ -103,4 +107,4 @@ The proof used local output paths under `test/output`.
 
 ## Recommendation
 
-Keep this local-only. The proof is much closer to the target than the silent fixture, but the next engineering step should be a Studio V2 visual-polish pass for card design, subtitle styling and safer trailer-reference ingestion before any one-story live pilot is considered.
+Keep this local-only. Do not pilot this render. The next engineering step should be a high-energy Shorts creator-edit lane with approved voice, stronger trailer segment selection, gameplay-first motion, sharper subtitles and HyperFrames-style card polish before any live pilot is considered.

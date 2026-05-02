@@ -179,7 +179,7 @@ test("still-deck adapter maps v1.1 assets into Studio V2 media package", async (
 
 test("still-deck adapter ingests accepted official frame extraction report into Studio V2 trailer frames", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-frame-ingest-"));
-  const localPath = await imageFile(dir, "001_GTA_18pct.jpg");
+  const localPath = await imageFile(dir, "001_GTA_42pct.jpg");
   const pack = await buildStillDeckMediaPackage({
     story: story({
       id: "rss_5b3abe925b27a199",
@@ -194,8 +194,8 @@ test("still-deck adapter ingests accepted official frame extraction report into 
         source_url: "https://video.akamai.steamstatic.com/store_trailers/gta/hls_264_master.m3u8",
         source_type: "steam_movie",
         entity: "GTA",
-        target_time_percent: 0.18,
-        target_time_seconds: 10.8,
+        target_time_percent: 0.42,
+        target_time_seconds: 25.2,
         local_path: localPath,
         status: "accepted",
         qa: {

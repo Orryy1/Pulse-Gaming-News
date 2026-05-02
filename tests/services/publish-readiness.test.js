@@ -198,12 +198,22 @@ test("summariseRecentFailedCandidates: surfaces operator-grade failure reasons",
         qa_failed: false,
       },
     ],
-    { limit: 2 },
+    {
+      limit: 2,
+      now: Date.parse("2026-05-02T09:00:00.000Z"),
+      recentWindowHours: 48,
+    },
   );
 
   assert.equal(summary.count, 2);
+  assert.equal(summary.recent_count, 2);
   assert.equal(summary.shown_count, 2);
   assert.deepEqual(summary.ids, ["fresh", "old"]);
+  assert.equal(summary.latest_failed_at, "2026-05-02T08:00:00.000Z");
+  assert.deepEqual(
+    summary.reason_groups.map((g) => g.reason).sort(),
+    ["qa:duration_too_long", "qa:glued_sentence_in_tts_script"],
+  );
   assert.equal(summary.examples[0].reason, "qa:glued_sentence_in_tts_script");
   assert.equal(summary.examples[1].reason, "qa:duration_too_long (80.00s)");
   assert.equal(summary.examples[0].render_lane, "studio_v2");
@@ -218,10 +228,48 @@ test("summariseRecentFailedCandidates: count is total, ids are display-limited",
       { id: "two", qa_failed: true, qa_failures: ["b"] },
       { id: "three", qa_failed: true, qa_failures: ["c"] },
     ],
-    { limit: 2 },
+    { limit: 2, now: Date.parse("2026-05-02T09:00:00.000Z") },
   );
 
   assert.equal(summary.count, 3);
   assert.equal(summary.shown_count, 2);
   assert.deepEqual(summary.ids, ["one", "two"]);
+});
+
+test("summariseRecentFailedCandidates: active window is separate from historical total", () => {
+  const summary = pr.summariseRecentFailedCandidates(
+    [
+      {
+        id: "fresh-1",
+        qa_failed: true,
+        qa_failures: ["audio_duration_too_long (126.11s, max 74.00s)"],
+        qa_failed_at: "2026-05-02T08:00:00.000Z",
+      },
+      {
+        id: "fresh-2",
+        qa_failed: true,
+        qa_failures: ["audio_duration_too_long (104.91s, max 74.00s)"],
+        qa_failed_at: "2026-05-02T07:00:00.000Z",
+      },
+      {
+        id: "stale",
+        qa_failed: true,
+        qa_failures: ["script_runtime_too_long (119.00s, max 75.00s)"],
+        qa_failed_at: "2026-04-29T07:00:00.000Z",
+      },
+    ],
+    {
+      limit: 3,
+      now: Date.parse("2026-05-02T09:00:00.000Z"),
+      recentWindowHours: 24,
+    },
+  );
+
+  assert.equal(summary.count, 3);
+  assert.equal(summary.recent_count, 2);
+  assert.equal(summary.reason_groups.length, 1);
+  assert.deepEqual(summary.reason_groups[0], {
+    reason: "qa:audio_duration_too_long",
+    count: 2,
+  });
 });

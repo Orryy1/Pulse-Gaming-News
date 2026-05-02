@@ -170,3 +170,58 @@ test("buildPublishReadinessReport: db throw degrades gracefully (no throw)", asy
   assert.ok(typeof report.overall_verdict === "string");
   assert.equal(report.story_count, 0);
 });
+
+test("summariseRecentFailedCandidates: surfaces operator-grade failure reasons", () => {
+  const summary = pr.summariseRecentFailedCandidates(
+    [
+      {
+        id: "old",
+        title: "Old failed story",
+        qa_failed: true,
+        qa_failures: ["duration_too_long (80.00s)"],
+        qa_failed_at: "2026-05-01T08:00:00.000Z",
+        render_lane: "legacy_multi_image",
+        render_quality_class: "standard",
+      },
+      {
+        id: "fresh",
+        title: "Fresh failed story with a very long title that should be clipped before it floods the readiness JSON output",
+        qa_failed: true,
+        qa_failures: JSON.stringify(["glued_sentence_in_tts_script"]),
+        qa_failed_at: "2026-05-02T08:00:00.000Z",
+        render_lane: "studio_v2",
+        render_quality_class: "premium",
+      },
+      {
+        id: "not-failed",
+        title: "Published story",
+        qa_failed: false,
+      },
+    ],
+    { limit: 2 },
+  );
+
+  assert.equal(summary.count, 2);
+  assert.equal(summary.shown_count, 2);
+  assert.deepEqual(summary.ids, ["fresh", "old"]);
+  assert.equal(summary.examples[0].reason, "qa:glued_sentence_in_tts_script");
+  assert.equal(summary.examples[1].reason, "qa:duration_too_long (80.00s)");
+  assert.equal(summary.examples[0].render_lane, "studio_v2");
+  assert.equal(summary.examples[0].render_quality_class, "premium");
+  assert.equal(summary.examples[0].title.length <= 120, true);
+});
+
+test("summariseRecentFailedCandidates: count is total, ids are display-limited", () => {
+  const summary = pr.summariseRecentFailedCandidates(
+    [
+      { id: "one", qa_failed: true, qa_failures: ["a"] },
+      { id: "two", qa_failed: true, qa_failures: ["b"] },
+      { id: "three", qa_failed: true, qa_failures: ["c"] },
+    ],
+    { limit: 2 },
+  );
+
+  assert.equal(summary.count, 3);
+  assert.equal(summary.shown_count, 2);
+  assert.deepEqual(summary.ids, ["one", "two"]);
+});

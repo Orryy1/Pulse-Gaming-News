@@ -26,6 +26,11 @@ const PHONETIC_MAP = {
 };
 
 const { applyGamingPronunciation } = require("./lib/tts-pronunciation");
+const {
+  classifyShortScriptRuntime,
+  DEFAULT_MIN_WORDS,
+  DEFAULT_MAX_WORDS,
+} = require("./lib/services/short-runtime-planner");
 
 // --- Clean text for TTS - shared logic ---
 function cleanForTTS(raw) {
@@ -139,6 +144,7 @@ function cleanForTTS(raw) {
 
 const BUMPER_DURATION = 0; // bumpers removed - audio must hit 61s on its own
 const MIN_TOTAL_DURATION = 61; // TikTok Creator Rewards minimum
+const MAX_FLASH_TOTAL_DURATION = 75;
 
 // --- Get audio duration via ffprobe ---
 async function getAudioDuration(audioPath) {
@@ -278,6 +284,35 @@ async function generateAudio() {
       // Clean TTS script using shared cleaning function
       const rawTTS = story.tts_script || story.full_script;
       const ttsText = cleanForTTS(rawTTS);
+      let finalTtsScript = ttsText;
+
+      const runtimePlan = classifyShortScriptRuntime({
+        text: ttsText,
+        story,
+      });
+      story.short_runtime_plan = runtimePlan;
+      if (runtimePlan.shouldGenerateShortAudio === false) {
+        const reason =
+          runtimePlan.failures[0] ||
+          runtimePlan.warnings[0] ||
+          "short_runtime_not_flash_lane";
+        console.log(
+          `[audio] ${story.id}: skipping TTS before generation: ${reason} ` +
+            `(words=${runtimePlan.wordCount}, est=${runtimePlan.estimatedSeconds || "?"}s, target=${runtimePlan.minSeconds}-${runtimePlan.maxSeconds}s)`,
+        );
+        story.qa_failed = true;
+        story.qa_failures = [reason];
+        story.qa_warnings = runtimePlan.warnings || [];
+        story.qa_failed_at = new Date().toISOString();
+        story.publish_status = "failed";
+        story.publish_error = `qa_blocked: ${reason}`;
+        story.render_fallback_reason = `duration_contract_pre_tts:${reason}`;
+        story.runtime_route = runtimePlan.route;
+        story.recommended_word_count_min = runtimePlan.minWords;
+        story.recommended_word_count_max = runtimePlan.maxWords;
+        continue;
+      }
+
       const outputPath = path.join("output", "audio", `${story.id}.mp3`);
 
       // Dynamic pacing: if story has separate hook/body/cta, generate each
@@ -415,7 +450,7 @@ async function generateAudio() {
           messages: [
             {
               role: "user",
-              content: `Rewrite this script to be 180-200 words (it was too short at ${story.word_count} words):\n\n${story.full_script}\n\nStory: ${story.title}\nKeep the same classification: ${story.classification}`,
+              content: `Rewrite this script to be ${DEFAULT_MIN_WORDS}-${DEFAULT_MAX_WORDS} spoken words for a 61-75 second gaming Short. It was too short at ${story.word_count} words.\n\n${story.full_script}\n\nStory: ${story.title}\nKeep the same classification: ${story.classification}. Keep the CTA exactly: Follow Pulse Gaming so you never miss a beat.`,
             },
           ],
         });
@@ -430,12 +465,22 @@ async function generateAudio() {
         try {
           const newScript = JSON.parse(text);
           const newTTS = cleanForTTS(newScript.full_script);
+          const newRuntimePlan = classifyShortScriptRuntime({
+            text: newTTS,
+            story,
+          });
+          if (newRuntimePlan.shouldGenerateShortAudio === false) {
+            throw new Error(
+              `regenerated_script_runtime_invalid:${newRuntimePlan.failures[0] || newRuntimePlan.warnings[0] || "unknown"}`,
+            );
+          }
 
           await generateTTS(newTTS, outputPath);
           const newDuration = await getAudioDuration(outputPath);
           story.audio_duration = newDuration;
           story.full_script = newScript.full_script;
           story.tts_script = newTTS;
+          finalTtsScript = newTTS;
           story.word_count = newScript.word_count || story.word_count;
           console.log(
             `[audio] Regenerated: now ${(newDuration + BUMPER_DURATION).toFixed(1)}s`,
@@ -455,7 +500,25 @@ async function generateAudio() {
         console.log(`[audio] Duration OK: ${totalDuration.toFixed(1)}s`);
       }
 
+      if (totalDuration > MAX_FLASH_TOTAL_DURATION) {
+        const reason = `audio_duration_too_long (${totalDuration.toFixed(2)}s, max ${MAX_FLASH_TOTAL_DURATION.toFixed(2)}s)`;
+        console.log(
+          `[audio] ${story.id}: generated audio exceeds Flash Lane contract, blocking before render: ${reason}`,
+        );
+        story.qa_failed = true;
+        story.qa_failures = [reason];
+        story.qa_warnings = [];
+        story.qa_failed_at = new Date().toISOString();
+        story.publish_status = "failed";
+        story.publish_error = `qa_blocked: ${reason}`;
+        story.render_fallback_reason = `duration_contract_post_tts:${reason}`;
+        story.audio_path = outputPath;
+        story.tts_script = finalTtsScript;
+        continue;
+      }
+
       story.audio_path = outputPath;
+      story.tts_script = finalTtsScript;
       console.log(`[audio] Saved: ${outputPath}`);
     } catch (err) {
       console.log(`[audio] ERROR for ${story.id}: ${err.message}`);

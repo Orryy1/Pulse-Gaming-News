@@ -4,6 +4,12 @@ const fs = require("fs-extra");
 const dotenv = require("dotenv");
 const { addBreadcrumb, captureException } = require("./lib/sentry");
 const db = require("./lib/db");
+const {
+  classifyShortScriptRuntime,
+  countSpokenWords,
+  DEFAULT_MIN_WORDS,
+  DEFAULT_MAX_WORDS,
+} = require("./lib/services/short-runtime-planner");
 
 dotenv.config({ override: true });
 
@@ -250,7 +256,24 @@ const CHANNEL_CLASSIFICATIONS = {
 
 function validate(script, channelId) {
   const errors = [];
-  if (script.word_count < 155 || script.word_count > 185) {
+  const actualWords = countSpokenWords(cleanForTTS(script.full_script || ""));
+  if (channelId === "pulse-gaming") {
+    const runtime = classifyShortScriptRuntime({
+      text: cleanForTTS(script.full_script || ""),
+    });
+    if (runtime.result === "fail" || runtime.result === "review") {
+      const reason =
+        runtime.failures[0] || runtime.warnings[0] || "script_runtime_invalid";
+      errors.push(
+        `${reason}; actual spoken words ${actualWords} outside ${runtime.minWords}-${runtime.maxWords} Flash Lane range`,
+      );
+    }
+    if (actualWords < DEFAULT_MIN_WORDS || actualWords > DEFAULT_MAX_WORDS) {
+      errors.push(
+        `Actual spoken word count ${actualWords} outside ${DEFAULT_MIN_WORDS}-${DEFAULT_MAX_WORDS} range`,
+      );
+    }
+  } else if (script.word_count < 155 || script.word_count > 185) {
     errors.push(`Word count ${script.word_count} outside 155-185 range`);
   }
   const hookLower = (script.hook || "").toLowerCase().trim();
@@ -622,10 +645,10 @@ Today's date is ${today}. You MUST follow these rules:
         let extra = "";
         if (attempts === 2) {
           extra =
-            "\n\nIMPORTANT: Your previous script failed validation. Ensure word_count is 160-180. Include a classification tag. Do not start the hook with So, Today, Hey, Welcome or In this.";
+            `\n\nIMPORTANT: Your previous script failed validation. For Pulse Gaming, ensure the actual full_script is ${DEFAULT_MIN_WORDS}-${DEFAULT_MAX_WORDS} spoken words for a 61-75 second Short. Include a classification tag. Do not start the hook with So, Today, Hey, Welcome or In this.`;
         } else if (attempts === 3) {
           extra =
-            "\n\nFINAL ATTEMPT: Produce a 170-word script with a strong hook, classification tag, and CTA. This is your last chance.";
+            `\n\nFINAL ATTEMPT: Produce a ${Math.round((DEFAULT_MIN_WORDS + DEFAULT_MAX_WORDS) / 2)}-word script with a strong hook, classification tag and CTA. This is your last chance.`;
         }
 
         const response = await client.messages.create({
@@ -660,6 +683,7 @@ Today's date is ${today}. You MUST follow these rules:
 
         // Post-generation sanitisation: fix banned openers + British English
         sanitiseScript(script);
+        script.word_count = countSpokenWords(cleanForTTS(script.full_script || ""));
 
         const errors = validate(script, channel.id);
         if (errors.length > 0) {
@@ -793,6 +817,8 @@ Today's date is ${today}. You MUST follow these rules:
 }
 
 module.exports = process_stories;
+module.exports.validate = validate;
+module.exports.cleanForTTS = cleanForTTS;
 
 if (require.main === module) {
   process_stories().catch((err) => {

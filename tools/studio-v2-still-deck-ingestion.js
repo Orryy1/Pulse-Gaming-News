@@ -50,11 +50,8 @@ const {
   runStillImageEnrichment,
 } = require("../lib/still-image-enrichment");
 const {
-  buildOfficialTrailerClipsFromFrameReport,
-} = require("../lib/studio/v2/official-trailer-clip-refs");
-const {
-  buildFlashLaneFootageBackboneReport,
-} = require("../lib/studio/v2/flash-lane-footage-backbone");
+  resolveOfficialTrailerClipRefsForProof,
+} = require("../lib/studio/v2/proof-official-clip-safety");
 const {
   assertNarrationAllowedForProof,
   looksLikeLocalTtsPath,
@@ -113,6 +110,7 @@ function parseArgs(argv) {
     allowSilentFixture: false,
     allowFlashDiagnosticRender: false,
     allowLocalVoiceDiagnostic: false,
+    allowUnvalidatedOfficialClips: false,
     generateLocalTts: false,
     useOfficialTrailerClips: false,
     audioPath: null,
@@ -134,6 +132,7 @@ function parseArgs(argv) {
     else if (arg === "--allow-silent-fixture") args.allowSilentFixture = true;
     else if (arg === "--allow-flash-diagnostic-render") args.allowFlashDiagnosticRender = true;
     else if (arg === "--allow-local-voice-diagnostic") args.allowLocalVoiceDiagnostic = true;
+    else if (arg === "--allow-unvalidated-official-clips") args.allowUnvalidatedOfficialClips = true;
     else if (arg === "--generate-local-tts") args.generateLocalTts = true;
     else if (arg === "--use-official-trailer-clips") args.useOfficialTrailerClips = true;
     else if (arg === "--audio") args.audioPath = path.resolve(argv[++i] || "");
@@ -166,6 +165,7 @@ function printHelp() {
       "  --allow-silent-fixture  Explicitly allow silent visual-only proof renders",
       "  --allow-flash-diagnostic-render  Explicitly allow a proof render even when Flash Lane preflight blocks it",
       "  --allow-local-voice-diagnostic  Explicitly allow unapproved local TTS in a local diagnostic render",
+      "  --allow-unvalidated-official-clips  Local diagnostic override; official clips otherwise require segment validation",
       "  --limit <n>        Number of selected stories to attempt, default 1",
       "",
       "This command is local-only. It does not mutate Railway, OAuth, production DB, scheduler, render defaults or publishing paths.",
@@ -934,29 +934,22 @@ async function main() {
   }
 
   const enrichedPackage = await buildStillDeckMediaPackage({ story, plan, frameReport });
-  let officialClipRefs = [];
-  let footageBackboneReport = null;
-  if (args.useOfficialTrailerClips && frameReport) {
-    if (segmentValidationReport) {
-      footageBackboneReport = buildFlashLaneFootageBackboneReport({
-        storyId: story.id,
-        frameReport,
-        segmentValidationReport,
-        targetRuntimeS: 66,
-      });
-      officialClipRefs = footageBackboneReport.validated_clip_refs || [];
-    } else {
-      officialClipRefs = buildOfficialTrailerClipsFromFrameReport(frameReport, story.id, {
-        maxClips: 8,
-        maxCandidateWindowsPerSource: 3,
-        includeFrameAnchoredWindows: true,
-      });
-    }
-  }
+  const officialClipResolution = resolveOfficialTrailerClipRefsForProof({
+    storyId: story.id,
+    frameReport,
+    segmentValidationReport,
+    useOfficialTrailerClips: args.useOfficialTrailerClips,
+    allowUnvalidatedOfficialClips: args.allowUnvalidatedOfficialClips,
+    targetRuntimeS: 66,
+  });
+  const officialClipRefs = officialClipResolution.clipRefs;
+  const footageBackboneReport = officialClipResolution.footageBackboneReport;
   if (officialClipRefs.length) {
     enrichedPackage.media.clips = officialClipRefs;
     enrichedPackage.metrics.acceptedOfficialClipRefs = officialClipRefs.length;
   }
+  enrichedPackage.metrics.officialClipSafetyStatus = officialClipResolution.safety.status;
+  enrichedPackage.metrics.officialClipSafetyReason = officialClipResolution.safety.reason;
   if (footageBackboneReport) {
     await fs.writeJson(path.join(OUT, "footage_backbone_for_render.json"), footageBackboneReport, {
       spaces: 2,
@@ -1171,6 +1164,7 @@ async function main() {
     },
     motion: {
       official_clip_refs_used: officialClipRefsUsed,
+      official_clip_safety: officialClipResolution.safety,
       official_trailer_frames_used: Number(enrichedPackage.metrics.acceptedFrameCount || 0),
     },
     render_requested: renderRequested,

@@ -5,6 +5,7 @@ const assert = require("node:assert/strict");
 
 const {
   buildOfficialTrailerClipsFromFrameReport,
+  DEFAULT_EXPLORATORY_START_SECONDS,
   safeClipStartFromFrame,
   scoreOfficialTrailerFrameForClip,
   MIN_OFFICIAL_CLIP_START_S,
@@ -404,6 +405,89 @@ test("official clip refs dedupe duplicate anchored starts from the same source",
   );
 });
 
+test("official clip refs can deep-scan official sources even when initial frames were rejected", () => {
+  const refs = buildOfficialTrailerClipsFromFrameReport(
+    {
+      plans: [
+        {
+          story_id: "story-1",
+          frames: [
+            acceptedFrame({
+              status: "rejected_qa",
+              entity: "GTA",
+              source_url: "https://video.example/gta.m3u8",
+              target_time_seconds: 25.2,
+              local_path: "gta-bad-open.jpg",
+              qa: {
+                thumbnail_safe: false,
+                verdict: "fail",
+                failures: ["title_or_rating_card_frame"],
+                prescan: {
+                  likely_is_logo: true,
+                  text_overlay_likelihood: 0.44,
+                  edge_density: 0.21,
+                  saturation_mean: 0.33,
+                },
+              },
+            }),
+          ],
+        },
+      ],
+    },
+    "story-1",
+    {
+      includeExploratoryWindows: true,
+      exploratoryStartSeconds: [36, 42, 48],
+      maxClips: 10,
+    },
+  );
+
+  assert.equal(DEFAULT_EXPLORATORY_START_SECONDS[0], 36);
+  assert.deepEqual(
+    refs.map((ref) => ref.mediaStartS),
+    [36, 42, 48],
+  );
+  assert.ok(refs.every((ref) => ref.provenance.segment_selection_policy === "deep_scan_uniform_window"));
+  assert.ok(refs.every((ref) => ref.provenance.exploratory_scan === true));
+});
+
+test("official clip refs deep-scan dedupes repeated source/entity/start windows", () => {
+  const refs = buildOfficialTrailerClipsFromFrameReport(
+    {
+      plans: [
+        {
+          story_id: "story-1",
+          frames: [
+            acceptedFrame({
+              status: "rejected_qa",
+              entity: "GTA",
+              source_url: "https://video.example/gta.m3u8",
+            }),
+            acceptedFrame({
+              status: "accepted",
+              entity: "GTA",
+              source_url: "https://video.example/gta.m3u8",
+              target_time_seconds: 44.4,
+            }),
+          ],
+        },
+      ],
+    },
+    "story-1",
+    {
+      includeExploratoryWindows: true,
+      exploratoryStartSeconds: [36, 36, 42],
+      maxClips: 20,
+    },
+  );
+
+  const exploratory = refs.filter((ref) => ref.provenance.exploratory_scan === true);
+  assert.deepEqual(
+    exploratory.map((ref) => ref.mediaStartS),
+    [36, 42],
+  );
+});
+
 test("official clip refs inherit local segment validation before Flash Lane use", () => {
   const frameReport = {
     plans: [
@@ -423,6 +507,9 @@ test("official clip refs inherit local segment validation before Flash Lane use"
           segment_validated: true,
           allowed_for_flash_lane: true,
           validation_reason: "segment_samples_passed",
+          segment_motion_class: "gameplay_action",
+          action_score: 82,
+          action_sample_count: 3,
           samples: [{}, {}, {}],
         },
       ],
@@ -466,6 +553,9 @@ test("official clip refs can filter out segment-validation failures for render p
           segment_validated: true,
           allowed_for_flash_lane: true,
           validation_reason: "segment_samples_passed",
+          segment_motion_class: "gameplay_action",
+          action_score: 82,
+          action_sample_count: 3,
           samples: [{}, {}, {}],
         },
         {
@@ -562,6 +652,9 @@ test("official clip refs keep searching past rejected validation windows until m
     segment_validated: allowed,
     allowed_for_flash_lane: allowed,
     validation_reason: allowed ? "segment_samples_passed" : "segment_contains_title_or_rating_card",
+    segment_motion_class: allowed ? "gameplay_action" : "rejected",
+    action_score: allowed ? 82 : 0,
+    action_sample_count: allowed ? 3 : 0,
     samples: [{}, {}, {}],
   });
 

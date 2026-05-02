@@ -287,6 +287,39 @@ test("official trailer segment validator requires at least two gameplay/action s
   assert.equal(report.segments[0].action_sample_count, 1);
 });
 
+test("official trailer segment validator rejects low-average action even with two action samples", async () => {
+  const outputRoot = tempOutputRoot("low-average-action");
+  await cleanTempRoot(outputRoot);
+  let call = 0;
+
+  const report = await runOfficialTrailerSegmentValidation([clip()], {
+    applyLocal: true,
+    outputRoot,
+    extractor: fakeExtractor,
+    inspectFrame: async (outputPath) => {
+      call += 1;
+      const base = passingQa(outputPath);
+      return {
+        ...base,
+        content_hash: `low-action-${call}`,
+        prescan: {
+          likely_is_logo: false,
+          text_overlay_likelihood: 0,
+          white_text_on_dark_likelihood: 0,
+          edge_density: call === 3 ? 0.13 : 0.17,
+          saturation_mean: call === 3 ? 0.27 : 0.31,
+        },
+      };
+    },
+  });
+
+  assert.equal(report.summary.segments_rejected, 1);
+  assert.equal(report.segments[0].validation_reason, "segment_action_score_below_flash_threshold");
+  assert.equal(report.segments[0].segment_motion_class, "non_gameplay_context");
+  assert.equal(report.segments[0].allowed_for_flash_lane, false);
+  assert.ok(report.segments[0].action_score < 70);
+});
+
 test("official trailer segment validator allows official game-character faces in segment samples", () => {
   const qa = guardSegmentSample(
     clip(),
@@ -325,6 +358,9 @@ test("segment validation report upgrades only validated refs for Flash Lane use"
         segment_validated: true,
         allowed_for_flash_lane: true,
         validation_reason: "segment_samples_passed",
+        segment_motion_class: "gameplay_action",
+        action_score: 82,
+        action_sample_count: 3,
         samples: [{}, {}, {}],
       },
     ],
@@ -336,6 +372,29 @@ test("segment validation report upgrades only validated refs for Flash Lane use"
   assert.equal(upgraded.provenance.allowed_for_flash_lane, true);
   assert.equal(upgraded.provenance.segment_validation_reason, "segment_samples_passed");
   assert.equal(upgraded.provenance.segment_validation_samples, 3);
+});
+
+test("segment validation report refuses legacy allowed segments without action proof", () => {
+  const ref = clip();
+  const report = {
+    generated_at: "2026-05-02T22:00:00.000Z",
+    segments: [
+      {
+        clip_key: segmentKeyForClipRef(ref),
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+        validation_reason: "segment_samples_passed",
+        samples: [{}, {}, {}],
+      },
+    ],
+  };
+
+  const [upgraded] = applySegmentValidationToClipRefs([ref], report);
+
+  assert.equal(upgraded.provenance.segment_validated, true);
+  assert.equal(upgraded.provenance.allowed_for_flash_lane, false);
+  assert.equal(upgraded.provenance.segment_validation_reason, "segment_samples_passed");
+  assert.equal(upgraded.provenance.segment_motion_class, null);
 });
 
 test("official trailer segment validator rejects apply-local outside test/output", async () => {

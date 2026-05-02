@@ -30,8 +30,12 @@ function segmentReport() {
         story_id: "story-1",
         entity: "BioShock",
         allowed_for_flash_lane: true,
+        segment_motion_class: "gameplay_action",
+        action_score: 82,
+        action_sample_count: 3,
         status: "accepted",
         start_s: 22,
+        media_start_s: 42,
         duration_s: 4,
       },
       {
@@ -40,7 +44,7 @@ function segmentReport() {
         allowed_for_flash_lane: false,
         status: "rejected",
         validation_reason: "segment_contains_title_or_rating_card",
-        start_s: 0,
+        media_start_s: 36,
       },
       {
         story_id: "story-1",
@@ -48,7 +52,7 @@ function segmentReport() {
         allowed_for_flash_lane: false,
         status: "rejected",
         validation_reason: "segment_contains_black_frame",
-        start_s: 3,
+        media_start_s: 36,
       },
     ],
   };
@@ -79,9 +83,76 @@ test("footage acquisition plan pushes failed early trailer samples later", () =>
   const gta = plan.shopping_list.find((item) => item.entity === "GTA");
   const redDead = plan.shopping_list.find((item) => item.entity === "Red Dead");
 
-  assert.ok(gta.suggested_windows.every((window) => window.start_s >= 12));
+  assert.ok(gta.suggested_windows.every((window) => window.start_s >= 36));
   assert.ok(gta.reasons.includes("skip_rating_title_logo_sections"));
   assert.ok(redDead.reasons.includes("avoid_black_or_transition_windows"));
+});
+
+test("footage acquisition plan refuses stale allowed segments without gameplay action proof", () => {
+  const plan = buildFlashLaneFootageAcquisitionPlan({
+    storyId: "story-1",
+    frameReport: frameReport(),
+    segmentValidationReport: {
+      segments: [
+        { story_id: "story-1", entity: "GTA", allowed_for_flash_lane: true, status: "accepted" },
+        {
+          story_id: "story-1",
+          entity: "Red Dead",
+          allowed_for_flash_lane: true,
+          status: "accepted",
+          segment_motion_class: "gameplay_action",
+          action_score: 66,
+        },
+        {
+          story_id: "story-1",
+          entity: "BioShock",
+          allowed_for_flash_lane: true,
+          status: "accepted",
+          segment_motion_class: "gameplay_action",
+          action_score: 82,
+          action_sample_count: 3,
+        },
+      ],
+    },
+  });
+
+  assert.equal(plan.verdict, "needs_more_validated_footage");
+  assert.deepEqual(plan.validated_entities, ["BioShock"]);
+  assert.ok(plan.rejected_reasons_by_entity.GTA.includes("segment_missing_gameplay_action_proof"));
+  assert.ok(plan.rejected_reasons_by_entity["Red Dead"].includes("segment_action_score_below_flash_threshold"));
+});
+
+test("footage acquisition plan does not repeat exhausted intro windows", () => {
+  const failedStarts = [36, 42, 48, 54, 60, 66];
+  const plan = buildFlashLaneFootageAcquisitionPlan({
+    storyId: "story-1",
+    frameReport: frameReport(),
+    segmentValidationReport: {
+      segments: [
+        {
+          story_id: "story-1",
+          entity: "BioShock",
+          allowed_for_flash_lane: true,
+          status: "accepted",
+          segment_motion_class: "gameplay_action",
+          action_score: 84,
+        },
+        ...failedStarts.map((start) => ({
+          story_id: "story-1",
+          entity: "GTA",
+          allowed_for_flash_lane: false,
+          status: "rejected",
+          validation_reason: "segment_lacks_gameplay_action_samples",
+          media_start_s: start,
+        })),
+      ],
+    },
+  });
+
+  const gta = plan.shopping_list.find((item) => item.entity === "GTA");
+  assert.ok(gta.reasons.includes("try_later_or_alternate_official_source_after_failed_windows"));
+  assert.ok(gta.suggested_windows.every((window) => !failedStarts.includes(window.start_s)));
+  assert.ok(gta.suggested_windows.every((window) => window.start_s >= 36));
 });
 
 test("footage acquisition plan becomes proof-ready with enough validated windows", () => {
@@ -90,9 +161,30 @@ test("footage acquisition plan becomes proof-ready with enough validated windows
     frameReport: frameReport(),
     segmentValidationReport: {
       segments: [
-        { story_id: "story-1", entity: "GTA", allowed_for_flash_lane: true, status: "accepted" },
-        { story_id: "story-1", entity: "Red Dead", allowed_for_flash_lane: true, status: "accepted" },
-        { story_id: "story-1", entity: "BioShock", allowed_for_flash_lane: true, status: "accepted" },
+        {
+          story_id: "story-1",
+          entity: "GTA",
+          allowed_for_flash_lane: true,
+          status: "accepted",
+          segment_motion_class: "gameplay_action",
+          action_score: 80,
+        },
+        {
+          story_id: "story-1",
+          entity: "Red Dead",
+          allowed_for_flash_lane: true,
+          status: "accepted",
+          segment_motion_class: "gameplay_action",
+          action_score: 81,
+        },
+        {
+          story_id: "story-1",
+          entity: "BioShock",
+          allowed_for_flash_lane: true,
+          status: "accepted",
+          segment_motion_class: "gameplay_action",
+          action_score: 82,
+        },
       ],
     },
   });

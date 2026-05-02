@@ -10,6 +10,7 @@ try {
 
 const {
   buildOfficialTrailerClipsFromFrameReport,
+  DEFAULT_EXPLORATORY_START_SECONDS,
 } = require("../lib/studio/v2/official-trailer-clip-refs");
 const {
   DEFAULT_OUTPUT_ROOT,
@@ -33,6 +34,8 @@ function parseArgs(argv) {
     maxSegments: 6,
     candidateWindowsPerSource: 1,
     includeFrameAnchoredWindows: false,
+    includeExploratoryWindows: false,
+    exploratoryStartSeconds: DEFAULT_EXPLORATORY_START_SECONDS,
   };
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i];
@@ -54,6 +57,13 @@ function parseArgs(argv) {
       args.candidateWindowsPerSource = Math.max(1, Number(argv[++i]) || 1);
     } else if (arg === "--include-frame-anchored-windows") {
       args.includeFrameAnchoredWindows = true;
+    } else if (arg === "--deep-scan" || arg === "--include-exploratory-windows") {
+      args.includeExploratoryWindows = true;
+    } else if (arg === "--exploratory-starts") {
+      args.exploratoryStartSeconds = String(argv[++i] || "")
+        .split(",")
+        .map((item) => Number(item.trim()))
+        .filter((item) => Number.isFinite(item));
     }
   }
   return args;
@@ -75,6 +85,9 @@ function printHelp() {
       "                         Validate alternate windows from the same official source",
       "  --include-frame-anchored-windows",
       "                         Also validate windows that start shortly before a safe frame",
+      "  --deep-scan            Add uniform exploratory windows from every official source",
+      "  --exploratory-starts <csv>",
+      "                         Start seconds for --deep-scan, default: 36,42,48,54,60,66",
       "  --json                 Print JSON instead of Markdown",
       "",
       "This command is local-only. It validates proposed official trailer clip windows before they can be used by Flash Lane.",
@@ -106,6 +119,8 @@ function buildClipRefsFromReport(frameReport, storyId, args = {}) {
       maxCandidateWindowsPerSource: args.candidateWindowsPerSource,
       includeFrameAnchoredWindows: args.includeFrameAnchoredWindows,
       maxClips: args.maxSegments,
+      includeExploratoryWindows: args.includeExploratoryWindows,
+      exploratoryStartSeconds: args.exploratoryStartSeconds,
     }).map((clip) => ({
       ...clip,
       story_id: id,

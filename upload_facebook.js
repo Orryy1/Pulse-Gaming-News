@@ -150,7 +150,10 @@ async function uploadReel(story) {
             ""
           ).substring(0, 100),
           description,
-          published: true,
+          // Reels finish requires a publish state transition. The
+          // legacy boolean publish flag can leave Graph at success:true
+          // while the Reel remains processed but unpublished.
+          video_state: "PUBLISHED",
           access_token: accessToken,
         },
       );
@@ -368,7 +371,7 @@ async function uploadReelViaUrl(story) {
         ""
       ).substring(0, 100),
       description,
-      published: true,
+      video_state: "PUBLISHED",
       access_token: accessToken,
     },
   );

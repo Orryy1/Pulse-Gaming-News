@@ -14,6 +14,8 @@ const assert = require("node:assert");
 
 const { interpretReelStatusSnapshot } = require("../../upload_facebook");
 const { renderPublishSummary } = require("../../lib/job-handlers");
+const fs = require("node:fs");
+const path = require("node:path");
 
 // ---------- interpretReelStatusSnapshot ----------
 
@@ -215,4 +217,26 @@ test("renderPublishSummary: FB Reel failure with Card success renders both outco
   assert.match(summary.message, /FB Reel: Facebook Reel did not go live/);
   // Status is at least degraded.
   assert.strictEqual(summary.status, "degraded");
+});
+
+test("upload_facebook: Reel finish uses video_state=PUBLISHED, not published=true", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "..", "..", "upload_facebook.js"),
+    "utf8",
+  );
+  const finishBodies = [
+    ...source.matchAll(
+      /upload_phase:\s*"finish"[\s\S]*?access_token:\s*accessToken,/g,
+    ),
+  ].map((match) => match[0]);
+
+  assert.ok(
+    finishBodies.length >= 2,
+    "expected binary and URL fallback Reel finish bodies",
+  );
+
+  for (const body of finishBodies) {
+    assert.match(body, /video_state:\s*"PUBLISHED"/);
+    assert.doesNotMatch(body, /published:\s*true/);
+  }
 });

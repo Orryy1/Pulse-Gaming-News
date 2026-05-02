@@ -1548,16 +1548,10 @@ async function _publishNextStoryInner() {
     storyId: story.id,
     platform: "facebook_reel",
   });
-  // 2026-04-28: empirical evidence (Graph API probe via
-  // tools/diagnostics/fb-page-content-probe.js) confirmed that
-  // /{page_id}/videos and /{page_id}/video_reels both return ZERO
-  // entries despite 3 publish summaries reporting FB Reel ✅
-  // verified. Meta accepts the API request, returns happy-path
-  // responses, then silently rejects the Reel before it reaches
-  // any visible surface — a Page-eligibility gate for new pages.
-  // This env flag lets the operator pause FB Reel attempts until
-  // Meta enables Reels for the Page (default off until they prove
-  // a Reel actually appears under /video_reels).
+  // This env flag lets the operator pause FB Reel attempts if Meta
+  // regresses the Page surface. 2026-05-02 API proof showed that
+  // Reels can publish when the finish phase uses video_state=PUBLISHED,
+  // but we keep the explicit switch so FB Card fallback remains safe.
   const fbReelsEnabled = process.env.FACEBOOK_REELS_ENABLED === "true";
   if (story.facebook_post_id) {
     result.facebook = true;

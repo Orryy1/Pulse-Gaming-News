@@ -4,6 +4,17 @@
 
 Pulse local VoxCPM voice synthesis is working again through the project TTS path.
 
+Operator acceptance update: Martin approved the Sleepy-Liam local Pulse sample on
+2026-05-02 as the correct local voice:
+
+```text
+D:\pulse-data\media\output\audio\__local_tts_smoke_sleepy_liam_20260502.mp3
+```
+
+That sample is the accepted local target. The earlier
+`__local_tts_smoke_fixed_20260502.mp3` sample was explicitly rejected as the old
+rushed/high-pitched voice.
+
 The root cause was a mismatch with the working `sleepy-empire` VoxCPM server. Sleepy loads VoxCPM with `load_denoiser=False` and serialises GPU generation. Pulse was loading the VoxCPM denoiser and allowed unsynchronised generation calls. The denoiser path was visible in logs as `enable_denoiser: True`, then local generation hung during synth.
 
 Second-pass audio QA found an additional voice-quality issue: the first smoke MP3s could still sound too low because Pulse accepted any VoxCPM take that returned bytes. The server now uses VoxCPM's real model sample rate, disables prompt conditioning for Pulse Liam by default, removes the old speed compensation and rejects low-F0 local takes before returning them.
@@ -24,8 +35,10 @@ Second-pass audio QA found an additional voice-quality issue: the first smoke MP
 - `tts_server/voices.json`
   - Marks Pulse Liam and Sleepy Christopher local voices with `"load_denoiser": false`.
   - Sets Pulse Liam to `base_speed=1.0`, disables prompt text conditioning and enables acoustic QA.
+  - Points Pulse Liam at `voices/pulse_liam_sleepy.wav`, the longer Sleepy Empire Liam reference that produced the accepted sample.
 - `audio.js`, `lib/studio/sound-layer.js`, `tools/studio-v2-local-render.js`
   - Removes the old local VoxCPM speed compensation defaults that were created around the broken 16 kHz path.
+  - Defaults local VoxCPM effective pacing to natural speed instead of the old 1.15x cap.
 - `tests/services/local-tts-voice-config.test.js`
   - Adds regression coverage for denoiser safety, generation serialisation, model sample-rate use, prompt policy and voice QA.
 
@@ -61,15 +74,16 @@ Smoke output:
 ```text
 D:\pulse-data\media\output\audio\__local_tts_smoke.mp3
 D:\pulse-data\media\output\audio\__local_tts_smoke_timestamps.json
-D:\pulse-data\media\output\audio\__local_tts_smoke_fixed_20260502.mp3
+D:\pulse-data\media\output\audio\__local_tts_smoke_sleepy_liam_20260502.mp3
+D:\pulse-data\media\output\audio\__local_tts_smoke_sleepy_liam_slow_20260502.mp3
 ```
 
 Acoustic check:
 
 ```text
-__local_tts_smoke.mp3: duration=6.261s median_f0=119.90Hz
-__local_tts_smoke_fixed_20260502.mp3: duration=9.183s median_f0=135.84Hz
-Pulse voice reference: duration=25.000s median_f0=127.30Hz
+__local_tts_smoke_fixed_20260502.mp3: duration=9.183s median_f0=135.84Hz (rejected)
+__local_tts_smoke_sleepy_liam_20260502.mp3: duration=6.720s median_f0=113.32Hz (accepted)
+Sleepy Liam reference: duration=48.762s
 ElevenLabs comparison: duration=54.976s median_f0=126.91Hz
 ```
 
@@ -96,4 +110,4 @@ python acoustic metrics for smoke/reference/ElevenLabs comparison
 
 ## Next
 
-Use this server for a controlled local render proof only after the smoke MP3 is manually listened to. If the voice is accepted, the next code step is a local render command that refuses old demonic audio caches and regenerates Pulse narration through this fixed local path.
+Use this server for a controlled local render proof. The next code step is a local render command that refuses old demonic audio caches and regenerates Pulse narration through this accepted local path.

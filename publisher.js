@@ -3,6 +3,7 @@ const dotenv = require("dotenv");
 const sendDiscord = require("./notify");
 const { addBreadcrumb, captureException } = require("./lib/sentry");
 const db = require("./lib/db");
+const { resolveFacebookReelsMode } = require("./lib/platforms/facebook-reels-mode");
 
 dotenv.config({ override: true });
 
@@ -1556,7 +1557,8 @@ async function _publishNextStoryInner() {
   // regresses the Page surface. 2026-05-02 API proof showed that
   // Reels can publish when the finish phase uses video_state=PUBLISHED,
   // but we keep the explicit switch so FB Card fallback remains safe.
-  const fbReelsEnabled = process.env.FACEBOOK_REELS_ENABLED === "true";
+  const fbReelsMode = resolveFacebookReelsMode(process.env);
+  const fbReelsEnabled = fbReelsMode.enabled;
   if (story.facebook_post_id) {
     result.facebook = true;
     result.platform_outcomes.facebook = "already_published";
@@ -1565,10 +1567,10 @@ async function _publishNextStoryInner() {
     );
   } else if (!fbReelsEnabled) {
     result.facebook = true;
-    result.platform_outcomes.facebook = "page_not_eligible";
+    result.platform_outcomes.facebook = "operator_disabled";
     console.log(
-      `[publisher] Facebook Reel: SKIPPED (FACEBOOK_REELS_ENABLED!=true) — ` +
-        `Page reels-eligibility gate must clear before re-enabling. FB Card fallback continues.`,
+      `[publisher] Facebook Reel: SKIPPED (${fbReelsMode.reason}) — ` +
+        `FB Card fallback continues.`,
     );
   } else if (fbPrior && fbPrior.status === "blocked") {
     result.facebook = true;

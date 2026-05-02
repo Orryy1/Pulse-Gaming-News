@@ -846,7 +846,7 @@ test("studio local voice path caps effective VoxCPM stretch below the warble zon
   ]);
 });
 
-test("studio local voice path defaults to post-sample-rate-fix pacing", () => {
+test("studio local voice path defaults to natural VoxCPM pacing", () => {
   const scaled = applyLocalVoiceRateMultiplier(
     [
       { label: "hook", text: "Hook", rate: 1.155 },
@@ -856,8 +856,8 @@ test("studio local voice path defaults to post-sample-rate-fix pacing", () => {
   );
 
   assert.deepEqual(scaled, [
-    { label: "hook", text: "Hook", rate: 1.15 },
-    { label: "body", text: "Body", rate: 1.15 },
+    { label: "hook", text: "Hook", rate: 1 },
+    { label: "body", text: "Body", rate: 1 },
   ]);
 });
 

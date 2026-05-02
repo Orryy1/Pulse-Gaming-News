@@ -14,7 +14,7 @@ test("Pulse VoxCPM voice map carries Sleepy-proven safety parameters", () => {
   const pulse = voices.TX3LPaxmHKxFdv7VOQHJ;
 
   assert.ok(pulse, "Pulse Liam voice mapping must exist");
-  assert.equal(pulse.ref_voice_path, "voices/pulse_v2.wav");
+  assert.equal(pulse.ref_voice_path, "voices/pulse_liam_sleepy.wav");
   assert.equal(pulse.base_speed, 1.0);
   assert.equal(pulse.cfg_value, 2.0);
   assert.equal(pulse.inference_timesteps, 20);
@@ -25,6 +25,7 @@ test("Pulse VoxCPM voice map carries Sleepy-proven safety parameters", () => {
   assert.equal(pulse.voice_qa.fallback_without_reference, true);
   assert.equal(typeof pulse.ref_voice_text, "string");
   assert.match(pulse.ref_voice_text, /Metro/i);
+  assert.match(pulse.notes, /Sleepy Empire Liam/i);
 });
 
 test("Pulse VoxCPM engine passes cfg, timesteps, prompt policy, voice QA and denoiser safety", () => {
@@ -126,5 +127,25 @@ test("Pulse local TTS default rate no longer trusts legacy BASE_SPEED compensati
     },
   );
 
-  assert.equal(local.speaking_rate <= 1.15, true);
+  assert.equal(local.speaking_rate <= 1.0, true);
+});
+
+test("Pulse Studio V2 local voice defaults to natural speed", () => {
+  const soundLayerSource = fs.readFileSync(
+    path.join(ROOT, "lib", "studio", "sound-layer.js"),
+    "utf8",
+  );
+
+  assert.match(soundLayerSource, /STUDIO_V2_LOCAL_TTS_EFFECTIVE_RATE_CAP\s*\|\|\s*1\.0/);
+  assert.doesNotMatch(soundLayerSource, /STUDIO_V2_LOCAL_TTS_EFFECTIVE_RATE_CAP\s*\|\|\s*1\.15/);
+});
+
+test("Pulse local TTS smoke test uses a natural rate by default", () => {
+  const smokeSource = fs.readFileSync(
+    path.join(ROOT, "tools", "local-tts-smoke.js"),
+    "utf8",
+  );
+
+  assert.match(smokeSource, /LOCAL_TTS_SMOKE_RATE\s*\|\|\s*1\.0/);
+  assert.doesNotMatch(smokeSource, /LOCAL_TTS_SMOKE_RATE\s*\|\|\s*1\.75/);
 });

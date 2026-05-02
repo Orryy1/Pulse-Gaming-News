@@ -253,7 +253,7 @@ function resolveLocalTtsSpeakingRate(rate, env = process.env) {
   const effectiveCap = finiteNumber(
     env.LOCAL_TTS_EFFECTIVE_RATE_CAP ||
       env.STUDIO_V2_LOCAL_TTS_EFFECTIVE_RATE_CAP,
-    1.15,
+    1.0,
   );
   const serverBase = baseSpeed > 0 ? baseSpeed : 1.0;
   const maxRequestRate = clamp(effectiveCap / serverBase, 0.85, 1.25);

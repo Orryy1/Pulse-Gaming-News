@@ -9,6 +9,7 @@ small metrics report so we can evaluate voice quality without guessing.
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 from typing import Optional
 
@@ -18,14 +19,22 @@ import soundfile as sf
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT_DIR = ROOT / "test" / "output" / "local-tts-voice-audition"
+OUT_DIR = ROOT / "test" / "output" / "local-tts-voice-audition-v2"
 REF_DIR = OUT_DIR / "refs"
-TEXT = "Pulse Gaming local voice check. Mega Mewtwo, GTA six and Xbox news should sound clean, bright and natural."
+TEXT = (
+    "Pulse Gaming voice check. GTA six, Pokemon and Xbox news should sound sharp, "
+    "confident and natural without rushing or dropping into a broken low voice."
+)
 PROMPT_TEXT = (
     "A new Metro game just dropped its official reveal trailer, and nobody expected this franchise to return. "
     "Metro twenty 39 is officially happening, The reveal trailer just went live, showing what appears to be a "
     "deeply personal story centred on a protagonist grappling with a haunting past. Based on the trailer's tone "
     "and imagery, the narrative explores themes of indoctrination and trauma."
+)
+SLEEPY_PROMPT_TEXT = (
+    "Welcome, weary traveller. Settle in. Let the world outside fall quiet. Tonight, "
+    "we walk together through a land that has slept for a thousand years, where kings "
+    "were buried beneath mountains, and dragons whispered in tongues older than memory."
 )
 
 
@@ -56,6 +65,29 @@ def f0_metrics(path: Path) -> dict:
     }
 
 
+def write_mp3(wav_path: Path) -> Path:
+    mp3_path = wav_path.with_suffix(".mp3")
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-v",
+            "error",
+            "-i",
+            str(wav_path),
+            "-ar",
+            "44100",
+            "-ac",
+            "1",
+            "-b:a",
+            "160k",
+            str(mp3_path),
+        ],
+        check=True,
+    )
+    return mp3_path
+
+
 def generate_variant(model, sample_rate: int, name: str, ref: Optional[Path], prompt_text: Optional[str]) -> dict:
     kwargs = {
         "text": TEXT,
@@ -74,10 +106,12 @@ def generate_variant(model, sample_rate: int, name: str, ref: Optional[Path], pr
         wav = wav.mean(axis=0 if wav.shape[0] < wav.shape[1] else 1)
     out = OUT_DIR / f"{name}.wav"
     sf.write(out, wav, sample_rate, subtype="PCM_16")
+    mp3 = write_mp3(out)
     metrics = f0_metrics(out)
     return {
         "name": name,
         "path": str(out),
+        "mp3_path": str(mp3),
         "reference": str(ref) if ref else None,
         "prompt_text": bool(prompt_text),
         **metrics,
@@ -108,6 +142,16 @@ def main() -> None:
             ROOT / "output" / "audio" / "1sn9xhe_studio_v1_elevenlabs.mp3",
         ),
     }
+    current_elevenlabs = Path(
+        "D:/pulse-data/media/output/audio/rss_ca673f22ddbbbdfc_studio_v1_elevenlabs.mp3"
+    )
+    if current_elevenlabs.exists():
+        refs["current_elevenlabs_24k"] = write_ref(
+            "current_elevenlabs_24k",
+            current_elevenlabs,
+            start_s=5.0,
+            duration_s=30.0,
+        )
     sleepy_ref = Path("C:/Users/MORR/gaming-studio/sleepy-empire/config/voices/reference_audio/the-sleep-lab_liam.wav")
     if sleepy_ref.exists():
         refs["sleepy_liam_24k"] = sleepy_ref
@@ -119,15 +163,25 @@ def main() -> None:
 
     variants = [
         ("no_ref_default", None, None),
-        ("pulse_v2_16k_prompt", refs["pulse_v2_16k_original"], PROMPT_TEXT),
         ("pulse_v2_16k_no_prompt", refs["pulse_v2_16k_original"], None),
-        ("pulse_v2_24k_prompt", refs["pulse_v2_24k_resampled"], PROMPT_TEXT),
         ("pulse_v2_24k_no_prompt", refs["pulse_v2_24k_resampled"], None),
         ("source_1sn9xhe_24k_no_prompt", refs["source_1sn9xhe_24k"], None),
         ("studio_elevenlabs_24k_no_prompt", refs["studio_elevenlabs_24k"], None),
     ]
+    if "current_elevenlabs_24k" in refs:
+        variants.extend(
+            [
+                ("current_elevenlabs_24k_no_prompt", refs["current_elevenlabs_24k"], None),
+                ("current_elevenlabs_24k_prompt", refs["current_elevenlabs_24k"], PROMPT_TEXT),
+            ]
+        )
     if "sleepy_liam_24k" in refs:
-        variants.append(("sleepy_liam_24k_no_prompt", refs["sleepy_liam_24k"], None))
+        variants.extend(
+            [
+                ("sleepy_liam_24k_no_prompt", refs["sleepy_liam_24k"], None),
+                ("sleepy_liam_24k_prompt", refs["sleepy_liam_24k"], SLEEPY_PROMPT_TEXT),
+            ]
+        )
 
     results = []
     for name, ref, prompt in variants:
@@ -146,7 +200,7 @@ def main() -> None:
         lines.append(
             f"- {item['name']}: duration={item['duration_s']}s, "
             f"median_f0={item['median_f0_hz']}Hz, centroid={item['centroid_hz']}Hz, "
-            f"prompt={item['prompt_text']}, file={item['path']}"
+            f"prompt={item['prompt_text']}, file={item['mp3_path']}"
         )
     (OUT_DIR / "voice_audition_report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(json.dumps(report, indent=2))

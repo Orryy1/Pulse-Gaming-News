@@ -36,7 +36,7 @@ async function main() {
   const rel = path.join("output", "audio", "__local_tts_smoke.mp3");
   const text =
     "Pulse Gaming local TTS is online. Pokemon is spoken clearly, and Pokémon keeps its accent in timestamps.";
-  await audio.generateTTS(text, rel, Number(process.env.LOCAL_TTS_SMOKE_RATE || 1.75));
+  await audio.generateTTS(text, rel, Number(process.env.LOCAL_TTS_SMOKE_RATE || 1.0));
 
   const mp3Abs = await mediaPaths.resolveExisting(rel);
   const tsRel = rel.replace(/\.mp3$/, "_timestamps.json");

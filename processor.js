@@ -414,6 +414,16 @@ Reply with ONLY a JSON object: { "score": N, "reason": "one sentence" }`,
  * for compliance, authority and natural language flow.
  * Only runs on scripts that passed the quality gate (score >= 7).
  */
+function editorWordCountInstruction(channel) {
+  if (channel?.id === "pulse-gaming") {
+    return (
+      `7) Keep the exact same classification tag and keep full_script within ` +
+      `${DEFAULT_MIN_WORDS}-${DEFAULT_MAX_WORDS} cleaned spoken words. Do not expand it.`
+    );
+  }
+  return "7) Keep the exact same classification tag and word count range (155-185).";
+}
+
 async function sonnetEditorPass(client, script, channel) {
   try {
     const isFinance = channel.id === "stacked";
@@ -432,7 +442,7 @@ ${complianceRules}
 4) If the hook is weak, rewrite it using the Curiosity Gap technique.
 5) Ensure sentence lengths vary (mix short 3-8 word punches with 15-25 word details).
 6) Remove em dashes. Replace with commas or full stops.
-7) Keep the exact same classification tag and word count range (155-185).
+${editorWordCountInstruction(channel)}
 
 Reply with ONLY the edited JSON object in the same format as the input. No explanation.`,
       messages: [
@@ -456,6 +466,12 @@ Reply with ONLY the edited JSON object in the same format as the input. No expla
       edited.classification !== script.classification
     ) {
       edited.classification = script.classification;
+    }
+
+    edited.word_count = countSpokenWords(cleanForTTS(edited.full_script || ""));
+    const errors = validate(edited, channel.id);
+    if (errors.length > 0) {
+      throw new Error(`editor_validation_failed:${errors.join("; ")}`);
     }
 
     console.log(`[processor] Sonnet editor polished script`);
@@ -818,6 +834,7 @@ Today's date is ${today}. You MUST follow these rules:
 
 module.exports = process_stories;
 module.exports.validate = validate;
+module.exports.editorWordCountInstruction = editorWordCountInstruction;
 module.exports.cleanForTTS = cleanForTTS;
 
 if (require.main === module) {

@@ -605,6 +605,8 @@ def _get_engine(voice_id: str) -> VoxCPMEngine:
             t0 = time.monotonic()
             eng = VoxCPMEngine(
                 ref_voice_path=_resolve_ref_path(REF_VOICE_PATH),
+                cfg_value=2.0,
+                inference_timesteps=20,
                 device=DEVICE,
             )
             dt_ms = int((time.monotonic() - t0) * 1000)
@@ -628,7 +630,13 @@ def _get_engine(voice_id: str) -> VoxCPMEngine:
     prev = os.environ.get("BASE_SPEED")
     os.environ["BASE_SPEED"] = str(base_speed)
     try:
-        eng = VoxCPMEngine(ref_voice_path=ref, device=DEVICE)
+        eng = VoxCPMEngine(
+            ref_voice_path=ref,
+            prompt_text=cfg.get("ref_voice_text"),
+            cfg_value=cfg.get("cfg_value", 2.0),
+            inference_timesteps=cfg.get("inference_timesteps", 20),
+            device=DEVICE,
+        )
     finally:
         if prev is None:
             os.environ.pop("BASE_SPEED", None)

@@ -39,13 +39,16 @@ class VoxCPMEngine:
         model_path: Optional[str] = None,
         ref_voice_path: Optional[str] = None,
         device: str = "cuda",
-        # Accepted for API compatibility with the older voice-design wrapper;
-        # VoxCPM 2 does not expose a text voice prompt parameter so this is
-        # ignored (kept so server.py and .env stay unchanged).
-        voice_prompt: Optional[str] = None,  # noqa: ARG002
+        voice_prompt: Optional[str] = None,
+        prompt_text: Optional[str] = None,
+        cfg_value: float = 2.0,
+        inference_timesteps: int = 20,
     ):
         self.device = device if torch.cuda.is_available() else "cpu"
         self.ref_voice_path = ref_voice_path or None
+        self.prompt_text = prompt_text or voice_prompt or None
+        self.cfg_value = float(cfg_value)
+        self.inference_timesteps = int(inference_timesteps)
         self._model = None
         self._model_path = model_path or "openbmb/VoxCPM2"
         # Multiplied with the per-call speaking_rate so the operator can set a
@@ -89,9 +92,16 @@ class VoxCPMEngine:
         """
         self.load()
 
-        kwargs = {"text": text}
+        kwargs = {
+            "text": text,
+            "cfg_value": self.cfg_value,
+            "inference_timesteps": self.inference_timesteps,
+        }
         if self.ref_voice_path and Path(self.ref_voice_path).exists():
             kwargs["reference_wav_path"] = str(self.ref_voice_path)
+            if self.prompt_text:
+                kwargs["prompt_wav_path"] = str(self.ref_voice_path)
+                kwargs["prompt_text"] = self.prompt_text
             log.debug(f"Cloning from reference: {self.ref_voice_path}")
 
         audio = self._model.generate(**kwargs)

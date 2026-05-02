@@ -234,6 +234,52 @@ function resolveTtsTimeoutMs(provider, env = process.env) {
   return Number.isFinite(remoteValue) && remoteValue > 0 ? remoteValue : 60000;
 }
 
+function finiteNumber(value, fallback) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function resolveLocalTtsSpeakingRate(rate, env = process.env) {
+  const requested = finiteNumber(rate, 1.0);
+  const baseSpeed = finiteNumber(
+    env.LOCAL_TTS_BASE_SPEED ||
+      env.STUDIO_V2_LOCAL_TTS_BASE_SPEED ||
+      env.BASE_SPEED,
+    1.4,
+  );
+  const effectiveCap = finiteNumber(
+    env.LOCAL_TTS_EFFECTIVE_RATE_CAP ||
+      env.STUDIO_V2_LOCAL_TTS_EFFECTIVE_RATE_CAP,
+    1.65,
+  );
+  const serverBase = baseSpeed > 0 ? baseSpeed : 1.4;
+  const maxRequestRate = clamp(effectiveCap / serverBase, 0.85, 1.25);
+  return clamp(requested, 0.85, maxRequestRate);
+}
+
+function resolveVoiceSettingsForProvider(
+  provider,
+  baseSettings,
+  rateOverride,
+  env = process.env,
+) {
+  const settings = Object.assign({}, baseSettings || {});
+  if (rateOverride !== undefined) {
+    settings.speaking_rate = rateOverride;
+  }
+  if (String(provider || "").toLowerCase() === "local") {
+    settings.speaking_rate = resolveLocalTtsSpeakingRate(
+      settings.speaking_rate,
+      env,
+    );
+  }
+  return settings;
+}
+
 // --- Concatenate multiple MP3 files via ffmpeg ---
 async function concatAudioFiles(files, outputPath) {
   // Resolve through media-paths so the list file + output land
@@ -272,9 +318,11 @@ async function generateTTS(text, outputPath, rateOverride) {
       speaking_rate: 1.1,
     },
   );
-  if (rateOverride !== undefined) {
-    voiceSettings.speaking_rate = rateOverride;
-  }
+  const resolvedVoiceSettings = resolveVoiceSettingsForProvider(
+    provider,
+    voiceSettings,
+    rateOverride,
+  );
 
   const baseUrl =
     provider === "local"
@@ -291,7 +339,7 @@ async function generateTTS(text, outputPath, rateOverride) {
 
   const data = {
     text,
-    voice_settings: voiceSettings,
+    voice_settings: resolvedVoiceSettings,
     output_format: "mp3_44100_128",
   };
   if (provider !== "local") {
@@ -625,6 +673,8 @@ module.exports.cleanForTTS = cleanForTTS;
 module.exports.generateTTS = generateTTS;
 module.exports.concatAudioFiles = concatAudioFiles;
 module.exports.resolveTtsTimeoutMs = resolveTtsTimeoutMs;
+module.exports.resolveLocalTtsSpeakingRate = resolveLocalTtsSpeakingRate;
+module.exports.resolveVoiceSettingsForProvider = resolveVoiceSettingsForProvider;
 module.exports.assertBrandNameQaForTts = assertBrandNameQaForTts;
 module.exports.selectRawTtsScript = selectRawTtsScript;
 

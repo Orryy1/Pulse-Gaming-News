@@ -40,7 +40,16 @@ function frameReport(frames) {
   };
 }
 
-function segment({ entity, source = null, allowed = true, reason = "segment_samples_passed", start = 48 } = {}) {
+function segment({
+  entity,
+  source = null,
+  allowed = true,
+  reason = "segment_samples_passed",
+  start = 48,
+  motionClass = "gameplay_action",
+  actionScore = 82,
+  actionSampleCount = 3,
+} = {}) {
   const url = source || `https://video.example/${entity}.m3u8`;
   return {
     story_id: "story-1",
@@ -54,6 +63,9 @@ function segment({ entity, source = null, allowed = true, reason = "segment_samp
     segment_validated: allowed,
     allowed_for_flash_lane: allowed,
     validation_reason: reason,
+    segment_motion_class: allowed ? motionClass : "rejected",
+    action_score: allowed ? actionScore : 0,
+    action_sample_count: allowed ? actionSampleCount : 0,
     samples: [{}, {}, {}],
   };
 }
@@ -242,6 +254,52 @@ test("Flash Lane footage backbone excludes validated clips below the Flash quali
     ["BioShock"],
   );
   assert.ok(report.blockers.includes("footage_backbone_needs_three_validated_clip_windows"));
+});
+
+test("Flash Lane footage backbone refuses clean segments that are not gameplay/action", () => {
+  const sourceA = "https://video.example/gta-clean-card.m3u8";
+  const sourceB = "https://video.example/reddead-clean-card.m3u8";
+  const sourceC = "https://video.example/bioshock-clean-card.m3u8";
+  const report = buildFlashLaneFootageBackboneReport({
+    storyId: "story-1",
+    targetRuntimeS: 15,
+    frameReport: frameReport([
+      frame({ entity: "GTA", source: sourceA }),
+      frame({ entity: "Red Dead", source: sourceB }),
+      frame({ entity: "BioShock", source: sourceC }),
+    ]),
+    segmentValidationReport: {
+      segments: [
+        segment({
+          entity: "GTA",
+          source: sourceA,
+          motionClass: "non_gameplay_context",
+          actionScore: 42,
+          actionSampleCount: 0,
+        }),
+        segment({
+          entity: "Red Dead",
+          source: sourceB,
+          motionClass: "non_gameplay_context",
+          actionScore: 45,
+          actionSampleCount: 1,
+        }),
+        segment({
+          entity: "BioShock",
+          source: sourceC,
+          motionClass: "non_gameplay_context",
+          actionScore: 48,
+          actionSampleCount: 0,
+        }),
+      ],
+    },
+  });
+
+  assert.equal(report.verdict, "downgrade_to_standard_short");
+  assert.equal(report.segment_inventory.validated_segments, 0);
+  assert.equal(report.segment_inventory.non_gameplay_context_segments, 3);
+  assert.deepEqual(report.validated_clip_refs, []);
+  assert.ok(report.blockers.includes("footage_backbone_needs_gameplay_action_clip_windows"));
 });
 
 test("Flash Lane footage backbone markdown is operator-readable", () => {

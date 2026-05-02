@@ -47,9 +47,10 @@ function segment({
   start = 48,
   allowed = true,
 } = {}) {
+  const safeEntity = String(entity).replace(/[^a-z0-9_-]+/gi, "_").replace(/^_+|_+$/g, "").toLowerCase();
   return {
     story_id: "story-1",
-    clip_key: `${source}|${entity.toLowerCase()}|${Number(start).toFixed(2)}`,
+    clip_key: `${source}|${safeEntity}|${Number(start).toFixed(2)}`,
     source_url: source,
     source_type: "steam_movie",
     entity,
@@ -59,6 +60,9 @@ function segment({
     segment_validated: allowed,
     allowed_for_flash_lane: allowed,
     validation_reason: allowed ? "segment_samples_passed" : "segment_contains_title_card",
+    segment_motion_class: allowed ? "gameplay_action" : "rejected",
+    action_score: allowed ? 82 : 0,
+    action_sample_count: allowed ? 3 : 0,
     samples: [{}, {}, {}],
   };
 }
@@ -92,10 +96,14 @@ test("proof official clips use only validated segment-backed refs", () => {
     frameReport: frameReport([
       frame({ entity: "GTA", source: "https://video.example/gta.m3u8" }),
       frame({ entity: "BioShock", source: "https://video.example/bio.m3u8" }),
+      frame({ entity: "Red Dead", source: "https://video.example/red.m3u8" }),
+      frame({ entity: "Mafia", source: "https://video.example/mafia.m3u8" }),
     ]),
     segmentValidationReport: {
       segments: [
         segment({ entity: "GTA", source: "https://video.example/gta.m3u8" }),
+        segment({ entity: "Red Dead", source: "https://video.example/red.m3u8" }),
+        segment({ entity: "Mafia", source: "https://video.example/mafia.m3u8" }),
         segment({
           entity: "BioShock",
           source: "https://video.example/bio.m3u8",
@@ -104,12 +112,46 @@ test("proof official clips use only validated segment-backed refs", () => {
       ],
     },
     useOfficialTrailerClips: true,
+    targetRuntimeS: 15,
   });
 
-  assert.equal(result.clipRefs.length, 1);
+  assert.equal(result.clipRefs.length, 3);
   assert.equal(result.clipRefs[0].entity, "GTA");
   assert.equal(result.clipRefs[0].provenance.segment_validated, true);
   assert.equal(result.safety.status, "validated_segments_only");
+});
+
+test("proof official clips block validated-looking segments when the footage backbone is not ready", () => {
+  const result = resolveOfficialTrailerClipRefsForProof({
+    storyId: "story-1",
+    frameReport: frameReport([
+      frame({ entity: "GTA", source: "https://video.example/gta.m3u8" }),
+      frame({ entity: "BioShock", source: "https://video.example/bio.m3u8" }),
+      frame({ entity: "Red Dead", source: "https://video.example/red.m3u8" }),
+    ]),
+    segmentValidationReport: {
+      segments: [
+        segment({ entity: "GTA", source: "https://video.example/gta.m3u8" }),
+        {
+          ...segment({ entity: "BioShock", source: "https://video.example/bio.m3u8" }),
+          segment_motion_class: "non_gameplay_context",
+          action_score: 42,
+          action_sample_count: 0,
+        },
+        {
+          ...segment({ entity: "Red Dead", source: "https://video.example/red.m3u8" }),
+          segment_motion_class: "non_gameplay_context",
+          action_score: 45,
+          action_sample_count: 1,
+        },
+      ],
+    },
+    useOfficialTrailerClips: true,
+  });
+
+  assert.equal(result.clipRefs.length, 0);
+  assert.equal(result.safety.status, "blocked_footage_backbone_not_ready");
+  assert.match(result.safety.reason, /gameplay\/action/i);
 });
 
 test("proof official clips can build unvalidated refs only for explicit diagnostic mode", () => {

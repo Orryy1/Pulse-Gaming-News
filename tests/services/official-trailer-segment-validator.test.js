@@ -64,7 +64,7 @@ function passingQa(outputPath) {
     prescan: {
       likely_is_logo: false,
       text_overlay_likelihood: 0.1,
-      edge_density: 0.2,
+      edge_density: 0.22,
       saturation_mean: 0.45,
     },
   };
@@ -106,6 +106,8 @@ test("official trailer segment validator apply-local marks clean sampled windows
   assert.equal(report.segments[0].segment_validated, true);
   assert.equal(report.segments[0].allowed_for_flash_lane, true);
   assert.equal(report.segments[0].validation_reason, "segment_samples_passed");
+  assert.equal(report.segments[0].segment_motion_class, "gameplay_action");
+  assert.ok(report.segments[0].action_score >= 70);
   assert.ok(report.segments[0].samples.every((sample) => sample.local_path.startsWith(outputRoot)));
 });
 
@@ -220,6 +222,69 @@ test("official trailer segment validator rejects repetitive dead windows", async
 
   assert.equal(report.summary.segments_rejected, 1);
   assert.equal(report.segments[0].validation_reason, "segment_samples_too_repetitive");
+});
+
+test("official trailer segment validator rejects clean but text-heavy non-gameplay windows", async () => {
+  const outputRoot = tempOutputRoot("text-heavy-clean");
+  await cleanTempRoot(outputRoot);
+
+  const report = await runOfficialTrailerSegmentValidation([clip()], {
+    applyLocal: true,
+    outputRoot,
+    extractor: fakeExtractor,
+    inspectFrame: async (outputPath) => ({
+      ...passingQa(outputPath),
+      content_hash: path.basename(outputPath),
+      prescan: {
+        likely_is_logo: false,
+        text_overlay_likelihood: 0.34,
+        white_text_on_dark_likelihood: 0,
+        edge_density: 0.19,
+        saturation_mean: 0.38,
+      },
+    }),
+  });
+
+  assert.equal(report.summary.segments_rejected, 1);
+  assert.equal(report.segments[0].validation_reason, "segment_lacks_gameplay_action_samples");
+  assert.equal(report.segments[0].segment_motion_class, "non_gameplay_context");
+  assert.equal(report.segments[0].allowed_for_flash_lane, false);
+});
+
+test("official trailer segment validator requires at least two gameplay/action samples", async () => {
+  const outputRoot = tempOutputRoot("one-action-sample");
+  await cleanTempRoot(outputRoot);
+  let call = 0;
+
+  const report = await runOfficialTrailerSegmentValidation([clip()], {
+    applyLocal: true,
+    outputRoot,
+    extractor: fakeExtractor,
+    inspectFrame: async (outputPath) => {
+      call += 1;
+      if (call === 1) {
+        return {
+          ...passingQa(outputPath),
+          content_hash: `action-${call}`,
+        };
+      }
+      return {
+        ...passingQa(outputPath),
+        content_hash: `context-${call}`,
+        prescan: {
+          likely_is_logo: false,
+          text_overlay_likelihood: 0.05,
+          white_text_on_dark_likelihood: 0,
+          edge_density: 0.11,
+          saturation_mean: 0.25,
+        },
+      };
+    },
+  });
+
+  assert.equal(report.summary.segments_rejected, 1);
+  assert.equal(report.segments[0].validation_reason, "segment_lacks_gameplay_action_samples");
+  assert.equal(report.segments[0].action_sample_count, 1);
 });
 
 test("official trailer segment validator allows official game-character faces in segment samples", () => {

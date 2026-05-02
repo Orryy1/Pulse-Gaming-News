@@ -63,9 +63,14 @@ test("publisher.js: persistQaFail helper writes qa_failed + publish_status=faile
 test("publisher.js: runPreflightQa runs content-QA then video-QA and returns structured pass/fail", () => {
   const idx = SRC.indexOf("async function runPreflightQa(");
   assert.ok(idx > 0, "runPreflightQa helper must exist");
-  const block = SRC.slice(idx, idx + 3500);
+  const block = SRC.slice(idx, idx + 5500);
   assert.match(block, /runContentQa/, "runPreflightQa must call content-QA");
   assert.match(block, /runVideoQa/, "runPreflightQa must call video-QA");
+  assert.match(
+    block,
+    /runPlatformVideoQa/,
+    "runPreflightQa must call platform-video-QA",
+  );
   assert.match(
     block,
     /source:\s*["']content["']/,
@@ -75,6 +80,11 @@ test("publisher.js: runPreflightQa runs content-QA then video-QA and returns str
     block,
     /source:\s*["']video["']/,
     "video-QA fail result must tag source: 'video'",
+  );
+  assert.match(
+    block,
+    /source:\s*["']platform_video["']/,
+    "platform-video-QA fail result must tag source: 'platform_video'",
   );
 });
 
@@ -127,6 +137,7 @@ const PUBLISHER_RESOLVED = require.resolve("../../publisher.js");
 const DB_RESOLVED = require.resolve("../../lib/db.js");
 const CQA_RESOLVED = require.resolve("../../lib/services/content-qa.js");
 const VQA_RESOLVED = require.resolve("../../lib/services/video-qa.js");
+const PVQA_RESOLVED = require.resolve("../../lib/services/platform-video-qa.js");
 const NOTIFY_RESOLVED = require.resolve("../../notify.js");
 const SENTRY_RESOLVED = require.resolve("../../lib/sentry.js");
 const PUBLISH_BLOCK_RESOLVED =
@@ -195,7 +206,12 @@ function clearPublisherCache() {
 let dbState;
 let uploaderCalls;
 
-function setupMocks({ cqaResult, vqaResult, stories }) {
+function setupMocks({
+  cqaResult,
+  vqaResult,
+  pvqaResult = { result: "pass", failures: [], warnings: [] },
+  stories,
+}) {
   dbState = {
     stories: stories.slice(),
     upsertCalls: [],
@@ -233,6 +249,11 @@ function setupMocks({ cqaResult, vqaResult, stories }) {
   stubModule(VQA_RESOLVED, {
     async runVideoQa() {
       return vqaResult;
+    },
+  });
+  stubModule(PVQA_RESOLVED, {
+    async runPlatformVideoQa() {
+      return pvqaResult;
     },
   });
 
@@ -286,7 +307,12 @@ function setupMocks({ cqaResult, vqaResult, stories }) {
 // Variant of setupMocks where content-QA returns a per-story result
 // keyed by story.id. Used by multi-candidate tests that need "bad
 // story fails QA, next story passes" behaviour in a single test run.
-function setupMocksPerStory({ perStoryCqa, vqaResult, stories }) {
+function setupMocksPerStory({
+  perStoryCqa,
+  vqaResult,
+  pvqaResult = { result: "pass", failures: [], warnings: [] },
+  stories,
+}) {
   dbState = {
     stories: stories.slice(),
     upsertCalls: [],
@@ -326,6 +352,11 @@ function setupMocksPerStory({ perStoryCqa, vqaResult, stories }) {
   stubModule(VQA_RESOLVED, {
     async runVideoQa() {
       return vqaResult;
+    },
+  });
+  stubModule(PVQA_RESOLVED, {
+    async runPlatformVideoQa() {
+      return pvqaResult;
     },
   });
   stubModule(PUBLISH_BLOCK_RESOLVED, {
@@ -480,6 +511,45 @@ test("publishNextStory: video-QA fail persists qa_failed=true + publish_status=f
     uploaderCalls,
     [],
     `no uploader should be called after video-QA fail, got: ${uploaderCalls.join(", ")}`,
+  );
+});
+
+test("publishNextStory: platform-video-QA fail persists before any uploader fires", async () => {
+  const story = {
+    id: "rss_qa_fail_platform_video",
+    title: "Bad MP4 metadata",
+    approved: true,
+    exported_path: "/tmp/bad-meta.mp4",
+    full_script:
+      "A healthy script and duration should still be refused if the MP4 stream metadata is not safe for social platforms. " +
+      "This protects Meta uploads from old chroma or profile renders that would otherwise fail only after the platform accepts the file.",
+  };
+  const { publishNextStory } = setupMocks({
+    cqaResult: { result: "pass", failures: [], warnings: [] },
+    vqaResult: { result: "pass", failures: [], warnings: [] },
+    pvqaResult: {
+      result: "fail",
+      failures: ["video_pixel_format_not_yuv420p (yuv444p)"],
+      warnings: [],
+    },
+    stories: [story],
+  });
+
+  const result = await publishNextStory();
+  assert.strictEqual(result.no_safe_candidate, true);
+  assert.match(result.top_reason, /^platform_video_qa:/);
+  assert.strictEqual(result.qa_skipped[0].source, "platform_video");
+
+  const persisted = dbState.upsertCalls[dbState.upsertCalls.length - 1];
+  assert.strictEqual(persisted.qa_failed, true);
+  assert.strictEqual(persisted.publish_status, "failed");
+  assert.deepStrictEqual(persisted.qa_failures, [
+    "video_pixel_format_not_yuv420p (yuv444p)",
+  ]);
+  assert.deepStrictEqual(
+    uploaderCalls,
+    [],
+    `no uploader should be called after platform-video-QA fail, got: ${uploaderCalls.join(", ")}`,
   );
 });
 

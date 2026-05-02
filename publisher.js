@@ -895,6 +895,42 @@ async function runPreflightQa(story) {
     );
   }
 
+  // Platform video QA — stream metadata that social APIs reject after upload.
+  // This catches old yuv444p / High 4:4:4 renders, missing audio and non-vertical
+  // MP4s before any platform receives the file.
+  try {
+    const { runPlatformVideoQa } = require("./lib/services/platform-video-qa");
+    const pvqa = story.exported_path
+      ? await runPlatformVideoQa(story.exported_path)
+      : { result: "skip", reason: "no_exported_path" };
+    if (pvqa.result === "warn" && Array.isArray(pvqa.warnings)) {
+      console.log(
+        `[publisher] platform video QA warnings (${story.id}): ${pvqa.warnings.join(", ")}`,
+      );
+      warnings.push(...pvqa.warnings);
+    }
+    if (pvqa.result === "fail") {
+      console.log(
+        `[publisher] platform video QA FAIL (${story.id}): ${pvqa.failures.join(", ")}`,
+      );
+      return {
+        pass: false,
+        failures: pvqa.failures,
+        warnings: warnings.slice(),
+        source: "platform_video",
+      };
+    }
+    if (pvqa.result === "skip") {
+      console.log(
+        `[publisher] platform video QA skipped for ${story.id}: ${pvqa.reason || "unknown"}`,
+      );
+    }
+  } catch (qaErr) {
+    console.log(
+      `[publisher] platform-video-qa error for ${story.id} (non-fatal): ${qaErr.message}`,
+    );
+  }
+
   return { pass: true, warnings };
 }
 

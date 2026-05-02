@@ -8,6 +8,7 @@
     "base_speed": 1.4,
     "cfg_value": 2.0,
     "inference_timesteps": 20,
+    "load_denoiser": false,
     "ref_voice_text": "A new Metro game just dropped its official reveal trailer, and nobody expected this franchise to return. Metro twenty 39 is officially happening, The reveal trailer just went live, showing what appears to be a deeply personal story centred on a protagonist grappling with a haunting past. Based on the trailer's tone and imagery, the narrative explores themes of indoctrination and trauma.",
     "notes": "Liam — moderate-pace clone. 25s ref extracted from output/audio/1sn9xhe.mp3 (real ElevenLabs render at natural speed — was previously a 15s clip from 1s4denn.mp3 with stretch artifacts already baked in, plus base_speed 2.6 causing phase-vocoder formant warble = demonic clone-of-a-clone). v2: cleaner ref + 1.4 stretch."
   },
@@ -19,6 +20,7 @@
     "base_speed": 1.4,
     "cfg_value": 2.0,
     "inference_timesteps": 20,
+    "load_denoiser": false,
     "notes": "Christopher — calm documentary narration, 85-95 WPM target. Needs 15-30s clean clone ref (not yet extracted)."
   }
 }

@@ -21,6 +21,8 @@ artifacts. The pipeline-supplied speaking_rate is multiplied by BASE_SPEED
 
 import logging
 import os
+import threading
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -29,6 +31,7 @@ import numpy as np
 import torch
 
 log = logging.getLogger("voxcpm")
+_generation_lock = threading.Lock()
 
 
 class VoxCPMEngine:
@@ -43,12 +46,14 @@ class VoxCPMEngine:
         prompt_text: Optional[str] = None,
         cfg_value: float = 2.0,
         inference_timesteps: int = 20,
+        load_denoiser: bool = False,
     ):
         self.device = device if torch.cuda.is_available() else "cpu"
         self.ref_voice_path = ref_voice_path or None
         self.prompt_text = prompt_text or voice_prompt or None
         self.cfg_value = float(cfg_value)
         self.inference_timesteps = int(inference_timesteps)
+        self.load_denoiser = bool(load_denoiser)
         self._model = None
         self._model_path = model_path or "openbmb/VoxCPM2"
         # Multiplied with the per-call speaking_rate so the operator can set a
@@ -61,13 +66,20 @@ class VoxCPMEngine:
         if self._model is not None:
             return
 
-        log.info(f"Loading VoxCPM 2 from {self._model_path} on {self.device}...")
+        log.info(
+            f"Loading VoxCPM 2 from {self._model_path} on {self.device} "
+            f"(load_denoiser={self.load_denoiser})..."
+        )
         try:
             from voxcpm import VoxCPM
 
             # The VoxCPM library handles device placement internally via its
             # device kwarg - .to() is not exposed and not needed.
-            self._model = VoxCPM.from_pretrained(self._model_path, device=self.device)
+            self._model = VoxCPM.from_pretrained(
+                self._model_path,
+                device=self.device,
+                load_denoiser=self.load_denoiser,
+            )
             log.info("VoxCPM 2 loaded.")
         except ImportError as e:
             raise RuntimeError(
@@ -104,7 +116,23 @@ class VoxCPMEngine:
                 kwargs["prompt_text"] = self.prompt_text
             log.debug(f"Cloning from reference: {self.ref_voice_path}")
 
-        audio = self._model.generate(**kwargs)
+        gen_t0 = time.monotonic()
+        log.info(
+            "generate_begin chars=%d cfg=%.2f timesteps=%d ref=%s denoiser=%s",
+            len(text),
+            self.cfg_value,
+            self.inference_timesteps,
+            bool(kwargs.get("reference_wav_path")),
+            self.load_denoiser,
+        )
+        with _generation_lock:
+            audio = self._model.generate(**kwargs)
+        gen_ms = int((time.monotonic() - gen_t0) * 1000)
+        try:
+            generated_samples = len(audio)
+        except TypeError:
+            generated_samples = "unknown"
+        log.info("generate_end elapsed_ms=%s samples=%s", gen_ms, generated_samples)
 
         # Coerce to mono float32 numpy
         if isinstance(audio, torch.Tensor):
@@ -117,7 +145,15 @@ class VoxCPMEngine:
 
         effective_rate = speaking_rate * self.base_speed
         if abs(effective_rate - 1.0) > 1e-3:
+            stretch_t0 = time.monotonic()
+            log.info(
+                "stretch_begin rate=%.3f samples=%d",
+                effective_rate,
+                len(audio),
+            )
             audio = self._time_stretch(audio, effective_rate)
+            stretch_ms = int((time.monotonic() - stretch_t0) * 1000)
+            log.info("stretch_end elapsed_ms=%s samples=%d", stretch_ms, len(audio))
         return audio
 
     @staticmethod

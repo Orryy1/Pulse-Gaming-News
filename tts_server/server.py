@@ -607,6 +607,7 @@ def _get_engine(voice_id: str) -> VoxCPMEngine:
                 ref_voice_path=_resolve_ref_path(REF_VOICE_PATH),
                 cfg_value=2.0,
                 inference_timesteps=20,
+                load_denoiser=False,
                 device=DEVICE,
             )
             dt_ms = int((time.monotonic() - t0) * 1000)
@@ -635,6 +636,7 @@ def _get_engine(voice_id: str) -> VoxCPMEngine:
             prompt_text=cfg.get("ref_voice_text"),
             cfg_value=cfg.get("cfg_value", 2.0),
             inference_timesteps=cfg.get("inference_timesteps", 20),
+            load_denoiser=cfg.get("load_denoiser", False),
             device=DEVICE,
         )
     finally:

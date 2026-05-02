@@ -1481,6 +1481,7 @@ async function _publishNextStoryInner() {
         uploadShort: igUpload,
         uploadReelViaUrl: igUrlUpload,
         isInstagramPendingProcessingTimeout,
+        shouldAttemptInstagramUrlFallback,
       } = require("./upload_instagram");
       let igResult;
       try {
@@ -1497,8 +1498,11 @@ async function _publishNextStoryInner() {
           await db.upsertStory(story);
           igResult = null;
         } else {
+          if (!shouldAttemptInstagramUrlFallback(reelErr)) {
+            throw reelErr;
+          }
           console.log(
-            `[publisher] Instagram binary upload failed: ${reelErr.message}, trying URL fallback...`,
+            `[publisher] Instagram binary upload transport failed: ${reelErr.message}, trying URL fallback...`,
           );
           try {
             igResult = await igUrlUpload(story);

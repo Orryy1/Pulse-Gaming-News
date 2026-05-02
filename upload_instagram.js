@@ -187,6 +187,29 @@ function isInstagramPendingProcessingTimeout(err) {
   );
 }
 
+function shouldAttemptInstagramUrlFallback(err) {
+  if (!err || isInstagramPendingProcessingTimeout(err)) return false;
+  const message = String(err.message || err);
+
+  // If Meta successfully received the MP4 and then rejected it during
+  // media processing, URL fallback will hand Meta the exact same bad MP4
+  // and create a second doomed container. This is the 2207076 shape from
+  // legacy 4:4:4/profile renders, so stop after the primary failure and
+  // let QA/rerender handle the asset.
+  if (
+    /Instagram (?:URL )?processing failed/i.test(message) ||
+    /2207076|2207052|Media upload has failed|unsupported|codec|pix_fmt|profile|duration|aspect/i.test(message)
+  ) {
+    return false;
+  }
+
+  // URL fallback is only useful when the direct rupload path itself had
+  // a transport or upload-session failure.
+  return /Instagram binary upload failed|ECONNRESET|ETIMEDOUT|timeout|socket|5\d\d/i.test(
+    message,
+  );
+}
+
 function redactInstagramLogValue(value) {
   let text = String(value ?? "");
   for (const pattern of SECRET_PATTERNS) {
@@ -706,6 +729,7 @@ module.exports = {
   IG_STORY_PROCESSING_POLL_MS,
   buildInstagramPendingProcessingTimeoutError,
   isInstagramPendingProcessingTimeout,
+  shouldAttemptInstagramUrlFallback,
   formatInstagramContainerStatus,
   formatInstagramStatusCheckError,
   redactInstagramLogValue,

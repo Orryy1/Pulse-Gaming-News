@@ -93,6 +93,8 @@ function passingStory(overrides = {}) {
       "A dead franchise just got resurrected and nobody saw it coming. Big studios are responding to a shift in the market that took three years to build and thirty seconds to explode. The numbers are staggering and the timing is surgical. Ubisoft confirmed the reveal is set for later this month and the embargo lifts at midday across every major territory. Sources have verified the timeline through two separate trade outlets and an internal calendar invite that leaked last week. Players are already speculating about what this means for the series going forward, and the marketing team is quietly scrubbing old posts in preparation for the new positioning. Follow Pulse Gaming so you never miss a drop, because this one moves fast.",
     tts_script: "Short clean tts variant for TTS pass.",
     image_path: "/tmp/card.png",
+    render_lane: "legacy_multi_image",
+    render_quality_class: "standard",
     downloaded_images: [
       { path: "/tmp/hero.jpg", type: "article_hero" },
       { path: "/tmp/logo.png", type: "company_logo" },
@@ -129,7 +131,9 @@ test("content-qa: outro_present=true produces no outro warning", async () => {
 test("content-qa: outro_present field absent (pre-stamp story) produces no outro warning", async () => {
   // Back-compat: stories from before the stamp shipped do not
   // carry outro_present at all. The gate must NOT fire on those.
-  const story = passingStory();
+  const story = passingStory({ allow_legacy_unstamped_render: true });
+  delete story.render_lane;
+  delete story.render_quality_class;
   const qa = await runContentQa(story, {
     fs: fakeFs({ [story.exported_path]: { size: 5 * 1024 * 1024 } }),
   });

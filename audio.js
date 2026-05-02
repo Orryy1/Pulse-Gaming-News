@@ -247,16 +247,15 @@ function resolveLocalTtsSpeakingRate(rate, env = process.env) {
   const requested = finiteNumber(rate, 1.0);
   const baseSpeed = finiteNumber(
     env.LOCAL_TTS_BASE_SPEED ||
-      env.STUDIO_V2_LOCAL_TTS_BASE_SPEED ||
-      env.BASE_SPEED,
-    1.4,
+      env.STUDIO_V2_LOCAL_TTS_BASE_SPEED,
+    1.0,
   );
   const effectiveCap = finiteNumber(
     env.LOCAL_TTS_EFFECTIVE_RATE_CAP ||
       env.STUDIO_V2_LOCAL_TTS_EFFECTIVE_RATE_CAP,
-    1.65,
+    1.15,
   );
-  const serverBase = baseSpeed > 0 ? baseSpeed : 1.4;
+  const serverBase = baseSpeed > 0 ? baseSpeed : 1.0;
   const maxRequestRate = clamp(effectiveCap / serverBase, 0.85, 1.25);
   return clamp(requested, 0.85, maxRequestRate);
 }

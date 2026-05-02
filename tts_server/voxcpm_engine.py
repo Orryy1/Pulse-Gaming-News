@@ -2,7 +2,7 @@
 VoxCPM 2 wrapper.
 
 Loads the model once at startup, exposes synth() that returns a mono float32
-PCM array at the model's native 16 kHz sample rate.
+PCM array at the model's native sample rate.
 
 Voice modes:
   - default (no reference): VoxCPM 2 picks a generic voice on each session.
@@ -24,7 +24,7 @@ import os
 import threading
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import librosa
 import numpy as np
@@ -35,7 +35,7 @@ _generation_lock = threading.Lock()
 
 
 class VoxCPMEngine:
-    SAMPLE_RATE = 16_000  # VoxCPM 2 AudioVAE native output
+    SAMPLE_RATE = 16_000  # Fallback only; overwritten from VoxCPM once loaded.
 
     def __init__(
         self,
@@ -47,6 +47,7 @@ class VoxCPMEngine:
         cfg_value: float = 2.0,
         inference_timesteps: int = 20,
         load_denoiser: bool = False,
+        voice_qa: Optional[Dict[str, Any]] = None,
     ):
         self.device = device if torch.cuda.is_available() else "cpu"
         self.ref_voice_path = ref_voice_path or None
@@ -54,8 +55,10 @@ class VoxCPMEngine:
         self.cfg_value = float(cfg_value)
         self.inference_timesteps = int(inference_timesteps)
         self.load_denoiser = bool(load_denoiser)
+        self.voice_qa = voice_qa or {}
         self._model = None
         self._model_path = model_path or "openbmb/VoxCPM2"
+        self.sample_rate = self.SAMPLE_RATE
         # Multiplied with the per-call speaking_rate so the operator can set a
         # global pace floor. VoxCPM 2 default voice ≈ 50 WPM, so 2.6x lands
         # near 130 WPM (Pulse Gaming target). Sleep niches should set ~1.0-1.4.
@@ -80,7 +83,10 @@ class VoxCPMEngine:
                 device=self.device,
                 load_denoiser=self.load_denoiser,
             )
-            log.info("VoxCPM 2 loaded.")
+            model_sr = getattr(getattr(self._model, "tts_model", None), "sample_rate", None)
+            if model_sr:
+                self.sample_rate = int(model_sr)
+            log.info("VoxCPM 2 loaded (sample_rate=%s).", self.sample_rate)
         except ImportError as e:
             raise RuntimeError(
                 "voxcpm package not installed. Run setup.bat first.\n"
@@ -100,48 +106,16 @@ class VoxCPMEngine:
         Generate speech for the given text.
 
         Returns:
-          numpy float32 array, mono, shape (n_samples,), at SAMPLE_RATE
+          numpy float32 array, mono, shape (n_samples,), at self.sample_rate
         """
         self.load()
 
-        kwargs = {
-            "text": text,
-            "cfg_value": self.cfg_value,
-            "inference_timesteps": self.inference_timesteps,
-        }
-        if self.ref_voice_path and Path(self.ref_voice_path).exists():
-            kwargs["reference_wav_path"] = str(self.ref_voice_path)
-            if self.prompt_text:
-                kwargs["prompt_wav_path"] = str(self.ref_voice_path)
-                kwargs["prompt_text"] = self.prompt_text
-            log.debug(f"Cloning from reference: {self.ref_voice_path}")
-
-        gen_t0 = time.monotonic()
-        log.info(
-            "generate_begin chars=%d cfg=%.2f timesteps=%d ref=%s denoiser=%s",
-            len(text),
-            self.cfg_value,
-            self.inference_timesteps,
-            bool(kwargs.get("reference_wav_path")),
-            self.load_denoiser,
+        kwargs = self._build_generation_kwargs(
+            text,
+            include_reference=True,
+            include_prompt=bool(self.prompt_text),
         )
-        with _generation_lock:
-            audio = self._model.generate(**kwargs)
-        gen_ms = int((time.monotonic() - gen_t0) * 1000)
-        try:
-            generated_samples = len(audio)
-        except TypeError:
-            generated_samples = "unknown"
-        log.info("generate_end elapsed_ms=%s samples=%s", gen_ms, generated_samples)
-
-        # Coerce to mono float32 numpy
-        if isinstance(audio, torch.Tensor):
-            audio = audio.detach().cpu().float().numpy()
-        if audio.ndim > 1:
-            audio = audio.mean(
-                axis=0 if audio.shape[0] < audio.shape[1] else 1
-            )
-        audio = audio.astype(np.float32)
+        audio = self._generate_with_voice_qa(text, kwargs)
 
         effective_rate = speaking_rate * self.base_speed
         if abs(effective_rate - 1.0) > 1e-3:
@@ -155,6 +129,155 @@ class VoxCPMEngine:
             stretch_ms = int((time.monotonic() - stretch_t0) * 1000)
             log.info("stretch_end elapsed_ms=%s samples=%d", stretch_ms, len(audio))
         return audio
+
+    def _build_generation_kwargs(
+        self,
+        text: str,
+        include_reference: bool = True,
+        include_prompt: bool = True,
+    ) -> Dict[str, Any]:
+        kwargs: Dict[str, Any] = {
+            "text": text,
+            "cfg_value": self.cfg_value,
+            "inference_timesteps": self.inference_timesteps,
+        }
+        if include_reference and self.ref_voice_path and Path(self.ref_voice_path).exists():
+            kwargs["reference_wav_path"] = str(self.ref_voice_path)
+            if include_prompt and self.prompt_text:
+                kwargs["prompt_wav_path"] = str(self.ref_voice_path)
+                kwargs["prompt_text"] = self.prompt_text
+            log.debug(f"Cloning from reference: {self.ref_voice_path}")
+        return kwargs
+
+    def _generate_with_voice_qa(self, text: str, kwargs: Dict[str, Any]) -> np.ndarray:
+        if not self.voice_qa.get("enabled", False):
+            return self._generate_candidate("configured", kwargs)
+
+        candidates = [("configured", kwargs)]
+        if kwargs.get("prompt_text"):
+            candidates.append(
+                (
+                    "without_prompt",
+                    self._build_generation_kwargs(
+                        text,
+                        include_reference=True,
+                        include_prompt=False,
+                    ),
+                )
+            )
+        elif self.voice_qa.get("retry_same_reference", False) and kwargs.get("reference_wav_path"):
+            candidates.append(("reference_retry", dict(kwargs)))
+
+        if self.voice_qa.get("fallback_without_reference", False):
+            candidates.append(
+                (
+                    "fallback_without_reference",
+                    self._build_generation_kwargs(
+                        text,
+                        include_reference=False,
+                        include_prompt=False,
+                    ),
+                )
+            )
+
+        best_audio: Optional[np.ndarray] = None
+        best_metrics: Dict[str, Any] = {}
+        best_reason: Optional[str] = None
+        for label, candidate_kwargs in candidates:
+            audio = self._generate_candidate(label, candidate_kwargs)
+            metrics = self._voice_quality_metrics(audio, text)
+            reason = self._voice_quality_rejection(metrics)
+            log.info("voice_qa candidate=%s metrics=%s rejection=%s", label, metrics, reason)
+            if reason is None:
+                return audio
+
+            if best_audio is None or self._voice_quality_score(metrics) > self._voice_quality_score(best_metrics):
+                best_audio = audio
+                best_metrics = metrics
+                best_reason = reason
+
+        log.warning(
+            "voice_qa all candidates rejected; using best candidate metrics=%s rejection=%s",
+            best_metrics,
+            best_reason,
+        )
+        return best_audio if best_audio is not None else self._generate_candidate("configured", kwargs)
+
+    def _generate_candidate(self, label: str, kwargs: Dict[str, Any]) -> np.ndarray:
+        gen_t0 = time.monotonic()
+        log.info(
+            "generate_begin candidate=%s chars=%d cfg=%.2f timesteps=%d ref=%s prompt=%s denoiser=%s",
+            label,
+            len(str(kwargs.get("text", ""))),
+            self.cfg_value,
+            self.inference_timesteps,
+            bool(kwargs.get("reference_wav_path")),
+            bool(kwargs.get("prompt_text")),
+            self.load_denoiser,
+        )
+        with _generation_lock:
+            audio = self._model.generate(**kwargs)
+        gen_ms = int((time.monotonic() - gen_t0) * 1000)
+        try:
+            generated_samples = len(audio)
+        except TypeError:
+            generated_samples = "unknown"
+        log.info("generate_end candidate=%s elapsed_ms=%s samples=%s", label, gen_ms, generated_samples)
+        return self._coerce_audio(audio)
+
+    @staticmethod
+    def _coerce_audio(audio: Any) -> np.ndarray:
+        if isinstance(audio, torch.Tensor):
+            audio = audio.detach().cpu().float().numpy()
+        if audio.ndim > 1:
+            audio = audio.mean(
+                axis=0 if audio.shape[0] < audio.shape[1] else 1
+            )
+        return audio.astype(np.float32)
+
+    def _voice_quality_metrics(self, audio: np.ndarray, text: str) -> Dict[str, Any]:
+        try:
+            duration_s = len(audio) / float(self.sample_rate)
+            trimmed, _ = librosa.effects.trim(audio, top_db=35)
+            if len(trimmed) < int(self.sample_rate * 0.25):
+                trimmed = audio
+            f0 = librosa.yin(trimmed, fmin=50, fmax=350, sr=self.sample_rate)
+            voiced = f0[np.isfinite(f0)]
+            voiced = voiced[(voiced >= 50) & (voiced <= 350)]
+            centroid = librosa.feature.spectral_centroid(y=trimmed, sr=self.sample_rate)[0]
+            return {
+                "duration_s": round(float(duration_s), 3),
+                "duration_per_char_s": round(float(duration_s / max(1, len(text))), 4),
+                "median_f0_hz": round(float(np.median(voiced)), 2) if len(voiced) else None,
+                "p10_f0_hz": round(float(np.percentile(voiced, 10)), 2) if len(voiced) else None,
+                "p90_f0_hz": round(float(np.percentile(voiced, 90)), 2) if len(voiced) else None,
+                "centroid_hz": round(float(np.median(centroid)), 2),
+            }
+        except Exception as exc:
+            return {"error": f"{type(exc).__name__}: {exc}"}
+
+    def _voice_quality_rejection(self, metrics: Dict[str, Any]) -> Optional[str]:
+        if metrics.get("error"):
+            return str(metrics["error"])
+        min_median_f0_hz = float(self.voice_qa.get("min_median_f0_hz", 0) or 0)
+        median_f0 = metrics.get("median_f0_hz")
+        if min_median_f0_hz and (median_f0 is None or float(median_f0) < min_median_f0_hz):
+            return f"median_f0_hz={median_f0} below min_median_f0_hz={min_median_f0_hz}"
+        max_duration_per_char_s = float(self.voice_qa.get("max_duration_per_char_s", 0) or 0)
+        duration_per_char = metrics.get("duration_per_char_s")
+        if max_duration_per_char_s and duration_per_char and float(duration_per_char) > max_duration_per_char_s:
+            return (
+                f"duration_per_char_s={duration_per_char} above "
+                f"max_duration_per_char_s={max_duration_per_char_s}"
+            )
+        return None
+
+    @staticmethod
+    def _voice_quality_score(metrics: Dict[str, Any]) -> float:
+        median_f0 = metrics.get("median_f0_hz")
+        if median_f0 is None:
+            return 0.0
+        return float(median_f0)
 
     @staticmethod
     def _time_stretch(audio: np.ndarray, rate: float) -> np.ndarray:

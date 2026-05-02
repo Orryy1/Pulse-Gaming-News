@@ -15,15 +15,19 @@ test("Pulse VoxCPM voice map carries Sleepy-proven safety parameters", () => {
 
   assert.ok(pulse, "Pulse Liam voice mapping must exist");
   assert.equal(pulse.ref_voice_path, "voices/pulse_v2.wav");
-  assert.equal(pulse.base_speed <= 1.4, true);
+  assert.equal(pulse.base_speed, 1.0);
   assert.equal(pulse.cfg_value, 2.0);
   assert.equal(pulse.inference_timesteps, 20);
   assert.equal(pulse.load_denoiser, false);
+  assert.equal(pulse.use_prompt_text, false);
+  assert.equal(pulse.voice_qa.enabled, true);
+  assert.equal(pulse.voice_qa.min_median_f0_hz >= 95, true);
+  assert.equal(pulse.voice_qa.fallback_without_reference, true);
   assert.equal(typeof pulse.ref_voice_text, "string");
   assert.match(pulse.ref_voice_text, /Metro/i);
 });
 
-test("Pulse VoxCPM engine passes cfg, timesteps, prompt conditioning and denoiser safety", () => {
+test("Pulse VoxCPM engine passes cfg, timesteps, prompt policy, voice QA and denoiser safety", () => {
   const engineSource = fs.readFileSync(
     path.join(ROOT, "tts_server", "voxcpm_engine.py"),
     "utf8",
@@ -38,7 +42,12 @@ test("Pulse VoxCPM engine passes cfg, timesteps, prompt conditioning and denoise
   assert.match(engineSource, /load_denoiser=self\.load_denoiser/);
   assert.match(engineSource, /kwargs\["prompt_wav_path"\]\s*=\s*str\(self\.ref_voice_path\)/);
   assert.match(engineSource, /kwargs\["prompt_text"\]\s*=\s*self\.prompt_text/);
-  assert.match(serverSource, /prompt_text=cfg\.get\("ref_voice_text"\)/);
+  assert.match(serverSource, /prompt_text=prompt_text/);
+  assert.match(serverSource, /voice_qa=cfg\.get\("voice_qa"\)/);
+  assert.match(serverSource, /cfg\.get\("use_prompt_text",\s*True\)/);
+  assert.match(engineSource, /_voice_quality_metrics/);
+  assert.match(engineSource, /min_median_f0_hz/);
+  assert.match(engineSource, /fallback_without_reference/);
   assert.match(serverSource, /cfg_value=cfg\.get\("cfg_value"/);
   assert.match(serverSource, /inference_timesteps=cfg\.get\("inference_timesteps"/);
   assert.match(serverSource, /load_denoiser=cfg\.get\("load_denoiser"/);
@@ -56,6 +65,23 @@ test("Pulse VoxCPM generation is serialised and stage-timed for hangs", () => {
   assert.match(engineSource, /generate_end/);
   assert.match(engineSource, /stretch_begin/);
   assert.match(engineSource, /stretch_end/);
+});
+
+test("Pulse VoxCPM server uses model sample rate instead of hardcoded 16 kHz", () => {
+  const engineSource = fs.readFileSync(
+    path.join(ROOT, "tts_server", "voxcpm_engine.py"),
+    "utf8",
+  );
+  const serverSource = fs.readFileSync(
+    path.join(ROOT, "tts_server", "server.py"),
+    "utf8",
+  );
+
+  assert.match(engineSource, /self\.sample_rate\s*=/);
+  assert.match(engineSource, /tts_model/);
+  assert.match(engineSource, /sample_rate/);
+  assert.match(serverSource, /sample_rate\s*=\s*engine\.sample_rate/);
+  assert.doesNotMatch(serverSource, /sample_rate\s*=\s*engine\.SAMPLE_RATE/);
 });
 
 test("Pulse local TTS request rate is capped before server base-speed multiplication", () => {
@@ -83,4 +109,22 @@ test("Pulse local TTS request rate is capped before server base-speed multiplica
     {},
   );
   assert.equal(eleven.speaking_rate, 1.68);
+});
+
+test("Pulse local TTS default rate no longer trusts legacy BASE_SPEED compensation", () => {
+  process.env.PULSE_SKIP_DOTENV = "true";
+  const {
+    resolveVoiceSettingsForProvider,
+  } = require("../../audio");
+
+  const local = resolveVoiceSettingsForProvider(
+    "local",
+    { speaking_rate: 1.75 },
+    1.75,
+    {
+      BASE_SPEED: "1.4",
+    },
+  );
+
+  assert.equal(local.speaking_rate <= 1.15, true);
 });

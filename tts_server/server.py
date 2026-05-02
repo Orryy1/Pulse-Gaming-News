@@ -619,6 +619,7 @@ def _get_engine(voice_id: str) -> VoxCPMEngine:
     ref = _resolve_ref_path(cfg.get("ref_voice_path"))
     base_speed = float(cfg.get("base_speed", 1.0))
     alias = cfg.get("alias", voice_id)
+    prompt_text = cfg.get("ref_voice_text") if cfg.get("use_prompt_text", True) else None
     log.info(
         f"[engine] COLD_START voice_id={voice_id!r} alias={alias} ref={ref} "
         f"base_speed={base_speed} — loading VoxCPM 2, expect 2-5 min"
@@ -633,10 +634,11 @@ def _get_engine(voice_id: str) -> VoxCPMEngine:
     try:
         eng = VoxCPMEngine(
             ref_voice_path=ref,
-            prompt_text=cfg.get("ref_voice_text"),
+            prompt_text=prompt_text,
             cfg_value=cfg.get("cfg_value", 2.0),
             inference_timesteps=cfg.get("inference_timesteps", 20),
             load_denoiser=cfg.get("load_denoiser", False),
+            voice_qa=cfg.get("voice_qa"),
             device=DEVICE,
         )
     finally:
@@ -961,7 +963,7 @@ def _synth(voice_id: str, req: TTSRequest) -> TTSResponse:
         log.exception("Synth failed")
         raise HTTPException(500, f"Synth failed: {e}")
 
-    sample_rate = engine.SAMPLE_RATE
+    sample_rate = engine.sample_rate
 
     # Encode to MP3 in memory via pydub (uses ffmpeg under the hood)
     try:

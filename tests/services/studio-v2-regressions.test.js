@@ -846,6 +846,21 @@ test("studio local voice path caps effective VoxCPM stretch below the warble zon
   ]);
 });
 
+test("studio local voice path defaults to post-sample-rate-fix pacing", () => {
+  const scaled = applyLocalVoiceRateMultiplier(
+    [
+      { label: "hook", text: "Hook", rate: 1.155 },
+      { label: "body", text: "Body", rate: 1.045 },
+    ],
+    {},
+  );
+
+  assert.deepEqual(scaled, [
+    { label: "hook", text: "Hook", rate: 1.15 },
+    { label: "body", text: "Body", rate: 1.15 },
+  ]);
+});
+
 test("studio local voice path keeps Chatterbox away from VoxCPM stretch settings", () => {
   const scaled = applyLocalVoiceRateMultiplier(
     [

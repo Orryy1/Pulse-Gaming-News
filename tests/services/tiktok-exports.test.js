@@ -30,6 +30,10 @@ test("upload_tiktok exports the full public surface required by server.js", () =
     "uploadAll",
     "generateAuthUrl",
     "buildAuthorizeUrl",
+    "resolveRedirectUri",
+    "isLoopbackRedirectUri",
+    "generatePkceVerifier",
+    "buildPkceChallenge",
     "exchangeCode",
   ];
   for (const name of required) {

@@ -61,6 +61,25 @@ test("consumeState: is single-use — a second consume always fails", () => {
   });
 });
 
+test("consumeState: returns stored metadata only on a valid same-provider consume", () => {
+  const s = createState("tiktok", {
+    metadata: { codeVerifier: "verifier-secret-for-pkce" },
+  });
+  const res = consumeState(s, "tiktok");
+  assert.deepStrictEqual(res, {
+    ok: true,
+    metadata: { codeVerifier: "verifier-secret-for-pkce" },
+  });
+});
+
+test("consumeState: metadata is not returned on wrong-provider consume", () => {
+  const s = createState("tiktok", {
+    metadata: { codeVerifier: "verifier-secret-for-pkce" },
+  });
+  const res = consumeState(s, "facebook");
+  assert.deepStrictEqual(res, { ok: false, reason: "provider_mismatch" });
+});
+
 // ---------- consumeState failure modes ----------
 
 test("consumeState: rejects a missing / empty / non-string state param", () => {
@@ -184,6 +203,33 @@ test("buildAuthorizeUrl: includes state when given, omits it otherwise", () => {
     assert.strictEqual(withoutState.includes("state="), false);
     const withState = buildAuthorizeUrl({ state: "abcdef1234567890" });
     assert.match(withState, /[?&]state=abcdef1234567890(?:$|&)/);
+  } finally {
+    if (prev === undefined) delete process.env.TIKTOK_CLIENT_KEY;
+    else process.env.TIKTOK_CLIENT_KEY = prev;
+  }
+});
+
+test("buildAuthorizeUrl: includes Desktop PKCE challenge without leaking verifier", () => {
+  const { buildAuthorizeUrl } = require("../../upload_tiktok");
+  const prev = process.env.TIKTOK_CLIENT_KEY;
+  process.env.TIKTOK_CLIENT_KEY = "sbfakeClient";
+  try {
+    const url = buildAuthorizeUrl({
+      state: "state123",
+      codeChallenge: "abc123challenge",
+      redirectUri: "http://127.0.0.1:3001/auth/tiktok/callback",
+    });
+    const parsed = new URL(url);
+    assert.strictEqual(
+      parsed.searchParams.get("redirect_uri"),
+      "http://127.0.0.1:3001/auth/tiktok/callback",
+    );
+    assert.strictEqual(
+      parsed.searchParams.get("code_challenge"),
+      "abc123challenge",
+    );
+    assert.strictEqual(parsed.searchParams.get("code_challenge_method"), "S256");
+    assert.strictEqual(parsed.searchParams.has("code_verifier"), false);
   } finally {
     if (prev === undefined) delete process.env.TIKTOK_CLIENT_KEY;
     else process.env.TIKTOK_CLIENT_KEY = prev;

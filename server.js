@@ -248,18 +248,28 @@ app.get("/data-deletion", (req, res) => {
 // next redeploy will wipe the token written by the callback handler.
 app.get("/auth/tiktok", requireAuthHeaderOrQuery, (req, res) => {
   try {
-    const { buildAuthorizeUrl } = require("./upload_tiktok");
+    const {
+      buildAuthorizeUrl,
+      buildPkceChallenge,
+      generatePkceVerifier,
+      isLoopbackRedirectUri,
+      resolveRedirectUri,
+    } = require("./upload_tiktok");
     const { createState } = require("./lib/oauth-state");
+    const redirectUri = resolveRedirectUri();
+    const metadata = { redirectUri };
+    let codeChallenge;
+    if (isLoopbackRedirectUri(redirectUri)) {
+      metadata.codeVerifier = generatePkceVerifier();
+      codeChallenge = buildPkceChallenge(metadata.codeVerifier);
+    }
     // CSRF protection: mint a fresh state, bind it to this provider,
     // and include it in the authorise URL. TikTok echoes it back on
     // the callback where consumeState() validates single-use.
-    const state = createState("tiktok");
-    const url = buildAuthorizeUrl({ state });
+    const state = createState("tiktok", { metadata });
+    const url = buildAuthorizeUrl({ state, codeChallenge, redirectUri });
     // Deliberately log only the redirect_uri (public), not the client key
     // (also public but noisy), never the state, and never the full URL.
-    const redirectUri =
-      process.env.TIKTOK_REDIRECT_URI ||
-      `${getPublicUrl()}/auth/tiktok/callback`;
     console.log(`[tiktok] OAuth initiator: redirect=${redirectUri}`);
     res.redirect(url);
   } catch (err) {
@@ -307,7 +317,10 @@ app.get("/auth/tiktok/callback", async (req, res) => {
 
   try {
     const { exchangeCode } = require("./upload_tiktok");
-    await exchangeCode(code);
+    await exchangeCode(code, {
+      codeVerifier: stateCheck.metadata?.codeVerifier,
+      redirectUri: stateCheck.metadata?.redirectUri,
+    });
     console.log("[tiktok] OAuth callback: token saved successfully");
     res.send(`<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:60px">
       <h1 style="color:#00C853">TikTok Connected!</h1>

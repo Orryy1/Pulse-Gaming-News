@@ -129,3 +129,55 @@ test("exchangeCode: writes to TIKTOK_TOKEN_PATH and creates parent dir", async (
     await fs.remove(tmpRoot).catch(() => {});
   }
 });
+
+test("exchangeCode: includes PKCE code_verifier when provided", async () => {
+  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "tiktok-pkce-"));
+  const target = path.join(tmpRoot, "tokens", "tiktok_token.json");
+  const axios = require("axios");
+  const origPost = axios.post;
+  let capturedBody = "";
+  axios.post = async (_url, body) => {
+    capturedBody = String(body);
+    return {
+      data: {
+        access_token: "test_access_token",
+        refresh_token: "test_refresh_token",
+        expires_in: 86400,
+      },
+    };
+  };
+
+  const prevEnv = {
+    TIKTOK_TOKEN_PATH: process.env.TIKTOK_TOKEN_PATH,
+    TIKTOK_CLIENT_KEY: process.env.TIKTOK_CLIENT_KEY,
+    TIKTOK_CLIENT_SECRET: process.env.TIKTOK_CLIENT_SECRET,
+    TIKTOK_REDIRECT_URI: process.env.TIKTOK_REDIRECT_URI,
+  };
+
+  try {
+    process.env.TIKTOK_TOKEN_PATH = target;
+    process.env.TIKTOK_CLIENT_KEY = "dummy_key";
+    process.env.TIKTOK_CLIENT_SECRET = "dummy_secret";
+    process.env.TIKTOK_REDIRECT_URI =
+      "http://127.0.0.1:3001/auth/tiktok/callback";
+
+    const { exchangeCode } = require("../../upload_tiktok");
+    await exchangeCode("fake_code_from_test", {
+      codeVerifier: "pkce-verifier-secret",
+    });
+
+    const params = new URLSearchParams(capturedBody);
+    assert.equal(params.get("code_verifier"), "pkce-verifier-secret");
+    assert.equal(
+      params.get("redirect_uri"),
+      "http://127.0.0.1:3001/auth/tiktok/callback",
+    );
+  } finally {
+    axios.post = origPost;
+    for (const [key, value] of Object.entries(prevEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    await fs.remove(tmpRoot).catch(() => {});
+  }
+});

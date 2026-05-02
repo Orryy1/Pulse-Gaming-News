@@ -1,5 +1,6 @@
 const fs = require("fs-extra");
 const path = require("path");
+const crypto = require("crypto");
 const axios = require("axios");
 const dotenv = require("dotenv");
 const { withRetry } = require("./lib/retry");
@@ -399,22 +400,60 @@ function assertTokenResponse(data, flavor) {
 // browser in the loop, no CSRF surface). The server initiator passes
 // a state minted by lib/oauth-state.js; omitting it keeps the CLI
 // path working unchanged.
-function buildAuthorizeUrl({ state } = {}) {
+function resolveRedirectUri(redirectUri) {
+  return (
+    redirectUri ||
+    process.env.TIKTOK_REDIRECT_URI ||
+    `${getPublicUrl()}/auth/tiktok/callback`
+  );
+}
+
+function isLoopbackRedirectUri(redirectUri) {
+  try {
+    const parsed = new URL(redirectUri);
+    return (
+      ["http:", "https:"].includes(parsed.protocol) &&
+      ["localhost", "127.0.0.1"].includes(parsed.hostname) &&
+      parsed.port.length > 0
+    );
+  } catch {
+    return false;
+  }
+}
+
+function generatePkceVerifier() {
+  // 48 random bytes -> 64 base64url chars. TikTok accepts OAuth
+  // unreserved characters with a verifier length of 43-128 chars.
+  return crypto.randomBytes(48).toString("base64url");
+}
+
+function buildPkceChallenge(codeVerifier) {
+  if (typeof codeVerifier !== "string" || codeVerifier.length < 43) {
+    throw new Error("TikTok PKCE code verifier must be at least 43 characters");
+  }
+  // TikTok's Desktop Login Kit docs specify hex-encoded SHA256 here
+  // rather than the RFC 7636 base64url form used by many providers.
+  return crypto.createHash("sha256").update(codeVerifier).digest("hex");
+}
+
+function buildAuthorizeUrl({ state, codeChallenge, redirectUri } = {}) {
   const clientKey = process.env.TIKTOK_CLIENT_KEY;
   if (!clientKey) {
     throw new Error("TIKTOK_CLIENT_KEY not set");
   }
-  const redirectUri =
-    process.env.TIKTOK_REDIRECT_URI ||
-    `${getPublicUrl()}/auth/tiktok/callback`;
+  const resolvedRedirectUri = resolveRedirectUri(redirectUri);
   const scope = "user.info.basic,video.publish,video.upload";
   const params = {
     client_key: clientKey,
     scope,
     response_type: "code",
-    redirect_uri: redirectUri,
+    redirect_uri: resolvedRedirectUri,
   };
   if (typeof state === "string" && state.length > 0) params.state = state;
+  if (typeof codeChallenge === "string" && codeChallenge.length > 0) {
+    params.code_challenge = codeChallenge;
+    params.code_challenge_method = "S256";
+  }
   const qs = new URLSearchParams(params);
   return `https://www.tiktok.com/v2/auth/authorize/?${qs.toString()}`;
 }
@@ -432,7 +471,7 @@ function generateAuthUrl() {
 }
 
 // --- Exchange code for token ---
-async function exchangeCode(code) {
+async function exchangeCode(code, opts = {}) {
   // See refreshToken() for why this MUST be form-urlencoded. Sending JSON
   // made TikTok return a 200 + `{error:"invalid_request"}` body which we
   // then saved to /data/tokens/tiktok_token.json as a fake token — that's
@@ -442,10 +481,11 @@ async function exchangeCode(code) {
     client_secret: process.env.TIKTOK_CLIENT_SECRET || "",
     code: code || "",
     grant_type: "authorization_code",
-    redirect_uri:
-      process.env.TIKTOK_REDIRECT_URI ||
-      `${getPublicUrl()}/auth/tiktok/callback`,
+    redirect_uri: resolveRedirectUri(opts.redirectUri),
   });
+  if (typeof opts.codeVerifier === "string" && opts.codeVerifier.length > 0) {
+    body.set("code_verifier", opts.codeVerifier);
+  }
   const response = await axios.post(
     "https://open.tiktokapis.com/v2/oauth/token/",
     body.toString(),
@@ -725,6 +765,10 @@ module.exports = {
   uploadAll,
   generateAuthUrl,
   buildAuthorizeUrl,
+  resolveRedirectUri,
+  isLoopbackRedirectUri,
+  generatePkceVerifier,
+  buildPkceChallenge,
   exchangeCode,
   // Exported so server.js's `/api/platforms/status?heal=true` route can
   // invoke the self-heal path in getAccessToken(). Missing from this

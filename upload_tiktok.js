@@ -590,6 +590,40 @@ async function uploadVideoToInbox(story) {
   );
 }
 
+function buildPublishStatusFetchRequest(publishId) {
+  if (!publishId) {
+    throw new Error("TikTok publish status fetch requires publishId");
+  }
+  return {
+    url: "https://open.tiktokapis.com/v2/post/publish/status/fetch/",
+    body: { publish_id: publishId },
+    safety: {
+      publicAutoPublish: false,
+      requiresManualCompletion: true,
+      printsToken: false,
+    },
+  };
+}
+
+async function fetchPublishStatus(publishId, { accessToken = null } = {}) {
+  const token = accessToken || (await getAccessToken());
+  const req = buildPublishStatusFetchRequest(publishId);
+  const response = await axios.post(req.url, req.body, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json; charset=UTF-8",
+    },
+  });
+  const error = response.data?.error || {};
+  const data = response.data?.data || {};
+  return {
+    ok: error.code === "ok" || response.status === 200,
+    status: data.status || null,
+    raw_error_code: error.code || null,
+    raw_error_message: error.message || null,
+  };
+}
+
 // --- Upload video to TikTok ---
 async function uploadVideo(story) {
   addBreadcrumb(`TikTok upload: ${story.title}`, "upload");
@@ -783,6 +817,8 @@ module.exports = {
   buildTokenRecord,
   assertTokenResponse,
   buildInboxUploadInitRequest,
+  buildPublishStatusFetchRequest,
+  fetchPublishStatus,
   DEFAULT_EXPIRES_IN_SECONDS,
   // Privacy-level resolver + constants — exported for tests and
   // for any operator tooling that wants to read the live effective

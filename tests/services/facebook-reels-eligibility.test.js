@@ -50,15 +50,16 @@ test("FB Reels eligibility: zero videos/reels keeps Reels gated", () => {
   assert.equal(result.counts.reels, 0);
 });
 
-test("FB Reels eligibility: visible Graph Reel moves to probe-ready, not auto-enable", () => {
+test("FB Reels eligibility: visible Graph Reel proves normal publisher can stay enabled", () => {
   const result = classifyFacebookReelsEligibility(
     evidence({
       reels: { ok: true, count: 1, sample: [{ id: "reel_1" }] },
     }),
   );
-  assert.equal(result.verdict, "eligible_for_probe");
+  assert.equal(result.verdict, "eligible_for_normal_publish");
   assert.equal(result.reason, "visible_graph_video_or_reel_found");
-  assert.match(result.recommendedAction, /deliberate low-risk Graph API probe/);
+  assert.match(result.recommendedAction, /normal publisher/);
+  assert.match(result.recommendedAction, /strict verifier/);
 });
 
 test("FB Reels eligibility: invalid token blocks enabling", () => {

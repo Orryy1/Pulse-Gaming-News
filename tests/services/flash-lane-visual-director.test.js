@@ -91,6 +91,62 @@ test("Flash Lane Visual Director allows diverse safe clip-led plans", () => {
   assert.equal(report.metrics.maxClipScenesPerSource, 2);
 });
 
+test("Flash Lane Visual Director blocks rating and age-slate frames even after the intro window", () => {
+  const scenes = [
+    clip("pegi_rating", "pegi-rating.m3u8", 34),
+    clip("gameplay_b1", "b.m3u8", 36),
+    clip("gameplay_c1", "c.m3u8", 38),
+    clip("gameplay_a2", "pegi-rating.m3u8", 42),
+    clip("gameplay_b2", "b.m3u8", 44),
+    clip("gameplay_c2", "c.m3u8", 46),
+    { type: "clip.frame", label: "frame_a", source: "gameplay-frame.jpg", duration: 4.2 },
+    card("card_context"),
+    card("card_takeaway"),
+  ];
+  const report = buildFlashLaneVisualDirector({
+    scenes,
+    media: { clips: [{ path: "pegi-rating.m3u8" }, { path: "b.m3u8" }, { path: "c.m3u8" }] },
+    narrationDurationS: 64,
+  });
+
+  assert.equal(report.verdict, "block");
+  assert.ok(report.blockers.includes("flash_visual_rating_slate_scene"));
+  assert.ok(report.blockers.includes("flash_visual_rating_slate_repeated"));
+  assert.equal(report.metrics.ratingSlateScenes.length, 2);
+});
+
+test("Flash Lane Visual Director blocks prescan-rejected title cards and dead frames", () => {
+  const scenes = [
+    {
+      ...clip("title_card", "a.m3u8", 34),
+      taste: { verdict: "reject", reason: "white_text_on_dark_card" },
+    },
+    clip("gameplay_b1", "b.m3u8", 36),
+    clip("gameplay_c1", "c.m3u8", 38),
+    clip("gameplay_a2", "a.m3u8", 42),
+    clip("gameplay_b2", "b.m3u8", 44),
+    clip("gameplay_c2", "c.m3u8", 46),
+    {
+      type: "clip.frame",
+      label: "dead_frame",
+      source: "dead-frame.jpg",
+      duration: 4.2,
+      provenance: { frame_taste: { verdict: "reject", reason: "dead_dark_frame" } },
+    },
+    card("card_context"),
+    card("card_takeaway"),
+  ];
+  const report = buildFlashLaneVisualDirector({
+    scenes,
+    media: { clips: [{ path: "a.m3u8" }, { path: "b.m3u8" }, { path: "c.m3u8" }] },
+    narrationDurationS: 64,
+  });
+
+  assert.equal(report.verdict, "block");
+  assert.ok(report.blockers.includes("flash_visual_bad_frame_taste"));
+  assert.equal(report.metrics.badFrameTasteScenes.length, 2);
+});
+
 test("Flash Lane Visual Director blocks unvalidated official trailer segments", () => {
   const scenes = [
     clip("a1", "a.m3u8", 40),

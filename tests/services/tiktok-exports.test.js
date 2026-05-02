@@ -35,6 +35,7 @@ test("upload_tiktok exports the full public surface required by server.js", () =
     "generatePkceVerifier",
     "buildPkceChallenge",
     "exchangeCode",
+    "buildPublishStatusFetchRequest",
   ];
   for (const name of required) {
     assert.strictEqual(
@@ -65,6 +66,16 @@ test("upload_tiktok builds an official inbox upload request without public post 
     },
   });
   assert.ok(!Object.prototype.hasOwnProperty.call(req.body, "post_info"));
+});
+
+test("upload_tiktok builds a redaction-safe publish status fetch request", () => {
+  const { buildPublishStatusFetchRequest } = require("../../upload_tiktok");
+  const req = buildPublishStatusFetchRequest("v_inbox_file~123");
+
+  assert.match(req.url, /\/v2\/post\/publish\/status\/fetch\/$/);
+  assert.deepStrictEqual(req.body, { publish_id: "v_inbox_file~123" });
+  assert.strictEqual(req.safety.publicAutoPublish, false);
+  assert.strictEqual(req.safety.printsToken, false);
 });
 
 test("server.js's platforms/status heal destructure matches upload_tiktok exports", () => {

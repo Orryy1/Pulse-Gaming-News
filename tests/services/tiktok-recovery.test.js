@@ -119,3 +119,37 @@ test("TikTok inbox command plan is dry-run by default and send requires explicit
   assert.equal(send.public_auto_publish, false);
   assert.equal(send.requires_manual_completion, true);
 });
+
+test("TikTok inbox command plan records post-upload inbox status without public posting", () => {
+  const {
+    buildTikTokInboxCommandPlan,
+    renderTikTokInboxCommandMarkdown,
+  } = require("../../lib/platforms/tiktok-inbox-command");
+
+  const plan = buildTikTokInboxCommandPlan({
+    story: { id: "s1", title: "Story", exported_path: "output/final/s1.mp4" },
+    args: { sendInbox: true },
+    result: {
+      platform: "tiktok_inbox",
+      publishId: "v_inbox_file~123",
+      status: "SEND_TO_USER_INBOX",
+      requiresManualCompletion: true,
+    },
+    tiktokStatus: {
+      status: "SEND_TO_USER_INBOX",
+      raw_error_code: "ok",
+    },
+  });
+
+  assert.equal(plan.public_auto_publish, false);
+  assert.equal(plan.completion_state, "sent_to_user_inbox");
+  assert.equal(plan.publish_id, "v_inbox_file~123");
+  assert.equal(plan.tiktok_status.status, "SEND_TO_USER_INBOX");
+  assert.match(plan.discord_summary, /TikTok Inbox/);
+  assert.match(plan.discord_summary, /Manual action/);
+
+  const md = renderTikTokInboxCommandMarkdown(plan);
+  assert.match(md, /Publish ID: v_inbox_file~123/);
+  assert.match(md, /Status: SEND_TO_USER_INBOX/);
+  assert.match(md, /Public auto-publish: false/);
+});

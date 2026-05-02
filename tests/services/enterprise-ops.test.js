@@ -263,7 +263,10 @@ test("TikTok dispatch pack is upload-ready without posting", () => {
   assert.ok(pack.hashtags.includes("#gaming"));
   assert.deepStrictEqual(pack.routePriority, ROUTE_ORDER);
   assert.strictEqual(pack.routePriority.at(-1), "va_last_resort");
+  assert.strictEqual(pack.routePriority[0], "official_inbox_upload");
+  assert.strictEqual(pack.recommendedRoute, "official_inbox_upload");
   assert.match(pack.discordNotification, /TikTok Ready - HIGH PRIORITY/);
+  assert.match(pack.discordNotification, /TikTok inbox/);
   assert.strictEqual(pack.schedulerReadyJson.requires_mobile_confirmation, false);
   assert.strictEqual(pack.officialInboxJson.requires_manual_completion, true);
   assert.match(pack.officialInboxJson.endpoint, /inbox\/video\/init/);
@@ -289,6 +292,7 @@ test("TikTok dispatch manifest emits a scheduler queue and sample Discord notifi
   );
   assert.strictEqual(manifest.queue.length, 1);
   assert.strictEqual(manifest.queue[0].schedulerReadyJson.network, "tiktok");
+  assert.strictEqual(manifest.queue[0].officialInboxJson.mode, "official_inbox_upload");
   assert.match(manifest.sampleDiscordNotification, /Caption:/);
 });
 
@@ -318,6 +322,30 @@ test("TikTok dispatch manifest prefers ready packs over higher-urgency missing a
 
   assert.equal(manifest.topPack.storyId, "ready");
   assert.equal(manifest.topPack.status, "ready_for_operator_review");
+});
+
+test("TikTok dispatch pack downgrades final renders without approved voice evidence", () => {
+  const pack = buildTikTokDispatchPack(
+    {
+      id: "story1",
+      title: "Old render",
+      exported_path: "output/final/story1.mp4",
+      thumbnail_candidate_path: "output/thumbnails/story1.png",
+    },
+    {
+      durationSeconds: 64,
+      voiceAudit: {
+        verdict: "review",
+        blockers: ["approved_voice_metadata_missing"],
+      },
+    },
+  );
+
+  assert.equal(pack.status, "voice_review_required");
+  assert.equal(pack.voiceGate.verdict, "review");
+  assert.ok(pack.voiceGate.blockers.includes("approved_voice_metadata_missing"));
+  assert.match(pack.discordNotification, /TikTok Review/);
+  assert.match(pack.discordNotification, /Voice gate: review/);
 });
 
 test("social platform operations report separates working platforms from external blockers", () => {
@@ -384,7 +412,7 @@ test("social platform operations report separates working platforms from externa
   assert.equal(report.platforms.instagram_reel.state, "working");
   assert.equal(report.platforms.facebook_reel.state, "blocked_external");
   assert.equal(report.platforms.tiktok.state, "blocked_external");
-  assert.equal(report.platforms.tiktok.safeRoutes[0].id, "third_party_scheduler_true_autopublish");
+  assert.equal(report.platforms.tiktok.safeRoutes[0].id, "official_inbox_upload");
   assert.ok(report.operatorActions.some((a) => /TikTok re-auth/.test(a)));
 
   const md = renderSocialPlatformOperationsMarkdown(report);
@@ -392,6 +420,48 @@ test("social platform operations report separates working platforms from externa
   assert.match(md, /TikTok/);
   assert.match(md, /Facebook Reels/);
   assert.doesNotMatch(md, /access_token|Bearer/);
+});
+
+test("social platform operations marks Facebook Reels working after visible Graph proof", () => {
+  const report = buildSocialPlatformOperationsReport({
+    platformStatus: {
+      operational: {
+        youtube: { state: "enabled", reason: "core_upload_path" },
+        instagram_reel: { state: "enabled", reason: "graph_credentials_present" },
+        facebook_reel: { state: "enabled", reason: "facebook_reels_enabled" },
+        tiktok: { state: "blocked_external", reason: "tiktok_direct_post_app_review" },
+        twitter: { state: "disabled", reason: "x_optional_disabled" },
+      },
+      counts: {
+        facebook_reel: { published: 1 },
+      },
+    },
+    facebookReelsEligibility: {
+      classification: {
+        verdict: "eligible_for_normal_publish",
+        reason: "visible_graph_video_or_reel_found",
+        counts: { videos: 1, reels: 1, posts: 7 },
+        page: {
+          is_published: true,
+          can_post: true,
+          fan_count: 1,
+          followers_count: 1,
+          is_verified: false,
+        },
+        green: ["visible_graph_video_or_reel_found"],
+        warnings: [],
+        hardFails: [],
+      },
+    },
+    tiktokDiagnosis: {},
+    dispatchManifest: {},
+  });
+
+  assert.equal(report.platforms.facebook_reel.state, "working");
+  assert.equal(report.platforms.facebook_reel.reason, "visible_graph_video_or_reel_found");
+  assert.ok(
+    !report.operatorActions.some((a) => /Keep automatic Facebook Reels disabled/.test(a)),
+  );
 });
 
 test("release radar gate rejects insufficient verified candidates", () => {

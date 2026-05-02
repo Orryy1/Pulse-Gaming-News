@@ -63,6 +63,7 @@
     "ops:frame-plan": "node tools/controlled-frame-extraction-plan.js",
     "ops:frame-extract": "node tools/controlled-frame-extraction-worker.js",
     "ops:approved-voice": "node tools/approved-voice-path.js",
+    "voice:final-audit": "node tools/final-voice-audit.js",
     "ops:validate-trailer-segments": "node tools/official-trailer-segment-validator.js",
     "ops:flash-footage": "node tools/flash-lane-footage-backbone.js",
     "ops:flash-footage-acquisition": "node tools/flash-lane-footage-acquisition.js",

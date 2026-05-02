@@ -7,6 +7,9 @@ const {
   buildTikTokDispatchManifest,
   renderTikTokDispatchMarkdown,
 } = require("../lib/platforms/tiktok-dispatch");
+const {
+  buildFinalVoiceAudit,
+} = require("../lib/studio/v2/final-voice-audit");
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
@@ -44,7 +47,16 @@ async function main() {
   const durationByStoryId = Object.fromEntries(
     stories.map((story) => [story.id, probeDurationSeconds(story)]),
   );
-  const manifest = buildTikTokDispatchManifest(stories, { durationByStoryId });
+  const finalVoiceAudit = buildFinalVoiceAudit({
+    files: stories.filter((story) => story.exported_path).map((story) => story.exported_path),
+  });
+  const voiceAuditByStoryId = Object.fromEntries(
+    finalVoiceAudit.rows.map((row) => [row.story_id, row]),
+  );
+  const manifest = buildTikTokDispatchManifest(stories, {
+    durationByStoryId,
+    voiceAuditByStoryId,
+  });
   const jsonPath = path.join(OUT, "tiktok_dispatch_manifest.json");
   const mdPath = path.join(OUT, "tiktok_dispatch_manifest.md");
   const queuePath = path.join(OUT, "tiktok_dispatch_queue.json");

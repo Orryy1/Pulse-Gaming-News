@@ -4,7 +4,7 @@ const fs = require("fs-extra");
 const path = require("node:path");
 const dotenv = require("dotenv");
 const db = require("../lib/db");
-const { uploadVideoToInbox } = require("../upload_tiktok");
+const { uploadVideoToInbox, fetchPublishStatus } = require("../upload_tiktok");
 const {
   buildTikTokInboxCommandPlan,
   renderTikTokInboxCommandMarkdown,
@@ -67,11 +67,27 @@ async function main() {
   const plan = buildTikTokInboxCommandPlan({ story, args });
 
   let result = null;
+  let tiktokStatus = null;
   if (plan.will_upload_to_tiktok) {
     result = await uploadVideoToInbox(story);
+    if (result?.publishId) {
+      try {
+        tiktokStatus = await fetchPublishStatus(result.publishId);
+      } catch (err) {
+        tiktokStatus = {
+          ok: false,
+          status: null,
+          raw_error_code: "status_fetch_failed",
+          raw_error_message: err.message || String(err),
+        };
+      }
+    }
   }
 
-  const payload = { ...plan, result };
+  const payload = {
+    ...buildTikTokInboxCommandPlan({ story, args, result, tiktokStatus }),
+    result,
+  };
   const jsonPath = path.join(outDir, "tiktok_inbox_upload_plan.json");
   const mdPath = path.join(outDir, "tiktok_inbox_upload_plan.md");
   await fs.writeJson(jsonPath, payload, { spaces: 2 });

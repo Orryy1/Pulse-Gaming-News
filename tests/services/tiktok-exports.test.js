@@ -41,6 +41,28 @@ test("upload_tiktok exports the full public surface required by server.js", () =
   }
 });
 
+test("upload_tiktok builds an official inbox upload request without public post settings", () => {
+  const { buildInboxUploadInitRequest } = require("../../upload_tiktok");
+  const req = buildInboxUploadInitRequest({
+    videoSize: 12_345_678,
+    chunkSize: 12_345_678,
+    totalChunkCount: 1,
+  });
+
+  assert.match(req.url, /\/v2\/post\/publish\/inbox\/video\/init\/$/);
+  assert.strictEqual(req.safety.publicAutoPublish, false);
+  assert.strictEqual(req.safety.requiresManualCompletion, true);
+  assert.deepStrictEqual(req.body, {
+    source_info: {
+      source: "FILE_UPLOAD",
+      video_size: 12_345_678,
+      chunk_size: 12_345_678,
+      total_chunk_count: 1,
+    },
+  });
+  assert.ok(!Object.prototype.hasOwnProperty.call(req.body, "post_info"));
+});
+
 test("server.js's platforms/status heal destructure matches upload_tiktok exports", () => {
   // Guard against the specific shape the heal route uses. If server.js
   // is refactored to destructure new names, or upload_tiktok's export

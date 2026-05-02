@@ -40,15 +40,15 @@ function frameReport(frames) {
   };
 }
 
-function segment({ entity, source = null, allowed = true, reason = "segment_samples_passed" } = {}) {
+function segment({ entity, source = null, allowed = true, reason = "segment_samples_passed", start = 48 } = {}) {
   const url = source || `https://video.example/${entity}.m3u8`;
   return {
     story_id: "story-1",
-    clip_key: `${url}|${String(entity).replace(/[^a-z0-9_-]+/gi, "_").replace(/^_+|_+$/g, "").toLowerCase()}|48.00`,
+    clip_key: `${url}|${String(entity).replace(/[^a-z0-9_-]+/gi, "_").replace(/^_+|_+$/g, "").toLowerCase()}|${Number(start).toFixed(2)}`,
     source_url: url,
     source_type: "steam_movie",
     entity,
-    media_start_s: 48,
+    media_start_s: start,
     duration_s: 5,
     status: allowed ? "validated" : "rejected",
     segment_validated: allowed,
@@ -110,8 +110,19 @@ test("Flash Lane footage backbone allows three validated clip windows", () => {
   assert.equal(report.validated_clip_refs.length, 3);
 });
 
-test("Flash Lane footage backbone projects enough validated clips for a 60s Flash proof", () => {
-  const entities = ["GTA", "Red Dead", "BioShock", "Mafia", "Borderlands", "Civilization", "NBA", "WWE"];
+test("Flash Lane footage backbone projects a footage-heavy 60s Flash proof", () => {
+  const entities = [
+    "GTA",
+    "Red Dead",
+    "BioShock",
+    "Mafia",
+    "Borderlands",
+    "Civilization",
+    "NBA",
+    "WWE",
+    "Max Payne",
+    "Bully",
+  ];
   const frames = entities.map((entity, index) =>
     frame({
       entity,
@@ -134,9 +145,40 @@ test("Flash Lane footage backbone projects enough validated clips for a 60s Flas
   });
 
   assert.equal(report.verdict, "ready_for_flash_render_preflight");
-  assert.equal(report.validated_clip_refs.length, 8);
-  assert.ok(report.projected_clip_dominance >= 0.55);
+  assert.equal(report.validated_clip_refs.length, 9);
+  assert.ok(report.projected_clip_dominance >= 0.65);
   assert.deepEqual(report.blockers, []);
+});
+
+test("Flash Lane footage backbone caps repeated use of the same trailer source", () => {
+  const sharedSource = "https://video.example/shared-bioshock.m3u8";
+  const frames = Array.from({ length: 6 }, (_, index) =>
+    frame({
+      entity: index % 2 === 0 ? "BioShock" : "GTA",
+      source: sharedSource,
+      seconds: 44 + index,
+    }),
+  );
+  const segments = frames.map((item) =>
+    segment({
+      entity: item.entity,
+      source: item.source_url,
+      start: item.target_time_seconds + 4,
+    }),
+  );
+
+  const report = buildFlashLaneFootageBackboneReport({
+    storyId: "story-1",
+    targetRuntimeS: 30,
+    minClipDominance: 0.5,
+    maxCandidateWindowsPerSource: 6,
+    frameReport: frameReport(frames),
+    segmentValidationReport: { segments },
+  });
+
+  const sharedUseCount = report.validated_clip_refs.filter((ref) => ref.path === sharedSource).length;
+  assert.ok(sharedUseCount <= 3);
+  assert.equal(report.filtered_source_overuse_clip_refs, frames.length - sharedUseCount);
 });
 
 test("Flash Lane footage backbone balances validated clips across story entities", () => {

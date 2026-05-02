@@ -27,10 +27,11 @@ test("Flash Lane source cards use a stronger creator-news treatment", () => {
   });
 
   assert.match(filter, /SOURCE CHECK/);
-  assert.match(filter, /PULSE VERIFIED/);
-  assert.match(filter, /saturation=0\.82/);
+  assert.match(filter, /VERIFIED/);
+  assert.match(filter, /saturation=1\.06/);
+  assert.match(filter, /drawbox=x=60:y=196:w=610:h=156:color=black@0\.34/);
   assert.doesNotMatch(filter, /w=iw:h=ih:color=black@0\.[2-9]/);
-  assert.match(filter, /FLASH SOURCE/);
+  assert.doesNotMatch(filter, /FLASH SOURCE/);
   assert.doesNotMatch(filter, /drawbox=[^,]*:alpha=/);
 });
 

@@ -28,10 +28,57 @@ test("TikTok auth doctor marks generated OAuth shape valid without exposing secr
   assert.equal(report.credentials.client_key.value, undefined);
   assert.equal(report.credentials.client_secret.value, undefined);
   assert.ok(report.operator_actions.some((a) => /same TikTok app/.test(a)));
+  assert.ok(report.operator_actions.some((a) => /Draft\/Staging/.test(a)));
 
   const md = renderTikTokAuthDoctorMarkdown(report);
   assert.match(md, /TikTok Auth Doctor/);
   assert.doesNotMatch(md, /secret-value|aw1234567890abcd/);
+});
+
+test("TikTok auth doctor can include a redacted live client credential probe", async () => {
+  const {
+    buildTikTokAuthDoctorReport,
+    probeTikTokClientCredentials,
+    renderTikTokAuthDoctorMarkdown,
+  } = require("../../lib/platforms/tiktok-auth-doctor");
+
+  const probe = await probeTikTokClientCredentials({
+    env: {
+      TIKTOK_CLIENT_KEY: "aw1234567890abcd",
+      TIKTOK_CLIENT_SECRET: "secret-value",
+    },
+    now: "2026-05-02T12:00:00.000Z",
+    async postForm(url, body) {
+      assert.equal(url, "https://open.tiktokapis.com/v2/oauth/token/");
+      assert.match(String(body), /client_key=aw1234567890abcd/);
+      return {
+        status: 200,
+        data: {
+          access_token: "redacted-by-report",
+          expires_in: 7200,
+        },
+      };
+    },
+  });
+
+  assert.equal(probe.verdict, "client_credentials_accepted");
+  assert.equal(probe.has_access_token, true);
+  assert.equal(probe.client_key_length, 16);
+  assert.equal(probe.client_secret_length, 12);
+  assert.equal(probe.access_token, undefined);
+
+  const report = buildTikTokAuthDoctorReport({
+    env: {
+      TIKTOK_CLIENT_KEY: "aw1234567890abcd",
+      TIKTOK_CLIENT_SECRET: "secret-value",
+      TIKTOK_REDIRECT_URI: "https://pulse.orryy.com/auth/tiktok/callback",
+    },
+    clientCredentialsProbe: probe,
+  });
+  const md = renderTikTokAuthDoctorMarkdown(report);
+  assert.match(md, /Live Client Credential Probe/);
+  assert.match(md, /client_credentials_accepted/);
+  assert.doesNotMatch(md, /redacted-by-report|secret-value|aw1234567890abcd/);
 });
 
 test("TikTok auth doctor flags missing client key and insecure redirect", () => {

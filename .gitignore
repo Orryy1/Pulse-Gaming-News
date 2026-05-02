@@ -38,6 +38,7 @@ tts_server/server.log.*
 tts_server/faulthandler.*.log
 tts_server/boot_state.json
 tts_server/venv/
+tts_lab/
 tts_lab/chatterbox_venv/
 tts_lab/__pycache__/
 
@@ -55,6 +56,36 @@ experiments/hf-thumbnail-*/
 experiments/hf-timeline-*/
 experiments/hf-quote-*/
 experiments/hf-takeaway-*/
+experiments/hf-context-*/
+experiments/hf-outro-*/
+experiments/hf-source-*/
+experiments/hf-quote/assets/backdrop.jpg
+experiments/hf-takeaway/assets/backdrop.jpg
+
+# --- Local generated branding/audio packs ---
+# Canonical shipped branding assets use stable names such as
+# branding/profile_picture.png and remain tracked. Numbered exports
+# are local design-tool variants and should be reviewed explicitly
+# before replacing the canonical assets.
+branding/[0-9]*.png
+branding/[0-9]*.gif
+branding/[0-9]*.mp4
+branding/Archived/
+branding/Brand Identity for Image Generation.md
+audio/flac/
+audio/broadcast_vol1_cover.jpg
+
+# --- Local scratch/prototype entrypoints and story dumps ---
+# These root-level files are legacy one-off experiments or local exports.
+# Canonical app code lives under tracked lib/, tools/ and uploader modules.
+backgrounds.js
+imagen.js
+news-post-vol.json
+news.json
+overlays.js
+scraper.js
+subtitles.js
+youtube.js
 
 # --- Claude Code / editor local state ---
 .claude/settings.local.json

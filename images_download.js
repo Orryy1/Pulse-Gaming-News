@@ -6,7 +6,7 @@
 const fs = require("fs-extra");
 const path = require("path");
 const axios = require("axios");
-const { classifyOutboundUrl } = require("./lib/safe-url");
+const { classifyOutboundUrl, safeRedirectConfig } = require("./lib/safe-url");
 const mediaPaths = require("./lib/media-paths");
 const { filterUnsafeImagesForRender } = require("./lib/thumbnail-safety");
 
@@ -156,7 +156,7 @@ async function downloadVideoClip(url, filename) {
       responseType: "arraybuffer",
       timeout: 30000,
       headers: { "User-Agent": randomUA() },
-      maxRedirects: 5,
+      ...safeRedirectConfig(5),
       maxContentLength: 50 * 1024 * 1024, // 50MB max
     });
 
@@ -208,7 +208,7 @@ async function downloadImage(url, filename) {
       responseType: "arraybuffer",
       timeout: 15000,
       headers: { "User-Agent": randomUA() },
-      maxRedirects: 3,
+      ...safeRedirectConfig(3),
       maxContentLength: 20 * 1024 * 1024, // 20MB cap — images shouldn't be bigger
     });
 
@@ -297,8 +297,32 @@ async function getBestImage(story) {
           path: cached,
           type: img.type,
           priority,
-          source: "steam",
+          source: img.source || "steam",
           url: img.url,
+          game_name: img.game_name || null,
+          steam_app_id: img.steam_app_id || img.store_app_id || null,
+          steam_app_title:
+            img.steam_app_title || img.store_app_title || img.game_name || null,
+          steam_matched_query:
+            img.steam_matched_query || img.store_matched_query || null,
+          igdb_id: img.igdb_id || null,
+          igdb_title: img.igdb_title || null,
+          igdb_slug: img.igdb_slug || null,
+          igdb_matched_query: img.igdb_matched_query || null,
+          store_app_id:
+            img.store_app_id || img.steam_app_id || img.igdb_id || null,
+          store_app_title:
+            img.store_app_title ||
+            img.steam_app_title ||
+            img.igdb_title ||
+            img.game_name ||
+            null,
+          store_app_slug: img.store_app_slug || img.igdb_slug || null,
+          store_matched_query:
+            img.store_matched_query ||
+            img.steam_matched_query ||
+            img.igdb_matched_query ||
+            null,
         });
       }
       if (images.length >= 10) break;
@@ -375,6 +399,13 @@ async function getBestImage(story) {
                   s.type === "capsule" ? 95 : s.type === "hero" ? 90 : 85,
                 source: "steam",
                 url: s.url,
+                game_name: steamName || null,
+                steam_app_id: String(appId),
+                steam_app_title: steamName || null,
+                steam_matched_query: matched.searchTerm,
+                store_app_id: String(appId),
+                store_app_title: steamName || null,
+                store_matched_query: matched.searchTerm,
               });
             }
           }
@@ -401,6 +432,13 @@ async function getBestImage(story) {
                       priority: 70 - ssCount,
                       source: "steam",
                       url: ss.path_full,
+                      game_name: appData.name || steamName || null,
+                      steam_app_id: String(appId),
+                      steam_app_title: appData.name || steamName || null,
+                      steam_matched_query: matched.searchTerm,
+                      store_app_id: String(appId),
+                      store_app_title: appData.name || steamName || null,
+                      store_matched_query: matched.searchTerm,
                     });
                     ssCount++;
                   }
@@ -491,6 +529,15 @@ async function getBestImage(story) {
             priority,
             source: "igdb",
             url: img.url,
+            game_name: img.game_name || img.igdb_title || null,
+            igdb_id: img.igdb_id || null,
+            igdb_title: img.igdb_title || img.game_name || null,
+            igdb_slug: img.igdb_slug || null,
+            igdb_matched_query: img.igdb_matched_query || null,
+            store_app_id: img.igdb_id || null,
+            store_app_title: img.igdb_title || img.game_name || null,
+            store_app_slug: img.igdb_slug || null,
+            store_matched_query: img.igdb_matched_query || null,
           });
           igdbCount++;
         }
@@ -565,6 +612,28 @@ async function getBestImage(story) {
             url: img.url,
             game_name: img.game_name || null,
             entity: img._entity || null,
+            steam_app_id: img.steam_app_id || null,
+            steam_app_title: img.steam_app_title || null,
+            steam_matched_query: img.steam_matched_query || null,
+            igdb_id: img.igdb_id || null,
+            igdb_title: img.igdb_title || null,
+            igdb_slug: img.igdb_slug || null,
+            igdb_matched_query: img.igdb_matched_query || null,
+            store_app_id:
+              img.store_app_id || img.steam_app_id || img.igdb_id || null,
+            store_app_title:
+              img.store_app_title ||
+              img.steam_app_title ||
+              img.igdb_title ||
+              img.game_name ||
+              null,
+            store_app_slug: img.store_app_slug || img.igdb_slug || null,
+            store_matched_query:
+              img.store_matched_query ||
+              img.steam_matched_query ||
+              img.igdb_matched_query ||
+              img._entity ||
+              null,
           });
           if (img.url) seenUrls.add(img.url);
           enrichCount++;
@@ -594,7 +663,7 @@ async function getBestImage(story) {
         timeout: 10000,
         headers: { "User-Agent": randomUA() },
         responseType: "text",
-        maxRedirects: 3,
+        ...safeRedirectConfig(3),
       });
       const html = typeof articleResp.data === "string" ? articleResp.data : "";
 
@@ -827,7 +896,7 @@ async function getBestImage(story) {
       const bingResp = await axios.get(bingUrl, {
         timeout: 10000,
         headers: { "User-Agent": randomUA() },
-        maxRedirects: 3,
+        ...safeRedirectConfig(3),
       });
       const html = typeof bingResp.data === "string" ? bingResp.data : "";
       // Bing embeds image URLs in murl attributes

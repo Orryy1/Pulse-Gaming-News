@@ -1,0 +1,51 @@
+"use strict";
+
+const test = require("node:test");
+const assert = require("node:assert/strict");
+
+const { selectRawTtsScript, resolveTtsTimeoutMs } = require("../../audio");
+
+test("selectRawTtsScript: uses clean full_script when cached tts_script damaged a protected name", () => {
+  const story = {
+    id: "pokemon-story",
+    full_script: "Pok\u00e9mon Go has a new Mega Mewtwo event.",
+    tts_script: "Pokmon Go has a new Mega Mewtwo event.",
+  };
+
+  assert.equal(selectRawTtsScript(story), story.full_script);
+});
+
+test("selectRawTtsScript: keeps clean cached tts_script", () => {
+  const story = {
+    full_script: "GTA 6 has a new report.",
+    tts_script: "G T A six has a new report.",
+  };
+
+  assert.equal(selectRawTtsScript(story), story.tts_script);
+});
+
+test("selectRawTtsScript: prefers canonical full_script over non-canonical cached spelling", () => {
+  const story = {
+    full_script: "Pok\u00e9mon Go Fest is free for all players.",
+    tts_script: "Pokemon Go Fest is free for all players.",
+  };
+
+  assert.equal(selectRawTtsScript(story), story.full_script);
+});
+
+test("selectRawTtsScript: returns cached script when no better fallback exists", () => {
+  const story = {
+    tts_script: "Pokmon Go has a new event.",
+  };
+
+  assert.equal(selectRawTtsScript(story), story.tts_script);
+});
+
+test("resolveTtsTimeoutMs: local VoxCPM gets a long configurable timeout", () => {
+  assert.equal(resolveTtsTimeoutMs("local", {}), 600000);
+  assert.equal(
+    resolveTtsTimeoutMs("local", { LOCAL_TTS_TIMEOUT_MS: "900000" }),
+    900000,
+  );
+  assert.equal(resolveTtsTimeoutMs("elevenlabs", {}), 60000);
+});

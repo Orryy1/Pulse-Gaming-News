@@ -21,15 +21,18 @@ async function withMockedAxios(fn) {
   const origGet = axios.get;
   let called = false;
   let calledUrl = null;
-  axios.get = async (url) => {
+  let calledOptions = null;
+  axios.get = async (url, options) => {
     called = true;
     calledUrl = url;
+    calledOptions = options || null;
     return { data: Buffer.alloc(0) };
   };
   try {
     return await fn({
       getCalled: () => called,
       getUrl: () => calledUrl,
+      getOptions: () => calledOptions,
     });
   } finally {
     axios.get = origGet;
@@ -141,6 +144,7 @@ test("downloadImage: lets a known-good public https URL through to axios", async
         "known-good Steam URL must reach axios",
       );
       assert.match(spy.getUrl(), /steamstatic\.com/);
+      assert.strictEqual(typeof spy.getOptions().beforeRedirect, "function");
     });
   });
 });
@@ -178,6 +182,7 @@ test("downloadVideoClip: known Steam movie URL reaches axios", async () => {
         "ok.mp4",
       );
       assert.strictEqual(spy.getCalled(), true);
+      assert.strictEqual(typeof spy.getOptions().beforeRedirect, "function");
     });
   });
 });

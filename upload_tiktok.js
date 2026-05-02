@@ -4,6 +4,7 @@ const axios = require("axios");
 const dotenv = require("dotenv");
 const { withRetry } = require("./lib/retry");
 const { addBreadcrumb, captureException } = require("./lib/sentry");
+const { getPublicUrl } = require("./lib/deployment-mode");
 const { validateVideo } = require("./lib/validate");
 const db = require("./lib/db");
 const mediaPaths = require("./lib/media-paths");
@@ -405,7 +406,7 @@ function buildAuthorizeUrl({ state } = {}) {
   }
   const redirectUri =
     process.env.TIKTOK_REDIRECT_URI ||
-    "https://marvelous-curiosity-production.up.railway.app/auth/tiktok/callback";
+    `${getPublicUrl()}/auth/tiktok/callback`;
   const scope = "user.info.basic,video.publish,video.upload";
   const params = {
     client_key: clientKey,
@@ -443,7 +444,7 @@ async function exchangeCode(code) {
     grant_type: "authorization_code",
     redirect_uri:
       process.env.TIKTOK_REDIRECT_URI ||
-      "https://marvelous-curiosity-production.up.railway.app/auth/tiktok/callback",
+      `${getPublicUrl()}/auth/tiktok/callback`,
   });
   const response = await axios.post(
     "https://open.tiktokapis.com/v2/oauth/token/",
@@ -461,6 +462,92 @@ async function exchangeCode(code) {
   await fs.writeJson(tokenPath, tokenData, { spaces: 2 });
   console.log(`[tiktok] Token saved to ${tokenPath}`);
   return tokenData;
+}
+
+function buildInboxUploadInitRequest({
+  videoSize,
+  chunkSize = videoSize,
+  totalChunkCount = 1,
+} = {}) {
+  const size = Number(videoSize);
+  const chunk = Number(chunkSize);
+  const chunks = Number(totalChunkCount);
+  if (!Number.isFinite(size) || size <= 0) {
+    throw new Error("TikTok inbox upload requires a positive videoSize");
+  }
+  if (!Number.isFinite(chunk) || chunk <= 0) {
+    throw new Error("TikTok inbox upload requires a positive chunkSize");
+  }
+  if (!Number.isFinite(chunks) || chunks <= 0) {
+    throw new Error("TikTok inbox upload requires a positive totalChunkCount");
+  }
+  return {
+    url: "https://open.tiktokapis.com/v2/post/publish/inbox/video/init/",
+    body: {
+      source_info: {
+        source: "FILE_UPLOAD",
+        video_size: size,
+        chunk_size: chunk,
+        total_chunk_count: chunks,
+      },
+    },
+    safety: {
+      publicAutoPublish: false,
+      requiresManualCompletion: true,
+    },
+  };
+}
+
+async function uploadVideoToInbox(story) {
+  addBreadcrumb(`TikTok inbox upload: ${story.title}`, "upload");
+  return withRetry(
+    async () => {
+      const accessToken = await getAccessToken();
+      const exportedAbs =
+        (await mediaPaths.resolveExisting(story.exported_path)) ||
+        story.exported_path;
+      await validateVideo(exportedAbs, "tiktok");
+
+      const fileSize = (await fs.stat(exportedAbs)).size;
+      const init = buildInboxUploadInitRequest({
+        videoSize: fileSize,
+        chunkSize: fileSize,
+        totalChunkCount: 1,
+      });
+      const initResponse = await axios.post(init.url, init.body, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json; charset=UTF-8",
+        },
+      });
+
+      const { publish_id, upload_url } = initResponse.data.data || {};
+      if (!publish_id || !upload_url) {
+        throw new Error(
+          `TikTok inbox init returned incomplete data: publish_id=${publish_id || "missing"} upload_url=${upload_url ? "present" : "missing"}`,
+        );
+      }
+
+      const videoBuffer = await fs.readFile(exportedAbs);
+      await axios.put(upload_url, videoBuffer, {
+        headers: {
+          "Content-Type": "video/mp4",
+          "Content-Length": fileSize,
+          "Content-Range": `bytes 0-${fileSize - 1}/${fileSize}`,
+        },
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity,
+      });
+
+      return {
+        platform: "tiktok_inbox",
+        publishId: publish_id,
+        status: "SEND_TO_USER_INBOX",
+        requiresManualCompletion: true,
+      };
+    },
+    { label: "tiktok inbox upload" },
+  );
 }
 
 // --- Upload video to TikTok ---
@@ -633,6 +720,7 @@ async function uploadShort(story) {
 
 module.exports = {
   uploadVideo,
+  uploadVideoToInbox,
   uploadShort,
   uploadAll,
   generateAuthUrl,
@@ -650,6 +738,7 @@ module.exports = {
   coerceExpiresIn,
   buildTokenRecord,
   assertTokenResponse,
+  buildInboxUploadInitRequest,
   DEFAULT_EXPIRES_IN_SECONDS,
   // Privacy-level resolver + constants — exported for tests and
   // for any operator tooling that wants to read the live effective

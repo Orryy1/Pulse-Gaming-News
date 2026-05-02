@@ -160,7 +160,7 @@ async function fetchPageText(url) {
   // lib/safe-url.js + docs/url-fetch-safety-audit.md for the full
   // rationale. Reject non-http(s), localhost, RFC1918, cloud
   // metadata addresses before hitting axios.
-  const { classifyOutboundUrl } = require("./lib/safe-url");
+  const { classifyOutboundUrl, safeRedirectConfig } = require("./lib/safe-url");
   const safe = classifyOutboundUrl(url);
   if (!safe.ok) {
     console.log(`[processor] skipping unsafe page URL: ${safe.reason}`);
@@ -170,7 +170,7 @@ async function fetchPageText(url) {
     const response = await axios.get(url, {
       timeout: 8000,
       headers: { "User-Agent": "Mozilla/5.0 (compatible; PulseGaming/1.0)" },
-      maxRedirects: 3,
+      ...safeRedirectConfig(3),
       maxContentLength: 5 * 1024 * 1024, // 5MB cap on article HTML
     });
     const html = response.data;

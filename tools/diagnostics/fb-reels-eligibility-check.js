@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 "use strict";
 
+const dotenv = require("dotenv");
 const {
   fetchFacebookReelsEvidence,
   writeFacebookReelsEligibilityReport,
 } = require("../../lib/platforms/facebook-reels-eligibility");
+
+dotenv.config({ override: true });
 
 async function main() {
   const evidence = await fetchFacebookReelsEvidence();

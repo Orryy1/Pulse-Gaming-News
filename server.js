@@ -8,6 +8,12 @@ const path = require("path");
 const { spawn } = require("child_process");
 const cron = require("node-cron");
 const dotenv = require("dotenv");
+const { extractBearerToken, tokenMatches } = require("./lib/auth-token");
+const { getPublicUrl } = require("./lib/deployment-mode");
+const {
+  resolveFacebookTokenPath,
+  resolveInstagramTokenPath,
+} = require("./lib/token-paths");
 
 dotenv.config({ override: true });
 
@@ -61,8 +67,8 @@ function requireAuth(req, res, next) {
   // never fires with a missing token.
   if (!secret) return next();
 
-  const token = req.headers.authorization?.replace("Bearer ", "");
-  if (token !== secret) {
+  const token = extractBearerToken(req.headers.authorization);
+  if (!tokenMatches(token, secret)) {
     return res.status(401).json({ error: "Unauthorized" });
   }
   next();
@@ -77,12 +83,11 @@ function requireAuth(req, res, next) {
 function requireAuthHeaderOrQuery(req, res, next) {
   const secret = process.env.API_TOKEN;
   if (!secret) return next();
-  const headerToken = (req.headers.authorization || "").replace(
-    /^Bearer\s+/,
-    "",
-  );
+  const headerToken = extractBearerToken(req.headers.authorization);
   const queryToken = typeof req.query.token === "string" ? req.query.token : "";
-  if (headerToken === secret || queryToken === secret) return next();
+  if (tokenMatches(headerToken, secret) || tokenMatches(queryToken, secret)) {
+    return next();
+  }
   return res.status(401).json({ error: "Unauthorized" });
 }
 
@@ -147,7 +152,31 @@ app.use(express.static(path.join(__dirname, "dist")));
 // off by default — if you need a public served dir for a future
 // asset, prefer a dedicated mount with a documented consumer and a
 // story-visibility gate where drafts are involved.
-app.use("/branding", express.static(path.join(__dirname, "branding")));
+const PUBLIC_BRANDING_EXTENSIONS = new Set([
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".webp",
+  ".mp4",
+]);
+
+function requirePublicBrandingAsset(req, res, next) {
+  const ext = path.extname(req.path).toLowerCase();
+  if (!PUBLIC_BRANDING_EXTENSIONS.has(ext)) {
+    return res.status(404).send("Not found");
+  }
+  next();
+}
+
+app.use(
+  "/branding",
+  requirePublicBrandingAsset,
+  express.static(path.join(__dirname, "branding"), {
+    dotfiles: "deny",
+    index: false,
+  }),
+);
 
 // Ported from the retired cloud.js (Phase B entrypoint unification).
 // discord_approve.js embeds `${base}/approve/${story.id}?token=...` in
@@ -201,13 +230,23 @@ app.get("/privacy", (req, res) => {
 </body></html>`);
 });
 
+app.get("/data-deletion", (req, res) => {
+  res.send(`<!DOCTYPE html><html><head><title>Data Deletion Instructions - Pulse Gaming</title></head><body style="max-width:800px;margin:40px auto;font-family:sans-serif;padding:0 20px">
+<h1>Data Deletion Instructions</h1><p>Last updated: 1 May 2026</p>
+<p>Pulse Gaming does not collect or store personal data from viewers.</p>
+<h2>Platform Data</h2><p>If you interact with Pulse Gaming on YouTube, TikTok, Instagram, Facebook or X, those platforms control their own account, comment, analytics and engagement data. Use the privacy or account settings on the relevant platform to manage or delete that data.</p>
+<h2>Operator Authorisation</h2><p>Pulse Gaming stores only operator authorisation records needed to publish content to our own connected channels. These records are not public viewer data.</p>
+<h2>Deletion Request</h2><p>For a deletion request, contact Pulse Gaming through the official YouTube channel and include the platform account or authorisation you want reviewed. We will delete any matching records we control.</p>
+</body></html>`);
+});
+
 // --- TikTok OAuth callback ---
 // --- TikTok OAuth initiator ---
 // Gives the operator a one-click way to re-auth TikTok from the browser
 // after a deploy wipes /app/tokens/. Must be paired with a persistent
 // TIKTOK_TOKEN_PATH (e.g. /data/tokens/tiktok_token.json) otherwise the
 // next redeploy will wipe the token written by the callback handler.
-app.get("/auth/tiktok", (req, res) => {
+app.get("/auth/tiktok", requireAuthHeaderOrQuery, (req, res) => {
   try {
     const { buildAuthorizeUrl } = require("./upload_tiktok");
     const { createState } = require("./lib/oauth-state");
@@ -220,7 +259,7 @@ app.get("/auth/tiktok", (req, res) => {
     // (also public but noisy), never the state, and never the full URL.
     const redirectUri =
       process.env.TIKTOK_REDIRECT_URI ||
-      "https://marvelous-curiosity-production.up.railway.app/auth/tiktok/callback";
+      `${getPublicUrl()}/auth/tiktok/callback`;
     console.log(`[tiktok] OAuth initiator: redirect=${redirectUri}`);
     res.redirect(url);
   } catch (err) {
@@ -285,12 +324,12 @@ app.get("/auth/tiktok/callback", async (req, res) => {
 
 // --- Facebook + Instagram OAuth flow ---
 // Start: redirects to Facebook login with required permissions
-app.get("/auth/facebook", (req, res) => {
+app.get("/auth/facebook", requireAuthHeaderOrQuery, (req, res) => {
   const appId = process.env.FACEBOOK_APP_ID;
   if (!appId) {
     return res.status(500).send("<h1>FACEBOOK_APP_ID not set in env</h1>");
   }
-  const baseUrl = process.env.RAILWAY_PUBLIC_URL || `http://localhost:${PORT}`;
+  const baseUrl = getPublicUrl();
   const redirectUri = `${baseUrl}/auth/facebook/callback`;
   const scopes =
     "pages_manage_posts,pages_read_engagement,pages_show_list,instagram_basic,instagram_content_publish,publish_video";
@@ -351,8 +390,7 @@ app.get("/auth/facebook/callback", async (req, res) => {
 
   try {
     const axios = require("axios");
-    const baseUrl =
-      process.env.RAILWAY_PUBLIC_URL || `http://localhost:${PORT}`;
+      const baseUrl = getPublicUrl();
     const redirectUri = `${baseUrl}/auth/facebook/callback`;
 
     // Step 1: Exchange code for short-lived user token
@@ -438,11 +476,13 @@ app.get("/auth/facebook/callback", async (req, res) => {
       `[facebook] OAuth: got page token for ${page.name} (${page.id})`,
     );
 
-    // Save Facebook token
-    const tokensDir = path.join(__dirname, "tokens");
-    await fs.ensureDir(tokensDir);
+    // Save tokens to the configured persistent token paths.
+    const facebookTokenPath = resolveFacebookTokenPath();
+    const instagramTokenPath = resolveInstagramTokenPath();
+    await fs.ensureDir(path.dirname(facebookTokenPath));
+    await fs.ensureDir(path.dirname(instagramTokenPath));
     await fs.writeJson(
-      path.join(tokensDir, "facebook_token.json"),
+      facebookTokenPath,
       {
         access_token: pageToken,
         page_id: page.id,
@@ -469,7 +509,7 @@ app.get("/auth/facebook/callback", async (req, res) => {
       igAccountId = igRes.data?.instagram_business_account?.id;
       if (igAccountId) {
         await fs.writeJson(
-          path.join(tokensDir, "instagram_token.json"),
+          instagramTokenPath,
           {
             access_token: pageToken,
             instagram_business_account_id: igAccountId,
@@ -512,7 +552,7 @@ app.get("/auth/facebook/callback", async (req, res) => {
       `[facebook] OAuth complete. ` +
         `Page=${page.id}, IG=${igAccountId || "(none)"}, ` +
         `pageToken_fp=${fingerprint(pageToken)}. ` +
-        `Sync these Railway env vars from tokens/facebook_token.json + tokens/instagram_token.json: ` +
+        `Sync these Railway env vars from the configured token files: ` +
         `${envVarNames.join(", ")}. ` +
         `Token VALUES are intentionally not logged.`,
     );
@@ -677,7 +717,7 @@ app.get("/api/health", (req, res) => {
   const build = {
     commit_sha: commitSha,
     commit_short: commitSha ? commitSha.slice(0, 7) : null,
-    commit_message: process.env.RAILWAY_GIT_COMMIT_MESSAGE || null,
+    commit_message_present: !!process.env.RAILWAY_GIT_COMMIT_MESSAGE,
     branch: process.env.RAILWAY_GIT_BRANCH || null,
     deployment_id: process.env.RAILWAY_DEPLOYMENT_ID || null,
     environment:
@@ -723,7 +763,8 @@ app.get("/api/health", (req, res) => {
     use_job_queue_explicit: process.env.USE_JOB_QUEUE || null,
     auto_publish: process.env.AUTO_PUBLISH === "true",
     dispatch: dispatchMode,
-    sqlite_db_path: sqliteDbPath,
+    sqlite_db_path: sqliteDbPath ? "(configured)" : null,
+    sqlite_db_path_redacted: !!sqliteDbPath,
     sqlite_db_path_looks_ephemeral: sqliteDbPathLooksEphemeral,
   };
 
@@ -1077,9 +1118,7 @@ app.get("/api/platforms/status", requireAuth, async (req, res) => {
     status.instagram.configured = !!process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID;
     status.instagram.authenticated =
       !!process.env.INSTAGRAM_ACCESS_TOKEN ||
-      (await fs.pathExists(
-        path.join(__dirname, "tokens", "instagram_token.json"),
-      ));
+      (await fs.pathExists(resolveInstagramTokenPath()));
   } catch (err) {
     /* skip */
   }
@@ -1185,8 +1224,8 @@ function isAuthenticatedRequest(req) {
   if (!secret) return true; // dev bypass — mirrors requireAuth
   const header = req.headers && req.headers.authorization;
   if (typeof header !== "string") return false;
-  const token = header.replace(/^Bearer\s+/, "");
-  return token === secret;
+  const token = extractBearerToken(header);
+  return tokenMatches(token, secret);
 }
 
 // --- Story image download (for Instagram Stories) ---
@@ -1626,16 +1665,25 @@ async function startAutonomousScheduler() {
   if (dispatch.mode === "queue") {
     try {
       const bootstrap = require("./lib/bootstrap-queue");
-      await bootstrap.start({
+      const bootstrapState = await bootstrap.start({
         workerId: `server-${require("os").hostname()}-${process.pid}`,
         runScheduler: true,
         runRunner: true,
         autoSeed: true,
       });
-      schedulerRunning = true;
-      console.log(
-        "[server] canonical scheduler up via bootstrap-queue (lib/scheduler.js + jobs-runner)",
+      schedulerRunning = !!(
+        bootstrapState &&
+        (bootstrapState.schedulerHandle || bootstrapState.runner)
       );
+      if (schedulerRunning) {
+        console.log(
+          "[server] canonical scheduler up via bootstrap-queue (lib/scheduler.js + jobs-runner)",
+        );
+      } else {
+        console.log(
+          "[server] canonical scheduler disabled by bootstrap-queue (observation-only)",
+        );
+      }
       return;
     } catch (err) {
       if (dispatch.strict) {
@@ -1961,13 +2009,10 @@ async function _registerLegacyDevCronRegistry() {
         const {
           seedTokenFromEnv,
           refreshToken,
+          resolveTokenPath,
         } = require("./upload_instagram");
         const fs2 = require("fs-extra");
-        const tokenPath = path.join(
-          __dirname,
-          "tokens",
-          "instagram_token.json",
-        );
+        const tokenPath = resolveTokenPath();
         await seedTokenFromEnv();
         if (await fs2.pathExists(tokenPath)) {
           const tokenData = await fs2.readJson(tokenPath);
@@ -2632,23 +2677,31 @@ app.get("/{*splat}", (req, res) => {
 });
 
 const server = app.listen(PORT, () => {
+  const { isPrimary } = require("./lib/deployment-mode");
+  const primaryInstance = isPrimary();
+
   console.log(
     `[server] Pulse Gaming Command Centre v2 running on http://localhost:${PORT}`,
   );
 
-  // Notify Discord on successful deploy (Railway restarts the process on each deploy)
+  // Notify Discord on successful deploy. Real Railway deploys keep the
+  // canonical "Railway Deploy OK" wording; local/dev starts are skipped
+  // unless explicitly opted in and then clearly labelled as local.
   (async () => {
     try {
+      const { buildStartupDeployNotification } = require("./lib/deploy-notification");
+      const notification = buildStartupDeployNotification({
+        env: process.env,
+        primaryInstance,
+      });
+      if (!notification.send) {
+        console.log(
+          `[server] Discord deploy notification skipped - ${notification.reason}`,
+        );
+        return;
+      }
       const sendDiscord = require("./notify");
-      const deployId = process.env.RAILWAY_DEPLOYMENT_ID || "local";
-      const commitRef =
-        process.env.RAILWAY_GIT_COMMIT_SHA?.substring(0, 7) || "dev";
-      await sendDiscord(
-        `**Railway Deploy OK**\n` +
-          `Service: Pulse Gaming\n` +
-          `Commit: ${commitRef}\n` +
-          `Deploy: ${deployId}`,
-      );
+      await sendDiscord(notification.message);
     } catch (e) {
       /* silent */
     }
@@ -2659,7 +2712,9 @@ const server = app.listen(PORT, () => {
   });
 
   // Start Discord bot alongside the server
-  if (process.env.DISCORD_BOT_TOKEN && process.env.DISCORD_GUILD_ID) {
+  if (!primaryInstance) {
+    console.log("[server] Discord bot skipped - non-primary mirror");
+  } else if (process.env.DISCORD_BOT_TOKEN && process.env.DISCORD_GUILD_ID) {
     try {
       const botProcess = spawn("node", ["discord/bot.js"], {
         cwd: __dirname,

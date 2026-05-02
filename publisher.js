@@ -3,6 +3,7 @@ const dotenv = require("dotenv");
 const sendDiscord = require("./notify");
 const { addBreadcrumb, captureException } = require("./lib/sentry");
 const db = require("./lib/db");
+const { resolveFacebookReelsMode } = require("./lib/platforms/facebook-reels-mode");
 
 dotenv.config({ override: true });
 
@@ -213,6 +214,33 @@ async function produce() {
   await images();
   await assemble();
 
+  // Studio v2.1 quality layer: explicit switch only. The legacy MP4
+  // remains the publishable artefact; v2.1 renders are sidecar
+  // candidates stamped with a human visual review hold. This lets us
+  // test the high-quality layer without accidentally pushing an
+  // experimental render into the normal platform queue.
+  try {
+    const {
+      isStudioV21BatchEnabled,
+      runStudioV21ReviewBatch,
+    } = require("./lib/studio/v2/studio-v21-review-batch");
+    if (isStudioV21BatchEnabled(process.env)) {
+      const limit = Number(process.env.STUDIO_V21_BATCH_LIMIT || 5);
+      const result = await runStudioV21ReviewBatch({
+        db,
+        limit,
+        env: process.env,
+      });
+      console.log(
+        `[publisher] Studio v2.1 review batch complete: candidates=${result.candidates.length}, results=${result.results.length}`,
+      );
+    }
+  } catch (err) {
+    console.log(
+      `[publisher] Studio v2.1 review batch errored (non-fatal): ${err.message}`,
+    );
+  }
+
   // Generate Instagram Story images for each produced video
   const { generateStoryImages } = require("./images_story");
   await generateStoryImages();
@@ -257,7 +285,11 @@ async function produce() {
 async function logFormatRecommendationsForApprovedStories() {
   const stories = await db.getStories();
   if (!Array.isArray(stories) || stories.length === 0) return;
-  const targets = stories.filter((s) => s.approved === true && s.exported_path);
+  const { applyProduceSelection } = require("./lib/produce-selection");
+  const targets = applyProduceSelection(
+    stories.filter((s) => s.approved === true && s.exported_path),
+    { stage: "format-catalogue", log: console.log },
+  );
   if (targets.length === 0) return;
   const {
     scoreStoryMediaInventory,
@@ -340,6 +372,7 @@ async function logFormatRecommendationsForApprovedStories() {
 async function selfHealStaleMediaPaths({ repos: _repos } = {}) {
   const fs = require("fs-extra");
   const mediaPaths = require("./lib/media-paths");
+  const { applyProduceSelection } = require("./lib/produce-selection");
   const stories = await db.getStories();
   const fields = [
     "exported_path",
@@ -350,7 +383,11 @@ async function selfHealStaleMediaPaths({ repos: _repos } = {}) {
     "thumbnail_candidate_path",
   ];
   let healed = 0;
-  for (const s of stories) {
+  const selectedStories = applyProduceSelection(stories, {
+    stage: "publisher:self-heal",
+    log: console.log,
+  });
+  for (const s of selectedStories) {
     let changed = false;
     for (const field of fields) {
       const val = s[field];
@@ -585,8 +622,8 @@ async function fullAutonomousCycle() {
           )
           .all();
         if (reviewRows.length) {
-          const dashUrl =
-            process.env.RAILWAY_PUBLIC_URL || "http://localhost:3001";
+          const { getPublicUrl } = require("./lib/deployment-mode");
+          const dashUrl = getPublicUrl();
           const storyList = reviewRows
             .map(
               (s) =>
@@ -1445,6 +1482,7 @@ async function _publishNextStoryInner() {
         uploadShort: igUpload,
         uploadReelViaUrl: igUrlUpload,
         isInstagramPendingProcessingTimeout,
+        shouldAttemptInstagramUrlFallback,
       } = require("./upload_instagram");
       let igResult;
       try {
@@ -1461,8 +1499,11 @@ async function _publishNextStoryInner() {
           await db.upsertStory(story);
           igResult = null;
         } else {
+          if (!shouldAttemptInstagramUrlFallback(reelErr)) {
+            throw reelErr;
+          }
           console.log(
-            `[publisher] Instagram binary upload failed: ${reelErr.message}, trying URL fallback...`,
+            `[publisher] Instagram binary upload transport failed: ${reelErr.message}, trying URL fallback...`,
           );
           try {
             igResult = await igUrlUpload(story);
@@ -1512,17 +1553,12 @@ async function _publishNextStoryInner() {
     storyId: story.id,
     platform: "facebook_reel",
   });
-  // 2026-04-28: empirical evidence (Graph API probe via
-  // tools/diagnostics/fb-page-content-probe.js) confirmed that
-  // /{page_id}/videos and /{page_id}/video_reels both return ZERO
-  // entries despite 3 publish summaries reporting FB Reel ✅
-  // verified. Meta accepts the API request, returns happy-path
-  // responses, then silently rejects the Reel before it reaches
-  // any visible surface — a Page-eligibility gate for new pages.
-  // This env flag lets the operator pause FB Reel attempts until
-  // Meta enables Reels for the Page (default off until they prove
-  // a Reel actually appears under /video_reels).
-  const fbReelsEnabled = process.env.FACEBOOK_REELS_ENABLED === "true";
+  // This env flag lets the operator pause FB Reel attempts if Meta
+  // regresses the Page surface. 2026-05-02 API proof showed that
+  // Reels can publish when the finish phase uses video_state=PUBLISHED,
+  // but we keep the explicit switch so FB Card fallback remains safe.
+  const fbReelsMode = resolveFacebookReelsMode(process.env);
+  const fbReelsEnabled = fbReelsMode.enabled;
   if (story.facebook_post_id) {
     result.facebook = true;
     result.platform_outcomes.facebook = "already_published";
@@ -1531,10 +1567,10 @@ async function _publishNextStoryInner() {
     );
   } else if (!fbReelsEnabled) {
     result.facebook = true;
-    result.platform_outcomes.facebook = "page_not_eligible";
+    result.platform_outcomes.facebook = "operator_disabled";
     console.log(
-      `[publisher] Facebook Reel: SKIPPED (FACEBOOK_REELS_ENABLED!=true) — ` +
-        `Page reels-eligibility gate must clear before re-enabling. FB Card fallback continues.`,
+      `[publisher] Facebook Reel: SKIPPED (${fbReelsMode.reason}) — ` +
+        `FB Card fallback continues.`,
     );
   } else if (fbPrior && fbPrior.status === "blocked") {
     result.facebook = true;

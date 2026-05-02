@@ -7,10 +7,18 @@ const { addBreadcrumb, captureException } = require("./lib/sentry");
 const { validateVideo } = require("./lib/validate");
 const db = require("./lib/db");
 const mediaPaths = require("./lib/media-paths");
+const { getPublicUrl } = require("./lib/deployment-mode");
+const { resolveInstagramTokenPath } = require("./lib/token-paths");
+const {
+  formatStorySource,
+  normaliseAffiliateLinks,
+} = require("./lib/affiliate-targeting");
 
 dotenv.config({ override: true });
 
-const TOKEN_PATH = path.join(__dirname, "tokens", "instagram_token.json");
+function resolveTokenPath() {
+  return resolveInstagramTokenPath();
+}
 // Graph rejects error_code/error_subcode/error_message as requested media
 // container fields. Poll accepted status fields and log detailed Graph error
 // payloads from failed responses via formatInstagramStatusCheckError().
@@ -48,8 +56,9 @@ async function getAccessToken() {
   }
 
   // Fallback to token file (local dev)
-  if (await fs.pathExists(TOKEN_PATH)) {
-    const tokenData = await fs.readJson(TOKEN_PATH);
+  const tokenPath = resolveTokenPath();
+  if (await fs.pathExists(tokenPath)) {
+    const tokenData = await fs.readJson(tokenPath);
     if (
       tokenData.expires_at &&
       tokenData.expires_at > 0 &&
@@ -84,8 +93,9 @@ async function refreshToken(currentToken) {
     refreshed_at: new Date().toISOString(),
   };
 
-  await fs.ensureDir(path.dirname(TOKEN_PATH));
-  await fs.writeJson(TOKEN_PATH, tokenData, { spaces: 2 });
+  const tokenPath = resolveTokenPath();
+  await fs.ensureDir(path.dirname(tokenPath));
+  await fs.writeJson(tokenPath, tokenData, { spaces: 2 });
   console.log(
     `[instagram] Token refreshed, expires in ${Math.round(response.data.expires_in / 86400)} days`,
   );
@@ -95,7 +105,7 @@ async function refreshToken(currentToken) {
 // Save the initial env var token to disk so it can be refreshed later
 async function seedTokenFromEnv() {
   if (
-    !(await fs.pathExists(TOKEN_PATH)) &&
+    !(await fs.pathExists(resolveTokenPath())) &&
     process.env.INSTAGRAM_ACCESS_TOKEN
   ) {
     const tokenData = {
@@ -104,10 +114,11 @@ async function seedTokenFromEnv() {
       seeded_from_env: true,
       seeded_at: new Date().toISOString(),
     };
-    await fs.ensureDir(path.dirname(TOKEN_PATH));
-    await fs.writeJson(TOKEN_PATH, tokenData, { spaces: 2 });
+    const tokenPath = resolveTokenPath();
+    await fs.ensureDir(path.dirname(tokenPath));
+    await fs.writeJson(tokenPath, tokenData, { spaces: 2 });
     console.log(
-      "[instagram] Seeded token from env var to tokens/instagram_token.json",
+      "[instagram] Seeded token from env var to configured token path",
     );
   }
 }
@@ -173,6 +184,29 @@ function isInstagramPendingProcessingTimeout(err) {
     (err.pendingProcessing === true ||
       err.code === "pending_processing_timeout" ||
       /\bpending_processing_timeout\b/.test(String(err.message || "")))
+  );
+}
+
+function shouldAttemptInstagramUrlFallback(err) {
+  if (!err || isInstagramPendingProcessingTimeout(err)) return false;
+  const message = String(err.message || err);
+
+  // If Meta successfully received the MP4 and then rejected it during
+  // media processing, URL fallback will hand Meta the exact same bad MP4
+  // and create a second doomed container. This is the 2207076 shape from
+  // legacy 4:4:4/profile renders, so stop after the primary failure and
+  // let QA/rerender handle the asset.
+  if (
+    /Instagram (?:URL )?processing failed/i.test(message) ||
+    /2207076|2207052|Media upload has failed|unsupported|codec|pix_fmt|profile|duration|aspect/i.test(message)
+  ) {
+    return false;
+  }
+
+  // URL fallback is only useful when the direct rupload path itself had
+  // a transport or upload-session failure.
+  return /Instagram binary upload failed|ECONNRESET|ETIMEDOUT|timeout|socket|5\d\d/i.test(
+    message,
   );
 }
 
@@ -254,8 +288,8 @@ async function uploadReel(story) {
         .map((h) => h.replace("#Shorts", "#reels"))
         .join(" ");
       caption += "\n\n" + tags + " #viral #explore";
-      if (story.affiliate_url) {
-        caption += `\n\nLink in bio | Source: r/${story.subreddit}`;
+      if (normaliseAffiliateLinks(story).length > 0) {
+        caption += `\n\nRelated gear links in bio | Source: ${formatStorySource(story)}`;
       }
 
       // Trim to Instagram's 2200 char limit
@@ -450,9 +484,7 @@ async function uploadReelViaUrl(story) {
   const accessToken = await getAccessToken();
   const accountId = getAccountId();
 
-  const publicBaseUrl =
-    process.env.RAILWAY_PUBLIC_URL ||
-    `http://localhost:${process.env.PORT || 3001}`;
+  const publicBaseUrl = getPublicUrl();
   // Include .mp4 suffix — IG/FB crawlers refuse URIs that don't
   // carry a recognised video extension, even when Content-Type is
   // correct (Graph error 2207052 / 2207076). Server-side route
@@ -570,10 +602,10 @@ async function uploadStoryImage(story) {
         throw new Error("Story image not found on disk");
       }
 
-      const publicBaseUrl = process.env.RAILWAY_PUBLIC_URL;
+      const publicBaseUrl = getPublicUrl();
       if (!publicBaseUrl) {
         throw new Error(
-          "RAILWAY_PUBLIC_URL not set - Instagram needs a public URL to fetch the image",
+          "Public URL not set - Instagram needs a public URL to fetch the image",
         );
       }
 
@@ -686,8 +718,10 @@ module.exports = {
   uploadShort,
   uploadAll,
   uploadStoryImage,
+  getAccessToken,
   refreshToken,
   seedTokenFromEnv,
+  resolveTokenPath,
   INSTAGRAM_CONTAINER_STATUS_FIELDS,
   IG_REEL_PROCESSING_MAX_ATTEMPTS,
   IG_REEL_PROCESSING_POLL_MS,
@@ -695,6 +729,7 @@ module.exports = {
   IG_STORY_PROCESSING_POLL_MS,
   buildInstagramPendingProcessingTimeoutError,
   isInstagramPendingProcessingTimeout,
+  shouldAttemptInstagramUrlFallback,
   formatInstagramContainerStatus,
   formatInstagramStatusCheckError,
   redactInstagramLogValue,

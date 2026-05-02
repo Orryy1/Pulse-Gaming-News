@@ -75,7 +75,7 @@ test("server.js still mounts the dist/ SPA and the whitelisted static roots we d
   );
   assert.match(
     src,
-    /express\.static\(path\.join\(__dirname,\s*["']branding["']\)\)/,
-    "branding/ static mount should still be present",
+    /app\.use\(\s*["']\/branding["']\s*,[\s\S]*?requirePublicBrandingAsset[\s\S]*?express\.static\(path\.join\(__dirname,\s*["']branding["']\)/,
+    "branding/ guarded static mount should still be present",
   );
 });

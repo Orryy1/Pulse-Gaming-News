@@ -16,6 +16,7 @@ const {
   formatInstagramStatusCheckError,
   isInstagramPendingProcessingTimeout,
   redactInstagramLogValue,
+  shouldAttemptInstagramUrlFallback,
   summariseInstagramContainerStatus,
   summariseInstagramGraphError,
 } = require("../../upload_instagram");
@@ -176,6 +177,38 @@ test("Instagram processing timeout is classified as pending_processing_timeout w
   assert.match(err.message, /creation_id=17890000000000000/);
   assert.match(err.message, /status_code=IN_PROGRESS/);
   assert.match(err.message, /verify_later=true/);
+});
+
+test("Instagram URL fallback is only for transport/upload failures, not rejected MP4s", () => {
+  assert.equal(
+    shouldAttemptInstagramUrlFallback(
+      new Error("Instagram binary upload failed (500): upstream timeout"),
+    ),
+    true,
+  );
+  assert.equal(
+    shouldAttemptInstagramUrlFallback(
+      new Error(
+        "Instagram processing failed: status_code=ERROR status=Error: Media upload has failed with error code 2207076",
+      ),
+    ),
+    false,
+  );
+  assert.equal(
+    shouldAttemptInstagramUrlFallback(
+      new Error("Instagram URL processing failed: status_code=ERROR status=Error"),
+    ),
+    false,
+  );
+  assert.equal(shouldAttemptInstagramUrlFallback(
+    buildInstagramPendingProcessingTimeoutError({
+      containerId: "1789",
+      phase: "instagram_reel",
+      attempts: 60,
+      pollMs: 10000,
+      statusSummary: { status_code: "IN_PROGRESS" },
+    }),
+  ), false);
 });
 
 test("publish summary renders IG pending processing as pending, not generic failure", () => {

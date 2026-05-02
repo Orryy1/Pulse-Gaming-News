@@ -37,6 +37,8 @@ function passingStory(overrides = {}) {
       "A dead franchise just got resurrected and nobody saw it coming. Big studios are responding to a shift in the market that took three years to build and thirty seconds to explode. The numbers are staggering and the timing is surgical. Ubisoft confirmed the reveal is set for later this month and the embargo lifts at midday across every major territory. Sources have verified the timeline through two separate trade outlets and an internal calendar invite that leaked last week. Players are already speculating about what this means for the series going forward, and the marketing team is quietly scrubbing old posts in preparation for the new positioning. Follow Pulse Gaming so you never miss a drop, because this one moves fast.",
     tts_script: "Short clean tts variant for TTS pass.",
     image_path: "/tmp/card.png",
+    render_lane: "legacy_multi_image",
+    render_quality_class: "standard",
     downloaded_images: [
       { path: "/tmp/hero.jpg", type: "article_hero" },
       { path: "/tmp/logo.png", type: "company_logo" },
@@ -170,6 +172,35 @@ test("visual-count gate: story without qa_visual_count field is unaffected (back
       `unexpected visual-count warning on stamp-less story: ${w}`,
     );
   }
+});
+
+test("legacy unstamped render is blocked unless explicitly allowed", async () => {
+  const story = passingStory({
+    render_lane: undefined,
+    render_quality_class: undefined,
+    qa_visual_count: undefined,
+  });
+  const result = await runContentQa(story, {
+    fs: fakeFs({ [story.exported_path]: { size: 2_000_000 } }),
+  });
+
+  assert.equal(result.result, "fail");
+  assert.ok(result.failures.includes("legacy_unstamped_render_requires_rerender"));
+});
+
+test("legacy unstamped render can be allowed for operator-only exceptions", async () => {
+  const story = passingStory({
+    render_lane: undefined,
+    render_quality_class: undefined,
+    qa_visual_count: undefined,
+    allow_legacy_unstamped_render: true,
+  });
+  const result = await runContentQa(story, {
+    fs: fakeFs({ [story.exported_path]: { size: 2_000_000 } }),
+  });
+
+  assert.notEqual(result.result, "fail");
+  assert.ok(!result.failures.includes("legacy_unstamped_render_requires_rerender"));
 });
 
 test("visual-count gate: MIN_DISTINCT_VISUAL_COUNT is exported and >= 3", () => {

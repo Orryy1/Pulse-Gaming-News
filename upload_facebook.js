@@ -12,7 +12,6 @@
 */
 
 const fs = require("fs-extra");
-const path = require("path");
 const axios = require("axios");
 const dotenv = require("dotenv");
 const { withRetry } = require("./lib/retry");
@@ -20,18 +19,23 @@ const { addBreadcrumb, captureException } = require("./lib/sentry");
 const { validateVideo } = require("./lib/validate");
 const db = require("./lib/db");
 const mediaPaths = require("./lib/media-paths");
+const { getPublicUrl } = require("./lib/deployment-mode");
+const { resolveFacebookTokenPath } = require("./lib/token-paths");
 
 dotenv.config({ override: true });
 
-const TOKEN_PATH = path.join(__dirname, "tokens", "facebook_token.json");
+function resolveTokenPath() {
+  return resolveFacebookTokenPath();
+}
 
 async function getAccessToken() {
   // Prefer env var (persists across Railway deploys, token files get wiped)
   if (process.env.FACEBOOK_PAGE_TOKEN) return process.env.FACEBOOK_PAGE_TOKEN;
 
   // Fallback to token file (local dev)
-  if (await fs.pathExists(TOKEN_PATH)) {
-    const tokenData = await fs.readJson(TOKEN_PATH);
+  const tokenPath = resolveTokenPath();
+  if (await fs.pathExists(tokenPath)) {
+    const tokenData = await fs.readJson(tokenPath);
     if (
       tokenData.expires_at &&
       tokenData.expires_at > 0 &&
@@ -67,9 +71,7 @@ async function uploadReel(story) {
         story.exported_path;
       await validateVideo(exportedAbs, "facebook");
 
-      const publicBaseUrl =
-        process.env.RAILWAY_PUBLIC_URL ||
-        `http://localhost:${process.env.PORT || 3001}`;
+      const publicBaseUrl = getPublicUrl();
       const videoUrl = `${publicBaseUrl}/api/download/${story.id}.mp4`;
 
       // Build description
@@ -148,7 +150,10 @@ async function uploadReel(story) {
             ""
           ).substring(0, 100),
           description,
-          published: true,
+          // Reels finish requires a publish state transition. The
+          // legacy boolean publish flag can leave Graph at success:true
+          // while the Reel remains processed but unpublished.
+          video_state: "PUBLISHED",
           access_token: accessToken,
         },
       );
@@ -307,9 +312,7 @@ async function uploadReelViaUrl(story) {
   const accessToken = await getAccessToken();
   const pageId = getPageId();
 
-  const publicBaseUrl =
-    process.env.RAILWAY_PUBLIC_URL ||
-    `http://localhost:${process.env.PORT || 3001}`;
+  const publicBaseUrl = getPublicUrl();
   const videoUrl = `${publicBaseUrl}/api/download/${story.id}.mp4`;
 
   let description =
@@ -368,7 +371,7 @@ async function uploadReelViaUrl(story) {
         ""
       ).substring(0, 100),
       description,
-      published: true,
+      video_state: "PUBLISHED",
       access_token: accessToken,
     },
   );
@@ -501,6 +504,8 @@ module.exports = {
   uploadShort,
   uploadAll,
   uploadStoryImage,
+  getAccessToken,
+  resolveTokenPath,
   // Exported for unit-testing the decision logic without mocking axios.
   interpretReelStatusSnapshot,
 };

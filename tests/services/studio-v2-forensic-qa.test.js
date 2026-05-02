@@ -13,6 +13,8 @@ const {
   analyseAudioRecurrence,
   findRecurringScheduledAudioClusters,
   hammingDistance,
+  filterRepeatPairsByIgnoreRanges,
+  buildVisualRepeatIgnoreRanges,
   sceneBreakdown,
   buildIssues,
   compareForensicReports,
@@ -103,10 +105,78 @@ test("findRecurringScheduledAudioClusters detects cut-synchronous repeated shape
   assert.equal(clusters[0].count, 6);
 });
 
+test("analyseAudioRecurrence ignores smooth repeated bed/voice shapes without transient hits", () => {
+  const sampleRate = 1000;
+  const samples = new Float32Array(sampleRate * 10);
+  const scheduledTimesS = [0, 1, 2, 3, 4, 5, 6];
+  for (const timeS of scheduledTimesS) {
+    const start = Math.round(timeS * sampleRate);
+    for (let i = 0; i < 450; i++) {
+      samples[start + i] = 0.2 * Math.sin((i / 450) * Math.PI * 8);
+    }
+  }
+  const result = analyseAudioRecurrence({
+    samples,
+    sampleRate,
+    declaredSfxCueCount: 1,
+    scheduledTimesS,
+  });
+  assert.equal(result.transientCandidateCount, 0);
+  assert.equal(result.worstScheduledCluster.count, 7);
+  assert.equal(result.verdict, "pass");
+});
+
+test("analyseAudioRecurrence allows two declared studio cues without transient evidence", () => {
+  const sampleRate = 1000;
+  const samples = new Float32Array(sampleRate * 10);
+  const scheduledTimesS = [0, 1, 2, 3, 4, 5, 6];
+  for (const timeS of scheduledTimesS) {
+    const start = Math.round(timeS * sampleRate);
+    for (let i = 0; i < 450; i++) {
+      samples[start + i] = 0.2 * Math.sin((i / 450) * Math.PI * 8);
+    }
+  }
+  const result = analyseAudioRecurrence({
+    samples,
+    sampleRate,
+    declaredSfxCueCount: 2,
+    scheduledTimesS,
+  });
+
+  assert.equal(result.transientCandidateCount, 0);
+  assert.equal(result.worstScheduledCluster.count, 7);
+  assert.equal(result.verdict, "pass");
+  assert.deepEqual(result.reasons, []);
+});
+
 test("hammingDistance handles different length hashes", () => {
   assert.equal(hammingDistance("1010", "1010"), 0);
   assert.equal(hammingDistance("1010", "0011"), 2);
   assert.equal(hammingDistance("1010", "10"), 2);
+});
+
+test("visual repeat filtering ignores deliberate outro holds only", () => {
+  const pairs = [
+    { aTimeS: 16.5, bTimeS: 39, hamming: 6 },
+    { aTimeS: 60, bTimeS: 66, hamming: 4 },
+  ];
+  const filtered = filterRepeatPairsByIgnoreRanges(pairs, [
+    { startS: 58, endS: 70, reason: "takeaway_hold" },
+  ]);
+
+  assert.deepEqual(filtered, [{ aTimeS: 16.5, bTimeS: 39, hamming: 6 }]);
+});
+
+test("visual repeat ignore ranges are derived from takeaway scenes", () => {
+  const ranges = buildVisualRepeatIgnoreRanges({
+    sceneList: [
+      { type: "clip", duration: 4 },
+      { type: "clip.frame", duration: 4 },
+      { type: "card.takeaway", duration: 5 },
+    ],
+  });
+
+  assert.deepEqual(ranges, [{ startS: 8, endS: 13, reason: "takeaway_hold" }]);
 });
 
 test("sceneBreakdown reports type counts and repeated sources", () => {
@@ -126,6 +196,25 @@ test("sceneBreakdown reports type counts and repeated sources", () => {
   assert.equal(result.sceneCount, 4);
   assert.equal(result.typeCounts.clip, 2);
   assert.deepEqual(result.repeatedSources, [{ source: "a.mp4", count: 2 }]);
+});
+
+test("sceneBreakdown treats distinct official clip offsets as different visual beats", () => {
+  const result = sceneBreakdown({
+    sceneList: [
+      { type: "clip", source: "trailer.m3u8", mediaStartS: 36 },
+      { type: "clip", source: "trailer.m3u8", mediaStartS: 42.4 },
+      { type: "clip", source: "trailer.m3u8", mediaStartS: 48.4 },
+      { type: "clip.frame", source: "same-frame.jpg" },
+      { type: "clip.frame", source: "same-frame.jpg" },
+    ],
+    auto: {
+      sourceDiversity: { value: 0.9, grade: "green" },
+      maxStillRepeat: { value: 1, grade: "green" },
+      stockFillerCount: { value: 0, grade: "green" },
+    },
+  });
+
+  assert.deepEqual(result.repeatedSources, [{ source: "same-frame.jpg", count: 2 }]);
 });
 
 test("buildIssues flags duration and audio defects", () => {

@@ -2,9 +2,13 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 const Database = require("better-sqlite3");
 
 const {
+  buildQueueReport,
   inspectQueue,
   redactJobError,
   renderQueueInspectMarkdown,
@@ -143,6 +147,82 @@ test("queue inspect preserves modern schedule timing columns when present", () =
     assert.equal(report.schedules[0].next_run_at, "2026-04-29 19:00:00");
   } finally {
     db.close();
+  }
+});
+
+test("buildQueueReport returns a structured skip when SQLite is disabled", async () => {
+  const report = await buildQueueReport({
+    dbModule: {
+      useSqlite() {
+        return false;
+      },
+    },
+  });
+
+  assert.equal(report.verdict, "skip");
+  assert.equal(report.reason, "USE_SQLITE_not_enabled");
+});
+
+test("buildQueueReport opens the configured SQLite database read-only", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-queue-inspect-"));
+  const dbPath = path.join(dir, "pulse.db");
+  const db = new Database(dbPath);
+  try {
+    db.exec(`
+      CREATE TABLE jobs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind TEXT,
+        status TEXT,
+        priority INTEGER,
+        attempt_count INTEGER,
+        max_attempts INTEGER,
+        run_at TEXT,
+        claimed_by TEXT,
+        claimed_at TEXT,
+        lease_until TEXT,
+        last_error TEXT,
+        updated_at TEXT
+      );
+
+      CREATE TABLE schedules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        kind TEXT NOT NULL,
+        cron_expr TEXT NOT NULL,
+        enabled INTEGER DEFAULT 1
+      );
+      INSERT INTO schedules (name, kind, cron_expr, enabled)
+        VALUES ('publish_youtube', 'publish', '0 19 * * *', 1);
+
+      CREATE TABLE workers (
+        id TEXT PRIMARY KEY,
+        status TEXT,
+        last_seen_at TEXT,
+        last_job_id INTEGER,
+        tags TEXT,
+        version TEXT
+      );
+    `);
+  } finally {
+    db.close();
+  }
+
+  try {
+    const report = await buildQueueReport({
+      dbModule: {
+        DB_PATH: dbPath,
+        useSqlite() {
+          return true;
+        },
+      },
+    });
+
+    assert.equal(report.verdict, "pass");
+    assert.equal(report.readOnly, true);
+    assert.equal(report.dbPath, dbPath);
+    assert.equal(report.green.includes("schedules_registered"), true);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 

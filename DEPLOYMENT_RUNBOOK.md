@@ -20,7 +20,7 @@ Do not deploy from this branch without explicit approval.
 ## Platform-Specific Checks
 
 - YouTube: video ID persistence and Discord success reporting.
-- Facebook Reel: `video_status=ready` plus `publishing_phase.status=complete` should be treated as success.
+- Facebook Reel: do not treat Graph processing completion alone as public success; require a published/permalink signal, otherwise keep `page_not_eligible` or processing status visible.
 - Facebook Card: fallback should not hide Reel failure evidence.
 - Instagram Reel: polling logs must include status and error payload fields.
 - TikTok: do not retry official posting until app/public posting blocker is resolved or dispatch path is approved.

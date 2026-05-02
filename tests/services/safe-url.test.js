@@ -5,6 +5,8 @@ const {
   classifyOutboundUrl,
   isSafeOutboundUrl,
   assertSafeOutboundUrl,
+  assertSafeRedirectTarget,
+  safeRedirectConfig,
   MAX_URL_LENGTH,
 } = require("../../lib/safe-url");
 
@@ -85,6 +87,20 @@ test("classifyOutboundUrl: rejects 127.0.0.1 / loopback", () => {
     classifyOutboundUrl("http://127.0.0.1:8080/").reason,
     "ipv4_private_or_reserved",
   );
+});
+
+test("classifyOutboundUrl: rejects non-dotted IPv4 loopback encodings", () => {
+  for (const url of [
+    "http://2130706433/",
+    "http://0x7f000001/",
+    "http://017700000001/",
+  ]) {
+    assert.strictEqual(
+      classifyOutboundUrl(url).ok,
+      false,
+      `must reject encoded loopback ${url}`,
+    );
+  }
 });
 
 test("classifyOutboundUrl: rejects RFC1918 private ranges", () => {
@@ -181,4 +197,31 @@ test("assertSafeOutboundUrl: throws with the reason when unsafe", () => {
 
 test("assertSafeOutboundUrl: is a no-op for safe URLs", () => {
   assert.doesNotThrow(() => assertSafeOutboundUrl("https://en.wikipedia.org/"));
+});
+
+test("assertSafeRedirectTarget: rejects redirects to private targets", () => {
+  assert.throws(
+    () =>
+      assertSafeRedirectTarget({
+        protocol: "http:",
+        hostname: "169.254.169.254",
+        path: "/metadata",
+      }),
+    /ipv4_private_or_reserved/,
+  );
+});
+
+test("safeRedirectConfig: wires axios/follow-redirects beforeRedirect guard", () => {
+  const cfg = safeRedirectConfig(3);
+  assert.equal(cfg.maxRedirects, 3);
+  assert.equal(typeof cfg.beforeRedirect, "function");
+  assert.throws(
+    () =>
+      cfg.beforeRedirect({
+        protocol: "http:",
+        hostname: "127.0.0.1",
+        path: "/secret",
+      }),
+    /ipv4_private_or_reserved/,
+  );
 });

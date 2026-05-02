@@ -182,6 +182,7 @@ test("fetchIgdbImages: happy path returns cover (key_art) + screenshots in order
         {
           id: 11,
           name: "Halo Infinite",
+          slug: "halo-infinite",
           cover: 7,
           screenshots: [101, 102, 103],
         },
@@ -207,6 +208,10 @@ test("fetchIgdbImages: happy path returns cover (key_art) + screenshots in order
   assert.equal(out[0].type, "key_art");
   assert.equal(out[0].source, "igdb");
   assert.equal(out[0].game_name, "Halo Infinite");
+  assert.equal(out[0].igdb_id, 11);
+  assert.equal(out[0].igdb_title, "Halo Infinite");
+  assert.equal(out[0].igdb_slug, "halo-infinite");
+  assert.equal(out[0].igdb_matched_query, "Halo Infinite");
   assert.equal(
     out[0].url,
     "https://images.igdb.com/igdb/image/upload/t_cover_big_2x/co_halo.jpg",
@@ -214,6 +219,7 @@ test("fetchIgdbImages: happy path returns cover (key_art) + screenshots in order
   for (const i of out.slice(1)) {
     assert.equal(i.type, "screenshot");
     assert.equal(i.source, "igdb");
+    assert.equal(i.igdb_title, "Halo Infinite");
     assert.match(i.url, /t_1080p\/sc_halo_/);
   }
 });

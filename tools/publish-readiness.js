@@ -20,6 +20,7 @@
 
 const fs = require("fs-extra");
 const path = require("node:path");
+require("dotenv").config({ override: true });
 const {
   buildPublishReadinessReport,
   formatPublishReadinessMarkdown,

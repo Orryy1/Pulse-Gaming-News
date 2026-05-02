@@ -10,6 +10,7 @@ const {
   createState,
   consumeState,
   DEFAULT_TTL_MS,
+  MAX_PENDING_STATES,
   _resetForTests,
   _sizeForTests,
 } = require("../../lib/oauth-state");
@@ -145,6 +146,13 @@ test("createState: lazily sweeps expired entries so the store can't grow forever
     ok: false,
     reason: "unknown_or_expired_state",
   });
+});
+
+test("createState: caps live pending states so public auth initiators cannot grow memory forever", () => {
+  for (let i = 0; i < MAX_PENDING_STATES + 50; i++) {
+    createState("tiktok", { now: 1_700_000_000_000 + i });
+  }
+  assert.strictEqual(_sizeForTests(), MAX_PENDING_STATES);
 });
 
 // ---------- leakage guards ----------

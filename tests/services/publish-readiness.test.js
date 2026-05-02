@@ -2,8 +2,11 @@
 
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 
 const pr = require("../../lib/ops/publish-readiness");
+const TOOL_PATH = path.resolve(__dirname, "..", "..", "tools", "publish-readiness.js");
 
 // 2026-04-30 mission: ops:publish-readiness must give one
 // GREEN/AMBER/RED verdict per pillar combination, never mutate
@@ -54,6 +57,11 @@ test("PILLAR_NAMES: includes the audit-flagged external blockers", () => {
 test("PILLAR_NAMES: includes the security + docs drift pillars", () => {
   assert.ok(pr.PILLAR_NAMES.includes("security_blockers"));
   assert.ok(pr.PILLAR_NAMES.includes("docs_drift"));
+});
+
+test("tools/publish-readiness.js loads .env for local operator runs", () => {
+  const src = fs.readFileSync(TOOL_PATH, "utf8");
+  assert.match(src, /require\(["']dotenv["']\)\.config\(\{\s*override:\s*true\s*\}\)/);
 });
 
 // ── formatPublishReadinessMarkdown ───────────────────────────────
@@ -161,4 +169,59 @@ test("buildPublishReadinessReport: db throw degrades gracefully (no throw)", asy
   });
   assert.ok(typeof report.overall_verdict === "string");
   assert.equal(report.story_count, 0);
+});
+
+test("summariseRecentFailedCandidates: surfaces operator-grade failure reasons", () => {
+  const summary = pr.summariseRecentFailedCandidates(
+    [
+      {
+        id: "old",
+        title: "Old failed story",
+        qa_failed: true,
+        qa_failures: ["duration_too_long (80.00s)"],
+        qa_failed_at: "2026-05-01T08:00:00.000Z",
+        render_lane: "legacy_multi_image",
+        render_quality_class: "standard",
+      },
+      {
+        id: "fresh",
+        title: "Fresh failed story with a very long title that should be clipped before it floods the readiness JSON output",
+        qa_failed: true,
+        qa_failures: JSON.stringify(["glued_sentence_in_tts_script"]),
+        qa_failed_at: "2026-05-02T08:00:00.000Z",
+        render_lane: "studio_v2",
+        render_quality_class: "premium",
+      },
+      {
+        id: "not-failed",
+        title: "Published story",
+        qa_failed: false,
+      },
+    ],
+    { limit: 2 },
+  );
+
+  assert.equal(summary.count, 2);
+  assert.equal(summary.shown_count, 2);
+  assert.deepEqual(summary.ids, ["fresh", "old"]);
+  assert.equal(summary.examples[0].reason, "qa:glued_sentence_in_tts_script");
+  assert.equal(summary.examples[1].reason, "qa:duration_too_long (80.00s)");
+  assert.equal(summary.examples[0].render_lane, "studio_v2");
+  assert.equal(summary.examples[0].render_quality_class, "premium");
+  assert.equal(summary.examples[0].title.length <= 120, true);
+});
+
+test("summariseRecentFailedCandidates: count is total, ids are display-limited", () => {
+  const summary = pr.summariseRecentFailedCandidates(
+    [
+      { id: "one", qa_failed: true, qa_failures: ["a"] },
+      { id: "two", qa_failed: true, qa_failures: ["b"] },
+      { id: "three", qa_failed: true, qa_failures: ["c"] },
+    ],
+    { limit: 2 },
+  );
+
+  assert.equal(summary.count, 3);
+  assert.equal(summary.shown_count, 2);
+  assert.deepEqual(summary.ids, ["one", "two"]);
 });

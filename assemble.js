@@ -7,11 +7,17 @@ const db = require("./lib/db");
 
 const execAsync = util.promisify(exec);
 
-dotenv.config({ override: true });
+if (!/^(true|1|yes|on)$/i.test(String(process.env.PULSE_SKIP_DOTENV || ""))) {
+  dotenv.config({ override: true });
+}
 
 const axios = require("axios");
 const brand = require("./brand");
 const { getChannel } = require("./channels");
+const { applyProduceSelection } = require("./lib/produce-selection");
+const {
+  classifyShortDuration,
+} = require("./lib/services/short-duration-contract");
 
 // Intro card REMOVED - first 1-2 seconds are critical for Shorts retention,
 // a branding card gives swipers a reason to leave before the hook lands
@@ -1079,6 +1085,11 @@ function getFlairColor(classification) {
   return brand.classificationColour(classification).ffm;
 }
 
+function makeFootageAttributionText(companyName) {
+  const company = sanitizeDrawtext(companyName || "Steam Store", 40);
+  return `Footage - ${company}`;
+}
+
 // --- Build filter graph and command with broadcast overlays ---
 function buildVideoCommand(
   story,
@@ -1351,15 +1362,17 @@ function buildVideoCommand(
 
   // Source attribution overlay for video clips (strengthens fair use as news commentary)
   if (videoClips.length > 0) {
-    const company = sanitizeDrawtext(story.company_name || "Steam Store", 40);
-    // Show "Footage: [Source]" in bottom-left during video clip segments
+    const company = makeFootageAttributionText(
+      story.company_name || "Steam Store",
+    );
+    // Show footage attribution in bottom-left during video clip segments.
     for (let i = 0; i < visualPaths.length; i++) {
       if (!isVideoSlot[i]) continue;
       const clipStart = i * segmentDuration;
       const clipEnd = clipStart + segmentDuration;
       chain.push(
-        `drawtext=text='  Footage: ${company}  ':${fontOpt}:fontcolor=white@0.6:fontsize=20:` +
-          `box=1:boxcolor=black@0.4:boxborderw=6:x=40:y=ih-230:` +
+          `drawtext=text='  ${company}  ':${fontOpt}:fontcolor=white@0.6:fontsize=20:` +
+          `box=1:boxcolor=black@0.4:boxborderw=6:x=40:y=h-230:` +
           `enable='between(t\\,${clipStart}\\,${clipEnd})'`,
       );
     }
@@ -1593,7 +1606,11 @@ async function assemble() {
   // under MEDIA_ROOT (persistent volume) when set with a fallback
   // to the legacy repo-root `output/...` location.
   const mediaPaths = require("./lib/media-paths");
-  for (const s of stories) {
+  const storiesForSelfHeal = applyProduceSelection(stories, {
+    stage: "assemble:self-heal",
+    log: console.log,
+  });
+  for (const s of storiesForSelfHeal) {
     if (!s.exported_path) continue;
     const resolved = await mediaPaths.resolveExisting(s.exported_path);
     const exists = resolved ? await fs.pathExists(resolved) : false;
@@ -1638,9 +1655,17 @@ async function assemble() {
     }
   }
 
-  const toProcess = stories.filter(
-    (s) =>
-      s.approved === true && s.audio_path && s.image_path && !s.exported_path,
+  const toProcess = applyProduceSelection(
+    stories.filter(
+      (s) =>
+        s.approved === true &&
+        s.qa_failed !== true &&
+        s.publish_status !== "failed" &&
+        s.audio_path &&
+        s.image_path &&
+        !s.exported_path,
+    ),
+    { stage: "assemble", log: console.log },
   );
 
   console.log(`[assemble] ${toProcess.length} stories ready for assembly`);
@@ -1686,6 +1711,30 @@ async function assemble() {
       (await mediaPaths.resolveExisting(story.audio_path)) || story.audio_path;
     const audioDuration = await getAudioDuration(audioPathAbs);
     const duration = audioDuration + 1; // 1s breathing room so CTA doesn't cut off abruptly
+    const durationQa = classifyShortDuration({
+      audioDurationSeconds: audioDuration,
+      videoDurationSeconds: duration,
+    });
+    if (
+      durationQa.failures.some((failure) =>
+        failure.startsWith("audio_duration_too_long"),
+      )
+    ) {
+      const reason = durationQa.failures[0] || "audio_duration_too_long";
+      console.log(
+        `[assemble] ${story.id}: audio duration outside Shorts contract, skipping render: ${reason}`,
+      );
+      story.audio_duration = audioDuration;
+      story.qa_failed = true;
+      story.qa_failures = durationQa.failures;
+      story.qa_warnings = durationQa.warnings;
+      story.qa_failed_at = new Date().toISOString();
+      story.publish_status = "failed";
+      story.publish_error = `qa_blocked: ${reason}`;
+      story.render_fallback_reason = `duration_contract:${reason}`;
+      skipped++;
+      continue;
+    }
 
     // Collect real downloaded images (NOT the composite thumbnail).
     // Resolve each through media-paths too — same class of bug as
@@ -2285,6 +2334,7 @@ module.exports = assemble;
 module.exports.sanitizeDrawtext = sanitizeDrawtext;
 module.exports.decodeHtmlEntities = decodeHtmlEntities;
 module.exports.asciiFallback = asciiFallback;
+module.exports.makeFootageAttributionText = makeFootageAttributionText;
 
 if (require.main === module) {
   assemble().catch((err) => {

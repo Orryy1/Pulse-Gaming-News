@@ -7,6 +7,7 @@ dotenv.config({ override: true });
 const { getChannel } = require("./channels");
 const { getTrendingTopics, getTrendingBoost } = require("./trending");
 const { getPerformanceBoost } = require("./analytics");
+const { classifyOutboundUrl, safeRedirectConfig } = require("./lib/safe-url");
 
 const USER_AGENT = "pulse-gaming-hunter/2.0 (by /u/PulseGamingBot)";
 
@@ -432,13 +433,15 @@ async function fetchRSSFeed(feed) {
 // --- Image URL extraction from article pages ---
 async function fetchArticleImage(url) {
   if (!url || url.includes("reddit.com")) return null;
+  const safe = classifyOutboundUrl(url);
+  if (!safe.ok) return null;
 
   try {
     const response = await axios.get(url, {
       headers: { "User-Agent": randomUA() },
       timeout: 10000,
       responseType: "text",
-      maxRedirects: 3,
+      ...safeRedirectConfig(3),
     });
 
     const html = response.data;
@@ -487,23 +490,37 @@ async function fetchGameImages(gameTitle) {
     const items = response.data?.items || [];
     if (items.length > 0) {
       const appId = items[0].id;
+      const steamAppId = String(appId);
+      const steamAppTitle = items[0].name || null;
+      const steamMeta = {
+        game_name: steamAppTitle,
+        steam_app_id: steamAppId,
+        steam_app_title: steamAppTitle,
+        steam_matched_query: gameTitle,
+        store_app_id: steamAppId,
+        store_app_title: steamAppTitle,
+        store_matched_query: gameTitle,
+      };
       // Steam header image (460x215, high quality key art)
       images.push({
         url: `https://cdn.akamai.steamstatic.com/steam/apps/${appId}/header.jpg`,
         type: "key_art",
         source: "steam",
+        ...steamMeta,
       });
       // Steam library hero (large, cinematic)
       images.push({
         url: `https://cdn.akamai.steamstatic.com/steam/apps/${appId}/library_hero.jpg`,
         type: "hero",
         source: "steam",
+        ...steamMeta,
       });
       // Steam capsule (vertical, good for shorts)
       images.push({
         url: `https://cdn.akamai.steamstatic.com/steam/apps/${appId}/library_600x900.jpg`,
         type: "capsule",
         source: "steam",
+        ...steamMeta,
       });
       // Fetch real screenshots via Steam app details API
       try {
@@ -519,6 +536,13 @@ async function fetchGameImages(gameTitle) {
                 url: ss.path_full,
                 type: "screenshot",
                 source: "steam",
+                game_name: appData.name || steamAppTitle,
+                steam_app_id: steamAppId,
+                steam_app_title: appData.name || steamAppTitle,
+                steam_matched_query: gameTitle,
+                store_app_id: steamAppId,
+                store_app_title: appData.name || steamAppTitle,
+                store_matched_query: gameTitle,
               });
             }
           }

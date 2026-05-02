@@ -21,6 +21,9 @@ const path = require("path");
 const axios = require("axios");
 const Anthropic = require("@anthropic-ai/sdk");
 const db = require("./lib/db");
+const { classifyOutboundUrl, safeRedirectConfig } = require("./lib/safe-url");
+const mediaPaths = require("./lib/media-paths");
+const { applyProduceSelection } = require("./lib/produce-selection");
 
 const CACHE_DIR = path.join("output", "entity_cache");
 
@@ -86,11 +89,13 @@ async function downloadToCache(url, filename) {
     const stat = await fs.stat(dest);
     if (stat.size > 5000) return dest;
   }
+  const safe = classifyOutboundUrl(url);
+  if (!safe.ok) return null;
   try {
     const resp = await axios.get(url, {
       responseType: "arraybuffer",
       timeout: 15000,
-      maxRedirects: 5,
+      ...safeRedirectConfig(5),
       headers: { "User-Agent": USER_AGENT },
     });
     await fs.ensureDir(CACHE_DIR);
@@ -116,6 +121,7 @@ async function fetchWikipediaImage(name) {
     const resp = await axios.get(summaryUrl, {
       timeout: 8000,
       headers: { "User-Agent": USER_AGENT },
+      ...safeRedirectConfig(3),
       validateStatus: (s) => s < 500, // treat 404 as non-fatal
     });
     if (resp.status !== 200) return null;
@@ -219,12 +225,15 @@ async function generateEntityMentions() {
     return;
   }
 
-  const toProcess = stories.filter(
-    (s) =>
-      s.approved === true &&
-      s.audio_path &&
-      s.full_script &&
-      !s.mentions_computed,
+  const toProcess = applyProduceSelection(
+    stories.filter(
+      (s) =>
+        s.approved === true &&
+        s.audio_path &&
+        s.full_script &&
+        !s.mentions_computed,
+    ),
+    { stage: "entities", log: console.log },
   );
 
   console.log(`[entities] ${toProcess.length} stories need entity extraction`);
@@ -240,7 +249,8 @@ async function generateEntityMentions() {
         /\.mp3$/,
         "_timestamps.json",
       );
-      if (!(await fs.pathExists(timestampsPath))) {
+      const timestampsAbs = await mediaPaths.resolveExisting(timestampsPath);
+      if (!timestampsAbs || !(await fs.pathExists(timestampsAbs))) {
         console.log(
           `[entities] ${story.id}: no timestamps file, skipping mentions`,
         );
@@ -249,7 +259,7 @@ async function generateEntityMentions() {
         continue;
       }
 
-      const timestamps = await fs.readJson(timestampsPath).catch(() => null);
+      const timestamps = await fs.readJson(timestampsAbs).catch(() => null);
       const words = wordsFromCharacterTimestamps(timestamps);
       if (words.length === 0) {
         console.log(`[entities] ${story.id}: empty word list, skipping`);

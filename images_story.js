@@ -4,6 +4,7 @@ const dotenv = require("dotenv");
 const db = require("./lib/db");
 const mediaPaths = require("./lib/media-paths");
 const { rankThumbnailCandidates } = require("./lib/thumbnail-safety");
+const { applyProduceSelection } = require("./lib/produce-selection");
 
 dotenv.config({ override: true });
 
@@ -163,8 +164,11 @@ async function generateStoryImages() {
   const outputDirAbs = mediaPaths.writePath(OUTPUT_DIR);
   await fs.ensureDir(outputDirAbs);
 
-  const toProcess = stories.filter(
-    (s) => s.approved === true && s.exported_path && !s.story_image_path,
+  const toProcess = applyProduceSelection(
+    stories.filter(
+      (s) => s.approved === true && s.exported_path && !s.story_image_path,
+    ),
+    { stage: "stories", log: console.log },
   );
 
   console.log(`[stories] ${toProcess.length} stories need Story images`);

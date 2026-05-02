@@ -31,8 +31,14 @@
 const path = require("node:path");
 const fs = require("fs-extra");
 const { execSync } = require("node:child_process");
+try {
+  if (!/^(true|1|yes|on)$/i.test(String(process.env.PULSE_SKIP_DOTENV || ""))) {
+    require("dotenv").config({ override: true });
+  }
+} catch {}
 
 const { smartCropToReel } = require("../lib/image-crop");
+const brand = require("../brand");
 const { composeStudioSlate, SCENE_TYPES } = require("../lib/scene-composer");
 const {
   buildStudioEditorial,
@@ -49,8 +55,14 @@ const {
   ensureTrimmedLocalLiam,
   ensureFreshLocalLiam,
   ensureProductionElevenLabsVoice,
+  ensureProductionLocalVoice,
   wordsFromAlignment,
 } = require("../lib/studio/sound-layer");
+const {
+  fetchLocalTtsHealth,
+  prewarmLocalTtsVoice,
+  formatLocalTtsStatus,
+} = require("../lib/studio/local-tts-readiness");
 const {
   buildSceneInput,
   dispatchSceneFilter,
@@ -59,6 +71,7 @@ const {
 
 // V2 modules
 const { buildStoryPackage } = require("../lib/studio/v2/story-package");
+const { resolveStudioDbPath } = require("../lib/studio/v2/studio-db-path");
 const {
   buildPunchScene,
   buildSpeedRampScene,
@@ -116,9 +129,93 @@ function currentBranch() {
   }
 }
 
+function envEnabled(value) {
+  return /^(true|1|yes|on)$/i.test(String(value || ""));
+}
+
+function assertLocalVoxCpmAllowed() {
+  if (envEnabled(process.env.STUDIO_V2_ALLOW_UNAPPROVED_LOCAL_VOICE)) return;
+  throw new Error(
+    [
+      "Refusing legacy local Liam VoxCPM voice for Studio v2 render.",
+      "Set STUDIO_V2_VOICE=local for the supported local VoxCPM provider path.",
+      "Only set STUDIO_V2_ALLOW_UNAPPROVED_LOCAL_VOICE=true for private legacy voice experiments.",
+    ].join(" "),
+  );
+}
+
+function resolveStudioV2VoiceMode() {
+  const voiceMode = (process.env.STUDIO_V2_VOICE || "production").toLowerCase();
+  if (voiceMode === "production" || voiceMode === "elevenlabs") {
+    return voiceMode;
+  }
+  if (voiceMode === "local" || voiceMode === "voxcpm" || voiceMode === "local-voxcpm") {
+    return "local";
+  }
+  if (
+    [
+      "local-liam",
+      "liam",
+      "fresh-local-liam",
+    ].includes(voiceMode)
+  ) {
+    assertLocalVoxCpmAllowed();
+    return voiceMode;
+  }
+  throw new Error(
+    `Unknown STUDIO_V2_VOICE="${voiceMode}". Use production, elevenlabs, local or explicitly approved legacy local Liam.`,
+  );
+}
+
+async function assertLocalTtsReadyForStudio() {
+  const voiceId = brand.voiceId || process.env.ELEVENLABS_VOICE_ID || "default";
+  const baseUrl = process.env.LOCAL_TTS_URL || "http://127.0.0.1:8765";
+  let summary = await fetchLocalTtsHealth({
+    baseUrl,
+    voiceId,
+    timeoutMs: Number(process.env.STUDIO_V2_LOCAL_TTS_HEALTH_TIMEOUT_MS || 5000),
+  });
+  console.log(`       local TTS: ${formatLocalTtsStatus(summary)}`);
+
+  if (
+    !summary.ok &&
+    summary.ready === true &&
+    summary.voice?.present === true &&
+    summary.voice?.refResolved === true &&
+    summary.voice?.loaded !== true
+  ) {
+    console.log("       local TTS: prewarming Pulse voice...");
+    const prewarm = await prewarmLocalTtsVoice({
+      baseUrl,
+      voiceId,
+      timeoutMs: Number(process.env.LOCAL_TTS_TIMEOUT_MS || 600000),
+    });
+    console.log(
+      `       local TTS: prewarm reused=${prewarm.reused === true} loaded_ms=${prewarm.loadedMs} engines=${prewarm.engineCount}`,
+    );
+    summary = await fetchLocalTtsHealth({
+      baseUrl,
+      voiceId,
+      timeoutMs: Number(process.env.STUDIO_V2_LOCAL_TTS_HEALTH_TIMEOUT_MS || 5000),
+    });
+    console.log(`       local TTS: ${formatLocalTtsStatus(summary)}`);
+  }
+
+  if (!summary.ok) {
+    throw new Error(
+      [
+        "[studio-v2] local TTS is not ready.",
+        summary.reasons.join("; "),
+        "Start tts_server\\start.bat, wait for /health to show ready=true and the Pulse voice loaded, then rerun.",
+      ].join(" "),
+    );
+  }
+  return summary;
+}
+
 function loadStoryRow(storyId) {
   const Database = require("better-sqlite3");
-  const db = new Database(path.join(ROOT, "data", "pulse.db"), {
+  const db = new Database(resolveStudioDbPath({ root: ROOT }), {
     readonly: true,
   });
   const row = db
@@ -426,7 +523,14 @@ function applySceneGrammarV2({
   //    and replace ONE of its instances with a card.timeline scene.
   //    The lane resolves the scene to the per-story HF timeline MP4
   //    when present, otherwise to the ffmpeg fallback drawtext.
-  if (transforms.timeline !== false) {
+  if (
+    transforms.timeline !== false &&
+    !out.some(
+      (scene) =>
+        scene.type === SCENE_TYPES.CARD_TIMELINE ||
+        scene.label === "card_timeline",
+    )
+  ) {
     // Count how many times each still source appears
     const stillSources = new Map();
     for (let i = 0; i < out.length; i++) {
@@ -611,6 +715,276 @@ function pickFreezeCaption(story) {
   return words.slice(0, 2).join(" ") || "PAUSE ON THIS";
 }
 
+function fallbackMotionCaption(story, scene, index) {
+  const text = [
+    story?.title,
+    story?.body,
+    story?.full_script,
+    story?.studio_editorial_script,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toUpperCase();
+
+  if (/MEGA\s+MEWTWO/.test(text) && /POK(E|\u00c9)MON\s+GO/.test(text)) {
+    return index === 0 ? "FREE GLOBAL EVENT" : "NO PREMIUM TICKET";
+  }
+  if (/NO DATE|PLATFORMS|UNKNOWN/i.test(scene?.dateLabel || scene?.sublabel)) {
+    return "DETAILS STILL OPEN";
+  }
+  return index === 0 ? "SOURCE CHECKED" : "WHAT CHANGED";
+}
+
+function replaceFallbackReleaseCardsWithMotion({
+  scenes,
+  story,
+  mediaClips = [],
+  hyperframesCardCount = 0,
+  enabled = true,
+}) {
+  const out = scenes.map((scene) => ({ ...scene }));
+  const clipPaths = mediaClips
+    .map((clip) => clip?.path)
+    .filter((clipPath) => /\.(mp4|mov|m4v|webm)$/i.test(String(clipPath || "")));
+  const replacements = [];
+
+  if (!enabled || hyperframesCardCount < 3 || clipPaths.length === 0) {
+    return { scenes: out, replacements };
+  }
+
+  let replacedCount = 0;
+  for (let i = 0; i < out.length; i++) {
+    const scene = out[i];
+    if (
+      scene?.type !== SCENE_TYPES.CARD_RELEASE ||
+      scene.premiumLane === "hyperframes" ||
+      scene.prerenderedMp4
+    ) {
+      continue;
+    }
+
+    const source = clipPaths[replacedCount % clipPaths.length];
+    const caption = fallbackMotionCaption(story, scene, replacedCount);
+    const motion = buildFreezeFrameScene({
+      slot: 0,
+      source,
+      startInSourceS: replacedCount % 2 === 0 ? 0.25 : 0.95,
+      playInS: 0.72,
+      duration: scene.duration,
+      caption,
+      fontOpt: FONT_OPT,
+      authored: true,
+    });
+    motion.label = `fallback_motion_${replacedCount}`;
+    motion.replacedFallbackCard = scene.label || scene.type;
+    motion.replacedFallbackCardType = scene.type;
+    out[i] = motion;
+    replacements.push({
+      atIdx: i,
+      replaced: scene.label || scene.type,
+      source: path.basename(source),
+      caption,
+    });
+    replacedCount++;
+  }
+
+  return { scenes: out, replacements };
+}
+
+function boostMotionDensityForShorts({
+  scenes,
+  mediaClips = [],
+  audioDurationS,
+  minPerMinute = Number(process.env.STUDIO_V2_MIN_MOTION_DENSITY || 12),
+  enabled = true,
+}) {
+  const out = scenes.map((scene) => ({ ...scene }));
+  const applied = [];
+  const duration = Number(audioDurationS || sumSceneDurations(out));
+  if (!enabled || !Number.isFinite(duration) || duration <= 0) {
+    return { scenes: out, applied };
+  }
+
+  const targetTransitions = Math.ceil((Number(minPerMinute || 12) * duration) / 60);
+  const clipPaths = mediaClips
+    .map((clip) => clip?.path)
+    .filter((clipPath) => /\.(mp4|mov|m4v|webm)$/i.test(String(clipPath || "")));
+
+  while (out.length - 1 < targetTransitions && clipPaths.length > 0) {
+    const candidate = out
+      .map((scene, idx) => ({ scene, idx }))
+      .filter(({ scene }) => {
+        const source = String(scene?.source || "");
+        return (
+          Number(scene?.duration || 0) >= 2.6 &&
+          !String(scene?.type || "").startsWith("card.") &&
+          scene?.type !== "outro" &&
+          scene?.sceneType !== "outro" &&
+          /\.(mp4|mov|m4v|webm)$/i.test(source || clipPaths[0])
+        );
+      })
+      .sort((a, b) => Number(b.scene.duration || 0) - Number(a.scene.duration || 0))[0];
+    if (!candidate) break;
+
+    const durationA = Number((Number(candidate.scene.duration) / 2).toFixed(3));
+    const durationB = Number((Number(candidate.scene.duration) - durationA).toFixed(3));
+    if (durationA < 1.2 || durationB < 1.2) break;
+
+    const sourceA = /\.(mp4|mov|m4v|webm)$/i.test(String(candidate.scene.source || ""))
+      ? candidate.scene.source
+      : clipPaths[applied.length % clipPaths.length];
+    const sourceB = clipPaths[(applied.length + 1) % clipPaths.length] || sourceA;
+    const clipDurA = ffprobeDuration(sourceA) || 6;
+    const clipDurB = ffprobeDuration(sourceB) || 6;
+    const startA = Math.max(0.15, Math.min(clipDurA - durationA - 0.2, clipDurA * 0.22));
+    const startB = Math.max(0.15, Math.min(clipDurB - durationB - 0.2, clipDurB * 0.68));
+
+    const punchA = buildPunchScene({
+      slot: 0,
+      source: sourceA,
+      startInSourceS: startA,
+      duration: durationA,
+      fontOpt: FONT_OPT,
+    });
+    const punchB = buildPunchScene({
+      slot: 0,
+      source: sourceB,
+      startInSourceS: startB,
+      duration: durationB,
+      fontOpt: FONT_OPT,
+    });
+    punchA.label = `motion_density_boost_${applied.length}_a`;
+    punchB.label = `motion_density_boost_${applied.length}_b`;
+    out.splice(candidate.idx, 1, punchA, punchB);
+    applied.push({
+      atIdx: candidate.idx,
+      replaced: candidate.scene.label || candidate.scene.type,
+      sources: [path.basename(sourceA), path.basename(sourceB)],
+    });
+  }
+
+  return { scenes: out, applied };
+}
+
+function sumSceneDurations(scenes) {
+  return Number(
+    (scenes || [])
+      .reduce((total, scene) => total + Number(scene?.duration || 0), 0)
+      .toFixed(3),
+  );
+}
+
+function resolveMainNarrationDurationS({ voice, audioDurationS }) {
+  const audioDuration = Number(audioDurationS);
+  const outroStart = Number(voice?.outroStartS);
+  if (
+    Number.isFinite(audioDuration) &&
+    Number.isFinite(outroStart) &&
+    outroStart > 0 &&
+    outroStart < audioDuration
+  ) {
+    return Number(outroStart.toFixed(3));
+  }
+  return Number.isFinite(audioDuration) ? Number(audioDuration.toFixed(3)) : 0;
+}
+
+function resolveSubtitleScriptText({
+  voice,
+  tsData,
+  editorial,
+  spokenTranscript,
+}) {
+  if (voice?.editorialScriptAppliedToAudio !== true) return "";
+  return (
+    tsData?.meta?.text ||
+    spokenTranscript ||
+    editorial?.scriptForCaption ||
+    editorial?.fullScript ||
+    ""
+  );
+}
+
+function storyOutroPath({ root = ROOT, storyId, channelId = "pulse-gaming" }) {
+  const suffix = channelId && channelId !== "pulse-gaming" ? `__${channelId}` : "";
+  return path.join(root, "test", "output", `hf_outro_card_${storyId}${suffix}.mp4`);
+}
+
+function buildFallbackOutroScene(duration) {
+  const safeDuration = Math.max(3, Number(duration || 4));
+  const ffmpegInput = `-f lavfi -t ${(safeDuration + 1).toFixed(2)} -i color=c=0x0D0D0F:s=1080x1920:r=${FPS}`;
+  const ffmpegFilter = [
+    `[0:v]setrange=tv`,
+    `drawbox=x=(w-760)/2:y=520:w=760:h=4:color=0xFF6B1A@0.95:t=fill`,
+    `drawtext=text='PULSE GAMING':${FONT_OPT}:fontcolor=0xFF6B1A:fontsize=42:x=(w-tw)/2:y=660`,
+    `drawtext=text='FOLLOW':${FONT_OPT}:fontcolor=white:fontsize=112:x=(w-tw)/2:y=820`,
+    `drawtext=text='FOR MORE':${FONT_OPT}:fontcolor=white:fontsize=112:x=(w-tw)/2:y=940`,
+    `drawtext=text='VERIFIED GAMING NEWS DAILY':${FONT_OPT}:fontcolor=white@0.82:fontsize=30:x=(w-tw)/2:y=1140`,
+    `drawbox=x=(w-760)/2:y=1300:w=760:h=4:color=0xFF6B1A@0.95:t=fill`,
+    `trim=duration=${safeDuration.toFixed(3)},setpts=PTS-STARTPTS`,
+    `format=yuv420p,setsar=1[v0]`,
+  ].join(",");
+  return {
+    type: "outro",
+    sceneType: "outro",
+    label: "outro_end_card",
+    duration: safeDuration,
+    premiumLane: "ffmpeg-outro",
+    ffmpegInput,
+    ffmpegFilter,
+  };
+}
+
+function appendStudioOutro({
+  scenes,
+  storyId,
+  root = ROOT,
+  channelId = "pulse-gaming",
+  minRuntimeS = Number(process.env.STUDIO_V2_MIN_RUNTIME_S || 61),
+  minOutroDurationS = Number(process.env.STUDIO_V2_MIN_OUTRO_S || 4),
+  voiceDurationS = null,
+  hfOutroPath = null,
+  enabled = true,
+} = {}) {
+  const out = (scenes || []).map((scene) => ({ ...scene }));
+  if (!enabled) {
+    return { scenes: out, appended: false, outroScene: null, totalDurationS: sumSceneDurations(out) };
+  }
+
+  const currentDurationS = sumSceneDurations(out);
+  const voiceDuration = Number(voiceDurationS);
+  const outroDurationS = Number(
+    Math.max(
+      Number.isFinite(minOutroDurationS) && minOutroDurationS > 0
+        ? minOutroDurationS
+        : 4,
+      (Number.isFinite(minRuntimeS) ? minRuntimeS : 61) - currentDurationS,
+      Number.isFinite(voiceDuration) ? voiceDuration - currentDurationS : 0,
+    ).toFixed(3),
+  );
+  const resolvedOutroPath =
+    hfOutroPath || storyOutroPath({ root, storyId, channelId });
+  const hasHyperframesOutro =
+    Boolean(hfOutroPath) || fs.existsSync(resolvedOutroPath);
+  const outroScene = hasHyperframesOutro
+    ? {
+        type: "outro",
+        sceneType: "outro",
+        label: "outro_end_card",
+        duration: outroDurationS,
+        premiumLane: "hyperframes",
+        prerenderedMp4: resolvedOutroPath,
+      }
+    : buildFallbackOutroScene(outroDurationS);
+
+  out.push(outroScene);
+  return {
+    scenes: out,
+    appended: true,
+    outroScene,
+    totalDurationS: sumSceneDurations(out),
+  };
+}
+
 /**
  * Beat-aware transition plan. Walks scenes, tries to align each cut
  * to the nearest word-end boundary within ±0.20s. Falls back to the
@@ -781,7 +1155,7 @@ async function main() {
 
   // ---- 5. Voice ----
   console.log("[5/11] resolving voice path...");
-  const voiceMode = (process.env.STUDIO_V2_VOICE || "production").toLowerCase();
+  const voiceMode = resolveStudioV2VoiceMode();
   let voice;
   if (voiceMode === "production" || voiceMode === "elevenlabs") {
     voice = await ensureProductionElevenLabsVoice({
@@ -792,24 +1166,49 @@ async function main() {
     }).catch(async (err) => {
       console.warn(`       production voice failed: ${err.message}`);
       if (process.env.STUDIO_V2_ALLOW_VOICE_FALLBACK !== "true") throw err;
-      const fallback = await ensureFreshLocalLiam({
+      await assertLocalTtsReadyForStudio();
+      const fallback = await ensureProductionLocalVoice({
         root: ROOT,
         storyId: STORY_ID,
         editorial,
         force: false,
-      }).catch(() => ensureTrimmedLocalLiam({ root: ROOT, storyId: STORY_ID }));
+      }).catch(async () => {
+        assertLocalVoxCpmAllowed();
+        return ensureFreshLocalLiam({
+          root: ROOT,
+          storyId: STORY_ID,
+          editorial,
+          force: false,
+        }).catch(() => ensureTrimmedLocalLiam({ root: ROOT, storyId: STORY_ID }));
+      });
       return {
         ...fallback,
         warning: `production failed, fell back: ${err.message}`,
       };
     });
+  } else if (voiceMode === "local") {
+    await assertLocalTtsReadyForStudio();
+    voice = await ensureProductionLocalVoice({
+      root: ROOT,
+      storyId: STORY_ID,
+      editorial,
+      force: process.env.STUDIO_V2_FORCE_TTS === "true",
+    });
   } else {
-    voice = await ensureTrimmedLocalLiam({ root: ROOT, storyId: STORY_ID });
+    voice = await ensureFreshLocalLiam({
+      root: ROOT,
+      storyId: STORY_ID,
+      editorial,
+    }).catch(() => ensureTrimmedLocalLiam({ root: ROOT, storyId: STORY_ID }));
   }
   if (!(await fs.pathExists(voice.audioPath))) {
     throw new Error(`voice audio missing: ${voice.audioPath}`);
   }
   const audioDurationS = ffprobeDuration(voice.audioPath);
+  const mainNarrationDurationS = resolveMainNarrationDurationS({
+    voice,
+    audioDurationS,
+  });
   const tsData = await fs.readJson(voice.timestampsPath);
   const alignment = tsData.alignment || tsData;
   const realignedWords = wordsFromAlignment(alignment);
@@ -817,6 +1216,11 @@ async function main() {
   console.log(
     `       audio: ${audioDurationS.toFixed(2)}s · ${realignedWords.length} words · ${voice.source}`,
   );
+  if (mainNarrationDurationS < audioDurationS - 0.05) {
+    console.log(
+      `       spoken outro starts at ${mainNarrationDurationS.toFixed(2)}s`,
+    );
+  }
 
   const renderStory = {
     ...story,
@@ -832,7 +1236,7 @@ async function main() {
   const composed = composeStudioSlate({
     story: renderStory,
     media: croppedMedia,
-    audioDurationS,
+    audioDurationS: mainNarrationDurationS || audioDurationS,
     opts: {
       takeawayText: "WATCH THE FULL TRAILER",
       cta: "FOLLOW FOR MORE",
@@ -869,7 +1273,28 @@ async function main() {
     root: ROOT,
     channelId: process.env.CHANNEL || "pulse-gaming",
   });
-  const scenes = lane.scenes;
+  const fallbackMotion = replaceFallbackReleaseCardsWithMotion({
+    scenes: lane.scenes,
+    story: renderStory,
+    mediaClips: media.clips,
+    hyperframesCardCount: lane.premiumLane.hyperframesCardCount,
+    enabled: process.env.STUDIO_V2_KEEP_BASIC_RELEASE_CARDS !== "true",
+  });
+  const outroPlan = appendStudioOutro({
+    scenes: fallbackMotion.scenes,
+    storyId: STORY_ID,
+    root: ROOT,
+    channelId: process.env.CHANNEL || "pulse-gaming",
+    voiceDurationS: audioDurationS,
+    enabled: process.env.STUDIO_V2_DISABLE_OUTRO !== "true",
+  });
+  const motionBoost = boostMotionDensityForShorts({
+    scenes: outroPlan.scenes,
+    mediaClips: media.clips,
+    audioDurationS,
+    enabled: process.env.STUDIO_V2_DISABLE_MOTION_DENSITY_BOOST !== "true",
+  });
+  const scenes = motionBoost.scenes;
   console.log(
     `       HF cards: ${lane.premiumLane.hyperframesCardCount} attached · verdict ${lane.premiumLane.verdict}`,
   );
@@ -877,9 +1302,30 @@ async function main() {
     console.log(`         - ${d.scene} (${d.type}) → ${d.renderer}`);
   }
 
+  if (fallbackMotion.replacements.length) {
+    console.log(
+      `       fallback cards replaced with motion: ${fallbackMotion.replacements.length}`,
+    );
+    for (const r of fallbackMotion.replacements) {
+      console.log(`         - ${r.replaced} -> ${r.caption} (${r.source})`);
+    }
+  }
+  if (outroPlan.appended) {
+    console.log(
+      `       outro: ${outroPlan.outroScene.premiumLane} · ${outroPlan.outroScene.duration.toFixed(2)}s · total ${outroPlan.totalDurationS.toFixed(2)}s`,
+    );
+  }
+
+  if (motionBoost.applied.length) {
+    console.log(
+      `       motion density boost: ${motionBoost.applied.length} extra cut${motionBoost.applied.length === 1 ? "" : "s"}`,
+    );
+  }
+
   // ---- 8. Beat-aware transitions ----
   console.log("[8/11] planning beat-aware cuts...");
   const transitions = buildBeatAwareTransitions(scenes, realignedWords);
+  const finalVideoDurationS = sumSceneDurations(scenes);
   const beatAligned = transitions.filter((t) => {
     let nearest = Infinity;
     for (const w of realignedWords) {
@@ -970,6 +1416,7 @@ async function main() {
     musicInputIdx,
     audioInputsBaseIdx,
     audioPlan,
+    targetDurationS: finalVideoDurationS,
   });
   const sfxInputs = soundLayer.extraInputs;
   filterParts.push(...soundLayer.filterLines);
@@ -1000,8 +1447,14 @@ async function main() {
     story: renderStory,
     words: realignedWords,
     duration: audioDurationS,
-    scriptText: editorial.scriptForCaption,
+    scriptText: resolveSubtitleScriptText({
+      voice,
+      tsData,
+      editorial,
+      spokenTranscript,
+    }),
     emphasisHex: channelTheme?.primary,
+    realign: voice.editorialScriptAppliedToAudio === true,
   });
   await fs.writeFile(assPath, assContent);
   const assDialogueCount = (assContent.match(/^Dialogue:/gm) || []).length;
@@ -1010,7 +1463,6 @@ async function main() {
   );
 
   const assRel = path.relative(ROOT, assPath).replace(/\\/g, "/");
-  const finalVideoDurationS = Number(audioDurationS.toFixed(3));
   let videoForSubtitles = "base";
   const heroOverlayFilter = heroPlan
     ? buildHeroMomentOverlayFilter({
@@ -1160,6 +1612,7 @@ async function main() {
     source: voice.source,
     audioPath: path.relative(ROOT, voice.audioPath).replace(/\\/g, "/"),
     durationS: audioDurationS,
+    outroStartS: voice.outroStartS || null,
     timestampSource: voice.timestampSource || null,
     editorialScriptAppliedToAudio: voice.editorialScriptAppliedToAudio === true,
   };
@@ -1325,3 +1778,14 @@ if (require.main === module) {
     process.exit(1);
   });
 }
+
+module.exports = {
+  appendStudioOutro,
+  assertLocalVoxCpmAllowed,
+  boostMotionDensityForShorts,
+  replaceFallbackReleaseCardsWithMotion,
+  resolveMainNarrationDurationS,
+  resolveStudioV2VoiceMode,
+  resolveSubtitleScriptText,
+  sumSceneDurations,
+};

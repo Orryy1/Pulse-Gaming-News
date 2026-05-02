@@ -108,6 +108,107 @@ test("computeSignalsFromSample: striped horizontal contrast lifts text_overlay_l
   assert.ok(sig.text_overlay_likelihood > 0.3);
 });
 
+test("computeSignalsFromSample: white CTA text on black raises promo-card likelihood", () => {
+  const dim = 64;
+  const buf = buildBuffer(dim, (x, y) => {
+    const inTitleStripe = y >= 18 && y <= 24 && x >= 8 && x <= 56 && x % 4 < 2;
+    const inCtaStripe = y >= 42 && y <= 47 && x >= 18 && x <= 46 && x % 3 < 2;
+    return inTitleStripe || inCtaStripe ? [245, 245, 245] : [5, 5, 5];
+  });
+  const sig = v.computeSignalsFromSample(buf, dim);
+
+  assert.ok(sig.dark_pixel_ratio > 0.75);
+  assert.ok(sig.bright_pixel_ratio > 0.05);
+  assert.ok(sig.white_text_on_dark_likelihood > 0.5);
+});
+
+test("classifyTrailerFrameTaste: rejects white-on-dark title and rating slates", () => {
+  const taste = v.classifyTrailerFrameTaste({
+    text_overlay_likelihood: 0.08,
+    white_text_on_dark_likelihood: 0.82,
+    edge_density: 0.16,
+    saturation_mean: 0.28,
+    bright_pixel_ratio: 0.07,
+    dark_pixel_ratio: 0.72,
+  });
+
+  assert.equal(taste.verdict, "fail");
+  assert.equal(taste.reason, "white_text_on_dark_card");
+});
+
+test("classifyTrailerFrameTaste: rejects dead dark low-detail frames", () => {
+  const taste = v.classifyTrailerFrameTaste({
+    text_overlay_likelihood: 0.02,
+    edge_density: 0.04,
+    saturation_mean: 0.12,
+    bright_pixel_ratio: 0.01,
+    dark_pixel_ratio: 0.91,
+  });
+
+  assert.equal(taste.verdict, "fail");
+  assert.equal(taste.reason, "dead_dark_frame");
+});
+
+test("classifyTrailerFrameTaste: rejects washed low-detail flash frames", () => {
+  const taste = v.classifyTrailerFrameTaste({
+    text_overlay_likelihood: 0.06,
+    edge_density: 0.05,
+    saturation_mean: 0.16,
+    bright_pixel_ratio: 0.66,
+    dark_pixel_ratio: 0.02,
+  });
+
+  assert.equal(taste.verdict, "fail");
+  assert.equal(taste.reason, "washed_low_detail_frame");
+});
+
+test("classifyTrailerFrameTaste: rejects pale monochrome transition frames", () => {
+  const taste = v.classifyTrailerFrameTaste({
+    text_overlay_likelihood: 0,
+    edge_density: 0.16,
+    saturation_mean: 0.08,
+    bright_pixel_ratio: 0.25,
+    dark_pixel_ratio: 0,
+  });
+
+  assert.equal(taste.verdict, "fail");
+  assert.equal(taste.reason, "washed_low_detail_frame");
+});
+
+test("classifyTrailerFrameTaste: rejects ultra-dark low-detail game frames", () => {
+  const taste = v.classifyTrailerFrameTaste({
+    text_overlay_likelihood: 0,
+    edge_density: 0.02,
+    saturation_mean: 0.52,
+    bright_pixel_ratio: 0,
+    dark_pixel_ratio: 0.82,
+  });
+
+  assert.equal(taste.verdict, "fail");
+  assert.equal(taste.reason, "dead_dark_frame");
+});
+
+test("classifyTrailerFrameTaste: accepts colourful detailed gameplay-like frames", () => {
+  const taste = v.classifyTrailerFrameTaste({
+    text_overlay_likelihood: 0.12,
+    edge_density: 0.24,
+    saturation_mean: 0.52,
+    bright_pixel_ratio: 0.08,
+    dark_pixel_ratio: 0.18,
+  });
+
+  assert.equal(taste.verdict, "pass");
+  assert.equal(taste.reason, "taste_passed");
+  assert.ok(taste.tags.includes("gameplay_candidate"));
+});
+
+test("classifyTrailerFrameTaste: missing metrics stays neutral for legacy QA records", () => {
+  const taste = v.classifyTrailerFrameTaste({});
+
+  assert.equal(taste.verdict, "unknown");
+  assert.equal(taste.reason, "taste_not_scanned");
+});
+
 // ── computeContentHash ───────────────────────────────────────────
 
 test("computeContentHash: deterministic for the same buffer", async () => {

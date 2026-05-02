@@ -1538,3 +1538,91 @@ Auto-commit note:
 Recommended next build:
 
 Build either `Flash Lane Footage Acquisition v1` to find at least three validated official footage windows per premium story, or `Standard Short Creator Overlay v1` so card-led Shorts can look intentionally TikTok-native without pretending they are premium footage-led Flash Lane renders.
+
+## Standard Overlay, Footage Acquisition And Approved Voice Update
+
+Completed the next local-only quality layer after Martin's review of the enriched MP4.
+
+New/updated files from this pass:
+
+- `lib/studio/v2/standard-short-creator-overlay.js`
+- `tools/standard-short-creator-overlay.js`
+- `tests/services/standard-short-creator-overlay.test.js`
+- `STANDARD_SHORT_CREATOR_OVERLAY_V1_REPORT.md`
+- `lib/studio/v2/flash-lane-footage-acquisition.js`
+- `tools/flash-lane-footage-acquisition.js`
+- `tests/services/flash-lane-footage-acquisition.test.js`
+- `FLASH_LANE_FOOTAGE_ACQUISITION_V1_REPORT.md`
+- `lib/studio/v2/approved-voice-path.js`
+- `tools/approved-voice-path.js`
+- `tests/services/approved-voice-path.test.js`
+- `APPROVED_VOICE_PATH_V1_REPORT.md`
+- `lib/studio/v2/proof-render-safety.js`
+- `tests/services/studio-v2-proof-render-safety.test.js`
+- `tests/services/studio-v2-flash-lane-preflight.test.js`
+- `package.json`
+
+Commands added:
+
+```bash
+npm run studio:v2:standard-overlay
+npm run ops:standard-overlay
+npm run studio:v2:footage-acquisition
+npm run ops:flash-footage-acquisition
+npm run studio:v2:approved-voice
+npm run ops:approved-voice
+```
+
+Local command outputs:
+
+- `test/output/standard_short_creator_overlay_v1.json`
+- `test/output/standard_short_creator_overlay_v1.md`
+- `test/output/flash_lane_footage_acquisition_v1.json`
+- `test/output/flash_lane_footage_acquisition_v1.md`
+- `test/output/approved_voice_path_v1.json`
+- `test/output/approved_voice_path_v1.md`
+
+Current Take-Two proof verdict:
+
+- Standard Overlay v1: ready for standard-short overlay treatment.
+- Flash Lane Footage Acquisition v1: still needs more validated footage.
+- Validated footage: BioShock only.
+- Missing validated footage windows: GTA and Red Dead.
+- Approved Voice Path v1: fixture path passes, but real proof renders must now have a present, non-empty narration file.
+
+Important behaviour change:
+
+- Studio V2 proof safety now blocks missing narration paths and missing narration files before render.
+- This directly addresses the "NO NARRATION AT ALL" proof failure.
+- Unapproved local TTS and low-pitch/demonic voice risk remain blocked.
+
+Validation:
+
+- Targeted tests: 22/22 pass.
+- Full `npm test`: 1,743/1,743 pass.
+- `npm run build`: pass.
+
+Safety position:
+
+- No deploy.
+- No Railway env changes.
+- No OAuth.
+- No production DB mutation.
+- No social posting.
+- No production Studio V2 switch.
+- No hard production gate enabled.
+
+Auto-commit status:
+
+- Auto-commit was failing because the worktree contains a large amount of unrelated untracked generated media, branding, scratch scripts and local TTS files.
+- A safe checkpoint requires explicit curated staging of code/tests/tools/reports only.
+- Do not use `git add .` in this repo state.
+
+Recommended next build:
+
+Use the footage acquisition shopping list to get validated GTA and Red Dead windows, then run a new local proof only when:
+
+- there are at least three validated footage windows;
+- GTA, Red Dead and BioShock are covered by exact footage or exact high-quality frames;
+- the approved voice path points at real narration;
+- the Standard Overlay contract replaces full-screen cards with punch captions and in-image popups.

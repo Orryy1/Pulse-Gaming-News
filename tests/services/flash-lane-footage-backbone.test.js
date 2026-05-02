@@ -1,0 +1,124 @@
+"use strict";
+
+const test = require("node:test");
+const assert = require("node:assert/strict");
+
+const {
+  buildFlashLaneFootageBackboneReport,
+  renderFlashLaneFootageBackboneMarkdown,
+} = require("../../lib/studio/v2/flash-lane-footage-backbone");
+
+function frame({ entity, source = null, status = "accepted", failures = [], seconds = 44 } = {}) {
+  return {
+    status,
+    source_url: source || `https://video.example/${entity}.m3u8`,
+    source_type: "steam_movie",
+    entity,
+    target_time_seconds: seconds,
+    qa: {
+      failures,
+      thumbnail_safe: status === "accepted",
+      verdict: status === "accepted" ? "pass" : "fail",
+      prescan: {
+        likely_is_logo: false,
+        text_overlay_likelihood: 0.05,
+        edge_density: 0.22,
+        saturation_mean: 0.45,
+      },
+    },
+  };
+}
+
+function frameReport(frames) {
+  return {
+    plans: [
+      {
+        story_id: "story-1",
+        frames,
+      },
+    ],
+  };
+}
+
+function segment({ entity, source = null, allowed = true, reason = "segment_samples_passed" } = {}) {
+  const url = source || `https://video.example/${entity}.m3u8`;
+  return {
+    story_id: "story-1",
+    clip_key: `${url}|${String(entity).replace(/[^a-z0-9_-]+/gi, "_").replace(/^_+|_+$/g, "").toLowerCase()}|48.00`,
+    source_url: url,
+    source_type: "steam_movie",
+    entity,
+    media_start_s: 48,
+    duration_s: 5,
+    status: allowed ? "validated" : "rejected",
+    segment_validated: allowed,
+    allowed_for_flash_lane: allowed,
+    validation_reason: reason,
+    samples: [{}, {}, {}],
+  };
+}
+
+test("Flash Lane footage backbone downgrades stories with only one validated clip", () => {
+  const report = buildFlashLaneFootageBackboneReport({
+    storyId: "story-1",
+    frameReport: frameReport([
+      frame({ entity: "GTA" }),
+      frame({ entity: "Red Dead", status: "rejected_qa", failures: ["black_frame"] }),
+      frame({ entity: "BioShock" }),
+    ]),
+    segmentValidationReport: {
+      segments: [
+        segment({ entity: "BioShock", allowed: true }),
+        segment({
+          entity: "GTA",
+          allowed: false,
+          reason: "segment_contains_black_frame",
+        }),
+      ],
+    },
+  });
+
+  assert.equal(report.verdict, "downgrade_to_standard_short");
+  assert.ok(report.blockers.includes("footage_backbone_needs_three_validated_clip_windows"));
+  assert.ok(report.recommendations.includes("downgrade_to_standard_short_until_footage_backbone_exists"));
+  assert.equal(report.segment_inventory.validated_segments, 1);
+});
+
+test("Flash Lane footage backbone allows three validated clip windows", () => {
+  const sourceA = "https://video.example/gta.m3u8";
+  const sourceB = "https://video.example/reddead.m3u8";
+  const sourceC = "https://video.example/bioshock.m3u8";
+  const report = buildFlashLaneFootageBackboneReport({
+    storyId: "story-1",
+    targetRuntimeS: 15,
+    frameReport: frameReport([
+      frame({ entity: "GTA", source: sourceA }),
+      frame({ entity: "Red Dead", source: sourceB }),
+      frame({ entity: "BioShock", source: sourceC }),
+    ]),
+    segmentValidationReport: {
+      segments: [
+        segment({ entity: "GTA", source: sourceA }),
+        segment({ entity: "Red Dead", source: sourceB }),
+        segment({ entity: "BioShock", source: sourceC }),
+      ],
+    },
+  });
+
+  assert.equal(report.verdict, "ready_for_flash_render_preflight");
+  assert.deepEqual(report.blockers, []);
+  assert.equal(report.validated_clip_refs.length, 3);
+});
+
+test("Flash Lane footage backbone markdown is operator-readable", () => {
+  const report = buildFlashLaneFootageBackboneReport({
+    storyId: "story-1",
+    frameReport: frameReport([frame({ entity: "GTA" })]),
+    segmentValidationReport: { segments: [] },
+  });
+  const md = renderFlashLaneFootageBackboneMarkdown(report);
+
+  assert.match(md, /Flash Lane Footage Backbone v1/);
+  assert.match(md, /Verdict:/);
+  assert.match(md, /Recommendations/);
+});

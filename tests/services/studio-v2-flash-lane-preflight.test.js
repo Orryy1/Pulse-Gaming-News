@@ -1,0 +1,214 @@
+"use strict";
+
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+
+const {
+  assertFlashLaneProofReady,
+  buildFlashLaneNarrationPlan,
+  buildFlashLaneProofPreflight,
+} = require("../../lib/studio/v2/flash-lane-preflight");
+
+function proofAudioPath(name = "flash-lane-provided.mp3") {
+  const dir = path.join(process.cwd(), "test", "output", "tmp-flash-lane-preflight");
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, name);
+  fs.writeFileSync(file, "fake flash lane narration bytes");
+  return file;
+}
+
+const providedNarration = {
+  mode: "real_audio",
+  provider: "external",
+  source: "provided-real-audio",
+  audioPath: proofAudioPath(),
+  transcript: "Follow Pulse Gaming so you never miss a beat.",
+  acoustic: { medianPitchHz: 118 },
+};
+
+function clipScene(i) {
+  return { type: "clip", label: `clip_${i}`, source: `clip-${i}.mp4` };
+}
+
+function cardScene(i) {
+  return { type: "card.stat", label: `card_${i}` };
+}
+
+test("Flash Lane preflight blocks still-only enriched proofs", () => {
+  const report = buildFlashLaneProofPreflight({
+    narration: providedNarration,
+    scenes: [cardScene(1), cardScene(2), { type: "still", source: "cover.jpg" }],
+    media: { clips: [], trailerFrames: [{ path: "frame.jpg" }], articleHeroes: [{ path: "cover.jpg" }] },
+  });
+
+  assert.equal(report.verdict, "block");
+  assert.ok(report.blockers.includes("flash_lane_requires_two_actual_clip_scenes"));
+  assert.ok(report.blockers.includes("flash_lane_clip_dominance_below_target"));
+});
+
+test("Flash Lane preflight allows footage-led proofs", () => {
+  const scenes = [
+    clipScene(1),
+    clipScene(2),
+    clipScene(3),
+    clipScene(4),
+    clipScene(5),
+    clipScene(6),
+    clipScene(7),
+    cardScene(1),
+    cardScene(2),
+    { type: "clip.frame", source: "frame-1.jpg" },
+    { type: "still", source: "hero-1.jpg" },
+    cardScene(3),
+  ];
+  const report = buildFlashLaneProofPreflight({
+    narration: providedNarration,
+    scenes,
+    media: {
+      clips: [{ path: "a.mp4" }, { path: "b.mp4" }, { path: "c.mp4" }],
+      trailerFrames: [{ path: "frame-1.jpg" }],
+    },
+  });
+
+  assert.equal(report.verdict, "allow");
+  assert.equal(report.metrics.actualClipScenes, 7);
+  assert.equal(report.metrics.actualClipDominance, 0.58);
+});
+
+test("Flash Lane preflight blocks repeating too few official clips across a 60s proof", () => {
+  const scenes = [
+    clipScene(1),
+    clipScene(2),
+    clipScene(3),
+    clipScene(4),
+    clipScene(5),
+    clipScene(6),
+    clipScene(7),
+    clipScene(8),
+    cardScene(1),
+    { type: "clip.frame", source: "frame-1.jpg" },
+  ];
+  const report = buildFlashLaneProofPreflight({
+    narration: providedNarration,
+    scenes,
+    media: { clips: [{ path: "a.mp4" }, { path: "b.mp4" }], trailerFrames: [{ path: "frame-1.jpg" }] },
+  });
+
+  assert.equal(report.verdict, "block");
+  assert.ok(report.blockers.includes("flash_lane_clip_reuse_too_high"));
+  assert.equal(report.metrics.maxAllowedActualClipScenesFromRefs, 6);
+});
+
+test("Flash Lane preflight blocks unapproved local narration", () => {
+  const report = buildFlashLaneProofPreflight({
+    narration: {
+      mode: "real_audio",
+      provider: "local",
+      source: "local-production-voxcpm-path",
+    },
+    scenes: [clipScene(1), clipScene(2), clipScene(3), clipScene(4), clipScene(5), clipScene(6)],
+    media: { clips: [{ path: "a.mp4" }, { path: "b.mp4" }] },
+    env: { STUDIO_V2_LOCAL_VOICE_APPROVED: "false" },
+  });
+
+  assert.equal(report.verdict, "block");
+  assert.ok(report.blockers.includes("unapproved_local_tts_voice_path"));
+  assert.throws(
+    () =>
+      assertFlashLaneProofReady({
+        narration: {
+          mode: "real_audio",
+          provider: "local",
+          source: "local-production-voxcpm-path",
+        },
+        scenes: [clipScene(1), clipScene(2), clipScene(3), clipScene(4), clipScene(5), clipScene(6)],
+        media: { clips: [{ path: "a.mp4" }, { path: "b.mp4" }] },
+        env: { STUDIO_V2_LOCAL_VOICE_APPROVED: "false" },
+      }),
+    /unapproved_local_tts_voice_path/,
+  );
+});
+
+test("Flash Lane preflight blocks overlong narration before rendering", () => {
+  const report = buildFlashLaneProofPreflight({
+    narration: {
+      ...providedNarration,
+      durationS: 118.025,
+    },
+    scenes: [clipScene(1), clipScene(2), clipScene(3), clipScene(4), clipScene(5), clipScene(6)],
+    media: { clips: [{ path: "a.mp4" }, { path: "b.mp4" }] },
+  });
+
+  assert.equal(report.verdict, "block");
+  assert.ok(report.blockers.includes("flash_lane_runtime_outside_61_to_75_seconds"));
+  assert.equal(report.metrics.narrationDurationS, 118.025);
+});
+
+test("Flash Lane preflight blocks very slow narration pace before rendering", () => {
+  const report = buildFlashLaneProofPreflight({
+    narration: {
+      ...providedNarration,
+      durationS: 118.025,
+    },
+    scriptWordCount: 148,
+    scenes: [clipScene(1), clipScene(2), clipScene(3), clipScene(4), clipScene(5), clipScene(6)],
+    media: { clips: [{ path: "a.mp4" }, { path: "b.mp4" }] },
+  });
+
+  assert.equal(report.verdict, "block");
+  assert.ok(report.blockers.includes("flash_lane_spoken_wpm_outside_publishable_range"));
+  assert.equal(report.metrics.spokenWpm, 75.2);
+  assert.equal(report.narrationPlan.recommendation, "regenerate_narration_at_normal_creator_pace");
+  assert.ok(report.narrationPlan.issues.includes("spoken_pace_too_slow"));
+});
+
+test("Flash Lane preflight accepts narration inside the 61-75 second window", () => {
+  const report = buildFlashLaneProofPreflight({
+    narration: {
+      ...providedNarration,
+      durationS: 68.2,
+    },
+    scriptWordCount: 160,
+    scenes: [
+      clipScene(1),
+      clipScene(2),
+      clipScene(3),
+      clipScene(4),
+      clipScene(5),
+      clipScene(6),
+      { type: "clip.frame", source: "frame-1.jpg" },
+      { type: "clip.frame", source: "frame-2.jpg" },
+      cardScene(1),
+    ],
+    media: { clips: [{ path: "a.mp4" }, { path: "b.mp4" }, { path: "c.mp4" }], trailerFrames: [{ path: "frame-1.jpg" }, { path: "frame-2.jpg" }] },
+  });
+
+  assert.equal(report.verdict, "allow");
+  assert.equal(report.metrics.spokenWpm, 140.8);
+});
+
+test("Flash Lane narration plan flags scripts too short for 61-75s creator pace", () => {
+  const plan = buildFlashLaneNarrationPlan({
+    scriptWordCount: 121,
+  });
+
+  assert.deepEqual(plan.targetRuntimeS, [61, 75]);
+  assert.deepEqual(plan.idealWpmRange, [140, 155]);
+  assert.ok(plan.issues.includes("script_too_short_for_flash_lane_target"));
+  assert.equal(plan.recommendation, "expand_script_before_flash_lane_voice");
+});
+
+test("Flash Lane preflight can be bypassed only for explicit diagnostics", () => {
+  assert.doesNotThrow(() =>
+    assertFlashLaneProofReady(
+      {
+        narration: providedNarration,
+        scenes: [cardScene(1), { type: "still", source: "cover.jpg" }],
+        media: { clips: [], articleHeroes: [{ path: "cover.jpg" }] },
+      },
+      { allowDiagnosticRender: true },
+    ),
+  );
+});

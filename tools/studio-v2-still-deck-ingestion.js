@@ -6,7 +6,7 @@ const fs = require("fs-extra");
 const { execFileSync, execSync } = require("node:child_process");
 
 try {
-  require("dotenv").config({ override: true });
+  require("dotenv").config();
 } catch {}
 
 const { composeStudioSlate, SCENE_TYPES } = require("../lib/scene-composer");
@@ -376,6 +376,9 @@ async function resolveNarration({
     }
     const inferredTs = timestampsPath || audioPath.replace(/\.(mp3|wav|m4a)$/i, "_timestamps.json");
     const suppliedLocalTts = looksLikeLocalTtsPath(audioPath);
+    const meta = (await fs.pathExists(inferredTs))
+      ? await fs.readJson(inferredTs).catch(() => null)
+      : null;
     return {
       mode: "real_audio",
       audioPath,
@@ -383,6 +386,8 @@ async function resolveNarration({
       durationS: ffprobeDuration(audioPath),
       provider: suppliedLocalTts ? "local" : "external",
       source: suppliedLocalTts ? "provided-local-tts-audio" : "provided-real-audio",
+      signatureHash: meta?.meta?.signatureHash || null,
+      acceptedLocalVoice: meta?.meta?.acceptedLocalVoice || null,
     };
   }
 

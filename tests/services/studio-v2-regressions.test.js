@@ -422,6 +422,63 @@ test("v2 quality report allows explicitly approved studio local voice renders fo
   );
 });
 
+test("v2 quality report accepts approved provided local TTS proof audio", () => {
+  const assPath = tempAss(dialogue("0:00:00.00", "0:00:59.00", "word"));
+  const scenes = Array.from({ length: 12 }, (_, i) => ({
+    type: i % 3 === 0 ? "clip" : i % 3 === 1 ? "clip.frame" : "card.source",
+    source: `source-${i}.mp4`,
+    duration: 5,
+  }));
+  const transitions = Array.from({ length: 11 }, (_, i) => ({
+    type: "cut",
+    offset: (i + 1) * 5,
+  }));
+  const words = Array.from({ length: 140 }, (_, i) => ({
+    word: `w${i}`,
+    start: i * 0.4,
+    end: i * 0.4 + 0.18,
+  }));
+  const report = buildQualityReportV2({
+    storyId: "x",
+    outputPath: "test/output/x.mp4",
+    pkg: {
+      title: "Pokemon Go",
+      hook: {
+        chosen: {
+          text: "Mega Mewtwo is finally real for Pokemon Go players",
+        },
+      },
+      script: {
+        tightened: Array.from({ length: 140 }, () => "word").join(" "),
+      },
+    },
+    scenes,
+    transitions,
+    audioMeta: {
+      provider: "local",
+      source: "provided-local-tts-audio",
+      voiceId: "TX3LPaxmHKxFdv7VOQHJ",
+      timestampSource: "tts-alignment",
+      approvedLocalVoice: true,
+    },
+    audioDurationS: 60,
+    assPath,
+    soundLayerPayload: {
+      cueCount: 0,
+      filterLines: ["sidechaincompress=threshold=0.05:ratio=4"],
+    },
+    realignedWords: words,
+    renderedDurationS: 60,
+    branch: "test",
+  });
+
+  assert.equal(report.auto.voicePathUsed.grade, "green");
+  assert.equal(report.auto.voicePathUsed.value, "approved-provided-local-tts");
+  assert.ok(
+    !report.verdict.reasons.includes("unapproved local TTS voice path"),
+  );
+});
+
 test("v2 quality report rejects demonic slow local voice pacing", () => {
   const assPath = tempAss(dialogue("0:00:00.00", "0:01:51.00", "word"));
   const scenes = Array.from({ length: 14 }, (_, i) => ({
@@ -965,6 +1022,7 @@ test("studio-v2 render report surfaces accepted local voice fingerprint", () => 
   );
   assert.match(src, /acceptedLocalVoice:\s*tsData\?\.meta\?\.acceptedLocalVoice/);
   assert.match(src, /signatureHash:\s*voice\.signatureHash/);
+  assert.doesNotMatch(src, /dotenv"\)\.config\(\{\s*override:\s*true\s*\}\)/);
 });
 
 test("studio-v2-render supports local VoxCPM through the production-shaped path", () => {

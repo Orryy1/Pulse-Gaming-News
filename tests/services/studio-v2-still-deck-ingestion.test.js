@@ -625,4 +625,5 @@ test("still-deck local narration uses the approved production-shaped local voice
   assert.match(src, /ensureProductionLocalVoice\(/);
   assert.match(src, /acceptedLocalVoice:\s*narration\.acceptedLocalVoice/);
   assert.doesNotMatch(src, /generateTTS\(/);
+  assert.doesNotMatch(src, /dotenv"\)\.config\(\{\s*override:\s*true\s*\}\)/);
 });

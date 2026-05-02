@@ -7,6 +7,7 @@ const path = require("node:path");
 
 const {
   evaluateApprovedVoicePath,
+  looksLikeLocalTtsPath,
   renderApprovedVoicePathMarkdown,
 } = require("../../lib/studio/v2/approved-voice-path");
 
@@ -64,6 +65,13 @@ test("approved voice path blocks unapproved low local voice", () => {
   assert.equal(result.verdict, "rejected");
   assert.ok(result.blockers.includes("unapproved_local_tts_voice_path"));
   assert.ok(result.blockers.includes("demonic_low_voice_risk"));
+});
+
+test("approved voice path recognises production-shaped local Studio V2 cache names", () => {
+  assert.equal(
+    looksLikeLocalTtsPath("D:/pulse-data/media/output/audio/rss_story_studio_v1_local.mp3"),
+    true,
+  );
 });
 
 test("approved voice path approves existing production audio", () => {

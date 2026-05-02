@@ -33,7 +33,7 @@ const fs = require("fs-extra");
 const { execSync } = require("node:child_process");
 try {
   if (!/^(true|1|yes|on)$/i.test(String(process.env.PULSE_SKIP_DOTENV || ""))) {
-    require("dotenv").config({ override: true });
+    require("dotenv").config();
   }
 } catch {}
 

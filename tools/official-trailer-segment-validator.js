@@ -31,6 +31,8 @@ function parseArgs(argv) {
     applyLocal: false,
     outputRoot: DEFAULT_OUTPUT_ROOT,
     maxSegments: 6,
+    candidateWindowsPerSource: 1,
+    includeFrameAnchoredWindows: false,
   };
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i];
@@ -48,6 +50,10 @@ function parseArgs(argv) {
       args.outputRoot = argv[++i] || DEFAULT_OUTPUT_ROOT;
     } else if (arg === "--max-segments") {
       args.maxSegments = Math.max(1, Number(argv[++i]) || 6);
+    } else if (arg === "--candidate-windows-per-source") {
+      args.candidateWindowsPerSource = Math.max(1, Number(argv[++i]) || 1);
+    } else if (arg === "--include-frame-anchored-windows") {
+      args.includeFrameAnchoredWindows = true;
     }
   }
   return args;
@@ -65,6 +71,10 @@ function printHelp() {
       "  --apply-local          Sample trailer segment frames to test/output only",
       "  --output-root <path>   Apply-local output root, must be under test/output",
       "  --max-segments <n>     Cap segment validations",
+      "  --candidate-windows-per-source <n>",
+      "                         Validate alternate windows from the same official source",
+      "  --include-frame-anchored-windows",
+      "                         Also validate windows that start shortly before a safe frame",
       "  --json                 Print JSON instead of Markdown",
       "",
       "This command is local-only. It validates proposed official trailer clip windows before they can be used by Flash Lane.",
@@ -81,7 +91,7 @@ async function loadFrameReport(args) {
   return { report, filePath };
 }
 
-function buildClipRefsFromReport(frameReport, storyId) {
+function buildClipRefsFromReport(frameReport, storyId, args = {}) {
   const storyIds = storyId
     ? [storyId]
     : [
@@ -92,7 +102,11 @@ function buildClipRefsFromReport(frameReport, storyId) {
         ),
       ];
   return storyIds.flatMap((id) =>
-    buildOfficialTrailerClipsFromFrameReport(frameReport, id).map((clip) => ({
+    buildOfficialTrailerClipsFromFrameReport(frameReport, id, {
+      maxCandidateWindowsPerSource: args.candidateWindowsPerSource,
+      includeFrameAnchoredWindows: args.includeFrameAnchoredWindows,
+      maxClips: args.maxSegments,
+    }).map((clip) => ({
       ...clip,
       story_id: id,
       storyId: id,
@@ -115,7 +129,7 @@ async function main() {
   }
 
   const loaded = await loadFrameReport(args);
-  const clipRefs = buildClipRefsFromReport(loaded.report, args.storyId);
+  const clipRefs = buildClipRefsFromReport(loaded.report, args.storyId, args);
   const report = await runOfficialTrailerSegmentValidation(clipRefs, {
     applyLocal: args.applyLocal,
     outputRoot: args.outputRoot,

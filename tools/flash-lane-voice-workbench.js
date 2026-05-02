@@ -32,6 +32,7 @@ function parseArgs(argv) {
     approvedLocalVoice: false,
     generateLocal: false,
     engine: process.env.LOCAL_TTS_ENGINE || process.env.STUDIO_V2_LOCAL_TTS_ENGINE || "voxcpm2",
+    baseUrl: process.env.LOCAL_TTS_URL || null,
     rate: Number(process.env.STUDIO_V2_VOICE_WORKBENCH_RATE || 1.7),
     pitchFactor: Number(process.env.STUDIO_V2_VOICE_PITCH_FACTOR || 1),
     outputDir: OUT,
@@ -51,6 +52,7 @@ function parseArgs(argv) {
     else if (arg === "--approved-local-voice") args.approvedLocalVoice = true;
     else if (arg === "--generate-local") args.generateLocal = true;
     else if (arg === "--engine") args.engine = argv[++i] || args.engine;
+    else if (arg === "--base-url") args.baseUrl = argv[++i] || args.baseUrl;
     else if (arg === "--rate") args.rate = Number(argv[++i] || args.rate);
     else if (arg === "--pitch-factor") args.pitchFactor = Number(argv[++i] || args.pitchFactor);
     else if (arg === "--out-dir") args.outputDir = path.resolve(argv[++i] || OUT);
@@ -317,6 +319,7 @@ function printHelp() {
       "  --approved-local-voice       Mark supplied local voice as human-approved",
       "  --generate-local             Generate one local TTS candidate only when --apply-local is present",
       "  --engine <name>              Local engine label for generated candidate",
+      "  --base-url <url>             Local TTS server URL, e.g. http://127.0.0.1:8766",
       "  --rate <number>              Local voice speaking rate, default 1.7",
       "  --pitch-factor <number>      Optional local pitch correction, e.g. 1.8",
       "  --out-dir <dir>              Output directory, default test/output",
@@ -342,6 +345,7 @@ async function main() {
       outputRoot: path.join(args.outputDir, "flash-lane-voice-workbench-assets"),
       applyLocal: args.dryRun !== true,
       engine: args.engine,
+      baseUrl: args.baseUrl || undefined,
       rate: args.rate,
       durationProbe: ffprobeDuration,
       acousticProbe: probeAcoustic,
@@ -369,7 +373,13 @@ async function main() {
   );
 }
 
-main().catch((err) => {
-  process.stderr.write(`[voice-workbench] ${err.stack || err.message}\n`);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    process.stderr.write(`[voice-workbench] ${err.stack || err.message}\n`);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  parseArgs,
+};

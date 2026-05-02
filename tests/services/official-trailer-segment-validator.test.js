@@ -8,6 +8,7 @@ const os = require("node:os");
 
 const {
   applySegmentValidationToClipRefs,
+  guardSegmentSample,
   runOfficialTrailerSegmentValidation,
   segmentKeyForClipRef,
 } = require("../../lib/studio/v2/official-trailer-segment-validator");
@@ -132,6 +133,33 @@ test("official trailer segment validator rejects PEGI/ESRB/title-card-like windo
   assert.equal(report.segments[0].allowed_for_flash_lane, false);
 });
 
+test("official trailer segment validator rejects promo CTA card windows", async () => {
+  const outputRoot = tempOutputRoot("promo-cta-card");
+  await cleanTempRoot(outputRoot);
+
+  const report = await runOfficialTrailerSegmentValidation([clip()], {
+    applyLocal: true,
+    outputRoot,
+    extractor: fakeExtractor,
+    inspectFrame: async (outputPath) => ({
+      ...passingQa(outputPath),
+      prescan: {
+        likely_is_logo: false,
+        text_overlay_likelihood: 0.03,
+        white_text_on_dark_likelihood: 0.82,
+        bright_pixel_ratio: 0.07,
+        dark_pixel_ratio: 0.72,
+        edge_density: 0.14,
+        saturation_mean: 0.28,
+      },
+    }),
+  });
+
+  assert.equal(report.summary.segments_rejected, 1);
+  assert.equal(report.segments[0].validation_reason, "segment_contains_title_or_rating_card");
+  assert.equal(report.segments[0].allowed_for_flash_lane, false);
+});
+
 test("official trailer segment validator rejects black-frame windows", async () => {
   const outputRoot = tempOutputRoot("black-frame");
   await cleanTempRoot(outputRoot);
@@ -192,6 +220,34 @@ test("official trailer segment validator rejects repetitive dead windows", async
 
   assert.equal(report.summary.segments_rejected, 1);
   assert.equal(report.segments[0].validation_reason, "segment_samples_too_repetitive");
+});
+
+test("official trailer segment validator allows official game-character faces in segment samples", () => {
+  const qa = guardSegmentSample(
+    clip(),
+    { seek_seconds: 44.4 },
+    {
+      thumbnail_safe: false,
+      likely_has_face: true,
+      black_frame: false,
+      blur_verdict: "pass",
+      verdict: "fail",
+      warnings: [],
+      failures: ["unsafe_face_like_frame"],
+      prescan: {
+        likely_is_stock_person: false,
+        likely_has_face: true,
+        likely_is_logo: false,
+        text_overlay_likelihood: 0,
+        edge_density: 0.18,
+        saturation_mean: 0.42,
+      },
+    },
+  );
+
+  assert.equal(qa.thumbnail_safe, true);
+  assert.equal(qa.failures.includes("unsafe_face_like_frame"), false);
+  assert.ok(qa.warnings.includes("official_game_character_face_allowed"));
 });
 
 test("segment validation report upgrades only validated refs for Flash Lane use", () => {

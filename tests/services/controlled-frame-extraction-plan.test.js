@@ -138,6 +138,62 @@ test("Controlled Frame Extraction Plan caps repeated same-entity references", ()
   assert.equal(plan.selected_references.filter((item) => item.entity === "GTA").length, 1);
 });
 
+test("Controlled Frame Extraction Plan can include alternate official references for retry QA", () => {
+  const plan = buildControlledFrameExtractionPlan(
+    motionPlan({
+      existing_references: [
+        reference("GTA", 1),
+        reference("GTA", 2),
+        reference("Red Dead", 1),
+        reference("Red Dead", 2),
+        reference("BioShock", 1),
+      ],
+    }),
+    {
+      maxReferences: 5,
+      maxReferencesPerEntity: 2,
+      maxTargetFrames: 10,
+    },
+  );
+
+  assert.equal(plan.selected_references.length, 5);
+  assert.deepEqual(
+    plan.selected_references.map((item) => `${item.entity}:${item.movie_name}`),
+    [
+      "GTA:GTA Official Trailer 1",
+      "Red Dead:Red Dead Official Trailer 1",
+      "BioShock:BioShock Official Trailer 1",
+      "GTA:GTA Official Trailer 2",
+      "Red Dead:Red Dead Official Trailer 2",
+    ],
+  );
+  assert.equal(plan.selected_references.filter((item) => item.entity === "Red Dead").length, 2);
+  assert.equal(plan.exact_subject_motion_coverage.max_references_per_entity, 2);
+  assert.equal(plan.target_frames.length, 10);
+});
+
+test("Controlled Frame Extraction Plan still caps alternates per entity", () => {
+  const plan = buildControlledFrameExtractionPlan(
+    motionPlan({
+      existing_references: [
+        reference("GTA", 1),
+        reference("GTA", 2),
+        reference("GTA", 3),
+        reference("Red Dead", 1),
+        reference("BioShock", 1),
+      ],
+    }),
+    {
+      maxReferences: 5,
+      maxReferencesPerEntity: 2,
+    },
+  );
+
+  assert.equal(plan.selected_references.length, 4);
+  assert.equal(plan.selected_references.filter((item) => item.entity === "GTA").length, 2);
+  assert.ok(!plan.selected_references.some((item) => item.movie_name === "GTA Official Trailer 3"));
+});
+
 test("Controlled Frame Extraction Plan rejects stories without official references", () => {
   const plan = buildControlledFrameExtractionPlan(
     motionPlan({

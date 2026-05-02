@@ -228,6 +228,26 @@ test("official clip frame quality score penalises text-heavy and dull frames", (
   assert.ok(strong > weak);
 });
 
+test("official clip score does not over-penalise safe post-intro cinematic frames", () => {
+  const score = scoreOfficialTrailerFrameForClip(
+    acceptedFrame({
+      target_time_seconds: 25.2,
+      qa: {
+        thumbnail_safe: true,
+        verdict: "pass",
+        prescan: {
+          likely_is_logo: false,
+          text_overlay_likelihood: 0,
+          edge_density: 0.145,
+          saturation_mean: 0.21,
+        },
+      },
+    }),
+  );
+
+  assert.ok(score >= 75);
+});
+
 test("official clip refs choose the later accepted frame per source", () => {
   const refs = buildOfficialTrailerClipsFromFrameReport(
     {
@@ -247,6 +267,141 @@ test("official clip refs choose the later accepted frame per source", () => {
   assert.equal(refs.length, 1);
   assert.equal(refs[0].provenance.frame_local_path, "late.jpg");
   assert.equal(refs[0].mediaStartS, 36);
+});
+
+test("official clip refs can emit alternate windows for the same source when validating footage", () => {
+  const refs = buildOfficialTrailerClipsFromFrameReport(
+    {
+      plans: [
+        {
+          story_id: "story-1",
+          frames: [
+            acceptedFrame({
+              target_time_seconds: 25.2,
+              local_path: "gta-42.jpg",
+              qa: {
+                thumbnail_safe: true,
+                verdict: "pass",
+                content_hash: "hash-a",
+                prescan: {
+                  likely_is_logo: false,
+                  text_overlay_likelihood: 0,
+                  edge_density: 0.18,
+                  saturation_mean: 0.34,
+                },
+              },
+            }),
+            acceptedFrame({
+              target_time_seconds: 34.8,
+              local_path: "gta-58.jpg",
+              qa: {
+                thumbnail_safe: true,
+                verdict: "pass",
+                content_hash: "hash-b",
+                prescan: {
+                  likely_is_logo: false,
+                  text_overlay_likelihood: 0,
+                  edge_density: 0.16,
+                  saturation_mean: 0.32,
+                },
+              },
+            }),
+            acceptedFrame({
+              target_time_seconds: 44.4,
+              local_path: "gta-74.jpg",
+              qa: {
+                thumbnail_safe: true,
+                verdict: "pass",
+                content_hash: "hash-c",
+                prescan: {
+                  likely_is_logo: false,
+                  text_overlay_likelihood: 0,
+                  edge_density: 0.14,
+                  saturation_mean: 0.29,
+                },
+              },
+            }),
+          ],
+        },
+      ],
+    },
+    "story-1",
+    { maxCandidateWindowsPerSource: 3 },
+  );
+
+  assert.equal(refs.length, 3);
+  assert.deepEqual(
+    refs.map((ref) => ref.mediaStartS),
+    [36, 38.8, 48.4],
+  );
+  assert.ok(refs.every((ref) => ref.provenance.segment_selection_policy === "ranked_quality_candidate_window"));
+});
+
+test("official clip refs can emit frame-anchored retry windows around a safe frame", () => {
+  const refs = buildOfficialTrailerClipsFromFrameReport(
+    {
+      plans: [
+        {
+          story_id: "story-1",
+          frames: [
+            acceptedFrame({
+              entity: "Red Dead",
+              source_url: "https://video.example/reddead.m3u8",
+              target_time_seconds: 44.4,
+              local_path: "red-dead-74.jpg",
+            }),
+          ],
+        },
+      ],
+    },
+    "story-1",
+    { includeFrameAnchoredWindows: true, maxCandidateWindowsPerSource: 2 },
+  );
+
+  assert.equal(refs.length, 2);
+  assert.deepEqual(
+    refs.map((ref) => ref.mediaStartS),
+    [42.4, 48.4],
+  );
+  assert.deepEqual(
+    refs.map((ref) => ref.provenance.clip_start_policy),
+    ["start_before_accepted_safe_frame", "start_after_accepted_safe_frame"],
+  );
+});
+
+test("official clip refs dedupe duplicate anchored starts from the same source", () => {
+  const refs = buildOfficialTrailerClipsFromFrameReport(
+    {
+      plans: [
+        {
+          story_id: "story-1",
+          frames: [
+            acceptedFrame({
+              source_url: "https://video.example/gta.m3u8",
+              target_time_seconds: 25.2,
+              local_path: "gta-42.jpg",
+            }),
+            acceptedFrame({
+              source_url: "https://video.example/gta.m3u8",
+              target_time_seconds: 34.8,
+              local_path: "gta-58.jpg",
+            }),
+          ],
+        },
+      ],
+    },
+    "story-1",
+    {
+      includeFrameAnchoredWindows: true,
+      maxCandidateWindowsPerSource: 2,
+      maxClips: 4,
+    },
+  );
+
+  assert.deepEqual(
+    refs.map((ref) => ref.mediaStartS),
+    [36, 38.8],
+  );
 });
 
 test("official clip refs inherit local segment validation before Flash Lane use", () => {
@@ -327,4 +482,106 @@ test("official clip refs can filter out segment-validation failures for render p
   assert.equal(refs.length, 1);
   assert.equal(refs[0].entity, "GTA");
   assert.equal(refs[0].provenance.allowed_for_flash_lane, true);
+});
+
+test("official clip refs keep searching past rejected validation windows until max valid refs", () => {
+  const frameReport = {
+    plans: [
+      {
+        story_id: "story-1",
+        frames: [
+          acceptedFrame({
+            source_url: "https://video.example/gta.m3u8",
+            entity: "GTA",
+            target_time_seconds: 50,
+            qa: {
+              thumbnail_safe: true,
+              verdict: "pass",
+              prescan: {
+                likely_is_logo: false,
+                text_overlay_likelihood: 0,
+                edge_density: 0.22,
+                saturation_mean: 0.45,
+              },
+            },
+          }),
+          acceptedFrame({
+            source_url: "https://video.example/xbox.m3u8",
+            entity: "Xbox",
+            target_time_seconds: 48,
+            qa: {
+              thumbnail_safe: true,
+              verdict: "pass",
+              prescan: {
+                likely_is_logo: false,
+                text_overlay_likelihood: 0,
+                edge_density: 0.21,
+                saturation_mean: 0.41,
+              },
+            },
+          }),
+          acceptedFrame({
+            source_url: "https://video.example/reddead.m3u8",
+            entity: "Red Dead",
+            target_time_seconds: 44,
+            qa: {
+              thumbnail_safe: true,
+              verdict: "pass",
+              prescan: {
+                likely_is_logo: false,
+                text_overlay_likelihood: 0,
+                edge_density: 0.16,
+                saturation_mean: 0.33,
+              },
+            },
+          }),
+          acceptedFrame({
+            source_url: "https://video.example/bioshock.m3u8",
+            entity: "BioShock",
+            target_time_seconds: 42,
+            qa: {
+              thumbnail_safe: true,
+              verdict: "pass",
+              prescan: {
+                likely_is_logo: false,
+                text_overlay_likelihood: 0,
+                edge_density: 0.15,
+                saturation_mean: 0.31,
+              },
+            },
+          }),
+        ],
+      },
+    ],
+  };
+  const candidates = buildOfficialTrailerClipsFromFrameReport(frameReport, "story-1", {
+    maxClips: 4,
+  });
+  const segment = (entity, allowed) => ({
+    clip_key: segmentKeyForClipRef(candidates.find((ref) => ref.entity === entity)),
+    segment_validated: allowed,
+    allowed_for_flash_lane: allowed,
+    validation_reason: allowed ? "segment_samples_passed" : "segment_contains_title_or_rating_card",
+    samples: [{}, {}, {}],
+  });
+
+  const refs = buildOfficialTrailerClipsFromFrameReport(frameReport, "story-1", {
+    maxClips: 2,
+    requireValidatedSegments: true,
+    segmentValidationReport: {
+      generated_at: "2026-05-02T22:00:00.000Z",
+      segments: [
+        segment("GTA", false),
+        segment("Xbox", false),
+        segment("Red Dead", true),
+        segment("BioShock", true),
+      ],
+    },
+  });
+
+  assert.deepEqual(
+    refs.map((ref) => ref.entity),
+    ["Red Dead", "BioShock"],
+  );
+  assert.ok(refs.every((ref) => ref.provenance.allowed_for_flash_lane === true));
 });

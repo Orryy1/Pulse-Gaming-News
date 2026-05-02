@@ -665,7 +665,7 @@ test("v2 audio library builds a forensic-safe studio SFX plan by default", () =>
     });
     assert.equal(plan.decisions.vibe, "verified");
     assert.match(plan.musicBed.path, /Main Background Loop 2\.wav$/);
-    assert.equal(plan.sfxCues.length, 1);
+    assert.equal(plan.sfxCues.length, 2);
     assert.equal(new Set(plan.sfxCues.map((cue) => cue.path)).size, plan.sfxCues.length);
     assert.ok(plan.sfxCues.every((cue) => cue.vol > 0 && cue.vol <= 0.16));
     assert.ok(plan.sfxCues.every((cue) => fs.existsSync(cue.path)));
@@ -673,6 +673,9 @@ test("v2 audio library builds a forensic-safe studio SFX plan by default", () =>
     assert.equal(plan.decisions.sfxCueCount, plan.sfxCues.length);
     assert.equal(plan.decisions.forensicSafeCueCount, true);
     assert.ok(plan.decisions.sfxBreakdown.reveal >= 1);
+    assert.ok(
+      (plan.decisions.sfxBreakdown.boom || plan.decisions.sfxBreakdown.impact || 0) >= 1,
+    );
   } finally {
     if (oldMode === undefined) delete process.env.STUDIO_V2_SFX_MODE;
     else process.env.STUDIO_V2_SFX_MODE = oldMode;

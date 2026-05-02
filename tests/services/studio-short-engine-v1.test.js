@@ -349,6 +349,11 @@ test("studio composer builds a footage-led Flash Lane slate from official clip r
         { path: "gta-trailer.m3u8", entity: "GTA", sourceType: "steam_movie", mediaStartS: 28.5 },
         { path: "bioshock-trailer.m3u8", entity: "BioShock", sourceType: "steam_movie", mediaStartS: 24 },
         { path: "red-dead-trailer.m3u8", entity: "Red Dead", sourceType: "steam_movie", mediaStartS: 30 },
+        { path: "gta-trailer.m3u8", entity: "GTA", sourceType: "steam_movie", mediaStartS: 34.5 },
+        { path: "bioshock-trailer.m3u8", entity: "BioShock", sourceType: "steam_movie", mediaStartS: 36 },
+        { path: "red-dead-trailer.m3u8", entity: "Red Dead", sourceType: "steam_movie", mediaStartS: 38 },
+        { path: "gta-trailer.m3u8", entity: "GTA", sourceType: "steam_movie", mediaStartS: 42 },
+        { path: "bioshock-trailer.m3u8", entity: "BioShock", sourceType: "steam_movie", mediaStartS: 48 },
       ],
       trailerFrames: [
         { path: "gta-frame.jpg", entity: "GTA" },
@@ -366,10 +371,14 @@ test("studio composer builds a footage-led Flash Lane slate from official clip r
   const actualClipScenes = result.scenes.filter(
     (scene) =>
       scene.type === SCENE_TYPES.CLIP ||
+      scene.type === SCENE_TYPES.PUNCH ||
+      scene.type === SCENE_TYPES.SPEED_RAMP ||
+      scene.type === SCENE_TYPES.FREEZE_FRAME ||
       (scene.type === SCENE_TYPES.OPENER && scene.isClipBacked === true),
   );
   const clipRatio = actualClipScenes.length / result.scenes.length;
   const mediaStarts = new Set(actualClipScenes.map((scene) => scene.mediaStartS));
+  const approvedStarts = new Set([28.5, 24, 30, 34.5, 36, 38, 42, 48]);
   const sourceCardIndex = result.scenes.findIndex((scene) => scene.type === SCENE_TYPES.CARD_SOURCE);
   const coverStillScenes = result.scenes.filter(
     (scene) => scene.type === SCENE_TYPES.STILL && /(?:header|hero|cover|capsule)/i.test(scene.sourceType || ""),
@@ -382,11 +391,16 @@ test("studio composer builds a footage-led Flash Lane slate from official clip r
   );
 
   assert.ok(result.scenes.length >= 12);
-  assert.ok(clipRatio >= 0.55, `expected Flash clip ratio >= .55, got ${clipRatio}`);
-  assert.ok(mediaStarts.size >= 4);
+  assert.ok(clipRatio >= 0.5, `expected Flash clip ratio >= .5, got ${clipRatio}`);
+  assert.ok(mediaStarts.size >= 3);
+  assert.ok([...mediaStarts].every((start) => approvedStarts.has(start)));
   assert.ok(sourceCardIndex > 2, `expected Flash source card after hook section, got ${sourceCardIndex}`);
   assert.equal(coverStillScenes.length, 0);
   assert.ok(maxClipSourceUse <= 3, `expected no clip source over 3 uses, got ${maxClipSourceUse}`);
+  assert.equal(actualClipScenes.length, 8);
+  assert.ok(result.scenes.some((scene) => scene.type === SCENE_TYPES.PUNCH));
+  assert.ok(result.scenes.some((scene) => scene.type === SCENE_TYPES.SPEED_RAMP));
+  assert.ok(result.scenes.some((scene) => scene.type === SCENE_TYPES.FREEZE_FRAME && scene.caption));
   assert.ok(
     result.scenes
       .filter((scene) => CARD_TYPES.has(scene.type))
@@ -421,6 +435,9 @@ test("studio composer does not stretch too few Flash Lane clips past the reuse b
   const actualClipScenes = result.scenes.filter(
     (scene) =>
       scene.type === SCENE_TYPES.CLIP ||
+      scene.type === SCENE_TYPES.PUNCH ||
+      scene.type === SCENE_TYPES.SPEED_RAMP ||
+      scene.type === SCENE_TYPES.FREEZE_FRAME ||
       (scene.type === SCENE_TYPES.OPENER && scene.isClipBacked === true),
   );
 

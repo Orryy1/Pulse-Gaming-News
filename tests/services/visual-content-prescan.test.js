@@ -108,6 +108,20 @@ test("computeSignalsFromSample: striped horizontal contrast lifts text_overlay_l
   assert.ok(sig.text_overlay_likelihood > 0.3);
 });
 
+test("computeSignalsFromSample: white CTA text on black raises promo-card likelihood", () => {
+  const dim = 64;
+  const buf = buildBuffer(dim, (x, y) => {
+    const inTitleStripe = y >= 18 && y <= 24 && x >= 8 && x <= 56 && x % 4 < 2;
+    const inCtaStripe = y >= 42 && y <= 47 && x >= 18 && x <= 46 && x % 3 < 2;
+    return inTitleStripe || inCtaStripe ? [245, 245, 245] : [5, 5, 5];
+  });
+  const sig = v.computeSignalsFromSample(buf, dim);
+
+  assert.ok(sig.dark_pixel_ratio > 0.75);
+  assert.ok(sig.bright_pixel_ratio > 0.05);
+  assert.ok(sig.white_text_on_dark_likelihood > 0.5);
+});
+
 // ── computeContentHash ───────────────────────────────────────────
 
 test("computeContentHash: deterministic for the same buffer", async () => {

@@ -53,6 +53,9 @@ const {
   buildOfficialTrailerClipsFromFrameReport,
 } = require("../lib/studio/v2/official-trailer-clip-refs");
 const {
+  buildFlashLaneFootageBackboneReport,
+} = require("../lib/studio/v2/flash-lane-footage-backbone");
+const {
   assertNarrationAllowedForProof,
   looksLikeLocalTtsPath,
 } = require("../lib/studio/v2/proof-render-safety");
@@ -87,7 +90,7 @@ const DEFAULT_SEGMENT_VALIDATION_REPORT = path.join(
   ROOT,
   "test",
   "output",
-  "official_trailer_segment_validation_v1.json",
+  "official_trailer_segment_validation_apply_local.json",
 );
 const PREFERRED = ["1szzhy9", "rss_4105cb7c837252c3"];
 const TARGET_RUNTIME_S = 61;
@@ -633,6 +636,7 @@ async function renderStillDeckVariant({
         scriptText: renderStory.scriptForCaption || renderStory.full_script,
         maxWordsPerPhrase: 2,
         maxPhraseChars: 14,
+        captionCase: "upper",
       }),
       "utf8",
     );
@@ -939,15 +943,35 @@ async function main() {
   }
 
   const enrichedPackage = await buildStillDeckMediaPackage({ story, plan, frameReport });
-  const officialClipRefs = args.useOfficialTrailerClips
-    ? buildOfficialTrailerClipsFromFrameReport(frameReport, story.id, {
+  let officialClipRefs = [];
+  let footageBackboneReport = null;
+  if (args.useOfficialTrailerClips && frameReport) {
+    if (segmentValidationReport) {
+      footageBackboneReport = buildFlashLaneFootageBackboneReport({
+        storyId: story.id,
+        frameReport,
         segmentValidationReport,
-        requireValidatedSegments: Boolean(segmentValidationReport),
-      })
-    : [];
+        targetRuntimeS: 66,
+      });
+      officialClipRefs = footageBackboneReport.validated_clip_refs || [];
+    } else {
+      officialClipRefs = buildOfficialTrailerClipsFromFrameReport(frameReport, story.id, {
+        maxClips: 8,
+        maxCandidateWindowsPerSource: 3,
+        includeFrameAnchoredWindows: true,
+      });
+    }
+  }
   if (officialClipRefs.length) {
     enrichedPackage.media.clips = officialClipRefs;
     enrichedPackage.metrics.acceptedOfficialClipRefs = officialClipRefs.length;
+  }
+  if (footageBackboneReport) {
+    await fs.writeJson(path.join(OUT, "footage_backbone_for_render.json"), footageBackboneReport, {
+      spaces: 2,
+    });
+    enrichedPackage.metrics.footageBackboneVerdict = footageBackboneReport.verdict;
+    enrichedPackage.metrics.projectedClipDominance = footageBackboneReport.projected_clip_dominance;
   }
   await fs.writeJson(path.join(OUT, "enriched_media_package.json"), enrichedPackage, { spaces: 2 });
   await fs.writeFile(

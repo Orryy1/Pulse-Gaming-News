@@ -166,7 +166,20 @@ test("controlled frame extraction rejects unsafe face-like frames", async () => 
   const outputRoot = tempOutputRoot("unsafe-face");
   await cleanTempRoot(outputRoot);
 
-  const report = await runControlledFrameExtraction([framePlan()], {
+  const report = await runControlledFrameExtraction([
+    framePlan({
+      target_frames: [
+        {
+          source_url: "https://images.example/author.jpg",
+          source_type: "article_image",
+          entity: "Unknown Person",
+          target_time_percent: 0.42,
+          downloads_allowed: false,
+          extraction_allowed: false,
+        },
+      ],
+    }),
+  ], {
     applyLocal: true,
     outputRoot,
     extractor: async ({ outputPath }) => {
@@ -191,8 +204,55 @@ test("controlled frame extraction rejects unsafe face-like frames", async () => 
   });
 
   assert.equal(report.summary.frames_accepted, 0);
-  assert.equal(report.summary.frames_rejected, 2);
+  assert.equal(report.summary.frames_rejected, 1);
   assert.ok(report.plans[0].frames.every((frame) => frame.status === "rejected_qa"));
+});
+
+test("controlled frame extraction allows official game-character faces when trailer provenance is strong", async () => {
+  const outputRoot = tempOutputRoot("official-game-character-face");
+  await cleanTempRoot(outputRoot);
+
+  const report = await runControlledFrameExtraction([framePlan()], {
+    applyLocal: true,
+    outputRoot,
+    extractor: async ({ outputPath }) => {
+      await fs.ensureDir(path.dirname(outputPath));
+      await fs.writeFile(outputPath, Buffer.from("fake-frame"));
+      return { outputPath };
+    },
+    inspectFrame: async (outputPath) => ({
+      local_path: outputPath,
+      file_size: 10,
+      content_hash: outputPath,
+      width: 1280,
+      height: 720,
+      thumbnail_safe: false,
+      likely_has_face: true,
+      black_frame: false,
+      blur_verdict: "pass",
+      verdict: "fail",
+      warnings: [],
+      failures: ["unsafe_face_like_frame"],
+      prescan: {
+        likely_is_stock_person: false,
+        likely_has_face: true,
+        likely_is_logo: false,
+        text_overlay_likelihood: 0,
+        edge_density: 0.18,
+        saturation_mean: 0.42,
+      },
+    }),
+  });
+
+  assert.equal(report.summary.frames_accepted, 2);
+  assert.equal(report.plans[0].frames[0].qa.thumbnail_safe, true);
+  assert.equal(
+    report.plans[0].frames[0].qa.failures.includes("unsafe_face_like_frame"),
+    false,
+  );
+  assert.ok(
+    report.plans[0].frames[0].qa.warnings.includes("official_game_character_face_allowed"),
+  );
 });
 
 test("controlled frame extraction rejects official trailer title or rating cards", async () => {
@@ -232,6 +292,51 @@ test("controlled frame extraction rejects official trailer title or rating cards
   assert.equal(report.summary.frames_accepted, 0);
   assert.equal(report.summary.frames_rejected, 2);
   assert.ok(report.plans[0].frames.every((frame) => frame.status === "rejected_qa"));
+  assert.ok(
+    report.plans[0].frames.every((frame) =>
+      frame.qa.failures.includes("title_or_rating_card_frame"),
+    ),
+  );
+});
+
+test("controlled frame extraction rejects official trailer promo CTA cards", async () => {
+  const outputRoot = tempOutputRoot("promo-cta-card");
+  await cleanTempRoot(outputRoot);
+
+  const report = await runControlledFrameExtraction([framePlan()], {
+    applyLocal: true,
+    outputRoot,
+    extractor: async ({ outputPath }) => {
+      await fs.ensureDir(path.dirname(outputPath));
+      await fs.writeFile(outputPath, Buffer.from("fake-frame"));
+      return { outputPath };
+    },
+    inspectFrame: async (outputPath) => ({
+      local_path: outputPath,
+      file_size: 10,
+      content_hash: outputPath,
+      width: 1280,
+      height: 720,
+      thumbnail_safe: true,
+      likely_has_face: false,
+      black_frame: false,
+      blur_verdict: "pass",
+      verdict: "pass",
+      warnings: [],
+      failures: [],
+      prescan: {
+        likely_is_logo: false,
+        text_overlay_likelihood: 0.03,
+        white_text_on_dark_likelihood: 0.82,
+        bright_pixel_ratio: 0.07,
+        dark_pixel_ratio: 0.72,
+        edge_density: 0.14,
+        saturation_mean: 0.28,
+      },
+    }),
+  });
+
+  assert.equal(report.summary.frames_accepted, 0);
   assert.ok(
     report.plans[0].frames.every((frame) =>
       frame.qa.failures.includes("title_or_rating_card_frame"),

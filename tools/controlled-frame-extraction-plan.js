@@ -31,6 +31,9 @@ function parseArgs(argv) {
     motionReport: null,
     trailerReferences: null,
     noTrailerReferences: false,
+    maxReferences: 4,
+    maxReferencesPerEntity: 1,
+    maxTargetFrames: 12,
   };
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i];
@@ -42,6 +45,13 @@ function parseArgs(argv) {
     else if (arg === "--motion-report") args.motionReport = argv[++i] || null;
     else if (arg === "--trailer-references") args.trailerReferences = argv[++i] || null;
     else if (arg === "--no-trailer-references") args.noTrailerReferences = true;
+    else if (arg === "--max-references") {
+      args.maxReferences = Math.max(1, Number(argv[++i]) || args.maxReferences);
+    } else if (arg === "--max-references-per-entity") {
+      args.maxReferencesPerEntity = Math.max(1, Number(argv[++i]) || args.maxReferencesPerEntity);
+    } else if (arg === "--max-target-frames") {
+      args.maxTargetFrames = Math.max(1, Number(argv[++i]) || args.maxTargetFrames);
+    }
     else if (arg === "--help" || arg === "-?") args.help = true;
   }
   return args;
@@ -62,6 +72,11 @@ function printHelp() {
       "                        Read official trailer references when building motion plans",
       "  --no-trailer-references",
       "                        Ignore official trailer reference report",
+      "  --max-references <n>  Maximum official trailer references per story",
+      "  --max-references-per-entity <n>",
+      "                        Allow controlled alternate official references per game/entity",
+      "  --max-target-frames <n>",
+      "                        Maximum target frames to plan per story",
       "  --json                Print JSON instead of Markdown",
       "",
       "This command is report-only: it plans target frames but never downloads videos, extracts frames, slices clips, publishes or mutates data.",
@@ -177,7 +192,11 @@ async function main() {
   }
 
   const motion = await loadMotionPlans(args);
-  const report = buildControlledFrameExtractionReport(motion.plans);
+  const report = buildControlledFrameExtractionReport(motion.plans, {
+    maxReferences: args.maxReferences,
+    maxReferencesPerEntity: args.maxReferencesPerEntity,
+    maxTargetFrames: args.maxTargetFrames,
+  });
   report.story_mode = motion.mode;
   report.motion_report_source = motion.motionReportSource;
   const markdown = renderControlledFrameExtractionMarkdown(report);

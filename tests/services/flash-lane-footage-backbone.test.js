@@ -110,6 +110,98 @@ test("Flash Lane footage backbone allows three validated clip windows", () => {
   assert.equal(report.validated_clip_refs.length, 3);
 });
 
+test("Flash Lane footage backbone projects enough validated clips for a 60s Flash proof", () => {
+  const entities = ["GTA", "Red Dead", "BioShock", "Mafia", "Borderlands", "Civilization", "NBA", "WWE"];
+  const frames = entities.map((entity, index) =>
+    frame({
+      entity,
+      source: `https://video.example/${index}-${entity}.m3u8`,
+      seconds: 44,
+    }),
+  );
+  const segments = entities.map((entity, index) =>
+    segment({
+      entity,
+      source: `https://video.example/${index}-${entity}.m3u8`,
+    }),
+  );
+
+  const report = buildFlashLaneFootageBackboneReport({
+    storyId: "story-1",
+    targetRuntimeS: 66,
+    frameReport: frameReport(frames),
+    segmentValidationReport: { segments },
+  });
+
+  assert.equal(report.verdict, "ready_for_flash_render_preflight");
+  assert.equal(report.validated_clip_refs.length, 8);
+  assert.ok(report.projected_clip_dominance >= 0.55);
+  assert.deepEqual(report.blockers, []);
+});
+
+test("Flash Lane footage backbone balances validated clips across story entities", () => {
+  const frames = [
+    frame({ entity: "GTA", source: "https://video.example/gta-1.m3u8", seconds: 44 }),
+    frame({ entity: "GTA", source: "https://video.example/gta-2.m3u8", seconds: 44 }),
+    frame({ entity: "GTA", source: "https://video.example/gta-3.m3u8", seconds: 44 }),
+    frame({ entity: "Red Dead", source: "https://video.example/red-1.m3u8", seconds: 44 }),
+    frame({ entity: "BioShock", source: "https://video.example/bio-1.m3u8", seconds: 44 }),
+  ];
+  const segments = frames.map((item) =>
+    segment({
+      entity: item.entity,
+      source: item.source_url,
+    }),
+  );
+
+  const report = buildFlashLaneFootageBackboneReport({
+    storyId: "story-1",
+    targetRuntimeS: 20,
+    minClipDominance: 0.5,
+    frameReport: frameReport(frames),
+    segmentValidationReport: { segments },
+  });
+
+  assert.deepEqual(
+    report.validated_clip_refs.slice(0, 3).map((ref) => ref.entity),
+    ["GTA", "Red Dead", "BioShock"],
+  );
+});
+
+test("Flash Lane footage backbone excludes validated clips below the Flash quality floor", () => {
+  const lowQuality = frame({
+    entity: "GTA",
+    source: "https://video.example/gta-low.m3u8",
+    seconds: 44,
+  });
+  lowQuality.qa.prescan.edge_density = 0.09;
+  lowQuality.qa.prescan.saturation_mean = 0.1;
+  lowQuality.qa.verdict = "warn";
+  const highQuality = frame({
+    entity: "BioShock",
+    source: "https://video.example/bioshock-high.m3u8",
+    seconds: 44,
+  });
+
+  const report = buildFlashLaneFootageBackboneReport({
+    storyId: "story-1",
+    targetRuntimeS: 15,
+    frameReport: frameReport([lowQuality, highQuality]),
+    segmentValidationReport: {
+      segments: [
+        segment({ entity: "GTA", source: "https://video.example/gta-low.m3u8" }),
+        segment({ entity: "BioShock", source: "https://video.example/bioshock-high.m3u8" }),
+      ],
+    },
+  });
+
+  assert.deepEqual(
+    report.validated_clip_refs.map((ref) => ref.entity),
+    ["BioShock"],
+  );
+  assert.ok(report.blockers.includes("footage_backbone_needs_three_validated_clip_windows"));
+});
+
 test("Flash Lane footage backbone markdown is operator-readable", () => {
   const report = buildFlashLaneFootageBackboneReport({
     storyId: "story-1",

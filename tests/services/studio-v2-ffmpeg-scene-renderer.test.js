@@ -25,7 +25,9 @@ test("visual scenes get compact entity popups instead of anonymous cover slides"
 
   assert.match(filter, /BIOSHOCK/);
   assert.match(filter, /OFFICIAL FRAME/);
-  assert.match(filter, /between\(t\\,0\.15\\,2\.35\)/);
+  assert.match(filter, /box=1:boxcolor=black@0\.46/);
+  assert.match(filter, /alpha='if\(lt\(t\\,0\.12\)/);
+  assert.doesNotMatch(filter, /drawbox=x=52:y=108:w=420:h=74/);
 });
 
 test("opener hook overlay is compact and avoids the old full-width top slab", () => {

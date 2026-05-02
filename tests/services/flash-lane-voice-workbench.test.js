@@ -289,6 +289,25 @@ test("Flash Lane voice workbench has a local operator command", () => {
   assert.equal(fs.existsSync(toolPath), true);
 });
 
+test("Flash Lane voice workbench CLI can target a specific local TTS base URL", () => {
+  const { parseArgs } = require("../../tools/flash-lane-voice-workbench");
+  const args = parseArgs([
+    "node",
+    "tools/flash-lane-voice-workbench.js",
+    "--generate-local",
+    "--engine",
+    "chatterbox",
+    "--base-url",
+    "http://127.0.0.1:8766",
+    "--apply-local",
+  ]);
+
+  assert.equal(args.generateLocal, true);
+  assert.equal(args.engine, "chatterbox");
+  assert.equal(args.baseUrl, "http://127.0.0.1:8766");
+  assert.equal(args.dryRun, false);
+});
+
 test("Flash Lane voice workbench can generate a local candidate under test/output", async () => {
   const outputRoot = path.join(process.cwd(), "test", "output", "tmp-voice-workbench");
   fs.rmSync(outputRoot, { recursive: true, force: true });

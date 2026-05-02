@@ -153,3 +153,24 @@ test("buildKineticAss supports Flash captions capped at two-word punches", () =>
     captions.every((caption) => caption.replace(/\\h/g, " ").split(/\s+/).filter(Boolean).length <= 2),
   );
 });
+
+test("buildKineticAss can render Flash Lane captions in uppercase without changing timing", () => {
+  const ass = buildKineticAss({
+    story: { title: "Pokemon GTA" },
+    words: [
+      { word: "Pokemon", start: 0, end: 0.2 },
+      { word: "just", start: 0.22, end: 0.36 },
+      { word: "changed", start: 0.38, end: 0.6 },
+    ],
+    duration: 2,
+    scriptText: "Pokemon just changed",
+    maxWordsPerPhrase: 2,
+    maxPhraseChars: 14,
+    captionCase: "upper",
+  });
+
+  const captions = extractAssDialogueText(ass).join(" ");
+  assert.match(captions, /POKEMON/);
+  assert.doesNotMatch(captions, /Pokemon/);
+  assert.ok(assIntervals(ass).every(([start, end]) => end > start));
+});

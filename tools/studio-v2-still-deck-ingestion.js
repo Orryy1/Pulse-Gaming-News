@@ -32,10 +32,10 @@ const { buildSoundLayerV2 } = require("../lib/studio/v2/sound-layer-v2");
 const { buildKineticAss } = require("../lib/studio/v2/subtitle-layer-v2");
 const { buildStudioEditorial } = require("../lib/studio/editorial-layer");
 const {
-  generateTTS,
   cleanForTTS,
 } = require("../audio");
 const {
+  ensureProductionLocalVoice,
   wordsFromAlignment,
   resolveStudioOutroLine,
 } = require("../lib/studio/sound-layer");
@@ -387,38 +387,31 @@ async function resolveNarration({
   }
 
   if (generateLocalTts) {
-    const audioDir = path.join(outputDir, "audio");
-    await fs.ensureDir(audioDir);
-    const out = path.join(audioDir, `${story.id}_local_tts.mp3`);
     const text = cleanForTTS(story.tts_script || story.full_script || story.body || story.title);
     if (!text.trim()) throw new Error("cannot generate local TTS for empty script");
-    const oldProvider = process.env.TTS_PROVIDER;
-    const oldUrl = process.env.LOCAL_TTS_URL;
-    process.env.TTS_PROVIDER = "local";
-    process.env.LOCAL_TTS_URL = process.env.LOCAL_TTS_URL || "http://127.0.0.1:8765";
-    const ts = out.replace(/\.mp3$/i, "_timestamps.json");
-    try {
-      if (!(await fs.pathExists(out)) || !(await fs.pathExists(ts))) {
-        const rateOverride = Number(
-          process.env.STUDIO_V2_STILL_DECK_LOCAL_TTS_RATE ||
-            process.env.STUDIO_V2_LOCAL_TTS_RATE_MULTIPLIER ||
-            1.55,
-        );
-        await generateTTS(text, out, Number.isFinite(rateOverride) ? rateOverride : 1.55);
-      }
-    } finally {
-      if (oldProvider === undefined) delete process.env.TTS_PROVIDER;
-      else process.env.TTS_PROVIDER = oldProvider;
-      if (oldUrl === undefined) delete process.env.LOCAL_TTS_URL;
-      else process.env.LOCAL_TTS_URL = oldUrl;
-    }
+    const voice = await ensureProductionLocalVoice({
+      root: ROOT,
+      storyId: story.id,
+      editorial: {
+        hook: story.hook || story.title,
+        body: story.body || story.full_script || story.title,
+        loop: story.loop || "",
+        fullScript: story.full_script || story.body || story.title,
+        scriptForCaption: story.scriptForCaption || story.full_script || story.body || story.title,
+        scriptForTTS: story.tts_script || story.full_script || story.body || story.title,
+      },
+      force: process.env.STUDIO_V2_FORCE_TTS === "true",
+    });
+    const meta = await fs.readJson(voice.timestampsPath).catch(() => null);
     return {
       mode: "real_audio",
-      audioPath: out,
-      timestampsPath: (await fs.pathExists(ts)) ? ts : null,
-      durationS: ffprobeDuration(out),
+      audioPath: voice.audioPath,
+      timestampsPath: voice.timestampsPath,
+      durationS: voice.durationS || ffprobeDuration(voice.audioPath),
       provider: "local",
-      source: "local-production-voxcpm-path",
+      source: voice.source || "local-production-voxcpm-path",
+      signatureHash: voice.signatureHash || meta?.meta?.signatureHash || null,
+      acceptedLocalVoice: meta?.meta?.acceptedLocalVoice || null,
     };
   }
 
@@ -566,16 +559,6 @@ async function renderStillDeckVariant({
 }) {
   await fs.ensureDir(outputDir);
   const renderStory = buildRenderStory(story);
-  if (generateLocalTts) {
-    assertNarrationAllowedForProof(
-      {
-        mode: "real_audio",
-        provider: "local",
-        source: "local-production-voxcpm-path",
-      },
-      { allowSilentFixture, allowLocalVoiceDiagnostic },
-    );
-  }
   const narration = await resolveNarration({
     story: renderStory,
     variant,
@@ -741,6 +724,7 @@ async function renderStillDeckVariant({
       voiceId: process.env.ELEVENLABS_VOICE_ID || null,
       editorialScriptAppliedToAudio: narration.mode === "real_audio",
       timestampSource: narration.timestampsPath ? "tts-alignment" : null,
+      approvedLocalVoice: process.env.STUDIO_V2_LOCAL_VOICE_APPROVED === "true",
     },
     audioDurationS: narration.mode === "real_audio" ? narration.durationS : fixtureDurationS,
     assPath,
@@ -766,6 +750,8 @@ async function renderStillDeckVariant({
     source: narration.source,
     audioPath: narration.audioPath ? path.relative(ROOT, narration.audioPath).replace(/\\/g, "/") : null,
     timestampsPath: narration.timestampsPath ? path.relative(ROOT, narration.timestampsPath).replace(/\\/g, "/") : null,
+    signatureHash: narration.signatureHash || null,
+    acceptedLocalVoice: narration.acceptedLocalVoice || null,
     note:
       narration.mode === "real_audio"
         ? "Real narration audio was used for this local proof."

@@ -616,3 +616,13 @@ test("buildStoryFromStillDeckPlan creates a safe local fallback story with v1.5 
   assert.match(fallback.full_script, /BioShock/);
   assert.equal(fallback.source_type, "asset_acquisition_report");
 });
+
+test("still-deck local narration uses the approved production-shaped local voice path", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+  assert.match(src, /ensureProductionLocalVoice\(/);
+  assert.match(src, /acceptedLocalVoice:\s*narration\.acceptedLocalVoice/);
+  assert.doesNotMatch(src, /generateTTS\(/);
+});

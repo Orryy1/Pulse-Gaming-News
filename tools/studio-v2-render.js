@@ -1615,6 +1615,8 @@ async function main() {
     outroStartS: voice.outroStartS || null,
     timestampSource: voice.timestampSource || null,
     editorialScriptAppliedToAudio: voice.editorialScriptAppliedToAudio === true,
+    signatureHash: voice.signatureHash || tsData?.meta?.signatureHash || null,
+    acceptedLocalVoice: tsData?.meta?.acceptedLocalVoice || null,
   };
   report.subtitles = {
     assPath: path.relative(ROOT, assPath).replace(/\\/g, "/"),

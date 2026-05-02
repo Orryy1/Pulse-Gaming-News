@@ -17,8 +17,11 @@ const {
 const { resolveAudioPlan } = require("../../lib/studio/v2/audio-library");
 const {
   applyLocalVoiceRateMultiplier,
+  buildProductionVoiceSignature,
   buildProductionVoiceSegments,
+  ACCEPTED_LOCAL_VOICE_ID,
   evaluateLocalVoicePace,
+  resolveAcceptedLocalVoiceReference,
   resolveLocalTtsEngine,
   resolveStudioOutroLine,
   splitLongVoiceSegments,
@@ -904,6 +907,46 @@ test("studio local voice path chunks long body segments into timeout-safe calls"
   assert.equal(chunks.map((chunk) => chunk.text).join(" "), longBody);
 });
 
+test("studio local voice signature fingerprints accepted Sleepy Liam reference", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-local-voice-"));
+  const firstRef = path.join(dir, "pulse_liam_sleepy.wav");
+  const secondRef = path.join(dir, "pulse_liam_sleepy_v2.wav");
+  fs.writeFileSync(firstRef, "accepted sleepy liam reference");
+  fs.writeFileSync(secondRef, "different local voice reference");
+
+  const env = {
+    LOCAL_TTS_URL: "http://127.0.0.1:8765",
+    STUDIO_V2_LOCAL_VOICE_REFERENCE_ID: "pulse-sleepy-liam-test",
+    STUDIO_V2_LOCAL_VOICE_REFERENCE_FILE: firstRef,
+    STUDIO_V2_LOCAL_TTS_MIN_WPM: "105",
+  };
+  const reference = resolveAcceptedLocalVoiceReference(env);
+  assert.equal(reference.id, "pulse-sleepy-liam-test");
+  assert.equal(reference.fileName, "pulse_liam_sleepy.wav");
+  assert.equal(reference.referencePresent, true);
+  assert.match(reference.referenceHash, /^[a-f0-9]{40}$/);
+
+  const signature = buildProductionVoiceSignature({
+    provider: "local",
+    localEngine: "voxcpm2",
+    voiceSegments: [{ label: "hook", text: "Take-Two just changed course.", rate: 1 }],
+    env,
+  });
+  assert.deepEqual(signature.acceptedLocalVoice, reference);
+  assert.equal(signature.localEngine, "voxcpm2");
+
+  const changed = buildProductionVoiceSignature({
+    provider: "local",
+    localEngine: "voxcpm2",
+    voiceSegments: [{ label: "hook", text: "Take-Two just changed course.", rate: 1 }],
+    env: { ...env, STUDIO_V2_LOCAL_VOICE_REFERENCE_FILE: secondRef },
+  });
+  assert.notEqual(
+    changed.acceptedLocalVoice.referenceHash,
+    signature.acceptedLocalVoice.referenceHash,
+  );
+});
+
 test("studio production voice implementation sends segment text after local pacing", () => {
   const src = fs.readFileSync(
     path.join(__dirname, "..", "..", "lib", "studio", "sound-layer.js"),
@@ -911,6 +954,17 @@ test("studio production voice implementation sends segment text after local paci
   );
   assert.match(src, /productionAudio\.generateTTS\(\s*segment\.text,/);
   assert.doesNotMatch(src, /productionAudio\.generateTTS\(\s*segment\.cleanText,/);
+  assert.match(src, /signature\.acceptedLocalVoice\s*=\s*resolveAcceptedLocalVoiceReference/);
+  assert.equal(ACCEPTED_LOCAL_VOICE_ID, "pulse-sleepy-liam-20260502");
+});
+
+test("studio-v2 render report surfaces accepted local voice fingerprint", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-render.js"),
+    "utf8",
+  );
+  assert.match(src, /acceptedLocalVoice:\s*tsData\?\.meta\?\.acceptedLocalVoice/);
+  assert.match(src, /signatureHash:\s*voice\.signatureHash/);
 });
 
 test("studio-v2-render supports local VoxCPM through the production-shaped path", () => {

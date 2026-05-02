@@ -15,6 +15,7 @@ const {
   hammingDistance,
   filterRepeatPairsByIgnoreRanges,
   buildVisualRepeatIgnoreRanges,
+  analyseRenderedFrameTaste,
   sceneBreakdown,
   buildIssues,
   compareForensicReports,
@@ -179,6 +180,114 @@ test("visual repeat ignore ranges are derived from takeaway scenes", () => {
   assert.deepEqual(ranges, [{ startS: 8, endS: 13, reason: "takeaway_hold" }]);
 });
 
+test("analyseRenderedFrameTaste fails rendered rating and title slates", async () => {
+  const result = await analyseRenderedFrameTaste({
+    frames: [
+      {
+        path: "rating-slate.jpg",
+        timeS: 0,
+        prescan: {
+          text_overlay_likelihood: 0.36,
+          white_text_on_dark_likelihood: 0.82,
+          edge_density: 0.08,
+          saturation_mean: 0.08,
+          bright_pixel_ratio: 0.08,
+          dark_pixel_ratio: 0.81,
+        },
+      },
+      {
+        path: "gameplay.jpg",
+        timeS: 3,
+        prescan: {
+          text_overlay_likelihood: 0.04,
+          white_text_on_dark_likelihood: 0,
+          edge_density: 0.28,
+          saturation_mean: 0.48,
+          bright_pixel_ratio: 0.08,
+          dark_pixel_ratio: 0.18,
+        },
+      },
+    ],
+    prescanFrame: async (frame) => frame.prescan,
+  });
+
+  assert.equal(result.verdict, "fail");
+  assert.equal(result.badFrameCount, 1);
+  assert.equal(result.ratingOrTitleFrameCount, 1);
+  assert.equal(result.badFrames[0].reason, "white_text_on_dark_card");
+});
+
+test("analyseRenderedFrameTaste warns on low-information blurry frames", async () => {
+  const result = await analyseRenderedFrameTaste({
+    frames: [
+      {
+        path: "blurry-corner.jpg",
+        timeS: 38,
+        prescan: {
+          text_overlay_likelihood: 0.02,
+          white_text_on_dark_likelihood: 0,
+          edge_density: 0.02,
+          saturation_mean: 0.11,
+          bright_pixel_ratio: 0.06,
+          dark_pixel_ratio: 0.46,
+        },
+      },
+      {
+        path: "good-gameplay.jpg",
+        timeS: 40,
+        prescan: {
+          text_overlay_likelihood: 0.04,
+          white_text_on_dark_likelihood: 0,
+          edge_density: 0.24,
+          saturation_mean: 0.5,
+          bright_pixel_ratio: 0.08,
+          dark_pixel_ratio: 0.2,
+        },
+      },
+    ],
+    prescanFrame: async (frame) => frame.prescan,
+  });
+
+  assert.equal(result.verdict, "warn");
+  assert.equal(result.lowInformationFrameCount, 1);
+  assert.equal(result.badFrames[0].reason, "low_visual_information_frame");
+});
+
+test("analyseRenderedFrameTaste passes detailed gameplay-like samples", async () => {
+  const result = await analyseRenderedFrameTaste({
+    frames: [
+      {
+        path: "gameplay-a.jpg",
+        timeS: 12,
+        prescan: {
+          text_overlay_likelihood: 0.03,
+          white_text_on_dark_likelihood: 0,
+          edge_density: 0.31,
+          saturation_mean: 0.55,
+          bright_pixel_ratio: 0.1,
+          dark_pixel_ratio: 0.16,
+        },
+      },
+      {
+        path: "gameplay-b.jpg",
+        timeS: 14,
+        prescan: {
+          text_overlay_likelihood: 0.08,
+          white_text_on_dark_likelihood: 0,
+          edge_density: 0.2,
+          saturation_mean: 0.42,
+          bright_pixel_ratio: 0.12,
+          dark_pixel_ratio: 0.26,
+        },
+      },
+    ],
+    prescanFrame: async (frame) => frame.prescan,
+  });
+
+  assert.equal(result.verdict, "pass");
+  assert.equal(result.badFrameCount, 0);
+});
+
 test("sceneBreakdown reports type counts and repeated sources", () => {
   const result = sceneBreakdown({
     sceneList: [
@@ -228,6 +337,34 @@ test("buildIssues flags duration and audio defects", () => {
   assert.equal(issues.length, 2);
   assert.equal(issues[0].code, "duration_mismatch");
   assert.equal(issues[1].code, "audio_recurrence");
+});
+
+test("buildIssues flags rendered frame taste failures", () => {
+  const issues = buildIssues({
+    runtime: { durationDeltaS: 0 },
+    subtitles: { verdict: "pass" },
+    audio: { verdict: "pass" },
+    visual: {
+      verdict: "pass",
+      taste: {
+        verdict: "fail",
+        badFrameCount: 1,
+        ratingOrTitleFrameCount: 1,
+        badFrames: [
+          {
+            frame: "rating-slate.jpg",
+            timeS: 0,
+            reason: "white_text_on_dark_card",
+          },
+        ],
+      },
+    },
+    scene: { repeatedSources: [] },
+  });
+
+  assert.equal(issues.length, 1);
+  assert.equal(issues[0].code, "rendered_frame_taste");
+  assert.equal(issues[0].severity, "fail");
 });
 
 test("buildIssues does not flag benign planned source reuse when diversity is green", () => {

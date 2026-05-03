@@ -3,6 +3,7 @@
 const cp = require("node:child_process");
 const fs = require("fs-extra");
 const path = require("node:path");
+const mediaPaths = require("../lib/media-paths");
 const {
   buildTikTokDispatchManifest,
   renderTikTokDispatchMarkdown,
@@ -19,9 +20,7 @@ const OUT = path.join(ROOT, "test", "output");
 
 function probeDurationSeconds(story) {
   if (!story?.exported_path) return null;
-  const candidate = path.isAbsolute(story.exported_path)
-    ? story.exported_path
-    : path.join(ROOT, story.exported_path);
+  const candidate = mediaPaths.resolveExistingSync(story.exported_path);
   if (!fs.existsSync(candidate)) return null;
   try {
     const raw = cp.execFileSync(
@@ -44,11 +43,33 @@ function probeDurationSeconds(story) {
   }
 }
 
+function renderFreshnessForStory(story, { now = new Date() } = {}) {
+  if (!story?.exported_path) return null;
+  const candidate = mediaPaths.resolveExistingSync(story.exported_path);
+  if (!candidate || !fs.existsSync(candidate)) return null;
+  try {
+    const stats = fs.statSync(candidate);
+    const lastModified = stats.mtime instanceof Date ? stats.mtime : new Date(stats.mtime);
+    const ageHours = Math.max(0, (now.getTime() - lastModified.getTime()) / 3_600_000);
+    return {
+      path: candidate,
+      lastModifiedIso: lastModified.toISOString(),
+      ageHours,
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
 async function main() {
   await fs.ensureDir(OUT);
   const stories = await require("../lib/db").getStories();
   const durationByStoryId = Object.fromEntries(
     stories.map((story) => [story.id, probeDurationSeconds(story)]),
+  );
+  const now = new Date();
+  const renderFreshnessByStoryId = Object.fromEntries(
+    stories.map((story) => [story.id, renderFreshnessForStory(story, { now })]),
   );
   const finalFiles = stories.filter((story) => story.exported_path).map((story) => story.exported_path);
   const reportsByStoryId = await loadFinalVoiceReportsByStoryId(finalFiles, {
@@ -64,6 +85,8 @@ async function main() {
   const manifest = buildTikTokDispatchManifest(stories, {
     durationByStoryId,
     voiceAuditByStoryId,
+    renderFreshnessByStoryId,
+    now,
   });
   const jsonPath = path.join(OUT, "tiktok_dispatch_manifest.json");
   const mdPath = path.join(OUT, "tiktok_dispatch_manifest.md");

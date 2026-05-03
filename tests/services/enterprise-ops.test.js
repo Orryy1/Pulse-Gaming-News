@@ -326,6 +326,36 @@ test("TikTok dispatch manifest prefers ready packs over higher-urgency missing a
   assert.equal(manifest.topPack.status, "ready_for_operator_review");
 });
 
+test("TikTok dispatch manifest does not produce an upload action when no pack is ready", () => {
+  const manifest = buildTikTokDispatchManifest(
+    [
+      {
+        id: "missing",
+        title: "Missing assets",
+        approved: true,
+        flair: "Verified",
+        breaking_score: 95,
+      },
+      {
+        id: "stale",
+        title: "Old rendered short",
+        exported_path: "old.mp4",
+        image_path: "cover.png",
+      },
+    ],
+    {
+      durationByStoryId: { stale: 70 },
+      renderFreshnessByStoryId: {
+        stale: { stale: true, ageHours: 240 },
+      },
+      now: new Date("2026-05-03T10:00:00Z"),
+    },
+  );
+
+  assert.equal(manifest.topReadyPack, null);
+  assert.equal(manifest.sampleDiscordNotification, null);
+});
+
 test("TikTok dispatch pack downgrades final renders without approved voice evidence", () => {
   const pack = buildTikTokDispatchPack(
     {
@@ -350,6 +380,31 @@ test("TikTok dispatch pack downgrades final renders without approved voice evide
   assert.match(pack.discordNotification, /Voice gate: review/);
 });
 
+test("TikTok dispatch pack marks stale final renders as not ready for live dispatch", () => {
+  const pack = buildTikTokDispatchPack(
+    {
+      id: "story1",
+      title: "Ancient render",
+      exported_path: "output/final/story1.mp4",
+      thumbnail_candidate_path: "output/thumbnails/story1.png",
+    },
+    {
+      durationSeconds: 70,
+      renderFreshness: {
+        stale: true,
+        ageHours: 220,
+        lastModifiedIso: "2026-04-24T12:00:00.000Z",
+      },
+      now: new Date("2026-05-03T10:00:00.000Z"),
+    },
+  );
+
+  assert.equal(pack.status, "stale_render_review_required");
+  assert.equal(pack.renderFreshness.stale, true);
+  assert.match(pack.discordNotification, /stale/i);
+  assert.equal(pack.officialInboxJson.ready_for_upload, false);
+});
+
 test("TikTok dispatch tooling loads final voice sidecar reports before gating", () => {
   const source = fs.readFileSync(
     path.join(__dirname, "..", "..", "tools", "tiktok-dispatch-pack.js"),
@@ -358,6 +413,7 @@ test("TikTok dispatch tooling loads final voice sidecar reports before gating", 
 
   assert.match(source, /loadFinalVoiceReportsByStoryId/);
   assert.match(source, /reportsByStoryId/);
+  assert.match(source, /renderFreshnessByStoryId/);
 });
 
 test("social platform operations report separates working platforms from external blockers", () => {

@@ -8,8 +8,10 @@ const dotenv = require("dotenv");
 const {
   buildFinalVoiceAudit,
   renderFinalVoiceAuditMarkdown,
-  storyIdFromPath,
 } = require("../lib/studio/v2/final-voice-audit");
+const {
+  loadFinalVoiceReportsByStoryId,
+} = require("../lib/studio/v2/final-voice-report-loader");
 
 dotenv.config({ override: true });
 
@@ -26,37 +28,6 @@ function parseArgs(argv) {
     else if (arg === "--json") args.json = true;
   }
   return args;
-}
-
-async function safeReadJson(file) {
-  try {
-    if (await fs.pathExists(file)) return await fs.readJson(file);
-  } catch (_) {
-    return null;
-  }
-  return null;
-}
-
-async function loadReportsByStoryId(files, finalDir) {
-  const reports = {};
-  for (const file of files) {
-    const id = storyIdFromPath(file);
-    const candidates = [
-      path.join(finalDir, `${id}.voice.json`),
-      path.join(finalDir, `${id}.render_manifest.json`),
-      path.join(finalDir, `${id}.json`),
-      path.join(OUT, `${id}.voice.json`),
-      path.join(OUT, `${id}.render_manifest.json`),
-    ];
-    for (const candidate of candidates) {
-      const json = await safeReadJson(candidate);
-      if (json) {
-        reports[id] = json;
-        break;
-      }
-    }
-  }
-  return reports;
 }
 
 async function listMp4s(finalDir, limit) {
@@ -82,7 +53,10 @@ async function main() {
   await fs.ensureDir(outDir);
 
   const files = await listMp4s(finalDir, args.limit);
-  const reportsByStoryId = await loadReportsByStoryId(files, finalDir);
+  const reportsByStoryId = await loadFinalVoiceReportsByStoryId(files, {
+    finalDir,
+    outputDirs: [outDir, OUT],
+  });
   const report = buildFinalVoiceAudit({ files, reportsByStoryId });
   const jsonPath = path.join(outDir, "final_voice_audit.json");
   const mdPath = path.join(outDir, "final_voice_audit.md");

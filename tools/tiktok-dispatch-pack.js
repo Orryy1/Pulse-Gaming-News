@@ -10,6 +10,9 @@ const {
 const {
   buildFinalVoiceAudit,
 } = require("../lib/studio/v2/final-voice-audit");
+const {
+  loadFinalVoiceReportsByStoryId,
+} = require("../lib/studio/v2/final-voice-report-loader");
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
@@ -47,8 +50,13 @@ async function main() {
   const durationByStoryId = Object.fromEntries(
     stories.map((story) => [story.id, probeDurationSeconds(story)]),
   );
+  const finalFiles = stories.filter((story) => story.exported_path).map((story) => story.exported_path);
+  const reportsByStoryId = await loadFinalVoiceReportsByStoryId(finalFiles, {
+    outputDirs: [OUT],
+  });
   const finalVoiceAudit = buildFinalVoiceAudit({
-    files: stories.filter((story) => story.exported_path).map((story) => story.exported_path),
+    files: finalFiles,
+    reportsByStoryId,
   });
   const voiceAuditByStoryId = Object.fromEntries(
     finalVoiceAudit.rows.map((row) => [row.story_id, row]),

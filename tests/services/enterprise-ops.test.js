@@ -1,5 +1,7 @@
 const { test } = require("node:test");
 const assert = require("node:assert");
+const fs = require("node:fs");
+const path = require("node:path");
 
 const { verifyMedia } = require("../../lib/ops/media-verify");
 const {
@@ -346,6 +348,16 @@ test("TikTok dispatch pack downgrades final renders without approved voice evide
   assert.ok(pack.voiceGate.blockers.includes("approved_voice_metadata_missing"));
   assert.match(pack.discordNotification, /TikTok Review/);
   assert.match(pack.discordNotification, /Voice gate: review/);
+});
+
+test("TikTok dispatch tooling loads final voice sidecar reports before gating", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "tiktok-dispatch-pack.js"),
+    "utf8",
+  );
+
+  assert.match(source, /loadFinalVoiceReportsByStoryId/);
+  assert.match(source, /reportsByStoryId/);
 });
 
 test("social platform operations report separates working platforms from external blockers", () => {

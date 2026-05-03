@@ -2,12 +2,18 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("fs-extra");
+const os = require("node:os");
+const path = require("node:path");
 
 const {
   buildFinalVoiceAudit,
   classifyFinalRenderVoice,
   renderFinalVoiceAuditMarkdown,
 } = require("../../lib/studio/v2/final-voice-audit");
+const {
+  loadFinalVoiceReportsByStoryId,
+} = require("../../lib/studio/v2/final-voice-report-loader");
 
 test("final voice audit marks legacy MP4s without approved voice evidence as not reusable", () => {
   const row = classifyFinalRenderVoice({
@@ -82,4 +88,35 @@ test("final voice audit report is readable and does not mutate media", () => {
   const md = renderFinalVoiceAuditMarkdown(report);
   assert.match(md, /Final Voice Audit/);
   assert.match(md, /approved_voice_metadata_missing/);
+});
+
+test("final voice report loader finds sidecar reports for dispatch tooling", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "final-voice-loader-"));
+  const finalDir = path.join(dir, "final");
+  const outDir = path.join(dir, "out");
+  await fs.ensureDir(finalDir);
+  await fs.ensureDir(outDir);
+  const mp4 = path.join(finalDir, "rss_good.mp4");
+  await fs.writeFile(mp4, "fake mp4");
+  await fs.writeJson(path.join(outDir, "rss_good_studio_v2_report.json"), {
+    voice: {
+      provider: "elevenlabs",
+      source: "elevenlabs-production-path",
+      audioPath: "D:/pulse-data/media/output/audio/rss_good.mp3",
+      acoustic: { medianPitchHz: 118 },
+      transcript: "Follow Pulse Gaming so you never miss a beat.",
+    },
+  });
+
+  const reports = await loadFinalVoiceReportsByStoryId([mp4], {
+    finalDir,
+    outputDirs: [outDir],
+  });
+  const report = buildFinalVoiceAudit({
+    files: [mp4],
+    reportsByStoryId: reports,
+  });
+
+  assert.equal(reports.rss_good.voice.provider, "elevenlabs");
+  assert.equal(report.counts.pass, 1);
 });

@@ -12,6 +12,12 @@ const {
 } = require("../../lib/studio/v2/approved-voice-path");
 
 const OUT = path.join(process.cwd(), "test", "output", "tmp-approved-voice-path");
+const ACCEPTED_SLEEPY_LIAM = {
+  id: "pulse-sleepy-liam-20260502",
+  fileName: "pulse_liam_sleepy.wav",
+  referencePresent: true,
+  referenceHash: "a".repeat(40),
+};
 
 function audioFile(name = "voice.mp3", bytes = "fake audio bytes") {
   fs.mkdirSync(OUT, { recursive: true });
@@ -65,6 +71,42 @@ test("approved voice path blocks unapproved low local voice", () => {
   assert.equal(result.verdict, "rejected");
   assert.ok(result.blockers.includes("unapproved_local_tts_voice_path"));
   assert.ok(result.blockers.includes("demonic_low_voice_risk"));
+});
+
+test("approved voice path rejects env-approved local voice without accepted Sleepy Liam reference", () => {
+  const result = evaluateApprovedVoicePath({
+    narration: {
+      provider: "local",
+      source: "local-production-voxcpm-path",
+      audioPath: audioFile("local-env-only.mp3"),
+      transcript: "Take-Two changed course. Follow Pulse Gaming so you never miss a beat.",
+      acoustic: { medianPitchHz: 118 },
+    },
+    env: { STUDIO_V2_LOCAL_VOICE_APPROVED: "true" },
+  });
+
+  assert.equal(result.verdict, "rejected");
+  assert.equal(result.local_voice_approved, false);
+  assert.ok(result.blockers.includes("local_tts_voice_reference_unverified"));
+});
+
+test("approved voice path accepts local voice only with accepted Sleepy Liam reference", () => {
+  const result = evaluateApprovedVoicePath({
+    narration: {
+      provider: "local",
+      source: "local-production-voxcpm-path",
+      audioPath: audioFile("local-sleepy-liam.mp3"),
+      transcript: "Take-Two changed course. Follow Pulse Gaming so you never miss a beat.",
+      acoustic: { medianPitchHz: 118 },
+      acceptedLocalVoice: ACCEPTED_SLEEPY_LIAM,
+    },
+    env: { STUDIO_V2_LOCAL_VOICE_APPROVED: "true" },
+  });
+
+  assert.equal(result.verdict, "approved_for_studio_v2_proof");
+  assert.equal(result.local_voice_approved, true);
+  assert.equal(result.local_voice_reference_approved, true);
+  assert.deepEqual(result.blockers, []);
 });
 
 test("approved voice path recognises production-shaped local Studio V2 cache names", () => {

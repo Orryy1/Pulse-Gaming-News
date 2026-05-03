@@ -730,6 +730,7 @@ async function renderStillDeckVariant({
       editorialScriptAppliedToAudio: narration.mode === "real_audio",
       timestampSource: narration.timestampsPath ? "tts-alignment" : null,
       approvedLocalVoice: process.env.STUDIO_V2_LOCAL_VOICE_APPROVED === "true",
+      acceptedLocalVoice: narration.acceptedLocalVoice || null,
     },
     audioDurationS: narration.mode === "real_audio" ? narration.durationS : fixtureDurationS,
     assPath,

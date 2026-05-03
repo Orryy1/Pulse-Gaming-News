@@ -29,6 +29,13 @@ const FLASH_SCRIPT = [
   "Follow Pulse Gaming so you never miss a beat.",
 ].join(" ");
 
+const ACCEPTED_SLEEPY_LIAM = {
+  id: "pulse-sleepy-liam-20260502",
+  fileName: "pulse_liam_sleepy.wav",
+  referencePresent: true,
+  referenceHash: "d".repeat(40),
+};
+
 function story(overrides = {}) {
   return {
     id: "voice-story",
@@ -129,12 +136,30 @@ test("Flash Lane voice workbench allows explicitly approved clean local output",
       provider: "local",
       source: "local-production-chatterbox-path",
       approvedLocalVoice: true,
+      acceptedLocalVoice: ACCEPTED_SLEEPY_LIAM,
     }),
     env: { STUDIO_V2_LOCAL_VOICE_APPROVED: "false" },
   });
 
   assert.equal(result.verdict, "approved_for_flash_lane_preflight");
   assert.equal(result.pilot_allowed, true);
+});
+
+test("Flash Lane voice workbench rejects local approval without accepted Sleepy Liam reference", () => {
+  const result = evaluateVoiceCandidate({
+    story: story(),
+    candidate: candidate({
+      id: "approved-local-missing-reference",
+      provider: "local",
+      source: "local-production-voxcpm-path",
+      approvedLocalVoice: true,
+    }),
+    env: { STUDIO_V2_LOCAL_VOICE_APPROVED: "true" },
+  });
+
+  assert.equal(result.verdict, "needs_human_voice_review");
+  assert.equal(result.pilot_allowed, false);
+  assert.ok(result.warnings.includes("local_tts_voice_reference_unverified"));
 });
 
 test("Flash Lane voice workbench rejects candidates missing the spoken outro", () => {

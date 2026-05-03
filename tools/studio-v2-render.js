@@ -1582,6 +1582,11 @@ async function main() {
     voiceId: voice.voiceId || null,
     source: voice.source,
     editorialScriptAppliedToAudio: voice.editorialScriptAppliedToAudio === true,
+    approvedLocalVoice:
+      voice.approvedLocalVoice === true ||
+      process.env.STUDIO_V2_LOCAL_VOICE_APPROVED === "true",
+    acceptedLocalVoice:
+      voice.acceptedLocalVoice || tsData?.meta?.acceptedLocalVoice || null,
   };
   const report = buildQualityReportV2({
     storyId: STORY_ID,

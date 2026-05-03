@@ -10,6 +10,13 @@ const {
   narrationVoiceBlocker,
 } = require("../../lib/studio/v2/proof-render-safety");
 
+const ACCEPTED_SLEEPY_LIAM = {
+  id: "pulse-sleepy-liam-20260502",
+  fileName: "pulse_liam_sleepy.wav",
+  referencePresent: true,
+  referenceHash: "b".repeat(40),
+};
+
 function proofAudioPath(name = "approved.mp3") {
   const dir = path.join(process.cwd(), "test", "output", "tmp-proof-render-safety");
   fs.mkdirSync(dir, { recursive: true });
@@ -41,7 +48,30 @@ test("Studio V2 proof safety blocks unapproved local VoxCPM narration before ren
   );
 });
 
-test("Studio V2 proof safety allows approved local narration only with explicit flag", () => {
+test("Studio V2 proof safety rejects env-approved local narration without accepted reference", () => {
+  const narration = {
+    mode: "real_audio",
+    provider: "local",
+    source: "local-production-voxcpm-path",
+    audioPath: proofAudioPath("local-env-only.mp3"),
+    transcript: "Follow Pulse Gaming so you never miss a beat.",
+    acoustic: { medianPitchHz: 118 },
+  };
+
+  assert.equal(
+    narrationVoiceBlocker(narration, { STUDIO_V2_LOCAL_VOICE_APPROVED: "true" }),
+    "local_tts_voice_reference_unverified",
+  );
+  assert.throws(
+    () =>
+      assertNarrationAllowedForProof(narration, {
+        env: { STUDIO_V2_LOCAL_VOICE_APPROVED: "true" },
+      }),
+    /accepted Sleepy Liam voice reference/i,
+  );
+});
+
+test("Studio V2 proof safety allows approved local narration only with explicit flag and accepted reference", () => {
   const narration = {
     mode: "real_audio",
     provider: "local",
@@ -49,6 +79,7 @@ test("Studio V2 proof safety allows approved local narration only with explicit 
     audioPath: proofAudioPath("local-explicitly-approved.mp3"),
     transcript: "Follow Pulse Gaming so you never miss a beat.",
     acoustic: { medianPitchHz: 118 },
+    acceptedLocalVoice: ACCEPTED_SLEEPY_LIAM,
   };
 
   assert.equal(narrationVoiceBlocker(narration, { STUDIO_V2_LOCAL_VOICE_APPROVED: "true" }), null);

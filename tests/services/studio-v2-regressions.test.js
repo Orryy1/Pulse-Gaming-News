@@ -30,6 +30,13 @@ const {
   summariseLocalTtsHealth,
 } = require("../../lib/studio/local-tts-readiness");
 
+const ACCEPTED_SLEEPY_LIAM = {
+  id: "pulse-sleepy-liam-20260502",
+  fileName: "pulse_liam_sleepy.wav",
+  referencePresent: true,
+  referenceHash: "c".repeat(40),
+};
+
 function tempAss(contents) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-v2-"));
   const file = path.join(dir, "captions.ass");
@@ -402,6 +409,7 @@ test("v2 quality report allows explicitly approved studio local voice renders fo
       voiceId: "TX3LPaxmHKxFdv7VOQHJ",
       timestampSource: "local-tts-even-alignment",
       approvedLocalVoice: true,
+      acceptedLocalVoice: ACCEPTED_SLEEPY_LIAM,
     },
     audioDurationS: 60,
     assPath,
@@ -419,6 +427,62 @@ test("v2 quality report allows explicitly approved studio local voice renders fo
   assert.notEqual(report.verdict.lane, "reject");
   assert.ok(
     !report.verdict.reasons.includes("unapproved local TTS voice path"),
+  );
+});
+
+test("v2 quality report rejects local TTS proof audio without accepted Sleepy Liam fingerprint", () => {
+  const assPath = tempAss(dialogue("0:00:00.00", "0:00:59.00", "word"));
+  const scenes = Array.from({ length: 12 }, (_, i) => ({
+    type: i % 3 === 0 ? "clip" : i % 3 === 1 ? "clip.frame" : "card.source",
+    source: `source-${i}.mp4`,
+    duration: 5,
+  }));
+  const transitions = Array.from({ length: 11 }, (_, i) => ({
+    type: "cut",
+    offset: (i + 1) * 5,
+  }));
+  const words = Array.from({ length: 140 }, (_, i) => ({
+    word: `w${i}`,
+    start: i * 0.4,
+    end: i * 0.4 + 0.18,
+  }));
+  const report = buildQualityReportV2({
+    storyId: "x",
+    outputPath: "test/output/x.mp4",
+    pkg: {
+      title: "Pokemon Go",
+      hook: {
+        chosen: {
+          text: "Mega Mewtwo is finally real for Pokemon Go players",
+        },
+      },
+      script: {
+        tightened: Array.from({ length: 140 }, () => "word").join(" "),
+      },
+    },
+    scenes,
+    transitions,
+    audioMeta: {
+      provider: "local",
+      source: "local-production-voxcpm-path",
+      voiceId: "TX3LPaxmHKxFdv7VOQHJ",
+      timestampSource: "local-tts-even-alignment",
+      approvedLocalVoice: true,
+    },
+    audioDurationS: 60,
+    assPath,
+    soundLayerPayload: {
+      cueCount: 0,
+      filterLines: ["sidechaincompress=threshold=0.05:ratio=4"],
+    },
+    realignedWords: words,
+    renderedDurationS: 60,
+    branch: "test",
+  });
+
+  assert.equal(report.auto.voicePathUsed.grade, "red");
+  assert.ok(
+    report.verdict.reasons.includes("local TTS voice reference unverified"),
   );
 });
 
@@ -460,6 +524,7 @@ test("v2 quality report accepts approved provided local TTS proof audio", () => 
       voiceId: "TX3LPaxmHKxFdv7VOQHJ",
       timestampSource: "tts-alignment",
       approvedLocalVoice: true,
+      acceptedLocalVoice: ACCEPTED_SLEEPY_LIAM,
     },
     audioDurationS: 60,
     assPath,
@@ -1012,6 +1077,7 @@ test("studio production voice implementation sends segment text after local paci
   assert.match(src, /productionAudio\.generateTTS\(\s*segment\.text,/);
   assert.doesNotMatch(src, /productionAudio\.generateTTS\(\s*segment\.cleanText,/);
   assert.match(src, /signature\.acceptedLocalVoice\s*=\s*resolveAcceptedLocalVoiceReference/);
+  assert.match(src, /acceptedLocalVoice:\s*signature\.acceptedLocalVoice/);
   assert.equal(ACCEPTED_LOCAL_VOICE_ID, "pulse-sleepy-liam-20260502");
 });
 

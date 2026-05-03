@@ -18,12 +18,25 @@ const OUT = path.join(ROOT, "test", "output");
 async function main() {
   await fs.ensureDir(OUT);
   const publicUrl = getPublicUrl();
+  let tokenStatus = null;
+  try {
+    const { inspectTokenStatus } = require("../upload_tiktok");
+    tokenStatus = await inspectTokenStatus();
+  } catch (err) {
+    tokenStatus = {
+      ok: false,
+      reason: `token_status_failed:${err.message}`,
+      refresh_available: false,
+      needs_reauth: true,
+    };
+  }
   const liveProbe = process.argv.includes("--live-probe")
     ? await probeTikTokClientCredentials({ env: process.env })
     : null;
   const report = buildTikTokAuthDoctorReport({
     env: process.env,
     publicUrl,
+    tokenStatus,
     clientCredentialsProbe: liveProbe,
   });
   const jsonPath = path.join(OUT, "tiktok_auth_doctor.json");

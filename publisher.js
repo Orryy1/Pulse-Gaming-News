@@ -1149,6 +1149,7 @@ async function _publishNextStoryInner() {
   const {
     recordPlatformBlock,
     getPlatformStatus,
+    isRetryablePlatformBlock,
   } = require("./lib/services/publish-block");
   const sqliteOn = process.env.USE_SQLITE === "true";
   let pubRepos = null;
@@ -1608,7 +1609,7 @@ async function _publishNextStoryInner() {
       `[publisher] Facebook Reel: SKIPPED (${fbReelsMode.reason}) — ` +
         `FB Card fallback continues.`,
     );
-  } else if (fbPrior && fbPrior.status === "blocked") {
+  } else if (fbPrior && fbPrior.status === "blocked" && !isRetryablePlatformBlock(fbPrior)) {
     result.facebook = true;
     result.platform_outcomes.facebook = "duplicate_blocked";
     console.log(

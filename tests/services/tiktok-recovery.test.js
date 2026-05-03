@@ -35,6 +35,40 @@ test("TikTok auth doctor marks generated OAuth shape valid without exposing secr
   assert.doesNotMatch(md, /secret-value|aw1234567890abcd/);
 });
 
+test("TikTok auth doctor reports OAuth token health without exposing token values", () => {
+  const {
+    buildTikTokAuthDoctorReport,
+    renderTikTokAuthDoctorMarkdown,
+  } = require("../../lib/platforms/tiktok-auth-doctor");
+
+  const report = buildTikTokAuthDoctorReport({
+    env: {
+      TIKTOK_CLIENT_KEY: "aw1234567890abcd",
+      TIKTOK_CLIENT_SECRET: "secret-value",
+      TIKTOK_REDIRECT_URI: "https://pulse.orryy.com/auth/tiktok/callback",
+    },
+    tokenStatus: {
+      ok: true,
+      reason: "ok",
+      expires_in_seconds: 50_000,
+      refresh_available: true,
+      needs_reauth: false,
+      access_token: "should-not-print",
+    },
+  });
+
+  assert.equal(report.token_status.ok, true);
+  assert.equal(report.token_status.reason, "ok");
+  assert.equal(report.token_status.connected, true);
+  assert.equal(report.token_status.access_token, undefined);
+
+  const md = renderTikTokAuthDoctorMarkdown(report);
+  assert.match(md, /OAuth Token/);
+  assert.match(md, /Connected: true/);
+  assert.match(md, /Needs re-auth: false/);
+  assert.doesNotMatch(md, /should-not-print|secret-value|aw1234567890abcd/);
+});
+
 test("TikTok auth doctor can include a redacted live client credential probe", async () => {
   const {
     buildTikTokAuthDoctorReport,

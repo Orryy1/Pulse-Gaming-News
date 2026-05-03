@@ -25,6 +25,7 @@ const { runMigrations } = require("../../lib/migrate");
 const {
   recordPlatformBlock,
   getPlatformStatus,
+  isRetryablePlatformBlock,
 } = require("../../lib/services/publish-block");
 const {
   bind: bindPlatformPosts,
@@ -192,6 +193,35 @@ test("getPlatformStatus: returns the row when one exists, null otherwise", () =>
     platform: "youtube",
   });
   assert.equal(miss, null);
+});
+
+test("isRetryablePlatformBlock: stale Facebook page gate can be retried after Page eligibility changes", () => {
+  assert.equal(
+    isRetryablePlatformBlock({
+      platform: "facebook_reel",
+      status: "blocked",
+      block_reason: "page_not_eligible",
+    }),
+    true,
+  );
+
+  assert.equal(
+    isRetryablePlatformBlock({
+      platform: "facebook_reel",
+      status: "blocked",
+      block_reason: "title-skip: duplicate story",
+    }),
+    false,
+  );
+
+  assert.equal(
+    isRetryablePlatformBlock({
+      platform: "instagram_reel",
+      status: "blocked",
+      block_reason: "page_not_eligible",
+    }),
+    false,
+  );
 });
 
 test("publish-block covers every publisher.js platform key (tiktok, instagram_reel, facebook_reel, twitter_video) without sentinel pollution", () => {

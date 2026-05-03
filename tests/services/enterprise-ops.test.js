@@ -476,6 +476,48 @@ test("social platform operations marks Facebook Reels working after visible Grap
   );
 });
 
+test("social platform operations markdown shows healthy TikTok token while direct posting remains externally blocked", () => {
+  const report = buildSocialPlatformOperationsReport({
+    platformStatus: {
+      operational: {
+        youtube: { state: "enabled", reason: "core_upload_path" },
+        instagram_reel: { state: "enabled", reason: "graph_credentials_present" },
+        facebook_reel: { state: "enabled", reason: "facebook_reels_enabled" },
+        tiktok: { state: "blocked_external", reason: "tiktok_direct_post_app_review" },
+        twitter: { state: "disabled", reason: "x_optional_disabled" },
+      },
+      counts: {},
+    },
+    facebookReelsEligibility: {
+      classification: {
+        verdict: "eligible_for_normal_publish",
+        reason: "visible_graph_video_or_reel_found",
+        counts: { videos: 1, reels: 1, posts: 7 },
+        page: { followers_count: 1, fan_count: 1 },
+      },
+    },
+    tiktokTokenStatus: {
+      ok: true,
+      reason: "ok",
+      expires_in_seconds: 50_000,
+      refresh_available: true,
+      needs_reauth: false,
+    },
+    tiktokDiagnosis: {
+      evidence: { uploadScopeRequested: true },
+    },
+    dispatchManifest: {},
+  });
+
+  assert.equal(report.platforms.tiktok.token.ok, true);
+  assert.equal(report.platforms.tiktok.state, "blocked_external");
+  assert.ok(!report.operatorActions.some((a) => /re-auth required/i.test(a)));
+
+  const md = renderSocialPlatformOperationsMarkdown(report);
+  assert.match(md, /Token: ok=true reason=ok/);
+  assert.doesNotMatch(md, /access_token|refresh_token|Bearer/);
+});
+
 test("release radar gate rejects insufficient verified candidates", () => {
   const radar = buildMonthlyReleaseRadar({
     monthLabel: "May 2026",

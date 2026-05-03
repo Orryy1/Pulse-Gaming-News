@@ -411,6 +411,11 @@ test("TikTok dispatch tooling loads final voice sidecar reports before gating", 
     "utf8",
   );
 
+  assert.match(source, /dotenv\.config/);
+  assert.ok(
+    source.indexOf("dotenv.config") < source.indexOf("require(\"../lib/db\")"),
+    "tiktok dispatch must load .env before opening lib/db so local mirror SQLite paths are honoured",
+  );
   assert.match(source, /loadFinalVoiceReportsByStoryId/);
   assert.match(source, /reportsByStoryId/);
   assert.match(source, /renderFreshnessByStoryId/);

@@ -3,6 +3,9 @@
 const cp = require("node:child_process");
 const fs = require("fs-extra");
 const path = require("node:path");
+const dotenv = require("dotenv");
+
+dotenv.config({ override: true });
 const mediaPaths = require("../lib/media-paths");
 const {
   buildTikTokDispatchManifest,

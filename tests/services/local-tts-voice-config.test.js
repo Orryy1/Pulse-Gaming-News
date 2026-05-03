@@ -151,3 +151,15 @@ test("Pulse local TTS smoke test uses a natural rate by default", () => {
   assert.match(smokeSource, /LOCAL_TTS_SMOKE_RATE\s*\|\|\s*1\.0/);
   assert.doesNotMatch(smokeSource, /LOCAL_TTS_SMOKE_RATE\s*\|\|\s*1\.75/);
 });
+
+test("Pulse Studio V2 local render wrapper keeps the accepted Liam pace", () => {
+  const wrapperSource = fs.readFileSync(
+    path.join(ROOT, "tools", "studio-v2-local-render.js"),
+    "utf8",
+  );
+
+  assert.match(wrapperSource, /STUDIO_V2_LOCAL_TTS_RATE_MULTIPLIER\s*\|\|\s*"1\.0"/);
+  assert.match(wrapperSource, /STUDIO_V2_LOCAL_TTS_EFFECTIVE_RATE_CAP\s*\|\|\s*"1\.0"/);
+  assert.doesNotMatch(wrapperSource, /STUDIO_V2_LOCAL_TTS_RATE_MULTIPLIER\s*\|\|\s*"1\.75"/);
+  assert.doesNotMatch(wrapperSource, /STUDIO_V2_LOCAL_TTS_EFFECTIVE_RATE_CAP\s*\|\|\s*"1\.15"/);
+});

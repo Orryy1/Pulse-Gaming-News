@@ -34,8 +34,7 @@ const { runBrandNameQa } = require("./lib/brand-name-qa");
 const { applyProduceSelection } = require("./lib/produce-selection");
 const {
   classifyShortScriptRuntime,
-  DEFAULT_MIN_WORDS,
-  DEFAULT_MAX_WORDS,
+  secondsPerWordForTtsProvider,
 } = require("./lib/services/short-runtime-planner");
 
 // --- Clean text for TTS - shared logic ---
@@ -418,7 +417,14 @@ async function generateAudio() {
       const runtimePlan = classifyShortScriptRuntime({
         text: ttsText,
         story,
+        secondsPerWord: secondsPerWordForTtsProvider(
+          process.env.TTS_PROVIDER || "elevenlabs",
+          process.env,
+        ),
       });
+      const runtimeSecondsPerWord = runtimePlan.estimatedSeconds
+        ? runtimePlan.estimatedSeconds / Math.max(1, runtimePlan.wordCount)
+        : secondsPerWordForTtsProvider(process.env.TTS_PROVIDER || "elevenlabs", process.env);
       story.short_runtime_plan = runtimePlan;
       if (runtimePlan.shouldGenerateShortAudio === false) {
         const reason =
@@ -584,7 +590,7 @@ async function generateAudio() {
           messages: [
             {
               role: "user",
-              content: `Rewrite this script to be ${DEFAULT_MIN_WORDS}-${DEFAULT_MAX_WORDS} spoken words for a 61-75 second gaming Short. It was too short at ${story.word_count} words.\n\n${story.full_script}\n\nStory: ${story.title}\nKeep the same classification: ${story.classification}. Keep the CTA exactly: Follow Pulse Gaming so you never miss a beat.`,
+              content: `Rewrite this script to be ${runtimePlan.minWords}-${runtimePlan.maxWords} spoken words for a 61-75 second gaming Short. It was too short at ${story.word_count} words.\n\n${story.full_script}\n\nStory: ${story.title}\nKeep the same classification: ${story.classification}. Keep the CTA exactly: Follow Pulse Gaming so you never miss a beat.`,
             },
           ],
         });
@@ -606,6 +612,7 @@ async function generateAudio() {
             const newRuntimePlan = classifyShortScriptRuntime({
             text: newTTS,
             story,
+            secondsPerWord: runtimeSecondsPerWord,
           });
           if (newRuntimePlan.shouldGenerateShortAudio === false) {
             throw new Error(

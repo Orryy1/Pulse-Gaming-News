@@ -37,6 +37,23 @@ const ACCEPTED_SLEEPY_LIAM = {
   referenceHash: "c".repeat(40),
 };
 
+function withEnv(overrides, fn) {
+  const previous = {};
+  for (const [key, value] of Object.entries(overrides)) {
+    previous[key] = process.env[key];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  try {
+    return fn();
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
 function tempAss(contents) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-v2-"));
   const file = path.join(dir, "captions.ass");
@@ -328,7 +345,8 @@ test("v2 quality report rejects unapproved studio local VoxCPM voice renders", (
     start: i * 0.4,
     end: i * 0.4 + 0.18,
   }));
-  const report = buildQualityReportV2({
+  const report = withEnv({ STUDIO_V2_LOCAL_VOICE_APPROVED: "false" }, () =>
+    buildQualityReportV2({
     storyId: "x",
     outputPath: "test/output/x.mp4",
     pkg: {
@@ -359,8 +377,9 @@ test("v2 quality report rejects unapproved studio local VoxCPM voice renders", (
     },
     realignedWords: words,
     renderedDurationS: 60,
-    branch: "test",
-  });
+      branch: "test",
+    }),
+  );
 
   assert.equal(report.auto.voicePathUsed.grade, "red");
   assert.equal(report.auto.voicePathUsed.value, "local-production-voxcpm");
@@ -446,7 +465,7 @@ test("v2 quality report rejects local TTS proof audio without accepted Sleepy Li
     start: i * 0.4,
     end: i * 0.4 + 0.18,
   }));
-  const report = buildQualityReportV2({
+  const report = withEnv({ STUDIO_V2_LOCAL_VOICE_APPROVED: "false" }, () => buildQualityReportV2({
     storyId: "x",
     outputPath: "test/output/x.mp4",
     pkg: {
@@ -478,7 +497,7 @@ test("v2 quality report rejects local TTS proof audio without accepted Sleepy Li
     realignedWords: words,
     renderedDurationS: 60,
     branch: "test",
-  });
+  }));
 
   assert.equal(report.auto.voicePathUsed.grade, "red");
   assert.ok(
@@ -502,7 +521,7 @@ test("v2 quality report accepts approved provided local TTS proof audio", () => 
     start: i * 0.4,
     end: i * 0.4 + 0.18,
   }));
-  const report = buildQualityReportV2({
+  const report = withEnv({ STUDIO_V2_LOCAL_VOICE_APPROVED: "false" }, () => buildQualityReportV2({
     storyId: "x",
     outputPath: "test/output/x.mp4",
     pkg: {
@@ -535,7 +554,7 @@ test("v2 quality report accepts approved provided local TTS proof audio", () => 
     realignedWords: words,
     renderedDurationS: 60,
     branch: "test",
-  });
+  }));
 
   assert.equal(report.auto.voicePathUsed.grade, "green");
   assert.equal(report.auto.voicePathUsed.value, "approved-provided-local-tts");

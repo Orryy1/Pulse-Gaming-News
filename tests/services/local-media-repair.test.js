@@ -1,0 +1,366 @@
+"use strict";
+
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+
+const {
+  applyLocalAudioRepairs,
+  buildLocalMediaRepairQueue,
+  renderLocalMediaRepairMarkdown,
+} = require("../../lib/ops/local-media-repair");
+
+const ROOT = path.resolve(__dirname, "..", "..");
+
+const READY_TTS = {
+  ok: true,
+  ready: true,
+  status: "ok",
+  phase: "ready",
+  voice: {
+    alias: "liam",
+    loaded: true,
+    refResolved: true,
+  },
+};
+
+test("local media repair queues approved stale voice renders for local Liam regeneration", () => {
+  const report = buildLocalMediaRepairQueue({
+    stories: [
+      {
+        id: "rss_voice_bad",
+        title: "GTA 6 trailer evidence is stacking up",
+        approved: true,
+        full_script: "GTA 6 has a confirmed clue today. ".repeat(35),
+        audio_path: "output/audio/rss_voice_bad.mp3",
+        exported_path: "output/final/rss_voice_bad.mp4",
+        breaking_score: 82,
+      },
+    ],
+    mediaByStoryId: {
+      rss_voice_bad: {
+        audioExists: true,
+        finalExists: true,
+        finalDurationSeconds: 64,
+      },
+    },
+    voiceAuditByStoryId: {
+      rss_voice_bad: {
+        verdict: "reject",
+        blockers: ["demonic_low_voice_risk"],
+        warnings: [],
+      },
+    },
+    localTts: READY_TTS,
+    dryRun: true,
+  });
+
+  assert.equal(report.counts.ready_local_repair, 1);
+  assert.equal(report.items[0].action, "ready_local_audio_render_repair");
+  assert.ok(report.items[0].needs.includes("regenerate_audio_with_sleepy_liam"));
+  assert.ok(report.items[0].needs.includes("rerender_video_local"));
+  assert.equal(report.safety.posts_to_platforms, false);
+  assert.equal(report.safety.mutates_production_db, false);
+});
+
+test("local media repair blocks overlong scripts before spending local TTS time", () => {
+  const report = buildLocalMediaRepairQueue({
+    stories: [
+      {
+        id: "rss_too_long",
+        title: "GTA 6 trailer evidence gets everything explained",
+        approved: true,
+        full_script: "This sentence makes the short too long. ".repeat(45),
+        audio_path: null,
+        exported_path: null,
+      },
+    ],
+    localTts: READY_TTS,
+  });
+
+  assert.equal(report.items[0].action, "rewrite_or_route_before_render");
+  assert.equal(report.items[0].runtime.shouldGenerateShortAudio, false);
+  assert.ok(report.items[0].blockers.some((item) => item.includes("script_runtime")));
+  assert.equal(report.counts.blocked_runtime, 1);
+});
+
+test("local media repair does not treat old 100-word scripts as 60-second local Liam candidates", () => {
+  const report = buildLocalMediaRepairQueue({
+    stories: [
+      {
+        id: "rss_too_short_for_local",
+        title: "Short local voice script",
+        approved: true,
+        full_script: "GTA 6 has a new clue. ".repeat(17),
+        audio_path: "output/audio/rss_too_short_for_local.mp3",
+        exported_path: "output/final/rss_too_short_for_local.mp4",
+      },
+    ],
+    mediaByStoryId: {
+      rss_too_short_for_local: {
+        audioExists: true,
+        finalExists: true,
+        finalDurationSeconds: 35,
+      },
+    },
+    voiceAuditByStoryId: {
+      rss_too_short_for_local: {
+        verdict: "review",
+        blockers: ["approved_voice_metadata_missing"],
+      },
+    },
+    localTts: READY_TTS,
+  });
+
+  assert.equal(report.items[0].action, "extend_script_before_local_repair");
+  assert.ok(report.items[0].needs.includes("extend_script_for_60s_local_voice"));
+  assert.match(report.items[0].warnings[0], /below_flash_target/);
+});
+
+test("local media repair estimates the cleaned narration text, not stale stored word_count", () => {
+  const report = buildLocalMediaRepairQueue({
+    stories: [
+      {
+        id: "rss_stale_count",
+        title: "GTA 6 evidence is stacking up",
+        approved: true,
+        word_count: 260,
+        full_script: "GTA 6 has a new clue. ".repeat(17),
+        audio_path: "output/audio/rss_stale_count.mp3",
+        exported_path: "output/final/rss_stale_count.mp4",
+      },
+    ],
+    mediaByStoryId: {
+      rss_stale_count: {
+        audioExists: true,
+        finalExists: true,
+        finalDurationSeconds: 35,
+      },
+    },
+    voiceAuditByStoryId: {
+      rss_stale_count: {
+        verdict: "review",
+        blockers: ["approved_voice_metadata_missing"],
+      },
+    },
+    localTts: READY_TTS,
+    cleanText: (text) => text.replace(/\bGTA\s*6\b/gi, "G T A six"),
+  });
+
+  assert.equal(report.items[0].action, "extend_script_before_local_repair");
+  assert.equal(report.items[0].runtime.wordCount, 136);
+  assert.match(report.items[0].warnings[0], /below_flash_target/);
+});
+
+test("local media repair does not resurrect approved off-brand entertainment rows", () => {
+  const report = buildLocalMediaRepairQueue({
+    stories: [
+      {
+        id: "rss_hotd",
+        title: "House of the Dragon Season 3 Trailer and Launch Date Confirmed",
+        approved: true,
+        full_script: "House of the Dragon has a new trailer. ".repeat(30),
+        audio_path: null,
+        exported_path: null,
+      },
+    ],
+    localTts: READY_TTS,
+  });
+
+  assert.equal(report.items[0].action, "skip_topicality_reject");
+  assert.ok(report.items[0].blockers.includes("off_topic_entertainment"));
+  assert.equal(report.counts.skipped, 1);
+});
+
+test("local media repair refuses apply recommendations when local Liam is not healthy", () => {
+  const report = buildLocalMediaRepairQueue({
+    stories: [
+      {
+        id: "rss_missing",
+        title: "Nintendo confirms a Switch 2 update",
+        approved: true,
+        full_script: "Nintendo confirmed new Switch details today. ".repeat(40),
+        audio_path: null,
+        exported_path: null,
+      },
+    ],
+    mediaByStoryId: {
+      rss_missing: {
+        audioExists: false,
+        finalExists: false,
+      },
+    },
+    localTts: {
+      ok: false,
+      ready: false,
+      status: "unreachable",
+      phase: "unknown",
+      reasons: ["health endpoint unreachable"],
+      voice: { alias: null, loaded: false, refResolved: false },
+    },
+  });
+
+  assert.equal(report.items[0].action, "blocked_local_tts_unavailable");
+  assert.ok(report.items[0].blockers.includes("local_tts_not_ready"));
+  assert.equal(report.counts.blocked_local_tts, 1);
+});
+
+test("local media repair leaves current approved-voice renders alone", () => {
+  const report = buildLocalMediaRepairQueue({
+    stories: [
+      {
+        id: "rss_good",
+        title: "Pokemon Go event starts today",
+        approved: true,
+        full_script: "Pokemon Go has a confirmed event today. ".repeat(33),
+        audio_path: "output/audio/rss_good.mp3",
+        exported_path: "output/final/rss_good.mp4",
+      },
+    ],
+    mediaByStoryId: {
+      rss_good: {
+        audioExists: true,
+        finalExists: true,
+        finalDurationSeconds: 66,
+      },
+    },
+    voiceAuditByStoryId: {
+      rss_good: {
+        verdict: "pass",
+        blockers: [],
+        warnings: [],
+      },
+    },
+    localTts: READY_TTS,
+  });
+
+  assert.equal(report.items[0].action, "no_action");
+  assert.equal(report.counts.no_action, 1);
+});
+
+test("local media repair markdown is operator-readable and explicitly local-only", () => {
+  const report = buildLocalMediaRepairQueue({
+    stories: [],
+    localTts: READY_TTS,
+  });
+  const md = renderLocalMediaRepairMarkdown(report);
+
+  assert.match(md, /Local Media Repair Queue/);
+  assert.match(md, /local-only/);
+  assert.match(md, /No OAuth, tokens, Railway env vars or social posts/);
+});
+
+test("local media repair CLI loads .env before opening SQLite and defaults to dry-run", () => {
+  const tool = fs.readFileSync(
+    path.join(ROOT, "tools", "local-media-repair.js"),
+    "utf8",
+  );
+  const dotenvIndex = tool.indexOf("dotenv.config");
+  const dbIndex = tool.indexOf('require("../lib/db")');
+
+  assert.ok(dotenvIndex >= 0, "tool must load .env");
+  assert.ok(dbIndex > dotenvIndex, "tool must load .env before requiring db");
+  assert.match(tool, /dryRun\s*:\s*!args\.applyLocal/);
+  assert.match(tool, /applyLocalAudioRepairs/);
+  assert.match(tool, /--apply-local-audio/);
+  assert.match(tool, /--apply-limit/);
+  assert.doesNotMatch(tool, /postShort|uploadShort|publishAll|autonomous\/publish/);
+});
+
+test("apply-local audio repair writes only queued Liam audio proofs", async () => {
+  const story = {
+    id: "rss_voice_bad",
+    title: "GTA 6 trailer evidence is stacking up",
+    approved: true,
+    full_script: "GTA 6 has a confirmed clue today. ".repeat(35),
+    audio_path: "output/audio/rss_voice_bad.mp3",
+    exported_path: "output/final/rss_voice_bad.mp4",
+  };
+  const report = buildLocalMediaRepairQueue({
+    stories: [
+      story,
+      {
+        id: "rss_too_long",
+        approved: true,
+        full_script: "This sentence makes the short too long. ".repeat(45),
+      },
+    ],
+    mediaByStoryId: {
+      rss_voice_bad: {
+        audioExists: true,
+        finalExists: true,
+        finalDurationSeconds: 64,
+      },
+    },
+    voiceAuditByStoryId: {
+      rss_voice_bad: {
+        verdict: "review",
+        blockers: ["approved_voice_metadata_missing"],
+      },
+    },
+    localTts: READY_TTS,
+  });
+  const generated = [];
+
+  const result = await applyLocalAudioRepairs({
+    report,
+    storiesById: { rss_voice_bad: story },
+    outputRelDir: "test/output/local-media-repair/audio",
+    generateTts: async (text, outputRel, rate) => {
+      generated.push({ text, outputRel, rate });
+      return outputRel;
+    },
+    measureDuration: async () => 66.2,
+  });
+
+  assert.equal(result.applied.length, 1);
+  assert.equal(result.skipped.length, 0);
+  assert.equal(generated.length, 1);
+  assert.equal(generated[0].rate, 1.0);
+  assert.match(generated[0].outputRel, /test[\\/]output[\\/]local-media-repair[\\/]audio[\\/]rss_voice_bad_liam\.mp3/);
+  assert.equal(result.applied[0].duration_seconds, 66.2);
+  assert.equal(result.applied[0].duration_verdict, "pass");
+  assert.equal(result.safety.mutates_production_db, false);
+  assert.equal(result.safety.posts_to_platforms, false);
+});
+
+test("apply-local audio repair reports below-floor Liam proofs as rejected", async () => {
+  const story = {
+    id: "rss_voice_short",
+    title: "GTA 6 trailer evidence is stacking up",
+    approved: true,
+    full_script: "GTA 6 has a confirmed clue today. ".repeat(27),
+    audio_path: "output/audio/rss_voice_short.mp3",
+    exported_path: "output/final/rss_voice_short.mp4",
+  };
+  const report = buildLocalMediaRepairQueue({
+    stories: [story],
+    mediaByStoryId: {
+      rss_voice_short: {
+        audioExists: true,
+        finalExists: true,
+        finalDurationSeconds: 64,
+      },
+    },
+    voiceAuditByStoryId: {
+      rss_voice_short: {
+        verdict: "review",
+        blockers: ["approved_voice_metadata_missing"],
+      },
+    },
+    localTts: READY_TTS,
+    cleanText: (text) => text.replace(/\bGTA\s*6\b/gi, "G T A six"),
+  });
+
+  const result = await applyLocalAudioRepairs({
+    report,
+    storiesById: { rss_voice_short: story },
+    generateTts: async () => null,
+    measureDuration: async () => 58.4,
+  });
+
+  assert.equal(result.applied.length, 1);
+  assert.equal(result.applied[0].duration_verdict, "reject_duration");
+  assert.equal(result.applied[0].duration_seconds, 58.4);
+});

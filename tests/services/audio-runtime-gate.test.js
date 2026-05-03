@@ -20,6 +20,12 @@ test("audio.js checks script runtime before generating TTS", () => {
   );
 });
 
+test("audio.js uses provider-aware timing for local Liam runtime gates", () => {
+  assert.match(AUDIO, /secondsPerWordForTtsProvider/);
+  assert.match(AUDIO, /runtimeSecondsPerWord/);
+  assert.match(AUDIO, /secondsPerWord:\s*runtimeSecondsPerWord/);
+});
+
 test("audio.js persists pre-TTS runtime blocks as QA failures", () => {
   assert.match(AUDIO, /duration_contract_pre_tts/);
   assert.match(AUDIO, /story\.qa_failed\s*=\s*true/);

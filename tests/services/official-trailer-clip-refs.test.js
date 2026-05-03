@@ -488,6 +488,122 @@ test("official clip refs deep-scan dedupes repeated source/entity/start windows"
   );
 });
 
+test("official clip refs deep-scan alternate official sources from a resolver report", () => {
+  const refs = buildOfficialTrailerClipsFromFrameReport(
+    {
+      plans: [
+        {
+          story_id: "story-1",
+          frames: [
+            acceptedFrame({
+              status: "rejected_qa",
+              entity: "GTA",
+              source_url: "https://video.example/gta-open.m3u8",
+            }),
+          ],
+        },
+      ],
+    },
+    "story-1",
+    {
+      includeExploratoryWindows: true,
+      exploratoryStartSeconds: [72],
+      referenceReport: {
+        plans: [
+          {
+            story_id: "story-1",
+            references: [
+              {
+                source_type: "steam_movie",
+                provider: "steam",
+                source_url: "https://video.example/gta-open.m3u8",
+                entity: "GTA",
+                movie_name: "Opening Rating Board",
+                downloads_allowed: false,
+              },
+              {
+                source_type: "steam_movie",
+                provider: "steam",
+                source_url: "https://video.example/gta-action.m3u8",
+                entity: "GTA",
+                movie_name: "Gameplay Update Trailer",
+                downloads_allowed: false,
+              },
+              {
+                source_type: "steam_movie",
+                provider: "steam",
+                source_url: "https://video.example/reddead-action.m3u8",
+                entity: "Red Dead",
+                movie_name: "Launch Trailer",
+                downloads_allowed: false,
+              },
+            ],
+          },
+        ],
+      },
+      maxClips: 20,
+    },
+  );
+
+  assert.deepEqual(
+    refs.map((ref) => `${ref.entity}:${ref.path}:${ref.mediaStartS}`),
+    [
+      "GTA:https://video.example/gta-open.m3u8:72",
+      "GTA:https://video.example/gta-action.m3u8:72",
+      "Red Dead:https://video.example/reddead-action.m3u8:72",
+    ],
+  );
+  assert.equal(refs[1].provenance.reference_report_source, true);
+  assert.equal(refs[1].provenance.movie_name, "Gameplay Update Trailer");
+});
+
+test("official clip refs ignore unsafe or downloadable resolver references", () => {
+  const refs = buildOfficialTrailerClipsFromFrameReport(
+    { plans: [{ story_id: "story-1", frames: [] }] },
+    "story-1",
+    {
+      includeExploratoryWindows: true,
+      exploratoryStartSeconds: [72],
+      referenceReport: {
+        plans: [
+          {
+            story_id: "story-1",
+            references: [
+              {
+                source_type: "steam_movie",
+                provider: "steam",
+                source_url: "https://video.example/downloadable.m3u8",
+                entity: "GTA",
+                downloads_allowed: true,
+              },
+              {
+                source_type: "unofficial_clip",
+                provider: "unknown",
+                source_url: "https://video.example/unofficial.mp4",
+                entity: "GTA",
+                downloads_allowed: false,
+              },
+              {
+                source_type: "igdb_video",
+                provider: "igdb",
+                source_url: "https://video.example/official.m3u8",
+                entity: "BioShock",
+                downloads_allowed: false,
+              },
+            ],
+          },
+        ],
+      },
+      maxClips: 20,
+    },
+  );
+
+  assert.deepEqual(
+    refs.map((ref) => ref.path),
+    ["https://video.example/official.m3u8"],
+  );
+});
+
 test("official clip refs inherit local segment validation before Flash Lane use", () => {
   const frameReport = {
     plans: [

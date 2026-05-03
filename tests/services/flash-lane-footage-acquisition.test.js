@@ -155,6 +155,39 @@ test("footage acquisition plan does not repeat exhausted intro windows", () => {
   assert.ok(gta.suggested_windows.every((window) => window.start_s >= 36));
 });
 
+test("footage acquisition plan treats near-identical attempted windows as exhausted", () => {
+  const plan = buildFlashLaneFootageAcquisitionPlan({
+    storyId: "story-1",
+    frameReport: frameReport(),
+    segmentValidationReport: {
+      segments: [
+        {
+          story_id: "story-1",
+          entity: "BioShock",
+          allowed_for_flash_lane: true,
+          status: "accepted",
+          segment_motion_class: "gameplay_action",
+          action_score: 84,
+        },
+        ...[36, 42.4, 48.4, 54.2].map((start) => ({
+          story_id: "story-1",
+          entity: "GTA",
+          allowed_for_flash_lane: false,
+          status: "rejected",
+          validation_reason: "segment_lacks_gameplay_action_samples",
+          media_start_s: start,
+        })),
+      ],
+    },
+  });
+
+  const gta = plan.shopping_list.find((item) => item.entity === "GTA");
+  assert.deepEqual(
+    gta.suggested_windows.map((window) => window.start_s),
+    [60, 66, 72],
+  );
+});
+
 test("footage acquisition plan becomes proof-ready with enough validated windows", () => {
   const plan = buildFlashLaneFootageAcquisitionPlan({
     storyId: "story-1",

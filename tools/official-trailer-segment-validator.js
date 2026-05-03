@@ -21,6 +21,7 @@ const {
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
 const DEFAULT_FRAME_REPORT = path.join(OUT, "controlled_frame_extraction_worker_v1.json");
+const DEFAULT_REFERENCE_REPORT = path.join(OUT, "official_trailer_references_v1.json");
 
 function parseArgs(argv) {
   const args = {
@@ -28,6 +29,8 @@ function parseArgs(argv) {
     json: false,
     storyId: null,
     frameReport: DEFAULT_FRAME_REPORT,
+    referenceReport: DEFAULT_REFERENCE_REPORT,
+    noReferenceReport: false,
     dryRun: true,
     applyLocal: false,
     outputRoot: DEFAULT_OUTPUT_ROOT,
@@ -43,6 +46,12 @@ function parseArgs(argv) {
     else if (arg === "--json") args.json = true;
     else if (arg === "--story" || arg === "--story-id") args.storyId = argv[++i] || null;
     else if (arg === "--frame-report") args.frameReport = argv[++i] || DEFAULT_FRAME_REPORT;
+    else if (arg === "--reference-report" || arg === "--trailer-references") {
+      args.referenceReport = argv[++i] || DEFAULT_REFERENCE_REPORT;
+      args.noReferenceReport = false;
+    } else if (arg === "--no-reference-report" || arg === "--no-trailer-references") {
+      args.noReferenceReport = true;
+    }
     else if (arg === "--dry-run") {
       args.dryRun = true;
       args.applyLocal = false;
@@ -76,6 +85,8 @@ function printHelp() {
       "",
       "Options:",
       "  --frame-report <p>     Read a controlled frame extraction worker report",
+      "  --reference-report <p> Read official trailer resolver references for alternate source scanning",
+      "  --no-reference-report  Ignore test/output/official_trailer_references_v1.json",
       "  --story-id <id>        Validate one story from the report",
       "  --dry-run              Default. No writes and no source fetches",
       "  --apply-local          Sample trailer segment frames to test/output only",
@@ -104,7 +115,15 @@ async function loadFrameReport(args) {
   return { report, filePath };
 }
 
-function buildClipRefsFromReport(frameReport, storyId, args = {}) {
+async function loadOptionalReferenceReport(args) {
+  if (args.noReferenceReport) return { report: null, filePath: null };
+  const filePath = path.resolve(ROOT, args.referenceReport || DEFAULT_REFERENCE_REPORT);
+  if (!(await fs.pathExists(filePath))) return { report: null, filePath: null };
+  const report = await fs.readJson(filePath);
+  return { report, filePath };
+}
+
+function buildClipRefsFromReport(frameReport, referenceReport, storyId, args = {}) {
   const storyIds = storyId
     ? [storyId]
     : [
@@ -121,6 +140,7 @@ function buildClipRefsFromReport(frameReport, storyId, args = {}) {
       maxClips: args.maxSegments,
       includeExploratoryWindows: args.includeExploratoryWindows,
       exploratoryStartSeconds: args.exploratoryStartSeconds,
+      referenceReport,
     }).map((clip) => ({
       ...clip,
       story_id: id,
@@ -144,13 +164,15 @@ async function main() {
   }
 
   const loaded = await loadFrameReport(args);
-  const clipRefs = buildClipRefsFromReport(loaded.report, args.storyId, args);
+  const loadedReference = await loadOptionalReferenceReport(args);
+  const clipRefs = buildClipRefsFromReport(loaded.report, loadedReference.report, args.storyId, args);
   const report = await runOfficialTrailerSegmentValidation(clipRefs, {
     applyLocal: args.applyLocal,
     outputRoot: args.outputRoot,
     maxSegments: args.maxSegments,
   });
   report.frame_report_source = loaded.filePath;
+  report.reference_report_source = loadedReference.filePath;
   report.clip_refs_input_count = clipRefs.length;
 
   const markdown = renderOfficialTrailerSegmentValidationMarkdown(report);

@@ -9,6 +9,7 @@ const mediaPaths = require("../lib/media-paths");
 const {
   DEFAULT_LOCAL_TTS_URL,
   fetchLocalTtsHealth,
+  prewarmLocalTtsVoice,
   formatLocalTtsStatus,
 } = require("../lib/studio/local-tts-readiness");
 
@@ -20,13 +21,38 @@ const audio = require("../audio");
 
 async function main() {
   const voiceId = brand.voiceId || process.env.ELEVENLABS_VOICE_ID || "default";
-  const summary = await fetchLocalTtsHealth({
+  let summary = await fetchLocalTtsHealth({
     baseUrl: process.env.LOCAL_TTS_URL,
     voiceId,
     timeoutMs: Number(process.env.LOCAL_TTS_HEALTH_TIMEOUT_MS || 5000),
   });
 
   console.log(`[tts] ${formatLocalTtsStatus(summary)}`);
+  if (
+    !summary.ok &&
+    summary.status === "ok" &&
+    summary.ready === true &&
+    summary.voice?.present === true &&
+    summary.voice?.refResolved === true &&
+    summary.voice?.loaded !== true
+  ) {
+    console.log(`[tts] prewarming voice=${summary.voice.alias || voiceId}`);
+    const prewarm = await prewarmLocalTtsVoice({
+      baseUrl: process.env.LOCAL_TTS_URL,
+      voiceId,
+      timeoutMs: Number(process.env.LOCAL_TTS_PREWARM_TIMEOUT_MS || 600000),
+    });
+    console.log(
+      `[tts] prewarm ok voice=${prewarm.voiceId} reused=${prewarm.reused === true} loaded_ms=${prewarm.loadedMs}`,
+    );
+    summary = await fetchLocalTtsHealth({
+      baseUrl: process.env.LOCAL_TTS_URL,
+      voiceId,
+      timeoutMs: Number(process.env.LOCAL_TTS_HEALTH_TIMEOUT_MS || 5000),
+    });
+    console.log(`[tts] ${formatLocalTtsStatus(summary)}`);
+  }
+
   if (!summary.ok) {
     console.error(`[tts] local TTS is not ready: ${summary.reasons.join("; ")}`);
     console.error("[tts] Start tts_server\\start.bat, wait for the Pulse voice to load, then rerun npm run tts:smoke.");

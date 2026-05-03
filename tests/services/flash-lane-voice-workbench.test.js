@@ -4,6 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const crypto = require("node:crypto");
 
 const {
   buildFlashLaneVoiceWorkbench,
@@ -333,6 +334,24 @@ test("Flash Lane voice workbench CLI can target a specific local TTS base URL", 
   assert.equal(args.dryRun, false);
 });
 
+test("Flash Lane voice workbench defaults local generation to natural Sleepy Liam speed", () => {
+  const { parseArgs } = require("../../tools/flash-lane-voice-workbench");
+  const args = parseArgs(["node", "tools/flash-lane-voice-workbench.js", "--generate-local"]);
+  const toolSource = fs.readFileSync(
+    path.join(process.cwd(), "tools", "flash-lane-voice-workbench.js"),
+    "utf8",
+  );
+  const librarySource = fs.readFileSync(
+    path.join(process.cwd(), "lib", "studio", "v2", "flash-lane-voice-workbench.js"),
+    "utf8",
+  );
+
+  assert.equal(args.rate, 1.0);
+  assert.match(toolSource, /default 1\.0/);
+  assert.match(librarySource, /rate = 1\.0/);
+  assert.doesNotMatch(toolSource, /\|\|\s*1\.7/);
+});
+
 test("Flash Lane voice workbench can generate a local candidate under test/output", async () => {
   const outputRoot = path.join(process.cwd(), "test", "output", "tmp-voice-workbench");
   fs.rmSync(outputRoot, { recursive: true, force: true });
@@ -424,6 +443,51 @@ test("Flash Lane voice workbench can keep raw local audio and evaluate a normali
   assert.equal(result.candidate.generation.audio_post_process.filter, "test-normalise");
   assert.equal(fs.existsSync(result.candidate.generation.raw_path), true);
   assert.equal(fs.existsSync(result.candidate.path), true);
+});
+
+test("Flash Lane voice workbench generated local candidate can carry approved Sleepy Liam reference", async () => {
+  const outputRoot = path.join(process.cwd(), "test", "output", "tmp-voice-workbench-approved-ref");
+  fs.rmSync(outputRoot, { recursive: true, force: true });
+  fs.mkdirSync(outputRoot, { recursive: true });
+  const refPath = path.join(outputRoot, "pulse_liam_sleepy.wav");
+  fs.writeFileSync(refPath, "approved sleepy liam reference");
+  const referenceHash = crypto.createHash("sha1").update(fs.readFileSync(refPath)).digest("hex");
+
+  const result = await generateLocalVoiceCandidate({
+    story: story(),
+    outputRoot,
+    applyLocal: true,
+    engine: "voxcpm2",
+    approvedLocalVoice: true,
+    env: {
+      STUDIO_V2_LOCAL_VOICE_REFERENCE_ID: "pulse-sleepy-liam-20260502",
+      STUDIO_V2_LOCAL_VOICE_REFERENCE_FILE: refPath,
+    },
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({
+        audio_base64: Buffer.from("approved local mp3 bytes").toString("base64"),
+        alignment: { characters: Array.from("Follow Pulse Gaming so you never miss a beat.") },
+      }),
+    }),
+    durationProbe: () => 64.5,
+    acousticProbe: () => ({
+      medianPitchHz: 118,
+      integratedLufs: -16,
+      truePeakDb: -1.5,
+      silenceRatio: 0.01,
+      clippingRatio: 0,
+    }),
+  });
+
+  assert.equal(result.status, "generated");
+  assert.equal(result.candidate.approvedLocalVoice, true);
+  assert.deepEqual(result.candidate.acceptedLocalVoice, {
+    id: "pulse-sleepy-liam-20260502",
+    fileName: "pulse_liam_sleepy.wav",
+    referencePresent: true,
+    referenceHash,
+  });
 });
 
 test("Flash Lane voice workbench refuses local generation outside test/output", async () => {

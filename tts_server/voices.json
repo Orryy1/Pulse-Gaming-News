@@ -14,7 +14,7 @@
       "enabled": true,
       "min_median_f0_hz": 95,
       "retry_same_reference": true,
-      "fallback_without_reference": true
+      "fallback_without_reference": false
     },
     "ref_voice_text": "A new Metro game just dropped its official reveal trailer, and nobody expected this franchise to return. Metro twenty 39 is officially happening. The reveal trailer just went live, showing what appears to be a deeply personal story centred on a protagonist grappling with a haunting past. Based on the trailer's tone and imagery, the narrative explores themes of indoctrination and trauma.",
     "notes": "Liam - local Pulse voice uses the longer Sleepy Empire Liam reference that already worked locally. The rejected pulse_v2 reference was too close to the older rushed/high-pitch local voice."

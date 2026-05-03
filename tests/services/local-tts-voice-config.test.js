@@ -22,7 +22,7 @@ test("Pulse VoxCPM voice map carries Sleepy-proven safety parameters", () => {
   assert.equal(pulse.use_prompt_text, false);
   assert.equal(pulse.voice_qa.enabled, true);
   assert.equal(pulse.voice_qa.min_median_f0_hz >= 95, true);
-  assert.equal(pulse.voice_qa.fallback_without_reference, true);
+  assert.equal(pulse.voice_qa.fallback_without_reference, false);
   assert.equal(typeof pulse.ref_voice_text, "string");
   assert.match(pulse.ref_voice_text, /Metro/i);
   assert.match(pulse.notes, /Sleepy Empire Liam/i);
@@ -146,6 +146,8 @@ test("Pulse local TTS smoke test uses a natural rate by default", () => {
     "utf8",
   );
 
+  assert.match(smokeSource, /prewarmLocalTtsVoice/);
+  assert.match(smokeSource, /LOCAL_TTS_PREWARM_TIMEOUT_MS/);
   assert.match(smokeSource, /LOCAL_TTS_SMOKE_RATE\s*\|\|\s*1\.0/);
   assert.doesNotMatch(smokeSource, /LOCAL_TTS_SMOKE_RATE\s*\|\|\s*1\.75/);
 });

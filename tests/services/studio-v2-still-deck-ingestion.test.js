@@ -627,3 +627,15 @@ test("still-deck local narration uses the approved production-shaped local voice
   assert.doesNotMatch(src, /generateTTS\(/);
   assert.doesNotMatch(src, /dotenv"\)\.config\(\{\s*override:\s*true\s*\}\)/);
 });
+
+test("still-deck report wording does not call no-render packages silent-audio proofs", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+  assert.match(src, /No render was attempted, so no narration audio was used/);
+  assert.match(src, /no MP4 render was attempted, so narration was not verified/);
+  assert.match(src, /report\.render_attempted\s*===\s*false/);
+  assert.match(src, /official trailer clips were blocked/i);
+  assert.match(src, /const visualOutput = !renderAttempted/);
+});

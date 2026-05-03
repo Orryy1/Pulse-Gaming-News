@@ -812,14 +812,23 @@ async function makeContactSheet(mp4Path, outPath) {
 function renderComparisonMarkdown(report) {
   const narration = report.narration || {};
   const motion = report.motion || {};
-  const narrationLine = report.render_preflight_error
+  const narrationLine = report.render_attempted === false
+    ? "- No render was attempted, so no narration audio was used or verified; a pilot proof still requires approved narration."
+    : report.render_preflight_error
     ? `- Narration/render was blocked before FFmpeg: ${report.render_preflight_error}`
     : narration.mode === "real_audio"
       ? `- Real narration audio used (${narration.enriched_source || "unknown source"}); ElevenLabs was not called.`
       : "- Silent fixture audio was explicitly allowed for a visual-only diagnostic; not valid for pilot approval.";
+  const clipSafety = motion.official_clip_safety || {};
+  const blockedClipLine =
+    clipSafety.status === "blocked_footage_backbone_not_ready"
+      ? `- Official trailer clips were blocked: ${clipSafety.backbone_verdict || "not_ready"}; validated entities: ${(clipSafety.validated_entities || []).join(", ") || "none"}; missing validated entities: ${(clipSafety.missing_validated_entities || []).join(", ") || "unknown"}.`
+      : null;
   const mediaLine =
     motion.official_clip_refs_used > 0
       ? `- Uses ${motion.official_clip_refs_used} local-only official Steam trailer reference(s) plus ${motion.official_trailer_frames_used || 0} extracted frame(s); no yt-dlp, browser scraping or persisted trailer downloads.`
+      : blockedClipLine
+        ? blockedClipLine
       : "- Still-image proof only; no trailer/video clip ingestion used.";
   const lines = [
     `# ${report.report_title || "Studio V2 Still-Deck Ingestion v1"}`,
@@ -1086,11 +1095,13 @@ async function main() {
       : frameReportUsed
         ? "official local frames improve motion variety but are not full trailer/video clips"
         : "no trailer/video clips in this phase",
-    realNarrationUsed && enrichedVoiceSource === "provided-real-audio"
-      ? "provided cached narration is present; runtime and render QA still decide pilot readiness"
-      : realNarrationUsed
-        ? "local narration is present but is blocked until human-approved against the production ElevenLabs voice"
-        : "silent fixture audio is not valid for pilot approval",
+    !renderAttempted
+      ? "no MP4 render was attempted, so narration was not verified"
+      : realNarrationUsed && enrichedVoiceSource === "provided-real-audio"
+        ? "provided cached narration is present; runtime and render QA still decide pilot readiness"
+        : realNarrationUsed
+          ? "local narration is present but is blocked until human-approved against the production ElevenLabs voice"
+          : "silent fixture audio is not valid for pilot approval",
   ];
   if (!renderAttempted) {
     premiumBlockers.push("no MP4 render was attempted, so suitability is diagnostic only");
@@ -1128,13 +1139,17 @@ async function main() {
     renderRejected,
     visualImproved,
   });
-  const visualOutput = renderPreflightBlocked
+  const visualOutput = !renderAttempted
     ? visualImproved
       ? "package_improved_not_render_verified"
       : "not_proven"
-    : visualImproved
-      ? "improved"
-      : "not_proven";
+    : renderPreflightBlocked
+      ? visualImproved
+        ? "package_improved_not_render_verified"
+        : "not_proven"
+      : visualImproved
+        ? "improved"
+        : "not_proven";
   const report = {
     schema_version: 1,
     report_title:

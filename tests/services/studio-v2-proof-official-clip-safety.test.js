@@ -154,6 +154,51 @@ test("proof official clips block validated-looking segments when the footage bac
   assert.match(result.safety.reason, /gameplay\/action/i);
 });
 
+test("proof official clips explain partial exact-subject trailer validation failures", () => {
+  const result = resolveOfficialTrailerClipRefsForProof({
+    storyId: "story-1",
+    frameReport: frameReport([
+      frame({ entity: "GTA", source: "https://video.example/gta.m3u8" }),
+      frame({ entity: "BioShock", source: "https://video.example/bio.m3u8" }),
+      frame({ entity: "Red Dead", source: "https://video.example/red.m3u8" }),
+    ]),
+    segmentValidationReport: {
+      segments: [
+        segment({
+          entity: "BioShock",
+          source: "https://video.example/bio.m3u8",
+          start: 42.4,
+        }),
+        segment({
+          entity: "GTA",
+          source: "https://video.example/gta.m3u8",
+          allowed: false,
+        }),
+        {
+          ...segment({
+            entity: "Red Dead",
+            source: "https://video.example/red.m3u8",
+            allowed: false,
+          }),
+          validation_reason: "segment_contains_title_or_rating_card",
+        },
+      ],
+    },
+    useOfficialTrailerClips: true,
+    targetRuntimeS: 66,
+  });
+
+  assert.equal(result.clipRefs.length, 0);
+  assert.equal(result.safety.status, "blocked_footage_backbone_not_ready");
+  assert.equal(result.safety.backbone_verdict, "downgrade_to_standard_short");
+  assert.deepEqual(result.safety.validated_entities, ["BioShock"]);
+  assert.deepEqual(result.safety.missing_validated_entities, ["GTA", "Red Dead"]);
+  assert.ok(result.safety.blockers.includes("footage_backbone_needs_three_validated_clip_windows"));
+  assert.equal(result.safety.rejected_segment_reasons.segment_contains_title_card, 1);
+  assert.equal(result.safety.rejected_segment_reasons.segment_contains_title_or_rating_card, 1);
+  assert.match(result.safety.next_action, /continue_motion_acquisition|standard_short/i);
+});
+
 test("proof official clips can build unvalidated refs only for explicit diagnostic mode", () => {
   const result = resolveOfficialTrailerClipRefsForProof({
     storyId: "story-1",

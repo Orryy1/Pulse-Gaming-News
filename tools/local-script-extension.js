@@ -1,0 +1,121 @@
+#!/usr/bin/env node
+"use strict";
+
+const path = require("node:path");
+const fs = require("fs-extra");
+const dotenv = require("dotenv");
+
+dotenv.config({ override: true });
+
+const ROOT = path.resolve(__dirname, "..");
+const OUT = path.join(ROOT, "test", "output");
+
+const {
+  applyLocalScriptExtensionAudio,
+  buildLocalScriptExtensionPlan,
+  renderLocalScriptExtensionMarkdown,
+} = require("../lib/ops/local-script-extension");
+const mediaPaths = require("../lib/media-paths");
+
+function parseArgs(argv) {
+  const args = {
+    limit: null,
+    applyLimit: null,
+    applyLocalAudio: false,
+    outDir: OUT,
+    queue: null,
+  };
+  for (let i = 2; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === "--limit") args.limit = Number(argv[++i]);
+    else if (arg === "--apply-limit") args.applyLimit = Number(argv[++i]);
+    else if (arg === "--out-dir") args.outDir = argv[++i];
+    else if (arg === "--queue") args.queue = argv[++i];
+    else if (arg === "--apply-local-audio") args.applyLocalAudio = true;
+    else if (arg === "--dry-run") {
+      // Dry-run is the default mode; --apply-local-audio only writes local proof MP3s.
+    }
+  }
+  return args;
+}
+
+function ffprobeDuration(file) {
+  if (!file || !fs.existsSync(file)) return null;
+  try {
+    const raw = require("node:child_process").execFileSync(
+      "ffprobe",
+      [
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        file,
+      ],
+      { encoding: "utf8", windowsHide: true },
+    );
+    const parsed = Number(String(raw || "").trim());
+    return Number.isFinite(parsed) ? Number(parsed.toFixed(2)) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function main() {
+  const args = parseArgs(process.argv);
+  const outDir = path.resolve(args.outDir || OUT);
+  await fs.ensureDir(outDir);
+  const queuePath = path.resolve(args.queue || path.join(outDir, "local_media_repair_queue.json"));
+  if (!(await fs.pathExists(queuePath))) {
+    throw new Error(`queue report not found: ${queuePath}. Run npm run ops:local-media-repair -- --dry-run first.`);
+  }
+
+  process.env.TTS_PROVIDER = "local";
+  process.env.PULSE_SKIP_DOTENV = "true";
+  const db = require("../lib/db");
+  const audio = require("../audio");
+  const stories = await db.getStories();
+  const storiesById = Object.fromEntries((stories || []).map((story) => [story.id, story]));
+  const queueReport = await fs.readJson(queuePath);
+  const plan = buildLocalScriptExtensionPlan({
+    queueReport,
+    storiesById,
+    cleanText: audio.cleanForTTS,
+    limit: args.limit,
+  });
+  const jsonPath = path.join(outDir, "local_script_extension_plan.json");
+  const mdPath = path.join(outDir, "local_script_extension_plan.md");
+  await fs.writeJson(jsonPath, plan, { spaces: 2 });
+  await fs.writeFile(mdPath, renderLocalScriptExtensionMarkdown(plan), "utf8");
+
+  if (args.applyLocalAudio) {
+    const applyReport = await applyLocalScriptExtensionAudio({
+      plan,
+      generateTts: audio.generateTTS,
+      measureDuration: async (outputRel) => {
+        const outputAbs = await mediaPaths.resolveExisting(outputRel);
+        return ffprobeDuration(outputAbs);
+      },
+      limit: args.applyLimit,
+    });
+    const applyPath = path.join(outDir, "local_script_extension_audio_apply.json");
+    await fs.writeJson(applyPath, applyReport, { spaces: 2 });
+    console.log(
+      `[local-script-extension] audio_apply=${path.relative(ROOT, applyPath)} applied=${applyReport.applied.length} skipped=${applyReport.skipped.length}`,
+    );
+  }
+
+  console.log(
+    `[local-script-extension] total=${plan.counts.total} ready=${plan.counts.ready} review=${plan.counts.review}`,
+  );
+  console.log(`[local-script-extension] json=${path.relative(ROOT, jsonPath)}`);
+  console.log(`[local-script-extension] md=${path.relative(ROOT, mdPath)}`);
+}
+
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(`[local-script-extension] ${err.stack || err.message}`);
+    process.exit(1);
+  });
+}

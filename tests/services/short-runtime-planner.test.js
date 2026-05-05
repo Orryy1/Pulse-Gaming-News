@@ -63,10 +63,10 @@ test("short runtime planner: default word budget matches current voice calibrati
   assert.equal(countSpokenWords("G T A six just moved again."), 7);
 });
 
-test("short runtime planner: local Liam voice uses its own faster calibration", () => {
-  assert.equal(DEFAULT_LOCAL_SECONDS_PER_WORD, 0.28);
-  assert.equal(secondsPerWordForTtsProvider("local", {}), 0.28);
-  assert.equal(secondsPerWordForTtsProvider("voxcpm", {}), 0.28);
+test("short runtime planner: local Liam voice uses measured approved-reference calibration", () => {
+  assert.equal(DEFAULT_LOCAL_SECONDS_PER_WORD, 0.33);
+  assert.equal(secondsPerWordForTtsProvider("local", {}), 0.33);
+  assert.equal(secondsPerWordForTtsProvider("voxcpm", {}), 0.33);
   assert.equal(secondsPerWordForTtsProvider("elevenlabs", {}), 0.68);
   assert.equal(
     secondsPerWordForTtsProvider("local", { LOCAL_TTS_SECONDS_PER_WORD: "0.4" }),
@@ -74,19 +74,19 @@ test("short runtime planner: local Liam voice uses its own faster calibration", 
   );
 
   const shortLocal = classifyShortScriptRuntime({
-    wordCount: 190,
+    wordCount: 180,
     secondsPerWord: secondsPerWordForTtsProvider("local", {}),
   });
   assert.equal(shortLocal.result, "warn");
   assert.match(shortLocal.warnings[0], /below_flash_target/);
-  assert.equal(shortLocal.estimatedSeconds, 53.2);
+  assert.equal(shortLocal.estimatedSeconds, 59.4);
 
   const passLocal = classifyShortScriptRuntime({
-    wordCount: 230,
+    wordCount: 210,
     secondsPerWord: secondsPerWordForTtsProvider("local", {}),
   });
   assert.equal(passLocal.result, "pass");
-  assert.equal(passLocal.estimatedSeconds, 64.4);
-  assert.equal(passLocal.minWords, 218);
-  assert.equal(passLocal.maxWords, 267);
+  assert.equal(passLocal.estimatedSeconds, 69.3);
+  assert.equal(passLocal.minWords, 185);
+  assert.equal(passLocal.maxWords, 227);
 });

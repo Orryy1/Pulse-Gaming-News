@@ -18,6 +18,22 @@ test("decodeHtmlEntities: named entities", () => {
   assert.equal(t.decodeHtmlEntities("&copy; 2026"), "© 2026");
 });
 
+test("classifyTextHygiene: common smart-quote mojibake is repaired and warned", () => {
+  const r = t.classifyTextHygiene("Don\u00e2\u20ac\u2122t Expect Product Placement");
+  assert.equal(r.ok, true);
+  assert.equal(r.severity, "warn");
+  assert.ok(r.issues.includes("mojibake_detected"));
+  assert.equal(r.normalised, "Don\u2019t Expect Product Placement");
+});
+
+test("classifyTextHygiene: simple Latin-1 accent mojibake is repaired and warned", () => {
+  const r = t.classifyTextHygiene("Fils-Aim\u00c3\u00a9");
+  assert.equal(r.ok, true);
+  assert.equal(r.severity, "warn");
+  assert.ok(r.issues.includes("mojibake_detected"));
+  assert.equal(r.normalised, "Fils-Aim\u00e9");
+});
+
 test("decodeHtmlEntities: numeric (decimal) entity", () => {
   assert.equal(t.decodeHtmlEntities("A &#8212; B"), "A — B"); // em dash
   assert.equal(t.decodeHtmlEntities("&#39;quoted&#39;"), "'quoted'");

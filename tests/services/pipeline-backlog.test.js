@@ -1,5 +1,7 @@
 const { test } = require("node:test");
 const assert = require("node:assert");
+const fs = require("node:fs");
+const path = require("node:path");
 const express = require("express");
 const http = require("node:http");
 
@@ -7,12 +9,16 @@ const {
   buildPipelineBacklog,
   classifyStage,
   blockingReason,
+  renderPipelineBacklogMarkdown,
   nextProduceCandidate,
   nextPublishCandidate,
   coreDoneCount,
   isRealPostId,
   MAX_STUCK,
 } = require("../../lib/services/pipeline-backlog");
+
+const PACKAGE_PATH = path.resolve(__dirname, "..", "..", "package.json");
+const TOOL_PATH = path.resolve(__dirname, "..", "..", "tools", "pipeline-backlog.js");
 
 // ---------- helpers ----------
 
@@ -107,6 +113,16 @@ test("blockingReason: qa_failed surfaces the first qa_failures entry", () => {
       qa_failures: ["script_too_short (50 words, min 80)", "glued_sentence"],
     }),
     "qa:script_too_short (50 words, min 80)",
+  );
+});
+
+test("blockingReason: qa_failed is surfaced even when script fields are missing", () => {
+  assert.strictEqual(
+    blockingReason({
+      qa_failed: true,
+      qa_failures: ["audio_duration_too_long (112.43s, max 74.00s)"],
+    }),
+    "qa:audio_duration_too_long (112.43s, max 74.00s)",
   );
 });
 
@@ -346,6 +362,56 @@ test("buildPipelineBacklog: no editorial fields leak into stuck entries", () => 
   ]);
   const serialised = JSON.stringify(b);
   assert.strictEqual(serialised.includes("SECRET"), false);
+});
+
+test("renderPipelineBacklogMarkdown: gives a readable operator summary", () => {
+  const md = renderPipelineBacklogMarkdown({
+    generated_at: "2026-05-05T20:00:00.000Z",
+    counts: {
+      review: 1,
+      approved_not_produced: 2,
+      produced_not_published: 3,
+      partial: 4,
+      failed: 5,
+      qa_failed: 6,
+      published: 7,
+      other: 0,
+    },
+    next_produce_candidate: {
+      id: "produce-me",
+      title: "Produce me",
+      reason: "script_ready",
+    },
+    next_publish_candidate: {
+      id: "publish-me",
+      title: "Publish me",
+      eligible_because: "awaiting_first_upload",
+    },
+    stuck_top10: [
+      {
+        id: "qa-story",
+        title: "QA story",
+        stage: "qa_failed",
+        blocking_reason: "qa:audio_duration_too_long",
+      },
+    ],
+  });
+
+  assert.match(md, /Pipeline Backlog/);
+  assert.match(md, /qa_failed: 6/);
+  assert.match(md, /produce-me/);
+  assert.match(md, /publish-me/);
+  assert.match(md, /qa:audio_duration_too_long/);
+});
+
+test("ops:pipeline-backlog CLI is registered as a read-only operator command", () => {
+  const pkg = JSON.parse(fs.readFileSync(PACKAGE_PATH, "utf8"));
+  assert.equal(pkg.scripts["ops:pipeline-backlog"], "node tools/pipeline-backlog.js");
+
+  const src = fs.readFileSync(TOOL_PATH, "utf8");
+  assert.match(src, /buildPipelineBacklog/);
+  assert.match(src, /renderPipelineBacklogMarkdown/);
+  assert.doesNotMatch(src, /upsertStory|publishNextStory|uploadShort|AUTO_PUBLISH/);
 });
 
 // ---------- HTTP contract ----------

@@ -47,6 +47,7 @@
     "ops:railway:health": "node tools/railway-health-check.js",
     "ops:system:doctor": "node tools/system-doctor.js",
     "ops:queue:inspect": "node tools/queue-inspect.js",
+    "ops:pipeline-backlog": "node tools/pipeline-backlog.js",
     "ops:media:verify": "node tools/media-verify.js",
     "ops:db:backup-dry-run": "node tools/db-backup-dry-run.js",
     "ops:platform:status": "node tools/platform-status.js",

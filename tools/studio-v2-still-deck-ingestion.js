@@ -30,6 +30,10 @@ const {
 const { resolveAudioPlan } = require("../lib/studio/v2/audio-library");
 const { buildSoundLayerV2 } = require("../lib/studio/v2/sound-layer-v2");
 const { buildKineticAss } = require("../lib/studio/v2/subtitle-layer-v2");
+const {
+  buildFlashLaneOverlayPlan,
+  buildFlashLaneOverlayFilters,
+} = require("../lib/studio/v2/flash-lane-overlays");
 const { buildStudioEditorial } = require("../lib/studio/editorial-layer");
 const {
   cleanForTTS,
@@ -515,6 +519,7 @@ async function buildFlashLaneRenderPreflight({
     opts: {
       allowStockFiller: false,
       flashLane: true,
+      sourceCardMode: "overlay",
       takeawayText: "FOLLOW PULSE GAMING",
       cta: "NEVER MISS A BEAT",
     },
@@ -587,6 +592,7 @@ async function renderStillDeckVariant({
     opts: {
       allowStockFiller: false,
       flashLane: variant === "enriched",
+      sourceCardMode: variant === "enriched" ? "overlay" : "scene",
       takeawayText: "FOLLOW PULSE GAMING",
       cta: "NEVER MISS A BEAT",
     },
@@ -625,8 +631,9 @@ async function renderStillDeckVariant({
         duration: assDurationS,
         scriptText: renderStory.scriptForCaption || renderStory.full_script,
         maxWordsPerPhrase: 2,
-        maxPhraseChars: 14,
+        maxPhraseChars: 16,
         captionCase: "upper",
+        revealMode: variant === "enriched" ? "phrase" : "word",
       }),
       "utf8",
     );
@@ -649,8 +656,23 @@ async function renderStillDeckVariant({
     prev = out;
   }
   if (scenes.length === 1) filterParts.push("[v0]copy[base]");
+  const overlayPlan =
+    variant === "enriched"
+      ? buildFlashLaneOverlayPlan({ story: renderStory, scenes, durationS })
+      : null;
+  const subtitleInputLabel = overlayPlan ? "overlayed" : "base";
+  if (overlayPlan) {
+    filterParts.push(
+      ...buildFlashLaneOverlayFilters({
+        plan: overlayPlan,
+        inputLabel: "base",
+        outputLabel: subtitleInputLabel,
+        fontOpt: FONT_OPT,
+      }),
+    );
+  }
   const assRel = path.relative(ROOT, assPath).replace(/\\/g, "/");
-  filterParts.push(`[base]ass=${assRel},format=yuv420p[outv]`);
+  filterParts.push(`[${subtitleInputLabel}]ass=${assRel},format=yuv420p[outv]`);
 
   const filterPath = path.join(outputDir, `${story.id}_${variant}_filter.txt`);
   const mp4Path = path.join(outputDir, `studio_v2_${story.id}_${variant}.mp4`);
@@ -766,6 +788,7 @@ async function renderStillDeckVariant({
         : "Silent fixture audio was explicitly allowed for this local visual diagnostic.",
   };
   if (flashLanePreflight) quality.flashLanePreflight = flashLanePreflight;
+  if (overlayPlan) quality.flashLaneOverlays = overlayPlan;
   const reportPath = path.join(outputDir, `${story.id}_${variant}_qa.json`);
   await fs.writeJson(reportPath, quality, { spaces: 2 });
   const forensic = await runForensicQa({

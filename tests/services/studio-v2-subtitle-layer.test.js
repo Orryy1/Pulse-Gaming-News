@@ -174,3 +174,26 @@ test("buildKineticAss can render Flash Lane captions in uppercase without changi
   assert.doesNotMatch(captions, /Pokemon/);
   assert.ok(assIntervals(ass).every(([start, end]) => end > start));
 });
+
+test("buildKineticAss can keep full Flash punches visible while words pop", () => {
+  const ass = buildKineticAss({
+    story: { title: "Marathon Steam" },
+    words: [
+      { word: "Marathon", start: 0, end: 0.24 },
+      { word: "just", start: 0.25, end: 0.38 },
+      { word: "fell", start: 0.39, end: 0.58 },
+      { word: "hard.", start: 0.59, end: 0.8 },
+    ],
+    duration: 2,
+    scriptText: "Marathon just fell hard.",
+    maxWordsPerPhrase: 2,
+    maxPhraseChars: 16,
+    captionCase: "upper",
+    revealMode: "phrase",
+  });
+
+  const captions = extractAssDialogueText(ass);
+  assert.deepEqual(captions.slice(0, 2), ["MARATHON\\hJUST", "FELL\\hHARD."]);
+  assert.doesNotMatch(ass, /\\alpha&HFF&/);
+  assert.match(ass, /\\t\(0,100,\\fscx115\\fscy115\)/);
+});

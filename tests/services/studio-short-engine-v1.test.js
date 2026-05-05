@@ -444,6 +444,49 @@ test("studio composer does not stretch too few Flash Lane clips past the reuse b
   assert.ok(actualClipScenes.length <= 6);
 });
 
+test("studio composer can move Flash source proof to overlay mode instead of a full-screen source card", () => {
+  const baseArgs = {
+    story: {
+      title: "Marathon Drops To 15K Daily CCU Peak On Steam",
+      source_type: "rss",
+      subreddit: "GameSpot",
+    },
+    media: {
+      clips: Array.from({ length: 8 }, (_, index) => ({
+        path: `marathon-${index}.mp4`,
+        entity: "Marathon",
+        sourceType: "steam_movie",
+        mediaStartS: 42 + index * 4,
+      })),
+      trailerFrames: [
+        { path: "marathon-frame-a.jpg", entity: "Marathon" },
+        { path: "marathon-frame-b.jpg", entity: "Marathon" },
+      ],
+      articleHeroes: [],
+      publisherAssets: [],
+      stockFillers: [],
+    },
+    audioDurationS: 64,
+  };
+  const defaultResult = composeStudioSlate({
+    ...baseArgs,
+    opts: { allowStockFiller: false, flashLane: true },
+  });
+  const result = composeStudioSlate({
+    ...baseArgs,
+    opts: {
+      allowStockFiller: false,
+      flashLane: true,
+      sourceCardMode: "overlay",
+    },
+  });
+
+  assert.equal(result.scenes.some((scene) => scene.type === SCENE_TYPES.CARD_SOURCE), false);
+  assert.ok(result.metrics.clipCount >= 6);
+  assert.equal(defaultResult.scenes.some((scene) => scene.type === SCENE_TYPES.CARD_SOURCE), true);
+  assert.ok(result.metrics.cardCount < defaultResult.metrics.cardCount);
+});
+
 test("quality gate reports non-slideshow when clips and cards carry the edit", () => {
   const scenes = [
     { type: "opener", isClipBacked: true, source: "a.mp4" },

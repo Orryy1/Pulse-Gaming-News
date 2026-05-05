@@ -126,6 +126,16 @@ test("blockingReason: qa_failed is surfaced even when script fields are missing"
   );
 });
 
+test("blockingReason: script-generation review is clearer than generic no_script", () => {
+  assert.strictEqual(
+    blockingReason({
+      script_generation_status: "review_required",
+      script_review_reason: "script_runtime_too_long (112.00s, max 75.00s)",
+    }),
+    "script_generation_review:script_runtime_too_long (112.00s, max 75.00s)",
+  );
+});
+
 test("blockingReason: partial_missing lists missing core platforms", () => {
   const r = blockingReason({
     full_script: "x",
@@ -241,6 +251,13 @@ test("nextProduceCandidate: skips qa_failed and already-produced", () => {
       exported_path: null,
       qa_failed: true,
       breaking_score: 99,
+    },
+    {
+      id: "script-review",
+      approved: true,
+      exported_path: null,
+      script_generation_status: "review_required",
+      breaking_score: 97,
     },
     {
       id: "ok",

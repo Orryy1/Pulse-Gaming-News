@@ -492,6 +492,36 @@ function getContentPillar(classification) {
   return "Confirmed Drop";
 }
 
+function buildScriptValidationReview(story = {}, channel = {}, errors = []) {
+  const title = String(story.title || "Manual review required");
+  const safeErrors = (Array.isArray(errors) ? errors : [errors])
+    .filter(Boolean)
+    .map((error) => String(error).slice(0, 240))
+    .slice(0, 10);
+
+  return {
+    classification: "[REVIEW]",
+    hook: "",
+    body: "Script validation failed. Manual review required before production.",
+    cta: "",
+    full_script: "",
+    tts_script: "",
+    word_count: 0,
+    suggested_thumbnail_text: title.substring(0, 40),
+    suggested_title: title.substring(0, 60),
+    content_pillar: "Manual Review",
+    quality_score: 0,
+    approved: false,
+    auto_approved: false,
+    format_route: "review_or_briefing",
+    runtime_route: "review_or_briefing",
+    script_generation_status: "review_required",
+    script_review_reason: safeErrors[0] || "script_validation_failed",
+    script_validation_errors: safeErrors,
+    channel_id: channel.id || story.channel_id,
+  };
+}
+
 // --- Clean script text for TTS (strip markers) ---
 function cleanForTTS(text) {
   if (!text) return "";
@@ -707,7 +737,12 @@ Today's date is ${today}. You MUST follow these rules:
             `[processor] Validation failed (attempt ${attempts}): ${errors.join(", ")}`,
           );
           if (attempts >= 3) {
-            console.log("[processor] Using script despite validation issues");
+            console.log(
+              "[processor] Final validation failed; routing story to review",
+            );
+            script = buildScriptValidationReview(story, channel, errors);
+            qualityScore = 0;
+            break;
           } else {
             script = null;
             continue;
@@ -762,16 +797,10 @@ Today's date is ${today}. You MUST follow these rules:
           attempt: attempts,
         });
         if (attempts >= 3) {
-          script = {
-            classification: "[BREAKING]",
-            hook: story.title,
-            body: "Script generation failed. Manual edit required.",
-            cta: channel.cta + ".",
-            full_script: story.title,
-            word_count: 0,
-            suggested_thumbnail_text: story.title.substring(0, 40),
-            suggested_title: story.title.substring(0, 60),
-          };
+          script = buildScriptValidationReview(story, channel, [
+            `script_generation_error:${err.message}`,
+          ]);
+          qualityScore = 0;
         }
       }
     }
@@ -784,15 +813,19 @@ Today's date is ${today}. You MUST follow these rules:
     const affiliateUrl = `https://www.amazon.co.uk/s?k=${encodeURIComponent(gameTitle)}&tag=${affiliateTag}`;
     const pinnedComment = `What do you think, legit or fake? Drop your take below 👇 | Check it out: ${affiliateUrl}`;
 
+    const requiresScriptReview =
+      script.script_generation_status === "review_required";
+
     const enrichedStory = {
       ...story,
       ...script,
       tts_script: ttsScript,
-      quality_score: qualityScore,
-      content_pillar: getContentPillar(script.classification),
+      quality_score: requiresScriptReview ? 0 : qualityScore,
+      content_pillar: script.content_pillar || getContentPillar(script.classification),
       affiliate_url: affiliateUrl,
       pinned_comment: pinnedComment,
-      approved: story.approved || false,
+      approved: requiresScriptReview ? false : story.approved || false,
+      auto_approved: requiresScriptReview ? false : story.auto_approved || false,
     };
 
     // Generate A/B title variants (non-blocking - if it fails, continue with single title)
@@ -835,6 +868,7 @@ Today's date is ${today}. You MUST follow these rules:
 module.exports = process_stories;
 module.exports.validate = validate;
 module.exports.editorWordCountInstruction = editorWordCountInstruction;
+module.exports.buildScriptValidationReview = buildScriptValidationReview;
 module.exports.cleanForTTS = cleanForTTS;
 
 if (require.main === module) {

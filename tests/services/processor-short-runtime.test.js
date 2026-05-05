@@ -65,3 +65,27 @@ test("processor editor pass revalidates edited scripts before accepting them", (
   assert.match(PROCESSOR_SOURCE, /validate\(edited,\s*channel\.id\)/);
   assert.match(PROCESSOR_SOURCE, /editor_validation_failed/);
 });
+
+test("processor final validation failure routes story to review instead of accepting bad Short script", () => {
+  assert.doesNotMatch(PROCESSOR_SOURCE, /Using script despite validation issues/);
+  assert.match(PROCESSOR_SOURCE, /Final validation failed; routing story to review/);
+
+  const fallback = processor.buildScriptValidationReview(
+    { id: "story1", title: "GTA 6 script ran too long" },
+    { id: "pulse-gaming" },
+    ["script_runtime_too_long (112.00s, max 75.00s)"],
+  );
+
+  assert.equal(fallback.classification, "[REVIEW]");
+  assert.equal(fallback.full_script, "");
+  assert.equal(fallback.tts_script, "");
+  assert.equal(fallback.word_count, 0);
+  assert.equal(fallback.quality_score, 0);
+  assert.equal(fallback.approved, false);
+  assert.equal(fallback.auto_approved, false);
+  assert.equal(fallback.script_generation_status, "review_required");
+  assert.equal(fallback.runtime_route, "review_or_briefing");
+  assert.deepEqual(fallback.script_validation_errors, [
+    "script_runtime_too_long (112.00s, max 75.00s)",
+  ]);
+});

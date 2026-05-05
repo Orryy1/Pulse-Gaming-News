@@ -66,6 +66,18 @@ function renderFreshnessForStory(story, { now = new Date() } = {}) {
 
 async function main() {
   await fs.ensureDir(OUT);
+  let tiktokTokenStatus = null;
+  try {
+    const { inspectTokenStatus } = require("../upload_tiktok");
+    tiktokTokenStatus = await inspectTokenStatus();
+  } catch (err) {
+    tiktokTokenStatus = {
+      ok: false,
+      reason: `token_status_failed:${err.message}`,
+      refresh_available: false,
+      needs_reauth: true,
+    };
+  }
   const stories = await require("../lib/db").getStories();
   const durationByStoryId = Object.fromEntries(
     stories.map((story) => [story.id, probeDurationSeconds(story)]),
@@ -89,6 +101,7 @@ async function main() {
     durationByStoryId,
     voiceAuditByStoryId,
     renderFreshnessByStoryId,
+    tiktokTokenStatus,
     now,
   });
   const jsonPath = path.join(OUT, "tiktok_dispatch_manifest.json");

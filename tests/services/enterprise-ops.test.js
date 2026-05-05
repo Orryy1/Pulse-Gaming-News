@@ -19,6 +19,7 @@ const {
   ROUTE_ORDER,
   buildTikTokDispatchManifest,
   buildTikTokDispatchPack,
+  renderTikTokDispatchMarkdown,
 } = require("../../lib/platforms/tiktok-dispatch");
 const {
   buildSocialPlatformOperationsReport,
@@ -298,6 +299,35 @@ test("TikTok dispatch manifest emits a scheduler queue and sample Discord notifi
   assert.match(manifest.sampleDiscordNotification, /Caption:/);
 });
 
+test("TikTok dispatch manifest surfaces the shared local token gate", () => {
+  const manifest = buildTikTokDispatchManifest(
+    [
+      {
+        id: "ready",
+        title: "Ready rendered short",
+        exported_path: "out.mp4",
+        image_path: "cover.png",
+      },
+    ],
+    {
+      durationByStoryId: { ready: 65 },
+      tiktokTokenStatus: {
+        ok: false,
+        reason: "expired",
+        refresh_available: true,
+        needs_reauth: false,
+      },
+    },
+  );
+
+  assert.equal(manifest.tiktokTokenGate.action, "refresh_or_sync_local_token");
+  assert.equal(manifest.statusCounts.tiktok_auth_action_required, 1);
+
+  const md = renderTikTokDispatchMarkdown(manifest);
+  assert.match(md, /TikTok Token Gate/);
+  assert.match(md, /refresh_or_sync_local_token/);
+});
+
 test("TikTok dispatch manifest prefers ready packs over higher-urgency missing assets", () => {
   const manifest = buildTikTokDispatchManifest(
     [
@@ -380,6 +410,39 @@ test("TikTok dispatch pack downgrades final renders without approved voice evide
   assert.match(pack.discordNotification, /Voice gate: review/);
 });
 
+test("TikTok dispatch pack blocks official inbox upload when the local token needs refresh or sync", () => {
+  const pack = buildTikTokDispatchPack(
+    {
+      id: "story1",
+      title: "Ready render but stale TikTok token",
+      exported_path: "output/final/story1.mp4",
+      thumbnail_candidate_path: "output/thumbnails/story1.png",
+    },
+    {
+      durationSeconds: 64,
+      voiceAudit: {
+        verdict: "pass",
+        blockers: [],
+        warnings: [],
+        do_not_reuse_for_tiktok_dispatch: false,
+      },
+      tiktokTokenStatus: {
+        ok: false,
+        reason: "expired",
+        expires_in_seconds: -900,
+        refresh_available: true,
+        needs_reauth: false,
+      },
+    },
+  );
+
+  assert.equal(pack.status, "tiktok_auth_action_required");
+  assert.equal(pack.tiktokTokenGate.action, "refresh_or_sync_local_token");
+  assert.equal(pack.officialInboxJson.ready_for_upload, false);
+  assert.match(pack.discordNotification, /TikTok Auth/);
+  assert.match(pack.discordNotification, /refresh_or_sync_local_token/);
+});
+
 test("TikTok dispatch pack marks stale final renders as not ready for live dispatch", () => {
   const pack = buildTikTokDispatchPack(
     {
@@ -419,6 +482,8 @@ test("TikTok dispatch tooling loads final voice sidecar reports before gating", 
   assert.match(source, /loadFinalVoiceReportsByStoryId/);
   assert.match(source, /reportsByStoryId/);
   assert.match(source, /renderFreshnessByStoryId/);
+  assert.match(source, /inspectTokenStatus/);
+  assert.match(source, /tiktokTokenStatus/);
 });
 
 test("social platform operations report separates working platforms from external blockers", () => {

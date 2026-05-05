@@ -61,6 +61,7 @@ const {
   buildFlashLaneProofPreflight,
 } = require("../lib/studio/v2/flash-lane-preflight");
 const {
+  evaluateStillDeckRenderReadiness,
   recommendStudioV2Promotion,
 } = require("../lib/studio/v2/still-deck-promotion");
 const {
@@ -987,10 +988,27 @@ async function main() {
   const renderRequested =
     !args.noRender &&
     (enrichedPackage.media.articleHeroes.length > 0 || enrichedPackage.media.trailerFrames.length > 0);
+  const renderPackageGate = evaluateStillDeckRenderReadiness({
+    baselineSummary,
+    enrichedSummary,
+    enrichedMetrics: enrichedPackage.metrics,
+  });
   let renderPreflight = null;
   let renderPreflightBlocked = false;
   let renderPreflightError = null;
-  if (renderRequested) {
+  if (renderRequested && renderPackageGate.verdict === "block" && !args.allowFlashDiagnosticRender) {
+    renderPreflightBlocked = true;
+    renderPreflightError = renderPackageGate.blockers.join(", ");
+    renderPreflight = {
+      verdict: "block",
+      blockers: renderPackageGate.blockers,
+      warnings: renderPackageGate.warnings,
+      metrics: {
+        package_gate: renderPackageGate.metrics,
+      },
+      package_gate: renderPackageGate,
+    };
+  } else if (renderRequested) {
     try {
       renderPreflight = await buildFlashLaneRenderPreflight({
         story,
@@ -1184,6 +1202,7 @@ async function main() {
       official_trailer_frames_used: Number(enrichedPackage.metrics.acceptedFrameCount || 0),
     },
     render_requested: renderRequested,
+    render_package_gate: renderPackageGate,
     render_preflight: renderPreflight,
     render_preflight_error: renderPreflightError,
     render_attempted: renderAttempted,

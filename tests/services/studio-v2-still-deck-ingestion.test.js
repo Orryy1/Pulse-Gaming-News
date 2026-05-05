@@ -628,6 +628,17 @@ test("still-deck local narration uses the approved production-shaped local voice
   assert.doesNotMatch(src, /dotenv"\)\.config\(\{\s*override:\s*true\s*\}\)/);
 });
 
+test("still-deck render path applies package readiness before ffmpeg render", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+  assert.match(src, /evaluateStillDeckRenderReadiness/);
+  assert.match(src, /render_package_gate/);
+  assert.match(src, /renderPreflightBlocked = true/);
+  assert.match(src, /args\.allowFlashDiagnosticRender/);
+});
+
 test("still-deck report wording does not call no-render packages silent-audio proofs", () => {
   const src = fs.readFileSync(
     path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),

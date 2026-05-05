@@ -34,6 +34,7 @@
     "studio:v2:footage-backbone": "node tools/flash-lane-footage-backbone.js",
     "studio:v2:footage-acquisition": "node tools/flash-lane-footage-acquisition.js",
     "studio:v2:standard-overlay": "node tools/standard-short-creator-overlay.js",
+    "studio:v2:proof-candidates": "node tools/studio-v2-proof-candidates.js",
     "performance:digest": "node tools/performance-learning-digest.js",
     "comments:digest": "node tools/comment-copilot-digest.js",
     "tiktok:auth-doctor": "node tools/tiktok-auth-doctor.js",

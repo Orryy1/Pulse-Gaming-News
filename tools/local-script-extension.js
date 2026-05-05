@@ -24,6 +24,7 @@ function parseArgs(argv) {
     applyLocalAudio: false,
     outDir: OUT,
     queue: null,
+    storyId: null,
   };
   for (let i = 2; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -31,6 +32,7 @@ function parseArgs(argv) {
     else if (arg === "--apply-limit") args.applyLimit = Number(argv[++i]);
     else if (arg === "--out-dir") args.outDir = argv[++i];
     else if (arg === "--queue") args.queue = argv[++i];
+    else if (arg === "--story" || arg === "--story-id") args.storyId = argv[++i] || null;
     else if (arg === "--apply-local-audio") args.applyLocalAudio = true;
     else if (arg === "--dry-run") {
       // Dry-run is the default mode; --apply-local-audio only writes local proof MP3s.
@@ -83,6 +85,7 @@ async function main() {
     storiesById,
     cleanText: audio.cleanForTTS,
     limit: args.limit,
+    storyId: args.storyId,
   });
   const jsonPath = path.join(outDir, "local_script_extension_plan.json");
   const mdPath = path.join(outDir, "local_script_extension_plan.md");

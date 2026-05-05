@@ -121,6 +121,34 @@ test("local script extension plan only consumes repair queue extension items", (
   assert.equal(plan.safety.posts_to_platforms, false);
 });
 
+test("local script extension plan can target one story without bulk audio work", () => {
+  const plan = buildLocalScriptExtensionPlan({
+    queueReport: {
+      items: [
+        queueItem("skip_me", 136),
+        queueItem("target_story", 136),
+      ],
+    },
+    storiesById: {
+      skip_me: {
+        id: "skip_me",
+        title: "Skip this story",
+        full_script: "Xbox confirmed a new update today. ".repeat(25),
+      },
+      target_story: {
+        id: "target_story",
+        title: "GTA 6 Owner Passed On A Legacy Franchise",
+        full_script: "Take-Two has a confirmed story today. ".repeat(24),
+      },
+    },
+    storyId: "target_story",
+    env: {},
+  });
+
+  assert.equal(plan.counts.total, 1);
+  assert.equal(plan.drafts[0].story_id, "target_story");
+});
+
 test("local script extension markdown is operator-readable and local-only", () => {
   const plan = buildLocalScriptExtensionPlan({
     queueReport: { items: [] },
@@ -139,6 +167,7 @@ test("local script extension CLI is local-only and does not publish", () => {
     "utf8",
   );
   assert.match(tool, /local_script_extension_plan\.json/);
+  assert.match(tool, /--story/);
   assert.match(tool, /--apply-local-audio/);
   assert.match(tool, /local_script_extension_audio_apply\.json/);
   assert.doesNotMatch(tool, /postShort|uploadShort|publishAll|autonomous\/publish/);

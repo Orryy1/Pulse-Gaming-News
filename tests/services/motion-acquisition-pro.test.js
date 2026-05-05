@@ -117,6 +117,33 @@ test("Motion Acquisition Pro consumes official resolver references as local fram
   assert.equal(plan.safety.video_downloads, false);
 });
 
+test("Motion Acquisition Pro preserves official resolver movie names for downstream frame scoring", () => {
+  const plan = buildMotionAcquisitionPlan(
+    baseStory({ id: "has-named-official-reference" }),
+    {
+      officialTrailerReferencePlans: [
+        {
+          story_id: "has-named-official-reference",
+          references: [
+            {
+              provider: "steam",
+              source_type: "steam_movie",
+              source_url: "https://video.example/pegi-rating.m3u8",
+              entity: "GTA",
+              movie_name: "GTA Official PEGI Rating Trailer",
+              rights_risk_class: "storefront_promotional_video",
+              allowed_render_use: "reference_only_by_default",
+              downloads_allowed: false,
+            },
+          ],
+        },
+      ],
+    },
+  );
+
+  assert.equal(plan.existing_references[0].movie_name, "GTA Official PEGI Rating Trailer");
+});
+
 test("Motion Acquisition Pro report counts resolver references in readiness summary", () => {
   const report = buildMotionAcquisitionReport(
     [

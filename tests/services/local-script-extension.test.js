@@ -251,3 +251,40 @@ test("apply local script extension audio marks underfloor proofs rejected", asyn
 
   assert.equal(result.applied[0].duration_verdict, "reject_duration");
 });
+
+test("apply local script extension audio records TTS failures and keeps going", async () => {
+  const generated = [];
+  const result = await applyLocalScriptExtensionAudio({
+    plan: {
+      drafts: [
+        {
+          story_id: "fails_once",
+          action: "ready_for_local_liam_audio",
+          proposed_full_script: "Ready script one. Follow Pulse Gaming so you never miss a beat.",
+          proposed_words: 190,
+          estimated_seconds: 62.7,
+        },
+        {
+          story_id: "still_runs",
+          action: "ready_for_local_liam_audio",
+          proposed_full_script: "Ready script two. Follow Pulse Gaming so you never miss a beat.",
+          proposed_words: 191,
+          estimated_seconds: 63.03,
+        },
+      ],
+    },
+    generateTts: async (text, outputRel) => {
+      generated.push(outputRel);
+      if (outputRel.includes("fails_once")) throw new Error("read ECONNRESET");
+    },
+    measureDuration: async () => 66.4,
+  });
+
+  assert.equal(generated.length, 2);
+  assert.equal(result.skipped.length, 1);
+  assert.equal(result.skipped[0].story_id, "fails_once");
+  assert.equal(result.skipped[0].reason, "generate_tts_failed");
+  assert.match(result.skipped[0].error, /ECONNRESET/);
+  assert.equal(result.applied.length, 1);
+  assert.equal(result.applied[0].story_id, "still_runs");
+});

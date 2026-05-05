@@ -364,3 +364,56 @@ test("apply-local audio repair reports below-floor Liam proofs as rejected", asy
   assert.equal(result.applied[0].duration_verdict, "reject_duration");
   assert.equal(result.applied[0].duration_seconds, 58.4);
 });
+
+test("apply-local audio repair records TTS failures without aborting the batch", async () => {
+  const stories = [
+    {
+      id: "rss_first",
+      title: "GTA 6 trailer evidence is stacking up",
+      approved: true,
+      full_script: "GTA 6 has a confirmed clue today. ".repeat(30),
+      audio_path: "output/audio/rss_first.mp3",
+      exported_path: "output/final/rss_first.mp4",
+      breaking_score: 90,
+    },
+    {
+      id: "rss_second",
+      title: "Xbox confirms a new update",
+      approved: true,
+      full_script: "Xbox confirmed new details for players today. ".repeat(32),
+      audio_path: "output/audio/rss_second.mp3",
+      exported_path: "output/final/rss_second.mp4",
+      breaking_score: 80,
+    },
+  ];
+  const report = buildLocalMediaRepairQueue({
+    stories,
+    mediaByStoryId: {
+      rss_first: { audioExists: true, finalExists: true, finalDurationSeconds: 64 },
+      rss_second: { audioExists: true, finalExists: true, finalDurationSeconds: 64 },
+    },
+    voiceAuditByStoryId: {
+      rss_first: { verdict: "review", blockers: ["approved_voice_metadata_missing"] },
+      rss_second: { verdict: "review", blockers: ["approved_voice_metadata_missing"] },
+    },
+    localTts: READY_TTS,
+  });
+  const generated = [];
+
+  const result = await applyLocalAudioRepairs({
+    report,
+    storiesById: Object.fromEntries(stories.map((story) => [story.id, story])),
+    generateTts: async (_text, outputRel) => {
+      generated.push(outputRel);
+      if (outputRel.includes("rss_first")) throw new Error("read ECONNRESET");
+    },
+    measureDuration: async () => 66.1,
+  });
+
+  assert.equal(generated.length, 2);
+  assert.equal(result.skipped.length, 1);
+  assert.equal(result.skipped[0].story_id, "rss_first");
+  assert.equal(result.skipped[0].reason, "generate_tts_failed");
+  assert.equal(result.applied.length, 1);
+  assert.equal(result.applied[0].story_id, "rss_second");
+});

@@ -138,6 +138,28 @@ test("Controlled Frame Extraction Plan caps repeated same-entity references", ()
   assert.equal(plan.selected_references.filter((item) => item.entity === "GTA").length, 1);
 });
 
+test("Controlled Frame Extraction Plan de-prioritises PEGI and rating-board trailer references", () => {
+  const plan = buildControlledFrameExtractionPlan(
+    motionPlan({
+      existing_references: [
+        reference("GTA", 1, {
+          movie_name: "GTA Official PEGI Rating Trailer",
+        }),
+        reference("GTA", 2, {
+          movie_name: "GTA Gameplay Update Trailer",
+        }),
+        reference("Red Dead", 1),
+        reference("BioShock", 1),
+      ],
+    }),
+  );
+
+  assert.equal(
+    plan.selected_references.find((item) => item.entity === "GTA").movie_name,
+    "GTA Gameplay Update Trailer",
+  );
+});
+
 test("Controlled Frame Extraction Plan can include alternate official references for retry QA", () => {
   const plan = buildControlledFrameExtractionPlan(
     motionPlan({

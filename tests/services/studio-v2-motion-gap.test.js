@@ -94,6 +94,8 @@ test("motion gap report explains why the closest Flash Lane proof is blocked", (
   assert.ok(gap.priority_next_steps.includes("find_one_more_validated_gameplay_clip_window"));
   assert.ok(gap.priority_next_steps.includes("generate_approved_sleepy_liam_audio_after_visuals_are_ready"));
   assert.ok(gap.recommended_commands.some((item) => /media:validate-trailer-segments/.test(item.command)));
+  assert.ok(gap.recommended_commands.some((item) => /media:resolve-trailers -- --story-id rss_gap/.test(item.command)));
+  assert.ok(gap.recommended_commands.some((item) => /media:plan-frames -- --story-id rss_gap/.test(item.command)));
 });
 
 test("motion gap report preserves ready proof commands instead of blocking", () => {
@@ -201,6 +203,41 @@ test("motion gap report ranks closest visual proof ahead of zero-inventory stori
 
   assert.equal(report.summary.closest_story_id, "closest_visuals");
   assert.equal(report.gaps[0].story_id, "closest_visuals");
+});
+
+test("motion gap report explains source diversity gaps when clip count reaches three", () => {
+  const report = buildStudioV2MotionGapReport({
+    proofCandidateReport: {
+      candidates: [
+        proofCandidate({
+          story_id: "three_refs_two_sources",
+          blockers: ["flash_proof_requires_three_validated_clip_refs"],
+          audio: {
+            status: "approved_local_liam_audio_ready",
+            ready: true,
+            output_audio_path: "test/output/audio/ready.mp3",
+            duration_seconds: 70,
+          },
+          visuals: {
+            exact_subject_count: 26,
+            exact_subject_groups: ["GTA", "Red Dead", "BioShock"],
+            accepted_frame_count: 12,
+            frame_groups: ["GTA", "Red Dead", "BioShock"],
+            validated_clip_ref_count: 3,
+            validated_clip_source_count: 2,
+            validated_clip_entities: ["BioShock"],
+          },
+        }),
+      ],
+      thresholds: { flash_min_validated_clip_refs: 3 },
+    },
+  });
+
+  const gap = report.gaps[0];
+  assert.equal(gap.motion_gap.missing_validated_clip_refs, 0);
+  assert.equal(gap.motion_gap.missing_validated_clip_sources, 1);
+  assert.ok(gap.priority_next_steps.includes("find_one_more_validated_clip_source"));
+  assert.doesNotMatch(gap.priority_next_steps.join(" "), /find_0_more/);
 });
 
 test("motion gap markdown is operator-readable and local-only", () => {

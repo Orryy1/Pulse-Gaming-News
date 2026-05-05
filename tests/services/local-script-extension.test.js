@@ -6,6 +6,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const {
+  DEFAULT_LOCAL_EXTENSION_TARGET_WORDS,
   REQUIRED_CTA,
   applyLocalScriptExtensionAudio,
   buildLocalScriptExtensionPlan,
@@ -49,6 +50,23 @@ test("local script extension expands short Liam scripts into the 61-75s local Fl
   assert.equal(draft.runtime.result, "pass");
   assert.ok(draft.proposed_words >= 185);
   assert.ok(draft.proposed_words <= 227);
+  assert.ok(draft.proposed_words <= 200);
+});
+
+test("local script extension targets the middle of the Liam-safe range, not the ceiling", () => {
+  const draft = extendScriptToLocalFlash({
+    story: {
+      id: "rss_midrange",
+      title: "Xbox confirms a new update",
+      full_script: "Xbox confirmed a new update today. ".repeat(25),
+    },
+    queueItem: queueItem("rss_midrange", 150),
+    env: {},
+  });
+
+  assert.equal(DEFAULT_LOCAL_EXTENSION_TARGET_WORDS, 192);
+  assert.equal(draft.target_words, 195);
+  assert.ok(draft.proposed_words <= 200);
 });
 
 test("local script extension strips duplicate CTA before appending the required outro once", () => {

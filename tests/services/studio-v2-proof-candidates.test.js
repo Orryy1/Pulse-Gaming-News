@@ -235,6 +235,8 @@ test("studio:v2:proof-candidates command is registered and read-only", () => {
   assert.equal(pkg.scripts["studio:v2:proof-candidates"], "node tools/studio-v2-proof-candidates.js");
 
   const tool = fs.readFileSync(path.join(ROOT, "tools", "studio-v2-proof-candidates.js"), "utf8");
+  assert.match(tool, /discoverLocalAudioProofReport/);
+  assert.match(tool, /ffprobeDuration/);
   assert.doesNotMatch(tool, /publishAll|uploadShort|postShort|autonomous\/publish/);
   assert.doesNotMatch(tool, /UPDATE\s+stories|INSERT\s+INTO\s+stories|DELETE\s+FROM/i);
 });

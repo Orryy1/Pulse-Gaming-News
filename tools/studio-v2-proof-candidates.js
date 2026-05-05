@@ -12,6 +12,10 @@ const {
   buildStudioV2ProofCandidateReport,
   renderStudioV2ProofCandidatesMarkdown,
 } = require("../lib/ops/studio-v2-proof-candidates");
+const {
+  discoverLocalAudioProofReport,
+} = require("../lib/ops/studio-v2-proof-audio-discovery");
+const { ffprobeDuration } = require("../lib/studio/media-acquisition");
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
@@ -188,7 +192,15 @@ async function main() {
     return;
   }
 
-  const localAudioReports = await readReports(DEFAULT_AUDIO_REPORTS);
+  const discoveredLocalAudioReport = await discoverLocalAudioProofReport({
+    mediaRoot: process.env.MEDIA_ROOT || null,
+    repoRoot: ROOT,
+    durationProbe: ffprobeDuration,
+  });
+  const localAudioReports = [
+    ...(await readReports(DEFAULT_AUDIO_REPORTS)),
+    discoveredLocalAudioReport,
+  ];
   const assetReports = await readReports(DEFAULT_ASSET_REPORTS);
   const frameReports = await readReports(DEFAULT_FRAME_REPORTS);
   const segmentValidationReports = await readReports(DEFAULT_SEGMENT_VALIDATION_REPORTS);

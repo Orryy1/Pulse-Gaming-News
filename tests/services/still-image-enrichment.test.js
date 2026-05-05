@@ -396,3 +396,48 @@ test("v1.5 multi-entity store search adds verified stills per required subject g
   assert.equal(plan.would_fetch.every((item) => item.store_match_status === "verified"), true);
   assert.equal(plan.multi_entity_store_search.coverage.length, 3);
 });
+
+test("v1.5 multi-entity store search targets inferred headline game before platform context", async () => {
+  const searchedTerms = [];
+  const report = await runStillImageEnrichment(
+    [
+      baseStory({
+        id: "marathon-platform-rankings",
+        title:
+          "Marathon Drops To 15K Daily CCU Peak On Steam, Exits Top 50 On PlayStation & Top 100 On Xbox Best-Sellers Lists",
+        hook: "Marathon has fallen hard on Steam.",
+        body: "The Bungie extraction shooter is struggling across Steam, PlayStation and Xbox.",
+        full_script:
+          "Marathon has fallen hard on Steam. The Bungie extraction shooter is struggling across Steam, PlayStation and Xbox.",
+        downloaded_images: [],
+        game_images: [],
+      }),
+    ],
+    {
+      dryRun: true,
+      multiEntityStoreSearch: true,
+      requireVerifiedStore: true,
+      maxDownloadsPerStory: 3,
+      storeSearchHttp: {
+        get: async (url) => {
+          const term = new URL(url).searchParams.get("term");
+          searchedTerms.push(term);
+          return {
+            data: {
+              items:
+                term.toLowerCase() === "marathon"
+                  ? [{ id: 3445850, name: "Marathon" }]
+                  : [],
+            },
+          };
+        },
+      },
+    },
+  );
+
+  const plan = report.plans[0];
+  assert.equal(searchedTerms[0], "Marathon");
+  assert.deepEqual(plan.multi_entity_store_search.coverage.map((item) => item.entity), ["Marathon"]);
+  assert.equal(plan.would_fetch.length, 3);
+  assert.equal(plan.would_fetch.every((item) => item.exact_subject_group === "Marathon"), true);
+});

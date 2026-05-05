@@ -162,6 +162,68 @@ test("Flash Lane footage backbone projects a footage-heavy 60s Flash proof", () 
   assert.deepEqual(report.blockers, []);
 });
 
+test("Flash Lane footage backbone accepts single-game stories with enough validated deep-scan segments", () => {
+  const sourceA = "https://video.example/marathon-a.m3u8";
+  const sourceB = "https://video.example/marathon-b.m3u8";
+  const sourceC = "https://video.example/marathon-c.m3u8";
+  const sourceD = "https://video.example/marathon-d.m3u8";
+  const sources = [sourceA, sourceB, sourceC, sourceD];
+  const report = buildFlashLaneFootageBackboneReport({
+    storyId: "story-1",
+    targetRuntimeS: 35,
+    minClipDominance: 0.5,
+    frameReport: frameReport([
+      frame({ entity: "Marathon", source: sourceA, status: "rejected_qa", failures: ["title_or_rating_card_frame"] }),
+    ]),
+    segmentValidationReport: {
+      segments: sources.map((source, index) =>
+        segment({
+          entity: "Marathon",
+          source,
+          start: 42 + index * 6,
+          actionScore: 80 + index,
+        }),
+      ),
+    },
+  });
+
+  assert.equal(report.verdict, "ready_for_flash_render_preflight");
+  assert.equal(report.thresholds.minValidatedEntities, 1);
+  assert.equal(report.blockers.includes("footage_backbone_entity_coverage_too_thin"), false);
+  assert.equal(report.validated_clip_refs.length, 4);
+  assert.deepEqual([...new Set(report.validated_clip_refs.map((ref) => ref.entity))], ["Marathon"]);
+});
+
+test("Flash Lane footage backbone allows validated clips when accepted trailer frames carry the motion gap", () => {
+  const frames = Array.from({ length: 6 }, (_, index) =>
+    frame({
+      entity: "Marathon",
+      source: `https://video.example/marathon-${index}.m3u8`,
+      seconds: 44 + index,
+    }),
+  );
+  const segments = frames.map((item, index) =>
+    segment({
+      entity: "Marathon",
+      source: item.source_url,
+      start: 48 + index * 6,
+      actionScore: 82,
+    }),
+  );
+
+  const report = buildFlashLaneFootageBackboneReport({
+    storyId: "story-1",
+    targetRuntimeS: 66,
+    frameReport: frameReport(frames),
+    segmentValidationReport: { segments },
+  });
+
+  assert.equal(report.verdict, "ready_for_flash_render_preflight");
+  assert.equal(report.blockers.includes("footage_backbone_clip_dominance_too_low"), false);
+  assert.ok(report.warnings.includes("footage_backbone_clip_dominance_supported_by_trailer_frames"));
+  assert.ok(report.projected_motion_dominance >= report.thresholds.minClipDominance);
+});
+
 test("Flash Lane footage backbone caps repeated use of the same trailer source", () => {
   const sharedSource = "https://video.example/shared-bioshock.m3u8";
   const frames = Array.from({ length: 6 }, (_, index) =>

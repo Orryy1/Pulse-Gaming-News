@@ -196,6 +196,28 @@ test("Asset Acquisition Pro v1 extracts multiple entities from publisher/franchi
   assert.ok(plan.entity_map.publishers.includes("Take-Two"));
 });
 
+test("Asset Acquisition Pro treats headline-leading game titles as game entities before platform context", () => {
+  const plan = buildAssetAcquisitionPlan(
+    baseStory({
+      id: "marathon-platform-rankings",
+      title:
+        "Marathon Drops To 15K Daily CCU Peak On Steam, Exits Top 50 On PlayStation & Top 100 On Xbox Best-Sellers Lists",
+      hook: "Marathon has fallen hard on Steam.",
+      body: "The Bungie extraction shooter is struggling across Steam, PlayStation and Xbox.",
+      full_script:
+        "Marathon has fallen hard on Steam. The Bungie extraction shooter is struggling across Steam, PlayStation and Xbox.",
+    }),
+  );
+
+  assert.ok(plan.entity_map.games.includes("Marathon"));
+  assert.deepEqual(
+    ["Steam", "PlayStation", "Xbox"].every((platform) => plan.entity_map.platforms.includes(platform)),
+    true,
+  );
+  assert.equal(plan.entity_map.primary, "Marathon");
+  assert.equal(plan.search_queries[0], "Marathon");
+});
+
 test("Asset Acquisition Pro v1 scores Steam and IGDB assets above article and generated cards", () => {
   const plan = buildAssetAcquisitionPlan(
     baseStory({

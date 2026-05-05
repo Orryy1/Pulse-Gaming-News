@@ -61,6 +61,7 @@ const {
   buildFlashLaneProofPreflight,
 } = require("../lib/studio/v2/flash-lane-preflight");
 const {
+  classifyStudioV2Suitability,
   evaluateStillDeckRenderReadiness,
   recommendStudioV2Promotion,
 } = require("../lib/studio/v2/still-deck-promotion");
@@ -1139,17 +1140,17 @@ async function main() {
   if (officialClipRefsUsed <= 0) {
     premiumBlockers.push("still images alone cannot prove premium motion quality");
   }
-  const studioV2Suitability = renderPreflightBlocked
-    ? "blocked_by_flash_lane_preflight"
-    : !renderAttempted
-    ? "diagnostic_only_not_render_verified"
-    : renderRejected || enrichedVoiceGate === "red"
-      ? "blocked_by_render_or_voice_qa"
-      : enrichedVisualCount >= 8 && enrichedPackage.metrics.distinctEntities >= 3
-        ? "studio_v2_60s_candidate_local_proof"
-        : enrichedVisualCount >= 3
-          ? "standard_short_candidate"
-          : "still_too_thin";
+  const studioV2Suitability = classifyStudioV2Suitability({
+    renderPreflightBlocked,
+    renderAttempted,
+    renderRejected,
+    enrichedVoiceGate,
+    enrichedVisualCount,
+    distinctEntities: enrichedPackage.metrics.distinctEntities,
+    officialClipRefsUsed,
+    acceptedFrameCount: enrichedPackage.metrics.acceptedFrameCount,
+    renderPreflight,
+  });
   const promotionRecommendation = recommendStudioV2Promotion({
     renderPreflightBlocked,
     renderPreflight,

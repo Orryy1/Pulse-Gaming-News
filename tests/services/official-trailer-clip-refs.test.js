@@ -794,3 +794,89 @@ test("official clip refs keep searching past rejected validation windows until m
   );
   assert.ok(refs.every((ref) => ref.provenance.allowed_for_flash_lane === true));
 });
+
+test("official clip refs include validated deep-scan segments even when no accepted frame window matched", () => {
+  const sourceA = "https://video.example/marathon-gameplay-a.m3u8";
+  const sourceB = "https://video.example/marathon-gameplay-b.m3u8";
+  const refs = buildOfficialTrailerClipsFromFrameReport(
+    {
+      plans: [
+        {
+          story_id: "story-1",
+          frames: [
+            acceptedFrame({
+              status: "rejected_qa",
+              entity: "Marathon",
+              source_url: sourceA,
+              target_time_seconds: 12,
+              qa: {
+                thumbnail_safe: false,
+                verdict: "fail",
+                failures: ["title_or_rating_card_frame"],
+                prescan: {
+                  likely_is_logo: true,
+                  text_overlay_likelihood: 0.55,
+                  edge_density: 0.18,
+                  saturation_mean: 0.22,
+                },
+              },
+            }),
+          ],
+        },
+      ],
+    },
+    "story-1",
+    {
+      maxClips: 4,
+      requireValidatedSegments: true,
+      segmentValidationReport: {
+        generated_at: "2026-05-02T22:00:00.000Z",
+        segments: [
+          {
+            clip_key: `${sourceA}|marathon|42.00`,
+            source_url: sourceA,
+            source_type: "steam_movie",
+            entity: "Marathon",
+            media_start_s: 42,
+            duration_s: 5,
+            status: "validated",
+            segment_validated: true,
+            allowed_for_flash_lane: true,
+            validation_reason: "segment_samples_passed",
+            segment_motion_class: "gameplay_action",
+            action_score: 78,
+            action_sample_count: 3,
+            samples: [
+              { local_path: "test/output/official-trailer-segment-validation-v1/assets/story-1/a.jpg" },
+            ],
+          },
+          {
+            clip_key: `${sourceB}|marathon|84.00`,
+            source_url: sourceB,
+            source_type: "steam_movie",
+            entity: "Marathon",
+            media_start_s: 84,
+            duration_s: 5,
+            status: "validated",
+            segment_validated: true,
+            allowed_for_flash_lane: true,
+            validation_reason: "segment_samples_passed",
+            segment_motion_class: "gameplay_action",
+            action_score: 82,
+            action_sample_count: 3,
+            samples: [
+              { local_path: "test/output/official-trailer-segment-validation-v1/assets/story-1/b.jpg" },
+            ],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.deepEqual(
+    refs.map((ref) => `${ref.entity}:${ref.mediaStartS}`),
+    ["Marathon:84", "Marathon:42"],
+  );
+  assert.ok(refs.every((ref) => ref.provenance.segment_validated === true));
+  assert.ok(refs.every((ref) => ref.provenance.segment_selection_policy === "validated_deep_scan_segment"));
+});

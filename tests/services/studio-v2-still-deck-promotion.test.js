@@ -4,6 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
+  classifyStudioV2Suitability,
   evaluateStillDeckRenderReadiness,
   recommendStudioV2Promotion,
 } = require("../../lib/studio/v2/still-deck-promotion");
@@ -74,4 +75,54 @@ test("still-deck render readiness allows diverse packages or motion-backed packa
     },
   });
   assert.equal(motionBacked.verdict, "pass");
+});
+
+test("Studio V2 suitability treats single-game footage-backed proofs as 60s local candidates", () => {
+  const suitability = classifyStudioV2Suitability({
+    renderPreflightBlocked: false,
+    renderAttempted: true,
+    renderRejected: false,
+    enrichedVoiceGate: null,
+    enrichedVisualCount: 12,
+    distinctEntities: 1,
+    officialClipRefsUsed: 7,
+    acceptedFrameCount: 9,
+    renderPreflight: {
+      verdict: "allow",
+      metrics: {
+        narrationDurationS: 72.48,
+        motionDominance: 0.81,
+        actualClipScenes: 7,
+        availableClipRefs: 7,
+      },
+      blockers: [],
+    },
+  });
+
+  assert.equal(suitability, "studio_v2_60s_candidate_local_proof");
+});
+
+test("Studio V2 suitability keeps still-only single-entity packages at standard short", () => {
+  const suitability = classifyStudioV2Suitability({
+    renderPreflightBlocked: false,
+    renderAttempted: true,
+    renderRejected: false,
+    enrichedVoiceGate: null,
+    enrichedVisualCount: 8,
+    distinctEntities: 1,
+    officialClipRefsUsed: 0,
+    acceptedFrameCount: 0,
+    renderPreflight: {
+      verdict: "allow",
+      metrics: {
+        narrationDurationS: 62,
+        motionDominance: 0.1,
+        actualClipScenes: 0,
+        availableClipRefs: 0,
+      },
+      blockers: [],
+    },
+  });
+
+  assert.equal(suitability, "standard_short_candidate");
 });

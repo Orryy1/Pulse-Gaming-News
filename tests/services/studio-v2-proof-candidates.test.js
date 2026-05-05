@@ -155,6 +155,68 @@ test("proof candidates require enough validated gameplay clip refs, not just sti
   assert.equal(report.candidates[0].visuals.validated_clip_ref_count, 1);
 });
 
+test("proof candidates distinguish source diversity gaps from missing clip count", () => {
+  const storyId = "same_source";
+  const report = buildStudioV2ProofCandidateReport({
+    stories: [story(storyId)],
+    localAudioReports: [audioReport(storyId)],
+    assetReports: [assetReport(storyId, 7)],
+    frameReports: [frameReport(storyId, 5)],
+    segmentValidationReports: [
+      {
+        segments: Array.from({ length: 3 }, (_, index) => ({
+          story_id: storyId,
+          source_url: "https://video.example.test/one-official-source.m3u8",
+          entity: ["GTA", "Red Dead", "BioShock"][index],
+          media_start_s: 42 + index * 6,
+          status: "validated",
+          segment_validated: true,
+          allowed_for_flash_lane: true,
+          segment_motion_class: "gameplay_action",
+        })),
+      },
+    ],
+  });
+
+  const candidate = report.candidates[0];
+  assert.equal(candidate.verdict, "needs_motion_or_exact_assets");
+  assert.equal(candidate.visuals.validated_clip_ref_count, 3);
+  assert.equal(candidate.visuals.validated_clip_source_count, 1);
+  assert.ok(candidate.blockers.includes("flash_proof_requires_three_validated_clip_sources"));
+  assert.ok(!candidate.blockers.includes("flash_proof_requires_three_validated_clip_refs"));
+});
+
+test("proof candidates require validated entity coverage for multi-game stories", () => {
+  const storyId = "single_entity_motion";
+  const report = buildStudioV2ProofCandidateReport({
+    stories: [story(storyId)],
+    localAudioReports: [audioReport(storyId)],
+    assetReports: [assetReport(storyId, 7)],
+    frameReports: [frameReport(storyId, 5)],
+    segmentValidationReports: [
+      {
+        segments: Array.from({ length: 3 }, (_, index) => ({
+          story_id: storyId,
+          source_url: `https://video.example.test/bioshock_${index}.m3u8`,
+          entity: "BioShock",
+          media_start_s: 42 + index * 6,
+          status: "validated",
+          segment_validated: true,
+          allowed_for_flash_lane: true,
+          segment_motion_class: "gameplay_action",
+        })),
+      },
+    ],
+  });
+
+  const candidate = report.candidates[0];
+  assert.equal(candidate.verdict, "needs_motion_or_exact_assets");
+  assert.equal(candidate.visuals.validated_clip_ref_count, 3);
+  assert.deepEqual(candidate.visuals.validated_clip_entities, ["BioShock"]);
+  assert.ok(candidate.blockers.includes("flash_proof_requires_validated_entity_coverage"));
+  assert.ok(!candidate.recommended_command);
+});
+
 test("proof candidate markdown is operator-readable and says when no render is safe", () => {
   const report = buildStudioV2ProofCandidateReport({
     stories: [story("weak_visual")],

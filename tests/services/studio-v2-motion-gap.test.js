@@ -248,6 +248,8 @@ test("motion gap markdown is operator-readable and local-only", () => {
 
   assert.match(md, /Studio V2 Motion Gap Planner/);
   assert.match(md, /do_not_render_yet/);
+  assert.match(md, /Validated clip sources:/);
+  assert.match(md, /Validated entities:/);
   assert.match(md, /local-only/);
   assert.match(md, /No DB, Railway, OAuth, render-default or posting changes/);
 });

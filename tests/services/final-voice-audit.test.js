@@ -14,6 +14,9 @@ const {
 const {
   loadFinalVoiceReportsByStoryId,
 } = require("../../lib/studio/v2/final-voice-report-loader");
+const {
+  listMp4s,
+} = require("../../tools/final-voice-audit");
 
 test("final voice audit marks legacy MP4s without approved voice evidence as not reusable", () => {
   const row = classifyFinalRenderVoice({
@@ -119,4 +122,20 @@ test("final voice report loader finds sidecar reports for dispatch tooling", asy
 
   assert.equal(reports.rss_good.voice.provider, "elevenlabs");
   assert.equal(report.counts.pass, 1);
+});
+
+test("final voice audit CLI inspects newest MP4s first when limited", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "final-voice-newest-"));
+  const oldMp4 = path.join(dir, "aaa_old.mp4");
+  const newMp4 = path.join(dir, "zzz_new.mp4");
+  await fs.writeFile(oldMp4, "old");
+  await fs.writeFile(newMp4, "new");
+  const oldDate = new Date("2026-05-01T10:00:00Z");
+  const newDate = new Date("2026-05-05T10:00:00Z");
+  await fs.utimes(oldMp4, oldDate, oldDate);
+  await fs.utimes(newMp4, newDate, newDate);
+
+  const files = await listMp4s(dir, 1);
+
+  assert.deepEqual(files, [newMp4]);
 });

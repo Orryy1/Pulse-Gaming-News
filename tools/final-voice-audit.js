@@ -13,8 +13,6 @@ const {
   loadFinalVoiceReportsByStoryId,
 } = require("../lib/studio/v2/final-voice-report-loader");
 
-dotenv.config({ override: true });
-
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
 
@@ -33,14 +31,20 @@ function parseArgs(argv) {
 async function listMp4s(finalDir, limit) {
   if (!(await fs.pathExists(finalDir))) return [];
   const entries = await fs.readdir(finalDir);
-  const files = entries
+  const files = await Promise.all(entries
     .filter((entry) => /\.mp4$/i.test(entry))
-    .sort()
-    .map((entry) => path.join(finalDir, entry));
-  return Number.isFinite(limit) && limit > 0 ? files.slice(0, limit) : files;
+    .map(async (entry) => {
+      const fullPath = path.join(finalDir, entry);
+      const stat = await fs.stat(fullPath);
+      return { fullPath, mtimeMs: stat.mtimeMs };
+    }));
+  files.sort((a, b) => b.mtimeMs - a.mtimeMs || a.fullPath.localeCompare(b.fullPath));
+  const mp4s = files.map((file) => file.fullPath);
+  return Number.isFinite(limit) && limit > 0 ? mp4s.slice(0, limit) : mp4s;
 }
 
 async function main() {
+  dotenv.config({ override: true });
   const args = parseArgs(process.argv);
   const finalDir = path.resolve(
     args.finalDir ||
@@ -80,3 +84,7 @@ if (require.main === module) {
     process.exit(1);
   });
 }
+
+module.exports = {
+  listMp4s,
+};

@@ -188,6 +188,41 @@ test("footage acquisition plan treats near-identical attempted windows as exhaus
   );
 });
 
+test("footage acquisition plan marks exhausted entities as alternate-source work", () => {
+  const attemptedStarts = [36, 42, 48, 54, 60, 66, 72, 84, 96, 108, 120];
+  const plan = buildFlashLaneFootageAcquisitionPlan({
+    storyId: "story-1",
+    frameReport: frameReport(),
+    segmentValidationReport: {
+      segments: [
+        {
+          story_id: "story-1",
+          entity: "BioShock",
+          allowed_for_flash_lane: true,
+          status: "accepted",
+          segment_motion_class: "gameplay_action",
+          action_score: 84,
+        },
+        ...attemptedStarts.map((start) => ({
+          story_id: "story-1",
+          entity: "GTA",
+          allowed_for_flash_lane: false,
+          status: "rejected",
+          validation_reason: "segment_samples_too_repetitive",
+          media_start_s: start,
+        })),
+      ],
+    },
+  });
+
+  const gta = plan.shopping_list.find((item) => item.entity === "GTA");
+  assert.equal(plan.next_best_action, "find_alternate_official_source_or_downgrade_story");
+  assert.equal(gta.window_status, "alternate_official_source_required");
+  assert.equal(gta.requires_alternate_official_source, true);
+  assert.deepEqual(gta.suggested_windows, []);
+  assert.ok(gta.reasons.includes("alternate_official_source_required"));
+});
+
 test("footage acquisition plan becomes proof-ready with enough validated windows", () => {
   const plan = buildFlashLaneFootageAcquisitionPlan({
     storyId: "story-1",
@@ -237,4 +272,26 @@ test("footage acquisition markdown is readable and explicit about safety", () =>
   assert.match(md, /Flash Lane Footage Acquisition v1/);
   assert.match(md, /Shopping List/);
   assert.match(md, /No downloads are performed/);
+});
+
+test("footage acquisition markdown does not hide exhausted source work behind blank windows", () => {
+  const attemptedStarts = [36, 42, 48, 54, 60, 66, 72, 84, 96, 108, 120];
+  const plan = buildFlashLaneFootageAcquisitionPlan({
+    storyId: "story-1",
+    frameReport: frameReport(),
+    segmentValidationReport: {
+      segments: attemptedStarts.map((start) => ({
+        story_id: "story-1",
+        entity: "GTA",
+        allowed_for_flash_lane: false,
+        status: "rejected",
+        validation_reason: "segment_samples_too_repetitive",
+        media_start_s: start,
+      })),
+    },
+  });
+  const md = renderFlashLaneFootageAcquisitionMarkdown(plan);
+
+  assert.match(md, /alternate official source required/);
+  assert.doesNotMatch(md, /windows:\s*$/m);
 });

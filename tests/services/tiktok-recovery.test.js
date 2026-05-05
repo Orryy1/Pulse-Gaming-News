@@ -69,6 +69,46 @@ test("TikTok auth doctor reports OAuth token health without exposing token value
   assert.doesNotMatch(md, /should-not-print|secret-value|aw1234567890abcd/);
 });
 
+test("TikTok auth doctor treats an expired refreshable local token as a sync or refresh action", () => {
+  const {
+    buildTikTokAuthDoctorReport,
+    renderTikTokAuthDoctorMarkdown,
+  } = require("../../lib/platforms/tiktok-auth-doctor");
+
+  const report = buildTikTokAuthDoctorReport({
+    env: {
+      TIKTOK_CLIENT_KEY: "aw1234567890abcd",
+      TIKTOK_CLIENT_SECRET: "secret-value",
+      TIKTOK_REDIRECT_URI: "https://pulse.orryy.com/auth/tiktok/callback",
+    },
+    tokenStatus: {
+      ok: false,
+      reason: "expired",
+      expires_in_seconds: -3_600,
+      refresh_available: true,
+      needs_reauth: false,
+      access_token: "expired-access-token",
+      refresh_token: "still-secret",
+    },
+  });
+
+  assert.equal(report.token_status.connected, false);
+  assert.equal(report.token_status.needs_reauth, false);
+  assert.equal(report.token_status.needs_refresh_or_sync, true);
+  assert.equal(report.token_status.local_action, "refresh_or_sync_local_token");
+  assert.ok(report.warnings.includes("local_token_expired_but_refreshable"));
+  assert.ok(
+    report.operator_actions.some((action) =>
+      /refresh or sync the local TikTok token/i.test(action),
+    ),
+  );
+
+  const md = renderTikTokAuthDoctorMarkdown(report);
+  assert.match(md, /Needs refresh or sync: true/);
+  assert.match(md, /refresh_or_sync_local_token/);
+  assert.doesNotMatch(md, /expired-access-token|still-secret|secret-value|aw1234567890abcd/);
+});
+
 test("TikTok auth doctor can include a redacted live client credential probe", async () => {
   const {
     buildTikTokAuthDoctorReport,

@@ -278,6 +278,58 @@ function resolveVoiceSettingsForProvider(
   return settings;
 }
 
+function isRetryableLocalTtsError(err) {
+  const code = String(err?.code || "").toUpperCase();
+  const message = String(err?.message || "");
+  return (
+    code === "ECONNRESET" ||
+    code === "ECONNABORTED" ||
+    code === "ETIMEDOUT" ||
+    /ECONNRESET|socket hang up|timeout/i.test(message)
+  );
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function requestTtsWithRetry({
+  provider,
+  requestConfig,
+  request = axios,
+  attempts,
+  retryDelayMs = Number(process.env.LOCAL_TTS_RETRY_DELAY_MS || 1500),
+  log = console.log,
+} = {}) {
+  const isLocal = String(provider || "").toLowerCase() === "local";
+  const maxAttempts = isLocal
+    ? Math.max(
+        1,
+        Math.trunc(
+          Number(attempts || process.env.LOCAL_TTS_REQUEST_ATTEMPTS || 3),
+        ),
+      )
+    : 1;
+
+  let lastError;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await request(requestConfig);
+    } catch (err) {
+      lastError = err;
+      const retryable = isLocal && isRetryableLocalTtsError(err);
+      if (!retryable || attempt >= maxAttempts) throw err;
+      if (typeof log === "function") {
+        log(
+          `[audio] local TTS request dropped (${err.message}); retrying ${attempt + 1}/${maxAttempts}`,
+        );
+      }
+      await delay(retryDelayMs);
+    }
+  }
+  throw lastError;
+}
+
 // --- Concatenate multiple MP3 files via ffmpeg ---
 async function concatAudioFiles(files, outputPath) {
   // Resolve through media-paths so the list file + output land
@@ -344,12 +396,15 @@ async function generateTTS(text, outputPath, rateOverride) {
     data.model_id = brand.voiceModel || "eleven_multilingual_v2";
   }
 
-  const response = await axios({
-    method: "POST",
-    url: `${baseUrl}/v1/text-to-speech/${voiceId}/with-timestamps`,
-    headers,
-    data,
-    timeout: resolveTtsTimeoutMs(provider),
+  const response = await requestTtsWithRetry({
+    provider,
+    requestConfig: {
+      method: "POST",
+      url: `${baseUrl}/v1/text-to-speech/${voiceId}/with-timestamps`,
+      headers,
+      data,
+      timeout: resolveTtsTimeoutMs(provider),
+    },
   });
 
   // outputPath is the repo-relative path the caller passes in
@@ -682,6 +737,8 @@ module.exports.concatAudioFiles = concatAudioFiles;
 module.exports.resolveTtsTimeoutMs = resolveTtsTimeoutMs;
 module.exports.resolveLocalTtsSpeakingRate = resolveLocalTtsSpeakingRate;
 module.exports.resolveVoiceSettingsForProvider = resolveVoiceSettingsForProvider;
+module.exports.isRetryableLocalTtsError = isRetryableLocalTtsError;
+module.exports.requestTtsWithRetry = requestTtsWithRetry;
 module.exports.assertBrandNameQaForTts = assertBrandNameQaForTts;
 module.exports.selectRawTtsScript = selectRawTtsScript;
 

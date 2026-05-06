@@ -14,6 +14,11 @@ const OUT = path.join(ROOT, "test", "output");
 
 const DEFAULT_PROOF_CANDIDATES = path.join(OUT, "studio_v2_proof_candidates.json");
 const DEFAULT_SEGMENT_REPORT = path.join(OUT, "official_trailer_segment_validation_apply_local.json");
+const DEFAULT_FORENSIC_REPORT = path.join(
+  OUT,
+  "studio-v2-still-deck",
+  "qa_forensic_1szzhy9_enriched_report.json",
+);
 const DEFAULT_ROOT_REPORT = path.join(ROOT, "MOTION_ACQUISITION_OVERNIGHT_REPORT.md");
 
 function parseArgs(argv) {
@@ -24,6 +29,7 @@ function parseArgs(argv) {
     limit: 10,
     proofCandidates: DEFAULT_PROOF_CANDIDATES,
     segmentReport: DEFAULT_SEGMENT_REPORT,
+    forensicReport: DEFAULT_FORENSIC_REPORT,
   };
   for (let i = 2; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -34,6 +40,8 @@ function parseArgs(argv) {
     else if (arg === "--proof-candidates") args.proofCandidates = path.resolve(ROOT, argv[++i] || "");
     else if (arg === "--segment-report") args.segmentReport = path.resolve(ROOT, argv[++i] || "");
     else if (arg === "--no-segment-report") args.segmentReport = null;
+    else if (arg === "--forensic-report") args.forensicReport = path.resolve(ROOT, argv[++i] || "");
+    else if (arg === "--no-forensic-report") args.forensicReport = null;
   }
   return args;
 }
@@ -49,6 +57,8 @@ function printHelp() {
       "  --proof-candidates <path>    studio_v2_proof_candidates.json path",
       "  --segment-report <path>      trailer segment validation report path",
       "  --no-segment-report          Run without segment rejection detail",
+      "  --forensic-report <path>     latest local render forensic report path",
+      "  --no-forensic-report         Run without latest render warning detail",
       "  --json                       Print JSON instead of Markdown",
       "",
       "Read-only/report-only. Does not render, call TTS, post, mutate the DB or touch Railway.",
@@ -79,9 +89,11 @@ async function main() {
     true,
   );
   const segmentValidationReport = await readJsonIfExists(args.segmentReport, "segment report", false);
+  const latestForensicReport = await readJsonIfExists(args.forensicReport, "forensic report", false);
   const report = buildStudioV2MotionGapReport({
     proofCandidateReport,
     segmentValidationReport,
+    latestForensicReport,
     storyId: args.storyId,
     limit: args.limit,
   });

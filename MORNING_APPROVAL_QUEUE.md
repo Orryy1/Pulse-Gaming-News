@@ -16,7 +16,7 @@ Risk: the proof still has forensic warnings and needs human visual review. The c
 
 Rollback: keep legacy `assemble.js` as canonical. If the pilot fails visual review or upload QA, publish using the existing legacy path and do not set any Studio V2 production flag.
 
-Tests/build status: focused Studio V2 promotion tests passed. Latest full validation passed: `npm test` `2058/2058`, `npm run build` pass.
+Tests/build status: focused Studio V2 promotion and motion gap tests passed. Latest full validation passed: `npm test` `2059/2059`, `npm run build` pass.
 
 Recommendation: review `STUDIO_V2_OVERNIGHT_PROMOTION_PACKET.md`, `test/output/studio-v2-still-deck/studio_v2_1szzhy9_enriched.mp4` and `test/output/studio-v2-still-deck/1szzhy9_enriched_contact_sheet.jpg` in the morning. If the visual taste still feels short of the high-energy Flash Lane bar, reject the pilot and keep improving motion acquisition. Do not approve a global Studio V2 switch.
 

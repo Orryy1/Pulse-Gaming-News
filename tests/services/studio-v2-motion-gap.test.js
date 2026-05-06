@@ -133,6 +133,62 @@ test("motion gap report preserves ready proof commands instead of blocking", () 
   assert.ok(report.gaps[0].recommended_commands.some((item) => item.command.includes("studio:v2:still-deck")));
 });
 
+test("motion gap report downgrades ready language when latest render proof has forensic warnings", () => {
+  const report = buildStudioV2MotionGapReport({
+    proofCandidateReport: {
+      candidates: [
+        proofCandidate({
+          story_id: "ready",
+          verdict: "ready_flash_proof",
+          blockers: [],
+          audio: {
+            status: "approved_local_liam_audio_ready",
+            ready: true,
+            output_audio_path: "test/output/audio/ready_liam.mp3",
+            duration_seconds: 66.2,
+          },
+          visuals: {
+            exact_subject_count: 8,
+            exact_subject_groups: ["Marathon"],
+            accepted_frame_count: 9,
+            frame_groups: ["Marathon"],
+            validated_clip_ref_count: 7,
+            validated_clip_source_count: 5,
+            validated_clip_entities: ["Marathon"],
+          },
+          recommended_command: "npm run studio:v2:still-deck -- --story ready",
+        }),
+      ],
+    },
+    latestForensicReport: {
+      storyId: "ready_enriched",
+      summary: { verdict: "warn", failCount: 0, warnCount: 2 },
+      visual: {
+        repeatPairCount: 2,
+        repeatPairs: [{ aTimeS: 46.5, bTimeS: 49.5 }],
+        taste: {
+          badFrameCount: 1,
+          badFrames: [{ timeS: 22.5, reason: "washed_low_detail_frame" }],
+        },
+      },
+      issues: [{ code: "rendered_frame_taste" }],
+    },
+  });
+
+  const gap = report.gaps[0];
+  assert.equal(gap.render_recommendation, "ready_for_local_flash_proof");
+  assert.equal(gap.latest_render_proof.verdict, "warn");
+  assert.equal(gap.latest_render_proof.needs_human_visual_review, true);
+  assert.deepEqual(gap.latest_render_proof.repeat_pair_times, ["46.5s/49.5s"]);
+  assert.deepEqual(gap.latest_render_proof.weak_frame_times, ["22.5s washed_low_detail_frame"]);
+  assert.ok(gap.priority_next_steps.includes("review_latest_render_forensic_warnings_before_pilot"));
+  assert.equal(report.summary.ready_flash_proofs_with_forensic_warnings, 1);
+
+  const md = renderStudioV2MotionGapMarkdown(report);
+  assert.match(md, /Latest render proof: warn/);
+  assert.match(md, /22\.5s washed_low_detail_frame/);
+});
+
 test("motion gap report keeps Liam-ready visual gaps focused on acquisition", () => {
   const report = buildStudioV2MotionGapReport({
     proofCandidateReport: {

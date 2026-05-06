@@ -22,6 +22,10 @@ const OUT_DIR = path.join(ROOT, "test", "output", "monetisation");
 const { buildMonetisationSnapshot } = require(
   path.join(ROOT, "lib", "intelligence", "monetisation-tracker"),
 );
+const {
+  buildMonetisationReadiness,
+  renderMonetisationReadinessMarkdown,
+} = require(path.join(ROOT, "lib", "intelligence", "monetisation-readiness"));
 const { recommend: recommendTikTokRoute, rankRoutesForBreakingNews } = require(
   path.join(ROOT, "lib", "intelligence", "tiktok-strategy"),
 );
@@ -43,6 +47,27 @@ const FIXTURE_STATE = {
   tiktok_followers: 0,
   tiktok_views_30d: 0,
 };
+
+const FIXTURE_STORIES = [
+  {
+    id: "affiliate_pokemon_go",
+    title: "Mega Mewtwo's Pokemon Go debut gets a confirmed date",
+    full_script:
+      "Pokemon Go players now have a concrete event date and a natural accessory angle.",
+  },
+  {
+    id: "affiliate_gta6",
+    title: "GTA 6 trailer evidence remains unconfirmed",
+    full_script:
+      "The GTA 6 angle is still rumour-led, so monetisation must stay careful and disclosed.",
+  },
+  {
+    id: "affiliate_xbox_policy",
+    title: "Xbox platform policy update changes account rules",
+    full_script:
+      "This is a platform-policy story, so random product links should be avoided.",
+  },
+];
 
 function renderMonetisationMarkdown(snapshot, tiktok) {
   const lines = [];
@@ -104,6 +129,14 @@ async function main() {
   const tiktokJsonPath = path.join(OUT_DIR, `tiktok-${date}.json`);
   const tiktokRoutesPath = path.join(OUT_DIR, `tiktok-routes-${date}.json`);
   const mdPath = path.join(OUT_DIR, `monetisation-${date}.md`);
+  const readiness = buildMonetisationReadiness({
+    snapshot: FIXTURE_STATE,
+    stories: FIXTURE_STORIES,
+  });
+  const readinessMd = renderMonetisationReadinessMarkdown(readiness);
+  const readinessJsonPath = path.join(ROOT, "test", "output", "monetisation_readiness.json");
+  const readinessMdPath = path.join(ROOT, "test", "output", "monetisation_readiness.md");
+  const overnightReportPath = path.join(ROOT, "MONETISATION_OVERNIGHT_REPORT.md");
 
   await fs.writeFile(jsonPath, JSON.stringify(snapshot, null, 2));
   await fs.writeFile(tiktokJsonPath, JSON.stringify(tiktok, null, 2));
@@ -112,6 +145,9 @@ async function main() {
     JSON.stringify(rankRoutesForBreakingNews(), null, 2),
   );
   await fs.writeFile(mdPath, renderMonetisationMarkdown(snapshot, tiktok));
+  await fs.writeFile(readinessJsonPath, JSON.stringify(readiness, null, 2));
+  await fs.writeFile(readinessMdPath, readinessMd);
+  await fs.writeFile(overnightReportPath, readinessMd);
 
   return {
     cleared: snapshot.summary.cleared,
@@ -122,6 +158,9 @@ async function main() {
       tiktokJson: path.relative(ROOT, tiktokJsonPath),
       tiktokRoutesJson: path.relative(ROOT, tiktokRoutesPath),
       md: path.relative(ROOT, mdPath),
+      readinessJson: path.relative(ROOT, readinessJsonPath),
+      readinessMd: path.relative(ROOT, readinessMdPath),
+      overnightReport: path.relative(ROOT, overnightReportPath),
     },
   };
 }
@@ -142,4 +181,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { main, FIXTURE_STATE };
+module.exports = { main, FIXTURE_STATE, FIXTURE_STORIES };

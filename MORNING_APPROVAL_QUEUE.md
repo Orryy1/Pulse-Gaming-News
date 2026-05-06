@@ -35,3 +35,19 @@ Rollback: keep TikTok posting manual/inbox-only. If a future inbox upload create
 Tests/build status: TikTok dispatch and automation report tests passed locally. Full suite/build status will be refreshed in the final overnight handoff.
 
 Recommendation: do not approve live-account browser automation. Approve only a single official inbox upload test after a fresh dispatch pack reaches `ready_for_operator_review`.
+
+## 3. Paid/External Voice Shootout
+
+Decision needed: approve or reject a small capped external voice shootout using ElevenLabs/Fish or any other paid/external provider.
+
+Why it matters: the local framework is ready and local Liam is available for safe benchmarking, but paid/external providers can spend credits or upload voice material outside the machine.
+
+What changes: if approved later, run a capped batch against the fixed benchmark scripts in `voice_benchmark_manifest.json` and compare against local Liam using the blind review sheet.
+
+Risk: paid credits may be spent and private/reference voice material could leave the machine if the wrong provider is used.
+
+Rollback: do not switch production voice. Keep all generated samples under `test/output` and delete any rejected samples after review.
+
+Tests/build status: voice shootout focused tests, full `npm test` and `npm run build` passed locally.
+
+Recommendation: run local Liam first. Approve a paid/external shootout only after local Liam has been scored against the blind review sheet.

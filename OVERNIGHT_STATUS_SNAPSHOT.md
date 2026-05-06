@@ -1,20 +1,20 @@
 # Overnight Status Snapshot
 
-Generated: 2026-05-06 21:07 BST
+Generated: 2026-05-06 21:22 BST
 
 ## Branch
 
 - Current branch: `codex/readiness-qa-failure-window`
-- Latest commit: `272624b8 Add overnight motion gap report`
+- Latest commit before voice shootout slice: `6a209a4b Add TikTok overnight readiness report`
 - `origin/main`: `2c7f47c5f6e7544f4a16ef7e5b4d3df1ffc7cf10`
 - Working tree at snapshot start: clean
-- Current in-progress slice: TikTok read-only automation/readiness report.
+- Current in-progress slice: Voice shootout framework.
 
 ## Validation
 
 - Focused Studio V2 still-deck ingestion tests: pass (`24/24`)
 - Focused TikTok automation/dispatch/recovery tests: pass (`39/39`)
-- Full `npm test`: pass (`2018/2018`)
+- Full `npm test`: pass (`2024/2024`)
 - `npm run build`: pass
 - `npm run build`: pass
 - No Railway deploy, OAuth, production DB mutation, social posting or production renderer switch was performed.

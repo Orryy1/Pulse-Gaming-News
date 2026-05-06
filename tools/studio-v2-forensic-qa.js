@@ -38,10 +38,14 @@ async function main() {
   console.log(
     `[qa] audio recurrence: ${report.audio.verdict} (${report.audio.declaredSfxCueCount} declared SFX cues)`,
   );
+  console.log(`[qa] audio presence: ${report.audio.presence?.verdict || "unknown"}`);
   console.log(
     `[qa] visual repetition: ${report.visual.verdict} (${report.visual.repeatPairCount} possible repeat pairs)`,
   );
   console.log(`[qa] subtitles: ${report.subtitles.verdict}`);
+  console.log(
+    `[qa] subtitle density: ${report.subtitles.density?.verdict || "unknown"}`,
+  );
   for (const issue of report.issues) {
     console.log(`  - ${issue.severity.toUpperCase()} ${issue.code}: ${issue.message}`);
   }

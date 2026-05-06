@@ -10,6 +10,8 @@ const {
   assTimeToSeconds,
   parseAssDialogues,
   analyseSubtitleTimeline,
+  analyseSubtitleDensity,
+  analyseAudioPresence,
   analyseAudioRecurrence,
   findRecurringScheduledAudioClusters,
   hammingDistance,
@@ -70,6 +72,60 @@ test("analyseSubtitleTimeline warns on long caption blackout and overrun", () =>
   assert.equal(result.verdict, "warn");
   assert.equal(result.gapsOver2s.length, 1);
   assert.equal(result.overrunS, 0.5);
+});
+
+test("analyseSubtitleDensity warns on dense multi-line captions", () => {
+  const assPath = tempFile(
+    [
+      "Dialogue: 0,0:00:00.00,0:00:01.00,Caption,,0,0,0,,Take-Two boss Strauss Zelnick has shared a story\\Nabout passing on a legacy sequel",
+      "Dialogue: 0,0:00:01.00,0:00:02.00,Caption,,0,0,0,,wait what",
+    ].join("\n"),
+  );
+  const result = analyseSubtitleDensity({ assPath });
+
+  assert.equal(result.verdict, "warn");
+  assert.equal(result.cueCount, 2);
+  assert.equal(result.maxWordsPerCue, 14);
+  assert.equal(result.multiLineCueCount, 1);
+  assert.equal(result.worstCues[0].wordCount, 14);
+});
+
+test("analyseSubtitleDensity passes punchy single-line captions", () => {
+  const assPath = tempFile(
+    [
+      "Dialogue: 0,0:00:00.00,0:00:00.80,Caption,,0,0,0,,wait what",
+      "Dialogue: 0,0:00:00.80,0:00:01.60,Caption,,0,0,0,,GTA moved",
+      "Dialogue: 0,0:00:01.60,0:00:02.40,Caption,,0,0,0,,no date yet",
+    ].join("\n"),
+  );
+  const result = analyseSubtitleDensity({ assPath });
+
+  assert.equal(result.verdict, "pass");
+  assert.equal(result.maxWordsPerCue, 3);
+  assert.equal(result.multiLineCueCount, 0);
+});
+
+test("analyseAudioPresence fails silent narration tracks", () => {
+  const result = analyseAudioPresence({
+    samples: new Float32Array(16000),
+    sampleRate: 16000,
+  });
+
+  assert.equal(result.verdict, "fail");
+  assert.equal(result.reason, "audio_missing_or_silent");
+  assert.equal(result.nonSilentRatio, 0);
+});
+
+test("analyseAudioPresence passes audible narration tracks", () => {
+  const samples = new Float32Array(16000);
+  for (let i = 0; i < samples.length; i++) {
+    samples[i] = 0.1 * Math.sin((i / 16000) * Math.PI * 240);
+  }
+  const result = analyseAudioPresence({ samples, sampleRate: 16000 });
+
+  assert.equal(result.verdict, "pass");
+  assert.ok(result.rms > 0.05);
+  assert.ok(result.nonSilentRatio > 0.9);
 });
 
 test("analyseAudioRecurrence passes an opener-only SFX path", () => {
@@ -337,6 +393,38 @@ test("buildIssues flags duration and audio defects", () => {
   assert.equal(issues.length, 2);
   assert.equal(issues[0].code, "duration_mismatch");
   assert.equal(issues[1].code, "audio_recurrence");
+});
+
+test("buildIssues flags silent audio and dense subtitles", () => {
+  const issues = buildIssues({
+    runtime: { durationDeltaS: 0 },
+    subtitles: {
+      verdict: "pass",
+      density: {
+        verdict: "warn",
+        maxWordsPerCue: 14,
+        multiLineCueCount: 1,
+        denseCueCount: 1,
+      },
+    },
+    audio: {
+      verdict: "pass",
+      presence: {
+        verdict: "fail",
+        reason: "audio_missing_or_silent",
+        rms: 0,
+        peak: 0,
+      },
+    },
+    visual: { verdict: "pass" },
+    scene: { repeatedSources: [] },
+  });
+
+  assert.equal(issues.length, 2);
+  assert.equal(issues[0].code, "subtitle_density");
+  assert.equal(issues[0].severity, "warn");
+  assert.equal(issues[1].code, "audio_presence");
+  assert.equal(issues[1].severity, "fail");
 });
 
 test("buildIssues flags rendered frame taste failures", () => {

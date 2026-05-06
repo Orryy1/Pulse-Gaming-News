@@ -40,6 +40,7 @@
     "comments:digest": "node tools/comment-copilot-digest.js",
     "tiktok:auth-doctor": "node tools/tiktok-auth-doctor.js",
     "tiktok:auth-link": "node tools/tiktok-auth-link.js",
+    "tiktok:token": "node tools/tiktok-token-maintenance.js",
     "tiktok:diagnose403": "node tools/tiktok-403-diagnosis.js",
     "tiktok:dispatch": "node tools/tiktok-dispatch-pack.js",
     "tiktok:inbox-upload": "node tools/tiktok-inbox-upload.js",

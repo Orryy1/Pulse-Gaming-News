@@ -3,14 +3,15 @@
 const fs = require("fs-extra");
 const path = require("node:path");
 const dotenv = require("dotenv");
+
+dotenv.config({ override: true });
+
 const db = require("../lib/db");
 const { uploadVideoToInbox, fetchPublishStatus } = require("../upload_tiktok");
 const {
   buildTikTokInboxCommandPlan,
   renderTikTokInboxCommandMarkdown,
 } = require("../lib/platforms/tiktok-inbox-command");
-
-dotenv.config({ override: true });
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");

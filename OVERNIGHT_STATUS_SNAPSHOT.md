@@ -1,18 +1,18 @@
 # Overnight Status Snapshot
 
-Generated: 2026-05-06 21:45 BST
+Generated: 2026-05-06 23:02 BST
 
 ## Branch
 
 - Current branch: `codex/readiness-qa-failure-window`
-- Latest commit: `567f1d3f Add monetisation readiness report`
+- Latest commit: `3b128827 Add Flash Lane subtitle motion styling`
 - `origin/main`: `2c7f47c5f6e7544f4a16ef7e5b4d3df1ffc7cf10`
-- Working tree at snapshot refresh: clean before final handoff edits
+- Working tree at snapshot refresh: clean before snapshot update
 - Deployed: no
 
 ## Validation
 
-- Full `npm test`: pass (`2035/2035`)
+- Full `npm test`: pass (`2053/2053`)
 - `npm run build`: pass
 - Local TTS doctor: green
 - TikTok auth doctor: AMBER, token usable, public direct-post approval still not confirmed
@@ -23,6 +23,7 @@ Generated: 2026-05-06 21:45 BST
 - Approved local voice reference: `pulse-sleepy-liam-20260502`
 - Latest local TTS doctor verdict: `green`
 - Current reason: local TTS is ready with accepted Liam voice loaded
+- Latest doctor report: `test/output/local_tts_doctor.md`
 - Proof path remains local-only. Do not fall back to the old low/demonic voice.
 
 ## Studio V2
@@ -31,6 +32,9 @@ Generated: 2026-05-06 21:45 BST
 - Latest enriched proof: `test/output/studio-v2-still-deck/studio_v2_1szzhy9_enriched.mp4`
 - Promotion packet: `STUDIO_V2_OVERNIGHT_PROMOTION_PACKET.md`
 - Status: AMBER local proof only, not production default
+- Proof selector: 1 ready Flash proof, 16 need motion or exact assets
+- Recent safety upgrade: local proof renders now require accepted local Liam timestamp metadata, so old/demonic local audio cannot silently pass as approved
+- Recent creative upgrade: enriched Flash captions now use short phrase reveal plus slide/fade/pop styling instead of static word-only captions
 - Blocker: needs human visual review and explicit one-story pilot approval before any live use
 
 ## Motion Acquisition
@@ -75,4 +79,3 @@ Generated: 2026-05-06 21:45 BST
 - External/paid voice shootout needs approval before spending credits or sending voice material to a provider.
 - Longform upload/scheduling needs approval.
 - Monetisation changes to live copy, sponsor outreach or affiliate publishing need approval.
-

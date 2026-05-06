@@ -652,6 +652,7 @@ async function renderStillDeckVariant({
         maxPhraseChars: 22,
         captionCase: "upper",
         revealMode: variant === "enriched" ? "phrase" : "word",
+        motionStyle: variant === "enriched" ? "flash" : "default",
         avoidDanglingWords: variant === "enriched",
         danglingMergeMaxWords: variant === "enriched" ? 3 : 2,
       }),

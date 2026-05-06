@@ -219,3 +219,26 @@ test("buildKineticAss can keep full Flash punches visible while words pop", () =
   assert.doesNotMatch(ass, /\\alpha&HFF&/);
   assert.match(ass, /\\t\(0,100,\\fscx115\\fscy115\)/);
 });
+
+test("buildKineticAss can add TikTok-native Flash motion styling", () => {
+  const ass = buildKineticAss({
+    story: { title: "GTA Red Dead" },
+    words: [
+      { word: "GTA", start: 0, end: 0.2 },
+      { word: "just", start: 0.22, end: 0.34 },
+      { word: "changed", start: 0.36, end: 0.62 },
+    ],
+    duration: 2,
+    scriptText: "GTA just changed",
+    maxWordsPerPhrase: 2,
+    maxPhraseChars: 14,
+    captionCase: "upper",
+    revealMode: "phrase",
+    motionStyle: "flash",
+  });
+
+  assert.match(ass, /\\move\(540,1484,540,1450,0,130\)/);
+  assert.match(ass, /\\fad\(35,70\)/);
+  assert.match(ass, /\\bord8\\shad5/);
+  assert.match(ass, /\\t\(0,130,\\fscx106\\fscy106\)/);
+});

@@ -29,6 +29,8 @@ test("voice shootout benchmark manifest includes hard pronunciation cases", () =
 
   const titleScript = manifest.transcripts.find((item) => item.id === "game_titles");
   assert.match(titleScript.text, /Pokémon/);
+  assert.doesNotMatch(titleScript.text, /PokÃ©mon/);
+  assert.ok(titleScript.pronunciation_watchlist.includes("Pokémon"));
   assert.ok(titleScript.pronunciation_watchlist.includes("BioShock"));
   assert.ok(titleScript.pronunciation_watchlist.includes("S.T.A.L.K.E.R. 2"));
   assert.equal(manifest.safety.callsExternalApis, false);

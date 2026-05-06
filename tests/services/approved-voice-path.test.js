@@ -116,6 +116,21 @@ test("approved voice path recognises production-shaped local Studio V2 cache nam
   );
 });
 
+test("approved voice path recognises local proof Liam audio folders", () => {
+  assert.equal(
+    looksLikeLocalTtsPath(
+      "D:/pulse-data/media/test/output/local-script-extension/audio/1szzhy9_liam_extended.mp3",
+    ),
+    true,
+  );
+  assert.equal(
+    looksLikeLocalTtsPath(
+      "D:/pulse-data/media/test/output/local-media-repair/audio/rss_story_liam.mp3",
+    ),
+    true,
+  );
+});
+
 test("approved voice path approves existing production audio", () => {
   const result = evaluateApprovedVoicePath({
     narration: {

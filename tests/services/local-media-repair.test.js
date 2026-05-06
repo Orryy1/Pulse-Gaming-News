@@ -325,6 +325,73 @@ test("apply-local audio repair writes only queued Liam audio proofs", async () =
   assert.equal(result.safety.posts_to_platforms, false);
 });
 
+test("apply-local audio repair stamps accepted Sleepy Liam metadata", async () => {
+  const previousApproval = process.env.STUDIO_V2_LOCAL_VOICE_APPROVED;
+  process.env.STUDIO_V2_LOCAL_VOICE_APPROVED = "true";
+  const outputDir = path.join(ROOT, "test", "output", "tmp-local-media-repair");
+  fs.rmSync(outputDir, { recursive: true, force: true });
+  const story = {
+    id: "rss_voice_meta",
+    title: "Xbox confirms a new update",
+    approved: true,
+    full_script: "Xbox confirmed a useful detail today. ".repeat(32),
+    audio_path: "output/audio/rss_voice_meta.mp3",
+    exported_path: "output/final/rss_voice_meta.mp4",
+  };
+  const report = buildLocalMediaRepairQueue({
+    stories: [story],
+    mediaByStoryId: {
+      rss_voice_meta: {
+        audioExists: true,
+        finalExists: true,
+        finalDurationSeconds: 64,
+      },
+    },
+    voiceAuditByStoryId: {
+      rss_voice_meta: {
+        verdict: "review",
+        blockers: ["approved_voice_metadata_missing"],
+      },
+    },
+    localTts: READY_TTS,
+  });
+
+  try {
+    const result = await applyLocalAudioRepairs({
+      report,
+      storiesById: { rss_voice_meta: story },
+      outputRelDir: outputDir,
+      generateTts: async (_text, outputRel) => {
+        fs.mkdirSync(path.dirname(outputRel), { recursive: true });
+        fs.writeFileSync(outputRel, "fake mp3 bytes");
+        fs.writeFileSync(
+          outputRel.replace(/\.mp3$/, "_timestamps.json"),
+          JSON.stringify({
+            characters: Array.from("Xbox confirmed. Follow Pulse Gaming so you never miss a beat."),
+            character_start_times_seconds: [],
+            character_end_times_seconds: [],
+          }),
+        );
+      },
+      measureDuration: async () => 65.1,
+    });
+
+    const applied = result.applied[0];
+    const timestamps = JSON.parse(
+      fs.readFileSync(path.join(outputDir, "rss_voice_meta_liam_timestamps.json"), "utf8"),
+    );
+    assert.equal(applied.local_voice_metadata, "stamped");
+    assert.equal(applied.local_voice_reference.referencePresent, true);
+    assert.equal(timestamps.meta.provider, "local");
+    assert.equal(timestamps.meta.acceptedLocalVoice.id, "pulse-sleepy-liam-20260502");
+    assert.equal(timestamps.meta.acceptedLocalVoice.referencePresent, true);
+  } finally {
+    if (previousApproval === undefined) delete process.env.STUDIO_V2_LOCAL_VOICE_APPROVED;
+    else process.env.STUDIO_V2_LOCAL_VOICE_APPROVED = previousApproval;
+    fs.rmSync(outputDir, { recursive: true, force: true });
+  }
+});
+
 test("apply-local audio repair reports below-floor Liam proofs as rejected", async () => {
   const story = {
     id: "rss_voice_short",

@@ -232,6 +232,62 @@ test("apply local script extension audio writes ready Liam proofs only", async (
   assert.equal(result.safety.posts_to_platforms, false);
 });
 
+test("apply local script extension audio stamps accepted Sleepy Liam metadata", async () => {
+  const previousApproval = process.env.STUDIO_V2_LOCAL_VOICE_APPROVED;
+  process.env.STUDIO_V2_LOCAL_VOICE_APPROVED = "true";
+  const outputDir = path.join(ROOT, "test", "output", "tmp-local-script-extension");
+  fs.rmSync(outputDir, { recursive: true, force: true });
+
+  try {
+    const result = await applyLocalScriptExtensionAudio({
+      plan: {
+        drafts: [
+          {
+            story_id: "ready_meta",
+            action: "ready_for_local_liam_audio",
+            proposed_full_script: "Ready script. Follow Pulse Gaming so you never miss a beat.",
+            proposed_words: 190,
+            estimated_seconds: 64.2,
+          },
+        ],
+      },
+      outputRelDir: outputDir,
+      generateTts: async (_text, outputRel) => {
+        fs.mkdirSync(path.dirname(outputRel), { recursive: true });
+        fs.writeFileSync(outputRel, "fake mp3 bytes");
+        fs.writeFileSync(
+          outputRel.replace(/\.mp3$/, "_timestamps.json"),
+          JSON.stringify({
+            characters: Array.from("Ready script. Follow Pulse Gaming so you never miss a beat."),
+            character_start_times_seconds: [],
+            character_end_times_seconds: [],
+          }),
+        );
+      },
+      measureDuration: async () => 65.2,
+    });
+
+    const applied = result.applied[0];
+    const timestamps = JSON.parse(
+      fs.readFileSync(
+        path.join(outputDir, "ready_meta_liam_extended_timestamps.json"),
+        "utf8",
+      ),
+    );
+    assert.equal(applied.local_voice_metadata, "stamped");
+    assert.equal(applied.local_voice_reference.referencePresent, true);
+    assert.equal(timestamps.meta.provider, "local");
+    assert.equal(timestamps.meta.source, "provided-local-tts-audio");
+    assert.equal(timestamps.meta.approvedLocalVoice, true);
+    assert.equal(timestamps.meta.acceptedLocalVoice.id, "pulse-sleepy-liam-20260502");
+    assert.equal(timestamps.meta.acceptedLocalVoice.referencePresent, true);
+  } finally {
+    if (previousApproval === undefined) delete process.env.STUDIO_V2_LOCAL_VOICE_APPROVED;
+    else process.env.STUDIO_V2_LOCAL_VOICE_APPROVED = previousApproval;
+    fs.rmSync(outputDir, { recursive: true, force: true });
+  }
+});
+
 test("apply local script extension audio marks underfloor proofs rejected", async () => {
   const result = await applyLocalScriptExtensionAudio({
     plan: {

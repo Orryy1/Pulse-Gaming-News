@@ -61,6 +61,9 @@ const {
   looksLikeLocalTtsPath,
 } = require("../lib/studio/v2/proof-render-safety");
 const {
+  resolveAcceptedLocalVoiceReference,
+} = require("../lib/studio/v2/approved-voice-path");
+const {
   assertFlashLaneProofReady,
   buildFlashLaneProofPreflight,
 } = require("../lib/studio/v2/flash-lane-preflight");
@@ -385,6 +388,7 @@ async function resolveNarration({
     const meta = (await fs.pathExists(inferredTs))
       ? await fs.readJson(inferredTs).catch(() => null)
       : null;
+    const transcriptChars = meta?.characters || meta?.alignment?.characters || [];
     return {
       mode: "real_audio",
       audioPath,
@@ -393,7 +397,12 @@ async function resolveNarration({
       provider: suppliedLocalTts ? "local" : "external",
       source: suppliedLocalTts ? "provided-local-tts-audio" : "provided-real-audio",
       signatureHash: meta?.meta?.signatureHash || null,
-      acceptedLocalVoice: meta?.meta?.acceptedLocalVoice || null,
+      approvedLocalVoice: meta?.meta?.approvedLocalVoice,
+      acceptedLocalVoice: meta?.meta?.acceptedLocalVoice ||
+        (suppliedLocalTts ? resolveAcceptedLocalVoiceReference(process.env) : null),
+      transcript:
+        meta?.meta?.text ||
+        (Array.isArray(transcriptChars) ? transcriptChars.join("") : ""),
     };
   }
 

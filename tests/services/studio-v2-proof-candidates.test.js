@@ -102,6 +102,9 @@ test("proof candidates mark motion-backed Liam stories ready for a Studio V2 pro
   assert.equal(report.candidates[0].audio.status, "approved_local_liam_audio_ready");
   assert.equal(report.candidates[0].visuals.motion_backbone_ready, true);
   assert.match(report.candidates[0].recommended_command, /studio:v2:still-deck/);
+  assert.match(report.candidates[0].recommended_command, /--segment-validation-report/);
+  assert.match(report.candidates[0].recommended_command, /--use-official-trailer-clips/);
+  assert.match(report.candidates[0].recommended_command, /--with-sound-design/);
 });
 
 test("proof candidates require Liam audio before a visual-ready render", () => {

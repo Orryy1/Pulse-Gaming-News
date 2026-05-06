@@ -259,6 +259,8 @@ test("studio:v2:motion-gap command is registered and read-only", () => {
   assert.equal(pkg.scripts["studio:v2:motion-gap"], "node tools/studio-v2-motion-gap.js");
 
   const tool = fs.readFileSync(path.join(ROOT, "tools", "studio-v2-motion-gap.js"), "utf8");
+  assert.match(tool, /motion_gap_report\.json/);
+  assert.match(tool, /MOTION_ACQUISITION_OVERNIGHT_REPORT\.md/);
   assert.doesNotMatch(tool, /publishAll|uploadShort|postShort|autonomous\/publish/);
   assert.doesNotMatch(tool, /UPDATE\s+stories|INSERT\s+INTO\s+stories|DELETE\s+FROM/i);
 });

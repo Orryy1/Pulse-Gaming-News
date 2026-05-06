@@ -14,6 +14,7 @@ const OUT = path.join(ROOT, "test", "output");
 
 const DEFAULT_PROOF_CANDIDATES = path.join(OUT, "studio_v2_proof_candidates.json");
 const DEFAULT_SEGMENT_REPORT = path.join(OUT, "official_trailer_segment_validation_apply_local.json");
+const DEFAULT_ROOT_REPORT = path.join(ROOT, "MOTION_ACQUISITION_OVERNIGHT_REPORT.md");
 
 function parseArgs(argv) {
   const args = {
@@ -89,12 +90,20 @@ async function main() {
   await fs.ensureDir(OUT);
   const jsonPath = path.join(OUT, "studio_v2_motion_gap.json");
   const mdPath = path.join(OUT, "studio_v2_motion_gap.md");
+  const aliasJsonPath = path.join(OUT, "motion_gap_report.json");
+  const aliasMdPath = path.join(OUT, "motion_gap_report.md");
   await fs.writeJson(jsonPath, report, { spaces: 2 });
   await fs.writeFile(mdPath, markdown, "utf8");
+  await fs.writeJson(aliasJsonPath, report, { spaces: 2 });
+  await fs.writeFile(aliasMdPath, markdown, "utf8");
+  await fs.writeFile(DEFAULT_ROOT_REPORT, markdown, "utf8");
 
   process.stdout.write(args.json ? `${JSON.stringify(report, null, 2)}\n` : markdown);
   process.stderr.write(
     `[motion-gap] wrote ${path.relative(ROOT, jsonPath).replace(/\\/g, "/")} and ${path.relative(ROOT, mdPath).replace(/\\/g, "/")}\n`,
+  );
+  process.stderr.write(
+    `[motion-gap] wrote ${path.relative(ROOT, aliasJsonPath).replace(/\\/g, "/")}, ${path.relative(ROOT, aliasMdPath).replace(/\\/g, "/")} and ${path.relative(ROOT, DEFAULT_ROOT_REPORT).replace(/\\/g, "/")}\n`,
   );
 }
 

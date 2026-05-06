@@ -12,6 +12,9 @@ const {
   prewarmLocalTtsVoice,
   formatLocalTtsStatus,
 } = require("../lib/studio/local-tts-readiness");
+const {
+  stampLocalVoiceTimestampMeta,
+} = require("../lib/ops/local-voice-metadata");
 
 process.env.TTS_PROVIDER = "local";
 process.env.LOCAL_TTS_URL = process.env.LOCAL_TTS_URL || DEFAULT_LOCAL_TTS_URL;
@@ -59,10 +62,19 @@ async function main() {
     process.exit(1);
   }
 
-  const rel = path.join("output", "audio", "__local_tts_smoke.mp3");
+  const smokeFileName =
+    process.env.LOCAL_TTS_SMOKE_FILE || "__local_tts_smoke_sleepy_liam_latest.mp3";
+  const rel = path.join("output", "audio", smokeFileName);
   const text =
     "Pulse Gaming local TTS is online. Pokemon is spoken clearly, and Pokémon keeps its accent in timestamps.";
-  await audio.generateTTS(text, rel, Number(process.env.LOCAL_TTS_SMOKE_RATE || 1.0));
+  const rate = Number(process.env.LOCAL_TTS_SMOKE_RATE || 1.0);
+  await audio.generateTTS(text, rel, rate);
+  const voiceMeta = await stampLocalVoiceTimestampMeta({
+    outputAudioPath: rel,
+    text,
+    source: "local-tts-smoke-sleepy-liam",
+    rate,
+  });
 
   const mp3Abs = await mediaPaths.resolveExisting(rel);
   const tsRel = rel.replace(/\.mp3$/, "_timestamps.json");
@@ -72,6 +84,9 @@ async function main() {
 
   console.log(`[tts] smoke mp3=${path.relative(process.cwd(), mp3Abs)}`);
   console.log(`[tts] smoke timestamps=${path.relative(process.cwd(), tsAbs)}`);
+  console.log(
+    `[tts] smoke voice_reference=${voiceMeta.local_voice_reference?.referencePresent === true ? "accepted_sleepy_liam" : "missing"}`,
+  );
   console.log(`[tts] timestamp text="${prefix}"`);
 }
 

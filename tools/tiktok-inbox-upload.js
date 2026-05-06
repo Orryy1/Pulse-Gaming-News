@@ -7,6 +7,7 @@ const dotenv = require("dotenv");
 dotenv.config({ override: true });
 
 const db = require("../lib/db");
+const mediaPaths = require("../lib/media-paths");
 const { uploadVideoToInbox, fetchPublishStatus } = require("../upload_tiktok");
 const {
   buildTikTokInboxCommandPlan,
@@ -24,9 +25,12 @@ function parseArgs(argv) {
     else if (arg === "--mp4") args.mp4 = argv[++i];
     else if (arg === "--title") args.title = argv[++i];
     else if (arg === "--out-dir") args.outDir = argv[++i];
+    else if (arg === "--max-age-hours") args.maxAgeHours = Number(argv[++i]);
+    else if (arg === "--allow-stale") args.allowStale = true;
     else if (arg === "--send-inbox" || arg === "--apply-inbox") args.sendInbox = true;
     else if (arg === "--dry-run") args.sendInbox = false;
   }
+  args.explicitSelection = Boolean(args.story || args.mp4);
   return args;
 }
 
@@ -52,11 +56,44 @@ async function loadStory(args) {
     };
   }
   const stories = await db.getStories();
+  args.autoSelected = true;
   return (
     stories.find((story) => story.approved && story.exported_path && !story.tiktok_post_id) ||
     stories.find((story) => story.exported_path) ||
     {}
   );
+}
+
+async function inspectMp4ForInbox(mp4Path, args = {}) {
+  if (!mp4Path) return null;
+  const maxAgeHours =
+    Number.isFinite(args.maxAgeHours) && args.maxAgeHours > 0
+      ? args.maxAgeHours
+      : 36;
+  const resolved = await mediaPaths.resolveExisting(mp4Path);
+  if (!resolved || !(await fs.pathExists(resolved))) {
+    return {
+      exists: false,
+      absolute_path: resolved || null,
+      max_age_hours: maxAgeHours,
+      is_current_render: false,
+      reason: "mp4_missing_on_disk",
+    };
+  }
+  const stat = await fs.stat(resolved);
+  const ageHours = Math.max(0, (Date.now() - stat.mtimeMs) / 3_600_000);
+  const isCurrent = ageHours <= maxAgeHours || args.allowStale === true;
+  return {
+    exists: true,
+    absolute_path: resolved,
+    size_bytes: stat.size,
+    mtime_iso: stat.mtime.toISOString(),
+    age_hours: ageHours,
+    max_age_hours: maxAgeHours,
+    allow_stale: args.allowStale === true,
+    is_current_render: isCurrent,
+    reason: isCurrent ? "current_render_window_ok" : "stale_or_unverified_mp4",
+  };
 }
 
 async function main() {
@@ -65,7 +102,11 @@ async function main() {
   await fs.ensureDir(outDir);
 
   const story = await loadStory(args);
-  const plan = buildTikTokInboxCommandPlan({ story, args });
+  const mediaInfo = await inspectMp4ForInbox(
+    args.mp4 || story.exported_path || story.video_path || null,
+    args,
+  );
+  const plan = buildTikTokInboxCommandPlan({ story, args, mediaInfo });
 
   let result = null;
   let tiktokStatus = null;
@@ -86,7 +127,7 @@ async function main() {
   }
 
   const payload = {
-    ...buildTikTokInboxCommandPlan({ story, args, result, tiktokStatus }),
+    ...buildTikTokInboxCommandPlan({ story, args, result, tiktokStatus, mediaInfo }),
     result,
   };
   const jsonPath = path.join(outDir, "tiktok_inbox_upload_plan.json");
@@ -105,3 +146,9 @@ if (require.main === module) {
     process.exitCode = 1;
   });
 }
+
+module.exports = {
+  inspectMp4ForInbox,
+  main,
+  parseArgs,
+};

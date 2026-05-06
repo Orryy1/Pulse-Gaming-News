@@ -227,3 +227,62 @@ test("TikTok inbox command plan records post-upload inbox status without public 
   assert.match(md, /Status: SEND_TO_USER_INBOX/);
   assert.match(md, /Public auto-publish: false/);
 });
+
+test("TikTok inbox command plan blocks real upload from auto-selected media", () => {
+  const {
+    buildTikTokInboxCommandPlan,
+  } = require("../../lib/platforms/tiktok-inbox-command");
+
+  const plan = buildTikTokInboxCommandPlan({
+    story: { id: "old", title: "Old Story", exported_path: "output/final/old.mp4" },
+    args: { sendInbox: true, autoSelected: true },
+    mediaInfo: {
+      exists: true,
+      is_current_render: true,
+      reason: "current_render_window_ok",
+    },
+  });
+
+  assert.equal(plan.will_upload_to_tiktok, false);
+  assert.equal(plan.status, "not_ready");
+  assert.equal(plan.completion_state, "blocked_before_upload");
+  assert.ok(plan.blockers.includes("explicit_story_or_mp4_required"));
+});
+
+test("TikTok inbox command plan blocks stale MP4s unless explicitly allowed", () => {
+  const {
+    buildTikTokInboxCommandPlan,
+    renderTikTokInboxCommandMarkdown,
+  } = require("../../lib/platforms/tiktok-inbox-command");
+
+  const blocked = buildTikTokInboxCommandPlan({
+    story: { id: "s1", title: "Story", exported_path: "output/final/s1.mp4" },
+    args: { sendInbox: true },
+    mediaInfo: {
+      exists: true,
+      is_current_render: false,
+      age_hours: 120,
+      max_age_hours: 36,
+      reason: "stale_or_unverified_mp4",
+    },
+  });
+
+  assert.equal(blocked.will_upload_to_tiktok, false);
+  assert.ok(blocked.blockers.includes("stale_or_unverified_mp4"));
+  assert.match(renderTikTokInboxCommandMarkdown(blocked), /Current render: false/);
+
+  const allowed = buildTikTokInboxCommandPlan({
+    story: { id: "s1", title: "Story", exported_path: "output/final/s1.mp4" },
+    args: { sendInbox: true, allowStale: true },
+    mediaInfo: {
+      exists: true,
+      is_current_render: false,
+      age_hours: 120,
+      max_age_hours: 36,
+      reason: "stale_or_unverified_mp4",
+    },
+  });
+
+  assert.equal(allowed.will_upload_to_tiktok, true);
+  assert.ok(allowed.warnings.includes("stale_or_unverified_mp4"));
+});

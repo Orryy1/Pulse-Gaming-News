@@ -8,6 +8,7 @@ const path = require("node:path");
 const {
   applyLocalAudioRepairs,
   buildLocalMediaRepairQueue,
+  renderLocalMediaRepairApplyMarkdown,
   renderLocalMediaRepairMarkdown,
 } = require("../../lib/ops/local-media-repair");
 
@@ -312,6 +313,7 @@ test("apply-local audio repair writes only queued Liam audio proofs", async () =
       return outputRel;
     },
     measureDuration: async () => 66.2,
+    resolveOutputPath: async (outputRel) => path.resolve("D:/pulse-data/media", outputRel),
   });
 
   assert.equal(result.applied.length, 1);
@@ -321,6 +323,8 @@ test("apply-local audio repair writes only queued Liam audio proofs", async () =
   assert.match(generated[0].outputRel, /test[\\/]output[\\/]local-media-repair[\\/]audio[\\/]rss_voice_bad_liam\.mp3/);
   assert.equal(result.applied[0].duration_seconds, 66.2);
   assert.equal(result.applied[0].duration_verdict, "pass");
+  assert.match(result.applied[0].resolved_audio_path, /D:[\\/]pulse-data[\\/]media/);
+  assert.match(renderLocalMediaRepairApplyMarkdown(result), /Local Media Repair Audio Apply/);
   assert.equal(result.safety.mutates_production_db, false);
   assert.equal(result.safety.posts_to_platforms, false);
 });

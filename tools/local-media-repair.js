@@ -13,6 +13,7 @@ const mediaPaths = require("../lib/media-paths");
 const {
   applyLocalAudioRepairs,
   buildLocalMediaRepairQueue,
+  renderLocalMediaRepairApplyMarkdown,
   renderLocalMediaRepairMarkdown,
 } = require("../lib/ops/local-media-repair");
 const {
@@ -158,13 +159,21 @@ async function main() {
         const outputAbs = await mediaPaths.resolveExisting(outputRel);
         return ffprobeDuration(outputAbs);
       },
+      resolveOutputPath: async (outputRel) => mediaPaths.resolveExisting(outputRel),
       limit: args.applyLimit,
     });
     const applyPath = path.join(outDir, "local_media_repair_audio_apply.json");
+    const applyMdPath = path.join(outDir, "local_media_repair_audio_apply.md");
     await fs.writeJson(applyPath, applyReport, { spaces: 2 });
+    await fs.writeFile(
+      applyMdPath,
+      renderLocalMediaRepairApplyMarkdown(applyReport),
+      "utf8",
+    );
     console.log(
       `[local-media-repair] audio_apply=${path.relative(ROOT, applyPath)} applied=${applyReport.applied.length} skipped=${applyReport.skipped.length}`,
     );
+    console.log(`[local-media-repair] audio_apply_md=${path.relative(ROOT, applyMdPath)}`);
   }
 
   console.log(

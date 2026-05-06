@@ -644,6 +644,19 @@ test("still-deck provided narration resolves media-root relative audio and times
   assert.match(src, /looksLikeLocalTtsPath\(resolvedAudioPath\)/);
 });
 
+test("still-deck supplied local narration must carry accepted voice metadata", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+
+  assert.match(src, /acceptedLocalVoice:\s*meta\?\.meta\?\.acceptedLocalVoice\s*\|\|\s*null/);
+  assert.doesNotMatch(
+    src,
+    /suppliedLocalTts\s*\?\s*resolveAcceptedLocalVoiceReference\(process\.env\)/,
+  );
+});
+
 test("still-deck render path applies package readiness before ffmpeg render", () => {
   const src = fs.readFileSync(
     path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),

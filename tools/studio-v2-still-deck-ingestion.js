@@ -62,9 +62,6 @@ const {
   looksLikeLocalTtsPath,
 } = require("../lib/studio/v2/proof-render-safety");
 const {
-  resolveAcceptedLocalVoiceReference,
-} = require("../lib/studio/v2/approved-voice-path");
-const {
   assertFlashLaneProofReady,
   buildFlashLaneProofPreflight,
 } = require("../lib/studio/v2/flash-lane-preflight");
@@ -411,8 +408,7 @@ async function resolveNarration({
       source: suppliedLocalTts ? "provided-local-tts-audio" : "provided-real-audio",
       signatureHash: meta?.meta?.signatureHash || null,
       approvedLocalVoice: meta?.meta?.approvedLocalVoice,
-      acceptedLocalVoice: meta?.meta?.acceptedLocalVoice ||
-        (suppliedLocalTts ? resolveAcceptedLocalVoiceReference(process.env) : null),
+      acceptedLocalVoice: meta?.meta?.acceptedLocalVoice || null,
       transcript:
         meta?.meta?.text ||
         (Array.isArray(transcriptChars) ? transcriptChars.join("") : ""),

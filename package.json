@@ -90,6 +90,7 @@
     "intelligence:comments": "node tools/intelligence/run-comment-digest.js",
     "intelligence:monetisation": "node tools/intelligence/run-monetisation-snapshot.js",
     "studio:creator-grade": "node tools/studio-creator-grade.js",
+    "tts:doctor": "node tools/local-tts-doctor.js",
     "tts:smoke": "node tools/local-tts-smoke.js"
   },
   "keywords": [],

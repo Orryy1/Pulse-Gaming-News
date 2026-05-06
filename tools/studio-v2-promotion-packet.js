@@ -83,10 +83,15 @@ async function main() {
   );
   const qaReport = (await readJsonIfExists(qaPath)) || {};
   const forensicComparison = await readJsonIfExists(forensicPath);
+  const forensicReportPath = stillDeckReport?.renders?.enriched?.forensic?.jsonPath
+    ? path.resolve(ROOT, stillDeckReport.renders.enriched.forensic.jsonPath)
+    : null;
+  const forensicReport = await readJsonIfExists(forensicReportPath);
   const packet = buildStudioV2PromotionPacket({
     stillDeckReport,
     qaReport,
     forensicComparison,
+    forensicReport,
   });
   const markdown = renderStudioV2PromotionPacketMarkdown(packet);
 

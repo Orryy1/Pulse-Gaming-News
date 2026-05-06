@@ -140,6 +140,44 @@ function baseQaReport(overrides = {}) {
   };
 }
 
+function baseForensicReport(overrides = {}) {
+  return {
+    summary: {
+      verdict: "warn",
+      failCount: 0,
+      warnCount: 2,
+    },
+    visual: {
+      repeatPairCount: 2,
+      repeatPairs: [
+        { aTimeS: 46.5, bTimeS: 49.5, hamming: 6 },
+        { aTimeS: 55.5, bTimeS: 58.5, hamming: 6 },
+      ],
+      taste: {
+        verdict: "warn",
+        badFrameCount: 2,
+        badFrames: [
+          { timeS: 16.5, reason: "dead_dark_frame", score: 62.5 },
+          { timeS: 22.5, reason: "washed_low_detail_frame", score: 27.9 },
+        ],
+      },
+    },
+    issues: [
+      {
+        severity: "warn",
+        code: "visual_repetition",
+        message: "Frame sampling found possible repeated visuals.",
+      },
+      {
+        severity: "warn",
+        code: "rendered_frame_taste",
+        message: "Rendered frame sampling found low-information frames.",
+      },
+    ],
+    ...overrides,
+  };
+}
+
 test("Studio V2 promotion packet classifies a clean local proof as approval queued", () => {
   const packet = buildStudioV2PromotionPacket({
     stillDeckReport: baseStillDeckReport(),
@@ -152,6 +190,28 @@ test("Studio V2 promotion packet classifies a clean local proof as approval queu
   assert.equal(packet.morning_approval_needed, true);
   assert.match(packet.recommendation, /one-story Studio V2 pilot/i);
   assert.ok(packet.safety.local_only);
+});
+
+test("Studio V2 promotion packet surfaces concrete forensic warning evidence", () => {
+  const packet = buildStudioV2PromotionPacket({
+    stillDeckReport: baseStillDeckReport(),
+    qaReport: baseQaReport(),
+    forensicReport: baseForensicReport(),
+    now: "2026-05-06T21:00:00.000Z",
+  });
+
+  assert.equal(packet.forensic_warning_details.repeat_pair_count, 2);
+  assert.deepEqual(packet.forensic_warning_details.repeat_pair_times, ["46.5s/49.5s", "55.5s/58.5s"]);
+  assert.deepEqual(packet.forensic_warning_details.weak_frame_times, [
+    "16.5s dead_dark_frame",
+    "22.5s washed_low_detail_frame",
+  ]);
+  assert.ok(packet.forensic_warning_details.issue_codes.includes("rendered_frame_taste"));
+
+  const markdown = renderStudioV2PromotionPacketMarkdown(packet);
+  assert.match(markdown, /Forensic Warning Details/i);
+  assert.match(markdown, /46\.5s\/49\.5s/i);
+  assert.match(markdown, /22\.5s washed_low_detail_frame/i);
 });
 
 test("Studio V2 promotion packet blocks production recommendation when safety is not local-only", () => {

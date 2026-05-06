@@ -12,13 +12,13 @@ Why it matters: the latest local proof is the first one that has approved local 
 
 What changes: if approved later, one manually selected story may be rendered through Studio V2 for a controlled pilot. The production renderer must not be switched globally.
 
-Risk: the proof still has forensic warnings and needs human visual review. A pilot could look worse than the legacy renderer if clip taste or pacing does not match the channel.
+Risk: the proof still has forensic warnings and needs human visual review. The current proof is `AMBER_LOCAL_PROOF`, not green: forensic QA warns on two repeated visual pairs at 46.5s/49.5s and 55.5s/58.5s, plus two weak rendered frame samples at 16.5s (`dead_dark_frame`) and 22.5s (`washed_low_detail_frame`). A pilot could look worse than the legacy renderer if clip taste or pacing does not match the channel.
 
 Rollback: keep legacy `assemble.js` as canonical. If the pilot fails visual review or upload QA, publish using the existing legacy path and do not set any Studio V2 production flag.
 
-Tests/build status: focused Studio V2 promotion tests passed. Final full validation passed: `npm test` `2035/2035`, `npm run build` pass.
+Tests/build status: focused Studio V2 promotion tests passed. Latest full validation passed: `npm test` `2058/2058`, `npm run build` pass.
 
-Recommendation: review `STUDIO_V2_OVERNIGHT_PROMOTION_PACKET.md`, the MP4 and the contact sheet in the morning. Do not approve a global Studio V2 switch.
+Recommendation: review `STUDIO_V2_OVERNIGHT_PROMOTION_PACKET.md`, `test/output/studio-v2-still-deck/studio_v2_1szzhy9_enriched.mp4` and `test/output/studio-v2-still-deck/1szzhy9_enriched_contact_sheet.jpg` in the morning. If the visual taste still feels short of the high-energy Flash Lane bar, reject the pilot and keep improving motion acquisition. Do not approve a global Studio V2 switch.
 
 ## 2. TikTok Route Discipline
 

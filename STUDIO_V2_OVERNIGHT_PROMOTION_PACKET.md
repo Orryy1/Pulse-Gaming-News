@@ -1,6 +1,6 @@
 # Studio V2 Overnight Promotion Packet
 
-Generated: 2026-05-06T19:45:20.242Z
+Generated: 2026-05-06T22:25:41.477Z
 Story: `1szzhy9`
 Title: Marathon Drops To 15K Daily CCU Peak On Steam, Exits Top 50 On PlayStation & Top 100 On Xbox Best-Sellers Lists
 
@@ -16,6 +16,15 @@ Morning approval needed: `yes`
 - forensic_warnings_remaining
 - preflight_flash_lane_spoken_wpm_outside_target_range
 - preflight_flash_lane_clip_dominance_supported_by_trailer_frames
+
+## Forensic Warning Details
+
+- Issue codes: visual_repetition, rendered_frame_taste
+- Repeat pair count: 2
+- Repeat pair times: 46.5s/49.5s, 55.5s/58.5s
+- Weak rendered frame count: 2
+- Weak rendered frames: 16.5s dead_dark_frame, 22.5s washed_low_detail_frame
+- Rating/title frame count: 0
 
 ## Evidence
 
@@ -40,8 +49,8 @@ Morning approval needed: `yes`
 | Official trailer frames | 9 |
 | Forensic verdict | warn |
 | Forensic fails / warns | 0 / 2 |
-| Visual repeat pairs after | 0 |
-| Visual repeat pairs delta | -16 |
+| Visual repeat pairs after | 2 |
+| Visual repeat pairs delta | -14 |
 | Unique scene sources | 14 |
 | Clip dominance | 0.88 |
 | Caption gaps over 2s | 0 |

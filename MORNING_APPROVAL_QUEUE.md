@@ -16,7 +16,7 @@ Risk: the proof still has forensic warnings and needs human visual review. A pil
 
 Rollback: keep legacy `assemble.js` as canonical. If the pilot fails visual review or upload QA, publish using the existing legacy path and do not set any Studio V2 production flag.
 
-Tests/build status: `node --test tests\services\studio-v2-promotion-packet.test.js` passed. Full suite/build status will be refreshed in the final overnight handoff.
+Tests/build status: focused Studio V2 promotion tests passed. Final full validation passed: `npm test` `2035/2035`, `npm run build` pass.
 
 Recommendation: review `STUDIO_V2_OVERNIGHT_PROMOTION_PACKET.md`, the MP4 and the contact sheet in the morning. Do not approve a global Studio V2 switch.
 
@@ -32,7 +32,7 @@ Risk: live-account browser automation can trigger account-risk systems. Uploadin
 
 Rollback: keep TikTok posting manual/inbox-only. If a future inbox upload creates a draft item, delete it manually in TikTok before posting.
 
-Tests/build status: TikTok dispatch and automation report tests passed locally. Full suite/build status will be refreshed in the final overnight handoff.
+Tests/build status: TikTok dispatch and automation report tests passed locally. Final full validation passed: `npm test` `2035/2035`, `npm run build` pass.
 
 Recommendation: do not approve live-account browser automation. Approve only a single official inbox upload test after a fresh dispatch pack reaches `ready_for_operator_review`.
 
@@ -51,3 +51,35 @@ Rollback: do not switch production voice. Keep all generated samples under `test
 Tests/build status: voice shootout focused tests, full `npm test` and `npm run build` passed locally.
 
 Recommendation: run local Liam first. Approve a paid/external shootout only after local Liam has been scored against the blind review sheet.
+
+## 4. Longform Pilot
+
+Decision needed: approve or reject a local-to-live weekly roundup pilot after reviewing the local dossier.
+
+Why it matters: the longform dossier builder can now produce a Weekly Roundup outline with source pack, chapters, visual plan, SEO package and Shorts spin-offs. Publishing or scheduling that format would change live output strategy.
+
+What changes: if approved later, one manually selected weekly roundup can be produced as a controlled longform pilot. No automatic cadence should be enabled at first.
+
+Risk: longform needs stronger source checks and visual coverage than Shorts. A weak first longform can hurt credibility if dates, platforms or rumours are overstated.
+
+Rollback: keep the longform tool local-only. If the pilot fails review, do not upload it and keep existing Shorts workflow unchanged.
+
+Tests/build status: longform focused tests passed. Final full validation passed: `npm test` `2035/2035`, `npm run build` pass.
+
+Recommendation: review `LONGFORM_OVERNIGHT_ARCHITECTURE_REPORT.md` first. Approve only a single manually reviewed Weekly Roundup pilot, not an automatic scheduler.
+
+## 5. Monetisation Live Use
+
+Decision needed: approve or reject promoting monetisation outputs into live public copy, sponsor outreach or stronger affiliate behaviour.
+
+Why it matters: the monetisation readiness report is now useful, but it is deliberately report-only. Live affiliate or sponsor behaviour affects money, disclosure and audience trust.
+
+What changes: if approved later, story-specific affiliate links and disclosure can be promoted more deliberately into public descriptions or pinned comments. Sponsor/media-kit outreach can also be prepared from real metrics.
+
+Risk: random affiliate links, missing disclosures or premature sponsor claims would reduce trust. The current media-kit draft has missing analytics metrics and is not outreach-ready.
+
+Rollback: keep monetisation reporting only. Revert any live copy changes and remove any non-specific affiliate links from public descriptions.
+
+Tests/build status: monetisation focused tests passed. Final full validation passed: `npm test` `2035/2035`, `npm run build` pass.
+
+Recommendation: allow report-only use now. Approve live affiliate promotion only after each story passes the affiliate targeting audit. Do not start sponsor outreach until real analytics fields are populated.

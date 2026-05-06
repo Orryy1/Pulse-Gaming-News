@@ -644,6 +644,46 @@ test("social platform operations markdown shows healthy TikTok token while direc
   assert.doesNotMatch(md, /access_token|refresh_token|Bearer/);
 });
 
+test("social platform operations blocks TikTok inbox route until expired local token is refreshed", () => {
+  const report = buildSocialPlatformOperationsReport({
+    platformStatus: {
+      operational: {
+        youtube: { state: "enabled", reason: "core_upload_path" },
+        instagram_reel: { state: "enabled", reason: "graph_credentials_present" },
+        facebook_reel: { state: "enabled", reason: "facebook_reels_enabled" },
+        tiktok: { state: "blocked_external", reason: "tiktok_direct_post_app_review" },
+        twitter: { state: "disabled", reason: "x_optional_disabled" },
+      },
+      counts: {},
+    },
+    facebookReelsEligibility: {
+      classification: {
+        verdict: "eligible_for_normal_publish",
+        reason: "visible_graph_video_or_reel_found",
+        counts: { videos: 1, reels: 1, posts: 7 },
+        page: { followers_count: 1, fan_count: 1 },
+      },
+    },
+    tiktokTokenStatus: {
+      ok: false,
+      reason: "expired",
+      refresh_available: true,
+      needs_reauth: false,
+    },
+    tiktokDiagnosis: {
+      evidence: { uploadScopeRequested: true },
+    },
+    dispatchManifest: {},
+  });
+
+  assert.equal(report.platforms.tiktok.safeRoutes[0].status, "needs_token_refresh_or_sync");
+  assert.ok(report.operatorActions.some((a) => /Refresh or sync the local TikTok token/.test(a)));
+
+  const md = renderSocialPlatformOperationsMarkdown(report);
+  assert.match(md, /official_inbox_upload: status=needs_token_refresh_or_sync/);
+  assert.doesNotMatch(md, /access_token|refresh_token|Bearer/);
+});
+
 test("release radar gate rejects insufficient verified candidates", () => {
   const radar = buildMonthlyReleaseRadar({
     monthLabel: "May 2026",

@@ -6,6 +6,7 @@ const assert = require("node:assert/strict");
 const {
   buildAnalyticsClient,
   fixturePullForVideo,
+  mapYouTubeAnalyticsReportToSnapshot,
   SNAPSHOT_LABELS,
   REQUIRED_REAL_SCOPES,
 } = require("../../lib/intelligence/analytics-client");
@@ -75,6 +76,73 @@ test("analytics-client: fixture pullSnapshotsForVideos handles empty input", asy
   const client = buildAnalyticsClient({ mode: "fixture" });
   const rows = await client.pullSnapshotsForVideos([]);
   assert.deepEqual(rows, []);
+});
+
+test("analytics-client: maps real YouTube Analytics rows into retention fields", () => {
+  const row = mapYouTubeAnalyticsReportToSnapshot({
+    videoId: "yt_real_1",
+    label: "+24h",
+    data: {
+      columnHeaders: [
+        { name: "views" },
+        { name: "estimatedMinutesWatched" },
+        { name: "averageViewDuration" },
+        { name: "averageViewPercentage" },
+        { name: "likes" },
+        { name: "comments" },
+        { name: "subscribersGained" },
+      ],
+      rows: [[1234, 98.5, 28.4, 63.2, 45, 6, 2]],
+    },
+    snapshotAt: "2026-05-05T10:00:00.000Z",
+  });
+
+  assert.equal(row.video_id, "yt_real_1");
+  assert.equal(row.fixture, false);
+  assert.equal(row.views, 1234);
+  assert.equal(row.watch_time_seconds, 5910);
+  assert.equal(row.average_view_duration_seconds, 28.4);
+  assert.equal(row.average_percentage_viewed, 63.2);
+  assert.equal(row.likes, 45);
+  assert.equal(row.comments, 6);
+  assert.equal(row.subscribers_gained, 2);
+});
+
+test("analytics-client: real mode can use an injected YouTube Analytics client without OAuth", async () => {
+  process.env.INTELLIGENCE_REAL_MODE = "true";
+  try {
+    const client = buildAnalyticsClient({ mode: "real" });
+    const rows = await client.pullSnapshotsForVideo("yt_real_2", {
+      authClient: { fake: true },
+      label: "+24h",
+      youtubeAnalyticsClient: {
+        reports: {
+          query: async () => ({
+            data: {
+              columnHeaders: [
+                { name: "views" },
+                { name: "estimatedMinutesWatched" },
+                { name: "averageViewDuration" },
+                { name: "averageViewPercentage" },
+                { name: "likes" },
+                { name: "comments" },
+                { name: "subscribersGained" },
+              ],
+              rows: [[2000, 140, 31, 68.5, 80, 12, 3]],
+            },
+          }),
+        },
+      },
+    });
+
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].views, 2000);
+    assert.equal(rows[0].watch_time_seconds, 8400);
+    assert.equal(rows[0].average_percentage_viewed, 68.5);
+    assert.equal(rows[0].fixture, false);
+  } finally {
+    delete process.env.INTELLIGENCE_REAL_MODE;
+  }
 });
 
 // ── comment-classifier ────────────────────────────────────────────

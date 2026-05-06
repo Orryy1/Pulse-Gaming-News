@@ -151,6 +151,8 @@ test("Pulse local TTS smoke test uses a natural rate by default", () => {
   assert.match(smokeSource, /LOCAL_TTS_SMOKE_RATE\s*\|\|\s*1\.0/);
   assert.match(smokeSource, /__local_tts_smoke_sleepy_liam_latest\.mp3/);
   assert.match(smokeSource, /stampLocalVoiceTimestampMeta/);
+  assert.match(smokeSource, /Pokémon keeps its accent/);
+  assert.doesNotMatch(smokeSource, /Pokmon|PokÃ©mon/);
   assert.doesNotMatch(smokeSource, /LOCAL_TTS_SMOKE_RATE\s*\|\|\s*1\.75/);
 });
 

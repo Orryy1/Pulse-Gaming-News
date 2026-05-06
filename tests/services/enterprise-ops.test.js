@@ -277,6 +277,43 @@ test("TikTok dispatch pack is upload-ready without posting", () => {
   assert.strictEqual(pack.compatibility.virtualAssistant, "last_resort_only");
 });
 
+test("TikTok dispatch pack downgrades videos under the 60 second TikTok threshold", () => {
+  const pack = buildTikTokDispatchPack(
+    {
+      id: "short-story",
+      title: "Useful but too short for TikTok rewards",
+      exported_path: "output/final/short-story.mp4",
+      thumbnail_candidate_path: "output/thumbnails/short-story.png",
+      flair: "Verified",
+    },
+    { durationSeconds: 59.4, now: new Date("2026-04-28T10:00:00Z") },
+  );
+
+  assert.equal(pack.status, "tiktok_length_review_required");
+  assert.equal(pack.eligibility.creatorRewardsLengthEligible, false);
+  assert.equal(pack.eligibility.dispatchLengthReady, false);
+  assert.equal(pack.durationGate.reason, "under_60_seconds");
+  assert.equal(pack.officialInboxJson.ready_for_upload, false);
+  assert.match(pack.discordNotification, /Duration gate: under_60_seconds/);
+});
+
+test("TikTok dispatch pack refuses unknown-duration videos until probed", () => {
+  const pack = buildTikTokDispatchPack(
+    {
+      id: "unknown-duration",
+      title: "Render with no ffprobe duration",
+      exported_path: "output/final/unknown-duration.mp4",
+      thumbnail_candidate_path: "output/thumbnails/unknown-duration.png",
+    },
+    { durationSeconds: null },
+  );
+
+  assert.equal(pack.status, "duration_review_required");
+  assert.equal(pack.eligibility.creatorRewardsLengthEligible, null);
+  assert.equal(pack.durationGate.reason, "duration_unknown");
+  assert.equal(pack.officialInboxJson.ready_for_upload, false);
+});
+
 test("TikTok dispatch manifest emits a scheduler queue and sample Discord notification", () => {
   const manifest = buildTikTokDispatchManifest(
     [

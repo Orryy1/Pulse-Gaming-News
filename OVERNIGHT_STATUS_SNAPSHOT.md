@@ -1,27 +1,30 @@
 # Overnight Status Snapshot
 
-Generated: 2026-05-06 20:12 BST
+Generated: 2026-05-06 21:07 BST
 
 ## Branch
 
 - Current branch: `codex/readiness-qa-failure-window`
-- Latest commit: `d77aa768 Resolve still-deck narration via media root`
+- Latest commit: `272624b8 Add overnight motion gap report`
 - `origin/main`: `2c7f47c5f6e7544f4a16ef7e5b4d3df1ffc7cf10`
 - Working tree at snapshot start: clean
+- Current in-progress slice: TikTok read-only automation/readiness report.
 
 ## Validation
 
 - Focused Studio V2 still-deck ingestion tests: pass (`24/24`)
-- Full `npm test`: pass (`2001/2001`)
+- Focused TikTok automation/dispatch/recovery tests: pass (`39/39`)
+- Full `npm test`: pass (`2018/2018`)
+- `npm run build`: pass
 - `npm run build`: pass
 - No Railway deploy, OAuth, production DB mutation, social posting or production renderer switch was performed.
 
 ## Local TTS
 
 - Approved local voice reference: `pulse-sleepy-liam-20260502`
-- Latest local TTS doctor verdict: `red`
-- Current reason: local TTS HTTP health is unreachable
-- Action: workstream A will stabilise the local TTS server workflow and batch handling. Do not fall back to the old low/demonic voice.
+- Latest local TTS doctor verdict: `green`
+- Current reason: local Liam engine is reachable, ready, loaded and has the approved reference.
+- Action: keep local Liam as proof-render capable. Do not fall back to the old low/demonic voice.
 
 ## Creator Studio OS
 
@@ -50,6 +53,7 @@ Generated: 2026-05-06 20:12 BST
 
 - Local TTS server is currently down/unreachable.
 - Studio V2 is still local-only and must not become production default overnight.
+- TikTok token gate is currently green locally, but no pack is ready for dispatch because current candidates are stale or missing media.
 - TikTok official direct posting remains dependent on TikTok app/API constraints; do not post overnight.
 - Old production/final MP4 folder contains many videos without approved voice provenance and must not be treated as TikTok-ready.
 - Any live production change must go into `MORNING_APPROVAL_QUEUE.md`.

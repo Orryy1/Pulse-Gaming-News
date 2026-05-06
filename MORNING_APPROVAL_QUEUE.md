@@ -22,19 +22,19 @@ Recommendation: review `STUDIO_V2_OVERNIGHT_PROMOTION_PACKET.md`, the MP4 and th
 
 ## 2. TikTok Route Discipline
 
-Decision needed: keep live-account TikTok browser automation blocked and use only the official inbox route or manual phone workflow until a proper ready dispatch pack exists.
+Decision needed: approve or reject one official TikTok inbox upload test from the fresh local dispatch pack.
 
-Why it matters: the local TikTok token now reports usable, but the overnight dispatch gate found no current pack ready for TikTok. Existing candidates are missing media or stale, so uploading them would waste the newly restored route.
+Why it matters: the local TikTok token now reports usable and a fresh local dry-run dispatch pack exists for `1szzhy9`, with 74.67s runtime, approved local Liam voice evidence, cover, caption and stale-render checks. It still needs human visual review before any live upload.
 
-What changes: no live TikTok upload should run yet. The next safe step is to produce a fresh 60+ second pack with approved voice, current MP4, cover, caption and token gate clear, then approve a single official inbox upload test.
+What changes: if approved later, run one explicit official inbox upload command for the selected MP4 only. This sends a TikTok inbox/draft item for manual completion; it must not create a public post automatically.
 
-Risk: live-account browser automation can trigger account-risk systems. Uploading stale or poor media would also damage the channel even if the API route works.
+Risk: live-account browser automation can trigger account-risk systems and remains blocked. Uploading a visually weak proof would also damage the channel even if the official inbox route works, so the MP4 and cover must be reviewed first.
 
-Rollback: keep TikTok posting manual/inbox-only. If a future inbox upload creates a draft item, delete it manually in TikTok before posting.
+Rollback: keep TikTok posting manual/inbox-only. If an inbox upload creates a draft item, delete it manually in TikTok before posting.
 
-Tests/build status: TikTok dispatch and automation report tests passed locally. Final full validation passed: `npm test` `2035/2035`, `npm run build` pass.
+Tests/build status: fresh dispatch pack tests passed locally. Final full validation passed: `npm test` `2039/2039`, `npm run build` pass.
 
-Recommendation: do not approve live-account browser automation. Approve only a single official inbox upload test after a fresh dispatch pack reaches `ready_for_operator_review`.
+Recommendation: do not approve live-account browser automation. Approve only a single official inbox upload test after reviewing `test/output/tiktok-fresh-dispatch/tiktok_fresh_dispatch_pack.md`, the MP4 and the cover.
 
 ## 3. Paid/External Voice Shootout
 

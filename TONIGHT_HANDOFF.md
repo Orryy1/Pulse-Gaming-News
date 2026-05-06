@@ -5,7 +5,7 @@ Date: 2026-05-06
 ## Branch
 
 - Branch: `codex/readiness-qa-failure-window`
-- Latest commit: `567f1d3f Add monetisation readiness report`
+- Latest commit before this slice: `c3f68699 Update overnight handoff and approval queue`
 - Pushed: yes
 - Deployed: no
 - Railway env vars: untouched
@@ -32,10 +32,11 @@ Date: 2026-05-06
 
 ## Validation
 
-- `npm test`: pass (`2035/2035`)
+- `npm test`: pass (`2039/2039`)
 - `npm run build`: pass
 - `npm run tts:doctor -- --prewarm`: green
 - `npm run tiktok:auth-doctor`: AMBER, token usable, direct public-post approval not confirmed
+- `npm run tiktok:fresh-pack -- --story 1szzhy9 ... --dry-run`: pass, dry-run pack ready for operator review
 - `npm run longform:dossier -- --fixture --format weekly_roundup`: pass
 - `npm run intelligence:monetisation`: pass
 
@@ -45,6 +46,7 @@ Date: 2026-05-06
 - Studio V2 promotion readiness: local one-story packet, approved local narration, QA artefacts and no production switch.
 - Motion acquisition reporting: official trailer/frame/clip gap report with local-only safety.
 - TikTok automation readiness: auth diagnostics, dispatch gate, stale media blocking and operator route report.
+- Fresh TikTok dispatch pack: local dry-run pack for `1szzhy9` with approved Liam voice evidence, current MP4, cover, caption, token gate clear and no live upload.
 - Voice shootout framework: benchmark manifest, local Liam status, blind review sheet and paid/external provider lockouts.
 - Longform prototype: Weekly Roundup dossier with segments, source pack, chapters, visual plan, SEO package and Shorts spin-offs.
 - Monetisation readiness: milestone tracker, affiliate audit, media-kit draft and revenue-path report with no fantasy projections.
@@ -60,6 +62,7 @@ Date: 2026-05-06
 - `LONGFORM_OVERNIGHT_ARCHITECTURE_REPORT.md`
 - `MONETISATION_OVERNIGHT_REPORT.md`
 - `MORNING_APPROVAL_QUEUE.md`
+- `test/output/tiktok-fresh-dispatch/tiktok_fresh_dispatch_pack.md`
 
 ## Best Local Proof
 
@@ -70,7 +73,7 @@ Date: 2026-05-06
 ## Biggest Remaining Blockers
 
 - Studio V2 needs a controlled one-story pilot approval before any live use.
-- TikTok has a usable local token, but no fresh TikTok-ready dispatch pack exists yet.
+- TikTok has a usable local token and a fresh local dry-run dispatch pack exists, but the MP4/cover still need human visual review before any inbox upload.
 - TikTok public direct posting remains dependent on TikTok app/API approval state.
 - Local Liam is proof-ready, but production voice must not switch without approval.
 - Longform is architecture/prototype only and must not be scheduled/uploaded automatically.
@@ -88,9 +91,8 @@ See `MORNING_APPROVAL_QUEUE.md`:
 
 ## Recommended Next Work
 
-1. Produce a fresh 60+ second TikTok dispatch pack with approved voice and current cover/caption.
+1. Review the fresh TikTok dispatch MP4 and cover, then decide whether to run one official inbox upload test.
 2. Run a local Liam Studio V2 proof on the best current story, then compare it against legacy.
 3. Review the Weekly Roundup dossier and decide whether to build one manual longform pilot.
 4. Keep improving motion acquisition taste gates: reject rating cards, logos, black frames and low-detail trailer frames.
 5. Wire real YouTube Analytics scope when approved so the learning loop can move beyond shallow counters.
-

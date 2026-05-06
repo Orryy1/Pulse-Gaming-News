@@ -32,7 +32,7 @@ Date: 2026-05-06
 
 ## Validation
 
-- `npm test`: pass (`2039/2039`)
+- `npm test`: pass (`2045/2045`)
 - `npm run build`: pass
 - `npm run tts:doctor -- --prewarm`: green
 - `npm run tiktok:auth-doctor`: AMBER, token usable, direct public-post approval not confirmed
@@ -47,6 +47,7 @@ Date: 2026-05-06
 - Motion acquisition reporting: official trailer/frame/clip gap report with local-only safety.
 - TikTok automation readiness: auth diagnostics, dispatch gate, stale media blocking and operator route report.
 - Fresh TikTok dispatch pack: local dry-run pack for `1szzhy9` with approved Liam voice evidence, current MP4, cover, caption, token gate clear and no live upload.
+- TikTok cover candidate scanner: extracts local cover frames, rejects obvious rating/slate/stale-person risks and writes a contact sheet for human visual choice.
 - Voice shootout framework: benchmark manifest, local Liam status, blind review sheet and paid/external provider lockouts.
 - Longform prototype: Weekly Roundup dossier with segments, source pack, chapters, visual plan, SEO package and Shorts spin-offs.
 - Monetisation readiness: milestone tracker, affiliate audit, media-kit draft and revenue-path report with no fantasy projections.
@@ -63,6 +64,8 @@ Date: 2026-05-06
 - `MONETISATION_OVERNIGHT_REPORT.md`
 - `MORNING_APPROVAL_QUEUE.md`
 - `test/output/tiktok-fresh-dispatch/tiktok_fresh_dispatch_pack.md`
+- `test/output/tiktok-cover-candidates/tiktok_cover_candidates.md`
+- `test/output/tiktok-cover-candidates/tiktok_cover_candidates_contact_sheet.jpg`
 
 ## Best Local Proof
 

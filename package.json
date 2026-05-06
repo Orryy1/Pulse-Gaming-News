@@ -44,6 +44,7 @@
     "tiktok:token": "node tools/tiktok-token-maintenance.js",
     "tiktok:diagnose403": "node tools/tiktok-403-diagnosis.js",
     "tiktok:dispatch": "node tools/tiktok-dispatch-pack.js",
+    "tiktok:covers": "node tools/tiktok-cover-candidates.js",
     "tiktok:fresh-pack": "node tools/tiktok-fresh-dispatch-pack.js",
     "tiktok:overnight-report": "node tools/tiktok-overnight-automation-report.js",
     "tiktok:inbox-upload": "node tools/tiktok-inbox-upload.js",

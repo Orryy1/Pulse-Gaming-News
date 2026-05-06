@@ -1,0 +1,64 @@
+"use strict";
+
+const { test } = require("node:test");
+const assert = require("node:assert/strict");
+
+const {
+  classifyLocalTtsFailure,
+  classifyLocalTtsHealthFailure,
+  classifyLocalTtsProofFailure,
+} = require("../../lib/studio/local-tts-failures");
+
+test("classifyLocalTtsHealthFailure separates server down, timeout and unloaded voice", () => {
+  assert.equal(
+    classifyLocalTtsHealthFailure({
+      status: "unreachable",
+      reasons: ["health endpoint unreachable: fetch failed ECONNREFUSED"],
+    }).code,
+    "server_down",
+  );
+  assert.equal(
+    classifyLocalTtsHealthFailure({
+      status: "unreachable",
+      reasons: ["health endpoint unreachable: This operation was aborted"],
+    }).code,
+    "health_timeout",
+  );
+  assert.equal(
+    classifyLocalTtsHealthFailure({
+      status: "ok",
+      ready: true,
+      voice: { present: true, refResolved: true, loaded: false },
+    }).code,
+    "voice_not_loaded",
+  );
+});
+
+test("classifyLocalTtsFailure recognises transient socket resets and TTS timeouts", () => {
+  const reset = new Error("read ECONNRESET");
+  reset.code = "ECONNRESET";
+  assert.equal(classifyLocalTtsFailure(reset).code, "connection_reset");
+  assert.equal(classifyLocalTtsFailure(new Error("local TTS timeout after 600000ms")).code, "tts_timeout");
+});
+
+test("classifyLocalTtsProofFailure classifies duration, timestamps and unsafe voice issues", () => {
+  assert.equal(classifyLocalTtsProofFailure({ durationSeconds: 58.9 }).code, "duration_too_short");
+  assert.equal(classifyLocalTtsProofFailure({ durationSeconds: 77.2 }).code, "duration_too_long");
+  assert.equal(classifyLocalTtsProofFailure({ timestampsStamped: false }).code, "missing_timestamps");
+  assert.equal(
+    classifyLocalTtsProofFailure({
+      durationSeconds: 66.2,
+      timestampsStamped: true,
+      localVoiceReference: { referencePresent: false },
+    }).code,
+    "unsafe_voice",
+  );
+  assert.equal(
+    classifyLocalTtsProofFailure({
+      durationSeconds: 66.2,
+      timestampsStamped: true,
+      localVoiceReference: { referencePresent: true },
+    }).code,
+    null,
+  );
+});

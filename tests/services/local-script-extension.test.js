@@ -306,6 +306,7 @@ test("apply local script extension audio marks underfloor proofs rejected", asyn
   });
 
   assert.equal(result.applied[0].duration_verdict, "reject_duration");
+  assert.equal(result.applied[0].failure_code, "duration_too_short");
 });
 
 test("apply local script extension audio records TTS failures and keeps going", async () => {
@@ -340,7 +341,31 @@ test("apply local script extension audio records TTS failures and keeps going", 
   assert.equal(result.skipped.length, 1);
   assert.equal(result.skipped[0].story_id, "fails_once");
   assert.equal(result.skipped[0].reason, "generate_tts_failed");
+  assert.equal(result.skipped[0].failure_code, "connection_reset");
+  assert.equal(result.skipped[0].server_reset_recorded, true);
   assert.match(result.skipped[0].error, /ECONNRESET/);
   assert.equal(result.applied.length, 1);
   assert.equal(result.applied[0].story_id, "still_runs");
+});
+
+test("apply local script extension audio records missing timestamps as a proof failure", async () => {
+  const result = await applyLocalScriptExtensionAudio({
+    plan: {
+      drafts: [
+        {
+          story_id: "ready_missing_ts",
+          action: "ready_for_local_liam_audio",
+          proposed_full_script: "Ready script. Follow Pulse Gaming so you never miss a beat.",
+          proposed_words: 190,
+          estimated_seconds: 64.4,
+        },
+      ],
+    },
+    generateTts: async () => null,
+    measureDuration: async () => 66.4,
+  });
+
+  assert.equal(result.applied[0].duration_verdict, "pass");
+  assert.equal(result.applied[0].failure_code, "missing_timestamps");
+  assert.match(result.applied[0].local_voice_metadata, /not_stamped:timestamps_missing/);
 });

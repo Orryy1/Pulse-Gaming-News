@@ -433,6 +433,7 @@ test("apply-local audio repair reports below-floor Liam proofs as rejected", asy
 
   assert.equal(result.applied.length, 1);
   assert.equal(result.applied[0].duration_verdict, "reject_duration");
+  assert.equal(result.applied[0].failure_code, "duration_too_short");
   assert.equal(result.applied[0].duration_seconds, 58.4);
 });
 
@@ -485,6 +486,41 @@ test("apply-local audio repair records TTS failures without aborting the batch",
   assert.equal(result.skipped.length, 1);
   assert.equal(result.skipped[0].story_id, "rss_first");
   assert.equal(result.skipped[0].reason, "generate_tts_failed");
+  assert.equal(result.skipped[0].failure_code, "connection_reset");
+  assert.equal(result.skipped[0].server_reset_recorded, true);
   assert.equal(result.applied.length, 1);
   assert.equal(result.applied[0].story_id, "rss_second");
+});
+
+test("apply-local audio repair records missing timestamps as a proof failure", async () => {
+  const story = {
+    id: "rss_missing_ts",
+    title: "Xbox confirms a new update",
+    approved: true,
+    full_script: "Xbox confirmed new details for players today. ".repeat(32),
+    audio_path: "output/audio/rss_missing_ts.mp3",
+    exported_path: "output/final/rss_missing_ts.mp4",
+  };
+  const report = buildLocalMediaRepairQueue({
+    stories: [story],
+    mediaByStoryId: {
+      rss_missing_ts: { audioExists: true, finalExists: true, finalDurationSeconds: 64 },
+    },
+    voiceAuditByStoryId: {
+      rss_missing_ts: { verdict: "review", blockers: ["approved_voice_metadata_missing"] },
+    },
+    localTts: READY_TTS,
+  });
+
+  const result = await applyLocalAudioRepairs({
+    report,
+    storiesById: { rss_missing_ts: story },
+    generateTts: async () => null,
+    measureDuration: async () => 66.1,
+  });
+
+  assert.equal(result.applied.length, 1);
+  assert.equal(result.applied[0].duration_verdict, "pass");
+  assert.equal(result.applied[0].failure_code, "missing_timestamps");
+  assert.match(result.applied[0].local_voice_metadata, /not_stamped:timestamps_missing/);
 });

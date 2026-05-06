@@ -17,6 +17,9 @@ const {
   startLocalTtsServer,
   waitForLocalTtsHealth,
 } = require("../lib/studio/local-tts-supervisor");
+const {
+  classifyLocalTtsHealthFailure,
+} = require("../lib/studio/local-tts-failures");
 
 function parseArgs(argv = process.argv.slice(2)) {
   return {
@@ -31,12 +34,17 @@ async function writeReport(report) {
   await fs.ensureDir(outDir);
   const jsonPath = path.join(outDir, "local_tts_doctor.json");
   const mdPath = path.join(outDir, "local_tts_doctor.md");
-  await fs.writeJson(jsonPath, report, { spaces: 2 });
-  await fs.writeFile(mdPath, renderLocalTtsDoctorMarkdown(report), "utf8");
-  return {
+  const reportPaths = {
     jsonPath: path.resolve(jsonPath),
     mdPath: path.resolve(mdPath),
   };
+  const reportWithPaths = {
+    ...report,
+    report_paths: reportPaths,
+  };
+  await fs.writeJson(jsonPath, reportWithPaths, { spaces: 2 });
+  await fs.writeFile(mdPath, renderLocalTtsDoctorMarkdown(reportWithPaths), "utf8");
+  return reportPaths;
 }
 
 async function runDoctor(options = {}) {
@@ -58,6 +66,7 @@ async function runDoctor(options = {}) {
     base_url: baseUrl,
     verdict: plan.verdict,
     action: plan.action,
+    failure_code: classifyLocalTtsHealthFailure(before).code,
     reason: plan.reason,
     before,
     after: null,
@@ -110,8 +119,10 @@ async function runDoctor(options = {}) {
     allowRestart: false,
     allowPrewarm: false,
   });
+  const finalFailure = classifyLocalTtsHealthFailure(finalSummary);
   report.verdict = finalPlan.verdict;
   report.action = finalPlan.action;
+  report.failure_code = finalFailure.code;
   report.reason = finalPlan.reason;
 
   if (options.writeReport !== false) {
@@ -135,4 +146,5 @@ if (require.main === module) {
 module.exports = {
   parseArgs,
   runDoctor,
+  writeReport,
 };

@@ -90,3 +90,31 @@ test("short runtime planner: local Liam voice uses measured approved-reference c
   assert.equal(passLocal.minWords, 185);
   assert.equal(passLocal.maxWords, 227);
 });
+
+test("short runtime planner: punctuation-heavy local Liam scripts still estimate from spoken words", () => {
+  const text = "Wait... GTA? Xbox! Steam, moving now. ".repeat(35);
+  const plan = classifyShortScriptRuntime({
+    text,
+    secondsPerWord: secondsPerWordForTtsProvider("local", {}),
+  });
+
+  assert.equal(countSpokenWords(text), 210);
+  assert.equal(plan.result, "pass");
+  assert.equal(plan.estimatedSeconds, 69.3);
+});
+
+test("short runtime planner: local Liam too-short and too-long estimates are explicit", () => {
+  const tooShort = classifyShortScriptRuntime({
+    wordCount: 180,
+    secondsPerWord: secondsPerWordForTtsProvider("local", {}),
+  });
+  const tooLong = classifyShortScriptRuntime({
+    wordCount: 274,
+    secondsPerWord: secondsPerWordForTtsProvider("local", {}),
+  });
+
+  assert.equal(tooShort.result, "warn");
+  assert.match(tooShort.warnings[0], /script_runtime_below_flash_target/);
+  assert.equal(tooLong.result, "fail");
+  assert.match(tooLong.failures[0], /script_runtime_too_long/);
+});

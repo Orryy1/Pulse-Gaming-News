@@ -102,6 +102,7 @@ test("renderLocalTtsDoctorMarkdown is operator-readable and local-only", () => {
     verdict: "amber",
     action: "prewarm",
     reason: "voice not loaded",
+    failure_code: "voice_not_loaded",
     before: {
       status: "ok",
       phase: "ready-skipped",
@@ -117,6 +118,7 @@ test("renderLocalTtsDoctorMarkdown is operator-readable and local-only", () => {
   });
 
   assert.match(md, /Local TTS Doctor/);
+  assert.match(md, /failure code: voice_not_loaded/);
   assert.match(md, /Local-only/);
   assert.doesNotMatch(md, /access_token|secret|API_KEY/i);
 });

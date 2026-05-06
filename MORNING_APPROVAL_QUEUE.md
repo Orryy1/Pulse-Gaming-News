@@ -32,7 +32,7 @@ Risk: live-account browser automation can trigger account-risk systems and remai
 
 Rollback: keep TikTok posting manual/inbox-only. If an inbox upload creates a draft item, delete it manually in TikTok before posting.
 
-Tests/build status: fresh dispatch pack and TikTok cover candidate tests passed locally. Final full validation passed: `npm test` `2045/2045`, `npm run build` pass.
+Tests/build status: TikTok automation report now prefers the fresh local dry-run dispatch pack and keeps dashboard/auth warnings visible. Final full validation passed: `npm test` `2060/2060`, `npm run build` pass.
 
 Recommendation: do not approve live-account browser automation. Approve only a single official inbox upload test after reviewing `test/output/tiktok-fresh-dispatch/tiktok_fresh_dispatch_pack.md`, the MP4, the selected cover and `test/output/tiktok-cover-candidates/tiktok_cover_candidates_contact_sheet.jpg`.
 

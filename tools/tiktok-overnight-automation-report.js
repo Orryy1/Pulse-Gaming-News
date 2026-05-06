@@ -22,9 +22,13 @@ async function main() {
   const dispatchManifest = await readJsonIfExists(
     path.join(OUT, "tiktok_dispatch_manifest.json"),
   );
+  const freshDispatchPack = await readJsonIfExists(
+    path.join(OUT, "tiktok-fresh-dispatch", "tiktok_fresh_dispatch_pack.json"),
+  );
   const report = buildTikTokAutomationReport({
     authDoctorReport,
     dispatchManifest,
+    freshDispatchPack,
   });
   const jsonPath = path.join(OUT, "tiktok_overnight_automation_report.json");
   const mdPath = path.join(OUT, "tiktok_overnight_automation_report.md");

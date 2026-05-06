@@ -109,6 +109,28 @@ test("groupIntoPhrases splits long creator captions before they become two-line 
   );
 });
 
+test("groupIntoPhrases can merge dangling Flash Lane caption fragments", () => {
+  const phrases = groupIntoPhrases(
+    [
+      { word: "This", start: 0, end: 0.18 },
+      { word: "as", start: 0.19, end: 0.35 },
+      { word: "flagship", start: 0.36, end: 0.58 },
+      { word: "launcher.", start: 0.59, end: 0.75 },
+    ],
+    {
+      maxWordsPerPhrase: 2,
+      maxPhraseChars: 16,
+      avoidDanglingWords: true,
+      danglingMergeMaxWords: 3,
+    },
+  );
+
+  assert.deepEqual(
+    phrases.map((phrase) => phrase.words.map((word) => word.word)),
+    [["This", "as", "flagship"], ["launcher."]],
+  );
+});
+
 test("buildWordPopDialogues uses hard spaces so short punches do not wrap", () => {
   const dialogues = buildWordPopDialogues(
     [

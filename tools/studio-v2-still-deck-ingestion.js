@@ -640,9 +640,11 @@ async function renderStillDeckVariant({
         duration: assDurationS,
         scriptText: renderStory.scriptForCaption || renderStory.full_script,
         maxWordsPerPhrase: 2,
-        maxPhraseChars: 16,
+        maxPhraseChars: 22,
         captionCase: "upper",
         revealMode: variant === "enriched" ? "phrase" : "word",
+        avoidDanglingWords: variant === "enriched",
+        danglingMergeMaxWords: variant === "enriched" ? 3 : 2,
       }),
       "utf8",
     );

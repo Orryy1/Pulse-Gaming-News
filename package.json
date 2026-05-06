@@ -90,6 +90,7 @@
     "creative:visual-qa": "node tools/creative/run-visual-qa.js",
     "creative:thumbnails": "node tools/creative/build-thumbnail-candidates.js",
     "creative:release-radar": "node tools/creative/build-monthly-release-radar.js",
+    "longform:dossier": "node tools/longform-production-dossier.js",
     "intelligence:learning": "node tools/intelligence/run-learning-digest.js",
     "intelligence:comments": "node tools/intelligence/run-comment-digest.js",
     "intelligence:monetisation": "node tools/intelligence/run-monetisation-snapshot.js",

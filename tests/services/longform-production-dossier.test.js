@@ -9,6 +9,9 @@ const {
   buildLongformProductionDossier,
   renderLongformDossierMarkdown,
 } = require("../../lib/longform/production-dossier");
+const {
+  renderArchitectureReport,
+} = require("../../tools/longform-production-dossier");
 
 const FIXTURE_STORIES = [
   {
@@ -148,3 +151,17 @@ test("longform markdown is operator-readable and clearly local-only", () => {
   assert.match(markdown, /Shorts Spin-Off Plan/);
 });
 
+test("longform architecture report separates Flash Lane shorts from Briefing Lane longform", () => {
+  const selector = buildLongformCandidateSelector(FIXTURE_STORIES);
+  const dossier = buildLongformProductionDossier({
+    formatId: "weekly_roundup",
+    stories: FIXTURE_STORIES,
+    generatedAt: "2026-05-06T21:45:00.000Z",
+  });
+  const markdown = renderArchitectureReport({ dossier, selector });
+
+  assert.match(markdown, /Pulse Flash Lane/);
+  assert.match(markdown, /Pulse Briefing Lane/);
+  assert.match(markdown, /mini-documentary/i);
+  assert.match(markdown, /Shared intelligence layer/);
+});

@@ -1,6 +1,6 @@
 # Longform Overnight Architecture Report
 
-Generated: 2026-05-06T20:33:39.746Z
+Generated: 2026-05-06T22:52:49.286Z
 Selected format: Weekly Roundup
 Status: outline_ready_for_editorial_review
 
@@ -9,6 +9,12 @@ Status: outline_ready_for_editorial_review
 - A local-only longform candidate selector.
 - A production dossier with segments, source pack, chapter plan, visual plan, shot list, SEO package and Shorts spin-off plan.
 - A fixture prototype that does not upload, schedule or write production DB rows.
+
+## Lane Strategy
+
+- Pulse Flash Lane: 61-75s high-energy Shorts, punch captions, rapid topic cards and game-footage backbone.
+- Pulse Briefing Lane: weekly and monthly formats with mini-documentary rhythm, chapter cards, calmer narration, source timelines and richer context.
+- Shared intelligence layer: research, fact-checking, media inventory and analytics stay common, while script rules, render rules and QA gates differ per format.
 
 ## Format Ladder
 

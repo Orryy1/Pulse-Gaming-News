@@ -64,7 +64,7 @@ Risk: longform needs stronger source checks and visual coverage than Shorts. A w
 
 Rollback: keep the longform tool local-only. If the pilot fails review, do not upload it and keep existing Shorts workflow unchanged.
 
-Tests/build status: longform focused tests passed. Final full validation passed: `npm test` `2035/2035`, `npm run build` pass.
+Tests/build status: longform focused tests now pin the Flash Lane vs Briefing Lane split. Final full validation passed: `npm test` `2061/2061`, `npm run build` pass.
 
 Recommendation: review `LONGFORM_OVERNIGHT_ARCHITECTURE_REPORT.md` first. Approve only a single manually reviewed Weekly Roundup pilot, not an automatic scheduler.
 

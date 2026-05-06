@@ -167,6 +167,12 @@ function renderArchitectureReport({ dossier, selector }) {
   lines.push("- A production dossier with segments, source pack, chapter plan, visual plan, shot list, SEO package and Shorts spin-off plan.");
   lines.push("- A fixture prototype that does not upload, schedule or write production DB rows.");
   lines.push("");
+  lines.push("## Lane Strategy");
+  lines.push("");
+  lines.push("- Pulse Flash Lane: 61-75s high-energy Shorts, punch captions, rapid topic cards and game-footage backbone.");
+  lines.push("- Pulse Briefing Lane: weekly and monthly formats with mini-documentary rhythm, chapter cards, calmer narration, source timelines and richer context.");
+  lines.push("- Shared intelligence layer: research, fact-checking, media inventory and analytics stay common, while script rules, render rules and QA gates differ per format.");
+  lines.push("");
   lines.push("## Format Ladder");
   lines.push("");
   for (const format of LONGFORM_FORMATS) {

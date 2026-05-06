@@ -628,6 +628,22 @@ test("still-deck local narration uses the approved production-shaped local voice
   assert.doesNotMatch(src, /dotenv"\)\.config\(\{\s*override:\s*true\s*\}\)/);
 });
 
+test("still-deck provided narration resolves media-root relative audio and timestamps at read time", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+
+  assert.match(src, /require\("\.\.\/lib\/media-paths"\)/);
+  assert.match(src, /async function resolveReadableMediaArg/);
+  assert.match(src, /mediaPaths\.resolveExisting\(inputPath\)/);
+  assert.match(src, /else if \(arg === "--audio"\) args\.audioPath = argv\[\+\+i\] \|\| "";/);
+  assert.match(src, /else if \(arg === "--timestamps"\) args\.timestampsPath = argv\[\+\+i\] \|\| "";/);
+  assert.match(src, /const resolvedAudioPath = await resolveReadableMediaArg\(audioPath\)/);
+  assert.match(src, /await resolveReadableMediaArg\(timestampsPath\)/);
+  assert.match(src, /looksLikeLocalTtsPath\(resolvedAudioPath\)/);
+});
+
 test("still-deck render path applies package readiness before ffmpeg render", () => {
   const src = fs.readFileSync(
     path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),

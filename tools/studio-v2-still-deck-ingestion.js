@@ -10,6 +10,7 @@ try {
 } catch {}
 
 const { composeStudioSlate, SCENE_TYPES } = require("../lib/scene-composer");
+const mediaPaths = require("../lib/media-paths");
 const {
   buildSceneInput,
   dispatchSceneFilter,
@@ -144,8 +145,8 @@ function parseArgs(argv) {
     else if (arg === "--allow-unvalidated-official-clips") args.allowUnvalidatedOfficialClips = true;
     else if (arg === "--generate-local-tts") args.generateLocalTts = true;
     else if (arg === "--use-official-trailer-clips") args.useOfficialTrailerClips = true;
-    else if (arg === "--audio") args.audioPath = path.resolve(argv[++i] || "");
-    else if (arg === "--timestamps") args.timestampsPath = path.resolve(argv[++i] || "");
+    else if (arg === "--audio") args.audioPath = argv[++i] || "";
+    else if (arg === "--timestamps") args.timestampsPath = argv[++i] || "";
     else if (arg === "--limit") args.limit = Math.max(1, Number(argv[++i]) || 1);
     else if (arg === "--help" || arg === "-?") args.help = true;
   }
@@ -370,6 +371,15 @@ async function readTimestampWords(timestampsPath) {
   return wordsFromAlignment(alignment);
 }
 
+async function resolveReadableMediaArg(inputPath) {
+  if (!inputPath) return null;
+  const mediaResolved = await mediaPaths.resolveExisting(inputPath);
+  if (mediaResolved && (await fs.pathExists(mediaResolved))) return mediaResolved;
+  const absolute = path.resolve(inputPath);
+  if (await fs.pathExists(absolute)) return absolute;
+  return mediaResolved || absolute;
+}
+
 async function resolveNarration({
   story,
   variant,
@@ -380,20 +390,23 @@ async function resolveNarration({
   allowSilentFixture,
 }) {
   if (audioPath) {
-    if (!(await fs.pathExists(audioPath))) {
-      throw new Error(`narration audio missing: ${audioPath}`);
+    const resolvedAudioPath = await resolveReadableMediaArg(audioPath);
+    if (!resolvedAudioPath || !(await fs.pathExists(resolvedAudioPath))) {
+      throw new Error(`narration audio missing: ${resolvedAudioPath || audioPath}`);
     }
-    const inferredTs = timestampsPath || audioPath.replace(/\.(mp3|wav|m4a)$/i, "_timestamps.json");
-    const suppliedLocalTts = looksLikeLocalTtsPath(audioPath);
-    const meta = (await fs.pathExists(inferredTs))
+    const inferredTs = timestampsPath
+      ? await resolveReadableMediaArg(timestampsPath)
+      : resolvedAudioPath.replace(/\.(mp3|wav|m4a)$/i, "_timestamps.json");
+    const suppliedLocalTts = looksLikeLocalTtsPath(resolvedAudioPath);
+    const meta = inferredTs && (await fs.pathExists(inferredTs))
       ? await fs.readJson(inferredTs).catch(() => null)
       : null;
     const transcriptChars = meta?.characters || meta?.alignment?.characters || [];
     return {
       mode: "real_audio",
-      audioPath,
-      timestampsPath: (await fs.pathExists(inferredTs)) ? inferredTs : null,
-      durationS: ffprobeDuration(audioPath),
+      audioPath: resolvedAudioPath,
+      timestampsPath: inferredTs && (await fs.pathExists(inferredTs)) ? inferredTs : null,
+      durationS: ffprobeDuration(resolvedAudioPath),
       provider: suppliedLocalTts ? "local" : "external",
       source: suppliedLocalTts ? "provided-local-tts-audio" : "provided-real-audio",
       signatureHash: meta?.meta?.signatureHash || null,

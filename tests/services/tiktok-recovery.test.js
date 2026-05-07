@@ -69,6 +69,35 @@ test("TikTok auth doctor reports OAuth token health without exposing token value
   assert.doesNotMatch(md, /should-not-print|secret-value|aw1234567890abcd/);
 });
 
+test("TikTok auth doctor does not keep dashboard client-key warning after token is usable", () => {
+  const { buildTikTokAuthDoctorReport } = require("../../lib/platforms/tiktok-auth-doctor");
+
+  const report = buildTikTokAuthDoctorReport({
+    env: {
+      TIKTOK_CLIENT_KEY: "aw1234567890abcd",
+      TIKTOK_CLIENT_SECRET: "secret-value",
+      TIKTOK_REDIRECT_URI: "https://pulse.orryy.com/auth/tiktok/callback",
+    },
+    tokenStatus: {
+      ok: true,
+      reason: "ok",
+      expires_in_seconds: 50_000,
+      refresh_available: true,
+      needs_reauth: false,
+    },
+  });
+
+  assert.equal(report.token_status.local_action, "token_usable");
+  assert.equal(
+    report.warnings.includes("dashboard_client_key_error_requires_operator_dashboard_fix"),
+    false,
+  );
+  assert.equal(
+    report.operator_actions.some((action) => /same TikTok app\/environment/.test(action)),
+    false,
+  );
+});
+
 test("TikTok auth doctor treats an expired refreshable local token as a sync or refresh action", () => {
   const {
     buildTikTokAuthDoctorReport,

@@ -1,6 +1,6 @@
 # TikTok Overnight Automation Report
 
-Generated: 2026-05-07T02:08:25.750Z
+Generated: 2026-05-07T03:25:31.143Z
 Mode: read-only-tiktok-automation-strategy
 Verdict: AMBER
 Recommended route: fix_fresh_dispatch_creative_blockers

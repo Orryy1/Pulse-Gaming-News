@@ -1,6 +1,6 @@
 # Longform Overnight Architecture Report
 
-Generated: 2026-05-06T22:52:49.286Z
+Generated: 2026-05-07T03:26:28.549Z
 Selected format: Weekly Roundup
 Status: outline_ready_for_editorial_review
 

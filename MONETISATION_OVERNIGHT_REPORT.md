@@ -1,6 +1,6 @@
 # Monetisation Overnight Report
 
-Generated: 2026-05-06T22:58:29.943Z
+Generated: 2026-05-07T03:26:28.848Z
 Cleared milestones: 1/12
 YPP eligible: false
 

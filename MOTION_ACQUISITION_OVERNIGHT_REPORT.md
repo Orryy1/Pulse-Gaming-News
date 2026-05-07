@@ -39,12 +39,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 
 ### Segment Rejections
 
-- segment_samples_too_repetitive: 6
-- segment_contains_black_frame: 6
-- segment_contains_title_or_rating_card: 1
-- segment_action_score_below_flash_threshold: 1
-- segment_lacks_gameplay_action_samples: 2
-- segment_contains_low_detail_frame: 2
+- none
 
 ### Latest Render Forensic Warnings
 
@@ -87,7 +82,11 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 
 ### Segment Rejections
 
-- none
+- segment_samples_too_repetitive: 7
+- segment_lacks_gameplay_action_samples: 6
+- segment_contains_low_detail_frame: 1
+- segment_contains_black_frame: 1
+- segment_sample_extract_failed: 1
 
 ### Latest Render Forensic Warnings
 

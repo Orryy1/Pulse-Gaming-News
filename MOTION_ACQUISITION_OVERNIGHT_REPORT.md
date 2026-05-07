@@ -5,7 +5,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 ## Summary
 
 - Ready local Flash proofs: 1
-- Blocked Flash proofs: 9
+- Blocked Flash proofs: 19
 - Closest story: 1szzhy9
 
 ## 1szzhy9
@@ -82,9 +82,73 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 
 - none
 
+## 1t0u9o4
+
+- Title: Don’t Expect Product Placement in GTA 6 — the CEO of Take-Two Says It Won't Do Real World Brand Partnerships Because 'All the Brands Are Made Up'
+- Recommendation: do_not_render_yet
+- Blockers: flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, flash_proof_requires_four_exact_subject_assets
+- Liam audio: approved_local_liam_audio_ready
+- Exact assets: 0
+- Motion frames: 0
+- Validated clip refs: 0
+- Validated clip sources: 0
+- Validated entities: none
+- Missing entities: none
+- Latest render proof: not available
+
+### Next Steps
+
+- find_3_more_validated_gameplay_clip_windows
+- find_3_more_validated_clip_sources
+- acquire_exact_subject_images_or_official_motion_refs
+
+### Safe Commands
+
+- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id 1t0u9o4`
+- plan_frame_sampling: `npm run media:plan-frames -- --story-id 1t0u9o4`
+- extract_safe_local_frames: `npm run media:extract-frames -- --story-id 1t0u9o4 --apply-local`
+- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id 1t0u9o4 --apply-local --deep-scan`
+- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story 1t0u9o4`
+
+### Segment Rejections
+
+- none
+
+## 1t0x9ui
+
+- Title: It's been a year since release and Oblivion Remastered is still broken- Digital Foundry
+- Recommendation: do_not_render_yet
+- Blockers: flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, flash_proof_requires_four_exact_subject_assets
+- Liam audio: approved_local_liam_audio_ready
+- Exact assets: 0
+- Motion frames: 0
+- Validated clip refs: 0
+- Validated clip sources: 0
+- Validated entities: none
+- Missing entities: none
+- Latest render proof: not available
+
+### Next Steps
+
+- find_3_more_validated_gameplay_clip_windows
+- find_3_more_validated_clip_sources
+- acquire_exact_subject_images_or_official_motion_refs
+
+### Safe Commands
+
+- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id 1t0x9ui`
+- plan_frame_sampling: `npm run media:plan-frames -- --story-id 1t0x9ui`
+- extract_safe_local_frames: `npm run media:extract-frames -- --story-id 1t0x9ui --apply-local`
+- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id 1t0x9ui --apply-local --deep-scan`
+- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story 1t0x9ui`
+
+### Segment Rejections
+
+- none
+
 ## 1t0zhng
 
-- Title: 1t0zhng
+- Title: LEGO Batman: Legacy of the Dark Knight PC specs revealed
 - Recommendation: do_not_render_yet
 - Blockers: flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, flash_proof_requires_four_exact_subject_assets
 - Liam audio: approved_local_liam_audio_ready
@@ -114,9 +178,9 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 
 - none
 
-## rss_7945f462187bd7f8
+## 1t186u4
 
-- Title: rss_7945f462187bd7f8
+- Title: Reggie says Nintendo stopped selling products on Amazon in the 2010s after they asked for financial support to undercut competitors' prices
 - Recommendation: do_not_render_yet
 - Blockers: flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, flash_proof_requires_four_exact_subject_assets
 - Liam audio: approved_local_liam_audio_ready
@@ -136,11 +200,11 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 
 ### Safe Commands
 
-- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_7945f462187bd7f8`
-- plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_7945f462187bd7f8`
-- extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_7945f462187bd7f8 --apply-local`
-- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_7945f462187bd7f8 --apply-local --deep-scan`
-- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story rss_7945f462187bd7f8`
+- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id 1t186u4`
+- plan_frame_sampling: `npm run media:plan-frames -- --story-id 1t186u4`
+- extract_safe_local_frames: `npm run media:extract-frames -- --story-id 1t186u4 --apply-local`
+- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id 1t186u4 --apply-local --deep-scan`
+- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story 1t186u4`
 
 ### Segment Rejections
 
@@ -148,7 +212,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 
 ## rss_8ea7f2689732f31a
 
-- Title: rss_8ea7f2689732f31a
+- Title: Even GTA 6's price needs to feel "reasonable", says Take-Two boss: hiking past $70 to match inflation "doesn’t make a whole lot of sense"
 - Recommendation: do_not_render_yet
 - Blockers: flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, flash_proof_requires_four_exact_subject_assets
 - Liam audio: approved_local_liam_audio_ready
@@ -178,12 +242,12 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 
 - none
 
-## rss_a23224b1ea49574e
+## 1t0w9nb
 
-- Title: rss_a23224b1ea49574e
+- Title: Digital Foundry: Yup, Oblivion Remastered Is Still Broken a Year After Release
 - Recommendation: do_not_render_yet
-- Blockers: flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, flash_proof_requires_four_exact_subject_assets
-- Liam audio: approved_local_liam_audio_ready
+- Blockers: approved_liam_audio_missing, flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, flash_proof_requires_four_exact_subject_assets
+- Liam audio: approved_local_liam_audio_missing
 - Exact assets: 0
 - Motion frames: 0
 - Validated clip refs: 0
@@ -197,14 +261,17 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - find_3_more_validated_gameplay_clip_windows
 - find_3_more_validated_clip_sources
 - acquire_exact_subject_images_or_official_motion_refs
+- generate_approved_sleepy_liam_audio_after_visuals_are_ready
 
 ### Safe Commands
 
-- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_a23224b1ea49574e`
-- plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_a23224b1ea49574e`
-- extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_a23224b1ea49574e --apply-local`
-- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_a23224b1ea49574e --apply-local --deep-scan`
-- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story rss_a23224b1ea49574e`
+- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id 1t0w9nb`
+- plan_frame_sampling: `npm run media:plan-frames -- --story-id 1t0w9nb`
+- extract_safe_local_frames: `npm run media:extract-frames -- --story-id 1t0w9nb --apply-local`
+- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id 1t0w9nb --apply-local --deep-scan`
+- refresh_local_audio_repair_queue: `npm run ops:local-media-repair -- --limit 20 --dry-run`
+- generate_sleepy_liam_audio_locally_after_visuals_are_ready: `npm run ops:local-script-extension -- --apply-local-audio`
+- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story 1t0w9nb`
 
 ### Segment Rejections
 
@@ -212,7 +279,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 
 ## 1t1hyqc
 
-- Title: 1t1hyqc
+- Title: Even tho I can’t download you. You will always be on my phone.
 - Recommendation: do_not_render_yet
 - Blockers: approved_liam_audio_missing, flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, flash_proof_requires_four_exact_subject_assets
 - Liam audio: local_liam_audio_not_flash_ready
@@ -245,9 +312,9 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 
 - none
 
-## fixture_flash_ready
+## rss_0e2778be9f97ffa4
 
-- Title: GTA 6 trailer evidence is stacking up
+- Title: The next Tales Of remaster has leaked, and it's probably not what you're expecting
 - Recommendation: do_not_render_yet
 - Blockers: approved_liam_audio_missing, flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, flash_proof_requires_four_exact_subject_assets
 - Liam audio: approved_local_liam_audio_missing
@@ -268,21 +335,336 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 
 ### Safe Commands
 
-- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id fixture_flash_ready`
-- plan_frame_sampling: `npm run media:plan-frames -- --story-id fixture_flash_ready`
-- extract_safe_local_frames: `npm run media:extract-frames -- --story-id fixture_flash_ready --apply-local`
-- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id fixture_flash_ready --apply-local --deep-scan`
+- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_0e2778be9f97ffa4`
+- plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_0e2778be9f97ffa4`
+- extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_0e2778be9f97ffa4 --apply-local`
+- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_0e2778be9f97ffa4 --apply-local --deep-scan`
 - refresh_local_audio_repair_queue: `npm run ops:local-media-repair -- --limit 20 --dry-run`
 - generate_sleepy_liam_audio_locally_after_visuals_are_ready: `npm run ops:local-script-extension -- --apply-local-audio`
-- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story fixture_flash_ready`
+- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story rss_0e2778be9f97ffa4`
 
 ### Segment Rejections
 
 - none
 
-## rss_4ff45649e69b89de
+## rss_3831c03ef4eaf35c
 
-- Title: rss_4ff45649e69b89de
+- Title: Invincible VS Global Release Times Confirmed
+- Recommendation: do_not_render_yet
+- Blockers: approved_liam_audio_missing, flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, flash_proof_requires_four_exact_subject_assets
+- Liam audio: approved_local_liam_audio_missing
+- Exact assets: 0
+- Motion frames: 0
+- Validated clip refs: 0
+- Validated clip sources: 0
+- Validated entities: none
+- Missing entities: none
+- Latest render proof: not available
+
+### Next Steps
+
+- find_3_more_validated_gameplay_clip_windows
+- find_3_more_validated_clip_sources
+- acquire_exact_subject_images_or_official_motion_refs
+- generate_approved_sleepy_liam_audio_after_visuals_are_ready
+
+### Safe Commands
+
+- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_3831c03ef4eaf35c`
+- plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_3831c03ef4eaf35c`
+- extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_3831c03ef4eaf35c --apply-local`
+- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_3831c03ef4eaf35c --apply-local --deep-scan`
+- refresh_local_audio_repair_queue: `npm run ops:local-media-repair -- --limit 20 --dry-run`
+- generate_sleepy_liam_audio_locally_after_visuals_are_ready: `npm run ops:local-script-extension -- --apply-local-audio`
+- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story rss_3831c03ef4eaf35c`
+
+### Segment Rejections
+
+- none
+
+## rss_4105cb7c837252c3
+
+- Title: A New The Division PC Game Is Out Right Now, And It's Free
+- Recommendation: do_not_render_yet
+- Blockers: approved_liam_audio_missing, flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, flash_proof_requires_four_exact_subject_assets
+- Liam audio: approved_local_liam_audio_missing
+- Exact assets: 0
+- Motion frames: 0
+- Validated clip refs: 0
+- Validated clip sources: 0
+- Validated entities: none
+- Missing entities: none
+- Latest render proof: not available
+
+### Next Steps
+
+- find_3_more_validated_gameplay_clip_windows
+- find_3_more_validated_clip_sources
+- acquire_exact_subject_images_or_official_motion_refs
+- generate_approved_sleepy_liam_audio_after_visuals_are_ready
+
+### Safe Commands
+
+- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_4105cb7c837252c3`
+- plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_4105cb7c837252c3`
+- extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_4105cb7c837252c3 --apply-local`
+- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_4105cb7c837252c3 --apply-local --deep-scan`
+- refresh_local_audio_repair_queue: `npm run ops:local-media-repair -- --limit 20 --dry-run`
+- generate_sleepy_liam_audio_locally_after_visuals_are_ready: `npm run ops:local-script-extension -- --apply-local-audio`
+- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story rss_4105cb7c837252c3`
+
+### Segment Rejections
+
+- none
+
+## rss_93fdf53a0c1211ef
+
+- Title: PlayStation Plus Free Games For May 2026 Revealed
+- Recommendation: do_not_render_yet
+- Blockers: approved_liam_audio_missing, flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, flash_proof_requires_four_exact_subject_assets
+- Liam audio: approved_local_liam_audio_missing
+- Exact assets: 0
+- Motion frames: 0
+- Validated clip refs: 0
+- Validated clip sources: 0
+- Validated entities: none
+- Missing entities: none
+- Latest render proof: not available
+
+### Next Steps
+
+- find_3_more_validated_gameplay_clip_windows
+- find_3_more_validated_clip_sources
+- acquire_exact_subject_images_or_official_motion_refs
+- generate_approved_sleepy_liam_audio_after_visuals_are_ready
+
+### Safe Commands
+
+- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_93fdf53a0c1211ef`
+- plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_93fdf53a0c1211ef`
+- extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_93fdf53a0c1211ef --apply-local`
+- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_93fdf53a0c1211ef --apply-local --deep-scan`
+- refresh_local_audio_repair_queue: `npm run ops:local-media-repair -- --limit 20 --dry-run`
+- generate_sleepy_liam_audio_locally_after_visuals_are_ready: `npm run ops:local-script-extension -- --apply-local-audio`
+- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story rss_93fdf53a0c1211ef`
+
+### Segment Rejections
+
+- none
+
+## rss_9fb084475142f310
+
+- Title: GTA 6 Price Commented On By Rockstar's Owner
+- Recommendation: do_not_render_yet
+- Blockers: approved_liam_audio_missing, flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, flash_proof_requires_four_exact_subject_assets
+- Liam audio: approved_local_liam_audio_missing
+- Exact assets: 0
+- Motion frames: 0
+- Validated clip refs: 0
+- Validated clip sources: 0
+- Validated entities: none
+- Missing entities: none
+- Latest render proof: not available
+
+### Next Steps
+
+- find_3_more_validated_gameplay_clip_windows
+- find_3_more_validated_clip_sources
+- acquire_exact_subject_images_or_official_motion_refs
+- generate_approved_sleepy_liam_audio_after_visuals_are_ready
+
+### Safe Commands
+
+- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_9fb084475142f310`
+- plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_9fb084475142f310`
+- extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_9fb084475142f310 --apply-local`
+- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_9fb084475142f310 --apply-local --deep-scan`
+- refresh_local_audio_repair_queue: `npm run ops:local-media-repair -- --limit 20 --dry-run`
+- generate_sleepy_liam_audio_locally_after_visuals_are_ready: `npm run ops:local-script-extension -- --apply-local-audio`
+- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story rss_9fb084475142f310`
+
+### Segment Rejections
+
+- none
+
+## rss_a110642aa97d0de9
+
+- Title: In the wake of $100 GTA 6 rumours, Take-Two still won't give an actual price, but says "our job is to charge way, way, way less of the value"
+- Recommendation: do_not_render_yet
+- Blockers: approved_liam_audio_missing, flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, flash_proof_requires_four_exact_subject_assets
+- Liam audio: approved_local_liam_audio_missing
+- Exact assets: 0
+- Motion frames: 0
+- Validated clip refs: 0
+- Validated clip sources: 0
+- Validated entities: none
+- Missing entities: none
+- Latest render proof: not available
+
+### Next Steps
+
+- find_3_more_validated_gameplay_clip_windows
+- find_3_more_validated_clip_sources
+- acquire_exact_subject_images_or_official_motion_refs
+- generate_approved_sleepy_liam_audio_after_visuals_are_ready
+
+### Safe Commands
+
+- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_a110642aa97d0de9`
+- plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_a110642aa97d0de9`
+- extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_a110642aa97d0de9 --apply-local`
+- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_a110642aa97d0de9 --apply-local --deep-scan`
+- refresh_local_audio_repair_queue: `npm run ops:local-media-repair -- --limit 20 --dry-run`
+- generate_sleepy_liam_audio_locally_after_visuals_are_ready: `npm run ops:local-script-extension -- --apply-local-audio`
+- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story rss_a110642aa97d0de9`
+
+### Segment Rejections
+
+- none
+
+## rss_a8e7d56725bf20cc
+
+- Title: All The Evidence That GTA 6‘s Next Trailer Is Nearly Here
+- Recommendation: do_not_render_yet
+- Blockers: approved_liam_audio_missing, flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, flash_proof_requires_four_exact_subject_assets
+- Liam audio: approved_local_liam_audio_missing
+- Exact assets: 0
+- Motion frames: 0
+- Validated clip refs: 0
+- Validated clip sources: 0
+- Validated entities: none
+- Missing entities: none
+- Latest render proof: not available
+
+### Next Steps
+
+- find_3_more_validated_gameplay_clip_windows
+- find_3_more_validated_clip_sources
+- acquire_exact_subject_images_or_official_motion_refs
+- generate_approved_sleepy_liam_audio_after_visuals_are_ready
+
+### Safe Commands
+
+- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_a8e7d56725bf20cc`
+- plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_a8e7d56725bf20cc`
+- extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_a8e7d56725bf20cc --apply-local`
+- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_a8e7d56725bf20cc --apply-local --deep-scan`
+- refresh_local_audio_repair_queue: `npm run ops:local-media-repair -- --limit 20 --dry-run`
+- generate_sleepy_liam_audio_locally_after_visuals_are_ready: `npm run ops:local-script-extension -- --apply-local-audio`
+- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story rss_a8e7d56725bf20cc`
+
+### Segment Rejections
+
+- none
+
+## rss_c3c6731708e35fc0
+
+- Title: Marathon update just made Cryo Archive Sponsored Kits a weekly freebie
+- Recommendation: do_not_render_yet
+- Blockers: approved_liam_audio_missing, flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, flash_proof_requires_four_exact_subject_assets
+- Liam audio: approved_local_liam_audio_missing
+- Exact assets: 0
+- Motion frames: 0
+- Validated clip refs: 0
+- Validated clip sources: 0
+- Validated entities: none
+- Missing entities: none
+- Latest render proof: not available
+
+### Next Steps
+
+- find_3_more_validated_gameplay_clip_windows
+- find_3_more_validated_clip_sources
+- acquire_exact_subject_images_or_official_motion_refs
+- generate_approved_sleepy_liam_audio_after_visuals_are_ready
+
+### Safe Commands
+
+- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_c3c6731708e35fc0`
+- plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_c3c6731708e35fc0`
+- extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_c3c6731708e35fc0 --apply-local`
+- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_c3c6731708e35fc0 --apply-local --deep-scan`
+- refresh_local_audio_repair_queue: `npm run ops:local-media-repair -- --limit 20 --dry-run`
+- generate_sleepy_liam_audio_locally_after_visuals_are_ready: `npm run ops:local-script-extension -- --apply-local-audio`
+- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story rss_c3c6731708e35fc0`
+
+### Segment Rejections
+
+- none
+
+## rss_ca673f22ddbbbdfc
+
+- Title: Mega Mewtwo's Pokémon Go debut finally announced and Go Fest Global is free for all players
+- Recommendation: do_not_render_yet
+- Blockers: approved_liam_audio_missing, flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, flash_proof_requires_four_exact_subject_assets
+- Liam audio: approved_local_liam_audio_missing
+- Exact assets: 0
+- Motion frames: 0
+- Validated clip refs: 0
+- Validated clip sources: 0
+- Validated entities: none
+- Missing entities: none
+- Latest render proof: not available
+
+### Next Steps
+
+- find_3_more_validated_gameplay_clip_windows
+- find_3_more_validated_clip_sources
+- acquire_exact_subject_images_or_official_motion_refs
+- generate_approved_sleepy_liam_audio_after_visuals_are_ready
+
+### Safe Commands
+
+- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_ca673f22ddbbbdfc`
+- plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_ca673f22ddbbbdfc`
+- extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_ca673f22ddbbbdfc --apply-local`
+- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_ca673f22ddbbbdfc --apply-local --deep-scan`
+- refresh_local_audio_repair_queue: `npm run ops:local-media-repair -- --limit 20 --dry-run`
+- generate_sleepy_liam_audio_locally_after_visuals_are_ready: `npm run ops:local-script-extension -- --apply-local-audio`
+- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story rss_ca673f22ddbbbdfc`
+
+### Segment Rejections
+
+- none
+
+## rss_d795d8d622707d2c
+
+- Title: 'Eventually the slop will just fall to the bottom': Garry's Mod sequel launches to 'mixed' reviews, but Garry himself isn't worried about AI games on the main page
+- Recommendation: do_not_render_yet
+- Blockers: approved_liam_audio_missing, flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, flash_proof_requires_four_exact_subject_assets
+- Liam audio: approved_local_liam_audio_missing
+- Exact assets: 0
+- Motion frames: 0
+- Validated clip refs: 0
+- Validated clip sources: 0
+- Validated entities: none
+- Missing entities: none
+- Latest render proof: not available
+
+### Next Steps
+
+- find_3_more_validated_gameplay_clip_windows
+- find_3_more_validated_clip_sources
+- acquire_exact_subject_images_or_official_motion_refs
+- generate_approved_sleepy_liam_audio_after_visuals_are_ready
+
+### Safe Commands
+
+- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_d795d8d622707d2c`
+- plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_d795d8d622707d2c`
+- extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_d795d8d622707d2c --apply-local`
+- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_d795d8d622707d2c --apply-local --deep-scan`
+- refresh_local_audio_repair_queue: `npm run ops:local-media-repair -- --limit 20 --dry-run`
+- generate_sleepy_liam_audio_locally_after_visuals_are_ready: `npm run ops:local-script-extension -- --apply-local-audio`
+- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story rss_d795d8d622707d2c`
+
+### Segment Rejections
+
+- none
+
+## rss_ef7e6e464509e0bc
+
+- Title: MindsEye Has a New Update and a Cheaper Price as Developer Launches Comeback Bid
 - Recommendation: do_not_render_yet
 - Blockers: approved_liam_audio_missing, flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, flash_proof_requires_four_exact_subject_assets
 - Liam audio: local_liam_audio_not_flash_ready
@@ -303,48 +685,13 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 
 ### Safe Commands
 
-- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_4ff45649e69b89de`
-- plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_4ff45649e69b89de`
-- extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_4ff45649e69b89de --apply-local`
-- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_4ff45649e69b89de --apply-local --deep-scan`
+- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_ef7e6e464509e0bc`
+- plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_ef7e6e464509e0bc`
+- extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_ef7e6e464509e0bc --apply-local`
+- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_ef7e6e464509e0bc --apply-local --deep-scan`
 - refresh_local_audio_repair_queue: `npm run ops:local-media-repair -- --limit 20 --dry-run`
 - generate_sleepy_liam_audio_locally_after_visuals_are_ready: `npm run ops:local-script-extension -- --apply-local-audio`
-- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story rss_4ff45649e69b89de`
-
-### Segment Rejections
-
-- none
-
-## rss_60b58c29a07be301
-
-- Title: rss_60b58c29a07be301
-- Recommendation: do_not_render_yet
-- Blockers: approved_liam_audio_missing, flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, flash_proof_requires_four_exact_subject_assets
-- Liam audio: local_liam_audio_not_flash_ready
-- Exact assets: 0
-- Motion frames: 0
-- Validated clip refs: 0
-- Validated clip sources: 0
-- Validated entities: none
-- Missing entities: none
-- Latest render proof: not available
-
-### Next Steps
-
-- find_3_more_validated_gameplay_clip_windows
-- find_3_more_validated_clip_sources
-- acquire_exact_subject_images_or_official_motion_refs
-- generate_approved_sleepy_liam_audio_after_visuals_are_ready
-
-### Safe Commands
-
-- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_60b58c29a07be301`
-- plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_60b58c29a07be301`
-- extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_60b58c29a07be301 --apply-local`
-- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_60b58c29a07be301 --apply-local --deep-scan`
-- refresh_local_audio_repair_queue: `npm run ops:local-media-repair -- --limit 20 --dry-run`
-- generate_sleepy_liam_audio_locally_after_visuals_are_ready: `npm run ops:local-script-extension -- --apply-local-audio`
-- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story rss_60b58c29a07be301`
+- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story rss_ef7e6e464509e0bc`
 
 ### Segment Rejections
 

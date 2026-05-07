@@ -271,6 +271,66 @@ test("official trailer resolver excludes exhausted Steam source families from pr
   assert.ok(plan.search_queries.includes("GTA official trailer"));
 });
 
+test("official trailer resolver names exhausted missing entities inside partial reference plans", async () => {
+  const redDeadSourceUrl =
+    "https://video.akamai.steamstatic.com/store_trailers/1174180/900001/reddead/hls_264_master.m3u8";
+  const plan = await buildOfficialTrailerReferencePlan(
+    baseStory({
+      full_script:
+        "Take-Two fans are comparing GTA, Red Dead and BioShock after the publisher passed on a legacy sequel.",
+      game_images: [
+        verifiedSteamAsset("GTA", "3240220", "Grand Theft Auto V Enhanced"),
+        verifiedSteamAsset("Red Dead", "1174180", "Red Dead Redemption 2"),
+      ],
+    }),
+    {
+      segmentValidationReport: {
+        segments: Array.from({ length: 8 }, (_, index) => ({
+          story_id: "trailer-ref-story",
+          entity: "Red Dead",
+          source_url: redDeadSourceUrl,
+          source_type: "steam_movie",
+          media_start_s: 36 + index * 6,
+          status: "rejected",
+          segment_validated: false,
+          allowed_for_flash_lane: false,
+          validation_reason: "segment_contains_black_frame",
+        })),
+      },
+      steamLookup: async (appId) => ({
+        appId,
+        success: true,
+        title: appId === "3240220" ? "Grand Theft Auto V Enhanced" : "Red Dead Redemption 2",
+        movies:
+          appId === "3240220"
+            ? [
+                {
+                  id: 1,
+                  name: "GTA gameplay",
+                  hls_h264: "https://video.example/gta-gameplay.m3u8",
+                },
+              ]
+            : [
+                {
+                  id: 900001,
+                  name: "Red Dead launch trailer",
+                  hls_h264: redDeadSourceUrl,
+                },
+              ],
+      }),
+      exhaustedSourceFamilyThreshold: 5,
+    },
+  );
+
+  assert.equal(plan.motion_reference_readiness, "partial_official_reference_found");
+  assert.deepEqual(plan.covered_target_entities, ["GTA"]);
+  assert.ok(plan.missing_target_entities.includes("Red Dead"));
+  assert.deepEqual(plan.alternate_reference_required_entities, ["Red Dead"]);
+  assert.ok(plan.blockers.includes("alternate_official_reference_required"));
+  assert.ok(plan.warnings.includes("alternate_source_needed_for_missing_entities"));
+  assert.ok(plan.planned_searches.some((item) => item.entity === "Red Dead"));
+});
+
 test("official trailer resolver keeps exhausted families when exclusion is explicitly disabled", async () => {
   const sourceUrl =
     "https://video.akamai.steamstatic.com/store_trailers/3240220/832632/4b8d5f06cf0a1/hls_264_master.m3u8";

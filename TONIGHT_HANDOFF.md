@@ -5,7 +5,7 @@ Date: 2026-05-07
 ## Branch
 
 - Branch: `codex/readiness-qa-failure-window`
-- Latest pushed commit: `fc3e2c9a Harden official trailer segment validation`
+- Base pushed commit before this slice: `398971a9 Refresh local TTS overnight status`
 - Deployed: no
 - Railway env vars: untouched
 - Production DB: untouched
@@ -36,13 +36,16 @@ Date: 2026-05-07
 - Official trailer resolver now filters explicit PEGI/rating-board Steam movies before they enter reports.
 - Segment validation can now keep a shorter trimmed gameplay slice when a trailer window has two clean action samples but a weak tail.
 - Local TTS was recovered with `npm run tts:doctor -- --restart --prewarm`; the accepted Liam voice is loaded and the latest smoke proof is `D:\pulse-data\media\output\audio\__local_tts_smoke_sleepy_liam_latest.mp3`.
+- Segment validation can now resume from and merge previous local scan reports, so validated windows are preserved while new source/start windows are sampled.
+- Deep-scan official clip refs now rotate alternate sources before repeated later windows from the same source.
+- New segment validation reports include source provenance for future scans, making failed Steam/IGDB trailer sources easier to diagnose.
+- A resumed local scan for `rss_5b3abe925b27a199` checked `100` merged segment windows and found `2` validated windows, both BioShock. GTA and Red Dead remain blocked, so no Studio V2 render was attempted.
 
 ## Validation
 
 - Focused analytics/intelligence tests: pass (`32/32`)
 - Focused YouTube analytics packet tests: pass (`8/8`)
-- Focused official trailer clip-ref tests: pass (`23/23`)
-- Focused official trailer segment-validator tests: pass (`17/17`)
+- Focused official trailer clip-ref and segment-validator tests: pass (`46/46`)
 - Focused Flash Lane footage acquisition tests: pass (`11/11`)
 - Focused game-title inference tests: pass (`5/5`)
 - Focused story-target coverage tests: pass (`39/39`)
@@ -51,14 +54,14 @@ Date: 2026-05-07
 - Combined Studio V2 motion safety tests: pass (`83/83`)
 - Focused TikTok diagnostics/dispatch tests: pass (`47/47`)
 - Focused voice/longform/monetisation tests: pass (`19/19`)
-- Full `npm test`: pass (`2119/2119`)
+- Full `npm test`: pass (`2123/2123`)
 - `npm run build`: pass
 
 ## Current Verdicts
 
 - Local TTS: `GREEN`
 - Studio V2 live pilot: `RED_BLOCKED`
-- Motion acquisition: local-only; refs cover GTA, BioShock and Red Dead, but only one trimmed BioShock gameplay segment validates, so Flash Lane remains blocked
+- Motion acquisition: local-only; refs cover GTA, BioShock and Red Dead, but only two trimmed BioShock gameplay segments validate after 100 merged local segment checks, so Flash Lane remains blocked
 - TikTok auth: `AMBER`, token usable, public direct posting not confirmed
 - TikTok dispatch: no ready clean pack for upload
 - Facebook Reels: `eligible_for_normal_publish`, keep strict verifier and card fallback

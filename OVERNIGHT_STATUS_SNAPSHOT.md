@@ -1,12 +1,12 @@
 # Overnight Status Snapshot
 
-Generated: 2026-05-07 06:55 BST
+Generated: 2026-05-07 07:22 BST
 
 ## Branch
 
 - Current branch: `codex/readiness-qa-failure-window`
-- Latest pushed commit: `fc3e2c9a Harden official trailer segment validation`
-- Working tree during this snapshot: refreshed local TTS report only
+- Base pushed commit before this slice: `398971a9 Refresh local TTS overnight status`
+- Working tree during this snapshot: local motion-acquisition resume/merge patch pending commit
 - Deployed: no
 
 ## Safety
@@ -22,8 +22,7 @@ Generated: 2026-05-07 06:55 BST
 
 ## Validation
 
-- Focused official trailer clip-ref tests: pass (`23/23`)
-- Focused official trailer segment-validator tests: pass (`17/17`)
+- Focused official trailer clip-ref and segment-validator tests: pass (`46/46`)
 - Focused Flash Lane footage acquisition tests: pass (`11/11`)
 - Focused game-title inference tests: pass (`5/5`)
 - Focused story-target coverage tests: pass (`39/39`)
@@ -32,7 +31,7 @@ Generated: 2026-05-07 06:55 BST
 - Combined Studio V2 motion safety tests: pass (`83/83`)
 - Focused analytics/intelligence tests: pass (`32/32`)
 - Focused YouTube analytics packet tests: pass (`8/8`)
-- Full `npm test`: pass (`2119/2119`)
+- Full `npm test`: pass (`2123/2123`)
 - `npm run build`: pass
 
 ## Local TTS
@@ -63,7 +62,8 @@ Generated: 2026-05-07 06:55 BST
 - Headline inference now strips source labels, quoted phrases and release-time utility tails before creating acquisition targets.
 - Official trailer reference resolver now treats multi-entity coverage as partial until every target has a reference.
 - Motion Acquisition Pro now routes partial resolver references to targeted official-reference search, not straight to a local frame plan.
-- Latest check for `rss_5b3abe925b27a199`: `13` official refs after filtering two explicit PEGI/rating-board GTA movies; target coverage is now GTA, BioShock and Red Dead, but only one trimmed BioShock gameplay segment validates. GTA and Red Dead remain blocked by repetitive, black, low-detail or title/rating frames.
+- Latest check for `rss_5b3abe925b27a199`: `13` official refs after filtering two explicit PEGI/rating-board GTA movies; target coverage is now GTA, BioShock and Red Dead, but only `2/100` merged local segment checks validate and both are BioShock. GTA and Red Dead remain blocked by repetitive, black, low-detail or title/rating frames.
+- New local tooling: segment validation can resume from a previous report, skip already-sampled windows, merge old/new scans and rotate alternate sources before later windows from the same source.
 - Live status: local/report-only
 
 ## TikTok

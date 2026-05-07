@@ -699,6 +699,56 @@ test("official clip refs deep-scan rotates later start windows before exhausting
   );
 });
 
+test("official clip refs deep-scan rotates alternate sources before later starts for the same entity", () => {
+  const refs = buildOfficialTrailerClipsFromFrameReport(
+    { plans: [{ story_id: "story-1", frames: [] }] },
+    "story-1",
+    {
+      includeExploratoryWindows: true,
+      exploratoryStartSeconds: [36, 42],
+      maxClips: 5,
+      referenceReport: {
+        plans: [
+          {
+            story_id: "story-1",
+            references: [
+              {
+                source_type: "steam_movie",
+                source_url: "https://video.example/gta-source-a.m3u8",
+                entity: "GTA",
+                downloads_allowed: false,
+              },
+              {
+                source_type: "steam_movie",
+                source_url: "https://video.example/gta-source-b.m3u8",
+                entity: "GTA",
+                downloads_allowed: false,
+              },
+              {
+                source_type: "steam_movie",
+                source_url: "https://video.example/reddead.m3u8",
+                entity: "Red Dead",
+                downloads_allowed: false,
+              },
+            ],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.deepEqual(
+    refs.map((ref) => `${ref.entity}:${ref.path}:${ref.mediaStartS}`),
+    [
+      "GTA:https://video.example/gta-source-a.m3u8:36",
+      "Red Dead:https://video.example/reddead.m3u8:36",
+      "GTA:https://video.example/gta-source-b.m3u8:36",
+      "Red Dead:https://video.example/reddead.m3u8:42",
+      "GTA:https://video.example/gta-source-a.m3u8:42",
+    ],
+  );
+});
+
 test("official clip refs ignore unsafe or downloadable resolver references", () => {
   const refs = buildOfficialTrailerClipsFromFrameReport(
     { plans: [{ story_id: "story-1", frames: [] }] },

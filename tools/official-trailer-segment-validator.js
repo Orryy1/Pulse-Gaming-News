@@ -14,6 +14,8 @@ const {
 } = require("../lib/studio/v2/official-trailer-clip-refs");
 const {
   DEFAULT_OUTPUT_ROOT,
+  filterPreviouslySampledClipRefs,
+  mergeOfficialTrailerSegmentReports,
   renderOfficialTrailerSegmentValidationMarkdown,
   runOfficialTrailerSegmentValidation,
 } = require("../lib/studio/v2/official-trailer-segment-validator");
@@ -30,7 +32,9 @@ function parseArgs(argv) {
     storyId: null,
     frameReport: DEFAULT_FRAME_REPORT,
     referenceReport: DEFAULT_REFERENCE_REPORT,
+    previousValidationReport: null,
     noReferenceReport: false,
+    mergePrevious: false,
     dryRun: true,
     applyLocal: false,
     outputRoot: DEFAULT_OUTPUT_ROOT,
@@ -51,8 +55,11 @@ function parseArgs(argv) {
       args.noReferenceReport = false;
     } else if (arg === "--no-reference-report" || arg === "--no-trailer-references") {
       args.noReferenceReport = true;
-    }
-    else if (arg === "--dry-run") {
+    } else if (arg === "--previous-validation-report") {
+      args.previousValidationReport = argv[++i] || null;
+    } else if (arg === "--merge-previous") {
+      args.mergePrevious = true;
+    } else if (arg === "--dry-run") {
       args.dryRun = true;
       args.applyLocal = false;
     } else if (arg === "--apply-local") {
@@ -87,6 +94,9 @@ function printHelp() {
       "  --frame-report <p>     Read a controlled frame extraction worker report",
       "  --reference-report <p> Read official trailer resolver references for alternate source scanning",
       "  --no-reference-report  Ignore test/output/official_trailer_references_v1.json",
+      "  --previous-validation-report <p>",
+      "                         Skip clip windows already sampled in a previous validation report",
+      "  --merge-previous       Merge previous validation segments into the written report",
       "  --story-id <id>        Validate one story from the report",
       "  --dry-run              Default. No writes and no source fetches",
       "  --apply-local          Sample trailer segment frames to test/output only",
@@ -119,6 +129,16 @@ async function loadOptionalReferenceReport(args) {
   if (args.noReferenceReport) return { report: null, filePath: null };
   const filePath = path.resolve(ROOT, args.referenceReport || DEFAULT_REFERENCE_REPORT);
   if (!(await fs.pathExists(filePath))) return { report: null, filePath: null };
+  const report = await fs.readJson(filePath);
+  return { report, filePath };
+}
+
+async function loadOptionalPreviousValidationReport(args) {
+  if (!args.previousValidationReport) return { report: null, filePath: null };
+  const filePath = path.resolve(ROOT, args.previousValidationReport);
+  if (!(await fs.pathExists(filePath))) {
+    throw new Error(`previous validation report not found: ${filePath}`);
+  }
   const report = await fs.readJson(filePath);
   return { report, filePath };
 }
@@ -165,8 +185,18 @@ async function main() {
 
   const loaded = await loadFrameReport(args);
   const loadedReference = await loadOptionalReferenceReport(args);
-  const clipRefs = buildClipRefsFromReport(loaded.report, loadedReference.report, args.storyId, args);
-  const report = await runOfficialTrailerSegmentValidation(clipRefs, {
+  const loadedPrevious = await loadOptionalPreviousValidationReport(args);
+  const previousSegmentCount = Array.isArray(loadedPrevious.report?.segments)
+    ? loadedPrevious.report.segments.length
+    : 0;
+  const clipRefs = buildClipRefsFromReport(loaded.report, loadedReference.report, args.storyId, {
+    ...args,
+    maxSegments: previousSegmentCount > 0 ? args.maxSegments + previousSegmentCount : args.maxSegments,
+  });
+  const filteredClipRefs = loadedPrevious.report
+    ? filterPreviouslySampledClipRefs(clipRefs, loadedPrevious.report)
+    : clipRefs;
+  let report = await runOfficialTrailerSegmentValidation(filteredClipRefs, {
     applyLocal: args.applyLocal,
     outputRoot: args.outputRoot,
     maxSegments: args.maxSegments,
@@ -174,6 +204,16 @@ async function main() {
   report.frame_report_source = loaded.filePath;
   report.reference_report_source = loadedReference.filePath;
   report.clip_refs_input_count = clipRefs.length;
+  report.clip_refs_filtered_previous_count = clipRefs.length - filteredClipRefs.length;
+  report.previous_validation_source = loadedPrevious.filePath;
+  if (args.mergePrevious && loadedPrevious.report) {
+    report = mergeOfficialTrailerSegmentReports(loadedPrevious.report, report);
+    report.frame_report_source = loaded.filePath;
+    report.reference_report_source = loadedReference.filePath;
+    report.clip_refs_input_count = clipRefs.length;
+    report.clip_refs_filtered_previous_count = clipRefs.length - filteredClipRefs.length;
+    report.previous_validation_source = loadedPrevious.filePath;
+  }
 
   const markdown = renderOfficialTrailerSegmentValidationMarkdown(report);
   await fs.ensureDir(OUT);

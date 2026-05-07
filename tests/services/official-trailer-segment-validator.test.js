@@ -8,7 +8,9 @@ const os = require("node:os");
 
 const {
   applySegmentValidationToClipRefs,
+  filterPreviouslySampledClipRefs,
   guardSegmentSample,
+  mergeOfficialTrailerSegmentReports,
   runOfficialTrailerSegmentValidation,
   segmentKeyForClipRef,
 } = require("../../lib/studio/v2/official-trailer-segment-validator");
@@ -88,6 +90,25 @@ test("official trailer segment validator defaults to dry-run and performs no wri
   assert.equal(report.summary.samples_would_extract, 3);
   assert.equal(extractorCalls, 0);
   assert.equal(await fs.pathExists(outputRoot), false);
+});
+
+test("official trailer segment validator reports source provenance for each sampled segment", async () => {
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        provenance: {
+          provider: "steam",
+          movie_name: "RDR2 Launch Trailer",
+          store_app_title: "Red Dead Redemption 2",
+        },
+      }),
+    ],
+    { outputRoot: tempOutputRoot("provenance-dry-run") },
+  );
+
+  assert.equal(report.segments[0].provider, "steam");
+  assert.equal(report.segments[0].reference_title, "RDR2 Launch Trailer");
+  assert.equal(report.segments[0].store_app_title, "Red Dead Redemption 2");
 });
 
 test("official trailer segment validator apply-local marks clean sampled windows as Flash Lane allowed", async () => {
@@ -568,4 +589,98 @@ test("official trailer segment validator rejects apply-local outside test/output
       }),
     /apply-local segment validation output must stay under test\/output/i,
   );
+});
+
+test("segment validation resume filters clip refs already sampled in a previous report", () => {
+  const clips = [
+    clip({
+      path: "https://video.example/gta.m3u8",
+      mediaStartS: 36,
+    }),
+    clip({
+      path: "https://video.example/gta.m3u8",
+      mediaStartS: 72,
+    }),
+  ];
+
+  const filtered = filterPreviouslySampledClipRefs(clips, {
+    segments: [
+      {
+        clip_key: segmentKeyForClipRef(clips[0]),
+        status: "rejected",
+        segment_validated: false,
+      },
+    ],
+  });
+
+  assert.deepEqual(filtered.map((item) => item.mediaStartS), [72]);
+});
+
+test("segment validation merge keeps previous validated clips and adds new scans without duplicates", () => {
+  const oldValidated = {
+    clip_key: "https://video.example/bioshock.m3u8|bioshock|42.00",
+    source_url: "https://video.example/bioshock.m3u8",
+    entity: "BioShock",
+    media_start_s: 42,
+    status: "validated",
+    segment_validated: true,
+    allowed_for_flash_lane: true,
+    segment_motion_class: "gameplay_action",
+    action_score: 82,
+    samples: [{}, {}, {}],
+  };
+  const oldRejected = {
+    clip_key: "https://video.example/gta.m3u8|gta|36.00",
+    source_url: "https://video.example/gta.m3u8",
+    entity: "GTA",
+    media_start_s: 36,
+    status: "rejected",
+    segment_validated: false,
+    allowed_for_flash_lane: false,
+    segment_motion_class: "rejected",
+    action_score: 0,
+    samples: [{}, {}, {}],
+  };
+  const newValidated = {
+    clip_key: "https://video.example/gta.m3u8|gta|72.00",
+    source_url: "https://video.example/gta.m3u8",
+    entity: "GTA",
+    media_start_s: 72,
+    status: "validated",
+    segment_validated: true,
+    allowed_for_flash_lane: true,
+    segment_motion_class: "gameplay_action",
+    action_score: 79,
+    samples: [{}, {}, {}],
+  };
+
+  const merged = mergeOfficialTrailerSegmentReports(
+    {
+      generated_at: "2026-05-07T00:00:00.000Z",
+      apply_local: true,
+      mode: "apply_local",
+      segments: [oldValidated, oldRejected],
+    },
+    {
+      generated_at: "2026-05-07T01:00:00.000Z",
+      apply_local: true,
+      mode: "apply_local",
+      segments: [newValidated, { ...oldRejected, validation_reason: "newer_duplicate_rejection" }],
+    },
+  );
+
+  assert.deepEqual(
+    merged.segments.map((segment) => `${segment.entity}:${segment.media_start_s}:${segment.validation_reason || ""}`),
+    [
+      "BioShock:42:",
+      "GTA:36:newer_duplicate_rejection",
+      "GTA:72:",
+    ],
+  );
+  assert.equal(merged.summary.segments, 3);
+  assert.equal(merged.summary.segments_validated, 2);
+  assert.equal(merged.summary.segments_rejected, 1);
+  assert.equal(merged.merge.previous_segment_count, 2);
+  assert.equal(merged.merge.current_segment_count, 2);
+  assert.equal(merged.merge.duplicate_segment_count, 1);
 });

@@ -11,6 +11,10 @@ Title: Marathon Drops To 15K Daily CCU Peak On Steam, Exits Top 50 On PlayStatio
 Production ready: `no`
 Morning approval needed: `no`
 
+## Latest Motion Validation Note
+
+After this packet was generated, the GTA/Red Dead/BioShock local motion scan was resumed and merged instead of overwritten. It now has `100` checked segment windows and `2` validated trimmed gameplay windows, but both are BioShock. GTA and Red Dead remain blocked by repetitive, black, low-detail or title/rating frames. This confirms the no-pilot verdict; no new Studio V2 render should be attempted from that story yet.
+
 ## Blockers
 
 - forensic_warnings_remaining

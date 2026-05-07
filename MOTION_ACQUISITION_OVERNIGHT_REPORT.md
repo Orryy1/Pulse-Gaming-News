@@ -7,6 +7,9 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - PEGI/ESRB/rating-board resolver references are now skipped before they enter the resolver report or deep-scan clip refs.
 - Official trailer segments that start before 36s are now preflight-rejected before extraction.
 - Mixed-quality official trailer windows can now be trimmed to a shorter contiguous clean gameplay slice instead of accepting the bad tail or throwing away the whole source.
+- Segment validation can now resume from a previous report, skip already sampled clip windows and merge old/new local scans without losing validated gameplay segments.
+- Deep-scan clip refs now rotate alternate official sources before spending more budget on later windows from the same source, which reduces repeated bad-source sampling.
+- Segment reports now carry source provenance for new scans, including provider, trailer title and store app title where available.
 - Proof candidates now separate story target entities from found exact assets, so multi-franchise stories cannot pass on one asset pile.
 - Headline inference now rejects source labels, quoted phrases and release-time utility tails before they become acquisition targets.
 - Official trailer reference resolution is now target-aware: one GTA trailer no longer makes a GTA/Red Dead/BioShock story look fully covered.
@@ -20,9 +23,17 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - Coverage verdict: `official_reference_found`
 - Covered target entities: `GTA`, `BioShock`, `Red Dead`
 - Missing target entities: none
-- Local segment validation: `1` validated trimmed BioShock gameplay window; GTA and Red Dead are still blocked by repetitive, black, low-detail or title/rating frames.
+- Local segment validation: `2` validated trimmed BioShock gameplay windows after `100` merged local segment checks; GTA and Red Dead are still blocked by repetitive, black, low-detail or title/rating frames.
 - Motion Acquisition verdict: `reference_ready_for_local_frame_plan`, but Studio V2 Flash proof remains blocked until at least two more validated gameplay clip windows cover GTA and Red Dead.
-- Next safe action: sample alternate/later official sources for `GTA` and `Red Dead`; no video download or production mutation.
+- Next safe action: find better official gameplay references for `GTA` and `Red Dead`; the sampled Steam trailer windows are not good enough for Flash Lane. No video download or production mutation.
+
+## Latest Resume/Merge Scan
+
+- Command: `node tools\official-trailer-segment-validator.js --frame-report test/output/controlled_frame_extraction_worker_apply_local.json --reference-report test/output/official_trailer_references_v1.json --story-id rss_5b3abe925b27a199 --apply-local --deep-scan --include-frame-anchored-windows --candidate-windows-per-source 2 --max-segments 40 --exploratory-starts 84,96,108,120,132,144,156 --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous`
+- Safety: local-only; writes under `test/output`; no retained trailer downloads; no DB, Railway, OAuth or posting changes.
+- Merged result: `100` segments, `2` validated, `98` rejected, `300` sampled frames.
+- Validated entities: `BioShock` only.
+- Main rejection reasons: `segment_samples_too_repetitive` (`28`), `segment_contains_black_frame` (`25`), `segment_contains_low_detail_frame` (`22`), `segment_lacks_gameplay_action_samples` (`9`), `segment_contains_title_or_rating_card` (`9`).
 
 ## Summary
 

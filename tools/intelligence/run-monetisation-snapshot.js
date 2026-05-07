@@ -2,10 +2,10 @@
 "use strict";
 
 /**
- * tools/intelligence/run-monetisation-snapshot.js — Session 3 prototype.
+ * tools/intelligence/run-monetisation-snapshot.js - Session 3 prototype.
  *
  * Build a monetisation milestone snapshot from a fixture state. No
- * assumptions about YPP/Creator-Rewards eligibility — every
+ * assumptions about YPP/Creator-Rewards eligibility - every
  * milestone is reported with its current value, threshold and
  * progress ratio.
  *
@@ -51,9 +51,9 @@ const FIXTURE_STATE = {
 const FIXTURE_STORIES = [
   {
     id: "affiliate_pokemon_go",
-    title: "Mega Mewtwo's Pokemon Go debut gets a confirmed date",
+    title: "Mega Mewtwo's Pokémon Go debut gets a confirmed date",
     full_script:
-      "Pokemon Go players now have a concrete event date and a natural accessory angle.",
+      "Pokémon Go players now have a concrete event date and a natural accessory angle.",
   },
   {
     id: "affiliate_gta6",
@@ -71,7 +71,7 @@ const FIXTURE_STORIES = [
 
 function renderMonetisationMarkdown(snapshot, tiktok) {
   const lines = [];
-  lines.push("# Pulse Gaming — Monetisation Snapshot (FIXTURE)");
+  lines.push("# Pulse Gaming - Monetisation Snapshot (FIXTURE)");
   lines.push("");
   lines.push(`Generated: ${snapshot.generated_at}`);
   lines.push(
@@ -87,8 +87,8 @@ function renderMonetisationMarkdown(snapshot, tiktok) {
     lines.push("");
     for (const item of body.items) {
       lines.push(
-        `- **${item.milestone_label}** — ${item.current_value} / ${item.threshold_value} ` +
-          `(${item.progress_percent}%) · cleared=${item.cleared} · path=${item.unlock_path}`,
+        `- **${item.milestone_label}** - ${item.current_value} / ${item.threshold_value} ` +
+          `(${item.progress_percent}%) - cleared=${item.cleared} - path=${item.unlock_path}`,
       );
       for (const n of item.notes || []) lines.push(`  - ${n}`);
     }
@@ -181,4 +181,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { main, FIXTURE_STATE, FIXTURE_STORIES };
+module.exports = { main, FIXTURE_STATE, FIXTURE_STORIES, renderMonetisationMarkdown };

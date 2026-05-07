@@ -1,6 +1,6 @@
 # Monetisation Overnight Report
 
-Generated: 2026-05-06T20:42:30.882Z
+Generated: 2026-05-06T22:58:29.943Z
 Cleared milestones: 1/12
 YPP eligible: false
 
@@ -12,7 +12,7 @@ Revenue projection: none. No fantasy revenue projection.
 
 ## Affiliate Readiness
 
-- Mega Mewtwo's Pokemon Go debut gets a confirmed date: pass, links=3, rejected=0
+- Mega Mewtwo's Pokémon Go debut gets a confirmed date: pass, links=3, rejected=0
 - GTA 6 trailer evidence remains unconfirmed: pass, links=3, rejected=0
 - Xbox platform policy update changes account rules: review, links=3, rejected=1
 

@@ -80,6 +80,6 @@ Risk: random affiliate links, missing disclosures or premature sponsor claims wo
 
 Rollback: keep monetisation reporting only. Revert any live copy changes and remove any non-specific affiliate links from public descriptions.
 
-Tests/build status: monetisation focused tests passed. Final full validation passed: `npm test` `2035/2035`, `npm run build` pass.
+Tests/build status: monetisation focused tests now pin encoding-clean report output and Pokémon spelling. Final full validation passed: `npm test` `2062/2062`, `npm run build` pass.
 
 Recommendation: allow report-only use now. Approve live affiliate promotion only after each story passes the affiliate targeting audit. Do not start sponsor outreach until real analytics fields are populated.

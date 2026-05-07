@@ -10,12 +10,16 @@ const {
   buildMonetisationReadiness,
   renderMonetisationReadinessMarkdown,
 } = require("../../lib/intelligence/monetisation-readiness");
+const {
+  FIXTURE_STATE,
+  renderMonetisationMarkdown,
+} = require("../../tools/intelligence/run-monetisation-snapshot");
 
 test("affiliate audit accepts relevant Amazon links with disclosure", () => {
   const audit = auditAffiliateTargeting({
     story: {
       id: "pokemon-go",
-      title: "Mega Mewtwo's Pokemon Go debut gets a confirmed date",
+      title: "Mega Mewtwo's Pokémon Go debut gets a confirmed date",
     },
     tag: "pulsegaming-21",
   });
@@ -103,4 +107,42 @@ test("monetisation readiness report includes all required sections", () => {
   assert.ok(readiness.sponsor_media_kit);
   assert.match(markdown, /Monetisation Overnight Report/);
   assert.match(markdown, /No fantasy revenue projection/);
+});
+
+test("monetisation snapshot markdown is encoding-clean and keeps Pokémon spelling", () => {
+  const snapshot = {
+    generated_at: "2026-05-06T23:00:00.000Z",
+    summary: {
+      cleared: 1,
+      total_milestones: 12,
+      ypp_eligible: false,
+      ypp_blockers: ["YPP subscriber threshold"],
+    },
+    sections: {
+      affiliate: {
+        items: [
+          {
+            milestone_label: "Pokémon affiliate disclosure",
+            current_value: 1,
+            threshold_value: 1,
+            progress_percent: 100,
+            cleared: true,
+            unlock_path: "affiliate_amazon",
+            notes: ["Pokémon Go links require disclosure"],
+          },
+        ],
+      },
+    },
+  };
+  const tiktok = {
+    primaryRecommendation: { label: "Official inbox", rationale: "Safe manual completion." },
+    fallback: { label: "Phone workflow", rationale: "No browser automation." },
+    rejected: [],
+    notes: ["No live post"],
+  };
+  const markdown = renderMonetisationMarkdown(snapshot, tiktok);
+
+  assert.equal(FIXTURE_STATE.amazon_affiliate_tag, "pulsegaming-21");
+  assert.match(markdown, /Pokémon/);
+  assert.doesNotMatch(markdown, /â|Â|PokÃ/);
 });

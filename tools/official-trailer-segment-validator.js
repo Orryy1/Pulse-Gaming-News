@@ -13,7 +13,9 @@ const {
   DEFAULT_EXPLORATORY_START_SECONDS,
 } = require("../lib/studio/v2/official-trailer-clip-refs");
 const {
+  DEFAULT_EXHAUSTED_SOURCE_FAMILY_THRESHOLD,
   DEFAULT_OUTPUT_ROOT,
+  filterExhaustedSourceFamilyClipRefs,
   filterPreviouslySampledClipRefs,
   mergeOfficialTrailerSegmentReports,
   renderOfficialTrailerSegmentValidationMarkdown,
@@ -40,6 +42,8 @@ function parseArgs(argv) {
     outputRoot: DEFAULT_OUTPUT_ROOT,
     maxSegments: 6,
     candidateWindowsPerSource: 1,
+    exhaustedSourceFamilyThreshold: DEFAULT_EXHAUSTED_SOURCE_FAMILY_THRESHOLD,
+    noExhaustedSourceFamilyFilter: false,
     includeFrameAnchoredWindows: false,
     includeExploratoryWindows: false,
     exploratoryStartSeconds: DEFAULT_EXPLORATORY_START_SECONDS,
@@ -71,6 +75,13 @@ function parseArgs(argv) {
       args.maxSegments = Math.max(1, Number(argv[++i]) || 6);
     } else if (arg === "--candidate-windows-per-source") {
       args.candidateWindowsPerSource = Math.max(1, Number(argv[++i]) || 1);
+    } else if (arg === "--exhausted-source-family-threshold") {
+      args.exhaustedSourceFamilyThreshold = Math.max(
+        1,
+        Number(argv[++i]) || DEFAULT_EXHAUSTED_SOURCE_FAMILY_THRESHOLD,
+      );
+    } else if (arg === "--no-exhausted-source-family-filter") {
+      args.noExhaustedSourceFamilyFilter = true;
     } else if (arg === "--include-frame-anchored-windows") {
       args.includeFrameAnchoredWindows = true;
     } else if (arg === "--deep-scan" || arg === "--include-exploratory-windows") {
@@ -104,6 +115,10 @@ function printHelp() {
       "  --max-segments <n>     Cap segment validations",
       "  --candidate-windows-per-source <n>",
       "                         Validate alternate windows from the same official source",
+      "  --exhausted-source-family-threshold <n>",
+      "                         Skip a source family after this many failed previous windows",
+      "  --no-exhausted-source-family-filter",
+      "                         Keep sampling previously exhausted source families",
       "  --include-frame-anchored-windows",
       "                         Also validate windows that start shortly before a safe frame",
       "  --deep-scan            Add uniform exploratory windows from every official source",
@@ -196,22 +211,54 @@ async function main() {
   const filteredClipRefs = loadedPrevious.report
     ? filterPreviouslySampledClipRefs(clipRefs, loadedPrevious.report)
     : clipRefs;
-  let report = await runOfficialTrailerSegmentValidation(filteredClipRefs, {
+  const exhaustedFilter =
+    loadedPrevious.report && !args.noExhaustedSourceFamilyFilter
+      ? filterExhaustedSourceFamilyClipRefs(filteredClipRefs, loadedPrevious.report, {
+          threshold: args.exhaustedSourceFamilyThreshold,
+        })
+      : {
+          clipRefs: filteredClipRefs,
+          skipped: [],
+          exhausted_source_families: [],
+        };
+  let report = await runOfficialTrailerSegmentValidation(exhaustedFilter.clipRefs, {
     applyLocal: args.applyLocal,
     outputRoot: args.outputRoot,
     maxSegments: args.maxSegments,
   });
+  const currentRun = {
+    mode: report.mode,
+    dry_run: report.dry_run,
+    apply_local: report.apply_local,
+    will_fetch_source_for_segment_samples: report.will_fetch_source_for_segment_samples,
+  };
+  report.current_run = currentRun;
   report.frame_report_source = loaded.filePath;
   report.reference_report_source = loadedReference.filePath;
   report.clip_refs_input_count = clipRefs.length;
   report.clip_refs_filtered_previous_count = clipRefs.length - filteredClipRefs.length;
+  report.clip_refs_filtered_exhausted_source_family_count = exhaustedFilter.skipped.length;
+  report.exhausted_source_family_filter = {
+    enabled: Boolean(loadedPrevious.report) && !args.noExhaustedSourceFamilyFilter,
+    threshold: args.exhaustedSourceFamilyThreshold,
+    skipped_clip_refs: exhaustedFilter.skipped,
+    exhausted_source_families: exhaustedFilter.exhausted_source_families,
+  };
   report.previous_validation_source = loadedPrevious.filePath;
   if (args.mergePrevious && loadedPrevious.report) {
     report = mergeOfficialTrailerSegmentReports(loadedPrevious.report, report);
+    report.current_run = currentRun;
     report.frame_report_source = loaded.filePath;
     report.reference_report_source = loadedReference.filePath;
     report.clip_refs_input_count = clipRefs.length;
     report.clip_refs_filtered_previous_count = clipRefs.length - filteredClipRefs.length;
+    report.clip_refs_filtered_exhausted_source_family_count = exhaustedFilter.skipped.length;
+    report.exhausted_source_family_filter = {
+      enabled: true,
+      threshold: args.exhaustedSourceFamilyThreshold,
+      skipped_clip_refs: exhaustedFilter.skipped,
+      exhausted_source_families: exhaustedFilter.exhausted_source_families,
+    };
     report.previous_validation_source = loadedPrevious.filePath;
   }
 

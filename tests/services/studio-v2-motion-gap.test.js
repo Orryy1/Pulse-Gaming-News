@@ -509,6 +509,7 @@ test("motion gap markdown is operator-readable and local-only", () => {
   assert.match(md, /Acquisition Strategy/);
   assert.match(md, /alternate_official_sources_required/);
   assert.match(md, /Source families/);
+  assert.match(md, /--previous-validation-report test\/output\/official_trailer_segment_validation_apply_local\.json --merge-previous/);
   assert.match(md, /local-only/);
   assert.match(md, /No DB, Railway, OAuth, render-default or posting changes/);
 });

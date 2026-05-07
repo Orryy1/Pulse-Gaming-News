@@ -4,13 +4,12 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 
 ## Guardrail Update
 
-- PEGI/ESRB/rating-board resolver references are skipped before deep-scan clip refs are created.
-- Official trailer segments that start before 36s are preflight-rejected before extraction.
-- Segment validation can resume from a previous report, skip already sampled clip windows and merge old/new local scans without losing validated gameplay segments.
-- Deep-scan clip refs rotate alternate official sources before spending more budget on later windows from the same source.
-- Segment reports carry source provenance for new scans, including provider, trailer title and store app title where available.
-- Motion-gap reporting now classifies entity-level acquisition state as `needs_first_segment_scan`, `continue_segment_scan` or `alternate_official_sources_required`.
-- Motion-gap reporting now groups attempts by source family, so repeated bad windows from the same Steam/IGDB movie can be separated from genuinely different official source families.
+- Trailer rating-board references are filtered before planning.
+- Segment validation rejects intro/rating/title windows before extraction when the start time or reference metadata is unsafe.
+- Segment validation can resume from a previous report, skip already-sampled windows and merge old/new scans.
+- Segment validation now skips exhausted source families from previous local scans, so the system stops repeatedly sampling the same bad official trailer once enough windows have failed.
+- New local dry-run for `rss_5b3abe925b27a199` skipped `28` already-sampled clip refs and `8` exhausted source-family clip refs, then proposed only `6` new unsampled windows.
+- Motion-gap reporting groups attempts by source family, so repeated bad windows from the same Steam/IGDB movie can be separated from genuinely different official source families.
 - Current verdict for `rss_5b3abe925b27a199`: BioShock has two validated windows, but GTA has `51` failed attempts across `8` source families and Red Dead has `22` failed attempts across `2`, so both need alternate official source families before another Studio V2 proof render.
 - No render defaults, production DB rows, Railway settings, OAuth state or social posting behaviour changed.
 
@@ -79,7 +78,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - resolve_alternate_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_5b3abe925b27a199`
 - plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_5b3abe925b27a199`
 - extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_5b3abe925b27a199 --apply-local`
-- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_5b3abe925b27a199 --apply-local --deep-scan`
+- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_5b3abe925b27a199 --apply-local --deep-scan --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous`
 - recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story rss_5b3abe925b27a199`
 
 ### Segment Rejections

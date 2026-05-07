@@ -16,7 +16,7 @@ Risk: approving a pilot now could put repetitive, low-information or weak-lookin
 
 Rollback: no live action was taken. Keep the production renderer unchanged.
 
-Validation status: focused Studio V2 and motion reports regenerated. The latest resumed segment scan checked `100` merged windows for `rss_5b3abe925b27a199`; only `2` BioShock windows validated. GTA now has `51` failed official-window attempts across `8` source families and Red Dead has `22` across `2`, so both are classified as `alternate_source_required`. Focused TikTok, voice, longform and monetisation tests passed. Full `npm test` passed `2125/2125` and `npm run build` passed.
+Validation status: focused Studio V2 and motion reports regenerated. The latest resumed segment scan checked `100` merged windows for `rss_5b3abe925b27a199`; only `2` BioShock windows validated. GTA now has `51` failed official-window attempts across `8` source families and Red Dead has `22` across `2`, so both are classified as `alternate_source_required`. The segment validator now skips exhausted source families on resume; the latest dry-run skipped `28` already-sampled refs and `8` exhausted family refs. Focused TikTok, voice, longform and monetisation tests passed. Full `npm test` passed `2125/2125` and `npm run build` passed.
 
 Recommendation: do not approve a Studio V2 live pilot yet. Next safe work is stronger motion acquisition and render selection until the promotion packet is clean.
 

@@ -8,6 +8,8 @@ const os = require("node:os");
 
 const {
   applySegmentValidationToClipRefs,
+  exhaustedSourceFamiliesFromReport,
+  filterExhaustedSourceFamilyClipRefs,
   filterPreviouslySampledClipRefs,
   guardSegmentSample,
   mergeOfficialTrailerSegmentReports,
@@ -614,6 +616,99 @@ test("segment validation resume filters clip refs already sampled in a previous 
   });
 
   assert.deepEqual(filtered.map((item) => item.mediaStartS), [72]);
+});
+
+test("segment validation skips exhausted source families from previous local scans", () => {
+  const previousSegments = Array.from({ length: 9 }, (_, index) => ({
+    ...clip({
+      path: "https://video.example/gta-exhausted.m3u8",
+      mediaStartS: 36 + index * 6,
+      provenance: {
+        provider: "steam",
+        movie_id: "gta-trailer-1",
+        store_app_id: "3240220",
+        story_id: "rss_5b3abe925b27a199",
+      },
+    }),
+    story_id: "rss_5b3abe925b27a199",
+    clip_key: `old-gta-${index}`,
+    source_url: "https://video.example/gta-exhausted.m3u8",
+    source_type: "steam_movie",
+    provider: "steam",
+    movie_id: "gta-trailer-1",
+    store_app_id: "3240220",
+    status: "rejected",
+    segment_validated: false,
+    allowed_for_flash_lane: false,
+    validation_reason: index % 2 ? "segment_contains_black_frame" : "segment_samples_too_repetitive",
+  }));
+  const previousReport = { segments: previousSegments };
+  const exhausted = exhaustedSourceFamiliesFromReport(previousReport);
+  const nextClips = [
+    clip({
+      path: "https://video.example/gta-exhausted.m3u8",
+      mediaStartS: 96,
+      provenance: {
+        provider: "steam",
+        movie_id: "gta-trailer-1",
+        store_app_id: "3240220",
+        story_id: "rss_5b3abe925b27a199",
+      },
+    }),
+    clip({
+      path: "https://video.example/gta-alternate.m3u8",
+      mediaStartS: 42,
+      provenance: {
+        provider: "steam",
+        movie_id: "gta-trailer-2",
+        store_app_id: "3240220",
+        story_id: "rss_5b3abe925b27a199",
+      },
+    }),
+  ];
+
+  const filtered = filterExhaustedSourceFamilyClipRefs(nextClips, previousReport);
+
+  assert.equal(exhausted.length, 1);
+  assert.equal(exhausted[0].attempted_segments, 9);
+  assert.equal(exhausted[0].validated_segments, 0);
+  assert.equal(exhausted[0].top_rejection_reason, "segment_samples_too_repetitive");
+  assert.deepEqual(filtered.clipRefs.map((item) => item.path), ["https://video.example/gta-alternate.m3u8"]);
+  assert.equal(filtered.skipped.length, 1);
+  assert.equal(filtered.skipped[0].attempted_segments, 9);
+});
+
+test("segment validation does not skip source families with validated gameplay", () => {
+  const ref = clip({
+    path: "https://video.example/bioshock-good.m3u8",
+    provenance: {
+      provider: "steam",
+      movie_id: "bioshock-trailer-1",
+      store_app_id: "8870",
+      story_id: "rss_5b3abe925b27a199",
+    },
+  });
+  const previousReport = {
+    segments: Array.from({ length: 9 }, (_, index) => ({
+      ...ref,
+      clip_key: `old-bioshock-${index}`,
+      source_url: ref.path,
+      story_id: "rss_5b3abe925b27a199",
+      provider: "steam",
+      movie_id: "bioshock-trailer-1",
+      store_app_id: "8870",
+      segment_validated: index === 8,
+      allowed_for_flash_lane: index === 8,
+      status: index === 8 ? "validated" : "rejected",
+      validation_reason: index === 8 ? "segment_samples_passed" : "segment_lacks_gameplay_action_samples",
+    })),
+  };
+
+  const filtered = filterExhaustedSourceFamilyClipRefs([ref], previousReport);
+
+  assert.equal(exhaustedSourceFamiliesFromReport(previousReport).length, 0);
+  assert.equal(filtered.clipRefs.length, 1);
+  assert.equal(filtered.skipped.length, 0);
 });
 
 test("segment validation merge keeps previous validated clips and adds new scans without duplicates", () => {

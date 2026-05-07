@@ -67,6 +67,7 @@ Generated: 2026-05-07 07:39 BST
 - New local tooling: segment validation can resume from a previous report, skip already-sampled windows, merge old/new scans and rotate alternate sources before later windows from the same source.
 - New local reporting: the Studio V2 motion gap planner now separates `needs_first_segment_scan`, `continue_segment_scan` and `alternate_official_sources_required`, with entity-level attempts, top rejection reasons and safe next commands.
 - New source-family reporting: GTA failures are grouped across `8` official source families and Red Dead across `2`, which makes alternate-source work more concrete than a raw rejected-window count.
+- New segment validator guardrail: when a previous local scan is supplied, exhausted source families are skipped before new sampling. The latest dry-run skipped `28` already-sampled refs and `8` exhausted source-family refs for `rss_5b3abe925b27a199`.
 - Live status: local/report-only
 
 ## TikTok

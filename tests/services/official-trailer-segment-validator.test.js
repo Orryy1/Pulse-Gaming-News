@@ -320,6 +320,56 @@ test("official trailer segment validator rejects low-average action even with tw
   assert.ok(report.segments[0].action_score < 70);
 });
 
+test("official trailer segment validator rejects mixed-quality windows even when two samples are strong", async () => {
+  const outputRoot = tempOutputRoot("mixed-quality-window");
+  await cleanTempRoot(outputRoot);
+  let call = 0;
+
+  const report = await runOfficialTrailerSegmentValidation([clip()], {
+    applyLocal: true,
+    outputRoot,
+    extractor: fakeExtractor,
+    inspectFrame: async (outputPath) => {
+      call += 1;
+      const base = passingQa(outputPath);
+      if (call <= 2) {
+        return {
+          ...base,
+          content_hash: `strong-action-${call}`,
+          prescan: {
+            likely_is_logo: false,
+            text_overlay_likelihood: 0,
+            white_text_on_dark_likelihood: 0,
+            edge_density: 0.19,
+            saturation_mean: 0.53,
+            dark_pixel_ratio: 0.1,
+            bright_pixel_ratio: 0.02,
+          },
+        };
+      }
+      return {
+        ...base,
+        content_hash: "weak-context-tail",
+        prescan: {
+          likely_is_logo: false,
+          text_overlay_likelihood: 0,
+          white_text_on_dark_likelihood: 0,
+          edge_density: 0.08,
+          saturation_mean: 0.33,
+          dark_pixel_ratio: 0.08,
+          bright_pixel_ratio: 0.37,
+        },
+      };
+    },
+  });
+
+  assert.equal(report.summary.segments_rejected, 1);
+  assert.equal(report.segments[0].validation_reason, "segment_contains_weak_flash_sample");
+  assert.equal(report.segments[0].action_sample_count, 2);
+  assert.ok(report.segments[0].action_score >= 70);
+  assert.equal(report.segments[0].allowed_for_flash_lane, false);
+});
+
 test("official trailer segment validator allows official game-character faces in segment samples", () => {
   const qa = guardSegmentSample(
     clip(),

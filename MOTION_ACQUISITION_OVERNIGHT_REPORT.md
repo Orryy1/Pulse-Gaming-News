@@ -12,34 +12,36 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 
 - Title: Marathon Drops To 15K Daily CCU Peak On Steam, Exits Top 50 On PlayStation & Top 100 On Xbox Best-Sellers Lists
 - Recommendation: do_not_render_yet
-- Blockers: latest_render_forensic_warnings
+- Blockers: flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources
 - Liam audio: approved_local_liam_audio_ready
 - Exact assets: 6
 - Motion frames: 8
-- Validated clip refs: 7
-- Validated clip sources: 5
-- Validated entities: Marathon
-- Missing entities: none
+- Validated clip refs: 0
+- Validated clip sources: 0
+- Validated entities: none
+- Missing entities: Marathon
 - Latest render proof: warn (0 fail / 2 warn)
 
 ### Next Steps
 
 - review_latest_render_forensic_warnings_before_pilot
-- repair_motion_quality_before_next_proof
+- find_3_more_validated_gameplay_clip_windows
+- find_3_more_validated_clip_sources
+- cover_missing_entities:Marathon
 
 ### Safe Commands
 
+- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id 1szzhy9`
+- plan_frame_sampling: `npm run media:plan-frames -- --story-id 1szzhy9`
+- extract_safe_local_frames: `npm run media:extract-frames -- --story-id 1szzhy9 --apply-local`
+- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id 1szzhy9 --apply-local --deep-scan`
 - recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story 1szzhy9`
 
 ### Segment Rejections
 
-- segment_contains_low_detail_frame: 17
-- segment_lacks_gameplay_action_samples: 39
-- segment_contains_title_or_rating_card: 10
-- segment_contains_black_frame: 13
-- segment_sample_extract_failed: 3
-- segment_action_score_below_flash_threshold: 3
-- segment_samples_too_repetitive: 18
+- segment_contains_title_or_rating_card: 1
+- segment_contains_low_detail_frame: 3
+- segment_lacks_gameplay_action_samples: 2
 
 ### Latest Render Forensic Warnings
 

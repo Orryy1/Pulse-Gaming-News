@@ -58,6 +58,7 @@
     "ops:platform:status": "node tools/platform-status.js",
     "ops:social-platforms": "node tools/social-platform-operations.js",
     "ops:analytics-doctor": "node tools/analytics-capability-doctor.js",
+    "ops:youtube-analytics-packet": "node tools/youtube-analytics-ingestion-packet.js",
     "ops:control-room": "node tools/control-room.js",
     "ops:render-health": "node tools/render-health.js",
     "ops:reclassify": "node tools/reclassify-report.js",

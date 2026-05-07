@@ -96,6 +96,6 @@ Risk: OAuth/token handling touches a live platform account, so it must not be tr
 
 Rollback: do not re-auth. Continue using public-counter learning only.
 
-Validation status: `npm run ops:analytics-doctor` reports `AMBER`, `requires_youtube_scope_reauth`, `public_counter_history_only`, `330` platform metric rows, `0` rich retention rows and `0` video performance rows. Learning and comment-digest text hygiene tests pass.
+Validation status: `npm run ops:analytics-doctor` reports `AMBER`, `requires_youtube_scope_reauth`, `public_counter_history_only`, `330` platform metric rows, `0` rich retention rows and `0` video performance rows. `npm run ops:youtube-analytics-packet` now plans retention and traffic-source ingestion but blocks safely until re-auth. Learning, comment-digest and YouTube analytics packet tests pass.
 
 Recommendation: approve read-only analytics re-auth after the current local/reporting work is safely committed and pushed.

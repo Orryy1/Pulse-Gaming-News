@@ -5,8 +5,8 @@ Generated: 2026-05-07 03:30 BST
 ## Branch
 
 - Current branch: `codex/readiness-qa-failure-window`
-- Latest pushed commit entering this analytics refresh: `cb54f4f4 Document Facebook Reels readiness`
-- Working tree during this snapshot: analytics/text-hygiene reporting fix
+- Latest pushed commit entering this analytics packet refresh: `d5dd7195 Document analytics learning readiness`
+- Working tree during this snapshot: read-only YouTube Analytics ingestion packet
 - Deployed: no
 
 ## Safety
@@ -23,9 +23,10 @@ Generated: 2026-05-07 03:30 BST
 ## Validation
 
 - Focused analytics/intelligence tests: pass (`32/32`)
+- Focused YouTube analytics packet tests: pass (`8/8`)
 - Focused TikTok diagnostics and dispatch tests: pass (`47/47`)
 - Focused voice, longform and monetisation tests: pass (`19/19`)
-- Full `npm test`: pass (`2093/2093`)
+- Full `npm test`: pass (`2101/2101`)
 - `npm run build`: pass
 
 ## Local TTS
@@ -79,6 +80,8 @@ Generated: 2026-05-07 03:30 BST
 - Video performance rows: `0`
 - Learning digest: generated under `test/output/learning-digest/`
 - Comment digest: generated under `test/output/comment-digest/`
+- YouTube analytics ingestion packet: `BLOCKED`, `requires_youtube_scope_reauth`
+- YouTube analytics packet report: `YOUTUBE_ANALYTICS_INGESTION_PACKET_REPORT.md`
 - Safety: no OAuth, no token printing, no DB mutation, no scoring-weight changes, no auto-replies
 
 ## Voice Shootout

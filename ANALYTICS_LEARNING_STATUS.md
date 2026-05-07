@@ -27,6 +27,8 @@ Current local outputs:
 - `test/output/comment-digest/comments-2026-05-07.md`
 - `test/output/comment-digest/reply-queue-2026-05-07.json`
 - `test/output/comment-digest/viewer-signals-2026-05-07.json`
+- `test/output/youtube_analytics_ingestion_packet.md`
+- `test/output/youtube_analytics_ingestion_packet.json`
 
 ## What Is Missing
 
@@ -87,15 +89,24 @@ Rollback: keep the current token and continue with public-counter learning only.
 
 Recommendation: approve this after the current local build is committed and pushed, because the growth loop needs real retention and traffic-source data.
 
-## Next Safe Build
+## YouTube Analytics Packet
 
-Build a read-only YouTube Analytics ingestion packet:
+Status: built in local/reporting mode.
 
-- scope checklist;
-- token-status doctor;
-- retention snapshot schema;
-- traffic-source snapshot schema;
-- local fixture tests;
-- no OAuth trigger by default;
-- operator command for re-auth only when approved.
+Command:
 
+```text
+npm run ops:youtube-analytics-packet
+```
+
+What it does:
+
+- plans retention-curve queries;
+- plans traffic-source queries;
+- defines local retention and traffic-source schemas;
+- blocks safely until `yt-analytics.readonly` is granted;
+- writes local reports only.
+
+Report:
+
+- `YOUTUBE_ANALYTICS_INGESTION_PACKET_REPORT.md`

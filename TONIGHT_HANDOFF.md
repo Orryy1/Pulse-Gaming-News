@@ -5,7 +5,7 @@ Date: 2026-05-07
 ## Branch
 
 - Branch: `codex/readiness-qa-failure-window`
-- Latest pushed commit entering this analytics refresh: `cb54f4f4 Document Facebook Reels readiness`
+- Latest pushed commit entering this analytics packet refresh: `d5dd7195 Document analytics learning readiness`
 - Deployed: no
 - Railway env vars: untouched
 - Production DB: untouched
@@ -24,13 +24,15 @@ Date: 2026-05-07
 - Facebook Reels read-only Graph inspection now reports `eligible_for_normal_publish` with one visible Reel and one visible video.
 - Analytics capability doctor was run and documented. Pulse has local/public-counter learning, but not full YouTube Studio analytics yet.
 - Learning and comment-digest Markdown renderers now have regression tests that prevent mojibake in public operator reports.
+- A read-only YouTube Analytics ingestion packet was added. It plans retention and traffic-source queries but blocks safely until analytics scope is approved.
 
 ## Validation
 
 - Focused analytics/intelligence tests: pass (`32/32`)
+- Focused YouTube analytics packet tests: pass (`8/8`)
 - Focused TikTok diagnostics/dispatch tests: pass (`47/47`)
 - Focused voice/longform/monetisation tests: pass (`19/19`)
-- Full `npm test`: pass (`2093/2093`)
+- Full `npm test`: pass (`2101/2101`)
 - `npm run build`: pass
 
 ## Current Verdicts
@@ -57,6 +59,7 @@ Date: 2026-05-07
 - `LONGFORM_OVERNIGHT_ARCHITECTURE_REPORT.md`
 - `MONETISATION_OVERNIGHT_REPORT.md`
 - `ANALYTICS_LEARNING_STATUS.md`
+- `YOUTUBE_ANALYTICS_INGESTION_PACKET_REPORT.md`
 - `MORNING_APPROVAL_QUEUE.md`
 - `FACEBOOK_REELS_STATUS.md`
 

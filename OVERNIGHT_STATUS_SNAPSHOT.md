@@ -59,6 +59,14 @@ Generated: 2026-05-07 03:30 BST
 - Fresh pack: refused to auto-select a live render without explicit `--mp4`, which is the intended safety behaviour
 - Live status: no upload, no browser automation, no token mutation
 
+## Facebook Reels
+
+- Status report: `FACEBOOK_REELS_STATUS.md`
+- Verdict: `eligible_for_normal_publish`
+- Evidence: Graph sees `1` video, `1` Reel and a valid Page token with `publish_video`.
+- Local flag: `FACEBOOK_REELS_ENABLED=true`
+- Safety: read-only check only, no Facebook post
+
 ## Voice Shootout
 
 - Report: `VOICE_SHOOTOUT_OVERNIGHT_REPORT.md`
@@ -84,6 +92,7 @@ Generated: 2026-05-07 03:30 BST
 - Studio V2 needs better validated motion before a live pilot.
 - TikTok public posting remains dependent on app/API approval state.
 - TikTok inbox/manual workflow needs a clean MP4 pack first.
+- Facebook Reels should be watched on the next normal publish to confirm API upload success, but Page eligibility now looks unblocked.
 - External voice providers need approval before spending credits or sending voice material externally.
 - Longform upload/scheduling needs approval.
 - Monetisation changes to live copy or sponsor outreach need approval.

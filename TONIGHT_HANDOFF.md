@@ -21,6 +21,7 @@ Date: 2026-05-07
 - The Studio V2 selector now clearly shows voice is no longer the main blocker; motion and exact subject visuals are.
 - TikTok auth diagnostics were fixed so a usable token no longer keeps the old dashboard client-key warning.
 - TikTok dispatch, voice shootout, longform and monetisation reports were refreshed.
+- Facebook Reels read-only Graph inspection now reports `eligible_for_normal_publish` with one visible Reel and one visible video.
 
 ## Validation
 
@@ -36,6 +37,7 @@ Date: 2026-05-07
 - Motion acquisition: local-only, still insufficient for Flash Lane
 - TikTok auth: `AMBER`, token usable, public direct posting not confirmed
 - TikTok dispatch: no ready clean pack for upload
+- Facebook Reels: `eligible_for_normal_publish`, keep strict verifier and card fallback
 - Voice shootout: local benchmark framework ready
 - Longform: Weekly Roundup outline ready for editorial review
 - Monetisation: pre-monetisation, report-only
@@ -51,6 +53,7 @@ Date: 2026-05-07
 - `LONGFORM_OVERNIGHT_ARCHITECTURE_REPORT.md`
 - `MONETISATION_OVERNIGHT_REPORT.md`
 - `MORNING_APPROVAL_QUEUE.md`
+- `FACEBOOK_REELS_STATUS.md`
 
 ## Current Best Proofs
 
@@ -78,4 +81,5 @@ See `MORNING_APPROVAL_QUEUE.md`:
 2. Use local Liam only for proof renders while keeping production voice unchanged.
 3. Build a fresh TikTok pack only from a clean current MP4, not from the blocked Studio V2 proof.
 4. Use the Weekly Roundup dossier as the first Pulse Briefing Lane editorial prototype.
-5. Keep monetisation tooling report-only until real analytics and affiliate targeting are clean.
+5. Watch the next normal Facebook Reel publish attempt; Page eligibility now looks unblocked but the strict verifier should stay on.
+6. Keep monetisation tooling report-only until real analytics and affiliate targeting are clean.

@@ -76,6 +76,28 @@ test("v1.2 counts exact Steam and IGDB app title matches for premium subject inv
   assert.equal(plan.exact_subject_readiness.exact_subject_asset_count, 2);
 });
 
+test("v1.2 normalises Pokemon subject groups to canonical accented spelling", () => {
+  const plan = buildAssetAcquisitionPlan(
+    baseStory({
+      id: "pokemon-exact",
+      title: "Pok\u00c3\u00a9mon Go event gets confirmed",
+      body: "Pokemon Go is the exact game being discussed.",
+      full_script: "Pok\u00c3\u00a9mon Go is the exact game being discussed.",
+      downloaded_images: [
+        img("steam_hero", "steam", "pokemon-go-hero.jpg", {
+          entity: "Pokemon",
+          steam_app_title: "Pokemon Go",
+        }),
+      ],
+    }),
+  );
+
+  assert.ok(plan.entity_map.games.includes("Pok\u00e9mon"));
+  assert.equal(candidateByPath(plan, "pokemon-go-hero.jpg").exact_subject_group, "Pok\u00e9mon");
+  assert.equal(candidateByPath(plan, "pokemon-go-hero.jpg").subject_match_quality, "exact_game_match");
+  assert.doesNotMatch(JSON.stringify(plan.exact_subject_readiness), /Pok\u00c3|&amp;/);
+});
+
 test("v1.2 counts franchise title matches but publisher logos stay context only", () => {
   const plan = buildAssetAcquisitionPlan(
     baseStory({

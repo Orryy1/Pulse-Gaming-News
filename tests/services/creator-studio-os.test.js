@@ -268,6 +268,23 @@ test("Creator Studio OS flags raw HTML entities before public render", () => {
   assert.ok(packet.fact_check_report.text_hygiene.issues.includes("raw_html_entity"));
 });
 
+test("Creator Studio OS repairs Pokemon mojibake and keeps the canonical accent", () => {
+  const packet = buildProductionPacket(
+    baseStory({
+      id: "pokemon-encoding",
+      title: "Pok\u00c3\u00a9mon &amp; Xbox event gets confirmed",
+      hook: "Pokemon just got a confirmed Xbox event update.",
+      full_script: "Pok\u00c3\u00a9mon just got a confirmed Xbox event update.",
+    }),
+  );
+
+  assert.equal(packet.story_dossier.title, "Pok\u00e9mon & Xbox event gets confirmed");
+  assert.ok(packet.story_dossier.entities.includes("Pok\u00e9mon"));
+  assert.ok(!packet.story_dossier.entities.includes("Pokemon"));
+  assert.ok(packet.fact_check_report.verified_facts[0].includes("Pok\u00e9mon"));
+  assert.doesNotMatch(packet.fact_check_report.verified_facts[0], /Pok\u00c3|&amp;/);
+});
+
 test("Creator Studio OS reports TikTok API blocked with dispatch pack required", () => {
   const packet = buildProductionPacket(baseStory({ id: "tiktok" }));
 

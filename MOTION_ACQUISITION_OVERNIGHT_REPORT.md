@@ -15,7 +15,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - Blockers: clear
 - Liam audio: approved_local_liam_audio_ready
 - Exact assets: 6
-- Motion frames: 9
+- Motion frames: 8
 - Validated clip refs: 7
 - Validated clip sources: 5
 - Validated entities: Marathon

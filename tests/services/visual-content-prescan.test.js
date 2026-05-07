@@ -188,6 +188,20 @@ test("classifyTrailerFrameTaste: rejects ultra-dark low-detail game frames", () 
   assert.equal(taste.reason, "dead_dark_frame");
 });
 
+test("classifyTrailerFrameTaste: rejects muddy dark low-colour trailer frames", () => {
+  const taste = v.classifyTrailerFrameTaste({
+    text_overlay_likelihood: 0.04,
+    white_text_on_dark_likelihood: 0,
+    edge_density: 0.125,
+    saturation_mean: 0.14,
+    bright_pixel_ratio: 0,
+    dark_pixel_ratio: 0.79,
+  });
+
+  assert.equal(taste.verdict, "fail");
+  assert.equal(taste.reason, "muddy_dark_low_energy_frame");
+});
+
 test("classifyTrailerFrameTaste: accepts colourful detailed gameplay-like frames", () => {
   const taste = v.classifyTrailerFrameTaste({
     text_overlay_likelihood: 0.12,

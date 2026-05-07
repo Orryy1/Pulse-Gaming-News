@@ -37,6 +37,7 @@
     "studio:v2:proof-candidates": "node tools/studio-v2-proof-candidates.js",
     "studio:v2:promotion-packet": "node tools/studio-v2-promotion-packet.js",
     "studio:v2:motion-gap": "node tools/studio-v2-motion-gap.js",
+    "studio:v2:alternate-sources": "node tools/alternate-official-source-handoff.js",
     "performance:digest": "node tools/performance-learning-digest.js",
     "comments:digest": "node tools/comment-copilot-digest.js",
     "tiktok:auth-doctor": "node tools/tiktok-auth-doctor.js",

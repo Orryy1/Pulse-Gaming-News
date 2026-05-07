@@ -39,6 +39,12 @@ const DEFAULT_SEGMENT_VALIDATION_REPORTS = [
 const DEFAULT_STILL_DECK_REPORTS = [
   "test/output/studio-v2-still-deck/studio_v2_still_deck_report.json",
 ];
+const DEFAULT_FORENSIC_REPORTS = [
+  "test/output/studio-v2-still-deck/qa_forensic_1szzhy9_enriched_report.json",
+  "test/output/studio-v2-still-deck/qa_forensic_rss_5b3abe925b27a199_enriched_report.json",
+  "test/output/qa_forensic_1szzhy9_enriched_report.json",
+  "test/output/qa_forensic_rss_5b3abe925b27a199_enriched_report.json",
+];
 
 function parseArgs(argv) {
   const args = {
@@ -205,6 +211,7 @@ async function main() {
   const frameReports = await readReports(DEFAULT_FRAME_REPORTS);
   const segmentValidationReports = await readReports(DEFAULT_SEGMENT_VALIDATION_REPORTS);
   const stillDeckReports = await readReports(DEFAULT_STILL_DECK_REPORTS);
+  const latestForensicReports = await readReports(DEFAULT_FORENSIC_REPORTS);
   const stories = mergeReportStoryStubs(
     await loadDbStories(args),
     [
@@ -213,6 +220,7 @@ async function main() {
       ...frameReports,
       ...segmentValidationReports,
       ...stillDeckReports,
+      ...latestForensicReports,
     ],
     args,
   );
@@ -223,6 +231,7 @@ async function main() {
     frameReports,
     segmentValidationReports,
     stillDeckReports,
+    latestForensicReports,
     limit: args.limit,
   });
   const md = renderStudioV2ProofCandidatesMarkdown(report);

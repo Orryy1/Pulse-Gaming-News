@@ -189,6 +189,80 @@ test("motion gap report downgrades ready language when latest render proof has f
   assert.match(md, /22\.5s washed_low_detail_frame/);
 });
 
+test("motion gap report does not show render preflight when proof candidates block latest forensic warnings", () => {
+  const report = buildStudioV2MotionGapReport({
+    proofCandidateReport: {
+      candidates: [
+        proofCandidate({
+          story_id: "warn_blocked",
+          verdict: "needs_forensic_warning_repair",
+          blockers: ["latest_render_forensic_warnings"],
+          audio: {
+            status: "approved_local_liam_audio_ready",
+            ready: true,
+            output_audio_path: "test/output/audio/warn_blocked_liam.mp3",
+            duration_seconds: 66.2,
+          },
+          visuals: {
+            exact_subject_count: 8,
+            exact_subject_groups: ["Marathon"],
+            accepted_frame_count: 8,
+            frame_groups: ["Marathon"],
+            validated_clip_ref_count: 7,
+            validated_clip_source_count: 5,
+            validated_clip_entities: ["Marathon"],
+          },
+        }),
+      ],
+    },
+    latestForensicReport: {
+      storyId: "warn_blocked_enriched",
+      summary: { verdict: "warn", failCount: 0, warnCount: 2 },
+      visual: {
+        repeatPairCount: 2,
+        taste: { badFrameCount: 1, badFrames: [{ timeS: 16.5, reason: "dead_dark_frame" }] },
+      },
+      issues: [{ code: "visual_repetition" }],
+    },
+  });
+
+  const gap = report.gaps[0];
+  assert.equal(gap.render_recommendation, "do_not_render_yet");
+  assert.ok(gap.priority_next_steps.includes("repair_motion_quality_before_next_proof"));
+  assert.ok(!gap.priority_next_steps.includes("ready_for_local_flash_render_preflight"));
+  assert.ok(!gap.recommended_commands.some((item) => /studio:v2:still-deck/.test(item.command)));
+});
+
+test("motion gap report preserves latest render proof supplied by proof candidates", () => {
+  const report = buildStudioV2MotionGapReport({
+    proofCandidateReport: {
+      candidates: [
+        proofCandidate({
+          story_id: "candidate_forensic",
+          blockers: ["latest_render_forensic_warnings"],
+          latest_render_proof: {
+            status: "available",
+            verdict: "fail",
+            fail_count: 1,
+            warn_count: 1,
+            needs_human_visual_review: true,
+            issue_codes: ["audio_presence"],
+            repeat_pair_count: 0,
+            repeat_pair_times: [],
+            weak_frame_count: 0,
+            weak_frame_times: [],
+            rating_or_title_frame_count: 0,
+          },
+        }),
+      ],
+    },
+  });
+
+  assert.equal(report.gaps[0].latest_render_proof.status, "available");
+  assert.equal(report.gaps[0].latest_render_proof.verdict, "fail");
+  assert.deepEqual(report.gaps[0].latest_render_proof.issue_codes, ["audio_presence"]);
+});
+
 test("motion gap report keeps Liam-ready visual gaps focused on acquisition", () => {
   const report = buildStudioV2MotionGapReport({
     proofCandidateReport: {

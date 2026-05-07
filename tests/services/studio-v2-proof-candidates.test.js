@@ -269,6 +269,69 @@ test("proof candidates require validated entity coverage for multi-game stories"
   assert.ok(!candidate.recommended_command);
 });
 
+test("proof candidates block stale ready proof commands when the latest render has forensic warnings", () => {
+  const storyId = "warned_render";
+  const report = buildStudioV2ProofCandidateReport({
+    stories: [story(storyId)],
+    localAudioReports: [audioReport(storyId)],
+    assetReports: [{ generated_at: "2026-05-05T10:00:00.000Z", ...assetReport(storyId, 7) }],
+    frameReports: [{ generated_at: "2026-05-05T11:00:00.000Z", ...frameReport(storyId, 5) }],
+    segmentValidationReports: [{ generated_at: "2026-05-05T12:00:00.000Z", ...segmentReport(storyId, 3) }],
+    latestForensicReports: [
+      {
+        storyId: `${storyId}_enriched`,
+        generatedAt: "2026-05-06T12:00:00.000Z",
+        summary: { verdict: "warn", failCount: 0, warnCount: 2 },
+        visual: {
+          repeatPairCount: 2,
+          repeatPairs: [{ aTimeS: 46.5, bTimeS: 49.5 }],
+          taste: {
+            badFrameCount: 1,
+            badFrames: [{ timeS: 22.5, reason: "washed_low_detail_frame" }],
+          },
+        },
+        issues: [{ code: "rendered_frame_taste" }],
+      },
+    ],
+  });
+
+  const candidate = report.candidates[0];
+  assert.equal(candidate.verdict, "needs_forensic_warning_repair");
+  assert.ok(candidate.blockers.includes("latest_render_forensic_warnings"));
+  assert.equal(candidate.latest_render_proof.verdict, "warn");
+  assert.equal(candidate.latest_render_proof.visual_inputs_are_newer, false);
+  assert.deepEqual(candidate.latest_render_proof.repeat_pair_times, ["46.5s/49.5s"]);
+  assert.deepEqual(candidate.latest_render_proof.weak_frame_times, ["22.5s washed_low_detail_frame"]);
+  assert.equal(candidate.recommended_command, null);
+  assert.equal(report.summary.needs_forensic_warning_repair, 1);
+});
+
+test("proof candidates allow a fresh local proof when visual inputs are newer than the warned render", () => {
+  const storyId = "fresh_after_warn";
+  const report = buildStudioV2ProofCandidateReport({
+    stories: [story(storyId)],
+    localAudioReports: [audioReport(storyId)],
+    assetReports: [{ generated_at: "2026-05-07T09:00:00.000Z", ...assetReport(storyId, 7) }],
+    frameReports: [{ generated_at: "2026-05-07T10:00:00.000Z", ...frameReport(storyId, 5) }],
+    segmentValidationReports: [{ generated_at: "2026-05-07T11:00:00.000Z", ...segmentReport(storyId, 3) }],
+    latestForensicReports: [
+      {
+        storyId: `${storyId}_enriched`,
+        generatedAt: "2026-05-06T12:00:00.000Z",
+        summary: { verdict: "warn", failCount: 0, warnCount: 1 },
+        visual: { repeatPairCount: 1 },
+        issues: [{ code: "visual_repetition" }],
+      },
+    ],
+  });
+
+  const candidate = report.candidates[0];
+  assert.equal(candidate.verdict, "ready_flash_proof");
+  assert.equal(candidate.latest_render_proof.visual_inputs_are_newer, true);
+  assert.ok(candidate.warnings.includes("latest_render_warned_but_visual_inputs_refreshed"));
+  assert.match(candidate.recommended_command, /studio:v2:still-deck/);
+});
+
 test("proof candidate markdown is operator-readable and says when no render is safe", () => {
   const report = buildStudioV2ProofCandidateReport({
     stories: [story("weak_visual")],
@@ -289,6 +352,7 @@ test("studio:v2:proof-candidates command is registered and read-only", () => {
   const tool = fs.readFileSync(path.join(ROOT, "tools", "studio-v2-proof-candidates.js"), "utf8");
   assert.match(tool, /discoverLocalAudioProofReport/);
   assert.match(tool, /ffprobeDuration/);
+  assert.match(tool, /DEFAULT_FORENSIC_REPORTS/);
   assert.doesNotMatch(tool, /publishAll|uploadShort|postShort|autonomous\/publish/);
   assert.doesNotMatch(tool, /UPDATE\s+stories|INSERT\s+INTO\s+stories|DELETE\s+FROM/i);
 });

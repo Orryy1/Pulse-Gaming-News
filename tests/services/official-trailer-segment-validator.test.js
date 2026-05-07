@@ -678,6 +678,30 @@ test("segment validation skips exhausted source families from previous local sca
   assert.equal(filtered.skipped[0].attempted_segments, 9);
 });
 
+test("segment validation backfills Steam source families from legacy segment URLs", () => {
+  const previousReport = {
+    segments: Array.from({ length: 8 }, (_, index) => ({
+      story_id: "rss_5b3abe925b27a199",
+      entity: "GTA",
+      source_url: "https://video.akamai.steamstatic.com/store_trailers/3240220/832632/4b8d5f06cf0a1/hls_264_master.m3u8",
+      source_type: "steam_movie",
+      media_start_s: 36 + index * 6,
+      status: "rejected",
+      segment_validated: false,
+      allowed_for_flash_lane: false,
+      validation_reason: "segment_samples_too_repetitive",
+    })),
+  };
+
+  const [family] = exhaustedSourceFamiliesFromReport(previousReport);
+
+  assert.equal(family.provider, "steam");
+  assert.equal(family.store_app_id, "3240220");
+  assert.equal(family.movie_id, "832632");
+  assert.equal(family.reference_title, "Steam movie 832632");
+  assert.equal(family.attempted_segments, 8);
+});
+
 test("segment validation does not skip source families with validated gameplay", () => {
   const ref = clip({
     path: "https://video.example/bioshock-good.m3u8",

@@ -427,6 +427,31 @@ test("motion gap report asks for alternate official sources when missing entitie
   assert.ok(gap.priority_next_steps.includes("do_not_rescan_same_official_sources_for:GTA,Red Dead"));
 });
 
+test("motion gap report backfills Steam source-family metadata from legacy source URLs", () => {
+  const report = buildStudioV2MotionGapReport({
+    proofCandidateReport: {
+      candidates: [proofCandidate()],
+      thresholds: { flash_min_validated_clip_refs: 3 },
+    },
+    segmentValidationReport: {
+      segments: Array.from({ length: 8 }, (_, index) =>
+        segment("rss_gap", "GTA", "segment_samples_too_repetitive", {
+          source_url: "https://video.akamai.steamstatic.com/store_trailers/3240220/832632/4b8d5f06cf0a1/hls_264_master.m3u8",
+          media_start_s: 36 + index * 6,
+        }),
+      ),
+    },
+  });
+
+  const family = report.gaps[0].motion_gap.acquisition_strategy.entity_statuses.GTA.source_families[0];
+
+  assert.equal(family.provider, "steam");
+  assert.equal(family.store_app_id, "3240220");
+  assert.equal(family.movie_id, "832632");
+  assert.equal(family.reference_title, "Steam movie 832632");
+  assert.equal(family.attempted_segments, 8);
+});
+
 test("motion gap report keeps first segment scan guidance for unattempted missing entities", () => {
   const report = buildStudioV2MotionGapReport({
     proofCandidateReport: {

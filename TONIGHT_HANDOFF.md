@@ -43,6 +43,7 @@ Date: 2026-05-07
 - Studio V2 motion-gap reporting now classifies exhausted source families. For `rss_5b3abe925b27a199`, GTA has `51` failed official-window attempts and Red Dead has `22`, so the next action is alternate official sources, not another blind rescan of the same material.
 - Source-family grouping now shows GTA failures spread across `8` official source families and Red Dead across `2`, with top rejection reasons per family.
 - Segment validation now skips exhausted source families when resuming from a previous local scan. The latest dry-run skipped `28` already-sampled refs and `8` exhausted source-family refs, leaving `6` new unsampled windows instead of blindly revisiting known-bad official sources.
+- Legacy Steam CDN trailer URLs are now backfilled into concrete source-family metadata. Old scans now show `steam`, store app IDs and movie IDs instead of `unknown`, which makes alternate-source acquisition decisions much clearer.
 
 ## Validation
 
@@ -55,10 +56,11 @@ Date: 2026-05-07
 - Focused trailer resolver/motion acquisition tests: pass (`18/18`)
 - Focused Flash Lane motion/backbone/director tests: pass (`43/43`)
 - Combined Studio V2 motion safety tests: pass (`83/83`)
-- Focused Studio V2 motion-gap tests: pass (`13/13`)
+- Focused Studio V2 motion-gap tests: pass (`14/14`)
+- Focused official trailer segment-validator tests: pass (`24/24`)
 - Focused TikTok diagnostics/dispatch tests: pass (`47/47`)
 - Focused voice/longform/monetisation tests: pass (`19/19`)
-- Full `npm test`: pass (`2125/2125`)
+- Full `npm test`: pass (`2129/2129`)
 - `npm run build`: pass
 
 ## Current Verdicts

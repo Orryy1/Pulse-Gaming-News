@@ -29,10 +29,11 @@ Generated: 2026-05-07 07:39 BST
 - Focused trailer resolver/motion acquisition tests: pass (`18/18`)
 - Focused Flash Lane motion/backbone/director tests: pass (`43/43`)
 - Combined Studio V2 motion safety tests: pass (`83/83`)
-- Focused Studio V2 motion-gap tests: pass (`13/13`)
+- Focused Studio V2 motion-gap tests: pass (`14/14`)
+- Focused official trailer segment-validator tests: pass (`24/24`)
 - Focused analytics/intelligence tests: pass (`32/32`)
 - Focused YouTube analytics packet tests: pass (`8/8`)
-- Full `npm test`: pass (`2125/2125`)
+- Full `npm test`: pass (`2129/2129`)
 - `npm run build`: pass
 
 ## Local TTS
@@ -68,6 +69,7 @@ Generated: 2026-05-07 07:39 BST
 - New local reporting: the Studio V2 motion gap planner now separates `needs_first_segment_scan`, `continue_segment_scan` and `alternate_official_sources_required`, with entity-level attempts, top rejection reasons and safe next commands.
 - New source-family reporting: GTA failures are grouped across `8` official source families and Red Dead across `2`, which makes alternate-source work more concrete than a raw rejected-window count.
 - New segment validator guardrail: when a previous local scan is supplied, exhausted source families are skipped before new sampling. The latest dry-run skipped `28` already-sampled refs and `8` exhausted source-family refs for `rss_5b3abe925b27a199`.
+- New source-family metadata backfill: legacy Steam CDN trailer URLs now populate provider, app ID and movie ID, so old scans no longer hide exhausted official sources behind `unknown`.
 - Live status: local/report-only
 
 ## TikTok

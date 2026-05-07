@@ -370,6 +370,79 @@ test("motion gap report explains source diversity gaps when clip count reaches t
   assert.doesNotMatch(gap.priority_next_steps.join(" "), /find_0_more/);
 });
 
+test("motion gap report asks for alternate official sources when missing entities are exhausted", () => {
+  const rejectedSegments = [
+    ...Array.from({ length: 9 }, (_, index) =>
+      segment("rss_gap", "GTA", index % 2 ? "segment_contains_black_frame" : "segment_contains_title_or_rating_card", {
+        media_start_s: 24 + index * 6,
+        source_url: "https://video.example.test/gta-official.m3u8",
+      }),
+    ),
+    ...Array.from({ length: 8 }, (_, index) =>
+      segment(
+        "rss_gap",
+        "Red Dead",
+        index % 2 ? "segment_samples_too_repetitive" : "segment_contains_low_detail_frame",
+        {
+          media_start_s: 30 + index * 6,
+          source_url: "https://video.example.test/red-dead-official.m3u8",
+        },
+      ),
+    ),
+  ];
+  const report = buildStudioV2MotionGapReport({
+    proofCandidateReport: {
+      candidates: [proofCandidate()],
+      thresholds: { flash_min_validated_clip_refs: 3 },
+    },
+    segmentValidationReport: {
+      segments: [
+        segment("rss_gap", "BioShock", null),
+        segment("rss_gap", "BioShock", null, { source_url: "https://video.example.test/bioshock-2.m3u8" }),
+        ...rejectedSegments,
+      ],
+    },
+  });
+
+  const gap = report.gaps[0];
+  assert.equal(gap.motion_gap.acquisition_strategy.status, "alternate_official_sources_required");
+  assert.deepEqual(gap.motion_gap.acquisition_strategy.alternate_source_entities, ["GTA", "Red Dead"]);
+  assert.equal(gap.motion_gap.acquisition_strategy.entity_statuses.GTA.status, "alternate_source_required");
+  assert.equal(gap.motion_gap.acquisition_strategy.entity_statuses["Red Dead"].status, "alternate_source_required");
+  assert.equal(gap.motion_gap.acquisition_strategy.entity_statuses.BioShock.status, "validated");
+  assert.ok(gap.priority_next_steps.includes("find_alternate_official_sources_for:GTA,Red Dead"));
+  assert.ok(gap.priority_next_steps.includes("do_not_rescan_same_official_sources_for:GTA,Red Dead"));
+});
+
+test("motion gap report keeps first segment scan guidance for unattempted missing entities", () => {
+  const report = buildStudioV2MotionGapReport({
+    proofCandidateReport: {
+      candidates: [
+        proofCandidate({
+          story_id: "unscanned_gap",
+          visuals: {
+            exact_subject_count: 6,
+            exact_subject_groups: ["GTA", "Red Dead", "BioShock"],
+            accepted_frame_count: 3,
+            frame_groups: ["GTA", "Red Dead", "BioShock"],
+            validated_clip_ref_count: 0,
+            validated_clip_source_count: 0,
+            validated_clip_entities: [],
+          },
+        }),
+      ],
+    },
+    segmentValidationReport: { segments: [] },
+  });
+
+  const gap = report.gaps[0];
+  assert.equal(gap.motion_gap.acquisition_strategy.status, "needs_first_segment_scan");
+  assert.deepEqual(gap.motion_gap.acquisition_strategy.unattempted_entities, ["GTA", "Red Dead", "BioShock"]);
+  assert.equal(gap.motion_gap.acquisition_strategy.alternate_source_entities.length, 0);
+  assert.ok(gap.priority_next_steps.includes("run_initial_segment_scan_for:GTA,Red Dead,BioShock"));
+  assert.doesNotMatch(gap.priority_next_steps.join(" "), /do_not_rescan_same_official_sources/);
+});
+
 test("motion gap report uses story target entities before exact asset groups", () => {
   const report = buildStudioV2MotionGapReport({
     proofCandidateReport: {
@@ -406,6 +479,13 @@ test("motion gap report uses story target entities before exact asset groups", (
 test("motion gap markdown is operator-readable and local-only", () => {
   const report = buildStudioV2MotionGapReport({
     proofCandidateReport: { candidates: [proofCandidate()] },
+    segmentValidationReport: {
+      segments: Array.from({ length: 8 }, (_, index) =>
+        segment("rss_gap", "GTA", "segment_contains_low_detail_frame", {
+          media_start_s: 18 + index * 6,
+        }),
+      ),
+    },
   });
   const md = renderStudioV2MotionGapMarkdown(report);
 
@@ -413,6 +493,8 @@ test("motion gap markdown is operator-readable and local-only", () => {
   assert.match(md, /do_not_render_yet/);
   assert.match(md, /Validated clip sources:/);
   assert.match(md, /Validated entities:/);
+  assert.match(md, /Acquisition Strategy/);
+  assert.match(md, /alternate_official_sources_required/);
   assert.match(md, /local-only/);
   assert.match(md, /No DB, Railway, OAuth, render-default or posting changes/);
 });

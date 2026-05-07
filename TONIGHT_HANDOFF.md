@@ -5,7 +5,7 @@ Date: 2026-05-07
 ## Branch
 
 - Branch: `codex/readiness-qa-failure-window`
-- Base pushed commit before this slice: `398971a9 Refresh local TTS overnight status`
+- Base pushed commit before this slice: `c1e3d249 Improve local trailer segment scan resume`
 - Deployed: no
 - Railway env vars: untouched
 - Production DB: untouched
@@ -40,6 +40,7 @@ Date: 2026-05-07
 - Deep-scan official clip refs now rotate alternate sources before repeated later windows from the same source.
 - New segment validation reports include source provenance for future scans, making failed Steam/IGDB trailer sources easier to diagnose.
 - A resumed local scan for `rss_5b3abe925b27a199` checked `100` merged segment windows and found `2` validated windows, both BioShock. GTA and Red Dead remain blocked, so no Studio V2 render was attempted.
+- Studio V2 motion-gap reporting now classifies exhausted source families. For `rss_5b3abe925b27a199`, GTA has `51` failed official-window attempts and Red Dead has `22`, so the next action is alternate official sources, not another blind rescan of the same material.
 
 ## Validation
 
@@ -52,16 +53,17 @@ Date: 2026-05-07
 - Focused trailer resolver/motion acquisition tests: pass (`18/18`)
 - Focused Flash Lane motion/backbone/director tests: pass (`43/43`)
 - Combined Studio V2 motion safety tests: pass (`83/83`)
+- Focused Studio V2 motion-gap tests: pass (`13/13`)
 - Focused TikTok diagnostics/dispatch tests: pass (`47/47`)
 - Focused voice/longform/monetisation tests: pass (`19/19`)
-- Full `npm test`: pass (`2123/2123`)
+- Full `npm test`: pass (`2125/2125`)
 - `npm run build`: pass
 
 ## Current Verdicts
 
 - Local TTS: `GREEN`
 - Studio V2 live pilot: `RED_BLOCKED`
-- Motion acquisition: local-only; refs cover GTA, BioShock and Red Dead, but only two trimmed BioShock gameplay segments validate after 100 merged local segment checks, so Flash Lane remains blocked
+- Motion acquisition: local-only; refs cover GTA, BioShock and Red Dead, but only two trimmed BioShock gameplay segments validate after 100 merged local segment checks. GTA and Red Dead are now marked `alternate_source_required`, so Flash Lane remains blocked.
 - TikTok auth: `AMBER`, token usable, public direct posting not confirmed
 - TikTok dispatch: no ready clean pack for upload
 - Facebook Reels: `eligible_for_normal_publish`, keep strict verifier and card fallback
@@ -108,7 +110,7 @@ See `MORNING_APPROVAL_QUEUE.md`:
 
 ## Recommended Next Work
 
-1. Use the targeted official-reference search list to find missing BioShock/Red Dead-style references before any new multi-franchise Studio V2 proof render.
+1. Find alternate official GTA and Red Dead source families before any new multi-franchise Studio V2 proof render.
 2. Keep improving official trailer and gameplay-window acquisition until at least one story has three validated clip refs, three validated sources and clean forensic output.
 3. Use local Liam only for proof renders while keeping production voice unchanged.
 4. Build a fresh TikTok pack only from a clean current MP4, not from the blocked Studio V2 proof.

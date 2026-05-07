@@ -1,12 +1,12 @@
 # Overnight Status Snapshot
 
-Generated: 2026-05-07 07:22 BST
+Generated: 2026-05-07 07:39 BST
 
 ## Branch
 
 - Current branch: `codex/readiness-qa-failure-window`
-- Base pushed commit before this slice: `398971a9 Refresh local TTS overnight status`
-- Working tree during this snapshot: local motion-acquisition resume/merge patch pending commit
+- Base pushed commit before this slice: `c1e3d249 Improve local trailer segment scan resume`
+- Working tree during this snapshot: local motion-gap source-exhaustion reporting patch pending commit
 - Deployed: no
 
 ## Safety
@@ -29,9 +29,10 @@ Generated: 2026-05-07 07:22 BST
 - Focused trailer resolver/motion acquisition tests: pass (`18/18`)
 - Focused Flash Lane motion/backbone/director tests: pass (`43/43`)
 - Combined Studio V2 motion safety tests: pass (`83/83`)
+- Focused Studio V2 motion-gap tests: pass (`13/13`)
 - Focused analytics/intelligence tests: pass (`32/32`)
 - Focused YouTube analytics packet tests: pass (`8/8`)
-- Full `npm test`: pass (`2123/2123`)
+- Full `npm test`: pass (`2125/2125`)
 - `npm run build`: pass
 
 ## Local TTS
@@ -62,8 +63,9 @@ Generated: 2026-05-07 07:22 BST
 - Headline inference now strips source labels, quoted phrases and release-time utility tails before creating acquisition targets.
 - Official trailer reference resolver now treats multi-entity coverage as partial until every target has a reference.
 - Motion Acquisition Pro now routes partial resolver references to targeted official-reference search, not straight to a local frame plan.
-- Latest check for `rss_5b3abe925b27a199`: `13` official refs after filtering two explicit PEGI/rating-board GTA movies; target coverage is now GTA, BioShock and Red Dead, but only `2/100` merged local segment checks validate and both are BioShock. GTA and Red Dead remain blocked by repetitive, black, low-detail or title/rating frames.
+- Latest check for `rss_5b3abe925b27a199`: `13` official refs after filtering two explicit PEGI/rating-board GTA movies; target coverage is now GTA, BioShock and Red Dead, but only `2/100` merged local segment checks validate and both are BioShock. GTA has `51` failed attempts and Red Dead has `22`; both are now classified as `alternate_source_required`, so the report tells operators not to rescan the same exhausted official sources.
 - New local tooling: segment validation can resume from a previous report, skip already-sampled windows, merge old/new scans and rotate alternate sources before later windows from the same source.
+- New local reporting: the Studio V2 motion gap planner now separates `needs_first_segment_scan`, `continue_segment_scan` and `alternate_official_sources_required`, with entity-level attempts, top rejection reasons and safe next commands.
 - Live status: local/report-only
 
 ## TikTok

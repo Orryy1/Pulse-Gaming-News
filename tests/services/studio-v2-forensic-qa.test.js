@@ -11,6 +11,7 @@ const {
   parseAssDialogues,
   analyseSubtitleTimeline,
   analyseSubtitleDensity,
+  FLASH_LANE_SUBTITLE_DENSITY_OPTIONS,
   analyseAudioPresence,
   analyseAudioRecurrence,
   findRecurringScheduledAudioClusters,
@@ -103,6 +104,42 @@ test("analyseSubtitleDensity passes punchy single-line captions", () => {
   assert.equal(result.verdict, "pass");
   assert.equal(result.maxWordsPerCue, 3);
   assert.equal(result.multiLineCueCount, 0);
+});
+
+test("analyseSubtitleDensity fails multi-line captions in strict Flash Lane mode", () => {
+  const assPath = tempFile(
+    [
+      "Dialogue: 0,0:00:00.00,0:00:01.20,Caption,,0,0,0,,Take-Two killed\\Na legacy sequel",
+      "Dialogue: 0,0:00:01.20,0:00:02.00,Caption,,0,0,0,,wait what",
+    ].join("\n"),
+  );
+  const result = analyseSubtitleDensity({
+    assPath,
+    ...FLASH_LANE_SUBTITLE_DENSITY_OPTIONS,
+  });
+
+  assert.equal(result.verdict, "fail");
+  assert.equal(result.multiLineCueCount, 1);
+  assert.equal(result.maxVisualLineCount, 2);
+  assert.ok(result.reasons.some((r) => /visual lines/.test(r)));
+});
+
+test("analyseSubtitleDensity fails long one-line captions in strict Flash Lane mode", () => {
+  const assPath = tempFile(
+    [
+      "Dialogue: 0,0:00:00.00,0:00:01.40,Caption,,0,0,0,,Developer passion has become a hard veto",
+      "Dialogue: 0,0:00:01.40,0:00:02.00,Caption,,0,0,0,,no date yet",
+    ].join("\n"),
+  );
+  const result = analyseSubtitleDensity({
+    assPath,
+    ...FLASH_LANE_SUBTITLE_DENSITY_OPTIONS,
+  });
+
+  assert.equal(result.verdict, "fail");
+  assert.equal(result.longCueCount, 1);
+  assert.equal(result.maxCharsPerCue, 40);
+  assert.ok(result.reasons.some((r) => /characters/.test(r)));
 });
 
 test("analyseAudioPresence fails silent narration tracks", () => {

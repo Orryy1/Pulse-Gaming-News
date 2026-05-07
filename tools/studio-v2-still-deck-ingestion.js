@@ -818,6 +818,7 @@ async function renderStillDeckVariant({
     mp4Path,
     reportPath,
     assPath,
+    flashLane: variant === "enriched",
   });
   return {
     variant,

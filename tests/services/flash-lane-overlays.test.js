@@ -60,11 +60,11 @@ test("Flash Lane overlay filters are time-bound and never create full-screen car
   assert.doesNotMatch(joined, /w=iw:h=ih/);
 });
 
-test("extractOverlayEntities prefers scene entities and normalises Pokemon spelling", () => {
+test("extractOverlayEntities prefers scene entities and normalises Pokemon spelling with accent", () => {
   const entities = extractOverlayEntities({
     story: { title: "Pokemon and Grand Theft Auto updates" },
     scenes: [{ entity: "Grand Theft Auto" }, { entity: "Pokemon" }, { entity: "Steam" }],
   });
 
-  assert.deepEqual(entities, ["GTA", "Pokemon", "Steam"]);
+  assert.deepEqual(entities, ["GTA", "Pok\u00e9mon", "Steam"]);
 });

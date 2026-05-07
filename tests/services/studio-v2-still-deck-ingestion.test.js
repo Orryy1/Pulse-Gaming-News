@@ -336,6 +336,15 @@ test("still-deck adapter rejects accepted trailer frames with failing visual tas
   assert.equal(pack.metrics.rejectedFrameCount, 1);
 });
 
+test("still-deck Flash Lane proofs run forensic QA with strict Flash subtitle density", async () => {
+  const source = await fs.readFile(
+    path.join(process.cwd(), "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+
+  assert.match(source, /runForensicQa\(\{[\s\S]*flashLane:\s*variant\s*===\s*"enriched"/);
+});
+
 test("still-deck adapter dedupes extracted frames by QA content hash", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-frame-ingest-"));
   const first = await imageFile(dir, "001_GTA_18pct.jpg");

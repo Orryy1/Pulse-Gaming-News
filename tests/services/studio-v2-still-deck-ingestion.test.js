@@ -297,6 +297,45 @@ test("still-deck adapter rejects accepted trailer frames that are title or ratin
   assert.equal(pack.metrics.rejectedFrameCount, 1);
 });
 
+test("still-deck adapter rejects accepted trailer frames with failing visual taste metadata", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-frame-ingest-"));
+  const localPath = await imageFile(dir, "004_BioShock_62pct.jpg");
+  const pack = await buildStillDeckMediaPackage({
+    story: story({
+      id: "rss_5b3abe925b27a199",
+      title: "GTA 6 owner passed on a sequel to a legacy franchise",
+      full_script: "BioShock is one of the exact subjects in this Take-Two story.",
+    }),
+    plan: planFor("rss_5b3abe925b27a199", []),
+    frameReport: frameReportFor("rss_5b3abe925b27a199", [
+      {
+        order: 1,
+        story_id: "rss_5b3abe925b27a199",
+        source_url: "https://video.akamai.steamstatic.com/store_trailers/bioshock/hls_264_master.m3u8",
+        source_type: "steam_movie",
+        entity: "BioShock",
+        local_path: localPath,
+        status: "accepted",
+        qa: {
+          verdict: "pass",
+          thumbnail_safe: true,
+          failures: [],
+          content_hash: "dead-dark-frame",
+          visual_taste: {
+            verdict: "fail",
+            reason: "dead_dark_frame",
+            score: 18.2,
+          },
+        },
+      },
+    ]),
+  });
+
+  assert.equal(pack.media.trailerFrames.length, 0);
+  assert.equal(pack.rejected[0].reason, "low_detail_official_frame");
+  assert.equal(pack.metrics.rejectedFrameCount, 1);
+});
+
 test("still-deck adapter dedupes extracted frames by QA content hash", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-frame-ingest-"));
   const first = await imageFile(dir, "001_GTA_18pct.jpg");

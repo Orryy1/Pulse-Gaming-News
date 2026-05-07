@@ -158,6 +158,55 @@ test("proof candidates require enough validated gameplay clip refs, not just sti
   assert.equal(report.candidates[0].visuals.validated_clip_ref_count, 1);
 });
 
+test("proof candidates do not count accepted frames with failing visual taste metadata", () => {
+  const storyId = "bad_taste_frame";
+  const report = buildStudioV2ProofCandidateReport({
+    stories: [story(storyId)],
+    localAudioReports: [audioReport(storyId)],
+    assetReports: [assetReport(storyId, 7)],
+    frameReports: [
+      {
+        plans: [
+          {
+            story_id: storyId,
+            frames: [
+              {
+                status: "accepted",
+                entity: "GTA",
+                source_type: "steam_movie",
+                local_path: `test/output/frames/${storyId}_dead_dark.jpg`,
+                qa: {
+                  verdict: "pass",
+                  failures: [],
+                  content_hash: "dead-dark",
+                  visual_taste: {
+                    verdict: "fail",
+                    reason: "dead_dark_frame",
+                  },
+                },
+              },
+              {
+                status: "accepted",
+                entity: "Red Dead",
+                source_type: "steam_movie",
+                local_path: `test/output/frames/${storyId}_good.jpg`,
+                qa: { verdict: "pass", failures: [], content_hash: "good-frame" },
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    segmentValidationReports: [segmentReport(storyId, 3)],
+  });
+
+  const candidate = report.candidates[0];
+  assert.equal(candidate.verdict, "needs_motion_or_exact_assets");
+  assert.equal(candidate.visuals.accepted_frame_count, 1);
+  assert.equal(candidate.visuals.motion_backbone_ready, false);
+  assert.ok(candidate.blockers.includes("flash_proof_requires_motion_backbone"));
+});
+
 test("proof candidates distinguish source diversity gaps from missing clip count", () => {
   const storyId = "same_source";
   const report = buildStudioV2ProofCandidateReport({

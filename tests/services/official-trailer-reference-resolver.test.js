@@ -8,6 +8,12 @@ const {
   buildOfficialTrailerReferenceReport,
   renderOfficialTrailerReferenceMarkdown,
 } = require("../../lib/official-trailer-reference-resolver");
+const {
+  writeOfficialTrailerReferenceReportFiles,
+} = require("../../lib/official-trailer-reference-report-files");
+const fs = require("fs-extra");
+const os = require("node:os");
+const path = require("node:path");
 
 function baseStory(overrides = {}) {
   return {
@@ -460,4 +466,34 @@ test("official trailer resolver report emits valid JSON and readable Markdown", 
   assert.match(markdown, /Official Trailer Reference Resolver/);
   assert.match(markdown, /with-steam/);
   assert.match(markdown, /needs-search/);
+});
+
+test("official trailer report writer keeps story-specific outputs for separate candidate runs", async () => {
+  const outputDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-trailer-reference-"));
+  const firstReport = await buildOfficialTrailerReferenceReport([baseStory({ id: "flash-a" })]);
+  const secondReport = await buildOfficialTrailerReferenceReport([baseStory({ id: "flash-b" })]);
+
+  const firstWritten = await writeOfficialTrailerReferenceReportFiles(
+    firstReport,
+    renderOfficialTrailerReferenceMarkdown(firstReport),
+    { outputDir },
+  );
+  const secondWritten = await writeOfficialTrailerReferenceReportFiles(
+    secondReport,
+    renderOfficialTrailerReferenceMarkdown(secondReport),
+    { outputDir },
+  );
+
+  assert.notEqual(firstWritten.storyJson, secondWritten.storyJson);
+  assert.equal(await fs.pathExists(firstWritten.storyJson), true);
+  assert.equal(await fs.pathExists(secondWritten.storyJson), true);
+
+  const firstStored = await fs.readJson(firstWritten.storyJson);
+  const secondStored = await fs.readJson(secondWritten.storyJson);
+  assert.deepEqual(firstStored, firstReport);
+  assert.deepEqual(secondStored, secondReport);
+  assert.deepEqual(firstStored.plans.map((plan) => plan.story_id), ["flash-a"]);
+  assert.deepEqual(secondStored.plans.map((plan) => plan.story_id), ["flash-b"]);
+  assert.equal(firstStored.safety.posted_to_platforms, false);
+  assert.equal(secondStored.safety.production_db_mutated, false);
 });

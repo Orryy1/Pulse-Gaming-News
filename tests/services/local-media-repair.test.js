@@ -240,6 +240,78 @@ test("local media repair leaves current approved-voice renders alone", () => {
   assert.equal(report.counts.no_action, 1);
 });
 
+test("local media repair classifies out-of-range Liam audio for local duration repair", () => {
+  const report = buildLocalMediaRepairQueue({
+    stories: [
+      {
+        id: "rss_duration_short",
+        title: "Nintendo confirms a Switch 2 update",
+        approved: true,
+        full_script: "Nintendo confirmed new Switch details today. ".repeat(32),
+        audio_path: "output/audio/rss_duration_short.mp3",
+        exported_path: "output/final/rss_duration_short.mp4",
+      },
+    ],
+    mediaByStoryId: {
+      rss_duration_short: {
+        audioExists: true,
+        finalExists: true,
+        audioDurationSeconds: 58.2,
+        finalDurationSeconds: 58.2,
+      },
+    },
+    voiceAuditByStoryId: {
+      rss_duration_short: {
+        verdict: "pass",
+        blockers: [],
+        warnings: [],
+      },
+    },
+    localTts: READY_TTS,
+  });
+
+  assert.equal(report.items[0].action, "ready_local_audio_render_repair");
+  assert.equal(report.items[0].failure_code, "duration_too_short");
+  assert.ok(report.items[0].blockers.includes("duration_too_short"));
+  assert.ok(report.items[0].needs.includes("regenerate_audio_with_sleepy_liam"));
+  assert.ok(report.items[0].needs.includes("rerender_video_local"));
+});
+
+test("local media repair rejects non-Liam local voices as unsafe", () => {
+  const report = buildLocalMediaRepairQueue({
+    stories: [
+      {
+        id: "rss_bad_voice",
+        title: "Xbox confirms a new update",
+        approved: true,
+        full_script: "Xbox confirmed new details for players today. ".repeat(32),
+        audio_path: null,
+        exported_path: null,
+      },
+    ],
+    mediaByStoryId: {
+      rss_bad_voice: { audioExists: false, finalExists: false },
+    },
+    localTts: {
+      ok: true,
+      ready: true,
+      status: "ok",
+      phase: "ready",
+      voice: {
+        alias: "christopher",
+        voiceId: "G17SuINrv2H9FC6nvetn",
+        loaded: true,
+        refResolved: true,
+      },
+    },
+  });
+
+  assert.equal(report.items[0].action, "blocked_local_tts_unavailable");
+  assert.equal(report.items[0].failure_code, "unsafe_voice");
+  assert.ok(report.items[0].blockers.includes("unsafe_voice"));
+  assert.equal(report.counts.blocked_local_tts, 1);
+});
+
 test("local media repair markdown is operator-readable and explicitly local-only", () => {
   const report = buildLocalMediaRepairQueue({
     stories: [],
@@ -491,6 +563,47 @@ test("apply-local audio repair records TTS failures without aborting the batch",
   assert.equal(result.skipped[0].server_reset_recorded, true);
   assert.equal(result.applied.length, 1);
   assert.equal(result.applied[0].story_id, "rss_second");
+});
+
+test("apply-local audio repair skips every candidate instead of using an unsafe voice", async () => {
+  let generated = 0;
+  const result = await applyLocalAudioRepairs({
+    report: {
+      local_tts: {
+        ready: true,
+        status: "ok",
+        phase: "ready",
+        voice: {
+          alias: "unknown",
+          loaded: true,
+          ref_resolved: true,
+        },
+      },
+      items: [
+        {
+          story_id: "rss_unsafe",
+          action: "ready_local_audio_render_repair",
+          needs: ["regenerate_audio_with_sleepy_liam"],
+          runtime: { wordCount: 190, estimatedSeconds: 64 },
+        },
+      ],
+    },
+    storiesById: {
+      rss_unsafe: {
+        id: "rss_unsafe",
+        full_script: "Xbox confirmed new details for players today. ".repeat(32),
+      },
+    },
+    generateTts: async () => {
+      generated += 1;
+    },
+  });
+
+  assert.equal(generated, 0);
+  assert.equal(result.applied.length, 0);
+  assert.equal(result.skipped.length, 1);
+  assert.equal(result.skipped[0].reason, "unsafe_voice");
+  assert.equal(result.skipped[0].failure_code, "unsafe_voice");
 });
 
 test("apply-local audio repair records missing timestamps as a proof failure", async () => {

@@ -15,6 +15,9 @@ const {
   buildLocalScriptExtensionPlan,
   renderLocalScriptExtensionMarkdown,
 } = require("../lib/ops/local-script-extension");
+const {
+  applyLocalProofTtsLimits,
+} = require("../lib/ops/local-proof-tts-limits");
 const mediaPaths = require("../lib/media-paths");
 
 function parseArgs(argv) {
@@ -93,6 +96,10 @@ async function main() {
   await fs.writeFile(mdPath, renderLocalScriptExtensionMarkdown(plan), "utf8");
 
   if (args.applyLocalAudio) {
+    const ttsLimits = applyLocalProofTtsLimits();
+    console.log(
+      `[local-script-extension] local_tts_timeout_ms=${ttsLimits.local_tts_timeout_ms} attempts=${ttsLimits.local_tts_request_attempts}`,
+    );
     const applyReport = await applyLocalScriptExtensionAudio({
       plan,
       generateTts: audio.generateTTS,

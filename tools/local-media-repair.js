@@ -17,6 +17,9 @@ const {
   renderLocalMediaRepairMarkdown,
 } = require("../lib/ops/local-media-repair");
 const {
+  applyLocalProofTtsLimits,
+} = require("../lib/ops/local-proof-tts-limits");
+const {
   buildFinalVoiceAudit,
 } = require("../lib/studio/v2/final-voice-audit");
 const {
@@ -90,6 +93,7 @@ function existingMediaFacts(story) {
     finalExists,
     audioPath: audioAbs || story.audio_path || null,
     finalPath: finalAbs || story.exported_path || null,
+    audioDurationSeconds: audioExists ? ffprobeDuration(audioAbs) : null,
     finalDurationSeconds: finalExists ? ffprobeDuration(finalAbs) : null,
   };
 }
@@ -149,6 +153,10 @@ async function main() {
   await fs.writeFile(mdPath, renderLocalMediaRepairMarkdown(report), "utf8");
 
   if (args.applyLocalAudio) {
+    const ttsLimits = applyLocalProofTtsLimits();
+    console.log(
+      `[local-media-repair] local_tts_timeout_ms=${ttsLimits.local_tts_timeout_ms} attempts=${ttsLimits.local_tts_request_attempts}`,
+    );
     const applyReport = await applyLocalAudioRepairs({
       report,
       storiesById: Object.fromEntries(stories.map((story) => [story.id, story])),

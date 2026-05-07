@@ -16,6 +16,16 @@ const {
 } = require("../../lib/ops/local-script-extension");
 
 const ROOT = path.resolve(__dirname, "..", "..");
+const READY_TTS = {
+  ready: true,
+  status: "ok",
+  phase: "ready",
+  voice: {
+    alias: "liam",
+    loaded: true,
+    ref_resolved: true,
+  },
+};
 
 function queueItem(id, words = 140) {
   return {
@@ -222,6 +232,7 @@ test("apply local script extension audio writes ready Liam proofs only", async (
       generated.push({ text, outputRel, rate });
     },
     measureDuration: async () => 65.8,
+    localTts: READY_TTS,
   });
 
   assert.equal(generated.length, 1);
@@ -265,6 +276,7 @@ test("apply local script extension audio stamps accepted Sleepy Liam metadata", 
         );
       },
       measureDuration: async () => 65.2,
+      localTts: READY_TTS,
     });
 
     const applied = result.applied[0];
@@ -303,6 +315,7 @@ test("apply local script extension audio marks underfloor proofs rejected", asyn
     },
     generateTts: async () => null,
     measureDuration: async () => 58.9,
+    localTts: READY_TTS,
   });
 
   assert.equal(result.applied[0].duration_verdict, "reject_duration");
@@ -335,6 +348,7 @@ test("apply local script extension audio records TTS failures and keeps going", 
       if (outputRel.includes("fails_once")) throw new Error("read ECONNRESET");
     },
     measureDuration: async () => 66.4,
+    localTts: READY_TTS,
   });
 
   assert.equal(generated.length, 2);
@@ -346,6 +360,42 @@ test("apply local script extension audio records TTS failures and keeps going", 
   assert.match(result.skipped[0].error, /ECONNRESET/);
   assert.equal(result.applied.length, 1);
   assert.equal(result.applied[0].story_id, "still_runs");
+});
+
+test("apply local script extension audio skips ready drafts when local voice is not Liam", async () => {
+  let generated = 0;
+  const result = await applyLocalScriptExtensionAudio({
+    plan: {
+      local_tts: {
+        ready: true,
+        status: "ok",
+        phase: "ready",
+        voice: {
+          alias: "christopher",
+          loaded: true,
+          ref_resolved: true,
+        },
+      },
+      drafts: [
+        {
+          story_id: "ready_bad_voice",
+          action: "ready_for_local_liam_audio",
+          proposed_full_script: "Ready script. Follow Pulse Gaming so you never miss a beat.",
+          proposed_words: 190,
+          estimated_seconds: 64.2,
+        },
+      ],
+    },
+    generateTts: async () => {
+      generated += 1;
+    },
+  });
+
+  assert.equal(generated, 0);
+  assert.equal(result.applied.length, 0);
+  assert.equal(result.skipped.length, 1);
+  assert.equal(result.skipped[0].reason, "unsafe_voice");
+  assert.equal(result.skipped[0].failure_code, "unsafe_voice");
 });
 
 test("apply local script extension audio records missing timestamps as a proof failure", async () => {
@@ -363,6 +413,7 @@ test("apply local script extension audio records missing timestamps as a proof f
     },
     generateTts: async () => null,
     measureDuration: async () => 66.4,
+    localTts: READY_TTS,
   });
 
   assert.equal(result.applied[0].duration_verdict, "pass");
@@ -395,6 +446,7 @@ test("apply local script extension audio records duration measurement failures w
       if (outputRel.includes("extended_measure_fails")) throw new Error("ffprobe duration failed");
       return 66.4;
     },
+    localTts: READY_TTS,
   });
 
   assert.equal(result.applied.length, 2);

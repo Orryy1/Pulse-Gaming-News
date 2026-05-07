@@ -17,6 +17,10 @@ const {
   dedupeAssets,
   loadStillsAssetMapFromFiles,
 } = require("../lib/official-trailer-reference-report-loader");
+const {
+  DEFAULT_REPORT_BASENAME,
+  writeOfficialTrailerReferenceReportFiles,
+} = require("../lib/official-trailer-reference-report-files");
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
@@ -44,6 +48,9 @@ function parseArgs(argv) {
     segmentValidationReport: null,
     noExcludeExhaustedSourceFamilies: false,
     exhaustedSourceFamilyThreshold: 8,
+    outputDir: OUT,
+    outputBasename: DEFAULT_REPORT_BASENAME,
+    noLatestReport: false,
   };
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i];
@@ -60,6 +67,9 @@ function parseArgs(argv) {
     else if (arg === "--exhausted-source-family-threshold") {
       args.exhaustedSourceFamilyThreshold = Math.max(1, Number(argv[++i]) || 8);
     }
+    else if (arg === "--output-dir") args.outputDir = argv[++i] || OUT;
+    else if (arg === "--output-basename") args.outputBasename = argv[++i] || DEFAULT_REPORT_BASENAME;
+    else if (arg === "--no-latest-report") args.noLatestReport = true;
     else if (arg === "--help" || arg === "-?") args.help = true;
   }
   return args;
@@ -84,6 +94,9 @@ function printHelp() {
       "                        Keep exhausted references even when a segment report is supplied",
       "  --exhausted-source-family-threshold <n>",
       "                        Failed windows before a source family is treated as exhausted",
+      "  --output-dir <p>      Write reports under this local directory",
+      "  --output-basename <n> Basename for latest + story/batch-specific report files",
+      "  --no-latest-report    Only write story/batch-specific report files, not the legacy latest files",
       "  --json                Print JSON instead of Markdown",
       "",
       "This command is report-only: it fetches Steam metadata JSON at most, and never downloads videos, extracts frames, slices clips, mutates the DB, publishes or touches Railway/OAuth.",
@@ -261,14 +274,17 @@ async function main() {
 
   const markdown = renderOfficialTrailerReferenceMarkdown(report);
 
-  await fs.ensureDir(OUT);
-  await fs.writeJson(path.join(OUT, "official_trailer_references_v1.json"), report, { spaces: 2 });
-  await fs.writeFile(path.join(OUT, "official_trailer_references_v1.md"), markdown, "utf8");
+  const written = await writeOfficialTrailerReferenceReportFiles(report, markdown, {
+    outputDir: path.resolve(ROOT, args.outputDir),
+    basename: args.outputBasename,
+    writeCanonical: !args.noLatestReport,
+  });
 
   process.stdout.write(args.json ? JSON.stringify(report, null, 2) + "\n" : markdown);
-  process.stderr.write(
-    "[trailer-reference] wrote test/output/official_trailer_references_v1.{json,md}\n",
-  );
+  process.stderr.write(`[trailer-reference] wrote ${path.relative(ROOT, written.storyJson)}\n`);
+  if (written.wroteCanonical) {
+    process.stderr.write(`[trailer-reference] updated latest ${path.relative(ROOT, written.canonicalJson)}\n`);
+  }
 }
 
 main().catch((err) => {

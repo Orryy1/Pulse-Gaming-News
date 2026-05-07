@@ -1211,3 +1211,47 @@ test("official clip refs from acquisition queue reject rating-board references",
 
   assert.deepEqual(refs, []);
 });
+
+test("official clip refs from acquisition queue skip exhausted source families", () => {
+  const refs = buildOfficialTrailerClipsFromAcquisitionPlan(
+    {
+      story_id: "story-1",
+      shopping_list: [
+        {
+          entity: "Marathon",
+          suggested_windows: [{ start_s: 72, duration_s: 4 }],
+          exhausted_source_families: [
+            { key: "https://video.example/marathon-loop.m3u8" },
+          ],
+        },
+      ],
+    },
+    {
+      plans: [
+        {
+          story_id: "story-1",
+          references: [
+            {
+              source_url: "https://video.example/marathon-loop.m3u8",
+              source_type: "steam_movie",
+              entity: "Marathon",
+              movie_name: "Marathon Loop",
+            },
+            {
+              source_url: "https://video.example/marathon-gameplay.m3u8",
+              source_type: "steam_movie",
+              entity: "Marathon",
+              movie_name: "Marathon Gameplay Trailer",
+            },
+          ],
+        },
+      ],
+    },
+    "story-1",
+  );
+
+  assert.deepEqual(
+    refs.map((ref) => ref.path),
+    ["https://video.example/marathon-gameplay.m3u8"],
+  );
+});

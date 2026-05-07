@@ -100,24 +100,25 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - Validated clip sources: 1
 - Validated entities: Marathon
 - Missing entities: none
-- Acquisition strategy: entity_motion_coverage_ready
+- Acquisition strategy: alternate_official_sources_required
 - Latest render proof: warn (0 fail / 2 warn)
 
 ### Acquisition Strategy
 
-- Status: entity_motion_coverage_ready
-- Alternate-source entities: none
+- Status: alternate_official_sources_required
+- Alternate-source entities: Marathon
 - Unattempted entities: none
 - Keep-sampling entities: none
 
 | Entity | Status | Attempts | Validated | Source families | Top rejection | Recommendation |
 | --- | --- | ---: | ---: | ---: | --- | --- |
-| Marathon | validated | 60 | 2 | 10 | segment_lacks_gameplay_action_samples | keep_as_validated_motion_source |
+| Marathon | alternate_source_required | 63 | 2 | 10 | segment_lacks_gameplay_action_samples | find_alternate_official_source_family |
 
 #### Source families
 
 | Entity | Provider | App | Movie/source | Attempts | Rejected | Top rejection |
 | --- | --- | --- | --- | ---: | ---: | --- |
+| Marathon | steam | Marathon | Marathon Gameplay Trailer | 9 | 7 | segment_lacks_gameplay_action_samples |
 | Marathon | steam | Marathon | Marathon - Loop - EN | 6 | 6 | segment_samples_too_repetitive |
 | Marathon | steam | Marathon | Marathon Pre-Order Story Trailer | 6 | 6 | segment_contains_low_detail_frame |
 | Marathon | steam | Marathon | Marathon | Reveal Cinematic Short - EN | 6 | 6 | segment_lacks_gameplay_action_samples |
@@ -127,17 +128,18 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 | Marathon | steam | Marathon | Marathon - Accolades - EN | 6 | 6 | segment_lacks_gameplay_action_samples |
 | Marathon | steam | Marathon | Marathon - Cryo Unlock - EN | 6 | 6 | segment_lacks_gameplay_action_samples |
 | Marathon | steam | Marathon | Marathon | Official Announce Trailer | 6 | 6 | segment_lacks_gameplay_action_samples |
-| Marathon | steam | Marathon | Marathon Gameplay Trailer | 6 | 4 | segment_lacks_gameplay_action_samples |
 
 ### Next Steps
 
 - review_latest_render_forensic_warnings_before_pilot
+- find_alternate_official_sources_for:Marathon
+- do_not_rescan_same_official_sources_for:Marathon
 - find_one_more_validated_gameplay_clip_window
 - find_2_more_validated_clip_sources
 
 ### Safe Commands
 
-- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id 1szzhy9`
+- resolve_alternate_official_trailer_refs: `npm run media:resolve-trailers -- --story-id 1szzhy9 --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5`
 - plan_frame_sampling: `npm run media:plan-frames -- --story-id 1szzhy9 --trailer-references test/output/official_trailer_references_v1.json`
 - extract_safe_local_frames: `npm run media:extract-frames -- --story-id 1szzhy9 --apply-local`
 - validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id 1szzhy9 --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6`
@@ -145,12 +147,12 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 
 ### Segment Rejections
 
-- segment_samples_too_repetitive: 7
+- segment_samples_too_repetitive: 9
 - segment_lacks_gameplay_action_samples: 25
 - segment_contains_low_detail_frame: 12
 - segment_action_score_below_flash_threshold: 2
 - segment_contains_weak_flash_sample: 1
-- segment_contains_black_frame: 8
+- segment_contains_black_frame: 9
 - segment_sample_extract_failed: 1
 - segment_contains_title_or_rating_card: 2
 

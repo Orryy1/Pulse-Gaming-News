@@ -370,6 +370,71 @@ test("motion gap report explains source diversity gaps when clip count reaches t
   assert.doesNotMatch(gap.priority_next_steps.join(" "), /find_0_more/);
 });
 
+test("motion gap report asks for alternate sources when partial validated footage is exhausted", () => {
+  const report = buildStudioV2MotionGapReport({
+    proofCandidateReport: {
+      candidates: [
+        proofCandidate({
+          story_id: "marathon_partial",
+          blockers: [
+            "flash_proof_requires_motion_backbone",
+            "flash_proof_requires_three_validated_clip_refs",
+            "flash_proof_requires_three_validated_clip_sources",
+          ],
+          audio: {
+            status: "approved_local_liam_audio_ready",
+            ready: true,
+            output_audio_path: "test/output/audio/marathon.mp3",
+            duration_seconds: 72,
+          },
+          visuals: {
+            story_target_entities: ["Marathon"],
+            exact_subject_count: 6,
+            exact_subject_groups: ["Marathon"],
+            accepted_frame_count: 0,
+            frame_groups: [],
+            validated_clip_ref_count: 2,
+            validated_clip_source_count: 1,
+            validated_clip_entities: ["Marathon"],
+          },
+        }),
+      ],
+      thresholds: { flash_min_validated_clip_refs: 3 },
+    },
+    segmentValidationReport: {
+      segments: [
+        segment("marathon_partial", "Marathon", null, {
+          source_url: "https://video.example.test/marathon-gameplay.m3u8",
+          media_start_s: 42,
+        }),
+        segment("marathon_partial", "Marathon", null, {
+          source_url: "https://video.example.test/marathon-gameplay.m3u8",
+          media_start_s: 60,
+        }),
+        ...Array.from({ length: 5 }, (_, index) =>
+          segment("marathon_partial", "Marathon", "segment_lacks_gameplay_action_samples", {
+            source_url: "https://video.example.test/marathon-gameplay.m3u8",
+            media_start_s: 72 + index * 6,
+          }),
+        ),
+        ...Array.from({ length: 5 }, (_, index) =>
+          segment("marathon_partial", "Marathon", "segment_samples_too_repetitive", {
+            source_url: "https://video.example.test/marathon-loop.m3u8",
+            media_start_s: 36 + index * 6,
+          }),
+        ),
+      ],
+    },
+  });
+
+  const gap = report.gaps[0];
+  assert.equal(gap.motion_gap.acquisition_strategy.status, "alternate_official_sources_required");
+  assert.deepEqual(gap.motion_gap.acquisition_strategy.alternate_source_entities, ["Marathon"]);
+  assert.equal(gap.motion_gap.acquisition_strategy.entity_statuses.Marathon.status, "alternate_source_required");
+  assert.ok(gap.priority_next_steps.includes("find_alternate_official_sources_for:Marathon"));
+  assert.ok(gap.priority_next_steps.includes("do_not_rescan_same_official_sources_for:Marathon"));
+});
+
 test("motion gap report asks for alternate official sources when missing entities are exhausted", () => {
   const rejectedSegments = [
     ...Array.from({ length: 9 }, (_, index) =>

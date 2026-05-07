@@ -317,6 +317,54 @@ test("footage acquisition plan marks exhausted source families as alternate-sour
   assert.ok(redDead.reasons.includes("alternate_official_source_required"));
 });
 
+test("footage acquisition plan asks for more windows when an entity is partially validated", () => {
+  const plan = buildFlashLaneFootageAcquisitionPlan({
+    storyId: "story-marathon",
+    frameReport: {
+      plans: [
+        {
+          story_id: "story-marathon",
+          frames: [{ entity: "Marathon", status: "accepted" }],
+        },
+      ],
+    },
+    segmentValidationReport: {
+      segments: [
+        ...[42, 60].map((start) => ({
+          story_id: "story-marathon",
+          entity: "Marathon",
+          source_url: "https://video.example/marathon-gameplay.m3u8",
+          allowed_for_flash_lane: true,
+          segment_motion_class: "gameplay_action",
+          action_score: 82,
+          status: "validated",
+          media_start_s: start,
+        })),
+        ...[36, 48, 54, 66].map((start) => ({
+          story_id: "story-marathon",
+          entity: "Marathon",
+          source_url: "https://video.example/marathon-gameplay.m3u8",
+          allowed_for_flash_lane: false,
+          status: "rejected",
+          validation_reason: "segment_lacks_gameplay_action_samples",
+          media_start_s: start,
+        })),
+      ],
+    },
+    minValidatedClipWindows: 3,
+    minValidatedEntities: 1,
+  });
+
+  const marathon = plan.shopping_list.find((item) => item.entity === "Marathon");
+  assert.equal(plan.next_best_action, "sample_more_official_trailer_windows");
+  assert.ok(marathon);
+  assert.ok(marathon.reasons.includes("find_additional_validated_clip_window_for_existing_entity"));
+  assert.deepEqual(
+    marathon.suggested_windows.map((window) => window.start_s),
+    [72, 84, 96],
+  );
+});
+
 test("footage acquisition plan becomes proof-ready with enough validated windows", () => {
   const plan = buildFlashLaneFootageAcquisitionPlan({
     storyId: "story-1",

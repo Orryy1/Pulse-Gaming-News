@@ -87,7 +87,8 @@ test("footage acquisition plan falls back to proof-candidate entities when frame
         {
           story_id: "story-1",
           visuals: {
-            exact_subject_groups: ["GTA", "Red Dead", "BioShock"],
+            story_target_entities: ["GTA", "Red Dead", "BioShock"],
+            exact_subject_groups: ["GTA"],
             frame_groups: ["GTA"],
             validated_clip_entities: ["BioShock"],
           },

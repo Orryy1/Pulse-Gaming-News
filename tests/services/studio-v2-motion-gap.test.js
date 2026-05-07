@@ -370,6 +370,39 @@ test("motion gap report explains source diversity gaps when clip count reaches t
   assert.doesNotMatch(gap.priority_next_steps.join(" "), /find_0_more/);
 });
 
+test("motion gap report uses story target entities before exact asset groups", () => {
+  const report = buildStudioV2MotionGapReport({
+    proofCandidateReport: {
+      candidates: [
+        proofCandidate({
+          story_id: "target_gap",
+          audio: {
+            status: "approved_local_liam_audio_ready",
+            ready: true,
+            output_audio_path: "test/output/audio/target_gap.mp3",
+            duration_seconds: 66,
+          },
+          visuals: {
+            story_target_entities: ["GTA", "BioShock", "Red Dead"],
+            exact_subject_count: 6,
+            exact_subject_groups: ["GTA"],
+            accepted_frame_count: 4,
+            frame_groups: ["GTA"],
+            validated_clip_ref_count: 3,
+            validated_clip_source_count: 3,
+            validated_clip_entities: ["GTA"],
+          },
+        }),
+      ],
+    },
+  });
+
+  const gap = report.gaps[0];
+  assert.deepEqual(gap.motion_gap.story_entities, ["GTA", "BioShock", "Red Dead"]);
+  assert.deepEqual(gap.motion_gap.missing_validated_entities, ["BioShock", "Red Dead"]);
+  assert.ok(gap.priority_next_steps.includes("cover_missing_entities:BioShock,Red Dead"));
+});
+
 test("motion gap markdown is operator-readable and local-only", () => {
   const report = buildStudioV2MotionGapReport({
     proofCandidateReport: { candidates: [proofCandidate()] },

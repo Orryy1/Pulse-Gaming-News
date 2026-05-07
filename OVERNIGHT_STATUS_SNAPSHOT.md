@@ -5,8 +5,8 @@ Generated: 2026-05-07 04:28 BST
 ## Branch
 
 - Current branch: `codex/readiness-qa-failure-window`
-- Latest pushed commit entering this footage-acquisition fallback pass: `a8d30f3b Harden Studio V2 trailer segment selection`
-- Working tree during this snapshot: Flash Lane footage acquisition proof-candidate entity fallback
+- Latest pushed commit entering this target-coverage pass: `f5755390 Use proof candidate entities for footage acquisition`
+- Working tree during this snapshot: Studio V2 story-target coverage and headline inference hardening
 - Deployed: no
 
 ## Safety
@@ -25,11 +25,13 @@ Generated: 2026-05-07 04:28 BST
 - Focused official trailer clip-ref tests: pass (`23/23`)
 - Focused official trailer segment-validator tests: pass (`17/17`)
 - Focused Flash Lane footage acquisition tests: pass (`11/11`)
+- Focused game-title inference tests: pass (`5/5`)
+- Focused story-target coverage tests: pass (`39/39`)
 - Focused Flash Lane motion/backbone/director tests: pass (`43/43`)
 - Combined Studio V2 motion safety tests: pass (`83/83`)
 - Focused analytics/intelligence tests: pass (`32/32`)
 - Focused YouTube analytics packet tests: pass (`8/8`)
-- Full `npm test`: pass (`2106/2106`)
+- Full `npm test`: pass (`2113/2113`)
 - `npm run build`: pass
 
 ## Local TTS
@@ -55,6 +57,8 @@ Generated: 2026-05-07 04:28 BST
 - Rejection pattern: repetitive samples, insufficient gameplay action, low-detail frames, black frames and sample extraction failures.
 - New guardrail: resolver references that are only PEGI/ESRB/rating-board material are filtered before clip refs, and official trailer segments before 36s are rejected before extraction.
 - Footage acquisition planner now falls back to Studio V2 proof-candidate exact subject groups when frame reports are thin, so it produces concrete entity shopping lists instead of hiding work behind `no story entities`.
+- Proof candidates now separate intended story target entities from found exact assets and validated clips, so a Take-Two/GTA/Red Dead/BioShock story cannot pass on one single-game asset pile.
+- Headline inference now strips source labels, quoted phrases and release-time utility tails before creating acquisition targets.
 - Live status: local/report-only
 
 ## TikTok

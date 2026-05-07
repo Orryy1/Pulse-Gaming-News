@@ -269,6 +269,64 @@ test("proof candidates require validated entity coverage for multi-game stories"
   assert.ok(!candidate.recommended_command);
 });
 
+test("proof candidates use script target entities to block single-game assets on multi-franchise stories", () => {
+  const storyId = "take_two_multi_target";
+  const report = buildStudioV2ProofCandidateReport({
+    stories: [
+      {
+        ...story(storyId, "Take-Two killed a mystery sequel while GTA, Red Dead and BioShock fans watched"),
+        full_script:
+          "Take-Two just passed on a legacy sequel. GTA, Red Dead and BioShock fans all have a reason to care because the missing game could sit inside any of those worlds.",
+      },
+    ],
+    localAudioReports: [audioReport(storyId)],
+    assetReports: [
+      {
+        plans: [
+          {
+            story_id: storyId,
+            would_fetch: Array.from({ length: 6 }, (_, index) => ({
+              id: `${storyId}_gta_${index}`,
+              source_type: "steam_screenshot",
+              entity: "GTA",
+              subject_match_quality: "exact_game_match",
+              exact_subject_group: "GTA",
+              counted_for_premium: true,
+              counted_for_standard: true,
+              local_path: `test/output/assets/${storyId}_${index}.jpg`,
+            })),
+          },
+        ],
+      },
+    ],
+    frameReports: [frameReport(storyId, 4)],
+    segmentValidationReports: [
+      {
+        segments: Array.from({ length: 3 }, (_, index) => ({
+          story_id: storyId,
+          source_url: `https://video.example.test/gta_${index}.m3u8`,
+          entity: "GTA",
+          media_start_s: 42 + index * 6,
+          status: "validated",
+          segment_validated: true,
+          allowed_for_flash_lane: true,
+          segment_motion_class: "gameplay_action",
+        })),
+      },
+    ],
+  });
+
+  const candidate = report.candidates[0];
+  assert.deepEqual(candidate.visuals.story_target_entities, ["GTA", "BioShock", "Red Dead"]);
+  assert.deepEqual(candidate.visuals.exact_subject_groups, ["GTA"]);
+  assert.deepEqual(candidate.visuals.missing_exact_subject_entities, ["BioShock", "Red Dead"]);
+  assert.deepEqual(candidate.visuals.missing_validated_clip_entities, ["BioShock", "Red Dead"]);
+  assert.equal(candidate.verdict, "needs_motion_or_exact_assets");
+  assert.ok(candidate.blockers.includes("flash_proof_requires_exact_subject_entity_coverage"));
+  assert.ok(candidate.blockers.includes("flash_proof_requires_validated_entity_coverage"));
+  assert.equal(candidate.recommended_command, null);
+});
+
 test("proof candidates block stale ready proof commands when the latest render has forensic warnings", () => {
   const storyId = "warned_render";
   const report = buildStudioV2ProofCandidateReport({

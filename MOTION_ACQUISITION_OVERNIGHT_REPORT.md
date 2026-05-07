@@ -6,7 +6,8 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 
 - PEGI/ESRB/rating-board resolver references are now skipped before deep-scan clip refs are created.
 - Official trailer segments that start before 36s are now preflight-rejected before extraction.
-- This directly targets repeated age-rating cards, title slates and weak trailer-opening material seen in the reviewed Studio V2 proof.
+- Proof candidates now separate story target entities from found exact assets, so multi-franchise stories cannot pass on one asset pile.
+- Headline inference now rejects source labels, quoted phrases and release-time utility tails before they become acquisition targets.
 - No render defaults, production DB rows, Railway settings, OAuth state or social posting behaviour changed.
 
 ## Summary
@@ -65,14 +66,14 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 
 - Title: GTA 6 Owner Passed On A Sequel To A Legacy Franchise, And We're Dying To Know Which One
 - Recommendation: do_not_render_yet
-- Blockers: flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, latest_render_forensic_warnings
+- Blockers: flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, flash_proof_requires_validated_entity_coverage, flash_proof_requires_exact_subject_entity_coverage, latest_render_forensic_warnings
 - Liam audio: approved_local_liam_audio_ready
 - Exact assets: 10
 - Motion frames: 0
 - Validated clip refs: 0
 - Validated clip sources: 0
 - Validated entities: none
-- Missing entities: GTA
+- Missing entities: GTA, BioShock, Red Dead
 - Latest render proof: fail (1 fail / 1 warn)
 
 ### Next Steps
@@ -80,7 +81,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - review_latest_render_forensic_warnings_before_pilot
 - find_3_more_validated_gameplay_clip_windows
 - find_3_more_validated_clip_sources
-- cover_missing_entities:GTA
+- cover_missing_entities:GTA,BioShock,Red Dead
 - repair_motion_quality_before_next_proof
 
 ### Safe Commands
@@ -115,7 +116,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - Validated clip refs: 0
 - Validated clip sources: 0
 - Validated entities: none
-- Missing entities: none
+- Missing entities: GTA
 - Latest render proof: not available
 
 ### Next Steps
@@ -123,6 +124,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - find_3_more_validated_gameplay_clip_windows
 - find_3_more_validated_clip_sources
 - acquire_exact_subject_images_or_official_motion_refs
+- cover_missing_entities:GTA
 
 ### Safe Commands
 
@@ -179,7 +181,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - Validated clip refs: 0
 - Validated clip sources: 0
 - Validated entities: none
-- Missing entities: none
+- Missing entities: LEGO Batman
 - Latest render proof: not available
 
 ### Next Steps
@@ -187,6 +189,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - find_3_more_validated_gameplay_clip_windows
 - find_3_more_validated_clip_sources
 - acquire_exact_subject_images_or_official_motion_refs
+- cover_missing_entities:LEGO Batman
 
 ### Safe Commands
 
@@ -243,7 +246,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - Validated clip refs: 0
 - Validated clip sources: 0
 - Validated entities: none
-- Missing entities: none
+- Missing entities: GTA
 - Latest render proof: not available
 
 ### Next Steps
@@ -251,6 +254,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - find_3_more_validated_gameplay_clip_windows
 - find_3_more_validated_clip_sources
 - acquire_exact_subject_images_or_official_motion_refs
+- cover_missing_entities:GTA
 
 ### Safe Commands
 
@@ -268,14 +272,14 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 
 - Title: Digital Foundry: Yup, Oblivion Remastered Is Still Broken a Year After Release
 - Recommendation: do_not_render_yet
-- Blockers: approved_liam_audio_missing, flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, flash_proof_requires_four_exact_subject_assets
+- Blockers: approved_liam_audio_missing, flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, flash_proof_requires_validated_entity_coverage, flash_proof_requires_exact_subject_entity_coverage, flash_proof_requires_four_exact_subject_assets
 - Liam audio: approved_local_liam_audio_missing
 - Exact assets: 0
 - Motion frames: 0
 - Validated clip refs: 0
 - Validated clip sources: 0
 - Validated entities: none
-- Missing entities: none
+- Missing entities: Digital Foundry: Yup Oblivion Remastered, Digital Foundry, Yup Oblivion
 - Latest render proof: not available
 
 ### Next Steps
@@ -283,6 +287,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - find_3_more_validated_gameplay_clip_windows
 - find_3_more_validated_clip_sources
 - acquire_exact_subject_images_or_official_motion_refs
+- cover_missing_entities:Digital Foundry: Yup Oblivion Remastered,Digital Foundry,Yup Oblivion
 - generate_approved_sleepy_liam_audio_after_visuals_are_ready
 
 ### Safe Commands
@@ -345,7 +350,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - Validated clip refs: 0
 - Validated clip sources: 0
 - Validated entities: none
-- Missing entities: none
+- Missing entities: The next Tales Of remaster
 - Latest render proof: not available
 
 ### Next Steps
@@ -353,6 +358,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - find_3_more_validated_gameplay_clip_windows
 - find_3_more_validated_clip_sources
 - acquire_exact_subject_images_or_official_motion_refs
+- cover_missing_entities:The next Tales Of remaster
 - generate_approved_sleepy_liam_audio_after_visuals_are_ready
 
 ### Safe Commands
@@ -380,7 +386,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - Validated clip refs: 0
 - Validated clip sources: 0
 - Validated entities: none
-- Missing entities: none
+- Missing entities: Invincible VS Global Release Times
 - Latest render proof: not available
 
 ### Next Steps
@@ -388,6 +394,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - find_3_more_validated_gameplay_clip_windows
 - find_3_more_validated_clip_sources
 - acquire_exact_subject_images_or_official_motion_refs
+- cover_missing_entities:Invincible VS Global Release Times
 - generate_approved_sleepy_liam_audio_after_visuals_are_ready
 
 ### Safe Commands
@@ -415,7 +422,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - Validated clip refs: 0
 - Validated clip sources: 0
 - Validated entities: none
-- Missing entities: none
+- Missing entities: A New The Division PC Game
 - Latest render proof: not available
 
 ### Next Steps
@@ -423,6 +430,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - find_3_more_validated_gameplay_clip_windows
 - find_3_more_validated_clip_sources
 - acquire_exact_subject_images_or_official_motion_refs
+- cover_missing_entities:A New The Division PC Game
 - generate_approved_sleepy_liam_audio_after_visuals_are_ready
 
 ### Safe Commands
@@ -485,7 +493,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - Validated clip refs: 0
 - Validated clip sources: 0
 - Validated entities: none
-- Missing entities: none
+- Missing entities: GTA
 - Latest render proof: not available
 
 ### Next Steps
@@ -493,6 +501,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - find_3_more_validated_gameplay_clip_windows
 - find_3_more_validated_clip_sources
 - acquire_exact_subject_images_or_official_motion_refs
+- cover_missing_entities:GTA
 - generate_approved_sleepy_liam_audio_after_visuals_are_ready
 
 ### Safe Commands
@@ -520,7 +529,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - Validated clip refs: 0
 - Validated clip sources: 0
 - Validated entities: none
-- Missing entities: none
+- Missing entities: GTA
 - Latest render proof: not available
 
 ### Next Steps
@@ -528,6 +537,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - find_3_more_validated_gameplay_clip_windows
 - find_3_more_validated_clip_sources
 - acquire_exact_subject_images_or_official_motion_refs
+- cover_missing_entities:GTA
 - generate_approved_sleepy_liam_audio_after_visuals_are_ready
 
 ### Safe Commands
@@ -555,7 +565,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - Validated clip refs: 0
 - Validated clip sources: 0
 - Validated entities: none
-- Missing entities: none
+- Missing entities: GTA
 - Latest render proof: not available
 
 ### Next Steps
@@ -563,6 +573,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - find_3_more_validated_gameplay_clip_windows
 - find_3_more_validated_clip_sources
 - acquire_exact_subject_images_or_official_motion_refs
+- cover_missing_entities:GTA
 - generate_approved_sleepy_liam_audio_after_visuals_are_ready
 
 ### Safe Commands
@@ -625,7 +636,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - Validated clip refs: 0
 - Validated clip sources: 0
 - Validated entities: none
-- Missing entities: none
+- Missing entities: Pokémon
 - Latest render proof: not available
 
 ### Next Steps
@@ -633,6 +644,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - find_3_more_validated_gameplay_clip_windows
 - find_3_more_validated_clip_sources
 - acquire_exact_subject_images_or_official_motion_refs
+- cover_missing_entities:Pokémon
 - generate_approved_sleepy_liam_audio_after_visuals_are_ready
 
 ### Safe Commands
@@ -653,14 +665,14 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 
 - Title: 'Eventually the slop will just fall to the bottom': Garry's Mod sequel launches to 'mixed' reviews, but Garry himself isn't worried about AI games on the main page
 - Recommendation: do_not_render_yet
-- Blockers: approved_liam_audio_missing, flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, flash_proof_requires_four_exact_subject_assets
+- Blockers: approved_liam_audio_missing, flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, flash_proof_requires_validated_entity_coverage, flash_proof_requires_exact_subject_entity_coverage, flash_proof_requires_four_exact_subject_assets
 - Liam audio: approved_local_liam_audio_missing
 - Exact assets: 0
 - Motion frames: 0
 - Validated clip refs: 0
 - Validated clip sources: 0
 - Validated entities: none
-- Missing entities: none
+- Missing entities: 'Eventually the slop, Garry's Mod
 - Latest render proof: not available
 
 ### Next Steps
@@ -668,6 +680,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - find_3_more_validated_gameplay_clip_windows
 - find_3_more_validated_clip_sources
 - acquire_exact_subject_images_or_official_motion_refs
+- cover_missing_entities:'Eventually the slop,Garry's Mod
 - generate_approved_sleepy_liam_audio_after_visuals_are_ready
 
 ### Safe Commands
@@ -695,7 +708,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - Validated clip refs: 0
 - Validated clip sources: 0
 - Validated entities: none
-- Missing entities: none
+- Missing entities: MindsEye
 - Latest render proof: not available
 
 ### Next Steps
@@ -703,6 +716,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - find_3_more_validated_gameplay_clip_windows
 - find_3_more_validated_clip_sources
 - acquire_exact_subject_images_or_official_motion_refs
+- cover_missing_entities:MindsEye
 - generate_approved_sleepy_liam_audio_after_visuals_are_ready
 
 ### Safe Commands

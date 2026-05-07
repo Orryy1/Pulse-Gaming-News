@@ -5,7 +5,7 @@ Date: 2026-05-07
 ## Branch
 
 - Branch: `codex/readiness-qa-failure-window`
-- Latest pushed commit entering this footage-acquisition fallback pass: `a8d30f3b Harden Studio V2 trailer segment selection`
+- Latest pushed commit entering this target-coverage pass: `f5755390 Use proof candidate entities for footage acquisition`
 - Deployed: no
 - Railway env vars: untouched
 - Production DB: untouched
@@ -28,6 +28,9 @@ Date: 2026-05-07
 - Studio V2 official trailer source selection now skips PEGI/ESRB/rating-board references before deep-scan clip refs are created.
 - Studio V2 official trailer segment validation now preflight-rejects rating-board references and official segments that start inside the intro/rating window, before any frame extraction.
 - Flash Lane footage acquisition now uses Studio V2 proof-candidate exact subject groups when frame reports are thin, preventing false `no story entities` reports and creating concrete entity shopping lists.
+- Studio V2 proof candidates now track intended story target entities separately from found exact assets and validated clips.
+- Multi-franchise stories now stay blocked until the actual games/franchises in the script have exact subject and validated motion coverage.
+- Headline inference now avoids source labels, quoted fragments and release-time utility tails becoming fake media acquisition targets.
 
 ## Validation
 
@@ -36,11 +39,13 @@ Date: 2026-05-07
 - Focused official trailer clip-ref tests: pass (`23/23`)
 - Focused official trailer segment-validator tests: pass (`17/17`)
 - Focused Flash Lane footage acquisition tests: pass (`11/11`)
+- Focused game-title inference tests: pass (`5/5`)
+- Focused story-target coverage tests: pass (`39/39`)
 - Focused Flash Lane motion/backbone/director tests: pass (`43/43`)
 - Combined Studio V2 motion safety tests: pass (`83/83`)
 - Focused TikTok diagnostics/dispatch tests: pass (`47/47`)
 - Focused voice/longform/monetisation tests: pass (`19/19`)
-- Full `npm test`: pass (`2106/2106`)
+- Full `npm test`: pass (`2113/2113`)
 - `npm run build`: pass
 
 ## Current Verdicts
@@ -95,9 +100,9 @@ See `MORNING_APPROVAL_QUEUE.md`:
 ## Recommended Next Work
 
 1. Keep improving official trailer and gameplay-window acquisition until at least one story has three validated clip refs, three validated sources and clean forensic output.
-2. Use local Liam only for proof renders while keeping production voice unchanged.
-3. Build a fresh TikTok pack only from a clean current MP4, not from the blocked Studio V2 proof.
-4. Use the Weekly Roundup dossier as the first Pulse Briefing Lane editorial prototype.
-5. Watch the next normal Facebook Reel publish attempt; Page eligibility now looks unblocked but the strict verifier should stay on.
-6. Build the read-only YouTube Analytics ingestion packet, then run OAuth only after Martin approves the morning item.
+2. Use the new story target entity list as the acquisition shopping list before any new Studio V2 proof render.
+3. Use local Liam only for proof renders while keeping production voice unchanged.
+4. Build a fresh TikTok pack only from a clean current MP4, not from the blocked Studio V2 proof.
+5. Use the Weekly Roundup dossier as the first Pulse Briefing Lane editorial prototype.
+6. Watch the next normal Facebook Reel publish attempt; Page eligibility now looks unblocked but the strict verifier should stay on.
 7. Keep monetisation tooling report-only until real analytics and affiliate targeting are clean.

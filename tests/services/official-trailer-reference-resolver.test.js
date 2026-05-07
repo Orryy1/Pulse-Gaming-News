@@ -18,8 +18,7 @@ function baseStory(overrides = {}) {
     flair: "Verified",
     score: 500,
     timestamp: "2026-05-01T10:00:00Z",
-    full_script:
-      "Take-Two passed on a sequel and fans are comparing GTA, Red Dead and BioShock.",
+    full_script: "GTA has a new official trailer and fans are watching every frame.",
     game_images: [],
     downloaded_images: [],
     igdb_assets: [],
@@ -96,6 +95,38 @@ test("official trailer resolver extracts Steam movie references from verified ap
   assert.equal(plan.references[0].source_url, "https://cdn.example/trailer_max.mp4");
   assert.equal(plan.references[0].downloads_allowed, false);
   assert.equal(plan.references[0].rights_risk_class, "storefront_promotional_video");
+});
+
+test("official trailer resolver marks multi-franchise coverage as partial until every target has a reference", async () => {
+  const plan = await buildOfficialTrailerReferencePlan(
+    baseStory({
+      full_script:
+        "Take-Two passed on a sequel and fans are comparing GTA, Red Dead and BioShock.",
+      game_images: [verifiedSteamAsset("GTA", "3240220", "Grand Theft Auto V Enhanced")],
+    }),
+    {
+      steamLookup: async () => ({
+        success: true,
+        title: "Grand Theft Auto V Enhanced",
+        movies: [
+          {
+            id: 1,
+            name: "Official Trailer",
+            mp4: { max: "https://cdn.example/gta.mp4" },
+          },
+        ],
+      }),
+    },
+  );
+
+  assert.equal(plan.motion_reference_readiness, "partial_official_reference_found");
+  assert.deepEqual(plan.target_entities, ["GTA", "BioShock", "Red Dead"]);
+  assert.deepEqual(plan.covered_target_entities, ["GTA"]);
+  assert.deepEqual(plan.missing_target_entities, ["BioShock", "Red Dead"]);
+  assert.ok(plan.blockers.includes("missing_official_reference_entities"));
+  assert.ok(plan.planned_searches.some((item) => item.entity === "BioShock"));
+  assert.ok(plan.search_queries.includes("BioShock official trailer"));
+  assert.ok(plan.search_queries.includes("Red Dead gameplay trailer"));
 });
 
 test("official trailer resolver recognises v1.5 applied-local Steam still assets", async () => {
@@ -234,6 +265,7 @@ test("official trailer resolver report emits valid JSON and readable Markdown", 
   assert.doesNotThrow(() => JSON.parse(JSON.stringify(report)));
   assert.equal(report.summary.stories, 2);
   assert.equal(report.summary.official_reference_found, 1);
+  assert.equal(report.summary.partial_official_reference_found, 0);
   assert.equal(report.summary.official_search_required, 1);
   assert.match(markdown, /Official Trailer Reference Resolver/);
   assert.match(markdown, /with-steam/);

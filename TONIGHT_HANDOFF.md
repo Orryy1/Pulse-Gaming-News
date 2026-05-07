@@ -5,7 +5,7 @@ Date: 2026-05-07
 ## Branch
 
 - Branch: `codex/readiness-qa-failure-window`
-- Latest pushed commit entering this target-coverage pass: `f5755390 Use proof candidate entities for footage acquisition`
+- Latest pushed commit entering this resolver-targeting pass: `7135e83f Harden Studio V2 story target coverage`
 - Deployed: no
 - Railway env vars: untouched
 - Production DB: untouched
@@ -31,6 +31,8 @@ Date: 2026-05-07
 - Studio V2 proof candidates now track intended story target entities separately from found exact assets and validated clips.
 - Multi-franchise stories now stay blocked until the actual games/franchises in the script have exact subject and validated motion coverage.
 - Headline inference now avoids source labels, quoted fragments and release-time utility tails becoming fake media acquisition targets.
+- Official trailer reference resolution is now target-aware, so a single GTA trailer reference does not fully cover a GTA/Red Dead/BioShock story.
+- Motion Acquisition Pro now has a partial-reference state and creates targeted official-reference search actions for missing story entities.
 
 ## Validation
 
@@ -41,18 +43,19 @@ Date: 2026-05-07
 - Focused Flash Lane footage acquisition tests: pass (`11/11`)
 - Focused game-title inference tests: pass (`5/5`)
 - Focused story-target coverage tests: pass (`39/39`)
+- Focused trailer resolver/motion acquisition tests: pass (`18/18`)
 - Focused Flash Lane motion/backbone/director tests: pass (`43/43`)
 - Combined Studio V2 motion safety tests: pass (`83/83`)
 - Focused TikTok diagnostics/dispatch tests: pass (`47/47`)
 - Focused voice/longform/monetisation tests: pass (`19/19`)
-- Full `npm test`: pass (`2113/2113`)
+- Full `npm test`: pass (`2116/2116`)
 - `npm run build`: pass
 
 ## Current Verdicts
 
 - Local TTS: `GREEN`
 - Studio V2 live pilot: `RED_BLOCKED`
-- Motion acquisition: local-only, still insufficient for Flash Lane
+- Motion acquisition: local-only, now correctly reports partial official-reference coverage
 - TikTok auth: `AMBER`, token usable, public direct posting not confirmed
 - TikTok dispatch: no ready clean pack for upload
 - Facebook Reels: `eligible_for_normal_publish`, keep strict verifier and card fallback
@@ -99,8 +102,8 @@ See `MORNING_APPROVAL_QUEUE.md`:
 
 ## Recommended Next Work
 
-1. Keep improving official trailer and gameplay-window acquisition until at least one story has three validated clip refs, three validated sources and clean forensic output.
-2. Use the new story target entity list as the acquisition shopping list before any new Studio V2 proof render.
+1. Use the targeted official-reference search list to find missing BioShock/Red Dead-style references before any new multi-franchise Studio V2 proof render.
+2. Keep improving official trailer and gameplay-window acquisition until at least one story has three validated clip refs, three validated sources and clean forensic output.
 3. Use local Liam only for proof renders while keeping production voice unchanged.
 4. Build a fresh TikTok pack only from a clean current MP4, not from the blocked Studio V2 proof.
 5. Use the Weekly Roundup dossier as the first Pulse Briefing Lane editorial prototype.

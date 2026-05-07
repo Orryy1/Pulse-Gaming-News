@@ -117,6 +117,40 @@ test("Motion Acquisition Pro consumes official resolver references as local fram
   assert.equal(plan.safety.video_downloads, false);
 });
 
+test("Motion Acquisition Pro keeps partial resolver references in targeted-search mode", () => {
+  const plan = buildMotionAcquisitionPlan(
+    baseStory({ id: "partial-official-reference" }),
+    {
+      officialTrailerReferencePlans: [
+        {
+          story_id: "partial-official-reference",
+          motion_reference_readiness: "partial_official_reference_found",
+          target_entities: ["GTA", "BioShock", "Red Dead"],
+          covered_target_entities: ["GTA"],
+          missing_target_entities: ["BioShock", "Red Dead"],
+          references: [
+            {
+              provider: "steam",
+              source_type: "steam_movie",
+              source_url: "https://video.example/gta.m3u8",
+              entity: "GTA",
+              downloads_allowed: false,
+            },
+          ],
+        },
+      ],
+    },
+  );
+  const actionTypes = plan.planned_actions.map((action) => action.type);
+
+  assert.equal(plan.motion_readiness, "partial_reference_needs_targeted_search");
+  assert.deepEqual(plan.resolver_reference_coverage.missing_target_entities, ["BioShock", "Red Dead"]);
+  assert.ok(plan.blockers.includes("missing_official_reference_entities"));
+  assert.equal(actionTypes.filter((type) => type === "targeted_official_reference_search").length, 2);
+  assert.ok(actionTypes.includes("trailer_frame_extract_plan"));
+  assert.equal(plan.studio_v2_motion_candidate, false);
+});
+
 test("Motion Acquisition Pro preserves official resolver movie names for downstream frame scoring", () => {
   const plan = buildMotionAcquisitionPlan(
     baseStory({ id: "has-named-official-reference" }),
@@ -170,6 +204,50 @@ test("Motion Acquisition Pro report counts resolver references in readiness summ
 
   assert.equal(report.summary.reference_ready_for_local_frame_plan, 1);
   assert.equal(report.summary.official_reference_search_required, 1);
+});
+
+test("Motion Acquisition Pro report counts partial resolver references separately", () => {
+  const report = buildMotionAcquisitionReport(
+    [
+      baseStory({ id: "partial-official-reference" }),
+      baseStory({ id: "has-official-reference" }),
+    ],
+    {
+      officialTrailerReferencePlans: [
+        {
+          story_id: "partial-official-reference",
+          motion_reference_readiness: "partial_official_reference_found",
+          target_entities: ["GTA", "BioShock"],
+          covered_target_entities: ["GTA"],
+          missing_target_entities: ["BioShock"],
+          references: [
+            {
+              provider: "steam",
+              source_type: "steam_movie",
+              source_url: "https://video.example/gta.m3u8",
+              entity: "GTA",
+              downloads_allowed: false,
+            },
+          ],
+        },
+        {
+          story_id: "has-official-reference",
+          references: [
+            {
+              provider: "steam",
+              source_type: "steam_movie",
+              source_url: "https://video.example/hls_264_master.m3u8",
+              entity: "GTA",
+              downloads_allowed: false,
+            },
+          ],
+        },
+      ],
+    },
+  );
+
+  assert.equal(report.summary.partial_reference_needs_targeted_search, 1);
+  assert.equal(report.summary.reference_ready_for_local_frame_plan, 1);
 });
 
 test("Motion Acquisition Pro marks enough clips and frames as local motion proof ready", () => {

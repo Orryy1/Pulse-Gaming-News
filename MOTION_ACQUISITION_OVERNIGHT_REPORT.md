@@ -8,7 +8,19 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - Official trailer segments that start before 36s are now preflight-rejected before extraction.
 - Proof candidates now separate story target entities from found exact assets, so multi-franchise stories cannot pass on one asset pile.
 - Headline inference now rejects source labels, quoted phrases and release-time utility tails before they become acquisition targets.
+- Official trailer reference resolution is now target-aware: one GTA trailer no longer makes a GTA/Red Dead/BioShock story look fully covered.
+- Motion Acquisition Pro now reports partial official-reference coverage separately and creates targeted official-reference searches for the missing entities.
 - No render defaults, production DB rows, Railway settings, OAuth state or social posting behaviour changed.
+
+## Latest Target-Aware Reference Check
+
+- Story: `rss_5b3abe925b27a199`
+- Official refs found: `10`
+- Coverage verdict: `partial_official_reference_found`
+- Covered target entities: `GTA`
+- Missing target entities: `BioShock`, `Red Dead`
+- Motion Acquisition verdict: `partial_reference_needs_targeted_search`
+- Next safe action: targeted official trailer/reference search for `BioShock` and `Red Dead`; no video download or production mutation.
 
 ## Summary
 

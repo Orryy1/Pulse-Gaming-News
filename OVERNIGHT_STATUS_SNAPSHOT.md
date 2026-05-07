@@ -5,8 +5,8 @@ Generated: 2026-05-07 04:28 BST
 ## Branch
 
 - Current branch: `codex/readiness-qa-failure-window`
-- Latest pushed commit entering this target-coverage pass: `f5755390 Use proof candidate entities for footage acquisition`
-- Working tree during this snapshot: Studio V2 story-target coverage and headline inference hardening
+- Latest pushed commit entering this resolver-targeting pass: `7135e83f Harden Studio V2 story target coverage`
+- Working tree during this snapshot: target-aware official trailer reference and motion acquisition reporting
 - Deployed: no
 
 ## Safety
@@ -27,11 +27,12 @@ Generated: 2026-05-07 04:28 BST
 - Focused Flash Lane footage acquisition tests: pass (`11/11`)
 - Focused game-title inference tests: pass (`5/5`)
 - Focused story-target coverage tests: pass (`39/39`)
+- Focused trailer resolver/motion acquisition tests: pass (`18/18`)
 - Focused Flash Lane motion/backbone/director tests: pass (`43/43`)
 - Combined Studio V2 motion safety tests: pass (`83/83`)
 - Focused analytics/intelligence tests: pass (`32/32`)
 - Focused YouTube analytics packet tests: pass (`8/8`)
-- Full `npm test`: pass (`2113/2113`)
+- Full `npm test`: pass (`2116/2116`)
 - `npm run build`: pass
 
 ## Local TTS
@@ -59,6 +60,9 @@ Generated: 2026-05-07 04:28 BST
 - Footage acquisition planner now falls back to Studio V2 proof-candidate exact subject groups when frame reports are thin, so it produces concrete entity shopping lists instead of hiding work behind `no story entities`.
 - Proof candidates now separate intended story target entities from found exact assets and validated clips, so a Take-Two/GTA/Red Dead/BioShock story cannot pass on one single-game asset pile.
 - Headline inference now strips source labels, quoted phrases and release-time utility tails before creating acquisition targets.
+- Official trailer reference resolver now treats multi-entity coverage as partial until every target has a reference.
+- Motion Acquisition Pro now routes partial resolver references to targeted official-reference search, not straight to a local frame plan.
+- Latest check for `rss_5b3abe925b27a199`: `10` GTA refs found, but `BioShock` and `Red Dead` remain missing, so the story stays blocked.
 - Live status: local/report-only
 
 ## TikTok

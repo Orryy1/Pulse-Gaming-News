@@ -8,7 +8,8 @@ Read-only control report. No Railway, OAuth, production DB, render default, TTS 
 - Ready for local Flash proof: 0
 - Need local Liam audio: 20
 - Need Liam audio duration repair: 3
-- Need exact subject assets: 5
+- Need format router decision: 2
+- Need exact subject assets: 3
 - Need motion validation: 0
 - Need alternate official motion source: 2
 
@@ -16,9 +17,9 @@ Read-only control report. No Railway, OAuth, production DB, render default, TTS 
 
 | Story | Stage | Distance | Audio | Exact | Clips | Missing motion entities | Next action |
 | --- | --- | --- | --- | ---: | ---: | --- | --- |
-| 1t186u4: Reggie says Nintendo stopped selling products on Amazon in the 2010s after they asked for financial support to undercut competitors' prices | needs_exact_subject_assets | two_blockers | ready 66.6s | 0 | 0/0 | none | run_exact_subject_still_acquisition |
+| 1t186u4: Reggie says Nintendo stopped selling products on Amazon in the 2010s after they asked for financial support to undercut competitors' prices | needs_format_router_decision | two_blockers | ready 66.6s | 0 | 0/0 | none | route_to_briefing_or_context_card_lane |
 | 1t0zhng: LEGO Batman: Legacy of the Dark Knight PC specs revealed | needs_exact_subject_assets | two_blockers | ready 70.1s | 0 | 0/0 | LEGO Batman, Legacy of the Dark Knight | run_exact_subject_still_acquisition |
-| 1t0x9ui: It's been a year since release and Oblivion Remastered is still broken- Digital Foundry | needs_exact_subject_assets | two_blockers | ready 67.4s | 0 | 0/0 | none | run_exact_subject_still_acquisition |
+| 1t0x9ui: It's been a year since release and Oblivion Remastered is still broken- Digital Foundry | needs_format_router_decision | two_blockers | ready 67.4s | 0 | 0/0 | none | route_to_briefing_or_context_card_lane |
 | 1t1hyqc: Even tho I can’t download you. You will always be on my phone. | needs_liam_audio_duration_repair | hard_blocked | local_liam_audio_not_flash_ready | 0 | 0/0 | none | repair_script_length_or_regenerate_local_liam_audio |
 | 1t0u9o4: Don’t Expect Product Placement in GTA 6 — the CEO of Take-Two Says It Won't Do Real World Brand Partnerships Because 'All the Brands Are Made Up' | needs_exact_subject_assets | two_blockers | ready 65.9s | 0 | 0/0 | GTA | run_exact_subject_still_acquisition |
 | 1szzhy9: Marathon Drops To 15K Daily CCU Peak On Steam, Exits Top 50 On PlayStation & Top 100 On Xbox Best-Sellers Lists | needs_alternate_official_motion_source | two_blockers | ready 72.5s | 6 | 2/1 | none | find_non_exhausted_official_motion_source |
@@ -50,9 +51,7 @@ Read-only control report. No Railway, OAuth, production DB, render default, TTS 
 ## Next Commands
 
 ### 1t186u4
-- Command: `npm run media:resolve-trailers -- --story-id 1t186u4`
-- Command: `npm run media:plan-frames -- --story-id 1t186u4 --trailer-references test/output/official_trailer_references_v1.json`
-- Command: `npm run media:extract-frames -- --story-id 1t186u4 --apply-local`
+- No safe render command yet. Work the blocker above first.
 
 ### 1t0zhng
 - Command: `npm run media:resolve-trailers -- --story-id 1t0zhng`
@@ -60,9 +59,7 @@ Read-only control report. No Railway, OAuth, production DB, render default, TTS 
 - Command: `npm run media:extract-frames -- --story-id 1t0zhng --apply-local`
 
 ### 1t0x9ui
-- Command: `npm run media:resolve-trailers -- --story-id 1t0x9ui`
-- Command: `npm run media:plan-frames -- --story-id 1t0x9ui --trailer-references test/output/official_trailer_references_v1.json`
-- Command: `npm run media:extract-frames -- --story-id 1t0x9ui --apply-local`
+- No safe render command yet. Work the blocker above first.
 
 ### 1t1hyqc
 - Command: `npm run media:resolve-trailers -- --story-id 1t1hyqc`

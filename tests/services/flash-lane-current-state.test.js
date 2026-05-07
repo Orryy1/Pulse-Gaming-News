@@ -127,6 +127,7 @@ test("current state does not hide missing Liam audio behind visual blockers", ()
       audio: { ready: false, status: "approved_local_liam_audio_missing" },
       visuals: {
         exact_subject_count: 0,
+        story_target_entities: ["GTA"],
         validated_clip_ref_count: 0,
         validated_clip_source_count: 0,
       },
@@ -166,6 +167,49 @@ test("current state rejects out-of-range Liam audio even when the source report 
   assert.equal(report.rows[0].audio.ready, false);
   assert.ok(report.rows[0].blocking_dimensions.includes("audio_duration"));
   assert.equal(report.summary.needs_liam_audio_duration_repair, 1);
+});
+
+test("current state routes stories with no exact subject target instead of forcing blind asset hunts", () => {
+  const report = buildFlashLaneCurrentStateReport({
+    proofCandidateReport: {
+      candidates: [
+        candidate({
+          story_id: "business_story",
+          title: "Nintendo stopped selling products on Amazon",
+          audio: {
+            ready: true,
+            status: "approved_local_liam_audio_ready",
+            duration_seconds: 66.5,
+            output_audio_path: "test/output/audio/business_story.mp3",
+          },
+          visuals: {
+            exact_subject_count: 0,
+            exact_subject_groups: [],
+            story_target_entities: [],
+            accepted_frame_count: 0,
+            validated_clip_ref_count: 0,
+            validated_clip_source_count: 0,
+            validated_clip_entities: [],
+            missing_validated_clip_entities: [],
+          },
+        }),
+      ],
+    },
+    motionGapReport: {
+      gaps: [
+        {
+          story_id: "business_story",
+          recommended_commands: [{ command: "npm run media:resolve-trailers -- --story-id business_story" }],
+        },
+      ],
+    },
+  });
+
+  assert.equal(report.rows[0].stage, "needs_format_router_decision");
+  assert.equal(report.rows[0].operator_next_action, "route_to_briefing_or_context_card_lane");
+  assert.ok(report.rows[0].blocking_dimensions.includes("format_route"));
+  assert.deepEqual(report.rows[0].recommended_commands, []);
+  assert.equal(report.summary.needs_format_router_decision, 1);
 });
 
 test("current state markdown is readable, escaped and safety labelled", () => {

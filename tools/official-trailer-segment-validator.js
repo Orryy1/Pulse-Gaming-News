@@ -17,6 +17,7 @@ const {
   DEFAULT_OUTPUT_ROOT,
   filterExhaustedSourceFamilyClipRefs,
   filterPreviouslySampledClipRefs,
+  filterSegmentsForStoryIds,
   mergeOfficialTrailerSegmentReports,
   renderOfficialTrailerSegmentValidationMarkdown,
   runOfficialTrailerSegmentValidation,
@@ -201,19 +202,25 @@ async function main() {
   const loaded = await loadFrameReport(args);
   const loadedReference = await loadOptionalReferenceReport(args);
   const loadedPrevious = await loadOptionalPreviousValidationReport(args);
-  const previousSegmentCount = Array.isArray(loadedPrevious.report?.segments)
-    ? loadedPrevious.report.segments.length
+  const scopedPreviousReport = loadedPrevious.report && args.storyId
+    ? {
+        ...loadedPrevious.report,
+        segments: filterSegmentsForStoryIds(loadedPrevious.report.segments, [args.storyId]),
+      }
+    : loadedPrevious.report;
+  const previousSegmentCount = Array.isArray(scopedPreviousReport?.segments)
+    ? scopedPreviousReport.segments.length
     : 0;
   const clipRefs = buildClipRefsFromReport(loaded.report, loadedReference.report, args.storyId, {
     ...args,
     maxSegments: previousSegmentCount > 0 ? args.maxSegments + previousSegmentCount : args.maxSegments,
   });
-  const filteredClipRefs = loadedPrevious.report
-    ? filterPreviouslySampledClipRefs(clipRefs, loadedPrevious.report)
+  const filteredClipRefs = scopedPreviousReport
+    ? filterPreviouslySampledClipRefs(clipRefs, scopedPreviousReport)
     : clipRefs;
   const exhaustedFilter =
-    loadedPrevious.report && !args.noExhaustedSourceFamilyFilter
-      ? filterExhaustedSourceFamilyClipRefs(filteredClipRefs, loadedPrevious.report, {
+    scopedPreviousReport && !args.noExhaustedSourceFamilyFilter
+      ? filterExhaustedSourceFamilyClipRefs(filteredClipRefs, scopedPreviousReport, {
           threshold: args.exhaustedSourceFamilyThreshold,
         })
       : {
@@ -245,8 +252,12 @@ async function main() {
     exhausted_source_families: exhaustedFilter.exhausted_source_families,
   };
   report.previous_validation_source = loadedPrevious.filePath;
+  if (args.storyId) report.display_story_ids = [args.storyId];
   if (args.mergePrevious && loadedPrevious.report) {
-    report = mergeOfficialTrailerSegmentReports(loadedPrevious.report, report);
+    report = mergeOfficialTrailerSegmentReports(loadedPrevious.report, report, {
+      preserveUnscopedPrevious: true,
+    });
+    if (args.storyId) report.display_story_ids = [args.storyId];
     report.current_run = currentRun;
     report.frame_report_source = loaded.filePath;
     report.reference_report_source = loadedReference.filePath;

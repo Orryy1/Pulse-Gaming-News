@@ -11,8 +11,10 @@ const {
   exhaustedSourceFamiliesFromReport,
   filterExhaustedSourceFamilyClipRefs,
   filterPreviouslySampledClipRefs,
+  filterSegmentsForStoryIds,
   guardSegmentSample,
   mergeOfficialTrailerSegmentReports,
+  renderOfficialTrailerSegmentValidationMarkdown,
   runOfficialTrailerSegmentValidation,
   segmentKeyForClipRef,
 } = require("../../lib/studio/v2/official-trailer-segment-validator");
@@ -609,6 +611,7 @@ test("segment validation resume filters clip refs already sampled in a previous 
     segments: [
       {
         clip_key: segmentKeyForClipRef(clips[0]),
+        story_id: "rss_5b3abe925b27a199",
         status: "rejected",
         segment_validated: false,
       },
@@ -616,6 +619,158 @@ test("segment validation resume filters clip refs already sampled in a previous 
   });
 
   assert.deepEqual(filtered.map((item) => item.mediaStartS), [72]);
+});
+
+test("segment validation resume ignores previous clips from other stories", () => {
+  const marathonClip = clip({
+    storyId: "1szzhy9",
+    story_id: "1szzhy9",
+    path: "https://video.example/shared-source.m3u8",
+    entity: "Marathon",
+    mediaStartS: 36,
+    provenance: { story_id: "1szzhy9" },
+  });
+  const gtaClip = clip({
+    storyId: "rss_5b3abe925b27a199",
+    story_id: "rss_5b3abe925b27a199",
+    path: marathonClip.path,
+    entity: "Marathon",
+    mediaStartS: 36,
+    provenance: { story_id: "rss_5b3abe925b27a199" },
+  });
+
+  const filtered = filterPreviouslySampledClipRefs([marathonClip], {
+    segments: [
+      {
+        ...gtaClip,
+        clip_key: segmentKeyForClipRef(gtaClip),
+        status: "rejected",
+        segment_validated: false,
+      },
+    ],
+  });
+
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].storyId, "1szzhy9");
+});
+
+test("segment validation merge can scope previous rows to the current story", () => {
+  const previousReport = {
+    apply_local: true,
+    segments: [
+      {
+        story_id: "rss_5b3abe925b27a199",
+        clip_key: "https://video.example/gta.m3u8|gta|36.00",
+        source_url: "https://video.example/gta.m3u8",
+        entity: "GTA",
+        media_start_s: 36,
+        status: "rejected",
+        segment_validated: false,
+      },
+      {
+        story_id: "1szzhy9",
+        clip_key: "https://video.example/marathon.m3u8|marathon|36.00",
+        source_url: "https://video.example/marathon.m3u8",
+        entity: "Marathon",
+        media_start_s: 36,
+        status: "rejected",
+        segment_validated: false,
+      },
+    ],
+  };
+  const currentReport = {
+    apply_local: true,
+    segments: [
+      {
+        story_id: "1szzhy9",
+        clip_key: "https://video.example/marathon.m3u8|marathon|72.00",
+        source_url: "https://video.example/marathon.m3u8",
+        entity: "Marathon",
+        media_start_s: 72,
+        status: "validated",
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+      },
+    ],
+  };
+
+  const merged = mergeOfficialTrailerSegmentReports(previousReport, currentReport, {
+    storyIds: ["1szzhy9"],
+  });
+
+  assert.deepEqual(merged.segments.map((segment) => segment.story_id), ["1szzhy9", "1szzhy9"]);
+  assert.equal(merged.merge.previous_segment_count, 1);
+  assert.equal(merged.merge.previous_unscoped_segment_count, 2);
+  assert.deepEqual(merged.merge.scoped_story_ids, ["1szzhy9"]);
+});
+
+test("segment validation merge can preserve the global ledger while rendering a story scope", () => {
+  const previousReport = {
+    apply_local: true,
+    output_root: tempOutputRoot("global-merge"),
+    summary: {},
+    segments: [
+      {
+        story_id: "rss_5b3abe925b27a199",
+        clip_key: "https://video.example/gta.m3u8|gta|36.00",
+        source_url: "https://video.example/gta.m3u8",
+        entity: "GTA",
+        media_start_s: 36,
+        status: "rejected",
+        segment_validated: false,
+        allowed_for_flash_lane: false,
+        samples: [{}, {}, {}],
+      },
+    ],
+  };
+  const currentReport = {
+    apply_local: true,
+    output_root: tempOutputRoot("global-merge"),
+    summary: {},
+    display_story_ids: ["1szzhy9"],
+    segments: [
+      {
+        story_id: "1szzhy9",
+        clip_key: "https://video.example/marathon.m3u8|marathon|42.00",
+        source_url: "https://video.example/marathon.m3u8",
+        entity: "Marathon",
+        media_start_s: 42,
+        status: "validated",
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+        segment_motion_class: "gameplay_action",
+        validation_reason: "trimmed_segment_samples_passed",
+        samples: [{}, {}, {}],
+      },
+    ],
+  };
+
+  const merged = mergeOfficialTrailerSegmentReports(previousReport, currentReport, {
+    preserveUnscopedPrevious: true,
+  });
+  merged.display_story_ids = ["1szzhy9"];
+  const markdown = renderOfficialTrailerSegmentValidationMarkdown(merged);
+
+  assert.deepEqual(merged.segments.map((segment) => segment.story_id), [
+    "rss_5b3abe925b27a199",
+    "1szzhy9",
+  ]);
+  assert.match(markdown, /Displayed story scope: 1szzhy9/);
+  assert.match(markdown, /Marathon/);
+  assert.doesNotMatch(markdown, /\| GTA \|/);
+});
+
+test("segment validation story filter excludes unscoped legacy rows for story-specific reports", () => {
+  const scoped = filterSegmentsForStoryIds(
+    [
+      { story_id: "1szzhy9", entity: "Marathon" },
+      { story_id: "rss_5b3abe925b27a199", entity: "GTA" },
+      { entity: "legacy-no-story" },
+    ],
+    ["1szzhy9"],
+  );
+
+  assert.deepEqual(scoped.map((segment) => segment.entity), ["Marathon"]);
 });
 
 test("segment validation skips exhausted source families from previous local scans", () => {

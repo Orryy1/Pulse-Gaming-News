@@ -4,8 +4,9 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 
 ## Guardrail Update
 
-- PEGI/ESRB/rating-board resolver references are now skipped before deep-scan clip refs are created.
+- PEGI/ESRB/rating-board resolver references are now skipped before they enter the resolver report or deep-scan clip refs.
 - Official trailer segments that start before 36s are now preflight-rejected before extraction.
+- Mixed-quality official trailer windows can now be trimmed to a shorter contiguous clean gameplay slice instead of accepting the bad tail or throwing away the whole source.
 - Proof candidates now separate story target entities from found exact assets, so multi-franchise stories cannot pass on one asset pile.
 - Headline inference now rejects source labels, quoted phrases and release-time utility tails before they become acquisition targets.
 - Official trailer reference resolution is now target-aware: one GTA trailer no longer makes a GTA/Red Dead/BioShock story look fully covered.
@@ -15,12 +16,13 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 ## Latest Target-Aware Reference Check
 
 - Story: `rss_5b3abe925b27a199`
-- Official refs found: `10`
-- Coverage verdict: `partial_official_reference_found`
-- Covered target entities: `GTA`
-- Missing target entities: `BioShock`, `Red Dead`
-- Motion Acquisition verdict: `partial_reference_needs_targeted_search`
-- Next safe action: targeted official trailer/reference search for `BioShock` and `Red Dead`; no video download or production mutation.
+- Official refs found: `13` after filtering two explicit GTA PEGI/rating-board movies.
+- Coverage verdict: `official_reference_found`
+- Covered target entities: `GTA`, `BioShock`, `Red Dead`
+- Missing target entities: none
+- Local segment validation: `1` validated trimmed BioShock gameplay window; GTA and Red Dead are still blocked by repetitive, black, low-detail or title/rating frames.
+- Motion Acquisition verdict: `reference_ready_for_local_frame_plan`, but Studio V2 Flash proof remains blocked until at least two more validated gameplay clip windows cover GTA and Red Dead.
+- Next safe action: sample alternate/later official sources for `GTA` and `Red Dead`; no video download or production mutation.
 
 ## Summary
 

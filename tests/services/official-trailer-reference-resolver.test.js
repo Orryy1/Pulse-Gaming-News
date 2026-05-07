@@ -188,6 +188,39 @@ test("official trailer resolver records Steam HLS/DASH movie references as refer
   assert.equal(plan.references[0].allowed_render_use, "reference_only_by_default");
 });
 
+test("official trailer resolver excludes Steam movie references that are rating-board material", async () => {
+  const plan = await buildOfficialTrailerReferencePlan(
+    baseStory({
+      game_images: [verifiedSteamAsset("GTA", "3240220", "Grand Theft Auto V Enhanced")],
+    }),
+    {
+      steamLookup: async () => ({
+        success: true,
+        title: "Grand Theft Auto V Enhanced",
+        movies: [
+          {
+            id: 11,
+            name: "A Safehouse in the Hills - PEGI",
+            hls_h264: "https://video.example/gta-pegi.m3u8",
+          },
+          {
+            id: 12,
+            name: "Agents of Sabotage",
+            hls_h264: "https://video.example/gta-gameplay.m3u8",
+          },
+        ],
+      }),
+    },
+  );
+
+  assert.equal(plan.references.length, 1);
+  assert.equal(plan.references[0].movie_name, "Agents of Sabotage");
+  assert.equal(plan.references[0].source_url, "https://video.example/gta-gameplay.m3u8");
+  assert.equal(plan.lookup_results[0].movies_found, 1);
+  assert.equal(plan.lookup_results[0].movies_rejected, 1);
+  assert.equal(plan.lookup_results[0].rejected_movie_reasons[0].reason, "rating_board_reference");
+});
+
 test("official trailer resolver refuses unverified Steam assets", async () => {
   const plan = await buildOfficialTrailerReferencePlan(
     baseStory({

@@ -1022,3 +1022,51 @@ test("official clip refs include validated deep-scan segments even when no accep
   assert.ok(refs.every((ref) => ref.provenance.segment_validated === true));
   assert.ok(refs.every((ref) => ref.provenance.segment_selection_policy === "validated_deep_scan_segment"));
 });
+
+test("official clip refs use recommended trim timing from validated deep-scan segments", () => {
+  const source = "https://video.example/gta-gameplay.m3u8";
+  const refs = buildOfficialTrailerClipsFromFrameReport(
+    { plans: [{ story_id: "story-1", frames: [] }] },
+    "story-1",
+    {
+      maxClips: 4,
+      requireValidatedSegments: true,
+      segmentValidationReport: {
+        generated_at: "2026-05-02T22:00:00.000Z",
+        segments: [
+          {
+            clip_key: `${source}|gta|42.00`,
+            source_url: source,
+            source_type: "steam_movie",
+            entity: "GTA",
+            media_start_s: 42,
+            duration_s: 5,
+            status: "validated",
+            segment_validated: true,
+            allowed_for_flash_lane: true,
+            validation_reason: "trimmed_segment_samples_passed",
+            segment_motion_class: "gameplay_action",
+            action_score: 88,
+            action_sample_count: 2,
+            trim_recommended: true,
+            recommended_media_start_s: 42.45,
+            recommended_duration_s: 2.8,
+            trim_sample_orders: [1, 2],
+            samples: [
+              { local_path: "test/output/official-trailer-segment-validation-v1/assets/story-1/a.jpg" },
+              { local_path: "test/output/official-trailer-segment-validation-v1/assets/story-1/b.jpg" },
+            ],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(refs.length, 1);
+  assert.equal(refs[0].mediaStartS, 42.45);
+  assert.equal(refs[0].durationS, 2.8);
+  assert.equal(refs[0].provenance.segment_validation_reason, "trimmed_segment_samples_passed");
+  assert.equal(refs[0].provenance.segment_trim_recommended, true);
+  assert.equal(refs[0].provenance.segment_original_start_s, 42);
+  assert.equal(refs[0].provenance.segment_original_duration_s, 5);
+});

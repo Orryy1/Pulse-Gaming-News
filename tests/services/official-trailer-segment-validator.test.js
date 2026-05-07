@@ -383,7 +383,7 @@ test("official trailer segment validator rejects low-average action even with tw
   assert.ok(report.segments[0].action_score < 70);
 });
 
-test("official trailer segment validator rejects mixed-quality windows even when two samples are strong", async () => {
+test("official trailer segment validator trims mixed-quality windows when two clean gameplay samples are strong", async () => {
   const outputRoot = tempOutputRoot("mixed-quality-window");
   await cleanTempRoot(outputRoot);
   let call = 0;
@@ -426,11 +426,60 @@ test("official trailer segment validator rejects mixed-quality windows even when
     },
   });
 
-  assert.equal(report.summary.segments_rejected, 1);
-  assert.equal(report.segments[0].validation_reason, "segment_contains_weak_flash_sample");
+  assert.equal(report.summary.segments_validated, 1);
+  assert.equal(report.summary.segments_rejected, 0);
+  assert.equal(report.segments[0].status, "validated");
+  assert.equal(report.segments[0].validation_reason, "trimmed_segment_samples_passed");
+  assert.equal(report.segments[0].segment_validated, true);
+  assert.equal(report.segments[0].allowed_for_flash_lane, true);
+  assert.equal(report.segments[0].segment_motion_class, "gameplay_action");
+  assert.equal(report.segments[0].trim_recommended, true);
+  assert.ok(report.segments[0].recommended_media_start_s >= 42);
+  assert.ok(report.segments[0].recommended_duration_s > 0);
+  assert.ok(report.segments[0].recommended_duration_s < 5);
+  assert.deepEqual(report.segments[0].trim_sample_orders, [1, 2]);
   assert.equal(report.segments[0].action_sample_count, 2);
   assert.ok(report.segments[0].action_score >= 70);
-  assert.equal(report.segments[0].allowed_for_flash_lane, false);
+});
+
+test("segment validation report carries trimmed segment timing into Flash Lane clip refs", () => {
+  const ref = clip();
+  const report = {
+    generated_at: "2026-05-02T22:00:00.000Z",
+    segments: [
+      {
+        clip_key: segmentKeyForClipRef(ref),
+        source_url: ref.path,
+        source_type: ref.sourceType,
+        entity: ref.entity,
+        media_start_s: 42,
+        duration_s: 5,
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+        validation_reason: "trimmed_segment_samples_passed",
+        segment_motion_class: "gameplay_action",
+        action_score: 88,
+        action_sample_count: 2,
+        trim_recommended: true,
+        recommended_media_start_s: 42.45,
+        recommended_duration_s: 2.8,
+        trim_sample_orders: [1, 2],
+        samples: [{}, {}],
+      },
+    ],
+  };
+
+  const [upgraded] = applySegmentValidationToClipRefs([ref], report);
+
+  assert.equal(upgraded.mediaStartS, 42.45);
+  assert.equal(upgraded.durationS, 2.8);
+  assert.equal(upgraded.provenance.segment_validated, true);
+  assert.equal(upgraded.provenance.allowed_for_flash_lane, true);
+  assert.equal(upgraded.provenance.segment_trim_recommended, true);
+  assert.equal(upgraded.provenance.segment_original_start_s, 42);
+  assert.equal(upgraded.provenance.segment_original_duration_s, 5);
+  assert.equal(upgraded.provenance.segment_recommended_start_s, 42.45);
+  assert.equal(upgraded.provenance.segment_recommended_duration_s, 2.8);
 });
 
 test("official trailer segment validator allows official game-character faces in segment samples", () => {

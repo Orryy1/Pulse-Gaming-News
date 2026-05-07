@@ -31,6 +31,17 @@ test("headline inference trims release-time utility phrasing from title candidat
   );
 });
 
+test("headline inference trims newsy prefixes and platform utility suffixes", () => {
+  assert.deepEqual(
+    inferHeadlineGameCandidates("The next Tales Of remaster has leaked, and it's probably not what you're expecting"),
+    ["Tales Of"],
+  );
+  assert.deepEqual(
+    inferHeadlineGameCandidates("A New The Division PC Game Is Out Right Now, And It's Free"),
+    ["The Division"],
+  );
+});
+
 test("headline inference still accepts real colon-separated game title candidates", () => {
   assert.deepEqual(
     inferHeadlineGameCandidates("LEGO Batman: Legacy of the Dark Knight PC specs revealed"),
@@ -38,7 +49,15 @@ test("headline inference still accepts real colon-separated game title candidate
   );
 });
 
+test("headline inference rejects sentence fragments as game titles", () => {
+  assert.deepEqual(
+    inferHeadlineGameCandidates("Even tho I can\u2019t download you. You will always be on my phone."),
+    [],
+  );
+});
+
 test("headline candidate guard rejects source labels and quoted fragments", () => {
   assert.equal(isLikelyGameTitleCandidate("Digital Foundry"), false);
   assert.equal(isLikelyGameTitleCandidate("'Eventually the slop"), false);
+  assert.equal(isLikelyGameTitleCandidate("I can't download you. You"), false);
 });

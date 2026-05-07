@@ -7,7 +7,6 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - Ready local Flash proofs: 0
 - Blocked Flash proofs: 1
 - Closest story: rss_5b3abe925b27a199
-- Legacy Steam trailer URLs now backfill provider/app/movie metadata, so old validation scans show concrete source families instead of `unknown`.
 
 ## Guardrail Update
 
@@ -15,10 +14,9 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - Segment validation rejects intro/rating/title windows before extraction when the start time or reference metadata is unsafe.
 - Segment validation can resume from a previous local report, merge old/new scans and skip both already-sampled windows and exhausted source families.
 - Steam CDN trailer URLs are parsed into source families such as `steam / 3240220 / Steam movie 832632`, making it clear when GTA or Red Dead needs alternate official sources instead of another scan of the same trailer.
-- The official trailer resolver can now ingest a previous segment-validation report and exclude exhausted Steam source families before planning the next reference search.
-- Current dry-run with previous scan merge skipped `28` already-sampled refs and `8` exhausted source-family refs for `rss_5b3abe925b27a199`.
+- The official trailer resolver can ingest a previous segment-validation report and exclude exhausted Steam source families before planning the next reference search.
 - Latest resolver check with a five-window exhaustion threshold excluded `9` known-bad Steam references and left `5` candidate references for further local validation.
-- Current verdict for `rss_5b3abe925b27a199`: BioShock has two validated windows, but GTA has `51` failed attempts across `8` source families and Red Dead has `22` failed attempts across `2`, so both need alternate official source families before another Studio V2 proof render.
+- Latest apply-local validation sampled the remaining candidates and found no new usable GTA or Red Dead windows. Current totals are GTA `52` failed attempts across `9` source families and Red Dead `26` failed attempts across `4`.
 - This remains local/report-only. No production media, DB rows, Railway settings, OAuth state, render defaults or upload paths were changed.
 
 ## rss_5b3abe925b27a199
@@ -45,9 +43,9 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 
 | Entity | Status | Attempts | Validated | Source families | Top rejection | Recommendation |
 | --- | --- | ---: | ---: | ---: | --- | --- |
-| GTA | alternate_source_required | 51 | 0 | 8 | segment_samples_too_repetitive | find_alternate_official_source_family |
-| BioShock | validated | 27 | 2 | 3 | segment_lacks_gameplay_action_samples | keep_as_validated_motion_source |
-| Red Dead | alternate_source_required | 22 | 0 | 2 | segment_contains_black_frame | find_alternate_official_source_family |
+| GTA | alternate_source_required | 52 | 0 | 9 | segment_samples_too_repetitive | find_alternate_official_source_family |
+| BioShock | validated | 28 | 2 | 3 | segment_lacks_gameplay_action_samples | keep_as_validated_motion_source |
+| Red Dead | alternate_source_required | 26 | 0 | 4 | segment_contains_black_frame | find_alternate_official_source_family |
 
 #### Source families
 
@@ -61,10 +59,10 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 | GTA | steam | 3240220 | Steam movie 840628 | 5 | 5 | segment_samples_too_repetitive |
 | GTA | steam | 3240220 | Steam movie 840631 | 5 | 5 | segment_contains_title_or_rating_card |
 | GTA | steam | 3240220 | Steam movie 840632 | 5 | 5 | segment_samples_too_repetitive |
+| GTA | steam | Grand Theft Auto V Enhanced | A Safehouse in the Hills - NR | 1 | 1 | segment_lacks_gameplay_action_samples |
 | BioShock | steam | 8870 | Steam movie 10985 | 12 | 11 | segment_contains_black_frame |
 | BioShock | steam | 8870 | Steam movie 10479 | 10 | 10 | segment_lacks_gameplay_action_samples |
-| BioShock | steam | 8870 | Steam movie 10662 | 5 | 4 | segment_contains_title_or_rating_card |
-| Red Dead | steam | 1174180 | Steam movie 254554 | 12 | 12 | segment_contains_black_frame |
+| BioShock | steam | 8870 | Steam movie 10662 | 6 | 5 | segment_contains_low_detail_frame |
 
 ### Next Steps
 
@@ -86,10 +84,10 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 ### Segment Rejections
 
 - segment_samples_too_repetitive: 28
-- segment_lacks_gameplay_action_samples: 9
-- segment_contains_low_detail_frame: 22
+- segment_lacks_gameplay_action_samples: 12
+- segment_contains_low_detail_frame: 24
 - segment_contains_black_frame: 25
-- segment_contains_title_or_rating_card: 9
+- segment_contains_title_or_rating_card: 10
 - segment_contains_weak_flash_sample: 1
 - segment_action_score_below_flash_threshold: 1
 - segment_sample_extract_failed: 3

@@ -39,12 +39,12 @@ Date: 2026-05-07
 - Segment validation can now resume from and merge previous local scan reports, so validated windows are preserved while new source/start windows are sampled.
 - Deep-scan official clip refs now rotate alternate sources before repeated later windows from the same source.
 - New segment validation reports include source provenance for future scans, making failed Steam/IGDB trailer sources easier to diagnose.
-- A resumed local scan for `rss_5b3abe925b27a199` checked `100` merged segment windows and found `2` validated windows, both BioShock. GTA and Red Dead remain blocked, so no Studio V2 render was attempted.
-- Studio V2 motion-gap reporting now classifies exhausted source families. For `rss_5b3abe925b27a199`, GTA has `51` failed official-window attempts and Red Dead has `22`, so the next action is alternate official sources, not another blind rescan of the same material.
-- Source-family grouping now shows GTA failures spread across `8` official source families and Red Dead across `2`, with top rejection reasons per family.
+- A resumed local scan for `rss_5b3abe925b27a199` checked `106` merged segment windows and found `2` validated windows, both BioShock. GTA and Red Dead remain blocked, so no Studio V2 render was attempted.
+- Studio V2 motion-gap reporting now classifies exhausted source families. For `rss_5b3abe925b27a199`, GTA has `52` failed official-window attempts and Red Dead has `26`, so the next action is alternate official sources, not another blind rescan of the same material.
+- Source-family grouping now shows GTA failures spread across `9` official source families and Red Dead across `4`, with top rejection reasons per family.
 - Segment validation now skips exhausted source families when resuming from a previous local scan. The latest dry-run skipped `28` already-sampled refs and `8` exhausted source-family refs, leaving `6` new unsampled windows instead of blindly revisiting known-bad official sources.
 - Legacy Steam CDN trailer URLs are now backfilled into concrete source-family metadata. Old scans now show `steam`, store app IDs and movie IDs instead of `unknown`, which makes alternate-source acquisition decisions much clearer.
-- Official trailer reference resolution can now ingest the previous segment-validation report and exclude exhausted Steam source families before planning the next search. The current story check with a five-window threshold excluded `9` known-bad Steam refs and left `5` further candidates for local validation.
+- Official trailer reference resolution can now ingest the previous segment-validation report and exclude exhausted Steam source families before planning the next search. The current story check with a five-window threshold excluded `9` known-bad Steam refs and left `5` further candidates; local validation sampled those and still found no new usable GTA or Red Dead windows.
 
 ## Validation
 
@@ -69,7 +69,7 @@ Date: 2026-05-07
 
 - Local TTS: `GREEN`
 - Studio V2 live pilot: `RED_BLOCKED`
-- Motion acquisition: local-only; refs cover GTA, BioShock and Red Dead, but only two trimmed BioShock gameplay segments validate after 100 merged local segment checks. GTA and Red Dead are now marked `alternate_source_required`; source-family grouping shows GTA exhausted across `8` source families and Red Dead across `2`, and the validator now skips exhausted families on resume. Flash Lane remains blocked until new official source families are found.
+- Motion acquisition: local-only; refs cover GTA, BioShock and Red Dead, but only two trimmed BioShock gameplay segments validate after 106 merged local segment checks. GTA and Red Dead are now marked `alternate_source_required`; source-family grouping shows GTA blocked across `9` source families and Red Dead across `4`, and the validator now skips exhausted families on resume. Flash Lane remains blocked until new official source families are found.
 - TikTok auth: `AMBER`, token usable, public direct posting not confirmed
 - TikTok dispatch: no ready clean pack for upload
 - Facebook Reels: `eligible_for_normal_publish`, keep strict verifier and card fallback

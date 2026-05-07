@@ -83,3 +83,19 @@ Rollback: keep monetisation report-only and remove any non-specific links from p
 Validation status: monetisation focused tests passed and report output preserves accented game names correctly. Full `npm test` passed `2091/2091` and `npm run build` passed.
 
 Recommendation: allow report-only use now. Approve live affiliate promotion only story by story after the targeting audit passes.
+
+## 6. YouTube Analytics Read-Only Re-Auth
+
+Decision needed: approve a YouTube OAuth re-auth for detailed analytics read access.
+
+Why it matters: Pulse has a learning loop, but the analytics doctor shows it is currently using public counters/local history rather than full YouTube Studio retention and traffic-source data. The system cannot deeply learn what keeps people watching until `yt-analytics.readonly` is granted.
+
+What changes: the YouTube token would gain read-only Creator Studio analytics access. It should not upload, edit, delete or publish anything.
+
+Risk: OAuth/token handling touches a live platform account, so it must not be triggered silently and token values must never be logged.
+
+Rollback: do not re-auth. Continue using public-counter learning only.
+
+Validation status: `npm run ops:analytics-doctor` reports `AMBER`, `requires_youtube_scope_reauth`, `public_counter_history_only`, `330` platform metric rows, `0` rich retention rows and `0` video performance rows. Learning and comment-digest text hygiene tests pass.
+
+Recommendation: approve read-only analytics re-auth after the current local/reporting work is safely committed and pushed.

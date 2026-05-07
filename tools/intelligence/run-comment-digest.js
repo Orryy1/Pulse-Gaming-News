@@ -55,7 +55,7 @@ function viewerSignals(verdicts) {
 
 function renderCommentDigestMarkdown({ summary, signals, queue }) {
   const lines = [];
-  lines.push("# Pulse Gaming — Comment Digest (FIXTURE)");
+  lines.push("# Pulse Gaming - Comment Digest (FIXTURE)");
   lines.push("");
   lines.push(`Generated: ${new Date().toISOString()}`);
   lines.push("");
@@ -72,7 +72,7 @@ function renderCommentDigestMarkdown({ summary, signals, queue }) {
     lines.push(`- ${k}: ${v}`);
   }
   lines.push("");
-  lines.push("## Reply queue (DRAFTS — never sent)");
+  lines.push("## Reply queue (DRAFTS - never sent)");
   lines.push("");
   if (queue.length === 0) {
     lines.push("- empty for this window");
@@ -180,4 +180,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { main };
+module.exports = { main, renderCommentDigestMarkdown };

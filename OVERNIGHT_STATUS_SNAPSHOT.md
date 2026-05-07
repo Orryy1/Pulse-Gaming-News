@@ -5,8 +5,8 @@ Generated: 2026-05-07 03:30 BST
 ## Branch
 
 - Current branch: `codex/readiness-qa-failure-window`
-- Latest pushed commit entering this refresh: `aa00bd84 Harden local Liam TTS proof reporting`
-- Working tree during this snapshot: safe report refresh plus TikTok auth-doctor diagnostic fix
+- Latest pushed commit entering this analytics refresh: `cb54f4f4 Document Facebook Reels readiness`
+- Working tree during this snapshot: analytics/text-hygiene reporting fix
 - Deployed: no
 
 ## Safety
@@ -22,9 +22,10 @@ Generated: 2026-05-07 03:30 BST
 
 ## Validation
 
+- Focused analytics/intelligence tests: pass (`32/32`)
 - Focused TikTok diagnostics and dispatch tests: pass (`47/47`)
 - Focused voice, longform and monetisation tests: pass (`19/19`)
-- Full `npm test`: pass (`2091/2091`)
+- Full `npm test`: pass (`2093/2093`)
 - `npm run build`: pass
 
 ## Local TTS
@@ -67,6 +68,19 @@ Generated: 2026-05-07 03:30 BST
 - Local flag: `FACEBOOK_REELS_ENABLED=true`
 - Safety: read-only check only, no Facebook post
 
+## Analytics And Learning
+
+- Status report: `ANALYTICS_LEARNING_STATUS.md`
+- Analytics doctor: `AMBER`
+- Detailed YouTube Analytics: `requires_youtube_scope_reauth`
+- Learning dataset: `public_counter_history_only`
+- Platform metric rows: `330`
+- Rich retention rows: `0`
+- Video performance rows: `0`
+- Learning digest: generated under `test/output/learning-digest/`
+- Comment digest: generated under `test/output/comment-digest/`
+- Safety: no OAuth, no token printing, no DB mutation, no scoring-weight changes, no auto-replies
+
 ## Voice Shootout
 
 - Report: `VOICE_SHOOTOUT_OVERNIGHT_REPORT.md`
@@ -92,6 +106,7 @@ Generated: 2026-05-07 03:30 BST
 - Studio V2 needs better validated motion before a live pilot.
 - TikTok public posting remains dependent on app/API approval state.
 - TikTok inbox/manual workflow needs a clean MP4 pack first.
+- Deep YouTube Studio learning needs a read-only analytics OAuth re-auth before retention and traffic-source data can be ingested.
 - Facebook Reels should be watched on the next normal publish to confirm API upload success, but Page eligibility now looks unblocked.
 - External voice providers need approval before spending credits or sending voice material externally.
 - Longform upload/scheduling needs approval.

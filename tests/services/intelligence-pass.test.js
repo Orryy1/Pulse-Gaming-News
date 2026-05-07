@@ -2,6 +2,8 @@
 
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
+const path = require("node:path");
+const fs = require("fs-extra");
 
 const {
   buildAnalyticsClient,
@@ -41,6 +43,7 @@ const {
   median,
   confidenceFor,
 } = require("../../lib/intelligence/learning-digest");
+const { main: runCommentDigest } = require("../../tools/intelligence/run-comment-digest");
 
 // ── analytics-client ──────────────────────────────────────────────
 
@@ -414,6 +417,13 @@ test("learning-digest: empty input → insufficient confidence, no crash", () =>
   assert.match(renderDigestMarkdown(d), /Learning Digest/);
 });
 
+test("learning-digest: public Markdown is ASCII-safe for operator reports", () => {
+  const d = buildLearningDigest({ snapshotsByVideo: {}, features: [] });
+  const markdown = renderDigestMarkdown(d);
+  assert.doesNotMatch(markdown, /â|Â|PokÃ/);
+  assert.match(markdown, /^# Pulse Gaming - Learning Digest/m);
+});
+
 test("learning-digest: real digest with fixture data emits all sections", () => {
   const features = [
     {
@@ -461,4 +471,12 @@ test("learning-digest: real digest with fixture data emits all sections", () => 
   assert.ok(d.by_topic.length >= 1);
   assert.equal(d.safety.auto_promote_formats, false);
   assert.equal(d.safety.auto_change_scoring_weights, false);
+});
+
+test("comment digest runner: public Markdown is ASCII-safe for operator reports", async () => {
+  const result = await runCommentDigest();
+  const markdownPath = path.join(__dirname, "..", "..", result.artefacts.md);
+  const markdown = await fs.readFile(markdownPath, "utf8");
+  assert.doesNotMatch(markdown, /â|Â|PokÃ/);
+  assert.match(markdown, /^# Pulse Gaming - Comment Digest \(FIXTURE\)/m);
 });

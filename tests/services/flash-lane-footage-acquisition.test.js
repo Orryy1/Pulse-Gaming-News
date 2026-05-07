@@ -541,6 +541,28 @@ test("footage acquisition queue markdown surfaces story queue and shopping items
   assert.match(md, /Report-only queue/);
 });
 
+test("footage acquisition normalises mojibake entity labels before reporting", () => {
+  const plan = buildFlashLaneFootageAcquisitionPlan({
+    frameReport: { plans: [] },
+    segmentValidationReport: { segments: [] },
+    proofCandidateReport: {
+      candidates: [
+        {
+          story_id: "pokemon-story",
+          visuals: {
+            story_target_entities: ["Pok\u00c3\u00a9mon"],
+          },
+        },
+      ],
+    },
+  });
+  const md = renderFlashLaneFootageAcquisitionMarkdown(plan);
+
+  assert.deepEqual(plan.stories[0].story_entities, ["Pok\u00e9mon"]);
+  assert.match(md, /Pok\u00e9mon/);
+  assert.doesNotMatch(md, /Pok\u00c3/);
+});
+
 test("footage acquisition markdown does not hide exhausted source work behind blank windows", () => {
   const attemptedStarts = [36, 42, 48, 54, 60, 66, 72, 84, 96, 108, 120];
   const plan = buildFlashLaneFootageAcquisitionPlan({

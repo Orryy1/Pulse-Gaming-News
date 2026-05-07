@@ -403,6 +403,19 @@ test("proof candidate markdown is operator-readable and says when no render is s
   assert.match(md, /local-only/);
 });
 
+test("proof candidates normalise mojibake titles before reporting", () => {
+  const report = buildStudioV2ProofCandidateReport({
+    stories: [story("mojibake", "Pok\u00c3\u00a9mon fans don\u00e2\u20ac\u2122t need another broken caption")],
+    localAudioReports: [audioReport("mojibake")],
+    assetReports: [assetReport("mojibake", 1)],
+  });
+  const md = renderStudioV2ProofCandidatesMarkdown(report);
+
+  assert.equal(report.candidates[0].title, "Pok\u00e9mon fans don\u2019t need another broken caption");
+  assert.match(md, /Pok\u00e9mon fans don\u2019t need another broken caption/);
+  assert.doesNotMatch(md, /Pok\u00c3|\u00e2|\u00c2/);
+});
+
 test("studio:v2:proof-candidates command is registered and read-only", () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
   assert.equal(pkg.scripts["studio:v2:proof-candidates"], "node tools/studio-v2-proof-candidates.js");

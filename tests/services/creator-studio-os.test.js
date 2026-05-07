@@ -168,6 +168,31 @@ test("Creator Studio OS assigns premium Shorts to the Pulse Flash Lane", () => {
   assert.equal(packet.format_lane_policy.render_rules.clip_dominance_target, 0.55);
   assert.ok(packet.format_lane_policy.qa_gates.includes("approved_voice_required"));
   assert.ok(packet.format_lane_policy.render_rules.visual_backbone.includes("game_footage"));
+  assert.equal(packet.format_lane_policy.hook_discipline.speculative_language, false);
+  assert.equal(packet.format_lane_policy.hook_discipline.concrete_consequence_signal, true);
+  assert.ok(
+    !packet.format_lane_policy.warnings.includes("flash_lane_hook_uses_speculative_language"),
+  );
+});
+
+test("Creator Studio OS flags speculative Flash Lane hooks after analytics warning", () => {
+  const packet = buildProductionPacket(
+    baseStory({
+      id: "flash-speculative-hook",
+      title: "GTA 6 trailer might be closer than expected",
+      hook: "GTA 6 might be getting its next trailer soon.",
+      body: "Fans are reading into store updates and platform timing, but nothing official has been confirmed.",
+      full_script:
+        "GTA 6 might be getting its next trailer soon. Fans are reading into store updates and platform timing, but nothing official has been confirmed.",
+    }),
+  );
+
+  assert.equal(packet.format_lane_policy.lane_id, "pulse_flash_short");
+  assert.equal(packet.format_lane_policy.hook_discipline.speculative_language, true);
+  assert.ok(
+    packet.format_lane_policy.warnings.includes("flash_lane_hook_uses_speculative_language"),
+  );
+  assert.equal(packet.format_lane_policy.readiness_colour, "AMBER");
 });
 
 test("Creator Studio OS assigns release radar stories to the Pulse Briefing Lane", () => {

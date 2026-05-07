@@ -5,7 +5,7 @@ Date: 2026-05-07
 ## Branch
 
 - Branch: `codex/readiness-qa-failure-window`
-- Latest pushed commit entering this motion guard pass: `9a33eee2 Add YouTube analytics ingestion packet`
+- Latest pushed commit entering this footage-acquisition fallback pass: `a8d30f3b Harden Studio V2 trailer segment selection`
 - Deployed: no
 - Railway env vars: untouched
 - Production DB: untouched
@@ -27,6 +27,7 @@ Date: 2026-05-07
 - A read-only YouTube Analytics ingestion packet was added. It plans retention and traffic-source queries but blocks safely until analytics scope is approved.
 - Studio V2 official trailer source selection now skips PEGI/ESRB/rating-board references before deep-scan clip refs are created.
 - Studio V2 official trailer segment validation now preflight-rejects rating-board references and official segments that start inside the intro/rating window, before any frame extraction.
+- Flash Lane footage acquisition now uses Studio V2 proof-candidate exact subject groups when frame reports are thin, preventing false `no story entities` reports and creating concrete entity shopping lists.
 
 ## Validation
 
@@ -34,11 +35,12 @@ Date: 2026-05-07
 - Focused YouTube analytics packet tests: pass (`8/8`)
 - Focused official trailer clip-ref tests: pass (`23/23`)
 - Focused official trailer segment-validator tests: pass (`17/17`)
+- Focused Flash Lane footage acquisition tests: pass (`11/11`)
 - Focused Flash Lane motion/backbone/director tests: pass (`43/43`)
 - Combined Studio V2 motion safety tests: pass (`83/83`)
 - Focused TikTok diagnostics/dispatch tests: pass (`47/47`)
 - Focused voice/longform/monetisation tests: pass (`19/19`)
-- Full `npm test`: pass (`2104/2104`)
+- Full `npm test`: pass (`2106/2106`)
 - `npm run build`: pass
 
 ## Current Verdicts

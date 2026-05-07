@@ -2,11 +2,15 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 
 const {
   buildFlashLaneFootageAcquisitionPlan,
   renderFlashLaneFootageAcquisitionMarkdown,
 } = require("../../lib/studio/v2/flash-lane-footage-acquisition");
+
+const ROOT = path.resolve(__dirname, "..", "..");
 
 function frameReport() {
   return {
@@ -72,6 +76,52 @@ test("footage acquisition plan requests only missing validated entity windows", 
     ["GTA", "Red Dead"],
   );
   assert.ok(plan.shopping_list.every((item) => item.acquisition_mode === "operator_or_local_apply_only"));
+});
+
+test("footage acquisition plan falls back to proof-candidate entities when frame report is thin", () => {
+  const plan = buildFlashLaneFootageAcquisitionPlan({
+    storyId: "story-1",
+    frameReport: { plans: [] },
+    proofCandidateReport: {
+      candidates: [
+        {
+          story_id: "story-1",
+          visuals: {
+            exact_subject_groups: ["GTA", "Red Dead", "BioShock"],
+            frame_groups: ["GTA"],
+            validated_clip_entities: ["BioShock"],
+          },
+        },
+      ],
+    },
+    segmentValidationReport: {
+      segments: [
+        {
+          story_id: "story-1",
+          entity: "BioShock",
+          allowed_for_flash_lane: true,
+          segment_motion_class: "gameplay_action",
+          action_score: 84,
+        },
+        {
+          story_id: "story-1",
+          entity: "GTA",
+          allowed_for_flash_lane: false,
+          status: "rejected",
+          validation_reason: "segment_starts_in_trailer_intro_or_rating_window",
+          media_start_s: 24,
+        },
+      ],
+    },
+  });
+
+  assert.deepEqual(plan.story_entities, ["GTA", "Red Dead", "BioShock"]);
+  assert.deepEqual(plan.validated_entities, ["BioShock"]);
+  assert.deepEqual(
+    plan.shopping_list.map((item) => item.entity),
+    ["GTA", "Red Dead"],
+  );
+  assert.ok(!plan.blockers.includes("flash_lane_has_no_story_entities"));
 });
 
 test("footage acquisition plan pushes failed early trailer samples later", () => {
@@ -294,4 +344,14 @@ test("footage acquisition markdown does not hide exhausted source work behind bl
 
   assert.match(md, /alternate official source required/);
   assert.doesNotMatch(md, /windows:\s*$/m);
+});
+
+test("footage acquisition tool wires proof-candidate fallback without live side effects", () => {
+  const tool = fs.readFileSync(path.join(ROOT, "tools", "flash-lane-footage-acquisition.js"), "utf8");
+
+  assert.match(tool, /studio_v2_proof_candidates\.json/);
+  assert.match(tool, /proofCandidateReport/);
+  assert.match(tool, /--no-proof-candidates/);
+  assert.doesNotMatch(tool, /publishAll|uploadShort|postShort|autonomous\/publish/);
+  assert.doesNotMatch(tool, /UPDATE\s+stories|INSERT\s+INTO\s+stories|DELETE\s+FROM/i);
 });

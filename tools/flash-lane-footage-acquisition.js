@@ -13,6 +13,7 @@ const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
 const DEFAULT_FRAME_REPORT = path.join(OUT, "controlled_frame_extraction_worker_apply_local.json");
 const DEFAULT_SEGMENT_REPORT = path.join(OUT, "official_trailer_segment_validation_v1.json");
+const DEFAULT_PROOF_CANDIDATES = path.join(OUT, "studio_v2_proof_candidates.json");
 
 function parseArgs(argv) {
   const args = {
@@ -21,6 +22,7 @@ function parseArgs(argv) {
     storyId: null,
     frameReport: DEFAULT_FRAME_REPORT,
     segmentReport: DEFAULT_SEGMENT_REPORT,
+    proofCandidates: DEFAULT_PROOF_CANDIDATES,
   };
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i];
@@ -29,6 +31,8 @@ function parseArgs(argv) {
     else if (arg === "--story" || arg === "--story-id") args.storyId = argv[++i] || null;
     else if (arg === "--frame-report") args.frameReport = argv[++i] || DEFAULT_FRAME_REPORT;
     else if (arg === "--segment-report") args.segmentReport = argv[++i] || DEFAULT_SEGMENT_REPORT;
+    else if (arg === "--proof-candidates") args.proofCandidates = argv[++i] || DEFAULT_PROOF_CANDIDATES;
+    else if (arg === "--no-proof-candidates") args.proofCandidates = null;
   }
   return args;
 }
@@ -42,6 +46,8 @@ function printHelp() {
       "  --story-id <id>       Story id to inspect",
       "  --frame-report <p>    Controlled frame extraction worker report",
       "  --segment-report <p>  Official trailer segment validation report",
+      "  --proof-candidates <p> Studio V2 proof candidate report for exact subject fallback",
+      "  --no-proof-candidates Disable proof-candidate fallback",
       "  --json                Print JSON instead of Markdown",
       "",
       "This command is report-only. It creates a shopping list for missing validated footage windows.",
@@ -55,6 +61,16 @@ async function readJson(filePath, label) {
   return { path: resolved, data: await fs.readJson(resolved) };
 }
 
+async function readJsonIfExists(filePath, label) {
+  if (!filePath) return null;
+  const resolved = path.resolve(ROOT, filePath);
+  if (!(await fs.pathExists(resolved))) {
+    process.stderr.write(`[flash-footage-acquisition] optional ${label} not found: ${resolved}\n`);
+    return null;
+  }
+  return { path: resolved, data: await fs.readJson(resolved) };
+}
+
 async function main() {
   const args = parseArgs(process.argv);
   if (args.help) {
@@ -63,13 +79,16 @@ async function main() {
   }
   const frame = await readJson(args.frameReport, "frame report");
   const segment = await readJson(args.segmentReport, "segment report");
+  const proofCandidates = await readJsonIfExists(args.proofCandidates, "proof candidate report");
   const plan = buildFlashLaneFootageAcquisitionPlan({
     storyId: args.storyId,
     frameReport: frame.data,
     segmentValidationReport: segment.data,
+    proofCandidateReport: proofCandidates?.data || null,
   });
   plan.frame_report_source = frame.path;
   plan.segment_report_source = segment.path;
+  plan.proof_candidate_report_source = proofCandidates?.path || null;
   const markdown = renderFlashLaneFootageAcquisitionMarkdown(plan);
 
   await fs.ensureDir(OUT);

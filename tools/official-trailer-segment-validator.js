@@ -9,6 +9,7 @@ try {
 } catch {}
 
 const {
+  buildOfficialTrailerClipsFromAcquisitionPlan,
   buildOfficialTrailerClipsFromFrameReport,
   DEFAULT_EXPLORATORY_START_SECONDS,
 } = require("../lib/studio/v2/official-trailer-clip-refs");
@@ -27,6 +28,7 @@ const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
 const DEFAULT_FRAME_REPORT = path.join(OUT, "controlled_frame_extraction_worker_v1.json");
 const DEFAULT_REFERENCE_REPORT = path.join(OUT, "official_trailer_references_v1.json");
+const DEFAULT_ACQUISITION_PLAN = path.join(OUT, "flash_lane_footage_acquisition_v1.json");
 
 function parseArgs(argv) {
   const args = {
@@ -35,6 +37,7 @@ function parseArgs(argv) {
     storyId: null,
     frameReport: DEFAULT_FRAME_REPORT,
     referenceReport: DEFAULT_REFERENCE_REPORT,
+    acquisitionPlan: null,
     previousValidationReport: null,
     noReferenceReport: false,
     mergePrevious: false,
@@ -60,6 +63,8 @@ function parseArgs(argv) {
       args.noReferenceReport = false;
     } else if (arg === "--no-reference-report" || arg === "--no-trailer-references") {
       args.noReferenceReport = true;
+    } else if (arg === "--acquisition-plan") {
+      args.acquisitionPlan = argv[++i] || DEFAULT_ACQUISITION_PLAN;
     } else if (arg === "--previous-validation-report") {
       args.previousValidationReport = argv[++i] || null;
     } else if (arg === "--merge-previous") {
@@ -106,6 +111,8 @@ function printHelp() {
       "  --frame-report <p>     Read a controlled frame extraction worker report",
       "  --reference-report <p> Read official trailer resolver references for alternate source scanning",
       "  --no-reference-report  Ignore test/output/official_trailer_references_v1.json",
+      "  --acquisition-plan <p>",
+      "                         Use Flash Lane shopping-list windows from test/output/flash_lane_footage_acquisition_v1.json",
       "  --previous-validation-report <p>",
       "                         Skip clip windows already sampled in a previous validation report",
       "  --merge-previous       Merge previous validation segments into the written report",
@@ -159,6 +166,16 @@ async function loadOptionalPreviousValidationReport(args) {
   return { report, filePath };
 }
 
+async function loadOptionalAcquisitionPlan(args) {
+  if (!args.acquisitionPlan) return { report: null, filePath: null };
+  const filePath = path.resolve(ROOT, args.acquisitionPlan);
+  if (!(await fs.pathExists(filePath))) {
+    throw new Error(`acquisition plan not found: ${filePath}`);
+  }
+  const report = await fs.readJson(filePath);
+  return { report, filePath };
+}
+
 function buildClipRefsFromReport(frameReport, referenceReport, storyId, args = {}) {
   const storyIds = storyId
     ? [storyId]
@@ -202,6 +219,7 @@ async function main() {
   const loaded = await loadFrameReport(args);
   const loadedReference = await loadOptionalReferenceReport(args);
   const loadedPrevious = await loadOptionalPreviousValidationReport(args);
+  const loadedAcquisition = await loadOptionalAcquisitionPlan(args);
   const scopedPreviousReport = loadedPrevious.report && args.storyId
     ? {
         ...loadedPrevious.report,
@@ -211,10 +229,16 @@ async function main() {
   const previousSegmentCount = Array.isArray(scopedPreviousReport?.segments)
     ? scopedPreviousReport.segments.length
     : 0;
-  const clipRefs = buildClipRefsFromReport(loaded.report, loadedReference.report, args.storyId, {
-    ...args,
-    maxSegments: previousSegmentCount > 0 ? args.maxSegments + previousSegmentCount : args.maxSegments,
-  });
+  const clipRefs = loadedAcquisition.report
+    ? buildOfficialTrailerClipsFromAcquisitionPlan(
+        loadedAcquisition.report,
+        loadedReference.report,
+        args.storyId,
+      )
+    : buildClipRefsFromReport(loaded.report, loadedReference.report, args.storyId, {
+        ...args,
+        maxSegments: previousSegmentCount > 0 ? args.maxSegments + previousSegmentCount : args.maxSegments,
+      });
   const filteredClipRefs = scopedPreviousReport
     ? filterPreviouslySampledClipRefs(clipRefs, scopedPreviousReport)
     : clipRefs;
@@ -242,6 +266,8 @@ async function main() {
   report.current_run = currentRun;
   report.frame_report_source = loaded.filePath;
   report.reference_report_source = loadedReference.filePath;
+  report.acquisition_plan_source = loadedAcquisition.filePath;
+  report.clip_refs_source = loadedAcquisition.report ? "flash_lane_acquisition_plan" : "frame_or_reference_report";
   report.clip_refs_input_count = clipRefs.length;
   report.clip_refs_filtered_previous_count = clipRefs.length - filteredClipRefs.length;
   report.clip_refs_filtered_exhausted_source_family_count = exhaustedFilter.skipped.length;
@@ -261,6 +287,8 @@ async function main() {
     report.current_run = currentRun;
     report.frame_report_source = loaded.filePath;
     report.reference_report_source = loadedReference.filePath;
+    report.acquisition_plan_source = loadedAcquisition.filePath;
+    report.clip_refs_source = loadedAcquisition.report ? "flash_lane_acquisition_plan" : "frame_or_reference_report";
     report.clip_refs_input_count = clipRefs.length;
     report.clip_refs_filtered_previous_count = clipRefs.length - filteredClipRefs.length;
     report.clip_refs_filtered_exhausted_source_family_count = exhaustedFilter.skipped.length;

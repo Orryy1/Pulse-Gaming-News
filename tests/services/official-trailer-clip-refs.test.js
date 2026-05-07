@@ -5,6 +5,7 @@ const assert = require("node:assert/strict");
 
 const {
   buildOfficialTrailerClipsFromFrameReport,
+  buildOfficialTrailerClipsFromAcquisitionPlan,
   DEFAULT_EXPLORATORY_START_SECONDS,
   safeClipStartFromFrame,
   scoreOfficialTrailerFrameForClip,
@@ -1119,4 +1120,94 @@ test("official clip refs use recommended trim timing from validated deep-scan se
   assert.equal(refs[0].provenance.segment_trim_recommended, true);
   assert.equal(refs[0].provenance.segment_original_start_s, 42);
   assert.equal(refs[0].provenance.segment_original_duration_s, 5);
+});
+
+test("official clip refs can be built from Flash Lane acquisition queue windows", () => {
+  const refs = buildOfficialTrailerClipsFromAcquisitionPlan(
+    {
+      stories: [
+        {
+          story_id: "story-1",
+          shopping_list: [
+            {
+              entity: "Red Dead",
+              suggested_windows: [
+                { start_s: 72, duration_s: 4 },
+                { start_s: 84, duration_s: 4 },
+              ],
+              reasons: ["find_validated_official_trailer_window"],
+            },
+          ],
+        },
+      ],
+    },
+    {
+      plans: [
+        {
+          story_id: "story-1",
+          references: [
+            {
+              source_url: "https://video.example/red-dead-trailer.m3u8",
+              source_type: "steam_movie",
+              entity: "Red Dead",
+              provider: "steam",
+              movie_name: "Red Dead Gameplay Trailer",
+              movie_id: "rdr2-1",
+              store_app_id: "1174180",
+            },
+            {
+              source_url: "https://video.example/gta-trailer.m3u8",
+              source_type: "steam_movie",
+              entity: "GTA",
+            },
+          ],
+        },
+      ],
+    },
+    "story-1",
+  );
+
+  assert.deepEqual(
+    refs.map((ref) => `${ref.entity}:${ref.mediaStartS}:${ref.durationS}`),
+    ["Red Dead:72:4", "Red Dead:84:4"],
+  );
+  assert.ok(refs.every((ref) => ref.path === "https://video.example/red-dead-trailer.m3u8"));
+  assert.ok(refs.every((ref) => ref.storyId === "story-1"));
+  assert.equal(refs[0].provenance.segment_selection_policy, "flash_lane_acquisition_queue");
+  assert.equal(refs[0].provenance.provider, "steam");
+  assert.equal(refs[0].provenance.movie_id, "rdr2-1");
+  assert.equal(refs[0].provenance.store_app_id, "1174180");
+});
+
+test("official clip refs from acquisition queue reject rating-board references", () => {
+  const refs = buildOfficialTrailerClipsFromAcquisitionPlan(
+    {
+      story_id: "story-1",
+      shopping_list: [
+        {
+          entity: "Red Dead",
+          suggested_windows: [{ start_s: 72, duration_s: 4 }],
+          reasons: ["find_validated_official_trailer_window"],
+        },
+      ],
+    },
+    {
+      plans: [
+        {
+          story_id: "story-1",
+          references: [
+            {
+              source_url: "https://video.example/red-dead-pegi.m3u8",
+              source_type: "steam_movie",
+              entity: "Red Dead",
+              movie_name: "Red Dead PEGI Rating Trailer",
+            },
+          ],
+        },
+      ],
+    },
+    "story-1",
+  );
+
+  assert.deepEqual(refs, []);
 });

@@ -760,6 +760,63 @@ test("segment validation merge can preserve the global ledger while rendering a 
   assert.doesNotMatch(markdown, /\| GTA \|/);
 });
 
+test("segment validation merge keeps dry-run metadata honest when preserving apply-local ledger", () => {
+  const previousReport = {
+    mode: "apply_local",
+    dry_run: false,
+    apply_local: true,
+    will_fetch_source_for_segment_samples: true,
+    segments: [
+      {
+        story_id: "rss_5b3abe925b27a199",
+        clip_key: "https://video.example/red-dead.m3u8|red-dead|72.00",
+        source_url: "https://video.example/red-dead.m3u8",
+        entity: "Red Dead",
+        media_start_s: 72,
+        status: "validated",
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+        segment_motion_class: "gameplay_action",
+        samples: [{ status: "extracted" }],
+      },
+    ],
+  };
+  const currentReport = {
+    mode: "dry_run",
+    dry_run: true,
+    apply_local: false,
+    will_fetch_source_for_segment_samples: false,
+    segments: [
+      {
+        story_id: "rss_5b3abe925b27a199",
+        clip_key: "https://video.example/red-dead.m3u8|red-dead|84.00",
+        source_url: "https://video.example/red-dead.m3u8",
+        entity: "Red Dead",
+        media_start_s: 84,
+        status: "would_validate",
+        segment_validated: false,
+        allowed_for_flash_lane: false,
+        segment_motion_class: "would_sample",
+        samples: [{ status: "would_sample" }],
+      },
+    ],
+  };
+
+  const merged = mergeOfficialTrailerSegmentReports(previousReport, currentReport, {
+    preserveUnscopedPrevious: true,
+  });
+
+  assert.equal(merged.mode, "dry_run");
+  assert.equal(merged.dry_run, true);
+  assert.equal(merged.apply_local, false);
+  assert.equal(merged.will_fetch_source_for_segment_samples, false);
+  assert.equal(merged.summary.samples_extracted, 1);
+  assert.equal(merged.summary.samples_would_extract, 1);
+  assert.equal(merged.merge.previous_apply_local, true);
+  assert.equal(merged.merge.current_apply_local, false);
+  assert.equal(merged.merge.preserved_previous_apply_local, true);
+});
+
 test("segment validation story filter excludes unscoped legacy rows for story-specific reports", () => {
   const scoped = filterSegmentsForStoryIds(
     [
@@ -957,4 +1014,17 @@ test("segment validation merge keeps previous validated clips and adds new scans
   assert.equal(merged.merge.previous_segment_count, 2);
   assert.equal(merged.merge.current_segment_count, 2);
   assert.equal(merged.merge.duplicate_segment_count, 1);
+});
+
+test("segment validator CLI can consume Flash Lane acquisition plans without live side effects", () => {
+  const tool = fs.readFileSync(
+    path.join(process.cwd(), "tools", "official-trailer-segment-validator.js"),
+    "utf8",
+  );
+
+  assert.match(tool, /buildOfficialTrailerClipsFromAcquisitionPlan/);
+  assert.match(tool, /--acquisition-plan/);
+  assert.match(tool, /flash_lane_footage_acquisition_v1\.json/);
+  assert.doesNotMatch(tool, /publishAll|uploadShort|postShort|autonomous\/publish/);
+  assert.doesNotMatch(tool, /UPDATE\s+stories|INSERT\s+INTO\s+stories|DELETE\s+FROM/i);
 });

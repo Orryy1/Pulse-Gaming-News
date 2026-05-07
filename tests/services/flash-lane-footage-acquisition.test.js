@@ -274,6 +274,49 @@ test("footage acquisition plan marks exhausted entities as alternate-source work
   assert.ok(gta.reasons.includes("alternate_official_source_required"));
 });
 
+test("footage acquisition plan marks exhausted source families as alternate-source work", () => {
+  const failedStarts = [36, 42, 48, 54, 60, 66];
+  const plan = buildFlashLaneFootageAcquisitionPlan({
+    storyId: "story-1",
+    frameReport: frameReport(),
+    segmentValidationReport: {
+      segments: [
+        {
+          story_id: "story-1",
+          entity: "BioShock",
+          allowed_for_flash_lane: true,
+          status: "accepted",
+          segment_motion_class: "gameplay_action",
+          action_score: 84,
+        },
+        ...["https://video.example/red-dead-launch.m3u8", "https://video.example/red-dead-60fps.m3u8"].flatMap(
+          (sourceUrl) =>
+            failedStarts.map((start) => ({
+              story_id: "story-1",
+              entity: "Red Dead",
+              source_url: sourceUrl,
+              reference_title: sourceUrl.includes("60fps")
+                ? "RDR2 60 FPS Trailer"
+                : "RDR2 Launch Trailer",
+              allowed_for_flash_lane: false,
+              status: "rejected",
+              validation_reason: "segment_contains_black_frame",
+              media_start_s: start,
+            })),
+        ),
+      ],
+    },
+  });
+
+  const redDead = plan.shopping_list.find((item) => item.entity === "Red Dead");
+  assert.equal(plan.next_best_action, "find_alternate_official_source_or_downgrade_story");
+  assert.equal(redDead.window_status, "alternate_official_source_required");
+  assert.equal(redDead.requires_alternate_official_source, true);
+  assert.equal(redDead.source_family_count, 2);
+  assert.equal(redDead.exhausted_source_family_count, 2);
+  assert.ok(redDead.reasons.includes("alternate_official_source_required"));
+});
+
 test("footage acquisition plan becomes proof-ready with enough validated windows", () => {
   const plan = buildFlashLaneFootageAcquisitionPlan({
     storyId: "story-1",

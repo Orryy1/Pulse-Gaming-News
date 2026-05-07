@@ -44,7 +44,11 @@ test("classifyLocalTtsFailure recognises transient socket resets and TTS timeout
 test("classifyLocalTtsProofFailure classifies duration, timestamps and unsafe voice issues", () => {
   assert.equal(classifyLocalTtsProofFailure({ durationSeconds: 58.9 }).code, "duration_too_short");
   assert.equal(classifyLocalTtsProofFailure({ durationSeconds: 77.2 }).code, "duration_too_long");
-  assert.equal(classifyLocalTtsProofFailure({ timestampsStamped: false }).code, "missing_timestamps");
+  assert.equal(classifyLocalTtsProofFailure({ durationSeconds: null }).code, "duration_unknown");
+  assert.equal(
+    classifyLocalTtsProofFailure({ durationSeconds: 66.2, timestampsStamped: false }).code,
+    "missing_timestamps",
+  );
   assert.equal(
     classifyLocalTtsProofFailure({
       durationSeconds: 66.2,

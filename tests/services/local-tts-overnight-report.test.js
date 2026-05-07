@@ -34,8 +34,11 @@ test("local TTS overnight report is green when all Liam proofs are accepted", ()
         {
           story_id: "rss_one",
           resolved_audio_path: "D:/pulse-data/media/test/output/rss_one_liam.mp3",
+          text_word_count: 192,
+          estimated_seconds: 66.8,
           duration_seconds: 66.2,
           duration_verdict: "pass",
+          local_voice_metadata: "stamped",
           local_voice_reference: ACCEPTED_REF,
         },
         {
@@ -53,9 +56,37 @@ test("local TTS overnight report is green when all Liam proofs are accepted", ()
 
   assert.equal(report.verdict, "GREEN");
   assert.equal(report.proof_batch.voice_ready_count, 2);
+  assert.equal(report.proof_batch.applied[0].word_count, 192);
+  assert.equal(report.proof_batch.applied[0].estimated_seconds, 66.8);
+  assert.equal(report.proof_batch.applied[0].wpm, 174);
+  assert.equal(report.proof_batch.applied[0].timestamp_verdict, "pass");
   assert.equal(report.proof_batch.rejected_count, 0);
   assert.equal(report.safety.production_voice_unchanged, true);
   assert.equal(report.safety.bad_fallback_voice_allowed, false);
+});
+
+test("local TTS overnight report trusts recovered doctor after-state over stale before-state", () => {
+  const report = buildLocalTtsOvernightReport({
+    doctorReport: {
+      verdict: "green",
+      action: "none",
+      failure_code: null,
+      before: {
+        ok: false,
+        status: "unreachable",
+        voice: { alias: null, loaded: false, refResolved: false },
+      },
+      after: {
+        ok: true,
+        status: "ok",
+        voice: { alias: "liam", loaded: true, refResolved: true },
+      },
+    },
+    audioApply: { applied: [] },
+  });
+
+  assert.equal(report.doctor.local_ready, true);
+  assert.equal(report.doctor.voice.alias, "liam");
 });
 
 test("local TTS overnight report stays amber when the batch recovered from a reset", () => {

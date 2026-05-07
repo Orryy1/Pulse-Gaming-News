@@ -369,3 +369,38 @@ test("apply local script extension audio records missing timestamps as a proof f
   assert.equal(result.applied[0].failure_code, "missing_timestamps");
   assert.match(result.applied[0].local_voice_metadata, /not_stamped:timestamps_missing/);
 });
+
+test("apply local script extension audio records duration measurement failures without aborting the batch", async () => {
+  const result = await applyLocalScriptExtensionAudio({
+    plan: {
+      drafts: [
+        {
+          story_id: "extended_measure_fails",
+          action: "ready_for_local_liam_audio",
+          proposed_full_script: "Ready script one. Follow Pulse Gaming so you never miss a beat.",
+          proposed_words: 190,
+          estimated_seconds: 64.4,
+        },
+        {
+          story_id: "extended_measure_ok",
+          action: "ready_for_local_liam_audio",
+          proposed_full_script: "Ready script two. Follow Pulse Gaming so you never miss a beat.",
+          proposed_words: 191,
+          estimated_seconds: 65.1,
+        },
+      ],
+    },
+    generateTts: async () => null,
+    measureDuration: async (outputRel) => {
+      if (outputRel.includes("extended_measure_fails")) throw new Error("ffprobe duration failed");
+      return 66.4;
+    },
+  });
+
+  assert.equal(result.applied.length, 2);
+  assert.equal(result.applied[0].story_id, "extended_measure_fails");
+  assert.equal(result.applied[0].duration_verdict, "unknown");
+  assert.equal(result.applied[0].failure_code, "duration_unknown");
+  assert.equal(result.applied[1].story_id, "extended_measure_ok");
+  assert.equal(result.applied[1].duration_verdict, "pass");
+});

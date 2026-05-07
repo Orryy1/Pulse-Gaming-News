@@ -323,6 +323,7 @@ test("apply-local audio repair writes only queued Liam audio proofs", async () =
   assert.match(generated[0].outputRel, /test[\\/]output[\\/]local-media-repair[\\/]audio[\\/]rss_voice_bad_liam\.mp3/);
   assert.equal(result.applied[0].duration_seconds, 66.2);
   assert.equal(result.applied[0].duration_verdict, "pass");
+  assert.equal(result.applied[0].estimated_seconds, report.items[0].runtime.estimatedSeconds);
   assert.match(result.applied[0].resolved_audio_path, /D:[\\/]pulse-data[\\/]media/);
   assert.match(renderLocalMediaRepairApplyMarkdown(result), /Local Media Repair Audio Apply/);
   assert.equal(result.safety.mutates_production_db, false);
@@ -523,4 +524,57 @@ test("apply-local audio repair records missing timestamps as a proof failure", a
   assert.equal(result.applied[0].duration_verdict, "pass");
   assert.equal(result.applied[0].failure_code, "missing_timestamps");
   assert.match(result.applied[0].local_voice_metadata, /not_stamped:timestamps_missing/);
+});
+
+test("apply-local audio repair records duration measurement failures without aborting the batch", async () => {
+  const stories = [
+    {
+      id: "rss_measure_fails",
+      title: "GTA 6 trailer evidence is stacking up",
+      approved: true,
+      full_script: "GTA 6 has a confirmed clue today. ".repeat(30),
+      audio_path: "output/audio/rss_measure_fails.mp3",
+      exported_path: "output/final/rss_measure_fails.mp4",
+      breaking_score: 90,
+    },
+    {
+      id: "rss_measure_ok",
+      title: "Xbox confirms a new update",
+      approved: true,
+      full_script: "Xbox confirmed new details for players today. ".repeat(32),
+      audio_path: "output/audio/rss_measure_ok.mp3",
+      exported_path: "output/final/rss_measure_ok.mp4",
+      breaking_score: 80,
+    },
+  ];
+  const report = buildLocalMediaRepairQueue({
+    stories,
+    mediaByStoryId: {
+      rss_measure_fails: { audioExists: true, finalExists: true, finalDurationSeconds: 64 },
+      rss_measure_ok: { audioExists: true, finalExists: true, finalDurationSeconds: 64 },
+    },
+    voiceAuditByStoryId: {
+      rss_measure_fails: { verdict: "review", blockers: ["approved_voice_metadata_missing"] },
+      rss_measure_ok: { verdict: "review", blockers: ["approved_voice_metadata_missing"] },
+    },
+    localTts: READY_TTS,
+  });
+
+  const result = await applyLocalAudioRepairs({
+    report,
+    storiesById: Object.fromEntries(stories.map((story) => [story.id, story])),
+    generateTts: async () => null,
+    measureDuration: async (outputRel) => {
+      if (outputRel.includes("rss_measure_fails")) throw new Error("ffprobe duration failed");
+      return 66.1;
+    },
+  });
+
+  assert.equal(result.applied.length, 2);
+  assert.equal(result.applied[0].story_id, "rss_measure_fails");
+  assert.equal(result.applied[0].duration_verdict, "unknown");
+  assert.equal(result.applied[0].failure_code, "duration_unknown");
+  assert.match(result.applied[0].failure_message, /duration/i);
+  assert.equal(result.applied[1].story_id, "rss_measure_ok");
+  assert.equal(result.applied[1].duration_verdict, "pass");
 });

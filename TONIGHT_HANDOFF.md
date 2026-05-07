@@ -5,7 +5,7 @@ Date: 2026-05-07
 ## Branch
 
 - Branch: `codex/readiness-qa-failure-window`
-- Latest pushed commit entering this analytics packet refresh: `d5dd7195 Document analytics learning readiness`
+- Latest pushed commit entering this motion guard pass: `9a33eee2 Add YouTube analytics ingestion packet`
 - Deployed: no
 - Railway env vars: untouched
 - Production DB: untouched
@@ -25,14 +25,20 @@ Date: 2026-05-07
 - Analytics capability doctor was run and documented. Pulse has local/public-counter learning, but not full YouTube Studio analytics yet.
 - Learning and comment-digest Markdown renderers now have regression tests that prevent mojibake in public operator reports.
 - A read-only YouTube Analytics ingestion packet was added. It plans retention and traffic-source queries but blocks safely until analytics scope is approved.
+- Studio V2 official trailer source selection now skips PEGI/ESRB/rating-board references before deep-scan clip refs are created.
+- Studio V2 official trailer segment validation now preflight-rejects rating-board references and official segments that start inside the intro/rating window, before any frame extraction.
 
 ## Validation
 
 - Focused analytics/intelligence tests: pass (`32/32`)
 - Focused YouTube analytics packet tests: pass (`8/8`)
+- Focused official trailer clip-ref tests: pass (`23/23`)
+- Focused official trailer segment-validator tests: pass (`17/17`)
+- Focused Flash Lane motion/backbone/director tests: pass (`43/43`)
+- Combined Studio V2 motion safety tests: pass (`83/83`)
 - Focused TikTok diagnostics/dispatch tests: pass (`47/47`)
 - Focused voice/longform/monetisation tests: pass (`19/19`)
-- Full `npm test`: pass (`2101/2101`)
+- Full `npm test`: pass (`2104/2104`)
 - `npm run build`: pass
 
 ## Current Verdicts
@@ -71,7 +77,7 @@ Date: 2026-05-07
 
 ## Biggest Remaining Blocker
 
-The system can now produce acceptable local Liam narration, but it still cannot safely produce a Flash Lane Studio V2 proof because the official motion windows are not yet good enough. The current gates correctly block repeated, low-detail, black or weak gameplay-looking segments.
+The system can now produce acceptable local Liam narration, but it still cannot safely produce a Flash Lane Studio V2 proof because the official motion windows are not yet good enough. The current gates correctly block repeated, low-detail, black, rating-board, intro-window or weak gameplay-looking segments.
 
 ## Morning Approval Items
 

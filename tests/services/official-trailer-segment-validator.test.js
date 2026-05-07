@@ -136,6 +136,68 @@ test("official trailer segment validator rejects PEGI/ESRB/title-card-like windo
   assert.equal(report.segments[0].allowed_for_flash_lane, false);
 });
 
+test("official trailer segment validator preflight-rejects rating-board references before extraction", async () => {
+  const outputRoot = tempOutputRoot("rating-board-reference");
+  await cleanTempRoot(outputRoot);
+  let extractorCalls = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        movieName: "GTA Official PEGI Rating Trailer",
+        provenance: {
+          movie_name: "GTA Official PEGI Rating Trailer",
+        },
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: async () => {
+        extractorCalls += 1;
+        throw new Error("rating-board reference should be rejected before extraction");
+      },
+      inspectFrame: async (outputPath) => passingQa(outputPath),
+    },
+  );
+
+  assert.equal(extractorCalls, 0);
+  assert.equal(report.summary.samples_extracted, 0);
+  assert.equal(report.summary.segments_rejected, 1);
+  assert.equal(report.segments[0].validation_reason, "segment_source_is_rating_board_reference");
+  assert.equal(report.segments[0].segment_validated, false);
+  assert.equal(report.segments[0].allowed_for_flash_lane, false);
+});
+
+test("official trailer segment validator preflight-rejects official segments still inside intro material", async () => {
+  const outputRoot = tempOutputRoot("intro-window");
+  await cleanTempRoot(outputRoot);
+  let extractorCalls = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        mediaStartS: 23,
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: async () => {
+        extractorCalls += 1;
+        throw new Error("intro segment should be rejected before extraction");
+      },
+      inspectFrame: async (outputPath) => passingQa(outputPath),
+    },
+  );
+
+  assert.equal(extractorCalls, 0);
+  assert.equal(report.summary.samples_extracted, 0);
+  assert.equal(report.summary.segments_rejected, 1);
+  assert.equal(report.segments[0].validation_reason, "segment_starts_in_trailer_intro_or_rating_window");
+  assert.equal(report.segments[0].media_start_s, 23);
+});
+
 test("official trailer segment validator rejects promo CTA card windows", async () => {
   const outputRoot = tempOutputRoot("promo-cta-card");
   await cleanTempRoot(outputRoot);

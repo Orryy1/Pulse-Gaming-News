@@ -1,12 +1,12 @@
 # Overnight Status Snapshot
 
-Generated: 2026-05-07 03:30 BST
+Generated: 2026-05-07 04:20 BST
 
 ## Branch
 
 - Current branch: `codex/readiness-qa-failure-window`
-- Latest pushed commit entering this analytics packet refresh: `d5dd7195 Document analytics learning readiness`
-- Working tree during this snapshot: read-only YouTube Analytics ingestion packet
+- Latest pushed commit entering this motion guard pass: `9a33eee2 Add YouTube analytics ingestion packet`
+- Working tree during this snapshot: Studio V2 official trailer source and segment guard hardening
 - Deployed: no
 
 ## Safety
@@ -22,11 +22,13 @@ Generated: 2026-05-07 03:30 BST
 
 ## Validation
 
+- Focused official trailer clip-ref tests: pass (`23/23`)
+- Focused official trailer segment-validator tests: pass (`17/17`)
+- Focused Flash Lane motion/backbone/director tests: pass (`43/43`)
+- Combined Studio V2 motion safety tests: pass (`83/83`)
 - Focused analytics/intelligence tests: pass (`32/32`)
 - Focused YouTube analytics packet tests: pass (`8/8`)
-- Focused TikTok diagnostics and dispatch tests: pass (`47/47`)
-- Focused voice, longform and monetisation tests: pass (`19/19`)
-- Full `npm test`: pass (`2101/2101`)
+- Full `npm test`: pass (`2104/2104`)
 - `npm run build`: pass
 
 ## Local TTS
@@ -50,6 +52,7 @@ Generated: 2026-05-07 03:30 BST
 - Motion gap report: `MOTION_ACQUISITION_OVERNIGHT_REPORT.md`
 - `1szzhy9` segment validation found `0/16` usable segments after strict gameplay/taste gates.
 - Rejection pattern: repetitive samples, insufficient gameplay action, low-detail frames, black frames and sample extraction failures.
+- New guardrail: resolver references that are only PEGI/ESRB/rating-board material are filtered before clip refs, and official trailer segments before 36s are rejected before extraction.
 - Live status: local/report-only
 
 ## TikTok

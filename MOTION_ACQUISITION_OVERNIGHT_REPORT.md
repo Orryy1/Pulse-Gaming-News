@@ -2,59 +2,24 @@
 
 This is local-only and report-only. It turns blocked Flash Lane proofs into concrete acquisition work.
 
+## Guardrail Update
+
+- PEGI/ESRB/rating-board resolver references are now skipped before deep-scan clip refs are created.
+- Official trailer segments that start before 36s are now preflight-rejected before extraction.
+- This directly targets repeated age-rating cards, title slates and weak trailer-opening material seen in the reviewed Studio V2 proof.
+- No render defaults, production DB rows, Railway settings, OAuth state or social posting behaviour changed.
+
 ## Summary
 
 - Ready local Flash proofs: 0
 - Blocked Flash proofs: 20
-- Closest story: rss_5b3abe925b27a199
-
-## rss_5b3abe925b27a199
-
-- Title: GTA 6 Owner Passed On A Sequel To A Legacy Franchise, And We're Dying To Know Which One
-- Recommendation: do_not_render_yet
-- Blockers: flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources
-- Liam audio: approved_local_liam_audio_ready
-- Exact assets: 10
-- Motion frames: 1
-- Validated clip refs: 0
-- Validated clip sources: 0
-- Validated entities: none
-- Missing entities: GTA
-- Latest render proof: fail (1 fail / 1 warn)
-
-### Next Steps
-
-- review_latest_render_forensic_warnings_before_pilot
-- find_3_more_validated_gameplay_clip_windows
-- find_3_more_validated_clip_sources
-- cover_missing_entities:GTA
-
-### Safe Commands
-
-- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_5b3abe925b27a199`
-- plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_5b3abe925b27a199`
-- extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_5b3abe925b27a199 --apply-local`
-- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_5b3abe925b27a199 --apply-local --deep-scan`
-- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story rss_5b3abe925b27a199`
-
-### Segment Rejections
-
-- none
-
-### Latest Render Forensic Warnings
-
-- Issue codes: visual_repetition, rendered_frame_taste
-- Repeat pair count: 7
-- Repeat pair times: 4.5s/7.5s, 19.5s/22.5s, 19.5s/24s, 21s/24s, 45s/48s, 51s/54s, 55.5s/58.5s
-- Weak rendered frame count: 3
-- Weak rendered frames: 0s text_card_frame, 1.5s text_card_frame, 3s text_card_frame
-- Rating/title frame count: 3
+- Closest story: 1szzhy9
 
 ## 1szzhy9
 
 - Title: Marathon Drops To 15K Daily CCU Peak On Steam, Exits Top 50 On PlayStation & Top 100 On Xbox Best-Sellers Lists
 - Recommendation: do_not_render_yet
-- Blockers: flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, latest_render_forensic_warnings
+- Blockers: flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources
 - Liam audio: approved_local_liam_audio_ready
 - Exact assets: 6
 - Motion frames: 0
@@ -70,7 +35,6 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - find_3_more_validated_gameplay_clip_windows
 - find_3_more_validated_clip_sources
 - cover_missing_entities:Marathon
-- repair_motion_quality_before_next_proof
 
 ### Safe Commands
 
@@ -96,6 +60,49 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - Weak rendered frame count: 2
 - Weak rendered frames: 16.5s dead_dark_frame, 22.5s washed_low_detail_frame
 - Rating/title frame count: 0
+
+## rss_5b3abe925b27a199
+
+- Title: GTA 6 Owner Passed On A Sequel To A Legacy Franchise, And We're Dying To Know Which One
+- Recommendation: do_not_render_yet
+- Blockers: flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, latest_render_forensic_warnings
+- Liam audio: approved_local_liam_audio_ready
+- Exact assets: 10
+- Motion frames: 0
+- Validated clip refs: 0
+- Validated clip sources: 0
+- Validated entities: none
+- Missing entities: GTA
+- Latest render proof: fail (1 fail / 1 warn)
+
+### Next Steps
+
+- review_latest_render_forensic_warnings_before_pilot
+- find_3_more_validated_gameplay_clip_windows
+- find_3_more_validated_clip_sources
+- cover_missing_entities:GTA
+- repair_motion_quality_before_next_proof
+
+### Safe Commands
+
+- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_5b3abe925b27a199`
+- plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_5b3abe925b27a199`
+- extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_5b3abe925b27a199 --apply-local`
+- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_5b3abe925b27a199 --apply-local --deep-scan`
+- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story rss_5b3abe925b27a199`
+
+### Segment Rejections
+
+- none
+
+### Latest Render Forensic Warnings
+
+- Issue codes: visual_repetition, rendered_frame_taste
+- Repeat pair count: 7
+- Repeat pair times: 4.5s/7.5s, 19.5s/22.5s, 19.5s/24s, 21s/24s, 45s/48s, 51s/54s, 55.5s/58.5s
+- Weak rendered frame count: 3
+- Weak rendered frames: 0s text_card_frame, 1.5s text_card_frame, 3s text_card_frame
+- Rating/title frame count: 3
 
 ## 1t0u9o4
 

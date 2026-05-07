@@ -4,6 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
+  assertPromotionPacketStoryRequest,
   buildStudioV2PromotionPacket,
   renderStudioV2PromotionPacketMarkdown,
 } = require("../../lib/studio/v2/promotion-packet");
@@ -256,6 +257,7 @@ test("Studio V2 promotion packet blocks stale clip evidence when current segment
       generated_at: "2026-05-07T02:04:42.959Z",
       segments: [
         {
+          story_id: "1szzhy9",
           entity: "Marathon",
           segment_validated: false,
           allowed_for_flash_lane: false,
@@ -277,6 +279,41 @@ test("Studio V2 promotion packet blocks stale clip evidence when current segment
   const markdown = renderStudioV2PromotionPacketMarkdown(packet);
   assert.match(markdown, /Current validated clip refs/i);
   assert.match(markdown, /Current segment rejections/i);
+});
+
+test("Studio V2 promotion packet ignores segment validation evidence from a different story", () => {
+  const packet = buildStudioV2PromotionPacket({
+    stillDeckReport: baseStillDeckReport({ story_id: "1szzhy9" }),
+    qaReport: baseQaReport(),
+    segmentValidationReport: {
+      generated_at: "2026-05-07T02:34:36.206Z",
+      segments: [
+        {
+          story_id: "rss_5b3abe925b27a199",
+          entity: "GTA",
+          segment_validated: false,
+          allowed_for_flash_lane: false,
+          validation_reason: "segment_contains_black_frame",
+          source_url: "https://video.example.test/gta.m3u8",
+        },
+      ],
+    },
+    now: "2026-05-07T02:40:00.000Z",
+  });
+
+  assert.equal(packet.metrics.current_segment_rejected_count, null);
+  assert.equal(packet.metrics.current_validated_clip_refs, null);
+  assert.ok(!packet.blockers.includes("current_segment_validation_insufficient"));
+});
+
+test("Studio V2 promotion packet rejects a requested story id that does not match the still-deck report", () => {
+  assert.throws(
+    () =>
+      assertPromotionPacketStoryRequest(baseStillDeckReport({ story_id: "1szzhy9" }), {
+        storyId: "rss_5b3abe925b27a199",
+      }),
+    /still-deck report is for 1szzhy9, not rss_5b3abe925b27a199/,
+  );
 });
 
 test("Studio V2 promotion packet blocks production recommendation when safety is not local-only", () => {

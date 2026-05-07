@@ -5,6 +5,7 @@ const path = require("node:path");
 const fs = require("fs-extra");
 
 const {
+  assertPromotionPacketStoryRequest,
   buildStudioV2PromotionPacket,
   renderStudioV2PromotionPacketMarkdown,
 } = require("../lib/studio/v2/promotion-packet");
@@ -26,6 +27,7 @@ function parseArgs(argv) {
     outDir: DEFAULT_OUT_DIR,
     rootMarkdown: ROOT_MARKDOWN,
     noRootMarkdown: false,
+    storyId: null,
   };
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i];
@@ -33,6 +35,7 @@ function parseArgs(argv) {
     else if (arg === "--out-dir") args.outDir = path.resolve(argv[++i] || "");
     else if (arg === "--root-markdown") args.rootMarkdown = path.resolve(argv[++i] || "");
     else if (arg === "--no-root-markdown") args.noRootMarkdown = true;
+    else if (arg === "--story" || arg === "--story-id") args.storyId = argv[++i] || null;
     else if (arg === "--help" || arg === "-?") args.help = true;
   }
   return args;
@@ -45,6 +48,7 @@ function printHelp() {
       "",
       "Options:",
       "  --report <path>         Studio V2 still-deck report JSON",
+      "  --story-id <id>         Refuse to build if the report is for a different story",
       "  --out-dir <path>        Output directory, default test/output/studio-v2-promotion",
       "  --root-markdown <path>  Root markdown packet path",
       "  --no-root-markdown      Only write under --out-dir",
@@ -71,6 +75,7 @@ async function main() {
   }
 
   const stillDeckReport = await fs.readJson(args.report);
+  assertPromotionPacketStoryRequest(stillDeckReport, { storyId: args.storyId });
   const qaPath = stillDeckReport?.renders?.enriched?.qa
     ? path.resolve(ROOT, stillDeckReport.renders.enriched.qa)
     : null;

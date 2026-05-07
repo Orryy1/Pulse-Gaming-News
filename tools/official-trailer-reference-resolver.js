@@ -13,6 +13,10 @@ const {
   buildOfficialTrailerReferenceReport,
   renderOfficialTrailerReferenceMarkdown,
 } = require("../lib/official-trailer-reference-resolver");
+const {
+  dedupeAssets,
+  loadStillsAssetMapFromFiles,
+} = require("../lib/official-trailer-reference-report-loader");
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
@@ -145,53 +149,10 @@ async function loadStories(args) {
   return { stories: buildDemoStories(), mode: "fixture_fallback" };
 }
 
-async function readJsonIfExists(filePath) {
-  if (!filePath || !(await fs.pathExists(filePath))) return null;
-  return fs.readJson(filePath);
-}
-
-function reportAssetsForPlan(plan) {
-  return [
-    ...(Array.isArray(plan?.applied_assets) ? plan.applied_assets : []),
-    ...(Array.isArray(plan?.would_fetch) ? plan.would_fetch : []),
-    ...(Array.isArray(plan?.provenance) ? plan.provenance : []),
-  ].filter(Boolean);
-}
-
-function assetKey(asset) {
-  return [
-    asset?.source_url || asset?.url || asset?.local_path || "",
-    asset?.store_app_id || "",
-    asset?.entity || "",
-    asset?.source_type || asset?.type || "",
-  ].join("|");
-}
-
-function dedupeAssets(assets) {
-  const seen = new Set();
-  const deduped = [];
-  for (const asset of assets) {
-    const key = assetKey(asset);
-    if (!key.trim() || seen.has(key)) continue;
-    seen.add(key);
-    deduped.push(asset);
-  }
-  return deduped;
-}
-
 async function loadStillsAssetMap(args) {
   if (args.noStillsReport) return { map: new Map(), source: null };
   const candidates = args.stillsReport ? [path.resolve(ROOT, args.stillsReport)] : DEFAULT_STILLS_REPORTS;
-  for (const filePath of candidates) {
-    const report = await readJsonIfExists(filePath);
-    if (!report || !Array.isArray(report.plans)) continue;
-    const map = new Map();
-    for (const plan of report.plans) {
-      map.set(plan.story_id, dedupeAssets(reportAssetsForPlan(plan)));
-    }
-    return { map, source: filePath };
-  }
-  return { map: new Map(), source: null };
+  return loadStillsAssetMapFromFiles(candidates);
 }
 
 function attachVerifiedStoreAssets(stories, assetMap) {
@@ -259,6 +220,7 @@ async function main() {
   });
   report.story_mode = mode;
   report.stills_report_source = stills.source;
+  report.stills_report_sources = stills.sources || [];
   report.network_metadata_lookup = {
     steam_appdetails_enabled: !args.offline,
     downloads_allowed: false,

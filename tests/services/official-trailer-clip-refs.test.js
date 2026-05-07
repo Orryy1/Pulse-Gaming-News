@@ -557,6 +557,105 @@ test("official clip refs deep-scan alternate official sources from a resolver re
   assert.equal(refs[1].provenance.movie_name, "Gameplay Update Trailer");
 });
 
+test("official clip refs deep-scan balances entities before repeated same-entity sources", () => {
+  const refs = buildOfficialTrailerClipsFromFrameReport(
+    { plans: [{ story_id: "story-1", frames: [] }] },
+    "story-1",
+    {
+      includeExploratoryWindows: true,
+      exploratoryStartSeconds: [36, 42],
+      maxClips: 4,
+      referenceReport: {
+        plans: [
+          {
+            story_id: "story-1",
+            references: [
+              {
+                source_type: "steam_movie",
+                provider: "steam",
+                source_url: "https://video.example/gta-a.m3u8",
+                entity: "GTA",
+                downloads_allowed: false,
+              },
+              {
+                source_type: "steam_movie",
+                provider: "steam",
+                source_url: "https://video.example/gta-b.m3u8",
+                entity: "GTA",
+                downloads_allowed: false,
+              },
+              {
+                source_type: "steam_movie",
+                provider: "steam",
+                source_url: "https://video.example/reddead.m3u8",
+                entity: "Red Dead",
+                downloads_allowed: false,
+              },
+              {
+                source_type: "steam_movie",
+                provider: "steam",
+                source_url: "https://video.example/bioshock.m3u8",
+                entity: "BioShock",
+                downloads_allowed: false,
+              },
+            ],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.deepEqual(
+    refs.slice(0, 3).map((ref) => ref.entity),
+    ["GTA", "Red Dead", "BioShock"],
+  );
+  assert.equal(new Set(refs.map((ref) => ref.entity)).size, 3);
+});
+
+test("official clip refs deep-scan rotates later start windows before exhausting early starts", () => {
+  const refs = buildOfficialTrailerClipsFromFrameReport(
+    { plans: [{ story_id: "story-1", frames: [] }] },
+    "story-1",
+    {
+      includeExploratoryWindows: true,
+      exploratoryStartSeconds: [36, 42, 48],
+      maxClips: 6,
+      referenceReport: {
+        plans: [
+          {
+            story_id: "story-1",
+            references: [
+              {
+                source_type: "steam_movie",
+                source_url: "https://video.example/gta.m3u8",
+                entity: "GTA",
+                downloads_allowed: false,
+              },
+              {
+                source_type: "steam_movie",
+                source_url: "https://video.example/reddead.m3u8",
+                entity: "Red Dead",
+                downloads_allowed: false,
+              },
+              {
+                source_type: "steam_movie",
+                source_url: "https://video.example/bioshock.m3u8",
+                entity: "BioShock",
+                downloads_allowed: false,
+              },
+            ],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.deepEqual(
+    refs.map((ref) => `${ref.entity}:${ref.mediaStartS}`),
+    ["GTA:36", "Red Dead:36", "BioShock:36", "GTA:42", "Red Dead:42", "BioShock:42"],
+  );
+});
+
 test("official clip refs ignore unsafe or downloadable resolver references", () => {
   const refs = buildOfficialTrailerClipsFromFrameReport(
     { plans: [{ story_id: "story-1", frames: [] }] },

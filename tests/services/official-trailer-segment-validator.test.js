@@ -104,6 +104,7 @@ test("official trailer segment validator apply-local marks clean sampled windows
   assert.equal(report.mode, "apply_local");
   assert.equal(report.summary.segments_validated, 1);
   assert.equal(report.segments[0].segment_validated, true);
+  assert.equal(report.segments[0].story_id, "rss_5b3abe925b27a199");
   assert.equal(report.segments[0].allowed_for_flash_lane, true);
   assert.equal(report.segments[0].validation_reason, "segment_samples_passed");
   assert.equal(report.segments[0].segment_motion_class, "gameplay_action");

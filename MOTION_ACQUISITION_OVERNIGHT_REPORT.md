@@ -6,60 +6,16 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 
 - Ready local Flash proofs: 0
 - Blocked Flash proofs: 20
-- Closest story: 1szzhy9
-
-## 1szzhy9
-
-- Title: Marathon Drops To 15K Daily CCU Peak On Steam, Exits Top 50 On PlayStation & Top 100 On Xbox Best-Sellers Lists
-- Recommendation: do_not_render_yet
-- Blockers: flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources
-- Liam audio: approved_local_liam_audio_ready
-- Exact assets: 6
-- Motion frames: 8
-- Validated clip refs: 0
-- Validated clip sources: 0
-- Validated entities: none
-- Missing entities: Marathon
-- Latest render proof: warn (0 fail / 2 warn)
-
-### Next Steps
-
-- review_latest_render_forensic_warnings_before_pilot
-- find_3_more_validated_gameplay_clip_windows
-- find_3_more_validated_clip_sources
-- cover_missing_entities:Marathon
-
-### Safe Commands
-
-- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id 1szzhy9`
-- plan_frame_sampling: `npm run media:plan-frames -- --story-id 1szzhy9`
-- extract_safe_local_frames: `npm run media:extract-frames -- --story-id 1szzhy9 --apply-local`
-- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id 1szzhy9 --apply-local --deep-scan`
-- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story 1szzhy9`
-
-### Segment Rejections
-
-- segment_contains_title_or_rating_card: 1
-- segment_contains_low_detail_frame: 3
-- segment_lacks_gameplay_action_samples: 2
-
-### Latest Render Forensic Warnings
-
-- Issue codes: visual_repetition, rendered_frame_taste
-- Repeat pair count: 2
-- Repeat pair times: 46.5s/49.5s, 55.5s/58.5s
-- Weak rendered frame count: 2
-- Weak rendered frames: 16.5s dead_dark_frame, 22.5s washed_low_detail_frame
-- Rating/title frame count: 0
+- Closest story: rss_5b3abe925b27a199
 
 ## rss_5b3abe925b27a199
 
 - Title: GTA 6 Owner Passed On A Sequel To A Legacy Franchise, And We're Dying To Know Which One
 - Recommendation: do_not_render_yet
-- Blockers: flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, latest_render_forensic_warnings
+- Blockers: flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources
 - Liam audio: approved_local_liam_audio_ready
 - Exact assets: 10
-- Motion frames: 0
+- Motion frames: 1
 - Validated clip refs: 0
 - Validated clip sources: 0
 - Validated entities: none
@@ -72,7 +28,6 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - find_3_more_validated_gameplay_clip_windows
 - find_3_more_validated_clip_sources
 - cover_missing_entities:GTA
-- repair_motion_quality_before_next_proof
 
 ### Safe Commands
 
@@ -84,7 +39,12 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 
 ### Segment Rejections
 
-- none
+- segment_samples_too_repetitive: 6
+- segment_contains_black_frame: 6
+- segment_contains_title_or_rating_card: 1
+- segment_action_score_below_flash_threshold: 1
+- segment_lacks_gameplay_action_samples: 2
+- segment_contains_low_detail_frame: 2
 
 ### Latest Render Forensic Warnings
 
@@ -94,6 +54,49 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - Weak rendered frame count: 3
 - Weak rendered frames: 0s text_card_frame, 1.5s text_card_frame, 3s text_card_frame
 - Rating/title frame count: 3
+
+## 1szzhy9
+
+- Title: Marathon Drops To 15K Daily CCU Peak On Steam, Exits Top 50 On PlayStation & Top 100 On Xbox Best-Sellers Lists
+- Recommendation: do_not_render_yet
+- Blockers: flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, latest_render_forensic_warnings
+- Liam audio: approved_local_liam_audio_ready
+- Exact assets: 6
+- Motion frames: 0
+- Validated clip refs: 0
+- Validated clip sources: 0
+- Validated entities: none
+- Missing entities: Marathon
+- Latest render proof: warn (0 fail / 2 warn)
+
+### Next Steps
+
+- review_latest_render_forensic_warnings_before_pilot
+- find_3_more_validated_gameplay_clip_windows
+- find_3_more_validated_clip_sources
+- cover_missing_entities:Marathon
+- repair_motion_quality_before_next_proof
+
+### Safe Commands
+
+- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id 1szzhy9`
+- plan_frame_sampling: `npm run media:plan-frames -- --story-id 1szzhy9`
+- extract_safe_local_frames: `npm run media:extract-frames -- --story-id 1szzhy9 --apply-local`
+- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id 1szzhy9 --apply-local --deep-scan`
+- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story 1szzhy9`
+
+### Segment Rejections
+
+- none
+
+### Latest Render Forensic Warnings
+
+- Issue codes: visual_repetition, rendered_frame_taste
+- Repeat pair count: 2
+- Repeat pair times: 46.5s/49.5s, 55.5s/58.5s
+- Weak rendered frame count: 2
+- Weak rendered frames: 16.5s dead_dark_frame, 22.5s washed_low_detail_frame
+- Rating/title frame count: 0
 
 ## 1t0u9o4
 

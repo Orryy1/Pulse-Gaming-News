@@ -5,7 +5,7 @@ Date: 2026-05-07
 ## Branch
 
 - Branch: `codex/readiness-qa-failure-window`
-- Latest pushed commit entering this resolver-targeting pass: `7135e83f Harden Studio V2 story target coverage`
+- Latest pushed commit: `fc3e2c9a Harden official trailer segment validation`
 - Deployed: no
 - Railway env vars: untouched
 - Production DB: untouched
@@ -33,6 +33,9 @@ Date: 2026-05-07
 - Headline inference now avoids source labels, quoted fragments and release-time utility tails becoming fake media acquisition targets.
 - Official trailer reference resolution is now target-aware, so a single GTA trailer reference does not fully cover a GTA/Red Dead/BioShock story.
 - Motion Acquisition Pro now has a partial-reference state and creates targeted official-reference search actions for missing story entities.
+- Official trailer resolver now filters explicit PEGI/rating-board Steam movies before they enter reports.
+- Segment validation can now keep a shorter trimmed gameplay slice when a trailer window has two clean action samples but a weak tail.
+- Local TTS was recovered with `npm run tts:doctor -- --restart --prewarm`; the accepted Liam voice is loaded and the latest smoke proof is `D:\pulse-data\media\output\audio\__local_tts_smoke_sleepy_liam_latest.mp3`.
 
 ## Validation
 
@@ -48,14 +51,14 @@ Date: 2026-05-07
 - Combined Studio V2 motion safety tests: pass (`83/83`)
 - Focused TikTok diagnostics/dispatch tests: pass (`47/47`)
 - Focused voice/longform/monetisation tests: pass (`19/19`)
-- Full `npm test`: pass (`2116/2116`)
+- Full `npm test`: pass (`2119/2119`)
 - `npm run build`: pass
 
 ## Current Verdicts
 
 - Local TTS: `GREEN`
 - Studio V2 live pilot: `RED_BLOCKED`
-- Motion acquisition: local-only, now correctly reports partial official-reference coverage
+- Motion acquisition: local-only; refs cover GTA, BioShock and Red Dead, but only one trimmed BioShock gameplay segment validates, so Flash Lane remains blocked
 - TikTok auth: `AMBER`, token usable, public direct posting not confirmed
 - TikTok dispatch: no ready clean pack for upload
 - Facebook Reels: `eligible_for_normal_publish`, keep strict verifier and card fallback

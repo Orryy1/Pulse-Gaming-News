@@ -1,6 +1,6 @@
 # Local TTS Overnight Report
 
-Generated: 2026-05-07T03:05:54.471Z
+Generated: 2026-05-07T05:52:25.277Z
 Verdict: GREEN
 Expected local voice: pulse-sleepy-liam-20260502
 

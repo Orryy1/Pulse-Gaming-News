@@ -16,7 +16,7 @@ Risk: approving a pilot now could put repetitive, low-information or weak-lookin
 
 Rollback: no live action was taken. Keep the production renderer unchanged.
 
-Validation status: focused Studio V2 and motion reports regenerated. Focused TikTok, voice, longform and monetisation tests passed. Full `npm test` passed `2091/2091` and `npm run build` passed.
+Validation status: focused Studio V2 and motion reports regenerated. Focused TikTok, voice, longform and monetisation tests passed. Full `npm test` passed `2119/2119` and `npm run build` passed.
 
 Recommendation: do not approve a Studio V2 live pilot yet. Next safe work is stronger motion acquisition and render selection until the promotion packet is clean.
 
@@ -32,7 +32,7 @@ Risk: uploading a visually weak proof would damage the channel. Live browser aut
 
 Rollback: no TikTok upload was performed. Keep public auto-posting disabled.
 
-Validation status: TikTok focused tests passed, including the regression that suppresses stale dashboard warnings after a usable token. Full `npm test` passed `2091/2091` and `npm run build` passed.
+Validation status: TikTok focused tests passed, including the regression that suppresses stale dashboard warnings after a usable token. Full `npm test` passed `2119/2119` and `npm run build` passed.
 
 Recommendation: use official inbox/manual workflow only after a clean MP4, cover, caption and voice proof pass review. Do not approve live-account browser automation.
 
@@ -48,7 +48,7 @@ Risk: credit spend and voice-material handling.
 
 Rollback: do not switch production voice. Keep samples under `test/output` and delete rejected local proofs after review.
 
-Validation status: voice shootout focused tests passed. Full `npm test` passed `2091/2091` and `npm run build` passed.
+Validation status: voice shootout focused tests passed. Full `npm test` passed `2119/2119` and `npm run build` passed.
 
 Recommendation: benchmark local Liam first. Delay external providers until there is a clear reason.
 
@@ -64,7 +64,7 @@ Risk: longform requires stronger sourcing and visual coverage than Shorts.
 
 Rollback: keep the longform tooling local-only and do not upload if the outline fails editorial review.
 
-Validation status: longform focused tests passed. Full `npm test` passed `2091/2091` and `npm run build` passed.
+Validation status: longform focused tests passed. Full `npm test` passed `2119/2119` and `npm run build` passed.
 
 Recommendation: review `LONGFORM_OVERNIGHT_ARCHITECTURE_REPORT.md`, then approve only one manual pilot, not an automatic cadence.
 
@@ -80,7 +80,7 @@ Risk: random affiliate links, missing disclosures and premature sponsor claims.
 
 Rollback: keep monetisation report-only and remove any non-specific links from public copy.
 
-Validation status: monetisation focused tests passed and report output preserves accented game names correctly. Full `npm test` passed `2091/2091` and `npm run build` passed.
+Validation status: monetisation focused tests passed and report output preserves accented game names correctly. Full `npm test` passed `2119/2119` and `npm run build` passed.
 
 Recommendation: allow report-only use now. Approve live affiliate promotion only story by story after the targeting audit passes.
 

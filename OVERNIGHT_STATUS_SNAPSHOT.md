@@ -1,12 +1,12 @@
 # Overnight Status Snapshot
 
-Generated: 2026-05-07 04:28 BST
+Generated: 2026-05-07 06:55 BST
 
 ## Branch
 
 - Current branch: `codex/readiness-qa-failure-window`
-- Latest pushed commit entering this resolver-targeting pass: `7135e83f Harden Studio V2 story target coverage`
-- Working tree during this snapshot: target-aware official trailer reference and motion acquisition reporting
+- Latest pushed commit: `fc3e2c9a Harden official trailer segment validation`
+- Working tree during this snapshot: refreshed local TTS report only
 - Deployed: no
 
 ## Safety
@@ -32,7 +32,7 @@ Generated: 2026-05-07 04:28 BST
 - Combined Studio V2 motion safety tests: pass (`83/83`)
 - Focused analytics/intelligence tests: pass (`32/32`)
 - Focused YouTube analytics packet tests: pass (`8/8`)
-- Full `npm test`: pass (`2116/2116`)
+- Full `npm test`: pass (`2119/2119`)
 - `npm run build`: pass
 
 ## Local TTS
@@ -40,12 +40,13 @@ Generated: 2026-05-07 04:28 BST
 - Approved local voice reference: `pulse-sleepy-liam-20260502`
 - Local TTS overnight verdict: `GREEN`
 - Latest proof: `rss_8ea7f2689732f31a` local Liam MP3, measured `65.44s`
-- Current state: local Liam is viable for proof renders and the old low/demonic fallback is not accepted.
+- Current state: local server was unreachable, then `npm run tts:doctor -- --restart --prewarm` started it locally and loaded the accepted Liam voice. Fresh smoke proof: `D:\pulse-data\media\output\audio\__local_tts_smoke_sleepy_liam_latest.mp3`.
+- The old low/demonic fallback is not accepted.
 
 ## Studio V2
 
-- Proof selector: `0` ready Flash proofs, `20` blocked by motion/exact-asset gaps
-- Closest story: `rss_5b3abe925b27a199`, but it still lacks validated clip refs/sources and has forensic warnings
+- Proof selector: `0` ready Flash proofs, `1` checked GTA/Red Dead/BioShock proof candidate still blocked by motion/exact-asset gaps
+- Closest story: `rss_5b3abe925b27a199`, but it still lacks validated clip refs/sources for GTA and Red Dead and has forensic warnings
 - Promotion packet story: `1szzhy9`
 - Promotion packet verdict: `RED_BLOCKED`
 - Main blockers: forensic warnings, repeated visual pairs, weak rendered frames, insufficient current segment validation and insufficient clip-source diversity
@@ -62,7 +63,7 @@ Generated: 2026-05-07 04:28 BST
 - Headline inference now strips source labels, quoted phrases and release-time utility tails before creating acquisition targets.
 - Official trailer reference resolver now treats multi-entity coverage as partial until every target has a reference.
 - Motion Acquisition Pro now routes partial resolver references to targeted official-reference search, not straight to a local frame plan.
-- Latest check for `rss_5b3abe925b27a199`: `10` GTA refs found, but `BioShock` and `Red Dead` remain missing, so the story stays blocked.
+- Latest check for `rss_5b3abe925b27a199`: `13` official refs after filtering two explicit PEGI/rating-board GTA movies; target coverage is now GTA, BioShock and Red Dead, but only one trimmed BioShock gameplay segment validates. GTA and Red Dead remain blocked by repetitive, black, low-detail or title/rating frames.
 - Live status: local/report-only
 
 ## TikTok

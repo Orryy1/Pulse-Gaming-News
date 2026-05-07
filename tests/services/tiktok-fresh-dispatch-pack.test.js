@@ -115,6 +115,34 @@ test("fresh TikTok dispatch pack refuses missing approved local Liam evidence", 
   assert.equal(result.dispatchPack.officialInboxJson.ready_for_upload, false);
 });
 
+test("fresh TikTok dispatch pack blocks Studio V2 proofs with promotion blockers", () => {
+  const result = buildFreshTikTokDispatchPack({
+    story: { id: "blocked-v2", title: "Blocked Studio V2 proof should not reach TikTok" },
+    mp4Path: "D:/pulse-data/media/test/output/blocked-v2.mp4",
+    coverPath: "D:/pulse-data/media/test/output/blocked-v2-cover.jpg",
+    durationSeconds: 66.4,
+    voiceNarration: approvedLiamNarration(),
+    mediaInfo: { exists: true, is_current_render: true, age_hours: 0.25 },
+    tiktokTokenStatus: { ok: true, reason: "ok" },
+    studioV2PromotionPacket: {
+      verdict: "RED_BLOCKED",
+      blockers: [
+        "forensic_warnings_remaining",
+        "visual_repeat_pairs_remaining",
+        "weak_rendered_frames_remaining",
+      ],
+      morning_approval_needed: false,
+    },
+    requireExistingAudio: false,
+  });
+
+  assert.equal(result.dispatchPack.status, "creative_review_required");
+  assert.equal(result.dispatchPack.officialInboxJson.ready_for_upload, false);
+  assert.equal(result.inboxPlan.status, "not_ready");
+  assert.ok(result.inboxPlan.blockers.includes("studio_v2_promotion_red_blocked"));
+  assert.ok(result.creativeReview.blockers.includes("weak_rendered_frames_remaining"));
+});
+
 test("fresh TikTok dispatch markdown states manual-only safety", () => {
   const result = buildFreshTikTokDispatchPack({
     story: { id: "fresh-story", title: "Confirmed Xbox update just landed" },

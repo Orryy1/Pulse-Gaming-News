@@ -18,6 +18,13 @@ const {
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output", "tiktok-fresh-dispatch");
+const DEFAULT_STUDIO_V2_PROMOTION_PACKET = path.join(
+  ROOT,
+  "test",
+  "output",
+  "studio-v2-promotion",
+  "studio_v2_overnight_promotion_packet.json",
+);
 
 function parseArgs(argv) {
   const args = {
@@ -41,6 +48,8 @@ function parseArgs(argv) {
     else if (arg === "--median-pitch-hz") args.medianPitchHz = Number(argv[++i]);
     else if (arg === "--extract-cover") args.extractCover = true;
     else if (arg === "--cover-timestamp") args.coverTimestamp = argv[++i];
+    else if (arg === "--studio-v2-promotion-packet") args.studioV2PromotionPacket = argv[++i];
+    else if (arg === "--no-studio-v2-promotion-packet") args.studioV2PromotionPacket = false;
     else if (arg === "--dry-run") args.dryRun = true;
   }
   return args;
@@ -169,6 +178,21 @@ async function buildVoiceNarration(args) {
   };
 }
 
+async function loadStudioV2PromotionPacket(args, { mp4Path, storyId } = {}) {
+  if (args.studioV2PromotionPacket === false) return null;
+  const packetPath = resolvePath(args.studioV2PromotionPacket || DEFAULT_STUDIO_V2_PROMOTION_PACKET);
+  if (!(await fs.pathExists(packetPath))) return null;
+  const packet = await fs.readJson(packetPath);
+  const evidenceMp4 = packet?.evidence?.mp4 ? resolvePath(packet.evidence.mp4) : null;
+  const selectedMp4 = mp4Path ? resolvePath(mp4Path) : null;
+  const sameMp4 =
+    evidenceMp4 &&
+    selectedMp4 &&
+    path.normalize(evidenceMp4).toLowerCase() === path.normalize(selectedMp4).toLowerCase();
+  const sameStory = packet?.story_id && storyId && String(packet.story_id) === String(storyId);
+  return sameMp4 || sameStory ? packet : null;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const outDir = resolvePath(args.outDir || OUT);
@@ -208,6 +232,10 @@ async function main() {
     ? Number(args.duration)
     : probeDurationSeconds(mp4Path);
   const voiceNarration = await buildVoiceNarration(args);
+  const studioV2PromotionPacket = await loadStudioV2PromotionPacket(args, {
+    mp4Path,
+    storyId,
+  });
   const result = buildFreshTikTokDispatchPack({
     story: {
       id: storyId,
@@ -220,6 +248,7 @@ async function main() {
     voiceNarration,
     mediaInfo,
     tiktokTokenStatus,
+    studioV2PromotionPacket,
     requireExistingAudio: true,
   });
 
@@ -260,4 +289,5 @@ module.exports = {
   parseArgs,
   probeDurationSeconds,
   readTranscript,
+  loadStudioV2PromotionPacket,
 };

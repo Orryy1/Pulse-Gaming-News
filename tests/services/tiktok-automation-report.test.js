@@ -146,6 +146,94 @@ test("TikTok automation report prefers a fresh local dispatch pack over stale ma
   assert.doesNotMatch(md, /access_token|refresh_token|Bearer/);
 });
 
+test("TikTok automation report surfaces blocked fresh Studio V2 dispatch packs", () => {
+  const report = buildTikTokAutomationReport({
+    generatedAt: "2026-05-07T01:30:00.000Z",
+    authDoctorReport: {
+      token_status: {
+        ok: true,
+        connected: true,
+        reason: "ok",
+        expires_in_seconds: 25000,
+        refresh_available: true,
+        needs_reauth: false,
+        local_action: "token_usable",
+      },
+    },
+    dispatchManifest: {
+      count: 2,
+      statusCounts: { missing_video: 2 },
+      topPack: {
+        storyId: "legacy",
+        status: "missing_video",
+        eligibility: { durationSeconds: null },
+      },
+    },
+    freshDispatchPack: {
+      dispatchPack: {
+        storyId: "1szzhy9",
+        status: "creative_review_required",
+        mp4: "test/output/studio-v2-still-deck/studio_v2_1szzhy9_enriched.mp4",
+        cover: "test/output/tiktok-cover-candidates/covers/1szzhy9_12s.jpg",
+        eligibility: {
+          durationSeconds: 74.67,
+          captionReady: true,
+          dispatchLengthReady: true,
+          creatorRewardsLengthEligible: true,
+        },
+        creativeGate: {
+          blocks_dispatch: true,
+          blockers: [
+            "studio_v2_promotion_red_blocked",
+            "visual_repeat_pairs_remaining",
+          ],
+        },
+      },
+      inboxPlan: {
+        status: "not_ready",
+        dry_run: true,
+        will_upload_to_tiktok: false,
+        public_auto_publish: false,
+        blockers: [
+          "dispatch_pack_creative_review_required",
+          "studio_v2_promotion_red_blocked",
+          "visual_repeat_pairs_remaining",
+        ],
+      },
+      creativeReview: {
+        operator_visual_review_required: true,
+        blockers: [
+          "studio_v2_promotion_red_blocked",
+          "visual_repeat_pairs_remaining",
+        ],
+      },
+      safety: {
+        local_dry_run_only: true,
+        live_upload_executed: false,
+        public_post_created: false,
+      },
+    },
+  });
+
+  assert.equal(report.verdict, "AMBER");
+  assert.equal(report.recommendedRoute, "fix_fresh_dispatch_creative_blockers");
+  assert.equal(report.dispatchGate.source, "fresh_local_dispatch_pack");
+  assert.equal(report.dispatchGate.topPack.status, "creative_review_required");
+  assert.ok(report.blockers.includes("studio_v2_promotion_red_blocked"));
+  assert.ok(report.blockers.includes("visual_repeat_pairs_remaining"));
+  assert.equal(report.preparedCommands.requiresApprovalBeforeExecution.length, 0);
+  assert.ok(
+    !report.approvalQueue.some((item) =>
+      /Approve one TikTok official inbox upload test/.test(item.decision),
+    ),
+  );
+
+  const md = renderTikTokAutomationMarkdown(report);
+  assert.match(md, /creative_review_required/);
+  assert.match(md, /studio_v2_promotion_red_blocked/);
+  assert.doesNotMatch(md, /Requires approval before execution/);
+});
+
 test("TikTok automation report distinguishes stale local token from a ready browser flow", () => {
   const report = buildTikTokAutomationReport({
     authDoctorReport: {

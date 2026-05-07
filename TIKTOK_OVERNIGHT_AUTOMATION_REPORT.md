@@ -1,9 +1,9 @@
 # TikTok Overnight Automation Report
 
-Generated: 2026-05-06T22:41:55.433Z
+Generated: 2026-05-07T01:30:48.372Z
 Mode: read-only-tiktok-automation-strategy
-Verdict: GREEN
-Recommended route: official_inbox_upload_prepare_only
+Verdict: AMBER
+Recommended route: fix_fresh_dispatch_creative_blockers
 
 ## Token Gate
 - ok: true
@@ -18,20 +18,18 @@ Recommended route: official_inbox_upload_prepare_only
 - missing_video_and_cover: 2
 - missing_video: 58
 - stale_render_review_required: 26
-- top pack: 1szzhy9 (ready_for_operator_review, duration=74.67)
-- top ready pack: 1szzhy9 (74.67s)
-- fresh local dispatch pack: dry-run only; visual/operator review is still required before any inbox upload
+- top pack: 1szzhy9 (creative_review_required, duration=74.67)
 - older dispatch manifest warnings were not treated as blockers because the fresh local pack is newer:
   - missing_video_and_cover: 2
   - missing_video: 58
   - stale_render_review_required: 26
 
 ## Route Strategy
-- Official TikTok inbox upload (official_inbox_upload): status=ready_for_operator_review_not_executed; public_auto_publish=false; account_risk=low
+- Official TikTok inbox upload (official_inbox_upload): status=blocked_by_creative_review; public_auto_publish=false; account_risk=low
   Use this first after a pack is ready and a local token is usable. It uploads to TikTok inbox/drafts only; the operator completes the public post in TikTok.
 - Official TikTok public API posting (official_public_api): status=blocked_until_tiktok_app_review_or_direct_post_approval; public_auto_publish=true; account_risk=low_after_approval
   Do not rely on this until TikTok app review/direct post approval is confirmed by a real API response.
-- Manual phone workflow using dispatch pack (manual_phone_workflow): status=available; public_auto_publish=false; account_risk=very_low
+- Manual phone workflow using dispatch pack (manual_phone_workflow): status=blocked_by_creative_review; public_auto_publish=false; account_risk=very_low
   Safest fallback today. Use when a human can complete the last TikTok app step.
 - Audited third-party scheduler (third_party_scheduler): status=vendor_proof_required; public_auto_publish=true; account_risk=medium
   Only use after a vendor proves true TikTok auto-publish without account-risky browser automation.
@@ -55,24 +53,20 @@ Recommended route: official_inbox_upload_prepare_only
   - After OAuth succeeds, keep public auto-posting disabled until TikTok app approval is confirmed; use inbox upload/manual completion as the safe bridge.
 
 ## Blockers
-- none for report-only readiness
+- studio_v2_promotion_red_blocked
+- forensic_warnings_remaining
+- visual_repeat_pairs_remaining
+- weak_rendered_frames_remaining
+- dispatch_pack_creative_review_required
+- creative_review_required
 
 ## Prepared Commands
 Safe diagnostics:
 - npm run tiktok:auth-doctor
 - npm run tiktok:dispatch
 - npm run tiktok:overnight-report
-Safe dry-run:
-- npm run tiktok:inbox-upload -- --story 1szzhy9
-Requires approval before execution:
-- npm run tiktok:inbox-upload -- --story 1szzhy9 --send-inbox
 
 ## Morning Approval Queue Entries
-- Approve one TikTok official inbox upload test for 1szzhy9.
-  Why: The dispatch pack is locally ready and the token gate reports usable, but sending to TikTok inbox still mutates the live TikTok account.
-  Risk: The upload may create a draft/inbox item or hit an app/account-level API rejection.
-  Rollback: Delete the TikTok inbox/draft item manually if it appears; no public post should be created by this route.
-  Recommendation: Approve a single explicit inbox-upload test before any repeat use.
 - Do not approve live-account TikTok browser automation yet.
   Why: Browser automation is account-risky and not needed before the official inbox route is exhausted.
   Risk: Automated TikTok Studio access could trigger anti-abuse systems.

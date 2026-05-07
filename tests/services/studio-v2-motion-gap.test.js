@@ -370,6 +370,60 @@ test("motion gap report explains source diversity gaps when clip count reaches t
   assert.doesNotMatch(gap.priority_next_steps.join(" "), /find_0_more/);
 });
 
+test("motion gap report does not show ready language when footage dominance is too low", () => {
+  const report = buildStudioV2MotionGapReport({
+    proofCandidateReport: {
+      candidates: [
+        proofCandidate({
+          story_id: "dominance_gap",
+          blockers: [
+            "footage_backbone_clip_dominance_too_low",
+            "flash_proof_requires_footage_backbone_dominance",
+          ],
+          audio: {
+            status: "approved_local_liam_audio_ready",
+            ready: true,
+            output_audio_path: "test/output/audio/dominance_gap.mp3",
+            duration_seconds: 72.48,
+          },
+          visuals: {
+            exact_subject_count: 26,
+            exact_subject_groups: ["GTA", "Red Dead", "BioShock"],
+            accepted_frame_count: 2,
+            frame_groups: ["GTA", "Red Dead"],
+            validated_clip_ref_count: 5,
+            validated_clip_source_count: 4,
+            validated_clip_entities: ["BioShock", "Red Dead", "GTA"],
+            footage_backbone_verdict: "needs_more_validated_footage",
+            projected_clip_seconds: 16.7,
+            projected_clip_dominance: 0.23,
+            projected_motion_seconds: 21.7,
+            projected_motion_dominance: 0.3,
+          },
+        }),
+      ],
+      thresholds: { flash_min_validated_clip_refs: 3 },
+    },
+    segmentValidationReport: {
+      segments: [
+        segment("dominance_gap", "GTA", null, { source_url: "https://video.example.test/gta-a.m3u8" }),
+        segment("dominance_gap", "Red Dead", null, { source_url: "https://video.example.test/red-a.m3u8" }),
+        segment("dominance_gap", "BioShock", null, { source_url: "https://video.example.test/bio-a.m3u8" }),
+        segment("dominance_gap", "BioShock", null, { source_url: "https://video.example.test/bio-b.m3u8" }),
+        segment("dominance_gap", "BioShock", null, { source_url: "https://video.example.test/bio-c.m3u8" }),
+      ],
+    },
+  });
+
+  const gap = report.gaps[0];
+  assert.equal(gap.render_recommendation, "do_not_render_yet");
+  assert.equal(gap.motion_gap.needs_footage_backbone_dominance, true);
+  assert.ok(gap.priority_next_steps.includes("find_more_validated_gameplay_seconds_for_flash_lane"));
+  assert.ok(!gap.priority_next_steps.includes("ready_for_local_flash_render_preflight"));
+  assert.ok(gap.recommended_commands.some((item) => /media:validate-trailer-segments/.test(item.command)));
+  assert.ok(!gap.recommended_commands.some((item) => /studio:v2:still-deck/.test(item.command)));
+});
+
 test("motion gap report asks for alternate sources when partial validated footage is exhausted", () => {
   const report = buildStudioV2MotionGapReport({
     proofCandidateReport: {

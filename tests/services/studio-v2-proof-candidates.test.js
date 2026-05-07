@@ -66,8 +66,19 @@ function frameReport(storyId, count = 3) {
           status: "accepted",
           entity: index % 2 === 0 ? "GTA" : "Red Dead",
           source_type: "steam_movie",
+          source_url: `https://video.example.test/${storyId}_${index}.m3u8`,
+          target_time_seconds: 44 + index,
           local_path: `test/output/frames/${storyId}_${index}.jpg`,
-          qa: { verdict: "pass", failures: [] },
+          qa: {
+            verdict: "pass",
+            failures: [],
+            prescan: {
+              edge_density: 0.24,
+              saturation_mean: 0.46,
+              text_overlay_likelihood: 0.04,
+              white_text_on_dark_likelihood: 0,
+            },
+          },
         })),
       },
     ],
@@ -80,10 +91,14 @@ function segmentReport(storyId, count = 3) {
       story_id: storyId,
       source_url: `https://video.example.test/${storyId}_${index}.m3u8`,
       entity: ["GTA", "Red Dead", "BioShock"][index % 3],
+      media_start_s: 48 + index * 5,
+      duration_s: 5,
       status: "validated",
       segment_validated: true,
       allowed_for_flash_lane: true,
       segment_motion_class: "gameplay_action",
+      action_score: 82,
+      action_sample_count: 3,
     })),
   };
 }
@@ -93,8 +108,8 @@ test("proof candidates mark motion-backed Liam stories ready for a Studio V2 pro
     stories: [story("ready")],
     localAudioReports: [audioReport("ready")],
     assetReports: [assetReport("ready", 7)],
-    frameReports: [frameReport("ready", 4)],
-    segmentValidationReports: [segmentReport("ready", 3)],
+    frameReports: [frameReport("ready", 10)],
+    segmentValidationReports: [segmentReport("ready", 10)],
   });
 
   assert.equal(report.summary.ready_flash_proof, 1);
@@ -111,8 +126,8 @@ test("proof candidates require Liam audio before a visual-ready render", () => {
   const report = buildStudioV2ProofCandidateReport({
     stories: [story("needs_audio")],
     assetReports: [assetReport("needs_audio", 8)],
-    frameReports: [frameReport("needs_audio", 4)],
-    segmentValidationReports: [segmentReport("needs_audio", 3)],
+    frameReports: [frameReport("needs_audio", 10)],
+    segmentValidationReports: [segmentReport("needs_audio", 10)],
   });
 
   assert.equal(report.candidates[0].verdict, "needs_liam_audio_then_flash_proof");
@@ -156,6 +171,25 @@ test("proof candidates require enough validated gameplay clip refs, not just sti
   assert.equal(report.candidates[0].verdict, "needs_motion_or_exact_assets");
   assert.ok(report.candidates[0].blockers.includes("flash_proof_requires_three_validated_clip_refs"));
   assert.equal(report.candidates[0].visuals.validated_clip_ref_count, 1);
+});
+
+test("proof candidates require enough validated clip seconds for Flash Lane dominance", () => {
+  const report = buildStudioV2ProofCandidateReport({
+    stories: [story("short_clip_backbone")],
+    localAudioReports: [audioReport("short_clip_backbone")],
+    assetReports: [assetReport("short_clip_backbone", 7)],
+    frameReports: [frameReport("short_clip_backbone", 5)],
+    segmentValidationReports: [segmentReport("short_clip_backbone", 5)],
+  });
+
+  const candidate = report.candidates[0];
+  assert.equal(candidate.verdict, "needs_motion_or_exact_assets");
+  assert.equal(candidate.visuals.validated_clip_ref_count, 5);
+  assert.equal(candidate.visuals.footage_backbone_ready, false);
+  assert.equal(candidate.visuals.footage_backbone_verdict, "needs_more_validated_footage");
+  assert.ok(candidate.blockers.includes("flash_proof_requires_footage_backbone_dominance"));
+  assert.ok(candidate.blockers.includes("footage_backbone_clip_dominance_too_low"));
+  assert.equal(candidate.recommended_command, null);
 });
 
 test("proof candidates do not count accepted frames with failing visual taste metadata", () => {
@@ -319,12 +353,57 @@ test("proof candidates use script target entities to block single-game assets on
   const candidate = report.candidates[0];
   assert.deepEqual(candidate.visuals.story_target_entities, ["GTA", "BioShock", "Red Dead"]);
   assert.deepEqual(candidate.visuals.exact_subject_groups, ["GTA"]);
-  assert.deepEqual(candidate.visuals.missing_exact_subject_entities, ["BioShock", "Red Dead"]);
+  assert.deepEqual(candidate.visuals.exact_subject_motion_groups, ["GTA", "Red Dead"]);
+  assert.deepEqual(candidate.visuals.missing_exact_subject_entities, ["BioShock"]);
   assert.deepEqual(candidate.visuals.missing_validated_clip_entities, ["BioShock", "Red Dead"]);
   assert.equal(candidate.verdict, "needs_motion_or_exact_assets");
   assert.ok(candidate.blockers.includes("flash_proof_requires_exact_subject_entity_coverage"));
   assert.ok(candidate.blockers.includes("flash_proof_requires_validated_entity_coverage"));
   assert.equal(candidate.recommended_command, null);
+});
+
+test("proof candidates let validated official clips cover exact-subject entity gaps", () => {
+  const storyId = "take_two_motion_covers_targets";
+  const report = buildStudioV2ProofCandidateReport({
+    stories: [
+      {
+        ...story(storyId, "Take-Two killed a mystery sequel while GTA, Red Dead and BioShock fans watched"),
+        full_script:
+          "Take-Two just passed on a legacy sequel. GTA, Red Dead and BioShock fans all have a reason to care because the missing game could sit inside any of those worlds.",
+      },
+    ],
+    localAudioReports: [audioReport(storyId)],
+    assetReports: [
+      {
+        plans: [
+          {
+            story_id: storyId,
+            would_fetch: Array.from({ length: 6 }, (_, index) => ({
+              id: `${storyId}_gta_${index}`,
+              source_type: "steam_screenshot",
+              entity: "GTA",
+              subject_match_quality: "exact_game_match",
+              exact_subject_group: "GTA",
+              counted_for_premium: true,
+              counted_for_standard: true,
+              local_path: `test/output/assets/${storyId}_${index}.jpg`,
+            })),
+          },
+        ],
+      },
+    ],
+    frameReports: [frameReport(storyId, 10)],
+    segmentValidationReports: [segmentReport(storyId, 10)],
+  });
+
+  const candidate = report.candidates[0];
+  assert.equal(candidate.verdict, "ready_flash_proof");
+  assert.deepEqual(candidate.visuals.story_target_entities, ["GTA", "BioShock", "Red Dead"]);
+  assert.deepEqual(candidate.visuals.exact_subject_groups, ["GTA"]);
+  assert.deepEqual(candidate.visuals.exact_subject_motion_groups, ["GTA", "Red Dead", "BioShock"]);
+  assert.deepEqual(candidate.visuals.missing_exact_subject_entities, []);
+  assert.ok(!candidate.blockers.includes("flash_proof_requires_exact_subject_entity_coverage"));
+  assert.match(candidate.recommended_command, /--use-official-trailer-clips/);
 });
 
 test("proof candidates block stale ready proof commands when the latest render has forensic warnings", () => {
@@ -333,8 +412,8 @@ test("proof candidates block stale ready proof commands when the latest render h
     stories: [story(storyId)],
     localAudioReports: [audioReport(storyId)],
     assetReports: [{ generated_at: "2026-05-05T10:00:00.000Z", ...assetReport(storyId, 7) }],
-    frameReports: [{ generated_at: "2026-05-05T11:00:00.000Z", ...frameReport(storyId, 5) }],
-    segmentValidationReports: [{ generated_at: "2026-05-05T12:00:00.000Z", ...segmentReport(storyId, 3) }],
+    frameReports: [{ generated_at: "2026-05-05T11:00:00.000Z", ...frameReport(storyId, 10) }],
+    segmentValidationReports: [{ generated_at: "2026-05-05T12:00:00.000Z", ...segmentReport(storyId, 10) }],
     latestForensicReports: [
       {
         storyId: `${storyId}_enriched`,
@@ -370,8 +449,8 @@ test("proof candidates allow a fresh local proof when visual inputs are newer th
     stories: [story(storyId)],
     localAudioReports: [audioReport(storyId)],
     assetReports: [{ generated_at: "2026-05-07T09:00:00.000Z", ...assetReport(storyId, 7) }],
-    frameReports: [{ generated_at: "2026-05-07T10:00:00.000Z", ...frameReport(storyId, 5) }],
-    segmentValidationReports: [{ generated_at: "2026-05-07T11:00:00.000Z", ...segmentReport(storyId, 3) }],
+    frameReports: [{ generated_at: "2026-05-07T10:00:00.000Z", ...frameReport(storyId, 10) }],
+    segmentValidationReports: [{ generated_at: "2026-05-07T11:00:00.000Z", ...segmentReport(storyId, 10) }],
     latestForensicReports: [
       {
         storyId: `${storyId}_enriched`,

@@ -122,6 +122,22 @@ test("computeSignalsFromSample: white CTA text on black raises promo-card likeli
   assert.ok(sig.white_text_on_dark_likelihood > 0.5);
 });
 
+test("computeSignalsFromSample: letterboxed cinematic frame is not treated as white-text card", () => {
+  const dim = 96;
+  const buf = buildBuffer(dim, (x, y) => {
+    if (y < 14 || y >= dim - 14) return [0, 0, 0];
+    const warmSky = x < dim * 0.58;
+    if (warmSky) return [220 - Math.floor(x * 0.8), 142 - Math.floor(x * 0.35), 54];
+    return [82, 42, 28];
+  });
+
+  const sig = v.computeSignalsFromSample(buf, dim);
+
+  assert.ok(sig.letterbox_bar_ratio >= 0.2);
+  assert.ok(sig.central_dark_pixel_ratio < sig.dark_pixel_ratio);
+  assert.ok(sig.white_text_on_dark_likelihood < 0.35);
+});
+
 test("classifyTrailerFrameTaste: rejects white-on-dark title and rating slates", () => {
   const taste = v.classifyTrailerFrameTaste({
     text_overlay_likelihood: 0.08,
@@ -134,6 +150,24 @@ test("classifyTrailerFrameTaste: rejects white-on-dark title and rating slates",
 
   assert.equal(taste.verdict, "fail");
   assert.equal(taste.reason, "white_text_on_dark_card");
+});
+
+test("classifyTrailerFrameTaste: accepts letterboxed colourful official gameplay frames", () => {
+  const taste = v.classifyTrailerFrameTaste({
+    text_overlay_likelihood: 0,
+    white_text_on_dark_likelihood: 0.72,
+    edge_density: 0.08,
+    saturation_mean: 0.65,
+    bright_pixel_ratio: 0.08,
+    dark_pixel_ratio: 0.54,
+    letterbox_bar_ratio: 0.26,
+    central_dark_pixel_ratio: 0.18,
+    central_bright_pixel_ratio: 0.12,
+  });
+
+  assert.notEqual(taste.verdict, "fail");
+  assert.equal(taste.reason, "taste_passed");
+  assert.ok(taste.tags.includes("letterboxed_cinematic_candidate"));
 });
 
 test("classifyTrailerFrameTaste: rejects dead dark low-detail frames", () => {

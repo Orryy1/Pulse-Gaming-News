@@ -250,6 +250,59 @@ test("official trailer segment validator rejects promo CTA card windows", async 
   assert.equal(report.segments[0].allowed_for_flash_lane, false);
 });
 
+test("official trailer segment validator accepts letterboxed cinematic gameplay samples", async () => {
+  const outputRoot = tempOutputRoot("letterboxed-cinematic-gameplay");
+  await cleanTempRoot(outputRoot);
+  let call = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        entity: "Red Dead",
+        path: "https://video.akamai.steamstatic.com/store_trailers/reddead/hls_264_master.m3u8",
+        mediaStartS: 36,
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: fakeExtractor,
+      inspectFrame: async (outputPath) => {
+        call += 1;
+        const samples = [
+          { edge_density: 0.078, saturation_mean: 0.65, central_dark_pixel_ratio: 0.41 },
+          { edge_density: 0.067, saturation_mean: 0.66, central_dark_pixel_ratio: 0.46 },
+          { edge_density: 0.073, saturation_mean: 0.53, central_dark_pixel_ratio: 0.57 },
+        ];
+        const sample = samples[call - 1] || samples[0];
+        return {
+          ...passingQa(outputPath),
+          content_hash: `letterboxed-red-dead-${call}`,
+          prescan: {
+            likely_is_logo: false,
+            text_overlay_likelihood: 0,
+            white_text_on_dark_likelihood: call === 3 ? 0 : 0.72,
+            edge_density: sample.edge_density,
+            saturation_mean: sample.saturation_mean,
+            dark_pixel_ratio: 0.54,
+            bright_pixel_ratio: 0.08,
+            central_dark_pixel_ratio: sample.central_dark_pixel_ratio,
+            central_bright_pixel_ratio: 0.1,
+            letterbox_bar_ratio: 0.24,
+          },
+        };
+      },
+    },
+  );
+
+  assert.equal(report.summary.segments_validated, 1);
+  assert.equal(report.summary.segments_rejected, 0);
+  assert.equal(report.segments[0].validation_reason, "segment_samples_passed");
+  assert.equal(report.segments[0].segment_motion_class, "gameplay_action");
+  assert.equal(report.segments[0].action_sample_count, 3);
+  assert.equal(report.segments[0].allowed_for_flash_lane, true);
+});
+
 test("official trailer segment validator rejects black-frame windows", async () => {
   const outputRoot = tempOutputRoot("black-frame");
   await cleanTempRoot(outputRoot);

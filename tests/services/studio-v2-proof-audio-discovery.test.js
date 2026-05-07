@@ -45,11 +45,23 @@ function frameReport(storyId) {
     plans: [
       {
         story_id: storyId,
-        frames: Array.from({ length: 3 }, (_, index) => ({
+        frames: Array.from({ length: 10 }, (_, index) => ({
           status: "accepted",
           entity: index % 2 === 0 ? "GTA" : "Red Dead",
+          source_url: `https://video.example.test/${storyId}_${index}.m3u8`,
+          source_type: "steam_movie",
+          target_time_seconds: 44 + index,
           local_path: `test/output/frames/${storyId}_${index}.jpg`,
-          qa: { verdict: "pass", failures: [] },
+          qa: {
+            verdict: "pass",
+            failures: [],
+            prescan: {
+              edge_density: 0.24,
+              saturation_mean: 0.46,
+              text_overlay_likelihood: 0.04,
+              white_text_on_dark_likelihood: 0,
+            },
+          },
         })),
       },
     ],
@@ -58,13 +70,18 @@ function frameReport(storyId) {
 
 function segmentReport(storyId) {
   return {
-    segments: Array.from({ length: 3 }, (_, index) => ({
+    segments: Array.from({ length: 10 }, (_, index) => ({
       story_id: storyId,
       source_url: `https://video.example.test/${storyId}_${index}.m3u8`,
       entity: ["GTA", "Red Dead", "BioShock"][index % 3],
+      media_start_s: 48 + index * 5,
+      duration_s: 5,
       status: "validated",
       segment_validated: true,
       allowed_for_flash_lane: true,
+      segment_motion_class: "gameplay_action",
+      action_score: 82,
+      action_sample_count: 3,
     })),
   };
 }

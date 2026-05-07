@@ -66,6 +66,7 @@ Generated: 2026-05-07 07:39 BST
 - Latest check for `rss_5b3abe925b27a199`: `13` official refs after filtering two explicit PEGI/rating-board GTA movies; target coverage is now GTA, BioShock and Red Dead, but only `2/100` merged local segment checks validate and both are BioShock. GTA has `51` failed attempts and Red Dead has `22`; both are now classified as `alternate_source_required`, so the report tells operators not to rescan the same exhausted official sources.
 - New local tooling: segment validation can resume from a previous report, skip already-sampled windows, merge old/new scans and rotate alternate sources before later windows from the same source.
 - New local reporting: the Studio V2 motion gap planner now separates `needs_first_segment_scan`, `continue_segment_scan` and `alternate_official_sources_required`, with entity-level attempts, top rejection reasons and safe next commands.
+- New source-family reporting: GTA failures are grouped across `8` official source families and Red Dead across `2`, which makes alternate-source work more concrete than a raw rejected-window count.
 - Live status: local/report-only
 
 ## TikTok

@@ -10,7 +10,8 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - Deep-scan clip refs rotate alternate official sources before spending more budget on later windows from the same source.
 - Segment reports carry source provenance for new scans, including provider, trailer title and store app title where available.
 - Motion-gap reporting now classifies entity-level acquisition state as `needs_first_segment_scan`, `continue_segment_scan` or `alternate_official_sources_required`.
-- Current verdict for `rss_5b3abe925b27a199`: BioShock has two validated windows, but GTA has `51` failed attempts and Red Dead has `22`, so both need alternate official source families before another Studio V2 proof render.
+- Motion-gap reporting now groups attempts by source family, so repeated bad windows from the same Steam/IGDB movie can be separated from genuinely different official source families.
+- Current verdict for `rss_5b3abe925b27a199`: BioShock has two validated windows, but GTA has `51` failed attempts across `8` source families and Red Dead has `22` failed attempts across `2`, so both need alternate official source families before another Studio V2 proof render.
 - No render defaults, production DB rows, Railway settings, OAuth state or social posting behaviour changed.
 
 ## Summary
@@ -41,11 +42,28 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - Unattempted entities: none
 - Keep-sampling entities: none
 
-| Entity | Status | Attempts | Validated | Top rejection | Recommendation |
-| --- | --- | ---: | ---: | --- | --- |
-| GTA | alternate_source_required | 51 | 0 | segment_samples_too_repetitive | find_alternate_official_source_family |
-| BioShock | validated | 27 | 2 | segment_lacks_gameplay_action_samples | keep_as_validated_motion_source |
-| Red Dead | alternate_source_required | 22 | 0 | segment_contains_black_frame | find_alternate_official_source_family |
+| Entity | Status | Attempts | Validated | Source families | Top rejection | Recommendation |
+| --- | --- | ---: | ---: | ---: | --- | --- |
+| GTA | alternate_source_required | 51 | 0 | 8 | segment_samples_too_repetitive | find_alternate_official_source_family |
+| BioShock | validated | 27 | 2 | 3 | segment_lacks_gameplay_action_samples | keep_as_validated_motion_source |
+| Red Dead | alternate_source_required | 22 | 0 | 2 | segment_contains_black_frame | find_alternate_official_source_family |
+
+#### Source families
+
+| Entity | Provider | App | Movie/source | Attempts | Rejected | Top rejection |
+| --- | --- | --- | --- | ---: | ---: | --- |
+| GTA | unknown | unknown | video.akamai.steamstatic.com/store_trailers/3240220/832632/4b8d5f06cf0a1 | 13 | 13 | segment_samples_too_repetitive |
+| GTA | unknown | unknown | video.akamai.steamstatic.com/store_trailers/3240220/840633/811cbebcd754c | 8 | 8 | segment_contains_low_detail_frame |
+| GTA | unknown | unknown | video.akamai.steamstatic.com/store_trailers/3240220/840621/b9a521ddc50ab | 5 | 5 | segment_contains_black_frame |
+| GTA | unknown | unknown | video.akamai.steamstatic.com/store_trailers/3240220/840623/54ee251eb23c8 | 5 | 5 | segment_contains_low_detail_frame |
+| GTA | unknown | unknown | video.akamai.steamstatic.com/store_trailers/3240220/840626/9b790211e0845 | 5 | 5 | segment_samples_too_repetitive |
+| GTA | unknown | unknown | video.akamai.steamstatic.com/store_trailers/3240220/840628/3ec4cf2586fb2 | 5 | 5 | segment_samples_too_repetitive |
+| GTA | unknown | unknown | video.akamai.steamstatic.com/store_trailers/3240220/840631/488112001bd68 | 5 | 5 | segment_contains_title_or_rating_card |
+| GTA | unknown | unknown | video.akamai.steamstatic.com/store_trailers/3240220/840632/e563e0e788371 | 5 | 5 | segment_samples_too_repetitive |
+| BioShock | unknown | unknown | video.akamai.steamstatic.com/store_trailers/8870/10985/fc40c909896effa47 | 12 | 11 | segment_contains_black_frame |
+| BioShock | unknown | unknown | video.akamai.steamstatic.com/store_trailers/8870/10479/806132269c009d9d6 | 10 | 10 | segment_lacks_gameplay_action_samples |
+| BioShock | unknown | unknown | video.akamai.steamstatic.com/store_trailers/8870/10662/135853d79f5278507 | 5 | 4 | segment_contains_title_or_rating_card |
+| Red Dead | unknown | unknown | video.akamai.steamstatic.com/store_trailers/1174180/254554/90a98a4fe08d5 | 12 | 12 | segment_contains_black_frame |
 
 ### Next Steps
 

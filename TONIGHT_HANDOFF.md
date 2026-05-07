@@ -41,6 +41,7 @@ Date: 2026-05-07
 - New segment validation reports include source provenance for future scans, making failed Steam/IGDB trailer sources easier to diagnose.
 - A resumed local scan for `rss_5b3abe925b27a199` checked `100` merged segment windows and found `2` validated windows, both BioShock. GTA and Red Dead remain blocked, so no Studio V2 render was attempted.
 - Studio V2 motion-gap reporting now classifies exhausted source families. For `rss_5b3abe925b27a199`, GTA has `51` failed official-window attempts and Red Dead has `22`, so the next action is alternate official sources, not another blind rescan of the same material.
+- Source-family grouping now shows GTA failures spread across `8` official source families and Red Dead across `2`, with top rejection reasons per family.
 
 ## Validation
 
@@ -63,7 +64,7 @@ Date: 2026-05-07
 
 - Local TTS: `GREEN`
 - Studio V2 live pilot: `RED_BLOCKED`
-- Motion acquisition: local-only; refs cover GTA, BioShock and Red Dead, but only two trimmed BioShock gameplay segments validate after 100 merged local segment checks. GTA and Red Dead are now marked `alternate_source_required`, so Flash Lane remains blocked.
+- Motion acquisition: local-only; refs cover GTA, BioShock and Red Dead, but only two trimmed BioShock gameplay segments validate after 100 merged local segment checks. GTA and Red Dead are now marked `alternate_source_required`; source-family grouping shows GTA exhausted across `8` source families and Red Dead across `2`, so Flash Lane remains blocked.
 - TikTok auth: `AMBER`, token usable, public direct posting not confirmed
 - TikTok dispatch: no ready clean pack for upload
 - Facebook Reels: `eligible_for_normal_publish`, keep strict verifier and card fallback

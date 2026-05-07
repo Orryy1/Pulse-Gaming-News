@@ -1,6 +1,6 @@
 # Morning Approval Queue
 
-Generated: 2026-05-06
+Generated: 2026-05-07
 
 This queue contains only actions that would affect live risk, production defaults or platform accounts. Everything here should stay manual until Martin approves it in plain English.
 
@@ -16,7 +16,7 @@ Risk: the proof still has forensic warnings and needs human visual review. The c
 
 Rollback: keep legacy `assemble.js` as canonical. If the pilot fails visual review or upload QA, publish using the existing legacy path and do not set any Studio V2 production flag.
 
-Tests/build status: focused Studio V2 promotion and motion gap tests passed. Latest full validation passed: `npm test` `2059/2059`, `npm run build` pass.
+Tests/build status: focused Studio V2 promotion and motion gap tests passed. Latest full validation passed: `npm test` `2062/2062`, `npm run build` pass.
 
 Recommendation: review `STUDIO_V2_OVERNIGHT_PROMOTION_PACKET.md`, `test/output/studio-v2-still-deck/studio_v2_1szzhy9_enriched.mp4` and `test/output/studio-v2-still-deck/1szzhy9_enriched_contact_sheet.jpg` in the morning. If the visual taste still feels short of the high-energy Flash Lane bar, reject the pilot and keep improving motion acquisition. Do not approve a global Studio V2 switch.
 
@@ -32,7 +32,7 @@ Risk: live-account browser automation can trigger account-risk systems and remai
 
 Rollback: keep TikTok posting manual/inbox-only. If an inbox upload creates a draft item, delete it manually in TikTok before posting.
 
-Tests/build status: TikTok automation report now prefers the fresh local dry-run dispatch pack and keeps dashboard/auth warnings visible. Final full validation passed: `npm test` `2060/2060`, `npm run build` pass.
+Tests/build status: TikTok automation report now prefers the fresh local dry-run dispatch pack and keeps dashboard/auth warnings visible. Final full validation passed: `npm test` `2062/2062`, `npm run build` pass.
 
 Recommendation: do not approve live-account browser automation. Approve only a single official inbox upload test after reviewing `test/output/tiktok-fresh-dispatch/tiktok_fresh_dispatch_pack.md`, the MP4, the selected cover and `test/output/tiktok-cover-candidates/tiktok_cover_candidates_contact_sheet.jpg`.
 
@@ -48,7 +48,7 @@ Risk: paid credits may be spent and private/reference voice material could leave
 
 Rollback: do not switch production voice. Keep all generated samples under `test/output` and delete any rejected samples after review.
 
-Tests/build status: voice shootout focused tests, full `npm test` and `npm run build` passed locally.
+Tests/build status: voice shootout focused tests passed. Final full validation passed: `npm test` `2062/2062`, `npm run build` pass.
 
 Recommendation: run local Liam first. Approve a paid/external shootout only after local Liam has been scored against the blind review sheet.
 
@@ -64,7 +64,7 @@ Risk: longform needs stronger source checks and visual coverage than Shorts. A w
 
 Rollback: keep the longform tool local-only. If the pilot fails review, do not upload it and keep existing Shorts workflow unchanged.
 
-Tests/build status: longform focused tests now pin the Flash Lane vs Briefing Lane split. Final full validation passed: `npm test` `2061/2061`, `npm run build` pass.
+Tests/build status: longform focused tests now pin the Flash Lane vs Briefing Lane split. Final full validation passed: `npm test` `2062/2062`, `npm run build` pass.
 
 Recommendation: review `LONGFORM_OVERNIGHT_ARCHITECTURE_REPORT.md` first. Approve only a single manually reviewed Weekly Roundup pilot, not an automatic scheduler.
 

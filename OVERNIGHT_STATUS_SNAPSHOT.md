@@ -1,18 +1,18 @@
 # Overnight Status Snapshot
 
-Generated: 2026-05-06 23:02 BST
+Generated: 2026-05-07 01:38 BST
 
 ## Branch
 
 - Current branch: `codex/readiness-qa-failure-window`
-- Latest commit: `3b128827 Add Flash Lane subtitle motion styling`
+- Latest commit: `3a91ba76 Clean monetisation report text hygiene`
 - `origin/main`: `2c7f47c5f6e7544f4a16ef7e5b4d3df1ffc7cf10`
-- Working tree at snapshot refresh: clean before snapshot update
+- Working tree at snapshot refresh: clean before handoff/snapshot refresh
 - Deployed: no
 
 ## Validation
 
-- Full `npm test`: pass (`2053/2053`)
+- Full `npm test`: pass (`2062/2062`)
 - `npm run build`: pass
 - Local TTS doctor: green
 - TikTok auth doctor: AMBER, token usable, public direct-post approval still not confirmed
@@ -47,8 +47,8 @@ Generated: 2026-05-06 23:02 BST
 
 - Auth doctor token status: connected, ok, refresh available
 - Overall auth doctor verdict: AMBER because public direct-post approval is not confirmed
-- Dispatch status: no current pack is ready; candidates are stale or missing media/cover
-- Recommended bridge: fresh 60+ second official inbox pack, then manual/operator review
+- Dispatch status: fresh local dry-run pack exists for `1szzhy9`; no upload was executed
+- Recommended bridge: review the 60+ second official inbox pack, then approve a single manual/operator inbox test if the MP4 and cover pass visual review
 
 ## Voice Shootout
 
@@ -75,7 +75,7 @@ Generated: 2026-05-06 23:02 BST
 
 - Studio V2 cannot become production default without approval.
 - TikTok direct public posting still depends on TikTok app/API approval state.
-- No TikTok dispatch pack is currently ready.
+- TikTok dispatch pack is local/dry-run ready only; live inbox upload still needs approval.
 - External/paid voice shootout needs approval before spending credits or sending voice material to a provider.
 - Longform upload/scheduling needs approval.
 - Monetisation changes to live copy, sponsor outreach or affiliate publishing need approval.

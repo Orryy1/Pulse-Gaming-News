@@ -1,6 +1,6 @@
 # Studio V2 Overnight Promotion Packet
 
-Generated: 2026-05-07T01:22:12.138Z
+Generated: 2026-05-07T02:11:42.172Z
 Story: `1szzhy9`
 Title: Marathon Drops To 15K Daily CCU Peak On Steam, Exits Top 50 On PlayStation & Top 100 On Xbox Best-Sellers Lists
 
@@ -16,6 +16,8 @@ Morning approval needed: `no`
 - forensic_warnings_remaining
 - visual_repeat_pairs_remaining
 - weak_rendered_frames_remaining
+- current_segment_validation_insufficient
+- current_segment_source_diversity_insufficient
 
 ## Warnings
 
@@ -52,6 +54,10 @@ Morning approval needed: `no`
 | Voice | approved-provided-local-tts (green) |
 | Official clip refs | 7 |
 | Official trailer frames | 9 |
+| Current validated clip refs | 0 |
+| Current validated clip sources | 0 |
+| Current validated clip entities | 0 |
+| Current segment rejections | 6 |
 | Forensic verdict | warn |
 | Forensic fails / warns | 0 / 2 |
 | Visual repeat pairs after | 2 |

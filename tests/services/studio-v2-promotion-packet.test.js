@@ -241,6 +241,44 @@ test("Studio V2 promotion packet blocks pilot promotion while forensic warnings 
   assert.doesNotMatch(markdown, /If Martin approves, use this as a one-story manual Studio V2 pilot/i);
 });
 
+test("Studio V2 promotion packet blocks stale clip evidence when current segment validation has no usable windows", () => {
+  const packet = buildStudioV2PromotionPacket({
+    stillDeckReport: baseStillDeckReport({
+      comparison: {
+        before: { verdict: "fail", failCount: 1, warnCount: 2, visualRepeatPairs: 16 },
+        after: { verdict: "pass", failCount: 0, warnCount: 0, visualRepeatPairs: 0 },
+        deltas: { failCount: -1, warnCount: -2, visualRepeatPairs: -16 },
+        verdict: "improved",
+      },
+    }),
+    qaReport: baseQaReport(),
+    segmentValidationReport: {
+      generated_at: "2026-05-07T02:04:42.959Z",
+      segments: [
+        {
+          entity: "Marathon",
+          segment_validated: false,
+          allowed_for_flash_lane: false,
+          validation_reason: "segment_contains_low_detail_frame",
+          source_url: "https://video.example.test/marathon.m3u8",
+        },
+      ],
+    },
+    now: "2026-05-07T02:10:00.000Z",
+  });
+
+  assert.equal(packet.verdict, "RED_BLOCKED");
+  assert.ok(packet.blockers.includes("current_segment_validation_insufficient"));
+  assert.equal(packet.metrics.current_validated_clip_refs, 0);
+  assert.equal(packet.metrics.current_validated_clip_sources, 0);
+  assert.equal(packet.metrics.current_validated_clip_entities, 0);
+  assert.equal(packet.metrics.current_segment_rejected_count, 1);
+
+  const markdown = renderStudioV2PromotionPacketMarkdown(packet);
+  assert.match(markdown, /Current validated clip refs/i);
+  assert.match(markdown, /Current segment rejections/i);
+});
+
 test("Studio V2 promotion packet blocks production recommendation when safety is not local-only", () => {
   const packet = buildStudioV2PromotionPacket({
     stillDeckReport: baseStillDeckReport({

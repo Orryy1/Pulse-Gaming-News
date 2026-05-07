@@ -14,6 +14,12 @@ const OUT = path.join(ROOT, "test", "output");
 const DEFAULT_FRAME_REPORT = path.join(OUT, "controlled_frame_extraction_worker_apply_local.json");
 const DEFAULT_SEGMENT_REPORT = path.join(OUT, "official_trailer_segment_validation_v1.json");
 const DEFAULT_PROOF_CANDIDATES = path.join(OUT, "studio_v2_proof_candidates.json");
+const DEFAULT_LIMIT = 20;
+
+function parsePositiveInteger(value, fallback) {
+  const number = Number(value);
+  return Number.isInteger(number) && number > 0 ? number : fallback;
+}
 
 function parseArgs(argv) {
   const args = {
@@ -23,6 +29,7 @@ function parseArgs(argv) {
     frameReport: DEFAULT_FRAME_REPORT,
     segmentReport: DEFAULT_SEGMENT_REPORT,
     proofCandidates: DEFAULT_PROOF_CANDIDATES,
+    limit: DEFAULT_LIMIT,
   };
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i];
@@ -33,6 +40,7 @@ function parseArgs(argv) {
     else if (arg === "--segment-report") args.segmentReport = argv[++i] || DEFAULT_SEGMENT_REPORT;
     else if (arg === "--proof-candidates") args.proofCandidates = argv[++i] || DEFAULT_PROOF_CANDIDATES;
     else if (arg === "--no-proof-candidates") args.proofCandidates = null;
+    else if (arg === "--limit") args.limit = parsePositiveInteger(argv[++i], DEFAULT_LIMIT);
   }
   return args;
 }
@@ -48,6 +56,7 @@ function printHelp() {
       "  --segment-report <p>  Official trailer segment validation report",
       "  --proof-candidates <p> Studio V2 proof candidate report for exact subject fallback",
       "  --no-proof-candidates Disable proof-candidate fallback",
+      "  --limit <n>           Maximum proof-candidate stories to queue when --story-id is omitted",
       "  --json                Print JSON instead of Markdown",
       "",
       "This command is report-only. It creates a shopping list for missing validated footage windows.",
@@ -85,6 +94,7 @@ async function main() {
     frameReport: frame.data,
     segmentValidationReport: segment.data,
     proofCandidateReport: proofCandidates?.data || null,
+    limit: args.limit,
   });
   plan.frame_report_source = frame.path;
   plan.segment_report_source = segment.path;

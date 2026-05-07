@@ -312,6 +312,107 @@ test("footage acquisition plan becomes proof-ready with enough validated windows
   assert.deepEqual(plan.shopping_list, []);
 });
 
+test("footage acquisition plan builds a ranked per-story queue when no story id is provided", () => {
+  const plan = buildFlashLaneFootageAcquisitionPlan({
+    limit: 2,
+    frameReport: {
+      plans: [
+        ...frameReport().plans,
+        {
+          story_id: "story-2",
+          frames: [
+            { entity: "Marathon", status: "accepted" },
+            { entity: "Bungie", status: "accepted" },
+          ],
+        },
+      ],
+    },
+    segmentValidationReport: {
+      segments: [
+        ...segmentReport().segments,
+        {
+          story_id: "story-2",
+          entity: "Marathon",
+          allowed_for_flash_lane: true,
+          segment_motion_class: "gameplay_action",
+          action_score: 86,
+        },
+        {
+          story_id: "story-2",
+          entity: "Bungie",
+          allowed_for_flash_lane: true,
+          segment_motion_class: "gameplay_action",
+          action_score: 84,
+        },
+        {
+          story_id: "story-2",
+          entity: "Marathon",
+          allowed_for_flash_lane: true,
+          segment_motion_class: "gameplay_action",
+          action_score: 88,
+        },
+      ],
+    },
+    proofCandidateReport: {
+      candidates: [
+        {
+          story_id: "story-1",
+          verdict: "warn",
+          title: "Take-Two legacy sequel speculation",
+          audio: { ready: true },
+          visuals: {
+            exact_subject_count: 10,
+            story_target_entities: ["GTA", "Red Dead", "BioShock"],
+          },
+        },
+        {
+          story_id: "story-2",
+          verdict: "candidate",
+          title: "Marathon update becomes weekly freebie",
+          audio: { ready: true },
+          visuals: {
+            exact_subject_count: 6,
+            story_target_entities: ["Marathon", "Bungie"],
+          },
+        },
+      ],
+    },
+    minValidatedEntities: 2,
+  });
+
+  assert.equal(plan.story_id, null);
+  assert.equal(plan.summary.stories_considered, 2);
+  assert.equal(plan.summary.ready_for_backbone, 1);
+  assert.equal(plan.verdict, "has_flash_footage_ready_story");
+  assert.equal(plan.stories[0].story_id, "story-2");
+  assert.equal(plan.stories[0].title, "Marathon update becomes weekly freebie");
+  assert.equal(plan.stories[0].verdict, "ready_for_flash_footage_backbone");
+  assert.deepEqual(
+    plan.stories.map((story) => story.story_id),
+    ["story-2", "story-1"],
+  );
+});
+
+test("footage acquisition queue honours the requested story limit", () => {
+  const plan = buildFlashLaneFootageAcquisitionPlan({
+    limit: 1,
+    frameReport: frameReport(),
+    segmentValidationReport: segmentReport(),
+    proofCandidateReport: {
+      candidates: [
+        { story_id: "story-1", visuals: { story_target_entities: ["GTA"] } },
+        { story_id: "story-2", visuals: { story_target_entities: ["Marathon"] } },
+      ],
+    },
+  });
+
+  assert.equal(plan.summary.stories_considered, 1);
+  assert.deepEqual(
+    plan.stories.map((story) => story.story_id),
+    ["story-1"],
+  );
+});
+
 test("footage acquisition markdown is readable and explicit about safety", () => {
   const plan = buildFlashLaneFootageAcquisitionPlan({
     storyId: "story-1",
@@ -323,6 +424,30 @@ test("footage acquisition markdown is readable and explicit about safety", () =>
   assert.match(md, /Flash Lane Footage Acquisition v1/);
   assert.match(md, /Shopping List/);
   assert.match(md, /No downloads are performed/);
+});
+
+test("footage acquisition queue markdown surfaces story queue and shopping items", () => {
+  const plan = buildFlashLaneFootageAcquisitionPlan({
+    frameReport: frameReport(),
+    segmentValidationReport: segmentReport(),
+    proofCandidateReport: {
+      candidates: [
+        {
+          story_id: "story-1",
+          visuals: {
+            story_target_entities: ["GTA", "Red Dead", "BioShock"],
+          },
+        },
+      ],
+    },
+  });
+  const md = renderFlashLaneFootageAcquisitionMarkdown(plan);
+
+  assert.match(md, /Queue Summary/);
+  assert.match(md, /Story Queue/);
+  assert.match(md, /story-1/);
+  assert.match(md, /Top Shopping Items/);
+  assert.match(md, /Report-only queue/);
 });
 
 test("footage acquisition markdown does not hide exhausted source work behind blank windows", () => {
@@ -353,6 +478,8 @@ test("footage acquisition tool wires proof-candidate fallback without live side 
   assert.match(tool, /studio_v2_proof_candidates\.json/);
   assert.match(tool, /proofCandidateReport/);
   assert.match(tool, /--no-proof-candidates/);
+  assert.match(tool, /--limit/);
+  assert.match(tool, /limit: args\.limit/);
   assert.doesNotMatch(tool, /publishAll|uploadShort|postShort|autonomous\/publish/);
   assert.doesNotMatch(tool, /UPDATE\s+stories|INSERT\s+INTO\s+stories|DELETE\s+FROM/i);
 });

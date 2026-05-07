@@ -593,6 +593,7 @@ test("motion gap markdown is operator-readable and local-only", () => {
       segments: Array.from({ length: 8 }, (_, index) =>
         segment("rss_gap", "GTA", "segment_contains_low_detail_frame", {
           media_start_s: 18 + index * 6,
+          reference_title: index === 0 ? "Marathon | Reveal Trailer" : "GTA Trailer",
         }),
       ),
     },
@@ -606,6 +607,7 @@ test("motion gap markdown is operator-readable and local-only", () => {
   assert.match(md, /Acquisition Strategy/);
   assert.match(md, /alternate_official_sources_required/);
   assert.match(md, /Source families/);
+  assert.match(md, /Marathon \\| Reveal Trailer/);
   assert.match(md, /--previous-validation-report test\/output\/official_trailer_segment_validation_apply_local\.json --merge-previous/);
   assert.match(md, /local-only/);
   assert.match(md, /No DB, Railway, OAuth, render-default or posting changes/);

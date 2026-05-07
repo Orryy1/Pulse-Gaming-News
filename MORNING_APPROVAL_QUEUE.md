@@ -4,21 +4,21 @@ Generated: 2026-05-07
 
 This queue contains only actions that would affect live risk, production defaults or platform accounts. Everything here should stay manual until Martin approves it in plain English.
 
-## 1. One-Story Studio V2 Pilot
+## 1. Studio V2 Pilot Is Blocked For Now
 
-Decision needed: approve or reject a one-story Studio V2 pilot candidate for `1szzhy9`.
+Decision needed: no live pilot approval is requested yet.
 
-Why it matters: the latest local proof is the first one that has approved local Liam narration, 60+ second runtime, motion-backed official trailer references, green QA and zero forensic fails. It is still not a production default.
+Why it matters: the stricter promotion gate now treats remaining forensic warnings, repeated visual pairs and weak rendered frames as pilot blockers. This matches the quality bar for Pulse Flash Lane: a proof that still has repeated-looking scenes or low-information frames should not be treated as ready just because runtime, narration and basic QA pass.
 
-What changes: if approved later, one manually selected story may be rendered through Studio V2 for a controlled pilot. The production renderer must not be switched globally.
+What changes: nothing changes live. The current proof for `1szzhy9` is now classified as `RED_BLOCKED`, not `AMBER_LOCAL_PROOF`, so it should stay out of any live Studio V2 pilot queue.
 
-Risk: the proof still has forensic warnings and needs human visual review. The current proof is `AMBER_LOCAL_PROOF`, not green: forensic QA warns on two repeated visual pairs at 46.5s/49.5s and 55.5s/58.5s, plus two weak rendered frame samples at 16.5s (`dead_dark_frame`) and 22.5s (`washed_low_detail_frame`). A pilot could look worse than the legacy renderer if clip taste or pacing does not match the channel.
+Risk: if this gate were ignored, Studio V2 could still produce Shorts that look repetitive, dark, washed out or less polished than a serious gaming TikTok channel. The current blockers are `forensic_warnings_remaining`, `visual_repeat_pairs_remaining` and `weak_rendered_frames_remaining`.
 
-Rollback: keep legacy `assemble.js` as canonical. If the pilot fails visual review or upload QA, publish using the existing legacy path and do not set any Studio V2 production flag.
+Rollback: no live action was taken. Keep legacy `assemble.js` as canonical and keep Studio V2 local-only until a clean packet is regenerated.
 
-Tests/build status: focused Studio V2 promotion and motion gap tests passed. Latest full validation passed: `npm test` `2062/2062`, `npm run build` pass.
+Tests/build status: focused Studio V2 promotion and motion gap tests passed. Latest full validation passed: `npm test` `2072/2072`, `npm run build` pass.
 
-Recommendation: review `STUDIO_V2_OVERNIGHT_PROMOTION_PACKET.md`, `test/output/studio-v2-still-deck/studio_v2_1szzhy9_enriched.mp4` and `test/output/studio-v2-still-deck/1szzhy9_enriched_contact_sheet.jpg` in the morning. If the visual taste still feels short of the high-energy Flash Lane bar, reject the pilot and keep improving motion acquisition. Do not approve a global Studio V2 switch.
+Recommendation: do not approve a Studio V2 live pilot yet. Next safe work is to improve motion acquisition and render selection until `STUDIO_V2_OVERNIGHT_PROMOTION_PACKET.md` is clean with zero forensic warnings, zero repeated visual pairs and zero weak rendered frames.
 
 ## 2. TikTok Route Discipline
 

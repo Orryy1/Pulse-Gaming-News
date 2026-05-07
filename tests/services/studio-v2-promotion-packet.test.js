@@ -62,8 +62,8 @@ function baseStillDeckReport(overrides = {}) {
     },
     comparison: {
       before: { verdict: "fail", failCount: 1, visualRepeatPairs: 16 },
-      after: { verdict: "warn", failCount: 0, warnCount: 2, visualRepeatPairs: 0 },
-      deltas: { failCount: -1, visualRepeatPairs: -16 },
+      after: { verdict: "pass", failCount: 0, warnCount: 0, visualRepeatPairs: 0 },
+      deltas: { failCount: -1, visualRepeatPairs: -16, warnCount: -2 },
       verdict: "improved",
     },
     judgement: {
@@ -212,6 +212,33 @@ test("Studio V2 promotion packet surfaces concrete forensic warning evidence", (
   assert.match(markdown, /Forensic Warning Details/i);
   assert.match(markdown, /46\.5s\/49\.5s/i);
   assert.match(markdown, /22\.5s washed_low_detail_frame/i);
+});
+
+test("Studio V2 promotion packet blocks pilot promotion while forensic warnings remain", () => {
+  const packet = buildStudioV2PromotionPacket({
+    stillDeckReport: baseStillDeckReport({
+      comparison: {
+        before: { verdict: "fail", failCount: 1, warnCount: 2, visualRepeatPairs: 16 },
+        after: { verdict: "warn", failCount: 0, warnCount: 2, visualRepeatPairs: 2 },
+        deltas: { failCount: -1, warnCount: 0, visualRepeatPairs: -14 },
+        verdict: "improved",
+      },
+    }),
+    qaReport: baseQaReport(),
+    forensicReport: baseForensicReport(),
+    now: "2026-05-06T21:00:00.000Z",
+  });
+
+  assert.equal(packet.verdict, "RED_BLOCKED");
+  assert.equal(packet.morning_approval_needed, false);
+  assert.ok(packet.blockers.includes("forensic_warnings_remaining"));
+  assert.ok(packet.blockers.includes("visual_repeat_pairs_remaining"));
+  assert.ok(packet.blockers.includes("weak_rendered_frames_remaining"));
+  assert.match(packet.recommendation, /Do not pilot Studio V2 yet/i);
+
+  const markdown = renderStudioV2PromotionPacketMarkdown(packet);
+  assert.match(markdown, /No Studio V2 pilot should be run until blockers are fixed/i);
+  assert.doesNotMatch(markdown, /If Martin approves, use this as a one-story manual Studio V2 pilot/i);
 });
 
 test("Studio V2 promotion packet blocks production recommendation when safety is not local-only", () => {

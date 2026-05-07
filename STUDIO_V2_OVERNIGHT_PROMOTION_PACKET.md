@@ -1,19 +1,24 @@
 # Studio V2 Overnight Promotion Packet
 
-Generated: 2026-05-06T22:25:41.477Z
+Generated: 2026-05-07T01:22:12.138Z
 Story: `1szzhy9`
 Title: Marathon Drops To 15K Daily CCU Peak On Steam, Exits Top 50 On PlayStation & Top 100 On Xbox Best-Sellers Lists
 
 ## Verdict
 
-`AMBER_LOCAL_PROOF` - Queue a morning decision for a one-story Studio V2 pilot; do not switch production defaults.
+`RED_BLOCKED` - Do not pilot Studio V2 yet; fix blockers and regenerate the local proof packet.
 
 Production ready: `no`
-Morning approval needed: `yes`
+Morning approval needed: `no`
+
+## Blockers
+
+- forensic_warnings_remaining
+- visual_repeat_pairs_remaining
+- weak_rendered_frames_remaining
 
 ## Warnings
 
-- forensic_warnings_remaining
 - preflight_flash_lane_spoken_wpm_outside_target_range
 - preflight_flash_lane_clip_dominance_supported_by_trailer_frames
 
@@ -61,7 +66,7 @@ Morning approval needed: `yes`
 - Do not change Railway env vars.
 - Do not enable hard production gates.
 - Do not publish automatically.
-- If Martin approves, use this as a one-story manual Studio V2 pilot candidate only.
+- No Studio V2 pilot should be run until blockers are fixed and a clean packet is regenerated.
 - Keep legacy `assemble.js` as the rollback path.
 
 ## Rollback
@@ -76,4 +81,4 @@ Keep legacy assemble.js as canonical; if pilot underperforms or fails, publish v
 - No production DB mutation.
 - No platform post.
 - No production render default change.
-- Add the pilot decision to `MORNING_APPROVAL_QUEUE.md` before any live action.
+- Keep the blocked proof out of the live approval queue until it is clean.

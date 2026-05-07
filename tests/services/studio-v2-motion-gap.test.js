@@ -425,6 +425,13 @@ test("motion gap report asks for alternate official sources when missing entitie
   assert.equal(gap.motion_gap.acquisition_strategy.entity_statuses.GTA.source_families[0].attempted_segments, 9);
   assert.ok(gap.priority_next_steps.includes("find_alternate_official_sources_for:GTA,Red Dead"));
   assert.ok(gap.priority_next_steps.includes("do_not_rescan_same_official_sources_for:GTA,Red Dead"));
+  assert.ok(
+    gap.recommended_commands.some((item) =>
+      /media:resolve-trailers -- --story-id rss_gap --segment-validation-report test\/output\/official_trailer_segment_validation_apply_local\.json --exhausted-source-family-threshold 5/.test(
+        item.command,
+      ),
+    ),
+  );
 });
 
 test("motion gap report backfills Steam source-family metadata from legacy source URLs", () => {

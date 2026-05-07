@@ -221,6 +221,103 @@ test("official trailer resolver excludes Steam movie references that are rating-
   assert.equal(plan.lookup_results[0].rejected_movie_reasons[0].reason, "rating_board_reference");
 });
 
+test("official trailer resolver excludes exhausted Steam source families from previous local validation", async () => {
+  const sourceUrl =
+    "https://video.akamai.steamstatic.com/store_trailers/3240220/832632/4b8d5f06cf0a1/hls_264_master.m3u8";
+  const segmentValidationReport = {
+    segments: Array.from({ length: 8 }, (_, index) => ({
+      story_id: "trailer-ref-story",
+      entity: "GTA",
+      source_url: sourceUrl,
+      source_type: "steam_movie",
+      media_start_s: 36 + index * 6,
+      status: "rejected",
+      segment_validated: false,
+      allowed_for_flash_lane: false,
+      validation_reason: "segment_samples_too_repetitive",
+    })),
+  };
+
+  const plan = await buildOfficialTrailerReferencePlan(
+    baseStory({
+      game_images: [verifiedSteamAsset("GTA", "3240220", "Grand Theft Auto V Enhanced")],
+    }),
+    {
+      segmentValidationReport,
+      steamLookup: async () => ({
+        success: true,
+        title: "Grand Theft Auto V Enhanced",
+        movies: [
+          {
+            id: 257100577,
+            name: "Official Trailer",
+            hls_h264: sourceUrl,
+          },
+        ],
+      }),
+    },
+  );
+
+  assert.equal(plan.motion_reference_readiness, "alternate_official_reference_required");
+  assert.equal(plan.resolved_reference_count, 1);
+  assert.equal(plan.references.length, 0);
+  assert.equal(plan.excluded_references.length, 1);
+  assert.equal(plan.excluded_references[0].movie_id, "832632");
+  assert.equal(plan.exhausted_source_family_filter.enabled, true);
+  assert.equal(plan.exhausted_source_family_filter.excluded_references, 1);
+  assert.deepEqual(plan.missing_target_entities, ["GTA"]);
+  assert.ok(plan.blockers.includes("resolved_references_exhausted"));
+  assert.ok(plan.warnings.includes("some_resolved_references_were_exhausted_locally"));
+  assert.ok(plan.search_queries.includes("GTA official trailer"));
+});
+
+test("official trailer resolver keeps exhausted families when exclusion is explicitly disabled", async () => {
+  const sourceUrl =
+    "https://video.akamai.steamstatic.com/store_trailers/3240220/832632/4b8d5f06cf0a1/hls_264_master.m3u8";
+  const segmentValidationReport = {
+    segments: Array.from({ length: 8 }, (_, index) => ({
+      story_id: "trailer-ref-story",
+      entity: "GTA",
+      source_url: sourceUrl,
+      source_type: "steam_movie",
+      media_start_s: 36 + index * 6,
+      status: "rejected",
+      segment_validated: false,
+      allowed_for_flash_lane: false,
+      validation_reason: "segment_samples_too_repetitive",
+    })),
+  };
+
+  const plan = await buildOfficialTrailerReferencePlan(
+    baseStory({
+      game_images: [verifiedSteamAsset("GTA", "3240220", "Grand Theft Auto V Enhanced")],
+    }),
+    {
+      excludeExhaustedSourceFamilies: false,
+      segmentValidationReport,
+      steamLookup: async () => ({
+        success: true,
+        title: "Grand Theft Auto V Enhanced",
+        movies: [
+          {
+            id: 257100577,
+            name: "Official Trailer",
+            hls_h264: sourceUrl,
+          },
+        ],
+      }),
+    },
+  );
+
+  assert.equal(plan.motion_reference_readiness, "official_reference_found");
+  assert.equal(plan.references.length, 1);
+  assert.equal(plan.references[0].movie_id, "832632");
+  assert.equal(plan.references[0].steam_movie_id, 257100577);
+  assert.equal(plan.excluded_references.length, 0);
+  assert.deepEqual(plan.warnings, []);
+  assert.equal(plan.exhausted_source_family_filter.enabled, false);
+});
+
 test("official trailer resolver refuses unverified Steam assets", async () => {
   const plan = await buildOfficialTrailerReferencePlan(
     baseStory({

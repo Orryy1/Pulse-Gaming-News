@@ -15,7 +15,9 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - Segment validation rejects intro/rating/title windows before extraction when the start time or reference metadata is unsafe.
 - Segment validation can resume from a previous local report, merge old/new scans and skip both already-sampled windows and exhausted source families.
 - Steam CDN trailer URLs are parsed into source families such as `steam / 3240220 / Steam movie 832632`, making it clear when GTA or Red Dead needs alternate official sources instead of another scan of the same trailer.
+- The official trailer resolver can now ingest a previous segment-validation report and exclude exhausted Steam source families before planning the next reference search.
 - Current dry-run with previous scan merge skipped `28` already-sampled refs and `8` exhausted source-family refs for `rss_5b3abe925b27a199`.
+- Latest resolver check with a five-window exhaustion threshold excluded `9` known-bad Steam references and left `5` candidate references for further local validation.
 - Current verdict for `rss_5b3abe925b27a199`: BioShock has two validated windows, but GTA has `51` failed attempts across `8` source families and Red Dead has `22` failed attempts across `2`, so both need alternate official source families before another Studio V2 proof render.
 - This remains local/report-only. No production media, DB rows, Railway settings, OAuth state, render defaults or upload paths were changed.
 
@@ -75,7 +77,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 
 ### Safe Commands
 
-- resolve_alternate_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_5b3abe925b27a199`
+- resolve_alternate_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_5b3abe925b27a199 --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5`
 - plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_5b3abe925b27a199`
 - extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_5b3abe925b27a199 --apply-local`
 - validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_5b3abe925b27a199 --apply-local --deep-scan --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous`

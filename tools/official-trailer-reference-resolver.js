@@ -41,6 +41,9 @@ function parseArgs(argv) {
     offline: false,
     stillsReport: null,
     noStillsReport: false,
+    segmentValidationReport: null,
+    noExcludeExhaustedSourceFamilies: false,
+    exhaustedSourceFamilyThreshold: 8,
   };
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i];
@@ -52,6 +55,11 @@ function parseArgs(argv) {
     else if (arg === "--offline" || arg === "--no-steam-network") args.offline = true;
     else if (arg === "--stills-report") args.stillsReport = argv[++i] || null;
     else if (arg === "--no-stills-report") args.noStillsReport = true;
+    else if (arg === "--segment-validation-report") args.segmentValidationReport = argv[++i] || null;
+    else if (arg === "--no-exclude-exhausted-source-families") args.noExcludeExhaustedSourceFamilies = true;
+    else if (arg === "--exhausted-source-family-threshold") {
+      args.exhaustedSourceFamilyThreshold = Math.max(1, Number(argv[++i]) || 8);
+    }
     else if (arg === "--help" || arg === "-?") args.help = true;
   }
   return args;
@@ -70,6 +78,12 @@ function printHelp() {
       "  --offline             Do not fetch Steam appdetails metadata",
       "  --stills-report <p>   Attach verified still assets from a specific v1.5/v1.4/v1.1 report",
       "  --no-stills-report    Do not attach still-enrichment report assets",
+      "  --segment-validation-report <p>",
+      "                        Exclude exhausted source families from a previous local validation report",
+      "  --no-exclude-exhausted-source-families",
+      "                        Keep exhausted references even when a segment report is supplied",
+      "  --exhausted-source-family-threshold <n>",
+      "                        Failed windows before a source family is treated as exhausted",
       "  --json                Print JSON instead of Markdown",
       "",
       "This command is report-only: it fetches Steam metadata JSON at most, and never downloads videos, extracts frames, slices clips, mutates the DB, publishes or touches Railway/OAuth.",
@@ -155,6 +169,17 @@ async function loadStillsAssetMap(args) {
   return loadStillsAssetMapFromFiles(candidates);
 }
 
+async function loadSegmentValidationReport(args) {
+  if (!args.segmentValidationReport) return { report: null, source: null };
+  const source = path.resolve(ROOT, args.segmentValidationReport);
+  try {
+    return { report: await fs.readJson(source), source };
+  } catch (err) {
+    process.stderr.write(`[trailer-reference] segment validation report ignored: ${err.message}\n`);
+    return { report: null, source };
+  }
+}
+
 function attachVerifiedStoreAssets(stories, assetMap) {
   return stories.map((story) => {
     const enriched = assetMap.get(story.id) || [];
@@ -213,14 +238,22 @@ async function main() {
 
   const { stories: rawStories, mode } = await loadStories(args);
   const stills = await loadStillsAssetMap(args);
+  const segmentValidation = await loadSegmentValidationReport(args);
   const stories = attachVerifiedStoreAssets(rawStories, stills.map);
   const report = await buildOfficialTrailerReferenceReport(stories, {
     mode,
     steamLookup: args.offline ? null : fetchSteamAppDetails,
+    segmentValidationReport: segmentValidation.report,
+    excludeExhaustedSourceFamilies:
+      Boolean(segmentValidation.report) && !args.noExcludeExhaustedSourceFamilies,
+    exhaustedSourceFamilyThreshold: args.exhaustedSourceFamilyThreshold,
   });
   report.story_mode = mode;
   report.stills_report_source = stills.source;
   report.stills_report_sources = stills.sources || [];
+  report.segment_validation_report_source = segmentValidation.source;
+  report.exhausted_source_family_filter_enabled =
+    Boolean(segmentValidation.report) && !args.noExcludeExhaustedSourceFamilies;
   report.network_metadata_lookup = {
     steam_appdetails_enabled: !args.offline,
     downloads_allowed: false,

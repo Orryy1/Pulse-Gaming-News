@@ -44,6 +44,7 @@ Date: 2026-05-07
 - Source-family grouping now shows GTA failures spread across `8` official source families and Red Dead across `2`, with top rejection reasons per family.
 - Segment validation now skips exhausted source families when resuming from a previous local scan. The latest dry-run skipped `28` already-sampled refs and `8` exhausted source-family refs, leaving `6` new unsampled windows instead of blindly revisiting known-bad official sources.
 - Legacy Steam CDN trailer URLs are now backfilled into concrete source-family metadata. Old scans now show `steam`, store app IDs and movie IDs instead of `unknown`, which makes alternate-source acquisition decisions much clearer.
+- Official trailer reference resolution can now ingest the previous segment-validation report and exclude exhausted Steam source families before planning the next search. The current story check with a five-window threshold excluded `9` known-bad Steam refs and left `5` further candidates for local validation.
 
 ## Validation
 
@@ -58,9 +59,10 @@ Date: 2026-05-07
 - Combined Studio V2 motion safety tests: pass (`83/83`)
 - Focused Studio V2 motion-gap tests: pass (`14/14`)
 - Focused official trailer segment-validator tests: pass (`24/24`)
+- Focused official trailer reference resolver tests: pass (`11/11`)
 - Focused TikTok diagnostics/dispatch tests: pass (`47/47`)
 - Focused voice/longform/monetisation tests: pass (`19/19`)
-- Full `npm test`: pass (`2129/2129`)
+- Full `npm test`: pass (`2131/2131`)
 - `npm run build`: pass
 
 ## Current Verdicts

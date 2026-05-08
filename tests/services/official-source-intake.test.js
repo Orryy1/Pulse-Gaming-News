@@ -163,6 +163,23 @@ test("official source intake rejects entries that request downloads", () => {
   assert.ok(report.rejected_entries[0].reasons.includes("downloads_requested"));
 });
 
+test("official source intake rejects logo/title-only video references", () => {
+  const report = buildOfficialSourceIntakeReport({
+    stories: [story()],
+    entries: [
+      officialEntry({
+        official_source_url: "https://www.rockstargames.com/reddeadredemption2/videos/logo-loop",
+        source_title: "Red Dead Redemption 2 Official Logo Loop",
+        evidence_of_officialness: "Official Rockstar Games video page.",
+        entity_match_notes: "Red Dead Redemption 2 title appears on the page.",
+      }),
+    ],
+  });
+
+  assert.equal(report.summary.accepted, 0);
+  assert.ok(report.rejected_entries[0].reasons.includes("logo_or_title_only_reference"));
+});
+
 test("official source intake integrates with trailer resolver without enabling downloads", async () => {
   const intakeReport = buildOfficialSourceIntakeReport({
     stories: [story()],

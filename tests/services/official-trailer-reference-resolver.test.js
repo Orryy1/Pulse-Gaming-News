@@ -264,6 +264,41 @@ test("official trailer resolver excludes Steam movie references that are rating-
   assert.equal(plan.lookup_results[0].rejected_movie_reasons[0].reason, "rating_board_reference");
 });
 
+test("official trailer resolver excludes Steam movie references that are logo/title-only material", async () => {
+  const plan = await buildOfficialTrailerReferencePlan(
+    baseStory({
+      game_images: [verifiedSteamAsset("GTA", "3240220", "Grand Theft Auto V Enhanced")],
+    }),
+    {
+      steamLookup: async () => ({
+        success: true,
+        title: "Grand Theft Auto V Enhanced",
+        movies: [
+          {
+            id: 21,
+            name: "Rockstar Games Logo Sequence",
+            hls_h264: "https://video.example/gta-logo.m3u8",
+          },
+          {
+            id: 22,
+            name: "Gameplay Deep Dive",
+            hls_h264: "https://video.example/gta-gameplay-deep-dive.m3u8",
+          },
+        ],
+      }),
+    },
+  );
+
+  assert.equal(plan.references.length, 1);
+  assert.equal(plan.references[0].movie_name, "Gameplay Deep Dive");
+  assert.equal(plan.lookup_results[0].movies_found, 1);
+  assert.equal(plan.lookup_results[0].movies_rejected, 1);
+  assert.equal(
+    plan.lookup_results[0].rejected_movie_reasons[0].reason,
+    "logo_or_title_only_reference",
+  );
+});
+
 test("official trailer resolver excludes exhausted Steam source families from previous local validation", async () => {
   const sourceUrl =
     "https://video.akamai.steamstatic.com/store_trailers/3240220/832632/4b8d5f06cf0a1/hls_264_master.m3u8";

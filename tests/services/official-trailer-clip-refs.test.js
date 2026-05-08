@@ -601,6 +601,49 @@ test("official clip refs skip resolver references that are only rating-board mat
   assert.equal(refs[0].provenance.movie_name, "GTA Gameplay Update Trailer");
 });
 
+test("official clip refs skip resolver references that are logo/title-only material", () => {
+  const refs = buildOfficialTrailerClipsFromFrameReport(
+    { plans: [{ story_id: "story-1", frames: [] }] },
+    "story-1",
+    {
+      includeExploratoryWindows: true,
+      exploratoryStartSeconds: [42],
+      referenceReport: {
+        plans: [
+          {
+            story_id: "story-1",
+            references: [
+              {
+                source_type: "steam_movie",
+                provider: "steam",
+                source_url: "https://video.example/gta-logo-loop.m3u8",
+                entity: "GTA",
+                movie_name: "GTA Logo Loop",
+                downloads_allowed: false,
+              },
+              {
+                source_type: "steam_movie",
+                provider: "steam",
+                source_url: "https://video.example/gta-gameplay.m3u8",
+                entity: "GTA",
+                movie_name: "GTA Gameplay Update Trailer",
+                downloads_allowed: false,
+              },
+            ],
+          },
+        ],
+      },
+      maxClips: 20,
+    },
+  );
+
+  assert.deepEqual(
+    refs.map((ref) => ref.path),
+    ["https://video.example/gta-gameplay.m3u8"],
+  );
+  assert.equal(refs[0].provenance.movie_name, "GTA Gameplay Update Trailer");
+});
+
 test("official clip refs deep-scan balances entities before repeated same-entity sources", () => {
   const refs = buildOfficialTrailerClipsFromFrameReport(
     { plans: [{ story_id: "story-1", frames: [] }] },

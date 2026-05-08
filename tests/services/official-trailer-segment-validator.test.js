@@ -194,6 +194,39 @@ test("official trailer segment validator preflight-rejects rating-board referenc
   assert.equal(report.segments[0].allowed_for_flash_lane, false);
 });
 
+test("official trailer segment validator preflight-rejects logo/title-only references", async () => {
+  const outputRoot = tempOutputRoot("logo-only-reference");
+  await cleanTempRoot(outputRoot);
+  let extractorCalls = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        movieName: "Red Dead Redemption 2 Official Logo Loop",
+        provenance: {
+          movie_name: "Red Dead Redemption 2 Official Logo Loop",
+        },
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: async () => {
+        extractorCalls += 1;
+        throw new Error("logo-only reference should be rejected before extraction");
+      },
+      inspectFrame: async (outputPath) => passingQa(outputPath),
+    },
+  );
+
+  assert.equal(extractorCalls, 0);
+  assert.equal(report.summary.samples_extracted, 0);
+  assert.equal(report.summary.segments_rejected, 1);
+  assert.equal(report.segments[0].validation_reason, "segment_source_is_logo_or_title_only_reference");
+  assert.equal(report.segments[0].segment_validated, false);
+  assert.equal(report.segments[0].allowed_for_flash_lane, false);
+});
+
 test("official trailer segment validator preflight-rejects official segments still inside intro material", async () => {
   const outputRoot = tempOutputRoot("intro-window");
   await cleanTempRoot(outputRoot);

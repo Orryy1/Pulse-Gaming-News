@@ -1,8 +1,8 @@
 # Studio V2 Overnight Promotion Packet
 
-Generated: 2026-05-07T03:21:22.483Z
-Story: `1szzhy9`
-Title: Marathon Drops To 15K Daily CCU Peak On Steam, Exits Top 50 On PlayStation & Top 100 On Xbox Best-Sellers Lists
+Generated: 2026-05-08T00:12:16.481Z
+Story: `rss_5b3abe925b27a199`
+Title: GTA 6 Owner Passed On A Sequel To A Legacy Franchise, And We're Dying To Know Which One
 
 ## Verdict
 
@@ -11,39 +11,34 @@ Title: Marathon Drops To 15K Daily CCU Peak On Steam, Exits Top 50 On PlayStatio
 Production ready: `no`
 Morning approval needed: `no`
 
-## Latest Motion Validation Note
-
-After this packet was generated, the GTA/Red Dead/BioShock local motion scan was resumed and merged instead of overwritten. It now has `100` checked segment windows and `2` validated trimmed gameplay windows, but both are BioShock. GTA and Red Dead remain blocked by repetitive, black, low-detail or title/rating frames. This confirms the no-pilot verdict; no new Studio V2 render should be attempted from that story yet.
-
 ## Blockers
 
+- qa_lane_unknown
+- flash_lane_preflight_not_allowed
+- preflight_flash_lane_requires_two_actual_clip_scenes
+- preflight_flash_lane_clip_dominance_below_target
+- preflight_flash_visual_requires_three_unique_clip_refs_for_60s
+- preflight_flash_visual_not_enough_distinct_scene_beats
 - forensic_warnings_remaining
 - visual_repeat_pairs_remaining
-- weak_rendered_frames_remaining
-- current_segment_validation_insufficient
-- current_segment_source_diversity_insufficient
+- not_a_60s_local_proof_candidate
+- voice_grade_unknown
 
 ## Warnings
 
-- preflight_flash_lane_spoken_wpm_outside_target_range
-- preflight_flash_lane_clip_dominance_supported_by_trailer_frames
-
-## Forensic Warning Details
-
-- Issue codes: visual_repetition, rendered_frame_taste
-- Repeat pair count: 2
-- Repeat pair times: 46.5s/49.5s, 55.5s/58.5s
-- Weak rendered frame count: 2
-- Weak rendered frames: 16.5s dead_dark_frame, 22.5s washed_low_detail_frame
-- Rating/title frame count: 0
+- thin_official_clip_reference_count
+- thin_official_frame_count
+- preflight_flash_lane_card_ratio_high
+- preflight_flash_visual_card_ratio_high
+- preflight_flash_visual_cover_art_should_only_support
 
 ## Evidence
 
-- MP4: `test/output/studio-v2-still-deck/studio_v2_1szzhy9_enriched.mp4`
-- Contact sheet: `test/output/studio-v2-still-deck/1szzhy9_enriched_contact_sheet.jpg`
-- QA JSON: `test/output/studio-v2-still-deck/1szzhy9_enriched_qa.json`
-- Forensic JSON: `test/output/studio-v2-still-deck/qa_forensic_1szzhy9_enriched_report.json`
-- Forensic Markdown: `test/output/studio-v2-still-deck/qa_forensic_1szzhy9_enriched.md`
+- MP4: `unknown`
+- Contact sheet: `unknown`
+- QA JSON: `unknown`
+- Forensic JSON: `unknown`
+- Forensic Markdown: `unknown`
 - Media package: `test/output/studio-v2-still-deck/enriched_media_package.json`
 - Frame report: `test/output/controlled_frame_extraction_worker_apply_local.json`
 - Segment validation report: `test/output/official_trailer_segment_validation_apply_local.json`
@@ -52,22 +47,22 @@ After this packet was generated, the GTA/Red Dead/BioShock local motion scan was
 
 | Check | Value |
 | --- | ---: |
-| Runtime | 74.666016s |
-| QA lane | pass |
-| QA green / amber / red | 14 / 4 / 0 |
-| Voice | approved-provided-local-tts (green) |
-| Official clip refs | 7 |
-| Official trailer frames | 9 |
-| Current validated clip refs | 0 |
-| Current validated clip sources | 0 |
-| Current validated clip entities | 0 |
-| Current segment rejections | 16 |
+| Runtime | 72.48s |
+| QA lane | unknown |
+| QA green / amber / red | 0 / 0 / 0 |
+| Voice | provided-local-tts-audio (unknown) |
+| Official clip refs | 0 |
+| Official trailer frames | 2 |
+| Current validated clip refs | 5 |
+| Current validated clip sources | 4 |
+| Current validated clip entities | 3 |
+| Current segment rejections | 83 |
 | Forensic verdict | warn |
 | Forensic fails / warns | 0 / 2 |
 | Visual repeat pairs after | 2 |
 | Visual repeat pairs delta | -14 |
-| Unique scene sources | 14 |
-| Clip dominance | 0.88 |
+| Unique scene sources | 0 |
+| Clip dominance | 0 |
 | Caption gaps over 2s | 0 |
 
 ## Proposed Pilot Plan

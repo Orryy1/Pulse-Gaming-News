@@ -32,6 +32,10 @@ function clipScene(i) {
   return { type: "clip", label: `clip_${i}`, source: `clip-${i}.mp4` };
 }
 
+function sharedClipScene(i, source = "shared-clip.mp4") {
+  return { type: "clip", label: `clip_${i}`, source };
+}
+
 function cardScene(i) {
   return { type: "card.stat", label: `card_${i}` };
 }
@@ -134,6 +138,111 @@ test("Flash Lane preflight blocks repeating too few official clips across a 60s 
   assert.equal(report.verdict, "block");
   assert.ok(report.blockers.includes("flash_lane_clip_reuse_too_high"));
   assert.equal(report.metrics.maxAllowedActualClipScenesFromRefs, 6);
+});
+
+test("Flash Lane preflight blocks card-heavy proofs without story beat overlay coverage", () => {
+  const scenes = [
+    clipScene(1),
+    clipScene(2),
+    clipScene(3),
+    clipScene(4),
+    clipScene(5),
+    clipScene(6),
+    cardScene(1),
+    cardScene(2),
+    cardScene(3),
+    cardScene(4),
+  ];
+  const report = buildFlashLaneProofPreflight({
+    narration: providedNarration,
+    scenes,
+    media: {
+      clips: [{ path: "a.mp4" }, { path: "b.mp4" }, { path: "c.mp4" }],
+      trailerFrames: [{ path: "frame-1.jpg" }],
+    },
+    overlayPlan: {
+      timeline: [
+        { kind: "hook_chip", label: "WAIT... WHAT?" },
+        { kind: "source_chip", label: "IGN" },
+      ],
+    },
+  });
+
+  assert.equal(report.verdict, "block");
+  assert.ok(report.warnings.includes("flash_lane_card_ratio_high"));
+  assert.ok(report.blockers.includes("flash_lane_card_ratio_requires_story_beat_coverage"));
+  assert.equal(report.metrics.cardRatio, 0.4);
+  assert.equal(report.metrics.storyBeatOverlayCount, 0);
+});
+
+test("Flash Lane preflight allows card-heavy proofs when motion and beat coverage are strong", () => {
+  const scenes = [
+    clipScene(1),
+    clipScene(2),
+    clipScene(3),
+    clipScene(4),
+    clipScene(5),
+    clipScene(6),
+    cardScene(1),
+    cardScene(2),
+    cardScene(3),
+    cardScene(4),
+  ];
+  const report = buildFlashLaneProofPreflight({
+    narration: providedNarration,
+    scenes,
+    media: {
+      clips: [{ path: "a.mp4" }, { path: "b.mp4" }, { path: "c.mp4" }],
+      trailerFrames: [{ path: "frame-1.jpg" }],
+    },
+    overlayPlan: {
+      timeline: [
+        { kind: "beat_chip", label: "SEQUEL VETO" },
+        { kind: "beat_chip", label: "NO DATE YET" },
+        { kind: "entity_chip", label: "GTA" },
+      ],
+    },
+  });
+
+  assert.equal(report.verdict, "allow");
+  assert.ok(report.warnings.includes("flash_lane_card_ratio_high"));
+  assert.equal(report.blockers.includes("flash_lane_card_ratio_requires_story_beat_coverage"), false);
+  assert.equal(report.metrics.storyBeatOverlayCount, 2);
+});
+
+test("Flash Lane preflight blocks card-heavy proofs without enough motion diversity", () => {
+  const scenes = [
+    sharedClipScene(1),
+    sharedClipScene(2),
+    sharedClipScene(3),
+    sharedClipScene(4),
+    sharedClipScene(5),
+    sharedClipScene(6),
+    cardScene(1),
+    cardScene(2),
+    cardScene(3),
+    cardScene(4),
+  ];
+  const report = buildFlashLaneProofPreflight({
+    narration: providedNarration,
+    scenes,
+    media: {
+      clips: [{ path: "shared-clip.mp4" }, { path: "unused-a.mp4" }, { path: "unused-b.mp4" }],
+      trailerFrames: [{ path: "frame-1.jpg" }],
+    },
+    overlayPlan: {
+      timeline: [
+        { kind: "beat_chip", label: "SEQUEL VETO" },
+        { kind: "beat_chip", label: "NO DATE YET" },
+        { kind: "entity_chip", label: "GTA" },
+      ],
+    },
+  });
+
+  assert.equal(report.verdict, "block");
+  assert.ok(report.blockers.includes("flash_lane_card_ratio_requires_motion_diversity"));
+  assert.equal(report.metrics.storyBeatOverlayCount, 2);
+  assert.equal(report.visualDirector.metrics.uniqueClipSources, 1);
 });
 
 test("Flash Lane preflight blocks unapproved local narration", () => {

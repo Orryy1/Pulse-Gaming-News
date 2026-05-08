@@ -552,10 +552,13 @@ async function buildFlashLaneRenderPreflight({
           sourceLabel: story.source_type || "NEWS",
         },
       ];
+  const durationS = sumDurations(scenes) || targetDurationS;
+  const overlayPlan = buildFlashLaneOverlayPlan({ story: renderStory, scenes, durationS });
   const report = buildFlashLaneProofPreflight({
     narration,
     scenes,
     media,
+    overlayPlan,
     scriptWordCount: countWords(renderStory.tts_script || renderStory.full_script || renderStory.body || renderStory.title),
   });
   return {
@@ -570,6 +573,7 @@ async function buildFlashLaneRenderPreflight({
         ? Number(Number(narration.durationS).toFixed(3))
         : null,
     },
+    flashLaneOverlays: overlayPlan,
     sceneList: sceneListForReport(scenes),
   };
 }
@@ -625,15 +629,19 @@ async function renderStillDeckVariant({
           sourceLabel: story.source_type || "NEWS",
         },
       ];
+  const durationS = sumDurations(scenes);
+  const overlayPlan =
+    variant === "enriched"
+      ? buildFlashLaneOverlayPlan({ story: renderStory, scenes, durationS })
+      : null;
   const flashLanePreflight =
     variant === "enriched"
       ? assertFlashLaneProofReady(
-          { narration, scenes, media },
+          { narration, scenes, media, overlayPlan },
           { allowDiagnosticRender: allowFlashDiagnosticRender },
         )
       : null;
   const transitions = buildCutTransitions(scenes);
-  const durationS = sumDurations(scenes);
   const assPath = path.join(outputDir, `${story.id}_${variant}.ass`);
   const assDurationS = Math.max(0.1, durationS - 0.6);
   let words = [];
@@ -677,10 +685,6 @@ async function renderStillDeckVariant({
     prev = out;
   }
   if (scenes.length === 1) filterParts.push("[v0]copy[base]");
-  const overlayPlan =
-    variant === "enriched"
-      ? buildFlashLaneOverlayPlan({ story: renderStory, scenes, durationS })
-      : null;
   const subtitleInputLabel = overlayPlan ? "overlayed" : "base";
   if (overlayPlan) {
     filterParts.push(
@@ -920,8 +924,9 @@ function renderComparisonMarkdown(report) {
     if (warnings.length) lines.push(`- Warnings: ${warnings.join(", ")}`);
     const metrics = report.render_preflight.metrics || {};
     if (Object.keys(metrics).length) {
+      const visualMetrics = report.render_preflight.visualDirector?.metrics || {};
       lines.push(
-        `- Runtime: ${metrics.narrationDurationS ?? "unknown"}s; spoken pace: ${metrics.spokenWpm ?? "unknown"} WPM; actual clip dominance: ${metrics.actualClipDominance ?? "unknown"}; card ratio: ${metrics.cardRatio ?? "unknown"}`,
+        `- Runtime: ${metrics.narrationDurationS ?? "unknown"}s; spoken pace: ${metrics.spokenWpm ?? "unknown"} WPM; actual clip dominance: ${metrics.actualClipDominance ?? "unknown"}; motion dominance: ${metrics.motionDominance ?? "unknown"}; card ratio: ${metrics.cardRatio ?? "unknown"}; story beat overlays: ${metrics.storyBeatOverlayCount ?? "unknown"}; unique clip sources: ${visualMetrics.uniqueClipSources ?? "unknown"}; distinct scene beats: ${visualMetrics.distinctSceneBeats ?? "unknown"}`,
       );
     }
     if (report.render_preflight.narrationPlan) {

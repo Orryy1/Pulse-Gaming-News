@@ -716,6 +716,29 @@ test("still-deck render path applies package readiness before ffmpeg render", ()
   assert.match(src, /args\.allowFlashDiagnosticRender/);
 });
 
+test("still-deck Flash render path passes overlay beat coverage into preflight", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+
+  assert.match(src, /const overlayPlan =[\s\S]*buildFlashLaneOverlayPlan\(\{ story: renderStory, scenes, durationS \}\)/);
+  assert.match(src, /buildFlashLaneProofPreflight\(\{\s*narration,\s*scenes,\s*media,\s*overlayPlan,/);
+  assert.match(src, /assertFlashLaneProofReady\(\s*\{\s*narration,\s*scenes,\s*media,\s*overlayPlan\s*\}/);
+});
+
+test("still-deck Flash preflight report surfaces motion and beat coverage metrics", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+
+  assert.match(src, /motion dominance:\s*\$\{metrics\.motionDominance/);
+  assert.match(src, /story beat overlays:\s*\$\{metrics\.storyBeatOverlayCount/);
+  assert.match(src, /unique clip sources:\s*\$\{visualMetrics\.uniqueClipSources/);
+  assert.match(src, /distinct scene beats:\s*\$\{visualMetrics\.distinctSceneBeats/);
+});
+
 test("still-deck report wording does not call no-render packages silent-audio proofs", () => {
   const src = fs.readFileSync(
     path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),

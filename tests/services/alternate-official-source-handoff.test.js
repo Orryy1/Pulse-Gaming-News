@@ -131,6 +131,12 @@ test("alternate official source handoff turns exhausted motion gaps into entity 
   assert.ok(row.manual_source_intake.rejection_checks.includes("localised_non_english_reference"));
   assert.ok(row.manual_source_intake.rejection_checks.includes("embedded_subtitle_reference"));
   assert.ok(row.manual_source_intake.safe_next_commands.some((item) => item.includes("media:intake-official-sources")));
+  assert.ok(
+    row.manual_source_intake.safe_next_commands.some((item) =>
+      item.includes("--input test/output/official_source_intake_template.json"),
+    ),
+  );
+  assert.ok(row.next_actions.some((item) => item.includes("test/output/official_source_intake_template.json")));
   assert.ok(row.unsafe_source_types.includes("random YouTube reuploads"));
   assert.ok(row.unsafe_source_types.includes("localised or non-English trailer references for Flash Lane footage"));
   assert.ok(row.next_actions.some((item) => item.includes("media:resolve-trailers")));

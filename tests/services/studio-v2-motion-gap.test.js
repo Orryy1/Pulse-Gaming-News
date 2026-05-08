@@ -546,7 +546,7 @@ test("motion gap report asks for alternate official sources when missing entitie
   assert.ok(gap.priority_next_steps.includes("do_not_rescan_same_official_sources_for:GTA,Red Dead"));
   assert.ok(
     gap.recommended_commands.some((item) =>
-      /media:intake-official-sources -- --input test\/input\/official_sources\.json --story-id rss_gap/.test(
+      /media:intake-official-sources -- --input test\/output\/official_source_intake_template\.json --story-id rss_gap/.test(
         item.command,
       ),
     ),
@@ -736,6 +736,8 @@ test("motion gap markdown is operator-readable and local-only", () => {
   assert.match(md, /Source families/);
   assert.match(md, /Marathon \\| Reveal Trailer/);
   assert.match(md, /--previous-validation-report test\/output\/official_trailer_segment_validation_apply_local\.json --merge-previous/);
+  assert.match(md, /--input test\/output\/official_source_intake_template\.json/);
+  assert.doesNotMatch(md, /test\/input\/official_sources\.json/);
   assert.match(md, /local-only/);
   assert.match(md, /No DB, Railway, OAuth, render-default or posting changes/);
 });

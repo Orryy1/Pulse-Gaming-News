@@ -132,6 +132,64 @@ test("current state flags stale alternate-source handoffs and preserves motion-g
   assert.match(md, /studio:v2:alternate-sources/);
 });
 
+test("current state treats provisional alternate-source reference counts as a resolver-refresh blocker", () => {
+  const refreshCommand =
+    "npm run media:resolve-trailers -- --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5";
+  const report = buildFlashLaneCurrentStateReport({
+    proofCandidateReport: { candidates: [candidate()] },
+    motionGapReport: {
+      generated_at: "2026-05-07T10:00:00.000Z",
+      gaps: [
+        {
+          story_id: "story_readyish",
+          title: "GTA 6 Owner Passed On A Legacy Franchise",
+          motion_gap: {
+            story_entities: ["GTA", "BioShock", "Red Dead"],
+            validated_entities: ["BioShock"],
+            missing_validated_entities: ["GTA", "Red Dead"],
+            acquisition_strategy: {
+              status: "alternate_official_sources_required",
+              alternate_source_entities: ["GTA", "Red Dead"],
+            },
+          },
+          recommended_commands: [{ label: "Validate segments", command: "npm run studio:v2:motion-gap -- --story story_readyish" }],
+        },
+      ],
+    },
+    alternateSourceReport: {
+      generated_at: "2026-05-07T10:05:00.000Z",
+      input_freshness: {
+        reference_counts_provisional: true,
+        warnings: [
+          {
+            code: "reference_report_older_than_motion_gap",
+            message: "Official trailer references are older than the motion-gap report.",
+            recommended_command: refreshCommand,
+          },
+        ],
+      },
+      rows: [
+        {
+          story_id: "story_readyish",
+          entity: "Red Dead",
+          blocker: "resolved_references_exhausted_and_entity_still_missing_from_validated_motion",
+          next_actions: ["Then rerun: npm run studio:v2:motion-gap -- --story story_readyish"],
+        },
+      ],
+    },
+  });
+  const commands = report.rows[0].recommended_commands.map((item) => item.command);
+  const md = renderFlashLaneCurrentStateMarkdown(report);
+
+  assert.equal(report.input_freshness.reference_counts_provisional, true);
+  assert.equal(report.rows[0].acquisition.reference_counts_provisional, true);
+  assert.equal(report.rows[0].acquisition.requires_reference_refresh, true);
+  assert.equal(commands[0], refreshCommand);
+  assert.ok(commands.indexOf(refreshCommand) < commands.indexOf("npm run studio:v2:motion-gap -- --story story_readyish"));
+  assert.match(md, /Reference counts: provisional/);
+  assert.match(md, /refresh resolver before trusting remaining\/excluded refs/i);
+});
+
 test("current state asks for more gameplay seconds when entities are covered but dominance is low", () => {
   const report = buildFlashLaneCurrentStateReport({
     proofCandidateReport: {

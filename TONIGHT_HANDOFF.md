@@ -5,7 +5,8 @@ Date: 2026-05-08
 ## Branch
 
 - Branch: `codex/readiness-qa-failure-window`
-- Current base commit before final slice: `1004f3d5`
+- Current commit: `04a3bac4`
+- Latest pushed slice: local TTS voice diagnostics now persist acoustic pitch, spoken outro and WPM evidence through local repair, script extension, Studio V2 ingestion and final voice audit.
 - Deployed: no
 - Railway/env/Cloudflare/OAuth/production DB/social posting: untouched
 - Production renderer and production voice defaults: unchanged
@@ -14,6 +15,7 @@ Date: 2026-05-08
 
 - Local Liam TTS is green with the accepted `pulse-sleepy-liam-20260502` reference.
 - The old low/demonic local fallback path is blocked.
+- Local MP3s now need real pitch, spoken outro and pace evidence before they can be treated as Studio V2 voice-ready.
 - Studio V2 proof selection now fails safely instead of pretending weak motion is good enough.
 - One-story trailer-reference runs no longer overwrite the canonical batch report unless explicitly requested.
 - Official source intake now validates operator-supplied motion references before the resolver can count them.
@@ -36,8 +38,8 @@ Date: 2026-05-08
 
 ## Validation
 
-- Focused modified-area tests: pass (`31/31` for official intake/resolver/handoff, `16/16` for motion gap)
-- Full `npm test`: pass (`2202/2202`)
+- Focused modified-area tests: pass (`131/131` for local TTS + Studio V2 proof safety coverage)
+- Full `npm test`: pass (`2227/2227`)
 - `npm run build`: pass
 
 ## Reports To Read

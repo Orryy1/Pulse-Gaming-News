@@ -1,12 +1,12 @@
 # Overnight Status Snapshot
 
-Generated: 2026-05-08 02:21 BST
+Generated: 2026-05-08 05:14 BST
 
 ## Branch
 
 - Current branch: `codex/readiness-qa-failure-window`
-- Current base commit before this slice: `1004f3d5`
-- Current slice pending commit: official source intake validator, resolver integration and updated motion handoff commands
+- Current commit: `04a3bac4`
+- Latest pushed slice: local TTS voice diagnostics are propagated into repair, script-extension, overnight report, Studio V2 ingestion and final voice audit paths
 - Deployed: no
 
 ## Safety
@@ -23,8 +23,8 @@ Generated: 2026-05-08 02:21 BST
 
 ## Validation
 
-- Focused modified-area tests: pass (`31/31` for official intake/resolver/handoff, `16/16` for motion gap)
-- Full `npm test`: pass (`2202/2202`)
+- Focused modified-area tests: pass (`131/131` for local TTS + Studio V2 proof safety coverage)
+- Full `npm test`: pass (`2227/2227`)
 - `npm run build`: pass
 
 ## Local TTS
@@ -34,6 +34,7 @@ Generated: 2026-05-08 02:21 BST
 - Latest smoke proof: `D:\pulse-data\media\output\audio\__local_tts_smoke_sleepy_liam_latest.mp3`
 - Voice-ready proof: `D:\pulse-data\media\test\output\local-media-repair\audio\rss_8ea7f2689732f31a_liam.mp3`
 - The old low/demonic fallback voice is blocked by the local Liam safety gate.
+- New hard proof fields: pitch profile, spoken outro and WPM evidence must now travel with local MP3s before Studio V2 can treat them as voice-ready.
 
 ## Studio V2 And Flash Lane
 

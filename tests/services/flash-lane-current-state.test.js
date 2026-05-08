@@ -91,6 +91,47 @@ test("current state prioritises alternate official motion sources when an entity
   assert.equal(report.summary.needs_alternate_official_motion_source, 1);
 });
 
+test("current state flags stale alternate-source handoffs and preserves motion-gap entities", () => {
+  const report = buildFlashLaneCurrentStateReport({
+    proofCandidateReport: { candidates: [candidate()] },
+    motionGapReport: {
+      generated_at: "2026-05-07T10:00:00.000Z",
+      gaps: [
+        {
+          story_id: "story_readyish",
+          title: "GTA 6 Owner Passed On A Legacy Franchise",
+          motion_gap: {
+            story_entities: ["GTA", "BioShock", "Red Dead"],
+            validated_entities: ["BioShock"],
+            missing_validated_entities: ["GTA", "Red Dead"],
+            acquisition_strategy: {
+              status: "alternate_official_sources_required",
+              alternate_source_entities: ["GTA", "Red Dead"],
+            },
+          },
+        },
+      ],
+    },
+    alternateSourceReport: {
+      generated_at: "2026-05-07T09:00:00.000Z",
+      rows: [
+        {
+          story_id: "story_readyish",
+          entity: "Red Dead",
+          blocker: "local_segment_validation_exhausted_current_motion_sources",
+          next_actions: [],
+        },
+      ],
+    },
+  });
+  const md = renderFlashLaneCurrentStateMarkdown(report);
+
+  assert.deepEqual(report.rows[0].acquisition.alternate_source_entities, ["GTA", "Red Dead"]);
+  assert.equal(report.input_freshness.warnings[0].code, "alternate_source_report_older_than_motion_gap");
+  assert.match(md, /alternate_source_report_older_than_motion_gap/);
+  assert.match(md, /studio:v2:alternate-sources/);
+});
+
 test("current state reports ready local proofs when all blockers are cleared", () => {
   const report = buildFlashLaneCurrentStateReport({
     proofCandidateReport: {

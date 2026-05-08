@@ -158,6 +158,19 @@ test("alternate official source handoff creates fallback search queries when ref
   assert.ok(report.rows[0].planned_searches.every((item) => item.generated_fallback));
 });
 
+test("alternate official source handoff flags stale reference reports", () => {
+  const report = buildAlternateOfficialSourceHandoffReport({
+    motionGapReport: { generated_at: "2026-05-07T10:00:00.000Z", gaps: [motionGap()] },
+    referenceReport: { generated_at: "2026-05-07T09:00:00.000Z", plans: [referencePlan()] },
+  });
+  const md = renderAlternateOfficialSourceHandoffMarkdown(report);
+
+  assert.equal(report.input_freshness.warnings[0].code, "reference_report_older_than_motion_gap");
+  assert.match(md, /Input Freshness/);
+  assert.match(md, /reference_report_older_than_motion_gap/);
+  assert.match(md, /media:resolve-trailers/);
+});
+
 test("alternate official source handoff markdown is readable and safety-labelled", () => {
   const report = buildAlternateOfficialSourceHandoffReport({
     motionGapReport: {

@@ -10,6 +10,15 @@ This report is local-only and report-only. It turns exhausted Flash Lane motion 
 - Downloads started: no
 - Production touched: no
 
+## Input Freshness
+
+- Motion gap report: 2026-05-08T00:12:16.459Z
+- Reference report: 2026-05-07T23:33:53.985Z
+
+Warnings:
+- reference_report_older_than_motion_gap: Official trailer references are older than the motion-gap report; rerun media:resolve-trailers before trusting remaining/excluded reference counts.
+  Recommended: `npm run media:resolve-trailers -- --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5`
+
 ## Allowed Source Policy
 
 - Allowed: Steam official movie metadata

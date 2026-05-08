@@ -13,6 +13,11 @@ Read-only control report. No Railway, OAuth, production DB, render default, TTS 
 - Need motion validation: 0
 - Need alternate official motion source: 1
 
+## Input Freshness
+
+- Motion gap report: 2026-05-08T00:12:16.459Z
+- Alternate source report: 2026-05-08T00:42:57.546Z
+
 ## Current Queue
 
 | Story | Stage | Distance | Audio | Exact | Clips | Missing motion entities | Next action |
@@ -25,7 +30,7 @@ Read-only control report. No Railway, OAuth, production DB, render default, TTS 
 - Command: `npm run media:resolve-trailers -- --story-id rss_5b3abe925b27a199 --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5`
 - Command: `npm run media:plan-frames -- --story-id rss_5b3abe925b27a199 --trailer-references test/output/official_trailer_references_v1.json`
 - Command: `npm run media:extract-frames -- --story-id rss_5b3abe925b27a199 --apply-local`
-- Search targets: Red Dead official trailer; Red Dead gameplay trailer; Red Dead Steam trailer; Red Dead gameplay
+- Search targets: GTA official trailer; GTA gameplay trailer; GTA official gameplay; GTA platform storefront trailer; BioShock official trailer; BioShock gameplay trailer; BioShock official gameplay; BioShock platform storefront trailer; Red Dead official trailer; Red Dead gameplay trailer; Red Dead official gameplay; Red Dead platform storefront trailer
 
 ## Safety
 

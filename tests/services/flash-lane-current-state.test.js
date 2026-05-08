@@ -304,6 +304,63 @@ test("current state reports ready local proofs when all blockers are cleared", (
   assert.equal(report.rows[0].recommended_commands[0].command, "npm run studio:v2:still-deck -- --story ready_story");
 });
 
+test("current state trusts fresh ready proof candidates over stale motion-gap blockers", () => {
+  const report = buildFlashLaneCurrentStateReport({
+    proofCandidateReport: {
+      candidates: [
+        candidate({
+          story_id: "ready_story",
+          verdict: "ready_flash_proof",
+          blockers: [],
+          recommended_command: "npm run studio:v2:still-deck -- --story ready_story",
+          visuals: {
+            exact_subject_count: 11,
+            exact_subject_groups: ["Marathon"],
+            story_target_entities: ["Marathon"],
+            accepted_frame_count: 0,
+            validated_clip_ref_count: 13,
+            validated_clip_source_count: 8,
+            validated_clip_entities: ["Marathon"],
+            missing_validated_clip_entities: [],
+          },
+        }),
+      ],
+    },
+    motionGapReport: {
+      gaps: [
+        {
+          story_id: "ready_story",
+          motion_gap: {
+            story_entities: ["Marathon"],
+            validated_entities: ["Marathon"],
+            missing_validated_entities: ["Marathon"],
+            acquisition_strategy: {
+              status: "alternate_official_sources_required",
+              alternate_source_entities: ["Marathon"],
+            },
+          },
+        },
+      ],
+    },
+    alternateSourceReport: {
+      rows: [
+        {
+          story_id: "ready_story",
+          entity: "Marathon",
+          blocker: "local_segment_validation_exhausted_current_motion_sources",
+          next_actions: ["Then rerun: npm run studio:v2:motion-gap -- --story ready_story"],
+        },
+      ],
+    },
+  });
+
+  assert.equal(report.rows[0].stage, "ready_for_local_flash_proof");
+  assert.equal(report.rows[0].distance_to_local_proof, "ready");
+  assert.deepEqual(report.rows[0].visuals.missing_motion_entities, []);
+  assert.equal(report.summary.ready_for_local_flash_proof, 1);
+  assert.equal(report.summary.needs_alternate_official_motion_source, 0);
+});
+
 test("current state does not hide missing Liam audio behind visual blockers", () => {
   const state = classifyCurrentState({
     candidate: candidate({

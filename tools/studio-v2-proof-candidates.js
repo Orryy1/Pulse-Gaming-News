@@ -25,6 +25,8 @@ const DEFAULT_AUDIO_REPORTS = [
   "test/output/local_script_extension_audio_apply.json",
 ];
 const DEFAULT_ASSET_REPORTS = [
+  "test/output/asset_acquisition_v16_gameplay_stills_apply_local.json",
+  "test/output/asset_acquisition_v16_gameplay_stills.json",
   "test/output/asset_acquisition_v15_multi_entity_apply_local.json",
   "test/output/asset_acquisition_v14_verified_store_apply_local.json",
   "test/output/asset_acquisition_v11_apply_local.json",

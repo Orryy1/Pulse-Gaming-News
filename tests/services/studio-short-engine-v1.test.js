@@ -284,6 +284,47 @@ test("studio composer carries exact entity labels into visual scenes for in-imag
   assert.equal(visualScenes.find((scene) => scene.entity === "GTA").mediaStartS, 28.5);
 });
 
+test("studio composer preserves validated official clip timing windows", () => {
+  const result = composeStudioSlate({
+    story: { title: "Marathon trailer proof" },
+    audioDurationS: 66,
+    media: {
+      clips: [
+        {
+          path: "marathon-trailer.m3u8",
+          entity: "Marathon",
+          sourceType: "steam_movie",
+          mediaStartS: 42.45,
+          durationS: 2.85,
+          provenance: {
+            clip_start_policy: "validated_trimmed_segment_window",
+            segment_trim_recommended: true,
+            segment_original_start_s: 42,
+            segment_original_duration_s: 5,
+            segment_recommended_start_s: 42.45,
+            segment_recommended_duration_s: 2.85,
+          },
+        },
+      ],
+      trailerFrames: [{ path: "marathon-frame.jpg", entity: "Marathon" }],
+      articleHeroes: [],
+      publisherAssets: [],
+      stockFillers: [],
+    },
+    opts: { allowStockFiller: false, flashLane: true },
+  });
+
+  const opener = result.scenes.find((scene) => scene.type === SCENE_TYPES.OPENER);
+
+  assert.equal(opener.mediaStartS, 42.45);
+  assert.equal(opener.clipDurationS, 2.85);
+  assert.equal(
+    opener.clipTimingProvenance.clip_start_policy,
+    "validated_trimmed_segment_window",
+  );
+  assert.equal(opener.clipTimingProvenance.segment_recommended_duration_s, 2.85);
+});
+
 test("studio composer does not present RSS excerpts as Reddit comments", () => {
   const result = composeStudioSlate({
     story: {

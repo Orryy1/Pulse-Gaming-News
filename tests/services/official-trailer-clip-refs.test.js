@@ -1157,12 +1157,18 @@ test("official clip refs use recommended trim timing from validated deep-scan se
   );
 
   assert.equal(refs.length, 1);
-  assert.equal(refs[0].mediaStartS, 42.45);
-  assert.equal(refs[0].durationS, 2.8);
+  assert.equal(refs[0].mediaStartS, 42.7);
+  assert.equal(refs[0].durationS, 2.2);
   assert.equal(refs[0].provenance.segment_validation_reason, "trimmed_segment_samples_passed");
   assert.equal(refs[0].provenance.segment_trim_recommended, true);
   assert.equal(refs[0].provenance.segment_original_start_s, 42);
   assert.equal(refs[0].provenance.segment_original_duration_s, 5);
+  assert.equal(refs[0].provenance.segment_recommended_start_s, 42.45);
+  assert.equal(refs[0].provenance.segment_recommended_duration_s, 2.8);
+  assert.equal(refs[0].provenance.segment_render_start_s, 42.7);
+  assert.equal(refs[0].provenance.segment_render_duration_s, 2.2);
+  assert.equal(refs[0].provenance.segment_render_head_inset_s, 0.25);
+  assert.equal(refs[0].provenance.segment_render_tail_inset_s, 0.35);
 });
 
 test("official clip refs can be built from Flash Lane acquisition queue windows", () => {

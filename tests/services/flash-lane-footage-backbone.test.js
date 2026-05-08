@@ -157,8 +157,40 @@ test("Flash Lane footage backbone projects a footage-heavy 60s Flash proof", () 
   });
 
   assert.equal(report.verdict, "ready_for_flash_render_preflight");
-  assert.equal(report.validated_clip_refs.length, 9);
-  assert.ok(report.projected_clip_dominance >= 0.65);
+  assert.equal(report.thresholds.minClipDominance, 0.55);
+  assert.equal(report.validated_clip_refs.length, 10);
+  assert.ok(report.projected_clip_dominance >= 0.55);
+  assert.deepEqual(report.blockers, []);
+});
+
+test("Flash Lane footage backbone uses measured trimmed clip durations before blocking dominance", () => {
+  const sources = Array.from({ length: 8 }, (_, index) => `https://video.example/marathon-${index}.m3u8`);
+  const frames = [frame({ entity: "Marathon", source: sources[0] })];
+  const segments = Array.from({ length: 16 }, (_, index) =>
+    segment({
+      entity: "Marathon",
+      source: sources[index % sources.length],
+      start: 36 + index * 6,
+      actionScore: 82 + (index % 8),
+    }),
+  ).map((item, index) => ({
+    ...item,
+    duration_s: index === 0 ? 5 : 2.85,
+    recommended_duration_s: index === 0 ? 5 : 2.85,
+    recommended_media_start_s: item.media_start_s,
+    trim_recommended: index !== 0,
+  }));
+
+  const report = buildFlashLaneFootageBackboneReport({
+    storyId: "story-1",
+    targetRuntimeS: 66.72,
+    frameReport: frameReport(frames),
+    segmentValidationReport: { segments },
+  });
+
+  assert.equal(report.verdict, "ready_for_flash_render_preflight");
+  assert.equal(report.validated_clip_refs.length, 16);
+  assert.ok(report.projected_clip_dominance >= 0.55);
   assert.deepEqual(report.blockers, []);
 });
 

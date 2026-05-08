@@ -18,6 +18,9 @@ const {
 const {
   applyLocalProofTtsLimits,
 } = require("../lib/ops/local-proof-tts-limits");
+const {
+  probeLocalAudioAcoustics,
+} = require("../lib/ops/local-acoustic-probe");
 const mediaPaths = require("../lib/media-paths");
 
 function parseArgs(argv) {
@@ -103,6 +106,7 @@ async function main() {
     const applyReport = await applyLocalScriptExtensionAudio({
       plan,
       generateTts: audio.generateTTS,
+      acousticProbe: probeLocalAudioAcoustics,
       measureDuration: async (outputRel) => {
         const outputAbs = await mediaPaths.resolveExisting(outputRel);
         return ffprobeDuration(outputAbs);

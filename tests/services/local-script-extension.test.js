@@ -41,8 +41,8 @@ function queueItem(id, words = 140) {
     action: "extend_script_before_local_repair",
     runtime: {
       wordCount: words,
-      minWords: 185,
-      maxWords: 227,
+      minWords: 163,
+      maxWords: 200,
     },
   };
 }
@@ -65,8 +65,8 @@ test("local script extension expands short Liam scripts into the 61-75s local Fl
   assert.equal(draft.cta_exactly_once, true);
   assert.match(draft.proposed_full_script, new RegExp(`${REQUIRED_CTA.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`));
   assert.equal(draft.runtime.result, "pass");
-  assert.ok(draft.proposed_words >= 185);
-  assert.ok(draft.proposed_words <= 227);
+  assert.ok(draft.proposed_words >= 163);
+  assert.ok(draft.proposed_words <= 200);
   assert.ok(draft.proposed_words <= 200);
 });
 
@@ -81,9 +81,30 @@ test("local script extension targets the middle of the Liam-safe range, not the 
     env: {},
   });
 
-  assert.equal(DEFAULT_LOCAL_EXTENSION_TARGET_WORDS, 192);
-  assert.equal(draft.target_words, 195);
-  assert.ok(draft.proposed_words <= 200);
+  assert.equal(DEFAULT_LOCAL_EXTENSION_TARGET_WORDS, 175);
+  assert.equal(draft.target_words, 175);
+  assert.ok(draft.proposed_words >= 163);
+  assert.ok(draft.proposed_words <= 181);
+});
+
+test("local script extension uses compact bridge lines instead of overshooting near the minimum", () => {
+  const draft = extendScriptToLocalFlash({
+    story: {
+      id: "rss_near_minimum",
+      title: "Marathon Drops To 15K Daily CCU Peak On Steam, Exits Top 50 On PlayStation & Top 100 On Xbox Best-Sellers Lists",
+      subreddit: "PCMasterRace",
+      content_pillar: "Confirmed Drop",
+      full_script: "Bungie charged 40 dollars for this. ".repeat(25),
+    },
+    queueItem: queueItem("rss_near_minimum", 160),
+    env: {},
+  });
+
+  assert.equal(draft.action, "ready_for_local_liam_audio");
+  assert.equal(draft.runtime.result, "pass");
+  assert.ok(draft.proposed_words >= 163);
+  assert.ok(draft.proposed_words <= 181);
+  assert.doesNotMatch(draft.proposed_full_script, /The clean read on Marathon Drops/i);
 });
 
 test("local script extension strips duplicate CTA before appending the required outro once", () => {
@@ -204,6 +225,7 @@ test("local script extension CLI is local-only and does not publish", () => {
   assert.match(tool, /local_script_extension_plan\.json/);
   assert.match(tool, /--story/);
   assert.match(tool, /--apply-local-audio/);
+  assert.match(tool, /probeLocalAudioAcoustics/);
   assert.match(tool, /local_script_extension_audio_apply\.json/);
   assert.doesNotMatch(tool, /postShort|uploadShort|publishAll|autonomous\/publish/);
 });
@@ -312,6 +334,72 @@ test("apply local script extension audio stamps accepted Sleepy Liam metadata", 
     assert.equal(timestamps.meta.approvedLocalVoice, true);
     assert.equal(timestamps.meta.acceptedLocalVoice.id, "pulse-sleepy-liam-20260502");
     assert.equal(timestamps.meta.acceptedLocalVoice.referencePresent, true);
+  } finally {
+    if (previousApproval === undefined) delete process.env.STUDIO_V2_LOCAL_VOICE_APPROVED;
+    else process.env.STUDIO_V2_LOCAL_VOICE_APPROVED = previousApproval;
+    fs.rmSync(outputDir, { recursive: true, force: true });
+  }
+});
+
+test("apply local script extension audio probes acoustic diagnostics when timestamps omit them", async () => {
+  const previousApproval = process.env.STUDIO_V2_LOCAL_VOICE_APPROVED;
+  process.env.STUDIO_V2_LOCAL_VOICE_APPROVED = "true";
+  const outputDir = path.join(ROOT, "test", "output", "tmp-local-script-extension-probe");
+  fs.rmSync(outputDir, { recursive: true, force: true });
+  const probed = [];
+
+  try {
+    const result = await applyLocalScriptExtensionAudio({
+      plan: {
+        drafts: [
+          {
+            story_id: "ready_probe",
+            action: "ready_for_local_liam_audio",
+            proposed_full_script: "Ready script. Follow Pulse Gaming so you never miss a beat.",
+            proposed_words: 190,
+            estimated_seconds: 64.2,
+          },
+        ],
+      },
+      outputRelDir: outputDir,
+      generateTts: async (_text, outputRel) => {
+        fs.mkdirSync(path.dirname(outputRel), { recursive: true });
+        fs.writeFileSync(outputRel, "fake mp3 bytes");
+        fs.writeFileSync(
+          outputRel.replace(/\.mp3$/, "_timestamps.json"),
+          JSON.stringify({
+            characters: Array.from("Ready script. Follow Pulse Gaming so you never miss a beat."),
+            character_start_times_seconds: [],
+            character_end_times_seconds: [],
+            meta: {},
+          }),
+        );
+      },
+      acousticProbe: async (audioPath) => {
+        probed.push(audioPath);
+        return {
+          medianPitchHz: 118,
+          integratedLufs: -16,
+          truePeakDb: -1.3,
+        };
+      },
+      measureDuration: async () => 65.2,
+      localTts: READY_TTS,
+    });
+
+    const applied = result.applied[0];
+    const timestamps = JSON.parse(
+      fs.readFileSync(
+        path.join(outputDir, "ready_probe_liam_extended_timestamps.json"),
+        "utf8",
+      ),
+    );
+    assert.equal(probed.length, 1);
+    assert.match(probed[0], /ready_probe_liam_extended\.mp3$/);
+    assert.equal(applied.failure_code, null);
+    assert.equal(applied.acoustic.medianPitchHz, 118);
+    assert.equal(timestamps.meta.acoustic.medianPitchHz, 118);
+    assert.equal(timestamps.meta.voiceDiagnostics.source, "local_acoustic_probe");
   } finally {
     if (previousApproval === undefined) delete process.env.STUDIO_V2_LOCAL_VOICE_APPROVED;
     else process.env.STUDIO_V2_LOCAL_VOICE_APPROVED = previousApproval;

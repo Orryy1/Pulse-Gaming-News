@@ -20,6 +20,9 @@ const {
   applyLocalProofTtsLimits,
 } = require("../lib/ops/local-proof-tts-limits");
 const {
+  probeLocalAudioAcoustics,
+} = require("../lib/ops/local-acoustic-probe");
+const {
   buildFinalVoiceAudit,
 } = require("../lib/studio/v2/final-voice-audit");
 const {
@@ -163,6 +166,7 @@ async function main() {
       outputRelDir: path.join("test", "output", "local-media-repair", "audio"),
       generateTts: audio.generateTTS,
       cleanText: audio.cleanForTTS,
+      acousticProbe: probeLocalAudioAcoustics,
       measureDuration: async (outputRel) => {
         const outputAbs = await mediaPaths.resolveExisting(outputRel);
         return ffprobeDuration(outputAbs);

@@ -612,8 +612,8 @@ test("segment validation report carries trimmed segment timing into Flash Lane c
 
   const [upgraded] = applySegmentValidationToClipRefs([ref], report);
 
-  assert.equal(upgraded.mediaStartS, 42.45);
-  assert.equal(upgraded.durationS, 2.8);
+  assert.equal(upgraded.mediaStartS, 42.7);
+  assert.equal(upgraded.durationS, 2.2);
   assert.equal(upgraded.provenance.segment_validated, true);
   assert.equal(upgraded.provenance.allowed_for_flash_lane, true);
   assert.equal(upgraded.provenance.segment_trim_recommended, true);
@@ -621,6 +621,10 @@ test("segment validation report carries trimmed segment timing into Flash Lane c
   assert.equal(upgraded.provenance.segment_original_duration_s, 5);
   assert.equal(upgraded.provenance.segment_recommended_start_s, 42.45);
   assert.equal(upgraded.provenance.segment_recommended_duration_s, 2.8);
+  assert.equal(upgraded.provenance.segment_render_start_s, 42.7);
+  assert.equal(upgraded.provenance.segment_render_duration_s, 2.2);
+  assert.equal(upgraded.provenance.segment_render_head_inset_s, 0.25);
+  assert.equal(upgraded.provenance.segment_render_tail_inset_s, 0.35);
 });
 
 test("official trailer segment validator allows official game-character faces in segment samples", () => {

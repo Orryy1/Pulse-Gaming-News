@@ -536,6 +536,64 @@ test("proof candidates block Flash proofs when exact assets are cover dominated"
   assert.equal(candidate.visuals.cover_dominated_exact_asset_share, 1);
 });
 
+test("proof candidates count gameplay-still repairs against cover domination", () => {
+  const storyId = "cover_repaired_with_gameplay_stills";
+  const coverReport = {
+    plans: [
+      {
+        story_id: storyId,
+        would_fetch: Array.from({ length: 4 }, (_, index) => ({
+          id: `${storyId}_cover_${index}`,
+          source_type: index % 2 === 0 ? "steam_capsule" : "igdb_cover",
+          entity: index % 2 === 0 ? "GTA" : "Red Dead",
+          subject_match_quality: "exact_game_match",
+          exact_subject_group: index % 2 === 0 ? "GTA" : "Red Dead",
+          counted_for_premium: true,
+          counted_for_standard: true,
+          store_match_verified: true,
+          local_path: `test/output/assets/${storyId}_cover_${index}.jpg`,
+        })),
+      },
+    ],
+  };
+  const gameplayRepairReport = {
+    plans: [
+      {
+        story_id: storyId,
+        visual_evidence_repair: {
+          prefer_gameplay_stills: true,
+          accepted_gameplay_stills: 5,
+          accepted_cover_like_stills: 0,
+        },
+        applied_assets: Array.from({ length: 5 }, (_, index) => ({
+          id: `${storyId}_gameplay_${index}`,
+          source_type: "steam_screenshot",
+          entity: index % 2 === 0 ? "GTA" : "Red Dead",
+          subject_match_quality: "exact_game_match",
+          exact_subject_group: index % 2 === 0 ? "GTA" : "Red Dead",
+          counted_for_premium: true,
+          counted_for_standard: true,
+          store_match_verified: true,
+          local_path: `test/output/assets/${storyId}_gameplay_${index}.jpg`,
+        })),
+      },
+    ],
+  };
+
+  const report = buildStudioV2ProofCandidateReport({
+    stories: [story(storyId)],
+    localAudioReports: [audioReport(storyId)],
+    assetReports: [gameplayRepairReport, coverReport],
+    frameReports: [frameReport(storyId, 10)],
+    segmentValidationReports: [segmentReport(storyId, 10)],
+  });
+
+  const candidate = report.candidates[0];
+  assert.equal(candidate.visuals.cover_dominated_exact_asset_count, 4);
+  assert.equal(candidate.visuals.cover_dominated_exact_asset_share, 0.444);
+  assert.ok(!candidate.blockers.includes("flash_proof_blocks_cover_dominated_exact_assets"));
+});
+
 test("proof candidates block wrong-story exact assets even when motion covers the real entities", () => {
   const storyId = "wrong_story_exact_assets";
   const report = buildStudioV2ProofCandidateReport({

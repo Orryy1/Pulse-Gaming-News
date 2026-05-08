@@ -62,6 +62,9 @@ const {
   looksLikeLocalTtsPath,
 } = require("../lib/studio/v2/proof-render-safety");
 const {
+  probeLocalAudioAcoustics,
+} = require("../lib/ops/local-acoustic-probe");
+const {
   assertFlashLaneProofReady,
   buildFlashLaneProofPreflight,
   buildFlashLaneProofReadinessSummary,
@@ -400,6 +403,9 @@ async function resolveNarration({
       ? await fs.readJson(inferredTs).catch(() => null)
       : null;
     const transcriptChars = meta?.characters || meta?.alignment?.characters || [];
+    const acoustic =
+      meta?.meta?.acoustic ||
+      (suppliedLocalTts ? probeLocalAudioAcoustics(resolvedAudioPath) : null);
     return {
       mode: "real_audio",
       audioPath: resolvedAudioPath,
@@ -410,7 +416,7 @@ async function resolveNarration({
       signatureHash: meta?.meta?.signatureHash || null,
       approvedLocalVoice: meta?.meta?.approvedLocalVoice === true,
       acceptedLocalVoice: meta?.meta?.acceptedLocalVoice || null,
-      acoustic: meta?.meta?.acoustic || null,
+      acoustic,
       voiceDiagnostics: meta?.meta?.voiceDiagnostics || null,
       transcript:
         meta?.meta?.transcript ||
@@ -509,6 +515,8 @@ function sceneListForReport(scenes) {
     duration: scene.duration,
     source: scene.source || scene.backgroundSource || scene.prerenderedMp4 || scene.statLabel || null,
     mediaStartS: scene.mediaStartS ?? null,
+    clipDurationS: scene.clipDurationS ?? null,
+    clipTimingProvenance: scene.clipTimingProvenance || null,
     premiumLane: scene.premiumLane || null,
     cardTreatment: scene.cardTreatment || null,
   }));

@@ -4,15 +4,15 @@ Read-only control report. No Railway, OAuth, production DB, render default, TTS 
 
 ## Summary
 
-- Candidates considered: 8
+- Candidates considered: 20
 - Ready for local Flash proof: 0
-- Need local Liam audio: 1
+- Need local Liam audio: 11
 - Need Liam audio duration repair: 2
 - Need format router decision: 1
-- Need exact subject assets: 0
-- Need visual evidence repair: 3
+- Need exact subject assets: 1
+- Need visual evidence repair: 2
 - Need motion validation: 0
-- Need alternate official motion source: 1
+- Need alternate official motion source: 3
 
 ## Input Freshness
 
@@ -29,9 +29,21 @@ Read-only control report. No Railway, OAuth, production DB, render default, TTS 
 | 1t0x9ui: It's been a year since release and Oblivion Remastered is still broken- Digital Foundry | needs_visual_evidence_repair | hard_blocked | ready 69.3s | 6 | block cover 0.667 | 0/0 | Oblivion | replace_cover_dominated_assets_with_screenshots_or_gameplay_frames |
 | 1t1hyqc: Even tho I can’t download you. You will always be on my phone. | needs_liam_audio_duration_repair | hard_blocked | local_liam_audio_not_flash_ready | 0 | pass | 0/0 | none | repair_script_length_or_regenerate_local_liam_audio |
 | 1t0u9o4: Don’t Expect Product Placement in GTA 6 — the CEO of Take-Two Says It Won't Do Real World Brand Partnerships Because 'All the Brands Are Made Up' | needs_alternate_official_motion_source | two_blockers | ready 71.2s | 17 | pass | 0/0 | GTA | find_non_exhausted_official_motion_source |
-| 1szzhy9: Marathon Drops To 15K Daily CCU Peak On Steam, Exits Top 50 On PlayStation & Top 100 On Xbox Best-Sellers Lists | needs_visual_evidence_repair | two_blockers | ready 74.6s | 6 | block cover 0.667 | 13/8 | none | replace_cover_dominated_assets_with_screenshots_or_gameplay_frames |
+| 1szzhy9: Marathon Drops To 15K Daily CCU Peak On Steam, Exits Top 50 On PlayStation & Top 100 On Xbox Best-Sellers Lists | needs_alternate_official_motion_source | two_blockers | ready 71.5s | 11 | pass | 13/8 | none | find_more_validated_gameplay_seconds_or_downgrade_story |
 | 1t0w9nb: Digital Foundry: Yup, Oblivion Remastered Is Still Broken a Year After Release | needs_local_liam_audio | hard_blocked | approved_local_liam_audio_missing | 6 | block cover 0.667 | 0/0 | Oblivion | generate_or_repair_local_liam_audio |
 | rss_ef7e6e464509e0bc: MindsEye Has a New Update and a Cheaper Price as Developer Launches Comeback Bid | needs_liam_audio_duration_repair | hard_blocked | local_liam_audio_not_flash_ready | 0 | pass | 0/0 | none | repair_script_length_or_regenerate_local_liam_audio |
+| rss_5b3abe925b27a199: GTA 6 Owner Passed On A Sequel To A Legacy Franchise, And We're Dying To Know Which One | needs_alternate_official_motion_source | one_blocker | ready 72.5s | 26 | pass | 6/5 | none | find_more_validated_gameplay_seconds_or_downgrade_story |
+| rss_0e2778be9f97ffa4: The next Tales Of remaster has leaked, and it's probably not what you're expecting | needs_local_liam_audio | hard_blocked | approved_local_liam_audio_missing | 6 | block cover 0.667 | 1/1 | none | generate_or_repair_local_liam_audio |
+| rss_93fdf53a0c1211ef: PlayStation Plus Free Games For May 2026 Revealed | needs_local_liam_audio | hard_blocked | approved_local_liam_audio_missing | 0 | pass | 0/0 | none | generate_or_repair_local_liam_audio |
+| rss_9fb084475142f310: GTA 6 Price Commented On By Rockstar's Owner | needs_local_liam_audio | hard_blocked | approved_local_liam_audio_missing | 0 | pass | 0/0 | none | generate_or_repair_local_liam_audio |
+| rss_a110642aa97d0de9: In the wake of $100 GTA 6 rumours, Take-Two still won't give an actual price, but says "our job is to charge way, way, way less of the value" | needs_local_liam_audio | hard_blocked | approved_local_liam_audio_missing | 0 | pass | 0/0 | none | generate_or_repair_local_liam_audio |
+| rss_8ea7f2689732f31a: Even GTA 6's price needs to feel "reasonable", says Take-Two boss: hiking past $70 to match inflation "doesn’t make a whole lot of sense" | needs_exact_subject_assets | two_blockers | ready 65.4s | 0 | pass | 0/0 | none | run_exact_subject_still_acquisition |
+| rss_a8e7d56725bf20cc: All The Evidence That GTA 6‘s Next Trailer Is Nearly Here | needs_local_liam_audio | hard_blocked | approved_local_liam_audio_missing | 0 | pass | 0/0 | none | generate_or_repair_local_liam_audio |
+| rss_d795d8d622707d2c: 'Eventually the slop will just fall to the bottom': Garry's Mod sequel launches to 'mixed' reviews, but Garry himself isn't worried about AI games on the main page | needs_local_liam_audio | hard_blocked | approved_local_liam_audio_missing | 0 | pass | 0/0 | none | generate_or_repair_local_liam_audio |
+| rss_ca673f22ddbbbdfc: Mega Mewtwo's Pokémon Go debut finally announced and Go Fest Global is free for all players | needs_local_liam_audio | hard_blocked | approved_local_liam_audio_missing | 0 | pass | 0/0 | none | generate_or_repair_local_liam_audio |
+| rss_c3c6731708e35fc0: Marathon update just made Cryo Archive Sponsored Kits a weekly freebie | needs_local_liam_audio | hard_blocked | approved_local_liam_audio_missing | 0 | pass | 0/0 | none | generate_or_repair_local_liam_audio |
+| rss_4105cb7c837252c3: A New The Division PC Game Is Out Right Now, And It's Free | needs_local_liam_audio | hard_blocked | approved_local_liam_audio_missing | 12 | block cover 0.667 | 1/1 | The Division | generate_or_repair_local_liam_audio |
+| rss_3831c03ef4eaf35c: Invincible VS Global Release Times Confirmed | needs_local_liam_audio | hard_blocked | approved_local_liam_audio_missing | 0 | pass | 0/0 | none | generate_or_repair_local_liam_audio |
 
 ## Next Commands
 

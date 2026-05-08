@@ -60,3 +60,46 @@ test("official clip inputs seek to the selected trailer beat instead of trailer 
 
   assert.match(input, /^-ss 31\.20 -t 5\.00 -i "https:\/\/video\.example\/trailer\.m3u8"$/);
 });
+
+test("official clip inputs do not read past validated safe windows", () => {
+  const input = buildSceneInput({
+    type: SCENE_TYPES.CLIP,
+    duration: 4.2,
+    source: "https://video.example/trailer.m3u8",
+    mediaStartS: 42.45,
+    clipDurationS: 2.85,
+  });
+
+  assert.match(input, /^-ss 42\.45 -t 2\.85 -i "https:\/\/video\.example\/trailer\.m3u8"$/);
+});
+
+test("speed-ramp inputs are capped to validated clip windows", () => {
+  const input = buildSceneInput({
+    type: SCENE_TYPES.SPEED_RAMP,
+    duration: 4,
+    source: "https://video.example/trailer.m3u8",
+    mediaStartS: 48.45,
+    clipDurationS: 2.95,
+  });
+
+  assert.match(input, /^-ss 48\.45 -t 2\.95 -i "https:\/\/video\.example\/trailer\.m3u8"$/);
+});
+
+test("clip filters pad safe-window clips instead of pulling later trailer slates", () => {
+  const filter = dispatchSceneFilter({
+    slot: 0,
+    fontOpt: "fontfile=Arial",
+    story: { title: "Marathon update" },
+    scene: {
+      type: SCENE_TYPES.CLIP,
+      duration: 4.2,
+      source: "https://video.example/trailer.m3u8",
+      entity: "Marathon",
+      sourceType: "steam_movie",
+      clipDurationS: 2.85,
+    },
+  });
+
+  assert.match(filter, /tpad=stop_mode=clone:stop_duration=1\.35/);
+  assert.match(filter, /trim=duration=4\.2,setpts=PTS-STARTPTS/);
+});

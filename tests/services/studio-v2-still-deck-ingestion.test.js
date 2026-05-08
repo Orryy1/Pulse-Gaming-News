@@ -699,7 +699,9 @@ test("still-deck supplied local narration must carry accepted voice metadata", (
   );
 
   assert.match(src, /acceptedLocalVoice:\s*meta\?\.meta\?\.acceptedLocalVoice\s*\|\|\s*null/);
-  assert.match(src, /acoustic:\s*meta\?\.meta\?\.acoustic\s*\|\|\s*null/);
+  assert.match(src, /probeLocalAudioAcoustics/);
+  assert.match(src, /const acoustic =[\s\S]*meta\?\.meta\?\.acoustic[\s\S]*suppliedLocalTts \? probeLocalAudioAcoustics\(resolvedAudioPath\) : null/);
+  assert.match(src, /acoustic,\s*\n\s*voiceDiagnostics/);
   assert.match(src, /voiceDiagnostics:\s*meta\?\.meta\?\.voiceDiagnostics\s*\|\|\s*null/);
   assert.match(src, /approvedLocalVoice:\s*meta\?\.meta\?\.approvedLocalVoice/);
   assert.match(src, /transcript:\s*meta\?\.meta\?\.transcript/);

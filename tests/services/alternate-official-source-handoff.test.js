@@ -220,6 +220,16 @@ test("alternate official source handoff generates a fillable intake template", (
   assert.equal(template[0].source_family, "rss_gap_red_dead_alternate_official_source");
   assert.match(template[0].operator_notes, /Suggested searches: Red Dead official trailer/);
   assert.equal(report.source_intake_template.validation_command.includes("--story-id rss_gap"), true);
+  assert.ok(
+    report.rows[0].manual_source_intake.safe_next_commands.some((item) =>
+      item.includes("--reference-report test/output/official_trailer_references_v1_story_rss_gap.json"),
+    ),
+  );
+  assert.ok(
+    report.rows[0].next_actions.some((item) =>
+      item.includes("--reference-report test/output/official_trailer_references_v1_story_rss_gap.json"),
+    ),
+  );
   assert.match(md, /Source Intake Template/);
   assert.match(md, /official_source_intake_template\.json/);
   assert.match(md, /direct_media_url_if_available/);

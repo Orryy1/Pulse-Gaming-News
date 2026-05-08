@@ -44,6 +44,11 @@ test("visual repair planner turns cover-dominated Flash rows into gameplay-still
   assert.equal(repair.cover_dominated_exact_asset_share, 0.75);
   assert.ok(repair.commands.some((item) => item.command.includes("--prefer-gameplay-stills")));
   assert.ok(repair.commands.some((item) => item.safety === "apply_local_under_test_output_only"));
+  assert.ok(
+    repair.commands.some((item) =>
+      item.command.includes("--reference-report test/output/official_trailer_references_v1_story_story_visual.json"),
+    ),
+  );
   assert.equal(report.summary.cover_dominated, 1);
 });
 

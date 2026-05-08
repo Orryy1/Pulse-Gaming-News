@@ -13,12 +13,8 @@ This report is local-only and report-only. It turns exhausted Flash Lane motion 
 
 ## Input Freshness
 
-- Motion gap report: 2026-05-08T13:00:47.611Z
-- Reference report: 2026-05-08T12:19:35.747Z
-
-Warnings:
-- reference_report_older_than_motion_gap: Official trailer references are older than the motion-gap report; rerun media:resolve-trailers before trusting remaining/excluded reference counts.
-  Recommended: `npm run media:resolve-trailers -- --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5`
+- Motion gap report: 2026-05-08T13:37:13.111Z
+- Reference report: 2026-05-08T13:37:53.491Z
 
 ## Allowed Source Policy
 
@@ -38,20 +34,20 @@ Warnings:
 
 ## Entity Handoff
 
-| Story | Entity | Blocker | Attempts | Validated | Rejected | Source families | Top rejection | Remaining refs (provisional) | Excluded refs (provisional) |
+| Story | Entity | Blocker | Attempts | Validated | Rejected | Source families | Top rejection | Remaining refs | Excluded refs |
 | --- | --- | --- | ---: | ---: | ---: | ---: | --- | ---: | ---: |
-| rss_5b3abe925b27a199 | GTA | local_segment_validation_exhausted_current_motion_sources | 102 | 2 | 100 | 9 | segment_samples_too_repetitive | 1 | 8 |
+| rss_5b3abe925b27a199 | GTA | resolved_references_exhausted_and_entity_still_missing_from_validated_motion | 102 | 2 | 100 | 9 | segment_samples_too_repetitive | 0 | 8 |
 | rss_5b3abe925b27a199 | BioShock | local_segment_validation_exhausted_current_motion_sources | 41 | 6 | 35 | 3 | segment_contains_low_detail_frame | 2 | 1 |
-| rss_5b3abe925b27a199 | Red Dead | local_segment_validation_exhausted_current_motion_sources | 48 | 1 | 47 | 4 | segment_contains_black_frame | 0 | 0 |
+| rss_5b3abe925b27a199 | Red Dead | local_segment_validation_exhausted_current_motion_sources | 48 | 1 | 47 | 4 | segment_contains_black_frame | 1 | 1 |
 
 ## rss_5b3abe925b27a199 - GTA
 
 - Title: GTA 6 Owner Passed On A Sequel To A Legacy Franchise, And We're Dying To Know Which One
-- Blocker: local_segment_validation_exhausted_current_motion_sources
-- Motion status: alternate_source_required
+- Blocker: resolved_references_exhausted_and_entity_still_missing_from_validated_motion
+- Motion status: current_references_exhausted_needs_new_official_source_before_sampling
 - Motion recommendation: find_alternate_official_source_family
 - Top rejection: segment_samples_too_repetitive
-- Planned searches: 4
+- Planned searches: 8
 
 ### Recommended Source Types
 
@@ -79,8 +75,12 @@ Warnings:
 
 - GTA official trailer
 - GTA gameplay trailer
-- GTA official gameplay
-- GTA platform storefront trailer
+- GTA Steam trailer
+- GTA gameplay
+- GTA 6 Owner official trailer
+- GTA 6 Owner gameplay
+- GTA 6 Owner Passed On A Sequel To A Legacy Franchise, And We're Dying To Know Which One official trailer
+- GTA 6 Owner Passed On A Sequel To A Legacy Franchise, And We're Dying To Know Which One gameplay trailer
 
 ### Manual Official Source Intake
 
@@ -140,7 +140,7 @@ Reject if:
 - Record provenance before any local frame or segment work.
 - Validate operator intake: npm run media:intake-official-sources -- --input test/output/official_source_intake_template.json --story-id rss_5b3abe925b27a199
 - Rerun: npm run media:resolve-trailers -- --story-id rss_5b3abe925b27a199 --no-latest-report --official-source-intake-report test/output/official_source_intake_report.json --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5
-- If a new official reference exists, rerun: npm run media:validate-trailer-segments -- --story-id rss_5b3abe925b27a199 --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6
+- If a new official reference exists, rerun: npm run media:validate-trailer-segments -- --story-id rss_5b3abe925b27a199 --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1_story_rss_5b3abe925b27a199.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6
 - Then rerun: npm run studio:v2:motion-gap -- --story rss_5b3abe925b27a199
 
 ## rss_5b3abe925b27a199 - BioShock
@@ -233,7 +233,7 @@ Reject if:
 - Record provenance before any local frame or segment work.
 - Validate operator intake: npm run media:intake-official-sources -- --input test/output/official_source_intake_template.json --story-id rss_5b3abe925b27a199
 - Rerun: npm run media:resolve-trailers -- --story-id rss_5b3abe925b27a199 --no-latest-report --official-source-intake-report test/output/official_source_intake_report.json --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5
-- If a new official reference exists, rerun: npm run media:validate-trailer-segments -- --story-id rss_5b3abe925b27a199 --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6
+- If a new official reference exists, rerun: npm run media:validate-trailer-segments -- --story-id rss_5b3abe925b27a199 --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1_story_rss_5b3abe925b27a199.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6
 - Then rerun: npm run studio:v2:motion-gap -- --story rss_5b3abe925b27a199
 
 ## rss_5b3abe925b27a199 - Red Dead
@@ -266,8 +266,8 @@ Reject if:
 
 - Red Dead official trailer
 - Red Dead gameplay trailer
-- Red Dead Steam trailer
-- Red Dead gameplay
+- Red Dead official gameplay
+- Red Dead platform storefront trailer
 
 ### Manual Official Source Intake
 
@@ -327,7 +327,7 @@ Reject if:
 - Record provenance before any local frame or segment work.
 - Validate operator intake: npm run media:intake-official-sources -- --input test/output/official_source_intake_template.json --story-id rss_5b3abe925b27a199
 - Rerun: npm run media:resolve-trailers -- --story-id rss_5b3abe925b27a199 --no-latest-report --official-source-intake-report test/output/official_source_intake_report.json --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5
-- If a new official reference exists, rerun: npm run media:validate-trailer-segments -- --story-id rss_5b3abe925b27a199 --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6
+- If a new official reference exists, rerun: npm run media:validate-trailer-segments -- --story-id rss_5b3abe925b27a199 --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1_story_rss_5b3abe925b27a199.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6
 - Then rerun: npm run studio:v2:motion-gap -- --story rss_5b3abe925b27a199
 
 ## Source Intake Template

@@ -625,3 +625,25 @@ test("official trailer report writer keeps story-specific outputs for separate c
   assert.equal(firstStored.safety.posted_to_platforms, false);
   assert.equal(secondStored.safety.production_db_mutated, false);
 });
+
+test("official trailer report writer keeps a stable one-story alias without updating latest", async () => {
+  const outputDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-trailer-reference-alias-"));
+  const report = await buildOfficialTrailerReferenceReport([baseStory({ id: "rss_5b3abe925b27a199" })]);
+  const written = await writeOfficialTrailerReferenceReportFiles(
+    report,
+    renderOfficialTrailerReferenceMarkdown(report),
+    { outputDir, writeCanonical: false },
+  );
+
+  const stableAlias = path.join(outputDir, "official_trailer_references_v1_story_rss_5b3abe925b27a199.json");
+  const canonicalLatest = path.join(outputDir, "official_trailer_references_v1.json");
+
+  assert.notEqual(written.storyJson, stableAlias);
+  assert.equal(written.storyAliasJson, stableAlias);
+  assert.equal(written.wroteCanonical, false);
+  assert.equal(written.wroteStoryAlias, true);
+  assert.equal(await fs.pathExists(written.storyJson), true);
+  assert.equal(await fs.pathExists(stableAlias), true);
+  assert.equal(await fs.pathExists(canonicalLatest), false);
+  assert.deepEqual(await fs.readJson(stableAlias), report);
+});

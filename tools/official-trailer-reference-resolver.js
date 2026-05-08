@@ -309,6 +309,9 @@ async function main() {
 
   process.stdout.write(args.json ? JSON.stringify(report, null, 2) + "\n" : markdown);
   process.stderr.write(`[trailer-reference] wrote ${path.relative(ROOT, written.storyJson)}\n`);
+  if (written.wroteStoryAlias) {
+    process.stderr.write(`[trailer-reference] updated story alias ${path.relative(ROOT, written.storyAliasJson)}\n`);
+  }
   if (written.wroteCanonical) {
     process.stderr.write(`[trailer-reference] updated latest ${path.relative(ROOT, written.canonicalJson)}\n`);
   }

@@ -96,6 +96,20 @@ test("motion gap report explains why the closest Flash Lane proof is blocked", (
   assert.ok(gap.recommended_commands.some((item) => /media:validate-trailer-segments/.test(item.command)));
   assert.ok(gap.recommended_commands.some((item) => /media:resolve-trailers -- --story-id rss_gap/.test(item.command)));
   assert.ok(gap.recommended_commands.some((item) => /media:plan-frames -- --story-id rss_gap/.test(item.command)));
+  assert.ok(
+    gap.recommended_commands.some((item) =>
+      /media:plan-frames -- --story-id rss_gap --trailer-references test\/output\/official_trailer_references_v1_story_rss_gap\.json/.test(
+        item.command,
+      ),
+    ),
+  );
+  assert.ok(
+    gap.recommended_commands.some((item) =>
+      /media:validate-trailer-segments -- --story-id rss_gap .*--reference-report test\/output\/official_trailer_references_v1_story_rss_gap\.json/.test(
+        item.command,
+      ),
+    ),
+  );
 });
 
 test("motion gap report preserves ready proof commands instead of blocking", () => {

@@ -12,8 +12,8 @@ This report is local-only and report-only. It turns exhausted Flash Lane motion 
 
 ## Input Freshness
 
-- Motion gap report: 2026-05-08T00:12:16.459Z
-- Reference report: 2026-05-07T23:33:53.985Z
+- Motion gap report: 2026-05-08T00:48:24.258Z
+- Reference report: 2026-05-08T00:45:07.863Z
 
 Warnings:
 - reference_report_older_than_motion_gap: Official trailer references are older than the motion-gap report; rerun media:resolve-trailers before trusting remaining/excluded reference counts.
@@ -37,9 +37,9 @@ Warnings:
 
 | Story | Entity | Blocker | Attempts | Validated | Rejected | Source families | Top rejection | Remaining refs | Excluded refs |
 | --- | --- | --- | ---: | ---: | ---: | ---: | --- | ---: | ---: |
-| rss_5b3abe925b27a199 | GTA | local_segment_validation_exhausted_current_motion_sources | 55 | 1 | 54 | 9 | segment_samples_too_repetitive | 8 | 1 |
-| rss_5b3abe925b27a199 | BioShock | local_segment_validation_exhausted_current_motion_sources | 20 | 3 | 17 | 3 | segment_contains_low_detail_frame | 3 | 0 |
-| rss_5b3abe925b27a199 | Red Dead | local_segment_validation_exhausted_current_motion_sources | 13 | 1 | 12 | 2 | segment_contains_black_frame | 2 | 0 |
+| rss_5b3abe925b27a199 | GTA | local_segment_validation_exhausted_current_motion_sources | 55 | 1 | 54 | 9 | segment_samples_too_repetitive | 1 | 8 |
+| rss_5b3abe925b27a199 | BioShock | local_segment_validation_exhausted_current_motion_sources | 20 | 3 | 17 | 3 | segment_contains_low_detail_frame | 2 | 1 |
+| rss_5b3abe925b27a199 | Red Dead | local_segment_validation_exhausted_current_motion_sources | 25 | 2 | 23 | 4 | segment_contains_black_frame | 2 | 0 |
 
 ## rss_5b3abe925b27a199 - GTA
 
@@ -218,6 +218,8 @@ Reject if:
 | --- | --- | --- | ---: | ---: | --- |
 | steam | Red Dead Redemption 2 | RDR2 Launch Trailer (GB) | 6 | 6 | segment_contains_black_frame |
 | steam | 1174180 | Steam movie 254554 | 7 | 6 | segment_contains_black_frame |
+| steam | Red Dead Redemption 2 | RDR2 Launch Trailer (DE) | 6 | 6 | segment_contains_black_frame |
+| steam | Red Dead Redemption 2 | RDR2 60 FPS Trailer (DE) | 6 | 5 | segment_contains_black_frame |
 
 ### Planned Searches
 

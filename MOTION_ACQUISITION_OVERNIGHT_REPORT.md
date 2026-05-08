@@ -16,9 +16,9 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - Liam audio: approved_local_liam_audio_ready
 - Exact assets: 26
 - Motion frames: 2
-- Validated clip refs: 5
-- Validated clip sources: 4
-- Projected clip dominance: 0.23
+- Validated clip refs: 6
+- Validated clip sources: 5
+- Projected clip dominance: 0.3
 - Validated entities: BioShock, Red Dead, GTA
 - Missing entities: none
 - Acquisition strategy: alternate_official_sources_required
@@ -35,7 +35,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 | --- | --- | ---: | ---: | ---: | --- | --- |
 | GTA | alternate_source_required | 55 | 1 | 9 | segment_samples_too_repetitive | find_alternate_official_source_family |
 | BioShock | alternate_source_required | 20 | 3 | 3 | segment_contains_low_detail_frame | find_alternate_official_source_family |
-| Red Dead | alternate_source_required | 13 | 1 | 2 | segment_contains_black_frame | find_alternate_official_source_family |
+| Red Dead | alternate_source_required | 25 | 2 | 4 | segment_contains_black_frame | find_alternate_official_source_family |
 
 #### Source families
 
@@ -73,11 +73,11 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 
 - segment_action_score_below_flash_threshold: 2
 - segment_samples_too_repetitive: 27
-- segment_contains_black_frame: 13
-- segment_contains_low_detail_frame: 20
-- segment_lacks_gameplay_action_samples: 9
+- segment_contains_black_frame: 20
+- segment_contains_low_detail_frame: 21
+- segment_lacks_gameplay_action_samples: 11
 - segment_contains_weak_flash_sample: 1
-- segment_sample_extract_failed: 3
+- segment_sample_extract_failed: 4
 - segment_contains_title_or_rating_card: 8
 
 ### Latest Render Forensic Warnings

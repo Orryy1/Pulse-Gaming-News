@@ -15,14 +15,14 @@ Read-only control report. No Railway, OAuth, production DB, render default, TTS 
 
 ## Input Freshness
 
-- Motion gap report: 2026-05-08T00:12:16.459Z
-- Alternate source report: 2026-05-08T00:42:57.546Z
+- Motion gap report: 2026-05-08T00:48:24.258Z
+- Alternate source report: 2026-05-08T00:48:36.566Z
 
 ## Current Queue
 
 | Story | Stage | Distance | Audio | Exact | Clips | Missing motion entities | Next action |
 | --- | --- | --- | --- | ---: | ---: | --- | --- |
-| rss_5b3abe925b27a199: GTA 6 Owner Passed On A Sequel To A Legacy Franchise, And We're Dying To Know Which One | needs_alternate_official_motion_source | two_blockers | ready 72.5s | 26 | 5/4 | Red Dead | find_non_exhausted_official_motion_source |
+| rss_5b3abe925b27a199: GTA 6 Owner Passed On A Sequel To A Legacy Franchise, And We're Dying To Know Which One | needs_alternate_official_motion_source | one_blocker | ready 72.5s | 26 | 6/5 | none | find_non_exhausted_official_motion_source |
 
 ## Next Commands
 

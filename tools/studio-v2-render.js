@@ -88,6 +88,9 @@ const {
 const { buildKineticAss } = require("../lib/studio/v2/subtitle-layer-v2");
 const { buildQualityReportV2 } = require("../lib/studio/v2/quality-gate-v2");
 const {
+  assertNarrationAllowedForProof,
+} = require("../lib/studio/v2/proof-render-safety");
+const {
   planHeroMomentsV21,
   buildHeroMomentOverlayFilter,
 } = require("../lib/studio/v2/hero-moments-v21");
@@ -904,6 +907,54 @@ function resolveSubtitleScriptText({
   );
 }
 
+function inferStudioV2VoiceProvider(voice = {}) {
+  const provider = String(voice.provider || "").trim();
+  if (provider) return provider;
+  const source = String(voice.source || "").toLowerCase();
+  if (source.includes("eleven")) return "elevenlabs";
+  if (source.includes("local") || source.includes("voxcpm") || source.includes("chatterbox")) {
+    return "local";
+  }
+  return "unknown";
+}
+
+function alignmentTranscript(tsData) {
+  const alignment = tsData?.alignment || tsData;
+  const chars = alignment?.characters;
+  return Array.isArray(chars) ? chars.join("") : "";
+}
+
+function assertStudioV2VoiceAllowedForRender({
+  voice = {},
+  tsData = null,
+  spokenTranscript = "",
+  audioPath = null,
+  env = process.env,
+} = {}) {
+  const meta = tsData?.meta || {};
+  const narration = {
+    mode: "real_audio",
+    provider: inferStudioV2VoiceProvider(voice),
+    source: voice.source || meta.source || "studio-v2-render-voice",
+    audioPath: audioPath || voice.audioPath || null,
+    transcript: meta.text || spokenTranscript || alignmentTranscript(tsData),
+    acoustic:
+      voice.acoustic ||
+      voice.acousticProfile ||
+      meta.acoustic ||
+      meta.acousticProfile ||
+      null,
+    approvedLocalVoice: voice.approvedLocalVoice === true || meta.approvedLocalVoice === true,
+    acceptedLocalVoice: voice.acceptedLocalVoice || meta.acceptedLocalVoice || null,
+    signatureHash: voice.signatureHash || meta.signatureHash || null,
+  };
+  assertNarrationAllowedForProof(narration, {
+    env,
+    allowVoiceReviewDiagnostic: envEnabled(env.STUDIO_V2_ALLOW_VOICE_REVIEW_DIAGNOSTIC),
+  });
+  return narration;
+}
+
 function storyOutroPath({ root = ROOT, storyId, channelId = "pulse-gaming" }) {
   const suffix = channelId && channelId !== "pulse-gaming" ? `__${channelId}` : "";
   return path.join(root, "test", "output", `hf_outro_card_${storyId}${suffix}.mp4`);
@@ -1221,6 +1272,14 @@ async function main() {
       `       spoken outro starts at ${mainNarrationDurationS.toFixed(2)}s`,
     );
   }
+
+  const voiceRenderNarration = assertStudioV2VoiceAllowedForRender({
+    voice,
+    tsData,
+    spokenTranscript,
+    audioPath: voice.audioPath,
+    env: process.env,
+  });
 
   const renderStory = {
     ...story,
@@ -1576,17 +1635,16 @@ async function main() {
   console.log("");
   console.log("[gate] running quality gate v2...");
   const audioMeta = {
-    provider:
-      voice.provider ||
-      (voice.source?.includes("eleven") ? "elevenlabs" : "local"),
+    provider: voiceRenderNarration.provider,
     voiceId: voice.voiceId || null,
-    source: voice.source,
+    source: voiceRenderNarration.source,
     editorialScriptAppliedToAudio: voice.editorialScriptAppliedToAudio === true,
     approvedLocalVoice:
-      voice.approvedLocalVoice === true ||
+      voiceRenderNarration.approvedLocalVoice === true ||
       process.env.STUDIO_V2_LOCAL_VOICE_APPROVED === "true",
-    acceptedLocalVoice:
-      voice.acceptedLocalVoice || tsData?.meta?.acceptedLocalVoice || null,
+    acceptedLocalVoice: voiceRenderNarration.acceptedLocalVoice || null,
+    acoustic: voiceRenderNarration.acoustic,
+    transcript: voiceRenderNarration.transcript,
   };
   const report = buildQualityReportV2({
     storyId: STORY_ID,
@@ -1614,14 +1672,18 @@ async function main() {
   };
   report.mediaDiversity = mediaDiversity;
   report.voice = {
-    source: voice.source,
+    provider: voiceRenderNarration.provider,
+    source: voiceRenderNarration.source,
     audioPath: path.relative(ROOT, voice.audioPath).replace(/\\/g, "/"),
     durationS: audioDurationS,
     outroStartS: voice.outroStartS || null,
     timestampSource: voice.timestampSource || null,
     editorialScriptAppliedToAudio: voice.editorialScriptAppliedToAudio === true,
     signatureHash: voice.signatureHash || tsData?.meta?.signatureHash || null,
-    acceptedLocalVoice: tsData?.meta?.acceptedLocalVoice || null,
+    approvedLocalVoice: voiceRenderNarration.approvedLocalVoice === true,
+    acceptedLocalVoice: voiceRenderNarration.acceptedLocalVoice || null,
+    acoustic: voiceRenderNarration.acoustic,
+    transcript: voiceRenderNarration.transcript,
   };
   report.subtitles = {
     assPath: path.relative(ROOT, assPath).replace(/\\/g, "/"),
@@ -1789,6 +1851,7 @@ if (require.main === module) {
 module.exports = {
   appendStudioOutro,
   assertLocalVoxCpmAllowed,
+  assertStudioV2VoiceAllowedForRender,
   boostMotionDensityForShorts,
   replaceFallbackReleaseCardsWithMotion,
   resolveMainNarrationDurationS,

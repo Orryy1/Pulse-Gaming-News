@@ -1141,7 +1141,14 @@ test("studio-v2 render report surfaces accepted local voice fingerprint", () => 
     path.join(__dirname, "..", "..", "tools", "studio-v2-render.js"),
     "utf8",
   );
-  assert.match(src, /acceptedLocalVoice:\s*tsData\?\.meta\?\.acceptedLocalVoice/);
+  assert.match(
+    src,
+    /const voiceRenderNarration = assertStudioV2VoiceAllowedForRender/,
+  );
+  assert.match(
+    src,
+    /acceptedLocalVoice:\s*voiceRenderNarration\.acceptedLocalVoice/,
+  );
   assert.match(src, /signatureHash:\s*voice\.signatureHash/);
   assert.doesNotMatch(src, /dotenv"\)\.config\(\{\s*override:\s*true\s*\}\)/);
 });

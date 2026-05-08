@@ -17,7 +17,7 @@ Read-only control report. No Railway, OAuth, production DB, render default, TTS 
 ## Input Freshness
 
 - Motion gap report: 2026-05-08T13:37:13.111Z
-- Alternate source report: 2026-05-08T13:37:53.759Z
+- Alternate source report: 2026-05-08T13:47:22.047Z
 - Reference counts: current
 
 ## Current Queue
@@ -32,7 +32,7 @@ Read-only control report. No Railway, OAuth, production DB, render default, TTS 
 - Command: `npm run media:intake-official-sources -- --input test/output/official_source_intake_template.json --story-id rss_5b3abe925b27a199`
 - Command: `npm run media:resolve-trailers -- --story-id rss_5b3abe925b27a199 --no-latest-report --official-source-intake-report test/output/official_source_intake_report.json --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5`
 - Command: `npm run media:plan-frames -- --story-id rss_5b3abe925b27a199 --trailer-references test/output/official_trailer_references_v1_story_rss_5b3abe925b27a199.json`
-- Search targets: GTA official trailer; GTA gameplay trailer; GTA Steam trailer; GTA gameplay; GTA 6 Owner official trailer; GTA 6 Owner gameplay; GTA 6 Owner Passed On A Sequel To A Legacy Franchise, And We're Dying To Know Which One official trailer; GTA 6 Owner Passed On A Sequel To A Legacy Franchise, And We're Dying To Know Which One gameplay trailer; BioShock official trailer; BioShock gameplay trailer; BioShock official gameplay; BioShock platform storefront trailer
+- Search targets: GTA official trailer; GTA gameplay trailer; GTA Steam trailer; GTA gameplay; BioShock official trailer; BioShock gameplay trailer; BioShock official gameplay; BioShock platform storefront trailer; Red Dead official trailer; Red Dead gameplay trailer; Red Dead official gameplay; Red Dead platform storefront trailer
 
 ## Safety
 

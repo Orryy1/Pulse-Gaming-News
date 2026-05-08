@@ -14,7 +14,7 @@ This report is local-only and report-only. It turns exhausted Flash Lane motion 
 ## Input Freshness
 
 - Motion gap report: 2026-05-08T13:37:13.111Z
-- Reference report: 2026-05-08T13:37:53.491Z
+- Reference report: 2026-05-08T13:47:05.826Z
 
 ## Allowed Source Policy
 
@@ -47,7 +47,7 @@ This report is local-only and report-only. It turns exhausted Flash Lane motion 
 - Motion status: current_references_exhausted_needs_new_official_source_before_sampling
 - Motion recommendation: find_alternate_official_source_family
 - Top rejection: segment_samples_too_repetitive
-- Planned searches: 8
+- Planned searches: 4
 
 ### Recommended Source Types
 
@@ -77,10 +77,6 @@ This report is local-only and report-only. It turns exhausted Flash Lane motion 
 - GTA gameplay trailer
 - GTA Steam trailer
 - GTA gameplay
-- GTA 6 Owner official trailer
-- GTA 6 Owner gameplay
-- GTA 6 Owner Passed On A Sequel To A Legacy Franchise, And We're Dying To Know Which One official trailer
-- GTA 6 Owner Passed On A Sequel To A Legacy Franchise, And We're Dying To Know Which One gameplay trailer
 
 ### Manual Official Source Intake
 

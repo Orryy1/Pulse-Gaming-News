@@ -457,6 +457,48 @@ test("official trailer resolver names exhausted missing entities inside partial 
   assert.ok(plan.planned_searches.some((item) => item.entity === "Red Dead"));
 });
 
+test("official trailer resolver keeps missing-entity searches free of story-title fragments", async () => {
+  const report = await buildOfficialTrailerReferenceReport(
+    [
+      baseStory({
+        id: "title-fragment-story",
+        title: "GTA 6 Owner Passed On A Sequel To A Legacy Franchise, And We're Dying To Know Which One",
+        full_script: "Take-Two discussed GTA, BioShock and Red Dead in a legacy franchise story.",
+        _verified_store_assets: [
+          verifiedSteamAsset("BioShock", "8870", "BioShock Infinite"),
+          verifiedSteamAsset("Red Dead", "1174180", "Red Dead Redemption 2"),
+        ],
+      }),
+    ],
+    {
+      steamLookup: async (appId) => ({
+        success: true,
+        title: appId === "8870" ? "BioShock Infinite" : "Red Dead Redemption 2",
+        movies: [
+          {
+            id: appId === "8870" ? 11 : 22,
+            name: "Official Trailer",
+            mp4: { max: `https://cdn.example/${appId}/trailer.mp4` },
+          },
+        ],
+      }),
+    },
+  );
+
+  const plan = report.plans[0];
+  assert.deepEqual(plan.missing_target_entities, ["GTA"]);
+  assert.ok(plan.search_queries.includes("GTA official trailer"));
+  assert.ok(plan.search_queries.includes("GTA gameplay trailer"));
+  assert.equal(
+    plan.search_queries.some((query) => /GTA 6 Owner Passed On A Sequel/i.test(query)),
+    false,
+  );
+  assert.equal(
+    plan.planned_searches.every((item) => item.entity === "GTA"),
+    true,
+  );
+});
+
 test("official trailer resolver keeps exhausted families when exclusion is explicitly disabled", async () => {
   const sourceUrl =
     "https://video.akamai.steamstatic.com/store_trailers/3240220/832632/4b8d5f06cf0a1/hls_264_master.m3u8";

@@ -7,6 +7,7 @@ const dotenv = require("dotenv");
 
 dotenv.config({ override: true });
 
+const brand = require("../brand");
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
 
@@ -21,6 +22,9 @@ const {
 const {
   probeLocalAudioAcoustics,
 } = require("../lib/ops/local-acoustic-probe");
+const {
+  createLocalTtsBatchRecovery,
+} = require("../lib/ops/local-tts-batch-recovery");
 const mediaPaths = require("../lib/media-paths");
 
 function parseArgs(argv) {
@@ -100,6 +104,7 @@ async function main() {
 
   if (args.applyLocalAudio) {
     const ttsLimits = applyLocalProofTtsLimits();
+    const voiceId = brand.voiceId || process.env.ELEVENLABS_VOICE_ID || "default";
     console.log(
       `[local-script-extension] local_tts_timeout_ms=${ttsLimits.local_tts_timeout_ms} attempts=${ttsLimits.local_tts_request_attempts}`,
     );
@@ -107,6 +112,10 @@ async function main() {
       plan,
       generateTts: audio.generateTTS,
       acousticProbe: probeLocalAudioAcoustics,
+      recoverLocalTts: createLocalTtsBatchRecovery({
+        root: ROOT,
+        voiceId,
+      }),
       measureDuration: async (outputRel) => {
         const outputAbs = await mediaPaths.resolveExisting(outputRel);
         return ffprobeDuration(outputAbs);

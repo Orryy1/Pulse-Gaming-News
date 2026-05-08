@@ -41,8 +41,8 @@ function queueItem(id, words = 140) {
     action: "extend_script_before_local_repair",
     runtime: {
       wordCount: words,
-      minWords: 163,
-      maxWords: 200,
+      minWords: 180,
+      maxWords: 220,
     },
   };
 }
@@ -66,8 +66,8 @@ test("local script extension expands short Liam scripts into the 61-75s local Fl
   assert.match(draft.proposed_full_script, new RegExp(`${REQUIRED_CTA.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`));
   assert.equal(draft.runtime.result, "pass");
   assert.ok(draft.proposed_words >= 163);
-  assert.ok(draft.proposed_words <= 200);
-  assert.ok(draft.proposed_words <= 200);
+  assert.ok(draft.proposed_words <= 220);
+  assert.ok(draft.estimated_seconds >= 61);
 });
 
 test("local script extension targets the middle of the Liam-safe range, not the ceiling", () => {
@@ -81,10 +81,10 @@ test("local script extension targets the middle of the Liam-safe range, not the 
     env: {},
   });
 
-  assert.equal(DEFAULT_LOCAL_EXTENSION_TARGET_WORDS, 175);
-  assert.equal(draft.target_words, 175);
-  assert.ok(draft.proposed_words >= 163);
-  assert.ok(draft.proposed_words <= 181);
+  assert.equal(DEFAULT_LOCAL_EXTENSION_TARGET_WORDS, 195);
+  assert.equal(draft.target_words, 195);
+  assert.ok(draft.proposed_words >= 180);
+  assert.ok(draft.proposed_words <= 201);
 });
 
 test("local script extension uses compact bridge lines instead of overshooting near the minimum", () => {
@@ -102,8 +102,8 @@ test("local script extension uses compact bridge lines instead of overshooting n
 
   assert.equal(draft.action, "ready_for_local_liam_audio");
   assert.equal(draft.runtime.result, "pass");
-  assert.ok(draft.proposed_words >= 163);
-  assert.ok(draft.proposed_words <= 181);
+  assert.ok(draft.proposed_words >= 180);
+  assert.ok(draft.proposed_words <= 201);
   assert.doesNotMatch(draft.proposed_full_script, /The clean read on Marathon Drops/i);
 });
 
@@ -226,6 +226,8 @@ test("local script extension CLI is local-only and does not publish", () => {
   assert.match(tool, /--story/);
   assert.match(tool, /--apply-local-audio/);
   assert.match(tool, /probeLocalAudioAcoustics/);
+  assert.match(tool, /createLocalTtsBatchRecovery/);
+  assert.match(tool, /recoverLocalTts/);
   assert.match(tool, /local_script_extension_audio_apply\.json/);
   assert.doesNotMatch(tool, /postShort|uploadShort|publishAll|autonomous\/publish/);
 });
@@ -467,6 +469,44 @@ test("apply local script extension audio records TTS failures and keeps going", 
   assert.match(result.skipped[0].error, /ECONNRESET/);
   assert.equal(result.applied.length, 1);
   assert.equal(result.applied[0].story_id, "still_runs");
+});
+
+test("apply local script extension audio restarts local TTS once on recoverable failures", async () => {
+  const generated = [];
+  const recoveries = [];
+  const result = await applyLocalScriptExtensionAudio({
+    plan: {
+      drafts: [
+        {
+          story_id: "recovers_once",
+          action: "ready_for_local_liam_audio",
+          proposed_full_script: "Ready script one. Follow Pulse Gaming so you never miss a beat.",
+          proposed_words: 190,
+          estimated_seconds: 62.7,
+        },
+      ],
+    },
+    generateTts: async (_text, outputRel) => {
+      generated.push(outputRel);
+      if (generated.length === 1) throw new Error("read ECONNRESET");
+    },
+    recoverLocalTts: async (context) => {
+      recoveries.push(context);
+      return { ok: true, action: "restart", after: { status: "ok" } };
+    },
+    measureDuration: async () => 66.4,
+    localTts: READY_TTS,
+  });
+
+  assert.equal(generated.length, 2);
+  assert.equal(recoveries.length, 1);
+  assert.equal(recoveries[0].storyId, "recovers_once");
+  assert.equal(recoveries[0].failure.code, "connection_reset");
+  assert.equal(result.skipped.length, 0);
+  assert.equal(result.applied.length, 1);
+  assert.equal(result.applied[0].story_id, "recovers_once");
+  assert.equal(result.applied[0].tts_attempts, 2);
+  assert.equal(result.applied[0].server_recovery.action, "restart");
 });
 
 test("apply local script extension audio skips ready drafts when local voice is not Liam", async () => {

@@ -20,6 +20,9 @@ const {
   applyLocalProofTtsLimits,
 } = require("../lib/ops/local-proof-tts-limits");
 const {
+  createLocalTtsBatchRecovery,
+} = require("../lib/ops/local-tts-batch-recovery");
+const {
   probeLocalAudioAcoustics,
 } = require("../lib/ops/local-acoustic-probe");
 const {
@@ -167,6 +170,11 @@ async function main() {
       generateTts: audio.generateTTS,
       cleanText: audio.cleanForTTS,
       acousticProbe: probeLocalAudioAcoustics,
+      recoverLocalTts: createLocalTtsBatchRecovery({
+        root: ROOT,
+        voiceId,
+        baseUrl: process.env.LOCAL_TTS_URL || DEFAULT_LOCAL_TTS_URL,
+      }),
       measureDuration: async (outputRel) => {
         const outputAbs = await mediaPaths.resolveExisting(outputRel);
         return ffprobeDuration(outputAbs);

@@ -40,7 +40,7 @@ test("local media repair queues approved stale voice renders for local Liam rege
         id: "rss_voice_bad",
         title: "GTA 6 trailer evidence is stacking up",
         approved: true,
-        full_script: "GTA 6 has a confirmed clue today. ".repeat(24),
+        full_script: "GTA 6 has a confirmed clue today. ".repeat(28),
         audio_path: "output/audio/rss_voice_bad.mp3",
         exported_path: "output/final/rss_voice_bad.mp4",
         breaking_score: 82,
@@ -221,7 +221,7 @@ test("local media repair leaves current approved-voice renders alone", () => {
         id: "rss_good",
         title: "Pokemon Go event starts today",
         approved: true,
-        full_script: "Pokemon Go has a confirmed event today. ".repeat(25),
+        full_script: "Pokemon Go has a confirmed event today. ".repeat(27),
         audio_path: "output/audio/rss_good.mp3",
         exported_path: "output/final/rss_good.mp4",
       },
@@ -291,7 +291,7 @@ test("local media repair rejects non-Liam local voices as unsafe", () => {
         id: "rss_bad_voice",
         title: "Xbox confirms a new update",
         approved: true,
-        full_script: "Xbox confirmed new details for players today. ".repeat(25),
+        full_script: "Xbox confirmed new details for players today. ".repeat(28),
         audio_path: null,
         exported_path: null,
       },
@@ -326,7 +326,7 @@ test("local media repair rejects Liam aliases without the accepted Sleepy Liam r
         id: "rss_wrong_liam",
         title: "Xbox confirms a new update",
         approved: true,
-        full_script: "Xbox confirmed new details for players today. ".repeat(25),
+        full_script: "Xbox confirmed new details for players today. ".repeat(28),
         audio_path: null,
         exported_path: null,
       },
@@ -364,7 +364,7 @@ test("local media repair accepts nested local TTS reference metadata from health
         id: "rss_nested_ref",
         title: "Xbox confirms a new update",
         approved: true,
-        full_script: "Xbox confirmed new details for players today. ".repeat(25),
+        full_script: "Xbox confirmed new details for players today. ".repeat(28),
         audio_path: null,
         exported_path: null,
       },
@@ -423,6 +423,8 @@ test("local media repair CLI loads .env before opening SQLite and defaults to dr
   assert.match(tool, /applyLocalAudioRepairs/);
   assert.match(tool, /--apply-local-audio/);
   assert.match(tool, /probeLocalAudioAcoustics/);
+  assert.match(tool, /createLocalTtsBatchRecovery/);
+  assert.match(tool, /recoverLocalTts/);
   assert.match(tool, /--apply-limit/);
   assert.doesNotMatch(tool, /postShort|uploadShort|publishAll|autonomous\/publish/);
 });
@@ -432,7 +434,7 @@ test("apply-local audio repair writes only queued Liam audio proofs", async () =
     id: "rss_voice_bad",
     title: "GTA 6 trailer evidence is stacking up",
     approved: true,
-    full_script: "GTA 6 has a confirmed clue today. ".repeat(24),
+    full_script: "GTA 6 has a confirmed clue today. ".repeat(28),
     audio_path: "output/audio/rss_voice_bad.mp3",
     exported_path: "output/final/rss_voice_bad.mp4",
   };
@@ -649,7 +651,7 @@ test("apply-local audio repair reports below-floor Liam proofs as rejected", asy
     id: "rss_voice_short",
     title: "GTA 6 trailer evidence is stacking up",
     approved: true,
-    full_script: "GTA 6 has a confirmed clue today. ".repeat(19),
+    full_script: "GTA 6 has a confirmed clue today. ".repeat(22),
     audio_path: "output/audio/rss_voice_short.mp3",
     exported_path: "output/final/rss_voice_short.mp4",
   };
@@ -691,7 +693,7 @@ test("apply-local audio repair records TTS failures without aborting the batch",
       id: "rss_first",
       title: "GTA 6 trailer evidence is stacking up",
       approved: true,
-      full_script: "GTA 6 has a confirmed clue today. ".repeat(24),
+      full_script: "GTA 6 has a confirmed clue today. ".repeat(28),
       audio_path: "output/audio/rss_first.mp3",
       exported_path: "output/final/rss_first.mp4",
       breaking_score: 90,
@@ -700,7 +702,7 @@ test("apply-local audio repair records TTS failures without aborting the batch",
       id: "rss_second",
       title: "Xbox confirms a new update",
       approved: true,
-      full_script: "Xbox confirmed new details for players today. ".repeat(25),
+      full_script: "Xbox confirmed new details for players today. ".repeat(28),
       audio_path: "output/audio/rss_second.mp3",
       exported_path: "output/final/rss_second.mp4",
       breaking_score: 80,
@@ -738,6 +740,53 @@ test("apply-local audio repair records TTS failures without aborting the batch",
   assert.equal(result.skipped[0].server_reset_recorded, true);
   assert.equal(result.applied.length, 1);
   assert.equal(result.applied[0].story_id, "rss_second");
+});
+
+test("apply-local audio repair restarts local TTS once on recoverable failures", async () => {
+  const story = {
+    id: "rss_recovers",
+    title: "Xbox confirms a new update",
+    approved: true,
+    full_script: "Xbox confirmed new details for players today. ".repeat(28),
+    audio_path: "output/audio/rss_recovers.mp3",
+    exported_path: "output/final/rss_recovers.mp4",
+  };
+  const report = buildLocalMediaRepairQueue({
+    stories: [story],
+    mediaByStoryId: {
+      rss_recovers: { audioExists: true, finalExists: true, finalDurationSeconds: 64 },
+    },
+    voiceAuditByStoryId: {
+      rss_recovers: { verdict: "review", blockers: ["approved_voice_metadata_missing"] },
+    },
+    localTts: READY_TTS,
+  });
+  const generated = [];
+  const recoveries = [];
+
+  const result = await applyLocalAudioRepairs({
+    report,
+    storiesById: { rss_recovers: story },
+    generateTts: async (_text, outputRel) => {
+      generated.push(outputRel);
+      if (generated.length === 1) throw new Error("read ECONNRESET");
+    },
+    recoverLocalTts: async (context) => {
+      recoveries.push(context);
+      return { ok: true, action: "restart", after: { status: "ok" } };
+    },
+    measureDuration: async () => 66.1,
+  });
+
+  assert.equal(generated.length, 2);
+  assert.equal(recoveries.length, 1);
+  assert.equal(recoveries[0].storyId, "rss_recovers");
+  assert.equal(recoveries[0].failure.code, "connection_reset");
+  assert.equal(result.skipped.length, 0);
+  assert.equal(result.applied.length, 1);
+  assert.equal(result.applied[0].story_id, "rss_recovers");
+  assert.equal(result.applied[0].tts_attempts, 2);
+  assert.equal(result.applied[0].server_recovery.action, "restart");
 });
 
 test("apply-local audio repair skips every candidate instead of using an unsafe voice", async () => {
@@ -786,7 +835,7 @@ test("apply-local audio repair records missing timestamps as a proof failure", a
     id: "rss_missing_ts",
     title: "Xbox confirms a new update",
     approved: true,
-    full_script: "Xbox confirmed new details for players today. ".repeat(25),
+    full_script: "Xbox confirmed new details for players today. ".repeat(28),
     audio_path: "output/audio/rss_missing_ts.mp3",
     exported_path: "output/final/rss_missing_ts.mp4",
   };
@@ -820,7 +869,7 @@ test("apply-local audio repair records duration measurement failures without abo
       id: "rss_measure_fails",
       title: "GTA 6 trailer evidence is stacking up",
       approved: true,
-      full_script: "GTA 6 has a confirmed clue today. ".repeat(24),
+      full_script: "GTA 6 has a confirmed clue today. ".repeat(28),
       audio_path: "output/audio/rss_measure_fails.mp3",
       exported_path: "output/final/rss_measure_fails.mp4",
       breaking_score: 90,
@@ -829,7 +878,7 @@ test("apply-local audio repair records duration measurement failures without abo
       id: "rss_measure_ok",
       title: "Xbox confirms a new update",
       approved: true,
-      full_script: "Xbox confirmed new details for players today. ".repeat(25),
+      full_script: "Xbox confirmed new details for players today. ".repeat(28),
       audio_path: "output/audio/rss_measure_ok.mp3",
       exported_path: "output/final/rss_measure_ok.mp4",
       breaking_score: 80,

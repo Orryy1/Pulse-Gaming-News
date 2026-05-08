@@ -64,9 +64,9 @@ test("short runtime planner: default word budget matches current voice calibrati
 });
 
 test("short runtime planner: local Liam voice uses measured approved-reference calibration", () => {
-  assert.equal(DEFAULT_LOCAL_SECONDS_PER_WORD, 0.375);
-  assert.equal(secondsPerWordForTtsProvider("local", {}), 0.375);
-  assert.equal(secondsPerWordForTtsProvider("voxcpm", {}), 0.375);
+  assert.equal(DEFAULT_LOCAL_SECONDS_PER_WORD, 0.34);
+  assert.equal(secondsPerWordForTtsProvider("local", {}), 0.34);
+  assert.equal(secondsPerWordForTtsProvider("voxcpm", {}), 0.34);
   assert.equal(secondsPerWordForTtsProvider("elevenlabs", {}), 0.68);
   assert.equal(
     secondsPerWordForTtsProvider("local", { LOCAL_TTS_SECONDS_PER_WORD: "0.4" }),
@@ -79,16 +79,16 @@ test("short runtime planner: local Liam voice uses measured approved-reference c
   });
   assert.equal(shortLocal.result, "warn");
   assert.match(shortLocal.warnings[0], /below_flash_target/);
-  assert.equal(shortLocal.estimatedSeconds, 60);
+  assert.equal(shortLocal.estimatedSeconds, 54.4);
 
   const passLocal = classifyShortScriptRuntime({
-    wordCount: 180,
+    wordCount: 200,
     secondsPerWord: secondsPerWordForTtsProvider("local", {}),
   });
   assert.equal(passLocal.result, "pass");
-  assert.equal(passLocal.estimatedSeconds, 67.5);
-  assert.equal(passLocal.minWords, 163);
-  assert.equal(passLocal.maxWords, 200);
+  assert.equal(passLocal.estimatedSeconds, 68);
+  assert.equal(passLocal.minWords, 180);
+  assert.equal(passLocal.maxWords, 220);
 });
 
 test("short runtime planner: punctuation-heavy local Liam scripts still estimate from spoken words", () => {
@@ -100,7 +100,7 @@ test("short runtime planner: punctuation-heavy local Liam scripts still estimate
 
   assert.equal(countSpokenWords(text), 180);
   assert.equal(plan.result, "pass");
-  assert.equal(plan.estimatedSeconds, 67.5);
+  assert.equal(plan.estimatedSeconds, 61.2);
 });
 
 test("short runtime planner: local Liam too-short and too-long estimates are explicit", () => {
@@ -109,7 +109,7 @@ test("short runtime planner: local Liam too-short and too-long estimates are exp
     secondsPerWord: secondsPerWordForTtsProvider("local", {}),
   });
   const tooLong = classifyShortScriptRuntime({
-    wordCount: 245,
+    wordCount: 270,
     secondsPerWord: secondsPerWordForTtsProvider("local", {}),
   });
 

@@ -12,8 +12,12 @@ This report is local-only and report-only. It turns exhausted Flash Lane motion 
 
 ## Input Freshness
 
-- Motion gap report: 2026-05-08T02:41:07.172Z
+- Motion gap report: 2026-05-08T08:34:57.090Z
 - Reference report: 2026-05-08T04:34:27.596Z
+
+Warnings:
+- reference_report_older_than_motion_gap: Official trailer references are older than the motion-gap report; rerun media:resolve-trailers before trusting remaining/excluded reference counts.
+  Recommended: `npm run media:resolve-trailers -- --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5`
 
 ## Allowed Source Policy
 
@@ -28,17 +32,19 @@ This report is local-only and report-only. It turns exhausted Flash Lane motion 
 - Forbidden: unofficial gameplay compilations
 - Forbidden: stock people or generic gaming footage
 - Forbidden: rating-card/title-card windows already rejected by local validation
+- Forbidden: localised or non-English trailer references for Flash Lane footage
+- Forbidden: references with baked-in subtitles or caption overlays
 
 ## Entity Handoff
 
-| Story | Entity | Blocker | Attempts | Validated | Rejected | Source families | Top rejection | Remaining refs | Excluded refs |
+| Story | Entity | Blocker | Attempts | Validated | Rejected | Source families | Top rejection | Remaining refs (provisional) | Excluded refs (provisional) |
 | --- | --- | --- | ---: | ---: | ---: | ---: | --- | ---: | ---: |
 | rss_5b3abe925b27a199 | BioShock | local_segment_validation_exhausted_current_motion_sources | 20 | 3 | 17 | 3 | segment_contains_low_detail_frame | 0 | 0 |
 | rss_5b3abe925b27a199 | Red Dead | local_segment_validation_exhausted_current_motion_sources | 25 | 2 | 23 | 4 | segment_contains_black_frame | 0 | 0 |
 | 1szzhy9 | Marathon | local_segment_validation_exhausted_current_motion_sources | 160 | 13 | 147 | 10 | segment_samples_too_repetitive | 0 | 0 |
 | rss_0e2778be9f97ffa4 | Tales Of | local_segment_validation_exhausted_current_motion_sources | 12 | 1 | 11 | 2 | segment_samples_too_repetitive | 0 | 0 |
-| 1t0u9o4 | GTA | local_segment_validation_exhausted_current_motion_sources | 48 | 0 | 48 | 8 | segment_samples_too_repetitive | 0 | 0 |
 | 1t0x9ui | Oblivion | resolved_references_exhausted_before_segment_plan | 6 | 0 | 6 | 1 | segment_lacks_gameplay_action_samples | 0 | 1 |
+| 1t0u9o4 | GTA | local_segment_validation_exhausted_current_motion_sources | 48 | 0 | 48 | 8 | segment_samples_too_repetitive | 0 | 0 |
 
 ## rss_5b3abe925b27a199 - BioShock
 
@@ -94,6 +100,8 @@ Acceptance checks:
 - The source must be for BioShock, not only the publisher or a loosely related franchise.
 - The URL owner must be official: publisher, developer, platform storefront or verified official channel.
 - The source must not be a fan reupload, compilation, social repost, reaction video or generic gaming footage.
+- The source title and metadata must not indicate a localised/non-English trailer for Flash Lane footage.
+- The source must not have baked-in subtitles or caption overlays unless manually approved for non-visual reference use only.
 - The first usable window must not be dominated by rating boards, black frames, logos or title cards.
 - The source must add a new source family when existing families are exhausted.
 - Provenance must be recorded before any local frame or segment validation.
@@ -105,6 +113,8 @@ Reject if:
 - unofficial_reupload
 - social_repost
 - rating_or_logo_only_window
+- localised_non_english_reference
+- embedded_subtitle_reference
 - duplicate_exhausted_source_family
 - no_provenance
 
@@ -172,6 +182,8 @@ Acceptance checks:
 - The source must be for Red Dead, not only the publisher or a loosely related franchise.
 - The URL owner must be official: publisher, developer, platform storefront or verified official channel.
 - The source must not be a fan reupload, compilation, social repost, reaction video or generic gaming footage.
+- The source title and metadata must not indicate a localised/non-English trailer for Flash Lane footage.
+- The source must not have baked-in subtitles or caption overlays unless manually approved for non-visual reference use only.
 - The first usable window must not be dominated by rating boards, black frames, logos or title cards.
 - The source must add a new source family when existing families are exhausted.
 - Provenance must be recorded before any local frame or segment validation.
@@ -183,6 +195,8 @@ Reject if:
 - unofficial_reupload
 - social_repost
 - rating_or_logo_only_window
+- localised_non_english_reference
+- embedded_subtitle_reference
 - duplicate_exhausted_source_family
 - no_provenance
 
@@ -256,6 +270,8 @@ Acceptance checks:
 - The source must be for Marathon, not only the publisher or a loosely related franchise.
 - The URL owner must be official: publisher, developer, platform storefront or verified official channel.
 - The source must not be a fan reupload, compilation, social repost, reaction video or generic gaming footage.
+- The source title and metadata must not indicate a localised/non-English trailer for Flash Lane footage.
+- The source must not have baked-in subtitles or caption overlays unless manually approved for non-visual reference use only.
 - The first usable window must not be dominated by rating boards, black frames, logos or title cards.
 - The source must add a new source family when existing families are exhausted.
 - Provenance must be recorded before any local frame or segment validation.
@@ -267,6 +283,8 @@ Reject if:
 - unofficial_reupload
 - social_repost
 - rating_or_logo_only_window
+- localised_non_english_reference
+- embedded_subtitle_reference
 - duplicate_exhausted_source_family
 - no_provenance
 
@@ -332,6 +350,8 @@ Acceptance checks:
 - The source must be for Tales Of, not only the publisher or a loosely related franchise.
 - The URL owner must be official: publisher, developer, platform storefront or verified official channel.
 - The source must not be a fan reupload, compilation, social repost, reaction video or generic gaming footage.
+- The source title and metadata must not indicate a localised/non-English trailer for Flash Lane footage.
+- The source must not have baked-in subtitles or caption overlays unless manually approved for non-visual reference use only.
 - The first usable window must not be dominated by rating boards, black frames, logos or title cards.
 - The source must add a new source family when existing families are exhausted.
 - Provenance must be recorded before any local frame or segment validation.
@@ -343,6 +363,8 @@ Reject if:
 - unofficial_reupload
 - social_repost
 - rating_or_logo_only_window
+- localised_non_english_reference
+- embedded_subtitle_reference
 - duplicate_exhausted_source_family
 - no_provenance
 
@@ -354,6 +376,84 @@ Reject if:
 - Rerun: npm run media:resolve-trailers -- --story-id rss_0e2778be9f97ffa4 --no-latest-report --official-source-intake-report test/output/official_source_intake_report.json --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5
 - If a new official reference exists, rerun: npm run media:validate-trailer-segments -- --story-id rss_0e2778be9f97ffa4 --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6
 - Then rerun: npm run studio:v2:motion-gap -- --story rss_0e2778be9f97ffa4
+
+## 1t0x9ui - Oblivion
+
+- Title: It's been a year since release and Oblivion Remastered is still broken- Digital Foundry
+- Blocker: resolved_references_exhausted_before_segment_plan
+- Motion status: current_references_exhausted_needs_new_official_source_before_sampling
+- Motion recommendation: continue_segment_scan_with_resume
+- Top rejection: segment_lacks_gameplay_action_samples
+- Planned searches: 4
+
+### Recommended Source Types
+
+- P1: official_publisher_or_developer_trailer_page (reference_only_first) - Best provenance when Steam/IGDB has no usable window or only rating/logo/title cards.
+- P2: platform_storefront_video_reference (reference_only_first) - Use a non-exhausted storefront family because the current Steam movie family has failed local validation.
+- P3: igdb_video_reference (reference_only_first) - Useful as a second official index when storefront trailers are missing or exhausted.
+- P4: official_youtube_channel_url (reference_only_no_download_by_default) - Accept only official publisher/developer/platform channels; do not ingest reuploads.
+- P5: official_press_kit_stills (still_downgrade_path) - If no usable motion exists, official stills can support a shorter standard/card lane but not premium motion.
+
+### Exhausted / Attempted Source Families
+
+| Provider | App | Movie/source | Attempts | Rejected | Top rejection |
+| --- | --- | --- | ---: | ---: | --- |
+| steam | The Elder Scrolls IV: Oblivion Remastered | Launch Trailer | 6 | 6 | segment_lacks_gameplay_action_samples |
+
+### Planned Searches
+
+- Oblivion official trailer
+- Oblivion gameplay trailer
+- Oblivion Steam trailer
+- Oblivion gameplay
+
+### Manual Official Source Intake
+
+- Mode: operator_supplied_reference_only
+- Downloads allowed by default: no
+- Priority: Current Steam/source-family validation is exhausted; prefer a different official source family.
+
+Required fields:
+- entity
+- official_source_url
+- source_owner
+- source_type
+- source_family
+- source_title
+- evidence_of_officialness
+- entity_match_notes
+- operator_notes
+
+Acceptance checks:
+- The source must be for Oblivion, not only the publisher or a loosely related franchise.
+- The URL owner must be official: publisher, developer, platform storefront or verified official channel.
+- The source must not be a fan reupload, compilation, social repost, reaction video or generic gaming footage.
+- The source title and metadata must not indicate a localised/non-English trailer for Flash Lane footage.
+- The source must not have baked-in subtitles or caption overlays unless manually approved for non-visual reference use only.
+- The first usable window must not be dominated by rating boards, black frames, logos or title cards.
+- The source must add a new source family when existing families are exhausted.
+- Provenance must be recorded before any local frame or segment validation.
+- Downloads remain disabled until a later apply-local validation command is run.
+
+Reject if:
+- wrong_entity
+- publisher_context_only
+- unofficial_reupload
+- social_repost
+- rating_or_logo_only_window
+- localised_non_english_reference
+- embedded_subtitle_reference
+- duplicate_exhausted_source_family
+- no_provenance
+
+### Next Safe Actions
+
+- Find a non-exhausted official source for Oblivion.
+- Record provenance before any local frame or segment work.
+- Validate operator intake: npm run media:intake-official-sources -- --input test/input/official_sources.json --story-id 1t0x9ui
+- Rerun: npm run media:resolve-trailers -- --story-id 1t0x9ui --no-latest-report --official-source-intake-report test/output/official_source_intake_report.json --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5
+- If a new official reference exists, rerun: npm run media:validate-trailer-segments -- --story-id 1t0x9ui --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6
+- Then rerun: npm run studio:v2:motion-gap -- --story 1t0x9ui
 
 ## 1t0u9o4 - GTA
 
@@ -414,6 +514,8 @@ Acceptance checks:
 - The source must be for GTA, not only the publisher or a loosely related franchise.
 - The URL owner must be official: publisher, developer, platform storefront or verified official channel.
 - The source must not be a fan reupload, compilation, social repost, reaction video or generic gaming footage.
+- The source title and metadata must not indicate a localised/non-English trailer for Flash Lane footage.
+- The source must not have baked-in subtitles or caption overlays unless manually approved for non-visual reference use only.
 - The first usable window must not be dominated by rating boards, black frames, logos or title cards.
 - The source must add a new source family when existing families are exhausted.
 - Provenance must be recorded before any local frame or segment validation.
@@ -425,6 +527,8 @@ Reject if:
 - unofficial_reupload
 - social_repost
 - rating_or_logo_only_window
+- localised_non_english_reference
+- embedded_subtitle_reference
 - duplicate_exhausted_source_family
 - no_provenance
 
@@ -436,80 +540,6 @@ Reject if:
 - Rerun: npm run media:resolve-trailers -- --story-id 1t0u9o4 --no-latest-report --official-source-intake-report test/output/official_source_intake_report.json --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5
 - If a new official reference exists, rerun: npm run media:validate-trailer-segments -- --story-id 1t0u9o4 --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6
 - Then rerun: npm run studio:v2:motion-gap -- --story 1t0u9o4
-
-## 1t0x9ui - Oblivion
-
-- Title: It's been a year since release and Oblivion Remastered is still broken- Digital Foundry
-- Blocker: resolved_references_exhausted_before_segment_plan
-- Motion status: current_references_exhausted_needs_new_official_source_before_sampling
-- Motion recommendation: continue_segment_scan_with_resume
-- Top rejection: segment_lacks_gameplay_action_samples
-- Planned searches: 4
-
-### Recommended Source Types
-
-- P1: official_publisher_or_developer_trailer_page (reference_only_first) - Best provenance when Steam/IGDB has no usable window or only rating/logo/title cards.
-- P2: platform_storefront_video_reference (reference_only_first) - Use a non-exhausted storefront family because the current Steam movie family has failed local validation.
-- P3: igdb_video_reference (reference_only_first) - Useful as a second official index when storefront trailers are missing or exhausted.
-- P4: official_youtube_channel_url (reference_only_no_download_by_default) - Accept only official publisher/developer/platform channels; do not ingest reuploads.
-- P5: official_press_kit_stills (still_downgrade_path) - If no usable motion exists, official stills can support a shorter standard/card lane but not premium motion.
-
-### Exhausted / Attempted Source Families
-
-| Provider | App | Movie/source | Attempts | Rejected | Top rejection |
-| --- | --- | --- | ---: | ---: | --- |
-| steam | The Elder Scrolls IV: Oblivion Remastered | Launch Trailer | 6 | 6 | segment_lacks_gameplay_action_samples |
-
-### Planned Searches
-
-- Oblivion official trailer
-- Oblivion gameplay trailer
-- Oblivion Steam trailer
-- Oblivion gameplay
-
-### Manual Official Source Intake
-
-- Mode: operator_supplied_reference_only
-- Downloads allowed by default: no
-- Priority: Current Steam/source-family validation is exhausted; prefer a different official source family.
-
-Required fields:
-- entity
-- official_source_url
-- source_owner
-- source_type
-- source_family
-- source_title
-- evidence_of_officialness
-- entity_match_notes
-- operator_notes
-
-Acceptance checks:
-- The source must be for Oblivion, not only the publisher or a loosely related franchise.
-- The URL owner must be official: publisher, developer, platform storefront or verified official channel.
-- The source must not be a fan reupload, compilation, social repost, reaction video or generic gaming footage.
-- The first usable window must not be dominated by rating boards, black frames, logos or title cards.
-- The source must add a new source family when existing families are exhausted.
-- Provenance must be recorded before any local frame or segment validation.
-- Downloads remain disabled until a later apply-local validation command is run.
-
-Reject if:
-- wrong_entity
-- publisher_context_only
-- unofficial_reupload
-- social_repost
-- rating_or_logo_only_window
-- duplicate_exhausted_source_family
-- no_provenance
-
-### Next Safe Actions
-
-- Find a non-exhausted official source for Oblivion.
-- Record provenance before any local frame or segment work.
-- Validate operator intake: npm run media:intake-official-sources -- --input test/input/official_sources.json --story-id 1t0x9ui
-- Rerun: npm run media:resolve-trailers -- --story-id 1t0x9ui --no-latest-report --official-source-intake-report test/output/official_source_intake_report.json --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5
-- If a new official reference exists, rerun: npm run media:validate-trailer-segments -- --story-id 1t0x9ui --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6
-- Then rerun: npm run studio:v2:motion-gap -- --story 1t0x9ui
 
 ## Safety
 

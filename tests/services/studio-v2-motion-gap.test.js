@@ -560,6 +560,72 @@ test("motion gap report asks for alternate official sources when missing entitie
   );
 });
 
+test("motion gap report refuses stale validated localised trailer segments", () => {
+  const report = buildStudioV2MotionGapReport({
+    proofCandidateReport: {
+      candidates: [
+        proofCandidate({
+          story_id: "localised_ready",
+          verdict: "ready_flash_proof",
+          blockers: [],
+          audio: {
+            status: "approved_local_liam_audio_ready",
+            ready: true,
+            output_audio_path: "test/output/audio/localised_ready.mp3",
+            duration_seconds: 66,
+          },
+          visuals: {
+            story_target_entities: ["GTA", "Red Dead", "BioShock"],
+            exact_subject_count: 18,
+            exact_subject_groups: ["GTA", "Red Dead", "BioShock"],
+            accepted_frame_count: 8,
+            frame_groups: ["GTA", "Red Dead", "BioShock"],
+            validated_clip_ref_count: 3,
+            validated_clip_source_count: 3,
+            validated_clip_entities: ["GTA", "Red Dead", "BioShock"],
+          },
+          recommended_command: "npm run studio:v2:still-deck -- --story localised_ready",
+        }),
+      ],
+      thresholds: { flash_min_validated_clip_refs: 3 },
+    },
+    segmentValidationReport: {
+      segments: [
+        segment("localised_ready", "GTA", null, {
+          source_url: "https://video.example.test/gta-clean.m3u8",
+          reference_title: "GTA official gameplay trailer",
+        }),
+        segment("localised_ready", "BioShock", null, {
+          source_url: "https://video.example.test/bioshock-clean.m3u8",
+          reference_title: "BioShock official gameplay trailer",
+        }),
+        segment("localised_ready", "Red Dead", null, {
+          source_url: "https://video.example.test/red-dead-de.m3u8",
+          provider: "steam",
+          store_app_id: "1174180",
+          store_app_title: "Red Dead Redemption 2",
+          movie_id: "900002",
+          reference_title: "RDR2 60 FPS Trailer (DE)",
+        }),
+      ],
+    },
+  });
+
+  const gap = report.gaps[0];
+  assert.equal(gap.render_recommendation, "do_not_render_yet");
+  assert.ok(gap.blockers.includes("segment_validation_report_invalidates_ready_motion"));
+  assert.equal(gap.motion_gap.validated_clip_ref_count, 2);
+  assert.equal(gap.motion_gap.validated_clip_source_count, 2);
+  assert.deepEqual(gap.motion_gap.validated_entities, ["GTA", "BioShock"]);
+  assert.deepEqual(gap.motion_gap.missing_validated_entities, ["Red Dead"]);
+  assert.equal(gap.motion_gap.rejection_reasons.segment_source_is_localised_non_english_reference, 1);
+  assert.equal(
+    gap.motion_gap.acquisition_strategy.entity_statuses["Red Dead"].top_rejection_reason,
+    "segment_source_is_localised_non_english_reference",
+  );
+  assert.ok(!gap.recommended_commands.some((item) => /studio:v2:still-deck/.test(item.command)));
+});
+
 test("motion gap report backfills Steam source-family metadata from legacy source URLs", () => {
   const report = buildStudioV2MotionGapReport({
     proofCandidateReport: {

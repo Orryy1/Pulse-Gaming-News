@@ -120,8 +120,11 @@ test("alternate official source handoff turns exhausted motion gaps into entity 
   assert.ok(row.manual_source_intake.required_fields.includes("official_source_url"));
   assert.ok(row.manual_source_intake.acceptance_checks.some((item) => item.includes("Red Dead")));
   assert.ok(row.manual_source_intake.rejection_checks.includes("unofficial_reupload"));
+  assert.ok(row.manual_source_intake.rejection_checks.includes("localised_non_english_reference"));
+  assert.ok(row.manual_source_intake.rejection_checks.includes("embedded_subtitle_reference"));
   assert.ok(row.manual_source_intake.safe_next_commands.some((item) => item.includes("media:intake-official-sources")));
   assert.ok(row.unsafe_source_types.includes("random YouTube reuploads"));
+  assert.ok(row.unsafe_source_types.includes("localised or non-English trailer references for Flash Lane footage"));
   assert.ok(row.next_actions.some((item) => item.includes("media:resolve-trailers")));
 });
 
@@ -259,6 +262,8 @@ test("alternate official source handoff rejects loose manual source intake paths
   assert.equal(intake.apply_local_required_before_any_media_extraction, true);
   assert.ok(intake.accepted_source_types.some((item) => item.includes("official publisher")));
   assert.ok(intake.acceptance_checks.some((item) => item.includes("not only the publisher")));
+  assert.ok(intake.acceptance_checks.some((item) => item.includes("localised/non-English trailer")));
+  assert.ok(intake.acceptance_checks.some((item) => item.includes("baked-in subtitles")));
   assert.ok(intake.rejection_checks.includes("publisher_context_only"));
   assert.ok(intake.safe_next_commands.every((item) => item.startsWith("npm run ")));
 });

@@ -160,6 +160,38 @@ test("Controlled Frame Extraction Plan de-prioritises PEGI and rating-board trai
   );
 });
 
+test("Controlled Frame Extraction Plan excludes localised and subtitle-labelled trailer references", () => {
+  const plan = buildControlledFrameExtractionPlan(
+    motionPlan({
+      existing_references: [
+        reference("Red Dead", 1, {
+          movie_name: "RDR2 60 FPS Trailer (DE)",
+        }),
+        reference("Red Dead", 2, {
+          movie_name: "Red Dead Redemption 2 Gameplay Trailer",
+        }),
+        reference("BioShock", 1, {
+          movie_name: "BioShock Infinite Launch Trailer Subtitles",
+        }),
+        reference("BioShock", 2, {
+          movie_name: "BioShock Infinite Gameplay Trailer",
+        }),
+        reference("GTA", 1),
+      ],
+    }),
+  );
+
+  assert.equal(
+    plan.selected_references.find((item) => item.entity === "Red Dead").movie_name,
+    "Red Dead Redemption 2 Gameplay Trailer",
+  );
+  assert.equal(
+    plan.selected_references.find((item) => item.entity === "BioShock").movie_name,
+    "BioShock Infinite Gameplay Trailer",
+  );
+  assert.ok(!plan.target_frames.some((frame) => /\(DE\)|Subtitles/i.test(frame.movie_name || "")));
+});
+
 test("Controlled Frame Extraction Plan can include alternate official references for retry QA", () => {
   const plan = buildControlledFrameExtractionPlan(
     motionPlan({

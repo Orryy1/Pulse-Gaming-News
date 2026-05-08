@@ -348,6 +348,120 @@ test("controlled frame extraction rejects official trailer title or rating cards
   );
 });
 
+test("controlled frame extraction rejects localised trailer references from frame metadata", async () => {
+  const outputRoot = tempOutputRoot("localised-frame-reference");
+  await cleanTempRoot(outputRoot);
+
+  const report = await runControlledFrameExtraction([
+    framePlan({
+      target_frames: [
+        {
+          source_url: "https://video.example/reddead-de.m3u8",
+          source_type: "steam_movie",
+          entity: "Red Dead",
+          movie_name: "RDR2 60 FPS Trailer (DE)",
+          reference_title: "RDR2 60 FPS Trailer (DE)",
+          target_time_percent: 0.58,
+          target_time_seconds: 34.8,
+          downloads_allowed: false,
+          extraction_allowed: false,
+        },
+      ],
+    }),
+  ], {
+    applyLocal: true,
+    outputRoot,
+    extractor: async ({ outputPath }) => {
+      await fs.ensureDir(path.dirname(outputPath));
+      await fs.writeFile(outputPath, Buffer.from("fake-frame"));
+      return { outputPath };
+    },
+    inspectFrame: async (outputPath) => ({
+      local_path: outputPath,
+      file_size: 10,
+      content_hash: outputPath,
+      width: 1280,
+      height: 720,
+      thumbnail_safe: true,
+      likely_has_face: false,
+      black_frame: false,
+      blur_verdict: "pass",
+      verdict: "pass",
+      warnings: [],
+      failures: [],
+      prescan: {
+        likely_is_logo: false,
+        text_overlay_likelihood: 0,
+        edge_density: 0.18,
+        saturation_mean: 0.42,
+      },
+    }),
+  });
+
+  assert.equal(report.summary.frames_accepted, 0);
+  assert.equal(report.summary.frames_rejected, 1);
+  assert.ok(
+    report.plans[0].frames[0].qa.failures.includes("localised_non_english_trailer_frame"),
+  );
+});
+
+test("controlled frame extraction rejects subtitle-labelled trailer references from frame metadata", async () => {
+  const outputRoot = tempOutputRoot("subtitle-frame-reference");
+  await cleanTempRoot(outputRoot);
+
+  const report = await runControlledFrameExtraction([
+    framePlan({
+      target_frames: [
+        {
+          source_url: "https://video.example/bioshock-subtitles.m3u8",
+          source_type: "steam_movie",
+          entity: "BioShock",
+          movie_name: "BioShock Infinite Launch Trailer Subtitles",
+          reference_title: "BioShock Infinite Launch Trailer Subtitles",
+          target_time_percent: 0.58,
+          target_time_seconds: 34.8,
+          downloads_allowed: false,
+          extraction_allowed: false,
+        },
+      ],
+    }),
+  ], {
+    applyLocal: true,
+    outputRoot,
+    extractor: async ({ outputPath }) => {
+      await fs.ensureDir(path.dirname(outputPath));
+      await fs.writeFile(outputPath, Buffer.from("fake-frame"));
+      return { outputPath };
+    },
+    inspectFrame: async (outputPath) => ({
+      local_path: outputPath,
+      file_size: 10,
+      content_hash: outputPath,
+      width: 1280,
+      height: 720,
+      thumbnail_safe: true,
+      likely_has_face: false,
+      black_frame: false,
+      blur_verdict: "pass",
+      verdict: "pass",
+      warnings: [],
+      failures: [],
+      prescan: {
+        likely_is_logo: false,
+        text_overlay_likelihood: 0,
+        edge_density: 0.18,
+        saturation_mean: 0.42,
+      },
+    }),
+  });
+
+  assert.equal(report.summary.frames_accepted, 0);
+  assert.equal(report.summary.frames_rejected, 1);
+  assert.ok(
+    report.plans[0].frames[0].qa.failures.includes("embedded_subtitle_trailer_frame"),
+  );
+});
+
 test("controlled frame extraction rejects official trailer promo CTA cards", async () => {
   const outputRoot = tempOutputRoot("promo-cta-card");
   await cleanTempRoot(outputRoot);

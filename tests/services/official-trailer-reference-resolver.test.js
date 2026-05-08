@@ -299,6 +299,48 @@ test("official trailer resolver excludes Steam movie references that are logo/ti
   );
 });
 
+test("official trailer resolver excludes localised and subtitle-labelled Steam movie references", async () => {
+  const plan = await buildOfficialTrailerReferencePlan(
+    baseStory({
+      _verified_store_assets: [
+        appliedLocalSteamAsset("Red Dead", "1174180", "Red Dead Redemption 2"),
+      ],
+    }),
+    {
+      steamLookup: async () => ({
+        success: true,
+        title: "Red Dead Redemption 2",
+        movies: [
+          {
+            id: 31,
+            name: "RDR2 60 FPS Trailer (DE)",
+            hls_h264: "https://video.example/reddead-de.m3u8",
+          },
+          {
+            id: 32,
+            name: "Launch Trailer Subtitles",
+            hls_h264: "https://video.example/reddead-subtitles.m3u8",
+          },
+          {
+            id: 33,
+            name: "Gameplay Trailer",
+            hls_h264: "https://video.example/reddead-gameplay.m3u8",
+          },
+        ],
+      }),
+    },
+  );
+
+  assert.equal(plan.references.length, 1);
+  assert.equal(plan.references[0].movie_name, "Gameplay Trailer");
+  assert.equal(plan.lookup_results[0].movies_found, 1);
+  assert.equal(plan.lookup_results[0].movies_rejected, 2);
+  assert.deepEqual(
+    plan.lookup_results[0].rejected_movie_reasons.map((item) => item.reason),
+    ["localised_non_english_reference", "embedded_subtitle_reference"],
+  );
+});
+
 test("official trailer resolver excludes exhausted Steam source families from previous local validation", async () => {
   const sourceUrl =
     "https://video.akamai.steamstatic.com/store_trailers/3240220/832632/4b8d5f06cf0a1/hls_264_master.m3u8";

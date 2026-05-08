@@ -229,6 +229,42 @@ test("proof candidates require enough validated gameplay clip refs, not just sti
   assert.equal(report.candidates[0].visuals.validated_clip_ref_count, 1);
 });
 
+test("proof candidates do not count stale localised validated segment rows", () => {
+  const storyId = "localised_segment_row";
+  const report = buildStudioV2ProofCandidateReport({
+    stories: [story(storyId)],
+    localAudioReports: [audioReport(storyId)],
+    assetReports: [assetReport(storyId, 7)],
+    frameReports: [frameReport(storyId, 5)],
+    segmentValidationReports: [
+      {
+        segments: [
+          ...segmentReport(storyId, 2).segments,
+          {
+            story_id: storyId,
+            source_url: "https://video.example.test/reddead-de.m3u8",
+            entity: "Red Dead",
+            reference_title: "RDR2 60 FPS Trailer (DE)",
+            media_start_s: 58,
+            duration_s: 5,
+            status: "validated",
+            segment_validated: true,
+            allowed_for_flash_lane: true,
+            segment_motion_class: "gameplay_action",
+            action_score: 88,
+            action_sample_count: 3,
+          },
+        ],
+      },
+    ],
+  });
+
+  const candidate = report.candidates[0];
+  assert.equal(candidate.verdict, "needs_motion_or_exact_assets");
+  assert.equal(candidate.visuals.validated_clip_ref_count, 2);
+  assert.ok(candidate.blockers.includes("flash_proof_requires_three_validated_clip_refs"));
+});
+
 test("proof candidates require enough validated clip seconds for Flash Lane dominance", () => {
   const report = buildStudioV2ProofCandidateReport({
     stories: [story("short_clip_backbone")],

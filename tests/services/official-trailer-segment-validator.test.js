@@ -227,6 +227,72 @@ test("official trailer segment validator preflight-rejects logo/title-only refer
   assert.equal(report.segments[0].allowed_for_flash_lane, false);
 });
 
+test("official trailer segment validator preflight-rejects localised non-English references", async () => {
+  const outputRoot = tempOutputRoot("localised-non-english-reference");
+  await cleanTempRoot(outputRoot);
+  let extractorCalls = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        movieName: "RDR2 60 FPS Trailer (DE)",
+        provenance: {
+          movie_name: "RDR2 60 FPS Trailer (DE)",
+        },
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: async () => {
+        extractorCalls += 1;
+        throw new Error("localised reference should be rejected before extraction");
+      },
+      inspectFrame: async (outputPath) => passingQa(outputPath),
+    },
+  );
+
+  assert.equal(extractorCalls, 0);
+  assert.equal(report.summary.samples_extracted, 0);
+  assert.equal(report.summary.segments_rejected, 1);
+  assert.equal(report.segments[0].validation_reason, "segment_source_is_localised_non_english_reference");
+  assert.equal(report.segments[0].segment_validated, false);
+  assert.equal(report.segments[0].allowed_for_flash_lane, false);
+});
+
+test("official trailer segment validator preflight-rejects subtitle-labelled references", async () => {
+  const outputRoot = tempOutputRoot("embedded-subtitle-reference");
+  await cleanTempRoot(outputRoot);
+  let extractorCalls = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        movieName: "BioShock Infinite Launch Trailer Subtitles",
+        provenance: {
+          movie_name: "BioShock Infinite Launch Trailer Subtitles",
+        },
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: async () => {
+        extractorCalls += 1;
+        throw new Error("subtitle reference should be rejected before extraction");
+      },
+      inspectFrame: async (outputPath) => passingQa(outputPath),
+    },
+  );
+
+  assert.equal(extractorCalls, 0);
+  assert.equal(report.summary.samples_extracted, 0);
+  assert.equal(report.summary.segments_rejected, 1);
+  assert.equal(report.segments[0].validation_reason, "segment_source_has_embedded_subtitle_reference");
+  assert.equal(report.segments[0].segment_validated, false);
+  assert.equal(report.segments[0].allowed_for_flash_lane, false);
+});
+
 test("official trailer segment validator preflight-rejects official segments still inside intro material", async () => {
   const outputRoot = tempOutputRoot("intro-window");
   await cleanTempRoot(outputRoot);
@@ -1134,6 +1200,37 @@ test("segment validation merge keeps previous validated clips and adds new scans
   assert.equal(merged.merge.previous_segment_count, 2);
   assert.equal(merged.merge.current_segment_count, 2);
   assert.equal(merged.merge.duplicate_segment_count, 1);
+});
+
+test("segment validation merge downgrades stale localised validated segments", () => {
+  const previous = {
+    apply_local: true,
+    segments: [
+      {
+        story_id: "rss_5b3abe925b27a199",
+        source_url: "https://video.example/reddead-de.m3u8",
+        entity: "Red Dead",
+        reference_title: "RDR2 60 FPS Trailer (DE)",
+        media_start_s: 36,
+        duration_s: 5,
+        status: "validated",
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+        segment_motion_class: "gameplay_action",
+        action_score: 88,
+      },
+    ],
+  };
+
+  const merged = mergeOfficialTrailerSegmentReports(previous, {
+    apply_local: true,
+    segments: [],
+  });
+
+  assert.equal(merged.summary.segments_validated, 0);
+  assert.equal(merged.summary.segments_rejected, 1);
+  assert.equal(merged.segments[0].allowed_for_flash_lane, false);
+  assert.equal(merged.segments[0].validation_reason, "segment_source_is_localised_non_english_reference");
 });
 
 test("segment validator CLI can consume Flash Lane acquisition plans without live side effects", () => {

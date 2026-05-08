@@ -739,6 +739,21 @@ test("still-deck Flash preflight report surfaces motion and beat coverage metric
   assert.match(src, /distinct scene beats:\s*\$\{visualMetrics\.distinctSceneBeats/);
 });
 
+test("still-deck report includes Flash proof render_readiness summary", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+
+  assert.match(src, /buildFlashLaneProofReadinessSummary/);
+  assert.match(src, /const renderReadiness = buildFlashLaneProofReadinessSummary\(\{/);
+  assert.match(src, /render_readiness:\s*renderReadiness/);
+  assert.match(src, /## Render Readiness/);
+  assert.match(src, /story beat overlays:\s*\$\{readiness\.storyBeatOverlayCount/);
+  assert.match(src, /unique clip sources:\s*\$\{readiness\.uniqueClipSources/);
+  assert.match(src, /distinct scene beats:\s*\$\{readiness\.distinctSceneBeats/);
+});
+
 test("still-deck report wording does not call no-render packages silent-audio proofs", () => {
   const src = fs.readFileSync(
     path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),

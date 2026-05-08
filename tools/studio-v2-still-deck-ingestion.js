@@ -64,6 +64,7 @@ const {
 const {
   assertFlashLaneProofReady,
   buildFlashLaneProofPreflight,
+  buildFlashLaneProofReadinessSummary,
 } = require("../lib/studio/v2/flash-lane-preflight");
 const {
   classifyStudioV2Suitability,
@@ -911,6 +912,19 @@ function renderComparisonMarkdown(report) {
   for (const row of report.metric_rows) {
     lines.push(`| ${row.metric} | ${row.baseline} | ${row.enriched} |`);
   }
+  if (report.render_readiness) {
+    const readiness = report.render_readiness;
+    const blockers = Array.isArray(readiness.blockers) ? readiness.blockers : [];
+    const warnings = Array.isArray(readiness.warnings) ? readiness.warnings : [];
+    lines.push("", "## Render Readiness", "");
+    lines.push(`- Verdict: ${readiness.verdict || "review"} (${readiness.statusColour || readiness.readinessClass || "amber"})`);
+    if (blockers.length) lines.push(`- Blockers: ${blockers.join(", ")}`);
+    if (warnings.length) lines.push(`- Warnings: ${warnings.join(", ")}`);
+    lines.push(
+      `- Motion dominance: ${readiness.motionDominance ?? "unknown"}; story beat overlays: ${readiness.storyBeatOverlayCount ?? "unknown"}/${readiness.requiredBeatOverlayMinimum ?? "unknown"}; unique clip sources: ${readiness.uniqueClipSources ?? "unknown"}; distinct scene beats: ${readiness.distinctSceneBeats ?? "unknown"}`,
+    );
+    lines.push(`- Recommendation: ${readiness.recommendation || "Operator review advised."}`);
+  }
   if (report.render_preflight) {
     lines.push("", "## Flash Lane Preflight", "");
     lines.push(`- Verdict: ${report.render_preflight.verdict || "unknown"}`);
@@ -1220,6 +1234,11 @@ async function main() {
       : visualImproved
         ? "improved"
         : "not_proven";
+  const renderReadiness = buildFlashLaneProofReadinessSummary({
+    preflight: renderPreflight,
+    overlayPlan: renderPreflight?.flashLaneOverlays,
+    scenes: renderPreflight?.sceneList,
+  });
   const report = {
     schema_version: 1,
     report_title:
@@ -1254,6 +1273,7 @@ async function main() {
     },
     render_requested: renderRequested,
     render_package_gate: renderPackageGate,
+    render_readiness: renderReadiness,
     render_preflight: renderPreflight,
     render_preflight_error: renderPreflightError,
     render_attempted: renderAttempted,

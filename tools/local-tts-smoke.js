@@ -66,7 +66,7 @@ async function main() {
     process.env.LOCAL_TTS_SMOKE_FILE || "__local_tts_smoke_sleepy_liam_latest.mp3";
   const rel = path.join("output", "audio", smokeFileName);
   const text =
-    "Pulse Gaming local TTS is online. Pokemon is spoken clearly, and Pokémon keeps its accent in timestamps.";
+    "Pulse Gaming local TTS is online. Pokémon is spoken clearly, and Pokémon keeps its accent in timestamps.";
   const rate = Number(process.env.LOCAL_TTS_SMOKE_RATE || 1.0);
   await audio.generateTTS(text, rel, rate);
   const voiceMeta = await stampLocalVoiceTimestampMeta({

@@ -9,6 +9,7 @@ const {
   assertFlashLaneProofReady,
   buildFlashLaneNarrationPlan,
   buildFlashLaneProofPreflight,
+  buildFlashLaneProofReadinessSummary,
 } = require("../../lib/studio/v2/flash-lane-preflight");
 
 function proofAudioPath(name = "flash-lane-provided.mp3") {
@@ -208,6 +209,92 @@ test("Flash Lane preflight allows card-heavy proofs when motion and beat coverag
   assert.ok(report.warnings.includes("flash_lane_card_ratio_high"));
   assert.equal(report.blockers.includes("flash_lane_card_ratio_requires_story_beat_coverage"), false);
   assert.equal(report.metrics.storyBeatOverlayCount, 2);
+});
+
+test("Flash Lane proof readiness is render-ready with overlay beats and motion diversity", () => {
+  const overlayPlan = {
+    timeline: [
+      { kind: "beat_chip", label: "SEQUEL VETO" },
+      { kind: "beat_chip", label: "NO DATE YET" },
+      { kind: "entity_chip", label: "GTA" },
+    ],
+  };
+  const report = buildFlashLaneProofPreflight({
+    narration: providedNarration,
+    scenes: [
+      clipScene(1),
+      clipScene(2),
+      clipScene(3),
+      clipScene(4),
+      clipScene(5),
+      clipScene(6),
+      cardScene(1),
+      cardScene(2),
+    ],
+    media: {
+      clips: [{ path: "a.mp4" }, { path: "b.mp4" }, { path: "c.mp4" }],
+      trailerFrames: [{ path: "frame-1.jpg" }],
+    },
+    overlayPlan,
+  });
+  const summary = buildFlashLaneProofReadinessSummary({
+    preflight: report,
+    overlayPlan,
+  });
+
+  assert.equal(report.verdict, "allow");
+  assert.equal(summary.verdict, "render_ready");
+  assert.equal(summary.statusColour, "green");
+  assert.equal(summary.motionDominance, 0.75);
+  assert.equal(summary.storyBeatOverlayCount, 2);
+  assert.equal(summary.requiredBeatOverlayMinimum, 2);
+  assert.equal(summary.uniqueClipSources, 6);
+  assert.equal(summary.distinctSceneBeats, 8);
+});
+
+test("Flash Lane proof readiness is blocked when preflight has blockers", () => {
+  const report = buildFlashLaneProofPreflight({
+    narration: providedNarration,
+    scenes: [cardScene(1), cardScene(2), { type: "still", source: "cover.jpg" }],
+    media: { clips: [], trailerFrames: [{ path: "frame.jpg" }] },
+  });
+  const summary = buildFlashLaneProofReadinessSummary({ preflight: report });
+
+  assert.equal(summary.verdict, "blocked");
+  assert.equal(summary.readinessClass, "red");
+  assert.ok(summary.blockers.includes("flash_lane_requires_two_actual_clip_scenes"));
+  assert.match(summary.recommendation, /Fix blockers/);
+});
+
+test("Flash Lane proof readiness blocks card-heavy proofs without enough beats", () => {
+  const report = buildFlashLaneProofPreflight({
+    narration: providedNarration,
+    scenes: [
+      clipScene(1),
+      clipScene(2),
+      clipScene(3),
+      clipScene(4),
+      clipScene(5),
+      clipScene(6),
+      cardScene(1),
+      cardScene(2),
+      cardScene(3),
+      cardScene(4),
+    ],
+    media: {
+      clips: [{ path: "a.mp4" }, { path: "b.mp4" }, { path: "c.mp4" }],
+      trailerFrames: [{ path: "frame-1.jpg" }],
+    },
+    overlayPlan: {
+      timeline: [{ kind: "beat_chip", label: "ONLY ONE BEAT" }],
+    },
+  });
+  const summary = buildFlashLaneProofReadinessSummary({ preflight: report });
+
+  assert.equal(summary.verdict, "blocked");
+  assert.equal(summary.storyBeatOverlayCount, 1);
+  assert.equal(summary.requiredBeatOverlayMinimum, 2);
+  assert.ok(summary.blockers.includes("flash_lane_card_ratio_requires_story_beat_coverage"));
 });
 
 test("Flash Lane preflight blocks card-heavy proofs without enough motion diversity", () => {

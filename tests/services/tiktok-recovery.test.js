@@ -166,6 +166,14 @@ test("TikTok auth doctor treats an expired refreshable local token as a sync or 
   assert.equal(report.token_status.needs_refresh_or_sync, true);
   assert.equal(report.token_status.local_action, "refresh_or_sync_local_token");
   assert.ok(report.warnings.includes("local_token_expired_but_refreshable"));
+  assert.equal(
+    report.warnings.includes("dashboard_client_key_error_requires_operator_dashboard_fix"),
+    false,
+  );
+  assert.equal(
+    report.operator_actions.some((action) => /same TikTok app\/environment/.test(action)),
+    false,
+  );
   assert.ok(
     report.operator_actions.some((action) =>
       /refresh or sync the local TikTok token/i.test(action),

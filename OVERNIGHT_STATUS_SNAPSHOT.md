@@ -5,8 +5,9 @@ Generated: 2026-05-08 10:12 BST
 ## Branch
 
 - Current branch: `codex/readiness-qa-failure-window`
-- Current base commit before this slice: `3a0dbe1c`
-- Latest pushed slice: local proof readiness reports are hardened; current working slice adds longform, voice-shootout and monetisation safety improvements
+- Current base commit before this slice: `71690df9`
+- Latest pushed slice: longform, voice-shootout and monetisation safety improvements
+- Current working slice: local monetisation state collector with fixture/file/local read-only modes
 - Deployed: no
 
 ## Safety
@@ -23,8 +24,8 @@ Generated: 2026-05-08 10:12 BST
 
 ## Validation
 
-- Focused modified-area tests: pass (`141/141` for local TTS, Studio V2 proof safety, longform, voice shootout, affiliate and monetisation coverage)
-- Full `npm test`: pass (`2283/2283`)
+- Focused modified-area tests: pass (`57/57` for the latest intelligence, affiliate and monetisation state slice)
+- Full `npm test`: pass (`2288/2288`)
 - `npm run build`: pass
 
 ## Local TTS
@@ -87,8 +88,10 @@ Generated: 2026-05-08 10:12 BST
 
 - Report: `MONETISATION_OVERNIGHT_REPORT.md`
 - Stage: pre-monetisation
-- Cleared milestones: `1/22`
+- Cleared milestones: `2/22`
 - YPP eligible: false
+- Local state source: SQLite contributed `23` YouTube public uploads in 90 days and `10,768` local YouTube views; the affiliate tag came from env as a masked public value.
+- Missing monetisation inputs are now explicit: subscribers, longform watch hours, TikTok follower/views, newsletter/blog metrics and detailed retention/AVP.
 - Expanded YPP early-access tracking is now separate from full YPP ad-revenue tracking.
 - TikTok Creator Rewards tracking now includes account type, eligible region, good standing, payment/tax setup, original-content readiness and 60s video eligibility.
 - Affiliate report output remains report-only, but this branch adds public-output safety gates for future deployment: story-specific audit required and Amazon Associate disclosure shown.

@@ -114,7 +114,7 @@ Recommendation: review the longform dossier first, then approve one controlled p
 
 Decision needed: approve deploying the new monetisation safety changes only after reviewing the operator impact.
 
-Why it matters: this branch now blocks review-case affiliate links from public story output and adds visible Amazon Associate disclosure to YouTube descriptions, pinned comments and blog posts. That is safer than the old behaviour, but it changes future public copy.
+Why it matters: this branch now blocks review-case affiliate links from public story output, adds visible Amazon Associate disclosure to YouTube descriptions, pinned comments and blog posts, and makes monetisation reports identify whether each metric came from fixture, env, local SQLite or a missing default. That is safer than the old behaviour, but it changes future public copy.
 
 What changes: story-specific affiliate links that pass audit can still appear. Fallback/random/review-case links are withheld, and public surfaces include: `As an Amazon Associate I earn from qualifying purchases.`
 
@@ -122,7 +122,7 @@ Risk: public descriptions become slightly longer and weaker stories may lose aff
 
 Rollback: revert the monetisation-safety commit or keep the branch undeployed.
 
-Validation: `npm test` passed `2283/2283`, `npm run build` passed, and focused affiliate/monetisation tests passed.
+Validation: `npm test` passed `2288/2288`, `npm run build` passed, and focused affiliate/monetisation tests passed.
 
 Recommendation: approve this for deployment after reading `MONETISATION_OVERNIGHT_REPORT.md`; it is a safety improvement, but should still be treated as a public-output change.
 

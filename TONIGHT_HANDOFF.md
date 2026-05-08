@@ -5,9 +5,9 @@ Date: 2026-05-08
 ## Branch
 
 - Branch: `codex/readiness-qa-failure-window`
-- Current base commit before this slice: `3a0dbe1c`
-- Latest pushed slice: local proof readiness reports now require accepted Liam voice evidence, safe TikTok diagnostics and clearer Studio V2 motion gates.
-- Current working slice: longform confidence gates, voice shootout safety modes, affiliate disclosure/audit gates and expanded monetisation readiness tracking.
+- Current base commit before this slice: `71690df9`
+- Latest pushed slice: longform confidence gates, voice shootout safety modes, affiliate disclosure/audit gates and expanded monetisation readiness tracking.
+- Current working slice: local monetisation state collector with fixture/file/local read-only modes.
 - Deployed: no
 - Railway/env/Cloudflare/OAuth/production DB/social posting: untouched
 - Production renderer and production voice defaults: unchanged
@@ -31,6 +31,8 @@ Date: 2026-05-08
 - Voice shootout no longer claims samples are reviewable until audio files exist; blocked/pending rows stay in the private map.
 - Affiliate links now require a story-specific audit before being written to public story output, and approved public affiliate surfaces carry the Amazon Associate disclosure.
 - Monetisation readiness now separates expanded YPP early access from full YPP ad-revenue eligibility and tracks fuller TikTok Creator Rewards prerequisites.
+- Monetisation reports now show where each major metric came from: fixture, file, env override, local SQLite or missing default.
+- Local monetisation mode currently sees 23 YouTube public uploads in the last 90 days and 10,768 local YouTube views, but subscriber, TikTok, blog and newsletter counts still need explicit operator/analytics sources.
 
 ## Current Verdicts
 
@@ -42,12 +44,12 @@ Date: 2026-05-08
 - Platform doctor: `AMBER`, current blockers are TikTok local token sync, TikTok creative-ready MP4 and Instagram rerender after `2207076`
 - Analytics learning: `AMBER`, public counters only until YouTube analytics scope is granted
 - Longform: local-only, insufficient Weekly Roundup segments after stricter confidence filtering
-- Monetisation: pre-monetisation, expanded YPP blocker is currently the 500-subscriber threshold; affiliate safety is branch-only and not deployed
+- Monetisation: pre-monetisation, expanded YPP blocker is currently the 500-subscriber threshold; affiliate safety and local state provenance are branch-only and not deployed
 
 ## Validation
 
-- Focused modified-area tests: pass (`141/141` for voice, Studio V2, longform, affiliate and monetisation coverage)
-- Full `npm test`: pass (`2283/2283`)
+- Focused modified-area tests: pass (`57/57` for intelligence, affiliate and monetisation state coverage in the latest slice)
+- Full `npm test`: pass (`2288/2288`)
 - `npm run build`: pass
 
 ## Reports To Read

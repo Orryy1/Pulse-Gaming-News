@@ -16,12 +16,9 @@ Read-only control report. No Railway, OAuth, production DB, render default, TTS 
 
 ## Input Freshness
 
-- Motion gap report: 2026-05-08T08:34:57.090Z
-- Alternate source report: 2026-05-08T04:34:42.824Z
+- Motion gap report: 2026-05-08T12:18:17.555Z
+- Alternate source report: 2026-05-08T12:19:56.974Z
 - Reference counts: current
-
-- Warning: alternate_source_report_older_than_motion_gap - The alternate-source handoff is older than the motion-gap report; alternate source entities may be incomplete.
-  Recommended: `npm run studio:v2:alternate-sources`
 
 ## Current Queue
 
@@ -35,7 +32,7 @@ Read-only control report. No Railway, OAuth, production DB, render default, TTS 
 - Command: `npm run media:intake-official-sources -- --input test/input/official_sources.json --story-id rss_5b3abe925b27a199`
 - Command: `npm run media:resolve-trailers -- --story-id rss_5b3abe925b27a199 --no-latest-report --official-source-intake-report test/output/official_source_intake_report.json --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5`
 - Command: `npm run media:plan-frames -- --story-id rss_5b3abe925b27a199 --trailer-references test/output/official_trailer_references_v1.json`
-- Search targets: BioShock official trailer; BioShock gameplay trailer; BioShock official gameplay; BioShock platform storefront trailer; Red Dead official trailer; Red Dead gameplay trailer; Red Dead official gameplay; Red Dead platform storefront trailer
+- Search targets: GTA official trailer; GTA gameplay trailer; GTA official gameplay; GTA platform storefront trailer; BioShock official trailer; BioShock gameplay trailer; BioShock official gameplay; BioShock platform storefront trailer; Red Dead official trailer; Red Dead gameplay trailer; Red Dead Steam trailer; Red Dead gameplay
 
 ## Safety
 

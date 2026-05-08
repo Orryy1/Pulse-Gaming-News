@@ -63,8 +63,12 @@ test("official source intake accepts entity-matched official references as refer
   assert.equal(reference.downloads_allowed, false);
   assert.equal(reference.allowed_render_use, "reference_only_by_default");
   assert.equal(reference.rights_risk_class, "official_reference_only");
+  assert.equal(reference.source_url_kind, "html_or_unknown_page");
+  assert.equal(reference.segment_validation_eligible, false);
+  assert.equal(reference.segment_validation_ineligible_reason, "segment_source_url_not_direct_media");
   assert.equal(reference.source_verified, true);
   assert.equal(reference.provenance.source, "operator_official_source_intake");
+  assert.equal(reference.provenance.source_url_kind, "html_or_unknown_page");
   assert.equal(report.safety.video_downloads, false);
   assert.equal(report.safety.production_db_mutated, false);
 });
@@ -105,6 +109,31 @@ test("official source intake accepts official YouTube channel references only wi
   assert.equal(report.summary.accepted, 1);
   assert.equal(report.accepted_references[0].provider, "official_intake");
   assert.equal(report.accepted_references[0].downloads_allowed, false);
+  assert.equal(report.accepted_references[0].source_url_kind, "youtube_watch");
+  assert.equal(report.accepted_references[0].segment_validation_eligible, false);
+  assert.equal(
+    report.accepted_references[0].segment_validation_ineligible_reason,
+    "segment_source_is_youtube_reference",
+  );
+});
+
+test("official source intake marks direct media URLs as segment-validation eligible", () => {
+  const report = buildOfficialSourceIntakeReport({
+    stories: [story()],
+    entries: [
+      officialEntry({
+        official_source_url: "https://cdn.rockstargames.com/reddead/gameplay-trailer.m3u8",
+        source_type: "platform_storefront_video_reference",
+        source_family: "rockstar_red_dead_direct_hls",
+      }),
+    ],
+  });
+
+  assert.equal(report.summary.accepted, 1);
+  assert.equal(report.accepted_references[0].source_url_kind, "hls_manifest");
+  assert.equal(report.accepted_references[0].segment_validation_eligible, true);
+  assert.equal(report.accepted_references[0].segment_validation_ineligible_reason, null);
+  assert.equal(report.provenance_ledger[0].segment_validation_eligible, true);
 });
 
 test("official source intake rejects social reposts, reuploads and duplicate URLs", () => {
@@ -194,6 +223,9 @@ test("official source intake integrates with trailer resolver without enabling d
   assert.equal(plan.references[0].provider, "official_intake");
   assert.equal(plan.references[0].entity, "Red Dead");
   assert.equal(plan.references[0].downloads_allowed, false);
+  assert.equal(plan.references[0].segment_validation_eligible, false);
+  assert.equal(plan.segment_validation_reference_counts.eligible, 0);
+  assert.equal(plan.segment_validation_reference_counts.ineligible, 1);
   assert.equal(plan.summary_accepted_official_intake_references, 1);
   assert.equal(plan.safety.video_downloads, false);
   assert.ok(plan.provenance_ledger.some((item) => item.provider === "official_intake"));

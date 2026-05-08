@@ -192,6 +192,37 @@ test("Controlled Frame Extraction Plan excludes localised and subtitle-labelled 
   assert.ok(!plan.target_frames.some((frame) => /\(DE\)|Subtitles/i.test(frame.movie_name || "")));
 });
 
+test("Controlled Frame Extraction Plan keeps YouTube and HTML official pages out of frame targets", () => {
+  const plan = buildControlledFrameExtractionPlan(
+    motionPlan({
+      existing_references: [
+        reference("GTA", 1, {
+          source_url: "https://www.youtube.com/watch?v=officialGta",
+          source_type: "igdb_video",
+          provider: "igdb",
+          segment_validation_eligible: false,
+        }),
+        reference("Red Dead", 1, {
+          source_url: "https://www.rockstargames.com/reddeadredemption2/videos",
+          source_type: "official_trailer",
+          provider: "official_intake",
+          segment_validation_eligible: false,
+        }),
+        reference("BioShock", 1, {
+          source_url: "https://video.example/bioshock-gameplay.m3u8",
+        }),
+      ],
+    }),
+  );
+
+  assert.equal(plan.selected_references.length, 1);
+  assert.equal(plan.selected_references[0].entity, "BioShock");
+  assert.equal(plan.selected_references[0].source_url_kind, "hls_manifest");
+  assert.equal(plan.selected_references[0].segment_validation_eligible, true);
+  assert.ok(plan.target_frames.every((frame) => frame.segment_validation_eligible === true));
+  assert.ok(!plan.target_frames.some((frame) => /youtube|rockstargames/i.test(frame.source_url || "")));
+});
+
 test("Controlled Frame Extraction Plan can include alternate official references for retry QA", () => {
   const plan = buildControlledFrameExtractionPlan(
     motionPlan({

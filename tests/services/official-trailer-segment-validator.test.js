@@ -293,6 +293,72 @@ test("official trailer segment validator preflight-rejects subtitle-labelled ref
   assert.equal(report.segments[0].allowed_for_flash_lane, false);
 });
 
+test("official trailer segment validator preflight-rejects YouTube watch URLs before extraction", async () => {
+  const outputRoot = tempOutputRoot("youtube-watch-reference");
+  await cleanTempRoot(outputRoot);
+  let extractorCalls = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        path: "https://www.youtube.com/watch?v=officialRef",
+        sourceType: "igdb_video",
+        segment_validation_eligible: false,
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: async () => {
+        extractorCalls += 1;
+        throw new Error("YouTube references should be rejected before extraction");
+      },
+      inspectFrame: async (outputPath) => passingQa(outputPath),
+    },
+  );
+
+  assert.equal(extractorCalls, 0);
+  assert.equal(report.summary.samples_extracted, 0);
+  assert.equal(report.summary.segments_rejected, 1);
+  assert.equal(report.segments[0].source_url_kind, "youtube_watch");
+  assert.equal(report.segments[0].validation_reason, "segment_source_is_youtube_reference");
+  assert.equal(report.segments[0].segment_validated, false);
+  assert.equal(report.segments[0].allowed_for_flash_lane, false);
+});
+
+test("official trailer segment validator preflight-rejects publisher HTML URLs before extraction", async () => {
+  const outputRoot = tempOutputRoot("publisher-html-reference");
+  await cleanTempRoot(outputRoot);
+  let extractorCalls = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        path: "https://www.rockstargames.com/reddeadredemption2/videos",
+        sourceType: "official_trailer",
+        segment_validation_eligible: false,
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: async () => {
+        extractorCalls += 1;
+        throw new Error("HTML references should be rejected before extraction");
+      },
+      inspectFrame: async (outputPath) => passingQa(outputPath),
+    },
+  );
+
+  assert.equal(extractorCalls, 0);
+  assert.equal(report.summary.samples_extracted, 0);
+  assert.equal(report.summary.segments_rejected, 1);
+  assert.equal(report.segments[0].source_url_kind, "html_or_unknown_page");
+  assert.equal(report.segments[0].validation_reason, "segment_source_url_not_direct_media");
+  assert.equal(report.segments[0].segment_validated, false);
+  assert.equal(report.segments[0].allowed_for_flash_lane, false);
+});
+
 test("official trailer segment validator preflight-rejects official segments still inside intro material", async () => {
   const outputRoot = tempOutputRoot("intro-window");
   await cleanTempRoot(outputRoot);

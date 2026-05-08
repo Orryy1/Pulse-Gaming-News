@@ -138,6 +138,10 @@ test("official trailer resolver extracts Steam movie references from verified ap
   assert.equal(plan.references[0].source_url, "https://cdn.example/trailer_max.mp4");
   assert.equal(plan.references[0].downloads_allowed, false);
   assert.equal(plan.references[0].rights_risk_class, "storefront_promotional_video");
+  assert.equal(plan.references[0].source_url_kind, "direct_video");
+  assert.equal(plan.references[0].segment_validation_eligible, true);
+  assert.equal(plan.segment_validation_reference_counts.eligible, 1);
+  assert.equal(plan.segment_validation_reference_counts.ineligible, 0);
 });
 
 test("official trailer resolver marks multi-franchise coverage as partial until every target has a reference", async () => {
@@ -229,6 +233,8 @@ test("official trailer resolver records Steam HLS/DASH movie references as refer
   assert.equal(plan.references[0].source_url, "https://video.example/hls_264_master.m3u8");
   assert.equal(plan.references[0].downloads_allowed, false);
   assert.equal(plan.references[0].allowed_render_use, "reference_only_by_default");
+  assert.equal(plan.references[0].source_url_kind, "hls_manifest");
+  assert.equal(plan.references[0].segment_validation_eligible, true);
 });
 
 test("official trailer resolver excludes Steam movie references that are rating-board material", async () => {
@@ -545,6 +551,11 @@ test("official trailer resolver maps IGDB video ids as reference-only", async ()
   assert.equal(plan.references[0].source_type, "igdb_video");
   assert.equal(plan.references[0].source_url, "https://www.youtube.com/watch?v=abc123");
   assert.equal(plan.references[0].allowed_render_use, "reference_only_by_default");
+  assert.equal(plan.references[0].source_url_kind, "youtube_watch");
+  assert.equal(plan.references[0].segment_validation_eligible, false);
+  assert.equal(plan.references[0].segment_validation_ineligible_reason, "segment_source_is_youtube_reference");
+  assert.equal(plan.segment_validation_reference_counts.eligible, 0);
+  assert.equal(plan.segment_validation_reference_counts.ineligible, 1);
 });
 
 test("official trailer resolver report emits valid JSON and readable Markdown", async () => {
@@ -577,7 +588,10 @@ test("official trailer resolver report emits valid JSON and readable Markdown", 
   assert.equal(report.summary.official_reference_found, 1);
   assert.equal(report.summary.partial_official_reference_found, 0);
   assert.equal(report.summary.official_search_required, 1);
+  assert.equal(report.summary.segment_validation_eligible_references, 1);
+  assert.equal(report.summary.segment_validation_ineligible_references, 0);
   assert.match(markdown, /Official Trailer Reference Resolver/);
+  assert.match(markdown, /segment-validation eligible references/);
   assert.match(markdown, /with-steam/);
   assert.match(markdown, /needs-search/);
 });

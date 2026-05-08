@@ -7,6 +7,9 @@ const {
   officialMediaReferenceLanguageRisk,
   officialMediaReferenceRejectReason,
 } = require("../../lib/official-media-reference-preflight");
+const {
+  classifyMediaSourceUrl,
+} = require("../../lib/media-source-url-kind");
 
 test("official media reference preflight rejects localised non-English trailer markers", () => {
   assert.equal(
@@ -34,5 +37,31 @@ test("official media reference preflight does not treat game-title words as lang
   assert.equal(
     officialMediaReferenceRejectReason({ movie_name: "Grand Theft Auto V Enhanced Gameplay Trailer" }),
     null,
+  );
+});
+
+test("media source URL kind allows only direct video or manifest URLs for segment validation", () => {
+  assert.deepEqual(classifyMediaSourceUrl("https://video.example/trailer.mp4?token=1"), {
+    source_url_kind: "direct_video",
+    segment_validation_eligible: true,
+    segment_validation_ineligible_reason: null,
+  });
+  assert.deepEqual(classifyMediaSourceUrl("https://video.example/hls_264_master.m3u8"), {
+    source_url_kind: "hls_manifest",
+    segment_validation_eligible: true,
+    segment_validation_ineligible_reason: null,
+  });
+  assert.equal(classifyMediaSourceUrl("https://youtu.be/abc123").source_url_kind, "youtube_watch");
+  assert.equal(
+    classifyMediaSourceUrl("https://www.youtube.com/shorts/abc123").segment_validation_ineligible_reason,
+    "segment_source_is_youtube_reference",
+  );
+  assert.equal(
+    classifyMediaSourceUrl("https://www.rockstargames.com/reddeadredemption2/videos").source_url_kind,
+    "html_or_unknown_page",
+  );
+  assert.equal(
+    classifyMediaSourceUrl("https://cdn.example/key-art.jpg").segment_validation_ineligible_reason,
+    "segment_source_is_image_reference",
   );
 });

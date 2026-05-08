@@ -644,6 +644,187 @@ test("official clip refs skip resolver references that are logo/title-only mater
   assert.equal(refs[0].provenance.movie_name, "GTA Gameplay Update Trailer");
 });
 
+test("official clip refs do not deep-scan YouTube watch references from resolver reports", () => {
+  const refs = buildOfficialTrailerClipsFromFrameReport(
+    { plans: [{ story_id: "story-1", frames: [] }] },
+    "story-1",
+    {
+      includeExploratoryWindows: true,
+      exploratoryStartSeconds: [42],
+      referenceReport: {
+        plans: [
+          {
+            story_id: "story-1",
+            references: [
+              {
+                source_type: "igdb_video",
+                provider: "igdb",
+                source_url: "https://www.youtube.com/watch?v=officialRef",
+                entity: "BioShock",
+                movie_name: "BioShock Official Trailer",
+                downloads_allowed: false,
+                segment_validation_eligible: false,
+              },
+              {
+                source_type: "steam_movie",
+                provider: "steam",
+                source_url: "https://video.example/bioshock-gameplay.m3u8",
+                entity: "BioShock",
+                movie_name: "BioShock Gameplay Trailer",
+                downloads_allowed: false,
+              },
+            ],
+          },
+        ],
+      },
+      maxClips: 20,
+    },
+  );
+
+  assert.deepEqual(refs.map((ref) => ref.path), ["https://video.example/bioshock-gameplay.m3u8"]);
+  assert.equal(refs[0].provenance.source_url_kind, "hls_manifest");
+  assert.equal(refs[0].provenance.segment_validation_eligible, true);
+});
+
+test("official clip refs do not build acquisition refs from HTML official pages", () => {
+  const refs = buildOfficialTrailerClipsFromAcquisitionPlan(
+    {
+      story_id: "story-1",
+      shopping_list: [
+        {
+          entity: "Red Dead",
+          suggested_windows: [{ start_s: 48, duration_s: 5 }],
+        },
+      ],
+    },
+    {
+      plans: [
+        {
+          story_id: "story-1",
+          references: [
+            {
+              source_type: "official_trailer",
+              provider: "official_intake",
+              source_url: "https://www.rockstargames.com/reddeadredemption2/videos",
+              entity: "Red Dead",
+              movie_name: "Red Dead official media page",
+              downloads_allowed: false,
+              segment_validation_eligible: false,
+            },
+            {
+              source_type: "steam_movie",
+              provider: "steam",
+              source_url: "https://video.example/reddead-gameplay.m3u8",
+              entity: "Red Dead",
+              movie_name: "Red Dead gameplay trailer",
+              downloads_allowed: false,
+            },
+          ],
+        },
+      ],
+    },
+    "story-1",
+  );
+
+  assert.deepEqual(refs.map((ref) => ref.path), ["https://video.example/reddead-gameplay.m3u8"]);
+  assert.equal(refs[0].provenance.segment_validation_eligible, true);
+});
+
+test("official clip refs do not create frame-derived refs from accepted YouTube or HTML frames", () => {
+  const refs = buildOfficialTrailerClipsFromFrameReport(
+    {
+      plans: [
+        {
+          story_id: "story-1",
+          frames: [
+            acceptedFrame({
+              source_url: "https://www.youtube.com/watch?v=officialRef",
+              source_type: "igdb_video",
+              entity: "BioShock",
+            }),
+            acceptedFrame({
+              source_url: "https://www.rockstargames.com/reddeadredemption2/videos",
+              source_type: "official_trailer",
+              entity: "Red Dead",
+            }),
+            acceptedFrame({
+              source_url: "https://video.example/gta-gameplay.m3u8",
+              source_type: "steam_movie",
+              entity: "GTA",
+            }),
+          ],
+        },
+      ],
+    },
+    "story-1",
+    { maxClips: 10 },
+  );
+
+  assert.deepEqual(refs.map((ref) => ref.path), ["https://video.example/gta-gameplay.m3u8"]);
+  assert.equal(refs[0].provenance.source_url_kind, "hls_manifest");
+});
+
+test("official clip refs ignore stale validated segment reports with non-direct URLs", () => {
+  const refs = buildOfficialTrailerClipsFromFrameReport(
+    { plans: [{ story_id: "story-1", frames: [] }] },
+    "story-1",
+    {
+      maxClips: 10,
+      requireValidatedSegments: true,
+      segmentValidationReport: {
+        generated_at: "2026-05-08T11:00:00.000Z",
+        segments: [
+          {
+            source_url: "https://www.youtube.com/watch?v=officialRef",
+            source_type: "igdb_video",
+            entity: "BioShock",
+            media_start_s: 42,
+            duration_s: 5,
+            segment_validated: true,
+            allowed_for_flash_lane: true,
+            validation_reason: "segment_samples_passed",
+            segment_motion_class: "gameplay_action",
+            action_score: 88,
+            action_sample_count: 3,
+            samples: [{ local_path: "test/output/official-trailer-segment-validation-v1/assets/story-1/a.jpg" }],
+          },
+          {
+            source_url: "https://www.rockstargames.com/reddeadredemption2/videos",
+            source_type: "official_trailer",
+            entity: "Red Dead",
+            media_start_s: 48,
+            duration_s: 5,
+            segment_validated: true,
+            allowed_for_flash_lane: true,
+            validation_reason: "segment_samples_passed",
+            segment_motion_class: "gameplay_action",
+            action_score: 86,
+            action_sample_count: 3,
+            samples: [{ local_path: "test/output/official-trailer-segment-validation-v1/assets/story-1/b.jpg" }],
+          },
+          {
+            source_url: "https://video.example/gta-gameplay.m3u8",
+            source_type: "steam_movie",
+            entity: "GTA",
+            media_start_s: 54,
+            duration_s: 5,
+            segment_validated: true,
+            allowed_for_flash_lane: true,
+            validation_reason: "segment_samples_passed",
+            segment_motion_class: "gameplay_action",
+            action_score: 84,
+            action_sample_count: 3,
+            samples: [{ local_path: "test/output/official-trailer-segment-validation-v1/assets/story-1/c.jpg" }],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.deepEqual(refs.map((ref) => ref.path), ["https://video.example/gta-gameplay.m3u8"]);
+  assert.equal(refs[0].provenance.source_url_kind, "hls_manifest");
+});
+
 test("official clip refs deep-scan balances entities before repeated same-entity sources", () => {
   const refs = buildOfficialTrailerClipsFromFrameReport(
     { plans: [{ story_id: "story-1", frames: [] }] },

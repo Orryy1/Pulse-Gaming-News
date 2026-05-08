@@ -129,6 +129,54 @@ test("controlled frame extraction rejects apply-local outside test/output", asyn
   );
 });
 
+test("controlled frame extraction rejects YouTube and HTML official references before extractor", async () => {
+  const outputRoot = tempOutputRoot("reject-reference-url-kind");
+  await cleanTempRoot(outputRoot);
+  let extractorCalls = 0;
+
+  const report = await runControlledFrameExtraction([
+    framePlan({
+      target_frames: [
+        {
+          source_url: "https://www.youtube.com/watch?v=officialRef",
+          source_type: "igdb_video",
+          entity: "BioShock",
+          target_time_percent: 0.42,
+          downloads_allowed: false,
+          extraction_allowed: false,
+        },
+        {
+          source_url: "https://www.rockstargames.com/reddeadredemption2/videos",
+          source_type: "official_trailer",
+          entity: "Red Dead",
+          target_time_percent: 0.58,
+          downloads_allowed: false,
+          extraction_allowed: false,
+        },
+      ],
+    }),
+  ], {
+    applyLocal: true,
+    outputRoot,
+    extractor: async () => {
+      extractorCalls++;
+      throw new Error("extractor should not receive non-direct official references");
+    },
+  });
+
+  assert.equal(extractorCalls, 0);
+  assert.equal(report.summary.frames_extracted, 0);
+  assert.equal(report.summary.frames_rejected, 2);
+  assert.deepEqual(
+    report.plans[0].frames.map((frame) => frame.status),
+    ["rejected_source_url", "rejected_source_url"],
+  );
+  assert.deepEqual(
+    report.plans[0].frames.map((frame) => frame.qa.failures[0]),
+    ["segment_source_is_youtube_reference", "segment_source_url_not_direct_media"],
+  );
+});
+
 test("controlled frame extraction rejects duplicate extracted hashes", async () => {
   const outputRoot = tempOutputRoot("duplicates");
   await cleanTempRoot(outputRoot);

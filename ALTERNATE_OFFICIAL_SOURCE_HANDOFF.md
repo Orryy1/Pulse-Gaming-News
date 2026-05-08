@@ -13,12 +13,8 @@ This report is local-only and report-only. It turns exhausted Flash Lane motion 
 
 ## Input Freshness
 
-- Motion gap report: 2026-05-08T11:46:01.330Z
-- Reference report: 2026-05-08T11:13:11.489Z
-
-Warnings:
-- reference_report_older_than_motion_gap: Official trailer references are older than the motion-gap report; rerun media:resolve-trailers before trusting remaining/excluded reference counts.
-  Recommended: `npm run media:resolve-trailers -- --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5`
+- Motion gap report: 2026-05-08T12:18:17.555Z
+- Reference report: 2026-05-08T12:19:35.747Z
 
 ## Allowed Source Policy
 
@@ -38,11 +34,11 @@ Warnings:
 
 ## Entity Handoff
 
-| Story | Entity | Blocker | Attempts | Validated | Rejected | Source families | Top rejection | Remaining refs (provisional) | Excluded refs (provisional) |
+| Story | Entity | Blocker | Attempts | Validated | Rejected | Source families | Top rejection | Remaining refs | Excluded refs |
 | --- | --- | --- | ---: | ---: | ---: | ---: | --- | ---: | ---: |
-| rss_5b3abe925b27a199 | GTA | local_segment_validation_exhausted_current_motion_sources | 102 | 2 | 100 | 9 | segment_samples_too_repetitive | 8 | 0 |
+| rss_5b3abe925b27a199 | GTA | local_segment_validation_exhausted_current_motion_sources | 102 | 2 | 100 | 9 | segment_samples_too_repetitive | 1 | 8 |
 | rss_5b3abe925b27a199 | BioShock | local_segment_validation_exhausted_current_motion_sources | 41 | 6 | 35 | 3 | segment_contains_low_detail_frame | 2 | 1 |
-| rss_5b3abe925b27a199 | Red Dead | local_segment_validation_exhausted_current_motion_sources | 48 | 1 | 47 | 4 | segment_contains_black_frame | 1 | 1 |
+| rss_5b3abe925b27a199 | Red Dead | local_segment_validation_exhausted_current_motion_sources | 48 | 1 | 47 | 4 | segment_contains_black_frame | 0 | 0 |
 
 ## rss_5b3abe925b27a199 - GTA
 
@@ -240,8 +236,8 @@ Reject if:
 
 - Red Dead official trailer
 - Red Dead gameplay trailer
-- Red Dead official gameplay
-- Red Dead platform storefront trailer
+- Red Dead Steam trailer
+- Red Dead gameplay
 
 ### Manual Official Source Intake
 

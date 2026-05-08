@@ -36,6 +36,7 @@ const ACCEPTED_SLEEPY_LIAM = {
   referencePresent: true,
   referenceHash: "c".repeat(40),
 };
+const ACTUAL_ACCEPTED_SLEEPY_LIAM = resolveAcceptedLocalVoiceReference();
 
 function withEnv(overrides, fn) {
   const previous = {};
@@ -860,6 +861,10 @@ test("local TTS health summary recognises the loaded Pulse voice without leaking
           alias: "liam",
           loaded: true,
           ref_resolved: true,
+          reference_present: true,
+          accepted_reference_id: ACTUAL_ACCEPTED_SLEEPY_LIAM.id,
+          accepted_reference_file: ACTUAL_ACCEPTED_SLEEPY_LIAM.fileName,
+          reference_sha1: ACTUAL_ACCEPTED_SLEEPY_LIAM.referenceHash,
         },
       ],
       engine_count: 1,
@@ -886,6 +891,10 @@ test("local TTS health summary fails closed when the Pulse voice is not loaded",
           alias: "liam",
           loaded: false,
           ref_resolved: true,
+          reference_present: true,
+          accepted_reference_id: ACTUAL_ACCEPTED_SLEEPY_LIAM.id,
+          accepted_reference_file: ACTUAL_ACCEPTED_SLEEPY_LIAM.fileName,
+          reference_sha1: ACTUAL_ACCEPTED_SLEEPY_LIAM.referenceHash,
         },
       ],
       engine_count: 0,
@@ -896,6 +905,33 @@ test("local TTS health summary fails closed when the Pulse voice is not loaded",
   assert.equal(summary.ok, false);
   assert.match(summary.reasons.join(" "), /not ready/);
   assert.match(summary.reasons.join(" "), /not loaded/);
+});
+
+test("local TTS health summary rejects Liam without the accepted Sleepy reference fingerprint", () => {
+  const summary = summariseLocalTtsHealth(
+    {
+      status: "ok",
+      ready: true,
+      phase: "ready",
+      voices: [
+        {
+          voice_id: "TX3LPaxmHKxFdv7VOQHJ",
+          alias: "liam",
+          loaded: true,
+          ref_resolved: true,
+          reference_present: true,
+          accepted_reference_id: "old-pulse-liam",
+          accepted_reference_file: "pulse_v2.wav",
+          reference_sha1: "0".repeat(40),
+        },
+      ],
+      engine_count: 1,
+    },
+    "TX3LPaxmHKxFdv7VOQHJ",
+  );
+
+  assert.equal(summary.ok, false);
+  assert.match(summary.reasons.join(" "), /accepted Sleepy Liam reference/);
 });
 
 test("v2 audio library can be held to tracked beds only with minimal mode", () => {

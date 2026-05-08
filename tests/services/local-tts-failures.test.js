@@ -32,6 +32,20 @@ test("classifyLocalTtsHealthFailure separates server down, timeout and unloaded 
     }).code,
     "voice_not_loaded",
   );
+  assert.equal(
+    classifyLocalTtsHealthFailure({
+      status: "ok",
+      ready: true,
+      reasons: ["accepted Sleepy Liam reference fingerprint is missing"],
+      voice: {
+        present: true,
+        refResolved: true,
+        loaded: true,
+        reference: { referencePresent: true },
+      },
+    }).code,
+    "unsafe_voice",
+  );
 });
 
 test("classifyLocalTtsFailure recognises transient socket resets and TTS timeouts", () => {

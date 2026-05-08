@@ -14,8 +14,12 @@ const {
   renderLocalScriptExtensionMarkdown,
   stripRequiredCta,
 } = require("../../lib/ops/local-script-extension");
+const {
+  resolveAcceptedLocalVoiceReference,
+} = require("../../lib/studio/v2/local-voice-reference");
 
 const ROOT = path.resolve(__dirname, "..", "..");
+const ACCEPTED_SLEEPY_LIAM = resolveAcceptedLocalVoiceReference();
 const READY_TTS = {
   ready: true,
   status: "ok",
@@ -24,6 +28,9 @@ const READY_TTS = {
     alias: "liam",
     loaded: true,
     ref_resolved: true,
+    accepted_reference_id: ACCEPTED_SLEEPY_LIAM.id,
+    accepted_reference_file: ACCEPTED_SLEEPY_LIAM.fileName,
+    reference_sha1: ACCEPTED_SLEEPY_LIAM.referenceHash,
   },
 };
 

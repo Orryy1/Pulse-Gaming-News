@@ -5,6 +5,8 @@
     "alias": "liam",
     "channel": "pulse-gaming",
     "ref_voice_path": "voices/pulse_liam_sleepy.wav",
+    "accepted_reference_id": "pulse-sleepy-liam-20260502",
+    "accepted_reference_file": "pulse_liam_sleepy.wav",
     "base_speed": 1.0,
     "cfg_value": 2.0,
     "inference_timesteps": 20,

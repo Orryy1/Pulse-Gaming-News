@@ -11,8 +11,12 @@ const {
   renderLocalMediaRepairApplyMarkdown,
   renderLocalMediaRepairMarkdown,
 } = require("../../lib/ops/local-media-repair");
+const {
+  resolveAcceptedLocalVoiceReference,
+} = require("../../lib/studio/v2/local-voice-reference");
 
 const ROOT = path.resolve(__dirname, "..", "..");
+const ACCEPTED_SLEEPY_LIAM = resolveAcceptedLocalVoiceReference();
 
 const READY_TTS = {
   ok: true,
@@ -23,6 +27,9 @@ const READY_TTS = {
     alias: "liam",
     loaded: true,
     refResolved: true,
+    acceptedReferenceId: ACCEPTED_SLEEPY_LIAM.id,
+    acceptedReferenceFile: ACCEPTED_SLEEPY_LIAM.fileName,
+    referenceHash: ACCEPTED_SLEEPY_LIAM.referenceHash,
   },
 };
 
@@ -309,6 +316,44 @@ test("local media repair rejects non-Liam local voices as unsafe", () => {
   assert.equal(report.items[0].action, "blocked_local_tts_unavailable");
   assert.equal(report.items[0].failure_code, "unsafe_voice");
   assert.ok(report.items[0].blockers.includes("unsafe_voice"));
+  assert.equal(report.counts.blocked_local_tts, 1);
+});
+
+test("local media repair rejects Liam aliases without the accepted Sleepy Liam reference", () => {
+  const report = buildLocalMediaRepairQueue({
+    stories: [
+      {
+        id: "rss_wrong_liam",
+        title: "Xbox confirms a new update",
+        approved: true,
+        full_script: "Xbox confirmed new details for players today. ".repeat(32),
+        audio_path: null,
+        exported_path: null,
+      },
+    ],
+    mediaByStoryId: {
+      rss_wrong_liam: { audioExists: false, finalExists: false },
+    },
+    localTts: {
+      ok: true,
+      ready: true,
+      status: "ok",
+      phase: "ready",
+      voice: {
+        alias: "liam",
+        voiceId: "TX3LPaxmHKxFdv7VOQHJ",
+        loaded: true,
+        refResolved: true,
+        acceptedReferenceId: "old-pulse-liam",
+        acceptedReferenceFile: "pulse_v2.wav",
+        referenceHash: "0".repeat(40),
+      },
+    },
+  });
+
+  assert.equal(report.items[0].action, "blocked_local_tts_unavailable");
+  assert.equal(report.items[0].failure_code, "unsafe_voice");
+  assert.match(report.items[0].failure_message, /accepted Sleepy Liam reference/);
   assert.equal(report.counts.blocked_local_tts, 1);
 });
 

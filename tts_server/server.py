@@ -21,9 +21,10 @@ Multi-voice routing:
   request and cached for the life of the process. This lets one server handle
   both Pulse Gaming (Liam) and Sleepy Stories (Christopher) without restart.
 
-  Fallback: if a voice_id isn't in voices.json, the server uses the default
-  engine built from REF_VOICE_PATH / BASE_SPEED env vars. That keeps the old
-  single-voice contract working.
+  Safety: explicit voice_id lookups must be registered in voices.json by
+  default. The legacy unmapped voice fallback is available only when
+  ALLOW_UNKNOWN_VOICE_FALLBACK=true, which keeps Pulse proof renders from
+  silently using the wrong local voice.
 
 Health: GET /health -> {"status": "ok", "voices": [...], "model_loaded": bool}
 
@@ -31,6 +32,7 @@ Run: uvicorn server:app --host 127.0.0.1 --port 8765
 """
 import base64
 import faulthandler
+import hashlib
 import io
 import json
 import logging
@@ -305,6 +307,9 @@ except Exception as _e:
 
 # --- Config ---
 REF_VOICE_PATH = os.getenv("REF_VOICE_PATH")  # fallback ref when voice_id isn't mapped
+ALLOW_UNKNOWN_VOICE_FALLBACK = os.getenv(
+    "ALLOW_UNKNOWN_VOICE_FALLBACK", "false",
+).strip().lower() in ("1", "true", "yes", "on")
 DEVICE = os.getenv("DEVICE", "cuda")
 HOST = os.getenv("HOST", "127.0.0.1")
 PORT = int(os.getenv("PORT", "8765"))
@@ -578,6 +583,19 @@ def _resolve_ref_path(ref_path: Optional[str]) -> Optional[str]:
     return str(p) if p.exists() else None
 
 
+def _sha1_file(path_value: Optional[str]) -> Optional[str]:
+    if not path_value:
+        return None
+    try:
+        h = hashlib.sha1()
+        with open(path_value, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+                h.update(chunk)
+        return h.hexdigest()
+    except Exception:
+        return None
+
+
 def _get_engine(voice_id: str) -> VoxCPMEngine:
     """Fetch or build the VoxCPMEngine for a voice_id.
 
@@ -594,6 +612,11 @@ def _get_engine(voice_id: str) -> VoxCPMEngine:
 
     cfg = VOICES_MAP.get(voice_id)
     if cfg is None:
+        if voice_id != "__default__" and not ALLOW_UNKNOWN_VOICE_FALLBACK:
+            raise ValueError(
+                f"unknown voice_id={voice_id!r} is not registered in voices.json; "
+                "refusing default fallback voice"
+            )
         # Unknown voice_id: fall back to env-var default (original behaviour).
         # Cache under the special "__default__" key so we reuse it for any
         # future unmapped voice_ids rather than rebuilding per-request.
@@ -738,21 +761,35 @@ def _on_startup():
 
 @app.get("/health")
 def health():
-    voices_listed = [
-        {
-            "voice_id": vid,
-            "alias": cfg.get("alias", vid),
-            "channel": cfg.get("channel"),
-            "base_speed": cfg.get("base_speed"),
-            "ref_resolved": _resolve_ref_path(cfg.get("ref_voice_path")) is not None,
-            "loaded": vid in _engine_cache,
-        }
-        for vid, cfg in VOICES_MAP.items()
-    ]
+    voices_listed = []
+    for vid, cfg in VOICES_MAP.items():
+        ref_path = _resolve_ref_path(cfg.get("ref_voice_path"))
+        voices_listed.append(
+            {
+                "voice_id": vid,
+                "alias": cfg.get("alias", vid),
+                "channel": cfg.get("channel"),
+                "base_speed": cfg.get("base_speed"),
+                "ref_resolved": ref_path is not None,
+                "reference_present": ref_path is not None,
+                "accepted_reference_id": cfg.get("accepted_reference_id"),
+                "accepted_reference_file": (
+                    cfg.get("accepted_reference_file")
+                    or (
+                        Path(ref_path).name
+                        if ref_path
+                        else Path(str(cfg.get("ref_voice_path", ""))).name
+                    )
+                ),
+                "reference_sha1": _sha1_file(ref_path),
+                "loaded": vid in _engine_cache,
+            },
+        )
     return {
         "status": "ok",
         "voices": voices_listed,
         "default_ref_voice": REF_VOICE_PATH or None,
+        "unknown_voice_fallback_allowed": ALLOW_UNKNOWN_VOICE_FALLBACK,
         "aligner_loaded": aligner._model is not None,
         "engine_count": len(_engine_cache),
         # Phase F readiness state. Callers that need to know whether the

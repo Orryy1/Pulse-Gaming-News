@@ -196,6 +196,12 @@ class VoxCPMEngine:
                 best_metrics = metrics
                 best_reason = reason
 
+        if not self.voice_qa.get("fallback_without_reference", False):
+            raise RuntimeError(
+                "voice_qa_all_candidates_rejected: "
+                f"metrics={best_metrics} rejection={best_reason}"
+            )
+
         log.warning(
             "voice_qa all candidates rejected; using best candidate metrics=%s rejection=%s",
             best_metrics,

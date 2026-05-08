@@ -15,6 +15,8 @@ test("Pulse VoxCPM voice map carries Sleepy-proven safety parameters", () => {
 
   assert.ok(pulse, "Pulse Liam voice mapping must exist");
   assert.equal(pulse.ref_voice_path, "voices/pulse_liam_sleepy.wav");
+  assert.equal(pulse.accepted_reference_id, "pulse-sleepy-liam-20260502");
+  assert.equal(pulse.accepted_reference_file, "pulse_liam_sleepy.wav");
   assert.equal(pulse.base_speed, 1.0);
   assert.equal(pulse.cfg_value, 2.0);
   assert.equal(pulse.inference_timesteps, 20);
@@ -49,9 +51,14 @@ test("Pulse VoxCPM engine passes cfg, timesteps, prompt policy, voice QA and den
   assert.match(engineSource, /_voice_quality_metrics/);
   assert.match(engineSource, /min_median_f0_hz/);
   assert.match(engineSource, /fallback_without_reference/);
+  assert.match(engineSource, /voice_qa_all_candidates_rejected/);
   assert.match(serverSource, /cfg_value=cfg\.get\("cfg_value"/);
   assert.match(serverSource, /inference_timesteps=cfg\.get\("inference_timesteps"/);
   assert.match(serverSource, /load_denoiser=cfg\.get\("load_denoiser"/);
+  assert.match(serverSource, /ALLOW_UNKNOWN_VOICE_FALLBACK/);
+  assert.match(serverSource, /refusing default fallback voice/);
+  assert.match(serverSource, /reference_sha1/);
+  assert.match(serverSource, /accepted_reference_id/);
 });
 
 test("Pulse VoxCPM generation is serialised and stage-timed for hangs", () => {

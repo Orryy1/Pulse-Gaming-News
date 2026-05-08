@@ -30,6 +30,16 @@ function audioReport(storyId, overrides = {}) {
         output_audio_path: `test/output/local-media-repair/audio/${storyId}_liam.mp3`,
         duration_seconds: 66.4,
         duration_verdict: "pass",
+        text_word_count: 190,
+        wpm: 172,
+        acoustic: { medianPitchHz: 107 },
+        transcript: "A clean gaming update. Follow Pulse Gaming so you never miss a beat.",
+        local_voice_metadata: "stamped",
+        local_voice_reference: {
+          id: "pulse-sleepy-liam-20260502",
+          fileName: "pulse_liam_sleepy.wav",
+          referencePresent: true,
+        },
         ...overrides,
       },
     ],
@@ -134,6 +144,51 @@ test("proof candidates require Liam audio before a visual-ready render", () => {
   assert.equal(report.candidates[0].verdict, "needs_liam_audio_then_flash_proof");
   assert.ok(report.candidates[0].blockers.includes("approved_liam_audio_missing"));
   assert.equal(report.candidates[0].next_action, "generate_sleepy_liam_audio");
+});
+
+test("proof candidates reject local audio without accepted Liam proof evidence", () => {
+  const storyId = "weak_audio_evidence";
+  const report = buildStudioV2ProofCandidateReport({
+    stories: [story(storyId)],
+    localAudioReports: [
+      audioReport(storyId, {
+        local_voice_reference: {
+          id: "old-local-voice",
+          referencePresent: true,
+        },
+      }),
+    ],
+    assetReports: [assetReport(storyId, 8)],
+    frameReports: [frameReport(storyId, 10)],
+    segmentValidationReports: [segmentReport(storyId, 10)],
+  });
+
+  const candidate = report.candidates[0];
+  assert.equal(candidate.verdict, "needs_liam_audio_then_flash_proof");
+  assert.equal(candidate.audio.ready, false);
+  assert.equal(candidate.audio.proof_failure_code, "unaccepted_local_voice_reference");
+  assert.ok(candidate.blockers.includes("approved_liam_audio_missing"));
+});
+
+test("proof candidates reject local audio with demonic low voice risk", () => {
+  const storyId = "low_voice_audio";
+  const report = buildStudioV2ProofCandidateReport({
+    stories: [story(storyId)],
+    localAudioReports: [
+      audioReport(storyId, {
+        acoustic: { medianPitchHz: 61 },
+      }),
+    ],
+    assetReports: [assetReport(storyId, 8)],
+    frameReports: [frameReport(storyId, 10)],
+    segmentValidationReports: [segmentReport(storyId, 10)],
+  });
+
+  const candidate = report.candidates[0];
+  assert.equal(candidate.verdict, "needs_liam_audio_then_flash_proof");
+  assert.equal(candidate.audio.ready, false);
+  assert.equal(candidate.audio.proof_failure_code, "demonic_low_voice_risk");
+  assert.ok(candidate.blockers.includes("approved_liam_audio_missing"));
 });
 
 test("proof candidates block Liam-ready stories with weak still-only visual packages", () => {

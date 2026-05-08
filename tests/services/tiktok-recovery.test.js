@@ -2,6 +2,8 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 
 test("TikTok auth doctor marks generated OAuth shape valid without exposing secrets", () => {
   const {
@@ -67,6 +69,44 @@ test("TikTok auth doctor reports OAuth token health without exposing token value
   assert.match(md, /Connected: true/);
   assert.match(md, /Needs re-auth: false/);
   assert.doesNotMatch(md, /should-not-print|secret-value|aw1234567890abcd/);
+});
+
+test("TikTok auth doctor can explicitly skip local token inspection", () => {
+  const {
+    buildTikTokAuthDoctorReport,
+    renderTikTokAuthDoctorMarkdown,
+  } = require("../../lib/platforms/tiktok-auth-doctor");
+
+  const report = buildTikTokAuthDoctorReport({
+    env: {
+      TIKTOK_CLIENT_KEY: "aw1234567890abcd",
+      TIKTOK_CLIENT_SECRET: "secret-value",
+      TIKTOK_REDIRECT_URI: "https://pulse.orryy.com/auth/tiktok/callback",
+    },
+    tokenStatus: null,
+    tokenStatusMode: "skipped_by_operator_flag",
+  });
+
+  assert.equal(report.token_status, null);
+  assert.equal(report.token_status_mode, "skipped_by_operator_flag");
+  assert.ok(report.warnings.includes("local_token_status_not_inspected"));
+
+  const md = renderTikTokAuthDoctorMarkdown(report);
+  assert.match(md, /Token status mode: skipped_by_operator_flag/);
+  assert.match(md, /OAuth token: not inspected/);
+  assert.doesNotMatch(md, /secret-value|aw1234567890abcd/);
+});
+
+test("TikTok auth doctor CLI exposes a no-token shape-only mode", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "tiktok-auth-doctor.js"),
+    "utf8",
+  );
+
+  assert.match(source, /--no-token/);
+  assert.match(source, /--shape-only/);
+  assert.match(source, /inspectLocalToken/);
+  assert.match(source, /skipped_by_operator_flag/);
 });
 
 test("TikTok auth doctor does not keep dashboard client-key warning after token is usable", () => {

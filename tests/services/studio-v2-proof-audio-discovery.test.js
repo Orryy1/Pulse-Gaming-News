@@ -115,12 +115,28 @@ test("proof candidates can use discovered Liam audio even when the latest apply 
   const audioDir = path.join(root, relDir);
   await fs.ensureDir(audioDir);
   await fs.writeFile(path.join(audioDir, "ready_story_liam_extended.mp3"), "fake mp3 bytes");
+  await fs.writeJson(path.join(audioDir, "ready_story_liam_extended_timestamps.json"), []);
+  await fs.writeJson(path.join(audioDir, "ready_story_liam_extended_proof.json"), {
+    text_word_count: 190,
+    wpm: 172,
+    acoustic: { medianPitchHz: 107 },
+    transcript: "A clean gaming update. Follow Pulse Gaming so you never miss a beat.",
+    local_voice_metadata: "stamped",
+    local_voice_reference: {
+      id: "pulse-sleepy-liam-20260502",
+      fileName: "pulse_liam_sleepy.wav",
+      referencePresent: true,
+    },
+  });
 
   const discovered = await discoverLocalAudioProofReport({
     mediaRoot: root,
     repoRoot: path.join(root, "repo"),
     durationProbe: () => 66.4,
   });
+
+  assert.equal(discovered.applied[0].proof_sidecar_path.endsWith("_proof.json"), true);
+  assert.equal(discovered.applied[0].local_voice_reference.referencePresent, true);
 
   const report = buildStudioV2ProofCandidateReport({
     stories: [story("ready_story")],

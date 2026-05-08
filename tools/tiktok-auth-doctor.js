@@ -16,27 +16,32 @@ const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
 
 async function main() {
+  const args = new Set(process.argv.slice(2));
   await fs.ensureDir(OUT);
   const publicUrl = getPublicUrl();
   let tokenStatus = null;
-  try {
-    const { inspectTokenStatus } = require("../upload_tiktok");
-    tokenStatus = await inspectTokenStatus();
-  } catch (err) {
-    tokenStatus = {
-      ok: false,
-      reason: `token_status_failed:${err.message}`,
-      refresh_available: false,
-      needs_reauth: true,
-    };
+  const inspectLocalToken = !args.has("--no-token") && !args.has("--shape-only");
+  if (inspectLocalToken) {
+    try {
+      const { inspectTokenStatus } = require("../upload_tiktok");
+      tokenStatus = await inspectTokenStatus();
+    } catch (err) {
+      tokenStatus = {
+        ok: false,
+        reason: `token_status_failed:${err.message}`,
+        refresh_available: false,
+        needs_reauth: true,
+      };
+    }
   }
-  const liveProbe = process.argv.includes("--live-probe")
+  const liveProbe = args.has("--live-probe")
     ? await probeTikTokClientCredentials({ env: process.env })
     : null;
   const report = buildTikTokAuthDoctorReport({
     env: process.env,
     publicUrl,
     tokenStatus,
+    tokenStatusMode: inspectLocalToken ? "inspected" : "skipped_by_operator_flag",
     clientCredentialsProbe: liveProbe,
   });
   const jsonPath = path.join(OUT, "tiktok_auth_doctor.json");
@@ -44,6 +49,7 @@ async function main() {
   await fs.writeJson(jsonPath, report, { spaces: 2 });
   await fs.writeFile(mdPath, renderTikTokAuthDoctorMarkdown(report), "utf8");
   console.log(`[tiktok-auth-doctor] verdict=${report.verdict}`);
+  console.log(`[tiktok-auth-doctor] token_status_mode=${report.token_status_mode}`);
   if (liveProbe) {
     console.log(`[tiktok-auth-doctor] client_credentials_probe=${liveProbe.verdict}`);
   }

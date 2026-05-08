@@ -22,11 +22,17 @@ async function main() {
   const doctorReport = await readJsonIfExists(path.join(OUT, "local_tts_doctor.json"));
   const repairQueue = await readJsonIfExists(path.join(OUT, "local_media_repair_queue.json"));
   const audioApply = await readJsonIfExists(path.join(OUT, "local_media_repair_audio_apply.json"));
+  const scriptExtensionAudioApply = await readJsonIfExists(
+    path.join(OUT, "local_script_extension_audio_apply.json"),
+  );
 
   const report = buildLocalTtsOvernightReport({
     doctorReport,
     repairQueue,
-    audioApply,
+    audioApplyReports: [
+      { source: "local_media_repair", report: audioApply },
+      { source: "local_script_extension", report: scriptExtensionAudioApply },
+    ],
   });
   const markdown = renderLocalTtsOvernightMarkdown(report);
 

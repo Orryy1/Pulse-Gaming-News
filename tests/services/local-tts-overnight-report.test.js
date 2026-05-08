@@ -99,6 +99,58 @@ test("local TTS overnight report trusts recovered doctor after-state over stale 
   assert.equal(report.doctor.voice.alias, "liam");
 });
 
+test("local TTS overnight report merges repair and script-extension proof sources", () => {
+  const report = buildLocalTtsOvernightReport({
+    doctorReport: DOCTOR_GREEN,
+    audioApplyReports: [
+      {
+        source: "local_media_repair",
+        report: {
+          applied: [
+            {
+              story_id: "rss_too_short",
+              duration_seconds: 54,
+              duration_verdict: "reject_duration",
+              failure_code: "duration_too_short",
+              text_word_count: 165,
+              local_voice_reference: ACCEPTED_REF,
+              ...PASSING_PROOF,
+            },
+          ],
+          skipped: [],
+        },
+      },
+      {
+        source: "local_script_extension",
+        report: {
+          applied: [
+            {
+              story_id: "rss_extended",
+              duration_seconds: 67,
+              duration_verdict: "pass",
+              text_word_count: 195,
+              local_voice_reference: ACCEPTED_REF,
+              local_voice_metadata: "stamped",
+              ...PASSING_PROOF,
+            },
+          ],
+          skipped: [],
+        },
+      },
+    ],
+  });
+  const markdown = renderLocalTtsOvernightMarkdown(report);
+
+  assert.equal(report.verdict, "AMBER");
+  assert.equal(report.proof_batch.applied_count, 2);
+  assert.equal(report.proof_batch.voice_ready_count, 1);
+  assert.equal(report.proof_batch.rejected_count, 1);
+  assert.equal(report.proof_batch.source_counts.local_media_repair, 1);
+  assert.equal(report.proof_batch.source_counts.local_script_extension, 1);
+  assert.equal(report.proof_batch.applied[1].proof_source, "local_script_extension");
+  assert.match(markdown, /rss_extended: source=local_script_extension/);
+});
+
 test("local TTS overnight report stays amber when the batch recovered from a reset", () => {
   const report = buildLocalTtsOvernightReport({
     doctorReport: DOCTOR_GREEN,

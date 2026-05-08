@@ -346,6 +346,35 @@ test("TikTok automation report keeps browser automation test-account-only", () =
   );
 });
 
+test("TikTok automation report labels dispatch token status as a snapshot when auth doctor skips token files", () => {
+  const report = buildTikTokAutomationReport({
+    authDoctorReport: {
+      token_status: null,
+      token_status_mode: "skipped_by_operator_flag",
+      warnings: ["local_token_status_not_inspected"],
+    },
+    dispatchManifest: {
+      count: 1,
+      statusCounts: { missing_video: 1 },
+      tiktokTokenGate: {
+        ok: false,
+        reason: "expired",
+        refresh_available: true,
+        needs_reauth: false,
+        needs_refresh_or_sync: true,
+        action: "refresh_or_sync_local_token",
+      },
+    },
+  });
+
+  assert.equal(report.tokenGate.source, "dispatch_manifest_snapshot");
+  assert.equal(report.tokenGate.token_status_mode, "skipped_by_operator_flag");
+
+  const md = renderTikTokAutomationMarkdown(report);
+  assert.match(md, /source: dispatch_manifest_snapshot/);
+  assert.match(md, /auth doctor did not inspect token files/);
+});
+
 test("TikTok automation token gate redacts raw token-shaped fields", () => {
   const gate = tokenGateFromReports({
     token_status: {

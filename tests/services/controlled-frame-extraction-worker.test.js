@@ -489,6 +489,54 @@ test("controlled frame extraction rejects low-detail official trailer frames", a
   );
 });
 
+test("controlled frame extraction rejects poor-subject official trailer frames", async () => {
+  const outputRoot = tempOutputRoot("poor-subject-framing");
+  await cleanTempRoot(outputRoot);
+
+  const report = await runControlledFrameExtraction([framePlan()], {
+    applyLocal: true,
+    outputRoot,
+    extractor: async ({ outputPath }) => {
+      await fs.ensureDir(path.dirname(outputPath));
+      await fs.writeFile(outputPath, Buffer.from("fake-frame"));
+      return { outputPath };
+    },
+    inspectFrame: async (outputPath) => ({
+      local_path: outputPath,
+      file_size: 10,
+      content_hash: outputPath,
+      width: 1280,
+      height: 720,
+      thumbnail_safe: true,
+      likely_has_face: false,
+      black_frame: false,
+      blur_verdict: "pass",
+      verdict: "pass",
+      warnings: [],
+      failures: [],
+      prescan: {
+        likely_is_logo: false,
+        text_overlay_likelihood: 0.02,
+        white_text_on_dark_likelihood: 0,
+        edge_density: 0.118,
+        saturation_mean: 0.27,
+        dark_pixel_ratio: 0.67,
+        bright_pixel_ratio: 0.04,
+        central_dark_pixel_ratio: 0.72,
+        central_bright_pixel_ratio: 0.035,
+        letterbox_bar_ratio: 0.03,
+      },
+    }),
+  });
+
+  assert.equal(report.summary.frames_accepted, 0);
+  assert.ok(
+    report.plans[0].frames.every((frame) =>
+      frame.qa.failures.includes("poor_subject_framing_frame"),
+    ),
+  );
+});
+
 test("controlled frame extraction report emits readable markdown", async () => {
   const report = await runControlledFrameExtraction([framePlan()], { dryRun: true });
   const markdown = renderControlledFrameExtractionWorkerMarkdown(report);

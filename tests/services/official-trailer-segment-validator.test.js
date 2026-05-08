@@ -347,6 +347,36 @@ test("official trailer segment validator rejects low-detail blurry windows", asy
   assert.equal(report.segments[0].validation_reason, "segment_contains_low_detail_frame");
 });
 
+test("official trailer segment validator rejects poor-subject windows", async () => {
+  const outputRoot = tempOutputRoot("poor-subject-framing");
+  await cleanTempRoot(outputRoot);
+
+  const report = await runOfficialTrailerSegmentValidation([clip()], {
+    applyLocal: true,
+    outputRoot,
+    extractor: fakeExtractor,
+    inspectFrame: async (outputPath) => ({
+      ...passingQa(outputPath),
+      prescan: {
+        likely_is_logo: false,
+        text_overlay_likelihood: 0.02,
+        white_text_on_dark_likelihood: 0,
+        edge_density: 0.118,
+        saturation_mean: 0.27,
+        dark_pixel_ratio: 0.67,
+        bright_pixel_ratio: 0.04,
+        central_dark_pixel_ratio: 0.72,
+        central_bright_pixel_ratio: 0.035,
+        letterbox_bar_ratio: 0.03,
+      },
+    }),
+  });
+
+  assert.equal(report.summary.segments_rejected, 1);
+  assert.equal(report.segments[0].validation_reason, "segment_contains_poor_subject_frame");
+  assert.equal(report.segments[0].allowed_for_flash_lane, false);
+});
+
 test("official trailer segment validator rejects repetitive dead windows", async () => {
   const outputRoot = tempOutputRoot("repetitive");
   await cleanTempRoot(outputRoot);

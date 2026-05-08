@@ -68,3 +68,56 @@ test("extractOverlayEntities prefers scene entities and normalises Pokemon spell
 
   assert.deepEqual(entities, ["GTA", "Pok\u00e9mon", "Steam"]);
 });
+
+test("Flash Lane overlay plan adds story-specific beat chips for multi-game mystery stories", () => {
+  const plan = buildFlashLaneOverlayPlan({
+    story: {
+      title: "GTA 6 Owner Passed On A Sequel To A Legacy Franchise, And We're Dying To Know Which One",
+      source_type: "rss",
+      subreddit: "GameSpot",
+      full_script: [
+        "Take-Two killed a legacy sequel, but the company will not say which one.",
+        "The conversation points straight at GTA, Red Dead and BioShock speculation.",
+        "No release date, platforms or launch window were shared.",
+      ].join(" "),
+    },
+    scenes: [
+      { type: SCENE_TYPES.CLIP, entity: "GTA", duration: 4 },
+      { type: SCENE_TYPES.CLIP, entity: "Red Dead", duration: 4 },
+      { type: SCENE_TYPES.CLIP, entity: "BioShock", duration: 4 },
+    ],
+    durationS: 66,
+  });
+
+  const beatLabels = plan.timeline
+    .filter((item) => item.kind === "beat_chip")
+    .map((item) => item.label);
+
+  assert.ok(beatLabels.includes("SEQUEL VETO"));
+  assert.ok(beatLabels.includes("MULTI-GAME MYSTERY"));
+  assert.ok(beatLabels.includes("NO DATE YET"));
+  assert.ok(plan.timeline.some((item) => item.kind === "hook_chip" && item.label === "WAIT, WHICH GAME?"));
+  assert.ok(plan.timeline.some((item) => item.kind === "micro_takeaway" && item.label === "NO DATE YET"));
+});
+
+test("Flash Lane overlay plan keeps creator chip labels mobile-safe and non-repeating", () => {
+  const plan = buildFlashLaneOverlayPlan({
+    story: {
+      title: "New York's new age verification law will ban anyone under the age of 18 from parts of online gaming",
+      source_type: "rss",
+      publisher: "IGN",
+      full_script:
+        "New York's age verification law could lock under-18 players out of gaming features unless platforms adapt fast.",
+    },
+    scenes: [
+      { type: SCENE_TYPES.CLIP_FRAME, entity: "Xbox", duration: 4 },
+      { type: SCENE_TYPES.CLIP_FRAME, entity: "PlayStation", duration: 4 },
+    ],
+    durationS: 64,
+  });
+
+  const labels = plan.timeline.map((item) => item.label);
+  assert.equal(new Set(labels).size, labels.length);
+  assert.ok(labels.every((label) => label.length <= 24), labels.join(", "));
+  assert.ok(plan.timeline.some((item) => item.kind === "beat_chip" && item.label === "AGE GATE"));
+});

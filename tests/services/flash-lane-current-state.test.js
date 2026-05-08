@@ -241,6 +241,39 @@ test("current state asks for more gameplay seconds when entities are covered but
   assert.deepEqual(report.rows[0].visuals.missing_motion_entities, []);
 });
 
+test("current state routes cover-dominated Flash candidates to visual evidence repair", () => {
+  const report = buildFlashLaneCurrentStateReport({
+    proofCandidateReport: {
+      candidates: [
+        candidate({
+          blockers: ["flash_proof_blocks_cover_dominated_exact_assets"],
+          visuals: {
+            exact_subject_count: 8,
+            exact_subject_groups: ["GTA", "Red Dead"],
+            story_target_entities: ["GTA", "Red Dead"],
+            visual_evidence_gate_ready: false,
+            cover_dominated_exact_asset_count: 6,
+            cover_dominated_exact_asset_share: 0.75,
+            accepted_frame_count: 4,
+            validated_clip_ref_count: 5,
+            validated_clip_source_count: 3,
+            validated_clip_entities: ["GTA", "Red Dead"],
+            missing_validated_clip_entities: [],
+          },
+        }),
+      ],
+    },
+  });
+
+  const row = report.rows[0];
+  assert.equal(row.stage, "needs_visual_evidence_repair");
+  assert.equal(row.operator_next_action, "replace_cover_dominated_assets_with_screenshots_or_gameplay_frames");
+  assert.ok(row.blocking_dimensions.includes("visual_evidence"));
+  assert.equal(row.visuals.visual_evidence_gate_ready, false);
+  assert.equal(row.visuals.cover_dominated_exact_asset_share, 0.75);
+  assert.equal(report.summary.needs_visual_evidence_repair, 1);
+});
+
 test("current state reports ready local proofs when all blockers are cleared", () => {
   const report = buildFlashLaneCurrentStateReport({
     proofCandidateReport: {
@@ -376,6 +409,8 @@ test("current state markdown is readable, escaped and safety labelled", () => {
   const md = renderFlashLaneCurrentStateMarkdown(report);
 
   assert.match(md, /Flash Lane Current State/);
+  assert.match(md, /Need visual evidence repair:/);
+  assert.match(md, /Visual gate/);
   assert.match(md, /GTA \\| BioShock story with Pokémon text/);
   assert.match(md, /Does not download media, render video, call TTS, post, mutate the DB, touch Railway or trigger OAuth/);
   assert.doesNotMatch(md, /PokÃ/);

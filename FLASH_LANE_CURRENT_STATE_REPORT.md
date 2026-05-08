@@ -16,11 +16,8 @@ Read-only control report. No Railway, OAuth, production DB, render default, TTS 
 ## Input Freshness
 
 - Motion gap report: 2026-05-08T02:41:07.172Z
-- Alternate source report: 2026-05-08T02:41:20.967Z
-- Reference counts: provisional - refresh resolver before trusting remaining/excluded refs
-
-- Warning: reference_report_older_than_motion_gap - Official trailer references are older than the motion-gap report; rerun media:resolve-trailers before trusting remaining/excluded reference counts.
-  Recommended: `npm run media:resolve-trailers -- --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5`
+- Alternate source report: 2026-05-08T04:34:42.824Z
+- Reference counts: current
 
 ## Current Queue
 
@@ -41,42 +38,42 @@ Read-only control report. No Railway, OAuth, production DB, render default, TTS 
 - No safe render command yet. Work the blocker above first.
 
 ### 1t0zhng
-- Refresh resolver before trusting remaining/excluded refs: `npm run media:resolve-trailers -- --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5`
 - Command: `npm run media:resolve-trailers -- --story-id 1t0zhng --no-latest-report`
 - Command: `npm run media:plan-frames -- --story-id 1t0zhng --trailer-references test/output/official_trailer_references_v1.json`
+- Command: `npm run media:extract-frames -- --story-id 1t0zhng --apply-local`
 
 ### 1t0x9ui
-- Refresh resolver before trusting remaining/excluded refs: `npm run media:resolve-trailers -- --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5`
 - Command: `npm run media:resolve-trailers -- --story-id 1t0x9ui --no-latest-report`
 - Command: `npm run media:plan-frames -- --story-id 1t0x9ui --trailer-references test/output/official_trailer_references_v1.json`
+- Command: `npm run media:extract-frames -- --story-id 1t0x9ui --apply-local`
 - Search targets: Oblivion official trailer; Oblivion gameplay trailer; Oblivion Steam trailer; Oblivion gameplay
 
 ### 1t1hyqc
-- Refresh resolver before trusting remaining/excluded refs: `npm run media:resolve-trailers -- --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5`
 - Command: `npm run media:resolve-trailers -- --story-id 1t1hyqc --no-latest-report`
 - Command: `npm run media:plan-frames -- --story-id 1t1hyqc --trailer-references test/output/official_trailer_references_v1.json`
+- Command: `npm run media:extract-frames -- --story-id 1t1hyqc --apply-local`
 
 ### 1t0u9o4
-- Refresh resolver before trusting remaining/excluded refs: `npm run media:resolve-trailers -- --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5`
 - Command: `npm run media:intake-official-sources -- --input test/input/official_sources.json --story-id 1t0u9o4`
 - Command: `npm run media:resolve-trailers -- --story-id 1t0u9o4 --no-latest-report --official-source-intake-report test/output/official_source_intake_report.json --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5`
-- Search targets: GTA official trailer; GTA gameplay trailer; GTA Steam trailer; GTA gameplay
+- Command: `npm run media:plan-frames -- --story-id 1t0u9o4 --trailer-references test/output/official_trailer_references_v1.json`
+- Search targets: GTA official trailer; GTA gameplay trailer; GTA official gameplay; GTA platform storefront trailer
 
 ### 1szzhy9
-- Refresh resolver before trusting remaining/excluded refs: `npm run media:resolve-trailers -- --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5`
 - Command: `npm run media:intake-official-sources -- --input test/input/official_sources.json --story-id 1szzhy9`
 - Command: `npm run media:resolve-trailers -- --story-id 1szzhy9 --no-latest-report --official-source-intake-report test/output/official_source_intake_report.json --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5`
+- Command: `npm run media:plan-frames -- --story-id 1szzhy9 --trailer-references test/output/official_trailer_references_v1.json`
 - Search targets: Marathon official trailer; Marathon gameplay trailer; Marathon official gameplay; Marathon platform storefront trailer
 
 ### 1t0w9nb
-- Refresh resolver before trusting remaining/excluded refs: `npm run media:resolve-trailers -- --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5`
 - Command: `npm run media:resolve-trailers -- --story-id 1t0w9nb --no-latest-report`
 - Command: `npm run media:plan-frames -- --story-id 1t0w9nb --trailer-references test/output/official_trailer_references_v1.json`
+- Command: `npm run media:extract-frames -- --story-id 1t0w9nb --apply-local`
 
 ### rss_5b3abe925b27a199
-- Refresh resolver before trusting remaining/excluded refs: `npm run media:resolve-trailers -- --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5`
 - Command: `npm run media:intake-official-sources -- --input test/input/official_sources.json --story-id rss_5b3abe925b27a199`
 - Command: `npm run media:resolve-trailers -- --story-id rss_5b3abe925b27a199 --no-latest-report --official-source-intake-report test/output/official_source_intake_report.json --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5`
+- Command: `npm run media:plan-frames -- --story-id rss_5b3abe925b27a199 --trailer-references test/output/official_trailer_references_v1.json`
 - Search targets: BioShock official trailer; BioShock gameplay trailer; BioShock official gameplay; BioShock platform storefront trailer; Red Dead official trailer; Red Dead gameplay trailer; Red Dead official gameplay; Red Dead platform storefront trailer
 
 ## Safety

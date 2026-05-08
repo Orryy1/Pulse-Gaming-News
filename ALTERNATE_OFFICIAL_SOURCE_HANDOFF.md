@@ -4,8 +4,8 @@ This report is local-only and report-only. It turns exhausted Flash Lane motion 
 
 ## Summary
 
-- Stories needing alternate sources: 6
-- Entities needing alternate sources: 7
+- Stories needing alternate sources: 5
+- Entities needing alternate sources: 6
 - Top priority story: rss_5b3abe925b27a199
 - Downloads started: no
 - Production touched: no
@@ -13,11 +13,7 @@ This report is local-only and report-only. It turns exhausted Flash Lane motion 
 ## Input Freshness
 
 - Motion gap report: 2026-05-08T02:41:07.172Z
-- Reference report: 2026-05-08T02:12:25.182Z
-
-Warnings:
-- reference_report_older_than_motion_gap: Official trailer references are older than the motion-gap report; rerun media:resolve-trailers before trusting remaining/excluded reference counts.
-  Recommended: `npm run media:resolve-trailers -- --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5`
+- Reference report: 2026-05-08T04:34:27.596Z
 
 ## Allowed Source Policy
 
@@ -35,14 +31,13 @@ Warnings:
 
 ## Entity Handoff
 
-| Story | Entity | Blocker | Attempts | Validated | Rejected | Source families | Top rejection | Remaining refs (provisional) | Excluded refs (provisional) |
+| Story | Entity | Blocker | Attempts | Validated | Rejected | Source families | Top rejection | Remaining refs | Excluded refs |
 | --- | --- | --- | ---: | ---: | ---: | ---: | --- | ---: | ---: |
-| rss_5b3abe925b27a199 | BioShock | local_segment_validation_exhausted_current_motion_sources | 20 | 3 | 17 | 3 | segment_contains_low_detail_frame | 2 | 1 |
-| rss_5b3abe925b27a199 | Red Dead | local_segment_validation_exhausted_current_motion_sources | 25 | 2 | 23 | 4 | segment_contains_black_frame | 1 | 1 |
-| 1szzhy9 | Marathon | local_segment_validation_exhausted_current_motion_sources | 160 | 13 | 147 | 10 | segment_samples_too_repetitive | 8 | 2 |
-| rss_0e2778be9f97ffa4 | Tales Of | local_segment_validation_exhausted_current_motion_sources | 12 | 1 | 11 | 2 | segment_samples_too_repetitive | 1 | 1 |
-| rss_4105cb7c837252c3 | The Division | resolved_references_exhausted_before_segment_plan | 6 | 0 | 6 | 1 | segment_contains_black_frame | 0 | 1 |
-| 1t0u9o4 | GTA | resolved_references_exhausted_and_entity_still_missing_from_validated_motion | 48 | 0 | 48 | 8 | segment_samples_too_repetitive | 0 | 8 |
+| rss_5b3abe925b27a199 | BioShock | local_segment_validation_exhausted_current_motion_sources | 20 | 3 | 17 | 3 | segment_contains_low_detail_frame | 0 | 0 |
+| rss_5b3abe925b27a199 | Red Dead | local_segment_validation_exhausted_current_motion_sources | 25 | 2 | 23 | 4 | segment_contains_black_frame | 0 | 0 |
+| 1szzhy9 | Marathon | local_segment_validation_exhausted_current_motion_sources | 160 | 13 | 147 | 10 | segment_samples_too_repetitive | 0 | 0 |
+| rss_0e2778be9f97ffa4 | Tales Of | local_segment_validation_exhausted_current_motion_sources | 12 | 1 | 11 | 2 | segment_samples_too_repetitive | 0 | 0 |
+| 1t0u9o4 | GTA | local_segment_validation_exhausted_current_motion_sources | 48 | 0 | 48 | 8 | segment_samples_too_repetitive | 0 | 0 |
 | 1t0x9ui | Oblivion | resolved_references_exhausted_before_segment_plan | 6 | 0 | 6 | 1 | segment_lacks_gameplay_action_samples | 0 | 1 |
 
 ## rss_5b3abe925b27a199 - BioShock
@@ -56,6 +51,7 @@ Warnings:
 
 ### Recommended Source Types
 
+- P0: verify_exact_store_or_official_game_page_first (metadata_check) - Do not source motion until the exact game/franchise target is verified.
 - P1: official_publisher_or_developer_trailer_page (reference_only_first) - Best provenance when Steam/IGDB has no usable window or only rating/logo/title cards.
 - P2: platform_storefront_video_reference (reference_only_first) - Use a non-exhausted storefront family because the current Steam movie family has failed local validation.
 - P3: igdb_video_reference (reference_only_first) - Useful as a second official index when storefront trailers are missing or exhausted.
@@ -132,6 +128,7 @@ Reject if:
 
 ### Recommended Source Types
 
+- P0: verify_exact_store_or_official_game_page_first (metadata_check) - Do not source motion until the exact game/franchise target is verified.
 - P1: official_publisher_or_developer_trailer_page (reference_only_first) - Best provenance when Steam/IGDB has no usable window or only rating/logo/title cards.
 - P2: platform_storefront_video_reference (reference_only_first) - Use a non-exhausted storefront family because the current Steam movie family has failed local validation.
 - P3: igdb_video_reference (reference_only_first) - Useful as a second official index when storefront trailers are missing or exhausted.
@@ -209,6 +206,7 @@ Reject if:
 
 ### Recommended Source Types
 
+- P0: verify_exact_store_or_official_game_page_first (metadata_check) - Do not source motion until the exact game/franchise target is verified.
 - P1: official_publisher_or_developer_trailer_page (reference_only_first) - Best provenance when Steam/IGDB has no usable window or only rating/logo/title cards.
 - P2: platform_storefront_video_reference (reference_only_first) - Use a non-exhausted storefront family because the current Steam movie family has failed local validation.
 - P3: igdb_video_reference (reference_only_first) - Useful as a second official index when storefront trailers are missing or exhausted.
@@ -292,6 +290,7 @@ Reject if:
 
 ### Recommended Source Types
 
+- P0: verify_exact_store_or_official_game_page_first (metadata_check) - Do not source motion until the exact game/franchise target is verified.
 - P1: official_publisher_or_developer_trailer_page (reference_only_first) - Best provenance when Steam/IGDB has no usable window or only rating/logo/title cards.
 - P2: platform_storefront_video_reference (reference_only_first) - Use a non-exhausted storefront family because the current Steam movie family has failed local validation.
 - P3: igdb_video_reference (reference_only_first) - Useful as a second official index when storefront trailers are missing or exhausted.
@@ -356,91 +355,18 @@ Reject if:
 - If a new official reference exists, rerun: npm run media:validate-trailer-segments -- --story-id rss_0e2778be9f97ffa4 --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6
 - Then rerun: npm run studio:v2:motion-gap -- --story rss_0e2778be9f97ffa4
 
-## rss_4105cb7c837252c3 - The Division
-
-- Title: A New The Division PC Game Is Out Right Now, And It's Free
-- Blocker: resolved_references_exhausted_before_segment_plan
-- Motion status: current_references_exhausted_needs_new_official_source_before_sampling
-- Motion recommendation: continue_segment_scan_with_resume
-- Top rejection: segment_contains_black_frame
-- Planned searches: 4
-
-### Recommended Source Types
-
-- P1: official_publisher_or_developer_trailer_page (reference_only_first) - Best provenance when Steam/IGDB has no usable window or only rating/logo/title cards.
-- P2: platform_storefront_video_reference (reference_only_first) - Use a non-exhausted storefront family because the current Steam movie family has failed local validation.
-- P3: igdb_video_reference (reference_only_first) - Useful as a second official index when storefront trailers are missing or exhausted.
-- P4: official_youtube_channel_url (reference_only_no_download_by_default) - Accept only official publisher/developer/platform channels; do not ingest reuploads.
-- P5: official_press_kit_stills (still_downgrade_path) - If no usable motion exists, official stills can support a shorter standard/card lane but not premium motion.
-
-### Exhausted / Attempted Source Families
-
-| Provider | App | Movie/source | Attempts | Rejected | Top rejection |
-| --- | --- | --- | ---: | ---: | --- |
-| steam | The Division 2 - Warlords of New York - Expansion | Trailer | 6 | 6 | segment_contains_black_frame |
-
-### Planned Searches
-
-- The Division official trailer
-- The Division gameplay trailer
-- The Division Steam trailer
-- The Division gameplay
-
-### Manual Official Source Intake
-
-- Mode: operator_supplied_reference_only
-- Downloads allowed by default: no
-- Priority: Current Steam/source-family validation is exhausted; prefer a different official source family.
-
-Required fields:
-- entity
-- official_source_url
-- source_owner
-- source_type
-- source_family
-- source_title
-- evidence_of_officialness
-- entity_match_notes
-- operator_notes
-
-Acceptance checks:
-- The source must be for The Division, not only the publisher or a loosely related franchise.
-- The URL owner must be official: publisher, developer, platform storefront or verified official channel.
-- The source must not be a fan reupload, compilation, social repost, reaction video or generic gaming footage.
-- The first usable window must not be dominated by rating boards, black frames, logos or title cards.
-- The source must add a new source family when existing families are exhausted.
-- Provenance must be recorded before any local frame or segment validation.
-- Downloads remain disabled until a later apply-local validation command is run.
-
-Reject if:
-- wrong_entity
-- publisher_context_only
-- unofficial_reupload
-- social_repost
-- rating_or_logo_only_window
-- duplicate_exhausted_source_family
-- no_provenance
-
-### Next Safe Actions
-
-- Find a non-exhausted official source for The Division.
-- Record provenance before any local frame or segment work.
-- Validate operator intake: npm run media:intake-official-sources -- --input test/input/official_sources.json --story-id rss_4105cb7c837252c3
-- Rerun: npm run media:resolve-trailers -- --story-id rss_4105cb7c837252c3 --no-latest-report --official-source-intake-report test/output/official_source_intake_report.json --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5
-- If a new official reference exists, rerun: npm run media:validate-trailer-segments -- --story-id rss_4105cb7c837252c3 --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6
-- Then rerun: npm run studio:v2:motion-gap -- --story rss_4105cb7c837252c3
-
 ## 1t0u9o4 - GTA
 
 - Title: Don’t Expect Product Placement in GTA 6 — the CEO of Take-Two Says It Won't Do Real World Brand Partnerships Because 'All the Brands Are Made Up'
-- Blocker: resolved_references_exhausted_and_entity_still_missing_from_validated_motion
-- Motion status: current_references_exhausted_needs_new_official_source_before_sampling
+- Blocker: local_segment_validation_exhausted_current_motion_sources
+- Motion status: alternate_source_required
 - Motion recommendation: find_alternate_official_source_family
 - Top rejection: segment_samples_too_repetitive
 - Planned searches: 4
 
 ### Recommended Source Types
 
+- P0: verify_exact_store_or_official_game_page_first (metadata_check) - Do not source motion until the exact game/franchise target is verified.
 - P1: official_publisher_or_developer_trailer_page (reference_only_first) - Best provenance when Steam/IGDB has no usable window or only rating/logo/title cards.
 - P2: platform_storefront_video_reference (reference_only_first) - Use a non-exhausted storefront family because the current Steam movie family has failed local validation.
 - P3: igdb_video_reference (reference_only_first) - Useful as a second official index when storefront trailers are missing or exhausted.
@@ -464,8 +390,8 @@ Reject if:
 
 - GTA official trailer
 - GTA gameplay trailer
-- GTA Steam trailer
-- GTA gameplay
+- GTA official gameplay
+- GTA platform storefront trailer
 
 ### Manual Official Source Intake
 

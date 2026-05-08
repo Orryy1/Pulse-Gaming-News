@@ -16,18 +16,20 @@ Read-only control report. No Railway, OAuth, production DB, render default, TTS 
 
 ## Input Freshness
 
-- Motion gap report: 2026-05-08T13:00:47.611Z
+- Motion gap report: 2026-05-08T13:16:16.824Z
 - Alternate source report: 2026-05-08T13:01:08.416Z
 - Reference counts: provisional - refresh resolver before trusting remaining/excluded refs
 
+- Warning: alternate_source_report_older_than_motion_gap - The alternate-source handoff is older than the motion-gap report; alternate source entities may be incomplete.
+  Recommended: `npm run studio:v2:alternate-sources`
 - Warning: reference_report_older_than_motion_gap - Official trailer references are older than the motion-gap report; rerun media:resolve-trailers before trusting remaining/excluded reference counts.
   Recommended: `npm run media:resolve-trailers -- --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5`
 
 ## Current Queue
 
-| Story | Stage | Distance | Audio | Exact | Visual gate | Clips | Missing motion entities | Next action |
-| --- | --- | --- | --- | ---: | --- | ---: | --- | --- |
-| rss_5b3abe925b27a199: GTA 6 Owner Passed On A Sequel To A Legacy Franchise, And We're Dying To Know Which One | needs_alternate_official_motion_source | one_blocker | ready 66.2s | 39 | pass | 9/4 | none | find_more_validated_gameplay_seconds_or_downgrade_story |
+| Story | Stage | Distance | Audio | Exact | Visual gate | Clips | Clip gap | Missing motion entities | Next action |
+| --- | --- | --- | --- | ---: | --- | ---: | --- | --- | --- |
+| rss_5b3abe925b27a199: GTA 6 Owner Passed On A Sequel To A Legacy Franchise, And We're Dying To Know Which One | needs_alternate_official_motion_source | one_blocker | ready 66.2s | 39 | pass | 9/4 | 10.2s | none | find_more_validated_gameplay_seconds_or_downgrade_story |
 
 ## Next Commands
 

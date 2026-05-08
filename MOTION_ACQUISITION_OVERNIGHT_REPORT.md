@@ -19,6 +19,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - Validated clip refs: 9
 - Validated clip sources: 4
 - Projected clip dominance: 0.4
+- Clip dominance shortfall: 10.2s
 - Validated entities: BioShock, Red Dead, GTA
 - Missing entities: none
 - Acquisition strategy: alternate_official_sources_required

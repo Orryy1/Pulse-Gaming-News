@@ -244,6 +244,7 @@ test("current state asks for more gameplay seconds when entities are covered but
             story_entities: ["GTA", "BioShock", "Red Dead"],
             validated_entities: ["GTA", "BioShock", "Red Dead"],
             missing_validated_entities: [],
+            missing_clip_seconds_for_dominance: 10.24,
             acquisition_strategy: {
               status: "alternate_official_sources_required",
               alternate_source_entities: ["GTA", "BioShock", "Red Dead"],
@@ -263,10 +264,14 @@ test("current state asks for more gameplay seconds when entities are covered but
       ],
     },
   });
+  const md = renderFlashLaneCurrentStateMarkdown(report);
 
   assert.equal(report.rows[0].stage, "needs_alternate_official_motion_source");
   assert.equal(report.rows[0].operator_next_action, "find_more_validated_gameplay_seconds_or_downgrade_story");
   assert.deepEqual(report.rows[0].visuals.missing_motion_entities, []);
+  assert.equal(report.rows[0].visuals.clip_dominance_shortfall_seconds, 10.24);
+  assert.match(md, /Clip gap/);
+  assert.match(md, /10\.2s/);
 });
 
 test("current state routes cover-dominated Flash candidates to visual evidence repair", () => {

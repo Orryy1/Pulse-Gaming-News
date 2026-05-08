@@ -416,12 +416,16 @@ test("motion gap report does not show ready language when footage dominance is t
   });
 
   const gap = report.gaps[0];
+  const md = renderStudioV2MotionGapMarkdown(report);
   assert.equal(gap.render_recommendation, "do_not_render_yet");
   assert.equal(gap.motion_gap.needs_footage_backbone_dominance, true);
+  assert.equal(gap.motion_gap.required_clip_seconds_for_dominance, 39.86);
+  assert.equal(gap.motion_gap.missing_clip_seconds_for_dominance, 23.16);
   assert.ok(gap.priority_next_steps.includes("find_more_validated_gameplay_seconds_for_flash_lane"));
   assert.ok(!gap.priority_next_steps.includes("ready_for_local_flash_render_preflight"));
   assert.ok(gap.recommended_commands.some((item) => /media:validate-trailer-segments/.test(item.command)));
   assert.ok(!gap.recommended_commands.some((item) => /studio:v2:still-deck/.test(item.command)));
+  assert.match(md, /Clip dominance shortfall: 23\.2s/);
 });
 
 test("motion gap report asks for alternate sources when partial validated footage is exhausted", () => {

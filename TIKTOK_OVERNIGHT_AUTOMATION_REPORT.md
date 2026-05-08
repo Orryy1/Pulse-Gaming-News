@@ -1,14 +1,14 @@
 # TikTok Overnight Automation Report
 
-Generated: 2026-05-07T03:25:31.143Z
+Generated: 2026-05-08T00:27:21.970Z
 Mode: read-only-tiktok-automation-strategy
 Verdict: AMBER
 Recommended route: fix_fresh_dispatch_creative_blockers
 
 ## Token Gate
-- ok: true
-- reason: ok
-- action: token_usable
+- ok: false
+- reason: expired
+- action: refresh_or_sync_local_token
 - refresh available: true
 - needs re-auth: false
 
@@ -43,13 +43,15 @@ Recommended route: fix_fresh_dispatch_creative_blockers
 - warnings:
   - direct_public_post_not_approved_or_not_declared
   - dashboard_client_key_error_requires_operator_dashboard_fix
+  - local_token_expired_but_refreshable
 - operator actions:
+  - Refresh or sync the local TikTok token before local uploads. If browser OAuth succeeded on pulse.orryy.com, the live server token may be current while this repo's local token file is still stale.
   - Verify the same TikTok app/environment owns the dashboard client key, Login Kit product, Content Posting API product, URL properties and redirect URI.
   - Confirm the TikTok dashboard redirect URI exactly matches https://pulse.orryy.com/auth/tiktok/callback.
   - If the app is still Draft/Staging, use Sandbox mode with your TikTok account added as a target user, or submit the Production app for review before expecting Production OAuth to work.
   - Confirm you are using the Production app client key for a reviewed/live Production OAuth flow, or the Sandbox client key for a Sandbox target-user OAuth flow.
-  - Use npm run tiktok:auth-link locally to generate the protected one-time auth link; direct /auth/tiktok is intentionally API-token protected.
   - If TikTok still reports client_key after exact dashboard values, the app/dashboard state is being rejected before OAuth; save the app again or raise it with TikTok support.
+  - Use npm run tiktok:auth-link locally to generate the protected one-time auth link; direct /auth/tiktok is intentionally API-token protected.
   - After OAuth succeeds, keep public auto-posting disabled until TikTok app approval is confirmed; use inbox upload/manual completion as the safe bridge.
 
 ## Blockers
@@ -59,6 +61,7 @@ Recommended route: fix_fresh_dispatch_creative_blockers
 - weak_rendered_frames_remaining
 - dispatch_pack_creative_review_required
 - creative_review_required
+- refresh_or_sync_local_token
 
 ## Prepared Commands
 Safe diagnostics:
@@ -67,6 +70,11 @@ Safe diagnostics:
 - npm run tiktok:overnight-report
 
 ## Morning Approval Queue Entries
+- Refresh, sync or re-run TikTok OAuth for the local token store.
+  Why: Official inbox upload cannot be tested locally until the token gate is clear.
+  Risk: OAuth/token actions affect platform account credentials.
+  Rollback: Keep previous token file backup and do not run upload until the auth doctor is green.
+  Recommendation: Only do this with Martin present because TikTok OAuth is an operator-owned account action.
 - Do not approve live-account TikTok browser automation yet.
   Why: Browser automation is account-risky and not needed before the official inbox route is exhausted.
   Risk: Automated TikTok Studio access could trigger anti-abuse systems.

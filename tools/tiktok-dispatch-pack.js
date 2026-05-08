@@ -64,6 +64,22 @@ function renderFreshnessForStory(story, { now = new Date() } = {}) {
   }
 }
 
+function coverPathForStory(story) {
+  return (
+    story?.thumbnail_candidate_path ||
+    story?.hf_thumbnail_path ||
+    story?.story_image_path ||
+    story?.image_path ||
+    null
+  );
+}
+
+function mediaExists(rawPath) {
+  if (!rawPath) return false;
+  const candidate = mediaPaths.resolveExistingSync(rawPath);
+  return Boolean(candidate && fs.existsSync(candidate));
+}
+
 async function main() {
   await fs.ensureDir(OUT);
   let tiktokTokenStatus = null;
@@ -86,6 +102,15 @@ async function main() {
   const renderFreshnessByStoryId = Object.fromEntries(
     stories.map((story) => [story.id, renderFreshnessForStory(story, { now })]),
   );
+  const assetExistenceByStoryId = Object.fromEntries(
+    stories.map((story) => [
+      story.id,
+      {
+        mp4Exists: mediaExists(story.exported_path),
+        coverExists: mediaExists(coverPathForStory(story)),
+      },
+    ]),
+  );
   const finalFiles = stories.filter((story) => story.exported_path).map((story) => story.exported_path);
   const reportsByStoryId = await loadFinalVoiceReportsByStoryId(finalFiles, {
     outputDirs: [OUT],
@@ -101,6 +126,7 @@ async function main() {
     durationByStoryId,
     voiceAuditByStoryId,
     renderFreshnessByStoryId,
+    assetExistenceByStoryId,
     tiktokTokenStatus,
     now,
   });

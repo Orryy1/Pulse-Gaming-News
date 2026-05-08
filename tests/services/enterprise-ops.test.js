@@ -393,6 +393,35 @@ test("TikTok dispatch manifest prefers ready packs over higher-urgency missing a
   assert.equal(manifest.topPack.status, "ready_for_operator_review");
 });
 
+test("TikTok dispatch manifest treats missing cover files as not ready even when a path exists", () => {
+  const manifest = buildTikTokDispatchManifest(
+    [
+      {
+        id: "missing-cover-file",
+        title: "Rendered short with stale cover path",
+        exported_path: "out.mp4",
+        image_path: "cover.png",
+      },
+    ],
+    {
+      durationByStoryId: { "missing-cover-file": 65 },
+      assetExistenceByStoryId: {
+        "missing-cover-file": {
+          mp4Exists: true,
+          coverExists: false,
+        },
+      },
+      now: new Date("2026-04-28T10:00:00Z"),
+    },
+  );
+
+  assert.equal(manifest.topPack.status, "missing_cover");
+  assert.equal(manifest.topPack.eligibility.hasMp4, true);
+  assert.equal(manifest.topPack.eligibility.hasCoverPath, true);
+  assert.equal(manifest.topPack.eligibility.hasCover, false);
+  assert.equal(manifest.topReadyPack, null);
+});
+
 test("TikTok dispatch manifest does not produce an upload action when no pack is ready", () => {
   const manifest = buildTikTokDispatchManifest(
     [
@@ -519,6 +548,7 @@ test("TikTok dispatch tooling loads final voice sidecar reports before gating", 
   assert.match(source, /loadFinalVoiceReportsByStoryId/);
   assert.match(source, /reportsByStoryId/);
   assert.match(source, /renderFreshnessByStoryId/);
+  assert.match(source, /assetExistenceByStoryId/);
   assert.match(source, /inspectTokenStatus/);
   assert.match(source, /tiktokTokenStatus/);
 });

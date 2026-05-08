@@ -1,12 +1,12 @@
 # Overnight Status Snapshot
 
-Generated: 2026-05-07 07:39 BST
+Generated: 2026-05-08 00:42 BST
 
 ## Branch
 
 - Current branch: `codex/readiness-qa-failure-window`
-- Base pushed commit before this slice: `c1e3d249 Improve local trailer segment scan resume`
-- Working tree during this snapshot: local motion-gap source-exhaustion reporting patch pending commit
+- Latest pushed commit before this snapshot: `5d5eca3c`
+- Current slice pending commit: TikTok dispatch cover-file verification and refreshed overnight reports
 - Deployed: no
 
 ## Safety
@@ -14,124 +14,78 @@ Generated: 2026-05-07 07:39 BST
 - Railway env vars: untouched
 - Cloudflare/DNS: untouched
 - OAuth: not triggered by this work
-- Production DB: untouched
+- Production DB rows: untouched
 - Social posting: none
 - Scheduler frequency: unchanged
 - Production renderer defaults: unchanged
 - Production voice defaults: unchanged
+- TikTok browser automation: not used
 
 ## Validation
 
-- Focused official trailer clip-ref and segment-validator tests: pass (`46/46`)
-- Focused Flash Lane footage acquisition tests: pass (`11/11`)
-- Focused game-title inference tests: pass (`5/5`)
-- Focused story-target coverage tests: pass (`39/39`)
-- Focused trailer resolver/motion acquisition tests: pass (`18/18`)
-- Focused Flash Lane motion/backbone/director tests: pass (`43/43`)
-- Combined Studio V2 motion safety tests: pass (`83/83`)
-- Focused Studio V2 motion-gap tests: pass (`14/14`)
-- Focused official trailer segment-validator tests: pass (`24/24`)
-- Focused analytics/intelligence tests: pass (`32/32`)
-- Focused YouTube analytics packet tests: pass (`8/8`)
-- Full `npm test`: pass (`2131/2131`)
+- TikTok/dispatch focused tests: pass (`44/44`)
+- Voice, longform, monetisation and analytics focused tests: pass (`59/59`)
+- Full `npm test`: pass (`2180/2180`)
 - `npm run build`: pass
 
 ## Local TTS
 
+- Verdict: `GREEN`
 - Approved local voice reference: `pulse-sleepy-liam-20260502`
-- Local TTS overnight verdict: `GREEN`
-- Latest proof: `rss_8ea7f2689732f31a` local Liam MP3, measured `65.44s`
-- Current state: local server was unreachable, then `npm run tts:doctor -- --restart --prewarm` started it locally and loaded the accepted Liam voice. Fresh smoke proof: `D:\pulse-data\media\output\audio\__local_tts_smoke_sleepy_liam_latest.mp3`.
-- The old low/demonic fallback is not accepted.
+- Latest smoke proof: `D:\pulse-data\media\output\audio\__local_tts_smoke_sleepy_liam_latest.mp3`
+- Voice-ready proof: `D:\pulse-data\media\test\output\local-media-repair\audio\rss_8ea7f2689732f31a_liam.mp3`
+- The old low/demonic fallback voice is blocked by the local Liam safety gate.
 
-## Studio V2
+## Studio V2 And Flash Lane
 
-- Proof selector: `0` ready Flash proofs, `1` checked GTA/Red Dead/BioShock proof candidate still blocked by motion/exact-asset gaps
-- Closest story: `rss_5b3abe925b27a199`, but it still lacks validated clip refs/sources for GTA and Red Dead and has forensic warnings
-- Promotion packet story: `1szzhy9`
-- Promotion packet verdict: `RED_BLOCKED`
-- Main blockers: forensic warnings, repeated visual pairs, weak rendered frames, insufficient current segment validation and insufficient clip-source diversity
-- Live status: local-only, no production switch
+- Ready local Flash proofs: `0`
+- Current closest story: `rss_5b3abe925b27a199`
+- Local Liam audio for that story is ready at about `72.5s`
+- Exact subject assets are strong enough for planning, but motion is not strong enough for a premium TikTok-style proof.
+- Current blocker: needs a non-exhausted official Red Dead motion source and better clip dominance.
+- Studio V2 live pilot verdict: `RED_BLOCKED`
 
 ## Motion Acquisition
 
-- Motion gap report: `MOTION_ACQUISITION_OVERNIGHT_REPORT.md`
-- `1szzhy9` segment validation found `0/16` usable segments after strict gameplay/taste gates.
-- Rejection pattern: repetitive samples, insufficient gameplay action, low-detail frames, black frames and sample extraction failures.
-- New guardrail: resolver references that are only PEGI/ESRB/rating-board material are filtered before clip refs, and official trailer segments before 36s are rejected before extraction.
-- Footage acquisition planner now falls back to Studio V2 proof-candidate exact subject groups when frame reports are thin, so it produces concrete entity shopping lists instead of hiding work behind `no story entities`.
-- Proof candidates now separate intended story target entities from found exact assets and validated clips, so a Take-Two/GTA/Red Dead/BioShock story cannot pass on one single-game asset pile.
-- Headline inference now strips source labels, quoted phrases and release-time utility tails before creating acquisition targets.
-- Official trailer reference resolver now treats multi-entity coverage as partial until every target has a reference.
-- Motion Acquisition Pro now routes partial resolver references to targeted official-reference search, not straight to a local frame plan.
-- Latest check for `rss_5b3abe925b27a199`: target coverage is GTA, BioShock and Red Dead, but only `2/106` merged local segment checks validate and both are BioShock. GTA has `52` failed attempts across `9` source families and Red Dead has `26` across `4`; both are still classified as `alternate_source_required`, so the report tells operators not to rescan the same exhausted official sources.
-- New local tooling: segment validation can resume from a previous report, skip already-sampled windows, merge old/new scans and rotate alternate sources before later windows from the same source.
-- New local reporting: the Studio V2 motion gap planner now separates `needs_first_segment_scan`, `continue_segment_scan` and `alternate_official_sources_required`, with entity-level attempts, top rejection reasons and safe next commands.
-- New source-family reporting: GTA failures are grouped across `9` official source families and Red Dead across `4`, which makes alternate-source work more concrete than a raw rejected-window count.
-- New segment validator guardrail: when a previous local scan is supplied, exhausted source families are skipped before new sampling. The latest dry-run skipped `28` already-sampled refs and `8` exhausted source-family refs for `rss_5b3abe925b27a199`.
-- New source-family metadata backfill: legacy Steam CDN trailer URLs now populate provider, app ID and movie ID, so old scans no longer hide exhausted official sources behind `unknown`.
-- New resolver guardrail: official trailer reference resolution can read a previous segment-validation report and exclude exhausted Steam source families before producing the next local reference plan. The current story check excluded `9` known-bad Steam refs with a five-window threshold, left `5` further candidates and local validation still found no new usable GTA or Red Dead windows.
-- Live status: local/report-only
+- Motion report: `MOTION_ACQUISITION_OVERNIGHT_REPORT.md`
+- Current strategy: alternate official sources, not another blind rescan of exhausted Steam/trailer windows.
+- Latest Flash Lane state says one candidate still needs alternate official motion source work.
+- No video render was started from the blocked proof.
 
 ## TikTok
 
-- Auth doctor: `AMBER`
-- Token status: connected, usable, refresh available
-- Direct public-post approval: not confirmed
-- Dispatch manifest: generated without upload
-- Fresh pack: refused to auto-select a live render without explicit `--mp4`, which is the intended safety behaviour
-- Live status: no upload, no browser automation, no token mutation
-
-## Facebook Reels
-
-- Status report: `FACEBOOK_REELS_STATUS.md`
-- Verdict: `eligible_for_normal_publish`
-- Evidence: Graph sees `1` video, `1` Reel and a valid Page token with `publish_video`.
-- Local flag: `FACEBOOK_REELS_ENABLED=true`
-- Safety: read-only check only, no Facebook post
+- Auth doctor verdict: `AMBER`
+- Local token status: expired but refreshable or syncable
+- Browser OAuth succeeded earlier on `pulse.orryy.com`, but the local token file is still stale.
+- Official inbox/manual route remains the safest route once a clean MP4 pack exists.
+- Public direct-post approval is still not confirmed.
+- New safe gate: dispatch now checks whether MP4 and cover files actually exist, not just whether DB paths are populated.
 
 ## Analytics And Learning
 
-- Status report: `ANALYTICS_LEARNING_STATUS.md`
-- Analytics doctor: `AMBER`
-- Detailed YouTube Analytics: `requires_youtube_scope_reauth`
-- Learning dataset: `public_counter_history_only`
-- Platform metric rows: `330`
-- Rich retention rows: `0`
-- Video performance rows: `0`
-- Learning digest: generated under `test/output/learning-digest/`
-- Comment digest: generated under `test/output/comment-digest/`
-- YouTube analytics ingestion packet: `BLOCKED`, `requires_youtube_scope_reauth`
-- YouTube analytics packet report: `YOUTUBE_ANALYTICS_INGESTION_PACKET_REPORT.md`
-- Safety: no OAuth, no token printing, no DB mutation, no scoring-weight changes, no auto-replies
-
-## Voice Shootout
-
-- Report: `VOICE_SHOOTOUT_OVERNIGHT_REPORT.md`
-- Verdict: `AMBER_READY_FOR_LOCAL_BENCHMARKS`
-- Local Liam is ready for local benchmark review.
-- Paid/external providers remain approval-gated.
+- Analytics doctor verdict: `AMBER`
+- Current learning depth: public counters/local history only
+- YouTube Studio retention and traffic-source learning is blocked until read-only `yt-analytics.readonly` re-auth is approved.
+- Learning and comment digest tools remain report-only and do not auto-reply.
 
 ## Longform
 
 - Report: `LONGFORM_OVERNIGHT_ARCHITECTURE_REPORT.md`
-- Current prototype: Weekly Roundup local outline
-- Status: outline ready for editorial review, no upload or scheduler change
+- Status: Weekly Roundup local outline ready for editorial review
+- No upload, scheduler change or production DB write was made.
 
 ## Monetisation
 
 - Report: `MONETISATION_OVERNIGHT_REPORT.md`
-- Current stage: pre-monetisation
-- Snapshot: `1/12` checks cleared, YPP not eligible
-- Status: report-only
+- Stage: pre-monetisation
+- Cleared milestones: `1/12`
+- YPP eligible: false
+- Affiliate and sponsor outputs remain report-only.
 
 ## Known Blockers
 
-- Studio V2 needs better validated motion before a live pilot.
-- TikTok public posting remains dependent on app/API approval state.
-- TikTok inbox/manual workflow needs a clean MP4 pack first.
-- Deep YouTube Studio learning needs a read-only analytics OAuth re-auth before retention and traffic-source data can be ingested.
-- Facebook Reels should be watched on the next normal publish to confirm API upload success, but Page eligibility now looks unblocked.
-- External voice providers need approval before spending credits or sending voice material externally.
-- Longform upload/scheduling needs approval.
-- Monetisation changes to live copy or sponsor outreach need approval.
+- Studio V2 needs better validated gameplay/motion before any live pilot.
+- TikTok local token needs refresh or sync before official inbox upload can be tested locally.
+- A clean current MP4 pack is required before TikTok manual/inbox workflow.
+- Deep YouTube learning needs read-only analytics OAuth re-auth.
+- Live affiliate, sponsor, longform upload and production voice/renderer changes all remain approval-gated.

@@ -42,6 +42,15 @@ test("headline inference trims newsy prefixes and platform utility suffixes", ()
   );
 });
 
+test("headline inference extracts mid-sentence subjects after release-age framing", () => {
+  assert.deepEqual(
+    inferHeadlineGameCandidates(
+      "It's been a year since release and Oblivion Remastered is still broken- Digital Foundry",
+    ),
+    ["Oblivion"],
+  );
+});
+
 test("headline inference still accepts real colon-separated game title candidates", () => {
   assert.deepEqual(
     inferHeadlineGameCandidates("LEGO Batman: Legacy of the Dark Knight PC specs revealed"),

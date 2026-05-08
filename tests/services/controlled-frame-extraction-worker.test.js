@@ -7,6 +7,7 @@ const path = require("node:path");
 const os = require("node:os");
 
 const {
+  mergeControlledFrameExtractionReports,
   runControlledFrameExtraction,
   renderControlledFrameExtractionWorkerMarkdown,
 } = require("../../lib/controlled-frame-extraction-worker");
@@ -160,6 +161,54 @@ test("controlled frame extraction rejects duplicate extracted hashes", async () 
   assert.equal(report.summary.frames_accepted, 1);
   assert.equal(report.summary.frames_rejected, 1);
   assert.ok(report.plans[0].frames.some((frame) => frame.status === "rejected_duplicate"));
+});
+
+test("controlled frame extraction can merge previous story plans without losing provenance", () => {
+  const previous = {
+    generated_at: "2026-05-07T10:00:00.000Z",
+    apply_local: true,
+    plans: [
+      {
+        story_id: "previous_story",
+        frames: [{ status: "accepted" }, { status: "rejected_qa" }],
+        provenance: [{ story_id: "previous_story", status: "accepted" }],
+      },
+      {
+        story_id: "updated_story",
+        frames: [{ status: "accepted" }],
+        provenance: [{ story_id: "updated_story", status: "accepted" }],
+      },
+    ],
+  };
+  const current = {
+    generated_at: "2026-05-08T10:00:00.000Z",
+    apply_local: true,
+    plans: [
+      {
+        story_id: "updated_story",
+        frames: [{ status: "rejected_qa" }],
+        provenance: [{ story_id: "updated_story", status: "rejected_qa" }],
+      },
+      {
+        story_id: "new_story",
+        frames: [{ status: "accepted" }],
+        provenance: [{ story_id: "new_story", status: "accepted" }],
+      },
+    ],
+  };
+
+  const merged = mergeControlledFrameExtractionReports(previous, current);
+
+  assert.equal(merged.merged_previous_report, true);
+  assert.deepEqual(merged.plans.map((plan) => plan.story_id), [
+    "previous_story",
+    "updated_story",
+    "new_story",
+  ]);
+  assert.equal(merged.summary.stories, 3);
+  assert.equal(merged.summary.frames_accepted, 2);
+  assert.equal(merged.summary.frames_rejected, 2);
+  assert.equal(merged.provenance.length, 3);
 });
 
 test("controlled frame extraction rejects unsafe face-like frames", async () => {

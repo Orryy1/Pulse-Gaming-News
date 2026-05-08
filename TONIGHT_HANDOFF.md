@@ -5,16 +5,18 @@ Date: 2026-05-08
 ## Branch
 
 - Branch: `codex/readiness-qa-failure-window`
-- Latest pushed commit before final slice: `5d5eca3c`
+- Current base commit before final slice: `1004f3d5`
 - Deployed: no
 - Railway/env/Cloudflare/OAuth/production DB/social posting: untouched
 - Production renderer and production voice defaults: unchanged
 
-## What Is Now Working
+## What Local Checks Now Enforce
 
 - Local Liam TTS is green with the accepted `pulse-sleepy-liam-20260502` reference.
 - The old low/demonic local fallback path is blocked.
 - Studio V2 proof selection now fails safely instead of pretending weak motion is good enough.
+- One-story trailer-reference runs no longer overwrite the canonical batch report unless explicitly requested.
+- Local motion validation now rejects the weak Oblivion trailer windows and records The Division/Tales as one usable clip each, not Flash-ready material.
 - TikTok OAuth shape is valid, but local token state is honestly reported as expired/refreshable.
 - TikTok dispatch now verifies MP4 and cover file existence, not just DB path strings.
 - Facebook Reels eligibility previously looked unblocked and should be watched on the next normal publish.
@@ -25,7 +27,7 @@ Date: 2026-05-08
 - Local TTS: `GREEN`
 - Studio V2 live pilot: `RED_BLOCKED`
 - Flash Lane: no ready local proof yet
-- Motion acquisition: needs alternate official Red Dead motion source
+- Motion acquisition: closest story needs alternate official BioShock and Red Dead sources plus another usable GTA window; Marathon is a separate candidate blocker
 - TikTok: `AMBER`, local token needs refresh/sync and clean MP4 pack
 - Analytics learning: `AMBER`, public counters only until YouTube analytics scope is granted
 - Longform: outline ready for editorial review
@@ -33,9 +35,8 @@ Date: 2026-05-08
 
 ## Validation
 
-- TikTok/dispatch focused tests: pass (`44/44`)
-- Voice, longform, monetisation and analytics focused tests: pass (`59/59`)
-- Full `npm test`: pass (`2180/2180`)
+- Focused modified-area tests: pass (`116/116`)
+- Full `npm test`: pass (`2193/2193`)
 - `npm run build`: pass
 
 ## Reports To Read
@@ -62,7 +63,7 @@ The voice problem is mostly solved locally. The video quality problem is now the
 
 ## Recommended Next Work
 
-1. Find non-exhausted official Red Dead/GTA motion sources for the Flash Lane candidate.
+1. Find non-exhausted official BioShock, Red Dead and Marathon motion sources for the closest Flash Lane candidates.
 2. Generate a new local Studio V2 proof only after the motion gate is green.
 3. Refresh or sync the local TikTok token with Martin present, then test official inbox/draft upload only with a clean pack.
 4. Approve YouTube analytics read-only re-auth so the learning loop can use retention and traffic-source data.

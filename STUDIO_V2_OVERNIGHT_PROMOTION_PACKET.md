@@ -1,6 +1,6 @@
 # Studio V2 Overnight Promotion Packet
 
-Generated: 2026-05-08T00:12:16.481Z
+Generated: 2026-05-08T02:08:44.304Z
 Story: `rss_5b3abe925b27a199`
 Title: GTA 6 Owner Passed On A Sequel To A Legacy Franchise, And We're Dying To Know Which One
 
@@ -53,10 +53,10 @@ Morning approval needed: `no`
 | Voice | provided-local-tts-audio (unknown) |
 | Official clip refs | 0 |
 | Official trailer frames | 2 |
-| Current validated clip refs | 5 |
-| Current validated clip sources | 4 |
+| Current validated clip refs | 6 |
+| Current validated clip sources | 5 |
 | Current validated clip entities | 3 |
-| Current segment rejections | 83 |
+| Current segment rejections | 46 |
 | Forensic verdict | warn |
 | Forensic fails / warns | 0 / 2 |
 | Visual repeat pairs after | 2 |

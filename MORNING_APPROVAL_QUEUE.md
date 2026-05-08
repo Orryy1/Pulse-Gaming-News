@@ -16,7 +16,7 @@ Risk: approving a pilot now could publish the same kind of dull, repetitive or w
 
 Rollback: no action needed because no pilot was run.
 
-Validation: full `npm test` passed `2180/2180`, build passed, proof candidates still show `0` ready Flash proofs.
+Validation: focused modified-area tests passed `116/116`, full `npm test` passed `2193/2193`, build passed and proof candidates still show `0` ready Flash proofs.
 
 Recommendation: do not approve a Studio V2 live pilot until a packet is green.
 
@@ -24,7 +24,7 @@ Recommendation: do not approve a Studio V2 live pilot until a packet is green.
 
 Decision needed: approve operator-owned token refresh/sync later.
 
-Why it matters: browser OAuth succeeded on `pulse.orryy.com`, but this local repo's TikTok token store still reports expired. Official inbox upload cannot be tested locally until the local token gate is clear.
+Why it matters: earlier operator/browser OAuth was reported as successful on `pulse.orryy.com`, but this local repo's TikTok token store still reports expired. Official inbox upload cannot be tested locally until the local token gate is clear.
 
 What changes: local TikTok token files would be refreshed or synced. Public auto-posting should remain disabled.
 

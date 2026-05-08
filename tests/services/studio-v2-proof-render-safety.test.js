@@ -121,6 +121,21 @@ test("Studio V2 proof safety allows provided real audio for local proof renders"
   assert.doesNotThrow(() => assertNarrationAllowedForProof(narration));
 });
 
+test("Studio V2 proof safety rejects supplied audio without pitch and outro verification", () => {
+  const narration = {
+    mode: "real_audio",
+    provider: "external",
+    source: "provided-real-audio",
+    audioPath: proofAudioPath("unverified-external.mp3"),
+  };
+
+  assert.equal(narrationVoiceBlocker(narration, {}), "voice_needs_human_review");
+  assert.throws(
+    () => assertNarrationAllowedForProof(narration),
+    /missing pitch or spoken-outro verification/i,
+  );
+});
+
 test("Studio V2 proof safety blocks missing narration before render", () => {
   assert.equal(
     narrationVoiceBlocker({ mode: "real_audio", provider: "external" }, {}),

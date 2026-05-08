@@ -14,6 +14,10 @@ const {
 const fs = require("fs-extra");
 const os = require("node:os");
 const path = require("node:path");
+const {
+  parseArgs: parseOfficialTrailerReferenceCliArgs,
+  shouldWriteLatestReport,
+} = require("../../tools/official-trailer-reference-resolver");
 
 function baseStory(overrides = {}) {
   return {
@@ -59,6 +63,32 @@ function appliedLocalSteamAsset(entity, appId, title) {
     store_match_verified: true,
   };
 }
+
+test("official trailer resolver CLI keeps one-story runs from overwriting the latest report by default", () => {
+  const oneStoryArgs = parseOfficialTrailerReferenceCliArgs([
+    "node",
+    "tools/official-trailer-reference-resolver.js",
+    "--story-id",
+    "rss_gap",
+  ]);
+  const batchArgs = parseOfficialTrailerReferenceCliArgs([
+    "node",
+    "tools/official-trailer-reference-resolver.js",
+    "--limit",
+    "5",
+  ]);
+  const explicitOneStoryArgs = parseOfficialTrailerReferenceCliArgs([
+    "node",
+    "tools/official-trailer-reference-resolver.js",
+    "--story-id",
+    "rss_gap",
+    "--write-latest-report",
+  ]);
+
+  assert.equal(shouldWriteLatestReport(oneStoryArgs), false);
+  assert.equal(shouldWriteLatestReport(batchArgs), true);
+  assert.equal(shouldWriteLatestReport(explicitOneStoryArgs), true);
+});
 
 test("official trailer resolver stays report-only and non-downloading", async () => {
   const plan = await buildOfficialTrailerReferencePlan(baseStory());

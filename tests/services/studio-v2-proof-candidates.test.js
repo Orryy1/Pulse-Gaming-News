@@ -192,6 +192,25 @@ test("proof candidates require enough validated clip seconds for Flash Lane domi
   assert.equal(candidate.recommended_command, null);
 });
 
+test("proof candidates let validated footage satisfy motion backbone without standalone frames", () => {
+  const storyId = "footage_backbone_only";
+  const report = buildStudioV2ProofCandidateReport({
+    stories: [story(storyId)],
+    localAudioReports: [audioReport(storyId)],
+    assetReports: [assetReport(storyId, 8)],
+    frameReports: [frameReport(storyId, 0)],
+    segmentValidationReports: [segmentReport(storyId, 12)],
+  });
+
+  const candidate = report.candidates[0];
+  assert.equal(candidate.verdict, "ready_flash_proof");
+  assert.equal(candidate.visuals.frame_motion_backbone_ready, false);
+  assert.equal(candidate.visuals.footage_motion_backbone_ready, true);
+  assert.equal(candidate.visuals.motion_backbone_ready, true);
+  assert.ok(!candidate.blockers.includes("flash_proof_requires_motion_backbone"));
+  assert.match(candidate.recommended_command, /--use-official-trailer-clips/);
+});
+
 test("proof candidates do not count accepted frames with failing visual taste metadata", () => {
   const storyId = "bad_taste_frame";
   const report = buildStudioV2ProofCandidateReport({

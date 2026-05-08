@@ -234,6 +234,66 @@ test("TikTok automation report surfaces blocked fresh Studio V2 dispatch packs",
   assert.doesNotMatch(md, /Requires approval before execution/);
 });
 
+test("TikTok automation report surfaces token plus creative blockers together", () => {
+  const report = buildTikTokAutomationReport({
+    generatedAt: "2026-05-07T02:30:00.000Z",
+    authDoctorReport: {
+      token_status: {
+        ok: false,
+        connected: false,
+        reason: "expired",
+        refresh_available: true,
+        needs_reauth: false,
+        needs_refresh_or_sync: true,
+        local_action: "refresh_or_sync_local_token",
+      },
+    },
+    dispatchManifest: {
+      count: 2,
+      statusCounts: { missing_video: 2 },
+    },
+    freshDispatchPack: {
+      dispatchPack: {
+        storyId: "1szzhy9",
+        status: "creative_review_required",
+        mp4: "test/output/studio-v2-still-deck/studio_v2_1szzhy9_enriched.mp4",
+        cover: "test/output/tiktok-cover-candidates/covers/1szzhy9_12s.jpg",
+        eligibility: {
+          durationSeconds: 74.67,
+          captionReady: true,
+          dispatchLengthReady: true,
+          creatorRewardsLengthEligible: true,
+        },
+        creativeGate: {
+          blocks_dispatch: true,
+          blockers: ["studio_v2_promotion_red_blocked"],
+        },
+      },
+      inboxPlan: {
+        status: "not_ready",
+        dry_run: true,
+        will_upload_to_tiktok: false,
+        blockers: ["dispatch_pack_creative_review_required"],
+      },
+      creativeReview: {
+        operator_visual_review_required: true,
+        blockers: ["studio_v2_promotion_red_blocked"],
+      },
+    },
+  });
+
+  assert.equal(
+    report.recommendedRoute,
+    "refresh_or_sync_local_token_then_fix_fresh_dispatch_creative_blockers",
+  );
+  assert.equal(report.routeStrategy[0].status, "blocked_by_local_token_and_creative_review");
+  assert.ok(report.blockers.includes("refresh_or_sync_local_token"));
+
+  const md = renderTikTokAutomationMarkdown(report);
+  assert.match(md, /blocked_by_local_token_and_creative_review/);
+  assert.doesNotMatch(md, /access_token|refresh_token|Bearer/);
+});
+
 test("TikTok automation report distinguishes stale local token from a ready browser flow", () => {
   const report = buildTikTokAutomationReport({
     authDoctorReport: {

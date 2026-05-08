@@ -103,3 +103,19 @@ test("runStudioV21ReviewBatch: renders all candidates, gauntlet once, then gates
   assert.equal(updates.length, 2);
   assert.ok(updates.every((u) => u.human_visual_review_required === true));
 });
+
+test("v2.1 review batch keeps voice fallback disabled unless explicitly opted in", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "lib", "studio", "v2", "studio-v21-review-batch.js"),
+    "utf8",
+  );
+  assert.match(src, /STUDIO_V2_ALLOW_VOICE_FALLBACK:\s*\n\s*env\.STUDIO_V2_ALLOW_VOICE_FALLBACK \|\| "false"/);
+});
+
+test("studio-v21 wrapper keeps voice fallback disabled by default", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v21-render.js"),
+    "utf8",
+  );
+  assert.match(src, /STUDIO_V2_ALLOW_VOICE_FALLBACK:\s*\n\s*process\.env\.STUDIO_V2_ALLOW_VOICE_FALLBACK \|\| "false"/);
+});

@@ -166,9 +166,42 @@ test("alternate official source handoff flags stale reference reports", () => {
   const md = renderAlternateOfficialSourceHandoffMarkdown(report);
 
   assert.equal(report.input_freshness.warnings[0].code, "reference_report_older_than_motion_gap");
+  assert.equal(report.input_freshness.reference_counts_provisional, true);
   assert.match(md, /Input Freshness/);
   assert.match(md, /reference_report_older_than_motion_gap/);
+  assert.match(md, /Remaining refs \(provisional\)/);
   assert.match(md, /media:resolve-trailers/);
+});
+
+test("alternate official source handoff does not describe exhausted references as keep-sampling", () => {
+  const report = buildAlternateOfficialSourceHandoffReport({
+    motionGapReport: {
+      gaps: [
+        motionGap({
+          motion_gap: {
+            acquisition_strategy: {
+              alternate_source_entities: [],
+              entity_statuses: {
+                "Red Dead": {
+                  status: "keep_sampling",
+                  recommendation: "scan_remaining_references",
+                },
+              },
+            },
+          },
+        }),
+      ],
+    },
+    referenceReport: { plans: [referencePlan()] },
+  });
+  const md = renderAlternateOfficialSourceHandoffMarkdown(report);
+
+  assert.equal(report.rows[0].blocker, "resolved_references_exhausted_before_segment_plan");
+  assert.equal(
+    report.rows[0].motion_status,
+    "current_references_exhausted_needs_new_official_source_before_sampling",
+  );
+  assert.doesNotMatch(md, /Motion status: keep_sampling/);
 });
 
 test("alternate official source handoff markdown is readable and safety-labelled", () => {

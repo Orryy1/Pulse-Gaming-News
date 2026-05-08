@@ -1,12 +1,12 @@
 # Overnight Status Snapshot
 
-Generated: 2026-05-08 00:42 BST
+Generated: 2026-05-08 02:21 BST
 
 ## Branch
 
 - Current branch: `codex/readiness-qa-failure-window`
-- Latest pushed commit before this snapshot: `5d5eca3c`
-- Current slice pending commit: TikTok dispatch cover-file verification and refreshed overnight reports
+- Current base commit before this slice: `1004f3d5`
+- Current slice pending commit: trailer-report overwrite guard, voice proof safety, local motion validation refresh and report updates
 - Deployed: no
 
 ## Safety
@@ -23,9 +23,8 @@ Generated: 2026-05-08 00:42 BST
 
 ## Validation
 
-- TikTok/dispatch focused tests: pass (`44/44`)
-- Voice, longform, monetisation and analytics focused tests: pass (`59/59`)
-- Full `npm test`: pass (`2180/2180`)
+- Focused modified-area tests: pass (`116/116`)
+- Full `npm test`: pass (`2193/2193`)
 - `npm run build`: pass
 
 ## Local TTS
@@ -42,21 +41,22 @@ Generated: 2026-05-08 00:42 BST
 - Current closest story: `rss_5b3abe925b27a199`
 - Local Liam audio for that story is ready at about `72.5s`
 - Exact subject assets are strong enough for planning, but motion is not strong enough for a premium TikTok-style proof.
-- Current blocker: needs a non-exhausted official Red Dead motion source and better clip dominance.
+- Current closest story needs non-exhausted official BioShock and Red Dead sources plus another usable GTA window; Marathon is a separate candidate blocker.
 - Studio V2 live pilot verdict: `RED_BLOCKED`
 
 ## Motion Acquisition
 
 - Motion report: `MOTION_ACQUISITION_OVERNIGHT_REPORT.md`
 - Current strategy: alternate official sources, not another blind rescan of exhausted Steam/trailer windows.
-- Latest Flash Lane state says one candidate still needs alternate official motion source work.
+- Latest local scans rejected weak Oblivion windows and found only one usable The Division window plus one usable Tales window, so neither became Flash-ready.
+- One-story trailer-reference commands now avoid overwriting the canonical batch report unless `--write-latest-report` is explicitly supplied.
 - No video render was started from the blocked proof.
 
 ## TikTok
 
 - Auth doctor verdict: `AMBER`
 - Local token status: expired but refreshable or syncable
-- Browser OAuth succeeded earlier on `pulse.orryy.com`, but the local token file is still stale.
+- Earlier operator/browser OAuth was reported as successful on `pulse.orryy.com`, but this local proof did not refresh or verify the local token file.
 - Official inbox/manual route remains the safest route once a clean MP4 pack exists.
 - Public direct-post approval is still not confirmed.
 - New safe gate: dispatch now checks whether MP4 and cover files actually exist, not just whether DB paths are populated.

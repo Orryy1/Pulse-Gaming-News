@@ -1,9 +1,9 @@
 # TikTok Overnight Automation Report
 
-Generated: 2026-05-08T00:27:21.970Z
+Generated: 2026-05-08T02:21:00.041Z
 Mode: read-only-tiktok-automation-strategy
 Verdict: AMBER
-Recommended route: fix_fresh_dispatch_creative_blockers
+Recommended route: refresh_or_sync_local_token_then_fix_fresh_dispatch_creative_blockers
 
 ## Token Gate
 - ok: false
@@ -25,7 +25,7 @@ Recommended route: fix_fresh_dispatch_creative_blockers
   - stale_render_review_required: 26
 
 ## Route Strategy
-- Official TikTok inbox upload (official_inbox_upload): status=blocked_by_creative_review; public_auto_publish=false; account_risk=low
+- Official TikTok inbox upload (official_inbox_upload): status=blocked_by_local_token_and_creative_review; public_auto_publish=false; account_risk=low
   Use this first after a pack is ready and a local token is usable. It uploads to TikTok inbox/drafts only; the operator completes the public post in TikTok.
 - Official TikTok public API posting (official_public_api): status=blocked_until_tiktok_app_review_or_direct_post_approval; public_auto_publish=true; account_risk=low_after_approval
   Do not rely on this until TikTok app review/direct post approval is confirmed by a real API response.
@@ -45,7 +45,7 @@ Recommended route: fix_fresh_dispatch_creative_blockers
   - dashboard_client_key_error_requires_operator_dashboard_fix
   - local_token_expired_but_refreshable
 - operator actions:
-  - Refresh or sync the local TikTok token before local uploads. If browser OAuth succeeded on pulse.orryy.com, the live server token may be current while this repo's local token file is still stale.
+  - Refresh or sync the local TikTok token before local uploads. Earlier operator/browser OAuth was reported as successful on pulse.orryy.com, but this local proof did not refresh or verify this repo's local token file.
   - Verify the same TikTok app/environment owns the dashboard client key, Login Kit product, Content Posting API product, URL properties and redirect URI.
   - Confirm the TikTok dashboard redirect URI exactly matches https://pulse.orryy.com/auth/tiktok/callback.
   - If the app is still Draft/Staging, use Sandbox mode with your TikTok account added as a target user, or submit the Production app for review before expecting Production OAuth to work.

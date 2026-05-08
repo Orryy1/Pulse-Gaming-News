@@ -51,6 +51,7 @@ function parseArgs(argv) {
     outputDir: OUT,
     outputBasename: DEFAULT_REPORT_BASENAME,
     noLatestReport: false,
+    writeLatestReport: false,
   };
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i];
@@ -70,9 +71,16 @@ function parseArgs(argv) {
     else if (arg === "--output-dir") args.outputDir = argv[++i] || OUT;
     else if (arg === "--output-basename") args.outputBasename = argv[++i] || DEFAULT_REPORT_BASENAME;
     else if (arg === "--no-latest-report") args.noLatestReport = true;
+    else if (arg === "--write-latest-report") args.writeLatestReport = true;
     else if (arg === "--help" || arg === "-?") args.help = true;
   }
   return args;
+}
+
+function shouldWriteLatestReport(args = {}) {
+  if (args.noLatestReport) return false;
+  if (args.writeLatestReport) return true;
+  return !args.storyId;
 }
 
 function printHelp() {
@@ -97,6 +105,7 @@ function printHelp() {
       "  --output-dir <p>      Write reports under this local directory",
       "  --output-basename <n> Basename for latest + story/batch-specific report files",
       "  --no-latest-report    Only write story/batch-specific report files, not the legacy latest files",
+      "  --write-latest-report Explicitly update legacy latest files from a one-story run",
       "  --json                Print JSON instead of Markdown",
       "",
       "This command is report-only: it fetches Steam metadata JSON at most, and never downloads videos, extracts frames, slices clips, mutates the DB, publishes or touches Railway/OAuth.",
@@ -277,7 +286,7 @@ async function main() {
   const written = await writeOfficialTrailerReferenceReportFiles(report, markdown, {
     outputDir: path.resolve(ROOT, args.outputDir),
     basename: args.outputBasename,
-    writeCanonical: !args.noLatestReport,
+    writeCanonical: shouldWriteLatestReport(args),
   });
 
   process.stdout.write(args.json ? JSON.stringify(report, null, 2) + "\n" : markdown);
@@ -287,7 +296,14 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  process.stderr.write(`[trailer-reference] ${err.stack || err.message}\n`);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    process.stderr.write(`[trailer-reference] ${err.stack || err.message}\n`);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  parseArgs,
+  shouldWriteLatestReport,
+};

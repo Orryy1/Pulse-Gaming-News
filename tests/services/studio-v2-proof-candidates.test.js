@@ -50,6 +50,7 @@ function assetReport(storyId, count = 6) {
           exact_subject_group: index % 2 === 0 ? "GTA" : "Red Dead",
           counted_for_premium: true,
           counted_for_standard: true,
+          store_match_verified: true,
           local_path: `test/output/assets/${storyId}_${index}.jpg`,
         })),
       },
@@ -346,6 +347,7 @@ test("proof candidates use script target entities to block single-game assets on
               exact_subject_group: "GTA",
               counted_for_premium: true,
               counted_for_standard: true,
+              store_match_verified: true,
               local_path: `test/output/assets/${storyId}_${index}.jpg`,
             })),
           },
@@ -405,6 +407,7 @@ test("proof candidates let validated official clips cover exact-subject entity g
               exact_subject_group: "GTA",
               counted_for_premium: true,
               counted_for_standard: true,
+              store_match_verified: true,
               local_path: `test/output/assets/${storyId}_${index}.jpg`,
             })),
           },
@@ -462,6 +465,119 @@ test("proof candidates block stale ready proof commands when the latest render h
   assert.equal(report.summary.needs_forensic_warning_repair, 1);
 });
 
+test("proof candidates require verified store matches before Steam exact assets count", () => {
+  const storyId = "unverified_store_exact";
+  const report = buildStudioV2ProofCandidateReport({
+    stories: [story(storyId)],
+    localAudioReports: [audioReport(storyId)],
+    assetReports: [
+      {
+        plans: [
+          {
+            story_id: storyId,
+            would_fetch: Array.from({ length: 6 }, (_, index) => ({
+              id: `${storyId}_steam_${index}`,
+              source_type: "steam_screenshot",
+              entity: index % 2 === 0 ? "GTA" : "Red Dead",
+              subject_match_quality: "exact_game_match",
+              exact_subject_group: index % 2 === 0 ? "GTA" : "Red Dead",
+              counted_for_premium: true,
+              counted_for_standard: true,
+              local_path: `test/output/assets/${storyId}_${index}.jpg`,
+            })),
+          },
+        ],
+      },
+    ],
+    frameReports: [frameReport(storyId, 10)],
+    segmentValidationReports: [segmentReport(storyId, 10)],
+  });
+
+  const candidate = report.candidates[0];
+  assert.equal(candidate.verdict, "needs_motion_or_exact_assets");
+  assert.equal(candidate.visuals.exact_subject_count, 0);
+  assert.ok(candidate.blockers.includes("flash_proof_requires_verified_store_exact_assets"));
+  assert.ok(candidate.blockers.includes("flash_proof_requires_four_exact_subject_assets"));
+});
+
+test("proof candidates block Flash proofs when exact assets are cover dominated", () => {
+  const storyId = "cover_dominated_exact";
+  const report = buildStudioV2ProofCandidateReport({
+    stories: [story(storyId)],
+    localAudioReports: [audioReport(storyId)],
+    assetReports: [
+      {
+        plans: [
+          {
+            story_id: storyId,
+            would_fetch: Array.from({ length: 6 }, (_, index) => ({
+              id: `${storyId}_cover_${index}`,
+              source_type: index % 2 === 0 ? "steam_capsule" : "igdb_cover",
+              entity: index % 2 === 0 ? "GTA" : "Red Dead",
+              subject_match_quality: "exact_game_match",
+              exact_subject_group: index % 2 === 0 ? "GTA" : "Red Dead",
+              counted_for_premium: true,
+              counted_for_standard: true,
+              store_match_verified: true,
+              local_path: `test/output/assets/${storyId}_${index}.jpg`,
+            })),
+          },
+        ],
+      },
+    ],
+    frameReports: [frameReport(storyId, 10)],
+    segmentValidationReports: [segmentReport(storyId, 10)],
+  });
+
+  const candidate = report.candidates[0];
+  assert.equal(candidate.verdict, "needs_motion_or_exact_assets");
+  assert.ok(candidate.blockers.includes("flash_proof_blocks_cover_dominated_exact_assets"));
+  assert.equal(candidate.visuals.cover_dominated_exact_asset_count, 6);
+  assert.equal(candidate.visuals.cover_dominated_exact_asset_share, 1);
+});
+
+test("proof candidates block wrong-story exact assets even when motion covers the real entities", () => {
+  const storyId = "wrong_story_exact_assets";
+  const report = buildStudioV2ProofCandidateReport({
+    stories: [
+      {
+        ...story(storyId, "Take-Two mystery sequel has GTA, Red Dead and BioShock fans watching"),
+        full_script:
+          "Take-Two has raised questions for GTA, Red Dead and BioShock fans after passing on a legacy sequel.",
+      },
+    ],
+    localAudioReports: [audioReport(storyId)],
+    assetReports: [
+      {
+        plans: [
+          {
+            story_id: storyId,
+            would_fetch: Array.from({ length: 6 }, (_, index) => ({
+              id: `${storyId}_metro_${index}`,
+              source_type: "steam_screenshot",
+              entity: "Metro 2033",
+              subject_match_quality: "exact_game_match",
+              exact_subject_group: "Metro 2033",
+              counted_for_premium: true,
+              counted_for_standard: true,
+              store_match_verified: true,
+              local_path: `test/output/assets/${storyId}_${index}.jpg`,
+            })),
+          },
+        ],
+      },
+    ],
+    frameReports: [frameReport(storyId, 10)],
+    segmentValidationReports: [segmentReport(storyId, 10)],
+  });
+
+  const candidate = report.candidates[0];
+  assert.equal(candidate.verdict, "needs_motion_or_exact_assets");
+  assert.ok(candidate.blockers.includes("flash_proof_blocks_wrong_story_exact_assets"));
+  assert.deepEqual(candidate.visuals.wrong_story_exact_asset_groups, ["Metro 2033"]);
+  assert.equal(candidate.recommended_command, null);
+});
+
 test("proof candidates allow a fresh local proof when visual inputs are newer than the warned render", () => {
   const storyId = "fresh_after_warn";
   const report = buildStudioV2ProofCandidateReport({
@@ -499,6 +615,7 @@ test("proof candidate markdown is operator-readable and says when no render is s
   assert.match(md, /Studio V2 Proof Candidate Selector/);
   assert.match(md, /No Studio V2 proof render is safe yet/);
   assert.match(md, /local-only/);
+  assert.match(md, /Visual evidence gate:/);
 });
 
 test("proof candidates normalise mojibake titles before reporting", () => {

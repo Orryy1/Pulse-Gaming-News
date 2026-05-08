@@ -700,6 +700,7 @@ class Alignment(BaseModel):
 class TTSResponse(BaseModel):
     audio_base64: str
     alignment: Alignment
+    voice_diagnostics: Optional[dict] = None
 
 
 # --- App ---
@@ -999,6 +1000,7 @@ def _synth(voice_id: str, req: TTSRequest) -> TTSResponse:
     except Exception as e:
         log.exception("Synth failed")
         raise HTTPException(500, f"Synth failed: {e}")
+    voice_diagnostics = getattr(engine, "last_voice_diagnostics", None)
 
     sample_rate = engine.sample_rate
 
@@ -1020,6 +1022,7 @@ def _synth(voice_id: str, req: TTSRequest) -> TTSResponse:
     return TTSResponse(
         audio_base64=base64.b64encode(mp3_bytes).decode("ascii"),
         alignment=Alignment(**alignment),
+        voice_diagnostics=voice_diagnostics,
     )
 
 

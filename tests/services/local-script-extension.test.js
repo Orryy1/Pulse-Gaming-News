@@ -279,6 +279,13 @@ test("apply local script extension audio stamps accepted Sleepy Liam metadata", 
             characters: Array.from("Ready script. Follow Pulse Gaming so you never miss a beat."),
             character_start_times_seconds: [],
             character_end_times_seconds: [],
+            meta: {
+              acoustic: { medianPitchHz: 118 },
+              voiceDiagnostics: {
+                selectedCandidate: "configured",
+                metrics: { median_f0_hz: 118 },
+              },
+            },
           }),
         );
       },
@@ -294,9 +301,14 @@ test("apply local script extension audio stamps accepted Sleepy Liam metadata", 
       ),
     );
     assert.equal(applied.local_voice_metadata, "stamped");
+    assert.equal(applied.failure_code, null);
+    assert.equal(applied.acoustic.medianPitchHz, 118);
+    assert.equal(applied.spoken_outro_present, true);
     assert.equal(applied.local_voice_reference.referencePresent, true);
     assert.equal(timestamps.meta.provider, "local");
     assert.equal(timestamps.meta.source, "provided-local-tts-audio");
+    assert.equal(timestamps.meta.acoustic.medianPitchHz, 118);
+    assert.match(timestamps.meta.transcript, /Follow Pulse Gaming so you never miss a beat/);
     assert.equal(timestamps.meta.approvedLocalVoice, true);
     assert.equal(timestamps.meta.acceptedLocalVoice.id, "pulse-sleepy-liam-20260502");
     assert.equal(timestamps.meta.acceptedLocalVoice.referencePresent, true);

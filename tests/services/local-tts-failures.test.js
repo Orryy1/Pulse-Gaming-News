@@ -76,7 +76,46 @@ test("classifyLocalTtsProofFailure classifies duration, timestamps and unsafe vo
       durationSeconds: 66.2,
       timestampsStamped: true,
       localVoiceReference: { referencePresent: true },
+      acoustic: { medianPitchHz: 118 },
+      transcript: "Follow Pulse Gaming so you never miss a beat.",
+      wordCount: 190,
     }).code,
     null,
+  );
+});
+
+test("classifyLocalTtsProofFailure rejects proof-ready audio without acoustic, outro and pace evidence", () => {
+  const base = {
+    durationSeconds: 66.2,
+    timestampsStamped: true,
+    localVoiceReference: { referencePresent: true },
+    wordCount: 190,
+  };
+
+  assert.equal(classifyLocalTtsProofFailure(base).code, "pitch_profile_unverified");
+  assert.equal(
+    classifyLocalTtsProofFailure({
+      ...base,
+      acoustic: { medianPitchHz: 62 },
+      transcript: "Follow Pulse Gaming so you never miss a beat.",
+    }).code,
+    "demonic_low_voice_risk",
+  );
+  assert.equal(
+    classifyLocalTtsProofFailure({
+      ...base,
+      acoustic: { medianPitchHz: 118 },
+      transcript: "The story ends without the channel outro.",
+    }).code,
+    "missing_spoken_outro",
+  );
+  assert.equal(
+    classifyLocalTtsProofFailure({
+      ...base,
+      acoustic: { medianPitchHz: 118 },
+      transcript: "Follow Pulse Gaming so you never miss a beat.",
+      wordCount: 95,
+    }).code,
+    "spoken_pace_too_slow",
   );
 });

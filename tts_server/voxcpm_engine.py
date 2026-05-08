@@ -59,6 +59,7 @@ class VoxCPMEngine:
         self._model = None
         self._model_path = model_path or "openbmb/VoxCPM2"
         self.sample_rate = self.SAMPLE_RATE
+        self.last_voice_diagnostics: Dict[str, Any] = {}
         # Multiplied with the per-call speaking_rate so the operator can set a
         # global pace floor. VoxCPM 2 default voice ≈ 50 WPM, so 2.6x lands
         # near 130 WPM (Pulse Gaming target). Sleep niches should set ~1.0-1.4.
@@ -128,6 +129,18 @@ class VoxCPMEngine:
             audio = self._time_stretch(audio, effective_rate)
             stretch_ms = int((time.monotonic() - stretch_t0) * 1000)
             log.info("stretch_end elapsed_ms=%s samples=%d", stretch_ms, len(audio))
+            try:
+                post_metrics = self._voice_quality_metrics(audio, text)
+                self.last_voice_diagnostics = {
+                    **(self.last_voice_diagnostics or {}),
+                    "post_stretch_metrics": post_metrics,
+                    "effective_rate": effective_rate,
+                }
+            except Exception:
+                self.last_voice_diagnostics = {
+                    **(self.last_voice_diagnostics or {}),
+                    "effective_rate": effective_rate,
+                }
         return audio
 
     def _build_generation_kwargs(
@@ -151,7 +164,22 @@ class VoxCPMEngine:
 
     def _generate_with_voice_qa(self, text: str, kwargs: Dict[str, Any]) -> np.ndarray:
         if not self.voice_qa.get("enabled", False):
-            return self._generate_candidate("configured", kwargs)
+            audio = self._generate_candidate("configured", kwargs)
+            metrics = self._voice_quality_metrics(audio, text)
+            self.last_voice_diagnostics = {
+                "qa_enabled": False,
+                "selected_candidate": "configured",
+                "metrics": metrics,
+                "rejection": None,
+                "candidates": [
+                    {
+                        "label": "configured",
+                        "metrics": metrics,
+                        "rejection": None,
+                    }
+                ],
+            }
+            return audio
 
         candidates = [("configured", kwargs)]
         if kwargs.get("prompt_text"):
@@ -183,20 +211,45 @@ class VoxCPMEngine:
         best_audio: Optional[np.ndarray] = None
         best_metrics: Dict[str, Any] = {}
         best_reason: Optional[str] = None
+        best_label: Optional[str] = None
+        candidate_diagnostics = []
         for label, candidate_kwargs in candidates:
             audio = self._generate_candidate(label, candidate_kwargs)
             metrics = self._voice_quality_metrics(audio, text)
             reason = self._voice_quality_rejection(metrics)
             log.info("voice_qa candidate=%s metrics=%s rejection=%s", label, metrics, reason)
+            candidate_diagnostics.append(
+                {
+                    "label": label,
+                    "metrics": metrics,
+                    "rejection": reason,
+                }
+            )
             if reason is None:
+                self.last_voice_diagnostics = {
+                    "qa_enabled": True,
+                    "selected_candidate": label,
+                    "metrics": metrics,
+                    "rejection": None,
+                    "candidates": candidate_diagnostics,
+                }
                 return audio
 
             if best_audio is None or self._voice_quality_score(metrics) > self._voice_quality_score(best_metrics):
                 best_audio = audio
                 best_metrics = metrics
                 best_reason = reason
+                best_label = label
 
         if not self.voice_qa.get("fallback_without_reference", False):
+            self.last_voice_diagnostics = {
+                "qa_enabled": True,
+                "selected_candidate": None,
+                "metrics": best_metrics,
+                "rejection": best_reason,
+                "best_rejected_candidate": best_label,
+                "candidates": candidate_diagnostics,
+            }
             raise RuntimeError(
                 "voice_qa_all_candidates_rejected: "
                 f"metrics={best_metrics} rejection={best_reason}"
@@ -207,6 +260,14 @@ class VoxCPMEngine:
             best_metrics,
             best_reason,
         )
+        self.last_voice_diagnostics = {
+            "qa_enabled": True,
+            "selected_candidate": best_label or "configured",
+            "metrics": best_metrics,
+            "rejection": best_reason,
+            "used_rejected_fallback": True,
+            "candidates": candidate_diagnostics,
+        }
         return best_audio if best_audio is not None else self._generate_candidate("configured", kwargs)
 
     def _generate_candidate(self, label: str, kwargs: Dict[str, Any]) -> np.ndarray:

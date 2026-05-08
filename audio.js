@@ -293,6 +293,35 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function numberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function normaliseLocalVoiceDiagnostics(diagnostics = null) {
+  if (!diagnostics || typeof diagnostics !== "object") return null;
+  const metrics = diagnostics.metrics || diagnostics.acoustic || diagnostics;
+  const acoustic = {
+    medianPitchHz: numberOrNull(
+      metrics.medianPitchHz ??
+        metrics.meanPitchHz ??
+        metrics.pitchHz ??
+        metrics.f0MedianHz ??
+        metrics.median_f0_hz,
+    ),
+    p10PitchHz: numberOrNull(metrics.p10PitchHz ?? metrics.p10_f0_hz),
+    p90PitchHz: numberOrNull(metrics.p90PitchHz ?? metrics.p90_f0_hz),
+    centroidHz: numberOrNull(metrics.centroidHz ?? metrics.centroid_hz),
+    durationSeconds: numberOrNull(metrics.durationSeconds ?? metrics.duration_s),
+  };
+  return {
+    ...diagnostics,
+    metrics,
+    acoustic,
+  };
+}
+
 async function requestTtsWithRetry({
   provider,
   requestConfig,
@@ -425,6 +454,26 @@ async function generateTTS(text, outputPath, rateOverride) {
   const timestampsPath = outputPath.replace(/\.mp3$/, "_timestamps.json");
   const timestampsWriteTarget = mediaPaths.writePath(timestampsPath);
   const alignment = response.data.alignment || {};
+  const voiceDiagnostics = normaliseLocalVoiceDiagnostics(
+    response.data.voice_diagnostics || response.data.voiceDiagnostics,
+  );
+  if (provider === "local" || voiceDiagnostics) {
+    alignment.meta = {
+      ...(alignment.meta || {}),
+      provider,
+      source: provider === "local" ? "local-tts-server" : "remote-tts-server",
+      text,
+      voiceDiagnostics,
+      acoustic: voiceDiagnostics?.acoustic || alignment.meta?.acoustic || null,
+      localTts: provider === "local"
+        ? {
+            voiceId,
+            baseUrl,
+            speakingRate: resolvedVoiceSettings.speaking_rate,
+          }
+        : null,
+    };
+  }
   await fs.writeJson(timestampsWriteTarget, alignment, { spaces: 2 });
 
   // Return the repo-relative path so callers and the DB continue
@@ -739,6 +788,7 @@ module.exports.resolveLocalTtsSpeakingRate = resolveLocalTtsSpeakingRate;
 module.exports.resolveVoiceSettingsForProvider = resolveVoiceSettingsForProvider;
 module.exports.isRetryableLocalTtsError = isRetryableLocalTtsError;
 module.exports.requestTtsWithRetry = requestTtsWithRetry;
+module.exports.normaliseLocalVoiceDiagnostics = normaliseLocalVoiceDiagnostics;
 module.exports.assertBrandNameQaForTts = assertBrandNameQaForTts;
 module.exports.selectRawTtsScript = selectRawTtsScript;
 

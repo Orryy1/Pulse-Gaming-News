@@ -61,6 +61,28 @@ test("Pulse VoxCPM engine passes cfg, timesteps, prompt policy, voice QA and den
   assert.match(serverSource, /accepted_reference_id/);
 });
 
+test("Pulse local TTS server returns per-request voice diagnostics", () => {
+  const engineSource = fs.readFileSync(
+    path.join(ROOT, "tts_server", "voxcpm_engine.py"),
+    "utf8",
+  );
+  const serverSource = fs.readFileSync(
+    path.join(ROOT, "tts_server", "server.py"),
+    "utf8",
+  );
+  const audioSource = fs.readFileSync(path.join(ROOT, "audio.js"), "utf8");
+
+  assert.match(engineSource, /self\.last_voice_diagnostics/);
+  assert.match(engineSource, /selected_candidate/);
+  assert.match(engineSource, /median_f0_hz/);
+  assert.match(serverSource, /voice_diagnostics:\s*Optional\[dict\]/);
+  assert.match(serverSource, /getattr\(engine,\s*"last_voice_diagnostics"/);
+  assert.match(serverSource, /voice_diagnostics=voice_diagnostics/);
+  assert.match(audioSource, /normaliseLocalVoiceDiagnostics/);
+  assert.match(audioSource, /voice_diagnostics/);
+  assert.match(audioSource, /medianPitchHz/);
+});
+
 test("Pulse VoxCPM generation is serialised and stage-timed for hangs", () => {
   const engineSource = fs.readFileSync(
     path.join(ROOT, "tts_server", "voxcpm_engine.py"),

@@ -408,9 +408,12 @@ async function resolveNarration({
       provider: suppliedLocalTts ? "local" : "external",
       source: suppliedLocalTts ? "provided-local-tts-audio" : "provided-real-audio",
       signatureHash: meta?.meta?.signatureHash || null,
-      approvedLocalVoice: meta?.meta?.approvedLocalVoice,
+      approvedLocalVoice: meta?.meta?.approvedLocalVoice === true,
       acceptedLocalVoice: meta?.meta?.acceptedLocalVoice || null,
+      acoustic: meta?.meta?.acoustic || null,
+      voiceDiagnostics: meta?.meta?.voiceDiagnostics || null,
       transcript:
+        meta?.meta?.transcript ||
         meta?.meta?.text ||
         (Array.isArray(transcriptChars) ? transcriptChars.join("") : ""),
     };
@@ -441,7 +444,11 @@ async function resolveNarration({
       provider: "local",
       source: voice.source || "local-production-voxcpm-path",
       signatureHash: voice.signatureHash || meta?.meta?.signatureHash || null,
+      approvedLocalVoice: meta?.meta?.approvedLocalVoice === true,
       acceptedLocalVoice: meta?.meta?.acceptedLocalVoice || null,
+      acoustic: meta?.meta?.acoustic || null,
+      voiceDiagnostics: meta?.meta?.voiceDiagnostics || null,
+      transcript: meta?.meta?.transcript || meta?.meta?.text || "",
     };
   }
 
@@ -779,8 +786,11 @@ async function renderStillDeckVariant({
       voiceId: process.env.ELEVENLABS_VOICE_ID || null,
       editorialScriptAppliedToAudio: narration.mode === "real_audio",
       timestampSource: narration.timestampsPath ? "tts-alignment" : null,
-      approvedLocalVoice: process.env.STUDIO_V2_LOCAL_VOICE_APPROVED === "true",
+      approvedLocalVoice: narration.approvedLocalVoice === true,
       acceptedLocalVoice: narration.acceptedLocalVoice || null,
+      acoustic: narration.acoustic || null,
+      voiceDiagnostics: narration.voiceDiagnostics || null,
+      transcript: narration.transcript || null,
     },
     audioDurationS: narration.mode === "real_audio" ? narration.durationS : fixtureDurationS,
     assPath,
@@ -807,7 +817,11 @@ async function renderStillDeckVariant({
     audioPath: narration.audioPath ? path.relative(ROOT, narration.audioPath).replace(/\\/g, "/") : null,
     timestampsPath: narration.timestampsPath ? path.relative(ROOT, narration.timestampsPath).replace(/\\/g, "/") : null,
     signatureHash: narration.signatureHash || null,
+    approvedLocalVoice: narration.approvedLocalVoice === true,
     acceptedLocalVoice: narration.acceptedLocalVoice || null,
+    acoustic: narration.acoustic || null,
+    voiceDiagnostics: narration.voiceDiagnostics || null,
+    transcript: narration.transcript || null,
     note:
       narration.mode === "real_audio"
         ? "Real narration audio was used for this local proof."

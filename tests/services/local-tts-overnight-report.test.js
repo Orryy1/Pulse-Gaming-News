@@ -25,6 +25,11 @@ const ACCEPTED_REF = {
   referencePresent: true,
 };
 
+const PASSING_PROOF = {
+  acoustic: { medianPitchHz: 118 },
+  transcript: "A clean gaming update. Follow Pulse Gaming so you never miss a beat.",
+};
+
 test("local TTS overnight report is green when all Liam proofs are accepted", () => {
   const report = buildLocalTtsOvernightReport({
     doctorReport: DOCTOR_GREEN,
@@ -40,13 +45,16 @@ test("local TTS overnight report is green when all Liam proofs are accepted", ()
           duration_verdict: "pass",
           local_voice_metadata: "stamped",
           local_voice_reference: ACCEPTED_REF,
+          ...PASSING_PROOF,
         },
         {
           story_id: "rss_two",
           resolved_audio_path: "D:/pulse-data/media/test/output/rss_two_liam.mp3",
+          text_word_count: 196,
           duration_seconds: 68.4,
           duration_verdict: "pass",
           local_voice_reference: ACCEPTED_REF,
+          ...PASSING_PROOF,
         },
       ],
       skipped: [],
@@ -59,6 +67,8 @@ test("local TTS overnight report is green when all Liam proofs are accepted", ()
   assert.equal(report.proof_batch.applied[0].word_count, 192);
   assert.equal(report.proof_batch.applied[0].estimated_seconds, 66.8);
   assert.equal(report.proof_batch.applied[0].wpm, 174);
+  assert.equal(report.proof_batch.applied[0].acoustic.medianPitchHz, 118);
+  assert.equal(report.proof_batch.applied[0].spoken_outro_present, true);
   assert.equal(report.proof_batch.applied[0].timestamp_verdict, "pass");
   assert.equal(report.proof_batch.rejected_count, 0);
   assert.equal(report.safety.production_voice_unchanged, true);
@@ -99,6 +109,8 @@ test("local TTS overnight report stays amber when the batch recovered from a res
           duration_seconds: 67,
           duration_verdict: "pass",
           local_voice_reference: ACCEPTED_REF,
+          text_word_count: 190,
+          ...PASSING_PROOF,
         },
       ],
       skipped: [
@@ -127,6 +139,8 @@ test("local TTS overnight report rejects proofs without the accepted Liam refere
           story_id: "rss_bad",
           duration_seconds: 66.2,
           duration_verdict: "pass",
+          text_word_count: 190,
+          ...PASSING_PROOF,
           local_voice_reference: {
             id: "old-local-voice",
             referencePresent: true,
@@ -139,6 +153,53 @@ test("local TTS overnight report rejects proofs without the accepted Liam refere
   assert.equal(report.verdict, "AMBER");
   assert.equal(report.proof_batch.applied[0].verdict, "reject_unaccepted_voice");
   assert.equal(report.proof_batch.rejected_count, 1);
+});
+
+test("local TTS overnight report rejects accepted-reference proofs without pitch and outro evidence", () => {
+  const report = buildLocalTtsOvernightReport({
+    doctorReport: DOCTOR_GREEN,
+    audioApply: {
+      applied: [
+        {
+          story_id: "rss_no_acoustic",
+          duration_seconds: 66.2,
+          duration_verdict: "pass",
+          text_word_count: 190,
+          local_voice_reference: ACCEPTED_REF,
+          transcript: "Follow Pulse Gaming so you never miss a beat.",
+        },
+        {
+          story_id: "rss_low_pitch",
+          duration_seconds: 66.2,
+          duration_verdict: "pass",
+          text_word_count: 190,
+          local_voice_reference: ACCEPTED_REF,
+          acoustic: { medianPitchHz: 61 },
+          transcript: "Follow Pulse Gaming so you never miss a beat.",
+        },
+        {
+          story_id: "rss_no_outro",
+          duration_seconds: 66.2,
+          duration_verdict: "pass",
+          text_word_count: 190,
+          local_voice_reference: ACCEPTED_REF,
+          acoustic: { medianPitchHz: 118 },
+          transcript: "This proof ends without the spoken channel line.",
+        },
+      ],
+    },
+  });
+
+  assert.equal(report.verdict, "AMBER");
+  assert.deepEqual(
+    report.proof_batch.applied.map((row) => row.verdict),
+    [
+      "reject_pitch_profile_unverified",
+      "reject_demonic_low_voice_risk",
+      "reject_missing_spoken_outro",
+    ],
+  );
+  assert.equal(report.proof_batch.voice_ready_count, 0);
 });
 
 test("local TTS overnight report is red when the doctor is red", () => {

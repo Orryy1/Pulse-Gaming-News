@@ -93,6 +93,30 @@ test("final voice audit report is readable and does not mutate media", () => {
   assert.match(md, /approved_voice_metadata_missing/);
 });
 
+test("final voice audit markdown surfaces pitch, outro and WPM evidence", () => {
+  const report = buildFinalVoiceAudit({
+    files: ["D:/pulse-data/media/output/final/rss_good.mp4"],
+    reportsByStoryId: {
+      rss_good: {
+        narration: {
+          provider: "elevenlabs",
+          source: "elevenlabs-production-path",
+          audioPath: "D:/pulse-data/media/output/audio/rss_good.mp3",
+          acoustic: { medianPitchHz: 118 },
+          transcript: "Follow Pulse Gaming so you never miss a beat.",
+          wpm: 176,
+        },
+      },
+    },
+  });
+
+  const md = renderFinalVoiceAuditMarkdown(report);
+
+  assert.match(md, /pitch=118Hz/);
+  assert.match(md, /outro=true/);
+  assert.match(md, /wpm=176/);
+});
+
 test("final voice report loader finds sidecar reports for dispatch tooling", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "final-voice-loader-"));
   const finalDir = path.join(dir, "final");

@@ -24,7 +24,7 @@ Recommendation: do not approve a Studio V2 live pilot until a packet is green.
 
 Decision needed: approve operator-owned token refresh/sync later.
 
-Why it matters: earlier operator/browser OAuth was reported as successful on `pulse.orryy.com`, but this local repo's TikTok token store still reports expired. Official inbox upload cannot be tested locally until the local token gate is clear.
+Why it matters: earlier operator/browser OAuth was reported as successful on `pulse.orryy.com`, but this local repo's TikTok token store still reports expired. Official inbox upload cannot be tested locally until the local token gate is clear, and the selected MP4 pack still needs creative review before any inbox send.
 
 What changes: local TikTok token files would be refreshed or synced. Public auto-posting should remain disabled.
 
@@ -32,9 +32,9 @@ Risk: OAuth/token actions touch a live platform account.
 
 Rollback: keep a token-file backup and do not upload until `npm run tiktok:auth-doctor` is green.
 
-Validation: `npm run tiktok:auth-doctor` is `AMBER`, `npm run tiktok:token -- --dry-run` reports `dry_run_refresh_available`, no token mutation occurred.
+Validation: `npm run tiktok:auth-doctor` is `AMBER`, `npm run tiktok:token -- --dry-run` reports `dry_run_refresh_available`, `npm run ops:platform-doctor` reports `tiktok_local_token_refresh_or_sync_required` and `tiktok_creative_review_required`. No token mutation occurred.
 
-Recommendation: do this with Martin present, then test only the official inbox/draft route with a clean current MP4.
+Recommendation: do this with Martin present, then test only the official inbox/draft route with a clean current MP4 after creative review is green.
 
 ## 3. TikTok Browser Automation
 
@@ -49,6 +49,22 @@ Risk: live-account automation could trigger TikTok anti-abuse systems.
 Rollback: use official inbox upload or manual phone workflow.
 
 Recommendation: do not approve live-account browser automation.
+
+## 3a. Instagram Rerender After 2207076
+
+Decision needed: no live approval yet; approve rerender/codec QA work only when a candidate MP4 is selected.
+
+Why it matters: Instagram error `2207076` means Meta rejected the media during processing. Retrying the same MP4 through URL fallback is likely to fail again and create duplicate failed containers.
+
+What changes: local render/codec QA should produce a fresh MP4; no platform upload should be retried automatically.
+
+Risk: rerendering is safe locally, but live upload retry is platform-mutating.
+
+Rollback: keep the failed MP4 out of retry queues and rerun the platform doctor after a fresh render.
+
+Validation: `PLATFORM_READINESS_DOCTOR.md` classifies `2207076` as `media_processing_rejected` with `rerender_mp4_codec_qa_required`.
+
+Recommendation: rerender locally first, then allow normal scheduler/publisher flow to try Instagram only with a fresh passing MP4.
 
 ## 4. YouTube Analytics Read-Only Re-Auth
 

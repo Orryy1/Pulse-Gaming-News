@@ -58,6 +58,7 @@
     "ops:media:verify": "node tools/media-verify.js",
     "ops:db:backup-dry-run": "node tools/db-backup-dry-run.js",
     "ops:platform:status": "node tools/platform-status.js",
+    "ops:platform-doctor": "node tools/platform-readiness-doctor.js",
     "ops:social-platforms": "node tools/social-platform-operations.js",
     "ops:analytics-doctor": "node tools/analytics-capability-doctor.js",
     "ops:youtube-analytics-packet": "node tools/youtube-analytics-ingestion-packet.js",

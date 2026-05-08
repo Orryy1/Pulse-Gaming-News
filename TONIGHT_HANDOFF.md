@@ -23,6 +23,8 @@ Date: 2026-05-08
 - TikTok OAuth shape is valid, but local token state is honestly reported as expired/refreshable.
 - TikTok dispatch now verifies MP4 and cover file existence, not just DB path strings.
 - Facebook Reels eligibility previously looked unblocked and should be watched on the next normal publish.
+- Platform readiness doctor now reports TikTok, Facebook Reels and Instagram Reels without OAuth, token mutation, uploads or posts.
+- Instagram `2207076` is now operator-visible as rerender/codec QA work, not a same-MP4 retry or URL fallback.
 - Learning, comment digest, longform and monetisation tooling are report-only and safe.
 
 ## Current Verdicts
@@ -32,6 +34,7 @@ Date: 2026-05-08
 - Flash Lane: no ready local proof yet
 - Motion acquisition: closest story needs alternate official BioShock and Red Dead sources plus another usable GTA window; any new source must pass `media:intake-official-sources` first
 - TikTok: `AMBER`, local token needs refresh/sync and clean MP4 pack
+- Platform doctor: `AMBER`, current blockers are TikTok local token sync, TikTok creative-ready MP4 and Instagram rerender after `2207076`
 - Analytics learning: `AMBER`, public counters only until YouTube analytics scope is granted
 - Longform: outline ready for editorial review
 - Monetisation: pre-monetisation, report-only
@@ -52,6 +55,7 @@ Date: 2026-05-08
 - `ALTERNATE_OFFICIAL_SOURCE_HANDOFF.md`
 - `test/output/official_source_intake_report.md`
 - `TIKTOK_OVERNIGHT_AUTOMATION_REPORT.md`
+- `PLATFORM_READINESS_DOCTOR.md`
 - `VOICE_SHOOTOUT_OVERNIGHT_REPORT.md`
 - `LONGFORM_OVERNIGHT_ARCHITECTURE_REPORT.md`
 - `MONETISATION_OVERNIGHT_REPORT.md`

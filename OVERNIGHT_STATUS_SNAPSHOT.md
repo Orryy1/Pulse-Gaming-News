@@ -62,6 +62,12 @@ Generated: 2026-05-08 05:14 BST
 - Official inbox/manual route remains the safest route once a clean MP4 pack exists.
 - Public direct-post approval is still not confirmed.
 - New safe gate: dispatch now checks whether MP4 and cover files actually exist, not just whether DB paths are populated.
+- Platform doctor: `PLATFORM_READINESS_DOCTOR.md` now separates local token readiness from browser OAuth success and blocks inbox upload until the selected MP4 pack clears creative review.
+
+## Facebook And Instagram
+
+- Facebook Reels: manual upload proof observed; code path remains verifier-guarded and must see ready/published/permalink evidence before counting a Reel as live.
+- Instagram Reels: latest `2207076` media processing error is classified as rerender/codec QA work; URL fallback must not resubmit the same rejected MP4.
 
 ## Analytics And Learning
 

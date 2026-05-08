@@ -5,9 +5,9 @@ Date: 2026-05-08
 ## Branch
 
 - Branch: `codex/readiness-qa-failure-window`
-- Current base commit before this slice: `71690df9`
-- Latest pushed slice: longform confidence gates, voice shootout safety modes, affiliate disclosure/audit gates and expanded monetisation readiness tracking.
-- Current working slice: local monetisation state collector with fixture/file/local read-only modes.
+- Current base commit before this slice: `379229fa`
+- Latest pushed slice: local monetisation state provenance with fixture/file/local read-only modes.
+- Current working slice: local Liam voice shootout sample generation under `test/output`.
 - Deployed: no
 - Railway/env/Cloudflare/OAuth/production DB/social posting: untouched
 - Production renderer and production voice defaults: unchanged
@@ -29,6 +29,7 @@ Date: 2026-05-08
 - Learning, comment digest, longform and monetisation tooling are report-only and safe.
 - Longform dossier selection now enforces per-format confidence rules, so rumours cannot silently enter Weekly Roundup or Monthly Release Radar segment lists.
 - Voice shootout no longer claims samples are reviewable until audio files exist; blocked/pending rows stay in the private map.
+- Voice shootout can now generate explicit local Liam benchmark samples under `test/output/voice-shootout/audio` without calling external APIs, spending credits or switching production voice.
 - Affiliate links now require a story-specific audit before being written to public story output, and approved public affiliate surfaces carry the Amazon Associate disclosure.
 - Monetisation readiness now separates expanded YPP early access from full YPP ad-revenue eligibility and tracks fuller TikTok Creator Rewards prerequisites.
 - Monetisation reports now show where each major metric came from: fixture, file, env override, local SQLite or missing default.
@@ -45,12 +46,16 @@ Date: 2026-05-08
 - Analytics learning: `AMBER`, public counters only until YouTube analytics scope is granted
 - Longform: local-only, insufficient Weekly Roundup segments after stricter confidence filtering
 - Monetisation: pre-monetisation, expanded YPP blocker is currently the 500-subscriber threshold; affiliate safety and local state provenance are branch-only and not deployed
+- Voice shootout: `AMBER_READY_FOR_LOCAL_BENCHMARKS`, with 2 local Liam samples generated for blind review
 
 ## Validation
 
-- Focused modified-area tests: pass (`57/57` for intelligence, affiliate and monetisation state coverage in the latest slice)
-- Full `npm test`: pass (`2288/2288`)
+- Latest focused voice tests: pass (`36/36`)
+- Latest dry-run: `npm run voice:shootout -- --out-dir test/output/voice-shootout --no-root --generate-local-liam --dry-run --limit 2`
+- Latest local apply: `npm run voice:shootout -- --out-dir test/output/voice-shootout --no-root --generate-local-liam --apply-local --limit 2` generated 2 local Liam benchmark MP3s
+- Full `npm test`: pass (`2292/2292`)
 - `npm run build`: pass
+- `git diff --check`: pass with CRLF warnings only
 
 ## Reports To Read
 
@@ -72,6 +77,7 @@ Date: 2026-05-08
 
 - Local Liam proof: `D:\pulse-data\media\output\audio\__local_tts_smoke_sleepy_liam_latest.mp3`
 - Voice-ready story proof: `D:\pulse-data\media\test\output\local-media-repair\audio\rss_8ea7f2689732f31a_liam.mp3`
+- Voice shootout samples: `test/output/voice-shootout/audio/voice_shootout_prices_voxcpm2_1.mp3` and `test/output/voice-shootout/audio/voice_shootout_game_titles_voxcpm2_1.mp3`
 
 ## Biggest Remaining Blocker
 

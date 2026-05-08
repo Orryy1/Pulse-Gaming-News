@@ -16,7 +16,7 @@ Risk: approving a pilot now could publish the same kind of dull, repetitive or w
 
 Rollback: no action needed because no pilot was run.
 
-Validation: focused modified-area tests passed, full `npm test` passed `2283/2283`, build passed and proof candidates still show `0` ready Flash proofs.
+Validation: focused modified-area tests passed, full `npm test` passed `2292/2292`, build passed and proof candidates still show `0` ready Flash proofs.
 
 Recommendation: do not approve a Studio V2 live pilot until a packet is green.
 
@@ -86,7 +86,7 @@ Recommendation: approve read-only analytics re-auth after this branch is safely 
 
 Decision needed: approve a capped external benchmark only if local Liam is not enough.
 
-Why it matters: local Liam is now good enough for proof work. External services may cost money or send voice material off-machine.
+Why it matters: local Liam is now good enough for proof work and has generated two local benchmark samples under `test/output/voice-shootout/audio`. External services may cost money or send voice material off-machine.
 
 What changes: sample generation for external providers only, not a production voice switch.
 
@@ -94,7 +94,7 @@ Risk: credit spend and voice-material handling.
 
 Rollback: keep production voice unchanged and delete rejected samples.
 
-Recommendation: benchmark local Liam first. Delay external providers.
+Recommendation: review the local Liam blind-review samples first. Delay external providers unless those samples are not good enough.
 
 ## 6. Longform Pilot
 
@@ -122,7 +122,7 @@ Risk: public descriptions become slightly longer and weaker stories may lose aff
 
 Rollback: revert the monetisation-safety commit or keep the branch undeployed.
 
-Validation: `npm test` passed `2288/2288`, `npm run build` passed, and focused affiliate/monetisation tests passed.
+Validation: `npm test` passed `2292/2292`, `npm run build` passed, and focused affiliate/monetisation/voice tests passed.
 
 Recommendation: approve this for deployment after reading `MONETISATION_OVERNIGHT_REPORT.md`; it is a safety improvement, but should still be treated as a public-output change.
 

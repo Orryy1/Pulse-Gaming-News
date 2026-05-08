@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-05-08T09:08:50.722Z",
+  "generatedAt": "2026-05-08T09:56:08.627Z",
   "mode": "voice_shootout_framework",
   "transcripts": [
     {
@@ -139,7 +139,30 @@
       "approvalRequired": false
     }
   ],
-  "samples": [],
+  "samples": [
+    {
+      "modelId": "local_liam_current",
+      "transcriptId": "prices",
+      "filePath": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\test\\output\\voice-shootout\\audio\\voice_shootout_prices_voxcpm2_1.mp3",
+      "timestampsPath": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\test\\output\\voice-shootout\\audio\\voice_shootout_prices_voxcpm2_1_timestamps.json",
+      "durationS": 12.48,
+      "provider": "local",
+      "source": "local-production-voxcpm-path",
+      "status": "generated",
+      "acoustic": null
+    },
+    {
+      "modelId": "local_liam_current",
+      "transcriptId": "game_titles",
+      "filePath": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\test\\output\\voice-shootout\\audio\\voice_shootout_game_titles_voxcpm2_1.mp3",
+      "timestampsPath": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\test\\output\\voice-shootout\\audio\\voice_shootout_game_titles_voxcpm2_1_timestamps.json",
+      "durationS": 12.48,
+      "provider": "local",
+      "source": "local-production-voxcpm-path",
+      "status": "generated",
+      "acoustic": null
+    }
+  ],
   "audioQa": {
     "duration_seconds": "measured_when_samples_exist",
     "words_per_minute": "measured_when_samples_exist",

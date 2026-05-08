@@ -1,6 +1,6 @@
 # Voice Shootout Overnight Report
 
-Generated: 2026-05-08T09:08:50.722Z
+Generated: 2026-05-08T09:56:08.627Z
 Verdict: AMBER_READY_FOR_LOCAL_BENCHMARKS
 
 ## Model Setup Status
@@ -31,9 +31,17 @@ Verdict: AMBER_READY_FOR_LOCAL_BENCHMARKS
 - pronunciation_watchlist: manual_review_required
 
 ## Blind Review
-- public rows: 0
-- pending or blocked rows: 36
+- public rows: 2
+- pending or blocked rows: 34
 - private model map is kept in JSON only and should not be shared before scoring.
+
+## Local Liam Generation
+- mode: apply_local
+- status: generated
+- output: C:\Users\MORR\gaming-studio\pulse-gaming\test\output\voice-shootout\audio
+- generated samples: 2
+- calls external APIs: false
+- switches production voice: false
 
 ## Safety
 - callsExternalApis: false

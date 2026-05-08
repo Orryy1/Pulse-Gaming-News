@@ -5,9 +5,9 @@ Generated: 2026-05-08 10:12 BST
 ## Branch
 
 - Current branch: `codex/readiness-qa-failure-window`
-- Current base commit before this slice: `71690df9`
-- Latest pushed slice: longform, voice-shootout and monetisation safety improvements
-- Current working slice: local monetisation state collector with fixture/file/local read-only modes
+- Current base commit before this slice: `379229fa`
+- Latest pushed slice: local monetisation state provenance
+- Current working slice: local Liam voice shootout sample generation under `test/output`
 - Deployed: no
 
 ## Safety
@@ -24,9 +24,11 @@ Generated: 2026-05-08 10:12 BST
 
 ## Validation
 
-- Focused modified-area tests: pass (`57/57` for the latest intelligence, affiliate and monetisation state slice)
-- Full `npm test`: pass (`2288/2288`)
+- Latest focused voice tests: pass (`36/36`)
+- Latest local voice shootout apply-local command generated 2 local Liam benchmark samples under `test/output/voice-shootout/audio`
+- Full `npm test`: pass (`2292/2292`)
 - `npm run build`: pass
+- `git diff --check`: pass with CRLF warnings only
 
 ## Local TTS
 
@@ -34,8 +36,10 @@ Generated: 2026-05-08 10:12 BST
 - Approved local voice reference: `pulse-sleepy-liam-20260502`
 - Latest smoke proof: `D:\pulse-data\media\output\audio\__local_tts_smoke_sleepy_liam_latest.mp3`
 - Voice-ready proof: `D:\pulse-data\media\test\output\local-media-repair\audio\rss_8ea7f2689732f31a_liam.mp3`
+- Voice shootout proofs: `test/output/voice-shootout/audio/voice_shootout_prices_voxcpm2_1.mp3` and `test/output/voice-shootout/audio/voice_shootout_game_titles_voxcpm2_1.mp3`
 - The old low/demonic fallback voice is blocked by the local Liam safety gate.
 - New hard proof fields: pitch profile, spoken outro and WPM evidence must now travel with local MP3s before Studio V2 can treat them as voice-ready.
+- Voice shootout now has 2 public blind-review rows and keeps the private model map local.
 
 ## Studio V2 And Flash Lane
 

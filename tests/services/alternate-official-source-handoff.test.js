@@ -116,6 +116,10 @@ test("alternate official source handoff turns exhausted motion gaps into entity 
   assert.equal(row.remaining_reference_count, 0);
   assert.equal(row.verified_store_targets[0].store_app_id, "1174180");
   assert.ok(row.recommended_source_types.some((item) => item.source_type === "platform_storefront_video_reference"));
+  assert.equal(row.manual_source_intake.default_downloads_allowed, false);
+  assert.ok(row.manual_source_intake.required_fields.includes("official_source_url"));
+  assert.ok(row.manual_source_intake.acceptance_checks.some((item) => item.includes("Red Dead")));
+  assert.ok(row.manual_source_intake.rejection_checks.includes("unofficial_reupload"));
   assert.ok(row.unsafe_source_types.includes("random YouTube reuploads"));
   assert.ok(row.next_actions.some((item) => item.includes("media:resolve-trailers")));
 });
@@ -191,7 +195,25 @@ test("alternate official source handoff markdown is readable and safety-labelled
   assert.match(md, /Red Dead/);
   assert.match(md, /No Railway, OAuth, DB/);
   assert.match(md, /official_publisher_or_developer_trailer_page/);
+  assert.match(md, /Manual Official Source Intake/);
+  assert.match(md, /official_source_url/);
+  assert.match(md, /Downloads allowed by default: no/);
   assert.match(md, /Marathon \\| Reveal Trailer/);
+});
+
+test("alternate official source handoff rejects loose manual source intake paths", () => {
+  const report = buildAlternateOfficialSourceHandoffReport({
+    motionGapReport: { gaps: [motionGap()] },
+    referenceReport: { plans: [referencePlan()] },
+  });
+  const intake = report.rows[0].manual_source_intake;
+
+  assert.equal(intake.mode, "operator_supplied_reference_only");
+  assert.equal(intake.apply_local_required_before_any_media_extraction, true);
+  assert.ok(intake.accepted_source_types.some((item) => item.includes("official publisher")));
+  assert.ok(intake.acceptance_checks.some((item) => item.includes("not only the publisher")));
+  assert.ok(intake.rejection_checks.includes("publisher_context_only"));
+  assert.ok(intake.safe_next_commands.every((item) => item.startsWith("npm run ")));
 });
 
 test("studio:v2:alternate-sources command is registered and read-only", () => {

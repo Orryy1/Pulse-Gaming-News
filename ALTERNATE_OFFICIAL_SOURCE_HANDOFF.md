@@ -12,7 +12,7 @@ This report is local-only and report-only. It turns exhausted Flash Lane motion 
 
 ## Input Freshness
 
-- Motion gap report: 2026-05-08T02:12:40.021Z
+- Motion gap report: 2026-05-08T02:41:07.172Z
 - Reference report: 2026-05-08T02:12:25.182Z
 
 Warnings:
@@ -88,6 +88,7 @@ Required fields:
 - official_source_url
 - source_owner
 - source_type
+- source_family
 - source_title
 - evidence_of_officialness
 - entity_match_notes
@@ -115,7 +116,8 @@ Reject if:
 
 - Find a non-exhausted official source for BioShock.
 - Record provenance before any local frame or segment work.
-- Rerun: npm run media:resolve-trailers -- --story-id rss_5b3abe925b27a199 --no-latest-report --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5
+- Validate operator intake: npm run media:intake-official-sources -- --input test/input/official_sources.json --story-id rss_5b3abe925b27a199
+- Rerun: npm run media:resolve-trailers -- --story-id rss_5b3abe925b27a199 --no-latest-report --official-source-intake-report test/output/official_source_intake_report.json --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5
 - If a new official reference exists, rerun: npm run media:validate-trailer-segments -- --story-id rss_5b3abe925b27a199 --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6
 - Then rerun: npm run studio:v2:motion-gap -- --story rss_5b3abe925b27a199
 
@@ -163,6 +165,7 @@ Required fields:
 - official_source_url
 - source_owner
 - source_type
+- source_family
 - source_title
 - evidence_of_officialness
 - entity_match_notes
@@ -190,7 +193,8 @@ Reject if:
 
 - Find a non-exhausted official source for Red Dead.
 - Record provenance before any local frame or segment work.
-- Rerun: npm run media:resolve-trailers -- --story-id rss_5b3abe925b27a199 --no-latest-report --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5
+- Validate operator intake: npm run media:intake-official-sources -- --input test/input/official_sources.json --story-id rss_5b3abe925b27a199
+- Rerun: npm run media:resolve-trailers -- --story-id rss_5b3abe925b27a199 --no-latest-report --official-source-intake-report test/output/official_source_intake_report.json --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5
 - If a new official reference exists, rerun: npm run media:validate-trailer-segments -- --story-id rss_5b3abe925b27a199 --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6
 - Then rerun: npm run studio:v2:motion-gap -- --story rss_5b3abe925b27a199
 
@@ -244,6 +248,7 @@ Required fields:
 - official_source_url
 - source_owner
 - source_type
+- source_family
 - source_title
 - evidence_of_officialness
 - entity_match_notes
@@ -271,7 +276,8 @@ Reject if:
 
 - Find a non-exhausted official source for Marathon.
 - Record provenance before any local frame or segment work.
-- Rerun: npm run media:resolve-trailers -- --story-id 1szzhy9 --no-latest-report --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5
+- Validate operator intake: npm run media:intake-official-sources -- --input test/input/official_sources.json --story-id 1szzhy9
+- Rerun: npm run media:resolve-trailers -- --story-id 1szzhy9 --no-latest-report --official-source-intake-report test/output/official_source_intake_report.json --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5
 - If a new official reference exists, rerun: npm run media:validate-trailer-segments -- --story-id 1szzhy9 --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6
 - Then rerun: npm run studio:v2:motion-gap -- --story 1szzhy9
 
@@ -317,6 +323,7 @@ Required fields:
 - official_source_url
 - source_owner
 - source_type
+- source_family
 - source_title
 - evidence_of_officialness
 - entity_match_notes
@@ -344,7 +351,8 @@ Reject if:
 
 - Find a non-exhausted official source for Tales Of.
 - Record provenance before any local frame or segment work.
-- Rerun: npm run media:resolve-trailers -- --story-id rss_0e2778be9f97ffa4 --no-latest-report --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5
+- Validate operator intake: npm run media:intake-official-sources -- --input test/input/official_sources.json --story-id rss_0e2778be9f97ffa4
+- Rerun: npm run media:resolve-trailers -- --story-id rss_0e2778be9f97ffa4 --no-latest-report --official-source-intake-report test/output/official_source_intake_report.json --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5
 - If a new official reference exists, rerun: npm run media:validate-trailer-segments -- --story-id rss_0e2778be9f97ffa4 --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6
 - Then rerun: npm run studio:v2:motion-gap -- --story rss_0e2778be9f97ffa4
 
@@ -389,6 +397,7 @@ Required fields:
 - official_source_url
 - source_owner
 - source_type
+- source_family
 - source_title
 - evidence_of_officialness
 - entity_match_notes
@@ -416,7 +425,8 @@ Reject if:
 
 - Find a non-exhausted official source for The Division.
 - Record provenance before any local frame or segment work.
-- Rerun: npm run media:resolve-trailers -- --story-id rss_4105cb7c837252c3 --no-latest-report --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5
+- Validate operator intake: npm run media:intake-official-sources -- --input test/input/official_sources.json --story-id rss_4105cb7c837252c3
+- Rerun: npm run media:resolve-trailers -- --story-id rss_4105cb7c837252c3 --no-latest-report --official-source-intake-report test/output/official_source_intake_report.json --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5
 - If a new official reference exists, rerun: npm run media:validate-trailer-segments -- --story-id rss_4105cb7c837252c3 --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6
 - Then rerun: npm run studio:v2:motion-gap -- --story rss_4105cb7c837252c3
 
@@ -468,6 +478,7 @@ Required fields:
 - official_source_url
 - source_owner
 - source_type
+- source_family
 - source_title
 - evidence_of_officialness
 - entity_match_notes
@@ -495,7 +506,8 @@ Reject if:
 
 - Find a non-exhausted official source for GTA.
 - Record provenance before any local frame or segment work.
-- Rerun: npm run media:resolve-trailers -- --story-id 1t0u9o4 --no-latest-report --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5
+- Validate operator intake: npm run media:intake-official-sources -- --input test/input/official_sources.json --story-id 1t0u9o4
+- Rerun: npm run media:resolve-trailers -- --story-id 1t0u9o4 --no-latest-report --official-source-intake-report test/output/official_source_intake_report.json --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5
 - If a new official reference exists, rerun: npm run media:validate-trailer-segments -- --story-id 1t0u9o4 --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6
 - Then rerun: npm run studio:v2:motion-gap -- --story 1t0u9o4
 
@@ -540,6 +552,7 @@ Required fields:
 - official_source_url
 - source_owner
 - source_type
+- source_family
 - source_title
 - evidence_of_officialness
 - entity_match_notes
@@ -567,7 +580,8 @@ Reject if:
 
 - Find a non-exhausted official source for Oblivion.
 - Record provenance before any local frame or segment work.
-- Rerun: npm run media:resolve-trailers -- --story-id 1t0x9ui --no-latest-report --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5
+- Validate operator intake: npm run media:intake-official-sources -- --input test/input/official_sources.json --story-id 1t0x9ui
+- Rerun: npm run media:resolve-trailers -- --story-id 1t0x9ui --no-latest-report --official-source-intake-report test/output/official_source_intake_report.json --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5
 - If a new official reference exists, rerun: npm run media:validate-trailer-segments -- --story-id 1t0x9ui --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6
 - Then rerun: npm run studio:v2:motion-gap -- --story 1t0x9ui
 

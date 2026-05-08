@@ -6,7 +6,7 @@ Generated: 2026-05-08 02:21 BST
 
 - Current branch: `codex/readiness-qa-failure-window`
 - Current base commit before this slice: `1004f3d5`
-- Current slice pending commit: trailer-report overwrite guard, voice proof safety, local motion validation refresh and report updates
+- Current slice pending commit: official source intake validator, resolver integration and updated motion handoff commands
 - Deployed: no
 
 ## Safety
@@ -23,8 +23,8 @@ Generated: 2026-05-08 02:21 BST
 
 ## Validation
 
-- Focused modified-area tests: pass (`116/116`)
-- Full `npm test`: pass (`2193/2193`)
+- Focused modified-area tests: pass (`31/31` for official intake/resolver/handoff, `16/16` for motion gap)
+- Full `npm test`: pass (`2202/2202`)
 - `npm run build`: pass
 
 ## Local TTS
@@ -48,6 +48,7 @@ Generated: 2026-05-08 02:21 BST
 
 - Motion report: `MOTION_ACQUISITION_OVERNIGHT_REPORT.md`
 - Current strategy: alternate official sources, not another blind rescan of exhausted Steam/trailer windows.
+- New intake gate: operator-supplied official sources must pass `npm run media:intake-official-sources` and stay reference-only before resolver/segment validation can use them.
 - Latest local scans rejected weak Oblivion windows and found only one usable The Division window plus one usable Tales window, so neither became Flash-ready.
 - One-story trailer-reference commands now avoid overwriting the canonical batch report unless `--write-latest-report` is explicitly supplied.
 - No video render was started from the blocked proof.

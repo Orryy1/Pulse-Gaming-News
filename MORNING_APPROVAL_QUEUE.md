@@ -16,7 +16,7 @@ Risk: approving a pilot now could publish the same kind of dull, repetitive or w
 
 Rollback: no action needed because no pilot was run.
 
-Validation: focused modified-area tests passed `116/116`, full `npm test` passed `2193/2193`, build passed and proof candidates still show `0` ready Flash proofs.
+Validation: focused modified-area tests passed, full `npm test` passed `2202/2202`, build passed and proof candidates still show `0` ready Flash proofs.
 
 Recommendation: do not approve a Studio V2 live pilot until a packet is green.
 

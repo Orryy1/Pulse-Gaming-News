@@ -84,10 +84,17 @@ test("official trailer resolver CLI keeps one-story runs from overwriting the la
     "rss_gap",
     "--write-latest-report",
   ]);
+  const intakeArgs = parseOfficialTrailerReferenceCliArgs([
+    "node",
+    "tools/official-trailer-reference-resolver.js",
+    "--official-source-intake-report",
+    "test/output/official_source_intake_report.json",
+  ]);
 
   assert.equal(shouldWriteLatestReport(oneStoryArgs), false);
   assert.equal(shouldWriteLatestReport(batchArgs), true);
   assert.equal(shouldWriteLatestReport(explicitOneStoryArgs), true);
+  assert.equal(intakeArgs.officialSourceIntakeReport, "test/output/official_source_intake_report.json");
 });
 
 test("official trailer resolver stays report-only and non-downloading", async () => {

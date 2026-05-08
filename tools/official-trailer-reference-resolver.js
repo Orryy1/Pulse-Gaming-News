@@ -46,6 +46,7 @@ function parseArgs(argv) {
     stillsReport: null,
     noStillsReport: false,
     segmentValidationReport: null,
+    officialSourceIntakeReport: null,
     noExcludeExhaustedSourceFamilies: false,
     exhaustedSourceFamilyThreshold: 8,
     outputDir: OUT,
@@ -64,6 +65,7 @@ function parseArgs(argv) {
     else if (arg === "--stills-report") args.stillsReport = argv[++i] || null;
     else if (arg === "--no-stills-report") args.noStillsReport = true;
     else if (arg === "--segment-validation-report") args.segmentValidationReport = argv[++i] || null;
+    else if (arg === "--official-source-intake-report") args.officialSourceIntakeReport = argv[++i] || null;
     else if (arg === "--no-exclude-exhausted-source-families") args.noExcludeExhaustedSourceFamilies = true;
     else if (arg === "--exhausted-source-family-threshold") {
       args.exhaustedSourceFamilyThreshold = Math.max(1, Number(argv[++i]) || 8);
@@ -98,6 +100,8 @@ function printHelp() {
       "  --no-stills-report    Do not attach still-enrichment report assets",
       "  --segment-validation-report <p>",
       "                        Exclude exhausted source families from a previous local validation report",
+      "  --official-source-intake-report <p>",
+      "                        Attach validated operator-supplied official references as reference-only inputs",
       "  --no-exclude-exhausted-source-families",
       "                        Keep exhausted references even when a segment report is supplied",
       "  --exhausted-source-family-threshold <n>",
@@ -202,6 +206,17 @@ async function loadSegmentValidationReport(args) {
   }
 }
 
+async function loadOfficialSourceIntakeReport(args) {
+  if (!args.officialSourceIntakeReport) return { report: null, source: null };
+  const source = path.resolve(ROOT, args.officialSourceIntakeReport);
+  try {
+    return { report: await fs.readJson(source), source };
+  } catch (err) {
+    process.stderr.write(`[trailer-reference] official source intake ignored: ${err.message}\n`);
+    return { report: null, source };
+  }
+}
+
 function attachVerifiedStoreAssets(stories, assetMap) {
   return stories.map((story) => {
     const enriched = assetMap.get(story.id) || [];
@@ -261,6 +276,7 @@ async function main() {
   const { stories: rawStories, mode } = await loadStories(args);
   const stills = await loadStillsAssetMap(args);
   const segmentValidation = await loadSegmentValidationReport(args);
+  const officialSourceIntake = await loadOfficialSourceIntakeReport(args);
   const stories = attachVerifiedStoreAssets(rawStories, stills.map);
   const report = await buildOfficialTrailerReferenceReport(stories, {
     mode,
@@ -269,11 +285,13 @@ async function main() {
     excludeExhaustedSourceFamilies:
       Boolean(segmentValidation.report) && !args.noExcludeExhaustedSourceFamilies,
     exhaustedSourceFamilyThreshold: args.exhaustedSourceFamilyThreshold,
+    officialSourceIntakeReport: officialSourceIntake.report,
   });
   report.story_mode = mode;
   report.stills_report_source = stills.source;
   report.stills_report_sources = stills.sources || [];
   report.segment_validation_report_source = segmentValidation.source;
+  report.official_source_intake_report_source = officialSourceIntake.source;
   report.exhausted_source_family_filter_enabled =
     Boolean(segmentValidation.report) && !args.noExcludeExhaustedSourceFamilies;
   report.network_metadata_lookup = {

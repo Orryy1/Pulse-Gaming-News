@@ -120,6 +120,7 @@ test("alternate official source handoff turns exhausted motion gaps into entity 
   assert.ok(row.manual_source_intake.required_fields.includes("official_source_url"));
   assert.ok(row.manual_source_intake.acceptance_checks.some((item) => item.includes("Red Dead")));
   assert.ok(row.manual_source_intake.rejection_checks.includes("unofficial_reupload"));
+  assert.ok(row.manual_source_intake.safe_next_commands.some((item) => item.includes("media:intake-official-sources")));
   assert.ok(row.unsafe_source_types.includes("random YouTube reuploads"));
   assert.ok(row.next_actions.some((item) => item.includes("media:resolve-trailers")));
 });

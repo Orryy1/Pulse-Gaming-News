@@ -16,6 +16,7 @@ Date: 2026-05-08
 - The old low/demonic local fallback path is blocked.
 - Studio V2 proof selection now fails safely instead of pretending weak motion is good enough.
 - One-story trailer-reference runs no longer overwrite the canonical batch report unless explicitly requested.
+- Official source intake now validates operator-supplied motion references before the resolver can count them.
 - Local motion validation now rejects the weak Oblivion trailer windows and records The Division/Tales as one usable clip each, not Flash-ready material.
 - TikTok OAuth shape is valid, but local token state is honestly reported as expired/refreshable.
 - TikTok dispatch now verifies MP4 and cover file existence, not just DB path strings.
@@ -27,7 +28,7 @@ Date: 2026-05-08
 - Local TTS: `GREEN`
 - Studio V2 live pilot: `RED_BLOCKED`
 - Flash Lane: no ready local proof yet
-- Motion acquisition: closest story needs alternate official BioShock and Red Dead sources plus another usable GTA window; Marathon is a separate candidate blocker
+- Motion acquisition: closest story needs alternate official BioShock and Red Dead sources plus another usable GTA window; any new source must pass `media:intake-official-sources` first
 - TikTok: `AMBER`, local token needs refresh/sync and clean MP4 pack
 - Analytics learning: `AMBER`, public counters only until YouTube analytics scope is granted
 - Longform: outline ready for editorial review
@@ -35,8 +36,8 @@ Date: 2026-05-08
 
 ## Validation
 
-- Focused modified-area tests: pass (`116/116`)
-- Full `npm test`: pass (`2193/2193`)
+- Focused modified-area tests: pass (`31/31` for official intake/resolver/handoff, `16/16` for motion gap)
+- Full `npm test`: pass (`2202/2202`)
 - `npm run build`: pass
 
 ## Reports To Read
@@ -46,6 +47,8 @@ Date: 2026-05-08
 - `STUDIO_V2_OVERNIGHT_PROMOTION_PACKET.md`
 - `FLASH_LANE_CURRENT_STATE_REPORT.md`
 - `MOTION_ACQUISITION_OVERNIGHT_REPORT.md`
+- `ALTERNATE_OFFICIAL_SOURCE_HANDOFF.md`
+- `test/output/official_source_intake_report.md`
 - `TIKTOK_OVERNIGHT_AUTOMATION_REPORT.md`
 - `VOICE_SHOOTOUT_OVERNIGHT_REPORT.md`
 - `LONGFORM_OVERNIGHT_ARCHITECTURE_REPORT.md`
@@ -63,7 +66,7 @@ The voice problem is mostly solved locally. The video quality problem is now the
 
 ## Recommended Next Work
 
-1. Find non-exhausted official BioShock, Red Dead and Marathon motion sources for the closest Flash Lane candidates.
+1. Find non-exhausted official BioShock, Red Dead and Marathon motion sources, record them in `test/input/official_sources.json`, then validate with `npm run media:intake-official-sources`.
 2. Generate a new local Studio V2 proof only after the motion gate is green.
 3. Refresh or sync the local TikTok token with Martin present, then test official inbox/draft upload only with a clean pack.
 4. Approve YouTube analytics read-only re-auth so the learning loop can use retention and traffic-source data.

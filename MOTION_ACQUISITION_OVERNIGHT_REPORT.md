@@ -60,7 +60,8 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 
 ### Safe Commands
 
-- resolve_alternate_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_5b3abe925b27a199 --no-latest-report --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5`
+- validate_operator_official_source_intake: `npm run media:intake-official-sources -- --input test/input/official_sources.json --story-id rss_5b3abe925b27a199`
+- resolve_alternate_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_5b3abe925b27a199 --no-latest-report --official-source-intake-report test/output/official_source_intake_report.json --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5`
 - plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_5b3abe925b27a199 --trailer-references test/output/official_trailer_references_v1.json`
 - extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_5b3abe925b27a199 --apply-local`
 - validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_5b3abe925b27a199 --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6`
@@ -136,7 +137,8 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 
 ### Safe Commands
 
-- resolve_alternate_official_trailer_refs: `npm run media:resolve-trailers -- --story-id 1szzhy9 --no-latest-report --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5`
+- validate_operator_official_source_intake: `npm run media:intake-official-sources -- --input test/input/official_sources.json --story-id 1szzhy9`
+- resolve_alternate_official_trailer_refs: `npm run media:resolve-trailers -- --story-id 1szzhy9 --no-latest-report --official-source-intake-report test/output/official_source_intake_report.json --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5`
 - plan_frame_sampling: `npm run media:plan-frames -- --story-id 1szzhy9 --trailer-references test/output/official_trailer_references_v1.json`
 - extract_safe_local_frames: `npm run media:extract-frames -- --story-id 1szzhy9 --apply-local`
 - validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id 1szzhy9 --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6`
@@ -267,7 +269,8 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 
 ### Safe Commands
 
-- resolve_alternate_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_0e2778be9f97ffa4 --no-latest-report --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5`
+- validate_operator_official_source_intake: `npm run media:intake-official-sources -- --input test/input/official_sources.json --story-id rss_0e2778be9f97ffa4`
+- resolve_alternate_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_0e2778be9f97ffa4 --no-latest-report --official-source-intake-report test/output/official_source_intake_report.json --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5`
 - plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_0e2778be9f97ffa4 --trailer-references test/output/official_trailer_references_v1.json`
 - extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_0e2778be9f97ffa4 --apply-local`
 - validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_0e2778be9f97ffa4 --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6`
@@ -399,7 +402,8 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 
 ### Safe Commands
 
-- resolve_alternate_official_trailer_refs: `npm run media:resolve-trailers -- --story-id 1t0u9o4 --no-latest-report --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5`
+- validate_operator_official_source_intake: `npm run media:intake-official-sources -- --input test/input/official_sources.json --story-id 1t0u9o4`
+- resolve_alternate_official_trailer_refs: `npm run media:resolve-trailers -- --story-id 1t0u9o4 --no-latest-report --official-source-intake-report test/output/official_source_intake_report.json --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5`
 - plan_frame_sampling: `npm run media:plan-frames -- --story-id 1t0u9o4 --trailer-references test/output/official_trailer_references_v1.json`
 - extract_safe_local_frames: `npm run media:extract-frames -- --story-id 1t0u9o4 --apply-local`
 - validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id 1t0u9o4 --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6`

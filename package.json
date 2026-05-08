@@ -88,6 +88,7 @@
     "media:enrich-stills": "node tools/still-image-enrichment.js",
     "media:plan-motion": "node tools/motion-acquisition-pro.js",
     "media:resolve-trailers": "node tools/official-trailer-reference-resolver.js",
+    "media:intake-official-sources": "node tools/official-source-intake.js",
     "media:plan-frames": "node tools/controlled-frame-extraction-plan.js",
     "media:extract-frames": "node tools/controlled-frame-extraction-worker.js",
     "media:validate-trailer-segments": "node tools/official-trailer-segment-validator.js",

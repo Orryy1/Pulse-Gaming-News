@@ -546,7 +546,14 @@ test("motion gap report asks for alternate official sources when missing entitie
   assert.ok(gap.priority_next_steps.includes("do_not_rescan_same_official_sources_for:GTA,Red Dead"));
   assert.ok(
     gap.recommended_commands.some((item) =>
-      /media:resolve-trailers -- --story-id rss_gap --no-latest-report --segment-validation-report test\/output\/official_trailer_segment_validation_apply_local\.json --exhausted-source-family-threshold 5/.test(
+      /media:intake-official-sources -- --input test\/input\/official_sources\.json --story-id rss_gap/.test(
+        item.command,
+      ),
+    ),
+  );
+  assert.ok(
+    gap.recommended_commands.some((item) =>
+      /media:resolve-trailers -- --story-id rss_gap --no-latest-report --official-source-intake-report test\/output\/official_source_intake_report\.json --segment-validation-report test\/output\/official_trailer_segment_validation_apply_local\.json --exhausted-source-family-threshold 5/.test(
         item.command,
       ),
     ),

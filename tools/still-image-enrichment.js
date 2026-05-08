@@ -29,6 +29,7 @@ function parseArgs(argv) {
     verifyStoreMetadata: false,
     requireVerifiedStore: false,
     multiEntityStoreSearch: false,
+    preferGameplayStills: false,
     maxStoreSearchEntities: 5,
     maxStoreAssetsPerEntity: 3,
     maxDownloadsPerStory: undefined,
@@ -50,6 +51,8 @@ function parseArgs(argv) {
       args.requireVerifiedStore = true;
     } else if (arg === "--multi-entity-store-search") {
       args.multiEntityStoreSearch = true;
+    } else if (arg === "--prefer-gameplay-stills") {
+      args.preferGameplayStills = true;
     } else if (arg === "--max-store-search-entities") {
       args.maxStoreSearchEntities = Math.max(1, Number(argv[++i]) || 5);
     } else if (arg === "--max-store-assets-per-entity") {
@@ -78,6 +81,8 @@ function printHelp() {
       "                     Reject Steam/IGDB assets unless store title/slug verification passes",
       "  --multi-entity-store-search",
       "                     Search Steam stills for each required game/franchise entity",
+      "  --prefer-gameplay-stills",
+      "                     Prefer Steam screenshots/gameplay-like stills over covers and capsules",
       "  --max-store-search-entities <n>",
       "                     Cap entity searches (default 5)",
       "  --max-store-assets-per-entity <n>",
@@ -228,7 +233,8 @@ async function main() {
     applyLocal: args.applyLocal,
     verifyStoreMetadata: args.verifyStoreMetadata,
     requireVerifiedStore: args.requireVerifiedStore,
-    multiEntityStoreSearch: args.multiEntityStoreSearch,
+    multiEntityStoreSearch: args.multiEntityStoreSearch || args.preferGameplayStills,
+    preferGameplayStills: args.preferGameplayStills,
     maxStoreSearchEntities: args.maxStoreSearchEntities,
     maxStoreAssetsPerEntity: args.maxStoreAssetsPerEntity,
     maxDownloadsPerStory: args.maxDownloadsPerStory,
@@ -240,9 +246,14 @@ async function main() {
   const deckMarkdown = renderVisualDeckExamplesMarkdown(deckExamples);
 
   await fs.ensureDir(OUT);
-  const v15 = args.multiEntityStoreSearch;
+  const v16 = args.preferGameplayStills;
+  const v15 = args.multiEntityStoreSearch || v16;
   const v14 = args.verifyStoreMetadata || args.requireVerifiedStore || v15;
-  const stem = v15
+  const stem = v16
+    ? args.applyLocal
+      ? "asset_acquisition_v16_gameplay_stills_apply_local"
+      : "asset_acquisition_v16_gameplay_stills_dry_run"
+    : v15
     ? args.applyLocal
       ? "asset_acquisition_v15_multi_entity_apply_local"
       : "asset_acquisition_v15_multi_entity_dry_run"
@@ -283,6 +294,16 @@ async function main() {
     });
     await fs.writeFile(
       path.join(OUT, "asset_acquisition_v15_multi_entity_store.md"),
+      markdown,
+      "utf8",
+    );
+  }
+  if (v16) {
+    await fs.writeJson(path.join(OUT, "asset_acquisition_v16_gameplay_stills.json"), report, {
+      spaces: 2,
+    });
+    await fs.writeFile(
+      path.join(OUT, "asset_acquisition_v16_gameplay_stills.md"),
       markdown,
       "utf8",
     );

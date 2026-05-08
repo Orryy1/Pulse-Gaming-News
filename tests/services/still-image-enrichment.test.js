@@ -8,6 +8,7 @@ const path = require("node:path");
 
 const {
   ALLOWED_STILL_SOURCE_TYPES,
+  GAMEPLAY_STILL_SOURCE_TYPES,
   buildStillImageEnrichmentPlan,
   renderStillImageEnrichmentMarkdown,
   runStillImageEnrichment,
@@ -440,4 +441,91 @@ test("v1.5 multi-entity store search targets inferred headline game before platf
   assert.deepEqual(plan.multi_entity_store_search.coverage.map((item) => item.entity), ["Marathon"]);
   assert.equal(plan.would_fetch.length, 3);
   assert.equal(plan.would_fetch.every((item) => item.exact_subject_group === "Marathon"), true);
+});
+
+test("v1.6 gameplay still preference pulls Steam screenshots ahead of covers", async () => {
+  const report = await runStillImageEnrichment(
+    [
+      baseStory({
+        title: "Take-Two story compares GTA and Red Dead",
+        full_script: "Take-Two story compares GTA and Red Dead.",
+        downloaded_images: [],
+        game_images: [],
+      }),
+    ],
+    {
+      dryRun: true,
+      multiEntityStoreSearch: true,
+      preferGameplayStills: true,
+      requireVerifiedStore: true,
+      maxDownloadsPerStory: 4,
+      maxStoreAssetsPerEntity: 2,
+      storeSearchHttp: {
+        get: async (url) => {
+          const term = new URL(url).searchParams.get("term").toLowerCase();
+          if (term === "gta") return { data: { items: [{ id: 3240220, name: "Grand Theft Auto V Enhanced" }] } };
+          if (term === "red dead") return { data: { items: [{ id: 1174180, name: "Red Dead Redemption 2" }] } };
+          return { data: { items: [] } };
+        },
+      },
+      storeDetailsHttp: {
+        get: async (url) => {
+          const appId = new URL(url).searchParams.get("appids");
+          const names = {
+            "3240220": "Grand Theft Auto V Enhanced",
+            "1174180": "Red Dead Redemption 2",
+          };
+          return {
+            data: {
+              [appId]: {
+                success: true,
+                data: {
+                  name: names[appId],
+                  screenshots: [
+                    { path_full: `https://cdn.example/${appId}/screen-1.jpg` },
+                    { path_full: `https://cdn.example/${appId}/screen-2.jpg` },
+                  ],
+                },
+              },
+            },
+          };
+        },
+      },
+    },
+  );
+
+  const plan = report.plans[0];
+  assert.ok(GAMEPLAY_STILL_SOURCE_TYPES.has("steam_screenshot"));
+  assert.equal(plan.would_fetch.length, 4);
+  assert.equal(plan.would_fetch.every((item) => item.source_type === "steam_screenshot"), true);
+  assert.equal(plan.would_fetch.every((item) => item.visual_evidence_role === "gameplay_still"), true);
+  assert.equal(plan.visual_evidence_repair.accepted_gameplay_stills, 4);
+  assert.equal(plan.visual_evidence_repair.accepted_cover_like_stills, 0);
+  assert.equal(report.summary.gameplay_still_preference, true);
+  assert.match(renderStillImageEnrichmentMarkdown(report), /Gameplay Still Preference/);
+});
+
+test("v1.6 gameplay still preference can add screenshots for an entity that already has cover art", () => {
+  const plan = buildStillImageEnrichmentPlan(
+    baseStory({
+      downloaded_images: [
+        img("steam_capsule", "steam", "https://cdn.example/gta-cover.jpg", { entity: "GTA" }),
+      ],
+      game_images: [
+        img("steam_screenshot", "steam", "https://cdn.example/gta-screen.jpg", {
+          entity: "GTA",
+          steam_app_title: "Grand Theft Auto V Enhanced",
+        }),
+      ],
+    }),
+    {
+      preferGameplayStills: true,
+      requireVerifiedStore: true,
+    },
+  );
+
+  assert.equal(plan.would_fetch.length, 1);
+  assert.equal(plan.would_fetch[0].source_type, "steam_screenshot");
+  assert.equal(plan.would_fetch[0].entity, "GTA");
+  assert.equal(plan.visual_evidence_repair.accepted_gameplay_stills, 1);
 });

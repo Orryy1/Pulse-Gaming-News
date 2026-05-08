@@ -132,6 +132,57 @@ test("current state flags stale alternate-source handoffs and preserves motion-g
   assert.match(md, /studio:v2:alternate-sources/);
 });
 
+test("current state asks for more gameplay seconds when entities are covered but dominance is low", () => {
+  const report = buildFlashLaneCurrentStateReport({
+    proofCandidateReport: {
+      candidates: [
+        candidate({
+          blockers: ["footage_backbone_clip_dominance_too_low"],
+          visuals: {
+            exact_subject_count: 8,
+            story_target_entities: ["GTA", "BioShock", "Red Dead"],
+            accepted_frame_count: 4,
+            validated_clip_ref_count: 6,
+            validated_clip_source_count: 5,
+            validated_clip_entities: ["GTA", "BioShock", "Red Dead"],
+            missing_validated_clip_entities: [],
+          },
+        }),
+      ],
+    },
+    motionGapReport: {
+      gaps: [
+        {
+          story_id: "story_readyish",
+          motion_gap: {
+            story_entities: ["GTA", "BioShock", "Red Dead"],
+            validated_entities: ["GTA", "BioShock", "Red Dead"],
+            missing_validated_entities: [],
+            acquisition_strategy: {
+              status: "alternate_official_sources_required",
+              alternate_source_entities: ["GTA", "BioShock", "Red Dead"],
+            },
+          },
+        },
+      ],
+    },
+    alternateSourceReport: {
+      rows: [
+        {
+          story_id: "story_readyish",
+          entity: "GTA",
+          blocker: "local_segment_validation_exhausted_current_motion_sources",
+          next_actions: [],
+        },
+      ],
+    },
+  });
+
+  assert.equal(report.rows[0].stage, "needs_alternate_official_motion_source");
+  assert.equal(report.rows[0].operator_next_action, "find_more_validated_gameplay_seconds_or_downgrade_story");
+  assert.deepEqual(report.rows[0].visuals.missing_motion_entities, []);
+});
+
 test("current state reports ready local proofs when all blockers are cleared", () => {
   const report = buildFlashLaneCurrentStateReport({
     proofCandidateReport: {

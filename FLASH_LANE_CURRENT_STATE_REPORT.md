@@ -22,7 +22,7 @@ Read-only control report. No Railway, OAuth, production DB, render default, TTS 
 
 | Story | Stage | Distance | Audio | Exact | Clips | Missing motion entities | Next action |
 | --- | --- | --- | --- | ---: | ---: | --- | --- |
-| rss_5b3abe925b27a199: GTA 6 Owner Passed On A Sequel To A Legacy Franchise, And We're Dying To Know Which One | needs_alternate_official_motion_source | one_blocker | ready 72.5s | 26 | 6/5 | none | find_non_exhausted_official_motion_source |
+| rss_5b3abe925b27a199: GTA 6 Owner Passed On A Sequel To A Legacy Franchise, And We're Dying To Know Which One | needs_alternate_official_motion_source | one_blocker | ready 72.5s | 26 | 6/5 | none | find_more_validated_gameplay_seconds_or_downgrade_story |
 
 ## Next Commands
 

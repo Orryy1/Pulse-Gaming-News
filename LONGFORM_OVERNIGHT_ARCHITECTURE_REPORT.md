@@ -1,8 +1,8 @@
 # Longform Overnight Architecture Report
 
-Generated: 2026-05-08T00:18:16.371Z
+Generated: 2026-05-08T09:10:24.926Z
 Selected format: Weekly Roundup
-Status: outline_ready_for_editorial_review
+Status: insufficient_segments
 
 ## What Was Built
 
@@ -36,6 +36,9 @@ Status: outline_ready_for_editorial_review
 
 ## Fact Safety
 
+- No selected-segment fact flags.
+
+Deferred candidate flags:
 - rumour_must_be_labelled
 - unsupported_release_date:rss_unsupported_release
 

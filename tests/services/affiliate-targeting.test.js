@@ -4,6 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
+  AMAZON_ASSOCIATE_DISCLOSURE,
   amazonSearchUrl,
   buildAffiliateStack,
   buildPinnedComment,
@@ -62,6 +63,7 @@ test("buildPinnedComment uses non-reddit RSS sources without fake r/ prefix", ()
   assert.match(comment, /Source: Eurogamer/);
   assert.doesNotMatch(comment, /Source: r\/Eurogamer/);
   assert.match(comment, /tag=pulsegaming-21/);
+  assert.match(comment, new RegExp(AMAZON_ASSOCIATE_DISCLOSURE));
 });
 
 test("normaliseAffiliateLinks preserves new stacks and old single-url stories", () => {

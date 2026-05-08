@@ -23,6 +23,7 @@ test("buildMetadata renders a targeted affiliate stack in the description", () =
   });
 
   assert.match(meta.description, /Related links:/);
+  assert.match(meta.description, /As an Amazon Associate I earn from qualifying purchases\./);
   assert.match(meta.description, /Pokemon Go Plus\+/);
   assert.match(meta.description, /Pokemon TCG/);
   assert.equal((meta.description.match(/tag=pulsegaming-21/g) || []).length, 2);

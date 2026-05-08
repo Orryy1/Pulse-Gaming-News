@@ -267,7 +267,7 @@ test("reply-drafter: draftReply on no-reply-needed returns null", () => {
 
 // ── monetisation-tracker ──────────────────────────────────────────
 
-test("monetisation: YPP requires subs AND one watch path", () => {
+test("monetisation: full YPP requires subs AND one watch path", () => {
   const ypp = trackYPP({
     subscribers: 1500,
     shorts_views_90d: 0,
@@ -294,7 +294,23 @@ test("monetisation: YPP requires subs AND one watch path", () => {
   assert.equal(ypp4.yppEligible, false);
 });
 
+test("monetisation: expanded YPP models the early-access path separately", () => {
+  const ypp = trackYPP({
+    subscribers: 520,
+    valid_public_uploads_90d: 3,
+    shorts_views_90d: 3_100_000,
+    longform_watch_hours_12m: 0,
+  });
+  assert.equal(ypp.earlyAccessEligible, true);
+  assert.equal(ypp.yppEligible, false);
+  assert.deepEqual(ypp.earlyAccessBlockers, []);
+});
+
 test("monetisation: YPP thresholds match the documented values", () => {
+  assert.equal(YPP_THRESHOLDS.early_subscribers.value, 500);
+  assert.equal(YPP_THRESHOLDS.early_uploads_90d.value, 3);
+  assert.equal(YPP_THRESHOLDS.early_shorts_views_90d.value, 3_000_000);
+  assert.equal(YPP_THRESHOLDS.early_longform_watch_hours_12m.value, 3_000);
   assert.equal(YPP_THRESHOLDS.subscribers.value, 1000);
   assert.equal(YPP_THRESHOLDS.shorts_views_90d.value, 10_000_000);
   assert.equal(YPP_THRESHOLDS.longform_watch_hours_12m.value, 4_000);
@@ -317,8 +333,26 @@ test("monetisation: snapshot reports per-section progress without fantasy revenu
   // shape carries one.
   assert.equal(typeof s.summary.cleared, "number");
   assert.equal(typeof s.summary.ypp_eligible, "boolean");
+  assert.equal(typeof s.summary.ypp_early_access_eligible, "boolean");
   assert.ok(!("revenue" in s.summary));
   assert.ok(!("expected_revenue" in s.summary));
+});
+
+test("monetisation: TikTok Creator Rewards includes account and 60s eligibility gates", () => {
+  const s = buildMonetisationSnapshot({
+    tiktok_followers: 12_000,
+    tiktok_views_30d: 120_000,
+    tiktok_account_type: "personal",
+    tiktok_eligible_region: true,
+    tiktok_good_standing: true,
+    tiktok_payment_tax_setup: true,
+    tiktok_original_content_ready: true,
+    tiktok_latest_video_duration_seconds: 64,
+  });
+  const keys = s.sections.tiktok_creator_rewards.items.map((item) => item.milestone_key);
+  assert.ok(keys.includes("tt_personal_account"));
+  assert.ok(keys.includes("tt_one_minute_video"));
+  assert.ok(s.sections.tiktok_creator_rewards.items.every((item) => item.cleared));
 });
 
 // ── tiktok-strategy ───────────────────────────────────────────────

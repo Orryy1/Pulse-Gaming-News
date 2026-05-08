@@ -1,12 +1,12 @@
 # Overnight Status Snapshot
 
-Generated: 2026-05-08 05:14 BST
+Generated: 2026-05-08 10:12 BST
 
 ## Branch
 
 - Current branch: `codex/readiness-qa-failure-window`
-- Current commit: `04a3bac4`
-- Latest pushed slice: local TTS voice diagnostics are propagated into repair, script-extension, overnight report, Studio V2 ingestion and final voice audit paths
+- Current base commit before this slice: `3a0dbe1c`
+- Latest pushed slice: local proof readiness reports are hardened; current working slice adds longform, voice-shootout and monetisation safety improvements
 - Deployed: no
 
 ## Safety
@@ -23,8 +23,8 @@ Generated: 2026-05-08 05:14 BST
 
 ## Validation
 
-- Focused modified-area tests: pass (`131/131` for local TTS + Studio V2 proof safety coverage)
-- Full `npm test`: pass (`2227/2227`)
+- Focused modified-area tests: pass (`141/141` for local TTS, Studio V2 proof safety, longform, voice shootout, affiliate and monetisation coverage)
+- Full `npm test`: pass (`2283/2283`)
 - `npm run build`: pass
 
 ## Local TTS
@@ -79,16 +79,19 @@ Generated: 2026-05-08 05:14 BST
 ## Longform
 
 - Report: `LONGFORM_OVERNIGHT_ARCHITECTURE_REPORT.md`
-- Status: Weekly Roundup local outline ready for editorial review
+- Status: stricter Weekly Roundup local outline is `insufficient_segments` until enough confirmed/verified stories are available
+- New guardrail: rumours and unsupported release-date stories are deferred instead of being mixed into selected longform segments.
 - No upload, scheduler change or production DB write was made.
 
 ## Monetisation
 
 - Report: `MONETISATION_OVERNIGHT_REPORT.md`
 - Stage: pre-monetisation
-- Cleared milestones: `1/12`
+- Cleared milestones: `1/22`
 - YPP eligible: false
-- Affiliate and sponsor outputs remain report-only.
+- Expanded YPP early-access tracking is now separate from full YPP ad-revenue tracking.
+- TikTok Creator Rewards tracking now includes account type, eligible region, good standing, payment/tax setup, original-content readiness and 60s video eligibility.
+- Affiliate report output remains report-only, but this branch adds public-output safety gates for future deployment: story-specific audit required and Amazon Associate disclosure shown.
 
 ## Known Blockers
 

@@ -5,8 +5,9 @@ Date: 2026-05-08
 ## Branch
 
 - Branch: `codex/readiness-qa-failure-window`
-- Current commit: `04a3bac4`
-- Latest pushed slice: local TTS voice diagnostics now persist acoustic pitch, spoken outro and WPM evidence through local repair, script extension, Studio V2 ingestion and final voice audit.
+- Current base commit before this slice: `3a0dbe1c`
+- Latest pushed slice: local proof readiness reports now require accepted Liam voice evidence, safe TikTok diagnostics and clearer Studio V2 motion gates.
+- Current working slice: longform confidence gates, voice shootout safety modes, affiliate disclosure/audit gates and expanded monetisation readiness tracking.
 - Deployed: no
 - Railway/env/Cloudflare/OAuth/production DB/social posting: untouched
 - Production renderer and production voice defaults: unchanged
@@ -26,6 +27,10 @@ Date: 2026-05-08
 - Platform readiness doctor now reports TikTok, Facebook Reels and Instagram Reels without OAuth, token mutation, uploads or posts.
 - Instagram `2207076` is now operator-visible as rerender/codec QA work, not a same-MP4 retry or URL fallback.
 - Learning, comment digest, longform and monetisation tooling are report-only and safe.
+- Longform dossier selection now enforces per-format confidence rules, so rumours cannot silently enter Weekly Roundup or Monthly Release Radar segment lists.
+- Voice shootout no longer claims samples are reviewable until audio files exist; blocked/pending rows stay in the private map.
+- Affiliate links now require a story-specific audit before being written to public story output, and approved public affiliate surfaces carry the Amazon Associate disclosure.
+- Monetisation readiness now separates expanded YPP early access from full YPP ad-revenue eligibility and tracks fuller TikTok Creator Rewards prerequisites.
 
 ## Current Verdicts
 
@@ -36,13 +41,13 @@ Date: 2026-05-08
 - TikTok: `AMBER`, local token needs refresh/sync and clean MP4 pack
 - Platform doctor: `AMBER`, current blockers are TikTok local token sync, TikTok creative-ready MP4 and Instagram rerender after `2207076`
 - Analytics learning: `AMBER`, public counters only until YouTube analytics scope is granted
-- Longform: outline ready for editorial review
-- Monetisation: pre-monetisation, report-only
+- Longform: local-only, insufficient Weekly Roundup segments after stricter confidence filtering
+- Monetisation: pre-monetisation, expanded YPP blocker is currently the 500-subscriber threshold; affiliate safety is branch-only and not deployed
 
 ## Validation
 
-- Focused modified-area tests: pass (`131/131` for local TTS + Studio V2 proof safety coverage)
-- Full `npm test`: pass (`2227/2227`)
+- Focused modified-area tests: pass (`141/141` for voice, Studio V2, longform, affiliate and monetisation coverage)
+- Full `npm test`: pass (`2283/2283`)
 - `npm run build`: pass
 
 ## Reports To Read
@@ -76,4 +81,4 @@ The voice problem is mostly solved locally. The video quality problem is now the
 2. Generate a new local Studio V2 proof only after the motion gate is green.
 3. Refresh or sync the local TikTok token with Martin present, then test official inbox/draft upload only with a clean pack.
 4. Approve YouTube analytics read-only re-auth so the learning loop can use retention and traffic-source data.
-5. Keep longform and monetisation report-only until the channel has stronger analytics and visual coverage.
+5. Review and approve the affiliate-disclosure/audit branch if you want the safer public monetisation copy deployed.

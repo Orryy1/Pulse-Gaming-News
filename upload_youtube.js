@@ -7,7 +7,10 @@ const { addBreadcrumb, captureException } = require("./lib/sentry");
 const { validateVideo } = require("./lib/validate");
 const db = require("./lib/db");
 const mediaPaths = require("./lib/media-paths");
-const { normaliseAffiliateLinks } = require("./lib/affiliate-targeting");
+const {
+  affiliateDisclosureForLinks,
+  normaliseAffiliateLinks,
+} = require("./lib/affiliate-targeting");
 
 dotenv.config({ override: true });
 
@@ -224,10 +227,13 @@ function buildMetadata(story) {
 
   // --- Section 2: Affiliate CTA ---
   const affiliateLinks = normaliseAffiliateLinks(story).slice(0, 4);
+  const disclosure = affiliateDisclosureForLinks(affiliateLinks);
   if (affiliateLinks.length === 1) {
+    descLines.push(disclosure);
     descLines.push(`${affiliateLinks[0].label}: ${affiliateLinks[0].url}`);
     descLines.push("");
   } else if (affiliateLinks.length > 1) {
+    descLines.push(disclosure);
     descLines.push("Related links:");
     for (const link of affiliateLinks) {
       descLines.push(`- ${link.label}: ${link.url}`);

@@ -16,7 +16,7 @@ Risk: approving a pilot now could publish the same kind of dull, repetitive or w
 
 Rollback: no action needed because no pilot was run.
 
-Validation: focused modified-area tests passed, full `npm test` passed `2202/2202`, build passed and proof candidates still show `0` ready Flash proofs.
+Validation: focused modified-area tests passed, full `npm test` passed `2283/2283`, build passed and proof candidates still show `0` ready Flash proofs.
 
 Recommendation: do not approve a Studio V2 live pilot until a packet is green.
 
@@ -112,14 +112,30 @@ Recommendation: review the longform dossier first, then approve one controlled p
 
 ## 7. Monetisation Live Use
 
-Decision needed: approve story-specific affiliate/sponsor usage only after targeting review.
+Decision needed: approve deploying the new monetisation safety changes only after reviewing the operator impact.
 
-Why it matters: monetisation output is useful, but random links or weak disclosure would harm trust.
+Why it matters: this branch now blocks review-case affiliate links from public story output and adds visible Amazon Associate disclosure to YouTube descriptions, pinned comments and blog posts. That is safer than the old behaviour, but it changes future public copy.
 
-What changes: affiliate links or sponsor language could enter public descriptions/pinned comments.
+What changes: story-specific affiliate links that pass audit can still appear. Fallback/random/review-case links are withheld, and public surfaces include: `As an Amazon Associate I earn from qualifying purchases.`
 
-Risk: missing disclosure, irrelevant links or premature sponsor claims.
+Risk: public descriptions become slightly longer and weaker stories may lose affiliate links until they pass targeting review.
 
-Rollback: keep monetisation report-only and remove any weak links from public copy.
+Rollback: revert the monetisation-safety commit or keep the branch undeployed.
 
-Recommendation: keep report-only until analytics and affiliate targeting are stronger.
+Validation: `npm test` passed `2283/2283`, `npm run build` passed, and focused affiliate/monetisation tests passed.
+
+Recommendation: approve this for deployment after reading `MONETISATION_OVERNIGHT_REPORT.md`; it is a safety improvement, but should still be treated as a public-output change.
+
+## 8. Current Policy Tracking
+
+Decision needed: none immediately; keep as a maintenance item.
+
+Why it matters: monetisation thresholds and platform rules change. The tracker now models expanded YPP early access, full YPP ad-revenue thresholds and more complete TikTok Creator Rewards prerequisites, based on official policy pages checked on 2026-05-08.
+
+What changes: local reports show expanded YPP 500-subscriber early access separately from full YPP ad revenue, and TikTok readiness includes account type, region, good standing, payment/tax setup, original-content readiness and 60s video eligibility.
+
+Risk: rules can change again.
+
+Rollback: update the thresholds/constants in `lib/intelligence/monetisation-tracker.js`.
+
+Recommendation: re-check official policy pages before making monetisation claims in public copy.

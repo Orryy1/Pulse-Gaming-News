@@ -79,7 +79,7 @@ test("revenue path report names the next milestone without fantasy projections",
   });
 
   assert.equal(report.current_stage, "pre_monetisation");
-  assert.match(report.next_monetisable_milestone, /YPP subscriber threshold|Shorts 10M/);
+  assert.match(report.next_monetisable_milestone, /Expanded YPP 500 subscribers|YPP subscriber threshold|Shorts 10M/);
   assert.ok(report.what_not_to_monetise_yet.includes("random affiliate links"));
   assert.equal(report.revenue_projection, null);
 });

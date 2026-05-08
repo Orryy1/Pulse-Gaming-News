@@ -190,9 +190,15 @@ function renderArchitectureReport({ dossier, selector }) {
   lines.push("## Fact Safety");
   lines.push("");
   if (dossier.fact_check_flags.length) {
+    lines.push("Selected segment flags:");
     for (const flag of dossier.fact_check_flags) lines.push(`- ${flag}`);
   } else {
-    lines.push("- No fixture fact flags.");
+    lines.push("- No selected-segment fact flags.");
+  }
+  if (dossier.deferred_fact_check_flags?.length) {
+    lines.push("");
+    lines.push("Deferred candidate flags:");
+    for (const flag of dossier.deferred_fact_check_flags) lines.push(`- ${flag}`);
   }
   lines.push("");
   lines.push("## Promotion Notes");

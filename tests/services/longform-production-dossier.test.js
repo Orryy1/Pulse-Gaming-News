@@ -119,9 +119,12 @@ test("monthly release radar dossier blocks unsupported release dates", () => {
   });
 
   assert.equal(dossier.safety.live_actions_allowed, false);
-  assert.ok(dossier.fact_check_flags.includes("unsupported_release_date:unsupported-date"));
+  assert.ok(!dossier.fact_check_flags.includes("unsupported_release_date:unsupported-date"));
+  assert.ok(dossier.deferred_fact_check_flags.includes("unsupported_release_date:unsupported-date"));
   assert.equal(dossier.publish_status, "local_prototype_only");
-  assert.ok(dossier.segment_list.length >= 2);
+  assert.equal(dossier.segment_list.length, 1);
+  assert.equal(dossier.segment_list[0].story_id, "subnautica2");
+  assert.equal(dossier.status, "insufficient_segments");
 });
 
 test("longform dossier produces chapters, visual plan, SEO and Shorts spin-offs", () => {
@@ -131,10 +134,33 @@ test("longform dossier produces chapters, visual plan, SEO and Shorts spin-offs"
     generatedAt: "2026-05-06T21:35:00.000Z",
   });
 
-  assert.ok(dossier.chapter_plan.length >= 3);
+  assert.ok(dossier.chapter_plan.length >= 2);
   assert.ok(dossier.visual_plan.every((entry) => entry.story_id));
   assert.ok(dossier.seo_package.title.includes("Pulse Gaming"));
   assert.ok(dossier.shorts_spin_off_plan.length >= 2);
+});
+
+test("weekly roundup excludes rumour-confidence segments", () => {
+  const dossier = buildLongformProductionDossier({
+    formatId: "weekly_roundup",
+    stories: FIXTURE_STORIES,
+    generatedAt: "2026-05-06T21:35:00.000Z",
+  });
+
+  assert.ok(!dossier.segment_list.some((segment) => segment.story_id === "gta6trailer"));
+  const deferred = dossier.deferred_candidates.find((candidate) => candidate.story_id === "gta6trailer");
+  assert.equal(deferred.reason, "format_confidence_ineligible");
+});
+
+test("longform selected fact flags are separated from deferred flags", () => {
+  const dossier = buildLongformProductionDossier({
+    formatId: "daily_briefing",
+    stories: FIXTURE_STORIES,
+    generatedAt: "2026-05-06T21:37:00.000Z",
+  });
+
+  assert.ok(!dossier.selected_fact_check_flags.includes("unsupported_release_date:unsupported-date"));
+  assert.ok(dossier.deferred_fact_check_flags.includes("unsupported_release_date:unsupported-date"));
 });
 
 test("longform markdown is operator-readable and clearly local-only", () => {
@@ -148,6 +174,8 @@ test("longform markdown is operator-readable and clearly local-only", () => {
   assert.match(markdown, /# Pulse Gaming Longform Production Dossier/);
   assert.match(markdown, /local-only prototype/i);
   assert.match(markdown, /No upload/);
+  assert.match(markdown, /Source Pack/);
+  assert.match(markdown, /https:\/\/news\.xbox\.com\/example\/subnautica-2-release-times/);
   assert.match(markdown, /Shorts Spin-Off Plan/);
 });
 

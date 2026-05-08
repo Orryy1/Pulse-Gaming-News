@@ -1,6 +1,6 @@
 # Voice Shootout Overnight Report
 
-Generated: 2026-05-08T00:18:16.380Z
+Generated: 2026-05-08T09:08:50.722Z
 Verdict: AMBER_READY_FOR_LOCAL_BENCHMARKS
 
 ## Model Setup Status
@@ -20,18 +20,19 @@ Verdict: AMBER_READY_FOR_LOCAL_BENCHMARKS
 - outro: Pulse outro (cta) watch=Pulse Gaming
 
 ## Audio QA
-- duration_seconds: true
-- words_per_minute: true
-- silence_ratio: true
-- clipping_ratio: true
-- loudness_lufs: true
-- true_peak_db: true
-- median_pitch_hz: true
-- timestamp_viability: true
-- pronunciation_watchlist: true
+- duration_seconds: measured_when_samples_exist
+- words_per_minute: measured_when_samples_exist
+- silence_ratio: planned_until_probe_supports_metric
+- clipping_ratio: planned_until_probe_supports_metric
+- loudness_lufs: measured_when_samples_exist
+- true_peak_db: measured_when_samples_exist
+- median_pitch_hz: measured_when_samples_exist
+- timestamp_viability: requires_alignment_sidecar
+- pronunciation_watchlist: manual_review_required
 
 ## Blind Review
-- public rows: 36
+- public rows: 0
+- pending or blocked rows: 36
 - private model map is kept in JSON only and should not be shared before scoring.
 
 ## Safety

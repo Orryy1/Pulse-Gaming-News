@@ -1,13 +1,13 @@
 # Monetisation Overnight Report
 
-Generated: 2026-05-08T00:18:16.430Z
-Cleared milestones: 1/12
+Generated: 2026-05-08T09:08:50.717Z
+Cleared milestones: 1/22
 YPP eligible: false
 
 ## Revenue Path
 
 Current stage: pre_monetisation
-Next milestone: YPP subscriber threshold
+Next milestone: Expanded YPP 500 subscribers
 Revenue projection: none. No fantasy revenue projection.
 
 ## Affiliate Readiness

@@ -9,22 +9,81 @@ const {
   buildBenchmarkManifest,
   buildBlindReviewPack,
   buildVoiceShootoutReport,
+  EXPECTED_LOCAL_VOICE_REFERENCE_ID,
+  localVoiceReadyStatus,
   localTtsReady,
   renderVoiceReviewSheet,
   renderVoiceShootoutMarkdown,
 } = require("../../lib/studio/v2/voice-shootout");
+const { parseArgs } = require("../../tools/voice-shootout");
 
-test("voice shootout treats green local TTS doctor as local Liam ready", () => {
-  assert.equal(localTtsReady({ verdict: "green" }), true);
-  assert.equal(localTtsReady({ before: { ready: true } }), true);
+function readyDoctor() {
+  return {
+    verdict: "green",
+    before: {
+      ok: true,
+      ready: true,
+      voice: {
+        loaded: true,
+        refResolved: true,
+        reference: {
+          id: EXPECTED_LOCAL_VOICE_REFERENCE_ID,
+          referencePresent: true,
+        },
+      },
+    },
+  };
+}
+
+test("voice shootout treats accepted local Liam doctor as local ready", () => {
+  assert.equal(localTtsReady(readyDoctor()), true);
+  assert.equal(localVoiceReadyStatus(readyDoctor()).reason, "accepted_local_liam_reference_ready");
   assert.equal(localTtsReady({ verdict: "red" }), false);
+  assert.equal(localTtsReady({ verdict: "green" }), false);
+  assert.equal(localTtsReady({ before: { ready: true } }), false);
+});
+
+test("voice shootout accepts overnight report only when accepted Liam reference is present", () => {
+  assert.equal(
+    localTtsReady({
+      overnightReport: {
+        expected_local_voice_id: EXPECTED_LOCAL_VOICE_REFERENCE_ID,
+        queue: {
+          local_tts: {
+            ready: true,
+            status: "ok",
+            phase: "ready",
+            voice: {
+              reference_present: true,
+              accepted_reference_id: EXPECTED_LOCAL_VOICE_REFERENCE_ID,
+            },
+          },
+        },
+      },
+    }),
+    true,
+  );
+  assert.equal(
+    localTtsReady({
+      overnightReport: {
+        queue: {
+          local_tts: {
+            ready: true,
+            status: "ok",
+            voice: { reference_present: true, accepted_reference_id: "old-voice" },
+          },
+        },
+      },
+    }),
+    false,
+  );
 });
 
 test("voice shootout benchmark manifest includes hard pronunciation cases", () => {
   const manifest = buildBenchmarkManifest({
     generatedAt: "2026-05-06T22:00:00.000Z",
     env: {},
-    localTtsDoctorReport: { verdict: "green" },
+    localTtsDoctorReport: readyDoctor(),
   });
 
   const titleScript = manifest.transcripts.find((item) => item.id === "game_titles");
@@ -43,7 +102,7 @@ test("voice shootout marks ElevenLabs as configured but externally locked", () =
       ELEVENLABS_API_KEY: "secret",
       ELEVENLABS_VOICE_ID: "voice-id",
     },
-    localTtsDoctorReport: { verdict: "green" },
+    localTtsDoctorReport: readyDoctor(),
   });
 
   const eleven = manifest.models.find((model) => model.id === "elevenlabs_production_baseline");
@@ -61,21 +120,38 @@ test("voice shootout marks ElevenLabs as configured but externally locked", () =
 test("voice shootout blind review sheet hides model identities", () => {
   const manifest = buildBenchmarkManifest({
     env: {},
-    localTtsDoctorReport: { verdict: "green" },
+    localTtsDoctorReport: readyDoctor(),
+    samples: [
+      {
+        modelId: "local_liam_current",
+        transcriptId: "prices",
+        filePath: "test/output/voice-shootout/audio/local_liam_prices.mp3",
+      },
+    ],
   });
   const pack = buildBlindReviewPack(manifest);
   const sheet = renderVoiceReviewSheet(pack);
 
   assert.ok(pack.privateMap.some((row) => row.modelId === "local_liam_current"));
-  assert.match(sheet, /voice_01/);
+  assert.match(sheet, /voice_\d\d/);
   assert.doesNotMatch(sheet, /local_liam_current|elevenlabs_production_baseline|chatterbox/);
+});
+
+test("voice shootout blind review has no public rows until samples exist", () => {
+  const manifest = buildBenchmarkManifest({
+    env: {},
+    localTtsDoctorReport: readyDoctor(),
+  });
+  const pack = buildBlindReviewPack(manifest);
+  assert.equal(pack.publicRows.length, 0);
+  assert.ok(pack.privateMap.some((row) => row.sampleStatus === "not_generated"));
 });
 
 test("voice shootout report is local, read-only and operator-readable", () => {
   const report = buildVoiceShootoutReport({
     generatedAt: "2026-05-06T22:00:00.000Z",
     env: {},
-    localTtsDoctorReport: { verdict: "green" },
+    localTtsDoctorReport: readyDoctor(),
   });
   const md = renderVoiceShootoutMarkdown(report);
 
@@ -91,4 +167,11 @@ test("voice shootout package script is available", () => {
   const pkg = require("../../package.json");
   assert.equal(pkg.scripts["voice:shootout"], "node tools/voice-shootout.js");
   assert.equal(fs.existsSync(path.join(process.cwd(), "tools", "voice-shootout.js")), true);
+});
+
+test("voice shootout CLI parses safe output controls", () => {
+  const args = parseArgs(["--out-dir", "test/output/voice-audit", "--no-root"]);
+  assert.equal(args.updateRoot, false);
+  assert.match(args.outDir, /test[\\/]output[\\/]voice-audit$/);
+  assert.equal(parseArgs(["--update-root"]).updateRoot, true);
 });

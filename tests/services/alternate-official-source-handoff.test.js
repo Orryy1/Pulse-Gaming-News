@@ -8,7 +8,9 @@ const path = require("node:path");
 const {
   buildAlternateOfficialSourceHandoffReport,
   renderAlternateOfficialSourceHandoffMarkdown,
+  buildSourceIntakeTemplate,
 } = require("../../lib/ops/alternate-official-source-handoff");
+const { parseArgs } = require("../../tools/alternate-official-source-handoff");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 
@@ -150,6 +152,61 @@ test("alternate official source handoff includes reference-only entities even wi
   assert.equal(report.rows[0].blocker, "resolved_references_exhausted_before_segment_plan");
 });
 
+test("alternate official source handoff can filter rows to one story", () => {
+  const report = buildAlternateOfficialSourceHandoffReport({
+    storyId: "rss_gap",
+    motionGapReport: {
+      gaps: [
+        motionGap(),
+        motionGap({
+          story_id: "other_story",
+          title: "Other story",
+          motion_gap: {
+            acquisition_strategy: {
+              status: "alternate_official_sources_required",
+              alternate_source_entities: ["Marathon"],
+              entity_statuses: {},
+            },
+          },
+        }),
+      ],
+    },
+    referenceReport: {
+      plans: [
+        referencePlan(),
+        { story_id: "other_story", alternate_reference_required_entities: ["Marathon"] },
+      ],
+    },
+  });
+
+  assert.equal(report.story_filter, "rss_gap");
+  assert.equal(report.rows.length, 1);
+  assert.equal(report.rows[0].story_id, "rss_gap");
+  assert.equal(report.summary.source_intake_template_entries, 1);
+  assert.equal(report.source_intake_template.entries[0].story_id, "rss_gap");
+});
+
+test("alternate official source handoff generates a fillable intake template", () => {
+  const report = buildAlternateOfficialSourceHandoffReport({
+    motionGapReport: { gaps: [motionGap()] },
+    referenceReport: { plans: [referencePlan()] },
+    storyId: "rss_gap",
+  });
+  const template = buildSourceIntakeTemplate(report.rows);
+  const md = renderAlternateOfficialSourceHandoffMarkdown(report);
+
+  assert.equal(template.length, 1);
+  assert.equal(template[0].story_id, "rss_gap");
+  assert.equal(template[0].entity, "Red Dead");
+  assert.equal(template[0].official_source_url, "");
+  assert.equal(template[0].downloads_allowed, false);
+  assert.equal(template[0].source_family, "rss_gap_red_dead_alternate_official_source");
+  assert.match(template[0].operator_notes, /Suggested searches: Red Dead official trailer/);
+  assert.equal(report.source_intake_template.validation_command.includes("--story-id rss_gap"), true);
+  assert.match(md, /Source Intake Template/);
+  assert.match(md, /official_source_intake_template\.json/);
+});
+
 test("alternate official source handoff creates fallback search queries when reference plan is absent", () => {
   const report = buildAlternateOfficialSourceHandoffReport({
     motionGapReport: { gaps: [motionGap()] },
@@ -273,5 +330,21 @@ test("studio:v2:alternate-sources command is registered and read-only", () => {
   assert.equal(pkg.scripts["studio:v2:alternate-sources"], "node tools/alternate-official-source-handoff.js");
   const tool = fs.readFileSync(path.join(ROOT, "tools", "alternate-official-source-handoff.js"), "utf8");
   assert.match(tool, /alternate_official_source_handoff\.json/);
+  assert.match(tool, /official_source_intake_template\.json/);
+  assert.match(tool, /--story-id/);
   assert.match(tool, /Does not download, render, call TTS, post, mutate DB, touch Railway or trigger OAuth/);
+});
+
+test("studio:v2:alternate-sources CLI parses story filter and template output", () => {
+  const args = parseArgs([
+    "node",
+    "tools/alternate-official-source-handoff.js",
+    "--story",
+    "rss_gap",
+    "--template-output",
+    "test/output/custom_intake_template.json",
+  ]);
+
+  assert.equal(args.storyId, "rss_gap");
+  assert.match(args.templateOutput, /custom_intake_template\.json$/);
 });

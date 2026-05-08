@@ -5,9 +5,9 @@ Generated: 2026-05-08 10:12 BST
 ## Branch
 
 - Current branch: `codex/readiness-qa-failure-window`
-- Current base commit before this slice: `379229fa`
-- Latest pushed slice: local monetisation state provenance
-- Current working slice: local Liam voice shootout sample generation under `test/output`
+- Current base commit before this slice: `f51f8895`
+- Latest pushed slice: local Liam voice shootout sample generation under `test/output`
+- Current working slice: Studio V2/Flash Lane wrong-story exact asset zero tolerance
 - Deployed: no
 
 ## Safety
@@ -26,7 +26,8 @@ Generated: 2026-05-08 10:12 BST
 
 - Latest focused voice tests: pass (`36/36`)
 - Latest local voice shootout apply-local command generated 2 local Liam benchmark samples under `test/output/voice-shootout/audio`
-- Full `npm test`: pass (`2292/2292`)
+- Latest Studio V2 focused tests: pass (`38/38`)
+- Full `npm test`: pass (`2294/2294`)
 - `npm run build`: pass
 - `git diff --check`: pass with CRLF warnings only
 
@@ -46,8 +47,8 @@ Generated: 2026-05-08 10:12 BST
 - Ready local Flash proofs: `0`
 - Current closest story: `rss_5b3abe925b27a199`
 - Local Liam audio for that story is ready at about `72.5s`
-- Exact subject assets are strong enough for planning, but motion is not strong enough for a premium TikTok-style proof.
-- Current closest story needs non-exhausted official BioShock and Red Dead sources plus another usable GTA window; Marathon is a separate candidate blocker.
+- Exact subject assets are numerous but still contaminated; any wrong-story exact asset now blocks Flash proof promotion immediately.
+- Current closest story needs exact-subject deck repair first, then non-exhausted official BioShock and Red Dead sources plus another usable GTA window; Marathon is a separate candidate blocker.
 - Studio V2 live pilot verdict: `RED_BLOCKED`
 
 ## Motion Acquisition
@@ -103,6 +104,7 @@ Generated: 2026-05-08 10:12 BST
 ## Known Blockers
 
 - Studio V2 needs better validated gameplay/motion before any live pilot.
+- Studio V2 also needs zero wrong-story exact assets before any local Flash proof can be considered.
 - TikTok local token needs refresh or sync before official inbox upload can be tested locally.
 - A clean current MP4 pack is required before TikTok manual/inbox workflow.
 - Deep YouTube learning needs read-only analytics OAuth re-auth.

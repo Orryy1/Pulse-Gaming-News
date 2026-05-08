@@ -5,9 +5,9 @@ Date: 2026-05-08
 ## Branch
 
 - Branch: `codex/readiness-qa-failure-window`
-- Current base commit before this slice: `379229fa`
-- Latest pushed slice: local monetisation state provenance with fixture/file/local read-only modes.
-- Current working slice: local Liam voice shootout sample generation under `test/output`.
+- Current base commit before this slice: `f51f8895`
+- Latest pushed slice: local Liam voice shootout sample generation under `test/output`.
+- Current working slice: Studio V2/Flash Lane wrong-story exact asset zero tolerance.
 - Deployed: no
 - Railway/env/Cloudflare/OAuth/production DB/social posting: untouched
 - Production renderer and production voice defaults: unchanged
@@ -18,6 +18,8 @@ Date: 2026-05-08
 - The old low/demonic local fallback path is blocked.
 - Local MP3s now need real pitch, spoken outro and pace evidence before they can be treated as Studio V2 voice-ready.
 - Studio V2 proof selection now fails safely instead of pretending weak motion is good enough.
+- Flash Lane proof selection now blocks any wrong-story exact asset immediately, even if it is only one item in an otherwise large deck.
+- The GTA/Take-Two proof is now routed to visual-evidence repair because unrelated exact assets are still contaminating the deck.
 - One-story trailer-reference runs no longer overwrite the canonical batch report unless explicitly requested.
 - Official source intake now validates operator-supplied motion references before the resolver can count them.
 - Local motion validation now rejects the weak Oblivion trailer windows and records The Division/Tales as one usable clip each, not Flash-ready material.
@@ -53,7 +55,8 @@ Date: 2026-05-08
 - Latest focused voice tests: pass (`36/36`)
 - Latest dry-run: `npm run voice:shootout -- --out-dir test/output/voice-shootout --no-root --generate-local-liam --dry-run --limit 2`
 - Latest local apply: `npm run voice:shootout -- --out-dir test/output/voice-shootout --no-root --generate-local-liam --apply-local --limit 2` generated 2 local Liam benchmark MP3s
-- Full `npm test`: pass (`2292/2292`)
+- Latest Studio V2 focused tests: pass (`38/38`)
+- Full `npm test`: pass (`2294/2294`)
 - `npm run build`: pass
 - `git diff --check`: pass with CRLF warnings only
 
@@ -81,12 +84,12 @@ Date: 2026-05-08
 
 ## Biggest Remaining Blocker
 
-The voice problem is mostly solved locally. The video quality problem is now the main blocker: Pulse still needs validated gameplay/motion coverage before Studio V2 can look like a high-energy gaming TikTok lane instead of a still-image/card lane.
+The voice problem is mostly solved locally. The video quality problem is now the main blocker: Pulse still needs exact, uncontaminated subject decks plus validated gameplay/motion coverage before Studio V2 can look like a high-energy gaming TikTok lane instead of a still-image/card lane.
 
 ## Recommended Next Work
 
-1. Find non-exhausted official BioShock, Red Dead and Marathon motion sources, record them in `test/input/official_sources.json`, then validate with `npm run media:intake-official-sources`.
-2. Generate a new local Studio V2 proof only after the motion gate is green.
-3. Refresh or sync the local TikTok token with Martin present, then test official inbox/draft upload only with a clean pack.
-4. Approve YouTube analytics read-only re-auth so the learning loop can use retention and traffic-source data.
-5. Review and approve the affiliate-disclosure/audit branch if you want the safer public monetisation copy deployed.
+1. Rerun exact-subject acquisition for `rss_5b3abe925b27a199` with the story entity filter before any further Studio V2 proof render.
+2. Find non-exhausted official BioShock, Red Dead and Marathon motion sources, record them in `test/input/official_sources.json`, then validate with `npm run media:intake-official-sources`.
+3. Generate a new local Studio V2 proof only after the visual evidence and motion gates are green.
+4. Refresh or sync the local TikTok token with Martin present, then test official inbox/draft upload only with a clean pack.
+5. Approve YouTube analytics read-only re-auth so the learning loop can use retention and traffic-source data.

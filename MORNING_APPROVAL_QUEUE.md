@@ -8,17 +8,17 @@ Only live-risk actions are listed here. Safe local tooling, report generation an
 
 Decision needed: no approval requested yet.
 
-Why it matters: the latest Studio V2 promotion packet remains `RED_BLOCKED`. Local Liam is no longer the main blocker. The blocker is visual quality: not enough validated motion, not enough clip dominance and remaining forensic/repetition risk.
+Why it matters: the latest Studio V2 promotion packet remains `RED_BLOCKED`. Local Liam is no longer the main blocker. The blocker is visual quality: contaminated exact-subject decks, not enough validated motion, not enough clip dominance and remaining forensic/repetition risk.
 
 What changes: nothing live. Legacy `assemble.js` stays canonical.
 
-Risk: approving a pilot now could publish the same kind of dull, repetitive or weak-looking video Martin rejected.
+Risk: approving a pilot now could publish the same kind of dull, repetitive, wrong-story or weak-looking video Martin rejected.
 
 Rollback: no action needed because no pilot was run.
 
-Validation: focused modified-area tests passed, full `npm test` passed `2292/2292`, build passed and proof candidates still show `0` ready Flash proofs.
+Validation: focused modified-area tests passed, full `npm test` passed `2294/2294`, build passed and proof candidates still show `0` ready Flash proofs.
 
-Recommendation: do not approve a Studio V2 live pilot until a packet is green.
+Recommendation: do not approve a Studio V2 live pilot until the visual-evidence gate is green, with zero wrong-story exact assets.
 
 ## 2. TikTok Local Token Refresh Or Sync
 

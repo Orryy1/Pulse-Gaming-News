@@ -16,10 +16,10 @@ const {
 function story(id) {
   return {
     id,
-    title: "GTA 6 trailer evidence is stacking up",
+    title: "GTA and Red Dead trailer evidence is stacking up",
     approved: true,
     breaking_score: 82,
-    full_script: "GTA 6 has a confirmed clue today. ".repeat(32),
+    full_script: "GTA and Red Dead have a confirmed Take-Two clue today. ".repeat(32),
   };
 }
 

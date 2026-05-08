@@ -11,6 +11,8 @@ Title: GTA 6 Owner Passed On A Sequel To A Legacy Franchise, And We're Dying To 
 Production ready: `no`
 Morning approval needed: `no`
 
+Current update: Flash Lane proof selection now uses zero tolerance for wrong-story exact assets. The GTA/Take-Two proof remains blocked until exact-subject deck repair removes unrelated game assets and the motion gate is green.
+
 ## Blockers
 
 - qa_lane_unknown

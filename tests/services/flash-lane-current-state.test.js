@@ -274,6 +274,39 @@ test("current state routes cover-dominated Flash candidates to visual evidence r
   assert.equal(report.summary.needs_visual_evidence_repair, 1);
 });
 
+test("current state routes any wrong-story exact asset to visual evidence repair", () => {
+  const report = buildFlashLaneCurrentStateReport({
+    proofCandidateReport: {
+      candidates: [
+        candidate({
+          blockers: ["flash_proof_blocks_wrong_story_exact_assets"],
+          visuals: {
+            exact_subject_count: 5,
+            exact_subject_groups: ["GTA", "Red Dead", "Metro 2033"],
+            story_target_entities: ["GTA", "Red Dead"],
+            visual_evidence_gate_ready: false,
+            wrong_story_exact_asset_count: 1,
+            wrong_story_exact_asset_share: 0.2,
+            wrong_story_exact_asset_groups: ["Metro 2033"],
+            accepted_frame_count: 4,
+            validated_clip_ref_count: 5,
+            validated_clip_source_count: 3,
+            validated_clip_entities: ["GTA", "Red Dead"],
+            missing_validated_clip_entities: [],
+          },
+        }),
+      ],
+    },
+  });
+
+  const row = report.rows[0];
+  assert.equal(row.stage, "needs_visual_evidence_repair");
+  assert.equal(row.operator_next_action, "rerun_exact_subject_acquisition_with_story_entity_filter");
+  assert.ok(row.blocking_dimensions.includes("visual_evidence"));
+  assert.equal(row.visuals.visual_evidence_gate_ready, false);
+  assert.equal(report.summary.needs_visual_evidence_repair, 1);
+});
+
 test("current state reports ready local proofs when all blockers are cleared", () => {
   const report = buildFlashLaneCurrentStateReport({
     proofCandidateReport: {

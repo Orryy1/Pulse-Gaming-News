@@ -12,13 +12,13 @@ const {
 
 const ROOT = path.resolve(__dirname, "..", "..");
 
-function story(id, title = "GTA 6 trailer evidence is stacking up") {
+function story(id, title = "GTA and Red Dead trailer evidence is stacking up") {
   return {
     id,
     title,
     approved: true,
     breaking_score: 82,
-    full_script: "GTA 6 has a confirmed clue today. ".repeat(32),
+    full_script: "GTA and Red Dead have a confirmed Take-Two clue today. ".repeat(32),
   };
 }
 
@@ -51,7 +51,7 @@ function assetReport(storyId, count = 6) {
     plans: [
       {
         story_id: storyId,
-        title: "GTA 6 trailer evidence is stacking up",
+        title: "GTA and Red Dead trailer evidence is stacking up",
         would_fetch: Array.from({ length: count }, (_, index) => ({
           id: `${storyId}_asset_${index}`,
           source_type: "steam_screenshot",
@@ -687,6 +687,64 @@ test("proof candidates block wrong-story exact assets even when motion covers th
   const candidate = report.candidates[0];
   assert.equal(candidate.verdict, "needs_motion_or_exact_assets");
   assert.ok(candidate.blockers.includes("flash_proof_blocks_wrong_story_exact_assets"));
+  assert.deepEqual(candidate.visuals.wrong_story_exact_asset_groups, ["Metro 2033"]);
+  assert.equal(candidate.recommended_command, null);
+});
+
+test("proof candidates block a single wrong-story exact asset even at low share", () => {
+  const storyId = "low_share_wrong_story_exact_asset";
+  const report = buildStudioV2ProofCandidateReport({
+    stories: [
+      {
+        ...story(storyId, "GTA and Red Dead sequel rumours get new Take-Two context"),
+        full_script:
+          "Take-Two has new context for GTA and Red Dead fans after passing on a legacy sequel pitch.",
+      },
+    ],
+    localAudioReports: [audioReport(storyId)],
+    assetReports: [
+      {
+        plans: [
+          {
+            story_id: storyId,
+            would_fetch: [
+              ...Array.from({ length: 4 }, (_, index) => ({
+                id: `${storyId}_real_${index}`,
+                source_type: "steam_screenshot",
+                entity: index % 2 === 0 ? "GTA" : "Red Dead",
+                subject_match_quality: "exact_game_match",
+                exact_subject_group: index % 2 === 0 ? "GTA" : "Red Dead",
+                counted_for_premium: true,
+                counted_for_standard: true,
+                store_match_verified: true,
+                local_path: `test/output/assets/${storyId}_real_${index}.jpg`,
+              })),
+              {
+                id: `${storyId}_wrong_metro`,
+                source_type: "steam_screenshot",
+                entity: "Metro 2033",
+                subject_match_quality: "exact_game_match",
+                exact_subject_group: "Metro 2033",
+                counted_for_premium: true,
+                counted_for_standard: true,
+                store_match_verified: true,
+                local_path: `test/output/assets/${storyId}_wrong_metro.jpg`,
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    frameReports: [frameReport(storyId, 10)],
+    segmentValidationReports: [segmentReport(storyId, 10)],
+  });
+
+  const candidate = report.candidates[0];
+  assert.equal(candidate.verdict, "needs_motion_or_exact_assets");
+  assert.ok(candidate.blockers.includes("flash_proof_blocks_wrong_story_exact_assets"));
+  assert.equal(candidate.warnings.includes("some_exact_assets_do_not_match_story_targets"), false);
+  assert.equal(candidate.visuals.wrong_story_exact_asset_count, 1);
+  assert.equal(candidate.visuals.wrong_story_exact_asset_share, 0.2);
   assert.deepEqual(candidate.visuals.wrong_story_exact_asset_groups, ["Metro 2033"]);
   assert.equal(candidate.recommended_command, null);
 });

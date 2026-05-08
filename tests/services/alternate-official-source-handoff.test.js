@@ -120,8 +120,14 @@ test("alternate official source handoff turns exhausted motion gaps into entity 
   assert.ok(row.recommended_source_types.some((item) => item.source_type === "platform_storefront_video_reference"));
   assert.equal(row.manual_source_intake.default_downloads_allowed, false);
   assert.ok(row.manual_source_intake.required_fields.includes("official_source_url"));
+  assert.ok(row.manual_source_intake.optional_fields.includes("direct_media_url_if_available"));
+  assert.equal(row.manual_source_intake.url_handling.direct_media_url_required_for_segment_validation, true);
+  assert.ok(row.manual_source_intake.url_handling.segment_validation_eligible_url_kinds.includes("hls_manifest"));
+  assert.ok(row.manual_source_intake.url_handling.reference_only_url_kinds.includes("youtube_watch"));
   assert.ok(row.manual_source_intake.acceptance_checks.some((item) => item.includes("Red Dead")));
+  assert.ok(row.manual_source_intake.acceptance_checks.some((item) => item.includes("direct_media_url_if_available")));
   assert.ok(row.manual_source_intake.rejection_checks.includes("unofficial_reupload"));
+  assert.ok(row.manual_source_intake.rejection_checks.includes("direct_media_field_contains_page_url"));
   assert.ok(row.manual_source_intake.rejection_checks.includes("localised_non_english_reference"));
   assert.ok(row.manual_source_intake.rejection_checks.includes("embedded_subtitle_reference"));
   assert.ok(row.manual_source_intake.safe_next_commands.some((item) => item.includes("media:intake-official-sources")));
@@ -199,12 +205,41 @@ test("alternate official source handoff generates a fillable intake template", (
   assert.equal(template[0].story_id, "rss_gap");
   assert.equal(template[0].entity, "Red Dead");
   assert.equal(template[0].official_source_url, "");
+  assert.equal(template[0].official_source_url_usage.includes("provenance/reference"), true);
+  assert.equal(template[0].direct_media_url_if_available, "");
+  assert.equal(template[0].direct_media_url_kind, "");
+  assert.match(template[0].direct_media_url_notes, /\.mp4/);
+  assert.match(template[0].direct_media_url_notes, /\.m3u8/);
   assert.equal(template[0].downloads_allowed, false);
   assert.equal(template[0].source_family, "rss_gap_red_dead_alternate_official_source");
   assert.match(template[0].operator_notes, /Suggested searches: Red Dead official trailer/);
   assert.equal(report.source_intake_template.validation_command.includes("--story-id rss_gap"), true);
   assert.match(md, /Source Intake Template/);
   assert.match(md, /official_source_intake_template\.json/);
+  assert.match(md, /direct_media_url_if_available/);
+  assert.match(md, /reference-only/);
+});
+
+test("alternate official source handoff separates reference pages from direct media URLs", () => {
+  const report = buildAlternateOfficialSourceHandoffReport({
+    motionGapReport: { gaps: [motionGap()] },
+    referenceReport: { plans: [referencePlan()] },
+  });
+  const intake = report.rows[0].manual_source_intake;
+  const md = renderAlternateOfficialSourceHandoffMarkdown(report);
+
+  assert.match(intake.url_handling.official_source_url, /reference page/);
+  assert.match(intake.url_handling.direct_media_url_if_available, /direct \.mp4/);
+  assert.deepEqual(intake.url_handling.segment_validation_eligible_url_kinds, [
+    "direct_video",
+    "hls_manifest",
+    "dash_manifest",
+  ]);
+  assert.ok(intake.acceptance_checks.some((item) => item.includes("leave direct_media_url_if_available blank")));
+  assert.ok(intake.acceptance_checks.some((item) => item.includes(".mpd")));
+  assert.match(md, /URL handling/);
+  assert.match(md, /HTML pages and official YouTube links are allowed/);
+  assert.match(md, /Only direct media or manifest URLs can feed segment validation/);
 });
 
 test("alternate official source handoff creates fallback search queries when reference plan is absent", () => {

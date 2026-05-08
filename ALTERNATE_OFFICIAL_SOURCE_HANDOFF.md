@@ -95,6 +95,16 @@ Required fields:
 - entity_match_notes
 - operator_notes
 
+Optional fields:
+- direct_media_url_if_available
+- direct_media_url_kind
+- direct_media_url_notes
+
+URL handling:
+- official_source_url: Official provenance/reference page or URL. HTML pages and official YouTube links are allowed here but remain reference-only.
+- direct_media_url_if_available: Optional direct .mp4/.webm/.mov/.m3u8/.mpd media or manifest URL. Leave blank unless the official source exposes a direct playable media URL.
+- Only direct media or manifest URLs can feed segment validation; official pages and YouTube links are kept as reference-only provenance.
+
 Acceptance checks:
 - The source must be for GTA, not only the publisher or a loosely related franchise.
 - The URL owner must be official: publisher, developer, platform storefront or verified official channel.
@@ -104,6 +114,8 @@ Acceptance checks:
 - The first usable window must not be dominated by rating boards, black frames, logos or title cards.
 - The source must add a new source family when existing families are exhausted.
 - Provenance must be recorded before any local frame or segment validation.
+- If you only have an official page, storefront page or YouTube URL, enter it as official_source_url and leave direct_media_url_if_available blank.
+- Only fill direct_media_url_if_available with a direct .mp4, .webm, .mov, .m3u8 or .mpd URL from an official source.
 - Downloads remain disabled until a later apply-local validation command is run.
 
 Reject if:
@@ -115,6 +127,7 @@ Reject if:
 - localised_non_english_reference
 - embedded_subtitle_reference
 - duplicate_exhausted_source_family
+- direct_media_field_contains_page_url
 - no_provenance
 
 ### Next Safe Actions
@@ -175,6 +188,16 @@ Required fields:
 - entity_match_notes
 - operator_notes
 
+Optional fields:
+- direct_media_url_if_available
+- direct_media_url_kind
+- direct_media_url_notes
+
+URL handling:
+- official_source_url: Official provenance/reference page or URL. HTML pages and official YouTube links are allowed here but remain reference-only.
+- direct_media_url_if_available: Optional direct .mp4/.webm/.mov/.m3u8/.mpd media or manifest URL. Leave blank unless the official source exposes a direct playable media URL.
+- Only direct media or manifest URLs can feed segment validation; official pages and YouTube links are kept as reference-only provenance.
+
 Acceptance checks:
 - The source must be for BioShock, not only the publisher or a loosely related franchise.
 - The URL owner must be official: publisher, developer, platform storefront or verified official channel.
@@ -184,6 +207,8 @@ Acceptance checks:
 - The first usable window must not be dominated by rating boards, black frames, logos or title cards.
 - The source must add a new source family when existing families are exhausted.
 - Provenance must be recorded before any local frame or segment validation.
+- If you only have an official page, storefront page or YouTube URL, enter it as official_source_url and leave direct_media_url_if_available blank.
+- Only fill direct_media_url_if_available with a direct .mp4, .webm, .mov, .m3u8 or .mpd URL from an official source.
 - Downloads remain disabled until a later apply-local validation command is run.
 
 Reject if:
@@ -195,6 +220,7 @@ Reject if:
 - localised_non_english_reference
 - embedded_subtitle_reference
 - duplicate_exhausted_source_family
+- direct_media_field_contains_page_url
 - no_provenance
 
 ### Next Safe Actions
@@ -256,6 +282,16 @@ Required fields:
 - entity_match_notes
 - operator_notes
 
+Optional fields:
+- direct_media_url_if_available
+- direct_media_url_kind
+- direct_media_url_notes
+
+URL handling:
+- official_source_url: Official provenance/reference page or URL. HTML pages and official YouTube links are allowed here but remain reference-only.
+- direct_media_url_if_available: Optional direct .mp4/.webm/.mov/.m3u8/.mpd media or manifest URL. Leave blank unless the official source exposes a direct playable media URL.
+- Only direct media or manifest URLs can feed segment validation; official pages and YouTube links are kept as reference-only provenance.
+
 Acceptance checks:
 - The source must be for Red Dead, not only the publisher or a loosely related franchise.
 - The URL owner must be official: publisher, developer, platform storefront or verified official channel.
@@ -265,6 +301,8 @@ Acceptance checks:
 - The first usable window must not be dominated by rating boards, black frames, logos or title cards.
 - The source must add a new source family when existing families are exhausted.
 - Provenance must be recorded before any local frame or segment validation.
+- If you only have an official page, storefront page or YouTube URL, enter it as official_source_url and leave direct_media_url_if_available blank.
+- Only fill direct_media_url_if_available with a direct .mp4, .webm, .mov, .m3u8 or .mpd URL from an official source.
 - Downloads remain disabled until a later apply-local validation command is run.
 
 Reject if:
@@ -276,6 +314,7 @@ Reject if:
 - localised_non_english_reference
 - embedded_subtitle_reference
 - duplicate_exhausted_source_family
+- direct_media_field_contains_page_url
 - no_provenance
 
 ### Next Safe Actions
@@ -292,12 +331,14 @@ Reject if:
 - Suggested output: test/output/official_source_intake_template.json
 - Validation command: `npm run media:intake-official-sources -- --input test/output/official_source_intake_template.json --story-id rss_5b3abe925b27a199`
 - URLs are intentionally blank until an official source is supplied.
+- `official_source_url` is the provenance/reference URL. HTML pages and official YouTube links are allowed here but remain reference-only.
+- `direct_media_url_if_available` is optional and must be a direct `.mp4`, `.webm`, `.mov`, `.m3u8` or `.mpd` URL before it can feed segment validation.
 
-| Story | Entity | Source type | Source family |
-| --- | --- | --- | --- |
-| rss_5b3abe925b27a199 | GTA | official_publisher_or_developer_trailer_page | rss_5b3abe925b27a199_gta_alternate_official_source |
-| rss_5b3abe925b27a199 | BioShock | official_publisher_or_developer_trailer_page | rss_5b3abe925b27a199_bioshock_alternate_official_source |
-| rss_5b3abe925b27a199 | Red Dead | official_publisher_or_developer_trailer_page | rss_5b3abe925b27a199_red_dead_alternate_official_source |
+| Story | Entity | Source type | Source family | Direct media field |
+| --- | --- | --- | --- | --- |
+| rss_5b3abe925b27a199 | GTA | official_publisher_or_developer_trailer_page | rss_5b3abe925b27a199_gta_alternate_official_source | blank unless direct media URL is available |
+| rss_5b3abe925b27a199 | BioShock | official_publisher_or_developer_trailer_page | rss_5b3abe925b27a199_bioshock_alternate_official_source | blank unless direct media URL is available |
+| rss_5b3abe925b27a199 | Red Dead | official_publisher_or_developer_trailer_page | rss_5b3abe925b27a199_red_dead_alternate_official_source | blank unless direct media URL is available |
 
 ## Safety
 

@@ -136,6 +136,59 @@ test("official source intake marks direct media URLs as segment-validation eligi
   assert.equal(report.provenance_ledger[0].segment_validation_eligible, true);
 });
 
+test("official source intake uses optional direct media URLs while preserving the reference page", () => {
+  const report = buildOfficialSourceIntakeReport({
+    stories: [story()],
+    entries: [
+      officialEntry({
+        official_source_url: "https://www.rockstargames.com/reddeadredemption2/videos",
+        direct_media_url_if_available: "https://cdn.rockstargames.com/reddead/gameplay-trailer.m3u8",
+        source_type: "official_publisher_or_developer_trailer_page",
+      }),
+    ],
+  });
+
+  assert.equal(report.summary.accepted, 1);
+  assert.equal(report.summary.rejected, 0);
+  assert.equal(report.accepted_entries[0].official_source_url, "https://www.rockstargames.com/reddeadredemption2/videos");
+  assert.equal(
+    report.accepted_entries[0].direct_media_url_if_available,
+    "https://cdn.rockstargames.com/reddead/gameplay-trailer.m3u8",
+  );
+  assert.equal(report.accepted_references[0].source_url, "https://cdn.rockstargames.com/reddead/gameplay-trailer.m3u8");
+  assert.equal(report.accepted_references[0].reference_page_url, "https://www.rockstargames.com/reddeadredemption2/videos");
+  assert.equal(report.accepted_references[0].source_url_kind, "hls_manifest");
+  assert.equal(report.accepted_references[0].segment_validation_eligible, true);
+  assert.equal(
+    report.accepted_references[0].provenance.reference_page_url,
+    "https://www.rockstargames.com/reddeadredemption2/videos",
+  );
+  assert.equal(
+    report.provenance_ledger[0].reference_page_url,
+    "https://www.rockstargames.com/reddeadredemption2/videos",
+  );
+  assert.match(renderOfficialSourceIntakeMarkdown(report), /direct media/);
+  assert.match(renderOfficialSourceIntakeMarkdown(report), /gameplay-trailer\.m3u8/);
+});
+
+test("official source intake rejects page URLs in the optional direct media field", () => {
+  const report = buildOfficialSourceIntakeReport({
+    stories: [story()],
+    entries: [
+      officialEntry({
+        direct_media_url_if_available: "https://www.youtube.com/watch?v=rockstar-official",
+        source_owner: "Rockstar Games official YouTube channel",
+        evidence_of_officialness: "Official verified Rockstar Games YouTube channel.",
+      }),
+    ],
+  });
+
+  assert.equal(report.summary.accepted, 0);
+  assert.equal(report.summary.rejected, 1);
+  assert.equal(report.rejected_entries[0].direct_media_url_if_available, "https://www.youtube.com/watch?v=rockstar-official");
+  assert.ok(report.rejected_entries[0].reasons.includes("direct_media_field_contains_page_url"));
+});
+
 test("official source intake rejects social reposts, reuploads and duplicate URLs", () => {
   const report = buildOfficialSourceIntakeReport({
     stories: [story()],

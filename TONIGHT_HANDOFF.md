@@ -89,7 +89,7 @@ The voice problem is mostly solved locally. The video quality problem is now the
 ## Recommended Next Work
 
 1. Rerun exact-subject acquisition for `rss_5b3abe925b27a199` with the story entity filter before any further Studio V2 proof render.
-2. Find non-exhausted official BioShock, Red Dead and Marathon motion sources, record them in `test/input/official_sources.json`, then validate with `npm run media:intake-official-sources`.
+2. Find non-exhausted official BioShock, Red Dead and Marathon motion sources, record them in `test/output/official_source_intake_template.json`, then validate with `npm run media:intake-official-sources -- --input test/output/official_source_intake_template.json`.
 3. Generate a new local Studio V2 proof only after the visual evidence and motion gates are green.
 4. Refresh or sync the local TikTok token with Martin present, then test official inbox/draft upload only with a clean pack.
 5. Approve YouTube analytics read-only re-auth so the learning loop can use retention and traffic-source data.

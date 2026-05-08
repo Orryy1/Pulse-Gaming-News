@@ -16,9 +16,12 @@ Read-only control report. No Railway, OAuth, production DB, render default, TTS 
 
 ## Input Freshness
 
-- Motion gap report: 2026-05-08T12:18:17.555Z
-- Alternate source report: 2026-05-08T12:19:56.974Z
-- Reference counts: current
+- Motion gap report: 2026-05-08T13:00:47.611Z
+- Alternate source report: 2026-05-08T13:01:08.416Z
+- Reference counts: provisional - refresh resolver before trusting remaining/excluded refs
+
+- Warning: reference_report_older_than_motion_gap - Official trailer references are older than the motion-gap report; rerun media:resolve-trailers before trusting remaining/excluded reference counts.
+  Recommended: `npm run media:resolve-trailers -- --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5`
 
 ## Current Queue
 
@@ -29,9 +32,9 @@ Read-only control report. No Railway, OAuth, production DB, render default, TTS 
 ## Next Commands
 
 ### rss_5b3abe925b27a199
-- Command: `npm run media:intake-official-sources -- --input test/input/official_sources.json --story-id rss_5b3abe925b27a199`
+- Refresh resolver before trusting remaining/excluded refs: `npm run media:resolve-trailers -- --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5`
+- Command: `npm run media:intake-official-sources -- --input test/output/official_source_intake_template.json --story-id rss_5b3abe925b27a199`
 - Command: `npm run media:resolve-trailers -- --story-id rss_5b3abe925b27a199 --no-latest-report --official-source-intake-report test/output/official_source_intake_report.json --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5`
-- Command: `npm run media:plan-frames -- --story-id rss_5b3abe925b27a199 --trailer-references test/output/official_trailer_references_v1.json`
 - Search targets: GTA official trailer; GTA gameplay trailer; GTA official gameplay; GTA platform storefront trailer; BioShock official trailer; BioShock gameplay trailer; BioShock official gameplay; BioShock platform storefront trailer; Red Dead official trailer; Red Dead gameplay trailer; Red Dead Steam trailer; Red Dead gameplay
 
 ## Safety

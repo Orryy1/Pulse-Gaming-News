@@ -132,6 +132,34 @@ test("current state flags stale alternate-source handoffs and preserves motion-g
   assert.match(md, /studio:v2:alternate-sources/);
 });
 
+test("current state rewrites stale official-source intake input paths in operator commands", () => {
+  const report = buildFlashLaneCurrentStateReport({
+    proofCandidateReport: { candidates: [candidate()] },
+    motionGapReport: {
+      gaps: [
+        {
+          story_id: "story_readyish",
+          recommended_commands: [
+            {
+              label: "Validate alternate official sources",
+              command:
+                "npm run media:intake-official-sources -- --input test/input/official_sources.json --story-id story_readyish",
+            },
+          ],
+        },
+      ],
+    },
+  });
+  const md = renderFlashLaneCurrentStateMarkdown(report);
+
+  assert.match(md, /test\/output\/official_source_intake_template\.json/);
+  assert.doesNotMatch(md, /test\/input\/official_sources\.json/);
+  assert.equal(
+    report.rows[0].recommended_commands[0].command,
+    "npm run media:intake-official-sources -- --input test/output/official_source_intake_template.json --story-id story_readyish",
+  );
+});
+
 test("current state treats provisional alternate-source reference counts as a resolver-refresh blocker", () => {
   const refreshCommand =
     "npm run media:resolve-trailers -- --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5";

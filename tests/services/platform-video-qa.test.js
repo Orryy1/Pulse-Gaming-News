@@ -2,6 +2,7 @@ const { test } = require("node:test");
 const assert = require("node:assert");
 
 const {
+  assertPlatformVideoQaPass,
   classifyPlatformVideoQa,
   parseFfprobeJson,
   runPlatformVideoQa,
@@ -126,4 +127,78 @@ test("runPlatformVideoQa skips rather than fails when ffprobe is unavailable", a
 
   assert.strictEqual(result.result, "skip");
   assert.strictEqual(result.reason, "ffprobe_missing");
+});
+
+test("assertPlatformVideoQaPass throws a typed upload gate error on codec failures", async () => {
+  await assert.rejects(
+    () =>
+      assertPlatformVideoQaPass("/tmp/video.mp4", {
+        platform: "instagram",
+        fs: {
+          async pathExists(p) {
+            return p === "/tmp/video.mp4";
+          },
+        },
+        async execFile() {
+          return {
+            stdout: JSON.stringify(
+              probe({
+                video: {
+                  pix_fmt: "yuv444p",
+                  profile: "High 4:4:4 Predictive",
+                },
+              }),
+            ),
+          };
+        },
+      }),
+    (err) => {
+      assert.strictEqual(err.name, "PlatformVideoQaUploadError");
+      assert.strictEqual(err.platform, "instagram");
+      assert.strictEqual(err.code, "platform_video_qa_failed");
+      assert.ok(err.failures.includes("video_pixel_format_not_yuv420p (yuv444p)"));
+      assert.ok(err.message.includes("instagram"));
+      assert.ok(err.message.includes("video_pixel_format_not_yuv420p (yuv444p)"));
+      return true;
+    },
+  );
+});
+
+test("assertPlatformVideoQaPass allows warn and skip results", async () => {
+  const warn = await assertPlatformVideoQaPass("/tmp/video.mp4", {
+    platform: "facebook",
+    fs: {
+      async pathExists(p) {
+        return p === "/tmp/video.mp4";
+      },
+    },
+    async execFile() {
+      return {
+        stdout: JSON.stringify(
+          probe({
+            video: {
+              width: 500,
+              height: 1000,
+            },
+          }),
+        ),
+      };
+    },
+  });
+  assert.strictEqual(warn.result, "warn");
+
+  const skip = await assertPlatformVideoQaPass("/tmp/video.mp4", {
+    platform: "tiktok",
+    fs: {
+      async pathExists(p) {
+        return p === "/tmp/video.mp4";
+      },
+    },
+    async execFile() {
+      const err = new Error("spawn ffprobe ENOENT");
+      err.code = "ENOENT";
+      throw err;
+    },
+  });
+  assert.strictEqual(skip.result, "skip");
 });

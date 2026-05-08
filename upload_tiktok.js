@@ -7,6 +7,9 @@ const { withRetry } = require("./lib/retry");
 const { addBreadcrumb, captureException } = require("./lib/sentry");
 const { getPublicUrl } = require("./lib/deployment-mode");
 const { validateVideo } = require("./lib/validate");
+const {
+  assertPlatformVideoQaPass,
+} = require("./lib/services/platform-video-qa");
 const db = require("./lib/db");
 const mediaPaths = require("./lib/media-paths");
 
@@ -547,6 +550,7 @@ async function uploadVideoToInbox(story) {
         (await mediaPaths.resolveExisting(story.exported_path)) ||
         story.exported_path;
       await validateVideo(exportedAbs, "tiktok");
+      await assertPlatformVideoQaPass(exportedAbs, { platform: "tiktok" });
 
       const fileSize = (await fs.stat(exportedAbs)).size;
       const init = buildInboxUploadInitRequest({
@@ -638,6 +642,7 @@ async function uploadVideo(story) {
         (await mediaPaths.resolveExisting(story.exported_path)) ||
         story.exported_path;
       await validateVideo(exportedAbs, "tiktok");
+      await assertPlatformVideoQaPass(exportedAbs, { platform: "tiktok" });
 
       const fileSize = (await fs.stat(exportedAbs)).size;
 

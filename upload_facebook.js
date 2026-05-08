@@ -17,6 +17,9 @@ const dotenv = require("dotenv");
 const { withRetry } = require("./lib/retry");
 const { addBreadcrumb, captureException } = require("./lib/sentry");
 const { validateVideo } = require("./lib/validate");
+const {
+  assertPlatformVideoQaPass,
+} = require("./lib/services/platform-video-qa");
 const db = require("./lib/db");
 const mediaPaths = require("./lib/media-paths");
 const { getPublicUrl } = require("./lib/deployment-mode");
@@ -70,6 +73,7 @@ async function uploadReel(story) {
         (await mediaPaths.resolveExisting(story.exported_path)) ||
         story.exported_path;
       await validateVideo(exportedAbs, "facebook");
+      await assertPlatformVideoQaPass(exportedAbs, { platform: "facebook" });
 
       const publicBaseUrl = getPublicUrl();
       const videoUrl = `${publicBaseUrl}/api/download/${story.id}.mp4`;
@@ -311,6 +315,11 @@ async function uploadReelViaUrl(story) {
 
   const accessToken = await getAccessToken();
   const pageId = getPageId();
+  const exportedAbs =
+    (await mediaPaths.resolveExisting(story.exported_path)) ||
+    story.exported_path;
+  await validateVideo(exportedAbs, "facebook");
+  await assertPlatformVideoQaPass(exportedAbs, { platform: "facebook" });
 
   const publicBaseUrl = getPublicUrl();
   const videoUrl = `${publicBaseUrl}/api/download/${story.id}.mp4`;

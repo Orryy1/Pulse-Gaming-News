@@ -5,6 +5,9 @@ const dotenv = require("dotenv");
 const { withRetry } = require("./lib/retry");
 const { addBreadcrumb, captureException } = require("./lib/sentry");
 const { validateVideo } = require("./lib/validate");
+const {
+  assertPlatformVideoQaPass,
+} = require("./lib/services/platform-video-qa");
 const db = require("./lib/db");
 const mediaPaths = require("./lib/media-paths");
 const { getPublicUrl } = require("./lib/deployment-mode");
@@ -272,6 +275,7 @@ async function uploadReel(story) {
         (await mediaPaths.resolveExisting(story.exported_path)) ||
         story.exported_path;
       await validateVideo(exportedAbs, "instagram");
+      await assertPlatformVideoQaPass(exportedAbs, { platform: "instagram" });
 
       // Build caption - channel-aware hashtags
       const { getChannel } = require("./channels");
@@ -483,6 +487,11 @@ async function uploadReelViaUrl(story) {
 
   const accessToken = await getAccessToken();
   const accountId = getAccountId();
+  const exportedAbs =
+    (await mediaPaths.resolveExisting(story.exported_path)) ||
+    story.exported_path;
+  await validateVideo(exportedAbs, "instagram");
+  await assertPlatformVideoQaPass(exportedAbs, { platform: "instagram" });
 
   const publicBaseUrl = getPublicUrl();
   // Include .mp4 suffix — IG/FB crawlers refuse URIs that don't

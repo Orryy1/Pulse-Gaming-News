@@ -384,6 +384,172 @@ test("motion gap report explains source diversity gaps when clip count reaches t
   assert.doesNotMatch(gap.priority_next_steps.join(" "), /find_0_more/);
 });
 
+test("motion gap report gives closest candidate a path from two validated sources to three-plus source backbone", () => {
+  const fullTitle = "LEGO Batman: Legacy of the Dark Knight";
+  const report = buildStudioV2MotionGapReport({
+    proofCandidateReport: {
+      candidates: [
+        proofCandidate({
+          story_id: "1t0zhng",
+          title: "LEGO Batman: Legacy of the Dark Knight PC specs revealed",
+          blockers: [
+            "flash_proof_requires_motion_backbone",
+            "flash_proof_requires_three_validated_clip_sources",
+            "footage_backbone_clip_dominance_too_low",
+          ],
+          audio: {
+            status: "approved_local_liam_audio_ready",
+            ready: true,
+            output_audio_path: "test/output/local-script-extension/audio/1t0zhng_liam_extended.mp3",
+            duration_seconds: 71.52,
+          },
+          visuals: {
+            story_target_entities: ["LEGO Batman", "Legacy of the Dark Knight"],
+            exact_subject_count: 24,
+            exact_subject_groups: ["LEGO Batman"],
+            accepted_frame_count: 0,
+            frame_groups: [],
+            validated_clip_ref_count: 4,
+            validated_clip_source_count: 2,
+            validated_clip_entities: ["LEGO Batman"],
+            validated_clip_coverage_labels: [fullTitle],
+            projected_clip_seconds: 11.6,
+            projected_clip_dominance: 0.16,
+          },
+        }),
+      ],
+      thresholds: { flash_min_validated_clip_refs: 3 },
+    },
+    segmentValidationReport: {
+      segments: [
+        segment("1t0zhng", "LEGO Batman", null, {
+          source_url: "https://video.example.test/lego-deluxe.m3u8",
+          provider: "steam",
+          store_app_id: "2215200",
+          store_app_title: fullTitle,
+          movie_id: "737714637",
+          reference_title: "Deluxe Edition Trailer WW",
+          media_start_s: 42,
+        }),
+        segment("1t0zhng", "LEGO Batman", null, {
+          source_url: "https://video.example.test/lego-deluxe.m3u8",
+          provider: "steam",
+          store_app_id: "2215200",
+          store_app_title: fullTitle,
+          movie_id: "737714637",
+          reference_title: "Deluxe Edition Trailer WW",
+          media_start_s: 66,
+        }),
+        segment("1t0zhng", "LEGO Batman", null, {
+          source_url: "https://video.example.test/lego-joker.m3u8",
+          provider: "steam",
+          store_app_id: "2215200",
+          store_app_title: fullTitle,
+          movie_id: "513615710",
+          reference_title: "The Joker Cinematic Trailer WW",
+          media_start_s: 48,
+        }),
+        segment("1t0zhng", "LEGO Batman", null, {
+          source_url: "https://video.example.test/lego-joker.m3u8",
+          provider: "steam",
+          store_app_id: "2215200",
+          store_app_title: fullTitle,
+          movie_id: "513615710",
+          reference_title: "The Joker Cinematic Trailer WW",
+          media_start_s: 72,
+        }),
+        segment("1t0zhng", "LEGO Batman", "segment_lacks_gameplay_action_samples", {
+          source_url: "https://video.example.test/lego-reveal.m3u8",
+          provider: "steam",
+          store_app_id: "2215200",
+          store_app_title: fullTitle,
+          movie_id: "1784773044",
+          reference_title: "Reveal Trailer WW",
+          media_start_s: 54,
+        }),
+      ],
+    },
+  });
+
+  const gap = report.gaps[0];
+  assert.equal(gap.story_id, "1t0zhng");
+  assert.equal(gap.motion_gap.validated_clip_ref_count, 4);
+  assert.equal(gap.motion_gap.motion_backbone_gap.required_validated_clip_sources, 3);
+  assert.equal(gap.motion_gap.motion_backbone_gap.current_validated_clip_sources, 2);
+  assert.equal(gap.motion_gap.motion_backbone_gap.missing_validated_clip_sources, 1);
+  assert.equal(gap.motion_gap.motion_backbone_gap.status, "needs_additional_validated_source_family");
+  assert.deepEqual(
+    gap.motion_gap.motion_backbone_gap.validated_source_families.map((family) => family.reference_title),
+    ["Deluxe Edition Trailer WW", "The Joker Cinematic Trailer WW"],
+  );
+  assert.ok(
+    gap.motion_gap.motion_backbone_gap.next_actions.includes(
+      "add_1_validated_official_source_family_for:LEGO Batman",
+    ),
+  );
+  assert.ok(
+    gap.motion_gap.source_coverage_warnings.includes(
+      "multi_entity_coverage_satisfied_by_validated_labels:Legacy of the Dark Knight",
+    ),
+  );
+
+  const md = renderStudioV2MotionGapMarkdown(report);
+  assert.match(md, /Motion Backbone Gap/);
+  assert.match(md, /Validated source families: 2 \/ 3\+/);
+  assert.match(md, /Need 1 more validated official source family/);
+  assert.match(md, /Deluxe Edition Trailer WW/);
+  assert.match(md, /The Joker Cinematic Trailer WW/);
+  assert.match(md, /\| Entity \| Provider \| App \| Movie\/source \| Attempts \| Validated \| Rejected \| Top rejection \|/);
+  assert.match(md, /Source coverage warnings:/);
+  assert.match(md, /multi_entity_coverage_satisfied_by_validated_labels:Legacy of the Dark Knight/);
+});
+
+test("motion gap report keeps missing entity coverage warnings separate from source diversity gaps", () => {
+  const report = buildStudioV2MotionGapReport({
+    proofCandidateReport: {
+      candidates: [
+        proofCandidate({
+          story_id: "multi_entity_gap",
+          blockers: [
+            "flash_proof_requires_three_validated_clip_sources",
+            "footage_backbone_clip_dominance_too_low",
+          ],
+          audio: {
+            status: "approved_local_liam_audio_ready",
+            ready: true,
+            output_audio_path: "test/output/audio/multi_entity_gap.mp3",
+            duration_seconds: 70,
+          },
+          visuals: {
+            story_target_entities: ["GTA", "BioShock", "Red Dead"],
+            exact_subject_count: 10,
+            exact_subject_groups: ["GTA", "BioShock", "Red Dead"],
+            accepted_frame_count: 0,
+            frame_groups: [],
+            validated_clip_ref_count: 4,
+            validated_clip_source_count: 2,
+            validated_clip_entities: ["GTA"],
+          },
+        }),
+      ],
+      thresholds: { flash_min_validated_clip_refs: 3 },
+    },
+  });
+
+  const gap = report.gaps[0];
+  assert.equal(gap.motion_gap.motion_backbone_gap.missing_validated_clip_sources, 1);
+  assert.deepEqual(gap.motion_gap.missing_validated_entities, ["BioShock", "Red Dead"]);
+  assert.ok(
+    gap.motion_gap.source_coverage_warnings.includes(
+      "missing_validated_motion_entities:BioShock,Red Dead",
+    ),
+  );
+
+  const md = renderStudioV2MotionGapMarkdown(report);
+  assert.match(md, /Need 1 more validated official source family/);
+  assert.match(md, /missing_validated_motion_entities:BioShock,Red Dead/);
+});
+
 test("motion gap report does not show ready language when footage dominance is too low", () => {
   const report = buildStudioV2MotionGapReport({
     proofCandidateReport: {

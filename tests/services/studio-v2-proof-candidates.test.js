@@ -170,7 +170,9 @@ test("proof readiness packet recommends a local proof only when voice, captions,
   const readiness = report.candidates[0].proof_readiness;
   assert.equal(readiness.final_recommendation, "render_local_proof");
   assert.equal(readiness.runtime_target.status, "pass");
-  assert.deepEqual(readiness.runtime_target.target_seconds, [64, 70]);
+  assert.deepEqual(readiness.runtime_target.target_seconds, [61, 75]);
+  assert.deepEqual(readiness.runtime_target.preferred_target_seconds, [64, 70]);
+  assert.equal(readiness.runtime_target.preferred_target_status, "pass");
   assert.equal(readiness.approved_voice_evidence.status, "pass");
   assert.equal(readiness.caption.status, "pass");
   assert.equal(readiness.overlay_safe_area.status, "pass");
@@ -182,7 +184,7 @@ test("proof readiness packet recommends a local proof only when voice, captions,
   assert.equal(readiness.outro_expected.status, "pass");
 });
 
-test("proof readiness packet sends edge-duration Liam proofs back to voice repair", () => {
+test("proof readiness packet accepts edge-duration Liam proofs but marks the preferred target miss", () => {
   const report = buildStudioV2ProofCandidateReport({
     stories: [story("edge_duration")],
     localAudioReports: [
@@ -196,9 +198,11 @@ test("proof readiness packet sends edge-duration Liam proofs back to voice repai
   });
 
   const readiness = report.candidates[0].proof_readiness;
-  assert.equal(readiness.runtime_target.status, "fail");
-  assert.deepEqual(readiness.runtime_target.target_seconds, [64, 70]);
-  assert.equal(readiness.final_recommendation, "repair_voice_first");
+  assert.equal(readiness.runtime_target.status, "pass");
+  assert.deepEqual(readiness.runtime_target.target_seconds, [61, 75]);
+  assert.deepEqual(readiness.runtime_target.preferred_target_seconds, [64, 70]);
+  assert.equal(readiness.runtime_target.preferred_target_status, "below_preferred");
+  assert.equal(readiness.final_recommendation, "render_local_proof");
 });
 
 test("proof readiness packet prioritises voice repair before media repair", () => {
@@ -976,7 +980,7 @@ test("proof readiness packet JSON and Markdown expose all required proof fields"
 
   assert.equal(reparsed.candidates[0].proof_readiness.final_recommendation, "render_local_proof");
   assert.match(md, /Approved voice evidence:/);
-  assert.match(md, /Runtime target 64-70s:/);
+  assert.match(md, /Runtime accepted 61-75s \/ preferred 64-70s:/);
   assert.match(md, /Caption coverage\/density:/);
   assert.match(md, /Overlay safe area:/);
   assert.match(md, /Validated frames\/clips:/);

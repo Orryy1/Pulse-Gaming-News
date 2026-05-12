@@ -283,6 +283,24 @@ test("visual repair markdown is operator-readable and safety labelled", () => {
   assert.match(md, /No Railway, OAuth, production DB, scheduler, renderer, TTS, upload or social posting behaviour is changed/);
 });
 
+test("visual repair planner normalises mojibake titles before operator reports", () => {
+  const report = buildVisualEvidenceRepairPlan({
+    currentStateReport: {
+      rows: [
+        row({
+          story_id: "story_mojibake",
+          title: "Pok\u00c3\u00a9mon don\u00e2\u20ac\u2122t need a cover-only deck",
+        }),
+      ],
+    },
+  });
+  const md = renderVisualEvidenceRepairMarkdown(report);
+
+  assert.equal(report.rows[0].title, "Pok\u00e9mon don\u2019t need a cover-only deck");
+  assert.match(md, /Pok\u00e9mon don\u2019t need a cover-only deck/);
+  assert.doesNotMatch(md, /\u00c3|\u00e2/);
+});
+
 test("visual repair command is registered and read-only", () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
   assert.equal(pkg.scripts["studio:v2:visual-repair"], "node tools/visual-evidence-repair-planner.js");

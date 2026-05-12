@@ -151,7 +151,7 @@ test("local TTS overnight report merges repair and script-extension proof source
   assert.match(markdown, /rss_extended: source=local_script_extension/);
 });
 
-test("local TTS overnight report rejects local proofs outside the 64-70s repair target", () => {
+test("local TTS overnight report flags proofs outside the preferred 64-70s target without rejecting 61-75s audio", () => {
   const report = buildLocalTtsOvernightReport({
     doctorReport: DOCTOR_GREEN,
     audioApply: {
@@ -170,11 +170,11 @@ test("local TTS overnight report rejects local proofs outside the 64-70s repair 
   });
   const markdown = renderLocalTtsOvernightMarkdown(report);
 
-  assert.equal(report.verdict, "AMBER");
-  assert.equal(report.proof_batch.voice_ready_count, 0);
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.proof_batch.voice_ready_count, 1);
   assert.equal(report.proof_batch.applied[0].target_duration_verdict, "above_target");
-  assert.equal(report.proof_batch.applied[0].verdict, "reject_duration_above_local_target");
-  assert.match(markdown, /64-70s target/);
+  assert.equal(report.proof_batch.applied[0].verdict, "voice_ready");
+  assert.match(markdown, /64-70s preferred, 61-75s accepted/);
 });
 
 test("local TTS overnight report stays amber when the batch recovered from a reset", () => {

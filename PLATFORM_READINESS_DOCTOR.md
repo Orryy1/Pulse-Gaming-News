@@ -2,7 +2,7 @@
 
 Read-only diagnostic. It performs no OAuth, token mutation, uploads or posts.
 
-Generated: 2026-05-12T23:53:33.379Z
+Generated: 2026-05-12T23:56:23.509Z
 Verdict: AMBER
 
 ## Blockers
@@ -29,8 +29,10 @@ Verdict: AMBER
 
 - Status: enabled_verify_after_upload
 - Reason: facebook_reels_enabled
-- Manual proof observed: false
-- Manual proof note: none
+- Manual proof observed: true
+- Manual proof note: read_only_graph_eligibility_visible_reel_or_video_found
+- Graph eligibility: eligible_for_normal_publish; reason=visible_graph_video_or_reel_found
+- Graph evidence: visible_reel_or_video=true; token_valid=true; page_can_post=true
 - Verifier: requires ready status plus published/permalink evidence
 
 ## Instagram Reels

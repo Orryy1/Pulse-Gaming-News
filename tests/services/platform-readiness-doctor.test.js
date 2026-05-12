@@ -222,6 +222,38 @@ test("platform readiness doctor records Facebook Reels enabled with verifier gua
   assert.match(renderPlatformReadinessDoctorMarkdown(report), /manual_reel_upload_succeeded/);
 });
 
+test("platform readiness doctor uses read-only Facebook Graph eligibility proof", () => {
+  const report = buildPlatformReadinessDoctor({
+    platformConfig: {
+      facebook_reel: { state: "enabled", reason: "facebook_reels_default_enabled" },
+    },
+    facebookEligibilityReport: {
+      evidence: {
+        page: { data: { can_post: true } },
+        videos: { count: 1 },
+        reels: { count: 1 },
+        tokenDebug: { data: { is_valid: true } },
+      },
+      classification: {
+        verdict: "eligible_for_normal_publish",
+        reason: "visible_graph_video_or_reel_found",
+      },
+    },
+  });
+
+  assert.equal(report.platforms.facebook_reel.manual_reel_upload_observed, true);
+  assert.equal(
+    report.platforms.facebook_reel.graph_eligibility.verdict,
+    "eligible_for_normal_publish",
+  );
+  assert.equal(report.platforms.facebook_reel.graph_eligibility.token_valid, true);
+  assert.equal(report.platforms.facebook_reel.graph_eligibility.page_can_post, true);
+
+  const markdown = renderPlatformReadinessDoctorMarkdown(report);
+  assert.match(markdown, /Graph eligibility: eligible_for_normal_publish/);
+  assert.match(markdown, /visible_reel_or_video=true; token_valid=true; page_can_post=true/);
+});
+
 test("platform readiness doctor command is registered and read-only", () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
   assert.equal(pkg.scripts["ops:platform-doctor"], "node tools/platform-readiness-doctor.js");

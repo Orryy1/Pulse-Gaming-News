@@ -35,6 +35,9 @@ async function main() {
   const tiktokAutomationReport = await readJsonIfExists(
     path.join(OUT, "tiktok_overnight_automation_report.json"),
   );
+  const facebookEligibilityReport = await readJsonIfExists(
+    path.join(OUT, "facebook_reels_eligibility.json"),
+  );
   const instagramLastError = getArg("--instagram-error") || process.env.PLATFORM_DOCTOR_INSTAGRAM_ERROR || null;
   const facebookManualProof = {
     observed:
@@ -51,6 +54,7 @@ async function main() {
     platformConfig: buildPlatformOperationalConfig(process.env),
     instagramLastError,
     facebookManualProof,
+    facebookEligibilityReport,
   });
   const jsonPath = path.join(OUT, "platform_readiness_doctor.json");
   const mdPath = path.join(OUT, "platform_readiness_doctor.md");

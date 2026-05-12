@@ -91,6 +91,7 @@
     "ops:local-primary-readiness": "node tools/local-primary-readiness.js",
     "ops:local-cutover-plan": "node tools/local-cutover-plan.js",
     "ops:local-posting-readiness": "node tools/local-posting-readiness.js",
+    "ops:local-resume-plan": "node tools/local-resume-plan.js",
     "ops:local-media-repair": "node tools/local-media-repair.js",
     "ops:local-script-extension": "node tools/local-script-extension.js",
     "media:enrich-stills": "node tools/still-image-enrichment.js",

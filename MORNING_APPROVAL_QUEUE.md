@@ -64,18 +64,18 @@ Rollback: keep the branch undeployed until the operator approves the production 
 
 Recommendation: defer production deployment until the current readiness gates are reviewed and the platform-specific live-risk decisions above are resolved.
 
-## 6. Restore Live Autonomous Posting
+## 6. Local Primary Cutover
 
-Decision needed: approve or defer turning live autonomous posting back on.
+Decision needed: approve or defer switching the PC/local stack into the live primary role.
 
-Current state from Railway health on 2026-05-12: the app is healthy and deployed, but `autonomousMode=false`, `schedulerActive=false` and `auto_publish=false`. The read-only publish-readiness check is AMBER and says publish is possible, but the service is not currently configured to autonomously upload.
+Current state from Railway health on 2026-05-12: Railway is healthy but deliberately observation-only (`primary=false`, `USE_JOB_QUEUE=false`, `AUTO_PUBLISH=false`). This matches the cost-control goal: Railway should remain optional/standby, not the always-on publisher.
 
-Why it matters: this is why the channel is not posting consistently even though ElevenLabs credits are available and the app itself is alive.
+Why it matters: the channel will not post consistently until one instance is primary. If Railway stays non-primary, the local PC must run scheduler, queue runner and uploads.
 
-What changes: Railway would be restored to the live posting profile, using the existing legacy production renderer and ElevenLabs voice path. Studio V2 would stay off. TikTok public posting would still be treated as externally blocked unless TikTok approval/route status changes.
+What changes: local `.env` would eventually need live-primary values (`DEPLOYMENT_MODE=local`, `PULSE_PRIMARY_INSTANCE=true`, `USE_JOB_QUEUE=true`, `AUTO_PUBLISH=true`) after local health, Cloudflare/public URL, OAuth callbacks, token paths, DB path and media paths pass readiness checks.
 
-Risk: enabling autonomous posting can upload to live social accounts. If there is a bad candidate, the existing QA gates should block it, but this is still live platform behaviour.
+Risk: enabling local primary can upload to live social accounts. It also relies on the PC, local network, Cloudflare Tunnel/public URL and local storage staying online.
 
-Rollback: turn `AUTO_PUBLISH=false` and/or set the instance back to observation-only, then restart the Railway service. No database rollback should be needed for merely re-disabling posting.
+Rollback: set local `AUTO_PUBLISH=false` or `PULSE_PRIMARY_INSTANCE=false`, stop the local server/runner and leave Railway standby. Railway can later be restored as primary if monetisation justifies the cost.
 
-Recommendation: approve a controlled restore of the legacy/ElevenLabs lane, not a Studio V2 switch. After restore, run publish-readiness first and watch the next publish window before touching TikTok or Studio V2.
+Recommendation: prepare and test local-primary mode first, then approve a controlled local cutover. Keep ElevenLabs available only as a temporary bridge while local Liam TTS is hardened; do not make Railway primary again just to resume posting.

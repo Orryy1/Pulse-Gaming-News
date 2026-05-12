@@ -63,6 +63,13 @@ function checkEnvVarPresent(name) {
   return { name, present, length, source };
 }
 
+function buildEffectiveEnv(parsed = dotenvParsed, base = process.env) {
+  // This doctor is specifically about the local `.env` runtime shape.
+  // Prefer parsed `.env` values over the shell wrapper so mode/primary
+  // checks match what `node server.js` will read after dotenv loads.
+  return { ...base, ...parsed };
+}
+
 function tryExec(cmd) {
   try {
     const out = execSync(cmd, {
@@ -89,7 +96,8 @@ async function checkPathWritable(p) {
 
 async function buildReport() {
   const dm = require("../lib/deployment-mode");
-  const mode = dm.summary();
+  const effectiveEnv = buildEffectiveEnv();
+  const mode = dm.summary(effectiveEnv);
 
   // Binary checks
   const ffmpeg = tryExec("ffmpeg -version");
@@ -142,12 +150,13 @@ async function buildReport() {
   };
 
   // File path writability
-  const targetMediaRoot = mode.media_root.startsWith("(")
-    ? path.resolve(__dirname, "..", "data", "media-local")
-    : mode.media_root;
-  const targetDbDir = mode.sqlite_db_path.startsWith("(")
-    ? path.resolve(__dirname, "..", "data")
-    : path.dirname(mode.sqlite_db_path);
+  const configuredMediaRoot = dm.getMediaRoot(effectiveEnv);
+  const configuredDbPath = dm.getSqliteDbPath(effectiveEnv);
+  const targetMediaRoot =
+    configuredMediaRoot || path.resolve(__dirname, "..", "data", "media-local");
+  const targetDbDir = configuredDbPath
+    ? path.dirname(configuredDbPath)
+    : path.resolve(__dirname, "..", "data");
   const fsChecks = {
     media_root: await checkPathWritable(targetMediaRoot),
     db_dir: await checkPathWritable(targetDbDir),
@@ -282,6 +291,16 @@ function formatMarkdown(report) {
   }
 
   lines.push("");
+  if (
+    report.verdict.overall === "green" &&
+    report.deployment_mode &&
+    report.deployment_mode.primary === false
+  ) {
+    lines.push(
+      "OK Local mirror prerequisites met. Safe to start observation-only; scheduler/posting stay disabled while `primary=false`.",
+    );
+    return lines.join("\n");
+  }
   if (report.verdict.overall === "green") {
     lines.push(
       "✅ Local-mode prerequisites met. Safe to start `node server.js` here.",
@@ -316,4 +335,12 @@ async function main() {
   }
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+module.exports = {
+  buildEffectiveEnv,
+  buildReport,
+  formatMarkdown,
+};

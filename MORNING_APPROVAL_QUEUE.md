@@ -63,3 +63,19 @@ Risk: deploying public-output changes can affect generated captions, proof selec
 Rollback: keep the branch undeployed until the operator approves the production rollout.
 
 Recommendation: defer production deployment until the current readiness gates are reviewed and the platform-specific live-risk decisions above are resolved.
+
+## 6. Restore Live Autonomous Posting
+
+Decision needed: approve or defer turning live autonomous posting back on.
+
+Current state from Railway health on 2026-05-12: the app is healthy and deployed, but `autonomousMode=false`, `schedulerActive=false` and `auto_publish=false`. The read-only publish-readiness check is AMBER and says publish is possible, but the service is not currently configured to autonomously upload.
+
+Why it matters: this is why the channel is not posting consistently even though ElevenLabs credits are available and the app itself is alive.
+
+What changes: Railway would be restored to the live posting profile, using the existing legacy production renderer and ElevenLabs voice path. Studio V2 would stay off. TikTok public posting would still be treated as externally blocked unless TikTok approval/route status changes.
+
+Risk: enabling autonomous posting can upload to live social accounts. If there is a bad candidate, the existing QA gates should block it, but this is still live platform behaviour.
+
+Rollback: turn `AUTO_PUBLISH=false` and/or set the instance back to observation-only, then restart the Railway service. No database rollback should be needed for merely re-disabling posting.
+
+Recommendation: approve a controlled restore of the legacy/ElevenLabs lane, not a Studio V2 switch. After restore, run publish-readiness first and watch the next publish window before touching TikTok or Studio V2.

@@ -389,3 +389,112 @@ test("TikTok automation token gate redacts raw token-shaped fields", () => {
   assert.equal(gate.access_token, undefined);
   assert.equal(gate.refresh_token, undefined);
 });
+
+test("TikTok automation report exposes separate no-post readiness gates", () => {
+  const report = buildTikTokAutomationReport({
+    generatedAt: "2026-05-13T08:00:00.000Z",
+    authDoctorReport: {
+      browser_oauth: {
+        status: "succeeded",
+        completed_at: "2026-05-12T22:10:00.000Z",
+        evidence: "operator_handoff",
+        access_token: "must-not-leak",
+      },
+      token_status: {
+        ok: false,
+        connected: false,
+        reason: "expired",
+        expires_in_seconds: -900,
+        refresh_available: true,
+        needs_reauth: false,
+        needs_refresh_or_sync: true,
+        local_action: "refresh_or_sync_local_token",
+        refresh_token: "must-not-leak",
+      },
+      posting_capability: {
+        official_inbox_upload_supported_by_code: true,
+        public_auto_posting_permitted_by_env: false,
+        public_auto_posting_expected_blocker:
+          "app_audit_or_direct_post_approval_not_confirmed",
+      },
+    },
+    freshDispatchPack: {
+      dispatchPack: {
+        storyId: "creative-story",
+        status: "creative_review_required",
+        mp4: "test/output/creative-story.mp4",
+        cover: "test/output/creative-story.jpg",
+        eligibility: {
+          durationSeconds: 74.6,
+          captionReady: true,
+          dispatchLengthReady: true,
+        },
+        creativeGate: {
+          blocks_dispatch: true,
+          blockers: ["visual_repeat_pairs_remaining"],
+        },
+      },
+      inboxPlan: {
+        status: "not_ready",
+        dry_run: true,
+        will_upload_to_tiktok: false,
+        blockers: ["dispatch_pack_creative_review_required"],
+      },
+      creativeReview: {
+        operator_visual_review_required: true,
+        blockers: ["visual_repeat_pairs_remaining"],
+      },
+      safety: {
+        public_post_created: false,
+      },
+    },
+  });
+
+  assert.equal(report.noPostReadiness.browserOAuth.status, "succeeded");
+  assert.equal(report.noPostReadiness.browserOAuth.local_token_proven, false);
+  assert.equal(report.noPostReadiness.localToken.status, "expired_but_refreshable");
+  assert.equal(report.noPostReadiness.localToken.next_action, "refresh_or_sync_local_token");
+  assert.equal(report.noPostReadiness.officialInbox.status, "blocked_by_local_token_and_creative_review");
+  assert.equal(report.noPostReadiness.directPost.status, "blocked_by_app_review_or_direct_post_approval");
+  assert.equal(report.noPostReadiness.dispatchCreative.status, "blocked_by_creative_review");
+  assert.equal(report.noPostReadiness.dispatchCreative.storyId, "creative-story");
+
+  const md = renderTikTokAutomationMarkdown(report);
+  assert.match(md, /No-Post Readiness Gates/);
+  assert.match(md, /Browser OAuth: succeeded/);
+  assert.match(md, /Local token: expired_but_refreshable/);
+  assert.match(md, /Direct post: blocked_by_app_review_or_direct_post_approval/);
+  assert.match(md, /Dispatch creative: blocked_by_creative_review/);
+  assert.doesNotMatch(md, /must-not-leak|access_token|refresh_token|Bearer/);
+});
+
+test("TikTok automation report recognises auth-doctor browser OAuth success evidence", () => {
+  const report = buildTikTokAutomationReport({
+    authDoctorReport: {
+      token_status: {
+        ok: false,
+        connected: false,
+        reason: "expired",
+        refresh_available: true,
+        needs_reauth: false,
+        needs_refresh_or_sync: true,
+        local_action: "refresh_or_sync_local_token",
+      },
+      operator_actions: [
+        "Refresh or sync the local TikTok token before local uploads. Earlier operator/browser OAuth was reported as successful on pulse.orryy.com, but this local proof did not refresh or verify this repo's local token file.",
+      ],
+    },
+    dispatchManifest: {},
+  });
+
+  assert.equal(report.noPostReadiness.browserOAuth.status, "reported_success");
+  assert.equal(
+    report.noPostReadiness.browserOAuth.evidence,
+    "auth_doctor_operator_action",
+  );
+  assert.equal(report.noPostReadiness.localToken.status, "expired_but_refreshable");
+
+  const md = renderTikTokAutomationMarkdown(report);
+  assert.match(md, /Browser OAuth: reported_success/);
+  assert.match(md, /Local token: expired_but_refreshable/);
+});

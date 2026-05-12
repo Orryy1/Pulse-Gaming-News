@@ -57,6 +57,88 @@ test("platform readiness doctor keeps TikTok OAuth success separate from local t
   assert.doesNotMatch(md, /must-not-leak|access_token|refresh_token|Bearer/);
 });
 
+test("platform readiness doctor renders TikTok no-post readiness lanes separately", () => {
+  const report = buildPlatformReadinessDoctor({
+    generatedAt: "2026-05-13T08:30:00.000Z",
+    tiktokTokenStatus: {
+      ok: false,
+      reason: "expired",
+      refresh_available: true,
+      needs_reauth: false,
+      expires_in_seconds: -60,
+      access_token: "must-not-leak",
+    },
+    tiktokAutomationReport: {
+      noPostReadiness: {
+        browserOAuth: {
+          status: "succeeded",
+          completed_at: "2026-05-12T22:10:00.000Z",
+          evidence: "operator_handoff",
+          local_token_proven: false,
+          local_token_status: "expired_but_refreshable",
+        },
+        localToken: {
+          status: "expired_but_refreshable",
+          next_action: "refresh_or_sync_local_token",
+          refresh_available: true,
+          needs_reauth: false,
+        },
+        officialInbox: {
+          status: "blocked_by_local_token_and_creative_review",
+          ready_pack_present: false,
+          public_auto_publish: false,
+        },
+        directPost: {
+          status: "blocked_by_app_review_or_direct_post_approval",
+          blocker: "direct_post_approval_not_declared",
+        },
+        dispatchCreative: {
+          status: "blocked_by_creative_review",
+          storyId: "1szzhy9",
+          blockers: ["visual_repeat_pairs_remaining"],
+        },
+      },
+      dispatchGate: {
+        topPack: {
+          storyId: "1szzhy9",
+          status: "creative_review_required",
+          mp4: "test/output/studio-v2-still-deck/studio_v2_1szzhy9_enriched.mp4",
+          cover: "test/output/tiktok-cover-candidates/covers/1szzhy9_12s.jpg",
+          eligibility: { durationSeconds: 74.6 },
+        },
+      },
+      blockers: ["visual_repeat_pairs_remaining"],
+    },
+  });
+
+  assert.equal(report.platforms.tiktok.no_post_readiness.browser_oauth.status, "succeeded");
+  assert.equal(
+    report.platforms.tiktok.no_post_readiness.local_token.status,
+    "expired_but_refreshable",
+  );
+  assert.equal(
+    report.platforms.tiktok.no_post_readiness.official_inbox.status,
+    "blocked_by_local_token_and_creative_review",
+  );
+  assert.equal(
+    report.platforms.tiktok.no_post_readiness.direct_post.status,
+    "blocked_by_app_review_or_direct_post_approval",
+  );
+  assert.equal(
+    report.platforms.tiktok.no_post_readiness.dispatch_creative.status,
+    "blocked_by_creative_review",
+  );
+
+  const md = renderPlatformReadinessDoctorMarkdown(report);
+  assert.match(md, /TikTok No-Post Readiness/);
+  assert.match(md, /Browser OAuth: succeeded/);
+  assert.match(md, /Local token: expired_but_refreshable/);
+  assert.match(md, /Official inbox: blocked_by_local_token_and_creative_review/);
+  assert.match(md, /Direct post: blocked_by_app_review_or_direct_post_approval/);
+  assert.match(md, /Dispatch creative: blocked_by_creative_review/);
+  assert.doesNotMatch(md, /must-not-leak|access_token|refresh_token|Bearer/);
+});
+
 test("platform readiness doctor blocks TikTok inbox when the selected pack still needs creative review", () => {
   const report = buildPlatformReadinessDoctor({
     tiktokTokenStatus: {

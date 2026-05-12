@@ -1,6 +1,6 @@
 # TikTok Overnight Automation Report
 
-Generated: 2026-05-08T14:08:35.053Z
+Generated: 2026-05-12T23:53:33.265Z
 Mode: read-only-tiktok-automation-strategy
 Verdict: AMBER
 Recommended route: refresh_or_sync_local_token_then_fix_fresh_dispatch_creative_blockers
@@ -13,6 +13,14 @@ Recommended route: refresh_or_sync_local_token_then_fix_fresh_dispatch_creative_
 - action: refresh_or_sync_local_token
 - refresh available: true
 - needs re-auth: false
+
+## No-Post Readiness Gates
+- Browser OAuth: reported_success; local token proven=false; local token status=expired_but_refreshable
+- Browser OAuth evidence: auth_doctor_operator_action
+- Local token: expired_but_refreshable; action=refresh_or_sync_local_token; refresh_available=true; needs_reauth=false
+- Official inbox: blocked_by_local_token_and_creative_review; ready_pack_present=false; public_auto_publish=false
+- Direct post: blocked_by_app_review_or_direct_post_approval; blocker=direct_post_approval_not_declared
+- Dispatch creative: blocked_by_creative_review; story=1szzhy9; blockers=studio_v2_promotion_red_blocked, forensic_warnings_remaining, visual_repeat_pairs_remaining, weak_rendered_frames_remaining, dispatch_pack_creative_review_required
 
 ## Dispatch Gate
 - source: fresh_local_dispatch_pack

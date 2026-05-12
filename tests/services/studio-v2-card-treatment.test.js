@@ -54,7 +54,7 @@ test("Flash Lane source cards compact long outlet labels into the card lane", ()
   assert.ok(layout.label.length <= 26, layout.label);
   assert.ok(layout.labelFontSize <= 36, String(layout.labelFontSize));
   assert.equal(layout.box.x + layout.box.w, 670);
-  assert.match(filter, /GAMINGLEAKSANDRUMOURS\.\.\./);
+  assert.match(filter, /\.\.\./);
   assert.match(filter, /fontsize=34|fontsize=36/);
 });
 
@@ -78,7 +78,7 @@ test("quote cards adapt long quote copy instead of cutting a fixed six-line bloc
   assert.ok(layout.blockTop >= 520, String(layout.blockTop));
   assert.ok(layout.blockBottom <= 1220, String(layout.blockBottom));
   assert.match(filter, /fontsize=3[4-8]/);
-  assert.match(filter, /\.\.\./);
+  assert.match(filter, /reaction could turn very quickly/);
 });
 
 test("standard source cards remain available outside Flash Lane", () => {

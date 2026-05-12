@@ -111,6 +111,67 @@ test("Controlled Frame Extraction Plan interleaves safe non-intro probe points a
   assert.ok(plan.target_frames.every((frame) => frame.target_time_percent >= 0.42));
 });
 
+test("Controlled Frame Extraction Plan moves known-duration frame targets out of rating-card window", () => {
+  const plan = buildControlledFrameExtractionPlan(
+    motionPlan({
+      existing_references: [
+        reference("GTA", 1, {
+          source_duration_s: 50,
+        }),
+        reference("Red Dead", 1, {
+          source_duration_s: 50,
+        }),
+      ],
+    }),
+  );
+
+  assert.ok(plan.target_frames.every((frame) => frame.target_time_seconds >= 24));
+  assert.ok(
+    plan.target_frames.every((frame) =>
+      frame.sampling_rejections.some((item) => item.reason === "intro_or_rating_card_window"),
+    ),
+  );
+});
+
+test("Controlled Frame Extraction Plan does not retry previously rejected bad frame windows", () => {
+  const previousFrameExtractionReport = {
+    plans: [
+      {
+        story_id: "frame-story",
+        frames: [
+          {
+            source_url: "https://video.example/gta-1.m3u8",
+            source_type: "steam_movie",
+            entity: "GTA",
+            target_time_percent: 0.42,
+            target_time_seconds: 25.2,
+            status: "rejected_qa",
+            qa: { failures: ["title_or_rating_card_frame"] },
+          },
+        ],
+      },
+    ],
+  };
+
+  const plan = buildControlledFrameExtractionPlan(motionPlan(), {
+    previousFrameExtractionReport,
+  });
+
+  assert.equal(
+    plan.target_frames.some(
+      (frame) =>
+        frame.entity === "GTA" &&
+        frame.source_url === "https://video.example/gta-1.m3u8" &&
+        frame.target_time_percent === 0.42,
+    ),
+    false,
+  );
+  assert.equal(plan.skipped_previously_rejected_windows.length, 1);
+  assert.deepEqual(plan.skipped_previously_rejected_windows[0].rejected_reasons, [
+    "title_or_rating_card_frame",
+  ]);
+});
+
 test("Controlled Frame Extraction Plan supports a max target frame cap", () => {
   const plan = buildControlledFrameExtractionPlan(motionPlan(), { maxTargetFrames: 5 });
 

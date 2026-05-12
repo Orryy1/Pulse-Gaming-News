@@ -8,6 +8,7 @@ const {
   buildWordPopDialogues,
   groupIntoPhrases,
   extractAssDialogueText,
+  planCaptionDensity,
 } = require("../../lib/studio/v2/subtitle-layer-v2");
 
 function assIntervals(ass) {
@@ -133,6 +134,57 @@ test("groupIntoPhrases splits long creator captions before they become two-line 
   );
 });
 
+test("planCaptionDensity prefers one-line normal captions inside word and char caps", () => {
+  const phrases = planCaptionDensity(
+    [
+      { word: "Pokemon", start: 0, end: 0.22 },
+      { word: "fans", start: 0.23, end: 0.38 },
+      { word: "get", start: 0.39, end: 0.52 },
+      { word: "Mega", start: 0.53, end: 0.7 },
+      { word: "Mewtwo.", start: 0.71, end: 0.96 },
+    ],
+    {
+      maxWordsPerCaption: 3,
+      maxCharsPerCaption: 18,
+      preferOneLine: true,
+    },
+  );
+
+  const captionTexts = phrases.map((phrase) => phrase.words.map((word) => word.word).join(" "));
+  assert.deepEqual(captionTexts, ["Pokemon fans get", "Mega Mewtwo."]);
+  assert.ok(captionTexts.every((caption) => !caption.includes("\n")));
+  assert.ok(captionTexts.every((caption) => caption.split(/\s+/).length <= 3));
+  assert.ok(captionTexts.every((caption) => caption.length <= 18));
+});
+
+test("planCaptionDensity splits long phrases into multiple punch captions", () => {
+  const phrases = planCaptionDensity(
+    [
+      { word: "PlayStation", start: 0, end: 0.18 },
+      { word: "showcase", start: 0.19, end: 0.36 },
+      { word: "shadow", start: 0.37, end: 0.52 },
+      { word: "drop", start: 0.53, end: 0.66 },
+      { word: "just", start: 0.67, end: 0.78 },
+      { word: "leaked.", start: 0.79, end: 0.98 },
+    ],
+    {
+      maxWordsPerCaption: 2,
+      maxCharsPerCaption: 14,
+      preferOneLine: true,
+    },
+  );
+
+  const captionTexts = phrases.map((phrase) => phrase.words.map((word) => word.word).join(" "));
+  assert.deepEqual(captionTexts, [
+    "PlayStation",
+    "showcase",
+    "shadow drop",
+    "just leaked.",
+  ]);
+  assert.ok(captionTexts.every((caption) => caption.split(/\s+/).length <= 2));
+  assert.ok(captionTexts.every((caption) => caption.length <= 14));
+});
+
 test("groupIntoPhrases can merge dangling Flash Lane caption fragments", () => {
   const phrases = groupIntoPhrases(
     [
@@ -242,6 +294,30 @@ test("buildKineticAss can keep full Flash punches visible while words pop", () =
   assert.deepEqual(captions.slice(0, 2), ["MARATHON\\hJUST", "FELL\\hHARD."]);
   assert.doesNotMatch(ass, /\\alpha&HFF&/);
   assert.match(ass, /\\t\(0,100,\\fscx115\\fscy115\)/);
+});
+
+test("buildKineticAss synthetic captions cover narration end and obey density caps", () => {
+  const scriptText = "Pokemon fans get Mega Mewtwo before the free event timer closes tonight.";
+  const ass = buildKineticAss({
+    story: { title: "Pokemon Mega Mewtwo" },
+    words: [],
+    duration: 8,
+    scriptText,
+    maxWordsPerPhrase: 2,
+    maxPhraseChars: 16,
+    captionCase: "upper",
+    revealMode: "phrase",
+  });
+
+  const intervals = assIntervals(ass);
+  const captions = extractAssDialogueText(ass).map((caption) => caption.replace(/\\h/g, " "));
+  assert.ok(intervals.length >= 5);
+  for (let i = 1; i < intervals.length; i++) {
+    assert.ok(intervals[i][0] - intervals[i - 1][1] <= 0.25);
+  }
+  assert.ok(intervals[intervals.length - 1][1] >= 7.75);
+  assert.ok(captions.every((caption) => caption.split(/\s+/).filter(Boolean).length <= 2));
+  assert.ok(captions.every((caption) => caption.length <= 16));
 });
 
 test("buildKineticAss can add TikTok-native Flash motion styling", () => {

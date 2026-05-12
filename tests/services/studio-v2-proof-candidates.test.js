@@ -133,6 +133,115 @@ test("proof candidates mark motion-backed Liam stories ready for a Studio V2 pro
   assert.match(report.candidates[0].recommended_command, /--with-sound-design/);
 });
 
+test("proof readiness packet recommends a local proof only when voice, captions, overlays and cover are ready", () => {
+  const report = buildStudioV2ProofCandidateReport({
+    stories: [
+      {
+        ...story("ready_packet"),
+        hf_thumbnail_path: "output/thumbnails/ready_packet.jpg",
+      },
+    ],
+    localAudioReports: [
+      audioReport("ready_packet", {
+        timestamps_path: "test/output/audio/ready_packet_timestamps.json",
+        timestamp_word_count: 154,
+        caption_coverage_ratio: 0.97,
+        caption_max_gap_s: 1.1,
+      }),
+    ],
+    assetReports: [assetReport("ready_packet", 7)],
+    frameReports: [frameReport("ready_packet", 10)],
+    segmentValidationReports: [segmentReport("ready_packet", 10)],
+    stillDeckReports: [
+      {
+        story_id: "ready_packet",
+        render_readiness: {
+          verdict: "render_ready",
+          readinessClass: "green",
+          blockers: [],
+          warnings: [],
+          storyBeatOverlayCount: 2,
+          requiredBeatOverlayMinimum: 2,
+        },
+      },
+    ],
+  });
+
+  const readiness = report.candidates[0].proof_readiness;
+  assert.equal(readiness.final_recommendation, "render_local_proof");
+  assert.equal(readiness.runtime_target.status, "pass");
+  assert.equal(readiness.approved_voice_evidence.status, "pass");
+  assert.equal(readiness.caption.status, "pass");
+  assert.equal(readiness.overlay_safe_area.status, "pass");
+  assert.equal(readiness.thumbnail_cover.status, "pass");
+  assert.equal(readiness.exact_subject_visual_count, 7);
+  assert.equal(readiness.validated_frame_count, 10);
+  assert.equal(readiness.validated_clip_count, 10);
+  assert.equal(readiness.bad_frame_rejection_count, 0);
+  assert.equal(readiness.outro_expected.status, "pass");
+});
+
+test("proof readiness packet prioritises voice repair before media repair", () => {
+  const report = buildStudioV2ProofCandidateReport({
+    stories: [story("voice_first")],
+    localAudioReports: [
+      audioReport("voice_first", {
+        local_voice_reference: { id: "old-local-voice", referencePresent: true },
+      }),
+    ],
+    assetReports: [assetReport("voice_first", 7)],
+    frameReports: [frameReport("voice_first", 10)],
+    segmentValidationReports: [segmentReport("voice_first", 10)],
+  });
+
+  const readiness = report.candidates[0].proof_readiness;
+  assert.equal(readiness.final_recommendation, "repair_voice_first");
+  assert.equal(readiness.approved_voice_evidence.status, "fail");
+});
+
+test("proof readiness packet rejects wrong-story exact visual evidence", () => {
+  const storyId = "reject_wrong_story_packet";
+  const report = buildStudioV2ProofCandidateReport({
+    stories: [
+      {
+        ...story(storyId, "GTA and Red Dead sequel rumours get new Take-Two context"),
+        full_script:
+          "Take-Two has new context for GTA and Red Dead fans after passing on a legacy sequel pitch.",
+      },
+    ],
+    localAudioReports: [audioReport(storyId)],
+    assetReports: [
+      {
+        plans: [
+          {
+            story_id: storyId,
+            would_fetch: [
+              ...assetReport(storyId, 4).plans[0].would_fetch,
+              {
+                id: `${storyId}_wrong`,
+                source_type: "steam_screenshot",
+                entity: "Metro 2033",
+                subject_match_quality: "exact_game_match",
+                exact_subject_group: "Metro 2033",
+                counted_for_premium: true,
+                counted_for_standard: true,
+                store_match_verified: true,
+                local_path: `test/output/assets/${storyId}_wrong.jpg`,
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    frameReports: [frameReport(storyId, 10)],
+    segmentValidationReports: [segmentReport(storyId, 10)],
+  });
+
+  const readiness = report.candidates[0].proof_readiness;
+  assert.equal(readiness.final_recommendation, "reject");
+  assert.equal(readiness.stale_wrong_story_risk.status, "fail");
+});
+
 test("proof candidates require Liam audio before a visual-ready render", () => {
   const report = buildStudioV2ProofCandidateReport({
     stories: [story("needs_audio")],

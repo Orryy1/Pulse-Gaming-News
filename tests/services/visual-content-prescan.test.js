@@ -152,6 +152,26 @@ test("classifyTrailerFrameTaste: rejects white-on-dark title and rating slates",
   assert.equal(taste.reason, "white_text_on_dark_card");
 });
 
+test("classifyTrailerFrameTaste: rejects OCR-detected PEGI and ESRB rating cards", () => {
+  for (const detected_text of [
+    "PEGI 18 www.pegi.info",
+    "ESRB Mature 17+ Blood and Gore",
+  ]) {
+    const taste = v.classifyTrailerFrameTaste({
+      detected_text,
+      text_overlay_likelihood: 0.08,
+      white_text_on_dark_likelihood: 0.2,
+      edge_density: 0.2,
+      saturation_mean: 0.4,
+      bright_pixel_ratio: 0.08,
+      dark_pixel_ratio: 0.45,
+    });
+
+    assert.equal(taste.verdict, "fail");
+    assert.equal(taste.reason, "rating_board_text_frame");
+  }
+});
+
 test("classifyTrailerFrameTaste: accepts letterboxed colourful official gameplay frames", () => {
   const taste = v.classifyTrailerFrameTaste({
     text_overlay_likelihood: 0,

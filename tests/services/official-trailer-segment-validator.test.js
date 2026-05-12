@@ -388,6 +388,35 @@ test("official trailer segment validator preflight-rejects official segments sti
   assert.equal(report.segments[0].media_start_s, 23);
 });
 
+test("official trailer segment validator allows short trailer windows when 36s skip would exhaust input", async () => {
+  const outputRoot = tempOutputRoot("short-trailer-window");
+  await cleanTempRoot(outputRoot);
+  let extractorCalls = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        mediaStartS: 12,
+        sourceDurationS: 28,
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: async (args) => {
+        extractorCalls += 1;
+        return fakeExtractor(args);
+      },
+      inspectFrame: async (outputPath) => passingQa(outputPath),
+    },
+  );
+
+  assert.equal(extractorCalls, 3);
+  assert.equal(report.summary.segments_validated, 1);
+  assert.equal(report.segments[0].validation_reason, "segment_samples_passed");
+  assert.equal(report.segments[0].media_start_s, 12);
+});
+
 test("official trailer segment validator rejects promo CTA card windows", async () => {
   const outputRoot = tempOutputRoot("promo-cta-card");
   await cleanTempRoot(outputRoot);

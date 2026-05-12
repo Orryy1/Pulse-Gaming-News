@@ -1,141 +1,65 @@
 # Morning Approval Queue
 
-Generated: 2026-05-08
+Generated: 2026-05-12
 
-Only live-risk actions are listed here. Safe local tooling, report generation and tests were done automatically.
+Only live-risk decisions are listed here. Safe local report edits and non-mutating checks do not need approval.
 
-## 1. Do Not Pilot Studio V2 Yet
+## 1. Studio V2 Pilot
 
-Decision needed: no approval requested yet.
+Decision needed: keep blocked.
 
-Why it matters: the latest Studio V2 promotion packet remains `RED_BLOCKED`. Local Liam is no longer the main blocker. The blocker is visual quality: contaminated exact-subject decks, not enough validated motion, not enough clip dominance and remaining forensic/repetition risk.
+Current state: proof candidates are `0` render-ready, `16` `repair_voice_first` and `1` reject. Local TTS doctor is green, but there are no render-ready proof candidates.
 
-What changes: nothing live. Legacy `assemble.js` stays canonical.
+Risk: approving a live pilot now could push an unready public video.
 
-Risk: approving a pilot now could publish the same kind of dull, repetitive, wrong-story or weak-looking video Martin rejected.
+Validation visible from current context: `npm test` passed `2351/2351`, build passed and local TTS doctor is green.
 
-Rollback: no action needed because no pilot was run.
+Recommendation: no. Do not approve Studio V2 pilot until at least one proof candidate is render-ready and has passed the existing visual, caption, frame and voice gates.
 
-Validation: focused modified-area tests passed, full `npm test` passed `2294/2294`, build passed and proof candidates still show `0` ready Flash proofs.
+## 2. TikTok Token And Official Use Route
 
-Recommendation: do not approve a Studio V2 live pilot until the visual-evidence gate is green, with zero wrong-story exact assets.
+Decision needed: approve or defer operator-owned TikTok token/use route work.
 
-## 2. TikTok Local Token Refresh Or Sync
+Current state: TikTok OAuth was recently connected in browser, but local/live upload remains gated. The official API/inbox route is still token/creative-gated.
 
-Decision needed: approve operator-owned token refresh/sync later.
+Risk: token sync, OAuth handling and official upload tests touch a live platform account even if public posting is not intended.
 
-Why it matters: earlier operator/browser OAuth was reported as successful on `pulse.orryy.com`, but this local repo's TikTok token store still reports expired. Official inbox upload cannot be tested locally until the local token gate is clear, and the selected MP4 pack still needs creative review before any inbox send.
+Rollback: do not mutate tokens and do not send any upload until a clean creative pack and explicit operator approval exist.
 
-What changes: local TikTok token files would be refreshed or synced. Public auto-posting should remain disabled.
+Recommendation: defer unless Martin is present and the work is explicitly limited to token/use-route verification with no live posting.
 
-Risk: OAuth/token actions touch a live platform account.
+## 3. YouTube Analytics Read-Only
 
-Rollback: keep a token-file backup and do not upload until `npm run tiktok:auth-doctor` is green.
+Decision needed: approve or defer read-only analytics access.
 
-Validation: `npm run tiktok:auth-doctor` is `AMBER`, `npm run tiktok:token -- --dry-run` reports `dry_run_refresh_available`, `npm run ops:platform-doctor` reports `tiktok_local_token_refresh_or_sync_required` and `tiktok_creative_review_required`. No token mutation occurred.
+Current state: deeper analytics learning remains read-only/OAuth-gated. No YouTube OAuth action was run by this refresh.
 
-Recommendation: do this with Martin present, then test only the official inbox/draft route with a clean current MP4 after creative review is green.
+Risk: OAuth handling touches a live YouTube account, even with read-only scope.
 
-## 3. TikTok Browser Automation
+Rollback: continue using public counters and local history only.
 
-Decision needed: reject for the live Pulse account for now.
+Recommendation: approve only `yt-analytics.readonly` if retention and traffic-source learning is needed now. Do not approve upload, edit, delete or publish scopes as part of this decision.
 
-Why it matters: browser automation is account-risky and not needed before the official inbox/manual route is exhausted.
+## 4. Facebook Reels Live Enable Or Verification
 
-What changes: nothing if rejected. If explored later, it must be test-account only.
+Decision needed: decide whether to verify or enable the normal Facebook Reels publisher path.
 
-Risk: live-account automation could trigger TikTok anti-abuse systems.
+Current state: a manual Facebook Reel proof worked, but the code path still needs readiness/verification and the normal publisher path remains safety-gated.
 
-Rollback: use official inbox upload or manual phone workflow.
+Risk: live publisher verification can create platform-side objects or public posts if not kept tightly scoped.
 
-Recommendation: do not approve live-account browser automation.
+Rollback: keep Facebook Reels manual-only and leave auto-publishing disabled.
 
-## 3a. Instagram Rerender After 2207076
+Recommendation: do not auto-enable anything from the manual proof. Approve only a controlled verification path if needed, with explicit no-auto-post constraints.
 
-Decision needed: no live approval yet; approve rerender/codec QA work only when a candidate MP4 is selected.
+## 5. Production Deployment Of Public-Output Changes
 
-Why it matters: Instagram error `2207076` means Meta rejected the media during processing. Retrying the same MP4 through URL fallback is likely to fail again and create duplicate failed containers.
+Decision needed: approve or defer production deployment.
 
-What changes: local render/codec QA should produce a fresh MP4; no platform upload should be retried automatically.
+Current state: this branch has proof-candidate, caption and frame QA changes pushed, but this documentation refresh made no code changes and no deployment.
 
-Risk: rerendering is safe locally, but live upload retry is platform-mutating.
+Risk: deploying public-output changes can affect generated captions, proof selection, visible output and platform behaviour.
 
-Rollback: keep the failed MP4 out of retry queues and rerun the platform doctor after a fresh render.
+Rollback: keep the branch undeployed until the operator approves the production rollout.
 
-Validation: `PLATFORM_READINESS_DOCTOR.md` classifies `2207076` as `media_processing_rejected` with `rerender_mp4_codec_qa_required`.
-
-Recommendation: rerender locally first, then allow normal scheduler/publisher flow to try Instagram only with a fresh passing MP4.
-
-## 4. YouTube Analytics Read-Only Re-Auth
-
-Decision needed: approve a YouTube OAuth re-auth for `yt-analytics.readonly`.
-
-Why it matters: Pulse can see public counters, but it cannot deeply learn retention, audience drop-off and traffic sources without Creator Studio analytics scope.
-
-What changes: YouTube token gains read-only analytics scope. It should not upload, edit, delete or publish anything.
-
-Risk: OAuth/token handling touches a live platform account.
-
-Rollback: do not re-auth and continue with public-counter learning only.
-
-Validation: analytics doctor is `AMBER`; YouTube analytics packet is `BLOCKED` until scope is granted.
-
-Recommendation: approve read-only analytics re-auth after this branch is safely merged.
-
-## 5. Paid Or External Voice Shootout
-
-Decision needed: approve a capped external benchmark only if local Liam is not enough.
-
-Why it matters: local Liam is now good enough for proof work and has generated two local benchmark samples under `test/output/voice-shootout/audio`. External services may cost money or send voice material off-machine.
-
-What changes: sample generation for external providers only, not a production voice switch.
-
-Risk: credit spend and voice-material handling.
-
-Rollback: keep production voice unchanged and delete rejected samples.
-
-Recommendation: review the local Liam blind-review samples first. Delay external providers unless those samples are not good enough.
-
-## 6. Longform Pilot
-
-Decision needed: approve one manually reviewed Pulse Briefing Lane pilot later.
-
-Why it matters: longform needs stronger sourcing, richer context and better visuals than Shorts.
-
-What changes: one Weekly Roundup or similar manually approved pilot, not an automatic cadence.
-
-Risk: unsupported facts or weak visual coverage would damage credibility.
-
-Rollback: keep longform local-only.
-
-Recommendation: review the longform dossier first, then approve one controlled pilot.
-
-## 7. Monetisation Live Use
-
-Decision needed: approve deploying the new monetisation safety changes only after reviewing the operator impact.
-
-Why it matters: this branch now blocks review-case affiliate links from public story output, adds visible Amazon Associate disclosure to YouTube descriptions, pinned comments and blog posts, and makes monetisation reports identify whether each metric came from fixture, env, local SQLite or a missing default. That is safer than the old behaviour, but it changes future public copy.
-
-What changes: story-specific affiliate links that pass audit can still appear. Fallback/random/review-case links are withheld, and public surfaces include: `As an Amazon Associate I earn from qualifying purchases.`
-
-Risk: public descriptions become slightly longer and weaker stories may lose affiliate links until they pass targeting review.
-
-Rollback: revert the monetisation-safety commit or keep the branch undeployed.
-
-Validation: `npm test` passed `2292/2292`, `npm run build` passed, and focused affiliate/monetisation/voice tests passed.
-
-Recommendation: approve this for deployment after reading `MONETISATION_OVERNIGHT_REPORT.md`; it is a safety improvement, but should still be treated as a public-output change.
-
-## 8. Current Policy Tracking
-
-Decision needed: none immediately; keep as a maintenance item.
-
-Why it matters: monetisation thresholds and platform rules change. The tracker now models expanded YPP early access, full YPP ad-revenue thresholds and more complete TikTok Creator Rewards prerequisites, based on official policy pages checked on 2026-05-08.
-
-What changes: local reports show expanded YPP 500-subscriber early access separately from full YPP ad revenue, and TikTok readiness includes account type, region, good standing, payment/tax setup, original-content readiness and 60s video eligibility.
-
-Risk: rules can change again.
-
-Rollback: update the thresholds/constants in `lib/intelligence/monetisation-tracker.js`.
-
-Recommendation: re-check official policy pages before making monetisation claims in public copy.
+Recommendation: defer production deployment until the current readiness gates are reviewed and the platform-specific live-risk decisions above are resolved.

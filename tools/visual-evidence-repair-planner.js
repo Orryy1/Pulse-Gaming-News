@@ -12,7 +12,10 @@ const {
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
 const DEFAULT_FLASH_STATE = path.join(OUT, "flash_lane_current_state.json");
+const DEFAULT_PROOF_CANDIDATES = path.join(OUT, "studio_v2_proof_candidates.json");
+const DEFAULT_MOTION_GAP = path.join(OUT, "studio_v2_motion_gap.json");
 const DEFAULT_ROOT_REPORT = path.join(ROOT, "VISUAL_EVIDENCE_REPAIR_PLAN.md");
+const DEFAULT_MEDIA_ROOT_REPORT = path.join(ROOT, "STUDIO_V2_MEDIA_REPAIR_ACTION_PLAN.md");
 
 function parseArgs(argv) {
   const args = {
@@ -20,6 +23,8 @@ function parseArgs(argv) {
     json: false,
     limit: 20,
     flashState: DEFAULT_FLASH_STATE,
+    proofCandidates: DEFAULT_PROOF_CANDIDATES,
+    motionGapReport: DEFAULT_MOTION_GAP,
   };
   for (let i = 2; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -27,6 +32,11 @@ function parseArgs(argv) {
     else if (arg === "--json") args.json = true;
     else if (arg === "--limit") args.limit = Math.max(1, Number(argv[++i]) || 20);
     else if (arg === "--flash-state") args.flashState = path.resolve(ROOT, argv[++i] || "");
+    else if (arg === "--no-flash-state") args.flashState = null;
+    else if (arg === "--proof-candidates") args.proofCandidates = path.resolve(ROOT, argv[++i] || "");
+    else if (arg === "--no-proof-candidates") args.proofCandidates = null;
+    else if (arg === "--motion-gap-report") args.motionGapReport = path.resolve(ROOT, argv[++i] || "");
+    else if (arg === "--no-motion-gap") args.motionGapReport = null;
   }
   return args;
 }
@@ -38,6 +48,11 @@ function printHelp() {
       "",
       "Options:",
       "  --flash-state <path>     Flash Lane current-state report",
+      "  --proof-candidates <p>   Studio V2 proof-candidate report",
+      "  --motion-gap-report <p>  Studio V2 motion-gap report",
+      "  --no-flash-state         Run without Flash Lane current-state input",
+      "  --no-proof-candidates    Run without proof-candidate input",
+      "  --no-motion-gap          Run without motion-gap input",
       "  --limit <n>              Limit inspected rows",
       "  --json                   Print JSON instead of Markdown",
       "",
@@ -46,10 +61,12 @@ function printHelp() {
   );
 }
 
-async function readJson(filePath, label) {
+async function readJsonIfExists(filePath, label, required = false) {
+  if (!filePath) return {};
   const resolved = path.resolve(ROOT, filePath);
   if (!(await fs.pathExists(resolved))) {
-    throw new Error(`${label} not found: ${resolved}`);
+    if (required) throw new Error(`${label} not found: ${resolved}`);
+    return {};
   }
   return fs.readJson(resolved);
 }
@@ -61,9 +78,16 @@ async function main() {
     return;
   }
 
-  const currentStateReport = await readJson(args.flashState, "Flash Lane current-state report");
+  const currentStateReport = await readJsonIfExists(args.flashState, "Flash Lane current-state report", false);
+  const proofCandidateReport = await readJsonIfExists(args.proofCandidates, "Studio V2 proof-candidate report", false);
+  const motionGapReport = await readJsonIfExists(args.motionGapReport, "Studio V2 motion-gap report", false);
+  if (!currentStateReport.rows && !proofCandidateReport.candidates) {
+    throw new Error("No planner input found; provide --flash-state or --proof-candidates");
+  }
   const report = buildVisualEvidenceRepairPlan({
     currentStateReport,
+    proofCandidateReport,
+    motionGapReport,
     limit: args.limit,
   });
   const markdown = renderVisualEvidenceRepairMarkdown(report);
@@ -71,16 +95,24 @@ async function main() {
   await fs.ensureDir(OUT);
   const jsonPath = path.join(OUT, "visual_evidence_repair_plan.json");
   const mdPath = path.join(OUT, "visual_evidence_repair_plan.md");
+  const mediaJsonPath = path.join(OUT, "studio_v2_media_repair_action_plan.json");
+  const mediaMdPath = path.join(OUT, "studio_v2_media_repair_action_plan.md");
   await fs.writeJson(jsonPath, report, { spaces: 2 });
   await fs.writeFile(mdPath, markdown, "utf8");
+  await fs.writeJson(mediaJsonPath, report, { spaces: 2 });
+  await fs.writeFile(mediaMdPath, markdown, "utf8");
   await fs.writeFile(DEFAULT_ROOT_REPORT, markdown, "utf8");
+  await fs.writeFile(DEFAULT_MEDIA_ROOT_REPORT, markdown, "utf8");
 
   process.stdout.write(args.json ? `${JSON.stringify(report, null, 2)}\n` : markdown);
   process.stderr.write(
     `[visual-repair] wrote ${path.relative(ROOT, jsonPath).replace(/\\/g, "/")}, ${path.relative(
       ROOT,
       mdPath,
-    ).replace(/\\/g, "/")} and ${path.relative(ROOT, DEFAULT_ROOT_REPORT).replace(/\\/g, "/")}\n`,
+    ).replace(/\\/g, "/")}, ${path.relative(ROOT, mediaJsonPath).replace(/\\/g, "/")}, ${path.relative(
+      ROOT,
+      mediaMdPath,
+    ).replace(/\\/g, "/")} and ${path.relative(ROOT, DEFAULT_MEDIA_ROOT_REPORT).replace(/\\/g, "/")}\n`,
   );
 }
 

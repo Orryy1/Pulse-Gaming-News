@@ -170,6 +170,7 @@ test("proof readiness packet recommends a local proof only when voice, captions,
   const readiness = report.candidates[0].proof_readiness;
   assert.equal(readiness.final_recommendation, "render_local_proof");
   assert.equal(readiness.runtime_target.status, "pass");
+  assert.deepEqual(readiness.runtime_target.target_seconds, [64, 70]);
   assert.equal(readiness.approved_voice_evidence.status, "pass");
   assert.equal(readiness.caption.status, "pass");
   assert.equal(readiness.overlay_safe_area.status, "pass");
@@ -179,6 +180,25 @@ test("proof readiness packet recommends a local proof only when voice, captions,
   assert.equal(readiness.validated_clip_count, 10);
   assert.equal(readiness.bad_frame_rejection_count, 0);
   assert.equal(readiness.outro_expected.status, "pass");
+});
+
+test("proof readiness packet sends edge-duration Liam proofs back to voice repair", () => {
+  const report = buildStudioV2ProofCandidateReport({
+    stories: [story("edge_duration")],
+    localAudioReports: [
+      audioReport("edge_duration", {
+        duration_seconds: 61.4,
+      }),
+    ],
+    assetReports: [assetReport("edge_duration", 7)],
+    frameReports: [frameReport("edge_duration", 10)],
+    segmentValidationReports: [segmentReport("edge_duration", 10)],
+  });
+
+  const readiness = report.candidates[0].proof_readiness;
+  assert.equal(readiness.runtime_target.status, "fail");
+  assert.deepEqual(readiness.runtime_target.target_seconds, [64, 70]);
+  assert.equal(readiness.final_recommendation, "repair_voice_first");
 });
 
 test("proof readiness packet prioritises voice repair before media repair", () => {
@@ -956,7 +976,7 @@ test("proof readiness packet JSON and Markdown expose all required proof fields"
 
   assert.equal(reparsed.candidates[0].proof_readiness.final_recommendation, "render_local_proof");
   assert.match(md, /Approved voice evidence:/);
-  assert.match(md, /Runtime target 61-75s:/);
+  assert.match(md, /Runtime target 64-70s:/);
   assert.match(md, /Caption coverage\/density:/);
   assert.match(md, /Overlay safe area:/);
   assert.match(md, /Validated frames\/clips:/);

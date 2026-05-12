@@ -114,6 +114,163 @@ test("visual repair planner ignores non-visual-repair rows", () => {
   assert.equal(report.summary.repair_candidates, 0);
 });
 
+test("visual repair planner turns cover-dominated proof candidates into gameplay-still repair", () => {
+  const report = buildVisualEvidenceRepairPlan({
+    proofCandidateReport: {
+      candidates: [
+        {
+          story_id: "story_cover",
+          title: "Legacy game cover deck",
+          verdict: "needs_motion_or_exact_assets",
+          blockers: ["flash_proof_requires_four_exact_subject_assets"],
+          audio: { ready: false, status: "local_liam_audio_not_flash_ready" },
+          visuals: {
+            exact_subject_count: 6,
+            cover_dominated_exact_asset_count: 4,
+            cover_dominated_exact_asset_share: 0.667,
+            wrong_story_exact_asset_count: 0,
+            validated_clip_ref_count: 0,
+            validated_clip_source_count: 0,
+            story_target_entities: ["Oblivion"],
+            validated_clip_entities: [],
+          },
+        },
+      ],
+    },
+  });
+
+  const repair = report.rows.find((item) => item.story_id === "story_cover");
+  assert.equal(repair.action, "replace_covers_with_gameplay_stills");
+  assert.equal(repair.primary_action_type, "cover_dominated_deck_repair");
+  assert.ok(repair.ranked_actions.some((item) => item.action_type === "exact_subject_gameplay_still_repair"));
+  assert.ok(repair.commands.some((item) => item.command.includes("--prefer-gameplay-stills")));
+  assert.equal(report.summary.cover_dominated, 1);
+});
+
+test("visual repair planner blocks wrong-story proof decks and queues entity-filtered repair", () => {
+  const report = buildVisualEvidenceRepairPlan({
+    proofCandidateReport: {
+      candidates: [
+        {
+          story_id: "story_wrong",
+          title: "GTA story with unrelated exact assets",
+          verdict: "needs_motion_or_exact_assets",
+          blockers: ["flash_proof_blocks_wrong_story_exact_assets"],
+          audio: { ready: true, status: "approved_local_liam_audio_ready" },
+          visuals: {
+            exact_subject_count: 39,
+            cover_dominated_exact_asset_count: 13,
+            wrong_story_exact_asset_count: 22,
+            wrong_story_exact_asset_groups: ["BioShock", "Red Dead"],
+            story_target_entities: ["GTA"],
+            validated_clip_ref_count: 9,
+            validated_clip_source_count: 4,
+            validated_clip_entities: ["GTA", "BioShock", "Red Dead"],
+          },
+        },
+      ],
+    },
+  });
+
+  const repair = report.rows.find((item) => item.story_id === "story_wrong");
+  assert.equal(repair.repair_class, "wrong_story_exact_assets");
+  assert.equal(repair.primary_action_type, "wrong_story_deck_rejection");
+  assert.ok(repair.ranked_actions.some((item) => item.action_type === "reject_wrong_story_deck"));
+  assert.ok(repair.ranked_actions.some((item) => item.action_type === "exact_subject_gameplay_still_repair"));
+  assert.equal(repair.render_recommendation, "do_not_render_yet");
+  assert.equal(report.summary.wrong_story, 1);
+});
+
+test("visual repair planner routes exhausted bad windows to alternate official source intake", () => {
+  const report = buildVisualEvidenceRepairPlan({
+    proofCandidateReport: {
+      candidates: [
+        {
+          story_id: "story_exhausted",
+          title: "Story with exhausted trailer windows",
+          verdict: "needs_motion_or_exact_assets",
+          blockers: ["footage_backbone_clip_dominance_too_low"],
+          audio: { ready: true, status: "approved_local_liam_audio_ready" },
+          visuals: {
+            exact_subject_count: 8,
+            cover_dominated_exact_asset_count: 0,
+            wrong_story_exact_asset_count: 0,
+            story_target_entities: ["GTA"],
+            validated_clip_ref_count: 2,
+            validated_clip_source_count: 1,
+            validated_clip_entities: ["GTA"],
+          },
+        },
+      ],
+    },
+    motionGapReport: {
+      gaps: [
+        {
+          story_id: "story_exhausted",
+          render_recommendation: "do_not_render_yet",
+          motion_gap: {
+            missing_validated_clip_refs: 1,
+            missing_validated_clip_sources: 1,
+            acquisition_strategy: {
+              status: "alternate_official_sources_required",
+              alternate_source_entities: ["GTA"],
+              entity_statuses: {
+                GTA: {
+                  status: "alternate_source_required",
+                  attempted_segments: 18,
+                  rejected_segments: 18,
+                  validated_segments: 0,
+                  top_rejection_reason: "segment_contains_title_or_rating_card",
+                },
+              },
+            },
+          },
+        },
+      ],
+    },
+  });
+
+  const repair = report.rows.find((item) => item.story_id === "story_exhausted");
+  assert.equal(repair.primary_action_type, "official_source_intake_needed");
+  assert.ok(repair.ranked_actions.some((item) => item.action_type === "exhausted_bad_windows"));
+  assert.ok(repair.ranked_actions.some((item) => item.action_type === "official_source_intake_needed"));
+  assert.ok(repair.commands.some((item) => item.command.includes("media:intake-official-sources")));
+  assert.equal(report.summary.official_source_intake_needed, 1);
+  assert.equal(report.summary.exhausted_bad_windows, 1);
+});
+
+test("visual repair planner never marks proof candidates render-ready without validated motion", () => {
+  const report = buildVisualEvidenceRepairPlan({
+    proofCandidateReport: {
+      candidates: [
+        {
+          story_id: "story_false_ready",
+          title: "False ready proof",
+          verdict: "ready_flash_proof",
+          recommended_command: "npm run studio:v2:local -- --story story_false_ready",
+          blockers: [],
+          audio: { ready: true, status: "approved_local_liam_audio_ready" },
+          visuals: {
+            exact_subject_count: 5,
+            cover_dominated_exact_asset_count: 0,
+            wrong_story_exact_asset_count: 0,
+            story_target_entities: ["Marathon"],
+            validated_clip_ref_count: 0,
+            validated_clip_source_count: 0,
+            validated_clip_entities: [],
+          },
+        },
+      ],
+    },
+  });
+
+  const repair = report.rows.find((item) => item.story_id === "story_false_ready");
+  assert.equal(repair.render_recommendation, "do_not_render_yet");
+  assert.equal(repair.validated_motion_ready, false);
+  assert.ok(!repair.commands.some((item) => item.purpose === "run_local_flash_proof"));
+  assert.equal(report.summary.render_ready_blocked_without_validated_motion, 1);
+});
+
 test("visual repair markdown is operator-readable and safety labelled", () => {
   const report = buildVisualEvidenceRepairPlan({
     currentStateReport: { rows: [row({ title: "GTA | Red Dead cover problem" })] },

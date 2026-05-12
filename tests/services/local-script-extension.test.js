@@ -83,8 +83,71 @@ test("local script extension targets the middle of the Liam-safe range, not the 
 
   assert.equal(DEFAULT_LOCAL_EXTENSION_TARGET_WORDS, 195);
   assert.equal(draft.target_words, 195);
+  assert.deepEqual(draft.target_seconds, [64, 70]);
+  assert.ok(draft.target_word_range.min >= 189);
+  assert.ok(draft.target_word_range.max <= 205);
   assert.ok(draft.proposed_words >= 180);
-  assert.ok(draft.proposed_words <= 201);
+  assert.ok(draft.proposed_words <= 205);
+});
+
+test("local script extension repairs underfloor Liam proofs toward 64-70s rather than the 61s floor", () => {
+  const draft = extendScriptToLocalFlash({
+    story: {
+      id: "rss_underfloor",
+      title: "Xbox confirms a new update",
+      full_script: "Xbox confirmed a new update today. ".repeat(27),
+    },
+    queueItem: {
+      ...queueItem("rss_underfloor", 168),
+      failure_code: "duration_too_short",
+      media: { audioDurationSeconds: 58.4 },
+    },
+    env: {},
+  });
+
+  assert.equal(draft.action, "ready_for_local_liam_audio");
+  assert.deepEqual(draft.target_seconds, [64, 70]);
+  assert.ok(draft.proposed_words >= draft.target_word_range.min);
+  assert.ok(draft.proposed_words <= draft.target_word_range.max);
+  assert.ok(draft.estimated_seconds >= 64);
+  assert.ok(draft.estimated_seconds <= 70);
+});
+
+test("local script extension reports per-story planning failures without aborting the batch", () => {
+  const plan = buildLocalScriptExtensionPlan({
+    queueReport: {
+      items: [
+        queueItem("bad_story", 136),
+        queueItem("good_story", 136),
+      ],
+    },
+    storiesById: {
+      bad_story: {
+        id: "bad_story",
+        title: "Bad story",
+        full_script: "Bad story marker confirms a new update today. ".repeat(25),
+      },
+      good_story: {
+        id: "good_story",
+        title: "Good story",
+        full_script: "Xbox confirmed a new update today. ".repeat(25),
+      },
+    },
+    cleanText: (text) => {
+      if (/Bad story|bad_story/i.test(text)) throw new Error("synthetic clean failure");
+      return text;
+    },
+    env: {},
+  });
+
+  assert.equal(plan.counts.total, 2);
+  assert.equal(plan.counts.ready, 1);
+  assert.equal(plan.counts.failed, 1);
+  assert.equal(plan.drafts.length, 1);
+  assert.equal(plan.drafts[0].story_id, "good_story");
+  assert.equal(plan.skipped[0].story_id, "bad_story");
+  assert.equal(plan.skipped[0].failure_code, "script_extension_planning_failed");
+  assert.match(renderLocalScriptExtensionMarkdown(plan), /bad_story: script_extension_planning_failed/);
 });
 
 test("local script extension uses compact bridge lines instead of overshooting near the minimum", () => {

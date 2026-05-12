@@ -122,7 +122,7 @@ test("local media repair does not treat old 100-word scripts as 60-second local 
   });
 
   assert.equal(report.items[0].action, "extend_script_before_local_repair");
-  assert.ok(report.items[0].needs.includes("extend_script_for_60s_local_voice"));
+  assert.ok(report.items[0].needs.includes("extend_script_for_64_70s_local_voice"));
   assert.match(report.items[0].warnings[0], /below_flash_target/);
 });
 
@@ -247,7 +247,7 @@ test("local media repair leaves current approved-voice renders alone", () => {
   assert.equal(report.counts.no_action, 1);
 });
 
-test("local media repair classifies out-of-range Liam audio for local duration repair", () => {
+test("local media repair classifies out-of-range Liam audio for local duration repair planning", () => {
   const report = buildLocalMediaRepairQueue({
     stories: [
       {
@@ -277,11 +277,48 @@ test("local media repair classifies out-of-range Liam audio for local duration r
     localTts: READY_TTS,
   });
 
-  assert.equal(report.items[0].action, "ready_local_audio_render_repair");
+  assert.equal(report.items[0].action, "extend_script_before_local_repair");
   assert.equal(report.items[0].failure_code, "duration_too_short");
   assert.ok(report.items[0].blockers.includes("duration_too_short"));
-  assert.ok(report.items[0].needs.includes("regenerate_audio_with_sleepy_liam"));
-  assert.ok(report.items[0].needs.includes("rerender_video_local"));
+  assert.ok(report.items[0].needs.includes("extend_script_for_64_70s_local_voice"));
+  assert.ok(!report.items[0].needs.includes("regenerate_audio_with_sleepy_liam"));
+});
+
+test("local media repair routes too-short Liam proofs through script extension before audio repair", () => {
+  const report = buildLocalMediaRepairQueue({
+    stories: [
+      {
+        id: "rss_duration_extension",
+        title: "Nintendo confirms a Switch 2 update",
+        approved: true,
+        full_script: "Nintendo confirmed new Switch details today. ".repeat(32),
+        audio_path: "output/audio/rss_duration_extension.mp3",
+        exported_path: "output/final/rss_duration_extension.mp4",
+      },
+    ],
+    mediaByStoryId: {
+      rss_duration_extension: {
+        audioExists: true,
+        finalExists: true,
+        audioDurationSeconds: 58.2,
+        finalDurationSeconds: 58.2,
+      },
+    },
+    voiceAuditByStoryId: {
+      rss_duration_extension: {
+        verdict: "pass",
+        blockers: [],
+        warnings: [],
+      },
+    },
+    localTts: READY_TTS,
+  });
+
+  assert.equal(report.items[0].action, "extend_script_before_local_repair");
+  assert.equal(report.items[0].failure_code, "duration_too_short");
+  assert.ok(report.items[0].needs.includes("extend_script_for_64_70s_local_voice"));
+  assert.ok(!report.items[0].needs.includes("regenerate_audio_with_sleepy_liam"));
+  assert.equal(report.counts.blocked_runtime, 1);
 });
 
 test("local media repair rejects non-Liam local voices as unsafe", () => {

@@ -299,6 +299,15 @@ function buildSimpleAss({ story, durationS }) {
   return lines.join("\n") + "\n";
 }
 
+function resolveSubtitleTimelineDurationS({ renderDurationS, narrationDurationS }) {
+  const renderDuration = Number(renderDurationS);
+  const narrationDuration = Number(narrationDurationS);
+  const candidates = [renderDuration, narrationDuration].filter(
+    (value) => Number.isFinite(value) && value > 0,
+  );
+  return Math.max(0.1, ...candidates);
+}
+
 function ensureSpokenOutro(text) {
   const outro = resolveStudioOutroLine({});
   const script = String(text || "").trim();
@@ -659,7 +668,10 @@ async function renderStillDeckVariant({
       : null;
   const transitions = buildCutTransitions(scenes);
   const assPath = path.join(outputDir, `${story.id}_${variant}.ass`);
-  const assDurationS = Math.max(0.1, durationS - 0.6);
+  const assDurationS = resolveSubtitleTimelineDurationS({
+    renderDurationS: durationS,
+    narrationDurationS: narration.durationS,
+  });
   let words = [];
   let subtitleStatus = "fixture_ass_generated";
   if (narration.mode === "real_audio") {

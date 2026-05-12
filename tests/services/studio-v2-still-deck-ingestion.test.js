@@ -733,6 +733,20 @@ test("still-deck Flash render path passes overlay beat coverage into preflight",
   assert.match(src, /assertFlashLaneProofReady\(\s*\{\s*narration,\s*scenes,\s*media,\s*overlayPlan\s*\}/);
 });
 
+test("still-deck ASS timeline covers the narration tail without a fixed outro cap", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+
+  assert.match(src, /function resolveSubtitleTimelineDurationS/);
+  assert.match(src, /Math\.max\(0\.1,\s*\.\.\.candidates\)/);
+  assert.match(src, /const assDurationS = resolveSubtitleTimelineDurationS\(\{/);
+  assert.match(src, /renderDurationS:\s*durationS/);
+  assert.match(src, /narrationDurationS:\s*narration\.durationS/);
+  assert.doesNotMatch(src, /durationS\s*-\s*0\.6/);
+});
+
 test("still-deck Flash preflight report surfaces motion and beat coverage metrics", () => {
   const src = fs.readFileSync(
     path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),

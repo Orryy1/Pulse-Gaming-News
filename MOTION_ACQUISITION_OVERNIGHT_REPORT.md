@@ -5,21 +5,21 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 ## Summary
 
 - Ready local Flash proofs: 0
-- Blocked Flash proofs: 17
+- Blocked Flash proofs: 20
 - Closest story: rss_5b3abe925b27a199
 
 ## rss_5b3abe925b27a199
 
 - Title: GTA 6 Owner Passed On A Sequel To A Legacy Franchise, And We're Dying To Know Which One
 - Recommendation: do_not_render_yet
-- Blockers: footage_backbone_clip_dominance_too_low, flash_proof_requires_footage_backbone_dominance, flash_proof_blocks_wrong_story_exact_assets
-- Liam audio: approved_local_liam_audio_ready
-- Exact assets: 39
+- Blockers: approved_liam_audio_missing, footage_backbone_clip_dominance_too_low, flash_proof_requires_footage_backbone_dominance, flash_proof_blocks_wrong_story_exact_assets
+- Liam audio: approved_local_liam_audio_missing
+- Exact assets: 26
 - Motion frames: 3
 - Validated clip refs: 9
 - Validated clip sources: 4
 - Projected clip dominance: 0.4
-- Clip dominance shortfall: 10.2s
+- Clip dominance shortfall: unknown
 - Validated entities: BioShock, Red Dead, GTA
 - Missing entities: none
 - Acquisition strategy: alternate_official_sources_required
@@ -61,6 +61,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - find_alternate_official_sources_for:GTA,Red Dead,BioShock
 - do_not_rescan_same_official_sources_for:GTA,Red Dead,BioShock
 - find_more_validated_gameplay_seconds_for_flash_lane
+- generate_approved_sleepy_liam_audio_after_visuals_are_ready
 
 ### Safe Commands
 
@@ -69,6 +70,8 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_5b3abe925b27a199 --trailer-references test/output/official_trailer_references_v1_story_rss_5b3abe925b27a199.json`
 - extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_5b3abe925b27a199 --apply-local`
 - validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_5b3abe925b27a199 --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1_story_rss_5b3abe925b27a199.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6`
+- refresh_local_audio_repair_queue: `npm run ops:local-media-repair -- --limit 20 --dry-run`
+- generate_sleepy_liam_audio_locally_after_visuals_are_ready: `npm run ops:local-script-extension -- --apply-local-audio`
 - recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story rss_5b3abe925b27a199`
 
 ### Segment Rejections
@@ -91,6 +94,70 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - Weak rendered frame count: 1
 - Weak rendered frames: 30s dead_dark_frame
 - Rating/title frame count: 0
+
+## 1t0zhng
+
+- Title: LEGO Batman: Legacy of the Dark Knight PC specs revealed
+- Recommendation: do_not_render_yet
+- Blockers: flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_sources, footage_backbone_clip_dominance_too_low, flash_proof_requires_validated_entity_coverage, flash_proof_requires_exact_subject_entity_coverage
+- Liam audio: approved_local_liam_audio_ready
+- Exact assets: 24
+- Motion frames: 0
+- Validated clip refs: 4
+- Validated clip sources: 2
+- Projected clip dominance: 0.16
+- Clip dominance shortfall: 27.6s
+- Validated entities: LEGO Batman
+- Missing entities: Legacy of the Dark Knight
+- Acquisition strategy: needs_first_segment_scan
+- Latest render proof: not available
+
+### Acquisition Strategy
+
+- Status: needs_first_segment_scan
+- Alternate-source entities: none
+- Unattempted entities: Legacy of the Dark Knight
+- Keep-sampling entities: none
+
+| Entity | Status | Attempts | Validated | Source families | Top rejection | Recommendation |
+| --- | --- | ---: | ---: | ---: | --- | --- |
+| LEGO Batman | validated | 36 | 4 | 6 | segment_lacks_gameplay_action_samples | keep_as_validated_motion_source |
+| Legacy of the Dark Knight | not_sampled | 0 | 0 | 0 | none | run_initial_segment_scan |
+
+#### Source families
+
+| Entity | Provider | App | Movie/source | Attempts | Rejected | Top rejection |
+| --- | --- | --- | --- | ---: | ---: | --- |
+| LEGO Batman | steam | LEGO® Batman™: Legacy of the Dark Knight | Launch Trailer WW | 6 | 6 | segment_contains_low_detail_frame |
+| LEGO Batman | steam | LEGO® Batman™: Legacy of the Dark Knight | Reveal Trailer WW | 6 | 6 | segment_lacks_gameplay_action_samples |
+| LEGO Batman | steam | LEGO® Batman™: Legacy of the Dark Knight | Heroes & Villains Trailer WW | 6 | 6 | segment_lacks_gameplay_action_samples |
+| LEGO Batman | steam | LEGO® Batman™: Legacy of the Dark Knight | Building the Legacy WW | 6 | 6 | segment_lacks_gameplay_action_samples |
+| LEGO Batman | steam | LEGO® Batman™: Legacy of the Dark Knight | Deluxe Edition Trailer WW | 6 | 5 | segment_samples_too_repetitive |
+| LEGO Batman | steam | LEGO® Batman™: Legacy of the Dark Knight | The Joker Cinematic Trailer WW | 6 | 3 | segment_lacks_gameplay_action_samples |
+
+### Next Steps
+
+- run_initial_segment_scan_for:Legacy of the Dark Knight
+- find_one_more_validated_clip_source
+- find_more_validated_gameplay_seconds_for_flash_lane
+- cover_missing_entities:Legacy of the Dark Knight
+
+### Safe Commands
+
+- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id 1t0zhng --no-latest-report`
+- plan_frame_sampling: `npm run media:plan-frames -- --story-id 1t0zhng --trailer-references test/output/official_trailer_references_v1_story_1t0zhng.json`
+- extract_safe_local_frames: `npm run media:extract-frames -- --story-id 1t0zhng --apply-local`
+- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id 1t0zhng --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1_story_1t0zhng.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6`
+- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story 1t0zhng`
+
+### Segment Rejections
+
+- segment_contains_low_detail_frame: 4
+- segment_lacks_gameplay_action_samples: 22
+- segment_contains_black_frame: 1
+- segment_contains_title_or_rating_card: 2
+- segment_sample_extract_failed: 1
+- segment_samples_too_repetitive: 2
 
 ## 1szzhy9
 
@@ -173,70 +240,6 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - Weak rendered frame count: 3
 - Weak rendered frames: 0s dead_dark_frame, 7.5s low_visual_information_frame, 10.5s white_text_on_dark_card
 - Rating/title frame count: 1
-
-## 1t0zhng
-
-- Title: LEGO Batman: Legacy of the Dark Knight PC specs revealed
-- Recommendation: do_not_render_yet
-- Blockers: approved_liam_audio_missing, flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_sources, footage_backbone_clip_dominance_too_low, flash_proof_requires_validated_entity_coverage, flash_proof_requires_exact_subject_entity_coverage, flash_proof_blocks_cover_dominated_exact_assets
-- Liam audio: approved_local_liam_audio_missing
-- Exact assets: 12
-- Motion frames: 0
-- Validated clip refs: 3
-- Validated clip sources: 1
-- Projected clip dominance: 0.14
-- Clip dominance shortfall: unknown
-- Validated entities: LEGO Batman
-- Missing entities: Legacy of the Dark Knight
-- Acquisition strategy: needs_first_segment_scan
-- Latest render proof: not available
-
-### Acquisition Strategy
-
-- Status: needs_first_segment_scan
-- Alternate-source entities: none
-- Unattempted entities: Legacy of the Dark Knight
-- Keep-sampling entities: none
-
-| Entity | Status | Attempts | Validated | Source families | Top rejection | Recommendation |
-| --- | --- | ---: | ---: | ---: | --- | --- |
-| LEGO Batman | validated | 30 | 3 | 5 | segment_lacks_gameplay_action_samples | keep_as_validated_motion_source |
-| Legacy of the Dark Knight | not_sampled | 0 | 0 | 0 | none | run_initial_segment_scan |
-
-#### Source families
-
-| Entity | Provider | App | Movie/source | Attempts | Rejected | Top rejection |
-| --- | --- | --- | --- | ---: | ---: | --- |
-| LEGO Batman | steam | LEGO® Batman™: Legacy of the Dark Knight | Launch Trailer WW | 6 | 6 | segment_contains_low_detail_frame |
-| LEGO Batman | steam | LEGO® Batman™: Legacy of the Dark Knight | Reveal Trailer WW | 6 | 6 | segment_lacks_gameplay_action_samples |
-| LEGO Batman | steam | LEGO® Batman™: Legacy of the Dark Knight | Heroes & Villains Trailer WW | 6 | 6 | segment_lacks_gameplay_action_samples |
-| LEGO Batman | steam | LEGO® Batman™: Legacy of the Dark Knight | Building the Legacy WW | 6 | 6 | segment_lacks_gameplay_action_samples |
-| LEGO Batman | steam | LEGO® Batman™: Legacy of the Dark Knight | The Joker Cinematic Trailer WW | 6 | 3 | segment_lacks_gameplay_action_samples |
-
-### Next Steps
-
-- run_initial_segment_scan_for:Legacy of the Dark Knight
-- find_2_more_validated_clip_sources
-- find_more_validated_gameplay_seconds_for_flash_lane
-- cover_missing_entities:Legacy of the Dark Knight
-- generate_approved_sleepy_liam_audio_after_visuals_are_ready
-
-### Safe Commands
-
-- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id 1t0zhng --no-latest-report`
-- plan_frame_sampling: `npm run media:plan-frames -- --story-id 1t0zhng --trailer-references test/output/official_trailer_references_v1_story_1t0zhng.json`
-- extract_safe_local_frames: `npm run media:extract-frames -- --story-id 1t0zhng --apply-local`
-- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id 1t0zhng --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1_story_1t0zhng.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6`
-- refresh_local_audio_repair_queue: `npm run ops:local-media-repair -- --limit 20 --dry-run`
-- generate_sleepy_liam_audio_locally_after_visuals_are_ready: `npm run ops:local-script-extension -- --apply-local-audio`
-- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story 1t0zhng`
-
-### Segment Rejections
-
-- segment_contains_low_detail_frame: 4
-- segment_lacks_gameplay_action_samples: 21
-- segment_contains_black_frame: 1
-- segment_contains_title_or_rating_card: 1
 
 ## rss_0e2778be9f97ffa4
 
@@ -547,6 +550,233 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - segment_lacks_gameplay_action_samples: 3
 - segment_contains_black_frame: 2
 
+## rss_1b7c404fc657548f
+
+- Title: rss_1b7c404fc657548f
+- Recommendation: do_not_render_yet
+- Blockers: flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, footage_backbone_needs_three_validated_clip_windows, footage_backbone_needs_gameplay_action_clip_windows, footage_backbone_entity_coverage_too_thin, footage_backbone_clip_dominance_too_low, flash_proof_requires_four_exact_subject_assets
+- Liam audio: approved_local_liam_audio_ready
+- Exact assets: 0
+- Motion frames: 0
+- Validated clip refs: 0
+- Validated clip sources: 0
+- Projected clip dominance: 0
+- Clip dominance shortfall: 36.3s
+- Validated entities: none
+- Missing entities: none
+- Acquisition strategy: no_story_entities
+- Latest render proof: not available
+
+### Acquisition Strategy
+
+- Status: no_story_entities
+- Alternate-source entities: none
+- Unattempted entities: none
+- Keep-sampling entities: none
+
+### Next Steps
+
+- find_3_more_validated_gameplay_clip_windows
+- find_3_more_validated_clip_sources
+- find_more_validated_gameplay_seconds_for_flash_lane
+- acquire_exact_subject_images_or_official_motion_refs
+
+### Safe Commands
+
+- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_1b7c404fc657548f --no-latest-report`
+- plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_1b7c404fc657548f --trailer-references test/output/official_trailer_references_v1_story_rss_1b7c404fc657548f.json`
+- extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_1b7c404fc657548f --apply-local`
+- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_1b7c404fc657548f --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1_story_rss_1b7c404fc657548f.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6`
+- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story rss_1b7c404fc657548f`
+
+### Segment Rejections
+
+- none
+
+## rss_2d69aa8506934c5e
+
+- Title: Call of Duty won't hit Xbox Game Pass at launch going forwards, as Microsoft's subscription service gets a price cut
+- Recommendation: do_not_render_yet
+- Blockers: flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, footage_backbone_needs_three_validated_clip_windows, footage_backbone_needs_gameplay_action_clip_windows, footage_backbone_entity_coverage_too_thin, footage_backbone_clip_dominance_too_low, flash_proof_requires_four_exact_subject_assets
+- Liam audio: approved_local_liam_audio_ready
+- Exact assets: 0
+- Motion frames: 0
+- Validated clip refs: 0
+- Validated clip sources: 0
+- Projected clip dominance: 0
+- Clip dominance shortfall: 37.7s
+- Validated entities: none
+- Missing entities: Call of Duty won't
+- Acquisition strategy: needs_first_segment_scan
+- Latest render proof: not available
+
+### Acquisition Strategy
+
+- Status: needs_first_segment_scan
+- Alternate-source entities: none
+- Unattempted entities: Call of Duty won't
+- Keep-sampling entities: none
+
+| Entity | Status | Attempts | Validated | Source families | Top rejection | Recommendation |
+| --- | --- | ---: | ---: | ---: | --- | --- |
+| Call of Duty won't | not_sampled | 0 | 0 | 0 | none | run_initial_segment_scan |
+
+### Next Steps
+
+- run_initial_segment_scan_for:Call of Duty won't
+- find_3_more_validated_gameplay_clip_windows
+- find_3_more_validated_clip_sources
+- find_more_validated_gameplay_seconds_for_flash_lane
+- acquire_exact_subject_images_or_official_motion_refs
+- cover_missing_entities:Call of Duty won't
+
+### Safe Commands
+
+- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_2d69aa8506934c5e --no-latest-report`
+- plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_2d69aa8506934c5e --trailer-references test/output/official_trailer_references_v1_story_rss_2d69aa8506934c5e.json`
+- extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_2d69aa8506934c5e --apply-local`
+- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_2d69aa8506934c5e --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1_story_rss_2d69aa8506934c5e.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6`
+- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story rss_2d69aa8506934c5e`
+
+### Segment Rejections
+
+- none
+
+## rss_6d8aaac7eccad2ff
+
+- Title: rss_6d8aaac7eccad2ff
+- Recommendation: do_not_render_yet
+- Blockers: flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, footage_backbone_needs_three_validated_clip_windows, footage_backbone_needs_gameplay_action_clip_windows, footage_backbone_entity_coverage_too_thin, footage_backbone_clip_dominance_too_low, flash_proof_requires_four_exact_subject_assets
+- Liam audio: approved_local_liam_audio_ready
+- Exact assets: 0
+- Motion frames: 0
+- Validated clip refs: 0
+- Validated clip sources: 0
+- Projected clip dominance: 0
+- Clip dominance shortfall: 34.5s
+- Validated entities: none
+- Missing entities: none
+- Acquisition strategy: no_story_entities
+- Latest render proof: not available
+
+### Acquisition Strategy
+
+- Status: no_story_entities
+- Alternate-source entities: none
+- Unattempted entities: none
+- Keep-sampling entities: none
+
+### Next Steps
+
+- find_3_more_validated_gameplay_clip_windows
+- find_3_more_validated_clip_sources
+- find_more_validated_gameplay_seconds_for_flash_lane
+- acquire_exact_subject_images_or_official_motion_refs
+
+### Safe Commands
+
+- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_6d8aaac7eccad2ff --no-latest-report`
+- plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_6d8aaac7eccad2ff --trailer-references test/output/official_trailer_references_v1_story_rss_6d8aaac7eccad2ff.json`
+- extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_6d8aaac7eccad2ff --apply-local`
+- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_6d8aaac7eccad2ff --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1_story_rss_6d8aaac7eccad2ff.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6`
+- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story rss_6d8aaac7eccad2ff`
+
+### Segment Rejections
+
+- none
+
+## rss_6edbb38dc280fc96
+
+- Title: rss_6edbb38dc280fc96
+- Recommendation: do_not_render_yet
+- Blockers: flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, footage_backbone_needs_three_validated_clip_windows, footage_backbone_needs_gameplay_action_clip_windows, footage_backbone_entity_coverage_too_thin, footage_backbone_clip_dominance_too_low, flash_proof_requires_four_exact_subject_assets
+- Liam audio: approved_local_liam_audio_ready
+- Exact assets: 0
+- Motion frames: 0
+- Validated clip refs: 0
+- Validated clip sources: 0
+- Projected clip dominance: 0
+- Clip dominance shortfall: 34.1s
+- Validated entities: none
+- Missing entities: none
+- Acquisition strategy: no_story_entities
+- Latest render proof: not available
+
+### Acquisition Strategy
+
+- Status: no_story_entities
+- Alternate-source entities: none
+- Unattempted entities: none
+- Keep-sampling entities: none
+
+### Next Steps
+
+- find_3_more_validated_gameplay_clip_windows
+- find_3_more_validated_clip_sources
+- find_more_validated_gameplay_seconds_for_flash_lane
+- acquire_exact_subject_images_or_official_motion_refs
+
+### Safe Commands
+
+- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_6edbb38dc280fc96 --no-latest-report`
+- plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_6edbb38dc280fc96 --trailer-references test/output/official_trailer_references_v1_story_rss_6edbb38dc280fc96.json`
+- extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_6edbb38dc280fc96 --apply-local`
+- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_6edbb38dc280fc96 --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1_story_rss_6edbb38dc280fc96.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6`
+- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story rss_6edbb38dc280fc96`
+
+### Segment Rejections
+
+- none
+
+## rss_ef7e6e464509e0bc
+
+- Title: MindsEye Has a New Update and a Cheaper Price as Developer Launches Comeback Bid
+- Recommendation: do_not_render_yet
+- Blockers: flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, footage_backbone_needs_three_validated_clip_windows, footage_backbone_needs_gameplay_action_clip_windows, footage_backbone_entity_coverage_too_thin, footage_backbone_clip_dominance_too_low, flash_proof_requires_four_exact_subject_assets
+- Liam audio: approved_local_liam_audio_ready
+- Exact assets: 0
+- Motion frames: 0
+- Validated clip refs: 0
+- Validated clip sources: 0
+- Projected clip dominance: 0
+- Clip dominance shortfall: 40.7s
+- Validated entities: none
+- Missing entities: MindsEye
+- Acquisition strategy: needs_first_segment_scan
+- Latest render proof: not available
+
+### Acquisition Strategy
+
+- Status: needs_first_segment_scan
+- Alternate-source entities: none
+- Unattempted entities: MindsEye
+- Keep-sampling entities: none
+
+| Entity | Status | Attempts | Validated | Source families | Top rejection | Recommendation |
+| --- | --- | ---: | ---: | ---: | --- | --- |
+| MindsEye | not_sampled | 0 | 0 | 0 | none | run_initial_segment_scan |
+
+### Next Steps
+
+- run_initial_segment_scan_for:MindsEye
+- find_3_more_validated_gameplay_clip_windows
+- find_3_more_validated_clip_sources
+- find_more_validated_gameplay_seconds_for_flash_lane
+- acquire_exact_subject_images_or_official_motion_refs
+- cover_missing_entities:MindsEye
+
+### Safe Commands
+
+- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_ef7e6e464509e0bc --no-latest-report`
+- plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_ef7e6e464509e0bc --trailer-references test/output/official_trailer_references_v1_story_rss_ef7e6e464509e0bc.json`
+- extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_ef7e6e464509e0bc --apply-local`
+- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_ef7e6e464509e0bc --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1_story_rss_ef7e6e464509e0bc.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6`
+- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story rss_ef7e6e464509e0bc`
+
+### Segment Rejections
+
+- none
+
 ## demo_gta_xbox
 
 - Title: GTA 6 gets a new Xbox showcase update
@@ -691,9 +921,9 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 
 - none
 
-## demo_hotd_reject
+## rss_3831c03ef4eaf35c
 
-- Title: House of the Dragon season 3 adds a major new cast member
+- Title: Invincible VS Global Release Times Confirmed
 - Recommendation: do_not_render_yet
 - Blockers: approved_liam_audio_missing, flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, footage_backbone_needs_three_validated_clip_windows, footage_backbone_needs_gameplay_action_clip_windows, footage_backbone_entity_coverage_too_thin, footage_backbone_clip_dominance_too_low, flash_proof_requires_four_exact_subject_assets
 - Liam audio: approved_local_liam_audio_missing
@@ -704,7 +934,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - Projected clip dominance: 0
 - Clip dominance shortfall: unknown
 - Validated entities: none
-- Missing entities: House of the Dragon season 3
+- Missing entities: Invincible VS
 - Acquisition strategy: needs_first_segment_scan
 - Latest render proof: not available
 
@@ -712,49 +942,101 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 
 - Status: needs_first_segment_scan
 - Alternate-source entities: none
-- Unattempted entities: House of the Dragon season 3
+- Unattempted entities: Invincible VS
 - Keep-sampling entities: none
 
 | Entity | Status | Attempts | Validated | Source families | Top rejection | Recommendation |
 | --- | --- | ---: | ---: | ---: | --- | --- |
-| House of the Dragon season 3 | not_sampled | 0 | 0 | 0 | none | run_initial_segment_scan |
+| Invincible VS | not_sampled | 0 | 0 | 0 | none | run_initial_segment_scan |
 
 ### Next Steps
 
-- run_initial_segment_scan_for:House of the Dragon season 3
+- run_initial_segment_scan_for:Invincible VS
 - find_3_more_validated_gameplay_clip_windows
 - find_3_more_validated_clip_sources
 - find_more_validated_gameplay_seconds_for_flash_lane
 - acquire_exact_subject_images_or_official_motion_refs
-- cover_missing_entities:House of the Dragon season 3
+- cover_missing_entities:Invincible VS
 - generate_approved_sleepy_liam_audio_after_visuals_are_ready
 
 ### Safe Commands
 
-- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id demo_hotd_reject --no-latest-report`
-- plan_frame_sampling: `npm run media:plan-frames -- --story-id demo_hotd_reject --trailer-references test/output/official_trailer_references_v1_story_demo_hotd_reject.json`
-- extract_safe_local_frames: `npm run media:extract-frames -- --story-id demo_hotd_reject --apply-local`
-- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id demo_hotd_reject --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1_story_demo_hotd_reject.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6`
+- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_3831c03ef4eaf35c --no-latest-report`
+- plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_3831c03ef4eaf35c --trailer-references test/output/official_trailer_references_v1_story_rss_3831c03ef4eaf35c.json`
+- extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_3831c03ef4eaf35c --apply-local`
+- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_3831c03ef4eaf35c --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1_story_rss_3831c03ef4eaf35c.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6`
 - refresh_local_audio_repair_queue: `npm run ops:local-media-repair -- --limit 20 --dry-run`
 - generate_sleepy_liam_audio_locally_after_visuals_are_ready: `npm run ops:local-script-extension -- --apply-local-audio`
-- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story demo_hotd_reject`
+- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story rss_3831c03ef4eaf35c`
 
 ### Segment Rejections
 
 - none
 
-## rss_1b7c404fc657548f
+## rss_8ea7f2689732f31a
 
-- Title: rss_1b7c404fc657548f
+- Title: Even GTA 6's price needs to feel "reasonable", says Take-Two boss: hiking past $70 to match inflation "doesn’t make a whole lot of sense"
 - Recommendation: do_not_render_yet
 - Blockers: approved_liam_audio_missing, flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, footage_backbone_needs_three_validated_clip_windows, footage_backbone_needs_gameplay_action_clip_windows, footage_backbone_entity_coverage_too_thin, footage_backbone_clip_dominance_too_low, flash_proof_requires_four_exact_subject_assets
-- Liam audio: local_liam_audio_not_flash_ready
+- Liam audio: approved_local_liam_audio_missing
 - Exact assets: 0
 - Motion frames: 0
 - Validated clip refs: 0
 - Validated clip sources: 0
 - Projected clip dominance: 0
-- Clip dominance shortfall: 30.5s
+- Clip dominance shortfall: unknown
+- Validated entities: none
+- Missing entities: GTA
+- Acquisition strategy: needs_first_segment_scan
+- Latest render proof: not available
+
+### Acquisition Strategy
+
+- Status: needs_first_segment_scan
+- Alternate-source entities: none
+- Unattempted entities: GTA
+- Keep-sampling entities: none
+
+| Entity | Status | Attempts | Validated | Source families | Top rejection | Recommendation |
+| --- | --- | ---: | ---: | ---: | --- | --- |
+| GTA | not_sampled | 0 | 0 | 0 | none | run_initial_segment_scan |
+
+### Next Steps
+
+- run_initial_segment_scan_for:GTA
+- find_3_more_validated_gameplay_clip_windows
+- find_3_more_validated_clip_sources
+- find_more_validated_gameplay_seconds_for_flash_lane
+- acquire_exact_subject_images_or_official_motion_refs
+- cover_missing_entities:GTA
+- generate_approved_sleepy_liam_audio_after_visuals_are_ready
+
+### Safe Commands
+
+- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_8ea7f2689732f31a --no-latest-report`
+- plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_8ea7f2689732f31a --trailer-references test/output/official_trailer_references_v1_story_rss_8ea7f2689732f31a.json`
+- extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_8ea7f2689732f31a --apply-local`
+- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_8ea7f2689732f31a --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1_story_rss_8ea7f2689732f31a.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6`
+- refresh_local_audio_repair_queue: `npm run ops:local-media-repair -- --limit 20 --dry-run`
+- generate_sleepy_liam_audio_locally_after_visuals_are_ready: `npm run ops:local-script-extension -- --apply-local-audio`
+- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story rss_8ea7f2689732f31a`
+
+### Segment Rejections
+
+- none
+
+## rss_93fdf53a0c1211ef
+
+- Title: PlayStation Plus Free Games For May 2026 Revealed
+- Recommendation: do_not_render_yet
+- Blockers: approved_liam_audio_missing, flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, footage_backbone_needs_three_validated_clip_windows, footage_backbone_needs_gameplay_action_clip_windows, footage_backbone_entity_coverage_too_thin, footage_backbone_clip_dominance_too_low, flash_proof_requires_four_exact_subject_assets
+- Liam audio: approved_local_liam_audio_missing
+- Exact assets: 0
+- Motion frames: 0
+- Validated clip refs: 0
+- Validated clip sources: 0
+- Projected clip dominance: 0
+- Clip dominance shortfall: unknown
 - Validated entities: none
 - Missing entities: none
 - Acquisition strategy: no_story_entities
@@ -777,197 +1059,65 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 
 ### Safe Commands
 
-- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_1b7c404fc657548f --no-latest-report`
-- plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_1b7c404fc657548f --trailer-references test/output/official_trailer_references_v1_story_rss_1b7c404fc657548f.json`
-- extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_1b7c404fc657548f --apply-local`
-- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_1b7c404fc657548f --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1_story_rss_1b7c404fc657548f.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6`
+- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_93fdf53a0c1211ef --no-latest-report`
+- plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_93fdf53a0c1211ef --trailer-references test/output/official_trailer_references_v1_story_rss_93fdf53a0c1211ef.json`
+- extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_93fdf53a0c1211ef --apply-local`
+- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_93fdf53a0c1211ef --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1_story_rss_93fdf53a0c1211ef.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6`
 - refresh_local_audio_repair_queue: `npm run ops:local-media-repair -- --limit 20 --dry-run`
 - generate_sleepy_liam_audio_locally_after_visuals_are_ready: `npm run ops:local-script-extension -- --apply-local-audio`
-- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story rss_1b7c404fc657548f`
+- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story rss_93fdf53a0c1211ef`
 
 ### Segment Rejections
 
 - none
 
-## rss_2d69aa8506934c5e
+## rss_9fb084475142f310
 
-- Title: rss_2d69aa8506934c5e
+- Title: GTA 6 Price Commented On By Rockstar's Owner
 - Recommendation: do_not_render_yet
 - Blockers: approved_liam_audio_missing, flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, footage_backbone_needs_three_validated_clip_windows, footage_backbone_needs_gameplay_action_clip_windows, footage_backbone_entity_coverage_too_thin, footage_backbone_clip_dominance_too_low, flash_proof_requires_four_exact_subject_assets
-- Liam audio: local_liam_audio_not_flash_ready
+- Liam audio: approved_local_liam_audio_missing
 - Exact assets: 0
 - Motion frames: 0
 - Validated clip refs: 0
 - Validated clip sources: 0
 - Projected clip dominance: 0
-- Clip dominance shortfall: 29.7s
+- Clip dominance shortfall: unknown
 - Validated entities: none
-- Missing entities: none
-- Acquisition strategy: no_story_entities
+- Missing entities: GTA
+- Acquisition strategy: needs_first_segment_scan
 - Latest render proof: not available
 
 ### Acquisition Strategy
 
-- Status: no_story_entities
+- Status: needs_first_segment_scan
 - Alternate-source entities: none
-- Unattempted entities: none
+- Unattempted entities: GTA
 - Keep-sampling entities: none
+
+| Entity | Status | Attempts | Validated | Source families | Top rejection | Recommendation |
+| --- | --- | ---: | ---: | ---: | --- | --- |
+| GTA | not_sampled | 0 | 0 | 0 | none | run_initial_segment_scan |
 
 ### Next Steps
 
+- run_initial_segment_scan_for:GTA
 - find_3_more_validated_gameplay_clip_windows
 - find_3_more_validated_clip_sources
 - find_more_validated_gameplay_seconds_for_flash_lane
 - acquire_exact_subject_images_or_official_motion_refs
+- cover_missing_entities:GTA
 - generate_approved_sleepy_liam_audio_after_visuals_are_ready
 
 ### Safe Commands
 
-- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_2d69aa8506934c5e --no-latest-report`
-- plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_2d69aa8506934c5e --trailer-references test/output/official_trailer_references_v1_story_rss_2d69aa8506934c5e.json`
-- extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_2d69aa8506934c5e --apply-local`
-- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_2d69aa8506934c5e --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1_story_rss_2d69aa8506934c5e.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6`
+- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_9fb084475142f310 --no-latest-report`
+- plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_9fb084475142f310 --trailer-references test/output/official_trailer_references_v1_story_rss_9fb084475142f310.json`
+- extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_9fb084475142f310 --apply-local`
+- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_9fb084475142f310 --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1_story_rss_9fb084475142f310.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6`
 - refresh_local_audio_repair_queue: `npm run ops:local-media-repair -- --limit 20 --dry-run`
 - generate_sleepy_liam_audio_locally_after_visuals_are_ready: `npm run ops:local-script-extension -- --apply-local-audio`
-- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story rss_2d69aa8506934c5e`
-
-### Segment Rejections
-
-- none
-
-## rss_6d8aaac7eccad2ff
-
-- Title: rss_6d8aaac7eccad2ff
-- Recommendation: do_not_render_yet
-- Blockers: approved_liam_audio_missing, flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, footage_backbone_needs_three_validated_clip_windows, footage_backbone_needs_gameplay_action_clip_windows, footage_backbone_entity_coverage_too_thin, footage_backbone_clip_dominance_too_low, flash_proof_requires_four_exact_subject_assets
-- Liam audio: local_liam_audio_not_flash_ready
-- Exact assets: 0
-- Motion frames: 0
-- Validated clip refs: 0
-- Validated clip sources: 0
-- Projected clip dominance: 0
-- Clip dominance shortfall: 33.0s
-- Validated entities: none
-- Missing entities: none
-- Acquisition strategy: no_story_entities
-- Latest render proof: not available
-
-### Acquisition Strategy
-
-- Status: no_story_entities
-- Alternate-source entities: none
-- Unattempted entities: none
-- Keep-sampling entities: none
-
-### Next Steps
-
-- find_3_more_validated_gameplay_clip_windows
-- find_3_more_validated_clip_sources
-- find_more_validated_gameplay_seconds_for_flash_lane
-- acquire_exact_subject_images_or_official_motion_refs
-- generate_approved_sleepy_liam_audio_after_visuals_are_ready
-
-### Safe Commands
-
-- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_6d8aaac7eccad2ff --no-latest-report`
-- plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_6d8aaac7eccad2ff --trailer-references test/output/official_trailer_references_v1_story_rss_6d8aaac7eccad2ff.json`
-- extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_6d8aaac7eccad2ff --apply-local`
-- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_6d8aaac7eccad2ff --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1_story_rss_6d8aaac7eccad2ff.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6`
-- refresh_local_audio_repair_queue: `npm run ops:local-media-repair -- --limit 20 --dry-run`
-- generate_sleepy_liam_audio_locally_after_visuals_are_ready: `npm run ops:local-script-extension -- --apply-local-audio`
-- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story rss_6d8aaac7eccad2ff`
-
-### Segment Rejections
-
-- none
-
-## rss_6edbb38dc280fc96
-
-- Title: rss_6edbb38dc280fc96
-- Recommendation: do_not_render_yet
-- Blockers: approved_liam_audio_missing, flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, footage_backbone_needs_three_validated_clip_windows, footage_backbone_needs_gameplay_action_clip_windows, footage_backbone_entity_coverage_too_thin, footage_backbone_clip_dominance_too_low, flash_proof_requires_four_exact_subject_assets
-- Liam audio: local_liam_audio_not_flash_ready
-- Exact assets: 0
-- Motion frames: 0
-- Validated clip refs: 0
-- Validated clip sources: 0
-- Projected clip dominance: 0
-- Clip dominance shortfall: 31.1s
-- Validated entities: none
-- Missing entities: none
-- Acquisition strategy: no_story_entities
-- Latest render proof: not available
-
-### Acquisition Strategy
-
-- Status: no_story_entities
-- Alternate-source entities: none
-- Unattempted entities: none
-- Keep-sampling entities: none
-
-### Next Steps
-
-- find_3_more_validated_gameplay_clip_windows
-- find_3_more_validated_clip_sources
-- find_more_validated_gameplay_seconds_for_flash_lane
-- acquire_exact_subject_images_or_official_motion_refs
-- generate_approved_sleepy_liam_audio_after_visuals_are_ready
-
-### Safe Commands
-
-- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_6edbb38dc280fc96 --no-latest-report`
-- plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_6edbb38dc280fc96 --trailer-references test/output/official_trailer_references_v1_story_rss_6edbb38dc280fc96.json`
-- extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_6edbb38dc280fc96 --apply-local`
-- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_6edbb38dc280fc96 --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1_story_rss_6edbb38dc280fc96.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6`
-- refresh_local_audio_repair_queue: `npm run ops:local-media-repair -- --limit 20 --dry-run`
-- generate_sleepy_liam_audio_locally_after_visuals_are_ready: `npm run ops:local-script-extension -- --apply-local-audio`
-- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story rss_6edbb38dc280fc96`
-
-### Segment Rejections
-
-- none
-
-## rss_ef7e6e464509e0bc
-
-- Title: rss_ef7e6e464509e0bc
-- Recommendation: do_not_render_yet
-- Blockers: approved_liam_audio_missing, flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_refs, flash_proof_requires_three_validated_clip_sources, footage_backbone_needs_three_validated_clip_windows, footage_backbone_needs_gameplay_action_clip_windows, footage_backbone_entity_coverage_too_thin, footage_backbone_clip_dominance_too_low, flash_proof_requires_four_exact_subject_assets
-- Liam audio: local_liam_audio_not_flash_ready
-- Exact assets: 0
-- Motion frames: 0
-- Validated clip refs: 0
-- Validated clip sources: 0
-- Projected clip dominance: 0
-- Clip dominance shortfall: 33.0s
-- Validated entities: none
-- Missing entities: none
-- Acquisition strategy: no_story_entities
-- Latest render proof: not available
-
-### Acquisition Strategy
-
-- Status: no_story_entities
-- Alternate-source entities: none
-- Unattempted entities: none
-- Keep-sampling entities: none
-
-### Next Steps
-
-- find_3_more_validated_gameplay_clip_windows
-- find_3_more_validated_clip_sources
-- find_more_validated_gameplay_seconds_for_flash_lane
-- acquire_exact_subject_images_or_official_motion_refs
-- generate_approved_sleepy_liam_audio_after_visuals_are_ready
-
-### Safe Commands
-
-- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_ef7e6e464509e0bc --no-latest-report`
-- plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_ef7e6e464509e0bc --trailer-references test/output/official_trailer_references_v1_story_rss_ef7e6e464509e0bc.json`
-- extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_ef7e6e464509e0bc --apply-local`
-- validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_ef7e6e464509e0bc --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1_story_rss_ef7e6e464509e0bc.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6`
-- refresh_local_audio_repair_queue: `npm run ops:local-media-repair -- --limit 20 --dry-run`
-- generate_sleepy_liam_audio_locally_after_visuals_are_ready: `npm run ops:local-script-extension -- --apply-local-audio`
-- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story rss_ef7e6e464509e0bc`
+- recheck_flash_lane_readiness: `npm run studio:v2:proof-candidates -- --story rss_9fb084475142f310`
 
 ### Segment Rejections
 

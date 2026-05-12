@@ -2,18 +2,18 @@
 
 Visual Evidence Repair Plan compatibility report.
 
-Generated: 2026-05-12T22:56:08.374Z
+Generated: 2026-05-12T23:11:42.400Z
 Mode: read_only_repair_plan
 
 ## Summary
 
 - Rows considered: 20
 - Repair candidates: 20
-- Cover dominated: 7
+- Cover dominated: 5
 - Wrong-story assets: 1
 - Unverified store assets: 0
-- Motion evidence gap: 0
-- Exact-subject gameplay-still repairs: 20
+- Motion evidence gap: 2
+- Exact-subject gameplay-still repairs: 18
 - Official source intake needed: 4
 - Validated clip windows needed: 20
 - Wrong-story deck rejections: 1
@@ -24,15 +24,13 @@ Mode: read_only_repair_plan
 
 | Story | Primary action | Repair | Audio | Media score | Motion ready | Exact | Cover share | Alternate source | Next command |
 | --- | --- | --- | --- | ---: | --- | ---: | ---: | --- | --- |
-| 1t0zhng: LEGO Batman: Legacy of the Dark Knight PC specs revealed | cover_dominated_deck_repair | cover_dominated_exact_assets | ready | 79.5 | no | 12 | 0.667 | none | npm run media:enrich-stills -- --story 1t0zhng --dry-run --prefer-gameplay-stills --require-verified-store --max-store-search-entities 5 --max-store-assets-per-entity 3 --max-downloads-per-story 12 |
 | rss_2d69aa8506934c5e: Call of Duty won't hit Xbox Game Pass at launch going forwards, as Microsoft's subscription service gets a price cut | exact_subject_gameplay_still_repair | exact_subject_gameplay_still_gap | ready | 0 | no | 0 | 0 | none | npm run media:enrich-stills -- --story rss_2d69aa8506934c5e --dry-run --prefer-gameplay-stills --require-verified-store --max-store-search-entities 5 --max-store-assets-per-entity 3 --max-downloads-per-story 12 |
 | rss_ef7e6e464509e0bc: MindsEye Has a New Update and a Cheaper Price as Developer Launches Comeback Bid | exact_subject_gameplay_still_repair | exact_subject_gameplay_still_gap | ready | 0 | no | 0 | 0 | none | npm run media:enrich-stills -- --story rss_ef7e6e464509e0bc --dry-run --prefer-gameplay-stills --require-verified-store --max-store-search-entities 5 --max-store-assets-per-entity 3 --max-downloads-per-story 12 |
 | rss_6edbb38dc280fc96: rss_6edbb38dc280fc96 | exact_subject_gameplay_still_repair | exact_subject_gameplay_still_gap | ready | 0 | no | 0 | 0 | none | npm run media:enrich-stills -- --story rss_6edbb38dc280fc96 --dry-run --prefer-gameplay-stills --require-verified-store --max-store-search-entities 5 --max-store-assets-per-entity 3 --max-downloads-per-story 12 |
 | rss_6d8aaac7eccad2ff: rss_6d8aaac7eccad2ff | exact_subject_gameplay_still_repair | exact_subject_gameplay_still_gap | ready | 0 | no | 0 | 0 | none | npm run media:enrich-stills -- --story rss_6d8aaac7eccad2ff --dry-run --prefer-gameplay-stills --require-verified-store --max-store-search-entities 5 --max-store-assets-per-entity 3 --max-downloads-per-story 12 |
 | rss_1b7c404fc657548f: rss_1b7c404fc657548f | exact_subject_gameplay_still_repair | exact_subject_gameplay_still_gap | ready | 0 | no | 0 | 0 | none | npm run media:enrich-stills -- --story rss_1b7c404fc657548f --dry-run --prefer-gameplay-stills --require-verified-store --max-store-search-entities 5 --max-store-assets-per-entity 3 --max-downloads-per-story 12 |
-| rss_5b3abe925b27a199: GTA 6 Owner Passed On A Sequel To A Legacy Franchise, And We're Dying To Know Which One | wrong_story_deck_rejection | wrong_story_exact_assets | missing | 261.25 | yes | 39 | 0.333 | GTA, BioShock, Red Dead | npm run media:enrich-stills -- --story rss_5b3abe925b27a199 --dry-run --prefer-gameplay-stills --require-verified-store --max-store-search-entities 5 --max-store-assets-per-entity 3 --max-downloads-per-story 12 |
-| 1szzhy9: Marathon Drops To 15K Daily CCU Peak On Steam, Exits Top 50 On PlayStation & Top 100 On Xbox Best-Sellers Lists | official_source_intake_needed | cover_dominated_exact_assets | missing | 184 | yes | 11 | 0.364 | Marathon | npm run media:enrich-stills -- --story 1szzhy9 --dry-run --prefer-gameplay-stills --require-verified-store --max-store-search-entities 5 --max-store-assets-per-entity 3 --max-downloads-per-story 12 |
-| 1t0u9o4: Don’t Expect Product Placement in GTA 6 — the CEO of Take-Two Says It Won't Do Real World Brand Partnerships Because 'All the Brands Are Made Up' | official_source_intake_needed | cover_dominated_exact_assets | missing | 68 | no | 17 | 0.412 | GTA | npm run media:enrich-stills -- --story 1t0u9o4 --dry-run --prefer-gameplay-stills --require-verified-store --max-store-search-entities 5 --max-store-assets-per-entity 3 --max-downloads-per-story 12 |
+| rss_5b3abe925b27a199: GTA 6 Owner Passed On A Sequel To A Legacy Franchise, And We're Dying To Know Which One | wrong_story_deck_rejection | wrong_story_exact_assets | missing | 209.25 | yes | 26 | 0.5 | GTA, BioShock, Red Dead | npm run media:enrich-stills -- --story rss_5b3abe925b27a199 --dry-run --prefer-gameplay-stills --require-verified-store --max-store-search-entities 5 --max-store-assets-per-entity 3 --max-downloads-per-story 12 |
+| 1szzhy9: Marathon Drops To 15K Daily CCU Peak On Steam, Exits Top 50 On PlayStation & Top 100 On Xbox Best-Sellers Lists | official_source_intake_needed | cover_dominated_exact_assets | missing | 164 | yes | 6 | 0.667 | Marathon | npm run media:enrich-stills -- --story 1szzhy9 --dry-run --prefer-gameplay-stills --require-verified-store --max-store-search-entities 5 --max-store-assets-per-entity 3 --max-downloads-per-story 12 |
 | rss_4105cb7c837252c3: A New The Division PC Game Is Out Right Now, And It's Free | cover_dominated_deck_repair | cover_dominated_exact_assets | missing | 63 | no | 12 | 0.667 | none | npm run media:enrich-stills -- --story rss_4105cb7c837252c3 --dry-run --prefer-gameplay-stills --require-verified-store --max-store-search-entities 5 --max-store-assets-per-entity 3 --max-downloads-per-story 12 |
 | rss_0e2778be9f97ffa4: The next Tales Of remaster has leaked, and it's probably not what you're expecting | official_source_intake_needed | cover_dominated_exact_assets | missing | 36.25 | no | 6 | 0.667 | Tales Of | npm run media:enrich-stills -- --story rss_0e2778be9f97ffa4 --dry-run --prefer-gameplay-stills --require-verified-store --max-store-search-entities 5 --max-store-assets-per-entity 3 --max-downloads-per-story 12 |
 | 1t0x9ui: It's been a year since release and Oblivion Remastered is still broken- Digital Foundry | cover_dominated_deck_repair | cover_dominated_exact_assets | missing | 24 | no | 6 | 0.667 | none | npm run media:enrich-stills -- --story 1t0x9ui --dry-run --prefer-gameplay-stills --require-verified-store --max-store-search-entities 5 --max-store-assets-per-entity 3 --max-downloads-per-story 12 |
@@ -44,29 +42,10 @@ Mode: read_only_repair_plan
 | 1t1hyqc: Even tho I can’t download you. You will always be on my phone. | exact_subject_gameplay_still_repair | exact_subject_gameplay_still_gap | missing | 0 | no | 0 | 0 | none | npm run media:enrich-stills -- --story 1t1hyqc --dry-run --prefer-gameplay-stills --require-verified-store --max-store-search-entities 5 --max-store-assets-per-entity 3 --max-downloads-per-story 12 |
 | rss_93fdf53a0c1211ef: PlayStation Plus Free Games For May 2026 Revealed | exact_subject_gameplay_still_repair | exact_subject_gameplay_still_gap | missing | 0 | no | 0 | 0 | none | npm run media:enrich-stills -- --story rss_93fdf53a0c1211ef --dry-run --prefer-gameplay-stills --require-verified-store --max-store-search-entities 5 --max-store-assets-per-entity 3 --max-downloads-per-story 12 |
 | rss_9fb084475142f310: GTA 6 Price Commented On By Rockstar's Owner | exact_subject_gameplay_still_repair | exact_subject_gameplay_still_gap | missing | 0 | no | 0 | 0 | none | npm run media:enrich-stills -- --story rss_9fb084475142f310 --dry-run --prefer-gameplay-stills --require-verified-store --max-store-search-entities 5 --max-store-assets-per-entity 3 --max-downloads-per-story 12 |
+| 1t0zhng: LEGO Batman: Legacy of the Dark Knight PC specs revealed | validated_clip_windows_needed | motion_evidence_gap | ready | 139.75 | no | 24 | 0.333 | none | npm run studio:v2:proof-candidates -- --story 1t0zhng |
+| 1t0u9o4: Don’t Expect Product Placement in GTA 6 — the CEO of Take-Two Says It Won't Do Real World Brand Partnerships Because 'All the Brands Are Made Up' | official_source_intake_needed | motion_evidence_gap | missing | 68 | no | 17 | 0.412 | GTA | npm run studio:v2:proof-candidates -- --story 1t0u9o4 |
 
 ## Command Details
-
-### 1t0zhng
-
-Reason: Exact-subject count is inflated by covers, capsules or key art.
-Render recommendation: do_not_render_yet
-Audio ready: yes
-Media progress score: 79.5
-Validated motion ready: no
-
-Ranked actions:
-- 1. cover_dominated_deck_repair (P0): Replace covers, capsules and key art with gameplay stills. Entities: LEGO Batman, Legacy of the Dark Knight
-- 2. exact_subject_gameplay_still_repair (P0): Exact-subject count is inflated by covers, capsules or key art. Entities: LEGO Batman, Legacy of the Dark Knight
-- 3. exhausted_bad_windows (P0): Do not keep sampling rating cards, title cards, blurry or repetitive windows from the same source family.
-- 4. validated_clip_windows_needed (P0): Validated gameplay clip windows are below the Flash Lane threshold. Entities: LEGO Batman, Legacy of the Dark Knight
-
-Commands:
-- gameplay_still_dry_run: `npm run media:enrich-stills -- --story 1t0zhng --dry-run --prefer-gameplay-stills --require-verified-store --max-store-search-entities 5 --max-store-assets-per-entity 3 --max-downloads-per-story 12` (dry_run_only)
-- gameplay_still_apply_local: `npm run media:enrich-stills -- --story 1t0zhng --apply-local --prefer-gameplay-stills --require-verified-store --max-store-search-entities 5 --max-store-assets-per-entity 3 --max-downloads-per-story 12` (apply_local_under_test_output_only)
-- rebuild_proof_candidates: `npm run studio:v2:proof-candidates -- --story 1t0zhng` (report_only)
-- recheck_flash_state: `npm run studio:v2:flash-state -- --story 1t0zhng` (report_only)
-- validate_gameplay_windows: `npm run media:validate-trailer-segments -- --story-id 1t0zhng --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1_story_1t0zhng.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6` (apply_local_under_test_output_only)
 
 ### rss_2d69aa8506934c5e
 
@@ -168,7 +147,7 @@ Commands:
 Reason: Exact-subject count includes assets for the wrong story/entity.
 Render recommendation: do_not_render_yet
 Audio ready: no
-Media progress score: 261.25
+Media progress score: 209.25
 Validated motion ready: yes
 
 Ranked actions:
@@ -192,7 +171,7 @@ Commands:
 Reason: Exact-subject count is inflated by covers, capsules or key art.
 Render recommendation: do_not_render_yet
 Audio ready: no
-Media progress score: 184
+Media progress score: 164
 Validated motion ready: yes
 
 Ranked actions:
@@ -210,30 +189,6 @@ Commands:
 - validate_operator_official_source_intake: `npm run media:intake-official-sources -- --input test/output/official_source_intake_template.json --story-id 1szzhy9` (report_only_reference_validation)
 - resolve_alternate_official_trailer_refs: `npm run media:resolve-trailers -- --story-id 1szzhy9 --no-latest-report --official-source-intake-report test/output/official_source_intake_report.json --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5` (network_metadata_lookup_report_only)
 - validate_gameplay_windows_after_intake: `npm run media:validate-trailer-segments -- --story-id 1szzhy9 --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1_story_1szzhy9.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6` (apply_local_under_test_output_only)
-
-### 1t0u9o4
-
-Reason: Exact-subject count is inflated by covers, capsules or key art.
-Render recommendation: do_not_render_yet
-Audio ready: no
-Media progress score: 68
-Validated motion ready: no
-
-Ranked actions:
-- 1. cover_dominated_deck_repair (P0): Replace covers, capsules and key art with gameplay stills. Entities: GTA
-- 2. exact_subject_gameplay_still_repair (P0): Exact-subject count is inflated by covers, capsules or key art. Entities: GTA
-- 3. official_source_intake_needed (P0): Current source families are exhausted; operator must supply a non-exhausted official reference first. Entities: GTA
-- 4. exhausted_bad_windows (P0): Do not keep sampling rating cards, title cards, blurry or repetitive windows from the same source family. Entities: GTA
-- 5. validated_clip_windows_needed (P1): Validated gameplay clip windows are below the Flash Lane threshold. Entities: GTA
-
-Commands:
-- gameplay_still_dry_run: `npm run media:enrich-stills -- --story 1t0u9o4 --dry-run --prefer-gameplay-stills --require-verified-store --max-store-search-entities 5 --max-store-assets-per-entity 3 --max-downloads-per-story 12` (dry_run_only)
-- gameplay_still_apply_local: `npm run media:enrich-stills -- --story 1t0u9o4 --apply-local --prefer-gameplay-stills --require-verified-store --max-store-search-entities 5 --max-store-assets-per-entity 3 --max-downloads-per-story 12` (apply_local_under_test_output_only)
-- rebuild_proof_candidates: `npm run studio:v2:proof-candidates -- --story 1t0u9o4` (report_only)
-- recheck_flash_state: `npm run studio:v2:flash-state -- --story 1t0u9o4` (report_only)
-- validate_operator_official_source_intake: `npm run media:intake-official-sources -- --input test/output/official_source_intake_template.json --story-id 1t0u9o4` (report_only_reference_validation)
-- resolve_alternate_official_trailer_refs: `npm run media:resolve-trailers -- --story-id 1t0u9o4 --no-latest-report --official-source-intake-report test/output/official_source_intake_report.json --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5` (network_metadata_lookup_report_only)
-- validate_gameplay_windows_after_intake: `npm run media:validate-trailer-segments -- --story-id 1t0u9o4 --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1_story_1t0u9o4.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6` (apply_local_under_test_output_only)
 
 ### rss_4105cb7c837252c3
 
@@ -453,6 +408,43 @@ Commands:
 - rebuild_proof_candidates: `npm run studio:v2:proof-candidates -- --story rss_9fb084475142f310` (report_only)
 - recheck_flash_state: `npm run studio:v2:flash-state -- --story rss_9fb084475142f310` (report_only)
 - validate_gameplay_windows: `npm run media:validate-trailer-segments -- --story-id rss_9fb084475142f310 --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1_story_rss_9fb084475142f310.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6` (apply_local_under_test_output_only)
+
+### 1t0zhng
+
+Reason: Visual stills are not the only blocker; validated motion/entity coverage is still thin.
+Render recommendation: do_not_render_yet
+Audio ready: yes
+Media progress score: 139.75
+Validated motion ready: no
+
+Ranked actions:
+- 1. exhausted_bad_windows (P0): Do not keep sampling rating cards, title cards, blurry or repetitive windows from the same source family.
+- 2. validated_clip_windows_needed (P0): Validated gameplay clip windows are below the Flash Lane threshold. Entities: LEGO Batman, Legacy of the Dark Knight
+
+Commands:
+- rebuild_proof_candidates: `npm run studio:v2:proof-candidates -- --story 1t0zhng` (report_only)
+- recheck_flash_state: `npm run studio:v2:flash-state -- --story 1t0zhng` (report_only)
+- validate_gameplay_windows: `npm run media:validate-trailer-segments -- --story-id 1t0zhng --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1_story_1t0zhng.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6` (apply_local_under_test_output_only)
+
+### 1t0u9o4
+
+Reason: Visual stills are not the only blocker; validated motion/entity coverage is still thin.
+Render recommendation: do_not_render_yet
+Audio ready: no
+Media progress score: 68
+Validated motion ready: no
+
+Ranked actions:
+- 1. official_source_intake_needed (P0): Current source families are exhausted; operator must supply a non-exhausted official reference first. Entities: GTA
+- 2. exhausted_bad_windows (P0): Do not keep sampling rating cards, title cards, blurry or repetitive windows from the same source family. Entities: GTA
+- 3. validated_clip_windows_needed (P1): Validated gameplay clip windows are below the Flash Lane threshold. Entities: GTA
+
+Commands:
+- rebuild_proof_candidates: `npm run studio:v2:proof-candidates -- --story 1t0u9o4` (report_only)
+- recheck_flash_state: `npm run studio:v2:flash-state -- --story 1t0u9o4` (report_only)
+- validate_operator_official_source_intake: `npm run media:intake-official-sources -- --input test/output/official_source_intake_template.json --story-id 1t0u9o4` (report_only_reference_validation)
+- resolve_alternate_official_trailer_refs: `npm run media:resolve-trailers -- --story-id 1t0u9o4 --no-latest-report --official-source-intake-report test/output/official_source_intake_report.json --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5` (network_metadata_lookup_report_only)
+- validate_gameplay_windows_after_intake: `npm run media:validate-trailer-segments -- --story-id 1t0u9o4 --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1_story_1t0u9o4.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6` (apply_local_under_test_output_only)
 
 ## Safety
 

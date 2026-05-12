@@ -147,6 +147,46 @@ test("visual repair planner turns cover-dominated proof candidates into gameplay
   assert.equal(report.summary.cover_dominated, 1);
 });
 
+test("visual repair planner does not call a mixed proof deck cover-dominated when motion is the blocker", () => {
+  const report = buildVisualEvidenceRepairPlan({
+    proofCandidateReport: {
+      candidates: [
+        {
+          story_id: "1t0zhng",
+          title: "LEGO Batman proof with gameplay stills but thin motion",
+          verdict: "needs_motion_or_exact_assets",
+          media_progress_score: 139.75,
+          proof_readiness: { final_recommendation: "repair_media_first" },
+          blockers: [
+            "flash_proof_requires_motion_backbone",
+            "flash_proof_requires_three_validated_clip_sources",
+            "footage_backbone_clip_dominance_too_low",
+          ],
+          audio: { ready: true, status: "approved_local_liam_audio_ready" },
+          visuals: {
+            exact_subject_count: 24,
+            cover_dominated_exact_asset_count: 8,
+            cover_dominated_exact_asset_share: 0.333,
+            wrong_story_exact_asset_count: 0,
+            validated_clip_ref_count: 4,
+            validated_clip_source_count: 2,
+            story_target_entities: ["LEGO Batman"],
+            validated_clip_entities: ["LEGO Batman"],
+          },
+        },
+      ],
+    },
+  });
+
+  const repair = report.rows.find((item) => item.story_id === "1t0zhng");
+  assert.equal(repair.repair_class, "motion_evidence_gap");
+  assert.equal(repair.primary_action_type, "validated_clip_windows_needed");
+  assert.ok(repair.ranked_actions.some((item) => item.action_type === "validated_clip_windows_needed"));
+  assert.ok(!repair.ranked_actions.some((item) => item.action_type === "cover_dominated_deck_repair"));
+  assert.equal(report.summary.cover_dominated, 0);
+  assert.equal(report.summary.motion_evidence_gap, 1);
+});
+
 test("visual repair planner keeps Liam-ready media-progress candidates ahead of audio-missing repairs", () => {
   const report = buildVisualEvidenceRepairPlan({
     proofCandidateReport: {

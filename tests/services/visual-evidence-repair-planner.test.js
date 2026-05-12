@@ -147,6 +147,133 @@ test("visual repair planner turns cover-dominated proof candidates into gameplay
   assert.equal(report.summary.cover_dominated, 1);
 });
 
+test("visual repair planner keeps Liam-ready media-progress candidates ahead of audio-missing repairs", () => {
+  const report = buildVisualEvidenceRepairPlan({
+    proofCandidateReport: {
+      candidates: [
+        {
+          story_id: "1s3pige",
+          title: "Alphabetically earlier but not voice ready",
+          verdict: "needs_motion_or_exact_assets",
+          media_progress_score: 0,
+          proof_readiness: { final_recommendation: "repair_voice_first" },
+          blockers: ["approved_liam_audio_missing", "flash_proof_requires_motion_backbone"],
+          audio: { ready: false, status: "local_liam_audio_not_flash_ready" },
+          visuals: {
+            exact_subject_count: 0,
+            cover_dominated_exact_asset_count: 0,
+            wrong_story_exact_asset_count: 0,
+            validated_clip_ref_count: 0,
+            validated_clip_source_count: 0,
+          },
+        },
+        {
+          story_id: "1t0zhng",
+          title: "LEGO Batman proof with usable media progress",
+          verdict: "needs_motion_or_exact_assets",
+          media_progress_score: 79.5,
+          proof_readiness: { final_recommendation: "repair_media_first" },
+          blockers: ["flash_proof_requires_motion_backbone", "footage_backbone_clip_dominance_too_low"],
+          audio: { ready: true, status: "approved_local_liam_audio_ready" },
+          visuals: {
+            exact_subject_count: 12,
+            cover_dominated_exact_asset_count: 8,
+            cover_dominated_exact_asset_share: 0.667,
+            wrong_story_exact_asset_count: 0,
+            validated_clip_ref_count: 3,
+            validated_clip_source_count: 1,
+            story_target_entities: ["LEGO Batman"],
+            validated_clip_entities: ["LEGO Batman"],
+          },
+        },
+      ],
+    },
+  });
+
+  assert.equal(report.rows[0].story_id, "1t0zhng");
+  assert.equal(report.rows[0].audio_ready, true);
+  assert.equal(report.rows[0].media_progress_score, 79.5);
+  assert.equal(report.rows[1].story_id, "1s3pige");
+});
+
+test("visual repair planner applies limit after readiness-aware ordering", () => {
+  const report = buildVisualEvidenceRepairPlan({
+    limit: 1,
+    proofCandidateReport: {
+      candidates: [
+        {
+          story_id: "1s3pige",
+          title: "Low value row first in source report",
+          verdict: "needs_motion_or_exact_assets",
+          media_progress_score: 0,
+          blockers: ["approved_liam_audio_missing"],
+          audio: { ready: false },
+          visuals: {
+            exact_subject_count: 0,
+            cover_dominated_exact_asset_count: 0,
+            wrong_story_exact_asset_count: 0,
+          },
+        },
+        {
+          story_id: "1t0zhng",
+          title: "High value row second in source report",
+          verdict: "needs_motion_or_exact_assets",
+          media_progress_score: 80,
+          blockers: ["flash_proof_requires_motion_backbone"],
+          audio: { ready: true },
+          visuals: {
+            exact_subject_count: 12,
+            cover_dominated_exact_asset_count: 6,
+            cover_dominated_exact_asset_share: 0.5,
+            wrong_story_exact_asset_count: 0,
+          },
+        },
+      ],
+    },
+  });
+
+  assert.equal(report.rows.length, 1);
+  assert.equal(report.rows[0].story_id, "1t0zhng");
+});
+
+test("visual repair planner preserves proof readiness signals when merging current state rows", () => {
+  const report = buildVisualEvidenceRepairPlan({
+    currentStateReport: {
+      rows: [
+        row({
+          story_id: "1t0zhng",
+          title: "Current state title",
+          audio: { ready: false },
+          media_progress_score: 0,
+        }),
+      ],
+    },
+    proofCandidateReport: {
+      candidates: [
+        {
+          story_id: "1t0zhng",
+          title: "Proof title",
+          verdict: "needs_motion_or_exact_assets",
+          media_progress_score: 79.5,
+          proof_readiness: { final_recommendation: "repair_media_first" },
+          blockers: ["flash_proof_requires_motion_backbone"],
+          audio: { ready: true, status: "approved_local_liam_audio_ready" },
+          visuals: {
+            exact_subject_count: 12,
+            cover_dominated_exact_asset_count: 8,
+            cover_dominated_exact_asset_share: 0.667,
+            wrong_story_exact_asset_count: 0,
+          },
+        },
+      ],
+    },
+  });
+
+  assert.equal(report.rows[0].story_id, "1t0zhng");
+  assert.equal(report.rows[0].audio_ready, true);
+  assert.equal(report.rows[0].media_progress_score, 79.5);
+});
+
 test("visual repair planner blocks wrong-story proof decks and queues entity-filtered repair", () => {
   const report = buildVisualEvidenceRepairPlan({
     proofCandidateReport: {

@@ -1,6 +1,6 @@
 # Local Posting Readiness
 
-Generated: 2026-05-12T23:31:18.804Z
+Generated: 2026-05-12T23:52:07.801Z
 Verdict: AMBER
 Status: local_foundation_ready_cutover_blocked
 Safety: read-only report; does not edit .env, start primary jobs, post, mutate DB, touch Railway or trigger OAuth
@@ -14,7 +14,7 @@ Safety: read-only report; does not edit .env, start primary jobs, post, mutate D
 - local_health: true
 - public_health: false
 - tunnel_connected: false
-- duplicate_control_keys: AUTO_PUBLISH, USE_JOB_QUEUE
+- duplicate_control_keys: none
 - primary_enabled: false
 - queue_enabled: false
 - auto_publish_enabled: false
@@ -22,7 +22,6 @@ Safety: read-only report; does not edit .env, start primary jobs, post, mutate D
 - local_voice_ready_count: 6
 
 ## Blockers
-- duplicate local control switches in .env: AUTO_PUBLISH, USE_JOB_QUEUE
 - pulse.orryy.com Cloudflare tunnel is not connected to this PC
 - public pulse.orryy.com health check is not reaching local Pulse
 - local instance is still mirror mode, not primary

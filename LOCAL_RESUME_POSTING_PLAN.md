@@ -1,6 +1,6 @@
 # Local Resume Posting Plan
 
-Generated: 2026-05-12T23:44:52.576Z
+Generated: 2026-05-12T23:52:21.825Z
 Verdict: AMBER
 Status: local_resume_blocked_but_recoverable
 Safety: read-only plan; does not edit .env, start Cloudflare, switch primary, mutate tokens, post, touch Railway or trigger OAuth
@@ -17,7 +17,7 @@ Safety: read-only plan; does not edit .env, start Cloudflare, switch primary, mu
 - local_health: true
 - public_health: false
 - tunnel_connected: false
-- duplicate_control_keys: AUTO_PUBLISH, USE_JOB_QUEUE
+- duplicate_control_keys: none
 - primary_enabled: false
 - queue_enabled: false
 - auto_publish_enabled: false
@@ -45,7 +45,6 @@ Safety: read-only plan; does not edit .env, start Cloudflare, switch primary, mu
 - rss_6d8aaac7eccad2ff: audio_ready=true; exact=0; clips=0; next=acquire_motion_frames_or_exact_subject_assets
 
 ## Blockers
-- duplicate local control switches in .env: AUTO_PUBLISH, USE_JOB_QUEUE
 - pulse.orryy.com Cloudflare tunnel is not connected to this PC
 - public pulse.orryy.com health check is not reaching local Pulse
 - local instance is still mirror mode, not primary

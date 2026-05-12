@@ -1,7 +1,7 @@
 # Local Env Cleanup Plan
 
-Generated: 2026-05-12T23:48:49.617Z
-Verdict: RED
+Generated: 2026-05-12T23:51:35.796Z
+Verdict: GREEN
 Safety: read-only; does not edit .env, print secrets, start jobs, post, mutate tokens, touch Railway or change Cloudflare
 
 ## Effective Control Values
@@ -17,14 +17,7 @@ Safety: read-only; does not edit .env, print secrets, start jobs, post, mutate t
 - USE_SQLITE: true
 
 ## Duplicate Actions
-- AUTO_PUBLISH: keep line 57; stale line(s) 16; action=comment_or_remove_stale_occurrences; effective=false
-  mirror safe: yes; expected while mirrored=false
-- RAILWAY_PUBLIC_URL: keep line 65; stale line(s) 10; action=manual_review; effective=(set, len 53)
-- USE_JOB_QUEUE: keep line 58; stale line(s) 50; action=comment_or_remove_stale_occurrences; effective=false
-  mirror safe: yes; expected while mirrored=false
-
-## Blockers
-- duplicate local control switches: AUTO_PUBLISH, USE_JOB_QUEUE
+- RAILWAY_PUBLIC_URL: keep line 63; stale line(s) 10; action=manual_review; effective=(set, len 53)
 
 ## Next Steps
 - Do not edit secret values from this report; values are intentionally redacted.

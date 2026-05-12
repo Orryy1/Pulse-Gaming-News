@@ -52,7 +52,10 @@ test("classifyLocalTtsFailure recognises transient socket resets and TTS timeout
   const reset = new Error("read ECONNRESET");
   reset.code = "ECONNRESET";
   assert.equal(classifyLocalTtsFailure(reset).code, "connection_reset");
-  assert.equal(classifyLocalTtsFailure(new Error("local TTS timeout after 600000ms")).code, "tts_timeout");
+  assert.equal(classifyLocalTtsFailure(reset).requires_server_reset, true);
+  const timeout = classifyLocalTtsFailure(new Error("local TTS timeout after 600000ms"));
+  assert.equal(timeout.code, "tts_timeout");
+  assert.equal(timeout.requires_server_reset, true);
 });
 
 test("classifyLocalTtsProofFailure classifies duration, timestamps and unsafe voice issues", () => {

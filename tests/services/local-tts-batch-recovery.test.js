@@ -5,6 +5,7 @@ const assert = require("node:assert/strict");
 
 const {
   createLocalTtsBatchRecovery,
+  generateLocalTtsWithOptionalRecovery,
 } = require("../../lib/ops/local-tts-batch-recovery");
 
 const SAFE_HEALTH = {
@@ -116,4 +117,28 @@ test("local TTS batch recovery reports unsafe final state without hiding the fai
   assert.equal(result.ok, false);
   assert.equal(result.failure_code, "unsafe_voice");
   assert.match(result.failure_message, /wrong voice/);
+});
+
+test("local TTS generation retries once after a timeout recovery", async () => {
+  const recoveries = [];
+  let attempts = 0;
+  const result = await generateLocalTtsWithOptionalRecovery({
+    storyId: "rss_timeout",
+    text: "A local Liam script",
+    outputRel: "test/output/audio/rss_timeout.mp3",
+    generateTts: async () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error("local TTS timeout after 600000ms");
+    },
+    recoverLocalTts: async (context) => {
+      recoveries.push(context);
+      return { ok: true, action: "restart" };
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.attempts, 2);
+  assert.equal(recoveries.length, 1);
+  assert.equal(recoveries[0].failure.code, "tts_timeout");
+  assert.equal(result.recovery.action, "restart");
 });

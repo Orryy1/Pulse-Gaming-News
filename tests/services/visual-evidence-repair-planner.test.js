@@ -185,6 +185,8 @@ test("visual repair planner does not call a mixed proof deck cover-dominated whe
   assert.ok(!repair.ranked_actions.some((item) => item.action_type === "cover_dominated_deck_repair"));
   assert.equal(report.summary.cover_dominated, 0);
   assert.equal(report.summary.motion_evidence_gap, 1);
+  const md = renderVisualEvidenceRepairMarkdown(report);
+  assert.match(md, /\| 1t0zhng: LEGO Batman proof with gameplay stills but thin motion \| validated_clip_windows_needed \| motion_evidence_gap \| ready \| 139\.75 \| no \| 24 \| 0\.333 \| none \| npm run media:validate-trailer-segments/);
 });
 
 test("visual repair planner keeps Liam-ready media-progress candidates ahead of audio-missing repairs", () => {

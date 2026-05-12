@@ -2,7 +2,7 @@
 
 Visual Evidence Repair Plan compatibility report.
 
-Generated: 2026-05-12T23:11:42.400Z
+Generated: 2026-05-12T23:13:18.285Z
 Mode: read_only_repair_plan
 
 ## Summary
@@ -42,8 +42,8 @@ Mode: read_only_repair_plan
 | 1t1hyqc: Even tho I can’t download you. You will always be on my phone. | exact_subject_gameplay_still_repair | exact_subject_gameplay_still_gap | missing | 0 | no | 0 | 0 | none | npm run media:enrich-stills -- --story 1t1hyqc --dry-run --prefer-gameplay-stills --require-verified-store --max-store-search-entities 5 --max-store-assets-per-entity 3 --max-downloads-per-story 12 |
 | rss_93fdf53a0c1211ef: PlayStation Plus Free Games For May 2026 Revealed | exact_subject_gameplay_still_repair | exact_subject_gameplay_still_gap | missing | 0 | no | 0 | 0 | none | npm run media:enrich-stills -- --story rss_93fdf53a0c1211ef --dry-run --prefer-gameplay-stills --require-verified-store --max-store-search-entities 5 --max-store-assets-per-entity 3 --max-downloads-per-story 12 |
 | rss_9fb084475142f310: GTA 6 Price Commented On By Rockstar's Owner | exact_subject_gameplay_still_repair | exact_subject_gameplay_still_gap | missing | 0 | no | 0 | 0 | none | npm run media:enrich-stills -- --story rss_9fb084475142f310 --dry-run --prefer-gameplay-stills --require-verified-store --max-store-search-entities 5 --max-store-assets-per-entity 3 --max-downloads-per-story 12 |
-| 1t0zhng: LEGO Batman: Legacy of the Dark Knight PC specs revealed | validated_clip_windows_needed | motion_evidence_gap | ready | 139.75 | no | 24 | 0.333 | none | npm run studio:v2:proof-candidates -- --story 1t0zhng |
-| 1t0u9o4: Don’t Expect Product Placement in GTA 6 — the CEO of Take-Two Says It Won't Do Real World Brand Partnerships Because 'All the Brands Are Made Up' | official_source_intake_needed | motion_evidence_gap | missing | 68 | no | 17 | 0.412 | GTA | npm run studio:v2:proof-candidates -- --story 1t0u9o4 |
+| 1t0zhng: LEGO Batman: Legacy of the Dark Knight PC specs revealed | validated_clip_windows_needed | motion_evidence_gap | ready | 139.75 | no | 24 | 0.333 | none | npm run media:validate-trailer-segments -- --story-id 1t0zhng --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1_story_1t0zhng.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6 |
+| 1t0u9o4: Don’t Expect Product Placement in GTA 6 — the CEO of Take-Two Says It Won't Do Real World Brand Partnerships Because 'All the Brands Are Made Up' | official_source_intake_needed | motion_evidence_gap | missing | 68 | no | 17 | 0.412 | GTA | npm run media:intake-official-sources -- --input test/output/official_source_intake_template.json --story-id 1t0u9o4 |
 
 ## Command Details
 

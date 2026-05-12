@@ -89,6 +89,7 @@
     "ops:standard-overlay": "node tools/standard-short-creator-overlay.js",
     "ops:local-doctor": "node tools/local-mode-doctor.js",
     "ops:local-primary-readiness": "node tools/local-primary-readiness.js",
+    "ops:local-cutover-plan": "node tools/local-cutover-plan.js",
     "ops:local-media-repair": "node tools/local-media-repair.js",
     "ops:local-script-extension": "node tools/local-script-extension.js",
     "media:enrich-stills": "node tools/still-image-enrichment.js",

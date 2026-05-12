@@ -97,6 +97,23 @@ function clampWords(value, maxWords) {
   return `${words.slice(0, maxWords).join(" ")}...`;
 }
 
+function clampQuoteText(value, { maxWords = 12, maxChars = 96 } = {}) {
+  const words = normaliseText(value).split(/\s+/).filter(Boolean);
+  let text = words.length > maxWords ? `${words.slice(0, maxWords).join(" ")}...` : words.join(" ");
+  if (text.length > maxChars) {
+    text = `${text.slice(0, maxChars - 3).replace(/\s+\S*$/, "").trim()}...`;
+  }
+  return text;
+}
+
+function quoteLayoutClass(text) {
+  const clean = normaliseText(text);
+  const words = clean.split(/\s+/).filter(Boolean).length;
+  if (words > 10 || clean.length > 88) return "quote quote--compact";
+  if (words > 7 || clean.length > 62) return "quote quote--medium";
+  return "quote";
+}
+
 function sourceLabel(story) {
   const raw =
     story?.subreddit ||
@@ -155,10 +172,10 @@ function firstUsefulQuote(story) {
     story?.top_comment ||
     story?.quoteCandidates?.[0]?.body ||
     story?.quoteCandidates?.[0]?.text;
-  if (topComment) return clampWords(topComment, 16);
+  if (topComment) return clampQuoteText(topComment);
 
   const title = normaliseText(story?.title);
-  return title ? clampWords(title, 12) : "The important detail is changing fast.";
+  return title ? clampQuoteText(title) : "The important detail is changing fast.";
 }
 
 function buildStoryCardSpecs(story) {
@@ -391,15 +408,24 @@ function applySpecToTemplate(kind, templateHtml, spec, channelId) {
       `$1\n${renderTimelineBullets(spec.bullets)}\n          $2`,
     );
   } else if (kind === "quote") {
-    const fontSize = pickQuoteFontSize(spec.quoteText);
+    const quoteText = clampQuoteText(spec.quoteText);
+    const fontSize = pickQuoteFontSize(quoteText);
     html = html.replace(
       /(\.quote\s*\{[^}]*?font-size:\s*)\d+(px;)/,
       `$1${fontSize}$2`,
     );
+    html = html.replace(
+      /<div id="quote" class="quote">/,
+      `<div id="quote" class="${quoteLayoutClass(quoteText)}">`,
+    );
     html = replaceElementText(html, "kicker", spec.kicker);
     html = html.replace(
       /(<div id="quote" class="quote">)[\s\S]*?(<\/div>)/,
-      `$1\n${buildQuoteWordSpans(spec.quoteText)}\n          $2`,
+      `$1\n${buildQuoteWordSpans(quoteText)}\n          $2`,
+    );
+    html = html.replace(
+      /(<div id="quote" class="quote quote--(?:medium|compact)">)[\s\S]*?(<\/div>)/,
+      `$1\n${buildQuoteWordSpans(quoteText)}\n          $2`,
     );
     html = replaceElementText(html, "attribution", spec.attribution);
     html = replaceElementText(html, "attribution-sub", spec.attributionSub);
@@ -606,6 +632,9 @@ if (require.main === module) {
 module.exports = {
   buildStoryCards,
   buildStoryCardSpecs,
+  clampQuoteText,
+  quoteLayoutClass,
+  applySpecToTemplate,
   outputNameForCard,
   pickStoryBackdrop,
 };

@@ -9,6 +9,8 @@ const {
   groupIntoPhrases,
   extractAssDialogueText,
   planCaptionDensity,
+  prepareSubtitleWords,
+  transcriptCoverageRatio,
 } = require("../../lib/studio/v2/subtitle-layer-v2");
 
 function assIntervals(ass) {
@@ -318,6 +320,53 @@ test("buildKineticAss synthetic captions cover narration end and obey density ca
   assert.ok(intervals[intervals.length - 1][1] >= 7.75);
   assert.ok(captions.every((caption) => caption.split(/\s+/).filter(Boolean).length <= 2));
   assert.ok(captions.every((caption) => caption.length <= 16));
+});
+
+test("prepareSubtitleWords rejects stale timestamp tracks when transcript coverage is low", () => {
+  const scriptText =
+    "GTA players just got a confirmed trailer clue and Rockstar fans are watching the next announcement window closely.";
+  const staleWords = [
+    { word: "Metro", start: 0.1, end: 0.4 },
+    { word: "survivors", start: 0.45, end: 0.8 },
+    { word: "walk", start: 0.85, end: 1.1 },
+    { word: "through", start: 1.15, end: 1.42 },
+    { word: "snow", start: 1.48, end: 1.8 },
+    { word: "and", start: 1.85, end: 2.0 },
+    { word: "tunnels", start: 2.05, end: 2.4 },
+    { word: "again", start: 2.45, end: 2.8 },
+    { word: "tonight", start: 2.85, end: 3.15 },
+  ];
+
+  assert.ok(transcriptCoverageRatio(staleWords, scriptText) < 0.35);
+  const prepared = prepareSubtitleWords({
+    words: staleWords,
+    duration: 8,
+    scriptText,
+  });
+
+  assert.equal(prepared[0].word, "GTA");
+  assert.ok(prepared[prepared.length - 1].end >= 7.7);
+  assert.notEqual(prepared[0].start, staleWords[0].start);
+});
+
+test("prepareSubtitleWords keeps healthy timestamp tracks with good transcript coverage", () => {
+  const scriptText =
+    "GTA players just got a confirmed trailer clue and Rockstar fans are watching the next announcement window closely.";
+  const words = scriptText.split(/\s+/).map((word, index) => ({
+    word,
+    start: index * 0.28,
+    end: index * 0.28 + 0.18,
+  }));
+
+  assert.ok(transcriptCoverageRatio(words, scriptText) > 0.8);
+  const prepared = prepareSubtitleWords({
+    words,
+    duration: 4.2,
+    scriptText,
+  });
+
+  assert.equal(prepared[0].word, "GTA");
+  assert.equal(prepared[1].start, words[1].start);
 });
 
 test("buildKineticAss can add TikTok-native Flash motion styling", () => {

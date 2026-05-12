@@ -79,9 +79,32 @@ test("Flash Lane upper-left chips reserve space below scene entity badges", () =
     fontOpt: FONT_OPT,
   }).join(";");
 
-  assert.match(filters, /drawbox=x=64:y=250:w=/);
+  assert.match(filters, /drawbox=x=64:y=388:w=/);
   assert.doesNotMatch(filters, /drawbox=x=64:y=128:w=/);
   assert.doesNotMatch(filters, /text='SOURCE'[^,]*:x=64\+28:y=128\+11/);
+});
+
+test("Flash Lane upper-left chips reserve space below source-card safe zone", () => {
+  const plan = {
+    timeline: [
+      {
+        kind: "source_chip",
+        label: "EUROGAMER",
+        at_s: 3,
+        duration_s: 2.6,
+        anchor: "upper_left",
+      },
+    ],
+  };
+  const filters = buildFlashLaneOverlayFilters({
+    plan,
+    inputLabel: "base",
+    outputLabel: "overlayed",
+    fontOpt: FONT_OPT,
+  }).join(";");
+
+  assert.doesNotMatch(filters, /drawbox=x=64:y=2(?:[0-9]{2}|50):w=/);
+  assert.match(filters, /drawbox=x=64:y=388:w=/);
 });
 
 test("extractOverlayEntities prefers scene entities and normalises Pokemon spelling with accent", () => {

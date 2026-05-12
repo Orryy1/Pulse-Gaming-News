@@ -10,6 +10,7 @@ const {
   boostMotionDensityForShorts,
   replaceFallbackReleaseCardsWithMotion,
   resolveMainNarrationDurationS,
+  resolveStudioV2CaptionOptions,
   resolveSubtitleScriptText,
   sumSceneDurations,
 } = require("../../tools/studio-v2-render");
@@ -203,6 +204,21 @@ test("subtitle script text follows the actual voice transcript including outro",
   });
 
   assert.match(text, /Follow Pulse Gaming/);
+});
+
+test("studio-v2 render passes strict Flash caption options to kinetic subtitles", () => {
+  const options = resolveStudioV2CaptionOptions();
+
+  assert.deepEqual(options, {
+    maxWordsPerPhrase: 2,
+    maxPhraseChars: 16,
+    captionCase: "upper",
+    revealMode: "phrase",
+    motionStyle: "flash",
+    avoidDanglingWords: true,
+    maxPhraseDurationS: 1.15,
+    minPhraseDurationS: 0.32,
+  });
 });
 
 test("studio-v2 render voice assertion rejects local audio without accepted Sleepy Liam reference", () => {

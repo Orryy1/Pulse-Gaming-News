@@ -187,6 +187,25 @@ test("planCaptionDensity splits long phrases into multiple punch captions", () =
   assert.ok(captionTexts.every((caption) => caption.length <= 14));
 });
 
+test("planCaptionDensity splits captions before a loose phrase drifts off sync", () => {
+  const phrases = planCaptionDensity(
+    [
+      { word: "GTA", start: 0, end: 0.18 },
+      { word: "delay", start: 0.82, end: 1.02 },
+      { word: "watch", start: 1.72, end: 1.94 },
+    ],
+    {
+      maxWordsPerCaption: 3,
+      maxCharsPerCaption: 18,
+      maxDurationPerCaption: 1.15,
+    },
+  );
+
+  const captionTexts = phrases.map((phrase) => phrase.words.map((word) => word.word).join(" "));
+  assert.deepEqual(captionTexts, ["GTA delay", "watch"]);
+  assert.ok(phrases.every((phrase) => phrase.end - phrase.start <= 1.15));
+});
+
 test("groupIntoPhrases can merge dangling Flash Lane caption fragments", () => {
   const phrases = groupIntoPhrases(
     [
@@ -207,6 +226,27 @@ test("groupIntoPhrases can merge dangling Flash Lane caption fragments", () => {
     phrases.map((phrase) => phrase.words.map((word) => word.word)),
     [["This", "as", "flagship"], ["launcher."]],
   );
+});
+
+test("groupIntoPhrases will not merge dangling words into overlong Flash captions", () => {
+  const phrases = groupIntoPhrases(
+    [
+      { word: "GTA", start: 0, end: 0.18 },
+      { word: "delay", start: 0.82, end: 1.02 },
+      { word: "watch", start: 1.72, end: 1.94 },
+    ],
+    {
+      maxWordsPerPhrase: 2,
+      maxPhraseChars: 16,
+      maxPhraseDurationS: 1.15,
+      avoidDanglingWords: true,
+      danglingMergeMaxWords: 3,
+    },
+  );
+
+  const captionTexts = phrases.map((phrase) => phrase.words.map((word) => word.word).join(" "));
+  assert.deepEqual(captionTexts, ["GTA delay", "watch"]);
+  assert.ok(phrases.every((phrase) => phrase.end - phrase.start <= 1.15));
 });
 
 test("buildWordPopDialogues uses hard spaces so short punches do not wrap", () => {

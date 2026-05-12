@@ -8,6 +8,7 @@ const {
   buildSceneInput,
   dispatchSceneFilter,
 } = require("../../lib/studio/ffmpeg-scene-renderer");
+const { buildQuoteBodyLayout } = require("../../lib/scenes/quote-card");
 
 test("visual scenes get compact entity popups instead of anonymous cover slides", () => {
   const filter = dispatchSceneFilter({
@@ -124,4 +125,21 @@ test("clip filters pad safe-window clips instead of pulling later trailer slates
 
   assert.match(filter, /tpad=stop_mode=clone:stop_duration=1\.35/);
   assert.match(filter, /trim=duration=4\.2,setpts=PTS-STARTPTS/);
+});
+
+test("quote card layout downgrades overlong text inside safe bounds", () => {
+  const layout = buildQuoteBodyLayout(
+    [
+      "This quote contains a deliberately excessive community reaction that would keep running",
+      "past the safe card body if rendered without a smaller fallback size and truncation.",
+      "SupercalifragilisticexpialidociousLongestUnbrokenTokenShouldNotEscape",
+    ].join(" "),
+  );
+
+  assert.equal(layout.downgraded, true);
+  assert.ok(layout.truncated || layout.lines.some((line) => line.includes("...")));
+  assert.ok(layout.lines.length <= layout.maxLines);
+  assert.ok(layout.lines.every((line) => line.length <= layout.lineMax + 6), layout.lines.join(" | "));
+  assert.ok(layout.blockTop >= layout.safeBounds.top);
+  assert.ok(layout.blockBottom <= layout.safeBounds.bottom);
 });

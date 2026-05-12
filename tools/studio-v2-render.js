@@ -907,6 +907,19 @@ function resolveSubtitleScriptText({
   );
 }
 
+function resolveStudioV2CaptionOptions() {
+  return {
+    maxWordsPerPhrase: 2,
+    maxPhraseChars: 16,
+    captionCase: "upper",
+    revealMode: "phrase",
+    motionStyle: "flash",
+    avoidDanglingWords: true,
+    maxPhraseDurationS: 1.15,
+    minPhraseDurationS: 0.32,
+  };
+}
+
 function inferStudioV2VoiceProvider(voice = {}) {
   const provider = String(voice.provider || "").trim();
   if (provider) return provider;
@@ -1514,6 +1527,7 @@ async function main() {
     }),
     emphasisHex: channelTheme?.primary,
     realign: voice.editorialScriptAppliedToAudio === true,
+    ...resolveStudioV2CaptionOptions(),
   });
   await fs.writeFile(assPath, assContent);
   const assDialogueCount = (assContent.match(/^Dialogue:/gm) || []).length;
@@ -1855,6 +1869,7 @@ module.exports = {
   boostMotionDensityForShorts,
   replaceFallbackReleaseCardsWithMotion,
   resolveMainNarrationDurationS,
+  resolveStudioV2CaptionOptions,
   resolveStudioV2VoiceMode,
   resolveSubtitleScriptText,
   sumSceneDurations,

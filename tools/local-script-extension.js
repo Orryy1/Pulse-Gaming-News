@@ -25,6 +25,9 @@ const {
 const {
   createLocalTtsBatchRecovery,
 } = require("../lib/ops/local-tts-batch-recovery");
+const {
+  archiveLocalTtsProofReport,
+} = require("../lib/studio/local-tts-proof-report-loader");
 const mediaPaths = require("../lib/media-paths");
 
 function parseArgs(argv) {
@@ -124,9 +127,15 @@ async function main() {
     });
     const applyPath = path.join(outDir, "local_script_extension_audio_apply.json");
     await fs.writeJson(applyPath, applyReport, { spaces: 2 });
+    const historyPath = await archiveLocalTtsProofReport({
+      outDir,
+      source: "local_script_extension",
+      report: applyReport,
+    });
     console.log(
       `[local-script-extension] audio_apply=${path.relative(ROOT, applyPath)} applied=${applyReport.applied.length} skipped=${applyReport.skipped.length}`,
     );
+    console.log(`[local-script-extension] audio_apply_history=${path.relative(ROOT, historyPath)}`);
   }
 
   console.log(

@@ -8,6 +8,9 @@ const {
   buildLocalTtsOvernightReport,
   renderLocalTtsOvernightMarkdown,
 } = require("../lib/studio/local-tts-overnight-report");
+const {
+  loadLocalTtsProofReports,
+} = require("../lib/studio/local-tts-proof-report-loader");
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
@@ -21,18 +24,12 @@ async function main() {
   await fs.ensureDir(OUT);
   const doctorReport = await readJsonIfExists(path.join(OUT, "local_tts_doctor.json"));
   const repairQueue = await readJsonIfExists(path.join(OUT, "local_media_repair_queue.json"));
-  const audioApply = await readJsonIfExists(path.join(OUT, "local_media_repair_audio_apply.json"));
-  const scriptExtensionAudioApply = await readJsonIfExists(
-    path.join(OUT, "local_script_extension_audio_apply.json"),
-  );
+  const proofReports = await loadLocalTtsProofReports({ outDir: OUT });
 
   const report = buildLocalTtsOvernightReport({
     doctorReport,
     repairQueue,
-    audioApplyReports: [
-      { source: "local_media_repair", report: audioApply },
-      { source: "local_script_extension", report: scriptExtensionAudioApply },
-    ],
+    audioApplyReports: proofReports,
   });
   const markdown = renderLocalTtsOvernightMarkdown(report);
 

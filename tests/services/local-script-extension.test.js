@@ -268,6 +268,29 @@ test("local script extension plan can target one story without bulk audio work",
   assert.equal(plan.drafts[0].story_id, "target_story");
 });
 
+test("local script extension plan can explicitly recover a measured-short proof outside the queue", () => {
+  const plan = buildLocalScriptExtensionPlan({
+    queueReport: { items: [] },
+    storiesById: {
+      measured_short: {
+        id: "measured_short",
+        title: "MindsEye update drops today",
+        subreddit: "GameSpot",
+        content_pillar: "Confirmed Drop",
+        full_script: "MindsEye has a confirmed update today. ".repeat(26),
+      },
+    },
+    storyId: "measured_short",
+    env: {},
+  });
+
+  assert.equal(plan.counts.total, 1);
+  assert.equal(plan.drafts[0].story_id, "measured_short");
+  assert.equal(plan.drafts[0].action, "ready_for_local_liam_audio");
+  assert.ok(plan.drafts[0].estimated_seconds >= 64);
+  assert.equal(plan.safety.mutates_production_db, false);
+});
+
 test("local script extension markdown is operator-readable and local-only", () => {
   const plan = buildLocalScriptExtensionPlan({
     queueReport: { items: [] },

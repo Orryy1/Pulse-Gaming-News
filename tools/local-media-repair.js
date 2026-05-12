@@ -23,6 +23,9 @@ const {
   createLocalTtsBatchRecovery,
 } = require("../lib/ops/local-tts-batch-recovery");
 const {
+  archiveLocalTtsProofReport,
+} = require("../lib/studio/local-tts-proof-report-loader");
+const {
   probeLocalAudioAcoustics,
 } = require("../lib/ops/local-acoustic-probe");
 const {
@@ -185,6 +188,11 @@ async function main() {
     const applyPath = path.join(outDir, "local_media_repair_audio_apply.json");
     const applyMdPath = path.join(outDir, "local_media_repair_audio_apply.md");
     await fs.writeJson(applyPath, applyReport, { spaces: 2 });
+    const historyPath = await archiveLocalTtsProofReport({
+      outDir,
+      source: "local_media_repair",
+      report: applyReport,
+    });
     await fs.writeFile(
       applyMdPath,
       renderLocalMediaRepairApplyMarkdown(applyReport),
@@ -194,6 +202,7 @@ async function main() {
       `[local-media-repair] audio_apply=${path.relative(ROOT, applyPath)} applied=${applyReport.applied.length} skipped=${applyReport.skipped.length}`,
     );
     console.log(`[local-media-repair] audio_apply_md=${path.relative(ROOT, applyMdPath)}`);
+    console.log(`[local-media-repair] audio_apply_history=${path.relative(ROOT, historyPath)}`);
   }
 
   console.log(

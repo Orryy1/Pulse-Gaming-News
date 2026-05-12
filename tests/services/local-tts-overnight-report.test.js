@@ -151,6 +151,82 @@ test("local TTS overnight report merges repair and script-extension proof source
   assert.match(markdown, /rss_extended: source=local_script_extension/);
 });
 
+test("local TTS overnight report creates a local-only recovery plan for short proofs and TTS timeouts", () => {
+  const report = buildLocalTtsOvernightReport({
+    doctorReport: DOCTOR_GREEN,
+    audioApplyReports: [
+      {
+        source: "local_media_repair",
+        report: {
+          applied: [
+            {
+              story_id: "rss_short",
+              duration_seconds: 57.4,
+              duration_verdict: "reject_duration",
+              failure_code: "duration_too_short",
+              text_word_count: 172,
+              local_voice_reference: ACCEPTED_REF,
+              ...PASSING_PROOF,
+            },
+            {
+              story_id: "rss_recovered",
+              duration_seconds: 57.4,
+              duration_verdict: "reject_duration",
+              failure_code: "duration_too_short",
+              text_word_count: 172,
+              local_voice_reference: ACCEPTED_REF,
+              ...PASSING_PROOF,
+            },
+            {
+              story_id: "rss_recovered",
+              duration_seconds: 71.1,
+              duration_verdict: "pass",
+              text_word_count: 198,
+              local_voice_reference: ACCEPTED_REF,
+              local_voice_metadata: "stamped",
+              ...PASSING_PROOF,
+            },
+          ],
+          skipped: [
+            {
+              story_id: "rss_reset",
+              reason: "generate_tts_failed",
+              failure_code: "connection_reset",
+              server_reset_recorded: true,
+            },
+            {
+              story_id: "rss_timeout",
+              reason: "generate_tts_failed",
+              failure_code: "tts_timeout",
+            },
+            {
+              story_id: "rss_recovered",
+              reason: "generate_tts_failed",
+              failure_code: "tts_timeout",
+            },
+          ],
+        },
+      },
+    ],
+  });
+  const markdown = renderLocalTtsOvernightMarkdown(report);
+
+  assert.equal(report.recovery_plan.local_only, true);
+  assert.equal(report.proof_batch.rejected_count, 1);
+  assert.equal(report.proof_batch.superseded_rejected_count, 1);
+  assert.equal(report.proof_batch.skipped_count, 2);
+  assert.equal(report.proof_batch.superseded_skipped_count, 1);
+  assert.deepEqual(report.recovery_plan.extend_script_story_ids, ["rss_short"]);
+  assert.deepEqual(report.recovery_plan.retry_tts_story_ids, ["rss_reset", "rss_timeout"]);
+  assert.equal(report.recovery_plan.blocked_by_voice_quality, false);
+  assert.match(report.recovery_plan.commands[0], /ops:local-media-repair -- --dry-run/);
+  assert.match(report.recovery_plan.commands[1], /ops:local-script-extension -- --dry-run/);
+  assert.match(markdown, /## Local Recovery Plan/);
+  assert.match(markdown, /## Superseded Failed Attempts/);
+  assert.match(markdown, /extend_script_story_ids=rss_short/);
+  assert.match(markdown, /retry_tts_story_ids=rss_reset, rss_timeout/);
+});
+
 test("local TTS overnight report flags proofs outside the preferred 64-70s target without rejecting 61-75s audio", () => {
   const report = buildLocalTtsOvernightReport({
     doctorReport: DOCTOR_GREEN,

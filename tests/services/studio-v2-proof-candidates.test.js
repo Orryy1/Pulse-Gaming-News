@@ -988,6 +988,9 @@ test("studio:v2:proof-candidates command is registered and read-only", () => {
   assert.match(tool, /discoverLocalAudioProofReport/);
   assert.match(tool, /ffprobeDuration/);
   assert.match(tool, /DEFAULT_FORENSIC_REPORTS/);
+  assert.match(tool, /--no-db/);
+  assert.match(tool, /if \(args\.noDb\) return \[\]/);
+  assert.doesNotMatch(tool, /dotenv/);
   assert.doesNotMatch(tool, /publishAll|uploadShort|postShort|autonomous\/publish/);
   assert.doesNotMatch(tool, /UPDATE\s+stories|INSERT\s+INTO\s+stories|DELETE\s+FROM/i);
 });

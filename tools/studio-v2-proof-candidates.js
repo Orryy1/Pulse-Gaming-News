@@ -4,10 +4,6 @@
 const fs = require("fs-extra");
 const path = require("node:path");
 
-try {
-  require("dotenv").config({ override: true });
-} catch {}
-
 const {
   buildStudioV2ProofCandidateReport,
   renderStudioV2ProofCandidatesMarkdown,
@@ -51,6 +47,7 @@ const DEFAULT_FORENSIC_REPORTS = [
 function parseArgs(argv) {
   const args = {
     fixture: false,
+    noDb: false,
     storyId: null,
     limit: 20,
     json: false,
@@ -59,6 +56,7 @@ function parseArgs(argv) {
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--fixture") args.fixture = true;
+    else if (arg === "--no-db") args.noDb = true;
     else if (arg === "--story") args.storyId = argv[++i] || null;
     else if (arg === "--limit") args.limit = Math.max(1, Number(argv[++i]) || 20);
     else if (arg === "--json") args.json = true;
@@ -74,6 +72,7 @@ function printHelp() {
       "",
       "Options:",
       "  --fixture       Use a built-in fixture",
+      "  --no-db         Do not read the local SQLite story DB; use report stubs only",
       "  --story <id>    Focus one story id",
       "  --limit <n>     Limit output candidates",
       "  --json          Print JSON instead of Markdown",
@@ -161,6 +160,7 @@ function storyIdsFromReports(reports) {
 }
 
 async function loadDbStories(args) {
+  if (args.noDb) return [];
   if (args.fixture) return fixtureStories();
   try {
     const db = require("../lib/db");

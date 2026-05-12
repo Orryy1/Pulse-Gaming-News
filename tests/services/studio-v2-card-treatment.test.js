@@ -6,7 +6,12 @@ const assert = require("node:assert/strict");
 const { SCENE_TYPES } = require("../../lib/scene-composer");
 const {
   buildSourceCardFilter,
+  flashLaneSourceCardLayout,
 } = require("../../lib/scenes/source-card");
+const {
+  buildQuoteBodyLayout,
+  buildQuoteCardFilter,
+} = require("../../lib/scenes/quote-card");
 const {
   buildClipFilter,
   buildSceneInput,
@@ -33,6 +38,47 @@ test("Flash Lane source cards use a stronger creator-news treatment", () => {
   assert.doesNotMatch(filter, /w=iw:h=ih:color=black@0\.[2-9]/);
   assert.doesNotMatch(filter, /FLASH SOURCE/);
   assert.doesNotMatch(filter, /drawbox=[^,]*:alpha=/);
+});
+
+test("Flash Lane source cards compact long outlet labels into the card lane", () => {
+  const layout = flashLaneSourceCardLayout("GamingLeaksAndRumoursInternationalNewswire");
+  const filter = buildSourceCardFilter({
+    slot: 0,
+    duration: 4,
+    sourceLabel: "GamingLeaksAndRumoursInternationalNewswire",
+    sublabel: "News",
+    treatment: "flash_lane",
+    fontOpt: FONT_OPT,
+  });
+
+  assert.ok(layout.label.length <= 26, layout.label);
+  assert.ok(layout.labelFontSize <= 36, String(layout.labelFontSize));
+  assert.equal(layout.box.x + layout.box.w, 670);
+  assert.match(filter, /GAMINGLEAKSANDRUMOURS\.\.\./);
+  assert.match(filter, /fontsize=34|fontsize=36/);
+});
+
+test("quote cards adapt long quote copy instead of cutting a fixed six-line block", () => {
+  const quote = [
+    "The first few hours looked promising, but the actual concern is whether the update can keep players returning once the novelty wears off.",
+    "If the next patch does not fix progression pacing, the community reaction could turn very quickly.",
+  ].join(" ");
+  const layout = buildQuoteBodyLayout(quote);
+  const filter = buildQuoteCardFilter({
+    slot: 0,
+    duration: 4,
+    body: quote,
+    author: "LongCommenter",
+    score: 1200,
+    fontOpt: FONT_OPT,
+  });
+
+  assert.ok(layout.lines.length <= layout.maxLines, String(layout.lines.length));
+  assert.ok(layout.fontSize <= 38, String(layout.fontSize));
+  assert.ok(layout.blockTop >= 520, String(layout.blockTop));
+  assert.ok(layout.blockBottom <= 1220, String(layout.blockBottom));
+  assert.match(filter, /fontsize=3[4-8]/);
+  assert.match(filter, /\.\.\./);
 });
 
 test("standard source cards remain available outside Flash Lane", () => {

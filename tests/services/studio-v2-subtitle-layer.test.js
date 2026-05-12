@@ -74,6 +74,30 @@ test("buildKineticAss falls back to synthetic timings when TTS alignment has hug
   assert.ok(intervals[intervals.length - 1][1] <= 12.1);
 });
 
+test("buildKineticAss falls back when alignment collapses long before narration ends", () => {
+  const scriptText = Array.from({ length: 90 }, (_, i) => `word${i}`).join(" ");
+  const words = Array.from({ length: 90 }, (_, i) => ({
+    word: `word${i}`,
+    start: i * 0.08,
+    end: i * 0.08 + 0.04,
+  }));
+
+  const ass = buildKineticAss({
+    story: { title: "Collapsed Alignment" },
+    words,
+    duration: 60,
+    scriptText,
+    realign: true,
+  });
+
+  const intervals = assIntervals(ass);
+  assert.ok(intervals.length > 20);
+  assert.ok(
+    intervals[intervals.length - 1][1] >= 55,
+    "caption timeline should cover the spoken narration instead of ending near the collapsed timestamp track",
+  );
+});
+
 test("groupIntoPhrases caps creator subtitles at three words to avoid two-line blocks", () => {
   const phrases = groupIntoPhrases([
     { word: "Take-Two", start: 0, end: 0.2 },

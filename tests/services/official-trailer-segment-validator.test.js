@@ -512,6 +512,35 @@ test("official trailer segment validator rejects low-detail blurry windows", asy
   assert.equal(report.segments[0].validation_reason, "segment_contains_low_detail_frame");
 });
 
+test("official trailer segment validator rejects explicitly blurred windows", async () => {
+  const outputRoot = tempOutputRoot("blurred-window");
+  await cleanTempRoot(outputRoot);
+
+  const report = await runOfficialTrailerSegmentValidation([clip()], {
+    applyLocal: true,
+    outputRoot,
+    extractor: fakeExtractor,
+    inspectFrame: async (outputPath) => ({
+      ...passingQa(outputPath),
+      blur_verdict: "fail",
+      prescan: {
+        likely_is_logo: false,
+        text_overlay_likelihood: 0.04,
+        edge_density: 0.16,
+        saturation_mean: 0.38,
+      },
+    }),
+  });
+
+  assert.equal(report.summary.segments_rejected, 1);
+  assert.equal(report.segments[0].validation_reason, "segment_contains_low_detail_frame");
+  assert.ok(
+    report.segments[0].samples.every((sample) =>
+      sample.qa.failures.includes("low_detail_official_frame"),
+    ),
+  );
+});
+
 test("official trailer segment validator rejects poor-subject windows", async () => {
   const outputRoot = tempOutputRoot("poor-subject-framing");
   await cleanTempRoot(outputRoot);

@@ -651,6 +651,48 @@ test("controlled frame extraction rejects low-detail official trailer frames", a
   );
 });
 
+test("controlled frame extraction rejects explicitly blurred official trailer frames", async () => {
+  const outputRoot = tempOutputRoot("blurred-frame");
+  await cleanTempRoot(outputRoot);
+
+  const report = await runControlledFrameExtraction([framePlan()], {
+    applyLocal: true,
+    outputRoot,
+    extractor: async ({ outputPath }) => {
+      await fs.ensureDir(path.dirname(outputPath));
+      await fs.writeFile(outputPath, Buffer.from("fake-frame"));
+      return { outputPath };
+    },
+    inspectFrame: async (outputPath) => ({
+      local_path: outputPath,
+      file_size: 10,
+      content_hash: outputPath,
+      width: 1280,
+      height: 720,
+      thumbnail_safe: true,
+      likely_has_face: false,
+      black_frame: false,
+      blur_verdict: "fail",
+      verdict: "pass",
+      warnings: [],
+      failures: [],
+      prescan: {
+        likely_is_logo: false,
+        text_overlay_likelihood: 0,
+        edge_density: 0.14,
+        saturation_mean: 0.38,
+      },
+    }),
+  });
+
+  assert.equal(report.summary.frames_accepted, 0);
+  assert.ok(
+    report.plans[0].frames.every((frame) =>
+      frame.qa.failures.includes("low_detail_official_frame"),
+    ),
+  );
+});
+
 test("controlled frame extraction rejects poor-subject official trailer frames", async () => {
   const outputRoot = tempOutputRoot("poor-subject-framing");
   await cleanTempRoot(outputRoot);

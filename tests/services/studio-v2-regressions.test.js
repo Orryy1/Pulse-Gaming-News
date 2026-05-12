@@ -95,6 +95,56 @@ test("v2 duration integrity passes when render covers voice and subtitle timelin
   assert.equal(result.grade, "green");
 });
 
+test("v2 quality report flags subtitles that disappear before narration ends", () => {
+  const assPath = tempAss(
+    [
+      dialogue("0:00:00.00", "0:00:01.00", "opening"),
+      dialogue("0:00:09.50", "0:00:10.00", "early ending caption"),
+    ].join("\n"),
+  );
+  const report = buildQualityReportV2({
+    storyId: "early-caption-tail",
+    outputPath: "test/output/early-caption-tail.mp4",
+    pkg: {
+      title: "Pokemon Go",
+      hook: { chosen: { text: "Mega Mewtwo is real for Pokemon Go players" } },
+      script: {
+        tightened: Array.from({ length: 130 }, () => "word").join(" "),
+      },
+    },
+    scenes: Array.from({ length: 12 }, (_, i) => ({
+      type: i % 2 === 0 ? "clip" : "card.source",
+      source: `source-${i}.mp4`,
+      duration: 5,
+    })),
+    transitions: Array.from({ length: 11 }, (_, i) => ({
+      type: "cut",
+      offset: (i + 1) * 5,
+    })),
+    audioMeta: { provider: "elevenlabs", voiceId: "TX3LPaxmHKxFdv7VOQHJ" },
+    audioDurationS: 60,
+    assPath,
+    soundLayerPayload: {
+      cueCount: 3,
+      filterLines: ["sidechaincompress=threshold=0.05:ratio=4"],
+    },
+    realignedWords: Array.from({ length: 130 }, (_, i) => ({
+      word: `w${i}`,
+      start: i * 0.4,
+      end: i * 0.4 + 0.18,
+    })),
+    renderedDurationS: 60,
+    branch: "test",
+  });
+
+  assert.equal(report.auto.captionGapsOver2s.grade, "red");
+  assert.deepEqual(report.auto.captionGapsOver2s.gaps, [
+    { fromS: 1, toS: 9.5, type: "internal" },
+    { fromS: 10, toS: 60, type: "tail" },
+  ]);
+  assert.match(report.verdict.reasons.join(" "), /captionGapsOver2s/);
+});
+
 test("v2 quality report surfaces Flash Lane preflight blockers as hard quality failures", () => {
   const assPath = tempAss(dialogue("0:00:01.00", "0:01:05.00", "story"));
   const scenes = Array.from({ length: 10 }, (_, i) => ({

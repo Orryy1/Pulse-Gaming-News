@@ -50,6 +50,28 @@ test("opener hook overlay is compact and avoids the old full-width top slab", ()
   assert.match(filter, /GTA/);
 });
 
+test("opener entity badge sits below the hook safe area", () => {
+  const filter = dispatchSceneFilter({
+    slot: 0,
+    fontOpt: "fontfile=Arial",
+    story: { hook: "GTA just changed the release window." },
+    scene: {
+      type: SCENE_TYPES.OPENER,
+      duration: 4,
+      source: "gta-trailer.m3u8",
+      isClipBacked: true,
+      entity: "GTA",
+      sourceType: "steam_movie",
+    },
+  });
+
+  assert.match(filter, /drawbox=x=72:y=102:w=760:h=118/);
+  assert.doesNotMatch(filter, /text='OFFICIAL CLIP'[^,]*:x=74:y=112/);
+  assert.doesNotMatch(filter, /text='GTA'[^,]*:x=74:y=152/);
+  assert.match(filter, /text='OFFICIAL CLIP'[^,]*:x=74:y=250/);
+  assert.match(filter, /text='GTA'[^,]*:x=74:y=290/);
+});
+
 test("official clip inputs seek to the selected trailer beat instead of trailer start", () => {
   const input = buildSceneInput({
     type: SCENE_TYPES.CLIP,

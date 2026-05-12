@@ -310,7 +310,7 @@ test("analyseRenderedFrameTaste fails rendered rating and title slates", async (
   assert.equal(result.badFrames[0].reason, "white_text_on_dark_card");
 });
 
-test("analyseRenderedFrameTaste warns on low-information blurry frames", async () => {
+test("analyseRenderedFrameTaste fails low-information rendered frames", async () => {
   const result = await analyseRenderedFrameTaste({
     frames: [
       {
@@ -341,9 +341,75 @@ test("analyseRenderedFrameTaste warns on low-information blurry frames", async (
     prescanFrame: async (frame) => frame.prescan,
   });
 
-  assert.equal(result.verdict, "warn");
+  assert.equal(result.verdict, "fail");
   assert.equal(result.lowInformationFrameCount, 1);
   assert.equal(result.badFrames[0].reason, "low_visual_information_frame");
+});
+
+test("analyseRenderedFrameTaste fails black, blurred and low-detail rendered frames", async () => {
+  const result = await analyseRenderedFrameTaste({
+    frames: [
+      {
+        path: "black.jpg",
+        timeS: 9,
+        black_frame: true,
+        prescan: {
+          edge_density: 0,
+          saturation_mean: 0,
+          dark_pixel_ratio: 0.96,
+          bright_pixel_ratio: 0,
+        },
+      },
+      {
+        path: "blurred.jpg",
+        timeS: 12,
+        blur_verdict: "fail",
+        prescan: {
+          edge_density: 0.035,
+          saturation_mean: 0.2,
+          dark_pixel_ratio: 0.34,
+          bright_pixel_ratio: 0.08,
+        },
+      },
+    ],
+    prescanFrame: async (frame) => frame.prescan,
+  });
+
+  assert.equal(result.verdict, "fail");
+  assert.equal(result.blackFrameCount, 1);
+  assert.equal(result.blurredFrameCount, 1);
+  assert.equal(result.lowInformationFrameCount, 2);
+  assert.deepEqual(
+    result.badFrames.map((frame) => frame.reason),
+    ["black_frame", "blurred_frame"],
+  );
+});
+
+test("analyseRenderedFrameTaste groups repeated title and rating slate frames", async () => {
+  const ratingPrescan = {
+    text_overlay_likelihood: 0.36,
+    white_text_on_dark_likelihood: 0.82,
+    edge_density: 0.08,
+    saturation_mean: 0.08,
+    bright_pixel_ratio: 0.08,
+    dark_pixel_ratio: 0.81,
+  };
+  const result = await analyseRenderedFrameTaste({
+    frames: [
+      { path: "rating-a.jpg", timeS: 0, content_hash: "same-rating", prescan: ratingPrescan },
+      { path: "rating-b.jpg", timeS: 1.5, content_hash: "same-rating", prescan: ratingPrescan },
+      { path: "rating-c.jpg", timeS: 3, content_hash: "same-rating", prescan: ratingPrescan },
+    ],
+    prescanFrame: async (frame) => frame.prescan,
+  });
+
+  assert.equal(result.verdict, "fail");
+  assert.equal(result.badFrameCount, 3);
+  assert.equal(result.uniqueBadFrameCount, 1);
+  assert.equal(result.duplicateBadFrameCount, 2);
+  assert.equal(result.badFrames.length, 1);
+  assert.equal(result.badFrames[0].duplicateCount, 3);
+  assert.deepEqual(result.badFrames[0].duplicateTimesS, [0, 1.5, 3]);
 });
 
 test("analyseRenderedFrameTaste passes detailed gameplay-like samples", async () => {

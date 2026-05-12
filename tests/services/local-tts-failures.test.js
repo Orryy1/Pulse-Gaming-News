@@ -58,6 +58,27 @@ test("classifyLocalTtsFailure recognises transient socket resets and TTS timeout
   assert.equal(timeout.requires_server_reset, true);
 });
 
+test("classifyLocalTtsFailure treats default voice fallback as unsafe voice", () => {
+  const unknownVoice = classifyLocalTtsFailure(
+    new Error("unknown voice_id='JBFqnCBsd6RMkjVDRZzb' is not registered in voices.json; refusing default fallback voice"),
+  );
+  assert.equal(unknownVoice.code, "unsafe_voice");
+  assert.equal(unknownVoice.requires_server_reset, false);
+
+  const fallbackAllowed = classifyLocalTtsHealthFailure({
+    status: "ok",
+    ready: true,
+    reasons: ["unknown local voice fallback is enabled"],
+    voice: {
+      present: true,
+      refResolved: true,
+      loaded: true,
+      reference: { referencePresent: true },
+    },
+  });
+  assert.equal(fallbackAllowed.code, "unsafe_voice");
+});
+
 test("classifyLocalTtsProofFailure classifies duration, timestamps and unsafe voice issues", () => {
   assert.equal(classifyLocalTtsProofFailure({ durationSeconds: 58.9 }).code, "duration_too_short");
   assert.equal(classifyLocalTtsProofFailure({ durationSeconds: 77.2 }).code, "duration_too_long");

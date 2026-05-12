@@ -36,6 +36,50 @@ const {
   classifyShortScriptRuntime,
   secondsPerWordForTtsProvider,
 } = require("./lib/services/short-runtime-planner");
+const {
+  classifyLocalTtsFailure,
+} = require("./lib/studio/local-tts-failures");
+
+const ACCEPTED_LOCAL_LIAM_VOICE_ID = "TX3LPaxmHKxFdv7VOQHJ";
+
+function isTruthy(value) {
+  return /^(true|1|yes|on)$/i.test(String(value || ""));
+}
+
+function firstNonBlank(...values) {
+  for (const value of values) {
+    if (value !== undefined && value !== null && String(value).trim() !== "") {
+      return String(value).trim();
+    }
+  }
+  return null;
+}
+
+function resolveTtsVoiceIdForProvider(provider, env = process.env, brandConfig = brand) {
+  const normalisedProvider = String(provider || "").toLowerCase();
+  if (normalisedProvider === "local") {
+    const voiceId = firstNonBlank(
+      env.LOCAL_TTS_VOICE_ID,
+      env.STUDIO_V2_LOCAL_TTS_VOICE_ID,
+      env.PULSE_LOCAL_TTS_VOICE_ID,
+      brandConfig?.voiceId,
+      env.ELEVENLABS_VOICE_ID,
+    );
+    if (!voiceId || voiceId === "default" || voiceId === "__default__") {
+      throw new Error("unsafe_local_tts_voice:missing_mapped_liam_voice_id");
+    }
+    if (
+      voiceId !== ACCEPTED_LOCAL_LIAM_VOICE_ID &&
+      !isTruthy(env.ALLOW_NON_LIAM_LOCAL_TTS)
+    ) {
+      throw new Error(
+        `unsafe_local_tts_voice:${voiceId}:expected_${ACCEPTED_LOCAL_LIAM_VOICE_ID}`,
+      );
+    }
+    return voiceId;
+  }
+  return firstNonBlank(brandConfig?.voiceId, env.ELEVENLABS_VOICE_ID) || "default";
+}
 
 // --- Clean text for TTS - shared logic ---
 function cleanForTTS(raw) {
@@ -359,6 +403,59 @@ async function requestTtsWithRetry({
   throw lastError;
 }
 
+function safeAudioErrorMessage(err) {
+  return String(err?.message || err || "audio generation failed")
+    .replace(/\s+/g, " ")
+    .slice(0, 240);
+}
+
+function markAudioGenerationFailure(
+  story,
+  err,
+  {
+    provider = process.env.TTS_PROVIDER || "elevenlabs",
+    now = () => new Date(),
+  } = {},
+) {
+  const normalisedProvider = String(provider || "").toLowerCase();
+  const failure =
+    normalisedProvider === "local"
+      ? classifyLocalTtsFailure(err)
+      : {
+          code: "audio_generation_failed",
+          message: safeAudioErrorMessage(err),
+          requires_server_reset: false,
+        };
+  const code = failure.code || "audio_generation_failed";
+  const message = failure.message || safeAudioErrorMessage(err);
+  const failedAt = now().toISOString();
+
+  if (story && typeof story === "object") {
+    story.qa_failed = true;
+    story.qa_failures = [`audio_generation_failed:${code}`];
+    story.qa_warnings = story.qa_warnings || [];
+    story.qa_failed_at = failedAt;
+    story.publish_status = "failed";
+    story.publish_error = `audio_generation_failed: ${code}: ${message}`.slice(0, 280);
+    story.audio_generation_failure = {
+      provider: normalisedProvider,
+      code,
+      message,
+      at: failedAt,
+    };
+    if (normalisedProvider === "local") {
+      story.local_tts_failure = {
+        code,
+        message,
+        requires_server_reset: failure.requires_server_reset === true,
+        at: failedAt,
+      };
+    }
+  }
+
+  return failure;
+}
+
 // --- Concatenate multiple MP3 files via ffmpeg ---
 async function concatAudioFiles(files, outputPath) {
   // Resolve through media-paths so the list file + output land
@@ -387,7 +484,7 @@ async function concatAudioFiles(files, outputPath) {
 //   { audio_base64, alignment: { characters, character_start_times_seconds, character_end_times_seconds } }
 async function generateTTS(text, outputPath, rateOverride) {
   const provider = (process.env.TTS_PROVIDER || "elevenlabs").toLowerCase();
-  const voiceId = brand.voiceId || process.env.ELEVENLABS_VOICE_ID || "default";
+  const voiceId = resolveTtsVoiceIdForProvider(provider, process.env, brand);
   const voiceSettings = Object.assign(
     {},
     brand.voiceSettings || {
@@ -771,6 +868,9 @@ async function generateAudio() {
       console.log(`[audio] Saved: ${outputPath}`);
     } catch (err) {
       console.log(`[audio] ERROR for ${story.id}: ${err.message}`);
+      markAudioGenerationFailure(story, err, {
+        provider: process.env.TTS_PROVIDER || "elevenlabs",
+      });
     }
   }
 
@@ -789,6 +889,8 @@ module.exports.resolveVoiceSettingsForProvider = resolveVoiceSettingsForProvider
 module.exports.isRetryableLocalTtsError = isRetryableLocalTtsError;
 module.exports.requestTtsWithRetry = requestTtsWithRetry;
 module.exports.normaliseLocalVoiceDiagnostics = normaliseLocalVoiceDiagnostics;
+module.exports.resolveTtsVoiceIdForProvider = resolveTtsVoiceIdForProvider;
+module.exports.markAudioGenerationFailure = markAudioGenerationFailure;
 module.exports.assertBrandNameQaForTts = assertBrandNameQaForTts;
 module.exports.selectRawTtsScript = selectRawTtsScript;
 

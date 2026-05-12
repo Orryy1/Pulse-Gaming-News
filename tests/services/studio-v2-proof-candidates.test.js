@@ -7,8 +7,14 @@ const path = require("node:path");
 
 const {
   buildStudioV2ProofCandidateReport,
+  buildRankingSignals,
+  mediaProgressScore,
   renderStudioV2ProofCandidatesMarkdown,
 } = require("../../lib/ops/studio-v2-proof-candidates");
+const {
+  mergeReportStoryStubs,
+  storyContextsFromReports,
+} = require("../../tools/studio-v2-proof-candidates");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 
@@ -154,6 +160,86 @@ test("proof candidates rank local Liam voice-ready media repairs above audio-mis
   assert.equal(report.candidates[0].proof_readiness.final_recommendation, "repair_media_first");
   assert.equal(report.candidates[1].story_id, "missing_audio_high_priority");
   assert.equal(report.candidates[1].proof_readiness.final_recommendation, "repair_voice_first");
+});
+
+test("proof candidates rank voice-ready media-progress stories above empty Liam stubs", () => {
+  const report = buildStudioV2ProofCandidateReport({
+    stories: [
+      {
+        ...story("empty_high_score"),
+        breaking_score: 99,
+      },
+      {
+        ...story("partial_media_low_score", "LEGO Batman proof with usable media progress"),
+        breaking_score: 1,
+      },
+    ],
+    localAudioReports: [
+      audioReport("empty_high_score"),
+      audioReport("partial_media_low_score"),
+    ],
+    assetReports: [assetReport("partial_media_low_score", 3)],
+    segmentValidationReports: [segmentReport("partial_media_low_score", 1)],
+    limit: 2,
+  });
+
+  assert.equal(report.candidates[0].story_id, "partial_media_low_score");
+  assert.ok(report.candidates[0].media_progress_score > 0);
+  assert.equal(report.candidates[0].ranking_signals.audio_ready, true);
+  assert.equal(report.candidates[1].story_id, "empty_high_score");
+  assert.equal(report.candidates[1].media_progress_score, 0);
+});
+
+test("proof candidate ranking signals penalise wrong-story assets", () => {
+  const clean = mediaProgressScore({
+    assets: { exact_subject_count: 6 },
+    frames: { accepted_frame_count: 2 },
+    segments: { validated_clip_ref_count: 3, validated_clip_source_count: 2 },
+  });
+  const wrongStory = mediaProgressScore({
+    assets: { exact_subject_count: 6, wrong_story_exact_asset_count: 2 },
+    frames: { accepted_frame_count: 2 },
+    segments: { validated_clip_ref_count: 3, validated_clip_source_count: 2 },
+  });
+
+  assert.ok(clean > wrongStory);
+  assert.equal(
+    buildRankingSignals({ audio: { ready: true }, assets: { exact_subject_count: 1 } }).audio_ready,
+    true,
+  );
+});
+
+test("proof candidate CLI hydrates report stubs from local script extension context", () => {
+  const contexts = storyContextsFromReports([
+    {
+      drafts: [
+        {
+          story_id: "rss_context",
+          title: "Call of Duty loses day-one Game Pass",
+          source: "RockPaperShotgun",
+          proposed_full_script: "Microsoft changed the Game Pass promise.",
+          breaking_score: 72,
+        },
+      ],
+    },
+  ]);
+  const stories = mergeReportStoryStubs(
+    [],
+    [
+      {
+        applied: [{ story_id: "rss_context" }],
+      },
+      {
+        drafts: [contexts.get("rss_context")],
+      },
+    ],
+    {},
+  );
+
+  assert.equal(stories[0].title, "Call of Duty loses day-one Game Pass");
+  assert.equal(stories[0].full_script, "Microsoft changed the Game Pass promise.");
+  assert.equal(stories[0].source, "RockPaperShotgun");
+  assert.equal(stories[0].breaking_score, 72);
 });
 
 test("proof readiness packet recommends a local proof only when voice, captions, overlays and cover are ready", () => {

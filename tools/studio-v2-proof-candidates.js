@@ -15,6 +15,7 @@ const {
   loadLocalTtsProofReports,
 } = require("../lib/studio/local-tts-proof-report-loader");
 const { ffprobeDuration } = require("../lib/studio/media-acquisition");
+const { normaliseText } = require("../lib/text-hygiene");
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
@@ -22,6 +23,11 @@ const OUT = path.join(ROOT, "test", "output");
 const DEFAULT_AUDIO_REPORTS = [
   "test/output/local_media_repair_audio_apply.json",
   "test/output/local_script_extension_audio_apply.json",
+];
+const DEFAULT_STORY_CONTEXT_REPORTS = [
+  "test/output/local_script_extension_plan.json",
+  "test/output/local_media_repair_queue.json",
+  "test/output/creator_studio_control_room.json",
 ];
 const DEFAULT_ASSET_REPORTS = [
   "test/output/asset_acquisition_v16_gameplay_stills_apply_local.json",
@@ -148,18 +154,59 @@ function fixtureStories() {
   ];
 }
 
-function storyIdsFromReports(reports) {
-  const ids = new Map();
-  for (const report of reports) {
-    if (report?.story_id) ids.set(report.story_id, report.title || report.story_id);
-    for (const plan of Array.isArray(report?.plans) ? report.plans : []) {
-      if (plan?.story_id) ids.set(plan.story_id, plan.title || plan.story_id);
+function storyContextFromItem(item = {}) {
+  const id = item.story_id || item.storyId || item.id || null;
+  if (!id) return null;
+  return {
+    id,
+    title: normaliseText(item.title || item.story_title || item.headline || ""),
+    source: item.source || item.publisher || item.source_name || item.subreddit || "",
+    url: item.url || item.source_url || item.article_url || "",
+    full_script:
+      item.proposed_full_script ||
+      item.full_script ||
+      item.script ||
+      item.narration ||
+      "",
+    hook: item.hook || "",
+    body: item.body || "",
+    approved: item.approved ?? true,
+    auto_approved: item.auto_approved,
+    breaking_score: Number(item.breaking_score || item.score || 0) || 0,
+    timestamp: item.timestamp || item.created_at || item.updated_at || null,
+  };
+}
+
+function mergeStoryContexts(base = {}, extra = {}) {
+  const merged = { ...base };
+  for (const [key, value] of Object.entries(extra || {})) {
+    if (value === undefined || value === null || value === "") continue;
+    if (key === "title" && merged.title && merged.title !== merged.id) continue;
+    if (key === "breaking_score") {
+      merged.breaking_score = Math.max(Number(merged.breaking_score || 0), Number(value || 0));
+      continue;
     }
-    for (const item of Array.isArray(report?.applied) ? report.applied : []) {
-      if (item?.story_id) ids.set(item.story_id, item.title || item.story_id);
+    if (merged[key] === undefined || merged[key] === null || merged[key] === "" || merged[key] === merged.id) {
+      merged[key] = value;
     }
   }
-  return ids;
+  return merged;
+}
+
+function storyContextsFromReports(reports) {
+  const contexts = new Map();
+  const add = (item) => {
+    const context = storyContextFromItem(item);
+    if (!context?.id) return;
+    contexts.set(context.id, mergeStoryContexts(contexts.get(context.id), context));
+  };
+  for (const report of reports) {
+    add(report);
+    for (const key of ["plans", "applied", "drafts", "items", "rows", "candidates"]) {
+      for (const item of Array.isArray(report?.[key]) ? report[key] : []) add(item);
+    }
+  }
+  return contexts;
 }
 
 async function loadDbStories(args) {
@@ -181,17 +228,21 @@ async function loadDbStories(args) {
 
 function mergeReportStoryStubs(stories, reports, args) {
   const byId = new Map(stories.filter(Boolean).map((story) => [story.id, story]));
-  const reportIds = storyIdsFromReports(reports);
-  for (const [id, title] of reportIds.entries()) {
+  const reportContexts = storyContextsFromReports(reports);
+  for (const [id, context] of reportContexts.entries()) {
     if (args.storyId && id !== args.storyId) continue;
-    if (byId.has(id)) continue;
-    byId.set(id, {
+    const existing = byId.get(id);
+    if (existing) {
+      byId.set(id, mergeStoryContexts(existing, context));
+      continue;
+    }
+    byId.set(id, mergeStoryContexts({
       id,
-      title,
+      title: id,
       approved: true,
       breaking_score: 0,
       full_script: "",
-    });
+    }, context));
   }
   return [...byId.values()];
 }
@@ -221,9 +272,11 @@ async function main() {
   const segmentValidationReports = await readReports(DEFAULT_SEGMENT_VALIDATION_REPORTS);
   const stillDeckReports = await readReports(DEFAULT_STILL_DECK_REPORTS);
   const latestForensicReports = await readReports(DEFAULT_FORENSIC_REPORTS);
+  const storyContextReports = await readReports(DEFAULT_STORY_CONTEXT_REPORTS);
   const stories = mergeReportStoryStubs(
     await loadDbStories(args),
     [
+      ...storyContextReports,
       ...localAudioReports,
       ...assetReports,
       ...frameReports,
@@ -257,7 +310,16 @@ async function main() {
   );
 }
 
-main().catch((err) => {
-  process.stderr.write(`[proof-candidates] ${err.stack || err.message}\n`);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    process.stderr.write(`[proof-candidates] ${err.stack || err.message}\n`);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  mergeReportStoryStubs,
+  mergeStoryContexts,
+  storyContextFromItem,
+  storyContextsFromReports,
+};

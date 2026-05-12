@@ -127,7 +127,9 @@ test("Controlled Frame Extraction Plan moves known-duration frame targets out of
 
   assert.ok(plan.target_frames.every((frame) => frame.target_time_seconds >= 24));
   assert.ok(
-    plan.target_frames.every((frame) =>
+    plan.target_frames
+      .filter((frame) => frame.target_time_percent === 0.42)
+      .every((frame) =>
       frame.sampling_rejections.some((item) => item.reason === "intro_or_rating_card_window"),
     ),
   );

@@ -934,6 +934,39 @@ test("proof candidate markdown is operator-readable and says when no render is s
   assert.match(md, /Visual evidence gate:/);
 });
 
+test("proof readiness packet JSON and Markdown expose all required proof fields", () => {
+  const report = buildStudioV2ProofCandidateReport({
+    stories: [
+      {
+        ...story("packet_validity"),
+        thumbnail_candidate_path: "output/thumbnails/packet_validity.png",
+      },
+    ],
+    localAudioReports: [
+      audioReport("packet_validity", {
+        timestamps_path: "test/output/audio/packet_validity_timestamps.json",
+      }),
+    ],
+    assetReports: [assetReport("packet_validity", 7)],
+    frameReports: [frameReport("packet_validity", 10)],
+    segmentValidationReports: [segmentReport("packet_validity", 10)],
+  });
+  const reparsed = JSON.parse(JSON.stringify(report));
+  const md = renderStudioV2ProofCandidatesMarkdown(report);
+
+  assert.equal(reparsed.candidates[0].proof_readiness.final_recommendation, "render_local_proof");
+  assert.match(md, /Approved voice evidence:/);
+  assert.match(md, /Runtime target 61-75s:/);
+  assert.match(md, /Caption coverage\/density:/);
+  assert.match(md, /Overlay safe area:/);
+  assert.match(md, /Validated frames\/clips:/);
+  assert.match(md, /Bad-frame rejections:/);
+  assert.match(md, /Stale\/wrong-story risk:/);
+  assert.match(md, /Outro expected:/);
+  assert.match(md, /Thumbnail\/cover readiness:/);
+  assert.match(md, /Final recommendation: render_local_proof/);
+});
+
 test("proof candidates normalise mojibake titles before reporting", () => {
   const report = buildStudioV2ProofCandidateReport({
     stories: [story("mojibake", "Pok\u00c3\u00a9mon fans don\u00e2\u20ac\u2122t need another broken caption")],

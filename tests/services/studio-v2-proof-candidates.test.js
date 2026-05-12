@@ -133,6 +133,29 @@ test("proof candidates mark motion-backed Liam stories ready for a Studio V2 pro
   assert.match(report.candidates[0].recommended_command, /--with-sound-design/);
 });
 
+test("proof candidates rank local Liam voice-ready media repairs above audio-missing media repairs", () => {
+  const report = buildStudioV2ProofCandidateReport({
+    stories: [
+      {
+        ...story("missing_audio_high_priority"),
+        breaking_score: 99,
+      },
+      {
+        ...story("voice_ready_lower_priority"),
+        breaking_score: 1,
+      },
+    ],
+    localAudioReports: [audioReport("voice_ready_lower_priority")],
+    limit: 2,
+  });
+
+  assert.equal(report.candidates[0].story_id, "voice_ready_lower_priority");
+  assert.equal(report.candidates[0].audio.status, "approved_local_liam_audio_ready");
+  assert.equal(report.candidates[0].proof_readiness.final_recommendation, "repair_media_first");
+  assert.equal(report.candidates[1].story_id, "missing_audio_high_priority");
+  assert.equal(report.candidates[1].proof_readiness.final_recommendation, "repair_voice_first");
+});
+
 test("proof readiness packet recommends a local proof only when voice, captions, overlays and cover are ready", () => {
   const report = buildStudioV2ProofCandidateReport({
     stories: [

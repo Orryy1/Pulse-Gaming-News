@@ -11,6 +11,9 @@ const {
 const {
   discoverLocalAudioProofReport,
 } = require("../lib/ops/studio-v2-proof-audio-discovery");
+const {
+  loadLocalTtsProofReports,
+} = require("../lib/studio/local-tts-proof-report-loader");
 const { ffprobeDuration } = require("../lib/studio/media-acquisition");
 
 const ROOT = path.resolve(__dirname, "..");
@@ -169,7 +172,7 @@ async function loadDbStories(args) {
     const approved = rows
       .filter((story) => story.approved || story.auto_approved)
       .sort((a, b) => storyTime(b) - storyTime(a));
-    return approved.slice(0, args.limit);
+    return approved;
   } catch (err) {
     process.stderr.write(`[proof-candidates] local DB read failed: ${err.message}\n`);
     return [];
@@ -205,8 +208,12 @@ async function main() {
     repoRoot: ROOT,
     durationProbe: ffprobeDuration,
   });
+  const proofHistoryReports = (await loadLocalTtsProofReports({ outDir: OUT })).map(
+    (entry) => entry.report,
+  );
   const localAudioReports = [
     ...(await readReports(DEFAULT_AUDIO_REPORTS)),
+    ...proofHistoryReports,
     discoveredLocalAudioReport,
   ];
   const assetReports = await readReports(DEFAULT_ASSET_REPORTS);

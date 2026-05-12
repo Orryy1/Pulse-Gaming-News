@@ -1,6 +1,6 @@
 # Local Resume Posting Plan
 
-Generated: 2026-05-12T22:41:26.204Z
+Generated: 2026-05-12T23:44:52.576Z
 Verdict: AMBER
 Status: local_resume_blocked_but_recoverable
 Safety: read-only plan; does not edit .env, start Cloudflare, switch primary, mutate tokens, post, touch Railway or trigger OAuth
@@ -35,14 +35,14 @@ Safety: read-only plan; does not edit .env, start Cloudflare, switch primary, mu
 - ready_flash_proof_count: 0
 - local_voice_ready_count: 6
 - repair_media_first_count: 6
-- repair_voice_first_count: 4
+- repair_voice_first_count: 13
 
 ### Closest Studio V2 Candidates
-- 1t0zhng: audio_ready=true; exact=12; clips=3; next=acquire_motion_frames_or_exact_subject_assets
+- 1t0zhng: audio_ready=true; exact=24; clips=4; next=acquire_motion_frames_or_exact_subject_assets
+- rss_2d69aa8506934c5e: audio_ready=true; exact=0; clips=0; next=acquire_motion_frames_or_exact_subject_assets
+- rss_ef7e6e464509e0bc: audio_ready=true; exact=0; clips=0; next=acquire_motion_frames_or_exact_subject_assets
 - rss_6edbb38dc280fc96: audio_ready=true; exact=0; clips=0; next=acquire_motion_frames_or_exact_subject_assets
 - rss_6d8aaac7eccad2ff: audio_ready=true; exact=0; clips=0; next=acquire_motion_frames_or_exact_subject_assets
-- rss_1b7c404fc657548f: audio_ready=true; exact=0; clips=0; next=acquire_motion_frames_or_exact_subject_assets
-- rss_2d69aa8506934c5e: audio_ready=true; exact=0; clips=0; next=acquire_motion_frames_or_exact_subject_assets
 
 ## Blockers
 - duplicate local control switches in .env: AUTO_PUBLISH, USE_JOB_QUEUE

@@ -2,13 +2,12 @@
 
 Read-only diagnostic. It performs no OAuth, token mutation, uploads or posts.
 
-Generated: 2026-05-12T18:06:13.911Z
+Generated: 2026-05-12T21:14:37.808Z
 Verdict: AMBER
 
 ## Blockers
 - tiktok_local_token_refresh_or_sync_required
 - tiktok_creative_review_required
-- instagram_reel_rerender_required
 
 ## TikTok
 
@@ -23,17 +22,17 @@ Verdict: AMBER
 - Status: enabled_verify_after_upload
 - Reason: facebook_reels_enabled
 - Manual proof observed: true
-- Manual proof note: manual_reel_upload_succeeded
+- Manual proof note: Manual Page UI Reel upload succeeded on 2026-05-12; treat Facebook Reels as externally possible, but keep automated Graph route under readiness checks.
 - Verifier: requires ready status plus published/permalink evidence
 
 ## Instagram Reels
 
-- Status: blocked_by_media_processing_rejection
-- Last error category: media_processing_rejected
-- Last error code: 2207076
+- Status: enabled_monitor_next_publish
+- Last error category: no_recent_error
+- Last error code: none
 - URL fallback allowed: false
 - Retry same MP4 recommended: false
-- Next action: rerender_mp4_codec_qa_required
+- Next action: monitor_next_publish
 - Fallback policy: do_not_resubmit_same_rejected_mp4
 
 ## Safety

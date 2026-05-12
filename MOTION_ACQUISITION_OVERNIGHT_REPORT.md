@@ -28,38 +28,38 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 ### Acquisition Strategy
 
 - Status: alternate_official_sources_required
-- Alternate-source entities: GTA, Red Dead, BioShock
+- Alternate-source entities: BioShock, Red Dead, GTA
 - Unattempted entities: none
 - Keep-sampling entities: none
 
 | Entity | Status | Attempts | Validated | Source families | Top rejection | Recommendation |
 | --- | --- | ---: | ---: | ---: | --- | --- |
-| GTA | alternate_source_required | 102 | 2 | 9 | segment_samples_too_repetitive | find_alternate_official_source_family |
-| Red Dead | alternate_source_required | 48 | 1 | 4 | segment_contains_black_frame | find_alternate_official_source_family |
 | BioShock | alternate_source_required | 41 | 6 | 3 | segment_contains_low_detail_frame | find_alternate_official_source_family |
+| Red Dead | alternate_source_required | 48 | 1 | 4 | segment_contains_black_frame | find_alternate_official_source_family |
+| GTA | alternate_source_required | 102 | 2 | 9 | segment_samples_too_repetitive | find_alternate_official_source_family |
 
 #### Source families
 
 | Entity | Provider | App | Movie/source | Attempts | Rejected | Top rejection |
 | --- | --- | --- | --- | ---: | ---: | --- |
+| BioShock | steam | 8870 | Steam movie 10985 | 19 | 16 | segment_contains_low_detail_frame |
+| BioShock | steam | BioShock Infinite | BioShock Infinite - Songbird Lamb | 16 | 13 | segment_contains_low_detail_frame |
+| BioShock | steam | BioShock Infinite | BioShock Infinite - Icarus | 6 | 6 | segment_contains_low_detail_frame |
+| Red Dead | steam | Red Dead Redemption 2 | RDR2 60 FPS Trailer (DE) | 18 | 18 | segment_contains_black_frame |
+| Red Dead | steam | 1174180 | Steam movie 254554 | 18 | 17 | segment_contains_black_frame |
+| Red Dead | steam | Red Dead Redemption 2 | RDR2 Launch Trailer (GB) | 6 | 6 | segment_contains_black_frame |
+| Red Dead | steam | Red Dead Redemption 2 | RDR2 Launch Trailer (DE) | 6 | 6 | segment_source_is_localised_non_english_reference |
 | GTA | steam | Grand Theft Auto V Enhanced | A Safehouse in the Hills - NR | 19 | 17 | segment_samples_too_repetitive |
 | GTA | steam | 3240220 | Steam movie 832632 | 12 | 12 | segment_samples_too_repetitive |
 | GTA | steam | 3240220 | Steam movie 840633 | 11 | 11 | segment_contains_low_detail_frame |
 | GTA | steam | Grand Theft Auto V Enhanced | Criminal Enterprises | 10 | 10 | segment_contains_black_frame |
 | GTA | steam | Grand Theft Auto V Enhanced | Los Santos Tuners | 10 | 10 | segment_contains_low_detail_frame |
-| GTA | steam | Grand Theft Auto V Enhanced | San Andreas Mercenaries | 10 | 10 | segment_samples_too_repetitive |
-| GTA | steam | Grand Theft Auto V Enhanced | Los Santos Drug Wars | 10 | 10 | segment_samples_too_repetitive |
-| GTA | steam | Grand Theft Auto V Enhanced | The Chop Shop | 10 | 10 | segment_contains_title_or_rating_card |
-| GTA | steam | Grand Theft Auto V Enhanced | Cluckin' Bell Farm Raid | 10 | 10 | segment_samples_too_repetitive |
-| Red Dead | steam | Red Dead Redemption 2 | RDR2 60 FPS Trailer (DE) | 18 | 18 | segment_contains_black_frame |
-| Red Dead | steam | 1174180 | Steam movie 254554 | 18 | 17 | segment_contains_black_frame |
-| Red Dead | steam | Red Dead Redemption 2 | RDR2 Launch Trailer (GB) | 6 | 6 | segment_contains_black_frame |
 
 ### Next Steps
 
 - review_latest_render_forensic_warnings_before_pilot
-- find_alternate_official_sources_for:GTA,Red Dead,BioShock
-- do_not_rescan_same_official_sources_for:GTA,Red Dead,BioShock
+- find_alternate_official_sources_for:BioShock,Red Dead,GTA
+- do_not_rescan_same_official_sources_for:BioShock,Red Dead,GTA
 - find_more_validated_gameplay_seconds_for_flash_lane
 - generate_approved_sleepy_liam_audio_after_visuals_are_ready
 
@@ -99,7 +99,7 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 
 - Title: LEGO Batman: Legacy of the Dark Knight PC specs revealed
 - Recommendation: do_not_render_yet
-- Blockers: flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_sources, footage_backbone_clip_dominance_too_low, flash_proof_requires_validated_entity_coverage, flash_proof_requires_exact_subject_entity_coverage
+- Blockers: flash_proof_requires_motion_backbone, flash_proof_requires_three_validated_clip_sources, footage_backbone_clip_dominance_too_low
 - Liam audio: approved_local_liam_audio_ready
 - Exact assets: 24
 - Motion frames: 0
@@ -108,21 +108,20 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - Projected clip dominance: 0.16
 - Clip dominance shortfall: 27.6s
 - Validated entities: LEGO Batman
-- Missing entities: Legacy of the Dark Knight
-- Acquisition strategy: needs_first_segment_scan
+- Missing entities: none
+- Acquisition strategy: continue_segment_scan
 - Latest render proof: not available
 
 ### Acquisition Strategy
 
-- Status: needs_first_segment_scan
+- Status: continue_segment_scan
 - Alternate-source entities: none
-- Unattempted entities: Legacy of the Dark Knight
-- Keep-sampling entities: none
+- Unattempted entities: none
+- Keep-sampling entities: LEGO Batman
 
 | Entity | Status | Attempts | Validated | Source families | Top rejection | Recommendation |
 | --- | --- | ---: | ---: | ---: | --- | --- |
-| LEGO Batman | validated | 36 | 4 | 6 | segment_lacks_gameplay_action_samples | keep_as_validated_motion_source |
-| Legacy of the Dark Knight | not_sampled | 0 | 0 | 0 | none | run_initial_segment_scan |
+| LEGO Batman | keep_sampling | 36 | 4 | 6 | segment_lacks_gameplay_action_samples | find_additional_validated_clip_window_for_existing_entity |
 
 #### Source families
 
@@ -137,10 +136,8 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 
 ### Next Steps
 
-- run_initial_segment_scan_for:Legacy of the Dark Knight
 - find_one_more_validated_clip_source
 - find_more_validated_gameplay_seconds_for_flash_lane
-- cover_missing_entities:Legacy of the Dark Knight
 
 ### Safe Commands
 
@@ -315,27 +312,25 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 - Projected clip dominance: 0.08
 - Clip dominance shortfall: unknown
 - Validated entities: Division
-- Missing entities: The Division
-- Acquisition strategy: continue_segment_scan
+- Missing entities: none
+- Acquisition strategy: alternate_official_sources_required
 - Latest render proof: not available
 
 ### Acquisition Strategy
 
-- Status: continue_segment_scan
-- Alternate-source entities: none
+- Status: alternate_official_sources_required
+- Alternate-source entities: Division
 - Unattempted entities: none
-- Keep-sampling entities: The Division
+- Keep-sampling entities: none
 
 | Entity | Status | Attempts | Validated | Source families | Top rejection | Recommendation |
 | --- | --- | ---: | ---: | ---: | --- | --- |
-| The Division | keep_sampling | 6 | 0 | 1 | segment_contains_black_frame | continue_segment_scan_with_resume |
-| Division | validated | 30 | 1 | 5 | segment_contains_low_detail_frame | keep_as_validated_motion_source |
+| Division | alternate_source_required | 30 | 1 | 5 | segment_contains_low_detail_frame | find_alternate_official_source_family |
 
 #### Source families
 
 | Entity | Provider | App | Movie/source | Attempts | Rejected | Top rejection |
 | --- | --- | --- | --- | ---: | ---: | --- |
-| The Division | steam | The Division 2 - Warlords of New York - Expansion | Trailer | 6 | 6 | segment_contains_black_frame |
 | Division | steam | Tom Clancy’s The Division® 2 | Gameplay Trailer | 6 | 6 | segment_samples_too_repetitive |
 | Division | steam | Tom Clancy’s The Division® 2 | WONY Launch | 6 | 6 | segment_contains_low_detail_frame |
 | Division | steam | Tom Clancy’s The Division® 2 | Gamescom Trailer | 6 | 6 | segment_contains_low_detail_frame |
@@ -344,15 +339,17 @@ This is local-only and report-only. It turns blocked Flash Lane proofs into conc
 
 ### Next Steps
 
+- find_alternate_official_sources_for:Division
+- do_not_rescan_same_official_sources_for:Division
 - find_2_more_validated_gameplay_clip_windows
 - find_2_more_validated_clip_sources
 - find_more_validated_gameplay_seconds_for_flash_lane
-- cover_missing_entities:The Division
 - generate_approved_sleepy_liam_audio_after_visuals_are_ready
 
 ### Safe Commands
 
-- resolve_more_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_4105cb7c837252c3 --no-latest-report`
+- validate_operator_official_source_intake: `npm run media:intake-official-sources -- --input test/output/official_source_intake_template.json --story-id rss_4105cb7c837252c3`
+- resolve_alternate_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_4105cb7c837252c3 --no-latest-report --official-source-intake-report test/output/official_source_intake_report.json --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5`
 - plan_frame_sampling: `npm run media:plan-frames -- --story-id rss_4105cb7c837252c3 --trailer-references test/output/official_trailer_references_v1_story_rss_4105cb7c837252c3.json`
 - extract_safe_local_frames: `npm run media:extract-frames -- --story-id rss_4105cb7c837252c3 --apply-local`
 - validate_gameplay_clip_windows: `npm run media:validate-trailer-segments -- --story-id rss_4105cb7c837252c3 --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1_story_rss_4105cb7c837252c3.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6`

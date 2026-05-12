@@ -731,6 +731,63 @@ test("motion gap report uses story target entities before exact asset groups", (
   assert.ok(gap.priority_next_steps.includes("cover_missing_entities:BioShock,Red Dead"));
 });
 
+test("motion gap report treats verified full store titles as coverage for subtitle-style entity splits", () => {
+  const fullTitle = "LEGO® Batman™: Legacy of the Dark Knight";
+  const report = buildStudioV2MotionGapReport({
+    proofCandidateReport: {
+      candidates: [
+        proofCandidate({
+          story_id: "lego_split_gap",
+          title: "LEGO Batman: Legacy of the Dark Knight PC specs revealed",
+          blockers: ["flash_proof_requires_footage_backbone_dominance"],
+          audio: {
+            status: "approved_local_liam_audio_ready",
+            ready: true,
+            output_audio_path: "test/output/audio/lego_split_gap.mp3",
+            duration_seconds: 68,
+          },
+          visuals: {
+            story_target_entities: ["LEGO Batman", "Legacy of the Dark Knight"],
+            exact_subject_count: 8,
+            exact_subject_groups: ["LEGO Batman"],
+            accepted_frame_count: 8,
+            frame_groups: ["LEGO Batman"],
+            validated_clip_ref_count: 4,
+            validated_clip_source_count: 3,
+            validated_clip_entities: ["LEGO Batman"],
+            validated_clip_coverage_labels: [fullTitle],
+            projected_clip_seconds: 14,
+            projected_clip_dominance: 0.21,
+          },
+        }),
+      ],
+      thresholds: { flash_min_validated_clip_refs: 3 },
+    },
+    segmentValidationReport: {
+      segments: Array.from({ length: 4 }, (_, index) =>
+        segment("lego_split_gap", "LEGO Batman", null, {
+          source_url: `https://video.example.test/lego-${index}.m3u8`,
+          provider: "steam",
+          store_app_id: "123456",
+          store_app_title: fullTitle,
+          movie_id: `lego-${index}`,
+          reference_title: `${fullTitle} gameplay clip ${index}`,
+          media_start_s: 42 + index * 6,
+        }),
+      ),
+    },
+  });
+
+  const gap = report.gaps[0];
+  assert.deepEqual(gap.motion_gap.story_entities, ["LEGO Batman", "Legacy of the Dark Knight"]);
+  assert.deepEqual(gap.motion_gap.validated_entities, ["LEGO Batman"]);
+  assert.deepEqual(gap.motion_gap.missing_validated_entities, []);
+  assert.equal(gap.motion_gap.acquisition_strategy.status, "continue_segment_scan");
+  assert.deepEqual(gap.motion_gap.acquisition_strategy.unattempted_entities, []);
+  assert.doesNotMatch(gap.priority_next_steps.join(" "), /Legacy of the Dark Knight/);
+  assert.doesNotMatch(gap.priority_next_steps.join(" "), /cover_missing_entities/);
+});
+
 test("motion gap markdown is operator-readable and local-only", () => {
   const report = buildStudioV2MotionGapReport({
     proofCandidateReport: { candidates: [proofCandidate()] },

@@ -716,6 +716,80 @@ test("proof candidates use script target entities to block single-game assets on
   assert.equal(candidate.recommended_command, null);
 });
 
+test("proof candidates let verified full store titles cover subtitle-style entity splits", () => {
+  const storyId = "lego_batman_subtitle_split";
+  const fullTitle = "LEGO® Batman™: Legacy of the Dark Knight";
+  const report = buildStudioV2ProofCandidateReport({
+    stories: [
+      {
+        ...story(storyId, "LEGO Batman: Legacy of the Dark Knight PC specs revealed"),
+        full_script:
+          "LEGO Batman: Legacy of the Dark Knight has new PC specs today. The Steam page confirms the requirements and gives Batman fans a clearer picture of the launch.",
+      },
+    ],
+    localAudioReports: [audioReport(storyId)],
+    assetReports: [
+      {
+        plans: [
+          {
+            story_id: storyId,
+            would_fetch: Array.from({ length: 6 }, (_, index) => ({
+              id: `${storyId}_lego_${index}`,
+              source_type: "steam_screenshot",
+              entity: "LEGO Batman",
+              subject_match_quality: "exact_game_match",
+              exact_subject_group: "LEGO Batman",
+              store_app_title: fullTitle,
+              store_match_verified: true,
+              counted_for_premium: true,
+              counted_for_standard: true,
+              local_path: `test/output/assets/${storyId}_${index}.jpg`,
+            })),
+          },
+        ],
+      },
+    ],
+    frameReports: [
+      {
+        frames: Array.from({ length: 8 }, (_, index) => ({
+          status: "accepted",
+          entity: "LEGO Batman",
+          source_type: "steam_movie",
+          source_url: `https://video.example.test/${storyId}_${index}.m3u8`,
+          store_app_title: fullTitle,
+          target_time_seconds: 44 + index,
+          local_path: `test/output/frames/${storyId}_${index}.jpg`,
+          qa: { verdict: "pass", failures: [], content_hash: `lego-frame-${index}` },
+        })),
+      },
+    ],
+    segmentValidationReports: [
+      {
+        segments: Array.from({ length: 8 }, (_, index) => ({
+          story_id: storyId,
+          source_url: `https://video.example.test/lego_${index}.m3u8`,
+          entity: "LEGO Batman",
+          store_app_title: fullTitle,
+          media_start_s: 42 + index * 6,
+          duration_s: 5,
+          status: "validated",
+          segment_validated: true,
+          allowed_for_flash_lane: true,
+          segment_motion_class: "gameplay_action",
+        })),
+      },
+    ],
+  });
+
+  const candidate = report.candidates[0];
+  assert.ok(candidate.visuals.story_target_entities.includes("LEGO Batman"));
+  assert.ok(candidate.visuals.story_target_entities.includes("Legacy of the Dark Knight"));
+  assert.deepEqual(candidate.visuals.missing_exact_subject_entities, []);
+  assert.deepEqual(candidate.visuals.missing_validated_clip_entities, []);
+  assert.ok(!candidate.blockers.includes("flash_proof_requires_exact_subject_entity_coverage"));
+  assert.ok(!candidate.blockers.includes("flash_proof_requires_validated_entity_coverage"));
+});
+
 test("proof candidates let validated official clips cover exact-subject entity gaps", () => {
   const storyId = "take_two_motion_covers_targets";
   const report = buildStudioV2ProofCandidateReport({

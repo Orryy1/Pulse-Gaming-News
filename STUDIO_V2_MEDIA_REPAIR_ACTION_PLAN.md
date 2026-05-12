@@ -2,7 +2,7 @@
 
 Visual Evidence Repair Plan compatibility report.
 
-Generated: 2026-05-12T23:13:18.285Z
+Generated: 2026-05-12T23:25:02.210Z
 Mode: read_only_repair_plan
 
 ## Summary
@@ -14,7 +14,7 @@ Mode: read_only_repair_plan
 - Unverified store assets: 0
 - Motion evidence gap: 2
 - Exact-subject gameplay-still repairs: 18
-- Official source intake needed: 4
+- Official source intake needed: 5
 - Validated clip windows needed: 20
 - Wrong-story deck rejections: 1
 - Exhausted bad windows: 7
@@ -31,7 +31,7 @@ Mode: read_only_repair_plan
 | rss_1b7c404fc657548f: rss_1b7c404fc657548f | exact_subject_gameplay_still_repair | exact_subject_gameplay_still_gap | ready | 0 | no | 0 | 0 | none | npm run media:enrich-stills -- --story rss_1b7c404fc657548f --dry-run --prefer-gameplay-stills --require-verified-store --max-store-search-entities 5 --max-store-assets-per-entity 3 --max-downloads-per-story 12 |
 | rss_5b3abe925b27a199: GTA 6 Owner Passed On A Sequel To A Legacy Franchise, And We're Dying To Know Which One | wrong_story_deck_rejection | wrong_story_exact_assets | missing | 209.25 | yes | 26 | 0.5 | GTA, BioShock, Red Dead | npm run media:enrich-stills -- --story rss_5b3abe925b27a199 --dry-run --prefer-gameplay-stills --require-verified-store --max-store-search-entities 5 --max-store-assets-per-entity 3 --max-downloads-per-story 12 |
 | 1szzhy9: Marathon Drops To 15K Daily CCU Peak On Steam, Exits Top 50 On PlayStation & Top 100 On Xbox Best-Sellers Lists | official_source_intake_needed | cover_dominated_exact_assets | missing | 164 | yes | 6 | 0.667 | Marathon | npm run media:enrich-stills -- --story 1szzhy9 --dry-run --prefer-gameplay-stills --require-verified-store --max-store-search-entities 5 --max-store-assets-per-entity 3 --max-downloads-per-story 12 |
-| rss_4105cb7c837252c3: A New The Division PC Game Is Out Right Now, And It's Free | cover_dominated_deck_repair | cover_dominated_exact_assets | missing | 63 | no | 12 | 0.667 | none | npm run media:enrich-stills -- --story rss_4105cb7c837252c3 --dry-run --prefer-gameplay-stills --require-verified-store --max-store-search-entities 5 --max-store-assets-per-entity 3 --max-downloads-per-story 12 |
+| rss_4105cb7c837252c3: A New The Division PC Game Is Out Right Now, And It's Free | official_source_intake_needed | cover_dominated_exact_assets | missing | 63 | no | 12 | 0.667 | Division | npm run media:enrich-stills -- --story rss_4105cb7c837252c3 --dry-run --prefer-gameplay-stills --require-verified-store --max-store-search-entities 5 --max-store-assets-per-entity 3 --max-downloads-per-story 12 |
 | rss_0e2778be9f97ffa4: The next Tales Of remaster has leaked, and it's probably not what you're expecting | official_source_intake_needed | cover_dominated_exact_assets | missing | 36.25 | no | 6 | 0.667 | Tales Of | npm run media:enrich-stills -- --story rss_0e2778be9f97ffa4 --dry-run --prefer-gameplay-stills --require-verified-store --max-store-search-entities 5 --max-store-assets-per-entity 3 --max-downloads-per-story 12 |
 | 1t0x9ui: It's been a year since release and Oblivion Remastered is still broken- Digital Foundry | cover_dominated_deck_repair | cover_dominated_exact_assets | missing | 24 | no | 6 | 0.667 | none | npm run media:enrich-stills -- --story 1t0x9ui --dry-run --prefer-gameplay-stills --require-verified-store --max-store-search-entities 5 --max-store-assets-per-entity 3 --max-downloads-per-story 12 |
 | 1t0w9nb: Digital Foundry: Yup, Oblivion Remastered Is Still Broken a Year After Release | cover_dominated_deck_repair | cover_dominated_exact_assets | missing | 24 | no | 6 | 0.667 | none | npm run media:enrich-stills -- --story 1t0w9nb --dry-run --prefer-gameplay-stills --require-verified-store --max-store-search-entities 5 --max-store-assets-per-entity 3 --max-downloads-per-story 12 |
@@ -201,15 +201,18 @@ Validated motion ready: no
 Ranked actions:
 - 1. cover_dominated_deck_repair (P0): Replace covers, capsules and key art with gameplay stills. Entities: The Division, Division
 - 2. exact_subject_gameplay_still_repair (P0): Exact-subject count is inflated by covers, capsules or key art. Entities: The Division, Division
-- 3. exhausted_bad_windows (P0): Do not keep sampling rating cards, title cards, blurry or repetitive windows from the same source family.
-- 4. validated_clip_windows_needed (P0): Validated gameplay clip windows are below the Flash Lane threshold. Entities: The Division, Division
+- 3. official_source_intake_needed (P0): Current source families are exhausted; operator must supply a non-exhausted official reference first. Entities: Division
+- 4. exhausted_bad_windows (P0): Do not keep sampling rating cards, title cards, blurry or repetitive windows from the same source family. Entities: Division
+- 5. validated_clip_windows_needed (P1): Validated gameplay clip windows are below the Flash Lane threshold. Entities: The Division, Division
 
 Commands:
 - gameplay_still_dry_run: `npm run media:enrich-stills -- --story rss_4105cb7c837252c3 --dry-run --prefer-gameplay-stills --require-verified-store --max-store-search-entities 5 --max-store-assets-per-entity 3 --max-downloads-per-story 12` (dry_run_only)
 - gameplay_still_apply_local: `npm run media:enrich-stills -- --story rss_4105cb7c837252c3 --apply-local --prefer-gameplay-stills --require-verified-store --max-store-search-entities 5 --max-store-assets-per-entity 3 --max-downloads-per-story 12` (apply_local_under_test_output_only)
 - rebuild_proof_candidates: `npm run studio:v2:proof-candidates -- --story rss_4105cb7c837252c3` (report_only)
 - recheck_flash_state: `npm run studio:v2:flash-state -- --story rss_4105cb7c837252c3` (report_only)
-- validate_gameplay_windows: `npm run media:validate-trailer-segments -- --story-id rss_4105cb7c837252c3 --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1_story_rss_4105cb7c837252c3.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6` (apply_local_under_test_output_only)
+- validate_operator_official_source_intake: `npm run media:intake-official-sources -- --input test/output/official_source_intake_template.json --story-id rss_4105cb7c837252c3` (report_only_reference_validation)
+- resolve_alternate_official_trailer_refs: `npm run media:resolve-trailers -- --story-id rss_4105cb7c837252c3 --no-latest-report --official-source-intake-report test/output/official_source_intake_report.json --segment-validation-report test/output/official_trailer_segment_validation_apply_local.json --exhausted-source-family-threshold 5` (network_metadata_lookup_report_only)
+- validate_gameplay_windows_after_intake: `npm run media:validate-trailer-segments -- --story-id rss_4105cb7c837252c3 --apply-local --deep-scan --reference-report test/output/official_trailer_references_v1_story_rss_4105cb7c837252c3.json --previous-validation-report test/output/official_trailer_segment_validation_apply_local.json --merge-previous --exhausted-source-family-threshold 5 --max-segments 90 --candidate-windows-per-source 6` (apply_local_under_test_output_only)
 
 ### rss_0e2778be9f97ffa4
 
@@ -411,7 +414,7 @@ Commands:
 
 ### 1t0zhng
 
-Reason: Visual stills are not the only blocker; validated motion/entity coverage is still thin.
+Reason: Validated motion windows are still below the Flash Lane proof threshold.
 Render recommendation: do_not_render_yet
 Audio ready: yes
 Media progress score: 139.75

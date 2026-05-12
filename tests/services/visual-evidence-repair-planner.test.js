@@ -307,5 +307,7 @@ test("visual repair command is registered and read-only", () => {
   assert.equal(pkg.scripts["ops:visual-repair"], "node tools/visual-evidence-repair-planner.js");
   const tool = fs.readFileSync(path.join(ROOT, "tools", "visual-evidence-repair-planner.js"), "utf8");
   assert.match(tool, /visual_evidence_repair_plan\.json/);
+  assert.match(tool, /--test-output-only/);
+  assert.match(tool, /if \(!args\.testOutputOnly\)/);
   assert.match(tool, /Does not download, render, call TTS, post, mutate DB, touch Railway or trigger OAuth/);
 });

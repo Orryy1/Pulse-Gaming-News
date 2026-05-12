@@ -22,6 +22,7 @@ function parseArgs(argv) {
     help: false,
     json: false,
     limit: 20,
+    testOutputOnly: false,
     flashState: DEFAULT_FLASH_STATE,
     proofCandidates: DEFAULT_PROOF_CANDIDATES,
     motionGapReport: DEFAULT_MOTION_GAP,
@@ -30,6 +31,7 @@ function parseArgs(argv) {
     const arg = argv[i];
     if (arg === "--help" || arg === "-?") args.help = true;
     else if (arg === "--json") args.json = true;
+    else if (arg === "--test-output-only") args.testOutputOnly = true;
     else if (arg === "--limit") args.limit = Math.max(1, Number(argv[++i]) || 20);
     else if (arg === "--flash-state") args.flashState = path.resolve(ROOT, argv[++i] || "");
     else if (arg === "--no-flash-state") args.flashState = null;
@@ -55,6 +57,7 @@ function printHelp() {
       "  --no-motion-gap          Run without motion-gap input",
       "  --limit <n>              Limit inspected rows",
       "  --json                   Print JSON instead of Markdown",
+      "  --test-output-only       Write only under test/output; skip root Markdown reports",
       "",
       "Read-only/report-only. Does not download, render, call TTS, post, mutate DB, touch Railway or trigger OAuth.",
     ].join("\n") + "\n",
@@ -101,18 +104,16 @@ async function main() {
   await fs.writeFile(mdPath, markdown, "utf8");
   await fs.writeJson(mediaJsonPath, report, { spaces: 2 });
   await fs.writeFile(mediaMdPath, markdown, "utf8");
-  await fs.writeFile(DEFAULT_ROOT_REPORT, markdown, "utf8");
-  await fs.writeFile(DEFAULT_MEDIA_ROOT_REPORT, markdown, "utf8");
+  if (!args.testOutputOnly) {
+    await fs.writeFile(DEFAULT_ROOT_REPORT, markdown, "utf8");
+    await fs.writeFile(DEFAULT_MEDIA_ROOT_REPORT, markdown, "utf8");
+  }
 
   process.stdout.write(args.json ? `${JSON.stringify(report, null, 2)}\n` : markdown);
+  const written = [jsonPath, mdPath, mediaJsonPath, mediaMdPath];
+  if (!args.testOutputOnly) written.push(DEFAULT_ROOT_REPORT, DEFAULT_MEDIA_ROOT_REPORT);
   process.stderr.write(
-    `[visual-repair] wrote ${path.relative(ROOT, jsonPath).replace(/\\/g, "/")}, ${path.relative(
-      ROOT,
-      mdPath,
-    ).replace(/\\/g, "/")}, ${path.relative(ROOT, mediaJsonPath).replace(/\\/g, "/")}, ${path.relative(
-      ROOT,
-      mediaMdPath,
-    ).replace(/\\/g, "/")} and ${path.relative(ROOT, DEFAULT_MEDIA_ROOT_REPORT).replace(/\\/g, "/")}\n`,
+    `[visual-repair] wrote ${written.map((item) => path.relative(ROOT, item).replace(/\\/g, "/")).join(", ")}\n`,
   );
 }
 

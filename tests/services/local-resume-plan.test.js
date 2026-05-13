@@ -5,6 +5,7 @@ const {
   buildLocalResumePlan,
   formatLocalResumePlanMarkdown,
   summarizeProofCandidates,
+  summarizeLocalTtsProofReports,
 } = require("../../lib/ops/local-resume-plan");
 const { resolveLocalPostingReadiness } = require("../../tools/local-resume-plan");
 
@@ -315,6 +316,111 @@ test("proof candidate summary prioritises local voice-ready media repair", () =>
   assert.equal(summary.closest_candidates[0].story_id, "flash_ready");
 });
 
+test("local resume plan turns approved local Liam proof MP3s into rerender candidates", () => {
+  const report = buildLocalResumePlan({
+    localPostingReadiness: greenLocalPosting(),
+    socialOps: workingSocialOps(),
+    ttsReport: greenTts(),
+    localTtsProofReports: [
+      {
+        source: "local_media_repair",
+        report: {
+          applied: [
+            {
+              story_id: "ready_audio",
+              output_audio_path: "test/output/local-media-repair/audio/ready_audio_liam.mp3",
+              resolved_audio_path: "D:/pulse-data/media/test/output/local-media-repair/audio/ready_audio_liam.mp3",
+              duration_seconds: 68.42,
+              duration_verdict: "pass",
+              failure_code: null,
+              local_voice_metadata: "stamped",
+              local_voice_reference: {
+                id: "pulse-sleepy-liam-20260502",
+                referencePresent: true,
+              },
+            },
+            {
+              story_id: "too_short",
+              output_audio_path: "test/output/local-media-repair/audio/too_short_liam.mp3",
+              duration_seconds: 54.56,
+              duration_verdict: "reject_duration",
+              failure_code: "duration_too_short",
+              local_voice_metadata: "stamped",
+              local_voice_reference: {
+                id: "pulse-sleepy-liam-20260502",
+                referencePresent: true,
+              },
+            },
+          ],
+          skipped: [
+            {
+              story_id: "server_down",
+              reason: "server_down",
+            },
+          ],
+        },
+      },
+    ],
+  });
+
+  assert.equal(report.local_voice_proofs.approved_audio_proof_count, 1);
+  assert.equal(report.local_voice_proofs.rejected_audio_proof_count, 2);
+  assert.equal(report.local_voice_proofs.ready_for_local_rerender.length, 1);
+  assert.equal(report.local_voice_proofs.ready_for_local_rerender[0].story_id, "ready_audio");
+  assert.equal(report.local_voice_proofs.ready_for_local_rerender[0].safe_to_publish_now, false);
+  assert.equal(report.local_voice_proofs.ready_for_local_rerender[0].next_action, "rerender_video_local");
+  assert.match(
+    report.local_voice_proofs.ready_for_local_rerender[0].promotion_blocker,
+    /clean local MP4 rerender/,
+  );
+  assert.deepEqual(report.local_voice_proofs.rejected_audio_proofs.map((row) => row.story_id), [
+    "too_short",
+    "server_down",
+  ]);
+  assert.match(report.next_actions.join("\n"), /Rerender locally with approved local Liam proof MP3s/);
+});
+
+test("local TTS proof summary dedupes by story and keeps the longest valid proof", () => {
+  const summary = summarizeLocalTtsProofReports([
+    {
+      source: "local_media_repair",
+      report: {
+        applied: [
+          {
+            story_id: "story_a",
+            output_audio_path: "test/output/local-media-repair/audio/story_a_liam.mp3",
+            duration_seconds: 64,
+            duration_verdict: "pass",
+            failure_code: null,
+            local_voice_metadata: "stamped",
+            local_voice_reference: { id: "pulse-sleepy-liam-20260502", referencePresent: true },
+          },
+        ],
+      },
+    },
+    {
+      source: "local_script_extension",
+      report: {
+        applied: [
+          {
+            story_id: "story_a",
+            output_audio_path: "test/output/local-script-extension/audio/story_a_liam_extended.mp3",
+            duration_seconds: 70,
+            duration_verdict: "pass",
+            failure_code: null,
+            local_voice_metadata: "stamped",
+            local_voice_reference: { id: "pulse-sleepy-liam-20260502", referencePresent: true },
+          },
+        ],
+      },
+    },
+  ]);
+
+  assert.equal(summary.approved_audio_proof_count, 1);
+  assert.equal(summary.ready_for_local_rerender[0].duration_seconds, 70);
+  assert.match(summary.ready_for_local_rerender[0].output_audio_path, /local-script-extension/);
+});
+
 test("local resume plan markdown is plain-English and operator readable", () => {
   const report = buildLocalResumePlan({
     localPostingReadiness: greenLocalPosting(),
@@ -327,6 +433,38 @@ test("local resume plan markdown is plain-English and operator readable", () => 
   assert.match(markdown, /ElevenLabs is only a temporary bridge/);
   assert.match(markdown, /Current safe production lane/);
   assert.match(markdown, /npm run ops:local-posting-readiness/);
+});
+
+test("local resume plan markdown lists approved local audio proofs without implying publish safety", () => {
+  const report = buildLocalResumePlan({
+    localPostingReadiness: greenLocalPosting(),
+    socialOps: workingSocialOps(),
+    ttsReport: greenTts(),
+    localTtsProofReports: [
+      {
+        source: "local_media_repair",
+        report: {
+          applied: [
+            {
+              story_id: "ready_audio",
+              output_audio_path: "test/output/local-media-repair/audio/ready_audio_liam.mp3",
+              duration_seconds: 68.42,
+              duration_verdict: "pass",
+              failure_code: null,
+              local_voice_metadata: "stamped",
+              local_voice_reference: { id: "pulse-sleepy-liam-20260502", referencePresent: true },
+            },
+          ],
+        },
+      },
+    ],
+  });
+  const markdown = formatLocalResumePlanMarkdown(report);
+
+  assert.match(markdown, /Approved Local Liam Audio Proofs/);
+  assert.match(markdown, /ready_audio/);
+  assert.match(markdown, /safe_to_publish_now=false/);
+  assert.match(markdown, /requires clean local MP4 rerender/);
 });
 
 test("local resume plan advertises read-only safety boundaries", () => {

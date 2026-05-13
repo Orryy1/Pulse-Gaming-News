@@ -156,6 +156,10 @@ test("resolveTtsVoiceIdForProvider: local TTS refuses generic or non-Liam fallba
     /unsafe_local_tts_voice:G17SuINrv2H9FC6nvetn:expected_TX3LPaxmHKxFdv7VOQHJ/,
   );
   assert.equal(
+    resolveTtsVoiceIdForProvider("local", { LOCAL_TTS_VOICE_ID: "liam" }, {}),
+    "TX3LPaxmHKxFdv7VOQHJ",
+  );
+  assert.equal(
     resolveTtsVoiceIdForProvider("local", {}, { voiceId: "TX3LPaxmHKxFdv7VOQHJ" }),
     "TX3LPaxmHKxFdv7VOQHJ",
   );

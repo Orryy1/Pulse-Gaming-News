@@ -46,8 +46,10 @@ const {
 const {
   resolveAcceptedLocalVoiceReference,
 } = require("./lib/studio/v2/local-voice-reference");
-
-const ACCEPTED_LOCAL_LIAM_VOICE_ID = "TX3LPaxmHKxFdv7VOQHJ";
+const {
+  ACCEPTED_LOCAL_LIAM_VOICE_ID,
+  canonicalLocalTtsVoiceId,
+} = require("./lib/studio/local-tts-voice-id");
 
 function isTruthy(value) {
   return /^(true|1|yes|on)$/i.test(String(value || ""));
@@ -134,13 +136,14 @@ function buildTtsAlignmentMeta({
 function resolveTtsVoiceIdForProvider(provider, env = process.env, brandConfig = brand) {
   const normalisedProvider = String(provider || "").toLowerCase();
   if (normalisedProvider === "local") {
-    const voiceId = firstNonBlank(
+    const rawVoiceId = firstNonBlank(
       env.LOCAL_TTS_VOICE_ID,
       env.STUDIO_V2_LOCAL_TTS_VOICE_ID,
       env.PULSE_LOCAL_TTS_VOICE_ID,
       brandConfig?.voiceId,
       env.ELEVENLABS_VOICE_ID,
     );
+    const voiceId = rawVoiceId ? canonicalLocalTtsVoiceId(rawVoiceId) : rawVoiceId;
     if (!voiceId || voiceId === "default" || voiceId === "__default__") {
       throw new Error("unsafe_local_tts_voice:missing_mapped_liam_voice_id");
     }

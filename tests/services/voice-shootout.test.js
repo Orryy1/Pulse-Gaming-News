@@ -242,6 +242,29 @@ test("voice shootout local Liam dry-run plans local calls without generated samp
   assert.equal(report.switchesProductionVoice, false);
 });
 
+test("voice shootout canonicalises the local Liam alias before generation", async () => {
+  let calls = 0;
+  const report = await generateLocalLiamBenchmarkSamples({
+    localTtsDoctorReport: readyDoctor(),
+    outputRoot: path.join(process.cwd(), "test", "output", "voice-shootout-unit", "audio"),
+    applyLocal: false,
+    voiceId: "liam",
+    limit: 1,
+    generator: async ({ voiceId }) => {
+      calls += 1;
+      assert.equal(voiceId, "TX3LPaxmHKxFdv7VOQHJ");
+      return {
+        status: "would_generate",
+        request: { output_root: "test/output/voice-shootout-unit/audio" },
+      };
+    },
+  });
+
+  assert.equal(calls, 1);
+  assert.equal(report.voiceId, "TX3LPaxmHKxFdv7VOQHJ");
+  assert.equal(report.status, "would_generate");
+});
+
 test("voice shootout local Liam generation is blocked unless accepted Liam is verified", async () => {
   let calls = 0;
   const report = await generateLocalLiamBenchmarkSamples({

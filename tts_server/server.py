@@ -360,6 +360,18 @@ def _load_voices_map() -> Dict[str, dict]:
 
 
 VOICES_MAP = _load_voices_map()
+VOICE_ALIAS_MAP = {
+    str(cfg.get("alias", "")).strip().lower(): voice_id
+    for voice_id, cfg in VOICES_MAP.items()
+    if str(cfg.get("alias", "")).strip()
+}
+
+
+def _canonical_voice_id(voice_id: Optional[str]) -> str:
+    raw = (voice_id or "__default__").strip()
+    if raw in VOICES_MAP or raw == "__default__":
+        return raw
+    return VOICE_ALIAS_MAP.get(raw.lower(), raw)
 
 # Shared aligner (language-agnostic enough for our stories, and it's not
 # cheap to double-load wav2vec2 into VRAM).
@@ -606,6 +618,7 @@ def _get_engine(voice_id: str) -> VoxCPMEngine:
     be 10 minutes or more. The Phase F stability patch wraps each load
     in timing logs so we can track regressions over time.
     """
+    voice_id = _canonical_voice_id(voice_id)
     if voice_id in _engine_cache:
         log.info(f"[engine] reuse voice_id={voice_id!r} (cached)")
         return _engine_cache[voice_id]
@@ -878,7 +891,7 @@ def prewarm(req: PrewarmRequest):
         engine_count  total cached engines after this call
         reused        true if the engine was already loaded before this call
     """
-    voice_id = (req.voice_id or "__default__").strip()
+    voice_id = _canonical_voice_id(req.voice_id)
     reused = voice_id in _engine_cache
     # Also catch the "__default__ already loaded, unmapped voice_id" case
     # so we don't double-warm. _get_engine handles the mapping internally.
@@ -985,6 +998,7 @@ def synth_tts(req: TTSRequest):
 
 
 def _synth(voice_id: str, req: TTSRequest) -> TTSResponse:
+    voice_id = _canonical_voice_id(voice_id)
     text = req.text.strip()
     if not text:
         raise HTTPException(400, "text is empty")

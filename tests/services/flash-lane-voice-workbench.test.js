@@ -402,6 +402,39 @@ test("Flash Lane voice workbench can generate a local candidate under test/outpu
   assert.equal(fs.existsSync(result.candidate.path), true);
 });
 
+test("Flash Lane voice workbench canonicalises the Liam alias before local TTS", async () => {
+  const outputRoot = path.join(process.cwd(), "test", "output", "tmp-voice-workbench-liam-alias");
+  fs.rmSync(outputRoot, { recursive: true, force: true });
+  let requestedUrl = "";
+
+  const result = await generateLocalVoiceCandidate({
+    story: story(),
+    outputRoot,
+    applyLocal: true,
+    voiceId: "liam",
+    fetchImpl: async (url) => {
+      requestedUrl = url;
+      return {
+        ok: true,
+        json: async () => ({
+          audio_base64: Buffer.from("fake mp3 bytes").toString("base64"),
+          alignment: {
+            characters: Array.from("Follow Pulse Gaming so you never miss a beat."),
+          },
+        }),
+      };
+    },
+    durationProbe: () => 64.2,
+    acousticProbe: () => ({ medianPitchHz: 118 }),
+  });
+
+  assert.equal(result.request.voiceId, "TX3LPaxmHKxFdv7VOQHJ");
+  assert.equal(result.request.requestedVoiceId, "liam");
+  assert.match(requestedUrl, /TX3LPaxmHKxFdv7VOQHJ/);
+  assert.doesNotMatch(requestedUrl, /\/liam\//);
+  assert.equal(result.status, "generated");
+});
+
 test("Flash Lane voice workbench can keep raw local audio and evaluate a normalised file", async () => {
   const outputRoot = path.join(process.cwd(), "test", "output", "tmp-voice-workbench-normalised");
   fs.rmSync(outputRoot, { recursive: true, force: true });

@@ -143,6 +143,34 @@ test("platform operational config reflects safe disabled/blocker defaults", () =
   assert.strictEqual(config.twitter.state, "disabled");
 });
 
+test("platform operational config reports explicit local TikTok operator disable", () => {
+  const config = buildPlatformOperationalConfig({
+    TIKTOK_ENABLED: "false",
+    USE_BUFFER_TIKTOK: "true",
+    BUFFER_ACCESS_TOKEN: "present",
+  });
+
+  assert.strictEqual(config.tiktok.state, "disabled");
+  assert.strictEqual(config.tiktok.reason, "operator_disabled");
+});
+
+test("platform status prefers explicit TikTok operator-disabled over stale token errors", () => {
+  const report = buildPlatformStatus({
+    stories: [
+      {
+        id: "s1",
+        title: "Story",
+        tiktok_error: "old 403",
+      },
+    ],
+    platformPosts: [],
+    platformConfig: buildPlatformOperationalConfig({ TIKTOK_ENABLED: "false" }),
+  });
+
+  assert.strictEqual(report.recent[0].platforms.tiktok.status, "disabled");
+  assert.strictEqual(report.recent[0].platforms.tiktok.reason, "operator_disabled");
+});
+
 test("platform status markdown includes operational state", () => {
   const md = renderPlatformStatusMarkdown({
     generatedAt: "2026-04-29T00:00:00.000Z",

@@ -746,28 +746,52 @@ async function publishNextStory() {
 const MAX_PUBLISH_CANDIDATES_PER_WINDOW = 5;
 
 /**
- * Count how many of the 5 tracked platform post ids the story has
- * already acquired. Used by the candidate ordering (fewest-done
- * first → highest priority) and by the `isRetry` check below.
+ * Core platform completion helpers. TikTok is normally core, but an
+ * explicit operator switch can make it optional for local cutover.
+ * The selector still prioritises candidates with fewer completed
+ * required platforms.
  */
-function countStoryPlatformsDone(s) {
-  return [
+function envExplicitFalse(env, name) {
+  return /^(false|0|no|off)$/i.test(String(env?.[name] || "").trim());
+}
+
+function isTikTokOperatorDisabled(env = process.env) {
+  return (
+    envExplicitFalse(env, "TIKTOK_ENABLED") ||
+    envExplicitFalse(env, "TIKTOK_AUTO_UPLOAD_ENABLED")
+  );
+}
+
+function isRealPostId(id) {
+  return typeof id === "string" && id.length > 0 && !id.startsWith("DUPE_");
+}
+
+function corePostIdsForStory(s, env = process.env) {
+  const ids = [
     s.youtube_post_id,
-    s.tiktok_post_id,
     s.instagram_media_id,
     s.facebook_post_id,
-    s.twitter_post_id,
-  ].filter(Boolean).length;
+  ];
+  if (!isTikTokOperatorDisabled(env)) {
+    ids.splice(1, 0, s.tiktok_post_id);
+  }
+  return ids;
+}
+
+function countStoryPlatformsDone(s, env = process.env) {
+  return corePostIdsForStory(s, env).filter(isRealPostId).length;
+}
+
+function countStoryPlatformsTotal(env = process.env) {
+  return corePostIdsForStory({}, env).length;
+}
+
+function storyCorePublishComplete(s, env = process.env) {
+  return countStoryPlatformsDone(s, env) >= countStoryPlatformsTotal(env);
 }
 
 function storyIsRetry(s) {
-  return !!(
-    s.youtube_post_id ||
-    s.tiktok_post_id ||
-    s.instagram_media_id ||
-    s.facebook_post_id ||
-    s.twitter_post_id
-  );
+  return countStoryPlatformsDone(s) > 0;
 }
 
 /**
@@ -961,7 +985,7 @@ async function _publishNextStoryInner() {
     if (!s.approved || !s.exported_path) return false;
     if (s.qa_failed === true) return false;
     if (s.publish_status === "failed") return false;
-    return countStoryPlatformsDone(s) < 5;
+    return !storyCorePublishComplete(s);
   });
 
   if (ready.length === 0) {
@@ -1328,6 +1352,12 @@ async function _publishNextStoryInner() {
     result.platform_outcomes.tiktok = "already_published";
     console.log(
       `[publisher] TikTok: already published (${story.tiktok_post_id})`,
+    );
+  } else if (isTikTokOperatorDisabled(process.env)) {
+    result.skipped.tiktok = "operator_disabled";
+    result.platform_outcomes.tiktok = "operator_disabled";
+    console.log(
+      "[publisher] TikTok: skipped (operator disabled; set TIKTOK_ENABLED=true to re-enable)",
     );
   } else if (ttPrior && ttPrior.status === "blocked") {
     result.tiktok = true;
@@ -1736,9 +1766,11 @@ async function _publishNextStoryInner() {
 
   // --- Set publish_status from CORE video-platform outcomes only ---
   //
-  // Task 4 (2026-04-21): story.publish_status counts only the four
-  // core video platforms: YouTube, TikTok, Instagram Reel, Facebook
-  // Reel. Twitter/X is OPTIONAL — its free API can't post video,
+  // Task 4 (2026-04-21): story.publish_status counts only required core
+  // video platforms: YouTube, TikTok, Instagram Reel and Facebook
+  // Reel. TikTok can be operator-disabled for local cutover, in which
+  // case YT/IG/FB completion is enough to prevent retry loops.
+  // Twitter/X is OPTIONAL - its free API cannot post video,
   // and the paid tier is expensive, so we gate it on
   // TWITTER_ENABLED=true and a skipped Twitter must never keep a
   // story in `partial` forever. Fallback cards (IG Story, FB Card,
@@ -1750,17 +1782,9 @@ async function _publishNextStoryInner() {
   // pre-2026-04-19 when the publisher wrote block-reason strings
   // into the *_post_id columns. Not a real publish; must not count
   // toward publish_status either.
-  function isRealPostId(id) {
-    return typeof id === "string" && id.length > 0 && !id.startsWith("DUPE_");
-  }
-  const coreIds = [
-    story.youtube_post_id,
-    story.tiktok_post_id,
-    story.instagram_media_id,
-    story.facebook_post_id,
-  ];
+  const coreIds = corePostIdsForStory(story, process.env);
   const coreDone = coreIds.filter(isRealPostId).length;
-  const coreTotal = coreIds.length; // 4
+  const coreTotal = coreIds.length;
   if (coreDone >= coreTotal) {
     story.publish_status = "published";
   } else if (coreDone > 0) {

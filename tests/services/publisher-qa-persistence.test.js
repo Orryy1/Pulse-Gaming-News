@@ -868,18 +868,23 @@ test("publishNextStory: selector skips publish_status='failed' stories (all-core
 // flag it. Keeping this replica lets us test the filter exhaustively
 // without having to boot the whole publish pipeline (which fans out
 // into engagement / blog / discord network paths even on retries).
-function selectorFilter(s) {
+function selectorFilter(s, env = {}) {
   if (!s.approved || !s.exported_path) return false;
   if (s.qa_failed === true) return false;
   if (s.publish_status === "failed") return false;
-  const platformsDone = [
+  const tiktokDisabled = /^(false|0|no|off)$/i.test(
+    String(env.TIKTOK_ENABLED || env.TIKTOK_AUTO_UPLOAD_ENABLED || "").trim(),
+  );
+  const coreIds = [
     s.youtube_post_id,
-    s.tiktok_post_id,
     s.instagram_media_id,
     s.facebook_post_id,
-    s.twitter_post_id,
-  ].filter(Boolean).length;
-  return platformsDone < 5;
+  ];
+  if (!tiktokDisabled) coreIds.splice(1, 0, s.tiktok_post_id);
+  const platformsDone = coreIds.filter(
+    (id) => typeof id === "string" && id.length > 0 && !id.startsWith("DUPE_"),
+  ).length;
+  return platformsDone < coreIds.length;
 }
 
 test("selector: partial stories remain eligible for retry (regression pin)", () => {
@@ -902,7 +907,7 @@ test("selector: partial stories remain eligible for retry (regression pin)", () 
   );
 });
 
-test("selector: fully-published story is skipped (platformsDone === 5)", () => {
+test("selector: fully-published story is skipped", () => {
   const fullyDone = {
     approved: true,
     exported_path: "/tmp/x.mp4",
@@ -914,6 +919,49 @@ test("selector: fully-published story is skipped (platformsDone === 5)", () => {
     twitter_post_id: "tw",
   };
   assert.strictEqual(selectorFilter(fullyDone), false);
+});
+
+test("selector: local TikTok disabled treats YT/IG/FB done as complete", () => {
+  const locallyDone = {
+    approved: true,
+    exported_path: "/tmp/x.mp4",
+    publish_status: "published",
+    youtube_post_id: "yt",
+    tiktok_post_id: null,
+    instagram_media_id: "ig",
+    facebook_post_id: "fb",
+  };
+  assert.strictEqual(selectorFilter(locallyDone, { TIKTOK_ENABLED: "false" }), false);
+});
+
+test("publishNextStory: local TikTok disabled does not retry YT/IG/FB-complete story", async () => {
+  const previous = process.env.TIKTOK_ENABLED;
+  process.env.TIKTOK_ENABLED = "false";
+  try {
+    const story = {
+      id: "rss_local_complete",
+      title: "Local complete",
+      approved: true,
+      exported_path: "/tmp/local-complete.mp4",
+      publish_status: "published",
+      youtube_post_id: "yt",
+      tiktok_post_id: null,
+      instagram_media_id: "ig",
+      facebook_post_id: "fb",
+    };
+    const { publishNextStory } = setupMocks({
+      cqaResult: { result: "pass", failures: [], warnings: [] },
+      vqaResult: { result: "pass", failures: [], warnings: [] },
+      stories: [story],
+    });
+
+    const result = await publishNextStory();
+    assert.strictEqual(result, null);
+    assert.deepStrictEqual(uploaderCalls, []);
+  } finally {
+    if (previous === undefined) delete process.env.TIKTOK_ENABLED;
+    else process.env.TIKTOK_ENABLED = previous;
+  }
 });
 
 test("publishNextStory: no-safe-candidate return shape carries top_reason + qa_skipped for callers", async () => {

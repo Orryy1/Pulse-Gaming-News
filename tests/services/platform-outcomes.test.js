@@ -217,6 +217,28 @@ test("partial-retry: 3 already + 1 failed yields no_new_post", () => {
   assert.match(s.message, /YT ↩ already/);
 });
 
+test("local TikTok operator-disabled renders as skip, not failure", () => {
+  const r = baseResult(
+    {
+      youtube: "new_upload",
+      tiktok: "operator_disabled",
+      instagram: "new_upload",
+      facebook: "public_verified",
+      twitter: "skipped",
+    },
+    {
+      skipped: {
+        tiktok: "operator_disabled",
+        twitter: "twitter_disabled",
+      },
+    },
+  );
+  const s = renderPublishSummary(r);
+  assert.match(s.message, /TT .*operator_disabled/);
+  assert.doesNotMatch(s.message, /TT .*failed/);
+  assert.equal(s.status, "degraded");
+});
+
 // ---------- 10. No secret / token leakage ---------------------------
 
 test("outcomes rendering is compact and does not fabricate secrets", () => {

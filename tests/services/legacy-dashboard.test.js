@@ -25,7 +25,8 @@
  *
  * Also pin that public/index.html:
  *   - fetches /api/news/full (authenticated), NOT /api/news
- *   - uses a Bearer token from localStorage
+ *   - uses a Bearer token from sessionStorage and clears legacy
+ *     localStorage tokens
  *   - renders ScriptBlock with an "(not generated)" placeholder
  *     when a field is empty (so operators see real state instead
  *     of a silently-blank label)
@@ -227,7 +228,11 @@ test("public/index.html attaches Bearer token to authenticated fetches (source-s
   assert.match(HTML, /Authorization:\s*`Bearer \$\{token\}`/);
   // Token storage
   assert.match(HTML, /pulse_api_token/);
-  assert.match(HTML, /localStorage/);
+  assert.match(HTML, /sessionStorage\.getItem\(TOKEN_KEY\)/);
+  assert.match(HTML, /sessionStorage\.setItem\(TOKEN_KEY,\s*t\)/);
+  assert.match(HTML, /sessionStorage\.removeItem\(TOKEN_KEY\)/);
+  assert.match(HTML, /localStorage\.removeItem\(TOKEN_KEY\)/);
+  assert.doesNotMatch(HTML, /localStorage\.(?:getItem|setItem)\(TOKEN_KEY/);
 });
 
 test("public/index.html 401 handler clears stored token and reloads", () => {

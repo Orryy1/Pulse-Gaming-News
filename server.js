@@ -114,6 +114,24 @@ function rateLimit(maxRequests, windowMs) {
   };
 }
 
+const publicApiReadLimit = rateLimit(120, 60 * 1000);
+const publicMediaReadLimit = rateLimit(60, 60 * 1000);
+const publicWebhookLimit = rateLimit(30, 60 * 1000);
+
+function requireRailwayWebhookAuth(req, res, next) {
+  const secret = process.env.RAILWAY_WEBHOOK_SECRET;
+  if (!secret) return next();
+  const headerToken =
+    typeof req.get === "function"
+      ? req.get("x-pulse-webhook-secret")
+      : req.headers && req.headers["x-pulse-webhook-secret"];
+  const bearerToken = extractBearerToken(req.headers.authorization);
+  if (tokenMatches(headerToken, secret) || tokenMatches(bearerToken, secret)) {
+    return next();
+  }
+  return res.status(401).json({ error: "Unauthorized" });
+}
+
 // HTML escaping for safe inline rendering
 function escapeHtml(str) {
   if (!str) return "";
@@ -707,6 +725,39 @@ function updateStory(id, updates) {
   return stories[idx];
 }
 
+function isSafeStoryId(id) {
+  return typeof id === "string" && /^[A-Za-z0-9_-]{1,96}$/.test(id);
+}
+
+function readRequiredStoryId(req, res) {
+  const id = req.body && req.body.id;
+  if (!isSafeStoryId(id)) {
+    res.status(400).json({ error: "valid id required" });
+    return null;
+  }
+  return id;
+}
+
+function normaliseMetricCount(value) {
+  if (value === undefined) return undefined;
+  const n = Number(value);
+  if (!Number.isSafeInteger(n) || n < 0) return null;
+  return n;
+}
+
+function normaliseScheduleTime(value) {
+  if (value === undefined || value === null || value === "") {
+    return { ok: true, value: null };
+  }
+  if (typeof value !== "string") return { ok: false, value: null };
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 64) return { ok: false, value: null };
+  if (Number.isNaN(Date.parse(trimmed))) {
+    return { ok: false, value: null };
+  }
+  return { ok: true, value: trimmed };
+}
+
 // --- API Routes ---
 
 app.get("/api/health", (req, res) => {
@@ -820,7 +871,7 @@ app.get("/api/health", (req, res) => {
 // Dashboard should call /api/news/full. If you're adding a new
 // public widget that needs a field not in PUBLIC_FIELDS, add it
 // there — do NOT bypass the sanitizer.
-app.get("/api/news", (req, res) => {
+app.get("/api/news", publicApiReadLimit, (req, res) => {
   try {
     const stories = readNews();
     const { sanitizeStoriesForPublic } = require("./lib/public-story");
@@ -894,8 +945,8 @@ app.get("/api/progress", requireAuthHeaderOrQuery, (req, res) => {
 
 app.post("/api/approve", requireAuth, rateLimit(30, 60000), (req, res) => {
   try {
-    const { id } = req.body;
-    if (!id) return res.status(400).json({ error: "id required" });
+    const id = readRequiredStoryId(req, res);
+    if (!id) return;
 
     const { story } = findStory(id);
     if (!story) return res.status(404).json({ error: "story not found" });
@@ -1146,8 +1197,8 @@ app.post(
   rateLimit(30, 60000),
   async (req, res) => {
     try {
-      const { id } = req.body;
-      if (!id) return res.status(400).json({ error: "id required" });
+      const id = readRequiredStoryId(req, res);
+      if (!id) return;
 
       const { story } = findStory(id);
       if (!story) return res.status(404).json({ error: "story not found" });
@@ -1176,8 +1227,8 @@ app.post(
   rateLimit(30, 60000),
   async (req, res) => {
     try {
-      const { id } = req.body;
-      if (!id) return res.status(400).json({ error: "id required" });
+      const id = readRequiredStoryId(req, res);
+      if (!id) return;
 
       const { story } = findStory(id);
       if (!story) return res.status(404).json({ error: "story not found" });
@@ -1202,19 +1253,24 @@ app.post(
 
 // --- Schedule ---
 app.post("/api/schedule", requireAuth, rateLimit(30, 60000), (req, res) => {
-  const { id, scheduleTime } = req.body;
-  if (!id) return res.status(400).json({ error: "id required" });
+  const id = readRequiredStoryId(req, res);
+  if (!id) return;
+  const { scheduleTime } = req.body || {};
+  const normalisedSchedule = normaliseScheduleTime(scheduleTime);
+  if (!normalisedSchedule.ok) {
+    return res.status(400).json({ error: "invalid scheduleTime" });
+  }
 
-  const updated = updateStory(id, { schedule_time: scheduleTime || null });
+  const updated = updateStory(id, { schedule_time: normalisedSchedule.value });
   if (!updated) return res.status(404).json({ error: "story not found" });
 
-  res.json({ status: "scheduled", id, scheduleTime });
+  res.json({ status: "scheduled", id, scheduleTime: normalisedSchedule.value });
 });
 
 // --- Retry publish ---
 app.post("/api/retry-publish", requireAuth, rateLimit(5, 60000), (req, res) => {
-  const { id } = req.body;
-  if (!id) return res.status(400).json({ error: "id required" });
+  const id = readRequiredStoryId(req, res);
+  if (!id) return;
 
   const updated = updateStory(id, {
     publish_status: "publishing",
@@ -1256,7 +1312,10 @@ function isAuthenticatedRequest(req) {
 // Content-Type is correct. Stripping `.png` server-side lets us
 // construct uploader URLs with the extension while keeping the
 // canonical story id as the path parameter.
-app.get(/^\/api\/story-image\/([^/]+?)(?:\.png)?$/, async (req, res) => {
+app.get(
+  /^\/api\/story-image\/([^/]+?)(?:\.png)?$/,
+  publicMediaReadLimit,
+  async (req, res) => {
   try {
     const { isPubliclyVisible } = require("./lib/public-story");
     const mediaPaths = require("./lib/media-paths");
@@ -1297,7 +1356,8 @@ app.get(/^\/api\/story-image\/([^/]+?)(?:\.png)?$/, async (req, res) => {
     console.error(`[server] ERROR serving story image: ${err.message}`);
     res.status(500).json({ error: "Failed to serve image" });
   }
-});
+  },
+);
 
 // NOTE: The former `app.use("/stories", express.static(output/stories))`
 // mount was removed on 2026-04-20 after the artefact-route audit —
@@ -1323,7 +1383,10 @@ app.get(/^\/api\/story-image\/([^/]+?)(?:\.png)?$/, async (req, res) => {
 // video vs something else. Without `.mp4` in the path, IG Reel URL
 // fallback can land on the same 2207052-class error ("media URI
 // doesn't meet our requirements").
-app.get(/^\/api\/download\/([^/]+?)(?:\.mp4)?$/, async (req, res) => {
+app.get(
+  /^\/api\/download\/([^/]+?)(?:\.mp4)?$/,
+  publicMediaReadLimit,
+  async (req, res) => {
   try {
     const { isPubliclyVisible } = require("./lib/public-story");
     const mediaPaths = require("./lib/media-paths");
@@ -1378,7 +1441,8 @@ app.get(/^\/api\/download\/([^/]+?)(?:\.mp4)?$/, async (req, res) => {
     console.log(`[server] ERROR downloading: ${err.message}`);
     res.status(500).json({ error: "Download failed" });
   }
-});
+  },
+);
 
 // --- Stats ---
 //
@@ -1496,12 +1560,21 @@ app.get(
 );
 
 app.post("/api/stats/update", requireAuth, rateLimit(30, 60000), (req, res) => {
-  const { id, youtube_views, tiktok_views } = req.body;
-  if (!id) return res.status(400).json({ error: "id required" });
+  const id = readRequiredStoryId(req, res);
+  if (!id) return;
+  const { youtube_views, tiktok_views } = req.body || {};
 
   const updates = {};
-  if (youtube_views !== undefined) updates.youtube_views = youtube_views;
-  if (tiktok_views !== undefined) updates.tiktok_views = tiktok_views;
+  const youtubeViews = normaliseMetricCount(youtube_views);
+  if (youtube_views !== undefined && youtubeViews === null) {
+    return res.status(400).json({ error: "invalid youtube_views" });
+  }
+  const tiktokViews = normaliseMetricCount(tiktok_views);
+  if (tiktok_views !== undefined && tiktokViews === null) {
+    return res.status(400).json({ error: "invalid tiktok_views" });
+  }
+  if (youtubeViews !== undefined) updates.youtube_views = youtubeViews;
+  if (tiktokViews !== undefined) updates.tiktok_views = tiktokViews;
 
   const updated = updateStory(id, updates);
   if (!updated) return res.status(404).json({ error: "story not found" });
@@ -2630,42 +2703,47 @@ app.get("/api/compile/topics", requireAuth, async (req, res) => {
 });
 
 // --- Railway deploy webhook - forwards build/deploy failures to Discord ---
-app.post("/api/webhook/railway", rateLimit(30, 60000), async (req, res) => {
-  res.json({ ok: true });
-  try {
-    const sendDiscord = require("./notify");
-    const payload = req.body || {};
-    const status = payload.status || payload.type || "unknown";
-    const service =
-      payload.service?.name || payload.meta?.serviceName || "Pulse Gaming";
+app.post(
+  "/api/webhook/railway",
+  publicWebhookLimit,
+  requireRailwayWebhookAuth,
+  async (req, res) => {
+    res.json({ ok: true });
+    try {
+      const sendDiscord = require("./notify");
+      const payload = req.body || {};
+      const status = payload.status || payload.type || "unknown";
+      const service =
+        payload.service?.name || payload.meta?.serviceName || "Pulse Gaming";
 
-    if (
-      ["FAILED", "CRASHED", "REMOVED", "BUILD_FAILED"].includes(
-        status.toUpperCase(),
-      ) ||
-      (payload.type === "deploy" && payload.status === "FAILED")
-    ) {
-      const error =
-        payload.error || payload.meta?.error || "No details provided";
-      await sendDiscord(
-        `**Railway Deploy FAILED**\n` +
-          `Service: ${service}\n` +
-          `Status: ${status}\n` +
-          `Error: ${error}\n\n` +
-          `Check Railway dashboard for details.`,
-      );
-    } else if (
-      status.toUpperCase() === "SUCCESS" ||
-      status.toUpperCase() === "DEPLOYED"
-    ) {
-      await sendDiscord(
-        `**Railway Deploy OK** - ${service} deployed successfully`,
-      );
+      if (
+        ["FAILED", "CRASHED", "REMOVED", "BUILD_FAILED"].includes(
+          status.toUpperCase(),
+        ) ||
+        (payload.type === "deploy" && payload.status === "FAILED")
+      ) {
+        const error =
+          payload.error || payload.meta?.error || "No details provided";
+        await sendDiscord(
+          `**Railway Deploy FAILED**\n` +
+            `Service: ${service}\n` +
+            `Status: ${status}\n` +
+            `Error: ${error}\n\n` +
+            `Check Railway dashboard for details.`,
+        );
+      } else if (
+        status.toUpperCase() === "SUCCESS" ||
+        status.toUpperCase() === "DEPLOYED"
+      ) {
+        await sendDiscord(
+          `**Railway Deploy OK** - ${service} deployed successfully`,
+        );
+      }
+    } catch (err) {
+      console.log(`[server] Railway webhook error: ${err.message}`);
     }
-  } catch (err) {
-    console.log(`[server] Railway webhook error: ${err.message}`);
-  }
-});
+  },
+);
 
 // Sentry error handler (must be after all routes, before SPA fallback)
 if (sentryMw.errorHandler === "__sentry_v8__") {

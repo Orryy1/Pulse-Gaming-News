@@ -1,12 +1,12 @@
 // Browser-only auth helpers. Pure logic lives in `./authCore.js` so
 // the Node test suite can cover it without pulling in `window` /
-// `localStorage`. Anything that talks to the browser belongs in this
+// browser storage. Anything that talks to the browser belongs in this
 // file; anything testable in isolation belongs in authCore.
 //
 // Token lifecycle:
 //   1. On module load we check the URL for `?token=…` (Discord
 //      approval links and one-shot operator bookmarks use this). If
-//      present, we save it to localStorage and strip it from the URL
+//      present, we save it to sessionStorage and strip it from the URL
 //      so it doesn't leak via `document.referrer` or clipboard
 //      copies.
 //   2. `getToken()` returns the currently stored token (or null).
@@ -19,16 +19,25 @@ import { normaliseToken, parseTokenFromUrl } from "./authCore.mjs";
 
 const STORAGE_KEY = "pulse.apiToken";
 
-function safeStorage(): Storage | null {
+function safeSessionStorage(): Storage | null {
   try {
-    return typeof window !== "undefined" ? window.localStorage : null;
+    return typeof window !== "undefined" ? window.sessionStorage : null;
   } catch {
     return null;
   }
 }
 
+function clearLegacyPersistentToken(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    /* noop */
+  }
+}
+
 export function getToken(): string | null {
-  const store = safeStorage();
+  const store = safeSessionStorage();
   if (!store) return null;
   try {
     return normaliseToken(store.getItem(STORAGE_KEY));
@@ -40,7 +49,7 @@ export function getToken(): string | null {
 export function setToken(raw: string): boolean {
   const clean = normaliseToken(raw);
   if (!clean) return false;
-  const store = safeStorage();
+  const store = safeSessionStorage();
   if (!store) return false;
   try {
     store.setItem(STORAGE_KEY, clean);
@@ -51,13 +60,13 @@ export function setToken(raw: string): boolean {
 }
 
 export function clearToken(): void {
-  const store = safeStorage();
-  if (!store) return;
+  const store = safeSessionStorage();
   try {
-    store.removeItem(STORAGE_KEY);
+    store?.removeItem(STORAGE_KEY);
   } catch {
     /* noop */
   }
+  clearLegacyPersistentToken();
 }
 
 // One-shot URL capture. Called exactly once on module load. Separated
@@ -78,6 +87,7 @@ function captureTokenFromUrl(): void {
   }
 }
 
+clearLegacyPersistentToken();
 captureTokenFromUrl();
 
 // Expose a tiny operator console for the case where the token is

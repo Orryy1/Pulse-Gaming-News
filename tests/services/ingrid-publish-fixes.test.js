@@ -85,7 +85,7 @@ test("server.js: /api/story-image route accepts optional .png suffix", () => {
   // Regex route form — `app.get(/^\/api\/story-image\/([^/]+?)(?:\.png)?$/`
   assert.match(
     server,
-    /app\.get\(\/\^\\\/api\\\/story-image\\\/\(\[\^\/\]\+\?\)\(\?:\\\.png\)\?\$\//,
+    /app\.get\(\s*\/\^\\\/api\\\/story-image\\\/\(\[\^\/\]\+\?\)\(\?:\\\.png\)\?\$\/[\s\S]*?async\s*\(req,\s*res\)\s*=>/,
     "server.js must define a regex route accepting optional .png suffix on story-image",
   );
 });
@@ -97,7 +97,7 @@ test("server.js: /api/download route accepts optional .mp4 suffix", () => {
   );
   assert.match(
     server,
-    /app\.get\(\/\^\\\/api\\\/download\\\/\(\[\^\/\]\+\?\)\(\?:\\\.mp4\)\?\$\//,
+    /app\.get\(\s*\/\^\\\/api\\\/download\\\/\(\[\^\/\]\+\?\)\(\?:\\\.mp4\)\?\$\/[\s\S]*?async\s*\(req,\s*res\)\s*=>/,
     "server.js must define a regex route accepting optional .mp4 suffix on download",
   );
 });

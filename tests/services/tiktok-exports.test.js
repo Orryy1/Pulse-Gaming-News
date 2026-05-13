@@ -36,6 +36,7 @@ test("upload_tiktok exports the full public surface required by server.js", () =
     "buildPkceChallenge",
     "exchangeCode",
     "buildPublishStatusFetchRequest",
+    "isTikTokOperatorDisabled",
   ];
   for (const name of required) {
     assert.strictEqual(
@@ -43,6 +44,27 @@ test("upload_tiktok exports the full public surface required by server.js", () =
       "function",
       `upload_tiktok must export ${name} as a function`,
     );
+  }
+});
+
+test("upload_tiktok uploadAll and uploadShort fail closed when operator-disabled", async () => {
+  const oldEnabled = process.env.TIKTOK_ENABLED;
+  const oldAuto = process.env.TIKTOK_AUTO_UPLOAD_ENABLED;
+  process.env.TIKTOK_ENABLED = "false";
+  process.env.TIKTOK_AUTO_UPLOAD_ENABLED = "false";
+  try {
+    const mod = require("../../upload_tiktok");
+    assert.strictEqual(mod.isTikTokOperatorDisabled(), true);
+    assert.deepStrictEqual(await mod.uploadAll(), []);
+    await assert.rejects(
+      mod.uploadShort({ id: "rss_disabled", title: "Disabled", exported_path: "x.mp4" }),
+      /tiktok_operator_disabled/,
+    );
+  } finally {
+    if (oldEnabled === undefined) delete process.env.TIKTOK_ENABLED;
+    else process.env.TIKTOK_ENABLED = oldEnabled;
+    if (oldAuto === undefined) delete process.env.TIKTOK_AUTO_UPLOAD_ENABLED;
+    else process.env.TIKTOK_AUTO_UPLOAD_ENABLED = oldAuto;
   }
 });
 

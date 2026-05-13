@@ -11,6 +11,10 @@ const {
   affiliateDisclosureForLinks,
   normaliseAffiliateLinks,
 } = require("./lib/affiliate-targeting");
+const {
+  assertBatchUploadPreflight,
+  storyIsBatchUploadCandidate,
+} = require("./lib/services/batch-upload-preflight");
 
 dotenv.config({ override: true });
 
@@ -796,7 +800,7 @@ async function uploadAll() {
   }
 
   const ready = stories.filter((s) => {
-    if (!s.approved || !s.exported_path) return false;
+    if (!storyIsBatchUploadCandidate(s, null)) return false;
     if (s.youtube_post_id && !String(s.youtube_post_id).startsWith("DUPE_")) {
       // Genuinely already published — skip.
       return false;
@@ -838,6 +842,7 @@ async function uploadAll() {
   for (const story of ready) {
     const storyChannelId = story.channel_id || process.env.CHANNEL || null;
     try {
+      await assertBatchUploadPreflight(story, { platform: "youtube" });
       const result = await uploadShort(story);
       // uploadShort returns { blocked: true, reason } when the remote
       // dedupe check rejects the upload. The batch path used to stamp

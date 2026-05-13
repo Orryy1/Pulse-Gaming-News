@@ -1,6 +1,6 @@
 # Local Resume Posting Plan
 
-Generated: 2026-05-13T08:01:22.359Z
+Generated: 2026-05-13T08:55:07.662Z
 Verdict: GREEN
 Status: ready_to_resume_local_automatic_posting
 Safety: read-only plan; does not edit .env, start Cloudflare, switch primary, mutate tokens, post, touch Railway or trigger OAuth

@@ -40,6 +40,10 @@ const {
   classifyLocalTtsFailure,
 } = require("./lib/studio/local-tts-failures");
 const {
+  createLocalTtsBatchRecovery,
+  generateLocalTtsWithOptionalRecovery,
+} = require("./lib/ops/local-tts-batch-recovery");
+const {
   resolveAcceptedLocalVoiceReference,
 } = require("./lib/studio/v2/local-voice-reference");
 
@@ -47,6 +51,10 @@ const ACCEPTED_LOCAL_LIAM_VOICE_ID = "TX3LPaxmHKxFdv7VOQHJ";
 
 function isTruthy(value) {
   return /^(true|1|yes|on)$/i.test(String(value || ""));
+}
+
+function isLocalTtsProvider(provider = process.env.TTS_PROVIDER || "elevenlabs") {
+  return String(provider || "").toLowerCase() === "local";
 }
 
 function firstNonBlank(...values) {
@@ -638,6 +646,59 @@ async function generateTTS(text, outputPath, rateOverride) {
   return outputPath;
 }
 
+function recordLocalTtsAttempt(story, label, attempt = {}) {
+  if (!story || typeof story !== "object" || !attempt) return;
+  story.local_tts_attempts = Array.isArray(story.local_tts_attempts)
+    ? story.local_tts_attempts
+    : [];
+  story.local_tts_attempts.push({
+    label: label || null,
+    ok: attempt.ok === true,
+    attempts: attempt.attempts || 1,
+    failure_code: attempt.failure?.code || null,
+    recovery: attempt.recovery || null,
+    at: new Date().toISOString(),
+  });
+}
+
+async function generateTtsForStory({
+  story,
+  text,
+  outputPath,
+  rate,
+  label = "full",
+  provider = process.env.TTS_PROVIDER || "elevenlabs",
+  recoverLocalTts = null,
+  generateTts = generateTTS,
+} = {}) {
+  if (!isLocalTtsProvider(provider)) {
+    await generateTts(text, outputPath, rate);
+    return { ok: true, attempts: 1, recovery: null };
+  }
+
+  const attempt = await generateLocalTtsWithOptionalRecovery({
+    storyId: story?.id,
+    text,
+    outputRel: outputPath,
+    rate,
+    generateTts,
+    recoverLocalTts,
+  });
+  recordLocalTtsAttempt(story, label, attempt);
+  if (attempt.ok) return attempt;
+
+  const failure = attempt.failure || {};
+  const message = [
+    "local_tts_generation_failed",
+    failure.code || "tts_failed",
+    failure.message || attempt.error || "local TTS generation failed",
+  ].join(":");
+  const err = new Error(message);
+  err.code = failure.code || "tts_failed";
+  err.localTtsAttempt = attempt;
+  throw err;
+}
+
 async function generateAudio() {
   console.log("[audio] Loading stories from canonical store...");
 
@@ -659,6 +720,17 @@ async function generateAudio() {
   );
 
   console.log(`[audio] ${toProcess.length} stories need audio generation`);
+  const provider = process.env.TTS_PROVIDER || "elevenlabs";
+  const localVoiceId = isLocalTtsProvider(provider)
+    ? resolveTtsVoiceIdForProvider(provider, process.env, brand)
+    : null;
+  const recoverLocalTts = localVoiceId
+    ? createLocalTtsBatchRecovery({
+        root: __dirname,
+        env: process.env,
+        voiceId: localVoiceId,
+      })
+    : null;
 
   for (const story of toProcess) {
     console.log(`[audio] Generating audio for: ${story.title}`);
@@ -745,7 +817,15 @@ async function generateAudio() {
               "audio",
               `${story.id}_${seg.label}.mp3`,
             );
-            await generateTTS(seg.text, segPath, seg.rate);
+            await generateTtsForStory({
+              story,
+              text: seg.text,
+              outputPath: segPath,
+              rate: seg.rate,
+              label: seg.label,
+              provider,
+              recoverLocalTts,
+            });
             segmentPaths.push(segPath);
           }
           await concatAudioFiles(segmentPaths, outputPath);
@@ -841,10 +921,24 @@ async function generateAudio() {
           }
         } else {
           // Only one non-empty segment, use single call
-          await generateTTS(ttsText, outputPath);
+          await generateTtsForStory({
+            story,
+            text: ttsText,
+            outputPath,
+            label: "single",
+            provider,
+            recoverLocalTts,
+          });
         }
       } else {
-        await generateTTS(ttsText, outputPath);
+        await generateTtsForStory({
+          story,
+          text: ttsText,
+          outputPath,
+          label: "full",
+          provider,
+          recoverLocalTts,
+        });
       }
 
       // Duration enforcement - check if video will clear 61s
@@ -906,7 +1000,14 @@ async function generateAudio() {
             );
           }
 
-          await generateTTS(newTTS, outputPath);
+          await generateTtsForStory({
+            story,
+            text: newTTS,
+            outputPath,
+            label: "regen",
+            provider,
+            recoverLocalTts,
+          });
           const newDuration = await getAudioDuration(outputPath);
           story.audio_duration = newDuration;
           story.full_script = newScript.full_script;
@@ -976,6 +1077,8 @@ module.exports.requestTtsWithRetry = requestTtsWithRetry;
 module.exports.normaliseLocalVoiceDiagnostics = normaliseLocalVoiceDiagnostics;
 module.exports.resolveTtsVoiceIdForProvider = resolveTtsVoiceIdForProvider;
 module.exports.markAudioGenerationFailure = markAudioGenerationFailure;
+module.exports.generateTtsForStory = generateTtsForStory;
+module.exports.isLocalTtsProvider = isLocalTtsProvider;
 module.exports.assertBrandNameQaForTts = assertBrandNameQaForTts;
 module.exports.selectRawTtsScript = selectRawTtsScript;
 

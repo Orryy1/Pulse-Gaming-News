@@ -8,6 +8,10 @@ const { validateVideo } = require("./lib/validate");
 const {
   assertPlatformVideoQaPass,
 } = require("./lib/services/platform-video-qa");
+const {
+  assertBatchUploadPreflight,
+  storyIsBatchUploadCandidate,
+} = require("./lib/services/batch-upload-preflight");
 const db = require("./lib/db");
 const mediaPaths = require("./lib/media-paths");
 const { getPublicUrl } = require("./lib/deployment-mode");
@@ -452,8 +456,8 @@ async function uploadAll() {
     return [];
   }
 
-  const ready = stories.filter(
-    (s) => s.approved && s.exported_path && !s.instagram_media_id,
+  const ready = stories.filter((s) =>
+    storyIsBatchUploadCandidate(s, "instagram_media_id"),
   );
 
   console.log(`[instagram] ${ready.length} videos ready for upload`);
@@ -462,6 +466,7 @@ async function uploadAll() {
 
   for (const story of ready) {
     try {
+      await assertBatchUploadPreflight(story, { platform: "instagram" });
       const result = await uploadReel(story);
       story.instagram_media_id = result.mediaId;
       results.push(result);

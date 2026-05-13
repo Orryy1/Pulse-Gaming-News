@@ -88,6 +88,29 @@ test("publisher.js: runPreflightQa runs content-QA then video-QA and returns str
   );
 });
 
+test("publisher.js: legacy batch publish delegates to canonical publishNextStory before raw uploadAll calls", () => {
+  const idx = SRC.indexOf("async function publishToAllPlatforms()");
+  assert.ok(idx > 0, "publishToAllPlatforms must exist");
+  const block = SRC.slice(idx, idx + 5000);
+  const delegateIdx = block.indexOf("await publishNextStory()");
+  const returnIdx = block.indexOf("return {");
+  const rawBatchIdx = block.indexOf("uploadAll");
+  assert.ok(delegateIdx > 0, "legacy publish must delegate to publishNextStory()");
+  assert.ok(returnIdx > delegateIdx, "legacy publish must return the canonical summary");
+  assert.ok(
+    rawBatchIdx === -1 || rawBatchIdx > returnIdx,
+    "raw uploadAll batch calls must be unreachable behind the canonical return",
+  );
+});
+
+test("publisher.js: retry QA bypass cannot bypass strict approved-voice mode", () => {
+  const idx = SRC.indexOf("process.env.PUBLISH_RETRY_QA_BYPASS");
+  assert.ok(idx > 0, "retry bypass branch must exist");
+  const block = SRC.slice(idx - 800, idx + 1200);
+  assert.match(block, /strictVoiceQa/, "retry bypass branch must calculate strict voice QA");
+  assert.match(block, /!strictVoiceQa/, "retry bypass must be disabled when strict voice QA is active");
+});
+
 test("publisher.js: publishNextStory selector skips qa_failed and publish_status=failed", () => {
   const selectorIdx = SRC.indexOf(
     "Find stories that still need publishing to at least one platform",

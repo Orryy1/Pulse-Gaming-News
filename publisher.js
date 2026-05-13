@@ -428,6 +428,23 @@ async function selfHealStaleMediaPaths({ repos: _repos } = {}) {
 // --- Staggered multi-platform upload ---
 async function publishToAllPlatforms() {
   console.log("[publisher] === Multi-Platform Publish ===");
+  console.log(
+    "[publisher] Legacy batch publish delegates to publishNextStory() so content, video and approved-voice QA always run before upload.",
+  );
+
+  const canonical = await publishNextStory();
+  const uploaded = (platform) =>
+    canonical?.platform_outcomes?.[platform] === "new_upload" ||
+    canonical?.platform_outcomes?.[platform] === "accepted_processing" ||
+    canonical?.platform_outcomes?.[platform] === "public_verified";
+
+  return {
+    canonical,
+    youtube: uploaded("youtube") ? [canonical] : [],
+    tiktok: uploaded("tiktok") ? [canonical] : [],
+    instagram: uploaded("instagram") ? [canonical] : [],
+    facebook: uploaded("facebook") ? [canonical] : [],
+  };
 
   const results = { youtube: [], tiktok: [], instagram: [] };
 
@@ -1021,7 +1038,19 @@ async function _publishNextStoryInner() {
         `"${candidate.title}" (score: ${candidate.breaking_score || candidate.score || 0})`,
     );
 
-    if (candidateIsRetry && process.env.PUBLISH_RETRY_QA_BYPASS === "true") {
+    const strictVoiceQa = (() => {
+      try {
+        const { strictVoiceQaEnabled } = require("./lib/services/publish-voice-qa");
+        return strictVoiceQaEnabled(candidate, process.env);
+      } catch (_) {
+        return process.env.REQUIRE_APPROVED_VOICE_FOR_PUBLISH === "true";
+      }
+    })();
+    if (
+      candidateIsRetry &&
+      process.env.PUBLISH_RETRY_QA_BYPASS === "true" &&
+      !strictVoiceQa
+    ) {
       // Partial-retry stories bypass QA — they were already published
       // once, so the artefacts are known-good. Take this candidate
       // immediately.

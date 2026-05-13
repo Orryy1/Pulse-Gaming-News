@@ -34,6 +34,8 @@ beforeEach(async () => {
   process.env.TIKTOK_TOKEN_PATH = tokenFile;
   process.env.TIKTOK_CLIENT_KEY = "sbfake";
   process.env.TIKTOK_CLIENT_SECRET = "sbfakesecret";
+  delete process.env.TIKTOK_ENABLED;
+  delete process.env.TIKTOK_AUTO_UPLOAD_ENABLED;
 });
 
 after(async () => {
@@ -240,6 +242,22 @@ test("handleTiktokAuthCheck: silent success when token is healthy", async () => 
     const result = await handlers.tiktok_auth_check({}, { log() {} });
     assert.strictEqual(result.initial_reason, "ok");
     assert.strictEqual(result.refresh_attempted, false);
+    assert.strictEqual(discord.sent.length, 0);
+  } finally {
+    discord.restore();
+  }
+});
+
+test("handleTiktokAuthCheck: skips token inspection when TikTok is operator-disabled", async () => {
+  process.env.TIKTOK_ENABLED = "false";
+  const discord = stubDiscord();
+  try {
+    clearHandlersCache();
+    const { handlers } = require("../../lib/job-handlers");
+    const result = await handlers.tiktok_auth_check({}, { log() {} });
+    assert.strictEqual(result.skipped, "operator_disabled");
+    assert.strictEqual(result.refresh_attempted, false);
+    assert.strictEqual(result.needs_reauth, false);
     assert.strictEqual(discord.sent.length, 0);
   } finally {
     discord.restore();

@@ -10,13 +10,13 @@ const AUDIO = fs.readFileSync(
 
 test("audio.js checks script runtime before generating TTS", () => {
   const gateAnchor = AUDIO.indexOf("classifyShortScriptRuntime");
-  const ttsAnchor = AUDIO.indexOf("await generateTTS");
+  const ttsAnchor = AUDIO.indexOf("await generateTtsForStory");
 
   assert.ok(gateAnchor > 0, "audio.js must import/use classifyShortScriptRuntime");
-  assert.ok(ttsAnchor > 0, "audio.js must generate TTS");
+  assert.ok(ttsAnchor > 0, "audio.js must generate TTS via the story wrapper");
   assert.ok(
     gateAnchor < ttsAnchor,
-    "script runtime gate must run before the first generateTTS call",
+    "script runtime gate must run before the first TTS generation call",
   );
 });
 

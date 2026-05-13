@@ -19,11 +19,29 @@ const path = require("path");
 const dotenv = require("dotenv");
 const { addBreadcrumb, captureException } = require("./lib/sentry");
 const db = require("./lib/db");
+const {
+  assertBatchUploadPreflight,
+  storyIsBatchUploadCandidate,
+} = require("./lib/services/batch-upload-preflight");
 
 dotenv.config({ override: true });
 
 const COOKIES_PATH = path.join(__dirname, "tokens", "tiktok_cookies.json");
 const UPLOAD_TIMEOUT = 120000; // 2 min max per upload
+
+function envExplicitFalse(name) {
+  return /^(false|0|no|off)$/i.test(String(process.env[name] || "").trim());
+}
+
+function isTikTokOperatorDisabled() {
+  return envExplicitFalse("TIKTOK_ENABLED") || envExplicitFalse("TIKTOK_AUTO_UPLOAD_ENABLED");
+}
+
+function assertTikTokOperatorEnabled() {
+  if (isTikTokOperatorDisabled()) {
+    throw new Error("tiktok_operator_disabled");
+  }
+}
 
 // Persistent browser profile path - keeps login state between runs
 const BROWSER_PROFILE = path.join(
@@ -269,6 +287,7 @@ async function loginAndSaveCookies() {
 
 // --- Upload a single video via browser automation ---
 async function uploadVideo(story) {
+  assertTikTokOperatorEnabled();
   addBreadcrumb(`TikTok browser upload: ${story.title}`, "upload");
 
   // Check for persistent browser profile OR cookie file
@@ -449,14 +468,19 @@ async function uploadVideo(story) {
 
 // --- Batch upload all ready stories ---
 async function uploadAll() {
+  if (isTikTokOperatorDisabled()) {
+    console.log("[tiktok-browser] Upload skipped: operator disabled");
+    return [];
+  }
+
   const stories = await db.getStories();
   if (!stories.length) {
     console.log("[tiktok-browser] No stories found");
     return [];
   }
 
-  const ready = stories.filter(
-    (s) => s.approved && s.exported_path && !s.tiktok_post_id,
+  const ready = stories.filter((s) =>
+    storyIsBatchUploadCandidate(s, "tiktok_post_id"),
   );
 
   console.log(`[tiktok-browser] ${ready.length} videos ready for upload`);
@@ -465,6 +489,7 @@ async function uploadAll() {
 
   for (const story of ready) {
     try {
+      await assertBatchUploadPreflight(story, { platform: "tiktok_browser" });
       const result = await uploadVideo(story);
       story.tiktok_post_id = result.publishId;
       story.tiktok_status = result.status;
@@ -495,6 +520,7 @@ module.exports = {
   uploadVideo,
   uploadShort,
   uploadAll,
+  isTikTokOperatorDisabled,
   loginAndSaveCookies,
   grabCookiesFromChrome,
 };

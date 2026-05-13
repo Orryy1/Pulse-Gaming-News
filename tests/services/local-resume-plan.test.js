@@ -158,6 +158,55 @@ test("local resume plan tool derives amber posting readiness when the readiness 
   assert.equal(readiness.readiness.tunnel_connected, true);
 });
 
+test("local resume plan tool rebuilds posting readiness instead of trusting stale JSON", async (t) => {
+  const fs = require("fs-extra");
+  const path = require("node:path");
+  const os = require("node:os");
+  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-resume-stale-"));
+  t.after(() => fs.remove(outDir));
+
+  await fs.writeJson(path.join(outDir, "local_posting_readiness.json"), {
+    verdict: "red",
+    readiness: {
+      local_health: false,
+      public_health: false,
+      tunnel_connected: false,
+      primary_enabled: false,
+      queue_enabled: false,
+      auto_publish_enabled: false,
+    },
+    blockers: ["stale report"],
+  });
+  await fs.writeJson(path.join(outDir, "local_cutover_plan.json"), {
+    generated_at: "2026-05-13T07:45:00.000Z",
+    verdict: "green",
+    env: {
+      duplicate_keys: [],
+      flags: {
+        primary: true,
+        use_job_queue: true,
+        auto_publish: true,
+      },
+    },
+    cloudflared: { tunnel_info: "Active connections: 2" },
+    health: {
+      local: { ok: true, status: 200, json: { deployment: { mode: "local", primary: true } } },
+      public: { ok: true, status: 200, json: { deployment: { mode: "local", primary: true } } },
+    },
+  });
+  await fs.writeJson(path.join(outDir, "local_tts_overnight_report.json"), {
+    generated_at: "2026-05-13T07:45:00.000Z",
+    ...greenTts(),
+  });
+
+  const readiness = await resolveLocalPostingReadiness(outDir);
+
+  assert.equal(readiness.verdict, "green");
+  assert.equal(readiness.readiness.local_health, true);
+  assert.equal(readiness.readiness.primary_enabled, true);
+  assert.deepEqual(readiness.blockers, []);
+});
+
 test("local resume plan can go green without TikTok direct posting", () => {
   const report = buildLocalResumePlan({
     localPostingReadiness: greenLocalPosting(),

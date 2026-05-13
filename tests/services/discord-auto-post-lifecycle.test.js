@@ -32,8 +32,23 @@ test("Discord auto-post standalone client is not kept by default", () => {
   );
 });
 
+test("Discord auto-post does not import the full bot by default", () => {
+  assert.equal(autoPost._private.reuseBotClient({}), false);
+  assert.equal(
+    autoPost._private.reuseBotClient({
+      DISCORD_AUTO_POST_REUSE_BOT_CLIENT: "true",
+    }),
+    true,
+  );
+});
+
 test("Discord auto-post public helpers release standalone clients", () => {
   const source = fs.readFileSync(AUTO_POST_PATH, "utf8");
+  assert.match(
+    source,
+    /if\s*\(\s*reuseBotClient\(\)\s*\)\s*{[\s\S]*require\("\.\/bot"\)/,
+    "bot.js import should be guarded behind explicit opt-in",
+  );
   for (const helper of [
     "postNewStory",
     "postVideoUpload",

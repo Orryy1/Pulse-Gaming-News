@@ -34,6 +34,10 @@ function keepStandaloneClient(env = process.env) {
   return String(env.DISCORD_AUTO_POST_KEEP_CLIENT || "").toLowerCase() === "true";
 }
 
+function reuseBotClient(env = process.env) {
+  return String(env.DISCORD_AUTO_POST_REUSE_BOT_CLIENT || "").toLowerCase() === "true";
+}
+
 function releaseStandaloneClient() {
   if (!_client || keepStandaloneClient()) return;
   const client = _client;
@@ -51,12 +55,16 @@ function releaseStandaloneClient() {
  * Reuses the bot.js client if available, otherwise creates a lightweight one.
  */
 function getClient() {
-  // If bot.js is already running, reuse its client
-  try {
-    const bot = require("./bot");
-    if (bot.client && bot.client.isReady()) return Promise.resolve(bot.client);
-  } catch (e) {
-    /* bot.js not loaded */
+  // Avoid importing bot.js by default: it logs into Discord, registers
+  // commands and keeps one-off local publish commands alive. Long-running
+  // bot processes can opt in when they genuinely want to share that client.
+  if (reuseBotClient()) {
+    try {
+      const bot = require("./bot");
+      if (bot.client && bot.client.isReady()) return Promise.resolve(bot.client);
+    } catch (e) {
+      /* bot.js not loaded */
+    }
   }
 
   // Create a lightweight client for posting only
@@ -686,5 +694,6 @@ module.exports = {
   _private: {
     discordLoginTimeoutMs,
     keepStandaloneClient,
+    reuseBotClient,
   },
 };

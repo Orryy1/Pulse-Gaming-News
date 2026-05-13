@@ -997,7 +997,7 @@ async function _publishNextStoryInner() {
         `"${candidate.title}" (score: ${candidate.breaking_score || candidate.score || 0})`,
     );
 
-    if (candidateIsRetry) {
+    if (candidateIsRetry && process.env.PUBLISH_RETRY_QA_BYPASS === "true") {
       // Partial-retry stories bypass QA — they were already published
       // once, so the artefacts are known-good. Take this candidate
       // immediately.
@@ -1009,7 +1009,7 @@ async function _publishNextStoryInner() {
     const qa = await runPreflightQa(candidate);
     if (qa.pass) {
       story = candidate;
-      isRetry = false;
+      isRetry = candidateIsRetry;
       preflightWarnings = qa.warnings || [];
       break;
     }

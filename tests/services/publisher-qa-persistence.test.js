@@ -699,9 +699,10 @@ test("multi-candidate: cap stops the loop at MAX (5) even if more candidates exi
   assert.notStrictEqual(unSeen7.qa_failed, true);
 });
 
-test("multi-candidate: partial retry candidate is taken immediately (QA skipped, uploaders fire)", async () => {
-  // Partial retry: youtube already done, others missing. isRetry=true
-  // means QA is skipped (artefacts known-good from first publish).
+test("multi-candidate: partial retry candidate still runs QA before missing-platform uploads", async () => {
+  // Partial retry: YouTube already done, others missing. It still
+  // needs current QA because local cutover must not reuse stale or
+  // bad-voice artefacts just because one platform succeeded earlier.
   const partial = {
     id: "rss_partial_retry",
     title: "Retry me",
@@ -713,11 +714,10 @@ test("multi-candidate: partial retry candidate is taken immediately (QA skipped,
     instagram_media_id: null,
     facebook_post_id: null,
   };
-  // Even if QA stub would fail, the retry path must not run it.
   const { publishNextStory } = setupMocks({
     cqaResult: {
       result: "fail",
-      failures: ["WOULD_BLOCK_IF_CALLED"],
+      failures: ["approved_voice:metadata_missing"],
       warnings: [],
     },
     vqaResult: { result: "pass", failures: [], warnings: [] },
@@ -725,17 +725,15 @@ test("multi-candidate: partial retry candidate is taken immediately (QA skipped,
   });
 
   const result = await publishNextStory();
-  // Not treated as no-safe-candidate — retry proceeds.
-  assert.strictEqual(result.no_safe_candidate, undefined);
-  assert.ok(uploaderCalls.length > 0, "retry must invoke uploaders");
+  // Treated as no-safe-candidate because the retry candidate failed fresh QA.
+  assert.strictEqual(result.no_safe_candidate, true);
+  assert.deepStrictEqual(uploaderCalls, [], "retry must not invoke uploaders on QA fail");
 
-  // The partial story was NOT persisted as qa_failed — QA wasn't run.
+  // The partial story is persisted as failed so the scheduler does not keep retrying it.
   const row = dbState.stories.find((s) => s.id === "rss_partial_retry");
-  assert.notStrictEqual(
-    row.qa_failed,
-    true,
-    "retry candidate must not be qa_failed",
-  );
+  assert.strictEqual(row.qa_failed, true);
+  assert.strictEqual(row.publish_status, "failed");
+  assert.match(row.publish_error, /approved_voice:metadata_missing/);
 });
 
 test("multi-candidate: soft warnings on passing candidate do not block publish (classification audit)", async () => {

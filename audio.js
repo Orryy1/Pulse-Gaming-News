@@ -39,6 +39,9 @@ const {
 const {
   classifyLocalTtsFailure,
 } = require("./lib/studio/local-tts-failures");
+const {
+  resolveAcceptedLocalVoiceReference,
+} = require("./lib/studio/v2/local-voice-reference");
 
 const ACCEPTED_LOCAL_LIAM_VOICE_ID = "TX3LPaxmHKxFdv7VOQHJ";
 
@@ -53,6 +56,71 @@ function firstNonBlank(...values) {
     }
   }
   return null;
+}
+
+function hasSpokenOutro(text) {
+  return String(text || "")
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .includes("follow pulse gaming so you never miss a beat");
+}
+
+function buildTtsAlignmentMeta({
+  existingMeta = {},
+  provider,
+  voiceId,
+  baseUrl,
+  text,
+  resolvedVoiceSettings = {},
+  voiceDiagnostics = null,
+} = {}) {
+  const normalisedProvider = String(provider || "").toLowerCase();
+  const isLocal = normalisedProvider === "local";
+  const source = isLocal ? "local-tts-server" : "elevenlabs-production-path";
+  const transcript =
+    typeof existingMeta.transcript === "string" && existingMeta.transcript.trim()
+      ? existingMeta.transcript
+      : typeof text === "string"
+        ? text
+        : existingMeta.text || null;
+  return {
+    ...existingMeta,
+    provider: normalisedProvider || existingMeta.provider || "unknown",
+    source,
+    text: typeof text === "string" ? text : existingMeta.text || null,
+    transcript,
+    spokenOutroPresent: hasSpokenOutro(transcript),
+    voiceDiagnostics: voiceDiagnostics || existingMeta.voiceDiagnostics || null,
+    acoustic:
+      voiceDiagnostics?.acoustic ||
+      voiceDiagnostics?.metrics ||
+      existingMeta.acoustic ||
+      null,
+    localTts: isLocal
+      ? {
+          voiceId,
+          baseUrl,
+          speakingRate: resolvedVoiceSettings.speaking_rate,
+        }
+      : null,
+    approvedLocalVoice: isLocal
+      ? isTruthy(process.env.STUDIO_V2_LOCAL_VOICE_APPROVED)
+      : existingMeta.approvedLocalVoice,
+    acceptedLocalVoice: isLocal
+      ? resolveAcceptedLocalVoiceReference(process.env)
+      : existingMeta.acceptedLocalVoice || null,
+    elevenlabs: !isLocal
+      ? {
+          voiceId,
+          modelId: brand.voiceModel || "eleven_multilingual_v2",
+          speakingRate: resolvedVoiceSettings.speaking_rate,
+        }
+      : null,
+    ttsMetadataVersion: 2,
+    stampedAt: new Date().toISOString(),
+  };
 }
 
 function resolveTtsVoiceIdForProvider(provider, env = process.env, brandConfig = brand) {
@@ -554,23 +622,15 @@ async function generateTTS(text, outputPath, rateOverride) {
   const voiceDiagnostics = normaliseLocalVoiceDiagnostics(
     response.data.voice_diagnostics || response.data.voiceDiagnostics,
   );
-  if (provider === "local" || voiceDiagnostics) {
-    alignment.meta = {
-      ...(alignment.meta || {}),
-      provider,
-      source: provider === "local" ? "local-tts-server" : "remote-tts-server",
-      text,
-      voiceDiagnostics,
-      acoustic: voiceDiagnostics?.acoustic || alignment.meta?.acoustic || null,
-      localTts: provider === "local"
-        ? {
-            voiceId,
-            baseUrl,
-            speakingRate: resolvedVoiceSettings.speaking_rate,
-          }
-        : null,
-    };
-  }
+  alignment.meta = buildTtsAlignmentMeta({
+    existingMeta: alignment.meta || {},
+    provider,
+    voiceId,
+    baseUrl,
+    text,
+    resolvedVoiceSettings,
+    voiceDiagnostics,
+  });
   await fs.writeJson(timestampsWriteTarget, alignment, { spaces: 2 });
 
   // Return the repo-relative path so callers and the DB continue
@@ -695,6 +755,7 @@ async function generateAudio() {
           const mergedChars = [];
           const mergedStarts = [];
           const mergedEnds = [];
+          const segmentMetas = [];
           let cumulativeOffset = 0;
           for (const sp of segmentPaths) {
             const tsPath = sp.replace(/\.mp3$/, "_timestamps.json");
@@ -702,6 +763,9 @@ async function generateAudio() {
             if (await fs.pathExists(tsAbs)) {
               try {
                 const ts = await fs.readJson(tsAbs);
+                if (ts.meta && typeof ts.meta === "object") {
+                  segmentMetas.push(ts.meta);
+                }
                 if (
                   ts.characters &&
                   ts.character_start_times_seconds &&
@@ -736,12 +800,33 @@ async function generateAudio() {
               /\.mp3$/,
               "_timestamps.json",
             );
+            const firstMeta = segmentMetas.find(Boolean) || {};
             await fs.writeJson(
               mediaPaths.writePath(combinedTsPath),
               {
                 characters: mergedChars,
                 character_start_times_seconds: mergedStarts,
                 character_end_times_seconds: mergedEnds,
+                meta: buildTtsAlignmentMeta({
+                  existingMeta: firstMeta,
+                  provider: process.env.TTS_PROVIDER || "elevenlabs",
+                  voiceId: resolveTtsVoiceIdForProvider(
+                    process.env.TTS_PROVIDER || "elevenlabs",
+                    process.env,
+                    brand,
+                  ),
+                  baseUrl:
+                    (process.env.TTS_PROVIDER || "elevenlabs").toLowerCase() ===
+                    "local"
+                      ? process.env.LOCAL_TTS_URL || "http://127.0.0.1:8765"
+                      : "https://api.elevenlabs.io",
+                  text: segments.map((segment) => segment.text).join(" "),
+                  resolvedVoiceSettings: {
+                    speaking_rate: baseRate,
+                  },
+                  voiceDiagnostics:
+                    firstMeta.voiceDiagnostics || firstMeta.voice_diagnostics || null,
+                }),
               },
               { spaces: 2 },
             );

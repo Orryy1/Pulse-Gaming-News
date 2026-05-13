@@ -7,8 +7,10 @@ const path = require("node:path");
 
 const {
   buildStudioV2ProofCandidateReport,
+  buildLocalRepairPromotionPacketReport,
   buildRankingSignals,
   mediaProgressScore,
+  renderLocalRepairPromotionPacketMarkdown,
   renderStudioV2ProofCandidatesMarkdown,
 } = require("../../lib/ops/studio-v2-proof-candidates");
 const {
@@ -1174,6 +1176,76 @@ test("proof readiness packet JSON and Markdown expose all required proof fields"
   assert.match(md, /Final recommendation: render_local_proof/);
 });
 
+test("local repair promotion packet exposes approved Liam audio and safe rerender command", () => {
+  const report = buildStudioV2ProofCandidateReport({
+    stories: [story("promotion_ready")],
+    localAudioReports: [
+      audioReport("promotion_ready", {
+        timestamps_path: "test/output/local-media-repair/audio/promotion_ready_liam_timestamps.json",
+      }),
+    ],
+    assetReports: [assetReport("promotion_ready", 7)],
+    frameReports: [frameReport("promotion_ready", 10)],
+    segmentValidationReports: [segmentReport("promotion_ready", 10)],
+  });
+  const packet = buildLocalRepairPromotionPacketReport({
+    generatedAt: "2026-05-13T10:00:00.000Z",
+    candidates: report.candidates,
+  });
+
+  assert.equal(report.local_repair_promotion_packet.items.length, 1);
+  assert.equal(packet.summary.ready_to_rerender_count, 1);
+  assert.equal(packet.items[0].story_id, "promotion_ready");
+  assert.equal(packet.items[0].approved_sleepy_liam_audio.path, "test/output/local-media-repair/audio/promotion_ready_liam.mp3");
+  assert.equal(
+    packet.items[0].approved_sleepy_liam_audio.timestamps_path,
+    "test/output/local-media-repair/audio/promotion_ready_liam_timestamps.json",
+  );
+  assert.equal(packet.items[0].approved_sleepy_liam_audio.voice_reference_id, "pulse-sleepy-liam-20260502");
+  assert.match(packet.items[0].rerender.command, /studio:v2:still-deck/);
+  assert.match(packet.items[0].rerender.command, /--audio/);
+  assert.equal(packet.items[0].safety.posts_to_platforms, false);
+  assert.equal(packet.items[0].safety.mutates_production_db, false);
+  assert.equal(packet.items[0].db_changes_needed_later[0].status, "deferred_until_clean_mp4_qa");
+});
+
+test("local repair promotion packet blocks rerender commands for audio-ready media-blocked candidates", () => {
+  const report = buildStudioV2ProofCandidateReport({
+    stories: [story("audio_ready_media_blocked")],
+    localAudioReports: [audioReport("audio_ready_media_blocked")],
+  });
+  const packet = buildLocalRepairPromotionPacketReport({
+    candidates: report.candidates,
+  });
+
+  assert.equal(packet.summary.audio_ready_blocked_count, 1);
+  assert.equal(packet.items[0].story_id, "audio_ready_media_blocked");
+  assert.equal(packet.items[0].rerender.required, false);
+  assert.equal(packet.items[0].rerender.command, null);
+  assert.ok(packet.items[0].rerender.blockers.includes("flash_proof_requires_motion_backbone"));
+  assert.equal(packet.items[0].safety.render_requested, false);
+});
+
+test("local repair promotion packet markdown is operator-readable and local-only", () => {
+  const report = buildStudioV2ProofCandidateReport({
+    stories: [story("promotion_ready")],
+    localAudioReports: [audioReport("promotion_ready")],
+    assetReports: [assetReport("promotion_ready", 7)],
+    frameReports: [frameReport("promotion_ready", 10)],
+    segmentValidationReports: [segmentReport("promotion_ready", 10)],
+  });
+  const packet = buildLocalRepairPromotionPacketReport({
+    candidates: report.candidates,
+  });
+  const markdown = renderLocalRepairPromotionPacketMarkdown(packet);
+
+  assert.match(markdown, /Studio V2 Local Repair Promotion Packet/);
+  assert.match(markdown, /promotion_ready/);
+  assert.match(markdown, /approved Sleepy Liam audio/);
+  assert.match(markdown, /does not render, post or mutate the DB/);
+  assert.match(markdown, /deferred DB changes/);
+});
+
 test("proof candidates normalise mojibake titles before reporting", () => {
   const report = buildStudioV2ProofCandidateReport({
     stories: [story("mojibake", "Pok\u00c3\u00a9mon fans don\u00e2\u20ac\u2122t need another broken caption")],
@@ -1194,6 +1266,8 @@ test("studio:v2:proof-candidates command is registered and read-only", () => {
   const tool = fs.readFileSync(path.join(ROOT, "tools", "studio-v2-proof-candidates.js"), "utf8");
   assert.match(tool, /discoverLocalAudioProofReport/);
   assert.match(tool, /ffprobeDuration/);
+  assert.match(tool, /studio_v2_local_repair_promotion_packet\.json/);
+  assert.match(tool, /renderLocalRepairPromotionPacketMarkdown/);
   assert.match(tool, /DEFAULT_FORENSIC_REPORTS/);
   assert.match(tool, /--no-db/);
   assert.match(tool, /if \(args\.noDb\) return \[\]/);

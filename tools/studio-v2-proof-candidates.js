@@ -6,6 +6,7 @@ const path = require("node:path");
 
 const {
   buildStudioV2ProofCandidateReport,
+  renderLocalRepairPromotionPacketMarkdown,
   renderStudioV2ProofCandidatesMarkdown,
 } = require("../lib/ops/studio-v2-proof-candidates");
 const {
@@ -301,12 +302,20 @@ async function main() {
   await fs.ensureDir(OUT);
   const jsonPath = path.join(OUT, "studio_v2_proof_candidates.json");
   const mdPath = path.join(OUT, "studio_v2_proof_candidates.md");
+  const packetJsonPath = path.join(OUT, "studio_v2_local_repair_promotion_packet.json");
+  const packetMdPath = path.join(OUT, "studio_v2_local_repair_promotion_packet.md");
   await fs.writeJson(jsonPath, report, { spaces: 2 });
   await fs.writeFile(mdPath, md, "utf8");
+  await fs.writeJson(packetJsonPath, report.local_repair_promotion_packet, { spaces: 2 });
+  await fs.writeFile(
+    packetMdPath,
+    renderLocalRepairPromotionPacketMarkdown(report.local_repair_promotion_packet),
+    "utf8",
+  );
 
   process.stdout.write(args.json ? `${JSON.stringify(report, null, 2)}\n` : md);
   process.stderr.write(
-    `[proof-candidates] wrote ${path.relative(ROOT, jsonPath).replace(/\\/g, "/")} and ${path.relative(ROOT, mdPath).replace(/\\/g, "/")}\n`,
+    `[proof-candidates] wrote ${path.relative(ROOT, jsonPath).replace(/\\/g, "/")}, ${path.relative(ROOT, mdPath).replace(/\\/g, "/")}, ${path.relative(ROOT, packetJsonPath).replace(/\\/g, "/")} and ${path.relative(ROOT, packetMdPath).replace(/\\/g, "/")}\n`,
   );
 }
 

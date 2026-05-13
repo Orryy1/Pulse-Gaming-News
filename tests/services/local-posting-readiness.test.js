@@ -90,6 +90,34 @@ test("local posting readiness is green when local primary route is actually read
   assert.deepEqual(report.blockers, []);
 });
 
+test("local posting readiness treats public local health as an active tunnel", () => {
+  const report = buildLocalPostingReadiness({
+    cutoverPlan: {
+      verdict: "red",
+      env: {
+        duplicate_keys: [],
+        flags: {
+          primary: false,
+          use_job_queue: true,
+          auto_publish: true,
+        },
+      },
+      cloudflared: { tunnel_info: "Your tunnel does not have any active connection." },
+      health: {
+        local: { ok: true, status: 200, json: { deployment: { mode: "local", primary: false } } },
+        public: { ok: true, status: 200, json: { deployment: { mode: "local", primary: false } } },
+      },
+    },
+    ttsReport: greenTts(),
+  });
+
+  assert.equal(report.verdict, "amber");
+  assert.equal(report.readiness.public_health, true);
+  assert.equal(report.readiness.tunnel_connected, true);
+  assert.ok(!report.blockers.includes("pulse.orryy.com Cloudflare tunnel is not connected to this PC"));
+  assert.ok(report.blockers.includes("local instance is still mirror mode, not primary"));
+});
+
 test("local posting readiness blocks if Liam proof batch is missing", () => {
   const report = buildLocalPostingReadiness({
     cutoverPlan: {

@@ -1,6 +1,6 @@
 # Local TTS Overnight Report
 
-Generated: 2026-05-12T23:32:21.502Z
+Generated: 2026-05-13T00:09:18.230Z
 Verdict: GREEN
 Expected local voice: pulse-sleepy-liam-20260502
 Local proof preferred duration: 64-70s preferred, 61-75s accepted

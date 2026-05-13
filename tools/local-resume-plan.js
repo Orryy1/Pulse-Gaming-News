@@ -8,6 +8,7 @@ const {
   buildLocalResumePlan,
   formatLocalResumePlanMarkdown,
 } = require("../lib/ops/local-resume-plan");
+const { buildLocalPostingReadiness } = require("../lib/ops/local-posting-readiness");
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
@@ -21,12 +22,27 @@ async function readJsonIfExists(filePath) {
   }
 }
 
+function hasUsablePostingReadiness(report = {}) {
+  return Boolean(report && report.verdict && report.readiness);
+}
+
+async function resolveLocalPostingReadiness(outDir = OUT) {
+  const current = await readJsonIfExists(path.join(outDir, "local_posting_readiness.json"));
+  if (hasUsablePostingReadiness(current)) return current;
+
+  return buildLocalPostingReadiness({
+    cutoverPlan: await readJsonIfExists(path.join(outDir, "local_cutover_plan.json")),
+    primaryReadiness: await readJsonIfExists(path.join(outDir, "local_primary_readiness.json")),
+    ttsReport: await readJsonIfExists(path.join(outDir, "local_tts_overnight_report.json")),
+  });
+}
+
 async function main() {
   const jsonOnly = process.argv.includes("--json");
   await fs.ensureDir(OUT);
 
   const report = buildLocalResumePlan({
-    localPostingReadiness: await readJsonIfExists(path.join(OUT, "local_posting_readiness.json")),
+    localPostingReadiness: await resolveLocalPostingReadiness(OUT),
     platformDoctor: await readJsonIfExists(path.join(OUT, "platform_readiness_doctor.json")),
     socialOps: await readJsonIfExists(path.join(OUT, "social_platform_operations.json")),
     proofCandidates: await readJsonIfExists(path.join(OUT, "studio_v2_proof_candidates.json")),
@@ -59,4 +75,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { readJsonIfExists };
+module.exports = { hasUsablePostingReadiness, readJsonIfExists, resolveLocalPostingReadiness };

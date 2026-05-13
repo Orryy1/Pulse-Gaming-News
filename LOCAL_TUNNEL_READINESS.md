@@ -1,7 +1,7 @@
 # Local Tunnel Readiness
 
-Generated: 2026-05-13T00:01:08.399Z
-Verdict: RED
+Generated: 2026-05-13T00:04:31.887Z
+Verdict: GREEN
 Safety: read-only; does not start Cloudflare, change DNS, edit env vars, start jobs, post or mutate tokens
 
 ## Cloudflared
@@ -16,13 +16,9 @@ Safety: read-only; does not start Cloudflare, change DNS, edit env vars, start j
 - actual route: http://localhost:3001
 
 ## Connection And Health
-- tunnel status: inactive
+- tunnel status: active
 - local health: pass
-- public health: fail:530
-
-## Blockers
-- pulse-gaming-local tunnel has no active Cloudflare connection
-- public /api/health is not reachable through pulse.orryy.com
+- public health: pass
 
 ## Controlled Start Command
 - cloudflared tunnel --config D:/pulse-data/cloudflared-pulse.yml run pulse-gaming-local

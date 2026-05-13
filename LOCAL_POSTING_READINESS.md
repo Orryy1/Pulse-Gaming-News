@@ -1,6 +1,6 @@
 # Local Posting Readiness
 
-Generated: 2026-05-12T23:52:07.801Z
+Generated: 2026-05-13T00:10:04.057Z
 Verdict: AMBER
 Status: local_foundation_ready_cutover_blocked
 Safety: read-only report; does not edit .env, start primary jobs, post, mutate DB, touch Railway or trigger OAuth
@@ -12,8 +12,8 @@ Safety: read-only report; does not edit .env, start primary jobs, post, mutate D
 
 ## Readiness
 - local_health: true
-- public_health: false
-- tunnel_connected: false
+- public_health: true
+- tunnel_connected: true
 - duplicate_control_keys: none
 - primary_enabled: false
 - queue_enabled: false
@@ -22,15 +22,12 @@ Safety: read-only report; does not edit .env, start primary jobs, post, mutate D
 - local_voice_ready_count: 6
 
 ## Blockers
-- pulse.orryy.com Cloudflare tunnel is not connected to this PC
-- public pulse.orryy.com health check is not reaching local Pulse
 - local instance is still mirror mode, not primary
 - local job queue is disabled
 - local AUTO_PUBLISH is disabled
 
 ## Warnings
 - local TTS has recovered from at least one timeout; keep the supervisor/watchdog enabled
-- local cutover plan is still red; use it as the authoritative blocker list before posting
 
 ## Next Steps
 - Keep Railway as standby only; do not restore it as the active publisher for cost reasons.

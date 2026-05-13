@@ -6,6 +6,7 @@ const {
   formatLocalResumePlanMarkdown,
   summarizeProofCandidates,
 } = require("../../lib/ops/local-resume-plan");
+const { resolveLocalPostingReadiness } = require("../../tools/local-resume-plan");
 
 function greenLocalPosting() {
   return {
@@ -90,6 +91,71 @@ test("local resume plan keeps Railway standby and ElevenLabs temporary", () => {
     report.blockers.includes("duplicate local control switches in .env: AUTO_PUBLISH, USE_JOB_QUEUE"),
   );
   assert.equal(report.platforms.tiktok.blocks_core_resume, false);
+});
+
+test("local resume plan consumes amber posting readiness deterministically", () => {
+  const report = buildLocalResumePlan({
+    generatedAt: "2026-05-12T22:00:00.000Z",
+    localPostingReadiness: {
+      verdict: "amber",
+      status: "local_foundation_ready_cutover_blocked",
+      readiness: {
+        local_health: true,
+        public_health: true,
+        tunnel_connected: true,
+        primary_enabled: false,
+        queue_enabled: true,
+        auto_publish_enabled: true,
+        duplicate_control_keys: [],
+        local_tts_green: true,
+        local_voice_ready_count: 6,
+      },
+      blockers: ["local instance is still mirror mode, not primary"],
+    },
+    socialOps: workingSocialOps(),
+    ttsReport: greenTts(),
+  });
+
+  assert.equal(report.verdict, "amber");
+  assert.equal(report.readiness.local_posting_verdict, "AMBER");
+  assert.equal(report.readiness.local_health, true);
+  assert.equal(report.readiness.public_health, true);
+  assert.equal(report.readiness.tunnel_connected, true);
+  assert.ok(report.blockers.includes("local instance is still mirror mode, not primary"));
+  assert.ok(!report.blockers.includes("local posting readiness is unknown, not green"));
+});
+
+test("local resume plan tool derives amber posting readiness when the readiness report is missing", async (t) => {
+  const fs = require("fs-extra");
+  const path = require("node:path");
+  const os = require("node:os");
+  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-resume-readiness-"));
+  t.after(() => fs.remove(outDir));
+
+  await fs.writeJson(path.join(outDir, "local_cutover_plan.json"), {
+    verdict: "red",
+    env: {
+      duplicate_keys: [],
+      flags: {
+        primary: false,
+        use_job_queue: true,
+        auto_publish: true,
+      },
+    },
+    cloudflared: { tunnel_info: "Your tunnel does not have any active connection." },
+    health: {
+      local: { ok: true, status: 200, json: { deployment: { mode: "local", primary: false } } },
+      public: { ok: true, status: 200, json: { deployment: { mode: "local", primary: false } } },
+    },
+  });
+  await fs.writeJson(path.join(outDir, "local_tts_overnight_report.json"), greenTts());
+
+  const readiness = await resolveLocalPostingReadiness(outDir);
+
+  assert.equal(readiness.verdict, "amber");
+  assert.equal(readiness.readiness.local_health, true);
+  assert.equal(readiness.readiness.public_health, true);
+  assert.equal(readiness.readiness.tunnel_connected, true);
 });
 
 test("local resume plan can go green without TikTok direct posting", () => {

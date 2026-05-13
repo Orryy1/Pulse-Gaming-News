@@ -43,3 +43,11 @@ test("audio.js rechecks regenerated audio duration, not the stale first pass", (
   assert.match(AUDIO, /let\s+totalDuration\s*=\s*audioDuration\s*\+\s*BUMPER_DURATION/);
   assert.match(AUDIO, /totalDuration\s*=\s*newDuration\s*\+\s*BUMPER_DURATION/);
 });
+
+test("audio.js retries too-short regenerated audio until the configured cap", () => {
+  assert.match(
+    AUDIO,
+    /while\s*\(\s*totalDuration\s*<\s*MIN_TOTAL_DURATION\s*&&\s*regenAttempts\s*<\s*MAX_REGEN\s*\)/,
+  );
+  assert.match(AUDIO, /Regenerating longer script \(attempt \$\{regenAttempts\}\/\$\{MAX_REGEN\}\)/);
+});

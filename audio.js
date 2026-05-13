@@ -949,7 +949,7 @@ async function generateAudio() {
       let totalDuration = audioDuration + BUMPER_DURATION;
       story.audio_duration = audioDuration;
 
-      if (totalDuration < MIN_TOTAL_DURATION && regenAttempts < MAX_REGEN) {
+      while (totalDuration < MIN_TOTAL_DURATION && regenAttempts < MAX_REGEN) {
         regenAttempts++;
         console.log(
           `[audio] WARNING: ${story.id} is ${totalDuration.toFixed(1)}s (need ${MIN_TOTAL_DURATION}s). Regenerating longer script (attempt ${regenAttempts}/${MAX_REGEN})...`,
@@ -1027,8 +1027,11 @@ async function generateAudio() {
             `[audio] Regen parse failed, keeping original: ${parseErr.message}`,
           );
           story.duration_warning = true;
+          break;
         }
-      } else if (totalDuration < MIN_TOTAL_DURATION) {
+      }
+
+      if (totalDuration < MIN_TOTAL_DURATION) {
         console.log(
           `[audio] WARNING: ${story.id} is ${totalDuration.toFixed(1)}s (need ${MIN_TOTAL_DURATION}s) but max regen attempts (${MAX_REGEN}) reached - accepting as-is`,
         );

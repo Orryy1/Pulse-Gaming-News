@@ -1,6 +1,6 @@
 # Local Resume Posting Plan
 
-Generated: 2026-05-13T00:10:04.080Z
+Generated: 2026-05-13T00:14:08.464Z
 Verdict: AMBER
 Status: local_resume_blocked_but_recoverable
 Safety: read-only plan; does not edit .env, start Cloudflare, switch primary, mutate tokens, post, touch Railway or trigger OAuth

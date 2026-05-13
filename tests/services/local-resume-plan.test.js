@@ -7,7 +7,10 @@ const {
   summarizeProofCandidates,
   summarizeLocalTtsProofReports,
 } = require("../../lib/ops/local-resume-plan");
-const { resolveLocalPostingReadiness } = require("../../tools/local-resume-plan");
+const {
+  resolveLocalPostingReadiness,
+  resolveLocalTtsProofReports,
+} = require("../../tools/local-resume-plan");
 
 function greenLocalPosting() {
   return {
@@ -206,6 +209,39 @@ test("local resume plan tool rebuilds posting readiness instead of trusting stal
   assert.equal(readiness.readiness.local_health, true);
   assert.equal(readiness.readiness.primary_enabled, true);
   assert.deepEqual(readiness.blockers, []);
+});
+
+test("local resume plan tool loads local Liam proof reports from output", async (t) => {
+  const fs = require("fs-extra");
+  const path = require("node:path");
+  const os = require("node:os");
+  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-resume-proofs-"));
+  t.after(() => fs.remove(outDir));
+
+  await fs.writeJson(path.join(outDir, "local_media_repair_audio_apply.json"), {
+    applied: [
+      {
+        story_id: "ready_audio",
+        output_audio_path: "test/output/local-media-repair/audio/ready_audio_liam.mp3",
+        duration_seconds: 68.4,
+        duration_verdict: "pass",
+        failure_code: null,
+        local_voice_metadata: "stamped",
+        local_voice_reference: { id: "pulse-sleepy-liam-20260502", referencePresent: true },
+      },
+    ],
+  });
+
+  const reports = await resolveLocalTtsProofReports(outDir);
+  const resume = buildLocalResumePlan({
+    localPostingReadiness: greenLocalPosting(),
+    socialOps: workingSocialOps(),
+    ttsReport: greenTts(),
+    localTtsProofReports: reports,
+  });
+
+  assert.equal(resume.local_voice_proofs.approved_audio_proof_count, 1);
+  assert.equal(resume.local_voice_proofs.ready_for_local_rerender[0].story_id, "ready_audio");
 });
 
 test("local resume plan can go green without TikTok direct posting", () => {

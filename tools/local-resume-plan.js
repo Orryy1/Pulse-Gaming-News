@@ -9,6 +9,7 @@ const {
   formatLocalResumePlanMarkdown,
 } = require("../lib/ops/local-resume-plan");
 const { buildLocalPostingReadiness } = require("../lib/ops/local-posting-readiness");
+const { loadLocalTtsProofReports } = require("../lib/studio/local-tts-proof-report-loader");
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
@@ -48,6 +49,10 @@ async function resolveLocalPostingReadiness(outDir = OUT) {
   });
 }
 
+async function resolveLocalTtsProofReports(outDir = OUT) {
+  return loadLocalTtsProofReports({ outDir });
+}
+
 async function main() {
   const jsonOnly = process.argv.includes("--json");
   await fs.ensureDir(OUT);
@@ -58,6 +63,7 @@ async function main() {
     socialOps: await readJsonIfExists(path.join(OUT, "social_platform_operations.json")),
     proofCandidates: await readJsonIfExists(path.join(OUT, "studio_v2_proof_candidates.json")),
     ttsReport: await readJsonIfExists(path.join(OUT, "local_tts_overnight_report.json")),
+    localTtsProofReports: await resolveLocalTtsProofReports(OUT),
   });
 
   const markdown = formatLocalResumePlanMarkdown(report);
@@ -86,4 +92,9 @@ if (require.main === module) {
   });
 }
 
-module.exports = { hasUsablePostingReadiness, readJsonIfExists, resolveLocalPostingReadiness };
+module.exports = {
+  hasUsablePostingReadiness,
+  readJsonIfExists,
+  resolveLocalPostingReadiness,
+  resolveLocalTtsProofReports,
+};

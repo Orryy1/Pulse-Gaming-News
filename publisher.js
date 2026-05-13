@@ -1840,11 +1840,12 @@ async function _publishNextStoryInner() {
         `[publisher] Instagram Story: already posted (${story.instagram_story_id})`,
       );
     } else {
+      const {
+        uploadStoryImage: igStory,
+        isInstagramPendingProcessingTimeout:
+          isInstagramPendingProcessingTimeoutForStory,
+      } = require("./upload_instagram");
       try {
-        const {
-          uploadStoryImage: igStory,
-          isInstagramPendingProcessingTimeout,
-        } = require("./upload_instagram");
         const igStoryResult = await igStory(story);
         story.instagram_story_id = igStoryResult.mediaId;
         result.fallbacks.instagram_story = true;
@@ -1858,7 +1859,7 @@ async function _publishNextStoryInner() {
         );
         result.errors.instagram_story = err.message;
         result.platform_outcomes.instagram_story =
-          isInstagramPendingProcessingTimeout(err)
+          isInstagramPendingProcessingTimeoutForStory(err)
             ? "accepted_processing"
             : "failed";
       }

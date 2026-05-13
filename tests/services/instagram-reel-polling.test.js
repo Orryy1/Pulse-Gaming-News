@@ -26,6 +26,10 @@ const SRC = fs.readFileSync(
   path.join(__dirname, "..", "..", "upload_instagram.js"),
   "utf8",
 );
+const PUBLISHER_SRC = fs.readFileSync(
+  path.join(__dirname, "..", "..", "publisher.js"),
+  "utf8",
+);
 
 test("Instagram Reel polling requests accepted Graph container status fields", () => {
   assert.equal(INSTAGRAM_CONTAINER_STATUS_FIELDS, "status_code,status");
@@ -246,4 +250,20 @@ test("publish summary renders IG pending processing as pending, not generic fail
   assert.match(summary.message, /container_id=1790/);
   assert.match(summary.message, /FB Reel/);
   assert.match(summary.message, /page_not_eligible/);
+});
+
+test("publisher fallback catch can classify Instagram Story pending timeouts", () => {
+  assert.match(
+    PUBLISHER_SRC,
+    /isInstagramPendingProcessingTimeout:\s*isInstagramPendingProcessingTimeoutForStory/,
+  );
+  assert.match(
+    PUBLISHER_SRC,
+    /isInstagramPendingProcessingTimeoutForStory\(err\)\s*\?\s*"accepted_processing"/,
+  );
+  assert.doesNotMatch(
+    PUBLISHER_SRC,
+    /catch\s*\(err\)\s*\{[\s\S]{0,260}isInstagramPendingProcessingTimeout\(err\)/,
+    "catch blocks must not reference a helper scoped only inside the preceding try block",
+  );
 });

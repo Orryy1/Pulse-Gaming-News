@@ -68,13 +68,13 @@ Recommendation: defer production deployment until the current readiness gates ar
 
 Decision needed: approve or defer switching the PC/local stack into the live primary role.
 
-Current state from local posting readiness on 2026-05-12: the local foundation is present but cutover is blocked by duplicate local control switches in `.env`, public `pulse.orryy.com` health not reaching local Pulse, a disconnected Cloudflare tunnel and mirror-mode flags (`PULSE_PRIMARY_INSTANCE=false`, `USE_JOB_QUEUE=false`, `AUTO_PUBLISH=false`). Railway should remain optional/standby, not the always-on publisher.
+Current state from local posting readiness on 2026-05-12: the local foundation is present. Duplicate local control switches have been cleaned locally. Cutover is now blocked by public `pulse.orryy.com` health not reaching local Pulse, a disconnected Cloudflare tunnel and mirror-mode flags (`PULSE_PRIMARY_INSTANCE=false`, `USE_JOB_QUEUE=false`, `AUTO_PUBLISH=false`). Railway should remain optional/standby, not the always-on publisher.
 
-Read-only env cleanup plan: keep `AUTO_PUBLISH=false` on line 57 and `USE_JOB_QUEUE=false` on line 58; comment/remove stale duplicate lines 16 and 50. Do not edit secret values from this report.
+Read-only tunnel readiness: `cloudflared` is installed, the Pulse config exists at `D:/pulse-data/cloudflared-pulse.yml`, the credentials file is present and `pulse.orryy.com` routes to `http://localhost:3001`. The blocker is that the tunnel has no active connection.
 
 Why it matters: the channel will not post consistently until one instance is primary. If Railway stays non-primary, the local PC must run scheduler, queue runner and uploads.
 
-What changes: local `.env` would eventually need live-primary values (`DEPLOYMENT_MODE=local`, `PULSE_PRIMARY_INSTANCE=true`, `USE_JOB_QUEUE=true`, `AUTO_PUBLISH=true`) after local health, Cloudflare/public URL, OAuth callbacks, token paths, DB path and media paths pass readiness checks.
+What changes: first start the existing Cloudflare tunnel and verify public health still reports `mode=local` and `primary=false`. Local `.env` would eventually need live-primary values (`DEPLOYMENT_MODE=local`, `PULSE_PRIMARY_INSTANCE=true`, `USE_JOB_QUEUE=true`, `AUTO_PUBLISH=true`) after local health, Cloudflare/public URL, OAuth callbacks, token paths, DB path and media paths pass readiness checks.
 
 Risk: enabling local primary can upload to live social accounts. It also relies on the PC, local network, Cloudflare Tunnel/public URL and local storage staying online.
 

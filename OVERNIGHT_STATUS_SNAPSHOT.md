@@ -75,8 +75,9 @@ Generated: 2026-05-12
 
 ## Known Blockers
 
-- Local posting is cutover-blocked: duplicate `.env` control switches, disconnected Cloudflare tunnel/public health and mirror-mode flags.
-- `LOCAL_ENV_CLEANUP_PLAN.md` now gives the exact non-secret duplicate line cleanup plan for the local switches.
+- Local posting is cutover-blocked: disconnected Cloudflare tunnel/public health and mirror-mode flags.
+- Duplicate local `.env` control switches have been cleaned locally; `LOCAL_ENV_CLEANUP_PLAN.md` is now green for control switches.
+- `LOCAL_TUNNEL_READINESS.md` confirms the Pulse tunnel config is present and correct, but the tunnel has no active connection.
 - Studio V2 has no render-ready Flash Lane proof candidates yet because motion/source-diversity is still thin.
 - TikTok needs local token refresh/sync and a clean creative pack before official upload testing.
 - Facebook Reels is eligible but still needs controlled verification in the normal publisher path.

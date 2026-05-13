@@ -22,8 +22,8 @@ Date: 2026-05-12
 - `1t0zhng` now has accepted Liam audio and corrected exact-subject coverage, but still needs more motion/source diversity before a Flash Lane proof.
 - Facebook Reels is now graph-eligible from read-only inspection: a visible Reel/video exists, the page can post and the token has `publish_video`.
 - TikTok browser OAuth succeeded, but this repo's local TikTok token is expired and needs refresh/sync before official upload testing.
-- Local posting is cutover-blocked, not code-blocked: duplicate local control keys, disconnected Cloudflare tunnel/public health and mirror-mode flags still need a controlled local cutover.
-- A read-only `.env` cleanup plan now pinpoints the duplicate local switches without printing secrets: keep `AUTO_PUBLISH` line 57 and `USE_JOB_QUEUE` line 58, comment/remove stale lines 16 and 50.
+- Local posting is cutover-blocked, not code-blocked: the duplicate local control keys have been cleaned locally, and the remaining blockers are the disconnected Cloudflare tunnel/public health plus mirror-mode flags.
+- `LOCAL_TUNNEL_READINESS.md` confirms `cloudflared` is installed, the Pulse tunnel config and credentials are present, and `pulse.orryy.com` routes to `http://localhost:3001`; the tunnel simply has no active connection.
 
 ## Platform Readiness
 
@@ -37,6 +37,7 @@ Date: 2026-05-12
 
 - `LOCAL_POSTING_READINESS.md`
 - `LOCAL_ENV_CLEANUP_PLAN.md`
+- `LOCAL_TUNNEL_READINESS.md`
 - `LOCAL_TTS_OVERNIGHT_REPORT.md`
 - `OVERNIGHT_STATUS_SNAPSHOT.md`
 - `MORNING_APPROVAL_QUEUE.md`
@@ -46,11 +47,11 @@ Date: 2026-05-12
 
 ## Biggest Remaining Blocker
 
-The project is close to local posting, but the live route is blocked by cutover operations: `.env` duplicate control switches, Cloudflare tunnel/public health and local primary/queue/auto-publish flags. TikTok also needs local token refresh/sync before official upload tests.
+The project is close to local posting, but the live route is blocked by cutover operations: Cloudflare tunnel/public health and local primary/queue/auto-publish flags. TikTok also needs local token refresh/sync before official upload tests.
 
 ## Recommended Next Work
 
-1. Use `LOCAL_ENV_CLEANUP_PLAN.md` to safely remove duplicate local switch lines without touching secrets.
+1. Start the existing Cloudflare tunnel only in a controlled cutover window, then verify public health still reports local/mirror mode.
 2. Keep Studio V2 pilot blocked until a candidate has enough motion backbone and source diversity.
 3. Refresh/sync TikTok local token only under explicit no-post constraints, then test dispatch pack readiness without posting.
 4. Treat Facebook Reels as ready for controlled normal-publisher verification once local posting is green.

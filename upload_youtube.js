@@ -26,6 +26,26 @@ const CREDENTIALS_PATH = path.join(
 );
 const PLAYLIST_PATH = path.join(__dirname, "tokens", "youtube_playlists.json");
 
+const DEFAULT_YOUTUBE_UPLOAD_TIMEOUT_MS = 10 * 60 * 1000;
+
+function getYoutubeUploadTimeoutMs(env = process.env) {
+  const raw = Number(env.YOUTUBE_UPLOAD_TIMEOUT_MS);
+  if (Number.isFinite(raw) && raw >= 30000) return Math.floor(raw);
+  return DEFAULT_YOUTUBE_UPLOAD_TIMEOUT_MS;
+}
+
+function youtubeRequestOptions(env = process.env) {
+  return { timeout: getYoutubeUploadTimeoutMs(env) };
+}
+
+function useEnvRefreshToken(oauth2Client, reason = "env_refresh_token") {
+  const refreshToken = process.env.YOUTUBE_REFRESH_TOKEN;
+  if (!refreshToken) return false;
+  console.log(`[youtube] Using refresh token from env (${reason})...`);
+  oauth2Client.setCredentials({ refresh_token: refreshToken });
+  return true;
+}
+
 // --- Playlist definitions ---
 const PLAYLIST_DEFS = [
   {
@@ -103,16 +123,22 @@ async function getAuthClient() {
 
     if (token.expiry_date && Date.now() > token.expiry_date - 60000) {
       console.log("[youtube] Refreshing expired token...");
-      const { credentials: newToken } = await oauth2Client.refreshAccessToken();
-      await fs.ensureDir(path.dirname(TOKEN_PATH));
-      await fs.writeJson(TOKEN_PATH, newToken, { spaces: 2 });
-      oauth2Client.setCredentials(newToken);
+      try {
+        const { credentials: newToken } =
+          await oauth2Client.refreshAccessToken();
+        await fs.ensureDir(path.dirname(TOKEN_PATH));
+        await fs.writeJson(TOKEN_PATH, newToken, { spaces: 2 });
+        oauth2Client.setCredentials(newToken);
+      } catch (err) {
+        if (useEnvRefreshToken(oauth2Client, "file_token_refresh_failed")) {
+          return oauth2Client;
+        }
+        throw err;
+      }
     }
 
     return oauth2Client;
-  } else if (refreshToken) {
-    console.log("[youtube] Using refresh token from env...");
-    oauth2Client.setCredentials({ refresh_token: refreshToken });
+  } else if (useEnvRefreshToken(oauth2Client)) {
     return oauth2Client;
   }
 
@@ -509,18 +535,24 @@ async function uploadShort(story) {
 
       // YouTube-side dedup: check recent uploads for similar titles before uploading
       try {
-        const ch = await youtube.channels.list({
-          part: ["contentDetails"],
-          mine: true,
-        });
+        const ch = await youtube.channels.list(
+          {
+            part: ["contentDetails"],
+            mine: true,
+          },
+          youtubeRequestOptions(),
+        );
         const uploadsPlaylist =
           ch.data.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
         if (uploadsPlaylist) {
-          const recent = await youtube.playlistItems.list({
-            part: ["snippet"],
-            playlistId: uploadsPlaylist,
-            maxResults: 50,
-          });
+          const recent = await youtube.playlistItems.list(
+            {
+              part: ["snippet"],
+              playlistId: uploadsPlaylist,
+              maxResults: 50,
+            },
+            youtubeRequestOptions(),
+          );
           const recentTitles = (recent.data.items || []).map(
             (v) => v.snippet.title,
           );
@@ -633,28 +665,31 @@ async function uploadShort(story) {
 
       console.log(`[youtube] Uploading: "${title}"`);
 
-      const response = await youtube.videos.insert({
-        part: ["snippet", "status"],
-        requestBody: {
-          snippet: {
-            title,
-            description,
-            tags,
-            categoryId:
-              require("./channels").getChannel().youtubeCategory || "20",
-            defaultLanguage: "en",
-            defaultAudioLanguage: "en",
+      const response = await youtube.videos.insert(
+        {
+          part: ["snippet", "status"],
+          requestBody: {
+            snippet: {
+              title,
+              description,
+              tags,
+              categoryId:
+                require("./channels").getChannel().youtubeCategory || "20",
+              defaultLanguage: "en",
+              defaultAudioLanguage: "en",
+            },
+            status: {
+              privacyStatus: "public",
+              selfDeclaredMadeForKids: false,
+              embeddable: true,
+            },
           },
-          status: {
-            privacyStatus: "public",
-            selfDeclaredMadeForKids: false,
-            embeddable: true,
+          media: {
+            body: fs.createReadStream(exportedAbs || story.exported_path),
           },
         },
-        media: {
-          body: fs.createReadStream(exportedAbs || story.exported_path),
-        },
-      });
+        youtubeRequestOptions(),
+      );
 
       const videoId = response.data.id;
       console.log(`[youtube] Uploaded: https://youtube.com/shorts/${videoId}`);
@@ -707,15 +742,18 @@ async function uploadShort(story) {
                 `[youtube] Custom thumbnail QA warnings: ${thumbQa.warnings.join(", ")}`,
               );
             }
-            await youtube.thumbnails.set({
-              videoId,
-              media: {
-                mimeType: thumbPath.endsWith(".jpg")
-                  ? "image/jpeg"
-                  : "image/png",
-                body: fs.createReadStream(thumbPath),
+            await youtube.thumbnails.set(
+              {
+                videoId,
+                media: {
+                  mimeType: thumbPath.endsWith(".jpg")
+                    ? "image/jpeg"
+                    : "image/png",
+                  body: fs.createReadStream(thumbPath),
+                },
               },
-            });
+              youtubeRequestOptions(),
+            );
             console.log(
               `[youtube] Custom thumbnail set from ${path.basename(thumbPath)}`,
             );
@@ -730,19 +768,22 @@ async function uploadShort(story) {
       // Post pinned comment
       if (story.pinned_comment) {
         try {
-          const commentResponse = await youtube.commentThreads.insert({
-            part: ["snippet"],
-            requestBody: {
-              snippet: {
-                videoId,
-                topLevelComment: {
-                  snippet: {
-                    textOriginal: story.pinned_comment,
+          const commentResponse = await youtube.commentThreads.insert(
+            {
+              part: ["snippet"],
+              requestBody: {
+                snippet: {
+                  videoId,
+                  topLevelComment: {
+                    snippet: {
+                      textOriginal: story.pinned_comment,
+                    },
                   },
                 },
               },
             },
-          });
+            youtubeRequestOptions(),
+          );
           console.log(`[youtube] Pinned comment posted`);
         } catch (err) {
           console.log(
@@ -757,7 +798,7 @@ async function uploadShort(story) {
         url: `https://youtube.com/shorts/${videoId}`,
       };
     },
-    { label: "youtube upload" },
+    { label: "youtube upload", platform: "youtube" },
   );
 }
 
@@ -952,27 +993,30 @@ async function uploadLongform(compilation) {
 
   console.log(`[youtube] Uploading longform: "${title}"`);
 
-  const response = await youtube.videos.insert({
-    part: ["snippet", "status"],
-    requestBody: {
-      snippet: {
-        title,
-        description,
-        tags,
-        categoryId: channel.youtubeCategory || "20",
-        defaultLanguage: "en",
-        defaultAudioLanguage: "en",
+  const response = await youtube.videos.insert(
+    {
+      part: ["snippet", "status"],
+      requestBody: {
+        snippet: {
+          title,
+          description,
+          tags,
+          categoryId: channel.youtubeCategory || "20",
+          defaultLanguage: "en",
+          defaultAudioLanguage: "en",
+        },
+        status: {
+          privacyStatus: "public",
+          selfDeclaredMadeForKids: false,
+          embeddable: true,
+        },
       },
-      status: {
-        privacyStatus: "public",
-        selfDeclaredMadeForKids: false,
-        embeddable: true,
+      media: {
+        body: fs.createReadStream(videoPath),
       },
     },
-    media: {
-      body: fs.createReadStream(videoPath),
-    },
-  });
+    youtubeRequestOptions(),
+  );
 
   const videoId = response.data.id;
   const url = `https://youtube.com/watch?v=${videoId}`;
@@ -1005,6 +1049,8 @@ module.exports = {
   generateAuthUrl,
   exchangeCode,
   getAuthClient,
+  getYoutubeUploadTimeoutMs,
+  youtubeRequestOptions,
   ensurePlaylists,
   addToPlaylists,
 };

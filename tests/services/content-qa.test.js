@@ -178,6 +178,42 @@ test("runContentQa: overlong audio duration hard-fails before publish", async ()
   );
 });
 
+test("runContentQa: legacy approved off-topic entertainment fails topicality recheck", async () => {
+  const story = goodStory({
+    title: "House of the Dragon Season 3 Trailer and Launch Date Confirmed",
+  });
+  const qa = await runContentQa(story, {
+    fs: fakeFs({ [story.exported_path]: { size: 5 * 1024 * 1024 } }),
+  });
+
+  assert.strictEqual(qa.result, "fail");
+  assert.ok(
+    qa.failures.includes("pulse_gaming_off_topic_entertainment"),
+    `got: ${qa.failures.join(", ")}`,
+  );
+});
+
+test("runContentQa: gaming adaptation remains review warning, not topicality failure", async () => {
+  const story = goodStory({
+    title: "Elden Ring Movie Casting Update Names a New Actor",
+  });
+  const qa = await runContentQa(story, {
+    fs: fakeFs({ [story.exported_path]: { size: 5 * 1024 * 1024 } }),
+  });
+
+  assert.strictEqual(qa.result, "warn", JSON.stringify(qa));
+  assert.ok(
+    qa.warnings.includes(
+      "topicality_review:gaming_adaptation_needs_manual_review",
+    ),
+    `got: ${qa.warnings.join(", ")}`,
+  );
+  assert.ok(
+    !qa.failures.some((f) => f.startsWith("pulse_gaming_")),
+    `got: ${qa.failures.join(", ")}`,
+  );
+});
+
 test("runContentQa: pending Studio v2.1 render requires human visual review", async () => {
   const story = goodStory({
     render_engine: "studio-v21",

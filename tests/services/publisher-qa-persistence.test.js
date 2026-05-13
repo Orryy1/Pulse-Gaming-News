@@ -127,6 +127,21 @@ test("publisher.js: publishNextStory selector skips qa_failed and publish_status
     /if\s*\(\s*s\.publish_status\s*===\s*["']failed["']\s*\)\s*return\s+false/,
     "selector must skip stories with publish_status === 'failed'",
   );
+  assert.match(
+    block,
+    /if\s*\(\s*storyIsStaleUnpublishedBacklog\(s\)\s*\)\s*return\s+false/,
+    "selector must skip stale never-published backlog rows by default",
+  );
+  assert.match(
+    SRC,
+    /env\.ALLOW_STALE_BACKLOG_PUBLISH\s*===\s*["']true["']/,
+    "stale backlog guard must have an explicit operator override",
+  );
+  assert.match(
+    SRC,
+    /if\s*\(\s*storyIsRetry\(s\)\s*\)\s*return\s+false/,
+    "stale backlog guard must not block partial publish retries",
+  );
 });
 
 test("publisher.js: multi-candidate loop uses MAX_PUBLISH_CANDIDATES_PER_WINDOW cap and persists failures via persistQaFail", () => {

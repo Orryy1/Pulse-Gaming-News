@@ -811,6 +811,32 @@ function storyIsRetry(s) {
   return countStoryPlatformsDone(s) > 0;
 }
 
+function parseStoryPublishAgeMs(s, now = Date.now()) {
+  const raw =
+    s?.approved_at ||
+    s?.produced_at ||
+    s?.created_at ||
+    s?.timestamp ||
+    s?.updated_at;
+  const t = raw ? Date.parse(raw) : NaN;
+  if (!Number.isFinite(t)) return null;
+  return now - t;
+}
+
+function staleBacklogMaxAgeMs(env = process.env) {
+  const days = Number(env.PUBLISH_STALE_BACKLOG_MAX_DAYS);
+  const safeDays = Number.isFinite(days) && days >= 1 ? days : 7;
+  return safeDays * 24 * 60 * 60 * 1000;
+}
+
+function storyIsStaleUnpublishedBacklog(s, env = process.env, now = Date.now()) {
+  if (env.ALLOW_STALE_BACKLOG_PUBLISH === "true") return false;
+  if (storyIsRetry(s)) return false;
+  const ageMs = parseStoryPublishAgeMs(s, now);
+  if (ageMs === null) return false;
+  return ageMs > staleBacklogMaxAgeMs(env);
+}
+
 /**
  * Persist a QA hard-fail on the story row and return the structured
  * row suitable for the no-safe-candidate summary. Extracted so the
@@ -1002,6 +1028,7 @@ async function _publishNextStoryInner() {
     if (!s.approved || !s.exported_path) return false;
     if (s.qa_failed === true) return false;
     if (s.publish_status === "failed") return false;
+    if (storyIsStaleUnpublishedBacklog(s)) return false;
     return !storyCorePublishComplete(s);
   });
 

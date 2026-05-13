@@ -144,6 +144,22 @@ test("publisher.js: publishNextStory selector skips qa_failed and publish_status
   );
 });
 
+test("publisher.js: duplicate published-story gate runs before upload", () => {
+  const idx = SRC.indexOf("findPublishedTitleDuplicate(candidate, stories)");
+  assert.ok(idx > 0, "published duplicate gate must exist in candidate loop");
+  const block = SRC.slice(idx, idx + 1200);
+  assert.match(
+    block,
+    /published_duplicate_story:/,
+    "duplicate gate must persist a clear publish_error reason",
+  );
+  assert.match(
+    block,
+    /continue;/,
+    "duplicate gate must skip to the next candidate without uploading",
+  );
+});
+
 test("publisher.js: multi-candidate loop uses MAX_PUBLISH_CANDIDATES_PER_WINDOW cap and persists failures via persistQaFail", () => {
   // Anchor on the constant declaration to make sure it exists with
   // a concrete number (not inferred). 3 ≤ cap ≤ 10 is a sanity
@@ -1000,6 +1016,44 @@ test("publishNextStory: local TikTok disabled does not retry YT/IG/FB-complete s
     if (previous === undefined) delete process.env.TIKTOK_ENABLED;
     else process.env.TIKTOK_ENABLED = previous;
   }
+});
+
+test("publishNextStory: near-duplicate already-published story is QA-blocked before upload", async () => {
+  const published = {
+    id: "dead-space-a",
+    title:
+      '"The Numbers Aren\'t There" for Dead Space 4 to Happen, Says Former Dead Space Writer and Producer',
+    approved: true,
+    exported_path: "/tmp/a.mp4",
+    publish_status: "published",
+    youtube_post_id: "yt_dead_space",
+    instagram_media_id: "ig",
+    facebook_post_id: "fb",
+  };
+  const duplicate = {
+    id: "dead-space-b",
+    title:
+      "Dead Space 4 likely won’t happen despite a fervent fan base as it can't hit the numbers it needs, explains original producer",
+    approved: true,
+    exported_path: "/tmp/b.mp4",
+  };
+  const { publishNextStory, _private } = setupMocks({
+    cqaResult: { result: "pass", failures: [], warnings: [] },
+    vqaResult: { result: "pass", failures: [], warnings: [] },
+    stories: [published, duplicate],
+  });
+
+  assert.equal(_private.titlesNearDuplicate(published.title, duplicate.title), true);
+
+  const result = await publishNextStory();
+  assert.equal(result.no_safe_candidate, true);
+  assert.equal(result.qa_skipped_count, 1);
+  assert.match(result.top_reason, /published_duplicate_story:dead-space-a/);
+  assert.deepStrictEqual(uploaderCalls, []);
+  const persisted = dbState.upsertCalls[dbState.upsertCalls.length - 1];
+  assert.equal(persisted.id, "dead-space-b");
+  assert.equal(persisted.qa_failed, true);
+  assert.match(persisted.publish_error, /published_duplicate_story:dead-space-a/);
 });
 
 test("publishNextStory: no-safe-candidate return shape carries top_reason + qa_skipped for callers", async () => {

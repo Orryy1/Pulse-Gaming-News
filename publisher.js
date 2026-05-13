@@ -20,6 +20,131 @@ function titlesSimilar(a, b) {
   return intersection.length / union.size > 0.5;
 }
 
+const TITLE_DEDUPE_STOPWORDS = new Set(
+  [
+    "the",
+    "a",
+    "an",
+    "and",
+    "or",
+    "but",
+    "if",
+    "then",
+    "for",
+    "to",
+    "of",
+    "in",
+    "on",
+    "at",
+    "as",
+    "it",
+    "its",
+    "is",
+    "are",
+    "was",
+    "were",
+    "be",
+    "been",
+    "being",
+    "has",
+    "have",
+    "had",
+    "with",
+    "by",
+    "from",
+    "into",
+    "out",
+    "up",
+    "down",
+    "this",
+    "that",
+    "these",
+    "those",
+    "he",
+    "she",
+    "they",
+    "them",
+    "their",
+    "his",
+    "her",
+    "our",
+    "your",
+    "you",
+    "we",
+    "us",
+    "not",
+    "no",
+    "likely",
+    "despite",
+    "says",
+    "said",
+    "explains",
+    "former",
+    "original",
+    "just",
+    "new",
+    "will",
+    "would",
+    "could",
+    "should",
+    "can",
+    "cant",
+    "cannot",
+    "wont",
+    "arent",
+    "there",
+  ].map((word) => word.toLowerCase()),
+);
+
+function titleDedupeTokens(title) {
+  return [
+    ...new Set(
+      String(title || "")
+        .toLowerCase()
+        .replace(/[’‘]/g, "'")
+        .replace(/can't/g, "cant")
+        .replace(/won't/g, "wont")
+        .replace(/aren't/g, "arent")
+        .replace(/[^a-z0-9]+/g, " ")
+        .split(/\s+/)
+        .filter((token) => token.length >= 3)
+        .filter((token) => !TITLE_DEDUPE_STOPWORDS.has(token)),
+    ),
+  ];
+}
+
+function titleDedupeScore(a, b) {
+  const wordsA = titleDedupeTokens(a);
+  const wordsB = titleDedupeTokens(b);
+  if (wordsA.length === 0 || wordsB.length === 0) return 0;
+  const setB = new Set(wordsB);
+  const intersection = wordsA.filter((word) => setB.has(word));
+  const union = new Set([...wordsA, ...wordsB]);
+  return intersection.length / union.size;
+}
+
+function titlesNearDuplicate(a, b) {
+  if (titlesSimilar(a, b)) return true;
+  const wordsA = titleDedupeTokens(a);
+  const wordsB = titleDedupeTokens(b);
+  if (wordsA.length === 0 || wordsB.length === 0) return false;
+  const setB = new Set(wordsB);
+  const shared = wordsA.filter((word) => setB.has(word));
+  return shared.length >= 5 && titleDedupeScore(a, b) >= 0.42;
+}
+
+function findPublishedTitleDuplicate(story, stories, platformIdKey = "youtube_post_id") {
+  return (Array.isArray(stories) ? stories : []).find(
+    (candidate) =>
+      candidate &&
+      candidate.id !== story.id &&
+      typeof candidate[platformIdKey] === "string" &&
+      candidate[platformIdKey].length > 0 &&
+      !candidate[platformIdKey].startsWith("DUPE_") &&
+      titlesNearDuplicate(candidate.title, story.title),
+  );
+}
+
 /**
  * Phase 2C shadow check. Logs what lib/services/publish-dedupe would
  * decide for (story, platform) without changing any behaviour. Gated
@@ -1065,6 +1190,22 @@ async function _publishNextStoryInner() {
         `"${candidate.title}" (score: ${candidate.breaking_score || candidate.score || 0})`,
     );
 
+    const publishedDuplicate = findPublishedTitleDuplicate(candidate, stories);
+    if (publishedDuplicate) {
+      const skipped = await persistQaFail(candidate, {
+        failures: [
+          `published_duplicate_story:${publishedDuplicate.id}:${publishedDuplicate.title}`,
+        ],
+        warnings: [],
+        source: "content",
+      });
+      qaSkipped.push(skipped);
+      console.log(
+        `[publisher] Duplicate story blocked before upload: "${candidate.title}" ~ "${publishedDuplicate.title}"`,
+      );
+      continue;
+    }
+
     const strictVoiceQa = (() => {
       try {
         const { strictVoiceQaEnabled } = require("./lib/services/publish-voice-qa");
@@ -1311,7 +1452,7 @@ async function _publishNextStoryInner() {
     (s) =>
       s.id !== story.id &&
       s.youtube_post_id &&
-      titlesSimilar(s.title, story.title),
+      titlesNearDuplicate(s.title, story.title),
   );
   const ytPrior = getPlatformStatus({
     repos: pubRepos,
@@ -1396,7 +1537,7 @@ async function _publishNextStoryInner() {
     (s) =>
       s.id !== story.id &&
       s.tiktok_post_id &&
-      titlesSimilar(s.title, story.title),
+      titlesNearDuplicate(s.title, story.title),
   );
   const ttPrior = getPlatformStatus({
     repos: pubRepos,
@@ -1563,7 +1704,7 @@ async function _publishNextStoryInner() {
     (s) =>
       s.id !== story.id &&
       s.instagram_media_id &&
-      titlesSimilar(s.title, story.title),
+      titlesNearDuplicate(s.title, story.title),
   );
   const igPrior = getPlatformStatus({
     repos: pubRepos,
@@ -1669,7 +1810,7 @@ async function _publishNextStoryInner() {
     (s) =>
       s.id !== story.id &&
       s.facebook_post_id &&
-      titlesSimilar(s.title, story.title),
+      titlesNearDuplicate(s.title, story.title),
   );
   const fbPrior = getPlatformStatus({
     repos: pubRepos,
@@ -1758,7 +1899,7 @@ async function _publishNextStoryInner() {
     (s) =>
       s.id !== story.id &&
       s.twitter_post_id &&
-      titlesSimilar(s.title, story.title),
+      titlesNearDuplicate(s.title, story.title),
   );
   const twPrior = getPlatformStatus({
     repos: pubRepos,
@@ -2078,6 +2219,13 @@ module.exports = {
   fullAutonomousCycle,
   publishOnlyCycle,
   selfHealStaleMediaPaths,
+  _private: {
+    titlesSimilar,
+    titleDedupeTokens,
+    titleDedupeScore,
+    titlesNearDuplicate,
+    findPublishedTitleDuplicate,
+  },
 };
 
 if (require.main === module) {

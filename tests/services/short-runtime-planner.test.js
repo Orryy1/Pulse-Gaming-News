@@ -28,10 +28,10 @@ test("short runtime planner: 75s upper edge passes Flash Lane", () => {
 test("short runtime planner: 90s script is review, not normal Short audio", () => {
   const plan = classifyShortScriptRuntime({ wordCount: 132 });
   assert.equal(plan.result, "review");
-  assert.equal(plan.route, "review_or_briefing");
+  assert.equal(plan.route, "extended_or_briefing");
   assert.equal(plan.shouldGenerateShortAudio, false);
   assert.ok(
-    plan.warnings.some((w) => w.startsWith("script_runtime_review_required")),
+    plan.warnings.some((w) => w.startsWith("script_runtime_extended_review_required")),
   );
 });
 

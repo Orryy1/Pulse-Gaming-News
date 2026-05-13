@@ -38,3 +38,8 @@ test("audio.js blocks generated overlong audio before render", () => {
   assert.match(AUDIO, /duration_contract_post_tts/);
   assert.match(AUDIO, /audio_duration_too_long/);
 });
+
+test("audio.js rechecks regenerated audio duration, not the stale first pass", () => {
+  assert.match(AUDIO, /let\s+totalDuration\s*=\s*audioDuration\s*\+\s*BUMPER_DURATION/);
+  assert.match(AUDIO, /totalDuration\s*=\s*newDuration\s*\+\s*BUMPER_DURATION/);
+});

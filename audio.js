@@ -945,8 +945,8 @@ async function generateAudio() {
       }
 
       // Duration enforcement - check if video will clear 61s
-      const audioDuration = await getAudioDuration(outputPath);
-      const totalDuration = audioDuration + BUMPER_DURATION;
+      let audioDuration = await getAudioDuration(outputPath);
+      let totalDuration = audioDuration + BUMPER_DURATION;
       story.audio_duration = audioDuration;
 
       if (totalDuration < MIN_TOTAL_DURATION && regenAttempts < MAX_REGEN) {
@@ -1012,6 +1012,8 @@ async function generateAudio() {
             recoverLocalTts,
           });
           const newDuration = await getAudioDuration(outputPath);
+          audioDuration = newDuration;
+          totalDuration = newDuration + BUMPER_DURATION;
           story.audio_duration = newDuration;
           story.full_script = newScript.full_script;
           story.tts_script = newTTS;

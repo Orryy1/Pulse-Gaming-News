@@ -498,6 +498,13 @@ function buildScriptValidationReview(story = {}, channel = {}, errors = []) {
     .filter(Boolean)
     .map((error) => String(error).slice(0, 240))
     .slice(0, 10);
+  const route = safeErrors.some((error) =>
+    /^script_runtime_extended_review_required/.test(error),
+  )
+    ? "extended_or_briefing"
+    : safeErrors.some((error) => /^script_runtime_too_long/.test(error))
+      ? "briefing_or_longform"
+      : "review_or_briefing";
 
   return {
     classification: "[REVIEW]",
@@ -513,8 +520,8 @@ function buildScriptValidationReview(story = {}, channel = {}, errors = []) {
     quality_score: 0,
     approved: false,
     auto_approved: false,
-    format_route: "review_or_briefing",
-    runtime_route: "review_or_briefing",
+    format_route: route,
+    runtime_route: route,
     script_generation_status: "review_required",
     script_review_reason: safeErrors[0] || "script_validation_failed",
     script_validation_errors: safeErrors,

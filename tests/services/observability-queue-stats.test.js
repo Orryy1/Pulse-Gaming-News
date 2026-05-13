@@ -4,7 +4,11 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const Database = require("better-sqlite3");
 
-const { getQueueStats, redactQueueError } = require("../../lib/observability");
+const {
+  getQueueStats,
+  getScoringDigest,
+  redactQueueError,
+} = require("../../lib/observability");
 
 function createDb() {
   const db = new Database(":memory:");
@@ -28,6 +32,21 @@ function createDb() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       kind TEXT,
       status TEXT
+    );
+
+    CREATE TABLE stories (
+      id TEXT PRIMARY KEY,
+      title TEXT
+    );
+
+    CREATE TABLE story_scores (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      story_id TEXT,
+      channel_id TEXT,
+      total INTEGER,
+      decision TEXT,
+      hard_stops TEXT,
+      scored_at TEXT
     );
   `);
   return db;
@@ -71,4 +90,41 @@ test("redactQueueError truncates long failures", () => {
   const out = redactQueueError("x".repeat(800));
   assert.equal(out.length, 500);
   assert.match(out, /\.\.\.$/);
+});
+
+test("getScoringDigest counts SQLite timestamps against ISO window values", () => {
+  const db = createDb();
+  const originalNow = Date.now;
+  try {
+    Date.now = () => Date.parse("2026-05-13T12:00:00.000Z");
+    db.prepare(`INSERT INTO stories (id, title) VALUES (?, ?)`).run(
+      "story1",
+      "Reggie says Nintendo stopped selling products on Amazon",
+    );
+    db.prepare(
+      `INSERT INTO story_scores
+        (story_id, channel_id, total, decision, hard_stops, scored_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run(
+      "story1",
+      "pulse-gaming",
+      82,
+      "auto",
+      "[]",
+      "2026-05-13 10:03:19",
+    );
+
+    const digest = getScoringDigest({
+      repos: { db },
+      sinceHours: 4,
+      channelId: "pulse-gaming",
+    });
+
+    assert.equal(digest.scored, 1);
+    assert.equal(digest.by_decision.auto, 1);
+    assert.equal(digest.top[0].story_id, "story1");
+  } finally {
+    Date.now = originalNow;
+    db.close();
+  }
 });

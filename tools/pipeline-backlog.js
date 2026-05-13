@@ -7,6 +7,7 @@ require("dotenv").config({ override: true });
 
 const {
   buildPipelineBacklog,
+  requiredCorePlatformsFromEnv,
   renderPipelineBacklogMarkdown,
 } = require("../lib/services/pipeline-backlog");
 
@@ -30,7 +31,9 @@ async function main() {
   }
 
   const stories = await require("../lib/db").getStories();
-  const report = buildPipelineBacklog(stories);
+  const report = buildPipelineBacklog(stories, {
+    corePlatforms: requiredCorePlatformsFromEnv(process.env),
+  });
   const markdown = renderPipelineBacklogMarkdown(report);
 
   await fs.ensureDir(OUT);

@@ -13,6 +13,7 @@ const {
   nextProduceCandidate,
   nextPublishCandidate,
   coreDoneCount,
+  requiredCorePlatformsFromEnv,
   isRealPostId,
   MAX_STUCK,
 } = require("../../lib/services/pipeline-backlog");
@@ -49,6 +50,23 @@ test("coreDoneCount: 4 real ids → 4; DUPE_ doesn't count", () => {
       facebook_post_id: "fb",
     }),
     2,
+  );
+});
+
+test("requiredCorePlatformsFromEnv: local TikTok disable removes TikTok from backlog completion", () => {
+  const platforms = requiredCorePlatformsFromEnv({ TIKTOK_ENABLED: "false" });
+  assert.deepStrictEqual(platforms, ["youtube", "instagram", "facebook"]);
+  assert.strictEqual(
+    coreDoneCount(
+      {
+        youtube_post_id: "yt",
+        tiktok_post_id: null,
+        instagram_media_id: "ig",
+        facebook_post_id: "fb",
+      },
+      platforms,
+    ),
+    3,
   );
 });
 
@@ -154,6 +172,25 @@ test("blockingReason: partial_missing lists missing core platforms", () => {
   assert.strictEqual(r.includes("instagram"), false);
 });
 
+test("blockingReason: local TikTok disabled does not report TikTok as missing", () => {
+  const r = blockingReason(
+    {
+      full_script: "x",
+      approved: true,
+      exported_path: "/x",
+      publish_status: "partial",
+      youtube_post_id: "yt",
+      tiktok_post_id: null,
+      instagram_media_id: "ig",
+      facebook_post_id: null,
+    },
+    { corePlatforms: ["youtube", "instagram", "facebook"] },
+  );
+  assert.match(r, /^partial_missing:/);
+  assert.match(r, /facebook/);
+  assert.strictEqual(r.includes("tiktok"), false);
+});
+
 test("blockingReason: failed includes the publish_error", () => {
   const r = blockingReason({
     full_script: "x",
@@ -229,6 +266,24 @@ test("nextPublishCandidate: returns null when nothing eligible", () => {
     ]),
     null,
   );
+});
+
+test("nextPublishCandidate: local TikTok disabled treats YT/IG/FB as complete", () => {
+  const pick = nextPublishCandidate(
+    [
+      {
+        id: "locally-complete",
+        approved: true,
+        exported_path: "/x",
+        youtube_post_id: "yt",
+        tiktok_post_id: null,
+        instagram_media_id: "ig",
+        facebook_post_id: "fb",
+      },
+    ],
+    { corePlatforms: ["youtube", "instagram", "facebook"] },
+  );
+  assert.strictEqual(pick, null);
 });
 
 // ---------- nextProduceCandidate ----------

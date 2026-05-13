@@ -84,8 +84,23 @@ test("processor final validation failure routes story to review instead of accep
   assert.equal(fallback.approved, false);
   assert.equal(fallback.auto_approved, false);
   assert.equal(fallback.script_generation_status, "review_required");
-  assert.equal(fallback.runtime_route, "review_or_briefing");
+  assert.equal(fallback.runtime_route, "briefing_or_longform");
   assert.deepEqual(fallback.script_validation_errors, [
     "script_runtime_too_long (112.00s, max 75.00s)",
   ]);
+});
+
+test("processor final validation failure preserves extended-short routing metadata", () => {
+  const fallback = processor.buildScriptValidationReview(
+    { id: "story2", title: "A richer story needs more than Flash Lane" },
+    { id: "pulse-gaming" },
+    [
+      "script_runtime_extended_review_required (84.00s, flash max 75.00s, review max 90.00s)",
+    ],
+  );
+
+  assert.equal(fallback.classification, "[REVIEW]");
+  assert.equal(fallback.format_route, "extended_or_briefing");
+  assert.equal(fallback.runtime_route, "extended_or_briefing");
+  assert.equal(fallback.script_generation_status, "review_required");
 });

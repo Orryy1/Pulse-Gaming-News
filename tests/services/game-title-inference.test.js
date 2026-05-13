@@ -65,8 +65,30 @@ test("headline inference rejects sentence fragments as game titles", () => {
   );
 });
 
+test("headline inference stops modal contractions before they become game names", () => {
+  assert.deepEqual(
+    inferHeadlineGameCandidates("Call of Duty won't hit Xbox Game Pass on day one anymore"),
+    ["Call of Duty"],
+  );
+});
+
+test("headline inference trims possessive news adverbs from game names", () => {
+  assert.deepEqual(
+    inferHeadlineGameCandidates("Pragmata's newly delayed demo finally gets a fresh date"),
+    ["Pragmata"],
+  );
+});
+
+test("headline inference rejects editorial colon fragments but keeps credited games", () => {
+  assert.deepEqual(
+    inferHeadlineGameCandidates("It's brutal out there: Deus Ex and Unreal composer says game music is changing"),
+    ["Deus Ex", "Unreal"],
+  );
+});
+
 test("headline candidate guard rejects source labels and quoted fragments", () => {
   assert.equal(isLikelyGameTitleCandidate("Digital Foundry"), false);
   assert.equal(isLikelyGameTitleCandidate("'Eventually the slop"), false);
   assert.equal(isLikelyGameTitleCandidate("I can't download you. You"), false);
+  assert.equal(isLikelyGameTitleCandidate("It's brutal out there"), false);
 });

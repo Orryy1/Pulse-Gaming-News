@@ -718,6 +718,37 @@ test("proof candidates use script target entities to block single-game assets on
   assert.equal(candidate.recommended_command, null);
 });
 
+test("proof candidates do not promote headline sentence fragments as target entities", () => {
+  const report = buildStudioV2ProofCandidateReport({
+    stories: [
+      {
+        ...story("call_of_duty_contract", "Call of Duty won't hit Xbox Game Pass on day one anymore"),
+        full_script: "Call of Duty fans just got a clear Game Pass update.",
+      },
+      {
+        ...story("pragmata_adverb", "Pragmata's newly delayed demo finally gets a fresh date"),
+        full_script: "Pragmata has a cleaner timing update today.",
+      },
+      {
+        ...story(
+          "editorial_fragment",
+          "It's brutal out there: Deus Ex and Unreal composer says game music is changing",
+        ),
+        full_script: "Deus Ex and Unreal are the actual game references in this story.",
+      },
+    ],
+  });
+
+  const byId = new Map(report.candidates.map((candidate) => [candidate.story_id, candidate]));
+  assert.deepEqual(byId.get("call_of_duty_contract").visuals.story_target_entities, ["Call of Duty"]);
+  assert.deepEqual(byId.get("pragmata_adverb").visuals.story_target_entities, ["Pragmata"]);
+  assert.deepEqual(byId.get("editorial_fragment").visuals.story_target_entities, ["Deus Ex", "Unreal"]);
+  const allTargets = report.candidates.flatMap((candidate) => candidate.visuals.story_target_entities);
+  assert.ok(!allTargets.includes("Call of Duty won't"));
+  assert.ok(!allTargets.includes("Pragmata's newly"));
+  assert.ok(!allTargets.includes("It's brutal out there"));
+});
+
 test("proof candidates let verified full store titles cover subtitle-style entity splits", () => {
   const storyId = "lego_batman_subtitle_split";
   const fullTitle = "LEGO® Batman™: Legacy of the Dark Knight";

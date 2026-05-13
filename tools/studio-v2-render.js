@@ -910,9 +910,9 @@ function resolveSubtitleScriptText({
 function resolveStudioV2CaptionOptions() {
   return {
     maxWordsPerPhrase: 2,
-    maxPhraseChars: 16,
+    maxPhraseChars: 14,
     captionCase: "upper",
-    revealMode: "phrase",
+    revealMode: "word",
     motionStyle: "flash",
     avoidDanglingWords: true,
     maxPhraseDurationS: 1.15,

@@ -168,3 +168,36 @@ test("Flash Lane overlay plan keeps creator chip labels mobile-safe and non-repe
   assert.ok(labels.every((label) => label.length <= 24), labels.join(", "));
   assert.ok(plan.timeline.some((item) => item.kind === "beat_chip" && item.label === "AGE GATE"));
 });
+
+test("Flash Lane overlay plan deconflicts same-anchor chips after bounded timing collapse", () => {
+  const plan = buildFlashLaneOverlayPlan({
+    story: {
+      title: "GTA and Red Dead trailer update",
+      source_type: "rss",
+      publisher: "IGN",
+    },
+    scenes: [
+      { type: SCENE_TYPES.CLIP, entity: "GTA", duration: 2 },
+      { type: SCENE_TYPES.CLIP_FRAME, entity: "Red Dead", duration: 2 },
+    ],
+    durationS: 4,
+  });
+
+  const byAnchor = new Map();
+  for (const item of plan.timeline) {
+    const items = byAnchor.get(item.anchor) || [];
+    items.push(item);
+    byAnchor.set(item.anchor, items);
+  }
+
+  for (const items of byAnchor.values()) {
+    const sorted = items.slice().sort((a, b) => a.at_s - b.at_s);
+    for (let index = 1; index < sorted.length; index++) {
+      const previousEnd = sorted[index - 1].at_s + sorted[index - 1].duration_s;
+      assert.ok(
+        sorted[index].at_s >= previousEnd - 0.001,
+        `${sorted[index - 1].kind} overlaps ${sorted[index].kind} at ${sorted[index].anchor}`,
+      );
+    }
+  }
+});

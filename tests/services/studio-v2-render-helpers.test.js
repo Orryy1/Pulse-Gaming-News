@@ -211,9 +211,9 @@ test("studio-v2 render passes strict Flash caption options to kinetic subtitles"
 
   assert.deepEqual(options, {
     maxWordsPerPhrase: 2,
-    maxPhraseChars: 16,
+    maxPhraseChars: 14,
     captionCase: "upper",
-    revealMode: "phrase",
+    revealMode: "word",
     motionStyle: "flash",
     avoidDanglingWords: true,
     maxPhraseDurationS: 1.15,

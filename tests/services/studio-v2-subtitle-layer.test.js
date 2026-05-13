@@ -431,3 +431,25 @@ test("buildKineticAss can add TikTok-native Flash motion styling", () => {
   assert.match(ass, /\\bord8\\shad5/);
   assert.match(ass, /\\t\(0,130,\\fscx106\\fscy106\)/);
 });
+
+test("buildKineticAss Flash word reveal hides later words until their timestamps", () => {
+  const ass = buildKineticAss({
+    story: { title: "GTA delay" },
+    words: [
+      { word: "GTA", start: 0, end: 0.2 },
+      { word: "delay", start: 0.72, end: 0.96 },
+      { word: "hits", start: 1.08, end: 1.24 },
+      { word: "tonight.", start: 1.3, end: 1.56 },
+    ],
+    duration: 2,
+    scriptText: "GTA delay hits tonight.",
+    maxWordsPerPhrase: 2,
+    maxPhraseChars: 14,
+    captionCase: "upper",
+    revealMode: "word",
+    motionStyle: "flash",
+  });
+
+  assert.match(ass, /GTA\\h/);
+  assert.match(ass, /\\alpha&HFF&\\t\(719,750,\\alpha&H00&\).*DELAY/);
+});

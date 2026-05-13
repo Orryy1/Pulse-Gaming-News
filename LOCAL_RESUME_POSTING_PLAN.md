@@ -1,6 +1,6 @@
 # Local Resume Posting Plan
 
-Generated: 2026-05-13T09:54:15.335Z
+Generated: 2026-05-13T10:25:52.474Z
 Verdict: GREEN
 Status: ready_to_resume_local_automatic_posting
 Safety: read-only plan; does not edit .env, start Cloudflare, switch primary, mutate tokens, post, touch Railway or trigger OAuth
@@ -33,16 +33,16 @@ Safety: read-only plan; does not edit .env, start Cloudflare, switch primary, mu
 
 ## Quality Lane
 - ready_flash_proof_count: 0
-- local_voice_ready_count: 6
-- repair_media_first_count: 6
-- repair_voice_first_count: 13
+- local_voice_ready_count: 7
+- repair_media_first_count: 7
+- repair_voice_first_count: 12
 
 ### Closest Studio V2 Candidates
 - 1t0zhng: audio_ready=true; exact=24; clips=4; next=acquire_motion_frames_or_exact_subject_assets
 - rss_2d69aa8506934c5e: audio_ready=true; exact=0; clips=0; next=acquire_motion_frames_or_exact_subject_assets
-- rss_ef7e6e464509e0bc: audio_ready=true; exact=0; clips=0; next=acquire_motion_frames_or_exact_subject_assets
 - rss_6edbb38dc280fc96: audio_ready=true; exact=0; clips=0; next=acquire_motion_frames_or_exact_subject_assets
-- rss_6d8aaac7eccad2ff: audio_ready=true; exact=0; clips=0; next=acquire_motion_frames_or_exact_subject_assets
+- rss_7945f462187bd7f8: audio_ready=true; exact=0; clips=0; next=acquire_motion_frames_or_exact_subject_assets
+- rss_ef7e6e464509e0bc: audio_ready=true; exact=0; clips=0; next=acquire_motion_frames_or_exact_subject_assets
 
 ## Approved Local Liam Audio Proofs
 - rss_ef7e6e464509e0bc: 73.92s; audio=test/output/local-script-extension/audio/rss_ef7e6e464509e0bc_liam_extended.mp3; safe_to_publish_now=false; requires clean local MP4 rerender

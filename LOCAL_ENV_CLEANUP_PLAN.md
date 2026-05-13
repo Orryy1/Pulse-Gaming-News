@@ -1,6 +1,6 @@
 # Local Env Cleanup Plan
 
-Generated: 2026-05-12T23:51:35.796Z
+Generated: 2026-05-13T07:38:26.425Z
 Verdict: GREEN
 Safety: read-only; does not edit .env, print secrets, start jobs, post, mutate tokens, touch Railway or change Cloudflare
 

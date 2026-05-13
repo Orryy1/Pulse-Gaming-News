@@ -27,13 +27,24 @@ function hasUsablePostingReadiness(report = {}) {
 }
 
 async function resolveLocalPostingReadiness(outDir = OUT) {
+  const cutoverPlan = await readJsonIfExists(path.join(outDir, "local_cutover_plan.json"));
+  const primaryReadiness = await readJsonIfExists(path.join(outDir, "local_primary_readiness.json"));
+  const ttsReport = await readJsonIfExists(path.join(outDir, "local_tts_overnight_report.json"));
+  if (cutoverPlan?.generated_at || primaryReadiness?.generated_at || ttsReport?.generated_at) {
+    return buildLocalPostingReadiness({
+      cutoverPlan,
+      primaryReadiness,
+      ttsReport,
+    });
+  }
+
   const current = await readJsonIfExists(path.join(outDir, "local_posting_readiness.json"));
   if (hasUsablePostingReadiness(current)) return current;
 
   return buildLocalPostingReadiness({
-    cutoverPlan: await readJsonIfExists(path.join(outDir, "local_cutover_plan.json")),
-    primaryReadiness: await readJsonIfExists(path.join(outDir, "local_primary_readiness.json")),
-    ttsReport: await readJsonIfExists(path.join(outDir, "local_tts_overnight_report.json")),
+    cutoverPlan,
+    primaryReadiness,
+    ttsReport,
   });
 }
 

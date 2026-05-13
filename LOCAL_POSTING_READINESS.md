@@ -1,8 +1,8 @@
 # Local Posting Readiness
 
-Generated: 2026-05-13T00:14:08.460Z
-Verdict: AMBER
-Status: local_foundation_ready_cutover_blocked
+Generated: 2026-05-13T07:46:15.547Z
+Verdict: GREEN
+Status: ready_to_resume_local_posting
 Safety: read-only report; does not edit .env, start primary jobs, post, mutate DB, touch Railway or trigger OAuth
 
 ## Strategy
@@ -15,16 +15,11 @@ Safety: read-only report; does not edit .env, start primary jobs, post, mutate D
 - public_health: true
 - tunnel_connected: true
 - duplicate_control_keys: none
-- primary_enabled: false
-- queue_enabled: false
-- auto_publish_enabled: false
+- primary_enabled: true
+- queue_enabled: true
+- auto_publish_enabled: true
 - local_tts_green: true
 - local_voice_ready_count: 6
-
-## Blockers
-- local instance is still mirror mode, not primary
-- local job queue is disabled
-- local AUTO_PUBLISH is disabled
 
 ## Warnings
 - local TTS has recovered from at least one timeout; keep the supervisor/watchdog enabled

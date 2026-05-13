@@ -1,26 +1,26 @@
 # Local Resume Posting Plan
 
-Generated: 2026-05-13T00:14:08.464Z
-Verdict: AMBER
-Status: local_resume_blocked_but_recoverable
+Generated: 2026-05-13T07:46:46.362Z
+Verdict: GREEN
+Status: ready_to_resume_local_automatic_posting
 Safety: read-only plan; does not edit .env, start Cloudflare, switch primary, mutate tokens, post, touch Railway or trigger OAuth
 
 ## Plain English
-- Pulse is not ready to resume local automatic posting yet. The remaining work is local cutover plumbing, not a return to Railway.
+- Pulse can resume local automatic posting once the operator intentionally starts the local primary path. Railway stays standby only.
 - Railway stays standby only. The target is this PC running Pulse locally.
 - Local Liam is the target voice. ElevenLabs is only a temporary bridge while local coverage improves.
 - Current safe production lane: legacy_standard_lane.
 
 ## Readiness
-- can_resume_local_automatic_posting: false
-- local_posting_verdict: AMBER
+- can_resume_local_automatic_posting: true
+- local_posting_verdict: GREEN
 - local_health: true
 - public_health: true
 - tunnel_connected: true
 - duplicate_control_keys: none
-- primary_enabled: false
-- queue_enabled: false
-- auto_publish_enabled: false
+- primary_enabled: true
+- queue_enabled: true
+- auto_publish_enabled: true
 - local_tts_green: true
 - local_voice_ready_count: 6
 - core_platform_ready: true
@@ -44,11 +44,6 @@ Safety: read-only plan; does not edit .env, start Cloudflare, switch primary, mu
 - rss_6edbb38dc280fc96: audio_ready=true; exact=0; clips=0; next=acquire_motion_frames_or_exact_subject_assets
 - rss_6d8aaac7eccad2ff: audio_ready=true; exact=0; clips=0; next=acquire_motion_frames_or_exact_subject_assets
 
-## Blockers
-- local instance is still mirror mode, not primary
-- local job queue is disabled
-- local AUTO_PUBLISH is disabled
-
 ## Warnings
 - TikTok is not a blocker for resuming YouTube/Instagram/Facebook, but automated TikTok remains blocked.
 - No Studio V2 Flash proof candidate is ready; resume posting should use the safer legacy/standard lane until media repair catches up.
@@ -56,13 +51,12 @@ Safety: read-only plan; does not edit .env, start Cloudflare, switch primary, mu
 ## Next Actions
 - Keep Railway standby only; do not restore Railway as the active publisher.
 - Keep building local Liam; treat ElevenLabs as a temporary bridge only while local voice coverage improves.
-- Resolve local cutover blockers in order: duplicate .env switches, Cloudflare tunnel, public health, primary flag, queue flag, AUTO_PUBLISH flag.
 - Resume with the safe standard/legacy lane first; do not switch Studio V2 into production until a promotion packet is green.
 - Use TikTok dispatch/inbox tooling only after token refresh/sync and creative-review blocker are resolved; do not rely on Railway.
 - Keep Facebook Reels enabled behind verifier checks because manual Page UI proof succeeded.
 
 ## Morning Approval Queue
-- local_primary_cutover: wait_until_local_resume_plan_is_green
+- local_primary_cutover: approve_when_ready
 - temporary_elevenlabs_bridge: allow_temporarily_but_keep_local_liam_as_target
 - tiktok_route_recovery: prepare_tooling_now_operator_test_later
 

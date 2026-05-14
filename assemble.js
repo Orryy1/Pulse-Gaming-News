@@ -1979,6 +1979,7 @@ async function assemble() {
       // DB gets the repo-relative path (unchanged contract);
       // filesystem ops use the resolved absolute target.
       story.exported_path = outputPath;
+      story.exported_at = new Date().toISOString();
       rendered++;
 
       const stat = await fs.stat(writeTargetPath);
@@ -2299,6 +2300,7 @@ async function assemble() {
         // DB gets the repo-relative path (unchanged contract);
         // filesystem ops use the resolved absolute target.
         story.exported_path = outputPath;
+        story.exported_at = new Date().toISOString();
         rendered++;
         console.log(
           `[assemble] Exported (single-image fallback with overlays): ${outputPath}`,

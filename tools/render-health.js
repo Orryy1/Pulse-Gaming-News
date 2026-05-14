@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 "use strict";
 
+require("dotenv").config({ quiet: true });
+
 /**
  * tools/render-health.js — print the render-health digest on demand.
  *
@@ -54,9 +56,19 @@ async function main() {
     printHelp();
     return;
   }
-  const { summary, markdown } = await runRenderHealthDigest({
-    windowHours: args.hours,
-  });
+  const originalLog = console.log;
+  console.log = (...items) => {
+    process.stderr.write(`${items.join(" ")}\n`);
+  };
+  let result;
+  try {
+    result = await runRenderHealthDigest({
+      windowHours: args.hours,
+    });
+  } finally {
+    console.log = originalLog;
+  }
+  const { summary, markdown } = result;
   if (args.json) {
     process.stdout.write(JSON.stringify(summary, null, 2) + "\n");
   } else {

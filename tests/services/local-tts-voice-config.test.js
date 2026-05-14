@@ -141,6 +141,25 @@ test("Pulse local TTS request rate is capped before server base-speed multiplica
   assert.equal(eleven.speaking_rate, 1.68);
 });
 
+test("Pulse local TTS can be deliberately slowed for too-short Liam proofs", () => {
+  process.env.PULSE_SKIP_DOTENV = "true";
+  const {
+    resolveVoiceSettingsForProvider,
+  } = require("../../audio");
+
+  const local = resolveVoiceSettingsForProvider(
+    "local",
+    { speaking_rate: 1.1 },
+    1.1,
+    {
+      LOCAL_TTS_MIN_SPEAKING_RATE: "0.65",
+      LOCAL_TTS_EFFECTIVE_RATE_CAP: "0.75",
+    },
+  );
+
+  assert.equal(local.speaking_rate, 0.75);
+});
+
 test("Pulse local TTS default rate no longer trusts legacy BASE_SPEED compensation", () => {
   process.env.PULSE_SKIP_DOTENV = "true";
   const {

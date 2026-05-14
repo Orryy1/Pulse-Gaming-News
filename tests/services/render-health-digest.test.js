@@ -41,6 +41,37 @@ test("buildRenderHealthSummary: stories outside window are excluded", () => {
   assert.equal(r.stamped, 1);
 });
 
+test("buildRenderHealthSummary: recent published legacy render is included without exported_at", () => {
+  const recent = new Date().toISOString();
+  const stories = [
+    story({
+      exported_at: undefined,
+      created_at: oldStamp(),
+      updated_at: oldStamp(),
+      published_at: recent,
+    }),
+  ];
+  const r = digest.buildRenderHealthSummary(stories, { windowHours: 24 });
+  assert.equal(r.total_in_window, 1);
+  assert.equal(r.stamped, 1);
+});
+
+test("buildRenderHealthSummary: recent updated old render is excluded without export/publish timestamps", () => {
+  const recent = new Date().toISOString();
+  const stories = [
+    story({
+      exported_at: undefined,
+      created_at: oldStamp(),
+      updated_at: recent,
+      published_at: undefined,
+      youtube_published_at: undefined,
+    }),
+  ];
+  const r = digest.buildRenderHealthSummary(stories, { windowHours: 24 });
+  assert.equal(r.total_in_window, 0);
+  assert.equal(r.stamped, 0);
+});
+
 test("buildRenderHealthSummary: stamp-less rows count as unstamped (excluded from %)", () => {
   const stories = [
     story(),

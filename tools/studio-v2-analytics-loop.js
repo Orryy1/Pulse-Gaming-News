@@ -38,6 +38,7 @@
 
 const path = require("node:path");
 const fs = require("fs-extra");
+const { describeAnthropicKeyState } = require("../lib/llm-key");
 
 const ROOT = path.resolve(__dirname, "..");
 
@@ -157,8 +158,9 @@ function buildPrompt(payload) {
 }
 
 async function callClaude(prompt) {
+  const keyState = describeAnthropicKeyState();
+  if (!keyState.ok) throw new Error(keyState.reason);
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY not set");
   const Anthropic =
     require("@anthropic-ai/sdk").default || require("@anthropic-ai/sdk");
   const client = new Anthropic({ apiKey });

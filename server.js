@@ -15,6 +15,7 @@ const {
   resolveFacebookTokenPath,
   resolveInstagramTokenPath,
 } = require("./lib/token-paths");
+const { describeAnthropicKeyState } = require("./lib/llm-key");
 
 dotenv.config({ override: true });
 const RUNTIME_BUILD_INFO = resolveRuntimeBuildInfo({
@@ -1716,14 +1717,12 @@ app.post(
 
 // --- Autonomous scheduler (built into server) ---
 async function startAutonomousScheduler() {
-  const hasKey =
-    process.env.ANTHROPIC_API_KEY &&
-    process.env.ANTHROPIC_API_KEY !== "placeholder";
-  if (!hasKey) {
+  const anthropicKey = describeAnthropicKeyState();
+  if (!anthropicKey.ok) {
     console.log(
-      "[server] Autonomous scheduler disabled. Set ANTHROPIC_API_KEY to enable.",
+      `[server] ANTHROPIC_API_KEY ${anthropicKey.state}; starting scheduler in limited mode. ` +
+        "LLM-dependent jobs will skip until a real key is configured.",
     );
-    return;
   }
 
   // Phase D: unified jobs queue is now the canonical dispatcher. The

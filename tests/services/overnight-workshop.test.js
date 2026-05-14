@@ -230,6 +230,25 @@ test("runOvernightClaudeAnalyst: env unset → enabled=false, no anthropic call"
   assert.equal(calls, 0);
 });
 
+test("runOvernightClaudeAnalyst: placeholder Anthropic key skips safely", async () => {
+  const result = await w.runOvernightClaudeAnalyst({
+    env: {
+      OVERNIGHT_WORKSHOP_ENABLED: "true",
+      ANTHROPIC_API_KEY: "placeholder",
+    },
+    db: {
+      async getStories() {
+        return [];
+      },
+    },
+    log: () => {},
+  });
+
+  assert.equal(result.enabled, true);
+  assert.equal(result.skipped, "anthropic_key_unavailable");
+  assert.equal(result.key_state, "placeholder");
+});
+
 test("runOvernightClaudeAnalyst: env true + injected anthropic returns briefing", async () => {
   const result = await w.runOvernightClaudeAnalyst({
     env: { OVERNIGHT_WORKSHOP_ENABLED: "true", ANTHROPIC_API_KEY: "k" },

@@ -1,5 +1,55 @@
 # Morning Approval Queue
 
+Updated: 2026-05-14
+
+## 0. Publish Cadence Hard Gates
+
+Decision needed: approve or defer enabling live cadence hard gates.
+
+Current state: the last 24h cadence doctor is AMBER: 11 public posts, 10 off-schedule posts, 7 tight-spacing pairs and a 2-minute minimum gap. The code now supports publish-window and cooldown policy checks, but they are warn-only unless explicit env flags are set.
+
+Why it matters: this prevents back-to-back overnight posting bursts like 23:59 then 00:00 while keeping scheduled windows intentional.
+
+What changes: enable `PUBLISH_REQUIRE_WINDOW=true` and `PUBLISH_REQUIRE_MIN_GAP=true` on the live primary instance only after confirming the desired daily window strategy. This would block direct/fast-lane/API publish calls outside allowed windows or inside the cooldown.
+
+Risk: fewer posts, missed breaking stories and possible queue backlog if the scoring/publish strategy is too conservative.
+
+Rollback: set both flags back to `false` or unset them, restart the local primary and run `npm run ops:publish-cadence -- --hours 24`.
+
+Recommendation: approve once the current live primary is identified. Use a 120-minute minimum gap first; do not raise upload volume until analytics proves the cadence works.
+
+## 0a. Publish Row Repair
+
+Decision needed: approve or defer a targeted production DB repair plan.
+
+Current state: dry-run `npm run ops:publish-row-repair -- --limit 40` found 2 public rows that contain script-validation fallback text and 24 failed rows that still carry platform IDs. No DB mutation was performed.
+
+Why it matters: these rows confuse Discord/status reporting and make it harder to tell which posts were genuinely clean.
+
+What changes: after a DB backup and manual platform check, apply a targeted repair that marks the two fallback rows as not clean public publishes and normalises failed/partial platform rows without deleting real platform IDs.
+
+Risk: changing production history incorrectly could hide a real public post or make a partial publish look cleaner than it is.
+
+Rollback: restore the DB backup or replay the inspection SQL from `test/output/publish_row_repair_plan.md`.
+
+Recommendation: approve only after checking the two RED public rows on-platform: `1tcabvy` and `1tb2q61`.
+
+## 0b. Deploy Current Safety Branch
+
+Decision needed: approve or defer deploying branch `codex/readiness-qa-failure-window`.
+
+Current state: latest pushed commit is `2691f1d2`. Full `npm test` passes (`2625/2625`) and `npm run build` passes. Changes are mostly safety/reporting: script-validation fallback blocking, publish cadence/cooldown policy support, dry-run row repair, still-deck subtitle timeline padding and local/strict assemble-time voice QA.
+
+Why it matters: the code now blocks the two failure classes seen overnight: public script-validation fallback rows and stale bad local voice paths in local assembly.
+
+What changes: live code behaviour changes only where existing pipelines hit these QA paths. The cadence hard gates remain warn-only unless env flags are separately enabled.
+
+Risk: some previously publishable rows may now fail QA instead of rendering/posting, which is intended but can reduce volume.
+
+Rollback: revert the branch deployment to the previous known-good commit or `git revert` the relevant commits.
+
+Recommendation: deploy after confirming the active primary is local, not Railway, and after deciding whether cadence hard gates stay warn-only or become blocking.
+
 Generated: 2026-05-12
 
 Only live-risk decisions are listed here. Safe local report edits and non-mutating checks do not need approval.

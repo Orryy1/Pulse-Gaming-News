@@ -1,5 +1,53 @@
 # Tonight Handoff
 
+Update: 2026-05-14
+
+## Latest Branch State
+
+- Branch: `codex/readiness-qa-failure-window`
+- Latest pushed commit: `2691f1d2 Gate stale local voices before assembly`
+- Deployed: no
+- Railway/env/Cloudflare/OAuth/production DB/social posting: untouched by this work
+- Production renderer and production voice defaults: unchanged
+
+## Latest Verification
+
+- `npm test`: pass (`2625/2625`)
+- `npm run build`: pass
+- `npm run ops:publish-cadence -- --hours 24`: AMBER
+- `npm run ops:publish-row-repair -- --limit 40`: dry-run report generated
+
+## What Changed In The Latest Slice
+
+- Script-validation fallback rows are now blocked before public content QA can pass them.
+- Publish cadence/cooldown policies exist and report provenance, but hard blocking is still disabled until env approval.
+- A dry-run publish row repair planner now identifies bad public rows and failed rows carrying platform IDs without mutating the DB.
+- Studio V2 still-deck renders now pad video and audio to the subtitle/narration timeline before burning ASS subtitles, reducing caption freeze/cut-off risk.
+- Local/strict assembly now runs approved-voice QA before FFmpeg render, so stale low/demonic local MP3s fail before becoming new local videos.
+
+## Current Live Signal
+
+- Last 24h public posts: 11
+- Off-schedule/direct or fast-lane posts: 10
+- Tight spacing pairs under 120 minutes: 7
+- Minimum gap: 2 minutes
+- Failed rows carrying platform IDs: 24
+- Invalid public fallback rows: 2
+
+## Immediate Recommendation
+
+Do not add broad new features before cadence is controlled. The next live-risk approval should be either:
+
+1. deploy the current safety branch with cadence still warn-only, then observe;
+2. deploy and enable `PUBLISH_REQUIRE_WINDOW=true` plus `PUBLISH_REQUIRE_MIN_GAP=true` on the confirmed local primary;
+3. run the dry-run DB repair plan through a manual backup/review process before any mutation.
+
+## Reports To Read Now
+
+- `test/output/publish_cadence.md`
+- `test/output/publish_row_repair_plan.md`
+- `MORNING_APPROVAL_QUEUE.md`
+
 Date: 2026-05-12
 
 ## Branch

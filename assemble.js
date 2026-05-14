@@ -350,10 +350,12 @@ function splitIntoPhrases(script) {
 
 // --- Format seconds to ASS timestamp (H:MM:SS.cc) ---
 function assTime(seconds) {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  return `${h}:${String(m).padStart(2, "0")}:${s.toFixed(2).padStart(5, "0")}`;
+  const totalCentiseconds = Math.max(0, Math.round(Number(seconds || 0) * 100));
+  const h = Math.floor(totalCentiseconds / 360000);
+  const m = Math.floor((totalCentiseconds % 360000) / 6000);
+  const s = Math.floor((totalCentiseconds % 6000) / 100);
+  const cs = totalCentiseconds % 100;
+  return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}.${String(cs).padStart(2, "0")}`;
 }
 
 // --- Highlight key words in orange (TikTok-style) using ASS override tags ---
@@ -2339,6 +2341,7 @@ module.exports.characterAlignmentToSubtitleWords =
   characterAlignmentToSubtitleWords;
 module.exports.inspectSubtitleTimingWords = inspectSubtitleTimingWords;
 module.exports.selectSubtitleScriptText = selectSubtitleScriptText;
+module.exports.assTime = assTime;
 
 if (require.main === module) {
   assemble().catch((err) => {

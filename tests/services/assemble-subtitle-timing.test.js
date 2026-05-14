@@ -4,6 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
+  assTime,
   characterAlignmentToSubtitleWords,
   inspectSubtitleTimingWords,
   selectSubtitleScriptText,
@@ -82,4 +83,9 @@ test("subtitle script fallback prefers the actual TTS transcript over stale stor
   );
 
   assert.equal(text, sidecar.meta.transcript);
+});
+
+test("assemble ASS timestamp formatter carries rounded centiseconds across minute boundaries", () => {
+  assert.equal(assTime(59.999), "0:01:00.00");
+  assert.equal(assTime(119.999), "0:02:00.00");
 });

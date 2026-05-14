@@ -1203,6 +1203,17 @@ test("studio-v2 render report surfaces accepted local voice fingerprint", () => 
   assert.doesNotMatch(src, /dotenv"\)\.config\(\{\s*override:\s*true\s*\}\)/);
 });
 
+test("studio-v2 render pads raw video before subtitle burn-in to prevent frozen captions", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-render.js"),
+    "utf8",
+  );
+
+  assert.doesNotMatch(src, /ass=\$\{assRel\},tpad=stop_mode=clone/);
+  assert.match(src, /tpad=stop_mode=clone:stop_duration=\$\{\(/);
+  assert.match(src, /\[subtitleBase\]ass=\$\{assRel\}\[outv\]/);
+});
+
 test("studio-v2-render supports local VoxCPM through the production-shaped path", () => {
   const oldSkipDotenv = process.env.PULSE_SKIP_DOTENV;
   const oldVoice = process.env.STUDIO_V2_VOICE;

@@ -73,6 +73,25 @@ test("approved voice path blocks unapproved low local voice", () => {
   assert.ok(result.blockers.includes("demonic_low_voice_risk"));
 });
 
+test("approved voice path blocks low local voice when diagnostics use snake_case median_f0_hz", () => {
+  const result = evaluateApprovedVoicePath({
+    narration: {
+      provider: "local",
+      source: "local-production-voxcpm-path",
+      audioPath: audioFile("local-snake-f0.mp3"),
+      transcript:
+        "A clean gaming update. Follow Pulse Gaming so you never miss a beat.",
+      acoustic: { median_f0_hz: 61 },
+      acceptedLocalVoice: ACCEPTED_SLEEPY_LIAM,
+      voiceMastering: { ok: true, code: "voice_mastered", targetLufs: -14 },
+    },
+    env: { STUDIO_V2_LOCAL_VOICE_APPROVED: "true" },
+  });
+
+  assert.equal(result.verdict, "rejected");
+  assert.ok(result.blockers.includes("demonic_low_voice_risk"));
+});
+
 test("approved voice path rejects env-approved local voice without accepted Sleepy Liam reference", () => {
   const result = evaluateApprovedVoicePath({
     narration: {

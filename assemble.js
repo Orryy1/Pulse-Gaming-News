@@ -1409,8 +1409,8 @@ function buildVideoCommand(
     const startTime = Math.floor(duration * 0.15);
     const fadeDur = 0.4;
 
-    // Y position: below the flair badge + subreddit card (those sit at y~90-155)
-    const yBase = 220;
+    // Y position: below the flair badge + source card with a safe gap.
+    const yBase = 260;
 
     comments.slice(0, count).forEach((comment, ci) => {
       const text = sanitizeDrawtext(comment.body, 500);
@@ -2175,7 +2175,7 @@ async function assemble() {
           const gapBetween = 2;
           const totalPerComment = showDur + gapBetween;
           const startTime = Math.floor(duration * 0.15);
-          const yBase = 220;
+          const yBase = 260;
 
           comments.slice(0, count).forEach((comment, ci) => {
             const text = sanitizeDrawtext(comment.body, 500);

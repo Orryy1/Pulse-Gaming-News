@@ -1550,11 +1550,12 @@ async function main() {
     videoForSubtitles = "heroBase";
   }
   filterParts.push(
-    `[${videoForSubtitles}]ass=${assRel},tpad=stop_mode=clone:stop_duration=${(
+    `[${videoForSubtitles}]tpad=stop_mode=clone:stop_duration=${(
       finalVideoDurationS + 1
     ).toFixed(
       3,
-    )},trim=duration=${finalVideoDurationS},setpts=PTS-STARTPTS[outv]`,
+    )},trim=duration=${finalVideoDurationS},setpts=PTS-STARTPTS[subtitleBase]`,
+    `[subtitleBase]ass=${assRel}[outv]`,
   );
 
   // ---- ffmpeg invocation ----

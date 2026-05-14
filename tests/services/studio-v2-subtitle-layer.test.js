@@ -46,6 +46,30 @@ test("buildKineticAss can skip script realignment for cached/non-editorial voice
   assert.doesNotMatch(ass, /2026/);
 });
 
+test("buildKineticAss repairs early-ending cached voice timings without swapping in editorial text", () => {
+  const ass = buildKineticAss({
+    story: { title: "Cached Voice" },
+    words: [
+      { word: "spoken", start: 0, end: 0.22 },
+      { word: "cached", start: 0.24, end: 0.48 },
+      { word: "voice", start: 0.5, end: 0.78 },
+      { word: "track", start: 0.8, end: 1.04 },
+    ],
+    duration: 8,
+    scriptText: "editorial text should not replace cached narration",
+    realign: false,
+  });
+
+  const intervals = assIntervals(ass);
+  assert.match(ass, /spoken/);
+  assert.match(ass, /cached/);
+  assert.doesNotMatch(ass, /editorial/);
+  assert.ok(
+    intervals[intervals.length - 1][1] >= 7.5,
+    "cached/non-editorial subtitle timings should still cover the full narration duration",
+  );
+});
+
 test("buildKineticAss falls back to synthetic timings when TTS alignment has huge gaps", () => {
   const scriptText = [
     "Mega Mewtwo is finally coming to Pokemon Go.",

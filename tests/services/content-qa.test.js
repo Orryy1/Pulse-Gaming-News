@@ -378,6 +378,102 @@ test("runContentQa: strict local publish accepts approved Sleepy Liam evidence",
   }
 });
 
+test("runContentQa: strict local publish blocks repaired local caption timings", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-voice-qa-"));
+  const mp4 = path.join(tmp, "out.mp4");
+  const audio = path.join(tmp, "voice.mp3");
+  await fs.writeFile(mp4, Buffer.alloc(5 * 1024 * 1024));
+  await fs.writeFile(audio, Buffer.from("fake audio"));
+  await fs.writeJson(audio.replace(/\.mp3$/, "_timestamps.json"), {
+    characters: ["F", "o", "l", "l", "o", "w"],
+    character_start_times_seconds: [0, 0.1, 0.2, 0.3, 0.4, 0.5],
+    character_end_times_seconds: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
+    meta: {
+      provider: "local",
+      source: "local-tts-server",
+      approvedLocalVoice: true,
+      acceptedLocalVoice: {
+        id: "pulse-sleepy-liam-20260502",
+        fileName: "pulse_liam_sleepy.wav",
+        referencePresent: true,
+        referenceHash: "a".repeat(40),
+      },
+      transcript:
+        "A clean gaming update. Follow Pulse Gaming so you never miss a beat.",
+      acoustic: { medianPitchHz: 118 },
+      voiceMastering: { ok: true, code: "voice_mastered", targetLufs: -14 },
+      timestampRepair: {
+        repaired: true,
+        reason: "max_gap_too_large",
+      },
+    },
+  });
+
+  try {
+    const qa = await runContentQa(goodStory({ exported_path: mp4, audio_path: audio }), {
+      env: {
+        DEPLOYMENT_MODE: "local",
+        AUTO_PUBLISH: "true",
+        STUDIO_V2_LOCAL_VOICE_APPROVED: "true",
+      },
+    });
+    assert.strictEqual(qa.result, "fail");
+    assert.ok(
+      qa.failures.includes("approved_voice:caption_timing_repaired:max_gap_too_large"),
+      `got: ${qa.failures.join(", ")}`,
+    );
+  } finally {
+    await fs.remove(tmp).catch(() => {});
+  }
+});
+
+test("runContentQa: non-strict publish warns on repaired local caption timings", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-voice-qa-"));
+  const mp4 = path.join(tmp, "out.mp4");
+  const audio = path.join(tmp, "voice.mp3");
+  await fs.writeFile(mp4, Buffer.alloc(5 * 1024 * 1024));
+  await fs.writeFile(audio, Buffer.from("fake audio"));
+  await fs.writeJson(audio.replace(/\.mp3$/, "_timestamps.json"), {
+    characters: ["F", "o", "l", "l", "o", "w"],
+    character_start_times_seconds: [0, 0.1, 0.2, 0.3, 0.4, 0.5],
+    character_end_times_seconds: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
+    meta: {
+      provider: "local",
+      source: "local-tts-server",
+      approvedLocalVoice: true,
+      acceptedLocalVoice: {
+        id: "pulse-sleepy-liam-20260502",
+        fileName: "pulse_liam_sleepy.wav",
+        referencePresent: true,
+        referenceHash: "a".repeat(40),
+      },
+      transcript:
+        "A clean gaming update. Follow Pulse Gaming so you never miss a beat.",
+      acoustic: { medianPitchHz: 118 },
+      voiceMastering: { ok: true, code: "voice_mastered", targetLufs: -14 },
+      timestampRepair: {
+        repaired: true,
+        reason: "trailing_caption_gap_too_large",
+      },
+    },
+  });
+
+  try {
+    const qa = await runContentQa(goodStory({ exported_path: mp4, audio_path: audio }), {
+      env: { DEPLOYMENT_MODE: "production", AUTO_PUBLISH: "true" },
+    });
+    assert.strictEqual(qa.result, "warn", JSON.stringify(qa));
+    assert.ok(
+      qa.warnings.includes(
+        "approved_voice:caption_timing_repaired:trailing_caption_gap_too_large",
+      ),
+      `got: ${qa.warnings.join(", ")}`,
+    );
+  } finally {
+    await fs.remove(tmp).catch(() => {});
+  }
+});
+
 test("runContentQa: strict local publish uses full aligned transcript when segment transcript is short", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-voice-qa-"));
   const mp4 = path.join(tmp, "out.mp4");

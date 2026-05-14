@@ -12,6 +12,9 @@
 
 const { Client, Events, GatewayIntentBits, EmbedBuilder } = require("discord.js");
 const config = require("./config");
+const {
+  shouldPostVideoDrop,
+} = require("../lib/services/discord-post-gate");
 
 let _client = null;
 let _ready = false;
@@ -280,6 +283,11 @@ async function postNewStory(story) {
  */
 async function postVideoUpload(story) {
   try {
+    if (!shouldPostVideoDrop(story)) {
+      console.log("[AutoPost] Skipping video upload post: story is not eligible");
+      return null;
+    }
+
     const client = await getClient();
     if (!client) return null;
 

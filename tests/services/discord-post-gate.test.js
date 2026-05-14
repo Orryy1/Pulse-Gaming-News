@@ -39,6 +39,44 @@ test("shouldPostVideoDrop: instagram_media_id alone qualifies", () => {
   assert.equal(shouldPostVideoDrop(story), true);
 });
 
+test("shouldPostVideoDrop: QA-failed story never qualifies even with a public URL", () => {
+  const story = {
+    id: "qa-failed",
+    youtube_url: "https://youtu.be/abc",
+    qa_failed: true,
+  };
+  assert.equal(shouldPostVideoDrop(story), false);
+});
+
+test("shouldPostVideoDrop: failed publish status never qualifies even with platform ids", () => {
+  const story = {
+    id: "publish-failed",
+    instagram_media_id: "ig-456",
+    publish_status: "failed",
+  };
+  assert.equal(shouldPostVideoDrop(story), false);
+});
+
+test("shouldPostVideoDrop: script-validation fallback text never posts as a video drop", () => {
+  const story = {
+    id: "script-review",
+    youtube_url: "https://youtu.be/abc",
+    hook: "",
+    body: "Script validation failed. Manual review required before production.",
+  };
+  assert.equal(shouldPostVideoDrop(story), false);
+});
+
+test("shouldPostVideoDrop: manual-review full script never qualifies even if body was changed", () => {
+  const story = {
+    id: "script-review-full",
+    tiktok_post_id: "tt-123",
+    body: "Clean-looking body",
+    full_script: "Manual review required before production.",
+  };
+  assert.equal(shouldPostVideoDrop(story), false);
+});
+
 test("shouldPostVideoDrop: once marker is set, never posts again (even with fresh URLs)", () => {
   const story = {
     id: "s1",

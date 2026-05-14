@@ -42,6 +42,24 @@ test("Discord auto-post does not import the full bot by default", () => {
   );
 });
 
+test("postVideoUpload has its own public-drop eligibility guard", () => {
+  const source = fs.readFileSync(AUTO_POST_PATH, "utf8");
+  assert.match(
+    source,
+    /shouldPostVideoDrop/,
+    "postVideoUpload should reuse the same QA/script-failure gate as publisher.js",
+  );
+  const start = source.indexOf("async function postVideoUpload");
+  assert.notEqual(start, -1, "postVideoUpload missing");
+  const next = source.indexOf("\nasync function ", start + 1);
+  const body = source.slice(start, next === -1 ? source.length : next);
+  assert.match(
+    body,
+    /if\s*\(\s*!\s*shouldPostVideoDrop\s*\(\s*story\s*\)\s*\)/,
+    "direct postVideoUpload calls must not bypass QA/script-failure eligibility",
+  );
+});
+
 test("Discord auto-post public helpers release standalone clients", () => {
   const source = fs.readFileSync(AUTO_POST_PATH, "utf8");
   assert.match(

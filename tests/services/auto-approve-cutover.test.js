@@ -398,3 +398,54 @@ test("community discussion prompts cannot auto-approve as news Shorts", async ()
   assert.equal(storyRow.approved, 0);
   assert.equal(storyRow.auto_approved, 0);
 });
+
+test("low-value community media posts cannot auto-approve from stale queue rows", async () => {
+  const repos = makeRepos();
+  seedStory(repos.db, {
+    id: "low-value-community-media",
+    title: "Alan Wake 2 safe rooms look like this",
+    flair: "News",
+    subreddit: "gaming",
+    source_type: "reddit",
+    score: 6000,
+    num_comments: 900,
+    breaking_score: 95,
+    article_image: "https://cdn/alan-wake-room.jpg",
+    game_images: JSON.stringify([
+      "https://steam/alan-wake-keyart.jpg",
+      "https://steam/alan-wake-screenshot.jpg",
+    ]),
+    hook: "Alan Wake 2 safe rooms are getting attention again",
+    full_script:
+      "A popular Reddit post shows Alan Wake 2 safe rooms. " +
+      "It is a community screenshot post, not a sourced news development.",
+    timestamp: new Date().toISOString(),
+  });
+
+  await autoApprove({
+    repos,
+    env: { NODE_ENV: "production", USE_SQLITE: "true" },
+  });
+
+  const scoreRow = repos.db
+    .prepare(
+      `SELECT decision, total, decision_reason, inputs FROM story_scores
+       WHERE story_id = 'low-value-community-media'
+       ORDER BY scored_at DESC LIMIT 1`,
+    )
+    .get();
+
+  assert.equal(scoreRow.decision, "review");
+  assert.match(scoreRow.decision_reason, /community_discussion_prompt/);
+
+  const inputs = JSON.parse(scoreRow.inputs);
+  assert.equal(inputs.community_discussion_auto_block, "community_discussion_prompt");
+
+  const storyRow = repos.db
+    .prepare(
+      `SELECT approved, auto_approved FROM stories WHERE id = 'low-value-community-media'`,
+    )
+    .get();
+  assert.equal(storyRow.approved, 0);
+  assert.equal(storyRow.auto_approved, 0);
+});

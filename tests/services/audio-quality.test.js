@@ -27,10 +27,23 @@ test("buildNarrationMusicMixFilter: preserves narration level when adding music"
 test("buildVoiceMasteringFilter: normalises local narration for crisp social-video playback", () => {
   const filter = buildVoiceMasteringFilter();
 
-  assert.match(filter, /highpass=f=80/);
+  assert.match(filter, /highpass=f=90/);
+  assert.match(filter, /equalizer=f=240:t=q:w=1\.0:g=-2/);
+  assert.match(filter, /equalizer=f=3200:t=q:w=1\.1:g=2\.4/);
+  assert.match(filter, /equalizer=f=6500:t=q:w=1\.0:g=1\.2/);
   assert.match(filter, /acompressor=/);
-  assert.match(filter, /loudnorm=I=-16:TP=-1\.5:LRA=8/);
-  assert.match(filter, /alimiter=limit=0\.92/);
+  assert.match(filter, /loudnorm=I=-14:TP=-1:LRA=7/);
+  assert.match(filter, /alimiter=limit=0\.96/);
+});
+
+test("audio-quality defaults keep local TTS loud and high-bitrate after mastering", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "..", "..", "lib", "audio-quality.js"),
+    "utf8",
+  );
+
+  assert.match(source, /TTS_VOICE_TARGET_LUFS,\s*-14/);
+  assert.match(source, /TTS_VOICE_MASTER_BITRATE,\s*"256k"/);
 });
 
 test("shouldMasterTtsAudio: defaults to local TTS only and can be disabled", () => {

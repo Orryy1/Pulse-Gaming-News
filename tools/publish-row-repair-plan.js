@@ -66,6 +66,13 @@ async function main() {
     markdown,
     "utf-8",
   );
+  if (plan.repair_sql_preview) {
+    await fs.writeFile(
+      path.join(OUT, "publish_row_repair_preview.sql"),
+      `${plan.repair_sql_preview}\n`,
+      "utf-8",
+    );
+  }
 
   if (args.json) {
     process.stdout.write(`${JSON.stringify(plan, null, 2)}\n`);

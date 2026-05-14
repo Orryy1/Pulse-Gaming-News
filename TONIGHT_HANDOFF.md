@@ -18,7 +18,7 @@ Update: 2026-05-14
 - Full `npm test`: pass (`2672/2672`) on 2026-05-14 after the Discord marker/poll hardening slice
 - `npm run build`: pass on 2026-05-14 after the Discord marker/poll hardening slice
 - `npm run ops:publish-cadence -- --hours 24`: AMBER
-- `npm run ops:publish-row-repair -- --limit 40`: dry-run report generated
+- `npm run ops:publish-row-repair -- --limit 40`: dry-run report plus `test/output/publish_row_repair_preview.sql` generated; no DB mutation performed
 - `npm run ops:local-restart-readiness`: RED, read-only report generated; now blocks restart readiness when the 24h daily cap is exceeded and the daily-cap hard gate is disabled
 
 ## What Changed In The Latest Slice
@@ -35,6 +35,7 @@ Update: 2026-05-14
 - Discord video-drop and story-poll markers are now persisted immediately after a successful Discord send, reducing duplicate-announcement risk if a process crashes before the final story save.
 - Discord story polls now require a clean published/partial state and refuse QA-failed or script-validation fallback rows.
 - Local restart readiness now checks publish-window, minimum-gap and daily-cap hard gates together before recommending a clean local primary restart.
+- Publish row repair now produces a backup-required SQL preview for the two red script-validation fallback rows while preserving platform IDs and keeping apply/manual mutation blocked.
 - Legacy multi-image assembly now accounts for xfade overlap so video duration covers narration/subtitles instead of cutting/freeze-risking the tail.
 
 ## Current Live Signal

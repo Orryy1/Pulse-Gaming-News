@@ -26,11 +26,11 @@ Recommendation: approve once the current live primary is identified. Use a 120-m
 
 Decision needed: approve or defer a targeted production DB repair plan.
 
-Current state: dry-run `npm run ops:publish-row-repair -- --limit 40` found 2 public rows that contain script-validation fallback text and 24 failed rows that still carry platform IDs. No DB mutation was performed.
+Current state: dry-run `npm run ops:publish-row-repair -- --limit 40` found 2 public rows that contain script-validation fallback text and 24 failed rows that still carry platform IDs. It now also writes `test/output/publish_row_repair_preview.sql` for operator review. No DB mutation was performed.
 
 Why it matters: these rows confuse Discord/status reporting and make it harder to tell which posts were genuinely clean.
 
-What changes: after a DB backup and manual platform check, apply a targeted repair that marks the two fallback rows as not clean public publishes and normalises failed/partial platform rows without deleting real platform IDs.
+What changes: after a DB backup and manual platform check, apply a targeted repair that marks the two fallback rows as failed/QA-failed without deleting real platform IDs. The amber failed rows remain manual-review-only unless a separate repair is approved.
 
 Risk: changing production history incorrectly could hide a real public post or make a partial publish look cleaner than it is.
 

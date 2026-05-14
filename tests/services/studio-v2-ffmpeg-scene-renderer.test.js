@@ -143,3 +143,25 @@ test("quote card layout downgrades overlong text inside safe bounds", () => {
   assert.ok(layout.blockTop >= layout.safeBounds.top);
   assert.ok(layout.blockBottom <= layout.safeBounds.bottom);
 });
+
+test("freeze-frame captions wrap long text instead of drawing one cut-off line", () => {
+  const filter = dispatchSceneFilter({
+    slot: 0,
+    fontOpt: "fontfile=Arial",
+    story: { title: "Take-Two legacy franchise story" },
+    scene: {
+      type: SCENE_TYPES.FREEZE_FRAME,
+      duration: 4,
+      source: "bioshock-trailer.mp4",
+      entity: "BioShock",
+      sourceType: "steam_movie",
+      caption: "Developer passion has become a hard veto for one of the company legacy franchises",
+    },
+  });
+
+  assert.doesNotMatch(filter, /DEVELOPER PASSION HAS BECOME A HARD VETO FOR ONE OF THE COMPANY LEGACY FRANCHISES/);
+  assert.match(filter, /DEVELOPER PASSION HAS/);
+  assert.match(filter, /BECOME A HARD VETO/);
+  assert.match(filter, /fontsize=48/);
+  assert.match(filter, /h=300/);
+});

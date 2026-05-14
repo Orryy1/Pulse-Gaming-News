@@ -107,6 +107,34 @@ test("Flash Lane upper-left chips reserve space below source-card safe zone", ()
   assert.match(filters, /drawbox=x=64:y=388:w=/);
 });
 
+test("Flash Lane upper-left chips move away from active card scenes", () => {
+  const plan = buildFlashLaneOverlayPlan({
+    story: {
+      title: "Xbox CEO responds to revenue pressure",
+      source_type: "rss",
+      publisher: "IGN",
+    },
+    scenes: [
+      { type: SCENE_TYPES.CARD_STAT, duration: 8 },
+      { type: SCENE_TYPES.CLIP, entity: "Xbox", duration: 4 },
+    ],
+    durationS: 12,
+  });
+
+  const sourceChip = plan.timeline.find((item) => item.kind === "source_chip");
+  assert.equal(sourceChip.anchor, "mid_left");
+
+  const filters = buildFlashLaneOverlayFilters({
+    plan,
+    inputLabel: "base",
+    outputLabel: "overlayed",
+    fontOpt: FONT_OPT,
+  }).join(";");
+
+  assert.match(filters, /drawbox=x=64:y=980:w=/);
+  assert.doesNotMatch(filters, /drawbox=x=64:y=388:w=/);
+});
+
 test("extractOverlayEntities prefers scene entities and normalises Pokemon spelling with accent", () => {
   const entities = extractOverlayEntities({
     story: { title: "Pokemon and Grand Theft Auto updates" },

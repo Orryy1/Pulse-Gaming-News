@@ -28,9 +28,11 @@ test("buildVoiceMasteringFilter: normalises local narration for crisp social-vid
   const filter = buildVoiceMasteringFilter();
 
   assert.match(filter, /highpass=f=90/);
+  assert.match(filter, /afftdn=nf=-28/);
   assert.match(filter, /equalizer=f=240:t=q:w=1\.0:g=-2/);
   assert.match(filter, /equalizer=f=3200:t=q:w=1\.1:g=2\.4/);
-  assert.match(filter, /equalizer=f=6500:t=q:w=1\.0:g=1\.2/);
+  assert.match(filter, /equalizer=f=6500:t=q:w=1\.0:g=1\.5/);
+  assert.match(filter, /equalizer=f=9500:t=q:w=0\.9:g=0\.9/);
   assert.match(filter, /acompressor=/);
   assert.match(filter, /loudnorm=I=-14:TP=-1:LRA=7/);
   assert.match(filter, /alimiter=limit=0\.96/);

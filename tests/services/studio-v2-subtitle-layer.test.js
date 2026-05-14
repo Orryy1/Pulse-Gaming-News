@@ -121,6 +121,33 @@ test("buildKineticAss falls back when alignment collapses long before narration 
   );
 });
 
+test("buildKineticAss repairs tracks that end several seconds before narration", () => {
+  const scriptText = Array.from({ length: 120 }, (_, i) => `beat${i}`).join(" ");
+  const words = Array.from({ length: 120 }, (_, i) => {
+    const start = (i / 120) * 55.2;
+    return {
+      word: `beat${i}`,
+      start: Number(start.toFixed(3)),
+      end: Number((start + 0.18).toFixed(3)),
+    };
+  });
+
+  const ass = buildKineticAss({
+    story: { title: "Early Ending Alignment" },
+    words,
+    duration: 60,
+    scriptText,
+    realign: true,
+  });
+
+  const intervals = assIntervals(ass);
+  assert.ok(intervals.length > 20);
+  assert.ok(
+    intervals[intervals.length - 1][1] >= 59,
+    "caption timeline should be regenerated when source timestamps stop several seconds early",
+  );
+});
+
 test("groupIntoPhrases caps creator subtitles at three words to avoid two-line blocks", () => {
   const phrases = groupIntoPhrases([
     { word: "Take-Two", start: 0, end: 0.2 },

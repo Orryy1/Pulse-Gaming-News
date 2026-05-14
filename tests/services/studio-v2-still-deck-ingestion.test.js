@@ -747,6 +747,19 @@ test("still-deck ASS timeline covers the narration tail without a fixed outro ca
   assert.doesNotMatch(src, /durationS\s*-\s*0\.6/);
 });
 
+test("still-deck Flash captions use the real narration transcript and strict caption density", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+
+  assert.match(src, /resolveStillDeckCaptionOptions/);
+  assert.match(src, /scriptText:\s*narration\.transcript\s*\|\|\s*renderStory\.scriptForCaption\s*\|\|\s*renderStory\.full_script/);
+  assert.match(src, /\.\.\.resolveStillDeckCaptionOptions\(\{ variant \}\)/);
+  assert.doesNotMatch(src, /maxPhraseChars:\s*22/);
+  assert.doesNotMatch(src, /danglingMergeMaxWords:\s*variant === "enriched" \? 3 : 2/);
+});
+
 test("still-deck Flash preflight report surfaces motion and beat coverage metrics", () => {
   const src = fs.readFileSync(
     path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),

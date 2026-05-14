@@ -308,6 +308,21 @@ function resolveSubtitleTimelineDurationS({ renderDurationS, narrationDurationS 
   return Math.max(0.1, ...candidates);
 }
 
+function resolveStillDeckCaptionOptions({ variant } = {}) {
+  const flash = variant === "enriched";
+  return {
+    maxWordsPerPhrase: 2,
+    maxPhraseChars: 14,
+    captionCase: "upper",
+    revealMode: flash ? "word" : "word",
+    motionStyle: flash ? "flash" : "default",
+    avoidDanglingWords: flash,
+    danglingMergeMaxWords: 2,
+    maxPhraseDurationS: flash ? 1.15 : 2.2,
+    minPhraseDurationS: flash ? 0.32 : 0.5,
+  };
+}
+
 function ensureSpokenOutro(text) {
   const outro = resolveStudioOutroLine({});
   const script = String(text || "").trim();
@@ -683,14 +698,9 @@ async function renderStillDeckVariant({
         story: renderStory,
         words,
         duration: assDurationS,
-        scriptText: renderStory.scriptForCaption || renderStory.full_script,
-        maxWordsPerPhrase: 2,
-        maxPhraseChars: 22,
-        captionCase: "upper",
-        revealMode: variant === "enriched" ? "phrase" : "word",
-        motionStyle: variant === "enriched" ? "flash" : "default",
-        avoidDanglingWords: variant === "enriched",
-        danglingMergeMaxWords: variant === "enriched" ? 3 : 2,
+        scriptText:
+          narration.transcript || renderStory.scriptForCaption || renderStory.full_script,
+        ...resolveStillDeckCaptionOptions({ variant }),
       }),
       "utf8",
     );

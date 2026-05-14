@@ -89,10 +89,10 @@ test("publisher.js: runPreflightQa runs content-QA then video-QA and returns str
 });
 
 test("publisher.js: legacy batch publish delegates to canonical publishNextStory before raw uploadAll calls", () => {
-  const idx = SRC.indexOf("async function publishToAllPlatforms()");
+  const idx = SRC.indexOf("async function publishToAllPlatforms");
   assert.ok(idx > 0, "publishToAllPlatforms must exist");
   const block = SRC.slice(idx, idx + 5000);
-  const delegateIdx = block.indexOf("await publishNextStory()");
+  const delegateIdx = block.indexOf("await publishNextStory");
   const returnIdx = block.indexOf("return {");
   const rawBatchIdx = block.indexOf("uploadAll");
   assert.ok(delegateIdx > 0, "legacy publish must delegate to publishNextStory()");

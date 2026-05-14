@@ -1051,7 +1051,7 @@ app.post(
 
     try {
       const { publishToAllPlatforms } = require("./publisher");
-      await publishToAllPlatforms();
+      await publishToAllPlatforms({ dispatchSource: "api_autonomous_publish" });
     } catch (err) {
       console.log(`[server] Multi-platform publish error: ${err.message}`);
     }
@@ -1868,7 +1868,9 @@ async function _registerLegacyDevCronRegistry() {
 
             // Publish ONE story per window (spread across the day for algorithm)
             const { publishNextStory } = require("./publisher");
-            const result = await publishNextStory();
+            const result = await publishNextStory({
+              dispatchSource: "server_cron_publish_window",
+            });
             if (result) {
               const errorDetails =
                 result.errors && Object.keys(result.errors).length > 0

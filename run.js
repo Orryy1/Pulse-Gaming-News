@@ -143,7 +143,7 @@ async function runPublish() {
   console.log("[run] === PUBLISH MODE ===");
 
   const { publishToAllPlatforms } = require("./publisher");
-  const results = await publishToAllPlatforms();
+  const results = await publishToAllPlatforms({ dispatchSource: "cli_publish" });
 
   const total =
     results.youtube.length + results.tiktok.length + results.instagram.length;

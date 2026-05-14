@@ -176,7 +176,9 @@ async function runFastPipeline(story) {
     if (process.env.AUTO_PUBLISH === "true") {
       console.log("[breaking] Step 5/5: Publishing to all platforms...");
       const { publishNextStory } = require("./publisher");
-      publishResult = await publishNextStory();
+      publishResult = await publishNextStory({
+        dispatchSource: "breaking_fast_lane",
+      });
       if (publishResult) {
         console.log(
           `[breaking] Published: YT=${publishResult.youtube} TT=${publishResult.tiktok} IG=${publishResult.instagram} FB=${publishResult.facebook} X=${publishResult.twitter}`,

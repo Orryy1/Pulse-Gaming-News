@@ -4,6 +4,9 @@ const sendDiscord = require("./notify");
 const { addBreadcrumb, captureException } = require("./lib/sentry");
 const db = require("./lib/db");
 const { resolveFacebookReelsMode } = require("./lib/platforms/facebook-reels-mode");
+const {
+  buildPublishWindowPolicy,
+} = require("./lib/services/publish-window-policy");
 
 dotenv.config({ override: true });
 
@@ -551,13 +554,16 @@ async function selfHealStaleMediaPaths({ repos: _repos } = {}) {
 }
 
 // --- Staggered multi-platform upload ---
-async function publishToAllPlatforms() {
+async function publishToAllPlatforms(options = {}) {
   console.log("[publisher] === Multi-Platform Publish ===");
   console.log(
     "[publisher] Legacy batch publish delegates to publishNextStory() so content, video and approved-voice QA always run before upload.",
   );
 
-  const canonical = await publishNextStory();
+  const canonical = await publishNextStory({
+    dispatchSource: options.dispatchSource || "legacy_batch_publish",
+    jobId: options.jobId || null,
+  });
   const uploaded = (platform) =>
     canonical?.platform_outcomes?.[platform] === "new_upload" ||
     canonical?.platform_outcomes?.[platform] === "accepted_processing" ||
@@ -792,7 +798,9 @@ async function fullAutonomousCycle() {
     if (process.env.AUTO_PUBLISH === "true") {
       addBreadcrumb("Publishing to all platforms", "pipeline");
       console.log("[publisher] Step 4/4: Publishing to all platforms...");
-      const results = await publishToAllPlatforms();
+      const results = await publishToAllPlatforms({
+        dispatchSource: "full_autonomous_cycle",
+      });
 
       const totalUploaded =
         results.youtube.length +
@@ -836,7 +844,9 @@ async function publishOnlyCycle() {
 
     // Publish
     if (process.env.AUTO_PUBLISH === "true") {
-      const results = await publishToAllPlatforms();
+      const results = await publishToAllPlatforms({
+        dispatchSource: "publish_only_cycle",
+      });
       const total =
         results.youtube.length +
         results.tiktok.length +
@@ -853,7 +863,7 @@ async function publishOnlyCycle() {
 
 // --- Publish a single next-available story across all platforms ---
 // Used by the 3x daily publish windows to spread content through the day
-async function publishNextStory() {
+async function publishNextStory(options = {}) {
   // Prevent concurrent publish calls from uploading the same story twice
   if (publishLock) {
     console.log("[publisher] Publish already in progress, skipping");
@@ -862,7 +872,35 @@ async function publishNextStory() {
   publishLock = true;
 
   try {
-    return await _publishNextStoryInner();
+    const publishWindow = buildPublishWindowPolicy({
+      dispatchSource: options.dispatchSource || "unspecified",
+      env: process.env,
+    });
+    if (publishWindow.advisory.length > 0) {
+      console.log(
+        `[publisher] publish window ${publishWindow.verdict}: ${publishWindow.advisory.join(" ")}`,
+      );
+    }
+    if (publishWindow.blocked) {
+      console.log(
+        `[publisher] publish window blocked for ${publishWindow.dispatchSource}: ${publishWindow.blockers.join(", ")}`,
+      );
+      return {
+        publish_window_blocked: true,
+        status: "blocked",
+        top_reason: publishWindow.blockers[0] || "publish_window_blocked",
+        publish_dispatch: {
+          ...publishWindow,
+          jobId: options.jobId || null,
+        },
+      };
+    }
+    return await _publishNextStoryInner({
+      publishDispatch: {
+        ...publishWindow,
+        jobId: options.jobId || null,
+      },
+    });
   } finally {
     publishLock = false;
   }
@@ -1139,7 +1177,7 @@ async function runPreflightQa(story) {
   return { pass: true, warnings };
 }
 
-async function _publishNextStoryInner() {
+async function _publishNextStoryInner({ publishDispatch = null } = {}) {
   const stories = await db.getStories();
 
   // Find stories that still need publishing to at least one platform.
@@ -1275,6 +1313,7 @@ async function _publishNextStoryInner() {
         ? `${top.source}_qa: ${top.reason}`
         : "no_candidates_eligible",
       candidates_tried: candidates.length,
+      publish_dispatch: publishDispatch,
     };
   }
 
@@ -1370,6 +1409,7 @@ async function _publishNextStoryInner() {
     qa_warnings: preflightWarnings,
     qa_skipped_count: qaSkipped.length,
     qa_skipped: qaSkipped,
+    publish_dispatch: publishDispatch,
   };
 
   // Sentinel-cleanup cutover: block/skip outcomes for every platform in

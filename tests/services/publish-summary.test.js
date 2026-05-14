@@ -313,6 +313,31 @@ test("no summary when publishNextStory returned null result", () => {
   assert.equal(s, null);
 });
 
+test("publish-window blocked result renders explicit blocked summary", () => {
+  const s = renderPublishSummary(
+    {
+      publish_window_blocked: true,
+      status: "blocked",
+      top_reason: "publish_window_blocked",
+      publish_dispatch: {
+        dispatchSource: "api_autonomous_publish",
+        nearestWindowUtc: "19:00",
+        minutesFromWindow: 213,
+        hardGateEnabled: true,
+      },
+    },
+    { jobId: 123 },
+  );
+
+  assert.equal(s.status, "failed");
+  assert.match(s.message, /Pulse Gaming Publish Attempt/);
+  assert.match(s.message, /job #123/);
+  assert.match(s.message, /Status:\s+blocked/);
+  assert.match(s.message, /api_autonomous_publish/);
+  assert.match(s.message, /Nearest window: 19:00 UTC/);
+  assert.match(s.message, /Reason: publish_window_blocked/);
+});
+
 // ---------- Multi-candidate fallback Discord summaries (2026-04-22) ----
 
 test("no-safe-candidate result renders failed summary with Top reason + Skipped count", () => {

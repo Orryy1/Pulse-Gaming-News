@@ -343,3 +343,58 @@ test("low script quality score blocks otherwise-auto stories from auto-approval"
   assert.equal(storyRow.approved, 0);
   assert.equal(storyRow.auto_approved, 0);
 });
+
+test("community discussion prompts cannot auto-approve as news Shorts", async () => {
+  const repos = makeRepos();
+  seedStory(repos.db, {
+    id: "community-discussion",
+    title: "What's the best obscure video game you've ever played?",
+    flair: "News",
+    subreddit: "gaming",
+    source_type: "reddit",
+    score: 5000,
+    num_comments: 800,
+    breaking_score: 95,
+    article_image: "https://cdn/forgotten-games.jpg",
+    game_images: JSON.stringify([
+      "https://steam/keyart.jpg",
+      "https://steam/screenshot.jpg",
+    ]),
+    hook: "Reddit just surfaced a forgotten-games thread everyone is debating",
+    full_script:
+      "A viral Reddit discussion asked players for obscure game recommendations. " +
+      "The thread is interesting, but it is not a confirmed news event with a source-backed development.",
+    timestamp: new Date().toISOString(),
+  });
+
+  await autoApprove({
+    repos,
+    env: { NODE_ENV: "production", USE_SQLITE: "true" },
+  });
+
+  const scoreRow = repos.db
+    .prepare(
+      `SELECT decision, total, decision_reason, inputs FROM story_scores
+       WHERE story_id = 'community-discussion'
+       ORDER BY scored_at DESC LIMIT 1`,
+    )
+    .get();
+
+  assert.equal(scoreRow.decision, "review");
+  assert.ok(
+    scoreRow.total >= 75,
+    `fixture should otherwise be auto-tier, got total=${scoreRow.total}`,
+  );
+  assert.match(scoreRow.decision_reason, /community_discussion_prompt/);
+
+  const inputs = JSON.parse(scoreRow.inputs);
+  assert.equal(inputs.community_discussion_auto_block, "community_discussion_prompt");
+
+  const storyRow = repos.db
+    .prepare(
+      `SELECT approved, auto_approved FROM stories WHERE id = 'community-discussion'`,
+    )
+    .get();
+  assert.equal(storyRow.approved, 0);
+  assert.equal(storyRow.auto_approved, 0);
+});

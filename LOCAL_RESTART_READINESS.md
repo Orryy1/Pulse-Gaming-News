@@ -1,19 +1,19 @@
 # Local Restart Readiness
 
-Generated: 2026-05-14T22:02:39.938Z
+Generated: 2026-05-14T22:10:28.380Z
 Verdict: RED
 Safety: read-only; does not restart the server, edit env vars, mutate DB rows, touch Railway or post
 
 ## Build Match
-- Current commit: 525f3cc
-- Local running commit: unknown (does not match)
-- Public running commit: unknown (does not match)
+- Current commit: c313c79
+- Local running commit: c313c79 (matches)
+- Public running commit: c313c79 (matches)
 
 ## Runtime
-- Local health: fail
-- Public health: fail (502)
-- Public mode: unknown
-- Public primary: unknown
+- Local health: pass (200)
+- Public health: pass (200)
+- Public mode: local
+- Public primary: true
 
 ## Cadence
 - Public posts in 24h: 10
@@ -30,12 +30,9 @@ Safety: read-only; does not restart the server, edit env vars, mutate DB rows, t
 - Daily-cap hard gate: enabled
 
 ## Blockers
-- localhost /api/health is not reachable
-- public /api/health is not reachable
 - public script-validation fallback rows need repair before a clean resume
 
 ## Warnings
-- 3 uncommitted file(s) are present; commit code changes before restart for reproducibility
 - 24 failed row(s) still carry platform IDs
 
 Recommendation: do_not_restart_primary_until_blockers_are_cleared

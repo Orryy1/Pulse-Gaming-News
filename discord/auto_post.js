@@ -13,7 +13,9 @@
 const { Client, Events, GatewayIntentBits, EmbedBuilder } = require("discord.js");
 const config = require("./config");
 const {
+  shouldPostNewStory,
   shouldPostVideoDrop,
+  shouldPostStoryPoll,
 } = require("../lib/services/discord-post-gate");
 
 let _client = null;
@@ -182,6 +184,11 @@ function badge(flair) {
  */
 async function postNewStory(story) {
   try {
+    if (!shouldPostNewStory(story)) {
+      console.log("[AutoPost] Skipping new story post: story is not eligible");
+      return null;
+    }
+
     const client = await getClient();
     if (!client) return null;
 
@@ -477,6 +484,11 @@ async function postStoryForApproval(story) {
  */
 async function postStoryPoll(story) {
   try {
+    if (!shouldPostStoryPoll(story)) {
+      console.log("[AutoPost] Skipping poll post: story is not eligible");
+      return null;
+    }
+
     const client = await getClient();
     if (!client) return null;
 

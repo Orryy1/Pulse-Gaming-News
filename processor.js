@@ -859,11 +859,13 @@ Today's date is ${today}. You MUST follow these rules:
   // Post new stories to Discord news channels
   try {
     const { postNewStory } = require("./discord/auto_post");
+    let postedCount = 0;
     for (const story of enriched) {
-      await postNewStory(story);
+      const msg = await postNewStory(story);
+      if (msg) postedCount++;
     }
     console.log(
-      `[processor] Discord: posted ${enriched.length} stories to news channels`,
+      `[processor] Discord: posted ${postedCount}/${enriched.length} stories to news channels`,
     );
   } catch (err) {
     console.log(`[processor] Discord news posting skipped: ${err.message}`);

@@ -13,6 +13,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
+  shouldPostNewStory,
   shouldPostVideoDrop,
   shouldPostStoryPoll,
   markVideoDropPosted,
@@ -20,6 +21,48 @@ const {
   hasCleanPublishState,
   hasPublicVideoTarget,
 } = require("../../lib/services/discord-post-gate");
+
+test("shouldPostNewStory: valid discovered story can be announced before upload", () => {
+  const story = {
+    id: "fresh-news",
+    title: "Nintendo confirms new bundle",
+    body: "Nintendo confirmed a new Switch bundle.",
+    content_pillar: "Confirmed Drop",
+  };
+  assert.equal(shouldPostNewStory(story), true);
+});
+
+test("shouldPostNewStory: script-validation fallback never reaches public news channels", () => {
+  const story = {
+    id: "script-review-news",
+    title: "Needs review",
+    body: "Script validation failed. Manual review required before production.",
+    content_pillar: "Manual Review",
+    script_generation_status: "review_required",
+  };
+  assert.equal(shouldPostNewStory(story), false);
+});
+
+test("shouldPostNewStory: failed or QA-failed rows are not public news", () => {
+  assert.equal(
+    shouldPostNewStory({
+      id: "failed",
+      publish_status: "failed",
+      title: "Bad row",
+      body: "Looks readable",
+    }),
+    false,
+  );
+  assert.equal(
+    shouldPostNewStory({
+      id: "qa",
+      qa_failed: true,
+      title: "Bad row",
+      body: "Looks readable",
+    }),
+    false,
+  );
+});
 
 test("shouldPostVideoDrop: fresh story with a YouTube URL qualifies", () => {
   const story = { id: "s1", youtube_url: "https://youtu.be/abc", publish_status: "partial" };

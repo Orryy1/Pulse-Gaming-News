@@ -325,6 +325,81 @@ function selectRawTtsScript(story) {
   return preferred;
 }
 
+const SPOKEN_OUTRO = "Follow Pulse Gaming so you never miss a beat.";
+
+function wordCount(text) {
+  return String(text || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+}
+
+function insertBeforeSpokenOutro(script, insertion) {
+  const cleanScript = String(script || "").trim();
+  const cleanInsertion = String(insertion || "").trim();
+  if (!cleanScript) return cleanInsertion;
+  if (!cleanInsertion) return cleanScript;
+
+  const outroRe = /\s*Follow Pulse Gaming so you never miss a beat\.?\s*$/i;
+  if (outroRe.test(cleanScript)) {
+    const withoutOutro = cleanScript.replace(outroRe, "").trim();
+    return `${withoutOutro} ${cleanInsertion} ${SPOKEN_OUTRO}`.replace(/\s+/g, " ").trim();
+  }
+
+  return `${cleanScript} ${cleanInsertion}`.replace(/\s+/g, " ").trim();
+}
+
+function buildDeterministicDurationPadding(story, { attempt = 1 } = {}) {
+  const haystack = `${story?.title || ""} ${story?.full_script || ""}`.toLowerCase();
+  const lines = [];
+
+  if (/\bnot (?:confirmed|a confirmed|a promise)|\bno (?:date|timeline|release date)|\bhypothetical\b/.test(haystack)) {
+    lines.push(
+      "That caveat matters, because an interview idea is not the same thing as a dated feature announcement.",
+    );
+  } else if (/\breportedly|\brumou?r|\bsources?\b/.test(haystack)) {
+    lines.push(
+      "That means the claim still needs official confirmation before players treat it as locked in.",
+    );
+  } else {
+    lines.push(
+      "The important point is the direction of travel, not just the headline itself.",
+    );
+  }
+
+  if (/\bdeveloper|\bcreator|\bdirector|\bproducer|\bexecutive|\bceo\b/.test(haystack)) {
+    lines.push(
+      "Because this came from a named person close to the project, it carries more weight than anonymous speculation.",
+    );
+  } else {
+    lines.push(
+      "The next thing to watch is whether an official post, platform listing or patch note backs it up.",
+    );
+  }
+
+  if (attempt > 1) {
+    lines.push(
+      "For Pulse, that means tracking the official follow-up before calling it a guaranteed change.",
+    );
+  } else {
+    lines.push(
+      "For players, the safest read is signal first, certainty later.",
+    );
+  }
+
+  return lines.join(" ");
+}
+
+function buildDeterministicDurationRewrite(story, { attempt = 1 } = {}) {
+  const base = firstNonBlank(story?.full_script, story?.tts_script, story?.body, story?.hook);
+  const padding = buildDeterministicDurationPadding(story, { attempt });
+  const fullScript = insertBeforeSpokenOutro(base || "", padding);
+  return {
+    full_script: fullScript,
+    word_count: wordCount(fullScript),
+  };
+}
+
 const BUMPER_DURATION = 0; // bumpers removed - audio must hit 61s on its own
 const MIN_TOTAL_DURATION = 61; // TikTok Creator Rewards minimum
 const MAX_FLASH_TOTAL_DURATION = 75;
@@ -964,44 +1039,57 @@ async function generateAudio() {
           `[audio] WARNING: ${story.id} is ${totalDuration.toFixed(1)}s (need ${MIN_TOTAL_DURATION}s). Regenerating longer script (attempt ${regenAttempts}/${MAX_REGEN})...`,
         );
 
-        // Regenerate with a longer target
-        const Anthropic = require("@anthropic-ai/sdk");
-        const { getChannel } = require("./channels");
-        const channel = getChannel();
-        const client = new Anthropic.default({
-          apiKey: process.env.ANTHROPIC_API_KEY,
-        });
-        const basePrompt =
-          channel.systemPrompt ||
-          (await fs.readFile("system_prompt.txt", "utf-8"));
+        let newScript;
+        if (!isTruthy(process.env.ALLOW_LLM_DURATION_REWRITE)) {
+          newScript = buildDeterministicDurationRewrite(story, {
+            attempt: regenAttempts,
+          });
+          console.log(
+            `[audio] ${story.id}: using deterministic duration padding (set ALLOW_LLM_DURATION_REWRITE=true to permit model rewrites)`,
+          );
+        } else {
+          // Regenerate with a longer target. This is opt-in because a
+          // model rewrite can strengthen claims while trying to add
+          // words. Default to deterministic padding so public facts stay
+          // anchored to the already-approved script.
+          const Anthropic = require("@anthropic-ai/sdk");
+          const { getChannel } = require("./channels");
+          const channel = getChannel();
+          const client = new Anthropic.default({
+            apiKey: process.env.ANTHROPIC_API_KEY,
+          });
+          const basePrompt =
+            channel.systemPrompt ||
+            (await fs.readFile("system_prompt.txt", "utf-8"));
 
-        const response = await client.messages.create({
-          model: "claude-haiku-4-5-20251001",
-          max_tokens: 1200,
-          system: basePrompt,
-          messages: [
-            {
-              role: "user",
-              content: `Rewrite this script to be ${runtimePlan.minWords}-${runtimePlan.maxWords} spoken words for a 61-75 second gaming Short. It was too short at ${story.word_count} words.\n\n${story.full_script}\n\nStory: ${story.title}\nKeep the same classification: ${story.classification}. Keep the CTA exactly: Follow Pulse Gaming so you never miss a beat.`,
-            },
-          ],
-        });
+          const response = await client.messages.create({
+            model: "claude-haiku-4-5-20251001",
+            max_tokens: 1200,
+            system: basePrompt,
+            messages: [
+              {
+                role: "user",
+                content: `Rewrite this script to be ${runtimePlan.minWords}-${runtimePlan.maxWords} spoken words for a 61-75 second gaming Short. It was too short at ${story.word_count} words.\n\n${story.full_script}\n\nStory: ${story.title}\nKeep the same classification: ${story.classification}. Keep the CTA exactly: Follow Pulse Gaming so you never miss a beat.`,
+              },
+            ],
+          });
 
-        let text = response.content[0].text.trim();
-        if (text.startsWith("```")) {
-          text = text
-            .replace(/^```(?:json)?\s*\n?/, "")
-            .replace(/\n?```\s*$/, "");
+          let text = response.content[0].text.trim();
+          if (text.startsWith("```")) {
+            text = text
+              .replace(/^```(?:json)?\s*\n?/, "")
+              .replace(/\n?```\s*$/, "");
+          }
+          newScript = JSON.parse(text);
         }
 
-          try {
-            const newScript = JSON.parse(text);
-            const newTTS = cleanForTTS(newScript.full_script);
-            assertBrandNameQaForTts(story, {
-              full_script: newScript.full_script,
-              tts_script: newTTS,
-            });
-            const newRuntimePlan = classifyShortScriptRuntime({
+        try {
+          const newTTS = cleanForTTS(newScript.full_script);
+          assertBrandNameQaForTts(story, {
+            full_script: newScript.full_script,
+            tts_script: newTTS,
+          });
+          const newRuntimePlan = classifyShortScriptRuntime({
             text: newTTS,
             story,
             secondsPerWord: runtimeSecondsPerWord,
@@ -1098,6 +1186,9 @@ module.exports.generateTtsForStory = generateTtsForStory;
 module.exports.isLocalTtsProvider = isLocalTtsProvider;
 module.exports.assertBrandNameQaForTts = assertBrandNameQaForTts;
 module.exports.selectRawTtsScript = selectRawTtsScript;
+module.exports.buildDeterministicDurationPadding = buildDeterministicDurationPadding;
+module.exports.buildDeterministicDurationRewrite = buildDeterministicDurationRewrite;
+module.exports.insertBeforeSpokenOutro = insertBeforeSpokenOutro;
 
 if (require.main === module) {
   generateAudio().catch((err) => {

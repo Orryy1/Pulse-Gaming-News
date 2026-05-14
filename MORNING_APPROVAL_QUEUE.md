@@ -10,17 +10,17 @@ Latest read-only restart check: `npm run ops:local-restart-readiness` is RED. It
 
 Decision needed: approve or defer enabling live cadence hard gates.
 
-Current state: the last 24h cadence doctor is AMBER: 11 public posts, 10 off-schedule posts, 7 tight-spacing pairs and a 2-minute minimum gap. The code now supports publish-window and cooldown policy checks, but they are warn-only unless explicit env flags are set.
+Current state: the last 24h cadence doctor is AMBER: 11 public posts, 10 off-schedule posts, 7 tight-spacing pairs and a 2-minute minimum gap. The code now supports publish-window, cooldown and daily-cap policy checks, but they are warn-only unless explicit env flags are set.
 
 Why it matters: this prevents back-to-back overnight posting bursts like 23:59 then 00:00 while keeping scheduled windows intentional.
 
-What changes: enable `PUBLISH_REQUIRE_WINDOW=true` and `PUBLISH_REQUIRE_MIN_GAP=true` on the live primary instance only after confirming the desired daily window strategy. This would block direct/fast-lane/API publish calls outside allowed windows or inside the cooldown.
+What changes: enable `PUBLISH_REQUIRE_WINDOW=true`, `PUBLISH_REQUIRE_MIN_GAP=true` and `PUBLISH_REQUIRE_DAILY_CAP=true` on the live primary instance only after confirming the desired daily window strategy. This would block direct/fast-lane/API publish calls outside allowed windows, inside the cooldown or after the daily cap.
 
 Risk: fewer posts, missed breaking stories and possible queue backlog if the scoring/publish strategy is too conservative.
 
-Rollback: set both flags back to `false` or unset them, restart the local primary and run `npm run ops:publish-cadence -- --hours 24`.
+Rollback: set those flags back to `false` or unset them, restart the local primary and run `npm run ops:publish-cadence -- --hours 24`.
 
-Recommendation: approve once the current live primary is identified. Use a 120-minute minimum gap first; do not raise upload volume until analytics proves the cadence works.
+Recommendation: approve once the current live primary is identified. Use a 120-minute minimum gap and a 3-post daily cap first; do not raise upload volume until analytics proves the cadence works.
 
 ## 0a. Publish Row Repair
 

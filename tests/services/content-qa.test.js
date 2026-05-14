@@ -665,6 +665,19 @@ test("DEFAULT_MIN_MP4_BYTES is conservative (200KB)", () => {
   assert.strictEqual(DEFAULT_MIN_MP4_BYTES, 200 * 1024);
 });
 
+test("runContentQa: processor script-validation fallback is a hard fail", async () => {
+  const story = goodStory({
+    body: "Script validation failed. Manual review required before production.",
+    script_generation_status: "review_required",
+    script_review_reason: "script_validation_failed",
+  });
+  const qa = await runContentQa(story, {
+    fs: fakeFs({ [story.exported_path]: { size: 5 * 1024 * 1024 } }),
+  });
+  assert.strictEqual(qa.result, "fail");
+  assert.ok(qa.failures.includes("script_validation_review_required"));
+});
+
 // ---------- real filesystem check ------------------------------
 // Single smoke test with a real temp file to confirm the
 // production code path works end-to-end with actual fs-extra.

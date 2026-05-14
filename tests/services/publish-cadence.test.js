@@ -74,6 +74,13 @@ test("buildPublishCadenceReport: flags bursts, off-schedule posts and failed row
         instagram_media_id: "ig_c",
       },
       {
+        id: "invalid_public",
+        title: "Invalid public row",
+        published_at: "2026-05-14T23:15:00.000Z",
+        youtube_post_id: "yt_invalid",
+        body: "Script validation failed. Manual review required before production.",
+      },
+      {
         id: "failed_has_ids",
         title: "Failed but uploaded somewhere",
         publish_status: "failed",
@@ -93,10 +100,11 @@ test("buildPublishCadenceReport: flags bursts, off-schedule posts and failed row
   });
 
   assert.equal(report.verdict, "amber");
-  assert.equal(report.summary.published_count, 3);
-  assert.equal(report.summary.off_schedule_count, 3);
-  assert.equal(report.summary.burst_pairs, 2);
+  assert.equal(report.summary.published_count, 4);
+  assert.equal(report.summary.off_schedule_count, 4);
+  assert.equal(report.summary.burst_pairs, 3);
   assert.equal(report.failed_rows_with_platform_ids.length, 1);
+  assert.equal(report.invalid_public_story_rows.length, 1);
   assert.deepEqual(
     report.direct_publish_route_candidates.map((route) => route.id),
     [
@@ -108,6 +116,7 @@ test("buildPublishCadenceReport: flags bursts, off-schedule posts and failed row
   );
   assert.match(report.advisory.join("\n"), /off-schedule/i);
   assert.match(report.advisory.join("\n"), /tight publish spacing/i);
+  assert.match(report.advisory.join("\n"), /script-validation fallback/i);
 });
 
 test("buildPublishCadenceReport: failed rows with platform IDs are not counted as public cadence events", () => {
@@ -154,6 +163,13 @@ test("formatPublishCadenceMarkdown: renders operator-readable warnings", () => {
       },
     ],
     failed_rows_with_platform_ids: [],
+    invalid_public_story_rows: [
+      {
+        id: "bad",
+        title: "Script validation failed row",
+        platforms: ["youtube"],
+      },
+    ],
     advisory: ["off-schedule public posts detected"],
     next_action: "Review direct publish paths.",
   });
@@ -161,6 +177,8 @@ test("formatPublishCadenceMarkdown: renders operator-readable warnings", () => {
   assert.match(md, /Publish Cadence/);
   assert.match(md, /AMBER/);
   assert.match(md, /Some Story/);
+  assert.match(md, /Invalid Public Story Rows/);
+  assert.match(md, /Script validation failed row/);
   assert.match(md, /Likely Direct Publish Routes/);
   assert.match(md, /Review direct publish paths/);
 });

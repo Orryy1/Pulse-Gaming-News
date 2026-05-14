@@ -5,9 +5,11 @@ const assert = require("node:assert/strict");
 
 const {
   generateTtsForStory,
+  buildTtsAlignmentMeta,
   isLocalTtsProvider,
   isRetryableLocalTtsError,
   markAudioGenerationFailure,
+  prepareTtsAlignmentForWrite,
   requestTtsWithRetry,
   resolveTtsVoiceIdForProvider,
 } = require("../../audio");
@@ -163,6 +165,49 @@ test("resolveTtsVoiceIdForProvider: local TTS refuses generic or non-Liam fallba
     resolveTtsVoiceIdForProvider("local", {}, { voiceId: "TX3LPaxmHKxFdv7VOQHJ" }),
     "TX3LPaxmHKxFdv7VOQHJ",
   );
+});
+
+test("buildTtsAlignmentMeta: prefers full request text over stale short local transcript", () => {
+  const fullText =
+    "This is the complete narration that should drive captions all the way to the outro. Follow Pulse Gaming so you never miss a beat.";
+  const meta = buildTtsAlignmentMeta({
+    existingMeta: { transcript: "short probe transcript" },
+    provider: "local",
+    voiceId: "TX3LPaxmHKxFdv7VOQHJ",
+    baseUrl: "http://127.0.0.1:8765",
+    text: fullText,
+    resolvedVoiceSettings: { speaking_rate: 1 },
+  });
+
+  assert.equal(meta.transcript, fullText);
+  assert.equal(meta.spokenOutroPresent, true);
+});
+
+test("prepareTtsAlignmentForWrite: local broken timings are replaced before sidecar write", () => {
+  const text = "Stardew Valley creator follow Pulse Gaming.";
+  const badAlignment = {
+    characters: Array.from(text),
+    character_start_times_seconds: Array.from(text, (_, i) =>
+      i < 7 ? 0.1 : i < 20 ? 36.7 : 64,
+    ),
+    character_end_times_seconds: Array.from(text, (_, i) =>
+      i < 7 ? 0.5 : i < 20 ? 37.1 : 64,
+    ),
+    meta: { transcript: "short stale transcript" },
+  };
+
+  const prepared = prepareTtsAlignmentForWrite({
+    provider: "local",
+    alignment: badAlignment,
+    text,
+    durationSeconds: 64,
+  });
+
+  assert.equal(prepared.repair.repaired, true);
+  assert.equal(prepared.repair.reason, "max_gap_too_large");
+  assert.equal(prepared.alignment.characters.join(""), text);
+  assert.equal(prepared.alignment.meta.transcript, "short stale transcript");
+  assert.equal(prepared.alignment.meta.timestampRepair.reason, "max_gap_too_large");
 });
 
 test("markAudioGenerationFailure: records local TTS voice failures on the story", () => {

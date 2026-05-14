@@ -50,6 +50,9 @@ const {
   ACCEPTED_LOCAL_LIAM_VOICE_ID,
   canonicalLocalTtsVoiceId,
 } = require("./lib/studio/local-tts-voice-id");
+const {
+  repairTimestampAlignment,
+} = require("./lib/subtitle-timing");
 
 function isTruthy(value) {
   return /^(true|1|yes|on)$/i.test(String(value || ""));
@@ -89,12 +92,16 @@ function buildTtsAlignmentMeta({
   const normalisedProvider = String(provider || "").toLowerCase();
   const isLocal = normalisedProvider === "local";
   const source = isLocal ? "local-tts-server" : "elevenlabs-production-path";
-  const transcript =
+  const requestedText = typeof text === "string" && text.trim() ? text : null;
+  const existingTranscript =
     typeof existingMeta.transcript === "string" && existingMeta.transcript.trim()
       ? existingMeta.transcript
-      : typeof text === "string"
-        ? text
-        : existingMeta.text || null;
+      : null;
+  const transcript =
+    existingTranscript &&
+    (!requestedText || existingTranscript.length >= requestedText.length * 0.65)
+      ? existingTranscript
+      : requestedText || existingMeta.text || existingTranscript || null;
   return {
     ...existingMeta,
     provider: normalisedProvider || existingMeta.provider || "unknown",
@@ -646,6 +653,70 @@ async function concatAudioFiles(files, outputPath) {
 //
 // Both providers must return identical JSON:
 //   { audio_base64, alignment: { characters, character_start_times_seconds, character_end_times_seconds } }
+function prepareTtsAlignmentForWrite({
+  provider,
+  alignment,
+  text,
+  durationSeconds,
+} = {}) {
+  const normalisedProvider = String(provider || "").toLowerCase();
+  const originalAlignment =
+    alignment && typeof alignment === "object" ? alignment : {};
+  const existingMeta =
+    originalAlignment.meta && typeof originalAlignment.meta === "object"
+      ? originalAlignment.meta
+      : {};
+
+  if (normalisedProvider !== "local") {
+    return {
+      alignment: originalAlignment,
+      repair: { repaired: false, reason: null },
+    };
+  }
+
+  const repaired = repairTimestampAlignment({
+    alignment: originalAlignment,
+    text,
+    duration: durationSeconds,
+  });
+
+  if (!repaired.repaired || repaired.inspection?.usable !== true) {
+    return {
+      alignment: {
+        ...originalAlignment,
+        meta: existingMeta,
+      },
+      repair: {
+        repaired: false,
+        reason: null,
+        inspection: repaired.inspection,
+        originalInspection: repaired.originalInspection,
+      },
+    };
+  }
+
+  return {
+    alignment: {
+      ...repaired.alignment,
+      meta: {
+        ...existingMeta,
+        timestampRepair: {
+          repaired: true,
+          reason: repaired.repairReason,
+          originalInspection: repaired.originalInspection,
+          repairedInspection: repaired.inspection,
+        },
+      },
+    },
+    repair: {
+      repaired: true,
+      reason: repaired.repairReason,
+      inspection: repaired.inspection,
+      originalInspection: repaired.originalInspection,
+    },
+  };
+}
+
 async function generateTTS(text, outputPath, rateOverride) {
   const provider = (process.env.TTS_PROVIDER || "elevenlabs").toLowerCase();
   const voiceId = resolveTtsVoiceIdForProvider(provider, process.env, brand);
@@ -712,12 +783,19 @@ async function generateTTS(text, outputPath, rateOverride) {
   }
   await fs.writeFile(writeTarget, Buffer.from(audioBase64, "base64"));
 
-  const timestampsPath = outputPath.replace(/\.mp3$/, "_timestamps.json");
-  const timestampsWriteTarget = mediaPaths.writePath(timestampsPath);
-  const alignment = response.data.alignment || {};
   const voiceDiagnostics = normaliseLocalVoiceDiagnostics(
     response.data.voice_diagnostics || response.data.voiceDiagnostics,
   );
+  const audioDurationForAlignment = await getAudioDuration(outputPath);
+  const preparedAlignment = prepareTtsAlignmentForWrite({
+    provider,
+    alignment: response.data.alignment || {},
+    text,
+    durationSeconds: audioDurationForAlignment,
+  });
+  const timestampsPath = outputPath.replace(/\.mp3$/, "_timestamps.json");
+  const timestampsWriteTarget = mediaPaths.writePath(timestampsPath);
+  const alignment = preparedAlignment.alignment || {};
   alignment.meta = buildTtsAlignmentMeta({
     existingMeta: alignment.meta || {},
     provider,
@@ -727,6 +805,13 @@ async function generateTTS(text, outputPath, rateOverride) {
     resolvedVoiceSettings,
     voiceDiagnostics,
   });
+  if (preparedAlignment.repair?.repaired) {
+    alignment.meta.timestampRepair = {
+      ...(alignment.meta.timestampRepair || {}),
+      provider,
+      repairedAt: new Date().toISOString(),
+    };
+  }
   await fs.writeJson(timestampsWriteTarget, alignment, { spaces: 2 });
 
   // Return the repo-relative path so callers and the DB continue
@@ -1182,6 +1267,7 @@ module.exports = generateAudio;
 module.exports.getAudioDuration = getAudioDuration;
 module.exports.cleanForTTS = cleanForTTS;
 module.exports.generateTTS = generateTTS;
+module.exports.buildTtsAlignmentMeta = buildTtsAlignmentMeta;
 module.exports.concatAudioFiles = concatAudioFiles;
 module.exports.resolveTtsTimeoutMs = resolveTtsTimeoutMs;
 module.exports.resolveLocalTtsSpeakingRate = resolveLocalTtsSpeakingRate;
@@ -1193,6 +1279,7 @@ module.exports.resolveTtsVoiceIdForProvider = resolveTtsVoiceIdForProvider;
 module.exports.markAudioGenerationFailure = markAudioGenerationFailure;
 module.exports.generateTtsForStory = generateTtsForStory;
 module.exports.isLocalTtsProvider = isLocalTtsProvider;
+module.exports.prepareTtsAlignmentForWrite = prepareTtsAlignmentForWrite;
 module.exports.assertBrandNameQaForTts = assertBrandNameQaForTts;
 module.exports.selectRawTtsScript = selectRawTtsScript;
 module.exports.buildDeterministicDurationPadding = buildDeterministicDurationPadding;

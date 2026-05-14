@@ -95,6 +95,7 @@
     "ops:local-env-plan": "node tools/local-env-cleanup-plan.js",
     "ops:local-tunnel-readiness": "node tools/local-tunnel-readiness.js",
     "ops:local-posting-readiness": "node tools/local-posting-readiness.js",
+    "ops:local-restart-readiness": "node tools/local-restart-readiness.js",
     "ops:local-resume-plan": "node tools/local-resume-plan.js",
     "ops:local-media-repair": "node tools/local-media-repair.js",
     "ops:local-script-extension": "node tools/local-script-extension.js",

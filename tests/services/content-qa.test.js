@@ -315,6 +315,7 @@ test("runContentQa: strict local publish rejects local audio without accepted Li
       transcript:
         "A clean gaming update. Follow Pulse Gaming so you never miss a beat.",
       acoustic: { medianPitchHz: 118 },
+      voiceMastering: { ok: true, code: "voice_mastered", targetLufs: -14 },
     },
   });
 
@@ -359,6 +360,7 @@ test("runContentQa: strict local publish accepts approved Sleepy Liam evidence",
       transcript:
         "A clean gaming update. Follow Pulse Gaming so you never miss a beat.",
       acoustic: { medianPitchHz: 118 },
+      voiceMastering: { ok: true, code: "voice_mastered", targetLufs: -14 },
     },
   });
 
@@ -404,6 +406,7 @@ test("runContentQa: strict local publish uses full aligned transcript when segme
       },
       transcript: "A clean gaming update.",
       acoustic: { medianPitchHz: 118 },
+      voiceMastering: { ok: true, code: "voice_mastered", targetLufs: -14 },
     },
   });
 

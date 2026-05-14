@@ -1531,7 +1531,7 @@ function buildVideoCommand(
 
   // --- ASS subtitles ---
   filterParts.push(`[${videoLabel}]ass=${assPathFixed}[afterass]`);
-  filterParts.push(`[afterass]copy[outv]`);
+  filterParts.push(`[afterass]scale=in_range=pc:out_range=tv,format=yuv420p,setsar=1[outv]`);
 
   // Audio mixing: narration at full volume + music at low volume
   let audioMapping;
@@ -1560,7 +1560,7 @@ function buildVideoCommand(
     // or full chroma — which our Sharp-rendered composites do.
     // Meta decoders refuse anything above 4:2:0. YouTube transcodes
     // server-side so it ignored the profile; Meta does not.
-    "-pix_fmt yuv420p -profile:v high -level:v 4.0",
+    "-pix_fmt yuv420p -profile:v high -level:v 4.0 -color_range tv -colorspace bt709 -color_primaries bt709 -color_trc bt709",
     "-c:a aac -b:a 192k",
     "-r 30 -shortest",
     "-map_metadata -1",
@@ -2256,9 +2256,10 @@ async function assemble() {
         // ASS subtitles LAST - on top of everything
         if (assPath && (await fs.pathExists(assPath))) {
           const assFixed = assPath.replace(/\\/g, "/").replace(/:/g, "\\\\:");
-          fbFilterParts.push(`[${fbVideoLabel}]ass=${assFixed}[outv]`);
+          fbFilterParts.push(`[${fbVideoLabel}]ass=${assFixed}[fbass]`);
+          fbFilterParts.push(`[fbass]scale=in_range=pc:out_range=tv,format=yuv420p,setsar=1[outv]`);
         } else {
-          fbFilterParts.push(`[${fbVideoLabel}]copy[outv]`);
+          fbFilterParts.push(`[${fbVideoLabel}]scale=in_range=pc:out_range=tv,format=yuv420p,setsar=1[outv]`);
         }
 
         // Audio mixing
@@ -2288,7 +2289,7 @@ async function assemble() {
           `-c:v libx264 -crf 21 -preset medium -threads ${FFMPEG_THREADS}`,
           // Meta-safe H.264 profile (same as primary branch) — IG
           // Reels and FB Reels refuse High 4:4:4 Predictive.
-          "-pix_fmt yuv420p -profile:v high -level:v 4.0",
+          "-pix_fmt yuv420p -profile:v high -level:v 4.0 -color_range tv -colorspace bt709 -color_primaries bt709 -color_trc bt709",
           "-c:a aac -b:a 192k -r 30 -shortest",
           `-movflags +faststart "${writeTargetPath}"`,
         ].join(" ");

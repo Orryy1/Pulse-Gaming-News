@@ -22,6 +22,12 @@ function approvedLiamNarration(overrides = {}) {
     },
     acoustic: {
       medianPitchHz: 132,
+      integratedLufs: -14.2,
+    },
+    voiceMastering: {
+      ok: true,
+      code: "voice_mastered",
+      targetLufs: -14,
     },
     transcript:
       "This is a current Pulse Gaming dispatch proof. Follow Pulse Gaming so you never miss a beat.",

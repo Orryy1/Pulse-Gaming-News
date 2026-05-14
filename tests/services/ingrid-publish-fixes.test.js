@@ -75,6 +75,19 @@ test("assemble.js: explicit high profile + level 4.0 baked in", () => {
   );
 });
 
+test("assemble.js: final encoder clamps full-range JPEG/video inputs to TV-range yuv420p", () => {
+  assert.match(
+    ASSEMBLE,
+    /scale=in_range=pc:out_range=tv,format=yuv420p/,
+    "primary filter graph must clamp full-range inputs before the final encode",
+  );
+  assert.match(
+    ASSEMBLE,
+    /-color_range\s+tv\s+-colorspace\s+bt709\s+-color_primaries\s+bt709\s+-color_trc\s+bt709/,
+    "encoder must tag short-form MP4s as TV-range BT.709",
+  );
+});
+
 // ---------- URL extension fix -----------------------------------
 
 test("server.js: /api/story-image route accepts optional .png suffix", () => {

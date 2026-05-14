@@ -959,6 +959,7 @@ function assertStudioV2VoiceAllowedForRender({
       null,
     approvedLocalVoice: voice.approvedLocalVoice === true || meta.approvedLocalVoice === true,
     acceptedLocalVoice: voice.acceptedLocalVoice || meta.acceptedLocalVoice || null,
+    voiceMastering: voice.voiceMastering || voice.mastering || meta.voiceMastering || meta.mastering || null,
     signatureHash: voice.signatureHash || meta.signatureHash || null,
   };
   assertNarrationAllowedForProof(narration, {

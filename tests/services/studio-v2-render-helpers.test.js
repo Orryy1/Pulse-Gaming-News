@@ -22,6 +22,12 @@ const ACCEPTED_SLEEPY_LIAM = {
   referenceHash: "d".repeat(40),
 };
 
+const APPROVED_LOCAL_VOICE_MASTERING = {
+  ok: true,
+  code: "voice_mastered",
+  targetLufs: -14,
+};
+
 function proofAudioPath(name = "studio-v2-render-helper.mp3") {
   const fs = require("node:fs");
   const path = require("node:path");
@@ -252,11 +258,13 @@ test("studio-v2 render voice assertion rejects accepted local audio without acou
           source: "local-production-voxcpm-path",
           audioPath: proofAudioPath("missing-acoustic.mp3"),
           acceptedLocalVoice: ACCEPTED_SLEEPY_LIAM,
+          voiceMastering: APPROVED_LOCAL_VOICE_MASTERING,
         },
         tsData: {
           meta: {
             text: "A clean update. Follow Pulse Gaming so you never miss a beat.",
             acceptedLocalVoice: ACCEPTED_SLEEPY_LIAM,
+            voiceMastering: APPROVED_LOCAL_VOICE_MASTERING,
           },
         },
         spokenTranscript: "A clean update. Follow Pulse Gaming so you never miss a beat.",
@@ -273,12 +281,14 @@ test("studio-v2 render voice assertion allows approved Sleepy Liam evidence befo
       source: "local-production-voxcpm-path",
       audioPath: proofAudioPath("approved-sleepy-liam.mp3"),
       acceptedLocalVoice: ACCEPTED_SLEEPY_LIAM,
+      voiceMastering: APPROVED_LOCAL_VOICE_MASTERING,
     },
     tsData: {
       meta: {
         text: "A clean update. Follow Pulse Gaming so you never miss a beat.",
-        acoustic: { medianPitchHz: 118 },
+        acoustic: { medianPitchHz: 118, integratedLufs: -14.2 },
         acceptedLocalVoice: ACCEPTED_SLEEPY_LIAM,
+        voiceMastering: APPROVED_LOCAL_VOICE_MASTERING,
       },
     },
     spokenTranscript: "A clean update. Follow Pulse Gaming so you never miss a beat.",
@@ -288,6 +298,7 @@ test("studio-v2 render voice assertion allows approved Sleepy Liam evidence befo
   assert.equal(narration.provider, "local");
   assert.equal(narration.acceptedLocalVoice.id, "pulse-sleepy-liam-20260502");
   assert.equal(narration.acoustic.medianPitchHz, 118);
+  assert.equal(narration.voiceMastering.code, "voice_mastered");
 });
 
 test("studio-v2 render calls voice assertion before sound-layer/ffmpeg input construction", () => {

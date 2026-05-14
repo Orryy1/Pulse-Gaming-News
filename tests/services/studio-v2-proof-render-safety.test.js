@@ -17,6 +17,12 @@ const ACCEPTED_SLEEPY_LIAM = {
   referenceHash: "b".repeat(40),
 };
 
+const APPROVED_LOCAL_VOICE_MASTERING = {
+  ok: true,
+  code: "voice_mastered",
+  targetLufs: -14,
+};
+
 function proofAudioPath(name = "approved.mp3") {
   const dir = path.join(process.cwd(), "test", "output", "tmp-proof-render-safety");
   fs.mkdirSync(dir, { recursive: true });
@@ -78,7 +84,8 @@ test("Studio V2 proof safety allows approved local narration only with explicit 
     source: "local-production-voxcpm-path",
     audioPath: proofAudioPath("local-explicitly-approved.mp3"),
     transcript: "Follow Pulse Gaming so you never miss a beat.",
-    acoustic: { medianPitchHz: 118 },
+    acoustic: { medianPitchHz: 118, integratedLufs: -14.3 },
+    voiceMastering: APPROVED_LOCAL_VOICE_MASTERING,
     acceptedLocalVoice: ACCEPTED_SLEEPY_LIAM,
   };
 
@@ -87,6 +94,55 @@ test("Studio V2 proof safety allows approved local narration only with explicit 
     assertNarrationAllowedForProof(narration, {
       env: { STUDIO_V2_LOCAL_VOICE_APPROVED: "true" },
     }),
+  );
+});
+
+test("Studio V2 proof safety rejects approved local narration without mastering proof", () => {
+  const narration = {
+    mode: "real_audio",
+    provider: "local",
+    source: "local-production-voxcpm-path",
+    audioPath: proofAudioPath("local-unmastered.mp3"),
+    transcript: "Follow Pulse Gaming so you never miss a beat.",
+    acoustic: { medianPitchHz: 118, integratedLufs: -14.3 },
+    acceptedLocalVoice: ACCEPTED_SLEEPY_LIAM,
+  };
+
+  assert.equal(
+    narrationVoiceBlocker(narration, { STUDIO_V2_LOCAL_VOICE_APPROVED: "true" }),
+    "local_voice_mastering_missing",
+  );
+  assert.throws(
+    () =>
+      assertNarrationAllowedForProof(narration, {
+        env: { STUDIO_V2_LOCAL_VOICE_APPROVED: "true" },
+      }),
+    /no mastering proof/i,
+  );
+});
+
+test("Studio V2 proof safety rejects approved local narration that is still too quiet", () => {
+  const narration = {
+    mode: "real_audio",
+    provider: "local",
+    source: "local-production-voxcpm-path",
+    audioPath: proofAudioPath("local-too-quiet.mp3"),
+    transcript: "Follow Pulse Gaming so you never miss a beat.",
+    acoustic: { medianPitchHz: 118, integratedLufs: -24.3 },
+    voiceMastering: APPROVED_LOCAL_VOICE_MASTERING,
+    acceptedLocalVoice: ACCEPTED_SLEEPY_LIAM,
+  };
+
+  assert.equal(
+    narrationVoiceBlocker(narration, { STUDIO_V2_LOCAL_VOICE_APPROVED: "true" }),
+    "local_voice_too_quiet",
+  );
+  assert.throws(
+    () =>
+      assertNarrationAllowedForProof(narration, {
+        env: { STUDIO_V2_LOCAL_VOICE_APPROVED: "true" },
+      }),
+    /too quiet/i,
   );
 });
 

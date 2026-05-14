@@ -11,10 +11,13 @@ dotenv.config({ override: true });
 const brand = require("../brand");
 const mediaPaths = require("../lib/media-paths");
 const {
+  applyStaleAudioQaFailureReset,
   applyLocalAudioRepairs,
   buildLocalMediaRepairQueue,
+  buildStaleAudioQaFailureResetPlan,
   renderLocalMediaRepairApplyMarkdown,
   renderLocalMediaRepairMarkdown,
+  renderStaleAudioQaFailureResetMarkdown,
 } = require("../lib/ops/local-media-repair");
 const {
   applyLocalProofTtsLimits,
@@ -48,17 +51,26 @@ function parseArgs(argv) {
     applyLimit: null,
     applyLocal: false,
     applyLocalAudio: false,
+    applyLocalReset: false,
+    storyIds: [],
     outDir: OUT,
   };
   for (let i = 2; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--limit") args.limit = Number(argv[++i]);
+    else if (arg === "--story") {
+      args.storyIds.push(...String(argv[++i] || "").split(",").map((value) => value.trim()).filter(Boolean));
+    }
     else if (arg === "--apply-limit") args.applyLimit = Number(argv[++i]);
     else if (arg === "--out-dir") args.outDir = argv[++i];
     else if (arg === "--apply-local") args.applyLocal = true;
     else if (arg === "--apply-local-audio") {
       args.applyLocal = true;
       args.applyLocalAudio = true;
+    }
+    else if (arg === "--apply-local-reset") {
+      args.applyLocal = true;
+      args.applyLocalReset = true;
     }
     else if (arg === "--dry-run") args.applyLocal = false;
   }
@@ -117,10 +129,15 @@ async function main() {
   const approvedStories = allStories.filter(
     (story) => story && (story.approved === true || story.auto_approved === true),
   );
+  const storyIdFilter = new Set(args.storyIds);
+  const filteredStories =
+    storyIdFilter.size > 0
+      ? approvedStories.filter((story) => storyIdFilter.has(story.id))
+      : approvedStories;
   const stories =
     Number.isFinite(args.limit) && args.limit > 0
-      ? approvedStories.slice(0, args.limit)
-      : approvedStories;
+      ? filteredStories.slice(0, args.limit)
+      : filteredStories;
 
   const mediaByStoryId = Object.fromEntries(
     stories.map((story) => [story.id, existingMediaFacts(story)]),
@@ -160,6 +177,34 @@ async function main() {
   const mdPath = path.join(outDir, "local_media_repair_queue.md");
   await fs.writeJson(jsonPath, report, { spaces: 2 });
   await fs.writeFile(mdPath, renderLocalMediaRepairMarkdown(report), "utf8");
+  const storiesById = Object.fromEntries(stories.map((story) => [story.id, story]));
+  const resetPlan = buildStaleAudioQaFailureResetPlan({
+    report,
+    storiesById,
+  });
+  let resetApplyReport = null;
+  if (args.applyLocalReset) {
+    resetApplyReport = await applyStaleAudioQaFailureReset({
+      plan: resetPlan,
+      storiesById,
+      persistStory: (story) => db.upsertStory(story),
+    });
+  }
+  const resetPath = path.join(outDir, "local_media_repair_stale_qa_reset.json");
+  const resetMdPath = path.join(outDir, "local_media_repair_stale_qa_reset.md");
+  await fs.writeJson(
+    resetPath,
+    {
+      plan: resetPlan,
+      apply: resetApplyReport,
+    },
+    { spaces: 2 },
+  );
+  await fs.writeFile(
+    resetMdPath,
+    renderStaleAudioQaFailureResetMarkdown(resetPlan, resetApplyReport),
+    "utf8",
+  );
 
   if (args.applyLocalAudio) {
     const ttsLimits = applyLocalProofTtsLimits();
@@ -168,7 +213,7 @@ async function main() {
     );
     const applyReport = await applyLocalAudioRepairs({
       report,
-      storiesById: Object.fromEntries(stories.map((story) => [story.id, story])),
+      storiesById,
       outputRelDir: path.join("test", "output", "local-media-repair", "audio"),
       generateTts: audio.generateTTS,
       cleanText: audio.cleanForTTS,
@@ -208,10 +253,17 @@ async function main() {
   console.log(
     `[local-media-repair] total=${report.counts.total} ready=${report.counts.ready_local_repair} runtime_blocked=${report.counts.blocked_runtime} tts_blocked=${report.counts.blocked_local_tts} no_action=${report.counts.no_action}`,
   );
+  console.log(
+    `[local-media-repair] stale_qa_reset=${path.relative(ROOT, resetPath)} resettable=${resetPlan.resettable.length}${resetApplyReport ? ` applied=${resetApplyReport.applied.length}` : ""}`,
+  );
+  console.log(`[local-media-repair] stale_qa_reset_md=${path.relative(ROOT, resetMdPath)}`);
   console.log(`[local-media-repair] json=${path.relative(ROOT, jsonPath)}`);
   console.log(`[local-media-repair] md=${path.relative(ROOT, mdPath)}`);
-  if (args.applyLocal && !args.applyLocalAudio) {
+  if (args.applyLocal && !args.applyLocalAudio && !args.applyLocalReset) {
     console.log("[local-media-repair] apply-local is reserved for media-only repair; this command did not post or mutate the DB.");
+  }
+  if (args.applyLocalReset) {
+    console.log("[local-media-repair] apply-local-reset cleared only stale local TTS outage rows; it did not post or touch tokens.");
   }
 }
 

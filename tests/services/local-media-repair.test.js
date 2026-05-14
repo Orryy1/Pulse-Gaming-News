@@ -7,7 +7,9 @@ const path = require("node:path");
 
 const {
   applyLocalAudioRepairs,
+  applyStaleAudioQaFailureReset,
   buildLocalMediaRepairQueue,
+  buildStaleAudioQaFailureResetPlan,
   renderLocalMediaRepairApplyMarkdown,
   renderLocalMediaRepairMarkdown,
 } = require("../../lib/ops/local-media-repair");
@@ -459,6 +461,10 @@ test("local media repair CLI loads .env before opening SQLite and defaults to dr
   assert.match(tool, /dryRun\s*:\s*!args\.applyLocal/);
   assert.match(tool, /applyLocalAudioRepairs/);
   assert.match(tool, /--apply-local-audio/);
+  assert.match(tool, /--apply-local-reset/);
+  assert.match(tool, /--story/);
+  assert.match(tool, /buildStaleAudioQaFailureResetPlan/);
+  assert.match(tool, /applyStaleAudioQaFailureReset/);
   assert.match(tool, /probeLocalAudioAcoustics/);
   assert.match(tool, /createLocalTtsBatchRecovery/);
   assert.match(tool, /recoverLocalTts/);
@@ -951,4 +957,151 @@ test("apply-local audio repair records duration measurement failures without abo
   assert.match(result.applied[0].failure_message, /duration/i);
   assert.equal(result.applied[1].story_id, "rss_measure_ok");
   assert.equal(result.applied[1].duration_verdict, "pass");
+});
+
+test("stale audio QA reset plans only recovered local TTS outage rows", () => {
+  const recoveredStory = {
+    id: "rss_recovered",
+    title: "Nintendo confirms a Switch 2 update",
+    approved: true,
+    full_script: "Nintendo confirmed new Switch details today. ".repeat(26),
+    audio_path: "output/audio/rss_recovered.mp3",
+    qa_failed: true,
+    qa_failures: ["audio_generation_failed:server_down"],
+    qa_failed_at: "2026-05-13T10:00:00.000Z",
+    publish_status: "failed",
+    publish_error: "audio_generation_failed: server_down: local TTS server is not reachable",
+  };
+  const contentBlockedStory = {
+    id: "rss_content_blocked",
+    title: "House of the Dragon Season 3 Trailer and Launch Date Confirmed",
+    approved: true,
+    full_script: "House of the Dragon has a new trailer. ".repeat(26),
+    audio_path: "output/audio/rss_content_blocked.mp3",
+    qa_failed: true,
+    qa_failures: ["unsupported_source_claim:community_reddit_attribution"],
+    qa_failed_at: "2026-05-13T10:05:00.000Z",
+    publish_status: "failed",
+    publish_error: "qa_blocked: unsupported_source_claim:community_reddit_attribution",
+  };
+  const report = buildLocalMediaRepairQueue({
+    stories: [recoveredStory, contentBlockedStory],
+    mediaByStoryId: {
+      rss_recovered: {
+        audioExists: true,
+        finalExists: false,
+        audioDurationSeconds: 66.4,
+      },
+      rss_content_blocked: {
+        audioExists: true,
+        finalExists: false,
+        audioDurationSeconds: 66.4,
+      },
+    },
+    localTts: READY_TTS,
+  });
+
+  const plan = buildStaleAudioQaFailureResetPlan({
+    report,
+    storiesById: {
+      rss_recovered: recoveredStory,
+      rss_content_blocked: contentBlockedStory,
+    },
+  });
+
+  assert.equal(plan.resettable.length, 1);
+  assert.equal(plan.resettable[0].story_id, "rss_recovered");
+  assert.equal(plan.skipped.length, 1);
+  assert.equal(plan.skipped[0].story_id, "rss_content_blocked");
+  assert.equal(plan.skipped[0].reason, "not_stale_audio_generation_failure");
+  assert.equal(plan.safety.mutates_production_db, false);
+});
+
+test("stale audio QA reset does not clear rows that still need TTS regeneration", () => {
+  const story = {
+    id: "rss_still_missing_audio",
+    title: "Nintendo confirms a Switch 2 update",
+    approved: true,
+    full_script: "Nintendo confirmed new Switch details today. ".repeat(26),
+    qa_failed: true,
+    qa_failures: ["audio_generation_failed:server_down"],
+    publish_status: "failed",
+    publish_error: "audio_generation_failed: server_down: local TTS server is not reachable",
+  };
+  const report = buildLocalMediaRepairQueue({
+    stories: [story],
+    mediaByStoryId: {
+      rss_still_missing_audio: {
+        audioExists: false,
+        finalExists: false,
+      },
+    },
+    localTts: READY_TTS,
+  });
+
+  const plan = buildStaleAudioQaFailureResetPlan({
+    report,
+    storiesById: { rss_still_missing_audio: story },
+  });
+
+  assert.equal(plan.resettable.length, 0);
+  assert.equal(plan.skipped[0].reason, "local_audio_not_recovered");
+});
+
+test("apply stale audio QA reset clears only stale failure fields before rerender", async () => {
+  const story = {
+    id: "rss_reset",
+    title: "Nintendo confirms a Switch 2 update",
+    approved: true,
+    full_script: "Nintendo confirmed new Switch details today. ".repeat(26),
+    audio_path: "output/audio/rss_reset.mp3",
+    qa_failed: true,
+    qa_failures: ["audio_generation_failed:server_down"],
+    qa_warnings: ["old warning"],
+    qa_failed_at: "2026-05-13T10:00:00.000Z",
+    publish_status: "failed",
+    publish_error: "audio_generation_failed: server_down: local TTS server is not reachable",
+    audio_generation_failure: { provider: "local", code: "server_down" },
+    local_tts_failure: { code: "server_down" },
+    custom_extra_field: "keep me",
+  };
+  const report = buildLocalMediaRepairQueue({
+    stories: [story],
+    mediaByStoryId: {
+      rss_reset: {
+        audioExists: true,
+        finalExists: false,
+        audioDurationSeconds: 66.4,
+      },
+    },
+    localTts: READY_TTS,
+  });
+  const plan = buildStaleAudioQaFailureResetPlan({
+    report,
+    storiesById: { rss_reset: story },
+  });
+  const persisted = [];
+
+  const result = await applyStaleAudioQaFailureReset({
+    plan,
+    storiesById: { rss_reset: story },
+    persistStory: async (nextStory) => {
+      persisted.push(nextStory);
+    },
+  });
+
+  assert.equal(result.applied.length, 1);
+  assert.equal(result.applied[0].story_id, "rss_reset");
+  assert.equal(persisted.length, 1);
+  assert.equal(persisted[0].id, "rss_reset");
+  assert.equal(persisted[0].qa_failed, false);
+  assert.equal(persisted[0].publish_status, null);
+  assert.equal(persisted[0].publish_error, null);
+  assert.equal(persisted[0].qa_failed_at, null);
+  assert.equal(persisted[0].qa_failures, undefined);
+  assert.equal(persisted[0].qa_warnings, undefined);
+  assert.equal(persisted[0].audio_generation_failure, undefined);
+  assert.equal(persisted[0].local_tts_failure, undefined);
+  assert.equal(persisted[0].custom_extra_field, "keep me");
+  assert.equal(result.safety.posts_to_platforms, false);
 });

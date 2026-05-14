@@ -2,6 +2,8 @@
 
 Updated: 2026-05-14
 
+Live health update: `http://localhost:3001/api/health` and `https://pulse.orryy.com/api/health` currently report `mode=local`, `primary=true`, `AUTO_PUBLISH=true`, `USE_JOB_QUEUE=true` and `schedulerActive=true`. The active `server.js` process started on 2026-05-14 at 07:24 before the latest safety commits, and the health endpoint does not expose a git commit, so a controlled restart is required before the latest pushed branch can protect live posting.
+
 ## 0. Publish Cadence Hard Gates
 
 Decision needed: approve or defer enabling live cadence hard gates.
@@ -48,7 +50,7 @@ Risk: some previously publishable rows may now fail QA instead of rendering/post
 
 Rollback: revert the branch deployment to the previous known-good commit or `git revert` the relevant commits.
 
-Recommendation: deploy after confirming the active primary is local, not Railway, and after deciding whether cadence hard gates stay warn-only or become blocking.
+Recommendation: deploy with a controlled local restart because the active primary is local. Keep cadence hard gates warn-only unless `PUBLISH_REQUIRE_WINDOW=true` and `PUBLISH_REQUIRE_MIN_GAP=true` are approved separately.
 
 Generated: 2026-05-12
 

@@ -7,6 +7,9 @@ Update: 2026-05-14
 - Branch: `codex/readiness-qa-failure-window`
 - Latest pushed commit: `2691f1d2 Gate stale local voices before assembly`
 - Deployed: no
+- Active public instance: local PC via `pulse.orryy.com`
+- Active health: `mode=local`, `primary=true`, `AUTO_PUBLISH=true`, `USE_JOB_QUEUE=true`, `schedulerActive=true`
+- Running process: `server.js` started 2026-05-14 07:24, before the latest safety commits
 - Railway/env/Cloudflare/OAuth/production DB/social posting: untouched by this work
 - Production renderer and production voice defaults: unchanged
 
@@ -36,7 +39,7 @@ Update: 2026-05-14
 
 ## Immediate Recommendation
 
-Do not add broad new features before cadence is controlled. The next live-risk approval should be either:
+Do not add broad new features before cadence is controlled. The active system is posting from the local PC right now, but the running process has not loaded the latest safety commits. The next live-risk approval should be either:
 
 1. deploy the current safety branch with cadence still warn-only, then observe;
 2. deploy and enable `PUBLISH_REQUIRE_WINDOW=true` plus `PUBLISH_REQUIRE_MIN_GAP=true` on the confirmed local primary;

@@ -26,11 +26,97 @@ const path = require("path");
 const axios = require("axios");
 const { exec } = require("child_process");
 const util = require("util");
+const { extractGameTitles } = require("./lib/script-game-enrichment");
 const execAsync = util.promisify(exec);
 
 const VIDEO_CACHE_DIR = path.join("output", "video_cache");
 const CLIP_MAX_SECONDS = 12;
 const MAX_TRAILER_DURATION_SECONDS = 20 * 60; // reject podcasts / reviews
+
+const TRUSTED_YOUTUBE_CHANNEL_RE =
+  /\b(official|playstation|xbox|nintendo|steam|square enix|final fantasy|rockstar|bethesda|capcom|sega|atlus|ubisoft|ea|electronic arts|bandai namco|konami|warner bros|wbgames|2k|take-two|devolver|annapurna|ign|gamespot|game informer|eurogamer|pc gamer|gamesradar)\b/i;
+
+const TRAILER_INTENT_RE =
+  /\b(trailer|gameplay|launch|reveal|announcement|showcase|preview|direct|state of play|overview)\b/i;
+
+function normaliseSearchText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/\bvii\b/g, "7")
+    .replace(/\bvi\b/g, "6")
+    .replace(/\biv\b/g, "4")
+    .replace(/\bxvi\b/g, "16")
+    .replace(/\bxiv\b/g, "14")
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function titleTokens(gameTitle) {
+  const stop = new Set([
+    "the",
+    "and",
+    "of",
+    "a",
+    "an",
+    "official",
+    "trailer",
+    "gameplay",
+    "video",
+    "new",
+  ]);
+  return normaliseSearchText(gameTitle)
+    .split(" ")
+    .filter((token) => token.length > 1 && !stop.has(token));
+}
+
+function hasStrongTitleMatch(candidateText, gameTitle) {
+  const haystack = normaliseSearchText(candidateText);
+  const needle = normaliseSearchText(gameTitle);
+  if (!haystack || !needle) return false;
+  if (haystack.includes(needle)) return true;
+
+  const tokens = titleTokens(gameTitle);
+  if (tokens.length === 0) return false;
+  const hits = tokens.filter((token) => haystack.includes(token));
+  if (tokens.length <= 2) return hits.length === tokens.length;
+  return hits.length >= Math.max(2, Math.ceil(tokens.length * 0.75));
+}
+
+function isTrustedYoutubeChannel(channelTitle) {
+  return TRUSTED_YOUTUBE_CHANNEL_RE.test(channelTitle || "");
+}
+
+function isSafeYoutubeTrailerCandidate(item, gameTitle) {
+  const snippet = item?.snippet || {};
+  const title = snippet.title || "";
+  const description = snippet.description || "";
+  const channelTitle = snippet.channelTitle || "";
+  const videoId = item?.id?.videoId;
+  if (!videoId) return false;
+  if (!isTrustedYoutubeChannel(channelTitle)) return false;
+  if (!TRAILER_INTENT_RE.test(`${title} ${description}`)) return false;
+  return hasStrongTitleMatch(`${title} ${description}`, gameTitle);
+}
+
+function selectSafeYoutubeTrailerCandidate(items, gameTitle) {
+  return (items || []).find((item) =>
+    isSafeYoutubeTrailerCandidate(item, gameTitle),
+  );
+}
+
+function deriveBrollSearchTitles(story) {
+  const text = [story?.full_script, story?.tts_script, story?.title]
+    .filter(Boolean)
+    .join("\n");
+  const titles = extractGameTitles(text, { maxTitles: 3 }).map((t) => t.name);
+  const deduped = Array.from(new Set(titles));
+  if (deduped.length > 0) return deduped;
+
+  const fallback = extractGameTitle(story);
+  return fallback ? [fallback] : [];
+}
 
 // --- IGDB (via Twitch app token) ---
 let _igdbToken = null;
@@ -132,12 +218,13 @@ async function searchYoutubeTrailer(gameTitle) {
     const items = resp.data?.items || [];
     if (items.length === 0) return null;
 
-    // Prefer official / verified publisher channels where we can detect them
-    const preferred = items.find((item) => {
-      const ch = (item.snippet?.channelTitle || "").toLowerCase();
-      return /official|playstation|xbox|nintendo|steam|ign|gamespot/i.test(ch);
-    });
-    const chosen = preferred || items[0];
+    const chosen = selectSafeYoutubeTrailerCandidate(items, gameTitle);
+    if (!chosen) {
+      console.log(
+        `[broll] YouTube fallback rejected all candidates for "${gameTitle}" - no trusted exact-subject trailer match`,
+      );
+      return null;
+    }
     return {
       youtubeId: chosen.id.videoId,
       source: `youtube:${chosen.snippet.channelTitle}`,
@@ -239,8 +326,8 @@ function extractGameTitle(story) {
 // Returns an array of { path, source } (max 2 clips) or [] if nothing usable.
 // Only called when Steam returned no clips.
 async function fetchFallbackBroll(story) {
-  const gameTitle = extractGameTitle(story);
-  if (!gameTitle) {
+  const searchTitles = deriveBrollSearchTitles(story);
+  if (searchTitles.length === 0) {
     console.log(
       `[broll] Skipping "${(story.title || "").substring(0, 40)}..." - no game title extractable`,
     );
@@ -258,32 +345,42 @@ async function fetchFallbackBroll(story) {
   const clips = [];
 
   // 1. IGDB
-  const igdb = await lookupIgdbTrailer(gameTitle);
-  if (igdb) {
-    const clip = await downloadYoutubeClip(
-      igdb.youtubeId,
-      `${story.id}_igdb_${igdb.youtubeId}.mp4`,
-      igdb.source,
-    );
-    if (clip) clips.push(clip);
+  for (const gameTitle of searchTitles) {
+    const igdb = await lookupIgdbTrailer(gameTitle);
+    if (igdb) {
+      const clip = await downloadYoutubeClip(
+        igdb.youtubeId,
+        `${story.id}_igdb_${igdb.youtubeId}.mp4`,
+        igdb.source,
+      );
+      if (clip) {
+        clips.push(clip);
+        break;
+      }
+    }
   }
 
   // 2. YouTube Data API (opt-in only - higher copyright-strike risk than Steam / IGDB)
   if (clips.length === 0 && process.env.BROLL_YOUTUBE_FALLBACK === "true") {
-    const yt = await searchYoutubeTrailer(gameTitle);
-    if (yt) {
-      const clip = await downloadYoutubeClip(
-        yt.youtubeId,
-        `${story.id}_yt_${yt.youtubeId}.mp4`,
-        yt.source,
-      );
-      if (clip) clips.push(clip);
+    for (const gameTitle of searchTitles) {
+      const yt = await searchYoutubeTrailer(gameTitle);
+      if (yt) {
+        const clip = await downloadYoutubeClip(
+          yt.youtubeId,
+          `${story.id}_yt_${yt.youtubeId}.mp4`,
+          yt.source,
+        );
+        if (clip) {
+          clips.push(clip);
+          break;
+        }
+      }
     }
   }
 
   if (clips.length > 0) {
     console.log(
-      `[broll] Sourced ${clips.length} fallback clip(s) for "${gameTitle}" via ${clips.map((c) => c.source).join(", ")}`,
+      `[broll] Sourced ${clips.length} fallback clip(s) for "${searchTitles.join(", ")}" via ${clips.map((c) => c.source).join(", ")}`,
     );
   }
   return clips;
@@ -295,4 +392,8 @@ module.exports = {
   downloadYoutubeClip,
   searchYoutubeTrailer,
   lookupIgdbTrailer,
+  deriveBrollSearchTitles,
+  hasStrongTitleMatch,
+  isSafeYoutubeTrailerCandidate,
+  selectSafeYoutubeTrailerCandidate,
 };

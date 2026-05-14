@@ -72,6 +72,7 @@
     "ops:render-contract": "node tools/render-contract-report.js",
     "ops:publish-readiness": "node tools/publish-readiness.js",
     "ops:publish-cadence": "node tools/publish-cadence-doctor.js",
+    "ops:publish-row-repair": "node tools/publish-row-repair-plan.js",
     "ops:creator-studio": "node tools/creator-studio-control-room.js",
     "ops:asset-acquisition": "node tools/asset-acquisition-pro.js",
     "ops:motion-acquisition": "node tools/motion-acquisition-pro.js",

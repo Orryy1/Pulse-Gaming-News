@@ -178,6 +178,43 @@ test("runContentQa: overlong audio duration hard-fails before publish", async ()
   );
 });
 
+test("runContentQa: general Reddit posts cannot invent insider/source attribution", async () => {
+  const story = goodStory({
+    source_type: "reddit",
+    subreddit: "gaming",
+    full_script:
+      goodStory().full_script +
+      " Industry insiders suggest the sequel is now stuck on the back burner.",
+  });
+  const qa = await runContentQa(story, {
+    fs: fakeFs({ [story.exported_path]: { size: 5 * 1024 * 1024 } }),
+  });
+
+  assert.strictEqual(qa.result, "fail");
+  assert.ok(
+    qa.failures.includes("unsupported_source_claim:community_reddit_attribution"),
+    `got: ${qa.failures.join(", ")}`,
+  );
+});
+
+test("runContentQa: GamingLeaksAndRumours may carry clearly-labelled source language", async () => {
+  const story = goodStory({
+    source_type: "reddit",
+    subreddit: "GamingLeaksAndRumours",
+    full_script:
+      goodStory().full_script +
+      " Sources suggest the timing could move, so treat this as unconfirmed.",
+  });
+  const qa = await runContentQa(story, {
+    fs: fakeFs({ [story.exported_path]: { size: 5 * 1024 * 1024 } }),
+  });
+
+  assert.ok(
+    !qa.failures.includes("unsupported_source_claim:community_reddit_attribution"),
+    `got: ${qa.failures.join(", ")}`,
+  );
+});
+
 test("runContentQa: legacy approved off-topic entertainment fails topicality recheck", async () => {
   const story = goodStory({
     title: "House of the Dragon Season 3 Trailer and Launch Date Confirmed",

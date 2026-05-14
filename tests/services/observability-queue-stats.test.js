@@ -36,7 +36,8 @@ function createDb() {
 
     CREATE TABLE stories (
       id TEXT PRIMARY KEY,
-      title TEXT
+      title TEXT,
+      channel_id TEXT
     );
 
     CREATE TABLE story_scores (
@@ -90,6 +91,45 @@ test("redactQueueError truncates long failures", () => {
   const out = redactQueueError("x".repeat(800));
   assert.equal(out.length, 500);
   assert.match(out, /\.\.\.$/);
+});
+
+test("getScoringDigest channel filter falls back from NULL score channel to story channel", () => {
+  const db = createDb();
+  const originalNow = Date.now;
+  try {
+    Date.now = () => Date.parse("2026-05-13T12:00:00.000Z");
+    db.prepare(`INSERT INTO stories (id, title, channel_id) VALUES (?, ?, ?)`).run(
+      "story-null-score-channel",
+      "Xbox CEO responds to player revenue growth",
+      "pulse-gaming",
+    );
+    db.prepare(
+      `INSERT INTO story_scores
+        (story_id, channel_id, total, decision, hard_stops, scored_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run(
+      "story-null-score-channel",
+      null,
+      78,
+      "review",
+      "[]",
+      "2026-05-13 10:03:19",
+    );
+
+    const digest = getScoringDigest({
+      repos: { db },
+      sinceHours: 4,
+      channelId: "pulse-gaming",
+    });
+
+    assert.equal(digest.scored, 1);
+    assert.equal(digest.by_decision.review, 1);
+    assert.equal(digest.top[0].story_id, "story-null-score-channel");
+    assert.equal(digest.near_miss[0].story_id, "story-null-score-channel");
+  } finally {
+    Date.now = originalNow;
+    db.close();
+  }
 });
 
 test("getScoringDigest counts SQLite timestamps against ISO window values", () => {

@@ -28,6 +28,7 @@ function parseArgs(argv) {
     else if (arg === "--max-age-hours") args.maxAgeHours = Number(argv[++i]);
     else if (arg === "--allow-stale") args.allowStale = true;
     else if (arg === "--send-inbox" || arg === "--apply-inbox") args.sendInbox = true;
+    else if (arg === "--operator-confirmed") args.operatorConfirmed = true;
     else if (arg === "--dry-run") args.sendInbox = false;
   }
   args.explicitSelection = Boolean(args.story || args.mp4);
@@ -111,6 +112,11 @@ async function main() {
   let result = null;
   let tiktokStatus = null;
   if (plan.will_upload_to_tiktok) {
+    if (args.operatorConfirmed !== true) {
+      throw new Error("tiktok_inbox_upload_requires_operator_confirmed_flag");
+    }
+    process.env.TIKTOK_ENABLED = "true";
+    process.env.TIKTOK_AUTO_UPLOAD_ENABLED = "true";
     result = await uploadVideoToInbox(story);
     if (result?.publishId) {
       try {

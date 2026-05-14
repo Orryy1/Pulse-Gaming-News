@@ -25,9 +25,9 @@ const {
   buildComparisonMarkdown,
 } = require("../../lib/studio/v2/forensic-qa-v2");
 
-function tempFile(contents) {
+function tempFile(contents, fileName = "captions.ass") {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-v2-qa-"));
-  const file = path.join(dir, "captions.ass");
+  const file = path.join(dir, fileName);
   fs.writeFileSync(file, contents);
   return file;
 }
@@ -73,6 +73,72 @@ test("analyseSubtitleTimeline warns on long caption blackout and overrun", () =>
   assert.equal(result.verdict, "warn");
   assert.equal(result.gapsOver2s.length, 1);
   assert.equal(result.overrunS, 0.5);
+});
+
+test("analyseSubtitleTimeline fails near-zero, overlapping and non-monotonic ASS cues", () => {
+  const assPath = tempFile(
+    [
+      "Dialogue: 0,0:00:00.00,0:00:01.00,Caption,,0,0,0,,first beat",
+      "Dialogue: 0,0:00:01.20,0:00:01.23,Caption,,0,0,0,,blink caption",
+      "Dialogue: 0,0:00:01.10,0:00:02.00,Caption,,0,0,0,,late source order",
+    ].join("\n"),
+  );
+
+  const result = analyseSubtitleTimeline({ assPath, durationS: 3 });
+
+  assert.equal(result.verdict, "fail");
+  assert.equal(result.nearZeroDurationCues.length, 1);
+  assert.equal(result.overlappingCues.length, 1);
+  assert.equal(result.nonMonotonicCues.length, 1);
+});
+
+test("analyseSubtitleTimeline catches SRT overlaps and repeated consecutive text", () => {
+  const srtPath = tempFile(
+    [
+      "1",
+      "00:00:00,000 --> 00:00:01,000",
+      "Hello there",
+      "",
+      "2",
+      "00:00:00,900 --> 00:00:02,000",
+      "Hello there",
+      "",
+      "3",
+      "00:00:02,000 --> 00:00:02,020",
+      "Tiny",
+      "",
+    ].join("\n"),
+    "captions.srt",
+  );
+
+  const result = analyseSubtitleTimeline({ srtPath, durationS: 3 });
+
+  assert.equal(result.verdict, "fail");
+  assert.equal(result.cueCount, 3);
+  assert.equal(result.overlappingCues.length, 1);
+  assert.equal(result.repeatedTextCues.length, 1);
+  assert.equal(result.nearZeroDurationCues.length, 1);
+});
+
+test("analyseSubtitleTimeline fails low transcript coverage when transcript is available", () => {
+  const assPath = tempFile(
+    [
+      "Dialogue: 0,0:00:00.00,0:00:01.00,Caption,,0,0,0,,GTA delay",
+      "Dialogue: 0,0:00:01.00,0:00:02.00,Caption,,0,0,0,,watch now",
+    ].join("\n"),
+  );
+  const transcriptText =
+    "Nintendo Direct announced the Metroid Prime release date today, with a follow-up showcase expected later.";
+
+  const result = analyseSubtitleTimeline({
+    assPath,
+    durationS: 3,
+    transcriptText,
+  });
+
+  assert.equal(result.verdict, "fail");
+  assert.equal(result.transcriptCoverage.verdict, "fail");
+  assert.ok(result.transcriptCoverage.ratio < 0.35);
 });
 
 test("analyseSubtitleDensity warns on dense multi-line captions", () => {
@@ -528,6 +594,26 @@ test("buildIssues flags silent audio and dense subtitles", () => {
   assert.equal(issues[0].severity, "warn");
   assert.equal(issues[1].code, "audio_presence");
   assert.equal(issues[1].severity, "fail");
+});
+
+test("buildIssues treats corrupt subtitle timelines as hard forensic failures", () => {
+  const issues = buildIssues({
+    runtime: { durationDeltaS: 0 },
+    subtitles: {
+      verdict: "fail",
+      nearZeroDurationCues: [{ startS: 1, endS: 1.02, text: "blink" }],
+      overlappingCues: [],
+      nonMonotonicCues: [],
+      repeatedTextCues: [],
+    },
+    audio: { verdict: "pass" },
+    visual: { verdict: "pass" },
+    scene: { repeatedSources: [] },
+  });
+
+  assert.equal(issues.length, 1);
+  assert.equal(issues[0].code, "subtitle_timeline");
+  assert.equal(issues[0].severity, "fail");
 });
 
 test("buildIssues flags rendered frame taste failures", () => {

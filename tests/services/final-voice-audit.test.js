@@ -148,6 +148,46 @@ test("final voice report loader finds sidecar reports for dispatch tooling", asy
   assert.equal(report.counts.pass, 1);
 });
 
+test("final voice report loader falls back to local TTS timestamp metadata", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "final-voice-timestamps-"));
+  const finalDir = path.join(dir, "output", "final");
+  const audioDir = path.join(dir, "output", "audio");
+  await fs.ensureDir(finalDir);
+  await fs.ensureDir(audioDir);
+  const mp4 = path.join(finalDir, "rss_local.mp4");
+  await fs.writeFile(mp4, "fake mp4");
+  await fs.writeJson(path.join(audioDir, "rss_local_timestamps.json"), {
+    characters: ["F", "o", "l", "l", "o", "w"],
+    meta: {
+      provider: "local",
+      source: "local-tts-server",
+      transcript: "A clean local render. Follow Pulse Gaming so you never miss a beat.",
+      approvedLocalVoice: true,
+      acceptedLocalVoice: {
+        id: "pulse-sleepy-liam-20260502",
+        fileName: "pulse_liam_sleepy.wav",
+        referencePresent: true,
+        referenceHash: "4bb87b65b64213fd8447ef1146eda42035b89f51",
+      },
+      acoustic: { medianPitchHz: 118, integratedLufs: -14.4 },
+      voiceMastering: { ok: true, code: "voice_mastered", targetLufs: -14 },
+    },
+  });
+
+  const reports = await loadFinalVoiceReportsByStoryId([mp4], {
+    finalDir,
+    outputDirs: [],
+  });
+  const report = buildFinalVoiceAudit({
+    files: [mp4],
+    reportsByStoryId: reports,
+  });
+
+  assert.equal(reports.rss_local.source, "audio_timestamp_sidecar");
+  assert.equal(report.counts.pass, 1);
+  assert.equal(report.rows[0].do_not_reuse_for_tiktok_dispatch, false);
+});
+
 test("final voice audit CLI inspects newest MP4s first when limited", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "final-voice-newest-"));
   const oldMp4 = path.join(dir, "aaa_old.mp4");

@@ -69,6 +69,25 @@ test("subtitle timing inspection rejects frozen local TTS timestamp sidecars", (
   assert.equal(inspection.zeroDurationWordRatio > 0.3, true);
 });
 
+test("subtitle timing inspection rejects timestamp tracks that stop before narration ends", () => {
+  const alignment = alignmentFromWords(
+    Array.from({ length: 30 }, (_, index) => ({
+      text: `word${index}`,
+      start: index * 2,
+      end: index * 2 + 0.35,
+    })),
+  );
+
+  const words = characterAlignmentToSubtitleWords(alignment);
+  const inspection = inspectSubtitleTimingWords(words, 64, {
+    maxTrailingGapSeconds: 2,
+  });
+
+  assert.equal(inspection.usable, false);
+  assert.equal(inspection.reason, "trailing_caption_gap_too_large");
+  assert.equal(inspection.trailingGapSeconds > 5, true);
+});
+
 test("subtitle script fallback prefers the actual TTS transcript over stale story text", () => {
   const sidecar = {
     meta: {

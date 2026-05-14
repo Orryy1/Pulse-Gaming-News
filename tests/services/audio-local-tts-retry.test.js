@@ -230,6 +230,31 @@ test("prepareTtsAlignmentForWrite: local broken timings are replaced before side
   assert.equal(prepared.alignment.meta.timestampRepair.reason, "max_gap_too_large");
 });
 
+test("prepareTtsAlignmentForWrite: local timings that end before the outro are repaired", () => {
+  const text = "Pulse Gaming reports the story and tells viewers to follow so they never miss a beat.";
+  const badAlignment = {
+    characters: Array.from(text),
+    character_start_times_seconds: Array.from(text, (_, i) =>
+      i < text.length - 4 ? (i / (text.length - 4)) * 58 : 58,
+    ),
+    character_end_times_seconds: Array.from(text, (_, i) =>
+      i < text.length - 4 ? (i / (text.length - 4)) * 58 + 0.2 : 58.2,
+    ),
+    meta: { transcript: "short stale transcript" },
+  };
+
+  const prepared = prepareTtsAlignmentForWrite({
+    provider: "local",
+    alignment: badAlignment,
+    text,
+    durationSeconds: 64,
+  });
+
+  assert.equal(prepared.repair.repaired, true);
+  assert.equal(prepared.repair.reason, "trailing_caption_gap_too_large");
+  assert.equal(prepared.alignment.meta.timestampRepair.reason, "trailing_caption_gap_too_large");
+});
+
 test("markAudioGenerationFailure: records local TTS voice failures on the story", () => {
   const story = { id: "rss_bad_voice", title: "Bad local voice" };
   const failure = markAudioGenerationFailure(

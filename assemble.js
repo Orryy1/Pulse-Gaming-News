@@ -472,7 +472,9 @@ async function generateSubtitles(story, duration, outputDir) {
   let events;
 
   const timestampWords = characterAlignmentToSubtitleWords(wordTimestamps);
-  const timestampInspection = inspectSubtitleTimingWords(timestampWords, duration);
+  const timestampInspection = inspectSubtitleTimingWords(timestampWords, duration, {
+    maxTrailingGapSeconds: 2,
+  });
 
   if (timestampInspection.usable) {
     // Build word list with precise start/end times from character-level data.

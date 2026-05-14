@@ -62,6 +62,8 @@ test("cadenceHardGateState recognises either hard-gate spelling", () => {
     require_min_gap: false,
     all_required: false,
     require_daily_cap: false,
+    active_primary_auto_publisher: false,
+    warn_only: false,
     env: {
       PUBLISH_REQUIRE_WINDOW: null,
       PUBLISH_WINDOW_HARD_GATE: null,
@@ -69,6 +71,8 @@ test("cadenceHardGateState recognises either hard-gate spelling", () => {
       PUBLISH_COOLDOWN_HARD_GATE: null,
       PUBLISH_REQUIRE_DAILY_CAP: null,
       PUBLISH_DAILY_CAP_HARD_GATE: null,
+      PUBLISH_CADENCE_WARN_ONLY: null,
+      PUBLISH_CADENCE_HARD_GATES: null,
     },
   });
   const state = cadenceHardGateState({
@@ -80,6 +84,38 @@ test("cadenceHardGateState recognises either hard-gate spelling", () => {
   assert.equal(state.require_min_gap, true);
   assert.equal(state.require_daily_cap, true);
   assert.equal(state.all_required, true);
+});
+
+test("cadenceHardGateState enables all gates for active primary auto-publishers by default", () => {
+  const state = cadenceHardGateState({
+    AUTO_PUBLISH: "true",
+    PULSE_PRIMARY_INSTANCE: "true",
+    PUBLISH_REQUIRE_WINDOW: "false",
+    PUBLISH_REQUIRE_MIN_GAP: "false",
+    PUBLISH_REQUIRE_DAILY_CAP: "false",
+  });
+
+  assert.equal(state.active_primary_auto_publisher, true);
+  assert.equal(state.warn_only, false);
+  assert.equal(state.require_window, true);
+  assert.equal(state.require_min_gap, true);
+  assert.equal(state.require_daily_cap, true);
+  assert.equal(state.all_required, true);
+});
+
+test("cadenceHardGateState honours global warn-only override", () => {
+  const state = cadenceHardGateState({
+    AUTO_PUBLISH: "true",
+    PULSE_PRIMARY_INSTANCE: "true",
+    PUBLISH_CADENCE_WARN_ONLY: "true",
+  });
+
+  assert.equal(state.active_primary_auto_publisher, true);
+  assert.equal(state.warn_only, true);
+  assert.equal(state.all_required, false);
+  assert.equal(state.require_window, false);
+  assert.equal(state.require_min_gap, false);
+  assert.equal(state.require_daily_cap, false);
 });
 
 test("summariseCadence exposes restart-critical publish counters", () => {

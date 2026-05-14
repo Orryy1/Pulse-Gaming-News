@@ -61,6 +61,39 @@ test("publish window policy can hard-block off-window direct routes behind expli
   assert.ok(policy.blockers.includes("publish_window_blocked"));
 });
 
+test("publish window policy hard-blocks active primary auto-publishers by default", () => {
+  const policy = buildPublishWindowPolicy({
+    now: "2026-05-14T22:33:00.000Z",
+    dispatchSource: "api_autonomous_publish",
+    env: {
+      AUTO_PUBLISH: "true",
+      PULSE_PRIMARY_INSTANCE: "true",
+      PUBLISH_REQUIRE_WINDOW: "false",
+    },
+  });
+
+  assert.equal(policy.verdict, "red");
+  assert.equal(policy.blocked, true);
+  assert.equal(policy.hardGateEnabled, true);
+  assert.ok(policy.blockers.includes("publish_window_blocked"));
+});
+
+test("publish cadence warn-only override keeps active primary routes advisory", () => {
+  const policy = buildPublishWindowPolicy({
+    now: "2026-05-14T22:33:00.000Z",
+    dispatchSource: "api_autonomous_publish",
+    env: {
+      AUTO_PUBLISH: "true",
+      PULSE_PRIMARY_INSTANCE: "true",
+      PUBLISH_CADENCE_WARN_ONLY: "true",
+    },
+  });
+
+  assert.equal(policy.verdict, "amber");
+  assert.equal(policy.blocked, false);
+  assert.equal(policy.hardGateEnabled, false);
+});
+
 test("publish cooldown policy is green when no recent public post exists", () => {
   const policy = buildPublishCooldownPolicy({
     now: "2026-05-14T19:00:00.000Z",
@@ -115,6 +148,30 @@ test("publish cooldown policy hard-blocks behind explicit env only", () => {
     ],
     minGapMinutes: 120,
     env: { PUBLISH_REQUIRE_MIN_GAP: "true" },
+  });
+
+  assert.equal(policy.verdict, "red");
+  assert.equal(policy.blocked, true);
+  assert.ok(policy.blockers.includes("publish_cooldown_blocked"));
+});
+
+test("publish cooldown policy hard-blocks active primary auto-publishers by default", () => {
+  const policy = buildPublishCooldownPolicy({
+    now: "2026-05-14T19:10:00.000Z",
+    stories: [
+      {
+        id: "recent",
+        title: "Recent public post",
+        youtube_post_id: "yt_123",
+        published_at: "2026-05-14T19:03:00.000Z",
+      },
+    ],
+    minGapMinutes: 120,
+    env: {
+      AUTO_PUBLISH: "true",
+      PULSE_PRIMARY_INSTANCE: "true",
+      PUBLISH_REQUIRE_MIN_GAP: "false",
+    },
   });
 
   assert.equal(policy.verdict, "red");
@@ -195,6 +252,34 @@ test("publish daily cap hard-blocks only behind explicit env", () => {
       },
     ],
     env: { PUBLISH_REQUIRE_DAILY_CAP: "true" },
+  });
+
+  assert.equal(policy.verdict, "red");
+  assert.equal(policy.blocked, true);
+  assert.ok(policy.blockers.includes("publish_daily_cap_blocked"));
+});
+
+test("publish daily cap hard-blocks active primary auto-publishers by default", () => {
+  const policy = buildPublishDailyCapPolicy({
+    now: "2026-05-14T20:00:00.000Z",
+    maxPublicPosts: 2,
+    stories: [
+      {
+        id: "one",
+        youtube_post_id: "yt_1",
+        published_at: "2026-05-14T08:00:00.000Z",
+      },
+      {
+        id: "two",
+        youtube_post_id: "yt_2",
+        published_at: "2026-05-14T19:00:00.000Z",
+      },
+    ],
+    env: {
+      AUTO_PUBLISH: "true",
+      PULSE_PRIMARY_INSTANCE: "true",
+      PUBLISH_REQUIRE_DAILY_CAP: "false",
+    },
   });
 
   assert.equal(policy.verdict, "red");

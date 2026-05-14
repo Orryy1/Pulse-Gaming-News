@@ -399,6 +399,7 @@ test("Flash Lane voice workbench can generate a local candidate under test/outpu
   assert.match(result.candidate.transcript, /Follow Pulse Gaming/);
   assert.match(requestedUrl, /loaded-pulse-voice/);
   assert.match(requestedBody.text, /Follow Pulse Gaming so you never miss a beat\.$/);
+  assert.equal(requestedBody.output_format, "mp3_44100_192");
   assert.equal(fs.existsSync(result.candidate.path), true);
 });
 

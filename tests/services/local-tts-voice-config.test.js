@@ -208,6 +208,22 @@ test("Pulse local TTS smoke test uses a natural rate by default", () => {
   assert.doesNotMatch(smokeSource, /LOCAL_TTS_SMOKE_RATE\s*\|\|\s*1\.75/);
 });
 
+test("Pulse Studio local TTS paths request high-bitrate source audio before mastering", () => {
+  const soundLayerSource = fs.readFileSync(
+    path.join(ROOT, "lib", "studio", "sound-layer.js"),
+    "utf8",
+  );
+  const workbenchSource = fs.readFileSync(
+    path.join(ROOT, "lib", "studio", "v2", "flash-lane-voice-workbench.js"),
+    "utf8",
+  );
+
+  assert.match(soundLayerSource, /resolveTtsOutputFormat\("local"/);
+  assert.match(workbenchSource, /resolveTtsOutputFormat\("local"/);
+  assert.doesNotMatch(soundLayerSource, /output_format:\s*"mp3_44100_128"/);
+  assert.doesNotMatch(workbenchSource, /output_format:\s*"mp3_44100_128"/);
+});
+
 test("Pulse Studio V2 local render wrapper keeps the accepted Liam pace", () => {
   const wrapperSource = fs.readFileSync(
     path.join(ROOT, "tools", "studio-v2-local-render.js"),

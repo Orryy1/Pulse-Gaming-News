@@ -6,6 +6,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const {
+  buildPublishCooldownPolicy,
   buildPublishWindowPolicy,
   nearestPublishWindow,
 } = require("../../lib/services/publish-window-policy");
@@ -58,6 +59,90 @@ test("publish window policy can hard-block off-window direct routes behind expli
   assert.ok(policy.blockers.includes("publish_window_blocked"));
 });
 
+test("publish cooldown policy is green when no recent public post exists", () => {
+  const policy = buildPublishCooldownPolicy({
+    now: "2026-05-14T19:00:00.000Z",
+    stories: [
+      {
+        id: "old",
+        title: "Old post",
+        youtube_post_id: "yt_123",
+        published_at: "2026-05-14T14:00:00.000Z",
+      },
+    ],
+    minGapMinutes: 120,
+    env: { PUBLISH_REQUIRE_MIN_GAP: "true" },
+  });
+
+  assert.equal(policy.verdict, "green");
+  assert.equal(policy.blocked, false);
+  assert.equal(policy.minutesSinceLastPost, 300);
+});
+
+test("publish cooldown policy is warn-only by default for recent public posts", () => {
+  const policy = buildPublishCooldownPolicy({
+    now: "2026-05-14T19:10:00.000Z",
+    stories: [
+      {
+        id: "recent",
+        title: "Recent public post",
+        instagram_media_id: "ig_123",
+        published_at: "2026-05-14T19:03:00.000Z",
+      },
+    ],
+    minGapMinutes: 120,
+    env: {},
+  });
+
+  assert.equal(policy.verdict, "amber");
+  assert.equal(policy.blocked, false);
+  assert.equal(policy.minutesSinceLastPost, 7);
+  assert.match(policy.advisory.join("\n"), /posted 7 minutes ago/);
+});
+
+test("publish cooldown policy hard-blocks behind explicit env only", () => {
+  const policy = buildPublishCooldownPolicy({
+    now: "2026-05-14T19:10:00.000Z",
+    stories: [
+      {
+        id: "recent",
+        title: "Recent public post",
+        youtube_post_id: "yt_123",
+        published_at: "2026-05-14T19:03:00.000Z",
+      },
+    ],
+    minGapMinutes: 120,
+    env: { PUBLISH_REQUIRE_MIN_GAP: "true" },
+  });
+
+  assert.equal(policy.verdict, "red");
+  assert.equal(policy.blocked, true);
+  assert.ok(policy.blockers.includes("publish_cooldown_blocked"));
+});
+
+test("publish cooldown ignores sentinel duplicate IDs and undated rows", () => {
+  const policy = buildPublishCooldownPolicy({
+    now: "2026-05-14T19:10:00.000Z",
+    stories: [
+      {
+        id: "dupe",
+        youtube_post_id: "DUPE_BLOCKED",
+        published_at: "2026-05-14T19:03:00.000Z",
+      },
+      {
+        id: "undated",
+        youtube_post_id: "yt_undated",
+      },
+    ],
+    minGapMinutes: 120,
+    env: { PUBLISH_REQUIRE_MIN_GAP: "true" },
+  });
+
+  assert.equal(policy.verdict, "green");
+  assert.equal(policy.blocked, false);
+  assert.equal(policy.lastPublishedAt, null);
+});
+
 test("publisher direct routes pass dispatch provenance into publish calls", () => {
   const publisher = fs.readFileSync(
     path.join(__dirname, "..", "..", "publisher.js"),
@@ -77,6 +162,7 @@ test("publisher direct routes pass dispatch provenance into publish calls", () =
   );
 
   assert.match(publisher, /buildPublishWindowPolicy/);
+  assert.match(publisher, /buildPublishCooldownPolicy/);
   assert.match(server, /dispatchSource:\s*"api_autonomous_publish"/);
   assert.match(jobs, /dispatchSource:\s*"scheduler_job"/);
   assert.match(breaking, /dispatchSource:\s*"breaking_fast_lane"/);

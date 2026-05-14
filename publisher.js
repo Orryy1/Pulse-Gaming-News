@@ -5,6 +5,7 @@ const { addBreadcrumb, captureException } = require("./lib/sentry");
 const db = require("./lib/db");
 const { resolveFacebookReelsMode } = require("./lib/platforms/facebook-reels-mode");
 const {
+  buildPublishCooldownPolicy,
   buildPublishWindowPolicy,
 } = require("./lib/services/publish-window-policy");
 
@@ -1179,6 +1180,30 @@ async function runPreflightQa(story) {
 
 async function _publishNextStoryInner({ publishDispatch = null } = {}) {
   const stories = await db.getStories();
+  const cooldown = buildPublishCooldownPolicy({
+    stories,
+    env: process.env,
+  });
+  const dispatchPolicy = {
+    ...(publishDispatch || {}),
+    cooldown,
+  };
+  if (cooldown.advisory.length > 0) {
+    console.log(
+      `[publisher] publish cooldown ${cooldown.verdict}: ${cooldown.advisory.join(" ")}`,
+    );
+  }
+  if (cooldown.blocked) {
+    console.log(
+      `[publisher] publish cooldown blocked: ${cooldown.blockers.join(", ")}`,
+    );
+    return {
+      publish_cooldown_blocked: true,
+      status: "blocked",
+      top_reason: cooldown.blockers[0] || "publish_cooldown_blocked",
+      publish_dispatch: dispatchPolicy,
+    };
+  }
 
   // Find stories that still need publishing to at least one platform.
   // This includes brand-new stories AND partially-published ones (e.g. YT succeeded but IG/FB failed).
@@ -1313,7 +1338,7 @@ async function _publishNextStoryInner({ publishDispatch = null } = {}) {
         ? `${top.source}_qa: ${top.reason}`
         : "no_candidates_eligible",
       candidates_tried: candidates.length,
-      publish_dispatch: publishDispatch,
+      publish_dispatch: dispatchPolicy,
     };
   }
 
@@ -1409,7 +1434,7 @@ async function _publishNextStoryInner({ publishDispatch = null } = {}) {
     qa_warnings: preflightWarnings,
     qa_skipped_count: qaSkipped.length,
     qa_skipped: qaSkipped,
-    publish_dispatch: publishDispatch,
+    publish_dispatch: dispatchPolicy,
   };
 
   // Sentinel-cleanup cutover: block/skip outcomes for every platform in

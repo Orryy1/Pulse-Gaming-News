@@ -338,6 +338,33 @@ test("publish-window blocked result renders explicit blocked summary", () => {
   assert.match(s.message, /Reason: publish_window_blocked/);
 });
 
+test("publish-cooldown blocked result renders explicit blocked summary", () => {
+  const s = renderPublishSummary(
+    {
+      publish_cooldown_blocked: true,
+      status: "blocked",
+      top_reason: "publish_cooldown_blocked",
+      publish_dispatch: {
+        dispatchSource: "breaking_fast_lane",
+        cooldown: {
+          lastStoryTitle: "Recent post",
+          lastPublishedAt: "2026-05-14T19:03:00.000Z",
+          minutesSinceLastPost: 7,
+          minGapMinutes: 120,
+        },
+      },
+    },
+    { jobId: 124 },
+  );
+
+  assert.equal(s.status, "failed");
+  assert.match(s.message, /Status:\s+blocked/);
+  assert.match(s.message, /Publish blocked by cooldown policy/);
+  assert.match(s.message, /breaking_fast_lane/);
+  assert.match(s.message, /Recent post/);
+  assert.match(s.message, /7 minutes since last post/);
+});
+
 // ---------- Multi-candidate fallback Discord summaries (2026-04-22) ----
 
 test("no-safe-candidate result renders failed summary with Top reason + Skipped count", () => {

@@ -1978,6 +1978,9 @@ async function assemble() {
 
       // DB gets the repo-relative path (unchanged contract);
       // filesystem ops use the resolved absolute target.
+      story.audio_duration = audioDuration;
+      story.duration_seconds = duration;
+      story.short_duration_contract = durationQa;
       story.exported_path = outputPath;
       story.exported_at = new Date().toISOString();
       rendered++;
@@ -2300,6 +2303,9 @@ async function assemble() {
 
         // DB gets the repo-relative path (unchanged contract);
         // filesystem ops use the resolved absolute target.
+        story.audio_duration = audioDuration;
+        story.duration_seconds = duration;
+        story.short_duration_contract = durationQa;
         story.exported_path = outputPath;
         story.exported_at = new Date().toISOString();
         rendered++;

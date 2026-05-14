@@ -20,8 +20,9 @@ test("buildNarrationMusicMixFilter: preserves narration level when adding music"
 
   assert.match(filter, /amix=inputs=2:duration=first/);
   assert.match(filter, /normalize=0/);
-  assert.match(filter, /alimiter=limit=0\.92/);
-  assert.equal(filter, "[voice][bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,alimiter=limit=0.92[outa]");
+  assert.match(filter, /loudnorm=I=-14:TP=-1\.5:LRA=7/);
+  assert.match(filter, /alimiter=limit=0\.85/);
+  assert.equal(filter, "[voice][bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,loudnorm=I=-14:TP=-1.5:LRA=7,alimiter=limit=0.85[outa]");
 });
 
 test("buildVoiceMasteringFilter: normalises local narration for crisp social-video playback", () => {

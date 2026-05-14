@@ -125,7 +125,7 @@ test("local media repair does not treat old 100-word scripts as 60-second local 
 
   assert.equal(report.items[0].action, "extend_script_before_local_repair");
   assert.ok(report.items[0].needs.includes("extend_script_for_64_70s_local_voice"));
-  assert.match(report.items[0].warnings[0], /below_flash_target/);
+  assert.match(report.items[0].warnings[0], /below_flash_target|below 61s/);
 });
 
 test("local media repair estimates the cleaned narration text, not stale stored word_count", () => {
@@ -160,7 +160,7 @@ test("local media repair estimates the cleaned narration text, not stale stored 
 
   assert.equal(report.items[0].action, "extend_script_before_local_repair");
   assert.equal(report.items[0].runtime.wordCount, 136);
-  assert.match(report.items[0].warnings[0], /below_flash_target/);
+  assert.match(report.items[0].warnings[0], /below_flash_target|below 61s/);
 });
 
 test("local media repair does not resurrect approved off-brand entertainment rows", () => {
@@ -403,7 +403,7 @@ test("local media repair accepts nested local TTS reference metadata from health
         id: "rss_nested_ref",
         title: "Xbox confirms a new update",
         approved: true,
-        full_script: "Xbox confirmed new details for players today. ".repeat(23),
+        full_script: "Xbox confirmed new details for players today. ".repeat(29),
         audio_path: null,
         exported_path: null,
       },

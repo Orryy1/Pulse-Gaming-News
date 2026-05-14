@@ -26,3 +26,15 @@ test("assemble.js persists overlong audio as a QA failure instead of rendering",
   assert.match(ASSEMBLE, /story\.publish_status\s*=\s*["']failed["']/);
   assert.match(ASSEMBLE, /story\.publish_error\s*=/);
 });
+
+test("assemble.js persists successful render durations so publish QA does not use stale _extra", () => {
+  const successAnchor = ASSEMBLE.indexOf("story.exported_path = outputPath;");
+  const audioAnchor = ASSEMBLE.indexOf("story.audio_duration = audioDuration;");
+  const videoAnchor = ASSEMBLE.indexOf("story.duration_seconds = duration;");
+  const contractAnchor = ASSEMBLE.indexOf("story.short_duration_contract = durationQa;");
+
+  assert.ok(successAnchor > 0, "assemble.js success export anchor must exist");
+  assert.ok(audioAnchor > 0 && audioAnchor < successAnchor, "audio duration must be saved before export path");
+  assert.ok(videoAnchor > 0 && videoAnchor < successAnchor, "video duration must be saved before export path");
+  assert.ok(contractAnchor > 0 && contractAnchor < successAnchor, "duration contract must be saved before export path");
+});

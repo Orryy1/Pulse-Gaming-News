@@ -76,9 +76,9 @@ test("short runtime planner: default word budget matches current voice calibrati
 });
 
 test("short runtime planner: local Liam voice uses measured approved-reference calibration", () => {
-  assert.equal(DEFAULT_LOCAL_SECONDS_PER_WORD, 0.42);
-  assert.equal(secondsPerWordForTtsProvider("local", {}), 0.42);
-  assert.equal(secondsPerWordForTtsProvider("voxcpm", {}), 0.42);
+  assert.equal(DEFAULT_LOCAL_SECONDS_PER_WORD, 0.34);
+  assert.equal(secondsPerWordForTtsProvider("local", {}), 0.34);
+  assert.equal(secondsPerWordForTtsProvider("voxcpm", {}), 0.34);
   assert.equal(secondsPerWordForTtsProvider("elevenlabs", {}), 0.68);
   assert.equal(
     secondsPerWordForTtsProvider("local", { LOCAL_TTS_SECONDS_PER_WORD: "0.4" }),
@@ -91,29 +91,44 @@ test("short runtime planner: local Liam voice uses measured approved-reference c
   });
   assert.equal(shortLocal.result, "warn");
   assert.match(shortLocal.warnings[0], /below_flash_target/);
-  assert.equal(shortLocal.estimatedSeconds, 54.6);
+  assert.equal(shortLocal.estimatedSeconds, 44.2);
 
   const passLocal = classifyShortScriptRuntime({
-    wordCount: 160,
+    wordCount: 190,
     secondsPerWord: secondsPerWordForTtsProvider("local", {}),
   });
   assert.equal(passLocal.result, "pass");
-  assert.equal(passLocal.estimatedSeconds, 67.2);
-  assert.equal(passLocal.minWords, 146);
-  assert.equal(passLocal.maxWords, 178);
+  assert.equal(passLocal.estimatedSeconds, 64.6);
+  assert.equal(passLocal.minWords, 180);
+  assert.equal(passLocal.maxWords, 220);
+});
+
+test("short runtime planner: latest Liam proof calibration no longer under-targets 172-word scripts", () => {
+  const measuredProofWords = 172;
+  const measuredProofSeconds = 59.68;
+  const measuredSecondsPerWord = measuredProofSeconds / measuredProofWords;
+  assert.ok(Math.abs(measuredSecondsPerWord - DEFAULT_LOCAL_SECONDS_PER_WORD) < 0.01);
+
+  const repairedLocal = classifyShortScriptRuntime({
+    wordCount: 190,
+    secondsPerWord: secondsPerWordForTtsProvider("local", {}),
+  });
+  assert.equal(repairedLocal.result, "pass");
+  assert.ok(repairedLocal.estimatedSeconds >= 64);
+  assert.ok(repairedLocal.estimatedSeconds <= 70);
 });
 
 test("short runtime planner: punctuation-heavy local Liam scripts include pause budget in duration estimates", () => {
-  const text = "Wait. GTA? Xbox! Steam, moving now. ".repeat(25);
+  const text = "Wait. GTA? Xbox! Steam, moving now. ".repeat(30);
   const plan = classifyShortScriptRuntime({
     text,
     secondsPerWord: secondsPerWordForTtsProvider("local", {}),
   });
 
-  assert.equal(countSpokenWords(text), 150);
+  assert.equal(countSpokenWords(text), 180);
   assert.equal(plan.result, "pass");
-  assert.equal(plan.estimatedSeconds, 65.5);
-  assert.equal(plan.punctuationPauseSeconds, 2.5);
+  assert.equal(plan.estimatedSeconds, 64.2);
+  assert.equal(plan.punctuationPauseSeconds, 3);
 });
 
 test("short runtime planner: local Liam too-short and too-long estimates are explicit", () => {
@@ -122,7 +137,7 @@ test("short runtime planner: local Liam too-short and too-long estimates are exp
     secondsPerWord: secondsPerWordForTtsProvider("local", {}),
   });
   const tooLong = classifyShortScriptRuntime({
-    wordCount: 220,
+    wordCount: 270,
     secondsPerWord: secondsPerWordForTtsProvider("local", {}),
   });
 

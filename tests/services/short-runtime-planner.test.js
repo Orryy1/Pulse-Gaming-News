@@ -35,6 +35,18 @@ test("short runtime planner: 90s script is review, not normal Short audio", () =
   );
 });
 
+test("short runtime planner: 90s script can generate only when explicitly routed as extended Short", () => {
+  const plan = classifyShortScriptRuntime({
+    wordCount: 132,
+    format: "pulse_extended_short",
+  });
+
+  assert.equal(plan.result, "pass");
+  assert.equal(plan.route, "extended_short");
+  assert.equal(plan.shouldGenerateShortAudio, true);
+  assert.equal(plan.maxSeconds, 90);
+});
+
 test("short runtime planner: 117s script blocks before audio/render", () => {
   const plan = classifyShortScriptRuntime({ wordCount: 172 });
   assert.equal(plan.result, "fail");

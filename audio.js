@@ -403,6 +403,7 @@ function buildDeterministicDurationRewrite(story, { attempt = 1 } = {}) {
 const BUMPER_DURATION = 0; // bumpers removed - audio must hit 61s on its own
 const MIN_TOTAL_DURATION = 61; // TikTok Creator Rewards minimum
 const MAX_FLASH_TOTAL_DURATION = 75;
+const MAX_EXTENDED_TOTAL_DURATION = 90;
 
 // --- Get audio duration via ffprobe ---
 async function getAudioDuration(audioPath) {
@@ -1137,10 +1138,18 @@ async function generateAudio() {
         console.log(`[audio] Duration OK: ${totalDuration.toFixed(1)}s`);
       }
 
-      if (totalDuration > MAX_FLASH_TOTAL_DURATION) {
-        const reason = `audio_duration_too_long (${totalDuration.toFixed(2)}s, max ${MAX_FLASH_TOTAL_DURATION.toFixed(2)}s)`;
+      const maxTotalDuration =
+        Number.isFinite(Number(runtimePlan.maxSeconds)) && runtimePlan.maxSeconds > 0
+          ? Number(runtimePlan.maxSeconds)
+          : runtimePlan.route === "extended_short"
+            ? MAX_EXTENDED_TOTAL_DURATION
+            : MAX_FLASH_TOTAL_DURATION;
+      const durationLaneLabel =
+        runtimePlan.route === "extended_short" ? "Extended Short" : "Flash Lane";
+      if (totalDuration > maxTotalDuration) {
+        const reason = `audio_duration_too_long (${totalDuration.toFixed(2)}s, max ${maxTotalDuration.toFixed(2)}s)`;
         console.log(
-          `[audio] ${story.id}: generated audio exceeds Flash Lane contract, blocking before render: ${reason}`,
+          `[audio] ${story.id}: generated audio exceeds ${durationLaneLabel} contract, blocking before render: ${reason}`,
         );
         story.qa_failed = true;
         story.qa_failures = [reason];

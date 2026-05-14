@@ -1714,6 +1714,7 @@ async function assemble() {
     const durationQa = classifyShortDuration({
       audioDurationSeconds: audioDuration,
       videoDurationSeconds: duration,
+      story,
     });
     if (
       durationQa.failures.some((failure) =>

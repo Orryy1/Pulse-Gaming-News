@@ -178,6 +178,23 @@ test("runContentQa: overlong audio duration hard-fails before publish", async ()
   );
 });
 
+test("runContentQa: deliberate extended Short can pass above Flash Lane ceiling", async () => {
+  const story = goodStory({
+    audio_duration: 84,
+    duration_seconds: 85,
+    duration_lane: "pulse_extended_short",
+  });
+  const qa = await runContentQa(story, {
+    fs: fakeFs({ [story.exported_path]: { size: 5 * 1024 * 1024 } }),
+  });
+
+  assert.notStrictEqual(qa.result, "fail", JSON.stringify(qa));
+  assert.ok(
+    !qa.failures.some((f) => f.startsWith("audio_duration_too_long")),
+    `got: ${qa.failures.join(", ")}`,
+  );
+});
+
 test("runContentQa: general Reddit posts cannot invent insider/source attribution", async () => {
   const story = goodStory({
     source_type: "reddit",

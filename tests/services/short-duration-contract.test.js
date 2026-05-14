@@ -46,6 +46,52 @@ test("classifyShortDuration blocks explicit overlong video duration", () => {
   );
 });
 
+test("classifyShortDuration keeps unplanned 85s videos out of the Flash Lane", () => {
+  const result = classifyShortDuration({
+    audioDurationSeconds: 84,
+    videoDurationSeconds: 85,
+  });
+
+  assert.equal(result.result, "fail");
+  assert.equal(result.durationLane, "pulse_flash_short");
+  assert.ok(
+    result.failures.some((failure) =>
+      failure.startsWith("audio_duration_too_long"),
+    ),
+    result.failures.join(", "),
+  );
+});
+
+test("classifyShortDuration allows a deliberate extended Short up to 90s", () => {
+  const result = classifyShortDuration({
+    audioDurationSeconds: 84,
+    videoDurationSeconds: 85,
+    lane: "pulse_extended_short",
+  });
+
+  assert.equal(result.result, "pass");
+  assert.deepEqual(result.failures, []);
+  assert.equal(result.durationLane, "pulse_extended_short");
+  assert.equal(result.maxVideoSeconds, 90);
+});
+
+test("classifyShortDuration blocks runaway audio even in the extended Short lane", () => {
+  const result = classifyShortDuration({
+    audioDurationSeconds: 124,
+    videoDurationSeconds: 125,
+    lane: "pulse_extended_short",
+  });
+
+  assert.equal(result.result, "fail");
+  assert.equal(result.durationLane, "pulse_extended_short");
+  assert.ok(
+    result.failures.some((failure) =>
+      failure.startsWith("audio_duration_too_long"),
+    ),
+    result.failures.join(", "),
+  );
+});
+
 test("duration defaults match the current publish QA contract", () => {
   assert.equal(DEFAULT_MIN_SHORT_VIDEO_SECONDS, 61);
   assert.equal(DEFAULT_MAX_SHORT_VIDEO_SECONDS, 75);

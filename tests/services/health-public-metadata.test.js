@@ -17,6 +17,13 @@ test("/api/health public metadata does not expose raw commit messages", () => {
   assert.doesNotMatch(healthBlock, /commit_message\s*:/);
 });
 
+test("/api/health public metadata includes runtime build resolver", () => {
+  assert.match(src, /resolveRuntimeBuildInfo/);
+  assert.match(src, /const RUNTIME_BUILD_INFO = resolveRuntimeBuildInfo/);
+  assert.match(healthBlock, /const build = RUNTIME_BUILD_INFO/);
+  assert.doesNotMatch(healthBlock, /RAILWAY_GIT_COMMIT_MESSAGE/);
+});
+
 test("/api/health public metadata redacts raw SQLite filesystem paths", () => {
   assert.notEqual(start, -1, "health route not found");
   assert.doesNotMatch(healthBlock, /sqlite_db_path\s*:\s*sqliteDbPath\s*[,}]/);

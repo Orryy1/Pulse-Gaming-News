@@ -10,12 +10,17 @@ const cron = require("node-cron");
 const dotenv = require("dotenv");
 const { extractBearerToken, tokenMatches } = require("./lib/auth-token");
 const { getPublicUrl } = require("./lib/deployment-mode");
+const { resolveRuntimeBuildInfo } = require("./lib/runtime-build-info");
 const {
   resolveFacebookTokenPath,
   resolveInstagramTokenPath,
 } = require("./lib/token-paths");
 
 dotenv.config({ override: true });
+const RUNTIME_BUILD_INFO = resolveRuntimeBuildInfo({
+  cwd: __dirname,
+  env: process.env,
+});
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -777,21 +782,7 @@ app.get("/api/health", (req, res) => {
   // verification: `curl https://<host>/api/health | jq .build` lets
   // an operator prove which commit is actually running without
   // trawling Discord deploy banners.
-  const commitSha = process.env.RAILWAY_GIT_COMMIT_SHA || null;
-  const build = {
-    commit_sha: commitSha,
-    commit_short: commitSha ? commitSha.slice(0, 7) : null,
-    commit_message_present: !!process.env.RAILWAY_GIT_COMMIT_MESSAGE,
-    branch: process.env.RAILWAY_GIT_BRANCH || null,
-    deployment_id: process.env.RAILWAY_DEPLOYMENT_ID || null,
-    environment:
-      process.env.RAILWAY_ENVIRONMENT_NAME ||
-      process.env.RAILWAY_ENVIRONMENT ||
-      null,
-    project_id: process.env.RAILWAY_PROJECT_ID || null,
-    service_id: process.env.RAILWAY_SERVICE_ID || null,
-    node_env: process.env.NODE_ENV || null,
-  };
+  const build = RUNTIME_BUILD_INFO;
 
   // Runtime feature flags that drive dispatch/persistence behaviour.
   // Safely resolve dispatch mode without running the bootstrap path —

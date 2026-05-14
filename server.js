@@ -1863,19 +1863,9 @@ async function _registerLegacyDevCronRegistry() {
               dispatchSource: "server_cron_publish_window",
             });
             if (result) {
-              const errorDetails =
-                result.errors && Object.keys(result.errors).length > 0
-                  ? "\n" +
-                    Object.entries(result.errors)
-                      .map(([p, msg]) => `${p}: ${msg}`)
-                      .join("\n")
-                  : "";
-              await sendDiscord(
-                `**Pulse Gaming Published** (${windowLabels[i]})\n` +
-                  `"${result.title}"\n` +
-                  `YT: ${result.youtube ? "yes" : "FAIL"} | TT: ${result.tiktok ? "yes" : "FAIL"} | IG: ${result.instagram ? "yes" : "FAIL"} | FB: ${result.facebook ? "yes" : "FAIL"} | X: ${result.twitter ? "yes" : "FAIL"}` +
-                  errorDetails,
-              );
+              const { renderPublishSummary } = require("./lib/job-handlers");
+              const summary = renderPublishSummary(result);
+              if (summary?.message) await sendDiscord(summary.message);
             } else {
               console.log(
                 `[server-cron] No unpublished stories ready for ${windowLabels[i]}`,

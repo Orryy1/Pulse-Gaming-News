@@ -395,9 +395,7 @@ async function postStoryForApproval(story) {
 
     const idMap = config.loadIdMap();
     // Story approvals go to #mod-log (staff), not #video-drops (public)
-    const channelId =
-      idMap.channels &&
-      (idMap.channels["mod-log"] || idMap.channels["video-drops"]);
+    const channelId = idMap.channels && idMap.channels["mod-log"];
 
     if (!channelId) {
       console.error('[AutoPost] Channel "mod-log" not found in id_map.json.');
@@ -602,6 +600,17 @@ function truncate(str, max) {
  */
 async function pingEarlyAccess(story, platforms) {
   try {
+    const storyForGate = {
+      ...(story || {}),
+      youtube_url: story?.youtube_url || platforms?.youtube,
+      tiktok_post_id: story?.tiktok_post_id || platforms?.tiktok,
+      instagram_media_id: story?.instagram_media_id || platforms?.instagram,
+    };
+    if (!shouldPostVideoDrop(storyForGate)) {
+      console.log("[discord] Skipping early access ping: story is not eligible");
+      return;
+    }
+
     const client = await getClient();
     if (!client) return;
 

@@ -4,7 +4,7 @@ Updated: 2026-05-14
 
 Live health update: `http://localhost:3001/api/health` and `https://pulse.orryy.com/api/health` currently report `mode=local`, `primary=true`, `AUTO_PUBLISH=true`, `USE_JOB_QUEUE=true` and `schedulerActive=true`. The active `server.js` process started on 2026-05-14 at 07:24 before the latest safety commits, and the health endpoint does not expose a git commit, so a controlled restart is required before the latest branch can protect live posting.
 
-Latest read-only restart check: `npm run ops:local-restart-readiness` is RED. It confirms the running local/public server does not expose `build.commit_sha`, cadence hard gates are disabled, 10 off-schedule posts happened in 24h, 7 tight-spacing pairs happened in 24h and 2 public script-validation fallback rows still need repair.
+Latest read-only restart check: `npm run ops:local-restart-readiness` is RED. It confirms the running local/public server does not expose `build.commit_sha`, cadence hard gates are disabled, 10 off-schedule posts happened in 24h, 7 tight-spacing pairs happened in 24h, 11 public posts exceeded the recommended 3-post cap and 2 public script-validation fallback rows still need repair.
 
 ## 0. Publish Cadence Hard Gates
 
@@ -42,9 +42,9 @@ Recommendation: approve only after checking the two RED public rows on-platform:
 
 Decision needed: approve or defer deploying branch `codex/readiness-qa-failure-window`.
 
-Current state: the branch now includes local restart readiness reporting, central publish dispatch gating, stricter Discord video-drop and story-poll eligibility, immediate Discord marker persistence, legacy subtitle-duration planning and the earlier safety/reporting changes. Full `npm test` passed `2672/2672` and `npm run build` passed locally after the latest Discord safety slice.
+Current state: the branch now includes local restart readiness reporting, central publish dispatch gating, stricter Discord news/video-drop/story-poll/early-access eligibility, staff-only Story approval Discord routing, canonical server/breaking publish summaries, immediate Discord marker persistence, legacy subtitle-duration planning and the earlier safety/reporting changes. Full `npm test` passed `2682/2682` and `npm run build` passed locally after the latest Discord safety slice.
 
-Why it matters: the code now blocks the two failure classes seen overnight: public script-validation fallback rows and stale bad local voice paths in local assembly.
+Why it matters: the code now blocks the failure classes seen overnight: public script-validation fallback rows, misleading “published” summaries for blocked/failed attempts and stale bad local voice paths in local assembly.
 
 What changes: live code behaviour changes only where existing pipelines hit these QA paths. The cadence hard gates remain warn-only unless env flags are separately enabled.
 

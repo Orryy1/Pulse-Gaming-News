@@ -5,7 +5,7 @@ Update: 2026-05-14
 ## Latest Branch State
 
 - Branch: `codex/readiness-qa-failure-window`
-- Latest local checkpoint before this slice: `d1c851de auto-commit: Codex session checkpoint`
+- Latest local checkpoint before this slice: `80b6115e auto-commit: Codex session checkpoint`
 - Deployed: no
 - Active public instance: local PC via `pulse.orryy.com`
 - Active health: `mode=local`, `primary=true`, `AUTO_PUBLISH=true`, `USE_JOB_QUEUE=true`, `schedulerActive=true`
@@ -15,8 +15,8 @@ Update: 2026-05-14
 
 ## Latest Verification
 
-- Full `npm test`: pass (`2672/2672`) on 2026-05-14 after the Discord marker/poll hardening slice
-- `npm run build`: pass on 2026-05-14 after the Discord marker/poll hardening slice
+- Full `npm test`: pass (`2682/2682`) on 2026-05-14 after the Discord public-notification hardening slice
+- `npm run build`: pass on 2026-05-14 after the Discord public-notification hardening slice
 - `npm run ops:publish-cadence -- --hours 24`: AMBER
 - `npm run ops:publish-row-repair -- --limit 40`: dry-run report plus `test/output/publish_row_repair_preview.sql` generated; no DB mutation performed
 - `npm run ops:local-restart-readiness`: RED, read-only report generated; now blocks restart readiness when the 24h daily cap is exceeded and the daily-cap hard gate is disabled
@@ -34,6 +34,10 @@ Update: 2026-05-14
 - Discord video-drop announcements now require a clean publish state and reject stale/`DUPE_*` platform IDs.
 - Discord video-drop and story-poll markers are now persisted immediately after a successful Discord send, reducing duplicate-announcement risk if a process crashes before the final story save.
 - Discord story polls now require a clean published/partial state and refuse QA-failed or script-validation fallback rows.
+- Discord public news posts now refuse script-validation fallback rows, failed rows and QA-failed rows before logging in to Discord.
+- Discord Story approval posts now require `mod-log` and no longer fall back to public `video-drops`.
+- Discord early-access pings now reuse the video-drop eligibility guard, so failed/script-review rows cannot ping the public role.
+- Server cron and breaking fast lane Discord summaries now use the canonical publish summary renderer instead of hand-rolled “Published” wording.
 - Local restart readiness now checks publish-window, minimum-gap and daily-cap hard gates together before recommending a clean local primary restart.
 - Publish row repair now produces a backup-required SQL preview for the two red script-validation fallback rows while preserving platform IDs and keeping apply/manual mutation blocked.
 - Legacy multi-image assembly now accounts for xfade overlap so video duration covers narration/subtitles instead of cutting/freeze-risking the tail.

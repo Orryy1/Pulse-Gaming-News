@@ -196,16 +196,26 @@ async function runFastPipeline(story) {
     // Discord notification
     try {
       const sendDiscord = require("./notify");
-      const platformStatus = publishResult
-        ? `YT: ${publishResult.youtube ? "yes" : "no"} | TT: ${publishResult.tiktok ? "yes" : "no"} | IG: ${publishResult.instagram ? "yes" : "no"} | FB: ${publishResult.facebook ? "yes" : "no"} | X: ${publishResult.twitter ? "yes" : "no"}`
-        : "Publishing skipped";
-      await sendDiscord(
-        `**BREAKING NEWS: Fast Pipeline**\n` +
-          `"${story.title}"\n` +
-          `Score: ${story.breaking_score} | Trigger: ${story.breaking_trigger}\n` +
-          `Time to publish: ${elapsedSec}s\n` +
-          platformStatus,
-      );
+      if (publishResult) {
+        const { renderPublishSummary } = require("./lib/job-handlers");
+        const summary = renderPublishSummary(publishResult);
+        if (summary?.message) {
+          await sendDiscord(
+            `**BREAKING FAST PIPELINE RESULT**\n` +
+              `Score: ${story.breaking_score} | Trigger: ${story.breaking_trigger}\n` +
+              `Elapsed: ${elapsedSec}s\n\n` +
+              summary.message,
+          );
+        }
+      } else {
+        await sendDiscord(
+          `**BREAKING FAST PIPELINE READY**\n` +
+            `"${story.title}"\n` +
+            `Score: ${story.breaking_score} | Trigger: ${story.breaking_trigger}\n` +
+            `Elapsed: ${elapsedSec}s\n` +
+            `Publishing skipped.`,
+        );
+      }
     } catch (err) {
       /* Discord notification is non-critical */
     }

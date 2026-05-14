@@ -47,6 +47,9 @@ const {
   resolveAcceptedLocalVoiceReference,
 } = require("./lib/studio/v2/local-voice-reference");
 const {
+  assertLocalTtsGpuReady,
+} = require("./lib/studio/local-gpu-pressure");
+const {
   ACCEPTED_LOCAL_LIAM_VOICE_ID,
   canonicalLocalTtsVoiceId,
 } = require("./lib/studio/local-tts-voice-id");
@@ -462,9 +465,9 @@ async function getAudioDuration(audioPath) {
 function resolveTtsTimeoutMs(provider, env = process.env) {
   if (String(provider || "").toLowerCase() === "local") {
     const value = Number(
-      env.LOCAL_TTS_TIMEOUT_MS || env.STUDIO_V2_LOCAL_TTS_TIMEOUT_MS || 600000,
+      env.LOCAL_TTS_TIMEOUT_MS || env.STUDIO_V2_LOCAL_TTS_TIMEOUT_MS || 300000,
     );
-    return Number.isFinite(value) && value > 0 ? value : 600000;
+    return Number.isFinite(value) && value > 0 ? value : 300000;
   }
   const remoteValue = Number(env.ELEVENLABS_TTS_TIMEOUT_MS || 60000);
   return Number.isFinite(remoteValue) && remoteValue > 0 ? remoteValue : 60000;
@@ -529,9 +532,7 @@ function isRetryableLocalTtsError(err) {
   const message = String(err?.message || "");
   return (
     code === "ECONNRESET" ||
-    code === "ECONNABORTED" ||
-    code === "ETIMEDOUT" ||
-    /ECONNRESET|socket hang up|timeout/i.test(message)
+    /ECONNRESET|socket hang up/i.test(message)
   );
 }
 
@@ -581,7 +582,7 @@ async function requestTtsWithRetry({
     ? Math.max(
         1,
         Math.trunc(
-          Number(attempts || process.env.LOCAL_TTS_REQUEST_ATTEMPTS || 3),
+          Number(attempts || process.env.LOCAL_TTS_REQUEST_ATTEMPTS || 2),
         ),
       )
     : 1;
@@ -786,6 +787,13 @@ async function generateTTS(text, outputPath, rateOverride) {
   };
   if (provider !== "local") {
     data.model_id = brand.voiceModel || "eleven_multilingual_v2";
+  }
+
+  if (provider === "local") {
+    await assertLocalTtsGpuReady({
+      env: process.env,
+      execFileImpl: execFile,
+    });
   }
 
   const response = await requestTtsWithRetry({

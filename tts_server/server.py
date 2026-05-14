@@ -899,6 +899,10 @@ def prewarm(req: PrewarmRequest):
         reused = True
 
     if reused:
+        SERVICE_STATE["phase"] = "ready"
+        SERVICE_STATE["ready"] = True
+        SERVICE_STATE["warming"] = False
+        SERVICE_STATE["last_error"] = None
         SERVICE_STATE["prewarm_voice_id"] = voice_id
         log.info(
             f"[prewarm] voice_id={voice_id} reused=True engine_count={len(_engine_cache)}"

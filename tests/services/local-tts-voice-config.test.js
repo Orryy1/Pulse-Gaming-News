@@ -24,6 +24,7 @@ test("Pulse VoxCPM voice map carries Sleepy-proven safety parameters", () => {
   assert.equal(pulse.use_prompt_text, false);
   assert.equal(pulse.voice_qa.enabled, true);
   assert.equal(pulse.voice_qa.min_median_f0_hz >= 95, true);
+  assert.equal(pulse.voice_qa.retry_same_reference, false);
   assert.equal(pulse.voice_qa.fallback_without_reference, false);
   assert.equal(typeof pulse.ref_voice_text, "string");
   assert.match(pulse.ref_voice_text, /Metro/i);
@@ -114,6 +115,17 @@ test("Pulse VoxCPM server uses model sample rate instead of hardcoded 16 kHz", (
   assert.doesNotMatch(serverSource, /sample_rate\s*=\s*engine\.SAMPLE_RATE/);
 });
 
+test("Pulse local TTS prewarm reuse leaves the health state ready", () => {
+  const serverSource = fs.readFileSync(
+    path.join(ROOT, "tts_server", "server.py"),
+    "utf8",
+  );
+
+  assert.match(serverSource, /if reused:\s+SERVICE_STATE\["phase"\]\s*=\s*"ready"/s);
+  assert.match(serverSource, /SERVICE_STATE\["ready"\]\s*=\s*True/);
+  assert.match(serverSource, /SERVICE_STATE\["warming"\]\s*=\s*False/);
+});
+
 test("Pulse local TTS request rate is capped before server base-speed multiplication", () => {
   process.env.PULSE_SKIP_DOTENV = "true";
   const {
@@ -197,6 +209,9 @@ test("Pulse local TTS smoke test uses a natural rate by default", () => {
   assert.match(smokeSource, /prewarmLocalTtsVoice/);
   assert.match(smokeSource, /createLocalTtsBatchRecovery/);
   assert.match(smokeSource, /generateTtsForStory/);
+  assert.match(smokeSource, /LOCAL_TTS_SMOKE_TIMEOUT_MS/);
+  assert.match(smokeSource, /LOCAL_TTS_SMOKE_ATTEMPTS/);
+  assert.match(smokeSource, /LOCAL_TTS_SMOKE_TEXT/);
   assert.match(smokeSource, /LOCAL_TTS_PREWARM_TIMEOUT_MS/);
   assert.match(smokeSource, /LOCAL_TTS_SMOKE_RATE\s*\|\|\s*1\.0/);
   assert.match(smokeSource, /__local_tts_smoke_sleepy_liam_latest\.mp3/);

@@ -56,6 +56,11 @@ test("classifyLocalTtsFailure recognises transient socket resets and TTS timeout
   const timeout = classifyLocalTtsFailure(new Error("local TTS timeout after 600000ms"));
   assert.equal(timeout.code, "tts_timeout");
   assert.equal(timeout.requires_server_reset, true);
+  const gpuBusy = classifyLocalTtsFailure(
+    new Error("local_tts_gpu_busy:GPU free memory 1045MB is below 3072MB"),
+  );
+  assert.equal(gpuBusy.code, "gpu_saturated");
+  assert.equal(gpuBusy.requires_server_reset, false);
 });
 
 test("classifyLocalTtsFailure treats default voice fallback as unsafe voice", () => {

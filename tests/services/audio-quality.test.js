@@ -20,9 +20,9 @@ test("buildNarrationMusicMixFilter: preserves narration level when adding music"
 
   assert.match(filter, /amix=inputs=2:duration=first/);
   assert.match(filter, /normalize=0/);
-  assert.match(filter, /loudnorm=I=-14:TP=-1\.5:LRA=7/);
-  assert.match(filter, /alimiter=limit=0\.85/);
-  assert.equal(filter, "[voice][bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,loudnorm=I=-14:TP=-1.5:LRA=7,alimiter=limit=0.85[outa]");
+  assert.match(filter, /loudnorm=I=-15:TP=-2:LRA=8/);
+  assert.match(filter, /alimiter=limit=0\.8/);
+  assert.equal(filter, "[voice][bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,loudnorm=I=-15:TP=-2:LRA=8,alimiter=limit=0.8[outa]");
 });
 
 test("buildVoiceMasteringFilter: normalises local narration for crisp social-video playback", () => {
@@ -31,12 +31,12 @@ test("buildVoiceMasteringFilter: normalises local narration for crisp social-vid
   assert.match(filter, /highpass=f=90/);
   assert.doesNotMatch(filter, /afftdn=/);
   assert.match(filter, /equalizer=f=240:t=q:w=1\.0:g=-2/);
-  assert.match(filter, /equalizer=f=3200:t=q:w=1\.1:g=2\.4/);
-  assert.match(filter, /equalizer=f=6500:t=q:w=1\.0:g=1\.5/);
-  assert.match(filter, /equalizer=f=9500:t=q:w=0\.9:g=0\.9/);
-  assert.match(filter, /acompressor=/);
-  assert.match(filter, /loudnorm=I=-14:TP=-1:LRA=7/);
-  assert.match(filter, /alimiter=limit=0\.96/);
+  assert.match(filter, /equalizer=f=3200:t=q:w=1\.1:g=1\.8/);
+  assert.match(filter, /equalizer=f=6500:t=q:w=1\.0:g=1\.0/);
+  assert.match(filter, /equalizer=f=9500:t=q:w=0\.9:g=0\.4/);
+  assert.match(filter, /acompressor=threshold=-22dB:ratio=2\.0:attack=5:release=100:makeup=1\.2/);
+  assert.match(filter, /loudnorm=I=-15:TP=-1\.7:LRA=8/);
+  assert.match(filter, /alimiter=limit=0\.88/);
 });
 
 test("buildVoiceMasteringFilter: denoise is opt-in so Liam consonants stay crisp by default", () => {
@@ -53,7 +53,7 @@ test("audio-quality defaults keep local TTS loud and high-bitrate after masterin
     "utf8",
   );
 
-  assert.match(source, /TTS_VOICE_TARGET_LUFS,\s*-14/);
+  assert.match(source, /TTS_VOICE_TARGET_LUFS,\s*-15/);
   assert.match(source, /TTS_VOICE_MASTER_BITRATE,\s*"256k"/);
 });
 

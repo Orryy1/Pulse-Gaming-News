@@ -41,8 +41,8 @@ test("selectRawTtsScript: returns cached script when no better fallback exists",
   assert.equal(selectRawTtsScript(story), story.tts_script);
 });
 
-test("resolveTtsTimeoutMs: local VoxCPM gets a long configurable timeout", () => {
-  assert.equal(resolveTtsTimeoutMs("local", {}), 600000);
+test("resolveTtsTimeoutMs: local VoxCPM defaults to a bounded timeout but remains configurable", () => {
+  assert.equal(resolveTtsTimeoutMs("local", {}), 300000);
   assert.equal(
     resolveTtsTimeoutMs("local", { LOCAL_TTS_TIMEOUT_MS: "900000" }),
     900000,

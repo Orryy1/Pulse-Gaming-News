@@ -12,13 +12,15 @@ const {
   prepareTtsAlignmentForWrite,
   requestTtsWithRetry,
   resolveTtsOutputFormat,
+  resolveTtsTimeoutMs,
   resolveTtsVoiceIdForProvider,
 } = require("../../audio");
 
 test("isRetryableLocalTtsError: recognises transient local socket resets", () => {
   assert.equal(isRetryableLocalTtsError({ code: "ECONNRESET" }), true);
   assert.equal(isRetryableLocalTtsError(new Error("read ECONNRESET")), true);
-  assert.equal(isRetryableLocalTtsError({ code: "ETIMEDOUT" }), true);
+  assert.equal(isRetryableLocalTtsError({ code: "ETIMEDOUT" }), false);
+  assert.equal(isRetryableLocalTtsError(new Error("timeout of 300000ms exceeded")), false);
   assert.equal(isRetryableLocalTtsError(new Error("HTTP 400")), false);
 });
 
@@ -82,6 +84,26 @@ test("requestTtsWithRetry: stops after configured local attempts", async () => {
   assert.equal(calls, 2);
 });
 
+test("requestTtsWithRetry: does not retry local generation timeouts", async () => {
+  let calls = 0;
+  await assert.rejects(
+    requestTtsWithRetry({
+      provider: "local",
+      requestConfig: {},
+      attempts: 2,
+      retryDelayMs: 1,
+      request: async () => {
+        calls++;
+        const err = new Error("timeout of 300000ms exceeded");
+        err.code = "ETIMEDOUT";
+        throw err;
+      },
+    }),
+    /timeout/,
+  );
+  assert.equal(calls, 1);
+});
+
 test("isLocalTtsProvider: only true for explicit local provider", () => {
   assert.equal(isLocalTtsProvider("local"), true);
   assert.equal(isLocalTtsProvider("LOCAL"), true);
@@ -105,6 +127,13 @@ test("resolveTtsOutputFormat: local Liam requests higher bitrate source audio", 
     }),
     "mp3_44100_192",
   );
+});
+
+test("resolveTtsTimeoutMs: local TTS defaults to a bounded five-minute cap", () => {
+  assert.equal(resolveTtsTimeoutMs("local", {}), 300000);
+  assert.equal(resolveTtsTimeoutMs("local", { LOCAL_TTS_TIMEOUT_MS: "450000" }), 450000);
+  assert.equal(resolveTtsTimeoutMs("local", { LOCAL_TTS_TIMEOUT_MS: "0" }), 300000);
+  assert.equal(resolveTtsTimeoutMs("elevenlabs", {}), 60000);
 });
 
 test("generateTtsForStory: server_down triggers one recovery then keeps the successful MP3", async () => {
@@ -166,6 +195,37 @@ test("generateTtsForStory: unsafe voice does not attempt server recovery", async
   assert.equal(recoveries, 0);
   assert.equal(story.local_tts_attempts.length, 1);
   assert.equal(story.local_tts_attempts[0].failure_code, "unsafe_voice");
+});
+
+test("generateTtsForStory: local generation timeout fails fast without retrying the same story", async () => {
+  const story = { id: "rss_timeout_tts" };
+  let calls = 0;
+  let recoveries = 0;
+
+  await assert.rejects(
+    generateTtsForStory({
+      story,
+      text: "Pulse Gaming local TTS timeout test.",
+      outputPath: "output/audio/rss_timeout_tts.mp3",
+      provider: "local",
+      generateTts: async () => {
+        calls += 1;
+        const err = new Error("timeout of 180000ms exceeded");
+        err.code = "ETIMEDOUT";
+        throw err;
+      },
+      recoverLocalTts: async () => {
+        recoveries += 1;
+        return { ok: true, action: "restart" };
+      },
+    }),
+    /local_tts_generation_failed:tts_timeout/,
+  );
+
+  assert.equal(calls, 1);
+  assert.equal(recoveries, 0);
+  assert.equal(story.local_tts_attempts[0].attempts, 1);
+  assert.equal(story.local_tts_attempts[0].failure_code, "tts_timeout");
 });
 
 test("resolveTtsVoiceIdForProvider: local TTS refuses generic or non-Liam fallback voices", () => {

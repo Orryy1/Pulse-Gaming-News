@@ -119,7 +119,7 @@ test("local TTS batch recovery reports unsafe final state without hiding the fai
   assert.match(result.failure_message, /wrong voice/);
 });
 
-test("local TTS generation retries once after a timeout recovery", async () => {
+test("local TTS generation does not recover/retry after a timeout", async () => {
   const recoveries = [];
   let attempts = 0;
   const result = await generateLocalTtsWithOptionalRecovery({
@@ -136,9 +136,9 @@ test("local TTS generation retries once after a timeout recovery", async () => {
     },
   });
 
-  assert.equal(result.ok, true);
-  assert.equal(result.attempts, 2);
-  assert.equal(recoveries.length, 1);
-  assert.equal(recoveries[0].failure.code, "tts_timeout");
-  assert.equal(result.recovery.action, "restart");
+  assert.equal(result.ok, false);
+  assert.equal(result.attempts, 1);
+  assert.equal(recoveries.length, 0);
+  assert.equal(result.failure.code, "tts_timeout");
+  assert.equal(result.recovery, null);
 });

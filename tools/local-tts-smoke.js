@@ -21,6 +21,14 @@ const {
 
 process.env.TTS_PROVIDER = "local";
 process.env.LOCAL_TTS_URL = process.env.LOCAL_TTS_URL || DEFAULT_LOCAL_TTS_URL;
+process.env.LOCAL_TTS_TIMEOUT_MS =
+  process.env.LOCAL_TTS_SMOKE_TIMEOUT_MS ||
+  process.env.LOCAL_TTS_TIMEOUT_MS ||
+  "180000";
+process.env.LOCAL_TTS_REQUEST_ATTEMPTS =
+  process.env.LOCAL_TTS_SMOKE_ATTEMPTS ||
+  process.env.LOCAL_TTS_REQUEST_ATTEMPTS ||
+  "1";
 process.env.PULSE_SKIP_DOTENV = "true";
 
 const audio = require("../audio");
@@ -72,6 +80,7 @@ async function main() {
   await fs.remove(mediaPaths.writePath(rel)).catch(() => {});
   await fs.remove(mediaPaths.writePath(tsRel)).catch(() => {});
   const text =
+    process.env.LOCAL_TTS_SMOKE_TEXT ||
     "Pulse Gaming local TTS is online. Pokémon is spoken clearly, and Pokémon keeps its accent in timestamps.";
   const rate = Number(process.env.LOCAL_TTS_SMOKE_RATE || 1.0);
   const recoverLocalTts = createLocalTtsBatchRecovery({

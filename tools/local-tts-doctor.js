@@ -20,6 +20,10 @@ const {
 const {
   classifyLocalTtsHealthFailure,
 } = require("../lib/studio/local-tts-failures");
+const {
+  formatLocalGpuPressure,
+  inspectLocalGpuPressure,
+} = require("../lib/studio/local-gpu-pressure");
 
 function parseArgs(argv = process.argv.slice(2)) {
   return {
@@ -72,6 +76,7 @@ async function runDoctor(options = {}) {
     after: null,
     started: null,
     prewarm: null,
+    gpu: null,
     report_paths: null,
   };
 
@@ -124,6 +129,15 @@ async function runDoctor(options = {}) {
   report.action = finalPlan.action;
   report.failure_code = finalFailure.code;
   report.reason = finalPlan.reason;
+
+  report.gpu = await inspectLocalGpuPressure({ env: process.env });
+  console.log(`[tts-doctor] gpu ${formatLocalGpuPressure(report.gpu)}`);
+  if (report.verdict === "green" && report.gpu?.ok === false) {
+    report.verdict = "amber";
+    report.action = "wait_for_gpu";
+    report.failure_code = report.gpu.failure_code || "gpu_saturated";
+    report.reason = report.gpu.reason || "local GPU is too busy for clean TTS generation";
+  }
 
   if (options.writeReport !== false) {
     report.report_paths = await writeReport(report);

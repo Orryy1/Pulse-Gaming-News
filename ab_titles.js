@@ -1,8 +1,8 @@
-const Anthropic = require("@anthropic-ai/sdk");
 const fs = require("fs-extra");
 const { google } = require("googleapis");
 const dotenv = require("dotenv");
 const db = require("./lib/db");
+const { createLlmClient } = require("./lib/llm-client");
 
 dotenv.config({ override: true });
 
@@ -21,9 +21,7 @@ async function generateTitleVariants(story) {
   const originalTitle =
     story.suggested_title || story.suggested_thumbnail_text || story.title;
 
-  const client = new Anthropic.default({
-    apiKey: process.env.ANTHROPIC_API_KEY,
-  });
+  const client = createLlmClient();
 
   try {
     const response = await client.messages.create({

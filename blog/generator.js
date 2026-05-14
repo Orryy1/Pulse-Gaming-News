@@ -7,6 +7,7 @@
 const fs = require('fs-extra');
 const path = require('path');
 const dotenv = require('dotenv');
+const { createLlmClient } = require('../lib/llm-client');
 
 dotenv.config({ override: true });
 
@@ -18,12 +19,11 @@ const DIST_DIR = path.join(__dirname, 'dist');
  * @returns {{ html: string, slug: string, title: string, description: string, publishedAt: string }}
  */
 async function generateBlogPost(story) {
-  const Anthropic = require('@anthropic-ai/sdk');
   const brand = require('../brand');
   const channelName = brand.CHANNEL_NAME || 'Pulse Gaming';
   const affiliateTag = process.env.AMAZON_AFFILIATE_TAG || 'placeholder';
 
-  const client = new Anthropic.default({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const client = createLlmClient();
 
   const script = story.full_script || story.body || story.hook || story.title;
   const classification = story.classification || story.flair || '';

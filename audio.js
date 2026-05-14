@@ -69,6 +69,11 @@ function isLocalTtsProvider(provider = process.env.TTS_PROVIDER || "elevenlabs")
   return String(provider || "").toLowerCase() === "local";
 }
 
+function shouldUseDynamicPacingForProvider(provider = process.env.TTS_PROVIDER || "elevenlabs") {
+  if (isLocalTtsProvider(provider)) return false;
+  return !/^(false|0|no|off)$/i.test(String(process.env.TTS_DYNAMIC_PACING || "true"));
+}
+
 function isValidTtsOutputFormat(value) {
   return /^mp3_(?:22050|24000|44100|48000)_(?:64|96|128|192|256|320)$/.test(
     String(value || ""),
@@ -445,6 +450,62 @@ const BUMPER_DURATION = 0; // bumpers removed - audio must hit 61s on its own
 const MIN_TOTAL_DURATION = 61; // TikTok Creator Rewards minimum
 const MAX_FLASH_TOTAL_DURATION = 75;
 const MAX_EXTENDED_TOTAL_DURATION = 90;
+
+function storyIsApprovedForExtendedShort(story = {}) {
+  if (story.approved !== true && story.auto_approved !== true) return false;
+  const type = String(story.story_type || story.content_type || "").toLowerCase();
+  if (type.includes("off_brand")) return false;
+  return true;
+}
+
+function markStoryAsExtendedShort(story, runtimePlan = {}, reason = "local_tts_extended_short") {
+  story.duration_lane = "pulse_extended_short";
+  story.runtime_lane = "pulse_extended_short";
+  story.runtime_route = "extended_short";
+  story.short_runtime_plan = {
+    ...runtimePlan,
+    result: runtimePlan.result === "fail" ? "review" : runtimePlan.result || "review",
+    route: "extended_short",
+    shouldGenerateShortAudio: true,
+    maxSeconds: MAX_EXTENDED_TOTAL_DURATION,
+    reviewMaxSeconds: MAX_EXTENDED_TOTAL_DURATION,
+    extended_short_auto_promoted: true,
+    extended_short_reason: reason,
+  };
+  story.qa_warnings = Array.from(
+    new Set([...(story.qa_warnings || []), `extended_short_auto_promoted:${reason}`]),
+  );
+  return story.short_runtime_plan;
+}
+
+function shouldAutoPromoteRuntimePlanToExtendedShort({
+  provider = process.env.TTS_PROVIDER || "elevenlabs",
+  story,
+  runtimePlan = {},
+} = {}) {
+  if (!isLocalTtsProvider(provider)) return false;
+  if (!storyIsApprovedForExtendedShort(story)) return false;
+  const estimated = Number(runtimePlan.estimatedSeconds);
+  if (!Number.isFinite(estimated)) return false;
+  if (estimated <= MAX_FLASH_TOTAL_DURATION || estimated > MAX_EXTENDED_TOTAL_DURATION) {
+    return false;
+  }
+  return runtimePlan.route === "extended_or_briefing";
+}
+
+function shouldAutoPromoteGeneratedAudioToExtendedShort({
+  provider = process.env.TTS_PROVIDER || "elevenlabs",
+  story,
+  runtimePlan = {},
+  totalDuration,
+} = {}) {
+  if (!isLocalTtsProvider(provider)) return false;
+  if (!storyIsApprovedForExtendedShort(story)) return false;
+  if (runtimePlan.shouldGenerateShortAudio === false) return false;
+  const total = Number(totalDuration);
+  if (!Number.isFinite(total)) return false;
+  return total > MAX_FLASH_TOTAL_DURATION && total <= MAX_EXTENDED_TOTAL_DURATION;
+}
 
 // --- Get audio duration via ffprobe ---
 async function getAudioDuration(audioPath) {
@@ -973,7 +1034,7 @@ async function generateAudio() {
         tts_script: ttsText,
       });
 
-      const runtimePlan = classifyShortScriptRuntime({
+      let runtimePlan = classifyShortScriptRuntime({
         text: ttsText,
         story,
         secondsPerWord: secondsPerWordForTtsProvider(
@@ -985,6 +1046,20 @@ async function generateAudio() {
         ? runtimePlan.estimatedSeconds / Math.max(1, runtimePlan.wordCount)
         : secondsPerWordForTtsProvider(process.env.TTS_PROVIDER || "elevenlabs", process.env);
       story.short_runtime_plan = runtimePlan;
+      if (
+        runtimePlan.shouldGenerateShortAudio === false &&
+        shouldAutoPromoteRuntimePlanToExtendedShort({ provider, story, runtimePlan })
+      ) {
+        runtimePlan = markStoryAsExtendedShort(
+          story,
+          runtimePlan,
+          "local_tts_estimated_76_to_90s",
+        );
+        console.log(
+          `[audio] ${story.id}: promoting approved local Liam script to Extended Short ` +
+            `(est=${runtimePlan.estimatedSeconds || "?"}s, max=${MAX_EXTENDED_TOTAL_DURATION}s)`,
+        );
+      }
       if (runtimePlan.shouldGenerateShortAudio === false) {
         const reason =
           runtimePlan.failures[0] ||
@@ -1012,7 +1087,7 @@ async function generateAudio() {
       // Dynamic pacing: if story has separate hook/body/cta, generate each
       // segment at a different speaking rate then concatenate
       const baseRate = (brand.voiceSettings || {}).speaking_rate || 1.1;
-      if (story.hook && story.body && story.cta) {
+      if (shouldUseDynamicPacingForProvider(provider) && story.hook && story.body && story.cta) {
         const segments = [
           {
             text: cleanForTTS(story.hook),
@@ -1191,12 +1266,10 @@ async function generateAudio() {
           // model rewrite can strengthen claims while trying to add
           // words. Default to deterministic padding so public facts stay
           // anchored to the already-approved script.
-          const Anthropic = require("@anthropic-ai/sdk");
+          const { createLlmClient } = require("./lib/llm-client");
           const { getChannel } = require("./channels");
           const channel = getChannel();
-          const client = new Anthropic.default({
-            apiKey: process.env.ANTHROPIC_API_KEY,
-          });
+          const client = createLlmClient();
           const basePrompt =
             channel.systemPrompt ||
             (await fs.readFile("system_prompt.txt", "utf-8"));
@@ -1276,14 +1349,35 @@ async function generateAudio() {
         console.log(`[audio] Duration OK: ${totalDuration.toFixed(1)}s`);
       }
 
-      const maxTotalDuration =
+      let maxTotalDuration =
         Number.isFinite(Number(runtimePlan.maxSeconds)) && runtimePlan.maxSeconds > 0
           ? Number(runtimePlan.maxSeconds)
           : runtimePlan.route === "extended_short"
             ? MAX_EXTENDED_TOTAL_DURATION
             : MAX_FLASH_TOTAL_DURATION;
-      const durationLaneLabel =
+      let durationLaneLabel =
         runtimePlan.route === "extended_short" ? "Extended Short" : "Flash Lane";
+      if (
+        totalDuration > maxTotalDuration &&
+        shouldAutoPromoteGeneratedAudioToExtendedShort({
+          provider,
+          story,
+          runtimePlan,
+          totalDuration,
+        })
+      ) {
+        runtimePlan = markStoryAsExtendedShort(
+          story,
+          runtimePlan,
+          "local_tts_actual_76_to_90s",
+        );
+        maxTotalDuration = MAX_EXTENDED_TOTAL_DURATION;
+        durationLaneLabel = "Extended Short";
+        console.log(
+          `[audio] ${story.id}: generated local Liam audio landed at ${totalDuration.toFixed(1)}s; ` +
+            `promoting to deliberate Extended Short instead of failing Flash Lane`,
+        );
+      }
       if (totalDuration > maxTotalDuration) {
         const reason = `audio_duration_too_long (${totalDuration.toFixed(2)}s, max ${maxTotalDuration.toFixed(2)}s)`;
         console.log(
@@ -1332,6 +1426,12 @@ module.exports.resolveTtsVoiceIdForProvider = resolveTtsVoiceIdForProvider;
 module.exports.markAudioGenerationFailure = markAudioGenerationFailure;
 module.exports.generateTtsForStory = generateTtsForStory;
 module.exports.isLocalTtsProvider = isLocalTtsProvider;
+module.exports.shouldUseDynamicPacingForProvider = shouldUseDynamicPacingForProvider;
+module.exports.shouldAutoPromoteRuntimePlanToExtendedShort =
+  shouldAutoPromoteRuntimePlanToExtendedShort;
+module.exports.shouldAutoPromoteGeneratedAudioToExtendedShort =
+  shouldAutoPromoteGeneratedAudioToExtendedShort;
+module.exports.markStoryAsExtendedShort = markStoryAsExtendedShort;
 module.exports.resolveTtsOutputFormat = resolveTtsOutputFormat;
 module.exports.prepareTtsAlignmentForWrite = prepareTtsAlignmentForWrite;
 module.exports.assertBrandNameQaForTts = assertBrandNameQaForTts;

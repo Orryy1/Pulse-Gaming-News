@@ -14,6 +14,9 @@ const {
   resolveTtsOutputFormat,
   resolveTtsTimeoutMs,
   resolveTtsVoiceIdForProvider,
+  shouldAutoPromoteGeneratedAudioToExtendedShort,
+  shouldAutoPromoteRuntimePlanToExtendedShort,
+  shouldUseDynamicPacingForProvider,
 } = require("../../audio");
 
 test("isRetryableLocalTtsError: recognises transient local socket resets", () => {
@@ -22,6 +25,105 @@ test("isRetryableLocalTtsError: recognises transient local socket resets", () =>
   assert.equal(isRetryableLocalTtsError({ code: "ETIMEDOUT" }), false);
   assert.equal(isRetryableLocalTtsError(new Error("timeout of 300000ms exceeded")), false);
   assert.equal(isRetryableLocalTtsError(new Error("HTTP 400")), false);
+});
+
+test("shouldUseDynamicPacingForProvider: disables split pacing for local Liam", () => {
+  const previous = process.env.TTS_DYNAMIC_PACING;
+  process.env.TTS_DYNAMIC_PACING = "true";
+  try {
+    assert.equal(shouldUseDynamicPacingForProvider("local"), false);
+    assert.equal(shouldUseDynamicPacingForProvider("elevenlabs"), true);
+  } finally {
+    if (previous === undefined) delete process.env.TTS_DYNAMIC_PACING;
+    else process.env.TTS_DYNAMIC_PACING = previous;
+  }
+});
+
+test("shouldUseDynamicPacingForProvider: keeps explicit remote opt-out", () => {
+  const previous = process.env.TTS_DYNAMIC_PACING;
+  process.env.TTS_DYNAMIC_PACING = "false";
+  try {
+    assert.equal(shouldUseDynamicPacingForProvider("elevenlabs"), false);
+  } finally {
+    if (previous === undefined) delete process.env.TTS_DYNAMIC_PACING;
+    else process.env.TTS_DYNAMIC_PACING = previous;
+  }
+});
+
+test("shouldAutoPromoteRuntimePlanToExtendedShort: allows approved local 76-90s scripts", () => {
+  assert.equal(
+    shouldAutoPromoteRuntimePlanToExtendedShort({
+      provider: "local",
+      story: { approved: true },
+      runtimePlan: {
+        route: "extended_or_briefing",
+        estimatedSeconds: 82,
+        shouldGenerateShortAudio: false,
+      },
+    }),
+    true,
+  );
+});
+
+test("shouldAutoPromoteRuntimePlanToExtendedShort: keeps remote and runaway scripts blocked", () => {
+  assert.equal(
+    shouldAutoPromoteRuntimePlanToExtendedShort({
+      provider: "elevenlabs",
+      story: { approved: true },
+      runtimePlan: { route: "extended_or_briefing", estimatedSeconds: 82 },
+    }),
+    false,
+  );
+  assert.equal(
+    shouldAutoPromoteRuntimePlanToExtendedShort({
+      provider: "local",
+      story: { approved: true },
+      runtimePlan: { route: "extended_or_briefing", estimatedSeconds: 95 },
+    }),
+    false,
+  );
+});
+
+test("shouldAutoPromoteGeneratedAudioToExtendedShort: accepts local Liam drift under 90s", () => {
+  assert.equal(
+    shouldAutoPromoteGeneratedAudioToExtendedShort({
+      provider: "local",
+      story: { approved: true },
+      runtimePlan: { route: "flash_short", shouldGenerateShortAudio: true },
+      totalDuration: 79.2,
+    }),
+    true,
+  );
+});
+
+test("shouldAutoPromoteGeneratedAudioToExtendedShort: blocks remote, unapproved and 90s+ audio", () => {
+  assert.equal(
+    shouldAutoPromoteGeneratedAudioToExtendedShort({
+      provider: "elevenlabs",
+      story: { approved: true },
+      runtimePlan: { route: "flash_short", shouldGenerateShortAudio: true },
+      totalDuration: 79.2,
+    }),
+    false,
+  );
+  assert.equal(
+    shouldAutoPromoteGeneratedAudioToExtendedShort({
+      provider: "local",
+      story: { approved: false },
+      runtimePlan: { route: "flash_short", shouldGenerateShortAudio: true },
+      totalDuration: 79.2,
+    }),
+    false,
+  );
+  assert.equal(
+    shouldAutoPromoteGeneratedAudioToExtendedShort({
+      provider: "local",
+      story: { approved: true },
+      runtimePlan: { route: "flash_short", shouldGenerateShortAudio: true },
+      totalDuration: 95,
+    }),
+    false,
+  );
 });
 
 test("requestTtsWithRetry: retries local ECONNRESET once and returns the response", async () => {

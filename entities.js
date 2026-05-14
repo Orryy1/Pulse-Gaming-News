@@ -19,8 +19,8 @@
 const fs = require("fs-extra");
 const path = require("path");
 const axios = require("axios");
-const Anthropic = require("@anthropic-ai/sdk");
 const db = require("./lib/db");
+const { createLlmClient } = require("./lib/llm-client");
 const { classifyOutboundUrl, safeRedirectConfig } = require("./lib/safe-url");
 const mediaPaths = require("./lib/media-paths");
 const { applyProduceSelection } = require("./lib/produce-selection");
@@ -33,10 +33,8 @@ const USER_AGENT =
 // --- Claude entity extraction --------------------------------------------
 async function extractEntities(script) {
   if (!script) return [];
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return [];
 
-  const client = new Anthropic.default({ apiKey });
+  const client = createLlmClient();
   const prompt = `Extract named entities from this video script that would benefit from showing the person or subject on screen when their name is spoken.
 
 Return a JSON array. Each entry:

@@ -655,12 +655,10 @@ async function analyzeSentiment(topic) {
     return { suggestion: null, reason: "No comments found" };
   }
 
-  // Use Claude to extract the main unanswered question
+  // Use the configured LLM to extract the main unanswered question.
   try {
-    const Anthropic = require("@anthropic-ai/sdk");
-    const client = new Anthropic.default({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-    });
+    const { createLlmClient } = require("./lib/llm-client");
+    const client = createLlmClient();
 
     const response = await client.messages.create({
       model: "claude-haiku-4-5-20251001",

@@ -230,7 +230,7 @@ test("runOvernightClaudeAnalyst: env unset → enabled=false, no anthropic call"
   assert.equal(calls, 0);
 });
 
-test("runOvernightClaudeAnalyst: placeholder Anthropic key skips safely", async () => {
+test("runOvernightClaudeAnalyst: no configured LLM skips safely", async () => {
   const result = await w.runOvernightClaudeAnalyst({
     env: {
       OVERNIGHT_WORKSHOP_ENABLED: "true",
@@ -245,7 +245,8 @@ test("runOvernightClaudeAnalyst: placeholder Anthropic key skips safely", async 
   });
 
   assert.equal(result.enabled, true);
-  assert.equal(result.skipped, "anthropic_key_unavailable");
+  assert.equal(result.skipped, "llm_unavailable");
+  assert.equal(result.provider, "none");
   assert.equal(result.key_state, "placeholder");
 });
 

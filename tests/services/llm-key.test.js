@@ -5,6 +5,7 @@ const assert = require("node:assert/strict");
 
 const {
   describeAnthropicKeyState,
+  describeLlmState,
   hasUsableAnthropicKey,
   skipAnthropicDependentJob,
 } = require("../../lib/llm-key");
@@ -53,6 +54,32 @@ test("skipAnthropicDependentJob returns a safe skip payload", () => {
 test("skipAnthropicDependentJob returns null for usable key", () => {
   const skipped = skipAnthropicDependentJob("hunt", {
     ANTHROPIC_API_KEY: "sk-ant-test",
+  });
+
+  assert.equal(skipped, null);
+});
+
+test("describeLlmState accepts local provider without Anthropic key", () => {
+  const state = describeLlmState({
+    LLM_PROVIDER: "local",
+    LOCAL_LLM_BASE_URL: "http://127.0.0.1:11434/v1",
+    LOCAL_LLM_MODEL: "gemma3:4b",
+    ANTHROPIC_API_KEY: "placeholder",
+  });
+
+  assert.deepEqual(state, {
+    ok: true,
+    provider: "local",
+    state: "configured",
+    reason: "LOCAL_LLM_configured",
+  });
+});
+
+test("skipAnthropicDependentJob allows local LLM provider", () => {
+  const skipped = skipAnthropicDependentJob("hunt", {
+    LLM_PROVIDER: "local",
+    LOCAL_LLM_MODEL: "gemma3:4b",
+    ANTHROPIC_API_KEY: "placeholder",
   });
 
   assert.equal(skipped, null);

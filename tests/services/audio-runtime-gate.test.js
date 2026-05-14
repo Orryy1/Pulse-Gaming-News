@@ -39,6 +39,13 @@ test("audio.js blocks generated overlong audio before render", () => {
   assert.match(AUDIO, /audio_duration_too_long/);
 });
 
+test("audio.js can promote approved local Liam 76-90s narration to extended Short", () => {
+  assert.match(AUDIO, /shouldAutoPromoteGeneratedAudioToExtendedShort/);
+  assert.match(AUDIO, /local_tts_actual_76_to_90s/);
+  assert.match(AUDIO, /pulse_extended_short/);
+  assert.match(AUDIO, /MAX_EXTENDED_TOTAL_DURATION\s*=\s*90/);
+});
+
 test("audio.js rechecks regenerated audio duration, not the stale first pass", () => {
   assert.match(AUDIO, /let\s+totalDuration\s*=\s*audioDuration\s*\+\s*BUMPER_DURATION/);
   assert.match(AUDIO, /totalDuration\s*=\s*newDuration\s*\+\s*BUMPER_DURATION/);

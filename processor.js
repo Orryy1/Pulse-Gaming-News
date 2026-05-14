@@ -1,9 +1,9 @@
-const Anthropic = require("@anthropic-ai/sdk");
 const axios = require("axios");
 const fs = require("fs-extra");
 const dotenv = require("dotenv");
 const { addBreadcrumb, captureException } = require("./lib/sentry");
 const db = require("./lib/db");
+const { createLlmClient } = require("./lib/llm-client");
 const {
   classifyShortScriptRuntime,
   countSpokenWords,
@@ -619,9 +619,7 @@ async function process_stories() {
     channel.systemPrompt || (await fs.readFile("system_prompt.txt", "utf-8"));
   const today = getTodayString();
 
-  const client = new Anthropic.default({
-    apiKey: process.env.ANTHROPIC_API_KEY,
-  });
+  const client = createLlmClient();
 
   const enriched = [];
 

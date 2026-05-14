@@ -15,7 +15,7 @@ const {
   resolveFacebookTokenPath,
   resolveInstagramTokenPath,
 } = require("./lib/token-paths");
-const { describeAnthropicKeyState } = require("./lib/llm-key");
+const { describeLlmState } = require("./lib/llm-key");
 
 dotenv.config({ override: true });
 const RUNTIME_BUILD_INFO = resolveRuntimeBuildInfo({
@@ -1717,11 +1717,11 @@ app.post(
 
 // --- Autonomous scheduler (built into server) ---
 async function startAutonomousScheduler() {
-  const anthropicKey = describeAnthropicKeyState();
-  if (!anthropicKey.ok) {
+  const llmState = describeLlmState();
+  if (!llmState.ok) {
     console.log(
-      `[server] ANTHROPIC_API_KEY ${anthropicKey.state}; starting scheduler in limited mode. ` +
-        "LLM-dependent jobs will skip until a real key is configured.",
+      `[server] LLM provider ${llmState.provider}/${llmState.state}; starting scheduler in limited mode. ` +
+        "LLM-dependent jobs will skip until local LLM or explicit Anthropic is configured.",
     );
   }
 

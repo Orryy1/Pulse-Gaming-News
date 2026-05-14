@@ -2,12 +2,12 @@
  * tools/studio-v2-analytics-loop.js — daily continuous-improvement loop.
  *
  * Pulls the last 14 days of published stories + their YouTube
- * metrics, hands the payload to Claude Haiku for pattern analysis,
+ * metrics, hands the payload to the configured LLM for pattern analysis,
  * and writes findings to data/analytics_findings.md (append-only,
  * dated). The findings file is the feedback signal future story
  * package generation can read into hook variant prompting.
  *
- * What Claude is asked to surface:
+ * What the LLM is asked to surface:
  *   1. Best-performing hooks this window (by view-count and
  *      like-to-view ratio).
  *   2. Worst-performing patterns (the ones to stop using).
@@ -17,7 +17,7 @@
  * Safety:
  *   - Read-only against the DB.
  *   - No publish triggers, no token reads, no platform writes.
- *   - Anthropic call uses claude-haiku-4-5-20251001 (cheapest tier).
+ *   - LLM call uses the configured local provider by default.
  *   - On any failure, posts a Discord error notification and exits
  *     non-zero so the operator knows to look.
  *
@@ -38,7 +38,8 @@
 
 const path = require("node:path");
 const fs = require("fs-extra");
-const { describeAnthropicKeyState } = require("../lib/llm-key");
+const { createLlmClient } = require("../lib/llm-client");
+const { describeLlmState } = require("../lib/llm-key");
 
 const ROOT = path.resolve(__dirname, "..");
 
@@ -158,12 +159,9 @@ function buildPrompt(payload) {
 }
 
 async function callClaude(prompt) {
-  const keyState = describeAnthropicKeyState();
-  if (!keyState.ok) throw new Error(keyState.reason);
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  const Anthropic =
-    require("@anthropic-ai/sdk").default || require("@anthropic-ai/sdk");
-  const client = new Anthropic({ apiKey });
+  const llmState = describeLlmState();
+  if (!llmState.ok) throw new Error(llmState.reason);
+  const client = createLlmClient();
   const resp = await client.messages.create({
     model: "claude-haiku-4-5-20251001",
     max_tokens: 1500,
@@ -240,7 +238,7 @@ async function main(argsIn) {
   try {
     findings = await callClaude(prompt);
   } catch (err) {
-    console.error("[analytics] Claude call failed:", err.message);
+    console.error("[analytics] LLM call failed:", err.message);
     await postDiscord(
       `⚠️ Analytics loop FAILED: ${err.message.slice(0, 300)}`,
     ).catch(() => {});

@@ -42,7 +42,7 @@ Recommendation: approve only after checking the two RED public rows on-platform:
 
 Decision needed: approve or defer deploying branch `codex/readiness-qa-failure-window`.
 
-Current state: the branch now includes local restart readiness reporting, central publish dispatch gating, stricter Discord video-drop eligibility, legacy subtitle-duration planning and the earlier safety/reporting changes. Focused tests pass locally; run full `npm test` and `npm run build` before any restart/deploy.
+Current state: the branch now includes local restart readiness reporting, central publish dispatch gating, stricter Discord video-drop and story-poll eligibility, immediate Discord marker persistence, legacy subtitle-duration planning and the earlier safety/reporting changes. Full `npm test` passed `2672/2672` and `npm run build` passed locally after the latest Discord safety slice.
 
 Why it matters: the code now blocks the two failure classes seen overnight: public script-validation fallback rows and stale bad local voice paths in local assembly.
 

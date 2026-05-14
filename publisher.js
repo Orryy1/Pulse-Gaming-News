@@ -2311,6 +2311,7 @@ async function _publishNextStoryInner({ publishDispatch = null, storyId = null }
       const msg = await postVideoUpload(story);
       if (msg) {
         markVideoDropPosted(story);
+        await db.upsertStory(story);
         postedVideoDropNow = true;
       }
     }
@@ -2320,6 +2321,7 @@ async function _publishNextStoryInner({ publishDispatch = null, storyId = null }
       const pollMsg = await postStoryPoll(story);
       if (pollMsg) {
         markStoryPollPosted(story);
+        await db.upsertStory(story);
         postedPollNow = true;
       }
     }

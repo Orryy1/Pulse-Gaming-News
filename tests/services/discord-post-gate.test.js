@@ -138,18 +138,36 @@ test("multi-entrypoint: two sequential publish cycles on the same story never do
   assert.equal(shouldPostVideoDrop(story), false);
 });
 
-test("shouldPostStoryPoll: fresh story -> true, after mark -> false", () => {
-  const story = { id: "s1" };
+test("shouldPostStoryPoll: fresh published story -> true, after mark -> false", () => {
+  const story = { id: "s1", publish_status: "partial" };
   assert.equal(shouldPostStoryPoll(story), true);
   markStoryPollPosted(story);
   assert.equal(shouldPostStoryPoll(story), false);
 });
 
-test("shouldPostStoryPoll: story-poll needs no URL (broader than video-drop)", () => {
-  // The live code fired postStoryPoll on any !isRetry pass regardless
-  // of URL state — the gate preserves that.
-  const story = { id: "s1" };
+test("shouldPostStoryPoll: story-poll needs clean publish state but no URL", () => {
+  // Polls are broader than video drops because they do not need a direct
+  // platform link, but they still require a clean published/partial state.
+  const story = { id: "s1", publish_status: "published" };
   assert.equal(shouldPostStoryPoll(story), true);
+});
+
+test("shouldPostStoryPoll: failed or script-review rows never qualify", () => {
+  assert.equal(
+    shouldPostStoryPoll({
+      id: "failed",
+      publish_status: "failed",
+    }),
+    false,
+  );
+  assert.equal(
+    shouldPostStoryPoll({
+      id: "script-review",
+      publish_status: "partial",
+      body: "Script validation failed. Manual review required before production.",
+    }),
+    false,
+  );
 });
 
 test("marker writers: set ISO timestamps and are idempotent at the value level", () => {

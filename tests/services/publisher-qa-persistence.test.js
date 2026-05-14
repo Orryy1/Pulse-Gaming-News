@@ -60,6 +60,19 @@ test("publisher.js: persistQaFail helper writes qa_failed + publish_status=faile
   );
 });
 
+test("publisher.js: Discord markers are persisted immediately after successful sends", () => {
+  assert.match(
+    SRC,
+    /markVideoDropPosted\(story\);\s*await\s+db\.upsertStory\(story\);/,
+    "video-drop marker must be persisted before any later publisher work can crash",
+  );
+  assert.match(
+    SRC,
+    /markStoryPollPosted\(story\);\s*await\s+db\.upsertStory\(story\);/,
+    "story-poll marker must be persisted before any later publisher work can crash",
+  );
+});
+
 test("publisher.js: runPreflightQa runs content-QA then video-QA and returns structured pass/fail", () => {
   const idx = SRC.indexOf("async function runPreflightQa(");
   assert.ok(idx > 0, "runPreflightQa helper must exist");

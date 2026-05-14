@@ -1,11 +1,11 @@
 # Local Restart Readiness
 
-Generated: 2026-05-14T20:49:50.576Z
+Generated: 2026-05-14T21:08:38.269Z
 Verdict: RED
 Safety: read-only; does not restart the server, edit env vars, mutate DB rows, touch Railway or post
 
 ## Build Match
-- Current commit: d1c851d
+- Current commit: b979271
 - Local running commit: unknown (does not match)
 - Public running commit: unknown (does not match)
 
@@ -35,7 +35,6 @@ Safety: read-only; does not restart the server, edit env vars, mutate DB rows, t
 - public script-validation fallback rows need repair before a clean resume
 
 ## Warnings
-- 17 uncommitted file(s) are present; commit code changes before restart for reproducibility
 - 24 failed row(s) still carry platform IDs
 
 Recommendation: do_not_restart_primary_until_blockers_are_cleared

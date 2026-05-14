@@ -15,8 +15,8 @@ Update: 2026-05-14
 
 ## Latest Verification
 
-- Full `npm test`: last full pass before this slice; focused tests are passing for restart readiness, dispatch policy, Discord gating, subtitle timing and publish summaries
-- `npm run build`: last build pass before this slice; rerun before restart/deploy
+- Full `npm test`: pass (`2672/2672`) on 2026-05-14 after the Discord marker/poll hardening slice
+- `npm run build`: pass on 2026-05-14 after the Discord marker/poll hardening slice
 - `npm run ops:publish-cadence -- --hours 24`: AMBER
 - `npm run ops:publish-row-repair -- --limit 40`: dry-run report generated
 - `npm run ops:local-restart-readiness`: RED, read-only report generated
@@ -32,6 +32,8 @@ Update: 2026-05-14
 - Direct publish dispatch now has a central `AUTO_PUBLISH` gate and better dispatch source labels for API, CLI, scheduler and breaking fast lane routes.
 - Breaking fast lane now pins the story it just processed instead of publishing whichever candidate happens to be next.
 - Discord video-drop announcements now require a clean publish state and reject stale/`DUPE_*` platform IDs.
+- Discord video-drop and story-poll markers are now persisted immediately after a successful Discord send, reducing duplicate-announcement risk if a process crashes before the final story save.
+- Discord story polls now require a clean published/partial state and refuse QA-failed or script-validation fallback rows.
 - Legacy multi-image assembly now accounts for xfade overlap so video duration covers narration/subtitles instead of cutting/freeze-risking the tail.
 
 ## Current Live Signal

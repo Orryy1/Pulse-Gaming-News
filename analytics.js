@@ -3,6 +3,10 @@ const path = require("path");
 const axios = require("axios");
 const dotenv = require("dotenv");
 const db = require("./lib/db");
+const {
+  formatRecommendationForPrompt,
+  readLatestRecommendation,
+} = require("./lib/analytics-recommendation");
 
 dotenv.config({ override: true });
 
@@ -865,6 +869,11 @@ function getAnalyticsContext() {
 
   const topics = getTopPerformingTopics();
   const lines = [];
+  const latestRecommendation = readLatestRecommendation();
+  const recommendationPrompt = formatRecommendationForPrompt(
+    latestRecommendation.recommendation,
+  );
+  if (recommendationPrompt) lines.push(recommendationPrompt);
 
   // Overall average virality for comparison baseline
   const allScores = entries

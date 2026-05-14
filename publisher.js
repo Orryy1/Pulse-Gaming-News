@@ -932,6 +932,19 @@ function storyCorePublishComplete(s, env = process.env) {
   return countStoryPlatformsDone(s, env) >= countStoryPlatformsTotal(env);
 }
 
+function parsePublishStoryIds(env = process.env) {
+  return String(env.PUBLISH_STORY_IDS || "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+}
+
+function storyMatchesPublishStoryIds(s, env = process.env) {
+  const ids = parsePublishStoryIds(env);
+  if (ids.length === 0) return true;
+  return ids.includes(String(s?.id || ""));
+}
+
 function storyIsRetry(s) {
   return countStoryPlatformsDone(s) > 0;
 }
@@ -1151,6 +1164,7 @@ async function _publishNextStoryInner() {
   // platforms at the next window.
   const ready = stories.filter((s) => {
     if (!s.approved || !s.exported_path) return false;
+    if (!storyMatchesPublishStoryIds(s)) return false;
     if (s.qa_failed === true) return false;
     if (s.publish_status === "failed") return false;
     if (storyIsStaleUnpublishedBacklog(s)) return false;
@@ -2220,6 +2234,8 @@ module.exports = {
   publishOnlyCycle,
   selfHealStaleMediaPaths,
   _private: {
+    parsePublishStoryIds,
+    storyMatchesPublishStoryIds,
     titlesSimilar,
     titleDedupeTokens,
     titleDedupeScore,

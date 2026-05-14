@@ -144,6 +144,32 @@ test("publisher.js: publishNextStory selector skips qa_failed and publish_status
   );
 });
 
+test("publisher.js: optional PUBLISH_STORY_IDS pins the selector without changing default behaviour", () => {
+  const publisher = require("../../publisher.js");
+  const priv = publisher._private;
+
+  assert.deepEqual(priv.parsePublishStoryIds({}), []);
+  assert.deepEqual(
+    priv.parsePublishStoryIds({ PUBLISH_STORY_IDS: " 1tbdx3b, rss_123 ,, " }),
+    ["1tbdx3b", "rss_123"],
+  );
+  assert.equal(priv.storyMatchesPublishStoryIds({ id: "any" }, {}), true);
+  assert.equal(
+    priv.storyMatchesPublishStoryIds(
+      { id: "1tbdx3b" },
+      { PUBLISH_STORY_IDS: "1tbdx3b" },
+    ),
+    true,
+  );
+  assert.equal(
+    priv.storyMatchesPublishStoryIds(
+      { id: "other" },
+      { PUBLISH_STORY_IDS: "1tbdx3b" },
+    ),
+    false,
+  );
+});
+
 test("publisher.js: duplicate published-story gate runs before upload", () => {
   const idx = SRC.indexOf("findPublishedTitleDuplicate(candidate, stories)");
   assert.ok(idx > 0, "published duplicate gate must exist in candidate loop");

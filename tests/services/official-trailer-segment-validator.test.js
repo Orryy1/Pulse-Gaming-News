@@ -161,6 +161,44 @@ test("official trailer segment validator rejects PEGI/ESRB/title-card-like windo
   assert.equal(report.segments[0].allowed_for_flash_lane, false);
 });
 
+test("official trailer segment validator rejects repeated visual rating-card samples", async () => {
+  const outputRoot = tempOutputRoot("repeated-visual-rating-cards");
+  await cleanTempRoot(outputRoot);
+  let call = 0;
+
+  const report = await runOfficialTrailerSegmentValidation([clip()], {
+    applyLocal: true,
+    outputRoot,
+    extractor: fakeExtractor,
+    inspectFrame: async (outputPath) => {
+      call += 1;
+      return {
+        ...passingQa(outputPath),
+        content_hash: `rating-card-${call}`,
+        prescan: {
+          likely_is_logo: false,
+          text_overlay_likelihood: 0.22,
+          white_text_on_dark_likelihood: 0.05,
+          edge_density: 0.38,
+          saturation_mean: 0.38,
+          bright_pixel_ratio: 0.48,
+          dark_pixel_ratio: 0.08,
+        },
+      };
+    },
+  });
+
+  assert.equal(report.summary.segments_rejected, 1);
+  assert.equal(report.segments[0].validation_reason, "segment_contains_title_or_rating_card");
+  assert.equal(report.segments[0].action_sample_count, 0);
+  assert.ok(
+    report.segments[0].samples.every((sample) =>
+      sample.qa.failures.includes("title_or_rating_card_frame"),
+    ),
+  );
+  assert.deepEqual(report.segments[0].sample_rejection_reasons, ["title_or_rating_card_frame"]);
+});
+
 test("official trailer segment validator preflight-rejects rating-board references before extraction", async () => {
   const outputRoot = tempOutputRoot("rating-board-reference");
   await cleanTempRoot(outputRoot);
@@ -539,6 +577,40 @@ test("official trailer segment validator rejects low-detail blurry windows", asy
 
   assert.equal(report.summary.segments_rejected, 1);
   assert.equal(report.segments[0].validation_reason, "segment_contains_low_detail_frame");
+});
+
+test("official trailer segment validator downgrades low-detail colourful samples from action footage", async () => {
+  const outputRoot = tempOutputRoot("low-detail-colourful-action-downgrade");
+  await cleanTempRoot(outputRoot);
+  let call = 0;
+
+  const report = await runOfficialTrailerSegmentValidation([clip()], {
+    applyLocal: true,
+    outputRoot,
+    extractor: fakeExtractor,
+    inspectFrame: async (outputPath) => {
+      call += 1;
+      return {
+        ...passingQa(outputPath),
+        content_hash: `soft-colour-${call}`,
+        prescan: {
+          likely_is_logo: false,
+          text_overlay_likelihood: 0.02,
+          white_text_on_dark_likelihood: 0,
+          edge_density: 0.145,
+          saturation_mean: 0.64,
+          bright_pixel_ratio: 0.12,
+          dark_pixel_ratio: 0.14,
+        },
+      };
+    },
+  });
+
+  assert.equal(report.summary.segments_rejected, 1);
+  assert.equal(report.segments[0].validation_reason, "segment_lacks_gameplay_action_samples");
+  assert.equal(report.segments[0].action_sample_count, 0);
+  assert.equal(report.segments[0].samples[0].qa.gameplay_action_candidate, false);
+  assert.equal(report.segments[0].samples[0].qa.gameplay_action_reason, "not_enough_visual_detail");
 });
 
 test("official trailer segment validator rejects explicitly blurred windows", async () => {

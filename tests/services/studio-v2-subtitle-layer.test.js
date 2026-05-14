@@ -524,3 +524,50 @@ test("buildKineticAss Flash word reveal hides later words until their timestamps
   assert.match(ass, /GTA\\h/);
   assert.match(ass, /\\alpha&HFF&\\t\(719,750,\\alpha&H00&\).*DELAY/);
 });
+
+test("buildWordPopDialogues does not let short caption holds overlap the next punch", () => {
+  const dialogues = buildWordPopDialogues(
+    [
+      {
+        start: 0,
+        end: 0.22,
+        words: [{ word: "GTA", start: 0, end: 0.22 }],
+      },
+      {
+        start: 0.28,
+        end: 0.48,
+        words: [{ word: "delay", start: 0.28, end: 0.48 }],
+      },
+    ],
+    new Set(["GTA"]),
+  );
+  const intervals = assIntervals(dialogues.join("\n"));
+
+  assert.equal(intervals.length, 2);
+  assert.ok(
+    intervals[0][1] <= intervals[1][0],
+    `previous caption should clear before next starts: ${JSON.stringify(intervals)}`,
+  );
+});
+
+test("buildKineticAss clamps overlong Flash caption tokens inside the one-line safe width", () => {
+  const ass = buildKineticAss({
+    story: { title: "PlayStation Showcase" },
+    words: [
+      { word: "SupercalifragilisticexpialidociousEdition", start: 0, end: 0.4 },
+      { word: "leaked", start: 0.44, end: 0.72 },
+    ],
+    duration: 2,
+    scriptText: "SupercalifragilisticexpialidociousEdition leaked",
+    maxWordsPerPhrase: 2,
+    maxPhraseChars: 14,
+    captionCase: "upper",
+    revealMode: "phrase",
+    motionStyle: "flash",
+  });
+  const captions = extractAssDialogueText(ass).map((caption) => caption.replace(/\\h/g, " "));
+
+  assert.ok(captions.length >= 2, captions.join(" | "));
+  assert.ok(captions.every((caption) => caption.length <= 14), captions.join(" | "));
+  assert.match(captions[0], /\.\.\.$/);
+});

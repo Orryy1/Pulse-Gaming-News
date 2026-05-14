@@ -23,6 +23,10 @@ const {
   assertBatchUploadPreflight,
   storyIsBatchUploadCandidate,
 } = require("./lib/services/batch-upload-preflight");
+const {
+  assertDirectUploadAllowed,
+  buildDirectUploadPolicy,
+} = require("./lib/services/direct-upload-policy");
 
 dotenv.config({ override: true });
 
@@ -539,9 +543,24 @@ if (require.main === module) {
       process.exit(1);
     });
   } else {
-    uploadAll().catch((err) => {
+    try {
+      const directPolicy = buildDirectUploadPolicy({
+        platform: "tiktok_browser",
+      });
+      assertDirectUploadAllowed(directPolicy);
+      if (directPolicy.mode !== "actual_upload") {
+        console.log(
+          `[tiktok-browser] Direct upload ${directPolicy.mode}: no upload dispatched`,
+        );
+      } else {
+        uploadAll().catch((err) => {
+          console.log(`[tiktok-browser] ERROR: ${err.message}`);
+          process.exit(1);
+        });
+      }
+    } catch (err) {
       console.log(`[tiktok-browser] ERROR: ${err.message}`);
       process.exit(1);
-    });
+    }
   }
 }

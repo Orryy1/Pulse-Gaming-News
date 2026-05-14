@@ -135,6 +135,25 @@ test("Flash Lane upper-left chips move away from active card scenes", () => {
   assert.doesNotMatch(filters, /drawbox=x=64:y=388:w=/);
 });
 
+test("Flash Lane upper-left chips also reserve space during card-like opener scenes", () => {
+  const plan = buildFlashLaneOverlayPlan({
+    story: {
+      title: "GTA trailer timing update",
+      source_type: "rss",
+      publisher: "IGN",
+    },
+    scenes: [
+      { type: SCENE_TYPES.OPENER, isClipBacked: false, duration: 4 },
+      { type: SCENE_TYPES.CLIP, entity: "GTA", duration: 4 },
+    ],
+    durationS: 10,
+  });
+
+  const sourceChip = plan.timeline.find((item) => item.kind === "source_chip");
+  assert.equal(sourceChip.anchor, "mid_left");
+  assert.equal(sourceChip.anchor_note, "moved_from_upper_left_to_avoid_card_scene");
+});
+
 test("extractOverlayEntities prefers scene entities and normalises Pokemon spelling with accent", () => {
   const entities = extractOverlayEntities({
     story: { title: "Pokemon and Grand Theft Auto updates" },

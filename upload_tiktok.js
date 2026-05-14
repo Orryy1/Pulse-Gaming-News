@@ -14,6 +14,10 @@ const {
   assertBatchUploadPreflight,
   storyIsBatchUploadCandidate,
 } = require("./lib/services/batch-upload-preflight");
+const {
+  assertDirectUploadAllowed,
+  buildDirectUploadPolicy,
+} = require("./lib/services/direct-upload-policy");
 const db = require("./lib/db");
 const mediaPaths = require("./lib/media-paths");
 
@@ -873,9 +877,22 @@ if (require.main === module) {
     }
     exchangeCode(code).catch(console.error);
   } else {
-    uploadAll().catch((err) => {
+    try {
+      const directPolicy = buildDirectUploadPolicy({ platform: "tiktok" });
+      assertDirectUploadAllowed(directPolicy);
+      if (directPolicy.mode !== "actual_upload") {
+        console.log(
+          `[tiktok] Direct upload ${directPolicy.mode}: no upload dispatched`,
+        );
+      } else {
+        uploadAll().catch((err) => {
+          console.log(`[tiktok] ERROR: ${err.message}`);
+          process.exit(1);
+        });
+      }
+    } catch (err) {
       console.log(`[tiktok] ERROR: ${err.message}`);
       process.exit(1);
-    });
+    }
   }
 }

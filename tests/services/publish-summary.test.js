@@ -365,6 +365,31 @@ test("publish-cooldown blocked result renders explicit blocked summary", () => {
   assert.match(s.message, /7 minutes since last post/);
 });
 
+test("publish-daily-cap blocked result renders explicit blocked summary", () => {
+  const s = renderPublishSummary(
+    {
+      publish_daily_cap_blocked: true,
+      status: "blocked",
+      top_reason: "publish_daily_cap_blocked",
+      publish_dispatch: {
+        dispatchSource: "breaking_fast_lane",
+        daily_cap: {
+          publicPostCount: 11,
+          maxPublicPosts: 3,
+          windowHours: 24,
+        },
+      },
+    },
+    { jobId: 125 },
+  );
+
+  assert.equal(s.status, "failed");
+  assert.match(s.message, /Status:\s+blocked/);
+  assert.match(s.message, /Publish blocked by daily volume policy/);
+  assert.match(s.message, /Posts in window: 11/);
+  assert.match(s.message, /Daily cap: 3/);
+});
+
 // ---------- Multi-candidate fallback Discord summaries (2026-04-22) ----
 
 test("no-safe-candidate result renders failed summary with Top reason + Skipped count", () => {

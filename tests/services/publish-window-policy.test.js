@@ -6,8 +6,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const {
+  buildPublishDailyCapPolicy,
   buildPublishCooldownPolicy,
   buildPublishWindowPolicy,
+  countPublicPostsInWindow,
   nearestPublishWindow,
 } = require("../../lib/services/publish-window-policy");
 
@@ -141,6 +143,93 @@ test("publish cooldown ignores sentinel duplicate IDs and undated rows", () => {
   assert.equal(policy.verdict, "green");
   assert.equal(policy.blocked, false);
   assert.equal(policy.lastPublishedAt, null);
+});
+
+test("publish daily cap is warn-only by default when the 24h volume is high", () => {
+  const policy = buildPublishDailyCapPolicy({
+    now: "2026-05-14T20:00:00.000Z",
+    maxPublicPosts: 3,
+    stories: [
+      {
+        id: "one",
+        title: "One",
+        youtube_post_id: "yt_1",
+        published_at: "2026-05-14T08:00:00.000Z",
+      },
+      {
+        id: "two",
+        title: "Two",
+        instagram_media_id: "ig_2",
+        published_at: "2026-05-14T14:00:00.000Z",
+      },
+      {
+        id: "three",
+        title: "Three",
+        facebook_post_id: "fb_3",
+        published_at: "2026-05-14T19:00:00.000Z",
+      },
+    ],
+    env: {},
+  });
+
+  assert.equal(policy.verdict, "amber");
+  assert.equal(policy.blocked, false);
+  assert.equal(policy.publicPostCount, 3);
+  assert.match(policy.advisory.join("\n"), /recommended cap is 3/);
+});
+
+test("publish daily cap hard-blocks only behind explicit env", () => {
+  const policy = buildPublishDailyCapPolicy({
+    now: "2026-05-14T20:00:00.000Z",
+    maxPublicPosts: 2,
+    stories: [
+      {
+        id: "one",
+        youtube_post_id: "yt_1",
+        published_at: "2026-05-14T08:00:00.000Z",
+      },
+      {
+        id: "two",
+        youtube_post_id: "yt_2",
+        published_at: "2026-05-14T19:00:00.000Z",
+      },
+    ],
+    env: { PUBLISH_REQUIRE_DAILY_CAP: "true" },
+  });
+
+  assert.equal(policy.verdict, "red");
+  assert.equal(policy.blocked, true);
+  assert.ok(policy.blockers.includes("publish_daily_cap_blocked"));
+});
+
+test("publish daily cap ignores DUPE ids, undated rows and old posts", () => {
+  const posts = countPublicPostsInWindow({
+    now: "2026-05-14T20:00:00.000Z",
+    stories: [
+      {
+        id: "dupe",
+        youtube_post_id: "DUPE_YT",
+        published_at: "2026-05-14T19:00:00.000Z",
+      },
+      {
+        id: "undated",
+        youtube_post_id: "yt_undated",
+      },
+      {
+        id: "old",
+        youtube_post_id: "yt_old",
+        published_at: "2026-05-12T19:00:00.000Z",
+      },
+      {
+        id: "real",
+        youtube_post_id: "yt_real",
+        published_at: "2026-05-14T19:00:00.000Z",
+      },
+    ],
+  });
+
+  assert.equal(posts.length, 1);
+  assert.equal(posts[0].id, "real");
 });
 
 test("publisher direct routes pass dispatch provenance into publish calls", () => {

@@ -6,6 +6,7 @@ const db = require("./lib/db");
 const { resolveFacebookReelsMode } = require("./lib/platforms/facebook-reels-mode");
 const {
   buildPublishCooldownPolicy,
+  buildPublishDailyCapPolicy,
   buildPublishWindowPolicy,
 } = require("./lib/services/publish-window-policy");
 const {
@@ -1239,6 +1240,28 @@ async function _publishNextStoryInner({ publishDispatch = null, storyId = null }
       publish_cooldown_blocked: true,
       status: "blocked",
       top_reason: cooldown.blockers[0] || "publish_cooldown_blocked",
+      publish_dispatch: dispatchPolicy,
+    };
+  }
+
+  const dailyCap = buildPublishDailyCapPolicy({
+    stories,
+    env: process.env,
+  });
+  dispatchPolicy.daily_cap = dailyCap;
+  if (dailyCap.advisory.length > 0) {
+    console.log(
+      `[publisher] publish daily cap ${dailyCap.verdict}: ${dailyCap.advisory.join(" ")}`,
+    );
+  }
+  if (dailyCap.blocked) {
+    console.log(
+      `[publisher] publish daily cap blocked: ${dailyCap.blockers.join(", ")}`,
+    );
+    return {
+      publish_daily_cap_blocked: true,
+      status: "blocked",
+      top_reason: dailyCap.blockers[0] || "publish_daily_cap_blocked",
       publish_dispatch: dispatchPolicy,
     };
   }

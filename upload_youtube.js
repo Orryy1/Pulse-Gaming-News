@@ -15,6 +15,10 @@ const {
   assertBatchUploadPreflight,
   storyIsBatchUploadCandidate,
 } = require("./lib/services/batch-upload-preflight");
+const {
+  assertDirectUploadAllowed,
+  buildDirectUploadPolicy,
+} = require("./lib/services/direct-upload-policy");
 
 dotenv.config({ override: true });
 
@@ -1075,9 +1079,22 @@ if (require.main === module) {
     }
     exchangeCode(code).catch(console.error);
   } else {
-    uploadAll().catch((err) => {
+    try {
+      const directPolicy = buildDirectUploadPolicy({ platform: "youtube" });
+      assertDirectUploadAllowed(directPolicy);
+      if (directPolicy.mode !== "actual_upload") {
+        console.log(
+          `[youtube] Direct upload ${directPolicy.mode}: no upload dispatched`,
+        );
+      } else {
+        uploadAll().catch((err) => {
+          console.log(`[youtube] ERROR: ${err.message}`);
+          process.exit(1);
+        });
+      }
+    } catch (err) {
       console.log(`[youtube] ERROR: ${err.message}`);
       process.exit(1);
-    });
+    }
   }
 }

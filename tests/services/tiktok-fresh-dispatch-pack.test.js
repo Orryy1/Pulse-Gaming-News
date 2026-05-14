@@ -7,6 +7,9 @@ const {
   buildFreshTikTokDispatchPack,
   renderFreshTikTokDispatchMarkdown,
 } = require("../../lib/platforms/tiktok-fresh-dispatch-pack");
+const {
+  buildTikTokDispatchManifest,
+} = require("../../lib/platforms/tiktok-dispatch");
 
 function approvedLiamNarration(overrides = {}) {
   return {
@@ -167,4 +170,106 @@ test("fresh TikTok dispatch markdown states manual-only safety", () => {
   assert.match(markdown, /Will upload to TikTok: false/);
   assert.match(markdown, /Operator visual review required/);
   assert.match(markdown, /No public post is created/);
+});
+
+test("TikTok dispatch manifest surfaces fresh produced MP4s before stale missing-video stories", () => {
+  const manifest = buildTikTokDispatchManifest(
+    [
+      {
+        id: "stale-missing-video",
+        title: "Old Reddit story with no render",
+        approved: true,
+        flair: "Verified",
+        breaking_score: 95,
+        score: 2400,
+        exported_path: "D:/pulse-data/media/output/final/stale-missing-video.mp4",
+        image_path: "D:/pulse-data/media/output/images/stale-missing-video.png",
+      },
+      {
+        id: "rss_6d8aaac7eccad2ff",
+        title: "Fresh produced RSS story",
+        approved: true,
+        flair: "News",
+        breaking_score: 62,
+        score: 50,
+        exported_path: "D:/pulse-data/media/output/final/rss_6d8aaac7eccad2ff.mp4",
+        image_path: "D:/pulse-data/media/output/images/rss_6d8aaac7eccad2ff.png",
+      },
+    ],
+    {
+      durationByStoryId: {
+        "stale-missing-video": null,
+        rss_6d8aaac7eccad2ff: 66.2,
+      },
+      assetExistenceByStoryId: {
+        "stale-missing-video": { mp4Exists: false, coverExists: true },
+        rss_6d8aaac7eccad2ff: { mp4Exists: true, coverExists: true },
+      },
+      renderFreshnessByStoryId: {
+        "stale-missing-video": {
+          stale: true,
+          ageHours: 240,
+          lastModifiedIso: "2026-05-01T00:00:00.000Z",
+        },
+        rss_6d8aaac7eccad2ff: {
+          stale: false,
+          ageHours: 0.5,
+          lastModifiedIso: "2026-05-14T22:00:00.000Z",
+        },
+      },
+      tiktokTokenStatus: {
+        ok: false,
+        reason: "expired",
+        refresh_available: true,
+        needs_reauth: false,
+      },
+      now: new Date("2026-05-14T22:30:00.000Z"),
+    },
+  );
+
+  assert.equal(manifest.topPack.storyId, "rss_6d8aaac7eccad2ff");
+  assert.equal(manifest.topPack.status, "tiktok_auth_action_required");
+  assert.equal(manifest.topPack.eligibility.dispatchLengthReady, true);
+  assert.equal(manifest.packs[1].storyId, "stale-missing-video");
+  assert.equal(manifest.packs[1].status, "missing_video");
+  assert.equal(manifest.topReadyPack, null);
+});
+
+test("TikTok dispatch manifest honours explicit story filter", () => {
+  const manifest = buildTikTokDispatchManifest(
+    [
+      {
+        id: "rss_6d8aaac7eccad2ff",
+        title: "Fresh produced RSS story",
+        approved: true,
+        exported_path: "D:/pulse-data/media/output/final/rss_6d8aaac7eccad2ff.mp4",
+        image_path: "D:/pulse-data/media/output/images/rss_6d8aaac7eccad2ff.png",
+      },
+      {
+        id: "rss_a23224b1ea49574e",
+        title: "Second fresh produced RSS story",
+        approved: true,
+        exported_path: "D:/pulse-data/media/output/final/rss_a23224b1ea49574e.mp4",
+        image_path: "D:/pulse-data/media/output/images/rss_a23224b1ea49574e.png",
+      },
+    ],
+    {
+      storyId: "rss_a23224b1ea49574e",
+      durationByStoryId: {
+        rss_6d8aaac7eccad2ff: 66,
+        rss_a23224b1ea49574e: 68,
+      },
+      assetExistenceByStoryId: {
+        rss_6d8aaac7eccad2ff: { mp4Exists: true, coverExists: true },
+        rss_a23224b1ea49574e: { mp4Exists: true, coverExists: true },
+      },
+      tiktokTokenStatus: { ok: true, reason: "ok" },
+      now: new Date("2026-05-14T22:30:00.000Z"),
+    },
+  );
+
+  assert.deepEqual(manifest.storyFilter, ["rss_a23224b1ea49574e"]);
+  assert.equal(manifest.count, 1);
+  assert.equal(manifest.topPack.storyId, "rss_a23224b1ea49574e");
+  assert.equal(manifest.topReadyPack.storyId, "rss_a23224b1ea49574e");
 });

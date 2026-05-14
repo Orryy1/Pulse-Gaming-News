@@ -80,8 +80,25 @@ function mediaExists(rawPath) {
   return Boolean(candidate && fs.existsSync(candidate));
 }
 
+function parseStoryIdArg(argv = process.argv.slice(2), env = process.env) {
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = String(argv[index] || "");
+    if (arg === "--story" || arg === "--story-id") {
+      return String(argv[index + 1] || "").trim() || null;
+    }
+    if (arg.startsWith("--story=")) {
+      return arg.slice("--story=".length).trim() || null;
+    }
+    if (arg.startsWith("--story-id=")) {
+      return arg.slice("--story-id=".length).trim() || null;
+    }
+  }
+  return String(env.TIKTOK_STORY_ID || "").trim() || null;
+}
+
 async function main() {
   await fs.ensureDir(OUT);
+  const storyId = parseStoryIdArg();
   let tiktokTokenStatus = null;
   try {
     const { inspectTokenStatus } = require("../upload_tiktok");
@@ -94,7 +111,10 @@ async function main() {
       needs_reauth: true,
     };
   }
-  const stories = await require("../lib/db").getStories();
+  const allStories = await require("../lib/db").getStories();
+  const stories = storyId
+    ? allStories.filter((story) => String(story?.id || "") === storyId)
+    : allStories;
   const durationByStoryId = Object.fromEntries(
     stories.map((story) => [story.id, probeDurationSeconds(story)]),
   );
@@ -128,6 +148,7 @@ async function main() {
     renderFreshnessByStoryId,
     assetExistenceByStoryId,
     tiktokTokenStatus,
+    storyId,
     now,
   });
   const jsonPath = path.join(OUT, "tiktok_dispatch_manifest.json");
@@ -151,6 +172,7 @@ async function main() {
     "utf8",
   );
   console.log(`[tiktok-dispatch] packs=${manifest.count}`);
+  if (storyId) console.log(`[tiktok-dispatch] story=${storyId}`);
   console.log(`[tiktok-dispatch] json=${path.relative(ROOT, jsonPath)}`);
   console.log(`[tiktok-dispatch] queue=${path.relative(ROOT, queuePath)}`);
   console.log(`[tiktok-dispatch] md=${path.relative(ROOT, mdPath)}`);

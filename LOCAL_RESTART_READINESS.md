@@ -1,43 +1,41 @@
 # Local Restart Readiness
 
-Generated: 2026-05-14T21:39:49.126Z
+Generated: 2026-05-14T22:02:39.938Z
 Verdict: RED
 Safety: read-only; does not restart the server, edit env vars, mutate DB rows, touch Railway or post
 
 ## Build Match
-- Current commit: 727b5e4
+- Current commit: 525f3cc
 - Local running commit: unknown (does not match)
 - Public running commit: unknown (does not match)
 
 ## Runtime
-- Local health: pass (200)
-- Public health: pass (200)
-- Public mode: local
-- Public primary: true
+- Local health: fail
+- Public health: fail (502)
+- Public mode: unknown
+- Public primary: unknown
 
 ## Cadence
-- Public posts in 24h: 11
+- Public posts in 24h: 10
 - Recommended daily cap: 3
-- Off-schedule posts: 10
-- Tight spacing pairs: 7
+- Off-schedule posts: 9
+- Tight spacing pairs: 6
 - Minimum gap: 2 minutes
 - Invalid public story rows: 2
 - Failed rows with platform IDs: 24
 
 ## Cadence Gates
-- Publish window hard gate: disabled
-- Minimum-gap hard gate: disabled
-- Daily-cap hard gate: disabled
+- Publish window hard gate: enabled
+- Minimum-gap hard gate: enabled
+- Daily-cap hard gate: enabled
 
 ## Blockers
-- running local server does not expose build.commit_sha yet
-- public server does not expose build.commit_sha yet
-- off-schedule posts were detected but publish window hard gate is not enabled
-- tight publish spacing was detected but publish cooldown hard gate is not enabled
-- daily public post cap was exceeded but publish daily-cap hard gate is not enabled
+- localhost /api/health is not reachable
+- public /api/health is not reachable
 - public script-validation fallback rows need repair before a clean resume
 
 ## Warnings
+- 3 uncommitted file(s) are present; commit code changes before restart for reproducibility
 - 24 failed row(s) still carry platform IDs
 
 Recommendation: do_not_restart_primary_until_blockers_are_cleared

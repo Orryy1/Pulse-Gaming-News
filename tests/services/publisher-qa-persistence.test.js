@@ -28,6 +28,7 @@ const path = require("node:path");
 
 const PUBLISHER_PATH = path.join(__dirname, "..", "..", "publisher.js");
 const SRC = fs.readFileSync(PUBLISHER_PATH, "utf8");
+let previousPublishCadenceWarnOnly;
 
 // ---------- source-scan pins ----------
 
@@ -494,11 +495,18 @@ function setupMocksPerStory({
 }
 
 beforeEach(() => {
+  previousPublishCadenceWarnOnly = process.env.PUBLISH_CADENCE_WARN_ONLY;
+  process.env.PUBLISH_CADENCE_WARN_ONLY = "true";
   delete process.env.USE_SQLITE;
   delete process.env.USE_CANONICAL_DEDUPE;
 });
 
 afterEach(() => {
+  if (previousPublishCadenceWarnOnly === undefined) {
+    delete process.env.PUBLISH_CADENCE_WARN_ONLY;
+  } else {
+    process.env.PUBLISH_CADENCE_WARN_ONLY = previousPublishCadenceWarnOnly;
+  }
   clearPublisherCache();
 });
 

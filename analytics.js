@@ -856,23 +856,23 @@ function getPerformanceBoost(title, flair) {
  * flairs and pillars so the AI can prioritise what resonates with the audience.
  */
 function getAnalyticsContext() {
-  let history;
-  try {
-    if (!fs.pathExistsSync(HISTORY_PATH)) return "";
-    history = fs.readJsonSync(HISTORY_PATH);
-  } catch {
-    return "";
-  }
-
-  const entries = history.entries || [];
-  if (entries.length < 3) return ""; // Need minimum data before making recommendations
-
-  const topics = getTopPerformingTopics();
-  const lines = [];
   const latestRecommendation = readLatestRecommendation();
   const recommendationPrompt = formatRecommendationForPrompt(
     latestRecommendation.recommendation,
   );
+  let history;
+  try {
+    if (!fs.pathExistsSync(HISTORY_PATH)) return recommendationPrompt;
+    history = fs.readJsonSync(HISTORY_PATH);
+  } catch {
+    return recommendationPrompt;
+  }
+
+  const entries = history.entries || [];
+  if (entries.length < 3) return recommendationPrompt;
+
+  const topics = getTopPerformingTopics();
+  const lines = [];
   if (recommendationPrompt) lines.push(recommendationPrompt);
 
   // Overall average virality for comparison baseline

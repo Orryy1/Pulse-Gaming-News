@@ -8,6 +8,7 @@ const {
   hasStrongTitleMatch,
   isSafeYoutubeTrailerCandidate,
   selectSafeYoutubeTrailerCandidate,
+  chooseClipWindow,
 } = require("../../fetch_broll");
 const { extractGameTitles } = require("../../lib/script-game-enrichment");
 
@@ -107,4 +108,20 @@ test("Roman numeral normalisation treats VII and 7 as the same game", () => {
     ),
     true,
   );
+});
+
+test("fallback B-roll clip window skips trailer intro slates when possible", () => {
+  assert.deepEqual(chooseClipWindow(90), { start: 5, end: 17 });
+});
+
+test("fallback B-roll clip window uses the tail of short trailers safely", () => {
+  assert.deepEqual(chooseClipWindow(14), { start: 2, end: 14 });
+});
+
+test("fallback B-roll clip window keeps very short clips bounded", () => {
+  assert.deepEqual(chooseClipWindow(8), { start: 0, end: 8 });
+});
+
+test("fallback B-roll clip window defaults safely when duration is unknown", () => {
+  assert.deepEqual(chooseClipWindow(undefined), { start: 0, end: 12 });
 });

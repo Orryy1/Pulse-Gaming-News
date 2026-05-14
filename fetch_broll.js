@@ -10,7 +10,7 @@
   Source priority:
     1. IGDB (Twitch dev creds) — returns a YouTube video_id for a trailer
     2. YouTube Data API search — "official trailer {game}" first result
-  Both converge on yt-dlp to download and trim the first 12 seconds.
+  Both converge on yt-dlp to download and trim a short safe trailer window.
 
   Fair-use guardrails enforced here:
     - CLIP_MAX_SECONDS = 12  (short enough that narration transformation dominates)
@@ -31,6 +31,7 @@ const execAsync = util.promisify(exec);
 
 const VIDEO_CACHE_DIR = path.join("output", "video_cache");
 const CLIP_MAX_SECONDS = 12;
+const CLIP_INTRO_SKIP_SECONDS = 5;
 const MAX_TRAILER_DURATION_SECONDS = 20 * 60; // reject podcasts / reviews
 
 const TRUSTED_YOUTUBE_CHANNEL_RE =
@@ -116,6 +117,23 @@ function deriveBrollSearchTitles(story) {
 
   const fallback = extractGameTitle(story);
   return fallback ? [fallback] : [];
+}
+
+function chooseClipWindow(durationSeconds) {
+  const duration = Number(durationSeconds);
+  if (!Number.isFinite(duration) || duration <= 0) {
+    return { start: 0, end: CLIP_MAX_SECONDS };
+  }
+  if (duration <= CLIP_MAX_SECONDS) {
+    return { start: 0, end: duration };
+  }
+
+  const start = Math.min(
+    CLIP_INTRO_SKIP_SECONDS,
+    Math.max(0, duration - CLIP_MAX_SECONDS),
+  );
+  const end = Math.min(duration, start + CLIP_MAX_SECONDS);
+  return { start, end };
 }
 
 // --- IGDB (via Twitch app token) ---
@@ -242,12 +260,13 @@ async function downloadYoutubeClip(youtubeId, filename, source) {
   if (await fs.pathExists(outPath)) return { path: outPath, source };
 
   const url = `https://www.youtube.com/watch?v=${youtubeId}`;
+  let duration = null;
 
   try {
     // Quick metadata probe — reject podcasts / long reviews
     const probeCmd = `yt-dlp --no-warnings --skip-download --print "%(duration)s" "${url}"`;
     const { stdout } = await execAsync(probeCmd, { timeout: 15000 });
-    const duration = parseInt(stdout.trim(), 10);
+    duration = parseInt(stdout.trim(), 10);
     if (!duration || duration > MAX_TRAILER_DURATION_SECONDS) {
       console.log(
         `[broll] Skipping ${youtubeId}: duration ${duration}s exceeds cap`,
@@ -263,11 +282,12 @@ async function downloadYoutubeClip(youtubeId, filename, source) {
   }
 
   try {
-    // Download first CLIP_MAX_SECONDS only.
+    const clipWindow = chooseClipWindow(duration);
+    // Skip the common rating/logo/title-card intro where possible.
     // Force mp4 container + 720p max (Shorts is 1080 tall but 720 scales fine)
     const dlCmd =
       `yt-dlp --no-warnings -q ` +
-      `--download-sections "*0-${CLIP_MAX_SECONDS}" ` +
+      `--download-sections "*${clipWindow.start}-${clipWindow.end}" ` +
       `--format "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best" ` +
       `--merge-output-format mp4 ` +
       `-o "${outPath.replace(/\\/g, "/")}" "${url}"`;
@@ -393,6 +413,7 @@ module.exports = {
   searchYoutubeTrailer,
   lookupIgdbTrailer,
   deriveBrollSearchTitles,
+  chooseClipWindow,
   hasStrongTitleMatch,
   isSafeYoutubeTrailerCandidate,
   selectSafeYoutubeTrailerCandidate,

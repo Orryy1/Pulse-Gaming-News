@@ -308,6 +308,23 @@ function resolveSubtitleTimelineDurationS({ renderDurationS, narrationDurationS 
   return Math.max(0.1, ...candidates);
 }
 
+function buildSubtitleBaseFilter({
+  inputLabel,
+  outputLabel = "subtitleBase",
+  renderDurationS,
+  subtitleDurationS,
+}) {
+  const renderDuration = Number(renderDurationS);
+  const subtitleDuration = Number(subtitleDurationS);
+  const targetDurationS = Math.max(
+    0.1,
+    ...[renderDuration, subtitleDuration].filter(
+      (value) => Number.isFinite(value) && value > 0,
+    ),
+  );
+  return `[${inputLabel}]tpad=stop_mode=clone:stop_duration=1.000,trim=duration=${targetDurationS.toFixed(3)},setpts=PTS-STARTPTS[${outputLabel}]`;
+}
+
 function resolveStillDeckCaptionOptions({ variant } = {}) {
   const flash = variant === "enriched";
   return {
@@ -735,7 +752,15 @@ async function renderStillDeckVariant({
     );
   }
   const assRel = path.relative(ROOT, assPath).replace(/\\/g, "/");
-  filterParts.push(`[${subtitleInputLabel}]ass=${assRel},format=yuv420p[outv]`);
+  const subtitleRenderDurationS = assDurationS;
+  filterParts.push(
+    buildSubtitleBaseFilter({
+      inputLabel: subtitleInputLabel,
+      renderDurationS: durationS,
+      subtitleDurationS: subtitleRenderDurationS,
+    }),
+    `[subtitleBase]ass=${assRel},format=yuv420p[outv]`,
+  );
 
   const filterPath = path.join(outputDir, `${story.id}_${variant}_filter.txt`);
   const mp4Path = path.join(outputDir, `studio_v2_${story.id}_${variant}.mp4`);
@@ -744,7 +769,7 @@ async function renderStillDeckVariant({
     ...sceneInputs,
     narration.mode === "real_audio"
       ? `-i "${narration.audioPath.replace(/\\/g, "/")}"`
-      : `-f lavfi -t ${durationS.toFixed(3)} -i anullsrc=channel_layout=stereo:sample_rate=48000`,
+      : `-f lavfi -t ${subtitleRenderDurationS.toFixed(3)} -i anullsrc=channel_layout=stereo:sample_rate=48000`,
   ];
   let audioMapArg = `-map ${audioIndex}:a`;
   let audioPlan = null;
@@ -766,7 +791,7 @@ async function renderStillDeckVariant({
       musicInputIdx: musicIndex,
       audioInputsBaseIdx: allInputs.length,
       audioPlan,
-      targetDurationS: durationS,
+      targetDurationS: subtitleRenderDurationS,
     });
     allInputs.push(...soundLayer.extraInputs);
     filterParts.push(...soundLayer.filterLines);
@@ -779,6 +804,11 @@ async function renderStillDeckVariant({
       audioPlan: audioPlan.decisions,
       musicBed: audioPlan.musicBed,
     };
+  } else {
+    filterParts.push(
+      `[${audioIndex}:a]apad,atrim=duration=${subtitleRenderDurationS.toFixed(3)},asetpts=PTS-STARTPTS[outa]`,
+    );
+    audioMapArg = '-map "[outa]"';
   }
 
   await fs.writeFile(filterPath, filterParts.join(";\n"), "utf8");

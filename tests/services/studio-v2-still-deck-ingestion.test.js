@@ -747,6 +747,24 @@ test("still-deck ASS timeline covers the narration tail without a fixed outro ca
   assert.doesNotMatch(src, /durationS\s*-\s*0\.6/);
 });
 
+test("still-deck render pads video and audio to the subtitle timeline before mapping", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+
+  assert.match(src, /function buildSubtitleBaseFilter/);
+  assert.match(src, /tpad=stop_mode=clone:stop_duration=1\.000/);
+  assert.match(src, /trim=duration=\$\{targetDurationS\.toFixed\(3\)\}/);
+  assert.match(src, /const subtitleRenderDurationS = assDurationS/);
+  assert.match(src, /buildSubtitleBaseFilter\(\{\s*inputLabel: subtitleInputLabel,/);
+  assert.match(src, /\[subtitleBase\]ass=\$\{assRel\},format=yuv420p\[outv\]/);
+  assert.match(src, /anullsrc=channel_layout=stereo:sample_rate=48000/);
+  assert.match(src, /-t \$\{subtitleRenderDurationS\.toFixed\(3\)\}/);
+  assert.match(src, /targetDurationS:\s*subtitleRenderDurationS/);
+  assert.match(src, /\[\$\{audioIndex\}:a\]apad,atrim=duration=\$\{subtitleRenderDurationS\.toFixed\(3\)\}/);
+});
+
 test("still-deck Flash captions use the real narration transcript and strict caption density", () => {
   const src = fs.readFileSync(
     path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),

@@ -77,6 +77,26 @@ test("buildKineticAss falls back to synthetic timings when TTS alignment has hug
   assert.ok(intervals[intervals.length - 1][1] <= 12.1);
 });
 
+test("buildWordPopDialogues carries centiseconds at minute boundaries", () => {
+  const dialogues = buildWordPopDialogues(
+    [
+      {
+        start: 59.996,
+        end: 60.504,
+        words: [
+          { word: "clean", start: 59.996, end: 60.004 },
+          { word: "timing", start: 60.004, end: 60.504 },
+        ],
+      },
+    ],
+    new Set(),
+  );
+  const ass = dialogues.join("\n");
+
+  assert.doesNotMatch(ass, /\.100/);
+  assert.match(ass, /0:01:00\.00/);
+});
+
 test("buildKineticAss falls back when alignment collapses long before narration ends", () => {
   const scriptText = Array.from({ length: 90 }, (_, i) => `word${i}`).join(" ");
   const words = Array.from({ length: 90 }, (_, i) => ({

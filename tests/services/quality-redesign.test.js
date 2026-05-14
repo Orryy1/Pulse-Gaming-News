@@ -251,6 +251,18 @@ test("captionEmphasis.buildAss: clamps phrases to PHRASE_MAX_DURATION_S", () => 
   assert.match(ass, /0:00:02\.20/);
 });
 
+test("captionEmphasis.buildAss: carries centiseconds instead of emitting .100", () => {
+  const story = { title: "test" };
+  const words = [
+    { word: "clean", start: 59.996, end: 60.004 },
+    { word: "timing", start: 60.004, end: 60.504 },
+  ];
+  const ass = captionEmphasis.buildAss({ story, words, duration: 62 });
+
+  assert.doesNotMatch(ass, /\.100/);
+  assert.match(ass, /0:01:00\.00/);
+});
+
 // ---------- lib/relevance ---------------------------------------
 
 test("relevance.tokenize: drops stopwords + short tokens", () => {

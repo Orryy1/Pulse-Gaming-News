@@ -26,6 +26,7 @@ const {
 const {
   buildNarrationMusicMixFilter,
 } = require("./lib/audio-quality");
+const { runPublishVoiceQa } = require("./lib/services/publish-voice-qa");
 
 // Intro card REMOVED - first 1-2 seconds are critical for Shorts retention,
 // a branding card gives swipers a reason to leave before the hook lands
@@ -317,6 +318,40 @@ async function getAudioDuration(audioPath) {
   } catch (err) {
     return 50;
   }
+}
+
+function bool(value) {
+  return /^(true|1|yes|on)$/i.test(String(value || ""));
+}
+
+function assembleVoiceQaShouldBlock(env = process.env) {
+  return (
+    bool(env.STRICT_ASSEMBLE_VOICE_QA) ||
+    String(env.DEPLOYMENT_MODE || "").toLowerCase() === "local"
+  );
+}
+
+function mergeQaList(existing, next) {
+  return [...new Set([...(existing || []), ...(next || [])].filter(Boolean))];
+}
+
+async function runAssembleVoiceGuard(story, audioPathAbs) {
+  const forceStrict = assembleVoiceQaShouldBlock(process.env);
+  return runPublishVoiceQa(
+    {
+      ...story,
+      audio_path: audioPathAbs || story.audio_path,
+    },
+    {
+      fs,
+      env: {
+        ...process.env,
+        REQUIRE_APPROVED_VOICE_FOR_PUBLISH: forceStrict
+          ? "true"
+          : process.env.REQUIRE_APPROVED_VOICE_FOR_PUBLISH,
+      },
+    },
+  );
 }
 
 // --- Split script into punchy karaoke phrases (1-3 words max) ---
@@ -1710,6 +1745,28 @@ async function assemble() {
 
     const audioPathAbs =
       (await mediaPaths.resolveExisting(story.audio_path)) || story.audio_path;
+    const voiceQa = await runAssembleVoiceGuard(story, audioPathAbs);
+    story.assemble_voice_qa = voiceQa;
+    if (voiceQa.result === "fail") {
+      const reason =
+        voiceQa.failures?.[0] || "approved_voice:assemble_voice_qa_failed";
+      console.log(
+        `[assemble] ${story.id}: voice QA failed before render, skipping: ${reason}`,
+      );
+      story.qa_failed = true;
+      story.qa_failures = mergeQaList(story.qa_failures, voiceQa.failures);
+      story.qa_warnings = mergeQaList(story.qa_warnings, voiceQa.warnings);
+      story.qa_failed_at = new Date().toISOString();
+      story.publish_status = "failed";
+      story.publish_error = `qa_blocked: ${reason}`;
+      story.render_fallback_reason = `voice_contract:${reason}`;
+      skipped++;
+      continue;
+    }
+    if (voiceQa.result === "warn") {
+      story.qa_warnings = mergeQaList(story.qa_warnings, voiceQa.warnings);
+    }
+
     const audioDuration = await getAudioDuration(audioPathAbs);
     const duration = audioDuration + 1; // 1s breathing room so CTA doesn't cut off abruptly
     const durationQa = classifyShortDuration({

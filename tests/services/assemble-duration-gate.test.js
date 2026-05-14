@@ -20,6 +20,22 @@ test("assemble.js checks the short duration contract before rendering", () => {
   );
 });
 
+test("assemble.js checks approved voice path before rendering", () => {
+  const renderAnchor = ASSEMBLE.indexOf("[assemble] Rendering");
+  const voiceAnchor = ASSEMBLE.indexOf("const voiceQa = await runAssembleVoiceGuard");
+
+  assert.ok(voiceAnchor > 0, "assemble.js must run assemble-stage voice QA");
+  assert.ok(renderAnchor > 0, "assemble.js render log anchor must exist");
+  assert.ok(
+    voiceAnchor < renderAnchor,
+    "approved voice guard must run before the FFmpeg render command is built",
+  );
+  assert.match(ASSEMBLE, /runPublishVoiceQa/);
+  assert.match(ASSEMBLE, /STRICT_ASSEMBLE_VOICE_QA/);
+  assert.match(ASSEMBLE, /DEPLOYMENT_MODE[^;]+local/s);
+  assert.match(ASSEMBLE, /voice_contract:\$\{reason\}/);
+});
+
 test("assemble.js persists overlong audio as a QA failure instead of rendering", () => {
   assert.match(ASSEMBLE, /audio_duration_too_long/);
   assert.match(ASSEMBLE, /story\.qa_failed\s*=\s*true/);

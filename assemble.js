@@ -38,6 +38,7 @@ const CUSTOM_MUSIC_DIR = path.join(__dirname, "audio", "mastered");
 const MUSIC_VOLUME = 0.08; // 8% volume - quieter background
 const MAX_IMAGES = 8; // More images = more visual variety in 60s+ videos
 const FFMPEG_THREADS = 2; // Limit FFmpeg threads to stay within container memory
+const LEGACY_XFADE_DURATION = 0.5;
 
 /**
  * Generates a 15-second teaser cut from the full video.
@@ -1126,6 +1127,29 @@ function makeFootageAttributionText(companyName) {
   return `Footage - ${company}`;
 }
 
+function effectiveVisualTimelineDuration(
+  segmentDuration,
+  visualCount,
+  xfadeDuration = LEGACY_XFADE_DURATION,
+) {
+  const count = Math.max(1, Number(visualCount) || 1);
+  const segment = Math.max(0, Number(segmentDuration) || 0);
+  if (count <= 1) return segment;
+  return segment * count - Number(xfadeDuration) * (count - 1);
+}
+
+function planLegacySegmentDuration(
+  targetDuration,
+  visualCount,
+  xfadeDuration = LEGACY_XFADE_DURATION,
+) {
+  const count = Math.max(1, Number(visualCount) || 1);
+  const target = Math.max(0, Number(targetDuration) || 0);
+  if (count <= 1) return Math.max(4, Math.ceil(target * 100) / 100);
+  const needed = (target + Number(xfadeDuration) * (count - 1)) / count;
+  return Math.max(4, Math.ceil(needed * 100) / 100);
+}
+
 // --- Build filter graph and command with broadcast overlays ---
 function buildVideoCommand(
   story,
@@ -1171,10 +1195,12 @@ function buildVideoCommand(
   const inputs = [];
   const fontOpt =
     process.platform === "win32" ? "font='Arial'" : "font='DejaVu Sans'";
-  const segmentDuration = Math.max(
-    4,
-    Math.floor(duration / visualPaths.length),
+  const segmentDuration = planLegacySegmentDuration(
+    duration,
+    visualPaths.length,
+    LEGACY_XFADE_DURATION,
   );
+  const segmentFrames = Math.ceil(segmentDuration * 30);
 
   // --- Inputs: background images + video clips ---
   // Steam trailers and IGDB clips are often shorter than the segment
@@ -1299,22 +1325,22 @@ function buildVideoCommand(
       const zoomIn = i % 2 === 0;
       // Scale zoom increment based on segment duration: reach 15% zoom over the segment's frames
       const zoomIncrement =
-        Math.round(10000 * (0.15 / (segmentDuration * 30))) / 10000;
+        Math.round(10000 * (0.15 / segmentFrames)) / 10000;
       const zoomExpr = zoomIn
         ? `z=min(zoom+${zoomIncrement}\\,1.15)`
         : `z=if(eq(on\\,1)\\,1.15\\,max(zoom-${zoomIncrement}\\,1.0))`;
       // Vary crop focus: top, centre, bottom - so same-ish images still look different
       const xPan =
         i % 3 === 0
-          ? `x=iw/2-(iw/zoom/2)`
+            ? `x=iw/2-(iw/zoom/2)`
           : i % 3 === 1
-            ? `x=(iw-iw/zoom)*on/${segmentDuration * 30}`
-            : `x=(iw-iw/zoom)*(1-on/${segmentDuration * 30})`;
+            ? `x=(iw-iw/zoom)*on/${segmentFrames}`
+            : `x=(iw-iw/zoom)*(1-on/${segmentFrames})`;
       filterParts.push(
         `[${i}:v]scale=1080:1920:force_original_aspect_ratio=increase,` +
           `crop=1080:1920:0:${i % 3 === 0 ? "0" : i % 3 === 1 ? "(ih-oh)/2" : "ih-oh"},` +
           `zoompan=${zoomExpr}:${xPan}:y=ih/2-(ih/zoom/2):` +
-          `d=${segmentDuration * 30}:s=1080x1920:fps=30,` +
+          `d=${segmentFrames}:s=1080x1920:fps=30,` +
           `trim=duration=${segmentDuration},setpts=PTS-STARTPTS,` +
           `format=yuv420p,setsar=1[v${i}]`,
       );
@@ -1327,7 +1353,7 @@ function buildVideoCommand(
   // made the first ~8 seconds feel flashy and broken. `dissolve` blends
   // the two segments directly with no black flash between them.
   if (visualPaths.length > 1) {
-    const xfadeDur = 0.5;
+    const xfadeDur = LEGACY_XFADE_DURATION;
     let prevLabel = "v0";
     for (let i = 1; i < visualPaths.length; i++) {
       const offset = i * (segmentDuration - xfadeDur);
@@ -1404,7 +1430,7 @@ function buildVideoCommand(
     // Show footage attribution in bottom-left during video clip segments.
     for (let i = 0; i < visualPaths.length; i++) {
       if (!isVideoSlot[i]) continue;
-      const clipStart = i * segmentDuration;
+      const clipStart = i * (segmentDuration - LEGACY_XFADE_DURATION);
       const clipEnd = clipStart + segmentDuration;
       chain.push(
           `drawtext=text='  ${company}  ':${fontOpt}:fontcolor=white@0.6:fontsize=20:` +
@@ -2403,6 +2429,8 @@ module.exports.sanitizeDrawtext = sanitizeDrawtext;
 module.exports.decodeHtmlEntities = decodeHtmlEntities;
 module.exports.asciiFallback = asciiFallback;
 module.exports.makeFootageAttributionText = makeFootageAttributionText;
+module.exports.effectiveVisualTimelineDuration = effectiveVisualTimelineDuration;
+module.exports.planLegacySegmentDuration = planLegacySegmentDuration;
 module.exports.characterAlignmentToSubtitleWords =
   characterAlignmentToSubtitleWords;
 module.exports.inspectSubtitleTimingWords = inspectSubtitleTimingWords;

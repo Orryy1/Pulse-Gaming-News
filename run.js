@@ -154,7 +154,7 @@ async function runFull() {
   console.log("[run] === FULL AUTONOMOUS CYCLE ===");
 
   const { fullAutonomousCycle } = require("./publisher");
-  await fullAutonomousCycle();
+  await fullAutonomousCycle({ dispatchSource: "cli_full" });
 }
 
 async function runApprove() {

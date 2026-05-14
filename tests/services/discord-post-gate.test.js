@@ -17,10 +17,12 @@ const {
   shouldPostStoryPoll,
   markVideoDropPosted,
   markStoryPollPosted,
+  hasCleanPublishState,
+  hasPublicVideoTarget,
 } = require("../../lib/services/discord-post-gate");
 
 test("shouldPostVideoDrop: fresh story with a YouTube URL qualifies", () => {
-  const story = { id: "s1", youtube_url: "https://youtu.be/abc" };
+  const story = { id: "s1", youtube_url: "https://youtu.be/abc", publish_status: "partial" };
   assert.equal(shouldPostVideoDrop(story), true);
 });
 
@@ -30,12 +32,12 @@ test("shouldPostVideoDrop: no URL + no platform ids -> false", () => {
 });
 
 test("shouldPostVideoDrop: tiktok_post_id alone qualifies", () => {
-  const story = { id: "s1", tiktok_post_id: "tt-123" };
+  const story = { id: "s1", tiktok_post_id: "tt-123", publish_status: "partial" };
   assert.equal(shouldPostVideoDrop(story), true);
 });
 
 test("shouldPostVideoDrop: instagram_media_id alone qualifies", () => {
-  const story = { id: "s1", instagram_media_id: "ig-456" };
+  const story = { id: "s1", instagram_media_id: "ig-456", publish_status: "partial" };
   assert.equal(shouldPostVideoDrop(story), true);
 });
 
@@ -83,6 +85,7 @@ test("shouldPostVideoDrop: once marker is set, never posts again (even with fres
     youtube_url: "https://youtu.be/abc",
     tiktok_post_id: "tt-123",
     instagram_media_id: "ig-456",
+    publish_status: "published",
     discord_video_drop_posted_at: "2026-04-16T20:05:00Z",
   };
   assert.equal(shouldPostVideoDrop(story), false);
@@ -97,6 +100,7 @@ test("Pragmata regression: re-render clears platform ids; marker still blocks", 
   const story = {
     id: "pragmata",
     youtube_url: "https://youtu.be/pragmata-20min",
+    publish_status: "partial",
     // Platform ids cleared by re-render (the bug scenario):
     youtube_post_id: null,
     tiktok_post_id: null,
@@ -118,6 +122,7 @@ test("multi-entrypoint: two sequential publish cycles on the same story never do
   // entrypoints each calling publishNextStory() on the same row. The
   // first pass sets the marker; subsequent passes must see it and bail.
   const story = { id: "s1", youtube_url: "https://youtu.be/abc" };
+  story.publish_status = "partial";
 
   // Entry 1: gate allows.
   assert.equal(shouldPostVideoDrop(story), true);
@@ -172,11 +177,43 @@ test("marker-set wins over every URL field — empty string marker still blocks?
   const story = {
     id: "s1",
     youtube_url: "https://youtu.be/abc",
+    publish_status: "partial",
     discord_video_drop_posted_at: "",
   };
   assert.equal(
     shouldPostVideoDrop(story),
     true,
     "empty-string marker is treated as 'not posted' — only a real timestamp blocks",
+  );
+});
+
+test("shouldPostVideoDrop: stale platform id without clean publish state does not qualify", () => {
+  const story = {
+    id: "stale",
+    youtube_url: "https://youtu.be/abc",
+    publish_status: null,
+  };
+  assert.equal(shouldPostVideoDrop(story), false);
+});
+
+test("shouldPostVideoDrop: DUPE sentinel platform ids are not public targets", () => {
+  const story = {
+    id: "dupe",
+    tiktok_post_id: "DUPE_TIKTOK_403",
+    instagram_media_id: "DUPE_IG",
+    publish_status: "partial",
+  };
+  assert.equal(hasPublicVideoTarget(story), false);
+  assert.equal(shouldPostVideoDrop(story), false);
+});
+
+test("hasCleanPublishState: published timestamp preserves legacy rows without status", () => {
+  assert.equal(
+    hasCleanPublishState({
+      id: "legacy",
+      youtube_url: "https://youtu.be/legacy",
+      published_at: "2026-05-14T19:03:00.000Z",
+    }),
+    true,
   );
 });

@@ -1001,7 +1001,7 @@ app.post(
 
     try {
       const { fullAutonomousCycle } = require("./publisher");
-      await fullAutonomousCycle();
+      await fullAutonomousCycle({ dispatchSource: "api_autonomous_run" });
     } catch (err) {
       console.log(`[server] Autonomous cycle error: ${err.message}`);
     }

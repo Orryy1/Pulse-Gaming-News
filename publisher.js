@@ -8,6 +8,9 @@ const {
   buildPublishCooldownPolicy,
   buildPublishWindowPolicy,
 } = require("./lib/services/publish-window-policy");
+const {
+  buildPublishDispatchPolicy,
+} = require("./lib/services/publish-dispatch-policy");
 
 dotenv.config({ override: true });
 
@@ -564,6 +567,8 @@ async function publishToAllPlatforms(options = {}) {
   const canonical = await publishNextStory({
     dispatchSource: options.dispatchSource || "legacy_batch_publish",
     jobId: options.jobId || null,
+    allowManualOverride: options.allowManualOverride === true,
+    storyId: options.storyId || null,
   });
   const uploaded = (platform) =>
     canonical?.platform_outcomes?.[platform] === "new_upload" ||
@@ -652,7 +657,8 @@ async function publishToAllPlatforms(options = {}) {
 }
 
 // --- Full autonomous cycle: hunt → approve → produce → publish ---
-async function fullAutonomousCycle() {
+async function fullAutonomousCycle(options = {}) {
+  const cycleDispatchSource = options.dispatchSource || "full_autonomous_cycle";
   const startTime = Date.now();
   console.log("[publisher] ========================================");
   console.log("[publisher] FULL AUTONOMOUS CYCLE STARTED");
@@ -800,7 +806,7 @@ async function fullAutonomousCycle() {
       addBreadcrumb("Publishing to all platforms", "pipeline");
       console.log("[publisher] Step 4/4: Publishing to all platforms...");
       const results = await publishToAllPlatforms({
-        dispatchSource: "full_autonomous_cycle",
+        dispatchSource: cycleDispatchSource,
       });
 
       const totalUploaded =
@@ -833,7 +839,8 @@ async function fullAutonomousCycle() {
 }
 
 // --- Publish-only cycle (for the evening optimal posting window) ---
-async function publishOnlyCycle() {
+async function publishOnlyCycle(options = {}) {
+  const cycleDispatchSource = options.dispatchSource || "publish_only_cycle";
   console.log("[publisher] === PUBLISH-ONLY CYCLE ===");
 
   try {
@@ -846,7 +853,7 @@ async function publishOnlyCycle() {
     // Publish
     if (process.env.AUTO_PUBLISH === "true") {
       const results = await publishToAllPlatforms({
-        dispatchSource: "publish_only_cycle",
+        dispatchSource: cycleDispatchSource,
       });
       const total =
         results.youtube.length +
@@ -873,8 +880,34 @@ async function publishNextStory(options = {}) {
   publishLock = true;
 
   try {
+    const dispatchSource = options.dispatchSource || "unspecified";
+    const dispatchGate = buildPublishDispatchPolicy({
+      dispatchSource,
+      env: process.env,
+      allowManualOverride: options.allowManualOverride === true,
+    });
+    if (dispatchGate.advisory.length > 0) {
+      console.log(
+        `[publisher] publish dispatch ${dispatchGate.verdict}: ${dispatchGate.advisory.join(" ")}`,
+      );
+    }
+    if (dispatchGate.blocked) {
+      console.log(
+        `[publisher] publish dispatch blocked for ${dispatchSource}: ${dispatchGate.blockers.join(", ")}`,
+      );
+      return {
+        publish_dispatch_blocked: true,
+        status: "blocked",
+        top_reason: dispatchGate.blockers[0] || "publish_dispatch_blocked",
+        publish_dispatch: {
+          ...dispatchGate,
+          jobId: options.jobId || null,
+          storyId: options.storyId || null,
+        },
+      };
+    }
     const publishWindow = buildPublishWindowPolicy({
-      dispatchSource: options.dispatchSource || "unspecified",
+      dispatchSource,
       env: process.env,
     });
     if (publishWindow.advisory.length > 0) {
@@ -892,15 +925,20 @@ async function publishNextStory(options = {}) {
         top_reason: publishWindow.blockers[0] || "publish_window_blocked",
         publish_dispatch: {
           ...publishWindow,
+          dispatch_gate: dispatchGate,
           jobId: options.jobId || null,
+          storyId: options.storyId || null,
         },
       };
     }
     return await _publishNextStoryInner({
       publishDispatch: {
         ...publishWindow,
+        dispatch_gate: dispatchGate,
         jobId: options.jobId || null,
+        storyId: options.storyId || null,
       },
+      storyId: options.storyId || null,
     });
   } finally {
     publishLock = false;
@@ -1178,7 +1216,7 @@ async function runPreflightQa(story) {
   return { pass: true, warnings };
 }
 
-async function _publishNextStoryInner({ publishDispatch = null } = {}) {
+async function _publishNextStoryInner({ publishDispatch = null, storyId = null } = {}) {
   const stories = await db.getStories();
   const cooldown = buildPublishCooldownPolicy({
     stories,
@@ -1227,6 +1265,7 @@ async function _publishNextStoryInner({ publishDispatch = null } = {}) {
   // platforms at the next window.
   const ready = stories.filter((s) => {
     if (!s.approved || !s.exported_path) return false;
+    if (storyId && String(s.id || "") !== String(storyId)) return false;
     if (!storyMatchesPublishStoryIds(s)) return false;
     if (s.qa_failed === true) return false;
     if (s.publish_status === "failed") return false;

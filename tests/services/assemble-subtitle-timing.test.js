@@ -6,7 +6,9 @@ const assert = require("node:assert/strict");
 const {
   assTime,
   characterAlignmentToSubtitleWords,
+  effectiveVisualTimelineDuration,
   inspectSubtitleTimingWords,
+  planLegacySegmentDuration,
   selectSubtitleScriptText,
 } = require("../../assemble");
 
@@ -107,4 +109,22 @@ test("subtitle script fallback prefers the actual TTS transcript over stale stor
 test("assemble ASS timestamp formatter carries rounded centiseconds across minute boundaries", () => {
   assert.equal(assTime(59.999), "0:01:00.00");
   assert.equal(assTime(119.999), "0:02:00.00");
+});
+
+test("legacy multi-image segment planner covers narration after xfade overlap", () => {
+  const segment = planLegacySegmentDuration(62, 8, 0.5);
+  const timeline = effectiveVisualTimelineDuration(segment, 8, 0.5);
+
+  assert.equal(segment >= 8.19, true);
+  assert.equal(timeline >= 62, true);
+});
+
+test("legacy segment planner avoids old floor-duration subtitle cut", () => {
+  const oldSegment = Math.max(4, Math.floor(61 / 8));
+  const oldTimeline = effectiveVisualTimelineDuration(oldSegment, 8, 0.5);
+  const planned = planLegacySegmentDuration(61, 8, 0.5);
+  const plannedTimeline = effectiveVisualTimelineDuration(planned, 8, 0.5);
+
+  assert.equal(oldTimeline < 61, true);
+  assert.equal(plannedTimeline >= 61, true);
 });

@@ -2,7 +2,9 @@
 
 Updated: 2026-05-14
 
-Live health update: `http://localhost:3001/api/health` and `https://pulse.orryy.com/api/health` currently report `mode=local`, `primary=true`, `AUTO_PUBLISH=true`, `USE_JOB_QUEUE=true` and `schedulerActive=true`. The active `server.js` process started on 2026-05-14 at 07:24 before the latest safety commits, and the health endpoint does not expose a git commit, so a controlled restart is required before the latest pushed branch can protect live posting.
+Live health update: `http://localhost:3001/api/health` and `https://pulse.orryy.com/api/health` currently report `mode=local`, `primary=true`, `AUTO_PUBLISH=true`, `USE_JOB_QUEUE=true` and `schedulerActive=true`. The active `server.js` process started on 2026-05-14 at 07:24 before the latest safety commits, and the health endpoint does not expose a git commit, so a controlled restart is required before the latest branch can protect live posting.
+
+Latest read-only restart check: `npm run ops:local-restart-readiness` is RED. It confirms the running local/public server does not expose `build.commit_sha`, cadence hard gates are disabled, 10 off-schedule posts happened in 24h, 7 tight-spacing pairs happened in 24h and 2 public script-validation fallback rows still need repair.
 
 ## 0. Publish Cadence Hard Gates
 
@@ -40,7 +42,7 @@ Recommendation: approve only after checking the two RED public rows on-platform:
 
 Decision needed: approve or defer deploying branch `codex/readiness-qa-failure-window`.
 
-Current state: latest pushed commit is `2691f1d2`. Full `npm test` passes (`2625/2625`) and `npm run build` passes. Changes are mostly safety/reporting: script-validation fallback blocking, publish cadence/cooldown policy support, dry-run row repair, still-deck subtitle timeline padding and local/strict assemble-time voice QA.
+Current state: the branch now includes local restart readiness reporting, central publish dispatch gating, stricter Discord video-drop eligibility, legacy subtitle-duration planning and the earlier safety/reporting changes. Focused tests pass locally; run full `npm test` and `npm run build` before any restart/deploy.
 
 Why it matters: the code now blocks the two failure classes seen overnight: public script-validation fallback rows and stale bad local voice paths in local assembly.
 
@@ -50,7 +52,23 @@ Risk: some previously publishable rows may now fail QA instead of rendering/post
 
 Rollback: revert the branch deployment to the previous known-good commit or `git revert` the relevant commits.
 
-Recommendation: deploy with a controlled local restart because the active primary is local. Keep cadence hard gates warn-only unless `PUBLISH_REQUIRE_WINDOW=true` and `PUBLISH_REQUIRE_MIN_GAP=true` are approved separately.
+Recommendation: deploy with a controlled local restart because the active primary is local. Keep cadence hard gates warn-only unless `PUBLISH_REQUIRE_WINDOW=true` and `PUBLISH_REQUIRE_MIN_GAP=true` are approved separately. Do not restart until `LOCAL_RESTART_READINESS.md` has been reviewed.
+
+## 0c. Controlled Local Restart
+
+Decision needed: approve or defer a controlled restart of the active local primary.
+
+Current state: the code branch has protections the running process does not expose. `LOCAL_RESTART_READINESS.md` is RED because the live process lacks build metadata, cadence gates are disabled and DB row repair is still pending.
+
+Why it matters: without a restart, the active local primary may keep posting with older safety logic and no commit provenance.
+
+What changes: stop and restart only the local `server.js`/bot stack after tests/build pass, then re-check `/api/health`, cadence, queue status and platform status. No Railway, OAuth, Cloudflare DNS or DB mutation is part of this restart decision.
+
+Risk: because the current local instance is already primary with `AUTO_PUBLISH=true`, restarting it can resume scheduler/queue processing and may publish at the next active window unless cadence gates are also enabled.
+
+Rollback: stop the local server, set `AUTO_PUBLISH=false`/`USE_JOB_QUEUE=false`/`PULSE_PRIMARY_INSTANCE=false` if needed, restart and verify `/api/health` reports non-primary/no scheduler.
+
+Recommendation: approve only after deciding whether to enable cadence hard gates at the same time.
 
 Generated: 2026-05-12
 

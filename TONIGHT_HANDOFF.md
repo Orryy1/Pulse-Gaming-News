@@ -5,7 +5,7 @@ Update: 2026-05-14
 ## Latest Branch State
 
 - Branch: `codex/readiness-qa-failure-window`
-- Latest pushed commit: `2691f1d2 Gate stale local voices before assembly`
+- Latest local checkpoint before this slice: `d1c851de auto-commit: Codex session checkpoint`
 - Deployed: no
 - Active public instance: local PC via `pulse.orryy.com`
 - Active health: `mode=local`, `primary=true`, `AUTO_PUBLISH=true`, `USE_JOB_QUEUE=true`, `schedulerActive=true`
@@ -15,10 +15,11 @@ Update: 2026-05-14
 
 ## Latest Verification
 
-- `npm test`: pass (`2625/2625`)
-- `npm run build`: pass
+- Full `npm test`: last full pass before this slice; focused tests are passing for restart readiness, dispatch policy, Discord gating, subtitle timing and publish summaries
+- `npm run build`: last build pass before this slice; rerun before restart/deploy
 - `npm run ops:publish-cadence -- --hours 24`: AMBER
 - `npm run ops:publish-row-repair -- --limit 40`: dry-run report generated
+- `npm run ops:local-restart-readiness`: RED, read-only report generated
 
 ## What Changed In The Latest Slice
 
@@ -27,6 +28,11 @@ Update: 2026-05-14
 - A dry-run publish row repair planner now identifies bad public rows and failed rows carrying platform IDs without mutating the DB.
 - Studio V2 still-deck renders now pad video and audio to the subtitle/narration timeline before burning ASS subtitles, reducing caption freeze/cut-off risk.
 - Local/strict assembly now runs approved-voice QA before FFmpeg render, so stale low/demonic local MP3s fail before becoming new local videos.
+- Local restart readiness now compares running `/api/health` build metadata with git and blocks a clean restart recommendation when the running primary cannot prove its commit.
+- Direct publish dispatch now has a central `AUTO_PUBLISH` gate and better dispatch source labels for API, CLI, scheduler and breaking fast lane routes.
+- Breaking fast lane now pins the story it just processed instead of publishing whichever candidate happens to be next.
+- Discord video-drop announcements now require a clean publish state and reject stale/`DUPE_*` platform IDs.
+- Legacy multi-image assembly now accounts for xfade overlap so video duration covers narration/subtitles instead of cutting/freeze-risking the tail.
 
 ## Current Live Signal
 
@@ -45,10 +51,13 @@ Do not add broad new features before cadence is controlled. The active system is
 2. deploy and enable `PUBLISH_REQUIRE_WINDOW=true` plus `PUBLISH_REQUIRE_MIN_GAP=true` on the confirmed local primary;
 3. run the dry-run DB repair plan through a manual backup/review process before any mutation.
 
+Do not restart the active local primary until `LOCAL_RESTART_READINESS.md` is reviewed and the cadence gate decision is made.
+
 ## Reports To Read Now
 
 - `test/output/publish_cadence.md`
 - `test/output/publish_row_repair_plan.md`
+- `LOCAL_RESTART_READINESS.md`
 - `MORNING_APPROVAL_QUEUE.md`
 
 Date: 2026-05-12

@@ -178,6 +178,7 @@ async function runFastPipeline(story) {
       const { publishNextStory } = require("./publisher");
       publishResult = await publishNextStory({
         dispatchSource: "breaking_fast_lane",
+        storyId: story.id,
       });
       if (publishResult) {
         console.log(

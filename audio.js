@@ -53,6 +53,10 @@ const {
 const {
   repairTimestampAlignment,
 } = require("./lib/subtitle-timing");
+const {
+  masterTtsAudioFile,
+  shouldMasterTtsAudio,
+} = require("./lib/audio-quality");
 
 function isTruthy(value) {
   return /^(true|1|yes|on)$/i.test(String(value || ""));
@@ -782,6 +786,19 @@ async function generateTTS(text, outputPath, rateOverride) {
     );
   }
   await fs.writeFile(writeTarget, Buffer.from(audioBase64, "base64"));
+  const voiceMastering = shouldMasterTtsAudio({ provider, env: process.env })
+    ? await masterTtsAudioFile({
+        inputPath: writeTarget,
+        execFileAsync,
+        env: process.env,
+        log: console.log,
+      })
+    : { ok: false, code: "voice_mastering_disabled" };
+  if (voiceMastering.ok) {
+    console.log(
+      `[audio] Voice mastered for crisp social playback: ${outputPath} (${voiceMastering.targetLufs} LUFS target)`,
+    );
+  }
 
   const voiceDiagnostics = normaliseLocalVoiceDiagnostics(
     response.data.voice_diagnostics || response.data.voiceDiagnostics,
@@ -812,6 +829,7 @@ async function generateTTS(text, outputPath, rateOverride) {
       repairedAt: new Date().toISOString(),
     };
   }
+  alignment.meta.voiceMastering = voiceMastering;
   await fs.writeJson(timestampsWriteTarget, alignment, { spaces: 2 });
 
   // Return the repo-relative path so callers and the DB continue

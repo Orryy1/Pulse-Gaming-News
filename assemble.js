@@ -23,6 +23,9 @@ const {
   inspectSubtitleTimingWords,
   selectSubtitleScriptText,
 } = require("./lib/subtitle-timing");
+const {
+  buildNarrationMusicMixFilter,
+} = require("./lib/audio-quality");
 
 // Intro card REMOVED - first 1-2 seconds are critical for Shorts retention,
 // a branding card gives swipers a reason to leave before the hook lands
@@ -1533,7 +1536,7 @@ function buildVideoCommand(
   if (musicIdx >= 0) {
     filterParts.push(`[${audioIdx}:a]volume=1.0[voice]`);
     filterParts.push(`[${musicIdx}:a]volume=${MUSIC_VOLUME}[bgm]`);
-    filterParts.push(`[voice][bgm]amix=inputs=2:duration=first[outa]`);
+    filterParts.push(buildNarrationMusicMixFilter());
     audioMapping = `-map "[outv]" -map "[outa]"`;
   } else {
     audioMapping = `-map "[outv]" -map ${audioIdx}:a`;
@@ -2261,7 +2264,7 @@ async function assemble() {
         if (fbMusicIdx >= 0) {
           fbFilterParts.push(`[${fbAudioIdx}:a]volume=1.0[voice]`);
           fbFilterParts.push(`[${fbMusicIdx}:a]volume=${MUSIC_VOLUME}[bgm]`);
-          fbFilterParts.push(`[voice][bgm]amix=inputs=2:duration=first[outa]`);
+          fbFilterParts.push(buildNarrationMusicMixFilter());
           fbAudioMapping = `-map "[outv]" -map "[outa]"`;
         } else {
           fbAudioMapping = `-map "[outv]" -map ${fbAudioIdx}:a`;

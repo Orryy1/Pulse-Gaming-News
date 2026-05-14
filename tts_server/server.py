@@ -1049,25 +1049,25 @@ def _encode_mp3(audio: np.ndarray, sample_rate: int, target_format: str = "mp3_4
     target_sr = int(parts[1]) if len(parts) > 1 else 44_100
     bitrate = f"{parts[2]}k" if len(parts) > 2 else "128k"
 
-    # Resample if needed (linear is fine here, MP3 lossy compression dominates)
-    if sample_rate != target_sr:
-        ratio = target_sr / sample_rate
-        new_len = int(len(audio) * ratio)
-        idx = np.linspace(0, len(audio) - 1, new_len).astype(np.int64)
-        audio = audio[idx]
-
-    # Float32 [-1,1] -> int16
+    # Float32 [-1,1] -> int16 at the model's native sample rate. We hand the
+    # real source rate to FFmpeg during export so it can do proper resampling;
+    # integer index resampling audibly dulled consonants in the local Liam voice.
     audio_i16 = np.clip(audio, -1.0, 1.0)
     audio_i16 = (audio_i16 * 32_767.0).astype(np.int16)
 
     seg = AudioSegment(
         audio_i16.tobytes(),
-        frame_rate=target_sr,
+        frame_rate=sample_rate,
         sample_width=2,
         channels=1,
     )
     buf = io.BytesIO()
-    seg.export(buf, format="mp3", bitrate=bitrate)
+    seg.export(
+        buf,
+        format="mp3",
+        bitrate=bitrate,
+        parameters=["-ar", str(target_sr)],
+    )
     return buf.getvalue()
 
 

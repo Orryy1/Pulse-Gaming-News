@@ -66,6 +66,33 @@ function isLocalTtsProvider(provider = process.env.TTS_PROVIDER || "elevenlabs")
   return String(provider || "").toLowerCase() === "local";
 }
 
+function isValidTtsOutputFormat(value) {
+  return /^mp3_(?:22050|24000|44100|48000)_(?:64|96|128|192|256|320)$/.test(
+    String(value || ""),
+  );
+}
+
+function ttsOutputBitrate(format) {
+  const parts = String(format || "").split("_");
+  const bitrate = Number(parts[2]);
+  return Number.isFinite(bitrate) ? bitrate : null;
+}
+
+function resolveTtsOutputFormat(provider, env = process.env) {
+  const local = isLocalTtsProvider(provider);
+  const candidate = firstNonBlank(
+    local ? env.LOCAL_TTS_OUTPUT_FORMAT : null,
+    env.TTS_OUTPUT_FORMAT,
+  );
+  if (candidate && isValidTtsOutputFormat(candidate)) {
+    if (!local || Number(ttsOutputBitrate(candidate)) >= 192) {
+      return candidate;
+    }
+  }
+
+  return local ? "mp3_44100_192" : "mp3_44100_128";
+}
+
 function firstNonBlank(...values) {
   for (const value of values) {
     if (value !== undefined && value !== null && String(value).trim() !== "") {
@@ -755,7 +782,7 @@ async function generateTTS(text, outputPath, rateOverride) {
   const data = {
     text,
     voice_settings: resolvedVoiceSettings,
-    output_format: "mp3_44100_128",
+    output_format: resolveTtsOutputFormat(provider, process.env),
   };
   if (provider !== "local") {
     data.model_id = brand.voiceModel || "eleven_multilingual_v2";
@@ -1297,6 +1324,7 @@ module.exports.resolveTtsVoiceIdForProvider = resolveTtsVoiceIdForProvider;
 module.exports.markAudioGenerationFailure = markAudioGenerationFailure;
 module.exports.generateTtsForStory = generateTtsForStory;
 module.exports.isLocalTtsProvider = isLocalTtsProvider;
+module.exports.resolveTtsOutputFormat = resolveTtsOutputFormat;
 module.exports.prepareTtsAlignmentForWrite = prepareTtsAlignmentForWrite;
 module.exports.assertBrandNameQaForTts = assertBrandNameQaForTts;
 module.exports.selectRawTtsScript = selectRawTtsScript;

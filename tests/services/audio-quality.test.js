@@ -61,3 +61,14 @@ test("assemble.js uses the narration-preserving mix helper instead of default am
   assert.match(source, /buildNarrationMusicMixFilter/);
   assert.doesNotMatch(source, /amix=inputs=2:duration=first\[outa\]/);
 });
+
+test("local TTS server does not use nearest-neighbour MP3 resampling", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tts_server", "server.py"),
+    "utf8",
+  );
+
+  assert.doesNotMatch(source, /np\.linspace\(0,\s*len\(audio\)\s*-\s*1,\s*new_len\)\.astype\(np\.int64\)/);
+  assert.match(source, /frame_rate=sample_rate/);
+  assert.match(source, /parameters=\["-ar",\s*str\(target_sr\)\]/);
+});

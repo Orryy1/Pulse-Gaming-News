@@ -15,6 +15,9 @@ const {
 const {
   stampLocalVoiceTimestampMeta,
 } = require("../lib/ops/local-voice-metadata");
+const {
+  createLocalTtsBatchRecovery,
+} = require("../lib/ops/local-tts-batch-recovery");
 
 process.env.TTS_PROVIDER = "local";
 process.env.LOCAL_TTS_URL = process.env.LOCAL_TTS_URL || DEFAULT_LOCAL_TTS_URL;
@@ -65,10 +68,30 @@ async function main() {
   const smokeFileName =
     process.env.LOCAL_TTS_SMOKE_FILE || "__local_tts_smoke_sleepy_liam_latest.mp3";
   const rel = path.join("output", "audio", smokeFileName);
+  const tsRel = rel.replace(/\.mp3$/, "_timestamps.json");
+  await fs.remove(mediaPaths.writePath(rel)).catch(() => {});
+  await fs.remove(mediaPaths.writePath(tsRel)).catch(() => {});
   const text =
     "Pulse Gaming local TTS is online. Pokémon is spoken clearly, and Pokémon keeps its accent in timestamps.";
   const rate = Number(process.env.LOCAL_TTS_SMOKE_RATE || 1.0);
-  await audio.generateTTS(text, rel, rate);
+  const recoverLocalTts = createLocalTtsBatchRecovery({
+    root: path.join(__dirname, ".."),
+    env: process.env,
+    voiceId,
+  });
+  const story = {
+    id: "local-tts-smoke",
+    title: "Local TTS smoke proof",
+  };
+  const attempt = await audio.generateTtsForStory({
+    story,
+    text,
+    outputPath: rel,
+    rate,
+    label: "smoke",
+    provider: "local",
+    recoverLocalTts,
+  });
   const voiceMeta = await stampLocalVoiceTimestampMeta({
     outputAudioPath: rel,
     text,
@@ -77,13 +100,15 @@ async function main() {
   });
 
   const mp3Abs = await mediaPaths.resolveExisting(rel);
-  const tsRel = rel.replace(/\.mp3$/, "_timestamps.json");
   const tsAbs = await mediaPaths.resolveExisting(tsRel);
   const timestamps = await fs.readJson(tsAbs);
   const prefix = (timestamps.characters || []).join("").slice(0, 96);
 
   console.log(`[tts] smoke mp3=${path.relative(process.cwd(), mp3Abs)}`);
   console.log(`[tts] smoke timestamps=${path.relative(process.cwd(), tsAbs)}`);
+  console.log(
+    `[tts] smoke attempts=${attempt.attempts || 1} recovery=${attempt.recovery?.action || "none"}`,
+  );
   console.log(
     `[tts] smoke voice_reference=${voiceMeta.local_voice_reference?.referencePresent === true ? "accepted_sleepy_liam" : "missing"}`,
   );

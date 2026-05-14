@@ -195,6 +195,8 @@ test("Pulse local TTS smoke test uses a natural rate by default", () => {
   );
 
   assert.match(smokeSource, /prewarmLocalTtsVoice/);
+  assert.match(smokeSource, /createLocalTtsBatchRecovery/);
+  assert.match(smokeSource, /generateTtsForStory/);
   assert.match(smokeSource, /LOCAL_TTS_PREWARM_TIMEOUT_MS/);
   assert.match(smokeSource, /LOCAL_TTS_SMOKE_RATE\s*\|\|\s*1\.0/);
   assert.match(smokeSource, /__local_tts_smoke_sleepy_liam_latest\.mp3/);
@@ -202,6 +204,7 @@ test("Pulse local TTS smoke test uses a natural rate by default", () => {
   assert.match(smokeSource, /Pokémon is spoken clearly/);
   assert.match(smokeSource, /Pokémon keeps its accent/);
   assert.doesNotMatch(smokeSource, /Pokemon is spoken clearly|Pokmon|PokÃ©mon/);
+  assert.doesNotMatch(smokeSource, /audio\.generateTTS\(text,\s*rel,\s*rate\)/);
   assert.doesNotMatch(smokeSource, /LOCAL_TTS_SMOKE_RATE\s*\|\|\s*1\.75/);
 });
 

@@ -1203,7 +1203,7 @@ test("studio-v2 render report surfaces accepted local voice fingerprint", () => 
   assert.doesNotMatch(src, /dotenv"\)\.config\(\{\s*override:\s*true\s*\}\)/);
 });
 
-test("studio-v2 render pads raw video before subtitle burn-in to prevent frozen captions", () => {
+test("studio-v2 render blocks subtitle tail padding from hiding frozen visuals", () => {
   const src = fs.readFileSync(
     path.join(__dirname, "..", "..", "tools", "studio-v2-render.js"),
     "utf8",
@@ -1212,8 +1212,8 @@ test("studio-v2 render pads raw video before subtitle burn-in to prevent frozen 
   assert.doesNotMatch(src, /ass=\$\{assRel\},tpad=stop_mode=clone/);
   assert.match(src, /const subtitleTimelineDurationS = Math\.max/);
   assert.match(src, /targetDurationS:\s*subtitleTimelineDurationS/);
-  assert.match(src, /const subtitleTailPadS = Math\.max/);
-  assert.match(src, /trim=duration=\$\{subtitleTimelineDurationS\.toFixed\(3\)\}/);
+  assert.match(src, /buildSubtitleBaseFilter/);
+  assert.match(src, /studio_v2_scene_timeline_under_covers_subtitles/);
   assert.match(src, /\[subtitleBase\]ass=\$\{assRel\}\[outv\]/);
 });
 

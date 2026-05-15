@@ -45,9 +45,9 @@ test("Flash Lane Visual Director blocks two reused clip refs across a 60s plan",
 test("Flash Lane Visual Director blocks clip anchors that start inside likely ratings/logo material", () => {
   const report = buildFlashLaneVisualDirector({
     scenes: [
-      clip("safe_a", "a.m3u8", 32),
+      clip("safe_a", "a.m3u8", MIN_SAFE_CLIP_START_S),
       clip("too_early", "b.m3u8", MIN_SAFE_CLIP_START_S - 0.1),
-      clip("safe_c", "c.m3u8", 36),
+      clip("safe_c", "c.m3u8", MIN_SAFE_CLIP_START_S + 4),
       { type: "clip.frame", source: "frame.jpg", duration: 4.2 },
       card(),
       card("card_takeaway"),
@@ -63,12 +63,12 @@ test("Flash Lane Visual Director blocks clip anchors that start inside likely ra
 
 test("Flash Lane Visual Director allows diverse safe clip-led plans", () => {
   const scenes = [
-    clip("a1", "a.m3u8", 30),
-    clip("b1", "b.m3u8", 32),
-    clip("c1", "c.m3u8", 34),
-    clip("a2", "a.m3u8", 38),
-    clip("b2", "b.m3u8", 40),
-    clip("c2", "c.m3u8", 42),
+    clip("a1", "a.m3u8", 36),
+    clip("b1", "b.m3u8", 38),
+    clip("c1", "c.m3u8", 40),
+    clip("a2", "a.m3u8", 42),
+    clip("b2", "b.m3u8", 44),
+    clip("c2", "c.m3u8", 46),
     { type: "clip.frame", label: "frame_a", source: "frame-a.jpg", duration: 4.2 },
     { type: "still", label: "still_a", source: "steam-screenshot.jpg", sourceType: "steam_screenshot", duration: 4.2 },
     card("card_context"),

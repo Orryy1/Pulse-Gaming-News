@@ -7,6 +7,7 @@ const { SCENE_TYPES } = require("../../lib/scene-composer");
 const {
   appendStudioOutro,
   assertStudioV2VoiceAllowedForRender,
+  buildSubtitleBaseFilter,
   boostMotionDensityForShorts,
   replaceFallbackReleaseCardsWithMotion,
   resolveMainNarrationDurationS,
@@ -210,6 +211,49 @@ test("subtitle script text follows the actual voice transcript including outro",
   });
 
   assert.match(text, /Follow Pulse Gaming/);
+});
+
+test("subtitle script text uses cached voice metadata for transcript coverage", () => {
+  const text = resolveSubtitleScriptText({
+    voice: { editorialScriptAppliedToAudio: false },
+    tsData: {
+      meta: {
+        text: "Subnautica crossed a million sales. Follow Pulse Gaming so you never miss a beat.",
+      },
+    },
+    editorial: { scriptForCaption: "Wrong stale caption text." },
+    spokenTranscript: "Subnautica crossed a million sales.",
+  });
+
+  assert.match(text, /Subnautica crossed/);
+  assert.match(text, /Follow Pulse Gaming/);
+  assert.doesNotMatch(text, /Wrong stale/);
+});
+
+test("Studio V2 subtitle base filter blocks visual timelines that under-cover audio", () => {
+  assert.throws(
+    () =>
+      buildSubtitleBaseFilter({
+        inputLabel: "base",
+        finalVideoDurationS: 62,
+        subtitleTimelineDurationS: 64,
+      }),
+    /studio_v2_scene_timeline_under_covers_subtitles:2\.000s/,
+  );
+});
+
+test("Studio V2 subtitle base filter only pads tiny timing slop", () => {
+  assert.deepEqual(
+    buildSubtitleBaseFilter({
+      inputLabel: "base",
+      finalVideoDurationS: 63.9,
+      subtitleTimelineDurationS: 64,
+    }),
+    [
+      "[base]tpad=stop_mode=clone:stop_duration=0.100[subtitlePad]",
+      "[subtitlePad]trim=duration=64.000,setpts=PTS-STARTPTS[subtitleBase]",
+    ],
+  );
 });
 
 test("studio-v2 render passes strict Flash caption options to kinetic subtitles", () => {

@@ -473,6 +473,29 @@ test("prepareSubtitleWords rejects stale timestamp tracks when transcript covera
   assert.notEqual(prepared[0].start, staleWords[0].start);
 });
 
+test("prepareSubtitleWords rejects stale cached tracks even when end coverage is relaxed", () => {
+  const scriptText =
+    "Subnautica 2 just crossed a million sales and the player count is already massive.";
+  const staleWords = [
+    { word: "Metro", start: 0.1, end: 0.3 },
+    { word: "Exodus", start: 0.35, end: 0.6 },
+    { word: "players", start: 0.65, end: 0.9 },
+    { word: "return", start: 0.95, end: 1.2 },
+    { word: "again", start: 1.25, end: 1.5 },
+  ];
+
+  assert.ok(transcriptCoverageRatio(staleWords, scriptText) < 0.35);
+  const prepared = prepareSubtitleWords({
+    words: staleWords,
+    duration: 6,
+    scriptText,
+    strictEndCoverage: false,
+  });
+
+  assert.equal(prepared[0].word, "Subnautica");
+  assert.ok(prepared[prepared.length - 1].end >= 5.7);
+});
+
 test("prepareSubtitleWords keeps healthy timestamp tracks with good transcript coverage", () => {
   const scriptText =
     "GTA players just got a confirmed trailer clue and Rockstar fans are watching the next announcement window closely.";

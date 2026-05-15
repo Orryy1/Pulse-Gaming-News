@@ -881,6 +881,50 @@ function sumSceneDurations(scenes) {
   );
 }
 
+function buildSubtitleBaseFilter({
+  inputLabel,
+  outputLabel = "subtitleBase",
+  finalVideoDurationS,
+  subtitleTimelineDurationS,
+  maxTailPadS = 0.35,
+} = {}) {
+  const videoDuration = Number(finalVideoDurationS);
+  const timelineDuration = Number(subtitleTimelineDurationS);
+  const tolerance = Number.isFinite(Number(maxTailPadS))
+    ? Math.max(0, Number(maxTailPadS))
+    : 0.35;
+  const input = String(inputLabel || "").trim();
+  const output = String(outputLabel || "").trim() || "subtitleBase";
+
+  if (!input) throw new Error("studio_v2_subtitle_base_missing_input");
+  if (!Number.isFinite(videoDuration) || videoDuration <= 0) {
+    throw new Error("studio_v2_subtitle_base_invalid_video_duration");
+  }
+  if (!Number.isFinite(timelineDuration) || timelineDuration <= 0) {
+    throw new Error("studio_v2_subtitle_base_invalid_timeline_duration");
+  }
+
+  const underrunS = Number((timelineDuration - videoDuration).toFixed(3));
+  if (underrunS > tolerance) {
+    throw new Error(
+      `studio_v2_scene_timeline_under_covers_subtitles:${underrunS.toFixed(3)}s`,
+    );
+  }
+
+  const parts = [];
+  let label = input;
+  if (underrunS > 0.001) {
+    parts.push(
+      `[${label}]tpad=stop_mode=clone:stop_duration=${underrunS.toFixed(3)}[subtitlePad]`,
+    );
+    label = "subtitlePad";
+  }
+  parts.push(
+    `[${label}]trim=duration=${timelineDuration.toFixed(3)},setpts=PTS-STARTPTS[${output}]`,
+  );
+  return parts;
+}
+
 function resolveMainNarrationDurationS({ voice, audioDurationS }) {
   const audioDuration = Number(audioDurationS);
   const outroStart = Number(voice?.outroStartS);
@@ -901,12 +945,12 @@ function resolveSubtitleScriptText({
   editorial,
   spokenTranscript,
 }) {
-  if (voice?.editorialScriptAppliedToAudio !== true) return "";
   return (
     tsData?.meta?.text ||
     spokenTranscript ||
-    editorial?.scriptForCaption ||
-    editorial?.fullScript ||
+    (voice?.editorialScriptAppliedToAudio === true
+      ? editorial?.scriptForCaption || editorial?.fullScript
+      : "") ||
     ""
   );
 }
@@ -1574,14 +1618,12 @@ async function main() {
     filterParts.push(heroOverlayFilter);
     videoForSubtitles = "heroBase";
   }
-  const subtitleTailPadS = Math.max(
-    1,
-    subtitleTimelineDurationS - finalVideoDurationS + 1,
-  );
   filterParts.push(
-    `[${videoForSubtitles}]tpad=stop_mode=clone:stop_duration=${(
-      subtitleTailPadS
-    ).toFixed(3)},trim=duration=${subtitleTimelineDurationS.toFixed(3)},setpts=PTS-STARTPTS[subtitleBase]`,
+    ...buildSubtitleBaseFilter({
+      inputLabel: videoForSubtitles,
+      finalVideoDurationS,
+      subtitleTimelineDurationS,
+    }),
     `[subtitleBase]ass=${assRel}[outv]`,
   );
 
@@ -1901,6 +1943,7 @@ module.exports = {
   boostMotionDensityForShorts,
   replaceFallbackReleaseCardsWithMotion,
   resolveMainNarrationDurationS,
+  buildSubtitleBaseFilter,
   resolveStudioV2CaptionOptions,
   resolveStudioV2VoiceMode,
   resolveSubtitleScriptText,

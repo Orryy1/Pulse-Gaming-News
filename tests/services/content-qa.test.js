@@ -178,6 +178,28 @@ test("runContentQa: overlong audio duration hard-fails before publish", async ()
   );
 });
 
+test("runContentQa: unusable subtitle timing hard-fails before publish", async () => {
+  const story = goodStory({
+    audio_duration: 68.2,
+    duration_seconds: 69.2,
+    subtitle_timing_source: "synthetic_fallback",
+    subtitle_timing_inspection: {
+      usable: false,
+      reason: "max_gap_too_large",
+      maxGapSeconds: 27.7,
+      zeroDurationWordRatio: 0.7,
+    },
+  });
+  const qa = await runContentQa(story, {
+    fs: fakeFs({ [story.exported_path]: { size: 5 * 1024 * 1024 } }),
+  });
+  assert.strictEqual(qa.result, "fail");
+  assert.ok(
+    qa.failures.includes("subtitle_timing_unusable:max_gap_too_large"),
+    `got: ${qa.failures.join(", ")}`,
+  );
+});
+
 test("runContentQa: deliberate extended Short can pass above Flash Lane ceiling", async () => {
   const story = goodStory({
     audio_duration: 84,

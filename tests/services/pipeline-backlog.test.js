@@ -250,6 +250,60 @@ test("nextPublishCandidate: skips qa_failed stories", () => {
   assert.strictEqual(pick.id, "good");
 });
 
+test("nextPublishCandidate: skips under-60 Shorts even when exported", () => {
+  const stories = [
+    {
+      id: "too-short",
+      approved: true,
+      exported_path: "/x",
+      full_script: "y",
+      duration_seconds: 57.8,
+      breaking_score: 99,
+    },
+    {
+      id: "ready",
+      approved: true,
+      exported_path: "/x",
+      full_script: "y",
+      duration_seconds: 68.2,
+      breaking_score: 60,
+    },
+  ];
+  const pick = nextPublishCandidate(stories);
+  assert.strictEqual(pick.id, "ready");
+});
+
+test("nextPublishCandidate: skips frozen or unusable subtitle timelines", () => {
+  const stories = [
+    {
+      id: "frozen-captions",
+      approved: true,
+      exported_path: "/x",
+      full_script: "y",
+      duration_seconds: 68.2,
+      breaking_score: 99,
+      subtitle_timing_inspection: {
+        usable: false,
+        reason: "max_gap_too_large",
+      },
+    },
+    {
+      id: "ready",
+      approved: true,
+      exported_path: "/x",
+      full_script: "y",
+      duration_seconds: 67.4,
+      breaking_score: 60,
+      subtitle_timing_inspection: {
+        usable: true,
+        reason: "usable",
+      },
+    },
+  ];
+  const pick = nextPublishCandidate(stories);
+  assert.strictEqual(pick.id, "ready");
+});
+
 test("nextPublishCandidate: returns null when nothing eligible", () => {
   assert.strictEqual(nextPublishCandidate([]), null);
   assert.strictEqual(

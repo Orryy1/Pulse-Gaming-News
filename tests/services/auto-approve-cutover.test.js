@@ -465,6 +465,62 @@ test("script review metadata in _extra blocks otherwise-auto stories", async () 
   assert.equal(storyRow.auto_approved, 0);
 });
 
+test("empty script validation errors in _extra do not block repaired scripts", async () => {
+  const repos = makeRepos();
+  seedStory(repos.db, {
+    id: "script-repaired-empty-errors",
+    title: "Nintendo confirms a major Switch 2 launch bundle for June",
+    flair: "verified",
+    subreddit: "ign",
+    source_type: "rss",
+    score: 3000,
+    num_comments: 450,
+    breaking_score: 96,
+    article_image: "https://cdn/switch-2-bundle.jpg",
+    game_images: JSON.stringify([
+      "https://steam/switch-2-keyart.jpg",
+      "https://steam/mario-kart-world.jpg",
+    ]),
+    hook: "Nintendo just confirmed a Switch 2 bundle with three launch games",
+    full_script:
+      "Nintendo has confirmed a Switch 2 bundle that includes a console and one of three digital launch games. " +
+      "The offer matters because it gives early buyers a clearer value choice before the June retail window. " +
+      "Follow Pulse Gaming so you never miss a beat.",
+    _extra: JSON.stringify({
+      script_generation_status: "script_ready",
+      script_validation_errors: [],
+    }),
+    timestamp: new Date().toISOString(),
+  });
+
+  await autoApprove({
+    repos,
+    env: { NODE_ENV: "production", USE_SQLITE: "true" },
+  });
+
+  const scoreRow = repos.db
+    .prepare(
+      `SELECT decision, total, decision_reason, inputs FROM story_scores
+       WHERE story_id = 'script-repaired-empty-errors'
+       ORDER BY scored_at DESC LIMIT 1`,
+    )
+    .get();
+
+  assert.equal(scoreRow.decision, "auto");
+  assert.doesNotMatch(scoreRow.decision_reason, /script_review/);
+
+  const inputs = JSON.parse(scoreRow.inputs);
+  assert.equal(inputs.script_review_auto_block, undefined);
+
+  const storyRow = repos.db
+    .prepare(
+      `SELECT approved, auto_approved FROM stories WHERE id = 'script-repaired-empty-errors'`,
+    )
+    .get();
+  assert.equal(storyRow.approved, 1);
+  assert.equal(storyRow.auto_approved, 1);
+});
+
 test("fresh source-backed game preservation policy stories can auto-approve", async () => {
   const repos = makeRepos();
   seedStory(repos.db, {

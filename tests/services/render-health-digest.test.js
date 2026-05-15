@@ -184,12 +184,14 @@ test("formatDigest: high thin-rate triggers 'hold off' operator hint", () => {
   assert.match(md, /Hold off on BLOCK_THIN_VISUALS=true/);
 });
 
-test("formatDigest: low thin-rate + sufficient sample triggers 'safe to flip' hint", () => {
+test("formatDigest: low thin-rate + sufficient sample triggers approval-ready pilot hint", () => {
   const stories = Array.from({ length: 12 }, () =>
     story({ distinct_visual_count: 6, render_quality_class: "premium" }),
   );
   const md = digest.formatDigest(digest.buildRenderHealthSummary(stories));
-  assert.match(md, /Safe to flip BLOCK_THIN_VISUALS=true/);
+  assert.match(md, /BLOCK_THIN_VISUALS=true is approval-ready/);
+  assert.match(md, /controlled next-window pilot/);
+  assert.match(md, /do not flip it silently/);
 });
 
 test("formatDigest: surfaces outro misses with the warning glyph", () => {

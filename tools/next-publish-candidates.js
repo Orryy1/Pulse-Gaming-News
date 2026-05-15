@@ -452,6 +452,119 @@ function scoreCandidate(story = {}, options = {}) {
   };
 }
 
+function summariseQaResult(result = {}) {
+  if (!result || typeof result !== "object") {
+    return {
+      result: "unknown",
+      failures: ["qa_result_missing"],
+      warnings: [],
+    };
+  }
+  return {
+    result: result.result || result.status || "unknown",
+    failures: Array.isArray(result.failures) ? result.failures : [],
+    warnings: Array.isArray(result.warnings) ? result.warnings : [],
+    reason: result.reason || null,
+  };
+}
+
+function combinePreflightQa({ content, video, platform } = {}) {
+  const checks = {
+    content: summariseQaResult(content),
+    video: summariseQaResult(video),
+    platform: summariseQaResult(platform),
+  };
+  const blockers = [];
+  const warnings = [];
+
+  for (const [name, check] of Object.entries(checks)) {
+    if (check.result === "fail") {
+      blockers.push(
+        `${name}:${check.failures[0] || check.reason || "failed"}`,
+      );
+    } else if (check.result === "warn") {
+      warnings.push(`${name}:${check.warnings[0] || "warning"}`);
+    } else if (check.result === "skip") {
+      warnings.push(`${name}:skipped:${check.reason || "unknown"}`);
+    }
+  }
+
+  return {
+    status: blockers.length > 0 ? "blocked" : warnings.length > 0 ? "warn" : "pass",
+    blockers,
+    warnings,
+    checks,
+  };
+}
+
+async function runPreflightQaForStory(story = {}, opts = {}) {
+  const {
+    runContentQa = require("../lib/services/content-qa").runContentQa,
+    runVideoQa = require("../lib/services/video-qa").runVideoQa,
+    runPlatformVideoQa = require("../lib/services/platform-video-qa").runPlatformVideoQa,
+  } = opts;
+
+  try {
+    const content = await runContentQa(story, opts.contentQaOptions || {});
+    const video = await runVideoQa(story.exported_path, opts.videoQaOptions || {});
+    const platform = await runPlatformVideoQa(
+      story.exported_path,
+      opts.platformVideoQaOptions || {},
+    );
+    return combinePreflightQa({ content, video, platform });
+  } catch (err) {
+    return {
+      status: "blocked",
+      blockers: [`preflight_exception:${err.code || err.name || "unknown"}`],
+      warnings: [],
+      checks: {
+        content: { result: "unknown", failures: [], warnings: [] },
+        video: { result: "unknown", failures: [], warnings: [] },
+        platform: { result: "unknown", failures: [], warnings: [] },
+      },
+    };
+  }
+}
+
+async function attachPreflightQa(report = {}, stories = [], opts = {}) {
+  const byId = new Map(
+    (Array.isArray(stories) ? stories : [])
+      .filter((story) => story && story.id)
+      .map((story) => [story.id, story]),
+  );
+  const candidates = Array.isArray(report.candidates) ? report.candidates : [];
+  for (const candidate of candidates) {
+    const story = byId.get(candidate.id);
+    if (!story) {
+      candidate.preflight_qa = {
+        status: "blocked",
+        blockers: ["story_missing"],
+        warnings: [],
+      };
+      candidate.status = "review";
+      continue;
+    }
+    const preflight = await runPreflightQaForStory(story, opts);
+    candidate.preflight_qa = preflight;
+    if (preflight.status === "blocked") {
+      candidate.status = "review";
+      candidate.penalties = [...new Set([...(candidate.penalties || []), "preflight_qa_blocked"])];
+      candidate.reasons = [...new Set([...(candidate.reasons || []), "preflight_qa_blocked"])];
+    } else {
+      candidate.reasons = [...new Set([...(candidate.reasons || []), `preflight_qa_${preflight.status}`])];
+    }
+  }
+  report.preflight_qa = {
+    enabled: true,
+    mode: "read_only",
+    candidates_checked: candidates.length,
+    blocked: candidates.filter((candidate) => candidate.preflight_qa?.status === "blocked").length,
+    warning: candidates.filter((candidate) => candidate.preflight_qa?.status === "warn").length,
+    pass: candidates.filter((candidate) => candidate.preflight_qa?.status === "pass").length,
+  };
+  return report;
+}
+
 function buildNextPublishCandidatesReport(stories, options = {}) {
   const generatedAt = options.generatedAt || new Date().toISOString();
   const limit = Number.isFinite(Number(options.limit))
@@ -571,12 +684,21 @@ function formatNextPublishCandidatesMarkdown(report = {}) {
           : `${Number(candidate.duration_seconds).toFixed(2)}s`;
       const reasons = (candidate.reasons || []).slice(0, 6).join(", ");
       const penalties = (candidate.penalties || []).join(", ") || "none";
+      const preflight = candidate.preflight_qa
+        ? ` | preflight=${candidate.preflight_qa.status}`
+        : "";
       lines.push(
-        `${index + 1}. ${candidate.id} - ${candidate.score} - ${candidate.status} - ${duration}`,
+        `${index + 1}. ${candidate.id} - ${candidate.score} - ${candidate.status} - ${duration}${preflight}`,
       );
       lines.push(`   ${candidate.title || ""}`);
       lines.push(`   reasons: ${reasons || "none"}`);
       lines.push(`   penalties: ${penalties}`);
+      if (candidate.preflight_qa?.blockers?.length) {
+        lines.push(`   preflight blockers: ${candidate.preflight_qa.blockers.join(", ")}`);
+      }
+      if (candidate.preflight_qa?.warnings?.length) {
+        lines.push(`   preflight warnings: ${candidate.preflight_qa.warnings.join(", ")}`);
+      }
     }
   }
   lines.push("");
@@ -598,10 +720,12 @@ function parseArgs(argv) {
     help: false,
     limit: DEFAULT_LIMIT,
     analyticsPath: DEFAULT_ANALYTICS_PATH,
+    preflightQa: false,
   };
   for (let i = 2; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--json") args.json = true;
+    else if (arg === "--preflight-qa" || arg === "--qa") args.preflightQa = true;
     else if (arg === "--help" || arg === "-?") args.help = true;
     else if (arg === "--limit") args.limit = Number(argv[++i] || DEFAULT_LIMIT);
     else if (arg.startsWith("--limit=")) args.limit = Number(arg.split("=")[1] || DEFAULT_LIMIT);
@@ -629,7 +753,7 @@ async function runCli(argv = process.argv) {
   const args = parseArgs(argv);
   if (args.help) {
     process.stdout.write(
-      "Usage: node tools/next-publish-candidates.js [--json] [--limit N] [--analytics PATH]\n",
+      "Usage: node tools/next-publish-candidates.js [--json] [--limit N] [--analytics PATH] [--preflight-qa]\n",
     );
     return { exitCode: 0 };
   }
@@ -643,6 +767,9 @@ async function runCli(argv = process.argv) {
     analyticsPath: args.analyticsPath,
     limit: args.limit,
   });
+  if (args.preflightQa) {
+    await attachPreflightQa(report, stories);
+  }
   const markdown = formatNextPublishCandidatesMarkdown(report);
   await fs.ensureDir(OUT);
   const jsonPath = path.join(OUT, "next_publish_candidates.json");
@@ -669,7 +796,11 @@ module.exports = {
   buildNextPublishCandidatesReport,
   formatNextPublishCandidatesMarkdown,
   scoreAnalyticsFit,
+  attachPreflightQa,
+  combinePreflightQa,
   durationVerdict,
   existingPublicPlatformFields,
+  runPreflightQaForStory,
+  summariseQaResult,
   runCli,
 };

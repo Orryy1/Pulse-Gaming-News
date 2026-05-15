@@ -26,6 +26,9 @@ const {
   renderSocialPlatformOperationsMarkdown,
 } = require("../../lib/ops/social-platform-operations");
 const { buildMonthlyReleaseRadar } = require("../../lib/formats/release-radar");
+const {
+  enrichVoiceReportForDispatch,
+} = require("../../tools/tiktok-dispatch-pack");
 
 function fakeFs(existing = {}) {
   return {
@@ -537,6 +540,32 @@ test("TikTok dispatch pack downgrades final renders without approved voice evide
   assert.match(pack.discordNotification, /Voice gate: review/);
 });
 
+test("TikTok dispatch pack allows warning-only voice gates but surfaces warning", () => {
+  const pack = buildTikTokDispatchPack(
+    {
+      id: "story1",
+      title: "Ready render with voice warning",
+      exported_path: "output/final/story1.mp4",
+      thumbnail_candidate_path: "output/thumbnails/story1.png",
+    },
+    {
+      durationSeconds: 64,
+      voiceAudit: {
+        verdict: "review",
+        blockers: [],
+        warnings: ["voice_true_peak_too_hot"],
+        do_not_reuse_for_tiktok_dispatch: true,
+      },
+      tiktokTokenStatus: { ok: true, reason: "ok" },
+    },
+  );
+
+  assert.equal(pack.status, "ready_for_operator_review");
+  assert.equal(pack.officialInboxJson.ready_for_upload, true);
+  assert.equal(pack.voiceGate.do_not_reuse_for_tiktok_dispatch, false);
+  assert.match(pack.discordNotification, /warnings: voice_true_peak_too_hot/);
+});
+
 test("TikTok dispatch pack blocks official inbox upload when the local token needs refresh or sync", () => {
   const pack = buildTikTokDispatchPack(
     {
@@ -612,6 +641,38 @@ test("TikTok dispatch tooling loads final voice sidecar reports before gating", 
   assert.match(source, /assetExistenceByStoryId/);
   assert.match(source, /inspectTokenStatus/);
   assert.match(source, /tiktokTokenStatus/);
+});
+
+test("TikTok dispatch tooling enriches local voice reports with measurable loudness and pace", async () => {
+  const report = {
+    narration: {
+      provider: "local",
+      source: "local-tts-server",
+      audioPath: __filename,
+      approvedLocalVoice: true,
+      transcript: "One two three four five six seven eight nine ten.",
+      acoustic: {
+        durationSeconds: 5,
+        medianPitchHz: 118,
+      },
+    },
+  };
+
+  await enrichVoiceReportForDispatch(report, {
+    execFileAsync: async () => ({
+      stderr: JSON.stringify({
+        input_i: "-15.9",
+        input_tp: "-1.6",
+        input_lra: "7.2",
+      }),
+      stdout: "",
+    }),
+  });
+
+  assert.equal(report.narration.wpm, 120);
+  assert.equal(report.narration.acoustic.integratedLufs, -15.9);
+  assert.equal(report.narration.acoustic.truePeakDb, -1.6);
+  assert.equal(report.narration.acoustic.loudnessMeasured, true);
 });
 
 test("social platform operations report separates working platforms from external blockers", () => {

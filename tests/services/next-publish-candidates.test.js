@@ -3,6 +3,8 @@ const assert = require("node:assert");
 
 const {
   buildNextPublishCandidatesReport,
+  attachPreflightQa,
+  combinePreflightQa,
   formatNextPublishCandidatesMarkdown,
   scoreAnalyticsFit,
 } = require("../../tools/next-publish-candidates");
@@ -119,4 +121,44 @@ test("next publish report JSON and Markdown are valid operator artefacts", () =>
   assert.match(markdown, /# Next Publish Candidates/);
   assert.match(markdown, /json_candidate/);
   assert.match(markdown, /read-only/);
+});
+
+test("preflight QA summary blocks failed checks and keeps warnings visible", () => {
+  const combined = combinePreflightQa({
+    content: { result: "warn", failures: [], warnings: ["caption_timing_repaired"] },
+    video: { result: "pass", failures: [], warnings: [] },
+    platform: { result: "fail", failures: ["video_codec_not_h264"], warnings: [] },
+  });
+
+  assert.equal(combined.status, "blocked");
+  assert.deepEqual(combined.blockers, ["platform:video_codec_not_h264"]);
+  assert.deepEqual(combined.warnings, ["content:caption_timing_repaired"]);
+});
+
+test("attachPreflightQa marks candidates with read-only QA evidence", async () => {
+  const stories = [
+    baseStory({ id: "qa_pass", title: "Nintendo confirms a Switch 2 price outcome" }),
+    baseStory({ id: "qa_blocked", title: "Xbox boss confirms a pricing problem" }),
+  ];
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-05-15T09:00:00.000Z",
+  });
+
+  await attachPreflightQa(report, stories, {
+    runContentQa: async (story) =>
+      story.id === "qa_blocked"
+        ? { result: "fail", failures: ["script_validation_review_required"], warnings: [] }
+        : { result: "pass", failures: [], warnings: [] },
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+  });
+
+  const pass = report.candidates.find((candidate) => candidate.id === "qa_pass");
+  const blocked = report.candidates.find((candidate) => candidate.id === "qa_blocked");
+  assert.equal(pass.preflight_qa.status, "pass");
+  assert.equal(blocked.preflight_qa.status, "blocked");
+  assert.equal(blocked.status, "review");
+  assert.ok(report.preflight_qa.enabled);
+  assert.match(formatNextPublishCandidatesMarkdown(report), /preflight=blocked/);
 });

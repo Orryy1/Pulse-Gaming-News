@@ -1,12 +1,15 @@
 "use strict";
 
 const cp = require("node:child_process");
+const util = require("node:util");
 const fs = require("fs-extra");
 const path = require("node:path");
 const dotenv = require("dotenv");
 
 dotenv.config({ override: true });
+const execFileAsync = util.promisify(cp.execFile);
 const mediaPaths = require("../lib/media-paths");
+const { measureAudioLoudness } = require("../lib/audio-quality");
 const {
   buildTikTokDispatchManifest,
   renderTikTokDispatchMarkdown,
@@ -80,6 +83,82 @@ function mediaExists(rawPath) {
   return Boolean(candidate && fs.existsSync(candidate));
 }
 
+function countWords(text) {
+  return String(text || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+}
+
+function numberOrNull(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+async function enrichVoiceReportForDispatch(report, opts = {}) {
+  if (!report || typeof report !== "object") return report;
+  const narration =
+    report.narration ||
+    report.voice ||
+    report.audio?.narration ||
+    report.audio?.voice ||
+    null;
+  if (!narration || typeof narration !== "object") return report;
+
+  narration.acoustic =
+    narration.acoustic && typeof narration.acoustic === "object"
+      ? { ...narration.acoustic }
+      : {};
+
+  const durationSeconds = numberOrNull(
+    narration.acoustic.durationSeconds ||
+      narration.durationSeconds ||
+      narration.duration_seconds,
+  );
+  if (!numberOrNull(narration.wpm) && durationSeconds) {
+    const words = countWords(narration.transcript);
+    if (words > 0) {
+      narration.wpm = Math.round((words / durationSeconds) * 60);
+    }
+  }
+
+  const hasLoudness =
+    numberOrNull(narration.acoustic.integratedLufs) !== null ||
+    numberOrNull(narration.acoustic.truePeakDb) !== null;
+  if (hasLoudness) return report;
+
+  const audioPath =
+    narration.audioPath ||
+    narration.audio_path ||
+    narration.path ||
+    null;
+  const resolved = audioPath ? mediaPaths.resolveExistingSync(audioPath) : null;
+  if (!resolved || !fs.existsSync(resolved)) return report;
+
+  const loudness = await measureAudioLoudness({
+    inputPath: resolved,
+    execFileAsync: opts.execFileAsync || execFileAsync,
+    env: opts.env || process.env,
+  });
+  if (loudness?.ok) {
+    narration.acoustic.integratedLufs = loudness.integratedLufs;
+    narration.acoustic.truePeakDb = loudness.truePeakDb;
+    narration.acoustic.loudnessRange = loudness.loudnessRange;
+    narration.acoustic.loudnessMeasured = true;
+  }
+  return report;
+}
+
+async function enrichVoiceReportsForDispatch(reportsByStoryId = {}, opts = {}) {
+  const entries = Object.entries(reportsByStoryId || {});
+  await Promise.all(
+    entries.map(async ([storyId, report]) => {
+      reportsByStoryId[storyId] = await enrichVoiceReportForDispatch(report, opts);
+    }),
+  );
+  return reportsByStoryId;
+}
+
 function parseStoryIdArg(argv = process.argv.slice(2), env = process.env) {
   for (let index = 0; index < argv.length; index += 1) {
     const arg = String(argv[index] || "");
@@ -135,6 +214,7 @@ async function main() {
   const reportsByStoryId = await loadFinalVoiceReportsByStoryId(finalFiles, {
     outputDirs: [OUT],
   });
+  await enrichVoiceReportsForDispatch(reportsByStoryId);
   const finalVoiceAudit = buildFinalVoiceAudit({
     files: finalFiles,
     reportsByStoryId,
@@ -179,7 +259,14 @@ async function main() {
   console.log(`[tiktok-dispatch] discord=${path.relative(ROOT, discordPath)}`);
 }
 
-main().catch((err) => {
-  console.error(err.message || err);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(err.message || err);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = {
+  enrichVoiceReportForDispatch,
+  enrichVoiceReportsForDispatch,
+};

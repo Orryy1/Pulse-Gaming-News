@@ -93,7 +93,7 @@ test("final voice audit report is readable and does not mutate media", () => {
   assert.match(md, /approved_voice_metadata_missing/);
 });
 
-test("final voice audit markdown surfaces pitch, outro and WPM evidence", () => {
+test("final voice audit markdown surfaces pitch, loudness, true peak, outro and WPM evidence", () => {
   const report = buildFinalVoiceAudit({
     files: ["D:/pulse-data/media/output/final/rss_good.mp4"],
     reportsByStoryId: {
@@ -102,7 +102,7 @@ test("final voice audit markdown surfaces pitch, outro and WPM evidence", () => 
           provider: "elevenlabs",
           source: "elevenlabs-production-path",
           audioPath: "D:/pulse-data/media/output/audio/rss_good.mp3",
-          acoustic: { medianPitchHz: 118 },
+          acoustic: { medianPitchHz: 118, integratedLufs: -15.8, truePeakDb: -1.4 },
           transcript: "Follow Pulse Gaming so you never miss a beat.",
           wpm: 176,
         },
@@ -113,8 +113,40 @@ test("final voice audit markdown surfaces pitch, outro and WPM evidence", () => 
   const md = renderFinalVoiceAuditMarkdown(report);
 
   assert.match(md, /pitch=118Hz/);
+  assert.match(md, /lufs=-15\.8/);
+  assert.match(md, /tp=-1\.4dBTP/);
   assert.match(md, /outro=true/);
   assert.match(md, /wpm=176/);
+});
+
+test("final voice audit reviews local voice when true peak is too hot for social transcodes", () => {
+  const row = classifyFinalRenderVoice({
+    mp4Path: "D:/pulse-data/media/output/final/rss_hot.mp4",
+    report: {
+      narration: {
+        provider: "local",
+        source: "local-production-voxcpm",
+        audioPath: "D:/pulse-data/media/output/audio/rss_hot.mp3",
+        approvedLocalVoice: true,
+        acceptedLocalVoice: {
+          id: "pulse-sleepy-liam-20260502",
+          fileName: "pulse_liam_sleepy.wav",
+          referencePresent: true,
+          referenceHash: "a".repeat(40),
+        },
+        acoustic: { medianPitchHz: 118, integratedLufs: -13.3, truePeakDb: 0.4 },
+        voiceMastering: { ok: true, code: "voice_mastered", targetLufs: -16 },
+        transcript: "A clean local render. Follow Pulse Gaming so you never miss a beat.",
+        wpm: 168,
+      },
+    },
+    env: { STUDIO_V2_LOCAL_VOICE_APPROVED: "true" },
+  });
+
+  assert.equal(row.verdict, "review");
+  assert.ok(row.warnings.includes("voice_true_peak_too_hot"));
+  assert.ok(row.warnings.includes("voice_loudness_too_hot"));
+  assert.equal(row.do_not_reuse_for_tiktok_dispatch, true);
 });
 
 test("final voice report loader finds sidecar reports for dispatch tooling", async () => {
@@ -169,8 +201,9 @@ test("final voice report loader falls back to local TTS timestamp metadata", asy
         referencePresent: true,
         referenceHash: "4bb87b65b64213fd8447ef1146eda42035b89f51",
       },
-      acoustic: { medianPitchHz: 118, integratedLufs: -14.4 },
-      voiceMastering: { ok: true, code: "voice_mastered", targetLufs: -14 },
+      acoustic: { medianPitchHz: 118, integratedLufs: -15.8, truePeakDb: -1.4 },
+      voiceMastering: { ok: true, code: "voice_mastered", targetLufs: -16 },
+      wpm: 168,
     },
   });
 

@@ -88,3 +88,49 @@ test("selectRenderImagesForBrightness: keeps all-dark decks intact", async () =>
   assert.deepEqual(result.demoted, []);
   assert.equal(result.reason, "all_images_dark_or_unscored");
 });
+
+test("selectRenderImagesForBrightness: demotes a dark opener even when it is not dark enough to drop", async () => {
+  const dimOpener = "dim-store-hero.jpg";
+  const brightA = "bright-screenshot-a.jpg";
+  const brightB = "bright-screenshot-b.jpg";
+
+  const result = await v.selectRenderImagesForBrightness(
+    [dimOpener, brightA, brightB],
+    {
+      sharp: fakeSharpStats({
+        [dimOpener]: { mean: 36, stdev: 5 },
+        [brightA]: { mean: 118, stdev: 16 },
+        [brightB]: { mean: 94, stdev: 14 },
+      }),
+      darkLumaThreshold: 24,
+      openingDarkLumaThreshold: 48,
+      minBrightImagesToDropDark: 3,
+    },
+  );
+
+  assert.deepEqual(result.images, [brightA, brightB, dimOpener]);
+  assert.deepEqual(result.dropped, []);
+  assert.equal(result.demoted.length, 1);
+  assert.equal(result.demoted[0].path, dimOpener);
+  assert.equal(result.demoted[0].reason, "opening_dark_low_luma");
+  assert.equal(result.reason, "demoted_dark_opening_image");
+});
+
+test("selectRenderImagesForBrightness: keeps a dim opener when there is no brighter alternative", async () => {
+  const dimOpener = "dim-store-hero.jpg";
+  const dimB = "dim-screenshot-b.jpg";
+
+  const result = await v.selectRenderImagesForBrightness([dimOpener, dimB], {
+    sharp: fakeSharpStats({
+      [dimOpener]: { mean: 36, stdev: 5 },
+      [dimB]: { mean: 42, stdev: 7 },
+    }),
+    darkLumaThreshold: 24,
+    openingDarkLumaThreshold: 48,
+  });
+
+  assert.deepEqual(result.images, [dimOpener, dimB]);
+  assert.deepEqual(result.dropped, []);
+  assert.deepEqual(result.demoted, []);
+  assert.equal(result.reason, "no_dark_images");
+});

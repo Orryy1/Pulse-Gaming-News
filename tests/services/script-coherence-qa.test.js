@@ -267,6 +267,34 @@ test("script coherence blocks broader internal signal and tracking language", ()
   );
 });
 
+test("script coherence blocks overused clickbait pivots that make stories sound generic", () => {
+  const qa = runScriptCoherenceQa(
+    {
+      title: "Nintendo confirms a Switch 2 bundle",
+      source_type: "rss",
+      subreddit: "Nintendo",
+      cta: "Follow Pulse Gaming so you never miss a beat",
+      full_script:
+        "Nintendo confirmed a Switch 2 bundle with a named release window. But here is where it gets interesting. Nobody expected the pricing angle, and that changes everything. Follow Pulse Gaming so you never miss a beat.",
+    },
+    { requireCtaField: true, requireFullScriptCta: true },
+  );
+
+  assert.equal(qa.result, "fail");
+  assert.ok(
+    qa.failures.includes("script_coherence:vague_filler:formulaic_pivot"),
+    qa.failures.join(", "),
+  );
+  assert.ok(
+    qa.failures.includes("script_coherence:vague_filler:nobody_expected_or_noticed"),
+    qa.failures.join(", "),
+  );
+  assert.ok(
+    qa.failures.includes("script_coherence:vague_filler:changes_everything"),
+    qa.failures.join(", "),
+  );
+});
+
 test("script coherence blocks false bill ownership and mangled campaign names", () => {
   const qa = runScriptCoherenceQa(
     {

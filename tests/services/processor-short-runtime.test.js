@@ -201,6 +201,17 @@ test("Pulse channel prompt does not request fake verified-insider attribution", 
   assert.match(channelSource, /Do not invent insider attribution/);
 });
 
+test("Pulse channel prompt bans internal strategy boilerplate from narration", () => {
+  const channelSource = fs.readFileSync(
+    path.join(__dirname, "..", "..", "channels", "pulse-gaming.js"),
+    "utf8",
+  );
+
+  assert.match(channelSource, /Do not write internal Pulse strategy language/);
+  assert.match(channelSource, /direction of travel/);
+  assert.match(channelSource, /signal first/);
+});
+
 test("processor editor prompt: non-Pulse channels keep legacy long-form short range", () => {
   const instruction = processor.editorWordCountInstruction({
     id: "the-signal",

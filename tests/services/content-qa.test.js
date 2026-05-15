@@ -237,6 +237,27 @@ test("runContentQa: general Reddit posts cannot invent insider/source attributio
   );
 });
 
+test("runContentQa: legacy approved direct Reddit media community posts fail preflight", async () => {
+  const story = goodStory({
+    title: "Came across a much simpler time in gaming today",
+    source_type: "reddit",
+    subreddit: "gaming",
+    article_url: "https://i.redd.it/example.jpeg",
+    full_script:
+      "Players are revisiting a nostalgic gaming image today. It is a community media post, not a sourced news development, so it should not become a Pulse Gaming news Short. Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  const qa = await runContentQa(story, {
+    fs: fakeFs({ [story.exported_path]: { size: 5 * 1024 * 1024 } }),
+  });
+
+  assert.strictEqual(qa.result, "fail");
+  assert.ok(
+    qa.failures.includes("community_reddit_media_not_news"),
+    `got: ${qa.failures.join(", ")}`,
+  );
+});
+
 test("runContentQa: coherence gate blocks vague filler and non-exact CTA", async () => {
   const story = goodStory({
     full_script:

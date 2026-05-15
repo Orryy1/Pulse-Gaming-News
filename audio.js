@@ -703,18 +703,30 @@ function markAudioGenerationFailure(
   const code = failure.code || "audio_generation_failed";
   const message = failure.message || safeAudioErrorMessage(err);
   const failedAt = now().toISOString();
+  const pendingLocalResource =
+    normalisedProvider === "local" && code === "gpu_saturated";
 
   if (story && typeof story === "object") {
-    story.qa_failed = true;
-    story.qa_failures = [`audio_generation_failed:${code}`];
-    story.qa_warnings = story.qa_warnings || [];
-    story.qa_failed_at = failedAt;
-    story.publish_status = "failed";
-    story.publish_error = `audio_generation_failed: ${code}: ${message}`.slice(0, 280);
+    if (pendingLocalResource) {
+      story.qa_failed = false;
+      story.qa_failures = [];
+      story.qa_warnings = [`audio_generation_pending:${code}`];
+      story.qa_failed_at = null;
+      story.publish_status = "pending_audio";
+      story.publish_error = `audio_generation_pending: ${code}: ${message}`.slice(0, 280);
+    } else {
+      story.qa_failed = true;
+      story.qa_failures = [`audio_generation_failed:${code}`];
+      story.qa_warnings = story.qa_warnings || [];
+      story.qa_failed_at = failedAt;
+      story.publish_status = "failed";
+      story.publish_error = `audio_generation_failed: ${code}: ${message}`.slice(0, 280);
+    }
     story.audio_generation_failure = {
       provider: normalisedProvider,
       code,
       message,
+      pending: pendingLocalResource,
       at: failedAt,
     };
     if (normalisedProvider === "local") {

@@ -16,6 +16,9 @@ const fs = require("fs-extra");
 const path = require("path");
 const { similarity } = require("./hunter");
 const db = require("./lib/db");
+const {
+  shouldRejectGeneralRedditForNews,
+} = require("./lib/community-discussion-gate");
 
 const COOLDOWN_MS = 2 * 60 * 60 * 1000; // 2 hours between breaking publishes
 const BREAKING_LOG = path.join(__dirname, "breaking_log.json");
@@ -109,6 +112,28 @@ async function isDuplicate(story, { dbHandle = db } = {}) {
   return stories.some((s) => similarity(s.title, story.title) > 0.5);
 }
 
+function getBreakingFastLaneBlockReason(story = {}) {
+  if (story.script_generation_status === "review_required") {
+    return `script_review:${story.script_review_reason || "validation_failed"}`;
+  }
+  if (story.script_review_reason) {
+    return `script_review:${story.script_review_reason}`;
+  }
+  if (
+    Array.isArray(story.script_validation_errors) &&
+    story.script_validation_errors.length > 0
+  ) {
+    return "script_review:script_validation_errors";
+  }
+  if (story.script_validation_errors && !Array.isArray(story.script_validation_errors)) {
+    return "script_review:script_validation_errors";
+  }
+  if (shouldRejectGeneralRedditForNews(story)) {
+    return "community_reddit_media_not_news";
+  }
+  return null;
+}
+
 // --- Fast pipeline: process a single breaking story end-to-end ---
 async function runFastPipeline(story) {
   const startTime = Date.now();
@@ -143,6 +168,19 @@ async function runFastPipeline(story) {
     const newStory = await db.getStory(story.id);
     if (!newStory) {
       console.log("[breaking] Processor did not produce a story:aborting");
+      return null;
+    }
+
+    const blockReason = getBreakingFastLaneBlockReason(newStory);
+    if (blockReason) {
+      console.log(`[breaking] Fast lane blocked before approval: ${blockReason}`);
+      newStory.approved = false;
+      newStory.auto_approved = false;
+      newStory.script_generation_status =
+        newStory.script_generation_status || "review_required";
+      newStory.script_review_reason =
+        newStory.script_review_reason || blockReason;
+      await db.upsertStory(newStory);
       return null;
     }
 
@@ -331,4 +369,9 @@ function getQueueStatus() {
   };
 }
 
-module.exports = { queueBreaking, getQueueStatus, isDuplicate };
+module.exports = {
+  queueBreaking,
+  getQueueStatus,
+  isDuplicate,
+  getBreakingFastLaneBlockReason,
+};

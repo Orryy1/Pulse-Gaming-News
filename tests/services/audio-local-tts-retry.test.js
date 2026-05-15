@@ -438,3 +438,28 @@ test("markAudioGenerationFailure: records local TTS voice failures on the story"
   assert.equal(story.local_tts_failure.requires_server_reset, false);
   assert.equal(story.qa_failed_at, "2026-05-13T00:00:00.000Z");
 });
+
+test("markAudioGenerationFailure: GPU saturation is pending audio, not hard QA failure", () => {
+  const story = {
+    id: "gpu-busy",
+    title: "GPU busy",
+    qa_failed: true,
+    qa_failures: ["audio_generation_failed:tts_timeout"],
+    qa_failed_at: "2026-05-13T00:00:00.000Z",
+  };
+  const failure = markAudioGenerationFailure(
+    story,
+    new Error("local_tts_gpu_busy: GPU free memory 702MB is below 3072MB"),
+    { provider: "local", now: () => new Date("2026-05-15T19:30:00.000Z") },
+  );
+
+  assert.equal(failure.code, "gpu_saturated");
+  assert.equal(story.qa_failed, false);
+  assert.deepEqual(story.qa_failures, []);
+  assert.deepEqual(story.qa_warnings, ["audio_generation_pending:gpu_saturated"]);
+  assert.equal(story.qa_failed_at, null);
+  assert.equal(story.publish_status, "pending_audio");
+  assert.match(story.publish_error, /audio_generation_pending: gpu_saturated/);
+  assert.equal(story.audio_generation_failure.pending, true);
+  assert.equal(story.local_tts_failure.requires_server_reset, false);
+});

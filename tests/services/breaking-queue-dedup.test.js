@@ -13,7 +13,10 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { isDuplicate } = require("../../breaking_queue");
+const {
+  isDuplicate,
+  getBreakingFastLaneBlockReason,
+} = require("../../breaking_queue");
 
 /** Minimal in-memory db shim — mirrors lib/db's getStories contract. */
 function makeDbShim(stories = []) {
@@ -128,4 +131,33 @@ test("isDuplicate: treats DUPE_* sentinel strings in legacy rows as not-publishe
   // future cleanup decides to filter sentinels inside isDuplicate,
   // update this assertion to reflect the new contract.
   assert.equal(out, true);
+});
+
+test("breaking fast lane blocks community media stories before approval", () => {
+  const reason = getBreakingFastLaneBlockReason({
+    id: "nostalgia",
+    title: "Came across a much simpler time in gaming today",
+    source_type: "reddit",
+    subreddit: "gaming",
+    article_url: "https://i.redd.it/example.jpeg",
+  });
+
+  assert.equal(reason, "community_reddit_media_not_news");
+});
+
+test("breaking fast lane blocks processor review scripts before approval", () => {
+  const reason = getBreakingFastLaneBlockReason({
+    id: "bad-script",
+    title: "Subnautica 2 sales post",
+    source_type: "reddit",
+    subreddit: "gaming",
+    article_url: "https://www.rockpapershotgun.com/subnautica-2",
+    script_generation_status: "review_required",
+    script_review_reason: "script_coherence:verified_reddit_post_as_source",
+  });
+
+  assert.equal(
+    reason,
+    "script_review:script_coherence:verified_reddit_post_as_source",
+  );
 });

@@ -6,6 +6,7 @@ const assert = require("node:assert/strict");
 const {
   buildPublishCadenceReport,
   classifyPublishEvent,
+  computeNextSafePublishWindow,
   formatPublishCadenceMarkdown,
 } = require("../../lib/ops/publish-cadence");
 
@@ -104,7 +105,10 @@ test("buildPublishCadenceReport: flags bursts, off-schedule posts and failed row
   assert.equal(report.summary.off_schedule_count, 4);
   assert.equal(report.summary.burst_pairs, 3);
   assert.equal(report.failed_rows_with_platform_ids.length, 1);
+  assert.equal(report.summary.failed_rows_with_platform_ids_recent, 1);
+  assert.equal(report.summary.failed_rows_with_platform_ids_historical, 0);
   assert.equal(report.invalid_public_story_rows.length, 1);
+  assert.equal(report.next_safe_publish.next_safe_publish_at_utc, "2026-05-16T09:00:00.000Z");
   assert.deepEqual(
     report.direct_publish_route_candidates.map((route) => route.id),
     [
@@ -138,6 +142,55 @@ test("buildPublishCadenceReport: failed rows with platform IDs are not counted a
   assert.equal(report.summary.published_count, 0);
   assert.equal(report.publish_events.length, 0);
   assert.equal(report.failed_rows_with_platform_ids.length, 1);
+  assert.equal(report.summary.failed_rows_with_platform_ids_recent, 1);
+});
+
+test("buildPublishCadenceReport: historical failed rows with platform IDs are cleanup notes, not cadence advisories", () => {
+  const report = buildPublishCadenceReport({
+    now: "2026-05-15T00:00:00.000Z",
+    windowHours: 24,
+    stories: [
+      {
+        id: "old_failed_partial",
+        title: "Old failed row with partial platform state",
+        publish_status: "failed",
+        updated_at: "2026-05-10T23:30:00.000Z",
+        instagram_media_id: "ig_partial",
+      },
+    ],
+    jobs: [],
+  });
+
+  assert.equal(report.verdict, "green");
+  assert.equal(report.summary.published_count, 0);
+  assert.equal(report.summary.failed_rows_with_platform_ids, 1);
+  assert.equal(report.summary.failed_rows_with_platform_ids_recent, 0);
+  assert.equal(report.summary.failed_rows_with_platform_ids_historical, 1);
+  assert.deepEqual(report.advisory, []);
+  assert.match(
+    formatPublishCadenceMarkdown(report),
+    /do not block current cadence/i,
+  );
+});
+
+test("computeNextSafePublishWindow: waits until cap clears then picks next canonical window", () => {
+  const next = computeNextSafePublishWindow({
+    nowDate: "2026-05-15T00:53:00.000Z",
+    expectedHoursUtc: [9, 14, 19],
+    minRecommendedGapMinutes: 120,
+    maxRecommendedPostsPer24h: 3,
+    publishEvents: [
+      { id: "a", published_at: "2026-05-14T01:08:00.000Z" },
+      { id: "b", published_at: "2026-05-14T03:49:00.000Z" },
+      { id: "c", published_at: "2026-05-14T07:04:00.000Z" },
+      { id: "d", published_at: "2026-05-14T08:03:00.000Z" },
+      { id: "e", published_at: "2026-05-14T19:03:00.000Z" },
+    ],
+  });
+
+  assert.equal(next.earliest_possible_at_utc, "2026-05-15T07:05:00.000Z");
+  assert.equal(next.next_safe_publish_at_utc, "2026-05-15T09:00:00.000Z");
+  assert.equal(next.blockers[0].type, "post_cap");
 });
 
 test("formatPublishCadenceMarkdown: renders operator-readable warnings", () => {
@@ -152,6 +205,8 @@ test("formatPublishCadenceMarkdown: renders operator-readable warnings", () => {
       scheduled_count: 1,
       burst_pairs: 1,
       min_gap_minutes: 31,
+      failed_rows_with_platform_ids_recent: 0,
+      failed_rows_with_platform_ids_historical: 0,
     },
     publish_events: [
       {

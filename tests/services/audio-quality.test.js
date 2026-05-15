@@ -8,7 +8,9 @@ const path = require("path");
 const {
   buildNarrationMusicMixFilter,
   buildNarrationOnlyMixFilter,
+  buildFinalVideoAudioRepairArgs,
   buildVoiceMasteringFilter,
+  repairFinalVideoAudioLoudness,
   masterTtsAudioFile,
   parseFfmpegLoudnessStats,
   shouldMasterTtsAudio,
@@ -23,9 +25,9 @@ test("buildNarrationMusicMixFilter: preserves narration level when adding music"
 
   assert.match(filter, /amix=inputs=2:duration=first/);
   assert.match(filter, /normalize=0/);
-  assert.match(filter, /loudnorm=I=-15:TP=-2:LRA=8/);
-  assert.match(filter, /alimiter=limit=0\.8/);
-  assert.equal(filter, "[voice][bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,loudnorm=I=-15:TP=-2:LRA=8,alimiter=limit=0.8[outa]");
+  assert.match(filter, /loudnorm=I=-15:TP=-2\.5:LRA=8/);
+  assert.match(filter, /alimiter=limit=0\.74/);
+  assert.equal(filter, "[voice][bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,loudnorm=I=-15:TP=-2.5:LRA=8,alimiter=limit=0.74[outa]");
 });
 
 test("buildNarrationOnlyMixFilter: masters narration when no music bed is present", () => {
@@ -37,8 +39,60 @@ test("buildNarrationOnlyMixFilter: masters narration when no music bed is presen
   assert.match(filter, /^\[voice\]highpass=f=90/);
   assert.match(filter, /equalizer=f=3200:t=q:w=1\.1:g=1\.8/);
   assert.match(filter, /acompressor=threshold=-22dB:ratio=2\.0/);
-  assert.match(filter, /loudnorm=I=-15:TP=-2:LRA=8/);
-  assert.match(filter, /alimiter=limit=0\.8\[outa\]$/);
+  assert.match(filter, /loudnorm=I=-15:TP=-2\.5:LRA=8/);
+  assert.match(filter, /alimiter=limit=0\.74\[outa\]$/);
+});
+
+test("buildFinalVideoAudioRepairArgs: remasters final MP4 audio without re-encoding video", () => {
+  const args = buildFinalVideoAudioRepairArgs({
+    inputPath: "input.mp4",
+    outputPath: "output.mp4",
+  });
+
+  assert.deepEqual(args.slice(0, 6), ["-y", "-hide_banner", "-loglevel", "error", "-i", "input.mp4"]);
+  assert.ok(args.includes("-map"));
+  assert.ok(args.includes("0:v:0"));
+  assert.ok(args.includes("-c:v"));
+  assert.ok(args.includes("copy"));
+  assert.ok(args.includes("-af"));
+  assert.match(args[args.indexOf("-af") + 1], /loudnorm=I=-15:TP=-2\.5:LRA=8/);
+  assert.match(args[args.indexOf("-af") + 1], /alimiter=limit=0\.74/);
+  assert.ok(args.includes("-movflags"));
+  assert.equal(args[args.length - 1], "output.mp4");
+});
+
+test("repairFinalVideoAudioLoudness: backs up and replaces same-path repairs only after a clean transcode", async () => {
+  const dir = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "final-audio-repair-"));
+  const inputPath = path.join(dir, "story.mp4");
+  fs.writeFileSync(inputPath, "original mp4");
+  const calls = [];
+  const execFileAsync = async (_cmd, args) => {
+    calls.push(args);
+    if (args.includes("-c:v")) {
+      fs.writeFileSync(args[args.length - 1], "repaired mp4");
+      return { stdout: "", stderr: "" };
+    }
+    return {
+      stdout: "",
+      stderr: `{
+        "input_i" : "-15.10",
+        "input_tp" : "-2.20",
+        "input_lra" : "2.10"
+      }`,
+    };
+  };
+
+  const result = await repairFinalVideoAudioLoudness({
+    inputPath,
+    execFileAsync,
+    now: new Date("2026-05-15T04:00:00Z"),
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(fs.readFileSync(inputPath, "utf8"), "repaired mp4");
+  assert.equal(fs.readFileSync(result.backupPath, "utf8"), "original mp4");
+  assert.equal(result.after.acoustic.truePeakDb, -2.2);
+  assert.equal(calls.length, 2);
 });
 
 test("buildVoiceMasteringFilter: normalises local narration for crisp social-video playback", () => {

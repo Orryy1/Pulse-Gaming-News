@@ -72,6 +72,19 @@ test("assemble.js fallback path lowers render_quality_class to fallback when sin
 
 // ── content-qa picks up outro_present ─────────────────────────────
 
+test("assemble.js can force selected legacy unstamped renders through fresh rerender", () => {
+  assert.match(
+    ASSEMBLE_SRC,
+    /FORCE_RERENDER_LEGACY_UNSTAMPED/,
+    "operator-targeted legacy rerender flag must exist",
+  );
+  assert.match(
+    ASSEMBLE_SRC,
+    /legacy unstamped render selected for fresh rerender[\s\S]{0,240}?s\.exported_path\s*=\s*null/,
+    "legacy unstamped rerender path must clear only exported_path so assemble regenerates the MP4",
+  );
+});
+
 function fakeFs(map) {
   return {
     async pathExists(p) {

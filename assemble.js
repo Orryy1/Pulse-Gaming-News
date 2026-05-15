@@ -1691,6 +1691,31 @@ async function assemble() {
       continue;
     }
     const stat = await fs.stat(resolved);
+    const hasRenderStamp =
+      typeof s.render_lane === "string" &&
+      s.render_lane.length > 0 &&
+      typeof s.render_quality_class === "string" &&
+      s.render_quality_class.length > 0;
+    const forceLegacyUnstampedRerender =
+      /^(true|1|yes|on)$/i.test(
+        String(process.env.FORCE_RERENDER_LEGACY_UNSTAMPED || ""),
+      ) && !hasRenderStamp;
+    if (forceLegacyUnstampedRerender) {
+      console.log(
+        `[assemble] ${s.id}: legacy unstamped render selected for fresh rerender (platform ids preserved)`,
+      );
+      s.exported_path = null;
+      s.render_fallback_reason = "legacy_unstamped_force_rerender";
+      s.render_fallback_at = new Date().toISOString();
+      try {
+        await db.upsertStory(s);
+      } catch (err) {
+        console.log(
+          `[assemble] ${s.id}: failed to persist legacy unstamped rerender marker: ${err.message}`,
+        );
+      }
+      continue;
+    }
     if (stat.size < 500 * 1024) {
       console.log(
         `[assemble] ${s.id}: exported file only ${Math.round(stat.size / 1024)}KB - re-rendering`,

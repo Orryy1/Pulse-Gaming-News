@@ -1,6 +1,6 @@
 # Local Resume Posting Plan
 
-Generated: 2026-05-13T10:25:52.474Z
+Generated: 2026-05-15T01:39:47.217Z
 Verdict: GREEN
 Status: ready_to_resume_local_automatic_posting
 Safety: read-only plan; does not edit .env, start Cloudflare, switch primary, mutate tokens, post, touch Railway or trigger OAuth
@@ -29,7 +29,7 @@ Safety: read-only plan; does not edit .env, start Cloudflare, switch primary, mu
 - YouTube: working
 - Instagram Reel: working
 - Facebook Reel: working
-- TikTok: blocked_external; token_ok=false; route=creative_review_required_before_inbox; blocks_core_resume=false
+- TikTok: blocked_external; token_ok=true; route=ready_pending_explicit_upload_approval; blocks_core_resume=false
 
 ## Quality Lane
 - ready_flash_proof_count: 0
@@ -48,15 +48,23 @@ Safety: read-only plan; does not edit .env, start Cloudflare, switch primary, mu
 - rss_ef7e6e464509e0bc: 73.92s; audio=test/output/local-script-extension/audio/rss_ef7e6e464509e0bc_liam_extended.mp3; safe_to_publish_now=false; requires clean local MP4 rerender
 - 1t0zhng: 71.52s; audio=test/output/local-script-extension/audio/1t0zhng_liam_extended.mp3; safe_to_publish_now=false; requires clean local MP4 rerender
 - rss_7945f462187bd7f8: 70.56s; audio=test/output/local-media-repair/audio/rss_7945f462187bd7f8_liam.mp3; safe_to_publish_now=false; requires clean local MP4 rerender
+- 1tcabvy: 69.44s; audio=test/output/local-media-repair/audio/1tcabvy_liam.mp3; safe_to_publish_now=false; requires clean local MP4 rerender
 - rss_2d69aa8506934c5e: 68.48s; audio=test/output/local-script-extension/audio/rss_2d69aa8506934c5e_liam_extended.mp3; safe_to_publish_now=false; requires clean local MP4 rerender
+- 1tb5izu: 67.52s; audio=test/output/local-script-extension/audio/1tb5izu_liam_extended.mp3; safe_to_publish_now=false; requires clean local MP4 rerender
 - rss_1b7c404fc657548f: 66.08s; audio=test/output/local-script-extension/audio/rss_1b7c404fc657548f_liam_extended.mp3; safe_to_publish_now=false; requires clean local MP4 rerender
+- 1tb2q61: 63.36s; audio=test/output/local-media-repair/audio/1tb2q61_liam.mp3; safe_to_publish_now=false; requires clean local MP4 rerender
 - rss_6d8aaac7eccad2ff: 62.72s; audio=test/output/local-script-extension/audio/rss_6d8aaac7eccad2ff_liam_extended.mp3; safe_to_publish_now=false; requires clean local MP4 rerender
 - rss_6edbb38dc280fc96: 62.08s; audio=test/output/local-script-extension/audio/rss_6edbb38dc280fc96_liam_extended.mp3; safe_to_publish_now=false; requires clean local MP4 rerender
 
 ## Rejected Local Audio Proofs
 - rss_6edbb38dc280fc96: duration_too_short; duration=57.12
 - rss_c4cabfc862af7b64: duration_too_short; duration=54.56
+- 1tb3i1r: duration_too_short; duration=56.48
+- 1t186u4: duration_too_short; duration=60.8
+- 1tb3i1r: duration_too_short; duration=57.76
+- 1tbdx3b: connection_reset; duration=unknown
 - rss_2d69aa8506934c5e: tts_timeout; duration=unknown
+- 1tb5izu: connection_reset; duration=unknown
 
 ## Warnings
 - TikTok is not a blocker for resuming YouTube/Instagram/Facebook, but automated TikTok remains blocked.
@@ -73,7 +81,6 @@ Safety: read-only plan; does not edit .env, start Cloudflare, switch primary, mu
 ## Morning Approval Queue
 - local_primary_cutover: approve_when_ready
 - temporary_elevenlabs_bridge: allow_temporarily_but_keep_local_liam_as_target
-- tiktok_route_recovery: prepare_tooling_now_operator_test_later
 
 ## Commands
 - local_posting_readiness: `npm run ops:local-posting-readiness`

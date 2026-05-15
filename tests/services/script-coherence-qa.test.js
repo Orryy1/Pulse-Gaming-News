@@ -172,3 +172,49 @@ test("script coherence blocks vague sources on general Reddit rows", () => {
     qa.failures.join(", "),
   );
 });
+
+test("script coherence blocks verified Reddit posts and Redditors as factual sources", () => {
+  const qa = runScriptCoherenceQa(
+    {
+      title: "Subnautica 2 sales are moving quickly",
+      source_type: "reddit",
+      subreddit: "pcgaming",
+      article_url: "https://aftermath.site/subnautica-2-units-sold-250-million-bonus-krafton/",
+      cta: "Follow Pulse Gaming so you never miss a beat",
+      full_script:
+        "According to a verified Reddit post, Subnautica 2 has already triggered a massive payout story. One Redditor thinks Krafton is about to pay the whole bonus. Follow Pulse Gaming so you never miss a beat.",
+    },
+    { requireCtaField: true, requireFullScriptCta: true },
+  );
+
+  assert.equal(qa.result, "fail");
+  assert.ok(
+    qa.failures.includes("script_coherence:verified_reddit_post_as_source"),
+    qa.failures.join(", "),
+  );
+  assert.ok(
+    qa.failures.includes("script_coherence:redditor_as_source_fact"),
+    qa.failures.join(", "),
+  );
+});
+
+test("script coherence blocks hedged stories being overclaimed as confirmed payouts", () => {
+  const qa = runScriptCoherenceQa(
+    {
+      title: "Sure Seems Like Subnautica 2’s Developers Are Going To Get Their $250 Million Bonus",
+      source_type: "reddit",
+      subreddit: "pcgaming",
+      article_url: "https://aftermath.site/subnautica-2-units-sold-250-million-bonus-krafton/",
+      cta: "Follow Pulse Gaming so you never miss a beat",
+      full_script:
+        "Krafton just paid out $250 million for Subnautica 2, and that is now confirmed. Follow Pulse Gaming so you never miss a beat.",
+    },
+    { requireCtaField: true, requireFullScriptCta: true },
+  );
+
+  assert.equal(qa.result, "fail");
+  assert.ok(
+    qa.failures.includes("script_coherence:hedged_story_overclaimed"),
+    qa.failures.join(", "),
+  );
+});

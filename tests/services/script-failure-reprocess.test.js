@@ -160,6 +160,14 @@ test("selectReprocessableScriptFailureStories targets source-backed coherence re
         title: "Image-only Reddit post should not be treated as sourced news",
         script_review_reason: "script_coherence:missing_exact_cta_in_script",
       },
+      {
+        id: "video-only",
+        source_type: "reddit",
+        subreddit: "pcmasterrace",
+        article_url: "https://v.redd.it/direct-video",
+        title: "Video-only Reddit post should not be treated as sourced news",
+        script_review_reason: "script_coherence:missing_exact_cta_in_script",
+      },
     ],
   });
 

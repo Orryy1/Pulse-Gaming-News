@@ -9,11 +9,12 @@ const {
   applyLocalProofTtsLimits,
 } = require("../../lib/ops/local-proof-tts-limits");
 
-test("local proof TTS limits cap apply-local jobs by default", () => {
+test("local proof TTS limits give long local Liam proofs a ten minute default", () => {
   const env = {};
 
   const result = applyLocalProofTtsLimits(env);
 
+  assert.equal(DEFAULT_LOCAL_PROOF_TTS_TIMEOUT_MS, 600000);
   assert.equal(result.local_tts_timeout_ms, DEFAULT_LOCAL_PROOF_TTS_TIMEOUT_MS);
   assert.equal(result.local_tts_request_attempts, DEFAULT_LOCAL_PROOF_TTS_ATTEMPTS);
   assert.equal(env.LOCAL_TTS_TIMEOUT_MS, String(DEFAULT_LOCAL_PROOF_TTS_TIMEOUT_MS));

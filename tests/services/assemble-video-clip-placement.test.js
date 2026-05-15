@@ -3,7 +3,11 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { planLegacyVisualSequence } = require("../../assemble");
+const {
+  filterLegacyRenderImageEntriesForSafety,
+  legacyRenderImageSafetyVerdict,
+  planLegacyVisualSequence,
+} = require("../../assemble");
 
 test("legacy visual planner keeps slot 0 as still image by default", () => {
   const plan = planLegacyVisualSequence(
@@ -42,4 +46,62 @@ test("legacy visual planner can still opt into hook video placement explicitly",
   assert.equal(plan.visualPaths[0], "clip0.mp4");
   assert.equal(plan.isVideoSlot[0], true);
   assert.equal(plan.placements[0].reason, "hook_video_slot");
+});
+
+test("legacy render image safety rejects low-relevance article inline portraits", () => {
+  const verdict = legacyRenderImageSafetyVerdict(
+    {
+      title:
+        "California bill backed by Stop Killing Games campaign clears committee",
+    },
+    {
+      path: "output/image_cache/story_article_inline_1.jpg",
+      type: "article_inline",
+      source: "article",
+      thumbnail_safety_score: 30,
+      thumbnail_safety_warnings: ["article_image_relevance_review"],
+    },
+    { likely_has_face: true },
+  );
+
+  assert.equal(verdict.allow, false);
+  assert.ok(verdict.reasons.includes("thumbnail_safety_low_score"));
+  assert.ok(verdict.reasons.includes("low_relevance_article_inline"));
+  assert.ok(verdict.reasons.includes("unsafe_face_like_render_image"));
+});
+
+test("legacy render image safety dedupes repeated article images", async () => {
+  const result = await filterLegacyRenderImageEntriesForSafety(
+    { title: "Stop Killing Games campaign update" },
+    [
+      {
+        path: "C:/cache/article.jpg",
+        image: {
+          path: "output/image_cache/story_article.jpg",
+          type: "article_hero",
+          source: "article",
+          thumbnail_safety_score: 100,
+        },
+      },
+      {
+        path: "C:/cache/article-copy.jpg",
+        image: {
+          path: "output/image_cache/story_article_inline_0.jpg",
+          type: "article_inline",
+          source: "article",
+          thumbnail_safety_score: 90,
+        },
+      },
+    ],
+    {
+      prescanImage: async () => ({ likely_has_face: false }),
+      computeContentHash: async () => "same-hash",
+    },
+  );
+
+  assert.equal(result.kept.length, 1);
+  assert.equal(result.rejected.length, 1);
+  assert.deepEqual(result.rejected[0].verdict.reasons, [
+    "duplicate_render_image",
+  ]);
 });

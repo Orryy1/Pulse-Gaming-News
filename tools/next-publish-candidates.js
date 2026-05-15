@@ -279,6 +279,13 @@ function pendingAudioReason(story = {}) {
   if (status !== "pending_audio" && !/^audio_generation_pending:/i.test(error)) {
     return null;
   }
+  if (
+    story.qa_failed !== true &&
+    story.audio_path &&
+    story.exported_path
+  ) {
+    return null;
+  }
   const gpuSaturated =
     /gpu_saturated/i.test(error) ||
     parseFailureList(story.qa_warnings).some((warning) =>

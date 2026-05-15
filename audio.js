@@ -742,6 +742,42 @@ function markAudioGenerationFailure(
   return failure;
 }
 
+function clearAudioGenerationState(story) {
+  if (!story || typeof story !== "object") return story;
+
+  const warnings = Array.isArray(story.qa_warnings) ? story.qa_warnings : [];
+  story.qa_warnings = warnings.filter(
+    (warning) => !/^audio_generation_pending:/i.test(String(warning || "")),
+  );
+
+  const failures = Array.isArray(story.qa_failures) ? story.qa_failures : [];
+  const remainingFailures = failures.filter(
+    (failure) =>
+      !/^audio_generation_failed:/i.test(String(failure || "")) &&
+      !/^audio_duration_too_long\b/i.test(String(failure || "")),
+  );
+  story.qa_failures = remainingFailures;
+  if (remainingFailures.length === 0) {
+    story.qa_failed = false;
+    story.qa_failed_at = null;
+  }
+
+  const publishStatus = String(story.publish_status || "").toLowerCase();
+  const publishError = String(story.publish_error || "");
+  if (
+    publishStatus === "pending_audio" ||
+    /^audio_generation_(?:pending|failed):/i.test(publishError) ||
+    /^qa_blocked:\s*audio_duration_too_long\b/i.test(publishError)
+  ) {
+    story.publish_status = null;
+    story.publish_error = null;
+  }
+
+  story.audio_generation_failure = null;
+  story.local_tts_failure = null;
+  return story;
+}
+
 // --- Concatenate multiple MP3 files via ffmpeg ---
 async function concatAudioFiles(files, outputPath) {
   // Resolve through media-paths so the list file + output land
@@ -1425,6 +1461,7 @@ async function generateAudio() {
         continue;
       }
 
+      clearAudioGenerationState(story);
       story.audio_path = outputPath;
       story.tts_script = finalTtsScript;
       console.log(`[audio] Saved: ${outputPath}`);
@@ -1454,6 +1491,7 @@ module.exports.requestTtsWithRetry = requestTtsWithRetry;
 module.exports.normaliseLocalVoiceDiagnostics = normaliseLocalVoiceDiagnostics;
 module.exports.resolveTtsVoiceIdForProvider = resolveTtsVoiceIdForProvider;
 module.exports.markAudioGenerationFailure = markAudioGenerationFailure;
+module.exports.clearAudioGenerationState = clearAudioGenerationState;
 module.exports.generateTtsForStory = generateTtsForStory;
 module.exports.isLocalTtsProvider = isLocalTtsProvider;
 module.exports.shouldUseDynamicPacingForProvider = shouldUseDynamicPacingForProvider;

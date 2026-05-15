@@ -4,6 +4,7 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
+  clearAudioGenerationState,
   generateTtsForStory,
   buildTtsAlignmentMeta,
   isLocalTtsProvider,
@@ -462,4 +463,29 @@ test("markAudioGenerationFailure: GPU saturation is pending audio, not hard QA f
   assert.match(story.publish_error, /audio_generation_pending: gpu_saturated/);
   assert.equal(story.audio_generation_failure.pending, true);
   assert.equal(story.local_tts_failure.requires_server_reset, false);
+});
+
+test("clearAudioGenerationState removes stale pending audio after a later success", () => {
+  const story = {
+    id: "audio-recovered",
+    qa_failed: false,
+    qa_failures: [],
+    qa_warnings: [
+      "audio_generation_pending:gpu_saturated",
+      "approved_voice:pitch_profile_unverified",
+    ],
+    publish_status: "pending_audio",
+    publish_error: "audio_generation_pending: local_tts_ready_for_retry",
+    audio_generation_failure: { provider: "local", code: "gpu_saturated" },
+    local_tts_failure: { code: "gpu_saturated" },
+  };
+
+  clearAudioGenerationState(story);
+
+  assert.equal(story.publish_status, null);
+  assert.equal(story.publish_error, null);
+  assert.deepEqual(story.qa_failures, []);
+  assert.deepEqual(story.qa_warnings, ["approved_voice:pitch_profile_unverified"]);
+  assert.equal(story.audio_generation_failure, null);
+  assert.equal(story.local_tts_failure, null);
 });

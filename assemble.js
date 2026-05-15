@@ -28,6 +28,11 @@ const {
   buildNarrationOnlyMixFilter,
 } = require("./lib/audio-quality");
 const { runPublishVoiceQa } = require("./lib/services/publish-voice-qa");
+const { classifyThumbnailImage } = require("./lib/thumbnail-safety");
+const {
+  computeContentHash,
+  prescanImage,
+} = require("./lib/visual-content-prescan");
 
 // Intro card REMOVED - first 1-2 seconds are critical for Shorts retention,
 // a branding card gives swipers a reason to leave before the hook lands
@@ -1204,6 +1209,134 @@ function planLegacyVisualSequence(images, videoClips, options = {}) {
   return { visualPaths, isVideoSlot, placements };
 }
 
+function normaliseImageType(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "_");
+}
+
+function parseWarningList(value) {
+  if (Array.isArray(value)) return value.filter(Boolean).map(String);
+  if (typeof value !== "string" || !value.trim()) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) return parsed.filter(Boolean).map(String);
+  } catch (_) {
+    // fall through to comma split
+  }
+  return value.split(/[,\n]/).map((item) => item.trim()).filter(Boolean);
+}
+
+function storyAllowsHumanRenderImage(story, image) {
+  const verdict = classifyThumbnailImage(story, {
+    ...(image || {}),
+    likely_human: true,
+  });
+  return verdict.namedPersonAllowed === true && verdict.safeForThumbnail === true;
+}
+
+function legacyRenderImageSafetyVerdict(story, image = {}, prescan = {}) {
+  const reasons = [];
+  const warnings = [];
+  const type = normaliseImageType(image.type);
+  const safetyScore = Number(image.thumbnail_safety_score);
+  const safetyWarnings = parseWarningList(image.thumbnail_safety_warnings);
+  const classifierVerdict = classifyThumbnailImage(story, image);
+
+  if (Number.isFinite(safetyScore) && safetyScore <= 30) {
+    reasons.push("thumbnail_safety_low_score");
+  }
+
+  if (
+    type === "article_inline" &&
+    safetyWarnings.includes("article_image_relevance_review") &&
+    !classifierVerdict.isGameAsset &&
+    !classifierVerdict.isPlatformAsset
+  ) {
+    reasons.push("low_relevance_article_inline");
+  }
+
+  if (classifierVerdict.isStock && !classifierVerdict.isGameAsset) {
+    warnings.push("stock_or_generic_render_image");
+  }
+
+  const prescanHasFace =
+    prescan?.likely_has_face === true || prescan?.likely_is_stock_person === true;
+  if (prescanHasFace && !storyAllowsHumanRenderImage(story, image)) {
+    reasons.push("unsafe_face_like_render_image");
+  }
+  if (prescan?.error) warnings.push(`prescan_unavailable:${prescan.error}`);
+
+  return {
+    allow: reasons.length === 0,
+    reasons: [...new Set(reasons)],
+    warnings: [...new Set(warnings)],
+    thumbnail_safety_score: Number.isFinite(safetyScore)
+      ? safetyScore
+      : classifierVerdict.score,
+    prescan: prescan || null,
+  };
+}
+
+async function filterLegacyRenderImageEntriesForSafety(story, entries, opts = {}) {
+  const scanImage = opts.prescanImage || prescanImage;
+  const hashImage = opts.computeContentHash || computeContentHash;
+  const kept = [];
+  const rejected = [];
+  const seenHashes = new Set();
+
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    if (!entry?.path) continue;
+    let scan = entry.prescan || null;
+    if (!scan && scanImage) {
+      try {
+        scan = await scanImage(entry.path, {
+          sourceTypeHint: String(entry.image?.source || "").toLowerCase() || null,
+        });
+      } catch (err) {
+        scan = { error: `prescan_exception:${String(err.message || err).slice(0, 80)}` };
+      }
+    }
+
+    let contentHash = entry.content_hash || null;
+    if (!contentHash && hashImage) {
+      try {
+        contentHash = await hashImage(entry.path);
+      } catch (_) {
+        contentHash = null;
+      }
+    }
+
+    const verdict = legacyRenderImageSafetyVerdict(story, entry.image || {}, scan || {});
+    if (!verdict.allow) {
+      rejected.push({
+        ...entry,
+        content_hash: contentHash,
+        verdict,
+      });
+      continue;
+    }
+    if (contentHash && seenHashes.has(contentHash)) {
+      rejected.push({
+        ...entry,
+        content_hash: contentHash,
+        verdict: {
+          ...verdict,
+          allow: false,
+          reasons: ["duplicate_render_image"],
+        },
+      });
+      continue;
+    }
+    if (contentHash) seenHashes.add(contentHash);
+    kept.push({
+      ...entry,
+      content_hash: contentHash,
+      verdict,
+    });
+  }
+
+  return { kept, rejected };
+}
+
 // --- Build filter graph and command with broadcast overlays ---
 function buildVideoCommand(
   story,
@@ -1900,20 +2033,20 @@ async function assemble() {
     // the audio check above: `story.downloaded_images[].path` is a
     // repo-relative string that only exists under MEDIA_ROOT in
     // production.
-    let realImages = [];
+    let realImageEntries = [];
     if (story.downloaded_images && story.downloaded_images.length > 0) {
       for (const img of story.downloaded_images) {
         if (!img.path || img.type === "company_logo") continue;
         const imgAbs = await mediaPaths.resolveExisting(img.path);
         if (imgAbs && (await fs.pathExists(imgAbs))) {
-          realImages.push(imgAbs);
+          realImageEntries.push({ image: img, path: imgAbs });
         }
       }
     }
 
     // If cached image files are missing (e.g. container restarted) or never downloaded, fetch them now
     if (
-      realImages.length === 0 &&
+      realImageEntries.length === 0 &&
       (story.article_image ||
         (story.game_images && story.game_images.length > 0) ||
         story.thumbnail_url)
@@ -1929,21 +2062,22 @@ async function assemble() {
         story.downloaded_images = freshImages.map((i) => ({
           path: i.path,
           type: i.type,
+          source: i.source,
         }));
         for (const img of freshImages) {
           if (!img.path || img.type === "company_logo") continue;
           const imgAbs = await mediaPaths.resolveExisting(img.path);
           if (imgAbs && (await fs.pathExists(imgAbs))) {
-            realImages.push(imgAbs);
+            realImageEntries.push({ image: img, path: imgAbs });
           }
         }
         // Store video clips for use in assembly
         if (freshClips.length > 0) {
           story.video_clips = freshClips.map((c) => c.path);
         }
-        if (realImages.length > 0) {
+        if (realImageEntries.length > 0) {
           console.log(
-            `[assemble] ${story.id}: re-downloaded ${realImages.length} images`,
+            `[assemble] ${story.id}: re-downloaded ${realImageEntries.length} images`,
           );
         }
       } catch (dlErr) {
@@ -1952,6 +2086,25 @@ async function assemble() {
         );
       }
     }
+
+    const safeRenderImages = await filterLegacyRenderImageEntriesForSafety(
+      story,
+      realImageEntries,
+    );
+    if (safeRenderImages.rejected.length > 0) {
+      const summary = safeRenderImages.rejected
+        .slice(0, 5)
+        .map((entry) => {
+          const rel = entry.image?.path || path.basename(entry.path || "");
+          const reasons = entry.verdict?.reasons || ["unknown"];
+          return `${rel}:${reasons.join("+")}`;
+        })
+        .join(", ");
+      console.log(
+        `[assemble] ${story.id}: rejected ${safeRenderImages.rejected.length} unsafe/duplicate render image(s): ${summary}`,
+      );
+    }
+    const realImages = safeRenderImages.kept.map((entry) => entry.path);
 
     if (realImages.length === 0) {
       console.log(
@@ -2553,6 +2706,9 @@ module.exports.makeFootageAttributionText = makeFootageAttributionText;
 module.exports.effectiveVisualTimelineDuration = effectiveVisualTimelineDuration;
 module.exports.planLegacySegmentDuration = planLegacySegmentDuration;
 module.exports.planLegacyVisualSequence = planLegacyVisualSequence;
+module.exports.legacyRenderImageSafetyVerdict = legacyRenderImageSafetyVerdict;
+module.exports.filterLegacyRenderImageEntriesForSafety =
+  filterLegacyRenderImageEntriesForSafety;
 module.exports.characterAlignmentToSubtitleWords =
   characterAlignmentToSubtitleWords;
 module.exports.inspectSubtitleTimingWords = inspectSubtitleTimingWords;

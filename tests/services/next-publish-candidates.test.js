@@ -112,6 +112,27 @@ test("next publish report distinguishes pending local audio from generic missing
   assert.match(formatNextPublishCandidatesMarkdown(report), /pending_local_audio: pending_audio:gpu_saturated/);
 });
 
+test("next publish report lets recovered pending-audio rows reach preflight QA", () => {
+  const report = buildNextPublishCandidatesReport(
+    [
+      baseStory({
+        id: "recovered_pending_audio",
+        audio_path: "D:/pulse-data/media/output/audio/recovered_pending_audio.mp3",
+        exported_path: "D:/pulse-data/media/output/final/recovered_pending_audio.mp4",
+        publish_status: "pending_audio",
+        publish_error: "audio_generation_pending: local_tts_ready_for_retry",
+      }),
+    ],
+    { analyticsText, generatedAt: "2026-05-15T09:00:00.000Z" },
+  );
+
+  assert.deepEqual(report.excluded, []);
+  assert.equal(report.totals.pending_audio, 0);
+  assert.deepEqual(report.candidates.map((row) => row.id), [
+    "recovered_pending_audio",
+  ]);
+});
+
 test("next publish report mirrors live skip for failed and stale unpublished backlog rows", () => {
   const report = buildNextPublishCandidatesReport(
     [

@@ -176,6 +176,36 @@ test("buildPublishCadenceReport: failed rows with platform IDs are not counted a
   assert.equal(report.summary.failed_rows_with_platform_ids_recent, 1);
 });
 
+test("buildPublishCadenceReport: DUPE sentinels do not count as real platform IDs", () => {
+  const report = buildPublishCadenceReport({
+    now: "2026-05-15T00:00:00.000Z",
+    windowHours: 24,
+    stories: [
+      {
+        id: "failed_dupe_only",
+        title: "Legacy duplicate sentinel only",
+        publish_status: "failed",
+        updated_at: "2026-05-14T23:30:00.000Z",
+        youtube_post_id: "DUPE_YOUTUBE",
+        instagram_media_id: "DUPE_INSTAGRAM",
+      },
+      {
+        id: "invalid_dupe_only",
+        title: "Script fallback but no real public target",
+        published_at: "2026-05-14T23:45:00.000Z",
+        youtube_post_id: "DUPE_BLOCKED",
+        body: "Script validation failed. Manual review required before production.",
+      },
+    ],
+    jobs: [],
+  });
+
+  assert.equal(report.summary.published_count, 0);
+  assert.equal(report.failed_rows_with_platform_ids.length, 0);
+  assert.equal(report.invalid_public_story_rows.length, 0);
+  assert.equal(report.verdict, "green");
+});
+
 test("buildPublishCadenceReport: historical failed rows with platform IDs are cleanup notes, not cadence advisories", () => {
   const report = buildPublishCadenceReport({
     now: "2026-05-15T00:00:00.000Z",

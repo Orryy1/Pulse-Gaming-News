@@ -32,6 +32,25 @@ test("classifyPublishRowIssue: failed rows carrying platform IDs need manual rep
   assert.equal(row.apply_status, "blocked_until_operator_approves_db_mutation");
 });
 
+test("classifyPublishRowIssue: DUPE sentinels are not treated as real platform IDs", () => {
+  const failed = classifyPublishRowIssue({
+    id: "legacy_failed",
+    title: "Legacy duplicate block",
+    publish_status: "failed",
+    youtube_post_id: "DUPE_YOUTUBE",
+  });
+  const scriptFallback = classifyPublishRowIssue({
+    id: "legacy_script",
+    title: "Legacy script fallback",
+    published_at: "2026-05-14T22:00:00.000Z",
+    instagram_media_id: "DUPE_INSTAGRAM",
+    body: "Script validation failed. Manual review required before production.",
+  });
+
+  assert.equal(failed, null);
+  assert.equal(scriptFallback, null);
+});
+
 test("classifyPublishRowIssue: public script-validation fallback rows are red", () => {
   const row = classifyPublishRowIssue({
     id: "bad_public",

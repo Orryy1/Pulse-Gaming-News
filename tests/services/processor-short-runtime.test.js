@@ -82,6 +82,33 @@ test("processor validate: allows launched today when the explicit date is today"
   assert.deepEqual(errors, []);
 });
 
+test("processor validate: rejects generated scripts with fake Reddit insider framing", () => {
+  const item = script(100);
+  item.full_script = `${words(96)} A verified insider claims this ordinary Reddit thread proves a platform shift. Follow Pulse Gaming so you never miss a beat.`;
+
+  const errors = processor.validate(item, "pulse-gaming", {
+    story: {
+      title: "Had a PS5 for years and someone just pointed this out to me.",
+      source_type: "reddit",
+      subreddit: "gaming",
+    },
+  });
+
+  assert.ok(
+    errors.includes("script_coherence:general_reddit_verified_insider_claim"),
+    `got: ${errors.join(", ")}`,
+  );
+});
+
+test("processor validate: rejects non-exact CTA field", () => {
+  const item = script(100);
+  item.cta = "Following Pulse Gaming so you never miss a beat.";
+
+  const errors = processor.validate(item, "pulse-gaming");
+
+  assert.ok(errors.includes("script_coherence:cta_not_exact"), `got: ${errors.join(", ")}`);
+});
+
 test("processor sanitiseScript tightens an overlong hook before validation", () => {
   const item = script(100);
   item.hook =
@@ -138,6 +165,21 @@ test("processor editor prompt: Pulse uses Flash Lane word budget, not old 155-18
   assert.match(instruction, /Do not expand it/);
 });
 
+test("processor prompt treats Reddit top comments as audience colour, not source evidence", () => {
+  assert.match(PROCESSOR_SOURCE, /Top comment \(audience colour only, not source evidence\)/);
+  assert.match(PROCESSOR_SOURCE, /Do not use Reddit comments as factual evidence/);
+});
+
+test("Pulse channel prompt does not request fake verified-insider attribution", () => {
+  const channelSource = fs.readFileSync(
+    path.join(__dirname, "..", "..", "channels", "pulse-gaming.js"),
+    "utf8",
+  );
+
+  assert.doesNotMatch(channelSource, /A verified insider claims/);
+  assert.match(channelSource, /Do not invent insider attribution/);
+});
+
 test("processor editor prompt: non-Pulse channels keep legacy long-form short range", () => {
   const instruction = processor.editorWordCountInstruction({
     id: "the-signal",
@@ -147,7 +189,7 @@ test("processor editor prompt: non-Pulse channels keep legacy long-form short ra
 });
 
 test("processor editor pass revalidates edited scripts before accepting them", () => {
-  assert.match(PROCESSOR_SOURCE, /validate\(edited,\s*channel\.id\)/);
+  assert.match(PROCESSOR_SOURCE, /validate\(edited,\s*channel\.id,\s*\{\s*story\s*\}\)/);
   assert.match(PROCESSOR_SOURCE, /editor_validation_failed/);
 });
 

@@ -38,7 +38,7 @@ function goodStory(overrides = {}) {
     // ~130 words — mirrors the real Pulse target of 120-150 so
     // the word-count check passes without tripping the max bound.
     full_script:
-      "A dead franchise just got resurrected and nobody saw it coming. Big studios are responding to a shift in the market that took three years to build and thirty seconds to explode. The numbers are staggering and the timing is surgical. Ubisoft confirmed the reveal is set for later this month and the embargo lifts at midday across every major territory. Sources have verified the timeline through two separate trade outlets and an internal calendar invite that leaked last week. Players are already speculating about what this means for the series going forward, and the marketing team is quietly scrubbing old posts in preparation for the new positioning. Follow Pulse Gaming so you never miss a drop, because this one moves fast.",
+      "A dead franchise just got resurrected and nobody saw it coming. Big studios are responding to a shift in the market that took three years to build and thirty seconds to explode. The numbers are staggering and the timing is surgical. Ubisoft confirmed the reveal is set for later this month and the embargo lifts at midday across every major territory. Sources have verified the timeline through two separate trade outlets and an internal calendar invite that leaked last week. Players are already speculating about what this means for the series going forward, and the marketing team is quietly scrubbing old posts in preparation for the new positioning. Follow Pulse Gaming so you never miss a beat.",
     tts_script: "Short clean tts variant for TTS pass.",
     image_path: "/tmp/card.png",
     render_lane: "legacy_multi_image",
@@ -233,6 +233,60 @@ test("runContentQa: general Reddit posts cannot invent insider/source attributio
   assert.strictEqual(qa.result, "fail");
   assert.ok(
     qa.failures.includes("unsupported_source_claim:community_reddit_attribution"),
+    `got: ${qa.failures.join(", ")}`,
+  );
+});
+
+test("runContentQa: coherence gate blocks vague filler and non-exact CTA", async () => {
+  const story = goodStory({
+    full_script:
+      "Nintendo confirmed a new Switch 2 bundle and the price is already locked. The community is buzzing because this raises more questions than answers. Follow Pulse Gaming so you never miss a drop.",
+  });
+  const qa = await runContentQa(story, {
+    fs: fakeFs({ [story.exported_path]: { size: 5 * 1024 * 1024 } }),
+  });
+
+  assert.strictEqual(qa.result, "fail");
+  assert.ok(
+    qa.failures.includes("script_coherence:missing_exact_cta_in_script"),
+    `got: ${qa.failures.join(", ")}`,
+  );
+  assert.ok(
+    qa.failures.includes("script_coherence:vague_filler:community_is_buzzing"),
+    `got: ${qa.failures.join(", ")}`,
+  );
+});
+
+test("runContentQa: coherence gate blocks repeated script sentences", async () => {
+  const repeated =
+    "Nintendo confirmed the Switch 2 bundle at a fixed price for summer.";
+  const story = goodStory({
+    full_script: `${repeated} ${repeated} Retailers are listing the bundle with a named game choice and a clear value bump. Follow Pulse Gaming so you never miss a beat.`,
+  });
+  const qa = await runContentQa(story, {
+    fs: fakeFs({ [story.exported_path]: { size: 5 * 1024 * 1024 } }),
+  });
+
+  assert.strictEqual(qa.result, "fail");
+  assert.ok(
+    qa.failures.some((f) => f.startsWith("script_coherence:repeated_sentence")),
+    `got: ${qa.failures.join(", ")}`,
+  );
+});
+
+test("runContentQa: coherence gate blocks Subnautica early-access EA misread as Electronic Arts", async () => {
+  const story = goodStory({
+    title: "2 million copies of Subnautica 2 EA has been sold within 12 hours",
+    full_script:
+      "Subnautica 2 has sold two million Early Access copies in twelve hours. Electronic Arts has officially confirmed the milestone, according to Reddit. Follow Pulse Gaming so you never miss a beat.",
+  });
+  const qa = await runContentQa(story, {
+    fs: fakeFs({ [story.exported_path]: { size: 5 * 1024 * 1024 } }),
+  });
+
+  assert.strictEqual(qa.result, "fail");
+  assert.ok(
+    qa.failures.includes("script_coherence:misexpanded_ea_as_electronic_arts"),
     `got: ${qa.failures.join(", ")}`,
   );
 });

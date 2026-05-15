@@ -70,6 +70,12 @@ test("selectReprocessableScriptFailureStories also targets fixable validation re
         script_review_reason: 'Advertiser-safety warning: contains "killed"',
       },
       {
+        id: "short-count",
+        title: "Retry short Flash Lane count",
+        script_review_reason:
+          "Actual spoken word count 70 outside 90-110 Flash Lane range",
+      },
+      {
         id: "public",
         title: "Already public",
         script_review_reason: "Hook too long",
@@ -85,7 +91,7 @@ test("selectReprocessableScriptFailureStories also targets fixable validation re
 
   assert.deepEqual(
     rows.map((row) => row.id),
-    ["hook", "safe-wording"],
+    ["hook", "safe-wording", "short-count"],
   );
   assert.match(rows[0].script_failure_reprocess_reason, /Hook too long/);
 });

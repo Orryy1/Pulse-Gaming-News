@@ -282,7 +282,9 @@ async function fetchSourceMaterial(story) {
             .map((c) => c.data.body.substring(0, 300))
             .join("\n---\n");
           if (topComments) {
-            parts.push(`TOP REDDIT COMMENTS:\n${topComments}`);
+            parts.push(
+              `TOP REDDIT COMMENTS (audience reaction only, not factual source):\n${topComments}`,
+            );
           }
         }
       }
@@ -687,7 +689,7 @@ function editorWordCountInstruction(channel) {
   return "7) Keep the exact same classification tag and word count range (155-185).";
 }
 
-async function sonnetEditorPass(client, script, channel) {
+async function sonnetEditorPass(client, script, channel, story = {}) {
   try {
     const isFinance = channel.id === "stacked";
     const complianceRules = isFinance
@@ -727,7 +729,7 @@ Reply with ONLY the edited JSON object in the same format as the input. No expla
     }
 
     edited.word_count = countSpokenWords(cleanForTTS(edited.full_script || ""));
-    const errors = validate(edited, channel.id);
+    const errors = validate(edited, channel.id, { story });
     if (errors.length > 0) {
       throw new Error(`editor_validation_failed:${errors.join("; ")}`);
     }
@@ -943,14 +945,15 @@ Today's date is ${today}. You MUST follow these rules:
 3. If a claim cannot be verified from the provided sources, use hedging language.
 4. NEVER invent specific dates, prices or statistics that are not in the source material.
 5. If the story references an old event or outdated information, update it to reflect the current situation as of ${today}.
-6. For game release dates: check if the date has already passed. If so, note the game has either released or been delayed.`;
+6. For game release dates: check if the date has already passed. If so, note the game has either released or been delayed.
+7. Do not use Reddit comments as factual evidence. Treat top comments only as audience colour, never as a source claim.`;
 
     const userMessage = [
       `Story title: ${story.title}`,
       `Flair: ${story.flair}`,
       `Subreddit: r/${story.subreddit}`,
       `Score: ${story.score}`,
-      `Top comment: ${story.top_comment}`,
+      `Top comment (audience colour only, not source evidence): ${story.top_comment}`,
       `Story URL: ${story.url || story.article_url || "N/A"}`,
       `Date found: ${story.timestamp || today}`,
       factContext.length > 0
@@ -1004,7 +1007,7 @@ Today's date is ${today}. You MUST follow these rules:
         sanitiseScript(script);
         script.word_count = countSpokenWords(cleanForTTS(script.full_script || ""));
 
-        const errors = validate(script, channel.id);
+        const errors = validate(script, channel.id, { story });
         if (errors.length > 0) {
           console.log(
             `[processor] Validation failed (attempt ${attempts}): ${errors.join(", ")}`,
@@ -1044,7 +1047,7 @@ Today's date is ${today}. You MUST follow these rules:
 
         // Sonnet editor pass - polish high-scoring scripts with a stronger model
         if (script && qualityScore >= 7) {
-          script = await sonnetEditorPass(client, script, channel);
+          script = await sonnetEditorPass(client, script, channel, story);
           // Re-strip em dashes after editor pass
           for (const key of [
             "hook",

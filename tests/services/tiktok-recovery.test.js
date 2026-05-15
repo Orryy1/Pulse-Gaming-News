@@ -305,6 +305,33 @@ test("TikTok inbox command plan records post-upload inbox status without public 
   assert.match(md, /Public auto-publish: false/);
 });
 
+test("TikTok inbox command plan can check a publish id without another upload", () => {
+  const {
+    buildTikTokInboxCommandPlan,
+    renderTikTokInboxCommandMarkdown,
+  } = require("../../lib/platforms/tiktok-inbox-command");
+
+  const plan = buildTikTokInboxCommandPlan({
+    args: { publishId: "v_inbox_file~456" },
+    tiktokStatus: {
+      status: "SEND_TO_USER_INBOX",
+      raw_error_code: "ok",
+    },
+  });
+
+  assert.equal(plan.status_only, true);
+  assert.equal(plan.dry_run, true);
+  assert.equal(plan.will_upload_to_tiktok, false);
+  assert.equal(plan.public_auto_publish, false);
+  assert.equal(plan.publish_id, "v_inbox_file~456");
+  assert.equal(plan.completion_state, "sent_to_user_inbox");
+  assert.equal(plan.blockers.length, 0);
+
+  const md = renderTikTokInboxCommandMarkdown(plan);
+  assert.match(md, /Status-only: true/);
+  assert.match(md, /TikTok Status: SEND_TO_USER_INBOX/);
+});
+
 test("TikTok inbox command plan blocks real upload from auto-selected media", () => {
   const {
     buildTikTokInboxCommandPlan,

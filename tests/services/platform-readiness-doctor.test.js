@@ -185,6 +185,53 @@ test("platform readiness doctor does not coerce unknown TikTok pack duration to 
   assert.doesNotMatch(renderPlatformReadinessDoctorMarkdown(report), /0\.0s/);
 });
 
+test("platform readiness doctor treats a top ready TikTok pack as actionable, not creative-blocked", () => {
+  const report = buildPlatformReadinessDoctor({
+    tiktokTokenStatus: { ok: true, reason: "ok", refresh_available: true },
+    tiktokAutomationReport: {
+      noPostReadiness: {
+        dispatchCreative: {
+          status: "blocked_by_creative_review",
+          storyId: "old-proof",
+          blockers: ["visual_repeat_pairs_remaining"],
+        },
+      },
+      dispatchGate: {
+        topReadyPack: {
+          storyId: "rss_clean",
+          status: "ready_for_operator_review",
+          durationSeconds: 68.2,
+          mp4: "output/final/rss_clean.mp4",
+          cover: "output/thumbnails/rss_clean.jpg",
+        },
+        topPack: {
+          storyId: "old-proof",
+          status: "creative_review_required",
+        },
+      },
+      blockers: [],
+    },
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(
+    report.platforms.tiktok.official_inbox_route,
+    "ready_pending_explicit_upload_approval",
+  );
+  assert.equal(report.platforms.tiktok.pack.story_id, "rss_clean");
+  assert.equal(report.platforms.tiktok.pack.duration_seconds, 68.2);
+  assert.equal(report.platforms.tiktok.pack.creative_review_required, false);
+  assert.equal(
+    report.platforms.tiktok.no_post_readiness.dispatch_creative.status,
+    "ready_for_operator_review",
+  );
+  assert.deepEqual(report.platforms.tiktok.no_post_readiness.dispatch_creative.blockers, []);
+  assert.doesNotMatch(
+    renderPlatformReadinessDoctorMarkdown(report),
+    /tiktok_creative_review_required|creative_review_required_before_inbox/,
+  );
+});
+
 test("platform readiness doctor classifies Instagram 2207076 as rerender work, not URL fallback", () => {
   const error =
     "Instagram URL processing failed: status_code=ERROR status=Error: Media upload has failed with error code 2207076";

@@ -2,28 +2,27 @@
 
 Read-only diagnostic. It performs no OAuth, token mutation, uploads or posts.
 
-Generated: 2026-05-13T07:45:50.082Z
-Verdict: AMBER
+Generated: 2026-05-15T00:03:31.805Z
+Verdict: GREEN
 
 ## Blockers
-- tiktok_local_token_refresh_or_sync_required
-- tiktok_creative_review_required
+- none
 
 ## TikTok
 
-- Status: needs_local_token_refresh_or_sync
-- Official inbox route: creative_review_required_before_inbox
+- Status: token_ready
+- Official inbox route: ready_pending_explicit_upload_approval
 - Public direct post: blocked_until_tiktok_app_review_or_direct_post_approval
-- Recommendation: refresh_or_sync_local_token_with_operator_present_before_any_inbox_upload
-- Ready pack: 1szzhy9 (duration unknown)
+- Recommendation: prepare_one_official_inbox_upload_packet_but_do_not_send_without_approval
+- Ready pack: rss_c27cd78d4621a058 (68.2s)
 
 ### TikTok No-Post Readiness
 
-- Browser OAuth: reported_success; local token proven=false; local token status=expired_but_refreshable
-- Local token: expired_but_refreshable; action=refresh_or_sync_local_token
-- Official inbox: blocked_by_local_token_and_creative_review; public_auto_publish=false
+- Browser OAuth: not_verified_by_this_report; local token proven=true; local token status=usable
+- Local token: usable; action=none
+- Official inbox: ready_for_operator_review_not_executed; public_auto_publish=false
 - Direct post: blocked_by_app_review_or_direct_post_approval; blocker=direct_post_approval_not_declared
-- Dispatch creative: blocked_by_creative_review; story=1szzhy9; blockers=studio_v2_promotion_red_blocked, forensic_warnings_remaining, visual_repeat_pairs_remaining, weak_rendered_frames_remaining, dispatch_pack_creative_review_required
+- Dispatch creative: ready_for_operator_review; story=rss_c27cd78d4621a058; blockers=none
 
 ## Facebook Reels
 

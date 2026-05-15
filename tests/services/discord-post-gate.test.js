@@ -102,6 +102,18 @@ test("shouldPostVideoDrop: failed publish status never qualifies even with platf
   assert.equal(shouldPostVideoDrop(story), false);
 });
 
+test("shouldPostVideoDrop: failed QA status never qualifies even with platform ids", () => {
+  const story = {
+    id: "qa-status-failed",
+    youtube_url: "https://youtu.be/abc",
+    youtube_post_id: "yt-123",
+    instagram_media_id: "ig-456",
+    publish_status: "partial",
+    qa_status: "failed",
+  };
+  assert.equal(shouldPostVideoDrop(story), false);
+});
+
 test("shouldPostVideoDrop: script-validation fallback text never posts as a video drop", () => {
   const story = {
     id: "script-review",

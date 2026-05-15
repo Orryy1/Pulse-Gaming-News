@@ -80,6 +80,39 @@ test("platform status summarises story platform fields", () => {
   assert.strictEqual(report.counts.tiktok.failed, 1);
 });
 
+test("platform status does not treat review-blocked platform IDs as published", () => {
+  const report = buildPlatformStatus({
+    stories: [
+      {
+        id: "review-blocked",
+        title: "Review blocked",
+        youtube_post_id: "yt1",
+        youtube_url: "https://youtu.be/x",
+        publish_status: "partial",
+        qa_status: "failed",
+      },
+    ],
+    platformPosts: [
+      {
+        story_id: "review-blocked",
+        platform: "youtube",
+        status: "published",
+        external_id: "yt1",
+      },
+    ],
+    platformConfig: {
+      youtube: { state: "enabled", reason: "core_upload_path" },
+      tiktok: { state: "enabled", reason: "direct_post_approved" },
+      instagram_reel: { state: "enabled", reason: "graph_credentials_present" },
+      facebook_reel: { state: "enabled", reason: "facebook_reels_enabled" },
+      twitter: { state: "enabled", reason: "x_video_enabled" },
+    },
+  });
+
+  assert.strictEqual(report.recent[0].platforms.youtube.status, "blocked_review");
+  assert.strictEqual(report.counts.youtube.blocked_review, 1);
+});
+
 test("platform status separates blocked and disabled platforms from not-published work", () => {
   const report = buildPlatformStatus({
     stories: [

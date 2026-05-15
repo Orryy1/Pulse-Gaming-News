@@ -109,3 +109,19 @@ test("optimal_timing.js source: no hard-coded 07:00/13:00 in Active Schedule ren
     "legacy 13:00 string still in Active Schedule block",
   );
 });
+
+test("server autonomous status reports canonical 09/14/19 publish windows", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "server.js"),
+    "utf8",
+  );
+  const statusBlock = src.match(
+    /app\.get\("\/api\/autonomous\/status"[\s\S]*?\n\}\);/,
+  );
+
+  assert.ok(statusBlock, "autonomous status endpoint not found");
+  assert.match(statusBlock[0], /09:00 UTC/);
+  assert.match(statusBlock[0], /14:00 UTC/);
+  assert.match(statusBlock[0], /19:00 UTC/);
+  assert.doesNotMatch(statusBlock[0], /12:00 UTC|17:00 UTC|21:00 UTC/);
+});

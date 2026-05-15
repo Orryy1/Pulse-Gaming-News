@@ -1063,9 +1063,9 @@ app.get("/api/autonomous/status", requireAuth, (req, res) => {
     schedule: {
       hunts: "Every 3 hours (auto-produces videos after each hunt)",
       publish: [
-        "12:00 UTC / 1:00 PM BST - lunch break + US morning",
-        "17:00 UTC / 6:00 PM BST - post-work peak + US noon",
-        "21:00 UTC / 10:00 PM BST - evening session + US afternoon",
+        "09:00 UTC / 10:00 AM BST - morning publish window",
+        "14:00 UTC / 3:00 PM BST - afternoon publish window",
+        "19:00 UTC / 8:00 PM BST - evening publish window",
       ],
       strategy: "1 Short per window = 3 Shorts/day across all platforms",
     },

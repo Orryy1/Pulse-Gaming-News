@@ -101,11 +101,11 @@ test("buildPublishCadenceReport: flags bursts, off-schedule posts and failed row
   });
 
   assert.equal(report.verdict, "amber");
-  assert.equal(report.summary.published_count, 4);
-  assert.equal(report.summary.off_schedule_count, 4);
-  assert.equal(report.summary.burst_pairs, 3);
-  assert.equal(report.failed_rows_with_platform_ids.length, 1);
-  assert.equal(report.summary.failed_rows_with_platform_ids_recent, 1);
+  assert.equal(report.summary.published_count, 3);
+  assert.equal(report.summary.off_schedule_count, 3);
+  assert.equal(report.summary.burst_pairs, 2);
+  assert.equal(report.failed_rows_with_platform_ids.length, 2);
+  assert.equal(report.summary.failed_rows_with_platform_ids_recent, 2);
   assert.equal(report.summary.failed_rows_with_platform_ids_historical, 0);
   assert.equal(report.invalid_public_story_rows.length, 1);
   assert.equal(report.next_safe_publish.next_safe_publish_at_utc, "2026-05-16T09:00:00.000Z");
@@ -121,6 +121,37 @@ test("buildPublishCadenceReport: flags bursts, off-schedule posts and failed row
   assert.match(report.advisory.join("\n"), /off-schedule/i);
   assert.match(report.advisory.join("\n"), /tight publish spacing/i);
   assert.match(report.advisory.join("\n"), /script-validation fallback/i);
+});
+
+test("buildPublishCadenceReport: review-blocked platform rows are not public cadence events", () => {
+  const report = buildPublishCadenceReport({
+    now: "2026-05-15T00:00:00.000Z",
+    windowHours: 24,
+    stories: [
+      {
+        id: "review_blocked",
+        title: "Review blocked but has a public ID",
+        publish_status: "partial",
+        qa_status: "failed",
+        published_at: "2026-05-14T23:00:00.000Z",
+        youtube_post_id: "yt_partial",
+      },
+      {
+        id: "script_blocked",
+        title: "Script fallback but has a public ID",
+        publish_status: "partial",
+        published_at: "2026-05-14T23:10:00.000Z",
+        youtube_post_id: "yt_script",
+        body: "Script validation failed. Manual review required before production.",
+      },
+    ],
+    jobs: [],
+  });
+
+  assert.equal(report.summary.published_count, 0);
+  assert.equal(report.publish_events.length, 0);
+  assert.equal(report.invalid_public_story_rows.length, 1);
+  assert.equal(report.invalid_public_story_rows[0].id, "script_blocked");
 });
 
 test("buildPublishCadenceReport: failed rows with platform IDs are not counted as public cadence events", () => {

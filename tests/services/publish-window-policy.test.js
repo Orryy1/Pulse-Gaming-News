@@ -78,6 +78,21 @@ test("publish window policy hard-blocks active primary auto-publishers by defaul
   assert.ok(policy.blockers.includes("publish_window_blocked"));
 });
 
+test("publish window policy treats unset primary as active primary when auto-publish is on", () => {
+  const policy = buildPublishWindowPolicy({
+    now: "2026-05-14T22:33:00.000Z",
+    dispatchSource: "api_autonomous_publish",
+    env: {
+      AUTO_PUBLISH: "true",
+    },
+  });
+
+  assert.equal(policy.verdict, "red");
+  assert.equal(policy.blocked, true);
+  assert.equal(policy.hardGateEnabled, true);
+  assert.ok(policy.blockers.includes("publish_window_blocked"));
+});
+
 test("publish cadence warn-only override keeps active primary routes advisory", () => {
   const policy = buildPublishWindowPolicy({
     now: "2026-05-14T22:33:00.000Z",
@@ -86,6 +101,21 @@ test("publish cadence warn-only override keeps active primary routes advisory", 
       AUTO_PUBLISH: "true",
       PULSE_PRIMARY_INSTANCE: "true",
       PUBLISH_CADENCE_WARN_ONLY: "true",
+    },
+  });
+
+  assert.equal(policy.verdict, "amber");
+  assert.equal(policy.blocked, false);
+  assert.equal(policy.hardGateEnabled, false);
+});
+
+test("publish cadence does not hard-block an explicit non-primary mirror", () => {
+  const policy = buildPublishWindowPolicy({
+    now: "2026-05-14T22:33:00.000Z",
+    dispatchSource: "api_autonomous_publish",
+    env: {
+      AUTO_PUBLISH: "true",
+      PULSE_PRIMARY_INSTANCE: "false",
     },
   });
 

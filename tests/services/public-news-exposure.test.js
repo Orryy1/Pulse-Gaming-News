@@ -244,6 +244,31 @@ test("isPubliclyVisible: published and partial both pass (YT live is live)", () 
   );
 });
 
+test("isPubliclyVisible: review-blocked rows with platform IDs are hidden", () => {
+  assert.strictEqual(
+    isPubliclyVisible(
+      fixtureInternalStory({
+        publish_status: "partial",
+        youtube_post_id: "yt_123",
+        youtube_url: "https://youtube.com/shorts/yt_123",
+        qa_status: "failed",
+      }),
+    ),
+    false,
+  );
+  assert.strictEqual(
+    isPubliclyVisible(
+      fixtureInternalStory({
+        publish_status: "partial",
+        youtube_post_id: "yt_456",
+        youtube_url: "https://youtube.com/shorts/yt_456",
+        body: "Script validation failed. Manual review required before production.",
+      }),
+    ),
+    false,
+  );
+});
+
 test("sanitizeStoriesForPublic: filters unpublished stories OUT of the list", () => {
   const live = fixtureInternalStory();
   const draft = fixtureInternalStory({

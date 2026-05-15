@@ -3,6 +3,7 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 
 const pr = require("../../lib/ops/publish-readiness");
@@ -180,6 +181,37 @@ test("pillarPublishCadence: over-cap cadence tells operators to hold manual publ
 
   assert.equal(pillar.verdict, "amber");
   assert.match(pillar.reason, /4_posts_in_24h_over_cap_3/);
+});
+
+test("pillarFacebookReelEligibility: graph proof makes Facebook Reels green", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-fb-reels-proof-"));
+  const proofPath = path.join(dir, "facebook_reels_eligibility.json");
+  try {
+    fs.writeFileSync(
+      proofPath,
+      JSON.stringify({
+        evidence: {
+          page: { data: { can_post: true } },
+          tokenDebug: { data: { is_valid: true } },
+          videos: { count: 1 },
+          reels: { count: 1 },
+        },
+        classification: {
+          verdict: "eligible_for_normal_publish",
+          reason: "visible_graph_video_or_reel_found",
+        },
+      }),
+    );
+
+    const pillar = pr.pillarFacebookReelEligibility({
+      evidencePath: proofPath,
+    });
+
+    assert.equal(pillar.verdict, "green");
+    assert.equal(pillar.raw.mode, "graph_verified");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("buildPublishReadinessReport: db throw degrades gracefully (no throw)", async () => {

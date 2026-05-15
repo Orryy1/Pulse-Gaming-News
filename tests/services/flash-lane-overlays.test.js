@@ -11,6 +11,38 @@ const {
 } = require("../../lib/studio/v2/flash-lane-overlays");
 
 const FONT_OPT = "fontfile='C\\:/Windows/Fonts/arial.ttf'";
+const FRAME = { width: 1080, height: 1920 };
+
+function numericExpression(value, frame = FRAME) {
+  if (/^\d+$/.test(value)) return Number(value);
+  const widthOffset = value.match(/^w-(\d+)$/);
+  if (widthOffset) return frame.width - Number(widthOffset[1]);
+  const heightOffset = value.match(/^h-(\d+)$/);
+  if (heightOffset) return frame.height - Number(heightOffset[1]);
+  throw new Error(`Unsupported drawbox expression: ${value}`);
+}
+
+function drawboxBounds(filters) {
+  return filters
+    .join(";")
+    .split(";")
+    .flatMap((filter) => filter.split(","))
+    .map((filter) => filter.replace(/^\[[^\]]+\]/, ""))
+    .filter((filter) => filter.startsWith("drawbox="))
+    .filter((filter) => /:color=black@/.test(filter))
+    .map((filter) => {
+      const match = filter.match(/drawbox=x=([^:]+):y=([^:]+):w=(\d+):h=(\d+)/);
+      assert.ok(match, `Expected parseable drawbox filter: ${filter}`);
+      const [, x, y, width, height] = match;
+      return {
+        x: numericExpression(x),
+        y: numericExpression(y),
+        width: Number(width),
+        height: Number(height),
+        rawX: x,
+      };
+    });
+}
 
 test("Flash Lane overlay plan turns source and entity context into compact chips", () => {
   const plan = buildFlashLaneOverlayPlan({
@@ -82,6 +114,80 @@ test("Flash Lane upper-left chips reserve space below scene entity badges", () =
   assert.match(filters, /drawbox=x=64:y=388:w=/);
   assert.doesNotMatch(filters, /drawbox=x=64:y=128:w=/);
   assert.doesNotMatch(filters, /text='SOURCE'[^,]*:x=64\+28:y=128\+11/);
+});
+
+test("Flash Lane chip anchors fit inside a 1080x1920 frame", () => {
+  const plan = {
+    timeline: [
+      {
+        kind: "source_chip",
+        label: "VERY LONG SOURCE NAME FOR GEOMETRY",
+        at_s: 1,
+        duration_s: 2.6,
+        anchor: "upper_left",
+      },
+      {
+        kind: "entity_chip",
+        label: "VERY LONG ENTITY NAME FOR GEOMETRY",
+        at_s: 4,
+        duration_s: 2.4,
+        anchor: "upper_right",
+      },
+      {
+        kind: "beat_chip",
+        label: "VERY LONG BEAT CHIP FOR GEOMETRY",
+        at_s: 7,
+        duration_s: 2.45,
+        anchor: "lower_left",
+      },
+      {
+        kind: "micro_takeaway",
+        label: "WHY IT MATTERS",
+        at_s: 10,
+        duration_s: 2.8,
+        anchor: "mid_left",
+      },
+    ],
+  };
+
+  const bounds = drawboxBounds(buildFlashLaneOverlayFilters({
+    plan,
+    inputLabel: "base",
+    outputLabel: "overlayed",
+    fontOpt: FONT_OPT,
+  }));
+
+  assert.equal(bounds.length, plan.timeline.length);
+  for (const box of bounds) {
+    assert.ok(box.x >= 0, `${box.rawX} starts off-frame`);
+    assert.ok(box.y >= 0, `${box.rawX} starts above frame`);
+    assert.ok(box.x + box.width <= FRAME.width, `${box.rawX}+${box.width} exceeds frame width`);
+    assert.ok(box.y + box.height <= FRAME.height, `${box.rawX}+${box.height} exceeds frame height`);
+  }
+});
+
+test("Flash Lane upper-right chips use computed chip width in FFmpeg x expression", () => {
+  const plan = {
+    timeline: [
+      {
+        kind: "source_chip",
+        label: "VERY LONG SOURCE NAME FOR GEOMETRY",
+        at_s: 1,
+        duration_s: 2.6,
+        anchor: "upper_right",
+      },
+    ],
+  };
+
+  const filters = buildFlashLaneOverlayFilters({
+    plan,
+    inputLabel: "base",
+    outputLabel: "overlayed",
+    fontOpt: FONT_OPT,
+  }).join(";");
+
+  assert.match(filters, /drawbox=x=w-470:y=128:w=470:h=72/);
+  assert.doesNotMatch(filters, /drawbox=x=w-420:y=128:w=470:h=72/);
 });
 
 test("Flash Lane upper-left chips reserve space below source-card safe zone", () => {

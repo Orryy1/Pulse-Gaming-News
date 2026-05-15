@@ -81,6 +81,11 @@ test("publisher.js: runPreflightQa runs content-QA then video-QA and returns str
   assert.ok(idx > 0, "runPreflightQa helper must exist");
   const block = SRC.slice(idx, idx + 5500);
   assert.match(block, /runContentQa/, "runPreflightQa must call content-QA");
+  assert.match(
+    block,
+    /blockThinVisuals:\s*true/,
+    "runPreflightQa must hard-block thin visual renders before upload",
+  );
   assert.match(block, /runVideoQa/, "runPreflightQa must call video-QA");
   assert.match(
     block,

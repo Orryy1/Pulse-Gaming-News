@@ -576,7 +576,10 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
   } = opts;
 
   try {
-    const content = await runContentQa(story, opts.contentQaOptions || {});
+    const content = await runContentQa(story, {
+      blockThinVisuals: true,
+      ...(opts.contentQaOptions || {}),
+    });
     const video = await runVideoQa(story.exported_path, opts.videoQaOptions || {});
     const platform = await runPlatformVideoQa(
       story.exported_path,

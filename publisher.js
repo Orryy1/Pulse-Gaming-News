@@ -1169,7 +1169,7 @@ async function runPreflightQa(story) {
   // Content QA — metadata + script + MP4 size / existence
   try {
     const { runContentQa } = require("./lib/services/content-qa");
-    const cqa = await runContentQa(story);
+    const cqa = await runContentQa(story, { blockThinVisuals: true });
     if (cqa.warnings && cqa.warnings.length > 0) {
       console.log(
         `[publisher] content QA warnings (${story.id}): ${cqa.warnings.join(", ")}`,

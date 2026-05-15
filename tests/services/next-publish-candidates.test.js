@@ -272,12 +272,17 @@ test("attachPreflightQa marks candidates with read-only QA evidence", async () =
     analyticsText,
     generatedAt: "2026-05-15T09:00:00.000Z",
   });
+  const contentQaOptions = [];
 
   await attachPreflightQa(report, stories, {
-    runContentQa: async (story) =>
+    runContentQa: async (story, opts) => {
+      contentQaOptions.push(opts);
+      return (
       story.id === "qa_blocked"
         ? { result: "fail", failures: ["script_validation_review_required"], warnings: [] }
-        : { result: "pass", failures: [], warnings: [] },
+        : { result: "pass", failures: [], warnings: [] }
+      );
+    },
     runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
     runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
   });
@@ -288,5 +293,6 @@ test("attachPreflightQa marks candidates with read-only QA evidence", async () =
   assert.equal(blocked.preflight_qa.status, "blocked");
   assert.equal(blocked.status, "review");
   assert.ok(report.preflight_qa.enabled);
+  assert.ok(contentQaOptions.every((opts) => opts.blockThinVisuals === true));
   assert.match(formatNextPublishCandidatesMarkdown(report), /preflight=blocked/);
 });

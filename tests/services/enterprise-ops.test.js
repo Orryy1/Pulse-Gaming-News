@@ -341,6 +341,34 @@ test("TikTok dispatch pack is upload-ready without posting", () => {
   assert.strictEqual(pack.compatibility.virtualAssistant, "last_resort_only");
 });
 
+test("TikTok dispatch hashtags prefer entities over filler opener words", () => {
+  const pack = buildTikTokDispatchPack(
+    {
+      id: "story-tags",
+      title:
+        "Even after Ubisoft confirmed gaming's worst-kept secret of an Assassin's Creed Black Flag remake",
+      suggested_title: "Ubisoft Just Lost Control of Their Own Announcement",
+      exported_path: "output/final/story-tags.mp4",
+      thumbnail_candidate_path: "output/thumbnails/story-tags.png",
+      flair: "Verified",
+    },
+    { durationSeconds: 68, now: new Date("2026-05-15T10:00:00Z") },
+  );
+
+  assert.ok(pack.hashtags.includes("#Ubisoft"));
+  assert.ok(pack.hashtags.includes("#AssassinsCreed"));
+  assert.ok(pack.hashtags.includes("#BlackFlag"));
+  assert.ok(!pack.hashtags.includes("#Even"));
+  assert.ok(!pack.hashtags.includes("#after"));
+  assert.ok(!pack.hashtags.includes("#Lost"));
+  assert.ok(!pack.hashtags.includes("#Announcement"));
+  assert.ok(!pack.hashtags.includes("#EXPOSED"));
+  assert.equal(
+    new Set(pack.hashtags.map((tag) => tag.toLowerCase())).size,
+    pack.hashtags.length,
+  );
+});
+
 test("TikTok dispatch pack downgrades videos under the 60 second TikTok threshold", () => {
   const pack = buildTikTokDispatchPack(
     {

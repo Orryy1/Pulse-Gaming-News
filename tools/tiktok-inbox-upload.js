@@ -39,6 +39,14 @@ function parseArgs(argv) {
 
 async function loadStory(args) {
   if (args.statusOnly) {
+    if (args.story) {
+      const story = await db.getStory(args.story);
+      if (story) {
+        if (args.mp4) story.exported_path = args.mp4;
+        if (args.title) story.title = args.title;
+        return story;
+      }
+    }
     return {
       id: args.story || null,
       title: args.title || "TikTok inbox status check",

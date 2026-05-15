@@ -27,15 +27,24 @@ function parseArgs(argv) {
     else if (arg === "--out-dir") args.outDir = argv[++i];
     else if (arg === "--max-age-hours") args.maxAgeHours = Number(argv[++i]);
     else if (arg === "--allow-stale") args.allowStale = true;
+    else if (arg === "--publish-id") args.publishId = argv[++i];
     else if (arg === "--send-inbox" || arg === "--apply-inbox") args.sendInbox = true;
     else if (arg === "--operator-confirmed") args.operatorConfirmed = true;
     else if (arg === "--dry-run") args.sendInbox = false;
   }
-  args.explicitSelection = Boolean(args.story || args.mp4);
+  args.statusOnly = Boolean(args.publishId) && args.sendInbox !== true;
+  args.explicitSelection = Boolean(args.story || args.mp4 || args.publishId);
   return args;
 }
 
 async function loadStory(args) {
+  if (args.statusOnly) {
+    return {
+      id: args.story || null,
+      title: args.title || "TikTok inbox status check",
+      exported_path: args.mp4 || null,
+    };
+  }
   if (args.story) {
     const story = await db.getStory(args.story);
     if (!story) {
@@ -111,7 +120,9 @@ async function main() {
 
   let result = null;
   let tiktokStatus = null;
-  if (plan.will_upload_to_tiktok) {
+  if (args.statusOnly && args.publishId) {
+    tiktokStatus = await fetchPublishStatus(args.publishId);
+  } else if (plan.will_upload_to_tiktok) {
     if (args.operatorConfirmed !== true) {
       throw new Error("tiktok_inbox_upload_requires_operator_confirmed_flag");
     }

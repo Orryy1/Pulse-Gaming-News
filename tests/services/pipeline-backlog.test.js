@@ -250,6 +250,32 @@ test("nextPublishCandidate: skips qa_failed stories", () => {
   assert.strictEqual(pick.id, "good");
 });
 
+test("nextPublishCandidate: uses the live selection score within the same platform bucket", () => {
+  const stories = [
+    {
+      id: "raw-score-winner",
+      approved: true,
+      exported_path: "/x",
+      full_script: "y",
+      duration_seconds: 68,
+      breaking_score: 999,
+    },
+    {
+      id: "analytics-winner",
+      approved: true,
+      exported_path: "/x",
+      full_script: "y",
+      duration_seconds: 68,
+      breaking_score: 10,
+    },
+  ];
+  const pick = nextPublishCandidate(stories, {
+    selectionScore: (story) =>
+      story.id === "analytics-winner" ? 2000 : story.breaking_score,
+  });
+  assert.strictEqual(pick.id, "analytics-winner");
+});
+
 test("nextPublishCandidate: skips under-60 Shorts even when exported", () => {
   const stories = [
     {

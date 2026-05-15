@@ -10,9 +10,11 @@ const {
   requiredCorePlatformsFromEnv,
   renderPipelineBacklogMarkdown,
 } = require("../lib/services/pipeline-backlog");
+const { scoreCandidate } = require("./next-publish-candidates");
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
+const DEFAULT_ANALYTICS_PATH = "D:\\pulse-data\\analytics_findings.md";
 
 function parseArgs(argv) {
   const args = { json: false };
@@ -31,8 +33,14 @@ async function main() {
   }
 
   const stories = await require("../lib/db").getStories();
+  const analyticsText = readOptionalFile(
+    process.env.PUBLISH_SELECTION_ANALYTICS_PATH ||
+      process.env.ANALYTICS_FINDINGS_PATH ||
+      DEFAULT_ANALYTICS_PATH,
+  );
   const report = buildPipelineBacklog(stories, {
     corePlatforms: requiredCorePlatformsFromEnv(process.env),
+    selectionScore: (story) => scoreCandidate(story, { analyticsText }).score,
   });
   const markdown = renderPipelineBacklogMarkdown(report);
 
@@ -46,6 +54,15 @@ async function main() {
   else process.stdout.write(markdown);
   process.stderr.write(`[pipeline-backlog] json=${path.relative(ROOT, jsonPath)}\n`);
   process.stderr.write(`[pipeline-backlog] md=${path.relative(ROOT, mdPath)}\n`);
+}
+
+function readOptionalFile(target) {
+  if (!target) return "";
+  try {
+    return fs.pathExistsSync(target) ? fs.readFileSync(target, "utf8") : "";
+  } catch {
+    return "";
+  }
 }
 
 main().catch((err) => {

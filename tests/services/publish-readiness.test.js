@@ -44,8 +44,9 @@ test("dominantVerdict: all green stays green", () => {
 
 // ── PILLAR_NAMES contract ────────────────────────────────────────
 
-test("PILLAR_NAMES: 20 pillars (matches mission spec)", () => {
-  assert.equal(pr.PILLAR_NAMES.length, 20);
+test("PILLAR_NAMES: includes cadence plus the original readiness pillars", () => {
+  assert.equal(pr.PILLAR_NAMES.length, 21);
+  assert.ok(pr.PILLAR_NAMES.includes("publish_cadence"));
 });
 
 test("PILLAR_NAMES: includes the audit-flagged external blockers", () => {
@@ -154,8 +155,31 @@ test("buildPublishReadinessReport: empty store does not crash, returns at least 
   );
   assert.equal(report.story_count, 0);
   assert.ok(typeof report.pillars === "object");
-  assert.equal(Object.keys(report.pillars).length, 20);
+  assert.equal(Object.keys(report.pillars).length, 21);
   assert.ok(typeof report.next_action === "string");
+});
+
+test("pillarPublishCadence: over-cap cadence tells operators to hold manual publishing", async () => {
+  const now = Date.parse("2026-05-15T12:00:00.000Z");
+  const stories = [0, 1, 2, 3].map((index) => ({
+    id: `rss_${index}`,
+    title: `Story ${index}`,
+    youtube_post_id: `yt_${index}`,
+    published_at: new Date(now - index * 60 * 60 * 1000).toISOString(),
+  }));
+
+  const pillar = pr.pillarPublishCadence({
+    stories,
+    now,
+    env: {
+      AUTO_PUBLISH: "true",
+      PULSE_PRIMARY_INSTANCE: "true",
+      USE_JOB_QUEUE: "true",
+    },
+  });
+
+  assert.equal(pillar.verdict, "amber");
+  assert.match(pillar.reason, /4_posts_in_24h_over_cap_3/);
 });
 
 test("buildPublishReadinessReport: db throw degrades gracefully (no throw)", async () => {

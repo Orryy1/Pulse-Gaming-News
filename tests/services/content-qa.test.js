@@ -7,6 +7,7 @@ const path = require("node:path");
 const {
   runContentQa,
   DEFAULT_MIN_MP4_BYTES,
+  classifyArticleContextRisk,
   BANNED_STOCK_PHRASES,
   GLUED_SENTENCE_RE,
   AMERICAN_TIME_RE,
@@ -704,6 +705,120 @@ test("runContentQa: only logo image available → warn", async () => {
   });
   assert.strictEqual(qa.result, "warn");
   assert.ok(qa.warnings.includes("only_logo_image_available"));
+});
+
+test("runContentQa: risky article-context dominated deck blocks publish", async () => {
+  const story = goodStory({
+    downloaded_images: [
+      {
+        path: "/tmp/article-1.jpg",
+        type: "article_inline",
+        source: "article",
+        thumbnail_safety_warnings: ["article_image_relevance_review"],
+      },
+      {
+        path: "/tmp/article-2.jpg",
+        type: "article_inline",
+        source: "article",
+        thumbnail_safety_warnings: ["article_image_relevance_review"],
+      },
+      {
+        path: "/tmp/article-3.jpg",
+        type: "article_inline",
+        source: "article",
+        thumbnail_safety_warnings: ["article_image_relevance_review"],
+      },
+      {
+        path: "/tmp/article-4.jpg",
+        type: "article_inline",
+        source: "article",
+        thumbnail_safety_warnings: ["article_image_relevance_review"],
+      },
+      { path: "/tmp/xbox.jpg", type: "wiki_image", source: "wiki" },
+    ],
+  });
+  const qa = await runContentQa(story, {
+    fs: fakeFs({ [story.exported_path]: { size: 5 * 1024 * 1024 } }),
+  });
+  assert.strictEqual(qa.result, "fail");
+  assert.ok(
+    qa.failures.some((failure) =>
+      failure.startsWith("risky_article_context_dominated_deck"),
+    ),
+    `expected risky article-context failure, got: ${qa.failures.join(", ")}`,
+  );
+});
+
+test("runContentQa: risky article-context images warn when safer assets support deck", async () => {
+  const story = goodStory({
+    downloaded_images: [
+      {
+        path: "/tmp/article-1.jpg",
+        type: "article_inline",
+        source: "article",
+        thumbnail_safety_warnings: ["article_image_relevance_review"],
+      },
+      {
+        path: "/tmp/article-2.jpg",
+        type: "article_inline",
+        source: "article",
+        thumbnail_safety_warnings: ["article_image_relevance_review"],
+      },
+      {
+        path: "/tmp/article-3.jpg",
+        type: "article_inline",
+        source: "article",
+        thumbnail_safety_warnings: ["article_image_relevance_review"],
+      },
+      { path: "/tmp/steam-hero.jpg", type: "steam_hero", source: "steam" },
+      { path: "/tmp/steam-shot.jpg", type: "steam_screenshot", source: "steam" },
+      { path: "/tmp/platform.jpg", type: "platform_ui", source: "official" },
+    ],
+  });
+  const qa = await runContentQa(story, {
+    fs: fakeFs({ [story.exported_path]: { size: 5 * 1024 * 1024 } }),
+  });
+  assert.strictEqual(qa.result, "warn");
+  assert.ok(qa.warnings.includes("risky_article_context_images (3)"));
+  assert.ok(
+    !qa.failures.some((failure) =>
+      failure.startsWith("risky_article_context_dominated_deck"),
+    ),
+  );
+});
+
+test("classifyArticleContextRisk: accepts JSON-string image lists from SQLite rows", () => {
+  const images = JSON.stringify([
+    {
+      path: "/tmp/article-1.jpg",
+      type: "article_inline",
+      source: "article",
+      thumbnail_safety_warnings: ["article_image_relevance_review"],
+    },
+    {
+      path: "/tmp/article-2.jpg",
+      type: "article_inline",
+      source: "article",
+      thumbnail_safety_warnings: ["article_image_relevance_review"],
+    },
+    {
+      path: "/tmp/article-3.jpg",
+      type: "article_inline",
+      source: "article",
+      thumbnail_safety_warnings: ["article_image_relevance_review"],
+    },
+    {
+      path: "/tmp/article-4.jpg",
+      type: "article_inline",
+      source: "article",
+      thumbnail_safety_warnings: ["article_image_relevance_review"],
+    },
+    { path: "/tmp/hero.jpg", type: "steam_hero", source: "steam" },
+  ]);
+  const risk = classifyArticleContextRisk(images);
+  assert.strictEqual(risk.blocked, true);
+  assert.strictEqual(risk.risky_count, 4);
+  assert.strictEqual(risk.safe_non_article_count, 1);
 });
 
 test("runContentQa: story_card_path set but file missing → warn", async () => {

@@ -330,6 +330,123 @@ test("nextPublishCandidate: skips frozen or unusable subtitle timelines", () => 
   assert.strictEqual(pick.id, "ready");
 });
 
+test("nextPublishCandidate: skips stale unpublished backlog rows", () => {
+  const nowMs = Date.parse("2026-05-15T12:00:00Z");
+  const stories = [
+    {
+      id: "old",
+      approved: true,
+      exported_path: "/x",
+      full_script: "y",
+      duration_seconds: 68.2,
+      created_at: "2026-04-20T12:00:00Z",
+      breaking_score: 999,
+    },
+    {
+      id: "fresh",
+      approved: true,
+      exported_path: "/x",
+      full_script: "y",
+      duration_seconds: 67.4,
+      created_at: "2026-05-15T11:00:00Z",
+      breaking_score: 60,
+    },
+  ];
+  const pick = nextPublishCandidate(stories, { nowMs });
+  assert.strictEqual(pick.id, "fresh");
+});
+
+test("nextPublishCandidate: stale news is not refreshed by a recent export", () => {
+  const nowMs = Date.parse("2026-05-15T12:00:00Z");
+  const stories = [
+    {
+      id: "old-rerendered",
+      approved: true,
+      exported_path: "/x",
+      full_script: "y",
+      duration_seconds: 68.2,
+      created_at: "2026-04-20T12:00:00Z",
+      exported_at: "2026-05-15T11:30:00Z",
+      breaking_score: 999,
+    },
+    {
+      id: "fresh",
+      approved: true,
+      exported_path: "/x",
+      full_script: "y",
+      duration_seconds: 67.4,
+      created_at: "2026-05-15T11:00:00Z",
+      breaking_score: 60,
+    },
+  ];
+  const pick = nextPublishCandidate(stories, { nowMs });
+  assert.strictEqual(pick.id, "fresh");
+});
+
+test("nextPublishCandidate: strict mode skips thin visual renders", () => {
+  const stories = [
+    {
+      id: "thin",
+      approved: true,
+      exported_path: "/x",
+      full_script: "y",
+      duration_seconds: 68.2,
+      qa_visual_count: 1,
+      qa_visual_warning: "thin_visuals_below_three",
+      breaking_score: 999,
+    },
+    {
+      id: "safe",
+      approved: true,
+      exported_path: "/x",
+      full_script: "y",
+      duration_seconds: 67.4,
+      qa_visual_count: 5,
+      breaking_score: 60,
+    },
+  ];
+  const pick = nextPublishCandidate(stories, { strictContentQa: true });
+  assert.strictEqual(pick.id, "safe");
+});
+
+test("nextPublishCandidate: skips risky article-context dominated decks", () => {
+  const riskyImages = Array.from({ length: 4 }, (_, index) => ({
+    type: "article_inline",
+    source: "article",
+    url: `https://example.test/${index}.jpg`,
+    thumbnail_safety_warnings: ["article_image_relevance_review"],
+  }));
+  const stories = [
+    {
+      id: "risky",
+      approved: true,
+      exported_path: "/x",
+      full_script: "y",
+      duration_seconds: 68.2,
+      downloaded_images: JSON.stringify([
+        ...riskyImages,
+        { type: "company_logo", source: "official" },
+      ]),
+      breaking_score: 999,
+    },
+    {
+      id: "safe",
+      approved: true,
+      exported_path: "/x",
+      full_script: "y",
+      duration_seconds: 67.4,
+      downloaded_images: JSON.stringify([
+        { type: "steam_screenshot", source: "steam" },
+        { type: "steam_header", source: "steam" },
+        { type: "article_hero", source: "article" },
+      ]),
+      breaking_score: 60,
+    },
+  ];
+  const pick = nextPublishCandidate(stories);
+  assert.strictEqual(pick.id, "safe");
+});
+
 test("nextPublishCandidate: returns null when nothing eligible", () => {
   assert.strictEqual(nextPublishCandidate([]), null);
   assert.strictEqual(

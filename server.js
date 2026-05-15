@@ -2443,7 +2443,7 @@ app.get("/api/pipeline/backlog", requireAuth, (req, res) => {
   try {
     const stories = readNews();
     const { buildPipelineBacklog } = require("./lib/services/pipeline-backlog");
-    res.json(buildPipelineBacklog(stories));
+    res.json(buildPipelineBacklog(stories, { strictContentQa: true }));
   } catch (err) {
     console.error(`[server] /api/pipeline/backlog error: ${err.message}`);
     res.status(500).json({ error: "Internal server error" });

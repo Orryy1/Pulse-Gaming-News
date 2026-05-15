@@ -40,6 +40,7 @@ async function main() {
   );
   const report = buildPipelineBacklog(stories, {
     corePlatforms: requiredCorePlatformsFromEnv(process.env),
+    strictContentQa: true,
     selectionScore: (story) => scoreCandidate(story, { analyticsText }).score,
   });
   const markdown = renderPipelineBacklogMarkdown(report);

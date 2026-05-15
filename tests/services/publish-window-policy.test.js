@@ -232,6 +232,34 @@ test("publish cooldown ignores sentinel duplicate IDs and undated rows", () => {
   assert.equal(policy.lastPublishedAt, null);
 });
 
+test("publish cooldown ignores failed and review-blocked rows with stale platform IDs", () => {
+  const policy = buildPublishCooldownPolicy({
+    now: "2026-05-14T19:10:00.000Z",
+    stories: [
+      {
+        id: "failed",
+        youtube_post_id: "yt_failed",
+        publish_status: "failed",
+        published_at: "2026-05-14T19:03:00.000Z",
+      },
+      {
+        id: "review",
+        youtube_post_id: "yt_review",
+        publish_status: "partial",
+        qa_status: "failed",
+        published_at: "2026-05-14T19:04:00.000Z",
+      },
+    ],
+    minGapMinutes: 120,
+    env: { AUTO_PUBLISH: "true" },
+  });
+
+  assert.equal(policy.verdict, "green");
+  assert.equal(policy.blocked, false);
+  assert.equal(policy.lastStoryId, null);
+  assert.equal(policy.minutesSinceLastPost, null);
+});
+
 test("publish daily cap is warn-only by default when the 24h volume is high", () => {
   const policy = buildPublishDailyCapPolicy({
     now: "2026-05-14T20:00:00.000Z",
@@ -345,6 +373,38 @@ test("publish daily cap ignores DUPE ids, undated rows and old posts", () => {
 
   assert.equal(posts.length, 1);
   assert.equal(posts[0].id, "real");
+});
+
+test("publish daily cap ignores failed and script-review rows with stale platform IDs", () => {
+  const posts = countPublicPostsInWindow({
+    now: "2026-05-14T20:00:00.000Z",
+    stories: [
+      {
+        id: "failed",
+        youtube_post_id: "yt_failed",
+        publish_status: "failed",
+        published_at: "2026-05-14T19:00:00.000Z",
+      },
+      {
+        id: "script-review",
+        youtube_post_id: "yt_script",
+        publish_status: "partial",
+        published_at: "2026-05-14T19:15:00.000Z",
+        body: "Script validation failed. Manual review required before production.",
+      },
+      {
+        id: "real",
+        youtube_post_id: "yt_real",
+        publish_status: "published",
+        published_at: "2026-05-14T19:30:00.000Z",
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    posts.map((post) => post.id),
+    ["real"],
+  );
 });
 
 test("publisher direct routes pass dispatch provenance into publish calls", () => {

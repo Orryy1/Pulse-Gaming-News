@@ -926,6 +926,12 @@ async function generateTTS(text, outputPath, rateOverride) {
     };
   }
   alignment.meta.voiceMastering = voiceMastering;
+  if (voiceMastering.acoustic) {
+    alignment.meta.acoustic = {
+      ...(alignment.meta.acoustic || {}),
+      ...voiceMastering.acoustic,
+    };
+  }
   await fs.writeJson(timestampsWriteTarget, alignment, { spaces: 2 });
 
   // Return the repo-relative path so callers and the DB continue

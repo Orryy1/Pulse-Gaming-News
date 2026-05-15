@@ -2134,6 +2134,22 @@ async function _publishNextStoryInner({ publishDispatch = null, storyId = null }
     story.published_at = new Date().toISOString();
   }
 
+  // Persist the public/core upload state before lower-reach fallback
+  // work. If a later static-card fallback or engagement side-task
+  // fails, jobs-runner retries must see the successful core platform
+  // ids/status and retry only this story's missing work.
+  try {
+    await db.upsertStory(story);
+  } catch (err) {
+    console.log(
+      `[publisher] CRITICAL: Failed to save core publish state before fallback work: ${err.message}`,
+    );
+    captureException(err, {
+      step: "publishNextStory.core_state_upsert",
+      storyId: story.id,
+    });
+  }
+
   // --- Story card image distribution ---
   // Each platform is gated on its own post-id field so a partial failure
   // followed by a retry only re-tries the platforms that actually failed.
@@ -2168,6 +2184,7 @@ async function _publishNextStoryInner({ publishDispatch = null, storyId = null }
         );
         result.errors.instagram_story = err.message;
         result.platform_outcomes.instagram_story =
+          typeof isInstagramPendingProcessingTimeoutForStory === "function" &&
           isInstagramPendingProcessingTimeoutForStory(err)
             ? "accepted_processing"
             : "failed";

@@ -13,6 +13,7 @@ dotenv.config({ override: true });
     hunt      -One-off Reddit + RSS fetch + script generation
     produce   -Generate audio, images, assemble videos
     publish   -Upload to YouTube, TikTok, Instagram
+              Optional: --story-id <id> or --story <id>
     schedule  -Start autonomous cron scheduler (recommended)
     full      -Run complete autonomous cycle once
     approve   -Run auto-approval pass only
@@ -139,11 +140,43 @@ async function runProduce() {
   console.log("[run] Produce complete");
 }
 
-async function runPublish() {
+function parsePublishStoryIdArg(argv = process.argv.slice(3)) {
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === "--story-id" || arg === "--story") {
+      const value = argv[i + 1];
+      if (!value || value.startsWith("--")) {
+        throw new Error(`${arg} requires a story id`);
+      }
+      return value;
+    }
+    if (arg.startsWith("--story-id=")) {
+      const value = arg.slice("--story-id=".length);
+      if (!value) throw new Error("--story-id requires a story id");
+      return value;
+    }
+    if (arg.startsWith("--story=")) {
+      const value = arg.slice("--story=".length);
+      if (!value) throw new Error("--story requires a story id");
+      return value;
+    }
+  }
+  return null;
+}
+
+async function runPublish({ storyId = null } = {}) {
   console.log("[run] === PUBLISH MODE ===");
 
+  if (storyId) {
+    process.env.PUBLISH_STORY_IDS = storyId;
+    console.log(`[run] Targeting story id: ${storyId}`);
+  }
+
   const { publishToAllPlatforms } = require("./publisher");
-  const results = await publishToAllPlatforms({ dispatchSource: "cli_publish" });
+  const results = await publishToAllPlatforms({
+    dispatchSource: "cli_publish",
+    storyId,
+  });
 
   const total =
     results.youtube.length + results.tiktok.length + results.instagram.length;
@@ -468,7 +501,9 @@ if (!mode) {
   console.log(
     "  node run.js produce   -Generate audio, images and assemble videos",
   );
-  console.log("  node run.js publish   -Upload to YouTube, TikTok, Instagram");
+  console.log(
+    "  node run.js publish [--story-id <id>] -Upload to YouTube, TikTok, Instagram",
+  );
   console.log("  node run.js full      -Run complete autonomous cycle once");
   console.log("  node run.js approve   -Run auto-approval pass");
   console.log(
@@ -494,7 +529,9 @@ if (!mode) {
         await runProduce();
         break;
       case "publish":
-        await runPublish();
+        await runPublish({
+          storyId: parsePublishStoryIdArg(process.argv.slice(3)),
+        });
         break;
       case "full":
         await runFull();

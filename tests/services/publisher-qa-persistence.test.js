@@ -28,6 +28,8 @@ const path = require("node:path");
 
 const PUBLISHER_PATH = path.join(__dirname, "..", "..", "publisher.js");
 const SRC = fs.readFileSync(PUBLISHER_PATH, "utf8");
+const RUN_PATH = path.join(__dirname, "..", "..", "run.js");
+const RUN_SRC = fs.readFileSync(RUN_PATH, "utf8");
 let previousPublishCadenceWarnOnly;
 
 // ---------- source-scan pins ----------
@@ -181,6 +183,78 @@ test("publisher.js: optional PUBLISH_STORY_IDS pins the selector without changin
       { PUBLISH_STORY_IDS: "1tbdx3b" },
     ),
     false,
+  );
+});
+
+test("publisher.js: Instagram Story fallback uses the exported pending-timeout classifier safely", () => {
+  const storyFallbackIdx = SRC.indexOf("Instagram Stories (static card");
+  assert.ok(storyFallbackIdx > 0, "Instagram Story fallback block must exist");
+  const block = SRC.slice(storyFallbackIdx, storyFallbackIdx + 2200);
+  assert.match(
+    block,
+    /isInstagramPendingProcessingTimeout/,
+    "fallback block must import the existing upload_instagram timeout classifier",
+  );
+  assert.match(
+    block,
+    /typeof\s+isInstagramPendingProcessingTimeoutForStory\s*===\s*["']function["']/,
+    "fallback error classification must guard the imported helper before calling it",
+  );
+  assert.match(
+    block,
+    /isInstagramPendingProcessingTimeoutForStory\(err\)\s*\?\s*["']accepted_processing["']\s*:\s*["']failed["']/,
+    "fallback pending-processing errors must be non-fatal and classified as accepted_processing",
+  );
+});
+
+test("publisher.js: core publish status is persisted before lower-reach fallback cards", () => {
+  const statusIdx = SRC.indexOf("Set publish_status from CORE video-platform outcomes only");
+  const fallbackIdx = SRC.indexOf("Story card image distribution");
+  assert.ok(statusIdx > 0, "core publish status block must exist");
+  assert.ok(fallbackIdx > statusIdx, "fallback card block must follow core status calculation");
+  const between = SRC.slice(statusIdx, fallbackIdx);
+  assert.match(
+    between,
+    /coreDone\s*>=\s*coreTotal[\s\S]*story\.publish_status\s*=\s*["']published["']/,
+    "core status block must calculate published/partial/failed before fallback work",
+  );
+  assert.match(
+    between,
+    /await\s+db\.upsertStory\(story\)/,
+    "core publish state must be upserted before any fallback card uploads can throw",
+  );
+});
+
+test("run.js: publish accepts --story-id/--story and passes storyId without bypassing publish gates", () => {
+  assert.match(
+    RUN_SRC,
+    /function\s+parsePublishStoryIdArg/,
+    "run.js should parse targeted publish arguments explicitly",
+  );
+  assert.match(
+    RUN_SRC,
+    /--story-id/,
+    "run.js publish usage should expose --story-id",
+  );
+  assert.match(
+    RUN_SRC,
+    /--story/,
+    "run.js publish usage should expose --story",
+  );
+  assert.match(
+    RUN_SRC,
+    /process\.env\.PUBLISH_STORY_IDS\s*=\s*storyId/,
+    "targeted publish should set the existing PUBLISH_STORY_IDS selector for the current process",
+  );
+  assert.match(
+    RUN_SRC,
+    /publishToAllPlatforms\(\{\s*dispatchSource:\s*["']cli_publish["'][\s\S]*storyId/,
+    "run.js must pass storyId into the canonical publisher path",
+  );
+  assert.doesNotMatch(
+    RUN_SRC,
+    /allowManualOverride:\s*true/,
+    "targeted publish must not opt into manual cadence/window overrides",
   );
 });
 

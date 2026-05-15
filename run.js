@@ -7,6 +7,7 @@ const mediaPaths = require("./lib/media-paths");
 const {
   buildProduceCompletionSummary,
   normaliseExportPath,
+  shouldSendProduceCompletionDiscord,
 } = require("./lib/ops/produce-notification");
 
 dotenv.config({ override: true });
@@ -145,7 +146,7 @@ async function runProduce() {
     recentlyTouchedExportPaths,
   });
 
-  if (summary.shouldNotifyDiscord || process.env.PRODUCE_NOTIFY_NOOP === "true") {
+  if (shouldSendProduceCompletionDiscord(summary)) {
     await sendDiscord(summary.message);
   }
   console.log(`[run] ${summary.message.replace(/\n/g, " | ")}`);

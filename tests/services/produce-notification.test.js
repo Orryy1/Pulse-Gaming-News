@@ -5,6 +5,7 @@ const assert = require("node:assert/strict");
 
 const {
   buildProduceCompletionSummary,
+  shouldSendProduceCompletionDiscord,
 } = require("../../lib/ops/produce-notification");
 
 test("produce notification suppresses no-op historical backlog lists", () => {
@@ -73,4 +74,30 @@ test("produce notification caps long current-run lists", () => {
   assert.match(summary.message, /story_0\.mp4/);
   assert.match(summary.message, /story_2\.mp4/);
   assert.doesNotMatch(summary.message, /story_3\.mp4/);
+});
+
+test("manual produce Discord notification is opt-in", () => {
+  const summary = { shouldNotifyDiscord: true };
+
+  assert.equal(shouldSendProduceCompletionDiscord(summary, {}), false);
+  assert.equal(
+    shouldSendProduceCompletionDiscord(summary, { PRODUCE_NOTIFY_DISCORD: "true" }),
+    true,
+  );
+});
+
+test("manual produce no-op Discord notification also requires opt-in", () => {
+  const summary = { shouldNotifyDiscord: false };
+
+  assert.equal(
+    shouldSendProduceCompletionDiscord(summary, { PRODUCE_NOTIFY_NOOP: "true" }),
+    false,
+  );
+  assert.equal(
+    shouldSendProduceCompletionDiscord(summary, {
+      PRODUCE_NOTIFY_DISCORD: "true",
+      PRODUCE_NOTIFY_NOOP: "true",
+    }),
+    true,
+  );
 });

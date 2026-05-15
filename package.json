@@ -100,6 +100,7 @@
     "ops:local-restart-readiness": "node tools/local-restart-readiness.js",
     "ops:local-resume-plan": "node tools/local-resume-plan.js",
     "ops:local-media-repair": "node tools/local-media-repair.js",
+    "ops:local-tts-publish-refresh": "node tools/local-tts-publish-refresh.js",
     "ops:local-script-extension": "node tools/local-script-extension.js",
     "media:enrich-stills": "node tools/still-image-enrichment.js",
     "media:plan-motion": "node tools/motion-acquisition-pro.js",

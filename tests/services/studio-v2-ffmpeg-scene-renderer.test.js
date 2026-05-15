@@ -10,7 +10,7 @@ const {
 } = require("../../lib/studio/ffmpeg-scene-renderer");
 const { buildQuoteBodyLayout } = require("../../lib/scenes/quote-card");
 
-test("visual scenes get compact entity popups instead of anonymous cover slides", () => {
+test("visual scenes get compact entity popups in the lower hook-safe badge lane", () => {
   const filter = dispatchSceneFilter({
     slot: 0,
     fontOpt: "fontfile=Arial",
@@ -28,6 +28,10 @@ test("visual scenes get compact entity popups instead of anonymous cover slides"
   assert.match(filter, /OFFICIAL FRAME/);
   assert.match(filter, /box=1:boxcolor=black@0\.46/);
   assert.match(filter, /alpha='if\(lt\(t\\,0\.12\)/);
+  assert.doesNotMatch(filter, /text='OFFICIAL FRAME'[^,]*:x=74:y=104/);
+  assert.doesNotMatch(filter, /text='BIOSHOCK'[^,]*:x=74:y=158/);
+  assert.match(filter, /text='OFFICIAL FRAME'[^,]*:x=74:y=250/);
+  assert.match(filter, /text='BIOSHOCK'[^,]*:x=74:y=306/);
   assert.doesNotMatch(filter, /drawbox=x=52:y=108:w=420:h=74/);
 });
 

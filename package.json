@@ -74,6 +74,7 @@
     "ops:publish-cadence": "node tools/publish-cadence-doctor.js",
     "ops:next-publish-candidates": "node tools/next-publish-candidates.js",
     "ops:publish-row-repair": "node tools/publish-row-repair-plan.js",
+    "ops:reprocess-script-failures": "node tools/reprocess-script-failures.js",
     "ops:creator-studio": "node tools/creator-studio-control-room.js",
     "ops:asset-acquisition": "node tools/asset-acquisition-pro.js",
     "ops:motion-acquisition": "node tools/motion-acquisition-pro.js",

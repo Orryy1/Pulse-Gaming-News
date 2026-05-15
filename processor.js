@@ -633,25 +633,41 @@ function titleSimilarity(a, b) {
   return intersection.length / union.size;
 }
 
-async function process_stories() {
+async function process_stories(options = {}) {
+  const {
+    storiesOverride = null,
+    skipDedupIds = [],
+    postDiscord = true,
+    persist = true,
+  } = options || {};
   console.log("[processor] Loading pending_news.json...");
 
-  if (!(await fs.pathExists("pending_news.json"))) {
-    console.log(
-      "[processor] ERROR: pending_news.json not found. Run hunter first.",
-    );
-    return [];
-  }
+  let stories;
+  if (Array.isArray(storiesOverride)) {
+    stories = storiesOverride;
+  } else {
+    if (!(await fs.pathExists("pending_news.json"))) {
+      console.log(
+        "[processor] ERROR: pending_news.json not found. Run hunter first.",
+      );
+      return [];
+    }
 
-  const data = await fs.readJson("pending_news.json");
-  let stories = data.stories || [];
+    const data = await fs.readJson("pending_news.json");
+    stories = data.stories || [];
+  }
   console.log(`[processor] Processing ${stories.length} stories...`);
 
   // Cross-cycle dedup: check pending stories against existing daily_news.json
+  const skipDedupSet = new Set((skipDedupIds || []).filter(Boolean));
   const existingStories = await db.getStories();
   if (existingStories.length > 0) {
     const before = stories.length;
     stories = stories.filter((pending) => {
+      if (skipDedupSet.has(pending.id)) {
+        console.log(`[processor] Reprocess allowed (ID match): ${pending.title}`);
+        return true;
+      }
       // Check by ID
       if (existingStories.some((e) => e.id === pending.id)) {
         console.log(`[processor] Dedup (ID match): ${pending.title}`);
@@ -890,6 +906,15 @@ Today's date is ${today}. You MUST follow these rules:
       pinned_comment: pinnedComment,
       approved: requiresScriptReview ? false : story.approved || false,
       auto_approved: requiresScriptReview ? false : story.auto_approved || false,
+      script_generation_status: requiresScriptReview
+        ? "review_required"
+        : "script_ready",
+      script_review_reason: requiresScriptReview
+        ? script.script_review_reason
+        : null,
+      script_validation_errors: requiresScriptReview
+        ? script.script_validation_errors || []
+        : [],
     };
 
     // Generate A/B title variants (non-blocking - if it fails, continue with single title)
@@ -908,24 +933,32 @@ Today's date is ${today}. You MUST follow these rules:
   // Upsert each story individually to avoid wiping previously published stories.
   // saveStories() deletes anything not in the array, which destroys youtube_post_id
   // and other platform IDs from earlier cycles, causing duplicate uploads.
-  for (const story of enriched) {
-    await db.upsertStory(story);
+  if (persist) {
+    for (const story of enriched) {
+      await db.upsertStory(story);
+    }
+    console.log(`[processor] Saved ${enriched.length} enriched stories (upsert)`);
+  } else {
+    console.log(`[processor] Dry-run: generated ${enriched.length} enriched stories`);
   }
-  console.log(`[processor] Saved ${enriched.length} enriched stories (upsert)`);
 
   // Post new stories to Discord news channels
-  try {
-    const { postNewStory } = require("./discord/auto_post");
-    let postedCount = 0;
-    for (const story of enriched) {
-      const msg = await postNewStory(story);
-      if (msg) postedCount++;
+  if (postDiscord && persist) {
+    try {
+      const { postNewStory } = require("./discord/auto_post");
+      let postedCount = 0;
+      for (const story of enriched) {
+        const msg = await postNewStory(story);
+        if (msg) postedCount++;
+      }
+      console.log(
+        `[processor] Discord: posted ${postedCount}/${enriched.length} stories to news channels`,
+      );
+    } catch (err) {
+      console.log(`[processor] Discord news posting skipped: ${err.message}`);
     }
-    console.log(
-      `[processor] Discord: posted ${postedCount}/${enriched.length} stories to news channels`,
-    );
-  } catch (err) {
-    console.log(`[processor] Discord news posting skipped: ${err.message}`);
+  } else {
+    console.log("[processor] Discord news posting skipped by options");
   }
 
   return enriched;

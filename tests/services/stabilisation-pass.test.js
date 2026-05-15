@@ -554,3 +554,14 @@ test("decision-engine wires the fresh-confirmed Reddit auto lane", () => {
   assert.match(src, /qualifiesForFreshConfirmedRedditAutoLane/);
   assert.match(src, /freshConfirmedLane/);
 });
+
+test("server approve endpoint blocks script-review fallback rows", () => {
+  const src = fs.readFileSync(
+    require.resolve("../../server.js"),
+    "utf8",
+  );
+
+  assert.match(src, /script_generation_status === "review_required"/);
+  assert.match(src, /script requires review/);
+  assert.match(src, /manual review required before production/i);
+});

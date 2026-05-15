@@ -223,6 +223,7 @@ test("processor editor prompt: non-Pulse channels keep legacy long-form short ra
 test("processor editor pass revalidates edited scripts before accepting them", () => {
   assert.match(PROCESSOR_SOURCE, /validate\(edited,\s*channel\.id,\s*\{\s*story\s*\}\)/);
   assert.match(PROCESSOR_SOURCE, /editor_validation_failed/);
+  assert.match(PROCESSOR_SOURCE, /editor_lint_failed/);
 });
 
 test("processor final validation failure routes story to review instead of accepting bad Short script", () => {
@@ -236,6 +237,7 @@ test("processor final validation failure routes story to review instead of accep
   );
 
   assert.equal(fallback.classification, "[REVIEW]");
+  assert.equal(fallback.body, "");
   assert.equal(fallback.full_script, "");
   assert.equal(fallback.tts_script, "");
   assert.equal(fallback.word_count, 0);
@@ -261,5 +263,24 @@ test("processor final validation failure preserves extended-short routing metada
   assert.equal(fallback.classification, "[REVIEW]");
   assert.equal(fallback.format_route, "extended_or_briefing");
   assert.equal(fallback.runtime_route, "extended_or_briefing");
+  assert.equal(fallback.script_generation_status, "review_required");
+});
+
+test("processor wires script lint into the generation retry loop", () => {
+  assert.match(PROCESSOR_SOURCE, /lintScript\(script\.full_script/);
+  assert.match(PROCESSOR_SOURCE, /buildRetryFeedback\(lint\)/);
+  assert.match(PROCESSOR_SOURCE, /Script lint failed/);
+});
+
+test("processor validation review rows do not store public fallback narration", () => {
+  const fallback = processor.buildScriptValidationReview(
+    { id: "story3", title: "Bad public fallback" },
+    { id: "pulse-gaming" },
+    ["script_coherence:missing_exact_cta_in_script"],
+  );
+
+  assert.equal(fallback.body, "");
+  assert.equal(fallback.full_script, "");
+  assert.equal(fallback.tts_script, "");
   assert.equal(fallback.script_generation_status, "review_required");
 });

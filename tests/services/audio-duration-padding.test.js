@@ -9,6 +9,7 @@ const {
   buildDeterministicDurationRewrite,
   insertBeforeSpokenOutro,
 } = require("../../audio");
+const { runScriptCoherenceQa } = require("../../lib/script-coherence-qa");
 
 test("duration padding keeps the approved CTA once at the end", () => {
   const script =
@@ -72,6 +73,14 @@ test("second duration padding attempt adds a source-safe follow-up sentence", ()
   const out = buildDeterministicDurationRewrite(story, { attempt: 2 });
 
   assert.match(out.full_script, /still needs official confirmation/i);
-  assert.match(out.full_script, /tracking the official follow-up/i);
+  assert.match(out.full_script, /honest angle is what has changed for players today/i);
   assert.match(out.full_script, /Follow Pulse Gaming so you never miss a beat\.$/);
+  assert.doesNotMatch(out.full_script, /For Pulse|direction of travel|signal first|tracking the official follow-up/i);
+  assert.equal(
+    runScriptCoherenceQa(
+      { ...story, full_script: out.full_script, cta: "Follow Pulse Gaming so you never miss a beat" },
+      { requireCtaField: true, requireFullScriptCta: true },
+    ).result,
+    "pass",
+  );
 });

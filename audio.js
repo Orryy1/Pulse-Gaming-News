@@ -419,7 +419,7 @@ function buildDeterministicDurationPadding(story, { attempt = 1 } = {}) {
     );
   } else {
     lines.push(
-      "The important point is the direction of travel, not just the headline itself.",
+      "The player-facing consequence matters more than stretching the headline beyond the source.",
     );
   }
 
@@ -429,17 +429,17 @@ function buildDeterministicDurationPadding(story, { attempt = 1 } = {}) {
     );
   } else {
     lines.push(
-      "The next thing to watch is whether an official post, platform listing or patch note backs it up.",
+      "The useful follow-up is a named update from the studio, store page or platform holder.",
     );
   }
 
   if (attempt > 1) {
     lines.push(
-      "For Pulse, that means tracking the official follow-up before calling it a guaranteed change.",
+      "Until that appears, the honest angle is what has changed for players today.",
     );
   } else {
     lines.push(
-      "For players, the safest read is signal first, certainty later.",
+      "For players, the decision point is simple: does this change what they can buy, play or trust today?",
     );
   }
 

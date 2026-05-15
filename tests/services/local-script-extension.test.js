@@ -235,6 +235,27 @@ test("local script extension uses compact bridge lines instead of overshooting n
   assert.doesNotMatch(draft.proposed_full_script, /The clean read on Marathon Drops/i);
 });
 
+test("local script extension never adds internal Pulse strategy boilerplate", () => {
+  const draft = extendScriptToLocalFlash({
+    story: {
+      id: "rss_internal_boilerplate",
+      title: "Reported update needs careful wording",
+      subreddit: "GameSpot",
+      content_pillar: "Confirmed Drop",
+      full_script:
+        "A reported gaming update still needs careful wording. Players have one confirmed detail today.",
+    },
+    queueItem: queueItem("rss_internal_boilerplate", 18),
+    env: {},
+  });
+
+  assert.doesNotMatch(
+    draft.proposed_full_script,
+    /For Pulse|direction of travel|signal first|safest read|tracking the official follow-up/i,
+  );
+  assert.ok(!draft.manual_review_flags.some((flag) => /abstract_signal_language/i.test(flag)));
+});
+
 test("local script extension strips duplicate CTA before appending the required outro once", () => {
   const draft = extendScriptToLocalFlash({
     story: {

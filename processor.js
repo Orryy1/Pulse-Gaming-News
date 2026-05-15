@@ -13,6 +13,10 @@ const {
   DEFAULT_MIN_WORDS,
   DEFAULT_MAX_WORDS,
 } = require("./lib/services/short-runtime-planner");
+const {
+  lintScript,
+  buildRetryFeedback,
+} = require("./lib/services/script-lint");
 const { runScriptCoherenceQa } = require("./lib/script-coherence-qa");
 
 const { getChannel } = require("./channels");
@@ -734,6 +738,13 @@ Reply with ONLY the edited JSON object in the same format as the input. No expla
     if (errors.length > 0) {
       throw new Error(`editor_validation_failed:${errors.join("; ")}`);
     }
+    const lint = lintScript(edited.full_script || "", {
+      minWords: DEFAULT_MIN_WORDS,
+      maxWords: Math.max(DEFAULT_MAX_WORDS, DEFAULT_MIN_WORDS),
+    });
+    if (lint.result === "fail") {
+      throw new Error(`editor_lint_failed:${lint.failures.join("; ")}`);
+    }
 
     console.log(`[processor] Sonnet editor polished script`);
     return edited;
@@ -770,7 +781,7 @@ function buildScriptValidationReview(story = {}, channel = {}, errors = []) {
   return {
     classification: "[REVIEW]",
     hook: "",
-    body: "Script validation failed. Manual review required before production.",
+    body: "",
     cta: "",
     full_script: "",
     tts_script: "",
@@ -967,6 +978,7 @@ Today's date is ${today}. You MUST follow these rules:
     let script = null;
     let qualityScore = null;
     let attempts = 0;
+    let lintRetryFeedback = "";
 
     while (attempts < 3) {
       attempts++;
@@ -974,10 +986,13 @@ Today's date is ${today}. You MUST follow these rules:
         let extra = "";
         if (attempts === 2) {
           extra =
-            `\n\nIMPORTANT: Your previous script failed validation. For Pulse Gaming, ensure the actual full_script is ${DEFAULT_MIN_WORDS}-${DEFAULT_MAX_WORDS} spoken words for a 61-75 second Short. Keep hook under 18 words. Include a classification tag. Do not start the hook with So, Today, Hey, Welcome or In this. Avoid advertiser-risk terms such as killed, murder, suicide, terrorist, massacre, genocide or slaughter.`;
+            `\n\nIMPORTANT: Your previous script failed validation. Ensure the actual full_script is ${DEFAULT_MIN_WORDS}-${DEFAULT_MAX_WORDS} spoken words for a 61-75 second Short. Keep hook under 18 words. Include a classification tag. Do not start the hook with So, Today, Hey, Welcome or In this. Avoid advertiser-risk terms such as killed, murder, suicide, terrorist, massacre, genocide or slaughter.`;
         } else if (attempts === 3) {
           extra =
             `\n\nFINAL ATTEMPT: Produce a ${Math.round((DEFAULT_MIN_WORDS + DEFAULT_MAX_WORDS) / 2)}-word script. Hook must be one concrete sentence under 18 words. Use named people/companies and concrete outcomes. Include a classification tag and CTA. This is your last chance.`;
+        }
+        if (lintRetryFeedback) {
+          extra += `\n\n${lintRetryFeedback}`;
         }
 
         const response = await client.messages.create({
@@ -1027,6 +1042,29 @@ Today's date is ${today}. You MUST follow these rules:
         } else {
           console.log(
             `[processor] Script validated (${script.word_count} words)`,
+          );
+        }
+
+        const lint = lintScript(script.full_script || "", {
+          minWords: DEFAULT_MIN_WORDS,
+          maxWords: Math.max(DEFAULT_MAX_WORDS, DEFAULT_MIN_WORDS),
+        });
+        if (lint.result === "fail") {
+          console.log(
+            `[processor] Script lint failed (attempt ${attempts}): ${lint.failures.join(", ")}`,
+          );
+          lintRetryFeedback = buildRetryFeedback(lint);
+          if (attempts >= 3) {
+            script = buildScriptValidationReview(story, channel, lint.failures);
+            qualityScore = 0;
+            break;
+          }
+          script = null;
+          continue;
+        }
+        if (lint.warnings.length > 0) {
+          console.log(
+            `[processor] Script lint warnings: ${lint.warnings.join(", ")}`,
           );
         }
 

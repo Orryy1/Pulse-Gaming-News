@@ -943,6 +943,19 @@ app.post("/api/approve", requireAuth, rateLimit(30, 60000), (req, res) => {
     const { story } = findStory(id);
     if (!story) return res.status(404).json({ error: "story not found" });
 
+    const scriptReviewBlocked =
+      story.script_generation_status === "review_required" ||
+      !!story.script_review_reason ||
+      /script validation failed|manual review required before production/i.test(
+        [story.body, story.full_script, story.tts_script].filter(Boolean).join("\n"),
+      );
+    if (scriptReviewBlocked) {
+      return res.status(409).json({
+        error: "script requires review",
+        reason: story.script_review_reason || "script_validation_review_required",
+      });
+    }
+
     updateStory(id, { approved: true });
     console.log(`[server] Approved: ${id}`);
     res.json({ success: true });

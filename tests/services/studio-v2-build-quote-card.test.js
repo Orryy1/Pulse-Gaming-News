@@ -20,5 +20,5 @@ test("standalone Studio v2 quote-card builder clamps long quotes before HyperFra
   assert.ok(quote.length <= 96, quote);
   assert.match(quote, /\.\.\.$/);
   assert.doesNotMatch(markup, /final/);
-  assert.equal(pickFontSize(quote), 54);
+  assert.equal(pickFontSize(quote), 50);
 });

@@ -2,6 +2,8 @@
 
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 
 const {
   buildKineticAss,
@@ -12,6 +14,8 @@ const {
   prepareSubtitleWords,
   transcriptCoverageRatio,
 } = require("../../lib/studio/v2/subtitle-layer-v2");
+
+const ROOT = path.resolve(__dirname, "..", "..");
 
 function assIntervals(ass) {
   return ass
@@ -407,6 +411,15 @@ test("buildKineticAss can keep full Flash punches visible while words pop", () =
   assert.deepEqual(captions.slice(0, 2), ["MARATHON\\hJUST", "FELL\\hHARD."]);
   assert.doesNotMatch(ass, /\\alpha&HFF&/);
   assert.match(ass, /\\t\(0,100,\\fscx115\\fscy115\)/);
+});
+
+test("still-deck enriched proofs use phrase reveal to avoid lonely word holds", () => {
+  const source = fs.readFileSync(
+    path.join(ROOT, "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+
+  assert.match(source, /revealMode:\s*flash\s*\?\s*"phrase"\s*:\s*"word"/);
 });
 
 test("buildKineticAss synthetic captions cover narration end and obey density caps", () => {

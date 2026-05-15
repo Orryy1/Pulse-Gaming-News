@@ -331,7 +331,7 @@ function resolveStillDeckCaptionOptions({ variant } = {}) {
     maxWordsPerPhrase: 2,
     maxPhraseChars: 14,
     captionCase: "upper",
-    revealMode: flash ? "word" : "word",
+    revealMode: flash ? "phrase" : "word",
     motionStyle: flash ? "flash" : "default",
     avoidDanglingWords: flash,
     danglingMergeMaxWords: 2,

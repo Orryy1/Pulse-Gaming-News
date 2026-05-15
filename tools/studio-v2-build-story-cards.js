@@ -13,6 +13,11 @@
 const path = require("node:path");
 const fs = require("fs-extra");
 const { execSync } = require("node:child_process");
+const {
+  fitQuoteText,
+  pickQuoteFontSize,
+  quoteLayoutClass,
+} = require("../lib/studio/v2/quote-fit");
 
 const ROOT = path.resolve(__dirname, "..");
 const TEST_OUT = path.join(ROOT, "test", "output");
@@ -98,20 +103,13 @@ function clampWords(value, maxWords) {
 }
 
 function clampQuoteText(value, { maxWords = 12, maxChars = 96 } = {}) {
-  const words = normaliseText(value).split(/\s+/).filter(Boolean);
-  let text = words.length > maxWords ? `${words.slice(0, maxWords).join(" ")}...` : words.join(" ");
-  if (text.length > maxChars) {
-    text = `${text.slice(0, maxChars - 3).replace(/\s+\S*$/, "").trim()}...`;
-  }
-  return text;
-}
-
-function quoteLayoutClass(text) {
-  const clean = normaliseText(text);
-  const words = clean.split(/\s+/).filter(Boolean).length;
-  if (words > 10 || clean.length > 88) return "quote quote--compact";
-  if (words > 7 || clean.length > 62) return "quote quote--medium";
-  return "quote";
+  return fitQuoteText(value, {
+    maxWords: Math.min(Number(maxWords) || 12, 11),
+    maxChars: Math.min(Number(maxChars) || 96, 84),
+    maxCharsPerLine: 28,
+    maxLines: 3,
+    maxTokenChars: 22,
+  });
 }
 
 function sourceLabel(story) {
@@ -363,15 +361,6 @@ function buildHeadlineSpans(words) {
   return words
     .map((word) => `            <span class="word">${escapeHtml(word)}</span>`)
     .join("\n");
-}
-
-function pickQuoteFontSize(text) {
-  const words = normaliseText(text).split(/\s+/).filter(Boolean).length;
-  const chars = normaliseText(text).length;
-  if (words <= 5 && chars <= 40) return 76;
-  if (words <= 8 && chars <= 70) return 64;
-  if (words <= 12 && chars <= 110) return 54;
-  return 46;
 }
 
 function renderTimelineBullets(bullets) {

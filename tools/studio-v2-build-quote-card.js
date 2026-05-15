@@ -26,6 +26,11 @@
 const path = require("node:path");
 const fs = require("fs-extra");
 const { execSync } = require("node:child_process");
+const {
+  fitQuoteText,
+  normaliseQuoteText,
+  pickQuoteFontSize,
+} = require("../lib/studio/v2/quote-fit");
 
 const ROOT = path.resolve(__dirname, "..");
 const TEMPLATE_DIR = path.join(ROOT, "experiments", "hf-quote");
@@ -40,24 +45,14 @@ function escapeHtml(s) {
     .replace(/'/g, "&#039;");
 }
 
-function normaliseQuoteText(value) {
-  return String(value ?? "")
-    .replace(/[\u201c\u201d]/g, '"')
-    .replace(/[\u2018\u2019]/g, "'")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 function clampQuoteText(value, { maxWords = 12, maxChars = 96 } = {}) {
-  const words = normaliseQuoteText(value).split(/\s+/).filter(Boolean);
-  let text =
-    words.length > maxWords
-      ? `${words.slice(0, maxWords).join(" ")}...`
-      : words.join(" ");
-  if (text.length > maxChars) {
-    text = `${text.slice(0, maxChars - 3).replace(/\s+\S*$/, "").trim()}...`;
-  }
-  return text;
+  return fitQuoteText(value, {
+    maxWords: Math.min(Number(maxWords) || 12, 11),
+    maxChars: Math.min(Number(maxChars) || 96, 84),
+    maxCharsPerLine: 28,
+    maxLines: 3,
+    maxTokenChars: 22,
+  });
 }
 
 /**
@@ -81,13 +76,7 @@ function buildQuoteWordSpans(text) {
  * 1080px wide. Empirical thresholds; conservative.
  */
 function pickFontSize(text) {
-  const clean = normaliseQuoteText(text);
-  const words = clean.split(/\s+/).filter(Boolean).length;
-  const chars = clean.length;
-  if (words <= 5 && chars <= 40) return 76;
-  if (words <= 8 && chars <= 70) return 64;
-  if (words <= 12 && chars <= 110) return 54;
-  return 46;
+  return pickQuoteFontSize(text);
 }
 
 /**

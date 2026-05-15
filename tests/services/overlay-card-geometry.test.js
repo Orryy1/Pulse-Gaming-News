@@ -8,6 +8,7 @@ const path = require("node:path");
 const { buildCommentSwoop } = require("../../lib/prl-overlays");
 const { buildSourceCardFilter } = require("../../lib/scenes/source-card");
 const { deriveCardContent } = require("../../lib/studio/v2/hf-card-builders");
+const { wrapQuoteLines } = require("../../lib/studio/v2/quote-fit");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const FONT_OPT = "font='Arial'";
@@ -69,4 +70,30 @@ test("Studio v2 quote derivation clamps long source comments before card render"
   assert.ok(words.length <= 12, content.quote.quoteText);
   assert.ok(content.quote.quoteText.length <= 96, content.quote.quoteText);
   assert.match(content.quote.quoteText, /\.\.\.$/);
+  assert.equal(
+    wrapQuoteLines(content.quote.quoteText, { maxCharsPerLine: 28, maxLines: 3 }).overflow,
+    false,
+  );
+});
+
+test("Studio v2 quote derivation shortens long unbroken quote tokens", () => {
+  const content = deriveCardContent({
+    story: {
+      id: "story_2",
+      subreddit: "GamingLeaksAndRumours",
+      source_type: "reddit",
+      top_comment:
+        "SupercalifragilisticexpialidociousEditionWithRidiculousSuffix should never become a one-line frame breaker.",
+    },
+    pkg: {},
+  });
+
+  assert.equal(
+    wrapQuoteLines(content.quote.quoteText, { maxCharsPerLine: 28, maxLines: 3 }).overflow,
+    false,
+  );
+  assert.ok(
+    content.quote.quoteText.split(/\s+/).every((word) => word.length <= 25),
+    content.quote.quoteText,
+  );
 });

@@ -261,7 +261,13 @@ test("ops:reprocess-script-failures command is registered and dry-run first", ()
   assert.match(tool, /selectReprocessableScriptFailureStories/);
   assert.match(tool, /--apply-local/);
   assert.match(tool, /--llm-timeout-ms/);
+  assert.match(tool, /--llm-provider/);
+  assert.match(tool, /--max-attempts/);
+  assert.match(tool, /--skip-editor/);
   assert.match(tool, /LLM_REQUEST_TIMEOUT_MS/);
+  assert.match(tool, /process\.env\.LLM_PROVIDER/);
+  assert.match(tool, /maxScriptAttempts/);
+  assert.match(tool, /skipEditorPass/);
   assert.match(tool, /for \(const candidate of candidates\)/);
   assert.match(tool, /postDiscord: false/);
   assert.match(tool, /backupFileName/);
@@ -269,14 +275,25 @@ test("ops:reprocess-script-failures command is registered and dry-run first", ()
 });
 
 test("reprocess tool args include bounded local LLM timeout", () => {
-  const { DEFAULT_REPROCESS_LLM_TIMEOUT_MS, parseArgs } = require("../../tools/reprocess-script-failures");
+  const {
+    DEFAULT_REPROCESS_LLM_TIMEOUT_MS,
+    DEFAULT_REPROCESS_MAX_ATTEMPTS,
+    parseArgs,
+  } = require("../../tools/reprocess-script-failures");
 
   assert.equal(parseArgs([]).llmTimeoutMs, DEFAULT_REPROCESS_LLM_TIMEOUT_MS);
+  assert.equal(parseArgs([]).maxAttempts, DEFAULT_REPROCESS_MAX_ATTEMPTS);
+  assert.equal(parseArgs([]).skipEditor, true);
   assert.equal(
     parseArgs(["--llm-timeout-ms", "9000", "--limit", "1"]).llmTimeoutMs,
     9000,
   );
   assert.equal(parseArgs(["--llm-timeout-ms=12000"]).llmTimeoutMs, 12000);
+  assert.equal(parseArgs(["--llm-provider", "anthropic"]).llmProvider, "anthropic");
+  assert.equal(parseArgs(["--llm-provider=local"]).llmProvider, "local");
+  assert.equal(parseArgs(["--max-attempts", "2"]).maxAttempts, 2);
+  assert.equal(parseArgs(["--max-attempts=3"]).maxAttempts, 3);
+  assert.equal(parseArgs(["--editor"]).skipEditor, false);
 });
 
 test("processor clears stale review metadata after a successful reprocess", () => {

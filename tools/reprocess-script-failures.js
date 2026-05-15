@@ -16,6 +16,7 @@ const {
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
 const DEFAULT_REPROCESS_LLM_TIMEOUT_MS = 30_000;
+const DEFAULT_REPROCESS_MAX_ATTEMPTS = 1;
 
 function backupFileName(now = new Date()) {
   return `pulse-pre-script-failure-reprocess-${now.toISOString().replace(/[:.]/g, "-")}.db`;
@@ -27,6 +28,9 @@ function parseArgs(argv = process.argv.slice(2)) {
     json: false,
     limit: 10,
     llmTimeoutMs: DEFAULT_REPROCESS_LLM_TIMEOUT_MS,
+    llmProvider: "",
+    maxAttempts: DEFAULT_REPROCESS_MAX_ATTEMPTS,
+    skipEditor: true,
     storyIds: [],
     help: false,
   };
@@ -54,6 +58,23 @@ function parseArgs(argv = process.argv.slice(2)) {
     } else if (arg.startsWith("--llm-timeout-ms=")) {
       const value = Number(arg.slice("--llm-timeout-ms=".length));
       if (Number.isFinite(value) && value > 0) args.llmTimeoutMs = Math.floor(value);
+    } else if (arg === "--llm-provider") {
+      const value = String(argv[++i] || "").trim().toLowerCase();
+      if (value) args.llmProvider = value;
+    } else if (arg.startsWith("--llm-provider=")) {
+      args.llmProvider = String(arg.slice("--llm-provider=".length) || "")
+        .trim()
+        .toLowerCase();
+    } else if (arg === "--max-attempts") {
+      const value = Number(argv[++i]);
+      if (Number.isFinite(value) && value > 0) args.maxAttempts = Math.floor(value);
+    } else if (arg.startsWith("--max-attempts=")) {
+      const value = Number(arg.slice("--max-attempts=".length));
+      if (Number.isFinite(value) && value > 0) args.maxAttempts = Math.floor(value);
+    } else if (arg === "--editor") {
+      args.skipEditor = false;
+    } else if (arg === "--skip-editor") {
+      args.skipEditor = true;
     } else if (arg === "--help" || arg === "-?") {
       args.help = true;
     }
@@ -63,9 +84,10 @@ function parseArgs(argv = process.argv.slice(2)) {
 
 function printHelp() {
   process.stdout.write(
-    "Usage: node tools/reprocess-script-failures.js [--limit N] [--story ID] [--llm-timeout-ms N] [--apply-local] [--json]\n" +
+    "Usage: node tools/reprocess-script-failures.js [--limit N] [--story ID] [--llm-provider local|anthropic] [--llm-timeout-ms N] [--max-attempts N] [--editor|--skip-editor] [--apply-local] [--json]\n" +
       "  Default is dry-run: generates scripts and reports, but does not write DB rows.\n" +
       `  Local LLM calls are bounded by --llm-timeout-ms (default ${DEFAULT_REPROCESS_LLM_TIMEOUT_MS}ms).\n` +
+      `  Repair mode uses --max-attempts ${DEFAULT_REPROCESS_MAX_ATTEMPTS} and --skip-editor by default so one bad story cannot stall the queue.\n` +
       "  --apply-local persists only selected script-review failure rows and never posts to Discord/social.\n",
   );
 }
@@ -77,6 +99,8 @@ async function reprocessCandidate(candidate, args) {
       skipDedupIds: [candidate.id],
       postDiscord: false,
       persist: args.applyLocal,
+      maxScriptAttempts: args.maxAttempts,
+      skipEditorPass: args.skipEditor,
     });
     return Array.isArray(rows) && rows.length > 0
       ? rows
@@ -112,6 +136,12 @@ async function main() {
   }
   if (!process.env.LLM_REQUEST_TIMEOUT_MS) {
     process.env.LLM_REQUEST_TIMEOUT_MS = String(args.llmTimeoutMs);
+  }
+  if (args.llmProvider) {
+    if (!["local", "ollama", "openai-compatible", "anthropic", "claude"].includes(args.llmProvider)) {
+      throw new Error(`Unsupported --llm-provider: ${args.llmProvider}`);
+    }
+    process.env.LLM_PROVIDER = args.llmProvider;
   }
 
   const stories =
@@ -172,6 +202,7 @@ if (require.main === module) {
 
 module.exports = {
   DEFAULT_REPROCESS_LLM_TIMEOUT_MS,
+  DEFAULT_REPROCESS_MAX_ATTEMPTS,
   parseArgs,
   reprocessCandidate,
 };

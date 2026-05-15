@@ -210,6 +210,39 @@ test("Pulse channel prompt bans internal strategy boilerplate from narration", (
   assert.match(channelSource, /Do not write internal Pulse strategy language/);
   assert.match(channelSource, /direction of travel/);
   assert.match(channelSource, /signal first/);
+  assert.match(channelSource, /safe takeaway/);
+  assert.match(channelSource, /High-energy gaming TikTok news/);
+  assert.doesNotMatch(channelSource, /slightly conspiratorial/);
+  assert.doesNotMatch(channelSource, /nobody noticed this/);
+});
+
+test("processor quality scorer penalises banned stock pivots instead of rewarding them", () => {
+  assert.match(PROCESSOR_SOURCE, /Penalise canned pivots/);
+  assert.doesNotMatch(
+    PROCESSOR_SOURCE,
+    /Look for patterns like "But here is where it gets interesting"/,
+  );
+});
+
+test("processor validate rejects overused clickbait stock phrasing", () => {
+  const item = script(100);
+  item.full_script =
+    "Nintendo confirmed a Switch 2 bundle with a clear price and release window. But here is where it gets interesting. Nobody saw this coming, and this changes everything. Follow Pulse Gaming so you never miss a beat.";
+
+  const errors = processor.validate(item, "pulse-gaming");
+
+  assert.ok(
+    errors.some((error) =>
+      error.includes("script_coherence:vague_filler:formulaic_pivot"),
+    ),
+    `got: ${errors.join(", ")}`,
+  );
+  assert.ok(
+    errors.some((error) =>
+      error.includes("script_coherence:vague_filler:changes_everything"),
+    ),
+    `got: ${errors.join(", ")}`,
+  );
 });
 
 test("fallback system prompt bans fake insider attribution and internal strategy boilerplate", () => {
@@ -290,6 +323,14 @@ test("processor wires script lint into the generation retry loop", () => {
   assert.match(PROCESSOR_SOURCE, /Script lint failed/);
 });
 
+test("processor exposes bounded script attempts for repair tooling", () => {
+  assert.match(PROCESSOR_SOURCE, /maxScriptAttempts\s*=\s*3/);
+  assert.match(PROCESSOR_SOURCE, /scriptAttemptLimit/);
+  assert.match(PROCESSOR_SOURCE, /attempts\s*<\s*scriptAttemptLimit/);
+  assert.match(PROCESSOR_SOURCE, /skipEditorPass\s*=\s*false/);
+  assert.match(PROCESSOR_SOURCE, /qualityScore\s*>=\s*7\s*&&\s*!skipEditorPass/);
+});
+
 test("processor validation review rows do not store public fallback narration", () => {
   const fallback = processor.buildScriptValidationReview(
     { id: "story3", title: "Bad public fallback" },
@@ -301,4 +342,8 @@ test("processor validation review rows do not store public fallback narration", 
   assert.equal(fallback.full_script, "");
   assert.equal(fallback.tts_script, "");
   assert.equal(fallback.script_generation_status, "review_required");
+});
+
+test("processor does not spend title-variant calls on unusable review scripts", () => {
+  assert.match(PROCESSOR_SOURCE, /if \(!requiresScriptReview\)\s*\{\s*try\s*\{\s*const \{ generateTitleVariants \}/s);
 });

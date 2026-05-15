@@ -267,6 +267,30 @@ test("script coherence blocks broader internal signal and tracking language", ()
   );
 });
 
+test("script coherence blocks paraphrased internal interpretation language", () => {
+  const qa = runScriptCoherenceQa(
+    {
+      title: "Xbox confirms a Game Pass update",
+      source_type: "rss",
+      subreddit: "Xbox Wire",
+      cta: "Follow Pulse Gaming so you never miss a beat",
+      full_script:
+        "Xbox confirmed three new Game Pass titles this week. Our safest interpretation is that the signal is not the headline. We are watching for confirmation before naming the next drop. Follow Pulse Gaming so you never miss a beat.",
+    },
+    { requireCtaField: true, requireFullScriptCta: true },
+  );
+
+  assert.equal(qa.result, "fail");
+  assert.ok(
+    qa.failures.includes("script_coherence:abstract_signal_language"),
+    qa.failures.join(", "),
+  );
+  assert.ok(
+    qa.failures.includes("script_coherence:vague_filler:internal_tracking_language"),
+    qa.failures.join(", "),
+  );
+});
+
 test("script coherence blocks overused clickbait pivots that make stories sound generic", () => {
   const qa = runScriptCoherenceQa(
     {
@@ -275,7 +299,7 @@ test("script coherence blocks overused clickbait pivots that make stories sound 
       subreddit: "Nintendo",
       cta: "Follow Pulse Gaming so you never miss a beat",
       full_script:
-        "Nintendo confirmed a Switch 2 bundle with a named release window. But here is where it gets interesting. Nobody expected the pricing angle, and that changes everything. Follow Pulse Gaming so you never miss a beat.",
+        "Nintendo confirmed a Switch 2 bundle with a named release window. But here is where it gets interesting. Nobody expected this, and that changes everything. Follow Pulse Gaming so you never miss a beat.",
     },
     { requireCtaField: true, requireFullScriptCta: true },
   );

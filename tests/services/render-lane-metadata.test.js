@@ -103,7 +103,7 @@ function passingStory(overrides = {}) {
     title: "Test Story",
     exported_path: "/tmp/out.mp4",
     full_script:
-      "A dead franchise just got resurrected and nobody saw it coming. Big studios are responding to a shift in the market that took three years to build and thirty seconds to explode. The numbers are staggering and the timing is surgical. Ubisoft confirmed the reveal is set for later this month and the embargo lifts at midday across every major territory. Sources have verified the timeline through two separate trade outlets and an internal calendar invite that leaked last week. Players are already speculating about what this means for the series going forward, and the marketing team is quietly scrubbing old posts in preparation for the new positioning. Follow Pulse Gaming so you never miss a beat.",
+      "Nintendo just turned a Switch 2 purchase into a much simpler decision. Nintendo says the new Choose Your Game Bundle launches in early June at participating retailers for four hundred and ninety nine dollars and ninety nine cents. The key detail is the download code. Buyers can choose Mario Kart World, Donkey Kong Bananza or Pokémon Pokopia, which makes the bundle easier to explain than a normal console listing. For players waiting on a first-party reason to upgrade, this is a cleaner pitch than a vague launch-window promise. Follow Pulse Gaming so you never miss a beat.",
     tts_script: "Short clean tts variant for TTS pass.",
     image_path: "/tmp/card.png",
     render_lane: "legacy_multi_image",

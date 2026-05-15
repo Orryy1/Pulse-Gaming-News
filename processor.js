@@ -656,7 +656,7 @@ async function scoreScript(client, script, story, channel) {
       max_tokens: 150,
       system: `You score YouTube Shorts scripts for a ${channel.niche} news channel called ${channel.name} (1-10). Criteria (in priority order):
 - HOOK STRENGTH (40% of score): Does it use a CURIOSITY GAP? Does it open a knowledge gap that compels the viewer to keep watching? A hook that reveals the answer or is vague scores 1-3. A hook that creates genuine "wait, WHAT?" tension scores 8-10.
-- MID-ROLL RE-HOOK (10%): Does the body contain a pivot sentence around the midpoint that resets attention? Look for patterns like "But here is where it gets interesting", "This is the part nobody is reporting", "But the real story is". Scripts with a strong re-hook score higher.
+- MID-ROLL RE-HOOK (10%): Does the body contain a fresh, story-specific pivot sentence around the midpoint that resets attention? Reward concrete pivots built around a named person, number, source contradiction, timing detail or platform consequence. Penalise canned pivots such as "But here is where it gets interesting", "This is the part nobody is reporting" or "This changes everything".
 - Information density (15%): facts per sentence, no filler
 - Source credibility (15%): does it cite sources?
 - Pacing (10%): punchy, no dead air, urgent tone
@@ -849,6 +849,8 @@ async function process_stories(options = {}) {
     skipDedupIds = [],
     postDiscord = true,
     persist = true,
+    maxScriptAttempts = 3,
+    skipEditorPass = false,
   } = options || {};
   console.log("[processor] Loading pending_news.json...");
 
@@ -983,7 +985,12 @@ Today's date is ${today}. You MUST follow these rules:
     let attempts = 0;
     let lintRetryFeedback = "";
 
-    while (attempts < 3) {
+    const scriptAttemptLimit =
+      Number.isFinite(Number(maxScriptAttempts)) && Number(maxScriptAttempts) > 0
+        ? Math.max(1, Math.min(3, Math.floor(Number(maxScriptAttempts))))
+        : 3;
+
+    while (attempts < scriptAttemptLimit) {
       attempts++;
       try {
         let extra = "";
@@ -1031,7 +1038,7 @@ Today's date is ${today}. You MUST follow these rules:
           console.log(
             `[processor] Validation failed (attempt ${attempts}): ${errors.join(", ")}`,
           );
-          if (attempts >= 3) {
+          if (attempts >= scriptAttemptLimit) {
             console.log(
               "[processor] Final validation failed; routing story to review",
             );
@@ -1057,7 +1064,7 @@ Today's date is ${today}. You MUST follow these rules:
             `[processor] Script lint failed (attempt ${attempts}): ${lint.failures.join(", ")}`,
           );
           lintRetryFeedback = buildRetryFeedback(lint);
-          if (attempts >= 3) {
+          if (attempts >= scriptAttemptLimit) {
             script = buildScriptValidationReview(story, channel, lint.failures);
             qualityScore = 0;
             break;
@@ -1082,7 +1089,7 @@ Today's date is ${today}. You MUST follow these rules:
           );
           if (gate.score < 7) {
             const reason = `quality_gate_below_threshold:${gate.score}/10:${gate.reason}`;
-            if (attempts >= 3) {
+            if (attempts >= scriptAttemptLimit) {
               console.log(
                 `[processor] Final quality gate failed; routing story to review`,
               );
@@ -1099,7 +1106,7 @@ Today's date is ${today}. You MUST follow these rules:
         }
 
         // Sonnet editor pass - polish high-scoring scripts with a stronger model
-        if (script && qualityScore >= 7) {
+        if (script && qualityScore >= 7 && !skipEditorPass) {
           script = await sonnetEditorPass(client, script, channel, story);
           // Re-strip em dashes after editor pass
           for (const key of [
@@ -1125,7 +1132,7 @@ Today's date is ${today}. You MUST follow these rules:
           storyId: story.id,
           attempt: attempts,
         });
-        if (attempts >= 3) {
+        if (attempts >= scriptAttemptLimit) {
           script = buildScriptValidationReview(story, channel, [
             `script_generation_error:${err.message}`,
           ]);
@@ -1166,14 +1173,18 @@ Today's date is ${today}. You MUST follow these rules:
         : [],
     };
 
-    // Generate A/B title variants (non-blocking - if it fails, continue with single title)
-    try {
-      const { generateTitleVariants } = require("./ab_titles");
-      await generateTitleVariants(enrichedStory);
-    } catch (err) {
-      console.log(
-        `[processor] A/B title variant generation skipped: ${err.message}`,
-      );
+    // Generate A/B title variants only for scripts that are actually usable.
+    // Review rows intentionally carry no public narration, so spending another
+    // LLM call on titles just slows repair/reporting tools down.
+    if (!requiresScriptReview) {
+      try {
+        const { generateTitleVariants } = require("./ab_titles");
+        await generateTitleVariants(enrichedStory);
+      } catch (err) {
+        console.log(
+          `[processor] A/B title variant generation skipped: ${err.message}`,
+        );
+      }
     }
 
     enriched.push(enrichedStory);

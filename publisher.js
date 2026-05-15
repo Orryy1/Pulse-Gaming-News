@@ -1023,6 +1023,55 @@ function storyMatchesPublishStoryIds(s, env = process.env) {
   return ids.includes(String(s?.id || ""));
 }
 
+const DEFAULT_PUBLISH_SELECTION_ANALYTICS_PATH =
+  "D:\\pulse-data\\analytics_findings.md";
+
+function loadPublishSelectionAnalyticsText(env = process.env) {
+  const target =
+    env.PUBLISH_SELECTION_ANALYTICS_PATH ||
+    env.ANALYTICS_FINDINGS_PATH ||
+    DEFAULT_PUBLISH_SELECTION_ANALYTICS_PATH;
+  if (!target) return "";
+  try {
+    if (fs.pathExistsSync(target)) return fs.readFileSync(target, "utf8");
+  } catch (err) {
+    console.log(
+      `[publisher] analytics selection signal unavailable: ${err.message}`,
+    );
+  }
+  return "";
+}
+
+function scorePublishSelectionStory(story = {}, analyticsText = "") {
+  try {
+    const { scoreCandidate } = require("./tools/next-publish-candidates");
+    const scored = scoreCandidate(story, { analyticsText });
+    if (Number.isFinite(Number(scored?.score))) return Number(scored.score);
+  } catch (err) {
+    console.log(`[publisher] candidate selection score fallback: ${err.message}`);
+  }
+  return Number(story.breaking_score || story.score || 0);
+}
+
+function sortPublishReadyStories(ready = [], options = {}) {
+  const analyticsText = options.analyticsText || "";
+  return [...ready].sort((a, b) => {
+    const aDone = countStoryPlatformsDone(a);
+    const bDone = countStoryPlatformsDone(b);
+    if (aDone !== bDone) return aDone - bDone;
+
+    const aSelectionScore = scorePublishSelectionStory(a, analyticsText);
+    const bSelectionScore = scorePublishSelectionStory(b, analyticsText);
+    if (bSelectionScore !== aSelectionScore) {
+      return bSelectionScore - aSelectionScore;
+    }
+
+    return (
+      (b.breaking_score || b.score || 0) - (a.breaking_score || a.score || 0)
+    );
+  });
+}
+
 function storyIsRetry(s) {
   return countStoryPlatformsDone(s) > 0;
 }
@@ -1301,21 +1350,21 @@ async function _publishNextStoryInner({ publishDispatch = null, storyId = null }
     return null;
   }
 
-  // Prioritise: unpublished stories first (0 platforms), then partial, then by score
-  ready.sort((a, b) => {
-    const aDone = countStoryPlatformsDone(a);
-    const bDone = countStoryPlatformsDone(b);
-    if (aDone !== bDone) return aDone - bDone;
-    return (
-      (b.breaking_score || b.score || 0) - (a.breaking_score || a.score || 0)
-    );
+  // Prioritise: unpublished stories first (0 platforms), then partials,
+  // then the same analytics-aware quality score used by
+  // ops:next-publish-candidates. This keeps the live scheduler aligned
+  // with the operator report instead of blindly picking the highest
+  // breaking_score row.
+  const publishSelectionAnalyticsText = loadPublishSelectionAnalyticsText();
+  const sortedReady = sortPublishReadyStories(ready, {
+    analyticsText: publishSelectionAnalyticsText,
   });
 
   // Multi-candidate loop. We'll walk up to
   // MAX_PUBLISH_CANDIDATES_PER_WINDOW stories and take the first
   // one that passes preflight QA. Each QA-failing candidate is
   // persisted so it's skipped in all future windows too.
-  const candidates = ready.slice(0, MAX_PUBLISH_CANDIDATES_PER_WINDOW);
+  const candidates = sortedReady.slice(0, MAX_PUBLISH_CANDIDATES_PER_WINDOW);
   const qaSkipped = []; // structured {id, title, reason, source, failures}
   let story = null;
   let isRetry = false;
@@ -2382,6 +2431,9 @@ module.exports = {
   _private: {
     parsePublishStoryIds,
     storyMatchesPublishStoryIds,
+    loadPublishSelectionAnalyticsText,
+    scorePublishSelectionStory,
+    sortPublishReadyStories,
     titlesSimilar,
     titleDedupeTokens,
     titleDedupeScore,

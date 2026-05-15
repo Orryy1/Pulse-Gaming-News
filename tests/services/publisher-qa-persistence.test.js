@@ -186,6 +186,43 @@ test("publisher.js: optional PUBLISH_STORY_IDS pins the selector without changin
   );
 });
 
+test("publisher.js: publish selector ranking follows analytics-aware next-candidate score", () => {
+  const publisher = require("../../publisher.js");
+  const priv = publisher._private;
+  const analyticsText =
+    "Tomorrow: Front corporate drama with named antagonists and concrete outcomes.";
+  const corporate = {
+    id: "corporate",
+    title: "Xbox boss Asha Sharma confirms Discord partnership after Game Pass price cut",
+    approved: true,
+    auto_approved: true,
+    exported_path: "output/final/corporate.mp4",
+    duration_seconds: 68,
+    breaking_score: 70,
+    score: 70,
+  };
+  const generic = {
+    id: "generic",
+    title: "New trailer shows another vague update that could arrive later",
+    approved: true,
+    auto_approved: true,
+    exported_path: "output/final/generic.mp4",
+    duration_seconds: 68,
+    breaking_score: 95,
+    score: 95,
+  };
+
+  const ranked = priv.sortPublishReadyStories([generic, corporate], {
+    analyticsText,
+  });
+
+  assert.equal(ranked[0].id, "corporate");
+  assert.ok(
+    priv.scorePublishSelectionStory(corporate, analyticsText) >
+      priv.scorePublishSelectionStory(generic, analyticsText),
+  );
+});
+
 test("publisher.js: Instagram Story fallback uses the exported pending-timeout classifier safely", () => {
   const storyFallbackIdx = SRC.indexOf("Instagram Stories (static card");
   assert.ok(storyFallbackIdx > 0, "Instagram Story fallback block must exist");
@@ -288,7 +325,7 @@ test("publisher.js: multi-candidate loop uses MAX_PUBLISH_CANDIDATES_PER_WINDOW 
   // And the main loop must pull its slice from that constant.
   assert.match(
     SRC,
-    /ready\.slice\(0,\s*MAX_PUBLISH_CANDIDATES_PER_WINDOW\)/,
+    /sortedReady\.slice\(0,\s*MAX_PUBLISH_CANDIDATES_PER_WINDOW\)/,
     "multi-candidate loop must slice the ready list with the cap constant",
   );
   // No-safe-candidate return shape must include the fields the
@@ -741,15 +778,17 @@ test("publishNextStory: platform-video-QA fail persists before any uploader fire
 test("multi-candidate: first QA-fails, second passes — second uploads, qa_skipped_count=1", async () => {
   const bad = {
     id: "rss_bad",
-    title: "Stale mp4",
+    title: "Xbox boss confirms Discord partnership after Game Pass price cut",
     approved: true,
     exported_path: "/tmp/bad.mp4",
+    breaking_score: 100,
   };
   const good = {
     id: "rss_good",
-    title: "Healthy mp4",
+    title: "Healthy fallback mp4",
     approved: true,
     exported_path: "/tmp/good.mp4",
+    breaking_score: 1,
   };
   // Stub content-QA: fail for `bad.id`, pass for `good.id`.
   const { publishNextStory } = setupMocksPerStory({
@@ -774,7 +813,7 @@ test("multi-candidate: first QA-fails, second passes — second uploads, qa_skip
 
   // Good story got published — result has the normal success shape
   assert.strictEqual(result.no_safe_candidate, undefined);
-  assert.strictEqual(result.title, "Healthy mp4");
+  assert.strictEqual(result.title, "Healthy fallback mp4");
   assert.strictEqual(result.qa_skipped_count, 1);
   assert.ok(result.qa_skipped && result.qa_skipped.length === 1);
   assert.strictEqual(result.qa_skipped[0].id, "rss_bad");

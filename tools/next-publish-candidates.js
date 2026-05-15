@@ -795,6 +795,7 @@ if (require.main === module) {
 module.exports = {
   buildNextPublishCandidatesReport,
   formatNextPublishCandidatesMarkdown,
+  scoreCandidate,
   scoreAnalyticsFit,
   attachPreflightQa,
   combinePreflightQa,

@@ -13,13 +13,20 @@ function words(n) {
   return Array.from({ length: n }, (_, i) => `word${i + 1}`).join(" ");
 }
 
+const EXACT_CTA = "Follow Pulse Gaming so you never miss a beat.";
+const EXACT_CTA_WORDS = 9;
+
 function script(wordCount) {
+  const narrativeWordCount = Math.max(0, wordCount - EXACT_CTA_WORDS);
+  const fullScript = [words(narrativeWordCount), EXACT_CTA]
+    .filter(Boolean)
+    .join(" ");
   return {
     classification: "[CONFIRMED]",
     hook: "Nintendo quietly confirmed a hardware shift.",
     body: "Details landed from an official source.",
-    cta: "Follow Pulse Gaming so you never miss a beat.",
-    full_script: words(wordCount),
+    cta: EXACT_CTA,
+    full_script: fullScript,
     word_count: wordCount,
     suggested_thumbnail_text: "Nintendo shift",
   };
@@ -107,6 +114,20 @@ test("processor validate: rejects non-exact CTA field", () => {
   const errors = processor.validate(item, "pulse-gaming");
 
   assert.ok(errors.includes("script_coherence:cta_not_exact"), `got: ${errors.join(", ")}`);
+});
+
+test("processor validate: rejects scripts where exact CTA is metadata-only", () => {
+  const item = script(100);
+  item.cta = "Follow Pulse Gaming so you never miss a beat";
+  item.full_script =
+    "Nintendo confirmed the Switch 2 bundle and named the price. The detail matters because it changes the value calculation for early buyers today.";
+
+  const errors = processor.validate(item, "pulse-gaming");
+
+  assert.ok(
+    errors.includes("script_coherence:missing_exact_cta_in_script"),
+    `got: ${errors.join(", ")}`,
+  );
 });
 
 test("processor sanitiseScript tightens an overlong hook before validation", () => {

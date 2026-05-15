@@ -505,12 +505,13 @@ function validateFutureReleaseClaims(script, { now = new Date() } = {}) {
 function validate(script, channelId, options = {}) {
   const errors = [];
   const actualWords = countSpokenWords(cleanForTTS(script.full_script || ""));
+  const requiresPulseCta = channelId === "pulse-gaming";
   errors.push(...validateFutureReleaseClaims(script, options));
   const coherenceQa = runScriptCoherenceQa(
     { ...(options.story || {}), ...script },
     {
-      requireCtaField: true,
-      requireFullScriptCta: false,
+      requireCtaField: requiresPulseCta,
+      requireFullScriptCta: requiresPulseCta,
     },
   );
   errors.push(...coherenceQa.failures);

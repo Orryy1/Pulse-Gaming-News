@@ -152,6 +152,14 @@ test("selectReprocessableScriptFailureStories targets source-backed coherence re
         title: "Article-backed comment misuse can be repaired",
         script_review_reason: "script_coherence:top_comment_used_as_fact",
       },
+      {
+        id: "image-only",
+        source_type: "reddit",
+        subreddit: "gaming",
+        article_url: "https://i.redd.it/image-only.jpeg",
+        title: "Image-only Reddit post should not be treated as sourced news",
+        script_review_reason: "script_coherence:missing_exact_cta_in_script",
+      },
     ],
   });
 

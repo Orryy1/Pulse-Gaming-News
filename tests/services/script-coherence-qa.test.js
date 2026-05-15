@@ -52,6 +52,24 @@ test("script coherence still catches true repeated sentences inside full_script"
   );
 });
 
+test("script coherence requires the spoken script itself to contain the exact CTA", () => {
+  const qa = runScriptCoherenceQa(
+    {
+      title: "Nintendo confirms Switch 2 bundle",
+      cta: "Follow Pulse Gaming so you never miss a beat",
+      full_script:
+        "Nintendo confirmed the bundle and named the launch window. The key detail is the price, because it changes the value calculation for early buyers.",
+    },
+    { requireFullScriptCta: true },
+  );
+
+  assert.equal(qa.result, "fail");
+  assert.ok(
+    qa.failures.includes("script_coherence:missing_exact_cta_in_script"),
+    `got: ${qa.failures.join(", ")}`,
+  );
+});
+
 test("script coherence blocks invented verified-insider framing, even on rumour subreddits", () => {
   const qa = runScriptCoherenceQa(
     {

@@ -486,9 +486,9 @@ test("fresh source-backed game preservation policy stories can auto-approve", as
     hook:
       "California just gave gamers a new weapon against abandoned games.",
     body:
-      "According to Rock Paper Shotgun, a bill backed by Stop Killing Games passed a key committee vote and would force game developers to maintain online servers or offer refunds.",
+      "According to Rock Paper Shotgun, a bill backed by Stop Killing Games passed a key committee vote and could force game developers to maintain online servers or offer refunds.",
     full_script:
-      "California just gave gamers a new weapon against abandoned games. According to Rock Paper Shotgun, a bill backed by Stop Killing Games passed a key committee vote and would force game developers to maintain online servers or offer refunds when games shut down. Follow Pulse Gaming so you never miss a beat.",
+      "California just gave gamers a new weapon against abandoned games. According to Rock Paper Shotgun, a bill backed by Stop Killing Games passed a key committee vote and could force game developers to maintain online servers or offer refunds when games shut down. Follow Pulse Gaming so you never miss a beat.",
     timestamp: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
   });
 

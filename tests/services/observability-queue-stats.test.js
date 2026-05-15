@@ -47,6 +47,7 @@ function createDb() {
       total INTEGER,
       decision TEXT,
       hard_stops TEXT,
+      inputs TEXT,
       scored_at TEXT
     );
   `);
@@ -105,14 +106,15 @@ test("getScoringDigest channel filter falls back from NULL score channel to stor
     );
     db.prepare(
       `INSERT INTO story_scores
-        (story_id, channel_id, total, decision, hard_stops, scored_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+        (story_id, channel_id, total, decision, hard_stops, inputs, scored_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       "story-null-score-channel",
       null,
-      78,
+      72,
       "review",
       "[]",
+      null,
       "2026-05-13 10:03:19",
     );
 
@@ -143,14 +145,15 @@ test("getScoringDigest counts SQLite timestamps against ISO window values", () =
     );
     db.prepare(
       `INSERT INTO story_scores
-        (story_id, channel_id, total, decision, hard_stops, scored_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+        (story_id, channel_id, total, decision, hard_stops, inputs, scored_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       "story1",
       "pulse-gaming",
       82,
       "auto",
       "[]",
+      null,
       "2026-05-13 10:03:19",
     );
 
@@ -163,6 +166,76 @@ test("getScoringDigest counts SQLite timestamps against ISO window values", () =
     assert.equal(digest.scored, 1);
     assert.equal(digest.by_decision.auto, 1);
     assert.equal(digest.top[0].story_id, "story1");
+  } finally {
+    Date.now = originalNow;
+    db.close();
+  }
+});
+
+test("getScoringDigest uses latest score per story and hides community near-misses", () => {
+  const db = createDb();
+  const originalNow = Date.now;
+  try {
+    Date.now = () => Date.parse("2026-05-13T12:00:00.000Z");
+    db.prepare(`INSERT INTO stories (id, title, channel_id) VALUES (?, ?, ?)`).run(
+      "community",
+      "What's the best obscure video game you've ever played?",
+      "pulse-gaming",
+    );
+    db.prepare(`INSERT INTO stories (id, title, channel_id) VALUES (?, ?, ?)`).run(
+      "real-near-miss",
+      "Xbox confirms a dashboard fix for broken graphics drivers",
+      "pulse-gaming",
+    );
+    const insert = db.prepare(
+      `INSERT INTO story_scores
+        (story_id, channel_id, total, decision, hard_stops, inputs, scored_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    );
+    insert.run(
+      "community",
+      "pulse-gaming",
+      80,
+      "auto",
+      "[]",
+      null,
+      "2026-05-13 09:00:00",
+    );
+    insert.run(
+      "community",
+      "pulse-gaming",
+      79,
+      "review",
+      "[]",
+      JSON.stringify({ community_discussion_auto_block: "community_discussion_prompt" }),
+      "2026-05-13 10:00:00",
+    );
+    insert.run(
+      "real-near-miss",
+      "pulse-gaming",
+      74,
+      "review",
+      "[]",
+      null,
+      "2026-05-13 10:05:00",
+    );
+
+    const digest = getScoringDigest({
+      repos: { db },
+      sinceHours: 4,
+      channelId: "pulse-gaming",
+    });
+
+    assert.equal(digest.scored, 2);
+    assert.equal(digest.by_decision.review, 2);
+    assert.deepEqual(
+      digest.near_miss.map((row) => row.story_id),
+      ["real-near-miss"],
+    );
+    assert.deepEqual(
+      digest.top.map((row) => row.story_id),
+      ["community", "real-near-miss"],
+    );
   } finally {
     Date.now = originalNow;
     db.close();

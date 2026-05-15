@@ -380,7 +380,7 @@ test("community discussion prompts cannot auto-approve as news Shorts", async ()
     )
     .get();
 
-  assert.equal(scoreRow.decision, "review");
+  assert.equal(scoreRow.decision, "reject");
   assert.ok(
     scoreRow.total >= 75,
     `fixture should otherwise be auto-tier, got total=${scoreRow.total}`,
@@ -612,7 +612,7 @@ test("low-value community media posts cannot auto-approve from stale queue rows"
     )
     .get();
 
-  assert.equal(scoreRow.decision, "review");
+  assert.equal(scoreRow.decision, "reject");
   assert.match(scoreRow.decision_reason, /community_discussion_prompt/);
 
   const inputs = JSON.parse(scoreRow.inputs);

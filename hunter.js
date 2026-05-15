@@ -869,6 +869,8 @@ async function hunt() {
           if (
             shouldRejectGeneralRedditForNews({
               title: post.title,
+              url: post.url,
+              article_url: post.url,
               subreddit: sub,
               source_type: "reddit",
             })

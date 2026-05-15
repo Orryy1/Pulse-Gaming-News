@@ -30,6 +30,11 @@ test("processor validate: Pulse accepts current 61-75s spoken word budget", () =
   assert.deepEqual(errors, []);
 });
 
+test("processor validate: Pulse allows 76-90s scripts as extended Short candidates", () => {
+  const errors = processor.validate(script(123), "pulse-gaming");
+  assert.deepEqual(errors, []);
+});
+
 test("processor validate: Pulse rejects old 160-180 word scripts", () => {
   const errors = processor.validate(script(166), "pulse-gaming");
   assert.ok(

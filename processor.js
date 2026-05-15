@@ -261,16 +261,22 @@ function validate(script, channelId) {
     const runtime = classifyShortScriptRuntime({
       text: cleanForTTS(script.full_script || ""),
     });
-    if (runtime.result === "fail" || runtime.result === "review") {
+    if (runtime.result === "fail") {
       const reason =
         runtime.failures[0] || runtime.warnings[0] || "script_runtime_invalid";
       errors.push(
-        `${reason}; actual spoken words ${actualWords} outside ${runtime.minWords}-${runtime.maxWords} Flash Lane range`,
+        `${reason}; actual spoken words ${actualWords} outside ${runtime.minWords}-${runtime.reviewMaxWords} Short review range`,
       );
     }
-    if (actualWords < DEFAULT_MIN_WORDS || actualWords > DEFAULT_MAX_WORDS) {
+    const maxAllowedWords =
+      runtime.result === "review" && runtime.route === "extended_or_briefing"
+        ? runtime.reviewMaxWords
+        : DEFAULT_MAX_WORDS;
+    const wordRangeLabel =
+      maxAllowedWords > DEFAULT_MAX_WORDS ? "Flash/Extended Short" : "Flash Lane";
+    if (actualWords < DEFAULT_MIN_WORDS || actualWords > maxAllowedWords) {
       errors.push(
-        `Actual spoken word count ${actualWords} outside ${DEFAULT_MIN_WORDS}-${DEFAULT_MAX_WORDS} range`,
+        `Actual spoken word count ${actualWords} outside ${DEFAULT_MIN_WORDS}-${maxAllowedWords} ${wordRangeLabel} range`,
       );
     }
   } else if (script.word_count < 155 || script.word_count > 185) {

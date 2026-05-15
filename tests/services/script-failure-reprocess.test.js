@@ -260,9 +260,23 @@ test("ops:reprocess-script-failures command is registered and dry-run first", ()
   assert.match(tool, /Default is dry-run/);
   assert.match(tool, /selectReprocessableScriptFailureStories/);
   assert.match(tool, /--apply-local/);
+  assert.match(tool, /--llm-timeout-ms/);
+  assert.match(tool, /LLM_REQUEST_TIMEOUT_MS/);
+  assert.match(tool, /for \(const candidate of candidates\)/);
   assert.match(tool, /postDiscord: false/);
   assert.match(tool, /backupFileName/);
   assert.match(tool, /db\.getDb\(\)\.backup/);
+});
+
+test("reprocess tool args include bounded local LLM timeout", () => {
+  const { DEFAULT_REPROCESS_LLM_TIMEOUT_MS, parseArgs } = require("../../tools/reprocess-script-failures");
+
+  assert.equal(parseArgs([]).llmTimeoutMs, DEFAULT_REPROCESS_LLM_TIMEOUT_MS);
+  assert.equal(
+    parseArgs(["--llm-timeout-ms", "9000", "--limit", "1"]).llmTimeoutMs,
+    9000,
+  );
+  assert.equal(parseArgs(["--llm-timeout-ms=12000"]).llmTimeoutMs, 12000);
 });
 
 test("processor clears stale review metadata after a successful reprocess", () => {

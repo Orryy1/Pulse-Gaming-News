@@ -43,6 +43,27 @@ test("shouldPostNewStory: script-validation fallback never reaches public news c
   assert.equal(shouldPostNewStory(story), false);
 });
 
+test("shouldPostNewStory: machine-readable script-review tokens never reach public news channels", () => {
+  const story = {
+    id: "script-review-token",
+    title: "Needs review",
+    body: "Readable-looking body",
+    content_pillar: "Confirmed Drop",
+    script_review_reason: "script_validation_failed",
+  };
+  assert.equal(shouldPostNewStory(story), false);
+});
+
+test("shouldPostNewStory: internal Pulse strategy language never reaches public news channels", () => {
+  const story = {
+    id: "internal-language",
+    title: "Subnautica 2 update",
+    body: "For Pulse, that means tracking the official follow-up before calling it a guaranteed change.",
+    content_pillar: "Confirmed Drop",
+  };
+  assert.equal(shouldPostNewStory(story), false);
+});
+
 test("shouldPostNewStory: failed or QA-failed rows are not public news", () => {
   assert.equal(
     shouldPostNewStory({
@@ -120,6 +141,16 @@ test("shouldPostVideoDrop: script-validation fallback text never posts as a vide
     youtube_url: "https://youtu.be/abc",
     hook: "",
     body: "Script validation failed. Manual review required before production.",
+  };
+  assert.equal(shouldPostVideoDrop(story), false);
+});
+
+test("shouldPostVideoDrop: script-review tokens never post as a video drop", () => {
+  const story = {
+    id: "script-review-token",
+    youtube_url: "https://youtu.be/abc",
+    publish_status: "partial",
+    script_review_reason: "script_validation_failed",
   };
   assert.equal(shouldPostVideoDrop(story), false);
 });

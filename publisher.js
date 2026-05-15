@@ -14,6 +14,9 @@ const {
 const {
   buildPublishDispatchPolicy,
 } = require("./lib/services/publish-dispatch-policy");
+const {
+  publishCandidateBlocker,
+} = require("./lib/services/pipeline-backlog");
 
 // Publish lock - prevents concurrent publishNextStory() calls from creating duplicates
 let publishLock = false;
@@ -1407,6 +1410,21 @@ async function _publishNextStoryInner({ publishDispatch = null, storyId = null }
       process.env.PUBLISH_RETRY_QA_BYPASS === "true" &&
       !strictVoiceQa
     ) {
+      const strictCandidateBlocker = publishCandidateBlocker(candidate, {
+        strictContentQa: true,
+      });
+      if (strictCandidateBlocker) {
+        const skipped = await persistQaFail(candidate, {
+          failures: [strictCandidateBlocker],
+          warnings: [],
+          source: "content",
+        });
+        qaSkipped.push(skipped);
+        console.log(
+          `[publisher] Strict readiness blocked retry QA bypass: ${strictCandidateBlocker}`,
+        );
+        continue;
+      }
       // Partial-retry stories bypass QA — they were already published
       // once, so the artefacts are known-good. Take this candidate
       // immediately.

@@ -243,6 +243,30 @@ test("script coherence blocks generic uncertainty boilerplate and internal Pulse
   );
 });
 
+test("script coherence blocks broader internal signal and tracking language", () => {
+  const qa = runScriptCoherenceQa(
+    {
+      title: "Subnautica 2 sales are moving quickly",
+      source_type: "rss",
+      subreddit: "GameSpot",
+      cta: "Follow Pulse Gaming so you never miss a beat",
+      full_script:
+        "Subnautica 2 is moving quickly, but the safest takeaway is signal over certainty. We are tracking confirmation before calling it the final number. Follow Pulse Gaming so you never miss a beat.",
+    },
+    { requireCtaField: true, requireFullScriptCta: true },
+  );
+
+  assert.equal(qa.result, "fail");
+  assert.ok(
+    qa.failures.includes("script_coherence:abstract_signal_language"),
+    qa.failures.join(", "),
+  );
+  assert.ok(
+    qa.failures.includes("script_coherence:vague_filler:internal_tracking_language"),
+    qa.failures.join(", "),
+  );
+});
+
 test("script coherence blocks false bill ownership and mangled campaign names", () => {
   const qa = runScriptCoherenceQa(
     {

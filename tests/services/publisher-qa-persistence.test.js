@@ -130,6 +130,11 @@ test("publisher.js: retry QA bypass cannot bypass strict approved-voice mode", (
   const block = SRC.slice(idx - 800, idx + 1200);
   assert.match(block, /strictVoiceQa/, "retry bypass branch must calculate strict voice QA");
   assert.match(block, /!strictVoiceQa/, "retry bypass must be disabled when strict voice QA is active");
+  assert.match(
+    block,
+    /publishCandidateBlocker\(candidate,\s*\{\s*strictContentQa:\s*true/,
+    "retry bypass must still respect strict content/readiness blockers",
+  );
 });
 
 test("publisher.js: publishNextStory selector skips qa_failed and publish_status=failed", () => {

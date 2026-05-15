@@ -3,7 +3,10 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { createLlmClient } = require("../../lib/llm-client");
+const {
+  createLlmClient,
+  resolveRequestTimeoutMs,
+} = require("../../lib/llm-client");
 
 test("local client maps Anthropic-style messages to an OpenAI-compatible endpoint", async () => {
   const requests = [];
@@ -38,12 +41,48 @@ test("local client maps Anthropic-style messages to an OpenAI-compatible endpoin
     "http://127.0.0.1:11434/v1/chat/completions",
   );
   const body = JSON.parse(requests[0].init.body);
+  assert.ok(requests[0].init.signal, "local client should pass an AbortSignal");
   assert.equal(body.model, "gemma3:4b");
   assert.equal(body.max_tokens, 300);
   assert.deepEqual(body.messages, [
     { role: "system", content: "Write JSON only." },
     { role: "user", content: "Hello" },
   ]);
+});
+
+test("local client times out hung OpenAI-compatible requests", async () => {
+  const client = createLlmClient({
+    env: {
+      LLM_PROVIDER: "local",
+      LLM_REQUEST_TIMEOUT_MS: "5",
+    },
+    fetchImpl: async (_url, init) =>
+      new Promise((_resolve, reject) => {
+        init.signal.addEventListener(
+          "abort",
+          () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })),
+          { once: true },
+        );
+      }),
+  });
+
+  await assert.rejects(
+    () =>
+      client.messages.create({
+        model: "claude-haiku-4-5-20251001",
+        messages: [{ role: "user", content: "Hello" }],
+      }),
+    /Local LLM request failed: timed out after 5ms/,
+  );
+});
+
+test("resolveRequestTimeoutMs keeps local LLM requests bounded by default", () => {
+  assert.equal(resolveRequestTimeoutMs({}), 120000);
+  assert.equal(resolveRequestTimeoutMs({ LLM_REQUEST_TIMEOUT_MS: "1234" }), 1234);
+  assert.equal(
+    resolveRequestTimeoutMs({ LOCAL_LLM_REQUEST_TIMEOUT_MS: "5678" }),
+    5678,
+  );
 });
 
 test("local client uses strong local model for former Sonnet/editor calls", async () => {

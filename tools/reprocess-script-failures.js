@@ -15,6 +15,7 @@ const {
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
+const DEFAULT_REPROCESS_LLM_TIMEOUT_MS = 30_000;
 
 function backupFileName(now = new Date()) {
   return `pulse-pre-script-failure-reprocess-${now.toISOString().replace(/[:.]/g, "-")}.db`;
@@ -25,6 +26,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     applyLocal: false,
     json: false,
     limit: 10,
+    llmTimeoutMs: DEFAULT_REPROCESS_LLM_TIMEOUT_MS,
     storyIds: [],
     help: false,
   };
@@ -46,6 +48,12 @@ function parseArgs(argv = process.argv.slice(2)) {
     } else if (arg.startsWith("--limit=")) {
       const value = Number(arg.slice("--limit=".length));
       if (Number.isFinite(value) && value > 0) args.limit = value;
+    } else if (arg === "--llm-timeout-ms") {
+      const value = Number(argv[++i]);
+      if (Number.isFinite(value) && value > 0) args.llmTimeoutMs = Math.floor(value);
+    } else if (arg.startsWith("--llm-timeout-ms=")) {
+      const value = Number(arg.slice("--llm-timeout-ms=".length));
+      if (Number.isFinite(value) && value > 0) args.llmTimeoutMs = Math.floor(value);
     } else if (arg === "--help" || arg === "-?") {
       args.help = true;
     }
@@ -55,10 +63,45 @@ function parseArgs(argv = process.argv.slice(2)) {
 
 function printHelp() {
   process.stdout.write(
-    "Usage: node tools/reprocess-script-failures.js [--limit N] [--story ID] [--apply-local] [--json]\n" +
+    "Usage: node tools/reprocess-script-failures.js [--limit N] [--story ID] [--llm-timeout-ms N] [--apply-local] [--json]\n" +
       "  Default is dry-run: generates scripts and reports, but does not write DB rows.\n" +
+      `  Local LLM calls are bounded by --llm-timeout-ms (default ${DEFAULT_REPROCESS_LLM_TIMEOUT_MS}ms).\n` +
       "  --apply-local persists only selected script-review failure rows and never posts to Discord/social.\n",
   );
+}
+
+async function reprocessCandidate(candidate, args) {
+  try {
+    const rows = await processStories({
+      storiesOverride: [candidate],
+      skipDedupIds: [candidate.id],
+      postDiscord: false,
+      persist: args.applyLocal,
+    });
+    return Array.isArray(rows) && rows.length > 0
+      ? rows
+      : [
+          {
+            ...candidate,
+            script_generation_status: "review_required",
+            script_review_reason: "reprocess_returned_no_rows",
+            script_validation_errors: ["reprocess_returned_no_rows"],
+          },
+        ];
+  } catch (err) {
+    return [
+      {
+        ...candidate,
+        script_generation_status: "review_required",
+        script_review_reason: `reprocess_exception:${String(
+          err.message || err,
+        ).slice(0, 180)}`,
+        script_validation_errors: [
+          `reprocess_exception:${String(err.message || err).slice(0, 180)}`,
+        ],
+      },
+    ];
+  }
 }
 
 async function main() {
@@ -66,6 +109,9 @@ async function main() {
   if (args.help) {
     printHelp();
     return;
+  }
+  if (!process.env.LLM_REQUEST_TIMEOUT_MS) {
+    process.env.LLM_REQUEST_TIMEOUT_MS = String(args.llmTimeoutMs);
   }
 
   const stories =
@@ -88,12 +134,10 @@ async function main() {
   }
 
   if (candidates.length > 0) {
-    results = await processStories({
-      storiesOverride: candidates,
-      skipDedupIds: candidates.map((story) => story.id),
-      postDiscord: false,
-      persist: args.applyLocal,
-    });
+    for (const candidate of candidates) {
+      const rows = await reprocessCandidate(candidate, args);
+      results.push(...rows);
+    }
   }
 
   const report = buildScriptFailureReprocessReport({
@@ -127,5 +171,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  DEFAULT_REPROCESS_LLM_TIMEOUT_MS,
   parseArgs,
+  reprocessCandidate,
 };

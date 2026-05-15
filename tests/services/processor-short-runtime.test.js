@@ -212,6 +212,18 @@ test("Pulse channel prompt bans internal strategy boilerplate from narration", (
   assert.match(channelSource, /signal first/);
 });
 
+test("fallback system prompt bans fake insider attribution and internal strategy boilerplate", () => {
+  const fallbackPrompt = fs.readFileSync(
+    path.join(__dirname, "..", "..", "system_prompt.txt"),
+    "utf8",
+  );
+
+  assert.doesNotMatch(fallbackPrompt, /A verified insider claims/);
+  assert.match(fallbackPrompt, /Do not invent insider attribution/);
+  assert.match(fallbackPrompt, /Do not write internal Pulse strategy language/);
+  assert.match(fallbackPrompt, /community is buzzing/);
+});
+
 test("processor editor prompt: non-Pulse channels keep legacy long-form short range", () => {
   const instruction = processor.editorWordCountInstruction({
     id: "the-signal",
@@ -249,6 +261,12 @@ test("processor final validation failure routes story to review instead of accep
   assert.deepEqual(fallback.script_validation_errors, [
     "script_runtime_too_long (112.00s, max 75.00s)",
   ]);
+});
+
+test("processor quality gate fails closed when scoring is unavailable", () => {
+  assert.doesNotMatch(PROCESSOR_SOURCE, /scoring failed - accepting by default/);
+  assert.match(PROCESSOR_SOURCE, /scoring failed - review required/);
+  assert.match(PROCESSOR_SOURCE, /Final quality gate failed; routing story to review/);
 });
 
 test("processor final validation failure preserves extended-short routing metadata", () => {

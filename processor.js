@@ -1,6 +1,9 @@
 const axios = require("axios");
 const fs = require("fs-extra");
 const dotenv = require("dotenv");
+
+dotenv.config({ override: true });
+
 const { addBreadcrumb, captureException } = require("./lib/sentry");
 const db = require("./lib/db");
 const { createLlmClient } = require("./lib/llm-client");
@@ -10,8 +13,6 @@ const {
   DEFAULT_MIN_WORDS,
   DEFAULT_MAX_WORDS,
 } = require("./lib/services/short-runtime-planner");
-
-dotenv.config({ override: true });
 
 const { getChannel } = require("./channels");
 const { getAnalyticsContext } = require("./analytics");

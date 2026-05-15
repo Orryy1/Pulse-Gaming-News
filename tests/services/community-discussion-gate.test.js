@@ -12,6 +12,7 @@ test("community discussion gate catches broad gaming prompts", () => {
     "What's the best obscure video game you've ever played?",
     "Did we lose the magic of community in online multiplayer games?",
     "We need another game like L.A Noire!",
+    "Came across a much simpler time in gaming today",
     "how to make your game cool as fuck: add exaggerated title cards",
     "This moment made me realize I was playing something special",
   ];
@@ -25,6 +26,31 @@ test("community discussion gate catches broad gaming prompts", () => {
       }),
       true,
       title,
+    );
+  }
+});
+
+test("general Reddit news gate catches direct image and video nostalgia posts", () => {
+  const rejected = [
+    {
+      title: "Came across a much simpler time in gaming today",
+      article_url: "https://i.redd.it/example.jpeg",
+    },
+    {
+      title: "Had a PS5 for years and someone just pointed this out to me.",
+      article_url: "https://v.redd.it/example",
+    },
+  ];
+
+  for (const story of rejected) {
+    assert.equal(
+      shouldRejectGeneralRedditForNews({
+        ...story,
+        subreddit: "gaming",
+        source_type: "reddit",
+      }),
+      true,
+      story.title,
     );
   }
 });

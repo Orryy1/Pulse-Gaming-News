@@ -218,3 +218,27 @@ test("script coherence blocks hedged stories being overclaimed as confirmed payo
     qa.failures.join(", "),
   );
 });
+
+test("script coherence blocks generic uncertainty boilerplate and internal Pulse framing", () => {
+  const qa = runScriptCoherenceQa(
+    {
+      title: "Subnautica 2 has been officially released in Early Access",
+      source_type: "reddit",
+      subreddit: "Games",
+      cta: "Follow Pulse Gaming so you never miss a beat",
+      full_script:
+        "Subnautica 2 is officially in Early Access. The important point is the direction of travel, not just the headline itself. The next thing to watch is whether an official post, platform listing or patch note backs it up. For Pulse, that means tracking the official follow-up before calling it a guaranteed change. Follow Pulse Gaming so you never miss a beat.",
+    },
+    { requireCtaField: true, requireFullScriptCta: true },
+  );
+
+  assert.equal(qa.result, "fail");
+  assert.ok(
+    qa.failures.includes("script_coherence:generic_uncertainty_boilerplate"),
+    qa.failures.join(", "),
+  );
+  assert.ok(
+    qa.failures.includes("script_coherence:internal_pulse_framing"),
+    qa.failures.join(", "),
+  );
+});

@@ -104,6 +104,73 @@ function checkAdvertiserSafety(script) {
   return found;
 }
 
+function stripJsonCodeFence(rawText) {
+  let text = String(rawText || "").trim();
+  if (text.startsWith("```")) {
+    text = text.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "");
+  }
+  return text.trim();
+}
+
+function extractJsonObjectText(rawText) {
+  const text = stripJsonCodeFence(rawText);
+  if (text.startsWith("{") && text.endsWith("}")) return text;
+  const first = text.indexOf("{");
+  const last = text.lastIndexOf("}");
+  if (first >= 0 && last > first) return text.slice(first, last + 1);
+  return text;
+}
+
+function escapeControlCharsInsideJsonStrings(rawText) {
+  const text = String(rawText || "");
+  let out = "";
+  let inString = false;
+  let escaped = false;
+
+  for (const char of text) {
+    if (escaped) {
+      out += char;
+      escaped = false;
+      continue;
+    }
+
+    if (char === "\\") {
+      out += char;
+      escaped = inString;
+      continue;
+    }
+
+    if (char === '"') {
+      inString = !inString;
+      out += char;
+      continue;
+    }
+
+    if (inString && char.charCodeAt(0) < 0x20) {
+      out += char === "\n" || char === "\r" ? "\\n" : " ";
+      continue;
+    }
+
+    out += char;
+  }
+
+  return out;
+}
+
+function parseLlmJsonObject(rawText) {
+  const text = extractJsonObjectText(rawText);
+  try {
+    return JSON.parse(text);
+  } catch (firstErr) {
+    const repaired = escapeControlCharsInsideJsonStrings(text);
+    try {
+      return JSON.parse(repaired);
+    } catch {
+      throw firstErr;
+    }
+  }
+}
+
 // --- Fetch source material for fact-checking ---
 async function fetchSourceMaterial(story) {
   const parts = [];
@@ -403,11 +470,7 @@ Reply with ONLY a JSON object: { "score": N, "reason": "one sentence" }`,
       ],
     });
 
-    let text = response.content[0].text.trim();
-    if (text.startsWith("```")) {
-      text = text.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "");
-    }
-    const result = JSON.parse(text);
+    const result = parseLlmJsonObject(response.content[0].text);
     return { score: result.score || 5, reason: result.reason || "" };
   } catch (err) {
     console.log(`[processor] Quality gate error: ${err.message}`);
@@ -459,12 +522,7 @@ Reply with ONLY the edited JSON object in the same format as the input. No expla
       ],
     });
 
-    let text = response.content[0].text.trim();
-    if (text.startsWith("```")) {
-      text = text.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "");
-    }
-
-    const edited = JSON.parse(text);
+    const edited = parseLlmJsonObject(response.content[0].text);
 
     // Preserve original classification if editor changed it
     if (
@@ -715,13 +773,7 @@ Today's date is ${today}. You MUST follow these rules:
           messages: [{ role: "user", content: userMessage + extra }],
         });
 
-        let text = response.content[0].text.trim();
-        if (text.startsWith("```")) {
-          text = text
-            .replace(/^```(?:json)?\s*\n?/, "")
-            .replace(/\n?```\s*$/, "");
-        }
-        script = JSON.parse(text);
+        script = parseLlmJsonObject(response.content[0].text);
 
         // Strip em dashes from all generated content (obvious AI tell)
         for (const key of [
@@ -883,6 +935,7 @@ module.exports.validate = validate;
 module.exports.editorWordCountInstruction = editorWordCountInstruction;
 module.exports.buildScriptValidationReview = buildScriptValidationReview;
 module.exports.cleanForTTS = cleanForTTS;
+module.exports.parseLlmJsonObject = parseLlmJsonObject;
 
 if (require.main === module) {
   process_stories().catch((err) => {

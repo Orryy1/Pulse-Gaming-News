@@ -7,6 +7,7 @@ const path = require("path");
 
 const {
   buildNarrationMusicMixFilter,
+  buildNarrationOnlyMixFilter,
   buildVoiceMasteringFilter,
   masterTtsAudioFile,
   parseFfmpegLoudnessStats,
@@ -25,6 +26,19 @@ test("buildNarrationMusicMixFilter: preserves narration level when adding music"
   assert.match(filter, /loudnorm=I=-15:TP=-2:LRA=8/);
   assert.match(filter, /alimiter=limit=0\.8/);
   assert.equal(filter, "[voice][bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,loudnorm=I=-15:TP=-2:LRA=8,alimiter=limit=0.8[outa]");
+});
+
+test("buildNarrationOnlyMixFilter: masters narration when no music bed is present", () => {
+  const filter = buildNarrationOnlyMixFilter({
+    voiceLabel: "voice",
+    outputLabel: "outa",
+  });
+
+  assert.match(filter, /^\[voice\]highpass=f=90/);
+  assert.match(filter, /equalizer=f=3200:t=q:w=1\.1:g=1\.8/);
+  assert.match(filter, /acompressor=threshold=-22dB:ratio=2\.0/);
+  assert.match(filter, /loudnorm=I=-15:TP=-2:LRA=8/);
+  assert.match(filter, /alimiter=limit=0\.8\[outa\]$/);
 });
 
 test("buildVoiceMasteringFilter: normalises local narration for crisp social-video playback", () => {
@@ -140,7 +154,10 @@ test("assemble.js uses the narration-preserving mix helper instead of default am
   );
 
   assert.match(source, /buildNarrationMusicMixFilter/);
+  assert.match(source, /buildNarrationOnlyMixFilter/);
   assert.doesNotMatch(source, /amix=inputs=2:duration=first\[outa\]/);
+  assert.doesNotMatch(source, /audioMapping = `-map "\[outv\]" -map \$\{audioIdx\}:a`/);
+  assert.doesNotMatch(source, /fbAudioMapping = `-map "\[outv\]" -map \$\{fbAudioIdx\}:a`/);
 });
 
 test("local TTS server does not use nearest-neighbour MP3 resampling", () => {

@@ -25,6 +25,7 @@ const {
 } = require("./lib/subtitle-timing");
 const {
   buildNarrationMusicMixFilter,
+  buildNarrationOnlyMixFilter,
 } = require("./lib/audio-quality");
 const { runPublishVoiceQa } = require("./lib/services/publish-voice-qa");
 
@@ -1604,7 +1605,9 @@ function buildVideoCommand(
     filterParts.push(buildNarrationMusicMixFilter());
     audioMapping = `-map "[outv]" -map "[outa]"`;
   } else {
-    audioMapping = `-map "[outv]" -map ${audioIdx}:a`;
+    filterParts.push(`[${audioIdx}:a]anull[voice]`);
+    filterParts.push(buildNarrationOnlyMixFilter());
+    audioMapping = `-map "[outv]" -map "[outa]"`;
   }
 
   const filterGraph = filterParts.join(";\n");
@@ -2383,7 +2386,9 @@ async function assemble() {
           fbFilterParts.push(buildNarrationMusicMixFilter());
           fbAudioMapping = `-map "[outv]" -map "[outa]"`;
         } else {
-          fbAudioMapping = `-map "[outv]" -map ${fbAudioIdx}:a`;
+          fbFilterParts.push(`[${fbAudioIdx}:a]anull[voice]`);
+          fbFilterParts.push(buildNarrationOnlyMixFilter());
+          fbAudioMapping = `-map "[outv]" -map "[outa]"`;
         }
 
         const fbFilterGraph = fbFilterParts.join(";\n");

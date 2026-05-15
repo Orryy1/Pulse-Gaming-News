@@ -1210,8 +1210,25 @@ test("studio-v2 render pads raw video before subtitle burn-in to prevent frozen 
   );
 
   assert.doesNotMatch(src, /ass=\$\{assRel\},tpad=stop_mode=clone/);
-  assert.match(src, /tpad=stop_mode=clone:stop_duration=\$\{\(/);
+  assert.match(src, /const subtitleTimelineDurationS = Math\.max/);
+  assert.match(src, /targetDurationS:\s*subtitleTimelineDurationS/);
+  assert.match(src, /const subtitleTailPadS = Math\.max/);
+  assert.match(src, /trim=duration=\$\{subtitleTimelineDurationS\.toFixed\(3\)\}/);
   assert.match(src, /\[subtitleBase\]ass=\$\{assRel\}\[outv\]/);
+});
+
+test("studio-v2 render burns repaired subtitle words instead of mixing raw and repaired timelines", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-render.js"),
+    "utf8",
+  );
+
+  assert.match(src, /prepareSubtitleWords/);
+  assert.match(src, /realignTimestampsToScript/);
+  assert.match(src, /const subtitleTimingWords = prepareSubtitleWords/);
+  assert.match(src, /words:\s*subtitleTimingWords/);
+  assert.match(src, /realign:\s*false/);
+  assert.match(src, /realignedWords:\s*subtitleTimingWords/);
 });
 
 test("studio-v2-render supports local VoxCPM through the production-shaped path", () => {

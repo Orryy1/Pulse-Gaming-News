@@ -78,7 +78,9 @@ test("quote cards adapt long quote copy instead of cutting a fixed six-line bloc
   assert.ok(layout.blockTop >= 520, String(layout.blockTop));
   assert.ok(layout.blockBottom <= 1220, String(layout.blockBottom));
   assert.match(filter, /fontsize=3[4-8]/);
-  assert.match(filter, /reaction could turn very quickly/);
+  assert.equal(layout.truncated, true);
+  assert.match(filter, /returning once the novelty wears/);
+  assert.doesNotMatch(filter, /reaction could turn very quickly/);
 });
 
 test("standard source cards remain available outside Flash Lane", () => {

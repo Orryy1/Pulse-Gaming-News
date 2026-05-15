@@ -7,6 +7,7 @@ const path = require("node:path");
 
 const { buildCommentSwoop } = require("../../lib/prl-overlays");
 const { buildSourceCardFilter } = require("../../lib/scenes/source-card");
+const { buildQuoteBodyLayout } = require("../../lib/scenes/quote-card");
 const { deriveCardContent } = require("../../lib/studio/v2/hf-card-builders");
 const { wrapQuoteLines } = require("../../lib/studio/v2/quote-fit");
 
@@ -96,4 +97,26 @@ test("Studio v2 quote derivation shortens long unbroken quote tokens", () => {
     content.quote.quoteText.split(/\s+/).every((word) => word.length <= 25),
     content.quote.quoteText,
   );
+});
+
+test("full-screen quote cards cap body copy to a compact safe block", () => {
+  const layout = buildQuoteBodyLayout(
+    "This is a long community quote that keeps adding detail and context until it would otherwise become a boring wall of text inside a fast gaming short.",
+  );
+
+  assert.ok(layout.lines.length <= 4, layout.lines.join(" / "));
+  assert.ok(layout.blockTop >= layout.safeBounds.top);
+  assert.ok(layout.blockBottom <= layout.safeBounds.bottom);
+  assert.ok(layout.truncated, "long quote should be truncated instead of overflowing");
+});
+
+test("Studio v2 entity badges keep kicker and label vertical bands separated", () => {
+  const src = fs.readFileSync(
+    path.join(ROOT, "lib", "studio", "ffmpeg-scene-renderer.js"),
+    "utf8",
+  );
+
+  assert.match(src, /layout\.kickerY\)\) \? Number\(layout\.kickerY\) : 104/);
+  assert.match(src, /layout\.labelY\)\) \? Number\(layout\.labelY\) : 158/);
+  assert.match(src, /kickerY: 250, labelY: 306/);
 });

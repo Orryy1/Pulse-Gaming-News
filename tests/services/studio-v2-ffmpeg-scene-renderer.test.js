@@ -70,7 +70,7 @@ test("opener entity badge sits below the hook safe area", () => {
   assert.doesNotMatch(filter, /text='OFFICIAL CLIP'[^,]*:x=74:y=112/);
   assert.doesNotMatch(filter, /text='GTA'[^,]*:x=74:y=152/);
   assert.match(filter, /text='OFFICIAL CLIP'[^,]*:x=74:y=250/);
-  assert.match(filter, /text='GTA'[^,]*:x=74:y=290/);
+  assert.match(filter, /text='GTA'[^,]*:x=74:y=306/);
 });
 
 test("official clip inputs seek to the selected trailer beat instead of trailer start", () => {

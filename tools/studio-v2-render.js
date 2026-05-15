@@ -85,7 +85,11 @@ const {
   buildSoundLayerV2,
   ensureSfxAssets,
 } = require("../lib/studio/v2/sound-layer-v2");
-const { buildKineticAss } = require("../lib/studio/v2/subtitle-layer-v2");
+const {
+  buildKineticAss,
+  prepareSubtitleWords,
+  realignTimestampsToScript,
+} = require("../lib/studio/v2/subtitle-layer-v2");
 const { buildQualityReportV2 } = require("../lib/studio/v2/quality-gate-v2");
 const {
   assertNarrationAllowedForProof,
@@ -1395,13 +1399,39 @@ async function main() {
     );
   }
 
+  const finalVideoDurationS = sumSceneDurations(scenes);
+  const subtitleScriptText = resolveSubtitleScriptText({
+    voice,
+    tsData,
+    editorial,
+    spokenTranscript,
+  });
+  const subtitleTimelineDurationS = Math.max(
+    0.1,
+    ...[finalVideoDurationS, audioDurationS].filter(
+      (value) => Number.isFinite(Number(value)) && Number(value) > 0,
+    ),
+  );
+  const shouldRealignSubtitles = voice.editorialScriptAppliedToAudio === true;
+  const subtitleAlignedWords = shouldRealignSubtitles
+    ? realignTimestampsToScript(subtitleScriptText, realignedWords)
+    : realignedWords;
+  const subtitleTimingWords = prepareSubtitleWords({
+    words: subtitleAlignedWords,
+    duration: subtitleTimelineDurationS,
+    scriptText: subtitleScriptText,
+    strictEndCoverage: shouldRealignSubtitles,
+  });
+  const transitionWords = subtitleTimingWords.length
+    ? subtitleTimingWords
+    : realignedWords;
+
   // ---- 8. Beat-aware transitions ----
   console.log("[8/11] planning beat-aware cuts...");
-  const transitions = buildBeatAwareTransitions(scenes, realignedWords);
-  const finalVideoDurationS = sumSceneDurations(scenes);
+  const transitions = buildBeatAwareTransitions(scenes, transitionWords);
   const beatAligned = transitions.filter((t) => {
     let nearest = Infinity;
-    for (const w of realignedWords) {
+    for (const w of transitionWords) {
       const d = Math.min(
         Math.abs(t.offset - (w.start || 0)),
         Math.abs(t.offset - (w.end || 0)),
@@ -1489,7 +1519,7 @@ async function main() {
     musicInputIdx,
     audioInputsBaseIdx,
     audioPlan,
-    targetDurationS: finalVideoDurationS,
+    targetDurationS: subtitleTimelineDurationS,
   });
   const sfxInputs = soundLayer.extraInputs;
   filterParts.push(...soundLayer.filterLines);
@@ -1518,16 +1548,11 @@ async function main() {
   })();
   const assContent = buildKineticAss({
     story: renderStory,
-    words: realignedWords,
-    duration: audioDurationS,
-    scriptText: resolveSubtitleScriptText({
-      voice,
-      tsData,
-      editorial,
-      spokenTranscript,
-    }),
+    words: subtitleTimingWords,
+    duration: subtitleTimelineDurationS,
+    scriptText: subtitleScriptText,
     emphasisHex: channelTheme?.primary,
-    realign: voice.editorialScriptAppliedToAudio === true,
+    realign: false,
     ...resolveStudioV2CaptionOptions(),
   });
   await fs.writeFile(assPath, assContent);
@@ -1549,12 +1574,14 @@ async function main() {
     filterParts.push(heroOverlayFilter);
     videoForSubtitles = "heroBase";
   }
+  const subtitleTailPadS = Math.max(
+    1,
+    subtitleTimelineDurationS - finalVideoDurationS + 1,
+  );
   filterParts.push(
     `[${videoForSubtitles}]tpad=stop_mode=clone:stop_duration=${(
-      finalVideoDurationS + 1
-    ).toFixed(
-      3,
-    )},trim=duration=${finalVideoDurationS},setpts=PTS-STARTPTS[subtitleBase]`,
+      subtitleTailPadS
+    ).toFixed(3)},trim=duration=${subtitleTimelineDurationS.toFixed(3)},setpts=PTS-STARTPTS[subtitleBase]`,
     `[subtitleBase]ass=${assRel}[outv]`,
   );
 
@@ -1672,7 +1699,7 @@ async function main() {
     audioDurationS,
     assPath,
     soundLayerPayload: soundLayer,
-    realignedWords,
+    realignedWords: subtitleTimingWords,
     renderedDurationS: output.durationS,
     branch: currentBranch(),
   });
@@ -1704,6 +1731,9 @@ async function main() {
   report.subtitles = {
     assPath: path.relative(ROOT, assPath).replace(/\\/g, "/"),
     dialogueCount: assDialogueCount,
+    timingWordCount: subtitleTimingWords.length,
+    timelineDurationS: Number(subtitleTimelineDurationS.toFixed(3)),
+    sourceDurationS: Number(finalVideoDurationS.toFixed(3)),
     style: "kinetic-word-pop",
   };
   report.premiumLane = lane.premiumLane;

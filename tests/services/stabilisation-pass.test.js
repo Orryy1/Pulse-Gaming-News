@@ -304,8 +304,11 @@ test("/api/news/full sets no-store cache headers (source-scan)", () => {
 // ---------- trusted-publisher auto lane (Task 5) ---------------------
 
 const {
+  qualifiesForFreshConfirmedRedditAutoLane,
   qualifiesForTrustedPublisherAutoLane,
   qualifiesForTrustedRumourAutoLane,
+  FRESH_CONFIRMED_REDDIT_MIN_SCORE,
+  FRESH_CONFIRMED_REDDIT_SUBS,
   TRUSTED_PUBLISHER_SUBS,
   TRUSTED_PUBLISHER_MIN_SCORE,
 } = require("../../lib/scoring.js");
@@ -480,4 +483,74 @@ test("TRUSTED_PUBLISHER_SUBS covers major gaming outlets", () => {
 
 test("TRUSTED_PUBLISHER_MIN_SCORE is 70 (one tier below global 75 auto floor)", () => {
   assert.equal(TRUSTED_PUBLISHER_MIN_SCORE, 70);
+});
+
+// ---------- fresh confirmed Reddit auto lane -------------------------
+
+function freshRedditStory(overrides = {}) {
+  return {
+    id: "1fresh",
+    title: "Subnautica 2 has been officially released in Early Access",
+    body: "Unknown Worlds confirmed the Early Access release on Steam and Xbox.",
+    full_script: "Subnautica 2 is officially in Early Access.",
+    hook: "Subnautica 2 is officially in Early Access.",
+    subreddit: "Games",
+    source_type: "reddit",
+    flair: "Release",
+    timestamp: new Date().toISOString(),
+    ...overrides,
+  };
+}
+
+test("fresh-confirmed Reddit lane: high-signal release story qualifies", () => {
+  const q = qualifiesForFreshConfirmedRedditAutoLane(
+    freshRedditStory(),
+    baseScore({ total: 73 }),
+  );
+
+  assert.equal(q.qualifies, true);
+  assert.match(q.reason, /^fresh_confirmed_reddit_auto_lane:/);
+  assert.match(q.reason, /subreddit=games/);
+  assert.match(q.reason, /score=73/);
+});
+
+test("fresh-confirmed Reddit lane: community discussion prompt does NOT qualify", () => {
+  const q = qualifiesForFreshConfirmedRedditAutoLane(
+    freshRedditStory({
+      title: "Did we lose the magic of community in online multiplayer games?",
+      body: "A discussion thread asks whether gaming communities are worse now.",
+      subreddit: "gaming",
+      flair: "Discussion",
+    }),
+    baseScore({ total: 73 }),
+  );
+
+  assert.equal(q.qualifies, false);
+});
+
+test("fresh-confirmed Reddit lane: stale story does NOT qualify", () => {
+  const q = qualifiesForFreshConfirmedRedditAutoLane(
+    freshRedditStory({
+      timestamp: new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString(),
+    }),
+    baseScore({ total: 73 }),
+  );
+
+  assert.equal(q.qualifies, false);
+});
+
+test("fresh-confirmed Reddit lane: constants remain deliberately narrow", () => {
+  assert.equal(FRESH_CONFIRMED_REDDIT_MIN_SCORE, 70);
+  assert.ok(FRESH_CONFIRMED_REDDIT_SUBS.has("games"));
+  assert.equal(FRESH_CONFIRMED_REDDIT_SUBS.has("gaming"), false);
+});
+
+test("decision-engine wires the fresh-confirmed Reddit auto lane", () => {
+  const src = fs.readFileSync(
+    require.resolve("../../lib/decision-engine.js"),
+    "utf8",
+  );
+
+  assert.match(src, /qualifiesForFreshConfirmedRedditAutoLane/);
+  assert.match(src, /freshConfirmedLane/);
 });

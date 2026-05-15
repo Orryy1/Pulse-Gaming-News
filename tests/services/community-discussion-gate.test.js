@@ -10,6 +10,7 @@ const {
 test("community discussion gate catches broad gaming prompts", () => {
   const prompts = [
     "What's the best obscure video game you've ever played?",
+    "Did we lose the magic of community in online multiplayer games?",
     "We need another game like L.A Noire!",
     "how to make your game cool as fuck: add exaggerated title cards",
     "This moment made me realize I was playing something special",

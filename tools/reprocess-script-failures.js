@@ -10,7 +10,7 @@ const db = require("../lib/db");
 const {
   buildScriptFailureReprocessReport,
   formatScriptFailureReprocessMarkdown,
-  selectLocalLlmFetchFailureStories,
+  selectReprocessableScriptFailureStories,
 } = require("../lib/ops/script-failure-reprocess");
 
 const ROOT = path.resolve(__dirname, "..");
@@ -57,7 +57,7 @@ function printHelp() {
   process.stdout.write(
     "Usage: node tools/reprocess-script-failures.js [--limit N] [--story ID] [--apply-local] [--json]\n" +
       "  Default is dry-run: generates scripts and reports, but does not write DB rows.\n" +
-      "  --apply-local persists only selected stale local-LLM failure rows and never posts to Discord/social.\n",
+      "  --apply-local persists only selected script-review failure rows and never posts to Discord/social.\n",
   );
 }
 
@@ -72,7 +72,7 @@ async function main() {
     typeof db.getStoriesSync === "function"
       ? db.getStoriesSync()
       : await db.getStories();
-  const candidates = selectLocalLlmFetchFailureStories({
+  const candidates = selectReprocessableScriptFailureStories({
     stories,
     limit: args.limit,
     storyIds: args.storyIds,

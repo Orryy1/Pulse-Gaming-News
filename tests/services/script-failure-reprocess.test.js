@@ -11,6 +11,7 @@ const {
   classifyReprocessedStory,
   formatScriptFailureReprocessMarkdown,
   selectLocalLlmFetchFailureStories,
+  selectReprocessableScriptFailureStories,
 } = require("../../lib/ops/script-failure-reprocess");
 
 const ROOT = path.resolve(__dirname, "..", "..");
@@ -53,6 +54,40 @@ test("selectLocalLlmFetchFailureStories honours story filter and limit", () => {
   });
 
   assert.deepEqual(rows.map((row) => row.id), ["b"]);
+});
+
+test("selectReprocessableScriptFailureStories also targets fixable validation reviews", () => {
+  const rows = selectReprocessableScriptFailureStories({
+    stories: [
+      {
+        id: "hook",
+        title: "Retry hook",
+        script_review_reason: "Hook too long (35 words) - must be under 25 words for punch",
+      },
+      {
+        id: "safe-wording",
+        title: "Retry wording",
+        script_review_reason: 'Advertiser-safety warning: contains "killed"',
+      },
+      {
+        id: "public",
+        title: "Already public",
+        script_review_reason: "Hook too long",
+        youtube_post_id: "yt_public",
+      },
+      {
+        id: "manual",
+        title: "Real manual review",
+        script_review_reason: "source_conflict_manual_review",
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    rows.map((row) => row.id),
+    ["hook", "safe-wording"],
+  );
+  assert.match(rows[0].script_failure_reprocess_reason, /Hook too long/);
 });
 
 test("classifyReprocessedStory separates script-ready from still-review rows", () => {
@@ -110,6 +145,7 @@ test("ops:reprocess-script-failures command is registered and dry-run first", ()
     "utf8",
   );
   assert.match(tool, /Default is dry-run/);
+  assert.match(tool, /selectReprocessableScriptFailureStories/);
   assert.match(tool, /--apply-local/);
   assert.match(tool, /postDiscord: false/);
   assert.match(tool, /backupFileName/);

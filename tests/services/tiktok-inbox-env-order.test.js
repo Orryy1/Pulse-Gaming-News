@@ -32,3 +32,26 @@ test("tiktok-inbox-upload requires an operator confirmation flag before live inb
   assert.match(src, /process\.env\.TIKTOK_ENABLED = "true"/);
   assert.match(src, /process\.env\.TIKTOK_AUTO_UPLOAD_ENABLED = "true"/);
 });
+
+test("tiktok-inbox-upload classifies pending-share TikTok 400 without retry advice", () => {
+  const { classifyTikTokInboxUploadError } = require("../../tools/tiktok-inbox-upload");
+
+  const classified = classifyTikTokInboxUploadError({
+    message: "Request failed with status code 400",
+    response: {
+      status: 400,
+      data: {
+        error: {
+          code: "spam_risk_too_many_pending_share",
+          message: "spam_risk_too_many_pending_share",
+          log_id: "log123",
+        },
+      },
+    },
+  });
+
+  assert.equal(classified.reason, "tiktok_pending_share_limit");
+  assert.equal(classified.http_status, 400);
+  assert.equal(classified.raw_error_code, "spam_risk_too_many_pending_share");
+  assert.match(classified.operator_action, /pending inbox\/draft share items/);
+});

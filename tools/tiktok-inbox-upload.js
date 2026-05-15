@@ -134,6 +134,43 @@ async function persistTikTokInboxResult(story = {}, payload = {}) {
   return true;
 }
 
+function classifyTikTokInboxUploadError(err) {
+  const response = err && err.response ? err.response : null;
+  const body = response && response.data ? response.data : null;
+  const rawError = body && typeof body === "object" ? body.error || {} : {};
+  const code = rawError.code || null;
+  const message = rawError.message || err?.message || String(err || "unknown_error");
+  const logId = rawError.log_id || null;
+
+  let reason = code || "tiktok_inbox_upload_failed";
+  let operatorAction =
+    "Do not retry immediately. Check TikTok auth, app mode and dispatch pack status, then rerun once the blocker is resolved.";
+
+  if (code === "spam_risk_too_many_pending_share") {
+    reason = "tiktok_pending_share_limit";
+    operatorAction =
+      "Open TikTok on the connected account and publish, discard or clear pending inbox/draft share items, then retry one inbox upload.";
+  } else if (response && response.status === 401) {
+    reason = "tiktok_token_unauthorised";
+    operatorAction =
+      "Run npm run tiktok:auth-doctor and refresh or re-auth TikTok before retrying.";
+  } else if (response && response.status === 403) {
+    reason = "tiktok_app_or_scope_blocked";
+    operatorAction =
+      "Check TikTok app review/scope status. Use phone/manual dispatch until the official route is accepted.";
+  }
+
+  return {
+    ok: false,
+    reason,
+    http_status: response ? response.status : null,
+    raw_error_code: code,
+    raw_error_message: message,
+    log_id: logId,
+    operator_action: operatorAction,
+  };
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const outDir = path.resolve(args.outDir || OUT);
@@ -148,6 +185,7 @@ async function main() {
 
   let result = null;
   let tiktokStatus = null;
+  let uploadError = null;
   if (args.statusOnly && args.publishId) {
     tiktokStatus = await fetchPublishStatus(args.publishId);
   } else if (plan.will_upload_to_tiktok) {
@@ -156,25 +194,45 @@ async function main() {
     }
     process.env.TIKTOK_ENABLED = "true";
     process.env.TIKTOK_AUTO_UPLOAD_ENABLED = "true";
-    result = await uploadVideoToInbox(story);
-    if (result?.publishId) {
-      try {
-        tiktokStatus = await fetchPublishStatus(result.publishId);
-      } catch (err) {
-        tiktokStatus = {
-          ok: false,
-          status: null,
-          raw_error_code: "status_fetch_failed",
-          raw_error_message: err.message || String(err),
-        };
+    try {
+      result = await uploadVideoToInbox(story);
+      if (result?.publishId) {
+        try {
+          tiktokStatus = await fetchPublishStatus(result.publishId);
+        } catch (err) {
+          tiktokStatus = {
+            ok: false,
+            status: null,
+            raw_error_code: "status_fetch_failed",
+            raw_error_message: err.message || String(err),
+          };
+        }
       }
+    } catch (err) {
+      uploadError = classifyTikTokInboxUploadError(err);
+      tiktokStatus = {
+        ok: false,
+        status: null,
+        raw_error_code: uploadError.raw_error_code || uploadError.reason,
+        raw_error_message: uploadError.raw_error_message,
+        http_status: uploadError.http_status,
+        log_id: uploadError.log_id,
+      };
     }
   }
 
   const payload = {
     ...buildTikTokInboxCommandPlan({ story, args, result, tiktokStatus, mediaInfo }),
     result,
+    upload_error: uploadError,
   };
+  if (uploadError) {
+    payload.status = "upload_failed";
+    payload.will_upload_to_tiktok = false;
+    payload.completion_state = uploadError.reason;
+    payload.blockers = [...(payload.blockers || []), uploadError.reason];
+    payload.next_operator_step = uploadError.operator_action;
+  }
   const persisted = await persistTikTokInboxResult(story, payload);
   payload.persisted_to_story = persisted;
   const jsonPath = path.join(outDir, "tiktok_inbox_upload_plan.json");
@@ -185,6 +243,10 @@ async function main() {
   console.log(`[tiktok-inbox] json=${path.relative(ROOT, jsonPath)}`);
   console.log(`[tiktok-inbox] md=${path.relative(ROOT, mdPath)}`);
   if (result) console.log(`[tiktok-inbox] publish_id=${result.publishId}`);
+  if (uploadError) {
+    console.log(`[tiktok-inbox] upload_failed=${uploadError.reason}`);
+    process.exitCode = 1;
+  }
 }
 
 if (require.main === module) {
@@ -196,6 +258,7 @@ if (require.main === module) {
 
 module.exports = {
   inspectMp4ForInbox,
+  classifyTikTokInboxUploadError,
   main,
   parseArgs,
   persistTikTokInboxResult,

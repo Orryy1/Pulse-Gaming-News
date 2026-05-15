@@ -13,6 +13,7 @@ const {
   DEFAULT_MIN_WORDS,
   DEFAULT_MAX_WORDS,
 } = require("./lib/services/short-runtime-planner");
+const { runScriptCoherenceQa } = require("./lib/script-coherence-qa");
 
 const { getChannel } = require("./channels");
 const { getAnalyticsContext } = require("./analytics");
@@ -37,6 +38,18 @@ const DEMONETIZATION_WORDS = [
   "massacre",
   "genocide",
   "slaughter",
+];
+
+const ADVERTISER_SAFE_REPLACEMENTS = [
+  [/\bkilled\b/gi, "ended"],
+  [/\bkilling\b/gi, "ending"],
+  [/\bmurder(?:ed|ing)?\b/gi, "removed"],
+  [/\bsuicide\b/gi, "self-harm"],
+  [/\brape\b/gi, "assault"],
+  [/\bterrorist(?:s)?\b/gi, "hostile faction"],
+  [/\bmassacre(?:d|s)?\b/gi, "wipeout"],
+  [/\bgenocide\b/gi, "atrocity"],
+  [/\bslaughter(?:ed|ing|s)?\b/gi, "wipeout"],
 ];
 
 // Finance-specific red flags (Stacked channel) - reject scripts with hype language
@@ -103,6 +116,73 @@ function checkAdvertiserSafety(script) {
   const text = (script.full_script || "").toLowerCase();
   const found = DEMONETIZATION_WORDS.filter((w) => text.includes(w));
   return found;
+}
+
+function replaceAdvertiserRiskWords(text) {
+  if (typeof text !== "string" || !text) return text;
+  let out = text;
+  for (const [pattern, replacement] of ADVERTISER_SAFE_REPLACEMENTS) {
+    out = out.replace(pattern, replacement);
+  }
+  return out;
+}
+
+function normaliseScriptPunctuation(text) {
+  if (typeof text !== "string" || !text) return text;
+  return text
+    .replace(/\.{2,}/g, ".")
+    .replace(/([.!?])\s+\1/g, "$1")
+    .replace(/\s+([,.!?;:])/g, "$1")
+    .replace(/([([{])\s+/g, "$1")
+    .replace(/\s+([)\]}])/g, "$1")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function cleanHookDisplayText(text) {
+  if (typeof text !== "string" || !text) return text;
+  return normaliseScriptPunctuation(
+    text.replace(/\[PAUSE\]/gi, ". ").replace(/\[VISUAL:[^\]]*\]/gi, " "),
+  );
+}
+
+function countWords(text) {
+  return String(text || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+}
+
+function trimToWordLimit(text, limit = 18) {
+  const words = String(text || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (words.length <= limit) return String(text || "").trim();
+  return `${words.slice(0, limit).join(" ").replace(/[,:;]+$/, "")}.`;
+}
+
+function derivePunchHook(hook) {
+  const raw = cleanHookDisplayText(String(hook || "").replace(/\s+/g, " "));
+  if (!raw) return raw;
+
+  const firstSentence = raw.split(/(?<=[.!?])\s+/)[0]?.trim();
+  if (
+    firstSentence &&
+    firstSentence !== raw &&
+    countWords(firstSentence) >= 4 &&
+    countWords(firstSentence) <= 24
+  ) {
+    return firstSentence;
+  }
+  if (countWords(raw) <= 24) return raw;
+
+  const firstClause = raw.split(/\s[,;:]\s|,\s|;\s|:\s/)[0]?.trim();
+  if (firstClause && countWords(firstClause) >= 4 && countWords(firstClause) <= 24) {
+    return /[.!?]$/.test(firstClause) ? firstClause : `${firstClause}.`;
+  }
+
+  return trimToWordLimit(raw, 18);
 }
 
 function stripJsonCodeFence(rawText) {
@@ -322,9 +402,116 @@ const CHANNEL_CLASSIFICATIONS = {
   ],
 };
 
-function validate(script, channelId) {
+const RELEASE_DATE_MONTHS = {
+  january: 0,
+  february: 1,
+  march: 2,
+  april: 3,
+  may: 4,
+  june: 5,
+  july: 6,
+  august: 7,
+  september: 8,
+  october: 9,
+  november: 10,
+  december: 11,
+};
+
+function dateOnly(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function parseLongDate(monthName, dayValue, yearValue) {
+  const month = RELEASE_DATE_MONTHS[String(monthName || "").toLowerCase()];
+  const day = Number(dayValue);
+  const year = Number(yearValue);
+  if (!Number.isInteger(month) || !Number.isInteger(day) || !Number.isInteger(year)) {
+    return null;
+  }
+  const parsed = new Date(year, month, day);
+  if (
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== month ||
+    parsed.getDate() !== day
+  ) {
+    return null;
+  }
+  return parsed;
+}
+
+function formatLongDate(date) {
+  const month = Object.keys(RELEASE_DATE_MONTHS).find(
+    (name) => RELEASE_DATE_MONTHS[name] === date.getMonth(),
+  );
+  const day = date.getDate();
+  const suffix =
+    day >= 11 && day <= 13
+      ? "th"
+      : day % 10 === 1
+        ? "st"
+        : day % 10 === 2
+          ? "nd"
+          : day % 10 === 3
+            ? "rd"
+            : "th";
+  return `${month.charAt(0).toUpperCase()}${month.slice(1)} ${day}${suffix}, ${date.getFullYear()}`;
+}
+
+function releaseClaimImpliesAlreadyOut(sentence) {
+  return /\b(launched|released|arrived|dropped|landed|went live|is live|is out|out now|available now|available today|launches today|releases today|hits today|unlocks today|opens today)\b/i.test(
+    sentence,
+  );
+}
+
+function validateFutureReleaseClaims(script, { now = new Date() } = {}) {
+  const today = dateOnly(now);
+  const text = [
+    script.hook,
+    script.body,
+    script.loop,
+    script.cta,
+    script.full_script,
+    script.tts_script,
+  ]
+    .filter(Boolean)
+    .join(". ");
+  const sentenceChunks = text.split(/(?<=[.!?])\s+|\n+/);
+  const errors = [];
+  const dateRe =
+    /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})(?:st|nd|rd|th)?[,]?\s+(\d{4})\b/gi;
+
+  for (const sentence of sentenceChunks) {
+    dateRe.lastIndex = 0;
+    let match;
+    while ((match = dateRe.exec(sentence))) {
+      const claimedDate = parseLongDate(match[1], match[2], match[3]);
+      if (!claimedDate || dateOnly(claimedDate) <= today) continue;
+
+      const impliesToday = /\btoday\b/i.test(sentence);
+      const impliesAlreadyOut = releaseClaimImpliesAlreadyOut(sentence);
+      if (!impliesToday && !impliesAlreadyOut) continue;
+
+      errors.push(
+        `unsupported_future_release_claim:${formatLongDate(claimedDate)} is after today (${formatLongDate(today)})`,
+      );
+    }
+  }
+
+  return [...new Set(errors)];
+}
+
+function validate(script, channelId, options = {}) {
   const errors = [];
   const actualWords = countSpokenWords(cleanForTTS(script.full_script || ""));
+  errors.push(...validateFutureReleaseClaims(script, options));
+  const coherenceQa = runScriptCoherenceQa(
+    { ...(options.story || {}), ...script },
+    {
+      requireCtaField: true,
+      requireFullScriptCta: false,
+    },
+  );
+  errors.push(...coherenceQa.failures);
   if (channelId === "pulse-gaming") {
     const runtime = classifyShortScriptRuntime({
       text: cleanForTTS(script.full_script || ""),
@@ -433,6 +620,8 @@ function sanitiseScript(script) {
     "suggested_thumbnail_text",
   ]) {
     if (!script[key]) continue;
+    script[key] = replaceAdvertiserRiskWords(script[key]);
+    script[key] = normaliseScriptPunctuation(script[key]);
     for (const [american, british] of Object.entries(BRITISH_SPELLING)) {
       const regex = new RegExp(`\\b${american}\\b`, "gi");
       script[key] = script[key].replace(regex, (match) => {
@@ -443,6 +632,10 @@ function sanitiseScript(script) {
         return british;
       });
     }
+  }
+
+  if (script.hook) {
+    script.hook = derivePunchHook(script.hook);
   }
 
   return script;
@@ -777,10 +970,10 @@ Today's date is ${today}. You MUST follow these rules:
         let extra = "";
         if (attempts === 2) {
           extra =
-            `\n\nIMPORTANT: Your previous script failed validation. For Pulse Gaming, ensure the actual full_script is ${DEFAULT_MIN_WORDS}-${DEFAULT_MAX_WORDS} spoken words for a 61-75 second Short. Include a classification tag. Do not start the hook with So, Today, Hey, Welcome or In this.`;
+            `\n\nIMPORTANT: Your previous script failed validation. For Pulse Gaming, ensure the actual full_script is ${DEFAULT_MIN_WORDS}-${DEFAULT_MAX_WORDS} spoken words for a 61-75 second Short. Keep hook under 18 words. Include a classification tag. Do not start the hook with So, Today, Hey, Welcome or In this. Avoid advertiser-risk terms such as killed, murder, suicide, terrorist, massacre, genocide or slaughter.`;
         } else if (attempts === 3) {
           extra =
-            `\n\nFINAL ATTEMPT: Produce a ${Math.round((DEFAULT_MIN_WORDS + DEFAULT_MAX_WORDS) / 2)}-word script with a strong hook, classification tag and CTA. This is your last chance.`;
+            `\n\nFINAL ATTEMPT: Produce a ${Math.round((DEFAULT_MIN_WORDS + DEFAULT_MAX_WORDS) / 2)}-word script. Hook must be one concrete sentence under 18 words. Use named people/companies and concrete outcomes. Include a classification tag and CTA. This is your last chance.`;
         }
 
         const response = await client.messages.create({
@@ -970,6 +1163,7 @@ module.exports.editorWordCountInstruction = editorWordCountInstruction;
 module.exports.buildScriptValidationReview = buildScriptValidationReview;
 module.exports.cleanForTTS = cleanForTTS;
 module.exports.parseLlmJsonObject = parseLlmJsonObject;
+module.exports.sanitiseScript = sanitiseScript;
 
 if (require.main === module) {
   process_stories().catch((err) => {

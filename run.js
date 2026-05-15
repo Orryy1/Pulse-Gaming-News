@@ -2,6 +2,9 @@ const cron = require("node-cron");
 const fs = require("fs-extra");
 const sendDiscord = require("./notify");
 const dotenv = require("dotenv");
+
+dotenv.config({ override: true });
+
 const db = require("./lib/db");
 const mediaPaths = require("./lib/media-paths");
 const {
@@ -9,8 +12,6 @@ const {
   normaliseExportPath,
   shouldSendProduceCompletionDiscord,
 } = require("./lib/ops/produce-notification");
-
-dotenv.config({ override: true });
 
 /*
   Pulse Gaming Pipeline v2 -Autonomous Operations

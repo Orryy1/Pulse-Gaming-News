@@ -92,6 +92,67 @@ test("next publish report excludes rows with existing public platform ids and QA
   assert.deepEqual(report.candidates.map((row) => row.id), ["clean"]);
 });
 
+test("next publish report mirrors live skip for failed and stale unpublished backlog rows", () => {
+  const report = buildNextPublishCandidatesReport(
+    [
+      baseStory({
+        id: "old_unpublished",
+        created_at: "2026-04-23T12:00:00.000Z",
+        updated_at: "2026-05-15T08:00:00.000Z",
+      }),
+      baseStory({
+        id: "publish_failed",
+        publish_status: "failed",
+      }),
+      baseStory({
+        id: "fresh_clean",
+        created_at: "2026-05-15T08:30:00.000Z",
+      }),
+    ],
+    {
+      analyticsText,
+      generatedAt: "2026-05-15T09:00:00.000Z",
+      nowMs: Date.parse("2026-05-15T09:00:00.000Z"),
+      env: {},
+    },
+  );
+
+  assert.deepEqual(report.candidates.map((row) => row.id), ["fresh_clean"]);
+  assert.ok(
+    report.excluded.some(
+      (row) =>
+        row.id === "old_unpublished" &&
+        row.reason === "stale_unpublished_backlog",
+    ),
+  );
+  assert.ok(
+    report.excluded.some(
+      (row) =>
+        row.id === "publish_failed" &&
+        row.reason === "qa_failure:publish_status=failed",
+    ),
+  );
+});
+
+test("next publish report can opt into stale backlog visibility when explicitly allowed", () => {
+  const report = buildNextPublishCandidatesReport(
+    [
+      baseStory({
+        id: "old_allowed",
+        created_at: "2026-04-23T12:00:00.000Z",
+      }),
+    ],
+    {
+      analyticsText,
+      generatedAt: "2026-05-15T09:00:00.000Z",
+      nowMs: Date.parse("2026-05-15T09:00:00.000Z"),
+      env: { ALLOW_STALE_BACKLOG_PUBLISH: "true" },
+    },
+  );
+
+  assert.deepEqual(report.candidates.map((row) => row.id), ["old_allowed"]);
+});
+
 test("next publish report keeps 76-90s extended Shorts in review instead of excluding them", () => {
   const report = buildNextPublishCandidatesReport(
     [

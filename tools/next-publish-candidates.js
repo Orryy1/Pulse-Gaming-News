@@ -260,6 +260,9 @@ function qaFailures(story = {}) {
     ...parseFailureList(story.content_qa_failures),
   ];
   if (story.qa_failed === true) failures.push("qa_failed=true");
+  if (String(story.publish_status || "").toLowerCase() === "failed") {
+    failures.push("publish_status=failed");
+  }
   if (story.script_generation_status === "review_required") {
     failures.push(`script_generation_review:${story.script_review_reason || "validation_failed"}`);
   }
@@ -268,6 +271,31 @@ function qaFailures(story = {}) {
     failures.push(publishError);
   }
   return [...new Set(failures.filter(Boolean))];
+}
+
+function parseStoryPublishAgeMs(story = {}, now = Date.now()) {
+  const raw =
+    story.approved_at ||
+    story.produced_at ||
+    story.created_at ||
+    story.timestamp ||
+    story.updated_at;
+  const parsed = raw ? Date.parse(raw) : NaN;
+  if (!Number.isFinite(parsed)) return null;
+  return now - parsed;
+}
+
+function staleBacklogMaxAgeMs(env = process.env) {
+  const days = Number(env.PUBLISH_STALE_BACKLOG_MAX_DAYS);
+  const safeDays = Number.isFinite(days) && days >= 1 ? days : 7;
+  return safeDays * 24 * 60 * 60 * 1000;
+}
+
+function storyIsStaleUnpublishedBacklog(story = {}, env = process.env, now = Date.now()) {
+  if (env.ALLOW_STALE_BACKLOG_PUBLISH === "true") return false;
+  const ageMs = parseStoryPublishAgeMs(story, now);
+  if (ageMs === null) return false;
+  return ageMs > staleBacklogMaxAgeMs(env);
 }
 
 function properNameHits(text) {
@@ -398,7 +426,7 @@ function approvalScore(story = {}) {
   return { score: -40, reason: "not_approved" };
 }
 
-function exclusionReason(story = {}) {
+function exclusionReason(story = {}, options = {}) {
   const publicFields = existingPublicPlatformFields(story);
   if (publicFields.length > 0) {
     return `already_has_public_platform_id:${publicFields.join(",")}`;
@@ -408,6 +436,15 @@ function exclusionReason(story = {}) {
   const approval = approvalScore(story);
   if (approval.score < 0) return approval.reason;
   if (!story.exported_path) return "missing_mp4";
+  if (
+    storyIsStaleUnpublishedBacklog(
+      story,
+      options.env || process.env,
+      options.nowMs || Date.now(),
+    )
+  ) {
+    return "stale_unpublished_backlog";
+  }
   const duration = durationVerdict(story);
   if (duration.status === "exclude") return duration.reason;
   return null;
@@ -584,7 +621,7 @@ function buildNextPublishCandidatesReport(stories, options = {}) {
 
   for (const story of rows) {
     if (!story || typeof story !== "object") continue;
-    const reason = exclusionReason(story);
+    const reason = exclusionReason(story, options);
     if (reason) {
       excluded.push({
         id: story.id || "unknown",

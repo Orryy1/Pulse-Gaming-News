@@ -3,7 +3,6 @@ const fs = require("fs-extra");
 const path = require("path");
 const dotenv = require("dotenv");
 const util = require("util");
-const db = require("./lib/db");
 
 const execAsync = util.promisify(exec);
 
@@ -11,6 +10,7 @@ if (!/^(true|1|yes|on)$/i.test(String(process.env.PULSE_SKIP_DOTENV || ""))) {
   dotenv.config({ override: true });
 }
 
+const db = require("./lib/db");
 const axios = require("axios");
 const brand = require("./brand");
 const { getChannel } = require("./channels");
@@ -1339,7 +1339,7 @@ function buildVideoCommand(
             : `x=(iw-iw/zoom)*(1-on/${segmentFrames})`;
       filterParts.push(
         `[${i}:v]scale=1080:1920:force_original_aspect_ratio=increase,` +
-          `crop=1080:1920:0:${i % 3 === 0 ? "0" : i % 3 === 1 ? "(ih-oh)/2" : "ih-oh"},` +
+          `crop=1080:1920:(iw-ow)/2:${i % 3 === 0 ? "0" : i % 3 === 1 ? "(ih-oh)/2" : "ih-oh"},` +
           `zoompan=${zoomExpr}:${xPan}:y=ih/2-(ih/zoom/2):` +
           `d=${segmentFrames}:s=1080x1920:fps=30,` +
           `trim=duration=${segmentDuration},setpts=PTS-STARTPTS,` +
@@ -2055,6 +2055,51 @@ async function assemble() {
     console.log(
       `[assemble] ${story.id}: using ${images.length} real images (smart-crop disabled — hotfix 2026-04-25)`,
     );
+
+    try {
+      const {
+        selectRenderImagesForBrightness,
+      } = require("./lib/render-input-validation");
+      const brightnessSelection = await selectRenderImagesForBrightness(
+        images,
+      );
+      if (
+        brightnessSelection.dropped.length > 0 ||
+        brightnessSelection.demoted.length > 0
+      ) {
+        const changed =
+          brightnessSelection.images.length !== images.length ||
+          brightnessSelection.images.some((p, i) => p !== images[i]);
+        if (changed) {
+          images = brightnessSelection.images;
+          story.qa_visual_count = images.length;
+          story.distinct_visual_count = images.length;
+          story.render_quality_class =
+            images.length >= 6
+              ? "premium"
+              : images.length >= 3
+                ? "standard"
+                : images.length >= 1
+                  ? "fallback"
+                  : "reject";
+        }
+        story.qa_warnings = mergeQaList(story.qa_warnings, [
+          brightnessSelection.dropped.length > 0
+            ? "dark_render_images_dropped"
+            : null,
+          brightnessSelection.demoted.length > 0
+            ? "dark_render_images_demoted"
+            : null,
+        ]);
+        console.log(
+          `[assemble] ${story.id}: brightness guard ${brightnessSelection.reason}; dropped=${brightnessSelection.dropped.length}, demoted=${brightnessSelection.demoted.length}, images=${images.length}`,
+        );
+      }
+    } catch (err) {
+      console.log(
+        `[assemble] ${story.id}: brightness guard errored (continuing): ${err.message}`,
+      );
+    }
 
     // Generate ASS subtitle file
     const subsDir = path.join("output", "subs");

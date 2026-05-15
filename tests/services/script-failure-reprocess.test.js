@@ -96,6 +96,75 @@ test("selectReprocessableScriptFailureStories also targets fixable validation re
   assert.match(rows[0].script_failure_reprocess_reason, /Hook too long/);
 });
 
+test("selectReprocessableScriptFailureStories targets source-backed coherence repairs only", () => {
+  const rows = selectReprocessableScriptFailureStories({
+    stories: [
+      {
+        id: "rss-cta",
+        source_type: "rss",
+        subreddit: "IGN",
+        title: "Official update needs CTA repair",
+        script_review_reason: "script_coherence:missing_exact_cta_in_script",
+      },
+      {
+        id: "linked-article",
+        source_type: "reddit",
+        subreddit: "pcgaming",
+        title: "Article-backed story needs filler repair",
+        article_url: "https://www.eurogamer.net/article-backed-story",
+        script_review_reason:
+          "script_coherence:vague_filler:community_is_buzzing",
+      },
+      {
+        id: "trusted-leak",
+        source_type: "reddit",
+        subreddit: "GamingLeaksAndRumours",
+        title: "Trusted leak story needs wording repair",
+        script_review_reason:
+          "script_coherence:unsupported_verified_insider_framing",
+      },
+      {
+        id: "community-thread",
+        source_type: "reddit",
+        subreddit: "gaming",
+        title: "Community discussion should not be recycled",
+        script_review_reason: "script_coherence:general_reddit_thread_as_news",
+      },
+      {
+        id: "vague-general-reddit",
+        source_type: "reddit",
+        subreddit: "pcmasterrace",
+        title: "General Reddit source claim should not be recycled",
+        script_review_reason: "script_coherence:vague_sources_on_general_reddit",
+      },
+      {
+        id: "comment-as-source",
+        source_type: "reddit",
+        subreddit: "GamingLeaksAndRumours",
+        title: "Comment-only leak should not be recycled",
+        script_review_reason: "script_coherence:top_comment_used_as_fact",
+      },
+      {
+        id: "comment-with-article",
+        source_type: "reddit",
+        subreddit: "pcgaming",
+        article_url: "https://videocardz.com/newz/real-source",
+        title: "Article-backed comment misuse can be repaired",
+        script_review_reason: "script_coherence:top_comment_used_as_fact",
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    rows.map((row) => row.id),
+    ["rss-cta", "linked-article", "trusted-leak", "comment-with-article"],
+  );
+  assert.match(
+    rows[1].script_failure_reprocess_reason,
+    /script_coherence:vague_filler/,
+  );
+});
+
 test("classifyReprocessedStory separates script-ready from still-review rows", () => {
   assert.deepEqual(classifyReprocessedStory({ full_script: "A real script", word_count: 3 }), {
     status: "script_ready",

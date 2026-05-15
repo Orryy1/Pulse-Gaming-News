@@ -399,6 +399,127 @@ test("community discussion prompts cannot auto-approve as news Shorts", async ()
   assert.equal(storyRow.auto_approved, 0);
 });
 
+test("script review metadata in _extra blocks otherwise-auto stories", async () => {
+  const repos = makeRepos();
+  seedStory(repos.db, {
+    id: "script-review-extra",
+    title: "Nintendo confirms a major Switch 2 launch bundle for June",
+    flair: "verified",
+    subreddit: "ign",
+    source_type: "rss",
+    score: 3000,
+    num_comments: 450,
+    breaking_score: 96,
+    article_image: "https://cdn/switch-2-bundle.jpg",
+    game_images: JSON.stringify([
+      "https://steam/switch-2-keyart.jpg",
+      "https://steam/mario-kart-world.jpg",
+    ]),
+    hook: "Nintendo just confirmed a Switch 2 bundle with three launch games",
+    full_script:
+      "Nintendo has confirmed a Switch 2 bundle that includes a console and one of three digital launch games. " +
+      "The offer matters because it gives early buyers a clearer value choice before the June retail window.",
+    _extra: JSON.stringify({
+      script_generation_status: "review_required",
+      script_review_reason:
+        "script_coherence:unsupported_verified_insider_framing",
+    }),
+    timestamp: new Date().toISOString(),
+  });
+
+  await autoApprove({
+    repos,
+    env: { NODE_ENV: "production", USE_SQLITE: "true" },
+  });
+
+  const scoreRow = repos.db
+    .prepare(
+      `SELECT decision, total, decision_reason, inputs FROM story_scores
+       WHERE story_id = 'script-review-extra'
+       ORDER BY scored_at DESC LIMIT 1`,
+    )
+    .get();
+
+  assert.equal(scoreRow.decision, "review");
+  assert.ok(
+    scoreRow.total >= 75,
+    `fixture should otherwise be auto-tier, got total=${scoreRow.total}`,
+  );
+  assert.match(
+    scoreRow.decision_reason,
+    /script_review:script_coherence:unsupported_verified_insider_framing/,
+  );
+
+  const inputs = JSON.parse(scoreRow.inputs);
+  assert.equal(
+    inputs.script_review_auto_block,
+    "script_review:script_coherence:unsupported_verified_insider_framing",
+  );
+
+  const storyRow = repos.db
+    .prepare(
+      `SELECT approved, auto_approved FROM stories WHERE id = 'script-review-extra'`,
+    )
+    .get();
+  assert.equal(storyRow.approved, 0);
+  assert.equal(storyRow.auto_approved, 0);
+});
+
+test("fresh source-backed game preservation policy stories can auto-approve", async () => {
+  const repos = makeRepos();
+  seedStory(repos.db, {
+    id: "game-policy-auto",
+    title:
+      "California bill backed by Stop Killing Games campaign keeps games playable after server shutdowns",
+    flair: "News",
+    subreddit: "Games",
+    source_type: "reddit",
+    score: 250,
+    num_comments: 80,
+    breaking_score: 60,
+    article_image: "https://cdn/stop-killing-games.jpg",
+    game_images: JSON.stringify(["https://cdn/game-preservation.jpg"]),
+    downloaded_images: JSON.stringify([
+      { path: "output/image_cache/game-preservation.jpg", type: "article_hero" },
+      { path: "output/image_cache/games-law.jpg", type: "article_inline" },
+    ]),
+    hook:
+      "California just gave gamers a new weapon against abandoned games.",
+    body:
+      "According to Rock Paper Shotgun, a bill backed by Stop Killing Games passed a key committee vote and would force game developers to maintain online servers or offer refunds.",
+    full_script:
+      "California just gave gamers a new weapon against abandoned games. According to Rock Paper Shotgun, a bill backed by Stop Killing Games passed a key committee vote and would force game developers to maintain online servers or offer refunds when games shut down. Follow Pulse Gaming so you never miss a beat.",
+    timestamp: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
+  });
+
+  await autoApprove({
+    repos,
+    env: { NODE_ENV: "production", USE_SQLITE: "true" },
+  });
+
+  const scoreRow = repos.db
+    .prepare(
+      `SELECT decision, total, decision_reason, inputs FROM story_scores
+       WHERE story_id = 'game-policy-auto'
+       ORDER BY scored_at DESC LIMIT 1`,
+    )
+    .get();
+
+  assert.equal(scoreRow.decision, "auto");
+  assert.match(scoreRow.decision_reason, /fresh_game_policy_reddit_auto_lane/);
+
+  const inputs = JSON.parse(scoreRow.inputs);
+  assert.match(inputs.auto_lane_reason, /fresh_game_policy_reddit_auto_lane/);
+
+  const storyRow = repos.db
+    .prepare(
+      `SELECT approved, auto_approved FROM stories WHERE id = 'game-policy-auto'`,
+    )
+    .get();
+  assert.equal(storyRow.approved, 1);
+  assert.equal(storyRow.auto_approved, 1);
+});
+
 test("low-value community media posts cannot auto-approve from stale queue rows", async () => {
   const repos = makeRepos();
   seedStory(repos.db, {

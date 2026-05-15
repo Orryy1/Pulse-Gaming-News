@@ -322,7 +322,15 @@ function buildSubtitleBaseFilter({
       (value) => Number.isFinite(value) && value > 0,
     ),
   );
-  return `[${inputLabel}]tpad=stop_mode=clone:stop_duration=1.000,trim=duration=${targetDurationS.toFixed(3)},setpts=PTS-STARTPTS[${outputLabel}]`;
+  const padDurationS = Math.max(
+    1,
+    targetDurationS -
+      (Number.isFinite(renderDuration) && renderDuration > 0
+        ? renderDuration
+        : 0) +
+      1,
+  );
+  return `[${inputLabel}]tpad=stop_mode=clone:stop_duration=${padDurationS.toFixed(3)},trim=duration=${targetDurationS.toFixed(3)},setpts=PTS-STARTPTS[${outputLabel}]`;
 }
 
 function resolveStillDeckCaptionOptions({ variant } = {}) {

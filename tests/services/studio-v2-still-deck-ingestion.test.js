@@ -754,7 +754,9 @@ test("still-deck render pads video and audio to the subtitle timeline before map
   );
 
   assert.match(src, /function buildSubtitleBaseFilter/);
-  assert.match(src, /tpad=stop_mode=clone:stop_duration=1\.000/);
+  assert.match(src, /const padDurationS = Math\.max\(/);
+  assert.match(src, /targetDurationS\s*-\s*\(Number\.isFinite\(renderDuration\)/);
+  assert.match(src, /tpad=stop_mode=clone:stop_duration=\$\{padDurationS\.toFixed\(3\)\}/);
   assert.match(src, /trim=duration=\$\{targetDurationS\.toFixed\(3\)\}/);
   assert.match(src, /const subtitleRenderDurationS = assDurationS/);
   assert.match(src, /buildSubtitleBaseFilter\(\{\s*inputLabel: subtitleInputLabel,/);

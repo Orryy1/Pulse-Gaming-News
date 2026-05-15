@@ -26,6 +26,21 @@ test("duration padding keeps the approved CTA once at the end", () => {
   );
 });
 
+test("duration padding restores the approved CTA when the source script is missing it", () => {
+  const script = "A short source-backed script.";
+
+  const out = insertBeforeSpokenOutro(script, "Extra context goes here.");
+
+  assert.equal(
+    out,
+    "A short source-backed script. Extra context goes here. Follow Pulse Gaming so you never miss a beat.",
+  );
+  assert.equal(
+    (out.match(/Follow Pulse Gaming so you never miss a beat/g) || []).length,
+    1,
+  );
+});
+
 test("duration padding adds caveat language without strengthening hypothetical claims", () => {
   const story = {
     title: "Stardew Valley dev considers relationship drama",

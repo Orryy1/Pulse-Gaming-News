@@ -3,7 +3,11 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { selectRawTtsScript, resolveTtsTimeoutMs } = require("../../audio");
+const {
+  ensureSpokenOutro,
+  selectRawTtsScript,
+  resolveTtsTimeoutMs,
+} = require("../../audio");
 
 test("selectRawTtsScript: uses clean full_script when cached tts_script damaged a protected name", () => {
   const story = {
@@ -12,7 +16,7 @@ test("selectRawTtsScript: uses clean full_script when cached tts_script damaged 
     tts_script: "Pokmon Go has a new Mega Mewtwo event.",
   };
 
-  assert.equal(selectRawTtsScript(story), story.full_script);
+  assert.equal(selectRawTtsScript(story), ensureSpokenOutro(story.full_script));
 });
 
 test("selectRawTtsScript: keeps clean cached tts_script", () => {
@@ -21,7 +25,7 @@ test("selectRawTtsScript: keeps clean cached tts_script", () => {
     tts_script: "G T A six has a new report.",
   };
 
-  assert.equal(selectRawTtsScript(story), story.tts_script);
+  assert.equal(selectRawTtsScript(story), ensureSpokenOutro(story.tts_script));
 });
 
 test("selectRawTtsScript: prefers canonical full_script over non-canonical cached spelling", () => {
@@ -30,7 +34,7 @@ test("selectRawTtsScript: prefers canonical full_script over non-canonical cache
     tts_script: "Pokemon Go Fest is free for all players.",
   };
 
-  assert.equal(selectRawTtsScript(story), story.full_script);
+  assert.equal(selectRawTtsScript(story), ensureSpokenOutro(story.full_script));
 });
 
 test("selectRawTtsScript: returns cached script when no better fallback exists", () => {
@@ -38,7 +42,18 @@ test("selectRawTtsScript: returns cached script when no better fallback exists",
     tts_script: "Pokmon Go has a new event.",
   };
 
-  assert.equal(selectRawTtsScript(story), story.tts_script);
+  assert.equal(selectRawTtsScript(story), ensureSpokenOutro(story.tts_script));
+});
+
+test("selectRawTtsScript: restores the required spoken outro for source scripts missing it", () => {
+  const story = {
+    full_script: "Subnautica 2 just passed a million sales.",
+  };
+
+  assert.equal(
+    selectRawTtsScript(story),
+    "Subnautica 2 just passed a million sales. Follow Pulse Gaming so you never miss a beat.",
+  );
 });
 
 test("resolveTtsTimeoutMs: local VoxCPM defaults to a bounded timeout but remains configurable", () => {

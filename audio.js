@@ -341,11 +341,11 @@ function selectRawTtsScript(story) {
     typeof story?.tts_script === "string" ? story.tts_script.trim() : "";
   const fallback =
     typeof story?.full_script === "string" ? story.full_script.trim() : "";
-  if (!preferred) return fallback;
+  if (!preferred) return ensureSpokenOutro(fallback);
 
   const preferredQa = runBrandNameQa({ tts_script: preferred });
   if (preferredQa.failures.length === 0 && preferredQa.warnings.length === 0) {
-    return preferred;
+    return ensureSpokenOutro(preferred);
   }
 
   if (fallback && fallback !== preferred) {
@@ -354,7 +354,7 @@ function selectRawTtsScript(story) {
       console.log(
         `[audio] ${story?.id || "story"}: cached tts_script failed brand-name QA; using clean full_script`,
       );
-      return fallback;
+      return ensureSpokenOutro(fallback);
     }
 
     if (
@@ -364,11 +364,11 @@ function selectRawTtsScript(story) {
       console.log(
         `[audio] ${story?.id || "story"}: cached tts_script has protected-name damage; using safer full_script`,
       );
-      return fallback;
+      return ensureSpokenOutro(fallback);
     }
   }
 
-  return preferred;
+  return ensureSpokenOutro(preferred);
 }
 
 const SPOKEN_OUTRO = "Follow Pulse Gaming so you never miss a beat.";
@@ -383,8 +383,8 @@ function wordCount(text) {
 function insertBeforeSpokenOutro(script, insertion) {
   const cleanScript = String(script || "").trim();
   const cleanInsertion = String(insertion || "").trim();
-  if (!cleanScript) return cleanInsertion;
-  if (!cleanInsertion) return cleanScript;
+  if (!cleanScript) return cleanInsertion ? ensureSpokenOutro(cleanInsertion) : SPOKEN_OUTRO;
+  if (!cleanInsertion) return ensureSpokenOutro(cleanScript);
 
   const outroRe = /\s*Follow Pulse Gaming so you never miss a beat\.?\s*$/i;
   if (outroRe.test(cleanScript)) {
@@ -392,7 +392,17 @@ function insertBeforeSpokenOutro(script, insertion) {
     return `${withoutOutro} ${cleanInsertion} ${SPOKEN_OUTRO}`.replace(/\s+/g, " ").trim();
   }
 
-  return `${cleanScript} ${cleanInsertion}`.replace(/\s+/g, " ").trim();
+  return `${cleanScript} ${cleanInsertion} ${SPOKEN_OUTRO}`
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function ensureSpokenOutro(script) {
+  const cleanScript = String(script || "").trim();
+  if (!cleanScript) return SPOKEN_OUTRO;
+  const outroRe = /Follow Pulse Gaming so you never miss a beat\.?\s*$/i;
+  if (outroRe.test(cleanScript)) return cleanScript;
+  return `${cleanScript} ${SPOKEN_OUTRO}`.replace(/\s+/g, " ").trim();
 }
 
 function buildDeterministicDurationPadding(story, { attempt = 1 } = {}) {
@@ -1447,6 +1457,7 @@ module.exports.selectRawTtsScript = selectRawTtsScript;
 module.exports.buildDeterministicDurationPadding = buildDeterministicDurationPadding;
 module.exports.buildDeterministicDurationRewrite = buildDeterministicDurationRewrite;
 module.exports.insertBeforeSpokenOutro = insertBeforeSpokenOutro;
+module.exports.ensureSpokenOutro = ensureSpokenOutro;
 
 if (require.main === module) {
   generateAudio().catch((err) => {

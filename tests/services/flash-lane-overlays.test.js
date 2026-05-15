@@ -8,6 +8,7 @@ const {
   buildFlashLaneOverlayPlan,
   buildFlashLaneOverlayFilters,
   extractOverlayEntities,
+  validateFlashLaneOverlayGeometry,
 } = require("../../lib/studio/v2/flash-lane-overlays");
 
 const FONT_OPT = "fontfile='C\\:/Windows/Fonts/arial.ttf'";
@@ -353,4 +354,51 @@ test("Flash Lane overlay plan deconflicts same-anchor chips after bounded timing
       );
     }
   }
+});
+
+test("Flash Lane overlay geometry validator blocks upper-left chips during full-screen card scenes", () => {
+  const report = validateFlashLaneOverlayGeometry({
+    overlayPlan: {
+      timeline: [
+        {
+          kind: "source_chip",
+          label: "IGN",
+          at_s: 3,
+          duration_s: 2.6,
+          anchor: "upper_left",
+        },
+      ],
+    },
+    scenes: [
+      { type: SCENE_TYPES.CARD_SOURCE, duration: 5 },
+      { type: SCENE_TYPES.CLIP, duration: 5 },
+    ],
+  });
+
+  assert.equal(report.verdict, "block");
+  assert.ok(report.blockers.includes("flash_lane_upper_left_overlay_intersects_fullscreen_scene"));
+  assert.equal(report.findings[0].sceneType, SCENE_TYPES.CARD_SOURCE);
+  assert.equal(report.findings[0].overlayKind, "source_chip");
+});
+
+test("Flash Lane overlay geometry validator blocks upper-left boxes crossing caption bands", () => {
+  const report = validateFlashLaneOverlayGeometry({
+    overlayPlan: {
+      timeline: [
+        {
+          kind: "source_chip",
+          label: "EUROGAMER",
+          at_s: 8,
+          duration_s: 2.6,
+          anchor: "upper_left",
+        },
+      ],
+    },
+    scenes: [{ type: SCENE_TYPES.CLIP, duration: 12 }],
+    captionBands: [{ x: 0, y: 360, width: 1080, height: 180, start_s: 7.5, end_s: 10.5 }],
+  });
+
+  assert.equal(report.verdict, "block");
+  assert.ok(report.blockers.includes("flash_lane_upper_left_overlay_overlaps_caption_band"));
+  assert.equal(report.findings[0].captionBandIndex, 0);
 });

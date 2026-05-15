@@ -176,6 +176,76 @@ test("Flash Lane preflight blocks card-heavy proofs without story beat overlay c
   assert.equal(report.metrics.storyBeatOverlayCount, 0);
 });
 
+test("Flash Lane preflight blocks unsafe local overlay geometry before proof render", () => {
+  const report = buildFlashLaneProofPreflight({
+    narration: providedNarration,
+    scenes: [
+      { type: "card.source", duration: 5 },
+      clipScene(1),
+      clipScene(2),
+      clipScene(3),
+      clipScene(4),
+      clipScene(5),
+      clipScene(6),
+    ],
+    media: {
+      clips: [{ path: "a.mp4" }, { path: "b.mp4" }, { path: "c.mp4" }],
+      trailerFrames: [{ path: "frame-1.jpg" }],
+    },
+    overlayPlan: {
+      timeline: [
+        {
+          kind: "source_chip",
+          label: "IGN",
+          anchor: "upper_left",
+          at_s: 3,
+          duration_s: 2.6,
+        },
+      ],
+    },
+  });
+
+  assert.equal(report.verdict, "block");
+  assert.ok(report.blockers.includes("flash_lane_overlay_geometry_blocked"));
+  assert.ok(
+    report.overlayGeometry.blockers.includes("flash_lane_upper_left_overlay_intersects_fullscreen_scene"),
+  );
+});
+
+test("Flash Lane preflight blocks upper-left overlays that would cover caption bands", () => {
+  const report = buildFlashLaneProofPreflight({
+    narration: providedNarration,
+    scenes: [
+      clipScene(1),
+      clipScene(2),
+      clipScene(3),
+      clipScene(4),
+      clipScene(5),
+      clipScene(6),
+    ],
+    media: {
+      clips: [{ path: "a.mp4" }, { path: "b.mp4" }, { path: "c.mp4" }],
+      trailerFrames: [{ path: "frame-1.jpg" }],
+    },
+    overlayPlan: {
+      timeline: [
+        {
+          kind: "source_chip",
+          label: "IGN",
+          anchor: "upper_left",
+          at_s: 8,
+          duration_s: 2.6,
+        },
+      ],
+      captionBands: [{ x: 0, y: 360, width: 1080, height: 180, start_s: 7.5, end_s: 10.5 }],
+    },
+  });
+
+  assert.equal(report.verdict, "block");
+  assert.ok(report.blockers.includes("flash_lane_overlay_geometry_blocked"));
+  assert.ok(report.overlayGeometry.findings.some((finding) => finding.type === "caption_band_overlap"));
+});
+
 test("Flash Lane preflight allows card-heavy proofs when motion and beat coverage are strong", () => {
   const scenes = [
     clipScene(1),

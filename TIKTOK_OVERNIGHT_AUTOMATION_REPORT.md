@@ -1,6 +1,6 @@
 # TikTok Overnight Automation Report
 
-Generated: 2026-05-15T00:00:39.466Z
+Generated: 2026-05-15T00:24:42.571Z
 Mode: read-only-tiktok-automation-strategy
 Verdict: GREEN
 Recommended route: official_inbox_upload_prepare_only
@@ -19,16 +19,14 @@ Recommended route: official_inbox_upload_prepare_only
 - Local token: usable; action=none; refresh_available=true; needs_reauth=false
 - Official inbox: ready_for_operator_review_not_executed; ready_pack_present=true; public_auto_publish=false
 - Direct post: blocked_by_app_review_or_direct_post_approval; blocker=direct_post_approval_not_declared
-- Dispatch creative: blocked_by_creative_review; story=1szzhy9; blockers=studio_v2_promotion_red_blocked, forensic_warnings_remaining, visual_repeat_pairs_remaining, weak_rendered_frames_remaining, dispatch_pack_creative_review_required
+- Dispatch creative: ready_for_operator_visual_review; story=rss_c27cd78d4621a058; blockers=none
 
 ## Dispatch Gate
-- source: fresh_local_dispatch_pack
+- source: dispatch_manifest
 - packs: 1
 - ready_for_operator_review: 1
-- top pack: 1szzhy9 (creative_review_required, duration=74.67)
+- top pack: rss_c27cd78d4621a058 (ready_for_operator_review, duration=68.2)
 - top ready pack: rss_c27cd78d4621a058 (68.2s)
-- older dispatch manifest warnings were not treated as blockers because the fresh local pack is newer:
-  - ready_for_operator_review: 1
 
 ## Route Strategy
 - Official TikTok inbox upload (official_inbox_upload): status=ready_for_operator_review_not_executed; public_auto_publish=false; account_risk=low

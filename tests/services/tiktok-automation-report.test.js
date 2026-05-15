@@ -234,6 +234,81 @@ test("TikTok automation report surfaces blocked fresh Studio V2 dispatch packs",
   assert.doesNotMatch(md, /Requires approval before execution/);
 });
 
+test("TikTok automation report favours ready manifest pack over blocked stale fresh proof", () => {
+  const report = buildTikTokAutomationReport({
+    generatedAt: "2026-05-15T00:30:00.000Z",
+    authDoctorReport: {
+      token_status: {
+        ok: true,
+        connected: true,
+        reason: "ok",
+        expires_in_seconds: 25000,
+        refresh_available: true,
+        needs_reauth: false,
+        local_action: "token_usable",
+      },
+      posting_capability: {
+        public_auto_posting_permitted_by_env: false,
+      },
+    },
+    dispatchManifest: {
+      count: 1,
+      statusCounts: { ready_for_operator_review: 1 },
+      topReadyPack: {
+        storyId: "rss_ready",
+        status: "ready_for_operator_review",
+        mp4: "D:/pulse-data/media/output/final/rss_ready.mp4",
+        cover: "D:/pulse-data/media/output/images/rss_ready.png",
+        eligibility: {
+          durationSeconds: 68.2,
+          captionReady: true,
+          dispatchLengthReady: true,
+        },
+      },
+    },
+    freshDispatchPack: {
+      dispatchPack: {
+        storyId: "stale_studio_v2",
+        status: "creative_review_required",
+        eligibility: {
+          durationSeconds: 74.67,
+          captionReady: true,
+          dispatchLengthReady: true,
+        },
+        creativeGate: {
+          blocks_dispatch: true,
+          blockers: ["weak_rendered_frames_remaining"],
+        },
+      },
+      inboxPlan: {
+        status: "not_ready",
+        dry_run: true,
+        will_upload_to_tiktok: false,
+        blockers: ["dispatch_pack_creative_review_required"],
+      },
+      creativeReview: {
+        operator_visual_review_required: true,
+        blockers: ["weak_rendered_frames_remaining"],
+      },
+      safety: {
+        local_dry_run_only: true,
+        live_upload_executed: false,
+        public_post_created: false,
+      },
+    },
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.recommendedRoute, "official_inbox_upload_prepare_only");
+  assert.equal(report.dispatchGate.source, "dispatch_manifest");
+  assert.equal(report.dispatchGate.topPack.storyId, "rss_ready");
+  assert.equal(report.noPostReadiness.dispatchCreative.status, "ready_for_operator_visual_review");
+  assert.equal(report.noPostReadiness.dispatchCreative.storyId, "rss_ready");
+  assert.deepEqual(report.noPostReadiness.dispatchCreative.blockers, []);
+  assert.equal(report.dispatchGate.topReadyPack.storyId, "rss_ready");
+  assert.deepEqual(report.dispatchGate.legacyManifestWarnings, {});
+});
+
 test("TikTok automation report surfaces token plus creative blockers together", () => {
   const report = buildTikTokAutomationReport({
     generatedAt: "2026-05-07T02:30:00.000Z",

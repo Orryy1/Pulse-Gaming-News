@@ -6,7 +6,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const {
+  applyPublishRowRepairPlan,
   buildInspectionSql,
+  buildScriptFallbackRepairUpdates,
   buildScriptFallbackRepairSql,
   buildPublishRowRepairPlan,
   classifyPublishRowIssue,
@@ -42,6 +44,30 @@ test("classifyPublishRowIssue: public script-validation fallback rows are red", 
   assert.equal(row.severity, "red");
   assert.ok(row.issues.includes("public_script_validation_fallback"));
   assert.equal(row.recommended_action, "manual_review_then_mark_not_clean_public_publish");
+});
+
+test("classifyPublishRowIssue: repaired script-validation fallback rows are amber and not applyable", () => {
+  const row = classifyPublishRowIssue({
+    id: "bad_public",
+    title: "Script failed but was already repaired",
+    publish_status: "failed",
+    qa_failed: true,
+    publish_error: "script_validation_review_required_public_row_repair",
+    published_at: "2026-05-14T02:00:00.000Z",
+    instagram_media_id: "ig_123",
+    body: "Script validation failed. Manual review required before production.",
+  });
+
+  assert.equal(row.severity, "amber");
+  assert.deepEqual(row.issues, [
+    "failed_row_with_platform_ids",
+    "repaired_script_validation_public_row",
+  ]);
+  assert.equal(row.apply_status, "already_applied");
+  assert.equal(
+    row.recommended_action,
+    "public_script_fallback_already_marked_failed_review_platform_post",
+  );
 });
 
 test("buildPublishRowRepairPlan: ignores clean public rows", () => {
@@ -90,8 +116,76 @@ test("buildScriptFallbackRepairSql: only targets red public fallback rows and pr
   assert.match(sql, /qa_failed = 1/);
   assert.match(sql, /bad''id/);
   assert.doesNotMatch(sql, /'amber'/);
+  assert.doesNotMatch(sql, /script_generation_status|script_review_reason/);
   assert.doesNotMatch(sql, /\bDELETE\b/);
   assert.doesNotMatch(sql, /youtube_post_id\s*=\s*NULL|instagram_media_id\s*=\s*NULL/i);
+});
+
+test("buildScriptFallbackRepairUpdates marks only red public fallback rows and keeps platform ids", () => {
+  const updates = buildScriptFallbackRepairUpdates({
+    now: "2026-05-15T00:10:00.000Z",
+    rows: [
+      { story_id: "bad", issues: ["public_script_validation_fallback"] },
+      { story_id: "amber", issues: ["failed_row_with_platform_ids"] },
+    ],
+    stories: [
+      {
+        id: "bad",
+        published_at: "2026-05-14T22:00:00.000Z",
+        youtube_post_id: "yt_bad",
+        instagram_media_id: "ig_bad",
+        full_script: "Script validation failed. Manual review required before production.",
+      },
+      {
+        id: "amber",
+        publish_status: "failed",
+        youtube_post_id: "yt_amber",
+      },
+    ],
+  });
+
+  assert.equal(updates.counts.applied, 1);
+  assert.equal(updates.applied[0].story_id, "bad");
+  assert.equal(updates.applied[0].next.publish_status, "failed");
+  assert.equal(updates.applied[0].next.qa_failed, true);
+  assert.equal(updates.applied[0].next.youtube_post_id, "yt_bad");
+  assert.equal(updates.applied[0].next.instagram_media_id, "ig_bad");
+  assert.equal(updates.applied[0].next.public_row_repair.platform_ids_preserved, true);
+});
+
+test("applyPublishRowRepairPlan persists targeted updates and reports skipped rows", async () => {
+  const persisted = [];
+  const plan = buildPublishRowRepairPlan({
+    now: "2026-05-15T00:12:00.000Z",
+    stories: [
+      {
+        id: "bad",
+        published_at: "2026-05-14T22:00:00.000Z",
+        youtube_post_id: "yt_bad",
+        body: "Script validation failed. Manual review required before production.",
+      },
+    ],
+  });
+
+  const result = await applyPublishRowRepairPlan({
+    plan,
+    stories: [
+      {
+        id: "bad",
+        published_at: "2026-05-14T22:00:00.000Z",
+        youtube_post_id: "yt_bad",
+        body: "Script validation failed. Manual review required before production.",
+      },
+    ],
+    persistStory: async (story) => persisted.push(story),
+    now: "2026-05-15T00:12:00.000Z",
+  });
+
+  assert.equal(result.counts.applied, 1);
+  assert.equal(result.counts.skipped, 0);
+  assert.equal(persisted[0].publish_status, "failed");
+  assert.equal(persisted[0].youtube_post_id, "yt_bad");
+  assert.equal(result.safety.platform_ids_preserved, true);
 });
 
 test("formatPublishRowRepairMarkdown: renders safety, inspection SQL and repair preview", () => {
@@ -133,6 +227,8 @@ test("ops:publish-row-repair command is registered and dry-run named", () => {
     "utf8",
   );
   assert.match(tool, /Dry-run publish row repair planner/);
+  assert.match(tool, /--operator-confirmed/);
+  assert.match(tool, /publish_row_repair_apply_requires_operator_confirmed_flag/);
   assert.match(tool, /publish_row_repair_plan\.json/);
   assert.match(tool, /publish_row_repair_preview\.sql/);
 });

@@ -3,6 +3,8 @@ const path = require("path");
 const crypto = require("crypto");
 const axios = require("axios");
 const dotenv = require("dotenv");
+dotenv.config({ override: true });
+
 const { withRetry } = require("./lib/retry");
 const { addBreadcrumb, captureException } = require("./lib/sentry");
 const { getPublicUrl } = require("./lib/deployment-mode");
@@ -20,8 +22,6 @@ const {
 } = require("./lib/services/direct-upload-policy");
 const db = require("./lib/db");
 const mediaPaths = require("./lib/media-paths");
-
-dotenv.config({ override: true });
 
 const DEFAULT_TOKEN_PATH = path.join(__dirname, "tokens", "tiktok_token.json");
 

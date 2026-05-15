@@ -619,6 +619,66 @@ test("TikTok dispatch pack allows warning-only voice gates when final audit allo
   assert.equal(pack.voiceGate.do_not_reuse_for_tiktok_dispatch, false);
 });
 
+test("TikTok dispatch pack blocks repeat inbox sends after a publish id is recorded", () => {
+  const pack = buildTikTokDispatchPack(
+    {
+      id: "story1",
+      title: "Already sent to TikTok inbox",
+      exported_path: "output/final/story1.mp4",
+      thumbnail_candidate_path: "output/thumbnails/story1.png",
+      tiktok_inbox_publish_id: "v_inbox_file~123",
+      tiktok_inbox_status: "SEND_TO_USER_INBOX",
+      tiktok_inbox_completion_state: "sent_to_user_inbox",
+    },
+    {
+      durationSeconds: 64,
+      voiceAudit: {
+        verdict: "pass",
+        blockers: [],
+        warnings: [],
+        do_not_reuse_for_tiktok_dispatch: false,
+      },
+      tiktokTokenStatus: { ok: true, reason: "ok" },
+    },
+  );
+
+  assert.equal(pack.status, "already_sent_to_tiktok_inbox");
+  assert.equal(pack.officialInboxJson.ready_for_upload, false);
+  assert.equal(pack.tiktokInbox.publishId, "v_inbox_file~123");
+});
+
+test("TikTok dispatch pack blocks stale news even when the render is fresh", () => {
+  const pack = buildTikTokDispatchPack(
+    {
+      id: "story1",
+      title: "Old news with a fresh render",
+      timestamp: "2026-04-20T10:00:00.000Z",
+      created_at: "2026-04-20 10:00:00",
+      exported_path: "output/final/story1.mp4",
+      thumbnail_candidate_path: "output/thumbnails/story1.png",
+    },
+    {
+      now: new Date("2026-05-15T10:00:00.000Z"),
+      durationSeconds: 64,
+      voiceAudit: {
+        verdict: "pass",
+        blockers: [],
+        warnings: [],
+        do_not_reuse_for_tiktok_dispatch: false,
+      },
+      renderFreshness: {
+        ageHours: 1,
+        lastModifiedIso: "2026-05-15T09:00:00.000Z",
+      },
+      tiktokTokenStatus: { ok: true, reason: "ok" },
+    },
+  );
+
+  assert.equal(pack.status, "stale_story_review_required");
+  assert.equal(pack.officialInboxJson.ready_for_upload, false);
+  assert.equal(pack.storyFreshness.reason, "stale_story_age_exceeds_limit");
+});
+
 test("TikTok dispatch pack blocks official inbox upload when the local token needs refresh or sync", () => {
   const pack = buildTikTokDispatchPack(
     {

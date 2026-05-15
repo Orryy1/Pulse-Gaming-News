@@ -114,6 +114,26 @@ async function inspectMp4ForInbox(mp4Path, args = {}) {
   };
 }
 
+async function persistTikTokInboxResult(story = {}, payload = {}) {
+  if (!story?.id || !payload?.publish_id) return false;
+  const current = (await db.getStory(story.id)) || story;
+  const status =
+    payload?.tiktok_status?.status ||
+    payload?.result?.status ||
+    payload?.completion_state ||
+    null;
+  await db.upsertStory({
+    ...current,
+    tiktok_inbox_publish_id: payload.publish_id,
+    tiktok_inbox_status: status,
+    tiktok_inbox_completion_state: payload.completion_state || null,
+    tiktok_inbox_sent_at: payload.generatedAt || new Date().toISOString(),
+    tiktok_inbox_requires_manual_completion: true,
+    tiktok_inbox_mp4_path: payload.mp4_path || current.exported_path || null,
+  });
+  return true;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const outDir = path.resolve(args.outDir || OUT);
@@ -155,6 +175,8 @@ async function main() {
     ...buildTikTokInboxCommandPlan({ story, args, result, tiktokStatus, mediaInfo }),
     result,
   };
+  const persisted = await persistTikTokInboxResult(story, payload);
+  payload.persisted_to_story = persisted;
   const jsonPath = path.join(outDir, "tiktok_inbox_upload_plan.json");
   const mdPath = path.join(outDir, "tiktok_inbox_upload_plan.md");
   await fs.writeJson(jsonPath, payload, { spaces: 2 });
@@ -176,4 +198,5 @@ module.exports = {
   inspectMp4ForInbox,
   main,
   parseArgs,
+  persistTikTokInboxResult,
 };

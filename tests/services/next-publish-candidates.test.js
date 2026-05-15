@@ -92,6 +92,26 @@ test("next publish report excludes rows with existing public platform ids and QA
   assert.deepEqual(report.candidates.map((row) => row.id), ["clean"]);
 });
 
+test("next publish report distinguishes pending local audio from generic missing MP4", () => {
+  const report = buildNextPublishCandidatesReport(
+    [
+      baseStory({
+        id: "pending_local_audio",
+        exported_path: null,
+        publish_status: "pending_audio",
+        publish_error:
+          "audio_generation_pending: gpu_saturated: local TTS GPU is too busy for clean generation",
+      }),
+    ],
+    { analyticsText, generatedAt: "2026-05-15T09:00:00.000Z" },
+  );
+
+  assert.equal(report.excluded[0].reason, "pending_audio:gpu_saturated");
+  assert.equal(report.totals.pending_audio, 1);
+  assert.match(formatNextPublishCandidatesMarkdown(report), /pending audio: 1/);
+  assert.match(formatNextPublishCandidatesMarkdown(report), /pending_local_audio: pending_audio:gpu_saturated/);
+});
+
 test("next publish report mirrors live skip for failed and stale unpublished backlog rows", () => {
   const report = buildNextPublishCandidatesReport(
     [

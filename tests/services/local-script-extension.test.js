@@ -47,6 +47,42 @@ function queueItem(id, words = 140) {
   };
 }
 
+function variedScript(subject, count = 24) {
+  const templates = [
+    "{subject} has a confirmed update today.",
+    "{subject} now has a specific player consequence.",
+    "{subject} is tied to an official store change.",
+    "{subject} gives players a concrete reason to pay attention.",
+    "{subject} has a timing detail worth tracking.",
+    "{subject} changes the next buying decision.",
+    "{subject} is not just another vague rumour.",
+    "{subject} now has enough evidence for a short.",
+    "{subject} has an official detail behind the headline.",
+    "{subject} is moving from chatter into consequence.",
+    "{subject} gives the story a clear angle.",
+    "{subject} has a practical impact for players.",
+    "{subject} should be explained without hype.",
+    "{subject} is strongest when the facts stay narrow.",
+    "{subject} has a clean reason for a follow-up.",
+    "{subject} makes the next official update important.",
+    "{subject} is useful because the outcome is specific.",
+    "{subject} gives Pulse a clear source-backed read.",
+    "{subject} matters because the change is concrete.",
+    "{subject} is worth watching for the next confirmed move.",
+    "{subject} has enough context to avoid filler.",
+    "{subject} should lead with the player-facing change.",
+    "{subject} gives the short a simple decision point.",
+    "{subject} now needs careful wording, not speculation.",
+    "{subject} is stronger when the unknowns stay labelled.",
+    "{subject} has a source trail that should stay visible.",
+    "{subject} belongs in the short because the effect is clear.",
+  ];
+  return templates
+    .slice(0, count)
+    .map((line) => line.replace("{subject}", subject))
+    .join(" ");
+}
+
 test("local script extension expands short Liam scripts into the 61-75s local Flash range", () => {
   const draft = extendScriptToLocalFlash({
     story: {
@@ -54,7 +90,7 @@ test("local script extension expands short Liam scripts into the 61-75s local Fl
       title: "GTA 6 evidence is stacking up",
       subreddit: "GameSpot",
       content_pillar: "Confirmed Drop",
-      full_script: "GTA 6 has a confirmed clue today. ".repeat(17),
+      full_script: variedScript("GTA 6", 17),
     },
     queueItem: queueItem("rss_short", 136),
     cleanText: (text) => text.replace(/\bGTA\s*6\b/gi, "G T A six"),
@@ -75,7 +111,7 @@ test("local script extension targets the middle of the Liam-safe range, not the 
     story: {
       id: "rss_midrange",
       title: "Xbox confirms a new update",
-      full_script: "Xbox confirmed a new update today. ".repeat(25),
+      full_script: variedScript("Xbox", 25),
     },
     queueItem: queueItem("rss_midrange", 150),
     env: {},
@@ -95,7 +131,7 @@ test("local script extension repairs underfloor Liam proofs toward 64-70s rather
     story: {
       id: "rss_underfloor",
       title: "Xbox confirms a new update",
-      full_script: "Xbox confirmed a new update today. ".repeat(27),
+      full_script: variedScript("Xbox", 27),
     },
     queueItem: {
       ...queueItem("rss_underfloor", 168),
@@ -154,12 +190,12 @@ test("local script extension reports per-story planning failures without abortin
       bad_story: {
         id: "bad_story",
         title: "Bad story",
-        full_script: "Bad story marker confirms a new update today. ".repeat(25),
+        full_script: variedScript("Bad story marker", 25),
       },
       good_story: {
         id: "good_story",
         title: "Good story",
-        full_script: "Xbox confirmed a new update today. ".repeat(25),
+        full_script: variedScript("Xbox", 25),
       },
     },
     cleanText: (text) => {
@@ -186,7 +222,7 @@ test("local script extension uses compact bridge lines instead of overshooting n
       title: "Marathon Drops To 15K Daily CCU Peak On Steam, Exits Top 50 On PlayStation & Top 100 On Xbox Best-Sellers Lists",
       subreddit: "PCMasterRace",
       content_pillar: "Confirmed Drop",
-      full_script: "Bungie charged 40 dollars for this. ".repeat(25),
+      full_script: variedScript("Marathon", 25),
     },
     queueItem: queueItem("rss_near_minimum", 160),
     env: {},
@@ -243,6 +279,38 @@ test("local script extension sends low-value personal posts to review", () => {
 
   assert.equal(draft.action, "review_extended_script");
   assert.ok(draft.manual_review_flags.includes("low_value_personal_post"));
+});
+
+test("local script extension sends incoherent source claims to review", () => {
+  const draft = extendScriptToLocalFlash({
+    story: {
+      id: "bad_bill_script",
+      title:
+        "California bill backed by Stop Killing Games campaign passes key hurdle",
+      source_type: "rss",
+      subreddit: "Rock Paper Shotgun",
+      content_pillar: "Source Breakdown",
+      full_script:
+        "Ubisoft's AB 1921 just passed a key committee vote. According to Rock Paper Shotgun, California's AB 1921, championed by the Stop ending Games campaign, has cleared its first hurdle.",
+      cta: REQUIRED_CTA,
+    },
+    queueItem: queueItem("bad_bill_script", 27),
+    env: {},
+  });
+
+  assert.equal(draft.action, "review_extended_script");
+  assert.ok(
+    draft.manual_review_flags.includes(
+      "script_coherence:false_bill_ownership",
+    ),
+    draft.manual_review_flags.join(", "),
+  );
+  assert.ok(
+    draft.manual_review_flags.includes(
+      "script_coherence:mangled_stop_killing_games_campaign",
+    ),
+    draft.manual_review_flags.join(", "),
+  );
 });
 
 test("local script extension plan only consumes repair queue extension items", () => {
@@ -303,10 +371,10 @@ test("local script extension plan can explicitly recover a measured-short proof 
     storiesById: {
       measured_short: {
         id: "measured_short",
-        title: "MindsEye update drops today",
-        subreddit: "GameSpot",
-        content_pillar: "Confirmed Drop",
-        full_script: "MindsEye has a confirmed update today. ".repeat(26),
+      title: "MindsEye update drops today",
+      subreddit: "GameSpot",
+      content_pillar: "Confirmed Drop",
+        full_script: variedScript("MindsEye", 26),
       },
     },
     storyId: "measured_short",

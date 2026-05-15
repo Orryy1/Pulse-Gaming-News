@@ -242,3 +242,30 @@ test("script coherence blocks generic uncertainty boilerplate and internal Pulse
     qa.failures.join(", "),
   );
 });
+
+test("script coherence blocks false bill ownership and mangled campaign names", () => {
+  const qa = runScriptCoherenceQa(
+    {
+      title:
+        "California bill backed by Stop Killing Games campaign passes key hurdle",
+      source_type: "rss",
+      subreddit: "Rock Paper Shotgun",
+      cta: "Follow Pulse Gaming so you never miss a beat",
+      full_script:
+        "Ubisoft's AB 1921 just passed a key committee vote, and the Stop ending Games campaign is pushing it forward. Follow Pulse Gaming so you never miss a beat.",
+    },
+    { requireCtaField: true, requireFullScriptCta: true },
+  );
+
+  assert.equal(qa.result, "fail");
+  assert.ok(
+    qa.failures.includes("script_coherence:false_bill_ownership"),
+    qa.failures.join(", "),
+  );
+  assert.ok(
+    qa.failures.includes(
+      "script_coherence:mangled_stop_killing_games_campaign",
+    ),
+    qa.failures.join(", "),
+  );
+});

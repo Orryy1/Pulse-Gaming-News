@@ -273,6 +273,23 @@ function qaFailures(story = {}) {
   return [...new Set(failures.filter(Boolean))];
 }
 
+function pendingAudioReason(story = {}) {
+  const status = String(story.publish_status || "").toLowerCase();
+  const error = String(story.publish_error || "");
+  if (status !== "pending_audio" && !/^audio_generation_pending:/i.test(error)) {
+    return null;
+  }
+  const gpuSaturated =
+    /gpu_saturated/i.test(error) ||
+    parseFailureList(story.qa_warnings).some((warning) =>
+      /audio_generation_pending:gpu_saturated/i.test(warning),
+    );
+  if (gpuSaturated) return "pending_audio:gpu_saturated";
+  const reason = error.match(/^audio_generation_pending:\s*([a-z0-9_-]+)/i);
+  if (reason) return `pending_audio:${reason[1].toLowerCase()}`;
+  return "pending_audio";
+}
+
 function parseStoryPublishAgeMs(story = {}, now = Date.now()) {
   const raw =
     story.approved_at ||
@@ -435,6 +452,8 @@ function exclusionReason(story = {}, options = {}) {
   if (failures.length > 0) return `qa_failure:${failures[0]}`;
   const approval = approvalScore(story);
   if (approval.score < 0) return approval.reason;
+  const pendingAudio = pendingAudioReason(story);
+  if (pendingAudio) return pendingAudio;
   if (!story.exported_path) return "missing_mp4";
   if (
     storyIsStaleUnpublishedBacklog(
@@ -618,11 +637,13 @@ function buildNextPublishCandidatesReport(stories, options = {}) {
   const rows = Array.isArray(stories) ? stories : [];
   const candidates = [];
   const excluded = [];
+  let pendingAudioCount = 0;
 
   for (const story of rows) {
     if (!story || typeof story !== "object") continue;
     const reason = exclusionReason(story, options);
     if (reason) {
+      if (reason.startsWith("pending_audio")) pendingAudioCount += 1;
       excluded.push({
         id: story.id || "unknown",
         title: String(story.title || "").slice(0, 180),
@@ -654,6 +675,7 @@ function buildNextPublishCandidatesReport(stories, options = {}) {
       candidates: candidates.length,
       excluded: excluded.length,
       returned: Math.min(limit, candidates.length),
+      pending_audio: pendingAudioCount,
     },
     candidates: candidates.slice(0, limit),
     excluded: excluded.slice(0, Math.max(limit, 20)),
@@ -709,6 +731,9 @@ function formatNextPublishCandidatesMarkdown(report = {}) {
   lines.push(`- stories seen: ${Number(totals.stories_seen || 0)}`);
   lines.push(`- candidates: ${Number(totals.candidates || 0)}`);
   lines.push(`- excluded: ${Number(totals.excluded || 0)}`);
+  if (Number(totals.pending_audio || 0) > 0) {
+    lines.push(`- pending audio: ${Number(totals.pending_audio || 0)}`);
+  }
   lines.push("");
   lines.push("## Analytics Bias");
   const summary = report.analytics_summary || {};

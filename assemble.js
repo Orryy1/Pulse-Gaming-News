@@ -1151,6 +1151,59 @@ function planLegacySegmentDuration(
   return Math.max(4, Math.ceil(needed * 100) / 100);
 }
 
+function planLegacyVisualSequence(images, videoClips, options = {}) {
+  const visualPaths = Array.isArray(images) ? [...images] : [];
+  const isVideoSlot = new Array(visualPaths.length).fill(false);
+  const clips = Array.isArray(videoClips) ? videoClips.filter(Boolean) : [];
+  const allowHookVideoSlot = options.allowHookVideoSlot === true;
+
+  if (visualPaths.length < 2 || clips.length === 0) {
+    return { visualPaths, isVideoSlot, placements: [] };
+  }
+
+  const candidateSlots = [];
+  if (allowHookVideoSlot) {
+    candidateSlots.push(0);
+  }
+  if (visualPaths.length >= 4) {
+    candidateSlots.push(Math.floor(visualPaths.length / 2));
+  }
+  if (visualPaths.length >= 5) {
+    candidateSlots.push(visualPaths.length - 1);
+  }
+  candidateSlots.push(Math.min(visualPaths.length - 1, 1));
+  if (visualPaths.length >= 6) {
+    candidateSlots.push(Math.floor(visualPaths.length * 0.75));
+  }
+
+  const slots = [];
+  for (const slot of candidateSlots) {
+    if (slot < 0 || slot >= visualPaths.length) continue;
+    if (!allowHookVideoSlot && slot === 0) continue;
+    if (slots.includes(slot)) continue;
+    slots.push(slot);
+  }
+
+  const placements = [];
+  for (let idx = 0; idx < clips.length && idx < slots.length; idx++) {
+    const slot = slots[idx];
+    visualPaths[slot] = clips[idx];
+    isVideoSlot[slot] = true;
+    placements.push({
+      clip: clips[idx],
+      slot,
+      reason:
+        slot === 0
+          ? "hook_video_slot"
+          : idx === 0
+            ? "midroll_pattern_interrupt"
+            : "late_motion_interrupt",
+    });
+  }
+
+  return { visualPaths, isVideoSlot, placements };
+}
+
 // --- Build filter graph and command with broadcast overlays ---
 function buildVideoCommand(
   story,
@@ -1170,27 +1223,20 @@ function buildVideoCommand(
     images = images.slice(0, MAX_IMAGES);
   }
 
-  // Merge video clips into the visual sequence - hook-first strategy
-  // First clip goes to slot 0 (hook visual), second to middle for pattern interrupt
+  // Merge video clips into the visual sequence. Raw Steam/IGDB trailers
+  // commonly start with black fades, rating cards or publisher bumpers; if
+  // one of those goes into slot 0, publish QA correctly rejects the render
+  // for a black segment at 0.00s. Keep the hook slot as a known-good still
+  // unless a future clip validator explicitly marks hook placement safe.
   const videoClips = (story.video_clips || []).filter((p) =>
     fs.pathExistsSync(p),
   );
-  const isVideoSlot = new Array(images.length).fill(false);
-  const visualPaths = [...images];
-  if (videoClips.length > 0 && images.length >= 2) {
-    // First video clip = slot 0 (hook-first: start with gameplay, not a static image)
-    visualPaths[0] = videoClips[0];
-    isVideoSlot[0] = true;
-    console.log(`[assemble] Slot 0: using Steam trailer for hook-first visual`);
-    // Second clip (if available) goes to middle for pattern interrupt
-    if (videoClips.length > 1 && images.length >= 4) {
-      const midSlot = Math.floor(images.length / 2);
-      visualPaths[midSlot] = videoClips[1];
-      isVideoSlot[midSlot] = true;
-      console.log(
-        `[assemble] Slot ${midSlot}: using second clip for mid-roll pattern interrupt`,
-      );
-    }
+  const { visualPaths, isVideoSlot, placements: videoClipPlacements } =
+    planLegacyVisualSequence(images, videoClips);
+  for (const placement of videoClipPlacements) {
+    console.log(
+      `[assemble] Slot ${placement.slot}: using trailer clip for ${placement.reason}`,
+    );
   }
 
   const inputs = [];
@@ -1424,7 +1470,7 @@ function buildVideoCommand(
   }
 
   // Source attribution overlay for video clips (strengthens fair use as news commentary)
-  if (videoClips.length > 0) {
+  if (videoClipPlacements.length > 0) {
     const company = makeFootageAttributionText(
       story.company_name || "Steam Store",
     );
@@ -2506,6 +2552,7 @@ module.exports.asciiFallback = asciiFallback;
 module.exports.makeFootageAttributionText = makeFootageAttributionText;
 module.exports.effectiveVisualTimelineDuration = effectiveVisualTimelineDuration;
 module.exports.planLegacySegmentDuration = planLegacySegmentDuration;
+module.exports.planLegacyVisualSequence = planLegacyVisualSequence;
 module.exports.characterAlignmentToSubtitleWords =
   characterAlignmentToSubtitleWords;
 module.exports.inspectSubtitleTimingWords = inspectSubtitleTimingWords;

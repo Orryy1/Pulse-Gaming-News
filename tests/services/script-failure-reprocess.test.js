@@ -124,6 +124,21 @@ test("selectReprocessableScriptFailureStories targets source-backed coherence re
           "script_coherence:unsupported_verified_insider_framing",
       },
       {
+        id: "rss-false-bill-owner",
+        source_type: "rss",
+        subreddit: "Rock Paper Shotgun",
+        title: "California game preservation bill needs repair",
+        script_review_reason: "script_coherence:false_bill_ownership",
+      },
+      {
+        id: "rss-mangled-campaign",
+        source_type: "rss",
+        subreddit: "Rock Paper Shotgun",
+        title: "Stop Killing Games campaign name needs repair",
+        script_review_reason:
+          "script_coherence:mangled_stop_killing_games_campaign",
+      },
+      {
         id: "community-thread",
         source_type: "reddit",
         subreddit: "gaming",
@@ -173,7 +188,14 @@ test("selectReprocessableScriptFailureStories targets source-backed coherence re
 
   assert.deepEqual(
     rows.map((row) => row.id),
-    ["rss-cta", "linked-article", "trusted-leak", "comment-with-article"],
+    [
+      "rss-cta",
+      "linked-article",
+      "trusted-leak",
+      "rss-false-bill-owner",
+      "rss-mangled-campaign",
+      "comment-with-article",
+    ],
   );
   assert.match(
     rows[1].script_failure_reprocess_reason,

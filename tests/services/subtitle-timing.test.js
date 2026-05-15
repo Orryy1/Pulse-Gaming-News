@@ -48,6 +48,7 @@ test("repairTimestampAlignment replaces unusable local sidecars with synthetic t
 
   assert.equal(repaired.repaired, true);
   assert.equal(repaired.repairReason, "max_gap_too_large");
+  assert.equal(repaired.repairStrategy, "synthetic_full_duration");
   assert.equal(repaired.inspection.usable, true);
   assert.equal(repaired.alignment.characters.join(""), "Stardew Valley creator follow pulse");
 });

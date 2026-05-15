@@ -796,6 +796,7 @@ function prepareTtsAlignmentForWrite({
         timestampRepair: {
           repaired: true,
           reason: repaired.repairReason,
+          strategy: repaired.repairStrategy,
           originalInspection: repaired.originalInspection,
           repairedInspection: repaired.inspection,
         },
@@ -804,6 +805,7 @@ function prepareTtsAlignmentForWrite({
     repair: {
       repaired: true,
       reason: repaired.repairReason,
+      strategy: repaired.repairStrategy,
       inspection: repaired.inspection,
       originalInspection: repaired.originalInspection,
     },

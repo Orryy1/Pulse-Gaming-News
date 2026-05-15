@@ -2,6 +2,9 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("fs-extra");
+const os = require("node:os");
+const path = require("node:path");
 
 const editorial = require("../../lib/studio/editorial-layer");
 const media = require("../../lib/studio/media-acquisition");
@@ -133,6 +136,44 @@ test("sound layer converts fresh char alignment to word timestamps", () => {
     words.map((w) => w.word),
     ["Metro", "twenty", "thirty-nine", "is", "real."],
   );
+});
+
+test("sound layer preserves repaired segment timing provenance when merging local voice", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-sound-merge-"));
+  const seg = path.join(tmp, "segment.mp3");
+  const ts = path.join(tmp, "segment_timestamps.json");
+  await fs.writeFile(seg, Buffer.from("not real mp3"));
+  await fs.writeJson(ts, {
+    characters: Array.from("Follow Pulse Gaming"),
+    character_start_times_seconds: Array.from(
+      { length: "Follow Pulse Gaming".length },
+      (_, i) => i * 0.05,
+    ),
+    character_end_times_seconds: Array.from(
+      { length: "Follow Pulse Gaming".length },
+      (_, i) => i * 0.05 + 0.04,
+    ),
+    meta: {
+      timestampRepair: {
+        repaired: true,
+        reason: "max_gap_too_large",
+        strategy: "synthetic_full_duration",
+        repairedInspection: { usable: true, reason: "usable" },
+      },
+    },
+  });
+
+  try {
+    const merged = await sound.mergeSegmentAlignments([seg]);
+    assert.equal(merged.meta.timestampRepair.reason, "segment_timestamp_repair");
+    assert.equal(merged.meta.segmentTimestampRepairs.length, 1);
+    assert.equal(
+      merged.meta.segmentTimestampRepairs[0].strategy,
+      "synthetic_full_duration",
+    );
+  } finally {
+    await fs.remove(tmp).catch(() => {});
+  }
 });
 
 test("studio composer uses an editorial card instead of repeating a still", () => {

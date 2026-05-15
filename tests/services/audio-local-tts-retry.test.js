@@ -390,6 +390,10 @@ test("prepareTtsAlignmentForWrite: local broken timings are replaced before side
   assert.equal(prepared.alignment.characters.join(""), text);
   assert.equal(prepared.alignment.meta.transcript, "short stale transcript");
   assert.equal(prepared.alignment.meta.timestampRepair.reason, "max_gap_too_large");
+  assert.equal(
+    prepared.alignment.meta.timestampRepair.strategy,
+    "synthetic_full_duration",
+  );
 });
 
 test("prepareTtsAlignmentForWrite: local timings that end before the outro are repaired", () => {
@@ -414,6 +418,7 @@ test("prepareTtsAlignmentForWrite: local timings that end before the outro are r
 
   assert.equal(prepared.repair.repaired, true);
   assert.equal(prepared.repair.reason, "trailing_caption_gap_too_large");
+  assert.equal(prepared.repair.strategy, "synthetic_full_duration");
   assert.equal(prepared.alignment.meta.timestampRepair.reason, "trailing_caption_gap_too_large");
 });
 

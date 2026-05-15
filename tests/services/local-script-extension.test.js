@@ -50,32 +50,32 @@ function queueItem(id, words = 140) {
 function variedScript(subject, count = 24) {
   const templates = [
     "{subject} has a confirmed update today.",
-    "{subject} now has a specific player consequence.",
-    "{subject} is tied to an official store change.",
-    "{subject} gives players a concrete reason to pay attention.",
-    "{subject} has a timing detail worth tracking.",
-    "{subject} changes the next buying decision.",
-    "{subject} is not just another vague rumour.",
-    "{subject} now has enough evidence for a short.",
-    "{subject} has an official detail behind the headline.",
-    "{subject} is moving from chatter into consequence.",
-    "{subject} gives the story a clear angle.",
-    "{subject} has a practical impact for players.",
-    "{subject} should be explained without hype.",
-    "{subject} is strongest when the facts stay narrow.",
-    "{subject} has a clean reason for a follow-up.",
-    "{subject} makes the next official update important.",
-    "{subject} is useful because the outcome is specific.",
-    "{subject} gives Pulse a clear source-backed read.",
-    "{subject} matters because the change is concrete.",
-    "{subject} is worth watching for the next confirmed move.",
-    "{subject} has enough context to avoid filler.",
-    "{subject} should lead with the player-facing change.",
-    "{subject} gives the short a simple decision point.",
-    "{subject} now needs careful wording, not speculation.",
-    "{subject} is stronger when the unknowns stay labelled.",
-    "{subject} has a source trail that should stay visible.",
-    "{subject} belongs in the short because the effect is clear.",
+    "The player-facing detail is specific enough to explain quickly.",
+    "An official source gives the story a hard edge.",
+    "Players now have a concrete reason to pay attention.",
+    "The timing detail matters because it changes what happens next.",
+    "This is not just another vague rumour.",
+    "There is enough evidence here for a clean short.",
+    "The headline has an official detail behind it.",
+    "Chatter is turning into a practical consequence.",
+    "The clearest angle is what players can actually do.",
+    "That practical impact should stay near the front.",
+    "The script should explain the update without hype.",
+    "It works best when the facts stay narrow.",
+    "A follow-up only matters if it adds proof.",
+    "The next official update is now worth watching.",
+    "The useful part is that the outcome is specific.",
+    "The source trail should stay visible throughout.",
+    "The story matters because the change is concrete.",
+    "The next confirmed move will decide the bigger picture.",
+    "There is enough context to avoid filler.",
+    "The player-facing change should lead the short.",
+    "The short needs one simple decision point.",
+    "Careful wording matters more than speculation here.",
+    "The unknowns should stay clearly labelled.",
+    "The source pack gives the update a useful boundary.",
+    "This belongs in the short because the effect is clear.",
+    "Here is what players should watch next.",
   ];
   return templates
     .slice(0, count)
@@ -131,7 +131,7 @@ test("local script extension repairs underfloor Liam proofs toward 64-70s rather
     story: {
       id: "rss_underfloor",
       title: "Xbox confirms a new update",
-      full_script: variedScript("Xbox", 27),
+      full_script: variedScript("Xbox", 21),
     },
     queueItem: {
       ...queueItem("rss_underfloor", 168),
@@ -407,6 +407,31 @@ test("local script extension plan can explicitly recover a measured-short proof 
   assert.equal(plan.drafts[0].action, "ready_for_local_liam_audio");
   assert.ok(plan.drafts[0].estimated_seconds >= 64);
   assert.equal(plan.safety.mutates_production_db, false);
+});
+
+test("local script extension refuses title-only recovery drafts", () => {
+  const plan = buildLocalScriptExtensionPlan({
+    queueReport: { items: [] },
+    storiesById: {
+      title_only: {
+        id: "title_only",
+        title:
+          "Forza Horizon 6 immediately beats its predecessor's all-time Steam record",
+        subreddit: "pcgaming",
+        content_pillar: "Manual Review",
+      },
+    },
+    storyId: "title_only",
+    env: {},
+  });
+
+  assert.equal(plan.counts.total, 1);
+  assert.equal(plan.counts.ready, 0);
+  assert.equal(plan.counts.review, 1);
+  assert.equal(plan.drafts[0].action, "review_extended_script");
+  assert.equal(plan.drafts[0].base_script_present, false);
+  assert.ok(plan.drafts[0].manual_review_flags.includes("missing_base_script"));
+  assert.doesNotMatch(plan.drafts[0].proposed_full_script, /Manual Review/);
 });
 
 test("local script extension markdown is operator-readable and local-only", () => {

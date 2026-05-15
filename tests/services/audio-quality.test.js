@@ -11,6 +11,7 @@ const {
   buildFinalVideoAudioRepairArgs,
   buildVoiceMasteringFilter,
   repairFinalVideoAudioLoudness,
+  repairTtsAudioFileLoudness,
   masterTtsAudioFile,
   parseFfmpegLoudnessStats,
   shouldMasterTtsAudio,
@@ -92,6 +93,40 @@ test("repairFinalVideoAudioLoudness: backs up and replaces same-path repairs onl
   assert.equal(fs.readFileSync(inputPath, "utf8"), "repaired mp4");
   assert.equal(fs.readFileSync(result.backupPath, "utf8"), "original mp4");
   assert.equal(result.after.acoustic.truePeakDb, -2.2);
+  assert.equal(calls.length, 3);
+});
+
+test("repairTtsAudioFileLoudness: backs up local narration before remastering in place", async () => {
+  const dir = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "tts-audio-repair-"));
+  const inputPath = path.join(dir, "story.mp3");
+  fs.writeFileSync(inputPath, "original mp3");
+  const calls = [];
+  const execFileAsync = async (_cmd, args) => {
+    calls.push(args);
+    if (args.includes("-b:a")) {
+      fs.writeFileSync(args[args.length - 1], "repaired mp3");
+      return { stdout: "", stderr: "" };
+    }
+    return {
+      stdout: "",
+      stderr: `{
+        "input_i" : "-15.90",
+        "input_tp" : "-2.25",
+        "input_lra" : "2.00"
+      }`,
+    };
+  };
+
+  const result = await repairTtsAudioFileLoudness({
+    inputPath,
+    execFileAsync,
+    now: new Date("2026-05-15T04:10:00Z"),
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(fs.readFileSync(inputPath, "utf8"), "repaired mp3");
+  assert.equal(fs.readFileSync(result.backupPath, "utf8"), "original mp3");
+  assert.equal(result.acoustic.truePeakDb, -2.25);
   assert.equal(calls.length, 2);
 });
 

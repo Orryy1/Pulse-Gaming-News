@@ -3,6 +3,11 @@ const fs = require("fs-extra");
 const sendDiscord = require("./notify");
 const dotenv = require("dotenv");
 const db = require("./lib/db");
+const mediaPaths = require("./lib/media-paths");
+const {
+  buildProduceCompletionSummary,
+  normaliseExportPath,
+} = require("./lib/ops/produce-notification");
 
 dotenv.config({ override: true });
 
@@ -95,6 +100,8 @@ async function runHunt() {
 
 async function runProduce() {
   console.log("[run] === PRODUCE MODE ===");
+  const produceStartedAtMs = Date.now();
+  const beforeStories = await db.getStories();
 
   const affiliates = require("./affiliates");
   const audio = require("./audio");
@@ -127,17 +134,48 @@ async function runProduce() {
     console.log(`[run] Thumbnail candidate batch failed (non-fatal): ${err.message}`);
   }
 
-  let exportedPaths = [];
   const stories = await db.getStories();
-  exportedPaths = stories
-    .filter((s) => s.exported_path)
-    .map((s) => s.exported_path);
-
-  await sendDiscord(
-    `**Pulse Gaming Produce Complete**\n${exportedPaths.length} videos exported:\n${exportedPaths.join("\n")}`,
+  const recentlyTouchedExportPaths = await findRecentlyTouchedExportPaths(
+    stories,
+    produceStartedAtMs,
   );
+  const summary = buildProduceCompletionSummary({
+    beforeStories,
+    afterStories: stories,
+    recentlyTouchedExportPaths,
+  });
+
+  if (summary.shouldNotifyDiscord || process.env.PRODUCE_NOTIFY_NOOP === "true") {
+    await sendDiscord(summary.message);
+  }
+  console.log(`[run] ${summary.message.replace(/\n/g, " | ")}`);
 
   console.log("[run] Produce complete");
+}
+
+async function findRecentlyTouchedExportPaths(stories = [], startedAtMs = Date.now()) {
+  const recentPaths = [];
+  const seen = new Set();
+  const mtimeSlackMs = 5000;
+
+  for (const story of stories || []) {
+    const exportedPath = normaliseExportPath(story && story.exported_path);
+    if (!exportedPath || seen.has(exportedPath)) continue;
+    seen.add(exportedPath);
+
+    try {
+      const resolved = await mediaPaths.resolveExisting(exportedPath);
+      if (!resolved) continue;
+      const stat = await fs.stat(resolved);
+      if (stat.mtimeMs >= startedAtMs - mtimeSlackMs) {
+        recentPaths.push(exportedPath);
+      }
+    } catch {
+      // Missing or unreadable exports are handled by publish readiness/QA.
+    }
+  }
+
+  return recentPaths;
 }
 
 function parsePublishStoryIdArg(argv = process.argv.slice(3)) {

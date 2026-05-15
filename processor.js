@@ -675,7 +675,10 @@ Reply with ONLY a JSON object: { "score": N, "reason": "one sentence" }`,
     return { score: result.score || 5, reason: result.reason || "" };
   } catch (err) {
     console.log(`[processor] Quality gate error: ${err.message}`);
-    return { score: 7, reason: "scoring failed - accepting by default" };
+    return {
+      score: 0,
+      reason: `scoring failed - review required: ${String(err.message || "unknown").slice(0, 160)}`,
+    };
   }
 }
 
@@ -1068,14 +1071,25 @@ Today's date is ${today}. You MUST follow these rules:
           );
         }
 
-        // Quality gate - score the script
-        if (script && attempts < 3) {
+        // Quality gate - score the script. This must fail closed:
+        // accepting an unscored draft is how vague or nonsensical
+        // local-LLM output reaches TTS and public video.
+        if (script) {
           const gate = await scoreScript(client, script, story, channel);
           qualityScore = gate.score;
           console.log(
             `[processor] Quality gate: ${gate.score}/10 - ${gate.reason}`,
           );
           if (gate.score < 7) {
+            const reason = `quality_gate_below_threshold:${gate.score}/10:${gate.reason}`;
+            if (attempts >= 3) {
+              console.log(
+                `[processor] Final quality gate failed; routing story to review`,
+              );
+              script = buildScriptValidationReview(story, channel, [reason]);
+              qualityScore = 0;
+              break;
+            }
             console.log(
               `[processor] Script below quality threshold (${gate.score}/10), regenerating...`,
             );

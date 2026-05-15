@@ -119,6 +119,41 @@ test("final voice audit markdown surfaces pitch, loudness, true peak, outro and 
   assert.match(md, /wpm=176/);
 });
 
+test("final voice audit derives local WPM from transcript and acoustic duration when missing", () => {
+  const row = classifyFinalRenderVoice({
+    mp4Path: "D:/pulse-data/media/output/final/rss_local.mp4",
+    report: {
+      narration: {
+        provider: "local",
+        source: "local-tts-server",
+        audioPath: "D:/pulse-data/media/output/audio/rss_local.mp3",
+        approvedLocalVoice: true,
+        acceptedLocalVoice: {
+          id: "pulse-sleepy-liam-20260502",
+          fileName: "pulse_liam_sleepy.wav",
+          referencePresent: true,
+          referenceHash: "4bb87b65b64213fd8447ef1146eda42035b89f51",
+        },
+        acoustic: {
+          medianPitchHz: 118,
+          integratedLufs: -16.1,
+          truePeakDb: -2.1,
+          durationSeconds: 60,
+        },
+        voiceMastering: { ok: true, code: "voice_mastered", targetLufs: -16 },
+        transcript:
+          "one two three four five six seven eight nine ten Follow Pulse Gaming so you never miss a beat.",
+      },
+    },
+    env: { STUDIO_V2_LOCAL_VOICE_APPROVED: "true" },
+  });
+
+  assert.equal(row.verdict, "pass");
+  assert.equal(row.voice_path.wpm, 19);
+  assert.equal(row.warnings.includes("voice_pace_unverified"), false);
+  assert.equal(row.do_not_reuse_for_tiktok_dispatch, false);
+});
+
 test("final voice audit reviews local voice when true peak is too hot for social transcodes", () => {
   const row = classifyFinalRenderVoice({
     mp4Path: "D:/pulse-data/media/output/final/rss_hot.mp4",

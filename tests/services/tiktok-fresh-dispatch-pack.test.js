@@ -2,6 +2,9 @@
 
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
+const os = require("node:os");
+const path = require("node:path");
+const fs = require("fs-extra");
 
 const {
   buildFreshTikTokDispatchPack,
@@ -10,6 +13,9 @@ const {
 const {
   buildTikTokDispatchManifest,
 } = require("../../lib/platforms/tiktok-dispatch");
+const {
+  buildVoiceNarration,
+} = require("../../tools/tiktok-fresh-dispatch-pack");
 
 function approvedLiamNarration(overrides = {}) {
   return {
@@ -122,6 +128,57 @@ test("fresh TikTok dispatch pack refuses missing approved local Liam evidence", 
   assert.equal(result.dispatchPack.status, "voice_review_required");
   assert.ok(result.dispatchPack.voiceGate.blockers.includes("approved_voice_evidence_missing"));
   assert.equal(result.dispatchPack.officialInboxJson.ready_for_upload, false);
+});
+
+test("fresh TikTok CLI voice narration falls back to local timestamp sidecar evidence", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "fresh-tiktok-voice-"));
+  const finalDir = path.join(dir, "output", "final");
+  const audioDir = path.join(dir, "output", "audio");
+  await fs.ensureDir(finalDir);
+  await fs.ensureDir(audioDir);
+  const mp4 = path.join(finalDir, "rss_fresh_voice.mp4");
+  const audio = path.join(audioDir, "rss_fresh_voice.mp3");
+  await fs.writeFile(mp4, "fake mp4");
+  await fs.writeFile(audio, "fake audio");
+  await fs.writeJson(path.join(audioDir, "rss_fresh_voice_timestamps.json"), {
+    characters: ["F", "o", "l", "l", "o", "w"],
+    meta: {
+      provider: "local",
+      source: "local-production-voxcpm",
+      transcript:
+        "This is a clean local TikTok proof. Follow Pulse Gaming so you never miss a beat.",
+      approvedLocalVoice: true,
+      acceptedLocalVoice: {
+        id: "pulse-sleepy-liam-20260502",
+        fileName: "pulse_liam_sleepy.wav",
+        referencePresent: true,
+        referenceHash: "4bb87b65b64213fd8447ef1146eda42035b89f51",
+      },
+      acoustic: {
+        medianPitchHz: 124,
+        integratedLufs: -16.2,
+        truePeakDb: -2.1,
+      },
+      voiceMastering: {
+        ok: true,
+        code: "voice_mastered",
+        targetLufs: -16,
+      },
+      wpm: 162,
+    },
+  });
+
+  const narration = await buildVoiceNarration({}, {
+    mp4Path: mp4,
+    storyId: "rss_fresh_voice",
+  });
+
+  assert.equal(narration.provider, "local");
+  assert.equal(narration.source, "local-production-voxcpm");
+  assert.equal(path.normalize(narration.audioPath), path.normalize(audio));
+  assert.equal(narration.approvedLocalVoice, true);
+  assert.equal(narration.acoustic.truePeakDb, -2.1);
+  assert.match(narration.transcript, /Follow Pulse Gaming/);
 });
 
 test("fresh TikTok dispatch pack honours explicit voice do-not-reuse audits", () => {

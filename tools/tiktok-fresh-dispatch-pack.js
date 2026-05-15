@@ -15,6 +15,16 @@ const {
 const {
   resolveAcceptedLocalVoiceReference,
 } = require("../lib/studio/v2/local-voice-reference");
+const {
+  extractNarrationEvidence,
+  storyIdFromPath,
+} = require("../lib/studio/v2/final-voice-audit");
+const {
+  loadFinalVoiceReportsByStoryId,
+} = require("../lib/studio/v2/final-voice-report-loader");
+const {
+  enrichVoiceReportForDispatch,
+} = require("./tiktok-dispatch-pack");
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output", "tiktok-fresh-dispatch");
@@ -163,8 +173,19 @@ async function readTranscript(args) {
   return "";
 }
 
-async function buildVoiceNarration(args) {
-  if (!args.approvedAudio) return null;
+async function buildVoiceNarration(args, context = {}) {
+  if (!args.approvedAudio) {
+    const mp4Path = context.mp4Path ? resolvePath(context.mp4Path) : null;
+    if (!mp4Path) return null;
+    const storyId = context.storyId || storyIdFromPath(mp4Path);
+    const outputDirs = [context.outDir, path.join(ROOT, "test", "output")].filter(Boolean);
+    const reportsByStoryId = await loadFinalVoiceReportsByStoryId([mp4Path], {
+      outputDirs,
+    });
+    const report = reportsByStoryId[storyId] || reportsByStoryId[storyIdFromPath(mp4Path)] || null;
+    const enriched = await enrichVoiceReportForDispatch(report);
+    return extractNarrationEvidence(enriched || {});
+  }
   const transcript = await readTranscript(args);
   const medianPitchHz = Number(args.medianPitchHz);
   return {
@@ -193,6 +214,16 @@ async function loadStudioV2PromotionPacket(args, { mp4Path, storyId } = {}) {
   return sameMp4 || sameStory ? packet : null;
 }
 
+async function loadStoryMetadata(storyId) {
+  if (!storyId) return null;
+  try {
+    const db = require("../lib/db");
+    return (await db.getStory(storyId)) || null;
+  } catch {
+    return null;
+  }
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const outDir = resolvePath(args.outDir || OUT);
@@ -204,6 +235,7 @@ async function main() {
 
   const mp4Path = resolvePath(args.mp4);
   const storyId = args.story || path.basename(mp4Path, path.extname(mp4Path));
+  const storyMetadata = await loadStoryMetadata(storyId);
   let coverPath = resolvePath(args.cover);
   if (!coverPath && args.extractCover) {
     coverPath = await extractCoverFrame({
@@ -231,16 +263,25 @@ async function main() {
   const durationSeconds = Number.isFinite(Number(args.duration))
     ? Number(args.duration)
     : probeDurationSeconds(mp4Path);
-  const voiceNarration = await buildVoiceNarration(args);
+  const voiceNarration = await buildVoiceNarration(args, {
+    mp4Path,
+    storyId,
+    outDir,
+  });
   const studioV2PromotionPacket = await loadStudioV2PromotionPacket(args, {
     mp4Path,
     storyId,
   });
   const result = buildFreshTikTokDispatchPack({
     story: {
+      ...(storyMetadata || {}),
       id: storyId,
-      title: args.title || storyId,
-      flair: "manual_local_dispatch",
+      title:
+        args.title ||
+        storyMetadata?.suggested_title ||
+        storyMetadata?.title ||
+        storyId,
+      flair: storyMetadata?.flair || storyMetadata?.classification || "manual_local_dispatch",
     },
     mp4Path,
     coverPath,
@@ -290,4 +331,5 @@ module.exports = {
   probeDurationSeconds,
   readTranscript,
   loadStudioV2PromotionPacket,
+  loadStoryMetadata,
 };

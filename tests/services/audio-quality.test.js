@@ -27,8 +27,8 @@ test("buildNarrationMusicMixFilter: preserves narration level when adding music"
   assert.match(filter, /amix=inputs=2:duration=first/);
   assert.match(filter, /normalize=0/);
   assert.match(filter, /loudnorm=I=-15:TP=-2\.5:LRA=8/);
-  assert.match(filter, /alimiter=limit=0\.74/);
-  assert.equal(filter, "[voice][bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,loudnorm=I=-15:TP=-2.5:LRA=8,alimiter=limit=0.74[outa]");
+  assert.match(filter, /alimiter=limit=0\.74:level=disabled/);
+  assert.equal(filter, "[voice][bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,loudnorm=I=-15:TP=-2.5:LRA=8,alimiter=limit=0.74:level=disabled[outa]");
 });
 
 test("buildNarrationOnlyMixFilter: masters narration when no music bed is present", () => {
@@ -41,7 +41,7 @@ test("buildNarrationOnlyMixFilter: masters narration when no music bed is presen
   assert.match(filter, /equalizer=f=3200:t=q:w=1\.1:g=1\.8/);
   assert.match(filter, /acompressor=threshold=-22dB:ratio=2\.0/);
   assert.match(filter, /loudnorm=I=-15:TP=-2\.5:LRA=8/);
-  assert.match(filter, /alimiter=limit=0\.74\[outa\]$/);
+  assert.match(filter, /alimiter=limit=0\.74:level=disabled\[outa\]$/);
 });
 
 test("buildFinalVideoAudioRepairArgs: remasters final MP4 audio without re-encoding video", () => {
@@ -57,7 +57,7 @@ test("buildFinalVideoAudioRepairArgs: remasters final MP4 audio without re-encod
   assert.ok(args.includes("copy"));
   assert.ok(args.includes("-af"));
   assert.match(args[args.indexOf("-af") + 1], /loudnorm=I=-15:TP=-2\.5:LRA=8/);
-  assert.match(args[args.indexOf("-af") + 1], /alimiter=limit=0\.74/);
+  assert.match(args[args.indexOf("-af") + 1], /alimiter=limit=0\.74:level=disabled/);
   assert.ok(args.includes("-movflags"));
   assert.equal(args[args.length - 1], "output.mp4");
 });
@@ -127,7 +127,7 @@ test("repairTtsAudioFileLoudness: backs up local narration before remastering in
   assert.equal(fs.readFileSync(inputPath, "utf8"), "repaired mp3");
   assert.equal(fs.readFileSync(result.backupPath, "utf8"), "original mp3");
   assert.equal(result.acoustic.truePeakDb, -2.25);
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 3);
 });
 
 test("buildVoiceMasteringFilter: normalises local narration for crisp social-video playback", () => {
@@ -141,7 +141,7 @@ test("buildVoiceMasteringFilter: normalises local narration for crisp social-vid
   assert.match(filter, /equalizer=f=9500:t=q:w=0\.9:g=0\.4/);
   assert.match(filter, /acompressor=threshold=-22dB:ratio=2\.0:attack=5:release=100:makeup=1\.2/);
   assert.match(filter, /loudnorm=I=-16:TP=-2\.2:LRA=8/);
-  assert.match(filter, /alimiter=limit=0\.78/);
+  assert.match(filter, /alimiter=limit=0\.78:level=disabled/);
 });
 
 test("buildVoiceMasteringFilter: denoise is opt-in so Liam consonants stay crisp by default", () => {

@@ -540,11 +540,11 @@ test("TikTok dispatch pack downgrades final renders without approved voice evide
   assert.match(pack.discordNotification, /Voice gate: review/);
 });
 
-test("TikTok dispatch pack allows warning-only voice gates but surfaces warning", () => {
+test("TikTok dispatch pack blocks explicit do-not-reuse voice audits even when warning-only", () => {
   const pack = buildTikTokDispatchPack(
     {
       id: "story1",
-      title: "Ready render with voice warning",
+      title: "Render with a do-not-reuse voice warning",
       exported_path: "output/final/story1.mp4",
       thumbnail_candidate_path: "output/thumbnails/story1.png",
     },
@@ -560,10 +560,35 @@ test("TikTok dispatch pack allows warning-only voice gates but surfaces warning"
     },
   );
 
+  assert.equal(pack.status, "voice_review_required");
+  assert.equal(pack.officialInboxJson.ready_for_upload, false);
+  assert.equal(pack.voiceGate.do_not_reuse_for_tiktok_dispatch, true);
+  assert.match(pack.discordNotification, /warnings: voice_true_peak_too_hot/);
+});
+
+test("TikTok dispatch pack allows warning-only voice gates when final audit allows reuse", () => {
+  const pack = buildTikTokDispatchPack(
+    {
+      id: "story1",
+      title: "Ready render with voice warning",
+      exported_path: "output/final/story1.mp4",
+      thumbnail_candidate_path: "output/thumbnails/story1.png",
+    },
+    {
+      durationSeconds: 64,
+      voiceAudit: {
+        verdict: "review",
+        blockers: [],
+        warnings: ["voice_true_peak_too_hot"],
+        do_not_reuse_for_tiktok_dispatch: false,
+      },
+      tiktokTokenStatus: { ok: true, reason: "ok" },
+    },
+  );
+
   assert.equal(pack.status, "ready_for_operator_review");
   assert.equal(pack.officialInboxJson.ready_for_upload, true);
   assert.equal(pack.voiceGate.do_not_reuse_for_tiktok_dispatch, false);
-  assert.match(pack.discordNotification, /warnings: voice_true_peak_too_hot/);
 });
 
 test("TikTok dispatch pack blocks official inbox upload when the local token needs refresh or sync", () => {

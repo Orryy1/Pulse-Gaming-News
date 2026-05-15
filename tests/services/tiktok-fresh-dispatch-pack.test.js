@@ -124,6 +124,33 @@ test("fresh TikTok dispatch pack refuses missing approved local Liam evidence", 
   assert.equal(result.dispatchPack.officialInboxJson.ready_for_upload, false);
 });
 
+test("fresh TikTok dispatch pack honours explicit voice do-not-reuse audits", () => {
+  const result = buildFreshTikTokDispatchPack({
+    story: { id: "voice-risk", title: "Voice risk should not reach TikTok inbox" },
+    mp4Path: "D:/pulse-data/media/test/output/voice-risk.mp4",
+    coverPath: "D:/pulse-data/media/test/output/voice-risk-cover.jpg",
+    durationSeconds: 64,
+    voiceAudit: {
+      verdict: "review",
+      blockers: [],
+      warnings: ["caption_timing_repaired:max_gap_too_large"],
+      do_not_reuse_for_tiktok_dispatch: true,
+    },
+    mediaInfo: {
+      exists: true,
+      is_current_render: true,
+      age_hours: 0.1,
+      mtime_iso: "2026-05-06T20:00:00.000Z",
+    },
+    tiktokTokenStatus: { ok: true, reason: "ok" },
+  });
+
+  assert.equal(result.dispatchPack.status, "voice_review_required");
+  assert.equal(result.dispatchPack.voiceGate.do_not_reuse_for_tiktok_dispatch, true);
+  assert.equal(result.dispatchPack.officialInboxJson.ready_for_upload, false);
+  assert.equal(result.inboxPlan.status, "not_ready");
+});
+
 test("fresh TikTok dispatch pack blocks Studio V2 proofs with promotion blockers", () => {
   const result = buildFreshTikTokDispatchPack({
     story: { id: "blocked-v2", title: "Blocked Studio V2 proof should not reach TikTok" },

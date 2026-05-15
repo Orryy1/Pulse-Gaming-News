@@ -154,6 +154,31 @@ test("buildPublishCadenceReport: review-blocked platform rows are not public cad
   assert.equal(report.invalid_public_story_rows[0].id, "script_blocked");
 });
 
+test("buildPublishCadenceReport: repaired script fallback rows stay in failed cleanup, not invalid public rows", () => {
+  const report = buildPublishCadenceReport({
+    now: "2026-05-15T00:00:00.000Z",
+    windowHours: 24,
+    stories: [
+      {
+        id: "repaired_script",
+        title: "Already repaired script fallback",
+        publish_status: "failed",
+        qa_failed: true,
+        published_at: "2026-05-14T23:10:00.000Z",
+        youtube_post_id: "yt_repaired",
+        publish_error: "script_validation_review_required_public_row_repair",
+        body: "Script validation failed. Manual review required before production.",
+      },
+    ],
+    jobs: [],
+  });
+
+  assert.equal(report.summary.published_count, 0);
+  assert.equal(report.invalid_public_story_rows.length, 0);
+  assert.equal(report.failed_rows_with_platform_ids.length, 1);
+  assert.equal(report.summary.failed_rows_with_platform_ids_recent, 1);
+});
+
 test("buildPublishCadenceReport: failed rows with platform IDs are not counted as public cadence events", () => {
   const report = buildPublishCadenceReport({
     now: "2026-05-15T00:00:00.000Z",

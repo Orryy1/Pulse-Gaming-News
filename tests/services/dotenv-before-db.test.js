@@ -26,3 +26,7 @@ test("assemble.js loads .env before lib/db", () => {
 test("run.js loads .env before lib/db", () => {
   assertDotenvBeforeDb("run.js");
 });
+
+test("publisher.js loads .env before lib/db", () => {
+  assertDotenvBeforeDb("publisher.js");
+});

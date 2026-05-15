@@ -1,5 +1,7 @@
 const fs = require("fs-extra");
 const dotenv = require("dotenv");
+dotenv.config({ override: true });
+
 const sendDiscord = require("./notify");
 const { addBreadcrumb, captureException } = require("./lib/sentry");
 const db = require("./lib/db");
@@ -12,8 +14,6 @@ const {
 const {
   buildPublishDispatchPolicy,
 } = require("./lib/services/publish-dispatch-policy");
-
-dotenv.config({ override: true });
 
 // Publish lock - prevents concurrent publishNextStory() calls from creating duplicates
 let publishLock = false;

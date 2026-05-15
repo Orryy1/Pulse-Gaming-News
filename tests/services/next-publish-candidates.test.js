@@ -92,6 +92,32 @@ test("next publish report excludes rows with existing public platform ids and QA
   assert.deepEqual(report.candidates.map((row) => row.id), ["clean"]);
 });
 
+test("next publish report keeps 76-90s extended Shorts in review instead of excluding them", () => {
+  const report = buildNextPublishCandidatesReport(
+    [
+      baseStory({
+        id: "extended_short",
+        title: "Xbox boss names Discord partnership after Game Pass price cut",
+        duration_seconds: 84,
+        breaking_score: 75,
+      }),
+      baseStory({
+        id: "runaway_short",
+        title: "Long script should not be treated as a normal Short",
+        duration_seconds: 112,
+        breaking_score: 99,
+      }),
+    ],
+    { analyticsText, generatedAt: "2026-05-15T09:00:00.000Z" },
+  );
+
+  const extended = report.candidates.find((row) => row.id === "extended_short");
+  assert.ok(extended, "extended Short should remain visible for operator review");
+  assert.equal(extended.status, "review");
+  assert.ok(extended.reasons.includes("extended_short_review"));
+  assert.ok(report.excluded.some((row) => row.id === "runaway_short"));
+});
+
 test("analytics specificity scoring rewards named corporate outcomes and penalises vague speculation", () => {
   const specific = scoreAnalyticsFit(baseStory({
     title: "GameStop takeover bid rejected by eBay board as not credible",

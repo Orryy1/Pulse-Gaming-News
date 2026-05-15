@@ -204,6 +204,14 @@ function durationVerdict(story = {}) {
       duration_seconds: duration,
     };
   }
+  if (duration > 75 && duration <= 90 && !isLongformLane(story)) {
+    return {
+      status: "review",
+      score: 4,
+      reason: "extended_short_review",
+      duration_seconds: duration,
+    };
+  }
   if (duration > 75 && duration <= 95 && isLongformLane(story)) {
     return {
       status: "review",

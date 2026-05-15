@@ -1061,13 +1061,11 @@ app.get("/api/autonomous/status", requireAuth, (req, res) => {
       ? new Date(lastHunterRun.getTime() + HUNTER_INTERVAL_MS).toISOString()
       : null,
     schedule: {
-      hunts: "Every 3 hours (auto-produces videos after each hunt)",
-      publish: [
-        "09:00 UTC / 10:00 AM BST - morning publish window",
-        "14:00 UTC / 3:00 PM BST - afternoon publish window",
-        "19:00 UTC / 8:00 PM BST - evening publish window",
-      ],
-      strategy: "1 Short per window = 3 Shorts/day across all platforms",
+      hunts: ["Every 3 hours"],
+      produce: "Auto-produces videos after each hunt",
+      publish: "09:00 UTC / 14:00 UTC / 19:00 UTC",
+      strategy:
+        "1 Short per window = 3 Shorts/day across all platforms",
     },
     platforms: {
       youtube: { configured: !!process.env.YOUTUBE_API_KEY },

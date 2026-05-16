@@ -1,6 +1,6 @@
 # Morning Approval Queue
 
-Updated: 2026-05-14
+Updated: 2026-05-16
 
 Live health update: `http://localhost:3001/api/health` and `https://pulse.orryy.com/api/health` currently report `mode=local`, `primary=true`, `AUTO_PUBLISH=true`, `USE_JOB_QUEUE=true` and `schedulerActive=true`. The active `server.js` process started on 2026-05-14 at 07:24 before the latest safety commits, and the health endpoint does not expose a git commit, so a controlled restart is required before the latest branch can protect live posting.
 
@@ -76,15 +76,27 @@ Only live-risk decisions are listed here. Safe local report edits and non-mutati
 
 ## 1. Studio V2 Pilot
 
-Decision needed: keep blocked.
+Decision needed: approve or defer exactly one manual Studio V2 pilot for `1t0zhng`.
 
-Current state: proof candidates are `0` render-ready, `20` need motion or exact assets and `1` reject. Local TTS doctor is green, but there are no render-ready Flash Lane proof candidates.
+Current state: there is now one clean local Flash Lane proof. `1t0zhng` rendered as `studio_v2_1t0zhng_enriched.mp4` with approved local Liam TTS, official Steam trailer evidence, beat-aware scene cuts, clean subtitles, clean forensic QA and a focused one-candidate gauntlet pass. No public post was sent and the production renderer was not switched.
 
-Risk: approving a live pilot now could push an unready public video.
+Evidence:
 
-Validation visible from current context: `npm test` passed `2417/2417`, build passed and local TTS doctor is green.
+- Video: `test/output/studio-v2-still-deck/studio_v2_1t0zhng_enriched.mp4`
+- Contact sheet: `test/output/studio-v2-still-deck/1t0zhng_enriched_contact_sheet.jpg`
+- QA: `test/output/studio-v2-still-deck/1t0zhng_enriched_qa.json`
+- Forensic QA: `test/output/studio-v2-still-deck/qa_forensic_1t0zhng_enriched_report.json`
+- Focused gauntlet: `test/output/studio-v2-still-deck/studio_v2_gauntlet_report.json`
+- Promotion packet: `test/output/studio-v2-promotion/studio_v2_overnight_promotion_packet.json`
+- Pilot readiness gate: `test/output/studio_v2_pilot_readiness_gate.json`
 
-Recommendation: no. Do not approve Studio V2 pilot until at least one proof candidate has enough motion backbone/source diversity and has passed the existing visual, caption, frame and voice gates.
+Gate result: `AMBER_PILOT_REVIEW_ONLY`. One-story pilot status is `ready_for_manual_approval`, but production default remains blocked by design until manual approval, completed pilot metrics and a multi-story regression window exist.
+
+Risk: approving the one-story pilot can still publish a real public video if the operator chooses a live platform route. The remaining warning is that clip dominance is supported by a blend of four render-safe official clips plus validated trailer frames, rather than full-motion clips throughout.
+
+Rollback: keep Studio V2 out of the production-default path. Continue using the existing production renderer for public output and leave this proof as local evidence only.
+
+Recommendation: approve only the manual one-story pilot after reviewing the MP4 and contact sheet. Do not approve production-default Studio V2 or broad auto-publishing from this pilot alone.
 
 ## 2. TikTok Token And Official Use Route
 

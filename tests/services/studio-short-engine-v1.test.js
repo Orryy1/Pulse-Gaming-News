@@ -490,6 +490,41 @@ test("studio composer builds a footage-led Flash Lane slate from official clip r
   );
 });
 
+test("studio composer keeps Flash Lane takeaway as the final card", () => {
+  const result = composeStudioSlate({
+    story: {
+      title: "LEGO Batman PC specs revealed",
+      source_type: "reddit",
+      subreddit: "GamingLeaksAndRumours",
+      top_comment: "The specs sheet is the real story here.",
+    },
+    media: {
+      clips: Array.from({ length: 11 }, (_, index) => ({
+        path: `lego-trailer-${index}.m3u8`,
+        entity: "LEGO Batman",
+        sourceType: "steam_movie",
+        mediaStartS: 40 + index * 4,
+      })),
+      trailerFrames: Array.from({ length: 6 }, (_, index) => ({
+        path: `lego-frame-${index + 1}.jpg`,
+        entity: "LEGO Batman",
+      })),
+      articleHeroes: [],
+      publisherAssets: [],
+      stockFillers: [],
+    },
+    audioDurationS: 66,
+    opts: {
+      allowStockFiller: false,
+      flashLane: true,
+      sourceCardMode: "overlay",
+    },
+  });
+
+  assert.equal(result.scenes.at(-1).type, SCENE_TYPES.CARD_TAKEAWAY);
+  assert.notEqual(sourceId(result.scenes.at(-1)), sourceId(result.scenes.at(-2)));
+});
+
 test("studio composer does not stretch too few Flash Lane clips past the reuse budget", () => {
   const result = composeStudioSlate({
     story: {

@@ -5,6 +5,7 @@ const assert = require("node:assert/strict");
 
 const {
   resolveOfficialTrailerClipRefsForProof,
+  selectRenderSafeOfficialClipRefs,
 } = require("../../lib/studio/v2/proof-official-clip-safety");
 
 function frame({ entity = "GTA", source = "https://video.example/gta.m3u8", seconds = 44 } = {}) {
@@ -119,6 +120,31 @@ test("proof official clips use only validated segment-backed refs", () => {
   assert.equal(result.clipRefs[0].entity, "GTA");
   assert.equal(result.clipRefs[0].provenance.segment_validated, true);
   assert.equal(result.safety.status, "validated_segments_only");
+});
+
+test("proof official clips filter overlapping render windows per source", () => {
+  const source = "https://video.example/gta.m3u8";
+  const refs = [
+    { path: source, mediaStartS: 50.4, provenance: { segment_action_score: 100 } },
+    { path: source, mediaStartS: 50.7, provenance: { segment_action_score: 99 } },
+    { path: source, mediaStartS: 36, provenance: { segment_action_score: 98 } },
+    { path: "https://video.example/bio.m3u8", mediaStartS: 99.4, provenance: { segment_action_score: 97 } },
+  ];
+
+  const result = selectRenderSafeOfficialClipRefs(refs, {
+    minStartGapS: 4,
+    maxPerSource: 4,
+  });
+
+  assert.deepEqual(
+    result.clipRefs.map((ref) => `${ref.path}:${ref.mediaStartS}`),
+    [
+      "https://video.example/gta.m3u8:36",
+      "https://video.example/bio.m3u8:99.4",
+      "https://video.example/gta.m3u8:50.4",
+    ],
+  );
+  assert.equal(result.filtered[0].reason, "overlapping_visual_window");
 });
 
 test("proof official clips block validated-looking segments when the footage backbone is not ready", () => {

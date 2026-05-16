@@ -701,7 +701,7 @@ test("still-deck supplied local narration must carry accepted voice metadata", (
   assert.match(src, /acceptedLocalVoice:\s*meta\?\.meta\?\.acceptedLocalVoice\s*\|\|\s*null/);
   assert.match(src, /probeLocalAudioAcoustics/);
   assert.match(src, /const acoustic =[\s\S]*meta\?\.meta\?\.acoustic[\s\S]*suppliedLocalTts \? probeLocalAudioAcoustics\(resolvedAudioPath\) : null/);
-  assert.match(src, /acoustic,\s*\n\s*voiceDiagnostics/);
+  assert.match(src, /acoustic,[\s\S]*voiceDiagnostics/);
   assert.match(src, /voiceDiagnostics:\s*meta\?\.meta\?\.voiceDiagnostics\s*\|\|\s*null/);
   assert.match(src, /approvedLocalVoice:\s*meta\?\.meta\?\.approvedLocalVoice/);
   assert.match(src, /transcript:\s*meta\?\.meta\?\.transcript/);
@@ -774,10 +774,26 @@ test("still-deck Flash captions use the real narration transcript and strict cap
   );
 
   assert.match(src, /resolveStillDeckCaptionOptions/);
-  assert.match(src, /scriptText:\s*narration\.transcript\s*\|\|\s*renderStory\.scriptForCaption\s*\|\|\s*renderStory\.full_script/);
+  assert.match(src, /const scriptText =[\s\S]*narration\.transcript\s*\|\|\s*renderStory\.scriptForCaption\s*\|\|\s*renderStory\.full_script/);
   assert.match(src, /\.\.\.resolveStillDeckCaptionOptions\(\{ variant \}\)/);
+  assert.match(src, /prepareSubtitleWords/);
+  assert.match(src, /realignTimestampsToScript/);
+  assert.match(src, /realign:\s*false/);
   assert.doesNotMatch(src, /maxPhraseChars:\s*22/);
   assert.doesNotMatch(src, /danglingMergeMaxWords:\s*variant === "enriched" \? 3 : 2/);
+});
+
+test("still-deck Flash render path adjusts scene durations to narration word boundaries", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+
+  assert.match(src, /beat-aware-scene-durations/);
+  assert.match(src, /function alignScenesToNarrationBeats/);
+  assert.match(src, /alignSceneDurationsToWordBoundaries/);
+  assert.match(src, /scenes = alignScenesToNarrationBeats\(\{/);
+  assert.match(src, /const transitions = buildCutTransitions\(scenes\)/);
 });
 
 test("still-deck Flash preflight report surfaces motion and beat coverage metrics", () => {

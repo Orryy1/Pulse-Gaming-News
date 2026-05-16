@@ -1,46 +1,27 @@
 # Studio V2 Overnight Promotion Packet
 
-Generated: 2026-05-08T02:08:44.304Z
-Story: `rss_5b3abe925b27a199`
-Title: GTA 6 Owner Passed On A Sequel To A Legacy Franchise, And We're Dying To Know Which One
+Generated: 2026-05-16T10:45:53.097Z
+Story: `1t0zhng`
+Title: LEGO Batman: Legacy of the Dark Knight PC specs revealed
 
 ## Verdict
 
-`RED_BLOCKED` - Do not pilot Studio V2 yet; fix blockers and regenerate the local proof packet.
+`AMBER_LOCAL_PROOF` - Queue a morning decision for a one-story Studio V2 pilot; do not switch production defaults.
 
 Production ready: `no`
-Morning approval needed: `no`
-
-Current update: Flash Lane proof selection now uses zero tolerance for wrong-story exact assets. The GTA/Take-Two proof remains blocked until exact-subject deck repair removes unrelated game assets and the motion gate is green.
-
-## Blockers
-
-- qa_lane_unknown
-- flash_lane_preflight_not_allowed
-- preflight_flash_lane_requires_two_actual_clip_scenes
-- preflight_flash_lane_clip_dominance_below_target
-- preflight_flash_visual_requires_three_unique_clip_refs_for_60s
-- preflight_flash_visual_not_enough_distinct_scene_beats
-- forensic_warnings_remaining
-- visual_repeat_pairs_remaining
-- not_a_60s_local_proof_candidate
-- voice_grade_unknown
+Morning approval needed: `yes`
 
 ## Warnings
 
-- thin_official_clip_reference_count
-- thin_official_frame_count
-- preflight_flash_lane_card_ratio_high
-- preflight_flash_visual_card_ratio_high
-- preflight_flash_visual_cover_art_should_only_support
+- preflight_flash_lane_clip_dominance_supported_by_trailer_frames
 
 ## Evidence
 
-- MP4: `unknown`
-- Contact sheet: `unknown`
-- QA JSON: `unknown`
-- Forensic JSON: `unknown`
-- Forensic Markdown: `unknown`
+- MP4: `test/output/studio-v2-still-deck/studio_v2_1t0zhng_enriched.mp4`
+- Contact sheet: `test/output/studio-v2-still-deck/1t0zhng_enriched_contact_sheet.jpg`
+- QA JSON: `test/output/studio-v2-still-deck/1t0zhng_enriched_qa.json`
+- Forensic JSON: `test/output/studio-v2-still-deck/qa_forensic_1t0zhng_enriched_report.json`
+- Forensic Markdown: `test/output/studio-v2-still-deck/qa_forensic_1t0zhng_enriched.md`
 - Media package: `test/output/studio-v2-still-deck/enriched_media_package.json`
 - Frame report: `test/output/controlled_frame_extraction_worker_apply_local.json`
 - Segment validation report: `test/output/official_trailer_segment_validation_apply_local.json`
@@ -49,22 +30,22 @@ Current update: Flash Lane proof selection now uses zero tolerance for wrong-sto
 
 | Check | Value |
 | --- | ---: |
-| Runtime | 72.48s |
-| QA lane | unknown |
-| QA green / amber / red | 0 / 0 / 0 |
-| Voice | provided-local-tts-audio (unknown) |
-| Official clip refs | 0 |
-| Official trailer frames | 2 |
-| Current validated clip refs | 6 |
-| Current validated clip sources | 5 |
-| Current validated clip entities | 3 |
-| Current segment rejections | 46 |
-| Forensic verdict | warn |
-| Forensic fails / warns | 0 / 2 |
-| Visual repeat pairs after | 2 |
-| Visual repeat pairs delta | -14 |
-| Unique scene sources | 0 |
-| Clip dominance | 0 |
+| Runtime | 73.72s |
+| QA lane | pass |
+| QA green / amber / red | 14 / 4 / 0 |
+| Voice | approved-provided-local-tts (green) |
+| Official clip refs | 4 |
+| Official trailer frames | 18 |
+| Current validated clip refs | 13 |
+| Current validated clip sources | 3 |
+| Current validated clip entities | 1 |
+| Current segment rejections | 351 |
+| Forensic verdict | pass |
+| Forensic fails / warns | 0 / 0 |
+| Visual repeat pairs after | 0 |
+| Visual repeat pairs delta | -93 |
+| Unique scene sources | 14 |
+| Clip dominance | 0.88 |
 | Caption gaps over 2s | 0 |
 
 ## Proposed Pilot Plan
@@ -73,7 +54,7 @@ Current update: Flash Lane proof selection now uses zero tolerance for wrong-sto
 - Do not change Railway env vars.
 - Do not enable hard production gates.
 - Do not publish automatically.
-- No Studio V2 pilot should be run until blockers are fixed and a clean packet is regenerated.
+- If Martin approves, use this as a one-story manual Studio V2 pilot candidate only.
 - Keep legacy `assemble.js` as the rollback path.
 
 ## Rollback
@@ -88,4 +69,4 @@ Keep legacy assemble.js as canonical; if pilot underperforms or fails, publish v
 - No production DB mutation.
 - No platform post.
 - No production render default change.
-- Keep the blocked proof out of the live approval queue until it is clean.
+- Add the pilot decision to `MORNING_APPROVAL_QUEUE.md` before any live action.

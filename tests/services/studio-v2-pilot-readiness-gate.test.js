@@ -252,6 +252,65 @@ test("pilot readiness gate allows only manual one-story review for a clean proof
   assert.doesNotMatch(markdown, /production default is allowed/i);
 });
 
+test("pilot readiness gate treats no-visual-repair monitor rows as clear", () => {
+  const report = buildStudioV2PilotReadinessGate({
+    promotionPacket: readyPromotionPacket(),
+    proofCandidateReport: {
+      candidates: [
+        proofCandidate({
+          story_id: "story_ready",
+          title: "Clean Studio V2 local proof",
+          verdict: "ready_flash_proof",
+          blockers: [],
+          proof_readiness: { final_recommendation: "render_local_proof" },
+          audio: { ready: true, status: "approved_local_liam_audio_ready" },
+          visuals: {
+            exact_subject_count: 8,
+            validated_clip_ref_count: 4,
+            validated_clip_source_count: 3,
+          },
+        }),
+      ],
+    },
+    motionGapReport: {
+      gaps: [
+        motionGap({
+          story_id: "story_ready",
+          render_recommendation: "ready_for_local_flash_proof",
+          blockers: [],
+          motion_gap: {
+            missing_validated_clip_refs: 0,
+            missing_validated_clip_sources: 0,
+            missing_validated_entities: [],
+          },
+          latest_render_proof: {
+            status: "available",
+            verdict: "pass",
+            needs_human_visual_review: false,
+          },
+        }),
+      ],
+    },
+    visualRepairReport: {
+      rows: [
+        visualRepairRow({
+          story_id: "story_ready",
+          primary_action_type: "monitor",
+          repair_class: "no_visual_repair_needed",
+          visual_evidence_gate_ready: true,
+          blockers: [],
+        }),
+      ],
+    },
+  });
+
+  assert.equal(report.one_story_pilot.status, "ready_for_manual_approval");
+  assert.equal(
+    report.one_story_pilot.requirements.find((item) => item.id === "visual_repair_queue_clear").status,
+    "pass",
+  );
+});
+
 test("pilot readiness gate tool is read-only", () => {
   const tool = fs.readFileSync(path.join(ROOT, "tools", "studio-v2-pilot-readiness-gate.js"), "utf8");
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));

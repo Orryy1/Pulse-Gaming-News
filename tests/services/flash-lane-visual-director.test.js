@@ -91,6 +91,31 @@ test("Flash Lane Visual Director allows diverse safe clip-led plans", () => {
   assert.equal(report.metrics.maxClipScenesPerSource, 2);
 });
 
+test("Flash Lane Visual Director allows four clip scenes per source when a 60s plan has three sources", () => {
+  const scenes = [
+    ...Array.from({ length: 4 }, (_, index) => clip(`a${index}`, "a.m3u8", 36 + index * 2)),
+    ...Array.from({ length: 4 }, (_, index) => clip(`b${index}`, "b.m3u8", 44 + index * 2)),
+    ...Array.from({ length: 4 }, (_, index) => clip(`c${index}`, "c.m3u8", 52 + index * 2)),
+    { type: "clip.frame", label: "frame_a", source: "frame-a.jpg", duration: 4.2 },
+  ];
+  const report = buildFlashLaneVisualDirector({
+    scenes,
+    media: {
+      clips: [
+        { path: "a.m3u8", provenance: { segment_quality_score: 90 } },
+        { path: "b.m3u8", provenance: { segment_quality_score: 89 } },
+        { path: "c.m3u8", provenance: { segment_quality_score: 91 } },
+      ],
+    },
+    narrationDurationS: 64,
+  });
+
+  assert.equal(report.verdict, "allow");
+  assert.equal(report.thresholds.maxClipScenesPerSource, 4);
+  assert.equal(report.metrics.maxClipScenesPerSource, 4);
+  assert.equal(report.metrics.maxAllowedClipScenesPerSource, 4);
+});
+
 test("Flash Lane Visual Director blocks rating and age-slate frames even after the intro window", () => {
   const scenes = [
     clip("pegi_rating", "pegi-rating.m3u8", 34),

@@ -48,6 +48,7 @@ const DEFAULT_STILL_DECK_REPORTS = [
   "test/output/studio-v2-still-deck/studio_v2_still_deck_report.json",
 ];
 const DEFAULT_FORENSIC_REPORTS = [
+  "test/output/studio-v2-still-deck/qa_forensic_1t0zhng_enriched_report.json",
   "test/output/studio-v2-still-deck/qa_forensic_1szzhy9_enriched_report.json",
   "test/output/studio-v2-still-deck/qa_forensic_rss_5b3abe925b27a199_enriched_report.json",
   "test/output/qa_forensic_1szzhy9_enriched_report.json",

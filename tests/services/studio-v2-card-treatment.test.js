@@ -83,6 +83,21 @@ test("quote cards adapt long quote copy instead of cutting a fixed six-line bloc
   assert.doesNotMatch(filter, /reaction could turn very quickly/);
 });
 
+test("Flash Lane quote cards keep the backdrop bright enough for forensic samples", () => {
+  const filter = buildQuoteCardFilter({
+    slot: 0,
+    duration: 4,
+    body: "The specs sheet is the real story here.",
+    author: "Viewer",
+    score: 120,
+    fontOpt: FONT_OPT,
+    treatment: "flash_lane",
+  });
+
+  assert.match(filter, /eq=brightness=-0\.08:saturation=0\.92:contrast=1\.12/);
+  assert.doesNotMatch(filter, /eq=brightness=-0\.45:saturation=0\.4:contrast=1\.05/);
+});
+
 test("standard source cards remain available outside Flash Lane", () => {
   const filter = buildSourceCardFilter({
     slot: 0,

@@ -315,28 +315,34 @@ test("hammingDistance handles different length hashes", () => {
   assert.equal(hammingDistance("1010", "10"), 2);
 });
 
-test("visual repeat filtering ignores deliberate outro holds only", () => {
+test("visual repeat filtering ignores deliberate card holds", () => {
   const pairs = [
     { aTimeS: 16.5, bTimeS: 39, hamming: 6 },
+    { aTimeS: 52.5, bTimeS: 55.5, hamming: 4 },
     { aTimeS: 60, bTimeS: 66, hamming: 4 },
   ];
   const filtered = filterRepeatPairsByIgnoreRanges(pairs, [
+    { startS: 52, endS: 57, reason: "quote_card_hold" },
     { startS: 58, endS: 70, reason: "takeaway_hold" },
   ]);
 
   assert.deepEqual(filtered, [{ aTimeS: 16.5, bTimeS: 39, hamming: 6 }]);
 });
 
-test("visual repeat ignore ranges are derived from takeaway scenes", () => {
+test("visual repeat ignore ranges are derived from quote and takeaway scenes", () => {
   const ranges = buildVisualRepeatIgnoreRanges({
     sceneList: [
       { type: "clip", duration: 4 },
       { type: "clip.frame", duration: 4 },
+      { type: "card.quote", duration: 3 },
       { type: "card.takeaway", duration: 5 },
     ],
   });
 
-  assert.deepEqual(ranges, [{ startS: 8, endS: 13, reason: "takeaway_hold" }]);
+  assert.deepEqual(ranges, [
+    { startS: 8, endS: 11, reason: "quote_card_hold" },
+    { startS: 11, endS: 16, reason: "takeaway_hold" },
+  ]);
 });
 
 test("analyseRenderedFrameTaste fails rendered rating and title slates", async () => {

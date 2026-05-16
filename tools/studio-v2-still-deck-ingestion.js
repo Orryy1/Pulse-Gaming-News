@@ -30,7 +30,14 @@ const {
 } = require("../lib/studio/v2/forensic-qa-v2");
 const { resolveAudioPlan } = require("../lib/studio/v2/audio-library");
 const { buildSoundLayerV2 } = require("../lib/studio/v2/sound-layer-v2");
-const { buildKineticAss } = require("../lib/studio/v2/subtitle-layer-v2");
+const {
+  buildKineticAss,
+  prepareSubtitleWords,
+  realignTimestampsToScript,
+} = require("../lib/studio/v2/subtitle-layer-v2");
+const {
+  alignSceneDurationsToWordBoundaries,
+} = require("../lib/studio/v2/beat-aware-scene-durations");
 const {
   buildFlashLaneOverlayPlan,
   buildFlashLaneOverlayFilters,
@@ -82,6 +89,9 @@ const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output", "studio-v2-still-deck");
 const SOURCE_OUT = path.join(OUT, "assets");
 const DEFAULT_REPORT_CANDIDATES = [
+  path.join(ROOT, "test", "output", "asset_acquisition_v16_gameplay_stills_apply_local.json"),
+  path.join(ROOT, "test", "output", "asset_acquisition_v16_gameplay_stills.json"),
+  path.join(ROOT, "test", "output", "asset_acquisition_v16_gameplay_stills_dry_run.json"),
   path.join(ROOT, "test", "output", "asset_acquisition_v15_multi_entity_apply_local.json"),
   path.join(ROOT, "test", "output", "asset_acquisition_v15_multi_entity_dry_run.json"),
   path.join(ROOT, "test", "output", "asset_acquisition_v14_verified_store_apply_local.json"),
@@ -466,6 +476,11 @@ async function resolveNarration({
       approvedLocalVoice: meta?.meta?.approvedLocalVoice === true,
       acceptedLocalVoice: meta?.meta?.acceptedLocalVoice || null,
       acoustic,
+      voiceMastering:
+        meta?.meta?.voiceMastering ||
+        meta?.meta?.voice_mastering ||
+        meta?.meta?.mastering ||
+        null,
       voiceDiagnostics: meta?.meta?.voiceDiagnostics || null,
       transcript:
         meta?.meta?.transcript ||
@@ -502,6 +517,11 @@ async function resolveNarration({
       approvedLocalVoice: meta?.meta?.approvedLocalVoice === true,
       acceptedLocalVoice: meta?.meta?.acceptedLocalVoice || null,
       acoustic: meta?.meta?.acoustic || null,
+      voiceMastering:
+        meta?.meta?.voiceMastering ||
+        meta?.meta?.voice_mastering ||
+        meta?.meta?.mastering ||
+        null,
       voiceDiagnostics: meta?.meta?.voiceDiagnostics || null,
       transcript: meta?.meta?.transcript || meta?.meta?.text || "",
     };
@@ -557,6 +577,34 @@ function sumDurations(scenes) {
   return scenes.reduce((sum, scene) => sum + Number(scene.duration || 0), 0);
 }
 
+function prepareNarrationWords({ rawWords, durationS, scriptText }) {
+  const realigned = rawWords.length
+    ? realignTimestampsToScript(scriptText || "", rawWords)
+    : [];
+  const prepared = prepareSubtitleWords({
+    words: realigned,
+    duration: durationS,
+    scriptText,
+    strictEndCoverage: true,
+  });
+  return prepared.length ? prepared : wordsForScript(scriptText, durationS);
+}
+
+async function readPreparedNarrationWords({ narration, durationS, scriptText }) {
+  if (narration.mode !== "real_audio") return wordsForScript(scriptText, durationS);
+  const rawWords = await readTimestampWords(narration.timestampsPath);
+  return prepareNarrationWords({ rawWords, durationS, scriptText });
+}
+
+function alignScenesToNarrationBeats({ scenes, words, totalDurationS }) {
+  const result = alignSceneDurationsToWordBoundaries(scenes, words, {
+    totalDurationS,
+    minSceneDurationS: 2.6,
+    maxSceneDurationS: 8.2,
+  });
+  return result.adjusted ? result.scenes : scenes;
+}
+
 function sceneListForReport(scenes) {
   return scenes.map((scene) => ({
     type: scene.type || scene.sceneType,
@@ -607,7 +655,7 @@ async function buildFlashLaneRenderPreflight({
       cta: "NEVER MISS A BEAT",
     },
   });
-  const scenes = composed.scenes.length
+  let scenes = composed.scenes.length
     ? composed.scenes
     : [
         {
@@ -617,6 +665,19 @@ async function buildFlashLaneRenderPreflight({
           sourceLabel: story.source_type || "NEWS",
         },
       ];
+  const initialDurationS = sumDurations(scenes) || targetDurationS;
+  const scriptText =
+    narration.transcript || renderStory.scriptForCaption || renderStory.full_script;
+  const words = await readPreparedNarrationWords({
+    narration,
+    durationS: initialDurationS,
+    scriptText,
+  });
+  scenes = alignScenesToNarrationBeats({
+    scenes,
+    words,
+    totalDurationS: initialDurationS,
+  });
   const durationS = sumDurations(scenes) || targetDurationS;
   const overlayPlan = buildFlashLaneOverlayPlan({ story: renderStory, scenes, durationS });
   const report = buildFlashLaneProofPreflight({
@@ -684,7 +745,7 @@ async function renderStillDeckVariant({
       cta: "NEVER MISS A BEAT",
     },
   });
-  const scenes = composed.scenes.length
+  let scenes = composed.scenes.length
     ? composed.scenes
     : [
         {
@@ -694,6 +755,23 @@ async function renderStillDeckVariant({
           sourceLabel: story.source_type || "NEWS",
         },
       ];
+  const initialDurationS = sumDurations(scenes);
+  const assDurationS = resolveSubtitleTimelineDurationS({
+    renderDurationS: initialDurationS,
+    narrationDurationS: narration.durationS,
+  });
+  const scriptText =
+    narration.transcript || renderStory.scriptForCaption || renderStory.full_script;
+  let words = await readPreparedNarrationWords({
+    narration,
+    durationS: assDurationS,
+    scriptText,
+  });
+  scenes = alignScenesToNarrationBeats({
+    scenes,
+    words,
+    totalDurationS: initialDurationS,
+  });
   const durationS = sumDurations(scenes);
   const overlayPlan =
     variant === "enriched"
@@ -708,23 +786,16 @@ async function renderStillDeckVariant({
       : null;
   const transitions = buildCutTransitions(scenes);
   const assPath = path.join(outputDir, `${story.id}_${variant}.ass`);
-  const assDurationS = resolveSubtitleTimelineDurationS({
-    renderDurationS: durationS,
-    narrationDurationS: narration.durationS,
-  });
-  let words = [];
   let subtitleStatus = "fixture_ass_generated";
   if (narration.mode === "real_audio") {
-    words = await readTimestampWords(narration.timestampsPath);
-    if (!words.length) words = wordsForScript(renderStory.full_script, assDurationS);
     await fs.writeFile(
       assPath,
       buildKineticAss({
         story: renderStory,
         words,
         duration: assDurationS,
-        scriptText:
-          narration.transcript || renderStory.scriptForCaption || renderStory.full_script,
+        scriptText,
+        realign: false,
         ...resolveStillDeckCaptionOptions({ variant }),
       }),
       "utf8",

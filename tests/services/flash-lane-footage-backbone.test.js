@@ -287,6 +287,50 @@ test("Flash Lane footage backbone caps repeated use of the same trailer source",
   assert.equal(report.filtered_source_overuse_clip_refs, frames.length - sharedUseCount);
 });
 
+test("Flash Lane footage backbone allows a fourth clip per source when source-diverse frames carry the gap", () => {
+  const sources = [
+    "https://video.example/marathon-a.m3u8",
+    "https://video.example/marathon-b.m3u8",
+    "https://video.example/marathon-c.m3u8",
+  ];
+  const frames = sources.flatMap((source) =>
+    Array.from({ length: 4 }, (_, index) =>
+      frame({
+        entity: "Marathon",
+        source,
+        seconds: 40 + index * 8,
+      }),
+    ),
+  );
+  const segments = frames.map((item, index) => ({
+    ...segment({
+      entity: "Marathon",
+      source: item.source_url,
+      start: item.target_time_seconds + 4,
+      actionScore: 88,
+    }),
+    duration_s: index % 4 === 0 ? 5 : 2.85,
+    recommended_duration_s: index % 4 === 0 ? 5 : 2.85,
+    recommended_media_start_s: item.target_time_seconds + 4,
+    trim_recommended: index % 4 !== 0,
+  }));
+
+  const report = buildFlashLaneFootageBackboneReport({
+    storyId: "story-1",
+    targetRuntimeS: 66,
+    frameReport: frameReport(frames),
+    segmentValidationReport: { segments },
+  });
+
+  assert.equal(report.verdict, "ready_for_flash_render_preflight");
+  assert.equal(report.max_clip_refs_per_source, 4);
+  assert.equal(report.quality_filtered_source_count, 3);
+  assert.equal(report.validated_clip_refs.length, 12);
+  assert.ok(report.projected_clip_dominance >= report.thresholds.minFrameSupportedClipDominance);
+  assert.ok(report.projected_clip_dominance < report.thresholds.minClipDominance);
+  assert.ok(report.warnings.includes("footage_backbone_clip_dominance_supported_by_trailer_frames"));
+});
+
 test("Flash Lane footage backbone balances validated clips across story entities", () => {
   const frames = [
     frame({ entity: "GTA", source: "https://video.example/gta-1.m3u8", seconds: 44 }),

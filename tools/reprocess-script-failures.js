@@ -7,12 +7,16 @@ require("dotenv").config({ override: true });
 
 const processStories = require("../processor");
 const db = require("../lib/db");
+const { fallbackTitleVariants } = require("../ab_titles");
 const { runScriptCoherenceQa } = require("../lib/script-coherence-qa");
 const { lintScript } = require("../lib/services/script-lint");
 const {
   classifyShortScriptRuntime,
   secondsPerWordForTtsProvider,
 } = require("../lib/services/short-runtime-planner");
+const {
+  buildSourceBoundFallbackScript,
+} = require("../lib/source-bound-script-writer");
 const {
   buildScriptFailureReprocessReport,
   formatScriptFailureReprocessMarkdown,
@@ -37,6 +41,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     llmProvider: "",
     maxAttempts: DEFAULT_REPROCESS_MAX_ATTEMPTS,
     skipEditor: true,
+    sourceBoundOnly: false,
     forceStory: false,
     storyIds: [],
     help: false,
@@ -82,6 +87,8 @@ function parseArgs(argv = process.argv.slice(2)) {
       args.skipEditor = false;
     } else if (arg === "--skip-editor") {
       args.skipEditor = true;
+    } else if (arg === "--source-bound-only") {
+      args.sourceBoundOnly = true;
     } else if (arg === "--force-story") {
       args.forceStory = true;
     } else if (arg === "--help" || arg === "-?") {
@@ -96,10 +103,48 @@ function printHelp() {
     "Usage: node tools/reprocess-script-failures.js [--limit N] [--story ID] [--llm-provider local|anthropic] [--llm-timeout-ms N] [--max-attempts N] [--editor|--skip-editor] [--apply-local] [--json]\n" +
       "  Default is dry-run: generates scripts and reports, but does not write DB rows.\n" +
       "  --force-story with --story ID regenerates an explicit unpublished story even if it was not already marked as a script failure.\n" +
+      "  --source-bound-only skips the LLM and uses the deterministic source-bound fallback writer for suitable source-backed stories.\n" +
       `  Local LLM calls are bounded by --llm-timeout-ms (default ${DEFAULT_REPROCESS_LLM_TIMEOUT_MS}ms).\n` +
       `  Repair mode uses --max-attempts ${DEFAULT_REPROCESS_MAX_ATTEMPTS} and --skip-editor by default so one bad story cannot stall the queue.\n` +
       "  --apply-local persists only selected script-review failure rows and never posts to Discord/social.\n",
   );
+}
+
+function sourceMaterialForFallback(story = {}) {
+  return [
+    story.source_title,
+    story.article_title,
+    story.description,
+    story.source_text,
+    story.top_comment,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function prepareScriptRepairRow(row = {}) {
+  const fullScript = String(row.full_script || "").trim();
+  const titleVariants = fallbackTitleVariants(row, row.suggested_title || row.title);
+  const allTitleVariants = [
+    row.suggested_title || row.title,
+    ...titleVariants,
+  ]
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+  return {
+    ...row,
+    ...(fullScript ? { tts_script: fullScript } : {}),
+    ...(titleVariants.length >= 2
+      ? { title_variants: [...new Set(allTitleVariants)] }
+      : {}),
+    active_title_index: 0,
+    audio_path: null,
+    exported_path: null,
+    publish_status: null,
+    publish_error: null,
+    script_review_reason: "",
+    script_validation_errors: [],
+  };
 }
 
 function isPersistableScriptReady(row = {}, env = process.env) {
@@ -142,28 +187,53 @@ function isPersistableScriptReady(row = {}, env = process.env) {
 
 async function reprocessCandidate(candidate, args) {
   try {
-    const rows = await processStories({
-      storiesOverride: [candidate],
-      skipDedupIds: [candidate.id],
-      postDiscord: false,
-      persist: false,
-      maxScriptAttempts: args.maxAttempts,
-      skipEditorPass: args.skipEditor,
-    });
-    const resultRows = Array.isArray(rows) && rows.length > 0
-      ? rows
-      : [
+    let resultRows = null;
+    if (args.sourceBoundOnly) {
+      const fallback = buildSourceBoundFallbackScript(candidate, {
+        sourceMaterial: sourceMaterialForFallback(candidate),
+      });
+      if (!fallback) {
+        resultRows = [
           {
             ...candidate,
             script_generation_status: "review_required",
-            script_review_reason: "reprocess_returned_no_rows",
-            script_validation_errors: ["reprocess_returned_no_rows"],
+            script_review_reason: "source_bound_fallback_unavailable",
+            script_validation_errors: ["source_bound_fallback_unavailable"],
           },
         ];
+      } else {
+        resultRows = [
+          prepareScriptRepairRow({ ...candidate, ...fallback, quality_score: 7 }),
+        ];
+      }
+    }
+
+    if (!resultRows) {
+      const rows = await processStories({
+        storiesOverride: [candidate],
+        skipDedupIds: [candidate.id],
+        postDiscord: false,
+        persist: false,
+        maxScriptAttempts: args.maxAttempts,
+        skipEditorPass: args.skipEditor,
+      });
+      resultRows = Array.isArray(rows) && rows.length > 0
+        ? rows
+        : [
+            {
+              ...candidate,
+              script_generation_status: "review_required",
+              script_review_reason: "reprocess_returned_no_rows",
+              script_validation_errors: ["reprocess_returned_no_rows"],
+            },
+          ];
+    }
     if (args.applyLocal) {
       for (const row of resultRows) {
-        if (isPersistableScriptReady(row)) {
-          await db.upsertStory(row);
+        const prepared = prepareScriptRepairRow(row);
+        if (isPersistableScriptReady(prepared)) {
+          await db.upsertStory(prepared);
+          Object.assign(row, prepared);
           row.reprocess_persisted = true;
         } else {
           row.reprocess_persisted = false;
@@ -269,5 +339,6 @@ module.exports = {
   DEFAULT_REPROCESS_MAX_ATTEMPTS,
   isPersistableScriptReady,
   parseArgs,
+  prepareScriptRepairRow,
   reprocessCandidate,
 };

@@ -76,6 +76,20 @@ test("general Reddit news gate catches low-value community media and personal po
   }
 });
 
+test("generated scripts cannot turn community prompts into source-backed news", () => {
+  assert.equal(
+    shouldRejectGeneralRedditForNews({
+      title: "Had a PS5 for years and someone just pointed this out to me.",
+      hook: "Sony confirmed a major PS5 feature today.",
+      full_script:
+        "According to sources, Sony confirmed a major PS5 feature today. Follow Pulse Gaming so you never miss a beat.",
+      subreddit: "ps5",
+      source_type: "reddit",
+    }),
+    true,
+  );
+});
+
 test("general Reddit news gate keeps source-backed industry stories available", () => {
   const acceptedTitles = [
     "Digital is now 93% of Capcom's game sales and is expected to rise even further",

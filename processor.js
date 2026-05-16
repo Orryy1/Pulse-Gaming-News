@@ -19,6 +19,9 @@ const {
   buildRetryFeedback,
 } = require("./lib/services/script-lint");
 const { runScriptCoherenceQa } = require("./lib/script-coherence-qa");
+const {
+  buildSourceBoundFallbackScript,
+} = require("./lib/source-bound-script-writer");
 
 const { getChannel } = require("./channels");
 const { getAnalyticsContext } = require("./analytics");
@@ -960,6 +963,49 @@ function buildValidationRetryFeedback(errors = [], options = {}) {
   return lines.join("\n");
 }
 
+function trySourceBoundFallbackScript(story = {}, channel = {}, options = {}) {
+  if (channel?.id !== "pulse-gaming") return null;
+  const runtimeProfile = resolvePulseRuntimeProfile(options);
+  const fallback = buildSourceBoundFallbackScript(story, {
+    runtimeProfile,
+    sourceMaterial: options.sourceMaterial,
+    env: options.env || process.env,
+  });
+  if (!fallback) return null;
+
+  sanitiseScript(fallback);
+  ensurePulseExactCta(fallback, channel.id);
+  fallback.word_count = countSpokenWords(cleanForTTS(fallback.full_script || ""));
+
+  const validationErrors = validate(fallback, channel.id, {
+    story,
+    ttsProvider: runtimeProfile.provider,
+    secondsPerWord: runtimeProfile.secondsPerWord,
+  });
+  if (validationErrors.length > 0) {
+    console.log(
+      `[processor] Source-bound fallback rejected: ${validationErrors.join(", ")}`,
+    );
+    return null;
+  }
+
+  const lint = lintScript(fallback.full_script || "", {
+    minWords: runtimeProfile.minWords,
+    maxWords: runtimeProfile.maxWords,
+  });
+  if (lint.result === "fail") {
+    console.log(
+      `[processor] Source-bound fallback lint rejected: ${lint.failures.join(", ")}`,
+    );
+    return null;
+  }
+
+  console.log(
+    `[processor] Source-bound fallback accepted (${fallback.word_count} words)`,
+  );
+  return fallback;
+}
+
 // --- Clean script text for TTS (strip markers) ---
 function cleanForTTS(text) {
   if (!text) return "";
@@ -1211,6 +1257,15 @@ Today's date is ${today}. You MUST follow these rules:
             `[processor] Validation failed (attempt ${attempts}): ${errors.join(", ")}`,
           );
           if (attempts >= scriptAttemptLimit) {
+            const fallback = trySourceBoundFallbackScript(story, channel, {
+              ...runtimeProfile,
+              sourceMaterial,
+            });
+            if (fallback) {
+              script = fallback;
+              qualityScore = 7;
+              break;
+            }
             console.log(
               "[processor] Final validation failed; routing story to review",
             );
@@ -1241,6 +1296,15 @@ Today's date is ${today}. You MUST follow these rules:
           );
           lintRetryFeedback = buildRetryFeedback(lint);
           if (attempts >= scriptAttemptLimit) {
+            const fallback = trySourceBoundFallbackScript(story, channel, {
+              ...runtimeProfile,
+              sourceMaterial,
+            });
+            if (fallback) {
+              script = fallback;
+              qualityScore = 7;
+              break;
+            }
             script = buildScriptValidationReview(story, channel, lint.failures);
             qualityScore = 0;
             break;
@@ -1266,6 +1330,15 @@ Today's date is ${today}. You MUST follow these rules:
           if (gate.score < 7) {
             const reason = `quality_gate_below_threshold:${gate.score}/10:${gate.reason}`;
             if (attempts >= scriptAttemptLimit) {
+              const fallback = trySourceBoundFallbackScript(story, channel, {
+                ...runtimeProfile,
+                sourceMaterial,
+              });
+              if (fallback) {
+                script = fallback;
+                qualityScore = 7;
+                break;
+              }
               console.log(
                 `[processor] Final quality gate failed; routing story to review`,
               );
@@ -1315,6 +1388,15 @@ Today's date is ${today}. You MUST follow these rules:
           attempt: attempts,
         });
         if (attempts >= scriptAttemptLimit) {
+          const fallback = trySourceBoundFallbackScript(story, channel, {
+            ...runtimeProfile,
+            sourceMaterial,
+          });
+          if (fallback) {
+            script = fallback;
+            qualityScore = 7;
+            break;
+          }
           script = buildScriptValidationReview(story, channel, [
             `script_generation_error:${err.message}`,
           ]);

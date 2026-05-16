@@ -306,6 +306,31 @@ test("v1.3 verifies Steam app id, title and matched query before counting store 
   assert.equal(candidate.counted_for_premium, true);
 });
 
+test("v1.3 verifies Steam assets against inferred record-breaking game titles", () => {
+  const plan = buildAssetAcquisitionPlan(
+    baseStory({
+      title:
+        "Forza Horizon 6 immediately beats its predecessor's all-time Steam record with 130,000 concurrent players",
+      body: "Forza Horizon 6 is the game being discussed.",
+      full_script: "Forza Horizon 6 is the game being discussed.",
+      downloaded_images: [
+        img("steam_screenshot", "steam", "forza-6-steam.jpg", {
+          entity: "Forza Horizon 6",
+          steam_app_id: 2483190,
+          steam_app_title: "Forza Horizon 6",
+          steam_matched_query: "Forza",
+        }),
+      ],
+    }),
+  );
+  const candidate = candidateByPath(plan, "forza-6-steam.jpg");
+
+  assert.ok(plan.entity_map.games.includes("Forza Horizon 6"));
+  assert.equal(candidate.store_match_status, "verified");
+  assert.equal(candidate.subject_match_quality, "exact_game_match");
+  assert.equal(candidate.counted_for_premium, true);
+});
+
 test("v1.3 rejects wrong Steam app titles even when a loose entity label claims a match", () => {
   const plan = buildAssetAcquisitionPlan(
     baseStory({

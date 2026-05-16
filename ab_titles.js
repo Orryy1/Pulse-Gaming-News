@@ -8,6 +8,33 @@ dotenv.config({ override: true });
 
 const { getChannel } = require("./channels");
 
+const BANNED_TITLE_VARIANT_RE =
+  /(?:\byou won'?t believe\b|\bwon'?t believe this\b|\bshocking\b|\binsane\b|\bcrazy\b|\bmind[- ]?blowing\b|\bexplained\b|\bwhat happens next\b|\?!|!!)/i;
+
+function cleanTitleVariant(value) {
+  const title = String(value || "")
+    .replace(/[\u2013\u2014]/g, ",")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!title) return "";
+  if (BANNED_TITLE_VARIANT_RE.test(title)) return "";
+  return title.length > 80 ? `${title.substring(0, 77)}...` : title;
+}
+
+function fallbackTitleVariants(story = {}, originalTitle = "") {
+  const title = String(story.title || originalTitle || "");
+  const variants = [];
+  if (/Forza Horizon 6/i.test(title)) {
+    variants.push("Forza 6 Just Beat Horizon 5", "Forza 6's Steam Record");
+  } else if (/Subnautica 2/i.test(title)) {
+    variants.push("Subnautica 2 Hit A Sales Milestone", "Subnautica 2's Huge First Day");
+  } else if (/Stop Killing Games|server shutdowns|AB\s*1921/i.test(title)) {
+    variants.push("The Game Shutdown Bill Advanced", "California's Game Ownership Fight");
+  }
+  variants.push(originalTitle);
+  return [...new Set(variants.map(cleanTitleVariant).filter(Boolean))].slice(0, 2);
+}
+
 /**
  * A/B Title Testing for YouTube Shorts
  *
@@ -54,11 +81,14 @@ Reply with ONLY a JSON array of 2 strings. No explanation.`,
       return;
     }
 
-    // Truncate variants to 80 chars
-    const cleanVariants = variants.slice(0, 2).map((v) => {
-      const trimmed = String(v).trim();
-      return trimmed.length > 80 ? trimmed.substring(0, 77) + "..." : trimmed;
-    });
+    let cleanVariants = variants.map(cleanTitleVariant).filter(Boolean).slice(0, 2);
+    if (cleanVariants.length < 2) {
+      cleanVariants = fallbackTitleVariants(story, originalTitle);
+    }
+    if (cleanVariants.length < 2) {
+      console.log("[ab_titles] Variant generation skipped - no safe variants");
+      return;
+    }
 
     story.title_variants = [originalTitle, ...cleanVariants];
     story.active_title_index = 0;
@@ -252,6 +282,8 @@ async function checkPendingTitleSwaps() {
 }
 
 module.exports = {
+  cleanTitleVariant,
+  fallbackTitleVariants,
   generateTitleVariants,
   getBestTitle,
   checkAndSwapTitle,

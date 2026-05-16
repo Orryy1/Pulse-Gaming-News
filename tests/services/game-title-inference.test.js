@@ -79,6 +79,15 @@ test("headline inference trims possessive news adverbs from game names", () => {
   );
 });
 
+test("headline inference extracts game titles before record-breaking verbs and adverbs", () => {
+  assert.deepEqual(
+    inferHeadlineGameCandidates(
+      "Forza Horizon 6 immediately beats its predecessor's all-time Steam record with 130,000 concurrent players",
+    ),
+    ["Forza Horizon 6"],
+  );
+});
+
 test("headline inference rejects editorial colon fragments but keeps credited games", () => {
   assert.deepEqual(
     inferHeadlineGameCandidates("It's brutal out there: Deus Ex and Unreal composer says game music is changing"),

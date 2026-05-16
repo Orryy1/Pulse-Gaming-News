@@ -13,7 +13,10 @@ const {
   selectLocalLlmFetchFailureStories,
   selectReprocessableScriptFailureStories,
 } = require("../../lib/ops/script-failure-reprocess");
-const { isPersistableScriptReady } = require("../../tools/reprocess-script-failures");
+const {
+  isPersistableScriptReady,
+  prepareScriptRepairRow,
+} = require("../../tools/reprocess-script-failures");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 
@@ -355,6 +358,7 @@ test("ops:reprocess-script-failures command is registered and dry-run first", ()
   assert.match(tool, /--llm-provider/);
   assert.match(tool, /--max-attempts/);
   assert.match(tool, /--force-story/);
+  assert.match(tool, /--source-bound-only/);
   assert.match(tool, /--skip-editor/);
   assert.match(tool, /LLM_REQUEST_TIMEOUT_MS/);
   assert.match(tool, /process\.env\.LLM_PROVIDER/);
@@ -364,7 +368,8 @@ test("ops:reprocess-script-failures command is registered and dry-run first", ()
   assert.match(tool, /postDiscord: false/);
   assert.match(tool, /persist: false/);
   assert.match(tool, /isPersistableScriptReady/);
-  assert.match(tool, /db\.upsertStory\(row\)/);
+  assert.match(tool, /prepareScriptRepairRow/);
+  assert.match(tool, /db\.upsertStory\(prepared\)/);
   assert.match(tool, /reprocess_persist_skip_reason = "not_script_ready"/);
   assert.match(tool, /backupFileName/);
   assert.match(tool, /db\.getDb\(\)\.backup/);
@@ -391,6 +396,57 @@ test("reprocess tool args include bounded local LLM timeout", () => {
   assert.equal(parseArgs(["--max-attempts=3"]).maxAttempts, 3);
   assert.equal(parseArgs(["--editor"]).skipEditor, false);
   assert.equal(parseArgs(["--force-story"]).forceStory, true);
+  assert.equal(parseArgs(["--source-bound-only"]).sourceBoundOnly, true);
+});
+
+test("prepareScriptRepairRow clears stale audio and render outputs", () => {
+  const row = prepareScriptRepairRow({
+    id: "story",
+    title: "Forza Horizon 6 immediately beats its predecessor's all-time Steam record",
+    suggested_title: "Forza Horizon 6",
+    full_script:
+      "Forza Horizon 6 just put up a wild Steam number. ".repeat(35) +
+      "Follow Pulse Gaming so you never miss a beat.",
+    audio_path: "output/audio/story.mp3",
+    exported_path: "output/final/story.mp4",
+    publish_status: "failed",
+    publish_error: "old_failure",
+    script_review_reason: "old_review",
+    script_validation_errors: ["old_review"],
+  });
+
+  assert.equal(row.audio_path, null);
+  assert.equal(row.exported_path, null);
+  assert.equal(row.publish_status, null);
+  assert.equal(row.publish_error, null);
+  assert.equal(row.tts_script, row.full_script.trim());
+  assert.equal(row.script_review_reason, "");
+  assert.deepEqual(row.script_validation_errors, []);
+  assert.ok(row.title_variants.includes("Forza 6 Just Beat Horizon 5"));
+});
+
+test("source-bound-only reprocess builds a clean local repair row", async () => {
+  const { parseArgs, reprocessCandidate } = require("../../tools/reprocess-script-failures");
+  const rows = await reprocessCandidate(
+    {
+      id: "forza",
+      title:
+        "Forza Horizon 6 immediately beats its predecessor's all-time Steam record with 130,000 concurrent players – and that's only counting people willing to pay $120 for early access",
+      source_type: "reddit",
+      subreddit: "pcgaming",
+      article_url: "https://www.gamesradar.com/example",
+      audio_path: "output/audio/forza.mp3",
+      exported_path: "output/final/forza.mp4",
+    },
+    parseArgs(["--source-bound-only"]),
+  );
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].script_generation_status, "script_ready");
+  assert.equal(rows[0].audio_path, null);
+  assert.equal(rows[0].exported_path, null);
+  assert.doesNotMatch(rows[0].full_script, /,\./);
+  assert.match(rows[0].full_script, /GamesRadar reports/);
 });
 
 test("processor clears stale review metadata after a successful reprocess", () => {

@@ -24,6 +24,10 @@ const {
   formatStorySource,
   normaliseAffiliateLinks,
 } = require("./lib/affiliate-targeting");
+const {
+  assertPublicMetadataSafe,
+  safePublicExcerpt,
+} = require("./lib/public-metadata-qa");
 
 dotenv.config({ override: true });
 
@@ -284,18 +288,14 @@ async function uploadReel(story) {
         story.exported_path;
       await validateVideo(exportedAbs, "instagram");
       await assertPlatformVideoQaPass(exportedAbs, { platform: "instagram" });
+      assertPublicMetadataSafe(story, { surface: "instagram" });
 
       // Build caption - channel-aware hashtags
       const { getChannel } = require("./channels");
       const channel = getChannel();
       let caption =
         story.suggested_title || story.suggested_thumbnail_text || story.title;
-      const cleanScript = (story.full_script || "")
-        .replace(/\[PAUSE\]/gi, "")
-        .replace(/\[VISUAL:[^\]]*\]/gi, "")
-        .replace(/\s+/g, " ")
-        .trim();
-      caption += "\n\n" + cleanScript.substring(0, 500);
+      caption += "\n\n" + safePublicExcerpt(story.full_script, 500);
       const tags = (channel.hashtags || [])
         .map((h) => h.replace("#Shorts", "#reels"))
         .join(" ");
@@ -501,6 +501,7 @@ async function uploadReelViaUrl(story) {
     story.exported_path;
   await validateVideo(exportedAbs, "instagram");
   await assertPlatformVideoQaPass(exportedAbs, { platform: "instagram" });
+  assertPublicMetadataSafe(story, { surface: "instagram" });
 
   const publicBaseUrl = getPublicUrl();
   // Include .mp4 suffix — IG/FB crawlers refuse URIs that don't
@@ -513,12 +514,7 @@ async function uploadReelViaUrl(story) {
   const channel = getChannel();
   let caption =
     story.suggested_title || story.suggested_thumbnail_text || story.title;
-  const cleanScript = (story.full_script || "")
-    .replace(/\[PAUSE\]/gi, "")
-    .replace(/\[VISUAL:[^\]]*\]/gi, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  caption += "\n\n" + cleanScript.substring(0, 500);
+  caption += "\n\n" + safePublicExcerpt(story.full_script, 500);
   const tags = (channel.hashtags || [])
     .map((h) => h.replace("#Shorts", "#reels"))
     .join(" ");

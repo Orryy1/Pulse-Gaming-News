@@ -32,6 +32,10 @@ const db = require("./lib/db");
 const mediaPaths = require("./lib/media-paths");
 const { getPublicUrl } = require("./lib/deployment-mode");
 const { resolveFacebookTokenPath } = require("./lib/token-paths");
+const {
+  assertPublicMetadataSafe,
+  safePublicExcerpt,
+} = require("./lib/public-metadata-qa");
 
 dotenv.config({ override: true });
 
@@ -82,6 +86,7 @@ async function uploadReel(story) {
         story.exported_path;
       await validateVideo(exportedAbs, "facebook");
       await assertPlatformVideoQaPass(exportedAbs, { platform: "facebook" });
+      assertPublicMetadataSafe(story, { surface: "facebook" });
 
       const publicBaseUrl = getPublicUrl();
       const videoUrl = `${publicBaseUrl}/api/download/${story.id}.mp4`;
@@ -89,12 +94,7 @@ async function uploadReel(story) {
       // Build description
       let description =
         story.suggested_title || story.suggested_thumbnail_text || story.title;
-      const cleanScript = (story.full_script || "")
-        .replace(/\[PAUSE\]/gi, "")
-        .replace(/\[VISUAL:[^\]]*\]/gi, "")
-        .replace(/\s+/g, " ")
-        .trim();
-      description += "\n\n" + cleanScript.substring(0, 300);
+      description += "\n\n" + safePublicExcerpt(story.full_script, 300);
       description +=
         "\n\n#gaming #gamingnews #gamingleaks #gamingcommunity #reels";
       if (description.length > 2000)
@@ -328,18 +328,14 @@ async function uploadReelViaUrl(story) {
     story.exported_path;
   await validateVideo(exportedAbs, "facebook");
   await assertPlatformVideoQaPass(exportedAbs, { platform: "facebook" });
+  assertPublicMetadataSafe(story, { surface: "facebook" });
 
   const publicBaseUrl = getPublicUrl();
   const videoUrl = `${publicBaseUrl}/api/download/${story.id}.mp4`;
 
   let description =
     story.suggested_title || story.suggested_thumbnail_text || story.title;
-  const cleanScript = (story.full_script || "")
-    .replace(/\[PAUSE\]/gi, "")
-    .replace(/\[VISUAL:[^\]]*\]/gi, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  description += "\n\n" + cleanScript.substring(0, 300);
+  description += "\n\n" + safePublicExcerpt(story.full_script, 300);
   description += "\n\n#gaming #gamingnews #gamingleaks #gamingcommunity #reels";
   if (description.length > 2000)
     description = description.substring(0, 1997) + "...";

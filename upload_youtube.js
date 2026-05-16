@@ -19,6 +19,10 @@ const {
   assertDirectUploadAllowed,
   buildDirectUploadPolicy,
 } = require("./lib/services/direct-upload-policy");
+const {
+  assertPublicMetadataSafe,
+  safePublicExcerpt,
+} = require("./lib/public-metadata-qa");
 
 dotenv.config({ override: true });
 
@@ -209,6 +213,8 @@ async function exchangeCode(code) {
 
 // --- Build YouTube metadata (SEO-optimised for Shorts discovery) ---
 function buildMetadata(story) {
+  assertPublicMetadataSafe(story, { surface: "youtube" });
+
   const brand = require("./brand");
   const classInfo = brand.classificationColour(
     story.classification || story.flair,
@@ -235,25 +241,7 @@ function buildMetadata(story) {
 
   // --- Section 1: Keyword-rich summary (most SEO weight - first 200 chars indexed) ---
   if (story.full_script) {
-    const clean = story.full_script
-      .replace(/\n/g, " ")
-      .replace(/\[.*?\]/g, "")
-      .replace(/\s+/g, " ")
-      .trim();
-    const cutoff = clean.substring(0, 300);
-    // Find the LAST sentence boundary within 300 chars (not the first)
-    let lastSentence = -1;
-    const re = /[.!?]\s+(?=[A-Z])/g;
-    let m;
-    while ((m = re.exec(cutoff)) !== null) lastSentence = m.index;
-    if (lastSentence > 80) {
-      descLines.push(cutoff.substring(0, lastSentence + 1).trim());
-    } else {
-      const lastSpace = cutoff.lastIndexOf(" ");
-      descLines.push(
-        lastSpace > 80 ? cutoff.substring(0, lastSpace).trim() : cutoff.trim(),
-      );
-    }
+    descLines.push(safePublicExcerpt(story.full_script, 300));
   } else {
     descLines.push(story.title);
   }

@@ -1,6 +1,6 @@
 # Local TTS Proof Render Promotion
 
-Generated: 2026-05-16T08:58:38.001Z
+Generated: 2026-05-16T09:04:37.561Z
 Verdict: GREEN
 Can replace ElevenLabs for proof renders: yes
 Expected local voice: pulse-sleepy-liam-20260502

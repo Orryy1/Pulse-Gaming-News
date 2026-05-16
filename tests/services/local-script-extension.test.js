@@ -101,7 +101,7 @@ test("local script extension expands short Liam scripts into the 61-75s local Fl
   assert.equal(draft.cta_exactly_once, true);
   assert.match(draft.proposed_full_script, new RegExp(`${REQUIRED_CTA.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`));
   assert.equal(draft.runtime.result, "pass");
-  assert.ok(draft.proposed_words >= 189);
+  assert.ok(draft.proposed_words >= 180);
   assert.ok(draft.proposed_words <= 220);
   assert.ok(draft.estimated_seconds >= 61);
 });
@@ -149,7 +149,7 @@ test("local script extension repairs underfloor Liam proofs toward 64-70s rather
   assert.ok(draft.estimated_seconds <= 75);
 });
 
-test("local script extension uses measured Liam pace so 172-word underfloor proofs get enough copy", () => {
+test("local script extension refuses to invent excessive copy for very thin scripts", () => {
   const draft = extendScriptToLocalFlash({
     story: {
       id: "batman_beyond_underfloor",
@@ -172,10 +172,9 @@ test("local script extension uses measured Liam pace so 172-word underfloor proo
     env: {},
   });
 
-  assert.equal(draft.action, "ready_for_local_liam_audio");
-  assert.ok(draft.proposed_words >= 189);
-  assert.ok(draft.estimated_seconds >= 64);
-  assert.ok(draft.estimated_seconds <= 70);
+  assert.equal(draft.action, "review_extended_script");
+  assert.ok(draft.manual_review_flags.includes("insufficient_story_specific_extension_material"));
+  assert.ok(draft.proposed_words < 180);
 });
 
 test("local script extension reports per-story planning failures without aborting the batch", () => {
@@ -254,6 +253,36 @@ test("local script extension never adds internal Pulse strategy boilerplate", ()
     /For Pulse|direction of travel|signal first|safest read|tracking the official follow-up/i,
   );
   assert.ok(!draft.manual_review_flags.some((flag) => /abstract_signal_language/i.test(flag)));
+});
+
+test("local script extension refuses generic padding on underwritten scripts", () => {
+  const draft = extendScriptToLocalFlash({
+    story: {
+      id: "forza_underwritten",
+      title:
+        "Forza Horizon 6 immediately beats its predecessor's all-time Steam record with 130,000 concurrent players",
+      subreddit: "pcgaming",
+      content_pillar: "Source Breakdown",
+      full_script: [
+        "Japan's calling. Forza Horizon 6 just smashed the Steam record with 130,000 concurrent players before the full release.",
+        "According to GamesRadar, the figure comes from people who paid for early access.",
+        "That is a huge opening for Xbox's racing series.",
+        REQUIRED_CTA,
+      ].join(" "),
+    },
+    queueItem: queueItem("forza_underwritten", 62),
+    env: {},
+  });
+
+  assert.equal(draft.action, "review_extended_script");
+  assert.ok(
+    draft.manual_review_flags.includes("insufficient_story_specific_extension_material"),
+    draft.manual_review_flags.join(", "),
+  );
+  assert.doesNotMatch(
+    draft.proposed_full_script,
+    /This is a Source Breakdown story|The strongest follow-up would be|Keep the next step concrete|direction is clear/i,
+  );
 });
 
 test("local script extension strips duplicate CTA before appending the required outro once", () => {

@@ -37,6 +37,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     llmProvider: "",
     maxAttempts: DEFAULT_REPROCESS_MAX_ATTEMPTS,
     skipEditor: true,
+    forceStory: false,
     storyIds: [],
     help: false,
   };
@@ -81,6 +82,8 @@ function parseArgs(argv = process.argv.slice(2)) {
       args.skipEditor = false;
     } else if (arg === "--skip-editor") {
       args.skipEditor = true;
+    } else if (arg === "--force-story") {
+      args.forceStory = true;
     } else if (arg === "--help" || arg === "-?") {
       args.help = true;
     }
@@ -92,6 +95,7 @@ function printHelp() {
   process.stdout.write(
     "Usage: node tools/reprocess-script-failures.js [--limit N] [--story ID] [--llm-provider local|anthropic] [--llm-timeout-ms N] [--max-attempts N] [--editor|--skip-editor] [--apply-local] [--json]\n" +
       "  Default is dry-run: generates scripts and reports, but does not write DB rows.\n" +
+      "  --force-story with --story ID regenerates an explicit unpublished story even if it was not already marked as a script failure.\n" +
       `  Local LLM calls are bounded by --llm-timeout-ms (default ${DEFAULT_REPROCESS_LLM_TIMEOUT_MS}ms).\n` +
       `  Repair mode uses --max-attempts ${DEFAULT_REPROCESS_MAX_ATTEMPTS} and --skip-editor by default so one bad story cannot stall the queue.\n` +
       "  --apply-local persists only selected script-review failure rows and never posts to Discord/social.\n",
@@ -190,6 +194,9 @@ async function main() {
     printHelp();
     return;
   }
+  if (args.forceStory && args.storyIds.length === 0) {
+    throw new Error("--force-story requires --story ID");
+  }
   if (!process.env.LLM_REQUEST_TIMEOUT_MS) {
     process.env.LLM_REQUEST_TIMEOUT_MS = String(args.llmTimeoutMs);
   }
@@ -208,6 +215,7 @@ async function main() {
     stories,
     limit: args.limit,
     storyIds: args.storyIds,
+    forceStoryIds: args.forceStory,
   });
 
   let results = [];

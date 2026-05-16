@@ -204,6 +204,33 @@ test("selectReprocessableScriptFailureStories targets source-backed coherence re
   );
 });
 
+test("selectReprocessableScriptFailureStories can force explicit unpublished story repair", () => {
+  const rows = selectReprocessableScriptFailureStories({
+    forceStoryIds: true,
+    storyIds: ["short-audio", "public"],
+    stories: [
+      {
+        id: "short-audio",
+        title: "Approved story has short local audio and needs a clean rewrite",
+        source_type: "reddit",
+        subreddit: "pcgaming",
+      },
+      {
+        id: "public",
+        title: "Do not force already-public rows",
+        youtube_post_id: "yt_public",
+      },
+      {
+        id: "other",
+        title: "Do not bulk force rows",
+      },
+    ],
+  });
+
+  assert.deepEqual(rows.map((row) => row.id), ["short-audio"]);
+  assert.equal(rows[0].script_failure_reprocess_reason, "explicit_story_reprocess");
+});
+
 test("classifyReprocessedStory separates script-ready from still-review rows", () => {
   assert.deepEqual(classifyReprocessedStory({ full_script: "A real script", word_count: 3 }), {
     status: "script_ready",
@@ -315,6 +342,7 @@ test("ops:reprocess-script-failures command is registered and dry-run first", ()
   assert.match(tool, /--llm-timeout-ms/);
   assert.match(tool, /--llm-provider/);
   assert.match(tool, /--max-attempts/);
+  assert.match(tool, /--force-story/);
   assert.match(tool, /--skip-editor/);
   assert.match(tool, /LLM_REQUEST_TIMEOUT_MS/);
   assert.match(tool, /process\.env\.LLM_PROVIDER/);
@@ -350,6 +378,7 @@ test("reprocess tool args include bounded local LLM timeout", () => {
   assert.equal(parseArgs(["--max-attempts", "2"]).maxAttempts, 2);
   assert.equal(parseArgs(["--max-attempts=3"]).maxAttempts, 3);
   assert.equal(parseArgs(["--editor"]).skipEditor, false);
+  assert.equal(parseArgs(["--force-story"]).forceStory, true);
 });
 
 test("processor clears stale review metadata after a successful reprocess", () => {

@@ -119,6 +119,7 @@ test("local TTS proof promoter goes green only when Liam sample, health, proof, 
       "D:/pulse-data/media/test/output/local-script-extension/audio/rss_ready_liam_extended_timestamps.json":
         timestampPayload(),
     },
+    env: { LOCAL_TTS_PROMOTION_MIN_READY_PROOFS: "1" },
   });
 
   assert.equal(report.verdict, "GREEN");
@@ -227,6 +228,52 @@ test("local TTS proof promoter deduplicates proof rows repeated by latest and ov
   assert.equal(report.gates.loudness_mastering.checked_count, 1);
 });
 
+test("local TTS proof promoter treats historical failed attempts as warnings once enough Liam proofs pass", () => {
+  const proofRows = [
+    passingProof({ story_id: "ready_1", output_audio_path: "test/output/local-script-extension/audio/ready_1_liam_extended.mp3" }),
+    passingProof({ story_id: "ready_2", output_audio_path: "test/output/local-script-extension/audio/ready_2_liam_extended.mp3" }),
+    passingProof({ story_id: "ready_3", output_audio_path: "test/output/local-script-extension/audio/ready_3_liam_extended.mp3" }),
+  ];
+  const timestampPayloads = {};
+  for (const row of proofRows) {
+    timestampPayloads[row.output_audio_path.replace(/\.mp3$/, "_timestamps.json")] =
+      timestampPayload();
+  }
+
+  const report = buildLocalTtsProofPromotionReport({
+    acceptedReference: ACCEPTED_REF,
+    doctorReport: DOCTOR_GREEN,
+    proofReports: [
+      {
+        source: "local_script_extension",
+        report: {
+          applied: [
+            ...proofRows,
+            {
+              story_id: "old_failed_story",
+              proof_source: "local_script_extension",
+              output_audio_path: "test/output/local-script-extension/audio/old_failed_story_liam_extended.mp3",
+              duration_verdict: "reject_duration",
+              failure_code: "duration_too_short",
+            },
+          ],
+          skipped: [{ story_id: "old_skipped_story", failure_code: "connection_reset" }],
+        },
+      },
+    ],
+    timestampPayloads,
+  });
+
+  assert.equal(report.gates.generation_evidence.ok, true);
+  assert.equal(report.verdict, "GREEN");
+  assert.ok(
+    report.gates.generation_evidence.warnings.includes(
+      "local_tts_historical_generation_failures_present",
+    ),
+  );
+  assert.ok(!report.blockers.includes("local_tts_unresolved_generation_failures"));
+});
+
 test("local TTS proof promoter markdown is operator-readable and does not suggest production cutover", () => {
   const report = buildLocalTtsProofPromotionReport({
     acceptedReference: ACCEPTED_REF,
@@ -241,6 +288,7 @@ test("local TTS proof promoter markdown is operator-readable and does not sugges
       "test/output/local-script-extension/audio/rss_ready_liam_extended_timestamps.json":
         timestampPayload(),
     },
+    env: { LOCAL_TTS_PROMOTION_MIN_READY_PROOFS: "1" },
   });
   const markdown = renderLocalTtsProofPromotionMarkdown(report);
 
@@ -275,6 +323,7 @@ test("local TTS proof promoter CLI writer persists local report paths", async ()
         "test/output/local-script-extension/audio/rss_ready_liam_extended_timestamps.json":
           timestampPayload(),
       },
+      env: { LOCAL_TTS_PROMOTION_MIN_READY_PROOFS: "1" },
     });
 
     const paths = await writePromotionReport({

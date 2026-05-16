@@ -125,6 +125,7 @@
     "studio:creator-grade": "node tools/studio-creator-grade.js",
     "tts:doctor": "node tools/local-tts-doctor.js",
     "tts:smoke": "node tools/local-tts-smoke.js",
+    "tts:proof-mastering": "node tools/local-tts-proof-mastering.js",
     "tts:proof-promoter": "node tools/local-tts-proof-promoter.js",
     "tts:overnight-report": "node tools/local-tts-overnight-report.js"
   },

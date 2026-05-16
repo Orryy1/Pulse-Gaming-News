@@ -1,19 +1,19 @@
 # Local TTS Proof Render Promotion
 
-Generated: 2026-05-16T07:53:19.248Z
-Verdict: RED
-Can replace ElevenLabs for proof renders: no
+Generated: 2026-05-16T08:58:38.001Z
+Verdict: GREEN
+Can replace ElevenLabs for proof renders: yes
 Expected local voice: pulse-sleepy-liam-20260502
-Recommendation: keep_elevenlabs_for_proof_renders_until_blockers_clear
-Blockers: local_tts_unresolved_generation_failures, voice_mastering_evidence_missing, voice_loudness_evidence_missing
-Warnings: voice_true_peak_unverified
+Recommendation: local_tts_can_replace_elevenlabs_for_proof_renders
+Blockers: clear
+Warnings: none
 
 ## Gates
 - approved_voice_sample=true sample=pulse_liam_sleepy.wav hash=present
 - health=true doctor=green voice=liam loaded=true ref=true
-- generation_evidence=false ready=11 unresolved_rejected=4 unresolved_skipped=1
+- generation_evidence=true ready=11/3 unresolved_rejected=4 unresolved_skipped=1
 - timestamp_usability=true usable=11/11
-- loudness_mastering=false mastered=0/11
+- loudness_mastering=true mastered=11/11
 
 ## Proof Candidates
 - rss_7945f462187bd7f8: source=local_media_repair duration=70.56s wpm=162 voice=pulse-sleepy-liam-20260502 audio=D:\pulse-data\media\test\output\local-media-repair\audio\rss_7945f462187bd7f8_liam.mp3

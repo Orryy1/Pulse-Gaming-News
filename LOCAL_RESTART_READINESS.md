@@ -1,19 +1,19 @@
 # Local Restart Readiness
 
-Generated: 2026-05-16T09:04:12.564Z
-Verdict: RED
+Generated: 2026-05-16T09:08:15.596Z
+Verdict: AMBER
 Safety: read-only; does not restart the server, edit env vars, mutate DB rows, touch Railway or post
 
 ## Build Match
-- Current commit: 0ad77f4
-- Local running commit: 0ad77f4 (matches)
-- Public running commit: 0ad77f4 (matches)
+- Current commit: e6824ad
+- Local running commit: e6824ad (matches)
+- Public running commit: e6824ad (matches)
 
 ## Runtime
 - Local health: pass (200)
 - Public health: pass (200)
 - Public mode: local
-- Public primary: false
+- Public primary: true
 
 ## Cadence
 - Public posts in 24h: 0
@@ -21,7 +21,7 @@ Safety: read-only; does not restart the server, edit env vars, mutate DB rows, t
 - Off-schedule posts: 0
 - Tight spacing pairs: 0
 - Minimum gap: n/a minutes
-- Invalid public story rows: 5
+- Invalid public story rows: 0
 - Failed rows with platform IDs: 31
 
 ## Cadence Gates
@@ -29,12 +29,7 @@ Safety: read-only; does not restart the server, edit env vars, mutate DB rows, t
 - Minimum-gap hard gate: enabled
 - Daily-cap hard gate: enabled
 
-## Blockers
-- public server is not reporting primary=true
-- public script-validation fallback rows need repair before a clean resume
-
 ## Warnings
-- 6 uncommitted file(s) are present; commit code changes before restart for reproducibility
 - 31 failed row(s) still carry platform IDs
 
 Recommendation: do_not_restart_primary_until_blockers_are_cleared

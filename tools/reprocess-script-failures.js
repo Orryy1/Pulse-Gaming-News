@@ -7,6 +7,12 @@ require("dotenv").config({ override: true });
 
 const processStories = require("../processor");
 const db = require("../lib/db");
+const { runScriptCoherenceQa } = require("../lib/script-coherence-qa");
+const { lintScript } = require("../lib/services/script-lint");
+const {
+  classifyShortScriptRuntime,
+  secondsPerWordForTtsProvider,
+} = require("../lib/services/short-runtime-planner");
 const {
   buildScriptFailureReprocessReport,
   formatScriptFailureReprocessMarkdown,
@@ -92,17 +98,55 @@ function printHelp() {
   );
 }
 
+function isPersistableScriptReady(row = {}, env = process.env) {
+  if (!row || row.script_generation_status === "review_required") return false;
+  const scriptText =
+    typeof row.tts_script === "string" && row.tts_script.trim()
+      ? row.tts_script
+      : row.full_script;
+  if (typeof scriptText !== "string" || scriptText.trim().length === 0) {
+    return false;
+  }
+  if (Number(row.word_count || 0) <= 0) return false;
+
+  const provider = String(env.TTS_PROVIDER || "elevenlabs").trim().toLowerCase();
+  const runtime = classifyShortScriptRuntime({
+    text: scriptText,
+    story: row,
+    secondsPerWord: secondsPerWordForTtsProvider(provider, env),
+  });
+  if (runtime.result !== "pass" || runtime.shouldGenerateShortAudio === false) {
+    return false;
+  }
+
+  const lint = lintScript(scriptText, {
+    minWords: runtime.minWords,
+    maxWords: runtime.maxWords,
+  });
+  if (lint.result === "fail") return false;
+
+  const requirePulseCta = !row.channel_id || row.channel_id === "pulse-gaming";
+  const coherence = runScriptCoherenceQa(
+    { ...row, full_script: scriptText },
+    {
+      requireCtaField: requirePulseCta,
+      requireFullScriptCta: requirePulseCta,
+    },
+  );
+  return coherence.failures.length === 0;
+}
+
 async function reprocessCandidate(candidate, args) {
   try {
     const rows = await processStories({
       storiesOverride: [candidate],
       skipDedupIds: [candidate.id],
       postDiscord: false,
-      persist: args.applyLocal,
+      persist: false,
       maxScriptAttempts: args.maxAttempts,
       skipEditorPass: args.skipEditor,
     });
-    return Array.isArray(rows) && rows.length > 0
+    const resultRows = Array.isArray(rows) && rows.length > 0
       ? rows
       : [
           {
@@ -112,6 +156,18 @@ async function reprocessCandidate(candidate, args) {
             script_validation_errors: ["reprocess_returned_no_rows"],
           },
         ];
+    if (args.applyLocal) {
+      for (const row of resultRows) {
+        if (isPersistableScriptReady(row)) {
+          await db.upsertStory(row);
+          row.reprocess_persisted = true;
+        } else {
+          row.reprocess_persisted = false;
+          row.reprocess_persist_skip_reason = "not_script_ready";
+        }
+      }
+    }
+    return resultRows;
   } catch (err) {
     return [
       {
@@ -203,6 +259,7 @@ if (require.main === module) {
 module.exports = {
   DEFAULT_REPROCESS_LLM_TIMEOUT_MS,
   DEFAULT_REPROCESS_MAX_ATTEMPTS,
+  isPersistableScriptReady,
   parseArgs,
   reprocessCandidate,
 };

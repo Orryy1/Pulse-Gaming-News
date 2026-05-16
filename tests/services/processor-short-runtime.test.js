@@ -33,21 +33,42 @@ function script(wordCount) {
 }
 
 test("processor validate: Pulse accepts current 61-75s spoken word budget", () => {
-  const errors = processor.validate(script(100), "pulse-gaming");
+  const errors = processor.validate(script(100), "pulse-gaming", {
+    ttsProvider: "elevenlabs",
+  });
   assert.deepEqual(errors, []);
 });
 
 test("processor validate: Pulse allows 76-90s scripts as extended Short candidates", () => {
-  const errors = processor.validate(script(123), "pulse-gaming");
+  const errors = processor.validate(script(123), "pulse-gaming", {
+    ttsProvider: "elevenlabs",
+  });
   assert.deepEqual(errors, []);
 });
 
 test("processor validate: Pulse rejects old 160-180 word scripts", () => {
-  const errors = processor.validate(script(166), "pulse-gaming");
+  const errors = processor.validate(script(166), "pulse-gaming", {
+    ttsProvider: "elevenlabs",
+  });
   assert.ok(
     errors.some((e) => e.includes("script_runtime_too_long")),
     `got: ${errors.join(", ")}`,
   );
+});
+
+test("processor validate: Pulse local Liam budget is provider-aware", () => {
+  const tooShort = processor.validate(script(100), "pulse-gaming", {
+    ttsProvider: "local",
+  });
+  assert.ok(
+    tooShort.some((e) => e.includes("outside 180-220 Flash Lane range")),
+    `got: ${tooShort.join(", ")}`,
+  );
+
+  const pass = processor.validate(script(190), "pulse-gaming", {
+    ttsProvider: "local",
+  });
+  assert.deepEqual(pass, []);
 });
 
 test("processor validate: rejects future dates presented as already launched", () => {
@@ -57,6 +78,7 @@ test("processor validate: rejects future dates presented as already launched", (
 
   const errors = processor.validate(item, "pulse-gaming", {
     now: new Date("2026-05-15T12:00:00Z"),
+    ttsProvider: "elevenlabs",
   });
 
   assert.ok(
@@ -72,6 +94,7 @@ test("processor validate: allows future scheduled dates when not claimed as alre
 
   const errors = processor.validate(item, "pulse-gaming", {
     now: new Date("2026-05-15T12:00:00Z"),
+    ttsProvider: "elevenlabs",
   });
 
   assert.deepEqual(errors, []);
@@ -84,6 +107,7 @@ test("processor validate: allows launched today when the explicit date is today"
 
   const errors = processor.validate(item, "pulse-gaming", {
     now: new Date("2026-05-15T12:00:00Z"),
+    ttsProvider: "elevenlabs",
   });
 
   assert.deepEqual(errors, []);
@@ -141,7 +165,7 @@ test("processor sanitiseScript tightens an overlong hook before validation", () 
     item.hook.split(/\s+/).filter(Boolean).length <= 24,
     `hook was not tightened: ${item.hook}`,
   );
-  assert.deepEqual(processor.validate(item, "pulse-gaming"), []);
+  assert.deepEqual(processor.validate(item, "pulse-gaming", { ttsProvider: "elevenlabs" }), []);
 });
 
 test("processor sanitiseScript replaces advertiser-risk words before validation", () => {
@@ -152,7 +176,7 @@ test("processor sanitiseScript replaces advertiser-risk words before validation"
   processor.sanitiseScript(item);
 
   assert.doesNotMatch(item.full_script, /\bkilled\b/i);
-  assert.deepEqual(processor.validate(item, "pulse-gaming"), []);
+  assert.deepEqual(processor.validate(item, "pulse-gaming", { ttsProvider: "elevenlabs" }), []);
 });
 
 test("processor sanitiseScript removes direction markers and punctuation spacing from hooks", () => {
@@ -168,7 +192,7 @@ test("processor sanitiseScript removes direction markers and punctuation spacing
   );
   assert.doesNotMatch(item.hook, /\[/);
   assert.doesNotMatch(item.hook, /\s+[,.!?;:]/);
-  assert.deepEqual(processor.validate(item, "pulse-gaming"), []);
+  assert.deepEqual(processor.validate(item, "pulse-gaming", { ttsProvider: "elevenlabs" }), []);
 });
 
 test("processor validate: non-Pulse channels keep their existing word-count contract", () => {
@@ -176,12 +200,14 @@ test("processor validate: non-Pulse channels keep their existing word-count cont
   assert.deepEqual(errors, []);
 });
 
-test("processor editor prompt: Pulse uses Flash Lane word budget, not old 155-185 range", () => {
+test("processor editor prompt: Pulse uses active local Flash Lane budget, not old 155-185 range", () => {
   const instruction = processor.editorWordCountInstruction({
     id: "pulse-gaming",
+  }, {
+    ttsProvider: "local",
   });
 
-  assert.match(instruction, /90-110/);
+  assert.match(instruction, /180-220/);
   assert.doesNotMatch(instruction, /155-185/);
   assert.match(instruction, /Do not expand it/);
 });
@@ -266,7 +292,7 @@ test("processor editor prompt: non-Pulse channels keep legacy long-form short ra
 });
 
 test("processor editor pass revalidates edited scripts before accepting them", () => {
-  assert.match(PROCESSOR_SOURCE, /validate\(edited,\s*channel\.id,\s*\{\s*story\s*\}\)/);
+  assert.match(PROCESSOR_SOURCE, /validate\(edited,\s*channel\.id,\s*\{[\s\S]*story,[\s\S]*ttsProvider:[\s\S]*secondsPerWord:/);
   assert.match(PROCESSOR_SOURCE, /editor_validation_failed/);
   assert.match(PROCESSOR_SOURCE, /editor_lint_failed/);
 });
@@ -296,6 +322,22 @@ test("processor final validation failure routes story to review instead of accep
   ]);
 });
 
+test("processor validation retry feedback gives concrete rewrite guidance", () => {
+  const feedback = processor.buildValidationRetryFeedback([
+    "Actual spoken word count 100 outside 180-220 Flash Lane range",
+    "script_coherence:vague_filler:community_is_buzzing",
+    "script_coherence:missing_exact_cta_in_script",
+  ], { ttsProvider: "local" });
+
+  assert.match(feedback, /VALIDATION REWRITE BRIEF/);
+  assert.match(feedback, /Rewrite full_script as 180-220 cleaned spoken words/);
+  assert.match(feedback, /Aim for 190-210 words/);
+  assert.match(feedback, /source-backed facts only/);
+  assert.match(feedback, /end full_script with exactly/);
+  assert.match(feedback, /named source, number, platform, price, release window or player impact/);
+  assert.doesNotMatch(feedback, /original script/i);
+});
+
 test("processor quality gate fails closed when scoring is unavailable", () => {
   assert.doesNotMatch(PROCESSOR_SOURCE, /scoring failed - accepting by default/);
   assert.match(PROCESSOR_SOURCE, /scoring failed - review required/);
@@ -320,6 +362,8 @@ test("processor final validation failure preserves extended-short routing metada
 test("processor wires script lint into the generation retry loop", () => {
   assert.match(PROCESSOR_SOURCE, /lintScript\(script\.full_script/);
   assert.match(PROCESSOR_SOURCE, /buildRetryFeedback\(lint\)/);
+  assert.match(PROCESSOR_SOURCE, /buildValidationRetryFeedback\(\s*errors,\s*runtimeProfile/s);
+  assert.match(PROCESSOR_SOURCE, /validationRetryFeedback/);
   assert.match(PROCESSOR_SOURCE, /Script lint failed/);
 });
 

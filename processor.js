@@ -10,6 +10,7 @@ const { createLlmClient } = require("./lib/llm-client");
 const {
   classifyShortScriptRuntime,
   countSpokenWords,
+  secondsPerWordForTtsProvider,
   DEFAULT_MIN_WORDS,
   DEFAULT_MAX_WORDS,
 } = require("./lib/services/short-runtime-planner");
@@ -506,6 +507,77 @@ function validateFutureReleaseClaims(script, { now = new Date() } = {}) {
   return [...new Set(errors)];
 }
 
+function resolveTtsProviderForRuntime(options = {}) {
+  return String(
+    options.ttsProvider ||
+      options.provider ||
+      process.env.TTS_PROVIDER ||
+      "elevenlabs",
+  )
+    .trim()
+    .toLowerCase();
+}
+
+function resolvePulseRuntimeProfile(options = {}) {
+  const provider = resolveTtsProviderForRuntime(options);
+  const secondsPerWord =
+    Number.isFinite(Number(options.secondsPerWord)) && Number(options.secondsPerWord) > 0
+      ? Number(options.secondsPerWord)
+      : secondsPerWordForTtsProvider(provider, options.env || process.env);
+  const probe = classifyShortScriptRuntime({
+    wordCount: 1,
+    secondsPerWord,
+  });
+  const minWords = probe.minWords || DEFAULT_MIN_WORDS;
+  const maxWords = probe.maxWords || DEFAULT_MAX_WORDS;
+  const reviewMaxWords = probe.reviewMaxWords || Math.max(maxWords, DEFAULT_MAX_WORDS);
+  const span = Math.max(0, maxWords - minWords);
+  let aimMin = Math.ceil(minWords + span * 0.25);
+  let aimMax = Math.floor(maxWords - span * 0.25);
+  if (aimMin > aimMax) {
+    const mid = Math.round((minWords + maxWords) / 2);
+    aimMin = mid;
+    aimMax = mid;
+  }
+  return {
+    provider,
+    secondsPerWord,
+    minWords,
+    maxWords,
+    reviewMaxWords,
+    aimMin,
+    aimMax,
+  };
+}
+
+function runtimeWordRange(profile = resolvePulseRuntimeProfile()) {
+  return `${profile.minWords}-${profile.maxWords}`;
+}
+
+function runtimeAimRange(profile = resolvePulseRuntimeProfile()) {
+  return profile.aimMin === profile.aimMax
+    ? String(profile.aimMin)
+    : `${profile.aimMin}-${profile.aimMax}`;
+}
+
+function buildPulseRuntimePromptInstruction(channel = {}, options = {}) {
+  if (channel?.id !== "pulse-gaming") return "";
+  const profile = resolvePulseRuntimeProfile(options);
+  const legacyNote =
+    profile.provider === "local"
+      ? "This overrides any older 90-110 word guidance, which only applied to the slower ElevenLabs path."
+      : "This is the active ElevenLabs pacing contract.";
+  return [
+    "",
+    "ACTIVE PULSE RUNTIME CONTRACT:",
+    `- TTS provider: ${profile.provider}.`,
+    `- full_script must be ${runtimeWordRange(profile)} cleaned spoken words for a 61-75 second Short.`,
+    `- Aim for ${runtimeAimRange(profile)} words so the voice does not land too short or scrape the ceiling.`,
+    "- Do not pad with vague channel strategy, repeated claims or internal Pulse language.",
+    `- ${legacyNote}`,
+  ].join("\n");
+}
+
 function validate(script, channelId, options = {}) {
   const errors = [];
   const actualWords = countSpokenWords(cleanForTTS(script.full_script || ""));
@@ -520,8 +592,10 @@ function validate(script, channelId, options = {}) {
   );
   errors.push(...coherenceQa.failures);
   if (channelId === "pulse-gaming") {
+    const runtimeProfile = resolvePulseRuntimeProfile(options);
     const runtime = classifyShortScriptRuntime({
       text: cleanForTTS(script.full_script || ""),
+      secondsPerWord: runtimeProfile.secondsPerWord,
     });
     if (runtime.result === "fail") {
       const reason =
@@ -533,12 +607,12 @@ function validate(script, channelId, options = {}) {
     const maxAllowedWords =
       runtime.result === "review" && runtime.route === "extended_or_briefing"
         ? runtime.reviewMaxWords
-        : DEFAULT_MAX_WORDS;
+        : runtime.maxWords;
     const wordRangeLabel =
-      maxAllowedWords > DEFAULT_MAX_WORDS ? "Flash/Extended Short" : "Flash Lane";
-    if (actualWords < DEFAULT_MIN_WORDS || actualWords > maxAllowedWords) {
+      maxAllowedWords > runtime.maxWords ? "Flash/Extended Short" : "Flash Lane";
+    if (actualWords < runtime.minWords || actualWords > maxAllowedWords) {
       errors.push(
-        `Actual spoken word count ${actualWords} outside ${DEFAULT_MIN_WORDS}-${maxAllowedWords} ${wordRangeLabel} range`,
+        `Actual spoken word count ${actualWords} outside ${runtime.minWords}-${maxAllowedWords} ${wordRangeLabel} range`,
       );
     }
   } else if (script.word_count < 155 || script.word_count > 185) {
@@ -687,17 +761,18 @@ Reply with ONLY a JSON object: { "score": N, "reason": "one sentence" }`,
  * for compliance, authority and natural language flow.
  * Only runs on scripts that passed the quality gate (score >= 7).
  */
-function editorWordCountInstruction(channel) {
+function editorWordCountInstruction(channel, options = {}) {
   if (channel?.id === "pulse-gaming") {
+    const runtimeProfile = resolvePulseRuntimeProfile(options);
     return (
       `7) Keep the exact same classification tag and keep full_script within ` +
-      `${DEFAULT_MIN_WORDS}-${DEFAULT_MAX_WORDS} cleaned spoken words. Do not expand it.`
+      `${runtimeWordRange(runtimeProfile)} cleaned spoken words. Do not expand it beyond that active provider budget.`
     );
   }
   return "7) Keep the exact same classification tag and word count range (155-185).";
 }
 
-async function sonnetEditorPass(client, script, channel, story = {}) {
+async function sonnetEditorPass(client, script, channel, story = {}, options = {}) {
   try {
     const isFinance = channel.id === "stacked";
     const complianceRules = isFinance
@@ -715,7 +790,7 @@ ${complianceRules}
 4) If the hook is weak, rewrite it using the Curiosity Gap technique.
 5) Ensure sentence lengths vary (mix short 3-8 word punches with 15-25 word details).
 6) Remove em dashes. Replace with commas or full stops.
-${editorWordCountInstruction(channel)}
+${editorWordCountInstruction(channel, options)}
 
 Reply with ONLY the edited JSON object in the same format as the input. No explanation.`,
       messages: [
@@ -737,13 +812,18 @@ Reply with ONLY the edited JSON object in the same format as the input. No expla
     }
 
     edited.word_count = countSpokenWords(cleanForTTS(edited.full_script || ""));
-    const errors = validate(edited, channel.id, { story });
+    const runtimeProfile = resolvePulseRuntimeProfile(options);
+    const errors = validate(edited, channel.id, {
+      story,
+      ttsProvider: runtimeProfile.provider,
+      secondsPerWord: runtimeProfile.secondsPerWord,
+    });
     if (errors.length > 0) {
       throw new Error(`editor_validation_failed:${errors.join("; ")}`);
     }
     const lint = lintScript(edited.full_script || "", {
-      minWords: DEFAULT_MIN_WORDS,
-      maxWords: Math.max(DEFAULT_MAX_WORDS, DEFAULT_MIN_WORDS),
+      minWords: runtimeProfile.minWords,
+      maxWords: runtimeProfile.maxWords,
     });
     if (lint.result === "fail") {
       throw new Error(`editor_lint_failed:${lint.failures.join("; ")}`);
@@ -802,6 +882,55 @@ function buildScriptValidationReview(story = {}, channel = {}, errors = []) {
     script_validation_errors: safeErrors,
     channel_id: channel.id || story.channel_id,
   };
+}
+
+function buildValidationRetryFeedback(errors = [], options = {}) {
+  const safeErrors = (Array.isArray(errors) ? errors : [errors])
+    .filter(Boolean)
+    .map((error) => String(error))
+    .slice(0, 8);
+  if (safeErrors.length === 0) return "";
+  const runtimeProfile = resolvePulseRuntimeProfile(options);
+
+  const lines = [
+    "VALIDATION REWRITE BRIEF:",
+    `- Rewrite full_script as ${runtimeWordRange(runtimeProfile)} cleaned spoken words. Aim for ${runtimeAimRange(runtimeProfile)} words, not the edge of the range.`,
+    "- Use one clear story arc: hook, named source, what happened, concrete player consequence, exact CTA.",
+    "- Do not repeat the same claim in different wording.",
+    "- Do not mention Pulse except the exact final CTA.",
+    "- Do not write internal strategy language such as signal, safe read, safe takeaway, direction of travel or tracking confirmation.",
+    "- Do not use generic hype such as community is buzzing, changes everything, nobody saw this coming or here is where it gets interesting.",
+    "- If the source is thin, write a smaller, honest script instead of padding.",
+    "Validation failures to fix:",
+  ];
+
+  for (const error of safeErrors) {
+    lines.push(`  - ${error}`);
+    if (/Actual spoken word count \d+ outside/i.test(error)) {
+      lines.push(
+        "    Fix: adjust length with source-backed facts only. Add or remove concrete details, not filler.",
+      );
+    }
+    if (/missing_exact_cta_in_script|cta_not_exact/i.test(error)) {
+      lines.push(
+        "    Fix: end full_script with exactly: Follow Pulse Gaming so you never miss a beat.",
+      );
+    }
+    if (/vague_filler|internal_pulse|abstract_signal|community_is_buzzing/i.test(
+      error,
+    )) {
+      lines.push(
+        "    Fix: replace vague channel-strategy phrasing with the named source, number, platform, price, release window or player impact.",
+      );
+    }
+    if (/repeated_sentence|repeated_phrase/i.test(error)) {
+      lines.push(
+        "    Fix: each sentence must add a new fact or consequence. Do not restate the hook.",
+      );
+    }
+  }
+
+  return lines.join("\n");
 }
 
 // --- Clean script text for TTS (strip markers) ---
@@ -906,6 +1035,12 @@ async function process_stories(options = {}) {
 
   const channel = getChannel();
   console.log(`[processor] Active channel: ${channel.name} (${channel.niche})`);
+  const runtimeProfile = resolvePulseRuntimeProfile();
+  if (channel.id === "pulse-gaming") {
+    console.log(
+      `[processor] Active Pulse runtime: ${runtimeProfile.provider} ${runtimeWordRange(runtimeProfile)} words (aim ${runtimeAimRange(runtimeProfile)})`,
+    );
+  }
 
   // Use channel's system prompt, fall back to file for backwards compatibility
   const baseSystemPrompt =
@@ -955,6 +1090,7 @@ async function process_stories(options = {}) {
     const systemPrompt =
       baseSystemPrompt +
       analyticsSection +
+      buildPulseRuntimePromptInstruction(channel, runtimeProfile) +
       `\n\nCRITICAL: DATE AND FACT-CHECKING RULES:
 Today's date is ${today}. You MUST follow these rules:
 1. NEVER reference dates in the past as if they are in the future.
@@ -984,6 +1120,7 @@ Today's date is ${today}. You MUST follow these rules:
     let qualityScore = null;
     let attempts = 0;
     let lintRetryFeedback = "";
+    let validationRetryFeedback = "";
 
     const scriptAttemptLimit =
       Number.isFinite(Number(maxScriptAttempts)) && Number(maxScriptAttempts) > 0
@@ -996,13 +1133,16 @@ Today's date is ${today}. You MUST follow these rules:
         let extra = "";
         if (attempts === 2) {
           extra =
-            `\n\nIMPORTANT: Your previous script failed validation. Ensure the actual full_script is ${DEFAULT_MIN_WORDS}-${DEFAULT_MAX_WORDS} spoken words for a 61-75 second Short. Keep hook under 18 words. Include a classification tag. Do not start the hook with So, Today, Hey, Welcome or In this. Avoid advertiser-risk terms such as killed, murder, suicide, terrorist, massacre, genocide or slaughter.`;
+            `\n\nIMPORTANT: Your previous script failed validation. Ensure the actual full_script is ${runtimeWordRange(runtimeProfile)} spoken words for a 61-75 second Short using the active ${runtimeProfile.provider} voice path. Aim for ${runtimeAimRange(runtimeProfile)} words. Keep hook under 18 words. Include a classification tag. Do not start the hook with So, Today, Hey, Welcome or In this. Avoid advertiser-risk terms such as killed, murder, suicide, terrorist, massacre, genocide or slaughter.`;
         } else if (attempts === 3) {
           extra =
-            `\n\nFINAL ATTEMPT: Produce a ${Math.round((DEFAULT_MIN_WORDS + DEFAULT_MAX_WORDS) / 2)}-word script. Hook must be one concrete sentence under 18 words. Use named people/companies and concrete outcomes. Include a classification tag and CTA. This is your last chance.`;
+            `\n\nFINAL ATTEMPT: Produce a ${Math.round((runtimeProfile.aimMin + runtimeProfile.aimMax) / 2)}-word script. Hook must be one concrete sentence under 18 words. Use named people/companies and concrete outcomes. Include a classification tag and CTA. This is your last chance.`;
         }
         if (lintRetryFeedback) {
           extra += `\n\n${lintRetryFeedback}`;
+        }
+        if (validationRetryFeedback) {
+          extra += `\n\n${validationRetryFeedback}`;
         }
 
         const response = await client.messages.create({
@@ -1033,7 +1173,11 @@ Today's date is ${today}. You MUST follow these rules:
         sanitiseScript(script);
         script.word_count = countSpokenWords(cleanForTTS(script.full_script || ""));
 
-        const errors = validate(script, channel.id, { story });
+        const errors = validate(script, channel.id, {
+          story,
+          ttsProvider: runtimeProfile.provider,
+          secondsPerWord: runtimeProfile.secondsPerWord,
+        });
         if (errors.length > 0) {
           console.log(
             `[processor] Validation failed (attempt ${attempts}): ${errors.join(", ")}`,
@@ -1046,6 +1190,10 @@ Today's date is ${today}. You MUST follow these rules:
             qualityScore = 0;
             break;
           } else {
+            validationRetryFeedback = buildValidationRetryFeedback(
+              errors,
+              runtimeProfile,
+            );
             script = null;
             continue;
           }
@@ -1056,8 +1204,8 @@ Today's date is ${today}. You MUST follow these rules:
         }
 
         const lint = lintScript(script.full_script || "", {
-          minWords: DEFAULT_MIN_WORDS,
-          maxWords: Math.max(DEFAULT_MAX_WORDS, DEFAULT_MIN_WORDS),
+          minWords: runtimeProfile.minWords,
+          maxWords: runtimeProfile.maxWords,
         });
         if (lint.result === "fail") {
           console.log(
@@ -1107,7 +1255,13 @@ Today's date is ${today}. You MUST follow these rules:
 
         // Sonnet editor pass - polish high-scoring scripts with a stronger model
         if (script && qualityScore >= 7 && !skipEditorPass) {
-          script = await sonnetEditorPass(client, script, channel, story);
+          script = await sonnetEditorPass(
+            client,
+            script,
+            channel,
+            story,
+            runtimeProfile,
+          );
           // Re-strip em dashes after editor pass
           for (const key of [
             "hook",
@@ -1228,6 +1382,7 @@ module.exports = process_stories;
 module.exports.validate = validate;
 module.exports.editorWordCountInstruction = editorWordCountInstruction;
 module.exports.buildScriptValidationReview = buildScriptValidationReview;
+module.exports.buildValidationRetryFeedback = buildValidationRetryFeedback;
 module.exports.cleanForTTS = cleanForTTS;
 module.exports.parseLlmJsonObject = parseLlmJsonObject;
 module.exports.sanitiseScript = sanitiseScript;

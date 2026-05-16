@@ -13,6 +13,7 @@ const {
   selectLocalLlmFetchFailureStories,
   selectReprocessableScriptFailureStories,
 } = require("../../lib/ops/script-failure-reprocess");
+const { isPersistableScriptReady } = require("../../tools/reprocess-script-failures");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 
@@ -220,6 +221,57 @@ test("classifyReprocessedStory separates script-ready from still-review rows", (
   );
 });
 
+test("isPersistableScriptReady prevents apply-local from writing review placeholders", () => {
+  const readyScript = `${Array.from(
+    { length: 175 },
+    (_, i) => `subnautica_fact_${i + 1}`,
+  ).join(" ")} Follow Pulse Gaming so you never miss a beat.`;
+
+  assert.equal(
+    isPersistableScriptReady({
+      script_generation_status: "review_required",
+      full_script: "",
+      word_count: 0,
+    }),
+    false,
+  );
+  assert.equal(
+    isPersistableScriptReady({
+      script_generation_status: "script_ready",
+      full_script: readyScript,
+      cta: "Follow Pulse Gaming so you never miss a beat.",
+      word_count: 184,
+    }),
+    true,
+  );
+  assert.equal(
+    isPersistableScriptReady({
+      script_generation_status: "script_ready",
+      full_script: "   ",
+      word_count: 0,
+    }),
+    false,
+  );
+  assert.equal(
+    isPersistableScriptReady({
+      script_generation_status: "script_ready",
+      full_script: "Nintendo confirmed a useful update today.",
+      cta: "Follow Pulse Gaming so you never miss a beat.",
+      word_count: 6,
+    }),
+    false,
+  );
+  assert.equal(
+    isPersistableScriptReady({
+      script_generation_status: "script_ready",
+      full_script: `${"The community is buzzing about this update. ".repeat(25)}Follow Pulse Gaming so you never miss a beat.`,
+      cta: "Follow Pulse Gaming so you never miss a beat.",
+      word_count: 184,
+    }),
+    false,
+  );
+});
+
 test("buildScriptFailureReprocessReport is safe by default", () => {
   const report = buildScriptFailureReprocessReport({
     candidates: [{ id: "retry" }],
@@ -270,6 +322,10 @@ test("ops:reprocess-script-failures command is registered and dry-run first", ()
   assert.match(tool, /skipEditorPass/);
   assert.match(tool, /for \(const candidate of candidates\)/);
   assert.match(tool, /postDiscord: false/);
+  assert.match(tool, /persist: false/);
+  assert.match(tool, /isPersistableScriptReady/);
+  assert.match(tool, /db\.upsertStory\(row\)/);
+  assert.match(tool, /reprocess_persist_skip_reason = "not_script_ready"/);
   assert.match(tool, /backupFileName/);
   assert.match(tool, /db\.getDb\(\)\.backup/);
 });

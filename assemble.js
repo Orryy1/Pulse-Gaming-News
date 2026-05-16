@@ -45,6 +45,14 @@ const MUSIC_VOLUME = 0.08; // 8% volume - quieter background
 const MAX_IMAGES = 8; // More images = more visual variety in 60s+ videos
 const FFMPEG_THREADS = 2; // Limit FFmpeg threads to stay within container memory
 const LEGACY_XFADE_DURATION = 0.5;
+const LEGACY_OVERLAY_LAYOUT = Object.freeze({
+  topLeftX: 40,
+  flairY: 60,
+  sourceY: 130,
+  commentY: 300,
+  commentLineChars: 30,
+  maxCommentLines: 4,
+});
 
 /**
  * Generates a 15-second teaser cut from the full video.
@@ -1123,6 +1131,40 @@ function sanitizeDrawtext(text, maxLen) {
   return clean;
 }
 
+function wrapDrawtextLines(text, options = {}) {
+  const maxChars = Math.max(12, Number(options.maxChars) || 30);
+  const maxLines = Math.max(1, Number(options.maxLines) || 4);
+  const words = String(text || "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .flatMap((word) => {
+      if (word.length <= maxChars) return [word];
+      const chunks = [];
+      for (let i = 0; i < word.length; i += maxChars) {
+        chunks.push(word.slice(i, i + maxChars));
+      }
+      return chunks;
+    });
+
+  const lines = [];
+  let current = "";
+  for (const word of words) {
+    if ((current + " " + word).trim().length > maxChars && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = current ? current + " " + word : word;
+    }
+  }
+  if (current) lines.push(current);
+  if (lines.length <= maxLines) return lines;
+
+  const kept = lines.slice(0, maxLines);
+  const suffix = "...";
+  kept[maxLines - 1] = `${kept[maxLines - 1].slice(0, Math.max(0, maxChars - suffix.length)).trimEnd()}${suffix}`;
+  return kept;
+}
+
 // --- Classification badge colour ---
 function getFlairColor(classification) {
   return brand.classificationColour(classification).ffm;
@@ -1572,13 +1614,13 @@ function buildVideoCommand(
   // Flair badge - top left with coloured pill
   chain.push(
     `drawtext=text='  ${flair}  ':${fontOpt}:fontcolor=white:fontsize=38:` +
-      `box=1:boxcolor=${flairColor}@0.85:boxborderw=14:x=40:y=60`,
+      `box=1:boxcolor=${flairColor}@0.85:boxborderw=14:x=${LEGACY_OVERLAY_LAYOUT.topLeftX}:y=${LEGACY_OVERLAY_LAYOUT.flairY}`,
   );
 
   // Source badge - below flair pill with visible gap
   chain.push(
     `drawtext=text='  ${source}  ':${fontOpt}:fontcolor=white@0.85:fontsize=26:` +
-      `box=1:boxcolor=${brand.MUTED_FFM}@0.6:boxborderw=8:x=40:y=130`,
+      `box=1:boxcolor=${brand.MUTED_FFM}@0.6:boxborderw=8:x=${LEGACY_OVERLAY_LAYOUT.topLeftX}:y=${LEGACY_OVERLAY_LAYOUT.sourceY}`,
   );
 
   // Brand bar removed - intro/outro cards handle branding
@@ -1650,8 +1692,9 @@ function buildVideoCommand(
     const startTime = Math.floor(duration * 0.15);
     const fadeDur = 0.4;
 
-    // Y position: below the flair badge + source card with a safe gap.
-    const yBase = 260;
+    // Y position: below the flair/source stack with enough room for
+    // short source labels and clip attribution to avoid top-left collisions.
+    const yBase = LEGACY_OVERLAY_LAYOUT.commentY;
 
     comments.slice(0, count).forEach((comment, ci) => {
       const text = sanitizeDrawtext(comment.body, 500);
@@ -1667,19 +1710,12 @@ function buildVideoCommand(
       const slideX = `if(lt(t-${ct}\\,${fadeDur})\\,(-20+60*(t-${ct})/${fadeDur})\\,40)`;
       const enableExpr = `between(t\\,${ct}\\,${ct + showDur})`;
 
-      // Word wrap into lines of ~30 chars - show ALL lines, no truncation
-      const words = text.split(" ");
-      const lines = [];
-      let current = "";
-      for (const word of words) {
-        if ((current + " " + word).length > 30 && current) {
-          lines.push(current);
-          current = word;
-        } else {
-          current = current ? current + " " + word : word;
-        }
-      }
-      if (current) lines.push(current);
+      // Keep quote cards bounded so long comments never spill off-frame
+      // or cover subtitles; the story itself carries full context.
+      const lines = wrapDrawtextLines(text, {
+        maxChars: LEGACY_OVERLAY_LAYOUT.commentLineChars,
+        maxLines: LEGACY_OVERLAY_LAYOUT.maxCommentLines,
+      });
 
       // Username + score header with fade + slide
       const upvotes = score > 0 ? `  ${score} pts` : "";
@@ -2481,12 +2517,12 @@ async function assemble() {
         // Flair badge - moved higher
         fbChain.push(
           `drawtext=text='  ${flair}  ':${fontOpt}:fontcolor=white:fontsize=38:` +
-            `box=1:boxcolor=${flairColor}@0.85:boxborderw=14:x=40:y=60`,
+            `box=1:boxcolor=${flairColor}@0.85:boxborderw=14:x=${LEGACY_OVERLAY_LAYOUT.topLeftX}:y=${LEGACY_OVERLAY_LAYOUT.flairY}`,
         );
         // Source badge - below flair with visible gap
         fbChain.push(
           `drawtext=text='  ${source}  ':${fontOpt}:fontcolor=white@0.85:fontsize=26:` +
-            `box=1:boxcolor=${brand.MUTED_FFM}@0.6:boxborderw=8:x=40:y=130`,
+            `box=1:boxcolor=${brand.MUTED_FFM}@0.6:boxborderw=8:x=${LEGACY_OVERLAY_LAYOUT.topLeftX}:y=${LEGACY_OVERLAY_LAYOUT.sourceY}`,
         );
         // Brand bar removed - intro/outro cards handle branding
 
@@ -2530,7 +2566,7 @@ async function assemble() {
           const gapBetween = 2;
           const totalPerComment = showDur + gapBetween;
           const startTime = Math.floor(duration * 0.15);
-          const yBase = 260;
+          const yBase = LEGACY_OVERLAY_LAYOUT.commentY;
 
           comments.slice(0, count).forEach((comment, ci) => {
             const text = sanitizeDrawtext(comment.body, 500);
@@ -2544,18 +2580,10 @@ async function assemble() {
             const slideX = `if(lt(t-${ct}\\,${fadeDur})\\,(-20+60*(t-${ct})/${fadeDur})\\,40)`;
             const enableExpr = `between(t\\,${ct}\\,${ct + showDur})`;
 
-            const words = text.split(" ");
-            const lines = [];
-            let current = "";
-            for (const word of words) {
-              if ((current + " " + word).length > 30 && current) {
-                lines.push(current);
-                current = word;
-              } else {
-                current = current ? current + " " + word : word;
-              }
-            }
-            if (current) lines.push(current);
+            const lines = wrapDrawtextLines(text, {
+              maxChars: LEGACY_OVERLAY_LAYOUT.commentLineChars,
+              maxLines: LEGACY_OVERLAY_LAYOUT.maxCommentLines,
+            });
 
             const upvotes = score > 0 ? `  ${score} pts` : "";
             fbChain.push(
@@ -2700,6 +2728,8 @@ async function assemble() {
 
 module.exports = assemble;
 module.exports.sanitizeDrawtext = sanitizeDrawtext;
+module.exports.wrapDrawtextLines = wrapDrawtextLines;
+module.exports.LEGACY_OVERLAY_LAYOUT = LEGACY_OVERLAY_LAYOUT;
 module.exports.decodeHtmlEntities = decodeHtmlEntities;
 module.exports.asciiFallback = asciiFallback;
 module.exports.makeFootageAttributionText = makeFootageAttributionText;

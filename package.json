@@ -36,6 +36,7 @@
     "studio:v2:standard-overlay": "node tools/standard-short-creator-overlay.js",
     "studio:v2:proof-candidates": "node tools/studio-v2-proof-candidates.js",
     "studio:v2:promotion-packet": "node tools/studio-v2-promotion-packet.js",
+    "studio:v2:pilot-readiness": "node tools/studio-v2-pilot-readiness-gate.js",
     "studio:v2:motion-gap": "node tools/studio-v2-motion-gap.js",
     "studio:v2:alternate-sources": "node tools/alternate-official-source-handoff.js",
     "studio:v2:flash-state": "node tools/flash-lane-current-state.js",
@@ -124,6 +125,7 @@
     "studio:creator-grade": "node tools/studio-creator-grade.js",
     "tts:doctor": "node tools/local-tts-doctor.js",
     "tts:smoke": "node tools/local-tts-smoke.js",
+    "tts:proof-promoter": "node tools/local-tts-proof-promoter.js",
     "tts:overnight-report": "node tools/local-tts-overnight-report.js"
   },
   "keywords": [],

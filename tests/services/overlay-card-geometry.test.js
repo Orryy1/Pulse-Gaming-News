@@ -10,6 +10,7 @@ const { buildSourceCardFilter } = require("../../lib/scenes/source-card");
 const { buildQuoteBodyLayout } = require("../../lib/scenes/quote-card");
 const { deriveCardContent } = require("../../lib/studio/v2/hf-card-builders");
 const { wrapQuoteLines } = require("../../lib/studio/v2/quote-fit");
+const { LEGACY_OVERLAY_LAYOUT } = require("../../assemble");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const FONT_OPT = "font='Arial'";
@@ -33,12 +34,21 @@ test("PRL comment card starts below top-left label safe area", () => {
 
 test("legacy assemble render paths keep comment cards below top-left labels", () => {
   const src = fs.readFileSync(path.join(ROOT, "assemble.js"), "utf8");
-  const yBases = yValuesFor(/const yBase = (\d+);/g, src).filter((value) =>
-    [220, 230, 240, 250, 260].includes(value),
+
+  assert.equal(LEGACY_OVERLAY_LAYOUT.commentY, 300);
+  assert.ok(
+    LEGACY_OVERLAY_LAYOUT.commentY >= LEGACY_OVERLAY_LAYOUT.sourceY + 150,
+    `comment cards should clear source label, got ${JSON.stringify(LEGACY_OVERLAY_LAYOUT)}`,
   );
 
-  assert.equal(yBases.length, 2, `expected main and fallback yBase, got ${yBases}`);
-  assert.deepEqual(yBases, [260, 260]);
+  const yBaseReferences = [
+    ...src.matchAll(/const yBase = LEGACY_OVERLAY_LAYOUT\.commentY;/g),
+  ];
+  assert.equal(
+    yBaseReferences.length,
+    2,
+    "main and fallback paths should both use the shared safe overlay layout",
+  );
 });
 
 test("standard source cards scale long source labels instead of clipping them", () => {

@@ -174,6 +174,26 @@ test("script coherence blocks vague sources on general Reddit rows", () => {
   );
 });
 
+test("script coherence does not let generated wording turn community Reddit into news", () => {
+  const qa = runScriptCoherenceQa(
+    {
+      title: "Had a PS5 for years and someone just pointed this out to me.",
+      source_type: "reddit",
+      subreddit: "PS5",
+      cta: "Follow Pulse Gaming so you never miss a beat",
+      full_script:
+        "According to a Reddit post, Sony just confirmed a hidden PlayStation 5 feature that most players missed. The discovery proves the console still has buried quality-of-life updates years after launch. Follow Pulse Gaming so you never miss a beat.",
+    },
+    { requireCtaField: true, requireFullScriptCta: true },
+  );
+
+  assert.equal(qa.result, "fail");
+  assert.ok(
+    qa.failures.includes("script_coherence:general_reddit_thread_as_news"),
+    qa.failures.join(", "),
+  );
+});
+
 test("script coherence blocks verified Reddit posts and Redditors as factual sources", () => {
   const qa = runScriptCoherenceQa(
     {

@@ -238,6 +238,18 @@ test("classifyReprocessedStory separates script-ready from still-review rows", (
   });
   assert.deepEqual(
     classifyReprocessedStory({
+      full_script: "A generated script that still failed persistence.",
+      word_count: 8,
+      reprocess_persisted: false,
+      reprocess_persist_skip_reason: "not_script_ready",
+    }),
+    {
+      status: "still_review",
+      reason: "not_script_ready",
+    },
+  );
+  assert.deepEqual(
+    classifyReprocessedStory({
       script_generation_status: "review_required",
       script_review_reason: "Hook too long",
     }),

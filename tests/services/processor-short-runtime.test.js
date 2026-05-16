@@ -154,6 +154,46 @@ test("processor validate: rejects scripts where exact CTA is metadata-only", () 
   );
 });
 
+test("processor ensurePulseExactCta appends exact spoken CTA and strips promo clutter", () => {
+  const item = script(190);
+  item.cta = "Following Pulse Gaming so you never misses a beat.";
+  item.full_script =
+    "Forza Horizon 6 hit a concrete Steam record today. Don’t miss out on the latest gaming news and breaking revelations.";
+
+  processor.ensurePulseExactCta(item, "pulse-gaming");
+
+  assert.equal(item.cta, EXACT_CTA);
+  assert.equal(
+    item.full_script,
+    "Forza Horizon 6 hit a concrete Steam record today. Follow Pulse Gaming so you never miss a beat.",
+  );
+  assert.deepEqual(
+    processor.validate(
+      {
+        ...script(190),
+        cta: item.cta,
+        full_script: `${words(181)} ${item.cta}`,
+        word_count: 190,
+      },
+      "pulse-gaming",
+      { ttsProvider: "local" },
+    ),
+    [],
+  );
+});
+
+test("processor ensurePulseExactCta leaves non-Pulse channels alone", () => {
+  const item = {
+    cta: "Subscribe for the next market briefing.",
+    full_script: "Stocks moved after the latest earnings call.",
+  };
+
+  processor.ensurePulseExactCta(item, "stacked");
+
+  assert.equal(item.cta, "Subscribe for the next market briefing.");
+  assert.equal(item.full_script, "Stocks moved after the latest earnings call.");
+});
+
 test("processor sanitiseScript tightens an overlong hook before validation", () => {
   const item = script(100);
   item.hook =

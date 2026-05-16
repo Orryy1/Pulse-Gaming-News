@@ -4,6 +4,7 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
+  repeatedNumericClaims,
   runScriptCoherenceQa,
 } = require("../../lib/script-coherence-qa");
 
@@ -344,4 +345,56 @@ test("script coherence blocks false bill ownership and mangled campaign names", 
     ),
     qa.failures.join(", "),
   );
+});
+
+test("script coherence blocks generic launch padding and unsupported invented details", () => {
+  const qa = runScriptCoherenceQa(
+    {
+      title:
+        "Forza Horizon 6 immediately beats its predecessor's all-time Steam record with 130,000 concurrent players",
+      source_type: "reddit",
+      subreddit: "pcgaming",
+      article_url: "https://www.gamesradar.com/forza-horizon-6-steam-record",
+      cta: "Follow Pulse Gaming so you never miss a beat",
+      full_script:
+        "Forza Horizon 6 hit 130,000 concurrent players on Steam. According to GamesRadar+, Forza Horizon 6 reached 130,000 concurrent players through early access. This represents a significant increase compared with Forza Horizon 5, exceeding projections by a substantial margin. Initial reports suggest server load and minor performance issues, however Playground Games are actively monitoring the situation and deploying fixes. Over 130,000 gamers simultaneously enjoyed the new open-world maps and vehicles. The future of the Forza Horizon franchise looks brighter than ever. Don’t miss out on the latest gaming news and breaking revelations. Follow Pulse Gaming so you never miss a beat.",
+    },
+    { requireCtaField: true, requireFullScriptCta: true },
+  );
+
+  assert.equal(qa.result, "fail");
+  assert.ok(
+    qa.failures.includes("script_coherence:unsupported_projection_claim"),
+    qa.failures.join(", "),
+  );
+  assert.ok(
+    qa.failures.includes("script_coherence:unsupported_live_ops_claim"),
+    qa.failures.join(", "),
+  );
+  assert.ok(
+    qa.failures.includes("script_coherence:vague_filler:generic_hype_closer"),
+    qa.failures.join(", "),
+  );
+  assert.ok(
+    qa.failures.includes("script_coherence:vague_filler:pre_cta_channel_promo"),
+    qa.failures.join(", "),
+  );
+  assert.ok(
+    qa.failures.some((failure) =>
+      failure.startsWith("script_coherence:repeated_numeric_claim:130,000"),
+    ),
+    qa.failures.join(", "),
+  );
+});
+
+test("repeatedNumericClaims ignores normal one-or-two-use statistics", () => {
+  assert.deepEqual(
+    repeatedNumericClaims(
+      "Subnautica 2 sold 1 million copies and hit 460,000 players. That 1 million figure is the story.",
+    ),
+    [],
+  );
+  assert.deepEqual(repeatedNumericClaims("130,000 players. 130,000 players. 130,000 players."), [
+    { claim: "130,000", count: 3 },
+  ]);
 });

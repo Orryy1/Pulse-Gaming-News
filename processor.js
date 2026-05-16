@@ -73,6 +73,12 @@ const FINANCE_RED_FLAGS = [
   "can't lose",
 ];
 
+const PULSE_EXACT_CTA = "Follow Pulse Gaming so you never miss a beat.";
+const PULSE_CTA_ENDING_RE =
+  /(?:[\s,.!?:;]*(?:don[’']?t miss out on (?:the )?latest gaming news[^.!?]*[.!?]\s*)?(?:follow(?:ing)?\s+pulse\s+gaming\s+so\s+you\s+never\s+miss(?:es)?\s+a\s+beat\.?))+$/i;
+const PULSE_PRE_CTA_PROMO_ENDING_RE =
+  /[\s,.!?:;]*don[’']?t miss out on (?:the )?latest gaming news[^.!?]*[.!?]?$/i;
+
 // British English enforcement map - common Americanisms Claude defaults to
 const BRITISH_SPELLING = {
   summarize: "summarise",
@@ -722,6 +728,27 @@ function sanitiseScript(script) {
   return script;
 }
 
+function ensurePulseExactCta(script = {}, channelId = "pulse-gaming") {
+  if (channelId !== "pulse-gaming" || !script || typeof script !== "object") {
+    return script;
+  }
+
+  script.cta = PULSE_EXACT_CTA;
+  const fullScript = normaliseScriptPunctuation(String(script.full_script || "")).trim();
+  if (!fullScript) return script;
+
+  const base =
+    fullScript
+      .replace(PULSE_CTA_ENDING_RE, "")
+      .replace(PULSE_PRE_CTA_PROMO_ENDING_RE, "")
+      .trim() || fullScript;
+  const separator = /[.!?]$/.test(base) ? " " : ". ";
+  script.full_script = `${base}${separator}${PULSE_EXACT_CTA}`
+    .replace(/\s+/g, " ")
+    .trim();
+  return script;
+}
+
 // --- Quality gate: score script 1-10 via second LLM call ---
 async function scoreScript(client, script, story, channel) {
   try {
@@ -1171,6 +1198,7 @@ Today's date is ${today}. You MUST follow these rules:
 
         // Post-generation sanitisation: fix banned openers + British English
         sanitiseScript(script);
+        ensurePulseExactCta(script, channel.id);
         script.word_count = countSpokenWords(cleanForTTS(script.full_script || ""));
 
         const errors = validate(script, channel.id, {
@@ -1386,6 +1414,7 @@ module.exports.buildValidationRetryFeedback = buildValidationRetryFeedback;
 module.exports.cleanForTTS = cleanForTTS;
 module.exports.parseLlmJsonObject = parseLlmJsonObject;
 module.exports.sanitiseScript = sanitiseScript;
+module.exports.ensurePulseExactCta = ensurePulseExactCta;
 
 if (require.main === module) {
   process_stories().catch((err) => {

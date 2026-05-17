@@ -2,7 +2,7 @@
 
 This is a read-only synthesis report for Studio V2 pilot readiness.
 
-Generated: 2026-05-16T10:45:57.151Z
+Generated: 2026-05-17T12:40:33.236Z
 Story: `1t0zhng`
 Title: LEGO Batman: Legacy of the Dark Knight PC specs revealed
 

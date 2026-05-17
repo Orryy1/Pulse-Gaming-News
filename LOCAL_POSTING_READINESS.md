@@ -1,6 +1,6 @@
 # Local Posting Readiness
 
-Generated: 2026-05-17T12:50:53.759Z
+Generated: 2026-05-17T13:11:43.756Z
 Verdict: GREEN
 Status: ready_to_resume_local_posting
 Safety: read-only report; does not edit .env, start primary jobs, post, mutate DB, touch Railway or trigger OAuth

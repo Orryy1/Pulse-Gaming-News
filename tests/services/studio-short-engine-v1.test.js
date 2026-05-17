@@ -227,6 +227,34 @@ test("sound layer preserves repaired segment timing provenance when merging loca
   }
 });
 
+test("sound layer offsets merged local voice alignments by native segment pauses", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-sound-gap-"));
+  const first = path.join(tmp, "first.mp3");
+  const second = path.join(tmp, "second.mp3");
+  await fs.writeFile(first, Buffer.from("not real mp3"));
+  await fs.writeFile(second, Buffer.from("not real mp3"));
+  await fs.writeJson(path.join(tmp, "first_timestamps.json"), {
+    characters: ["A"],
+    character_start_times_seconds: [0],
+    character_end_times_seconds: [0.2],
+  });
+  await fs.writeJson(path.join(tmp, "second_timestamps.json"), {
+    characters: ["B"],
+    character_start_times_seconds: [0],
+    character_end_times_seconds: [0.2],
+  });
+
+  try {
+    const merged = await sound.mergeSegmentAlignments([first, second], {
+      interSegmentGapS: 0.75,
+    });
+    assert.deepEqual(merged.characters, ["A", " ", "B"]);
+    assert.equal(Number(merged.character_start_times_seconds[2].toFixed(2)), 0.75);
+  } finally {
+    await fs.remove(tmp).catch(() => {});
+  }
+});
+
 test("studio editorial strips internal retention labels while keeping the question", () => {
   const result = editorial.buildStudioEditorial({
     title: "Forza Horizon 6 hits 130,000 concurrent players on Steam",

@@ -287,6 +287,34 @@ test("Flash Lane footage backbone caps repeated use of the same trailer source",
   assert.equal(report.filtered_source_overuse_clip_refs, frames.length - sharedUseCount);
 });
 
+test("Flash Lane footage backbone prefers distant validated windows over clustered near-duplicates", () => {
+  const sharedSource = "https://video.example/forza.m3u8";
+  const report = buildFlashLaneFootageBackboneReport({
+    storyId: "story-1",
+    targetRuntimeS: 66,
+    frameReport: frameReport([
+      frame({ entity: "Forza Horizon 6", source: sharedSource, seconds: 44 }),
+      frame({ entity: "Forza Horizon 6", source: sharedSource, seconds: 54 }),
+      frame({ entity: "Forza Horizon 6", source: sharedSource, seconds: 82 }),
+    ]),
+    segmentValidationReport: {
+      segments: [
+        segment({ entity: "Forza Horizon 6", source: sharedSource, start: 36, actionScore: 79 }),
+        segment({ entity: "Forza Horizon 6", source: sharedSource, start: 54, actionScore: 73.4 }),
+        segment({ entity: "Forza Horizon 6", source: sharedSource, start: 52, actionScore: 73.2 }),
+        segment({ entity: "Forza Horizon 6", source: sharedSource, start: 50, actionScore: 72.4 }),
+        segment({ entity: "Forza Horizon 6", source: sharedSource, start: 82, actionScore: 72.2 }),
+      ],
+    },
+  });
+
+  const starts = report.validated_clip_refs.map((ref) => ref.mediaStartS).sort((a, b) => a - b);
+  assert.equal(starts.length, 3);
+  assert.ok(starts.includes(36));
+  assert.ok(starts.includes(82));
+  assert.ok(starts.every((start, index) => index === 0 || start - starts[index - 1] >= 4));
+});
+
 test("Flash Lane footage backbone allows a fourth clip per source when source-diverse frames carry the gap", () => {
   const sources = [
     "https://video.example/marathon-a.m3u8",

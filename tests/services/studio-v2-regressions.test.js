@@ -22,6 +22,7 @@ const {
   ACCEPTED_LOCAL_VOICE_ID,
   evaluateLocalVoicePace,
   resolveAcceptedLocalVoiceReference,
+  resolveLocalInterSegmentPauseS,
   resolveLocalTtsEngine,
   resolveStudioOutroLine,
   splitLongVoiceSegments,
@@ -1192,6 +1193,29 @@ test("studio local voice path defaults to natural VoxCPM pacing", () => {
   ]);
 });
 
+test("studio local voice path inserts native-rate pauses to reach creator rewards runtime", () => {
+  const gap = resolveLocalInterSegmentPauseS({
+    provider: "local",
+    segmentDurations: [3.36, 10.24, 7.68, 10.4, 5.44, 6.08, 8.8, 2.56],
+    env: {
+      STUDIO_V2_LOCAL_TTS_TARGET_DURATION_S: "61.2",
+      STUDIO_V2_LOCAL_TTS_MAX_INTERSEGMENT_PAUSE_S: "0.95",
+    },
+  });
+
+  assert.equal(gap, 0.949);
+});
+
+test("studio local voice path does not add artificial pauses when native runtime is already long", () => {
+  const gap = resolveLocalInterSegmentPauseS({
+    provider: "local",
+    segmentDurations: [20, 22, 21],
+    env: { STUDIO_V2_LOCAL_TTS_TARGET_DURATION_S: "61.2" },
+  });
+
+  assert.equal(gap, 0);
+});
+
 test("studio local voice path keeps Chatterbox away from VoxCPM stretch settings", () => {
   const scaled = applyLocalVoiceRateMultiplier(
     [
@@ -1262,6 +1286,12 @@ test("studio local voice signature fingerprints accepted Sleepy Liam reference",
   });
   assert.deepEqual(signature.acceptedLocalVoice, reference);
   assert.equal(signature.localEngine, "voxcpm2");
+  assert.deepEqual(signature.naturalInterSegmentPause, {
+    version: 1,
+    targetDurationS: 61.2,
+    maxPauseS: 0.95,
+    method: "concat_inserted_silence_between_native_rate_segments",
+  });
 
   const changed = buildProductionVoiceSignature({
     provider: "local",

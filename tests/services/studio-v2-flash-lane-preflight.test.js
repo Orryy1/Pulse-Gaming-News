@@ -353,6 +353,42 @@ test("Flash Lane proof readiness is render-ready with overlay beats and motion d
   assert.equal(summary.distinctSceneBeats, 8);
 });
 
+test("Flash Lane proof readiness treats strict frame-supported motion as render-ready note", () => {
+  const overlayPlan = {
+    timeline: [
+      { kind: "beat_chip", label: "STEAM SPIKE" },
+      { kind: "beat_chip", label: "EARLY ACCESS" },
+    ],
+  };
+  const scenes = [
+    clipScene(1),
+    clipScene(2),
+    clipScene(3),
+    ...Array.from({ length: 8 }, (_, index) => ({
+      type: "clip.frame",
+      source: `frame-${index}.jpg`,
+    })),
+    cardScene(1),
+  ];
+  const report = buildFlashLaneProofPreflight({
+    narration: { ...providedNarration, durationS: 61.4 },
+    scriptWordCount: 155,
+    scenes,
+    media: {
+      clips: [{ path: "a.mp4" }, { path: "b.mp4" }, { path: "c.mp4" }],
+      trailerFrames: Array.from({ length: 8 }, (_, index) => ({ path: `frame-${index}.jpg` })),
+    },
+    overlayPlan,
+  });
+  const summary = buildFlashLaneProofReadinessSummary({ preflight: report, overlayPlan });
+
+  assert.ok(report.warnings.includes("flash_lane_clip_dominance_supported_by_trailer_frames"));
+  assert.equal(summary.verdict, "render_ready");
+  assert.equal(summary.statusColour, "green");
+  assert.deepEqual(summary.warnings, []);
+  assert.ok(summary.notes.includes("flash_lane_clip_dominance_supported_by_trailer_frames"));
+});
+
 test("Flash Lane proof readiness is blocked when preflight has blockers", () => {
   const report = buildFlashLaneProofPreflight({
     narration: providedNarration,

@@ -905,13 +905,30 @@ function clearAudioGenerationState(story) {
 }
 
 // --- Concatenate multiple MP3 files via ffmpeg ---
-async function concatAudioFiles(files, outputPath) {
+async function concatAudioFiles(files, outputPath, options = {}) {
   // Resolve through media-paths so the list file + output land
   // next to the segment mp3s the caller wrote via generateTTS
   // (which now lives under MEDIA_ROOT in production).
   const outputAbs = mediaPaths.writePath(outputPath);
   const listAbs = outputAbs.replace(/\.mp3$/, "_concat.txt");
-  const listContent = files.map((f) => `file '${path.basename(f)}'`).join("\n");
+  const gapS = Number(options.interSegmentGapS || options.gapS || 0);
+  let silenceAbs = null;
+  if (Number.isFinite(gapS) && gapS > 0.001 && files.length > 1) {
+    const gapMs = Math.round(gapS * 1000);
+    silenceAbs = outputAbs.replace(/\.mp3$/i, `_silence_${gapMs}ms.mp3`);
+    await execAsync(
+      `ffmpeg -y -hide_banner -loglevel error -f lavfi -i anullsrc=r=44100:cl=mono -t ${gapS.toFixed(3)} -q:a 9 -acodec libmp3lame "${silenceAbs.replace(/\\/g, "/")}"`,
+      { timeout: 30000 },
+    );
+  }
+  const listEntries = [];
+  files.forEach((f, index) => {
+    listEntries.push(`file '${path.basename(f)}'`);
+    if (silenceAbs && index < files.length - 1) {
+      listEntries.push(`file '${path.basename(silenceAbs)}'`);
+    }
+  });
+  const listContent = listEntries.join("\n");
   await fs.writeFile(listAbs, listContent);
   try {
     await execAsync(
@@ -920,6 +937,7 @@ async function concatAudioFiles(files, outputPath) {
     );
   } finally {
     await fs.remove(listAbs).catch(() => {});
+    if (silenceAbs) await fs.remove(silenceAbs).catch(() => {});
   }
 }
 

@@ -119,6 +119,120 @@ function hasSpokenOutro(text) {
     .includes("follow pulse gaming so you never miss a beat");
 }
 
+const ONES = [
+  "zero",
+  "one",
+  "two",
+  "three",
+  "four",
+  "five",
+  "six",
+  "seven",
+  "eight",
+  "nine",
+  "ten",
+  "eleven",
+  "twelve",
+  "thirteen",
+  "fourteen",
+  "fifteen",
+  "sixteen",
+  "seventeen",
+  "eighteen",
+  "nineteen",
+];
+
+const TENS = [
+  "",
+  "",
+  "twenty",
+  "thirty",
+  "forty",
+  "fifty",
+  "sixty",
+  "seventy",
+  "eighty",
+  "ninety",
+];
+
+function belowHundredToWords(value) {
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < 0 || number >= 100) return String(value);
+  if (number < 20) return ONES[number];
+  const ten = Math.floor(number / 10);
+  const ones = number % 10;
+  return ones ? `${TENS[ten]} ${ONES[ones]}` : TENS[ten];
+}
+
+function belowThousandToWords(value) {
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < 0 || number >= 1000) return String(value);
+  if (number < 100) return belowHundredToWords(number);
+  const hundreds = Math.floor(number / 100);
+  const remainder = number % 100;
+  if (remainder === 0) return `${ONES[hundreds]} hundred`;
+  return `${ONES[hundreds]} hundred and ${belowHundredToWords(remainder)}`;
+}
+
+function integerToSpokenWords(value) {
+  const number = Number(value);
+  if (!Number.isSafeInteger(number) || number < 0 || number > 999999999) {
+    return String(value);
+  }
+  if (number < 1000) return belowThousandToWords(number);
+
+  const scales = [
+    { value: 1000000, label: "million" },
+    { value: 1000, label: "thousand" },
+  ];
+  let remainder = number;
+  const parts = [];
+  for (const scale of scales) {
+    const count = Math.floor(remainder / scale.value);
+    if (count > 0) {
+      parts.push(`${integerToSpokenWords(count)} ${scale.label}`);
+      remainder %= scale.value;
+    }
+  }
+  if (remainder > 0) {
+    parts.push(`${remainder < 100 ? "and " : ""}${belowThousandToWords(remainder)}`);
+  }
+  return parts.join(" ");
+}
+
+function expandCommaFormattedNumbers(text) {
+  return String(text || "").replace(/\b\d{1,3}(?:,\d{3})+\b/g, (match) => {
+    const number = Number(match.replace(/,/g, ""));
+    return Number.isSafeInteger(number) ? integerToSpokenWords(number) : match;
+  });
+}
+
+function normaliseSentenceDedupeKey(sentence) {
+  return normaliseText(sentence || "")
+    .toLowerCase()
+    .replace(/[\u2018\u2019']/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function collapseAdjacentDuplicateSentences(text) {
+  const cleanText = String(text || "").replace(/\s+/g, " ").trim();
+  if (!cleanText) return "";
+
+  const chunks = cleanText.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [cleanText];
+  const deduped = [];
+  let previousKey = "";
+  for (const rawChunk of chunks) {
+    const chunk = rawChunk.trim();
+    if (!chunk) continue;
+    const key = normaliseSentenceDedupeKey(chunk);
+    if (key && key === previousKey) continue;
+    deduped.push(chunk);
+    previousKey = key;
+  }
+  return deduped.join(" ").replace(/\s+/g, " ").trim();
+}
+
 function buildTtsAlignmentMeta({
   existingMeta = {},
   provider,
@@ -215,8 +329,7 @@ function cleanForTTS(raw) {
   // text (e.g. so the abbreviation-stripper doesn't trip on "Triple A").
   const normalised = normaliseText(raw || "");
   const pre = applyGamingPronunciation(normalised);
-  return (
-    pre
+  const cleaned = pre
       // 2026-04-19 fix (precedes the other transforms): paragraph /
       // line separators (U+2028, U+2029) must become real spaces BEFORE
       // the invisible-unicode stripper runs, otherwise the stripper
@@ -279,6 +392,12 @@ function cleanForTTS(raw) {
         (_, whole, cents) => `${whole} euros ${parseInt(cents)}`,
       )
       .replace(/€(\d+)/g, (_, n) => `${n} euros`)
+      // Comma-formatted large numbers: "130,000" -> "one hundred and
+      // thirty thousand". This avoids voice engines reading the comma
+      // shape oddly while leaving years and small sequel numbers alone.
+      .replace(/\b\d{1,3}(?:,\d{3})+\b/g, (match) =>
+        expandCommaFormattedNumbers(match),
+      )
       // Years
       .replace(/(\d{4})/g, (match) => {
         const y = parseInt(match);
@@ -316,8 +435,8 @@ function cleanForTTS(raw) {
       .replace(/\.\s*\./g, ".")
       .replace(/\.\s*,/g, ",")
       .replace(/,\s*,/g, ",")
-      .trim()
-  );
+      .trim();
+  return collapseAdjacentDuplicateSentences(cleaned);
 }
 
 function assertBrandNameQaForTts(story, fields) {
@@ -371,7 +490,20 @@ function selectRawTtsScript(story) {
   return ensureSpokenOutro(preferred);
 }
 
-const SPOKEN_OUTRO = "Follow Pulse Gaming so you never miss a beat.";
+const SPOKEN_OUTRO_TEXT = "Follow Pulse Gaming so you never miss a beat";
+const SPOKEN_OUTRO = `${SPOKEN_OUTRO_TEXT}.`;
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function stripTerminalSpokenOutros(script) {
+  const outroRe = new RegExp(
+    `(?:\\s*${escapeRegExp(SPOKEN_OUTRO_TEXT)}\\.?\\s*)+$`,
+    "i",
+  );
+  return String(script || "").replace(outroRe, "").trim();
+}
 
 function wordCount(text) {
   return String(text || "")
@@ -381,28 +513,22 @@ function wordCount(text) {
 }
 
 function insertBeforeSpokenOutro(script, insertion) {
-  const cleanScript = String(script || "").trim();
-  const cleanInsertion = String(insertion || "").trim();
+  const cleanScript = collapseAdjacentDuplicateSentences(String(script || "").trim());
+  const cleanInsertion = collapseAdjacentDuplicateSentences(
+    String(insertion || "").trim(),
+  );
   if (!cleanScript) return cleanInsertion ? ensureSpokenOutro(cleanInsertion) : SPOKEN_OUTRO;
   if (!cleanInsertion) return ensureSpokenOutro(cleanScript);
 
-  const outroRe = /\s*Follow Pulse Gaming so you never miss a beat\.?\s*$/i;
-  if (outroRe.test(cleanScript)) {
-    const withoutOutro = cleanScript.replace(outroRe, "").trim();
-    return `${withoutOutro} ${cleanInsertion} ${SPOKEN_OUTRO}`.replace(/\s+/g, " ").trim();
-  }
-
-  return `${cleanScript} ${cleanInsertion} ${SPOKEN_OUTRO}`
-    .replace(/\s+/g, " ")
-    .trim();
+  const withoutOutro = stripTerminalSpokenOutros(cleanScript);
+  return ensureSpokenOutro(`${withoutOutro} ${cleanInsertion}`.trim());
 }
 
 function ensureSpokenOutro(script) {
-  const cleanScript = String(script || "").trim();
-  if (!cleanScript) return SPOKEN_OUTRO;
-  const outroRe = /Follow Pulse Gaming so you never miss a beat\.?\s*$/i;
-  if (outroRe.test(cleanScript)) return cleanScript;
-  return `${cleanScript} ${SPOKEN_OUTRO}`.replace(/\s+/g, " ").trim();
+  const cleanScript = collapseAdjacentDuplicateSentences(String(script || "").trim());
+  const withoutTerminalOutros = stripTerminalSpokenOutros(cleanScript);
+  if (!withoutTerminalOutros) return SPOKEN_OUTRO;
+  return `${withoutTerminalOutros} ${SPOKEN_OUTRO}`.replace(/\s+/g, " ").trim();
 }
 
 function buildDeterministicDurationPadding(story, { attempt = 1 } = {}) {

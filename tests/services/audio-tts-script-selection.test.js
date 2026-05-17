@@ -4,6 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
+  cleanForTTS,
   ensureSpokenOutro,
   selectRawTtsScript,
   resolveTtsTimeoutMs,
@@ -53,6 +54,47 @@ test("selectRawTtsScript: restores the required spoken outro for source scripts 
   assert.equal(
     selectRawTtsScript(story),
     "Subnautica 2 just passed a million sales. Follow Pulse Gaming so you never miss a beat.",
+  );
+});
+
+test("selectRawTtsScript: removes adjacent duplicate opener and duplicate spoken outro", () => {
+  const opener = "Forza Horizon 6 just put up a ridiculous Steam number.";
+  const story = {
+    id: "forza-steam-record",
+    tts_script:
+      `${opener} ${opener} GamesRadar reports the early access launch hit a new Steam peak. ` +
+      "Follow Pulse Gaming so you never miss a beat. Follow Pulse Gaming so you never miss a beat.",
+  };
+
+  const selected = selectRawTtsScript(story);
+
+  assert.equal(
+    (selected.match(/Forza Horizon 6 just put up a ridiculous Steam number/g) || []).length,
+    1,
+  );
+  assert.equal(
+    (selected.match(/Follow Pulse Gaming so you never miss a beat/g) || []).length,
+    1,
+  );
+  assert.equal(
+    selected,
+    `${opener} GamesRadar reports the early access launch hit a new Steam peak. Follow Pulse Gaming so you never miss a beat.`,
+  );
+});
+
+test("ensureSpokenOutro: collapses repeated terminal CTAs to exactly one", () => {
+  assert.equal(
+    ensureSpokenOutro(
+      "A clean gaming update. Follow Pulse Gaming so you never miss a beat. Follow Pulse Gaming so you never miss a beat.",
+    ),
+    "A clean gaming update. Follow Pulse Gaming so you never miss a beat.",
+  );
+});
+
+test("cleanForTTS: expands comma-formatted large numbers for clearer narration", () => {
+  assert.equal(
+    cleanForTTS("Forza Horizon 6 hit 130,000 concurrent players on Steam."),
+    "Forza Horizon 6 hit one hundred and thirty thousand concurrent players on Steam.",
   );
 });
 

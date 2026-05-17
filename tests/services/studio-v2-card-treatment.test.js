@@ -127,7 +127,8 @@ test("Flash Lane clip badges use compact fading creator chips", () => {
   assert.match(filter, /OFFICIAL CLIP/);
   assert.match(filter, /GTA/);
   assert.match(filter, /box=1:boxcolor=black@0\.46/);
-  assert.match(filter, /alpha='if\(lt\(t\\,0\.12\)/);
+  assert.match(filter, /enable='between\(t\\,0\.12\\,2\.56\)'/);
+  assert.doesNotMatch(filter, /text='OFFICIAL CLIP'[^,]*alpha=/);
   assert.doesNotMatch(filter, /drawbox=x=52:y=108:w=420:h=74/);
 });
 
@@ -246,6 +247,8 @@ test("Flash Lane takeaway card stays bright and does not duplicate the exact spo
   assert.match(filter, /PULSE GAMING/);
   assert.doesNotMatch(filter, /FOLLOW PULSE GAMING SO YOU NEVER MISS A BEAT/);
   assert.match(filter, /eq=brightness=-0\.08:saturation=1\.08:contrast=1\.14/);
+  assert.match(filter, /drawbox=x=310:y=h\/2\+70:w='if\(lt\(t\\,0\.72\)/);
+  assert.doesNotMatch(filter, /drawbox=x=118:y=h\/2-178:w=844:h=356:color=black@0\.34/);
   assert.doesNotMatch(filter, /drawbox=x=0:y=0:w=iw:h=400:color=black@0\.55/);
   assert.doesNotMatch(filter, /drawbox=x=0:y=h-500:w=iw:h=500:color=black@0\.55/);
   assert.doesNotMatch(filter, /drawbox=[^,]*:alpha=/);

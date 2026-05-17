@@ -16,7 +16,7 @@ const FRAME = { width: 1080, height: 1920 };
 
 function numericExpression(value, frame = FRAME) {
   if (/^\d+$/.test(value)) return Number(value);
-  const widthOffset = value.match(/^w-(\d+)$/);
+  const widthOffset = value.match(/^(?:w|iw)-(\d+)$/);
   if (widthOffset) return frame.width - Number(widthOffset[1]);
   const heightOffset = value.match(/^h-(\d+)$/);
   if (heightOffset) return frame.height - Number(heightOffset[1]);
@@ -167,7 +167,7 @@ test("Flash Lane chip anchors fit inside a 1080x1920 frame", () => {
   }
 });
 
-test("Flash Lane upper-right chips use computed chip width in FFmpeg x expression", () => {
+test("Flash Lane upper-right chips use video-width drawbox coordinates", () => {
   const plan = {
     timeline: [
       {
@@ -187,8 +187,10 @@ test("Flash Lane upper-right chips use computed chip width in FFmpeg x expressio
     fontOpt: FONT_OPT,
   }).join(";");
 
-  assert.match(filters, /drawbox=x=w-470:y=128:w=470:h=72/);
-  assert.doesNotMatch(filters, /drawbox=x=w-420:y=128:w=470:h=72/);
+  assert.match(filters, /drawbox=x=iw-470:y=128:w=470:h=72/);
+  assert.match(filters, /drawtext=text='SOURCE'[^,]+x=w-tw-28:y=128\+11/);
+  assert.doesNotMatch(filters, /drawbox=x=w-470:y=128:w=470:h=72/);
+  assert.doesNotMatch(filters, /drawbox=x=iw-420:y=128:w=470:h=72/);
 });
 
 test("Flash Lane upper-left chips reserve space below source-card safe zone", () => {

@@ -27,7 +27,8 @@ test("visual scenes get compact entity popups in the lower hook-safe badge lane"
   assert.match(filter, /BIOSHOCK/);
   assert.match(filter, /OFFICIAL FRAME/);
   assert.match(filter, /box=1:boxcolor=black@0\.46/);
-  assert.match(filter, /alpha='if\(lt\(t\\,0\.12\)/);
+  assert.match(filter, /enable='between\(t\\,0\.12\\,2\.56\)'/);
+  assert.doesNotMatch(filter, /text='OFFICIAL FRAME'[^,]*alpha=/);
   assert.doesNotMatch(filter, /text='OFFICIAL FRAME'[^,]*:x=74:y=104/);
   assert.doesNotMatch(filter, /text='BIOSHOCK'[^,]*:x=74:y=158/);
   assert.match(filter, /text='OFFICIAL FRAME'[^,]*:x=74:y=250/);
@@ -53,6 +54,28 @@ test("opener hook overlay is compact and avoids the old full-width top slab", ()
   assert.doesNotMatch(filter, /h=172:color=black@0\.86/);
   assert.match(filter, /w=760:h=118:color=black@0\.58/);
   assert.match(filter, /GTA/);
+});
+
+test("opener visual hook uses a metric headline instead of duplicating spoken Steam hook", () => {
+  const filter = dispatchSceneFilter({
+    slot: 0,
+    fontOpt: "fontfile=Arial",
+    story: {
+      hook: "Forza Horizon 6 just put up a ridiculous Steam number.",
+      title: "Forza Horizon 6 hit 130,000 concurrent players on Steam",
+    },
+    scene: {
+      type: SCENE_TYPES.OPENER,
+      duration: 4,
+      source: "forza-trailer.m3u8",
+      isClipBacked: true,
+      entity: "Forza Horizon 6",
+      sourceType: "steam_movie",
+    },
+  });
+
+  assert.match(filter, /130\\,000 ON STEAM/);
+  assert.doesNotMatch(filter, /JUST PUT UP A RIDICULOUS STEAM/);
 });
 
 test("opener entity badge sits below the hook safe area", () => {

@@ -522,6 +522,12 @@ test("Flash Lane voice workbench generated local candidate can carry approved Sl
     referencePresent: true,
     referenceHash,
   });
+  const sidecar = JSON.parse(fs.readFileSync(result.candidate.timestampsPath, "utf8"));
+  assert.equal(sidecar.meta.provider, "local");
+  assert.equal(sidecar.meta.source, "local-production-voxcpm-path");
+  assert.equal(sidecar.meta.approvedLocalVoice, true);
+  assert.deepEqual(sidecar.meta.acceptedLocalVoice, result.candidate.acceptedLocalVoice);
+  assert.match(sidecar.meta.transcript, /Follow Pulse Gaming/);
 });
 
 test("Flash Lane voice workbench refuses local generation outside test/output", async () => {

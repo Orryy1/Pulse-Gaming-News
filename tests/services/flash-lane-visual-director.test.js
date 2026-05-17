@@ -12,9 +12,10 @@ function clip(label, source, mediaStartS = 30) {
   return { type: "clip", label, source, mediaStartS, duration: 4.2 };
 }
 
-function validatedClip(label, source, mediaStartS, originalStartS = mediaStartS) {
+function validatedClip(label, source, mediaStartS, originalStartS = mediaStartS, type = "clip") {
   return {
     ...clip(label, source, mediaStartS),
+    type,
     clipTimingProvenance: {
       clip_start_policy: "validated_segment_window",
       segment_original_start_s: originalStartS,
@@ -130,10 +131,17 @@ test("Flash Lane Visual Director allows four clip scenes per source when a 60s p
 
 test("Flash Lane Visual Director treats validated windows from one official trailer as distinct reusable clip refs", () => {
   const source = "forza-official.m3u8";
+  const treatments = ["clip", "punch", "speed-ramp"];
   const scenes = [
-    ...Array.from({ length: 3 }, (_, index) => validatedClip(`w36_${index}`, source, 36.7, 36)),
-    ...Array.from({ length: 3 }, (_, index) => validatedClip(`w54_${index}`, source, 54.7, 54)),
-    ...Array.from({ length: 3 }, (_, index) => validatedClip(`w84_${index}`, source, 84, 84)),
+    ...Array.from({ length: 3 }, (_, index) =>
+      validatedClip(`w36_${index}`, source, 36.7, 36, treatments[index]),
+    ),
+    ...Array.from({ length: 3 }, (_, index) =>
+      validatedClip(`w54_${index}`, source, 54.7, 54, treatments[index]),
+    ),
+    ...Array.from({ length: 3 }, (_, index) =>
+      validatedClip(`w84_${index}`, source, 84, 84, treatments[index]),
+    ),
     { type: "clip.frame", label: "frame_a", source: "frame-a.jpg", duration: 4.2 },
     { type: "still", label: "still_a", source: "forza-a.jpg", sourceType: "steam_screenshot", duration: 4.2 },
     card("card_context"),

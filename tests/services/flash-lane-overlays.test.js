@@ -301,6 +301,36 @@ test("Flash Lane overlay plan adds story-specific beat chips for multi-game myst
   assert.ok(plan.timeline.some((item) => item.kind === "micro_takeaway" && item.label === "NO DATE YET"));
 });
 
+test("Flash Lane overlay plan does not call excluded Game Pass audiences a freebie", () => {
+  const plan = buildFlashLaneOverlayPlan({
+    story: {
+      title:
+        "Forza Horizon 6 beats the all-time Steam record with 130,000 concurrent players",
+      source_type: "reddit",
+      subreddit: "pcgaming",
+      top_comment: "we all wanna go to japan bruh",
+      full_script:
+        "GamesRadar reports Forza Horizon 6 hit 130,000 concurrent players on Steam during early access. It does not count Xbox, Game Pass or Microsoft Store players, so the real audience could be bigger.",
+    },
+    scenes: [
+      { type: SCENE_TYPES.OPENER, isClipBacked: true, entity: "Forza Horizon 6", duration: 4 },
+      { type: SCENE_TYPES.CLIP, entity: "Forza Horizon 6", duration: 4 },
+    ],
+    durationS: 58,
+  });
+
+  const labels = plan.timeline.map((item) => item.label);
+  assert.equal(labels.includes("FREEBIE ALERT"), false);
+  assert.equal(labels.includes("NUMBERS DOWN"), false);
+  assert.ok(labels.includes("STEAM PEAK"));
+  assert.ok(labels.includes("EARLY ACCESS"));
+  assert.ok(plan.timeline.some((item) => item.kind === "source_chip" && item.label === "GAMESRADAR"));
+  assert.ok(plan.timeline.some((item) => item.kind === "hook_chip" && item.label === "HARD NUMBERS"));
+  assert.equal(plan.comment_overlay.allowed, false);
+  assert.equal(plan.comment_overlay.source_type, "stat_led_story");
+  assert.equal(plan.timeline.some((item) => item.kind === "comment_chip"), false);
+});
+
 test("Flash Lane overlay plan keeps creator chip labels mobile-safe and non-repeating", () => {
   const plan = buildFlashLaneOverlayPlan({
     story: {

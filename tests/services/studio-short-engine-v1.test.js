@@ -176,6 +176,63 @@ test("sound layer preserves repaired segment timing provenance when merging loca
   }
 });
 
+test("studio editorial strips internal retention labels while keeping the question", () => {
+  const result = editorial.buildStudioEditorial({
+    title: "Forza Horizon 6 hits 130,000 concurrent players on Steam",
+    hook: "Forza Horizon 6 just put up a ridiculous Steam number.",
+    full_script:
+      "Forza Horizon 6 just put up a ridiculous Steam number. GamesRadar reports the early-access launch hit 130,000 concurrent players on Steam. RETENTION: do players stay once the novelty settles, or is this just launch-week heat?",
+  });
+
+  assert.doesNotMatch(result.scriptForCaption, /\bRETENTION\s*:/i);
+  assert.match(result.scriptForCaption, /Do players stay/i);
+  assert.match(result.scriptForTTS, /one hundred and thirty thousand/i);
+  assert.match(result.scriptForCaption, /130,000/);
+});
+
+test("Flash Lane composer keeps Steam-stat stories off generic trailer cards", () => {
+  const media = {
+    clips: [
+      { path: "forza-trailer-a.mp4", sourceType: "steam_movie", entity: "Forza Horizon 6", durationS: 2.5, mediaStartS: 36 },
+      { path: "forza-trailer-b.mp4", sourceType: "steam_movie", entity: "Forza Horizon 6", durationS: 2.5, mediaStartS: 54 },
+    ],
+    articleHeroes: [
+      { path: "forza-still-1.jpg", sourceType: "steam_screenshot", entity: "Forza Horizon 6" },
+      { path: "forza-still-2.jpg", sourceType: "steam_screenshot", entity: "Forza Horizon 6" },
+      { path: "forza-still-3.jpg", sourceType: "steam_screenshot", entity: "Forza Horizon 6" },
+    ],
+  };
+  const result = composeStudioSlate({
+    story: {
+      title:
+        "Forza Horizon 6 immediately beats its predecessor's all-time Steam record with 130,000 concurrent players",
+      body:
+        "GamesRadar reports the early-access launch hit 130,000 concurrent players on Steam. It does not count Xbox, Game Pass or Microsoft Store players.",
+      source_type: "rss",
+      publisher: "GamesRadar",
+      top_comment: "we all wanna go to japan bruh",
+    },
+    media,
+    audioDurationS: 58,
+    opts: {
+      flashLane: true,
+      sourceCardMode: "overlay",
+      takeawayText: "PULSE GAMING",
+      cta: "DAILY GAMING NEWS",
+    },
+  });
+
+  const timeline = result.scenes.find((scene) => scene.label === "card_timeline");
+  const labels = result.scenes.map((scene) => scene.dateLabel || scene.text || scene.statLabel || scene.heading);
+  const cardRatio = result.metrics.cardCount / result.metrics.totalScenes;
+
+  assert.equal(timeline.heading, "FORZA HORIZON 6");
+  assert.equal(labels.includes("TRAILER ONLY"), false);
+  assert.equal(labels.includes("NO DATE YET"), false);
+  assert.equal(result.scenes.some((scene) => scene.type === SCENE_TYPES.CARD_QUOTE), false);
+  assert.ok(cardRatio <= 0.35, String(cardRatio));
+});
+
 test("studio composer uses an editorial card instead of repeating a still", () => {
   const mediaPlan = {
     clips: [

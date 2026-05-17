@@ -23,6 +23,7 @@ const {
   buildIssues,
   compareForensicReports,
   buildComparisonMarkdown,
+  transcriptTextFromReport,
 } = require("../../lib/studio/v2/forensic-qa-v2");
 
 function tempFile(contents, fileName = "captions.ass") {
@@ -73,6 +74,17 @@ test("analyseSubtitleTimeline warns on long caption blackout and overrun", () =>
   assert.equal(result.verdict, "warn");
   assert.equal(result.gapsOver2s.length, 1);
   assert.equal(result.overrunS, 0.5);
+});
+
+test("forensic transcript lookup reads still-deck voice transcript metadata", () => {
+  const transcript = transcriptTextFromReport({
+    voice: {
+      transcript:
+        "Forza Horizon 6 hit 130,000 concurrent players on Steam. Follow Pulse Gaming so you never miss a beat.",
+    },
+  });
+
+  assert.match(transcript, /130,000 concurrent players/);
 });
 
 test("analyseSubtitleTimeline fails near-zero, overlapping and non-monotonic ASS cues", () => {

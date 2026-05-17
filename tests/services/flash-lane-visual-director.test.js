@@ -12,6 +12,18 @@ function clip(label, source, mediaStartS = 30) {
   return { type: "clip", label, source, mediaStartS, duration: 4.2 };
 }
 
+function validatedClip(label, source, mediaStartS, originalStartS = mediaStartS) {
+  return {
+    ...clip(label, source, mediaStartS),
+    clipTimingProvenance: {
+      clip_start_policy: "validated_segment_window",
+      segment_original_start_s: originalStartS,
+      segment_validated: true,
+      allowed_for_flash_lane: true,
+    },
+  };
+}
+
 function card(label = "card_context") {
   return { type: "card.stat", label, duration: 4.2 };
 }
@@ -114,6 +126,40 @@ test("Flash Lane Visual Director allows four clip scenes per source when a 60s p
   assert.equal(report.thresholds.maxClipScenesPerSource, 4);
   assert.equal(report.metrics.maxClipScenesPerSource, 4);
   assert.equal(report.metrics.maxAllowedClipScenesPerSource, 4);
+});
+
+test("Flash Lane Visual Director treats validated windows from one official trailer as distinct reusable clip refs", () => {
+  const source = "forza-official.m3u8";
+  const scenes = [
+    ...Array.from({ length: 3 }, (_, index) => validatedClip(`w36_${index}`, source, 36.7, 36)),
+    ...Array.from({ length: 3 }, (_, index) => validatedClip(`w54_${index}`, source, 54.7, 54)),
+    ...Array.from({ length: 3 }, (_, index) => validatedClip(`w84_${index}`, source, 84, 84)),
+    { type: "clip.frame", label: "frame_a", source: "frame-a.jpg", duration: 4.2 },
+    { type: "still", label: "still_a", source: "forza-a.jpg", sourceType: "steam_screenshot", duration: 4.2 },
+    card("card_context"),
+  ];
+  const report = buildFlashLaneVisualDirector({
+    scenes,
+    media: {
+      clips: [
+        {
+          path: source,
+          provenance: {
+            requires_segment_validation: true,
+            segment_validated: true,
+            allowed_for_flash_lane: true,
+            segment_quality_score: 91,
+          },
+        },
+      ],
+    },
+    narrationDurationS: 64,
+  });
+
+  assert.equal(report.verdict, "allow");
+  assert.equal(report.metrics.uniqueClipSources, 3);
+  assert.equal(report.metrics.maxClipScenesPerSource, 3);
+  assert.equal(report.metrics.overusedClipSources.length, 0);
 });
 
 test("Flash Lane Visual Director blocks rating and age-slate frames even after the intro window", () => {

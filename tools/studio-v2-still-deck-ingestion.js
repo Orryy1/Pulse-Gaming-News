@@ -46,6 +46,9 @@ const {
   buildVisualV3OverlayFilter,
   buildVisualV3OverlayPlan,
 } = require("../lib/studio/v2/visual-v3-overlays");
+const {
+  applyPremiumCardLaneV2,
+} = require("../lib/studio/v2/premium-card-lane-v2");
 const { buildStudioEditorial } = require("../lib/studio/editorial-layer");
 const {
   cleanForTTS,
@@ -390,6 +393,24 @@ function countWords(text) {
   return cleanInlineText(text).split(/\s+/).filter(Boolean).length;
 }
 
+function inferVoiceMastering({ explicit, acoustic } = {}) {
+  if (explicit) return explicit;
+  const integratedLufs = Number(acoustic?.integratedLufs);
+  const truePeakDb = Number(acoustic?.truePeakDb);
+  const loudnessOk =
+    Number.isFinite(integratedLufs) && integratedLufs >= -18 && integratedLufs <= -14;
+  const peakOk = Number.isFinite(truePeakDb) && truePeakDb <= -1 && truePeakDb >= -4;
+  if (!loudnessOk || !peakOk) return null;
+  return {
+    ok: true,
+    code: "voice_mastered",
+    targetLufs: -16,
+    truePeak: truePeakDb,
+    source: "local_acoustic_probe",
+    acoustic,
+  };
+}
+
 function selectProofHook({ editorialHook, story }) {
   const editorial = cleanInlineText(editorialHook);
   const original = cleanInlineText(story.hook || story.title);
@@ -478,6 +499,11 @@ async function resolveNarration({
     const acoustic =
       meta?.meta?.acoustic ||
       (suppliedLocalTts ? probeLocalAudioAcoustics(resolvedAudioPath) : null);
+    const explicitVoiceMastering =
+      meta?.meta?.voiceMastering ||
+      meta?.meta?.voice_mastering ||
+      meta?.meta?.mastering ||
+      null;
     return {
       mode: "real_audio",
       audioPath: resolvedAudioPath,
@@ -489,11 +515,7 @@ async function resolveNarration({
       approvedLocalVoice: meta?.meta?.approvedLocalVoice === true,
       acceptedLocalVoice: meta?.meta?.acceptedLocalVoice || null,
       acoustic,
-      voiceMastering:
-        meta?.meta?.voiceMastering ||
-        meta?.meta?.voice_mastering ||
-        meta?.meta?.mastering ||
-        null,
+      voiceMastering: inferVoiceMastering({ explicit: explicitVoiceMastering, acoustic }),
       voiceDiagnostics: meta?.meta?.voiceDiagnostics || null,
       displayText:
         meta?.meta?.displayText ||
@@ -523,6 +545,12 @@ async function resolveNarration({
       force: process.env.STUDIO_V2_FORCE_TTS === "true",
     });
     const meta = await fs.readJson(voice.timestampsPath).catch(() => null);
+    const acoustic = meta?.meta?.acoustic || probeLocalAudioAcoustics(voice.audioPath);
+    const explicitVoiceMastering =
+      meta?.meta?.voiceMastering ||
+      meta?.meta?.voice_mastering ||
+      meta?.meta?.mastering ||
+      null;
     return {
       mode: "real_audio",
       audioPath: voice.audioPath,
@@ -533,12 +561,8 @@ async function resolveNarration({
       signatureHash: voice.signatureHash || meta?.meta?.signatureHash || null,
       approvedLocalVoice: meta?.meta?.approvedLocalVoice === true,
       acceptedLocalVoice: meta?.meta?.acceptedLocalVoice || null,
-      acoustic: meta?.meta?.acoustic || null,
-      voiceMastering:
-        meta?.meta?.voiceMastering ||
-        meta?.meta?.voice_mastering ||
-        meta?.meta?.mastering ||
-        null,
+      acoustic,
+      voiceMastering: inferVoiceMastering({ explicit: explicitVoiceMastering, acoustic }),
       voiceDiagnostics: meta?.meta?.voiceDiagnostics || null,
       displayText:
         meta?.meta?.displayText ||
@@ -673,8 +697,8 @@ async function buildFlashLaneRenderPreflight({
       allowStockFiller: false,
       flashLane: true,
       sourceCardMode: "overlay",
-      takeawayText: "FOLLOW PULSE GAMING",
-      cta: "NEVER MISS A BEAT",
+      takeawayText: "PULSE GAMING",
+      cta: "DAILY GAMING NEWS",
     },
   });
   let scenes = composed.scenes.length
@@ -703,6 +727,12 @@ async function buildFlashLaneRenderPreflight({
     words,
     totalDurationS: initialDurationS,
   });
+  scenes = applyPremiumCardLaneV2({
+    scenes,
+    story: renderStory,
+    root: ROOT,
+    channelId: process.env.CHANNEL || renderStory.channel_id || "pulse-gaming",
+  }).scenes;
   const durationS = sumDurations(scenes) || targetDurationS;
   const overlayPlan = buildFlashLaneOverlayPlan({ story: renderStory, scenes, durationS });
   const report = buildFlashLaneProofPreflight({
@@ -767,8 +797,8 @@ async function renderStillDeckVariant({
       allowStockFiller: false,
       flashLane: variant === "enriched",
       sourceCardMode: variant === "enriched" ? "overlay" : "scene",
-      takeawayText: "FOLLOW PULSE GAMING",
-      cta: "NEVER MISS A BEAT",
+      takeawayText: "PULSE GAMING",
+      cta: "DAILY GAMING NEWS",
     },
   });
   let scenes = composed.scenes.length
@@ -801,6 +831,12 @@ async function renderStillDeckVariant({
     words,
     totalDurationS: initialDurationS,
   });
+  scenes = applyPremiumCardLaneV2({
+    scenes,
+    story: renderStory,
+    root: ROOT,
+    channelId: process.env.CHANNEL || renderStory.channel_id || "pulse-gaming",
+  }).scenes;
   const durationS = sumDurations(scenes);
   const overlayPlan =
     variant === "enriched"

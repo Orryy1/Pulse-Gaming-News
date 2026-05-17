@@ -175,7 +175,7 @@ test("Flash Lane grammar scene inputs seek the intended trailer section", () => 
   assert.match(input, /-t 8\.80/);
 });
 
-test("Flash Lane context cards do not fall back to plain release-date layout", () => {
+test("Flash Lane context cards do not fall back to plain release-date layout or engagement bait", () => {
   const filter = buildFlashStatCardFilter({
     slot: 1,
     scene: {
@@ -190,8 +190,9 @@ test("Flash Lane context cards do not fall back to plain release-date layout", (
   });
 
   assert.match(filter, /MUST KNOW/);
-  assert.match(filter, /KEEP WATCHING/);
+  assert.match(filter, /SOURCE-BACKED/);
   assert.match(filter, /WHY IT MATTERS/);
+  assert.doesNotMatch(filter, /KEEP WATCHING/);
   assert.doesNotMatch(filter, /drawbox=[^,]*:alpha=/);
 });
 
@@ -222,26 +223,28 @@ test("dispatchSceneFilter routes Flash Lane card treatment", () => {
   });
 
   assert.match(source, /SOURCE CHECK/);
-  assert.match(context, /KEEP WATCHING/);
+  assert.match(context, /SOURCE-BACKED/);
+  assert.doesNotMatch(context, /KEEP WATCHING/);
 });
 
-test("Flash Lane takeaway card stays bright enough for end-frame QA", () => {
+test("Flash Lane takeaway card stays bright and does not duplicate the exact spoken CTA", () => {
   const filter = dispatchSceneFilter({
     slot: 0,
     scene: {
       type: SCENE_TYPES.CARD_TAKEAWAY,
       label: "card_takeaway",
       duration: 4,
-      text: "FOLLOW PULSE GAMING",
-      cta: "NEVER MISS A BEAT",
+      text: "PULSE GAMING",
+      cta: "DAILY GAMING NEWS",
       cardTreatment: "flash_lane",
     },
     story: {},
     fontOpt: FONT_OPT,
   });
 
-  assert.match(filter, /NEVER MISS A BEAT/);
-  assert.match(filter, /FOLLOW PULSE GAMING/);
+  assert.match(filter, /DAILY GAMING NEWS/);
+  assert.match(filter, /PULSE GAMING/);
+  assert.doesNotMatch(filter, /FOLLOW PULSE GAMING SO YOU NEVER MISS A BEAT/);
   assert.match(filter, /eq=brightness=-0\.08:saturation=1\.08:contrast=1\.14/);
   assert.doesNotMatch(filter, /drawbox=x=0:y=0:w=iw:h=400:color=black@0\.55/);
   assert.doesNotMatch(filter, /drawbox=x=0:y=h-500:w=iw:h=500:color=black@0\.55/);

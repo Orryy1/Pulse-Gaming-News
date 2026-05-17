@@ -849,6 +849,19 @@ test("still-deck supplied local narration must carry accepted voice metadata", (
   );
 });
 
+test("still-deck local narration can infer mastering from acoustic proof", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+
+  assert.match(src, /function inferVoiceMastering\(\{ explicit, acoustic \} = \{\}\)/);
+  assert.match(src, /integratedLufs >= -18 && integratedLufs <= -14/);
+  assert.match(src, /truePeakDb <= -1 && truePeakDb >= -4/);
+  assert.match(src, /source:\s*"local_acoustic_probe"/);
+  assert.match(src, /voiceMastering:\s*inferVoiceMastering\(\{ explicit: explicitVoiceMastering, acoustic \}\)/);
+});
+
 test("still-deck render path applies package readiness before ffmpeg render", () => {
   const src = fs.readFileSync(
     path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),

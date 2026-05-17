@@ -178,6 +178,40 @@ test("Motion Acquisition Pro preserves official resolver movie names for downstr
   assert.equal(plan.existing_references[0].movie_name, "GTA Official PEGI Rating Trailer");
 });
 
+test("Motion Acquisition Pro preserves trusted registry provenance for autonomous local planning", () => {
+  const plan = buildMotionAcquisitionPlan(
+    baseStory({ id: "has-trusted-registry-reference" }),
+    {
+      officialTrailerReferencePlans: [
+        {
+          story_id: "has-trusted-registry-reference",
+          references: [
+            {
+              provider: "trusted_footage_registry",
+              source_type: "official_youtube_channel_url",
+              source_url: "https://www.youtube.com/@Xbox",
+              entity: "GTA",
+              source_tier: "official",
+              trusted_footage_source_id: "xbox-official-youtube",
+              trusted_footage_registry_status: "accepted",
+              rights_risk_class: "official_reference_only",
+              allowed_render_use: "reference_only_by_default",
+              downloads_allowed: false,
+            },
+          ],
+        },
+      ],
+    },
+  );
+
+  assert.equal(plan.motion_readiness, "reference_ready_for_local_frame_plan");
+  assert.equal(plan.existing_references[0].provider, "trusted_footage_registry");
+  assert.equal(plan.existing_references[0].trusted_footage_source_id, "xbox-official-youtube");
+  assert.equal(plan.existing_references[0].trusted_footage_registry_status, "accepted");
+  assert.equal(plan.existing_references[0].source_tier, "official");
+  assert.equal(plan.planned_actions[0].accepted_sources.includes("trusted footage registry references"), true);
+});
+
 test("Motion Acquisition Pro report counts resolver references in readiness summary", () => {
   const report = buildMotionAcquisitionReport(
     [

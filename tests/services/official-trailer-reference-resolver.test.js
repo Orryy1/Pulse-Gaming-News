@@ -21,6 +21,9 @@ const {
 const {
   buildStillsAssetMapFromReports,
 } = require("../../lib/official-trailer-reference-report-loader");
+const {
+  buildTrustedFootageRegistryReport,
+} = require("../../lib/trusted-footage-registry");
 
 function baseStory(overrides = {}) {
   return {
@@ -93,11 +96,21 @@ test("official trailer resolver CLI keeps one-story runs from overwriting the la
     "--official-source-intake-report",
     "test/output/official_source_intake_report.json",
   ]);
+  const trustedRegistryArgs = parseOfficialTrailerReferenceCliArgs([
+    "node",
+    "tools/official-trailer-reference-resolver.js",
+    "--trusted-footage-registry-report",
+    "test/output/trusted_footage_registry_report.json",
+  ]);
 
   assert.equal(shouldWriteLatestReport(oneStoryArgs), false);
   assert.equal(shouldWriteLatestReport(batchArgs), true);
   assert.equal(shouldWriteLatestReport(explicitOneStoryArgs), true);
   assert.equal(intakeArgs.officialSourceIntakeReport, "test/output/official_source_intake_report.json");
+  assert.equal(
+    trustedRegistryArgs.trustedFootageRegistryReport,
+    "test/output/trusted_footage_registry_report.json",
+  );
 });
 
 test("official trailer resolver CLI reads current asset acquisition reports first", () => {
@@ -686,6 +699,49 @@ test("official trailer resolver maps IGDB video ids as reference-only", async ()
   assert.equal(plan.references[0].segment_validation_ineligible_reason, "segment_source_is_youtube_reference");
   assert.equal(plan.segment_validation_reference_counts.eligible, 0);
   assert.equal(plan.segment_validation_reference_counts.ineligible, 1);
+});
+
+test("official trailer resolver consumes trusted footage registry references without enabling downloads", async () => {
+  const story = baseStory({
+    id: "registry-forza",
+    title: "Forza Horizon 6 just hit 130,000 players on Steam",
+    full_script:
+      "Forza Horizon 6 is pulling a huge Steam number and Xbox fans are watching the official channel.",
+  });
+  const trustedFootageRegistryReport = buildTrustedFootageRegistryReport({
+    stories: [story],
+    entries: [
+      {
+        source_id: "xbox-official-youtube",
+        display_name: "Xbox official YouTube",
+        owner_type: "platform",
+        platform: "youtube",
+        channel_url: "https://www.youtube.com/@Xbox",
+        source_family: "xbox_official_youtube",
+        entities: ["Forza Horizon 6"],
+        allowed_uses: ["reference_only"],
+        official_evidence: "Official Xbox channel operated by the platform owner.",
+      },
+    ],
+    generatedAt: "2026-05-17T12:00:00.000Z",
+  });
+
+  const plan = await buildOfficialTrailerReferencePlan(story, {
+    trustedFootageRegistryReport,
+  });
+
+  assert.equal(plan.summary_accepted_trusted_footage_references, 1);
+  assert.equal(plan.references.length, 1);
+  assert.equal(plan.references[0].provider, "trusted_footage_registry");
+  assert.equal(plan.references[0].trusted_footage_source_id, "xbox-official-youtube");
+  assert.equal(plan.references[0].source_tier, "official");
+  assert.equal(plan.references[0].downloads_allowed, false);
+  assert.equal(plan.references[0].allowed_render_use, "reference_only_by_default");
+  assert.equal(plan.references[0].source_url_kind, "youtube_page");
+  assert.equal(plan.references[0].segment_validation_eligible, false);
+  assert.equal(plan.segment_validation_reference_counts.ineligible, 1);
+  assert.equal(plan.safety.video_downloads, false);
+  assert.ok(plan.provenance_ledger.some((item) => item.provider === "trusted_footage_registry"));
 });
 
 test("official trailer resolver report emits valid JSON and readable Markdown", async () => {

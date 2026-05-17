@@ -113,6 +113,8 @@
     "media:plan-motion": "node tools/motion-acquisition-pro.js",
     "media:resolve-trailers": "node tools/official-trailer-reference-resolver.js",
     "media:intake-official-sources": "node tools/official-source-intake.js",
+    "media:trusted-footage": "node tools/trusted-footage-registry.js",
+    "media:local-timeline": "node tools/local-video-timeline.js",
     "media:plan-frames": "node tools/controlled-frame-extraction-plan.js",
     "media:extract-frames": "node tools/controlled-frame-extraction-worker.js",
     "media:validate-trailer-segments": "node tools/official-trailer-segment-validator.js",

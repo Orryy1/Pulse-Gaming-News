@@ -952,11 +952,11 @@ function resolveSubtitleScriptText({
   return (
     tsData?.meta?.displayText ||
     tsData?.meta?.display_text ||
-    tsData?.meta?.text ||
-    spokenTranscript ||
     (voice?.editorialScriptAppliedToAudio === true
       ? editorial?.scriptForCaption || editorial?.fullScript
       : "") ||
+    tsData?.meta?.text ||
+    spokenTranscript ||
     ""
   );
 }

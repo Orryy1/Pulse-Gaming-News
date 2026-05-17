@@ -1295,6 +1295,38 @@ test("studio-v2 subtitle script prefers display text over TTS-cleaned wording", 
   }
 });
 
+test("studio-v2 subtitle script falls back to editorial caption text before cached TTS text", () => {
+  const oldSkipDotenv = process.env.PULSE_SKIP_DOTENV;
+  process.env.PULSE_SKIP_DOTENV = "true";
+  const { resolveSubtitleScriptText } = require("../../tools/studio-v2-render");
+
+  try {
+    const script = resolveSubtitleScriptText({
+      voice: { editorialScriptAppliedToAudio: true },
+      tsData: {
+        meta: {
+          text:
+            "Forza Horizon 6 just hit one hundred and thirty thousand concurrent players on Steam.",
+        },
+      },
+      editorial: {
+        scriptForCaption:
+          "Forza Horizon 6 just hit 130,000 concurrent players on Steam.",
+      },
+      spokenTranscript:
+        "Forza Horizon 6 just hit one hundred and thirty thousand concurrent players on Steam.",
+    });
+
+    assert.equal(
+      script,
+      "Forza Horizon 6 just hit 130,000 concurrent players on Steam.",
+    );
+  } finally {
+    if (oldSkipDotenv === undefined) delete process.env.PULSE_SKIP_DOTENV;
+    else process.env.PULSE_SKIP_DOTENV = oldSkipDotenv;
+  }
+});
+
 test("studio-v2-render supports local VoxCPM through the production-shaped path", () => {
   const oldSkipDotenv = process.env.PULSE_SKIP_DOTENV;
   const oldVoice = process.env.STUDIO_V2_VOICE;

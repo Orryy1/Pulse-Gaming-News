@@ -272,6 +272,31 @@ test("Flash Lane voice workbench blocks objectively too-quiet narration", () => 
   assert.ok(result.blockers.includes("voice_too_quiet"));
 });
 
+test("Flash Lane voice workbench blocks filtered local narration with weak high-frequency detail", () => {
+  const result = evaluateVoiceCandidate({
+    story: story(),
+    candidate: candidate({
+      id: "filtered-local",
+      provider: "local",
+      source: "local-production-voxcpm-path",
+      approvedLocalVoice: true,
+      acceptedLocalVoice: ACCEPTED_SLEEPY_LIAM,
+      acoustic: {
+        medianPitchHz: 118,
+        integratedLufs: -16.4,
+        truePeakDb: -1.7,
+        silenceRatio: 0.01,
+        clippingRatio: 0,
+        spectralRolloff85Hz: 600,
+        highFrequencyRatioGt5Khz: 0.0004,
+      },
+    }),
+  });
+
+  assert.equal(result.verdict, "rejected");
+  assert.ok(result.blockers.includes("local_tts_filtered_voice_risk"));
+});
+
 test("Flash Lane voice workbench emits a local-only dry-run generation plan", () => {
   const report = buildFlashLaneVoiceWorkbench({
     story: story(),
@@ -377,6 +402,40 @@ test("Flash Lane voice workbench defaults local generation to natural Sleepy Lia
   assert.match(toolSource, /default 1\.0/);
   assert.match(librarySource, /rate = 1\.0/);
   assert.doesNotMatch(toolSource, /\|\|\s*1\.7/);
+});
+
+test("Flash Lane voice workbench keeps VoxCPM local generation out of sub-1 tempo-stretch", async () => {
+  const outputRoot = path.join(process.cwd(), "test", "output", "tmp-voice-workbench-voxcpm-rate");
+  fs.rmSync(outputRoot, { recursive: true, force: true });
+  let requestedBody = null;
+
+  const result = await generateLocalVoiceCandidate({
+    story: story(),
+    outputRoot,
+    applyLocal: true,
+    engine: "voxcpm2",
+    rate: 0.85,
+    fetchImpl: async (_url, request = {}) => {
+      requestedBody = JSON.parse(request.body);
+      return {
+        ok: true,
+        json: async () => ({
+          audio_base64: Buffer.from("fake mp3 bytes").toString("base64"),
+          alignment: {
+            characters: Array.from("Follow Pulse Gaming so you never miss a beat."),
+          },
+        }),
+      };
+    },
+    durationProbe: () => 49.8,
+    acousticProbe: () => ({ medianPitchHz: 118 }),
+  });
+
+  assert.equal(result.request.rate, 1);
+  assert.equal(result.request.requestedRate, 0.85);
+  assert.equal(requestedBody.voice_settings.speaking_rate, 1);
+  assert.equal(result.candidate.generation.rate, 1);
+  assert.equal(result.candidate.generation.requested_rate, 0.85);
 });
 
 test("Flash Lane voice workbench can generate a local candidate under test/output", async () => {

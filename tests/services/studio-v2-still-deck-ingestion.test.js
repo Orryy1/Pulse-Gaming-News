@@ -842,6 +842,7 @@ test("still-deck supplied local narration must carry accepted voice metadata", (
   assert.match(src, /voiceDiagnostics:\s*meta\?\.meta\?\.voiceDiagnostics\s*\|\|\s*null/);
   assert.match(src, /approvedLocalVoice:\s*meta\?\.meta\?\.approvedLocalVoice/);
   assert.match(src, /transcript:\s*meta\?\.meta\?\.transcript/);
+  assert.match(src, /displayText:\s*meta\?\.meta\?\.displayText/);
   assert.doesNotMatch(
     src,
     /suppliedLocalTts\s*\?\s*resolveAcceptedLocalVoiceReference\(process\.env\)/,
@@ -918,14 +919,14 @@ test("still-deck render pads video and audio to the subtitle timeline before map
   assert.match(src, /\[\$\{audioIndex\}:a\]apad,atrim=duration=\$\{subtitleRenderDurationS\.toFixed\(3\)\}/);
 });
 
-test("still-deck Flash captions use the real narration transcript and strict caption density", () => {
+test("still-deck Flash captions prefer display text while aligning against real narration", () => {
   const src = fs.readFileSync(
     path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
     "utf8",
   );
 
   assert.match(src, /resolveStillDeckCaptionOptions/);
-  assert.match(src, /const scriptText =[\s\S]*narration\.transcript\s*\|\|\s*renderStory\.scriptForCaption\s*\|\|\s*renderStory\.full_script/);
+  assert.match(src, /const scriptText =[\s\S]*narration\.displayText\s*\|\|\s*renderStory\.scriptForCaption\s*\|\|\s*narration\.transcript\s*\|\|\s*renderStory\.full_script/);
   assert.match(src, /\.\.\.resolveStillDeckCaptionOptions\(\{ variant \}\)/);
   assert.match(src, /prepareSubtitleWords/);
   assert.match(src, /realignTimestampsToScript/);

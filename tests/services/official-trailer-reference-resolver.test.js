@@ -18,6 +18,9 @@ const {
   parseArgs: parseOfficialTrailerReferenceCliArgs,
   shouldWriteLatestReport,
 } = require("../../tools/official-trailer-reference-resolver");
+const {
+  buildStillsAssetMapFromReports,
+} = require("../../lib/official-trailer-reference-report-loader");
 
 function baseStory(overrides = {}) {
   return {
@@ -95,6 +98,16 @@ test("official trailer resolver CLI keeps one-story runs from overwriting the la
   assert.equal(shouldWriteLatestReport(batchArgs), true);
   assert.equal(shouldWriteLatestReport(explicitOneStoryArgs), true);
   assert.equal(intakeArgs.officialSourceIntakeReport, "test/output/official_source_intake_report.json");
+});
+
+test("official trailer resolver CLI reads current asset acquisition reports first", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "official-trailer-reference-resolver.js"),
+    "utf8",
+  );
+
+  assert.match(src, /asset_acquisition_pro\.json/);
+  assert.match(src, /asset_acquisition_v16_gameplay_stills_apply_local\.json/);
 });
 
 test("official trailer resolver stays report-only and non-downloading", async () => {
@@ -203,6 +216,81 @@ test("official trailer resolver recognises v1.5 applied-local Steam still assets
   assert.equal(plan.verified_store_targets[0].store_app_id, "8870");
   assert.equal(plan.references.length, 1);
   assert.equal(plan.references[0].entity, "BioShock");
+});
+
+test("official trailer resolver derives Steam motion targets from exact-subject storefront URLs", async () => {
+  const plan = await buildOfficialTrailerReferencePlan(
+    baseStory({
+      title:
+        "Forza Horizon 6 immediately beats its predecessor's all-time Steam record",
+      full_script:
+        "Forza Horizon 6 has a verified Steam record and exact-subject Steam storefront art.",
+      _verified_store_assets: [
+        {
+          source_url:
+            "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/2483190/abc/ss_forza.1920x1080.jpg",
+          source_type: "steam_screenshot",
+          entity: "steam",
+          subject_match_quality: "exact_game_match",
+          exact_subject_group: "Forza Horizon 6",
+          counted_for_premium: true,
+        },
+      ],
+    }),
+    {
+      steamLookup: async (appId) => ({
+        appId,
+        success: true,
+        title: "Forza Horizon 6",
+        movies: [
+          {
+            id: 257270546,
+            name: "Forza Horizon 6 Launch Trailer",
+            hls_h264:
+              "https://video.akamai.steamstatic.com/store_trailers/2483190/1133501958/abc/hls_264_master.m3u8",
+          },
+        ],
+      }),
+    },
+  );
+
+  assert.equal(plan.motion_reference_readiness, "official_reference_found");
+  assert.equal(plan.verified_store_targets.length, 1);
+  assert.equal(plan.verified_store_targets[0].store_app_id, "2483190");
+  assert.equal(plan.verified_store_targets[0].entity, "Forza Horizon 6");
+  assert.equal(plan.references.length, 1);
+  assert.equal(plan.references[0].movie_name, "Forza Horizon 6 Launch Trailer");
+  assert.equal(plan.references[0].segment_validation_eligible, true);
+});
+
+test("official trailer resolver loader includes visual deck exact-subject assets", () => {
+  const { map } = buildStillsAssetMapFromReports([
+    {
+      filePath: "test/output/asset_acquisition_pro.json",
+      report: {
+        plans: [
+          {
+            story_id: "1te1oq7",
+            visual_deck: {
+              items: [
+                {
+                  source_url:
+                    "https://cdn.akamai.steamstatic.com/steam/apps/2483190/header.jpg",
+                  source_type: "steam_hero",
+                  entity: "steam",
+                  subject_match_quality: "exact_game_match",
+                  exact_subject_group: "Forza Horizon 6",
+                },
+              ],
+            },
+          },
+        ],
+      },
+    },
+  ]);
+
+  assert.equal(map.get("1te1oq7").length, 1);
+  assert.equal(map.get("1te1oq7")[0].exact_subject_group, "Forza Horizon 6");
 });
 
 test("official trailer resolver records Steam HLS/DASH movie references as reference-only", async () => {

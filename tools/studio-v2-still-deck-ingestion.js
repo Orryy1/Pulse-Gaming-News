@@ -495,6 +495,10 @@ async function resolveNarration({
         meta?.meta?.mastering ||
         null,
       voiceDiagnostics: meta?.meta?.voiceDiagnostics || null,
+      displayText:
+        meta?.meta?.displayText ||
+        meta?.meta?.display_text ||
+        null,
       transcript:
         meta?.meta?.transcript ||
         meta?.meta?.text ||
@@ -536,6 +540,10 @@ async function resolveNarration({
         meta?.meta?.mastering ||
         null,
       voiceDiagnostics: meta?.meta?.voiceDiagnostics || null,
+      displayText:
+        meta?.meta?.displayText ||
+        meta?.meta?.display_text ||
+        null,
       transcript: meta?.meta?.transcript || meta?.meta?.text || "",
     };
   }
@@ -681,7 +689,10 @@ async function buildFlashLaneRenderPreflight({
       ];
   const initialDurationS = sumDurations(scenes) || targetDurationS;
   const scriptText =
-    narration.transcript || renderStory.scriptForCaption || renderStory.full_script;
+    narration.displayText ||
+    renderStory.scriptForCaption ||
+    narration.transcript ||
+    renderStory.full_script;
   const words = await readPreparedNarrationWords({
     narration,
     durationS: initialDurationS,
@@ -776,7 +787,10 @@ async function renderStillDeckVariant({
     narrationDurationS: narration.durationS,
   });
   const scriptText =
-    narration.transcript || renderStory.scriptForCaption || renderStory.full_script;
+    narration.displayText ||
+    renderStory.scriptForCaption ||
+    narration.transcript ||
+    renderStory.full_script;
   let words = await readPreparedNarrationWords({
     narration,
     durationS: assDurationS,

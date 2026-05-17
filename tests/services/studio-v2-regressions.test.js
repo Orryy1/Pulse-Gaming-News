@@ -1263,6 +1263,38 @@ test("studio-v2 render can apply Visual V3 before subtitles and report it", () =
   assert.match(src, /report\.visualV3\s*=/);
 });
 
+test("studio-v2 subtitle script prefers display text over TTS-cleaned wording", () => {
+  const oldSkipDotenv = process.env.PULSE_SKIP_DOTENV;
+  process.env.PULSE_SKIP_DOTENV = "true";
+  const { resolveSubtitleScriptText } = require("../../tools/studio-v2-render");
+
+  try {
+    const script = resolveSubtitleScriptText({
+      voice: {},
+      tsData: {
+        meta: {
+          displayText:
+            "Forza Horizon 6 just hit 130,000 concurrent players on Steam.",
+          text:
+            "Forza Horizon 6 just hit one hundred and thirty thousand concurrent players on Steam.",
+        },
+      },
+      editorial: {
+        scriptForCaption: "Fallback caption script.",
+      },
+      spokenTranscript: "",
+    });
+
+    assert.equal(
+      script,
+      "Forza Horizon 6 just hit 130,000 concurrent players on Steam.",
+    );
+  } finally {
+    if (oldSkipDotenv === undefined) delete process.env.PULSE_SKIP_DOTENV;
+    else process.env.PULSE_SKIP_DOTENV = oldSkipDotenv;
+  }
+});
+
 test("studio-v2-render supports local VoxCPM through the production-shaped path", () => {
   const oldSkipDotenv = process.env.PULSE_SKIP_DOTENV;
   const oldVoice = process.env.STUDIO_V2_VOICE;

@@ -950,6 +950,8 @@ function resolveSubtitleScriptText({
   spokenTranscript,
 }) {
   return (
+    tsData?.meta?.displayText ||
+    tsData?.meta?.display_text ||
     tsData?.meta?.text ||
     spokenTranscript ||
     (voice?.editorialScriptAppliedToAudio === true

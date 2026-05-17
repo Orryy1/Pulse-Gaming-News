@@ -25,6 +25,11 @@ const {
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
 const DEFAULT_STILLS_REPORTS = [
+  path.join(OUT, "asset_acquisition_pro.json"),
+  path.join(OUT, "asset_acquisition_v16_gameplay_stills_apply_local.json"),
+  path.join(OUT, "asset_acquisition_v16_gameplay_stills.json"),
+  path.join(OUT, "asset_acquisition_v13_store_verification.json"),
+  path.join(OUT, "asset_acquisition_v12_exact_subject.json"),
   path.join(OUT, "asset_acquisition_v15_multi_entity_apply_local.json"),
   path.join(OUT, "asset_acquisition_v15_multi_entity_store.json"),
   path.join(OUT, "asset_acquisition_v15_multi_entity_dry_run.json"),

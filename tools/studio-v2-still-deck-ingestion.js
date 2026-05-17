@@ -927,6 +927,7 @@ async function renderStillDeckVariant({
           words,
           durationS: captionDurationS,
           retentionIntelligence,
+          scenes,
         })
       : null;
   const flashLanePreflight =
@@ -1167,6 +1168,7 @@ async function renderStillDeckVariant({
     reportPath,
     assPath,
     flashLane: variant === "enriched",
+    frameIntervalS: visualV3 && variant === "enriched" ? 0.5 : undefined,
   });
   return {
     variant,

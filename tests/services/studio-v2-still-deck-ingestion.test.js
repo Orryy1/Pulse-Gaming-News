@@ -1156,7 +1156,7 @@ test("still-deck render path can feed retention intelligence into Visual V3", ()
     src,
     /async function renderStillDeckVariant\(\{[\s\S]*?retentionIntelligence = null,[\s\S]*?visualV3 = false,/,
   );
-  assert.match(src, /retentionIntelligence,\s*\n\s*\}\)/);
+  assert.match(src, /retentionIntelligence,\s*\n\s*scenes,\s*\n\s*\}\)/);
   assert.match(wrapper, /--retention-intelligence/);
 });
 

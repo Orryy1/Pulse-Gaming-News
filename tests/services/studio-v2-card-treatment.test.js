@@ -126,8 +126,8 @@ test("Flash Lane clip badges use compact fading creator chips", () => {
 
   assert.match(filter, /OFFICIAL CLIP/);
   assert.match(filter, /GTA/);
-  assert.match(filter, /box=1:boxcolor=black@0\.46/);
-  assert.match(filter, /enable='between\(t\\,0\.12\\,2\.56\)'/);
+  assert.match(filter, /box=1:boxcolor=black@0\.36/);
+  assert.match(filter, /enable='between\(t\\,0\.12\\,1\.16\)'/);
   assert.doesNotMatch(filter, /text='OFFICIAL CLIP'[^,]*alpha=/);
   assert.doesNotMatch(filter, /drawbox=x=52:y=108:w=420:h=74/);
 });

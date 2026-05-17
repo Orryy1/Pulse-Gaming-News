@@ -37,10 +37,10 @@ test("buildNarrationOnlyMixFilter: masters narration when no music bed is presen
     outputLabel: "outa",
   });
 
-  assert.match(filter, /^\[voice\]highpass=f=75/);
-  assert.match(filter, /equalizer=f=3000:t=q:w=1\.0:g=2\.4/);
-  assert.match(filter, /aexciter=amount=2\.2/);
-  assert.match(filter, /acompressor=threshold=-20dB:ratio=1\.45/);
+  assert.match(filter, /^\[voice\]highpass=f=60/);
+  assert.match(filter, /equalizer=f=2900:t=q:w=1\.0:g=1\.2/);
+  assert.doesNotMatch(filter, /aexciter=/);
+  assert.match(filter, /acompressor=threshold=-18dB:ratio=1\.25/);
   assert.match(filter, /loudnorm=I=-15:TP=-2\.5:LRA=8/);
   assert.match(filter, /alimiter=limit=0\.74:level=disabled\[outa\]$/);
 });
@@ -134,13 +134,13 @@ test("repairTtsAudioFileLoudness: backs up local narration before remastering in
 test("buildVoiceMasteringFilter: normalises local narration for crisp social-video playback", () => {
   const filter = buildVoiceMasteringFilter();
 
-  assert.match(filter, /highpass=f=75/);
+  assert.match(filter, /highpass=f=60/);
   assert.doesNotMatch(filter, /afftdn=/);
-  assert.match(filter, /equalizer=f=220:t=q:w=1\.0:g=-1/);
-  assert.match(filter, /equalizer=f=3000:t=q:w=1\.0:g=2\.4/);
-  assert.match(filter, /equalizer=f=5200:t=q:w=1\.2:g=4\.5/);
-  assert.match(filter, /aexciter=amount=2\.2:drive=6\.5:blend=0\.45:freq=3600:ceil=16000/);
-  assert.match(filter, /acompressor=threshold=-20dB:ratio=1\.45:attack=8:release=120:makeup=1\.0/);
+  assert.match(filter, /equalizer=f=180:t=q:w=1\.0:g=-0\.6/);
+  assert.match(filter, /equalizer=f=2900:t=q:w=1\.0:g=1\.2/);
+  assert.match(filter, /equalizer=f=5200:t=q:w=1\.2:g=1\.4/);
+  assert.doesNotMatch(filter, /aexciter=/);
+  assert.match(filter, /acompressor=threshold=-18dB:ratio=1\.25:attack=12:release=160:makeup=1\.0/);
   assert.match(filter, /loudnorm=I=-16:TP=-2\.2:LRA=8/);
   assert.match(filter, /alimiter=limit=0\.82:level=disabled/);
 });
@@ -149,8 +149,8 @@ test("buildVoiceMasteringSignature: pins the local clarity preset for cache inva
   const { buildVoiceMasteringSignature } = require("../../lib/audio-quality");
   const signature = buildVoiceMasteringSignature({ TTS_VOICE_TARGET_LUFS: "-16" });
 
-  assert.equal(signature.version, 2);
-  assert.equal(signature.preset, "local_presence_clarity_v2");
+  assert.equal(signature.version, 3);
+  assert.equal(signature.preset, "local_clean_presence_v3");
   assert.equal(signature.targetLufs, -16);
   assert.equal(signature.truePeak, -2.2);
   assert.equal(signature.outputBitrate, "256k");

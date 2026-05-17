@@ -26,13 +26,13 @@ test("visual scenes get compact entity popups in the lower hook-safe badge lane"
 
   assert.match(filter, /BIOSHOCK/);
   assert.match(filter, /OFFICIAL FRAME/);
-  assert.match(filter, /box=1:boxcolor=black@0\.46/);
-  assert.match(filter, /enable='between\(t\\,0\.12\\,2\.56\)'/);
+  assert.match(filter, /box=1:boxcolor=black@0\.36/);
+  assert.match(filter, /enable='between\(t\\,0\.12\\,1\.16\)'/);
   assert.doesNotMatch(filter, /text='OFFICIAL FRAME'[^,]*alpha=/);
   assert.doesNotMatch(filter, /text='OFFICIAL FRAME'[^,]*:x=74:y=104/);
   assert.doesNotMatch(filter, /text='BIOSHOCK'[^,]*:x=74:y=158/);
   assert.match(filter, /text='OFFICIAL FRAME'[^,]*:x=74:y=250/);
-  assert.match(filter, /text='BIOSHOCK'[^,]*:x=74:y=306/);
+  assert.match(filter, /text='BIOSHOCK'[^,]*:x=74:y=292/);
   assert.doesNotMatch(filter, /drawbox=x=52:y=108:w=420:h=74/);
 });
 
@@ -97,7 +97,7 @@ test("opener entity badge sits below the hook safe area", () => {
   assert.doesNotMatch(filter, /text='OFFICIAL CLIP'[^,]*:x=74:y=112/);
   assert.doesNotMatch(filter, /text='GTA'[^,]*:x=74:y=152/);
   assert.match(filter, /text='OFFICIAL CLIP'[^,]*:x=74:y=250/);
-  assert.match(filter, /text='GTA'[^,]*:x=74:y=306/);
+  assert.match(filter, /text='GTA'[^,]*:x=74:y=292/);
 });
 
 test("official clip inputs seek to the selected trailer beat instead of trailer start", () => {
@@ -151,7 +151,7 @@ test("clip filters cap safe-window clips instead of freezing tail frames", () =>
   });
 
   assert.doesNotMatch(filter, /tpad=stop_mode=clone/);
-  assert.match(filter, /trim=duration=2\.85,setpts=PTS-STARTPTS/);
+  assert.match(filter, /trim=duration=2\.67,setpts=PTS-STARTPTS/);
 });
 
 test("quote card layout downgrades overlong text inside safe bounds", () => {

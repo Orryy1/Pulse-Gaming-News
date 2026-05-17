@@ -127,6 +127,6 @@ test("Studio v2 entity badges keep kicker and label vertical bands separated", (
   );
 
   assert.match(src, /layout\.kickerY\)\) \? Number\(layout\.kickerY\) : 250/);
-  assert.match(src, /layout\.labelY\)\) \? Number\(layout\.labelY\) : 306/);
-  assert.match(src, /kickerY: 250, labelY: 306/);
+  assert.match(src, /layout\.labelY\)\) \? Number\(layout\.labelY\) : 292/);
+  assert.match(src, /kickerY:\s*250,\s*\n\s*labelY:\s*292/);
 });

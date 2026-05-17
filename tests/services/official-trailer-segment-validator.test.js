@@ -17,6 +17,7 @@ const {
   renderOfficialTrailerSegmentValidationMarkdown,
   runOfficialTrailerSegmentValidation,
   segmentKeyForClipRef,
+  VALIDATOR_RULESET_VERSION,
 } = require("../../lib/studio/v2/official-trailer-segment-validator");
 
 function clip(overrides = {}) {
@@ -758,9 +759,10 @@ test("official trailer segment validator rechecks stale pass taste records for p
     },
   });
 
-  assert.equal(report.summary.segments_validated, 1);
-  assert.equal(report.segments[0].validation_reason, "trimmed_segment_samples_passed");
-  assert.equal(report.segments[0].trim_recommended, true);
+  assert.equal(report.summary.segments_rejected, 1);
+  assert.equal(report.segments[0].validation_reason, "segment_contains_title_or_rating_card");
+  assert.equal(report.segments[0].trim_recommended, false);
+  assert.equal(report.segments[0].allowed_for_flash_lane, false);
   assert.equal(report.segments[0].samples[2].status, "rejected_qa");
   assert.ok(report.segments[0].samples[2].qa.failures.includes("title_or_rating_card_frame"));
 });
@@ -1038,6 +1040,7 @@ test("segment validation resume filters clip refs already sampled in a previous 
   ];
 
   const filtered = filterPreviouslySampledClipRefs(clips, {
+    validator_ruleset_version: VALIDATOR_RULESET_VERSION,
     segments: [
       {
         clip_key: segmentKeyForClipRef(clips[0]),
@@ -1049,6 +1052,29 @@ test("segment validation resume filters clip refs already sampled in a previous 
   });
 
   assert.deepEqual(filtered.map((item) => item.mediaStartS), [72]);
+});
+
+test("segment validation resume resamples stale previous reports from older rulesets", () => {
+  const clips = [
+    clip({
+      path: "https://video.example/gta.m3u8",
+      mediaStartS: 36,
+    }),
+  ];
+
+  const filtered = filterPreviouslySampledClipRefs(clips, {
+    validator_ruleset_version: VALIDATOR_RULESET_VERSION - 1,
+    segments: [
+      {
+        clip_key: segmentKeyForClipRef(clips[0]),
+        story_id: "rss_5b3abe925b27a199",
+        status: "validated",
+        segment_validated: true,
+      },
+    ],
+  });
+
+  assert.deepEqual(filtered.map((item) => item.mediaStartS), [36]);
 });
 
 test("segment validation resume ignores previous clips from other stories", () => {
@@ -1070,6 +1096,7 @@ test("segment validation resume ignores previous clips from other stories", () =
   });
 
   const filtered = filterPreviouslySampledClipRefs([marathonClip], {
+    validator_ruleset_version: VALIDATOR_RULESET_VERSION,
     segments: [
       {
         ...gtaClip,

@@ -150,6 +150,7 @@ function parseArgs(argv) {
     useOfficialTrailerClips: false,
     audioPath: null,
     timestampsPath: null,
+    retentionIntelligencePath: null,
     visualV3: envEnabled(process.env.STUDIO_V3_VISUALS),
     limit: 1,
   };
@@ -173,6 +174,8 @@ function parseArgs(argv) {
     else if (arg === "--use-official-trailer-clips") args.useOfficialTrailerClips = true;
     else if (arg === "--audio") args.audioPath = argv[++i] || "";
     else if (arg === "--timestamps") args.timestampsPath = argv[++i] || "";
+    else if (arg === "--retention-intelligence")
+      args.retentionIntelligencePath = path.resolve(argv[++i] || "");
     else if (arg === "--visual-v3") args.visualV3 = true;
     else if (arg === "--no-visual-v3") args.visualV3 = false;
     else if (arg === "--limit") args.limit = Math.max(1, Number(argv[++i]) || 1);
@@ -198,6 +201,7 @@ function printHelp() {
       "  --with-sound-design  Mix local music bed + restrained SFX in the local proof",
       "  --audio <path>     Use real narration audio for the proof",
       "  --timestamps <path>  Use matching ElevenLabs/local-TTS timestamps JSON",
+      "  --retention-intelligence <path>  Apply read-only retention recommendations to Visual V3 overlays",
       "  --visual-v3       Burn Visual V3 source-aware story overlays before subtitles",
       "  --no-visual-v3    Disable Visual V3 even when STUDIO_V3_VISUALS=true",
       "  --generate-local-tts  Generate local TTS audio under test/output before rendering",
@@ -701,6 +705,7 @@ async function buildFlashLaneRenderPreflight({
   generateLocalTts = false,
   audioPath = null,
   timestampsPath = null,
+  retentionIntelligence = null,
   visualV3 = false,
 }) {
   const renderStory = buildRenderStory(story);
@@ -882,6 +887,7 @@ async function renderStillDeckVariant({
           story: renderStory,
           words,
           durationS: captionDurationS,
+          retentionIntelligence,
         })
       : null;
   const flashLanePreflight =
@@ -1300,6 +1306,10 @@ async function main() {
     args.segmentValidationReportPath && (await fs.pathExists(args.segmentValidationReportPath))
       ? await fs.readJson(args.segmentValidationReportPath)
       : null;
+  const retentionIntelligence =
+    args.retentionIntelligencePath && (await fs.pathExists(args.retentionIntelligencePath))
+      ? await fs.readJson(args.retentionIntelligencePath)
+      : null;
   const preferredStoryIds = args.storyId ? [args.storyId, ...PREFERRED] : PREFERRED;
   const selected = selectStillDeckPlan(dryReport, {
     storyId: args.storyId,
@@ -1432,6 +1442,7 @@ async function main() {
       generateLocalTts: args.generateLocalTts,
       audioPath: args.audioPath,
       timestampsPath: args.timestampsPath,
+      retentionIntelligence,
       visualV3: args.visualV3,
     });
     enrichedRender = await renderStillDeckVariant({
@@ -1446,6 +1457,7 @@ async function main() {
       generateLocalTts: args.generateLocalTts,
       audioPath: args.audioPath,
       timestampsPath: args.timestampsPath,
+      retentionIntelligence,
       visualV3: args.visualV3,
     });
     comparison = compareForensicReports(baselineRender.forensic, enrichedRender.forensic);

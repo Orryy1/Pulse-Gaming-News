@@ -900,6 +900,23 @@ test("still-deck render path can burn Visual V3 before subtitles", () => {
   assert.match(src, /visual_v3:/);
 });
 
+test("still-deck render path can feed retention intelligence into Visual V3", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+  const wrapper = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v3-still-deck.js"),
+    "utf8",
+  );
+
+  assert.match(src, /--retention-intelligence/);
+  assert.match(src, /retentionIntelligencePath/);
+  assert.match(src, /const retentionIntelligence =/);
+  assert.match(src, /retentionIntelligence,\s*\n\s*\}\)/);
+  assert.match(wrapper, /--retention-intelligence/);
+});
+
 test("still-deck ASS timeline covers the narration tail without a fixed outro cap", () => {
   const src = fs.readFileSync(
     path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),

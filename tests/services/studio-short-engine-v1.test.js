@@ -618,6 +618,48 @@ test("studio composer does not stretch too few Flash Lane clips past the reuse b
   assert.ok(actualClipScenes.length <= 6);
 });
 
+test("studio composer avoids repeating Flash Lane clip windows when stills can carry gaps", () => {
+  const result = composeStudioSlate({
+    story: {
+      title:
+        "Forza Horizon 6 hits 130,000 concurrent players on Steam during early access",
+      source_type: "rss",
+      subreddit: "GamesRadar",
+    },
+    media: {
+      clips: [
+        { path: "forza-trailer.m3u8", entity: "Forza Horizon 6", sourceType: "steam_movie", mediaStartS: 28.5 },
+        { path: "forza-trailer.m3u8", entity: "Forza Horizon 6", sourceType: "steam_movie", mediaStartS: 34.5 },
+        { path: "forza-trailer.m3u8", entity: "Forza Horizon 6", sourceType: "steam_movie", mediaStartS: 41.0 },
+      ],
+      trailerFrames: Array.from({ length: 8 }, (_, index) => ({
+        path: `forza-frame-${index + 1}.jpg`,
+        entity: "Forza Horizon 6",
+      })),
+      articleHeroes: [{ path: "forza-hero.jpg", entity: "Forza Horizon 6" }],
+      publisherAssets: [],
+      stockFillers: [],
+    },
+    audioDurationS: 66,
+    opts: { allowStockFiller: false, flashLane: true },
+  });
+  const actualClipScenes = result.scenes.filter(
+    (scene) =>
+      scene.type === SCENE_TYPES.CLIP ||
+      scene.type === SCENE_TYPES.PUNCH ||
+      scene.type === SCENE_TYPES.SPEED_RAMP ||
+      scene.type === SCENE_TYPES.FREEZE_FRAME ||
+      (scene.type === SCENE_TYPES.OPENER && scene.isClipBacked === true),
+  );
+  const clipWindows = actualClipScenes.map(
+    (scene) => `${scene.source}|${scene.mediaStartS ?? ""}`,
+  );
+
+  assert.equal(actualClipScenes.length, 3);
+  assert.equal(new Set(clipWindows).size, clipWindows.length);
+  assert.ok(result.scenes.some((scene) => STILL_TYPES.has(scene.type)));
+});
+
 test("studio composer can move Flash source proof to overlay mode instead of a full-screen source card", () => {
   const baseArgs = {
     story: {

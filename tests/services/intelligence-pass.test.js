@@ -148,6 +148,65 @@ test("analytics-client: real mode can use an injected YouTube Analytics client w
   }
 });
 
+test("analytics-client: real mode can pull retention intelligence inputs", async () => {
+  process.env.INTELLIGENCE_REAL_MODE = "true";
+  try {
+    const calls = [];
+    const client = buildAnalyticsClient({ mode: "real" });
+    const result = await client.pullRetentionIntelligenceInputsForVideo("yt_real_retention", {
+      authClient: { fake: true },
+      startDate: "2026-05-01",
+      endDate: "2026-05-07",
+      youtubeAnalyticsClient: {
+        reports: {
+          query: async (query) => {
+            calls.push(query);
+            if (query.dimensions === "elapsedVideoTimeRatio") {
+              return {
+                data: {
+                  columnHeaders: [
+                    { name: "elapsedVideoTimeRatio" },
+                    { name: "audienceWatchRatio" },
+                    { name: "relativeRetentionPerformance" },
+                  ],
+                  rows: [
+                    [0, 1, 1.1],
+                    [0.1, 0.66, 0.9],
+                  ],
+                },
+              };
+            }
+            return {
+              data: {
+                columnHeaders: [
+                  { name: "insightTrafficSourceType" },
+                  { name: "views" },
+                  { name: "estimatedMinutesWatched" },
+                  { name: "averageViewDuration" },
+                  { name: "averageViewPercentage" },
+                ],
+                rows: [["SHORTS", 1000, 42, 25.2, 58]],
+              },
+            };
+          },
+        },
+      },
+    });
+
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].dimensions, "elapsedVideoTimeRatio");
+    assert.equal(calls[1].dimensions, "insightTrafficSourceType");
+    assert.equal(calls[0].filters, "video==yt_real_retention");
+    assert.equal(result.videoId, "yt_real_retention");
+    assert.equal(result.retentionRows[1].audience_watch_ratio, 0.66);
+    assert.equal(result.trafficRows[0].traffic_source_type, "SHORTS");
+    assert.equal(result.safety.network_called, true);
+    assert.equal(result.safety.oauth_triggered, false);
+  } finally {
+    delete process.env.INTELLIGENCE_REAL_MODE;
+  }
+});
+
 // ── comment-classifier ────────────────────────────────────────────
 
 test("comment-classifier: hype text → hype/no_reply_needed", () => {

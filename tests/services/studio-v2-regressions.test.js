@@ -900,14 +900,21 @@ test("v2 audio library builds a forensic-safe studio SFX plan by default", () =>
     });
     assert.equal(plan.decisions.vibe, "verified");
     assert.match(plan.musicBed.path, /Main Background Loop 2\.wav$/);
-    assert.equal(plan.sfxCues.length, 2);
+    assert.equal(plan.sfxCues.length, 4);
     assert.equal(new Set(plan.sfxCues.map((cue) => cue.path)).size, plan.sfxCues.length);
     assert.ok(plan.sfxCues.every((cue) => cue.vol > 0 && cue.vol <= 0.16));
     assert.ok(plan.sfxCues.every((cue) => fs.existsSync(cue.path)));
+    for (let i = 1; i < plan.sfxCues.length; i++) {
+      assert.ok(
+        plan.sfxCues[i].atS - plan.sfxCues[i - 1].atS >= 2.4,
+        "studio SFX cues should be spaced far enough apart to avoid recurrence artefacts",
+      );
+    }
     assert.equal(plan.decisions.sfxMode, "studio");
     assert.equal(plan.decisions.sfxCueCount, plan.sfxCues.length);
     assert.equal(plan.decisions.forensicSafeCueCount, true);
     assert.ok(plan.decisions.sfxBreakdown.reveal >= 1);
+    assert.ok(plan.decisions.sfxBreakdown.transition >= 1);
     assert.ok(
       (plan.decisions.sfxBreakdown.boom || plan.decisions.sfxBreakdown.impact || 0) >= 1,
     );
@@ -933,6 +940,60 @@ test("v2 audio library still supports an explicit SFX off switch", () => {
     assert.deepEqual(plan.sfxCues, []);
     assert.equal(plan.decisions.sfxMode, "off");
     assert.equal(plan.decisions.sfxCueCount, 0);
+  } finally {
+    if (oldMode === undefined) delete process.env.STUDIO_V2_SFX_MODE;
+    else process.env.STUDIO_V2_SFX_MODE = oldMode;
+  }
+});
+
+test("v2 audio library keeps four cues when the opener cut is short", () => {
+  const oldMode = process.env.STUDIO_V2_SFX_MODE;
+  delete process.env.STUDIO_V2_SFX_MODE;
+  try {
+    const scenes = [
+      { type: "opener", duration: 2.35 },
+      { type: "clip.frame", duration: 4.231 },
+      { type: "clip", duration: 2.35 },
+      { type: "still", duration: 4.452 },
+      { type: "clip.frame", duration: 3.41 },
+      { type: "still", duration: 4.771 },
+      { type: "clip.frame", duration: 4.069 },
+      { type: "still", duration: 4.049 },
+      { type: "clip.frame", duration: 4.317 },
+      { type: "still", duration: 4.356 },
+      { type: "clip.frame", duration: 4.094 },
+      { type: "clip.frame", duration: 4.15 },
+      { type: "clip.frame", duration: 4.31 },
+      { type: "clip.frame", duration: 3.293 },
+      { type: "card.takeaway", duration: 2.866 },
+    ];
+    const transitions = [
+      { type: "cut", duration: 0, offset: 2.35 },
+      { type: "dissolve", duration: 0.22, offset: 6.361 },
+      { type: "cut", duration: 0, offset: 8.711 },
+      { type: "dissolve", duration: 0.22, offset: 12.943 },
+      { type: "slideleft", duration: 0.25, offset: 16.103 },
+      { type: "dissolve", duration: 0.22, offset: 20.654 },
+      { type: "cut", duration: 0, offset: 24.723 },
+      { type: "dissolve", duration: 0.22, offset: 28.552 },
+      { type: "cut", duration: 0, offset: 32.869 },
+      { type: "slideleft", duration: 0.25, offset: 36.975 },
+      { type: "cut", duration: 0, offset: 41.069 },
+      { type: "dissolve", duration: 0.22, offset: 44.999 },
+      { type: "cut", duration: 0, offset: 49.309 },
+      { type: "dissolve", duration: 0.3, offset: 52.302 },
+    ];
+    const plan = resolveAudioPlan({
+      story: { flair: "Verified", breaking_score: 20 },
+      scenes,
+      transitions,
+    });
+
+    assert.equal(plan.sfxCues.length, 4);
+    assert.ok(plan.sfxCues.some((cue) => cue.kind === "hook-handoff"));
+    for (let i = 1; i < plan.sfxCues.length; i++) {
+      assert.ok(plan.sfxCues[i].atS - plan.sfxCues[i - 1].atS >= 2.4);
+    }
   } finally {
     if (oldMode === undefined) delete process.env.STUDIO_V2_SFX_MODE;
     else process.env.STUDIO_V2_SFX_MODE = oldMode;

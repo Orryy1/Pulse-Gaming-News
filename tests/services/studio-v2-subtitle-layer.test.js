@@ -77,6 +77,23 @@ test("realignTimestampsToScript preserves numeric display tokens over spoken num
   assert.equal(aligned[4].end, 1.98);
 });
 
+test("realignTimestampsToScript consumes direct spoken currency units", () => {
+  const aligned = realignTimestampsToScript("players paid 120 dollars early.", [
+    { word: "players", start: 0, end: 0.24 },
+    { word: "paid", start: 0.26, end: 0.44 },
+    { word: "120", start: 0.48, end: 0.72 },
+    { word: "dollars", start: 0.74, end: 1.04 },
+    { word: "early", start: 1.08, end: 1.34 },
+  ]);
+
+  assert.deepEqual(
+    aligned.map((word) => word.word),
+    ["players", "paid", "$120", "early."],
+  );
+  assert.equal(aligned[2].start, 0.48);
+  assert.equal(aligned[2].end, 1.04);
+});
+
 test("buildKineticAss burns numeric captions while audio speaks the expanded number", () => {
   const ass = buildKineticAss({
     story: { title: "Forza Horizon 6" },
@@ -103,6 +120,92 @@ test("buildKineticAss burns numeric captions while audio speaks the expanded num
   assert.doesNotMatch(captions, /ONE/);
   assert.doesNotMatch(captions, /THIRTY/);
   assert.doesNotMatch(captions, /THOUSAND/);
+});
+
+test("buildKineticAss burns currency captions while audio speaks dollars", () => {
+  const ass = buildKineticAss({
+    story: { title: "Premium Launch" },
+    words: [
+      { word: "The", start: 0, end: 0.12 },
+      { word: "premium", start: 0.14, end: 0.42 },
+      { word: "early", start: 0.44, end: 0.62 },
+      { word: "access", start: 0.64, end: 0.86 },
+      { word: "crowd", start: 0.88, end: 1.08 },
+      { word: "paid", start: 1.1, end: 1.28 },
+      { word: "around", start: 1.3, end: 1.56 },
+      { word: "one", start: 1.6, end: 1.72 },
+      { word: "hundred", start: 1.74, end: 1.96 },
+      { word: "and", start: 1.98, end: 2.08 },
+      { word: "twenty", start: 2.1, end: 2.34 },
+      { word: "dollars", start: 2.36, end: 2.66 },
+      { word: "before", start: 2.7, end: 2.94 },
+      { word: "launch", start: 2.96, end: 3.22 },
+    ],
+    duration: 4,
+    scriptText: "The premium early-access crowd paid around $120 before launch.",
+    maxWordsPerPhrase: 2,
+    maxPhraseChars: 14,
+    captionCase: "upper",
+    revealMode: "phrase",
+  });
+
+  const captions = extractAssDialogueText(ass).join(" ");
+  assert.match(captions, /\$120/);
+  assert.doesNotMatch(captions, /120 DOLLARS/);
+  assert.doesNotMatch(captions, /DOLLARS/);
+  assert.doesNotMatch(captions, /ONE/);
+  assert.doesNotMatch(captions, /TWENTY/);
+});
+
+test("buildKineticAss compacts numeric dollar phrases in caption scripts", () => {
+  const ass = buildKineticAss({
+    story: { title: "Premium Launch" },
+    words: [
+      { word: "paid", start: 0, end: 0.18 },
+      { word: "around", start: 0.2, end: 0.46 },
+      { word: "one", start: 0.5, end: 0.62 },
+      { word: "hundred", start: 0.64, end: 0.86 },
+      { word: "and", start: 0.88, end: 0.98 },
+      { word: "twenty", start: 1, end: 1.24 },
+      { word: "dollars", start: 1.26, end: 1.56 },
+      { word: "early", start: 1.6, end: 1.82 },
+    ],
+    duration: 3,
+    scriptText: "paid around 120 dollars early.",
+    maxWordsPerPhrase: 2,
+    maxPhraseChars: 14,
+    captionCase: "upper",
+    revealMode: "phrase",
+  });
+
+  const captions = extractAssDialogueText(ass).join(" ");
+  assert.match(captions, /\$120/);
+  assert.doesNotMatch(captions, /120 DOLLARS/);
+  assert.doesNotMatch(captions, /DOLLARS/);
+});
+
+test("buildKineticAss consumes spoken dollars after direct numeric currency timestamps", () => {
+  const ass = buildKineticAss({
+    story: { title: "Premium Launch" },
+    words: [
+      { word: "paid", start: 0, end: 0.18 },
+      { word: "around", start: 0.2, end: 0.46 },
+      { word: "120", start: 0.5, end: 0.78 },
+      { word: "dollars", start: 0.8, end: 1.14 },
+      { word: "early", start: 1.18, end: 1.42 },
+    ],
+    duration: 2.5,
+    scriptText: "paid around 120 dollars early.",
+    maxWordsPerPhrase: 2,
+    maxPhraseChars: 14,
+    captionCase: "upper",
+    revealMode: "phrase",
+  });
+
+  const captions = extractAssDialogueText(ass).join(" ");
+  assert.match(captions, /\$120/);
+  assert.doesNotMatch(captions, /\$120 DOLLARS/);
+  assert.doesNotMatch(captions, /DOLLARS/);
 });
 
 test("buildKineticAss repairs early-ending cached voice timings without swapping in editorial text", () => {

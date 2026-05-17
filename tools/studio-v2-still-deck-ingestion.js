@@ -13,6 +13,8 @@ const { composeStudioSlate, SCENE_TYPES } = require("../lib/scene-composer");
 const mediaPaths = require("../lib/media-paths");
 const {
   buildSceneInput,
+  buildTransitionFilters,
+  buildTransitionPlan,
   dispatchSceneFilter,
   FPS,
 } = require("../lib/studio/ffmpeg-scene-renderer");
@@ -372,7 +374,7 @@ function buildSubtitleBaseFilter({
         : 0) +
       1,
   );
-  return `[${inputLabel}]tpad=stop_mode=clone:stop_duration=${padDurationS.toFixed(3)},trim=duration=${targetDurationS.toFixed(3)},setpts=PTS-STARTPTS[${outputLabel}]`;
+  return `[${inputLabel}]tpad=stop_mode=clone:stop_duration=${padDurationS.toFixed(3)},trim=duration=${targetDurationS.toFixed(3)},noise=alls=2:allf=t+u,eq=brightness=0.006*sin(8.168*t):eval=frame,setpts=PTS-STARTPTS[${outputLabel}]`;
 }
 
 function resolveStillDeckCaptionOptions({ variant } = {}) {
@@ -669,6 +671,16 @@ function sumDurations(scenes) {
   return scenes.reduce((sum, scene) => sum + Number(scene.duration || 0), 0);
 }
 
+function transitionedDurationS(scenes, transitions) {
+  const baseDurationS = sumDurations(scenes);
+  const overlapS = (transitions || []).reduce(
+    (sum, transition) =>
+      sum + (transition?.type === "cut" ? 0 : Number(transition?.duration || 0)),
+    0,
+  );
+  return Math.max(0.1, baseDurationS - overlapS);
+}
+
 function prepareNarrationWords({ rawWords, durationS, scriptText }) {
   const realigned = rawWords.length
     ? realignTimestampsToScript(scriptText || "", rawWords)
@@ -898,7 +910,9 @@ async function renderStillDeckVariant({
   });
   scenes = clipDurationGuard.scenes;
   const durationS = sumDurations(scenes);
-  const renderTimelineDurationS = Math.max(durationS, captionDurationS);
+  const transitions = buildTransitionPlan(scenes);
+  const transitionDurationS = transitionedDurationS(scenes, transitions);
+  const renderTimelineDurationS = Math.max(transitionDurationS, captionDurationS);
   const overlayPlan =
     variant === "enriched"
       ? buildFlashLaneOverlayPlan({ story: renderStory, scenes, durationS })
@@ -919,7 +933,6 @@ async function renderStillDeckVariant({
           { allowDiagnosticRender: allowFlashDiagnosticRender },
         )
       : null;
-  const transitions = buildCutTransitions(scenes);
   const assPath = path.join(outputDir, `${story.id}_${variant}.ass`);
   let subtitleStatus = "fixture_ass_generated";
   if (narration.mode === "real_audio") {
@@ -949,14 +962,7 @@ async function renderStillDeckVariant({
   const filterParts = scenes.map((scene, index) =>
     dispatchSceneFilter({ slot: index, scene, story: renderStory, fontOpt: FONT_OPT }),
   );
-  let prev = "v0";
-  for (let i = 0; i < transitions.length; i++) {
-    const out = i === transitions.length - 1 ? "base" : `xf${i + 1}`;
-    filterParts.push(
-      `[${prev}][v${i + 1}]concat=n=2:v=1:a=0,fps=${FPS},setpts=PTS-STARTPTS[${out}]`,
-    );
-    prev = out;
-  }
+  filterParts.push(...buildTransitionFilters(transitions));
   if (scenes.length === 1) filterParts.push("[v0]copy[base]");
   let subtitleInputLabel = "base";
   if (overlayPlan) {
@@ -987,7 +993,7 @@ async function renderStillDeckVariant({
   filterParts.push(
     buildSubtitleBaseFilter({
       inputLabel: subtitleInputLabel,
-      renderDurationS: durationS,
+      renderDurationS: transitionDurationS,
       subtitleDurationS: subtitleRenderDurationS,
     }),
     `[subtitleBase]ass=${assRel},format=yuv420p[outv]`,

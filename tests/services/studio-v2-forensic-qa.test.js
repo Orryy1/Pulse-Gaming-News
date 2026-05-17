@@ -298,7 +298,7 @@ test("analyseAudioRecurrence ignores smooth repeated bed/voice shapes without tr
   assert.equal(result.verdict, "pass");
 });
 
-test("analyseAudioRecurrence allows two declared studio cues without transient evidence", () => {
+test("analyseAudioRecurrence allows four declared studio cues without transient evidence", () => {
   const sampleRate = 1000;
   const samples = new Float32Array(sampleRate * 10);
   const scheduledTimesS = [0, 1, 2, 3, 4, 5, 6];
@@ -311,7 +311,7 @@ test("analyseAudioRecurrence allows two declared studio cues without transient e
   const result = analyseAudioRecurrence({
     samples,
     sampleRate,
-    declaredSfxCueCount: 2,
+    declaredSfxCueCount: 4,
     scheduledTimesS,
   });
 

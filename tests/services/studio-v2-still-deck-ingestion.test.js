@@ -1177,9 +1177,13 @@ test("still-deck render pads video and audio to the subtitle timeline before map
   assert.match(src, /targetDurationS\s*-\s*\(Number\.isFinite\(renderDuration\)/);
   assert.match(src, /tpad=stop_mode=clone:stop_duration=\$\{padDurationS\.toFixed\(3\)\}/);
   assert.match(src, /trim=duration=\$\{targetDurationS\.toFixed\(3\)\}/);
-  assert.match(src, /const renderTimelineDurationS = Math\.max\(durationS, captionDurationS\)/);
+  assert.match(src, /noise=alls=2:allf=t\+u/);
+  assert.match(src, /eq=brightness=0\.006\*sin\(8\.168\*t\):eval=frame/);
+  assert.match(src, /const transitionDurationS = transitionedDurationS\(scenes, transitions\)/);
+  assert.match(src, /const renderTimelineDurationS = Math\.max\(transitionDurationS, captionDurationS\)/);
   assert.match(src, /const subtitleRenderDurationS = renderTimelineDurationS/);
   assert.match(src, /buildSubtitleBaseFilter\(\{\s*inputLabel: subtitleInputLabel,/);
+  assert.match(src, /renderDurationS:\s*transitionDurationS/);
   assert.match(src, /\[subtitleBase\]ass=\$\{assRel\},format=yuv420p\[outv\]/);
   assert.match(src, /anullsrc=channel_layout=stereo:sample_rate=48000/);
   assert.match(src, /-t \$\{subtitleRenderDurationS\.toFixed\(3\)\}/);
@@ -1225,7 +1229,10 @@ test("still-deck Flash render path adjusts scene durations to narration word bou
   assert.match(src, /scenes = alignScenesToNarrationBeats\(\{/);
   assert.match(src, /protectClipSceneDurationsFromFreezes/);
   assert.match(src, /clipDurationGuard/);
-  assert.match(src, /const transitions = buildCutTransitions\(scenes\)/);
+  assert.match(src, /buildTransitionPlan/);
+  assert.match(src, /buildTransitionFilters/);
+  assert.match(src, /function transitionedDurationS/);
+  assert.match(src, /const transitions = buildTransitionPlan\(scenes\)/);
 });
 
 test("still-deck Flash preflight report surfaces motion and beat coverage metrics", () => {

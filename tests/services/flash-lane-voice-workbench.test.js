@@ -464,7 +464,8 @@ test("Flash Lane voice workbench post-processes local candidates with the produc
   );
 
   assert.match(toolSource, /buildVoiceMasteringFilter\(\{/);
-  assert.match(audioQualitySource, /highpass=f=90/);
+  assert.match(audioQualitySource, /highpass=f=75/);
+  assert.match(audioQualitySource, /aexciter=amount=2\.2/);
   assert.match(toolSource, /const outputBitrate = "256k"/);
   assert.doesNotMatch(toolSource, /filters\.push\("loudnorm=I=-16:TP=-1\.5:LRA=11"\)/);
 });

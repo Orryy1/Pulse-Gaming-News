@@ -420,6 +420,41 @@ test("still-deck adapter rejects accepted trailer frames with failing visual tas
   assert.equal(pack.metrics.rejectedFrameCount, 1);
 });
 
+test("still-deck adapter rejects store stills with failing visual taste metadata", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-still-taste-"));
+  const localPath = await imageFile(dir, "forza-washed-still.jpg");
+  const pack = await buildStillDeckMediaPackage({
+    story: story({
+      id: "1te1oq7",
+      title: "Forza Horizon 6 immediately beats its predecessor's Steam record",
+      full_script: "Forza Horizon 6 is the exact subject in this story.",
+    }),
+    plan: planFor("1te1oq7", [
+      {
+        local_path: localPath,
+        source_url: "https://shared.akamai.steamstatic.com/forza/washed.jpg",
+        source_type: "steam_screenshot",
+        entity: "steam",
+        exact_subject_group: "Forza Horizon 6",
+        subject_match_quality: "exact_game_match",
+        counted_for_premium: true,
+        counted_for_standard: true,
+        store_match_verified: true,
+        duplicate_hash: "washed-forza-still",
+        visual_taste: {
+          verdict: "fail",
+          reason: "washed_low_detail_frame",
+          score: 80,
+        },
+      },
+    ]),
+  });
+
+  assert.equal(pack.media.articleHeroes.length, 0);
+  assert.equal(pack.rejected[0].reason, "low_detail_still_frame");
+  assert.equal(pack.metrics.acceptedCount, 0);
+});
+
 test("still-deck Flash Lane proofs run forensic QA with strict Flash subtitle density", async () => {
   const source = await fs.readFile(
     path.join(process.cwd(), "tools", "studio-v2-still-deck-ingestion.js"),
@@ -987,6 +1022,21 @@ test("still-deck local narration uses the approved production-shaped local voice
   assert.match(src, /acceptedLocalVoice:\s*narration\.acceptedLocalVoice/);
   assert.doesNotMatch(src, /generateTTS\(/);
   assert.doesNotMatch(src, /dotenv"\)\.config\(\{\s*override:\s*true\s*\}\)/);
+});
+
+test("still-deck render reuses forced local narration across preflight and variants", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+
+  assert.match(src, /narrationCache/);
+  assert.match(src, /const narrationCacheKey =/);
+  assert.match(src, /narrationCache\.has\(narrationCacheKey\)/);
+  assert.match(src, /narrationCache\.set\(narrationCacheKey,/);
+  assert.match(src, /buildFlashLaneRenderPreflight\(\{[\s\S]*narrationCache/);
+  assert.match(src, /baselineRender = await renderStillDeckVariant\(\{[\s\S]*narrationCache/);
+  assert.match(src, /enrichedRender = await renderStillDeckVariant\(\{[\s\S]*narrationCache/);
 });
 
 test("still-deck provided narration resolves media-root relative audio and timestamps at read time", () => {

@@ -111,7 +111,7 @@ test("official clip inputs seek to the selected trailer beat instead of trailer 
   assert.match(input, /^-ss 31\.20 -t 5\.00 -i "https:\/\/video\.example\/trailer\.m3u8"$/);
 });
 
-test("official clip inputs do not read past validated safe windows", () => {
+test("official clip inputs read a small margin beyond validated windows", () => {
   const input = buildSceneInput({
     type: SCENE_TYPES.CLIP,
     duration: 4.2,
@@ -120,7 +120,7 @@ test("official clip inputs do not read past validated safe windows", () => {
     clipDurationS: 2.85,
   });
 
-  assert.match(input, /^-ss 42\.45 -t 2\.85 -i "https:\/\/video\.example\/trailer\.m3u8"$/);
+  assert.match(input, /^-ss 42\.45 -t 3\.10 -i "https:\/\/video\.example\/trailer\.m3u8"$/);
 });
 
 test("speed-ramp inputs are capped to validated clip windows", () => {
@@ -132,7 +132,7 @@ test("speed-ramp inputs are capped to validated clip windows", () => {
     clipDurationS: 2.95,
   });
 
-  assert.match(input, /^-ss 48\.45 -t 2\.95 -i "https:\/\/video\.example\/trailer\.m3u8"$/);
+  assert.match(input, /^-ss 48\.45 -t 3\.20 -i "https:\/\/video\.example\/trailer\.m3u8"$/);
 });
 
 test("clip filters cap safe-window clips instead of freezing tail frames", () => {

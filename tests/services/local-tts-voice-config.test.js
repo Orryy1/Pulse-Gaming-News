@@ -270,6 +270,9 @@ test("Pulse Studio local production voice metadata stays at native Liam rate", (
 
   assert.match(soundLayerSource, /voiceSettings:\s*isLocal[\s\S]*speaking_rate:\s*1\.0/);
   assert.match(soundLayerSource, /rate:\s*isLocal \? 1\.0 : brand\.voiceSettings\?\.speaking_rate/);
+  assert.match(soundLayerSource, /buildVoiceMasteringSignature/);
+  assert.match(soundLayerSource, /segmentVoiceMastering/);
+  assert.match(soundLayerSource, /voiceMastering:\s*sourceVoiceMeta\.voiceMastering/);
   assert.doesNotMatch(soundLayerSource, /STUDIO_V1_LIAM_RATE \|\| 1\.78/);
 });
 

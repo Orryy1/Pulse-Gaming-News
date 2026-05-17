@@ -502,6 +502,7 @@ async function resolveNarration({
   timestampsPath,
   generateLocalTts,
   allowSilentFixture,
+  narrationCache = null,
 }) {
   if (audioPath) {
     const resolvedAudioPath = await resolveReadableMediaArg(audioPath);
@@ -560,6 +561,12 @@ async function resolveNarration({
   if (generateLocalTts) {
     const text = cleanForTTS(story.tts_script || story.full_script || story.body || story.title);
     if (!text.trim()) throw new Error("cannot generate local TTS for empty script");
+    const narrationCacheKey = narrationCache
+      ? [story.id || "", text].join("::")
+      : null;
+    if (narrationCacheKey && narrationCache.has(narrationCacheKey)) {
+      return narrationCache.get(narrationCacheKey);
+    }
     const voice = await ensureProductionLocalVoice({
       root: ROOT,
       storyId: story.id,
@@ -582,7 +589,7 @@ async function resolveNarration({
       metaRoot.mastering ||
       null;
     const generation = metaRoot.generation || null;
-    return {
+    const narration = {
       mode: "real_audio",
       audioPath: voice.audioPath,
       timestampsPath: voice.timestampsPath,
@@ -608,6 +615,8 @@ async function resolveNarration({
         null,
       transcript: metaRoot.transcript || metaRoot.text || "",
     };
+    if (narrationCacheKey) narrationCache.set(narrationCacheKey, narration);
+    return narration;
   }
 
   if (!allowSilentFixture) {
@@ -713,6 +722,7 @@ async function buildFlashLaneRenderPreflight({
   generateLocalTts = false,
   audioPath = null,
   timestampsPath = null,
+  narrationCache = null,
   retentionIntelligence = null,
   visualV3 = false,
 }) {
@@ -725,6 +735,7 @@ async function buildFlashLaneRenderPreflight({
     timestampsPath,
     generateLocalTts,
     allowSilentFixture,
+    narrationCache,
   });
   const targetDurationS =
     narration.mode === "real_audio" && Number.isFinite(narration.durationS)
@@ -812,6 +823,7 @@ async function renderStillDeckVariant({
   generateLocalTts = false,
   audioPath = null,
   timestampsPath = null,
+  narrationCache = null,
   retentionIntelligence = null,
   visualV3 = false,
 }) {
@@ -825,6 +837,7 @@ async function renderStillDeckVariant({
     timestampsPath,
     generateLocalTts,
     allowSilentFixture,
+    narrationCache,
   });
   assertNarrationAllowedForProof(narration, { allowSilentFixture, allowLocalVoiceDiagnostic });
   const targetDurationS =
@@ -1407,6 +1420,7 @@ async function main() {
   let renderPreflight = null;
   let renderPreflightBlocked = false;
   let renderPreflightError = null;
+  const narrationCache = new Map();
   if (renderRequested && renderPackageGate.verdict === "block" && !args.allowFlashDiagnosticRender) {
     renderPreflightBlocked = true;
     renderPreflightError = renderPackageGate.blockers.join(", ");
@@ -1430,6 +1444,7 @@ async function main() {
         generateLocalTts: args.generateLocalTts,
         audioPath: args.audioPath,
         timestampsPath: args.timestampsPath,
+        narrationCache,
       });
       renderPreflightBlocked =
         renderPreflight.verdict === "block" && !args.allowFlashDiagnosticRender;
@@ -1461,6 +1476,7 @@ async function main() {
       generateLocalTts: args.generateLocalTts,
       audioPath: args.audioPath,
       timestampsPath: args.timestampsPath,
+      narrationCache,
       retentionIntelligence,
       visualV3: args.visualV3,
     });
@@ -1476,6 +1492,7 @@ async function main() {
       generateLocalTts: args.generateLocalTts,
       audioPath: args.audioPath,
       timestampsPath: args.timestampsPath,
+      narrationCache,
       retentionIntelligence,
       visualV3: args.visualV3,
     });

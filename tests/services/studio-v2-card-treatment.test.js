@@ -246,8 +246,12 @@ test("Flash Lane takeaway card stays bright and does not duplicate the exact spo
   assert.match(filter, /DAILY GAMING NEWS/);
   assert.match(filter, /PULSE GAMING/);
   assert.doesNotMatch(filter, /FOLLOW PULSE GAMING SO YOU NEVER MISS A BEAT/);
+  assert.match(filter, /zoompan=z=min\(zoom\+0\.0012\\,1\.08\)/);
   assert.match(filter, /eq=brightness=-0\.08:saturation=1\.08:contrast=1\.14/);
   assert.match(filter, /drawbox=x=310:y=h\/2\+70:w='if\(lt\(t\\,0\.72\)/);
+  assert.match(filter, /drawtext=text='PULSE  PULSE  PULSE  PULSE'/);
+  assert.match(filter, /mod\(t\*920\\,w\+880\)-880/);
+  assert.match(filter, /enable='gte\(t\\,1\.05\)'/);
   assert.doesNotMatch(filter, /drawbox=x=118:y=h\/2-178:w=844:h=356:color=black@0\.34/);
   assert.doesNotMatch(filter, /drawbox=x=0:y=0:w=iw:h=400:color=black@0\.55/);
   assert.doesNotMatch(filter, /drawbox=x=0:y=h-500:w=iw:h=500:color=black@0\.55/);

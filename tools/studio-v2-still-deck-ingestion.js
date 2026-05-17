@@ -700,11 +700,11 @@ async function readPreparedNarrationWords({ narration, durationS, scriptText }) 
   return prepareNarrationWords({ rawWords, durationS, scriptText });
 }
 
-function alignScenesToNarrationBeats({ scenes, words, totalDurationS }) {
+function alignScenesToNarrationBeats({ scenes, words, totalDurationS, quickCut = false }) {
   const result = alignSceneDurationsToWordBoundaries(scenes, words, {
     totalDurationS,
-    minSceneDurationS: 2.6,
-    maxSceneDurationS: 8.2,
+    minSceneDurationS: quickCut ? 2.2 : 2.6,
+    maxSceneDurationS: quickCut ? 5.2 : 8.2,
   });
   return result.adjusted ? result.scenes : scenes;
 }
@@ -856,6 +856,7 @@ async function renderStillDeckVariant({
     narration.mode === "real_audio" && Number.isFinite(narration.durationS)
       ? narration.durationS
       : TARGET_RUNTIME_S;
+  const quickCut = visualV3 && variant === "enriched";
   const composed = composeStudioSlate({
     story: renderStory,
     media,
@@ -863,6 +864,7 @@ async function renderStillDeckVariant({
     opts: {
       allowStockFiller: false,
       flashLane: variant === "enriched",
+      quickCut: visualV3 && variant === "enriched",
       sourceCardMode: variant === "enriched" ? "overlay" : "scene",
       takeawayText: "PULSE GAMING",
       cta: "DAILY GAMING NEWS",
@@ -898,6 +900,7 @@ async function renderStillDeckVariant({
     scenes,
     words,
     totalDurationS: captionDurationS,
+    quickCut,
   });
   scenes = applyPremiumCardLaneV2({
     scenes,
@@ -910,7 +913,7 @@ async function renderStillDeckVariant({
   });
   scenes = clipDurationGuard.scenes;
   const durationS = sumDurations(scenes);
-  const transitions = buildTransitionPlan(scenes);
+  const transitions = buildTransitionPlan(scenes, { quickCut });
   const transitionDurationS = transitionedDurationS(scenes, transitions);
   const renderTimelineDurationS = Math.max(transitionDurationS, captionDurationS);
   const overlayPlan =
@@ -965,7 +968,8 @@ async function renderStillDeckVariant({
   filterParts.push(...buildTransitionFilters(transitions));
   if (scenes.length === 1) filterParts.push("[v0]copy[base]");
   let subtitleInputLabel = "base";
-  if (overlayPlan) {
+  const shouldBurnFlashLaneOverlays = Boolean(overlayPlan && !visualV3Plan);
+  if (shouldBurnFlashLaneOverlays) {
     subtitleInputLabel = "overlayed";
     filterParts.push(
       ...buildFlashLaneOverlayFilters({

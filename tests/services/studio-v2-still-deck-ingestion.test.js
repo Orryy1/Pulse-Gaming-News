@@ -1128,6 +1128,17 @@ test("still-deck render path can burn Visual V3 before subtitles", () => {
   assert.match(src, /visual_v3:/);
 });
 
+test("still-deck Visual V3 render suppresses Flash Lane chip burn to avoid stacked text", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+
+  assert.match(src, /const shouldBurnFlashLaneOverlays = Boolean\(overlayPlan && !visualV3Plan\)/);
+  assert.match(src, /if \(shouldBurnFlashLaneOverlays\) \{/);
+  assert.match(src, /if \(overlayPlan\) quality\.flashLaneOverlays = overlayPlan/);
+});
+
 test("still-deck render path can feed retention intelligence into Visual V3", () => {
   const src = fs.readFileSync(
     path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
@@ -1232,7 +1243,9 @@ test("still-deck Flash render path adjusts scene durations to narration word bou
   assert.match(src, /buildTransitionPlan/);
   assert.match(src, /buildTransitionFilters/);
   assert.match(src, /function transitionedDurationS/);
-  assert.match(src, /const transitions = buildTransitionPlan\(scenes\)/);
+  assert.match(src, /quickCut:\s*visualV3 && variant === "enriched"/);
+  assert.match(src, /minSceneDurationS:\s*quickCut \? 2\.2 : 2\.6/);
+  assert.match(src, /const transitions = buildTransitionPlan\(scenes,\s*\{ quickCut \}\)/);
 });
 
 test("still-deck Flash preflight report surfaces motion and beat coverage metrics", () => {

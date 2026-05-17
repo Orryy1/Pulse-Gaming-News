@@ -19,6 +19,9 @@ const {
   SCENE_TYPES,
   CARD_TYPES,
 } = require("../../lib/scene-composer");
+const {
+  buildTransitionPlan,
+} = require("../../lib/studio/ffmpeg-scene-renderer");
 
 test("studio editorial builds a tighter Metro 2039 script", () => {
   const result = editorial.buildStudioEditorial({
@@ -74,6 +77,54 @@ test("media acquisition plans trailer slices and frame extraction", () => {
   assert.equal(framePlan.length, 6);
   assert.ok(clipPlan[0].output.includes("abc_clip_A.mp4"));
   assert.ok(framePlan[0].output.includes("abc_trailerframe_1.jpg"));
+});
+
+test("Visual V3 quick-cut slate targets high edit density without stacked cards", () => {
+  const mediaDeck = {
+    clips: Array.from({ length: 3 }, (_, index) => ({
+      path: `forza-official-${index}.m3u8`,
+      durationS: 2.95,
+      mediaStartS: 36 + index * 18,
+      entity: "Forza Horizon 6",
+      sourceType: "steam_movie",
+    })),
+    trailerFrames: Array.from({ length: 24 }, (_, index) => ({
+      path: `forza-frame-${index}.jpg`,
+      entity: "Forza Horizon 6",
+      sourceType: "official_trailer_frame",
+    })),
+    articleHeroes: [],
+    publisherAssets: [],
+    stockFillers: [],
+  };
+
+  const result = composeStudioSlate({
+    story: {
+      id: "forza-quick-cut",
+      title: "Forza Horizon 6 hits 130,000 players on Steam",
+    },
+    media: mediaDeck,
+    audioDurationS: 57,
+    opts: {
+      flashLane: true,
+      sourceCardMode: "overlay",
+      quickCut: true,
+    },
+  });
+  const transitions = buildTransitionPlan(result.scenes, { quickCut: true });
+  const weightedEdits =
+    transitions.filter((transition) => transition.type === "cut").length +
+    0.5 * transitions.filter((transition) => transition.type !== "cut").length;
+  const editDensityPerMinute = (weightedEdits / 57) * 60;
+
+  assert.ok(result.scenes.length >= 20);
+  assert.ok(editDensityPerMinute >= 18);
+  assert.ok(transitions.filter((transition) => transition.type !== "cut").length <= 4);
+  assert.ok(
+    result.scenes.filter(
+      (scene) => CARD_TYPES.has(scene.type) && scene.type !== SCENE_TYPES.OPENER,
+    ).length <= 1,
+  );
 });
 
 test("premium card lane converts duplicate source cards to context", () => {

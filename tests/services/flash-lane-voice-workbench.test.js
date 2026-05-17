@@ -146,6 +146,33 @@ test("Flash Lane voice workbench allows explicitly approved clean local output",
   assert.equal(result.pilot_allowed, true);
 });
 
+test("Flash Lane voice workbench rejects mechanically stretched local output", () => {
+  const result = evaluateVoiceCandidate({
+    story: story(),
+    candidate: candidate({
+      id: "approved-local-stretched",
+      provider: "local",
+      source: "local-production-voxcpm-path",
+      approvedLocalVoice: true,
+      acceptedLocalVoice: ACCEPTED_SLEEPY_LIAM,
+      generation: {
+        tempo_stretch: {
+          applied: true,
+          input_duration_s: 55.529,
+          output_duration_s: 64.479,
+          timestamp_scale: 1.161,
+        },
+      },
+    }),
+    env: { STUDIO_V2_LOCAL_VOICE_APPROVED: "false" },
+  });
+
+  assert.equal(result.verdict, "rejected");
+  assert.equal(result.pilot_allowed, false);
+  assert.ok(result.blockers.includes("local_tts_tempo_stretch_applied"));
+  assert.equal(result.tempo_stretch.applied, true);
+});
+
 test("Flash Lane voice workbench rejects local approval without accepted Sleepy Liam reference", () => {
   const result = evaluateVoiceCandidate({
     story: story(),

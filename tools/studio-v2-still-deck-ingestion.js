@@ -39,6 +39,9 @@ const {
   alignSceneDurationsToWordBoundaries,
 } = require("../lib/studio/v2/beat-aware-scene-durations");
 const {
+  protectClipSceneDurationsFromFreezes,
+} = require("../lib/studio/v2/clip-duration-guard");
+const {
   buildFlashLaneOverlayPlan,
   buildFlashLaneOverlayFilters,
 } = require("../lib/studio/v2/flash-lane-overlays");
@@ -325,9 +328,16 @@ function buildSimpleAss({ story, durationS }) {
   return lines.join("\n") + "\n";
 }
 
-function resolveSubtitleTimelineDurationS({ renderDurationS, narrationDurationS }) {
+function resolveSubtitleTimelineDurationS({
+  renderDurationS,
+  narrationDurationS,
+  preferNarrationDuration = false,
+}) {
   const renderDuration = Number(renderDurationS);
   const narrationDuration = Number(narrationDurationS);
+  if (preferNarrationDuration && Number.isFinite(narrationDuration) && narrationDuration > 0) {
+    return Math.max(0.1, narrationDuration);
+  }
   const candidates = [renderDuration, narrationDuration].filter(
     (value) => Number.isFinite(value) && value > 0,
   );
@@ -504,6 +514,7 @@ async function resolveNarration({
       meta?.meta?.voice_mastering ||
       meta?.meta?.mastering ||
       null;
+    const generation = meta?.meta?.generation || null;
     return {
       mode: "real_audio",
       audioPath: resolvedAudioPath,
@@ -516,6 +527,13 @@ async function resolveNarration({
       acceptedLocalVoice: meta?.meta?.acceptedLocalVoice || null,
       acoustic,
       voiceMastering: inferVoiceMastering({ explicit: explicitVoiceMastering, acoustic }),
+      generation,
+      tempoStretch:
+        generation?.tempo_stretch ||
+        generation?.tempoStretch ||
+        meta?.meta?.tempo_stretch ||
+        meta?.meta?.tempoStretch ||
+        null,
       voiceDiagnostics: meta?.meta?.voiceDiagnostics || null,
       displayText:
         meta?.meta?.displayText ||
@@ -551,6 +569,7 @@ async function resolveNarration({
       meta?.meta?.voice_mastering ||
       meta?.meta?.mastering ||
       null;
+    const generation = meta?.meta?.generation || null;
     return {
       mode: "real_audio",
       audioPath: voice.audioPath,
@@ -563,6 +582,13 @@ async function resolveNarration({
       acceptedLocalVoice: meta?.meta?.acceptedLocalVoice || null,
       acoustic,
       voiceMastering: inferVoiceMastering({ explicit: explicitVoiceMastering, acoustic }),
+      generation,
+      tempoStretch:
+        generation?.tempo_stretch ||
+        generation?.tempoStretch ||
+        meta?.meta?.tempo_stretch ||
+        meta?.meta?.tempoStretch ||
+        null,
       voiceDiagnostics: meta?.meta?.voiceDiagnostics || null,
       displayText:
         meta?.meta?.displayText ||
@@ -658,6 +684,8 @@ function sceneListForReport(scenes) {
     source: scene.source || scene.backgroundSource || scene.prerenderedMp4 || scene.statLabel || null,
     mediaStartS: scene.mediaStartS ?? null,
     clipDurationS: scene.clipDurationS ?? null,
+    clipDurationCapped: scene.clipDurationCapped === true,
+    clipDurationCapReason: scene.clipDurationCapReason || null,
     clipTimingProvenance: scene.clipTimingProvenance || null,
     premiumLane: scene.premiumLane || null,
     cardTreatment: scene.cardTreatment || null,
@@ -812,9 +840,10 @@ async function renderStillDeckVariant({
         },
       ];
   const initialDurationS = sumDurations(scenes);
-  const assDurationS = resolveSubtitleTimelineDurationS({
+  const captionDurationS = resolveSubtitleTimelineDurationS({
     renderDurationS: initialDurationS,
     narrationDurationS: narration.durationS,
+    preferNarrationDuration: narration.mode === "real_audio",
   });
   const scriptText =
     narration.displayText ||
@@ -823,13 +852,13 @@ async function renderStillDeckVariant({
     renderStory.full_script;
   let words = await readPreparedNarrationWords({
     narration,
-    durationS: assDurationS,
+    durationS: captionDurationS,
     scriptText,
   });
   scenes = alignScenesToNarrationBeats({
     scenes,
     words,
-    totalDurationS: initialDurationS,
+    totalDurationS: captionDurationS,
   });
   scenes = applyPremiumCardLaneV2({
     scenes,
@@ -837,7 +866,12 @@ async function renderStillDeckVariant({
     root: ROOT,
     channelId: process.env.CHANNEL || renderStory.channel_id || "pulse-gaming",
   }).scenes;
+  const clipDurationGuard = protectClipSceneDurationsFromFreezes(scenes, {
+    targetDurationS: captionDurationS,
+  });
+  scenes = clipDurationGuard.scenes;
   const durationS = sumDurations(scenes);
+  const renderTimelineDurationS = Math.max(durationS, captionDurationS);
   const overlayPlan =
     variant === "enriched"
       ? buildFlashLaneOverlayPlan({ story: renderStory, scenes, durationS })
@@ -847,7 +881,7 @@ async function renderStillDeckVariant({
       ? buildVisualV3OverlayPlan({
           story: renderStory,
           words,
-          durationS: assDurationS,
+          durationS: captionDurationS,
         })
       : null;
   const flashLanePreflight =
@@ -866,7 +900,7 @@ async function renderStillDeckVariant({
       buildKineticAss({
         story: renderStory,
         words,
-        duration: assDurationS,
+        duration: captionDurationS,
         scriptText,
         realign: false,
         ...resolveStillDeckCaptionOptions({ variant }),
@@ -875,8 +909,12 @@ async function renderStillDeckVariant({
     );
     subtitleStatus = words.length ? "kinetic_ass_from_real_audio" : "kinetic_ass_even_timing";
   } else {
-    await fs.writeFile(assPath, buildSimpleAss({ story: renderStory, durationS: assDurationS }), "utf8");
-    words = wordsForScript(renderStory.full_script, assDurationS);
+    await fs.writeFile(
+      assPath,
+      buildSimpleAss({ story: renderStory, durationS: captionDurationS }),
+      "utf8",
+    );
+    words = wordsForScript(renderStory.full_script, captionDurationS);
   }
 
   const sceneInputs = scenes.map(buildSceneInput);
@@ -917,7 +955,7 @@ async function renderStillDeckVariant({
     subtitleInputLabel = "visualV3Base";
   }
   const assRel = path.relative(ROOT, assPath).replace(/\\/g, "/");
-  const subtitleRenderDurationS = assDurationS;
+  const subtitleRenderDurationS = renderTimelineDurationS;
   filterParts.push(
     buildSubtitleBaseFilter({
       inputLabel: subtitleInputLabel,
@@ -1015,6 +1053,7 @@ async function renderStillDeckVariant({
       approvedLocalVoice: narration.approvedLocalVoice === true,
       acceptedLocalVoice: narration.acceptedLocalVoice || null,
       acoustic: narration.acoustic || null,
+      tempoStretch: narration.tempoStretch || null,
       voiceDiagnostics: narration.voiceDiagnostics || null,
       transcript: narration.transcript || null,
     },
@@ -1033,6 +1072,12 @@ async function renderStillDeckVariant({
   };
   quality.sceneList = sceneListForReport(scenes);
   quality.transitions = transitions;
+  quality.timeline = {
+    captionDurationS: Number(captionDurationS.toFixed(3)),
+    visualDurationS: Number(durationS.toFixed(3)),
+    renderTimelineDurationS: Number(renderTimelineDurationS.toFixed(3)),
+    clipDurationGuard,
+  };
   quality.mediaDiversity = rankSourceDiversity(media);
   quality.subtitles = {
     assPath: path.relative(ROOT, assPath).replace(/\\/g, "/"),
@@ -1046,6 +1091,7 @@ async function renderStillDeckVariant({
     approvedLocalVoice: narration.approvedLocalVoice === true,
     acceptedLocalVoice: narration.acceptedLocalVoice || null,
     acoustic: narration.acoustic || null,
+    tempoStretch: narration.tempoStretch || null,
     voiceDiagnostics: narration.voiceDiagnostics || null,
     transcript: narration.transcript || null,
     note:

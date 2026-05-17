@@ -135,7 +135,7 @@ test("speed-ramp inputs are capped to validated clip windows", () => {
   assert.match(input, /^-ss 48\.45 -t 2\.95 -i "https:\/\/video\.example\/trailer\.m3u8"$/);
 });
 
-test("clip filters pad safe-window clips instead of pulling later trailer slates", () => {
+test("clip filters cap safe-window clips instead of freezing tail frames", () => {
   const filter = dispatchSceneFilter({
     slot: 0,
     fontOpt: "fontfile=Arial",
@@ -150,8 +150,8 @@ test("clip filters pad safe-window clips instead of pulling later trailer slates
     },
   });
 
-  assert.match(filter, /tpad=stop_mode=clone:stop_duration=1\.35/);
-  assert.match(filter, /trim=duration=4\.2,setpts=PTS-STARTPTS/);
+  assert.doesNotMatch(filter, /tpad=stop_mode=clone/);
+  assert.match(filter, /trim=duration=2\.85,setpts=PTS-STARTPTS/);
 });
 
 test("quote card layout downgrades overlong text inside safe bounds", () => {

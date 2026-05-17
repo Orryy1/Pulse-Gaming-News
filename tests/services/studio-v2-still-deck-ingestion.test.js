@@ -839,6 +839,8 @@ test("still-deck supplied local narration must carry accepted voice metadata", (
   assert.match(src, /probeLocalAudioAcoustics/);
   assert.match(src, /const acoustic =[\s\S]*meta\?\.meta\?\.acoustic[\s\S]*suppliedLocalTts \? probeLocalAudioAcoustics\(resolvedAudioPath\) : null/);
   assert.match(src, /acoustic,[\s\S]*voiceDiagnostics/);
+  assert.match(src, /const generation = meta\?\.meta\?\.generation \|\| null/);
+  assert.match(src, /tempoStretch:[\s\S]*generation\?\.tempo_stretch/);
   assert.match(src, /voiceDiagnostics:\s*meta\?\.meta\?\.voiceDiagnostics\s*\|\|\s*null/);
   assert.match(src, /approvedLocalVoice:\s*meta\?\.meta\?\.approvedLocalVoice/);
   assert.match(src, /transcript:\s*meta\?\.meta\?\.transcript/);
@@ -905,10 +907,13 @@ test("still-deck ASS timeline covers the narration tail without a fixed outro ca
   );
 
   assert.match(src, /function resolveSubtitleTimelineDurationS/);
+  assert.match(src, /preferNarrationDuration = false/);
+  assert.match(src, /if \(preferNarrationDuration && Number\.isFinite\(narrationDuration\)/);
   assert.match(src, /Math\.max\(0\.1,\s*\.\.\.candidates\)/);
-  assert.match(src, /const assDurationS = resolveSubtitleTimelineDurationS\(\{/);
-  assert.match(src, /renderDurationS:\s*durationS/);
+  assert.match(src, /const captionDurationS = resolveSubtitleTimelineDurationS\(\{/);
+  assert.match(src, /renderDurationS:\s*initialDurationS/);
   assert.match(src, /narrationDurationS:\s*narration\.durationS/);
+  assert.match(src, /preferNarrationDuration:\s*narration\.mode === "real_audio"/);
   assert.doesNotMatch(src, /durationS\s*-\s*0\.6/);
 });
 
@@ -923,7 +928,8 @@ test("still-deck render pads video and audio to the subtitle timeline before map
   assert.match(src, /targetDurationS\s*-\s*\(Number\.isFinite\(renderDuration\)/);
   assert.match(src, /tpad=stop_mode=clone:stop_duration=\$\{padDurationS\.toFixed\(3\)\}/);
   assert.match(src, /trim=duration=\$\{targetDurationS\.toFixed\(3\)\}/);
-  assert.match(src, /const subtitleRenderDurationS = assDurationS/);
+  assert.match(src, /const renderTimelineDurationS = Math\.max\(durationS, captionDurationS\)/);
+  assert.match(src, /const subtitleRenderDurationS = renderTimelineDurationS/);
   assert.match(src, /buildSubtitleBaseFilter\(\{\s*inputLabel: subtitleInputLabel,/);
   assert.match(src, /\[subtitleBase\]ass=\$\{assRel\},format=yuv420p\[outv\]/);
   assert.match(src, /anullsrc=channel_layout=stereo:sample_rate=48000/);
@@ -958,6 +964,8 @@ test("still-deck Flash render path adjusts scene durations to narration word bou
   assert.match(src, /function alignScenesToNarrationBeats/);
   assert.match(src, /alignSceneDurationsToWordBoundaries/);
   assert.match(src, /scenes = alignScenesToNarrationBeats\(\{/);
+  assert.match(src, /protectClipSceneDurationsFromFreezes/);
+  assert.match(src, /clipDurationGuard/);
   assert.match(src, /const transitions = buildCutTransitions\(scenes\)/);
 });
 

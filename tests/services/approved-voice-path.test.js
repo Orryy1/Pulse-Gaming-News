@@ -129,6 +129,33 @@ test("approved voice path accepts local voice only with accepted Sleepy Liam ref
   assert.deepEqual(result.blockers, []);
 });
 
+test("approved voice path rejects mechanically stretched local TTS", () => {
+  const result = evaluateApprovedVoicePath({
+    narration: {
+      provider: "local",
+      source: "local-production-voxcpm-path",
+      audioPath: audioFile("local-stretched.mp3"),
+      transcript: "Take-Two changed course. Follow Pulse Gaming so you never miss a beat.",
+      acoustic: { medianPitchHz: 118, integratedLufs: -16.4, truePeakDb: -1.7 },
+      acceptedLocalVoice: ACCEPTED_SLEEPY_LIAM,
+      voiceMastering: { ok: true, code: "voice_mastered", targetLufs: -16 },
+      generation: {
+        tempo_stretch: {
+          applied: true,
+          input_duration_s: 55.529,
+          output_duration_s: 64.479,
+          timestamp_scale: 1.161,
+        },
+      },
+    },
+    env: { STUDIO_V2_LOCAL_VOICE_APPROVED: "true" },
+  });
+
+  assert.equal(result.verdict, "rejected");
+  assert.ok(result.blockers.includes("local_tts_tempo_stretch_applied"));
+  assert.equal(result.tempo_stretch.applied, true);
+});
+
 test("approved voice path rejects old local Liam proofs without mastering evidence", () => {
   const result = evaluateApprovedVoicePath({
     narration: {

@@ -443,7 +443,7 @@ test("Flash Lane preflight blocks overlong narration before rendering", () => {
   });
 
   assert.equal(report.verdict, "block");
-  assert.ok(report.blockers.includes("flash_lane_runtime_outside_61_to_75_seconds"));
+  assert.ok(report.blockers.includes("flash_lane_runtime_outside_50_to_75_seconds"));
   assert.equal(report.metrics.narrationDurationS, 118.025);
 });
 
@@ -490,12 +490,30 @@ test("Flash Lane preflight accepts narration inside the 61-75 second window", ()
   assert.equal(report.metrics.spokenWpm, 140.8);
 });
 
-test("Flash Lane narration plan flags scripts too short for 61-75s creator pace", () => {
-  const plan = buildFlashLaneNarrationPlan({
-    scriptWordCount: 121,
+test("Flash Lane preflight allows sharp sub-60s shorts but warns on creator rewards runtime", () => {
+  const report = buildFlashLaneProofPreflight({
+    narration: {
+      ...providedNarration,
+      durationS: 55.5,
+    },
+    scriptWordCount: 150,
+    scenes: [clipScene(1), clipScene(2), clipScene(3), clipScene(4), clipScene(5), clipScene(6)],
+    media: { clips: [{ path: "a.mp4" }, { path: "b.mp4" }, { path: "c.mp4" }] },
   });
 
-  assert.deepEqual(plan.targetRuntimeS, [61, 75]);
+  assert.equal(report.verdict, "allow");
+  assert.ok(report.warnings.includes("flash_lane_below_creator_rewards_runtime_target"));
+  assert.ok(report.narrationPlan.warnings.includes("narration_below_creator_rewards_runtime_target"));
+  assert.equal(report.metrics.spokenWpm, 162.2);
+});
+
+test("Flash Lane narration plan flags scripts too short for 50-75s creator pace", () => {
+  const plan = buildFlashLaneNarrationPlan({
+    scriptWordCount: 100,
+  });
+
+  assert.deepEqual(plan.targetRuntimeS, [50, 75]);
+  assert.deepEqual(plan.creatorRewardsTargetRuntimeS, [61, 75]);
   assert.deepEqual(plan.idealWpmRange, [140, 155]);
   assert.ok(plan.issues.includes("script_too_short_for_flash_lane_target"));
   assert.equal(plan.recommendation, "expand_script_before_flash_lane_voice");

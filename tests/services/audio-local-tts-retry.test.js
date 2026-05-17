@@ -214,7 +214,7 @@ test("isLocalTtsProvider: only true for explicit local provider", () => {
 });
 
 test("resolveTtsOutputFormat: local Liam requests higher bitrate source audio", () => {
-  assert.equal(resolveTtsOutputFormat("local", {}), "mp3_44100_192");
+  assert.equal(resolveTtsOutputFormat("local", {}), "mp3_44100_256");
   assert.equal(resolveTtsOutputFormat("elevenlabs", {}), "mp3_44100_128");
   assert.equal(
     resolveTtsOutputFormat("local", { LOCAL_TTS_OUTPUT_FORMAT: "mp3_44100_256" }),
@@ -222,13 +222,13 @@ test("resolveTtsOutputFormat: local Liam requests higher bitrate source audio", 
   );
   assert.equal(
     resolveTtsOutputFormat("local", { LOCAL_TTS_OUTPUT_FORMAT: "mp3_44100_128" }),
-    "mp3_44100_192",
+    "mp3_44100_256",
   );
   assert.equal(
     resolveTtsOutputFormat("local", {
       LOCAL_TTS_OUTPUT_FORMAT: 'mp3_44100_256","injected":"yes',
     }),
-    "mp3_44100_192",
+    "mp3_44100_256",
   );
 });
 

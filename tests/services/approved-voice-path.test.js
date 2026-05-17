@@ -156,6 +156,52 @@ test("approved voice path rejects mechanically stretched local TTS", () => {
   assert.equal(result.tempo_stretch.applied, true);
 });
 
+test("approved voice path rejects non-native local TTS generation rates", () => {
+  const result = evaluateApprovedVoicePath({
+    narration: {
+      provider: "local",
+      source: "local-production-voxcpm-path",
+      audioPath: audioFile("local-rate-085.mp3"),
+      transcript: "Take-Two changed course. Follow Pulse Gaming so you never miss a beat.",
+      acoustic: { medianPitchHz: 118, integratedLufs: -16.4, truePeakDb: -1.7 },
+      acceptedLocalVoice: ACCEPTED_SLEEPY_LIAM,
+      voiceMastering: { ok: true, code: "voice_mastered", targetLufs: -16 },
+      generation: {
+        rate: 0.85,
+        engine: "voxcpm2",
+      },
+    },
+    env: { STUDIO_V2_LOCAL_VOICE_APPROVED: "true" },
+  });
+
+  assert.equal(result.verdict, "rejected");
+  assert.ok(result.blockers.includes("local_tts_non_native_rate_applied"));
+});
+
+test("approved voice path rejects non-native local TTS metadata voice settings", () => {
+  const result = evaluateApprovedVoicePath({
+    narration: {
+      provider: "local",
+      source: "local-production-voxcpm-path",
+      audioPath: audioFile("local-rate-metadata.mp3"),
+      transcript: "Take-Two changed course. Follow Pulse Gaming so you never miss a beat.",
+      acoustic: { medianPitchHz: 118, integratedLufs: -16.4, truePeakDb: -1.7 },
+      acceptedLocalVoice: ACCEPTED_SLEEPY_LIAM,
+      voiceMastering: { ok: true, code: "voice_mastered", targetLufs: -16 },
+      meta: {
+        voiceSettings: {
+          speaking_rate: 1.1,
+        },
+      },
+    },
+    env: { STUDIO_V2_LOCAL_VOICE_APPROVED: "true" },
+  });
+
+  assert.equal(result.verdict, "rejected");
+  assert.ok(result.blockers.includes("local_tts_non_native_rate_applied"));
+  assert.equal(result.rate_adjustment.evidence.field, "voiceSettings.speaking_rate");
+});
+
 test("approved voice path rejects old local Liam proofs without mastering evidence", () => {
   const result = evaluateApprovedVoicePath({
     narration: {

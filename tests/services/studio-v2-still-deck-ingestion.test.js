@@ -9,6 +9,7 @@ const path = require("node:path");
 const {
   buildStillDeckMediaPackage,
   buildStoryFromStillDeckPlan,
+  materialiseMissingStillDeckAssets,
   mergeStillDeckApplyLocalPlan,
   selectStillDeckPlan,
 } = require("../../lib/studio/v2/still-deck-ingestion");
@@ -80,6 +81,42 @@ test("still-deck adapter rejects missing local assets", async () => {
 
   assert.equal(pack.media.articleHeroes.length, 0);
   assert.equal(pack.rejected[0].reason, "missing_local_asset");
+});
+
+test("still-deck adapter can materialise missing visual deck URLs before ingest", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-still-materialise-"));
+  const plan = await materialiseMissingStillDeckAssets({
+    storyId: "1szzhy9",
+    outputRoot: dir,
+    fetchImage: async () => ({
+      buffer: Buffer.from("fake-image"),
+      contentType: "image/jpeg",
+    }),
+    plan: {
+      story_id: "1szzhy9",
+      visual_deck: {
+        items: [
+          {
+            source_url: "https://cdn.example/marathon.jpg",
+            source_type: "steam_screenshot",
+            entity: "Marathon",
+            duplicate_hash: "marathon-a",
+          },
+        ],
+      },
+    },
+  });
+
+  assert.equal(plan.visual_deck.items[0].local_path.endsWith(".jpg"), true);
+  assert.equal(await fs.pathExists(plan.visual_deck.items[0].local_path), true);
+  assert.equal(plan.applied_assets.length, 1);
+  assert.equal(plan.provenance[0].action, "materialised_visual_deck_asset");
+
+  const pack = await buildStillDeckMediaPackage({
+    story: story(),
+    plan,
+  });
+  assert.equal(pack.media.articleHeroes.length, 1);
 });
 
 test("still-deck adapter rejects unsafe portrait assets", async () => {
@@ -220,6 +257,52 @@ test("still-deck adapter ingests accepted official frame extraction report into 
   assert.equal(pack.assets[0].provenance.content_hash, "frame-hash-one");
   assert.equal(pack.metrics.acceptedFrameCount, 1);
   assert.equal(pack.metrics.distinctFrameEntities, 1);
+});
+
+test("still-deck adapter ingests accepted segment-validation samples into trailer frames", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-segment-frame-ingest-"));
+  const localPath = await imageFile(dir, "001_Forza_03665cs.jpg");
+  const pack = await buildStillDeckMediaPackage({
+    story: story({
+      id: "1te1oq7",
+      title: "Forza Horizon 6 hits 130,000 concurrent players on Steam",
+      full_script: "Forza Horizon 6 is the exact subject.",
+    }),
+    plan: planFor("1te1oq7", []),
+    segmentValidationReport: {
+      schema_version: 1,
+      generated_at: "2026-05-17T17:56:54.451Z",
+      segments: [
+        {
+          story_id: "1te1oq7",
+          source_url: "https://video.akamai.steamstatic.com/store_trailers/forza/hls_264_master.m3u8",
+          source_type: "steam_movie",
+          entity: "Forza Horizon 6",
+          action_score: 82,
+          samples: [
+            {
+              local_path: localPath,
+              status: "accepted",
+              qa: {
+                verdict: "pass",
+                thumbnail_safe: true,
+                likely_has_face: false,
+                black_frame: false,
+                content_hash: "segment-frame-one",
+                failures: [],
+              },
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  assert.equal(pack.media.trailerFrames.length, 1);
+  assert.equal(pack.assets[0].kind, "trailer-frame");
+  assert.equal(pack.assets[0].sourceType, "official_trailer_frame");
+  assert.equal(pack.assets[0].provenance.original_source_type, "steam_movie");
+  assert.equal(pack.assets[0].provenance.content_hash, "segment-frame-one");
 });
 
 test("still-deck adapter rejects QA-failed extracted frames", async () => {
@@ -928,16 +1011,18 @@ test("still-deck supplied local narration must carry accepted voice metadata", (
     "utf8",
   );
 
-  assert.match(src, /acceptedLocalVoice:\s*meta\?\.meta\?\.acceptedLocalVoice\s*\|\|\s*null/);
+  assert.match(src, /function sidecarMeta\(data\)/);
+  assert.match(src, /const metaRoot = sidecarMeta\(meta\)/);
+  assert.match(src, /acceptedLocalVoice:\s*metaRoot\.acceptedLocalVoice\s*\|\|\s*null/);
   assert.match(src, /probeLocalAudioAcoustics/);
-  assert.match(src, /const acoustic =[\s\S]*meta\?\.meta\?\.acoustic[\s\S]*suppliedLocalTts \? probeLocalAudioAcoustics\(resolvedAudioPath\) : null/);
+  assert.match(src, /const acoustic =[\s\S]*metaRoot\.acoustic[\s\S]*suppliedLocalTts \? probeLocalAudioAcoustics\(resolvedAudioPath\) : null/);
   assert.match(src, /acoustic,[\s\S]*voiceDiagnostics/);
-  assert.match(src, /const generation = meta\?\.meta\?\.generation \|\| null/);
+  assert.match(src, /const generation = metaRoot\.generation \|\| null/);
   assert.match(src, /tempoStretch:[\s\S]*generation\?\.tempo_stretch/);
-  assert.match(src, /voiceDiagnostics:\s*meta\?\.meta\?\.voiceDiagnostics\s*\|\|\s*null/);
-  assert.match(src, /approvedLocalVoice:\s*meta\?\.meta\?\.approvedLocalVoice/);
-  assert.match(src, /transcript:\s*meta\?\.meta\?\.transcript/);
-  assert.match(src, /displayText:\s*meta\?\.meta\?\.displayText/);
+  assert.match(src, /voiceDiagnostics:\s*metaRoot\.voiceDiagnostics\s*\|\|\s*null/);
+  assert.match(src, /approvedLocalVoice:\s*metaRoot\.approvedLocalVoice/);
+  assert.match(src, /transcript:\s*metaRoot\.transcript/);
+  assert.match(src, /displayText:\s*metaRoot\.displayText/);
   assert.doesNotMatch(
     src,
     /suppliedLocalTts\s*\?\s*resolveAcceptedLocalVoiceReference\(process\.env\)/,
@@ -1050,6 +1135,16 @@ test("still-deck render pads video and audio to the subtitle timeline before map
   assert.match(src, /-t \$\{subtitleRenderDurationS\.toFixed\(3\)\}/);
   assert.match(src, /targetDurationS:\s*subtitleRenderDurationS/);
   assert.match(src, /\[\$\{audioIndex\}:a\]apad,atrim=duration=\$\{subtitleRenderDurationS\.toFixed\(3\)\}/);
+});
+
+test("still-deck render keeps final MP4 audio at creator-grade AAC bitrate", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+
+  assert.match(src, /"-c:a aac -b:a 192k"/);
+  assert.doesNotMatch(src, /"-c:a aac -b:a 96k"/);
 });
 
 test("still-deck Flash captions prefer display text while aligning against real narration", () => {

@@ -66,6 +66,7 @@ const {
   buildStillDeckMarkdown,
   buildStillDeckMediaPackage,
   mergeStillDeckApplyLocalPlan,
+  materialiseMissingStillDeckAssets,
   selectStillDeckPlan,
 } = require("../lib/studio/v2/still-deck-ingestion");
 const {
@@ -489,6 +490,10 @@ async function resolveReadableMediaArg(inputPath) {
   return mediaResolved || absolute;
 }
 
+function sidecarMeta(data) {
+  return data?.meta || data?.alignment?.meta || data?.timestamps?.meta || {};
+}
+
 async function resolveNarration({
   story,
   variant,
@@ -510,16 +515,17 @@ async function resolveNarration({
     const meta = inferredTs && (await fs.pathExists(inferredTs))
       ? await fs.readJson(inferredTs).catch(() => null)
       : null;
+    const metaRoot = sidecarMeta(meta);
     const transcriptChars = meta?.characters || meta?.alignment?.characters || [];
     const acoustic =
-      meta?.meta?.acoustic ||
+      metaRoot.acoustic ||
       (suppliedLocalTts ? probeLocalAudioAcoustics(resolvedAudioPath) : null);
     const explicitVoiceMastering =
-      meta?.meta?.voiceMastering ||
-      meta?.meta?.voice_mastering ||
-      meta?.meta?.mastering ||
+      metaRoot.voiceMastering ||
+      metaRoot.voice_mastering ||
+      metaRoot.mastering ||
       null;
-    const generation = meta?.meta?.generation || null;
+    const generation = metaRoot.generation || null;
     return {
       mode: "real_audio",
       audioPath: resolvedAudioPath,
@@ -527,26 +533,26 @@ async function resolveNarration({
       durationS: ffprobeDuration(resolvedAudioPath),
       provider: suppliedLocalTts ? "local" : "external",
       source: suppliedLocalTts ? "provided-local-tts-audio" : "provided-real-audio",
-      signatureHash: meta?.meta?.signatureHash || null,
-      approvedLocalVoice: meta?.meta?.approvedLocalVoice === true,
-      acceptedLocalVoice: meta?.meta?.acceptedLocalVoice || null,
+      signatureHash: metaRoot.signatureHash || null,
+      approvedLocalVoice: metaRoot.approvedLocalVoice === true,
+      acceptedLocalVoice: metaRoot.acceptedLocalVoice || null,
       acoustic,
       voiceMastering: inferVoiceMastering({ explicit: explicitVoiceMastering, acoustic }),
       generation,
       tempoStretch:
         generation?.tempo_stretch ||
         generation?.tempoStretch ||
-        meta?.meta?.tempo_stretch ||
-        meta?.meta?.tempoStretch ||
+        metaRoot.tempo_stretch ||
+        metaRoot.tempoStretch ||
         null,
-      voiceDiagnostics: meta?.meta?.voiceDiagnostics || null,
+      voiceDiagnostics: metaRoot.voiceDiagnostics || null,
       displayText:
-        meta?.meta?.displayText ||
-        meta?.meta?.display_text ||
+        metaRoot.displayText ||
+        metaRoot.display_text ||
         null,
       transcript:
-        meta?.meta?.transcript ||
-        meta?.meta?.text ||
+        metaRoot.transcript ||
+        metaRoot.text ||
         (Array.isArray(transcriptChars) ? transcriptChars.join("") : ""),
     };
   }
@@ -568,13 +574,14 @@ async function resolveNarration({
       force: process.env.STUDIO_V2_FORCE_TTS === "true",
     });
     const meta = await fs.readJson(voice.timestampsPath).catch(() => null);
-    const acoustic = meta?.meta?.acoustic || probeLocalAudioAcoustics(voice.audioPath);
+    const metaRoot = sidecarMeta(meta);
+    const acoustic = metaRoot.acoustic || probeLocalAudioAcoustics(voice.audioPath);
     const explicitVoiceMastering =
-      meta?.meta?.voiceMastering ||
-      meta?.meta?.voice_mastering ||
-      meta?.meta?.mastering ||
+      metaRoot.voiceMastering ||
+      metaRoot.voice_mastering ||
+      metaRoot.mastering ||
       null;
-    const generation = meta?.meta?.generation || null;
+    const generation = metaRoot.generation || null;
     return {
       mode: "real_audio",
       audioPath: voice.audioPath,
@@ -582,24 +589,24 @@ async function resolveNarration({
       durationS: voice.durationS || ffprobeDuration(voice.audioPath),
       provider: "local",
       source: voice.source || "local-production-voxcpm-path",
-      signatureHash: voice.signatureHash || meta?.meta?.signatureHash || null,
-      approvedLocalVoice: meta?.meta?.approvedLocalVoice === true,
-      acceptedLocalVoice: meta?.meta?.acceptedLocalVoice || null,
+      signatureHash: voice.signatureHash || metaRoot.signatureHash || null,
+      approvedLocalVoice: metaRoot.approvedLocalVoice === true,
+      acceptedLocalVoice: metaRoot.acceptedLocalVoice || null,
       acoustic,
       voiceMastering: inferVoiceMastering({ explicit: explicitVoiceMastering, acoustic }),
       generation,
       tempoStretch:
         generation?.tempo_stretch ||
         generation?.tempoStretch ||
-        meta?.meta?.tempo_stretch ||
-        meta?.meta?.tempoStretch ||
+        metaRoot.tempo_stretch ||
+        metaRoot.tempoStretch ||
         null,
-      voiceDiagnostics: meta?.meta?.voiceDiagnostics || null,
+      voiceDiagnostics: metaRoot.voiceDiagnostics || null,
       displayText:
-        meta?.meta?.displayText ||
-        meta?.meta?.display_text ||
+        metaRoot.displayText ||
+        metaRoot.display_text ||
         null,
-      transcript: meta?.meta?.transcript || meta?.meta?.text || "",
+      transcript: metaRoot.transcript || metaRoot.text || "",
     };
   }
 
@@ -1031,7 +1038,7 @@ async function renderStillDeckVariant({
     `-map "[outv]" ${audioMapArg}`,
     "-c:v libx264 -crf 21 -preset veryfast",
     "-pix_fmt yuv420p -profile:v high -level:v 4.0",
-    "-c:a aac -b:a 96k",
+    "-c:a aac -b:a 192k",
     `-r ${FPS} -shortest -movflags +faststart "${mp4Path.replace(/\\/g, "/")}"`,
   ].join(" ");
   execSync(command, { cwd: ROOT, stdio: "inherit", maxBuffer: 80 * 1024 * 1024 });
@@ -1329,6 +1336,11 @@ async function main() {
       outputRoot: SOURCE_OUT,
     });
     plan = mergeStillDeckApplyLocalPlan(selected, localApplyReport.plans[0]);
+    plan = await materialiseMissingStillDeckAssets({
+      plan,
+      storyId: story.id,
+      outputRoot: SOURCE_OUT,
+    });
     await fs.writeJson(path.join(OUT, "still_deck_apply_local.json"), localApplyReport, { spaces: 2 });
     await fs.writeFile(
       path.join(OUT, "still_deck_apply_local.md"),
@@ -1337,7 +1349,12 @@ async function main() {
     );
   }
 
-  const enrichedPackage = await buildStillDeckMediaPackage({ story, plan, frameReport });
+  const enrichedPackage = await buildStillDeckMediaPackage({
+    story,
+    plan,
+    frameReport,
+    segmentValidationReport,
+  });
   const officialClipResolution = resolveOfficialTrailerClipRefsForProof({
     storyId: story.id,
     frameReport,

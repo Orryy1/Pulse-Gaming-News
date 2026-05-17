@@ -93,12 +93,12 @@ function resolveTtsOutputFormat(provider, env = process.env) {
     env.TTS_OUTPUT_FORMAT,
   );
   if (candidate && isValidTtsOutputFormat(candidate)) {
-    if (!local || Number(ttsOutputBitrate(candidate)) >= 192) {
+    if (!local || Number(ttsOutputBitrate(candidate)) >= 256) {
       return candidate;
     }
   }
 
-  return local ? "mp3_44100_192" : "mp3_44100_128";
+  return local ? "mp3_44100_256" : "mp3_44100_128";
 }
 
 function firstNonBlank(...values) {

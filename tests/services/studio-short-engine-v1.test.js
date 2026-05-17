@@ -660,6 +660,44 @@ test("studio composer avoids repeating Flash Lane clip windows when stills can c
   assert.ok(result.scenes.some((scene) => STILL_TYPES.has(scene.type)));
 });
 
+test("studio composer does not reuse scarce Flash Lane stills to pad the edit", () => {
+  const result = composeStudioSlate({
+    story: {
+      title:
+        "Forza Horizon 6 hits 130,000 concurrent players on Steam during early access",
+      full_script:
+        "Forza Horizon 6 hits 130,000 concurrent players on Steam during early access.",
+      source_type: "rss",
+      subreddit: "GamesRadar",
+    },
+    media: {
+      clips: [
+        { path: "forza-trailer.m3u8", entity: "Forza Horizon 6", sourceType: "steam_movie", mediaStartS: 36.45 },
+        { path: "forza-trailer.m3u8", entity: "Forza Horizon 6", sourceType: "steam_movie", mediaStartS: 54.45 },
+      ],
+      trailerFrames: [],
+      articleHeroes: Array.from({ length: 4 }, (_, index) => ({
+        path: `forza-still-${index + 1}.jpg`,
+        entity: "Forza Horizon 6",
+      })),
+      publisherAssets: [],
+      stockFillers: [],
+    },
+    audioDurationS: 62,
+    opts: {
+      allowStockFiller: false,
+      flashLane: true,
+      sourceCardMode: "overlay",
+    },
+  });
+  const stillSources = result.scenes
+    .filter((scene) => STILL_TYPES.has(scene.type))
+    .map((scene) => scene.source);
+
+  assert.equal(stillSources.length, new Set(stillSources).size);
+  assert.ok(result.scenes.length >= 18);
+});
+
 test("studio composer can move Flash source proof to overlay mode instead of a full-screen source card", () => {
   const baseArgs = {
     story: {

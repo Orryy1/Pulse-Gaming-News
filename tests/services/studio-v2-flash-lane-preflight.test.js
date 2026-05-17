@@ -117,6 +117,37 @@ test("Flash Lane preflight allows exhausted clip refs when trailer frames carry 
   assert.equal(report.blockers.includes("flash_lane_clip_dominance_below_target"), false);
 });
 
+test("Flash Lane preflight allows mixed official frames and verified stills when clip refs are exhausted", () => {
+  const scenes = [
+    clipScene(1),
+    clipScene(2),
+    ...Array.from({ length: 6 }, (_, index) => ({
+      type: "clip.frame",
+      source: `frame-${index}.jpg`,
+    })),
+    ...Array.from({ length: 5 }, (_, index) => ({
+      type: "still",
+      source: `hero-${index}.jpg`,
+    })),
+    cardScene(1),
+  ];
+  const report = buildFlashLaneProofPreflight({
+    narration: providedNarration,
+    scenes,
+    media: {
+      clips: [{ path: "a.mp4" }, { path: "b.mp4" }],
+      trailerFrames: Array.from({ length: 6 }, (_, index) => ({ path: `frame-${index}.jpg` })),
+      articleHeroes: Array.from({ length: 5 }, (_, index) => ({ path: `hero-${index}.jpg` })),
+    },
+  });
+
+  assert.equal(report.verdict, "allow");
+  assert.equal(report.metrics.actualClipDominance, 0.14);
+  assert.equal(report.metrics.motionDominance, 0.57);
+  assert.ok(report.warnings.includes("flash_lane_clip_dominance_supported_by_trailer_frames"));
+  assert.equal(report.blockers.includes("flash_lane_clip_dominance_below_target"), false);
+});
+
 test("Flash Lane preflight blocks repeating too few official clips across a 60s proof", () => {
   const scenes = [
     clipScene(1),

@@ -262,6 +262,17 @@ test("Pulse Studio local TTS paths request high-bitrate source audio before mast
   assert.doesNotMatch(workbenchSource, /output_format:\s*"mp3_44100_128"/);
 });
 
+test("Pulse Studio local production voice metadata stays at native Liam rate", () => {
+  const soundLayerSource = fs.readFileSync(
+    path.join(ROOT, "lib", "studio", "sound-layer.js"),
+    "utf8",
+  );
+
+  assert.match(soundLayerSource, /voiceSettings:\s*isLocal[\s\S]*speaking_rate:\s*1\.0/);
+  assert.match(soundLayerSource, /rate:\s*isLocal \? 1\.0 : brand\.voiceSettings\?\.speaking_rate/);
+  assert.doesNotMatch(soundLayerSource, /STUDIO_V1_LIAM_RATE \|\| 1\.78/);
+});
+
 test("Pulse Studio V2 local render wrapper keeps the accepted Liam pace", () => {
   const wrapperSource = fs.readFileSync(
     path.join(ROOT, "tools", "studio-v2-local-render.js"),

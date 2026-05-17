@@ -159,14 +159,52 @@ async function loadTrailerReferenceReport(args) {
   return readJsonIfExists(filePath);
 }
 
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function motionPlanReferenceCount(plan) {
+  return asArray(plan?.existing_references).length;
+}
+
+function trailerReferenceCountForStory(report, storyId) {
+  if (!storyId) return 0;
+  const plan = asArray(report?.plans).find((item) => item?.story_id === storyId);
+  return asArray(plan?.references).length;
+}
+
+function shouldRebuildMotionPlansFromReferences({
+  storyId,
+  explicitMotionPath,
+  plans,
+  trailerReferenceReport,
+} = {}) {
+  if (explicitMotionPath || !storyId || !trailerReferenceReport) return false;
+  return asArray(plans).some(
+    (plan) =>
+      plan?.story_id === storyId &&
+      motionPlanReferenceCount(plan) === 0 &&
+      trailerReferenceCountForStory(trailerReferenceReport, storyId) > 0,
+  );
+}
+
 async function loadMotionPlans(args) {
   const explicitMotionPath = args.motionReport ? path.resolve(ROOT, args.motionReport) : null;
+  const trailerReferenceReport = await loadTrailerReferenceReport(args);
   const defaultReport = !args.fixture ? await readJsonIfExists(explicitMotionPath || DEFAULT_MOTION_REPORT) : null;
   if (defaultReport && Array.isArray(defaultReport.plans)) {
     const plans = args.storyId
       ? defaultReport.plans.filter((plan) => plan.story_id === args.storyId)
       : defaultReport.plans;
-    if (plans.length > 0 || explicitMotionPath) {
+    if (
+      (plans.length > 0 || explicitMotionPath) &&
+      !shouldRebuildMotionPlansFromReferences({
+        storyId: args.storyId,
+        explicitMotionPath,
+        plans,
+        trailerReferenceReport,
+      })
+    ) {
       return {
         plans,
         mode: "motion_report",
@@ -176,7 +214,6 @@ async function loadMotionPlans(args) {
   }
 
   const { stories, mode } = await loadStories(args);
-  const trailerReferenceReport = await loadTrailerReferenceReport(args);
   const motionReport = buildMotionAcquisitionReport(stories, {
     mode,
     officialTrailerReferenceReport: trailerReferenceReport,
@@ -209,7 +246,15 @@ async function main() {
   process.stderr.write("[frame-plan] wrote test/output/controlled_frame_extraction_v1.{json,md}\n");
 }
 
-main().catch((err) => {
-  process.stderr.write(`[frame-plan] ${err.stack || err.message}\n`);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    process.stderr.write(`[frame-plan] ${err.stack || err.message}\n`);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  loadMotionPlans,
+  parseArgs,
+  shouldRebuildMotionPlansFromReferences,
+};

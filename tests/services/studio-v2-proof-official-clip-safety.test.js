@@ -180,6 +180,35 @@ test("proof official clips block validated-looking segments when the footage bac
   assert.match(result.safety.reason, /gameplay\/action/i);
 });
 
+test("proof official clips can use partial validated segments for explicit diagnostic renders", () => {
+  const result = resolveOfficialTrailerClipRefsForProof({
+    storyId: "story-1",
+    frameReport: frameReport([
+      frame({ entity: "GTA", source: "https://video.example/gta.m3u8" }),
+      frame({ entity: "BioShock", source: "https://video.example/bio.m3u8" }),
+      frame({ entity: "Red Dead", source: "https://video.example/red.m3u8" }),
+    ]),
+    segmentValidationReport: {
+      segments: [
+        segment({ entity: "GTA", source: "https://video.example/gta.m3u8" }),
+        {
+          ...segment({ entity: "BioShock", source: "https://video.example/bio.m3u8" }),
+          segment_motion_class: "non_gameplay_context",
+          action_score: 42,
+          action_sample_count: 0,
+        },
+      ],
+    },
+    useOfficialTrailerClips: true,
+    allowPartialValidatedOfficialClips: true,
+  });
+
+  assert.equal(result.clipRefs.length, 1);
+  assert.equal(result.clipRefs[0].provenance.segment_validated, true);
+  assert.equal(result.safety.status, "partial_validated_diagnostic_only");
+  assert.match(result.safety.reason, /diagnostic/i);
+});
+
 test("proof official clips explain partial exact-subject trailer validation failures", () => {
   const result = resolveOfficialTrailerClipRefsForProof({
     storyId: "story-1",

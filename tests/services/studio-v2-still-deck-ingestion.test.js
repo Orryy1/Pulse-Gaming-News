@@ -986,3 +986,13 @@ test("still-deck report wording does not call no-render packages silent-audio pr
   assert.match(src, /official trailer clips were blocked/i);
   assert.match(src, /const visualOutput = !renderAttempted/);
 });
+
+test("still-deck diagnostic renders may use partial validated official clips explicitly", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+
+  assert.match(src, /resolveOfficialTrailerClipRefsForProof\(\{/);
+  assert.match(src, /allowPartialValidatedOfficialClips:\s*args\.allowFlashDiagnosticRender/);
+});

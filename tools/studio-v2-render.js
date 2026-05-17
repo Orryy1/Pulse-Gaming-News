@@ -949,14 +949,20 @@ function resolveSubtitleScriptText({
   editorial,
   spokenTranscript,
 }) {
+  const displayText = tsData?.meta?.displayText || tsData?.meta?.display_text;
+  const editorialText = editorial?.scriptForCaption || editorial?.fullScript || "";
+  const transcriptText = tsData?.meta?.text || spokenTranscript || alignmentTranscript(tsData);
+  const transcriptHasSpokenOutro =
+    /follow pulse gaming/i.test(transcriptText || "") &&
+    !/follow pulse gaming/i.test(editorialText || "");
   return (
-    tsData?.meta?.displayText ||
-    tsData?.meta?.display_text ||
+    displayText ||
     (voice?.editorialScriptAppliedToAudio === true
-      ? editorial?.scriptForCaption || editorial?.fullScript
+      ? transcriptHasSpokenOutro
+        ? transcriptText
+        : editorialText
       : "") ||
-    tsData?.meta?.text ||
-    spokenTranscript ||
+    transcriptText ||
     ""
   );
 }

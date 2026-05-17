@@ -1250,6 +1250,7 @@ async function main() {
     segmentValidationReport,
     useOfficialTrailerClips: args.useOfficialTrailerClips,
     allowUnvalidatedOfficialClips: args.allowUnvalidatedOfficialClips,
+    allowPartialValidatedOfficialClips: args.allowFlashDiagnosticRender,
     targetRuntimeS: 66,
   });
   const officialClipRefs = officialClipResolution.clipRefs;

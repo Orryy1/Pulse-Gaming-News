@@ -8,6 +8,9 @@ const {
   buildControlledFrameExtractionReport,
   renderControlledFrameExtractionMarkdown,
 } = require("../../lib/controlled-frame-extraction-plan");
+const {
+  shouldRebuildMotionPlansFromReferences,
+} = require("../../tools/controlled-frame-extraction-plan");
 
 function reference(entity, index = 1, extra = {}) {
   return {
@@ -353,6 +356,53 @@ test("Controlled Frame Extraction Plan rejects stories without official referenc
   assert.equal(plan.frame_plan_readiness, "no_reference");
   assert.equal(plan.target_frames.length, 0);
   assert.ok(plan.blockers.includes("no_official_motion_reference"));
+});
+
+test("Controlled Frame Extraction Plan rebuilds stale story motion plans when fresh trailer refs exist", () => {
+  assert.equal(
+    shouldRebuildMotionPlansFromReferences({
+      storyId: "1te1oq7",
+      explicitMotionPath: null,
+      plans: [
+        {
+          story_id: "1te1oq7",
+          motion_readiness: "official_reference_search_required",
+          existing_references: [],
+        },
+      ],
+      trailerReferenceReport: {
+        plans: [
+          {
+            story_id: "1te1oq7",
+            references: [reference("Forza Horizon 6")],
+          },
+        ],
+      },
+    }),
+    true,
+  );
+
+  assert.equal(
+    shouldRebuildMotionPlansFromReferences({
+      storyId: "1te1oq7",
+      explicitMotionPath: "test/output/custom_motion.json",
+      plans: [
+        {
+          story_id: "1te1oq7",
+          existing_references: [],
+        },
+      ],
+      trailerReferenceReport: {
+        plans: [
+          {
+            story_id: "1te1oq7",
+            references: [reference("Forza Horizon 6")],
+          },
+        ],
+      },
+    }),
+    false,
+  );
 });
 
 test("Controlled Frame Extraction report emits valid JSON and readable Markdown", () => {

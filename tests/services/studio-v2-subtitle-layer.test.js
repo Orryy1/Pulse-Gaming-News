@@ -12,6 +12,7 @@ const {
   extractAssDialogueText,
   planCaptionDensity,
   prepareSubtitleWords,
+  realignTimestampsToScript,
   transcriptCoverageRatio,
 } = require("../../lib/studio/v2/subtitle-layer-v2");
 
@@ -48,6 +49,60 @@ test("buildKineticAss can skip script realignment for cached/non-editorial voice
   assert.match(ass, /twenty/);
   assert.match(ass, /six/);
   assert.doesNotMatch(ass, /2026/);
+});
+
+test("realignTimestampsToScript preserves numeric display tokens over spoken number expansions", () => {
+  const aligned = realignTimestampsToScript("Steam early-access launch hit 130,000 concurrent players.", [
+    { word: "Steam", start: 0, end: 0.18 },
+    { word: "early", start: 0.2, end: 0.38 },
+    { word: "access", start: 0.42, end: 0.62 },
+    { word: "launch", start: 0.66, end: 0.82 },
+    { word: "hit", start: 0.86, end: 1 },
+    { word: "one", start: 1.04, end: 1.16 },
+    { word: "hundred", start: 1.18, end: 1.38 },
+    { word: "and", start: 1.4, end: 1.5 },
+    { word: "thirty", start: 1.52, end: 1.72 },
+    { word: "thousand", start: 1.74, end: 1.98 },
+    { word: "concurrent", start: 2.02, end: 2.42 },
+    { word: "players", start: 2.46, end: 2.74 },
+  ]);
+
+  assert.deepEqual(
+    aligned.map((word) => word.word),
+    ["Steam", "early-access", "launch", "hit", "130,000", "concurrent", "players."],
+  );
+  assert.equal(aligned[1].start, 0.2);
+  assert.equal(aligned[1].end, 0.62);
+  assert.equal(aligned[4].start, 1.04);
+  assert.equal(aligned[4].end, 1.98);
+});
+
+test("buildKineticAss burns numeric captions while audio speaks the expanded number", () => {
+  const ass = buildKineticAss({
+    story: { title: "Forza Horizon 6" },
+    words: [
+      { word: "Steam", start: 0, end: 0.18 },
+      { word: "hit", start: 0.2, end: 0.34 },
+      { word: "one", start: 0.4, end: 0.52 },
+      { word: "hundred", start: 0.54, end: 0.74 },
+      { word: "and", start: 0.76, end: 0.86 },
+      { word: "thirty", start: 0.88, end: 1.08 },
+      { word: "thousand", start: 1.1, end: 1.34 },
+      { word: "players", start: 1.38, end: 1.72 },
+    ],
+    duration: 3,
+    scriptText: "Steam hit 130,000 players.",
+    maxWordsPerPhrase: 2,
+    maxPhraseChars: 14,
+    captionCase: "upper",
+    revealMode: "phrase",
+  });
+
+  const captions = extractAssDialogueText(ass).join(" ");
+  assert.match(captions, /130,000/);
+  assert.doesNotMatch(captions, /ONE/);
+  assert.doesNotMatch(captions, /THIRTY/);
+  assert.doesNotMatch(captions, /THOUSAND/);
 });
 
 test("buildKineticAss repairs early-ending cached voice timings without swapping in editorial text", () => {

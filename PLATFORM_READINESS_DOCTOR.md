@@ -2,18 +2,18 @@
 
 Read-only diagnostic. It performs no OAuth, token mutation, uploads or posts.
 
-Generated: 2026-05-17T12:42:47.045Z
-Verdict: AMBER
+Generated: 2026-05-17T12:57:47.684Z
+Verdict: GREEN
 
 ## Blockers
-- tiktok_local_token_refresh_or_sync_required
+- none
 
 ## TikTok
 
-- Status: needs_local_token_refresh_or_sync
-- Official inbox route: prepared_not_executed
+- Status: token_ready
+- Official inbox route: ready_pending_explicit_upload_approval
 - Public direct post: blocked_until_tiktok_app_review_or_direct_post_approval
-- Recommendation: refresh_or_sync_local_token_with_operator_present_before_any_inbox_upload
+- Recommendation: prepare_one_official_inbox_upload_packet_but_do_not_send_without_approval
 - Ready pack: rss_c27cd78d4621a058 (68.2s)
 
 ### TikTok No-Post Readiness

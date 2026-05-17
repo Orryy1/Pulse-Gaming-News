@@ -532,6 +532,143 @@ test("still-deck adapter rejects generic store assets without a game entity", as
   assert.equal(pack.rejected[0].reason, "generic_store_asset_without_game_entity");
 });
 
+test("still-deck adapter accepts verified exact-subject store assets with generic source entity", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-still-ingest-"));
+  const localPath = await imageFile(dir, "forza_steam_screenshot.jpg");
+  const pack = await buildStillDeckMediaPackage({
+    story: story({
+      id: "1te1oq7",
+      title: "Forza Horizon 6 beats its predecessor's all-time Steam record",
+      full_script: "Forza Horizon 6 has a verified Steam store signal.",
+    }),
+    plan: planFor("1te1oq7", [
+      {
+        local_path: localPath,
+        source_url: "https://cdn.akamai.steamstatic.com/steam/apps/2483190/ss_forza.jpg",
+        source_type: "steam_screenshot",
+        entity: "steam",
+        duplicate_hash: "forza-steam",
+        subject_match_quality: "exact_game_match",
+        exact_subject_group: "Forza Horizon 6",
+        counted_for_premium: true,
+        store_match_verified: true,
+      },
+    ]),
+  });
+
+  assert.equal(pack.media.articleHeroes.length, 1);
+  assert.equal(pack.media.articleHeroes[0].entity, "Forza Horizon 6");
+  assert.equal(pack.metrics.distinctEntities, 1);
+});
+
+test("still-deck adapter accepts exact-subject metadata restored from provenance", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-still-ingest-"));
+  const localPath = await imageFile(dir, "forza_apply_local.jpg");
+  const pack = await buildStillDeckMediaPackage({
+    story: story({
+      id: "1te1oq7",
+      title: "Forza Horizon 6 beats its predecessor's all-time Steam record",
+      full_script: "Forza Horizon 6 has a verified Steam store signal.",
+    }),
+    plan: {
+      story_id: "1te1oq7",
+      applied_assets: [
+        {
+          local_path: localPath,
+          source_url: "https://cdn.akamai.steamstatic.com/steam/apps/2483190/ss_forza.jpg",
+          source_type: "steam_screenshot",
+          entity: "steam",
+          store_match_verified: true,
+        },
+      ],
+      provenance: [
+        {
+          local_path: null,
+          source_url: "https://cdn.akamai.steamstatic.com/steam/apps/2483190/ss_forza.jpg",
+          source_type: "steam_screenshot",
+          entity: "Forza Horizon 6",
+          subject_match_quality: "exact_game_match",
+          exact_subject_group: "Forza Horizon 6",
+          counted_for_premium: true,
+          store_match_verified: true,
+          duplicate_hash: "forza-from-provenance",
+        },
+      ],
+    },
+  });
+
+  assert.equal(pack.media.articleHeroes.length, 1);
+  assert.equal(pack.media.articleHeroes[0].entity, "Forza Horizon 6");
+});
+
+test("still-deck adapter resolves MEDIA_ROOT-relative local assets", async () => {
+  const oldMediaRoot = process.env.MEDIA_ROOT;
+  const mediaRoot = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-media-root-"));
+  process.env.MEDIA_ROOT = mediaRoot;
+  try {
+    const relPath = path.join("output", "image_cache", "forza_media_root.jpg");
+    await imageFile(mediaRoot, relPath);
+    const pack = await buildStillDeckMediaPackage({
+      story: story({
+        id: "1te1oq7",
+        title: "Forza Horizon 6 beats its predecessor's all-time Steam record",
+        full_script: "Forza Horizon 6 has a verified Steam store signal.",
+      }),
+      plan: planFor("1te1oq7", [
+        {
+          local_path: relPath,
+          source_url: "https://cdn.akamai.steamstatic.com/steam/apps/2483190/ss_media_root.jpg",
+          source_type: "steam_screenshot",
+          entity: "Forza Horizon 6",
+          duplicate_hash: "forza-media-root",
+          subject_match_quality: "exact_game_match",
+          exact_subject_group: "Forza Horizon 6",
+          counted_for_premium: true,
+          store_match_verified: true,
+        },
+      ]),
+    });
+
+    assert.equal(pack.media.articleHeroes.length, 1);
+    assert.equal(pack.media.articleHeroes[0].path, path.join(mediaRoot, relPath));
+  } finally {
+    if (oldMediaRoot === undefined) delete process.env.MEDIA_ROOT;
+    else process.env.MEDIA_ROOT = oldMediaRoot;
+  }
+});
+
+test("still-deck adapter falls back to visual deck items from asset acquisition reports", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-still-ingest-"));
+  const localPath = await imageFile(dir, "forza_visual_deck.jpg");
+  const pack = await buildStillDeckMediaPackage({
+    story: story({
+      id: "1te1oq7",
+      title: "Forza Horizon 6 beats its predecessor's all-time Steam record",
+      full_script: "Forza Horizon 6 has a verified Steam store signal.",
+    }),
+    plan: {
+      story_id: "1te1oq7",
+      visual_deck: {
+        items: [
+          {
+            local_path: localPath,
+            source_url: "https://cdn.akamai.steamstatic.com/steam/apps/2483190/visual_deck.jpg",
+            source_type: "steam_screenshot",
+            entity: "steam",
+            subject_match_quality: "exact_game_match",
+            exact_subject_group: "Forza Horizon 6",
+            counted_for_premium: true,
+            store_match_verified: true,
+          },
+        ],
+      },
+    },
+  });
+
+  assert.equal(pack.media.articleHeroes.length, 1);
+  assert.equal(pack.media.articleHeroes[0].entity, "Forza Horizon 6");
+});
+
 test("still-deck adapter rejects low-confidence article review images", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-still-ingest-"));
   const localPath = await imageFile(dir, "article-review.jpg");
@@ -731,6 +868,20 @@ test("still-deck Flash render path passes overlay beat coverage into preflight",
   assert.match(src, /const overlayPlan =[\s\S]*buildFlashLaneOverlayPlan\(\{ story: renderStory, scenes, durationS \}\)/);
   assert.match(src, /buildFlashLaneProofPreflight\(\{\s*narration,\s*scenes,\s*media,\s*overlayPlan,/);
   assert.match(src, /assertFlashLaneProofReady\(\s*\{\s*narration,\s*scenes,\s*media,\s*overlayPlan\s*\}/);
+});
+
+test("still-deck render path can burn Visual V3 before subtitles", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+
+  assert.match(src, /--visual-v3/);
+  assert.match(src, /buildVisualV3OverlayPlan/);
+  assert.match(src, /buildVisualV3OverlayFilter/);
+  assert.match(src, /subtitleInputLabel = "visualV3Base"/);
+  assert.match(src, /quality\.visualV3\s*=/);
+  assert.match(src, /visual_v3:/);
 });
 
 test("still-deck ASS timeline covers the narration tail without a fixed outro cap", () => {

@@ -42,6 +42,10 @@ const {
   buildFlashLaneOverlayPlan,
   buildFlashLaneOverlayFilters,
 } = require("../lib/studio/v2/flash-lane-overlays");
+const {
+  buildVisualV3OverlayFilter,
+  buildVisualV3OverlayPlan,
+} = require("../lib/studio/v2/visual-v3-overlays");
 const { buildStudioEditorial } = require("../lib/studio/editorial-layer");
 const {
   cleanForTTS,
@@ -117,6 +121,10 @@ const FONT_OPT =
     ? "fontfile='C\\:/Windows/Fonts/arial.ttf'"
     : "font='DejaVu Sans'";
 
+function envEnabled(value) {
+  return /^(1|true|yes|on)$/i.test(String(value || "").trim());
+}
+
 function parseArgs(argv) {
   const args = {
     storyId: null,
@@ -136,6 +144,7 @@ function parseArgs(argv) {
     useOfficialTrailerClips: false,
     audioPath: null,
     timestampsPath: null,
+    visualV3: envEnabled(process.env.STUDIO_V3_VISUALS),
     limit: 1,
   };
   for (let i = 2; i < argv.length; i++) {
@@ -158,6 +167,8 @@ function parseArgs(argv) {
     else if (arg === "--use-official-trailer-clips") args.useOfficialTrailerClips = true;
     else if (arg === "--audio") args.audioPath = argv[++i] || "";
     else if (arg === "--timestamps") args.timestampsPath = argv[++i] || "";
+    else if (arg === "--visual-v3") args.visualV3 = true;
+    else if (arg === "--no-visual-v3") args.visualV3 = false;
     else if (arg === "--limit") args.limit = Math.max(1, Number(argv[++i]) || 1);
     else if (arg === "--help" || arg === "-?") args.help = true;
   }
@@ -181,6 +192,8 @@ function printHelp() {
       "  --with-sound-design  Mix local music bed + restrained SFX in the local proof",
       "  --audio <path>     Use real narration audio for the proof",
       "  --timestamps <path>  Use matching ElevenLabs/local-TTS timestamps JSON",
+      "  --visual-v3       Burn Visual V3 source-aware story overlays before subtitles",
+      "  --no-visual-v3    Disable Visual V3 even when STUDIO_V3_VISUALS=true",
       "  --generate-local-tts  Generate local TTS audio under test/output before rendering",
       "  --use-official-trailer-clips  Use official Steam/IGDB trailer references as local-only ffmpeg clip inputs",
       "  --allow-silent-fixture  Explicitly allow silent visual-only proof renders",
@@ -628,6 +641,7 @@ async function buildFlashLaneRenderPreflight({
   generateLocalTts = false,
   audioPath = null,
   timestampsPath = null,
+  visualV3 = false,
 }) {
   const renderStory = buildRenderStory(story);
   const narration = await resolveNarration({
@@ -716,6 +730,7 @@ async function renderStillDeckVariant({
   generateLocalTts = false,
   audioPath = null,
   timestampsPath = null,
+  visualV3 = false,
 }) {
   await fs.ensureDir(outputDir);
   const renderStory = buildRenderStory(story);
@@ -777,6 +792,14 @@ async function renderStillDeckVariant({
     variant === "enriched"
       ? buildFlashLaneOverlayPlan({ story: renderStory, scenes, durationS })
       : null;
+  const visualV3Plan =
+    visualV3 && variant === "enriched"
+      ? buildVisualV3OverlayPlan({
+          story: renderStory,
+          words,
+          durationS: assDurationS,
+        })
+      : null;
   const flashLanePreflight =
     variant === "enriched"
       ? assertFlashLaneProofReady(
@@ -819,8 +842,9 @@ async function renderStillDeckVariant({
     prev = out;
   }
   if (scenes.length === 1) filterParts.push("[v0]copy[base]");
-  const subtitleInputLabel = overlayPlan ? "overlayed" : "base";
+  let subtitleInputLabel = "base";
   if (overlayPlan) {
+    subtitleInputLabel = "overlayed";
     filterParts.push(
       ...buildFlashLaneOverlayFilters({
         plan: overlayPlan,
@@ -829,6 +853,18 @@ async function renderStillDeckVariant({
         fontOpt: FONT_OPT,
       }),
     );
+  }
+  const visualV3OverlayFilter = visualV3Plan
+    ? buildVisualV3OverlayFilter({
+        plan: visualV3Plan,
+        inputLabel: subtitleInputLabel,
+        outputLabel: "visualV3Base",
+        fontOpt: FONT_OPT,
+      })
+    : null;
+  if (visualV3OverlayFilter) {
+    filterParts.push(visualV3OverlayFilter);
+    subtitleInputLabel = "visualV3Base";
   }
   const assRel = path.relative(ROOT, assPath).replace(/\\/g, "/");
   const subtitleRenderDurationS = assDurationS;
@@ -842,7 +878,8 @@ async function renderStillDeckVariant({
   );
 
   const filterPath = path.join(outputDir, `${story.id}_${variant}_filter.txt`);
-  const mp4Path = path.join(outputDir, `studio_v2_${story.id}_${variant}.mp4`);
+  const renderPrefix = visualV3Plan && variant === "enriched" ? "studio_v3" : "studio_v2";
+  const mp4Path = path.join(outputDir, `${renderPrefix}_${story.id}_${variant}.mp4`);
   const audioIndex = sceneInputs.length;
   const allInputs = [
     ...sceneInputs,
@@ -968,6 +1005,25 @@ async function renderStillDeckVariant({
   };
   if (flashLanePreflight) quality.flashLanePreflight = flashLanePreflight;
   if (overlayPlan) quality.flashLaneOverlays = overlayPlan;
+  quality.visualV3 = visualV3Plan
+    ? {
+        enabled: true,
+        verdict: visualV3Plan.verdict,
+        blockers: visualV3Plan.blockers,
+        warnings: visualV3Plan.warnings,
+        eventCount: visualV3Plan.eventCount,
+        events: visualV3Plan.events,
+        overlayApplied: Boolean(visualV3OverlayFilter),
+      }
+    : {
+        enabled: false,
+        verdict: "disabled",
+        blockers: [],
+        warnings: [],
+        eventCount: 0,
+        events: [],
+        overlayApplied: false,
+      };
   const reportPath = path.join(outputDir, `${story.id}_${variant}_qa.json`);
   await fs.writeJson(reportPath, quality, { spaces: 2 });
   const forensic = await runForensicQa({
@@ -1054,6 +1110,17 @@ function renderComparisonMarkdown(report) {
   ];
   for (const item of report.artefacts) {
     lines.push(`- ${item.label}: ${item.path}`);
+  }
+  if (report.visual_v3?.enabled) {
+    lines.push("", "## Visual V3", "");
+    lines.push(`- Verdict: ${report.visual_v3.verdict || "unknown"}`);
+    lines.push(`- Overlay applied: ${report.visual_v3.overlayApplied ? "yes" : "no"}`);
+    lines.push(`- Events: ${report.visual_v3.eventCount || 0}`);
+    for (const event of Array.isArray(report.visual_v3.events) ? report.visual_v3.events : []) {
+      lines.push(
+        `- ${event.atS}s ${event.kind}: ${event.metric || event.entity || event.label || event.source || event.id}`,
+      );
+    }
   }
   lines.push(
     "",
@@ -1268,6 +1335,7 @@ async function main() {
       generateLocalTts: args.generateLocalTts,
       audioPath: args.audioPath,
       timestampsPath: args.timestampsPath,
+      visualV3: args.visualV3,
     });
     enrichedRender = await renderStillDeckVariant({
       story,
@@ -1281,6 +1349,7 @@ async function main() {
       generateLocalTts: args.generateLocalTts,
       audioPath: args.audioPath,
       timestampsPath: args.timestampsPath,
+      visualV3: args.visualV3,
     });
     comparison = compareForensicReports(baselineRender.forensic, enrichedRender.forensic);
     await fs.writeJson(path.join(OUT, "forensic_comparison.json"), comparison, { spaces: 2 });
@@ -1423,6 +1492,15 @@ async function main() {
       official_clip_refs_used: officialClipRefsUsed,
       official_clip_safety: officialClipResolution.safety,
       official_trailer_frames_used: Number(enrichedPackage.metrics.acceptedFrameCount || 0),
+    },
+    visual_v3: enrichedRender?.quality?.visualV3 || {
+      enabled: args.visualV3,
+      verdict: args.visualV3 ? "render_not_attempted" : "disabled",
+      blockers: args.visualV3 && !renderAttempted ? ["render_not_attempted"] : [],
+      warnings: [],
+      eventCount: 0,
+      events: [],
+      overlayApplied: false,
     },
     render_requested: renderRequested,
     render_package_gate: renderPackageGate,

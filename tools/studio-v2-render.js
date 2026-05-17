@@ -99,6 +99,10 @@ const {
   buildHeroMomentOverlayFilter,
 } = require("../lib/studio/v2/hero-moments-v21");
 const {
+  buildVisualV3OverlayFilter,
+  buildVisualV3OverlayPlan,
+} = require("../lib/studio/v2/visual-v3-overlays");
+const {
   buildCreatorGradePlan,
 } = require("../lib/studio/creator-grade/orchestrator");
 const {
@@ -1506,6 +1510,24 @@ async function main() {
     }
   }
 
+  const visualV3Plan = envEnabled(process.env.STUDIO_V3_VISUALS)
+    ? buildVisualV3OverlayPlan({
+        story: renderStory,
+        words: subtitleTimingWords,
+        durationS: subtitleTimelineDurationS,
+      })
+    : null;
+  if (visualV3Plan) {
+    console.log(
+      `       visual v3: ${visualV3Plan.eventCount} overlay event${visualV3Plan.eventCount === 1 ? "" : "s"} planned (${visualV3Plan.verdict})`,
+    );
+    for (const event of visualV3Plan.events) {
+      console.log(
+        `         - ${event.kind}@${event.atS}s (${event.metric || event.entity || event.label || event.source || "beat"})`,
+      );
+    }
+  }
+
   // ---- 9. Inputs + filter graph ----
   console.log("[9/11] building inputs + filter graph...");
   const sceneInputs = scenes.map(buildV2SceneInput);
@@ -1617,6 +1639,18 @@ async function main() {
   if (heroOverlayFilter) {
     filterParts.push(heroOverlayFilter);
     videoForSubtitles = "heroBase";
+  }
+  const visualV3OverlayFilter = visualV3Plan
+    ? buildVisualV3OverlayFilter({
+        inputLabel: videoForSubtitles,
+        outputLabel: "visualV3Base",
+        plan: visualV3Plan,
+        fontOpt: FONT_OPT,
+      })
+    : null;
+  if (visualV3OverlayFilter) {
+    filterParts.push(visualV3OverlayFilter);
+    videoForSubtitles = "visualV3Base";
   }
   filterParts.push(
     ...buildSubtitleBaseFilter({
@@ -1792,6 +1826,25 @@ async function main() {
         enabled: false,
         momentCount: 0,
         moments: [],
+        overlayApplied: false,
+      };
+  report.visualV3 = visualV3Plan
+    ? {
+        enabled: true,
+        verdict: visualV3Plan.verdict,
+        blockers: visualV3Plan.blockers,
+        warnings: visualV3Plan.warnings,
+        eventCount: visualV3Plan.eventCount,
+        events: visualV3Plan.events,
+        overlayApplied: Boolean(visualV3OverlayFilter),
+      }
+    : {
+        enabled: false,
+        verdict: "disabled",
+        blockers: [],
+        warnings: [],
+        eventCount: 0,
+        events: [],
         overlayApplied: false,
       };
   if (creatorGradePlan) {

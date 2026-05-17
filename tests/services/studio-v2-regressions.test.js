@@ -781,6 +781,25 @@ test("studio production voice can disable the spoken outro for private tests", (
   assert.equal(segments.some((segment) => segment.label === "outro"), false);
 });
 
+test("studio production voice dedupes repeated hook and loop segment boundaries", () => {
+  const segments = buildProductionVoiceSegments(
+    {
+      hook: "Forza Horizon 6 just put up a ridiculous Steam number.",
+      body:
+        "Forza Horizon 6 just put up a ridiculous Steam number. The Steam peak hit one hundred and thirty thousand players. Either way, Xbox finally has a racing story with hard numbers behind it.",
+      loop:
+        "Either way, Xbox finally has a racing story with hard numbers behind it.",
+    },
+    { STUDIO_V2_DISABLE_SPOKEN_OUTRO: "true" },
+  );
+
+  assert.equal(
+    segments.find((segment) => segment.label === "body").cleanText,
+    "The Steam peak hit one hundred and thirty thousand players. Either way, Xbox finally has a racing story with hard numbers behind it.",
+  );
+  assert.equal(segments.some((segment) => segment.label === "loop"), false);
+});
+
 test("v2 quality report does not penalise SFX when explicitly disabled", () => {
   const oldMode = process.env.STUDIO_V2_SFX_MODE;
   process.env.STUDIO_V2_SFX_MODE = "off";
@@ -1229,6 +1248,19 @@ test("studio-v2 render burns repaired subtitle words instead of mixing raw and r
   assert.match(src, /words:\s*subtitleTimingWords/);
   assert.match(src, /realign:\s*false/);
   assert.match(src, /realignedWords:\s*subtitleTimingWords/);
+});
+
+test("studio-v2 render can apply Visual V3 before subtitles and report it", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-render.js"),
+    "utf8",
+  );
+
+  assert.match(src, /buildVisualV3OverlayPlan/);
+  assert.match(src, /STUDIO_V3_VISUALS/);
+  assert.match(src, /buildVisualV3OverlayFilter/);
+  assert.match(src, /videoForSubtitles\s*=\s*"visualV3Base"/);
+  assert.match(src, /report\.visualV3\s*=/);
 });
 
 test("studio-v2-render supports local VoxCPM through the production-shaped path", () => {

@@ -119,6 +119,12 @@ test("Studio V2 proof safety rejects approved local narration without mastering 
       }),
     /no mastering proof/i,
   );
+  assert.doesNotThrow(() =>
+    assertNarrationAllowedForProof(narration, {
+      env: { STUDIO_V2_LOCAL_VOICE_APPROVED: "true" },
+      allowLocalVoiceDiagnostic: true,
+    }),
+  );
 });
 
 test("Studio V2 proof safety rejects approved local narration that is still too quiet", () => {

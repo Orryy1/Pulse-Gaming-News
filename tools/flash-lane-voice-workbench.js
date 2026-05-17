@@ -10,6 +10,7 @@ try {
 } catch {}
 
 const { ffprobeDuration } = require("../lib/studio/media-acquisition");
+const { buildVoiceMasteringFilter } = require("../lib/audio-quality");
 const {
   buildFlashLaneVoiceWorkbench,
   generateLocalVoiceCandidate,
@@ -215,7 +216,7 @@ function probeMedianPitch(file) {
     "import json, sys",
     "import numpy as np",
     "import librosa",
-    "y, sr = librosa.load(sys.argv[1], sr=16000, mono=True)",
+    "y, sr = librosa.load(sys.argv[1], sr=48000, mono=True)",
     "if y.size == 0:",
     "    print(json.dumps({'medianPitchHz': None}))",
     "    raise SystemExit(0)",
@@ -254,10 +255,19 @@ function probeMedianPitch(file) {
 
 async function normaliseVoiceAudio({ inputPath, outputPath, pitchFactor = 1 }) {
   const filters = [];
+  const outputBitrate = "256k";
   if (Number.isFinite(Number(pitchFactor)) && Number(pitchFactor) > 0 && Number(pitchFactor) !== 1) {
     filters.push(`rubberband=pitch=${Number(pitchFactor).toFixed(3)}`);
   }
-  filters.push("loudnorm=I=-16:TP=-1.5:LRA=11");
+  filters.push(
+    buildVoiceMasteringFilter({
+      targetLufs: -16,
+      truePeak: -1.5,
+      loudnessRange: 11,
+      limiter: 0.9,
+      denoise: false,
+    }),
+  );
   const result = spawnSync(
     "ffmpeg",
     [
@@ -273,7 +283,7 @@ async function normaliseVoiceAudio({ inputPath, outputPath, pitchFactor = 1 }) {
       "-ac",
       "1",
       "-b:a",
-      "256k",
+      outputBitrate,
       outputPath,
     ],
     { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 120000 },
@@ -287,6 +297,7 @@ async function normaliseVoiceAudio({ inputPath, outputPath, pitchFactor = 1 }) {
     applied: true,
     filter: filters.join(","),
     pitchFactor: Number(pitchFactor),
+    outputBitrate,
     inputPath,
     outputPath,
   };

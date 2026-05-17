@@ -65,6 +65,7 @@ const {
   buildStoryFromStillDeckPlan,
   buildStillDeckMarkdown,
   buildStillDeckMediaPackage,
+  mergeStillDeckApplyLocalPlan,
   selectStillDeckPlan,
 } = require("../lib/studio/v2/still-deck-ingestion");
 const {
@@ -804,6 +805,7 @@ async function renderStillDeckVariant({
   generateLocalTts = false,
   audioPath = null,
   timestampsPath = null,
+  retentionIntelligence = null,
   visualV3 = false,
 }) {
   await fs.ensureDir(outputDir);
@@ -1326,7 +1328,7 @@ async function main() {
       applyLocal: true,
       outputRoot: SOURCE_OUT,
     });
-    plan = localApplyReport.plans[0];
+    plan = mergeStillDeckApplyLocalPlan(selected, localApplyReport.plans[0]);
     await fs.writeJson(path.join(OUT, "still_deck_apply_local.json"), localApplyReport, { spaces: 2 });
     await fs.writeFile(
       path.join(OUT, "still_deck_apply_local.md"),

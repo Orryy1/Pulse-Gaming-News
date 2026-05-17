@@ -187,6 +187,22 @@ test("classifyTrailerFrameTaste: rejects legal and platform slate text", () => {
   assert.equal(taste.reason, "legal_slate_text_frame");
 });
 
+test("classifyTrailerFrameTaste: rejects bright promotional store slates without OCR text", () => {
+  const taste = v.classifyTrailerFrameTaste({
+    text_overlay_likelihood: 0.01,
+    white_text_on_dark_likelihood: 0,
+    edge_density: 0.26,
+    saturation_mean: 0.37,
+    bright_pixel_ratio: 0.36,
+    dark_pixel_ratio: 0.05,
+    central_bright_pixel_ratio: 0.34,
+    central_dark_pixel_ratio: 0.06,
+  });
+
+  assert.equal(taste.verdict, "fail");
+  assert.equal(taste.reason, "promotional_store_slate_frame");
+});
+
 test("classifyTrailerFrameTaste: rejects very early trailer intro frames", () => {
   const taste = v.classifyTrailerFrameTaste({
     target_time_seconds: 6,

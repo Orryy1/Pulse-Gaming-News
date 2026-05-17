@@ -9,6 +9,7 @@ const path = require("node:path");
 const {
   buildStillDeckMediaPackage,
   buildStoryFromStillDeckPlan,
+  mergeStillDeckApplyLocalPlan,
   selectStillDeckPlan,
 } = require("../../lib/studio/v2/still-deck-ingestion");
 
@@ -669,6 +670,98 @@ test("still-deck adapter falls back to visual deck items from asset acquisition 
   assert.equal(pack.media.articleHeroes[0].entity, "Forza Horizon 6");
 });
 
+test("still-deck adapter keeps existing visual deck items when apply-local adds assets", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-still-ingest-"));
+  const existingA = await imageFile(dir, "forza_existing_a.jpg");
+  const existingB = await imageFile(dir, "forza_existing_b.jpg");
+  const applied = await imageFile(dir, "forza_applied.jpg");
+  const pack = await buildStillDeckMediaPackage({
+    story: story({
+      id: "1te1oq7",
+      title: "Forza Horizon 6 beats its predecessor's all-time Steam record",
+      full_script: "Forza Horizon 6 has a verified Steam store signal.",
+    }),
+    plan: {
+      story_id: "1te1oq7",
+      applied_assets: [
+        {
+          local_path: applied,
+          source_url: "https://cdn.akamai.steamstatic.com/steam/apps/2483190/applied.jpg",
+          source_type: "steam_screenshot",
+          entity: "Forza Horizon 6",
+          duplicate_hash: "applied-forza",
+          subject_match_quality: "exact_game_match",
+          exact_subject_group: "Forza Horizon 6",
+          counted_for_premium: true,
+          store_match_verified: true,
+        },
+      ],
+      visual_deck: {
+        items: [
+          {
+            local_path: existingA,
+            source_url: "https://cdn.akamai.steamstatic.com/steam/apps/2483190/existing-a.jpg",
+            source_type: "steam_screenshot",
+            entity: "Forza Horizon 6",
+            duplicate_hash: "existing-forza-a",
+            subject_match_quality: "exact_game_match",
+            exact_subject_group: "Forza Horizon 6",
+            counted_for_premium: true,
+            store_match_verified: true,
+          },
+          {
+            local_path: existingB,
+            source_url: "https://cdn.akamai.steamstatic.com/steam/apps/2483190/existing-b.jpg",
+            source_type: "steam_screenshot",
+            entity: "Forza Horizon 6",
+            duplicate_hash: "existing-forza-b",
+            subject_match_quality: "exact_game_match",
+            exact_subject_group: "Forza Horizon 6",
+            counted_for_premium: true,
+            store_match_verified: true,
+          },
+        ],
+      },
+    },
+  });
+
+  assert.equal(pack.media.articleHeroes.length, 3);
+  assert.deepEqual(
+    pack.media.articleHeroes.map((asset) => path.basename(asset.path)).sort(),
+    ["forza_applied.jpg", "forza_existing_a.jpg", "forza_existing_b.jpg"],
+  );
+});
+
+test("mergeStillDeckApplyLocalPlan preserves base visual deck while adding apply-local output", () => {
+  const merged = mergeStillDeckApplyLocalPlan(
+    {
+      story_id: "1te1oq7",
+      visual_deck: {
+        items: [
+          { local_path: "existing-a.jpg", duplicate_hash: "existing-a" },
+          { local_path: "existing-b.jpg", duplicate_hash: "existing-b" },
+        ],
+      },
+      provenance: [{ duplicate_hash: "existing-a" }],
+    },
+    {
+      story_id: "1te1oq7",
+      applied_assets: [{ local_path: "applied.jpg", duplicate_hash: "applied" }],
+      provenance: [{ duplicate_hash: "applied" }],
+    },
+  );
+
+  assert.deepEqual(
+    merged.visual_deck.items.map((item) => item.duplicate_hash),
+    ["existing-a", "existing-b"],
+  );
+  assert.deepEqual(
+    merged.applied_assets.map((item) => item.duplicate_hash),
+    ["applied"],
+  );
+  assert.equal(merged.provenance.length, 2);
+});
+
 test("still-deck adapter rejects low-confidence article review images", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-still-ingest-"));
   const localPath = await imageFile(dir, "article-review.jpg");
@@ -913,6 +1006,10 @@ test("still-deck render path can feed retention intelligence into Visual V3", ()
   assert.match(src, /--retention-intelligence/);
   assert.match(src, /retentionIntelligencePath/);
   assert.match(src, /const retentionIntelligence =/);
+  assert.match(
+    src,
+    /async function renderStillDeckVariant\(\{[\s\S]*?retentionIntelligence = null,[\s\S]*?visualV3 = false,/,
+  );
   assert.match(src, /retentionIntelligence,\s*\n\s*\}\)/);
   assert.match(wrapper, /--retention-intelligence/);
 });

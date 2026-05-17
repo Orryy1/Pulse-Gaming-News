@@ -12,15 +12,16 @@ Voice modes:
     plenty. Do NOT use audio of an ElevenLabs stock voice as the reference -
     that is a ToS violation.
 
-Pacing: VoxCPM 2's default voice synthesizes at ~50 WPM, which is well below
-the 130-140 WPM Pulse Gaming targets. We post-process with librosa's phase
-vocoder (pitch-preserving) so we can stretch up to ~2.5x without chipmunk
-artifacts. The pipeline-supplied speaking_rate is multiplied by BASE_SPEED
-(env, default 1.0) so the operator can set a global pace floor.
+Pacing: VoxCPM 2's default voice synthesizes slowly for Pulse-style shorts.
+The pipeline-supplied speaking_rate is multiplied by BASE_SPEED (env, default
+1.0). When tempo correction is needed, prefer FFmpeg's Rubber Band filter over
+librosa's phase vocoder because it keeps consonants cleaner for social video.
 """
 
 import logging
 import os
+import subprocess
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -305,20 +306,49 @@ class VoxCPMEngine:
     def _voice_quality_metrics(self, audio: np.ndarray, text: str) -> Dict[str, Any]:
         try:
             duration_s = len(audio) / float(self.sample_rate)
-            trimmed, _ = librosa.effects.trim(audio, top_db=35)
+            max_analysis_s = float(os.getenv("VOICE_QA_MAX_ANALYSIS_S", "45") or 45)
+            max_analysis_samples = max(1, int(max_analysis_s * self.sample_rate))
+            if len(audio) > max_analysis_samples:
+                # Analyse a stable mid-front window. Running f0/STFT over a full
+                # 90-150s raw render can spike memory and has crashed the local
+                # server after generation, before the HTTP response is returned.
+                start = min(
+                    max(0, len(audio) - max_analysis_samples),
+                    max(0, int(len(audio) * 0.15)),
+                )
+                analysis_audio = audio[start:start + max_analysis_samples]
+            else:
+                analysis_audio = audio
+            trimmed, _ = librosa.effects.trim(analysis_audio, top_db=35)
             if len(trimmed) < int(self.sample_rate * 0.25):
-                trimmed = audio
+                trimmed = analysis_audio
             f0 = librosa.yin(trimmed, fmin=50, fmax=350, sr=self.sample_rate)
             voiced = f0[np.isfinite(f0)]
             voiced = voiced[(voiced >= 50) & (voiced <= 350)]
             centroid = librosa.feature.spectral_centroid(y=trimmed, sr=self.sample_rate)[0]
+            rolloff = librosa.feature.spectral_rolloff(
+                y=trimmed,
+                sr=self.sample_rate,
+                roll_percent=0.85,
+            )[0]
+            n_fft = 1024
+            spectrum = np.abs(librosa.stft(trimmed, n_fft=n_fft, hop_length=512)) ** 2
+            freqs = librosa.fft_frequencies(sr=self.sample_rate, n_fft=n_fft)
+            voice_band = (freqs >= 80) & (freqs <= min(7500, self.sample_rate / 2))
+            high_band = freqs >= 5000
+            total = spectrum[voice_band].sum(axis=0)
+            high = spectrum[high_band].sum(axis=0)
+            high_ratio = high / np.maximum(total, 1e-12)
             return {
                 "duration_s": round(float(duration_s), 3),
+                "analysis_duration_s": round(float(len(analysis_audio) / self.sample_rate), 3),
                 "duration_per_char_s": round(float(duration_s / max(1, len(text))), 4),
                 "median_f0_hz": round(float(np.median(voiced)), 2) if len(voiced) else None,
                 "p10_f0_hz": round(float(np.percentile(voiced, 10)), 2) if len(voiced) else None,
                 "p90_f0_hz": round(float(np.percentile(voiced, 90)), 2) if len(voiced) else None,
                 "centroid_hz": round(float(np.median(centroid)), 2),
+                "rolloff_85_hz": round(float(np.median(rolloff)), 2),
+                "high_frequency_ratio_gt_5khz": round(float(np.median(high_ratio)), 6),
             }
         except Exception as exc:
             return {"error": f"{type(exc).__name__}: {exc}"}
@@ -346,10 +376,54 @@ class VoxCPMEngine:
             return 0.0
         return float(median_f0)
 
-    @staticmethod
-    def _time_stretch(audio: np.ndarray, rate: float) -> np.ndarray:
-        """Pitch-preserving time-stretch via librosa's phase vocoder. Sounds
-        natural up to ~2.5x; beyond that artifacts become audible."""
+    def _time_stretch(self, audio: np.ndarray, rate: float) -> np.ndarray:
+        """Pitch-preserving time-stretch with a Rubber Band first path.
+
+        Librosa's phase vocoder is kept only as librosa_fallback because the
+        old path made Pulse narration sound filtered when pushed to Shorts pace.
+        """
         if abs(rate - 1.0) < 1e-3 or len(audio) < 2:
             return audio
+        backend = os.getenv("VOXCPM_TIME_STRETCH_BACKEND", "rubberband").strip().lower()
+        if backend in ("rubberband", "ffmpeg", "ffmpeg_rubberband"):
+            try:
+                return self._time_stretch_rubberband(audio, rate)
+            except Exception as exc:
+                log.warning("rubberband stretch failed; using librosa_fallback: %s", exc)
+        log.info("librosa_fallback rate=%.3f", rate)
         return librosa.effects.time_stretch(audio, rate=rate).astype(np.float32)
+
+    def _time_stretch_rubberband(self, audio: np.ndarray, rate: float) -> np.ndarray:
+        import soundfile as sf
+
+        timeout_s = int(os.getenv("VOXCPM_RUBBERBAND_TIMEOUT_S", "180") or 180)
+        sample_rate = int(self.sample_rate)
+        with tempfile.TemporaryDirectory(prefix="voxcpm-rubberband-") as tmp:
+            in_path = Path(tmp) / "in.wav"
+            out_path = Path(tmp) / "out.wav"
+            sf.write(in_path, audio.astype(np.float32), sample_rate)
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-i",
+                    str(in_path),
+                    "-af",
+                    f"rubberband=tempo={float(rate):.6f}:pitch=1",
+                    "-ar",
+                    str(sample_rate),
+                    "-ac",
+                    "1",
+                    str(out_path),
+                ],
+                check=True,
+                capture_output=True,
+                timeout=timeout_s,
+            )
+            stretched, _ = sf.read(out_path, dtype="float32", always_2d=False)
+            if getattr(stretched, "ndim", 1) > 1:
+                stretched = stretched.mean(axis=1)
+            return np.asarray(stretched, dtype=np.float32)

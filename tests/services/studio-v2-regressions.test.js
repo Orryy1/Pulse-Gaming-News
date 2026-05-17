@@ -750,6 +750,27 @@ test("v2 sound layer can pad the audio bed to a longer outro runtime", () => {
   );
 });
 
+test("v2 sound layer keeps the music bed below local narration clarity", () => {
+  const payload = buildSoundLayerV2({
+    scenes: [{ type: "opener", duration: 58 }, { type: "outro", duration: 4 }],
+    transitions: [{ type: "cut", offset: 58 }],
+    voiceInputIdx: 2,
+    musicInputIdx: 3,
+    audioInputsBaseIdx: 4,
+    audioPlan: { sfxCues: [] },
+    targetDurationS: 62,
+  });
+
+  assert.ok(
+    payload.filterLines.some((line) => line.includes("volume=0.075[bgm_raw]")),
+  );
+  assert.ok(
+    payload.filterLines.some((line) =>
+      line.includes("sidechaincompress=threshold=0.035:ratio=6"),
+    ),
+  );
+});
+
 test("studio production voice includes the branded spoken outro by default", () => {
   const segments = buildProductionVoiceSegments({
     hook: "Mega Mewtwo is real.",

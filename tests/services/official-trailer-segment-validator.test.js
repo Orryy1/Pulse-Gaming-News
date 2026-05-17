@@ -717,6 +717,54 @@ test("official trailer segment validator rejects clean but text-heavy non-gamepl
   assert.equal(report.segments[0].allowed_for_flash_lane, false);
 });
 
+test("official trailer segment validator rechecks stale pass taste records for promo slates", async () => {
+  const outputRoot = tempOutputRoot("stale-promo-slate");
+  await cleanTempRoot(outputRoot);
+  let call = 0;
+
+  const report = await runOfficialTrailerSegmentValidation([clip()], {
+    applyLocal: true,
+    outputRoot,
+    extractor: fakeExtractor,
+    inspectFrame: async (outputPath) => {
+      call += 1;
+      if (call < 3) {
+        return {
+          ...passingQa(outputPath),
+          content_hash: `clean-${call}`,
+        };
+      }
+      return {
+        ...passingQa(outputPath),
+        content_hash: "stale-promo-slate",
+        visual_taste: {
+          verdict: "pass",
+          reason: "legacy_pass",
+          score: 100,
+          tags: ["gameplay_candidate"],
+        },
+        prescan: {
+          likely_is_logo: false,
+          text_overlay_likelihood: 0.01,
+          white_text_on_dark_likelihood: 0,
+          edge_density: 0.26,
+          saturation_mean: 0.37,
+          bright_pixel_ratio: 0.36,
+          dark_pixel_ratio: 0.05,
+          central_bright_pixel_ratio: 0.34,
+          central_dark_pixel_ratio: 0.06,
+        },
+      };
+    },
+  });
+
+  assert.equal(report.summary.segments_validated, 1);
+  assert.equal(report.segments[0].validation_reason, "trimmed_segment_samples_passed");
+  assert.equal(report.segments[0].trim_recommended, true);
+  assert.equal(report.segments[0].samples[2].status, "rejected_qa");
+  assert.ok(report.segments[0].samples[2].qa.failures.includes("title_or_rating_card_frame"));
+});
+
 test("official trailer segment validator requires at least two gameplay/action samples", async () => {
   const outputRoot = tempOutputRoot("one-action-sample");
   await cleanTempRoot(outputRoot);

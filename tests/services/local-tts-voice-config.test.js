@@ -98,6 +98,29 @@ test("Pulse VoxCPM generation is serialised and stage-timed for hangs", () => {
   assert.match(engineSource, /stretch_end/);
 });
 
+test("Pulse VoxCPM voice QA analyses bounded audio windows instead of whole long renders", () => {
+  const engineSource = fs.readFileSync(
+    path.join(ROOT, "tts_server", "voxcpm_engine.py"),
+    "utf8",
+  );
+
+  assert.match(engineSource, /VOICE_QA_MAX_ANALYSIS_S/);
+  assert.match(engineSource, /analysis_audio/);
+  assert.match(engineSource, /analysis_duration_s/);
+});
+
+test("Pulse VoxCPM stretch prefers FFmpeg Rubber Band over librosa phase vocoder", () => {
+  const engineSource = fs.readFileSync(
+    path.join(ROOT, "tts_server", "voxcpm_engine.py"),
+    "utf8",
+  );
+
+  assert.match(engineSource, /VOXCPM_TIME_STRETCH_BACKEND/);
+  assert.match(engineSource, /rubberband=tempo=/);
+  assert.match(engineSource, /_time_stretch_rubberband/);
+  assert.match(engineSource, /librosa_fallback/);
+});
+
 test("Pulse VoxCPM server uses model sample rate instead of hardcoded 16 kHz", () => {
   const engineSource = fs.readFileSync(
     path.join(ROOT, "tts_server", "voxcpm_engine.py"),

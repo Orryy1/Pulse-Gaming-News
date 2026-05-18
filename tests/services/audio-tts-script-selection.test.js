@@ -98,6 +98,13 @@ test("cleanForTTS: expands comma-formatted large numbers for clearer narration",
   );
 });
 
+test("cleanForTTS: expands modern years without hybrid spoken digits", () => {
+  assert.equal(
+    cleanForTTS("Forza Horizon 6 topped Metacritic in 2026, not 2039."),
+    "Forza Horizon 6 topped Metacritic in twenty twenty six, not twenty thirty nine.",
+  );
+});
+
 test("resolveTtsTimeoutMs: local VoxCPM defaults to a bounded timeout but remains configurable", () => {
   assert.equal(resolveTtsTimeoutMs("local", {}), 300000);
   assert.equal(

@@ -138,6 +138,7 @@ function envEnabled(value) {
 function parseArgs(argv) {
   const args = {
     storyId: null,
+    storyJsonPath: null,
     reportPath: null,
     applyLocal: false,
     frameReportPath: null,
@@ -161,6 +162,7 @@ function parseArgs(argv) {
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--story") args.storyId = argv[++i] || null;
+    else if (arg === "--story-json") args.storyJsonPath = argv[++i] || "";
     else if (arg === "--report") args.reportPath = path.resolve(argv[++i] || "");
     else if (arg === "--frame-report") args.frameReportPath = path.resolve(argv[++i] || "");
     else if (arg === "--segment-validation-report")
@@ -195,6 +197,7 @@ function printHelp() {
       "",
       "Options:",
       "  --story <id>       Prefer one story id",
+      "  --story-json <path> Use a local story override JSON for proof renders",
       "  --report <path>    still-enrichment report path; defaults to newest v1.5/v1.4/v1.1 output",
       "  --frame-report <path>  accepted local frame-extraction report; defaults to controlled worker apply-local output if present",
       "  --segment-validation-report <path>  optional local segment validation report for official trailer clip refs",
@@ -277,7 +280,19 @@ function normaliseStory(row) {
   };
 }
 
-async function loadStory(storyId, plan) {
+async function loadStory(storyId, plan, storyJsonPath = null) {
+  if (storyJsonPath) {
+    const resolved = path.isAbsolute(storyJsonPath)
+      ? storyJsonPath
+      : path.resolve(ROOT, storyJsonPath);
+    const raw = await fs.readJson(resolved);
+    const payload = raw?.story && typeof raw.story === "object" ? raw.story : raw;
+    const override = normaliseStory(payload);
+    return {
+      ...override,
+      id: override.id || storyId || plan?.story_id || "local_story_override",
+    };
+  }
   const db = require("../lib/db");
   const rows = (await db.getStories()).map(normaliseStory);
   const story = rows.find((item) => item.id === storyId);
@@ -1350,7 +1365,7 @@ async function main() {
     preferredStoryIds,
   });
   if (!selected) throw new Error("No still-deck plan found");
-  const story = await loadStory(selected.story_id, selected);
+  const story = await loadStory(selected.story_id, selected, args.storyJsonPath);
 
   let plan = selected;
   let localApplyReport = null;

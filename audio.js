@@ -443,7 +443,7 @@ function cleanForTTS(raw) {
             : `two thousand and ${ones[y - 2000]}`;
         }
         if (y >= 2010 && y <= 2099)
-          return `twenty ${match.slice(2, 4).replace(/^0/, "")}`;
+          return `twenty ${belowHundredToWords(y % 100)}`;
         return match;
       })
       // Phonetic replacements for mispronounced words

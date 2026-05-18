@@ -88,6 +88,13 @@ test("headline inference extracts game titles before record-breaking verbs and a
   );
 });
 
+test("headline inference extracts game titles before review-score becomes framing", () => {
+  assert.deepEqual(
+    inferHeadlineGameCandidates("Forza Horizon 6 Becomes Highest Rated Game of 2026 on Metacritic"),
+    ["Forza Horizon 6"],
+  );
+});
+
 test("headline inference rejects editorial colon fragments but keeps credited games", () => {
   assert.deepEqual(
     inferHeadlineGameCandidates("It's brutal out there: Deus Ex and Unreal composer says game music is changing"),

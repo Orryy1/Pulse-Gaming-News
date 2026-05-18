@@ -516,6 +516,8 @@ function selectRawTtsScript(story) {
 
 const SPOKEN_OUTRO_TEXT = "Follow Pulse Gaming so you never miss a beat";
 const SPOKEN_OUTRO = `${SPOKEN_OUTRO_TEXT}.`;
+const TERMINAL_PULSE_CTA_RE =
+  /\bFollow\s+Pulse\s+Gaming\b[^.!?]*(?:[.!?]\s*)?$/i;
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -552,6 +554,9 @@ function ensureSpokenOutro(script) {
   const cleanScript = collapseAdjacentDuplicateSentences(String(script || "").trim());
   const withoutTerminalOutros = stripTerminalSpokenOutros(cleanScript);
   if (!withoutTerminalOutros) return SPOKEN_OUTRO;
+  if (TERMINAL_PULSE_CTA_RE.test(withoutTerminalOutros)) {
+    return withoutTerminalOutros.replace(/\s+/g, " ").trim();
+  }
   return `${withoutTerminalOutros} ${SPOKEN_OUTRO}`.replace(/\s+/g, " ").trim();
 }
 
@@ -935,20 +940,35 @@ async function concatAudioFiles(files, outputPath, options = {}) {
   // (which now lives under MEDIA_ROOT in production).
   const outputAbs = mediaPaths.writePath(outputPath);
   const listAbs = outputAbs.replace(/\.mp3$/, "_concat.txt");
+  const configuredGaps = Array.isArray(options.interSegmentGapsS)
+    ? options.interSegmentGapsS
+    : null;
   const gapS = Number(options.interSegmentGapS || options.gapS || 0);
-  let silenceAbs = null;
-  if (Number.isFinite(gapS) && gapS > 0.001 && files.length > 1) {
-    const gapMs = Math.round(gapS * 1000);
-    silenceAbs = outputAbs.replace(/\.mp3$/i, `_silence_${gapMs}ms.mp3`);
+  const gapForIndex = (index) => {
+    const value = configuredGaps ? Number(configuredGaps[index]) : gapS;
+    return Number.isFinite(value) && value > 0.001 ? value : 0;
+  };
+  const silenceByMs = new Map();
+  const cleanupSilences = [];
+  for (let index = 0; index < files.length - 1; index += 1) {
+    const gapAfterS = gapForIndex(index);
+    if (gapAfterS <= 0.001) continue;
+    const gapMs = Math.round(gapAfterS * 1000);
+    if (silenceByMs.has(gapMs)) continue;
+    const silenceAbs = outputAbs.replace(/\.mp3$/i, `_silence_${gapMs}ms.mp3`);
+    silenceByMs.set(gapMs, silenceAbs);
+    cleanupSilences.push(silenceAbs);
     await execAsync(
-      `ffmpeg -y -hide_banner -loglevel error -f lavfi -i anullsrc=r=44100:cl=mono -t ${gapS.toFixed(3)} -q:a 9 -acodec libmp3lame "${silenceAbs.replace(/\\/g, "/")}"`,
+      `ffmpeg -y -hide_banner -loglevel error -f lavfi -i anullsrc=r=44100:cl=mono -t ${gapAfterS.toFixed(3)} -q:a 9 -acodec libmp3lame "${silenceAbs.replace(/\\/g, "/")}"`,
       { timeout: 30000 },
     );
   }
   const listEntries = [];
   files.forEach((f, index) => {
     listEntries.push(`file '${path.basename(f)}'`);
-    if (silenceAbs && index < files.length - 1) {
+    const gapAfterS = gapForIndex(index);
+    if (index < files.length - 1 && gapAfterS > 0.001) {
+      const silenceAbs = silenceByMs.get(Math.round(gapAfterS * 1000));
       listEntries.push(`file '${path.basename(silenceAbs)}'`);
     }
   });
@@ -961,7 +981,9 @@ async function concatAudioFiles(files, outputPath, options = {}) {
     );
   } finally {
     await fs.remove(listAbs).catch(() => {});
-    if (silenceAbs) await fs.remove(silenceAbs).catch(() => {});
+    for (const silenceAbs of cleanupSilences) {
+      await fs.remove(silenceAbs).catch(() => {});
+    }
   }
 }
 

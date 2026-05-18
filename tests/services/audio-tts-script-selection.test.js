@@ -91,6 +91,13 @@ test("ensureSpokenOutro: collapses repeated terminal CTAs to exactly one", () =>
   );
 });
 
+test("ensureSpokenOutro: keeps a custom terminal Pulse CTA without adding the default", () => {
+  assert.equal(
+    ensureSpokenOutro("A clean gaming update. Follow Pulse Gaming for the next read."),
+    "A clean gaming update. Follow Pulse Gaming for the next read.",
+  );
+});
+
 test("cleanForTTS: expands comma-formatted large numbers for clearer narration", () => {
   assert.equal(
     cleanForTTS("Forza Horizon 6 hit 130,000 concurrent players on Steam."),

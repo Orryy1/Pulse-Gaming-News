@@ -307,6 +307,42 @@ test("sound layer offsets merged local voice alignments by native segment pauses
   }
 });
 
+test("sound layer offsets merged local voice alignments by scheduled segment pauses", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-sound-gap-schedule-"));
+  const first = path.join(tmp, "first.mp3");
+  const second = path.join(tmp, "second.mp3");
+  const third = path.join(tmp, "third.mp3");
+  await fs.writeFile(first, Buffer.from("not real mp3"));
+  await fs.writeFile(second, Buffer.from("not real mp3"));
+  await fs.writeFile(third, Buffer.from("not real mp3"));
+  await fs.writeJson(path.join(tmp, "first_timestamps.json"), {
+    characters: ["A"],
+    character_start_times_seconds: [0],
+    character_end_times_seconds: [0.2],
+  });
+  await fs.writeJson(path.join(tmp, "second_timestamps.json"), {
+    characters: ["B"],
+    character_start_times_seconds: [0],
+    character_end_times_seconds: [0.2],
+  });
+  await fs.writeJson(path.join(tmp, "third_timestamps.json"), {
+    characters: ["C"],
+    character_start_times_seconds: [0],
+    character_end_times_seconds: [0.2],
+  });
+
+  try {
+    const merged = await sound.mergeSegmentAlignments([first, second, third], {
+      interSegmentGapsS: [0.75, 0.25],
+    });
+    assert.deepEqual(merged.characters, ["A", " ", "B", " ", "C"]);
+    assert.equal(Number(merged.character_start_times_seconds[2].toFixed(2)), 0.75);
+    assert.equal(Number(merged.character_start_times_seconds[4].toFixed(2)), 1);
+  } finally {
+    await fs.remove(tmp).catch(() => {});
+  }
+});
+
 test("studio editorial strips internal retention labels while keeping the question", () => {
   const result = editorial.buildStudioEditorial({
     title: "Forza Horizon 6 hits 130,000 concurrent players on Steam",
@@ -589,6 +625,51 @@ test("studio composer preserves validated official clip timing windows", () => {
   assert.equal(opener.clipTimingProvenance.segment_validated, true);
   assert.equal(opener.clipTimingProvenance.allowed_for_flash_lane, true);
   assert.equal(opener.clipTimingProvenance.segment_recommended_duration_s, 2.85);
+});
+
+test("studio composer prefers clean full-action clips for the opener", () => {
+  const result = composeStudioSlate({
+    story: { title: "Forza Horizon 6 Steam peak" },
+    audioDurationS: 62,
+    media: {
+      clips: [
+        {
+          path: "forza-trimmed.m3u8",
+          entity: "Forza Horizon 6",
+          sourceType: "steam_movie",
+          mediaStartS: 36.7,
+          durationS: 2.35,
+          provenance: {
+            clip_start_policy: "validated_trimmed_segment_window",
+            segment_trim_recommended: true,
+            segment_action_score: 79,
+          },
+        },
+        {
+          path: "forza-clean.m3u8",
+          entity: "Forza Horizon 6",
+          sourceType: "steam_movie",
+          mediaStartS: 50.8,
+          durationS: 5,
+          provenance: {
+            clip_start_policy: "validated_segment_window",
+            segment_trim_recommended: false,
+            segment_action_score: 76.4,
+          },
+        },
+      ],
+      trailerFrames: [{ path: "forza-frame.jpg", entity: "Forza Horizon 6" }],
+      articleHeroes: [],
+      publisherAssets: [],
+      stockFillers: [],
+    },
+    opts: { allowStockFiller: false, flashLane: true },
+  });
+
+  const opener = result.scenes.find((scene) => scene.type === SCENE_TYPES.OPENER);
+
+  assert.equal(opener.source, "forza-clean.m3u8");
+  assert.equal(opener.mediaStartS, 50.8);
 });
 
 test("studio composer does not present RSS excerpts as Reddit comments", () => {

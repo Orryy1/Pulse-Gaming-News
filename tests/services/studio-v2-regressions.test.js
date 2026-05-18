@@ -24,6 +24,7 @@ const {
   resolveAcceptedLocalVoiceReference,
   resolveLocalInterSegmentPauseS,
   resolveLocalInterSegmentPausePlan,
+  resolveLocalInterSegmentGapSchedule,
   resolveLocalTtsEngine,
   resolveStudioOutroLine,
   splitLongVoiceSegments,
@@ -804,6 +805,20 @@ test("studio production voice can disable the spoken outro for private tests", (
   assert.equal(segments.some((segment) => segment.label === "outro"), false);
 });
 
+test("studio production voice does not add a second outro after a custom Pulse CTA", () => {
+  const segments = buildProductionVoiceSegments({
+    hook: "Hook.",
+    body: "Body. Follow Pulse Gaming for the next read.",
+    loop: "",
+  });
+
+  assert.equal(segments.some((segment) => segment.label === "outro"), false);
+  assert.equal(
+    segments.find((segment) => segment.label === "body").cleanText,
+    "Body. Follow Pulse Gaming for the next read.",
+  );
+});
+
 test("studio production voice dedupes repeated hook and loop segment boundaries", () => {
   const segments = buildProductionVoiceSegments(
     {
@@ -1229,6 +1244,21 @@ test("studio local voice path extends native pauses when narration would exceed 
   assert.equal(plan.reason, "target_wpm_guard");
 });
 
+test("studio local voice path caps the final pause before the Pulse outro", () => {
+  const voiceSegments = [
+    { label: "hook", text: "Hook" },
+    { label: "body_1", text: "Body one" },
+    { label: "body_2", text: "Body two" },
+    { label: "outro", text: "Follow Pulse Gaming so you never miss a beat." },
+  ];
+  const gaps = resolveLocalInterSegmentGapSchedule({
+    interSegmentPausePlan: { gapS: 1.85, maxPauseS: 1.85 },
+    voiceSegments,
+  });
+
+  assert.deepEqual(gaps, [1.85, 1.85, 0.65]);
+});
+
 test("studio local voice path does not add artificial pauses when native runtime is already long", () => {
   const gap = resolveLocalInterSegmentPauseS({
     provider: "local",
@@ -1310,11 +1340,12 @@ test("studio local voice signature fingerprints accepted Sleepy Liam reference",
   assert.deepEqual(signature.acceptedLocalVoice, reference);
   assert.equal(signature.localEngine, "voxcpm2");
   assert.deepEqual(signature.naturalInterSegmentPause, {
-    version: 3,
+    version: 4,
     targetDurationS: 62.5,
     targetMaxWpm: 158,
     maxPauseS: 1.85,
-    method: "concat_inserted_silence_between_native_rate_segments",
+    maxOutroLeadGapS: 0.65,
+    method: "concat_inserted_silence_between_native_rate_segments_outro_capped",
   });
 
   const changed = buildProductionVoiceSignature({

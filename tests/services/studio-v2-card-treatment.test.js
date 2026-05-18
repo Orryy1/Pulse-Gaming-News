@@ -111,7 +111,7 @@ test("standard source cards remain available outside Flash Lane", () => {
   assert.doesNotMatch(filter, /PULSE VERIFIED/);
 });
 
-test("Flash Lane clip badges use compact fading creator chips", () => {
+test("opt-in Flash Lane clip badges use compact fading creator chips", () => {
   const filter = buildClipFilter({
     slot: 0,
     duration: 4,
@@ -120,6 +120,7 @@ test("Flash Lane clip badges use compact fading creator chips", () => {
       entity: "GTA",
       sourceType: "steam_movie",
       source: "trailer.m3u8",
+      showEntityBadge: true,
     },
     fontOpt: FONT_OPT,
   });

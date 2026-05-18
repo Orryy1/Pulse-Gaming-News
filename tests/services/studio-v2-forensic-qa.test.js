@@ -416,6 +416,30 @@ test("analyseRenderedFrameTaste fails rendered rating and title slates", async (
   assert.equal(result.badFrames[0].reason, "white_text_on_dark_card");
 });
 
+test("analyseRenderedFrameTaste ignores colourful subtitle overlay false positives", async () => {
+  const result = await analyseRenderedFrameTaste({
+    frames: [
+      {
+        path: "captioned-gameplay.jpg",
+        timeS: 18.5,
+        prescan: {
+          text_overlay_likelihood: 0.05,
+          white_text_on_dark_likelihood: 0.58,
+          edge_density: 0.12,
+          saturation_mean: 0.52,
+          bright_pixel_ratio: 0.027,
+          dark_pixel_ratio: 0.62,
+        },
+      },
+    ],
+    prescanFrame: async (frame) => frame.prescan,
+  });
+
+  assert.equal(result.verdict, "pass");
+  assert.equal(result.badFrameCount, 0);
+  assert.equal(result.samples[0].reason, "subtitle_overlay_taste_ignored");
+});
+
 test("analyseRenderedFrameTaste fails low-information rendered frames", async () => {
   const result = await analyseRenderedFrameTaste({
     frames: [

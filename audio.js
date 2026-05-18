@@ -54,8 +54,13 @@ const {
   canonicalLocalTtsVoiceId,
 } = require("./lib/studio/local-tts-voice-id");
 const {
+  buildSyntheticCharacterAlignment,
   repairTimestampAlignment,
 } = require("./lib/subtitle-timing");
+const {
+  isVoiceboxLocalTtsEngine,
+  requestVoiceboxSpeech,
+} = require("./lib/studio/voicebox-client");
 const {
   masterTtsAudioFile,
   shouldMasterTtsAudio,
@@ -67,6 +72,25 @@ function isTruthy(value) {
 
 function isLocalTtsProvider(provider = process.env.TTS_PROVIDER || "elevenlabs") {
   return String(provider || "").toLowerCase() === "local";
+}
+
+function isLocalOnlyTts(env = process.env) {
+  return (
+    isTruthy(env.LOCAL_ONLY_TTS) ||
+    isTruthy(env.PULSE_LOCAL_TTS_ONLY) ||
+    isTruthy(env.STUDIO_V2_LOCAL_TTS_ONLY)
+  );
+}
+
+function resolveTtsProvider(env = process.env) {
+  const localOnly = isLocalOnlyTts(env);
+  const provider = String(
+    firstNonBlank(env.TTS_PROVIDER, localOnly ? "local" : null) || "elevenlabs",
+  ).toLowerCase();
+  if (localOnly && provider !== "local") {
+    throw new Error(`local_only_tts_refuses_remote_provider:${provider}`);
+  }
+  return provider;
 }
 
 function shouldUseDynamicPacingForProvider(provider = process.env.TTS_PROVIDER || "elevenlabs") {
@@ -1014,9 +1038,137 @@ function prepareTtsAlignmentForWrite({
   };
 }
 
+function bufferFromResponseData(data) {
+  if (Buffer.isBuffer(data)) return data;
+  if (data instanceof ArrayBuffer) return Buffer.from(data);
+  if (ArrayBuffer.isView(data)) {
+    return Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+  }
+  if (typeof data === "string") return Buffer.from(data, "binary");
+  return Buffer.from(data || []);
+}
+
+async function writeVoiceboxAudioAsMp3({ response, outputPath }) {
+  const writeTarget = mediaPaths.writePath(outputPath);
+  await fs.ensureDir(path.dirname(writeTarget));
+  const sourceBuffer = bufferFromResponseData(response?.data);
+  if (!sourceBuffer.length) {
+    throw new Error("[audio] voicebox returned empty audio");
+  }
+
+  const sourcePath = writeTarget.replace(/\.mp3$/i, "_voicebox_source.wav");
+  await fs.writeFile(sourcePath, sourceBuffer);
+  try {
+    await execFileAsync(
+      "ffmpeg",
+      [
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        sourcePath,
+        "-ar",
+        "44100",
+        "-ac",
+        "1",
+        "-b:a",
+        "256k",
+        writeTarget,
+      ],
+      {
+        timeout: Number(process.env.VOICEBOX_AUDIO_CONVERT_TIMEOUT_MS || 120000),
+      },
+    );
+  } finally {
+    await fs.remove(sourcePath).catch(() => {});
+  }
+}
+
+async function generateVoiceboxTTS({
+  text,
+  outputPath,
+  resolvedVoiceSettings,
+} = {}) {
+  const voicebox = await requestVoiceboxSpeech({
+    text,
+    env: process.env,
+  });
+  await writeVoiceboxAudioAsMp3({
+    response: voicebox.response,
+    outputPath,
+  });
+
+  const writeTarget = mediaPaths.writePath(outputPath);
+  const voiceMastering = shouldMasterTtsAudio({ provider: "local", env: process.env })
+    ? await masterTtsAudioFile({
+        inputPath: writeTarget,
+        execFileAsync,
+        env: process.env,
+        log: console.log,
+      })
+    : { ok: false, code: "voice_mastering_disabled" };
+  if (voiceMastering.ok) {
+    console.log(
+      `[audio] Voicebox audio mastered for crisp social playback: ${outputPath} (${voiceMastering.targetLufs} LUFS target)`,
+    );
+  }
+
+  const audioDurationForAlignment = await getAudioDuration(outputPath);
+  const alignment = buildSyntheticCharacterAlignment(text, audioDurationForAlignment);
+  alignment.meta = buildTtsAlignmentMeta({
+    existingMeta: {
+      timestampRepair: {
+        repaired: true,
+        reason: "voicebox_no_word_timestamps",
+        strategy: "synthetic_full_duration",
+      },
+    },
+    provider: "local",
+    voiceId: `voicebox:${voicebox.profileId}`,
+    baseUrl: voicebox.config.baseUrl,
+    text,
+    resolvedVoiceSettings,
+    voiceDiagnostics: {
+      engine: voicebox.config.engine || null,
+      modelSize: voicebox.config.modelSize || null,
+      source: "voicebox",
+    },
+  });
+  alignment.meta.source = "voicebox-local-tts";
+  alignment.meta.localTts = {
+    ...(alignment.meta.localTts || {}),
+    engine: "voicebox",
+    voiceId: `voicebox:${voicebox.profileId}`,
+    profileId: voicebox.profileId,
+    baseUrl: voicebox.config.baseUrl,
+    speakingRate: resolvedVoiceSettings?.speaking_rate,
+  };
+  alignment.meta.voicebox = {
+    profileId: voicebox.profileId,
+    baseUrl: voicebox.config.baseUrl,
+    engine: voicebox.config.engine || null,
+    modelSize: voicebox.config.modelSize || null,
+    language: voicebox.config.language,
+    maxChunkChars: voicebox.config.maxChunkChars,
+    crossfadeMs: voicebox.config.crossfadeMs,
+    normalize: voicebox.config.normalize,
+  };
+  alignment.meta.voiceMastering = voiceMastering;
+  if (voiceMastering.acoustic) {
+    alignment.meta.acoustic = {
+      ...(alignment.meta.acoustic || {}),
+      ...voiceMastering.acoustic,
+    };
+  }
+
+  const timestampsPath = outputPath.replace(/\.mp3$/, "_timestamps.json");
+  await fs.writeJson(mediaPaths.writePath(timestampsPath), alignment, { spaces: 2 });
+  return outputPath;
+}
+
 async function generateTTS(text, outputPath, rateOverride) {
-  const provider = (process.env.TTS_PROVIDER || "elevenlabs").toLowerCase();
-  const voiceId = resolveTtsVoiceIdForProvider(provider, process.env, brand);
+  const provider = resolveTtsProvider(process.env);
   const voiceSettings = Object.assign(
     {},
     brand.voiceSettings || {
@@ -1032,6 +1184,15 @@ async function generateTTS(text, outputPath, rateOverride) {
     rateOverride,
   );
 
+  if (provider === "local" && isVoiceboxLocalTtsEngine(process.env)) {
+    return generateVoiceboxTTS({
+      text,
+      outputPath,
+      resolvedVoiceSettings,
+    });
+  }
+
+  const voiceId = resolveTtsVoiceIdForProvider(provider, process.env, brand);
   const baseUrl =
     provider === "local"
       ? process.env.LOCAL_TTS_URL || "http://127.0.0.1:8765"
@@ -1164,7 +1325,7 @@ async function generateTtsForStory({
   outputPath,
   rate,
   label = "full",
-  provider = process.env.TTS_PROVIDER || "elevenlabs",
+  provider = resolveTtsProvider(process.env),
   recoverLocalTts = null,
   generateTts = generateTTS,
 } = {}) {
@@ -1217,8 +1378,9 @@ async function generateAudio() {
   );
 
   console.log(`[audio] ${toProcess.length} stories need audio generation`);
-  const provider = process.env.TTS_PROVIDER || "elevenlabs";
+  const provider = resolveTtsProvider(process.env);
   const localVoiceId = isLocalTtsProvider(provider)
+    && !isVoiceboxLocalTtsEngine(process.env)
     ? resolveTtsVoiceIdForProvider(provider, process.env, brand)
     : null;
   const recoverLocalTts = localVoiceId
@@ -1634,6 +1796,7 @@ module.exports.isRetryableLocalTtsError = isRetryableLocalTtsError;
 module.exports.requestTtsWithRetry = requestTtsWithRetry;
 module.exports.normaliseLocalVoiceDiagnostics = normaliseLocalVoiceDiagnostics;
 module.exports.resolveTtsVoiceIdForProvider = resolveTtsVoiceIdForProvider;
+module.exports.resolveTtsProvider = resolveTtsProvider;
 module.exports.markAudioGenerationFailure = markAudioGenerationFailure;
 module.exports.clearAudioGenerationState = clearAudioGenerationState;
 module.exports.generateTtsForStory = generateTtsForStory;

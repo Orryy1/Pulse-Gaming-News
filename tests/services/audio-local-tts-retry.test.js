@@ -13,6 +13,7 @@ const {
   prepareTtsAlignmentForWrite,
   requestTtsWithRetry,
   resolveTtsOutputFormat,
+  resolveTtsProvider,
   resolveTtsTimeoutMs,
   resolveTtsVoiceIdForProvider,
   shouldAutoPromoteGeneratedAudioToExtendedShort,
@@ -211,6 +212,16 @@ test("isLocalTtsProvider: only true for explicit local provider", () => {
   assert.equal(isLocalTtsProvider("local"), true);
   assert.equal(isLocalTtsProvider("LOCAL"), true);
   assert.equal(isLocalTtsProvider("elevenlabs"), false);
+});
+
+test("resolveTtsProvider: local-only mode defaults to local and refuses remote providers", () => {
+  assert.equal(resolveTtsProvider({ LOCAL_ONLY_TTS: "true" }), "local");
+  assert.equal(resolveTtsProvider({ PULSE_LOCAL_TTS_ONLY: "true" }), "local");
+  assert.throws(
+    () => resolveTtsProvider({ LOCAL_ONLY_TTS: "true", TTS_PROVIDER: "elevenlabs" }),
+    /local_only_tts_refuses_remote_provider:elevenlabs/,
+  );
+  assert.equal(resolveTtsProvider({ TTS_PROVIDER: "local" }), "local");
 });
 
 test("resolveTtsOutputFormat: local Liam requests higher bitrate source audio", () => {

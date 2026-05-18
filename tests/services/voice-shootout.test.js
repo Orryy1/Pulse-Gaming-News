@@ -109,6 +109,7 @@ test("voice shootout marks ElevenLabs as configured but externally locked", () =
   const eleven = manifest.models.find((model) => model.id === "elevenlabs_production_baseline");
   const local = manifest.models.find((model) => model.id === "local_liam_current");
   const chatterbox = manifest.models.find((model) => model.id === "chatterbox_local");
+  const voicebox = manifest.models.find((model) => model.id === "voicebox_local");
   assert.equal(eleven.setupStatus, "configured_external_paid_locked");
   assert.equal(eleven.allowedTonight, false);
   assert.equal(eleven.approvalRequired, true);
@@ -116,6 +117,39 @@ test("voice shootout marks ElevenLabs as configured but externally locked", () =
   assert.equal(local.allowedTonight, true);
   assert.equal(chatterbox.setupStatus, "not_detected_optional_setup");
   assert.equal(chatterbox.allowedTonight, false);
+  assert.equal(voicebox.setupStatus, "not_detected_optional_setup");
+  assert.equal(voicebox.allowedTonight, false);
+  assert.equal(voicebox.external, false);
+});
+
+test("voice shootout marks Voicebox as local optional when explicitly enabled", () => {
+  const manifest = buildBenchmarkManifest({
+    env: {
+      VOICEBOX_TTS_ENABLED: "true",
+      VOICEBOX_PROFILE_ID: "pulse-liam",
+    },
+    localTtsDoctorReport: readyDoctor(),
+  });
+
+  const voicebox = manifest.models.find((model) => model.id === "voicebox_local");
+  assert.equal(voicebox.provider, "voicebox");
+  assert.equal(voicebox.setupStatus, "configured_optional");
+  assert.equal(voicebox.allowedTonight, true);
+  assert.equal(voicebox.approvalRequired, false);
+});
+
+test("voice shootout treats LOCAL_TTS_ENGINE=voicebox as a configured local backend", () => {
+  const manifest = buildBenchmarkManifest({
+    env: {
+      LOCAL_TTS_ENGINE: "voicebox",
+      VOICEBOX_PROFILE_NAME: "Pulse Liam",
+    },
+    localTtsDoctorReport: readyDoctor(),
+  });
+
+  const voicebox = manifest.models.find((model) => model.id === "voicebox_local");
+  assert.equal(voicebox.setupStatus, "configured_optional");
+  assert.equal(voicebox.allowedTonight, true);
 });
 
 test("voice shootout blind review sheet hides model identities", () => {

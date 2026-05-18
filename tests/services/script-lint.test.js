@@ -82,6 +82,12 @@ test("lintScript: glued sentence token → fail:glued_sentence", () => {
   assert.ok(r.failures.includes("glued_sentence"));
 });
 
+test("lintScript: hybrid spoken year fails before TTS", () => {
+  const r = lintScript(CLEAN_SCRIPT.replace("three years", "twenty 26"));
+  assert.strictEqual(r.result, "fail");
+  assert.ok(r.failures.includes("hybrid_spoken_year"));
+});
+
 test("lintScript: generic first word → fail:generic_opener", () => {
   const opener = "So here's the thing that nobody saw coming. ";
   const r = lintScript(opener + CLEAN_SCRIPT);

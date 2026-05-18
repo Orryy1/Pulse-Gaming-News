@@ -77,6 +77,48 @@ test("realignTimestampsToScript preserves numeric display tokens over spoken num
   assert.equal(aligned[4].end, 1.98);
 });
 
+test("prepareSubtitleWords keeps real numeric timings across natural local-TTS pauses", () => {
+  const scriptText =
+    "GamesRadar reports the early-access launch hit 130,000 concurrent players on Steam. It is only the premium launch crowd.";
+  const aligned = realignTimestampsToScript(scriptText, [
+    { word: "GamesRadar", start: 0, end: 0.38 },
+    { word: "reports", start: 0.42, end: 0.72 },
+    { word: "the", start: 0.76, end: 0.88 },
+    { word: "early", start: 0.92, end: 1.12 },
+    { word: "access", start: 1.16, end: 1.38 },
+    { word: "launch", start: 1.42, end: 1.62 },
+    { word: "hit", start: 1.66, end: 1.8 },
+    { word: "one", start: 1.84, end: 1.96 },
+    { word: "hundred", start: 1.98, end: 2.18 },
+    { word: "and", start: 2.2, end: 2.3 },
+    { word: "thirty", start: 2.32, end: 2.52 },
+    { word: "thousand", start: 2.54, end: 2.78 },
+    { word: "concurrent", start: 2.82, end: 3.22 },
+    { word: "players", start: 3.26, end: 3.54 },
+    { word: "on", start: 3.58, end: 3.7 },
+    { word: "Steam.", start: 3.74, end: 3.98 },
+    { word: "It", start: 6.78, end: 6.9 },
+    { word: "is", start: 6.94, end: 7.04 },
+    { word: "only", start: 7.08, end: 7.28 },
+    { word: "the", start: 7.32, end: 7.42 },
+    { word: "premium", start: 7.46, end: 7.74 },
+    { word: "launch", start: 7.78, end: 7.98 },
+    { word: "crowd.", start: 8.02, end: 8.34 },
+  ]);
+
+  const prepared = prepareSubtitleWords({
+    words: aligned,
+    duration: 9,
+    scriptText,
+  });
+
+  const number = prepared.find((word) => word.word === "130,000");
+  assert.ok(number, "numeric display token should survive preparation");
+  assert.equal(number.start, 1.84);
+  assert.equal(number.end, 2.78);
+  assert.equal(prepared.find((word) => word.word === "It")?.start, 6.78);
+});
+
 test("realignTimestampsToScript consumes direct spoken currency units", () => {
   const aligned = realignTimestampsToScript("players paid 120 dollars early.", [
     { word: "players", start: 0, end: 0.24 },
@@ -459,6 +501,27 @@ test("groupIntoPhrases can merge dangling Flash Lane caption fragments", () => {
     phrases.map((phrase) => phrase.words.map((word) => word.word)),
     [["This", "as", "flagship"], ["launcher."]],
   );
+});
+
+test("groupIntoPhrases merges short sentence-tail words backwards in Flash captions", () => {
+  const phrases = groupIntoPhrases(
+    [
+      { word: "dismiss", start: 0, end: 0.28 },
+      { word: "it.", start: 0.3, end: 0.52 },
+      { word: "This", start: 1.2, end: 1.44 },
+      { word: "matters.", start: 1.46, end: 1.8 },
+    ],
+    {
+      maxWordsPerPhrase: 2,
+      maxPhraseChars: 16,
+      avoidDanglingWords: true,
+      danglingMergeMaxWords: 2,
+      maxPhraseDurationS: 1.15,
+    },
+  );
+
+  const captionTexts = phrases.map((phrase) => phrase.words.map((word) => word.word).join(" "));
+  assert.deepEqual(captionTexts, ["dismiss it.", "This matters."]);
 });
 
 test("groupIntoPhrases will not merge dangling words into overlong Flash captions", () => {

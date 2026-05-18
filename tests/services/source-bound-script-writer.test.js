@@ -67,6 +67,34 @@ test("source-bound fallback builds a validated Forza script from an article-back
   assert.equal(runtime.result, "pass");
 });
 
+test("source-bound fallback does not inject Steam player-count context into Forza review-score stories", () => {
+  const story = {
+    id: "1tftq7f",
+    title: "Forza Horizon 6 Becomes Highest Rated Game of 2026 on Metacritic",
+    source_type: "reddit",
+    subreddit: "PCMasterRace",
+    article_url:
+      "https://twistedvoxel.com/forza-horizon-6-becomes-highest-rated-game-of-2026-on-metacritic/",
+  };
+
+  const script = buildSourceBoundFallbackScript(story, {
+    runtimeProfile: LOCAL_PROFILE,
+    sourceMaterial:
+      "Twisted Voxel reports Forza Horizon 6 reached a 92 Metacritic score and is currently the highest rated game of 2026.",
+  });
+
+  assert.ok(script);
+  assert.match(script.hook, /review-score slot/i);
+  assert.match(script.full_script, /Metacritic/i);
+  assert.doesNotMatch(script.full_script, /Steam number|Steam peak|concurrent players|early-access crowd|\$120/i);
+
+  const coherence = runScriptCoherenceQa(
+    { ...story, ...script },
+    { requireCtaField: true, requireFullScriptCta: true },
+  );
+  assert.equal(coherence.result, "pass", coherence.failures.join(", "));
+});
+
 test("source-bound fallback refuses general community Reddit posts without article backing", () => {
   const story = {
     title: "Had a PS5 for years and someone just pointed this out to me.",

@@ -76,6 +76,19 @@ test("analyseSubtitleTimeline warns on long caption blackout and overrun", () =>
   assert.equal(result.overrunS, 0.5);
 });
 
+test("analyseSubtitleTimeline accepts short natural narration pauses", () => {
+  const assPath = tempFile(
+    [
+      "Dialogue: 0,0:00:19.80,0:00:21.26,Caption,,0,0,0,,before launch",
+      "Dialogue: 0,0:00:23.92,0:00:24.60,Caption,,0,0,0,,it is still",
+    ].join("\n"),
+  );
+  const result = analyseSubtitleTimeline({ assPath, durationS: 25 });
+
+  assert.equal(result.verdict, "pass");
+  assert.deepEqual(result.gapsOver2s, []);
+});
+
 test("forensic transcript lookup reads still-deck voice transcript metadata", () => {
   const transcript = transcriptTextFromReport({
     voice: {

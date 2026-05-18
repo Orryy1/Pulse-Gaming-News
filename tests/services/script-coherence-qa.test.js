@@ -418,3 +418,29 @@ test("repeatedNumericClaims ignores normal one-or-two-use statistics", () => {
     { claim: "130,000", count: 3 },
   ]);
 });
+
+test("script coherence blocks hybrid spoken years and generic success-padding from uploaded-style drafts", () => {
+  const qa = runScriptCoherenceQa(
+    {
+      title: "Forza Horizon 6 Becomes Highest Rated Game of 2026 on Metacritic",
+      source_type: "reddit",
+      subreddit: "PCMasterRace",
+      article_url:
+        "https://twistedvoxel.com/forza-horizon-6-becomes-highest-rated-game-of-2026-on-metacritic/",
+      cta: "Follow Pulse Gaming so you never miss a beat",
+      full_script:
+        "Forza Horizon 6 just hit 92 on Metacritic. Playground Games' Forza Horizon 6 has topped Metacritic's charts for twenty 26, achieving a 92. The game's critical acclaim is driving phenomenal Steam numbers. The strong numbers underscore the game's appeal, proving to be a massive success. This sets a new benchmark for racing games in twenty 26 and has resonated with players worldwide, further cementing its status. Follow Pulse Gaming so you never miss a beat.",
+    },
+    { requireCtaField: true, requireFullScriptCta: true },
+  );
+
+  assert.equal(qa.result, "fail");
+  assert.ok(
+    qa.failures.includes("script_coherence:hybrid_spoken_year"),
+    qa.failures.join(", "),
+  );
+  assert.ok(
+    qa.failures.includes("script_coherence:vague_filler:generic_hype_closer"),
+    qa.failures.join(", "),
+  );
+});

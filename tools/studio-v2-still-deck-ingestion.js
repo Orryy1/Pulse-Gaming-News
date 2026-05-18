@@ -381,12 +381,12 @@ function resolveStillDeckCaptionOptions({ variant } = {}) {
   const flash = variant === "enriched";
   return {
     maxWordsPerPhrase: 2,
-    maxPhraseChars: 14,
+    maxPhraseChars: flash ? 18 : 14,
     captionCase: "upper",
     revealMode: flash ? "phrase" : "word",
     motionStyle: flash ? "flash" : "default",
     avoidDanglingWords: flash,
-    danglingMergeMaxWords: 2,
+    danglingMergeMaxWords: flash ? 3 : 2,
     maxPhraseDurationS: flash ? 1.15 : 2.2,
     minPhraseDurationS: flash ? 0.32 : 0.5,
   };

@@ -590,6 +590,29 @@ test("buildKineticAss supports Flash captions capped at two-word punches", () =>
   );
 });
 
+test("buildKineticAss can merge short Flash sentence tails into three-word punches", () => {
+  const ass = buildKineticAss({
+    story: { title: "Forza Steam" },
+    words: [
+      { word: "numbers", start: 0, end: 0.24 },
+      { word: "behind", start: 0.28, end: 0.54 },
+      { word: "it.", start: 0.58, end: 0.82 },
+    ],
+    duration: 1.4,
+    scriptText: "numbers behind it.",
+    maxWordsPerPhrase: 2,
+    maxPhraseChars: 18,
+    captionCase: "upper",
+    revealMode: "phrase",
+    motionStyle: "flash",
+    avoidDanglingWords: true,
+    danglingMergeMaxWords: 3,
+  });
+
+  const captions = extractAssDialogueText(ass).map((caption) => caption.replace(/\\h/g, " "));
+  assert.deepEqual(captions, ["NUMBERS BEHIND IT."]);
+});
+
 test("buildKineticAss can render Flash Lane captions in uppercase without changing timing", () => {
   const ass = buildKineticAss({
     story: { title: "Pokemon GTA" },

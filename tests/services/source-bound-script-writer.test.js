@@ -80,7 +80,7 @@ test("source-bound fallback does not inject Steam player-count context into Forz
   const script = buildSourceBoundFallbackScript(story, {
     runtimeProfile: LOCAL_PROFILE,
     sourceMaterial:
-      "Twisted Voxel reports Forza Horizon 6 reached a 92 Metacritic score and is currently the highest rated game of 2026.",
+      "Twisted Voxel reports Forza Horizon 6 reached a 92 Metacritic score and is currently the highest rated game of 2026. The story is about critic score framing, not Steam player counts or sales.",
   });
 
   assert.ok(script);
@@ -131,5 +131,6 @@ test("sourceNameFromUrl gives readable publisher names", () => {
     sourceNameFromUrl("https://www.rockpapershotgun.com/example"),
     "Rock Paper Shotgun",
   );
+  assert.equal(sourceNameFromUrl("https://twistedvoxel.com/example"), "Twisted Voxel");
   assert.equal(sourceNameFromUrl("https://www.pcgamer.com/example"), "PC Gamer");
 });

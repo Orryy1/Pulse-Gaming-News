@@ -24,6 +24,7 @@ const {
   compareForensicReports,
   buildComparisonMarkdown,
   transcriptTextFromReport,
+  buildFrameExtractionFilter,
 } = require("../../lib/studio/v2/forensic-qa-v2");
 
 function tempFile(contents, fileName = "captions.ass") {
@@ -61,6 +62,14 @@ test("parseAssDialogues extracts cue timing and text", () => {
   assert.equal(cues.length, 2);
   assert.equal(cues[0].endS, 1.2);
   assert.equal(cues[1].text, "grim reveal");
+});
+
+test("forensic frame extraction samples exact decoded frame indexes", () => {
+  const filter = buildFrameExtractionFilter({ fps: 30, intervalS: 0.5 });
+
+  assert.match(filter, /select='not\(mod\(n\\,15\)\)'/);
+  assert.doesNotMatch(filter, /^fps=/);
+  assert.match(filter, /scale=270:480/);
 });
 
 test("analyseSubtitleTimeline warns on long caption blackout and overrun", () => {

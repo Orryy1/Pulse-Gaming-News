@@ -1584,7 +1584,7 @@ async function main() {
       : realNarrationUsed && enrichedVoiceSource === "provided-real-audio"
         ? "provided cached narration is present; runtime and render QA still decide pilot readiness"
         : realNarrationUsed
-          ? "local narration is present but is blocked until human-approved against the production ElevenLabs voice"
+          ? "local narration is present; human approval should compare it against the accepted local Liam reference"
           : "silent fixture audio is not valid for pilot approval",
   ];
   if (!renderAttempted) {

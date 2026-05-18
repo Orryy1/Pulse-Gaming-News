@@ -23,6 +23,7 @@ const {
   evaluateLocalVoicePace,
   resolveAcceptedLocalVoiceReference,
   resolveLocalInterSegmentPauseS,
+  resolveLocalInterSegmentPausePlan,
   resolveLocalTtsEngine,
   resolveStudioOutroLine,
   splitLongVoiceSegments,
@@ -1204,6 +1205,28 @@ test("studio local voice path inserts native-rate pauses to reach creator reward
   });
 
   assert.equal(gap, 0.949);
+});
+
+test("studio local voice path extends native pauses when narration would exceed target WPM", () => {
+  const voiceSegments = Array.from({ length: 7 }, (_, index) => ({
+    label: `segment_${index + 1}`,
+    text: Array.from({ length: index === 6 ? 15 : 27 }, () => "word").join(" "),
+  }));
+  const plan = resolveLocalInterSegmentPausePlan({
+    provider: "local",
+    segmentDurations: [8.9, 8.6, 9.1, 8.8, 9.0, 8.7, 9.2],
+    voiceSegments,
+    env: {
+      STUDIO_V2_LOCAL_TTS_TARGET_DURATION_S: "61.2",
+      STUDIO_V2_LOCAL_TTS_MAX_INTERSEGMENT_PAUSE_S: "1.1",
+    },
+  });
+
+  assert.equal(plan.wordCount, 177);
+  assert.equal(plan.targetMaxWpm, 158);
+  assert.equal(plan.targetDurationS, 67.215);
+  assert.equal(plan.gapS, 0.819);
+  assert.equal(plan.reason, "target_wpm_guard");
 });
 
 test("studio local voice path does not add artificial pauses when native runtime is already long", () => {

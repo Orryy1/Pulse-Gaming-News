@@ -1310,10 +1310,10 @@ test("studio local voice signature fingerprints accepted Sleepy Liam reference",
   assert.deepEqual(signature.acceptedLocalVoice, reference);
   assert.equal(signature.localEngine, "voxcpm2");
   assert.deepEqual(signature.naturalInterSegmentPause, {
-    version: 2,
-    targetDurationS: 61.2,
+    version: 3,
+    targetDurationS: 62.5,
     targetMaxWpm: 158,
-    maxPauseS: 0.95,
+    maxPauseS: 1.85,
     method: "concat_inserted_silence_between_native_rate_segments",
   });
 

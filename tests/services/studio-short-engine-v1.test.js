@@ -416,6 +416,39 @@ test("studio composer rotates card backdrops across enriched still decks", () =>
   assert.ok(maxRepeat <= 2);
 });
 
+test("studio composer avoids reusing a visual as a later card backdrop when fresh backdrops exist", () => {
+  const mediaPlan = {
+    clips: [],
+    trailerFrames: Array.from({ length: 8 }, (_, i) => ({
+      path: `forza-trailer-frame-${i + 1}.jpg`,
+      kind: "trailer-frame",
+    })),
+    articleHeroes: Array.from({ length: 8 }, (_, i) => ({
+      path: `forza-store-still-${i + 1}.jpg`,
+    })),
+    publisherAssets: [],
+    stockFillers: [],
+  };
+  const result = composeStudioSlate({
+    story: {
+      title: "Forza Horizon 6 Becomes Highest Rated Game of 2026 on Metacritic",
+      source_name: "Twisted Voxel",
+    },
+    media: mediaPlan,
+    audioDurationS: 62,
+    opts: { allowStockFiller: false },
+  });
+
+  const usedVisuals = new Set();
+  for (const scene of result.scenes) {
+    if (CARD_TYPES.has(scene.type) && scene.backgroundSource) {
+      assert.equal(usedVisuals.has(sourceId(scene)), false);
+    }
+    if (scene.source) usedVisuals.add(sourceId(scene));
+    if (scene.backgroundSource) usedVisuals.add(sourceId(scene));
+  }
+});
+
 test("studio composer labels RSS source cards as publishers, not subreddits", () => {
   const result = composeStudioSlate({
     story: {

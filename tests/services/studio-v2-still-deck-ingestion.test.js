@@ -5,6 +5,7 @@ const assert = require("node:assert/strict");
 const fs = require("fs-extra");
 const os = require("node:os");
 const path = require("node:path");
+const sharp = require("sharp");
 
 const {
   assertStillDeckPlanMaterialised,
@@ -631,6 +632,62 @@ test("still-deck adapter dedupes extracted frames by QA content hash", async () 
 
   assert.equal(pack.media.trailerFrames.length, 1);
   assert.equal(pack.rejected[0].reason, "duplicate_frame");
+});
+
+test("still-deck adapter rejects near-duplicate extracted frames by visual hash", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-frame-ingest-"));
+  const first = path.join(dir, "001_Forza_42pct.jpg");
+  const second = path.join(dir, "002_Forza_58pct.jpg");
+  await sharp({
+    create: {
+      width: 32,
+      height: 32,
+      channels: 3,
+      background: { r: 240, g: 60, b: 40 },
+    },
+  }).jpeg().toFile(first);
+  await sharp({
+    create: {
+      width: 32,
+      height: 32,
+      channels: 3,
+      background: { r: 238, g: 58, b: 42 },
+    },
+  }).jpeg().toFile(second);
+
+  const pack = await buildStillDeckMediaPackage({
+    story: story({
+      id: "1tftq7f",
+      title: "Forza Horizon 6 Becomes Highest Rated Game of 2026 on Metacritic",
+      full_script: "Forza Horizon 6 is the exact subject.",
+    }),
+    plan: planFor("1tftq7f", []),
+    frameReport: frameReportFor("1tftq7f", [
+      {
+        order: 1,
+        story_id: "1tftq7f",
+        source_url: "https://video.akamai.steamstatic.com/store_trailers/forza/hls_264_master.m3u8",
+        source_type: "steam_movie",
+        entity: "Forza Horizon 6",
+        local_path: first,
+        status: "accepted",
+        qa: { verdict: "pass", thumbnail_safe: true, content_hash: "frame-hash-a" },
+      },
+      {
+        order: 2,
+        story_id: "1tftq7f",
+        source_url: "https://video.akamai.steamstatic.com/store_trailers/forza/hls_264_master.m3u8",
+        source_type: "steam_movie",
+        entity: "Forza Horizon 6",
+        local_path: second,
+        status: "accepted",
+        qa: { verdict: "pass", thumbnail_safe: true, content_hash: "frame-hash-b" },
+      },
+    ]),
+  });
+
+  assert.equal(pack.media.trailerFrames.length, 1);
+  assert.equal(pack.rejected[0].reason, "near_duplicate_frame");
 });
 
 test("still-deck adapter ignores extracted frames for another story", async () => {

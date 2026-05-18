@@ -1298,6 +1298,55 @@ test("official clip refs include validated deep-scan segments even when no accep
   assert.ok(refs.every((ref) => ref.provenance.segment_selection_policy === "validated_deep_scan_segment"));
 });
 
+test("official clip refs prefer deep-scan gameplay segments over late frame-anchored windows", () => {
+  const source = "https://video.example/forza-gameplay.m3u8";
+  const refs = buildOfficialTrailerClipsFromFrameReport(
+    {
+      plans: [
+        {
+          story_id: "story-1",
+          frames: [
+            acceptedFrame({
+              source_url: source,
+              entity: "Forza Horizon 6",
+              target_time_seconds: 80.4,
+            }),
+          ],
+        },
+      ],
+    },
+    "story-1",
+    {
+      maxClips: 3,
+      requireValidatedSegments: true,
+      segmentValidationReport: {
+        generated_at: "2026-05-02T22:00:00.000Z",
+        segments: [42, 48, 54, 84].map((start, index) => ({
+          clip_key: `${source}|forza_horizon_6|${start.toFixed(2)}`,
+          source_url: source,
+          source_type: "steam_movie",
+          entity: "Forza Horizon 6",
+          media_start_s: start,
+          duration_s: 5,
+          status: "validated",
+          segment_validated: true,
+          allowed_for_flash_lane: true,
+          validation_reason: "segment_samples_passed",
+          segment_motion_class: "gameplay_action",
+          action_score: index === 3 ? 70 : 90 - index,
+          action_sample_count: 3,
+          samples: [
+            { local_path: `test/output/official-trailer-segment-validation-v1/assets/story-1/${start}.jpg` },
+          ],
+        })),
+      },
+    },
+  );
+
+  assert.deepEqual(refs.map((ref) => ref.mediaStartS), [42, 48, 54]);
+  assert.ok(refs.every((ref) => ref.provenance.segment_selection_policy === "validated_deep_scan_segment"));
+});
+
 test("official clip refs use recommended trim timing from validated deep-scan segments", () => {
   const source = "https://video.example/gta-gameplay.m3u8";
   const refs = buildOfficialTrailerClipsFromFrameReport(

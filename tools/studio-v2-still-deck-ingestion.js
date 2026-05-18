@@ -64,6 +64,7 @@ const {
   resolveStudioOutroLine,
 } = require("../lib/studio/sound-layer");
 const {
+  assertStillDeckPlanMaterialised,
   buildStoryFromStillDeckPlan,
   buildStillDeckMarkdown,
   buildStillDeckMediaPackage,
@@ -1394,6 +1395,11 @@ async function main() {
     plan,
     frameReport,
     segmentValidationReport,
+  });
+  assertStillDeckPlanMaterialised({
+    plan,
+    packageResult: enrichedPackage,
+    reportPath: args.reportPath,
   });
   const officialClipResolution = resolveOfficialTrailerClipRefsForProof({
     storyId: story.id,

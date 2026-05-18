@@ -7,6 +7,7 @@ const os = require("node:os");
 const path = require("node:path");
 
 const {
+  assertStillDeckPlanMaterialised,
   buildStillDeckMediaPackage,
   buildStoryFromStillDeckPlan,
   materialiseMissingStillDeckAssets,
@@ -81,6 +82,41 @@ test("still-deck adapter rejects missing local assets", async () => {
 
   assert.equal(pack.media.articleHeroes.length, 0);
   assert.equal(pack.rejected[0].reason, "missing_local_asset");
+});
+
+test("still-deck adapter fails fast when applied local stills disappear from the package", () => {
+  const plan = planFor("1te1oq7", [
+    {
+      local_path: "forza-a.jpg",
+      source_url: "https://cdn.akamai.steamstatic.com/steam/apps/2483190/ss_a.jpg",
+      source_type: "steam_screenshot",
+      entity: "Forza Horizon 6",
+      duplicate_hash: "forza-a",
+    },
+    {
+      local_path: "forza-b.jpg",
+      source_url: "https://cdn.akamai.steamstatic.com/steam/apps/2483190/ss_b.jpg",
+      source_type: "steam_screenshot",
+      entity: "Forza Horizon 6",
+      duplicate_hash: "forza-b",
+    },
+  ]);
+
+  assert.throws(
+    () =>
+      assertStillDeckPlanMaterialised({
+        plan,
+        packageResult: {
+          metrics: { acceptedCount: 0, acceptedFrameCount: 35 },
+          rejected: [
+            { source_type: "steam_screenshot", reason: "missing_local_asset" },
+            { source_type: "steam_screenshot", reason: "duplicate_asset" },
+          ],
+        },
+        reportPath: "test/output/asset_acquisition_v16_gameplay_stills_apply_local.json",
+      }),
+    /still_deck_applied_stills_dropped: expected 2 applied stills from test\/output\/asset_acquisition_v16_gameplay_stills_apply_local\.json but package accepted 0 stills \(missing_local_asset, duplicate_asset\)/,
+  );
 });
 
 test("still-deck adapter can materialise missing visual deck URLs before ingest", async () => {

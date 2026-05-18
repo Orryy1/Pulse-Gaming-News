@@ -358,6 +358,34 @@ test("Controlled Frame Extraction Plan rejects stories without official referenc
   assert.ok(plan.blockers.includes("no_official_motion_reference"));
 });
 
+test("Controlled Frame Extraction Plan accepts trusted Steam storefront video references", () => {
+  const plan = buildControlledFrameExtractionPlan(
+    motionPlan({
+      story_id: "1tftq7f",
+      existing_references: [
+        {
+          source_type: "steam_storefront_video_reference",
+          provider: "trusted_footage_registry",
+          source_url:
+            "https://video.fastly.steamstatic.com/store_trailers/2483190/1133501958/clip.mp4",
+          source_url_kind: "direct_video",
+          segment_validation_eligible: true,
+          entity: "Forza Horizon 6",
+          movie_name: "Steam - Forza Horizon 6 launch trailer reference",
+          downloads_allowed: false,
+          source_duration_s: 58,
+        },
+      ],
+    }),
+    { maxReferences: 1, maxTargetFrames: 4 },
+  );
+
+  assert.notEqual(plan.frame_plan_readiness, "no_reference");
+  assert.equal(plan.selected_references.length, 1);
+  assert.equal(plan.target_frames.length, 4);
+  assert.equal(plan.target_frames[0].source_type, "steam_storefront_video_reference");
+});
+
 test("Controlled Frame Extraction Plan rebuilds stale story motion plans when fresh trailer refs exist", () => {
   assert.equal(
     shouldRebuildMotionPlansFromReferences({

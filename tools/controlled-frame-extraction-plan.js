@@ -5,7 +5,7 @@ const fs = require("fs-extra");
 const path = require("node:path");
 
 try {
-  require("dotenv").config({ override: true });
+  require("dotenv").config({ override: true, quiet: true });
 } catch {}
 
 const { buildDemoStories } = require("../lib/creator-studio-os");
@@ -26,6 +26,7 @@ function parseArgs(argv) {
     json: false,
     help: false,
     storyId: null,
+    storyJsonPath: null,
     allApproved: false,
     limit: 5,
     motionReport: null,
@@ -41,6 +42,7 @@ function parseArgs(argv) {
     else if (arg === "--json") args.json = true;
     else if (arg === "--all-approved") args.allApproved = true;
     else if (arg === "--story-id" || arg === "--story") args.storyId = argv[++i] || null;
+    else if (arg === "--story-json") args.storyJsonPath = argv[++i] || null;
     else if (arg === "--limit") args.limit = Math.max(1, Number(argv[++i]) || 5);
     else if (arg === "--motion-report") args.motionReport = argv[++i] || null;
     else if (arg === "--trailer-references") args.trailerReferences = argv[++i] || null;
@@ -65,6 +67,7 @@ function printHelp() {
       "Options:",
       "  --fixture             Use built-in demo stories",
       "  --story-id <id>       Build a frame plan for one story id",
+      "  --story-json <p>      Use a local story override JSON",
       "  --all-approved        Include approved / auto-approved stories",
       "  --limit <n>           Limit local DB stories when not using --all-approved",
       "  --motion-report <p>   Read an existing Motion Acquisition report",
@@ -120,6 +123,17 @@ function storyTime(story) {
 
 async function loadStories(args) {
   if (args.fixture) return { stories: buildDemoStories(), mode: "fixture" };
+
+  if (args.storyJsonPath) {
+    const storyJsonPath = path.resolve(ROOT, args.storyJsonPath);
+    const parsed = await fs.readJson(storyJsonPath);
+    const rows = (Array.isArray(parsed) ? parsed : [parsed]).map(normaliseStory);
+    const selected = args.storyId ? rows.filter((story) => story.id === args.storyId) : rows;
+    if (selected.length === 0) {
+      throw new Error(`story JSON did not contain requested story id: ${args.storyId}`);
+    }
+    return { stories: selected, mode: "story_json" };
+  }
 
   try {
     const db = require("../lib/db");
@@ -254,7 +268,9 @@ if (require.main === module) {
 }
 
 module.exports = {
+  loadStories,
   loadMotionPlans,
+  normaliseStory,
   parseArgs,
   shouldRebuildMotionPlansFromReferences,
 };

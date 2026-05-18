@@ -305,6 +305,41 @@ test("still-deck adapter ingests accepted segment-validation samples into traile
   assert.equal(pack.assets[0].provenance.content_hash, "segment-frame-one");
 });
 
+test("still-deck adapter accepts trusted Steam storefront trailer frame sources", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-frame-ingest-"));
+  const localPath = await imageFile(dir, "forza-storefront-frame.jpg");
+  const pack = await buildStillDeckMediaPackage({
+    story: story({
+      id: "1tftq7f",
+      title: "Forza Horizon 6 Becomes Highest Rated Game of 2026 on Metacritic",
+      full_script: "Forza Horizon 6 is the exact subject.",
+    }),
+    plan: planFor("1tftq7f", []),
+    frameReport: frameReportFor("1tftq7f", [
+      {
+        story_id: "1tftq7f",
+        source_url: "https://video.fastly.steamstatic.com/store_trailers/2483190/1133501958/clip.mp4",
+        source_type: "steam_storefront_video_reference",
+        entity: "Forza Horizon 6",
+        local_path: localPath,
+        target_time_seconds: 34,
+        status: "accepted",
+        qa: {
+          verdict: "pass",
+          thumbnail_safe: true,
+          likely_has_face: false,
+          black_frame: false,
+          content_hash: "storefront-frame-one",
+          failures: [],
+        },
+      },
+    ]),
+  });
+
+  assert.equal(pack.media.trailerFrames.length, 1);
+  assert.equal(pack.assets[0].provenance.original_source_type, "steam_storefront_video_reference");
+});
+
 test("still-deck adapter rejects QA-failed extracted frames", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-frame-ingest-"));
   const localPath = await imageFile(dir, "002_GTA_52pct.jpg");

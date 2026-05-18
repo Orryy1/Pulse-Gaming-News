@@ -480,6 +480,8 @@ test("studio composer preserves validated official clip timing windows", () => {
             segment_original_duration_s: 5,
             segment_recommended_start_s: 42.45,
             segment_recommended_duration_s: 2.85,
+            segment_validated: true,
+            allowed_for_flash_lane: true,
           },
         },
       ],
@@ -499,6 +501,8 @@ test("studio composer preserves validated official clip timing windows", () => {
     opener.clipTimingProvenance.clip_start_policy,
     "validated_trimmed_segment_window",
   );
+  assert.equal(opener.clipTimingProvenance.segment_validated, true);
+  assert.equal(opener.clipTimingProvenance.allowed_for_flash_lane, true);
   assert.equal(opener.clipTimingProvenance.segment_recommended_duration_s, 2.85);
 });
 

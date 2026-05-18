@@ -341,6 +341,65 @@ test("still-deck adapter ingests accepted segment-validation samples into traile
   assert.equal(pack.assets[0].provenance.content_hash, "segment-frame-one");
 });
 
+test("still-deck adapter uses one best sample per validated segment to avoid repeated trailer stills", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-segment-frame-ingest-"));
+  const weakPath = await imageFile(dir, "001_Forza_03665cs.jpg");
+  const bestPath = await imageFile(dir, "001_Forza_03835cs.jpg");
+  const pack = await buildStillDeckMediaPackage({
+    story: story({
+      id: "1te1oq7",
+      title: "Forza Horizon 6 hits 130,000 concurrent players on Steam",
+      full_script: "Forza Horizon 6 is the exact subject.",
+    }),
+    plan: planFor("1te1oq7", []),
+    segmentValidationReport: {
+      schema_version: 1,
+      generated_at: "2026-05-17T17:56:54.451Z",
+      segments: [
+        {
+          story_id: "1te1oq7",
+          source_url: "https://video.akamai.steamstatic.com/store_trailers/forza/hls_264_master.m3u8",
+          source_type: "steam_movie",
+          entity: "Forza Horizon 6",
+          action_score: 82,
+          samples: [
+            {
+              local_path: weakPath,
+              status: "accepted",
+              score: 70,
+              qa: {
+                verdict: "pass",
+                thumbnail_safe: true,
+                likely_has_face: false,
+                black_frame: false,
+                content_hash: "segment-frame-weak",
+                failures: [],
+              },
+            },
+            {
+              local_path: bestPath,
+              status: "accepted",
+              score: 94,
+              qa: {
+                verdict: "pass",
+                thumbnail_safe: true,
+                likely_has_face: false,
+                black_frame: false,
+                content_hash: "segment-frame-best",
+                failures: [],
+              },
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  assert.equal(pack.media.trailerFrames.length, 1);
+  assert.equal(pack.media.trailerFrames[0].path, bestPath);
+  assert.equal(pack.assets[0].provenance.content_hash, "segment-frame-best");
+});
+
 test("still-deck adapter accepts trusted Steam storefront trailer frame sources", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-frame-ingest-"));
   const localPath = await imageFile(dir, "forza-storefront-frame.jpg");
@@ -947,6 +1006,30 @@ test("mergeStillDeckApplyLocalPlan preserves base visual deck while adding apply
   assert.deepEqual(
     merged.applied_assets.map((item) => item.duplicate_hash),
     ["applied"],
+  );
+  assert.equal(merged.provenance.length, 2);
+});
+
+test("mergeStillDeckApplyLocalPlan preserves selected report stills when apply-local has no new assets", () => {
+  const merged = mergeStillDeckApplyLocalPlan(
+    {
+      story_id: "1tftq7f",
+      applied_assets: [
+        { local_path: "forza-a.jpg", duplicate_hash: "forza-a" },
+        { local_path: "forza-b.jpg", duplicate_hash: "forza-b" },
+      ],
+      provenance: [{ duplicate_hash: "forza-a" }, { duplicate_hash: "forza-b" }],
+    },
+    {
+      story_id: "1tftq7f",
+      applied_assets: [],
+      provenance: [],
+    },
+  );
+
+  assert.deepEqual(
+    merged.applied_assets.map((item) => item.duplicate_hash),
+    ["forza-a", "forza-b"],
   );
   assert.equal(merged.provenance.length, 2);
 });

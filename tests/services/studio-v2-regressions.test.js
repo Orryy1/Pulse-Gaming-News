@@ -1341,6 +1341,17 @@ test("studio production voice implementation sends segment text after local paci
   assert.equal(ACCEPTED_LOCAL_VOICE_ID, "pulse-sleepy-liam-20260502");
 });
 
+test("studio production voice keeps native pause metadata available for sidecar writes", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "lib", "studio", "sound-layer.js"),
+    "utf8",
+  );
+
+  assert.match(src, /let interSegmentPausePlan = null;/);
+  assert.match(src, /interSegmentPausePlan = resolveLocalInterSegmentPausePlan\(/);
+  assert.doesNotMatch(src, /const interSegmentPausePlan = resolveLocalInterSegmentPausePlan\(/);
+});
+
 test("studio-v2 render report surfaces accepted local voice fingerprint", () => {
   const src = fs.readFileSync(
     path.join(__dirname, "..", "..", "tools", "studio-v2-render.js"),

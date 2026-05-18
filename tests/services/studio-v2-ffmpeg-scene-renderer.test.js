@@ -10,7 +10,7 @@ const {
 } = require("../../lib/studio/ffmpeg-scene-renderer");
 const { buildQuoteBodyLayout } = require("../../lib/scenes/quote-card");
 
-test("visual scenes get compact entity popups in the lower hook-safe badge lane", () => {
+test("visual scenes suppress repeated proof badges unless explicitly enabled", () => {
   const filter = dispatchSceneFilter({
     slot: 0,
     fontOpt: "fontfile=Arial",
@@ -21,6 +21,26 @@ test("visual scenes get compact entity popups in the lower hook-safe badge lane"
       source: "frame.jpg",
       entity: "BioShock",
       sourceType: "official_trailer_frame",
+    },
+  });
+
+  assert.doesNotMatch(filter, /BIOSHOCK/);
+  assert.doesNotMatch(filter, /OFFICIAL FRAME/);
+  assert.doesNotMatch(filter, /box=1:boxcolor=black@0\.36/);
+});
+
+test("visual scenes can opt into compact entity proof badges", () => {
+  const filter = dispatchSceneFilter({
+    slot: 0,
+    fontOpt: "fontfile=Arial",
+    story: { title: "Take-Two legacy franchise story" },
+    scene: {
+      type: SCENE_TYPES.CLIP_FRAME,
+      duration: 4,
+      source: "frame.jpg",
+      entity: "BioShock",
+      sourceType: "official_trailer_frame",
+      showEntityBadge: true,
     },
   });
 

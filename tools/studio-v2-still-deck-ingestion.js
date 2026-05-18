@@ -373,24 +373,37 @@ function buildSubtitleBaseFilter({
   outputLabel = "subtitleBase",
   renderDurationS,
   subtitleDurationS,
+  maxPadS = 0.35,
 }) {
   const renderDuration = Number(renderDurationS);
   const subtitleDuration = Number(subtitleDurationS);
+  if (!Number.isFinite(renderDuration) || renderDuration <= 0) {
+    throw new Error("still_deck_scene_timeline_duration_unknown");
+  }
   const targetDurationS = Math.max(
     0.1,
     ...[renderDuration, subtitleDuration].filter(
       (value) => Number.isFinite(value) && value > 0,
     ),
   );
-  const padDurationS = Math.max(
-    1,
-    targetDurationS -
-      (Number.isFinite(renderDuration) && renderDuration > 0
-        ? renderDuration
-        : 0) +
-      1,
+  const padDurationS = targetDurationS - renderDuration;
+  if (padDurationS > maxPadS) {
+    throw new Error(
+      `still_deck_scene_timeline_under_covers_subtitles:${padDurationS.toFixed(3)}`,
+    );
+  }
+  const filters = [];
+  if (padDurationS > 0.01) {
+    filters.push(`tpad=stop_mode=clone:stop_duration=${padDurationS.toFixed(3)}`);
+  }
+  filters.push(
+    `trim=duration=${targetDurationS.toFixed(3)}`,
+    "noise=alls=2:allf=t+u",
+    "eq=brightness=0.006*sin(8.168*t):eval=frame",
+    "drawbox=x=0:y=h-430:w=iw:h=430:color=black@0.22:t=fill",
+    "setpts=PTS-STARTPTS",
   );
-  return `[${inputLabel}]tpad=stop_mode=clone:stop_duration=${padDurationS.toFixed(3)},trim=duration=${targetDurationS.toFixed(3)},noise=alls=2:allf=t+u,eq=brightness=0.006*sin(8.168*t):eval=frame,setpts=PTS-STARTPTS[${outputLabel}]`;
+  return `[${inputLabel}]${filters.join(",")}[${outputLabel}]`;
 }
 
 function resolveStillDeckCaptionOptions({ variant } = {}) {
@@ -697,6 +710,37 @@ function transitionedDurationS(scenes, transitions) {
   return Math.max(0.1, baseDurationS - overlapS);
 }
 
+function ensureTransitionTimelineCoversCaptions({
+  scenes,
+  captionDurationS,
+  quickCut = false,
+  maxSubtitlePadS = 0.35,
+} = {}) {
+  let nextScenes = scenes;
+  let transitions = buildTransitionPlan(nextScenes, { quickCut });
+  let transitionDurationS = transitionedDurationS(nextScenes, transitions);
+  let extensionGuard = null;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const deficitS = Number(captionDurationS) - transitionDurationS;
+    if (!Number.isFinite(deficitS) || deficitS <= maxSubtitlePadS) break;
+    const targetDurationS = sumDurations(nextScenes) + deficitS + 0.04;
+    extensionGuard = protectClipSceneDurationsFromFreezes(nextScenes, {
+      targetDurationS,
+    });
+    nextScenes = extensionGuard.scenes;
+    transitions = buildTransitionPlan(nextScenes, { quickCut });
+    transitionDurationS = transitionedDurationS(nextScenes, transitions);
+  }
+
+  return {
+    scenes: nextScenes,
+    transitions,
+    transitionDurationS,
+    extensionGuard,
+  };
+}
+
 function prepareNarrationWords({ rawWords, durationS, scriptText }) {
   const realigned = rawWords.length
     ? realignTimestampsToScript(scriptText || "", rawWords)
@@ -928,9 +972,16 @@ async function renderStillDeckVariant({
     targetDurationS: captionDurationS,
   });
   scenes = clipDurationGuard.scenes;
-  const durationS = sumDurations(scenes);
-  const transitions = buildTransitionPlan(scenes, { quickCut });
-  const transitionDurationS = transitionedDurationS(scenes, transitions);
+  let durationS = sumDurations(scenes);
+  const transitionCoverage = ensureTransitionTimelineCoversCaptions({
+    scenes,
+    captionDurationS,
+    quickCut,
+  });
+  scenes = transitionCoverage.scenes;
+  durationS = sumDurations(scenes);
+  const transitions = transitionCoverage.transitions;
+  const transitionDurationS = transitionCoverage.transitionDurationS;
   const renderTimelineDurationS = Math.max(transitionDurationS, captionDurationS);
   const overlayPlan =
     variant === "enriched"
@@ -1131,7 +1182,10 @@ async function renderStillDeckVariant({
     captionDurationS: Number(captionDurationS.toFixed(3)),
     visualDurationS: Number(durationS.toFixed(3)),
     renderTimelineDurationS: Number(renderTimelineDurationS.toFixed(3)),
-    clipDurationGuard,
+    clipDurationGuard: {
+      ...clipDurationGuard,
+      transitionCoverageExtension: transitionCoverage.extensionGuard,
+    },
   };
   quality.mediaDiversity = rankSourceDiversity(media);
   quality.subtitles = {

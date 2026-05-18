@@ -315,11 +315,16 @@ test("still-deck adapter ingests accepted segment-validation samples into traile
           source_url: "https://video.akamai.steamstatic.com/store_trailers/forza/hls_264_master.m3u8",
           source_type: "steam_movie",
           entity: "Forza Horizon 6",
+          status: "validated",
+          validation_reason: "segment_samples_passed",
+          media_start_s: 36,
           action_score: 82,
           samples: [
             {
               local_path: localPath,
               status: "accepted",
+              offset_s: 0.65,
+              seek_seconds: 36.65,
               qa: {
                 verdict: "pass",
                 thumbnail_safe: true,
@@ -340,6 +345,56 @@ test("still-deck adapter ingests accepted segment-validation samples into traile
   assert.equal(pack.assets[0].sourceType, "official_trailer_frame");
   assert.equal(pack.assets[0].provenance.original_source_type, "steam_movie");
   assert.equal(pack.assets[0].provenance.content_hash, "segment-frame-one");
+  assert.equal(pack.assets[0].provenance.target_time_seconds, 36.65);
+});
+
+test("still-deck adapter rejects samples from rejected segment-validation windows", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-rejected-segment-frame-"));
+  const localPath = await imageFile(dir, "060_Forza_09065cs.jpg");
+  const pack = await buildStillDeckMediaPackage({
+    story: story({
+      id: "1tftq7f",
+      title: "Forza Horizon 6 hits 92 on Metacritic",
+      full_script: "Forza Horizon 6 is the exact subject.",
+    }),
+    plan: planFor("1tftq7f", []),
+    segmentValidationReport: {
+      schema_version: 1,
+      generated_at: "2026-05-18T18:40:29.275Z",
+      segments: [
+        {
+          story_id: "1tftq7f",
+          source_url: "https://video.akamai.steamstatic.com/store_trailers/forza/hls_264_master.m3u8",
+          source_type: "steam_movie",
+          entity: "Forza Horizon 6",
+          status: "rejected",
+          validation_reason: "segment_contains_black_frame",
+          media_start_s: 90,
+          action_score: 86.6,
+          samples: [
+            {
+              local_path: localPath,
+              status: "accepted",
+              offset_s: 0.65,
+              seek_seconds: 90.65,
+              qa: {
+                verdict: "pass",
+                thumbnail_safe: true,
+                likely_has_face: false,
+                black_frame: false,
+                content_hash: "promo-card-frame",
+                failures: [],
+              },
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  assert.equal(pack.media.trailerFrames.length, 0);
+  assert.equal(pack.rejected[0].reason, "segment_contains_black_frame");
+  assert.equal(pack.metrics.rejectedFrameCount, 1);
 });
 
 test("still-deck adapter uses one best sample per validated segment to avoid repeated trailer stills", async () => {
@@ -362,6 +417,8 @@ test("still-deck adapter uses one best sample per validated segment to avoid rep
           source_url: "https://video.akamai.steamstatic.com/store_trailers/forza/hls_264_master.m3u8",
           source_type: "steam_movie",
           entity: "Forza Horizon 6",
+          status: "validated",
+          validation_reason: "segment_samples_passed",
           action_score: 82,
           samples: [
             {
@@ -1388,20 +1445,25 @@ test("still-deck ASS timeline covers the narration tail without a fixed outro ca
   assert.doesNotMatch(src, /durationS\s*-\s*0\.6/);
 });
 
-test("still-deck render pads video and audio to the subtitle timeline before mapping", () => {
+test("still-deck render refuses long cloned subtitle tail padding and adds a caption-safe backing layer", () => {
   const src = fs.readFileSync(
     path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
     "utf8",
   );
 
   assert.match(src, /function buildSubtitleBaseFilter/);
-  assert.match(src, /const padDurationS = Math\.max\(/);
-  assert.match(src, /targetDurationS\s*-\s*\(Number\.isFinite\(renderDuration\)/);
+  assert.match(src, /maxPadS = 0\.35/);
+  assert.match(src, /still_deck_scene_timeline_under_covers_subtitles/);
+  assert.match(src, /if \(padDurationS > maxPadS\)/);
+  assert.match(src, /if \(padDurationS > 0\.01\)/);
   assert.match(src, /tpad=stop_mode=clone:stop_duration=\$\{padDurationS\.toFixed\(3\)\}/);
   assert.match(src, /trim=duration=\$\{targetDurationS\.toFixed\(3\)\}/);
   assert.match(src, /noise=alls=2:allf=t\+u/);
   assert.match(src, /eq=brightness=0\.006\*sin\(8\.168\*t\):eval=frame/);
-  assert.match(src, /const transitionDurationS = transitionedDurationS\(scenes, transitions\)/);
+  assert.match(src, /drawbox=x=0:y=h-430:w=iw:h=430:color=black@0\.22:t=fill/);
+  assert.match(src, /const transitionDurationS = transitionCoverage\.transitionDurationS/);
+  assert.match(src, /ensureTransitionTimelineCoversCaptions/);
+  assert.match(src, /transitionCoverageExtension/);
   assert.match(src, /const renderTimelineDurationS = Math\.max\(transitionDurationS, captionDurationS\)/);
   assert.match(src, /const subtitleRenderDurationS = renderTimelineDurationS/);
   assert.match(src, /buildSubtitleBaseFilter\(\{\s*inputLabel: subtitleInputLabel,/);
@@ -1454,9 +1516,10 @@ test("still-deck Flash render path adjusts scene durations to narration word bou
   assert.match(src, /buildTransitionPlan/);
   assert.match(src, /buildTransitionFilters/);
   assert.match(src, /function transitionedDurationS/);
+  assert.match(src, /function ensureTransitionTimelineCoversCaptions/);
   assert.match(src, /quickCut:\s*visualV3 && variant === "enriched"/);
   assert.match(src, /minSceneDurationS:\s*quickCut \? 2\.2 : 2\.6/);
-  assert.match(src, /const transitions = buildTransitionPlan\(scenes,\s*\{ quickCut \}\)/);
+  assert.match(src, /const transitionCoverage = ensureTransitionTimelineCoversCaptions\(\{/);
 });
 
 test("still-deck Flash preflight report surfaces motion and beat coverage metrics", () => {

@@ -127,6 +127,58 @@ test("Visual V3 quick-cut slate targets high edit density without stacked cards"
   );
 });
 
+test("Visual V3 quick-cut slate avoids still frames already covered by motion clips", () => {
+  const trailerUrl = "https://video.akamai.steamstatic.com/store_trailers/forza/hls_264_master.m3u8?t=abc";
+  const result = composeStudioSlate({
+    story: {
+      id: "forza-motion-overlap",
+      title: "Forza Horizon 6 hits 130,000 players on Steam",
+    },
+    media: {
+      clips: [
+        {
+          path: trailerUrl,
+          durationS: 2.35,
+          mediaStartS: 36.7,
+          entity: "Forza Horizon 6",
+          sourceType: "steam_movie",
+        },
+      ],
+      trailerFrames: [
+        {
+          path: "forza-overlap.jpg",
+          sourceUrl: "https://video.akamai.steamstatic.com/store_trailers/forza/hls_264_master.m3u8?t=abc",
+          target_time_seconds: 36.65,
+          entity: "Forza Horizon 6",
+          sourceType: "official_trailer_frame",
+        },
+        {
+          path: "forza-clean.jpg",
+          sourceUrl: "https://video.akamai.steamstatic.com/store_trailers/forza/hls_264_master.m3u8?t=abc",
+          target_time_seconds: 44.4,
+          entity: "Forza Horizon 6",
+          sourceType: "official_trailer_frame",
+        },
+      ],
+      articleHeroes: [],
+      publisherAssets: [],
+      stockFillers: [],
+    },
+    audioDurationS: 24,
+    opts: {
+      flashLane: true,
+      sourceCardMode: "overlay",
+      quickCut: true,
+    },
+  });
+
+  assert.equal(
+    result.scenes.some((scene) => scene.source === "forza-overlap.jpg"),
+    false,
+  );
+  assert.ok(result.scenes.some((scene) => scene.source === "forza-clean.jpg"));
+});
+
 test("premium card lane converts duplicate source cards to context", () => {
   const scenes = [
     { type: SCENE_TYPES.CARD_SOURCE, label: "source_a", duration: 4 },
@@ -770,13 +822,17 @@ test("studio composer avoids repeating Flash Lane clip windows when stills can c
   const clipWindows = actualClipScenes.map(
     (scene) => `${scene.source}|${scene.mediaStartS ?? ""}`,
   );
+  const visualSources = result.scenes
+    .filter((scene) => STILL_TYPES.has(scene.type))
+    .map((scene) => scene.source);
 
   assert.equal(actualClipScenes.length, 3);
   assert.equal(new Set(clipWindows).size, clipWindows.length);
+  assert.equal(visualSources.length, new Set(visualSources).size);
   assert.ok(result.scenes.some((scene) => STILL_TYPES.has(scene.type)));
 });
 
-test("studio composer does not reuse scarce Flash Lane stills to pad the edit", () => {
+test("studio composer does not pad scarce Flash Lane media with a run of filler cards", () => {
   const result = composeStudioSlate({
     story: {
       title:
@@ -809,9 +865,13 @@ test("studio composer does not reuse scarce Flash Lane stills to pad the edit", 
   const stillSources = result.scenes
     .filter((scene) => STILL_TYPES.has(scene.type))
     .map((scene) => scene.source);
+  const cardScenes = result.scenes.filter(
+    (scene) => CARD_TYPES.has(scene.type) && scene.type !== SCENE_TYPES.OPENER,
+  );
 
   assert.equal(stillSources.length, new Set(stillSources).size);
-  assert.ok(result.scenes.length >= 18);
+  assert.ok(result.scenes.length < 18);
+  assert.ok(cardScenes.length <= 3);
 });
 
 test("studio composer can move Flash source proof to overlay mode instead of a full-screen source card", () => {

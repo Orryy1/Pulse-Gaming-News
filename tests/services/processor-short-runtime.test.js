@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const processor = require("../../processor");
+const pulseChannel = require("../../channels/pulse-gaming");
 const PROCESSOR_SOURCE = fs.readFileSync(
   path.join(__dirname, "..", "..", "processor.js"),
   "utf8",
@@ -282,6 +283,13 @@ test("Pulse channel prompt bans internal strategy boilerplate from narration", (
   assert.doesNotMatch(channelSource, /nobody noticed this/);
 });
 
+test("Pulse channel prompt requires angle-first scripts with useful hot takes", () => {
+  assert.match(pulseChannel.systemPrompt, /ANGLE-FIRST EDITORIAL CONTRACT/);
+  assert.match(pulseChannel.systemPrompt, /hot take/i);
+  assert.match(pulseChannel.systemPrompt, /curiosity gap/i);
+  assert.match(pulseChannel.systemPrompt, /payoff/i);
+});
+
 test("processor quality scorer penalises banned stock pivots instead of rewarding them", () => {
   assert.match(PROCESSOR_SOURCE, /Penalise canned pivots/);
   assert.doesNotMatch(
@@ -373,6 +381,8 @@ test("processor validation retry feedback gives concrete rewrite guidance", () =
   assert.match(feedback, /Rewrite full_script as 180-220 cleaned spoken words/);
   assert.match(feedback, /Aim for 190-210 words/);
   assert.match(feedback, /source-backed facts only/);
+  assert.match(feedback, /angle-first/i);
+  assert.match(feedback, /hot take/i);
   assert.match(feedback, /end full_script with exactly/);
   assert.match(feedback, /named source, number, platform, price, release window or player impact/);
   assert.doesNotMatch(feedback, /original script/i);

@@ -925,7 +925,8 @@ function buildValidationRetryFeedback(errors = [], options = {}) {
   const lines = [
     "VALIDATION REWRITE BRIEF:",
     `- Rewrite full_script as ${runtimeWordRange(runtimeProfile)} cleaned spoken words. Aim for ${runtimeAimRange(runtimeProfile)} words, not the edge of the range.`,
-    "- Use one clear story arc: hook, named source, what happened, concrete player consequence, exact CTA.",
+    "- Use an angle-first story arc: scroll-stopping hook, named source, what happened, concrete player consequence, hot take, payoff, exact CTA.",
+    "- The hot take must be useful and source-safe: explain why the fact matters, who benefits, what changes for players or what risk/catch the headline hides.",
     "- Do not repeat the same claim in different wording.",
     "- Do not mention Pulse except the exact final CTA.",
     "- Do not write internal strategy language such as signal, safe read, safe takeaway, direction of travel or tracking confirmation.",

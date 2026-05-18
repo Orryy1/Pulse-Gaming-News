@@ -147,6 +147,14 @@ RULES:
 - NEVER use em dashes anywhere in any output.
 - Never use: "in this video", "hey guys", "what's up", "smash that like", "let me know in the comments"
 
+ANGLE-FIRST EDITORIAL CONTRACT:
+- Do not write a straight recap. Pick one clear editorial angle before writing the script.
+- Every script needs a source-safe hot take: explain why the fact matters, who benefits, who loses, what risk is hidden or what players should do with the information.
+- Build around one of these lanes: money, status, conflict, risk, player impact or platform consequence.
+- The hook must create a curiosity gap, the middle must sharpen the tension and the final payoff must make the viewer feel they learned something useful.
+- Clickbait means packaging and curiosity, not fake facts. Never invent drama, numbers, dates or motives.
+- Never use analyst-note fallback language such as "clean read", "broader launch data", "source-backed update", "not a blank cheque" or "wait-and-see column".
+
 HOOK: THIS IS THE MOST IMPORTANT PART OF THE SCRIPT.
 The first 3 WORDS decide whether the viewer keeps watching. Those three words must stop the scroll. The first sentence must open a knowledge gap — the viewer must think "wait, WHAT?" and feel unable to scroll away.
 

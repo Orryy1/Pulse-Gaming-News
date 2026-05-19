@@ -2421,6 +2421,45 @@ app.get("/api/commercial/learning", requireAuth, async (req, res) => {
   }
 });
 
+app.get("/api/revenue/paths", requireAuth, async (req, res) => {
+  try {
+    const {
+      buildRevenuePathDigest,
+      loadRevenuePathManifests,
+    } = require("./lib/revenue-path-engine");
+    const {
+      buildCommercialLearningDigest,
+      loadCommercialManifests,
+      readCommercialClickLog,
+    } = require("./lib/intelligence/commercial-learning-loop");
+    const stories = readNews();
+    const commercialManifests = await loadCommercialManifests([
+      path.join(__dirname, "output", "commercial"),
+    ]);
+    const revenueManifests = await loadRevenuePathManifests([
+      path.join(__dirname, "output", "revenue"),
+    ]);
+    const clickLog = await readCommercialClickLog(
+      path.join(__dirname, "data", "commercial_clicks.jsonl"),
+    );
+    const learningDigest = buildCommercialLearningDigest({
+      clicks: clickLog.entries,
+      manifests: commercialManifests,
+      stories,
+    });
+    const digest = buildRevenuePathDigest({
+      revenueManifests,
+      commercialManifests,
+      learningDigest,
+      stories,
+    });
+    res.json(digest);
+  } catch (err) {
+    console.log(`[server] /api/revenue/paths error: ${err.message}`);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // --- Blog static site ---
 app.use("/blog", express.static(path.join(__dirname, "blog", "dist")));
 app.use("/p", express.static(path.join(__dirname, "blog", "dist", "p")));

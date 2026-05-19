@@ -72,6 +72,7 @@
     "ops:retention-intelligence": "node tools/retention-intelligence.js",
     "ops:learning-loop": "node tools/continuous-learning-loop.js",
     "ops:commercial-learning": "node tools/commercial-learning-loop.js",
+    "ops:revenue-paths": "node tools/revenue-paths.js",
     "ops:control-room": "node tools/control-room.js",
     "ops:render-health": "node tools/render-health.js",
     "ops:reclassify": "node tools/reclassify-report.js",

@@ -10,6 +10,10 @@ const {
   writeAffiliateLinkManifest,
   writeCommercialLandingPage,
 } = require("./lib/commercial-intelligence-engine");
+const {
+  buildRevenuePathManifest,
+  writeRevenuePathManifest,
+} = require("./lib/revenue-path-engine");
 
 if (!/^(true|1|yes|on)$/i.test(String(process.env.PULSE_SKIP_DOTENV || ""))) {
   dotenv.config({ override: true });
@@ -30,14 +34,18 @@ async function processAffiliates() {
   });
 
   for (const story of selectedStories) {
-    const { audit, affiliateLinks, commercialManifest } = applyAffiliateAuditToStory(story, tag);
+    const { audit, affiliateLinks, commercialManifest, revenuePathManifest } = applyAffiliateAuditToStory(story, tag);
     const manifestWrite = await writeAffiliateLinkManifest(commercialManifest, {
       outputDir: path.join(__dirname, "output", "commercial"),
+    });
+    const revenuePathWrite = await writeRevenuePathManifest(revenuePathManifest, {
+      outputDir: path.join(__dirname, "output", "revenue"),
     });
     const landingWrite = await writeCommercialLandingPage(commercialManifest, {
       outputDir: path.join(__dirname, "blog", "dist", "p"),
     });
     story.affiliate_link_manifest_path = manifestWrite.path;
+    story.revenue_path_manifest_path = revenuePathWrite.path;
     story.commercial_landing_page_path = landingWrite.path;
 
     console.log(
@@ -53,6 +61,7 @@ async function processAffiliates() {
 
 function applyAffiliateAuditToStory(story, tag) {
   const commercialManifest = buildAffiliateLinkManifest({ story, tag });
+  const revenuePathManifest = buildRevenuePathManifest({ story, commercialManifest });
   const affiliateLinks = [
     commercialManifest.primary_link,
     ...(commercialManifest.fallback_links || []),
@@ -105,9 +114,16 @@ function applyAffiliateAuditToStory(story, tag) {
   };
   story.commercial_landing_page_route = commercialManifest.landing_page_route;
   story.commercial_opportunity_score = commercialManifest.commercial_opportunity_score;
+  story.revenue_path_manifest = revenuePathManifest;
+  story.revenue_path_engine = {
+    version: "v2",
+    verdict: revenuePathManifest.path_gate.verdict,
+    score: revenuePathManifest.revenue_path_score,
+    primary_path_type: revenuePathManifest.primary_path.path_type,
+  };
   story.pinned_comment = buildPinnedComment(story, affiliateLinks);
 
-  return { audit, affiliateLinks, commercialManifest };
+  return { audit, affiliateLinks, commercialManifest, revenuePathManifest };
 }
 
 module.exports = processAffiliates;

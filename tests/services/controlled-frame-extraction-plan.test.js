@@ -417,6 +417,44 @@ test("Controlled Frame Extraction Plan accepts direct media discovered from offi
   assert.equal(plan.target_frames[3].target_time_seconds, 8.8);
 });
 
+test("Controlled Frame Extraction Plan automatically uses distinct official alternates for single-game stories", () => {
+  const plan = buildControlledFrameExtractionPlan(
+    motionPlan({
+      story_id: "1tftq7f",
+      existing_references: [
+        reference("Forza Horizon 6", 1, {
+          source_type: "steam_movie",
+          provider: "steam",
+          source_url: "https://video.example/forza-steam.m3u8",
+          movie_name: "Forza Horizon 6 Launch Trailer",
+        }),
+        {
+          source_type: "official_publisher_or_developer_trailer_page",
+          provider: "official_intake",
+          source_url:
+            "https://cdn.forza.net/strapi-uploads/assets/Forza_Horizon_6_Primary_Animated_Keyart.webm",
+          reference_page_url: "https://forza.net/forzahorizon6/",
+          source_url_kind: "direct_video",
+          segment_validation_eligible: true,
+          entity: "Forza Horizon 6",
+          movie_name: "Forza Horizon 6 official animated keyart",
+          downloads_allowed: false,
+          source_duration_s: 10,
+        },
+      ],
+    }),
+  );
+
+  assert.equal(plan.frame_plan_readiness, "frame_plan_ready");
+  assert.equal(plan.selected_references.length, 2);
+  assert.deepEqual(
+    plan.selected_references.map((item) => item.source_url_kind),
+    ["hls_manifest", "direct_video"],
+  );
+  assert.equal(plan.exact_subject_motion_coverage.max_references_per_entity, 2);
+  assert.ok(!plan.blockers.includes("needs_two_unique_official_references"));
+});
+
 test("Controlled Frame Extraction Plan rebuilds stale story motion plans when fresh trailer refs exist", () => {
   assert.equal(
     shouldRebuildMotionPlansFromReferences({

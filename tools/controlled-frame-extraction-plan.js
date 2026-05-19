@@ -33,7 +33,7 @@ function parseArgs(argv) {
     trailerReferences: null,
     noTrailerReferences: false,
     maxReferences: 4,
-    maxReferencesPerEntity: 1,
+    maxReferencesPerEntity: null,
     maxTargetFrames: 12,
   };
   for (let i = 2; i < argv.length; i++) {
@@ -50,7 +50,7 @@ function parseArgs(argv) {
     else if (arg === "--max-references") {
       args.maxReferences = Math.max(1, Number(argv[++i]) || args.maxReferences);
     } else if (arg === "--max-references-per-entity") {
-      args.maxReferencesPerEntity = Math.max(1, Number(argv[++i]) || args.maxReferencesPerEntity);
+      args.maxReferencesPerEntity = Math.max(1, Number(argv[++i]) || 1);
     } else if (arg === "--max-target-frames") {
       args.maxTargetFrames = Math.max(1, Number(argv[++i]) || args.maxTargetFrames);
     }

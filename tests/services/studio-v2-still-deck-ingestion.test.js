@@ -1396,6 +1396,30 @@ test("still-deck render path can burn Visual V3 before subtitles", () => {
   assert.match(src, /visual_v3:/);
 });
 
+test("still-deck render path can build Visual V4 director readiness before subtitles", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+
+  assert.match(src, /buildFootageEmpirePlan/);
+  assert.match(src, /buildVisualV4DirectorPlan/);
+  assert.match(src, /buildViralScriptIntelligence/);
+  assert.match(src, /buildLocalVideoTimeline/);
+  assert.match(src, /--visual-v4/);
+  assert.match(src, /visualV4:\s*envEnabled\(process\.env\.STUDIO_V4_VISUALS\)/);
+  assert.match(
+    src,
+    /async function renderStillDeckVariant\(\{[\s\S]*?trustedFootageReport = null,[\s\S]*?visualV4 = false,/,
+  );
+  assert.match(src, /const visualV4Plan =/);
+  assert.match(src, /const viralScriptIntelligence =/);
+  assert.match(src, /buildVisualV4DirectorPlan\(\{[\s\S]*?retentionIntelligence,/);
+  assert.match(src, /quality\.visualV4\s*=/);
+  assert.match(src, /visual_v4:/);
+  assert.match(src, /studio_v4/);
+});
+
 test("still-deck Visual V3 render suppresses Flash Lane chip burn to avoid stacked text", () => {
   const src = fs.readFileSync(
     path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),

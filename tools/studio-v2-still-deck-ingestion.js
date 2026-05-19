@@ -100,6 +100,18 @@ const {
 const {
   FLASH_LANE_DEFAULT_MAX_WORDS,
 } = require("../lib/studio/v2/flash-lane-production-contract");
+const {
+  buildFootageEmpirePlan,
+} = require("../lib/studio/v4/footage-empire");
+const {
+  buildVisualV4DirectorPlan,
+} = require("../lib/studio/v4/director-brain");
+const {
+  buildViralScriptIntelligence,
+} = require("../lib/viral-script-intelligence");
+const {
+  buildLocalVideoTimeline,
+} = require("../lib/local-video-timeline");
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output", "studio-v2-still-deck");
@@ -125,6 +137,12 @@ const DEFAULT_SEGMENT_VALIDATION_REPORT = path.join(
   "test",
   "output",
   "official_trailer_segment_validation_apply_local.json",
+);
+const DEFAULT_TRUSTED_FOOTAGE_REPORT = path.join(
+  ROOT,
+  "test",
+  "output",
+  "trusted_footage_registry_report.json",
 );
 const PREFERRED = ["1szzhy9", "rss_4105cb7c837252c3"];
 const TARGET_RUNTIME_S = 61;
@@ -159,6 +177,7 @@ function parseArgs(argv) {
     timestampsPath: null,
     retentionIntelligencePath: null,
     visualV3: envEnabled(process.env.STUDIO_V3_VISUALS),
+    visualV4: envEnabled(process.env.STUDIO_V4_VISUALS),
     limit: 1,
   };
   for (let i = 2; i < argv.length; i++) {
@@ -186,6 +205,11 @@ function parseArgs(argv) {
       args.retentionIntelligencePath = path.resolve(argv[++i] || "");
     else if (arg === "--visual-v3") args.visualV3 = true;
     else if (arg === "--no-visual-v3") args.visualV3 = false;
+    else if (arg === "--visual-v4") {
+      args.visualV4 = true;
+      args.visualV3 = true;
+    }
+    else if (arg === "--no-visual-v4") args.visualV4 = false;
     else if (arg === "--limit") args.limit = Math.max(1, Number(argv[++i]) || 1);
     else if (arg === "--help" || arg === "-?") args.help = true;
   }
@@ -213,6 +237,8 @@ function printHelp() {
       "  --retention-intelligence <path>  Apply read-only retention recommendations to Visual V3 overlays",
       "  --visual-v3       Burn Visual V3 source-aware story overlays before subtitles",
       "  --no-visual-v3    Disable Visual V3 even when STUDIO_V3_VISUALS=true",
+      "  --visual-v4       Build Visual V4 director readiness and enable Visual V3 overlays",
+      "  --no-visual-v4    Disable Visual V4 readiness even when STUDIO_V4_VISUALS=true",
       "  --generate-local-tts  Generate local TTS audio under test/output before rendering",
       "  --use-official-trailer-clips  Use official Steam/IGDB trailer references as local-only ffmpeg clip inputs",
       "  --allow-silent-fixture  Explicitly allow silent visual-only proof renders",
@@ -786,6 +812,42 @@ function sceneListForReport(scenes) {
   }));
 }
 
+function motionSourceFamilyFromScene(scene, index) {
+  const explicit =
+    scene.sourceFamily ||
+    scene.source_family ||
+    scene.clipSourceFamily ||
+    scene.trusted_footage_source_id ||
+    scene.sourceId;
+  if (explicit) return explicit;
+  const source = String(scene.source || scene.backgroundSource || scene.localPath || "");
+  if (/steamstatic\.com|steam/i.test(source)) return "steam";
+  if (/igdb/i.test(source)) return "igdb";
+  if (/xbox|forza/i.test(source)) return "forza";
+  return source || `scene_motion_${index + 1}`;
+}
+
+function localMotionClipsFromScenes(scenes) {
+  const motionTypes = new Set([
+    SCENE_TYPES.CLIP,
+    SCENE_TYPES.PUNCH,
+    SCENE_TYPES.SPEED_RAMP,
+  ]);
+  return (Array.isArray(scenes) ? scenes : [])
+    .filter((scene) => motionTypes.has(scene.type || scene.sceneType))
+    .map((scene, index) => ({
+      id: scene.id || scene.label || `scene_motion_${index + 1}`,
+      source_family: motionSourceFamilyFromScene(scene, index),
+      path: scene.localPath || scene.path || scene.source || scene.backgroundSource || "",
+      durationS: Number(scene.clipDurationS || scene.duration || 0),
+      validated:
+        scene.clipTimingProvenance === "official_segment_validation" ||
+        scene.segmentValidationPassed === true ||
+        scene.validated !== false,
+      type: "clip",
+    }));
+}
+
 async function buildFlashLaneRenderPreflight({
   story,
   media,
@@ -798,6 +860,8 @@ async function buildFlashLaneRenderPreflight({
   narrationCache = null,
   retentionIntelligence = null,
   visualV3 = false,
+  trustedFootageReport = null,
+  visualV4 = false,
 }) {
   const renderStory = buildRenderStory(story);
   const narration = await resolveNarration({
@@ -899,6 +963,8 @@ async function renderStillDeckVariant({
   narrationCache = null,
   retentionIntelligence = null,
   visualV3 = false,
+  trustedFootageReport = null,
+  visualV4 = false,
 }) {
   await fs.ensureDir(outputDir);
   const renderStory = buildRenderStory(story);
@@ -1003,6 +1069,42 @@ async function renderStillDeckVariant({
           scenes,
         })
       : null;
+  const viralScriptIntelligence =
+    visualV4 && variant === "enriched"
+      ? buildViralScriptIntelligence({
+          story: renderStory,
+          script: scriptText,
+        })
+      : null;
+  const visualV4Timeline =
+    visualV4 && variant === "enriched"
+      ? buildLocalVideoTimeline({
+          story: renderStory,
+          timestamps: {
+            source: "prepared_local_alignment",
+            duration: captionDurationS,
+            words,
+          },
+          duration: captionDurationS,
+        })
+      : null;
+  const visualV4FootagePlan =
+    visualV4 && variant === "enriched"
+      ? buildFootageEmpirePlan({
+          story: renderStory,
+          trustedFootageReport: trustedFootageReport || {},
+          localMotionClips: localMotionClipsFromScenes(scenes),
+        })
+      : null;
+  const visualV4Plan =
+    visualV4 && variant === "enriched"
+      ? buildVisualV4DirectorPlan({
+          story: renderStory,
+          footagePlan: visualV4FootagePlan,
+          localTimeline: visualV4Timeline,
+          retentionIntelligence,
+        })
+      : null;
   const flashLanePreflight =
     variant === "enriched"
       ? assertFlashLaneProofReady(
@@ -1078,7 +1180,12 @@ async function renderStillDeckVariant({
   );
 
   const filterPath = path.join(outputDir, `${story.id}_${variant}_filter.txt`);
-  const renderPrefix = visualV3Plan && variant === "enriched" ? "studio_v3" : "studio_v2";
+  const renderPrefix =
+    visualV4Plan && variant === "enriched"
+      ? "studio_v4"
+      : visualV3Plan && variant === "enriched"
+        ? "studio_v3"
+        : "studio_v2";
   const mp4Path = path.join(outputDir, `${renderPrefix}_${story.id}_${variant}.mp4`);
   const audioIndex = sceneInputs.length;
   const allInputs = [
@@ -1235,6 +1342,35 @@ async function renderStillDeckVariant({
         events: [],
         overlayApplied: false,
       };
+  quality.visualV4 = visualV4Plan
+    ? {
+        enabled: true,
+        verdict: visualV4Plan.readiness.status,
+        blockers: visualV4Plan.readiness.blockers,
+        warnings: visualV4Plan.readiness.warnings,
+        shotBudget: visualV4Plan.shot_budget,
+        shotPlan: visualV4Plan.shot_plan,
+        transitionPlan: visualV4Plan.transition_plan,
+        sfxPlan: visualV4Plan.sfx_plan,
+        soundTransitionPlan: visualV4Plan.sound_transition_plan,
+        footagePlan: visualV4FootagePlan,
+        localTimeline: visualV4Timeline,
+        viralScriptIntelligence,
+      }
+    : {
+        enabled: false,
+        verdict: "disabled",
+        blockers: [],
+        warnings: [],
+        shotBudget: null,
+        shotPlan: [],
+        transitionPlan: null,
+        sfxPlan: null,
+        soundTransitionPlan: null,
+        footagePlan: null,
+        localTimeline: null,
+        viralScriptIntelligence: null,
+      };
   const reportPath = path.join(outputDir, `${story.id}_${variant}_qa.json`);
   await fs.writeJson(reportPath, quality, { spaces: 2 });
   const forensic = await runForensicQa({
@@ -1334,6 +1470,22 @@ function renderComparisonMarkdown(report) {
       );
     }
   }
+  if (report.visual_v4?.enabled) {
+    const v4 = report.visual_v4;
+    const budget = v4.shotBudget || {};
+    lines.push("", "## Visual V4", "");
+    lines.push(`- Verdict: ${v4.verdict || "unknown"}`);
+    if (Array.isArray(v4.blockers) && v4.blockers.length) {
+      lines.push(`- Blockers: ${v4.blockers.join(", ")}`);
+    }
+    lines.push(
+      `- Motion budget: ${budget.available_motion_clips ?? "?"}/${budget.min_actual_motion_clips ?? "?"} motion clips; ${budget.available_distinct_motion_families ?? "?"}/${budget.min_distinct_motion_families ?? "?"} source families.`,
+    );
+    lines.push(`- Shot plan events: ${Array.isArray(v4.shotPlan) ? v4.shotPlan.length : 0}`);
+    if (v4.viralScriptIntelligence) {
+      lines.push(`- Script score: ${v4.viralScriptIntelligence.viral_score ?? "unknown"} (${v4.viralScriptIntelligence.verdict || "unknown"})`);
+    }
+  }
   lines.push(
     "",
     "## Metrics",
@@ -1420,6 +1572,9 @@ async function main() {
     args.retentionIntelligencePath && (await fs.pathExists(args.retentionIntelligencePath))
       ? await fs.readJson(args.retentionIntelligencePath)
       : null;
+  const trustedFootageReport = (await fs.pathExists(DEFAULT_TRUSTED_FOOTAGE_REPORT))
+    ? await fs.readJson(DEFAULT_TRUSTED_FOOTAGE_REPORT)
+    : null;
   const preferredStoryIds = args.storyId ? [args.storyId, ...PREFERRED] : PREFERRED;
   const selected = selectStillDeckPlan(dryReport, {
     storyId: args.storyId,
@@ -1572,6 +1727,8 @@ async function main() {
       narrationCache,
       retentionIntelligence,
       visualV3: args.visualV3,
+      trustedFootageReport,
+      visualV4: args.visualV4,
     });
     enrichedRender = await renderStillDeckVariant({
       story,
@@ -1588,6 +1745,8 @@ async function main() {
       narrationCache,
       retentionIntelligence,
       visualV3: args.visualV3,
+      trustedFootageReport,
+      visualV4: args.visualV4,
     });
     comparison = compareForensicReports(baselineRender.forensic, enrichedRender.forensic);
     await fs.writeJson(path.join(OUT, "forensic_comparison.json"), comparison, { spaces: 2 });
@@ -1739,6 +1898,20 @@ async function main() {
       eventCount: 0,
       events: [],
       overlayApplied: false,
+    },
+    visual_v4: enrichedRender?.quality?.visualV4 || {
+      enabled: args.visualV4,
+      verdict: args.visualV4 ? "render_not_attempted" : "disabled",
+      blockers: args.visualV4 && !renderAttempted ? ["render_not_attempted"] : [],
+      warnings: [],
+      shotBudget: null,
+      shotPlan: [],
+      transitionPlan: null,
+      sfxPlan: null,
+      soundTransitionPlan: null,
+      footagePlan: null,
+      localTimeline: null,
+      viralScriptIntelligence: null,
     },
     render_requested: renderRequested,
     render_package_gate: renderPackageGate,

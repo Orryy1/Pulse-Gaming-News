@@ -2396,6 +2396,31 @@ app.get("/api/analytics/digest", requireAuth, async (req, res) => {
   }
 });
 
+app.get("/api/commercial/learning", requireAuth, async (req, res) => {
+  try {
+    const {
+      buildCommercialLearningDigest,
+      loadCommercialManifests,
+      readCommercialClickLog,
+    } = require("./lib/intelligence/commercial-learning-loop");
+    const clickLog = await readCommercialClickLog(
+      path.join(__dirname, "data", "commercial_clicks.jsonl"),
+    );
+    const manifests = await loadCommercialManifests([
+      path.join(__dirname, "output", "commercial"),
+    ]);
+    const digest = buildCommercialLearningDigest({
+      clicks: clickLog.entries,
+      manifests,
+      stories: readNews(),
+    });
+    res.json(digest);
+  } catch (err) {
+    console.log(`[server] /api/commercial/learning error: ${err.message}`);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // --- Blog static site ---
 app.use("/blog", express.static(path.join(__dirname, "blog", "dist")));
 app.use("/p", express.static(path.join(__dirname, "blog", "dist", "p")));

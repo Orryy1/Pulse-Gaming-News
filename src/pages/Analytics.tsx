@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { BarChart3, Eye, Flame, Calendar, Trophy } from 'lucide-react';
+import { BarChart3, Eye, Flame, Calendar, Trophy, MousePointerClick } from 'lucide-react';
 import {
   BarChart,
   Bar,
@@ -85,6 +85,36 @@ interface HistoryResponse {
   entries?: HistoryEntry[];
 }
 
+interface CommercialLearningStory {
+  story_id: string;
+  title: string;
+  clicks: number;
+  affiliate_click_rate?: number | null;
+  commercial_angle_lift?: string;
+  top_offer?: {
+    label?: string;
+    product_category?: string | null;
+    clicks?: number;
+  } | null;
+}
+
+interface CommercialLearningRecommendation {
+  type?: string;
+  priority?: string;
+  text: string;
+}
+
+interface CommercialLearningResponse {
+  status?: string;
+  totals?: {
+    clicks?: number;
+    clicked_stories?: number;
+    clicked_offers?: number;
+  };
+  top_stories?: CommercialLearningStory[];
+  recommendations?: CommercialLearningRecommendation[];
+}
+
 function formatViews(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
@@ -144,6 +174,7 @@ export default function Analytics() {
   const [topPerformers, setTopPerformers] = useState<TopPerformer[]>([]);
   const [topicBreakdown, setTopicBreakdown] = useState<TopicBreakdown[]>([]);
   const [dailyTrends, setDailyTrends] = useState<DailyTrend[]>([]);
+  const [commercialLearning, setCommercialLearning] = useState<CommercialLearningResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -152,10 +183,11 @@ export default function Analytics() {
       setLoading(true);
       setError(null);
       try {
-        const [overview, topics, history] = await Promise.all([
+        const [overview, topics, history, commercial] = await Promise.all([
           apiGetAuthed<OverviewResponse>('/api/analytics/overview'),
           apiGetAuthed<TopicsResponse>('/api/analytics/topics'),
           apiGetAuthed<HistoryResponse>('/api/analytics/history?limit=50'),
+          apiGetAuthed<CommercialLearningResponse>('/api/commercial/learning'),
         ]);
         const entries = Array.isArray(history.entries) ? history.entries : [];
         const flairs = Array.isArray(topics.flairs) ? topics.flairs : [];
@@ -188,6 +220,7 @@ export default function Analytics() {
           })),
         );
         setDailyTrends(buildDailyTrends(entries));
+        setCommercialLearning(commercial);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load analytics');
         setSummary({
@@ -200,6 +233,7 @@ export default function Analytics() {
         setTopPerformers([]);
         setTopicBreakdown([]);
         setDailyTrends([]);
+        setCommercialLearning(null);
       } finally {
         setLoading(false);
       }
@@ -225,7 +259,7 @@ export default function Analytics() {
       )}
 
       {/* Summary Cards */}
-      <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-5">
         <SummaryCard
           icon={<Eye size={16} />}
           label="Total Views"
@@ -246,6 +280,74 @@ export default function Analytics() {
           label="Best Topic"
           value={summary?.bestTopic ?? '--'}
         />
+        <SummaryCard
+          icon={<MousePointerClick size={16} />}
+          label="Commercial Clicks"
+          value={String(commercialLearning?.totals?.clicks ?? 0)}
+        />
+      </div>
+
+      <div className="mb-8 rounded-xl border border-white/[0.06] bg-[#252B3B] p-5">
+        <h2 className="mb-4 flex items-center gap-2 text-xs font-bold tracking-[0.15em] text-white/50">
+          <MousePointerClick size={14} className="text-[#FF6B1A]" />
+          Commercial Learning
+        </h2>
+        {(commercialLearning?.top_stories || []).length === 0 ? (
+          <p className="py-6 text-center text-sm text-white/20">
+            No commercial clicks recorded yet.
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-white/[0.06] text-[10px] font-bold tracking-wider text-white/30">
+                    <th className="py-2 pr-3">STORY</th>
+                    <th className="py-2 pr-3 text-right">CLICKS</th>
+                    <th className="py-2 pr-3 text-right">CTR</th>
+                    <th className="py-2 text-right">LIFT</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(commercialLearning?.top_stories || []).slice(0, 5).map((story) => (
+                    <tr key={story.story_id} className="border-b border-white/[0.03]">
+                      <td className="max-w-[340px] py-2.5 pr-3">
+                        <p className="truncate text-xs text-white/65">{story.title}</p>
+                        <p className="mt-1 truncate text-[10px] text-white/30">
+                          {story.top_offer?.label || 'Story page'}
+                        </p>
+                      </td>
+                      <td className="py-2.5 pr-3 text-right text-xs font-bold text-[#FF6B1A]">
+                        {story.clicks}
+                      </td>
+                      <td className="py-2.5 pr-3 text-right text-xs text-white/40">
+                        {typeof story.affiliate_click_rate === 'number'
+                          ? `${(story.affiliate_click_rate * 100).toFixed(2)}%`
+                          : 'n/a'}
+                      </td>
+                      <td className="py-2.5 text-right text-[10px] uppercase text-white/35">
+                        {story.commercial_angle_lift || 'unknown'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="rounded-lg border border-white/[0.05] bg-black/10 p-4">
+              <p className="mb-3 text-[10px] font-bold tracking-wider text-white/30">
+                RECOMMENDATIONS
+              </p>
+              {(commercialLearning?.recommendations || []).slice(0, 3).map((rec, index) => (
+                <p key={`${rec.type || 'rec'}-${index}`} className="mb-3 text-xs leading-5 text-white/55">
+                  <span className="mr-2 rounded bg-[#FF6B1A]/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-[#FF6B1A]">
+                    {rec.priority || 'normal'}
+                  </span>
+                  {rec.text}
+                </p>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Top Performers Table */}

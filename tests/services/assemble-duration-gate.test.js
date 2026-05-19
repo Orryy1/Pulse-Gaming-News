@@ -58,12 +58,18 @@ test("assemble.js persists successful render durations so publish QA does not us
 test("assemble.js writes a story manifest before marking the MP4 publishable", () => {
   const successAnchor = ASSEMBLE.indexOf("story.exported_path = outputPath;");
   const manifestAnchor = ASSEMBLE.indexOf("story.story_manifest_path = storyManifestPath;");
+  const benchmarkAnchor = ASSEMBLE.indexOf("story.media_house_benchmark = runMediaHouseBenchmark");
 
   assert.ok(successAnchor > 0, "assemble.js success export anchor must exist");
   assert.ok(manifestAnchor > 0, "assemble.js must persist the public story manifest path");
+  assert.ok(
+    benchmarkAnchor > 0 && benchmarkAnchor < manifestAnchor,
+    "gold-standard benchmark must be generated before the story manifest is written",
+  );
   assert.ok(
     manifestAnchor < successAnchor,
     "story manifest must be written before exported_path makes the render publishable",
   );
   assert.match(ASSEMBLE, /writeStoryManifest/);
+  assert.match(ASSEMBLE, /referenceBenchmark: story\.media_house_benchmark/);
 });

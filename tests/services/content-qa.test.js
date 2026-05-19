@@ -1026,6 +1026,48 @@ test("runContentQa: public output coherence blocks placeholder titles before pub
   assert.ok(qa.failures.includes("public_output:internal_qa_phrase:source_backed_update"));
 });
 
+test("runContentQa: required gold-standard benchmark blocks amateur renders", async () => {
+  const story = goodStory({
+    id: "weak_gold_standard_render",
+    title: "Gaming news update",
+    suggested_title: "Gaming news update",
+    hook: "Here is what happened in gaming news today.",
+    full_script:
+      "Here is what happened in gaming news today. The story is developing and more details could arrive soon. Follow Pulse Gaming so you never miss a beat.",
+    tts_script:
+      "Here is what happened in gaming news today. The story is developing and more details could arrive soon. Follow Pulse Gaming so you never miss a beat.",
+    suggested_thumbnail_text:
+      "THIS GAMING STORY HAS A LOT OF CONTEXT TO EXPLAIN",
+    render_lane: "studio_v4",
+    render_quality_class: "candidate",
+    audio_duration: 28,
+    duration_seconds: 28,
+    subtitle_timing_source: "synthetic",
+    subtitle_timing_inspection: { usable: true },
+    downloaded_images: [{ rights_risk_class: "unknown" }],
+    video_clips: [],
+    visual_director_plan: {
+      shot_plan: [{ id: "static_card", kind: "card", startS: 0 }],
+      transition_plan: { planned: [], max_same_transition_run: 0 },
+      sound_transition_plan: {
+        sfx: { cue_count: 0, cues: [], mastering: {} },
+      },
+      caption_policy: { snap_to_local_word_timing: false },
+    },
+  });
+
+  const qa = await runContentQa(story, {
+    fs: fakeFs({ [story.exported_path]: { size: 5 * 1024 * 1024 } }),
+    minWords: 1,
+    requireGoldStandardBenchmark: true,
+  });
+
+  assert.strictEqual(qa.result, "fail");
+  assert.ok(
+    qa.failures.includes("gold_standard:media_house_polish_below_reference"),
+  );
+});
+
 test("runContentQa: machine-readable script-validation token is a hard fail", async () => {
   const story = goodStory({
     script_review_reason: "script_validation_failed",

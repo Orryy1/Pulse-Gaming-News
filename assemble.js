@@ -2341,9 +2341,25 @@ async function assemble() {
     const subsDir = path.join("output", "subs");
     await fs.ensureDir(subsDir);
     const assPath = await generateSubtitles(story, duration, subsDir);
+    try {
+      const { runMediaHouseBenchmark } = require("./lib/media-house-benchmark");
+      story.media_house_benchmark = runMediaHouseBenchmark({
+        story,
+        requireGate: false,
+      });
+      story.reference_pack_used =
+        story.media_house_benchmark.reference_pack_used || [];
+      story.media_house_polish_score =
+        story.media_house_benchmark.scores?.media_house_polish_score ?? null;
+    } catch (err) {
+      story.qa_warnings = mergeQaList(story.qa_warnings, [
+        `gold_standard_benchmark_error:${err.code || "unknown"}`,
+      ]);
+    }
     const { path: manifestAbsPath } = await writeStoryManifest(story, {
       outputDir: path.join(__dirname, "output", "manifests"),
       publicTitle: story.suggested_title || story.title,
+      referenceBenchmark: story.media_house_benchmark || null,
     });
     const storyManifestPath = path.relative(__dirname, manifestAbsPath).replace(/\\/g, "/");
     story.story_manifest_path = storyManifestPath;

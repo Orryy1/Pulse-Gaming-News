@@ -216,6 +216,25 @@ app.get("/approve/:id", (req, res) => {
   res.redirect("/" + q);
 });
 
+app.get("/go/:storyId/:offerId", publicApiReadLimit, async (req, res) => {
+  try {
+    const { resolveCommercialRedirect } = require("./lib/commercial-click-tracker");
+    const resolved = await resolveCommercialRedirect({
+      storyId: req.params.storyId,
+      offerId: req.params.offerId,
+      query: req.query,
+      headers: req.headers,
+      manifestDirs: [path.join(__dirname, "output", "commercial")],
+      clickLogPath: path.join(__dirname, "data", "commercial_clicks.jsonl"),
+    });
+    if (!resolved.ok) return res.status(resolved.status || 404).send("Not found");
+    return res.redirect(302, resolved.url);
+  } catch (err) {
+    console.log(`[server] /go redirect error: ${err.message}`);
+    return res.status(500).send("Redirect unavailable");
+  }
+});
+
 // --- Remote workers API (Phase 4: outbound-only polling from local box) ---
 // Mounted only when SQLite + the jobs queue are active. Safe no-op
 // otherwise so legacy deployments don't need to know the endpoints exist.

@@ -12,6 +12,7 @@ const {
   renderPipelineBacklogMarkdown,
   nextProduceCandidate,
   nextPublishCandidate,
+  publishCandidateBlocker,
   coreDoneCount,
   requiredCorePlatformsFromEnv,
   isRealPostId,
@@ -407,6 +408,54 @@ test("nextPublishCandidate: strict mode skips thin visual renders", () => {
   ];
   const pick = nextPublishCandidate(stories, { strictContentQa: true });
   assert.strictEqual(pick.id, "safe");
+});
+
+test("publishCandidateBlocker: strict retry mode blocks public-output title failures", () => {
+  const blocker = publishCandidateBlocker(
+    {
+      id: "mixtape_bad_retry",
+      approved: true,
+      exported_path: "/x",
+      duration_seconds: 68.2,
+      title:
+        "Mixtape will be safe from a music licensing related delisting, ensured by its developer paying extra for the privilege",
+      suggested_title: "This gaming story",
+      source_type: "reddit",
+      subreddit: "Games",
+      article_url: "https://www.rockpapershotgun.com/mixtape-music-licensing",
+      full_script:
+        "This gaming story just got a source backed update. " +
+        "The useful caveat is that this is one sourced update, not a blank check to invent extra details. " +
+        "Treat the headline as confirmed only where the named source confirms it. " +
+        "Follow Pulse Gaming so you never miss a beat.",
+      suggested_thumbnail_text:
+        "MIXTAPE WILL BE SAFE FROM A MUSIC LICENSING RELATED DELISTING",
+      source_card_label: "r/Games",
+    },
+    { strictContentQa: true },
+  );
+
+  assert.match(blocker, /^public_output:/);
+});
+
+test("publishCandidateBlocker: terminal Instagram 2207076 errors require rerender before retry", () => {
+  const blocker = publishCandidateBlocker(
+    {
+      id: "ig_bad_asset",
+      approved: true,
+      exported_path: "/x",
+      duration_seconds: 68.2,
+      title: "Steam Named Vampire Survivors' Genre",
+      suggested_title: "Steam Named Vampire Survivors' Genre",
+      full_script:
+        "Steam just gave the Vampire Survivors genre a name players can actually search for. Follow Pulse Gaming so you never miss a beat.",
+      instagram_error:
+        "Instagram URL processing failed: status_code=ERROR status=Error: Media upload has failed with error code 2207076",
+    },
+    { strictContentQa: true },
+  );
+
+  assert.equal(blocker, "instagram_reel_processing_rejected_2207076_requires_rerender");
 });
 
 test("nextPublishCandidate: skips risky article-context dominated decks", () => {

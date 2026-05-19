@@ -109,14 +109,27 @@ test("YouTube metadata builder refuses unsafe public descriptions", () => {
   );
 });
 
-test("YouTube metadata builder refuses placeholder upload titles even when the story title is specific", () => {
-  assert.throws(
-    () =>
-      buildMetadata(
-        goodStory({
-          suggested_title: "This gaming story",
-        }),
-      ),
-    /public metadata QA failed/i,
+test("YouTube metadata builder repairs placeholder upload titles before publish", () => {
+  const metadata = buildMetadata(
+    goodStory({
+      suggested_title: "This gaming story",
+    }),
   );
+
+  assert.notEqual(metadata.title, "This gaming story");
+  assert.match(metadata.title, /Forza|Steam/i);
+});
+
+test("YouTube metadata builder repairs raw article headline upload titles", () => {
+  const metadata = buildMetadata(
+    goodStory({
+      title:
+        "Mixtape will be safe from a music licensing related delisting, ensured by its developer paying extra for the privilege",
+      suggested_title: "",
+      full_script:
+        "Mixtape just dodged one of gaming's most annoying problems. Licensed music can make games disappear later when rights expire. Mixtape's developer says they paid extra so its music licences last. Follow Pulse Gaming so you never miss a beat.",
+    }),
+  );
+
+  assert.equal(metadata.title, "Mixtape Dodged Gaming's Delisting Trap");
 });

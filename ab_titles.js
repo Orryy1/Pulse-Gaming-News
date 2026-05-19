@@ -7,6 +7,11 @@ const { createLlmClient } = require("./lib/llm-client");
 dotenv.config({ override: true });
 
 const { getChannel } = require("./channels");
+const {
+  isPlaceholderPublicTitle,
+  isRawArticleTitleShape,
+  resolvePublicTitle,
+} = require("./lib/public-title");
 
 const BANNED_TITLE_VARIANT_RE =
   /(?:\byou won'?t believe\b|\bwon'?t believe this\b|\bshocking\b|\binsane\b|\bcrazy\b|\bmind[- ]?blowing\b|\bexplained\b|\bwhat happens next\b|\?!|!!)/i;
@@ -18,6 +23,8 @@ function cleanTitleVariant(value) {
     .trim();
   if (!title) return "";
   if (BANNED_TITLE_VARIANT_RE.test(title)) return "";
+  if (isPlaceholderPublicTitle(title)) return "";
+  if (isRawArticleTitleShape(title)) return "";
   return title.length > 80 ? `${title.substring(0, 77)}...` : title;
 }
 
@@ -45,8 +52,7 @@ function fallbackTitleVariants(story = {}, originalTitle = "") {
 // --- Generate 2 additional title variants from the original ---
 async function generateTitleVariants(story) {
   const channel = getChannel();
-  const originalTitle =
-    story.suggested_title || story.suggested_thumbnail_text || story.title;
+  const originalTitle = resolvePublicTitle(story);
 
   const client = createLlmClient();
 
@@ -103,18 +109,18 @@ Reply with ONLY a JSON array of 2 strings. No explanation.`,
 
 // --- Get the currently active title variant (or fall back to original) ---
 function getBestTitle(story) {
+  const resolved = resolvePublicTitle(story);
   if (
     !story.title_variants ||
     !Array.isArray(story.title_variants) ||
     story.title_variants.length === 0
   ) {
-    return (
-      story.suggested_title || story.suggested_thumbnail_text || story.title
-    );
+    return resolved;
   }
 
   const index = story.active_title_index || 0;
-  return story.title_variants[index] || story.title_variants[0];
+  const active = cleanTitleVariant(story.title_variants[index] || story.title_variants[0]);
+  return active || resolved;
 }
 
 // --- Check views and swap title if underperforming ---

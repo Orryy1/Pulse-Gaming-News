@@ -288,13 +288,17 @@ async function uploadReel(story) {
         story.exported_path;
       await validateVideo(exportedAbs, "instagram");
       await assertPlatformVideoQaPass(exportedAbs, { platform: "instagram" });
-      assertPublicMetadataSafe(story, { surface: "instagram" });
+      const { getBestTitle } = require("./ab_titles");
+      const publicTitle = getBestTitle(story);
+      assertPublicMetadataSafe(story, {
+        surface: "instagram",
+        publicTitle,
+      });
 
       // Build caption - channel-aware hashtags
       const { getChannel } = require("./channels");
       const channel = getChannel();
-      let caption =
-        story.suggested_title || story.suggested_thumbnail_text || story.title;
+      let caption = publicTitle;
       caption += "\n\n" + safePublicExcerpt(story.full_script, 500);
       const tags = (channel.hashtags || [])
         .map((h) => h.replace("#Shorts", "#reels"))
@@ -501,7 +505,12 @@ async function uploadReelViaUrl(story) {
     story.exported_path;
   await validateVideo(exportedAbs, "instagram");
   await assertPlatformVideoQaPass(exportedAbs, { platform: "instagram" });
-  assertPublicMetadataSafe(story, { surface: "instagram" });
+  const { getBestTitle } = require("./ab_titles");
+  const publicTitle = getBestTitle(story);
+  assertPublicMetadataSafe(story, {
+    surface: "instagram",
+    publicTitle,
+  });
 
   const publicBaseUrl = getPublicUrl();
   // Include .mp4 suffix — IG/FB crawlers refuse URIs that don't
@@ -512,8 +521,7 @@ async function uploadReelViaUrl(story) {
 
   const { getChannel } = require("./channels");
   const channel = getChannel();
-  let caption =
-    story.suggested_title || story.suggested_thumbnail_text || story.title;
+  let caption = publicTitle;
   caption += "\n\n" + safePublicExcerpt(story.full_script, 500);
   const tags = (channel.hashtags || [])
     .map((h) => h.replace("#Shorts", "#reels"))

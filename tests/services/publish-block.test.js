@@ -222,6 +222,15 @@ test("isRetryablePlatformBlock: stale Facebook page gate can be retried after Pa
     }),
     false,
   );
+
+  assert.equal(
+    isRetryablePlatformBlock({
+      platform: "instagram_reel",
+      status: "blocked",
+      block_reason: "instagram_reel_processing_rejected_2207076_requires_rerender",
+    }),
+    false,
+  );
 });
 
 test("publish-block covers every publisher.js platform key (tiktok, instagram_reel, facebook_reel, twitter_video) without sentinel pollution", () => {

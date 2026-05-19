@@ -22,6 +22,8 @@ function goodStory(overrides = {}) {
     subreddit: "IGN",
     full_script: GOOD_SCRIPT,
     cta: "Follow Pulse Gaming so you never miss a beat",
+    subtitle_timing_source: "timestamps",
+    subtitle_timing_inspection: { usable: true },
     ...overrides,
   };
 }
@@ -101,6 +103,18 @@ test("YouTube metadata builder refuses unsafe public descriptions", () => {
           full_script:
             GOOD_SCRIPT +
             " For Pulse, that means the signal is not the headline.",
+        }),
+      ),
+    /public metadata QA failed/i,
+  );
+});
+
+test("YouTube metadata builder refuses placeholder upload titles even when the story title is specific", () => {
+  assert.throws(
+    () =>
+      buildMetadata(
+        goodStory({
+          suggested_title: "This gaming story",
         }),
       ),
     /public metadata QA failed/i,

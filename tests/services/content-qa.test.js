@@ -43,6 +43,8 @@ function goodStory(overrides = {}) {
     image_path: "/tmp/card.png",
     render_lane: "legacy_multi_image",
     render_quality_class: "standard",
+    subtitle_timing_source: "timestamps",
+    subtitle_timing_inspection: { usable: true },
     downloaded_images: [
       { path: "/tmp/hero.jpg", type: "article_hero" },
       { path: "/tmp/logo.png", type: "company_logo" },
@@ -989,6 +991,39 @@ test("runContentQa: processor script-validation fallback is a hard fail", async 
   });
   assert.strictEqual(qa.result, "fail");
   assert.ok(qa.failures.includes("script_validation_review_required"));
+});
+
+test("runContentQa: public output coherence blocks placeholder titles before publish", async () => {
+  const story = goodStory({
+    title: "Mixtape will be safe from a music licensing related delisting",
+    suggested_title: "This gaming story",
+    source_type: "reddit",
+    subreddit: "Games",
+    article_url: "https://www.rockpapershotgun.com/mixtape-music-licensing",
+    full_script:
+      "This gaming story just got a source backed update. " +
+      "The useful caveat is that this is one sourced update, not a blank check to invent extra details. " +
+      "Treat the headline as confirmed only where the named source confirms it. " +
+      "Everything else stays in the wait-and-see column until an official post backs it up. " +
+      "That keeps the story useful without turning Reddit reaction into evidence. " +
+      "Follow Pulse Gaming so you never miss a beat.",
+    thumbnail_source_label: "r/Games",
+    source_card_label: "r/Games",
+    suggested_thumbnail_text:
+      "MIXTAPE WILL BE SAFE FROM A MUSIC LICENSING RELATED DELISTING",
+    subtitle_timing_source: "synthetic_fallback",
+    subtitle_timing_inspection: { usable: false, reason: "no_word_timestamps" },
+  });
+
+  const qa = await runContentQa(story, {
+    fs: fakeFs({ [story.exported_path]: { size: 5 * 1024 * 1024 } }),
+    minWords: 30,
+  });
+
+  assert.strictEqual(qa.result, "fail");
+  assert.ok(qa.failures.includes("public_output:placeholder_title"));
+  assert.ok(qa.failures.includes("public_output:manual_captions_missing"));
+  assert.ok(qa.failures.includes("public_output:internal_qa_phrase:source_backed_update"));
 });
 
 test("runContentQa: machine-readable script-validation token is a hard fail", async () => {

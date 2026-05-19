@@ -54,3 +54,16 @@ test("assemble.js persists successful render durations so publish QA does not us
   assert.ok(videoAnchor > 0 && videoAnchor < successAnchor, "video duration must be saved before export path");
   assert.ok(contractAnchor > 0 && contractAnchor < successAnchor, "duration contract must be saved before export path");
 });
+
+test("assemble.js writes a story manifest before marking the MP4 publishable", () => {
+  const successAnchor = ASSEMBLE.indexOf("story.exported_path = outputPath;");
+  const manifestAnchor = ASSEMBLE.indexOf("story.story_manifest_path = storyManifestPath;");
+
+  assert.ok(successAnchor > 0, "assemble.js success export anchor must exist");
+  assert.ok(manifestAnchor > 0, "assemble.js must persist the public story manifest path");
+  assert.ok(
+    manifestAnchor < successAnchor,
+    "story manifest must be written before exported_path makes the render publishable",
+  );
+  assert.match(ASSEMBLE, /writeStoryManifest/);
+});

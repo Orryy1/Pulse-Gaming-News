@@ -2,6 +2,8 @@
 
 const assert = require("node:assert/strict");
 const test = require("node:test");
+const fs = require("node:fs");
+const path = require("node:path");
 
 const {
   buildSourceBoundFallbackScript,
@@ -22,6 +24,11 @@ const LOCAL_PROFILE = {
   aimMin: 190,
   aimMax: 210,
 };
+
+const SOURCE = fs.readFileSync(
+  path.join(__dirname, "..", "..", "lib", "source-bound-script-writer.js"),
+  "utf8",
+);
 
 test("source-bound fallback builds a validated Forza script from an article-backed Reddit story", () => {
   const story = {
@@ -124,6 +131,40 @@ test("source-bound fallback keeps Stop Killing Games wording intact", () => {
   assert.match(script.full_script, /Stop Killing Games/);
   assert.doesNotMatch(script.full_script, /Stop Ending Games/i);
   assert.match(script.full_script, /committee vote is progress, not a finished law/i);
+});
+
+test("source-bound fallback rewrites Mixtape as a viewer-facing preservation story", () => {
+  const story = {
+    id: "mixtape_rps",
+    title:
+      "Mixtape will be safe from a music licensing related delisting, ensured by its developer paying extra for the privilege",
+    source_type: "reddit",
+    subreddit: "Games",
+    article_url:
+      "https://www.rockpapershotgun.com/mixtape-will-be-safe-from-a-music-licensing-related-delisting-ensured-by-its-developer-paying-extra-for-the-privilege",
+  };
+
+  const script = buildSourceBoundFallbackScript(story, {
+    runtimeProfile: LOCAL_PROFILE,
+    sourceMaterial:
+      "Rock Paper Shotgun reports that Mixtape's developer paid extra for music licences in perpetuity, reducing future delisting risk.",
+  });
+
+  assert.ok(script);
+  assert.match(script.hook, /^Mixtape\b/);
+  assert.match(script.full_script, /music licences last in perpetuity/i);
+  assert.match(script.suggested_title, /Mixtape/i);
+  assert.doesNotMatch(
+    script.full_script,
+    /source-backed update|not a blank cheque|not a blank check|invent extra details|named source confirms|wait-and-see column|Reddit reaction into evidence/i,
+  );
+});
+
+test("source-bound fallback source does not carry internal analyst-note phrases", () => {
+  assert.doesNotMatch(
+    SOURCE,
+    /source-backed update|not a blank cheque|not a blank check|invent extra details|named source confirms|wait-and-see column|Reddit reaction into evidence/i,
+  );
 });
 
 test("sourceNameFromUrl gives readable publisher names", () => {

@@ -213,8 +213,6 @@ async function exchangeCode(code) {
 
 // --- Build YouTube metadata (SEO-optimised for Shorts discovery) ---
 function buildMetadata(story) {
-  assertPublicMetadataSafe(story, { surface: "youtube" });
-
   const brand = require("./brand");
   const classInfo = brand.classificationColour(
     story.classification || story.flair,
@@ -230,6 +228,11 @@ function buildMetadata(story) {
     .trim();
   if (baseTitle.length > 80) baseTitle = baseTitle.substring(0, 77) + "...";
   const title = baseTitle;
+  assertPublicMetadataSafe(story, {
+    surface: "youtube",
+    publicTitle: title,
+    requireCaptionEvidence: false,
+  });
 
   const gameName = extractGameName(story.title);
   const platform = detectPlatform(story.title + " " + (story.body || ""));

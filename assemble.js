@@ -33,6 +33,7 @@ const {
   computeContentHash,
   prescanImage,
 } = require("./lib/visual-content-prescan");
+const { writeStoryManifest } = require("./lib/public-output-manifest");
 
 // Intro card REMOVED - first 1-2 seconds are critical for Shorts retention,
 // a branding card gives swipers a reason to leave before the hook lands
@@ -2340,6 +2341,12 @@ async function assemble() {
     const subsDir = path.join("output", "subs");
     await fs.ensureDir(subsDir);
     const assPath = await generateSubtitles(story, duration, subsDir);
+    const { path: manifestAbsPath } = await writeStoryManifest(story, {
+      outputDir: path.join(__dirname, "output", "manifests"),
+      publicTitle: story.suggested_title || story.title,
+    });
+    const storyManifestPath = path.relative(__dirname, manifestAbsPath).replace(/\\/g, "/");
+    story.story_manifest_path = storyManifestPath;
 
     // Generate or reuse background music
     const musicPath = await ensureBackgroundMusic(duration, story);

@@ -178,6 +178,36 @@ test("Motion Acquisition Pro preserves official resolver movie names for downstr
   assert.equal(plan.existing_references[0].movie_name, "GTA Official PEGI Rating Trailer");
 });
 
+test("Motion Acquisition Pro preserves official resolver media metadata for frame timing", () => {
+  const plan = buildMotionAcquisitionPlan(
+    baseStory({ id: "has-direct-official-reference" }),
+    {
+      officialTrailerReferencePlans: [
+        {
+          story_id: "has-direct-official-reference",
+          references: [
+            {
+              provider: "official_intake",
+              source_type: "official_publisher_or_developer_trailer_page",
+              source_url: "https://cdn.example/gta-keyart.webm",
+              source_url_kind: "direct_video",
+              segment_validation_eligible: true,
+              segment_validation_ineligible_reason: null,
+              source_duration_s: 10,
+              entity: "GTA",
+              downloads_allowed: false,
+            },
+          ],
+        },
+      ],
+    },
+  );
+
+  assert.equal(plan.existing_references[0].source_url_kind, "direct_video");
+  assert.equal(plan.existing_references[0].segment_validation_eligible, true);
+  assert.equal(plan.existing_references[0].source_duration_s, 10);
+});
+
 test("Motion Acquisition Pro preserves trusted registry provenance for autonomous local planning", () => {
   const plan = buildMotionAcquisitionPlan(
     baseStory({ id: "has-trusted-registry-reference" }),

@@ -6,6 +6,7 @@ const assert = require("node:assert/strict");
 const {
   buildOfficialTrailerClipsFromFrameReport,
   buildOfficialTrailerClipsFromAcquisitionPlan,
+  buildExploratoryClipRefs,
   DEFAULT_EXPLORATORY_START_SECONDS,
   safeClipStartFromFrame,
   scoreOfficialTrailerFrameForClip,
@@ -62,6 +63,108 @@ test("official clip refs start after the accepted safe frame, not before it", ()
 test("official clip refs enforce a minimum start to avoid trailer rating/opening boards", () => {
   assert.equal(MIN_OFFICIAL_CLIP_START_S, 36);
   assert.equal(safeClipStartFromFrame({ target_time_seconds: 10.8 }), MIN_OFFICIAL_CLIP_START_S);
+  assert.equal(
+    safeClipStartFromFrame({ target_time_seconds: 4.2, source_duration_s: 10 }),
+    5.75,
+  );
+});
+
+test("official clip refs keep short direct media windows inside the source duration", () => {
+  const refs = buildOfficialTrailerClipsFromFrameReport(
+    {
+      plans: [
+        {
+          story_id: "story-1",
+          frames: [
+            acceptedFrame({
+              source_url: "https://cdn.example/short-keyart.webm",
+              source_type: "official_publisher_or_developer_trailer_page",
+              source_duration_s: 10,
+              target_time_seconds: 4.2,
+            }),
+          ],
+        },
+      ],
+    },
+    "story-1",
+    { includeFrameAnchoredWindows: true, maxClips: 4 },
+  );
+
+  assert.deepEqual(
+    refs.map((ref) => ref.mediaStartS),
+    [2.8, 5.75],
+  );
+  assert.ok(refs.every((ref) => ref.sourceDurationS === 10));
+  assert.ok(refs.every((ref) => ref.provenance.source_duration_s === 10));
+});
+
+test("exploratory refs skip Steam microtrailer aliases when duration is unknown", () => {
+  const refs = buildExploratoryClipRefs(
+    {
+      plans: [],
+    },
+    "story-1",
+    {
+      referenceReport: {
+        plans: [
+          {
+            story_id: "story-1",
+            references: [
+              {
+                source_url:
+                  "https://video.akamai.steamstatic.com/store_trailers/2483190/1133501958/hash/1778255437/hls_264_master.m3u8",
+                source_type: "steam_movie",
+                entity: "Forza Horizon 6",
+              },
+              {
+                source_url:
+                  "https://video.fastly.steamstatic.com/store_trailers/2483190/1133501958/hash/1778255437/microtrailer.mp4",
+                source_type: "steam_storefront_video_reference",
+                entity: "Forza Horizon 6",
+              },
+            ],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.ok(refs.length > 0);
+  assert.ok(refs.every((ref) => ref.path.includes("hls_264_master.m3u8")));
+});
+
+test("exploratory refs skip no-duration Steam microtrailers from frame reports", () => {
+  const refs = buildExploratoryClipRefs(
+    {
+      plans: [
+        {
+          story_id: "story-1",
+          frames: [
+            {
+              source_url:
+                "https://video.fastly.steamstatic.com/store_trailers/2483190/1133501958/hash/1778255437/microtrailer.mp4",
+              source_type: "steam_storefront_video_reference",
+              entity: "Forza Horizon 6",
+              target_time_seconds: 25,
+              status: "rejected_qa",
+            },
+            {
+              source_url:
+                "https://video.akamai.steamstatic.com/store_trailers/2483190/1133501958/hash/1778255437/hls_264_master.m3u8",
+              source_type: "steam_movie",
+              entity: "Forza Horizon 6",
+              target_time_seconds: 36,
+              status: "accepted",
+            },
+          ],
+        },
+      ],
+    },
+    "story-1",
+  );
+
+  assert.ok(refs.length > 0);
+  assert.ok(refs.every((ref) => ref.path.includes("hls_264_master.m3u8")));
 });
 
 test("official clip refs ignore accepted frames that trailer guards classify as title/rating cards", () => {

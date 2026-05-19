@@ -2,6 +2,8 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 
 const {
   buildOfficialSourceIntakeReport,
@@ -144,6 +146,7 @@ test("official source intake uses optional direct media URLs while preserving th
         official_source_url: "https://www.rockstargames.com/reddeadredemption2/videos",
         direct_media_url_if_available: "https://cdn.rockstargames.com/reddead/gameplay-trailer.m3u8",
         source_type: "official_publisher_or_developer_trailer_page",
+        source_duration_s: 10,
       }),
     ],
   });
@@ -159,6 +162,8 @@ test("official source intake uses optional direct media URLs while preserving th
   assert.equal(report.accepted_references[0].reference_page_url, "https://www.rockstargames.com/reddeadredemption2/videos");
   assert.equal(report.accepted_references[0].source_url_kind, "hls_manifest");
   assert.equal(report.accepted_references[0].segment_validation_eligible, true);
+  assert.equal(report.accepted_references[0].source_duration_s, 10);
+  assert.equal(report.accepted_references[0].provenance.source_duration_s, 10);
   assert.equal(
     report.accepted_references[0].provenance.reference_page_url,
     "https://www.rockstargames.com/reddeadredemption2/videos",
@@ -314,5 +319,10 @@ test("official source intake CLI and package script are available", () => {
   assert.equal(args.input, "test/input/official_sources.json");
   assert.equal(args.storyId, "rss_gap");
   assert.equal(args.json, true);
+  const toolSource = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "official-source-intake.js"),
+    "utf8",
+  );
+  assert.match(toolSource, /dotenv.*config/s);
   assert.match(packageJson.scripts["media:intake-official-sources"], /official-source-intake\.js/);
 });

@@ -195,10 +195,12 @@ function shouldRebuildMotionPlansFromReferences({
 } = {}) {
   if (explicitMotionPath || !storyId || !trailerReferenceReport) return false;
   return asArray(plans).some(
-    (plan) =>
-      plan?.story_id === storyId &&
-      motionPlanReferenceCount(plan) === 0 &&
-      trailerReferenceCountForStory(trailerReferenceReport, storyId) > 0,
+    (plan) => {
+      if (plan?.story_id !== storyId) return false;
+      const motionCount = motionPlanReferenceCount(plan);
+      const trailerCount = trailerReferenceCountForStory(trailerReferenceReport, storyId);
+      return trailerCount > 0 && (motionCount === 0 || trailerCount > motionCount);
+    },
   );
 }
 

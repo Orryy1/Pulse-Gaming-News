@@ -386,6 +386,37 @@ test("Controlled Frame Extraction Plan accepts trusted Steam storefront video re
   assert.equal(plan.target_frames[0].source_type, "steam_storefront_video_reference");
 });
 
+test("Controlled Frame Extraction Plan accepts direct media discovered from official pages", () => {
+  const plan = buildControlledFrameExtractionPlan(
+    motionPlan({
+      story_id: "1tftq7f",
+      existing_references: [
+        {
+          source_type: "official_publisher_or_developer_trailer_page",
+          provider: "official_intake",
+          source_url:
+            "https://cdn.forza.net/strapi-uploads/assets/Forza_Horizon_6_Primary_Animated_Keyart.webm",
+          reference_page_url: "https://forza.net/forzahorizon6/",
+          source_url_kind: "direct_video",
+          segment_validation_eligible: true,
+          entity: "Forza Horizon 6",
+          movie_name: "Forza Horizon 6 official reference",
+          downloads_allowed: false,
+          source_duration_s: 10,
+        },
+      ],
+    }),
+    { maxReferences: 1, maxTargetFrames: 4 },
+  );
+
+  assert.equal(plan.selected_references.length, 1);
+  assert.equal(plan.target_frames.length, 4);
+  assert.equal(plan.target_frames[0].source_type, "official_publisher_or_developer_trailer_page");
+  assert.equal(plan.target_frames[0].segment_validation_eligible, true);
+  assert.equal(plan.target_frames[0].target_time_seconds, 4.2);
+  assert.equal(plan.target_frames[3].target_time_seconds, 8.8);
+});
+
 test("Controlled Frame Extraction Plan rebuilds stale story motion plans when fresh trailer refs exist", () => {
   assert.equal(
     shouldRebuildMotionPlansFromReferences({
@@ -430,6 +461,40 @@ test("Controlled Frame Extraction Plan rebuilds stale story motion plans when fr
       },
     }),
     false,
+  );
+});
+
+test("Controlled Frame Extraction Plan rebuilds stale motion plans when trailer refs are richer", () => {
+  assert.equal(
+    shouldRebuildMotionPlansFromReferences({
+      storyId: "1tftq7f",
+      explicitMotionPath: null,
+      plans: [
+        {
+          story_id: "1tftq7f",
+          motion_readiness: "reference_ready_for_local_frame_plan",
+          existing_references: [
+            { source_url: "https://video.example/old.m3u8", entity: "Forza Horizon 6" },
+          ],
+        },
+      ],
+      trailerReferenceReport: {
+        plans: [
+          {
+            story_id: "1tftq7f",
+            references: [
+              { source_url: "https://video.example/old.m3u8", entity: "Forza Horizon 6" },
+              {
+                source_url: "https://cdn.forza.net/assets/keyart.webm",
+                entity: "Forza Horizon 6",
+                source_duration_s: 10,
+              },
+            ],
+          },
+        ],
+      },
+    }),
+    true,
   );
 });
 

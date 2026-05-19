@@ -4,6 +4,10 @@
 const fs = require("fs-extra");
 const path = require("node:path");
 
+try {
+  require("dotenv").config({ override: true, quiet: true });
+} catch {}
+
 const { buildDemoStories } = require("../lib/creator-studio-os");
 const {
   buildOfficialSourceIntakeReport,

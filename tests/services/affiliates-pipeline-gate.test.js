@@ -20,6 +20,10 @@ test("affiliate pipeline keeps approved story-specific links and disclosure", ()
   assert.ok(affiliateLinks.length > 0);
   assert.ok(story.affiliate_url.includes("tag=pulsegaming-21"));
   assert.match(story.pinned_comment, /As an Amazon Associate I earn from qualifying purchases\./);
+  assert.equal(story.affiliate_link_manifest.story_id, "pokemon");
+  assert.equal(story.affiliate_link_manifest.disclosure_required, true);
+  assert.match(story.commercial_landing_page_route, /^\/p\//);
+  assert.ok(story.commercial_opportunity_score > 0);
 });
 
 test("affiliate pipeline blocks review-case fallback links from public story output", () => {
@@ -38,4 +42,10 @@ test("affiliate pipeline blocks review-case fallback links from public story out
   assert.deepEqual(story.affiliate_links, []);
   assert.equal(story.affiliate_url, null);
   assert.doesNotMatch(story.pinned_comment, /amazon\.co\.uk/);
+  assert.equal(story.affiliate_link_manifest.primary_link, null);
+  assert.ok(
+    story.affiliate_link_manifest.rejection_reasons.includes(
+      "story_does_not_naturally_support_affiliate",
+    ),
+  );
 });

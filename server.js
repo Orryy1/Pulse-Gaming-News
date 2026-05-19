@@ -2379,6 +2379,7 @@ app.get("/api/analytics/digest", requireAuth, async (req, res) => {
 
 // --- Blog static site ---
 app.use("/blog", express.static(path.join(__dirname, "blog", "dist")));
+app.use("/p", express.static(path.join(__dirname, "blog", "dist", "p")));
 
 // --- Engagement stats endpoint ---
 app.get("/api/engagement/stats", requireAuth, async (req, res) => {

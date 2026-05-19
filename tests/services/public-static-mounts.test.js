@@ -23,7 +23,7 @@ const codeNoComments = code
 
 // The set of static mounts the server is allowed to register. "root"
 // is the no-prefix express.static(dist) mount for the Vite SPA.
-const ALLOWED_STATIC_MOUNTS = new Set(["/branding", "/blog", "root"]);
+const ALLOWED_STATIC_MOUNTS = new Set(["/branding", "/blog", "/p", "root"]);
 
 // Extract every `app.use("<prefix>"?, express.static(...))` call.
 // Regex captures the optional prefix; if no prefix, we tag it "root".
@@ -84,6 +84,14 @@ test("server.js: still mounts the dashboard SPA (dist) and /branding", () => {
     src,
     /app\.use\(\s*["']\/branding["']\s*,[\s\S]*?express\.static/,
     "/branding mount must remain (outgoing video composition uses these assets)",
+  );
+});
+
+test("server.js: mounts commercial story pages under /p only", () => {
+  assert.match(
+    codeNoComments,
+    /app\.use\(\s*["']\/p["']\s*,\s*express\.static\(path\.join\(__dirname,\s*["']blog["']\s*,\s*["']dist["']\s*,\s*["']p["']\)\)\s*\)/,
+    "/p must serve generated commercial story pages from blog/dist/p",
   );
 });
 

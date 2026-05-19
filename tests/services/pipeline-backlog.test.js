@@ -410,6 +410,47 @@ test("nextPublishCandidate: strict mode skips thin visual renders", () => {
   assert.strictEqual(pick.id, "safe");
 });
 
+test("nextPublishCandidate: skips legacy renders when Studio V4 premium publish is required", () => {
+  const stories = [
+    {
+      id: "legacy",
+      approved: true,
+      exported_path: "/x",
+      full_script: "y",
+      duration_seconds: 68.2,
+      render_lane: "legacy_multi_image",
+      render_quality_class: "standard",
+      require_studio_v4_premium_publish: true,
+      breaking_score: 999,
+    },
+    {
+      id: "v4-premium",
+      approved: true,
+      exported_path: "/x",
+      full_script: "y",
+      duration_seconds: 67.4,
+      render_lane: "studio_v4",
+      render_quality_class: "premium",
+      distinct_visual_count: 8,
+      require_studio_v4_premium_publish: true,
+      media_house_benchmark: {
+        result: "pass",
+        scores: {
+          motion_density_score: 91,
+          media_house_polish_score: 89,
+        },
+      },
+      breaking_score: 60,
+    },
+  ];
+  const pick = nextPublishCandidate(stories);
+  assert.strictEqual(pick.id, "v4-premium");
+  assert.match(
+    publishCandidateBlocker(stories[0]),
+    /^premium_contract_required:/,
+  );
+});
+
 test("publishCandidateBlocker: strict retry mode blocks public-output title failures", () => {
   const blocker = publishCandidateBlocker(
     {

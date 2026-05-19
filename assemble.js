@@ -46,6 +46,7 @@ const MUSIC_VOLUME = 0.08; // 8% volume - quieter background
 const MAX_IMAGES = 8; // More images = more visual variety in 60s+ videos
 const FFMPEG_THREADS = 2; // Limit FFmpeg threads to stay within container memory
 const LEGACY_XFADE_DURATION = 0.5;
+const STUDIO_V4_PACKET_DIR = path.join(__dirname, "output", "studio-v4");
 const LEGACY_OVERLAY_LAYOUT = Object.freeze({
   topLeftX: 40,
   flairY: 60,
@@ -54,6 +55,32 @@ const LEGACY_OVERLAY_LAYOUT = Object.freeze({
   commentLineChars: 30,
   maxCommentLines: 4,
 });
+
+async function loadStudioV4TrustedFootageReport() {
+  const candidates = [
+    process.env.STUDIO_V4_TRUSTED_FOOTAGE_REPORT,
+    path.join(__dirname, "output", "trusted_footage_registry_report.json"),
+    path.join(__dirname, "test", "output", "trusted_footage_registry_report.json"),
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    try {
+      if (await fs.pathExists(candidate)) return await fs.readJson(candidate);
+    } catch (err) {
+      console.log(
+        `[assemble] Studio V4 trusted-footage report unreadable (${candidate}): ${err.message}`,
+      );
+    }
+  }
+  return {};
+}
+
+async function writeStudioV4CanonicalPacket(story, packet) {
+  await fs.ensureDir(STUDIO_V4_PACKET_DIR);
+  const safeId = String(story.id || "story").replace(/[^a-z0-9_-]+/gi, "_");
+  const absPath = path.join(STUDIO_V4_PACKET_DIR, `${safeId}_canonical_packet.json`);
+  await fs.writeJson(absPath, packet, { spaces: 2 });
+  return path.relative(__dirname, absPath).replace(/\\/g, "/");
+}
 
 /**
  * Generates a 15-second teaser cut from the full video.
@@ -2151,6 +2178,60 @@ async function assemble() {
       console.log(
         `[assemble] ${story.id}: using ${realImages.length} real images`,
       );
+    }
+
+    try {
+      const {
+        buildStudioV4CanonicalPacket,
+        applyStudioV4PacketToStory,
+        shouldHoldLegacyRender,
+        resolveStudioV4Policy,
+      } = require("./lib/studio/v4/canonical-policy");
+      const studioV4Policy = resolveStudioV4Policy(process.env);
+      if (studioV4Policy.enabled) {
+        const trustedFootageReport = await loadStudioV4TrustedFootageReport();
+        const studioV4Packet = buildStudioV4CanonicalPacket({
+          story,
+          trustedFootageReport,
+          localTimeline:
+            story.local_video_timeline ||
+            story.visual_timeline ||
+            story.timeline ||
+            { duration_s: duration },
+          retentionIntelligence:
+            story.retention_intelligence ||
+            story.retention_recommendations ||
+            {},
+        });
+        applyStudioV4PacketToStory(story, studioV4Packet);
+        story.studio_v4_canonical_packet_path =
+          await writeStudioV4CanonicalPacket(story, studioV4Packet);
+
+        if (shouldHoldLegacyRender(story, studioV4Packet, studioV4Policy)) {
+          console.log(
+            `[assemble] ${story.id}: Studio V4 hold (${studioV4Packet.readiness.status}) - ${studioV4Packet.readiness.blockers.join(", ") || "not_ready"}`,
+          );
+          skipped++;
+          continue;
+        }
+      }
+    } catch (err) {
+      story.qa_warnings = mergeQaList(story.qa_warnings, [
+        `studio_v4_canonical_policy_error:${err.code || "unknown"}`,
+      ]);
+      if (process.env.STUDIO_V4_CANONICAL_FAIL_OPEN === "true") {
+        console.log(
+          `[assemble] ${story.id}: Studio V4 policy errored, continuing because STUDIO_V4_CANONICAL_FAIL_OPEN=true: ${err.message}`,
+        );
+      } else {
+        story.render_fallback_reason = `studio_v4_policy_error:${err.code || err.message || "unknown"}`;
+        story.render_fallback_at = new Date().toISOString();
+        console.log(
+          `[assemble] ${story.id}: Studio V4 policy errored, holding legacy render: ${err.message}`,
+        );
+        skipped++;
+        continue;
+      }
     }
 
     // 2026-04-29 incident: stamp visual-count metadata on the story

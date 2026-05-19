@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const CONTENT_QA = require.resolve("../../lib/services/content-qa");
+const RENDER_DECISION = require.resolve("../../lib/render-decision");
 
 function stubContentQa(result) {
   require.cache[CONTENT_QA] = {
@@ -18,8 +19,23 @@ function stubContentQa(result) {
   };
 }
 
+function stubRenderDecision(decision) {
+  require.cache[RENDER_DECISION] = {
+    id: RENDER_DECISION,
+    filename: RENDER_DECISION,
+    loaded: true,
+    exports: {
+      async decideForStory() {
+        return decision;
+      },
+    },
+  };
+}
+
 afterEach(() => {
   delete require.cache[CONTENT_QA];
+  delete require.cache[RENDER_DECISION];
+  delete require.cache[require.resolve("../../lib/services/batch-upload-preflight")];
 });
 
 test("storyIsBatchUploadCandidate: refuses failed or incomplete stories", () => {
@@ -57,6 +73,38 @@ test("assertBatchUploadPreflight: propagates content/voice QA failures", async (
   await assert.rejects(
     assertBatchUploadPreflight({ id: "rss_old", exported_path: "x.mp4" }, { platform: "youtube" }),
     /batch_upload_preflight_failed:youtube:approved_voice:metadata_missing/,
+  );
+});
+
+test("assertBatchUploadPreflight: rejects non-premium renders under the shared contract gate", async () => {
+  stubContentQa({
+    result: "pass",
+    failures: [],
+    warnings: [],
+  });
+  stubRenderDecision({
+    verdict: {
+      class: "standard",
+      reasons: [],
+      missing: [],
+      premium_required: true,
+      premium_missing: ["studio_v4_render_lane_required"],
+    },
+    gate: {
+      allowed: false,
+      reason: "premium_contract_required: got=standard, missing=studio_v4_render_lane_required",
+    },
+  });
+  const {
+    assertBatchUploadPreflight,
+  } = require("../../lib/services/batch-upload-preflight");
+
+  await assert.rejects(
+    assertBatchUploadPreflight(
+      { id: "legacy_render", exported_path: "x.mp4" },
+      { platform: "instagram" },
+    ),
+    /batch_upload_preflight_failed:instagram:premium_contract_required/,
   );
 });
 

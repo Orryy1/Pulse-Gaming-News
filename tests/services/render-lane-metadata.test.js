@@ -42,6 +42,24 @@ test("assemble.js stamps render_quality_class derived from inventory size", () =
   );
 });
 
+test("assemble.js gates legacy rendering through Studio V4 canonical policy", () => {
+  assert.match(
+    ASSEMBLE_SRC,
+    /buildStudioV4CanonicalPacket/,
+    "production assemble must build a Studio V4 canonical packet before legacy rendering",
+  );
+  assert.match(
+    ASSEMBLE_SRC,
+    /shouldHoldLegacyRender/,
+    "production assemble must hold legacy renders when Visual V4 motion is not ready",
+  );
+  assert.match(
+    ASSEMBLE_SRC,
+    /studio_v4_canonical_packet_path/,
+    "Studio V4 readiness packets must be persisted for operator review",
+  );
+});
+
 test("assemble.js stamps distinct_visual_count + thumbnail_candidate_present + outro_present", () => {
   assert.match(
     ASSEMBLE_SRC,

@@ -9,6 +9,7 @@ const path = require("node:path");
 const {
   buildQualityReportV2,
   gradeDurationIntegrity,
+  gradeMotionDensity,
 } = require("../../lib/studio/v2/quality-gate-v2");
 const {
   buildSfxCueList,
@@ -96,6 +97,40 @@ test("v2 duration integrity passes when render covers voice and subtitle timelin
     assPath,
   });
   assert.equal(result.grade, "green");
+});
+
+test("v2 motion density allows a high-motion Visual V3 slate without repeated frames", () => {
+  const scenes = [
+    { type: "opener", isClipBacked: true },
+    ...Array.from({ length: 8 }, () => ({ type: "clip.frame" })),
+    { type: "card.stat" },
+    { type: "card.timeline" },
+    { type: "card.takeaway" },
+  ];
+  const transitions = Array.from({ length: 10 }, (_, index) => ({
+    type: index % 2 === 0 ? "cut" : "xfade",
+  }));
+  const result = gradeMotionDensity(scenes, transitions, 61.4);
+
+  assert.equal(result.value, 7.3);
+  assert.equal(result.motionSceneRatio, 0.75);
+  assert.equal(result.grade, "red");
+
+  const highMotion = gradeMotionDensity(
+    scenes,
+    Array.from({ length: 10 }, () => ({ type: "cut" })),
+    61.4,
+  );
+  assert.equal(highMotion.value, 9.8);
+  assert.equal(highMotion.grade, "amber");
+
+  const faster = gradeMotionDensity(
+    scenes,
+    Array.from({ length: 13 }, () => ({ type: "cut" })),
+    61.4,
+  );
+  assert.equal(faster.value, 12.7);
+  assert.equal(faster.grade, "amber");
 });
 
 test("v2 quality report flags subtitles that disappear before narration ends", () => {

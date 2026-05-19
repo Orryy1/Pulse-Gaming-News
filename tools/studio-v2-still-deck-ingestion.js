@@ -39,6 +39,7 @@ const {
 } = require("../lib/studio/v2/subtitle-layer-v2");
 const {
   alignSceneDurationsToWordBoundaries,
+  capStaticCardDurations,
 } = require("../lib/studio/v2/beat-aware-scene-durations");
 const {
   protectClipSceneDurationsFromFreezes,
@@ -925,6 +926,7 @@ async function renderStillDeckVariant({
       allowStockFiller: false,
       flashLane: variant === "enriched",
       quickCut: visualV3 && variant === "enriched",
+      flashStillRepeatCap: 1,
       sourceCardMode: variant === "enriched" ? "overlay" : "scene",
       takeawayText: "PULSE GAMING",
       cta: "DAILY GAMING NEWS",
@@ -972,6 +974,10 @@ async function renderStillDeckVariant({
     targetDurationS: captionDurationS,
   });
   scenes = clipDurationGuard.scenes;
+  scenes = capStaticCardDurations(scenes, {
+    maxStaticCardDurationS: 3.2,
+    maxFlexibleDurationS: 6.8,
+  }).scenes;
   let durationS = sumDurations(scenes);
   const transitionCoverage = ensureTransitionTimelineCoversCaptions({
     scenes,

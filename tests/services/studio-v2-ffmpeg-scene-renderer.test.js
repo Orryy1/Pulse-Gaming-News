@@ -73,6 +73,7 @@ test("opener hook overlay is compact and avoids the old full-width top slab", ()
 
   assert.doesNotMatch(filter, /h=172:color=black@0\.86/);
   assert.match(filter, /w=760:h=118:color=black@0\.58/);
+  assert.match(filter, /drawbox=x=0:y=ih-410:w=iw:h=410:color=black@1\.0:t=fill/);
   assert.match(filter, /GTA/);
 });
 
@@ -172,6 +173,41 @@ test("clip filters cap safe-window clips instead of freezing tail frames", () =>
 
   assert.doesNotMatch(filter, /tpad=stop_mode=clone/);
   assert.match(filter, /trim=duration=2\.67,setpts=PTS-STARTPTS/);
+});
+
+test("clip-backed scenes mask trailer footer text as production-safe chrome", () => {
+  const filter = dispatchSceneFilter({
+    slot: 0,
+    fontOpt: "fontfile=Arial",
+    story: { title: "Forza Horizon 6 Steam update" },
+    scene: {
+      type: SCENE_TYPES.CLIP,
+      duration: 4.2,
+      source: "https://video.example/trailer.m3u8",
+      entity: "Forza Horizon 6",
+      sourceType: "steam_movie",
+      clipDurationS: 2.85,
+    },
+  });
+
+  assert.match(filter, /drawbox=x=0:y=ih-560:w=iw:h=560:color=black@0\.86:t=fill/);
+  assert.match(filter, /drawbox=x=0:y=ih-410:w=iw:h=410:color=black@1\.0:t=fill/);
+});
+
+test("official trailer frames get stronger motion travel than generic stills", () => {
+  const filter = dispatchSceneFilter({
+    slot: 0,
+    fontOpt: "fontfile=Arial",
+    story: { title: "Forza Horizon 6 Steam update" },
+    scene: {
+      type: SCENE_TYPES.CLIP_FRAME,
+      duration: 4.2,
+      source: "forza-frame.jpg",
+      sourceType: "official_trailer_frame",
+    },
+  });
+
+  assert.match(filter, /min\(zoom\+0\.0037\\,1\.46\)/);
 });
 
 test("quote card layout downgrades overlong text inside safe bounds", () => {

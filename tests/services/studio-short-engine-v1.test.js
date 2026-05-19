@@ -672,6 +672,31 @@ test("studio composer prefers clean full-action clips for the opener", () => {
   assert.equal(opener.mediaStartS, 50.8);
 });
 
+test("studio composer keeps Flash Lane on trailer frames when there is enough frame inventory", () => {
+  const result = composeStudioSlate({
+    story: { title: "Forza Horizon 6 Steam peak" },
+    audioDurationS: 62,
+    media: {
+      clips: [{ path: "forza-clean.m3u8", durationS: 5, mediaStartS: 50.8 }],
+      trailerFrames: Array.from({ length: 6 }, (_, index) => ({
+        path: `forza-frame-${index}.jpg`,
+        sourceType: "official_trailer_frame",
+      })),
+      articleHeroes: [{ path: "store-preorder-slate.jpg", sourceType: "steam_screenshot" }],
+      publisherAssets: [],
+      stockFillers: [],
+    },
+    opts: { allowStockFiller: false, flashLane: true },
+  });
+
+  const visualSources = result.scenes
+    .filter((scene) => ["still", "clip.frame"].includes(scene.type))
+    .map((scene) => scene.source);
+
+  assert.ok(visualSources.length >= 4);
+  assert.ok(!visualSources.includes("store-preorder-slate.jpg"));
+});
+
 test("studio composer does not present RSS excerpts as Reddit comments", () => {
   const result = composeStudioSlate({
     story: {

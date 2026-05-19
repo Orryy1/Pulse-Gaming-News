@@ -250,6 +250,46 @@ test("buildKineticAss consumes spoken dollars after direct numeric currency time
   assert.doesNotMatch(captions, /DOLLARS/);
 });
 
+test("buildKineticAss consumes hyphenated numeric metric suffixes before currency captions", () => {
+  const ass = buildKineticAss({
+    story: { title: "Forza Horizon 6 Steam update" },
+    words: [
+      { word: "reports", start: 0, end: 0.2 },
+      { word: "a", start: 0.22, end: 0.3 },
+      { word: "one", start: 0.32, end: 0.42 },
+      { word: "hundred", start: 0.44, end: 0.6 },
+      { word: "and", start: 0.62, end: 0.68 },
+      { word: "seventy", start: 0.7, end: 0.86 },
+      { word: "eight", start: 0.88, end: 1.0 },
+      { word: "thousand", start: 1.02, end: 1.22 },
+      { word: "and", start: 1.24, end: 1.3 },
+      { word: "nine", start: 1.32, end: 1.48 },
+      { word: "player", start: 1.5, end: 1.7 },
+      { word: "Steam", start: 1.72, end: 1.92 },
+      { word: "peak", start: 1.94, end: 2.14 },
+      { word: "tied", start: 2.16, end: 2.34 },
+      { word: "to", start: 2.36, end: 2.46 },
+      { word: "the", start: 2.48, end: 2.58 },
+      { word: "120", start: 2.6, end: 2.82 },
+      { word: "dollars", start: 2.84, end: 3.08 },
+      { word: "Premium", start: 3.1, end: 3.34 },
+    ],
+    duration: 4,
+    scriptText:
+      "reports a 178,009-player Steam peak tied to the $120 Premium Edition.",
+    maxWordsPerPhrase: 3,
+    maxPhraseChars: 18,
+    captionCase: "upper",
+    revealMode: "phrase",
+  });
+
+  const captions = extractAssDialogueText(ass).join(" ");
+  assert.match(captions, /178,009-PLAYER/);
+  assert.doesNotMatch(captions, /PLAYER\\hSTEAM/);
+  assert.match(captions, /\$120/);
+  assert.doesNotMatch(captions, /120 DOLLARS/);
+});
+
 test("buildKineticAss repairs early-ending cached voice timings without swapping in editorial text", () => {
   const ass = buildKineticAss({
     story: { title: "Cached Voice" },

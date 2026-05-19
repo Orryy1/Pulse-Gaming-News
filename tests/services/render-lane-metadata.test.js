@@ -58,6 +58,16 @@ test("assemble.js gates legacy rendering through Studio V4 canonical policy", ()
     /studio_v4_canonical_packet_path/,
     "Studio V4 readiness packets must be persisted for operator review",
   );
+  assert.match(
+    ASSEMBLE_SRC,
+    /loadStudioV4MotionPack/,
+    "production assemble must load validated V4 motion packs before canonical readiness",
+  );
+  assert.match(
+    ASSEMBLE_SRC,
+    /applyVisualV4MotionPackToStory/,
+    "validated V4 motion pack clips must be handed to the canonical policy",
+  );
 });
 
 test("assemble.js stamps distinct_visual_count + thumbnail_candidate_present + outro_present", () => {

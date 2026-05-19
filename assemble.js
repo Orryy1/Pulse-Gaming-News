@@ -82,6 +82,30 @@ async function writeStudioV4CanonicalPacket(story, packet) {
   return path.relative(__dirname, absPath).replace(/\\/g, "/");
 }
 
+function safeStudioV4StoryId(story) {
+  return String(story?.id || "story").replace(/[^a-z0-9_-]+/gi, "_");
+}
+
+async function loadStudioV4MotionPack(story) {
+  const safeId = safeStudioV4StoryId(story);
+  const candidates = [
+    process.env.STUDIO_V4_MOTION_PACK_PATH,
+    process.env.STUDIO_V4_MOTION_PACK_REPORT,
+    path.join(__dirname, "output", "studio-v4", "motion-packs", `${safeId}_motion_pack_manifest.json`),
+    path.join(__dirname, "test", "output", `${safeId}_motion_pack_manifest.json`),
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    try {
+      if (await fs.pathExists(candidate)) return await fs.readJson(candidate);
+    } catch (err) {
+      console.log(
+        `[assemble] Studio V4 motion pack unreadable (${candidate}): ${err.message}`,
+      );
+    }
+  }
+  return null;
+}
+
 /**
  * Generates a 15-second teaser cut from the full video.
  * Takes the first 13s + 2s "Full story on YouTube" card.
@@ -2187,9 +2211,16 @@ async function assemble() {
         shouldHoldLegacyRender,
         resolveStudioV4Policy,
       } = require("./lib/studio/v4/canonical-policy");
+      const {
+        applyVisualV4MotionPackToStory,
+      } = require("./lib/studio/v4/motion-pack");
       const studioV4Policy = resolveStudioV4Policy(process.env);
       if (studioV4Policy.enabled) {
         const trustedFootageReport = await loadStudioV4TrustedFootageReport();
+        const visualV4MotionPack = await loadStudioV4MotionPack(story);
+        if (visualV4MotionPack) {
+          applyVisualV4MotionPackToStory(story, visualV4MotionPack);
+        }
         const studioV4Packet = buildStudioV4CanonicalPacket({
           story,
           trustedFootageReport,

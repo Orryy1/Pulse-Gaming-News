@@ -14,7 +14,7 @@ This report is local-only and report-only. It turns exhausted Flash Lane motion 
 ## Input Freshness
 
 - Motion gap report: 2026-05-16T10:41:00.236Z
-- Reference report: 2026-05-16T10:45:26.064Z
+- Reference report: 2026-05-19T20:46:34.667Z
 
 ## Allowed Source Policy
 

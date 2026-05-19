@@ -202,6 +202,37 @@ test("official trailer resolver marks multi-franchise coverage as partial until 
   assert.ok(plan.search_queries.includes("Red Dead gameplay trailer"));
 });
 
+test("official trailer resolver ignores score-table comparison games as source targets", async () => {
+  const plan = await buildOfficialTrailerReferencePlan(
+    baseStory({
+      title: "Forza Horizon 6 Becomes Highest Rated Game of 2026 on Metacritic",
+      hook: "Forza Horizon 6 just hit 92 on Metacritic, beating out Pok\u00e9mon Pokopia.",
+      body:
+        "The racing title is currently ahead of Pok\u00e9mon Pokopia and Resident Evil Requiem in overall ratings.",
+      full_script:
+        "Forza Horizon 6 just hit 92 on Metacritic, beating out Pok\u00e9mon Pokopia. The racing title is currently ahead of Pok\u00e9mon Pokopia.",
+      game_images: [verifiedSteamAsset("Forza Horizon 6", "2483190", "Forza Horizon 6")],
+    }),
+    {
+      steamLookup: async () => ({
+        success: true,
+        title: "Forza Horizon 6",
+        movies: [
+          {
+            id: 1133501958,
+            name: "Launch Trailer",
+            hls_h264: "https://video.akamai.steamstatic.com/store_trailers/2483190/1133501958/hash/hls_264_master.m3u8",
+          },
+        ],
+      }),
+    },
+  );
+
+  assert.deepEqual(plan.target_entities, ["Forza Horizon 6"]);
+  assert.deepEqual(plan.missing_target_entities, []);
+  assert.ok(!plan.search_queries.includes("Pok\u00e9mon official trailer"));
+});
+
 test("official trailer resolver recognises v1.5 applied-local Steam still assets", async () => {
   const plan = await buildOfficialTrailerReferencePlan(
     baseStory({
@@ -742,6 +773,54 @@ test("official trailer resolver consumes trusted footage registry references wit
   assert.equal(plan.segment_validation_reference_counts.ineligible, 1);
   assert.equal(plan.safety.video_downloads, false);
   assert.ok(plan.provenance_ledger.some((item) => item.provider === "trusted_footage_registry"));
+});
+
+test("official trailer resolver filters trusted registry comparison references", async () => {
+  const story = baseStory({
+    id: "registry-forza-comparison",
+    title: "Forza Horizon 6 Becomes Highest Rated Game of 2026 on Metacritic",
+    hook: "Forza Horizon 6 just hit 92 on Metacritic, beating out Pok\u00e9mon Pokopia.",
+    full_script:
+      "Forza Horizon 6 just hit 92 on Metacritic, beating out Pok\u00e9mon Pokopia. Xbox Game Studios has the racing story.",
+  });
+  const trustedFootageRegistryReport = buildTrustedFootageRegistryReport({
+    stories: [story],
+    entries: [
+      {
+        source_id: "xbox-forza-launch-trailer",
+        display_name: "Xbox official YouTube - Forza Horizon 6 launch trailer",
+        owner_type: "platform",
+        platform: "youtube",
+        channel_url: "https://www.youtube.com/watch?v=forza",
+        source_family: "xbox_forza_launch_trailer",
+        entities: ["Forza Horizon 6"],
+        allowed_uses: ["reference_only"],
+        official_evidence: "Official Xbox trailer for Forza Horizon 6.",
+      },
+      {
+        source_id: "nintendo-pokemon-channel",
+        display_name: "Nintendo official YouTube - Pokemon",
+        owner_type: "platform",
+        platform: "youtube",
+        channel_url: "https://www.youtube.com/@NintendoAmerica",
+        source_family: "nintendo_pokemon",
+        entities: ["Pokemon"],
+        allowed_uses: ["reference_only"],
+        official_evidence: "Official Nintendo channel.",
+      },
+    ],
+    generatedAt: "2026-05-17T12:00:00.000Z",
+  });
+
+  const plan = await buildOfficialTrailerReferencePlan(story, {
+    trustedFootageRegistryReport,
+  });
+
+  assert.deepEqual(plan.target_entities, ["Forza Horizon 6"]);
+  assert.deepEqual(
+    plan.references.map((reference) => reference.trusted_footage_source_id),
+    ["xbox-forza-launch-trailer"],
+  );
 });
 
 test("official trailer resolver report emits valid JSON and readable Markdown", async () => {

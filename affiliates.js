@@ -1,5 +1,10 @@
 const dotenv = require("dotenv");
 const path = require("node:path");
+
+if (!/^(true|1|yes|on)$/i.test(String(process.env.PULSE_SKIP_DOTENV || ""))) {
+  dotenv.config({ override: true });
+}
+
 const db = require("./lib/db");
 const { applyProduceSelection } = require("./lib/produce-selection");
 const {
@@ -14,10 +19,6 @@ const {
   buildRevenuePathManifest,
   writeRevenuePathManifest,
 } = require("./lib/revenue-path-engine");
-
-if (!/^(true|1|yes|on)$/i.test(String(process.env.PULSE_SKIP_DOTENV || ""))) {
-  dotenv.config({ override: true });
-}
 
 async function processAffiliates() {
   console.log("[affiliates] Loading stories from canonical store...");

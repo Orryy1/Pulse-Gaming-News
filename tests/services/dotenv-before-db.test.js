@@ -34,3 +34,7 @@ test("publisher.js loads .env before lib/db", () => {
 test("upload_tiktok.js loads .env before lib/db", () => {
   assertDotenvBeforeDb("upload_tiktok.js");
 });
+
+test("affiliates.js loads .env before lib/db", () => {
+  assertDotenvBeforeDb("affiliates.js");
+});

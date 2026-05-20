@@ -9,10 +9,19 @@ const ROOT = path.resolve(__dirname, "..", "..");
 
 function assertDotenvBeforeDb(file) {
   const source = fs.readFileSync(path.join(ROOT, file), "utf8");
-  const dotenvConfig = source.indexOf("dotenv.config");
-  const dbRequire = source.indexOf('require("./lib/db")');
+  const dotenvConfigCandidates = [
+    source.indexOf("dotenv.config"),
+    source.indexOf('require("dotenv").config'),
+    source.indexOf("require('dotenv').config"),
+  ].filter((index) => index >= 0);
+  const dotenvConfig = dotenvConfigCandidates.length ? Math.min(...dotenvConfigCandidates) : -1;
+  const dbRequireCandidates = [
+    source.indexOf('require("./lib/db")'),
+    source.indexOf('require("../lib/db")'),
+  ].filter((index) => index >= 0);
+  const dbRequire = dbRequireCandidates.length ? Math.min(...dbRequireCandidates) : -1;
   assert.ok(dotenvConfig >= 0, `${file} should call dotenv.config`);
-  assert.ok(dbRequire >= 0, `${file} should require ./lib/db`);
+  assert.ok(dbRequire >= 0, `${file} should require lib/db`);
   assert.ok(
     dotenvConfig < dbRequire,
     `${file} must load .env before requiring lib/db so SQLITE_DB_PATH is honoured`,
@@ -37,4 +46,8 @@ test("upload_tiktok.js loads .env before lib/db", () => {
 
 test("affiliates.js loads .env before lib/db", () => {
   assertDotenvBeforeDb("affiliates.js");
+});
+
+test("trusted-footage registry loads .env before lib/db", () => {
+  assertDotenvBeforeDb("tools/trusted-footage-registry.js");
 });

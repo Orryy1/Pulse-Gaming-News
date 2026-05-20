@@ -2460,6 +2460,83 @@ app.get("/api/revenue/paths", requireAuth, async (req, res) => {
   }
 });
 
+app.get("/api/studio/enterprise-os", requireAuth, async (req, res) => {
+  try {
+    const {
+      buildStudioEnterpriseOSPack,
+    } = require("./lib/studio-enterprise-os");
+    const {
+      loadGoldStandardReferenceLibrary,
+    } = require("./lib/gold-standard-reference-library");
+
+    const readJsonMaybe = async (filePath, fallback = {}) => {
+      try {
+        return await fs.readJson(filePath);
+      } catch (err) {
+        if (err && err.code === "ENOENT") return fallback;
+        throw err;
+      }
+    };
+    const loadGoldStandards = () => {
+      try {
+        return loadGoldStandardReferenceLibrary();
+      } catch {
+        return {};
+      }
+    };
+
+    const [
+      retentionBaseline,
+      revenuePathRaw,
+      commercialLearningDigest,
+      commentsDigest,
+      renderHealthRaw,
+      v4SourceDeficit,
+      v4MotionPacks,
+      costSnapshot,
+      securitySnapshot,
+      governanceSummaryRaw,
+    ] = await Promise.all([
+      readJsonMaybe(path.join(__dirname, "config", "retention-baseline.json"), {}),
+      readJsonMaybe(path.join(__dirname, "output", "revenue", "revenue-paths.json"), {}),
+      readJsonMaybe(path.join(__dirname, "output", "commercial", "commercial-learning.json"), {}),
+      readJsonMaybe(path.join(__dirname, "output", "comments", "comment-digest.json"), {}),
+      readJsonMaybe(path.join(__dirname, "test", "output", "render_health.json"), {}),
+      readJsonMaybe(path.join(__dirname, "test", "output", "studio_v4_source_deficit.json"), {}),
+      readJsonMaybe(path.join(__dirname, "output", "studio-v4", "motion-packs", "visual_v4_motion_packs.json"), {}),
+      readJsonMaybe(path.join(__dirname, "output", "enterprise-os", "cost-snapshot.json"), {}),
+      readJsonMaybe(path.join(__dirname, "output", "enterprise-os", "security-snapshot.json"), {
+        api_token_present: Boolean(process.env.API_TOKEN),
+        hardcoded_secret_findings: [],
+        env_separation: process.env.NODE_ENV || "local",
+        audit_log_enabled: true,
+        emergency_kill_switch: true,
+        rollback_renderer_available: true,
+      }),
+      readJsonMaybe(path.join(__dirname, "output", "governance", "publish_manifest.json"), {}),
+    ]);
+
+    const pack = buildStudioEnterpriseOSPack({
+      stories: readNews(),
+      retentionBaseline,
+      revenuePathDigest: revenuePathRaw.digest || revenuePathRaw,
+      commercialLearningDigest,
+      commentsDigest,
+      renderHealthSummary: renderHealthRaw.summary || renderHealthRaw,
+      v4SourceDeficit,
+      v4MotionPacks,
+      goldStandardLibrary: loadGoldStandards(),
+      costSnapshot,
+      securitySnapshot,
+      governanceSummary: governanceSummaryRaw.publish_control_tower || governanceSummaryRaw,
+    });
+    res.json(pack);
+  } catch (err) {
+    console.log(`[server] /api/studio/enterprise-os error: ${err.message}`);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // --- Blog static site ---
 app.use("/blog", express.static(path.join(__dirname, "blog", "dist")));
 app.use("/p", express.static(path.join(__dirname, "blog", "dist", "p")));

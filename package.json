@@ -75,6 +75,7 @@
     "ops:commercial-learning": "node tools/commercial-learning-loop.js",
     "ops:revenue-paths": "node tools/revenue-paths.js",
     "ops:studio-governance": "node tools/studio-governance.js",
+    "ops:studio-enterprise-os": "node tools/studio-enterprise-os.js",
     "ops:empire-readiness": "node tools/empire-readiness-audit.js",
     "ops:control-room": "node tools/control-room.js",
     "ops:render-health": "node tools/render-health.js",

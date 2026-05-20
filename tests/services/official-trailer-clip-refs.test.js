@@ -133,6 +133,79 @@ test("exploratory refs skip Steam microtrailer aliases when duration is unknown"
   assert.ok(refs.every((ref) => ref.path.includes("hls_264_master.m3u8")));
 });
 
+test("exploratory refs include licensed direct media references from official intake", () => {
+  const refs = buildExploratoryClipRefs(
+    {
+      plans: [],
+    },
+    "story-1",
+    {
+      referenceReport: {
+        plans: [
+          {
+            story_id: "story-1",
+            references: [
+              {
+                source_url: "https://video.twimg.com/amplify_video/123/vid/avc1/1280x720/gameplay.mp4",
+                source_type: "licensed_direct_media_url",
+                source_family: "official_x_gameplay_clip",
+                entity: "Forza Horizon 6",
+                source_duration_s: 45,
+                downloads_allowed: false,
+                segment_validation_eligible: true,
+              },
+            ],
+          },
+        ],
+      },
+      exploratoryStartSeconds: [36],
+    },
+  );
+
+  assert.equal(refs.length, 1);
+  assert.equal(refs[0].path, "https://video.twimg.com/amplify_video/123/vid/avc1/1280x720/gameplay.mp4");
+  assert.equal(refs[0].sourceType, "licensed_direct_media_url");
+  assert.equal(refs[0].sourceFamily, "official_x_gameplay_clip");
+  assert.equal(refs[0].sourceDurationS, 45);
+  assert.equal(refs[0].provenance.reference_report_source, true);
+  assert.equal(refs[0].provenance.source_duration_s, 45);
+});
+
+test("exploratory refs use source-relative windows for short licensed direct media", () => {
+  const refs = buildExploratoryClipRefs(
+    {
+      plans: [],
+    },
+    "story-1",
+    {
+      referenceReport: {
+        plans: [
+          {
+            story_id: "story-1",
+            references: [
+              {
+                source_url: "https://video.twimg.com/amplify_video/123/vid/avc1/720x1280/short.mp4",
+                source_type: "licensed_direct_media_url",
+                source_family: "official_x_short_social_clip",
+                entity: "Forza Horizon 6",
+                source_duration_s: 12,
+                downloads_allowed: false,
+                segment_validation_eligible: true,
+              },
+            ],
+          },
+        ],
+      },
+      exploratoryStartSeconds: [36, 42, 48],
+    },
+  );
+
+  assert.ok(refs.length >= 2);
+  assert.ok(refs.every((ref) => ref.mediaStartS >= 4));
+  assert.ok(refs.every((ref) => ref.mediaStartS <= 7.75));
+  assert.ok(refs.every((ref) => ref.sourceFamily === "official_x_short_social_clip"));
+});
+
 test("exploratory refs skip no-duration Steam microtrailers from frame reports", () => {
   const refs = buildExploratoryClipRefs(
     {

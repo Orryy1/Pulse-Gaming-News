@@ -803,6 +803,53 @@ test("official trailer segment validator requires at least two gameplay/action s
   assert.equal(report.segments[0].action_sample_count, 1);
 });
 
+test("official trailer segment validator accepts clean short licensed direct media with one strong motion sample", async () => {
+  const outputRoot = tempOutputRoot("short-direct-media-one-action-sample");
+  await cleanTempRoot(outputRoot);
+  let call = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        path: "https://video.twimg.com/amplify_video/123/vid/avc1/720x1280/short.mp4",
+        sourceType: "licensed_direct_media_url",
+        sourceDurationS: 12,
+        mediaStartS: 4,
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: fakeExtractor,
+      inspectFrame: async (outputPath) => {
+        call += 1;
+        if (call === 2) {
+          return {
+            ...passingQa(outputPath),
+            content_hash: `action-${call}`,
+          };
+        }
+        return {
+          ...passingQa(outputPath),
+          content_hash: `context-${call}`,
+          prescan: {
+            likely_is_logo: false,
+            text_overlay_likelihood: 0.04,
+            white_text_on_dark_likelihood: 0,
+            edge_density: 0.15,
+            saturation_mean: 0.45,
+          },
+        };
+      },
+    },
+  );
+
+  assert.equal(report.summary.segments_validated, 1);
+  assert.equal(report.segments[0].validation_reason, "short_direct_media_motion_samples_passed");
+  assert.equal(report.segments[0].action_sample_count, 1);
+  assert.equal(report.segments[0].allowed_for_flash_lane, true);
+});
+
 test("official trailer segment validator rejects low-average action even with two action samples", async () => {
   const outputRoot = tempOutputRoot("low-average-action");
   await cleanTempRoot(outputRoot);

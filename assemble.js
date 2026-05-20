@@ -34,6 +34,8 @@ const {
   prescanImage,
 } = require("./lib/visual-content-prescan");
 const { writeStoryManifest } = require("./lib/public-output-manifest");
+const { mediaSourceUrlKindFields } = require("./lib/media-source-url-kind");
+const { isSafeOutboundUrl } = require("./lib/safe-url");
 
 // Intro card REMOVED - first 1-2 seconds are critical for Shorts retention,
 // a branding card gives swipers a reason to leave before the hook lands
@@ -1303,6 +1305,16 @@ function planLegacyVisualSequence(images, videoClips, options = {}) {
   return { visualPaths, isVideoSlot, placements };
 }
 
+function isRenderableVideoClipPath(value) {
+  const clipPath = String(value || "").trim();
+  if (!clipPath) return false;
+  if (fs.pathExistsSync(clipPath)) return true;
+  if (!/^https?:\/\//i.test(clipPath)) return false;
+  if (!isSafeOutboundUrl(clipPath)) return false;
+  const kind = mediaSourceUrlKindFields(clipPath);
+  return kind.segment_validation_eligible === true;
+}
+
 function normaliseImageType(value) {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "_");
 }
@@ -1455,9 +1467,7 @@ function buildVideoCommand(
   // one of those goes into slot 0, publish QA correctly rejects the render
   // for a black segment at 0.00s. Keep the hook slot as a known-good still
   // unless a future clip validator explicitly marks hook placement safe.
-  const videoClips = (story.video_clips || []).filter((p) =>
-    fs.pathExistsSync(p),
-  );
+  const videoClips = (story.video_clips || []).filter(isRenderableVideoClipPath);
   const { visualPaths, isVideoSlot, placements: videoClipPlacements } =
     planLegacyVisualSequence(images, videoClips);
   for (const placement of videoClipPlacements) {
@@ -2895,6 +2905,7 @@ module.exports.makeFootageAttributionText = makeFootageAttributionText;
 module.exports.effectiveVisualTimelineDuration = effectiveVisualTimelineDuration;
 module.exports.planLegacySegmentDuration = planLegacySegmentDuration;
 module.exports.planLegacyVisualSequence = planLegacyVisualSequence;
+module.exports.isRenderableVideoClipPath = isRenderableVideoClipPath;
 module.exports.legacyRenderImageSafetyVerdict = legacyRenderImageSafetyVerdict;
 module.exports.filterLegacyRenderImageEntriesForSafety =
   filterLegacyRenderImageEntriesForSafety;

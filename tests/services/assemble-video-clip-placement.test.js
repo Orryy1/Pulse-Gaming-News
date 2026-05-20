@@ -5,6 +5,7 @@ const assert = require("node:assert/strict");
 
 const {
   filterLegacyRenderImageEntriesForSafety,
+  isRenderableVideoClipPath,
   legacyRenderImageSafetyVerdict,
   planLegacyVisualSequence,
 } = require("../../assemble");
@@ -94,6 +95,17 @@ test("assemble exposes Studio V4 render bridge helpers for the production handof
   assert.equal(bridge.readiness.status, "bridge_ready");
   assert.deepEqual(story.video_clips, ["C:/media/steam.mp4"]);
   assert.equal(story.render_lane, "studio_v4_director_bridge");
+});
+
+test("assemble accepts validated direct-media URLs as renderable V4 clips", () => {
+  assert.equal(
+    isRenderableVideoClipPath(
+      "https://video.twimg.com/amplify_video/2047677198685933568/vid/avc1/1280x720/qksvu_H_ODjUC4em.mp4?tag=14",
+    ),
+    true,
+  );
+  assert.equal(isRenderableVideoClipPath("https://www.youtube.com/watch?v=abc123"), false);
+  assert.equal(isRenderableVideoClipPath("C:/missing/local.mp4"), false);
 });
 
 test("legacy render image safety rejects low-relevance article inline portraits", () => {

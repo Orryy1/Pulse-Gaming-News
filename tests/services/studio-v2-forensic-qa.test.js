@@ -19,6 +19,8 @@ const {
   filterRepeatPairsByIgnoreRanges,
   buildVisualRepeatIgnoreRanges,
   analyseRenderedFrameTaste,
+  analyseRenderConsistency,
+  analyseReportTextHygiene,
   sceneBreakdown,
   buildIssues,
   compareForensicReports,
@@ -96,6 +98,22 @@ test("analyseSubtitleTimeline accepts short natural narration pauses", () => {
 
   assert.equal(result.verdict, "pass");
   assert.deepEqual(result.gapsOver2s, []);
+});
+
+test("analyseSubtitleTimeline warns when video keeps rolling after the final caption", () => {
+  const assPath = tempFile(
+    [
+      "Dialogue: 0,0:00:57.80,0:01:00.96,Caption,,0,0,0,,Follow Pulse Gaming",
+    ].join("\n"),
+  );
+  const result = analyseSubtitleTimeline({
+    assPath,
+    durationS: 69.62,
+    maxTailAfterLastCueS: 3,
+  });
+
+  assert.equal(result.verdict, "warn");
+  assert.equal(result.tailAfterLastCueS, 8.66);
 });
 
 test("forensic transcript lookup reads still-deck voice transcript metadata", () => {
@@ -341,6 +359,31 @@ test("analyseAudioRecurrence allows four declared studio cues without transient 
   assert.equal(result.worstScheduledCluster.count, 7);
   assert.equal(result.verdict, "pass");
   assert.deepEqual(result.reasons, []);
+});
+
+test("analyseAudioRecurrence warns on strict repeated cut-synchronous SFX signatures", () => {
+  const sampleRate = 1000;
+  const samples = new Float32Array(sampleRate * 10);
+  const scheduledTimesS = [0, 1, 2, 3, 4, 5, 6];
+  for (const timeS of scheduledTimesS) {
+    const start = Math.round(timeS * sampleRate);
+    for (let i = 0; i < 450; i++) {
+      samples[start + i] = 0.2 * Math.sin((i / 450) * Math.PI * 8);
+    }
+  }
+
+  const result = analyseAudioRecurrence({
+    samples,
+    sampleRate,
+    declaredSfxCueCount: 3,
+    scheduledTimesS,
+    strictScheduledRecurrence: true,
+  });
+
+  assert.equal(result.transientCandidateCount, 0);
+  assert.equal(result.worstScheduledCluster.count, 7);
+  assert.equal(result.verdict, "warn");
+  assert.match(result.reasons.join(" "), /cut-synchronous/);
 });
 
 test("hammingDistance handles different length hashes", () => {
@@ -740,6 +783,69 @@ test("buildIssues flags heavy source reuse", () => {
   });
   assert.equal(issues.length, 1);
   assert.equal(issues[0].code, "scene_source_reuse");
+});
+
+test("analyseRenderConsistency fails blocked V4 renders and planned SFX mismatches", () => {
+  const consistency = analyseRenderConsistency({
+    visualV4: {
+      verdict: "director_blocked",
+      blockers: ["actual_motion_clip_minimum_not_met"],
+      sfxPlan: { cue_count: 8 },
+      soundTransitionPlan: { sfx: { cue_count: 8 } },
+    },
+    auto: {
+      sfxEventCount: { value: 4 },
+    },
+  });
+
+  assert.equal(consistency.verdict, "fail");
+  assert.deepEqual(
+    consistency.issues.map((issue) => issue.code),
+    ["visual_v4_blocked_render", "sfx_plan_render_mismatch"],
+  );
+});
+
+test("analyseReportTextHygiene finds mojibake in nested public report text", () => {
+  const hygiene = analyseReportTextHygiene({
+    story: {
+      title: "Pok\u00c3\u00a9mon Games\u00e2\u20ac\u2122 biggest issue",
+    },
+    visualV4: {
+      beats: [{ text: "Metacritic\u00e2\u20ac\u2122s score card" }],
+    },
+  });
+
+  assert.equal(hygiene.verdict, "warn");
+  assert.ok(hygiene.samples.length >= 2);
+  assert.ok(hygiene.samples.some((sample) => sample.path === "story.title"));
+});
+
+test("buildIssues includes V4 consistency and text hygiene gates", () => {
+  const issues = buildIssues({
+    runtime: { durationDeltaS: 0 },
+    subtitles: { verdict: "pass" },
+    audio: { verdict: "pass" },
+    visual: { verdict: "pass" },
+    scene: { repeatedSources: [] },
+    renderReport: {
+      story: { title: "Pok\u00c3\u00a9mon Games\u00e2\u20ac\u2122 biggest issue" },
+      visualV4: {
+        verdict: "director_blocked",
+        blockers: ["actual_motion_clip_minimum_not_met"],
+        sfxPlan: { cue_count: 8 },
+      },
+      auto: { sfxEventCount: { value: 4 } },
+    },
+  });
+
+  assert.deepEqual(
+    issues.map((issue) => issue.code),
+    [
+      "visual_v4_blocked_render",
+      "sfx_plan_render_mismatch",
+      "report_text_hygiene",
+    ],
+  );
 });
 
 test("compareForensicReports reports material audio/subtitle improvement", () => {

@@ -417,6 +417,38 @@ test("Controlled Frame Extraction Plan accepts direct media discovered from offi
   assert.equal(plan.target_frames[3].target_time_seconds, 8.8);
 });
 
+test("Controlled Frame Extraction Plan accepts official social direct media", () => {
+  const plan = buildControlledFrameExtractionPlan(
+    motionPlan({
+      story_id: "1tftq7f",
+      existing_references: [
+        {
+          source_type: "official_social_media_video",
+          provider: "trusted_footage_registry",
+          source_url:
+            "https://video-s.twimg.com/amplify_video/2021227162603339776/vid/avc1/1280x720/IbJGc42nnQTptud_.mp4?tag=14",
+          reference_page_url: "https://x.com/ForzaHorizon/status/2021227288788947178",
+          source_url_kind: "direct_video",
+          segment_validation_eligible: true,
+          entity: "Forza Horizon 6",
+          movie_name: "Forza Horizon official X - FH6 Lowlands video",
+          rights_risk_class: "official_reference_only",
+          allowed_render_use: "reference_only_by_default",
+          downloads_allowed: false,
+          source_duration_s: 27.71,
+        },
+      ],
+    }),
+    { maxReferences: 1, maxTargetFrames: 4 },
+  );
+
+  assert.equal(plan.selected_references.length, 1);
+  assert.equal(plan.target_frames.length, 4);
+  assert.equal(plan.target_frames[0].source_type, "official_social_media_video");
+  assert.equal(plan.target_frames[0].source_url_kind, "direct_video");
+  assert.equal(plan.target_frames[0].downloads_allowed, false);
+});
+
 test("Controlled Frame Extraction Plan samples licensed direct media across distinct source families", () => {
   const plan = buildControlledFrameExtractionPlan(
     motionPlan({

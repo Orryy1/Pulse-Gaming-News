@@ -119,6 +119,84 @@ test("official source intake accepts official YouTube channel references only wi
   );
 });
 
+test("official source intake accepts official social direct video only with strict evidence", () => {
+  const report = buildOfficialSourceIntakeReport({
+    stories: [
+      story({
+        title: "Forza Horizon 6 is available now on Steam",
+        full_script: "Forza Horizon 6 is pulling a huge Steam number and Xbox fans are watching closely.",
+      }),
+    ],
+    entries: [
+      officialEntry({
+        entity: "Forza Horizon 6",
+        official_source_url: "https://x.com/ForzaHorizon/status/2021227288788947178",
+        direct_media_url_if_available:
+          "https://video-s.twimg.com/amplify_video/2021227162603339776/vid/avc1/1280x720/IbJGc42nnQTptud_.mp4?tag=14",
+        source_title: "Lots to see in the lowlands #ForzaHorizon6",
+        source_owner: "Official Forza Horizon verified X account",
+        source_type: "official_social_media_video",
+        source_family: "forza_horizon_official_x_fh6_lowlands_video",
+        evidence_of_officialness:
+          "Official verified @ForzaHorizon X post with direct media hosted on video-s.twimg.com.",
+        entity_match_notes: "The official post and direct media are for Forza Horizon 6.",
+        source_duration_s: 12,
+      }),
+    ],
+  });
+
+  assert.equal(report.summary.accepted, 1);
+  assert.equal(report.summary.rejected, 0);
+  assert.equal(report.accepted_references[0].source_type, "official_social_media_video");
+  assert.equal(report.accepted_references[0].source_url_kind, "direct_video");
+  assert.equal(report.accepted_references[0].segment_validation_eligible, true);
+  assert.equal(report.accepted_references[0].downloads_allowed, false);
+  assert.equal(
+    report.accepted_references[0].reference_page_url,
+    "https://x.com/ForzaHorizon/status/2021227288788947178",
+  );
+});
+
+test("official source intake rejects official social video without direct twimg media and evidence", () => {
+  const report = buildOfficialSourceIntakeReport({
+    stories: [
+      story({
+        title: "Forza Horizon 6 is available now on Steam",
+        full_script: "Forza Horizon 6 is pulling a huge Steam number and Xbox fans are watching closely.",
+      }),
+    ],
+    entries: [
+      officialEntry({
+        entity: "Forza Horizon 6",
+        official_source_url: "https://x.com/randomfan/status/123",
+        source_title: "Forza Horizon 6 clip repost",
+        source_owner: "Random fan account",
+        source_type: "official_social_media_video",
+        source_family: "random_fan_forza_social_clip",
+        evidence_of_officialness: "",
+        entity_match_notes: "Forza Horizon 6 is mentioned in the post.",
+      }),
+      officialEntry({
+        entity: "Forza Horizon 6",
+        official_source_url: "https://x.com/ForzaHorizon/status/2021227288788947178",
+        direct_media_url_if_available: "https://cdn.example.com/forza-horizon-6-social.mp4",
+        source_title: "Lots to see in the lowlands #ForzaHorizon6",
+        source_owner: "Official Forza Horizon verified X account",
+        source_type: "official_social_media_video",
+        source_family: "forza_horizon_official_x_wrong_cdn",
+        evidence_of_officialness: "Official verified @ForzaHorizon X post.",
+        entity_match_notes: "The official post is for Forza Horizon 6.",
+      }),
+    ],
+  });
+
+  assert.equal(report.summary.accepted, 0);
+  assert.equal(report.summary.rejected, 2);
+  assert.ok(report.rejected_entries[0].reasons.includes("official_social_direct_media_required"));
+  assert.ok(report.rejected_entries[0].reasons.includes("official_evidence_required_for_video_platform"));
+  assert.ok(report.rejected_entries[1].reasons.includes("official_social_direct_media_host_not_allowed"));
+});
+
 test("official source intake marks direct media URLs as segment-validation eligible", () => {
   const report = buildOfficialSourceIntakeReport({
     stories: [story()],

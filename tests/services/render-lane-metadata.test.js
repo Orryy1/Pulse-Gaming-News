@@ -24,13 +24,31 @@ const ASSEMBLE_SRC = fs.readFileSync(
 test("assemble.js stamps render_lane on every story", () => {
   assert.match(
     ASSEMBLE_SRC,
-    /story\.render_lane\s*=\s*"legacy_multi_image"/,
-    "default render_lane must be stamped at the top of the produce loop",
+    /:\s*"legacy_multi_image"/,
+    "default render_lane must still stamp legacy_multi_image when V4 is not ready",
   );
   assert.match(
     ASSEMBLE_SRC,
     /story\.render_lane\s*=\s*"legacy_single_image_fallback"/,
     "fallback path must update render_lane when ffmpeg drops to composite-only",
+  );
+});
+
+test("assemble.js preserves Studio V4 bridge lane once V4 clips are renderable", () => {
+  assert.match(
+    ASSEMBLE_SRC,
+    /const\s+v4BridgeRenderReady\s*=\s*story\.render_lane\s*===\s*"studio_v4_director_bridge"/,
+    "assemble must detect a ready Studio V4 bridge before default lane stamping",
+  );
+  assert.match(
+    ASSEMBLE_SRC,
+    /story\.render_lane\s*=\s*v4BridgeRenderReady\s*\?\s*"studio_v4_director_bridge"\s*:\s*"legacy_multi_image"/,
+    "assemble must not overwrite the Studio V4 render lane with legacy_multi_image",
+  );
+  assert.match(
+    ASSEMBLE_SRC,
+    /materializeStudioV4BridgeClips/,
+    "assemble must materialize validated V4 media windows before handing clips to FFmpeg",
   );
 });
 
@@ -73,8 +91,8 @@ test("assemble.js gates legacy rendering through Studio V4 canonical policy", ()
 test("assemble.js stamps distinct_visual_count + thumbnail_candidate_present + outro_present", () => {
   assert.match(
     ASSEMBLE_SRC,
-    /story\.distinct_visual_count\s*=\s*realImages\.length/,
-    "distinct_visual_count must alias realImages.length so dashboards have a self-describing field",
+    /story\.distinct_visual_count\s*=\s*effectiveVisualCount/,
+    "distinct_visual_count must include V4 motion clips when the bridge is render-ready",
   );
   assert.match(
     ASSEMBLE_SRC,

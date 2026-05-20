@@ -49,6 +49,21 @@ test("legacy visual planner can still opt into hook video placement explicitly",
   assert.equal(plan.placements[0].reason, "hook_video_slot");
 });
 
+test("legacy visual planner supports Studio V4 motion-only render decks", () => {
+  const plan = planLegacyVisualSequence(
+    [],
+    ["clip0.mp4", "clip1.mp4", "clip2.mp4"],
+    { allowMotionOnly: true },
+  );
+
+  assert.deepEqual(plan.visualPaths, ["clip0.mp4", "clip1.mp4", "clip2.mp4"]);
+  assert.deepEqual(plan.isVideoSlot, [true, true, true]);
+  assert.deepEqual(
+    plan.placements.map((p) => p.reason),
+    ["studio_v4_motion_only", "studio_v4_motion_only", "studio_v4_motion_only"],
+  );
+});
+
 test("assemble exposes Studio V4 render bridge helpers for the production handoff", () => {
   const {
     buildStudioV4RenderBridge,

@@ -1257,6 +1257,21 @@ function planLegacyVisualSequence(images, videoClips, options = {}) {
   const isVideoSlot = new Array(visualPaths.length).fill(false);
   const clips = Array.isArray(videoClips) ? videoClips.filter(Boolean) : [];
   const allowHookVideoSlot = options.allowHookVideoSlot === true;
+  const allowMotionOnly = options.allowMotionOnly === true;
+
+  if (allowMotionOnly && visualPaths.length === 0 && clips.length > 0) {
+    const maxSlots = Math.max(1, Number(options.maxMotionOnlySlots || MAX_IMAGES));
+    const selected = clips.slice(0, maxSlots);
+    return {
+      visualPaths: selected,
+      isVideoSlot: selected.map(() => true),
+      placements: selected.map((clip, slot) => ({
+        clip,
+        slot,
+        reason: "studio_v4_motion_only",
+      })),
+    };
+  }
 
   if (visualPaths.length < 2 || clips.length === 0) {
     return { visualPaths, isVideoSlot, placements: [] };
@@ -1468,8 +1483,12 @@ function buildVideoCommand(
   // for a black segment at 0.00s. Keep the hook slot as a known-good still
   // unless a future clip validator explicitly marks hook placement safe.
   const videoClips = (story.video_clips || []).filter(isRenderableVideoClipPath);
+  const studioV4MotionOnly = story.render_lane === "studio_v4_director_bridge";
   const { visualPaths, isVideoSlot, placements: videoClipPlacements } =
-    planLegacyVisualSequence(images, videoClips);
+    planLegacyVisualSequence(images, videoClips, {
+      allowHookVideoSlot: studioV4MotionOnly,
+      allowMotionOnly: studioV4MotionOnly,
+    });
   for (const placement of videoClipPlacements) {
     console.log(
       `[assemble] Slot ${placement.slot}: using trailer clip for ${placement.reason}`,
@@ -2228,6 +2247,9 @@ async function assemble() {
         buildStudioV4RenderBridge,
         applyStudioV4RenderBridgeToStory,
       } = require("./lib/studio/v4/render-bridge");
+      const {
+        materializeStudioV4BridgeClips,
+      } = require("./lib/studio/v4/render-clip-materializer");
       const studioV4Policy = resolveStudioV4Policy(process.env);
       if (studioV4Policy.enabled) {
         const trustedFootageReport = await loadStudioV4TrustedFootageReport();
@@ -2260,16 +2282,27 @@ async function assemble() {
           continue;
         }
 
-        const studioV4RenderBridge = buildStudioV4RenderBridge({
+        const rawStudioV4RenderBridge = buildStudioV4RenderBridge({
           story,
           canonicalPacket: studioV4Packet,
           motionPack: visualV4MotionPack || story.visual_v4_motion_pack,
           pathExists: (candidate) => fs.pathExistsSync(candidate),
         });
+        const studioV4ClipMaterialization = await materializeStudioV4BridgeClips({
+          root: __dirname,
+          story,
+          bridge: rawStudioV4RenderBridge,
+        });
+        const studioV4RenderBridge = studioV4ClipMaterialization.bridge;
+        story.visual_v4_clip_materialization = {
+          status: studioV4ClipMaterialization.readiness.status,
+          materialized: studioV4ClipMaterialization.materialized.length,
+          rejected: studioV4ClipMaterialization.rejected.length,
+        };
         applyStudioV4RenderBridgeToStory(story, studioV4RenderBridge);
         if (studioV4RenderBridge.readiness.status === "bridge_ready") {
           console.log(
-            `[assemble] ${story.id}: Studio V4 render bridge using ${studioV4RenderBridge.video_clips.length} director motion clip(s)`,
+            `[assemble] ${story.id}: Studio V4 render bridge using ${studioV4RenderBridge.video_clips.length} director motion clip(s) (${studioV4ClipMaterialization.materialized.length} materialized)`,
           );
         } else {
           story.qa_warnings = mergeQaList(story.qa_warnings, [
@@ -2306,11 +2339,20 @@ async function assemble() {
     // composite. This is record-only tonight — the publish gate that
     // blocks "fewer than N distinct visuals" will land in the next
     // pass once we have a publish-cycle of evidence on the new field.
-    story.qa_visual_count = realImages.length;
+    const renderableVideoClipCount = (story.video_clips || []).filter(
+      isRenderableVideoClipPath,
+    ).length;
+    const v4BridgeRenderReady =
+      story.render_lane === "studio_v4_director_bridge" &&
+      renderableVideoClipCount > 0;
+    const effectiveVisualCount = v4BridgeRenderReady
+      ? Math.max(realImages.length, renderableVideoClipCount)
+      : realImages.length;
+    story.qa_visual_count = effectiveVisualCount;
     story.qa_visual_warning =
-      realImages.length === 0
+      effectiveVisualCount === 0
         ? "no_real_images_used_composite"
-        : realImages.length < 3
+        : effectiveVisualCount < 3
           ? "thin_visuals_below_three"
           : null;
 
@@ -2335,8 +2377,10 @@ async function assemble() {
     // through to the composite-only path. Studio V2 / clip-first /
     // HyperFrames-for-MP4 are not in production today (Session 1
     // §G); when they are, add the matching label here.
-    story.render_lane = "legacy_multi_image";
-    story.distinct_visual_count = realImages.length;
+    story.render_lane = v4BridgeRenderReady
+      ? "studio_v4_director_bridge"
+      : "legacy_multi_image";
+    story.distinct_visual_count = effectiveVisualCount;
     story.outro_present = await fs.pathExists(OUTRO_CARD);
     story.thumbnail_candidate_present = !!(
       story.hf_thumbnail_path ||
@@ -2345,7 +2389,9 @@ async function assemble() {
       story.image_path
     );
     story.render_quality_class =
-      realImages.length >= 6
+      v4BridgeRenderReady
+        ? "premium"
+        : realImages.length >= 6
         ? "premium"
         : realImages.length >= 3
           ? "standard"
@@ -2369,7 +2415,7 @@ async function assemble() {
           ? [compositeImageAbs]
           : [];
 
-    if (rawImages.length === 0) {
+    if (rawImages.length === 0 && !v4BridgeRenderReady) {
       console.log(`[assemble] WARNING: No images for ${story.id}, skipping`);
       skipped++;
       continue;
@@ -2400,7 +2446,9 @@ async function assemble() {
     let preflightBad = [];
     try {
       const { validateImageBatch } = require("./lib/render-input-validation");
-      const r = await validateImageBatch(rawImages);
+      const r = rawImages.length > 0
+        ? await validateImageBatch(rawImages)
+        : { good: [], bad: [] };
       if (r.bad.length > 0) {
         preflightBad = r.bad;
         console.log(
@@ -2413,7 +2461,9 @@ async function assemble() {
       // If validation drained the deck completely, fall back to the
       // composite image if available — beats hard-skipping the
       // story.
-      if (r.good.length === 0 && compositeImageAbs) {
+      if (r.good.length === 0 && v4BridgeRenderReady) {
+        images = [];
+      } else if (r.good.length === 0 && compositeImageAbs) {
         images = [compositeImageAbs];
         story.render_fallback_reason = `class=all_inputs_invalid | inputs_validated=${rawImages.length} | inputs_bad=${r.bad.length} | detail=using_composite_only`;
         story.render_fallback_at = new Date().toISOString();

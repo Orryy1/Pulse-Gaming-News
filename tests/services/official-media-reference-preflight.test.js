@@ -51,6 +51,11 @@ test("media source URL kind allows only direct video or manifest URLs for segmen
     segment_validation_eligible: true,
     segment_validation_ineligible_reason: null,
   });
+  assert.deepEqual(classifyMediaSourceUrl("C:\\media\\approved-forza-clip.mp4"), {
+    source_url_kind: "local_video_file",
+    segment_validation_eligible: true,
+    segment_validation_ineligible_reason: null,
+  });
   assert.equal(classifyMediaSourceUrl("https://youtu.be/abc123").source_url_kind, "youtube_watch");
   assert.equal(
     classifyMediaSourceUrl("https://www.youtube.com/shorts/abc123").segment_validation_ineligible_reason,

@@ -2214,6 +2214,10 @@ async function assemble() {
       const {
         applyVisualV4MotionPackToStory,
       } = require("./lib/studio/v4/motion-pack");
+      const {
+        buildStudioV4RenderBridge,
+        applyStudioV4RenderBridgeToStory,
+      } = require("./lib/studio/v4/render-bridge");
       const studioV4Policy = resolveStudioV4Policy(process.env);
       if (studioV4Policy.enabled) {
         const trustedFootageReport = await loadStudioV4TrustedFootageReport();
@@ -2244,6 +2248,26 @@ async function assemble() {
           );
           skipped++;
           continue;
+        }
+
+        const studioV4RenderBridge = buildStudioV4RenderBridge({
+          story,
+          canonicalPacket: studioV4Packet,
+          motionPack: visualV4MotionPack || story.visual_v4_motion_pack,
+          pathExists: (candidate) => fs.pathExistsSync(candidate),
+        });
+        applyStudioV4RenderBridgeToStory(story, studioV4RenderBridge);
+        if (studioV4RenderBridge.readiness.status === "bridge_ready") {
+          console.log(
+            `[assemble] ${story.id}: Studio V4 render bridge using ${studioV4RenderBridge.video_clips.length} director motion clip(s)`,
+          );
+        } else {
+          story.qa_warnings = mergeQaList(story.qa_warnings, [
+            `studio_v4_render_bridge:${studioV4RenderBridge.readiness.blockers.join("|") || "not_ready"}`,
+          ]);
+          console.log(
+            `[assemble] ${story.id}: Studio V4 render bridge not ready (${studioV4RenderBridge.readiness.blockers.join(", ") || "not_ready"}), legacy visual sequence retained`,
+          );
         }
       }
     } catch (err) {

@@ -48,6 +48,54 @@ test("legacy visual planner can still opt into hook video placement explicitly",
   assert.equal(plan.placements[0].reason, "hook_video_slot");
 });
 
+test("assemble exposes Studio V4 render bridge helpers for the production handoff", () => {
+  const {
+    buildStudioV4RenderBridge,
+    applyStudioV4RenderBridgeToStory,
+  } = require("../../lib/studio/v4/render-bridge");
+
+  const story = {
+    id: "forza-v4-bridge",
+    video_clips: ["legacy.mp4"],
+    studio_v4_canonical_packet: {
+      readiness: { status: "ready_for_studio_v4_render" },
+      director_plan: {
+        shot_plan: [
+          {
+            id: "motion",
+            kind: "motion_clip",
+            source_family: "steam",
+            media_path: "C:/media/steam.mp4",
+            startS: 0.35,
+            durationS: 2.4,
+          },
+        ],
+      },
+    },
+    visual_v4_motion_pack: {
+      clips: [
+        {
+          id: "steam",
+          source_family: "steam",
+          path: "C:/media/steam.mp4",
+          mediaStartS: 10,
+          durationS: 3,
+        },
+      ],
+    },
+  };
+  const bridge = buildStudioV4RenderBridge({
+    story,
+    pathExists: () => true,
+  });
+
+  applyStudioV4RenderBridgeToStory(story, bridge);
+
+  assert.equal(bridge.readiness.status, "bridge_ready");
+  assert.deepEqual(story.video_clips, ["C:/media/steam.mp4"]);
+  assert.equal(story.render_lane, "studio_v4_director_bridge");
+});
+
 test("legacy render image safety rejects low-relevance article inline portraits", () => {
   const verdict = legacyRenderImageSafetyVerdict(
     {

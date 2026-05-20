@@ -117,6 +117,42 @@ test("Motion Acquisition Pro consumes official resolver references as local fram
   assert.equal(plan.safety.video_downloads, false);
 });
 
+test("Motion Acquisition Pro preserves source families from resolver references", () => {
+  const plan = buildMotionAcquisitionPlan(
+    baseStory({ id: "forza-family" }),
+    {
+      officialTrailerReferencePlans: [
+        {
+          story_id: "forza-family",
+          references: [
+            {
+              provider: "official_intake",
+              source_type: "licensed_direct_media_url",
+              source_url: "https://media.example/fh6/initial-drive.mp4",
+              source_url_kind: "direct_video",
+              segment_validation_eligible: true,
+              entity: "Forza Horizon 6",
+              source_family: "gamefront_xbox_game_studios_fh6_initial_drive_gameplay",
+              reference_url:
+                "https://www.gamefront.com/videos/forza-horizon-6/forza-horizon-6-official-initial-drive-gameplay",
+              downloads_allowed: false,
+            },
+          ],
+        },
+      ],
+    },
+  );
+
+  assert.equal(
+    plan.existing_references[0].source_family,
+    "gamefront_xbox_game_studios_fh6_initial_drive_gameplay",
+  );
+  assert.equal(
+    plan.existing_references[0].reference_url,
+    "https://www.gamefront.com/videos/forza-horizon-6/forza-horizon-6-official-initial-drive-gameplay",
+  );
+});
+
 test("Motion Acquisition Pro keeps partial resolver references in targeted-search mode", () => {
   const plan = buildMotionAcquisitionPlan(
     baseStory({ id: "partial-official-reference" }),

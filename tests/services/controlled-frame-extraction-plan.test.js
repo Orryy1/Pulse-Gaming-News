@@ -417,6 +417,51 @@ test("Controlled Frame Extraction Plan accepts direct media discovered from offi
   assert.equal(plan.target_frames[3].target_time_seconds, 8.8);
 });
 
+test("Controlled Frame Extraction Plan samples licensed direct media across distinct source families", () => {
+  const plan = buildControlledFrameExtractionPlan(
+    motionPlan({
+      title: "Forza Horizon 6 needs multiple official motion sources",
+      existing_references: [
+        reference("Forza Horizon 6", 1, {
+          source_family: "steam_forza_horizon_6_launch_trailer",
+        }),
+        reference("Forza Horizon 6", 2, {
+          provider: "official_intake",
+          source_type: "licensed_direct_media_url",
+          source_url: "https://cdn.forza.example/fh6/keyart.webm",
+          source_family: "forza_official_site_forza_horizon_6",
+          rights_risk_class: "official_direct_media",
+          allowed_render_use: "official_direct_media_segment_candidate",
+        }),
+        reference("Forza Horizon 6", 3, {
+          provider: "official_intake",
+          source_type: "licensed_direct_media_url",
+          source_url: "https://media.example/fh6/initial-drive.mp4",
+          source_family: "gamefront_xbox_game_studios_fh6_initial_drive_gameplay",
+          rights_risk_class: "official_direct_media",
+          allowed_render_use: "official_direct_media_segment_candidate",
+        }),
+      ],
+    }),
+    { maxReferences: 4, maxReferencesPerEntity: 4, maxTargetFrames: 12 },
+  );
+
+  assert.equal(plan.selected_references.length, 3);
+  assert.deepEqual(
+    plan.selected_references.map((item) => item.source_family),
+    [
+      "steam_forza_horizon_6_launch_trailer",
+      "forza_official_site_forza_horizon_6",
+      "gamefront_xbox_game_studios_fh6_initial_drive_gameplay",
+    ],
+  );
+  assert.ok(
+    plan.target_frames.some(
+      (frame) => frame.source_family === "gamefront_xbox_game_studios_fh6_initial_drive_gameplay",
+    ),
+  );
+});
+
 test("Controlled Frame Extraction Plan automatically uses distinct official alternates for single-game stories", () => {
   const plan = buildControlledFrameExtractionPlan(
     motionPlan({

@@ -803,6 +803,171 @@ test("official trailer segment validator requires at least two gameplay/action s
   assert.equal(report.segments[0].action_sample_count, 1);
 });
 
+test("official trailer segment validator accepts branded trailer gameplay when neighbouring frames are clean", async () => {
+  const outputRoot = tempOutputRoot("branded-trailer-motion");
+  await cleanTempRoot(outputRoot);
+  let call = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        path: "https://media.gamereactor.dk/t_Forza_Horizon_6_Official_Launch_Trailer_806443.mp4",
+        sourceType: "licensed_direct_media_url",
+        sourceDurationS: 95.57,
+        mediaStartS: 74.72,
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: fakeExtractor,
+      inspectFrame: async (outputPath) => {
+        call += 1;
+        const base = passingQa(outputPath);
+        if (call === 1) {
+          return {
+            ...base,
+            content_hash: "branded-motion-a",
+            prescan: {
+              likely_is_logo: false,
+              text_overlay_likelihood: 0,
+              white_text_on_dark_likelihood: 0,
+              edge_density: 0.118,
+              saturation_mean: 0.331,
+              dark_pixel_ratio: 0.08,
+              bright_pixel_ratio: 0.08,
+            },
+          };
+        }
+        if (call === 2) {
+          return {
+            ...base,
+            content_hash: "branded-motion-b",
+            prescan: {
+              likely_is_logo: false,
+              text_overlay_likelihood: 0,
+              white_text_on_dark_likelihood: 0,
+              edge_density: 0.113,
+              saturation_mean: 0.477,
+              dark_pixel_ratio: 0.22,
+              bright_pixel_ratio: 0.07,
+            },
+          };
+        }
+        return {
+          ...base,
+          content_hash: "branded-motion-c",
+          prescan: {
+            likely_is_logo: false,
+            text_overlay_likelihood: 0,
+            white_text_on_dark_likelihood: 0,
+            edge_density: 0.187,
+            saturation_mean: 0.586,
+            dark_pixel_ratio: 0.004,
+            bright_pixel_ratio: 0.015,
+          },
+        };
+      },
+    },
+  );
+
+  assert.equal(report.summary.segments_validated, 1);
+  assert.equal(report.segments[0].validation_reason, "branded_direct_media_motion_samples_passed");
+  assert.equal(report.segments[0].action_sample_count, 1);
+  assert.ok(report.segments[0].action_score >= 70);
+  assert.equal(report.segments[0].segment_motion_class, "gameplay_action");
+});
+
+test("official trailer segment validator accepts short official detail-motion clips", async () => {
+  const outputRoot = tempOutputRoot("short-detail-motion");
+  await cleanTempRoot(outputRoot);
+  let call = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        path: "https://video.twimg.com/amplify_video/2036120548040658944/vid/avc1/720x1280/detail.mp4",
+        sourceType: "licensed_direct_media_url",
+        sourceDurationS: 23.98,
+        mediaStartS: 6.71,
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: fakeExtractor,
+      inspectFrame: async (outputPath) => {
+        call += 1;
+        const base = passingQa(outputPath);
+        const samples = [
+          { edge_density: 0.101, saturation_mean: 0.435 },
+          { edge_density: 0.13, saturation_mean: 0.451 },
+          { edge_density: 0.12, saturation_mean: 0.5 },
+        ];
+        return {
+          ...base,
+          content_hash: `short-detail-${call}`,
+          prescan: {
+            likely_is_logo: false,
+            text_overlay_likelihood: 0,
+            white_text_on_dark_likelihood: 0,
+            dark_pixel_ratio: 0.08,
+            bright_pixel_ratio: 0.06,
+            ...samples[call - 1],
+          },
+        };
+      },
+    },
+  );
+
+  assert.equal(report.summary.segments_validated, 1);
+  assert.equal(report.segments[0].validation_reason, "short_direct_media_detail_motion_samples_passed");
+  assert.equal(report.segments[0].action_sample_count, 0);
+  assert.ok(report.segments[0].action_score >= 68);
+});
+
+test("official trailer segment validator keeps animated key art out of detail-motion fallback", async () => {
+  const outputRoot = tempOutputRoot("animated-key-art-still-block");
+  await cleanTempRoot(outputRoot);
+  let call = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        path: "https://cdn.forza.net/strapi-uploads/assets/Forza_Horizon_6_Primary_Animated_Keyart_f0431e036f.webm",
+        sourceType: "licensed_direct_media_url",
+        sourceDurationS: 10,
+        mediaStartS: 5.75,
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: fakeExtractor,
+      inspectFrame: async (outputPath) => {
+        call += 1;
+        return {
+          ...passingQa(outputPath),
+          content_hash: `key-art-${call}`,
+          prescan: {
+            likely_is_logo: false,
+            text_overlay_likelihood: 0,
+            white_text_on_dark_likelihood: 0,
+            edge_density: 0.265,
+            saturation_mean: 0.211,
+            dark_pixel_ratio: 0.05,
+            bright_pixel_ratio: 0.07,
+          },
+        };
+      },
+    },
+  );
+
+  assert.equal(report.summary.segments_rejected, 1);
+  assert.equal(report.segments[0].validation_reason, "segment_lacks_gameplay_action_samples");
+  assert.equal(report.segments[0].allowed_for_flash_lane, false);
+});
+
 test("official trailer segment validator accepts clean short licensed direct media with one strong motion sample", async () => {
   const outputRoot = tempOutputRoot("short-direct-media-one-action-sample");
   await cleanTempRoot(outputRoot);

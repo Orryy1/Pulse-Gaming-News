@@ -573,6 +573,7 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
     runContentQa = require("../lib/services/content-qa").runContentQa,
     runVideoQa = require("../lib/services/video-qa").runVideoQa,
     runPlatformVideoQa = require("../lib/services/platform-video-qa").runPlatformVideoQa,
+    runStudioGovernancePreflight = require("../lib/services/studio-governance-preflight").runStudioGovernancePreflight,
   } = opts;
 
   try {
@@ -585,7 +586,11 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
       story.exported_path,
       opts.platformVideoQaOptions || {},
     );
-    return combinePreflightQa({ content, video, platform });
+    const governance = await runStudioGovernancePreflight(
+      story,
+      opts.studioGovernanceOptions || {},
+    );
+    return combinePreflightQa({ content, video, platform, governance });
   } catch (err) {
     return {
       status: "blocked",

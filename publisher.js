@@ -1266,6 +1266,33 @@ async function runPreflightQa(story) {
     );
   }
 
+  // Studio Governance Engine - final control, rights, disclosure and
+  // coherence gate. Unlike optional media probes above, this is a hard
+  // autonomy guard: a story must be GREEN before the publisher can
+  // attempt any platform upload.
+  try {
+    const {
+      assertStudioGovernancePreflight,
+    } = require("./lib/services/studio-governance-preflight");
+    const governance = await assertStudioGovernancePreflight(story);
+    if (governance.rejection_reasons?.warnings?.length > 0) {
+      warnings.push(...governance.rejection_reasons.warnings);
+    }
+  } catch (qaErr) {
+    const failures = Array.isArray(qaErr.failures)
+      ? qaErr.failures
+      : [qaErr.code || "studio_governance_blocked"];
+    console.log(
+      `[publisher] studio governance FAIL (${story.id}): ${failures.join(", ")}`,
+    );
+    return {
+      pass: false,
+      failures,
+      warnings: warnings.slice(),
+      source: "governance",
+    };
+  }
+
   return { pass: true, warnings };
 }
 

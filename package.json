@@ -79,6 +79,8 @@
     "ops:goal-proof": "node tools/goal-proof-package.js",
     "ops:goal-batch": "node tools/goal-batch-packages.js",
     "ops:goal-dry-run-publish": "node tools/goal-dry-run-publish.js",
+    "ops:goal-production-cutover": "node tools/goal-production-cutover.js",
+    "ops:goal-render-inputs": "node tools/goal-render-input-workorder.js",
     "ops:goal": "node tools/run-goal.js",
     "ops:empire-readiness": "node tools/empire-readiness-audit.js",
     "ops:control-room": "node tools/control-room.js",

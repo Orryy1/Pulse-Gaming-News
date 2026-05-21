@@ -75,6 +75,20 @@ test("classifyShortDuration allows a deliberate extended Short up to 90s", () =>
   assert.equal(result.maxVideoSeconds, 90);
 });
 
+test("classifyShortDuration allows deliberate retention-short edits", () => {
+  const result = classifyShortDuration({
+    audioDurationSeconds: 35.2,
+    videoDurationSeconds: 35.2,
+    lane: "pulse_retention_short",
+  });
+
+  assert.equal(result.result, "pass");
+  assert.deepEqual(result.failures, []);
+  assert.deepEqual(result.warnings, []);
+  assert.equal(result.durationLane, "pulse_retention_short");
+  assert.equal(result.minVideoSeconds, 22);
+});
+
 test("classifyShortDuration blocks runaway audio even in the extended Short lane", () => {
   const result = classifyShortDuration({
     audioDurationSeconds: 124,

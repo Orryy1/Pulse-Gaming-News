@@ -7,8 +7,10 @@ const {
   parseFfprobeDuration,
   parseBlackdetectOutput,
   DEFAULT_MIN_DURATION_SECONDS,
+  DEFAULT_MIN_RETENTION_SHORT_SECONDS,
   DEFAULT_MAX_DURATION_SECONDS,
   DEFAULT_MAX_BLACK_SEGMENT_SECONDS,
+  buildVideoQaOptionsForStory,
 } = require("../../lib/services/video-qa");
 
 // ---------- ffprobe output parsing ----------
@@ -56,6 +58,25 @@ test("parseBlackdetectOutput: returns empty array on empty/no-match input", () =
   assert.deepStrictEqual(parseBlackdetectOutput(""), []);
   assert.deepStrictEqual(parseBlackdetectOutput("some unrelated log"), []);
   assert.deepStrictEqual(parseBlackdetectOutput(null), []);
+});
+
+test("buildVideoQaOptionsForStory only permits short retention edits when metadata says so", () => {
+  const blocked = classifyVideoQa({ durationSeconds: 35.2, blackSegments: [] });
+  assert.strictEqual(blocked.result, "fail");
+  assert.ok(blocked.failures.some((f) => f.startsWith("duration_too_short")));
+
+  const options = buildVideoQaOptionsForStory({
+    duration_lane: "pulse_retention_short",
+    allow_retention_short_video: true,
+  });
+  const allowed = classifyVideoQa({
+    durationSeconds: 35.2,
+    blackSegments: [],
+    ...options,
+  });
+
+  assert.strictEqual(options.minDuration, DEFAULT_MIN_RETENTION_SHORT_SECONDS);
+  assert.strictEqual(allowed.result, "pass");
 });
 
 // ---------- classifyVideoQa: duration branch ----------

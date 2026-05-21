@@ -1198,9 +1198,12 @@ async function runPreflightQa(story) {
 
   // Video QA — duration + black-frame detection via ffprobe/ffmpeg
   try {
-    const { runVideoQa } = require("./lib/services/video-qa");
+    const {
+      runVideoQa,
+      buildVideoQaOptionsForStory,
+    } = require("./lib/services/video-qa");
     const vqa = story.exported_path
-      ? await runVideoQa(story.exported_path)
+      ? await runVideoQa(story.exported_path, buildVideoQaOptionsForStory(story))
       : { result: "skip", reason: "no_exported_path" };
     if (vqa.result === "warn" && Array.isArray(vqa.warnings)) {
       console.log(

@@ -572,6 +572,7 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
   const {
     runContentQa = require("../lib/services/content-qa").runContentQa,
     runVideoQa = require("../lib/services/video-qa").runVideoQa,
+    buildVideoQaOptionsForStory = require("../lib/services/video-qa").buildVideoQaOptionsForStory,
     runPlatformVideoQa = require("../lib/services/platform-video-qa").runPlatformVideoQa,
     runStudioGovernancePreflight = require("../lib/services/studio-governance-preflight").runStudioGovernancePreflight,
   } = opts;
@@ -581,7 +582,10 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
       blockThinVisuals: true,
       ...(opts.contentQaOptions || {}),
     });
-    const video = await runVideoQa(story.exported_path, opts.videoQaOptions || {});
+    const video = await runVideoQa(
+      story.exported_path,
+      buildVideoQaOptionsForStory(story, opts.videoQaOptions || {}),
+    );
     const platform = await runPlatformVideoQa(
       story.exported_path,
       opts.platformVideoQaOptions || {},

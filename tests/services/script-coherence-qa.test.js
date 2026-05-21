@@ -31,6 +31,24 @@ test("script coherence does not double-count hook/body/loop mirrored in full_scr
   assert.equal(qa.result, "pass", qa.failures.join(", "));
 });
 
+test("script coherence accepts the identity CTA for adult gaming news positioning", () => {
+  const story = {
+    title: "Forza Horizon 6 Just Broke Xbox's Steam Ceiling",
+    source_type: "rss",
+    subreddit: "GameSpot",
+    cta: "Follow Pulse Gaming for the gaming stories behind the headline.",
+    full_script:
+      "Forza Horizon 6 just gave Xbox the Steam number it needed. SteamDB shows the paid early-access peak landed before the standard launch, which makes the number a demand signal rather than the final ceiling. Follow Pulse Gaming for the gaming stories behind the headline.",
+  };
+
+  const qa = runScriptCoherenceQa(story, {
+    requireCtaField: true,
+    requireFullScriptCta: true,
+  });
+
+  assert.equal(qa.result, "pass", qa.failures.join(", "));
+});
+
 test("script coherence still catches true repeated sentences inside full_script", () => {
   const repeated = "Capcom named Mega Man and Ace Attorney in the same investor update.";
   const qa = runScriptCoherenceQa(

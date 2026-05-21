@@ -258,6 +258,23 @@ test("approved voice path approves existing production audio", () => {
   assert.deepEqual(result.blockers, []);
 });
 
+test("approved voice path accepts the identity CTA outro", () => {
+  const result = evaluateApprovedVoicePath({
+    narration: {
+      provider: "elevenlabs",
+      source: "elevenlabs-production-path",
+      audioPath: audioFile("identity-cta.mp3"),
+      transcript:
+        "Forza Horizon 6 just gave Xbox a paid-access stress test. Follow Pulse Gaming for the gaming stories behind the headline.",
+      acoustic: { medianPitchHz: 118 },
+    },
+  });
+
+  assert.equal(result.verdict, "approved_for_studio_v2_proof");
+  assert.deepEqual(result.blockers, []);
+  assert.equal(result.transcript.spoken_outro_present, true);
+});
+
 test("approved voice path markdown is readable for operators", () => {
   const result = evaluateApprovedVoicePath({
     narration: {

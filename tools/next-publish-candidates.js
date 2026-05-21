@@ -539,11 +539,12 @@ function summariseQaResult(result = {}) {
   };
 }
 
-function combinePreflightQa({ content, video, platform } = {}) {
+function combinePreflightQa({ content, video, platform, governance } = {}) {
   const checks = {
     content: summariseQaResult(content),
     video: summariseQaResult(video),
     platform: summariseQaResult(platform),
+    governance: summariseQaResult(governance),
   };
   const blockers = [];
   const warnings = [];
@@ -604,6 +605,7 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
         content: { result: "unknown", failures: [], warnings: [] },
         video: { result: "unknown", failures: [], warnings: [] },
         platform: { result: "unknown", failures: [], warnings: [] },
+        governance: { result: "unknown", failures: [], warnings: [] },
       },
     };
   }
@@ -613,11 +615,11 @@ async function attachPreflightQa(report = {}, stories = [], opts = {}) {
   const byId = new Map(
     (Array.isArray(stories) ? stories : [])
       .filter((story) => story && story.id)
-      .map((story) => [story.id, story]),
+      .map((story) => [String(story.id), story]),
   );
   const candidates = Array.isArray(report.candidates) ? report.candidates : [];
   for (const candidate of candidates) {
-    const story = byId.get(candidate.id);
+    const story = byId.get(String(candidate.id || ""));
     if (!story) {
       candidate.preflight_qa = {
         status: "blocked",
@@ -648,12 +650,62 @@ async function attachPreflightQa(report = {}, stories = [], opts = {}) {
   return report;
 }
 
+function normaliseStoryId(value) {
+  const storyId = String(value || "").trim();
+  return storyId || null;
+}
+
+function filterStoriesByStoryId(stories = [], storyId = null) {
+  const requestedStoryId = normaliseStoryId(storyId);
+  const rows = Array.isArray(stories) ? stories : [];
+  if (!requestedStoryId) return rows;
+  return rows.filter((story) => String(story?.id || "") === requestedStoryId);
+}
+
+async function attachStoryPreflight(report = {}, stories = [], storyId = null, opts = {}) {
+  const requestedStoryId = normaliseStoryId(storyId);
+  if (!requestedStoryId) return report;
+
+  const story = (Array.isArray(stories) ? stories : []).find(
+    (row) => String(row?.id || "") === requestedStoryId,
+  );
+
+  if (!story) {
+    report.story_preflight = {
+      enabled: true,
+      mode: "read_only",
+      story_id: requestedStoryId,
+      status: "blocked",
+      blockers: ["story_not_found"],
+      warnings: [],
+      checks: {},
+    };
+    return report;
+  }
+
+  const run = opts.runPreflightQaForStory || runPreflightQaForStory;
+  const preflight = await run(story, opts);
+  report.story_preflight = {
+    enabled: true,
+    mode: "read_only",
+    story_id: requestedStoryId,
+    title: String(story.title || "").slice(0, 180),
+    status: preflight?.status || "blocked",
+    blockers: Array.isArray(preflight?.blockers) ? preflight.blockers : [],
+    warnings: Array.isArray(preflight?.warnings) ? preflight.warnings : [],
+    checks: preflight?.checks || {},
+  };
+  return report;
+}
+
 function buildNextPublishCandidatesReport(stories, options = {}) {
   const generatedAt = options.generatedAt || new Date().toISOString();
   const limit = Number.isFinite(Number(options.limit))
     ? Math.max(1, Number(options.limit))
     : DEFAULT_LIMIT;
-  const rows = Array.isArray(stories) ? stories : [];
+  const requestedStoryId = normaliseStoryId(options.storyId);
+  const inputRows = Array.isArray(stories) ? stories : [];
+  const rows = filterStoriesByStoryId(inputRows, requestedStoryId);
   const candidates = [];
   const excluded = [];
   let pendingAudioCount = 0;
@@ -678,7 +730,7 @@ function buildNextPublishCandidatesReport(stories, options = {}) {
     return String(a.id || "").localeCompare(String(b.id || ""));
   });
 
-  return {
+  const report = {
     generated_at: generatedAt,
     safety: {
       mode: "read_only",
@@ -699,6 +751,16 @@ function buildNextPublishCandidatesReport(stories, options = {}) {
     candidates: candidates.slice(0, limit),
     excluded: excluded.slice(0, Math.max(limit, 20)),
   };
+
+  if (requestedStoryId) {
+    report.story_filter = {
+      story_id: requestedStoryId,
+      matched: rows.length,
+      input_stories_seen: inputRows.length,
+    };
+  }
+
+  return report;
 }
 
 function summariseAnalytics(text = "") {
@@ -754,6 +816,25 @@ function formatNextPublishCandidatesMarkdown(report = {}) {
     lines.push(`- pending audio: ${Number(totals.pending_audio || 0)}`);
   }
   lines.push("");
+  if (report.story_filter) {
+    lines.push("## Story Filter");
+    lines.push(`- story id: ${report.story_filter.story_id}`);
+    lines.push(`- matched: ${Number(report.story_filter.matched || 0)}`);
+    lines.push("");
+  }
+  if (report.story_preflight) {
+    const preflight = report.story_preflight;
+    lines.push("## Story Preflight");
+    lines.push(`- story id: ${preflight.story_id || "unknown"}`);
+    lines.push(`- status: ${preflight.status || "unknown"}`);
+    if (Array.isArray(preflight.blockers) && preflight.blockers.length) {
+      lines.push(`- blockers: ${preflight.blockers.join(", ")}`);
+    }
+    if (Array.isArray(preflight.warnings) && preflight.warnings.length) {
+      lines.push(`- warnings: ${preflight.warnings.join(", ")}`);
+    }
+    lines.push("");
+  }
   lines.push("## Analytics Bias");
   const summary = report.analytics_summary || {};
   lines.push(`- available: ${summary.available ? "yes" : "no"}`);
@@ -810,6 +891,7 @@ function parseArgs(argv) {
     limit: DEFAULT_LIMIT,
     analyticsPath: DEFAULT_ANALYTICS_PATH,
     preflightQa: false,
+    storyId: null,
   };
   for (let i = 2; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -820,6 +902,9 @@ function parseArgs(argv) {
     else if (arg.startsWith("--limit=")) args.limit = Number(arg.split("=")[1] || DEFAULT_LIMIT);
     else if (arg === "--analytics") args.analyticsPath = argv[++i] || args.analyticsPath;
     else if (arg.startsWith("--analytics=")) args.analyticsPath = arg.slice("--analytics=".length);
+    else if (arg === "--story-id" || arg === "--story") args.storyId = normaliseStoryId(argv[++i]);
+    else if (arg.startsWith("--story-id=")) args.storyId = normaliseStoryId(arg.slice("--story-id=".length));
+    else if (arg.startsWith("--story=")) args.storyId = normaliseStoryId(arg.slice("--story=".length));
   }
   return args;
 }
@@ -842,7 +927,7 @@ async function runCli(argv = process.argv) {
   const args = parseArgs(argv);
   if (args.help) {
     process.stdout.write(
-      "Usage: node tools/next-publish-candidates.js [--json] [--limit N] [--analytics PATH] [--preflight-qa]\n",
+      "Usage: node tools/next-publish-candidates.js [--json] [--limit N] [--analytics PATH] [--preflight-qa] [--story-id ID]\n",
     );
     return { exitCode: 0 };
   }
@@ -855,9 +940,11 @@ async function runCli(argv = process.argv) {
     analyticsText,
     analyticsPath: args.analyticsPath,
     limit: args.limit,
+    storyId: args.storyId,
   });
   if (args.preflightQa) {
     await attachPreflightQa(report, stories);
+    await attachStoryPreflight(report, stories, args.storyId);
   }
   const markdown = formatNextPublishCandidatesMarkdown(report);
   await fs.ensureDir(OUT);
@@ -887,9 +974,12 @@ module.exports = {
   scoreCandidate,
   scoreAnalyticsFit,
   attachPreflightQa,
+  attachStoryPreflight,
   combinePreflightQa,
   durationVerdict,
   existingPublicPlatformFields,
+  filterStoriesByStoryId,
+  parseArgs,
   runPreflightQaForStory,
   summariseQaResult,
   runCli,

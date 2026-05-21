@@ -4,8 +4,10 @@ const assert = require("node:assert");
 const {
   buildNextPublishCandidatesReport,
   attachPreflightQa,
+  attachStoryPreflight,
   combinePreflightQa,
   formatNextPublishCandidatesMarkdown,
+  parseArgs,
   scoreAnalyticsFit,
 } = require("../../tools/next-publish-candidates");
 
@@ -194,6 +196,77 @@ test("next publish report can opt into stale backlog visibility when explicitly 
   assert.deepEqual(report.candidates.map((row) => row.id), ["old_allowed"]);
 });
 
+test("next publish CLI parses story-specific preflight flags", () => {
+  const args = parseArgs([
+    "node",
+    "tools/next-publish-candidates.js",
+    "--story-id",
+    "1td4x0w",
+    "--preflight-qa",
+    "--json",
+  ]);
+  const inline = parseArgs([
+    "node",
+    "tools/next-publish-candidates.js",
+    "--story=1thsxw7",
+  ]);
+
+  assert.equal(args.storyId, "1td4x0w");
+  assert.equal(args.preflightQa, true);
+  assert.equal(args.json, true);
+  assert.equal(inline.storyId, "1thsxw7");
+});
+
+test("next publish report can focus candidate ranking on one story id", () => {
+  const report = buildNextPublishCandidatesReport(
+    [
+      baseStory({ id: "target_story", title: "Nintendo confirms Switch 2 bundle outcome" }),
+      baseStory({ id: "other_story", title: "Xbox confirms a Game Pass pricing outcome" }),
+    ],
+    {
+      analyticsText,
+      generatedAt: "2026-05-15T09:00:00.000Z",
+      storyId: "target_story",
+    },
+  );
+
+  assert.equal(report.story_filter.story_id, "target_story");
+  assert.equal(report.totals.stories_seen, 1);
+  assert.deepEqual(report.candidates.map((row) => row.id), ["target_story"]);
+});
+
+test("story-specific preflight checks requested story even when it is excluded from candidates", async () => {
+  const stories = [
+    baseStory({
+      id: "stale_script_story",
+      publish_status: "failed",
+      title: "Mixtape Just Avoided Gaming's Delisting Trap",
+    }),
+  ];
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-05-15T09:00:00.000Z",
+    storyId: "stale_script_story",
+  });
+
+  assert.deepEqual(report.candidates, []);
+
+  await attachStoryPreflight(report, stories, "stale_script_story", {
+    runPreflightQaForStory: async (story) => ({
+      story_id: story.id,
+      status: "pass",
+      blockers: [],
+      warnings: ["stale persisted QA label cleared by current script"],
+      checks: {},
+    }),
+  });
+
+  assert.equal(report.story_preflight.story_id, "stale_script_story");
+  assert.equal(report.story_preflight.status, "pass");
+  assert.deepEqual(report.story_preflight.blockers, []);
+  assert.match(formatNextPublishCandidatesMarkdown(report), /Story Preflight/);
+});
+
 test("next publish report keeps 76-90s extended Shorts in review instead of excluding them", () => {
   const report = buildNextPublishCandidatesReport(
     [
@@ -256,11 +329,29 @@ test("preflight QA summary blocks failed checks and keeps warnings visible", () 
     content: { result: "warn", failures: [], warnings: ["caption_timing_repaired"] },
     video: { result: "pass", failures: [], warnings: [] },
     platform: { result: "fail", failures: ["video_codec_not_h264"], warnings: [] },
+    governance: { result: "pass", failures: [], warnings: [] },
   });
 
   assert.equal(combined.status, "blocked");
   assert.deepEqual(combined.blockers, ["platform:video_codec_not_h264"]);
   assert.deepEqual(combined.warnings, ["content:caption_timing_repaired"]);
+});
+
+test("preflight QA summary includes studio governance blockers", () => {
+  const combined = combinePreflightQa({
+    content: { result: "pass", failures: [], warnings: [] },
+    video: { result: "pass", failures: [], warnings: [] },
+    platform: { result: "pass", failures: [], warnings: [] },
+    governance: {
+      result: "fail",
+      failures: ["publish_verdict_not_green"],
+      warnings: [],
+    },
+  });
+
+  assert.equal(combined.status, "blocked");
+  assert.deepEqual(combined.blockers, ["governance:publish_verdict_not_green"]);
+  assert.equal(combined.checks.governance.result, "fail");
 });
 
 test("attachPreflightQa marks candidates with read-only QA evidence", async () => {

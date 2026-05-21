@@ -86,6 +86,7 @@
     "ops:publish-readiness": "node tools/publish-readiness.js",
     "ops:publish-cadence": "node tools/publish-cadence-doctor.js",
     "ops:next-publish-candidates": "node tools/next-publish-candidates.js --preflight-qa",
+    "ops:publish-unblock": "node tools/publish-blocker-resolution.js",
     "ops:publish-row-repair": "node tools/publish-row-repair-plan.js",
     "ops:reprocess-script-failures": "node tools/reprocess-script-failures.js",
     "ops:script-coherence-audit": "node tools/script-coherence-audit.js",

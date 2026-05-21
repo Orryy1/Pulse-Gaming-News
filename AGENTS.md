@@ -1,5 +1,9 @@
 # Pulse Gaming — AI News Shorts Empire v3
 
+## Primary Codex /goal
+
+Use `docs/codex-main-goal.md` as the main operating goal for this repo. It supersedes any older "shorts factory" framing: Pulse Gaming is being built as a governed autonomous media operating system with production-grade story manifests, rights ledgers, platform-native outputs, policy gates, commercial intelligence, observability and hard publish control.
+
 ## Overview
 
 Multi-channel autonomous pipeline that hunts Reddit + RSS feeds for verified news, generates YouTube Shorts scripts via Codex, produces professional audio/image/video assets with real images, branded bumpers and broadcast overlays, and auto-publishes to 5 platforms (YouTube Shorts, TikTok, Instagram Reels, Facebook Reels, X/Twitter) at research-backed optimal times. Supports multiple channels via the `channels/` config system.

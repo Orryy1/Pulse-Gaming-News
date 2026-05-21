@@ -15,6 +15,7 @@ test("community discussion gate catches broad gaming prompts", () => {
     "Came across a much simpler time in gaming today",
     "how to make your game cool as fuck: add exaggerated title cards",
     "This moment made me realize I was playing something special",
+    "'Forza Horizon 6' - Review Thread",
   ];
 
   for (const title of prompts) {

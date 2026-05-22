@@ -232,6 +232,58 @@ test("platform readiness doctor treats a top ready TikTok pack as actionable, no
   );
 });
 
+test("platform readiness doctor exposes X enablement without network calls or secret leakage", () => {
+  const report = buildPlatformReadinessDoctor({
+    generatedAt: "2026-05-22T16:10:00.000Z",
+    platformConfig: {
+      twitter: { state: "disabled", reason: "x_optional_disabled" },
+      facebook_reel: { state: "enabled", reason: "facebook_reels_default_enabled" },
+    },
+    xEnv: {
+      TWITTER_ENABLED: "false",
+      TWITTER_API_KEY: "must-not-leak",
+      TWITTER_API_SECRET: "must-not-leak",
+      TWITTER_ACCESS_TOKEN: "must-not-leak",
+      TWITTER_ACCESS_SECRET: "must-not-leak",
+    },
+  });
+
+  assert.equal(report.platforms.x.status, "operator_disabled");
+  assert.equal(report.platforms.x.no_post_readiness.operator_switch.status, "disabled");
+  assert.equal(report.platforms.x.no_post_readiness.credential_set.status, "present");
+  assert.equal(report.platforms.x.no_post_readiness.api_billing.status, "not_declared");
+  assert.equal(report.platforms.x.public_auto_publish, false);
+  assert.equal(report.platforms.x.network_calls_allowed, false);
+  assert.ok(report.enablement_gaps.includes("x_operator_disabled"));
+
+  const md = renderPlatformReadinessDoctorMarkdown(report);
+  assert.match(md, /## X/);
+  assert.match(md, /operator_disabled/);
+  assert.match(md, /Network calls allowed: false/);
+  assert.doesNotMatch(md, /must-not-leak|TWITTER_API_KEY|TWITTER_ACCESS_TOKEN|Bearer/);
+});
+
+test("platform readiness doctor blocks X enablement when credentials are incomplete", () => {
+  const report = buildPlatformReadinessDoctor({
+    platformConfig: {
+      twitter: { state: "enabled", reason: "x_video_enabled" },
+      facebook_reel: { state: "enabled", reason: "facebook_reels_default_enabled" },
+    },
+    xEnv: {
+      TWITTER_ENABLED: "true",
+      TWITTER_API_KEY: "must-not-leak",
+      X_API_BILLING_CONFIRMED: "true",
+    },
+  });
+
+  assert.equal(report.platforms.x.status, "missing_credentials");
+  assert.equal(report.platforms.x.no_post_readiness.operator_switch.status, "enabled");
+  assert.equal(report.platforms.x.no_post_readiness.credential_set.status, "missing");
+  assert.ok(report.enablement_gaps.includes("x_credentials_missing"));
+  assert.equal(report.platforms.x.network_calls_allowed, false);
+  assert.doesNotMatch(renderPlatformReadinessDoctorMarkdown(report), /must-not-leak|TWITTER_API_KEY/);
+});
+
 test("platform readiness doctor classifies Instagram 2207076 as rerender work, not URL fallback", () => {
   const error =
     "Instagram URL processing failed: status_code=ERROR status=Error: Media upload has failed with error code 2207076";

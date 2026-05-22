@@ -86,6 +86,7 @@
     "ops:goal-audio-materialize": "node tools/goal-audio-timestamp-materializer.js",
     "ops:goal-production-render": "node tools/goal-production-render-materializer.js",
     "ops:goal-platform-duration-contract": "node tools/goal-platform-duration-contract.js",
+    "ops:goal-platform-native-repair": "node tools/goal-platform-native-pack-repair.js",
     "ops:goal-duration-variant-repair": "node tools/goal-duration-variant-repair.js",
     "ops:goal-public-copy-repair": "node tools/goal-public-copy-repair.js",
     "ops:bridge-candidate-promotion": "node tools/bridge-candidate-promotion.js",

@@ -16,6 +16,10 @@ const {
 const {
   resolveAcceptedLocalVoiceReference,
 } = require("../../lib/studio/v2/local-voice-reference");
+const {
+  DEFAULT_LOCAL_MEDIA_REPAIR_TTS_TIMEOUT_MS,
+  parseArgs: parseLocalMediaRepairArgs,
+} = require("../../tools/local-media-repair");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const ACCEPTED_SLEEPY_LIAM = resolveAcceptedLocalVoiceReference();
@@ -470,7 +474,31 @@ test("local media repair CLI loads .env before opening SQLite and defaults to dr
   assert.match(tool, /createLocalTtsBatchRecovery/);
   assert.match(tool, /recoverLocalTts/);
   assert.match(tool, /--apply-limit/);
+  assert.match(tool, /--tts-timeout-ms/);
   assert.doesNotMatch(tool, /postShort|uploadShort|publishAll|autonomous\/publish/);
+});
+
+test("local media repair CLI bounds backlog TTS repair by default", () => {
+  const args = parseLocalMediaRepairArgs([
+    "node",
+    "tools/local-media-repair.js",
+    "--apply-local-audio",
+  ]);
+
+  assert.equal(args.applyLocalAudio, true);
+  assert.equal(args.ttsTimeoutMs, DEFAULT_LOCAL_MEDIA_REPAIR_TTS_TIMEOUT_MS);
+});
+
+test("local media repair CLI accepts an explicit TTS timeout", () => {
+  const args = parseLocalMediaRepairArgs([
+    "node",
+    "tools/local-media-repair.js",
+    "--apply-local-audio",
+    "--tts-timeout-ms",
+    "45000",
+  ]);
+
+  assert.equal(args.ttsTimeoutMs, 45000);
 });
 
 test("apply-local audio repair writes only queued Liam audio proofs", async () => {

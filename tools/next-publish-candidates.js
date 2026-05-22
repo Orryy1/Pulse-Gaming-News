@@ -665,6 +665,15 @@ function combinePreflightQa({ content, video, platform, governance } = {}) {
   };
 }
 
+function cloneStoryForPreflight(story = {}) {
+  if (!story || typeof story !== "object") return {};
+  try {
+    return JSON.parse(JSON.stringify(story));
+  } catch {
+    return { ...story };
+  }
+}
+
 async function runPreflightQaForStory(story = {}, opts = {}) {
   const {
     runContentQa = require("../lib/services/content-qa").runContentQa,
@@ -675,20 +684,24 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
   } = opts;
 
   try {
-    const content = await runContentQa(story, {
+    const contentStory = cloneStoryForPreflight(story);
+    const videoStory = cloneStoryForPreflight(story);
+    const platformStory = cloneStoryForPreflight(story);
+    const governanceStory = cloneStoryForPreflight(story);
+    const content = await runContentQa(contentStory, {
       blockThinVisuals: true,
       ...(opts.contentQaOptions || {}),
     });
     const video = await runVideoQa(
-      story.exported_path,
-      buildVideoQaOptionsForStory(story, opts.videoQaOptions || {}),
+      videoStory.exported_path,
+      buildVideoQaOptionsForStory(videoStory, opts.videoQaOptions || {}),
     );
     const platform = await runPlatformVideoQa(
-      story.exported_path,
+      platformStory.exported_path,
       opts.platformVideoQaOptions || {},
     );
     const governance = await runStudioGovernancePreflight(
-      story,
+      governanceStory,
       opts.studioGovernanceOptions || {},
     );
     return combinePreflightQa({ content, video, platform, governance });
@@ -1105,6 +1118,7 @@ module.exports = {
   scoreAnalyticsFit,
   attachPreflightQa,
   attachStoryPreflight,
+  cloneStoryForPreflight,
   combinePreflightQa,
   durationVerdict,
   existingPublicPlatformFields,

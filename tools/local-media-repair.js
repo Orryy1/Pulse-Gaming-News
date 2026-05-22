@@ -44,6 +44,7 @@ const {
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
+const DEFAULT_LOCAL_MEDIA_REPAIR_TTS_TIMEOUT_MS = 120_000;
 
 function parseArgs(argv) {
   const args = {
@@ -54,6 +55,7 @@ function parseArgs(argv) {
     applyLocalReset: false,
     storyIds: [],
     outDir: OUT,
+    ttsTimeoutMs: DEFAULT_LOCAL_MEDIA_REPAIR_TTS_TIMEOUT_MS,
   };
   for (let i = 2; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -69,6 +71,10 @@ function parseArgs(argv) {
     }
     else if (arg === "--apply-limit") args.applyLimit = Number(argv[++i]);
     else if (arg === "--out-dir") args.outDir = argv[++i];
+    else if (arg === "--tts-timeout-ms") args.ttsTimeoutMs = Number(argv[++i]);
+    else if (arg.startsWith("--tts-timeout-ms=")) {
+      args.ttsTimeoutMs = Number(arg.slice("--tts-timeout-ms=".length));
+    }
     else if (arg === "--apply-local") args.applyLocal = true;
     else if (arg === "--apply-local-audio") {
       args.applyLocal = true;
@@ -213,6 +219,16 @@ async function main() {
   );
 
   if (args.applyLocalAudio) {
+    if (!process.env.LOCAL_TTS_TIMEOUT_MS) {
+      const configuredTimeout = Number(
+        process.env.LOCAL_MEDIA_REPAIR_TTS_TIMEOUT_MS || args.ttsTimeoutMs,
+      );
+      process.env.LOCAL_TTS_TIMEOUT_MS = String(
+        Number.isFinite(configuredTimeout) && configuredTimeout > 0
+          ? Math.trunc(configuredTimeout)
+          : DEFAULT_LOCAL_MEDIA_REPAIR_TTS_TIMEOUT_MS,
+      );
+    }
     const ttsLimits = applyLocalProofTtsLimits();
     console.log(
       `[local-media-repair] local_tts_timeout_ms=${ttsLimits.local_tts_timeout_ms} attempts=${ttsLimits.local_tts_request_attempts}`,
@@ -279,3 +295,8 @@ if (require.main === module) {
     process.exit(1);
   });
 }
+
+module.exports = {
+  DEFAULT_LOCAL_MEDIA_REPAIR_TTS_TIMEOUT_MS,
+  parseArgs,
+};

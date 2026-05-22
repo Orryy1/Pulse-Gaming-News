@@ -458,3 +458,44 @@ test("attachPreflightQa marks candidates with read-only QA evidence", async () =
   assert.ok(contentQaOptions.every((opts) => opts.blockThinVisuals === true));
   assert.match(formatNextPublishCandidatesMarkdown(report), /preflight=blocked/);
 });
+
+test("attachPreflightQa keeps read-only preflight mutations off source stories", async () => {
+  const stories = [
+    baseStory({
+      id: "bridge_clean",
+      title: "Forza Horizon 6 Just Changed Xbox's Steam Plan",
+      duration_seconds: 24,
+      duration_lane: "pulse_retention_short",
+      allow_retention_short_video: true,
+      render_lane: "visual_v4_production",
+      render_quality_class: "premium",
+    }),
+  ];
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-05-22T09:05:00.000Z",
+  });
+
+  await attachPreflightQa(report, stories, {
+    runContentQa: async (story) => {
+      story.qa_failed = true;
+      story.qa_failures = ["script_too_short (24 words, min 80)"];
+      story.publish_status = "failed";
+      story.publish_error = "qa_blocked: script_too_short (24 words, min 80)";
+      return { result: "pass", failures: [], warnings: [] };
+    },
+    runVideoQa: async (_path, _opts) => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async (story) => {
+      story.content_qa_failures = ["mutated_inside_governance"];
+      return { result: "pass", failures: [], warnings: [] };
+    },
+  });
+
+  assert.equal(report.candidates[0].preflight_qa.status, "pass");
+  assert.equal(stories[0].qa_failed, undefined);
+  assert.equal(stories[0].qa_failures, undefined);
+  assert.equal(stories[0].publish_status, null);
+  assert.equal(stories[0].publish_error, undefined);
+  assert.equal(stories[0].content_qa_failures, undefined);
+});

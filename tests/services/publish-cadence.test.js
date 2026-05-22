@@ -175,8 +175,11 @@ test("buildPublishCadenceReport: repaired script fallback rows stay in failed cl
 
   assert.equal(report.summary.published_count, 0);
   assert.equal(report.invalid_public_story_rows.length, 0);
-  assert.equal(report.failed_rows_with_platform_ids.length, 1);
-  assert.equal(report.summary.failed_rows_with_platform_ids_recent, 1);
+  assert.equal(report.failed_rows_with_platform_ids.length, 0);
+  assert.equal(report.summary.failed_rows_with_platform_ids_recent, 0);
+  assert.equal(report.summary.repaired_failed_rows_with_platform_ids, 1);
+  assert.equal(report.repaired_failed_rows_with_platform_ids.length, 1);
+  assert.equal(report.verdict, "green");
 });
 
 test("buildPublishCadenceReport: failed rows with platform IDs are not counted as public cadence events", () => {

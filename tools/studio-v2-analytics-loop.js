@@ -1,5 +1,5 @@
-/**
- * tools/studio-v2-analytics-loop.js — daily continuous-improvement loop.
+﻿/**
+ * tools/studio-v2-analytics-loop.js â€” daily continuous-improvement loop.
  *
  * Pulls the last 14 days of published stories + their YouTube
  * metrics, hands the payload to the configured LLM for pattern analysis,
@@ -30,8 +30,8 @@
  * --dry: skip the LLM call and Discord post. Just print the payload.
  *
  * Env:
- *   ANTHROPIC_API_KEY  — required for live runs
- *   DISCORD_WEBHOOK_URL — required for live runs
+ *   ANTHROPIC_API_KEY  â€” required for live runs
+ *   DISCORD_WEBHOOK_URL â€” required for live runs
  */
 
 "use strict";
@@ -122,6 +122,111 @@ function summariseStory(s) {
   };
 }
 
+function median(numbers = []) {
+  const values = numbers
+    .map(Number)
+    .filter((value) => Number.isFinite(value))
+    .sort((a, b) => a - b);
+  if (!values.length) return 0;
+  const mid = Math.floor(values.length / 2);
+  return values.length % 2 ? values[mid] : (values[mid - 1] + values[mid]) / 2;
+}
+
+function hookFragment(hook = "") {
+  return String(hook || "")
+    .replace(/[^\p{L}\p{N}\s']/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 8)
+    .join(" ");
+}
+
+function storyPerformanceScore(story = {}) {
+  const views = Number(story.views || 0);
+  const likeRatio = Number(story.likeToViewRatio || 0);
+  const commentRatio = Number(story.commentToViewRatio || 0);
+  const virality = Number(story.viralityScore || 0);
+  return views + likeRatio * 12000 + commentRatio * 8000 + virality * 8;
+}
+
+function groupMedianViewsByFlair(payload = []) {
+  const groups = new Map();
+  for (const item of payload) {
+    const flair = String(item.flair || "Unknown").trim() || "Unknown";
+    const views = groups.get(flair) || [];
+    views.push(Number(item.views || 0));
+    groups.set(flair, views);
+  }
+  return [...groups.entries()]
+    .map(([flair, views]) => ({ flair, median_views: median(views) }))
+    .sort((a, b) => b.median_views - a.median_views);
+}
+
+function buildSmallDatasetFindings(payload = [], { reason = "" } = {}) {
+  const note = reason ? ` Local analysis fallback used because ${reason}.` : "";
+  return [
+    "## Top patterns (this window)",
+    `Dataset is too small to call a reliable pattern (${payload.length} stories).${note}`,
+    "",
+    "## Underperforming patterns",
+    `Dataset is too small to call a reliable weak pattern (${payload.length} stories).`,
+    "",
+    "## Classification mix",
+    `Dataset is too small to compare flairs reliably (${payload.length} stories).`,
+    "",
+    "## Tomorrow's recommendation",
+    "Prioritise named game release details with launch timing, editions and player access in the first sentence.",
+  ].join("\n");
+}
+
+function buildDeterministicFindings(payload = [], { reason = "" } = {}) {
+  const rows = Array.isArray(payload) ? payload : [];
+  if (rows.length < 5) return buildSmallDatasetFindings(rows, { reason });
+
+  const ranked = [...rows].sort(
+    (a, b) => storyPerformanceScore(b) - storyPerformanceScore(a),
+  );
+  const top = ranked.slice(0, 3);
+  const weak = ranked.slice(-2).reverse();
+  const flairRows = groupMedianViewsByFlair(rows);
+  const bestFlair = flairRows[0] || { flair: "Unknown", median_views: 0 };
+  const weakestFlair = flairRows[flairRows.length - 1] || bestFlair;
+  const best = top[0] || {};
+  const releaseLed = /release|launch|state of play|pre.?order|edition|available|returns/i.test(
+    `${best.title || ""} ${best.hook || ""}`,
+  );
+  const recommendation = releaseLed
+    ? "Prioritise named game release details with launch timing, editions and player access in the first sentence."
+    : "Prioritise named games with a concrete player consequence and proof in the first sentence.";
+  const note = reason
+    ? `Local analysis fallback used because ${String(reason).slice(0, 180)}.`
+    : "Local analysis fallback used.";
+
+  return [
+    "## Top patterns (this window)",
+    ...top.map(
+      (item) =>
+        `- ${item.id}: named subject plus concrete player detail, "${hookFragment(item.hook)}" (${Number(item.views || 0)} views).`,
+    ),
+    "",
+    "## Underperforming patterns",
+    ...weak.map(
+      (item) =>
+        `- ${item.id}: broad discussion framing underperformed, "${hookFragment(item.hook)}" (${Number(item.views || 0)} views).`,
+    ),
+    "",
+    "## Classification mix",
+    `${bestFlair.flair} overperformed on median views (${Math.round(bestFlair.median_views)}). ${weakestFlair.flair} underperformed (${Math.round(weakestFlair.median_views)}).`,
+    "",
+    "## Tomorrow's recommendation",
+    recommendation,
+    "",
+    `Fallback note: ${note}`,
+  ].join("\n");
+}
+
 function buildPrompt(payload) {
   return [
     "You are an experienced YouTube Shorts analyst for the Pulse Gaming channel.",
@@ -199,7 +304,7 @@ async function appendFindings(findingsText, payload, daysWindow, opts = {}) {
   await fs.ensureDir(path.dirname(findingsPath));
   const existing = (await fs.pathExists(findingsPath))
     ? await fs.readFile(findingsPath, "utf8")
-    : "# Pulse Gaming — analytics findings (rolling)\n\nAppended by `tools/studio-v2-analytics-loop.js` once daily. Most recent at top.\n\n";
+    : "# Pulse Gaming â€” analytics findings (rolling)\n\nAppended by `tools/studio-v2-analytics-loop.js` once daily. Most recent at top.\n\n";
   const date = new Date().toISOString().slice(0, 10);
   const header = `\n---\n\n# ${date} (${daysWindow}-day window, ${payload.length} stories)\n\n`;
   // Insert new entry directly after the file's title block.
@@ -212,66 +317,78 @@ async function appendFindings(findingsText, payload, daysWindow, opts = {}) {
   return findingsPath;
 }
 
-async function main(argsIn) {
-  const args = argsIn || parseArgs(process.argv);
-  console.log(
-    `[analytics] window: ${args.days} days · dry=${args.dry ? "yes" : "no"}`,
+function extractTomorrowRecommendation(findings = "") {
+  const recoMatch = String(findings || "").match(
+    /## Tomorrow'?s recommendation\s*\n([^\n#]+)/,
   );
-  const stories = loadStories(args.days);
-  console.log(`[analytics] loaded ${stories.length} published stories`);
+  return recoMatch ? recoMatch[1].trim() : "";
+}
+
+async function runAnalyticsLoop({
+  args,
+  loadStoriesFn = loadStories,
+  callLlmFn = callClaude,
+  postDiscordFn = postDiscord,
+  appendFindingsFn = appendFindings,
+  log = console.log,
+} = {}) {
+  log(`[analytics] window: ${args.days} days - dry=${args.dry ? "yes" : "no"}`);
+  const stories = loadStoriesFn(args.days);
+  log(`[analytics] loaded ${stories.length} published stories`);
 
   if (stories.length === 0) {
-    console.log("[analytics] no published stories in window; nothing to do.");
-    return;
+    log("[analytics] no published stories in window; nothing to do.");
+    return { payload: [], findings: "", findingsPath: null, usedFallback: false };
   }
 
   const payload = stories.map(summariseStory);
   const prompt = buildPrompt(payload);
 
   if (args.dry) {
-    console.log("[analytics] DRY RUN — payload size:", payload.length);
-    console.log(prompt.slice(0, 1200));
-    return;
+    log("[analytics] DRY RUN - payload size:", payload.length);
+    log(prompt.slice(0, 1200));
+    return { payload, findings: "", findingsPath: null, usedFallback: false };
   }
 
   let findings;
+  let usedFallback = false;
+  let fallbackReason = "";
   try {
-    findings = await callClaude(prompt);
+    findings = await callLlmFn(prompt);
   } catch (err) {
-    console.error("[analytics] LLM call failed:", err.message);
-    await postDiscord(
-      `⚠️ Analytics loop FAILED: ${err.message.slice(0, 300)}`,
-    ).catch(() => {});
-    // Throw rather than process.exit so the in-process job runner
-    // records a failed job + retries on schedule rather than killing
-    // the entire worker process. The CLI wrapper at the bottom of
-    // this file converts the throw into an exit code 1 for direct
-    // `node tools/studio-v2-analytics-loop.js` invocations.
-    throw err;
+    fallbackReason = err.message || "local analyst unavailable";
+    log(`[analytics] LLM call failed, using deterministic fallback: ${fallbackReason}`);
+    findings = buildDeterministicFindings(payload, { reason: fallbackReason });
+    usedFallback = true;
   }
 
-  const findingsPath = await appendFindings(findings, payload, args.days);
-  console.log(`[analytics] findings appended → ${findingsPath}`);
+  const findingsPath = await appendFindingsFn(findings, payload, args.days);
+  log(`[analytics] findings appended -> ${findingsPath}`);
 
-  // Discord summary: send a stripped-down version (Tomorrow's
-  // recommendation only — the full file is for the operator dashboard).
-  const recoMatch = findings.match(
-    /## Tomorrow'?s recommendation\s*\n([^\n#]+)/,
-  );
-  const reco = recoMatch ? recoMatch[1].trim() : "";
+  const reco = extractTomorrowRecommendation(findings);
   const summary = [
-    `📊 **Analytics loop** (${args.days}-day window, ${payload.length} stories)`,
+    `Analytics loop (${args.days}-day window, ${payload.length} stories)`,
     "",
+    usedFallback
+      ? `Fallback: local analysis used after LLM failure (${fallbackReason.slice(0, 160)})`
+      : "",
     reco ? `**Tomorrow:** ${reco}` : "(no actionable recommendation produced)",
     "",
     `Full findings: \`${displayPath(findingsPath)}\``,
-  ].join("\n");
+  ].filter(Boolean).join("\n");
   try {
-    await postDiscord(summary);
-    console.log("[analytics] Discord summary posted");
+    await postDiscordFn(summary);
+    log("[analytics] Discord summary posted");
   } catch (err) {
-    console.error("[analytics] Discord post failed:", err.message);
+    log(`[analytics] Discord post failed: ${err.message}`);
   }
+
+  return { payload, findings, findingsPath, usedFallback, fallbackReason };
+}
+
+async function main(argsIn) {
+  const args = argsIn || parseArgs(process.argv);
+  return runAnalyticsLoop({ args });
 }
 
 if (require.main === module) {
@@ -283,9 +400,12 @@ if (require.main === module) {
 
 module.exports = {
   main,
+  runAnalyticsLoop,
   loadStories,
   summariseStory,
+  buildDeterministicFindings,
   buildPrompt,
+  extractTomorrowRecommendation,
   appendFindings,
   getAnalyticsDbPath,
   getFindingsPath,

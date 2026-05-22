@@ -174,6 +174,52 @@ test("formatDigest: empty window emits 'no stamped stories'", () => {
   assert.match(md, /No stamped stories in window/);
 });
 
+test("buildRenderHealthSummary: bridge candidates are reported separately from live DB stamps", () => {
+  const r = digest.buildRenderHealthSummary(
+    [story({ render_quality_class: undefined, render_lane: undefined })],
+    {
+      bridgeCandidates: [
+        {
+          id: "bridge-one",
+          approved_at: new Date().toISOString(),
+          render_quality_class: "premium",
+          render_lane: "visual_v4_production",
+          qa_visual_count: 8,
+          outro_present: true,
+          thumbnail_candidate_present: true,
+        },
+      ],
+    },
+  );
+
+  assert.equal(r.stamped, 0);
+  assert.equal(r.unstamped, 1);
+  assert.equal(r.bridge.candidate_count, 1);
+  assert.equal(r.bridge.stamped, 1);
+  assert.equal(r.bridge.quality.premium, 1);
+  assert.equal(r.bridge.lane.visual_v4_production, 1);
+  assert.equal(r.bridge.visual_count.median, 8);
+});
+
+test("formatDigest: bridge candidates make unstamped live debt explicit", () => {
+  const md = digest.formatDigest(
+    digest.buildRenderHealthSummary([], {
+      bridgeCandidates: [
+        {
+          id: "bridge-one",
+          approved_at: new Date().toISOString(),
+          render_quality_class: "premium",
+          render_lane: "visual_v4_production",
+          qa_visual_count: 8,
+        },
+      ],
+    }),
+  );
+
+  assert.match(md, /Bridge V4 final renders: 1 stamped/);
+  assert.match(md, /live DB still has no stamped rows/);
+});
+
 test("formatDigest: high thin-rate triggers 'hold off' operator hint", () => {
   const stories = [
     story({ distinct_visual_count: 1 }),
@@ -213,8 +259,18 @@ test("runRenderHealthDigest: pulls stories via injected db, returns summary + ma
   };
   const { summary, markdown } = await digest.runRenderHealthDigest({
     db: fakeDb,
+    bridgeCandidates: [
+      {
+        id: "bridge-one",
+        approved_at: new Date().toISOString(),
+        render_quality_class: "premium",
+        render_lane: "visual_v4_production",
+        qa_visual_count: 8,
+      },
+    ],
   });
   assert.equal(summary.stamped, 2);
+  assert.equal(summary.bridge.stamped, 1);
   assert.match(markdown, /Render health/);
 });
 

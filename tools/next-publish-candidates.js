@@ -3,6 +3,10 @@
 
 const fs = require("fs-extra");
 const path = require("node:path");
+const {
+  RETENTION_DURATION_LANE,
+  resolveDurationLane,
+} = require("../lib/services/short-duration-contract");
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
@@ -185,6 +189,52 @@ function durationVerdict(story = {}) {
       score: -8,
       reason: "duration_unknown",
       duration_seconds: null,
+    };
+  }
+  const durationLane = resolveDurationLane({ story });
+  if (durationLane === RETENTION_DURATION_LANE || story.allow_retention_short_video === true) {
+    const hardMin = numberOrNull(story.min_video_duration_seconds) ?? 15;
+    const targetMin = numberOrNull(story.target_video_duration_seconds_min) ?? 22;
+    const targetMax = numberOrNull(story.target_video_duration_seconds_max) ?? 45;
+    const max = numberOrNull(story.max_video_duration_seconds) ?? 75;
+    if (duration < hardMin) {
+      return {
+        status: "exclude",
+        score: -28,
+        reason: `retention_short_too_short_${duration.toFixed(2)}s`,
+        duration_seconds: duration,
+      };
+    }
+    if (duration < targetMin) {
+      return {
+        status: "review",
+        score: 2,
+        reason: "retention_short_below_target_review",
+        duration_seconds: duration,
+      };
+    }
+    if (duration <= targetMax) {
+      const centrePenalty = Math.abs(duration - Math.min(30, targetMax)) * 0.2;
+      return {
+        status: "publish_ready",
+        score: Math.round(24 - centrePenalty),
+        reason: "retention_short_target_window",
+        duration_seconds: duration,
+      };
+    }
+    if (duration <= max) {
+      return {
+        status: "review",
+        score: 4,
+        reason: "retention_short_extended_review",
+        duration_seconds: duration,
+      };
+    }
+    return {
+      status: "exclude",
+      score: -30,
+      reason: `retention_short_too_long_${duration.toFixed(2)}s`,
+      duration_seconds: duration,
     };
   }
   if (duration >= 61 && duration <= 75) {
@@ -495,6 +545,7 @@ function scoreCandidate(story = {}, options = {}) {
   const reasons = [
     approval.reason,
     duration.reason,
+    story.scheduler_bridge_source ? "scheduler_bridge_candidate" : null,
     ...analytics.reasons,
     ...platform.reasons,
     ...tiktok.reasons,
@@ -521,6 +572,51 @@ function scoreCandidate(story = {}, options = {}) {
       exported_path: story.exported_path || null,
     },
   };
+}
+
+function bridgeCandidateCount(stories = []) {
+  return (Array.isArray(stories) ? stories : []).filter(
+    (story) => story && story.scheduler_bridge_source,
+  ).length;
+}
+
+function mergeBridgeCandidates(stories = [], bridgeCandidates = []) {
+  const rows = Array.isArray(stories) ? stories.filter(Boolean) : [];
+  const bridges = Array.isArray(bridgeCandidates) ? bridgeCandidates.filter(Boolean) : [];
+  if (!bridges.length) return [...rows];
+
+  const byId = new Map(
+    rows.map((story, index) => [String(story.id || `row-${index}`), { story: { ...story }, index }]),
+  );
+  const merged = rows.map((story) => ({ ...story }));
+
+  for (const bridge of bridges) {
+    const id = String(bridge.id || "").trim();
+    if (!id) continue;
+    const existing = byId.get(id);
+    if (!existing) {
+      merged.push({
+        ...bridge,
+        scheduler_bridge_source: bridge.scheduler_bridge_source || "scheduler_bridge_candidates",
+      });
+      continue;
+    }
+    const live = existing.story;
+    const overlay = {
+      ...live,
+      ...bridge,
+      scheduler_bridge_source: bridge.scheduler_bridge_source || "scheduler_bridge_candidates",
+      scheduler_bridge_overlay_live_row: true,
+    };
+    for (const field of PUBLIC_PLATFORM_FIELDS) {
+      if (realPlatformId(live[field]) && !realPlatformId(bridge[field])) {
+        overlay[field] = live[field];
+      }
+    }
+    merged[existing.index] = overlay;
+  }
+
+  return merged;
 }
 
 function summariseQaResult(result = {}) {
@@ -706,6 +802,7 @@ function buildNextPublishCandidatesReport(stories, options = {}) {
   const requestedStoryId = normaliseStoryId(options.storyId);
   const inputRows = Array.isArray(stories) ? stories : [];
   const rows = filterStoriesByStoryId(inputRows, requestedStoryId);
+  const bridgeCount = bridgeCandidateCount(rows);
   const candidates = [];
   const excluded = [];
   let pendingAudioCount = 0;
@@ -751,6 +848,15 @@ function buildNextPublishCandidatesReport(stories, options = {}) {
     candidates: candidates.slice(0, limit),
     excluded: excluded.slice(0, Math.max(limit, 20)),
   };
+
+  if (bridgeCount > 0) {
+    report.bridge_candidates = {
+      count: bridgeCount,
+      mode: "dry_run_overlay",
+      source: "scheduler_bridge_candidates",
+      db_mutation: false,
+    };
+  }
 
   if (requestedStoryId) {
     report.story_filter = {
@@ -892,6 +998,7 @@ function parseArgs(argv) {
     analyticsPath: DEFAULT_ANALYTICS_PATH,
     preflightQa: false,
     storyId: null,
+    bridgeCandidatesPath: null,
   };
   for (let i = 2; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -902,6 +1009,13 @@ function parseArgs(argv) {
     else if (arg.startsWith("--limit=")) args.limit = Number(arg.split("=")[1] || DEFAULT_LIMIT);
     else if (arg === "--analytics") args.analyticsPath = argv[++i] || args.analyticsPath;
     else if (arg.startsWith("--analytics=")) args.analyticsPath = arg.slice("--analytics=".length);
+    else if (arg === "--bridge-candidates" || arg === "--bridge") {
+      args.bridgeCandidatesPath = argv[++i] || null;
+    }
+    else if (arg.startsWith("--bridge-candidates=")) {
+      args.bridgeCandidatesPath = arg.slice("--bridge-candidates=".length);
+    }
+    else if (arg.startsWith("--bridge=")) args.bridgeCandidatesPath = arg.slice("--bridge=".length);
     else if (arg === "--story-id" || arg === "--story") args.storyId = normaliseStoryId(argv[++i]);
     else if (arg.startsWith("--story-id=")) args.storyId = normaliseStoryId(arg.slice("--story-id=".length));
     else if (arg.startsWith("--story=")) args.storyId = normaliseStoryId(arg.slice("--story=".length));
@@ -918,6 +1032,20 @@ async function readAnalytics(pathname) {
   return "";
 }
 
+async function readBridgeCandidates(pathname) {
+  if (!pathname) return [];
+  try {
+    const resolved = path.resolve(pathname);
+    if (!(await fs.pathExists(resolved))) return [];
+    const value = await fs.readJson(resolved);
+    if (Array.isArray(value)) return value;
+    if (Array.isArray(value?.candidates)) return value.candidates;
+  } catch {
+    return [];
+  }
+  return [];
+}
+
 async function loadStories() {
   const db = require("../lib/db");
   return db.getStories();
@@ -932,19 +1060,21 @@ async function runCli(argv = process.argv) {
     return { exitCode: 0 };
   }
 
-  const [stories, analyticsText] = await Promise.all([
+  const [stories, analyticsText, bridgeCandidates] = await Promise.all([
     loadStories(),
     readAnalytics(args.analyticsPath),
+    readBridgeCandidates(args.bridgeCandidatesPath),
   ]);
-  const report = buildNextPublishCandidatesReport(stories, {
+  const mergedStories = mergeBridgeCandidates(stories, bridgeCandidates);
+  const report = buildNextPublishCandidatesReport(mergedStories, {
     analyticsText,
     analyticsPath: args.analyticsPath,
     limit: args.limit,
     storyId: args.storyId,
   });
   if (args.preflightQa) {
-    await attachPreflightQa(report, stories);
-    await attachStoryPreflight(report, stories, args.storyId);
+    await attachPreflightQa(report, mergedStories);
+    await attachStoryPreflight(report, mergedStories, args.storyId);
   }
   const markdown = formatNextPublishCandidatesMarkdown(report);
   await fs.ensureDir(OUT);
@@ -979,6 +1109,7 @@ module.exports = {
   durationVerdict,
   existingPublicPlatformFields,
   filterStoriesByStoryId,
+  mergeBridgeCandidates,
   parseArgs,
   runPreflightQaForStory,
   summariseQaResult,

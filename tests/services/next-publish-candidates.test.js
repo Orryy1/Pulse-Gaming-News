@@ -9,6 +9,7 @@ const {
   formatNextPublishCandidatesMarkdown,
   parseArgs,
   scoreAnalyticsFit,
+  mergeBridgeCandidates,
 } = require("../../tools/next-publish-candidates");
 
 const analyticsText = [
@@ -291,6 +292,76 @@ test("next publish report keeps 76-90s extended Shorts in review instead of excl
   assert.equal(extended.status, "review");
   assert.ok(extended.reasons.includes("extended_short_review"));
   assert.ok(report.excluded.some((row) => row.id === "runaway_short"));
+});
+
+test("next publish report treats governed retention-short V4 rows as publish-ready", () => {
+  const report = buildNextPublishCandidatesReport(
+    [
+      baseStory({
+        id: "v4_retention_short",
+        title: "Forza Horizon 6 Just Broke Xbox's Steam Ceiling",
+        auto_approved: true,
+        duration_seconds: 24.4,
+        duration_lane: "pulse_retention_short",
+        allow_retention_short_video: true,
+        render_lane: "visual_v4_production",
+        render_quality_class: "premium",
+      }),
+    ],
+    { analyticsText, generatedAt: "2026-05-22T06:00:00.000Z" },
+  );
+
+  assert.equal(report.excluded.length, 0);
+  assert.equal(report.candidates[0].id, "v4_retention_short");
+  assert.equal(report.candidates[0].status, "publish_ready");
+  assert.ok(report.candidates[0].reasons.includes("retention_short_target_window"));
+});
+
+test("next publish report keeps sub-target V4 retention shorts visible for review", () => {
+  const report = buildNextPublishCandidatesReport(
+    [
+      baseStory({
+        id: "v4_subtarget_short",
+        title: "Star Fox Just Got A Switch 2 Route",
+        auto_approved: true,
+        duration_seconds: 18.2,
+        duration_lane: "pulse_retention_short",
+        allow_retention_short_video: true,
+      }),
+    ],
+    { analyticsText, generatedAt: "2026-05-22T06:00:00.000Z" },
+  );
+
+  assert.equal(report.excluded.length, 0);
+  assert.equal(report.candidates[0].status, "review");
+  assert.ok(report.candidates[0].reasons.includes("retention_short_below_target_review"));
+});
+
+test("next publish report can merge scheduler bridge candidates without mutating DB rows", () => {
+  const live = [baseStory({ id: "live_story", title: "Nintendo confirms a Switch 2 bundle outcome" })];
+  const bridged = [
+    baseStory({
+      id: "bridge_story",
+      title: "Destiny 2 Is Getting Its Final Update",
+      auto_approved: true,
+      duration_seconds: 25,
+      duration_lane: "pulse_retention_short",
+      allow_retention_short_video: true,
+      scheduler_bridge_source: "goal_production_cutover",
+    }),
+  ];
+
+  const merged = mergeBridgeCandidates(live, bridged);
+  const report = buildNextPublishCandidatesReport(merged, {
+    analyticsText,
+    generatedAt: "2026-05-22T06:00:00.000Z",
+  });
+
+  assert.equal(merged.length, 2);
+  assert.ok(report.bridge_candidates);
+  assert.equal(report.bridge_candidates.count, 1);
+  assert.ok(report.candidates.some((candidate) => candidate.id === "bridge_story"));
+  assert.ok(report.candidates.find((candidate) => candidate.id === "bridge_story").reasons.includes("scheduler_bridge_candidate"));
 });
 
 test("analytics specificity scoring rewards named corporate outcomes and penalises vague speculation", () => {

@@ -2,6 +2,8 @@
 "use strict";
 
 require("dotenv").config({ quiet: true });
+const fs = require("node:fs");
+const path = require("node:path");
 
 /**
  * tools/render-health.js — print the render-health digest on demand.
@@ -23,8 +25,20 @@ const {
   runRenderHealthDigest,
 } = require("../lib/intelligence/render-health-digest");
 
+const ROOT = path.resolve(__dirname, "..");
+const DEFAULT_BRIDGE_CANDIDATES_PATH = path.join(
+  ROOT,
+  "output",
+  "goal-contract",
+  "scheduler_bridge_candidates.json",
+);
+
 function parseArgs(argv) {
-  const args = { hours: 24, json: false };
+  const args = {
+    hours: 24,
+    json: false,
+    bridgeCandidatesPath: DEFAULT_BRIDGE_CANDIDATES_PATH,
+  };
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--json") {
@@ -35,6 +49,14 @@ function parseArgs(argv) {
     } else if (a.startsWith("--hours=")) {
       const n = Number(a.slice("--hours=".length));
       if (Number.isFinite(n) && n > 0) args.hours = n;
+    } else if (a === "--bridge-candidates" || a === "--bridge") {
+      args.bridgeCandidatesPath = argv[++i] || "";
+    } else if (a.startsWith("--bridge-candidates=")) {
+      args.bridgeCandidatesPath = a.slice("--bridge-candidates=".length);
+    } else if (a.startsWith("--bridge=")) {
+      args.bridgeCandidatesPath = a.slice("--bridge=".length);
+    } else if (a === "--no-bridge-candidates" || a === "--no-bridge") {
+      args.bridgeCandidatesPath = "";
     } else if (a === "--help" || a === "-?") {
       args.help = true;
     }
@@ -46,8 +68,37 @@ function printHelp() {
   process.stdout.write(
     "Usage: node tools/render-health.js [--hours N] [--json]\n" +
       "  --hours N   Look-back window in hours (default 24)\n" +
-      "  --json      Print the summary as JSON instead of markdown\n",
+      "  --json      Print the summary as JSON instead of markdown\n" +
+      "  --bridge-candidates PATH  Include governed V4 bridge candidates\n" +
+      "  --no-bridge-candidates    Ignore bridge candidates\n",
   );
+}
+
+function resolveCandidatePath(candidatePath) {
+  if (!candidatePath) return "";
+  return path.isAbsolute(candidatePath)
+    ? candidatePath
+    : path.resolve(ROOT, candidatePath);
+}
+
+function readBridgeCandidates(candidatePath) {
+  const resolved = resolveCandidatePath(candidatePath);
+  if (!resolved || !fs.existsSync(resolved)) return [];
+
+  const parsed = JSON.parse(fs.readFileSync(resolved, "utf8"));
+  const candidates = Array.isArray(parsed)
+    ? parsed
+    : Array.isArray(parsed.candidates)
+      ? parsed.candidates
+      : Array.isArray(parsed.scheduler_bridge_candidates)
+        ? parsed.scheduler_bridge_candidates
+        : [];
+
+  const loadedAt = new Date().toISOString();
+  return candidates.map((candidate) => ({
+    ...candidate,
+    _bridge_loaded_at: loadedAt,
+  }));
 }
 
 async function main() {
@@ -56,18 +107,16 @@ async function main() {
     printHelp();
     return;
   }
-  const originalLog = console.log;
-  console.log = (...items) => {
-    process.stderr.write(`${items.join(" ")}\n`);
-  };
-  let result;
-  try {
-    result = await runRenderHealthDigest({
-      windowHours: args.hours,
-    });
-  } finally {
-    console.log = originalLog;
-  }
+  // Keep the operator artefact clean; lib/db logs connection details via
+  // console.log during module initialisation.
+  console.log = () => {};
+  console.info = () => {};
+  console.warn = () => {};
+  const bridgeCandidates = readBridgeCandidates(args.bridgeCandidatesPath);
+  const result = await runRenderHealthDigest({
+    windowHours: args.hours,
+    bridgeCandidates,
+  });
   const { summary, markdown } = result;
   if (args.json) {
     process.stdout.write(JSON.stringify(summary, null, 2) + "\n");

@@ -58,8 +58,14 @@ function parseArgs(argv) {
   for (let i = 2; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--limit") args.limit = Number(argv[++i]);
-    else if (arg === "--story") {
+    else if (arg === "--story" || arg === "--story-id") {
       args.storyIds.push(...String(argv[++i] || "").split(",").map((value) => value.trim()).filter(Boolean));
+    }
+    else if (arg.startsWith("--story=")) {
+      args.storyIds.push(...arg.slice("--story=".length).split(",").map((value) => value.trim()).filter(Boolean));
+    }
+    else if (arg.startsWith("--story-id=")) {
+      args.storyIds.push(...arg.slice("--story-id=".length).split(",").map((value) => value.trim()).filter(Boolean));
     }
     else if (arg === "--apply-limit") args.applyLimit = Number(argv[++i]);
     else if (arg === "--out-dir") args.outDir = argv[++i];

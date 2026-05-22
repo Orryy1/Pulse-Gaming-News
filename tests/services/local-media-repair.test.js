@@ -463,6 +463,7 @@ test("local media repair CLI loads .env before opening SQLite and defaults to dr
   assert.match(tool, /--apply-local-audio/);
   assert.match(tool, /--apply-local-reset/);
   assert.match(tool, /--story/);
+  assert.match(tool, /--story-id/);
   assert.match(tool, /buildStaleAudioQaFailureResetPlan/);
   assert.match(tool, /applyStaleAudioQaFailureReset/);
   assert.match(tool, /probeLocalAudioAcoustics/);

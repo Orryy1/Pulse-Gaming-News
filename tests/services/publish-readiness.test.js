@@ -329,3 +329,33 @@ test("summariseRecentFailedCandidates: active window is separate from historical
     count: 2,
   });
 });
+
+test("summariseRecentFailedCandidates: excludes repaired public rows from active failure pressure", () => {
+  const summary = pr.summariseRecentFailedCandidates(
+    [
+      {
+        id: "repaired-public",
+        qa_failed: true,
+        publish_error: "script_validation_review_required_public_row_repair",
+        public_row_repair: { reason: "public_script_validation_fallback" },
+        updated_at: "2026-05-02T08:30:00.000Z",
+      },
+      {
+        id: "active-failure",
+        qa_failed: true,
+        qa_failures: ["audio_duration_too_long (104.91s, max 74.00s)"],
+        qa_failed_at: "2026-05-02T08:00:00.000Z",
+      },
+    ],
+    {
+      limit: 5,
+      now: Date.parse("2026-05-02T09:00:00.000Z"),
+      recentWindowHours: 24,
+    },
+  );
+
+  assert.equal(summary.count, 1);
+  assert.equal(summary.repaired_public_row_count, 1);
+  assert.equal(summary.recent_count, 1);
+  assert.deepEqual(summary.ids, ["active-failure"]);
+});

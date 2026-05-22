@@ -38,6 +38,30 @@ test("script coherence audit finds unpublished bad scripts and skips published r
   assert.equal(rows[0].approved, true);
 });
 
+test("script coherence audit can target explicit story ids for repair reports", () => {
+  const rows = auditScriptCoherenceStories(
+    [
+      {
+        id: "bad-1",
+        title: "Bad script one",
+        cta: "Follow Pulse Gaming so you never miss a beat",
+        full_script:
+          "The community is buzzing because this raises more questions than answers. Follow Pulse Gaming so you never miss a beat.",
+      },
+      {
+        id: "bad-2",
+        title: "Bad script two",
+        cta: "Follow Pulse Gaming so you never miss a beat",
+        full_script:
+          "Nobody expected this update and the community is buzzing. Follow Pulse Gaming so you never miss a beat.",
+      },
+    ],
+    { storyIds: ["bad-2"] },
+  );
+
+  assert.deepEqual(rows.map((row) => row.story_id), ["bad-2"]);
+});
+
 test("markStoryForScriptReview clears approval and preserves story fields", () => {
   const story = markStoryForScriptReview(
     {
@@ -84,6 +108,7 @@ test("ops:script-coherence-audit command is registered and dry-run first", () =>
 
   const tool = fs.readFileSync(path.join(ROOT, "tools", "script-coherence-audit.js"), "utf8");
   assert.match(tool, /Default is dry-run/);
+  assert.match(tool, /--story-id/);
   assert.match(tool, /--apply-local/);
   assert.match(tool, /db\.getDb\(\)\.backup/);
 });

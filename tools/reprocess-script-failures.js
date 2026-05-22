@@ -49,6 +49,7 @@ function parseArgs(argv = process.argv.slice(2)) {
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--apply-local") args.applyLocal = true;
+    else if (arg === "--dry-run") args.applyLocal = false;
     else if (arg === "--json") args.json = true;
     else if (arg === "--story" || arg === "--story-id") {
       const value = argv[++i];

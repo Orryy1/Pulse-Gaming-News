@@ -10,6 +10,12 @@ const {
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
+const DEFAULT_BRIDGE_CANDIDATES_PATH = path.join(
+  ROOT,
+  "output",
+  "goal-contract",
+  "scheduler_bridge_candidates.json",
+);
 const DEFAULT_ANALYTICS_PATH = "D:\\pulse-data\\analytics_findings.md";
 const DEFAULT_LIMIT = 12;
 
@@ -21,6 +27,22 @@ const PUBLIC_PLATFORM_FIELDS = [
   "facebook_post_id",
   "twitter_post_id",
   "x_post_id",
+];
+
+const BRIDGE_REPLACED_MEDIA_FIELDS = [
+  "downloaded_images",
+  "game_images",
+  "downloaded_videos",
+  "local_motion_clips",
+  "motion_clips",
+  "sfx_assets",
+  "sound_effects",
+  "music_assets",
+  "image_path",
+  "thumbnail_candidate_path",
+  "hf_thumbnail_path",
+  "music_path",
+  "sfx_path",
 ];
 
 const COMPANY_TERMS = [
@@ -608,6 +630,10 @@ function mergeBridgeCandidates(stories = [], bridgeCandidates = []) {
       scheduler_bridge_source: bridge.scheduler_bridge_source || "scheduler_bridge_candidates",
       scheduler_bridge_overlay_live_row: true,
     };
+    for (const field of BRIDGE_REPLACED_MEDIA_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(bridge, field)) continue;
+      overlay[field] = Array.isArray(live[field]) ? [] : null;
+    }
     for (const field of PUBLIC_PLATFORM_FIELDS) {
       if (realPlatformId(live[field]) && !realPlatformId(bridge[field])) {
         overlay[field] = live[field];
@@ -635,13 +661,14 @@ function summariseQaResult(result = {}) {
   };
 }
 
-function combinePreflightQa({ content, video, platform, governance } = {}) {
+function combinePreflightQa({ content, video, platform, governance, publicCopy } = {}) {
   const checks = {
     content: summariseQaResult(content),
     video: summariseQaResult(video),
     platform: summariseQaResult(platform),
     governance: summariseQaResult(governance),
   };
+  if (publicCopy) checks.public_copy = summariseQaResult(publicCopy);
   const blockers = [];
   const warnings = [];
 
@@ -674,6 +701,50 @@ function cloneStoryForPreflight(story = {}) {
   }
 }
 
+function cleanText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function firstSentence(value = "") {
+  const text = cleanText(value);
+  if (!text) return "";
+  const match = text.match(/^(.+?[.!?])(?:\s|$)/);
+  return cleanText(match ? match[1] : text);
+}
+
+function publicCopyManifestForStory(story = {}) {
+  const script = cleanText(story.narration_script || story.full_script || story.tts_script);
+  return {
+    canonical_subject: cleanText(story.canonical_subject || story.canonical_game),
+    canonical_game: cleanText(story.canonical_game),
+    selected_title: cleanText(
+      story.selected_title ||
+        story.public_title ||
+        story.upload_title ||
+        story.suggested_title ||
+        story.title,
+    ),
+    first_spoken_line: cleanText(
+      story.first_spoken_line ||
+        story.narration_hook ||
+        story.hook ||
+        firstSentence(script),
+    ),
+    narration_script: script,
+    description: cleanText(story.description),
+  };
+}
+
+function summarisePublicCopyQaResult(result = {}) {
+  const failures = Array.isArray(result.failures) ? result.failures : [];
+  const warnings = Array.isArray(result.warnings) ? result.warnings : [];
+  return {
+    result: result.verdict === "fail" ? "fail" : "pass",
+    failures: failures.map((failure) => String(failure).replace(/^public_copy:/, "")),
+    warnings: warnings.map((warning) => String(warning).replace(/^public_copy:/, "")),
+  };
+}
+
 async function runPreflightQaForStory(story = {}, opts = {}) {
   const {
     runContentQa = require("../lib/services/content-qa").runContentQa,
@@ -681,6 +752,7 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
     buildVideoQaOptionsForStory = require("../lib/services/video-qa").buildVideoQaOptionsForStory,
     runPlatformVideoQa = require("../lib/services/platform-video-qa").runPlatformVideoQa,
     runStudioGovernancePreflight = require("../lib/services/studio-governance-preflight").runStudioGovernancePreflight,
+    runPublicCopyQa = (manifest) => require("../lib/goal-public-copy-qa").evaluateGoalPublicCopy(manifest),
   } = opts;
 
   try {
@@ -688,6 +760,7 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
     const videoStory = cloneStoryForPreflight(story);
     const platformStory = cloneStoryForPreflight(story);
     const governanceStory = cloneStoryForPreflight(story);
+    const publicCopyStory = cloneStoryForPreflight(story);
     const content = await runContentQa(contentStory, {
       blockThinVisuals: true,
       ...(opts.contentQaOptions || {}),
@@ -704,7 +777,10 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
       governanceStory,
       opts.studioGovernanceOptions || {},
     );
-    return combinePreflightQa({ content, video, platform, governance });
+    const publicCopy = summarisePublicCopyQaResult(
+      await runPublicCopyQa(publicCopyManifestForStory(publicCopyStory)),
+    );
+    return combinePreflightQa({ content, video, platform, governance, publicCopy });
   } catch (err) {
     return {
       status: "blocked",
@@ -1011,7 +1087,7 @@ function parseArgs(argv) {
     analyticsPath: DEFAULT_ANALYTICS_PATH,
     preflightQa: false,
     storyId: null,
-    bridgeCandidatesPath: null,
+    bridgeCandidatesPath: DEFAULT_BRIDGE_CANDIDATES_PATH,
   };
   for (let i = 2; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -1022,6 +1098,9 @@ function parseArgs(argv) {
     else if (arg.startsWith("--limit=")) args.limit = Number(arg.split("=")[1] || DEFAULT_LIMIT);
     else if (arg === "--analytics") args.analyticsPath = argv[++i] || args.analyticsPath;
     else if (arg.startsWith("--analytics=")) args.analyticsPath = arg.slice("--analytics=".length);
+    else if (arg === "--no-bridge" || arg === "--no-bridge-candidates") {
+      args.bridgeCandidatesPath = null;
+    }
     else if (arg === "--bridge-candidates" || arg === "--bridge") {
       args.bridgeCandidatesPath = argv[++i] || null;
     }
@@ -1068,7 +1147,7 @@ async function runCli(argv = process.argv) {
   const args = parseArgs(argv);
   if (args.help) {
     process.stdout.write(
-      "Usage: node tools/next-publish-candidates.js [--json] [--limit N] [--analytics PATH] [--preflight-qa] [--story-id ID]\n",
+      "Usage: node tools/next-publish-candidates.js [--json] [--limit N] [--analytics PATH] [--preflight-qa] [--story-id ID] [--bridge PATH|--no-bridge]\n",
     );
     return { exitCode: 0 };
   }
@@ -1112,6 +1191,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  DEFAULT_BRIDGE_CANDIDATES_PATH,
   buildNextPublishCandidatesReport,
   formatNextPublishCandidatesMarkdown,
   scoreCandidate,

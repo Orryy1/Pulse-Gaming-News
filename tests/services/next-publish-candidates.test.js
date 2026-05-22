@@ -1,7 +1,9 @@
 const { test } = require("node:test");
 const assert = require("node:assert");
+const path = require("node:path");
 
 const {
+  DEFAULT_BRIDGE_CANDIDATES_PATH,
   buildNextPublishCandidatesReport,
   attachPreflightQa,
   attachStoryPreflight,
@@ -28,6 +30,9 @@ function baseStory(overrides = {}) {
     duration_seconds: 66,
     breaking_score: 60,
     publish_status: null,
+    canonical_subject: "Nintendo",
+    first_spoken_line: "Nintendo just confirmed why the Amazon deal collapsed.",
+    description: "Nintendo confirmed the Amazon pricing dispute. Source: Nintendo.",
     full_script: "Nintendo executive Reggie Fils-Aime says Amazon's pricing demand collapsed.",
     ...overrides,
   };
@@ -218,6 +223,16 @@ test("next publish CLI parses story-specific preflight flags", () => {
   assert.equal(inline.storyId, "1thsxw7");
 });
 
+test("next publish CLI defaults to the scheduler bridge candidate overlay", () => {
+  const args = parseArgs(["node", "tools/next-publish-candidates.js"]);
+
+  assert.equal(
+    args.bridgeCandidatesPath,
+    path.join(process.cwd(), "output", "goal-contract", "scheduler_bridge_candidates.json"),
+  );
+  assert.equal(args.bridgeCandidatesPath, DEFAULT_BRIDGE_CANDIDATES_PATH);
+});
+
 test("next publish report can focus candidate ranking on one story id", () => {
   const report = buildNextPublishCandidatesReport(
     [
@@ -364,6 +379,59 @@ test("next publish report can merge scheduler bridge candidates without mutating
   assert.ok(report.candidates.find((candidate) => candidate.id === "bridge_story").reasons.includes("scheduler_bridge_candidate"));
 });
 
+test("bridge candidate overlay drops stale live article media arrays", () => {
+  const live = [
+    baseStory({
+      id: "same_story",
+      title: "Old article-deck story",
+      downloaded_images: [
+        {
+          path: "output/image_cache/article-context.jpg",
+          source_type: "article_context_image",
+          rights_risk_class: "article_context",
+        },
+      ],
+      game_images: ["https://example.invalid/old-card.jpg"],
+    }),
+  ];
+  const bridged = [
+    baseStory({
+      id: "same_story",
+      title: "Spellcasters Chronicles Is Shutting Down",
+      scheduler_bridge_source: "goal_production_cutover",
+      video_clips: [
+        {
+          asset_id: "same_story-owned-motion-1",
+          path: "output/generated-motion/same_story/hook_slam.mp4",
+          source_url: "local://pulse-generated-motion/same_story/hook_slam",
+          source_type: "internally_generated_motion_graphic",
+          rights_risk_class: "owned_generated_motion",
+        },
+      ],
+      rights_ledger: [
+        {
+          asset_id: "same_story-owned-motion-1",
+          path: "output/generated-motion/same_story/hook_slam.mp4",
+          source_url: "local://pulse-generated-motion/same_story/hook_slam",
+          source_type: "internally_generated_motion_graphic",
+          licence_basis: "owned_generated_editorial_motion_graphic",
+          commercial_use_allowed: true,
+          allowed_platforms: ["youtube", "instagram", "facebook", "tiktok"],
+          risk_score: 0.03,
+        },
+      ],
+    }),
+  ];
+
+  const merged = mergeBridgeCandidates(live, bridged);
+
+  assert.equal(merged[0].id, "same_story");
+  assert.equal(merged[0].scheduler_bridge_overlay_live_row, true);
+  assert.deepEqual(merged[0].downloaded_images, []);
+  assert.deepEqual(merged[0].game_images, []);
+  assert.equal(merged[0].video_clips.length, 1);
+});
+
 test("analytics specificity scoring rewards named corporate outcomes and penalises vague speculation", () => {
   const specific = scoreAnalyticsFit(baseStory({
     title: "GameStop takeover bid rejected by eBay board as not credible",
@@ -423,6 +491,41 @@ test("preflight QA summary includes studio governance blockers", () => {
   assert.equal(combined.status, "blocked");
   assert.deepEqual(combined.blockers, ["governance:publish_verdict_not_green"]);
   assert.equal(combined.checks.governance.result, "fail");
+});
+
+test("attachPreflightQa blocks malformed public copy before scheduler promotion", async () => {
+  const stories = [
+    baseStory({
+      id: "bad_public_copy",
+      title: "Kickstarter Just Walked Back Its Rules",
+      selected_title: "Kickstarter Just Walked Back Its Rules",
+      canonical_subject: "Kickstarter",
+      first_spoken_line: "Kickstarter just walked back one of its most controversial rule changes.",
+      description: '"Honestly?. Source: Eurogamer.',
+      duration_seconds: 24,
+      duration_lane: "pulse_retention_short",
+      allow_retention_short_video: true,
+      full_script:
+        "Kickstarter just walked back one of its most controversial rule changes. Eurogamer reports the company apologised after backlash from game creators.",
+    }),
+  ];
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-05-22T09:05:00.000Z",
+  });
+
+  await attachPreflightQa(report, stories, {
+    runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+  });
+
+  assert.equal(report.candidates[0].preflight_qa.status, "blocked");
+  assert.ok(
+    report.candidates[0].preflight_qa.blockers.includes("public_copy:malformed_quote_description"),
+  );
+  assert.equal(report.candidates[0].status, "review");
 });
 
 test("attachPreflightQa marks candidates with read-only QA evidence", async () => {

@@ -19,6 +19,7 @@ const {
   Modes:
     hunt      -One-off Reddit + RSS fetch + script generation
     produce   -Generate audio, images, assemble videos
+              Optional: --story-id <id> or --story <id>
     publish   -Upload to YouTube, TikTok, Instagram
               Optional: --story-id <id> or --story <id>
     schedule  -Start autonomous cron scheduler (recommended)
@@ -100,8 +101,15 @@ async function runHunt() {
   console.log("[run] Hunt complete");
 }
 
-async function runProduce() {
+async function runProduce({ storyId = null } = {}) {
   console.log("[run] === PRODUCE MODE ===");
+
+  if (storyId) {
+    process.env.PRODUCE_STORY_IDS = storyId;
+    delete process.env.PRODUCE_STORY_LIMIT;
+    console.log(`[run] Targeting story id: ${storyId}`);
+  }
+
   const produceStartedAtMs = Date.now();
   const beforeStories = await db.getStories();
 
@@ -539,7 +547,7 @@ if (!mode) {
     "  node run.js hunt      -Fetch Reddit + RSS stories and generate scripts",
   );
   console.log(
-    "  node run.js produce   -Generate audio, images and assemble videos",
+    "  node run.js produce [--story-id <id>] -Generate audio, images and assemble videos",
   );
   console.log(
     "  node run.js publish [--story-id <id>] -Upload to YouTube, TikTok, Instagram",
@@ -566,7 +574,9 @@ if (!mode) {
         await runHunt();
         break;
       case "produce":
-        await runProduce();
+        await runProduce({
+          storyId: parsePublishStoryIdArg(process.argv.slice(3)),
+        });
         break;
       case "publish":
         await runPublish({

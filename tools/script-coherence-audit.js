@@ -20,6 +20,7 @@ function parseArgs(argv = process.argv.slice(2)) {
   const args = {
     applyLocal: false,
     includePublished: false,
+    storyIds: [],
     limit: 50,
     help: false,
   };
@@ -27,7 +28,30 @@ function parseArgs(argv = process.argv.slice(2)) {
     const arg = argv[i];
     if (arg === "--apply-local") args.applyLocal = true;
     else if (arg === "--include-published") args.includePublished = true;
-    else if (arg === "--limit") {
+    else if (arg === "--story-id" || arg === "--story") {
+      args.storyIds.push(
+        ...String(argv[++i] || "")
+          .split(",")
+          .map((value) => value.trim())
+          .filter(Boolean),
+      );
+    } else if (arg.startsWith("--story-id=")) {
+      args.storyIds.push(
+        ...arg
+          .slice("--story-id=".length)
+          .split(",")
+          .map((value) => value.trim())
+          .filter(Boolean),
+      );
+    } else if (arg.startsWith("--story=")) {
+      args.storyIds.push(
+        ...arg
+          .slice("--story=".length)
+          .split(",")
+          .map((value) => value.trim())
+          .filter(Boolean),
+      );
+    } else if (arg === "--limit") {
       const value = Number(argv[++i]);
       if (Number.isFinite(value) && value > 0) args.limit = value;
     } else if (arg.startsWith("--limit=")) {
@@ -37,6 +61,7 @@ function parseArgs(argv = process.argv.slice(2)) {
       args.help = true;
     }
   }
+  args.storyIds = [...new Set(args.storyIds)];
   return args;
 }
 
@@ -50,7 +75,7 @@ function validateArgs(args = {}) {
 
 function printHelp() {
   process.stdout.write(
-    "Usage: node tools/script-coherence-audit.js [--limit N] [--apply-local] [--include-published]\n" +
+    "Usage: node tools/script-coherence-audit.js [--story-id ID[,ID]] [--limit N] [--apply-local] [--include-published]\n" +
       "  Default is dry-run. --include-published is for inspection only and cannot be combined with --apply-local.\n",
   );
 }
@@ -70,6 +95,7 @@ async function main() {
   const stories = typeof db.getStoriesSync === "function" ? db.getStoriesSync() : await db.getStories();
   const rows = auditScriptCoherenceStories(stories, {
     includePublished: args.includePublished,
+    storyIds: args.storyIds,
     limit: args.limit,
   });
 

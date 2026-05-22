@@ -305,6 +305,24 @@ test("run.js: publish accepts --story-id/--story and passes storyId without bypa
   );
 });
 
+test("run.js: produce accepts --story-id and routes through existing produce selectors", () => {
+  assert.match(
+    RUN_SRC,
+    /async function runProduce\(\{\s*storyId\s*=\s*null\s*\}\s*=\s*\{\}\)/,
+    "run.js produce should accept an optional storyId",
+  );
+  assert.match(
+    RUN_SRC,
+    /process\.env\.PRODUCE_STORY_IDS\s*=\s*storyId/,
+    "targeted produce should set the existing PRODUCE_STORY_IDS selector",
+  );
+  assert.match(
+    RUN_SRC,
+    /case\s+["']produce["']:[\s\S]*parsePublishStoryIdArg\(process\.argv\.slice\(3\)\)/,
+    "produce should parse the same --story-id/--story form as publish",
+  );
+});
+
 test("publisher.js: duplicate published-story gate runs before upload", () => {
   const idx = SRC.indexOf("findPublishedTitleDuplicate(candidate, stories)");
   assert.ok(idx > 0, "published duplicate gate must exist in candidate loop");

@@ -395,6 +395,7 @@ test("reprocess tool args include bounded local LLM timeout", () => {
   assert.equal(parseArgs(["--max-attempts", "2"]).maxAttempts, 2);
   assert.equal(parseArgs(["--max-attempts=3"]).maxAttempts, 3);
   assert.equal(parseArgs(["--editor"]).skipEditor, false);
+  assert.equal(parseArgs(["--apply-local", "--dry-run"]).applyLocal, false);
   assert.equal(parseArgs(["--force-story"]).forceStory, true);
   assert.equal(parseArgs(["--source-bound-only"]).sourceBoundOnly, true);
 });

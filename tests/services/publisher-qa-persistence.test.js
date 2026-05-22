@@ -357,6 +357,8 @@ const NOTIFY_RESOLVED = require.resolve("../../notify.js");
 const SENTRY_RESOLVED = require.resolve("../../lib/sentry.js");
 const PUBLISH_BLOCK_RESOLVED =
   require.resolve("../../lib/services/publish-block.js");
+const PUBLISH_WINDOW_POLICY_RESOLVED =
+  require.resolve("../../lib/services/publish-window-policy.js");
 const ENGAGEMENT_RESOLVED = require.resolve("../../engagement.js");
 const BLOG_RESOLVED = require.resolve("../../blog/generator.js");
 const DISCORD_AUTO_POST_RESOLVED =
@@ -407,6 +409,7 @@ function stubDownstreamPublisherDeps() {
     shouldPostStoryPoll: () => false,
     markVideoDropPosted: () => {},
     markStoryPollPosted: () => {},
+    isPublishFailureOrReviewBlocked: () => false,
   });
 }
 
@@ -415,6 +418,7 @@ function clearPublisherCache() {
   // live in require.cache and are picked up by publisher's top-level
   // requires on the next load — if we delete them here we'd lose the
   // stubs.
+  delete require.cache[PUBLISH_WINDOW_POLICY_RESOLVED];
   delete require.cache[PUBLISHER_RESOLVED];
 }
 
@@ -462,6 +466,9 @@ function setupMocks({
     },
   });
   stubModule(VQA_RESOLVED, {
+    buildVideoQaOptionsForStory() {
+      return {};
+    },
     async runVideoQa() {
       return vqaResult;
     },
@@ -565,6 +572,9 @@ function setupMocksPerStory({
     },
   });
   stubModule(VQA_RESOLVED, {
+    buildVideoQaOptionsForStory() {
+      return {};
+    },
     async runVideoQa() {
       return vqaResult;
     },

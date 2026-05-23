@@ -1189,8 +1189,10 @@ async function generateVoiceboxTTS({
   return outputPath;
 }
 
-async function generateTTS(text, outputPath, rateOverride) {
-  const provider = resolveTtsProvider(process.env);
+async function generateTTS(text, outputPath, rateOverride, providerOverride = null) {
+  const provider = providerOverride
+    ? String(providerOverride || "").toLowerCase()
+    : resolveTtsProvider(process.env);
   const voiceSettings = Object.assign(
     {},
     brand.voiceSettings || {
@@ -1352,7 +1354,7 @@ async function generateTtsForStory({
   generateTts = generateTTS,
 } = {}) {
   if (!isLocalTtsProvider(provider)) {
-    await generateTts(text, outputPath, rate);
+    await generateTts(text, outputPath, rate, provider);
     return { ok: true, attempts: 1, recovery: null };
   }
 

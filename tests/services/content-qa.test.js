@@ -739,6 +739,52 @@ test("runContentQa: strict local publish blocks missing voice sidecar", async ()
   }
 });
 
+test("runContentQa: ElevenLabs production narration passes without local pitch diagnostics", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-voice-qa-"));
+  const mp4 = path.join(tmp, "out.mp4");
+  const audio = path.join(tmp, "voice.mp3");
+  const timestamps = path.join(tmp, "voice_timestamps.json");
+  const transcript = goodStory().full_script.replace(
+    "A dead franchise",
+    "Forza Horizon 6",
+  );
+  await fs.writeFile(mp4, Buffer.alloc(5 * 1024 * 1024));
+  await fs.writeFile(audio, Buffer.from("fake elevenlabs audio"));
+  await fs.writeJson(timestamps, {
+    meta: {
+      provider: "elevenlabs",
+      source: "elevenlabs-production-path",
+      transcript,
+      elevenlabs: {
+        voiceId: "TX3LPaxmHKxFdv7VOQHJ",
+        modelId: "eleven_multilingual_v2",
+      },
+    },
+    words: [
+      { word: "Forza", start: 0, end: 0.2 },
+      { word: "Horizon", start: 0.2, end: 0.5 },
+    ],
+  });
+
+  try {
+    const qa = await runContentQa(
+      goodStory({
+        exported_path: mp4,
+        audio_path: audio,
+        full_script: transcript,
+        tts_script: transcript,
+      }),
+      {
+        env: { DEPLOYMENT_MODE: "production", AUTO_PUBLISH: "true" },
+      },
+    );
+    assert.strictEqual(qa.result, "pass", JSON.stringify(qa));
+    assert.ok(!qa.warnings.includes("approved_voice:pitch_profile_unverified"));
+  } finally {
+    await fs.remove(tmp).catch(() => {});
+  }
+});
+
 test("runContentQa: non-strict publish reports voice provenance issues as warnings", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-voice-qa-"));
   const mp4 = path.join(tmp, "out.mp4");

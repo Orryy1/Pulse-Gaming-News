@@ -581,6 +581,9 @@ function exclusionReason(story = {}, options = {}) {
   if (publicFields.length > 0) {
     return `already_has_public_platform_id:${publicFields.join(",")}`;
   }
+  if (story.stale_scheduler_bridge_candidate === true) {
+    return "stale_scheduler_bridge_candidate:not_in_current_bridge";
+  }
   const failures = qaFailures(story);
   if (failures.length > 0) return `qa_failure:${failures[0]}`;
   const approval = approvalScore(story);
@@ -660,6 +663,9 @@ function mergeBridgeCandidates(stories = [], bridgeCandidates = []) {
   const rows = Array.isArray(stories) ? stories.filter(Boolean) : [];
   const bridges = Array.isArray(bridgeCandidates) ? bridgeCandidates.filter(Boolean) : [];
   if (!bridges.length) return [...rows];
+  const bridgeIds = new Set(
+    bridges.map((bridge) => String(bridge.id || bridge.story_id || "").trim()).filter(Boolean),
+  );
 
   const byId = new Map(
     rows.map((story, index) => [String(story.id || `row-${index}`), { story: { ...story }, index }]),
@@ -696,7 +702,18 @@ function mergeBridgeCandidates(stories = [], bridgeCandidates = []) {
     merged[existing.index] = overlay;
   }
 
-  return merged;
+  return merged.map((story) => {
+    const id = String(story.id || story.story_id || "").trim();
+    if (!id || !story.scheduler_bridge_source || bridgeIds.has(id) || story.scheduler_bridge_overlay_live_row) {
+      return story;
+    }
+    return {
+      ...story,
+      stale_scheduler_bridge_candidate: true,
+      stale_scheduler_bridge_source: story.scheduler_bridge_source,
+      scheduler_bridge_source: null,
+    };
+  });
 }
 
 function summariseQaResult(result = {}) {
@@ -910,6 +927,22 @@ function incidentGuardPreflightForStory(story = {}) {
     directorPlan: story.visual_v4_director_plan || story.director_plan || {},
   });
   const generatedVisualFailures = asArray(visualEvidence.blockers);
+  const directMotionExceptionApproved =
+    story.breaking_news_flag === true ||
+    story.human_reviewed_direct_video_motion_exception === true ||
+    story.direct_video_motion_exception_approved === true ||
+    renderManifest.human_reviewed_direct_video_motion_exception === true ||
+    renderManifest.direct_video_motion_exception_approved === true;
+  const requiresDirectVideoMotion =
+    !directMotionExceptionApproved &&
+    (
+      /visual_v4/i.test(renderLane) ||
+      /production_v4/i.test(cleanText(renderManifest.visual_tier || renderManifest.tier)) ||
+      /premium/i.test(renderClass)
+    );
+  if (requiresDirectVideoMotion && Number(visualEvidence.direct_video_motion_asset_count) < 1) {
+    generatedVisualFailures.push("visual_evidence:direct_video_motion_missing");
+  }
   if (report.verdict === "pass" && !generatedVisualFailures.length) {
     return {
       result: "pass",
@@ -1089,6 +1122,7 @@ function buildNextPublishCandidatesReport(stories, options = {}) {
         id: story.id || "unknown",
         title: String(story.title || "").slice(0, 180),
         reason,
+        scheduler_bridge_source: story.scheduler_bridge_source || null,
       });
       continue;
     }
@@ -1119,7 +1153,7 @@ function buildNextPublishCandidatesReport(stories, options = {}) {
       pending_audio: pendingAudioCount,
     },
     candidates: candidates.slice(0, limit),
-    excluded: excluded.slice(0, Math.max(limit, 20)),
+    excluded: excludedRowsForReport(excluded, { limit }),
   };
 
   if (bridgeCount > 0) {
@@ -1140,6 +1174,26 @@ function buildNextPublishCandidatesReport(stories, options = {}) {
   }
 
   return report;
+}
+
+function excludedRowsForReport(excluded = [], { limit = DEFAULT_LIMIT } = {}) {
+  const displayCap = Math.max(Number(limit) || DEFAULT_LIMIT, 20);
+  const rows = [];
+  const seen = new Set();
+  function add(row) {
+    const id = String(row?.id || "");
+    if (!id || seen.has(id)) return;
+    rows.push(row);
+    seen.add(id);
+  }
+  for (const row of excluded.slice(0, displayCap)) add(row);
+  for (const row of excluded) {
+    const reason = String(row?.reason || "");
+    if (row?.scheduler_bridge_source && /^already_has_public_platform_id:/i.test(reason)) {
+      add(row);
+    }
+  }
+  return rows;
 }
 
 function summariseAnalytics(text = "") {

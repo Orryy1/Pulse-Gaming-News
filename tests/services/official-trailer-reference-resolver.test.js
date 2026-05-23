@@ -307,6 +307,52 @@ test("official trailer resolver derives Steam motion targets from exact-subject 
   assert.equal(plan.references[0].segment_validation_eligible, true);
 });
 
+test("official trailer resolver derives Steam motion targets from repaired rights-ledger evidence", async () => {
+  const plan = await buildOfficialTrailerReferencePlan(
+    baseStory({
+      id: "expanse-v4",
+      title: "The Expanse Shows Real Gameplay",
+      canonical_subject: "The Expanse: Osiris Reborn",
+      canonical_game: "The Expanse: Osiris Reborn",
+      full_script:
+        "The Expanse: Osiris Reborn finally showed real gameplay. Xbox showed it during Xbox Partner Preview.",
+      rights_ledger: [
+        {
+          asset_id: "expanse_screenshot_1",
+          asset_type: "screenshot_derived_motion_clip",
+          source_type: "screenshot",
+          source_url:
+            "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/3727390/abc/ss_expanse.1920x1080.jpg",
+          licence_basis: "source_documented_transformative_editorial_use",
+          approval_status: "approved_for_transformative_editorial_use",
+        },
+      ],
+    }),
+    {
+      steamLookup: async (appId) => ({
+        appId,
+        success: true,
+        title: "The Expanse: Osiris Reborn",
+        movies: [
+          {
+            id: 44,
+            name: "Gameplay Trailer",
+            mp4: { max: "https://cdn.example/expanse-gameplay.mp4" },
+          },
+        ],
+      }),
+    },
+  );
+
+  assert.equal(plan.motion_reference_readiness, "official_reference_found");
+  assert.equal(plan.verified_store_targets.length, 1);
+  assert.equal(plan.verified_store_targets[0].store_app_id, "3727390");
+  assert.equal(plan.verified_store_targets[0].entity, "The Expanse: Osiris Reborn");
+  assert.equal(plan.references.length, 1);
+  assert.equal(plan.references[0].source_url, "https://cdn.example/expanse-gameplay.mp4");
+  assert.equal(plan.references[0].source_url_kind, "direct_video");
+});
+
 test("official trailer resolver loader includes visual deck exact-subject assets", () => {
   const { map } = buildStillsAssetMapFromReports([
     {

@@ -19,6 +19,10 @@ const {
   segmentKeyForClipRef,
   VALIDATOR_RULESET_VERSION,
 } = require("../../lib/studio/v2/official-trailer-segment-validator");
+const {
+  buildClipRefsFromReport,
+  reportOutputTargets,
+} = require("../../tools/official-trailer-segment-validator");
 
 function clip(overrides = {}) {
   return {
@@ -40,6 +44,25 @@ function clip(overrides = {}) {
 
 function tempOutputRoot(name) {
   return path.join(process.cwd(), "test", "output", "tmp-segment-validator", name);
+}
+
+function referencePlan(storyId, sourceUrl) {
+  return {
+    story_id: storyId,
+    references: [
+      {
+        source_url: sourceUrl,
+        source_type: "steam_storefront_video_reference",
+        source_family: `steam_${storyId}`,
+        entity: storyId,
+        provider: "steam",
+        store_app_id: "12345",
+        movie_id: storyId,
+        duration_seconds: 78,
+        segment_validation_eligible: true,
+      },
+    ],
+  };
 }
 
 async function cleanTempRoot(root) {
@@ -114,6 +137,82 @@ test("official trailer segment validator reports source provenance for each samp
   assert.equal(report.segments[0].provider, "steam");
   assert.equal(report.segments[0].reference_title, "RDR2 Launch Trailer");
   assert.equal(report.segments[0].store_app_title, "Red Dead Redemption 2");
+});
+
+test("segment validator CLI scopes batch clip refs from explicit reference reports", () => {
+  const refs = buildClipRefsFromReport(
+    {
+      plans: [
+        {
+          story_id: "stale-frame-story",
+          frames: [
+            {
+              status: "accepted",
+              entity: "Stale Game",
+              source_url:
+                "https://video.twimg.com/amplify_video/2047677198685933568/vid/avc1/1280x720/stale.mp4?tag=14",
+              source_type: "official_trailer",
+              target_time_seconds: 42,
+              qa: {
+                verdict: "pass",
+                prescan: {
+                  edge_density: 0.24,
+                  saturation_mean: 0.42,
+                  text_overlay_likelihood: 0.05,
+                },
+              },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      plans: [
+        referencePlan(
+          "story-a",
+          "https://video.akamai.steamstatic.com/store_trailers/12345/1001/hash/hls_264_master.m3u8",
+        ),
+        referencePlan(
+          "story-b",
+          "https://video.akamai.steamstatic.com/store_trailers/12345/1002/hash/hls_264_master.m3u8",
+        ),
+      ],
+    },
+    null,
+    {
+      includeExploratoryWindows: true,
+      exploratoryStartSeconds: [36],
+      candidateWindowsPerSource: 1,
+      maxSegments: 8,
+    },
+  );
+
+  const storyIds = [...new Set(refs.map((ref) => ref.story_id).filter(Boolean))].sort();
+  assert.deepEqual(storyIds, ["story-a", "story-b"]);
+  assert.equal(refs.some((ref) => ref.story_id === "stale-frame-story"), false);
+});
+
+test("segment validator CLI writes story-scoped report aliases for one-story runs", () => {
+  const targets = reportOutputTargets({
+    applyLocal: true,
+    storyId: "1s4e2ws",
+  });
+  const relativeJsonPaths = targets.map((target) => path.relative(process.cwd(), target.json));
+
+  assert.ok(
+    relativeJsonPaths.includes(
+      path.join("test", "output", "official_trailer_segment_validation_apply_local.json"),
+    ),
+  );
+  assert.ok(
+    relativeJsonPaths.includes(
+      path.join(
+        "test",
+        "output",
+        "official_trailer_segment_validation_story_1s4e2ws_apply_local.json",
+      ),
+    ),
+  );
 });
 
 test("official trailer segment validator apply-local marks clean sampled windows as Flash Lane allowed", async () => {

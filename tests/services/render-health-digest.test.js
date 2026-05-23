@@ -201,6 +201,78 @@ test("buildRenderHealthSummary: bridge candidates are reported separately from l
   assert.equal(r.bridge.visual_count.median, 8);
 });
 
+test("buildRenderHealthSummary: bridge candidates expose real-media and generated-only evidence", () => {
+  const now = new Date().toISOString();
+  const generatedClips = Array.from({ length: 8 }, (_, index) => ({
+    id: `generated-${index + 1}`,
+    path: `output/generated-motion/generated-only/${index + 1}.mp4`,
+    source_url: `local://pulse-generated-motion/generated-only/${index + 1}`,
+    source_type: "internally_generated_motion_graphic",
+    rights_risk_class: "owned_generated_motion",
+    source_family: `generated_family_${index + 1}`,
+  }));
+  const stillClips = Array.from({ length: 7 }, (_, index) => ({
+    id: `still-${index + 1}`,
+    path: `/tmp/still-${index + 1}.mp4`,
+    source_url: `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1/ss_${index + 1}.jpg`,
+    source_type: "screenshot_derived_motion_clip",
+    rights_risk_class: "source_documented_transformative_editorial_use",
+    source_family: `steam_still_${index + 1}`,
+  }));
+  const directClips = Array.from({ length: 5 }, (_, index) => ({
+    id: `direct-${index + 1}`,
+    path: `/tmp/direct-${index + 1}.mp4`,
+    source_url: `https://cdn.example.test/gameplay-${index + 1}.mp4`,
+    source_type: "official_trailer_segment",
+    rights_risk_class: "official_reference_only",
+    source_family: `official_video_${index + 1}`,
+  }));
+
+  const r = digest.buildRenderHealthSummary([], {
+    bridgeCandidates: [
+      {
+        id: "generated-only",
+        approved_at: now,
+        render_quality_class: "premium",
+        render_lane: "visual_v4_production",
+        qa_visual_count: 8,
+        visual_v4_bridge_video_clips: generatedClips,
+      },
+      {
+        id: "still-motion",
+        approved_at: now,
+        render_quality_class: "premium",
+        render_lane: "visual_v4_production",
+        qa_visual_count: 7,
+        visual_v4_bridge_video_clips: stillClips,
+        rights_ledger: stillClips,
+      },
+      {
+        id: "direct-video",
+        approved_at: now,
+        render_quality_class: "premium",
+        render_lane: "visual_v4_production",
+        qa_visual_count: 5,
+        visual_v4_bridge_video_clips: directClips,
+        rights_ledger: directClips,
+      },
+    ],
+  });
+
+  assert.equal(r.bridge.visual_evidence.real_media_ready_count, 2);
+  assert.equal(r.bridge.visual_evidence.generated_only_motion_deck_count, 1);
+  assert.equal(r.bridge.visual_evidence.no_real_visual_media_asset_count, 1);
+  assert.equal(r.bridge.visual_evidence.direct_video_motion_count, 1);
+  assert.equal(r.bridge.visual_evidence.screenshot_derived_only_count, 1);
+
+  const md = digest.formatDigest(r);
+  assert.match(md, /Bridge visual evidence: real media 2\/3/);
+  assert.match(md, /direct-video motion 1\/3/);
+  assert.match(md, /generated-only 1/);
+  assert.match(md, /screenshot-derived only 1/);
+  assert.match(md, /direct-video motion coverage is low/);
+});
+
 test("formatDigest: bridge candidates make unstamped live debt explicit", () => {
   const md = digest.formatDigest(
     digest.buildRenderHealthSummary([], {

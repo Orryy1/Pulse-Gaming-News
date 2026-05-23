@@ -139,6 +139,31 @@ function printHelp() {
   );
 }
 
+function safeReportStemPart(value) {
+  return String(value || "")
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 96);
+}
+
+function reportOutputTargets(args = {}) {
+  const modeStem = args.applyLocal ? "apply_local" : "dry_run";
+  const targets = [
+    `official_trailer_segment_validation_${modeStem}`,
+    "official_trailer_segment_validation_v1",
+  ];
+  const safeStoryId = safeReportStemPart(args.storyId);
+  if (safeStoryId) {
+    targets.push(`official_trailer_segment_validation_story_${safeStoryId}_${modeStem}`);
+  }
+  return [...new Set(targets)].map((stem) => ({
+    stem,
+    json: path.join(OUT, `${stem}.json`),
+    md: path.join(OUT, `${stem}.md`),
+  }));
+}
+
 async function loadFrameReport(args) {
   const filePath = path.resolve(ROOT, args.frameReport);
   if (!(await fs.pathExists(filePath))) {
@@ -177,8 +202,17 @@ async function loadOptionalAcquisitionPlan(args) {
 }
 
 function buildClipRefsFromReport(frameReport, referenceReport, storyId, args = {}) {
+  const referenceStoryIds = [
+    ...new Set(
+      (Array.isArray(referenceReport?.plans) ? referenceReport.plans : [])
+        .map((plan) => plan.story_id)
+        .filter(Boolean),
+    ),
+  ];
   const storyIds = storyId
     ? [storyId]
+    : referenceStoryIds.length
+      ? referenceStoryIds
     : [
         ...new Set(
           (Array.isArray(frameReport?.plans) ? frameReport.plans : [])
@@ -303,21 +337,27 @@ async function main() {
 
   const markdown = renderOfficialTrailerSegmentValidationMarkdown(report);
   await fs.ensureDir(OUT);
-  const stem = args.applyLocal
-    ? "official_trailer_segment_validation_apply_local"
-    : "official_trailer_segment_validation_dry_run";
-  await fs.writeJson(path.join(OUT, `${stem}.json`), report, { spaces: 2 });
-  await fs.writeFile(path.join(OUT, `${stem}.md`), markdown, "utf8");
-  await fs.writeJson(path.join(OUT, "official_trailer_segment_validation_v1.json"), report, {
-    spaces: 2,
-  });
-  await fs.writeFile(path.join(OUT, "official_trailer_segment_validation_v1.md"), markdown, "utf8");
+  const outputTargets = reportOutputTargets(args);
+  for (const target of outputTargets) {
+    await fs.writeJson(target.json, report, { spaces: 2 });
+    await fs.writeFile(target.md, markdown, "utf8");
+  }
 
   process.stdout.write(args.json ? JSON.stringify(report, null, 2) + "\n" : markdown);
-  process.stderr.write(`[segment-validator] wrote test/output/${stem}.{json,md}\n`);
+  const writtenStems = outputTargets.map((target) => `test/output/${target.stem}.{json,md}`).join(", ");
+  process.stderr.write(`[segment-validator] wrote ${writtenStems}\n`);
 }
 
-main().catch((err) => {
-  process.stderr.write(`[segment-validator] ${err.stack || err.message}\n`);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    process.stderr.write(`[segment-validator] ${err.stack || err.message}\n`);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  buildClipRefsFromReport,
+  main,
+  parseArgs,
+  reportOutputTargets,
+};

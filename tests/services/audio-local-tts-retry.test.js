@@ -285,6 +285,24 @@ test("generateTtsForStory: server_down triggers one recovery then keeps the succ
   assert.equal(story.local_tts_attempts[0].recovery.action, "start+prewarm");
 });
 
+test("generateTtsForStory: remote provider overrides local environment defaults", async () => {
+  const seen = [];
+
+  const result = await generateTtsForStory({
+    story: { id: "rss_remote_tts" },
+    text: "Pulse Gaming ElevenLabs override test.",
+    outputPath: "output/audio/rss_remote_tts.mp3",
+    provider: "elevenlabs",
+    generateTts: async (text, outputPath, rate, provider) => {
+      seen.push({ text, outputPath, rate, provider });
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].provider, "elevenlabs");
+});
+
 test("generateTtsForStory: unsafe voice does not attempt server recovery", async () => {
   const story = { id: "rss_bad_voice" };
   let recoveries = 0;

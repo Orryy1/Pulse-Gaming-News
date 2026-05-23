@@ -312,6 +312,37 @@ test("story-specific preflight checks requested story even when it is excluded f
   assert.match(formatNextPublishCandidatesMarkdown(report), /Story Preflight/);
 });
 
+test("next publish report preserves already-public bridge exclusions beyond the display cap", () => {
+  const excludedNoise = Array.from({ length: 25 }, (_, index) =>
+    baseStory({
+      id: `already-public-${index}`,
+      title: `Already Public Filler ${index}`,
+      youtube_post_id: `yt-${index}`,
+    }),
+  );
+  const bridgedAlreadyPublic = baseStory({
+    id: "bridge-already-public",
+    title: "Forza Horizon 6 Becomes Highest Rated Game of 2026",
+    scheduler_bridge_source: "scheduler_bridge_candidates",
+    youtube_post_id: "yt-live",
+    youtube_url: "https://youtube.com/shorts/live",
+  });
+
+  const report = buildNextPublishCandidatesReport([...excludedNoise, bridgedAlreadyPublic], {
+    analyticsText,
+    generatedAt: "2026-05-23T08:25:00.000Z",
+    limit: 2,
+  });
+
+  assert.ok(
+    report.excluded.some(
+      (row) =>
+        row.id === "bridge-already-public" &&
+        /^already_has_public_platform_id:/i.test(row.reason),
+    ),
+  );
+});
+
 test("next publish report keeps 76-90s extended Shorts in review instead of excluding them", () => {
   const report = buildNextPublishCandidatesReport(
     [
@@ -486,6 +517,61 @@ test("bridge candidate overlay drops stale live article media arrays", () => {
   assert.deepEqual(merged[0].downloaded_images, []);
   assert.deepEqual(merged[0].game_images, []);
   assert.equal(merged[0].video_clips.length, 1);
+});
+
+test("current bridge manifest excludes stale live bridge rows that are not present", () => {
+  const live = [
+    baseStory({
+      id: "stale_bridge_story",
+      title: "Spellcasters Chronicles Is Shutting Down",
+      auto_approved: true,
+      exported_path: "output/final/stale_bridge_story.mp4",
+      audio_path: "output/audio/stale_bridge_story.mp3",
+      duration_seconds: 42,
+      scheduler_bridge_source: "old_goal_production_cutover",
+    }),
+    baseStory({
+      id: "fresh_bridge_story",
+      title: "Forza Horizon 6 Broke Xbox's Steam Ceiling",
+      auto_approved: true,
+      exported_path: "output/final/fresh_bridge_story.mp4",
+      audio_path: "output/audio/fresh_bridge_story.mp3",
+      duration_seconds: 42,
+      duration_lane: "normal_production",
+      min_video_duration_seconds: 35,
+      max_video_duration_seconds: 60,
+    }),
+  ];
+  const bridged = [
+    baseStory({
+      id: "fresh_bridge_story",
+      title: "Forza Horizon 6 Broke Xbox's Steam Ceiling",
+      auto_approved: true,
+      exported_path: "output/final/fresh_bridge_story.mp4",
+      audio_path: "output/audio/fresh_bridge_story.mp3",
+      duration_seconds: 42,
+      duration_lane: "normal_production",
+      min_video_duration_seconds: 35,
+      max_video_duration_seconds: 60,
+      scheduler_bridge_source: "goal_production_cutover",
+    }),
+  ];
+
+  const merged = mergeBridgeCandidates(live, bridged);
+  const report = buildNextPublishCandidatesReport(merged, {
+    analyticsText,
+    generatedAt: "2026-05-23T10:45:00.000Z",
+  });
+
+  assert.ok(report.candidates.some((candidate) => candidate.id === "fresh_bridge_story"));
+  assert.ok(!report.candidates.some((candidate) => candidate.id === "stale_bridge_story"));
+  assert.ok(
+    report.excluded.some(
+      (row) =>
+        row.id === "stale_bridge_story" &&
+        row.reason === "stale_scheduler_bridge_candidate:not_in_current_bridge",
+    ),
+  );
 });
 
 test("analytics specificity scoring rewards named corporate outcomes and penalises vague speculation", () => {
@@ -713,7 +799,7 @@ test("bridge preflight accepts visual QA and benchmark evidence from scheduler c
           asset_id: "bridge-official-a",
           path: "clip-a.mp4",
           source_url: "https://cdn.example.com/boltgun/a.mp4",
-          source_type: "official_reference_clip",
+          source_type: "official_trailer_segment",
           rights_risk_class: "official_reference_only",
           source_family: "official_trailer_a",
         },
@@ -721,7 +807,7 @@ test("bridge preflight accepts visual QA and benchmark evidence from scheduler c
           asset_id: "bridge-official-b",
           path: "clip-b.mp4",
           source_url: "https://cdn.example.com/boltgun/b.mp4",
-          source_type: "official_reference_clip",
+          source_type: "official_trailer_segment",
           rights_risk_class: "official_reference_only",
           source_family: "official_trailer_b",
         },
@@ -729,7 +815,7 @@ test("bridge preflight accepts visual QA and benchmark evidence from scheduler c
           asset_id: "bridge-official-c",
           path: "clip-c.mp4",
           source_url: "https://cdn.example.com/boltgun/c.mp4",
-          source_type: "official_reference_clip",
+          source_type: "official_trailer_segment",
           rights_risk_class: "official_reference_only",
           source_family: "official_trailer_c",
         },
@@ -828,6 +914,88 @@ test("bridge preflight blocks generated-only orange-card motion decks", async ()
 
   assert.equal(preflight.status, "blocked");
   assert.ok(preflight.blockers.includes("incident_guard:visual_evidence:generated_only_motion_deck"));
+});
+
+test("bridge preflight blocks screenshot-derived-only motion decks", async () => {
+  const scores = {
+    motion_density_score: 92,
+    first_3_seconds_hook_score: 88,
+    source_lock_quality_score: 86,
+    caption_legibility_score: 94,
+    card_hierarchy_score: 84,
+    media_house_polish_score: 90,
+  };
+  const screenshotClips = Array.from({ length: 8 }, (_, index) => ({
+    id: `bridge-screenshot-${index + 1}`,
+    path: `output/video_cache/bridge-screenshot-${index + 1}.mp4`,
+    source_url: `https://shared.akamai.steamstatic.com/store_item_assets/app/shot-${index + 1}.jpg`,
+    source_type: "screenshot",
+    media_kind: "visual_still",
+    source_family: `steam_screenshot_${index + 1}`,
+  }));
+  const preflight = await runPreflightQaForStory(
+    baseStory({
+      id: "bridge_screenshot_only",
+      title: "The Expanse Shows A Risky First Look",
+      selected_title: "The Expanse Shows A Risky First Look",
+      canonical_subject: "The Expanse: Osiris Reborn",
+      first_spoken_line: "The Expanse: Osiris Reborn finally showed its first risky look.",
+      description: "Xbox showed the first look at The Expanse: Osiris Reborn. Source: Xbox.",
+      full_script:
+        "The Expanse: Osiris Reborn finally showed its first risky look. Xbox showed the footage, but this package only has screenshot-derived motion.",
+      scheduler_bridge_source: "goal_production_cutover",
+      render_lane: "visual_v4_production",
+      render_quality_class: "premium",
+      qa_visual_count: 8,
+      exported_path: "D:/pulse-data/media/output/final/bridge_screenshot_only.mp4",
+      audio_path: "D:/pulse-data/media/output/audio/bridge_screenshot_only.mp3",
+      timestamps_path: "D:/pulse-data/media/output/audio/bridge_screenshot_only_timestamps.json",
+      manual_caption_path: "D:/pulse-data/media/output/captions/bridge_screenshot_only.srt",
+      primary_source: "Xbox",
+      discovery_source: "Xbox",
+      publish_verdict: { verdict: "GREEN" },
+      platform_publish_manifest: {
+        publish_status: "GREEN",
+        platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts"] },
+        outputs: {
+          youtube_shorts: { title: "The Expanse Shows A Risky First Look" },
+        },
+      },
+      visual_quality_report: {
+        result: "pass",
+        scores,
+        frame_rules: {
+          first_frame_subject: "The Expanse: Osiris Reborn",
+          first_frame_text: "EXPANSE FIRST LOOK",
+          source_locks_readable: true,
+        },
+        failures: [],
+      },
+      media_house_benchmark: {
+        result: "pass",
+        scores,
+        failures: [],
+      },
+      rights_ledger: screenshotClips.map((clip) => ({
+        ...clip,
+        asset_type: "screenshot_derived_motion_clip",
+        kind: "video",
+        licence_basis: "source_documented_transformative_editorial_use",
+        allowed_use: "screenshot_derived_editorial_motion",
+        approval_status: "approved_for_transformative_editorial_use",
+      })),
+      video_clips: screenshotClips,
+    }),
+    {
+      runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    },
+  );
+
+  assert.equal(preflight.status, "blocked");
+  assert.ok(preflight.blockers.includes("incident_guard:visual_evidence:direct_video_motion_missing"));
 });
 
 test("attachPreflightQa marks candidates with read-only QA evidence", async () => {

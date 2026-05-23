@@ -86,12 +86,23 @@ test("headline inference extracts game titles before record-breaking verbs and a
     ),
     ["Forza Horizon 6"],
   );
+  assert.deepEqual(
+    inferHeadlineGameCandidates("Forza Horizon 6 breaks its predecessor's Steam record"),
+    ["Forza Horizon 6"],
+  );
 });
 
 test("headline inference extracts game titles before review-score becomes framing", () => {
   assert.deepEqual(
     inferHeadlineGameCandidates("Forza Horizon 6 Becomes Highest Rated Game of 2026 on Metacritic"),
     ["Forza Horizon 6"],
+  );
+});
+
+test("headline inference treats showed-style headlines as subject-first game stories", () => {
+  assert.deepEqual(
+    inferHeadlineGameCandidates("Stranger Than Heaven Shows Five Eras"),
+    ["Stranger Than Heaven"],
   );
 });
 

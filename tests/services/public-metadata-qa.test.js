@@ -109,6 +109,31 @@ test("YouTube metadata builder refuses unsafe public descriptions", () => {
   );
 });
 
+test("YouTube metadata builder refuses Boltgun-style incident copy before upload", () => {
+  assert.throws(
+    () =>
+      buildMetadata({
+        id: "boltgun-incident",
+        title: "Boltgun 2 Already Feels Loud",
+        suggested_title: "Boltgun 2 Already Feels Loud",
+        canonical_subject: "Warhammer 40,000: Boltgun 2",
+        canonical_game: "Warhammer 40,000: Boltgun 2",
+        source_type: "rss",
+        subreddit: "IGN",
+        url: "https://www.ign.com/articles/warhammer-40000-boltgun-2-preview-fps-preview",
+        suggested_thumbnail_text: "BOLTGUN 2 ALREADY FEELS LOUD",
+        full_script:
+          "Warhammer 40,000: Boltgun 2 already feels loud in its new demo. IGN reports Warhammer 40,000 Boltgun 2 takes the ultraviolent '90s FPS to the great outdoors. The player angle is simple: check the price, access or platform details before you decide what to play next.",
+        subtitle_timing_source: "timestamps",
+        subtitle_timing_inspection: { usable: true },
+      }),
+    (err) =>
+      err instanceof PublicMetadataQaError &&
+      err.failures.includes("public_copy:weak_title_pattern") &&
+      err.failures.includes("public_copy:lazy_player_angle_sentence"),
+  );
+});
+
 test("YouTube metadata builder repairs placeholder upload titles before publish", () => {
   const metadata = buildMetadata(
     goodStory({

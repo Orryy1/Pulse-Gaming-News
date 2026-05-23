@@ -267,12 +267,9 @@ function buildMetadata(story) {
   }
 
   // --- Section 3: Channel identity ---
-  descLines.push(`${brand.CHANNEL_NAME} - ${brand.TAGLINE}`);
-  descLines.push(
-    brand.CTA
-      ? brand.CTA.replace(/^Follow /i, "Follow ")
-      : "Follow so you never miss an update.",
-  );
+  const identity = youtubeIdentityLines(story, brand);
+  descLines.push(identity.taglineLine);
+  descLines.push(identity.ctaLine);
   descLines.push("");
 
   // --- Section 4: Social links ---
@@ -795,6 +792,21 @@ async function uploadShort(story) {
     },
     { label: "youtube upload", platform: "youtube" },
   );
+}
+
+function youtubeIdentityLines(story = {}, brand = require("./brand")) {
+  const classification = String(story.classification || story.flair || story.content_pillar || "").toLowerCase();
+  const isLeakOrRumour = /\b(leak|rumou?r)\b/.test(classification);
+  if (isLeakOrRumour) {
+    return {
+      taglineLine: `${brand.CHANNEL_NAME} - ${brand.TAGLINE}`,
+      ctaLine: "Follow Pulse Gaming for the next sourced gaming lead.",
+    };
+  }
+  return {
+    taglineLine: `${brand.CHANNEL_NAME} - Gaming stories with named sources.`,
+    ctaLine: "Follow Pulse Gaming for sharp gaming news that is worth your time.",
+  };
 }
 
 // --- Batch upload all ready stories ---

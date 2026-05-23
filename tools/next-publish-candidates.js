@@ -4,6 +4,9 @@
 const fs = require("fs-extra");
 const path = require("node:path");
 const {
+  DEFAULT_MAX_NORMAL_PRODUCTION_VIDEO_SECONDS,
+  DEFAULT_MIN_NORMAL_PRODUCTION_VIDEO_SECONDS,
+  NORMAL_PRODUCTION_DURATION_LANE,
   RETENTION_DURATION_LANE,
   resolveDurationLane,
 } = require("../lib/services/short-duration-contract");
@@ -256,6 +259,57 @@ function durationVerdict(story = {}) {
       status: "exclude",
       score: -30,
       reason: `retention_short_too_long_${duration.toFixed(2)}s`,
+      duration_seconds: duration,
+    };
+  }
+  if (durationLane === NORMAL_PRODUCTION_DURATION_LANE) {
+    const hardMin =
+      numberOrNull(story.min_video_duration_seconds) ??
+      numberOrNull(story.target_video_duration_seconds_min) ??
+      DEFAULT_MIN_NORMAL_PRODUCTION_VIDEO_SECONDS;
+    const targetMax =
+      numberOrNull(story.target_video_duration_seconds_max) ??
+      DEFAULT_MAX_NORMAL_PRODUCTION_VIDEO_SECONDS;
+    const max =
+      numberOrNull(story.max_video_duration_seconds) ??
+      DEFAULT_MAX_NORMAL_PRODUCTION_VIDEO_SECONDS;
+    if (duration < 15) {
+      return {
+        status: "exclude",
+        score: -28,
+        reason: `normal_production_too_short_${duration.toFixed(2)}s`,
+        duration_seconds: duration,
+      };
+    }
+    if (duration < hardMin) {
+      return {
+        status: "review",
+        score: -4,
+        reason: "normal_production_below_floor_review",
+        duration_seconds: duration,
+      };
+    }
+    if (duration <= targetMax) {
+      const centrePenalty = Math.abs(duration - 45) * 0.25;
+      return {
+        status: "publish_ready",
+        score: Math.round(25 - centrePenalty),
+        reason: "normal_production_duration_window",
+        duration_seconds: duration,
+      };
+    }
+    if (duration <= max + 15) {
+      return {
+        status: "review",
+        score: 2,
+        reason: "normal_production_extended_review",
+        duration_seconds: duration,
+      };
+    }
+    return {
+      status: "exclude",
+      score: -30,
+      reason: `normal_production_too_long_${duration.toFixed(2)}s`,
       duration_seconds: duration,
     };
   }
@@ -661,7 +715,7 @@ function summariseQaResult(result = {}) {
   };
 }
 
-function combinePreflightQa({ content, video, platform, governance, publicCopy } = {}) {
+function combinePreflightQa({ content, video, platform, governance, publicCopy, incidentGuard } = {}) {
   const checks = {
     content: summariseQaResult(content),
     video: summariseQaResult(video),
@@ -669,6 +723,7 @@ function combinePreflightQa({ content, video, platform, governance, publicCopy }
     governance: summariseQaResult(governance),
   };
   if (publicCopy) checks.public_copy = summariseQaResult(publicCopy);
+  if (incidentGuard) checks.incident_guard = summariseQaResult(incidentGuard);
   const blockers = [];
   const warnings = [];
 
@@ -732,6 +787,11 @@ function publicCopyManifestForStory(story = {}) {
     ),
     narration_script: script,
     description: cleanText(story.description),
+    thumbnail_headline: cleanText(story.suggested_thumbnail_text || story.thumbnail_text || story.thumbnail_headline),
+    primary_source: story.primary_source || story.source_card_label || story.source_name || null,
+    discovery_source: story.discovery_source || null,
+    official_source: story.official_source || story.official_confirmation_source || null,
+    secondary_sources: Array.isArray(story.secondary_sources) ? story.secondary_sources : [],
   };
 }
 
@@ -745,6 +805,113 @@ function summarisePublicCopyQaResult(result = {}) {
   };
 }
 
+function objectValue(value, fallback = {}) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : fallback;
+}
+
+function shouldRunIncidentGuardForStory(story = {}) {
+  return Boolean(
+    story.scheduler_bridge_source ||
+      story.visual_v4_render_bridge_status ||
+      story.require_incident_guard === true,
+  );
+}
+
+function uniqueMotionFamilies(story = {}) {
+  const clips = [
+    ...(Array.isArray(story.video_clips) ? story.video_clips : []),
+    ...(Array.isArray(story.visual_v4_bridge_video_clips) ? story.visual_v4_bridge_video_clips : []),
+  ];
+  return new Set(
+    clips
+      .map((clip) =>
+        typeof clip === "string"
+          ? path.basename(clip, path.extname(clip))
+          : cleanText(clip.source_family || clip.motion_family || clip.family || clip.id),
+      )
+      .filter(Boolean),
+  );
+}
+
+function incidentGuardFileEvidenceForStory(story = {}) {
+  const families = uniqueMotionFamilies(story);
+  const clipCount = Math.max(
+    Number(story.visual_v4_render_bridge_clip_count || 0),
+    Array.isArray(story.video_clips) ? story.video_clips.length : 0,
+    Array.isArray(story.visual_v4_bridge_video_clips) ? story.visual_v4_bridge_video_clips.length : 0,
+  );
+  const rightsRecords = Array.isArray(story.rights_ledger)
+    ? story.rights_ledger
+    : Array.isArray(story.rights_records)
+      ? story.rights_records
+      : [];
+  return {
+    mp4_ready: Boolean(story.exported_path),
+    captions_ready: Boolean(story.manual_caption_path || story.caption_path || story.clean_manual_captions),
+    narration_ready: Boolean(story.audio_path || story.voice_report_path || story.final_voice_report_path),
+    word_timestamps_ready: Boolean(
+      story.timestamps_path ||
+        story.word_timestamps_path ||
+        story.subtitle_timing_source === "timestamps" ||
+        Number(story.word_timestamp_count) > 0,
+    ),
+    materialised_motion_ready: clipCount >= 3,
+    distinct_motion_families_ready: families.size >= 3 || Number(story.distinct_motion_family_count) >= 3,
+    rights_ledger_ready: rightsRecords.length > 0,
+  };
+}
+
+function incidentGuardPreflightForStory(story = {}) {
+  if (!shouldRunIncidentGuardForStory(story)) return null;
+  const { evaluateIncidentGuard } = require("../lib/incident-guard");
+  const renderManifest = objectValue(story.render_manifest, {});
+  const renderLane = cleanText(renderManifest.render_lane || renderManifest.lane || story.render_lane);
+  const renderClass = cleanText(
+    renderManifest.render_quality_class ||
+      renderManifest.quality_class ||
+      renderManifest.visual_tier ||
+      story.render_quality_class,
+  );
+  const report = evaluateIncidentGuard({
+    story_id: story.id || story.story_id || "unknown",
+    canonical_story_manifest: publicCopyManifestForStory(story),
+    render_manifest: {
+      ...renderManifest,
+      final_publish_render:
+        renderManifest.final_publish_render === true ||
+        Boolean(story.exported_path && /visual_v4|studio_v4/i.test(renderLane)),
+      render_lane: renderLane,
+      render_quality_class: renderClass,
+      visual_count:
+        renderManifest.visual_count ||
+        renderManifest.visuals_count ||
+        story.qa_visual_count ||
+        story.distinct_visual_count ||
+        story.visual_v4_render_bridge_clip_count,
+    },
+    visual_quality_report: objectValue(story.visual_quality_report || story.visualQualityReport, {}),
+    benchmark_report: objectValue(story.benchmark_report || story.media_house_benchmark || story.benchmarkReport, {}),
+    publish_verdict: objectValue(story.publish_verdict, {}),
+    platform_publish_manifest: objectValue(story.platform_publish_manifest, {}),
+    platform_policy_report: objectValue(story.platform_policy_report, {}),
+    landing_page_manifest: objectValue(story.landing_page_manifest, {}),
+    affiliate_link_manifest: objectValue(story.affiliate_link_manifest, {}),
+    file_evidence: incidentGuardFileEvidenceForStory(story),
+  });
+  if (report.verdict === "pass") {
+    return {
+      result: "pass",
+      failures: [],
+      warnings: report.warnings || [],
+    };
+  }
+  return {
+    result: "fail",
+    failures: report.disaster_upload_blockers || ["incident_guard_failed"],
+    warnings: report.warnings || [],
+  };
+}
+
 async function runPreflightQaForStory(story = {}, opts = {}) {
   const {
     runContentQa = require("../lib/services/content-qa").runContentQa,
@@ -753,6 +920,7 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
     runPlatformVideoQa = require("../lib/services/platform-video-qa").runPlatformVideoQa,
     runStudioGovernancePreflight = require("../lib/services/studio-governance-preflight").runStudioGovernancePreflight,
     runPublicCopyQa = (manifest) => require("../lib/goal-public-copy-qa").evaluateGoalPublicCopy(manifest),
+    runIncidentGuard = incidentGuardPreflightForStory,
   } = opts;
 
   try {
@@ -780,7 +948,8 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
     const publicCopy = summarisePublicCopyQaResult(
       await runPublicCopyQa(publicCopyManifestForStory(publicCopyStory)),
     );
-    return combinePreflightQa({ content, video, platform, governance, publicCopy });
+    const incidentGuard = await runIncidentGuard(cloneStoryForPreflight(story));
+    return combinePreflightQa({ content, video, platform, governance, publicCopy, incidentGuard });
   } catch (err) {
     return {
       status: "blocked",

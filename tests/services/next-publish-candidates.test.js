@@ -10,6 +10,7 @@ const {
   combinePreflightQa,
   formatNextPublishCandidatesMarkdown,
   parseArgs,
+  runPreflightQaForStory,
   scoreAnalyticsFit,
   mergeBridgeCandidates,
 } = require("../../tools/next-publish-candidates");
@@ -19,6 +20,34 @@ const analyticsText = [
   "Front corporate drama with named antagonists and concrete outcomes.",
   "Avoid abstract industry commentary. Prioritise specificity over vague insider quotes.",
 ].join("\n");
+
+function bridgeVisualEvidence(subject = "GameSir G7 Pro") {
+  const scores = {
+    motion_density_score: 92,
+    first_3_seconds_hook_score: 88,
+    source_lock_quality_score: 86,
+    caption_legibility_score: 94,
+    card_hierarchy_score: 84,
+    media_house_polish_score: 90,
+  };
+  return {
+    visual_quality_report: {
+      result: "pass",
+      scores,
+      frame_rules: {
+        first_frame_subject: subject,
+        first_frame_text: String(subject).split(/\s+/).slice(0, 4).join(" ").toUpperCase(),
+        source_locks_readable: true,
+      },
+      failures: [],
+    },
+    media_house_benchmark: {
+      result: "pass",
+      scores,
+      failures: [],
+    },
+  };
+}
 
 function baseStory(overrides = {}) {
   return {
@@ -332,6 +361,33 @@ test("next publish report treats governed retention-short V4 rows as publish-rea
   assert.ok(report.candidates[0].reasons.includes("retention_short_target_window"));
 });
 
+test("next publish report treats normal production V4 bridge rows as publish-ready from 35 to 60 seconds", () => {
+  const report = buildNextPublishCandidatesReport(
+    [
+      baseStory({
+        id: "v4_normal_production",
+        title: "Boltgun 2 Leaves The Corridors",
+        auto_approved: true,
+        duration_seconds: 42.88,
+        duration_lane: "normal_production",
+        allow_retention_short_video: false,
+        render_lane: "visual_v4_production",
+        render_quality_class: "premium",
+        min_video_duration_seconds: 35,
+        target_video_duration_seconds_min: 35,
+        target_video_duration_seconds_max: 60,
+        max_video_duration_seconds: 60,
+      }),
+    ],
+    { analyticsText, generatedAt: "2026-05-22T22:00:00.000Z" },
+  );
+
+  assert.equal(report.excluded.length, 0);
+  assert.equal(report.candidates[0].id, "v4_normal_production");
+  assert.equal(report.candidates[0].status, "publish_ready");
+  assert.ok(report.candidates[0].reasons.includes("normal_production_duration_window"));
+});
+
 test("next publish report keeps sub-target V4 retention shorts visible for review", () => {
   const report = buildNextPublishCandidatesReport(
     [
@@ -526,6 +582,149 @@ test("attachPreflightQa blocks malformed public copy before scheduler promotion"
     report.candidates[0].preflight_qa.blockers.includes("public_copy:malformed_quote_description"),
   );
   assert.equal(report.candidates[0].status, "review");
+});
+
+test("attachPreflightQa blocks V4 bridge deal candidates without commercial disclosure evidence", async () => {
+  const stories = [
+    baseStory({
+      id: "bridge_deal_without_disclosure",
+      title: "GameSir G7 Pro Deal Has One Catch",
+      selected_title: "GameSir G7 Pro Deal Has One Catch",
+      canonical_subject: "GameSir G7 Pro",
+      first_spoken_line: "GameSir G7 Pro just became a better controller deal for PC players.",
+      description: "The GameSir G7 Pro is on sale for Memorial Day. Source: IGN.",
+      full_script:
+        "GameSir G7 Pro just became a better controller deal for PC players. IGN says the controller is on sale for Memorial Day, but the catch is whether it fits your setup.",
+      duration_seconds: 42,
+      duration_lane: "normal_production",
+      min_video_duration_seconds: 35,
+      target_video_duration_seconds_min: 35,
+      target_video_duration_seconds_max: 60,
+      max_video_duration_seconds: 60,
+      scheduler_bridge_source: "goal_production_cutover",
+      render_lane: "visual_v4_production",
+      render_quality_class: "premium",
+      qa_visual_count: 8,
+      primary_source: "IGN",
+      discovery_source: "IGN",
+      audio_path: "D:/pulse-data/media/output/audio/bridge_deal_without_disclosure.mp3",
+      timestamps_path: "D:/pulse-data/media/output/audio/bridge_deal_without_disclosure_timestamps.json",
+      manual_caption_path: "D:/pulse-data/media/output/captions/bridge_deal_without_disclosure.srt",
+      platform_publish_manifest: {
+        publish_status: "GREEN",
+        platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts"] },
+        outputs: {
+          youtube_shorts: { title: "GameSir G7 Pro Deal Has One Catch" },
+        },
+      },
+      publish_verdict: { verdict: "GREEN" },
+      platform_policy_report: {
+        disclosure_requirements: { affiliate: false },
+      },
+      affiliate_link_manifest: {
+        disclosure_required: false,
+      },
+      landing_page_manifest: {},
+      ...bridgeVisualEvidence("GameSir G7 Pro"),
+      rights_ledger: [{ asset_id: "bridge-deal-final-render" }],
+      video_clips: [
+        { path: "clip-a.mp4", source_family: "kinetic_title" },
+        { path: "clip-b.mp4", source_family: "source_card" },
+        { path: "clip-c.mp4", source_family: "stat_card" },
+      ],
+    }),
+  ];
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-05-22T23:59:00.000Z",
+  });
+
+  await attachPreflightQa(report, stories, {
+    runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+  });
+
+  assert.equal(report.candidates[0].preflight_qa.status, "blocked");
+  assert.ok(
+    report.candidates[0].preflight_qa.blockers.includes(
+      "incident_guard:incident:commercial_deal_disclosure_missing",
+    ),
+  );
+  assert.equal(report.candidates[0].status, "review");
+});
+
+test("bridge preflight accepts visual QA and benchmark evidence from scheduler candidates", async () => {
+  const scores = {
+    motion_density_score: 92,
+    first_3_seconds_hook_score: 88,
+    source_lock_quality_score: 86,
+    caption_legibility_score: 94,
+    card_hierarchy_score: 84,
+    media_house_polish_score: 90,
+  };
+  const preflight = await runPreflightQaForStory(
+    baseStory({
+      id: "bridge_visual_clean",
+      title: "Boltgun 2 Leaves The Corridors",
+      selected_title: "Boltgun 2 Leaves The Corridors",
+      canonical_subject: "Warhammer 40,000: Boltgun 2",
+      first_spoken_line:
+        "Warhammer 40,000: Boltgun 2 is moving its retro FPS chaos into bigger outdoor spaces.",
+      description: "IGN previewed Warhammer 40,000: Boltgun 2 moving into bigger outdoor spaces. Source: IGN.",
+      full_script:
+        "Warhammer 40,000: Boltgun 2 is moving its retro FPS chaos into bigger outdoor spaces. IGN previewed the sequel and showed how the arenas change the pace.",
+      scheduler_bridge_source: "goal_production_cutover",
+      render_lane: "visual_v4_production",
+      render_quality_class: "premium",
+      qa_visual_count: 8,
+      exported_path: "D:/pulse-data/media/output/final/bridge_visual_clean.mp4",
+      audio_path: "D:/pulse-data/media/output/audio/bridge_visual_clean.mp3",
+      timestamps_path: "D:/pulse-data/media/output/audio/bridge_visual_clean_timestamps.json",
+      manual_caption_path: "D:/pulse-data/media/output/captions/bridge_visual_clean.srt",
+      primary_source: "IGN",
+      discovery_source: "IGN",
+      publish_verdict: { verdict: "GREEN" },
+      platform_publish_manifest: {
+        publish_status: "GREEN",
+        platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts"] },
+        outputs: {
+          youtube_shorts: { title: "Boltgun 2 Leaves The Corridors" },
+        },
+      },
+      visual_quality_report: {
+        result: "pass",
+        scores,
+        frame_rules: {
+          first_frame_subject: "Warhammer 40,000: Boltgun 2",
+          first_frame_text: "BOLTGUN 2 OUTDOORS",
+          source_locks_readable: true,
+        },
+        failures: [],
+      },
+      media_house_benchmark: {
+        result: "pass",
+        scores,
+        failures: [],
+      },
+      rights_ledger: [{ asset_id: "bridge-visual-final-render" }],
+      video_clips: [
+        { path: "clip-a.mp4", source_family: "kinetic_title" },
+        { path: "clip-b.mp4", source_family: "source_card" },
+        { path: "clip-c.mp4", source_family: "stat_card" },
+      ],
+    }),
+    {
+      runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    },
+  );
+
+  assert.equal(preflight.status, "pass");
+  assert.deepEqual(preflight.blockers, []);
 });
 
 test("attachPreflightQa marks candidates with read-only QA evidence", async () => {

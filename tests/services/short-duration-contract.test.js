@@ -3,10 +3,15 @@ const assert = require("node:assert/strict");
 
 const {
   classifyShortDuration,
+  durationBoundsForLane,
   estimateVideoDurationFromAudio,
+  resolveDurationLane,
   DEFAULT_MIN_SHORT_VIDEO_SECONDS,
+  DEFAULT_MIN_NORMAL_PRODUCTION_VIDEO_SECONDS,
   DEFAULT_MAX_SHORT_VIDEO_SECONDS,
+  DEFAULT_MAX_NORMAL_PRODUCTION_VIDEO_SECONDS,
   DEFAULT_RENDER_BREATHING_ROOM_SECONDS,
+  NORMAL_PRODUCTION_DURATION_LANE,
 } = require("../../lib/services/short-duration-contract");
 
 test("estimateVideoDurationFromAudio adds the render breathing room", () => {
@@ -87,6 +92,27 @@ test("classifyShortDuration allows deliberate retention-short edits", () => {
   assert.deepEqual(result.warnings, []);
   assert.equal(result.durationLane, "pulse_retention_short");
   assert.equal(result.minVideoSeconds, 22);
+});
+
+test("classifyShortDuration allows normal production Shorts between 35 and 60 seconds", () => {
+  const result = classifyShortDuration({
+    audioDurationSeconds: 41.8,
+    videoDurationSeconds: 42.88,
+    lane: "normal_production",
+  });
+
+  assert.equal(resolveDurationLane({ lane: "normal_production" }), NORMAL_PRODUCTION_DURATION_LANE);
+  assert.equal(result.result, "pass");
+  assert.deepEqual(result.failures, []);
+  assert.deepEqual(result.warnings, []);
+  assert.equal(result.durationLane, NORMAL_PRODUCTION_DURATION_LANE);
+  assert.equal(result.minVideoSeconds, DEFAULT_MIN_NORMAL_PRODUCTION_VIDEO_SECONDS);
+  assert.equal(result.maxVideoSeconds, DEFAULT_MAX_NORMAL_PRODUCTION_VIDEO_SECONDS);
+  assert.deepEqual(durationBoundsForLane("normal_short"), {
+    durationLane: NORMAL_PRODUCTION_DURATION_LANE,
+    minVideoSeconds: DEFAULT_MIN_NORMAL_PRODUCTION_VIDEO_SECONDS,
+    maxVideoSeconds: DEFAULT_MAX_NORMAL_PRODUCTION_VIDEO_SECONDS,
+  });
 });
 
 test("classifyShortDuration blocks runaway audio even in the extended Short lane", () => {

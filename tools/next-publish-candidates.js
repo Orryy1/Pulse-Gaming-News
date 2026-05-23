@@ -918,6 +918,7 @@ function incidentGuardPreflightForStory(story = {}) {
     platform_policy_report: objectValue(story.platform_policy_report, {}),
     landing_page_manifest: objectValue(story.landing_page_manifest, {}),
     affiliate_link_manifest: objectValue(story.affiliate_link_manifest, {}),
+    sfx_manifest: objectValue(story.sfx_manifest || story.sound_transition_plan?.sfx, {}),
     file_evidence: incidentGuardFileEvidenceForStory(story),
   });
   const visualEvidence = visualEvidenceProfile({

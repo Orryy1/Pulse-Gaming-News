@@ -49,6 +49,67 @@ function bridgeVisualEvidence(subject = "GameSir G7 Pro") {
   };
 }
 
+function bridgeSfxEvidence() {
+  return {
+    cue_count: 8,
+    source_plan: {
+      readiness: { status: "pass", blockers: [] },
+      selected_assets: [
+        {
+          asset_id: "boom-impact-01",
+          role: "impact",
+          family: "impact",
+          provider_id: "boom_library",
+          source_url: "file://audio/licensed-sfx/boom/impact-01.wav",
+          rights_basis: "boom_library_media_license",
+          commercial_use_allowed: true,
+          approval_status: "approved_for_commercial_editorial_use",
+        },
+        {
+          asset_id: "soundly-transition-01",
+          role: "transition",
+          family: "whoosh",
+          provider_id: "soundly",
+          source_url: "file://audio/licensed-sfx/soundly/transition-01.wav",
+          rights_basis: "soundly_pro_commercial_use",
+          commercial_use_allowed: true,
+          approval_status: "approved_for_commercial_editorial_use",
+        },
+        {
+          asset_id: "sonniss-ui-01",
+          role: "ui_tick",
+          family: "source_tick",
+          provider_id: "sonniss",
+          source_url: "file://audio/licensed-sfx/sonniss/ui-01.wav",
+          rights_basis: "sonniss_game_audio_gdc_bundle_license",
+          commercial_use_allowed: true,
+          approval_status: "approved_for_commercial_editorial_use",
+        },
+        {
+          asset_id: "pse-riser-01",
+          role: "riser",
+          family: "riser",
+          provider_id: "pro_sound_effects",
+          source_url: "file://audio/licensed-sfx/pse/riser-01.wav",
+          rights_basis: "pro_sound_effects_subscription_license",
+          commercial_use_allowed: true,
+          approval_status: "approved_for_commercial_editorial_use",
+        },
+        {
+          asset_id: "boom-sub-01",
+          role: "sub_hit",
+          family: "sub_hit",
+          provider_id: "boom_library",
+          source_url: "file://audio/licensed-sfx/boom/sub-01.wav",
+          rights_basis: "boom_library_media_license",
+          commercial_use_allowed: true,
+          approval_status: "approved_for_commercial_editorial_use",
+        },
+      ],
+    },
+  };
+}
+
 function baseStory(overrides = {}) {
   return {
     id: "story_base",
@@ -711,6 +772,7 @@ test("attachPreflightQa blocks V4 bridge deal candidates without commercial disc
         disclosure_required: false,
       },
       landing_page_manifest: {},
+      sfx_manifest: bridgeSfxEvidence(),
       ...bridgeVisualEvidence("GameSir G7 Pro"),
       rights_ledger: [{ asset_id: "bridge-deal-final-render" }],
       video_clips: [
@@ -794,6 +856,7 @@ test("bridge preflight accepts visual QA and benchmark evidence from scheduler c
         scores,
         failures: [],
       },
+      sfx_manifest: bridgeSfxEvidence(),
       rights_ledger: [
         {
           asset_id: "bridge-official-a",
@@ -898,6 +961,7 @@ test("bridge preflight blocks generated-only orange-card motion decks", async ()
         scores,
         failures: [],
       },
+      sfx_manifest: bridgeSfxEvidence(),
       rights_ledger: generatedClips.map((clip) => ({
         ...clip,
         licence_basis: "owned_generated_editorial_motion_graphic",
@@ -976,6 +1040,7 @@ test("bridge preflight blocks screenshot-derived-only motion decks", async () =>
         scores,
         failures: [],
       },
+      sfx_manifest: bridgeSfxEvidence(),
       rights_ledger: screenshotClips.map((clip) => ({
         ...clip,
         asset_type: "screenshot_derived_motion_clip",

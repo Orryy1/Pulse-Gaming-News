@@ -708,11 +708,36 @@ test("bridge preflight accepts visual QA and benchmark evidence from scheduler c
         scores,
         failures: [],
       },
-      rights_ledger: [{ asset_id: "bridge-visual-final-render" }],
+      rights_ledger: [
+        {
+          asset_id: "bridge-official-a",
+          path: "clip-a.mp4",
+          source_url: "https://cdn.example.com/boltgun/a.mp4",
+          source_type: "official_reference_clip",
+          rights_risk_class: "official_reference_only",
+          source_family: "official_trailer_a",
+        },
+        {
+          asset_id: "bridge-official-b",
+          path: "clip-b.mp4",
+          source_url: "https://cdn.example.com/boltgun/b.mp4",
+          source_type: "official_reference_clip",
+          rights_risk_class: "official_reference_only",
+          source_family: "official_trailer_b",
+        },
+        {
+          asset_id: "bridge-official-c",
+          path: "clip-c.mp4",
+          source_url: "https://cdn.example.com/boltgun/c.mp4",
+          source_type: "official_reference_clip",
+          rights_risk_class: "official_reference_only",
+          source_family: "official_trailer_c",
+        },
+      ],
       video_clips: [
-        { path: "clip-a.mp4", source_family: "kinetic_title" },
-        { path: "clip-b.mp4", source_family: "source_card" },
-        { path: "clip-c.mp4", source_family: "stat_card" },
+        { path: "clip-a.mp4", source_family: "official_trailer_a" },
+        { path: "clip-b.mp4", source_family: "official_trailer_b" },
+        { path: "clip-c.mp4", source_family: "official_trailer_c" },
       ],
     }),
     {
@@ -725,6 +750,84 @@ test("bridge preflight accepts visual QA and benchmark evidence from scheduler c
 
   assert.equal(preflight.status, "pass");
   assert.deepEqual(preflight.blockers, []);
+});
+
+test("bridge preflight blocks generated-only orange-card motion decks", async () => {
+  const scores = {
+    motion_density_score: 92,
+    first_3_seconds_hook_score: 88,
+    source_lock_quality_score: 86,
+    caption_legibility_score: 94,
+    card_hierarchy_score: 84,
+    media_house_polish_score: 90,
+  };
+  const generatedClips = Array.from({ length: 8 }, (_, index) => ({
+    id: `generated-card-${index + 1}`,
+    path: `output/generated-motion/bridge-generated/${index + 1}.mp4`,
+    source_url: `local://pulse-generated-motion/bridge-generated/${index + 1}`,
+    source_type: "internally_generated_motion_graphic",
+    rights_risk_class: "owned_generated_motion",
+    source_family: `orange_card_${index + 1}`,
+  }));
+  const preflight = await runPreflightQaForStory(
+    baseStory({
+      id: "bridge_generated_cards",
+      title: "PlayStation's Pricing Test Has A Legal Problem",
+      selected_title: "PlayStation's Pricing Test Has A Legal Problem",
+      canonical_subject: "PlayStation Store",
+      first_spoken_line: "PlayStation Store dynamic pricing may have a legal problem in Europe.",
+      description: "Eurogamer reported the PlayStation Store dynamic pricing legal issue. Source: Eurogamer.",
+      full_script:
+        "PlayStation Store dynamic pricing may have a legal problem in Europe. Eurogamer reported the legal concern around the store experiment.",
+      scheduler_bridge_source: "goal_production_cutover",
+      render_lane: "visual_v4_production",
+      render_quality_class: "premium",
+      qa_visual_count: 8,
+      exported_path: "D:/pulse-data/media/output/final/bridge_generated_cards.mp4",
+      audio_path: "D:/pulse-data/media/output/audio/bridge_generated_cards.mp3",
+      timestamps_path: "D:/pulse-data/media/output/audio/bridge_generated_cards_timestamps.json",
+      manual_caption_path: "D:/pulse-data/media/output/captions/bridge_generated_cards.srt",
+      primary_source: "Eurogamer",
+      discovery_source: "Eurogamer",
+      publish_verdict: { verdict: "GREEN" },
+      platform_publish_manifest: {
+        publish_status: "GREEN",
+        platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts"] },
+        outputs: {
+          youtube_shorts: { title: "PlayStation's Pricing Test Has A Legal Problem" },
+        },
+      },
+      visual_quality_report: {
+        result: "pass",
+        scores,
+        frame_rules: {
+          first_frame_subject: "PlayStation Store",
+          first_frame_text: "PS STORE LEGAL RISK",
+          source_locks_readable: true,
+        },
+        failures: [],
+      },
+      media_house_benchmark: {
+        result: "pass",
+        scores,
+        failures: [],
+      },
+      rights_ledger: generatedClips.map((clip) => ({
+        ...clip,
+        licence_basis: "owned_generated_editorial_motion_graphic",
+      })),
+      video_clips: generatedClips,
+    }),
+    {
+      runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    },
+  );
+
+  assert.equal(preflight.status, "blocked");
+  assert.ok(preflight.blockers.includes("incident_guard:visual_evidence:generated_only_motion_deck"));
 });
 
 test("attachPreflightQa marks candidates with read-only QA evidence", async () => {

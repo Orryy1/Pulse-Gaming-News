@@ -760,6 +760,10 @@ function cleanText(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
 }
 
+function asArray(value) {
+  return Array.isArray(value) ? value.filter(Boolean) : [];
+}
+
 function firstSentence(value = "") {
   const text = cleanText(value);
   if (!text) return "";
@@ -864,6 +868,7 @@ function incidentGuardFileEvidenceForStory(story = {}) {
 function incidentGuardPreflightForStory(story = {}) {
   if (!shouldRunIncidentGuardForStory(story)) return null;
   const { evaluateIncidentGuard } = require("../lib/incident-guard");
+  const { visualEvidenceProfile } = require("../lib/visual-evidence-classifier");
   const renderManifest = objectValue(story.render_manifest, {});
   const renderLane = cleanText(renderManifest.render_lane || renderManifest.lane || story.render_lane);
   const renderClass = cleanText(
@@ -898,7 +903,14 @@ function incidentGuardPreflightForStory(story = {}) {
     affiliate_link_manifest: objectValue(story.affiliate_link_manifest, {}),
     file_evidence: incidentGuardFileEvidenceForStory(story),
   });
-  if (report.verdict === "pass") {
+  const visualEvidence = visualEvidenceProfile({
+    story,
+    rightsLedger: story.rights_ledger || story.rights_records || {},
+    footageInventory: story.footage_inventory || {},
+    directorPlan: story.visual_v4_director_plan || story.director_plan || {},
+  });
+  const generatedVisualFailures = asArray(visualEvidence.blockers);
+  if (report.verdict === "pass" && !generatedVisualFailures.length) {
     return {
       result: "pass",
       failures: [],
@@ -907,7 +919,10 @@ function incidentGuardPreflightForStory(story = {}) {
   }
   return {
     result: "fail",
-    failures: report.disaster_upload_blockers || ["incident_guard_failed"],
+    failures: [
+      ...asArray(report.disaster_upload_blockers || ["incident_guard_failed"]),
+      ...generatedVisualFailures,
+    ],
     warnings: report.warnings || [],
   };
 }

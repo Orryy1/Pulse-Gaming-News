@@ -102,6 +102,11 @@ function normaliseStory(row) {
   if (!row || typeof row !== "object") return row;
   return {
     ...row,
+    id: row.id || row.story_id,
+    title: row.title || row.selected_title || row.canonical_title,
+    full_script: row.full_script || row.narration_script,
+    game_title: row.game_title || row.canonical_game || row.canonical_subject,
+    primary_entity: row.primary_entity || row.canonical_subject || row.canonical_game,
     downloaded_images: Array.isArray(row.downloaded_images)
       ? row.downloaded_images
       : parseJsonField(row.downloaded_images) || [],

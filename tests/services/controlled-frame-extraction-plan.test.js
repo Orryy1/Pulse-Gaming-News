@@ -2,6 +2,9 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("fs-extra");
+const os = require("node:os");
+const path = require("node:path");
 
 const {
   buildControlledFrameExtractionPlan,
@@ -9,6 +12,7 @@ const {
   renderControlledFrameExtractionMarkdown,
 } = require("../../lib/controlled-frame-extraction-plan");
 const {
+  loadStories,
   shouldRebuildMotionPlansFromReferences,
 } = require("../../tools/controlled-frame-extraction-plan");
 
@@ -447,6 +451,37 @@ test("Controlled Frame Extraction Plan accepts official social direct media", ()
   assert.equal(plan.target_frames[0].source_type, "official_social_media_video");
   assert.equal(plan.target_frames[0].source_url_kind, "direct_video");
   assert.equal(plan.target_frames[0].downloads_allowed, false);
+});
+
+test("Controlled Frame Extraction Plan loads governed canonical story JSON by story_id", async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-frame-story-"));
+  try {
+    const storyPath = path.join(tempDir, "canonical_story_manifest.json");
+    await fs.writeJson(
+      storyPath,
+      {
+        story_id: "1s49ty7",
+        selected_title: "Star Wars Zero Company Is More Than XCOM",
+        canonical_subject: "Star Wars Zero Company",
+        canonical_game: "Star Wars Zero Company",
+        narration_script: "Star Wars Zero Company is trying to be more than Star Wars XCOM.",
+      },
+      { spaces: 2 },
+    );
+
+    const result = await loadStories({
+      fixture: false,
+      storyJsonPath: storyPath,
+      storyId: "1s49ty7",
+    });
+
+    assert.equal(result.mode, "story_json");
+    assert.equal(result.stories.length, 1);
+    assert.equal(result.stories[0].id, "1s49ty7");
+    assert.equal(result.stories[0].title, "Star Wars Zero Company Is More Than XCOM");
+  } finally {
+    await fs.remove(tempDir);
+  }
 });
 
 test("Controlled Frame Extraction Plan samples licensed direct media across distinct source families", () => {

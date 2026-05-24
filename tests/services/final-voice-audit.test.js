@@ -184,6 +184,40 @@ test("final voice audit reviews local voice when true peak is too hot for social
   assert.equal(row.do_not_reuse_for_tiktok_dispatch, true);
 });
 
+test("final voice audit reviews local voice when segment loudness jumps mid-render", () => {
+  const row = classifyFinalRenderVoice({
+    mp4Path: "D:/pulse-data/media/output/final/rss_jump.mp4",
+    report: {
+      narration: {
+        provider: "local",
+        source: "local-production-voxcpm",
+        audioPath: "D:/pulse-data/media/output/audio/rss_jump.mp3",
+        approvedLocalVoice: true,
+        acceptedLocalVoice: {
+          id: "pulse-sleepy-liam-20260502",
+          fileName: "pulse_liam_sleepy.wav",
+          referencePresent: true,
+          referenceHash: "b".repeat(40),
+        },
+        acoustic: {
+          medianPitchHz: 118,
+          integratedLufs: -15.7,
+          truePeakDb: -2.4,
+          segmentLufs: [-18.2, -17.8, -10.9, -10.6],
+        },
+        voiceMastering: { ok: true, code: "voice_mastered", targetLufs: -16 },
+        transcript: "A clean local render. Follow Pulse Gaming so you never miss a beat.",
+        wpm: 168,
+      },
+    },
+    env: { STUDIO_V2_LOCAL_VOICE_APPROVED: "true" },
+  });
+
+  assert.equal(row.verdict, "review");
+  assert.ok(row.warnings.includes("voice_segment_loudness_jump"));
+  assert.equal(row.do_not_reuse_for_tiktok_dispatch, true);
+});
+
 test("final voice report loader finds sidecar reports for dispatch tooling", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "final-voice-loader-"));
   const finalDir = path.join(dir, "final");

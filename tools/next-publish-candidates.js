@@ -659,12 +659,16 @@ function bridgeCandidateCount(stories = []) {
   ).length;
 }
 
+function bridgeCandidateId(candidate = {}) {
+  return String(candidate?.id || candidate?.story_id || "").trim();
+}
+
 function mergeBridgeCandidates(stories = [], bridgeCandidates = []) {
   const rows = Array.isArray(stories) ? stories.filter(Boolean) : [];
   const bridges = Array.isArray(bridgeCandidates) ? bridgeCandidates.filter(Boolean) : [];
   if (!bridges.length) return [...rows];
   const bridgeIds = new Set(
-    bridges.map((bridge) => String(bridge.id || bridge.story_id || "").trim()).filter(Boolean),
+    bridges.map(bridgeCandidateId).filter(Boolean),
   );
 
   const byId = new Map(
@@ -714,6 +718,111 @@ function mergeBridgeCandidates(stories = [], bridgeCandidates = []) {
       scheduler_bridge_source: null,
     };
   });
+}
+
+function normaliseBridgeManifest(manifest = {}) {
+  const requested = manifest.requested === true || Boolean(manifest.path);
+  const disabled = manifest.disabled === true || requested === false;
+  const exists = manifest.exists === true;
+  const allowLiveFallback =
+    manifest.allowLiveFallback === true ||
+    manifest.allow_live_fallback === true;
+  const candidateCount = Number.isFinite(Number(manifest.candidate_count))
+    ? Number(manifest.candidate_count)
+    : Array.isArray(manifest.candidates)
+      ? manifest.candidates.length
+      : null;
+  return {
+    requested,
+    disabled,
+    exists,
+    path: manifest.path || null,
+    status:
+      manifest.status ||
+      (disabled ? "disabled" : exists ? "loaded" : requested ? "missing" : "disabled"),
+    candidate_count: candidateCount,
+    allowLiveFallback,
+    authoritative: manifest.authoritative === true,
+    mode: manifest.mode || null,
+    source: manifest.source || null,
+    live_fallback_used: manifest.live_fallback_used === true,
+    live_db_rows_seen: Number.isFinite(Number(manifest.live_db_rows_seen))
+      ? Number(manifest.live_db_rows_seen)
+      : 0,
+    live_db_rows_considered: Number.isFinite(Number(manifest.live_db_rows_considered))
+      ? Number(manifest.live_db_rows_considered)
+      : 0,
+    live_db_rows_ignored: Number.isFinite(Number(manifest.live_db_rows_ignored))
+      ? Number(manifest.live_db_rows_ignored)
+      : 0,
+  };
+}
+
+function bridgeManifestIsAuthoritative(manifest = {}) {
+  const normalised = normaliseBridgeManifest(manifest);
+  return (
+    normalised.requested === true &&
+    normalised.disabled !== true &&
+    normalised.exists === true &&
+    normalised.allowLiveFallback !== true
+  );
+}
+
+function selectCandidateSourceStories({
+  liveStories = [],
+  bridgeCandidates = [],
+  bridgeManifest = {},
+} = {}) {
+  const liveRows = Array.isArray(liveStories) ? liveStories.filter(Boolean) : [];
+  const bridges = Array.isArray(bridgeCandidates) ? bridgeCandidates.filter(Boolean) : [];
+  const normalisedManifest = normaliseBridgeManifest({
+    ...bridgeManifest,
+    candidate_count:
+      Number.isFinite(Number(bridgeManifest?.candidate_count))
+        ? Number(bridgeManifest.candidate_count)
+        : bridges.length,
+  });
+  const authoritative = bridgeManifestIsAuthoritative(normalisedManifest);
+
+  if (authoritative) {
+    const bridgeIds = new Set(bridges.map(bridgeCandidateId).filter(Boolean));
+    const liveRowsForBridgeIds = liveRows.filter((story) =>
+      bridgeIds.has(String(story?.id || "").trim()),
+    );
+    const stories = mergeBridgeCandidates(liveRowsForBridgeIds, bridges);
+    return {
+      stories,
+      bridge_manifest: {
+        ...normalisedManifest,
+        authoritative: true,
+        mode: "authoritative_bridge_only",
+        source: "scheduler_bridge_candidates",
+        live_fallback_used: false,
+        live_db_rows_seen: liveRows.length,
+        live_db_rows_considered: liveRowsForBridgeIds.length,
+        live_db_rows_ignored: Math.max(0, liveRows.length - liveRowsForBridgeIds.length),
+      },
+    };
+  }
+
+  const stories = mergeBridgeCandidates(liveRows, bridges);
+  const fallbackUsed =
+    normalisedManifest.requested === true &&
+    normalisedManifest.disabled !== true &&
+    (normalisedManifest.exists !== true || normalisedManifest.allowLiveFallback === true);
+  return {
+    stories,
+    bridge_manifest: {
+      ...normalisedManifest,
+      authoritative: false,
+      mode: bridges.length ? "bridge_overlay_with_live_rows" : "live_db",
+      source: bridges.length ? "scheduler_bridge_candidates" : "live_db",
+      live_fallback_used: fallbackUsed,
+      live_db_rows_seen: liveRows.length,
+      live_db_rows_considered: liveRows.length,
+      live_db_rows_ignored: 0,
+    },
+  };
 }
 
 function summariseQaResult(result = {}) {
@@ -1244,6 +1353,9 @@ function buildNextPublishCandidatesReport(stories, options = {}) {
   const inputRows = Array.isArray(stories) ? stories : [];
   const rows = filterStoriesByStoryId(inputRows, requestedStoryId);
   const bridgeCount = bridgeCandidateCount(rows);
+  const bridgeManifest = options.bridgeManifest
+    ? normaliseBridgeManifest(options.bridgeManifest)
+    : null;
   const candidates = [];
   const excluded = [];
   let pendingAudioCount = 0;
@@ -1291,11 +1403,21 @@ function buildNextPublishCandidatesReport(stories, options = {}) {
     excluded: excludedRowsForReport(excluded, { limit }),
   };
 
-  if (bridgeCount > 0) {
+  if (bridgeCount > 0 || bridgeManifest) {
     report.bridge_candidates = {
-      count: bridgeCount,
-      mode: "dry_run_overlay",
-      source: "scheduler_bridge_candidates",
+      count:
+        bridgeManifest && bridgeManifest.candidate_count !== null
+          ? bridgeManifest.candidate_count
+          : bridgeCount,
+      mode: bridgeManifest?.mode || "dry_run_overlay",
+      status: bridgeManifest?.status || "loaded",
+      authoritative: bridgeManifest?.authoritative === true,
+      source: bridgeManifest?.source || "scheduler_bridge_candidates",
+      path: bridgeManifest?.path || null,
+      live_fallback_used: bridgeManifest?.live_fallback_used === true,
+      live_db_rows_seen: Number(bridgeManifest?.live_db_rows_seen || 0),
+      live_db_rows_considered: Number(bridgeManifest?.live_db_rows_considered || 0),
+      live_db_rows_ignored: Number(bridgeManifest?.live_db_rows_ignored || 0),
       db_mutation: false,
     };
   }
@@ -1390,6 +1512,19 @@ function formatNextPublishCandidatesMarkdown(report = {}) {
     lines.push(`- matched: ${Number(report.story_filter.matched || 0)}`);
     lines.push("");
   }
+  if (report.bridge_candidates) {
+    const bridge = report.bridge_candidates;
+    lines.push("## Scheduler Bridge");
+    lines.push(`- status: ${bridge.status || "unknown"}`);
+    lines.push(`- mode: ${bridge.mode || "unknown"}`);
+    lines.push(`- candidates: ${Number(bridge.count || 0)}`);
+    lines.push(`- authoritative: ${bridge.authoritative ? "yes" : "no"}`);
+    lines.push(`- live fallback: ${bridge.live_fallback_used ? "used" : "blocked"}`);
+    if (Number(bridge.live_db_rows_ignored || 0) > 0) {
+      lines.push(`- live DB rows ignored: ${Number(bridge.live_db_rows_ignored || 0)}`);
+    }
+    lines.push("");
+  }
   if (report.story_preflight) {
     const preflight = report.story_preflight;
     lines.push("## Story Preflight");
@@ -1461,6 +1596,7 @@ function parseArgs(argv) {
     preflightQa: false,
     storyId: null,
     bridgeCandidatesPath: DEFAULT_BRIDGE_CANDIDATES_PATH,
+    allowLiveFallback: false,
   };
   for (let i = 2; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -1474,6 +1610,7 @@ function parseArgs(argv) {
     else if (arg === "--no-bridge" || arg === "--no-bridge-candidates") {
       args.bridgeCandidatesPath = null;
     }
+    else if (arg === "--allow-live-fallback") args.allowLiveFallback = true;
     else if (arg === "--bridge-candidates" || arg === "--bridge") {
       args.bridgeCandidatesPath = argv[++i] || null;
     }
@@ -1498,17 +1635,58 @@ async function readAnalytics(pathname) {
 }
 
 async function readBridgeCandidates(pathname) {
-  if (!pathname) return [];
-  try {
-    const resolved = path.resolve(pathname);
-    if (!(await fs.pathExists(resolved))) return [];
-    const value = await fs.readJson(resolved);
-    if (Array.isArray(value)) return value;
-    if (Array.isArray(value?.candidates)) return value.candidates;
-  } catch {
-    return [];
+  return (await readBridgeCandidateManifest(pathname)).candidates;
+}
+
+async function readBridgeCandidateManifest(pathname) {
+  if (!pathname) {
+    return {
+      candidates: [],
+      requested: false,
+      disabled: true,
+      exists: false,
+      path: null,
+      status: "disabled",
+    };
   }
-  return [];
+  const resolved = path.resolve(pathname);
+  try {
+    if (!(await fs.pathExists(resolved))) {
+      return {
+        candidates: [],
+        requested: true,
+        disabled: false,
+        exists: false,
+        path: resolved,
+        status: "missing",
+      };
+    }
+    const value = await fs.readJson(resolved);
+    const candidates = Array.isArray(value)
+      ? value
+      : Array.isArray(value?.candidates)
+        ? value.candidates
+        : [];
+    return {
+      candidates,
+      requested: true,
+      disabled: false,
+      exists: true,
+      path: resolved,
+      status: "loaded",
+      candidate_count: candidates.length,
+    };
+  } catch {
+    return {
+      candidates: [],
+      requested: true,
+      disabled: false,
+      exists: true,
+      path: resolved,
+      status: "unreadable",
+      candidate_count: 0,
+    };
+  }
 }
 
 async function loadStories() {
@@ -1520,22 +1698,31 @@ async function runCli(argv = process.argv) {
   const args = parseArgs(argv);
   if (args.help) {
     process.stdout.write(
-      "Usage: node tools/next-publish-candidates.js [--json] [--limit N] [--analytics PATH] [--preflight-qa] [--story-id ID] [--bridge PATH|--no-bridge]\n",
+      "Usage: node tools/next-publish-candidates.js [--json] [--limit N] [--analytics PATH] [--preflight-qa] [--story-id ID] [--bridge PATH|--no-bridge] [--allow-live-fallback]\n",
     );
     return { exitCode: 0 };
   }
 
-  const [stories, analyticsText, bridgeCandidates] = await Promise.all([
+  const [stories, analyticsText, bridgeManifest] = await Promise.all([
     loadStories(),
     readAnalytics(args.analyticsPath),
-    readBridgeCandidates(args.bridgeCandidatesPath),
+    readBridgeCandidateManifest(args.bridgeCandidatesPath),
   ]);
-  const mergedStories = mergeBridgeCandidates(stories, bridgeCandidates);
+  const selected = selectCandidateSourceStories({
+    liveStories: stories,
+    bridgeCandidates: bridgeManifest.candidates,
+    bridgeManifest: {
+      ...bridgeManifest,
+      allowLiveFallback: args.allowLiveFallback,
+    },
+  });
+  const mergedStories = selected.stories;
   const report = buildNextPublishCandidatesReport(mergedStories, {
     analyticsText,
     analyticsPath: args.analyticsPath,
     limit: args.limit,
     storyId: args.storyId,
+    bridgeManifest: selected.bridge_manifest,
   });
   if (args.preflightQa) {
     await attachPreflightQa(report, mergedStories);
@@ -1578,7 +1765,10 @@ module.exports = {
   filterStoriesByStoryId,
   mergeBridgeCandidates,
   parseArgs,
+  readBridgeCandidateManifest,
+  readBridgeCandidates,
   runPreflightQaForStory,
+  selectCandidateSourceStories,
   summariseQaResult,
   runCli,
 };

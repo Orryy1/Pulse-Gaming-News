@@ -13,6 +13,7 @@ const {
   runPreflightQaForStory,
   scoreAnalyticsFit,
   mergeBridgeCandidates,
+  selectCandidateSourceStories,
 } = require("../../tools/next-publish-candidates");
 
 const analyticsText = [
@@ -56,51 +57,51 @@ function bridgeSfxEvidence() {
       readiness: { status: "pass", blockers: [] },
       selected_assets: [
         {
-          asset_id: "boom-impact-01",
+          asset_id: "modern-cinematic-impact-slam",
           role: "impact",
           family: "impact",
           provider_id: "boom_library",
-          source_url: "file://audio/licensed-sfx/boom/impact-01.wav",
+          source_url: "file://licensed/boom_library/modern-cinematic-impact-slam.wav",
           rights_basis: "boom_library_media_license",
           commercial_use_allowed: true,
           approval_status: "approved_for_commercial_editorial_use",
         },
         {
-          asset_id: "soundly-transition-01",
+          asset_id: "pure-scifi-whoosh-fast-transition",
           role: "transition",
           family: "whoosh",
           provider_id: "soundly",
-          source_url: "file://audio/licensed-sfx/soundly/transition-01.wav",
+          source_url: "file://licensed/soundly/pure-scifi-whoosh-fast-transition.wav",
           rights_basis: "soundly_pro_commercial_use",
           commercial_use_allowed: true,
           approval_status: "approved_for_commercial_editorial_use",
         },
         {
-          asset_id: "sonniss-ui-01",
+          asset_id: "qantum-ui-alert-confirm",
           role: "ui_tick",
           family: "source_tick",
           provider_id: "sonniss",
-          source_url: "file://audio/licensed-sfx/sonniss/ui-01.wav",
+          source_url: "file://licensed/sonniss/qantum-ui-alert-confirm.wav",
           rights_basis: "sonniss_game_audio_gdc_bundle_license",
           commercial_use_allowed: true,
           approval_status: "approved_for_commercial_editorial_use",
         },
         {
-          asset_id: "pse-riser-01",
+          asset_id: "clean-editorial-news-riser-trailer",
           role: "riser",
           family: "riser",
           provider_id: "pro_sound_effects",
-          source_url: "file://audio/licensed-sfx/pse/riser-01.wav",
+          source_url: "file://licensed/pro_sound_effects/clean-editorial-news-riser-trailer.wav",
           rights_basis: "pro_sound_effects_subscription_license",
           commercial_use_allowed: true,
           approval_status: "approved_for_commercial_editorial_use",
         },
         {
-          asset_id: "boom-sub-01",
+          asset_id: "mechanical-wave-trailer-sub-cinematic-hit",
           role: "sub_hit",
           family: "sub_hit",
           provider_id: "boom_library",
-          source_url: "file://audio/licensed-sfx/boom/sub-01.wav",
+          source_url: "file://licensed/boom_library/mechanical-wave-trailer-sub-cinematic-hit.wav",
           rights_basis: "boom_library_media_license",
           commercial_use_allowed: true,
           approval_status: "approved_for_commercial_editorial_use",
@@ -633,6 +634,39 @@ test("current bridge manifest excludes stale live bridge rows that are not prese
         row.reason === "stale_scheduler_bridge_candidate:not_in_current_bridge",
     ),
   );
+});
+
+test("explicit empty scheduler bridge manifest blocks live DB fallback", () => {
+  const selected = selectCandidateSourceStories({
+    liveStories: [
+      baseStory({
+        id: "live_only_after_policy_bump",
+        title: "Nintendo confirms a Switch 2 bundle outcome",
+        auto_approved: true,
+      }),
+    ],
+    bridgeCandidates: [],
+    bridgeManifest: {
+      requested: true,
+      exists: true,
+      path: "output/goal-contract/scheduler_bridge_candidates.json",
+      allowLiveFallback: false,
+    },
+  });
+  const report = buildNextPublishCandidatesReport(selected.stories, {
+    analyticsText,
+    generatedAt: "2026-05-24T12:00:00.000Z",
+    bridgeManifest: selected.bridge_manifest,
+  });
+  const markdown = formatNextPublishCandidatesMarkdown(report);
+
+  assert.deepEqual(selected.stories, []);
+  assert.equal(report.totals.candidates, 0);
+  assert.equal(report.bridge_candidates.count, 0);
+  assert.equal(report.bridge_candidates.authoritative, true);
+  assert.equal(report.bridge_candidates.live_fallback_used, false);
+  assert.equal(report.bridge_candidates.live_db_rows_ignored, 1);
+  assert.match(markdown, /live fallback: blocked/);
 });
 
 test("analytics specificity scoring rewards named corporate outcomes and penalises vague speculation", () => {

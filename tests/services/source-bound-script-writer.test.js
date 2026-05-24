@@ -30,6 +30,9 @@ const SOURCE = fs.readFileSync(
   "utf8",
 );
 
+const INSTRUCTION_LIKE_PUBLIC_SCRIPT_RE =
+  /core detail plainly|keep the claim tight|anything outside the report|outside the narration|outside the script|fake certainty|question is practical|what players can actually do with it|source line|decision filter|useful version is narrow|if the source is right|useful take is not blind hype/i;
+
 test("source-bound fallback builds a validated Forza script from an article-backed Reddit story", () => {
   const story = {
     id: "1te1oq7",
@@ -102,6 +105,28 @@ test("source-bound fallback does not inject Steam player-count context into Forz
   assert.equal(coherence.result, "pass", coherence.failures.join(", "));
 });
 
+test("source-bound fallback does not narrate editorial instructions", () => {
+  const story = {
+    id: "resident_evil_requiem_preview",
+    title: "Resident Evil Requiem shows new first-person gameplay in latest preview",
+    source_type: "reddit",
+    subreddit: "Games",
+    article_url:
+      "https://www.ign.com/articles/resident-evil-requiem-preview-first-person-gameplay",
+  };
+
+  const script = buildSourceBoundFallbackScript(story, {
+    runtimeProfile: LOCAL_PROFILE,
+    sourceMaterial:
+      "IGN reports Resident Evil Requiem has new first-person gameplay footage, with a closer look at exploration, lighting and survival-horror pacing.",
+  });
+
+  assert.ok(script);
+  assert.match(script.full_script, /Resident Evil Requiem/i);
+  assert.match(script.full_script, /IGN/i);
+  assert.doesNotMatch(script.full_script, INSTRUCTION_LIKE_PUBLIC_SCRIPT_RE);
+});
+
 test("source-bound fallback refuses general community Reddit posts without article backing", () => {
   const story = {
     title: "Had a PS5 for years and someone just pointed this out to me.",
@@ -163,7 +188,7 @@ test("source-bound fallback rewrites Mixtape as a viewer-facing preservation sto
 test("source-bound fallback source does not carry internal analyst-note phrases", () => {
   assert.doesNotMatch(
     SOURCE,
-    /source-backed update|not a blank cheque|not a blank check|invent extra details|named source confirms|wait-and-see column|Reddit reaction into evidence/i,
+    /source-backed update|not a blank cheque|not a blank check|invent extra details|named source confirms|wait-and-see column|Reddit reaction into evidence|core detail plainly|keep the claim tight|anything outside the report|fake certainty|what players can actually do with it/i,
   );
 });
 

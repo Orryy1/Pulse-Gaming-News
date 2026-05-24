@@ -78,6 +78,7 @@
     "ops:studio-enterprise-os": "node tools/studio-enterprise-os.js",
     "ops:goal-proof": "node tools/goal-proof-package.js",
     "ops:goal-batch": "node tools/goal-batch-packages.js",
+    "ops:goal-baseline-audit": "node tools/goal-baseline-audit.js",
     "ops:goal-dry-run-publish": "node tools/goal-dry-run-publish.js",
     "ops:goal-human-review": "node tools/goal-human-review-queue.js",
     "ops:goal-daily-cadence": "node tools/goal-daily-cadence.js",

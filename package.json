@@ -109,6 +109,7 @@
     "ops:render-health": "node tools/render-health.js",
     "ops:reclassify": "node tools/reclassify-report.js",
     "docs:doctor": "node tools/docs-doctor.js",
+    "ops:agent-rules": "node tools/validate-agent-operating-rules.js",
     "ops:provenance": "node tools/provenance-report.js",
     "ops:render-contract": "node tools/render-contract-report.js",
     "ops:publish-readiness": "node tools/publish-readiness.js",

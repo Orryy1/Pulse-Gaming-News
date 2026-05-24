@@ -980,6 +980,115 @@ test("bridge preflight blocks generated-only orange-card motion decks", async ()
   assert.ok(preflight.blockers.includes("incident_guard:visual_evidence:generated_only_motion_deck"));
 });
 
+test("bridge preflight accepts stringified source-locked owned explainer bridge evidence", async () => {
+  const scores = {
+    motion_density_score: 92,
+    first_3_seconds_hook_score: 88,
+    source_lock_quality_score: 86,
+    caption_legibility_score: 94,
+    card_hierarchy_score: 84,
+    media_house_polish_score: 90,
+  };
+  const clips = Array.from({ length: 5 }, (_, index) => ({
+    id: `bridge-owned-explainer-${index + 1}`,
+    path: `output/generated-motion/bridge-owned-explainer/${index + 1}.mp4`,
+    source_url: `local://pulse-generated-motion/bridge-owned-explainer/${index + 1}`,
+    source_type: "internally_generated_motion_graphic",
+    source_kind: "owned_source_card_explainer_motion",
+    media_kind: "owned_explainer_motion",
+    rights_risk_class: "owned_generated_motion",
+    source_family: `owned_explainer_${index + 1}`,
+    motion_family: `owned_explainer_${index + 1}`,
+    owned_explainer_visual_plan: true,
+    counts_towards_motion_readiness: true,
+    materialized: true,
+  }));
+  const rightsLedger = {
+    verdict: "pass",
+    assets: [],
+    records: clips.map((clip) => ({
+      ...clip,
+      asset_type: "generated_motion",
+      licence_basis: "owned_generated_editorial_motion_graphic",
+      allowed_platforms: ["youtube", "tiktok", "instagram", "facebook", "x", "threads", "pinterest"],
+      commercial_use_allowed: true,
+      approval_status: "approved_for_transformative_editorial_use",
+      risk_score: 0.03,
+    })),
+  };
+  const footageInventory = {
+    motion_budget: {
+      allow_owned_explainer_motion_only: true,
+      owned_explainer_visual_plan: true,
+    },
+    motion_inventory: {
+      owned_explainer_visual_plan: true,
+      accepted_local_clips: clips,
+      production_motion_clips: clips,
+      distinct_source_families: clips.map((clip) => clip.source_family),
+    },
+  };
+  const preflight = await runPreflightQaForStory(
+    baseStory({
+      id: "bridge_owned_explainer",
+      title: "Xbox Fans Used Feedback To Demand Exclusives",
+      selected_title: "Xbox Fans Used Feedback To Demand Exclusives",
+      canonical_subject: "Xbox",
+      first_spoken_line: "Xbox asked for feedback and immediately got the exclusives argument.",
+      description: "IGN reported Xbox Player Voice feedback turned into an exclusives argument. Source: IGN.",
+      full_script:
+        "Xbox asked for feedback and immediately got the exclusives argument. IGN reported the Player Voice update and the fan response around exclusives.",
+      scheduler_bridge_source: "goal_production_cutover",
+      render_lane: "visual_v4_production",
+      render_quality_class: "premium",
+      qa_visual_count: 5,
+      visual_v4_render_bridge_clip_count: 5,
+      exported_path: "D:/pulse-data/media/output/final/bridge_owned_explainer.mp4",
+      audio_path: "D:/pulse-data/media/output/audio/bridge_owned_explainer.mp3",
+      timestamps_path: "D:/pulse-data/media/output/audio/bridge_owned_explainer_timestamps.json",
+      manual_caption_path: "D:/pulse-data/media/output/captions/bridge_owned_explainer.srt",
+      primary_source: "IGN",
+      discovery_source: "IGN",
+      publish_verdict: { verdict: "GREEN" },
+      platform_publish_manifest: {
+        publish_status: "GREEN",
+        platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts"] },
+        outputs: {
+          youtube_shorts: { title: "Xbox Fans Used Feedback To Demand Exclusives" },
+        },
+      },
+      visual_quality_report: {
+        result: "pass",
+        scores,
+        frame_rules: {
+          first_frame_subject: "Xbox",
+          first_frame_text: "XBOX FEEDBACK FIGHT",
+          source_locks_readable: true,
+        },
+        failures: [],
+      },
+      media_house_benchmark: {
+        result: "pass",
+        scores,
+        failures: [],
+      },
+      sfx_manifest: bridgeSfxEvidence(),
+      rights_ledger: JSON.stringify(rightsLedger),
+      footage_inventory: JSON.stringify(footageInventory),
+      visual_v4_bridge_video_clips: JSON.stringify(clips),
+      video_clips: JSON.stringify(clips),
+    }),
+    {
+      runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    },
+  );
+
+  assert.equal(preflight.status, "pass");
+});
+
 test("bridge preflight blocks screenshot-derived-only motion decks", async () => {
   const scores = {
     motion_density_score: 92,

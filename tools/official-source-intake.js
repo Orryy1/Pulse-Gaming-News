@@ -23,6 +23,7 @@ function parseArgs(argv) {
   const args = {
     input: null,
     storyId: null,
+    storyJsonPath: null,
     fixture: false,
     json: false,
     help: false,
@@ -33,6 +34,7 @@ function parseArgs(argv) {
     const arg = argv[i];
     if (arg === "--input") args.input = argv[++i] || null;
     else if (arg === "--story-id" || arg === "--story") args.storyId = argv[++i] || null;
+    else if (arg === "--story-json") args.storyJsonPath = argv[++i] || null;
     else if (arg === "--fixture") args.fixture = true;
     else if (arg === "--json") args.json = true;
     else if (arg === "--output-json") args.outputJson = argv[++i] || DEFAULT_OUTPUT_JSON;
@@ -50,6 +52,7 @@ function printHelp() {
       "Options:",
       "  --input <p>       JSON array or object with entries/items/sources",
       "  --story-id <id>   Validate entries for one story id",
+      "  --story-json <p>  Use a local governed/package story JSON",
       "  --fixture         Use built-in demo stories when local DB is unavailable",
       "  --output-json <p> Write local JSON report",
       "  --output-md <p>   Write local Markdown report",
@@ -90,6 +93,17 @@ async function loadStories(args) {
   if (args.fixture) {
     const stories = buildDemoStories();
     return args.storyId ? stories.filter((story) => story.id === args.storyId) : stories;
+  }
+
+  if (args.storyJsonPath) {
+    const storyJsonPath = path.resolve(ROOT, args.storyJsonPath);
+    const parsed = await fs.readJson(storyJsonPath);
+    const rows = (Array.isArray(parsed) ? parsed : [parsed]).map(normaliseStory);
+    const selected = args.storyId ? rows.filter((story) => story.id === args.storyId) : rows;
+    if (selected.length === 0) {
+      throw new Error(`story JSON did not contain requested story id: ${args.storyId}`);
+    }
+    return selected;
   }
 
   try {

@@ -1197,6 +1197,48 @@ test("official clip refs ignore unsafe or downloadable resolver references", () 
   );
 });
 
+test("official clip refs deep-scan official product page direct media without calling it gameplay", () => {
+  const refs = buildOfficialTrailerClipsFromFrameReport(
+    { plans: [{ story_id: "ps5-story", frames: [] }] },
+    "ps5-story",
+    {
+      includeExploratoryWindows: true,
+      exploratoryStartSeconds: [2, 6],
+      referenceReport: {
+        plans: [
+          {
+            story_id: "ps5-story",
+            references: [
+              {
+                source_type: "official_platform_product_page",
+                provider: "playstation",
+                source_url: "https://gmedia.playstation.com/is/content/SIEPDC/global/ps5/product-motion.mp4",
+                entity: "PS5",
+                source_family: "playstation_ps5_product_page",
+                duration_seconds: 9.88,
+                downloads_allowed: false,
+                segment_validation_eligible: true,
+              },
+            ],
+          },
+        ],
+      },
+      maxClips: 4,
+    },
+  );
+
+  assert.deepEqual(
+    refs.map((ref) => `${ref.sourceType}:${ref.mediaStartS}`),
+    [
+      "official_platform_product_page:4",
+      "official_platform_product_page:4.15",
+      "official_platform_product_page:5.63",
+    ],
+  );
+  assert.ok(refs.every((ref) => ref.provenance.segment_validation_reason === "exploratory_window_not_sampled"));
+  assert.ok(refs.every((ref) => ref.provenance.segment_validation_eligible === true));
+});
+
 test("official clip refs inherit local segment validation before Flash Lane use", () => {
   const frameReport = {
     plans: [

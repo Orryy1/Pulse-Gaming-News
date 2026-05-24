@@ -177,6 +177,22 @@ test("platform operational config reflects safe disabled/blocker defaults", () =
   assert.strictEqual(config.tiktok.state, "blocked_external");
   assert.strictEqual(config.facebook_reel.state, "disabled");
   assert.strictEqual(config.twitter.state, "disabled");
+  assert.strictEqual(config.threads.state, "disabled");
+  assert.strictEqual(config.threads.reason, "threads_not_configured");
+  assert.strictEqual(config.pinterest.state, "disabled");
+  assert.strictEqual(config.pinterest.reason, "pinterest_not_configured");
+});
+
+test("platform operational config reports explicit Threads and Pinterest credential gaps", () => {
+  const config = buildPlatformOperationalConfig({
+    THREADS_ENABLED: "true",
+    PINTEREST_ENABLED: "true",
+  });
+
+  assert.strictEqual(config.threads.state, "needs_credentials");
+  assert.strictEqual(config.threads.reason, "threads_credentials_missing");
+  assert.strictEqual(config.pinterest.state, "needs_credentials");
+  assert.strictEqual(config.pinterest.reason, "pinterest_credentials_missing");
 });
 
 test("platform operational config reports explicit local TikTok operator disable", () => {

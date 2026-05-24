@@ -15,6 +15,7 @@ const fs = require("fs-extra");
 const os = require("node:os");
 const path = require("node:path");
 const {
+  loadStories,
   parseArgs: parseOfficialTrailerReferenceCliArgs,
   shouldWriteLatestReport,
 } = require("../../tools/official-trailer-reference-resolver");
@@ -111,6 +112,43 @@ test("official trailer resolver CLI keeps one-story runs from overwriting the la
     trustedRegistryArgs.trustedFootageRegistryReport,
     "test/output/trusted_footage_registry_report.json",
   );
+});
+
+test("official trailer resolver story-json mode accepts governed story_id manifests", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-trailer-story-json-"));
+  const storyPath = path.join(dir, "canonical_story_manifest.json");
+  await fs.writeJson(storyPath, {
+    story_id: "story-from-manifest",
+    canonical_subject: "The Expanse: Osiris Reborn",
+    selected_title: "The Expanse Shows Real Gameplay",
+    game_images: [],
+    downloaded_images: [],
+  });
+  await fs.writeJson(path.join(dir, "rights_ledger.json"), {
+    verdict: "pass",
+    assets: [
+      {
+        asset_id: "steam-header",
+        source: "steam",
+        source_type: "steam_header",
+        source_url: "https://cdn.akamai.steamstatic.com/steam/apps/3727390/header.jpg",
+        licence_basis: "source_documented_transformative_editorial_use",
+        approval_status: "approved",
+      },
+    ],
+  });
+
+  const result = await loadStories({
+    storyJsonPath: storyPath,
+    storyId: "story-from-manifest",
+  });
+
+  assert.equal(result.mode, "story_json");
+  assert.equal(result.stories.length, 1);
+  assert.equal(result.stories[0].id, "story-from-manifest");
+  assert.equal(result.stories[0].title, "The Expanse Shows Real Gameplay");
+  assert.equal(result.stories[0].game_title, "The Expanse: Osiris Reborn");
+  assert.equal(result.stories[0].rights_ledger.length, 1);
 });
 
 test("official trailer resolver CLI reads current asset acquisition reports first", () => {
@@ -351,6 +389,44 @@ test("official trailer resolver derives Steam motion targets from repaired right
   assert.equal(plan.references.length, 1);
   assert.equal(plan.references[0].source_url, "https://cdn.example/expanse-gameplay.mp4");
   assert.equal(plan.references[0].source_url_kind, "direct_video");
+});
+
+test("official trailer resolver treats governed Steam CDN rights rows as storefront reference targets", async () => {
+  const plan = await buildOfficialTrailerReferencePlan(
+    baseStory({
+      id: "expanse-v4-minimal-rights",
+      title: "The Expanse Shows Real Gameplay",
+      canonical_subject: "The Expanse: Osiris Reborn",
+      canonical_game: "The Expanse: Osiris Reborn",
+      full_script: "The Expanse: Osiris Reborn finally showed real gameplay.",
+      rights_ledger: [
+        {
+          asset_id: "steam-header",
+          source: "steam",
+          source_type: "key_art",
+          source_url: "https://cdn.akamai.steamstatic.com/steam/apps/3727390/header.jpg",
+        },
+      ],
+    }),
+    {
+      steamLookup: async (appId) => ({
+        appId,
+        success: true,
+        title: "The Expanse: Osiris Reborn",
+        movies: [
+          {
+            id: 44,
+            name: "Gameplay Trailer",
+            mp4: { max: "https://cdn.example/expanse-gameplay.mp4" },
+          },
+        ],
+      }),
+    },
+  );
+
+  assert.equal(plan.motion_reference_readiness, "official_reference_found");
+  assert.equal(plan.verified_store_targets[0].store_app_id, "3727390");
+  assert.equal(plan.references[0].allowed_render_use, "reference_only_by_default");
 });
 
 test("official trailer resolver loader includes visual deck exact-subject assets", () => {

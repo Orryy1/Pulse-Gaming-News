@@ -201,6 +201,33 @@ test("buildRenderHealthSummary: bridge candidates are reported separately from l
   assert.equal(r.bridge.visual_count.median, 8);
 });
 
+test("splitRenderHealthSummary: emits separate live DB and scheduler bridge reports", () => {
+  const summary = digest.buildRenderHealthSummary(
+    [story({ render_quality_class: undefined, render_lane: undefined })],
+    {
+      bridgeCandidates: [
+        {
+          id: "bridge-one",
+          approved_at: new Date().toISOString(),
+          render_quality_class: "premium",
+          render_lane: "visual_v4_production",
+          qa_visual_count: 8,
+        },
+      ],
+    },
+  );
+
+  const split = digest.splitRenderHealthSummary(summary);
+
+  assert.equal(split.live_db_health_report.stamped, 0);
+  assert.equal(split.live_db_health_report.unstamped, 1);
+  assert.equal(Object.hasOwn(split.live_db_health_report, "bridge"), false);
+  assert.equal(split.bridge_health_report.candidate_count, 1);
+  assert.equal(split.bridge_health_report.candidate_count_meaning, "scheduler_bridge_candidates");
+  assert.equal(split.discord_digest_payload.summary.live_db_stamped, 0);
+  assert.equal(split.discord_digest_payload.summary.scheduler_bridge_candidate_count, 1);
+});
+
 test("buildRenderHealthSummary: bridge candidates expose real-media and generated-only evidence", () => {
   const now = new Date().toISOString();
   const generatedClips = Array.from({ length: 8 }, (_, index) => ({

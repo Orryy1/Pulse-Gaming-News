@@ -3,7 +3,9 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
+const { spawnSync } = require("node:child_process");
 
 const {
   buildOfficialSourceIntakeReport,
@@ -216,6 +218,40 @@ test("official source intake marks direct media URLs as segment-validation eligi
   assert.equal(report.provenance_ledger[0].segment_validation_eligible, true);
 });
 
+test("official source intake accepts official product-page direct media", () => {
+  const report = buildOfficialSourceIntakeReport({
+    stories: [
+      story({
+        title: "PS5 Price Hike Rumour Hits Europe",
+        canonical_subject: "PS5",
+        full_script: "PS5 pricing is under scrutiny, but the product footage is only visual context.",
+      }),
+    ],
+    entries: [
+      officialEntry({
+        entity: "PS5",
+        official_source_url: "https://www.playstation.com/en-gb/ps5/",
+        direct_media_url_if_available:
+          "https://gmedia.playstation.com/is/content/SIEPDC/global_pdc/en/hardware/ps5/channel-specific-content/pdc/2025/overview/hero/ps5-overview-evergreen-hero-desktop-video-01-en-16oct25.mp4",
+        source_title: "PS5 official product video",
+        source_owner: "PlayStation",
+        source_type: "official_platform_product_page",
+        source_family: "playstation_ps5_product_page",
+        evidence_of_officialness: "Official PlayStation product page for PS5.",
+        entity_match_notes: "The page and media are for PS5 hardware.",
+        source_duration_s: 9.88,
+      }),
+    ],
+  });
+
+  assert.equal(report.summary.accepted, 1);
+  assert.equal(report.summary.rejected, 0);
+  assert.equal(report.accepted_references[0].source_type, "official_platform_product_page");
+  assert.equal(report.accepted_references[0].source_url_kind, "direct_video");
+  assert.equal(report.accepted_references[0].segment_validation_eligible, true);
+  assert.equal(report.accepted_references[0].allowed_render_use, "reference_only_by_default");
+});
+
 test("official source intake uses optional direct media URLs while preserving the reference page", () => {
   const report = buildOfficialSourceIntakeReport({
     stories: [story()],
@@ -403,4 +439,126 @@ test("official source intake CLI and package script are available", () => {
   );
   assert.match(toolSource, /dotenv.*config/s);
   assert.match(packageJson.scripts["media:intake-official-sources"], /official-source-intake\.js/);
+});
+
+test("official source intake CLI accepts governed package story JSON overrides", async () => {
+  const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "pulse-official-source-story-json-"));
+  const storyPath = path.join(dir, "story.json");
+  const inputPath = path.join(dir, "official-sources.json");
+  const outputJson = path.join(dir, "report.json");
+  const outputMd = path.join(dir, "report.md");
+
+  fs.writeFileSync(
+    storyPath,
+    JSON.stringify({
+      id: "package_story_red_dead",
+      title: "Red Dead Redemption 2 trailer update",
+      full_script: "Red Dead Redemption 2 has a new official trailer reference for a visual repair pass.",
+      source_type: "rss",
+      subreddit: "Rockstar",
+      flair: "Verified",
+      timestamp: "2026-05-07T12:00:00Z",
+    }),
+  );
+  fs.writeFileSync(
+    inputPath,
+    JSON.stringify([
+      officialEntry({
+        story_id: "package_story_red_dead",
+        official_source_url: "https://www.rockstargames.com/reddeadredemption2/videos",
+      }),
+    ]),
+  );
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      "tools/official-source-intake.js",
+      "--story-json",
+      storyPath,
+      "--input",
+      inputPath,
+      "--output-json",
+      outputJson,
+      "--output-md",
+      outputMd,
+      "--json",
+    ],
+    {
+      cwd: path.join(__dirname, "..", ".."),
+      encoding: "utf8",
+    },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(fs.readFileSync(outputJson, "utf8"));
+  assert.equal(report.summary.accepted, 1);
+  assert.equal(report.summary.rejected, 0);
+  assert.equal(report.accepted_references[0].story_id, "package_story_red_dead");
+  assert.match(result.stdout, /package_story_red_dead/);
+});
+
+test("official source intake CLI accepts governed story_id without legacy id", async () => {
+  const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "pulse-official-source-story-id-json-"));
+  const storyPath = path.join(dir, "story.json");
+  const inputPath = path.join(dir, "official-sources.json");
+  const outputJson = path.join(dir, "report.json");
+  const outputMd = path.join(dir, "report.md");
+
+  fs.writeFileSync(
+    storyPath,
+    JSON.stringify({
+      story_id: "package_story_ps5",
+      canonical_subject: "PS5",
+      title: "PS5 Price Hike Rumour Hits Europe",
+      full_script: "PS5 pricing is under scrutiny, with official product footage used only as visual context.",
+      source_type: "rss",
+      subreddit: "Eurogamer",
+      flair: "Verified",
+      timestamp: "2026-05-07T12:00:00Z",
+    }),
+  );
+  fs.writeFileSync(
+    inputPath,
+    JSON.stringify([
+      officialEntry({
+        story_id: "package_story_ps5",
+        entity: "PS5",
+        official_source_url: "https://www.playstation.com/en-gb/ps5/",
+        direct_media_url_if_available:
+          "https://gmedia.playstation.com/is/content/SIEPDC/global_pdc/en/hardware/ps5/channel-specific-content/pdc/2025/overview/hero/ps5-overview-evergreen-hero-desktop-video-01-en-16oct25.mp4",
+        source_type: "official_platform_product_page",
+        source_family: "playstation_ps5_product_page",
+        source_owner: "PlayStation",
+        evidence_of_officialness: "Official PlayStation product page for PS5.",
+        entity_match_notes: "The page and media are for PS5 hardware.",
+      }),
+    ]),
+  );
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      "tools/official-source-intake.js",
+      "--story-json",
+      storyPath,
+      "--input",
+      inputPath,
+      "--output-json",
+      outputJson,
+      "--output-md",
+      outputMd,
+      "--json",
+    ],
+    {
+      cwd: path.join(__dirname, "..", ".."),
+      encoding: "utf8",
+    },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(fs.readFileSync(outputJson, "utf8"));
+  assert.equal(report.summary.accepted, 1);
+  assert.equal(report.summary.rejected, 0);
+  assert.equal(report.accepted_references[0].story_id, "package_story_ps5");
 });

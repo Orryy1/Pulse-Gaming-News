@@ -778,7 +778,19 @@ function cleanText(value) {
 }
 
 function asArray(value) {
-  return Array.isArray(value) ? value.filter(Boolean) : [];
+  if (Array.isArray(value)) return value.filter(Boolean);
+  if (typeof value !== "string") return [];
+  const trimmed = value.trim();
+  if (!trimmed) return [];
+  if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
 }
 
 function firstSentence(value = "") {
@@ -827,7 +839,120 @@ function summarisePublicCopyQaResult(result = {}) {
 }
 
 function objectValue(value, fallback = {}) {
-  return value && typeof value === "object" && !Array.isArray(value) ? value : fallback;
+  if (value && typeof value === "object" && !Array.isArray(value)) return value;
+  if (typeof value === "string" && value.trim().startsWith("{")) {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+  return fallback;
+}
+
+function rightsLedgerRecords(value = null) {
+  if (Array.isArray(value)) return value.filter(Boolean);
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    try {
+      return rightsLedgerRecords(JSON.parse(trimmed));
+    } catch {
+      return [];
+    }
+  }
+  if (!value || typeof value !== "object") return [];
+  return [
+    ...asArray(value.assets),
+    ...asArray(value.records),
+    ...asArray(value.rights_ledger),
+  ];
+}
+
+function clipKeyValues(clip = {}) {
+  return [
+    clip.asset_id,
+    clip.id,
+    clip.path,
+    clip.local_path,
+    clip.local_materialized_path,
+    clip.media_path,
+    clip.source_url,
+  ]
+    .map(cleanText)
+    .filter(Boolean)
+    .map((value) => value.replace(/\\/g, "/").toLowerCase());
+}
+
+function recordCoversClip(record = {}, clip = {}) {
+  const recordKeys = new Set(clipKeyValues(record));
+  return clipKeyValues(clip).some((key) => recordKeys.has(key));
+}
+
+function ownedExplainerMotionReadyForStory(story = {}) {
+  const footageInventory = objectValue(story.footage_inventory, {});
+  const budget = footageInventory.motion_budget || {};
+  const inventory = footageInventory.motion_inventory || {};
+  const explicitPlan =
+    budget.allow_owned_explainer_motion_only === true ||
+    budget.owned_explainer_visual_plan === true ||
+    inventory.owned_explainer_visual_plan === true;
+  if (!explicitPlan) return false;
+  const clips = [
+    ...asArray(story.visual_v4_bridge_video_clips),
+    ...asArray(story.video_clips),
+    ...asArray(inventory.accepted_local_clips),
+    ...asArray(inventory.production_motion_clips),
+  ].filter((clip) => clip && typeof clip === "object");
+  const ownedClips = clips.filter((clip) => {
+    const text = [
+      clip.source_type,
+      clip.source_kind,
+      clip.media_kind,
+      clip.rights_risk_class,
+      clip.licence_basis,
+      clip.rights_basis,
+      clip.source_url,
+      clip.path,
+    ]
+      .map(cleanText)
+      .join(" ")
+      .toLowerCase();
+    return (
+      clip.owned_explainer_visual_plan === true ||
+      text.includes("owned_explainer_motion") ||
+      text.includes("owned_source_card_explainer_motion") ||
+      text.includes("owned_generated_editorial_motion_graphic")
+    );
+  });
+  const families = new Set(
+    ownedClips
+      .map((clip) => cleanText(clip.motion_family || clip.source_family || clip.visual_family || clip.family || clip.id))
+      .filter(Boolean),
+  );
+  const rightsRecords = rightsLedgerRecords(story.rights_ledger || story.rights_records);
+  const rightsCovered = ownedClips.every((clip) =>
+    rightsRecords.some((record) => {
+      const rightsText = [
+        record.licence_basis,
+        record.license_basis,
+        record.rights_basis,
+        record.approval_status,
+        record.asset_type,
+        record.source_type,
+      ]
+        .map(cleanText)
+        .join(" ")
+        .toLowerCase();
+      return (
+        recordCoversClip(record, clip) &&
+        rightsText.includes("owned_generated_editorial_motion_graphic") &&
+        record.commercial_use_allowed !== false
+      );
+    }),
+  );
+  return ownedClips.length >= 5 && families.size >= 5 && rightsCovered;
 }
 
 function shouldRunIncidentGuardForStory(story = {}) {
@@ -840,8 +965,8 @@ function shouldRunIncidentGuardForStory(story = {}) {
 
 function uniqueMotionFamilies(story = {}) {
   const clips = [
-    ...(Array.isArray(story.video_clips) ? story.video_clips : []),
-    ...(Array.isArray(story.visual_v4_bridge_video_clips) ? story.visual_v4_bridge_video_clips : []),
+    ...asArray(story.video_clips),
+    ...asArray(story.visual_v4_bridge_video_clips),
   ];
   return new Set(
     clips
@@ -858,14 +983,10 @@ function incidentGuardFileEvidenceForStory(story = {}) {
   const families = uniqueMotionFamilies(story);
   const clipCount = Math.max(
     Number(story.visual_v4_render_bridge_clip_count || 0),
-    Array.isArray(story.video_clips) ? story.video_clips.length : 0,
-    Array.isArray(story.visual_v4_bridge_video_clips) ? story.visual_v4_bridge_video_clips.length : 0,
+    asArray(story.video_clips).length,
+    asArray(story.visual_v4_bridge_video_clips).length,
   );
-  const rightsRecords = Array.isArray(story.rights_ledger)
-    ? story.rights_ledger
-    : Array.isArray(story.rights_records)
-      ? story.rights_records
-      : [];
+  const rightsRecords = rightsLedgerRecords(story.rights_ledger || story.rights_records);
   return {
     mp4_ready: Boolean(story.exported_path),
     captions_ready: Boolean(story.manual_caption_path || story.caption_path || story.clean_manual_captions),
@@ -924,10 +1045,19 @@ function incidentGuardPreflightForStory(story = {}) {
   const visualEvidence = visualEvidenceProfile({
     story,
     rightsLedger: story.rights_ledger || story.rights_records || {},
-    footageInventory: story.footage_inventory || {},
+    footageInventory: objectValue(story.footage_inventory, {}),
     directorPlan: story.visual_v4_director_plan || story.director_plan || {},
   });
-  const generatedVisualFailures = asArray(visualEvidence.blockers);
+  const ownedExplainerReady = ownedExplainerMotionReadyForStory(story);
+  const generatedVisualFailures = asArray(visualEvidence.blockers).filter(
+    (blocker) =>
+      !ownedExplainerReady ||
+      ![
+        "visual_evidence:generated_only_motion_deck",
+        "visual_evidence:no_real_visual_media_asset",
+        "visual_evidence:direct_video_motion_missing",
+      ].includes(blocker),
+  );
   const directMotionExceptionApproved =
     story.breaking_news_flag === true ||
     story.human_reviewed_direct_video_motion_exception === true ||
@@ -941,7 +1071,11 @@ function incidentGuardPreflightForStory(story = {}) {
       /production_v4/i.test(cleanText(renderManifest.visual_tier || renderManifest.tier)) ||
       /premium/i.test(renderClass)
     );
-  if (requiresDirectVideoMotion && Number(visualEvidence.direct_video_motion_asset_count) < 1) {
+  if (
+    requiresDirectVideoMotion &&
+    Number(visualEvidence.direct_video_motion_asset_count) < 1 &&
+    !ownedExplainerReady
+  ) {
     generatedVisualFailures.push("visual_evidence:direct_video_motion_missing");
   }
   if (report.verdict === "pass" && !generatedVisualFailures.length) {

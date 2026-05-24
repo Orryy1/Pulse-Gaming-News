@@ -23,6 +23,7 @@ const path = require("node:path");
 
 const {
   runRenderHealthDigest,
+  splitRenderHealthSummary,
 } = require("../lib/intelligence/render-health-digest");
 
 const ROOT = path.resolve(__dirname, "..");
@@ -32,12 +33,15 @@ const DEFAULT_BRIDGE_CANDIDATES_PATH = path.join(
   "goal-contract",
   "scheduler_bridge_candidates.json",
 );
+const DEFAULT_OUTPUT_DIR = path.join(ROOT, "output", "goal-contract");
 
 function parseArgs(argv) {
   const args = {
     hours: 24,
     json: false,
     bridgeCandidatesPath: DEFAULT_BRIDGE_CANDIDATES_PATH,
+    outputDir: DEFAULT_OUTPUT_DIR,
+    writeReports: true,
   };
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
@@ -57,6 +61,12 @@ function parseArgs(argv) {
       args.bridgeCandidatesPath = a.slice("--bridge=".length);
     } else if (a === "--no-bridge-candidates" || a === "--no-bridge") {
       args.bridgeCandidatesPath = "";
+    } else if (a === "--out-dir") {
+      args.outputDir = argv[++i] || "";
+    } else if (a.startsWith("--out-dir=")) {
+      args.outputDir = a.slice("--out-dir=".length);
+    } else if (a === "--no-write") {
+      args.writeReports = false;
     } else if (a === "--help" || a === "-?") {
       args.help = true;
     }
@@ -70,7 +80,9 @@ function printHelp() {
       "  --hours N   Look-back window in hours (default 24)\n" +
       "  --json      Print the summary as JSON instead of markdown\n" +
       "  --bridge-candidates PATH  Include governed V4 bridge candidates\n" +
-      "  --no-bridge-candidates    Ignore bridge candidates\n",
+      "  --no-bridge-candidates    Ignore bridge candidates\n" +
+      "  --out-dir PATH            Write JSON report artefacts here\n" +
+      "  --no-write                Do not write report artefacts\n",
   );
 }
 
@@ -101,6 +113,29 @@ function readBridgeCandidates(candidatePath) {
   }));
 }
 
+function resolveOutputDir(outputDir) {
+  if (!outputDir) return "";
+  return path.isAbsolute(outputDir) ? outputDir : path.resolve(ROOT, outputDir);
+}
+
+function writeReportArtifacts({ summary, markdown, outputDir }) {
+  const resolved = resolveOutputDir(outputDir);
+  if (!resolved) return null;
+  fs.mkdirSync(resolved, { recursive: true });
+  const reports = splitRenderHealthSummary(summary);
+  reports.discord_digest_payload.markdown = markdown;
+  const files = {
+    render_health_report: path.join(resolved, "render_health_report.json"),
+    live_db_health_report: path.join(resolved, "live_db_health_report.json"),
+    bridge_health_report: path.join(resolved, "bridge_health_report.json"),
+    discord_digest_payload: path.join(resolved, "discord_digest_payload.json"),
+  };
+  for (const [key, filePath] of Object.entries(files)) {
+    fs.writeFileSync(filePath, JSON.stringify(reports[key], null, 2) + "\n");
+  }
+  return files;
+}
+
 async function main() {
   const args = parseArgs(process.argv);
   if (args.help) {
@@ -118,6 +153,9 @@ async function main() {
     bridgeCandidates,
   });
   const { summary, markdown } = result;
+  if (args.writeReports) {
+    writeReportArtifacts({ summary, markdown, outputDir: args.outputDir });
+  }
   if (args.json) {
     process.stdout.write(JSON.stringify(summary, null, 2) + "\n");
   } else {

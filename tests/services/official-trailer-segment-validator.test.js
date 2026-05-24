@@ -20,6 +20,7 @@ const {
   VALIDATOR_RULESET_VERSION,
 } = require("../../lib/studio/v2/official-trailer-segment-validator");
 const {
+  balanceClipRefsAcrossStories,
   buildClipRefsFromReport,
   reportOutputTargets,
 } = require("../../tools/official-trailer-segment-validator");
@@ -190,6 +191,28 @@ test("segment validator CLI scopes batch clip refs from explicit reference repor
   const storyIds = [...new Set(refs.map((ref) => ref.story_id).filter(Boolean))].sort();
   assert.deepEqual(storyIds, ["story-a", "story-b"]);
   assert.equal(refs.some((ref) => ref.story_id === "stale-frame-story"), false);
+});
+
+test("segment validator CLI balances batch clip refs across stories before segment caps", () => {
+  const refs = [
+    clip({ story_id: "story-a", storyId: "story-a", mediaStartS: 36 }),
+    clip({ story_id: "story-a", storyId: "story-a", mediaStartS: 42 }),
+    clip({ story_id: "story-a", storyId: "story-a", mediaStartS: 48 }),
+    clip({ story_id: "story-b", storyId: "story-b", mediaStartS: 36 }),
+    clip({ story_id: "story-b", storyId: "story-b", mediaStartS: 42 }),
+    clip({ story_id: "story-c", storyId: "story-c", mediaStartS: 36 }),
+  ];
+
+  const balanced = balanceClipRefsAcrossStories(refs);
+
+  assert.deepEqual(
+    balanced.slice(0, 3).map((ref) => ref.story_id),
+    ["story-a", "story-b", "story-c"],
+  );
+  assert.deepEqual(
+    balanced.map((ref) => `${ref.story_id}:${ref.mediaStartS}`),
+    ["story-a:36", "story-b:36", "story-c:36", "story-a:42", "story-b:42", "story-a:48"],
+  );
 });
 
 test("segment validator CLI writes story-scoped report aliases for one-story runs", () => {
@@ -758,6 +781,110 @@ test("official trailer segment validator accepts clean official direct-media mot
   assert.equal(report.segments[0].segment_motion_class, "gameplay_action");
 });
 
+test("official trailer segment validator accepts clean official Steam gameplay trailer motion when frames are cinematic", async () => {
+  const outputRoot = tempOutputRoot("official-steam-gameplay-trailer-cinematic-motion");
+  await cleanTempRoot(outputRoot);
+  let call = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        path: "https://video.akamai.steamstatic.com/store_trailers/3727390/2016455987/hash/hls_264_master.m3u8",
+        sourceType: "steam_movie",
+        movieName: "Gameplay Trailer",
+        sourceDurationS: 86,
+        mediaStartS: 66,
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: fakeExtractor,
+      inspectFrame: async (outputPath) => {
+        call += 1;
+        const samples = [
+          { edge_density: 0.09, saturation_mean: 0.36, score: 80, tags: ["colourful"] },
+          { edge_density: 0.148, saturation_mean: 0.275, score: 83, tags: ["detail_rich"] },
+          { edge_density: 0.132, saturation_mean: 0.369, score: 86, tags: ["colourful"] },
+        ];
+        const sample = samples[call - 1] || samples[0];
+        return {
+          ...passingQa(outputPath),
+          content_hash: `steam-gameplay-trailer-${call}`,
+          prescan: {
+            likely_is_logo: false,
+            text_overlay_likelihood: 0,
+            white_text_on_dark_likelihood: 0,
+            edge_density: sample.edge_density,
+            saturation_mean: sample.saturation_mean,
+            dark_pixel_ratio: 0.24,
+            bright_pixel_ratio: 0.01,
+            letterbox_bar_ratio: 0,
+          },
+          visual_taste: {
+            verdict: "pass",
+            reason: "taste_passed",
+            score: sample.score,
+            tags: sample.tags,
+          },
+        };
+      },
+    },
+  );
+
+  assert.equal(report.summary.segments_validated, 1);
+  assert.equal(report.segments[0].validation_reason, "official_storefront_trailer_motion_samples_passed");
+  assert.equal(report.segments[0].action_sample_count, 0);
+  assert.equal(report.segments[0].segment_motion_class, "gameplay_action");
+  assert.equal(report.segments[0].allowed_for_flash_lane, true);
+});
+
+test("official trailer segment validator labels official product page motion without pretending it is gameplay", async () => {
+  const outputRoot = tempOutputRoot("official-product-motion");
+  await cleanTempRoot(outputRoot);
+  let call = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        path: "https://gmedia.playstation.com/is/content/SIEPDC/global/ps5/product-motion.mp4",
+        sourceType: "official_platform_product_page",
+        sourceDurationS: 9.88,
+        mediaStartS: 4,
+        entity: "PS5",
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: fakeExtractor,
+      inspectFrame: async (outputPath) => {
+        call += 1;
+        return {
+          ...passingQa(outputPath),
+          content_hash: `official-product-motion-${call}`,
+          prescan: {
+            likely_is_logo: false,
+            text_overlay_likelihood: 0,
+            white_text_on_dark_likelihood: 0,
+            edge_density: 0.18,
+            saturation_mean: 0.62,
+            dark_pixel_ratio: 0.28,
+            bright_pixel_ratio: 0.02,
+            letterbox_bar_ratio: 0.04,
+          },
+        };
+      },
+    },
+  );
+
+  assert.equal(report.summary.segments_validated, 1);
+  assert.equal(report.segments[0].validation_reason, "official_product_motion_samples_passed");
+  assert.equal(report.segments[0].segment_motion_class, "official_product_motion");
+  assert.equal(report.segments[0].allowed_for_flash_lane, true);
+  assert.ok(report.segments[0].action_score >= 76);
+});
+
 test("official trailer segment validator rejects explicitly blurred windows", async () => {
   const outputRoot = tempOutputRoot("blurred-window");
   await cleanTempRoot(outputRoot);
@@ -1248,6 +1375,74 @@ test("official trailer segment validator trims mixed-quality windows when two cl
   assert.ok(report.segments[0].recommended_duration_s < 5);
   assert.deepEqual(report.segments[0].trim_sample_orders, [1, 2]);
   assert.equal(report.segments[0].action_sample_count, 2);
+  assert.ok(report.segments[0].action_score >= 70);
+});
+
+test("official trailer segment validator trims high-detail official storefront windows without requiring colour-heavy samples", async () => {
+  const outputRoot = tempOutputRoot("storefront-detail-trim");
+  await cleanTempRoot(outputRoot);
+  let call = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        sourceType: "steam_movie",
+        source_type: "steam_movie",
+        path: "https://video.akamai.steamstatic.com/store_trailers/3357650/307602564/hash/hls_264_master.m3u8",
+        reference_title: "09_PRAGMATA_PV5_Multi_2K_EN_PEGI",
+        movie_name: "09_PRAGMATA_PV5_Multi_2K_EN_PEGI",
+        provider: "steam",
+        store_app_id: "3357650",
+        movie_id: "307602564",
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: fakeExtractor,
+      inspectFrame: async (outputPath) => {
+        call += 1;
+        const base = passingQa(outputPath);
+        if (call <= 2) {
+          return {
+            ...base,
+            content_hash: `storefront-detail-${call}`,
+            prescan: {
+              likely_is_logo: false,
+              text_overlay_likelihood: 0,
+              white_text_on_dark_likelihood: 0,
+              edge_density: call === 1 ? 0.28 : 0.27,
+              saturation_mean: 0.11,
+              dark_pixel_ratio: 0.02,
+              bright_pixel_ratio: 0.01,
+            },
+          };
+        }
+        return {
+          ...base,
+          thumbnail_safe: false,
+          content_hash: "washed-tail",
+          verdict: "fail",
+          failures: ["low_detail_official_frame"],
+          prescan: {
+            likely_is_logo: false,
+            text_overlay_likelihood: 0,
+            white_text_on_dark_likelihood: 0,
+            edge_density: 0.01,
+            saturation_mean: 0.02,
+            dark_pixel_ratio: 0,
+            bright_pixel_ratio: 0.92,
+          },
+        };
+      },
+    },
+  );
+
+  assert.equal(report.summary.segments_validated, 1);
+  assert.equal(report.segments[0].validation_reason, "trimmed_official_storefront_detail_motion_samples_passed");
+  assert.equal(report.segments[0].trim_recommended, true);
+  assert.deepEqual(report.segments[0].trim_sample_orders, [1, 2]);
+  assert.ok(report.segments[0].recommended_duration_s < 5);
   assert.ok(report.segments[0].action_score >= 70);
 });
 

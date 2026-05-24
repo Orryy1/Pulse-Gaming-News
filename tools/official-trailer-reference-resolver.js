@@ -140,10 +140,68 @@ function parseJsonField(value) {
   }
 }
 
+async function readAdjacentJsonIfPresent(baseDir, basename, fallback = null) {
+  const filePath = path.join(baseDir, basename);
+  try {
+    if (await fs.pathExists(filePath)) return await fs.readJson(filePath);
+  } catch {}
+  return fallback;
+}
+
+async function enrichStoryJsonRowFromAdjacent(row, storyJsonPath) {
+  if (!row || typeof row !== "object") return row;
+  const baseDir = path.dirname(storyJsonPath);
+  const enriched = { ...row };
+  if (!enriched.rights_ledger && !enriched.rights_records) {
+    const rightsLedger = await readAdjacentJsonIfPresent(baseDir, "rights_ledger.json", null);
+    if (rightsLedger) enriched.rights_ledger = rightsLedger;
+  }
+  if (!enriched.footage_inventory) {
+    const footageInventory = await readAdjacentJsonIfPresent(baseDir, "footage_inventory.json", null);
+    if (footageInventory) enriched.footage_inventory = footageInventory;
+  }
+  const renderStory = await readAdjacentJsonIfPresent(baseDir, "visual_v4_render_story.json", null);
+  if (renderStory && typeof renderStory === "object") {
+    for (const key of [
+      "downloaded_images",
+      "game_images",
+      "media_candidates",
+      "igdb_assets",
+      "video_clips",
+      "visual_v4_bridge_video_clips",
+      "source_type",
+      "subreddit",
+      "url",
+      "company_name",
+      "game_name",
+    ]) {
+      if (enriched[key] == null && renderStory[key] != null) enriched[key] = renderStory[key];
+    }
+  }
+  return enriched;
+}
+
+function normaliseRightsLedgerRows(value) {
+  const parsed = parseJsonField(value);
+  if (Array.isArray(parsed)) return parsed;
+  if (!parsed || typeof parsed !== "object") return [];
+  return [
+    ...(Array.isArray(parsed.assets) ? parsed.assets : []),
+    ...(Array.isArray(parsed.records) ? parsed.records : []),
+    ...(Array.isArray(parsed.rights_ledger) ? parsed.rights_ledger : []),
+    ...(Array.isArray(parsed.rights_records) ? parsed.rights_records : []),
+  ];
+}
+
 function normaliseStory(row) {
   if (!row || typeof row !== "object") return row;
   return {
     ...row,
+    id: row.id || row.story_id,
+    title: row.title || row.selected_title || row.canonical_title,
+    full_script: row.full_script || row.narration_script,
+    game_title: row.game_title || row.canonical_game || row.canonical_subject,
+    primary_entity: row.primary_entity || row.canonical_subject || row.canonical_game,
     downloaded_images: Array.isArray(row.downloaded_images)
       ? row.downloaded_images
       : parseJsonField(row.downloaded_images) || [],
@@ -162,6 +220,8 @@ function normaliseStory(row) {
     igdb_assets: Array.isArray(row.igdb_assets)
       ? row.igdb_assets
       : parseJsonField(row.igdb_assets) || [],
+    rights_ledger: normaliseRightsLedgerRows(row.rights_ledger),
+    rights_records: normaliseRightsLedgerRows(row.rights_records),
   };
 }
 
@@ -177,8 +237,14 @@ async function loadStories(args) {
   if (args.storyJsonPath) {
     const storyJsonPath = path.resolve(ROOT, args.storyJsonPath);
     const parsed = await fs.readJson(storyJsonPath);
-    const rows = (Array.isArray(parsed) ? parsed : [parsed]).map(normaliseStory);
-    const selected = args.storyId ? rows.filter((story) => story.id === args.storyId) : rows;
+    const enrichedRows = [];
+    for (const row of (Array.isArray(parsed) ? parsed : [parsed])) {
+      enrichedRows.push(await enrichStoryJsonRowFromAdjacent(row, storyJsonPath));
+    }
+    const rows = enrichedRows.map(normaliseStory);
+    const selected = args.storyId
+      ? rows.filter((story) => story.id === args.storyId || story.story_id === args.storyId)
+      : rows;
     if (selected.length === 0) {
       throw new Error(`story JSON did not contain requested story id: ${args.storyId}`);
     }
@@ -362,8 +428,10 @@ if (require.main === module) {
 }
 
 module.exports = {
+  enrichStoryJsonRowFromAdjacent,
   loadStories,
   normaliseStory,
+  normaliseRightsLedgerRows,
   parseArgs,
   shouldWriteLatestReport,
 };

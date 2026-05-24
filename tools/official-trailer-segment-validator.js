@@ -240,6 +240,44 @@ function buildClipRefsFromReport(frameReport, referenceReport, storyId, args = {
   );
 }
 
+function clipRefStoryId(ref = {}) {
+  return String(ref.story_id || ref.storyId || ref.provenance?.story_id || "").trim();
+}
+
+function balanceClipRefsAcrossStories(clipRefs = []) {
+  const groups = new Map();
+  const storyOrder = [];
+  const unscoped = [];
+  for (const ref of Array.isArray(clipRefs) ? clipRefs : []) {
+    const storyId = clipRefStoryId(ref);
+    if (!storyId) {
+      unscoped.push(ref);
+      continue;
+    }
+    if (!groups.has(storyId)) {
+      groups.set(storyId, []);
+      storyOrder.push(storyId);
+    }
+    groups.get(storyId).push(ref);
+  }
+  if (storyOrder.length <= 1) return Array.isArray(clipRefs) ? clipRefs : [];
+
+  const balanced = [];
+  let index = 0;
+  let madeProgress = true;
+  while (madeProgress) {
+    madeProgress = false;
+    for (const storyId of storyOrder) {
+      const refs = groups.get(storyId) || [];
+      if (index >= refs.length) continue;
+      balanced.push(refs[index]);
+      madeProgress = true;
+    }
+    index++;
+  }
+  return balanced.concat(unscoped);
+}
+
 async function main() {
   const args = parseArgs(process.argv);
   if (args.help) {
@@ -286,7 +324,10 @@ async function main() {
           skipped: [],
           exhausted_source_families: [],
         };
-  let report = await runOfficialTrailerSegmentValidation(exhaustedFilter.clipRefs, {
+  const validationClipRefs = args.storyId
+    ? exhaustedFilter.clipRefs
+    : balanceClipRefsAcrossStories(exhaustedFilter.clipRefs);
+  let report = await runOfficialTrailerSegmentValidation(validationClipRefs, {
     applyLocal: args.applyLocal,
     outputRoot: args.outputRoot,
     maxSegments: args.maxSegments,
@@ -305,6 +346,7 @@ async function main() {
   report.clip_refs_input_count = clipRefs.length;
   report.clip_refs_filtered_previous_count = clipRefs.length - filteredClipRefs.length;
   report.clip_refs_filtered_exhausted_source_family_count = exhaustedFilter.skipped.length;
+  report.clip_refs_balanced_for_batch = !args.storyId && validationClipRefs !== exhaustedFilter.clipRefs;
   report.exhausted_source_family_filter = {
     enabled: Boolean(loadedPrevious.report) && !args.noExhaustedSourceFamilyFilter,
     threshold: args.exhaustedSourceFamilyThreshold,
@@ -326,6 +368,7 @@ async function main() {
     report.clip_refs_input_count = clipRefs.length;
     report.clip_refs_filtered_previous_count = clipRefs.length - filteredClipRefs.length;
     report.clip_refs_filtered_exhausted_source_family_count = exhaustedFilter.skipped.length;
+    report.clip_refs_balanced_for_batch = !args.storyId && validationClipRefs !== exhaustedFilter.clipRefs;
     report.exhausted_source_family_filter = {
       enabled: true,
       threshold: args.exhaustedSourceFamilyThreshold,
@@ -356,6 +399,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  balanceClipRefsAcrossStories,
   buildClipRefsFromReport,
   main,
   parseArgs,

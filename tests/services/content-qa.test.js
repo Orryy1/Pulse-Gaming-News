@@ -239,6 +239,26 @@ test("runContentQa: general Reddit posts cannot invent insider/source attributio
   );
 });
 
+test("runContentQa: Reddit-discovered stories with a non-Reddit primary source use the primary source gate", async () => {
+  const story = goodStory({
+    source_type: "reddit",
+    subreddit: "gaming",
+    primary_source: "Respawnfirst",
+    primary_source_url: "https://respawnfirst.com/subnautica-2-reportedly-leaked/",
+    source_card_label: "Respawnfirst",
+    full_script:
+      "Subnautica 2 is keeping one of its strangest survival rules. Respawnfirst reports the launch timing reportedly leaked ahead of release. Follow Pulse Gaming so you never miss a beat.",
+  });
+  const qa = await runContentQa(story, {
+    fs: fakeFs({ [story.exported_path]: { size: 5 * 1024 * 1024 } }),
+  });
+
+  assert.ok(
+    !qa.failures.includes("unsupported_source_claim:community_reddit_attribution"),
+    `got: ${qa.failures.join(", ")}`,
+  );
+});
+
 test("runContentQa: legacy approved direct Reddit media community posts fail preflight", async () => {
   const story = goodStory({
     title: "Came across a much simpler time in gaming today",

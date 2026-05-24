@@ -111,6 +111,49 @@ function bridgeSfxEvidence() {
   };
 }
 
+function ownedExplainerFixture(storyId = "bridge_owned_explainer") {
+  const clips = Array.from({ length: 5 }, (_, index) => ({
+    id: `${storyId}-${index + 1}`,
+    path: `output/generated-motion/${storyId}/${index + 1}.mp4`,
+    source_url: `local://pulse-generated-motion/${storyId}/${index + 1}`,
+    source_type: "internally_generated_motion_graphic",
+    source_kind: "owned_source_card_explainer_motion",
+    media_kind: "owned_explainer_motion",
+    rights_risk_class: "owned_generated_motion",
+    source_family: `owned_explainer_${index + 1}`,
+    motion_family: `owned_explainer_${index + 1}`,
+    owned_explainer_visual_plan: true,
+    counts_towards_motion_readiness: true,
+    materialized: true,
+  }));
+  const rightsLedger = {
+    verdict: "pass",
+    assets: [],
+    records: clips.map((clip) => ({
+      ...clip,
+      asset_type: "generated_motion",
+      licence_basis: "owned_generated_editorial_motion_graphic",
+      allowed_platforms: ["youtube", "tiktok", "instagram", "facebook", "x", "threads", "pinterest"],
+      commercial_use_allowed: true,
+      approval_status: "approved_for_transformative_editorial_use",
+      risk_score: 0.03,
+    })),
+  };
+  const footageInventory = {
+    motion_budget: {
+      allow_owned_explainer_motion_only: true,
+      owned_explainer_visual_plan: true,
+    },
+    motion_inventory: {
+      owned_explainer_visual_plan: true,
+      accepted_local_clips: clips,
+      production_motion_clips: clips,
+      distinct_source_families: clips.map((clip) => clip.source_family),
+    },
+  };
+  return { clips, rightsLedger, footageInventory };
+}
+
 function baseStory(overrides = {}) {
   return {
     id: "story_base",
@@ -119,6 +162,17 @@ function baseStory(overrides = {}) {
     auto_approved: false,
     exported_path: "D:/pulse-data/media/output/final/story_base.mp4",
     duration_seconds: 66,
+    audio_segment_loudness_report: {
+      verdict: "pass",
+      blockers: [],
+      warnings: [],
+      metrics: {
+        valid_segment_count: 6,
+        mean_range_db: 1.2,
+        max_adjacent_rise_db: 0.6,
+        max_peak_db: -2.4,
+      },
+    },
     breaking_score: 60,
     publish_status: null,
     canonical_subject: "Nintendo",
@@ -1014,7 +1068,7 @@ test("bridge preflight blocks generated-only orange-card motion decks", async ()
   assert.ok(preflight.blockers.includes("incident_guard:visual_evidence:generated_only_motion_deck"));
 });
 
-test("bridge preflight accepts stringified source-locked owned explainer bridge evidence", async () => {
+test("bridge preflight accepts human-reviewed source-locked owned explainer bridge evidence", async () => {
   const scores = {
     motion_density_score: 92,
     first_3_seconds_hook_score: 88,
@@ -1023,45 +1077,7 @@ test("bridge preflight accepts stringified source-locked owned explainer bridge 
     card_hierarchy_score: 84,
     media_house_polish_score: 90,
   };
-  const clips = Array.from({ length: 5 }, (_, index) => ({
-    id: `bridge-owned-explainer-${index + 1}`,
-    path: `output/generated-motion/bridge-owned-explainer/${index + 1}.mp4`,
-    source_url: `local://pulse-generated-motion/bridge-owned-explainer/${index + 1}`,
-    source_type: "internally_generated_motion_graphic",
-    source_kind: "owned_source_card_explainer_motion",
-    media_kind: "owned_explainer_motion",
-    rights_risk_class: "owned_generated_motion",
-    source_family: `owned_explainer_${index + 1}`,
-    motion_family: `owned_explainer_${index + 1}`,
-    owned_explainer_visual_plan: true,
-    counts_towards_motion_readiness: true,
-    materialized: true,
-  }));
-  const rightsLedger = {
-    verdict: "pass",
-    assets: [],
-    records: clips.map((clip) => ({
-      ...clip,
-      asset_type: "generated_motion",
-      licence_basis: "owned_generated_editorial_motion_graphic",
-      allowed_platforms: ["youtube", "tiktok", "instagram", "facebook", "x", "threads", "pinterest"],
-      commercial_use_allowed: true,
-      approval_status: "approved_for_transformative_editorial_use",
-      risk_score: 0.03,
-    })),
-  };
-  const footageInventory = {
-    motion_budget: {
-      allow_owned_explainer_motion_only: true,
-      owned_explainer_visual_plan: true,
-    },
-    motion_inventory: {
-      owned_explainer_visual_plan: true,
-      accepted_local_clips: clips,
-      production_motion_clips: clips,
-      distinct_source_families: clips.map((clip) => clip.source_family),
-    },
-  };
+  const { clips, rightsLedger, footageInventory } = ownedExplainerFixture();
   const preflight = await runPreflightQaForStory(
     baseStory({
       id: "bridge_owned_explainer",
@@ -1075,6 +1091,7 @@ test("bridge preflight accepts stringified source-locked owned explainer bridge 
       scheduler_bridge_source: "goal_production_cutover",
       render_lane: "visual_v4_production",
       render_quality_class: "premium",
+      human_reviewed_owned_explainer_motion_exception: true,
       qa_visual_count: 5,
       visual_v4_render_bridge_clip_count: 5,
       exported_path: "D:/pulse-data/media/output/final/bridge_owned_explainer.mp4",
@@ -1121,6 +1138,78 @@ test("bridge preflight accepts stringified source-locked owned explainer bridge 
   );
 
   assert.equal(preflight.status, "pass");
+});
+
+test("bridge preflight blocks owned explainer decks without a human-reviewed exception", async () => {
+  const scores = {
+    motion_density_score: 92,
+    first_3_seconds_hook_score: 88,
+    source_lock_quality_score: 86,
+    caption_legibility_score: 94,
+    card_hierarchy_score: 84,
+    media_house_polish_score: 90,
+  };
+  const { clips, rightsLedger, footageInventory } = ownedExplainerFixture("bridge_owned_explainer_unreviewed");
+  const preflight = await runPreflightQaForStory(
+    baseStory({
+      id: "bridge_owned_explainer_unreviewed",
+      title: "Xbox Fans Used Feedback To Demand Exclusives",
+      selected_title: "Xbox Fans Used Feedback To Demand Exclusives",
+      canonical_subject: "Xbox",
+      first_spoken_line: "Xbox asked for feedback and immediately got the exclusives argument.",
+      description: "IGN reported Xbox Player Voice feedback turned into an exclusives argument. Source: IGN.",
+      full_script:
+        "Xbox asked for feedback and immediately got the exclusives argument. IGN reported the Player Voice update and the fan response around exclusives.",
+      scheduler_bridge_source: "goal_production_cutover",
+      render_lane: "visual_v4_production",
+      render_quality_class: "premium",
+      qa_visual_count: 5,
+      visual_v4_render_bridge_clip_count: 5,
+      exported_path: "D:/pulse-data/media/output/final/bridge_owned_explainer_unreviewed.mp4",
+      audio_path: "D:/pulse-data/media/output/audio/bridge_owned_explainer_unreviewed.mp3",
+      timestamps_path: "D:/pulse-data/media/output/audio/bridge_owned_explainer_unreviewed_timestamps.json",
+      manual_caption_path: "D:/pulse-data/media/output/captions/bridge_owned_explainer_unreviewed.srt",
+      primary_source: "IGN",
+      discovery_source: "IGN",
+      publish_verdict: { verdict: "GREEN" },
+      platform_publish_manifest: {
+        publish_status: "GREEN",
+        platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts"] },
+        outputs: {
+          youtube_shorts: { title: "Xbox Fans Used Feedback To Demand Exclusives" },
+        },
+      },
+      visual_quality_report: {
+        result: "pass",
+        scores,
+        frame_rules: {
+          first_frame_subject: "Xbox",
+          first_frame_text: "XBOX FEEDBACK FIGHT",
+          source_locks_readable: true,
+        },
+        failures: [],
+      },
+      media_house_benchmark: {
+        result: "pass",
+        scores,
+        failures: [],
+      },
+      sfx_manifest: bridgeSfxEvidence(),
+      rights_ledger: JSON.stringify(rightsLedger),
+      footage_inventory: JSON.stringify(footageInventory),
+      visual_v4_bridge_video_clips: JSON.stringify(clips),
+      video_clips: JSON.stringify(clips),
+    }),
+    {
+      runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    },
+  );
+
+  assert.equal(preflight.status, "blocked");
+  assert.ok(preflight.blockers.includes("incident_guard:visual_evidence:generated_only_motion_deck"));
 });
 
 test("bridge preflight blocks screenshot-derived-only motion decks", async () => {
@@ -1238,6 +1327,40 @@ test("attachPreflightQa marks candidates with read-only QA evidence", async () =
   assert.ok(report.preflight_qa.enabled);
   assert.ok(contentQaOptions.every((opts) => opts.blockThinVisuals === true));
   assert.match(formatNextPublishCandidatesMarkdown(report), /preflight=blocked/);
+});
+
+test("attachPreflightQa blocks candidates without rendered-audio segment loudness proof", async () => {
+  const stories = [
+    baseStory({
+      id: "audio_jump",
+      title: "Forza Horizon 6 Just Changed Xbox's Steam Plan",
+      audio_segment_loudness_report: {
+        verdict: "fail",
+        blockers: ["voice_segment_loudness_jump"],
+        warnings: [],
+      },
+    }),
+  ];
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-05-24T20:40:00.000Z",
+  });
+
+  await attachPreflightQa(report, stories, {
+    runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+  });
+
+  assert.equal(report.candidates[0].preflight_qa.status, "blocked");
+  assert.ok(
+    report.candidates[0].preflight_qa.blockers.includes(
+      "audio_segment_loudness:voice_segment_loudness_jump",
+    ),
+  );
 });
 
 test("attachPreflightQa keeps read-only preflight mutations off source stories", async () => {

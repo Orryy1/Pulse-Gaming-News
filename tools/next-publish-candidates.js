@@ -841,7 +841,7 @@ function summariseQaResult(result = {}) {
   };
 }
 
-function combinePreflightQa({ content, video, platform, governance, publicCopy, incidentGuard } = {}) {
+function combinePreflightQa({ content, video, platform, governance, publicCopy, incidentGuard, audioSegment } = {}) {
   const checks = {
     content: summariseQaResult(content),
     video: summariseQaResult(video),
@@ -850,6 +850,7 @@ function combinePreflightQa({ content, video, platform, governance, publicCopy, 
   };
   if (publicCopy) checks.public_copy = summariseQaResult(publicCopy);
   if (incidentGuard) checks.incident_guard = summariseQaResult(incidentGuard);
+  if (audioSegment) checks.audio_segment_loudness = summariseQaResult(audioSegment);
   const blockers = [];
   const warnings = [];
 
@@ -871,6 +872,52 @@ function combinePreflightQa({ content, video, platform, governance, publicCopy, 
     warnings,
     checks,
   };
+}
+
+async function audioSegmentPreflightForStory(story = {}) {
+  const embedded =
+    story.audio_segment_loudness_report ||
+    story.render_audio_segment_report ||
+    story.audio_segment_report ||
+    null;
+  if (embedded && typeof embedded === "object") {
+    return {
+      result: embedded.verdict === "pass" || embedded.status === "pass" ? "pass" : "fail",
+      failures: asArray(embedded.blockers || embedded.failures),
+      warnings: asArray(embedded.warnings),
+      reason: embedded.reason || null,
+    };
+  }
+
+  const explicitPath = cleanText(
+    story.audio_segment_loudness_report_path || story.render_audio_segment_report_path,
+  );
+  const artifactDir = cleanText(
+    story.scheduler_bridge_artifact_dir || story.artifact_dir || story.output_dir || story.package_dir,
+  );
+  const reportPath = explicitPath || (artifactDir ? path.join(artifactDir, "audio_segment_loudness_report.json") : "");
+  if (!reportPath) {
+    return {
+      result: "fail",
+      failures: ["audio_segment_loudness_report_missing"],
+      warnings: [],
+    };
+  }
+  try {
+    const report = await fs.readJson(path.resolve(reportPath));
+    return {
+      result: report.verdict === "pass" || report.status === "pass" ? "pass" : "fail",
+      failures: asArray(report.blockers || report.failures),
+      warnings: asArray(report.warnings),
+      reason: report.reason || null,
+    };
+  } catch {
+    return {
+      result: "fail",
+      failures: ["audio_segment_loudness_report_missing"],
+      warnings: [],
+    };
+  }
 }
 
 function cloneStoryForPreflight(story = {}) {
@@ -1064,6 +1111,17 @@ function ownedExplainerMotionReadyForStory(story = {}) {
   return ownedClips.length >= 5 && families.size >= 5 && rightsCovered;
 }
 
+function ownedExplainerExceptionApprovedForStory(story = {}, renderManifest = {}) {
+  return Boolean(
+    story.breaking_news_flag === true ||
+      renderManifest.breaking_news_flag === true ||
+      story.human_reviewed_owned_explainer_motion_exception === true ||
+      story.owned_explainer_motion_exception_approved === true ||
+      renderManifest.human_reviewed_owned_explainer_motion_exception === true ||
+      renderManifest.owned_explainer_motion_exception_approved === true,
+  );
+}
+
 function shouldRunIncidentGuardForStory(story = {}) {
   return Boolean(
     story.scheduler_bridge_source ||
@@ -1158,9 +1216,11 @@ function incidentGuardPreflightForStory(story = {}) {
     directorPlan: story.visual_v4_director_plan || story.director_plan || {},
   });
   const ownedExplainerReady = ownedExplainerMotionReadyForStory(story);
+  const ownedExplainerExceptionApproved = ownedExplainerExceptionApprovedForStory(story, renderManifest);
   const generatedVisualFailures = asArray(visualEvidence.blockers).filter(
     (blocker) =>
       !ownedExplainerReady ||
+      !ownedExplainerExceptionApproved ||
       ![
         "visual_evidence:generated_only_motion_deck",
         "visual_evidence:no_real_visual_media_asset",
@@ -1175,6 +1235,7 @@ function incidentGuardPreflightForStory(story = {}) {
     renderManifest.direct_video_motion_exception_approved === true;
   const requiresDirectVideoMotion =
     !directMotionExceptionApproved &&
+    !(ownedExplainerReady && ownedExplainerExceptionApproved) &&
     (
       /visual_v4/i.test(renderLane) ||
       /production_v4/i.test(cleanText(renderManifest.visual_tier || renderManifest.tier)) ||
@@ -1183,7 +1244,7 @@ function incidentGuardPreflightForStory(story = {}) {
   if (
     requiresDirectVideoMotion &&
     Number(visualEvidence.direct_video_motion_asset_count) < 1 &&
-    !ownedExplainerReady
+    !(ownedExplainerReady && ownedExplainerExceptionApproved)
   ) {
     generatedVisualFailures.push("visual_evidence:direct_video_motion_missing");
   }
@@ -1213,6 +1274,7 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
     runStudioGovernancePreflight = require("../lib/services/studio-governance-preflight").runStudioGovernancePreflight,
     runPublicCopyQa = (manifest) => require("../lib/goal-public-copy-qa").evaluateGoalPublicCopy(manifest),
     runIncidentGuard = incidentGuardPreflightForStory,
+    runAudioSegmentQa = audioSegmentPreflightForStory,
   } = opts;
 
   try {
@@ -1241,7 +1303,8 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
       await runPublicCopyQa(publicCopyManifestForStory(publicCopyStory)),
     );
     const incidentGuard = await runIncidentGuard(cloneStoryForPreflight(story));
-    return combinePreflightQa({ content, video, platform, governance, publicCopy, incidentGuard });
+    const audioSegment = await runAudioSegmentQa(cloneStoryForPreflight(story));
+    return combinePreflightQa({ content, video, platform, governance, publicCopy, incidentGuard, audioSegment });
   } catch (err) {
     return {
       status: "blocked",
@@ -1758,6 +1821,7 @@ module.exports = {
   scoreAnalyticsFit,
   attachPreflightQa,
   attachStoryPreflight,
+  audioSegmentPreflightForStory,
   cloneStoryForPreflight,
   combinePreflightQa,
   durationVerdict,

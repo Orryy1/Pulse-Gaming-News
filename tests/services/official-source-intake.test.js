@@ -308,6 +308,36 @@ test("official source intake rejects page URLs in the optional direct media fiel
   assert.ok(report.rejected_entries[0].reasons.includes("direct_media_field_contains_page_url"));
 });
 
+test("official source intake rejects raw image URLs as source references", () => {
+  const report = buildOfficialSourceIntakeReport({
+    stories: [
+      story({
+        id: "1tbpzah",
+        canonical_subject: "Capturing",
+        title: "Capturing mewtwo in the office shh (pokemon red version) game boy color og",
+        full_script: "Capturing Mewtwo in Pokemon Red appears in an office photo.",
+      }),
+    ],
+    entries: [
+      officialEntry({
+        story_id: "1tbpzah",
+        entity: "Capturing",
+        official_source_url: "https://i.redd.it/g9uhlr6g9u0h1.jpeg",
+        source_title: "Capturing Mewtwo in Pokemon Red",
+        source_owner: "Operator supplied image",
+        source_type: "official_game_website_media_page",
+        source_family: "raw_image_post",
+        evidence_of_officialness: "Operator supplied image only.",
+        entity_match_notes: "The image title mentions Capturing Mewtwo.",
+      }),
+    ],
+  });
+
+  assert.equal(report.summary.accepted, 0);
+  assert.equal(report.summary.rejected, 1);
+  assert.ok(report.rejected_entries[0].reasons.includes("raw_image_source_not_allowed"));
+});
+
 test("official source intake rejects social reposts, reuploads and duplicate URLs", () => {
   const report = buildOfficialSourceIntakeReport({
     stories: [story()],

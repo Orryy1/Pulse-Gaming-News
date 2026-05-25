@@ -136,6 +136,65 @@ test("realignTimestampsToScript consumes direct spoken currency units", () => {
   assert.equal(aligned[2].end, 1.04);
 });
 
+test("realignTimestampsToScript preserves Hades II display while audio says Hades two", () => {
+  const aligned = realignTimestampsToScript("Hades II lands on console.", [
+    { word: "Hades", start: 0, end: 0.28 },
+    { word: "two", start: 0.3, end: 0.48 },
+    { word: "lands", start: 0.52, end: 0.82 },
+    { word: "on", start: 0.86, end: 0.98 },
+    { word: "console", start: 1.02, end: 1.34 },
+  ]);
+
+  assert.deepEqual(
+    aligned.map((word) => word.word),
+    ["Hades", "II", "lands", "on", "console."],
+  );
+  assert.equal(aligned[1].start, 0.3);
+  assert.equal(aligned[1].end, 0.48);
+});
+
+test("realignTimestampsToScript repairs local Whisper brand-name misrecognition", () => {
+  const aligned = realignTimestampsToScript("Follow Pulse Gaming so you never miss a beat.", [
+    { word: "Follow", start: 41.3, end: 41.3 },
+    { word: "Paul", start: 41.3, end: 41.6 },
+    { word: "Skaming,", start: 41.6, end: 41.94 },
+    { word: "so", start: 42.22, end: 42.32 },
+    { word: "you", start: 42.32, end: 42.46 },
+    { word: "never", start: 42.46, end: 42.6 },
+    { word: "miss", start: 42.6, end: 42.78 },
+    { word: "a", start: 42.78, end: 42.92 },
+    { word: "beat.", start: 42.92, end: 43.06 },
+  ]);
+
+  assert.deepEqual(
+    aligned.map((word) => word.word),
+    ["Follow", "Pulse", "Gaming", "so", "you", "never", "miss", "a", "beat."],
+  );
+  assert.equal(aligned[1].start, 41.3);
+  assert.equal(aligned[1].end, 41.6);
+  assert.equal(aligned[2].start, 41.6);
+  assert.equal(aligned[2].end, 41.94);
+});
+
+test("realignTimestampsToScript skips one-word ASR duplicates when the next timestamp matches", () => {
+  const aligned = realignTimestampsToScript("clean reads and players breaking builds", [
+    { word: "clean", start: 29.72, end: 29.8 },
+    { word: "reads", start: 29.8, end: 29.98 },
+    { word: "and", start: 29.98, end: 29.98 },
+    { word: "and", start: 29.98, end: 30.32 },
+    { word: "players", start: 30.32, end: 30.62 },
+    { word: "breaking", start: 30.62, end: 30.96 },
+    { word: "builds", start: 30.96, end: 31.28 },
+  ]);
+
+  assert.deepEqual(
+    aligned.map((word) => word.word),
+    ["clean", "reads", "and", "players", "breaking", "builds"],
+  );
+  assert.equal(aligned[3].start, 30.32);
+  assert.equal(aligned[3].end, 30.62);
+});
+
 test("buildKineticAss burns numeric captions while audio speaks the expanded number", () => {
   const ass = buildKineticAss({
     story: { title: "Forza Horizon 6" },

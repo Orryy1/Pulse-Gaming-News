@@ -112,6 +112,13 @@ test("cleanForTTS: expands modern years without hybrid spoken digits", () => {
   );
 });
 
+test("cleanForTTS: speaks Hades II as Hades two for local voice clarity", () => {
+  assert.equal(
+    cleanForTTS("Hades II just put PlayStation and Xbox players on the same April countdown."),
+    "Hades two just put PlayStation and Xbox players on the same April countdown.",
+  );
+});
+
 test("resolveTtsTimeoutMs: local VoxCPM defaults to a bounded timeout but remains configurable", () => {
   assert.equal(resolveTtsTimeoutMs("local", {}), 300000);
   assert.equal(

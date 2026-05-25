@@ -117,6 +117,17 @@ test("Silent Hill 2 / II → Silent Hill two", () => {
   );
 });
 
+test("Hades II / 2 → Hades two", () => {
+  assert.equal(
+    applyGamingPronunciation("Hades II finally has a console date"),
+    "Hades two finally has a console date",
+  );
+  assert.equal(
+    applyGamingPronunciation("Hades 2 finally has a console date"),
+    "Hades two finally has a console date",
+  );
+});
+
 test("Roman numerals OUTSIDE canonical game titles are left alone", () => {
   assert.equal(
     applyGamingPronunciation("Henry VIII reigned 1509"),

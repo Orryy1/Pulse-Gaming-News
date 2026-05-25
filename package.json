@@ -94,6 +94,7 @@
     "ops:goal-audio-timestamps": "node tools/goal-audio-timestamp-workbench.js",
     "ops:goal-audio-materialize": "node tools/goal-audio-timestamp-materializer.js",
     "ops:goal05-narration-readiness": "node tools/goal05-narration-readiness.js",
+    "ops:goal06-rights-ledger": "node tools/goal06-rights-ledger.js",
     "ops:goal-production-render": "node tools/goal-production-render-materializer.js",
     "ops:goal-platform-duration-contract": "node tools/goal-platform-duration-contract.js",
     "ops:goal-platform-native-repair": "node tools/goal-platform-native-pack-repair.js",

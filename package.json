@@ -96,6 +96,7 @@
     "ops:goal05-narration-readiness": "node tools/goal05-narration-readiness.js",
     "ops:goal06-rights-ledger": "node tools/goal06-rights-ledger.js",
     "ops:goal07-director-brain": "node tools/goal07-director-brain.js",
+    "ops:goal08-visual-v4-renderer": "node tools/goal08-visual-v4-renderer.js",
     "ops:goal-production-render": "node tools/goal-production-render-materializer.js",
     "ops:goal-platform-duration-contract": "node tools/goal-platform-duration-contract.js",
     "ops:goal-platform-native-repair": "node tools/goal-platform-native-pack-repair.js",

@@ -98,6 +98,7 @@
     "ops:goal07-director-brain": "node tools/goal07-director-brain.js",
     "ops:goal08-visual-v4-renderer": "node tools/goal08-visual-v4-renderer.js",
     "ops:goal09-sound-design-engine": "node tools/goal09-sound-design-engine.js",
+    "ops:goal10-gold-standard-forensics": "node tools/goal10-gold-standard-forensics-engine.js",
     "ops:goal-production-render": "node tools/goal-production-render-materializer.js",
     "ops:goal-platform-duration-contract": "node tools/goal-platform-duration-contract.js",
     "ops:goal-platform-native-repair": "node tools/goal-platform-native-pack-repair.js",

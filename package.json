@@ -93,6 +93,7 @@
     "ops:goal04-source-submission-preflight": "node tools/goal04-operator-source-submission-preflight.js",
     "ops:goal-audio-timestamps": "node tools/goal-audio-timestamp-workbench.js",
     "ops:goal-audio-materialize": "node tools/goal-audio-timestamp-materializer.js",
+    "ops:goal05-narration-readiness": "node tools/goal05-narration-readiness.js",
     "ops:goal-production-render": "node tools/goal-production-render-materializer.js",
     "ops:goal-platform-duration-contract": "node tools/goal-platform-duration-contract.js",
     "ops:goal-platform-native-repair": "node tools/goal-platform-native-pack-repair.js",

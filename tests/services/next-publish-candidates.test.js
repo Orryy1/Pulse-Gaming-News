@@ -77,11 +77,11 @@ function bridgeSfxEvidence() {
           approval_status: "approved_for_commercial_editorial_use",
         },
         {
-          asset_id: "qantum-ui-alert-confirm",
+          asset_id: "clean-editorial-select-tick",
           role: "ui_tick",
           family: "source_tick",
           provider_id: "sonniss",
-          source_url: "file://licensed/sonniss/qantum-ui-alert-confirm.wav",
+          source_url: "file://licensed/sonniss/UIClick_Select_Middle_29.wav",
           rights_basis: "sonniss_game_audio_gdc_bundle_license",
           commercial_use_allowed: true,
           approval_status: "approved_for_commercial_editorial_use",

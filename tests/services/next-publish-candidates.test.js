@@ -1140,7 +1140,7 @@ test("bridge preflight accepts human-reviewed source-locked owned explainer brid
   assert.equal(preflight.status, "pass");
 });
 
-test("bridge preflight blocks owned explainer decks without a human-reviewed exception", async () => {
+test("bridge preflight blocks owned explainer decks without a human review or verified source exception", async () => {
   const scores = {
     motion_density_score: 92,
     first_3_seconds_hook_score: 88,
@@ -1210,6 +1210,67 @@ test("bridge preflight blocks owned explainer decks without a human-reviewed exc
 
   assert.equal(preflight.status, "blocked");
   assert.ok(preflight.blockers.includes("incident_guard:visual_evidence:generated_only_motion_deck"));
+
+  const sourceLockedPreflight = await runPreflightQaForStory(
+    baseStory({
+      id: "bridge_owned_explainer_unreviewed",
+      title: "Xbox Fans Used Feedback To Demand Exclusives",
+      selected_title: "Xbox Fans Used Feedback To Demand Exclusives",
+      canonical_subject: "Xbox",
+      first_spoken_line: "Xbox asked for feedback and immediately got the exclusives argument.",
+      description: "IGN reported Xbox Player Voice feedback turned into an exclusives argument. Source: IGN.",
+      full_script:
+        "Xbox asked for feedback and immediately got the exclusives argument. IGN reported the Player Voice update and the fan response around exclusives.",
+      scheduler_bridge_source: "goal_production_cutover",
+      render_lane: "visual_v4_production",
+      render_quality_class: "premium",
+      qa_visual_count: 5,
+      visual_v4_render_bridge_clip_count: 5,
+      exported_path: "D:/pulse-data/media/output/final/bridge_owned_explainer_unreviewed.mp4",
+      audio_path: "D:/pulse-data/media/output/audio/bridge_owned_explainer_unreviewed.mp3",
+      timestamps_path: "D:/pulse-data/media/output/audio/bridge_owned_explainer_unreviewed_timestamps.json",
+      manual_caption_path: "D:/pulse-data/media/output/captions/bridge_owned_explainer_unreviewed.srt",
+      primary_source: "IGN",
+      primary_source_url: "https://www.ign.com/articles/xbox-player-voice-feedback-example",
+      discovery_source: "IGN",
+      publish_verdict: { verdict: "GREEN" },
+      platform_publish_manifest: {
+        publish_status: "GREEN",
+        platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts"] },
+        outputs: {
+          youtube_shorts: { title: "Xbox Fans Used Feedback To Demand Exclusives" },
+        },
+      },
+      visual_quality_report: {
+        result: "pass",
+        scores,
+        frame_rules: {
+          first_frame_subject: "Xbox",
+          first_frame_text: "XBOX FEEDBACK FIGHT",
+          source_locks_readable: true,
+        },
+        failures: [],
+      },
+      media_house_benchmark: {
+        result: "pass",
+        scores,
+        failures: [],
+      },
+      sfx_manifest: bridgeSfxEvidence(),
+      rights_ledger: JSON.stringify(rightsLedger),
+      footage_inventory: JSON.stringify(footageInventory),
+      visual_v4_bridge_video_clips: JSON.stringify(clips),
+      video_clips: JSON.stringify(clips),
+    }),
+    {
+      runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    },
+  );
+
+  assert.equal(sourceLockedPreflight.status, "pass");
 });
 
 test("bridge preflight blocks screenshot-derived-only motion decks", async () => {

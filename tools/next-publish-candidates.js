@@ -1122,6 +1122,47 @@ function ownedExplainerExceptionApprovedForStory(story = {}, renderManifest = {}
   );
 }
 
+function sourceNameValue(value) {
+  if (value && typeof value === "object") return cleanText(value.name || value.source_name || value.label);
+  return cleanText(value);
+}
+
+function sourceUrlValue(value) {
+  if (value && typeof value === "object") return cleanText(value.url || value.source_url || value.href);
+  return cleanText(value);
+}
+
+function sourceLooksEditoriallyVerified(story = {}) {
+  const sourceName = sourceNameValue(story.primary_source || story.source_card_label || story.official_source);
+  const sourceUrl =
+    (story.primary_source && typeof story.primary_source === "object"
+      ? sourceUrlValue(story.primary_source)
+      : "") ||
+    sourceUrlValue(story.primary_source_url || story.source_url || story.article_url || story.url);
+  if (!sourceName || /reddit|unknown|source needed/i.test(sourceName)) return false;
+  try {
+    const parsed = new URL(sourceUrl);
+    if (!/^https?:$/.test(parsed.protocol)) return false;
+    if (/reddit\.com$/i.test(parsed.hostname.replace(/^www\./i, ""))) return false;
+  } catch {
+    return false;
+  }
+  return true;
+}
+
+function ownedExplainerPolicyApprovedForStory(story = {}) {
+  const footageInventory = objectValue(story.footage_inventory, {});
+  const budget = footageInventory.motion_budget || {};
+  const inventory = footageInventory.motion_inventory || {};
+  const explicitOwnedExplainerPlan =
+    budget.allow_owned_explainer_motion_only === true &&
+    (budget.owned_explainer_visual_plan === true || inventory.owned_explainer_visual_plan === true);
+  if (!explicitOwnedExplainerPlan) return false;
+  const subject = cleanText(story.canonical_subject || story.canonical_game || story.canonical_company);
+  if (!subject || /^(?:this story|gaming story|story|news|update)$/i.test(subject)) return false;
+  return sourceLooksEditoriallyVerified(story);
+}
+
 function shouldRunIncidentGuardForStory(story = {}) {
   return Boolean(
     story.scheduler_bridge_source ||
@@ -1216,7 +1257,9 @@ function incidentGuardPreflightForStory(story = {}) {
     directorPlan: story.visual_v4_director_plan || story.director_plan || {},
   });
   const ownedExplainerReady = ownedExplainerMotionReadyForStory(story);
-  const ownedExplainerExceptionApproved = ownedExplainerExceptionApprovedForStory(story, renderManifest);
+  const ownedExplainerExceptionApproved =
+    ownedExplainerExceptionApprovedForStory(story, renderManifest) ||
+    (ownedExplainerReady && ownedExplainerPolicyApprovedForStory(story));
   const generatedVisualFailures = asArray(visualEvidence.blockers).filter(
     (blocker) =>
       !ownedExplainerReady ||

@@ -90,6 +90,7 @@
     "ops:goal-real-motion": "node tools/goal-real-motion-materializer.js",
     "ops:goal04-source-holds": "node tools/goal04-human-held-source-consolidation.js",
     "ops:goal04-operator-source-queue": "node tools/goal04-operator-source-intake-queue.js",
+    "ops:goal04-source-submission-preflight": "node tools/goal04-operator-source-submission-preflight.js",
     "ops:goal-audio-timestamps": "node tools/goal-audio-timestamp-workbench.js",
     "ops:goal-audio-materialize": "node tools/goal-audio-timestamp-materializer.js",
     "ops:goal-production-render": "node tools/goal-production-render-materializer.js",

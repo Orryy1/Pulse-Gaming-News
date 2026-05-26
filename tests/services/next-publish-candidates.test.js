@@ -371,6 +371,7 @@ test("next publish CLI parses story-specific preflight flags", () => {
 test("next publish CLI defaults to the scheduler bridge candidate overlay", () => {
   const args = parseArgs(["node", "tools/next-publish-candidates.js"]);
 
+  assert.equal(args.limit, null);
   assert.equal(
     args.bridgeCandidatesPath,
     path.join(process.cwd(), "output", "goal-contract", "scheduler_bridge_candidates.json"),
@@ -580,6 +581,69 @@ test("next publish report can merge scheduler bridge candidates without mutating
   assert.equal(report.bridge_candidates.count, 1);
   assert.ok(report.candidates.some((candidate) => candidate.id === "bridge_story"));
   assert.ok(report.candidates.find((candidate) => candidate.id === "bridge_story").reasons.includes("scheduler_bridge_candidate"));
+});
+
+test("next publish report default includes every authoritative bridge candidate", () => {
+  const bridged = Array.from({ length: 18 }, (_, index) =>
+    baseStory({
+      id: `bridge_story_${index + 1}`,
+      title: `Xbox bridge story ${index + 1} names a concrete outcome`,
+      auto_approved: true,
+      duration_seconds: 42,
+      duration_lane: "normal_production",
+      min_video_duration_seconds: 35,
+      target_video_duration_seconds_min: 35,
+      target_video_duration_seconds_max: 60,
+      max_video_duration_seconds: 60,
+      scheduler_bridge_source: "goal_production_cutover",
+    }),
+  );
+
+  const report = buildNextPublishCandidatesReport(bridged, {
+    analyticsText,
+    generatedAt: "2026-05-26T09:00:00.000Z",
+    bridgeManifest: {
+      status: "loaded",
+      authoritative: true,
+      candidate_count: bridged.length,
+    },
+  });
+
+  assert.equal(report.totals.candidates, 18);
+  assert.equal(report.totals.returned, 18);
+  assert.equal(report.candidates.length, 18);
+});
+
+test("next publish report still honours an explicit bridge candidate limit", () => {
+  const bridged = Array.from({ length: 18 }, (_, index) =>
+    baseStory({
+      id: `bridge_limited_${index + 1}`,
+      title: `Nintendo bridge story ${index + 1} names a concrete outcome`,
+      auto_approved: true,
+      duration_seconds: 42,
+      duration_lane: "normal_production",
+      min_video_duration_seconds: 35,
+      target_video_duration_seconds_min: 35,
+      target_video_duration_seconds_max: 60,
+      max_video_duration_seconds: 60,
+      scheduler_bridge_source: "goal_production_cutover",
+    }),
+  );
+
+  const report = buildNextPublishCandidatesReport(bridged, {
+    analyticsText,
+    generatedAt: "2026-05-26T09:00:00.000Z",
+    limit: 6,
+    bridgeManifest: {
+      status: "loaded",
+      authoritative: true,
+      candidate_count: bridged.length,
+    },
+  });
+
+  assert.equal(report.totals.candidates, 18);
+  assert.equal(report.totals.returned, 6);
+  assert.equal(report.candidates.length, 6);
 });
 
 test("bridge candidate overlay drops stale live article media arrays", () => {

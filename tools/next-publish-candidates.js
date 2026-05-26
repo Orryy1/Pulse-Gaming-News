@@ -1452,9 +1452,6 @@ async function attachStoryPreflight(report = {}, stories = [], storyId = null, o
 
 function buildNextPublishCandidatesReport(stories, options = {}) {
   const generatedAt = options.generatedAt || new Date().toISOString();
-  const limit = Number.isFinite(Number(options.limit))
-    ? Math.max(1, Number(options.limit))
-    : DEFAULT_LIMIT;
   const requestedStoryId = normaliseStoryId(options.storyId);
   const inputRows = Array.isArray(stories) ? stories : [];
   const rows = filterStoriesByStoryId(inputRows, requestedStoryId);
@@ -1462,6 +1459,14 @@ function buildNextPublishCandidatesReport(stories, options = {}) {
   const bridgeManifest = options.bridgeManifest
     ? normaliseBridgeManifest(options.bridgeManifest)
     : null;
+  const explicitLimit = Number.isFinite(Number(options.limit)) && Number(options.limit) > 0;
+  const bridgeCandidateTotal =
+    bridgeManifest && bridgeManifest.candidate_count !== null
+      ? Number(bridgeManifest.candidate_count || 0)
+      : bridgeCount;
+  const limit = explicitLimit
+    ? Math.max(1, Number(options.limit))
+    : Math.max(DEFAULT_LIMIT, bridgeCandidateTotal);
   const candidates = [];
   const excluded = [];
   let pendingAudioCount = 0;
@@ -1697,7 +1702,7 @@ function parseArgs(argv) {
   const args = {
     json: false,
     help: false,
-    limit: DEFAULT_LIMIT,
+    limit: null,
     analyticsPath: DEFAULT_ANALYTICS_PATH,
     preflightQa: false,
     storyId: null,

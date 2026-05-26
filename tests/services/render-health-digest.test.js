@@ -291,6 +291,12 @@ test("buildRenderHealthSummary: bridge candidates expose real-media and generate
   assert.equal(r.bridge.visual_evidence.no_real_visual_media_asset_count, 1);
   assert.equal(r.bridge.visual_evidence.direct_video_motion_count, 1);
   assert.equal(r.bridge.visual_evidence.screenshot_derived_only_count, 1);
+  assert.deepEqual(r.bridge.visual_evidence.direct_video_gap_story_ids, [
+    "generated-only",
+    "still-motion",
+  ]);
+  assert.deepEqual(r.bridge.visual_evidence.screenshot_derived_only_story_ids, ["still-motion"]);
+  assert.deepEqual(r.bridge.visual_evidence.generated_only_story_ids, ["generated-only"]);
 
   const md = digest.formatDigest(r);
   assert.match(md, /Bridge visual evidence: real media 2\/3/);
@@ -298,6 +304,7 @@ test("buildRenderHealthSummary: bridge candidates expose real-media and generate
   assert.match(md, /generated-only 1/);
   assert.match(md, /screenshot-derived only 1/);
   assert.match(md, /direct-video motion coverage is low/);
+  assert.match(md, /Direct-video gap sample: generated-only, still-motion/);
 });
 
 test("formatDigest: bridge candidates make unstamped live debt explicit", () => {

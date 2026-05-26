@@ -112,10 +112,10 @@ test("cleanForTTS: expands modern years without hybrid spoken digits", () => {
   );
 });
 
-test("cleanForTTS: speaks Hades II as Hades two for local voice clarity", () => {
+test("cleanForTTS: speaks Hades II with a break before two for local voice clarity", () => {
   assert.equal(
     cleanForTTS("Hades II just put PlayStation and Xbox players on the same April countdown."),
-    "Hades two just put PlayStation and Xbox players on the same April countdown.",
+    "Hades, two just put PlayStation and Xbox players on the same April countdown.",
   );
 });
 

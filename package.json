@@ -202,6 +202,7 @@
     "tts:smoke": "node tools/local-tts-smoke.js",
     "tts:proof-mastering": "node tools/local-tts-proof-mastering.js",
     "tts:proof-promoter": "node tools/local-tts-proof-promoter.js",
+    "ops:goal26-creator-studio-brand-system": "node tools/goal26-creator-studio-brand-system.js",
     "tts:overnight-report": "node tools/local-tts-overnight-report.js"
   },
   "keywords": [],

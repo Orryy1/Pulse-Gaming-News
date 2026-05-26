@@ -109,6 +109,7 @@
     "ops:goal18-finance-crypto-firewall": "node tools/goal18-finance-crypto-firewall.js",
     "ops:goal19-autonomy-control-tower": "node tools/goal19-autonomy-control-tower.js",
     "ops:goal20-anti-spam-uniqueness": "node tools/goal20-anti-spam-uniqueness-engine.js",
+    "ops:goal21-observability-dashboard": "node tools/goal21-observability-dashboard.js",
     "ops:goal-production-render": "node tools/goal-production-render-materializer.js",
     "ops:goal-platform-duration-contract": "node tools/goal-platform-duration-contract.js",
     "ops:goal-platform-native-repair": "node tools/goal-platform-native-pack-repair.js",

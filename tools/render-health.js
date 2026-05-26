@@ -128,6 +128,10 @@ function writeReportArtifacts({ summary, markdown, outputDir }) {
     render_health_report: path.join(resolved, "render_health_report.json"),
     live_db_health_report: path.join(resolved, "live_db_health_report.json"),
     bridge_health_report: path.join(resolved, "bridge_health_report.json"),
+    direct_video_enrichment_work_order: path.join(
+      resolved,
+      "direct_video_enrichment_work_order.json",
+    ),
     discord_digest_payload: path.join(resolved, "discord_digest_payload.json"),
   };
   for (const [key, filePath] of Object.entries(files)) {

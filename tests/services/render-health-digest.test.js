@@ -228,6 +228,39 @@ test("splitRenderHealthSummary: emits separate live DB and scheduler bridge repo
   assert.equal(split.discord_digest_payload.summary.scheduler_bridge_candidate_count, 1);
 });
 
+test("splitRenderHealthSummary: emits direct-video enrichment work order separately", () => {
+  const summary = digest.buildRenderHealthSummary([], {
+    bridgeCandidates: [
+      {
+        id: "still-motion",
+        title: "Still Motion Needs Gameplay",
+        approved_at: new Date().toISOString(),
+        render_quality_class: "premium",
+        render_lane: "visual_v4_production",
+        qa_visual_count: 6,
+        visual_v4_bridge_video_clips: [
+          {
+            id: "still-1",
+            path: "/tmp/still-1.mp4",
+            source_url: "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1/ss_1.jpg",
+            source_type: "screenshot_derived_motion_clip",
+            rights_risk_class: "source_documented_transformative_editorial_use",
+            source_family: "steam_still_1",
+          },
+        ],
+      },
+    ],
+  });
+
+  const split = digest.splitRenderHealthSummary(summary);
+
+  assert.equal(split.direct_video_enrichment_work_order.summary.job_count, 1);
+  assert.equal(
+    split.discord_digest_payload.summary.scheduler_bridge_direct_video_gap_count,
+    1,
+  );
+});
+
 test("buildRenderHealthSummary: bridge candidates expose real-media and generated-only evidence", () => {
   const now = new Date().toISOString();
   const generatedClips = Array.from({ length: 8 }, (_, index) => ({
@@ -339,6 +372,71 @@ test("buildRenderHealthSummary: bridge visual evidence uses the shared direct-vi
   assert.equal(r.bridge.visual_evidence.direct_video_motion_count, 1);
   assert.deepEqual(r.bridge.visual_evidence.direct_video_story_ids, ["ps5-product-page"]);
   assert.deepEqual(r.bridge.visual_evidence.direct_video_gap_story_ids, []);
+});
+
+test("buildRenderHealthSummary: bridge direct-video gaps become enrichment work orders", () => {
+  const now = new Date().toISOString();
+  const stillClips = Array.from({ length: 6 }, (_, index) => ({
+    id: `still-${index + 1}`,
+    path: `/tmp/still-${index + 1}.mp4`,
+    source_url: `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1/ss_${index + 1}.jpg`,
+    source_type: "screenshot_derived_motion_clip",
+    rights_risk_class: "source_documented_transformative_editorial_use",
+    source_family: `steam_still_${index + 1}`,
+  }));
+  const directClips = [
+    {
+      id: "direct-1",
+      path: "/tmp/direct-1.mp4",
+      source_url: "https://cdn.example.test/gameplay-1.mp4",
+      source_type: "official_trailer_segment",
+      source_url_kind: "direct_video",
+      media_kind: "direct_video",
+      rights_risk_class: "official_reference_only",
+      source_family: "official_video_1",
+    },
+  ];
+
+  const r = digest.buildRenderHealthSummary([], {
+    bridgeCandidates: [
+      {
+        id: "still-motion",
+        title: "Still Motion Needs Gameplay",
+        approved_at: now,
+        render_quality_class: "premium",
+        render_lane: "visual_v4_production",
+        qa_visual_count: 6,
+        visual_v4_bridge_video_clips: stillClips,
+        rights_ledger: stillClips,
+      },
+      {
+        id: "direct-video",
+        title: "Direct Video Already Ready",
+        approved_at: now,
+        render_quality_class: "premium",
+        render_lane: "visual_v4_production",
+        qa_visual_count: 6,
+        visual_v4_bridge_video_clips: directClips,
+        rights_ledger: directClips,
+      },
+    ],
+  });
+
+  const workOrder = r.bridge.direct_video_enrichment_work_order;
+  assert.equal(workOrder.summary.job_count, 1);
+  assert.equal(workOrder.summary.quality_gap_count, 1);
+  assert.equal(workOrder.jobs[0].story_id, "still-motion");
+  assert.equal(workOrder.jobs[0].repair_lane, "direct_video_enrichment");
+  assert.equal(workOrder.jobs[0].blocking_current_dry_run, false);
+  assert.equal(workOrder.jobs[0].operator_approval_required, true);
+  assert.match(
+    workOrder.jobs[0].recommended_commands[0].command,
+    /ops:v4-source-family-acquisition -- --story-id still-motion/,
+  );
+  assert.match(
+    workOrder.jobs[0].post_repair_validation_command,
+    /ops:render-health -- --json/,
+  );
 });
 
 test("formatDigest: bridge candidates make unstamped live debt explicit", () => {

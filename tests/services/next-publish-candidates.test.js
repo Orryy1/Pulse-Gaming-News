@@ -1,5 +1,7 @@
 const { test } = require("node:test");
 const assert = require("node:assert");
+const fs = require("fs-extra");
+const os = require("node:os");
 const path = require("node:path");
 
 const {
@@ -181,6 +183,10 @@ function baseStory(overrides = {}) {
     full_script: "Nintendo executive Reggie Fils-Aime says Amazon's pricing demand collapsed.",
     ...overrides,
   };
+}
+
+async function passBridgeArtifactFreshnessQa() {
+  return { result: "pass", failures: [], warnings: [] };
 }
 
 test("next publish report ranks clean approved candidates by approval, duration and analytics fit", () => {
@@ -1046,11 +1052,52 @@ test("bridge preflight accepts visual QA and benchmark evidence from scheduler c
       runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
     },
   );
 
   assert.equal(preflight.status, "pass");
   assert.deepEqual(preflight.blockers, []);
+});
+
+test("bridge preflight blocks stale bridge duration metadata against current render manifest", async (t) => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-bridge-stale-"));
+  t.after(() => fs.remove(tmpDir));
+  const renderManifestPath = path.join(tmpDir, "render_manifest.json");
+  await fs.writeJson(renderManifestPath, {
+    rendered_duration_s: 44.333,
+    output_path: "D:/pulse-data/media/output/final/bridge_stale_duration.mp4",
+  });
+
+  const preflight = await runPreflightQaForStory(
+    baseStory({
+      id: "bridge_stale_duration",
+      title: "Hades II Just Broke PlayStation's Silence",
+      scheduler_bridge_source: "goal_production_cutover",
+      render_manifest_path: renderManifestPath,
+      scheduler_bridge_artifact_dir: tmpDir,
+      exported_path: "D:/pulse-data/media/output/final/bridge_stale_duration.mp4",
+      duration_seconds: 42.733,
+      runtime_seconds: 42.733,
+      audio_duration: 42.733,
+    }),
+    {
+      runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+      runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    },
+  );
+
+  assert.equal(preflight.status, "blocked");
+  assert.ok(
+    preflight.blockers.includes(
+      "bridge_artifact_freshness:bridge_metadata_stale:duration_seconds",
+    ),
+  );
 });
 
 test("bridge preflight blocks generated-only orange-card motion decks", async () => {
@@ -1125,6 +1172,7 @@ test("bridge preflight blocks generated-only orange-card motion decks", async ()
       runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
     },
   );
 
@@ -1198,6 +1246,7 @@ test("bridge preflight accepts human-reviewed source-locked owned explainer brid
       runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
     },
   );
 
@@ -1269,6 +1318,7 @@ test("bridge preflight blocks owned explainer decks without a human review or ve
       runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
     },
   );
 
@@ -1331,6 +1381,7 @@ test("bridge preflight blocks owned explainer decks without a human review or ve
       runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
     },
   );
 

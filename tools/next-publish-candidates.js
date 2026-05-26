@@ -191,6 +191,34 @@ function storyDurationSeconds(story = {}) {
   );
 }
 
+function normaliseComparablePath(value = "") {
+  return String(value || "")
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^file:\/+/i, "")
+    .toLowerCase();
+}
+
+function renderedDurationFromManifest(manifest = {}) {
+  return (
+    numberOrNull(manifest.rendered_duration_s) ??
+    numberOrNull(manifest.duration_s) ??
+    numberOrNull(manifest.video_duration_s) ??
+    numberOrNull(manifest.duration_seconds)
+  );
+}
+
+function renderOutputPathFromManifest(manifest = {}) {
+  return (
+    manifest.output_path ||
+    manifest.exported_path ||
+    manifest.final_render_path ||
+    manifest.output?.path ||
+    manifest.output?.file ||
+    ""
+  );
+}
+
 function isLongformLane(story = {}) {
   const fields = [
     story.format,
@@ -841,7 +869,16 @@ function summariseQaResult(result = {}) {
   };
 }
 
-function combinePreflightQa({ content, video, platform, governance, publicCopy, incidentGuard, audioSegment } = {}) {
+function combinePreflightQa({
+  content,
+  video,
+  platform,
+  governance,
+  publicCopy,
+  incidentGuard,
+  audioSegment,
+  bridgeArtifactFreshness,
+} = {}) {
   const checks = {
     content: summariseQaResult(content),
     video: summariseQaResult(video),
@@ -851,6 +888,7 @@ function combinePreflightQa({ content, video, platform, governance, publicCopy, 
   if (publicCopy) checks.public_copy = summariseQaResult(publicCopy);
   if (incidentGuard) checks.incident_guard = summariseQaResult(incidentGuard);
   if (audioSegment) checks.audio_segment_loudness = summariseQaResult(audioSegment);
+  if (bridgeArtifactFreshness) checks.bridge_artifact_freshness = summariseQaResult(bridgeArtifactFreshness);
   const blockers = [];
   const warnings = [];
 
@@ -871,6 +909,61 @@ function combinePreflightQa({ content, video, platform, governance, publicCopy, 
     blockers,
     warnings,
     checks,
+  };
+}
+
+async function bridgeArtifactFreshnessPreflightForStory(story = {}) {
+  if (!story.scheduler_bridge_source) return null;
+  const artifactDir = cleanText(
+    story.scheduler_bridge_artifact_dir || story.artifact_dir || story.output_dir || story.package_dir,
+  );
+  const manifestPath = cleanText(story.render_manifest_path) ||
+    (artifactDir ? path.join(artifactDir, "render_manifest.json") : "");
+  if (!manifestPath) {
+    return {
+      result: "fail",
+      failures: ["bridge_render_manifest_missing"],
+      warnings: [],
+    };
+  }
+
+  let manifest = null;
+  try {
+    manifest = await fs.readJson(path.resolve(manifestPath));
+  } catch {
+    return {
+      result: "fail",
+      failures: ["bridge_render_manifest_unreadable"],
+      warnings: [],
+    };
+  }
+
+  const failures = [];
+  const manifestDuration = renderedDurationFromManifest(manifest);
+  const bridgeDuration = storyDurationSeconds(story);
+  if (
+    Number.isFinite(manifestDuration) &&
+    Number.isFinite(bridgeDuration) &&
+    Math.abs(manifestDuration - bridgeDuration) > 0.25
+  ) {
+    failures.push("bridge_metadata_stale:duration_seconds");
+  }
+
+  const manifestOutputPath = normaliseComparablePath(renderOutputPathFromManifest(manifest));
+  const bridgeOutputPath = normaliseComparablePath(story.exported_path);
+  if (manifestOutputPath && bridgeOutputPath && manifestOutputPath !== bridgeOutputPath) {
+    failures.push("bridge_metadata_stale:exported_path");
+  }
+
+  return {
+    result: failures.length ? "fail" : "pass",
+    failures,
+    warnings: [],
+    evidence: {
+      render_manifest_path: manifestPath,
+      bridge_duration_seconds: bridgeDuration,
+      render_manifest_duration_seconds: manifestDuration,
+    },
   };
 }
 
@@ -1318,6 +1411,7 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
     runPublicCopyQa = (manifest) => require("../lib/goal-public-copy-qa").evaluateGoalPublicCopy(manifest),
     runIncidentGuard = incidentGuardPreflightForStory,
     runAudioSegmentQa = audioSegmentPreflightForStory,
+    runBridgeArtifactFreshnessQa = bridgeArtifactFreshnessPreflightForStory,
   } = opts;
 
   try {
@@ -1347,7 +1441,19 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
     );
     const incidentGuard = await runIncidentGuard(cloneStoryForPreflight(story));
     const audioSegment = await runAudioSegmentQa(cloneStoryForPreflight(story));
-    return combinePreflightQa({ content, video, platform, governance, publicCopy, incidentGuard, audioSegment });
+    const bridgeArtifactFreshness = story.scheduler_bridge_source
+      ? await runBridgeArtifactFreshnessQa(cloneStoryForPreflight(story))
+      : null;
+    return combinePreflightQa({
+      content,
+      video,
+      platform,
+      governance,
+      publicCopy,
+      incidentGuard,
+      audioSegment,
+      bridgeArtifactFreshness,
+    });
   } catch (err) {
     return {
       status: "blocked",
@@ -1870,6 +1976,7 @@ module.exports = {
   attachPreflightQa,
   attachStoryPreflight,
   audioSegmentPreflightForStory,
+  bridgeArtifactFreshnessPreflightForStory,
   cloneStoryForPreflight,
   combinePreflightQa,
   durationVerdict,

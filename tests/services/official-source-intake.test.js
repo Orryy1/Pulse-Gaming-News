@@ -77,6 +77,38 @@ test("official source intake accepts entity-matched official references as refer
   assert.equal(report.safety.production_db_mutated, false);
 });
 
+test("official source intake matches clean operator entries against mojibake story manifests", () => {
+  const report = buildOfficialSourceIntakeReport({
+    stories: [
+      story({
+        id: "pokemon-go",
+        title: "Mega Mewtwo Is Finally Coming To Pok\u00c3\u00a9mon Go",
+        canonical_subject: "Pok\u00c3\u00a9mon Go",
+        canonical_game: "Pok\u00c3\u00a9mon Go",
+        full_script: "Mega Mewtwo is finally coming to Pok\u00c3\u00a9mon Go.",
+      }),
+    ],
+    entries: [
+      officialEntry({
+        story_id: "pokemon-go",
+        entity: "Pok\u00e9mon Go",
+        official_source_url: "https://pokemongo.com/news/mega-mewtwo-gofest-2026",
+        source_title: "Mewtwo Mega Evolves and more exciting GO Fest updates!",
+        source_owner: "Pok\u00e9mon GO official website",
+        source_type: "official_game_website_media_page",
+        source_family: "pokemon_go_mega_mewtwo_gofest_2026_official_news",
+        evidence_of_officialness: "Official Pok\u00e9mon GO website news page.",
+        entity_match_notes: "Official page names Mega Mewtwo and Pok\u00e9mon GO Fest 2026.",
+      }),
+    ],
+  });
+
+  assert.equal(report.summary.accepted, 1);
+  assert.equal(report.summary.rejected, 0);
+  assert.equal(report.accepted_references[0].entity, "Pok\u00e9mon Go");
+  assert.doesNotMatch(JSON.stringify(report), /Pok\u00c3|Ã|Â/);
+});
+
 test("official source intake rejects generic YouTube URLs without official evidence", () => {
   const report = buildOfficialSourceIntakeReport({
     stories: [story()],

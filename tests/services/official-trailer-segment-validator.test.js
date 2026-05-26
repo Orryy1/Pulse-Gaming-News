@@ -903,6 +903,65 @@ test("official trailer segment validator accepts clean official Steam gameplay t
   assert.equal(report.segments[0].allowed_for_flash_lane, true);
 });
 
+test("official trailer segment validator labels clean storefront cinematic motion without calling it gameplay", async () => {
+  const outputRoot = tempOutputRoot("official-steam-storefront-cinematic-motion");
+  await cleanTempRoot(outputRoot);
+  let call = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        path: "https://video.akamai.steamstatic.com/store_trailers/2075800/876175/hash/hls_264_master.m3u8",
+        sourceType: "steam_movie",
+        movieName: "Star Wars Zero Company | Official Announce Trailer",
+        sourceDurationS: 134.2,
+        mediaStartS: 120,
+        entity: "Star Wars Zero Company",
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: fakeExtractor,
+      inspectFrame: async (outputPath) => {
+        call += 1;
+        const samples = [
+          { edge_density: 0.091, saturation_mean: 0.425, dark_pixel_ratio: 0, score: 83.3 },
+          { edge_density: 0.037, saturation_mean: 0.44, dark_pixel_ratio: 0.29, score: 77.5 },
+          { edge_density: 0.116, saturation_mean: 0.406, dark_pixel_ratio: 0.16, score: 85.4 },
+        ];
+        const sample = samples[call - 1] || samples[0];
+        return {
+          ...passingQa(outputPath),
+          content_hash: `star-wars-cinematic-${call}`,
+          prescan: {
+            likely_is_logo: false,
+            text_overlay_likelihood: 0,
+            white_text_on_dark_likelihood: 0,
+            edge_density: sample.edge_density,
+            saturation_mean: sample.saturation_mean,
+            dark_pixel_ratio: sample.dark_pixel_ratio,
+            bright_pixel_ratio: 0,
+            letterbox_bar_ratio: 0,
+          },
+          visual_taste: {
+            verdict: "pass",
+            reason: "taste_passed",
+            score: sample.score,
+            tags: ["colourful"],
+          },
+        };
+      },
+    },
+  );
+
+  assert.equal(report.summary.segments_validated, 1);
+  assert.equal(report.segments[0].validation_reason, "official_storefront_cinematic_motion_samples_passed");
+  assert.equal(report.segments[0].segment_motion_class, "official_storefront_cinematic_motion");
+  assert.equal(report.segments[0].allowed_for_flash_lane, true);
+  assert.ok(report.segments[0].action_score >= 62);
+});
+
 test("official trailer segment validator labels official product page motion without pretending it is gameplay", async () => {
   const outputRoot = tempOutputRoot("official-product-motion");
   await cleanTempRoot(outputRoot);

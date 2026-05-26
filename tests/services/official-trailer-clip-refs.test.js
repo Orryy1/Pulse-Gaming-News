@@ -628,6 +628,41 @@ test("official clip refs can deep-scan official sources even when initial frames
   assert.ok(refs.every((ref) => ref.provenance.exploratory_scan === true));
 });
 
+test("official clip refs default deep-scan adds later windows for long official media", () => {
+  const refs = buildOfficialTrailerClipsFromFrameReport(
+    { plans: [{ story_id: "story-1", frames: [] }] },
+    "story-1",
+    {
+      includeExploratoryWindows: true,
+      referenceReport: {
+        plans: [
+          {
+            story_id: "story-1",
+            references: [
+              {
+                source_type: "steam_movie",
+                provider: "steam",
+                source_url: "https://video.example/star-wars-zero-company.m3u8",
+                entity: "Star Wars Zero Company",
+                movie_name: "Official Announce Trailer",
+                source_duration_s: 134.2,
+                downloads_allowed: false,
+              },
+            ],
+          },
+        ],
+      },
+      maxClips: 20,
+    },
+  );
+
+  assert.deepEqual(
+    refs.map((ref) => ref.mediaStartS),
+    [36, 42, 48, 54, 60, 66, 78, 90, 102, 114, 126],
+  );
+  assert.ok(refs.every((ref) => ref.provenance.segment_selection_policy === "deep_scan_uniform_window"));
+});
+
 test("official clip refs deep-scan dedupes repeated source/entity/start windows", () => {
   const refs = buildOfficialTrailerClipsFromFrameReport(
     {

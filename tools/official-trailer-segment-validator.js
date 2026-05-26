@@ -50,7 +50,7 @@ function parseArgs(argv) {
     noExhaustedSourceFamilyFilter: false,
     includeFrameAnchoredWindows: false,
     includeExploratoryWindows: false,
-    exploratoryStartSeconds: DEFAULT_EXPLORATORY_START_SECONDS,
+    exploratoryStartSeconds: null,
   };
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i];

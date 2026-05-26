@@ -525,7 +525,7 @@ async function exchangeCode(code, opts = {}) {
   const tokenPath = resolveTokenPath();
   await fs.ensureDir(path.dirname(tokenPath));
   await fs.writeJson(tokenPath, tokenData, { spaces: 2 });
-  console.log(`[tiktok] Token saved to ${tokenPath}`);
+  console.log("[tiktok] OAuth credential saved successfully");
   return tokenData;
 }
 

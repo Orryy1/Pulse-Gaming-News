@@ -421,6 +421,39 @@ test("Controlled Frame Extraction Plan accepts direct media discovered from offi
   assert.equal(plan.target_frames[3].target_time_seconds, 8.8);
 });
 
+test("Controlled Frame Extraction Plan accepts official platform product page direct media", () => {
+  const plan = buildControlledFrameExtractionPlan(
+    motionPlan({
+      story_id: "1s4d0ev",
+      title: "PS5 Prices Went Up In Europe",
+      existing_references: [
+        {
+          source_type: "official_platform_product_page",
+          provider: "official_intake",
+          source_url:
+            "https://gmedia.playstation.com/is/content/SIEPDC/global_pdc/en/hardware/ps5/channel-specific-content/pdc/2025/overview/hero/ps5-overview-evergreen-hero-desktop-video-01-en-16oct25.mp4",
+          reference_page_url: "https://www.playstation.com/en-us/ps5/",
+          source_url_kind: "direct_video",
+          segment_validation_eligible: true,
+          entity: "PS5",
+          movie_name: "PS5 official product video",
+          rights_risk_class: "official_reference_only",
+          allowed_render_use: "reference_only_by_default",
+          downloads_allowed: false,
+          source_duration_s: 9.88,
+        },
+      ],
+    }),
+    { maxReferences: 1, maxTargetFrames: 4 },
+  );
+
+  assert.equal(plan.selected_references.length, 1);
+  assert.equal(plan.target_frames.length, 4);
+  assert.equal(plan.target_frames[0].source_type, "official_platform_product_page");
+  assert.equal(plan.target_frames[0].source_url_kind, "direct_video");
+  assert.equal(plan.target_frames[0].downloads_allowed, false);
+});
+
 test("Controlled Frame Extraction Plan accepts official social direct media", () => {
   const plan = buildControlledFrameExtractionPlan(
     motionPlan({

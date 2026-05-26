@@ -578,6 +578,70 @@ test("official trailer segment validator allows short trailer windows when 36s s
   assert.equal(report.segments[0].media_start_s, 12);
 });
 
+test("official trailer segment validator samples short official product page loops from the first frame", async () => {
+  const outputRoot = tempOutputRoot("official-product-page-start-zero");
+  await cleanTempRoot(outputRoot);
+  let extractorCalls = 0;
+  let inspectCalls = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        path: "https://gmedia.playstation.com/is/content/SIEPDC/global/ps5/product-hero.mp4",
+        sourceType: "official_platform_product_page",
+        sourceDurationS: 9.88,
+        mediaStartS: 0,
+        entity: "PS5",
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: async (args) => {
+        extractorCalls += 1;
+        return fakeExtractor(args);
+      },
+      inspectFrame: async (outputPath) => {
+        inspectCalls += 1;
+        const samples = [
+          { edge_density: 0.031, saturation_mean: 0.74, score: 89.3, action: 67.8 },
+          { edge_density: 0.047, saturation_mean: 0.75, score: 91.2, action: 69.7 },
+          { edge_density: 0.03, saturation_mean: 0.71, score: 89.2, action: 67.7 },
+        ];
+        const sample = samples[inspectCalls - 1] || samples[0];
+        return {
+          ...passingQa(outputPath),
+          content_hash: `official-product-start-zero-${inspectCalls}`,
+          gameplay_action_score: sample.action,
+          gameplay_action_candidate: false,
+          gameplay_action_reason: "official_product_motion_not_gameplay",
+          prescan: {
+            likely_is_logo: false,
+            text_overlay_likelihood: 0,
+            white_text_on_dark_likelihood: 0,
+            edge_density: sample.edge_density,
+            saturation_mean: sample.saturation_mean,
+            dark_pixel_ratio: 0.24,
+            bright_pixel_ratio: 0.02,
+            letterbox_bar_ratio: 0,
+          },
+          visual_taste: {
+            verdict: "pass",
+            reason: "taste_passed",
+            score: sample.score,
+            tags: ["product_motion", "colourful"],
+          },
+        };
+      },
+    },
+  );
+
+  assert.equal(extractorCalls, 3);
+  assert.equal(report.summary.segments_validated, 1);
+  assert.equal(report.segments[0].validation_reason, "official_product_motion_samples_passed");
+  assert.equal(report.segments[0].media_start_s, 0);
+});
+
 test("official trailer segment validator rejects promo CTA card windows", async () => {
   const outputRoot = tempOutputRoot("promo-cta-card");
   await cleanTempRoot(outputRoot);
@@ -883,6 +947,127 @@ test("official trailer segment validator labels official product page motion wit
   assert.equal(report.segments[0].segment_motion_class, "official_product_motion");
   assert.equal(report.segments[0].allowed_for_flash_lane, true);
   assert.ok(report.segments[0].action_score >= 76);
+});
+
+test("official trailer segment validator accepts polished official product motion with low gameplay edge density", async () => {
+  const outputRoot = tempOutputRoot("official-product-polished-low-edge");
+  await cleanTempRoot(outputRoot);
+  let call = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        path: "https://gmedia.playstation.com/is/content/SIEPDC/global/ps5/ps5-product-hero.mp4",
+        sourceType: "official_platform_product_page",
+        sourceDurationS: 9.88,
+        mediaStartS: 6.2,
+        entity: "PS5",
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: fakeExtractor,
+      inspectFrame: async (outputPath) => {
+        call += 1;
+        const samples = [
+          { edge_density: 0.031, saturation_mean: 0.74, score: 89.3, action: 67.8 },
+          { edge_density: 0.047, saturation_mean: 0.75, score: 91.2, action: 69.7 },
+          { edge_density: 0.03, saturation_mean: 0.71, score: 89.2, action: 67.7 },
+        ];
+        const sample = samples[call - 1] || samples[0];
+        return {
+          ...passingQa(outputPath),
+          content_hash: `official-product-polished-${call}`,
+          gameplay_action_score: sample.action,
+          gameplay_action_candidate: false,
+          gameplay_action_reason: "official_product_motion_not_gameplay",
+          prescan: {
+            likely_is_logo: false,
+            text_overlay_likelihood: 0,
+            white_text_on_dark_likelihood: 0,
+            edge_density: sample.edge_density,
+            saturation_mean: sample.saturation_mean,
+            dark_pixel_ratio: 0.24,
+            bright_pixel_ratio: 0.02,
+            letterbox_bar_ratio: 0,
+          },
+          visual_taste: {
+            verdict: "pass",
+            reason: "taste_passed",
+            score: sample.score,
+            tags: ["product_motion", "colourful"],
+          },
+        };
+      },
+    },
+  );
+
+  assert.equal(report.summary.segments_validated, 1);
+  assert.equal(report.segments[0].validation_reason, "official_product_motion_samples_passed");
+  assert.equal(report.segments[0].segment_motion_class, "official_product_motion");
+  assert.equal(report.segments[0].allowed_for_flash_lane, true);
+  assert.ok(report.segments[0].action_score >= 67);
+});
+
+test("official trailer segment validator accepts official hardware lifestyle product motion", async () => {
+  const outputRoot = tempOutputRoot("official-product-lifestyle-motion");
+  await cleanTempRoot(outputRoot);
+  let call = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        path: "https://gmedia.playstation.com/is/content/SIEPDC/global/portal/playstation-portal-lifestyle.mp4",
+        sourceType: "official_platform_product_page",
+        sourceDurationS: 10.24,
+        mediaStartS: 4.3,
+        entity: "PlayStation Portal",
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: fakeExtractor,
+      inspectFrame: async (outputPath) => {
+        call += 1;
+        const samples = [
+          { edge_density: 0.195, saturation_mean: 0.262, score: 88, action: 69.2 },
+          { edge_density: 0.063, saturation_mean: 0.431, score: 80.3, action: 61.7 },
+          { edge_density: 0.183, saturation_mean: 0.214, score: 84.2, action: 65.7 },
+        ];
+        const sample = samples[call - 1] || samples[0];
+        return {
+          ...passingQa(outputPath),
+          content_hash: `official-product-lifestyle-${call}`,
+          gameplay_action_score: sample.action,
+          gameplay_action_candidate: false,
+          gameplay_action_reason: "official_product_lifestyle_motion_not_gameplay",
+          prescan: {
+            likely_is_logo: false,
+            text_overlay_likelihood: 0,
+            white_text_on_dark_likelihood: 0,
+            edge_density: sample.edge_density,
+            saturation_mean: sample.saturation_mean,
+            dark_pixel_ratio: 0.25,
+            bright_pixel_ratio: 0.05,
+            letterbox_bar_ratio: 0,
+          },
+          visual_taste: {
+            verdict: "pass",
+            reason: "taste_passed",
+            score: sample.score,
+            tags: ["product_motion", "hardware_lifestyle"],
+          },
+        };
+      },
+    },
+  );
+
+  assert.equal(report.summary.segments_validated, 1);
+  assert.equal(report.segments[0].validation_reason, "official_product_motion_samples_passed");
+  assert.equal(report.segments[0].segment_motion_class, "official_product_motion");
+  assert.ok(report.segments[0].action_score >= 64);
 });
 
 test("official trailer segment validator rejects explicitly blurred windows", async () => {

@@ -2,7 +2,7 @@
 
 Read-only diagnostic. It performs no OAuth, token mutation, uploads or posts.
 
-Generated: 2026-05-26T04:17:06.820Z
+Generated: 2026-05-26T07:14:59.231Z
 Verdict: AMBER
 
 ## Blockers
@@ -18,8 +18,8 @@ Verdict: AMBER
 
 ### TikTok No-Post Readiness
 
-- Browser OAuth: not_verified_by_this_report; local token proven=true; local token status=usable
-- Local token: usable; action=none
+- Browser OAuth: not_verified_by_this_report; local token proven=false; local token status=expired_but_refreshable
+- Local token: expired_but_refreshable; action=refresh_or_sync_local_token
 - Official inbox: ready_for_operator_review_not_executed; public_auto_publish=false
 - Direct post: blocked_by_app_review_or_direct_post_approval; blocker=direct_post_approval_not_declared
 - Dispatch creative: ready_for_operator_review; story=rss_c27cd78d4621a058; blockers=none

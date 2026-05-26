@@ -139,6 +139,56 @@ test("platform readiness doctor renders TikTok no-post readiness lanes separatel
   assert.doesNotMatch(md, /must-not-leak|access_token|refresh_token|Bearer/);
 });
 
+test("platform readiness doctor lets live TikTok token inspection override stale usable no-post evidence", () => {
+  const report = buildPlatformReadinessDoctor({
+    generatedAt: "2026-05-26T11:10:00.000Z",
+    tiktokTokenStatus: {
+      ok: false,
+      reason: "expired",
+      refresh_available: true,
+      needs_reauth: false,
+      expires_in_seconds: -464321,
+    },
+    tiktokAutomationReport: {
+      noPostReadiness: {
+        browserOAuth: {
+          status: "succeeded",
+          local_token_proven: true,
+          local_token_status: "usable",
+        },
+        localToken: {
+          status: "usable",
+          next_action: "none",
+          refresh_available: false,
+          needs_reauth: false,
+        },
+      },
+      dispatchGate: {
+        topReadyPack: {
+          storyId: "ready-story",
+          status: "ready_for_operator_review",
+          durationSeconds: 67.4,
+        },
+      },
+    },
+  });
+
+  const readiness = report.platforms.tiktok.no_post_readiness;
+
+  assert.equal(report.platforms.tiktok.status, "needs_local_token_refresh_or_sync");
+  assert.equal(readiness.browser_oauth.status, "succeeded");
+  assert.equal(readiness.browser_oauth.local_token_proven, false);
+  assert.equal(readiness.browser_oauth.local_token_status, "expired_but_refreshable");
+  assert.equal(readiness.local_token.status, "expired_but_refreshable");
+  assert.equal(readiness.local_token.next_action, "refresh_or_sync_local_token");
+  assert.equal(readiness.local_token.refresh_available, true);
+  assert.ok(report.blockers.includes("tiktok_local_token_refresh_or_sync_required"));
+
+  const md = renderPlatformReadinessDoctorMarkdown(report);
+  assert.match(md, /Local token: expired_but_refreshable; action=refresh_or_sync_local_token/);
+  assert.doesNotMatch(md, /Local token: usable; action=none/);
+});
+
 test("platform readiness doctor blocks TikTok inbox when the selected pack still needs creative review", () => {
   const report = buildPlatformReadinessDoctor({
     tiktokTokenStatus: {

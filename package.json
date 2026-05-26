@@ -101,6 +101,7 @@
     "ops:goal10-gold-standard-forensics": "node tools/goal10-gold-standard-forensics-engine.js",
     "ops:goal11-retention-intelligence": "node tools/goal11-retention-intelligence-loop.js",
     "ops:goal12-experimentation-engine": "node tools/goal12-experimentation-engine.js",
+    "ops:goal13-multi-platform-publisher": "node tools/goal13-multi-platform-publisher-engine.js",
     "ops:goal-production-render": "node tools/goal-production-render-materializer.js",
     "ops:goal-platform-duration-contract": "node tools/goal-platform-duration-contract.js",
     "ops:goal-platform-native-repair": "node tools/goal-platform-native-pack-repair.js",

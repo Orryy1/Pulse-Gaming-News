@@ -34,12 +34,19 @@ const DEFAULT_BRIDGE_CANDIDATES_PATH = path.join(
   "scheduler_bridge_candidates.json",
 );
 const DEFAULT_OUTPUT_DIR = path.join(ROOT, "output", "goal-contract");
+const DEFAULT_DRY_RUN_PLAN_PATH = path.join(
+  ROOT,
+  "output",
+  "goal-contract",
+  "dry_run_publish_plan.json",
+);
 
 function parseArgs(argv) {
   const args = {
     hours: 24,
     json: false,
     bridgeCandidatesPath: DEFAULT_BRIDGE_CANDIDATES_PATH,
+    dryRunPlanPath: DEFAULT_DRY_RUN_PLAN_PATH,
     outputDir: DEFAULT_OUTPUT_DIR,
     writeReports: true,
   };
@@ -61,6 +68,12 @@ function parseArgs(argv) {
       args.bridgeCandidatesPath = a.slice("--bridge=".length);
     } else if (a === "--no-bridge-candidates" || a === "--no-bridge") {
       args.bridgeCandidatesPath = "";
+    } else if (a === "--dry-run-plan") {
+      args.dryRunPlanPath = argv[++i] || "";
+    } else if (a.startsWith("--dry-run-plan=")) {
+      args.dryRunPlanPath = a.slice("--dry-run-plan=".length);
+    } else if (a === "--no-dry-run-plan") {
+      args.dryRunPlanPath = "";
     } else if (a === "--out-dir") {
       args.outputDir = argv[++i] || "";
     } else if (a.startsWith("--out-dir=")) {
@@ -81,6 +94,8 @@ function printHelp() {
       "  --json      Print the summary as JSON instead of markdown\n" +
       "  --bridge-candidates PATH  Include governed V4 bridge candidates\n" +
       "  --no-bridge-candidates    Ignore bridge candidates\n" +
+      "  --dry-run-plan PATH        Include strict dry-run plan blocker context\n" +
+      "  --no-dry-run-plan         Ignore strict dry-run blocker context\n" +
       "  --out-dir PATH            Write JSON report artefacts here\n" +
       "  --no-write                Do not write report artefacts\n",
   );
@@ -111,6 +126,12 @@ function readBridgeCandidates(candidatePath) {
     ...candidate,
     _bridge_loaded_at: loadedAt,
   }));
+}
+
+function readJsonIfPresent(filePath) {
+  const resolved = resolveCandidatePath(filePath);
+  if (!resolved || !fs.existsSync(resolved)) return {};
+  return JSON.parse(fs.readFileSync(resolved, "utf8"));
 }
 
 function resolveOutputDir(outputDir) {
@@ -152,9 +173,11 @@ async function main() {
   console.info = () => {};
   console.warn = () => {};
   const bridgeCandidates = readBridgeCandidates(args.bridgeCandidatesPath);
+  const dryRunPlan = readJsonIfPresent(args.dryRunPlanPath);
   const result = await runRenderHealthDigest({
     windowHours: args.hours,
     bridgeCandidates,
+    dryRunPlan,
   });
   const { summary, markdown } = result;
   if (args.writeReports) {

@@ -117,14 +117,14 @@ test("Silent Hill 2 / II → Silent Hill two", () => {
   );
 });
 
-test("Hades II / 2 → Hades, part two with a spoken break", () => {
+test("Hades II / 2 -> Hades, number two with a spoken break", () => {
   assert.equal(
     applyGamingPronunciation("Hades II finally has a console date"),
-    "Hades two finally has a console date",
+    "Hades, number two finally has a console date",
   );
   assert.equal(
     applyGamingPronunciation("Hades 2 finally has a console date"),
-    "Hades two finally has a console date",
+    "Hades, number two finally has a console date",
   );
 });
 
@@ -156,6 +156,25 @@ test("MMORPGs → online RPGs (plural preserved)", () => {
 });
 
 // ── compositional safety ────────────────────────────────────────
+
+test("source brand pronunciations split merged publication names", () => {
+  assert.equal(
+    applyGamingPronunciation("Respawnfirst reports the leak."),
+    "Respawn First reports the leak.",
+  );
+  assert.equal(
+    applyGamingPronunciation("RespawnFirst says the leak moved."),
+    "Respawn First says the leak moved.",
+  );
+  assert.equal(
+    applyGamingPronunciation("GameSpot and GameStop both show the deal."),
+    "Game Spot and Game Stop both show the deal.",
+  );
+  assert.equal(
+    applyGamingPronunciation("Gamestop reports a physical discount."),
+    "Game Stop reports a physical discount.",
+  );
+});
 
 test("applyGamingPronunciation: empty string returns empty", () => {
   assert.equal(applyGamingPronunciation(""), "");

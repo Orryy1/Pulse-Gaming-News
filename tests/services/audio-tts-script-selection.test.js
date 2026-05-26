@@ -112,10 +112,24 @@ test("cleanForTTS: expands modern years without hybrid spoken digits", () => {
   );
 });
 
-test("cleanForTTS: speaks Hades II as Hades number two for local voice clarity", () => {
+test("cleanForTTS: speaks Hades II with a pause before number two for local voice clarity", () => {
   assert.equal(
     cleanForTTS("Hades II just put PlayStation and Xbox players on the same April countdown."),
-    "Hades number two just put PlayStation and Xbox players on the same April countdown.",
+    "Hades, number two just put PlayStation and Xbox players on the same April countdown.",
+  );
+});
+
+test("cleanForTTS: turns article-style deal snippets into spoken sentences", () => {
+  assert.equal(
+    cleanForTTS("Super Mario RPG - $15 (70% off) at GameStop, physical, lowest price ever."),
+    "Super Mario RPG, 15 dollars, 70 percent off, at Game Stop, physical, lowest price ever.",
+  );
+});
+
+test("cleanForTTS: avoids hyphenated phonetic tokens that break word alignment", () => {
+  assert.equal(
+    cleanForTTS("Pearl Abyss announced the Crimson Desert timing."),
+    "Pearl uh biss announced the Crimson Desert timing.",
   );
 });
 

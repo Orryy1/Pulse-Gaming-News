@@ -1095,6 +1095,29 @@ function bridgeMotionGovernanceExceptionApprovedForStory(story = {}, evidence = 
   return Boolean(storyId && evidence?.ownedExplainerExceptionStoryIds?.has(storyId));
 }
 
+function currentBridgeMotionEvidenceForStory(story = {}) {
+  const { visualEvidenceProfile } = require("../lib/visual-evidence-classifier");
+  const profile = visualEvidenceProfile({
+    story,
+    rightsLedger: objectValue(story.rights_ledger || story.rights_records, {}),
+    footageInventory: objectValue(story.footage_inventory, {}),
+    directorPlan: objectValue(story.visual_v4_director_plan || story.director_plan, {}),
+  });
+  const currentClipCount = Math.max(
+    Number(story.visual_v4_render_bridge_clip_count || 0),
+    asArray(story.video_clips).length,
+    asArray(story.visual_v4_bridge_video_clips).length,
+  );
+  return {
+    profile,
+    directVideoMotionReady: Number(profile.direct_video_motion_asset_count || 0) > 0,
+    motionPackReady:
+      currentClipCount >= 3 &&
+      Number(profile.motion_asset_count || 0) >= 3 &&
+      profile.generated_only_motion_deck !== true,
+  };
+}
+
 function bridgeMotionGovernancePreflightForStory(story = {}, opts = {}) {
   if (!story.scheduler_bridge_source) return null;
   const storyId = normaliseStoryId(story.id || story.story_id);
@@ -1115,6 +1138,41 @@ function bridgeMotionGovernancePreflightForStory(story = {}, opts = {}) {
   }
   if (!failures.length) return { result: "pass", failures: [], warnings: [] };
 
+  const currentMotionEvidence = currentBridgeMotionEvidenceForStory(story);
+  const staleFailures = [];
+  const activeFailures = failures.filter((failure) => {
+    if (
+      failure === "direct_video_enrichment_required" &&
+      currentMotionEvidence.directVideoMotionReady
+    ) {
+      staleFailures.push(failure);
+      return false;
+    }
+    if (
+      failure === "v4_motion_pack_blocked" &&
+      currentMotionEvidence.directVideoMotionReady &&
+      currentMotionEvidence.motionPackReady
+    ) {
+      staleFailures.push(failure);
+      return false;
+    }
+    return true;
+  });
+  if (!activeFailures.length && staleFailures.length) {
+    return {
+      result: "warn",
+      failures: [],
+      warnings: ["stale_source_family_evidence_ignored"],
+      evidence: {
+        story_id: storyId,
+        stale_failures: [...new Set(staleFailures)],
+        direct_video_motion_asset_count:
+          currentMotionEvidence.profile.direct_video_motion_asset_count,
+        motion_asset_count: currentMotionEvidence.profile.motion_asset_count,
+      },
+    };
+  }
+
   if (bridgeMotionGovernanceExceptionApprovedForStory(story, evidence)) {
     return {
       result: "pass",
@@ -1125,13 +1183,14 @@ function bridgeMotionGovernancePreflightForStory(story = {}, opts = {}) {
 
   return {
     result: "fail",
-    failures: [...new Set(failures)],
-    warnings: [],
+    failures: [...new Set(activeFailures)],
+    warnings: staleFailures.length ? ["stale_source_family_evidence_ignored"] : [],
     evidence: {
       story_id: storyId,
-      direct_video_enrichment_required: evidence.directVideoEnrichmentStoryIds.has(storyId),
-      v4_motion_pack_blocked: evidence.blockedMotionPackStoryIds.has(storyId),
-      canonical_entity_repair_required: evidence.canonicalEntityRepairStoryIds.has(storyId),
+      direct_video_enrichment_required: activeFailures.includes("direct_video_enrichment_required"),
+      v4_motion_pack_blocked: activeFailures.includes("v4_motion_pack_blocked"),
+      canonical_entity_repair_required: activeFailures.includes("canonical_entity_repair_required"),
+      stale_failures: [...new Set(staleFailures)],
     },
   };
 }

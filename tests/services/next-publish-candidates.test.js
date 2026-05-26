@@ -158,6 +158,45 @@ function ownedExplainerFixture(storyId = "bridge_owned_explainer") {
   return { clips, rightsLedger, footageInventory };
 }
 
+function directVideoFixture(storyId = "bridge_direct_video_resolved") {
+  const clips = Array.from({ length: 5 }, (_, index) => ({
+    id: `${storyId}-direct-${index + 1}`,
+    path: `output/video_cache/${storyId}-direct-${index + 1}.mp4`,
+    source_url: "https://video.fastly.steamstatic.com/store_trailers/353370/37301/hls_264_master.m3u8",
+    source_type: "official_platform_product_page",
+    media_kind: "direct_video",
+    source_url_kind: "hls_manifest",
+    source_family: `steam_353370_37301_window_${index + 1}`,
+    motion_family: `steam_353370_37301_window_${index + 1}`,
+    rights_risk_class: "official_reference_transformative_editorial_use",
+    rights_basis: "official_reference_transformative_editorial_use",
+    licence_basis: "official_reference_transformative_editorial_use",
+    commercial_use_allowed: true,
+    approval_status: "approved_for_transformative_editorial_use",
+    counts_towards_motion_readiness: true,
+    materialized: true,
+  }));
+  const rightsLedger = {
+    verdict: "pass",
+    assets: [],
+    records: clips.map((clip) => ({
+      ...clip,
+      asset_type: "direct_video_motion_clip",
+      allowed_platforms: ["youtube", "tiktok", "instagram", "facebook", "x", "threads", "pinterest"],
+      allowed_use: "transformative_editorial_reference",
+      risk_score: 0.08,
+    })),
+  };
+  const footageInventory = {
+    motion_inventory: {
+      accepted_local_clips: clips,
+      production_motion_clips: clips,
+      distinct_source_families: clips.map((clip) => clip.source_family),
+    },
+  };
+  return { clips, rightsLedger, footageInventory };
+}
+
 function baseStory(overrides = {}) {
   return {
     id: "story_base",
@@ -1334,6 +1373,97 @@ test("bridge preflight blocks direct-video enrichment work-order gaps before sch
   assert.ok(
     preflight.blockers.includes("bridge_motion_governance:direct_video_enrichment_required"),
   );
+});
+
+test("bridge preflight ignores stale source-family motion blockers when current bridge clips prove direct video", async () => {
+  const scores = {
+    motion_density_score: 96,
+    first_3_seconds_hook_score: 91,
+    source_lock_quality_score: 90,
+    caption_legibility_score: 95,
+    card_hierarchy_score: 88,
+    media_house_polish_score: 93,
+  };
+  const { clips, rightsLedger, footageInventory } = directVideoFixture("bridge_direct_video_resolved");
+  const preflight = await runPreflightQaForStory(
+    baseStory({
+      id: "bridge_direct_video_resolved",
+      title: "Steam Controller Date May Have Leaked",
+      selected_title: "Steam Controller Date May Have Leaked",
+      canonical_subject: "Steam Controller",
+      first_spoken_line: "Steam Controller may have just picked up a real launch window.",
+      description: "Valve's Steam listing surfaced a possible Steam Controller date. Source: Steam.",
+      full_script:
+        "Steam Controller may have just picked up a real launch window. Valve's Steam listing is the source, and the key player question is whether to wait before buying a controller.",
+      scheduler_bridge_source: "goal_production_cutover",
+      render_lane: "visual_v4_production",
+      render_quality_class: "premium",
+      qa_visual_count: 8,
+      visual_v4_render_bridge_clip_count: 5,
+      exported_path: "D:/pulse-data/media/output/final/bridge_direct_video_resolved.mp4",
+      audio_path: "D:/pulse-data/media/output/audio/bridge_direct_video_resolved.mp3",
+      timestamps_path: "D:/pulse-data/media/output/audio/bridge_direct_video_resolved_timestamps.json",
+      manual_caption_path: "D:/pulse-data/media/output/captions/bridge_direct_video_resolved.srt",
+      primary_source: "Steam",
+      primary_source_url: "https://store.steampowered.com/app/353370/Steam_Controller/",
+      discovery_source: "Steam",
+      publish_verdict: { verdict: "GREEN" },
+      platform_publish_manifest: {
+        publish_status: "GREEN",
+        platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts"] },
+        outputs: {
+          youtube_shorts: { title: "Steam Controller Date May Have Leaked" },
+        },
+      },
+      visual_quality_report: {
+        result: "pass",
+        scores,
+        frame_rules: {
+          first_frame_subject: "Steam Controller",
+          first_frame_text: "STEAM CONTROLLER DATE",
+          source_locks_readable: true,
+        },
+        failures: [],
+      },
+      media_house_benchmark: {
+        result: "pass",
+        scores,
+        failures: [],
+      },
+      sfx_manifest: bridgeSfxEvidence(),
+      rights_ledger: JSON.stringify(rightsLedger),
+      footage_inventory: JSON.stringify(footageInventory),
+      visual_v4_bridge_video_clips: JSON.stringify(clips),
+      video_clips: JSON.stringify(clips),
+    }),
+    {
+      bridgeMotionGovernanceEvidence: {
+        source_family_acquisition_report: {
+          rows: [
+            {
+              story_id: "bridge_direct_video_resolved",
+              direct_video_enrichment_requested: true,
+              missing_direct_video_motion: 1,
+              blocking_current_motion_readiness: true,
+              blockers: ["v4_motion_blocked"],
+            },
+          ],
+        },
+      },
+      runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+    },
+  );
+
+  assert.equal(preflight.status, "warn");
+  assert.ok(preflight.warnings.includes("bridge_motion_governance:stale_source_family_evidence_ignored"));
+  assert.ok(
+    !preflight.blockers.includes("bridge_motion_governance:direct_video_enrichment_required"),
+  );
+  assert.ok(!preflight.blockers.includes("bridge_motion_governance:v4_motion_pack_blocked"));
 });
 
 test("bridge preflight allows human-reviewed source-locked owned explainer exceptions through enrichment work orders", async () => {

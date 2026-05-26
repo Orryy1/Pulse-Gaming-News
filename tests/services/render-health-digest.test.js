@@ -261,6 +261,46 @@ test("splitRenderHealthSummary: emits direct-video enrichment work order separat
   );
 });
 
+test("buildRenderHealthSummary: marks direct-video gaps that block strict dry-run", () => {
+  const summary = digest.buildRenderHealthSummary([], {
+    bridgeCandidates: [
+      {
+        id: "still-motion",
+        title: "Still Motion Needs Gameplay",
+        approved_at: new Date().toISOString(),
+        render_quality_class: "premium",
+        render_lane: "visual_v4_production",
+        qa_visual_count: 6,
+        visual_v4_bridge_video_clips: [
+          {
+            id: "still-1",
+            path: "/tmp/still-1.mp4",
+            source_url: "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1/ss_1.jpg",
+            source_type: "screenshot_derived_motion_clip",
+            rights_risk_class: "source_documented_transformative_editorial_use",
+            source_family: "steam_still_1",
+          },
+        ],
+      },
+    ],
+    dryRunPlan: {
+      blocked_stories: [
+        {
+          story_id: "still-motion",
+          blockers: [
+            "preflight_qa_blocked:bridge_motion_governance:direct_video_enrichment_required",
+          ],
+        },
+      ],
+    },
+  });
+
+  const workOrder = summary.bridge.direct_video_enrichment_work_order;
+  assert.equal(workOrder.summary.job_count, 1);
+  assert.equal(workOrder.summary.blocking_current_dry_run_count, 1);
+  assert.equal(workOrder.jobs[0].blocking_current_dry_run, true);
+});
+
 test("buildRenderHealthSummary: bridge candidates expose real-media and generated-only evidence", () => {
   const now = new Date().toISOString();
   const generatedClips = Array.from({ length: 8 }, (_, index) => ({

@@ -18,7 +18,7 @@ const brand = require("./brand");
 
 // --- Phonetic replacements for words TTS mispronounces ---
 const PHONETIC_MAP = {
-  abyss: "uh-biss",
+  abyss: "uh biss",
   cache: "cash",
   segue: "seg-way",
   genre: "zhon-ruh",
@@ -376,6 +376,7 @@ function cleanForTTS(raw) {
       .replace(/[\u201C\u201D]/g, '"')
       .replace(/[\u2018\u2019\u0060\u00B4]/g, "'")
       .replace(/[\u2013\u2014]/g, " - ") // only en/em dashes get spaced out
+      .replace(/\s+-\s+/g, ", ")
       // Version numbers: "1.03.00" -> "1 point 0 3 point 0 0"
       .replace(/(\d+)\.(\d+)\.(\d+)/g, (_, a, b, c) => {
         const spellDigits = (s) => s.split("").join(" ");
@@ -406,6 +407,8 @@ function cleanForTTS(raw) {
         /\$(\d+)/g,
         (_, n) => `${n} dollar${parseInt(n) === 1 ? "" : "s"}`,
       )
+      .replace(/(\d+(?:\.\d+)?)\s*%/g, "$1 percent")
+      .replace(/\((\d+(?:\.\d+)?\s+percent\s+off)\)/gi, ", $1,")
       .replace(
         /£(\d+)\.(\d{1,2})/g,
         (_, whole, pence) => `${whole} pounds ${parseInt(pence)}`,
@@ -456,9 +459,11 @@ function cleanForTTS(raw) {
       // speak literally or leak into timestamp subtitles.
       .replace(/[^\p{L}\p{M}\p{N}\p{P}\p{Sc}\p{Zs}\p{Sm}\t\r\n]/gu, "")
       .replace(/\s+/g, " ")
+      .replace(/\s+,/g, ",")
       .replace(/\.\s*\./g, ".")
       .replace(/\.\s*,/g, ",")
       .replace(/,\s*,/g, ",")
+      .replace(/,\s+\./g, ".")
       .trim();
   return collapseAdjacentDuplicateSentences(cleaned);
 }

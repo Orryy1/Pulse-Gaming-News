@@ -112,6 +112,7 @@
     "ops:goal21-observability-dashboard": "node tools/goal21-observability-dashboard.js",
     "ops:goal22-versioned-prompt-model-registry": "node tools/goal22-versioned-prompt-model-registry.js",
     "ops:goal23-security-secrets-deployment-safety": "node tools/goal23-security-secrets-deployment-safety.js",
+    "ops:goal24-corrections-retractions-takedowns": "node tools/goal24-corrections-retractions-takedowns.js",
     "ops:goal-production-render": "node tools/goal-production-render-materializer.js",
     "ops:goal-platform-duration-contract": "node tools/goal-platform-duration-contract.js",
     "ops:goal-platform-native-repair": "node tools/goal-platform-native-pack-repair.js",

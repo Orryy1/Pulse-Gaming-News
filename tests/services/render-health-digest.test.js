@@ -307,6 +307,40 @@ test("buildRenderHealthSummary: bridge candidates expose real-media and generate
   assert.match(md, /Direct-video gap sample: generated-only, still-motion/);
 });
 
+test("buildRenderHealthSummary: bridge visual evidence uses the shared direct-video classifier", () => {
+  const now = new Date().toISOString();
+  const productPageClips = [
+    {
+      id: "ps5-product-video",
+      path: "C:/tmp/ps5-product-video.mp4",
+      source_url: "https://gmedia.playstation.com/is/content/SIEPDC/ps5-overview.mp4",
+      source_type: "official_platform_product_page",
+      source_url_kind: "direct_video",
+      media_kind: "direct_video",
+      licence_basis: "official_platform_product_page_transformative_editorial_use",
+      source_family: "official_playstation_ps5_product_page",
+    },
+  ];
+
+  const r = digest.buildRenderHealthSummary([], {
+    bridgeCandidates: [
+      {
+        id: "ps5-product-page",
+        approved_at: now,
+        render_quality_class: "premium",
+        render_lane: "visual_v4_production",
+        qa_visual_count: 8,
+        visual_v4_bridge_video_clips: productPageClips,
+        rights_ledger: productPageClips,
+      },
+    ],
+  });
+
+  assert.equal(r.bridge.visual_evidence.direct_video_motion_count, 1);
+  assert.deepEqual(r.bridge.visual_evidence.direct_video_story_ids, ["ps5-product-page"]);
+  assert.deepEqual(r.bridge.visual_evidence.direct_video_gap_story_ids, []);
+});
+
 test("formatDigest: bridge candidates make unstamped live debt explicit", () => {
   const md = digest.formatDigest(
     digest.buildRenderHealthSummary([], {

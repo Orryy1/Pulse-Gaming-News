@@ -204,6 +204,7 @@
     "tts:proof-promoter": "node tools/local-tts-proof-promoter.js",
     "ops:goal26-creator-studio-brand-system": "node tools/goal26-creator-studio-brand-system.js",
     "ops:goal27-definition-missing": "node tools/goal27-definition-missing.js",
+    "ops:goal28-definition-missing": "node tools/goal28-definition-missing.js",
     "tts:overnight-report": "node tools/local-tts-overnight-report.js"
   },
   "keywords": [],

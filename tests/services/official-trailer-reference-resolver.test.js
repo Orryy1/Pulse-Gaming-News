@@ -897,6 +897,51 @@ test("official trailer resolver consumes trusted footage registry references wit
   assert.ok(plan.provenance_ledger.some((item) => item.provider === "trusted_footage_registry"));
 });
 
+test("official trailer resolver rejects trusted registry references when the story has no matching target entity", async () => {
+  const story = baseStory({
+    id: "registry-steam-controller",
+    title: "The Steam controller release date may have been leaked online",
+    full_script: "Valve may have a new Steam Controller date, but the trailer source still needs checking.",
+  });
+  const trustedFootageRegistryReport = {
+    accepted_sources: [
+      {
+        source_id: "ea-star-wars-zero-company",
+        display_name: "EA official Star Wars Zero Company trailer",
+        owner_type: "publisher",
+        platform: "youtube",
+        channel_url: "https://www.youtube.com/watch?v=starwars",
+        reference_url: "https://www.youtube.com/watch?v=starwars",
+        source_family: "ea_star_wars_zero_company",
+        allowed_uses: ["reference_only"],
+        source_tier: "official",
+        provenance: {
+          official_evidence: "Official EA trailer for a different game.",
+        },
+      },
+    ],
+    story_candidates: [
+      {
+        story_id: "registry-steam-controller",
+        source_id: "ea-star-wars-zero-company",
+        entity: "Star Wars Zero Company",
+        display_name: "EA official Star Wars Zero Company trailer",
+        source_family: "ea_star_wars_zero_company",
+      },
+    ],
+  };
+
+  const plan = await buildOfficialTrailerReferencePlan(story, {
+    trustedFootageRegistryReport,
+  });
+
+  assert.equal(plan.summary_accepted_trusted_footage_references, 1);
+  assert.equal(plan.filtered_target_mismatch_reference_count, 1);
+  assert.equal(plan.references.length, 0);
+  assert.equal(plan.motion_reference_readiness, "official_search_required");
+  assert.ok(plan.search_queries.includes("The Steam controller release date may have been leaked online official trailer"));
+});
+
 test("official trailer resolver filters trusted registry comparison references", async () => {
   const story = baseStory({
     id: "registry-forza-comparison",

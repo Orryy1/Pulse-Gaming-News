@@ -215,6 +215,7 @@
     "ops:goal36-definition-missing": "node tools/goal36-definition-missing.js",
     "ops:goal37-definition-missing": "node tools/goal37-definition-missing.js",
     "ops:goal38-definition-missing": "node tools/goal38-definition-missing.js",
+    "ops:goal39-definition-missing": "node tools/goal39-definition-missing.js",
     "tts:overnight-report": "node tools/local-tts-overnight-report.js"
   },
   "keywords": [],

@@ -951,10 +951,38 @@ function bridgeMotionEvidenceSource(value = {}) {
   };
 }
 
+const OWNED_EXPLAINER_SOURCE_FAMILY_EXCEPTION_BLOCKERS = new Set([
+  "corporate_transaction_requires_owned_explainer_visual_plan",
+  "broad_platform_story_requires_specific_visual_plan",
+  "legal_story_requires_source_card_or_human_visual_plan",
+]);
+
+function rowAllowsOwnedExplainerMotionException(row = {}) {
+  const tokens = [
+    row.visual_plan_type,
+    row.plan_type,
+    row.recommended_visual_plan_type,
+    ...(Array.isArray(row.source_search_blockers) ? row.source_search_blockers : []),
+    ...(Array.isArray(row.blockers) ? row.blockers : []),
+  ]
+    .map(cleanText)
+    .filter(Boolean);
+  return tokens.some((token) => {
+    const normalised = token.toLowerCase();
+    return (
+      OWNED_EXPLAINER_SOURCE_FAMILY_EXCEPTION_BLOCKERS.has(normalised) ||
+      /owned_explainer_plan|owned_explainer_visual_plan|source_card_or_human_visual_plan/.test(
+        normalised,
+      )
+    );
+  });
+}
+
 function normaliseBridgeMotionGovernanceEvidence(value = {}) {
   const directVideoEnrichmentStoryIds = new Set();
   const blockedMotionPackStoryIds = new Set();
   const canonicalEntityRepairStoryIds = new Set();
+  const ownedExplainerExceptionStoryIds = new Set();
 
   for (const storyId of [
     ...asArray(value.direct_video_enrichment_story_ids),
@@ -1018,18 +1046,23 @@ function normaliseBridgeMotionGovernanceEvidence(value = {}) {
     if (Array.isArray(row.canonical_entity_repair_blockers) && row.canonical_entity_repair_blockers.length) {
       addStoryIdToSet(canonicalEntityRepairStoryIds, storyId);
     }
+    if (rowAllowsOwnedExplainerMotionException(row)) {
+      addStoryIdToSet(ownedExplainerExceptionStoryIds, storyId);
+    }
   }
 
   const enabled =
     directVideoEnrichmentStoryIds.size > 0 ||
     blockedMotionPackStoryIds.size > 0 ||
-    canonicalEntityRepairStoryIds.size > 0;
+    canonicalEntityRepairStoryIds.size > 0 ||
+    ownedExplainerExceptionStoryIds.size > 0;
 
   return {
     enabled,
     directVideoEnrichmentStoryIds,
     blockedMotionPackStoryIds,
     canonicalEntityRepairStoryIds,
+    ownedExplainerExceptionStoryIds,
   };
 }
 
@@ -1040,19 +1073,26 @@ function bridgeMotionGovernanceEvidenceSummary(value = {}) {
     direct_video_enrichment_story_count: evidence.directVideoEnrichmentStoryIds.size,
     blocked_motion_pack_story_count: evidence.blockedMotionPackStoryIds.size,
     canonical_entity_repair_story_count: evidence.canonicalEntityRepairStoryIds.size,
+    owned_explainer_exception_story_count: evidence.ownedExplainerExceptionStoryIds.size,
   };
 }
 
-function bridgeMotionGovernanceExceptionApprovedForStory(story = {}) {
+function bridgeMotionGovernanceExceptionApprovedForStory(story = {}, evidence = null) {
   const directMotionExceptionApproved =
     story.human_reviewed_direct_video_motion_exception === true ||
     story.direct_video_motion_exception_approved === true;
   if (directMotionExceptionApproved) return true;
 
-  const ownedExplainerExceptionApproved =
-    story.human_reviewed_owned_explainer_motion_exception === true ||
+  const humanReviewedOwnedExplainerException =
+    story.human_reviewed_owned_explainer_motion_exception === true;
+  if (humanReviewedOwnedExplainerException) return sourceLooksEditoriallyVerified(story);
+
+  const automaticOwnedExplainerException =
     story.owned_explainer_motion_exception_approved === true;
-  return ownedExplainerExceptionApproved && sourceLooksEditoriallyVerified(story);
+  if (!automaticOwnedExplainerException || !sourceLooksEditoriallyVerified(story)) return false;
+
+  const storyId = normaliseStoryId(story.id || story.story_id);
+  return Boolean(storyId && evidence?.ownedExplainerExceptionStoryIds?.has(storyId));
 }
 
 function bridgeMotionGovernancePreflightForStory(story = {}, opts = {}) {
@@ -1075,7 +1115,7 @@ function bridgeMotionGovernancePreflightForStory(story = {}, opts = {}) {
   }
   if (!failures.length) return { result: "pass", failures: [], warnings: [] };
 
-  if (bridgeMotionGovernanceExceptionApprovedForStory(story)) {
+  if (bridgeMotionGovernanceExceptionApprovedForStory(story, evidence)) {
     return {
       result: "pass",
       failures: [],

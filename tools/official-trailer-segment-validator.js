@@ -3,6 +3,7 @@
 
 const path = require("node:path");
 const fs = require("fs-extra");
+const { ffprobeDuration } = require("../lib/studio/media-acquisition");
 
 try {
   require("dotenv").config({ override: true });
@@ -40,6 +41,7 @@ function parseArgs(argv) {
     acquisitionPlan: null,
     previousValidationReport: null,
     noReferenceReport: false,
+    noReferenceDurationProbe: false,
     mergePrevious: false,
     dryRun: true,
     applyLocal: false,
@@ -63,6 +65,8 @@ function parseArgs(argv) {
       args.noReferenceReport = false;
     } else if (arg === "--no-reference-report" || arg === "--no-trailer-references") {
       args.noReferenceReport = true;
+    } else if (arg === "--no-reference-duration-probe") {
+      args.noReferenceDurationProbe = true;
     } else if (arg === "--acquisition-plan") {
       args.acquisitionPlan = argv[++i] || DEFAULT_ACQUISITION_PLAN;
     } else if (arg === "--previous-validation-report") {
@@ -111,6 +115,8 @@ function printHelp() {
       "  --frame-report <p>     Read a controlled frame extraction worker report",
       "  --reference-report <p> Read official trailer resolver references for alternate source scanning",
       "  --no-reference-report  Ignore test/output/official_trailer_references_v1.json",
+      "  --no-reference-duration-probe",
+      "                         Do not ffprobe missing HLS/DASH/direct durations before deep scan",
       "  --acquisition-plan <p>",
       "                         Use Flash Lane shopping-list windows from test/output/flash_lane_footage_acquisition_v1.json",
       "  --previous-validation-report <p>",
@@ -179,6 +185,89 @@ async function loadOptionalReferenceReport(args) {
   if (!(await fs.pathExists(filePath))) return { report: null, filePath: null };
   const report = await fs.readJson(filePath);
   return { report, filePath };
+}
+
+function existingDurationSeconds(record = {}) {
+  const provenance = record.provenance || {};
+  for (const value of [
+    record.sourceDurationS,
+    record.source_duration_s,
+    record.durationSeconds,
+    record.duration_seconds,
+    record.referenceDurationS,
+    record.reference_duration_s,
+    provenance.sourceDurationS,
+    provenance.source_duration_s,
+    provenance.durationSeconds,
+    provenance.duration_seconds,
+  ]) {
+    const number = Number(value);
+    if (Number.isFinite(number) && number > 0) return number;
+  }
+  return null;
+}
+
+function durationProbeEligibleReference(reference = {}) {
+  if (!reference || typeof reference !== "object") return false;
+  if (existingDurationSeconds(reference)) return false;
+  if (reference.segment_validation_eligible === false) return false;
+  const sourceUrl = String(reference.source_url || reference.sourceUrl || reference.local_path || "").trim();
+  if (!sourceUrl) return false;
+  const urlKind = reference.source_url_kind || require("../lib/media-source-url-kind").mediaSourceUrlKindFields(sourceUrl).source_url_kind;
+  return ["direct_video", "hls_manifest", "dash_manifest", "local_video_file"].includes(urlKind);
+}
+
+async function enrichReferenceReportDurations(report = null, options = {}) {
+  const enabled = options.enabled !== false;
+  const durationProbe = options.durationProbe || ffprobeDuration;
+  const summary = {
+    enabled,
+    candidates: 0,
+    probed: 0,
+    failed: 0,
+    skipped_existing_duration: 0,
+  };
+  if (!report || typeof report !== "object") return { report, summary };
+  const plans = Array.isArray(report.plans) ? report.plans : [];
+  const enriched = {
+    ...report,
+    plans: plans.map((plan) => ({
+      ...plan,
+      references: Array.isArray(plan.references) ? plan.references.map((reference) => ({ ...reference })) : [],
+    })),
+  };
+  if (!enabled) return { report: enriched, summary };
+
+  for (const plan of enriched.plans) {
+    for (const reference of plan.references) {
+      if (existingDurationSeconds(reference)) {
+        summary.skipped_existing_duration += 1;
+        continue;
+      }
+      if (!durationProbeEligibleReference(reference)) continue;
+      summary.candidates += 1;
+      const sourceUrl = String(reference.source_url || reference.sourceUrl || reference.local_path || "").trim();
+      try {
+        const duration = await Promise.resolve(durationProbe(sourceUrl, reference));
+        const number = Number(duration);
+        if (!Number.isFinite(number) || number <= 0) {
+          summary.failed += 1;
+          continue;
+        }
+        const rounded = Number(number.toFixed(2));
+        reference.source_duration_s = rounded;
+        reference.provenance = {
+          ...(reference.provenance || {}),
+          source_duration_s: rounded,
+          duration_probe: "ffprobe",
+        };
+        summary.probed += 1;
+      } catch {
+        summary.failed += 1;
+      }
+    }
+  }
+  return { report: enriched, summary };
 }
 
 async function loadOptionalPreviousValidationReport(args) {
@@ -290,6 +379,9 @@ async function main() {
 
   const loaded = await loadFrameReport(args);
   const loadedReference = await loadOptionalReferenceReport(args);
+  const enrichedReference = await enrichReferenceReportDurations(loadedReference.report, {
+    enabled: args.applyLocal && args.includeExploratoryWindows && !args.noReferenceDurationProbe,
+  });
   const loadedPrevious = await loadOptionalPreviousValidationReport(args);
   const loadedAcquisition = await loadOptionalAcquisitionPlan(args);
   const scopedPreviousReport = loadedPrevious.report && args.storyId
@@ -304,10 +396,10 @@ async function main() {
   const clipRefs = loadedAcquisition.report
     ? buildOfficialTrailerClipsFromAcquisitionPlan(
         loadedAcquisition.report,
-        loadedReference.report,
+        enrichedReference.report,
         args.storyId,
       )
-    : buildClipRefsFromReport(loaded.report, loadedReference.report, args.storyId, {
+    : buildClipRefsFromReport(loaded.report, enrichedReference.report, args.storyId, {
         ...args,
         maxSegments: previousSegmentCount > 0 ? args.maxSegments + previousSegmentCount : args.maxSegments,
       });
@@ -341,6 +433,7 @@ async function main() {
   report.current_run = currentRun;
   report.frame_report_source = loaded.filePath;
   report.reference_report_source = loadedReference.filePath;
+  report.reference_duration_probe = enrichedReference.summary;
   report.acquisition_plan_source = loadedAcquisition.filePath;
   report.clip_refs_source = loadedAcquisition.report ? "flash_lane_acquisition_plan" : "frame_or_reference_report";
   report.clip_refs_input_count = clipRefs.length;
@@ -363,6 +456,7 @@ async function main() {
     report.current_run = currentRun;
     report.frame_report_source = loaded.filePath;
     report.reference_report_source = loadedReference.filePath;
+    report.reference_duration_probe = enrichedReference.summary;
     report.acquisition_plan_source = loadedAcquisition.filePath;
     report.clip_refs_source = loadedAcquisition.report ? "flash_lane_acquisition_plan" : "frame_or_reference_report";
     report.clip_refs_input_count = clipRefs.length;
@@ -404,4 +498,5 @@ module.exports = {
   main,
   parseArgs,
   reportOutputTargets,
+  enrichReferenceReportDurations,
 };

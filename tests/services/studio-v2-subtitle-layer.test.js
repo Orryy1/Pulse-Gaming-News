@@ -775,13 +775,14 @@ test("buildKineticAss can keep full Flash punches visible while words pop", () =
   assert.match(ass, /\\t\(0,100,\\fscx115\\fscy115\)/);
 });
 
-test("still-deck enriched proofs use phrase reveal to avoid lonely word holds", () => {
+test("still-deck enriched proofs use word reveal so captions land on narration timing", () => {
   const source = fs.readFileSync(
     path.join(ROOT, "tools", "studio-v2-still-deck-ingestion.js"),
     "utf8",
   );
 
-  assert.match(source, /revealMode:\s*flash\s*\?\s*"phrase"\s*:\s*"word"/);
+  assert.match(source, /revealMode:\s*"word"/);
+  assert.doesNotMatch(source, /revealMode:\s*flash\s*\?\s*"phrase"\s*:\s*"word"/);
 });
 
 test("buildKineticAss synthetic captions cover narration end and obey density caps", () => {

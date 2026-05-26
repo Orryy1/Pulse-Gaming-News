@@ -658,7 +658,7 @@ test("official clip refs default deep-scan adds later windows for long official 
 
   assert.deepEqual(
     refs.map((ref) => ref.mediaStartS),
-    [36, 42, 48, 54, 60, 66, 78, 90, 102, 114, 126],
+    [36, 42, 48, 54, 60, 66, 78, 90, 102, 114, 120, 126],
   );
   assert.ok(refs.every((ref) => ref.provenance.segment_selection_policy === "deep_scan_uniform_window"));
 });

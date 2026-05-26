@@ -22,6 +22,7 @@ const {
 const {
   balanceClipRefsAcrossStories,
   buildClipRefsFromReport,
+  enrichReferenceReportDurations,
   reportOutputTargets,
 } = require("../../tools/official-trailer-segment-validator");
 
@@ -236,6 +237,47 @@ test("segment validator CLI writes story-scoped report aliases for one-story run
       ),
     ),
   );
+});
+
+test("segment validator duration-probes reference reports before default deep scan", async () => {
+  const referenceReport = {
+    plans: [
+      {
+        story_id: "story-1",
+        references: [
+          {
+            source_type: "steam_movie",
+            provider: "steam",
+            source_url: "https://video.example/long-official-trailer.m3u8",
+            source_url_kind: "hls_manifest",
+            segment_validation_eligible: true,
+            entity: "Star Wars Zero Company",
+            movie_name: "Official Announce Trailer",
+            downloads_allowed: false,
+          },
+        ],
+      },
+    ],
+  };
+
+  const enriched = await enrichReferenceReportDurations(referenceReport, {
+    enabled: true,
+    durationProbe: () => 134.2,
+  });
+  const refs = buildClipRefsFromReport(
+    { plans: [{ story_id: "story-1", frames: [] }] },
+    enriched.report,
+    "story-1",
+    {
+      includeExploratoryWindows: true,
+      maxSegments: 20,
+    },
+  );
+
+  assert.equal(enriched.summary.probed, 1);
+  assert.equal(enriched.report.plans[0].references[0].source_duration_s, 134.2);
+  assert.ok(refs.some((ref) => ref.mediaStartS === 120));
+  assert.ok(refs.some((ref) => ref.mediaStartS === 126));
 });
 
 test("official trailer segment validator apply-local marks clean sampled windows as Flash Lane allowed", async () => {

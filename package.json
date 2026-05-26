@@ -121,6 +121,7 @@
     "ops:goal-landing-attribution-repair": "node tools/goal-landing-attribution-repair.js",
     "ops:goal-commercial-disclosure-repair": "node tools/goal-commercial-disclosure-repair.js",
     "ops:goal-duration-variant-repair": "node tools/goal-duration-variant-repair.js",
+    "ops:goal-normal-duration-repair-workorder": "node tools/goal-normal-duration-repair-workorder.js",
     "ops:goal-normal-duration-repair": "node tools/goal-duration-variant-repair.js --normal-production",
     "ops:goal-public-copy-repair": "node tools/goal-public-copy-repair.js",
     "ops:goal-sfx-evidence-repair": "node tools/goal-sfx-evidence-repair.js",

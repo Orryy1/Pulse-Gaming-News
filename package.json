@@ -104,6 +104,7 @@
     "ops:goal13-multi-platform-publisher": "node tools/goal13-multi-platform-publisher-engine.js",
     "ops:goal14-social-derivatives": "node tools/goal14-social-derivatives-engine.js",
     "ops:goal15-affiliate-intelligence": "node tools/goal15-affiliate-intelligence-engine.js",
+    "ops:goal16-landing-pages": "node tools/goal16-landing-page-engine.js",
     "ops:goal-production-render": "node tools/goal-production-render-materializer.js",
     "ops:goal-platform-duration-contract": "node tools/goal-platform-duration-contract.js",
     "ops:goal-platform-native-repair": "node tools/goal-platform-native-pack-repair.js",

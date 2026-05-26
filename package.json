@@ -107,6 +107,7 @@
     "ops:goal16-landing-pages": "node tools/goal16-landing-page-engine.js",
     "ops:goal17-platform-policy": "node tools/goal17-platform-policy-engine.js",
     "ops:goal18-finance-crypto-firewall": "node tools/goal18-finance-crypto-firewall.js",
+    "ops:goal19-autonomy-control-tower": "node tools/goal19-autonomy-control-tower.js",
     "ops:goal-production-render": "node tools/goal-production-render-materializer.js",
     "ops:goal-platform-duration-contract": "node tools/goal-platform-duration-contract.js",
     "ops:goal-platform-native-repair": "node tools/goal-platform-native-pack-repair.js",

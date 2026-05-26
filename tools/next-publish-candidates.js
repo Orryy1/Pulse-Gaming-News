@@ -19,6 +19,18 @@ const DEFAULT_BRIDGE_CANDIDATES_PATH = path.join(
   "goal-contract",
   "scheduler_bridge_candidates.json",
 );
+const DEFAULT_DIRECT_VIDEO_ENRICHMENT_WORK_ORDER_PATH = path.join(
+  ROOT,
+  "output",
+  "goal-contract",
+  "direct_video_enrichment_work_order.json",
+);
+const DEFAULT_SOURCE_FAMILY_ACQUISITION_REPORT_PATH = path.join(
+  ROOT,
+  "test",
+  "output",
+  "studio_v4_source_family_acquisition.json",
+);
 const DEFAULT_ANALYTICS_PATH = "D:\\pulse-data\\analytics_findings.md";
 const DEFAULT_LIMIT = 12;
 
@@ -877,7 +889,9 @@ function combinePreflightQa({
   publicCopy,
   incidentGuard,
   audioSegment,
+  timestampAlignment,
   bridgeArtifactFreshness,
+  bridgeMotionGovernance,
 } = {}) {
   const checks = {
     content: summariseQaResult(content),
@@ -888,7 +902,9 @@ function combinePreflightQa({
   if (publicCopy) checks.public_copy = summariseQaResult(publicCopy);
   if (incidentGuard) checks.incident_guard = summariseQaResult(incidentGuard);
   if (audioSegment) checks.audio_segment_loudness = summariseQaResult(audioSegment);
+  if (timestampAlignment) checks.timestamp_alignment = summariseQaResult(timestampAlignment);
   if (bridgeArtifactFreshness) checks.bridge_artifact_freshness = summariseQaResult(bridgeArtifactFreshness);
+  if (bridgeMotionGovernance) checks.bridge_motion_governance = summariseQaResult(bridgeMotionGovernance);
   const blockers = [];
   const warnings = [];
 
@@ -909,6 +925,174 @@ function combinePreflightQa({
     blockers,
     warnings,
     checks,
+  };
+}
+
+function addStoryIdToSet(target, value) {
+  const storyId = normaliseStoryId(value);
+  if (storyId) target.add(storyId);
+}
+
+function bridgeMotionEvidenceSource(value = {}) {
+  if (!value || typeof value !== "object") return {};
+  return {
+    directVideoEnrichmentWorkOrder:
+      value.directVideoEnrichmentWorkOrder ||
+      value.direct_video_enrichment_work_order ||
+      value.directVideoWorkOrder ||
+      value.direct_video_work_order ||
+      (Array.isArray(value.jobs) ? value : null),
+    sourceFamilyAcquisitionReport:
+      value.sourceFamilyAcquisitionReport ||
+      value.source_family_acquisition_report ||
+      value.sourceFamilyReport ||
+      value.source_family_report ||
+      (Array.isArray(value.rows) ? value : null),
+  };
+}
+
+function normaliseBridgeMotionGovernanceEvidence(value = {}) {
+  const directVideoEnrichmentStoryIds = new Set();
+  const blockedMotionPackStoryIds = new Set();
+  const canonicalEntityRepairStoryIds = new Set();
+
+  for (const storyId of [
+    ...asArray(value.direct_video_enrichment_story_ids),
+    ...asArray(value.directVideoEnrichmentStoryIds),
+  ]) {
+    addStoryIdToSet(directVideoEnrichmentStoryIds, storyId);
+  }
+  for (const storyId of [
+    ...asArray(value.blocked_motion_pack_story_ids),
+    ...asArray(value.blockedMotionPackStoryIds),
+  ]) {
+    addStoryIdToSet(blockedMotionPackStoryIds, storyId);
+  }
+
+  const { directVideoEnrichmentWorkOrder, sourceFamilyAcquisitionReport } =
+    bridgeMotionEvidenceSource(value);
+
+  for (const job of asArray(directVideoEnrichmentWorkOrder?.jobs)) {
+    const blockerText = [
+      job.blocker_type,
+      job.repair_lane,
+      job.exact_missing_input,
+      ...(Array.isArray(job.blockers) ? job.blockers : []),
+    ]
+      .map(cleanText)
+      .join(" ")
+      .toLowerCase();
+    if (
+      blockerText.includes("direct_video") ||
+      blockerText.includes("direct-video") ||
+      blockerText.includes("direct video")
+    ) {
+      addStoryIdToSet(directVideoEnrichmentStoryIds, job.story_id || job.id);
+    }
+  }
+
+  for (const row of asArray(sourceFamilyAcquisitionReport?.rows)) {
+    const storyId = row.story_id || row.id;
+    const blockers = [
+      row.readiness_status,
+      ...(Array.isArray(row.blockers) ? row.blockers : []),
+    ]
+      .map(cleanText)
+      .join(" ")
+      .toLowerCase();
+    if (
+      row.blocking_current_motion_readiness === true ||
+      blockers.includes("v4_motion_blocked") ||
+      blockers.includes("actual_motion_clip_minimum_not_met") ||
+      blockers.includes("distinct_motion_families_minimum_not_met")
+    ) {
+      addStoryIdToSet(blockedMotionPackStoryIds, storyId);
+    }
+    if (
+      row.direct_video_enrichment_requested === true ||
+      blockers.includes("direct_video_motion_missing") ||
+      Number(row.missing_direct_video_motion || 0) > 0
+    ) {
+      addStoryIdToSet(directVideoEnrichmentStoryIds, storyId);
+    }
+    if (Array.isArray(row.canonical_entity_repair_blockers) && row.canonical_entity_repair_blockers.length) {
+      addStoryIdToSet(canonicalEntityRepairStoryIds, storyId);
+    }
+  }
+
+  const enabled =
+    directVideoEnrichmentStoryIds.size > 0 ||
+    blockedMotionPackStoryIds.size > 0 ||
+    canonicalEntityRepairStoryIds.size > 0;
+
+  return {
+    enabled,
+    directVideoEnrichmentStoryIds,
+    blockedMotionPackStoryIds,
+    canonicalEntityRepairStoryIds,
+  };
+}
+
+function bridgeMotionGovernanceEvidenceSummary(value = {}) {
+  const evidence = normaliseBridgeMotionGovernanceEvidence(value);
+  return {
+    enabled: evidence.enabled,
+    direct_video_enrichment_story_count: evidence.directVideoEnrichmentStoryIds.size,
+    blocked_motion_pack_story_count: evidence.blockedMotionPackStoryIds.size,
+    canonical_entity_repair_story_count: evidence.canonicalEntityRepairStoryIds.size,
+  };
+}
+
+function bridgeMotionGovernanceExceptionApprovedForStory(story = {}) {
+  const directMotionExceptionApproved =
+    story.human_reviewed_direct_video_motion_exception === true ||
+    story.direct_video_motion_exception_approved === true;
+  if (directMotionExceptionApproved) return true;
+
+  const ownedExplainerExceptionApproved =
+    story.human_reviewed_owned_explainer_motion_exception === true ||
+    story.owned_explainer_motion_exception_approved === true;
+  return ownedExplainerExceptionApproved && sourceLooksEditoriallyVerified(story);
+}
+
+function bridgeMotionGovernancePreflightForStory(story = {}, opts = {}) {
+  if (!story.scheduler_bridge_source) return null;
+  const storyId = normaliseStoryId(story.id || story.story_id);
+  if (!storyId) return null;
+
+  const evidence = normaliseBridgeMotionGovernanceEvidence(opts.bridgeMotionGovernanceEvidence || {});
+  if (!evidence.enabled) return null;
+
+  const failures = [];
+  if (evidence.directVideoEnrichmentStoryIds.has(storyId)) {
+    failures.push("direct_video_enrichment_required");
+  }
+  if (evidence.blockedMotionPackStoryIds.has(storyId)) {
+    failures.push("v4_motion_pack_blocked");
+  }
+  if (evidence.canonicalEntityRepairStoryIds.has(storyId)) {
+    failures.push("canonical_entity_repair_required");
+  }
+  if (!failures.length) return { result: "pass", failures: [], warnings: [] };
+
+  if (bridgeMotionGovernanceExceptionApprovedForStory(story)) {
+    return {
+      result: "pass",
+      failures: [],
+      warnings: ["bridge_motion_governance_exception:human_reviewed_source_locked"],
+    };
+  }
+
+  return {
+    result: "fail",
+    failures: [...new Set(failures)],
+    warnings: [],
+    evidence: {
+      story_id: storyId,
+      direct_video_enrichment_required: evidence.directVideoEnrichmentStoryIds.has(storyId),
+      v4_motion_pack_blocked: evidence.blockedMotionPackStoryIds.has(storyId),
+      canonical_entity_repair_required: evidence.canonicalEntityRepairStoryIds.has(storyId),
+    },
   };
 }
 
@@ -1011,6 +1195,200 @@ async function audioSegmentPreflightForStory(story = {}) {
       warnings: [],
     };
   }
+}
+
+function firstObjectValue(...values) {
+  for (const value of values) {
+    const parsed = objectValue(value, null);
+    if (parsed && typeof parsed === "object") return parsed;
+  }
+  return {};
+}
+
+function timestampPathCandidatesForStory(story = {}, audioManifest = {}) {
+  return [
+    story.word_timestamps_path,
+    story.timestamps_path,
+    story.timestamp_path,
+    audioManifest.word_timestamps_path,
+    audioManifest.timestamps_path,
+    audioManifest.resolved_timestamps_path,
+  ].map(cleanText).filter(Boolean);
+}
+
+function artifactDirForStory(story = {}) {
+  return cleanText(
+    story.scheduler_bridge_artifact_dir ||
+      story.artifact_dir ||
+      story.output_dir ||
+      story.package_dir,
+  );
+}
+
+async function resolveReadableTimestampPath(candidate = "", artifactDir = "") {
+  const raw = cleanText(candidate);
+  if (!raw || /^local:\/\//i.test(raw)) return "";
+  const attempts = [];
+  if (path.isAbsolute(raw)) {
+    attempts.push(raw);
+  } else {
+    if (artifactDir) attempts.push(path.resolve(artifactDir, raw));
+    attempts.push(path.resolve(raw));
+    try {
+      const mediaPaths = require("../lib/media-paths");
+      const mediaResolved = await mediaPaths.resolveExisting(raw).catch(() => "");
+      if (mediaResolved) attempts.push(mediaResolved);
+    } catch {
+      // Optional media-root resolution should not make read-only preflight crash.
+    }
+  }
+  for (const attempt of [...new Set(attempts.filter(Boolean))]) {
+    if (await fs.pathExists(attempt)) return attempt;
+  }
+  return "";
+}
+
+async function readTimestampPayloadForStory(story = {}) {
+  const inlinePayload = firstObjectValue(
+    story.word_timestamps_payload,
+    story.timestamps_payload,
+    story.word_timestamps,
+    story.timestamps,
+  );
+  if (Object.keys(inlinePayload).length) {
+    return { payload: inlinePayload, path: null, requested: true, loaded: true };
+  }
+
+  const audioManifest = firstObjectValue(story.audio_manifest, story.final_audio_manifest);
+  const artifactDir = artifactDirForStory(story);
+  const candidates = timestampPathCandidatesForStory(story, audioManifest);
+  for (const candidate of candidates) {
+    const resolved = await resolveReadableTimestampPath(candidate, artifactDir);
+    if (!resolved) continue;
+    try {
+      return {
+        payload: await fs.readJson(resolved),
+        path: resolved,
+        requested: true,
+        loaded: true,
+      };
+    } catch {
+      return { payload: null, path: resolved, requested: true, loaded: false };
+    }
+  }
+  return {
+    payload: null,
+    path: null,
+    requested: candidates.length > 0,
+    loaded: false,
+  };
+}
+
+function timestampSourceForPayload(payload = {}, story = {}) {
+  return cleanText(
+    story.word_timestamp_source ||
+      story.wordTimestampSource ||
+      story.timestamp_source ||
+      payload?.meta?.wordTimestampSource ||
+      payload?.meta?.word_timestamp_source ||
+      payload?.wordTimestampSource ||
+      payload?.word_timestamp_source,
+  );
+}
+
+function voiceProviderForTimestampGate(story = {}) {
+  const audioManifest = firstObjectValue(story.audio_manifest, story.final_audio_manifest);
+  return cleanText(
+    story.voice_provider ||
+      story.tts_provider ||
+      story.narration_provider ||
+      audioManifest.voice_provider ||
+      audioManifest.provider,
+  ).toLowerCase();
+}
+
+function localVoiceTimingRequired({ story = {}, source = "" } = {}) {
+  const provider = voiceProviderForTimestampGate(story);
+  const lowerSource = cleanText(source).toLowerCase();
+  return (
+    provider === "local" ||
+    provider === "local_tts" ||
+    provider === "existing_local_audio" ||
+    provider.startsWith("local_") ||
+    story.local_tts === true ||
+    story.local_voice === true ||
+    lowerSource.startsWith("local_")
+  );
+}
+
+function timestampPayloadAsrAligned(payload = {}, source = "", story = {}) {
+  const lowerSource = cleanText(source).toLowerCase();
+  return Boolean(
+    lowerSource === "local_whisper_word_alignment" ||
+      lowerSource === "whisper_word_alignment" ||
+      story.word_timestamps_asr_aligned === true ||
+      story.asr_aligned_word_timestamps === true ||
+      payload?.meta?.timestampWhisperAlignment?.repaired === true ||
+      payload?.timestampWhisperAlignment?.repaired === true,
+  );
+}
+
+async function timestampAlignmentPreflightForStory(story = {}) {
+  if (!shouldRunIncidentGuardForStory(story)) return null;
+  const artifactDir = artifactDirForStory(story);
+  const sourceHint = timestampSourceForPayload({}, story);
+  const requiresLocalTiming = localVoiceTimingRequired({ story, source: sourceHint });
+  const timestampEvidence = await readTimestampPayloadForStory(story);
+
+  if (!timestampEvidence.loaded) {
+    if (artifactDir || requiresLocalTiming) {
+      return {
+        result: "fail",
+        failures: [timestampEvidence.requested ? "word_timestamps_payload_unreadable" : "word_timestamps_path_missing"],
+        warnings: [],
+        evidence: {
+          word_timestamp_alignment_required: requiresLocalTiming
+            ? "local_whisper_word_alignment"
+            : null,
+        },
+      };
+    }
+    return null;
+  }
+
+  const payload = timestampEvidence.payload || {};
+  const source = timestampSourceForPayload(payload, story);
+  if (!localVoiceTimingRequired({ story, source })) {
+    return {
+      result: "pass",
+      failures: [],
+      warnings: [],
+      evidence: source ? { word_timestamp_source: source } : {},
+    };
+  }
+
+  if (timestampPayloadAsrAligned(payload, source, story)) {
+    return {
+      result: "pass",
+      failures: [],
+      warnings: [],
+      evidence: {
+        word_timestamp_source: source || "local_whisper_word_alignment",
+        word_timestamp_alignment_required: "local_whisper_word_alignment",
+      },
+    };
+  }
+
+  return {
+    result: "fail",
+    failures: ["word_timestamps_not_asr_aligned"],
+    warnings: [],
+    evidence: {
+      word_timestamp_source: source || "unknown",
+      word_timestamp_alignment_required: "local_whisper_word_alignment",
+      word_timestamps_path: timestampEvidence.path || null,
+    },
+  };
 }
 
 function cloneStoryForPreflight(story = {}) {
@@ -1411,7 +1789,9 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
     runPublicCopyQa = (manifest) => require("../lib/goal-public-copy-qa").evaluateGoalPublicCopy(manifest),
     runIncidentGuard = incidentGuardPreflightForStory,
     runAudioSegmentQa = audioSegmentPreflightForStory,
+    runTimestampAlignmentQa = timestampAlignmentPreflightForStory,
     runBridgeArtifactFreshnessQa = bridgeArtifactFreshnessPreflightForStory,
+    runBridgeMotionGovernanceQa = bridgeMotionGovernancePreflightForStory,
   } = opts;
 
   try {
@@ -1441,8 +1821,12 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
     );
     const incidentGuard = await runIncidentGuard(cloneStoryForPreflight(story));
     const audioSegment = await runAudioSegmentQa(cloneStoryForPreflight(story));
+    const timestampAlignment = await runTimestampAlignmentQa(cloneStoryForPreflight(story));
     const bridgeArtifactFreshness = story.scheduler_bridge_source
       ? await runBridgeArtifactFreshnessQa(cloneStoryForPreflight(story))
+      : null;
+    const bridgeMotionGovernance = story.scheduler_bridge_source
+      ? await runBridgeMotionGovernanceQa(cloneStoryForPreflight(story), opts)
       : null;
     return combinePreflightQa({
       content,
@@ -1452,7 +1836,9 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
       publicCopy,
       incidentGuard,
       audioSegment,
+      timestampAlignment,
       bridgeArtifactFreshness,
+      bridgeMotionGovernance,
     });
   } catch (err) {
     return {
@@ -1504,6 +1890,9 @@ async function attachPreflightQa(report = {}, stories = [], opts = {}) {
     blocked: candidates.filter((candidate) => candidate.preflight_qa?.status === "blocked").length,
     warning: candidates.filter((candidate) => candidate.preflight_qa?.status === "warn").length,
     pass: candidates.filter((candidate) => candidate.preflight_qa?.status === "pass").length,
+    bridge_motion_governance: bridgeMotionGovernanceEvidenceSummary(
+      opts.bridgeMotionGovernanceEvidence || {},
+    ),
   };
   return report;
 }
@@ -1813,6 +2202,8 @@ function parseArgs(argv) {
     preflightQa: false,
     storyId: null,
     bridgeCandidatesPath: DEFAULT_BRIDGE_CANDIDATES_PATH,
+    directVideoEnrichmentWorkOrderPath: DEFAULT_DIRECT_VIDEO_ENRICHMENT_WORK_ORDER_PATH,
+    sourceFamilyAcquisitionReportPath: DEFAULT_SOURCE_FAMILY_ACQUISITION_REPORT_PATH,
     allowLiveFallback: false,
   };
   for (let i = 2; i < argv.length; i += 1) {
@@ -1835,6 +2226,24 @@ function parseArgs(argv) {
       args.bridgeCandidatesPath = arg.slice("--bridge-candidates=".length);
     }
     else if (arg.startsWith("--bridge=")) args.bridgeCandidatesPath = arg.slice("--bridge=".length);
+    else if (arg === "--direct-video-work-order") {
+      args.directVideoEnrichmentWorkOrderPath = argv[++i] || null;
+    }
+    else if (arg.startsWith("--direct-video-work-order=")) {
+      args.directVideoEnrichmentWorkOrderPath = arg.slice("--direct-video-work-order=".length);
+    }
+    else if (arg === "--no-direct-video-work-order") {
+      args.directVideoEnrichmentWorkOrderPath = null;
+    }
+    else if (arg === "--source-family-acquisition") {
+      args.sourceFamilyAcquisitionReportPath = argv[++i] || null;
+    }
+    else if (arg.startsWith("--source-family-acquisition=")) {
+      args.sourceFamilyAcquisitionReportPath = arg.slice("--source-family-acquisition=".length);
+    }
+    else if (arg === "--no-source-family-acquisition") {
+      args.sourceFamilyAcquisitionReportPath = null;
+    }
     else if (arg === "--story-id" || arg === "--story") args.storyId = normaliseStoryId(argv[++i]);
     else if (arg.startsWith("--story-id=")) args.storyId = normaliseStoryId(arg.slice("--story-id=".length));
     else if (arg.startsWith("--story=")) args.storyId = normaliseStoryId(arg.slice("--story=".length));
@@ -1849,6 +2258,17 @@ async function readAnalytics(pathname) {
     // report as unavailable below
   }
   return "";
+}
+
+async function readOptionalJson(pathname) {
+  if (!pathname) return null;
+  try {
+    const resolved = path.resolve(pathname);
+    if (await fs.pathExists(resolved)) return fs.readJson(resolved);
+  } catch {
+    // Optional governance evidence should never make read-only preflight crash.
+  }
+  return null;
 }
 
 async function readBridgeCandidates(pathname) {
@@ -1915,16 +2335,22 @@ async function runCli(argv = process.argv) {
   const args = parseArgs(argv);
   if (args.help) {
     process.stdout.write(
-      "Usage: node tools/next-publish-candidates.js [--json] [--limit N] [--analytics PATH] [--preflight-qa] [--story-id ID] [--bridge PATH|--no-bridge] [--allow-live-fallback]\n",
+      "Usage: node tools/next-publish-candidates.js [--json] [--limit N] [--analytics PATH] [--preflight-qa] [--story-id ID] [--bridge PATH|--no-bridge] [--direct-video-work-order PATH|--no-direct-video-work-order] [--source-family-acquisition PATH|--no-source-family-acquisition] [--allow-live-fallback]\n",
     );
     return { exitCode: 0 };
   }
 
-  const [stories, analyticsText, bridgeManifest] = await Promise.all([
+  const [stories, analyticsText, bridgeManifest, directVideoEnrichmentWorkOrder, sourceFamilyAcquisitionReport] = await Promise.all([
     loadStories(),
     readAnalytics(args.analyticsPath),
     readBridgeCandidateManifest(args.bridgeCandidatesPath),
+    readOptionalJson(args.directVideoEnrichmentWorkOrderPath),
+    readOptionalJson(args.sourceFamilyAcquisitionReportPath),
   ]);
+  const bridgeMotionGovernanceEvidence = {
+    directVideoEnrichmentWorkOrder,
+    sourceFamilyAcquisitionReport,
+  };
   const selected = selectCandidateSourceStories({
     liveStories: stories,
     bridgeCandidates: bridgeManifest.candidates,
@@ -1942,8 +2368,8 @@ async function runCli(argv = process.argv) {
     bridgeManifest: selected.bridge_manifest,
   });
   if (args.preflightQa) {
-    await attachPreflightQa(report, mergedStories);
-    await attachStoryPreflight(report, mergedStories, args.storyId);
+    await attachPreflightQa(report, mergedStories, { bridgeMotionGovernanceEvidence });
+    await attachStoryPreflight(report, mergedStories, args.storyId, { bridgeMotionGovernanceEvidence });
   }
   const markdown = formatNextPublishCandidatesMarkdown(report);
   await fs.ensureDir(OUT);
@@ -1969,6 +2395,8 @@ if (require.main === module) {
 
 module.exports = {
   DEFAULT_BRIDGE_CANDIDATES_PATH,
+  DEFAULT_DIRECT_VIDEO_ENRICHMENT_WORK_ORDER_PATH,
+  DEFAULT_SOURCE_FAMILY_ACQUISITION_REPORT_PATH,
   buildNextPublishCandidatesReport,
   formatNextPublishCandidatesMarkdown,
   scoreCandidate,
@@ -1977,6 +2405,7 @@ module.exports = {
   attachStoryPreflight,
   audioSegmentPreflightForStory,
   bridgeArtifactFreshnessPreflightForStory,
+  bridgeMotionGovernancePreflightForStory,
   cloneStoryForPreflight,
   combinePreflightQa,
   durationVerdict,
@@ -1986,8 +2415,11 @@ module.exports = {
   parseArgs,
   readBridgeCandidateManifest,
   readBridgeCandidates,
+  readOptionalJson,
   runPreflightQaForStory,
   selectCandidateSourceStories,
+  timestampAlignmentPreflightForStory,
+  normaliseBridgeMotionGovernanceEvidence,
   summariseQaResult,
   runCli,
 };

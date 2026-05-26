@@ -6,6 +6,8 @@ const path = require("node:path");
 
 const {
   DEFAULT_BRIDGE_CANDIDATES_PATH,
+  DEFAULT_DIRECT_VIDEO_ENRICHMENT_WORK_ORDER_PATH,
+  DEFAULT_SOURCE_FAMILY_ACQUISITION_REPORT_PATH,
   buildNextPublishCandidatesReport,
   attachPreflightQa,
   attachStoryPreflight,
@@ -383,6 +385,8 @@ test("next publish CLI defaults to the scheduler bridge candidate overlay", () =
     path.join(process.cwd(), "output", "goal-contract", "scheduler_bridge_candidates.json"),
   );
   assert.equal(args.bridgeCandidatesPath, DEFAULT_BRIDGE_CANDIDATES_PATH);
+  assert.equal(args.directVideoEnrichmentWorkOrderPath, DEFAULT_DIRECT_VIDEO_ENRICHMENT_WORK_ORDER_PATH);
+  assert.equal(args.sourceFamilyAcquisitionReportPath, DEFAULT_SOURCE_FAMILY_ACQUISITION_REPORT_PATH);
 });
 
 test("next publish report can focus candidate ranking on one story id", () => {
@@ -1253,6 +1257,162 @@ test("bridge preflight accepts human-reviewed source-locked owned explainer brid
   assert.equal(preflight.status, "pass");
 });
 
+test("bridge preflight blocks direct-video enrichment work-order gaps before scheduler promotion", async () => {
+  const scores = {
+    motion_density_score: 92,
+    first_3_seconds_hook_score: 88,
+    source_lock_quality_score: 86,
+    caption_legibility_score: 94,
+    card_hierarchy_score: 84,
+    media_house_polish_score: 90,
+  };
+  const { clips, rightsLedger, footageInventory } = ownedExplainerFixture("bridge_direct_video_gap");
+  const preflight = await runPreflightQaForStory(
+    baseStory({
+      id: "bridge_direct_video_gap",
+      title: "Kadokawa Stake Just Passed Sony",
+      selected_title: "Kadokawa Stake Just Passed Sony",
+      canonical_subject: "Kadokawa",
+      first_spoken_line: "Kadokawa's shareholder fight just got more awkward for Sony.",
+      description: "IGN reported Kadokawa's latest shareholder filing. Source: IGN.",
+      full_script:
+        "Kadokawa's shareholder fight just got more awkward for Sony. IGN reported the latest filing and the ownership balance now matters.",
+      scheduler_bridge_source: "goal_production_cutover",
+      render_lane: "visual_v4_production",
+      render_quality_class: "premium",
+      qa_visual_count: 5,
+      visual_v4_render_bridge_clip_count: 5,
+      exported_path: "D:/pulse-data/media/output/final/bridge_direct_video_gap.mp4",
+      audio_path: "D:/pulse-data/media/output/audio/bridge_direct_video_gap.mp3",
+      timestamps_path: "D:/pulse-data/media/output/audio/bridge_direct_video_gap_timestamps.json",
+      manual_caption_path: "D:/pulse-data/media/output/captions/bridge_direct_video_gap.srt",
+      primary_source: "IGN",
+      primary_source_url: "https://www.ign.com/articles/kadokawa-sony-shareholder-example",
+      discovery_source: "IGN",
+      publish_verdict: { verdict: "GREEN" },
+      platform_publish_manifest: {
+        publish_status: "GREEN",
+        platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts"] },
+        outputs: {
+          youtube_shorts: { title: "Kadokawa Stake Just Passed Sony" },
+        },
+      },
+      visual_quality_report: {
+        result: "pass",
+        scores,
+        frame_rules: {
+          first_frame_subject: "Kadokawa",
+          first_frame_text: "KADOKAWA STAKE FIGHT",
+          source_locks_readable: true,
+        },
+        failures: [],
+      },
+      media_house_benchmark: {
+        result: "pass",
+        scores,
+        failures: [],
+      },
+      sfx_manifest: bridgeSfxEvidence(),
+      rights_ledger: JSON.stringify(rightsLedger),
+      footage_inventory: JSON.stringify(footageInventory),
+      visual_v4_bridge_video_clips: JSON.stringify(clips),
+      video_clips: JSON.stringify(clips),
+    }),
+    {
+      bridgeMotionGovernanceEvidence: {
+        direct_video_enrichment_story_ids: ["bridge_direct_video_gap"],
+      },
+      runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+    },
+  );
+
+  assert.equal(preflight.status, "blocked");
+  assert.ok(
+    preflight.blockers.includes("bridge_motion_governance:direct_video_enrichment_required"),
+  );
+});
+
+test("bridge preflight allows human-reviewed source-locked owned explainer exceptions through enrichment work orders", async () => {
+  const scores = {
+    motion_density_score: 92,
+    first_3_seconds_hook_score: 88,
+    source_lock_quality_score: 86,
+    caption_legibility_score: 94,
+    card_hierarchy_score: 84,
+    media_house_polish_score: 90,
+  };
+  const { clips, rightsLedger, footageInventory } = ownedExplainerFixture("bridge_reviewed_gap");
+  const preflight = await runPreflightQaForStory(
+    baseStory({
+      id: "bridge_reviewed_gap",
+      title: "Xbox Fans Used Feedback To Demand Exclusives",
+      selected_title: "Xbox Fans Used Feedback To Demand Exclusives",
+      canonical_subject: "Xbox",
+      first_spoken_line: "Xbox asked for feedback and immediately got the exclusives argument.",
+      description: "IGN reported Xbox Player Voice feedback turned into an exclusives argument. Source: IGN.",
+      full_script:
+        "Xbox asked for feedback and immediately got the exclusives argument. IGN reported the Player Voice update and the fan response around exclusives.",
+      scheduler_bridge_source: "goal_production_cutover",
+      render_lane: "visual_v4_production",
+      render_quality_class: "premium",
+      human_reviewed_owned_explainer_motion_exception: true,
+      qa_visual_count: 5,
+      visual_v4_render_bridge_clip_count: 5,
+      exported_path: "D:/pulse-data/media/output/final/bridge_reviewed_gap.mp4",
+      audio_path: "D:/pulse-data/media/output/audio/bridge_reviewed_gap.mp3",
+      timestamps_path: "D:/pulse-data/media/output/audio/bridge_reviewed_gap_timestamps.json",
+      manual_caption_path: "D:/pulse-data/media/output/captions/bridge_reviewed_gap.srt",
+      primary_source: "IGN",
+      primary_source_url: "https://www.ign.com/articles/xbox-player-voice-feedback-example",
+      discovery_source: "IGN",
+      publish_verdict: { verdict: "GREEN" },
+      platform_publish_manifest: {
+        publish_status: "GREEN",
+        platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts"] },
+        outputs: {
+          youtube_shorts: { title: "Xbox Fans Used Feedback To Demand Exclusives" },
+        },
+      },
+      visual_quality_report: {
+        result: "pass",
+        scores,
+        frame_rules: {
+          first_frame_subject: "Xbox",
+          first_frame_text: "XBOX FEEDBACK FIGHT",
+          source_locks_readable: true,
+        },
+        failures: [],
+      },
+      media_house_benchmark: {
+        result: "pass",
+        scores,
+        failures: [],
+      },
+      sfx_manifest: bridgeSfxEvidence(),
+      rights_ledger: JSON.stringify(rightsLedger),
+      footage_inventory: JSON.stringify(footageInventory),
+      visual_v4_bridge_video_clips: JSON.stringify(clips),
+      video_clips: JSON.stringify(clips),
+    }),
+    {
+      bridgeMotionGovernanceEvidence: {
+        direct_video_enrichment_story_ids: ["bridge_reviewed_gap"],
+      },
+      runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+    },
+  );
+
+  assert.equal(preflight.status, "pass");
+});
+
 test("bridge preflight blocks owned explainer decks without a human review or verified source exception", async () => {
   const scores = {
     motion_density_score: 92,
@@ -1537,6 +1697,83 @@ test("attachPreflightQa blocks candidates without rendered-audio segment loudnes
       "audio_segment_loudness:voice_segment_loudness_jump",
     ),
   );
+});
+
+test("attachPreflightQa blocks local-clone narration when word timestamps are not ASR aligned", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-timestamp-preflight-"));
+  const timestampsPath = path.join(tmp, "local_silence_timestamps.json");
+  await fs.writeJson(timestampsPath, {
+    words: [
+      { word: "Hades", start: 0, end: 0.28 },
+      { word: "two", start: 0.28, end: 0.52 },
+      { word: "changed", start: 0.52, end: 0.88 },
+    ],
+    meta: {
+      transcript: "Hades two changed its launch plan.",
+      wordTimestampSource: "local_audio_silence_anchored",
+    },
+  });
+
+  const stories = [
+    baseStory({
+      id: "local_timestamp_drift",
+      title: "Hades II Changed Its Launch Plan",
+      selected_title: "Hades II Changed Its Launch Plan",
+      canonical_subject: "Hades II",
+      first_spoken_line: "Hades II changed its launch plan for players.",
+      full_script: "Hades II changed its launch plan for players. The important part is what changes at launch.",
+      scheduler_bridge_source: "goal_production_cutover",
+      scheduler_bridge_artifact_dir: tmp,
+      render_lane: "visual_v4_production",
+      render_quality_class: "premium",
+      exported_path: "D:/pulse-data/media/output/final/local_timestamp_drift.mp4",
+      audio_path: "D:/pulse-data/media/output/audio/local_timestamp_drift.mp3",
+      timestamps_path: timestampsPath,
+      manual_caption_path: "D:/pulse-data/media/output/captions/local_timestamp_drift.srt",
+      audio_manifest: {
+        voice_provider: "local_tts",
+      },
+      publish_verdict: { verdict: "GREEN" },
+      platform_publish_manifest: {
+        publish_status: "GREEN",
+        platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts"] },
+        outputs: {
+          youtube_shorts: { title: "Hades II Changed Its Launch Plan" },
+        },
+      },
+      ...bridgeVisualEvidence("Hades II"),
+      sfx_manifest: bridgeSfxEvidence(),
+      rights_ledger: [{ asset_id: "local-timestamp-drift-render" }],
+      video_clips: [
+        { path: "clip-a.mp4", source_family: "official_trailer_a" },
+        { path: "clip-b.mp4", source_family: "official_trailer_b" },
+        { path: "clip-c.mp4", source_family: "official_trailer_c" },
+      ],
+    }),
+  ];
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-05-26T10:10:00.000Z",
+  });
+
+  await attachPreflightQa(report, stories, {
+    runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+  });
+
+  assert.equal(report.candidates[0].preflight_qa.status, "blocked");
+  assert.ok(
+    report.candidates[0].preflight_qa.blockers.includes(
+      "timestamp_alignment:word_timestamps_not_asr_aligned",
+    ),
+  );
+  assert.equal(report.candidates[0].preflight_qa.checks.timestamp_alignment.result, "fail");
 });
 
 test("attachPreflightQa keeps read-only preflight mutations off source stories", async () => {

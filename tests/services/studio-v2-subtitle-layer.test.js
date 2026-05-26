@@ -136,13 +136,14 @@ test("realignTimestampsToScript consumes direct spoken currency units", () => {
   assert.equal(aligned[2].end, 1.04);
 });
 
-test("realignTimestampsToScript preserves Hades II display while audio says Hades two", () => {
+test("realignTimestampsToScript preserves Hades II display while audio says Hades number two", () => {
   const aligned = realignTimestampsToScript("Hades II lands on console.", [
     { word: "Hades", start: 0, end: 0.28 },
-    { word: "two", start: 0.3, end: 0.48 },
-    { word: "lands", start: 0.52, end: 0.82 },
-    { word: "on", start: 0.86, end: 0.98 },
-    { word: "console", start: 1.02, end: 1.34 },
+    { word: "number", start: 0.3, end: 0.42 },
+    { word: "two", start: 0.44, end: 0.62 },
+    { word: "lands", start: 0.66, end: 0.92 },
+    { word: "on", start: 0.96, end: 1.08 },
+    { word: "console", start: 1.12, end: 1.44 },
   ]);
 
   assert.deepEqual(
@@ -150,7 +151,7 @@ test("realignTimestampsToScript preserves Hades II display while audio says Hade
     ["Hades", "II", "lands", "on", "console."],
   );
   assert.equal(aligned[1].start, 0.3);
-  assert.equal(aligned[1].end, 0.48);
+  assert.equal(aligned[1].end, 0.62);
 });
 
 test("realignTimestampsToScript repairs local Whisper brand-name misrecognition", () => {

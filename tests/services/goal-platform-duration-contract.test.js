@@ -166,6 +166,51 @@ test("platform duration contract repair emits TikTok creator rewards variant wor
   assert.equal(job.safety.no_publish_triggered, true);
 });
 
+test("platform duration contract repair preserves ready TikTok creator rewards variants", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-duration-contract-tiktok-ready-"));
+  const artifactDir = path.join(root, "expanse-gameplay-ready");
+  const variantPath = path.join(
+    artifactDir,
+    "platform_variants",
+    "tiktok_creator_rewards",
+    "visual_v4_render_tiktok_creator_rewards.mp4",
+  );
+  const storyPackage = await makePackage(root, "expanse-gameplay-ready", 44.8, {
+    outputs: {
+      tiktok: {
+        duration_seconds: { min: 61, max: 90 },
+        creator_rewards_eligible: true,
+        duration_warnings: [],
+        technical_duration_seconds: 67.549,
+        variant_video_path: variantPath,
+        platform_variant_render: {
+          status: "ready",
+          variant_type: "tiktok_creator_rewards",
+          output_path: variantPath,
+          duration_s: 67.549,
+          base_render_mutated: false,
+        },
+      },
+    },
+  });
+  await fs.ensureDir(path.dirname(variantPath));
+  await fs.writeFile(variantPath, Buffer.alloc(2048));
+
+  const report = await repairGoalPlatformDurationContracts({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-05-27T19:55:00.000Z",
+  });
+
+  assert.equal(report.summary.updated_count, 1);
+  assert.equal(report.summary.tiktok_creator_rewards_variant_required_count, 0);
+  assert.equal(report.tiktok_creator_rewards_variant_work_order.jobs.length, 0);
+  const updated = await fs.readJson(path.join(storyPackage.artifact_dir, "platform_publish_manifest.json"));
+  assert.equal(updated.outputs.tiktok.creator_rewards_eligible, true);
+  assert.equal(updated.outputs.tiktok.technical_duration_seconds, 67.549);
+  assert.deepEqual(updated.outputs.tiktok.duration_warnings, []);
+  assert.equal(updated.outputs.tiktok.platform_variant_render.variant_type, "tiktok_creator_rewards");
+});
+
 test("platform duration contract repair blocks too-short renders instead of bending the gate", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-duration-contract-block-"));
   const storyPackage = await makePackage(root, "too-short", 11.5);

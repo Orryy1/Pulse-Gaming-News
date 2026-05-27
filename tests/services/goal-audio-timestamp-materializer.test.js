@@ -271,6 +271,151 @@ test("goal audio materializer segments long local-clone narration before strict 
   }
 });
 
+test("goal audio materializer avoids tiny trailing local-clone TTS segments", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-no-short-tail-"));
+  const script =
+    "Helldivers players expected armour crossover news after the latest leak framed the update around possible Warhammer rewards but the stronger story is what Arrowhead confirmed what remains unconfirmed and what squads should act on.";
+  const artifactDir = await makePackage(root, "story-no-short-tail", {
+    selected_title: "Helldivers Armour Leak Has One Catch",
+    narration_script: script,
+  });
+  const calls = [];
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    workbenchReport: {
+      local_tts: { verdict: "green", ready: true },
+      jobs: [workbenchJob("story-no-short-tail", artifactDir)],
+    },
+    generatedAt: "2026-05-27T17:30:00.000Z",
+    alignmentMode: "whisper",
+    localTtsSegmentedMaterializer: true,
+    localTtsSegmentedWordThreshold: 20,
+    localTtsSegmentMaxWords: 16,
+    getAudioDuration: async () => 2.5,
+    concatAudioFiles: async (files, outputPath) => {
+      assert.ok(files.length > 1);
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 1));
+    },
+    alignWordsWithAudio: async ({ scriptText }) => ({
+      ok: true,
+      source: "local_whisper_word_alignment",
+      model: "tiny.en",
+      transcript: scriptText,
+      words: whisperWordsFromScript(scriptText),
+    }),
+    generateTtsForStory: async ({ text, outputPath }) => {
+      calls.push({ text, outputPath });
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(2048, 1));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: {
+          ...charAlignment(text),
+          meta: {
+            provider: "local",
+            source: "local-production-voxcpm-path",
+            approvedLocalVoice: true,
+            acceptedLocalVoice: ACCEPTED_SLEEPY_LIAM,
+          },
+        },
+      });
+      return { ok: true };
+    },
+  });
+
+  assert.equal(report.summary.materialized_count, 1);
+  assert.equal(report.jobs[0].status, "materialized");
+  assert.ok(calls.length > 1);
+  assert.equal(calls.some((call) => call.text.trim().toLowerCase() === "act on."), false);
+  assert.ok(
+    calls.every((call) => call.text.trim().split(/\s+/).length >= 3 && call.text.trim().length >= 24),
+    calls.map((call) => call.text).join(" | "),
+  );
+});
+
+test("goal audio materializer keeps short comma-led transitions with the following local-clone segment", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-transition-fragment-"));
+  const script = [
+    "A confirmed timeline would turn this from business noise into a clearer launch pressure story.",
+    "Until then, the audience has two questions about Krafton and whether the sequel still looks strong.",
+  ].join(" ");
+  const artifactDir = await makePackage(root, "story-transition-fragment", {
+    selected_title: "Subnautica 2 Bonus Fight Got Bigger",
+    narration_script: script,
+  });
+  const calls = [];
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    workbenchReport: {
+      local_tts: { verdict: "green", ready: true },
+      jobs: [workbenchJob("story-transition-fragment", artifactDir)],
+    },
+    generatedAt: "2026-05-27T17:45:00.000Z",
+    alignmentMode: "whisper",
+    localTtsSegmentedMaterializer: true,
+    localTtsSegmentedWordThreshold: 12,
+    localTtsSegmentMaxWords: 12,
+    getAudioDuration: async () => 2.5,
+    concatAudioFiles: async (files, outputPath) => {
+      assert.ok(files.length > 1);
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 1));
+    },
+    alignWordsWithAudio: async ({ scriptText }) => ({
+      ok: true,
+      source: "local_whisper_word_alignment",
+      model: "tiny.en",
+      transcript: scriptText,
+      words: whisperWordsFromScript(scriptText),
+    }),
+    generateTtsForStory: async ({ text, outputPath }) => {
+      calls.push({ text, outputPath });
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(2048, 1));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignment(text),
+      });
+      return { ok: true };
+    },
+  });
+
+  assert.equal(report.summary.materialized_count, 1);
+  assert.ok(calls.length > 1);
+  assert.equal(
+    calls.some((call) => /Until then,?$/i.test(call.text.trim())),
+    false,
+  );
+  assert.equal(
+    calls.some((call) => /^Until then,?$/i.test(call.text.trim())),
+    false,
+  );
+});
+
+test("local-clone segment splitter does not strand short comma-ending retry fragments", () => {
+  const script = [
+    "Subnautica 2's bonus fight now looks bigger than the sequel hype.",
+    "Aftermath reports Subnautica 2's developers appear to be in line for a 250 million dollars bonus.",
+    "Fans are watching the sequel and the payout fight at the same time, which makes every official update land heavier.",
+    "Subnautica 2 is now carrying a business fight as much as sequel hype.",
+    "Studio control, publisher timing and the reported creator payout are all colliding in public.",
+    "Krafton now has to sell the sequel while the creators' reward story is still in the room.",
+    "That makes each official update land with a business question attached, not just a gameplay one.",
+    "A confirmed timeline would turn this from business noise into a clearer launch pressure story.",
+    "Until then, the audience has two questions: what changed inside Krafton, and whether the sequel still looks strong.",
+  ].join(" ");
+
+  const segments = _testables.splitLocalTtsSegments(script, { maxWords: 12 });
+
+  assert.equal(
+    segments.some((segment) => /launch pressure story\. Until then,?$/i.test(segment.trim())),
+    false,
+    segments.join(" | "),
+  );
+  assert.equal(
+    segments.some((segment) => segment.trim().endsWith(",") && segment.trim().split(/\s+/).length <= 6),
+    false,
+    segments.join(" | "),
+  );
+});
+
 test("goal audio voice metadata repair restores approved local metadata from segment sidecars", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-voice-meta-repair-"));
   const storyId = "story-voice-meta-repair";
@@ -466,6 +611,114 @@ test("goal audio materializer makes a smaller third local-clone pass after a ret
   assert.equal(report.jobs[0].generation_attempts, 3);
   assert.ok(retrySegmentCounts.some((count) => count > 8));
   assert.ok(retrySegmentCounts.at(-1) <= 8);
+});
+
+test("goal audio materializer retries recoverable local TTS server errors", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-server-retry-"));
+  const script = Array.from({ length: 7 }, (_, index) =>
+    `Crimson Desert launch proof beat ${index + 1} keeps the shipped build under pressure.`
+  ).join(" ");
+  const artifactDir = await makePackage(root, "story-server-retry", {
+    selected_title: "Crimson Desert Is Already Live",
+    narration_script: script,
+  });
+  const calls = [];
+  let failedOnce = false;
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    workbenchReport: {
+      local_tts: { verdict: "green", ready: true },
+      jobs: [workbenchJob("story-server-retry", artifactDir)],
+    },
+    generatedAt: "2026-05-27T20:20:00.000Z",
+    alignmentMode: "whisper",
+    localTtsSegmentedWordThreshold: 20,
+    localTtsSegmentMaxWords: 30,
+    getAudioDuration: async () => 1.2,
+    concatAudioFiles: async (files, outputPath) => {
+      assert.ok(files.length > 1);
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 1));
+    },
+    alignWordsWithAudio: async ({ scriptText }) => ({
+      ok: true,
+      source: "local_whisper_word_alignment",
+      model: "tiny.en",
+      transcript: scriptText,
+      words: whisperWordsFromScript(scriptText),
+    }),
+    generateTtsForStory: async ({ text, outputPath }) => {
+      calls.push({ text, outputPath });
+      if (!failedOnce) {
+        failedOnce = true;
+        throw new Error("local_tts_generation_failed:server_error:local TTS server returned a recoverable generation error");
+      }
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(2048, 1));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignment(text),
+      });
+      return { ok: true };
+    },
+  });
+
+  assert.equal(failedOnce, true);
+  assert.equal(report.summary.materialized_count, 1);
+  assert.equal(report.jobs[0].generation_attempts, 2);
+  assert.ok(calls.length > 1);
+});
+
+test("goal audio materializer retries local TTS connection resets during strict Whisper generation", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-connection-reset-retry-"));
+  const script = Array.from({ length: 7 }, (_, index) =>
+    `V Rising vampire world proof beat ${index + 1} keeps the next project under pressure.`
+  ).join(" ");
+  const artifactDir = await makePackage(root, "story-connection-reset-retry", {
+    selected_title: "V Rising Devs Are Making Another Vampire Game",
+    narration_script: script,
+  });
+  const calls = [];
+  let failedOnce = false;
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    workbenchReport: {
+      local_tts: { verdict: "green", ready: true },
+      jobs: [workbenchJob("story-connection-reset-retry", artifactDir)],
+    },
+    generatedAt: "2026-05-27T21:10:00.000Z",
+    alignmentMode: "whisper",
+    localTtsSegmentedWordThreshold: 20,
+    localTtsSegmentMaxWords: 30,
+    getAudioDuration: async () => 1.2,
+    concatAudioFiles: async (files, outputPath) => {
+      assert.ok(files.length > 1);
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 1));
+    },
+    alignWordsWithAudio: async ({ scriptText }) => ({
+      ok: true,
+      source: "local_whisper_word_alignment",
+      model: "tiny.en",
+      transcript: scriptText,
+      words: whisperWordsFromScript(scriptText),
+    }),
+    generateTtsForStory: async ({ text, outputPath }) => {
+      calls.push({ text, outputPath });
+      if (!failedOnce) {
+        failedOnce = true;
+        throw new Error("local_tts_generation_failed:connection_reset:local TTS connection reset during generation");
+      }
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(2048, 1));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignment(text),
+      });
+      return { ok: true };
+    },
+  });
+
+  assert.equal(failedOnce, true);
+  assert.equal(report.summary.materialized_count, 1);
+  assert.equal(report.jobs[0].generation_attempts, 2);
+  assert.ok(calls.length > 1);
 });
 
 test("goal audio materializer aligns expanded PlayStation hardware names when Whisper emits digits", async () => {
@@ -669,6 +922,9 @@ test("goal audio materializer blocks generated local audio when requested Whispe
   assert.equal(report.summary.failed_count, 1);
   assert.equal(report.jobs[0].status, "failed");
   assert.match(report.jobs[0].error, /local_whisper_word_alignment_failed/);
+  assert.equal(report.jobs[0].timestamp_whisper_alignment.error, "script_coverage_below_threshold");
+  assert.equal(report.jobs[0].timestamp_whisper_alignment.model, "tiny.en");
+  assert.equal(report.jobs[0].timestamp_whisper_alignment.script_opening_covered, true);
 });
 
 test("goal audio materializer rolls back generated local audio when strict Whisper alignment fails", async () => {

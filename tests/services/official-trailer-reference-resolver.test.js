@@ -854,6 +854,39 @@ test("official trailer resolver maps IGDB video ids as reference-only", async ()
   assert.equal(plan.segment_validation_reference_counts.ineligible, 1);
 });
 
+test("official trailer resolver separates source proof from direct-motion eligibility", async () => {
+  const story = baseStory({
+    id: "reference-only-official",
+    title: "Super Mario RPG Drops To $15",
+    full_script: "Super Mario RPG just dropped to fifteen dollars on Nintendo Switch.",
+  });
+
+  const plan = await buildOfficialTrailerReferencePlan(story, {
+    officialSourceIntakeReport: {
+      accepted_references: [
+        {
+          story_id: "reference-only-official",
+          source_url: "https://www.nintendo.com/us/store/products/super-mario-rpg-switch/",
+          source_type: "platform_storefront",
+          entity: "Super Mario RPG",
+          source_verified: true,
+          allowed_render_use: "reference_only_by_default",
+        },
+      ],
+    },
+  });
+
+  assert.deepEqual(plan.target_entities, ["Super Mario RPG"]);
+  assert.deepEqual(plan.source_proof_covered_target_entities, ["Super Mario RPG"]);
+  assert.deepEqual(plan.source_proof_missing_target_entities, []);
+  assert.deepEqual(plan.covered_target_entities, []);
+  assert.deepEqual(plan.missing_target_entities, ["Super Mario RPG"]);
+  assert.equal(plan.motion_reference_readiness, "official_search_required");
+  assert.ok(plan.blockers.includes("no_segment_validation_eligible_reference_resolved"));
+  assert.ok(!plan.blockers.includes("missing_official_reference_entities"));
+  assert.ok(plan.warnings.includes("some_references_are_provenance_only_not_direct_media"));
+});
+
 test("official trailer resolver consumes trusted footage registry references without enabling downloads", async () => {
   const story = baseStory({
     id: "registry-forza",

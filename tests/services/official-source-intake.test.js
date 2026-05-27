@@ -153,6 +153,60 @@ test("official source intake accepts official YouTube channel references only wi
   );
 });
 
+test("official source intake accepts recommended official site and storefront aliases as reference-only", () => {
+  const report = buildOfficialSourceIntakeReport({
+    stories: [
+      story({
+        id: "pokemon-go-news",
+        title: "Mega Mewtwo Is Finally Coming To Pokémon Go",
+        canonical_subject: "Pokémon Go",
+        canonical_game: "Pokémon Go",
+        full_script: "Mega Mewtwo is finally coming to Pokémon Go during GO Fest.",
+      }),
+      story({
+        id: "super-mario-rpg-deal",
+        title: "Super Mario RPG Drops To $15",
+        canonical_subject: "Super Mario RPG",
+        canonical_game: "Super Mario RPG",
+        full_script: "Super Mario RPG is listed at a lower physical price.",
+      }),
+    ],
+    entries: [
+      officialEntry({
+        story_id: "pokemon-go-news",
+        entity: "Pokémon Go",
+        official_source_url: "https://pokemongo.com/en/news/mega-mewtwo-gofest-2026",
+        source_title: "Mewtwo Mega Evolves and more exciting GO Fest updates!",
+        source_owner: "Official Pokémon GO website",
+        source_type: "official_game_site_news_page",
+        source_family: "pokemon_go_official_mega_mewtwo_gofest_2026",
+        evidence_of_officialness: "Official Pokémon GO website news page.",
+        entity_match_notes: "Official Pokémon GO page names Mega Mewtwo and GO Fest 2026.",
+      }),
+      officialEntry({
+        story_id: "super-mario-rpg-deal",
+        entity: "Super Mario RPG",
+        official_source_url: "https://www.nintendo.com/us/store/products/super-mario-rpg-switch/",
+        source_title: "Super Mario RPG for Nintendo Switch",
+        source_owner: "Nintendo Official Site",
+        source_type: "platform_storefront",
+        source_family: "nintendo_store_super_mario_rpg_switch",
+        evidence_of_officialness: "Official Nintendo product storefront page.",
+        entity_match_notes: "The Nintendo storefront page is for Super Mario RPG.",
+      }),
+    ],
+  });
+
+  assert.equal(report.summary.accepted, 2);
+  assert.equal(report.summary.rejected, 0);
+  assert.deepEqual(
+    report.accepted_references.map((reference) => reference.source_type),
+    ["official_game_site_news_page", "platform_storefront"],
+  );
+  assert.ok(report.accepted_references.every((reference) => reference.downloads_allowed === false));
+  assert.ok(report.accepted_references.every((reference) => reference.segment_validation_eligible === false));
+});
+
 test("official source intake accepts official social direct video only with strict evidence", () => {
   const report = buildOfficialSourceIntakeReport({
     stories: [

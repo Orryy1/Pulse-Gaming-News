@@ -112,6 +112,13 @@ test("cleanForTTS: expands modern years without hybrid spoken digits", () => {
   );
 });
 
+test("cleanForTTS: expands review scores with slash notation for local narration", () => {
+  assert.equal(
+    cleanForTTS("PC Gamer scored Forza Horizon 6 at 84/100."),
+    "PC Gamer scored Forza Horizon 6 at eighty four out of one hundred.",
+  );
+});
+
 test("cleanForTTS: speaks Hades II as part two for local voice clarity", () => {
   assert.equal(
     cleanForTTS("Hades II just put PlayStation and Xbox players on the same April countdown."),

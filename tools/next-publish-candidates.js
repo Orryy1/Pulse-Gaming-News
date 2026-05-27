@@ -1331,8 +1331,6 @@ async function resolveReadableTimestampPath(candidate = "", artifactDir = "") {
   if (path.isAbsolute(raw)) {
     attempts.push(raw);
   } else {
-    if (artifactDir) attempts.push(path.resolve(artifactDir, raw));
-    attempts.push(path.resolve(raw));
     try {
       const mediaPaths = require("../lib/media-paths");
       const mediaResolved = await mediaPaths.resolveExisting(raw).catch(() => "");
@@ -1340,6 +1338,8 @@ async function resolveReadableTimestampPath(candidate = "", artifactDir = "") {
     } catch {
       // Optional media-root resolution should not make read-only preflight crash.
     }
+    if (artifactDir) attempts.push(path.resolve(artifactDir, raw));
+    attempts.push(path.resolve(raw));
   }
   for (const attempt of [...new Set(attempts.filter(Boolean))]) {
     if (await fs.pathExists(attempt)) return attempt;

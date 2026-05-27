@@ -823,10 +823,20 @@ test("multi-candidate: first QA-fails, second passes — second uploads, qa_skip
   };
   const good = {
     id: "rss_good",
-    title: "Healthy fallback mp4",
+    title: "Metroid Prime 4 Keeps Its Release Window",
     approved: true,
     exported_path: "/tmp/good.mp4",
     breaking_score: 1,
+    canonical_subject: "Metroid Prime 4",
+    canonical_game: "Metroid Prime 4",
+    primary_source: "Nintendo",
+    source_card_label: "Nintendo",
+    full_script:
+      "Metroid Prime 4 keeps its release window, and that matters because Nintendo now has to show players what the next trailer actually proves. The useful watch point is simple: combat clarity, Switch 2 performance and a firm launch date. Follow Pulse Gaming so you never miss a beat.",
+    tts_script:
+      "Metroid Prime 4 keeps its release window, and that matters because Nintendo now has to show players what the next trailer actually proves. The useful watch point is simple: combat clarity, Switch 2 performance and a firm launch date. Follow Pulse Gaming so you never miss a beat.",
+    description:
+      "Nintendo still has Metroid Prime 4 in the release conversation. Source: Nintendo.",
   };
   // Stub content-QA: fail for `bad.id`, pass for `good.id`.
   const { publishNextStory } = setupMocksPerStory({
@@ -851,7 +861,7 @@ test("multi-candidate: first QA-fails, second passes — second uploads, qa_skip
 
   // Good story got published — result has the normal success shape
   assert.strictEqual(result.no_safe_candidate, undefined);
-  assert.strictEqual(result.title, "Healthy fallback mp4");
+  assert.strictEqual(result.title, "Metroid Prime 4 Keeps Its Release Window");
   assert.strictEqual(result.qa_skipped_count, 1);
   assert.ok(result.qa_skipped && result.qa_skipped.length === 1);
   assert.strictEqual(result.qa_skipped[0].id, "rss_bad");
@@ -994,9 +1004,19 @@ test("multi-candidate: soft warnings on passing candidate do not block publish (
   // get attached to result.qa_warnings for the Discord summary.
   const story = {
     id: "rss_warnings",
-    title: "Warn but ship",
+    title: "Metroid Prime 4 Keeps Its Window",
     approved: true,
     exported_path: "/tmp/w.mp4",
+    canonical_subject: "Metroid Prime 4",
+    canonical_game: "Metroid Prime 4",
+    primary_source: "Nintendo",
+    source_card_label: "Nintendo",
+    full_script:
+      "Metroid Prime 4 keeps its release window, and the pressure is now on Nintendo to show a clean gameplay beat before launch. Players need a date, performance details and a reason to trust the long wait. Follow Pulse Gaming so you never miss a beat.",
+    tts_script:
+      "Metroid Prime 4 keeps its release window, and the pressure is now on Nintendo to show a clean gameplay beat before launch. Players need a date, performance details and a reason to trust the long wait. Follow Pulse Gaming so you never miss a beat.",
+    description:
+      "Nintendo still has Metroid Prime 4 in the release conversation. Source: Nintendo.",
   };
   const { publishNextStory } = setupMocks({
     cqaResult: {

@@ -2082,6 +2082,108 @@ test("attachPreflightQa blocks local-clone narration when word timestamps are no
   assert.equal(report.candidates[0].preflight_qa.checks.timestamp_alignment.result, "fail");
 });
 
+test("attachPreflightQa prefers MEDIA_ROOT ASR timestamps over stale repo fallback timestamps", async () => {
+  const previousMediaRoot = process.env.MEDIA_ROOT;
+  const mediaRoot = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-media-root-timestamps-"));
+  process.env.MEDIA_ROOT = mediaRoot;
+
+  const relativeTimestampsPath = path.join(
+    "test",
+    "output",
+    "timestamp-preflight",
+    "media-root-precedence_timestamps.json",
+  );
+  const repoFallbackPath = path.resolve(relativeTimestampsPath);
+  const mediaRootPath = path.join(mediaRoot, relativeTimestampsPath);
+
+  await fs.ensureDir(path.dirname(repoFallbackPath));
+  await fs.writeJson(repoFallbackPath, {
+    words: [{ word: "Xbox", start: 0, end: 0.3 }],
+    meta: {
+      transcript: "Xbox opened a public feedback channel.",
+      wordTimestampSource: "local_audio_silence_anchored",
+    },
+  });
+
+  await fs.ensureDir(path.dirname(mediaRootPath));
+  await fs.writeJson(mediaRootPath, {
+    words: [
+      { word: "Xbox", start: 0, end: 0.28 },
+      { word: "opened", start: 0.28, end: 0.6 },
+      { word: "feedback", start: 0.6, end: 1.0 },
+    ],
+    meta: {
+      transcript: "Xbox opened a public feedback channel.",
+      wordTimestampSource: "local_whisper_word_alignment",
+      timestampWhisperAlignment: { repaired: true },
+    },
+  });
+
+  try {
+    const stories = [
+      baseStory({
+        id: "media_root_precedence",
+        title: "Xbox Feedback Just Became A Promise Test",
+        selected_title: "Xbox Feedback Just Became A Promise Test",
+        canonical_subject: "Xbox",
+        first_spoken_line: "Xbox opened a public feedback channel.",
+        full_script: "Xbox opened a public feedback channel. Players are treating it like a promise test.",
+        scheduler_bridge_source: "goal_production_cutover",
+        render_lane: "visual_v4_production",
+        render_quality_class: "premium",
+        exported_path: "D:/pulse-data/media/output/final/media_root_precedence.mp4",
+        audio_path: "output/audio/media_root_precedence.mp3",
+        timestamps_path: relativeTimestampsPath,
+        manual_caption_path: "output/captions/media_root_precedence.srt",
+        audio_manifest: {
+          voice_provider: "local_tts",
+          word_timestamps_path: relativeTimestampsPath,
+        },
+        publish_verdict: { verdict: "GREEN" },
+        platform_publish_manifest: {
+          publish_status: "GREEN",
+          platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts"] },
+          outputs: {
+            youtube_shorts: { title: "Xbox Feedback Just Became A Promise Test" },
+          },
+        },
+        ...bridgeVisualEvidence("Xbox"),
+        sfx_manifest: bridgeSfxEvidence(),
+        rights_ledger: [{ asset_id: "media-root-precedence-render" }],
+        video_clips: [
+          { path: "clip-a.mp4", source_family: "official_trailer_a" },
+          { path: "clip-b.mp4", source_family: "official_trailer_b" },
+          { path: "clip-c.mp4", source_family: "official_trailer_c" },
+        ],
+      }),
+    ];
+
+    const report = buildNextPublishCandidatesReport(stories, {
+      analyticsText,
+      generatedAt: "2026-05-27T10:35:00.000Z",
+    });
+
+    await attachPreflightQa(report, stories, {
+      runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+      runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+    });
+
+    assert.equal(report.candidates[0].preflight_qa.status, "pass");
+    assert.equal(report.candidates[0].preflight_qa.checks.timestamp_alignment.result, "pass");
+  } finally {
+    if (previousMediaRoot === undefined) delete process.env.MEDIA_ROOT;
+    else process.env.MEDIA_ROOT = previousMediaRoot;
+    await fs.remove(repoFallbackPath);
+    await fs.remove(mediaRoot);
+  }
+});
+
 test("attachPreflightQa keeps read-only preflight mutations off source stories", async () => {
   const stories = [
     baseStory({

@@ -407,6 +407,15 @@ function cleanForTTS(raw) {
         /\$(\d+)/g,
         (_, n) => `${n} dollar${parseInt(n) === 1 ? "" : "s"}`,
       )
+      .replace(/\b(\d{1,3})\s*\/\s*(100|10)\b/g, (_, score, max) => {
+        const scoreNumber = Number(score);
+        const maxNumber = Number(max);
+        const scoreWords = Number.isSafeInteger(scoreNumber)
+          ? integerToSpokenWords(scoreNumber)
+          : score;
+        const maxWords = maxNumber === 100 ? "one hundred" : "ten";
+        return `${scoreWords} out of ${maxWords}`;
+      })
       .replace(/(\d+(?:\.\d+)?)\s*%/g, "$1 percent")
       .replace(/\((\d+(?:\.\d+)?\s+percent\s+off)\)/gi, ", $1,")
       .replace(

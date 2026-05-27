@@ -121,6 +121,7 @@
     "ops:goal-platform-duration-contract": "node tools/goal-platform-duration-contract.js",
     "ops:goal-platform-native-repair": "node tools/goal-platform-native-pack-repair.js",
     "ops:goal-platform-variants": "node tools/goal-platform-variant-materializer.js",
+    "ops:goal-tiktok-creator-rewards-variant": "node tools/goal-tiktok-creator-rewards-variant-materializer.js",
     "ops:goal-landing-attribution-repair": "node tools/goal-landing-attribution-repair.js",
     "ops:goal-commercial-disclosure-repair": "node tools/goal-commercial-disclosure-repair.js",
     "ops:goal-duration-variant-repair": "node tools/goal-duration-variant-repair.js",

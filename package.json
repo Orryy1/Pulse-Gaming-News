@@ -160,6 +160,7 @@
     "ops:v4-sfx-library-ingest": "node tools/studio-v4-sfx-library-ingest.js",
     "ops:epidemic-sound-intake": "node tools/epidemic-sound-intake.js",
     "ops:epidemic-download-intake": "node tools/epidemic-download-intake.js",
+    "ops:epidemic-audio-pack-materialize": "node tools/epidemic-audio-pack-materialize.js",
     "ops:trailer-references": "node tools/official-trailer-reference-resolver.js",
     "ops:frame-plan": "node tools/controlled-frame-extraction-plan.js",
     "ops:frame-extract": "node tools/controlled-frame-extraction-worker.js",

@@ -39,4 +39,12 @@ Run the SFX-only source plan with:
 npm run ops:v4-sfx-library-ingest -- --root audio/epidemic --out-dir output/epidemic-sound-intake
 ```
 
-Both commands are local-only. They do not download assets, post externally, mutate database rows, mutate OAuth tokens or publish anything.
+When the intake report is `pass`, materialise channel packs and the SFX runtime manifest with:
+
+```powershell
+npm run ops:epidemic-audio-pack-materialize -- --intake-report output/epidemic-sound-intake/epidemic_sound_intake_report.json --out-dir output/epidemic-implementation
+```
+
+Add `--apply` only after the implementation report is `ready`. A blocked report will not write `channels/<channel>/audio/pack.json`.
+
+These commands are local-only. They do not download assets, post externally, mutate database rows, mutate OAuth tokens or publish anything.

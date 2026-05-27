@@ -16,6 +16,7 @@ function parseArgs(argv = process.argv) {
     generatedAt: new Date().toISOString(),
     roleHint: "",
     sinceIso: "",
+    allowUnprefixed: false,
     apply: false,
     json: false,
     help: false,
@@ -28,6 +29,7 @@ function parseArgs(argv = process.argv) {
     else if (arg === "--generated-at") args.generatedAt = argv[++index] || args.generatedAt;
     else if (arg === "--role") args.roleHint = argv[++index] || "";
     else if (arg === "--since-iso") args.sinceIso = argv[++index] || "";
+    else if (arg === "--allow-unprefixed") args.allowUnprefixed = true;
     else if (arg === "--apply") args.apply = true;
     else if (arg === "--json") args.json = true;
     else if (arg === "--help" || arg === "-h") args.help = true;
@@ -49,6 +51,7 @@ function usage() {
     "  --generated-at <iso>   Deterministic proof timestamp",
     "  --role <role>          Explicit role hint for a batch with vague filenames",
     "  --since-iso <iso>      Only consider audio files modified at or after this timestamp",
+    "  --allow-unprefixed     Permit filename-only classification. Default requires epidemic_<role>_ prefixes",
     "  --apply                Copy recognised files",
     "  --json                 Print JSON",
   ].join("\n");
@@ -78,6 +81,7 @@ function renderMarkdown(report = {}) {
   lines.push(`Mode: ${report.mode || "unknown"}`);
   lines.push(`Source: ${report.source_dir || "(unknown)"}`);
   lines.push(`Target: ${report.target_root || "(unknown)"}`);
+  lines.push(`Prefix required: ${report.prefix_required === false ? "no" : "yes"}`);
   lines.push("");
   lines.push("## Summary");
   lines.push(`- Candidate files: ${Number(report.summary?.candidate_files || 0)}`);
@@ -95,7 +99,8 @@ function renderMarkdown(report = {}) {
   if (report.needs_review?.length) {
     lines.push("## Needs Review");
     for (const item of report.needs_review) {
-      lines.push(`- ${item.source_path}: ${item.reason}`);
+      const detected = item.detected_role ? `, detected role ${item.detected_role}` : "";
+      lines.push(`- ${item.source_path}: ${item.reason}${detected}`);
     }
     lines.push("");
   }
@@ -121,6 +126,7 @@ async function main(argv = process.argv) {
     generatedAt: args.generatedAt,
     roleHint: args.roleHint,
     sinceIso: args.sinceIso,
+    allowUnprefixed: args.allowUnprefixed,
     apply: args.apply,
   });
   const outputs = await writeReport(report, { outputDir: args.outputDir });

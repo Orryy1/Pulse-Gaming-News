@@ -6,6 +6,7 @@ const path = require("node:path");
 
 const {
   buildEpidemicSoundIntakeReport,
+  enrichDownloadSlot,
 } = require("../lib/epidemic-sound-intake");
 
 function parseArgs(argv = process.argv) {
@@ -56,6 +57,7 @@ async function writeReport(report, { outputDir } = {}) {
     rightsLedgerPath: path.join(outDir, "epidemic_rights_ledger.json"),
     audioPackCandidatesPath: path.join(outDir, "epidemic_audio_pack_candidates.json"),
     downloadPlanPath: path.join(outDir, "epidemic_download_plan.json"),
+    browserQueuePath: path.join(outDir, "epidemic_browser_download_queue.json"),
     markdownPath: path.join(outDir, "epidemic_operator_report.md"),
     downloadCockpitPath: path.join(outDir, "epidemic_download_cockpit.html"),
   };
@@ -65,9 +67,44 @@ async function writeReport(report, { outputDir } = {}) {
   await fs.writeJson(outputs.rightsLedgerPath, report.rights_ledger, { spaces: 2 });
   await fs.writeJson(outputs.audioPackCandidatesPath, report.audio_pack_candidates, { spaces: 2 });
   await fs.writeJson(outputs.downloadPlanPath, report.download_plan, { spaces: 2 });
+  await fs.writeJson(outputs.browserQueuePath, buildBrowserDownloadQueue(report), { spaces: 2 });
   await fs.writeFile(outputs.markdownPath, renderMarkdown(report));
   await fs.writeFile(outputs.downloadCockpitPath, renderDownloadCockpit(report));
   return outputs;
+}
+
+function buildBrowserDownloadQueue(report = {}) {
+  const slots = (report.download_plan?.required_slots || []).map((slot) => {
+    const enriched = enrichDownloadSlot(slot);
+    return {
+      role: enriched.role,
+      asset_category: enriched.asset_category,
+      search_url: enriched.search_url,
+      search_brief: enriched.search_brief,
+      target_folder: enriched.folder,
+      local_target_path: enriched.local_target_path,
+      recommended_filename_prefix: enriched.recommended_filename_prefix,
+      post_download_intake_command:
+        'npm run ops:epidemic-download-intake -- --source "$env:USERPROFILE\\Downloads" --apply',
+    };
+  });
+
+  return {
+    schema_version: 1,
+    generated_at: report.generated_at || new Date().toISOString(),
+    mode: "epidemic_sound_browser_download_queue",
+    provider: report.provider?.provider_name || report.download_plan?.provider || "Epidemic Sound",
+    slots,
+    safety: {
+      local_only: true,
+      opens_browser_links_only: true,
+      no_downloads_started_by_tool: true,
+      no_posting: true,
+      no_db_mutation: true,
+      no_oauth_or_token_change: true,
+      no_secret_or_token_read: true,
+    },
+  };
 }
 
 function renderMarkdown(report = {}) {
@@ -103,7 +140,9 @@ function renderMarkdown(report = {}) {
   }
   lines.push("## Download Slots");
   for (const slot of report.download_plan?.required_slots || []) {
-    lines.push(`- ${slot.role}: ${slot.folder} - ${slot.search_brief}`);
+    lines.push(
+      `- ${slot.role}: ${slot.folder} - ${slot.search_brief} - prefix ${slot.recommended_filename_prefix || ""}`,
+    );
   }
   lines.push("");
   lines.push("## Safety");
@@ -129,12 +168,15 @@ function renderDownloadCockpit(report = {}) {
   const policyLinks = report.download_plan?.policy_links || [];
   const slotRows = slots
     .map((slot) => {
-      const searchUrl = `https://www.epidemicsound.com/music/?term=${encodeURIComponent(slot.search_brief || slot.role || "")}`;
+      const enriched = enrichDownloadSlot(slot);
+      const searchUrl = enriched.search_url;
       return [
         "<tr>",
-        `<td>${escapeHtml(slot.role)}</td>`,
-        `<td><code>${escapeHtml(`audio/epidemic/${slot.folder}`)}</code></td>`,
-        `<td>${escapeHtml(slot.search_brief)}</td>`,
+        `<td>${escapeHtml(enriched.role)}</td>`,
+        `<td>${escapeHtml(enriched.asset_category)}</td>`,
+        `<td><code>${escapeHtml(enriched.local_target_path)}</code></td>`,
+        `<td><code>${escapeHtml(enriched.recommended_filename_prefix)}</code></td>`,
+        `<td>${escapeHtml(enriched.search_brief)}</td>`,
         `<td><a href="${searchUrl}">Open search</a></td>`,
         "</tr>",
       ].join("");
@@ -160,12 +202,14 @@ function renderDownloadCockpit(report = {}) {
 <body>
   <h1>Epidemic Sound Download Cockpit</h1>
   <p>Readiness: <span class="blocked">${escapeHtml(report.readiness?.status || "unknown")}</span></p>
-  <p>Use the search links while signed in to Epidemic Sound. Download files into the listed local folders, then rerun <code>npm run ops:epidemic-sound-intake</code>.</p>
+  <p>Use these links while signed in to Epidemic Sound. Download files, rename vague files with the listed prefix, then run the download intake.</p>
   <h2>Download Slots</h2>
   <table>
-    <thead><tr><th>Role</th><th>Target folder</th><th>Search brief</th><th>Search</th></tr></thead>
+    <thead><tr><th>Role</th><th>Type</th><th>Target folder</th><th>Filename prefix</th><th>Search brief</th><th>Search</th></tr></thead>
     <tbody>${slotRows}</tbody>
   </table>
+  <h2>After Downloads</h2>
+  <p>Run <code>npm run ops:epidemic-download-intake -- --source "$env:USERPROFILE\\Downloads"</code> first. Add <code>--apply</code> only after the planned copies look right.</p>
   <h2>Policy Links</h2>
   <ul>${policyItems}</ul>
   <h2>Safety</h2>
@@ -210,6 +254,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  buildBrowserDownloadQueue,
   main,
   parseArgs,
   renderDownloadCockpit,

@@ -19,13 +19,13 @@ async function touchAudio(filePath) {
 test("Epidemic download intake classifies downloaded beds, stings and SFX into target folders", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-epidemic-download-"));
   const source = path.join(root, "Downloads");
-  await touchAudio(path.join(source, "Pulse Main News Loop.wav"));
-  await touchAudio(path.join(source, "Urgent Breaking Bed.mp3"));
-  await touchAudio(path.join(source, "Verified Source Lock Sting.wav"));
-  await touchAudio(path.join(source, "Rumour Watch Sting.wav"));
-  await touchAudio(path.join(source, "Breaking Hit Sting.wav"));
-  await touchAudio(path.join(source, "Cinematic Impact Hit.wav"));
-  await touchAudio(path.join(source, "Fast Whoosh Transition.wav"));
+  await touchAudio(path.join(source, "epidemic_bed_primary_pulse-main-news-loop.wav"));
+  await touchAudio(path.join(source, "epidemic_bed_breaking_urgent-breaking-bed.mp3"));
+  await touchAudio(path.join(source, "epidemic_sting_verified_source-lock.wav"));
+  await touchAudio(path.join(source, "epidemic_sting_rumour_watch-sting.wav"));
+  await touchAudio(path.join(source, "epidemic_sting_breaking_hit.wav"));
+  await touchAudio(path.join(source, "epidemic_impact_cinematic-hit.wav"));
+  await touchAudio(path.join(source, "epidemic_transition_fast-whoosh.wav"));
   await touchAudio(path.join(source, "Personal Voice Memo.wav"));
 
   const plan = buildEpidemicDownloadIntakePlan({
@@ -48,7 +48,7 @@ test("Epidemic download intake copies recognised files and leaves unknown files 
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-epidemic-copy-"));
   const source = path.join(root, "Downloads");
   const targetRoot = path.join(root, "audio", "epidemic");
-  const sourceFile = path.join(source, "Clean UI Tick Click.wav");
+  const sourceFile = path.join(source, "epidemic_ui_tick_clean-click.wav");
   const unknownFile = path.join(source, "Unclear Audio.wav");
   await touchAudio(sourceFile);
   await touchAudio(unknownFile);
@@ -64,15 +64,15 @@ test("Epidemic download intake copies recognised files and leaves unknown files 
   assert.equal(result.summary.copied_files, 1);
   assert.equal(await fs.pathExists(sourceFile), true);
   assert.equal(await fs.pathExists(unknownFile), true);
-  assert.equal(await fs.pathExists(path.join(targetRoot, "sfx", "Clean UI Tick Click.wav")), true);
+  assert.equal(await fs.pathExists(path.join(targetRoot, "sfx", "epidemic_ui_tick_clean-click.wav")), true);
   assert.equal(result.safety.no_source_deletion, true);
 });
 
 test("Epidemic download intake can limit candidates to files modified after a timestamp", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-epidemic-since-"));
   const source = path.join(root, "Downloads");
-  const oldFile = path.join(source, "Old Main News Loop.wav");
-  const newFile = path.join(source, "New Main News Loop.wav");
+  const oldFile = path.join(source, "epidemic_bed_primary_old-main-news-loop.wav");
+  const newFile = path.join(source, "epidemic_bed_primary_new-main-news-loop.wav");
   await touchAudio(oldFile);
   await touchAudio(newFile);
   const oldDate = new Date("2026-05-27T09:00:00.000Z");
@@ -89,11 +89,47 @@ test("Epidemic download intake can limit candidates to files modified after a ti
   });
 
   assert.equal(plan.summary.candidate_files, 1);
-  assert.equal(plan.planned_copies[0].source_path.endsWith("New Main News Loop.wav"), true);
+  assert.equal(plan.planned_copies[0].source_path.endsWith("epidemic_bed_primary_new-main-news-loop.wav"), true);
 });
 
 test("Epidemic download intake supports explicit role hints for awkward filenames", () => {
   assert.equal(classifyDownloadedEpidemicFile("download.wav", "bed_breaking").role, "bed_breaking");
   assert.equal(classifyDownloadedEpidemicFile("download.wav", "sting_rumour").target_folder, "stings/sting_rumour");
   assert.equal(classifyDownloadedEpidemicFile("digital static glitch.wav").role, "glitch");
+});
+
+test("Epidemic download intake recognises recommended role filename prefixes", () => {
+  assert.equal(classifyDownloadedEpidemicFile("epidemic_bed_primary_neon-loop.wav").role, "bed_primary");
+  assert.equal(
+    classifyDownloadedEpidemicFile("epidemic_sting_verified_source-lock.wav").target_folder,
+    "stings/sting_verified",
+  );
+  assert.equal(classifyDownloadedEpidemicFile("epidemic_ui_tick_clean-click.wav").role, "ui_tick");
+});
+
+test("Epidemic download intake requires role prefixes by default for batch safety", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-epidemic-prefix-required-"));
+  const source = path.join(root, "Downloads");
+  await touchAudio(path.join(source, "Main News Loop.wav"));
+
+  const defaultPlan = buildEpidemicDownloadIntakePlan({
+    workspaceRoot: root,
+    sourceDir: source,
+    targetRoot: path.join(root, "audio", "epidemic"),
+    generatedAt: "2026-05-27T10:07:00.000Z",
+  });
+
+  assert.equal(defaultPlan.summary.planned_copies, 0);
+  assert.equal(defaultPlan.summary.needs_review, 1);
+  assert.equal(defaultPlan.needs_review[0].reason, "epidemic_download_prefix_required");
+
+  const overridePlan = buildEpidemicDownloadIntakePlan({
+    workspaceRoot: root,
+    sourceDir: source,
+    targetRoot: path.join(root, "audio", "epidemic"),
+    generatedAt: "2026-05-27T10:08:00.000Z",
+    allowUnprefixed: true,
+  });
+
+  assert.equal(overridePlan.summary.planned_copies, 1);
 });

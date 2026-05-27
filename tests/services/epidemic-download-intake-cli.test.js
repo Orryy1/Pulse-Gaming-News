@@ -20,7 +20,7 @@ test("Epidemic download intake CLI writes dry-run proof without copying by defau
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-epidemic-download-cli-"));
   const source = path.join(root, "Downloads");
   const outDir = path.join(root, "out");
-  await touchAudio(path.join(source, "Main News Loop.wav"));
+  await touchAudio(path.join(source, "epidemic_bed_primary_main-news-loop.wav"));
 
   const previousCwd = process.cwd();
   process.chdir(root);
@@ -43,7 +43,12 @@ test("Epidemic download intake CLI writes dry-run proof without copying by defau
     assert.equal(report.mode, "dry_run");
     assert.equal(await fs.pathExists(outputs.reportPath), true);
     assert.equal(await fs.pathExists(outputs.markdownPath), true);
-    assert.equal(await fs.pathExists(path.join(root, "audio", "epidemic", "music", "bed_primary", "Main News Loop.wav")), false);
+    assert.equal(
+      await fs.pathExists(
+        path.join(root, "audio", "epidemic", "music", "bed_primary", "epidemic_bed_primary_main-news-loop.wav"),
+      ),
+      false,
+    );
   } finally {
     process.chdir(previousCwd);
   }
@@ -53,7 +58,7 @@ test("Epidemic download intake CLI copies files only when apply is set", async (
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-epidemic-download-apply-"));
   const source = path.join(root, "Downloads");
   const targetRoot = path.join(root, "audio", "epidemic");
-  await touchAudio(path.join(source, "Breaking Alert Hit.wav"));
+  await touchAudio(path.join(source, "epidemic_sting_breaking_alert-hit.wav"));
 
   const previousCwd = process.cwd();
   process.chdir(root);
@@ -74,7 +79,12 @@ test("Epidemic download intake CLI copies files only when apply is set", async (
 
     assert.equal(report.mode, "apply");
     assert.equal(report.summary.copied_files, 1);
-    assert.equal(await fs.pathExists(path.join(targetRoot, "stings", "sting_breaking", "Breaking Alert Hit.wav")), true);
+    assert.equal(
+      await fs.pathExists(
+        path.join(targetRoot, "stings", "sting_breaking", "epidemic_sting_breaking_alert-hit.wav"),
+      ),
+      true,
+    );
   } finally {
     process.chdir(previousCwd);
   }
@@ -94,6 +104,7 @@ test("Epidemic download intake CLI parses source, target and explicit role", () 
     "bed_primary",
     "--since-iso",
     "2026-05-27T10:00:00.000Z",
+    "--allow-unprefixed",
     "--apply",
     "--json",
   ]);
@@ -103,6 +114,7 @@ test("Epidemic download intake CLI parses source, target and explicit role", () 
   assert.equal(args.outputDir, "output/epidemic-download-intake");
   assert.equal(args.roleHint, "bed_primary");
   assert.equal(args.sinceIso, "2026-05-27T10:00:00.000Z");
+  assert.equal(args.allowUnprefixed, true);
   assert.equal(args.apply, true);
   assert.equal(args.json, true);
 });

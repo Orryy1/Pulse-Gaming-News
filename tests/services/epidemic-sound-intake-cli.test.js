@@ -7,8 +7,10 @@ const path = require("node:path");
 const test = require("node:test");
 
 const {
+  buildBrowserDownloadQueue,
   main,
   parseArgs,
+  renderDownloadCockpit,
   renderMarkdown,
 } = require("../../tools/epidemic-sound-intake");
 
@@ -54,6 +56,7 @@ test("Epidemic intake CLI writes machine-readable and human-readable proof artef
     assert.equal(await fs.pathExists(outputs.rightsLedgerPath), true);
     assert.equal(await fs.pathExists(outputs.audioPackCandidatesPath), true);
     assert.equal(await fs.pathExists(outputs.downloadPlanPath), true);
+    assert.equal(await fs.pathExists(outputs.browserQueuePath), true);
     assert.equal(await fs.pathExists(outputs.markdownPath), true);
     assert.equal(await fs.pathExists(outputs.downloadCockpitPath), true);
     const markdown = await fs.readFile(outputs.markdownPath, "utf8");
@@ -62,6 +65,10 @@ test("Epidemic intake CLI writes machine-readable and human-readable proof artef
     const cockpit = await fs.readFile(outputs.downloadCockpitPath, "utf8");
     assert.match(cockpit, /Epidemic Sound Download Cockpit/);
     assert.match(cockpit, /music\/bed_primary/);
+    assert.match(cockpit, /sound-effects/);
+    const queue = await fs.readJson(outputs.browserQueuePath);
+    assert.equal(queue.slots.find((slot) => slot.role === "impact").asset_category, "sfx");
+    assert.match(queue.slots.find((slot) => slot.role === "impact").search_url, /sound-effects/);
   } finally {
     process.chdir(previousCwd);
   }
@@ -117,4 +124,43 @@ test("Epidemic intake markdown is honest when assets are missing", () => {
   assert.match(markdown, /Readiness: blocked/);
   assert.match(markdown, /epidemic:no_local_audio_assets/);
   assert.match(markdown, /music\/bed_primary/);
+});
+
+test("Epidemic download cockpit uses category-specific search routes and filename prefixes", () => {
+  const queue = buildBrowserDownloadQueue({
+    generated_at: "2026-05-26T17:06:00.000Z",
+    download_plan: {
+      required_slots: [
+        {
+          role: "bed_primary",
+          folder: "music/bed_primary",
+          asset_category: "music",
+          search_url: "https://www.epidemicsound.com/music/?term=bed",
+          recommended_filename_prefix: "epidemic_bed_primary_",
+          search_brief: "bed",
+        },
+        {
+          role: "impact",
+          folder: "sfx",
+          asset_category: "sfx",
+          search_url: "https://www.epidemicsound.com/sound-effects/?term=impact",
+          recommended_filename_prefix: "epidemic_impact_",
+          search_brief: "impact",
+        },
+      ],
+    },
+  });
+
+  assert.equal(queue.slots[0].asset_category, "music");
+  assert.equal(queue.slots[1].asset_category, "sfx");
+  assert.match(queue.slots[1].search_url, /sound-effects/);
+
+  const cockpit = renderDownloadCockpit({
+    readiness: { status: "blocked" },
+    download_plan: { required_slots: queue.slots },
+    safety: {},
+  });
+  assert.match(cockpit, /epidemic_bed_primary_/);
+  assert.match(cockpit, /epidemic_impact_/);
+  assert.match(cockpit, /sound-effects/);
 });

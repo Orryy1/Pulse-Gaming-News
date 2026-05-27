@@ -31,6 +31,8 @@ If the planned copy report looks right, apply it:
 npm run ops:epidemic-download-intake -- --source "$env:USERPROFILE\Downloads" --apply
 ```
 
+The default download intake only plans files with an `epidemic_<role>_` prefix, for example `epidemic_bed_primary_neon-loop.wav` or `epidemic_transition_fast-whoosh.wav`. This prevents old Downloads audio from being copied into the Epidemic pack by mistake. Use `--allow-unprefixed` only for a deliberately isolated download folder that contains Epidemic files and nothing else.
+
 Run the SFX-only source plan with:
 
 ```powershell

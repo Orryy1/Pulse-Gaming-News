@@ -97,6 +97,12 @@ test("Epidemic music role classification supports beds, stings and stems", () =>
 
   const plan = defaultDownloadPlan();
   assert.ok(plan.channels.some((channel) => channel.channel_id === "pulse-gaming"));
-  assert.ok(plan.required_slots.some((slot) => slot.role === "bed_primary"));
-  assert.ok(plan.required_slots.some((slot) => slot.role === "sting_breaking"));
+  const primaryBed = plan.required_slots.find((slot) => slot.role === "bed_primary");
+  const transition = plan.required_slots.find((slot) => slot.role === "transition");
+  assert.equal(primaryBed.asset_category, "music");
+  assert.match(primaryBed.search_url, /epidemicsound\.com\/music\//);
+  assert.equal(primaryBed.recommended_filename_prefix, "epidemic_bed_primary_");
+  assert.equal(transition.asset_category, "sfx");
+  assert.match(transition.search_url, /epidemicsound\.com\/sound-effects\//);
+  assert.equal(transition.recommended_filename_prefix, "epidemic_transition_");
 });

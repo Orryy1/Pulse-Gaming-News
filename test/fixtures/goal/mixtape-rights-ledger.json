@@ -1,0 +1,41 @@
+[
+  {
+    "asset_id": "mixtape-key-art",
+    "path": "output/images/mixtape-key-art.jpg",
+    "source_url": "https://www.rockpapershotgun.com/mixtape-will-be-safe-from-a-music-licensing-related-delisting",
+    "source_type": "article_image",
+    "licence_basis": "editorial_source_reference",
+    "allowed_platforms": ["youtube", "tiktok", "instagram", "facebook"],
+    "expiry": null,
+    "credit_required": false,
+    "commercial_use_allowed": true,
+    "risk_score": 0.24,
+    "evidence_file": "rights/mixtape-key-art.json"
+  },
+  {
+    "asset_id": "mixtape-official-trailer",
+    "path": "output/video/mixtape-official-trailer.mp4",
+    "source_url": "https://www.youtube.com/@AnnapurnaInteractive",
+    "source_type": "official_trailer",
+    "licence_basis": "official_reference_transformative_short",
+    "allowed_platforms": ["youtube", "tiktok", "instagram", "facebook"],
+    "expiry": null,
+    "credit_required": false,
+    "commercial_use_allowed": true,
+    "risk_score": 0.18,
+    "evidence_file": "rights/mixtape-official-trailer.json"
+  },
+  {
+    "asset_id": "mixtape-governance-proof_audio_path",
+    "path": "output/audio/mixtape-governance-proof.mp3",
+    "source_url": "local://tts/liam",
+    "source_type": "local_tts_voice",
+    "licence_basis": "owned_local_voice_model",
+    "allowed_platforms": ["youtube", "tiktok", "instagram", "facebook"],
+    "expiry": null,
+    "credit_required": false,
+    "commercial_use_allowed": true,
+    "risk_score": 0.05,
+    "evidence_file": "rights/local-tts-liam.json"
+  }
+]

@@ -1,0 +1,72 @@
+{
+  "id": "mixtape-governance-proof",
+  "channel_id": "pulse-gaming",
+  "canonical_subject": "Mixtape",
+  "canonical_game": "Mixtape",
+  "canonical_angle": "developer paid extra for lasting music rights",
+  "title": "Mixtape will be safe from a music licensing related delisting, ensured by its developer paying extra for the privilege",
+  "suggested_title": "Mixtape Just Avoided Gaming's Delisting Trap",
+  "public_title": "Mixtape Just Avoided Gaming's Delisting Trap",
+  "suggested_thumbnail_text": "MIXTAPE WON'T VANISH",
+  "thumbnail_source_label": "Rock Paper Shotgun",
+  "source_card_label": "Rock Paper Shotgun",
+  "source_type": "reddit",
+  "subreddit": "Games",
+  "url": "https://www.reddit.com/r/Games/comments/example/mixtape/",
+  "article_url": "https://www.rockpapershotgun.com/mixtape-will-be-safe-from-a-music-licensing-related-delisting",
+  "primary_source": "Rock Paper Shotgun",
+  "discovery_source": "r/Games",
+  "full_script": "Mixtape just dodged one of gaming's most annoying problems. Games with licensed music can disappear later when those rights expire. Rock Paper Shotgun reports that Mixtape's developer paid extra so the music licences last in perpetuity. That matters because the soundtrack is part of the game's identity. So this is a preservation win players can actually understand. Follow Pulse Gaming for the gaming stories behind the headline.",
+  "description": "Mixtape's developer says the game paid extra for lasting music rights. Sources and related links are on the story page.",
+  "pinned_comment": "Sources and related notes are on the story page.",
+  "manual_caption_generated": true,
+  "caption_path": "output/captions/mixtape-governance-proof.srt",
+  "exported_path": "output/final/mixtape-governance-proof.mp4",
+  "audio_path": "output/audio/mixtape-governance-proof.mp3",
+  "downloaded_images": [
+    {
+      "id": "mixtape-key-art",
+      "type": "article_hero",
+      "path": "output/images/mixtape-key-art.jpg",
+      "source_url": "https://www.rockpapershotgun.com/mixtape-will-be-safe-from-a-music-licensing-related-delisting",
+      "rights_risk_class": "article_editorial_reference",
+      "source_type": "article_image"
+    }
+  ],
+  "video_clips": [
+    {
+      "id": "mixtape-official-trailer",
+      "type": "official_trailer_clip",
+      "path": "output/video/mixtape-official-trailer.mp4",
+      "source_url": "https://www.youtube.com/@AnnapurnaInteractive",
+      "rights_risk_class": "official_reference_only",
+      "source_type": "official_trailer",
+      "source_family": "annapurna"
+    }
+  ],
+  "affiliate_link_manifest": {
+    "story_id": "mixtape-governance-proof",
+    "vertical": "gaming",
+    "disclosure_required": false,
+    "primary_link": null,
+    "fallback_links": [],
+    "platform_disclosure": {
+      "youtube": {
+        "affiliate_disclosure_required": false
+      }
+    }
+  },
+  "platform_disclosures": {
+    "youtube": {
+      "paid_promotion": false,
+      "altered_or_synthetic": false
+    },
+    "tiktok": {
+      "ai_generated_content_label": false
+    }
+  },
+  "ai_usage": {
+    "realistic_altered_or_synthetic": false,
+    "label_required": false
+  }
+}

@@ -1,0 +1,98 @@
+{
+  "generated_at": "2026-05-27T18:30:43.382Z",
+  "results": [
+    {
+      "command": "node --test tests/services/goal-production-cutover.test.js tests/services/goal-production-cutover-cli.test.js tests/services/goal-render-input-workorder.test.js tests/services/goal-render-input-workorder-cli.test.js tests/services/goal-dry-run-publisher.test.js tests/services/goal-baseline-audit.test.js tests/services/goal-human-review-queue.test.js tests/services/bridge-candidate-promotion.test.js tests/services/bridge-candidate-promotion-cli.test.js tests/services/bridge-live-rights-repair.test.js tests/services/bridge-live-rights-repair-cli.test.js tests/services/bridge-preflight-stamp-repair.test.js tests/services/empire-readiness-audit.test.js tests/services/empire-readiness-audit-tool.test.js",
+      "status": "PASS",
+      "tests": 181,
+      "passed": 181,
+      "failed": 0
+    },
+    {
+      "command": "npm test",
+      "status": "FAIL_THEN_FIXED",
+      "failure": "outbound redirect guard flagged lib/goal-official-still-visual-repair.js for bare maxRedirects without safeRedirectConfig"
+    },
+    {
+      "command": "node --test tests/services/goal-official-still-visual-repair.test.js tests/services/outbound-redirect-guard.test.js",
+      "status": "PASS",
+      "tests": 4,
+      "passed": 4,
+      "failed": 0
+    },
+    {
+      "command": "npm test",
+      "status": "PASS",
+      "tests": 4525,
+      "passed": 4525,
+      "failed": 0
+    },
+    {
+      "command": "npm run ops:agent-rules",
+      "status": "PASS",
+      "summary": "Goal 00 agent operating rules pass. No missing required sections or critical safety rules."
+    },
+    {
+      "command": "npm run docs:doctor",
+      "status": "PASS_WITH_LOW_SIGNALS",
+      "summary": "Docs doctor scanned 909 markdown files and found 3 low signals, 0 medium and 0 high."
+    },
+    {
+      "command": "node --test tests/services/system-doctor.test.js tests/services/goal23-security-secrets-deployment-safety.test.js",
+      "status": "PASS",
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "summary": "Push-protection remediation kept the Goal 23 secret scanner covered without provider-shaped synthetic key fixtures."
+    },
+    {
+      "command": "node --test tests/services/goal-dry-run-publisher.test.js",
+      "status": "PASS",
+      "tests": 60,
+      "passed": 60,
+      "failed": 0,
+      "summary": "Late dry-run publisher warning-classification changes passed focused coverage."
+    },
+    {
+      "command": "npm test",
+      "status": "FAIL_THEN_FIXED",
+      "failure": "source-family acquisition regression showed an owned explainer deck failed benchmark but still lacked the real-visual-or-human-review handoff flag"
+    },
+    {
+      "command": "node --test tests/services/studio-v4-source-family-acquisition.test.js",
+      "status": "PASS",
+      "tests": 37,
+      "passed": 37,
+      "failed": 0
+    },
+    {
+      "command": "node --test tests/services/goal04-human-held-source-consolidation.test.js",
+      "status": "PASS",
+      "tests": 3,
+      "passed": 3,
+      "failed": 0
+    },
+    {
+      "command": "node --test tests/services/goal-human-review-queue.test.js",
+      "status": "PASS",
+      "tests": 6,
+      "passed": 6,
+      "failed": 0
+    },
+    {
+      "command": "node --test tests/services/goal-duration-variant-repair-cli.test.js",
+      "status": "PASS",
+      "tests": 6,
+      "passed": 6,
+      "failed": 0
+    },
+    {
+      "command": "npm test",
+      "status": "PASS",
+      "tests": 4531,
+      "passed": 4531,
+      "failed": 0,
+      "summary": "Final full suite after source-family, Goal 04, human-review queue and TikTok duration-variant propagation fixes."
+    }
+  ]
+}

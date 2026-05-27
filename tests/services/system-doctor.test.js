@@ -66,7 +66,7 @@ test("system doctor still reviews when neither gh auth nor credential fallback e
 
 test("github credential fallback detector never returns the credential value", () => {
   const result = inspectGithubCredentialFallback(
-    commandRunnerWithGithub({ credentialPassword: "ghp_secret_value" }),
+    commandRunnerWithGithub({ credentialPassword: "credential_value_for_unit_test" }),
   );
 
   assert.deepEqual(result, {

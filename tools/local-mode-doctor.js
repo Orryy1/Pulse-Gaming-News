@@ -63,6 +63,13 @@ function checkEnvVarPresent(name) {
   return { name, present, length, source };
 }
 
+function buildEffectiveEnv(parsed = dotenvParsed, base = process.env) {
+  // This doctor is specifically about the local `.env` runtime shape.
+  // Prefer parsed `.env` values over the shell wrapper so mode/primary
+  // checks match what `node server.js` will read after dotenv loads.
+  return { ...base, ...parsed };
+}
+
 function tryExec(cmd) {
   try {
     const out = execSync(cmd, {
@@ -89,7 +96,10 @@ async function checkPathWritable(p) {
 
 async function buildReport() {
   const dm = require("../lib/deployment-mode");
-  const mode = dm.summary();
+  const { describeLlmState } = require("../lib/llm-key");
+  const effectiveEnv = buildEffectiveEnv();
+  const mode = dm.summary(effectiveEnv);
+  const llmState = describeLlmState(effectiveEnv);
 
   // Binary checks
   const ffmpeg = tryExec("ffmpeg -version");
@@ -103,7 +113,11 @@ async function buildReport() {
 
   // Env vars expected for local production
   const envPresence = {
-    // Required for Pulse to function at all
+    // Required for Pulse to generate scripts locally
+    LLM_PROVIDER: checkEnvVarPresent("LLM_PROVIDER"),
+    LOCAL_LLM_BASE_URL: checkEnvVarPresent("LOCAL_LLM_BASE_URL"),
+    LOCAL_LLM_MODEL: checkEnvVarPresent("LOCAL_LLM_MODEL"),
+    LOCAL_LLM_STRONG_MODEL: checkEnvVarPresent("LOCAL_LLM_STRONG_MODEL"),
     ANTHROPIC_API_KEY: checkEnvVarPresent("ANTHROPIC_API_KEY"),
     ELEVENLABS_API_KEY: checkEnvVarPresent("ELEVENLABS_API_KEY"),
     DISCORD_WEBHOOK_URL: checkEnvVarPresent("DISCORD_WEBHOOK_URL"),
@@ -142,12 +156,13 @@ async function buildReport() {
   };
 
   // File path writability
-  const targetMediaRoot = mode.media_root.startsWith("(")
-    ? path.resolve(__dirname, "..", "data", "media-local")
-    : mode.media_root;
-  const targetDbDir = mode.sqlite_db_path.startsWith("(")
-    ? path.resolve(__dirname, "..", "data")
-    : path.dirname(mode.sqlite_db_path);
+  const configuredMediaRoot = dm.getMediaRoot(effectiveEnv);
+  const configuredDbPath = dm.getSqliteDbPath(effectiveEnv);
+  const targetMediaRoot =
+    configuredMediaRoot || path.resolve(__dirname, "..", "data", "media-local");
+  const targetDbDir = configuredDbPath
+    ? path.dirname(configuredDbPath)
+    : path.resolve(__dirname, "..", "data");
   const fsChecks = {
     media_root: await checkPathWritable(targetMediaRoot),
     db_dir: await checkPathWritable(targetDbDir),
@@ -163,8 +178,9 @@ async function buildReport() {
   if (!ffmpeg.ok) verdict.blockers.push("ffmpeg binary not found on PATH");
   if (!ffprobe.ok) verdict.blockers.push("ffprobe binary not found on PATH");
   if (!node.ok) verdict.blockers.push("node binary not found");
-  if (!envPresence.ANTHROPIC_API_KEY.present)
-    verdict.blockers.push("ANTHROPIC_API_KEY not set");
+  if (!llmState.ok) {
+    verdict.blockers.push(`LLM provider not configured: ${llmState.reason}`);
+  }
   if (!envPresence.ELEVENLABS_API_KEY.present)
     verdict.blockers.push("ELEVENLABS_API_KEY not set");
   if (!fsChecks.media_root.writable)
@@ -282,6 +298,16 @@ function formatMarkdown(report) {
   }
 
   lines.push("");
+  if (
+    report.verdict.overall === "green" &&
+    report.deployment_mode &&
+    report.deployment_mode.primary === false
+  ) {
+    lines.push(
+      "OK Local mirror prerequisites met. Safe to start observation-only; scheduler/posting stay disabled while `primary=false`.",
+    );
+    return lines.join("\n");
+  }
   if (report.verdict.overall === "green") {
     lines.push(
       "✅ Local-mode prerequisites met. Safe to start `node server.js` here.",
@@ -316,4 +342,12 @@ async function main() {
   }
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+module.exports = {
+  buildEffectiveEnv,
+  buildReport,
+  formatMarkdown,
+};

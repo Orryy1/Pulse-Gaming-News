@@ -66,6 +66,23 @@ test("Pulse topicality gate accepts Xbox Game Pass price stories", () => {
   );
 });
 
+test("Pulse topicality gate accepts game preservation and shutdown law stories", () => {
+  const s = story({
+    title:
+      "California bill backed by Stop Killing Games campaign pushing to keep games playable after server shutdowns passes key hurdle",
+    body:
+      "The bill would affect game developers, online servers and players who lose access when games shut down.",
+  });
+  const topicality = evaluatePulseGamingTopicality(s);
+  assert.equal(topicality.decision, "accept");
+  assert.equal(topicality.reason, "gaming_topic_match");
+
+  const scored = scoreStory(s, { channelId: "pulse-gaming" });
+  assert.ok(
+    !scored.hard_stops.includes("pulse_gaming_off_topic_entertainment"),
+  );
+});
+
 test("Pulse topicality gate accepts mainstream game franchise release-date stories", () => {
   const s = story({
     title: "Bethesda confirms release date for Elder Scrolls VI",

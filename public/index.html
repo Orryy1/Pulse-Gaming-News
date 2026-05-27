@@ -145,22 +145,32 @@
 
       const TOKEN_KEY = "pulse_api_token";
 
+      function clearLegacyToken() {
+        try {
+          localStorage.removeItem(TOKEN_KEY);
+        } catch {}
+      }
       function getToken() {
         try {
-          return localStorage.getItem(TOKEN_KEY) || "";
+          const token = sessionStorage.getItem(TOKEN_KEY) || "";
+          clearLegacyToken();
+          return token;
         } catch {
+          clearLegacyToken();
           return "";
         }
       }
       function setToken(t) {
         try {
-          localStorage.setItem(TOKEN_KEY, t);
+          sessionStorage.setItem(TOKEN_KEY, t);
+          clearLegacyToken();
         } catch {}
       }
       function clearToken() {
         try {
-          localStorage.removeItem(TOKEN_KEY);
+          sessionStorage.removeItem(TOKEN_KEY);
         } catch {}
+        clearLegacyToken();
       }
 
       // Every mutating / authenticated fetch goes through this helper

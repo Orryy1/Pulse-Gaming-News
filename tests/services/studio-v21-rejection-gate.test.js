@@ -19,7 +19,9 @@ function canonical(overrides = {}) {
     forensicWarnCount: 0,
     forensicIssues: [],
     audioRecurrence: "pass",
+    audioPresence: "pass",
     subtitleVerdict: "pass",
+    subtitleDensity: "pass",
     visualVerdict: "pass",
     redTrips: 0,
     sourceDiversity: 0.88,
@@ -55,7 +57,9 @@ test("normaliseGateCandidate extracts summary and report signals", () => {
       forensic: {
         verdict: "pass",
         audioRecurrence: "pass",
+        audioPresence: "pass",
         subtitleVerdict: "pass",
+        subtitleDensity: "pass",
         visualVerdict: "pass",
       },
     },
@@ -72,6 +76,8 @@ test("normaliseGateCandidate extracts summary and report signals", () => {
   });
   assert.equal(result.score, 91);
   assert.equal(result.sourceDiversity, 0.9);
+  assert.equal(result.audioPresence, "pass");
+  assert.equal(result.subtitleDensity, "pass");
   assert.equal(result.heroMomentCount, 2);
   assert.equal(result.heroOverlayApplied, true);
 });
@@ -141,6 +147,28 @@ test("gate rejects synthetic black-screen and caption-corruption cases", () => {
   assert.equal(report.verdict, "reject");
   assert.ok(report.hardFailReasons.some((reason) => reason.code === "forensic_fail"));
   assert.ok(report.hardFailReasons.some((reason) => reason.code === "caption_blackout"));
+});
+
+test("gate rejects missing narration and dense captions", () => {
+  const c = canonical();
+  const candidate = canonical({
+    key: "synthetic:no-narration-dense-captions",
+    forensicVerdict: "fail",
+    forensicFailCount: 1,
+    forensicWarnCount: 1,
+    forensicIssues: ["audio_presence", "subtitle_density"],
+    audioPresence: "fail",
+    subtitleDensity: "warn",
+  });
+  const report = evaluateStudioRejectionGate({
+    candidate,
+    canonical: c,
+    requireHeroMoments: false,
+  });
+
+  assert.equal(report.verdict, "reject");
+  assert.ok(report.hardFailReasons.some((reason) => reason.code === "audio_presence"));
+  assert.ok(report.amberWarnings.some((reason) => reason.code === "subtitle_density"));
 });
 
 test("gate passes a V2.1 candidate that preserves canonical metrics", () => {

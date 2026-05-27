@@ -1,0 +1,190 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-05-08T09:56:08.627Z",
+  "mode": "voice_shootout_framework",
+  "transcripts": [
+    {
+      "id": "prices",
+      "label": "Price shock",
+      "style": "urgent_news",
+      "text": "GTA 6 still has no confirmed price, but Take-Two says value has to feel reasonable. That matters because one bad price reveal can dominate the entire launch conversation.",
+      "pronunciation_watchlist": [
+        "GTA 6",
+        "Take-Two"
+      ]
+    },
+    {
+      "id": "game_titles",
+      "label": "Game title stress test",
+      "style": "flash_news",
+      "text": "Pokémon, BioShock, Red Dead Redemption, S.T.A.L.K.E.R. 2, Final Fantasy 14 and The Elder Scrolls all need clean pronunciation in one take.",
+      "pronunciation_watchlist": [
+        "Pokémon",
+        "BioShock",
+        "Red Dead Redemption",
+        "S.T.A.L.K.E.R. 2",
+        "Final Fantasy 14",
+        "The Elder Scrolls"
+      ]
+    },
+    {
+      "id": "acronyms",
+      "label": "Gaming acronyms",
+      "style": "technical_news",
+      "text": "Triple A budgets, MMORPG updates, DLC roadmaps, FPS performance, RPG balance, GPU requirements and PSVR2 discounts should sound clear, not robotic.",
+      "pronunciation_watchlist": [
+        "AAA",
+        "MMORPG",
+        "DLC",
+        "FPS",
+        "RPG",
+        "GPU",
+        "PSVR2"
+      ]
+    },
+    {
+      "id": "urgent_news",
+      "label": "Urgent short hook",
+      "style": "high_energy_short",
+      "text": "Wait, this is bigger than it looks. Nintendo just confirmed a Switch 2 detail players were not expecting, and it changes the launch conversation immediately.",
+      "pronunciation_watchlist": [
+        "Nintendo",
+        "Switch 2"
+      ]
+    },
+    {
+      "id": "calm_analysis",
+      "label": "Briefing analysis",
+      "style": "mini_documentary",
+      "text": "The bigger story is not one patch note. It is the pattern: publishers are testing higher prices, slower reveals and longer marketing cycles before players get firm answers.",
+      "pronunciation_watchlist": [
+        "publishers"
+      ]
+    },
+    {
+      "id": "outro",
+      "label": "Pulse outro",
+      "style": "cta",
+      "text": "Follow Pulse Gaming so you never miss a beat.",
+      "pronunciation_watchlist": [
+        "Pulse Gaming"
+      ]
+    }
+  ],
+  "models": [
+    {
+      "id": "elevenlabs_production_baseline",
+      "label": "ElevenLabs production baseline",
+      "provider": "elevenlabs",
+      "generationMode": "external_paid_disabled_by_default",
+      "external": true,
+      "paid": true,
+      "setupStatus": "configured_external_paid_locked",
+      "allowedTonight": false,
+      "approvalRequired": true
+    },
+    {
+      "id": "local_liam_current",
+      "label": "Local Liam current path",
+      "provider": "local_liam",
+      "generationMode": "local_only_when_tts_ready",
+      "external": false,
+      "paid": false,
+      "setupStatus": "ready_for_local_proof",
+      "allowedTonight": true,
+      "approvalRequired": false
+    },
+    {
+      "id": "chatterbox_local",
+      "label": "Chatterbox local",
+      "provider": "chatterbox",
+      "generationMode": "local_optional_if_installed",
+      "external": false,
+      "paid": false,
+      "setupStatus": "not_detected_optional_setup",
+      "allowedTonight": false,
+      "approvalRequired": false
+    },
+    {
+      "id": "indextts2_local",
+      "label": "IndexTTS2 local",
+      "provider": "indextts2",
+      "generationMode": "setup_required",
+      "external": false,
+      "paid": false,
+      "setupStatus": "not_detected_setup_required",
+      "allowedTonight": false,
+      "approvalRequired": false
+    },
+    {
+      "id": "fish_local_or_api",
+      "label": "Fish",
+      "provider": "fish",
+      "generationMode": "setup_required_external_disabled",
+      "external": true,
+      "paid": true,
+      "setupStatus": "not_detected_external_locked",
+      "allowedTonight": false,
+      "approvalRequired": true
+    },
+    {
+      "id": "kokoro_fast_baseline",
+      "label": "Kokoro fast baseline",
+      "provider": "kokoro",
+      "generationMode": "local_optional_if_installed",
+      "external": false,
+      "paid": false,
+      "setupStatus": "not_detected_optional_setup",
+      "allowedTonight": false,
+      "approvalRequired": false
+    }
+  ],
+  "samples": [
+    {
+      "modelId": "local_liam_current",
+      "transcriptId": "prices",
+      "filePath": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\test\\output\\voice-shootout\\audio\\voice_shootout_prices_voxcpm2_1.mp3",
+      "timestampsPath": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\test\\output\\voice-shootout\\audio\\voice_shootout_prices_voxcpm2_1_timestamps.json",
+      "durationS": 12.48,
+      "provider": "local",
+      "source": "local-production-voxcpm-path",
+      "status": "generated",
+      "acoustic": null
+    },
+    {
+      "modelId": "local_liam_current",
+      "transcriptId": "game_titles",
+      "filePath": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\test\\output\\voice-shootout\\audio\\voice_shootout_game_titles_voxcpm2_1.mp3",
+      "timestampsPath": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\test\\output\\voice-shootout\\audio\\voice_shootout_game_titles_voxcpm2_1_timestamps.json",
+      "durationS": 12.48,
+      "provider": "local",
+      "source": "local-production-voxcpm-path",
+      "status": "generated",
+      "acoustic": null
+    }
+  ],
+  "audioQa": {
+    "duration_seconds": "measured_when_samples_exist",
+    "words_per_minute": "measured_when_samples_exist",
+    "silence_ratio": "planned_until_probe_supports_metric",
+    "clipping_ratio": "planned_until_probe_supports_metric",
+    "loudness_lufs": "measured_when_samples_exist",
+    "true_peak_db": "measured_when_samples_exist",
+    "median_pitch_hz": "measured_when_samples_exist",
+    "timestamp_viability": "requires_alignment_sidecar",
+    "pronunciation_watchlist": "manual_review_required"
+  },
+  "rightsNotes": [
+    "Use only Martin-owned or explicitly licensed reference voice material.",
+    "Do not upload private voice samples to unknown services.",
+    "Do not fine-tune, redistribute or publish model weights from this framework.",
+    "ElevenLabs is baseline evidence only unless paid API use is explicitly approved."
+  ],
+  "safety": {
+    "callsExternalApis": false,
+    "spendsPaidCredits": false,
+    "switchesProductionVoice": false,
+    "writesProductionDb": false,
+    "postsToPlatforms": false
+  }
+}

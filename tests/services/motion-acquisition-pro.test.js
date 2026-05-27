@@ -117,6 +117,167 @@ test("Motion Acquisition Pro consumes official resolver references as local fram
   assert.equal(plan.safety.video_downloads, false);
 });
 
+test("Motion Acquisition Pro preserves source families from resolver references", () => {
+  const plan = buildMotionAcquisitionPlan(
+    baseStory({ id: "forza-family" }),
+    {
+      officialTrailerReferencePlans: [
+        {
+          story_id: "forza-family",
+          references: [
+            {
+              provider: "official_intake",
+              source_type: "licensed_direct_media_url",
+              source_url: "https://media.example/fh6/initial-drive.mp4",
+              source_url_kind: "direct_video",
+              segment_validation_eligible: true,
+              entity: "Forza Horizon 6",
+              source_family: "gamefront_xbox_game_studios_fh6_initial_drive_gameplay",
+              reference_url:
+                "https://www.gamefront.com/videos/forza-horizon-6/forza-horizon-6-official-initial-drive-gameplay",
+              downloads_allowed: false,
+            },
+          ],
+        },
+      ],
+    },
+  );
+
+  assert.equal(
+    plan.existing_references[0].source_family,
+    "gamefront_xbox_game_studios_fh6_initial_drive_gameplay",
+  );
+  assert.equal(
+    plan.existing_references[0].reference_url,
+    "https://www.gamefront.com/videos/forza-horizon-6/forza-horizon-6-official-initial-drive-gameplay",
+  );
+});
+
+test("Motion Acquisition Pro keeps partial resolver references in targeted-search mode", () => {
+  const plan = buildMotionAcquisitionPlan(
+    baseStory({ id: "partial-official-reference" }),
+    {
+      officialTrailerReferencePlans: [
+        {
+          story_id: "partial-official-reference",
+          motion_reference_readiness: "partial_official_reference_found",
+          target_entities: ["GTA", "BioShock", "Red Dead"],
+          covered_target_entities: ["GTA"],
+          missing_target_entities: ["BioShock", "Red Dead"],
+          references: [
+            {
+              provider: "steam",
+              source_type: "steam_movie",
+              source_url: "https://video.example/gta.m3u8",
+              entity: "GTA",
+              downloads_allowed: false,
+            },
+          ],
+        },
+      ],
+    },
+  );
+  const actionTypes = plan.planned_actions.map((action) => action.type);
+
+  assert.equal(plan.motion_readiness, "partial_reference_needs_targeted_search");
+  assert.deepEqual(plan.resolver_reference_coverage.missing_target_entities, ["BioShock", "Red Dead"]);
+  assert.ok(plan.blockers.includes("missing_official_reference_entities"));
+  assert.equal(actionTypes.filter((type) => type === "targeted_official_reference_search").length, 2);
+  assert.ok(actionTypes.includes("trailer_frame_extract_plan"));
+  assert.equal(plan.studio_v2_motion_candidate, false);
+});
+
+test("Motion Acquisition Pro preserves official resolver movie names for downstream frame scoring", () => {
+  const plan = buildMotionAcquisitionPlan(
+    baseStory({ id: "has-named-official-reference" }),
+    {
+      officialTrailerReferencePlans: [
+        {
+          story_id: "has-named-official-reference",
+          references: [
+            {
+              provider: "steam",
+              source_type: "steam_movie",
+              source_url: "https://video.example/pegi-rating.m3u8",
+              entity: "GTA",
+              movie_name: "GTA Official PEGI Rating Trailer",
+              rights_risk_class: "storefront_promotional_video",
+              allowed_render_use: "reference_only_by_default",
+              downloads_allowed: false,
+            },
+          ],
+        },
+      ],
+    },
+  );
+
+  assert.equal(plan.existing_references[0].movie_name, "GTA Official PEGI Rating Trailer");
+});
+
+test("Motion Acquisition Pro preserves official resolver media metadata for frame timing", () => {
+  const plan = buildMotionAcquisitionPlan(
+    baseStory({ id: "has-direct-official-reference" }),
+    {
+      officialTrailerReferencePlans: [
+        {
+          story_id: "has-direct-official-reference",
+          references: [
+            {
+              provider: "official_intake",
+              source_type: "official_publisher_or_developer_trailer_page",
+              source_url: "https://cdn.example/gta-keyart.webm",
+              source_url_kind: "direct_video",
+              segment_validation_eligible: true,
+              segment_validation_ineligible_reason: null,
+              source_duration_s: 10,
+              entity: "GTA",
+              downloads_allowed: false,
+            },
+          ],
+        },
+      ],
+    },
+  );
+
+  assert.equal(plan.existing_references[0].source_url_kind, "direct_video");
+  assert.equal(plan.existing_references[0].segment_validation_eligible, true);
+  assert.equal(plan.existing_references[0].source_duration_s, 10);
+});
+
+test("Motion Acquisition Pro preserves trusted registry provenance for autonomous local planning", () => {
+  const plan = buildMotionAcquisitionPlan(
+    baseStory({ id: "has-trusted-registry-reference" }),
+    {
+      officialTrailerReferencePlans: [
+        {
+          story_id: "has-trusted-registry-reference",
+          references: [
+            {
+              provider: "trusted_footage_registry",
+              source_type: "official_youtube_channel_url",
+              source_url: "https://www.youtube.com/@Xbox",
+              entity: "GTA",
+              source_tier: "official",
+              trusted_footage_source_id: "xbox-official-youtube",
+              trusted_footage_registry_status: "accepted",
+              rights_risk_class: "official_reference_only",
+              allowed_render_use: "reference_only_by_default",
+              downloads_allowed: false,
+            },
+          ],
+        },
+      ],
+    },
+  );
+
+  assert.equal(plan.motion_readiness, "reference_ready_for_local_frame_plan");
+  assert.equal(plan.existing_references[0].provider, "trusted_footage_registry");
+  assert.equal(plan.existing_references[0].trusted_footage_source_id, "xbox-official-youtube");
+  assert.equal(plan.existing_references[0].trusted_footage_registry_status, "accepted");
+  assert.equal(plan.existing_references[0].source_tier, "official");
+  assert.equal(plan.planned_actions[0].accepted_sources.includes("trusted footage registry references"), true);
+});
+
 test("Motion Acquisition Pro report counts resolver references in readiness summary", () => {
   const report = buildMotionAcquisitionReport(
     [
@@ -143,6 +304,50 @@ test("Motion Acquisition Pro report counts resolver references in readiness summ
 
   assert.equal(report.summary.reference_ready_for_local_frame_plan, 1);
   assert.equal(report.summary.official_reference_search_required, 1);
+});
+
+test("Motion Acquisition Pro report counts partial resolver references separately", () => {
+  const report = buildMotionAcquisitionReport(
+    [
+      baseStory({ id: "partial-official-reference" }),
+      baseStory({ id: "has-official-reference" }),
+    ],
+    {
+      officialTrailerReferencePlans: [
+        {
+          story_id: "partial-official-reference",
+          motion_reference_readiness: "partial_official_reference_found",
+          target_entities: ["GTA", "BioShock"],
+          covered_target_entities: ["GTA"],
+          missing_target_entities: ["BioShock"],
+          references: [
+            {
+              provider: "steam",
+              source_type: "steam_movie",
+              source_url: "https://video.example/gta.m3u8",
+              entity: "GTA",
+              downloads_allowed: false,
+            },
+          ],
+        },
+        {
+          story_id: "has-official-reference",
+          references: [
+            {
+              provider: "steam",
+              source_type: "steam_movie",
+              source_url: "https://video.example/hls_264_master.m3u8",
+              entity: "GTA",
+              downloads_allowed: false,
+            },
+          ],
+        },
+      ],
+    },
+  );
+
+  assert.equal(report.summary.partial_reference_needs_targeted_search, 1);
+  assert.equal(report.summary.reference_ready_for_local_frame_plan, 1);
 });
 
 test("Motion Acquisition Pro marks enough clips and frames as local motion proof ready", () => {

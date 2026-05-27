@@ -13,6 +13,11 @@
 const path = require("node:path");
 const fs = require("fs-extra");
 const { execSync } = require("node:child_process");
+const {
+  fitQuoteText,
+  pickQuoteFontSize,
+  quoteLayoutClass,
+} = require("../lib/studio/v2/quote-fit");
 
 const ROOT = path.resolve(__dirname, "..");
 const TEST_OUT = path.join(ROOT, "test", "output");
@@ -97,6 +102,16 @@ function clampWords(value, maxWords) {
   return `${words.slice(0, maxWords).join(" ")}...`;
 }
 
+function clampQuoteText(value, { maxWords = 12, maxChars = 96 } = {}) {
+  return fitQuoteText(value, {
+    maxWords: Math.min(Number(maxWords) || 12, 11),
+    maxChars: Math.min(Number(maxChars) || 96, 84),
+    maxCharsPerLine: 28,
+    maxLines: 3,
+    maxTokenChars: 22,
+  });
+}
+
 function sourceLabel(story) {
   const raw =
     story?.subreddit ||
@@ -155,10 +170,10 @@ function firstUsefulQuote(story) {
     story?.top_comment ||
     story?.quoteCandidates?.[0]?.body ||
     story?.quoteCandidates?.[0]?.text;
-  if (topComment) return clampWords(topComment, 16);
+  if (topComment) return clampQuoteText(topComment);
 
   const title = normaliseText(story?.title);
-  return title ? clampWords(title, 12) : "The important detail is changing fast.";
+  return title ? clampQuoteText(title) : "The important detail is changing fast.";
 }
 
 function buildStoryCardSpecs(story) {
@@ -348,15 +363,6 @@ function buildHeadlineSpans(words) {
     .join("\n");
 }
 
-function pickQuoteFontSize(text) {
-  const words = normaliseText(text).split(/\s+/).filter(Boolean).length;
-  const chars = normaliseText(text).length;
-  if (words <= 5 && chars <= 40) return 76;
-  if (words <= 8 && chars <= 70) return 64;
-  if (words <= 12 && chars <= 110) return 54;
-  return 46;
-}
-
 function renderTimelineBullets(bullets) {
   return bullets
     .slice(0, 3)
@@ -391,15 +397,24 @@ function applySpecToTemplate(kind, templateHtml, spec, channelId) {
       `$1\n${renderTimelineBullets(spec.bullets)}\n          $2`,
     );
   } else if (kind === "quote") {
-    const fontSize = pickQuoteFontSize(spec.quoteText);
+    const quoteText = clampQuoteText(spec.quoteText);
+    const fontSize = pickQuoteFontSize(quoteText);
     html = html.replace(
       /(\.quote\s*\{[^}]*?font-size:\s*)\d+(px;)/,
       `$1${fontSize}$2`,
     );
+    html = html.replace(
+      /<div id="quote" class="quote">/,
+      `<div id="quote" class="${quoteLayoutClass(quoteText)}">`,
+    );
     html = replaceElementText(html, "kicker", spec.kicker);
     html = html.replace(
       /(<div id="quote" class="quote">)[\s\S]*?(<\/div>)/,
-      `$1\n${buildQuoteWordSpans(spec.quoteText)}\n          $2`,
+      `$1\n${buildQuoteWordSpans(quoteText)}\n          $2`,
+    );
+    html = html.replace(
+      /(<div id="quote" class="quote quote--(?:medium|compact)">)[\s\S]*?(<\/div>)/,
+      `$1\n${buildQuoteWordSpans(quoteText)}\n          $2`,
     );
     html = replaceElementText(html, "attribution", spec.attribution);
     html = replaceElementText(html, "attribution-sub", spec.attributionSub);
@@ -606,6 +621,9 @@ if (require.main === module) {
 module.exports = {
   buildStoryCards,
   buildStoryCardSpecs,
+  clampQuoteText,
+  quoteLayoutClass,
+  applySpecToTemplate,
   outputNameForCard,
   pickStoryBackdrop,
 };

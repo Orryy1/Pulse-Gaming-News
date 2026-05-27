@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { BarChart3, Eye, Flame, Calendar, Trophy } from 'lucide-react';
+import { BarChart3, Eye, Flame, Calendar, Trophy, MousePointerClick, Route, ShieldCheck, Gauge, AlertCircle } from 'lucide-react';
 import {
   BarChart,
   Bar,
@@ -85,6 +85,108 @@ interface HistoryResponse {
   entries?: HistoryEntry[];
 }
 
+interface CommercialLearningStory {
+  story_id: string;
+  title: string;
+  clicks: number;
+  affiliate_click_rate?: number | null;
+  commercial_angle_lift?: string;
+  top_offer?: {
+    label?: string;
+    product_category?: string | null;
+    clicks?: number;
+  } | null;
+}
+
+interface CommercialLearningRecommendation {
+  type?: string;
+  priority?: string;
+  text: string;
+}
+
+interface CommercialLearningResponse {
+  status?: string;
+  totals?: {
+    clicks?: number;
+    clicked_stories?: number;
+    clicked_offers?: number;
+  };
+  top_stories?: CommercialLearningStory[];
+  recommendations?: CommercialLearningRecommendation[];
+}
+
+interface RevenuePathRow {
+  story_id: string;
+  title: string;
+  verdict: string;
+  revenue_path_score: number;
+  route?: string | null;
+  primary_path_type?: string;
+  learning_lift?: string;
+  primary_offer?: {
+    label?: string;
+    product_category?: string | null;
+  } | null;
+  blockers?: string[];
+}
+
+interface RevenuePathRecommendation {
+  type?: string;
+  priority?: string;
+  text: string;
+}
+
+interface RevenuePathResponse {
+  status?: string;
+  totals?: {
+    paths?: number;
+    pass?: number;
+    review?: number;
+    blocked_for_compliance?: number;
+    average_revenue_path_score?: number;
+  };
+  top_paths?: RevenuePathRow[];
+  recommendations?: RevenuePathRecommendation[];
+}
+
+interface StudioEnterpriseCard {
+  id: string;
+  label: string;
+  value?: string | number | null;
+  unit?: string;
+}
+
+interface StudioEnterpriseAction {
+  priority?: string;
+  action: string;
+  owner?: string;
+}
+
+interface StudioEnterpriseOSResponse {
+  autonomy_control_tower?: {
+    mode?: string;
+    blockers?: string[];
+    can_auto_publish?: boolean;
+  };
+  observability_dashboard?: {
+    cards?: StudioEnterpriseCard[];
+  };
+  next_actions?: StudioEnterpriseAction[];
+  security_secret_management?: {
+    status?: string;
+    blockers?: string[];
+    warnings?: string[];
+  };
+  disaster_recovery?: {
+    emergency_kill_switch?: {
+      available?: boolean;
+    };
+    rollback_renderer?: {
+      available?: boolean;
+    };
+  };
+}
+
 function formatViews(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
@@ -139,11 +241,24 @@ function videosPublishedThisWeek(entries: HistoryEntry[]): number {
   }).length;
 }
 
+function enterpriseCardValue(
+  enterpriseOS: StudioEnterpriseOSResponse | null,
+  id: string,
+  fallback: string | number = 'n/a',
+): string {
+  const card = enterpriseOS?.observability_dashboard?.cards?.find((item) => item.id === id);
+  if (!card || card.value === null || card.value === undefined) return String(fallback);
+  return `${card.value}${card.unit || ''}`;
+}
+
 export default function Analytics() {
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [topPerformers, setTopPerformers] = useState<TopPerformer[]>([]);
   const [topicBreakdown, setTopicBreakdown] = useState<TopicBreakdown[]>([]);
   const [dailyTrends, setDailyTrends] = useState<DailyTrend[]>([]);
+  const [commercialLearning, setCommercialLearning] = useState<CommercialLearningResponse | null>(null);
+  const [revenuePaths, setRevenuePaths] = useState<RevenuePathResponse | null>(null);
+  const [enterpriseOS, setEnterpriseOS] = useState<StudioEnterpriseOSResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -152,10 +267,13 @@ export default function Analytics() {
       setLoading(true);
       setError(null);
       try {
-        const [overview, topics, history] = await Promise.all([
+        const [overview, topics, history, commercial, revenue, enterprise] = await Promise.all([
           apiGetAuthed<OverviewResponse>('/api/analytics/overview'),
           apiGetAuthed<TopicsResponse>('/api/analytics/topics'),
           apiGetAuthed<HistoryResponse>('/api/analytics/history?limit=50'),
+          apiGetAuthed<CommercialLearningResponse>('/api/commercial/learning'),
+          apiGetAuthed<RevenuePathResponse>('/api/revenue/paths'),
+          apiGetAuthed<StudioEnterpriseOSResponse>('/api/studio/enterprise-os'),
         ]);
         const entries = Array.isArray(history.entries) ? history.entries : [];
         const flairs = Array.isArray(topics.flairs) ? topics.flairs : [];
@@ -188,6 +306,9 @@ export default function Analytics() {
           })),
         );
         setDailyTrends(buildDailyTrends(entries));
+        setCommercialLearning(commercial);
+        setRevenuePaths(revenue);
+        setEnterpriseOS(enterprise);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load analytics');
         setSummary({
@@ -200,6 +321,9 @@ export default function Analytics() {
         setTopPerformers([]);
         setTopicBreakdown([]);
         setDailyTrends([]);
+        setCommercialLearning(null);
+        setRevenuePaths(null);
+        setEnterpriseOS(null);
       } finally {
         setLoading(false);
       }
@@ -225,7 +349,7 @@ export default function Analytics() {
       )}
 
       {/* Summary Cards */}
-      <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-6">
         <SummaryCard
           icon={<Eye size={16} />}
           label="Total Views"
@@ -246,6 +370,198 @@ export default function Analytics() {
           label="Best Topic"
           value={summary?.bestTopic ?? '--'}
         />
+        <SummaryCard
+          icon={<MousePointerClick size={16} />}
+          label="Commercial Clicks"
+          value={String(commercialLearning?.totals?.clicks ?? 0)}
+        />
+        <SummaryCard
+          icon={<Route size={16} />}
+          label="Revenue Paths"
+          value={String(revenuePaths?.totals?.pass ?? 0)}
+        />
+      </div>
+
+      <div className="mb-8 rounded-xl border border-white/[0.06] bg-[#252B3B] p-5">
+        <h2 className="mb-4 flex items-center gap-2 text-xs font-bold tracking-[0.15em] text-white/50">
+          <ShieldCheck size={14} className="text-[#FF6B1A]" />
+          Studio Enterprise OS
+        </h2>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
+          <SummaryCard
+            icon={<Gauge size={16} />}
+            label="Autonomy Mode"
+            value={enterpriseOS?.autonomy_control_tower?.mode || 'unknown'}
+          />
+          <SummaryCard
+            icon={<Route size={16} />}
+            label="Motion Readiness"
+            value={`${enterpriseCardValue(enterpriseOS, 'motion_ready', 0)} ready / ${enterpriseCardValue(enterpriseOS, 'motion_blocked', 0)} blocked`}
+          />
+          <SummaryCard
+            icon={<ShieldCheck size={16} />}
+            label="Security"
+            value={enterpriseOS?.security_secret_management?.status || 'unknown'}
+          />
+          <SummaryCard
+            icon={<AlertCircle size={16} />}
+            label="Blockers"
+            value={String(enterpriseOS?.autonomy_control_tower?.blockers?.length ?? 0)}
+          />
+        </div>
+        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+          <div className="rounded-lg border border-white/[0.05] bg-black/10 p-4">
+            <p className="mb-3 text-[10px] font-bold tracking-wider text-white/30">
+              LIVE GATES
+            </p>
+            {(enterpriseOS?.autonomy_control_tower?.blockers || []).length === 0 ? (
+              <p className="text-xs text-white/45">No active enterprise blockers.</p>
+            ) : (
+              (enterpriseOS?.autonomy_control_tower?.blockers || []).slice(0, 6).map((blocker) => (
+                <p key={blocker} className="mb-2 text-xs text-white/55">
+                  {blocker}
+                </p>
+              ))
+            )}
+          </div>
+          <div className="rounded-lg border border-white/[0.05] bg-black/10 p-4">
+            <p className="mb-3 text-[10px] font-bold tracking-wider text-white/30">
+              Next Actions
+            </p>
+            {(enterpriseOS?.next_actions || []).slice(0, 4).map((item, index) => (
+              <p key={`${item.owner || 'action'}-${index}`} className="mb-3 text-xs leading-5 text-white/55">
+                <span className="mr-2 rounded bg-[#FF6B1A]/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-[#FF6B1A]">
+                  {item.priority || 'P1'}
+                </span>
+                {item.action}
+              </p>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="mb-8 rounded-xl border border-white/[0.06] bg-[#252B3B] p-5">
+        <h2 className="mb-4 flex items-center gap-2 text-xs font-bold tracking-[0.15em] text-white/50">
+          <Route size={14} className="text-[#FF6B1A]" />
+          Revenue Paths
+        </h2>
+        {(revenuePaths?.top_paths || []).length === 0 ? (
+          <p className="py-6 text-center text-sm text-white/20">
+            No revenue paths built yet.
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-white/[0.06] text-[10px] font-bold tracking-wider text-white/30">
+                    <th className="py-2 pr-3">STORY</th>
+                    <th className="py-2 pr-3 text-right">SCORE</th>
+                    <th className="py-2 pr-3 text-right">GATE</th>
+                    <th className="py-2 text-right">LIFT</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(revenuePaths?.top_paths || []).slice(0, 5).map((pathRow) => (
+                    <tr key={pathRow.story_id} className="border-b border-white/[0.03]">
+                      <td className="max-w-[340px] py-2.5 pr-3">
+                        <p className="truncate text-xs text-white/65">{pathRow.title}</p>
+                        <p className="mt-1 truncate text-[10px] text-white/30">
+                          {pathRow.primary_offer?.label || pathRow.primary_path_type || 'Story page'}
+                        </p>
+                      </td>
+                      <td className="py-2.5 pr-3 text-right text-xs font-bold text-[#FF6B1A]">
+                        {pathRow.revenue_path_score}
+                      </td>
+                      <td className="py-2.5 pr-3 text-right text-[10px] uppercase text-white/35">
+                        {pathRow.verdict}
+                      </td>
+                      <td className="py-2.5 text-right text-[10px] uppercase text-white/35">
+                        {pathRow.learning_lift || 'unknown'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="rounded-lg border border-white/[0.05] bg-black/10 p-4">
+              <p className="mb-3 text-[10px] font-bold tracking-wider text-white/30">
+                NEXT MOVES
+              </p>
+              {(revenuePaths?.recommendations || []).slice(0, 3).map((rec, index) => (
+                <p key={`${rec.type || 'rec'}-${index}`} className="mb-3 text-xs leading-5 text-white/55">
+                  <span className="mr-2 rounded bg-[#FF6B1A]/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-[#FF6B1A]">
+                    {rec.priority || 'normal'}
+                  </span>
+                  {rec.text}
+                </p>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="mb-8 rounded-xl border border-white/[0.06] bg-[#252B3B] p-5">
+        <h2 className="mb-4 flex items-center gap-2 text-xs font-bold tracking-[0.15em] text-white/50">
+          <MousePointerClick size={14} className="text-[#FF6B1A]" />
+          Commercial Learning
+        </h2>
+        {(commercialLearning?.top_stories || []).length === 0 ? (
+          <p className="py-6 text-center text-sm text-white/20">
+            No commercial clicks recorded yet.
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-white/[0.06] text-[10px] font-bold tracking-wider text-white/30">
+                    <th className="py-2 pr-3">STORY</th>
+                    <th className="py-2 pr-3 text-right">CLICKS</th>
+                    <th className="py-2 pr-3 text-right">CTR</th>
+                    <th className="py-2 text-right">LIFT</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(commercialLearning?.top_stories || []).slice(0, 5).map((story) => (
+                    <tr key={story.story_id} className="border-b border-white/[0.03]">
+                      <td className="max-w-[340px] py-2.5 pr-3">
+                        <p className="truncate text-xs text-white/65">{story.title}</p>
+                        <p className="mt-1 truncate text-[10px] text-white/30">
+                          {story.top_offer?.label || 'Story page'}
+                        </p>
+                      </td>
+                      <td className="py-2.5 pr-3 text-right text-xs font-bold text-[#FF6B1A]">
+                        {story.clicks}
+                      </td>
+                      <td className="py-2.5 pr-3 text-right text-xs text-white/40">
+                        {typeof story.affiliate_click_rate === 'number'
+                          ? `${(story.affiliate_click_rate * 100).toFixed(2)}%`
+                          : 'n/a'}
+                      </td>
+                      <td className="py-2.5 text-right text-[10px] uppercase text-white/35">
+                        {story.commercial_angle_lift || 'unknown'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="rounded-lg border border-white/[0.05] bg-black/10 p-4">
+              <p className="mb-3 text-[10px] font-bold tracking-wider text-white/30">
+                RECOMMENDATIONS
+              </p>
+              {(commercialLearning?.recommendations || []).slice(0, 3).map((rec, index) => (
+                <p key={`${rec.type || 'rec'}-${index}`} className="mb-3 text-xs leading-5 text-white/55">
+                  <span className="mr-2 rounded bg-[#FF6B1A]/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-[#FF6B1A]">
+                    {rec.priority || 'normal'}
+                  </span>
+                  {rec.text}
+                </p>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Top Performers Table */}

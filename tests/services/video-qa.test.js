@@ -7,8 +7,12 @@ const {
   parseFfprobeDuration,
   parseBlackdetectOutput,
   DEFAULT_MIN_DURATION_SECONDS,
+  DEFAULT_MIN_RETENTION_SHORT_SECONDS,
+  DEFAULT_MIN_NORMAL_PRODUCTION_SECONDS,
+  DEFAULT_MAX_NORMAL_PRODUCTION_SECONDS,
   DEFAULT_MAX_DURATION_SECONDS,
   DEFAULT_MAX_BLACK_SEGMENT_SECONDS,
+  buildVideoQaOptionsForStory,
 } = require("../../lib/services/video-qa");
 
 // ---------- ffprobe output parsing ----------
@@ -56,6 +60,53 @@ test("parseBlackdetectOutput: returns empty array on empty/no-match input", () =
   assert.deepStrictEqual(parseBlackdetectOutput(""), []);
   assert.deepStrictEqual(parseBlackdetectOutput("some unrelated log"), []);
   assert.deepStrictEqual(parseBlackdetectOutput(null), []);
+});
+
+test("buildVideoQaOptionsForStory only permits short retention edits when metadata says so", () => {
+  const blocked = classifyVideoQa({ durationSeconds: 35.2, blackSegments: [] });
+  assert.strictEqual(blocked.result, "fail");
+  assert.ok(blocked.failures.some((f) => f.startsWith("duration_too_short")));
+
+  const options = buildVideoQaOptionsForStory({
+    duration_lane: "pulse_retention_short",
+    allow_retention_short_video: true,
+  });
+  const allowed = classifyVideoQa({
+    durationSeconds: 35.2,
+    blackSegments: [],
+    ...options,
+  });
+
+  assert.strictEqual(options.minDuration, DEFAULT_MIN_RETENTION_SHORT_SECONDS);
+  assert.strictEqual(allowed.result, "pass");
+});
+
+test("buildVideoQaOptionsForStory permits governed normal-production V4 shorts from 35 to 60 seconds", () => {
+  const blockedByLegacyFloor = classifyVideoQa({ durationSeconds: 37.28, blackSegments: [] });
+  assert.strictEqual(blockedByLegacyFloor.result, "fail");
+  assert.ok(blockedByLegacyFloor.failures.some((f) => f.startsWith("duration_too_short")));
+
+  const options = buildVideoQaOptionsForStory({
+    duration_lane: "normal_production",
+    render_lane: "visual_v4_production",
+    render_quality_class: "premium",
+  });
+  const allowed = classifyVideoQa({
+    durationSeconds: 37.28,
+    blackSegments: [],
+    ...options,
+  });
+  const overlong = classifyVideoQa({
+    durationSeconds: 64,
+    blackSegments: [],
+    ...options,
+  });
+
+  assert.strictEqual(options.minDuration, DEFAULT_MIN_NORMAL_PRODUCTION_SECONDS);
+  assert.strictEqual(options.maxDuration, DEFAULT_MAX_NORMAL_PRODUCTION_SECONDS);
+  assert.strictEqual(allowed.result, "pass");
+  assert.strictEqual(overlong.result, "fail");
+  assert.ok(overlong.failures.some((f) => f.startsWith("duration_too_long")));
 });
 
 // ---------- classifyVideoQa: duration branch ----------

@@ -35,6 +35,8 @@ test("upload_tiktok exports the full public surface required by server.js", () =
     "generatePkceVerifier",
     "buildPkceChallenge",
     "exchangeCode",
+    "buildPublishStatusFetchRequest",
+    "isTikTokOperatorDisabled",
   ];
   for (const name of required) {
     assert.strictEqual(
@@ -42,6 +44,27 @@ test("upload_tiktok exports the full public surface required by server.js", () =
       "function",
       `upload_tiktok must export ${name} as a function`,
     );
+  }
+});
+
+test("upload_tiktok uploadAll and uploadShort fail closed when operator-disabled", async () => {
+  const oldEnabled = process.env.TIKTOK_ENABLED;
+  const oldAuto = process.env.TIKTOK_AUTO_UPLOAD_ENABLED;
+  process.env.TIKTOK_ENABLED = "false";
+  process.env.TIKTOK_AUTO_UPLOAD_ENABLED = "false";
+  try {
+    const mod = require("../../upload_tiktok");
+    assert.strictEqual(mod.isTikTokOperatorDisabled(), true);
+    assert.deepStrictEqual(await mod.uploadAll(), []);
+    await assert.rejects(
+      mod.uploadShort({ id: "rss_disabled", title: "Disabled", exported_path: "x.mp4" }),
+      /tiktok_operator_disabled/,
+    );
+  } finally {
+    if (oldEnabled === undefined) delete process.env.TIKTOK_ENABLED;
+    else process.env.TIKTOK_ENABLED = oldEnabled;
+    if (oldAuto === undefined) delete process.env.TIKTOK_AUTO_UPLOAD_ENABLED;
+    else process.env.TIKTOK_AUTO_UPLOAD_ENABLED = oldAuto;
   }
 });
 
@@ -65,6 +88,16 @@ test("upload_tiktok builds an official inbox upload request without public post 
     },
   });
   assert.ok(!Object.prototype.hasOwnProperty.call(req.body, "post_info"));
+});
+
+test("upload_tiktok builds a redaction-safe publish status fetch request", () => {
+  const { buildPublishStatusFetchRequest } = require("../../upload_tiktok");
+  const req = buildPublishStatusFetchRequest("v_inbox_file~123");
+
+  assert.match(req.url, /\/v2\/post\/publish\/status\/fetch\/$/);
+  assert.deepStrictEqual(req.body, { publish_id: "v_inbox_file~123" });
+  assert.strictEqual(req.safety.publicAutoPublish, false);
+  assert.strictEqual(req.safety.printsToken, false);
 });
 
 test("server.js's platforms/status heal destructure matches upload_tiktok exports", () => {

@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 "use strict";
 
+require("dotenv").config({ quiet: true });
+const fs = require("node:fs");
+const path = require("node:path");
+
 /**
  * tools/render-health.js — print the render-health digest on demand.
  *
@@ -19,10 +23,33 @@
 
 const {
   runRenderHealthDigest,
+  splitRenderHealthSummary,
 } = require("../lib/intelligence/render-health-digest");
 
+const ROOT = path.resolve(__dirname, "..");
+const DEFAULT_BRIDGE_CANDIDATES_PATH = path.join(
+  ROOT,
+  "output",
+  "goal-contract",
+  "scheduler_bridge_candidates.json",
+);
+const DEFAULT_OUTPUT_DIR = path.join(ROOT, "output", "goal-contract");
+const DEFAULT_DRY_RUN_PLAN_PATH = path.join(
+  ROOT,
+  "output",
+  "goal-contract",
+  "dry_run_publish_plan.json",
+);
+
 function parseArgs(argv) {
-  const args = { hours: 24, json: false };
+  const args = {
+    hours: 24,
+    json: false,
+    bridgeCandidatesPath: DEFAULT_BRIDGE_CANDIDATES_PATH,
+    dryRunPlanPath: DEFAULT_DRY_RUN_PLAN_PATH,
+    outputDir: DEFAULT_OUTPUT_DIR,
+    writeReports: true,
+  };
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--json") {
@@ -33,6 +60,26 @@ function parseArgs(argv) {
     } else if (a.startsWith("--hours=")) {
       const n = Number(a.slice("--hours=".length));
       if (Number.isFinite(n) && n > 0) args.hours = n;
+    } else if (a === "--bridge-candidates" || a === "--bridge") {
+      args.bridgeCandidatesPath = argv[++i] || "";
+    } else if (a.startsWith("--bridge-candidates=")) {
+      args.bridgeCandidatesPath = a.slice("--bridge-candidates=".length);
+    } else if (a.startsWith("--bridge=")) {
+      args.bridgeCandidatesPath = a.slice("--bridge=".length);
+    } else if (a === "--no-bridge-candidates" || a === "--no-bridge") {
+      args.bridgeCandidatesPath = "";
+    } else if (a === "--dry-run-plan") {
+      args.dryRunPlanPath = argv[++i] || "";
+    } else if (a.startsWith("--dry-run-plan=")) {
+      args.dryRunPlanPath = a.slice("--dry-run-plan=".length);
+    } else if (a === "--no-dry-run-plan") {
+      args.dryRunPlanPath = "";
+    } else if (a === "--out-dir") {
+      args.outputDir = argv[++i] || "";
+    } else if (a.startsWith("--out-dir=")) {
+      args.outputDir = a.slice("--out-dir=".length);
+    } else if (a === "--no-write") {
+      args.writeReports = false;
     } else if (a === "--help" || a === "-?") {
       args.help = true;
     }
@@ -44,8 +91,74 @@ function printHelp() {
   process.stdout.write(
     "Usage: node tools/render-health.js [--hours N] [--json]\n" +
       "  --hours N   Look-back window in hours (default 24)\n" +
-      "  --json      Print the summary as JSON instead of markdown\n",
+      "  --json      Print the summary as JSON instead of markdown\n" +
+      "  --bridge-candidates PATH  Include governed V4 bridge candidates\n" +
+      "  --no-bridge-candidates    Ignore bridge candidates\n" +
+      "  --dry-run-plan PATH        Include strict dry-run plan blocker context\n" +
+      "  --no-dry-run-plan         Ignore strict dry-run blocker context\n" +
+      "  --out-dir PATH            Write JSON report artefacts here\n" +
+      "  --no-write                Do not write report artefacts\n",
   );
+}
+
+function resolveCandidatePath(candidatePath) {
+  if (!candidatePath) return "";
+  return path.isAbsolute(candidatePath)
+    ? candidatePath
+    : path.resolve(ROOT, candidatePath);
+}
+
+function readBridgeCandidates(candidatePath) {
+  const resolved = resolveCandidatePath(candidatePath);
+  if (!resolved || !fs.existsSync(resolved)) return [];
+
+  const parsed = JSON.parse(fs.readFileSync(resolved, "utf8"));
+  const candidates = Array.isArray(parsed)
+    ? parsed
+    : Array.isArray(parsed.candidates)
+      ? parsed.candidates
+      : Array.isArray(parsed.scheduler_bridge_candidates)
+        ? parsed.scheduler_bridge_candidates
+        : [];
+
+  const loadedAt = new Date().toISOString();
+  return candidates.map((candidate) => ({
+    ...candidate,
+    _bridge_loaded_at: loadedAt,
+  }));
+}
+
+function readJsonIfPresent(filePath) {
+  const resolved = resolveCandidatePath(filePath);
+  if (!resolved || !fs.existsSync(resolved)) return {};
+  return JSON.parse(fs.readFileSync(resolved, "utf8"));
+}
+
+function resolveOutputDir(outputDir) {
+  if (!outputDir) return "";
+  return path.isAbsolute(outputDir) ? outputDir : path.resolve(ROOT, outputDir);
+}
+
+function writeReportArtifacts({ summary, markdown, outputDir }) {
+  const resolved = resolveOutputDir(outputDir);
+  if (!resolved) return null;
+  fs.mkdirSync(resolved, { recursive: true });
+  const reports = splitRenderHealthSummary(summary);
+  reports.discord_digest_payload.markdown = markdown;
+  const files = {
+    render_health_report: path.join(resolved, "render_health_report.json"),
+    live_db_health_report: path.join(resolved, "live_db_health_report.json"),
+    bridge_health_report: path.join(resolved, "bridge_health_report.json"),
+    direct_video_enrichment_work_order: path.join(
+      resolved,
+      "direct_video_enrichment_work_order.json",
+    ),
+    discord_digest_payload: path.join(resolved, "discord_digest_payload.json"),
+  };
+  for (const [key, filePath] of Object.entries(files)) {
+    fs.writeFileSync(filePath, JSON.stringify(reports[key], null, 2) + "\n");
+  }
+  return files;
 }
 
 async function main() {
@@ -54,9 +167,22 @@ async function main() {
     printHelp();
     return;
   }
-  const { summary, markdown } = await runRenderHealthDigest({
+  // Keep the operator artefact clean; lib/db logs connection details via
+  // console.log during module initialisation.
+  console.log = () => {};
+  console.info = () => {};
+  console.warn = () => {};
+  const bridgeCandidates = readBridgeCandidates(args.bridgeCandidatesPath);
+  const dryRunPlan = readJsonIfPresent(args.dryRunPlanPath);
+  const result = await runRenderHealthDigest({
     windowHours: args.hours,
+    bridgeCandidates,
+    dryRunPlan,
   });
+  const { summary, markdown } = result;
+  if (args.writeReports) {
+    writeReportArtifacts({ summary, markdown, outputDir: args.outputDir });
+  }
   if (args.json) {
     process.stdout.write(JSON.stringify(summary, null, 2) + "\n");
   } else {

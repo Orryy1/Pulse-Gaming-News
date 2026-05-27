@@ -5,6 +5,17 @@ const dotenv = require("dotenv");
 const { withRetry } = require("./lib/retry");
 const { addBreadcrumb, captureException } = require("./lib/sentry");
 const { validateVideo } = require("./lib/validate");
+const {
+  assertPlatformVideoQaPass,
+} = require("./lib/services/platform-video-qa");
+const {
+  assertBatchUploadPreflight,
+  storyIsBatchUploadCandidate,
+} = require("./lib/services/batch-upload-preflight");
+const {
+  assertDirectUploadAllowed,
+  buildDirectUploadPolicy,
+} = require("./lib/services/direct-upload-policy");
 const db = require("./lib/db");
 const mediaPaths = require("./lib/media-paths");
 const { getPublicUrl } = require("./lib/deployment-mode");
@@ -13,6 +24,10 @@ const {
   formatStorySource,
   normaliseAffiliateLinks,
 } = require("./lib/affiliate-targeting");
+const {
+  assertPublicMetadataSafe,
+  safePublicExcerpt,
+} = require("./lib/public-metadata-qa");
 
 dotenv.config({ override: true });
 
@@ -272,18 +287,19 @@ async function uploadReel(story) {
         (await mediaPaths.resolveExisting(story.exported_path)) ||
         story.exported_path;
       await validateVideo(exportedAbs, "instagram");
+      await assertPlatformVideoQaPass(exportedAbs, { platform: "instagram" });
+      const { getBestTitle } = require("./ab_titles");
+      const publicTitle = getBestTitle(story);
+      assertPublicMetadataSafe(story, {
+        surface: "instagram",
+        publicTitle,
+      });
 
       // Build caption - channel-aware hashtags
       const { getChannel } = require("./channels");
       const channel = getChannel();
-      let caption =
-        story.suggested_title || story.suggested_thumbnail_text || story.title;
-      const cleanScript = (story.full_script || "")
-        .replace(/\[PAUSE\]/gi, "")
-        .replace(/\[VISUAL:[^\]]*\]/gi, "")
-        .replace(/\s+/g, " ")
-        .trim();
-      caption += "\n\n" + cleanScript.substring(0, 500);
+      let caption = publicTitle;
+      caption += "\n\n" + safePublicExcerpt(story.full_script, 500);
       const tags = (channel.hashtags || [])
         .map((h) => h.replace("#Shorts", "#reels"))
         .join(" ");
@@ -448,8 +464,8 @@ async function uploadAll() {
     return [];
   }
 
-  const ready = stories.filter(
-    (s) => s.approved && s.exported_path && !s.instagram_media_id,
+  const ready = stories.filter((s) =>
+    storyIsBatchUploadCandidate(s, "instagram_media_id"),
   );
 
   console.log(`[instagram] ${ready.length} videos ready for upload`);
@@ -458,6 +474,7 @@ async function uploadAll() {
 
   for (const story of ready) {
     try {
+      await assertBatchUploadPreflight(story, { platform: "instagram" });
       const result = await uploadReel(story);
       story.instagram_media_id = result.mediaId;
       results.push(result);
@@ -483,6 +500,17 @@ async function uploadReelViaUrl(story) {
 
   const accessToken = await getAccessToken();
   const accountId = getAccountId();
+  const exportedAbs =
+    (await mediaPaths.resolveExisting(story.exported_path)) ||
+    story.exported_path;
+  await validateVideo(exportedAbs, "instagram");
+  await assertPlatformVideoQaPass(exportedAbs, { platform: "instagram" });
+  const { getBestTitle } = require("./ab_titles");
+  const publicTitle = getBestTitle(story);
+  assertPublicMetadataSafe(story, {
+    surface: "instagram",
+    publicTitle,
+  });
 
   const publicBaseUrl = getPublicUrl();
   // Include .mp4 suffix — IG/FB crawlers refuse URIs that don't
@@ -493,14 +521,8 @@ async function uploadReelViaUrl(story) {
 
   const { getChannel } = require("./channels");
   const channel = getChannel();
-  let caption =
-    story.suggested_title || story.suggested_thumbnail_text || story.title;
-  const cleanScript = (story.full_script || "")
-    .replace(/\[PAUSE\]/gi, "")
-    .replace(/\[VISUAL:[^\]]*\]/gi, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  caption += "\n\n" + cleanScript.substring(0, 500);
+  let caption = publicTitle;
+  caption += "\n\n" + safePublicExcerpt(story.full_script, 500);
   const tags = (channel.hashtags || [])
     .map((h) => h.replace("#Shorts", "#reels"))
     .join(" ");
@@ -738,8 +760,21 @@ module.exports = {
 };
 
 if (require.main === module) {
-  uploadAll().catch((err) => {
+  try {
+    const directPolicy = buildDirectUploadPolicy({ platform: "instagram" });
+    assertDirectUploadAllowed(directPolicy);
+    if (directPolicy.mode !== "actual_upload") {
+      console.log(
+        `[instagram] Direct upload ${directPolicy.mode}: no upload dispatched`,
+      );
+    } else {
+      uploadAll().catch((err) => {
+        console.log(`[instagram] ERROR: ${err.message}`);
+        process.exit(1);
+      });
+    }
+  } catch (err) {
     console.log(`[instagram] ERROR: ${err.message}`);
     process.exit(1);
-  });
+  }
 }

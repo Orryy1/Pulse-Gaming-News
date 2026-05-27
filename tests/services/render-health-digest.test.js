@@ -41,6 +41,37 @@ test("buildRenderHealthSummary: stories outside window are excluded", () => {
   assert.equal(r.stamped, 1);
 });
 
+test("buildRenderHealthSummary: recent published legacy render is included without exported_at", () => {
+  const recent = new Date().toISOString();
+  const stories = [
+    story({
+      exported_at: undefined,
+      created_at: oldStamp(),
+      updated_at: oldStamp(),
+      published_at: recent,
+    }),
+  ];
+  const r = digest.buildRenderHealthSummary(stories, { windowHours: 24 });
+  assert.equal(r.total_in_window, 1);
+  assert.equal(r.stamped, 1);
+});
+
+test("buildRenderHealthSummary: recent updated old render is excluded without export/publish timestamps", () => {
+  const recent = new Date().toISOString();
+  const stories = [
+    story({
+      exported_at: undefined,
+      created_at: oldStamp(),
+      updated_at: recent,
+      published_at: undefined,
+      youtube_published_at: undefined,
+    }),
+  ];
+  const r = digest.buildRenderHealthSummary(stories, { windowHours: 24 });
+  assert.equal(r.total_in_window, 0);
+  assert.equal(r.stamped, 0);
+});
+
 test("buildRenderHealthSummary: stamp-less rows count as unstamped (excluded from %)", () => {
   const stories = [
     story(),
@@ -143,6 +174,330 @@ test("formatDigest: empty window emits 'no stamped stories'", () => {
   assert.match(md, /No stamped stories in window/);
 });
 
+test("buildRenderHealthSummary: bridge candidates are reported separately from live DB stamps", () => {
+  const r = digest.buildRenderHealthSummary(
+    [story({ render_quality_class: undefined, render_lane: undefined })],
+    {
+      bridgeCandidates: [
+        {
+          id: "bridge-one",
+          approved_at: new Date().toISOString(),
+          render_quality_class: "premium",
+          render_lane: "visual_v4_production",
+          qa_visual_count: 8,
+          outro_present: true,
+          thumbnail_candidate_present: true,
+        },
+      ],
+    },
+  );
+
+  assert.equal(r.stamped, 0);
+  assert.equal(r.unstamped, 1);
+  assert.equal(r.bridge.candidate_count, 1);
+  assert.equal(r.bridge.stamped, 1);
+  assert.equal(r.bridge.quality.premium, 1);
+  assert.equal(r.bridge.lane.visual_v4_production, 1);
+  assert.equal(r.bridge.visual_count.median, 8);
+});
+
+test("splitRenderHealthSummary: emits separate live DB and scheduler bridge reports", () => {
+  const summary = digest.buildRenderHealthSummary(
+    [story({ render_quality_class: undefined, render_lane: undefined })],
+    {
+      bridgeCandidates: [
+        {
+          id: "bridge-one",
+          approved_at: new Date().toISOString(),
+          render_quality_class: "premium",
+          render_lane: "visual_v4_production",
+          qa_visual_count: 8,
+        },
+      ],
+    },
+  );
+
+  const split = digest.splitRenderHealthSummary(summary);
+
+  assert.equal(split.live_db_health_report.stamped, 0);
+  assert.equal(split.live_db_health_report.unstamped, 1);
+  assert.equal(Object.hasOwn(split.live_db_health_report, "bridge"), false);
+  assert.equal(split.bridge_health_report.candidate_count, 1);
+  assert.equal(split.bridge_health_report.candidate_count_meaning, "scheduler_bridge_candidates");
+  assert.equal(split.discord_digest_payload.summary.live_db_stamped, 0);
+  assert.equal(split.discord_digest_payload.summary.scheduler_bridge_candidate_count, 1);
+});
+
+test("splitRenderHealthSummary: emits direct-video enrichment work order separately", () => {
+  const summary = digest.buildRenderHealthSummary([], {
+    bridgeCandidates: [
+      {
+        id: "still-motion",
+        title: "Still Motion Needs Gameplay",
+        approved_at: new Date().toISOString(),
+        render_quality_class: "premium",
+        render_lane: "visual_v4_production",
+        qa_visual_count: 6,
+        visual_v4_bridge_video_clips: [
+          {
+            id: "still-1",
+            path: "/tmp/still-1.mp4",
+            source_url: "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1/ss_1.jpg",
+            source_type: "screenshot_derived_motion_clip",
+            rights_risk_class: "source_documented_transformative_editorial_use",
+            source_family: "steam_still_1",
+          },
+        ],
+      },
+    ],
+  });
+
+  const split = digest.splitRenderHealthSummary(summary);
+
+  assert.equal(split.direct_video_enrichment_work_order.summary.job_count, 1);
+  assert.equal(
+    split.discord_digest_payload.summary.scheduler_bridge_direct_video_gap_count,
+    1,
+  );
+});
+
+test("buildRenderHealthSummary: marks direct-video gaps that block strict dry-run", () => {
+  const summary = digest.buildRenderHealthSummary([], {
+    bridgeCandidates: [
+      {
+        id: "still-motion",
+        title: "Still Motion Needs Gameplay",
+        approved_at: new Date().toISOString(),
+        render_quality_class: "premium",
+        render_lane: "visual_v4_production",
+        qa_visual_count: 6,
+        visual_v4_bridge_video_clips: [
+          {
+            id: "still-1",
+            path: "/tmp/still-1.mp4",
+            source_url: "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1/ss_1.jpg",
+            source_type: "screenshot_derived_motion_clip",
+            rights_risk_class: "source_documented_transformative_editorial_use",
+            source_family: "steam_still_1",
+          },
+        ],
+      },
+    ],
+    dryRunPlan: {
+      blocked_stories: [
+        {
+          story_id: "still-motion",
+          blockers: [
+            "preflight_qa_blocked:bridge_motion_governance:direct_video_enrichment_required",
+          ],
+        },
+      ],
+    },
+  });
+
+  const workOrder = summary.bridge.direct_video_enrichment_work_order;
+  assert.equal(workOrder.summary.job_count, 1);
+  assert.equal(workOrder.summary.blocking_current_dry_run_count, 1);
+  assert.equal(workOrder.jobs[0].blocking_current_dry_run, true);
+});
+
+test("buildRenderHealthSummary: bridge candidates expose real-media and generated-only evidence", () => {
+  const now = new Date().toISOString();
+  const generatedClips = Array.from({ length: 8 }, (_, index) => ({
+    id: `generated-${index + 1}`,
+    path: `output/generated-motion/generated-only/${index + 1}.mp4`,
+    source_url: `local://pulse-generated-motion/generated-only/${index + 1}`,
+    source_type: "internally_generated_motion_graphic",
+    rights_risk_class: "owned_generated_motion",
+    source_family: `generated_family_${index + 1}`,
+  }));
+  const stillClips = Array.from({ length: 7 }, (_, index) => ({
+    id: `still-${index + 1}`,
+    path: `/tmp/still-${index + 1}.mp4`,
+    source_url: `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1/ss_${index + 1}.jpg`,
+    source_type: "screenshot_derived_motion_clip",
+    rights_risk_class: "source_documented_transformative_editorial_use",
+    source_family: `steam_still_${index + 1}`,
+  }));
+  const directClips = Array.from({ length: 5 }, (_, index) => ({
+    id: `direct-${index + 1}`,
+    path: `/tmp/direct-${index + 1}.mp4`,
+    source_url: `https://cdn.example.test/gameplay-${index + 1}.mp4`,
+    source_type: "official_trailer_segment",
+    rights_risk_class: "official_reference_only",
+    source_family: `official_video_${index + 1}`,
+  }));
+
+  const r = digest.buildRenderHealthSummary([], {
+    bridgeCandidates: [
+      {
+        id: "generated-only",
+        approved_at: now,
+        render_quality_class: "premium",
+        render_lane: "visual_v4_production",
+        qa_visual_count: 8,
+        visual_v4_bridge_video_clips: generatedClips,
+      },
+      {
+        id: "still-motion",
+        approved_at: now,
+        render_quality_class: "premium",
+        render_lane: "visual_v4_production",
+        qa_visual_count: 7,
+        visual_v4_bridge_video_clips: stillClips,
+        rights_ledger: stillClips,
+      },
+      {
+        id: "direct-video",
+        approved_at: now,
+        render_quality_class: "premium",
+        render_lane: "visual_v4_production",
+        qa_visual_count: 5,
+        visual_v4_bridge_video_clips: directClips,
+        rights_ledger: directClips,
+      },
+    ],
+  });
+
+  assert.equal(r.bridge.visual_evidence.real_media_ready_count, 2);
+  assert.equal(r.bridge.visual_evidence.generated_only_motion_deck_count, 1);
+  assert.equal(r.bridge.visual_evidence.no_real_visual_media_asset_count, 1);
+  assert.equal(r.bridge.visual_evidence.direct_video_motion_count, 1);
+  assert.equal(r.bridge.visual_evidence.screenshot_derived_only_count, 1);
+  assert.deepEqual(r.bridge.visual_evidence.direct_video_gap_story_ids, [
+    "generated-only",
+    "still-motion",
+  ]);
+  assert.deepEqual(r.bridge.visual_evidence.screenshot_derived_only_story_ids, ["still-motion"]);
+  assert.deepEqual(r.bridge.visual_evidence.generated_only_story_ids, ["generated-only"]);
+
+  const md = digest.formatDigest(r);
+  assert.match(md, /Bridge visual evidence: real media 2\/3/);
+  assert.match(md, /direct-video motion 1\/3/);
+  assert.match(md, /generated-only 1/);
+  assert.match(md, /screenshot-derived only 1/);
+  assert.match(md, /direct-video motion coverage is low/);
+  assert.match(md, /Direct-video gap sample: generated-only, still-motion/);
+});
+
+test("buildRenderHealthSummary: bridge visual evidence uses the shared direct-video classifier", () => {
+  const now = new Date().toISOString();
+  const productPageClips = [
+    {
+      id: "ps5-product-video",
+      path: "C:/tmp/ps5-product-video.mp4",
+      source_url: "https://gmedia.playstation.com/is/content/SIEPDC/ps5-overview.mp4",
+      source_type: "official_platform_product_page",
+      source_url_kind: "direct_video",
+      media_kind: "direct_video",
+      licence_basis: "official_platform_product_page_transformative_editorial_use",
+      source_family: "official_playstation_ps5_product_page",
+    },
+  ];
+
+  const r = digest.buildRenderHealthSummary([], {
+    bridgeCandidates: [
+      {
+        id: "ps5-product-page",
+        approved_at: now,
+        render_quality_class: "premium",
+        render_lane: "visual_v4_production",
+        qa_visual_count: 8,
+        visual_v4_bridge_video_clips: productPageClips,
+        rights_ledger: productPageClips,
+      },
+    ],
+  });
+
+  assert.equal(r.bridge.visual_evidence.direct_video_motion_count, 1);
+  assert.deepEqual(r.bridge.visual_evidence.direct_video_story_ids, ["ps5-product-page"]);
+  assert.deepEqual(r.bridge.visual_evidence.direct_video_gap_story_ids, []);
+});
+
+test("buildRenderHealthSummary: bridge direct-video gaps become enrichment work orders", () => {
+  const now = new Date().toISOString();
+  const stillClips = Array.from({ length: 6 }, (_, index) => ({
+    id: `still-${index + 1}`,
+    path: `/tmp/still-${index + 1}.mp4`,
+    source_url: `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1/ss_${index + 1}.jpg`,
+    source_type: "screenshot_derived_motion_clip",
+    rights_risk_class: "source_documented_transformative_editorial_use",
+    source_family: `steam_still_${index + 1}`,
+  }));
+  const directClips = [
+    {
+      id: "direct-1",
+      path: "/tmp/direct-1.mp4",
+      source_url: "https://cdn.example.test/gameplay-1.mp4",
+      source_type: "official_trailer_segment",
+      source_url_kind: "direct_video",
+      media_kind: "direct_video",
+      rights_risk_class: "official_reference_only",
+      source_family: "official_video_1",
+    },
+  ];
+
+  const r = digest.buildRenderHealthSummary([], {
+    bridgeCandidates: [
+      {
+        id: "still-motion",
+        title: "Still Motion Needs Gameplay",
+        approved_at: now,
+        render_quality_class: "premium",
+        render_lane: "visual_v4_production",
+        qa_visual_count: 6,
+        visual_v4_bridge_video_clips: stillClips,
+        rights_ledger: stillClips,
+      },
+      {
+        id: "direct-video",
+        title: "Direct Video Already Ready",
+        approved_at: now,
+        render_quality_class: "premium",
+        render_lane: "visual_v4_production",
+        qa_visual_count: 6,
+        visual_v4_bridge_video_clips: directClips,
+        rights_ledger: directClips,
+      },
+    ],
+  });
+
+  const workOrder = r.bridge.direct_video_enrichment_work_order;
+  assert.equal(workOrder.summary.job_count, 1);
+  assert.equal(workOrder.summary.quality_gap_count, 1);
+  assert.equal(workOrder.jobs[0].story_id, "still-motion");
+  assert.equal(workOrder.jobs[0].repair_lane, "direct_video_enrichment");
+  assert.equal(workOrder.jobs[0].blocking_current_dry_run, false);
+  assert.equal(workOrder.jobs[0].operator_approval_required, true);
+  assert.match(
+    workOrder.jobs[0].recommended_commands[0].command,
+    /ops:v4-source-family-acquisition -- --story-id still-motion/,
+  );
+  assert.match(
+    workOrder.jobs[0].post_repair_validation_command,
+    /ops:render-health -- --json/,
+  );
+});
+
+test("formatDigest: bridge candidates make unstamped live debt explicit", () => {
+  const md = digest.formatDigest(
+    digest.buildRenderHealthSummary([], {
+      bridgeCandidates: [
+        {
+          id: "bridge-one",
+          approved_at: new Date().toISOString(),
+          render_quality_class: "premium",
+          render_lane: "visual_v4_production",
+          qa_visual_count: 8,
+        },
+      ],
+    }),
+  );
+
+  assert.match(md, /Bridge V4 final renders: 1 stamped/);
+  assert.match(md, /live DB still has no stamped rows/);
+});
+
 test("formatDigest: high thin-rate triggers 'hold off' operator hint", () => {
   const stories = [
     story({ distinct_visual_count: 1 }),
@@ -153,12 +508,14 @@ test("formatDigest: high thin-rate triggers 'hold off' operator hint", () => {
   assert.match(md, /Hold off on BLOCK_THIN_VISUALS=true/);
 });
 
-test("formatDigest: low thin-rate + sufficient sample triggers 'safe to flip' hint", () => {
+test("formatDigest: low thin-rate + sufficient sample triggers approval-ready pilot hint", () => {
   const stories = Array.from({ length: 12 }, () =>
     story({ distinct_visual_count: 6, render_quality_class: "premium" }),
   );
   const md = digest.formatDigest(digest.buildRenderHealthSummary(stories));
-  assert.match(md, /Safe to flip BLOCK_THIN_VISUALS=true/);
+  assert.match(md, /BLOCK_THIN_VISUALS=true is approval-ready/);
+  assert.match(md, /controlled next-window pilot/);
+  assert.match(md, /do not flip it silently/);
 });
 
 test("formatDigest: surfaces outro misses with the warning glyph", () => {
@@ -180,8 +537,18 @@ test("runRenderHealthDigest: pulls stories via injected db, returns summary + ma
   };
   const { summary, markdown } = await digest.runRenderHealthDigest({
     db: fakeDb,
+    bridgeCandidates: [
+      {
+        id: "bridge-one",
+        approved_at: new Date().toISOString(),
+        render_quality_class: "premium",
+        render_lane: "visual_v4_production",
+        qa_visual_count: 8,
+      },
+    ],
   });
   assert.equal(summary.stamped, 2);
+  assert.equal(summary.bridge.stamped, 1);
   assert.match(markdown, /Render health/);
 });
 

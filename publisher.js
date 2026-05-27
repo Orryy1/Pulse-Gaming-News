@@ -1,11 +1,22 @@
 const fs = require("fs-extra");
 const dotenv = require("dotenv");
+dotenv.config({ override: true });
+
 const sendDiscord = require("./notify");
 const { addBreadcrumb, captureException } = require("./lib/sentry");
 const db = require("./lib/db");
 const { resolveFacebookReelsMode } = require("./lib/platforms/facebook-reels-mode");
-
-dotenv.config({ override: true });
+const {
+  buildPublishCooldownPolicy,
+  buildPublishDailyCapPolicy,
+  buildPublishWindowPolicy,
+} = require("./lib/services/publish-window-policy");
+const {
+  buildPublishDispatchPolicy,
+} = require("./lib/services/publish-dispatch-policy");
+const {
+  publishCandidateBlocker,
+} = require("./lib/services/pipeline-backlog");
 
 // Publish lock - prevents concurrent publishNextStory() calls from creating duplicates
 let publishLock = false;
@@ -18,6 +29,131 @@ function titlesSimilar(a, b) {
   const intersection = [...wordsA].filter((w) => wordsB.has(w));
   const union = new Set([...wordsA, ...wordsB]);
   return intersection.length / union.size > 0.5;
+}
+
+const TITLE_DEDUPE_STOPWORDS = new Set(
+  [
+    "the",
+    "a",
+    "an",
+    "and",
+    "or",
+    "but",
+    "if",
+    "then",
+    "for",
+    "to",
+    "of",
+    "in",
+    "on",
+    "at",
+    "as",
+    "it",
+    "its",
+    "is",
+    "are",
+    "was",
+    "were",
+    "be",
+    "been",
+    "being",
+    "has",
+    "have",
+    "had",
+    "with",
+    "by",
+    "from",
+    "into",
+    "out",
+    "up",
+    "down",
+    "this",
+    "that",
+    "these",
+    "those",
+    "he",
+    "she",
+    "they",
+    "them",
+    "their",
+    "his",
+    "her",
+    "our",
+    "your",
+    "you",
+    "we",
+    "us",
+    "not",
+    "no",
+    "likely",
+    "despite",
+    "says",
+    "said",
+    "explains",
+    "former",
+    "original",
+    "just",
+    "new",
+    "will",
+    "would",
+    "could",
+    "should",
+    "can",
+    "cant",
+    "cannot",
+    "wont",
+    "arent",
+    "there",
+  ].map((word) => word.toLowerCase()),
+);
+
+function titleDedupeTokens(title) {
+  return [
+    ...new Set(
+      String(title || "")
+        .toLowerCase()
+        .replace(/[’‘]/g, "'")
+        .replace(/can't/g, "cant")
+        .replace(/won't/g, "wont")
+        .replace(/aren't/g, "arent")
+        .replace(/[^a-z0-9]+/g, " ")
+        .split(/\s+/)
+        .filter((token) => token.length >= 3)
+        .filter((token) => !TITLE_DEDUPE_STOPWORDS.has(token)),
+    ),
+  ];
+}
+
+function titleDedupeScore(a, b) {
+  const wordsA = titleDedupeTokens(a);
+  const wordsB = titleDedupeTokens(b);
+  if (wordsA.length === 0 || wordsB.length === 0) return 0;
+  const setB = new Set(wordsB);
+  const intersection = wordsA.filter((word) => setB.has(word));
+  const union = new Set([...wordsA, ...wordsB]);
+  return intersection.length / union.size;
+}
+
+function titlesNearDuplicate(a, b) {
+  if (titlesSimilar(a, b)) return true;
+  const wordsA = titleDedupeTokens(a);
+  const wordsB = titleDedupeTokens(b);
+  if (wordsA.length === 0 || wordsB.length === 0) return false;
+  const setB = new Set(wordsB);
+  const shared = wordsA.filter((word) => setB.has(word));
+  return shared.length >= 5 && titleDedupeScore(a, b) >= 0.42;
+}
+
+function findPublishedTitleDuplicate(story, stories, platformIdKey = "youtube_post_id") {
+  return (Array.isArray(stories) ? stories : []).find(
+    (candidate) =>
+      candidate &&
+      candidate.id !== story.id &&
+      typeof candidate[platformIdKey] === "string" &&
+      candidate[platformIdKey].length > 0 &&
+      !candidate[platformIdKey].startsWith("DUPE_") &&
+      titlesNearDuplicate(candidate.title, story.title),
+  );
 }
 
 /**
@@ -426,8 +562,30 @@ async function selfHealStaleMediaPaths({ repos: _repos } = {}) {
 }
 
 // --- Staggered multi-platform upload ---
-async function publishToAllPlatforms() {
+async function publishToAllPlatforms(options = {}) {
   console.log("[publisher] === Multi-Platform Publish ===");
+  console.log(
+    "[publisher] Legacy batch publish delegates to publishNextStory() so content, video and approved-voice QA always run before upload.",
+  );
+
+  const canonical = await publishNextStory({
+    dispatchSource: options.dispatchSource || "legacy_batch_publish",
+    jobId: options.jobId || null,
+    allowManualOverride: options.allowManualOverride === true,
+    storyId: options.storyId || null,
+  });
+  const uploaded = (platform) =>
+    canonical?.platform_outcomes?.[platform] === "new_upload" ||
+    canonical?.platform_outcomes?.[platform] === "accepted_processing" ||
+    canonical?.platform_outcomes?.[platform] === "public_verified";
+
+  return {
+    canonical,
+    youtube: uploaded("youtube") ? [canonical] : [],
+    tiktok: uploaded("tiktok") ? [canonical] : [],
+    instagram: uploaded("instagram") ? [canonical] : [],
+    facebook: uploaded("facebook") ? [canonical] : [],
+  };
 
   const results = { youtube: [], tiktok: [], instagram: [] };
 
@@ -503,7 +661,8 @@ async function publishToAllPlatforms() {
 }
 
 // --- Full autonomous cycle: hunt → approve → produce → publish ---
-async function fullAutonomousCycle() {
+async function fullAutonomousCycle(options = {}) {
+  const cycleDispatchSource = options.dispatchSource || "full_autonomous_cycle";
   const startTime = Date.now();
   console.log("[publisher] ========================================");
   console.log("[publisher] FULL AUTONOMOUS CYCLE STARTED");
@@ -650,7 +809,9 @@ async function fullAutonomousCycle() {
     if (process.env.AUTO_PUBLISH === "true") {
       addBreadcrumb("Publishing to all platforms", "pipeline");
       console.log("[publisher] Step 4/4: Publishing to all platforms...");
-      const results = await publishToAllPlatforms();
+      const results = await publishToAllPlatforms({
+        dispatchSource: cycleDispatchSource,
+      });
 
       const totalUploaded =
         results.youtube.length +
@@ -682,7 +843,8 @@ async function fullAutonomousCycle() {
 }
 
 // --- Publish-only cycle (for the evening optimal posting window) ---
-async function publishOnlyCycle() {
+async function publishOnlyCycle(options = {}) {
+  const cycleDispatchSource = options.dispatchSource || "publish_only_cycle";
   console.log("[publisher] === PUBLISH-ONLY CYCLE ===");
 
   try {
@@ -694,7 +856,9 @@ async function publishOnlyCycle() {
 
     // Publish
     if (process.env.AUTO_PUBLISH === "true") {
-      const results = await publishToAllPlatforms();
+      const results = await publishToAllPlatforms({
+        dispatchSource: cycleDispatchSource,
+      });
       const total =
         results.youtube.length +
         results.tiktok.length +
@@ -711,7 +875,7 @@ async function publishOnlyCycle() {
 
 // --- Publish a single next-available story across all platforms ---
 // Used by the 3x daily publish windows to spread content through the day
-async function publishNextStory() {
+async function publishNextStory(options = {}) {
   // Prevent concurrent publish calls from uploading the same story twice
   if (publishLock) {
     console.log("[publisher] Publish already in progress, skipping");
@@ -720,7 +884,66 @@ async function publishNextStory() {
   publishLock = true;
 
   try {
-    return await _publishNextStoryInner();
+    const dispatchSource = options.dispatchSource || "unspecified";
+    const dispatchGate = buildPublishDispatchPolicy({
+      dispatchSource,
+      env: process.env,
+      allowManualOverride: options.allowManualOverride === true,
+    });
+    if (dispatchGate.advisory.length > 0) {
+      console.log(
+        `[publisher] publish dispatch ${dispatchGate.verdict}: ${dispatchGate.advisory.join(" ")}`,
+      );
+    }
+    if (dispatchGate.blocked) {
+      console.log(
+        `[publisher] publish dispatch blocked for ${dispatchSource}: ${dispatchGate.blockers.join(", ")}`,
+      );
+      return {
+        publish_dispatch_blocked: true,
+        status: "blocked",
+        top_reason: dispatchGate.blockers[0] || "publish_dispatch_blocked",
+        publish_dispatch: {
+          ...dispatchGate,
+          jobId: options.jobId || null,
+          storyId: options.storyId || null,
+        },
+      };
+    }
+    const publishWindow = buildPublishWindowPolicy({
+      dispatchSource,
+      env: process.env,
+    });
+    if (publishWindow.advisory.length > 0) {
+      console.log(
+        `[publisher] publish window ${publishWindow.verdict}: ${publishWindow.advisory.join(" ")}`,
+      );
+    }
+    if (publishWindow.blocked) {
+      console.log(
+        `[publisher] publish window blocked for ${publishWindow.dispatchSource}: ${publishWindow.blockers.join(", ")}`,
+      );
+      return {
+        publish_window_blocked: true,
+        status: "blocked",
+        top_reason: publishWindow.blockers[0] || "publish_window_blocked",
+        publish_dispatch: {
+          ...publishWindow,
+          dispatch_gate: dispatchGate,
+          jobId: options.jobId || null,
+          storyId: options.storyId || null,
+        },
+      };
+    }
+    return await _publishNextStoryInner({
+      publishDispatch: {
+        ...publishWindow,
+        dispatch_gate: dispatchGate,
+        jobId: options.jobId || null,
+        storyId: options.storyId || null,
+      },
+      storyId: options.storyId || null,
+    });
   } finally {
     publishLock = false;
   }
@@ -746,28 +969,140 @@ async function publishNextStory() {
 const MAX_PUBLISH_CANDIDATES_PER_WINDOW = 5;
 
 /**
- * Count how many of the 5 tracked platform post ids the story has
- * already acquired. Used by the candidate ordering (fewest-done
- * first → highest priority) and by the `isRetry` check below.
+ * Core platform completion helpers. TikTok is normally core, but an
+ * explicit operator switch can make it optional for local cutover.
+ * The selector still prioritises candidates with fewer completed
+ * required platforms.
  */
-function countStoryPlatformsDone(s) {
-  return [
+function envExplicitFalse(env, name) {
+  return /^(false|0|no|off)$/i.test(String(env?.[name] || "").trim());
+}
+
+function isTikTokOperatorDisabled(env = process.env) {
+  return (
+    envExplicitFalse(env, "TIKTOK_ENABLED") ||
+    envExplicitFalse(env, "TIKTOK_AUTO_UPLOAD_ENABLED")
+  );
+}
+
+function isRealPostId(id) {
+  return typeof id === "string" && id.length > 0 && !id.startsWith("DUPE_");
+}
+
+function corePostIdsForStory(s, env = process.env) {
+  const ids = [
     s.youtube_post_id,
-    s.tiktok_post_id,
     s.instagram_media_id,
     s.facebook_post_id,
-    s.twitter_post_id,
-  ].filter(Boolean).length;
+  ];
+  if (!isTikTokOperatorDisabled(env)) {
+    ids.splice(1, 0, s.tiktok_post_id);
+  }
+  return ids;
+}
+
+function countStoryPlatformsDone(s, env = process.env) {
+  return corePostIdsForStory(s, env).filter(isRealPostId).length;
+}
+
+function countStoryPlatformsTotal(env = process.env) {
+  return corePostIdsForStory({}, env).length;
+}
+
+function storyCorePublishComplete(s, env = process.env) {
+  return countStoryPlatformsDone(s, env) >= countStoryPlatformsTotal(env);
+}
+
+function parsePublishStoryIds(env = process.env) {
+  return String(env.PUBLISH_STORY_IDS || "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+}
+
+function storyMatchesPublishStoryIds(s, env = process.env) {
+  const ids = parsePublishStoryIds(env);
+  if (ids.length === 0) return true;
+  return ids.includes(String(s?.id || ""));
+}
+
+const DEFAULT_PUBLISH_SELECTION_ANALYTICS_PATH =
+  "D:\\pulse-data\\analytics_findings.md";
+
+function loadPublishSelectionAnalyticsText(env = process.env) {
+  const target =
+    env.PUBLISH_SELECTION_ANALYTICS_PATH ||
+    env.ANALYTICS_FINDINGS_PATH ||
+    DEFAULT_PUBLISH_SELECTION_ANALYTICS_PATH;
+  if (!target) return "";
+  try {
+    if (fs.pathExistsSync(target)) return fs.readFileSync(target, "utf8");
+  } catch (err) {
+    console.log(
+      `[publisher] analytics selection signal unavailable: ${err.message}`,
+    );
+  }
+  return "";
+}
+
+function scorePublishSelectionStory(story = {}, analyticsText = "") {
+  try {
+    const { scoreCandidate } = require("./tools/next-publish-candidates");
+    const scored = scoreCandidate(story, { analyticsText });
+    if (Number.isFinite(Number(scored?.score))) return Number(scored.score);
+  } catch (err) {
+    console.log(`[publisher] candidate selection score fallback: ${err.message}`);
+  }
+  return Number(story.breaking_score || story.score || 0);
+}
+
+function sortPublishReadyStories(ready = [], options = {}) {
+  const analyticsText = options.analyticsText || "";
+  return [...ready].sort((a, b) => {
+    const aDone = countStoryPlatformsDone(a);
+    const bDone = countStoryPlatformsDone(b);
+    if (aDone !== bDone) return aDone - bDone;
+
+    const aSelectionScore = scorePublishSelectionStory(a, analyticsText);
+    const bSelectionScore = scorePublishSelectionStory(b, analyticsText);
+    if (bSelectionScore !== aSelectionScore) {
+      return bSelectionScore - aSelectionScore;
+    }
+
+    return (
+      (b.breaking_score || b.score || 0) - (a.breaking_score || a.score || 0)
+    );
+  });
 }
 
 function storyIsRetry(s) {
-  return !!(
-    s.youtube_post_id ||
-    s.tiktok_post_id ||
-    s.instagram_media_id ||
-    s.facebook_post_id ||
-    s.twitter_post_id
-  );
+  return countStoryPlatformsDone(s) > 0;
+}
+
+function parseStoryPublishAgeMs(s, now = Date.now()) {
+  const raw =
+    s?.approved_at ||
+    s?.produced_at ||
+    s?.created_at ||
+    s?.timestamp ||
+    s?.updated_at;
+  const t = raw ? Date.parse(raw) : NaN;
+  if (!Number.isFinite(t)) return null;
+  return now - t;
+}
+
+function staleBacklogMaxAgeMs(env = process.env) {
+  const days = Number(env.PUBLISH_STALE_BACKLOG_MAX_DAYS);
+  const safeDays = Number.isFinite(days) && days >= 1 ? days : 7;
+  return safeDays * 24 * 60 * 60 * 1000;
+}
+
+function storyIsStaleUnpublishedBacklog(s, env = process.env, now = Date.now()) {
+  if (env.ALLOW_STALE_BACKLOG_PUBLISH === "true") return false;
+  if (storyIsRetry(s)) return false;
+  const ageMs = parseStoryPublishAgeMs(s, now);
+  if (ageMs === null) return false;
+  return ageMs > staleBacklogMaxAgeMs(env);
 }
 
 /**
@@ -837,7 +1172,7 @@ async function runPreflightQa(story) {
   // Content QA — metadata + script + MP4 size / existence
   try {
     const { runContentQa } = require("./lib/services/content-qa");
-    const cqa = await runContentQa(story);
+    const cqa = await runContentQa(story, { blockThinVisuals: true });
     if (cqa.warnings && cqa.warnings.length > 0) {
       console.log(
         `[publisher] content QA warnings (${story.id}): ${cqa.warnings.join(", ")}`,
@@ -863,9 +1198,12 @@ async function runPreflightQa(story) {
 
   // Video QA — duration + black-frame detection via ffprobe/ffmpeg
   try {
-    const { runVideoQa } = require("./lib/services/video-qa");
+    const {
+      runVideoQa,
+      buildVideoQaOptionsForStory,
+    } = require("./lib/services/video-qa");
     const vqa = story.exported_path
-      ? await runVideoQa(story.exported_path)
+      ? await runVideoQa(story.exported_path, buildVideoQaOptionsForStory(story))
       : { result: "skip", reason: "no_exported_path" };
     if (vqa.result === "warn" && Array.isArray(vqa.warnings)) {
       console.log(
@@ -931,11 +1269,84 @@ async function runPreflightQa(story) {
     );
   }
 
+  // Studio Governance Engine - final control, rights, disclosure and
+  // coherence gate. Unlike optional media probes above, this is a hard
+  // autonomy guard: a story must be GREEN before the publisher can
+  // attempt any platform upload.
+  try {
+    const {
+      assertStudioGovernancePreflight,
+    } = require("./lib/services/studio-governance-preflight");
+    const governance = await assertStudioGovernancePreflight(story);
+    if (governance.rejection_reasons?.warnings?.length > 0) {
+      warnings.push(...governance.rejection_reasons.warnings);
+    }
+  } catch (qaErr) {
+    const failures = Array.isArray(qaErr.failures)
+      ? qaErr.failures
+      : [qaErr.code || "studio_governance_blocked"];
+    console.log(
+      `[publisher] studio governance FAIL (${story.id}): ${failures.join(", ")}`,
+    );
+    return {
+      pass: false,
+      failures,
+      warnings: warnings.slice(),
+      source: "governance",
+    };
+  }
+
   return { pass: true, warnings };
 }
 
-async function _publishNextStoryInner() {
+async function _publishNextStoryInner({ publishDispatch = null, storyId = null } = {}) {
   const stories = await db.getStories();
+  const cooldown = buildPublishCooldownPolicy({
+    stories,
+    env: process.env,
+  });
+  const dispatchPolicy = {
+    ...(publishDispatch || {}),
+    cooldown,
+  };
+  if (cooldown.advisory.length > 0) {
+    console.log(
+      `[publisher] publish cooldown ${cooldown.verdict}: ${cooldown.advisory.join(" ")}`,
+    );
+  }
+  if (cooldown.blocked) {
+    console.log(
+      `[publisher] publish cooldown blocked: ${cooldown.blockers.join(", ")}`,
+    );
+    return {
+      publish_cooldown_blocked: true,
+      status: "blocked",
+      top_reason: cooldown.blockers[0] || "publish_cooldown_blocked",
+      publish_dispatch: dispatchPolicy,
+    };
+  }
+
+  const dailyCap = buildPublishDailyCapPolicy({
+    stories,
+    env: process.env,
+  });
+  dispatchPolicy.daily_cap = dailyCap;
+  if (dailyCap.advisory.length > 0) {
+    console.log(
+      `[publisher] publish daily cap ${dailyCap.verdict}: ${dailyCap.advisory.join(" ")}`,
+    );
+  }
+  if (dailyCap.blocked) {
+    console.log(
+      `[publisher] publish daily cap blocked: ${dailyCap.blockers.join(", ")}`,
+    );
+    return {
+      publish_daily_cap_blocked: true,
+      status: "blocked",
+      top_reason: dailyCap.blockers[0] || "publish_daily_cap_blocked",
+      publish_dispatch: dispatchPolicy,
+    };
+  }
 
   // Find stories that still need publishing to at least one platform.
   // This includes brand-new stories AND partially-published ones (e.g. YT succeeded but IG/FB failed).
@@ -959,9 +1370,12 @@ async function _publishNextStoryInner() {
   // platforms at the next window.
   const ready = stories.filter((s) => {
     if (!s.approved || !s.exported_path) return false;
+    if (storyId && String(s.id || "") !== String(storyId)) return false;
+    if (!storyMatchesPublishStoryIds(s)) return false;
     if (s.qa_failed === true) return false;
     if (s.publish_status === "failed") return false;
-    return countStoryPlatformsDone(s) < 5;
+    if (storyIsStaleUnpublishedBacklog(s)) return false;
+    return !storyCorePublishComplete(s);
   });
 
   if (ready.length === 0) {
@@ -969,21 +1383,21 @@ async function _publishNextStoryInner() {
     return null;
   }
 
-  // Prioritise: unpublished stories first (0 platforms), then partial, then by score
-  ready.sort((a, b) => {
-    const aDone = countStoryPlatformsDone(a);
-    const bDone = countStoryPlatformsDone(b);
-    if (aDone !== bDone) return aDone - bDone;
-    return (
-      (b.breaking_score || b.score || 0) - (a.breaking_score || a.score || 0)
-    );
+  // Prioritise: unpublished stories first (0 platforms), then partials,
+  // then the same analytics-aware quality score used by
+  // ops:next-publish-candidates. This keeps the live scheduler aligned
+  // with the operator report instead of blindly picking the highest
+  // breaking_score row.
+  const publishSelectionAnalyticsText = loadPublishSelectionAnalyticsText();
+  const sortedReady = sortPublishReadyStories(ready, {
+    analyticsText: publishSelectionAnalyticsText,
   });
 
   // Multi-candidate loop. We'll walk up to
   // MAX_PUBLISH_CANDIDATES_PER_WINDOW stories and take the first
   // one that passes preflight QA. Each QA-failing candidate is
   // persisted so it's skipped in all future windows too.
-  const candidates = ready.slice(0, MAX_PUBLISH_CANDIDATES_PER_WINDOW);
+  const candidates = sortedReady.slice(0, MAX_PUBLISH_CANDIDATES_PER_WINDOW);
   const qaSkipped = []; // structured {id, title, reason, source, failures}
   let story = null;
   let isRetry = false;
@@ -997,7 +1411,50 @@ async function _publishNextStoryInner() {
         `"${candidate.title}" (score: ${candidate.breaking_score || candidate.score || 0})`,
     );
 
-    if (candidateIsRetry) {
+    const publishedDuplicate = findPublishedTitleDuplicate(candidate, stories);
+    if (publishedDuplicate) {
+      const skipped = await persistQaFail(candidate, {
+        failures: [
+          `published_duplicate_story:${publishedDuplicate.id}:${publishedDuplicate.title}`,
+        ],
+        warnings: [],
+        source: "content",
+      });
+      qaSkipped.push(skipped);
+      console.log(
+        `[publisher] Duplicate story blocked before upload: "${candidate.title}" ~ "${publishedDuplicate.title}"`,
+      );
+      continue;
+    }
+
+    const strictVoiceQa = (() => {
+      try {
+        const { strictVoiceQaEnabled } = require("./lib/services/publish-voice-qa");
+        return strictVoiceQaEnabled(candidate, process.env);
+      } catch (_) {
+        return process.env.REQUIRE_APPROVED_VOICE_FOR_PUBLISH === "true";
+      }
+    })();
+    if (
+      candidateIsRetry &&
+      process.env.PUBLISH_RETRY_QA_BYPASS === "true" &&
+      !strictVoiceQa
+    ) {
+      const strictCandidateBlocker = publishCandidateBlocker(candidate, {
+        strictContentQa: true,
+      });
+      if (strictCandidateBlocker) {
+        const skipped = await persistQaFail(candidate, {
+          failures: [strictCandidateBlocker],
+          warnings: [],
+          source: "content",
+        });
+        qaSkipped.push(skipped);
+        console.log(
+          `[publisher] Strict readiness blocked retry QA bypass: ${strictCandidateBlocker}`,
+        );
+        continue;
+      }
       // Partial-retry stories bypass QA — they were already published
       // once, so the artefacts are known-good. Take this candidate
       // immediately.
@@ -1009,7 +1466,7 @@ async function _publishNextStoryInner() {
     const qa = await runPreflightQa(candidate);
     if (qa.pass) {
       story = candidate;
-      isRetry = false;
+      isRetry = candidateIsRetry;
       preflightWarnings = qa.warnings || [];
       break;
     }
@@ -1040,6 +1497,7 @@ async function _publishNextStoryInner() {
         ? `${top.source}_qa: ${top.reason}`
         : "no_candidates_eligible",
       candidates_tried: candidates.length,
+      publish_dispatch: dispatchPolicy,
     };
   }
 
@@ -1135,6 +1593,7 @@ async function _publishNextStoryInner() {
     qa_warnings: preflightWarnings,
     qa_skipped_count: qaSkipped.length,
     qa_skipped: qaSkipped,
+    publish_dispatch: dispatchPolicy,
   };
 
   // Sentinel-cleanup cutover: block/skip outcomes for every platform in
@@ -1149,6 +1608,7 @@ async function _publishNextStoryInner() {
   const {
     recordPlatformBlock,
     getPlatformStatus,
+    isRetryablePlatformBlock,
   } = require("./lib/services/publish-block");
   const sqliteOn = process.env.USE_SQLITE === "true";
   let pubRepos = null;
@@ -1230,7 +1690,7 @@ async function _publishNextStoryInner() {
     (s) =>
       s.id !== story.id &&
       s.youtube_post_id &&
-      titlesSimilar(s.title, story.title),
+      titlesNearDuplicate(s.title, story.title),
   );
   const ytPrior = getPlatformStatus({
     repos: pubRepos,
@@ -1315,7 +1775,7 @@ async function _publishNextStoryInner() {
     (s) =>
       s.id !== story.id &&
       s.tiktok_post_id &&
-      titlesSimilar(s.title, story.title),
+      titlesNearDuplicate(s.title, story.title),
   );
   const ttPrior = getPlatformStatus({
     repos: pubRepos,
@@ -1327,6 +1787,12 @@ async function _publishNextStoryInner() {
     result.platform_outcomes.tiktok = "already_published";
     console.log(
       `[publisher] TikTok: already published (${story.tiktok_post_id})`,
+    );
+  } else if (isTikTokOperatorDisabled(process.env)) {
+    result.skipped.tiktok = "operator_disabled";
+    result.platform_outcomes.tiktok = "operator_disabled";
+    console.log(
+      "[publisher] TikTok: skipped (operator disabled; set TIKTOK_ENABLED=true to re-enable)",
     );
   } else if (ttPrior && ttPrior.status === "blocked") {
     result.tiktok = true;
@@ -1476,7 +1942,7 @@ async function _publishNextStoryInner() {
     (s) =>
       s.id !== story.id &&
       s.instagram_media_id &&
-      titlesSimilar(s.title, story.title),
+      titlesNearDuplicate(s.title, story.title),
   );
   const igPrior = getPlatformStatus({
     repos: pubRepos,
@@ -1582,7 +2048,7 @@ async function _publishNextStoryInner() {
     (s) =>
       s.id !== story.id &&
       s.facebook_post_id &&
-      titlesSimilar(s.title, story.title),
+      titlesNearDuplicate(s.title, story.title),
   );
   const fbPrior = getPlatformStatus({
     repos: pubRepos,
@@ -1608,7 +2074,7 @@ async function _publishNextStoryInner() {
       `[publisher] Facebook Reel: SKIPPED (${fbReelsMode.reason}) — ` +
         `FB Card fallback continues.`,
     );
-  } else if (fbPrior && fbPrior.status === "blocked") {
+  } else if (fbPrior && fbPrior.status === "blocked" && !isRetryablePlatformBlock(fbPrior)) {
     result.facebook = true;
     result.platform_outcomes.facebook = "duplicate_blocked";
     console.log(
@@ -1671,7 +2137,7 @@ async function _publishNextStoryInner() {
     (s) =>
       s.id !== story.id &&
       s.twitter_post_id &&
-      titlesSimilar(s.title, story.title),
+      titlesNearDuplicate(s.title, story.title),
   );
   const twPrior = getPlatformStatus({
     repos: pubRepos,
@@ -1735,9 +2201,11 @@ async function _publishNextStoryInner() {
 
   // --- Set publish_status from CORE video-platform outcomes only ---
   //
-  // Task 4 (2026-04-21): story.publish_status counts only the four
-  // core video platforms: YouTube, TikTok, Instagram Reel, Facebook
-  // Reel. Twitter/X is OPTIONAL — its free API can't post video,
+  // Task 4 (2026-04-21): story.publish_status counts only required core
+  // video platforms: YouTube, TikTok, Instagram Reel and Facebook
+  // Reel. TikTok can be operator-disabled for local cutover, in which
+  // case YT/IG/FB completion is enough to prevent retry loops.
+  // Twitter/X is OPTIONAL - its free API cannot post video,
   // and the paid tier is expensive, so we gate it on
   // TWITTER_ENABLED=true and a skipped Twitter must never keep a
   // story in `partial` forever. Fallback cards (IG Story, FB Card,
@@ -1749,17 +2217,9 @@ async function _publishNextStoryInner() {
   // pre-2026-04-19 when the publisher wrote block-reason strings
   // into the *_post_id columns. Not a real publish; must not count
   // toward publish_status either.
-  function isRealPostId(id) {
-    return typeof id === "string" && id.length > 0 && !id.startsWith("DUPE_");
-  }
-  const coreIds = [
-    story.youtube_post_id,
-    story.tiktok_post_id,
-    story.instagram_media_id,
-    story.facebook_post_id,
-  ];
+  const coreIds = corePostIdsForStory(story, process.env);
   const coreDone = coreIds.filter(isRealPostId).length;
-  const coreTotal = coreIds.length; // 4
+  const coreTotal = coreIds.length;
   if (coreDone >= coreTotal) {
     story.publish_status = "published";
   } else if (coreDone > 0) {
@@ -1769,6 +2229,22 @@ async function _publishNextStoryInner() {
   }
   if (!story.published_at && coreDone > 0) {
     story.published_at = new Date().toISOString();
+  }
+
+  // Persist the public/core upload state before lower-reach fallback
+  // work. If a later static-card fallback or engagement side-task
+  // fails, jobs-runner retries must see the successful core platform
+  // ids/status and retry only this story's missing work.
+  try {
+    await db.upsertStory(story);
+  } catch (err) {
+    console.log(
+      `[publisher] CRITICAL: Failed to save core publish state before fallback work: ${err.message}`,
+    );
+    captureException(err, {
+      step: "publishNextStory.core_state_upsert",
+      storyId: story.id,
+    });
   }
 
   // --- Story card image distribution ---
@@ -1786,11 +2262,12 @@ async function _publishNextStoryInner() {
         `[publisher] Instagram Story: already posted (${story.instagram_story_id})`,
       );
     } else {
+      const {
+        uploadStoryImage: igStory,
+        isInstagramPendingProcessingTimeout:
+          isInstagramPendingProcessingTimeoutForStory,
+      } = require("./upload_instagram");
       try {
-        const {
-          uploadStoryImage: igStory,
-          isInstagramPendingProcessingTimeout,
-        } = require("./upload_instagram");
         const igStoryResult = await igStory(story);
         story.instagram_story_id = igStoryResult.mediaId;
         result.fallbacks.instagram_story = true;
@@ -1804,7 +2281,8 @@ async function _publishNextStoryInner() {
         );
         result.errors.instagram_story = err.message;
         result.platform_outcomes.instagram_story =
-          isInstagramPendingProcessingTimeout(err)
+          typeof isInstagramPendingProcessingTimeoutForStory === "function" &&
+          isInstagramPendingProcessingTimeoutForStory(err)
             ? "accepted_processing"
             : "failed";
       }
@@ -1947,6 +2425,7 @@ async function _publishNextStoryInner() {
       const msg = await postVideoUpload(story);
       if (msg) {
         markVideoDropPosted(story);
+        await db.upsertStory(story);
         postedVideoDropNow = true;
       }
     }
@@ -1956,6 +2435,7 @@ async function _publishNextStoryInner() {
       const pollMsg = await postStoryPoll(story);
       if (pollMsg) {
         markStoryPollPosted(story);
+        await db.upsertStory(story);
         postedPollNow = true;
       }
     }
@@ -1996,6 +2476,18 @@ module.exports = {
   fullAutonomousCycle,
   publishOnlyCycle,
   selfHealStaleMediaPaths,
+  _private: {
+    parsePublishStoryIds,
+    storyMatchesPublishStoryIds,
+    loadPublishSelectionAnalyticsText,
+    scorePublishSelectionStory,
+    sortPublishReadyStories,
+    titlesSimilar,
+    titleDedupeTokens,
+    titleDedupeScore,
+    titlesNearDuplicate,
+    findPublishedTitleDuplicate,
+  },
 };
 
 if (require.main === module) {

@@ -88,7 +88,7 @@ function App() {
               {/* Auth-specific recovery action. Surfaces only when the
                   error looks like it came from apiGetAuthed / apiMutate's
                   401 path — "API token required or invalid". One click
-                  wipes localStorage.pulse.apiToken and reloads, which
+                  clears browser token storage and reloads, which
                   drops us back at the token prompt on the next mutating
                   action. Avoids the devtools-only `pulseAuth.clear()`
                   dance for the common case. */}

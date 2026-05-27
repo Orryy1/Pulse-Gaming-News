@@ -1,5 +1,188 @@
 # Pulse Gaming — AI News Shorts Empire v3
 
+## Primary Codex /goal
+
+Use `docs/codex-main-goal.md` as the main operating goal for this repo. It supersedes any older "shorts factory" framing: Pulse Gaming is being built as a governed autonomous media operating system with production-grade story manifests, rights ledgers, platform-native outputs, policy gates, commercial intelligence, observability and hard publish control.
+
+## Repo layout
+
+Pulse Gaming is a Node.js CommonJS media system with a React/Vite dashboard.
+
+- `server.js` runs the Express API, dashboard routes and scheduler entrypoints.
+- `run.js` is the top-level pipeline runner for hunt, approve, produce, publish and schedule modes.
+- `lib/` contains production services, policy gates, render governance, platform logic and studio systems.
+- `tools/` contains operator CLIs, diagnostics, repair lanes and proof artefact generators.
+- `tests/` contains Node test files. `test/fixtures/` contains regression fixtures. `test/output/` is disposable proof output.
+- `output/` contains generated media, manifests, QA reports and campaign proof artefacts.
+- `channels/` contains channel-specific brand, source, voice and prompt configuration.
+- `src/` contains the React dashboard. `public/` contains static frontend assets.
+- `docs/` contains current operating goals, runbooks, audits and production readiness notes.
+- `db/` contains SQLite migrations and repository support.
+- `tokens/` and `.env` are local secret material. Never commit, print or mutate them unless a goal explicitly allows it.
+
+## Key directories
+
+- Production code: `lib/`, root pipeline files, `server.js`, `publisher.js`, `processor.js`, `audio.js`, `assemble.js`, `upload_*.js`.
+- Operator commands: `tools/`.
+- Tests: `tests/services/`, `tests/ops/`, `tests/db/`.
+- Proof fixtures: `test/fixtures/goal/`.
+- Generated proof: `output/`, `test/output/`.
+- Current product contract: `docs/codex-main-goal.md`.
+
+## Build commands
+
+- Install from the lockfile: `npm install`.
+- Build the dashboard: `npm run build`.
+- Start the local API and dashboard together: `npm run dev`.
+- Start the API and scheduler process: `npm start`.
+
+## Test commands
+
+- Run a focused test file: `node --test tests/services/<name>.test.js`.
+- Run a focused ops test: `node --test tests/ops/<name>.test.js`.
+- Run the full Node suite: `npm test`.
+- Validate this operating-rules file: `npm run ops:agent-rules`.
+- Run docs drift checks: `npm run docs:doctor`.
+
+## Render commands
+
+- Create render input work orders: `npm run ops:goal-render-inputs`.
+- Materialise owned motion: `npm run ops:goal-owned-motion`.
+- Build audio and timestamp workbench outputs: `npm run ops:goal-audio-timestamps`.
+- Materialise audio and timestamp artefacts: `npm run ops:goal-audio-materialize`.
+- Materialise production renders: `npm run ops:goal-production-render`.
+- Inspect V4 motion packs: `npm run ops:v4-motion-pack`.
+- Run V4 source-family acquisition checks: `npm run ops:v4-source-family-acquisition`.
+
+## Dry-run publish commands
+
+- Strict dry-run package plan: `npm run ops:goal-dry-run-publish`.
+- Publish readiness report: `npm run ops:publish-readiness`.
+- Next candidate preflight: `npm run ops:next-publish-candidates`.
+- Platform status matrix: `npm run ops:platform:status`.
+- Platform readiness doctor: `npm run ops:platform-doctor`.
+
+Dry-run output is evidence, not permission to publish.
+
+## Safety modes
+
+LOCAL_PROOF is the default mode. Use it for renders, tests, repair planning and proof artefacts.
+
+DRY_RUN_PUBLISH is the default publish mode. It may generate platform packs and planned actions but must not post externally.
+
+HUMAN_REVIEW queues candidates for operator approval. AMBER items stay blocked until a human accepts the stated risk.
+
+AUTO_PUBLISH is forbidden unless a goal explicitly authorises it, the operator has enabled the platform, the kill switch is healthy and the control tower returns GREEN.
+
+## Banned behaviours
+
+- No live publishing by default.
+- No OAuth/token mutation by default.
+- No production DB mutation by default.
+- No external posting by default.
+- Do not weaken gates.
+- Do not change tests to bless unsafe behaviour.
+- Do not mark disabled platforms as publishable.
+- Do not count package files as scheduler-ready without preflight evidence.
+- Do not use legacy thin renders as normal production output.
+- Do not expose `.env`, API keys, OAuth tokens or token file contents.
+- Do not run `node run.js publish`, `node run.js full`, `upload_*.js` live modes or OAuth token commands unless the exact goal allows it.
+
+TDD is required. Focused tests are required. Machine-readable artefacts are required. Proof reporting is required.
+
+## Current production-cutover context
+
+The current cutover is blocked by final production render inputs, not by a lack of ideas. Treat these as live blockers until artefacts prove otherwise:
+
+- Missing final narration audio.
+- Missing word timestamps.
+- Missing materialised motion clips.
+- Missing distinct motion families.
+- Missing or stale final MP4 evidence.
+- Incomplete rights records.
+- Scheduler bridge and strict dry-run gaps.
+
+Past production incidents include legacy thin visual renders, placeholder titles, public narration that leaked internal QA language, local LLM failures and platform upload errors. New work must reduce those risks, not route around them.
+
+## Definition of done
+
+A goal is done only when the repo has the behaviour, tests and proof artefacts to support the claim.
+
+- Focused tests were added or updated.
+- Focused tests passed.
+- Relevant integration tests passed or the skip is explained.
+- No gates were weakened.
+- No live publishing, production DB mutation, OAuth/token mutation or external posting occurred unless the goal explicitly allowed it.
+- Machine-readable JSON artefacts were generated.
+- A human-readable summary was generated.
+- Remaining blockers are listed.
+- Commands run and files changed are reported.
+
+## Focused tests
+
+Use the smallest test command that proves the changed behaviour. Examples:
+
+- `node --test tests/services/agent-operating-rules.test.js`
+- `node --test tests/services/incident-guard.test.js`
+- `node --test tests/services/goal-render-input-workorder.test.js`
+- `node --test tests/services/studio-v4-render-bridge.test.js`
+
+## Full tests
+
+Run `npm test` before claiming broad readiness. If the suite is too slow for the current goal, run the relevant focused tests plus the closest integration tests and say exactly what did not run.
+
+## Preflight
+
+Use preflight commands when a change touches scheduling, publish candidates, platform packs or readiness claims:
+
+- `npm run ops:next-publish-candidates`
+- `npm run ops:publish-readiness`
+- `npm run ops:platform-doctor`
+- `npm run ops:goal-dry-run-publish`
+
+Scheduler preflight is the source of truth for scheduler readiness. Package files alone are not enough.
+
+## Render health
+
+Use `npm run ops:render-health` for render health. The report must separate live DB debt from governed V4 bridge readiness. Do not say "ready" unless the scheduler preflight agrees.
+
+## Repair backlog
+
+Use these commands to inspect and plan repair work:
+
+- `npm run ops:pipeline-backlog`
+- `npm run ops:goal-render-inputs`
+- `npm run ops:goal-audio-timestamps`
+- `npm run ops:goal-owned-motion`
+- `npm run ops:bridge-live-rights-repair`
+- `npm run ops:bridge-preflight-stamp-repair`
+
+Repair plans must name the story ID, blocker type, missing input, command, required artefact path, expected output, DB mutation status, operator approval status and post-repair validation command.
+
+## Platform packs
+
+Use these commands to inspect platform packs without posting:
+
+- `npm run ops:goal-platform-duration-contract`
+- `npm run ops:goal-platform-native-repair`
+- `npm run ops:goal-platform-variants`
+- `npm run ops:platform:status`
+- `npm run ops:platform-doctor`
+
+Disabled platforms must stay visible and must not be counted as publishable.
+
+## Pulse Gaming production law
+
+1. Rendered does not mean publishable.
+2. Dry-run package does not mean scheduler-ready.
+3. Scheduler-ready does not mean platform-ready.
+4. Platform-ready does not mean safe to auto-publish.
+5. Only GREEN control tower verdict can publish.
+6. Placeholder titles are production incidents.
+7. Internal QA language in public narration is a production incident.
+8. Missing narration, timestamps, materialised motion or rights records blocks publishing.
+9. All readiness claims must be backed by artefacts.
+
 ## Overview
 
 Multi-channel autonomous pipeline that hunts Reddit + RSS feeds for verified news, generates YouTube Shorts scripts via Codex, produces professional audio/image/video assets with real images, branded bumpers and broadcast overlays, and auto-publishes to 5 platforms (YouTube Shorts, TikTok, Instagram Reels, Facebook Reels, X/Twitter) at research-backed optimal times. Supports multiple channels via the `channels/` config system.

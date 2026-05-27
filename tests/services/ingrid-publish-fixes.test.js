@@ -75,6 +75,19 @@ test("assemble.js: explicit high profile + level 4.0 baked in", () => {
   );
 });
 
+test("assemble.js: final encoder clamps full-range JPEG/video inputs to TV-range yuv420p", () => {
+  assert.match(
+    ASSEMBLE,
+    /scale=in_range=pc:out_range=tv,format=yuv420p/,
+    "primary filter graph must clamp full-range inputs before the final encode",
+  );
+  assert.match(
+    ASSEMBLE,
+    /-color_range\s+tv\s+-colorspace\s+bt709\s+-color_primaries\s+bt709\s+-color_trc\s+bt709/,
+    "encoder must tag short-form MP4s as TV-range BT.709",
+  );
+});
+
 // ---------- URL extension fix -----------------------------------
 
 test("server.js: /api/story-image route accepts optional .png suffix", () => {
@@ -85,7 +98,7 @@ test("server.js: /api/story-image route accepts optional .png suffix", () => {
   // Regex route form — `app.get(/^\/api\/story-image\/([^/]+?)(?:\.png)?$/`
   assert.match(
     server,
-    /app\.get\(\/\^\\\/api\\\/story-image\\\/\(\[\^\/\]\+\?\)\(\?:\\\.png\)\?\$\//,
+    /app\.get\(\s*\/\^\\\/api\\\/story-image\\\/\(\[\^\/\]\+\?\)\(\?:\\\.png\)\?\$\/[\s\S]*?async\s*\(req,\s*res\)\s*=>/,
     "server.js must define a regex route accepting optional .png suffix on story-image",
   );
 });
@@ -97,7 +110,7 @@ test("server.js: /api/download route accepts optional .mp4 suffix", () => {
   );
   assert.match(
     server,
-    /app\.get\(\/\^\\\/api\\\/download\\\/\(\[\^\/\]\+\?\)\(\?:\\\.mp4\)\?\$\//,
+    /app\.get\(\s*\/\^\\\/api\\\/download\\\/\(\[\^\/\]\+\?\)\(\?:\\\.mp4\)\?\$\/[\s\S]*?async\s*\(req,\s*res\)\s*=>/,
     "server.js must define a regex route accepting optional .mp4 suffix on download",
   );
 });

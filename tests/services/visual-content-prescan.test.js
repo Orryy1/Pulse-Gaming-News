@@ -122,6 +122,22 @@ test("computeSignalsFromSample: white CTA text on black raises promo-card likeli
   assert.ok(sig.white_text_on_dark_likelihood > 0.5);
 });
 
+test("computeSignalsFromSample: letterboxed cinematic frame is not treated as white-text card", () => {
+  const dim = 96;
+  const buf = buildBuffer(dim, (x, y) => {
+    if (y < 14 || y >= dim - 14) return [0, 0, 0];
+    const warmSky = x < dim * 0.58;
+    if (warmSky) return [220 - Math.floor(x * 0.8), 142 - Math.floor(x * 0.35), 54];
+    return [82, 42, 28];
+  });
+
+  const sig = v.computeSignalsFromSample(buf, dim);
+
+  assert.ok(sig.letterbox_bar_ratio >= 0.2);
+  assert.ok(sig.central_dark_pixel_ratio < sig.dark_pixel_ratio);
+  assert.ok(sig.white_text_on_dark_likelihood < 0.35);
+});
+
 test("classifyTrailerFrameTaste: rejects white-on-dark title and rating slates", () => {
   const taste = v.classifyTrailerFrameTaste({
     text_overlay_likelihood: 0.08,
@@ -134,6 +150,90 @@ test("classifyTrailerFrameTaste: rejects white-on-dark title and rating slates",
 
   assert.equal(taste.verdict, "fail");
   assert.equal(taste.reason, "white_text_on_dark_card");
+});
+
+test("classifyTrailerFrameTaste: rejects OCR-detected PEGI and ESRB rating cards", () => {
+  for (const detected_text of [
+    "PEGI 18 www.pegi.info",
+    "ESRB Mature 17+ Blood and Gore",
+  ]) {
+    const taste = v.classifyTrailerFrameTaste({
+      detected_text,
+      text_overlay_likelihood: 0.08,
+      white_text_on_dark_likelihood: 0.2,
+      edge_density: 0.2,
+      saturation_mean: 0.4,
+      bright_pixel_ratio: 0.08,
+      dark_pixel_ratio: 0.45,
+    });
+
+    assert.equal(taste.verdict, "fail");
+    assert.equal(taste.reason, "rating_board_text_frame");
+  }
+});
+
+test("classifyTrailerFrameTaste: rejects legal and platform slate text", () => {
+  const taste = v.classifyTrailerFrameTaste({
+    detected_text: "© 2026 Publisher. All rights reserved. Not actual gameplay footage.",
+    text_overlay_likelihood: 0.22,
+    white_text_on_dark_likelihood: 0.12,
+    edge_density: 0.19,
+    saturation_mean: 0.22,
+    bright_pixel_ratio: 0.4,
+    dark_pixel_ratio: 0.22,
+  });
+
+  assert.equal(taste.verdict, "fail");
+  assert.equal(taste.reason, "legal_slate_text_frame");
+});
+
+test("classifyTrailerFrameTaste: rejects bright promotional store slates without OCR text", () => {
+  const taste = v.classifyTrailerFrameTaste({
+    text_overlay_likelihood: 0.01,
+    white_text_on_dark_likelihood: 0,
+    edge_density: 0.26,
+    saturation_mean: 0.37,
+    bright_pixel_ratio: 0.36,
+    dark_pixel_ratio: 0.05,
+    central_bright_pixel_ratio: 0.34,
+    central_dark_pixel_ratio: 0.06,
+  });
+
+  assert.equal(taste.verdict, "fail");
+  assert.equal(taste.reason, "promotional_store_slate_frame");
+});
+
+test("classifyTrailerFrameTaste: rejects very early trailer intro frames", () => {
+  const taste = v.classifyTrailerFrameTaste({
+    target_time_seconds: 6,
+    text_overlay_likelihood: 0.18,
+    white_text_on_dark_likelihood: 0.18,
+    edge_density: 0.18,
+    saturation_mean: 0.34,
+    bright_pixel_ratio: 0.18,
+    dark_pixel_ratio: 0.38,
+  });
+
+  assert.equal(taste.verdict, "fail");
+  assert.equal(taste.reason, "early_trailer_intro_frame");
+});
+
+test("classifyTrailerFrameTaste: accepts letterboxed colourful official gameplay frames", () => {
+  const taste = v.classifyTrailerFrameTaste({
+    text_overlay_likelihood: 0,
+    white_text_on_dark_likelihood: 0.72,
+    edge_density: 0.08,
+    saturation_mean: 0.65,
+    bright_pixel_ratio: 0.08,
+    dark_pixel_ratio: 0.54,
+    letterbox_bar_ratio: 0.26,
+    central_dark_pixel_ratio: 0.18,
+    central_bright_pixel_ratio: 0.12,
+  });
+
+  assert.notEqual(taste.verdict, "fail");
+  assert.equal(taste.reason, "taste_passed");
+  assert.ok(taste.tags.includes("letterboxed_cinematic_candidate"));
 });
 
 test("classifyTrailerFrameTaste: rejects dead dark low-detail frames", () => {
@@ -162,6 +262,20 @@ test("classifyTrailerFrameTaste: rejects washed low-detail flash frames", () => 
   assert.equal(taste.reason, "washed_low_detail_frame");
 });
 
+test("classifyTrailerFrameTaste: rejects blurry low-detail frames with moderate colour", () => {
+  const taste = v.classifyTrailerFrameTaste({
+    text_overlay_likelihood: 0.04,
+    white_text_on_dark_likelihood: 0,
+    edge_density: 0.095,
+    saturation_mean: 0.27,
+    bright_pixel_ratio: 0.34,
+    dark_pixel_ratio: 0.12,
+  });
+
+  assert.equal(taste.verdict, "fail");
+  assert.equal(taste.reason, "blurred_low_detail_frame");
+});
+
 test("classifyTrailerFrameTaste: rejects pale monochrome transition frames", () => {
   const taste = v.classifyTrailerFrameTaste({
     text_overlay_likelihood: 0,
@@ -186,6 +300,20 @@ test("classifyTrailerFrameTaste: rejects ultra-dark low-detail game frames", () 
 
   assert.equal(taste.verdict, "fail");
   assert.equal(taste.reason, "dead_dark_frame");
+});
+
+test("classifyTrailerFrameTaste: rejects muddy dark low-colour trailer frames", () => {
+  const taste = v.classifyTrailerFrameTaste({
+    text_overlay_likelihood: 0.04,
+    white_text_on_dark_likelihood: 0,
+    edge_density: 0.125,
+    saturation_mean: 0.14,
+    bright_pixel_ratio: 0,
+    dark_pixel_ratio: 0.79,
+  });
+
+  assert.equal(taste.verdict, "fail");
+  assert.equal(taste.reason, "muddy_dark_low_energy_frame");
 });
 
 test("classifyTrailerFrameTaste: accepts colourful detailed gameplay-like frames", () => {

@@ -3,6 +3,10 @@ const path = require("path");
 const axios = require("axios");
 const dotenv = require("dotenv");
 const db = require("./lib/db");
+const {
+  formatRecommendationForPrompt,
+  readLatestRecommendation,
+} = require("./lib/analytics-recommendation");
 
 dotenv.config({ override: true });
 
@@ -852,19 +856,24 @@ function getPerformanceBoost(title, flair) {
  * flairs and pillars so the AI can prioritise what resonates with the audience.
  */
 function getAnalyticsContext() {
+  const latestRecommendation = readLatestRecommendation();
+  const recommendationPrompt = formatRecommendationForPrompt(
+    latestRecommendation.recommendation,
+  );
   let history;
   try {
-    if (!fs.pathExistsSync(HISTORY_PATH)) return "";
+    if (!fs.pathExistsSync(HISTORY_PATH)) return recommendationPrompt;
     history = fs.readJsonSync(HISTORY_PATH);
   } catch {
-    return "";
+    return recommendationPrompt;
   }
 
   const entries = history.entries || [];
-  if (entries.length < 3) return ""; // Need minimum data before making recommendations
+  if (entries.length < 3) return recommendationPrompt;
 
   const topics = getTopPerformingTopics();
   const lines = [];
+  if (recommendationPrompt) lines.push(recommendationPrompt);
 
   // Overall average virality for comparison baseline
   const allScores = entries

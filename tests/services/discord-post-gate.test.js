@@ -13,14 +13,80 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
+  shouldPostNewStory,
   shouldPostVideoDrop,
   shouldPostStoryPoll,
   markVideoDropPosted,
   markStoryPollPosted,
+  hasCleanPublishState,
+  hasPublicVideoTarget,
 } = require("../../lib/services/discord-post-gate");
 
+test("shouldPostNewStory: valid discovered story can be announced before upload", () => {
+  const story = {
+    id: "fresh-news",
+    title: "Nintendo confirms new bundle",
+    body: "Nintendo confirmed a new Switch bundle.",
+    content_pillar: "Confirmed Drop",
+  };
+  assert.equal(shouldPostNewStory(story), true);
+});
+
+test("shouldPostNewStory: script-validation fallback never reaches public news channels", () => {
+  const story = {
+    id: "script-review-news",
+    title: "Needs review",
+    body: "Script validation failed. Manual review required before production.",
+    content_pillar: "Manual Review",
+    script_generation_status: "review_required",
+  };
+  assert.equal(shouldPostNewStory(story), false);
+});
+
+test("shouldPostNewStory: machine-readable script-review tokens never reach public news channels", () => {
+  const story = {
+    id: "script-review-token",
+    title: "Needs review",
+    body: "Readable-looking body",
+    content_pillar: "Confirmed Drop",
+    script_review_reason: "script_validation_failed",
+  };
+  assert.equal(shouldPostNewStory(story), false);
+});
+
+test("shouldPostNewStory: internal Pulse strategy language never reaches public news channels", () => {
+  const story = {
+    id: "internal-language",
+    title: "Subnautica 2 update",
+    body: "For Pulse, that means tracking the official follow-up before calling it a guaranteed change.",
+    content_pillar: "Confirmed Drop",
+  };
+  assert.equal(shouldPostNewStory(story), false);
+});
+
+test("shouldPostNewStory: failed or QA-failed rows are not public news", () => {
+  assert.equal(
+    shouldPostNewStory({
+      id: "failed",
+      publish_status: "failed",
+      title: "Bad row",
+      body: "Looks readable",
+    }),
+    false,
+  );
+  assert.equal(
+    shouldPostNewStory({
+      id: "qa",
+      qa_failed: true,
+      title: "Bad row",
+      body: "Looks readable",
+    }),
+    false,
+  );
+});
+
 test("shouldPostVideoDrop: fresh story with a YouTube URL qualifies", () => {
-  const story = { id: "s1", youtube_url: "https://youtu.be/abc" };
+  const story = { id: "s1", youtube_url: "https://youtu.be/abc", publish_status: "partial" };
   assert.equal(shouldPostVideoDrop(story), true);
 });
 
@@ -30,13 +96,73 @@ test("shouldPostVideoDrop: no URL + no platform ids -> false", () => {
 });
 
 test("shouldPostVideoDrop: tiktok_post_id alone qualifies", () => {
-  const story = { id: "s1", tiktok_post_id: "tt-123" };
+  const story = { id: "s1", tiktok_post_id: "tt-123", publish_status: "partial" };
   assert.equal(shouldPostVideoDrop(story), true);
 });
 
 test("shouldPostVideoDrop: instagram_media_id alone qualifies", () => {
-  const story = { id: "s1", instagram_media_id: "ig-456" };
+  const story = { id: "s1", instagram_media_id: "ig-456", publish_status: "partial" };
   assert.equal(shouldPostVideoDrop(story), true);
+});
+
+test("shouldPostVideoDrop: QA-failed story never qualifies even with a public URL", () => {
+  const story = {
+    id: "qa-failed",
+    youtube_url: "https://youtu.be/abc",
+    qa_failed: true,
+  };
+  assert.equal(shouldPostVideoDrop(story), false);
+});
+
+test("shouldPostVideoDrop: failed publish status never qualifies even with platform ids", () => {
+  const story = {
+    id: "publish-failed",
+    instagram_media_id: "ig-456",
+    publish_status: "failed",
+  };
+  assert.equal(shouldPostVideoDrop(story), false);
+});
+
+test("shouldPostVideoDrop: failed QA status never qualifies even with platform ids", () => {
+  const story = {
+    id: "qa-status-failed",
+    youtube_url: "https://youtu.be/abc",
+    youtube_post_id: "yt-123",
+    instagram_media_id: "ig-456",
+    publish_status: "partial",
+    qa_status: "failed",
+  };
+  assert.equal(shouldPostVideoDrop(story), false);
+});
+
+test("shouldPostVideoDrop: script-validation fallback text never posts as a video drop", () => {
+  const story = {
+    id: "script-review",
+    youtube_url: "https://youtu.be/abc",
+    hook: "",
+    body: "Script validation failed. Manual review required before production.",
+  };
+  assert.equal(shouldPostVideoDrop(story), false);
+});
+
+test("shouldPostVideoDrop: script-review tokens never post as a video drop", () => {
+  const story = {
+    id: "script-review-token",
+    youtube_url: "https://youtu.be/abc",
+    publish_status: "partial",
+    script_review_reason: "script_validation_failed",
+  };
+  assert.equal(shouldPostVideoDrop(story), false);
+});
+
+test("shouldPostVideoDrop: manual-review full script never qualifies even if body was changed", () => {
+  const story = {
+    id: "script-review-full",
+    tiktok_post_id: "tt-123",
+    body: "Clean-looking body",
+    full_script: "Manual review required before production.",
+  };
+  assert.equal(shouldPostVideoDrop(story), false);
 });
 
 test("shouldPostVideoDrop: once marker is set, never posts again (even with fresh URLs)", () => {
@@ -45,6 +171,7 @@ test("shouldPostVideoDrop: once marker is set, never posts again (even with fres
     youtube_url: "https://youtu.be/abc",
     tiktok_post_id: "tt-123",
     instagram_media_id: "ig-456",
+    publish_status: "published",
     discord_video_drop_posted_at: "2026-04-16T20:05:00Z",
   };
   assert.equal(shouldPostVideoDrop(story), false);
@@ -59,6 +186,7 @@ test("Pragmata regression: re-render clears platform ids; marker still blocks", 
   const story = {
     id: "pragmata",
     youtube_url: "https://youtu.be/pragmata-20min",
+    publish_status: "partial",
     // Platform ids cleared by re-render (the bug scenario):
     youtube_post_id: null,
     tiktok_post_id: null,
@@ -80,6 +208,7 @@ test("multi-entrypoint: two sequential publish cycles on the same story never do
   // entrypoints each calling publishNextStory() on the same row. The
   // first pass sets the marker; subsequent passes must see it and bail.
   const story = { id: "s1", youtube_url: "https://youtu.be/abc" };
+  story.publish_status = "partial";
 
   // Entry 1: gate allows.
   assert.equal(shouldPostVideoDrop(story), true);
@@ -95,18 +224,36 @@ test("multi-entrypoint: two sequential publish cycles on the same story never do
   assert.equal(shouldPostVideoDrop(story), false);
 });
 
-test("shouldPostStoryPoll: fresh story -> true, after mark -> false", () => {
-  const story = { id: "s1" };
+test("shouldPostStoryPoll: fresh published story -> true, after mark -> false", () => {
+  const story = { id: "s1", publish_status: "partial" };
   assert.equal(shouldPostStoryPoll(story), true);
   markStoryPollPosted(story);
   assert.equal(shouldPostStoryPoll(story), false);
 });
 
-test("shouldPostStoryPoll: story-poll needs no URL (broader than video-drop)", () => {
-  // The live code fired postStoryPoll on any !isRetry pass regardless
-  // of URL state — the gate preserves that.
-  const story = { id: "s1" };
+test("shouldPostStoryPoll: story-poll needs clean publish state but no URL", () => {
+  // Polls are broader than video drops because they do not need a direct
+  // platform link, but they still require a clean published/partial state.
+  const story = { id: "s1", publish_status: "published" };
   assert.equal(shouldPostStoryPoll(story), true);
+});
+
+test("shouldPostStoryPoll: failed or script-review rows never qualify", () => {
+  assert.equal(
+    shouldPostStoryPoll({
+      id: "failed",
+      publish_status: "failed",
+    }),
+    false,
+  );
+  assert.equal(
+    shouldPostStoryPoll({
+      id: "script-review",
+      publish_status: "partial",
+      body: "Script validation failed. Manual review required before production.",
+    }),
+    false,
+  );
 });
 
 test("marker writers: set ISO timestamps and are idempotent at the value level", () => {
@@ -134,11 +281,43 @@ test("marker-set wins over every URL field — empty string marker still blocks?
   const story = {
     id: "s1",
     youtube_url: "https://youtu.be/abc",
+    publish_status: "partial",
     discord_video_drop_posted_at: "",
   };
   assert.equal(
     shouldPostVideoDrop(story),
     true,
     "empty-string marker is treated as 'not posted' — only a real timestamp blocks",
+  );
+});
+
+test("shouldPostVideoDrop: stale platform id without clean publish state does not qualify", () => {
+  const story = {
+    id: "stale",
+    youtube_url: "https://youtu.be/abc",
+    publish_status: null,
+  };
+  assert.equal(shouldPostVideoDrop(story), false);
+});
+
+test("shouldPostVideoDrop: DUPE sentinel platform ids are not public targets", () => {
+  const story = {
+    id: "dupe",
+    tiktok_post_id: "DUPE_TIKTOK_403",
+    instagram_media_id: "DUPE_IG",
+    publish_status: "partial",
+  };
+  assert.equal(hasPublicVideoTarget(story), false);
+  assert.equal(shouldPostVideoDrop(story), false);
+});
+
+test("hasCleanPublishState: published timestamp preserves legacy rows without status", () => {
+  assert.equal(
+    hasCleanPublishState({
+      id: "legacy",
+      youtube_url: "https://youtu.be/legacy",
+      published_at: "2026-05-14T19:03:00.000Z",
+    }),
+    true,
   );
 });

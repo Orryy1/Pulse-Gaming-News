@@ -26,6 +26,11 @@
 const path = require("node:path");
 const fs = require("fs-extra");
 const { execSync } = require("node:child_process");
+const {
+  fitQuoteText,
+  normaliseQuoteText,
+  pickQuoteFontSize,
+} = require("../lib/studio/v2/quote-fit");
 
 const ROOT = path.resolve(__dirname, "..");
 const TEMPLATE_DIR = path.join(ROOT, "experiments", "hf-quote");
@@ -40,13 +45,23 @@ function escapeHtml(s) {
     .replace(/'/g, "&#039;");
 }
 
+function clampQuoteText(value, { maxWords = 12, maxChars = 96 } = {}) {
+  return fitQuoteText(value, {
+    maxWords: Math.min(Number(maxWords) || 12, 11),
+    maxChars: Math.min(Number(maxChars) || 96, 84),
+    maxCharsPerLine: 28,
+    maxLines: 3,
+    maxTokenChars: 22,
+  });
+}
+
 /**
  * Build the per-word <span class="word"> markup so the GSAP timeline
  * (which animates ".word" stagger) still has valid targets.
  */
 function buildQuoteWordSpans(text) {
   // Tokenise on whitespace; keep punctuation attached to its word.
-  const tokens = String(text)
+  const tokens = normaliseQuoteText(text)
     .replace(/[“”]/g, '"')
     .replace(/[‘’]/g, "'")
     .split(/\s+/)
@@ -61,12 +76,7 @@ function buildQuoteWordSpans(text) {
  * 1080px wide. Empirical thresholds; conservative.
  */
 function pickFontSize(text) {
-  const words = String(text).trim().split(/\s+/).length;
-  const chars = String(text).length;
-  if (words <= 5 && chars <= 40) return 76;
-  if (words <= 8 && chars <= 70) return 64;
-  if (words <= 12 && chars <= 110) return 54;
-  return 46;
+  return pickQuoteFontSize(text);
 }
 
 /**
@@ -129,8 +139,9 @@ async function buildStoryQuoteCard({
     "utf8",
   );
 
-  const fontSize = pickFontSize(quoteText);
-  const wordsMarkup = buildQuoteWordSpans(quoteText);
+  const safeQuoteText = clampQuoteText(quoteText);
+  const fontSize = pickFontSize(safeQuoteText);
+  const wordsMarkup = buildQuoteWordSpans(safeQuoteText);
   const attributionSub = pickAttributionSub(kind);
   const kicker = kind === "reddit" ? "TOP COMMENT" : "FROM THE TRAILER";
 
@@ -195,7 +206,7 @@ async function buildStoryQuoteCard({
     { cwd: projectDir, stdio: "inherit" },
   );
 
-  return { outPath, projectDir, fontSize, channelId };
+  return { outPath, projectDir, fontSize, channelId, quoteText: safeQuoteText };
 }
 
 async function main() {
@@ -224,4 +235,9 @@ if (require.main === module) {
   });
 }
 
-module.exports = { buildStoryQuoteCard };
+module.exports = {
+  buildStoryQuoteCard,
+  buildQuoteWordSpans,
+  clampQuoteText,
+  pickFontSize,
+};

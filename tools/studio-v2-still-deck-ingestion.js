@@ -6,12 +6,15 @@ const fs = require("fs-extra");
 const { execFileSync, execSync } = require("node:child_process");
 
 try {
-  require("dotenv").config({ override: true });
+  require("dotenv").config();
 } catch {}
 
 const { composeStudioSlate, SCENE_TYPES } = require("../lib/scene-composer");
+const mediaPaths = require("../lib/media-paths");
 const {
   buildSceneInput,
+  buildTransitionFilters,
+  buildTransitionPlan,
   dispatchSceneFilter,
   FPS,
 } = require("../lib/studio/ffmpeg-scene-renderer");
@@ -29,20 +32,45 @@ const {
 } = require("../lib/studio/v2/forensic-qa-v2");
 const { resolveAudioPlan } = require("../lib/studio/v2/audio-library");
 const { buildSoundLayerV2 } = require("../lib/studio/v2/sound-layer-v2");
-const { buildKineticAss } = require("../lib/studio/v2/subtitle-layer-v2");
+const {
+  buildKineticAss,
+  prepareSubtitleWords,
+  realignTimestampsToScript,
+} = require("../lib/studio/v2/subtitle-layer-v2");
+const {
+  alignSceneDurationsToWordBoundaries,
+  capStaticCardDurations,
+} = require("../lib/studio/v2/beat-aware-scene-durations");
+const {
+  protectClipSceneDurationsFromFreezes,
+} = require("../lib/studio/v2/clip-duration-guard");
+const {
+  buildFlashLaneOverlayPlan,
+  buildFlashLaneOverlayFilters,
+} = require("../lib/studio/v2/flash-lane-overlays");
+const {
+  buildVisualV3OverlayFilter,
+  buildVisualV3OverlayPlan,
+} = require("../lib/studio/v2/visual-v3-overlays");
+const {
+  applyPremiumCardLaneV2,
+} = require("../lib/studio/v2/premium-card-lane-v2");
 const { buildStudioEditorial } = require("../lib/studio/editorial-layer");
 const {
-  generateTTS,
   cleanForTTS,
 } = require("../audio");
 const {
+  ensureProductionLocalVoice,
   wordsFromAlignment,
   resolveStudioOutroLine,
 } = require("../lib/studio/sound-layer");
 const {
+  assertStillDeckPlanMaterialised,
   buildStoryFromStillDeckPlan,
   buildStillDeckMarkdown,
   buildStillDeckMediaPackage,
+  mergeStillDeckApplyLocalPlan,
+  materialiseMissingStillDeckAssets,
   selectStillDeckPlan,
 } = require("../lib/studio/v2/still-deck-ingestion");
 const {
@@ -50,30 +78,48 @@ const {
   runStillImageEnrichment,
 } = require("../lib/still-image-enrichment");
 const {
-  buildOfficialTrailerClipsFromFrameReport,
-} = require("../lib/studio/v2/official-trailer-clip-refs");
-const {
-  buildFlashLaneFootageBackboneReport,
-} = require("../lib/studio/v2/flash-lane-footage-backbone");
+  resolveOfficialTrailerClipRefsForProof,
+} = require("../lib/studio/v2/proof-official-clip-safety");
 const {
   assertNarrationAllowedForProof,
   looksLikeLocalTtsPath,
 } = require("../lib/studio/v2/proof-render-safety");
 const {
+  probeLocalAudioAcoustics,
+} = require("../lib/ops/local-acoustic-probe");
+const {
   assertFlashLaneProofReady,
   buildFlashLaneProofPreflight,
+  buildFlashLaneProofReadinessSummary,
 } = require("../lib/studio/v2/flash-lane-preflight");
 const {
+  classifyStudioV2Suitability,
+  evaluateStillDeckRenderReadiness,
   recommendStudioV2Promotion,
 } = require("../lib/studio/v2/still-deck-promotion");
 const {
   FLASH_LANE_DEFAULT_MAX_WORDS,
 } = require("../lib/studio/v2/flash-lane-production-contract");
+const {
+  buildFootageEmpirePlan,
+} = require("../lib/studio/v4/footage-empire");
+const {
+  buildVisualV4DirectorPlan,
+} = require("../lib/studio/v4/director-brain");
+const {
+  buildViralScriptIntelligence,
+} = require("../lib/viral-script-intelligence");
+const {
+  buildLocalVideoTimeline,
+} = require("../lib/local-video-timeline");
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output", "studio-v2-still-deck");
 const SOURCE_OUT = path.join(OUT, "assets");
 const DEFAULT_REPORT_CANDIDATES = [
+  path.join(ROOT, "test", "output", "asset_acquisition_v16_gameplay_stills_apply_local.json"),
+  path.join(ROOT, "test", "output", "asset_acquisition_v16_gameplay_stills.json"),
+  path.join(ROOT, "test", "output", "asset_acquisition_v16_gameplay_stills_dry_run.json"),
   path.join(ROOT, "test", "output", "asset_acquisition_v15_multi_entity_apply_local.json"),
   path.join(ROOT, "test", "output", "asset_acquisition_v15_multi_entity_dry_run.json"),
   path.join(ROOT, "test", "output", "asset_acquisition_v14_verified_store_apply_local.json"),
@@ -92,6 +138,12 @@ const DEFAULT_SEGMENT_VALIDATION_REPORT = path.join(
   "output",
   "official_trailer_segment_validation_apply_local.json",
 );
+const DEFAULT_TRUSTED_FOOTAGE_REPORT = path.join(
+  ROOT,
+  "test",
+  "output",
+  "trusted_footage_registry_report.json",
+);
 const PREFERRED = ["1szzhy9", "rss_4105cb7c837252c3"];
 const TARGET_RUNTIME_S = 61;
 const FONT_OPT =
@@ -99,9 +151,14 @@ const FONT_OPT =
     ? "fontfile='C\\:/Windows/Fonts/arial.ttf'"
     : "font='DejaVu Sans'";
 
+function envEnabled(value) {
+  return /^(1|true|yes|on)$/i.test(String(value || "").trim());
+}
+
 function parseArgs(argv) {
   const args = {
     storyId: null,
+    storyJsonPath: null,
     reportPath: null,
     applyLocal: false,
     frameReportPath: null,
@@ -113,15 +170,20 @@ function parseArgs(argv) {
     allowSilentFixture: false,
     allowFlashDiagnosticRender: false,
     allowLocalVoiceDiagnostic: false,
+    allowUnvalidatedOfficialClips: false,
     generateLocalTts: false,
     useOfficialTrailerClips: false,
     audioPath: null,
     timestampsPath: null,
+    retentionIntelligencePath: null,
+    visualV3: envEnabled(process.env.STUDIO_V3_VISUALS),
+    visualV4: envEnabled(process.env.STUDIO_V4_VISUALS),
     limit: 1,
   };
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--story") args.storyId = argv[++i] || null;
+    else if (arg === "--story-json") args.storyJsonPath = argv[++i] || "";
     else if (arg === "--report") args.reportPath = path.resolve(argv[++i] || "");
     else if (arg === "--frame-report") args.frameReportPath = path.resolve(argv[++i] || "");
     else if (arg === "--segment-validation-report")
@@ -134,10 +196,20 @@ function parseArgs(argv) {
     else if (arg === "--allow-silent-fixture") args.allowSilentFixture = true;
     else if (arg === "--allow-flash-diagnostic-render") args.allowFlashDiagnosticRender = true;
     else if (arg === "--allow-local-voice-diagnostic") args.allowLocalVoiceDiagnostic = true;
+    else if (arg === "--allow-unvalidated-official-clips") args.allowUnvalidatedOfficialClips = true;
     else if (arg === "--generate-local-tts") args.generateLocalTts = true;
     else if (arg === "--use-official-trailer-clips") args.useOfficialTrailerClips = true;
-    else if (arg === "--audio") args.audioPath = path.resolve(argv[++i] || "");
-    else if (arg === "--timestamps") args.timestampsPath = path.resolve(argv[++i] || "");
+    else if (arg === "--audio") args.audioPath = argv[++i] || "";
+    else if (arg === "--timestamps") args.timestampsPath = argv[++i] || "";
+    else if (arg === "--retention-intelligence")
+      args.retentionIntelligencePath = path.resolve(argv[++i] || "");
+    else if (arg === "--visual-v3") args.visualV3 = true;
+    else if (arg === "--no-visual-v3") args.visualV3 = false;
+    else if (arg === "--visual-v4") {
+      args.visualV4 = true;
+      args.visualV3 = true;
+    }
+    else if (arg === "--no-visual-v4") args.visualV4 = false;
     else if (arg === "--limit") args.limit = Math.max(1, Number(argv[++i]) || 1);
     else if (arg === "--help" || arg === "-?") args.help = true;
   }
@@ -151,6 +223,7 @@ function printHelp() {
       "",
       "Options:",
       "  --story <id>       Prefer one story id",
+      "  --story-json <path> Use a local story override JSON for proof renders",
       "  --report <path>    still-enrichment report path; defaults to newest v1.5/v1.4/v1.1 output",
       "  --frame-report <path>  accepted local frame-extraction report; defaults to controlled worker apply-local output if present",
       "  --segment-validation-report <path>  optional local segment validation report for official trailer clip refs",
@@ -161,11 +234,17 @@ function printHelp() {
       "  --with-sound-design  Mix local music bed + restrained SFX in the local proof",
       "  --audio <path>     Use real narration audio for the proof",
       "  --timestamps <path>  Use matching ElevenLabs/local-TTS timestamps JSON",
+      "  --retention-intelligence <path>  Apply read-only retention recommendations to Visual V3 overlays",
+      "  --visual-v3       Burn Visual V3 source-aware story overlays before subtitles",
+      "  --no-visual-v3    Disable Visual V3 even when STUDIO_V3_VISUALS=true",
+      "  --visual-v4       Build Visual V4 director readiness and enable Visual V3 overlays",
+      "  --no-visual-v4    Disable Visual V4 readiness even when STUDIO_V4_VISUALS=true",
       "  --generate-local-tts  Generate local TTS audio under test/output before rendering",
       "  --use-official-trailer-clips  Use official Steam/IGDB trailer references as local-only ffmpeg clip inputs",
       "  --allow-silent-fixture  Explicitly allow silent visual-only proof renders",
       "  --allow-flash-diagnostic-render  Explicitly allow a proof render even when Flash Lane preflight blocks it",
       "  --allow-local-voice-diagnostic  Explicitly allow unapproved local TTS in a local diagnostic render",
+      "  --allow-unvalidated-official-clips  Local diagnostic override; official clips otherwise require segment validation",
       "  --limit <n>        Number of selected stories to attempt, default 1",
       "",
       "This command is local-only. It does not mutate Railway, OAuth, production DB, scheduler, render defaults or publishing paths.",
@@ -229,7 +308,19 @@ function normaliseStory(row) {
   };
 }
 
-async function loadStory(storyId, plan) {
+async function loadStory(storyId, plan, storyJsonPath = null) {
+  if (storyJsonPath) {
+    const resolved = path.isAbsolute(storyJsonPath)
+      ? storyJsonPath
+      : path.resolve(ROOT, storyJsonPath);
+    const raw = await fs.readJson(resolved);
+    const payload = raw?.story && typeof raw.story === "object" ? raw.story : raw;
+    const override = normaliseStory(payload);
+    return {
+      ...override,
+      id: override.id || storyId || plan?.story_id || "local_story_override",
+    };
+  }
   const db = require("../lib/db");
   const rows = (await db.getStories()).map(normaliseStory);
   const story = rows.find((item) => item.id === storyId);
@@ -288,6 +379,75 @@ function buildSimpleAss({ story, durationS }) {
   return lines.join("\n") + "\n";
 }
 
+function resolveSubtitleTimelineDurationS({
+  renderDurationS,
+  narrationDurationS,
+  preferNarrationDuration = false,
+}) {
+  const renderDuration = Number(renderDurationS);
+  const narrationDuration = Number(narrationDurationS);
+  if (preferNarrationDuration && Number.isFinite(narrationDuration) && narrationDuration > 0) {
+    return Math.max(0.1, narrationDuration);
+  }
+  const candidates = [renderDuration, narrationDuration].filter(
+    (value) => Number.isFinite(value) && value > 0,
+  );
+  return Math.max(0.1, ...candidates);
+}
+
+function buildSubtitleBaseFilter({
+  inputLabel,
+  outputLabel = "subtitleBase",
+  renderDurationS,
+  subtitleDurationS,
+  maxPadS = 0.35,
+}) {
+  const renderDuration = Number(renderDurationS);
+  const subtitleDuration = Number(subtitleDurationS);
+  if (!Number.isFinite(renderDuration) || renderDuration <= 0) {
+    throw new Error("still_deck_scene_timeline_duration_unknown");
+  }
+  const targetDurationS = Math.max(
+    0.1,
+    ...[renderDuration, subtitleDuration].filter(
+      (value) => Number.isFinite(value) && value > 0,
+    ),
+  );
+  const padDurationS = targetDurationS - renderDuration;
+  if (padDurationS > maxPadS) {
+    throw new Error(
+      `still_deck_scene_timeline_under_covers_subtitles:${padDurationS.toFixed(3)}`,
+    );
+  }
+  const filters = [];
+  if (padDurationS > 0.01) {
+    filters.push(`tpad=stop_mode=clone:stop_duration=${padDurationS.toFixed(3)}`);
+  }
+  filters.push(
+    `trim=duration=${targetDurationS.toFixed(3)}`,
+    "noise=alls=2:allf=t+u",
+    "eq=brightness=0.006*sin(8.168*t):eval=frame",
+    "drawbox=x=0:y=h-430:w=iw:h=430:color=black@0.22:t=fill",
+    "setpts=PTS-STARTPTS",
+  );
+  return `[${inputLabel}]${filters.join(",")}[${outputLabel}]`;
+}
+
+function resolveStillDeckCaptionOptions({ variant } = {}) {
+  const flash = variant === "enriched";
+  return {
+    maxWordsPerPhrase: 2,
+    maxPhraseChars: flash ? 18 : 14,
+    captionCase: "upper",
+    revealMode: "word",
+    motionStyle: flash ? "flash" : "default",
+    avoidDanglingWords: flash,
+    danglingMergeMaxWords: flash ? 3 : 2,
+    maxPhraseDurationS: flash ? 1.15 : 2.2,
+    minPhraseDurationS: flash ? 0.32 : 0.5,
+  };
+}
+
 function ensureSpokenOutro(text) {
   const outro = resolveStudioOutroLine({});
   const script = String(text || "").trim();
@@ -305,6 +465,24 @@ function cleanInlineText(text) {
 
 function countWords(text) {
   return cleanInlineText(text).split(/\s+/).filter(Boolean).length;
+}
+
+function inferVoiceMastering({ explicit, acoustic } = {}) {
+  if (explicit) return explicit;
+  const integratedLufs = Number(acoustic?.integratedLufs);
+  const truePeakDb = Number(acoustic?.truePeakDb);
+  const loudnessOk =
+    Number.isFinite(integratedLufs) && integratedLufs >= -18 && integratedLufs <= -14;
+  const peakOk = Number.isFinite(truePeakDb) && truePeakDb <= -1 && truePeakDb >= -4;
+  if (!loudnessOk || !peakOk) return null;
+  return {
+    ok: true,
+    code: "voice_mastered",
+    targetLufs: -16,
+    truePeak: truePeakDb,
+    source: "local_acoustic_probe",
+    acoustic,
+  };
 }
 
 function selectProofHook({ editorialHook, story }) {
@@ -361,6 +539,19 @@ async function readTimestampWords(timestampsPath) {
   return wordsFromAlignment(alignment);
 }
 
+async function resolveReadableMediaArg(inputPath) {
+  if (!inputPath) return null;
+  const mediaResolved = await mediaPaths.resolveExisting(inputPath);
+  if (mediaResolved && (await fs.pathExists(mediaResolved))) return mediaResolved;
+  const absolute = path.resolve(inputPath);
+  if (await fs.pathExists(absolute)) return absolute;
+  return mediaResolved || absolute;
+}
+
+function sidecarMeta(data) {
+  return data?.meta || data?.alignment?.meta || data?.timestamps?.meta || {};
+}
+
 async function resolveNarration({
   story,
   variant,
@@ -369,57 +560,121 @@ async function resolveNarration({
   timestampsPath,
   generateLocalTts,
   allowSilentFixture,
+  narrationCache = null,
 }) {
   if (audioPath) {
-    if (!(await fs.pathExists(audioPath))) {
-      throw new Error(`narration audio missing: ${audioPath}`);
+    const resolvedAudioPath = await resolveReadableMediaArg(audioPath);
+    if (!resolvedAudioPath || !(await fs.pathExists(resolvedAudioPath))) {
+      throw new Error(`narration audio missing: ${resolvedAudioPath || audioPath}`);
     }
-    const inferredTs = timestampsPath || audioPath.replace(/\.(mp3|wav|m4a)$/i, "_timestamps.json");
-    const suppliedLocalTts = looksLikeLocalTtsPath(audioPath);
+    const inferredTs = timestampsPath
+      ? await resolveReadableMediaArg(timestampsPath)
+      : resolvedAudioPath.replace(/\.(mp3|wav|m4a)$/i, "_timestamps.json");
+    const suppliedLocalTts = looksLikeLocalTtsPath(resolvedAudioPath);
+    const meta = inferredTs && (await fs.pathExists(inferredTs))
+      ? await fs.readJson(inferredTs).catch(() => null)
+      : null;
+    const metaRoot = sidecarMeta(meta);
+    const transcriptChars = meta?.characters || meta?.alignment?.characters || [];
+    const acoustic =
+      metaRoot.acoustic ||
+      (suppliedLocalTts ? probeLocalAudioAcoustics(resolvedAudioPath) : null);
+    const explicitVoiceMastering =
+      metaRoot.voiceMastering ||
+      metaRoot.voice_mastering ||
+      metaRoot.mastering ||
+      null;
+    const generation = metaRoot.generation || null;
     return {
       mode: "real_audio",
-      audioPath,
-      timestampsPath: (await fs.pathExists(inferredTs)) ? inferredTs : null,
-      durationS: ffprobeDuration(audioPath),
+      audioPath: resolvedAudioPath,
+      timestampsPath: inferredTs && (await fs.pathExists(inferredTs)) ? inferredTs : null,
+      durationS: ffprobeDuration(resolvedAudioPath),
       provider: suppliedLocalTts ? "local" : "external",
       source: suppliedLocalTts ? "provided-local-tts-audio" : "provided-real-audio",
+      signatureHash: metaRoot.signatureHash || null,
+      approvedLocalVoice: metaRoot.approvedLocalVoice === true,
+      acceptedLocalVoice: metaRoot.acceptedLocalVoice || null,
+      acoustic,
+      voiceMastering: inferVoiceMastering({ explicit: explicitVoiceMastering, acoustic }),
+      generation,
+      tempoStretch:
+        generation?.tempo_stretch ||
+        generation?.tempoStretch ||
+        metaRoot.tempo_stretch ||
+        metaRoot.tempoStretch ||
+        null,
+      voiceDiagnostics: metaRoot.voiceDiagnostics || null,
+      displayText:
+        metaRoot.displayText ||
+        metaRoot.display_text ||
+        null,
+      transcript:
+        metaRoot.transcript ||
+        metaRoot.text ||
+        (Array.isArray(transcriptChars) ? transcriptChars.join("") : ""),
     };
   }
 
   if (generateLocalTts) {
-    const audioDir = path.join(outputDir, "audio");
-    await fs.ensureDir(audioDir);
-    const out = path.join(audioDir, `${story.id}_local_tts.mp3`);
     const text = cleanForTTS(story.tts_script || story.full_script || story.body || story.title);
     if (!text.trim()) throw new Error("cannot generate local TTS for empty script");
-    const oldProvider = process.env.TTS_PROVIDER;
-    const oldUrl = process.env.LOCAL_TTS_URL;
-    process.env.TTS_PROVIDER = "local";
-    process.env.LOCAL_TTS_URL = process.env.LOCAL_TTS_URL || "http://127.0.0.1:8765";
-    const ts = out.replace(/\.mp3$/i, "_timestamps.json");
-    try {
-      if (!(await fs.pathExists(out)) || !(await fs.pathExists(ts))) {
-        const rateOverride = Number(
-          process.env.STUDIO_V2_STILL_DECK_LOCAL_TTS_RATE ||
-            process.env.STUDIO_V2_LOCAL_TTS_RATE_MULTIPLIER ||
-            1.55,
-        );
-        await generateTTS(text, out, Number.isFinite(rateOverride) ? rateOverride : 1.55);
-      }
-    } finally {
-      if (oldProvider === undefined) delete process.env.TTS_PROVIDER;
-      else process.env.TTS_PROVIDER = oldProvider;
-      if (oldUrl === undefined) delete process.env.LOCAL_TTS_URL;
-      else process.env.LOCAL_TTS_URL = oldUrl;
+    const narrationCacheKey = narrationCache
+      ? [story.id || "", text].join("::")
+      : null;
+    if (narrationCacheKey && narrationCache.has(narrationCacheKey)) {
+      return narrationCache.get(narrationCacheKey);
     }
-    return {
+    const voice = await ensureProductionLocalVoice({
+      root: ROOT,
+      storyId: story.id,
+      editorial: {
+        hook: story.hook || story.title,
+        body: story.body || story.full_script || story.title,
+        loop: story.loop || "",
+        fullScript: story.full_script || story.body || story.title,
+        scriptForCaption: story.scriptForCaption || story.full_script || story.body || story.title,
+        scriptForTTS: story.tts_script || story.full_script || story.body || story.title,
+      },
+      force: process.env.STUDIO_V2_FORCE_TTS === "true",
+    });
+    const meta = await fs.readJson(voice.timestampsPath).catch(() => null);
+    const metaRoot = sidecarMeta(meta);
+    const acoustic = metaRoot.acoustic || probeLocalAudioAcoustics(voice.audioPath);
+    const explicitVoiceMastering =
+      metaRoot.voiceMastering ||
+      metaRoot.voice_mastering ||
+      metaRoot.mastering ||
+      null;
+    const generation = metaRoot.generation || null;
+    const narration = {
       mode: "real_audio",
-      audioPath: out,
-      timestampsPath: (await fs.pathExists(ts)) ? ts : null,
-      durationS: ffprobeDuration(out),
+      audioPath: voice.audioPath,
+      timestampsPath: voice.timestampsPath,
+      durationS: voice.durationS || ffprobeDuration(voice.audioPath),
       provider: "local",
-      source: "local-production-voxcpm-path",
+      source: voice.source || "local-production-voxcpm-path",
+      signatureHash: voice.signatureHash || metaRoot.signatureHash || null,
+      approvedLocalVoice: metaRoot.approvedLocalVoice === true,
+      acceptedLocalVoice: metaRoot.acceptedLocalVoice || null,
+      acoustic,
+      voiceMastering: inferVoiceMastering({ explicit: explicitVoiceMastering, acoustic }),
+      generation,
+      tempoStretch:
+        generation?.tempo_stretch ||
+        generation?.tempoStretch ||
+        metaRoot.tempo_stretch ||
+        metaRoot.tempoStretch ||
+        null,
+      voiceDiagnostics: metaRoot.voiceDiagnostics || null,
+      displayText:
+        metaRoot.displayText ||
+        metaRoot.display_text ||
+        null,
+      transcript: metaRoot.transcript || metaRoot.text || "",
     };
+    if (narrationCacheKey) narrationCache.set(narrationCacheKey, narration);
+    return narration;
   }
 
   if (!allowSilentFixture) {
@@ -472,6 +727,75 @@ function sumDurations(scenes) {
   return scenes.reduce((sum, scene) => sum + Number(scene.duration || 0), 0);
 }
 
+function transitionedDurationS(scenes, transitions) {
+  const baseDurationS = sumDurations(scenes);
+  const overlapS = (transitions || []).reduce(
+    (sum, transition) =>
+      sum + (transition?.type === "cut" ? 0 : Number(transition?.duration || 0)),
+    0,
+  );
+  return Math.max(0.1, baseDurationS - overlapS);
+}
+
+function ensureTransitionTimelineCoversCaptions({
+  scenes,
+  captionDurationS,
+  quickCut = false,
+  maxSubtitlePadS = 0.35,
+} = {}) {
+  let nextScenes = scenes;
+  let transitions = buildTransitionPlan(nextScenes, { quickCut });
+  let transitionDurationS = transitionedDurationS(nextScenes, transitions);
+  let extensionGuard = null;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const deficitS = Number(captionDurationS) - transitionDurationS;
+    if (!Number.isFinite(deficitS) || deficitS <= maxSubtitlePadS) break;
+    const targetDurationS = sumDurations(nextScenes) + deficitS + 0.04;
+    extensionGuard = protectClipSceneDurationsFromFreezes(nextScenes, {
+      targetDurationS,
+    });
+    nextScenes = extensionGuard.scenes;
+    transitions = buildTransitionPlan(nextScenes, { quickCut });
+    transitionDurationS = transitionedDurationS(nextScenes, transitions);
+  }
+
+  return {
+    scenes: nextScenes,
+    transitions,
+    transitionDurationS,
+    extensionGuard,
+  };
+}
+
+function prepareNarrationWords({ rawWords, durationS, scriptText }) {
+  const realigned = rawWords.length
+    ? realignTimestampsToScript(scriptText || "", rawWords)
+    : [];
+  const prepared = prepareSubtitleWords({
+    words: realigned,
+    duration: durationS,
+    scriptText,
+    strictEndCoverage: true,
+  });
+  return prepared.length ? prepared : wordsForScript(scriptText, durationS);
+}
+
+async function readPreparedNarrationWords({ narration, durationS, scriptText }) {
+  if (narration.mode !== "real_audio") return wordsForScript(scriptText, durationS);
+  const rawWords = await readTimestampWords(narration.timestampsPath);
+  return prepareNarrationWords({ rawWords, durationS, scriptText });
+}
+
+function alignScenesToNarrationBeats({ scenes, words, totalDurationS, quickCut = false }) {
+  const result = alignSceneDurationsToWordBoundaries(scenes, words, {
+    totalDurationS,
+    minSceneDurationS: quickCut ? 2.2 : 2.6,
+    maxSceneDurationS: quickCut ? 5.2 : 8.2,
+  });
+  return result.adjusted ? result.scenes : scenes;
+}
+
 function sceneListForReport(scenes) {
   return scenes.map((scene) => ({
     type: scene.type || scene.sceneType,
@@ -479,9 +803,49 @@ function sceneListForReport(scenes) {
     duration: scene.duration,
     source: scene.source || scene.backgroundSource || scene.prerenderedMp4 || scene.statLabel || null,
     mediaStartS: scene.mediaStartS ?? null,
+    clipDurationS: scene.clipDurationS ?? null,
+    clipDurationCapped: scene.clipDurationCapped === true,
+    clipDurationCapReason: scene.clipDurationCapReason || null,
+    clipTimingProvenance: scene.clipTimingProvenance || null,
     premiumLane: scene.premiumLane || null,
     cardTreatment: scene.cardTreatment || null,
   }));
+}
+
+function motionSourceFamilyFromScene(scene, index) {
+  const explicit =
+    scene.sourceFamily ||
+    scene.source_family ||
+    scene.clipSourceFamily ||
+    scene.trusted_footage_source_id ||
+    scene.sourceId;
+  if (explicit) return explicit;
+  const source = String(scene.source || scene.backgroundSource || scene.localPath || "");
+  if (/steamstatic\.com|steam/i.test(source)) return "steam";
+  if (/igdb/i.test(source)) return "igdb";
+  if (/xbox|forza/i.test(source)) return "forza";
+  return source || `scene_motion_${index + 1}`;
+}
+
+function localMotionClipsFromScenes(scenes) {
+  const motionTypes = new Set([
+    SCENE_TYPES.CLIP,
+    SCENE_TYPES.PUNCH,
+    SCENE_TYPES.SPEED_RAMP,
+  ]);
+  return (Array.isArray(scenes) ? scenes : [])
+    .filter((scene) => motionTypes.has(scene.type || scene.sceneType))
+    .map((scene, index) => ({
+      id: scene.id || scene.label || `scene_motion_${index + 1}`,
+      source_family: motionSourceFamilyFromScene(scene, index),
+      path: scene.localPath || scene.path || scene.source || scene.backgroundSource || "",
+      durationS: Number(scene.clipDurationS || scene.duration || 0),
+      validated:
+        scene.clipTimingProvenance === "official_segment_validation" ||
+        scene.segmentValidationPassed === true ||
+        scene.validated !== false,
+      type: "clip",
+    }));
 }
 
 async function buildFlashLaneRenderPreflight({
@@ -493,6 +857,11 @@ async function buildFlashLaneRenderPreflight({
   generateLocalTts = false,
   audioPath = null,
   timestampsPath = null,
+  narrationCache = null,
+  retentionIntelligence = null,
+  visualV3 = false,
+  trustedFootageReport = null,
+  visualV4 = false,
 }) {
   const renderStory = buildRenderStory(story);
   const narration = await resolveNarration({
@@ -503,6 +872,7 @@ async function buildFlashLaneRenderPreflight({
     timestampsPath,
     generateLocalTts,
     allowSilentFixture,
+    narrationCache,
   });
   const targetDurationS =
     narration.mode === "real_audio" && Number.isFinite(narration.durationS)
@@ -515,11 +885,12 @@ async function buildFlashLaneRenderPreflight({
     opts: {
       allowStockFiller: false,
       flashLane: true,
-      takeawayText: "FOLLOW PULSE GAMING",
-      cta: "NEVER MISS A BEAT",
+      sourceCardMode: "overlay",
+      takeawayText: "PULSE GAMING",
+      cta: "DAILY GAMING NEWS",
     },
   });
-  const scenes = composed.scenes.length
+  let scenes = composed.scenes.length
     ? composed.scenes
     : [
         {
@@ -529,10 +900,35 @@ async function buildFlashLaneRenderPreflight({
           sourceLabel: story.source_type || "NEWS",
         },
       ];
+  const initialDurationS = sumDurations(scenes) || targetDurationS;
+  const scriptText =
+    narration.displayText ||
+    renderStory.scriptForCaption ||
+    narration.transcript ||
+    renderStory.full_script;
+  const words = await readPreparedNarrationWords({
+    narration,
+    durationS: initialDurationS,
+    scriptText,
+  });
+  scenes = alignScenesToNarrationBeats({
+    scenes,
+    words,
+    totalDurationS: initialDurationS,
+  });
+  scenes = applyPremiumCardLaneV2({
+    scenes,
+    story: renderStory,
+    root: ROOT,
+    channelId: process.env.CHANNEL || renderStory.channel_id || "pulse-gaming",
+  }).scenes;
+  const durationS = sumDurations(scenes) || targetDurationS;
+  const overlayPlan = buildFlashLaneOverlayPlan({ story: renderStory, scenes, durationS });
   const report = buildFlashLaneProofPreflight({
     narration,
     scenes,
     media,
+    overlayPlan,
     scriptWordCount: countWords(renderStory.tts_script || renderStory.full_script || renderStory.body || renderStory.title),
   });
   return {
@@ -547,6 +943,7 @@ async function buildFlashLaneRenderPreflight({
         ? Number(Number(narration.durationS).toFixed(3))
         : null,
     },
+    flashLaneOverlays: overlayPlan,
     sceneList: sceneListForReport(scenes),
   };
 }
@@ -563,19 +960,14 @@ async function renderStillDeckVariant({
   generateLocalTts = false,
   audioPath = null,
   timestampsPath = null,
+  narrationCache = null,
+  retentionIntelligence = null,
+  visualV3 = false,
+  trustedFootageReport = null,
+  visualV4 = false,
 }) {
   await fs.ensureDir(outputDir);
   const renderStory = buildRenderStory(story);
-  if (generateLocalTts) {
-    assertNarrationAllowedForProof(
-      {
-        mode: "real_audio",
-        provider: "local",
-        source: "local-production-voxcpm-path",
-      },
-      { allowSilentFixture, allowLocalVoiceDiagnostic },
-    );
-  }
   const narration = await resolveNarration({
     story: renderStory,
     variant,
@@ -584,12 +976,14 @@ async function renderStillDeckVariant({
     timestampsPath,
     generateLocalTts,
     allowSilentFixture,
+    narrationCache,
   });
   assertNarrationAllowedForProof(narration, { allowSilentFixture, allowLocalVoiceDiagnostic });
   const targetDurationS =
     narration.mode === "real_audio" && Number.isFinite(narration.durationS)
       ? narration.durationS
       : TARGET_RUNTIME_S;
+  const quickCut = visualV3 && variant === "enriched";
   const composed = composeStudioSlate({
     story: renderStory,
     media,
@@ -597,11 +991,14 @@ async function renderStillDeckVariant({
     opts: {
       allowStockFiller: false,
       flashLane: variant === "enriched",
-      takeawayText: "FOLLOW PULSE GAMING",
-      cta: "NEVER MISS A BEAT",
+      quickCut: visualV3 && variant === "enriched",
+      flashStillRepeatCap: 1,
+      sourceCardMode: variant === "enriched" ? "overlay" : "scene",
+      takeawayText: "PULSE GAMING",
+      cta: "DAILY GAMING NEWS",
     },
   });
-  const scenes = composed.scenes.length
+  let scenes = composed.scenes.length
     ? composed.scenes
     : [
         {
@@ -611,65 +1008,191 @@ async function renderStillDeckVariant({
           sourceLabel: story.source_type || "NEWS",
         },
       ];
+  const initialDurationS = sumDurations(scenes);
+  const captionDurationS = resolveSubtitleTimelineDurationS({
+    renderDurationS: initialDurationS,
+    narrationDurationS: narration.durationS,
+    preferNarrationDuration: narration.mode === "real_audio",
+  });
+  const scriptText =
+    narration.displayText ||
+    renderStory.scriptForCaption ||
+    narration.transcript ||
+    renderStory.full_script;
+  let words = await readPreparedNarrationWords({
+    narration,
+    durationS: captionDurationS,
+    scriptText,
+  });
+  scenes = alignScenesToNarrationBeats({
+    scenes,
+    words,
+    totalDurationS: captionDurationS,
+    quickCut,
+  });
+  scenes = applyPremiumCardLaneV2({
+    scenes,
+    story: renderStory,
+    root: ROOT,
+    channelId: process.env.CHANNEL || renderStory.channel_id || "pulse-gaming",
+  }).scenes;
+  const clipDurationGuard = protectClipSceneDurationsFromFreezes(scenes, {
+    targetDurationS: captionDurationS,
+  });
+  scenes = clipDurationGuard.scenes;
+  scenes = capStaticCardDurations(scenes, {
+    maxStaticCardDurationS: 3.2,
+    maxFlexibleDurationS: 6.8,
+  }).scenes;
+  let durationS = sumDurations(scenes);
+  const transitionCoverage = ensureTransitionTimelineCoversCaptions({
+    scenes,
+    captionDurationS,
+    quickCut,
+  });
+  scenes = transitionCoverage.scenes;
+  durationS = sumDurations(scenes);
+  const transitions = transitionCoverage.transitions;
+  const transitionDurationS = transitionCoverage.transitionDurationS;
+  const renderTimelineDurationS = Math.max(transitionDurationS, captionDurationS);
+  const overlayPlan =
+    variant === "enriched"
+      ? buildFlashLaneOverlayPlan({ story: renderStory, scenes, durationS })
+      : null;
+  const visualV3Plan =
+    visualV3 && variant === "enriched"
+      ? buildVisualV3OverlayPlan({
+          story: renderStory,
+          words,
+          durationS: captionDurationS,
+          retentionIntelligence,
+          scenes,
+        })
+      : null;
+  const viralScriptIntelligence =
+    visualV4 && variant === "enriched"
+      ? buildViralScriptIntelligence({
+          story: renderStory,
+          script: scriptText,
+        })
+      : null;
+  const visualV4Timeline =
+    visualV4 && variant === "enriched"
+      ? buildLocalVideoTimeline({
+          story: renderStory,
+          timestamps: {
+            source: "prepared_local_alignment",
+            duration: captionDurationS,
+            words,
+          },
+          duration: captionDurationS,
+        })
+      : null;
+  const visualV4FootagePlan =
+    visualV4 && variant === "enriched"
+      ? buildFootageEmpirePlan({
+          story: renderStory,
+          trustedFootageReport: trustedFootageReport || {},
+          localMotionClips: localMotionClipsFromScenes(scenes),
+        })
+      : null;
+  const visualV4Plan =
+    visualV4 && variant === "enriched"
+      ? buildVisualV4DirectorPlan({
+          story: renderStory,
+          footagePlan: visualV4FootagePlan,
+          localTimeline: visualV4Timeline,
+          retentionIntelligence,
+        })
+      : null;
   const flashLanePreflight =
     variant === "enriched"
       ? assertFlashLaneProofReady(
-          { narration, scenes, media },
+          { narration, scenes, media, overlayPlan },
           { allowDiagnosticRender: allowFlashDiagnosticRender },
         )
       : null;
-  const transitions = buildCutTransitions(scenes);
-  const durationS = sumDurations(scenes);
   const assPath = path.join(outputDir, `${story.id}_${variant}.ass`);
-  const assDurationS = Math.max(0.1, durationS - 0.6);
-  let words = [];
   let subtitleStatus = "fixture_ass_generated";
   if (narration.mode === "real_audio") {
-    words = await readTimestampWords(narration.timestampsPath);
-    if (!words.length) words = wordsForScript(renderStory.full_script, assDurationS);
     await fs.writeFile(
       assPath,
       buildKineticAss({
         story: renderStory,
         words,
-        duration: assDurationS,
-        scriptText: renderStory.scriptForCaption || renderStory.full_script,
-        maxWordsPerPhrase: 2,
-        maxPhraseChars: 14,
-        captionCase: "upper",
+        duration: captionDurationS,
+        scriptText,
+        realign: false,
+        ...resolveStillDeckCaptionOptions({ variant }),
       }),
       "utf8",
     );
     subtitleStatus = words.length ? "kinetic_ass_from_real_audio" : "kinetic_ass_even_timing";
   } else {
-    await fs.writeFile(assPath, buildSimpleAss({ story: renderStory, durationS: assDurationS }), "utf8");
-    words = wordsForScript(renderStory.full_script, assDurationS);
+    await fs.writeFile(
+      assPath,
+      buildSimpleAss({ story: renderStory, durationS: captionDurationS }),
+      "utf8",
+    );
+    words = wordsForScript(renderStory.full_script, captionDurationS);
   }
 
   const sceneInputs = scenes.map(buildSceneInput);
   const filterParts = scenes.map((scene, index) =>
     dispatchSceneFilter({ slot: index, scene, story: renderStory, fontOpt: FONT_OPT }),
   );
-  let prev = "v0";
-  for (let i = 0; i < transitions.length; i++) {
-    const out = i === transitions.length - 1 ? "base" : `xf${i + 1}`;
-    filterParts.push(
-      `[${prev}][v${i + 1}]concat=n=2:v=1:a=0,fps=${FPS},setpts=PTS-STARTPTS[${out}]`,
-    );
-    prev = out;
-  }
+  filterParts.push(...buildTransitionFilters(transitions));
   if (scenes.length === 1) filterParts.push("[v0]copy[base]");
+  let subtitleInputLabel = "base";
+  const shouldBurnFlashLaneOverlays = Boolean(overlayPlan && !visualV3Plan);
+  if (shouldBurnFlashLaneOverlays) {
+    subtitleInputLabel = "overlayed";
+    filterParts.push(
+      ...buildFlashLaneOverlayFilters({
+        plan: overlayPlan,
+        inputLabel: "base",
+        outputLabel: subtitleInputLabel,
+        fontOpt: FONT_OPT,
+      }),
+    );
+  }
+  const visualV3OverlayFilter = visualV3Plan
+    ? buildVisualV3OverlayFilter({
+        plan: visualV3Plan,
+        inputLabel: subtitleInputLabel,
+        outputLabel: "visualV3Base",
+        fontOpt: FONT_OPT,
+      })
+    : null;
+  if (visualV3OverlayFilter) {
+    filterParts.push(visualV3OverlayFilter);
+    subtitleInputLabel = "visualV3Base";
+  }
   const assRel = path.relative(ROOT, assPath).replace(/\\/g, "/");
-  filterParts.push(`[base]ass=${assRel},format=yuv420p[outv]`);
+  const subtitleRenderDurationS = renderTimelineDurationS;
+  filterParts.push(
+    buildSubtitleBaseFilter({
+      inputLabel: subtitleInputLabel,
+      renderDurationS: transitionDurationS,
+      subtitleDurationS: subtitleRenderDurationS,
+    }),
+    `[subtitleBase]ass=${assRel},format=yuv420p[outv]`,
+  );
 
   const filterPath = path.join(outputDir, `${story.id}_${variant}_filter.txt`);
-  const mp4Path = path.join(outputDir, `studio_v2_${story.id}_${variant}.mp4`);
+  const renderPrefix =
+    visualV4Plan && variant === "enriched"
+      ? "studio_v4"
+      : visualV3Plan && variant === "enriched"
+        ? "studio_v3"
+        : "studio_v2";
+  const mp4Path = path.join(outputDir, `${renderPrefix}_${story.id}_${variant}.mp4`);
   const audioIndex = sceneInputs.length;
   const allInputs = [
     ...sceneInputs,
     narration.mode === "real_audio"
       ? `-i "${narration.audioPath.replace(/\\/g, "/")}"`
-      : `-f lavfi -t ${durationS.toFixed(3)} -i anullsrc=channel_layout=stereo:sample_rate=48000`,
+      : `-f lavfi -t ${subtitleRenderDurationS.toFixed(3)} -i anullsrc=channel_layout=stereo:sample_rate=48000`,
   ];
   let audioMapArg = `-map ${audioIndex}:a`;
   let audioPlan = null;
@@ -691,7 +1214,7 @@ async function renderStillDeckVariant({
       musicInputIdx: musicIndex,
       audioInputsBaseIdx: allInputs.length,
       audioPlan,
-      targetDurationS: durationS,
+      targetDurationS: subtitleRenderDurationS,
     });
     allInputs.push(...soundLayer.extraInputs);
     filterParts.push(...soundLayer.filterLines);
@@ -704,6 +1227,11 @@ async function renderStillDeckVariant({
       audioPlan: audioPlan.decisions,
       musicBed: audioPlan.musicBed,
     };
+  } else {
+    filterParts.push(
+      `[${audioIndex}:a]apad,atrim=duration=${subtitleRenderDurationS.toFixed(3)},asetpts=PTS-STARTPTS[outa]`,
+    );
+    audioMapArg = '-map "[outa]"';
   }
 
   await fs.writeFile(filterPath, filterParts.join(";\n"), "utf8");
@@ -714,7 +1242,7 @@ async function renderStillDeckVariant({
     `-map "[outv]" ${audioMapArg}`,
     "-c:v libx264 -crf 21 -preset veryfast",
     "-pix_fmt yuv420p -profile:v high -level:v 4.0",
-    "-c:a aac -b:a 96k",
+    "-c:a aac -b:a 192k",
     `-r ${FPS} -shortest -movflags +faststart "${mp4Path.replace(/\\/g, "/")}"`,
   ].join(" ");
   execSync(command, { cwd: ROOT, stdio: "inherit", maxBuffer: 80 * 1024 * 1024 });
@@ -741,6 +1269,12 @@ async function renderStillDeckVariant({
       voiceId: process.env.ELEVENLABS_VOICE_ID || null,
       editorialScriptAppliedToAudio: narration.mode === "real_audio",
       timestampSource: narration.timestampsPath ? "tts-alignment" : null,
+      approvedLocalVoice: narration.approvedLocalVoice === true,
+      acceptedLocalVoice: narration.acceptedLocalVoice || null,
+      acoustic: narration.acoustic || null,
+      tempoStretch: narration.tempoStretch || null,
+      voiceDiagnostics: narration.voiceDiagnostics || null,
+      transcript: narration.transcript || null,
     },
     audioDurationS: narration.mode === "real_audio" ? narration.durationS : fixtureDurationS,
     assPath,
@@ -757,6 +1291,15 @@ async function renderStillDeckVariant({
   };
   quality.sceneList = sceneListForReport(scenes);
   quality.transitions = transitions;
+  quality.timeline = {
+    captionDurationS: Number(captionDurationS.toFixed(3)),
+    visualDurationS: Number(durationS.toFixed(3)),
+    renderTimelineDurationS: Number(renderTimelineDurationS.toFixed(3)),
+    clipDurationGuard: {
+      ...clipDurationGuard,
+      transitionCoverageExtension: transitionCoverage.extensionGuard,
+    },
+  };
   quality.mediaDiversity = rankSourceDiversity(media);
   quality.subtitles = {
     assPath: path.relative(ROOT, assPath).replace(/\\/g, "/"),
@@ -766,12 +1309,68 @@ async function renderStillDeckVariant({
     source: narration.source,
     audioPath: narration.audioPath ? path.relative(ROOT, narration.audioPath).replace(/\\/g, "/") : null,
     timestampsPath: narration.timestampsPath ? path.relative(ROOT, narration.timestampsPath).replace(/\\/g, "/") : null,
+    signatureHash: narration.signatureHash || null,
+    approvedLocalVoice: narration.approvedLocalVoice === true,
+    acceptedLocalVoice: narration.acceptedLocalVoice || null,
+    acoustic: narration.acoustic || null,
+    tempoStretch: narration.tempoStretch || null,
+    voiceDiagnostics: narration.voiceDiagnostics || null,
+    transcript: narration.transcript || null,
     note:
       narration.mode === "real_audio"
         ? "Real narration audio was used for this local proof."
         : "Silent fixture audio was explicitly allowed for this local visual diagnostic.",
   };
   if (flashLanePreflight) quality.flashLanePreflight = flashLanePreflight;
+  if (overlayPlan) quality.flashLaneOverlays = overlayPlan;
+  quality.visualV3 = visualV3Plan
+    ? {
+        enabled: true,
+        verdict: visualV3Plan.verdict,
+        blockers: visualV3Plan.blockers,
+        warnings: visualV3Plan.warnings,
+        eventCount: visualV3Plan.eventCount,
+        events: visualV3Plan.events,
+        overlayApplied: Boolean(visualV3OverlayFilter),
+      }
+    : {
+        enabled: false,
+        verdict: "disabled",
+        blockers: [],
+        warnings: [],
+        eventCount: 0,
+        events: [],
+        overlayApplied: false,
+      };
+  quality.visualV4 = visualV4Plan
+    ? {
+        enabled: true,
+        verdict: visualV4Plan.readiness.status,
+        blockers: visualV4Plan.readiness.blockers,
+        warnings: visualV4Plan.readiness.warnings,
+        shotBudget: visualV4Plan.shot_budget,
+        shotPlan: visualV4Plan.shot_plan,
+        transitionPlan: visualV4Plan.transition_plan,
+        sfxPlan: visualV4Plan.sfx_plan,
+        soundTransitionPlan: visualV4Plan.sound_transition_plan,
+        footagePlan: visualV4FootagePlan,
+        localTimeline: visualV4Timeline,
+        viralScriptIntelligence,
+      }
+    : {
+        enabled: false,
+        verdict: "disabled",
+        blockers: [],
+        warnings: [],
+        shotBudget: null,
+        shotPlan: [],
+        transitionPlan: null,
+        sfxPlan: null,
+        soundTransitionPlan: null,
+        footagePlan: null,
+        localTimeline: null,
+        viralScriptIntelligence: null,
+      };
   const reportPath = path.join(outputDir, `${story.id}_${variant}_qa.json`);
   await fs.writeJson(reportPath, quality, { spaces: 2 });
   const forensic = await runForensicQa({
@@ -780,6 +1379,8 @@ async function renderStillDeckVariant({
     mp4Path,
     reportPath,
     assPath,
+    flashLane: variant === "enriched",
+    frameIntervalS: visualV3 && variant === "enriched" ? 0.5 : undefined,
   });
   return {
     variant,
@@ -821,14 +1422,23 @@ async function makeContactSheet(mp4Path, outPath) {
 function renderComparisonMarkdown(report) {
   const narration = report.narration || {};
   const motion = report.motion || {};
-  const narrationLine = report.render_preflight_error
+  const narrationLine = report.render_attempted === false
+    ? "- No render was attempted, so no narration audio was used or verified; a pilot proof still requires approved narration."
+    : report.render_preflight_error
     ? `- Narration/render was blocked before FFmpeg: ${report.render_preflight_error}`
     : narration.mode === "real_audio"
       ? `- Real narration audio used (${narration.enriched_source || "unknown source"}); ElevenLabs was not called.`
       : "- Silent fixture audio was explicitly allowed for a visual-only diagnostic; not valid for pilot approval.";
+  const clipSafety = motion.official_clip_safety || {};
+  const blockedClipLine =
+    clipSafety.status === "blocked_footage_backbone_not_ready"
+      ? `- Official trailer clips were blocked: ${clipSafety.backbone_verdict || "not_ready"}; validated entities: ${(clipSafety.validated_entities || []).join(", ") || "none"}; missing validated entities: ${(clipSafety.missing_validated_entities || []).join(", ") || "unknown"}.`
+      : null;
   const mediaLine =
     motion.official_clip_refs_used > 0
       ? `- Uses ${motion.official_clip_refs_used} local-only official Steam trailer reference(s) plus ${motion.official_trailer_frames_used || 0} extracted frame(s); no yt-dlp, browser scraping or persisted trailer downloads.`
+      : blockedClipLine
+        ? blockedClipLine
       : "- Still-image proof only; no trailer/video clip ingestion used.";
   const lines = [
     `# ${report.report_title || "Studio V2 Still-Deck Ingestion v1"}`,
@@ -849,6 +1459,33 @@ function renderComparisonMarkdown(report) {
   for (const item of report.artefacts) {
     lines.push(`- ${item.label}: ${item.path}`);
   }
+  if (report.visual_v3?.enabled) {
+    lines.push("", "## Visual V3", "");
+    lines.push(`- Verdict: ${report.visual_v3.verdict || "unknown"}`);
+    lines.push(`- Overlay applied: ${report.visual_v3.overlayApplied ? "yes" : "no"}`);
+    lines.push(`- Events: ${report.visual_v3.eventCount || 0}`);
+    for (const event of Array.isArray(report.visual_v3.events) ? report.visual_v3.events : []) {
+      lines.push(
+        `- ${event.atS}s ${event.kind}: ${event.metric || event.entity || event.label || event.source || event.id}`,
+      );
+    }
+  }
+  if (report.visual_v4?.enabled) {
+    const v4 = report.visual_v4;
+    const budget = v4.shotBudget || {};
+    lines.push("", "## Visual V4", "");
+    lines.push(`- Verdict: ${v4.verdict || "unknown"}`);
+    if (Array.isArray(v4.blockers) && v4.blockers.length) {
+      lines.push(`- Blockers: ${v4.blockers.join(", ")}`);
+    }
+    lines.push(
+      `- Motion budget: ${budget.available_motion_clips ?? "?"}/${budget.min_actual_motion_clips ?? "?"} motion clips; ${budget.available_distinct_motion_families ?? "?"}/${budget.min_distinct_motion_families ?? "?"} source families.`,
+    );
+    lines.push(`- Shot plan events: ${Array.isArray(v4.shotPlan) ? v4.shotPlan.length : 0}`);
+    if (v4.viralScriptIntelligence) {
+      lines.push(`- Script score: ${v4.viralScriptIntelligence.viral_score ?? "unknown"} (${v4.viralScriptIntelligence.verdict || "unknown"})`);
+    }
+  }
   lines.push(
     "",
     "## Metrics",
@@ -858,6 +1495,19 @@ function renderComparisonMarkdown(report) {
   );
   for (const row of report.metric_rows) {
     lines.push(`| ${row.metric} | ${row.baseline} | ${row.enriched} |`);
+  }
+  if (report.render_readiness) {
+    const readiness = report.render_readiness;
+    const blockers = Array.isArray(readiness.blockers) ? readiness.blockers : [];
+    const warnings = Array.isArray(readiness.warnings) ? readiness.warnings : [];
+    lines.push("", "## Render Readiness", "");
+    lines.push(`- Verdict: ${readiness.verdict || "review"} (${readiness.statusColour || readiness.readinessClass || "amber"})`);
+    if (blockers.length) lines.push(`- Blockers: ${blockers.join(", ")}`);
+    if (warnings.length) lines.push(`- Warnings: ${warnings.join(", ")}`);
+    lines.push(
+      `- Motion dominance: ${readiness.motionDominance ?? "unknown"}; story beat overlays: ${readiness.storyBeatOverlayCount ?? "unknown"}/${readiness.requiredBeatOverlayMinimum ?? "unknown"}; unique clip sources: ${readiness.uniqueClipSources ?? "unknown"}; distinct scene beats: ${readiness.distinctSceneBeats ?? "unknown"}`,
+    );
+    lines.push(`- Recommendation: ${readiness.recommendation || "Operator review advised."}`);
   }
   if (report.render_preflight) {
     lines.push("", "## Flash Lane Preflight", "");
@@ -872,8 +1522,9 @@ function renderComparisonMarkdown(report) {
     if (warnings.length) lines.push(`- Warnings: ${warnings.join(", ")}`);
     const metrics = report.render_preflight.metrics || {};
     if (Object.keys(metrics).length) {
+      const visualMetrics = report.render_preflight.visualDirector?.metrics || {};
       lines.push(
-        `- Runtime: ${metrics.narrationDurationS ?? "unknown"}s; spoken pace: ${metrics.spokenWpm ?? "unknown"} WPM; actual clip dominance: ${metrics.actualClipDominance ?? "unknown"}; card ratio: ${metrics.cardRatio ?? "unknown"}`,
+        `- Runtime: ${metrics.narrationDurationS ?? "unknown"}s; spoken pace: ${metrics.spokenWpm ?? "unknown"} WPM; actual clip dominance: ${metrics.actualClipDominance ?? "unknown"}; motion dominance: ${metrics.motionDominance ?? "unknown"}; card ratio: ${metrics.cardRatio ?? "unknown"}; story beat overlays: ${metrics.storyBeatOverlayCount ?? "unknown"}; unique clip sources: ${visualMetrics.uniqueClipSources ?? "unknown"}; distinct scene beats: ${visualMetrics.distinctSceneBeats ?? "unknown"}`,
       );
     }
     if (report.render_preflight.narrationPlan) {
@@ -917,13 +1568,20 @@ async function main() {
     args.segmentValidationReportPath && (await fs.pathExists(args.segmentValidationReportPath))
       ? await fs.readJson(args.segmentValidationReportPath)
       : null;
+  const retentionIntelligence =
+    args.retentionIntelligencePath && (await fs.pathExists(args.retentionIntelligencePath))
+      ? await fs.readJson(args.retentionIntelligencePath)
+      : null;
+  const trustedFootageReport = (await fs.pathExists(DEFAULT_TRUSTED_FOOTAGE_REPORT))
+    ? await fs.readJson(DEFAULT_TRUSTED_FOOTAGE_REPORT)
+    : null;
   const preferredStoryIds = args.storyId ? [args.storyId, ...PREFERRED] : PREFERRED;
   const selected = selectStillDeckPlan(dryReport, {
     storyId: args.storyId,
     preferredStoryIds,
   });
   if (!selected) throw new Error("No still-deck plan found");
-  const story = await loadStory(selected.story_id, selected);
+  const story = await loadStory(selected.story_id, selected, args.storyJsonPath);
 
   let plan = selected;
   let localApplyReport = null;
@@ -933,7 +1591,12 @@ async function main() {
       applyLocal: true,
       outputRoot: SOURCE_OUT,
     });
-    plan = localApplyReport.plans[0];
+    plan = mergeStillDeckApplyLocalPlan(selected, localApplyReport.plans[0]);
+    plan = await materialiseMissingStillDeckAssets({
+      plan,
+      storyId: story.id,
+      outputRoot: SOURCE_OUT,
+    });
     await fs.writeJson(path.join(OUT, "still_deck_apply_local.json"), localApplyReport, { spaces: 2 });
     await fs.writeFile(
       path.join(OUT, "still_deck_apply_local.md"),
@@ -942,30 +1605,34 @@ async function main() {
     );
   }
 
-  const enrichedPackage = await buildStillDeckMediaPackage({ story, plan, frameReport });
-  let officialClipRefs = [];
-  let footageBackboneReport = null;
-  if (args.useOfficialTrailerClips && frameReport) {
-    if (segmentValidationReport) {
-      footageBackboneReport = buildFlashLaneFootageBackboneReport({
-        storyId: story.id,
-        frameReport,
-        segmentValidationReport,
-        targetRuntimeS: 66,
-      });
-      officialClipRefs = footageBackboneReport.validated_clip_refs || [];
-    } else {
-      officialClipRefs = buildOfficialTrailerClipsFromFrameReport(frameReport, story.id, {
-        maxClips: 8,
-        maxCandidateWindowsPerSource: 3,
-        includeFrameAnchoredWindows: true,
-      });
-    }
-  }
+  const enrichedPackage = await buildStillDeckMediaPackage({
+    story,
+    plan,
+    frameReport,
+    segmentValidationReport,
+  });
+  assertStillDeckPlanMaterialised({
+    plan,
+    packageResult: enrichedPackage,
+    reportPath: args.reportPath,
+  });
+  const officialClipResolution = resolveOfficialTrailerClipRefsForProof({
+    storyId: story.id,
+    frameReport,
+    segmentValidationReport,
+    useOfficialTrailerClips: args.useOfficialTrailerClips,
+    allowUnvalidatedOfficialClips: args.allowUnvalidatedOfficialClips,
+    allowPartialValidatedOfficialClips: args.allowFlashDiagnosticRender,
+    targetRuntimeS: 66,
+  });
+  const officialClipRefs = officialClipResolution.clipRefs;
+  const footageBackboneReport = officialClipResolution.footageBackboneReport;
   if (officialClipRefs.length) {
     enrichedPackage.media.clips = officialClipRefs;
     enrichedPackage.metrics.acceptedOfficialClipRefs = officialClipRefs.length;
   }
+  enrichedPackage.metrics.officialClipSafetyStatus = officialClipResolution.safety.status;
+  enrichedPackage.metrics.officialClipSafetyReason = officialClipResolution.safety.reason;
   if (footageBackboneReport) {
     await fs.writeJson(path.join(OUT, "footage_backbone_for_render.json"), footageBackboneReport, {
       spaces: 2,
@@ -993,10 +1660,28 @@ async function main() {
   const renderRequested =
     !args.noRender &&
     (enrichedPackage.media.articleHeroes.length > 0 || enrichedPackage.media.trailerFrames.length > 0);
+  const renderPackageGate = evaluateStillDeckRenderReadiness({
+    baselineSummary,
+    enrichedSummary,
+    enrichedMetrics: enrichedPackage.metrics,
+  });
   let renderPreflight = null;
   let renderPreflightBlocked = false;
   let renderPreflightError = null;
-  if (renderRequested) {
+  const narrationCache = new Map();
+  if (renderRequested && renderPackageGate.verdict === "block" && !args.allowFlashDiagnosticRender) {
+    renderPreflightBlocked = true;
+    renderPreflightError = renderPackageGate.blockers.join(", ");
+    renderPreflight = {
+      verdict: "block",
+      blockers: renderPackageGate.blockers,
+      warnings: renderPackageGate.warnings,
+      metrics: {
+        package_gate: renderPackageGate.metrics,
+      },
+      package_gate: renderPackageGate,
+    };
+  } else if (renderRequested) {
     try {
       renderPreflight = await buildFlashLaneRenderPreflight({
         story,
@@ -1007,6 +1692,7 @@ async function main() {
         generateLocalTts: args.generateLocalTts,
         audioPath: args.audioPath,
         timestampsPath: args.timestampsPath,
+        narrationCache,
       });
       renderPreflightBlocked =
         renderPreflight.verdict === "block" && !args.allowFlashDiagnosticRender;
@@ -1038,6 +1724,11 @@ async function main() {
       generateLocalTts: args.generateLocalTts,
       audioPath: args.audioPath,
       timestampsPath: args.timestampsPath,
+      narrationCache,
+      retentionIntelligence,
+      visualV3: args.visualV3,
+      trustedFootageReport,
+      visualV4: args.visualV4,
     });
     enrichedRender = await renderStillDeckVariant({
       story,
@@ -1051,6 +1742,11 @@ async function main() {
       generateLocalTts: args.generateLocalTts,
       audioPath: args.audioPath,
       timestampsPath: args.timestampsPath,
+      narrationCache,
+      retentionIntelligence,
+      visualV3: args.visualV3,
+      trustedFootageReport,
+      visualV4: args.visualV4,
     });
     comparison = compareForensicReports(baselineRender.forensic, enrichedRender.forensic);
     await fs.writeJson(path.join(OUT, "forensic_comparison.json"), comparison, { spaces: 2 });
@@ -1102,11 +1798,13 @@ async function main() {
       : frameReportUsed
         ? "official local frames improve motion variety but are not full trailer/video clips"
         : "no trailer/video clips in this phase",
-    realNarrationUsed && enrichedVoiceSource === "provided-real-audio"
-      ? "provided cached narration is present; runtime and render QA still decide pilot readiness"
-      : realNarrationUsed
-        ? "local narration is present but is blocked until human-approved against the production ElevenLabs voice"
-        : "silent fixture audio is not valid for pilot approval",
+    !renderAttempted
+      ? "no MP4 render was attempted, so narration was not verified"
+      : realNarrationUsed && enrichedVoiceSource === "provided-real-audio"
+        ? "provided cached narration is present; runtime and render QA still decide pilot readiness"
+        : realNarrationUsed
+          ? "local narration is present; human approval should compare it against the accepted local Liam reference"
+          : "silent fixture audio is not valid for pilot approval",
   ];
   if (!renderAttempted) {
     premiumBlockers.push("no MP4 render was attempted, so suitability is diagnostic only");
@@ -1125,17 +1823,17 @@ async function main() {
   if (officialClipRefsUsed <= 0) {
     premiumBlockers.push("still images alone cannot prove premium motion quality");
   }
-  const studioV2Suitability = renderPreflightBlocked
-    ? "blocked_by_flash_lane_preflight"
-    : !renderAttempted
-    ? "diagnostic_only_not_render_verified"
-    : renderRejected || enrichedVoiceGate === "red"
-      ? "blocked_by_render_or_voice_qa"
-      : enrichedVisualCount >= 8 && enrichedPackage.metrics.distinctEntities >= 3
-        ? "studio_v2_60s_candidate_local_proof"
-        : enrichedVisualCount >= 3
-          ? "standard_short_candidate"
-          : "still_too_thin";
+  const studioV2Suitability = classifyStudioV2Suitability({
+    renderPreflightBlocked,
+    renderAttempted,
+    renderRejected,
+    enrichedVoiceGate,
+    enrichedVisualCount,
+    distinctEntities: enrichedPackage.metrics.distinctEntities,
+    officialClipRefsUsed,
+    acceptedFrameCount: enrichedPackage.metrics.acceptedFrameCount,
+    renderPreflight,
+  });
   const promotionRecommendation = recommendStudioV2Promotion({
     renderPreflightBlocked,
     renderPreflight,
@@ -1144,13 +1842,22 @@ async function main() {
     renderRejected,
     visualImproved,
   });
-  const visualOutput = renderPreflightBlocked
+  const visualOutput = !renderAttempted
     ? visualImproved
       ? "package_improved_not_render_verified"
       : "not_proven"
-    : visualImproved
-      ? "improved"
-      : "not_proven";
+    : renderPreflightBlocked
+      ? visualImproved
+        ? "package_improved_not_render_verified"
+        : "not_proven"
+      : visualImproved
+        ? "improved"
+        : "not_proven";
+  const renderReadiness = buildFlashLaneProofReadinessSummary({
+    preflight: renderPreflight,
+    overlayPlan: renderPreflight?.flashLaneOverlays,
+    scenes: renderPreflight?.sceneList,
+  });
   const report = {
     schema_version: 1,
     report_title:
@@ -1180,9 +1887,35 @@ async function main() {
     },
     motion: {
       official_clip_refs_used: officialClipRefsUsed,
+      official_clip_safety: officialClipResolution.safety,
       official_trailer_frames_used: Number(enrichedPackage.metrics.acceptedFrameCount || 0),
     },
+    visual_v3: enrichedRender?.quality?.visualV3 || {
+      enabled: args.visualV3,
+      verdict: args.visualV3 ? "render_not_attempted" : "disabled",
+      blockers: args.visualV3 && !renderAttempted ? ["render_not_attempted"] : [],
+      warnings: [],
+      eventCount: 0,
+      events: [],
+      overlayApplied: false,
+    },
+    visual_v4: enrichedRender?.quality?.visualV4 || {
+      enabled: args.visualV4,
+      verdict: args.visualV4 ? "render_not_attempted" : "disabled",
+      blockers: args.visualV4 && !renderAttempted ? ["render_not_attempted"] : [],
+      warnings: [],
+      shotBudget: null,
+      shotPlan: [],
+      transitionPlan: null,
+      sfxPlan: null,
+      soundTransitionPlan: null,
+      footagePlan: null,
+      localTimeline: null,
+      viralScriptIntelligence: null,
+    },
     render_requested: renderRequested,
+    render_package_gate: renderPackageGate,
+    render_readiness: renderReadiness,
     render_preflight: renderPreflight,
     render_preflight_error: renderPreflightError,
     render_attempted: renderAttempted,

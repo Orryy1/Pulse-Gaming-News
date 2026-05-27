@@ -1,4 +1,3 @@
-const Anthropic = require('@anthropic-ai/sdk');
 const axios = require('axios');
 const fs = require('fs-extra');
 const path = require('path');
@@ -6,6 +5,7 @@ const { exec } = require('child_process');
 const util = require('util');
 const dotenv = require('dotenv');
 const db = require('./lib/db');
+const { createLlmClient } = require('./lib/llm-client');
 
 const execAsync = util.promisify(exec);
 
@@ -117,9 +117,7 @@ function selectTopStories(stories, history) {
 async function generateCompilationScript(selectedStories, dateRange) {
   const channel = getChannel();
 
-  const client = new Anthropic.default({
-    apiKey: process.env.ANTHROPIC_API_KEY,
-  });
+  const client = createLlmClient();
 
   const storySummaries = selectedStories.map((s, i) => (
     `${i + 1}. [${s.classification || s.flair || 'NEWS'}] "${s.title}" - ${(s.full_script || s.body || '').substring(0, 200)}`
@@ -572,9 +570,7 @@ async function compileByTopic(topicName) {
  * Uses a prompt tailored to the topic rather than a generic weekly roundup.
  */
 async function generateTopicCompilationScript(selectedStories, topicName, dateRange, channel) {
-  const client = new Anthropic.default({
-    apiKey: process.env.ANTHROPIC_API_KEY,
-  });
+  const client = createLlmClient();
 
   const storySummaries = selectedStories.map((s, i) => (
     `${i + 1}. [${s.classification || s.flair || 'NEWS'}] "${s.title}" - ${(s.full_script || s.body || '').substring(0, 200)}`

@@ -8,6 +8,9 @@ const { getChannel } = require("./channels");
 const { getTrendingTopics, getTrendingBoost } = require("./trending");
 const { getPerformanceBoost } = require("./analytics");
 const { classifyOutboundUrl, safeRedirectConfig } = require("./lib/safe-url");
+const {
+  shouldRejectGeneralRedditForNews,
+} = require("./lib/community-discussion-gate");
 
 const USER_AGENT = "pulse-gaming-hunter/2.0 (by /u/PulseGamingBot)";
 
@@ -863,6 +866,17 @@ async function hunt() {
           const postFlair = (flair || "").toLowerCase();
           if (junkPatterns.some((p) => p.test(titleLower))) continue;
           if (junkFlairs.some((f) => postFlair.includes(f))) continue;
+          if (
+            shouldRejectGeneralRedditForNews({
+              title: post.title,
+              url: post.url,
+              article_url: post.url,
+              subreddit: sub,
+              source_type: "reddit",
+            })
+          ) {
+            continue;
+          }
         }
 
         allPosts.push({

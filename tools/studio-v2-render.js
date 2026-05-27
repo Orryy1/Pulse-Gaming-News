@@ -33,7 +33,7 @@ const fs = require("fs-extra");
 const { execSync } = require("node:child_process");
 try {
   if (!/^(true|1|yes|on)$/i.test(String(process.env.PULSE_SKIP_DOTENV || ""))) {
-    require("dotenv").config({ override: true });
+    require("dotenv").config();
   }
 } catch {}
 
@@ -85,12 +85,23 @@ const {
   buildSoundLayerV2,
   ensureSfxAssets,
 } = require("../lib/studio/v2/sound-layer-v2");
-const { buildKineticAss } = require("../lib/studio/v2/subtitle-layer-v2");
+const {
+  buildKineticAss,
+  prepareSubtitleWords,
+  realignTimestampsToScript,
+} = require("../lib/studio/v2/subtitle-layer-v2");
 const { buildQualityReportV2 } = require("../lib/studio/v2/quality-gate-v2");
+const {
+  assertNarrationAllowedForProof,
+} = require("../lib/studio/v2/proof-render-safety");
 const {
   planHeroMomentsV21,
   buildHeroMomentOverlayFilter,
 } = require("../lib/studio/v2/hero-moments-v21");
+const {
+  buildVisualV3OverlayFilter,
+  buildVisualV3OverlayPlan,
+} = require("../lib/studio/v2/visual-v3-overlays");
 const {
   buildCreatorGradePlan,
 } = require("../lib/studio/creator-grade/orchestrator");
@@ -874,6 +885,50 @@ function sumSceneDurations(scenes) {
   );
 }
 
+function buildSubtitleBaseFilter({
+  inputLabel,
+  outputLabel = "subtitleBase",
+  finalVideoDurationS,
+  subtitleTimelineDurationS,
+  maxTailPadS = 0.35,
+} = {}) {
+  const videoDuration = Number(finalVideoDurationS);
+  const timelineDuration = Number(subtitleTimelineDurationS);
+  const tolerance = Number.isFinite(Number(maxTailPadS))
+    ? Math.max(0, Number(maxTailPadS))
+    : 0.35;
+  const input = String(inputLabel || "").trim();
+  const output = String(outputLabel || "").trim() || "subtitleBase";
+
+  if (!input) throw new Error("studio_v2_subtitle_base_missing_input");
+  if (!Number.isFinite(videoDuration) || videoDuration <= 0) {
+    throw new Error("studio_v2_subtitle_base_invalid_video_duration");
+  }
+  if (!Number.isFinite(timelineDuration) || timelineDuration <= 0) {
+    throw new Error("studio_v2_subtitle_base_invalid_timeline_duration");
+  }
+
+  const underrunS = Number((timelineDuration - videoDuration).toFixed(3));
+  if (underrunS > tolerance) {
+    throw new Error(
+      `studio_v2_scene_timeline_under_covers_subtitles:${underrunS.toFixed(3)}s`,
+    );
+  }
+
+  const parts = [];
+  let label = input;
+  if (underrunS > 0.001) {
+    parts.push(
+      `[${label}]tpad=stop_mode=clone:stop_duration=${underrunS.toFixed(3)}[subtitlePad]`,
+    );
+    label = "subtitlePad";
+  }
+  parts.push(
+    `[${label}]trim=duration=${timelineDuration.toFixed(3)},setpts=PTS-STARTPTS[${output}]`,
+  );
+  return parts;
+}
+
 function resolveMainNarrationDurationS({ voice, audioDurationS }) {
   const audioDuration = Number(audioDurationS);
   const outroStart = Number(voice?.outroStartS);
@@ -894,14 +949,84 @@ function resolveSubtitleScriptText({
   editorial,
   spokenTranscript,
 }) {
-  if (voice?.editorialScriptAppliedToAudio !== true) return "";
+  const displayText = tsData?.meta?.displayText || tsData?.meta?.display_text;
+  const editorialText = editorial?.scriptForCaption || editorial?.fullScript || "";
+  const transcriptText = tsData?.meta?.text || spokenTranscript || alignmentTranscript(tsData);
+  const transcriptHasSpokenOutro =
+    /follow pulse gaming/i.test(transcriptText || "") &&
+    !/follow pulse gaming/i.test(editorialText || "");
   return (
-    tsData?.meta?.text ||
-    spokenTranscript ||
-    editorial?.scriptForCaption ||
-    editorial?.fullScript ||
+    displayText ||
+    (voice?.editorialScriptAppliedToAudio === true
+      ? transcriptHasSpokenOutro
+        ? transcriptText
+        : editorialText
+      : "") ||
+    transcriptText ||
     ""
   );
+}
+
+function resolveStudioV2CaptionOptions() {
+  return {
+    maxWordsPerPhrase: 2,
+    maxPhraseChars: 14,
+    captionCase: "upper",
+    revealMode: "word",
+    motionStyle: "flash",
+    avoidDanglingWords: true,
+    maxPhraseDurationS: 1.15,
+    minPhraseDurationS: 0.32,
+  };
+}
+
+function inferStudioV2VoiceProvider(voice = {}) {
+  const provider = String(voice.provider || "").trim();
+  if (provider) return provider;
+  const source = String(voice.source || "").toLowerCase();
+  if (source.includes("eleven")) return "elevenlabs";
+  if (source.includes("local") || source.includes("voxcpm") || source.includes("chatterbox")) {
+    return "local";
+  }
+  return "unknown";
+}
+
+function alignmentTranscript(tsData) {
+  const alignment = tsData?.alignment || tsData;
+  const chars = alignment?.characters;
+  return Array.isArray(chars) ? chars.join("") : "";
+}
+
+function assertStudioV2VoiceAllowedForRender({
+  voice = {},
+  tsData = null,
+  spokenTranscript = "",
+  audioPath = null,
+  env = process.env,
+} = {}) {
+  const meta = tsData?.meta || {};
+  const narration = {
+    mode: "real_audio",
+    provider: inferStudioV2VoiceProvider(voice),
+    source: voice.source || meta.source || "studio-v2-render-voice",
+    audioPath: audioPath || voice.audioPath || null,
+    transcript: meta.text || spokenTranscript || alignmentTranscript(tsData),
+    acoustic:
+      voice.acoustic ||
+      voice.acousticProfile ||
+      meta.acoustic ||
+      meta.acousticProfile ||
+      null,
+    approvedLocalVoice: voice.approvedLocalVoice === true || meta.approvedLocalVoice === true,
+    acceptedLocalVoice: voice.acceptedLocalVoice || meta.acceptedLocalVoice || null,
+    voiceMastering: voice.voiceMastering || voice.mastering || meta.voiceMastering || meta.mastering || null,
+    signatureHash: voice.signatureHash || meta.signatureHash || null,
+  };
+  assertNarrationAllowedForProof(narration, {
+    env,
+    allowVoiceReviewDiagnostic: envEnabled(env.STUDIO_V2_ALLOW_VOICE_REVIEW_DIAGNOSTIC),
+  });
+  return narration;
 }
 
 function storyOutroPath({ root = ROOT, storyId, channelId = "pulse-gaming" }) {
@@ -1222,6 +1347,14 @@ async function main() {
     );
   }
 
+  const voiceRenderNarration = assertStudioV2VoiceAllowedForRender({
+    voice,
+    tsData,
+    spokenTranscript,
+    audioPath: voice.audioPath,
+    env: process.env,
+  });
+
   const renderStory = {
     ...story,
     hook: pkg.hook.chosen.text,
@@ -1322,13 +1455,39 @@ async function main() {
     );
   }
 
+  const finalVideoDurationS = sumSceneDurations(scenes);
+  const subtitleScriptText = resolveSubtitleScriptText({
+    voice,
+    tsData,
+    editorial,
+    spokenTranscript,
+  });
+  const subtitleTimelineDurationS = Math.max(
+    0.1,
+    ...[finalVideoDurationS, audioDurationS].filter(
+      (value) => Number.isFinite(Number(value)) && Number(value) > 0,
+    ),
+  );
+  const shouldRealignSubtitles = voice.editorialScriptAppliedToAudio === true;
+  const subtitleAlignedWords = shouldRealignSubtitles
+    ? realignTimestampsToScript(subtitleScriptText, realignedWords)
+    : realignedWords;
+  const subtitleTimingWords = prepareSubtitleWords({
+    words: subtitleAlignedWords,
+    duration: subtitleTimelineDurationS,
+    scriptText: subtitleScriptText,
+    strictEndCoverage: shouldRealignSubtitles,
+  });
+  const transitionWords = subtitleTimingWords.length
+    ? subtitleTimingWords
+    : realignedWords;
+
   // ---- 8. Beat-aware transitions ----
   console.log("[8/11] planning beat-aware cuts...");
-  const transitions = buildBeatAwareTransitions(scenes, realignedWords);
-  const finalVideoDurationS = sumSceneDurations(scenes);
+  const transitions = buildBeatAwareTransitions(scenes, transitionWords);
   const beatAligned = transitions.filter((t) => {
     let nearest = Infinity;
-    for (const w of realignedWords) {
+    for (const w of transitionWords) {
       const d = Math.min(
         Math.abs(t.offset - (w.start || 0)),
         Math.abs(t.offset - (w.end || 0)),
@@ -1355,6 +1514,24 @@ async function main() {
     for (const m of heroPlan.moments) {
       console.log(
         `         - ${m.type}@${m.targetTimestampS}s (${m.sceneType})`,
+      );
+    }
+  }
+
+  const visualV3Plan = envEnabled(process.env.STUDIO_V3_VISUALS)
+    ? buildVisualV3OverlayPlan({
+        story: renderStory,
+        words: subtitleTimingWords,
+        durationS: subtitleTimelineDurationS,
+      })
+    : null;
+  if (visualV3Plan) {
+    console.log(
+      `       visual v3: ${visualV3Plan.eventCount} overlay event${visualV3Plan.eventCount === 1 ? "" : "s"} planned (${visualV3Plan.verdict})`,
+    );
+    for (const event of visualV3Plan.events) {
+      console.log(
+        `         - ${event.kind}@${event.atS}s (${event.metric || event.entity || event.label || event.source || "beat"})`,
       );
     }
   }
@@ -1416,7 +1593,7 @@ async function main() {
     musicInputIdx,
     audioInputsBaseIdx,
     audioPlan,
-    targetDurationS: finalVideoDurationS,
+    targetDurationS: subtitleTimelineDurationS,
   });
   const sfxInputs = soundLayer.extraInputs;
   filterParts.push(...soundLayer.filterLines);
@@ -1445,16 +1622,12 @@ async function main() {
   })();
   const assContent = buildKineticAss({
     story: renderStory,
-    words: realignedWords,
-    duration: audioDurationS,
-    scriptText: resolveSubtitleScriptText({
-      voice,
-      tsData,
-      editorial,
-      spokenTranscript,
-    }),
+    words: subtitleTimingWords,
+    duration: subtitleTimelineDurationS,
+    scriptText: subtitleScriptText,
     emphasisHex: channelTheme?.primary,
-    realign: voice.editorialScriptAppliedToAudio === true,
+    realign: false,
+    ...resolveStudioV2CaptionOptions(),
   });
   await fs.writeFile(assPath, assContent);
   const assDialogueCount = (assContent.match(/^Dialogue:/gm) || []).length;
@@ -1475,12 +1648,25 @@ async function main() {
     filterParts.push(heroOverlayFilter);
     videoForSubtitles = "heroBase";
   }
+  const visualV3OverlayFilter = visualV3Plan
+    ? buildVisualV3OverlayFilter({
+        inputLabel: videoForSubtitles,
+        outputLabel: "visualV3Base",
+        plan: visualV3Plan,
+        fontOpt: FONT_OPT,
+      })
+    : null;
+  if (visualV3OverlayFilter) {
+    filterParts.push(visualV3OverlayFilter);
+    videoForSubtitles = "visualV3Base";
+  }
   filterParts.push(
-    `[${videoForSubtitles}]ass=${assRel},tpad=stop_mode=clone:stop_duration=${(
-      finalVideoDurationS + 1
-    ).toFixed(
-      3,
-    )},trim=duration=${finalVideoDurationS},setpts=PTS-STARTPTS[outv]`,
+    ...buildSubtitleBaseFilter({
+      inputLabel: videoForSubtitles,
+      finalVideoDurationS,
+      subtitleTimelineDurationS,
+    }),
+    `[subtitleBase]ass=${assRel}[outv]`,
   );
 
   // ---- ffmpeg invocation ----
@@ -1576,12 +1762,16 @@ async function main() {
   console.log("");
   console.log("[gate] running quality gate v2...");
   const audioMeta = {
-    provider:
-      voice.provider ||
-      (voice.source?.includes("eleven") ? "elevenlabs" : "local"),
+    provider: voiceRenderNarration.provider,
     voiceId: voice.voiceId || null,
-    source: voice.source,
+    source: voiceRenderNarration.source,
     editorialScriptAppliedToAudio: voice.editorialScriptAppliedToAudio === true,
+    approvedLocalVoice:
+      voiceRenderNarration.approvedLocalVoice === true ||
+      process.env.STUDIO_V2_LOCAL_VOICE_APPROVED === "true",
+    acceptedLocalVoice: voiceRenderNarration.acceptedLocalVoice || null,
+    acoustic: voiceRenderNarration.acoustic,
+    transcript: voiceRenderNarration.transcript,
   };
   const report = buildQualityReportV2({
     storyId: STORY_ID,
@@ -1593,7 +1783,7 @@ async function main() {
     audioDurationS,
     assPath,
     soundLayerPayload: soundLayer,
-    realignedWords,
+    realignedWords: subtitleTimingWords,
     renderedDurationS: output.durationS,
     branch: currentBranch(),
   });
@@ -1609,16 +1799,25 @@ async function main() {
   };
   report.mediaDiversity = mediaDiversity;
   report.voice = {
-    source: voice.source,
+    provider: voiceRenderNarration.provider,
+    source: voiceRenderNarration.source,
     audioPath: path.relative(ROOT, voice.audioPath).replace(/\\/g, "/"),
     durationS: audioDurationS,
     outroStartS: voice.outroStartS || null,
     timestampSource: voice.timestampSource || null,
     editorialScriptAppliedToAudio: voice.editorialScriptAppliedToAudio === true,
+    signatureHash: voice.signatureHash || tsData?.meta?.signatureHash || null,
+    approvedLocalVoice: voiceRenderNarration.approvedLocalVoice === true,
+    acceptedLocalVoice: voiceRenderNarration.acceptedLocalVoice || null,
+    acoustic: voiceRenderNarration.acoustic,
+    transcript: voiceRenderNarration.transcript,
   };
   report.subtitles = {
     assPath: path.relative(ROOT, assPath).replace(/\\/g, "/"),
     dialogueCount: assDialogueCount,
+    timingWordCount: subtitleTimingWords.length,
+    timelineDurationS: Number(subtitleTimelineDurationS.toFixed(3)),
+    sourceDurationS: Number(finalVideoDurationS.toFixed(3)),
     style: "kinetic-word-pop",
   };
   report.premiumLane = lane.premiumLane;
@@ -1635,6 +1834,25 @@ async function main() {
         enabled: false,
         momentCount: 0,
         moments: [],
+        overlayApplied: false,
+      };
+  report.visualV3 = visualV3Plan
+    ? {
+        enabled: true,
+        verdict: visualV3Plan.verdict,
+        blockers: visualV3Plan.blockers,
+        warnings: visualV3Plan.warnings,
+        eventCount: visualV3Plan.eventCount,
+        events: visualV3Plan.events,
+        overlayApplied: Boolean(visualV3OverlayFilter),
+      }
+    : {
+        enabled: false,
+        verdict: "disabled",
+        blockers: [],
+        warnings: [],
+        eventCount: 0,
+        events: [],
         overlayApplied: false,
       };
   if (creatorGradePlan) {
@@ -1782,9 +2000,12 @@ if (require.main === module) {
 module.exports = {
   appendStudioOutro,
   assertLocalVoxCpmAllowed,
+  assertStudioV2VoiceAllowedForRender,
   boostMotionDensityForShorts,
   replaceFallbackReleaseCardsWithMotion,
   resolveMainNarrationDurationS,
+  buildSubtitleBaseFilter,
+  resolveStudioV2CaptionOptions,
   resolveStudioV2VoiceMode,
   resolveSubtitleScriptText,
   sumSceneDurations,

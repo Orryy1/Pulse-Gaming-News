@@ -76,6 +76,28 @@ test("v1.2 counts exact Steam and IGDB app title matches for premium subject inv
   assert.equal(plan.exact_subject_readiness.exact_subject_asset_count, 2);
 });
 
+test("v1.2 normalises Pokemon subject groups to canonical accented spelling", () => {
+  const plan = buildAssetAcquisitionPlan(
+    baseStory({
+      id: "pokemon-exact",
+      title: "Pok\u00c3\u00a9mon Go event gets confirmed",
+      body: "Pokemon Go is the exact game being discussed.",
+      full_script: "Pok\u00c3\u00a9mon Go is the exact game being discussed.",
+      downloaded_images: [
+        img("steam_hero", "steam", "pokemon-go-hero.jpg", {
+          entity: "Pokemon",
+          steam_app_title: "Pokemon Go",
+        }),
+      ],
+    }),
+  );
+
+  assert.ok(plan.entity_map.games.includes("Pok\u00e9mon"));
+  assert.equal(candidateByPath(plan, "pokemon-go-hero.jpg").exact_subject_group, "Pok\u00e9mon");
+  assert.equal(candidateByPath(plan, "pokemon-go-hero.jpg").subject_match_quality, "exact_game_match");
+  assert.doesNotMatch(JSON.stringify(plan.exact_subject_readiness), /Pok\u00c3|&amp;/);
+});
+
 test("v1.2 counts franchise title matches but publisher logos stay context only", () => {
   const plan = buildAssetAcquisitionPlan(
     baseStory({
@@ -280,6 +302,31 @@ test("v1.3 verifies Steam app id, title and matched query before counting store 
   assert.equal(candidate.store_matched_query, "BioShock");
   assert.equal(candidate.store_match_status, "verified");
   assert.equal(candidate.store_match_verified, true);
+  assert.equal(candidate.subject_match_quality, "exact_game_match");
+  assert.equal(candidate.counted_for_premium, true);
+});
+
+test("v1.3 verifies Steam assets against inferred record-breaking game titles", () => {
+  const plan = buildAssetAcquisitionPlan(
+    baseStory({
+      title:
+        "Forza Horizon 6 immediately beats its predecessor's all-time Steam record with 130,000 concurrent players",
+      body: "Forza Horizon 6 is the game being discussed.",
+      full_script: "Forza Horizon 6 is the game being discussed.",
+      downloaded_images: [
+        img("steam_screenshot", "steam", "forza-6-steam.jpg", {
+          entity: "Forza Horizon 6",
+          steam_app_id: 2483190,
+          steam_app_title: "Forza Horizon 6",
+          steam_matched_query: "Forza",
+        }),
+      ],
+    }),
+  );
+  const candidate = candidateByPath(plan, "forza-6-steam.jpg");
+
+  assert.ok(plan.entity_map.games.includes("Forza Horizon 6"));
+  assert.equal(candidate.store_match_status, "verified");
   assert.equal(candidate.subject_match_quality, "exact_game_match");
   assert.equal(candidate.counted_for_premium, true);
 });

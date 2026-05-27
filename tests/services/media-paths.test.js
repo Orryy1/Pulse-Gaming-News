@@ -266,9 +266,9 @@ test("content-qa: existing persistent MP4 under MEDIA_ROOT passes the on-disk ch
         "separate trade outlets and an internal calendar invite that " +
         "leaked last week. Players are already speculating about what " +
         "this means for the series going forward and the marketing " +
-        "team is quietly scrubbing old posts in preparation. Follow " +
-        "Pulse Gaming so you never miss a drop, because this one " +
-        "moves fast and the window is closing quickly now.",
+        "team is quietly scrubbing old posts in preparation. The upload " +
+        "remains specific, factual and relevant for players before the " +
+        "final CTA. Follow Pulse Gaming so you never miss a beat.",
       render_lane: "legacy_multi_image",
       render_quality_class: "standard",
       downloaded_images: [

@@ -3,11 +3,13 @@
 !.env.example
 node_modules/
 output/
+test/output/
 dist/
 daily_news.json
 pending_news.json
 image_queue.json
 video_queue.json
+engagement_first_hour_log.json
 
 # --- Secret-bearing files (see docs/security-hygiene.md) ---
 # Local OAuth tokens, API tokens, deploy scripts. If any of these end
@@ -74,6 +76,11 @@ branding/Archived/
 branding/Brand Identity for Image Generation.md
 audio/flac/
 audio/broadcast_vol1_cover.jpg
+audio/epidemic/**/*.aac
+audio/epidemic/**/*.flac
+audio/epidemic/**/*.m4a
+audio/epidemic/**/*.mp3
+audio/epidemic/**/*.wav
 
 # --- Local scratch/prototype entrypoints and story dumps ---
 # These root-level files are legacy one-off experiments or local exports.

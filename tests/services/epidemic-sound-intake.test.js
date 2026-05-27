@@ -1,0 +1,102 @@
+"use strict";
+
+const assert = require("node:assert/strict");
+const fs = require("fs-extra");
+const os = require("node:os");
+const path = require("node:path");
+const test = require("node:test");
+
+const {
+  buildEpidemicSoundIntakeReport,
+  classifyMusicRole,
+  defaultDownloadPlan,
+} = require("../../lib/epidemic-sound-intake");
+
+async function touchAudio(filePath) {
+  await fs.outputFile(filePath, Buffer.alloc(32, 3));
+}
+
+test("Epidemic intake builds rights-backed music, SFX and pack candidates from retained local files", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-epidemic-intake-"));
+  const epidemicRoot = path.join(root, "audio", "epidemic");
+  const files = [
+    path.join(epidemicRoot, "music", "bed_primary", "Pulse Gaming Main News Bed.wav"),
+    path.join(epidemicRoot, "music", "bed_breaking", "Pulse Gaming Breaking Urgent Bed.wav"),
+    path.join(epidemicRoot, "stings", "sting_verified", "Verified Source Lock Sting.wav"),
+    path.join(epidemicRoot, "stings", "sting_rumour", "Rumour Watch Sting.wav"),
+    path.join(epidemicRoot, "stings", "sting_breaking", "Breaking Hit Sting.wav"),
+    path.join(epidemicRoot, "sfx", "Cinematic Impact Hit.wav"),
+    path.join(epidemicRoot, "sfx", "Editorial Fast Whoosh Transition.wav"),
+    path.join(epidemicRoot, "sfx", "UI Tick Click.wav"),
+    path.join(epidemicRoot, "sfx", "Tension Riser.wav"),
+    path.join(epidemicRoot, "sfx", "Sub Boom.wav"),
+    path.join(epidemicRoot, "sfx", "Digital Glitch Static.wav"),
+  ];
+  for (const file of files) await touchAudio(file);
+
+  const report = buildEpidemicSoundIntakeReport({
+    workspaceRoot: root,
+    root: epidemicRoot,
+    generatedAt: "2026-05-26T17:00:00.000Z",
+    safelistEvidence: "https://help.epidemicsound.com/hc/en-us/articles/26248340314258-Safelisting",
+  });
+
+  assert.equal(report.readiness.status, "pass");
+  assert.deepEqual(report.readiness.blockers, []);
+  assert.equal(report.summary.music_assets, 5);
+  assert.equal(report.summary.sfx_assets, 6);
+  assert.ok(report.music_inventory.every((asset) => asset.provider_id === "epidemic_sound"));
+  assert.ok(report.sfx_source_plan.selected_assets.some((asset) => asset.provider_id === "epidemic_sound"));
+  assert.ok(report.rights_ledger.records.every((record) => record.licence_basis.includes("epidemic_sound")));
+  assert.ok(report.audio_pack_candidates.some((pack) => pack.channel_id === "pulse-gaming"));
+  const pulsePack = report.audio_pack_candidates.find((pack) => pack.channel_id === "pulse-gaming");
+  assert.deepEqual(
+    pulsePack.assets.map((asset) => asset.role).sort(),
+    ["bed_breaking", "bed_primary", "sting_breaking", "sting_rumour", "sting_verified"],
+  );
+  assert.equal(report.safety.no_downloads_started, true);
+  assert.equal(report.safety.no_posting, true);
+});
+
+test("Epidemic intake blocks use when no safelisting evidence is retained", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-epidemic-no-evidence-"));
+  const epidemicRoot = path.join(root, "audio", "epidemic");
+  await touchAudio(path.join(epidemicRoot, "music", "bed_primary", "Main News Bed.wav"));
+
+  const report = buildEpidemicSoundIntakeReport({
+    workspaceRoot: root,
+    root: epidemicRoot,
+    generatedAt: "2026-05-26T17:01:00.000Z",
+  });
+
+  assert.equal(report.readiness.status, "blocked");
+  assert.ok(report.readiness.blockers.includes("epidemic:safelist_evidence_missing"));
+  assert.equal(report.rights_ledger.records[0].safelist_evidence, null);
+});
+
+test("Epidemic intake blocks when the local subscription pack has not been downloaded", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-epidemic-empty-"));
+  const report = buildEpidemicSoundIntakeReport({
+    workspaceRoot: root,
+    root: path.join(root, "audio", "epidemic"),
+    generatedAt: "2026-05-26T17:02:00.000Z",
+    safelistEvidence: "https://help.epidemicsound.com/hc/en-us/articles/26248340314258-Safelisting",
+  });
+
+  assert.equal(report.readiness.status, "blocked");
+  assert.ok(report.readiness.blockers.includes("epidemic:no_local_audio_assets"));
+  assert.ok(report.readiness.blockers.includes("epidemic:missing_music_role:bed_primary"));
+  assert.ok(report.readiness.blockers.includes("sfx_source:no_creator_studio_sfx_assets"));
+});
+
+test("Epidemic music role classification supports beds, stings and stems", () => {
+  assert.equal(classifyMusicRole("audio/epidemic/music/breaking/urgent full mix.wav"), "bed_breaking");
+  assert.equal(classifyMusicRole("audio/epidemic/stings/rumour-watch-hit.wav"), "sting_rumour");
+  assert.equal(classifyMusicRole("audio/epidemic/stems/main-news-drums.wav"), "stem");
+  assert.equal(classifyMusicRole("audio/epidemic/music/main-news-loop.wav"), "bed_primary");
+
+  const plan = defaultDownloadPlan();
+  assert.ok(plan.channels.some((channel) => channel.channel_id === "pulse-gaming"));
+  assert.ok(plan.required_slots.some((slot) => slot.role === "bed_primary"));
+  assert.ok(plan.required_slots.some((slot) => slot.role === "sting_breaking"));
+});

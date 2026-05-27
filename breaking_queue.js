@@ -16,6 +16,9 @@ const fs = require("fs-extra");
 const path = require("path");
 const { similarity } = require("./hunter");
 const db = require("./lib/db");
+const {
+  shouldRejectGeneralRedditForNews,
+} = require("./lib/community-discussion-gate");
 
 const COOLDOWN_MS = 2 * 60 * 60 * 1000; // 2 hours between breaking publishes
 const BREAKING_LOG = path.join(__dirname, "breaking_log.json");
@@ -109,6 +112,28 @@ async function isDuplicate(story, { dbHandle = db } = {}) {
   return stories.some((s) => similarity(s.title, story.title) > 0.5);
 }
 
+function getBreakingFastLaneBlockReason(story = {}) {
+  if (story.script_generation_status === "review_required") {
+    return `script_review:${story.script_review_reason || "validation_failed"}`;
+  }
+  if (story.script_review_reason) {
+    return `script_review:${story.script_review_reason}`;
+  }
+  if (
+    Array.isArray(story.script_validation_errors) &&
+    story.script_validation_errors.length > 0
+  ) {
+    return "script_review:script_validation_errors";
+  }
+  if (story.script_validation_errors && !Array.isArray(story.script_validation_errors)) {
+    return "script_review:script_validation_errors";
+  }
+  if (shouldRejectGeneralRedditForNews(story)) {
+    return "community_reddit_media_not_news";
+  }
+  return null;
+}
+
 // --- Fast pipeline: process a single breaking story end-to-end ---
 async function runFastPipeline(story) {
   const startTime = Date.now();
@@ -146,6 +171,19 @@ async function runFastPipeline(story) {
       return null;
     }
 
+    const blockReason = getBreakingFastLaneBlockReason(newStory);
+    if (blockReason) {
+      console.log(`[breaking] Fast lane blocked before approval: ${blockReason}`);
+      newStory.approved = false;
+      newStory.auto_approved = false;
+      newStory.script_generation_status =
+        newStory.script_generation_status || "review_required";
+      newStory.script_review_reason =
+        newStory.script_review_reason || blockReason;
+      await db.upsertStory(newStory);
+      return null;
+    }
+
     // Mark it as approved and breaking:override classification so the
     // thumbnail and video badge show "BREAKING" instead of the original flair
     newStory.approved = true;
@@ -176,7 +214,10 @@ async function runFastPipeline(story) {
     if (process.env.AUTO_PUBLISH === "true") {
       console.log("[breaking] Step 5/5: Publishing to all platforms...");
       const { publishNextStory } = require("./publisher");
-      publishResult = await publishNextStory();
+      publishResult = await publishNextStory({
+        dispatchSource: "breaking_fast_lane",
+        storyId: story.id,
+      });
       if (publishResult) {
         console.log(
           `[breaking] Published: YT=${publishResult.youtube} TT=${publishResult.tiktok} IG=${publishResult.instagram} FB=${publishResult.facebook} X=${publishResult.twitter}`,
@@ -193,16 +234,26 @@ async function runFastPipeline(story) {
     // Discord notification
     try {
       const sendDiscord = require("./notify");
-      const platformStatus = publishResult
-        ? `YT: ${publishResult.youtube ? "yes" : "no"} | TT: ${publishResult.tiktok ? "yes" : "no"} | IG: ${publishResult.instagram ? "yes" : "no"} | FB: ${publishResult.facebook ? "yes" : "no"} | X: ${publishResult.twitter ? "yes" : "no"}`
-        : "Publishing skipped";
-      await sendDiscord(
-        `**BREAKING NEWS: Fast Pipeline**\n` +
-          `"${story.title}"\n` +
-          `Score: ${story.breaking_score} | Trigger: ${story.breaking_trigger}\n` +
-          `Time to publish: ${elapsedSec}s\n` +
-          platformStatus,
-      );
+      if (publishResult) {
+        const { renderPublishSummary } = require("./lib/job-handlers");
+        const summary = renderPublishSummary(publishResult);
+        if (summary?.message) {
+          await sendDiscord(
+            `**BREAKING FAST PIPELINE RESULT**\n` +
+              `Score: ${story.breaking_score} | Trigger: ${story.breaking_trigger}\n` +
+              `Elapsed: ${elapsedSec}s\n\n` +
+              summary.message,
+          );
+        }
+      } else {
+        await sendDiscord(
+          `**BREAKING FAST PIPELINE READY**\n` +
+            `"${story.title}"\n` +
+            `Score: ${story.breaking_score} | Trigger: ${story.breaking_trigger}\n` +
+            `Elapsed: ${elapsedSec}s\n` +
+            `Publishing skipped.`,
+        );
+      }
     } catch (err) {
       /* Discord notification is non-critical */
     }
@@ -318,4 +369,9 @@ function getQueueStatus() {
   };
 }
 
-module.exports = { queueBreaking, getQueueStatus, isDuplicate };
+module.exports = {
+  queueBreaking,
+  getQueueStatus,
+  isDuplicate,
+  getBreakingFastLaneBlockReason,
+};

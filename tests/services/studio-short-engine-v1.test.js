@@ -2,6 +2,9 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("fs-extra");
+const os = require("node:os");
+const path = require("node:path");
 
 const editorial = require("../../lib/studio/editorial-layer");
 const media = require("../../lib/studio/media-acquisition");
@@ -16,6 +19,9 @@ const {
   SCENE_TYPES,
   CARD_TYPES,
 } = require("../../lib/scene-composer");
+const {
+  buildTransitionPlan,
+} = require("../../lib/studio/ffmpeg-scene-renderer");
 
 test("studio editorial builds a tighter Metro 2039 script", () => {
   const result = editorial.buildStudioEditorial({
@@ -71,6 +77,106 @@ test("media acquisition plans trailer slices and frame extraction", () => {
   assert.equal(framePlan.length, 6);
   assert.ok(clipPlan[0].output.includes("abc_clip_A.mp4"));
   assert.ok(framePlan[0].output.includes("abc_trailerframe_1.jpg"));
+});
+
+test("Visual V3 quick-cut slate targets high edit density without stacked cards", () => {
+  const mediaDeck = {
+    clips: Array.from({ length: 3 }, (_, index) => ({
+      path: `forza-official-${index}.m3u8`,
+      durationS: 2.95,
+      mediaStartS: 36 + index * 18,
+      entity: "Forza Horizon 6",
+      sourceType: "steam_movie",
+    })),
+    trailerFrames: Array.from({ length: 24 }, (_, index) => ({
+      path: `forza-frame-${index}.jpg`,
+      entity: "Forza Horizon 6",
+      sourceType: "official_trailer_frame",
+    })),
+    articleHeroes: [],
+    publisherAssets: [],
+    stockFillers: [],
+  };
+
+  const result = composeStudioSlate({
+    story: {
+      id: "forza-quick-cut",
+      title: "Forza Horizon 6 hits 130,000 players on Steam",
+    },
+    media: mediaDeck,
+    audioDurationS: 57,
+    opts: {
+      flashLane: true,
+      sourceCardMode: "overlay",
+      quickCut: true,
+    },
+  });
+  const transitions = buildTransitionPlan(result.scenes, { quickCut: true });
+  const weightedEdits =
+    transitions.filter((transition) => transition.type === "cut").length +
+    0.5 * transitions.filter((transition) => transition.type !== "cut").length;
+  const editDensityPerMinute = (weightedEdits / 57) * 60;
+
+  assert.ok(result.scenes.length >= 20);
+  assert.ok(editDensityPerMinute >= 18);
+  assert.ok(transitions.filter((transition) => transition.type !== "cut").length <= 4);
+  assert.ok(
+    result.scenes.filter(
+      (scene) => CARD_TYPES.has(scene.type) && scene.type !== SCENE_TYPES.OPENER,
+    ).length <= 1,
+  );
+});
+
+test("Visual V3 quick-cut slate avoids still frames already covered by motion clips", () => {
+  const trailerUrl = "https://video.akamai.steamstatic.com/store_trailers/forza/hls_264_master.m3u8?t=abc";
+  const result = composeStudioSlate({
+    story: {
+      id: "forza-motion-overlap",
+      title: "Forza Horizon 6 hits 130,000 players on Steam",
+    },
+    media: {
+      clips: [
+        {
+          path: trailerUrl,
+          durationS: 2.35,
+          mediaStartS: 36.7,
+          entity: "Forza Horizon 6",
+          sourceType: "steam_movie",
+        },
+      ],
+      trailerFrames: [
+        {
+          path: "forza-overlap.jpg",
+          sourceUrl: "https://video.akamai.steamstatic.com/store_trailers/forza/hls_264_master.m3u8?t=abc",
+          target_time_seconds: 36.65,
+          entity: "Forza Horizon 6",
+          sourceType: "official_trailer_frame",
+        },
+        {
+          path: "forza-clean.jpg",
+          sourceUrl: "https://video.akamai.steamstatic.com/store_trailers/forza/hls_264_master.m3u8?t=abc",
+          target_time_seconds: 44.4,
+          entity: "Forza Horizon 6",
+          sourceType: "official_trailer_frame",
+        },
+      ],
+      articleHeroes: [],
+      publisherAssets: [],
+      stockFillers: [],
+    },
+    audioDurationS: 24,
+    opts: {
+      flashLane: true,
+      sourceCardMode: "overlay",
+      quickCut: true,
+    },
+  });
+
+  assert.equal(
+    result.scenes.some((scene) => scene.source === "forza-overlap.jpg"),
+    false,
+  );
+  assert.ok(result.scenes.some((scene) => scene.source === "forza-clean.jpg"));
 });
 
 test("premium card lane converts duplicate source cards to context", () => {
@@ -133,6 +239,165 @@ test("sound layer converts fresh char alignment to word timestamps", () => {
     words.map((w) => w.word),
     ["Metro", "twenty", "thirty-nine", "is", "real."],
   );
+});
+
+test("sound layer preserves repaired segment timing provenance when merging local voice", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-sound-merge-"));
+  const seg = path.join(tmp, "segment.mp3");
+  const ts = path.join(tmp, "segment_timestamps.json");
+  await fs.writeFile(seg, Buffer.from("not real mp3"));
+  await fs.writeJson(ts, {
+    characters: Array.from("Follow Pulse Gaming"),
+    character_start_times_seconds: Array.from(
+      { length: "Follow Pulse Gaming".length },
+      (_, i) => i * 0.05,
+    ),
+    character_end_times_seconds: Array.from(
+      { length: "Follow Pulse Gaming".length },
+      (_, i) => i * 0.05 + 0.04,
+    ),
+    meta: {
+      timestampRepair: {
+        repaired: true,
+        reason: "max_gap_too_large",
+        strategy: "synthetic_full_duration",
+        repairedInspection: { usable: true, reason: "usable" },
+      },
+    },
+  });
+
+  try {
+    const merged = await sound.mergeSegmentAlignments([seg]);
+    assert.equal(merged.meta.timestampRepair.reason, "segment_timestamp_repair");
+    assert.equal(merged.meta.segmentTimestampRepairs.length, 1);
+    assert.equal(
+      merged.meta.segmentTimestampRepairs[0].strategy,
+      "synthetic_full_duration",
+    );
+  } finally {
+    await fs.remove(tmp).catch(() => {});
+  }
+});
+
+test("sound layer offsets merged local voice alignments by native segment pauses", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-sound-gap-"));
+  const first = path.join(tmp, "first.mp3");
+  const second = path.join(tmp, "second.mp3");
+  await fs.writeFile(first, Buffer.from("not real mp3"));
+  await fs.writeFile(second, Buffer.from("not real mp3"));
+  await fs.writeJson(path.join(tmp, "first_timestamps.json"), {
+    characters: ["A"],
+    character_start_times_seconds: [0],
+    character_end_times_seconds: [0.2],
+  });
+  await fs.writeJson(path.join(tmp, "second_timestamps.json"), {
+    characters: ["B"],
+    character_start_times_seconds: [0],
+    character_end_times_seconds: [0.2],
+  });
+
+  try {
+    const merged = await sound.mergeSegmentAlignments([first, second], {
+      interSegmentGapS: 0.75,
+    });
+    assert.deepEqual(merged.characters, ["A", " ", "B"]);
+    assert.equal(Number(merged.character_start_times_seconds[2].toFixed(2)), 0.75);
+  } finally {
+    await fs.remove(tmp).catch(() => {});
+  }
+});
+
+test("sound layer offsets merged local voice alignments by scheduled segment pauses", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-sound-gap-schedule-"));
+  const first = path.join(tmp, "first.mp3");
+  const second = path.join(tmp, "second.mp3");
+  const third = path.join(tmp, "third.mp3");
+  await fs.writeFile(first, Buffer.from("not real mp3"));
+  await fs.writeFile(second, Buffer.from("not real mp3"));
+  await fs.writeFile(third, Buffer.from("not real mp3"));
+  await fs.writeJson(path.join(tmp, "first_timestamps.json"), {
+    characters: ["A"],
+    character_start_times_seconds: [0],
+    character_end_times_seconds: [0.2],
+  });
+  await fs.writeJson(path.join(tmp, "second_timestamps.json"), {
+    characters: ["B"],
+    character_start_times_seconds: [0],
+    character_end_times_seconds: [0.2],
+  });
+  await fs.writeJson(path.join(tmp, "third_timestamps.json"), {
+    characters: ["C"],
+    character_start_times_seconds: [0],
+    character_end_times_seconds: [0.2],
+  });
+
+  try {
+    const merged = await sound.mergeSegmentAlignments([first, second, third], {
+      interSegmentGapsS: [0.75, 0.25],
+    });
+    assert.deepEqual(merged.characters, ["A", " ", "B", " ", "C"]);
+    assert.equal(Number(merged.character_start_times_seconds[2].toFixed(2)), 0.75);
+    assert.equal(Number(merged.character_start_times_seconds[4].toFixed(2)), 1);
+  } finally {
+    await fs.remove(tmp).catch(() => {});
+  }
+});
+
+test("studio editorial strips internal retention labels while keeping the question", () => {
+  const result = editorial.buildStudioEditorial({
+    title: "Forza Horizon 6 hits 130,000 concurrent players on Steam",
+    hook: "Forza Horizon 6 just put up a ridiculous Steam number.",
+    full_script:
+      "Forza Horizon 6 just put up a ridiculous Steam number. GamesRadar reports the early-access launch hit 130,000 concurrent players on Steam. RETENTION: do players stay once the novelty settles, or is this just launch-week heat?",
+  });
+
+  assert.doesNotMatch(result.scriptForCaption, /\bRETENTION\s*:/i);
+  assert.match(result.scriptForCaption, /Do players stay/i);
+  assert.match(result.scriptForTTS, /one hundred and thirty thousand/i);
+  assert.match(result.scriptForCaption, /130,000/);
+});
+
+test("Flash Lane composer keeps Steam-stat stories off generic trailer cards", () => {
+  const media = {
+    clips: [
+      { path: "forza-trailer-a.mp4", sourceType: "steam_movie", entity: "Forza Horizon 6", durationS: 2.5, mediaStartS: 36 },
+      { path: "forza-trailer-b.mp4", sourceType: "steam_movie", entity: "Forza Horizon 6", durationS: 2.5, mediaStartS: 54 },
+    ],
+    articleHeroes: [
+      { path: "forza-still-1.jpg", sourceType: "steam_screenshot", entity: "Forza Horizon 6" },
+      { path: "forza-still-2.jpg", sourceType: "steam_screenshot", entity: "Forza Horizon 6" },
+      { path: "forza-still-3.jpg", sourceType: "steam_screenshot", entity: "Forza Horizon 6" },
+    ],
+  };
+  const result = composeStudioSlate({
+    story: {
+      title:
+        "Forza Horizon 6 immediately beats its predecessor's all-time Steam record with 130,000 concurrent players",
+      body:
+        "GamesRadar reports the early-access launch hit 130,000 concurrent players on Steam. It does not count Xbox, Game Pass or Microsoft Store players.",
+      source_type: "rss",
+      publisher: "GamesRadar",
+      top_comment: "we all wanna go to japan bruh",
+    },
+    media,
+    audioDurationS: 58,
+    opts: {
+      flashLane: true,
+      sourceCardMode: "overlay",
+      takeawayText: "PULSE GAMING",
+      cta: "DAILY GAMING NEWS",
+    },
+  });
+
+  const timeline = result.scenes.find((scene) => scene.label === "card_timeline");
+  const labels = result.scenes.map((scene) => scene.dateLabel || scene.text || scene.statLabel || scene.heading);
+  const cardRatio = result.metrics.cardCount / result.metrics.totalScenes;
+
+  assert.equal(timeline.heading, "FORZA HORIZON 6");
+  assert.equal(labels.includes("TRAILER ONLY"), false);
+  assert.equal(labels.includes("NO DATE YET"), false);
+  assert.equal(result.scenes.some((scene) => scene.type === SCENE_TYPES.CARD_QUOTE), false);
+  assert.ok(cardRatio <= 0.35, String(cardRatio));
 });
 
 test("studio composer uses an editorial card instead of repeating a still", () => {
@@ -239,6 +504,39 @@ test("studio composer rotates card backdrops across enriched still decks", () =>
   assert.ok(maxRepeat <= 2);
 });
 
+test("studio composer avoids reusing a visual as a later card backdrop when fresh backdrops exist", () => {
+  const mediaPlan = {
+    clips: [],
+    trailerFrames: Array.from({ length: 8 }, (_, i) => ({
+      path: `forza-trailer-frame-${i + 1}.jpg`,
+      kind: "trailer-frame",
+    })),
+    articleHeroes: Array.from({ length: 8 }, (_, i) => ({
+      path: `forza-store-still-${i + 1}.jpg`,
+    })),
+    publisherAssets: [],
+    stockFillers: [],
+  };
+  const result = composeStudioSlate({
+    story: {
+      title: "Forza Horizon 6 Becomes Highest Rated Game of 2026 on Metacritic",
+      source_name: "Twisted Voxel",
+    },
+    media: mediaPlan,
+    audioDurationS: 62,
+    opts: { allowStockFiller: false },
+  });
+
+  const usedVisuals = new Set();
+  for (const scene of result.scenes) {
+    if (CARD_TYPES.has(scene.type) && scene.backgroundSource) {
+      assert.equal(usedVisuals.has(sourceId(scene)), false);
+    }
+    if (scene.source) usedVisuals.add(sourceId(scene));
+    if (scene.backgroundSource) usedVisuals.add(sourceId(scene));
+  }
+});
+
 test("studio composer labels RSS source cards as publishers, not subreddits", () => {
   const result = composeStudioSlate({
     story: {
@@ -282,6 +580,121 @@ test("studio composer carries exact entity labels into visual scenes for in-imag
   assert.ok(visualScenes.some((scene) => scene.entity === "Red Dead"));
   assert.ok(visualScenes.some((scene) => scene.entity === "BioShock"));
   assert.equal(visualScenes.find((scene) => scene.entity === "GTA").mediaStartS, 28.5);
+});
+
+test("studio composer preserves validated official clip timing windows", () => {
+  const result = composeStudioSlate({
+    story: { title: "Marathon trailer proof" },
+    audioDurationS: 66,
+    media: {
+      clips: [
+        {
+          path: "marathon-trailer.m3u8",
+          entity: "Marathon",
+          sourceType: "steam_movie",
+          mediaStartS: 42.45,
+          durationS: 2.85,
+          provenance: {
+            clip_start_policy: "validated_trimmed_segment_window",
+            segment_trim_recommended: true,
+            segment_original_start_s: 42,
+            segment_original_duration_s: 5,
+            segment_recommended_start_s: 42.45,
+            segment_recommended_duration_s: 2.85,
+            segment_validated: true,
+            allowed_for_flash_lane: true,
+          },
+        },
+      ],
+      trailerFrames: [{ path: "marathon-frame.jpg", entity: "Marathon" }],
+      articleHeroes: [],
+      publisherAssets: [],
+      stockFillers: [],
+    },
+    opts: { allowStockFiller: false, flashLane: true },
+  });
+
+  const opener = result.scenes.find((scene) => scene.type === SCENE_TYPES.OPENER);
+
+  assert.equal(opener.mediaStartS, 42.45);
+  assert.equal(opener.clipDurationS, 2.85);
+  assert.equal(
+    opener.clipTimingProvenance.clip_start_policy,
+    "validated_trimmed_segment_window",
+  );
+  assert.equal(opener.clipTimingProvenance.segment_validated, true);
+  assert.equal(opener.clipTimingProvenance.allowed_for_flash_lane, true);
+  assert.equal(opener.clipTimingProvenance.segment_recommended_duration_s, 2.85);
+});
+
+test("studio composer prefers clean full-action clips for the opener", () => {
+  const result = composeStudioSlate({
+    story: { title: "Forza Horizon 6 Steam peak" },
+    audioDurationS: 62,
+    media: {
+      clips: [
+        {
+          path: "forza-trimmed.m3u8",
+          entity: "Forza Horizon 6",
+          sourceType: "steam_movie",
+          mediaStartS: 36.7,
+          durationS: 2.35,
+          provenance: {
+            clip_start_policy: "validated_trimmed_segment_window",
+            segment_trim_recommended: true,
+            segment_action_score: 79,
+          },
+        },
+        {
+          path: "forza-clean.m3u8",
+          entity: "Forza Horizon 6",
+          sourceType: "steam_movie",
+          mediaStartS: 50.8,
+          durationS: 5,
+          provenance: {
+            clip_start_policy: "validated_segment_window",
+            segment_trim_recommended: false,
+            segment_action_score: 76.4,
+          },
+        },
+      ],
+      trailerFrames: [{ path: "forza-frame.jpg", entity: "Forza Horizon 6" }],
+      articleHeroes: [],
+      publisherAssets: [],
+      stockFillers: [],
+    },
+    opts: { allowStockFiller: false, flashLane: true },
+  });
+
+  const opener = result.scenes.find((scene) => scene.type === SCENE_TYPES.OPENER);
+
+  assert.equal(opener.source, "forza-clean.m3u8");
+  assert.equal(opener.mediaStartS, 50.8);
+});
+
+test("studio composer keeps Flash Lane on trailer frames when there is enough frame inventory", () => {
+  const result = composeStudioSlate({
+    story: { title: "Forza Horizon 6 Steam peak" },
+    audioDurationS: 62,
+    media: {
+      clips: [{ path: "forza-clean.m3u8", durationS: 5, mediaStartS: 50.8 }],
+      trailerFrames: Array.from({ length: 6 }, (_, index) => ({
+        path: `forza-frame-${index}.jpg`,
+        sourceType: "official_trailer_frame",
+      })),
+      articleHeroes: [{ path: "store-preorder-slate.jpg", sourceType: "steam_screenshot" }],
+      publisherAssets: [],
+      stockFillers: [],
+    },
+    opts: { allowStockFiller: false, flashLane: true },
+  });
+
+  const visualSources = result.scenes
+    .filter((scene) => ["still", "clip.frame"].includes(scene.type))
+    .map((scene) => scene.source);
+
+  assert.ok(visualSources.length >= 4);
+  assert.ok(!visualSources.includes("store-preorder-slate.jpg"));
 });
 
 test("studio composer does not present RSS excerpts as Reddit comments", () => {
@@ -408,6 +821,41 @@ test("studio composer builds a footage-led Flash Lane slate from official clip r
   );
 });
 
+test("studio composer keeps Flash Lane takeaway as the final card", () => {
+  const result = composeStudioSlate({
+    story: {
+      title: "LEGO Batman PC specs revealed",
+      source_type: "reddit",
+      subreddit: "GamingLeaksAndRumours",
+      top_comment: "The specs sheet is the real story here.",
+    },
+    media: {
+      clips: Array.from({ length: 11 }, (_, index) => ({
+        path: `lego-trailer-${index}.m3u8`,
+        entity: "LEGO Batman",
+        sourceType: "steam_movie",
+        mediaStartS: 40 + index * 4,
+      })),
+      trailerFrames: Array.from({ length: 6 }, (_, index) => ({
+        path: `lego-frame-${index + 1}.jpg`,
+        entity: "LEGO Batman",
+      })),
+      articleHeroes: [],
+      publisherAssets: [],
+      stockFillers: [],
+    },
+    audioDurationS: 66,
+    opts: {
+      allowStockFiller: false,
+      flashLane: true,
+      sourceCardMode: "overlay",
+    },
+  });
+
+  assert.equal(result.scenes.at(-1).type, SCENE_TYPES.CARD_TAKEAWAY);
+  assert.notEqual(sourceId(result.scenes.at(-1)), sourceId(result.scenes.at(-2)));
+});
+
 test("studio composer does not stretch too few Flash Lane clips past the reuse budget", () => {
   const result = composeStudioSlate({
     story: {
@@ -442,6 +890,137 @@ test("studio composer does not stretch too few Flash Lane clips past the reuse b
   );
 
   assert.ok(actualClipScenes.length <= 6);
+});
+
+test("studio composer avoids repeating Flash Lane clip windows when stills can carry gaps", () => {
+  const result = composeStudioSlate({
+    story: {
+      title:
+        "Forza Horizon 6 hits 130,000 concurrent players on Steam during early access",
+      source_type: "rss",
+      subreddit: "GamesRadar",
+    },
+    media: {
+      clips: [
+        { path: "forza-trailer.m3u8", entity: "Forza Horizon 6", sourceType: "steam_movie", mediaStartS: 28.5 },
+        { path: "forza-trailer.m3u8", entity: "Forza Horizon 6", sourceType: "steam_movie", mediaStartS: 34.5 },
+        { path: "forza-trailer.m3u8", entity: "Forza Horizon 6", sourceType: "steam_movie", mediaStartS: 41.0 },
+      ],
+      trailerFrames: Array.from({ length: 8 }, (_, index) => ({
+        path: `forza-frame-${index + 1}.jpg`,
+        entity: "Forza Horizon 6",
+      })),
+      articleHeroes: [{ path: "forza-hero.jpg", entity: "Forza Horizon 6" }],
+      publisherAssets: [],
+      stockFillers: [],
+    },
+    audioDurationS: 66,
+    opts: { allowStockFiller: false, flashLane: true },
+  });
+  const actualClipScenes = result.scenes.filter(
+    (scene) =>
+      scene.type === SCENE_TYPES.CLIP ||
+      scene.type === SCENE_TYPES.PUNCH ||
+      scene.type === SCENE_TYPES.SPEED_RAMP ||
+      scene.type === SCENE_TYPES.FREEZE_FRAME ||
+      (scene.type === SCENE_TYPES.OPENER && scene.isClipBacked === true),
+  );
+  const clipWindows = actualClipScenes.map(
+    (scene) => `${scene.source}|${scene.mediaStartS ?? ""}`,
+  );
+  const visualSources = result.scenes
+    .filter((scene) => STILL_TYPES.has(scene.type))
+    .map((scene) => scene.source);
+
+  assert.equal(actualClipScenes.length, 3);
+  assert.equal(new Set(clipWindows).size, clipWindows.length);
+  assert.equal(visualSources.length, new Set(visualSources).size);
+  assert.ok(result.scenes.some((scene) => STILL_TYPES.has(scene.type)));
+});
+
+test("studio composer does not pad scarce Flash Lane media with a run of filler cards", () => {
+  const result = composeStudioSlate({
+    story: {
+      title:
+        "Forza Horizon 6 hits 130,000 concurrent players on Steam during early access",
+      full_script:
+        "Forza Horizon 6 hits 130,000 concurrent players on Steam during early access.",
+      source_type: "rss",
+      subreddit: "GamesRadar",
+    },
+    media: {
+      clips: [
+        { path: "forza-trailer.m3u8", entity: "Forza Horizon 6", sourceType: "steam_movie", mediaStartS: 36.45 },
+        { path: "forza-trailer.m3u8", entity: "Forza Horizon 6", sourceType: "steam_movie", mediaStartS: 54.45 },
+      ],
+      trailerFrames: [],
+      articleHeroes: Array.from({ length: 4 }, (_, index) => ({
+        path: `forza-still-${index + 1}.jpg`,
+        entity: "Forza Horizon 6",
+      })),
+      publisherAssets: [],
+      stockFillers: [],
+    },
+    audioDurationS: 62,
+    opts: {
+      allowStockFiller: false,
+      flashLane: true,
+      sourceCardMode: "overlay",
+    },
+  });
+  const stillSources = result.scenes
+    .filter((scene) => STILL_TYPES.has(scene.type))
+    .map((scene) => scene.source);
+  const cardScenes = result.scenes.filter(
+    (scene) => CARD_TYPES.has(scene.type) && scene.type !== SCENE_TYPES.OPENER,
+  );
+
+  assert.equal(stillSources.length, new Set(stillSources).size);
+  assert.ok(result.scenes.length < 18);
+  assert.ok(cardScenes.length <= 3);
+});
+
+test("studio composer can move Flash source proof to overlay mode instead of a full-screen source card", () => {
+  const baseArgs = {
+    story: {
+      title: "Marathon Drops To 15K Daily CCU Peak On Steam",
+      source_type: "rss",
+      subreddit: "GameSpot",
+    },
+    media: {
+      clips: Array.from({ length: 8 }, (_, index) => ({
+        path: `marathon-${index}.mp4`,
+        entity: "Marathon",
+        sourceType: "steam_movie",
+        mediaStartS: 42 + index * 4,
+      })),
+      trailerFrames: [
+        { path: "marathon-frame-a.jpg", entity: "Marathon" },
+        { path: "marathon-frame-b.jpg", entity: "Marathon" },
+      ],
+      articleHeroes: [],
+      publisherAssets: [],
+      stockFillers: [],
+    },
+    audioDurationS: 64,
+  };
+  const defaultResult = composeStudioSlate({
+    ...baseArgs,
+    opts: { allowStockFiller: false, flashLane: true },
+  });
+  const result = composeStudioSlate({
+    ...baseArgs,
+    opts: {
+      allowStockFiller: false,
+      flashLane: true,
+      sourceCardMode: "overlay",
+    },
+  });
+
+  assert.equal(result.scenes.some((scene) => scene.type === SCENE_TYPES.CARD_SOURCE), false);
+  assert.ok(result.metrics.clipCount >= 6);
+  assert.equal(defaultResult.scenes.some((scene) => scene.type === SCENE_TYPES.CARD_SOURCE), true);
+  assert.ok(result.metrics.cardCount < defaultResult.metrics.cardCount);
 });
 
 test("quality gate reports non-slideshow when clips and cards carry the edit", () => {

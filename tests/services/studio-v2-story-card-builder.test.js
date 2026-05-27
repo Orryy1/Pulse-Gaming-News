@@ -8,9 +8,13 @@ const path = require("node:path");
 
 const {
   buildStoryCardSpecs,
+  applySpecToTemplate,
+  clampQuoteText,
   outputNameForCard,
   pickStoryBackdrop,
+  quoteLayoutClass,
 } = require("../../tools/studio-v2-build-story-cards");
+const { wrapQuoteLines } = require("../../lib/studio/v2/quote-fit");
 
 test("story card specs are topical and do not reuse generic Metro copy", () => {
   const story = {
@@ -81,4 +85,77 @@ test("story card builder prefers smart-cropped story backdrops", async () => {
   } finally {
     await fs.remove(root).catch(() => {});
   }
+});
+
+test("quote card specs clamp long comments before rendering", () => {
+  const story = {
+    title: "GTA 6 trailer evidence is stacking up",
+    subreddit: "GamingLeaksAndRumours",
+    source_type: "reddit",
+    top_comment:
+      "This is a very long community quote that would absolutely spill across the frame and get cut off if the card tried to render every single word at once.",
+  };
+
+  const specs = buildStoryCardSpecs(story);
+  const words = specs.quote.quoteText.split(/\s+/).filter(Boolean);
+
+  assert.ok(words.length <= 12, specs.quote.quoteText);
+  assert.ok(specs.quote.quoteText.length <= 96, specs.quote.quoteText);
+  assert.match(specs.quote.quoteText, /\.\.\.$/);
+  assert.equal(
+    wrapQuoteLines(specs.quote.quoteText, { maxCharsPerLine: 28, maxLines: 3 }).overflow,
+    false,
+  );
+});
+
+test("quote layout class switches to compact mode for long safe quotes", () => {
+  const quote =
+    "This sentence is still concise enough to use, but long enough that the card needs compact layout.";
+
+  assert.equal(quoteLayoutClass("Short sharp quote."), "quote");
+  assert.equal(quoteLayoutClass(quote), "quote quote--compact");
+  assert.equal(clampQuoteText(`${quote} Extra words that should not fit.`).split(/\s+/).length <= 12, true);
+});
+
+test("quote card HTML applies compact layout and safe clamped text", () => {
+  const template = `
+    <style>
+      .quote { font-size: 76px; }
+    </style>
+    <div id="kicker">OLD</div>
+    <div id="quote" class="quote"><span class="word">OLD</span></div>
+    <div id="attribution">OLD ATTR</div>
+    <div id="attribution-sub">OLD SUB</div>
+  `;
+  const html = applySpecToTemplate(
+    "quote",
+    template,
+    {
+      kicker: "KEY LINE",
+      quoteText:
+        "This is a very long quote that needs to be clamped before it reaches the HyperFrames template and cuts off on screen.",
+      attribution: "GAMESPOT",
+      attributionSub: "reported detail",
+    },
+    "pulse-gaming",
+  );
+
+  assert.match(html, /class="quote quote--compact"/);
+  assert.match(html, /font-size:\s*50px/);
+  assert.doesNotMatch(html, /cuts off on screen/);
+  assert.match(html, /GAMESPOT/);
+});
+
+test("quote card fitting shortens long tokens before they can be cut off", () => {
+  const quote =
+    "SupercalifragilisticexpialidociousEditionWithRidiculousSuffix is somehow the key quote that would normally break the frame.";
+  const fitted = clampQuoteText(quote);
+  const wrapped = wrapQuoteLines(fitted, { maxCharsPerLine: 28, maxLines: 3 });
+
+  assert.equal(wrapped.overflow, false, fitted);
+  assert.ok(
+    fitted.split(/\s+/).every((word) => word.length <= 25),
+    fitted,
+  );
+  assert.match(fitted, /\.\.\./);
 });

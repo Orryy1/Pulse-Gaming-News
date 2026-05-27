@@ -21,9 +21,10 @@ Multi-voice routing:
   request and cached for the life of the process. This lets one server handle
   both Pulse Gaming (Liam) and Sleepy Stories (Christopher) without restart.
 
-  Fallback: if a voice_id isn't in voices.json, the server uses the default
-  engine built from REF_VOICE_PATH / BASE_SPEED env vars. That keeps the old
-  single-voice contract working.
+  Safety: explicit voice_id lookups must be registered in voices.json by
+  default. The legacy unmapped voice fallback is available only when
+  ALLOW_UNKNOWN_VOICE_FALLBACK=true, which keeps Pulse proof renders from
+  silently using the wrong local voice.
 
 Health: GET /health -> {"status": "ok", "voices": [...], "model_loaded": bool}
 
@@ -31,6 +32,7 @@ Run: uvicorn server:app --host 127.0.0.1 --port 8765
 """
 import base64
 import faulthandler
+import hashlib
 import io
 import json
 import logging
@@ -305,6 +307,9 @@ except Exception as _e:
 
 # --- Config ---
 REF_VOICE_PATH = os.getenv("REF_VOICE_PATH")  # fallback ref when voice_id isn't mapped
+ALLOW_UNKNOWN_VOICE_FALLBACK = os.getenv(
+    "ALLOW_UNKNOWN_VOICE_FALLBACK", "false",
+).strip().lower() in ("1", "true", "yes", "on")
 DEVICE = os.getenv("DEVICE", "cuda")
 HOST = os.getenv("HOST", "127.0.0.1")
 PORT = int(os.getenv("PORT", "8765"))
@@ -355,6 +360,18 @@ def _load_voices_map() -> Dict[str, dict]:
 
 
 VOICES_MAP = _load_voices_map()
+VOICE_ALIAS_MAP = {
+    str(cfg.get("alias", "")).strip().lower(): voice_id
+    for voice_id, cfg in VOICES_MAP.items()
+    if str(cfg.get("alias", "")).strip()
+}
+
+
+def _canonical_voice_id(voice_id: Optional[str]) -> str:
+    raw = (voice_id or "__default__").strip()
+    if raw in VOICES_MAP or raw == "__default__":
+        return raw
+    return VOICE_ALIAS_MAP.get(raw.lower(), raw)
 
 # Shared aligner (language-agnostic enough for our stories, and it's not
 # cheap to double-load wav2vec2 into VRAM).
@@ -578,6 +595,19 @@ def _resolve_ref_path(ref_path: Optional[str]) -> Optional[str]:
     return str(p) if p.exists() else None
 
 
+def _sha1_file(path_value: Optional[str]) -> Optional[str]:
+    if not path_value:
+        return None
+    try:
+        h = hashlib.sha1()
+        with open(path_value, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+                h.update(chunk)
+        return h.hexdigest()
+    except Exception:
+        return None
+
+
 def _get_engine(voice_id: str) -> VoxCPMEngine:
     """Fetch or build the VoxCPMEngine for a voice_id.
 
@@ -588,12 +618,18 @@ def _get_engine(voice_id: str) -> VoxCPMEngine:
     be 10 minutes or more. The Phase F stability patch wraps each load
     in timing logs so we can track regressions over time.
     """
+    voice_id = _canonical_voice_id(voice_id)
     if voice_id in _engine_cache:
         log.info(f"[engine] reuse voice_id={voice_id!r} (cached)")
         return _engine_cache[voice_id]
 
     cfg = VOICES_MAP.get(voice_id)
     if cfg is None:
+        if voice_id != "__default__" and not ALLOW_UNKNOWN_VOICE_FALLBACK:
+            raise ValueError(
+                f"unknown voice_id={voice_id!r} is not registered in voices.json; "
+                "refusing default fallback voice"
+            )
         # Unknown voice_id: fall back to env-var default (original behaviour).
         # Cache under the special "__default__" key so we reuse it for any
         # future unmapped voice_ids rather than rebuilding per-request.
@@ -607,6 +643,7 @@ def _get_engine(voice_id: str) -> VoxCPMEngine:
                 ref_voice_path=_resolve_ref_path(REF_VOICE_PATH),
                 cfg_value=2.0,
                 inference_timesteps=20,
+                load_denoiser=False,
                 device=DEVICE,
             )
             dt_ms = int((time.monotonic() - t0) * 1000)
@@ -618,6 +655,7 @@ def _get_engine(voice_id: str) -> VoxCPMEngine:
     ref = _resolve_ref_path(cfg.get("ref_voice_path"))
     base_speed = float(cfg.get("base_speed", 1.0))
     alias = cfg.get("alias", voice_id)
+    prompt_text = cfg.get("ref_voice_text") if cfg.get("use_prompt_text", True) else None
     log.info(
         f"[engine] COLD_START voice_id={voice_id!r} alias={alias} ref={ref} "
         f"base_speed={base_speed} — loading VoxCPM 2, expect 2-5 min"
@@ -632,9 +670,11 @@ def _get_engine(voice_id: str) -> VoxCPMEngine:
     try:
         eng = VoxCPMEngine(
             ref_voice_path=ref,
-            prompt_text=cfg.get("ref_voice_text"),
+            prompt_text=prompt_text,
             cfg_value=cfg.get("cfg_value", 2.0),
             inference_timesteps=cfg.get("inference_timesteps", 20),
+            load_denoiser=cfg.get("load_denoiser", False),
+            voice_qa=cfg.get("voice_qa"),
             device=DEVICE,
         )
     finally:
@@ -673,6 +713,7 @@ class Alignment(BaseModel):
 class TTSResponse(BaseModel):
     audio_base64: str
     alignment: Alignment
+    voice_diagnostics: Optional[dict] = None
 
 
 # --- App ---
@@ -734,21 +775,35 @@ def _on_startup():
 
 @app.get("/health")
 def health():
-    voices_listed = [
-        {
-            "voice_id": vid,
-            "alias": cfg.get("alias", vid),
-            "channel": cfg.get("channel"),
-            "base_speed": cfg.get("base_speed"),
-            "ref_resolved": _resolve_ref_path(cfg.get("ref_voice_path")) is not None,
-            "loaded": vid in _engine_cache,
-        }
-        for vid, cfg in VOICES_MAP.items()
-    ]
+    voices_listed = []
+    for vid, cfg in VOICES_MAP.items():
+        ref_path = _resolve_ref_path(cfg.get("ref_voice_path"))
+        voices_listed.append(
+            {
+                "voice_id": vid,
+                "alias": cfg.get("alias", vid),
+                "channel": cfg.get("channel"),
+                "base_speed": cfg.get("base_speed"),
+                "ref_resolved": ref_path is not None,
+                "reference_present": ref_path is not None,
+                "accepted_reference_id": cfg.get("accepted_reference_id"),
+                "accepted_reference_file": (
+                    cfg.get("accepted_reference_file")
+                    or (
+                        Path(ref_path).name
+                        if ref_path
+                        else Path(str(cfg.get("ref_voice_path", ""))).name
+                    )
+                ),
+                "reference_sha1": _sha1_file(ref_path),
+                "loaded": vid in _engine_cache,
+            },
+        )
     return {
         "status": "ok",
         "voices": voices_listed,
         "default_ref_voice": REF_VOICE_PATH or None,
+        "unknown_voice_fallback_allowed": ALLOW_UNKNOWN_VOICE_FALLBACK,
         "aligner_loaded": aligner._model is not None,
         "engine_count": len(_engine_cache),
         # Phase F readiness state. Callers that need to know whether the
@@ -836,7 +891,7 @@ def prewarm(req: PrewarmRequest):
         engine_count  total cached engines after this call
         reused        true if the engine was already loaded before this call
     """
-    voice_id = (req.voice_id or "__default__").strip()
+    voice_id = _canonical_voice_id(req.voice_id)
     reused = voice_id in _engine_cache
     # Also catch the "__default__ already loaded, unmapped voice_id" case
     # so we don't double-warm. _get_engine handles the mapping internally.
@@ -844,6 +899,10 @@ def prewarm(req: PrewarmRequest):
         reused = True
 
     if reused:
+        SERVICE_STATE["phase"] = "ready"
+        SERVICE_STATE["ready"] = True
+        SERVICE_STATE["warming"] = False
+        SERVICE_STATE["last_error"] = None
         SERVICE_STATE["prewarm_voice_id"] = voice_id
         log.info(
             f"[prewarm] voice_id={voice_id} reused=True engine_count={len(_engine_cache)}"
@@ -943,6 +1002,7 @@ def synth_tts(req: TTSRequest):
 
 
 def _synth(voice_id: str, req: TTSRequest) -> TTSResponse:
+    voice_id = _canonical_voice_id(voice_id)
     text = req.text.strip()
     if not text:
         raise HTTPException(400, "text is empty")
@@ -958,8 +1018,9 @@ def _synth(voice_id: str, req: TTSRequest) -> TTSResponse:
     except Exception as e:
         log.exception("Synth failed")
         raise HTTPException(500, f"Synth failed: {e}")
+    voice_diagnostics = getattr(engine, "last_voice_diagnostics", None)
 
-    sample_rate = engine.SAMPLE_RATE
+    sample_rate = engine.sample_rate
 
     # Encode to MP3 in memory via pydub (uses ffmpeg under the hood)
     try:
@@ -979,6 +1040,7 @@ def _synth(voice_id: str, req: TTSRequest) -> TTSResponse:
     return TTSResponse(
         audio_base64=base64.b64encode(mp3_bytes).decode("ascii"),
         alignment=Alignment(**alignment),
+        voice_diagnostics=voice_diagnostics,
     )
 
 
@@ -991,25 +1053,25 @@ def _encode_mp3(audio: np.ndarray, sample_rate: int, target_format: str = "mp3_4
     target_sr = int(parts[1]) if len(parts) > 1 else 44_100
     bitrate = f"{parts[2]}k" if len(parts) > 2 else "128k"
 
-    # Resample if needed (linear is fine here, MP3 lossy compression dominates)
-    if sample_rate != target_sr:
-        ratio = target_sr / sample_rate
-        new_len = int(len(audio) * ratio)
-        idx = np.linspace(0, len(audio) - 1, new_len).astype(np.int64)
-        audio = audio[idx]
-
-    # Float32 [-1,1] -> int16
+    # Float32 [-1,1] -> int16 at the model's native sample rate. We hand the
+    # real source rate to FFmpeg during export so it can do proper resampling;
+    # integer index resampling audibly dulled consonants in the local Liam voice.
     audio_i16 = np.clip(audio, -1.0, 1.0)
     audio_i16 = (audio_i16 * 32_767.0).astype(np.int16)
 
     seg = AudioSegment(
         audio_i16.tobytes(),
-        frame_rate=target_sr,
+        frame_rate=sample_rate,
         sample_width=2,
         channels=1,
     )
     buf = io.BytesIO()
-    seg.export(buf, format="mp3", bitrate=bitrate)
+    seg.export(
+        buf,
+        format="mp3",
+        bitrate=bitrate,
+        parameters=["-ar", str(target_sr)],
+    )
     return buf.getvalue()
 
 

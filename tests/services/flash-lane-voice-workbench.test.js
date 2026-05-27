@@ -4,6 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const crypto = require("node:crypto");
 
 const {
   buildFlashLaneVoiceWorkbench,
@@ -28,6 +29,13 @@ const FLASH_SCRIPT = [
   "A beloved franchise can still lose internally if the pitch feels average.",
   "Follow Pulse Gaming so you never miss a beat.",
 ].join(" ");
+
+const ACCEPTED_SLEEPY_LIAM = {
+  id: "pulse-sleepy-liam-20260502",
+  fileName: "pulse_liam_sleepy.wav",
+  referencePresent: true,
+  referenceHash: "d".repeat(40),
+};
 
 function story(overrides = {}) {
   return {
@@ -129,12 +137,79 @@ test("Flash Lane voice workbench allows explicitly approved clean local output",
       provider: "local",
       source: "local-production-chatterbox-path",
       approvedLocalVoice: true,
+      acceptedLocalVoice: ACCEPTED_SLEEPY_LIAM,
     }),
     env: { STUDIO_V2_LOCAL_VOICE_APPROVED: "false" },
   });
 
   assert.equal(result.verdict, "approved_for_flash_lane_preflight");
   assert.equal(result.pilot_allowed, true);
+});
+
+test("Flash Lane voice workbench rejects mechanically stretched local output", () => {
+  const result = evaluateVoiceCandidate({
+    story: story(),
+    candidate: candidate({
+      id: "approved-local-stretched",
+      provider: "local",
+      source: "local-production-voxcpm-path",
+      approvedLocalVoice: true,
+      acceptedLocalVoice: ACCEPTED_SLEEPY_LIAM,
+      generation: {
+        tempo_stretch: {
+          applied: true,
+          input_duration_s: 55.529,
+          output_duration_s: 64.479,
+          timestamp_scale: 1.161,
+        },
+      },
+    }),
+    env: { STUDIO_V2_LOCAL_VOICE_APPROVED: "false" },
+  });
+
+  assert.equal(result.verdict, "rejected");
+  assert.equal(result.pilot_allowed, false);
+  assert.ok(result.blockers.includes("local_tts_tempo_stretch_applied"));
+  assert.equal(result.tempo_stretch.applied, true);
+});
+
+test("Flash Lane voice workbench rejects non-native local generation rates for clean pilot audio", () => {
+  const result = evaluateVoiceCandidate({
+    story: story(),
+    candidate: candidate({
+      id: "approved-local-slowed",
+      provider: "local",
+      source: "local-production-voxcpm-path",
+      approvedLocalVoice: true,
+      acceptedLocalVoice: ACCEPTED_SLEEPY_LIAM,
+      generation: {
+        rate: 0.85,
+        engine: "voxcpm2",
+      },
+    }),
+    env: { STUDIO_V2_LOCAL_VOICE_APPROVED: "false" },
+  });
+
+  assert.equal(result.verdict, "rejected");
+  assert.equal(result.pilot_allowed, false);
+  assert.ok(result.blockers.includes("local_tts_non_native_rate_applied"));
+});
+
+test("Flash Lane voice workbench rejects local approval without accepted Sleepy Liam reference", () => {
+  const result = evaluateVoiceCandidate({
+    story: story(),
+    candidate: candidate({
+      id: "approved-local-missing-reference",
+      provider: "local",
+      source: "local-production-voxcpm-path",
+      approvedLocalVoice: true,
+    }),
+    env: { STUDIO_V2_LOCAL_VOICE_APPROVED: "true" },
+  });
+
+  assert.equal(result.verdict, "needs_human_voice_review");
+  assert.equal(result.pilot_allowed, false);
+  assert.ok(result.warnings.includes("local_tts_voice_reference_unverified"));
 });
 
 test("Flash Lane voice workbench rejects candidates missing the spoken outro", () => {
@@ -217,6 +292,58 @@ test("Flash Lane voice workbench blocks objectively too-quiet narration", () => 
 
   assert.equal(result.verdict, "rejected");
   assert.ok(result.blockers.includes("voice_too_quiet"));
+});
+
+test("Flash Lane voice workbench blocks filtered local narration with weak high-frequency detail", () => {
+  const result = evaluateVoiceCandidate({
+    story: story(),
+    candidate: candidate({
+      id: "filtered-local",
+      provider: "local",
+      source: "local-production-voxcpm-path",
+      approvedLocalVoice: true,
+      acceptedLocalVoice: ACCEPTED_SLEEPY_LIAM,
+      acoustic: {
+        medianPitchHz: 118,
+        integratedLufs: -16.4,
+        truePeakDb: -1.7,
+        silenceRatio: 0.01,
+        clippingRatio: 0,
+        spectralRolloff85Hz: 600,
+        highFrequencyRatioGt5Khz: 0.0004,
+      },
+    }),
+  });
+
+  assert.equal(result.verdict, "rejected");
+  assert.ok(result.blockers.includes("local_tts_filtered_voice_risk"));
+});
+
+test("Flash Lane voice workbench preserves clean local spectral clarity evidence", () => {
+  const result = evaluateVoiceCandidate({
+    story: story(),
+    candidate: candidate({
+      id: "clean-local-spectral",
+      provider: "local",
+      source: "local-production-voxcpm-path",
+      approvedLocalVoice: true,
+      acceptedLocalVoice: ACCEPTED_SLEEPY_LIAM,
+      acoustic: {
+        medianPitchHz: 104,
+        integratedLufs: -16.1,
+        truePeakDb: -1.5,
+        silenceRatio: 0.01,
+        clippingRatio: 0,
+        spectralRolloff85Hz: 2953.125,
+        highFrequencyRatioGt5Khz: 0.0011526751331984997,
+      },
+    }),
+  });
+
+  assert.equal(result.verdict, "approved_for_flash_lane_preflight");
+  assert.equal(result.blockers.includes("local_tts_filtered_voice_risk"), false);
+  assert.equal(result.acoustic.spectralRolloff85Hz, 2953.125);
+  assert.equal(result.acoustic.highFrequencyRatioGt5Khz, 0.0011526751331984997);
 });
 
 test("Flash Lane voice workbench emits a local-only dry-run generation plan", () => {
@@ -308,6 +435,109 @@ test("Flash Lane voice workbench CLI can target a specific local TTS base URL", 
   assert.equal(args.dryRun, false);
 });
 
+test("Flash Lane voice workbench defaults local generation to natural Sleepy Liam speed", () => {
+  const { parseArgs } = require("../../tools/flash-lane-voice-workbench");
+  const args = parseArgs(["node", "tools/flash-lane-voice-workbench.js", "--generate-local"]);
+  const toolSource = fs.readFileSync(
+    path.join(process.cwd(), "tools", "flash-lane-voice-workbench.js"),
+    "utf8",
+  );
+  const librarySource = fs.readFileSync(
+    path.join(process.cwd(), "lib", "studio", "v2", "flash-lane-voice-workbench.js"),
+    "utf8",
+  );
+
+  assert.equal(args.rate, 1.0);
+  assert.match(toolSource, /default 1\.0/);
+  assert.match(librarySource, /rate = 1\.0/);
+  assert.doesNotMatch(toolSource, /\|\|\s*1\.7/);
+});
+
+test("Flash Lane voice workbench post-processes local candidates with the production voice mastering filter", () => {
+  const toolSource = fs.readFileSync(
+    path.join(process.cwd(), "tools", "flash-lane-voice-workbench.js"),
+    "utf8",
+  );
+  const audioQualitySource = fs.readFileSync(
+    path.join(process.cwd(), "lib", "audio-quality.js"),
+    "utf8",
+  );
+
+  assert.match(toolSource, /buildVoiceMasteringFilter\(\{/);
+  assert.match(audioQualitySource, /highpass=f=60/);
+  assert.doesNotMatch(audioQualitySource, /aexciter=amount=2\.2/);
+  assert.match(toolSource, /const outputBitrate = "256k"/);
+  assert.doesNotMatch(toolSource, /filters\.push\("loudnorm=I=-16:TP=-1\.5:LRA=11"\)/);
+});
+
+test("Flash Lane voice workbench allows controlled slower VoxCPM rates for the Rubber Band server path", async () => {
+  const outputRoot = path.join(process.cwd(), "test", "output", "tmp-voice-workbench-voxcpm-rate");
+  fs.rmSync(outputRoot, { recursive: true, force: true });
+  let requestedBody = null;
+
+  const result = await generateLocalVoiceCandidate({
+    story: story(),
+    outputRoot,
+    applyLocal: true,
+    engine: "voxcpm2",
+    rate: 0.85,
+    fetchImpl: async (_url, request = {}) => {
+      requestedBody = JSON.parse(request.body);
+      return {
+        ok: true,
+        json: async () => ({
+          audio_base64: Buffer.from("fake mp3 bytes").toString("base64"),
+          alignment: {
+            characters: Array.from("Follow Pulse Gaming so you never miss a beat."),
+          },
+        }),
+      };
+    },
+    durationProbe: () => 49.8,
+    acousticProbe: () => ({ medianPitchHz: 118 }),
+  });
+
+  assert.equal(result.request.rate, 0.85);
+  assert.equal(result.request.rateAdjusted, false);
+  assert.equal(requestedBody.voice_settings.speaking_rate, 0.85);
+  assert.equal(result.candidate.generation.rate, 0.85);
+  assert.equal(result.candidate.generation.requested_rate, null);
+});
+
+test("Flash Lane voice workbench allows faster VoxCPM rates for the Rubber Band server path", async () => {
+  const outputRoot = path.join(process.cwd(), "test", "output", "tmp-voice-workbench-voxcpm-fast-rate");
+  fs.rmSync(outputRoot, { recursive: true, force: true });
+  let requestedBody = null;
+
+  const result = await generateLocalVoiceCandidate({
+    story: story(),
+    outputRoot,
+    applyLocal: true,
+    engine: "voxcpm2",
+    rate: 2.1,
+    fetchImpl: async (_url, request = {}) => {
+      requestedBody = JSON.parse(request.body);
+      return {
+        ok: true,
+        json: async () => ({
+          audio_base64: Buffer.from("fake mp3 bytes").toString("base64"),
+          alignment: {
+            characters: Array.from("Follow Pulse Gaming so you never miss a beat."),
+          },
+        }),
+      };
+    },
+    durationProbe: () => 64.2,
+    acousticProbe: () => ({ medianPitchHz: 118 }),
+  });
+
+  assert.equal(result.request.rate, 2.1);
+  assert.equal(result.request.rateAdjusted, false);
+  assert.equal(requestedBody.voice_settings.speaking_rate, 2.1);
+  assert.equal(result.candidate.generation.rate, 2.1);
+  assert.equal(result.candidate.generation.requested_rate, null);
+});
+
 test("Flash Lane voice workbench can generate a local candidate under test/output", async () => {
   const outputRoot = path.join(process.cwd(), "test", "output", "tmp-voice-workbench");
   fs.rmSync(outputRoot, { recursive: true, force: true });
@@ -355,7 +585,41 @@ test("Flash Lane voice workbench can generate a local candidate under test/outpu
   assert.match(result.candidate.transcript, /Follow Pulse Gaming/);
   assert.match(requestedUrl, /loaded-pulse-voice/);
   assert.match(requestedBody.text, /Follow Pulse Gaming so you never miss a beat\.$/);
+  assert.equal(requestedBody.output_format, "mp3_44100_256");
   assert.equal(fs.existsSync(result.candidate.path), true);
+});
+
+test("Flash Lane voice workbench canonicalises the Liam alias before local TTS", async () => {
+  const outputRoot = path.join(process.cwd(), "test", "output", "tmp-voice-workbench-liam-alias");
+  fs.rmSync(outputRoot, { recursive: true, force: true });
+  let requestedUrl = "";
+
+  const result = await generateLocalVoiceCandidate({
+    story: story(),
+    outputRoot,
+    applyLocal: true,
+    voiceId: "liam",
+    fetchImpl: async (url) => {
+      requestedUrl = url;
+      return {
+        ok: true,
+        json: async () => ({
+          audio_base64: Buffer.from("fake mp3 bytes").toString("base64"),
+          alignment: {
+            characters: Array.from("Follow Pulse Gaming so you never miss a beat."),
+          },
+        }),
+      };
+    },
+    durationProbe: () => 64.2,
+    acousticProbe: () => ({ medianPitchHz: 118 }),
+  });
+
+  assert.equal(result.request.voiceId, "TX3LPaxmHKxFdv7VOQHJ");
+  assert.equal(result.request.requestedVoiceId, "liam");
+  assert.match(requestedUrl, /TX3LPaxmHKxFdv7VOQHJ/);
+  assert.doesNotMatch(requestedUrl, /\/liam\//);
+  assert.equal(result.status, "generated");
 });
 
 test("Flash Lane voice workbench can keep raw local audio and evaluate a normalised file", async () => {
@@ -399,6 +663,57 @@ test("Flash Lane voice workbench can keep raw local audio and evaluate a normali
   assert.equal(result.candidate.generation.audio_post_process.filter, "test-normalise");
   assert.equal(fs.existsSync(result.candidate.generation.raw_path), true);
   assert.equal(fs.existsSync(result.candidate.path), true);
+});
+
+test("Flash Lane voice workbench generated local candidate can carry approved Sleepy Liam reference", async () => {
+  const outputRoot = path.join(process.cwd(), "test", "output", "tmp-voice-workbench-approved-ref");
+  fs.rmSync(outputRoot, { recursive: true, force: true });
+  fs.mkdirSync(outputRoot, { recursive: true });
+  const refPath = path.join(outputRoot, "pulse_liam_sleepy.wav");
+  fs.writeFileSync(refPath, "approved sleepy liam reference");
+  const referenceHash = crypto.createHash("sha1").update(fs.readFileSync(refPath)).digest("hex");
+
+  const result = await generateLocalVoiceCandidate({
+    story: story(),
+    outputRoot,
+    applyLocal: true,
+    engine: "voxcpm2",
+    approvedLocalVoice: true,
+    env: {
+      STUDIO_V2_LOCAL_VOICE_REFERENCE_ID: "pulse-sleepy-liam-20260502",
+      STUDIO_V2_LOCAL_VOICE_REFERENCE_FILE: refPath,
+    },
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({
+        audio_base64: Buffer.from("approved local mp3 bytes").toString("base64"),
+        alignment: { characters: Array.from("Follow Pulse Gaming so you never miss a beat.") },
+      }),
+    }),
+    durationProbe: () => 64.5,
+    acousticProbe: () => ({
+      medianPitchHz: 118,
+      integratedLufs: -16,
+      truePeakDb: -1.5,
+      silenceRatio: 0.01,
+      clippingRatio: 0,
+    }),
+  });
+
+  assert.equal(result.status, "generated");
+  assert.equal(result.candidate.approvedLocalVoice, true);
+  assert.deepEqual(result.candidate.acceptedLocalVoice, {
+    id: "pulse-sleepy-liam-20260502",
+    fileName: "pulse_liam_sleepy.wav",
+    referencePresent: true,
+    referenceHash,
+  });
+  const sidecar = JSON.parse(fs.readFileSync(result.candidate.timestampsPath, "utf8"));
+  assert.equal(sidecar.meta.provider, "local");
+  assert.equal(sidecar.meta.source, "local-production-voxcpm-path");
+  assert.equal(sidecar.meta.approvedLocalVoice, true);
+  assert.deepEqual(sidecar.meta.acceptedLocalVoice, result.candidate.acceptedLocalVoice);
+  assert.match(sidecar.meta.transcript, /Follow Pulse Gaming/);
 });
 
 test("Flash Lane voice workbench refuses local generation outside test/output", async () => {

@@ -12,21 +12,64 @@
 
 const { Client, Events, GatewayIntentBits, EmbedBuilder } = require("discord.js");
 const config = require("./config");
+const {
+  shouldPostNewStory,
+  shouldPostVideoDrop,
+  shouldPostStoryPoll,
+} = require("../lib/services/discord-post-gate");
 
 let _client = null;
 let _ready = false;
+
+const DEFAULT_DISCORD_LOGIN_TIMEOUT_MS = 15000;
+
+function parsePositiveInt(value, fallback) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : fallback;
+}
+
+function discordLoginTimeoutMs(env = process.env) {
+  return parsePositiveInt(
+    env.DISCORD_AUTO_POST_LOGIN_TIMEOUT_MS,
+    DEFAULT_DISCORD_LOGIN_TIMEOUT_MS,
+  );
+}
+
+function keepStandaloneClient(env = process.env) {
+  return String(env.DISCORD_AUTO_POST_KEEP_CLIENT || "").toLowerCase() === "true";
+}
+
+function reuseBotClient(env = process.env) {
+  return String(env.DISCORD_AUTO_POST_REUSE_BOT_CLIENT || "").toLowerCase() === "true";
+}
+
+function releaseStandaloneClient() {
+  if (!_client || keepStandaloneClient()) return;
+  const client = _client;
+  _client = null;
+  _ready = false;
+  try {
+    client.destroy();
+  } catch (err) {
+    console.error("[AutoPost] Failed to close Discord client:", err.message);
+  }
+}
 
 /**
  * Get or create a Discord client instance.
  * Reuses the bot.js client if available, otherwise creates a lightweight one.
  */
 function getClient() {
-  // If bot.js is already running, reuse its client
-  try {
-    const bot = require("./bot");
-    if (bot.client && bot.client.isReady()) return Promise.resolve(bot.client);
-  } catch (e) {
-    /* bot.js not loaded */
+  // Avoid importing bot.js by default: it logs into Discord, registers
+  // commands and keeps one-off local publish commands alive. Long-running
+  // bot processes can opt in when they genuinely want to share that client.
+  if (reuseBotClient()) {
+    try {
+      const bot = require("./bot");
+      if (bot.client && bot.client.isReady()) return Promise.resolve(bot.client);
+    } catch (e) {
+      /* bot.js not loaded */
+    }
   }
 
   // Create a lightweight client for posting only
@@ -44,13 +87,25 @@ function getClient() {
   _client = new Client({ intents: [GatewayIntentBits.Guilds] });
   _ready = false;
 
+  let rejectLogin = null;
+  let timer = null;
   const promise = new Promise((resolve, reject) => {
+    rejectLogin = reject;
+    timer = setTimeout(() => {
+      reject(new Error("Discord client login timed out"));
+    }, discordLoginTimeoutMs());
+    if (timer && typeof timer.unref === "function") timer.unref();
+
     _client.once(Events.ClientReady, () => {
+      clearTimeout(timer);
       _ready = true;
       console.log("[AutoPost] Discord client ready.");
       resolve(_client);
     });
-    _client.once("error", reject);
+    _client.once("error", (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
   });
 
   const token = process.env.DISCORD_BOT_TOKEN || config.BOT_TOKEN;
@@ -62,7 +117,11 @@ function getClient() {
   }
 
   _client.login(token).catch((err) => {
+    if (timer) clearTimeout(timer);
     console.error("[AutoPost] Failed to login:", err.message);
+    _client = null;
+    _ready = false;
+    if (rejectLogin) rejectLogin(err);
   });
 
   return promise;
@@ -125,6 +184,11 @@ function badge(flair) {
  */
 async function postNewStory(story) {
   try {
+    if (!shouldPostNewStory(story)) {
+      console.log("[AutoPost] Skipping new story post: story is not eligible");
+      return null;
+    }
+
     const client = await getClient();
     if (!client) return null;
 
@@ -216,6 +280,8 @@ async function postNewStory(story) {
   } catch (err) {
     console.error("[AutoPost] Failed to post story:", err.message);
     return null;
+  } finally {
+    releaseStandaloneClient();
   }
 }
 
@@ -224,6 +290,11 @@ async function postNewStory(story) {
  */
 async function postVideoUpload(story) {
   try {
+    if (!shouldPostVideoDrop(story)) {
+      console.log("[AutoPost] Skipping video upload post: story is not eligible");
+      return null;
+    }
+
     const client = await getClient();
     if (!client) return null;
 
@@ -299,6 +370,8 @@ async function postVideoUpload(story) {
   } catch (err) {
     console.error("[AutoPost] Failed to post video upload:", err.message);
     return null;
+  } finally {
+    releaseStandaloneClient();
   }
 }
 
@@ -322,9 +395,7 @@ async function postStoryForApproval(story) {
 
     const idMap = config.loadIdMap();
     // Story approvals go to #mod-log (staff), not #video-drops (public)
-    const channelId =
-      idMap.channels &&
-      (idMap.channels["mod-log"] || idMap.channels["video-drops"]);
+    const channelId = idMap.channels && idMap.channels["mod-log"];
 
     if (!channelId) {
       console.error('[AutoPost] Channel "mod-log" not found in id_map.json.');
@@ -400,6 +471,8 @@ async function postStoryForApproval(story) {
   } catch (err) {
     console.error("[AutoPost] Failed to post Story for approval:", err.message);
     return null;
+  } finally {
+    releaseStandaloneClient();
   }
 }
 
@@ -409,6 +482,11 @@ async function postStoryForApproval(story) {
  */
 async function postStoryPoll(story) {
   try {
+    if (!shouldPostStoryPoll(story)) {
+      console.log("[AutoPost] Skipping poll post: story is not eligible");
+      return null;
+    }
+
     const client = await getClient();
     if (!client) return null;
 
@@ -446,6 +524,8 @@ async function postStoryPoll(story) {
   } catch (err) {
     console.error("[AutoPost] Failed to post poll:", err.message);
     return null;
+  } finally {
+    releaseStandaloneClient();
   }
 }
 
@@ -520,6 +600,17 @@ function truncate(str, max) {
  */
 async function pingEarlyAccess(story, platforms) {
   try {
+    const storyForGate = {
+      ...(story || {}),
+      youtube_url: story?.youtube_url || platforms?.youtube,
+      tiktok_post_id: story?.tiktok_post_id || platforms?.tiktok,
+      instagram_media_id: story?.instagram_media_id || platforms?.instagram,
+    };
+    if (!shouldPostVideoDrop(storyForGate)) {
+      console.log("[discord] Skipping early access ping: story is not eligible");
+      return;
+    }
+
     const client = await getClient();
     if (!client) return;
 
@@ -557,6 +648,8 @@ async function pingEarlyAccess(story, platforms) {
     console.log("[discord] Early access ping sent to #video-drops");
   } catch (err) {
     console.log(`[discord] Early access ping failed: ${err.message}`);
+  } finally {
+    releaseStandaloneClient();
   }
 }
 
@@ -615,6 +708,8 @@ async function getPollResults() {
   } catch (err) {
     console.log(`[discord] Poll results fetch failed: ${err.message}`);
     return [];
+  } finally {
+    releaseStandaloneClient();
   }
 }
 
@@ -625,4 +720,9 @@ module.exports = {
   postStoryPoll,
   pingEarlyAccess,
   getPollResults,
+  _private: {
+    discordLoginTimeoutMs,
+    keepStandaloneClient,
+    reuseBotClient,
+  },
 };

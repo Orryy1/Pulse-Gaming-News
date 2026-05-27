@@ -58,7 +58,8 @@ async function main() {
   if (!token) {
     throw new Error("FACEBOOK_PAGE_TOKEN not set");
   }
-  console.log(`[fb-probe] page_id=${pageId} token=${redact(token)}`);
+  const pageAccessConfigured = Boolean(token);
+  console.log(`[fb-probe] page_id=${pageId} page_access_configured=${pageAccessConfigured}`);
 
   // 1) Page meta — sanity check the token is for the right Page and
   //    the Page is not in a restricted state.
@@ -177,7 +178,7 @@ async function main() {
 
   // 5) Token debug — confirm the token has the scopes we expect for
   //    Reels publishing.
-  console.log("\n[fb-probe] === Token scope inspection ===");
+  console.log("\n[fb-probe] === Credential scope inspection ===");
   try {
     const debug = await axios.get(
       "https://graph.facebook.com/v21.0/debug_token",

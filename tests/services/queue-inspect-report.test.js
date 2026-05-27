@@ -240,6 +240,7 @@ test("queue inspect redacts token-shaped failed job errors in JSON and Markdown"
   `);
 
   try {
+    const now = Date.parse("2026-04-29T13:00:00.000Z");
     db.prepare(
       `INSERT INTO jobs
         (kind, status, priority, attempt_count, max_attempts, last_error, updated_at)
@@ -254,8 +255,9 @@ test("queue inspect redacts token-shaped failed job errors in JSON and Markdown"
       "2026-04-29T12:00:00.000Z",
     );
 
-    const report = inspectQueue({ db });
+    const report = inspectQueue({ db, now });
     assert.equal(report.verdict, "review");
+    assert.equal(report.recentFailedJobs.length, 1);
     assert.doesNotMatch(report.failedJobs[0].last_error, /abc\.def\.ghi/);
     assert.doesNotMatch(report.failedJobs[0].last_error, /supersecret/);
     assert.match(report.failedJobs[0].last_error, /\[REDACTED\]/);
@@ -265,6 +267,54 @@ test("queue inspect redacts token-shaped failed job errors in JSON and Markdown"
     assert.doesNotMatch(md, /abc\.def\.ghi/);
     assert.doesNotMatch(md, /supersecret/);
     assert.match(md, /\[REDACTED\]/);
+  } finally {
+    db.close();
+  }
+});
+
+test("queue inspect treats old failed jobs as historical audit noise, not active queue failure", () => {
+  const db = createQueueInspectDb(`
+    CREATE TABLE schedules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      kind TEXT NOT NULL,
+      cron_expr TEXT NOT NULL,
+      enabled INTEGER DEFAULT 1
+    );
+    INSERT INTO schedules (name, kind, cron_expr, enabled)
+      VALUES ('publish_youtube', 'publish', '0 19 * * *', 1);
+  `);
+
+  try {
+    db.prepare(
+      `INSERT INTO jobs
+        (kind, status, priority, attempt_count, max_attempts, last_error, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      "publish",
+      "failed",
+      50,
+      3,
+      3,
+      "old fixed failure",
+      "2026-04-28T12:00:00.000Z",
+    );
+
+    const report = inspectQueue({
+      db,
+      now: Date.parse("2026-04-30T13:00:00.000Z"),
+      recentFailedWindowHours: 24,
+    });
+
+    assert.equal(report.verdict, "pass");
+    assert.equal(report.recentFailedJobs.length, 0);
+    assert.equal(report.historicalFailedJobs.length, 1);
+    assert.ok(report.green.includes("historical_failed_jobs_tracked"));
+    assert.ok(report.green.includes("no_active_backlog"));
+
+    const md = renderQueueInspectMarkdown(report);
+    assert.match(md, /Historical Failed Jobs/);
+    assert.match(md, /do not make the queue unhealthy unless they are recent/);
   } finally {
     db.close();
   }

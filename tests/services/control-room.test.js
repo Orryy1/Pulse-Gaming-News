@@ -147,7 +147,7 @@ test("buildControlRoomReport: high thin-rate triggers operator hint", async () =
   );
 });
 
-test("buildControlRoomReport: low thin-rate + sample triggers safe-to-flip hint", async () => {
+test("buildControlRoomReport: low thin-rate + sample triggers approval-ready pilot hint", async () => {
   const report = await cr.buildControlRoomReport({
     db: {
       async getStories() {
@@ -166,8 +166,11 @@ test("buildControlRoomReport: low thin-rate + sample triggers safe-to-flip hint"
   });
   assert.ok(
     report.recommendations.some((r) =>
-      /Safe to flip BLOCK_THIN_VISUALS/.test(r),
+      /BLOCK_THIN_VISUALS=true is approval-ready/.test(r),
     ),
+  );
+  assert.ok(
+    report.recommendations.some((r) => /changes live publish gating/.test(r)),
   );
 });
 

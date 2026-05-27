@@ -5,7 +5,7 @@ const fs = require("fs-extra");
 const path = require("node:path");
 
 try {
-  require("dotenv").config({ override: true });
+  require("dotenv").config({ override: true, quiet: true });
 } catch {}
 
 const { buildDemoStories } = require("../lib/creator-studio-os");
@@ -23,12 +23,14 @@ function parseArgs(argv) {
     fixture: false,
     help: false,
     storyId: null,
+    storyJsonPath: null,
     limit: 5,
     dryRun: true,
     applyLocal: false,
     verifyStoreMetadata: false,
     requireVerifiedStore: false,
     multiEntityStoreSearch: false,
+    preferGameplayStills: false,
     maxStoreSearchEntities: 5,
     maxStoreAssetsPerEntity: 3,
     maxDownloadsPerStory: undefined,
@@ -37,6 +39,7 @@ function parseArgs(argv) {
     const arg = argv[i];
     if (arg === "--fixture") args.fixture = true;
     else if (arg === "--story") args.storyId = argv[++i] || null;
+    else if (arg === "--story-json") args.storyJsonPath = argv[++i] || null;
     else if (arg === "--limit") args.limit = Math.max(1, Number(argv[++i]) || 5);
     else if (arg === "--dry-run") {
       args.dryRun = true;
@@ -50,6 +53,8 @@ function parseArgs(argv) {
       args.requireVerifiedStore = true;
     } else if (arg === "--multi-entity-store-search") {
       args.multiEntityStoreSearch = true;
+    } else if (arg === "--prefer-gameplay-stills") {
+      args.preferGameplayStills = true;
     } else if (arg === "--max-store-search-entities") {
       args.maxStoreSearchEntities = Math.max(1, Number(argv[++i]) || 5);
     } else if (arg === "--max-store-assets-per-entity") {
@@ -69,6 +74,7 @@ function printHelp() {
       "Options:",
       "  --fixture          Use built-in demo stories",
       "  --story <id>       Build an enrichment plan for one story id",
+      "  --story-json <p>   Use a local story override JSON",
       "  --limit <n>        Limit local DB stories",
       "  --dry-run          Default. Plan only, no asset writes",
       "  --apply-local      Download allowed still images to test/output only",
@@ -78,6 +84,8 @@ function printHelp() {
       "                     Reject Steam/IGDB assets unless store title/slug verification passes",
       "  --multi-entity-store-search",
       "                     Search Steam stills for each required game/franchise entity",
+      "  --prefer-gameplay-stills",
+      "                     Prefer Steam screenshots/gameplay-like stills over covers and capsules",
       "  --max-store-search-entities <n>",
       "                     Cap entity searches (default 5)",
       "  --max-store-assets-per-entity <n>",
@@ -132,6 +140,17 @@ function storyTime(story) {
 
 async function loadStories(args) {
   if (args.fixture) return { stories: buildDemoStories(), mode: "fixture" };
+
+  if (args.storyJsonPath) {
+    const storyJsonPath = path.resolve(ROOT, args.storyJsonPath);
+    const parsed = await fs.readJson(storyJsonPath);
+    const rows = (Array.isArray(parsed) ? parsed : [parsed]).map(normaliseStory);
+    const selected = args.storyId ? rows.filter((story) => story.id === args.storyId) : rows;
+    if (selected.length === 0) {
+      throw new Error(`story JSON did not contain requested story id: ${args.storyId}`);
+    }
+    return { stories: selected, mode: "story_json" };
+  }
 
   try {
     const db = require("../lib/db");
@@ -228,7 +247,8 @@ async function main() {
     applyLocal: args.applyLocal,
     verifyStoreMetadata: args.verifyStoreMetadata,
     requireVerifiedStore: args.requireVerifiedStore,
-    multiEntityStoreSearch: args.multiEntityStoreSearch,
+    multiEntityStoreSearch: args.multiEntityStoreSearch || args.preferGameplayStills,
+    preferGameplayStills: args.preferGameplayStills,
     maxStoreSearchEntities: args.maxStoreSearchEntities,
     maxStoreAssetsPerEntity: args.maxStoreAssetsPerEntity,
     maxDownloadsPerStory: args.maxDownloadsPerStory,
@@ -240,9 +260,14 @@ async function main() {
   const deckMarkdown = renderVisualDeckExamplesMarkdown(deckExamples);
 
   await fs.ensureDir(OUT);
-  const v15 = args.multiEntityStoreSearch;
+  const v16 = args.preferGameplayStills;
+  const v15 = args.multiEntityStoreSearch || v16;
   const v14 = args.verifyStoreMetadata || args.requireVerifiedStore || v15;
-  const stem = v15
+  const stem = v16
+    ? args.applyLocal
+      ? "asset_acquisition_v16_gameplay_stills_apply_local"
+      : "asset_acquisition_v16_gameplay_stills_dry_run"
+    : v15
     ? args.applyLocal
       ? "asset_acquisition_v15_multi_entity_apply_local"
       : "asset_acquisition_v15_multi_entity_dry_run"
@@ -287,12 +312,31 @@ async function main() {
       "utf8",
     );
   }
+  if (v16) {
+    await fs.writeJson(path.join(OUT, "asset_acquisition_v16_gameplay_stills.json"), report, {
+      spaces: 2,
+    });
+    await fs.writeFile(
+      path.join(OUT, "asset_acquisition_v16_gameplay_stills.md"),
+      markdown,
+      "utf8",
+    );
+  }
 
   process.stdout.write(markdown);
   process.stderr.write(`[stills] wrote test/output/${stem}.{json,md}\n`);
 }
 
-main().catch((err) => {
-  process.stderr.write(`[stills] ${err.stack || err.message}\n`);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    process.stderr.write(`[stills] ${err.stack || err.message}\n`);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  loadStories,
+  main,
+  normaliseStory,
+  parseArgs,
+};

@@ -20,7 +20,7 @@ const result = spawnSync(
       STUDIO_V2_SKIP_LLM: process.env.STUDIO_V2_SKIP_LLM || "true",
       STUDIO_V2_VOICE: process.env.STUDIO_V2_VOICE || "production",
       STUDIO_V2_ALLOW_VOICE_FALLBACK:
-        process.env.STUDIO_V2_ALLOW_VOICE_FALLBACK || "true",
+        process.env.STUDIO_V2_ALLOW_VOICE_FALLBACK || "false",
     },
   },
 );

@@ -19,6 +19,12 @@ const {
   buildTikTokDispatchManifest,
 } = require("../lib/platforms/tiktok-dispatch");
 const {
+  buildFinalVoiceAudit,
+} = require("../lib/studio/v2/final-voice-audit");
+const {
+  loadFinalVoiceReportsByStoryId,
+} = require("../lib/studio/v2/final-voice-report-loader");
+const {
   buildSocialPlatformOperationsReport,
   renderSocialPlatformOperationsMarkdown,
 } = require("../lib/ops/social-platform-operations");
@@ -97,8 +103,20 @@ async function main() {
     };
   }
 
+  const finalFiles = stories.filter((story) => story.exported_path).map((story) => story.exported_path);
+  const reportsByStoryId = await loadFinalVoiceReportsByStoryId(finalFiles, {
+    outputDirs: [OUT],
+  });
+  const finalVoiceAudit = buildFinalVoiceAudit({
+    files: finalFiles,
+    reportsByStoryId,
+  });
+  const voiceAuditByStoryId = Object.fromEntries(
+    finalVoiceAudit.rows.map((row) => [row.story_id, row]),
+  );
   const dispatchManifest = buildTikTokDispatchManifest(stories, {
     durationByStoryId: {},
+    voiceAuditByStoryId,
   });
 
   const report = buildSocialPlatformOperationsReport({

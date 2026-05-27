@@ -40,7 +40,16 @@ function frameReport(frames) {
   };
 }
 
-function segment({ entity, source = null, allowed = true, reason = "segment_samples_passed", start = 48 } = {}) {
+function segment({
+  entity,
+  source = null,
+  allowed = true,
+  reason = "segment_samples_passed",
+  start = 48,
+  motionClass = "gameplay_action",
+  actionScore = 82,
+  actionSampleCount = 3,
+} = {}) {
   const url = source || `https://video.example/${entity}.m3u8`;
   return {
     story_id: "story-1",
@@ -54,6 +63,9 @@ function segment({ entity, source = null, allowed = true, reason = "segment_samp
     segment_validated: allowed,
     allowed_for_flash_lane: allowed,
     validation_reason: reason,
+    segment_motion_class: allowed ? motionClass : "rejected",
+    action_score: allowed ? actionScore : 0,
+    action_sample_count: allowed ? actionSampleCount : 0,
     samples: [{}, {}, {}],
   };
 }
@@ -145,9 +157,103 @@ test("Flash Lane footage backbone projects a footage-heavy 60s Flash proof", () 
   });
 
   assert.equal(report.verdict, "ready_for_flash_render_preflight");
-  assert.equal(report.validated_clip_refs.length, 9);
-  assert.ok(report.projected_clip_dominance >= 0.65);
+  assert.equal(report.thresholds.minClipDominance, 0.55);
+  assert.equal(report.validated_clip_refs.length, 10);
+  assert.ok(report.projected_clip_dominance >= 0.55);
   assert.deepEqual(report.blockers, []);
+});
+
+test("Flash Lane footage backbone uses measured trimmed clip durations before blocking dominance", () => {
+  const sources = Array.from({ length: 8 }, (_, index) => `https://video.example/marathon-${index}.m3u8`);
+  const frames = [frame({ entity: "Marathon", source: sources[0] })];
+  const segments = Array.from({ length: 16 }, (_, index) =>
+    segment({
+      entity: "Marathon",
+      source: sources[index % sources.length],
+      start: 36 + index * 6,
+      actionScore: 82 + (index % 8),
+    }),
+  ).map((item, index) => ({
+    ...item,
+    duration_s: index === 0 ? 5 : 2.85,
+    recommended_duration_s: index === 0 ? 5 : 2.85,
+    recommended_media_start_s: item.media_start_s,
+    trim_recommended: index !== 0,
+  }));
+
+  const report = buildFlashLaneFootageBackboneReport({
+    storyId: "story-1",
+    targetRuntimeS: 66.72,
+    frameReport: frameReport(frames),
+    segmentValidationReport: { segments },
+  });
+
+  assert.equal(report.verdict, "ready_for_flash_render_preflight");
+  assert.equal(report.validated_clip_refs.length, 16);
+  assert.ok(report.projected_clip_dominance >= 0.55);
+  assert.deepEqual(report.blockers, []);
+});
+
+test("Flash Lane footage backbone accepts single-game stories with enough validated deep-scan segments", () => {
+  const sourceA = "https://video.example/marathon-a.m3u8";
+  const sourceB = "https://video.example/marathon-b.m3u8";
+  const sourceC = "https://video.example/marathon-c.m3u8";
+  const sourceD = "https://video.example/marathon-d.m3u8";
+  const sources = [sourceA, sourceB, sourceC, sourceD];
+  const report = buildFlashLaneFootageBackboneReport({
+    storyId: "story-1",
+    targetRuntimeS: 35,
+    minClipDominance: 0.5,
+    frameReport: frameReport([
+      frame({ entity: "Marathon", source: sourceA, status: "rejected_qa", failures: ["title_or_rating_card_frame"] }),
+    ]),
+    segmentValidationReport: {
+      segments: sources.map((source, index) =>
+        segment({
+          entity: "Marathon",
+          source,
+          start: 42 + index * 6,
+          actionScore: 80 + index,
+        }),
+      ),
+    },
+  });
+
+  assert.equal(report.verdict, "ready_for_flash_render_preflight");
+  assert.equal(report.thresholds.minValidatedEntities, 1);
+  assert.equal(report.blockers.includes("footage_backbone_entity_coverage_too_thin"), false);
+  assert.equal(report.validated_clip_refs.length, 4);
+  assert.deepEqual([...new Set(report.validated_clip_refs.map((ref) => ref.entity))], ["Marathon"]);
+});
+
+test("Flash Lane footage backbone allows validated clips when accepted trailer frames carry the motion gap", () => {
+  const frames = Array.from({ length: 6 }, (_, index) =>
+    frame({
+      entity: "Marathon",
+      source: `https://video.example/marathon-${index}.m3u8`,
+      seconds: 44 + index,
+    }),
+  );
+  const segments = frames.map((item, index) =>
+    segment({
+      entity: "Marathon",
+      source: item.source_url,
+      start: 48 + index * 6,
+      actionScore: 82,
+    }),
+  );
+
+  const report = buildFlashLaneFootageBackboneReport({
+    storyId: "story-1",
+    targetRuntimeS: 66,
+    frameReport: frameReport(frames),
+    segmentValidationReport: { segments },
+  });
+
+  assert.equal(report.verdict, "ready_for_flash_render_preflight");
+  assert.equal(report.blockers.includes("footage_backbone_clip_dominance_too_low"), false);
+  assert.ok(report.warnings.includes("footage_backbone_clip_dominance_supported_by_trailer_frames"));
+  assert.ok(report.projected_motion_dominance >= report.thresholds.minClipDominance);
 });
 
 test("Flash Lane footage backbone caps repeated use of the same trailer source", () => {
@@ -179,6 +285,78 @@ test("Flash Lane footage backbone caps repeated use of the same trailer source",
   const sharedUseCount = report.validated_clip_refs.filter((ref) => ref.path === sharedSource).length;
   assert.ok(sharedUseCount <= 3);
   assert.equal(report.filtered_source_overuse_clip_refs, frames.length - sharedUseCount);
+});
+
+test("Flash Lane footage backbone prefers distant validated windows over clustered near-duplicates", () => {
+  const sharedSource = "https://video.example/forza.m3u8";
+  const report = buildFlashLaneFootageBackboneReport({
+    storyId: "story-1",
+    targetRuntimeS: 66,
+    frameReport: frameReport([
+      frame({ entity: "Forza Horizon 6", source: sharedSource, seconds: 44 }),
+      frame({ entity: "Forza Horizon 6", source: sharedSource, seconds: 54 }),
+      frame({ entity: "Forza Horizon 6", source: sharedSource, seconds: 82 }),
+    ]),
+    segmentValidationReport: {
+      segments: [
+        segment({ entity: "Forza Horizon 6", source: sharedSource, start: 36, actionScore: 79 }),
+        segment({ entity: "Forza Horizon 6", source: sharedSource, start: 54, actionScore: 73.4 }),
+        segment({ entity: "Forza Horizon 6", source: sharedSource, start: 52, actionScore: 73.2 }),
+        segment({ entity: "Forza Horizon 6", source: sharedSource, start: 50, actionScore: 72.4 }),
+        segment({ entity: "Forza Horizon 6", source: sharedSource, start: 82, actionScore: 72.2 }),
+      ],
+    },
+  });
+
+  const starts = report.validated_clip_refs.map((ref) => ref.mediaStartS).sort((a, b) => a - b);
+  assert.equal(starts.length, 3);
+  assert.ok(starts.includes(36));
+  assert.ok(starts.includes(82));
+  assert.ok(starts.every((start, index) => index === 0 || start - starts[index - 1] >= 4));
+});
+
+test("Flash Lane footage backbone allows a fourth clip per source when source-diverse frames carry the gap", () => {
+  const sources = [
+    "https://video.example/marathon-a.m3u8",
+    "https://video.example/marathon-b.m3u8",
+    "https://video.example/marathon-c.m3u8",
+  ];
+  const frames = sources.flatMap((source) =>
+    Array.from({ length: 4 }, (_, index) =>
+      frame({
+        entity: "Marathon",
+        source,
+        seconds: 40 + index * 8,
+      }),
+    ),
+  );
+  const segments = frames.map((item, index) => ({
+    ...segment({
+      entity: "Marathon",
+      source: item.source_url,
+      start: item.target_time_seconds + 4,
+      actionScore: 88,
+    }),
+    duration_s: index % 4 === 0 ? 5 : 2.85,
+    recommended_duration_s: index % 4 === 0 ? 5 : 2.85,
+    recommended_media_start_s: item.target_time_seconds + 4,
+    trim_recommended: index % 4 !== 0,
+  }));
+
+  const report = buildFlashLaneFootageBackboneReport({
+    storyId: "story-1",
+    targetRuntimeS: 66,
+    frameReport: frameReport(frames),
+    segmentValidationReport: { segments },
+  });
+
+  assert.equal(report.verdict, "ready_for_flash_render_preflight");
+  assert.equal(report.max_clip_refs_per_source, 4);
+  assert.equal(report.quality_filtered_source_count, 3);
+  assert.equal(report.validated_clip_refs.length, 12);
+  assert.ok(report.projected_clip_dominance >= report.thresholds.minFrameSupportedClipDominance);
+  assert.ok(report.projected_clip_dominance < report.thresholds.minClipDominance);
+  assert.ok(report.warnings.includes("footage_backbone_clip_dominance_supported_by_trailer_frames"));
 });
 
 test("Flash Lane footage backbone balances validated clips across story entities", () => {
@@ -242,6 +420,52 @@ test("Flash Lane footage backbone excludes validated clips below the Flash quali
     ["BioShock"],
   );
   assert.ok(report.blockers.includes("footage_backbone_needs_three_validated_clip_windows"));
+});
+
+test("Flash Lane footage backbone refuses clean segments that are not gameplay/action", () => {
+  const sourceA = "https://video.example/gta-clean-card.m3u8";
+  const sourceB = "https://video.example/reddead-clean-card.m3u8";
+  const sourceC = "https://video.example/bioshock-clean-card.m3u8";
+  const report = buildFlashLaneFootageBackboneReport({
+    storyId: "story-1",
+    targetRuntimeS: 15,
+    frameReport: frameReport([
+      frame({ entity: "GTA", source: sourceA }),
+      frame({ entity: "Red Dead", source: sourceB }),
+      frame({ entity: "BioShock", source: sourceC }),
+    ]),
+    segmentValidationReport: {
+      segments: [
+        segment({
+          entity: "GTA",
+          source: sourceA,
+          motionClass: "non_gameplay_context",
+          actionScore: 42,
+          actionSampleCount: 0,
+        }),
+        segment({
+          entity: "Red Dead",
+          source: sourceB,
+          motionClass: "non_gameplay_context",
+          actionScore: 45,
+          actionSampleCount: 1,
+        }),
+        segment({
+          entity: "BioShock",
+          source: sourceC,
+          motionClass: "non_gameplay_context",
+          actionScore: 48,
+          actionSampleCount: 0,
+        }),
+      ],
+    },
+  });
+
+  assert.equal(report.verdict, "downgrade_to_standard_short");
+  assert.equal(report.segment_inventory.validated_segments, 0);
+  assert.equal(report.segment_inventory.non_gameplay_context_segments, 3);
+  assert.deepEqual(report.validated_clip_refs, []);
+  assert.ok(report.blockers.includes("footage_backbone_needs_gameplay_action_clip_windows"));
 });
 
 test("Flash Lane footage backbone markdown is operator-readable", () => {

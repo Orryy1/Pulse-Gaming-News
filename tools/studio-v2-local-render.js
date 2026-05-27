@@ -9,11 +9,11 @@ process.env.STUDIO_V2_VOICE = process.env.STUDIO_V2_VOICE || "local";
 process.env.TTS_PROVIDER = "local";
 process.env.LOCAL_TTS_URL = process.env.LOCAL_TTS_URL || "http://127.0.0.1:8765";
 process.env.STUDIO_V2_LOCAL_TTS_RATE_MULTIPLIER =
-  process.env.STUDIO_V2_LOCAL_TTS_RATE_MULTIPLIER || "1.75";
+  process.env.STUDIO_V2_LOCAL_TTS_RATE_MULTIPLIER || "1.0";
 process.env.STUDIO_V2_LOCAL_TTS_BASE_SPEED =
-  process.env.STUDIO_V2_LOCAL_TTS_BASE_SPEED || "1.4";
+  process.env.STUDIO_V2_LOCAL_TTS_BASE_SPEED || "1.0";
 process.env.STUDIO_V2_LOCAL_TTS_EFFECTIVE_RATE_CAP =
-  process.env.STUDIO_V2_LOCAL_TTS_EFFECTIVE_RATE_CAP || "2.35";
+  process.env.STUDIO_V2_LOCAL_TTS_EFFECTIVE_RATE_CAP || "1.0";
 process.env.STUDIO_EDITORIAL_MAX_WORDS =
   process.env.STUDIO_EDITORIAL_MAX_WORDS || "125";
 process.env.STUDIO_V2_LOCAL_TTS_MAX_SEGMENT_WORDS =

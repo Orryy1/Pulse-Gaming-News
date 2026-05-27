@@ -3,16 +3,41 @@ const path = require("path");
 const crypto = require("crypto");
 const axios = require("axios");
 const dotenv = require("dotenv");
+dotenv.config({ override: true });
+
 const { withRetry } = require("./lib/retry");
 const { addBreadcrumb, captureException } = require("./lib/sentry");
 const { getPublicUrl } = require("./lib/deployment-mode");
 const { validateVideo } = require("./lib/validate");
+const {
+  assertPlatformVideoQaPass,
+} = require("./lib/services/platform-video-qa");
+const {
+  assertBatchUploadPreflight,
+  storyIsBatchUploadCandidate,
+} = require("./lib/services/batch-upload-preflight");
+const {
+  assertDirectUploadAllowed,
+  buildDirectUploadPolicy,
+} = require("./lib/services/direct-upload-policy");
 const db = require("./lib/db");
 const mediaPaths = require("./lib/media-paths");
 
-dotenv.config({ override: true });
-
 const DEFAULT_TOKEN_PATH = path.join(__dirname, "tokens", "tiktok_token.json");
+
+function envExplicitFalse(name) {
+  return /^(false|0|no|off)$/i.test(String(process.env[name] || "").trim());
+}
+
+function isTikTokOperatorDisabled() {
+  return envExplicitFalse("TIKTOK_ENABLED") || envExplicitFalse("TIKTOK_AUTO_UPLOAD_ENABLED");
+}
+
+function assertTikTokOperatorEnabled() {
+  if (isTikTokOperatorDisabled()) {
+    throw new Error("tiktok_operator_disabled");
+  }
+}
 
 /**
  * Pick the `privacy_level` we send to TikTok's Content Posting API.
@@ -500,7 +525,7 @@ async function exchangeCode(code, opts = {}) {
   const tokenPath = resolveTokenPath();
   await fs.ensureDir(path.dirname(tokenPath));
   await fs.writeJson(tokenPath, tokenData, { spaces: 2 });
-  console.log(`[tiktok] Token saved to ${tokenPath}`);
+  console.log("[tiktok] OAuth credential saved successfully");
   return tokenData;
 }
 
@@ -539,6 +564,7 @@ function buildInboxUploadInitRequest({
 }
 
 async function uploadVideoToInbox(story) {
+  assertTikTokOperatorEnabled();
   addBreadcrumb(`TikTok inbox upload: ${story.title}`, "upload");
   return withRetry(
     async () => {
@@ -547,6 +573,7 @@ async function uploadVideoToInbox(story) {
         (await mediaPaths.resolveExisting(story.exported_path)) ||
         story.exported_path;
       await validateVideo(exportedAbs, "tiktok");
+      await assertPlatformVideoQaPass(exportedAbs, { platform: "tiktok" });
 
       const fileSize = (await fs.stat(exportedAbs)).size;
       const init = buildInboxUploadInitRequest({
@@ -590,8 +617,43 @@ async function uploadVideoToInbox(story) {
   );
 }
 
+function buildPublishStatusFetchRequest(publishId) {
+  if (!publishId) {
+    throw new Error("TikTok publish status fetch requires publishId");
+  }
+  return {
+    url: "https://open.tiktokapis.com/v2/post/publish/status/fetch/",
+    body: { publish_id: publishId },
+    safety: {
+      publicAutoPublish: false,
+      requiresManualCompletion: true,
+      printsToken: false,
+    },
+  };
+}
+
+async function fetchPublishStatus(publishId, { accessToken = null } = {}) {
+  const token = accessToken || (await getAccessToken());
+  const req = buildPublishStatusFetchRequest(publishId);
+  const response = await axios.post(req.url, req.body, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json; charset=UTF-8",
+    },
+  });
+  const error = response.data?.error || {};
+  const data = response.data?.data || {};
+  return {
+    ok: error.code === "ok" || response.status === 200,
+    status: data.status || null,
+    raw_error_code: error.code || null,
+    raw_error_message: error.message || null,
+  };
+}
+
 // --- Upload video to TikTok ---
 async function uploadVideo(story) {
+  assertTikTokOperatorEnabled();
   addBreadcrumb(`TikTok upload: ${story.title}`, "upload");
   return withRetry(
     async () => {
@@ -604,6 +666,7 @@ async function uploadVideo(story) {
         (await mediaPaths.resolveExisting(story.exported_path)) ||
         story.exported_path;
       await validateVideo(exportedAbs, "tiktok");
+      await assertPlatformVideoQaPass(exportedAbs, { platform: "tiktok" });
 
       const fileSize = (await fs.stat(exportedAbs)).size;
 
@@ -718,14 +781,19 @@ async function uploadVideo(story) {
 
 // --- Batch upload all ready stories ---
 async function uploadAll() {
+  if (isTikTokOperatorDisabled()) {
+    console.log("[tiktok] Upload skipped: operator disabled");
+    return [];
+  }
+
   const stories = await db.getStories();
   if (!stories.length) {
     console.log("[tiktok] No stories found");
     return [];
   }
 
-  const ready = stories.filter(
-    (s) => s.approved && s.exported_path && !s.tiktok_post_id,
+  const ready = stories.filter((s) =>
+    storyIsBatchUploadCandidate(s, "tiktok_post_id"),
   );
 
   console.log(`[tiktok] ${ready.length} videos ready for upload`);
@@ -734,6 +802,7 @@ async function uploadAll() {
 
   for (const story of ready) {
     try {
+      await assertBatchUploadPreflight(story, { platform: "tiktok" });
       const result = await uploadVideo(story);
       story.tiktok_post_id = result.publishId;
       story.tiktok_status = result.status;
@@ -763,6 +832,7 @@ module.exports = {
   uploadVideoToInbox,
   uploadShort,
   uploadAll,
+  isTikTokOperatorDisabled,
   generateAuthUrl,
   buildAuthorizeUrl,
   resolveRedirectUri,
@@ -783,6 +853,8 @@ module.exports = {
   buildTokenRecord,
   assertTokenResponse,
   buildInboxUploadInitRequest,
+  buildPublishStatusFetchRequest,
+  fetchPublishStatus,
   DEFAULT_EXPIRES_IN_SECONDS,
   // Privacy-level resolver + constants — exported for tests and
   // for any operator tooling that wants to read the live effective
@@ -805,9 +877,22 @@ if (require.main === module) {
     }
     exchangeCode(code).catch(console.error);
   } else {
-    uploadAll().catch((err) => {
+    try {
+      const directPolicy = buildDirectUploadPolicy({ platform: "tiktok" });
+      assertDirectUploadAllowed(directPolicy);
+      if (directPolicy.mode !== "actual_upload") {
+        console.log(
+          `[tiktok] Direct upload ${directPolicy.mode}: no upload dispatched`,
+        );
+      } else {
+        uploadAll().catch((err) => {
+          console.log(`[tiktok] ERROR: ${err.message}`);
+          process.exit(1);
+        });
+      }
+    } catch (err) {
       console.log(`[tiktok] ERROR: ${err.message}`);
       process.exit(1);
-    });
+    }
   }
 }

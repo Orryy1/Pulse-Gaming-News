@@ -108,6 +108,27 @@ test("upload_tiktok_browser: module loads + exposes uploadShort/uploadAll", () =
   assert.strictEqual(typeof mod.uploadAll, "function");
 });
 
+test("upload_tiktok_browser: operator-disabled guard blocks upload paths", async () => {
+  const oldEnabled = process.env.TIKTOK_ENABLED;
+  const oldAuto = process.env.TIKTOK_AUTO_UPLOAD_ENABLED;
+  process.env.TIKTOK_ENABLED = "false";
+  process.env.TIKTOK_AUTO_UPLOAD_ENABLED = "false";
+  try {
+    const mod = require("../../upload_tiktok_browser");
+    assert.strictEqual(mod.isTikTokOperatorDisabled(), true);
+    assert.deepStrictEqual(await mod.uploadAll(), []);
+    await assert.rejects(
+      mod.uploadShort({ id: "rss_disabled", title: "Disabled", exported_path: "x.mp4" }),
+      /tiktok_operator_disabled/,
+    );
+  } finally {
+    if (oldEnabled === undefined) delete process.env.TIKTOK_ENABLED;
+    else process.env.TIKTOK_ENABLED = oldEnabled;
+    if (oldAuto === undefined) delete process.env.TIKTOK_AUTO_UPLOAD_ENABLED;
+    else process.env.TIKTOK_AUTO_UPLOAD_ENABLED = oldAuto;
+  }
+});
+
 test("publisher.js: TIKTOK_BROWSER_FALLBACK read from env + lower-cased (dev flag idiom)", () => {
   // The canonical check is
   //   (process.env.TIKTOK_BROWSER_FALLBACK || "").toLowerCase() === "true"

@@ -9,6 +9,7 @@ const path = require("node:path");
 const {
   buildQualityReportV2,
   gradeDurationIntegrity,
+  gradeMotionDensity,
 } = require("../../lib/studio/v2/quality-gate-v2");
 const {
   buildSfxCueList,
@@ -17,8 +18,14 @@ const {
 const { resolveAudioPlan } = require("../../lib/studio/v2/audio-library");
 const {
   applyLocalVoiceRateMultiplier,
+  buildProductionVoiceSignature,
   buildProductionVoiceSegments,
+  ACCEPTED_LOCAL_VOICE_ID,
   evaluateLocalVoicePace,
+  resolveAcceptedLocalVoiceReference,
+  resolveLocalInterSegmentPauseS,
+  resolveLocalInterSegmentPausePlan,
+  resolveLocalInterSegmentGapSchedule,
   resolveLocalTtsEngine,
   resolveStudioOutroLine,
   splitLongVoiceSegments,
@@ -26,6 +33,31 @@ const {
 const {
   summariseLocalTtsHealth,
 } = require("../../lib/studio/local-tts-readiness");
+
+const ACCEPTED_SLEEPY_LIAM = {
+  id: "pulse-sleepy-liam-20260502",
+  fileName: "pulse_liam_sleepy.wav",
+  referencePresent: true,
+  referenceHash: "c".repeat(40),
+};
+const ACTUAL_ACCEPTED_SLEEPY_LIAM = resolveAcceptedLocalVoiceReference();
+
+function withEnv(overrides, fn) {
+  const previous = {};
+  for (const [key, value] of Object.entries(overrides)) {
+    previous[key] = process.env[key];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  try {
+    return fn();
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
 
 function tempAss(contents) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-v2-"));
@@ -65,6 +97,90 @@ test("v2 duration integrity passes when render covers voice and subtitle timelin
     assPath,
   });
   assert.equal(result.grade, "green");
+});
+
+test("v2 motion density allows a high-motion Visual V3 slate without repeated frames", () => {
+  const scenes = [
+    { type: "opener", isClipBacked: true },
+    ...Array.from({ length: 8 }, () => ({ type: "clip.frame" })),
+    { type: "card.stat" },
+    { type: "card.timeline" },
+    { type: "card.takeaway" },
+  ];
+  const transitions = Array.from({ length: 10 }, (_, index) => ({
+    type: index % 2 === 0 ? "cut" : "xfade",
+  }));
+  const result = gradeMotionDensity(scenes, transitions, 61.4);
+
+  assert.equal(result.value, 7.3);
+  assert.equal(result.motionSceneRatio, 0.75);
+  assert.equal(result.grade, "red");
+
+  const highMotion = gradeMotionDensity(
+    scenes,
+    Array.from({ length: 10 }, () => ({ type: "cut" })),
+    61.4,
+  );
+  assert.equal(highMotion.value, 9.8);
+  assert.equal(highMotion.grade, "amber");
+
+  const faster = gradeMotionDensity(
+    scenes,
+    Array.from({ length: 13 }, () => ({ type: "cut" })),
+    61.4,
+  );
+  assert.equal(faster.value, 12.7);
+  assert.equal(faster.grade, "amber");
+});
+
+test("v2 quality report flags subtitles that disappear before narration ends", () => {
+  const assPath = tempAss(
+    [
+      dialogue("0:00:00.00", "0:00:01.00", "opening"),
+      dialogue("0:00:09.50", "0:00:10.00", "early ending caption"),
+    ].join("\n"),
+  );
+  const report = buildQualityReportV2({
+    storyId: "early-caption-tail",
+    outputPath: "test/output/early-caption-tail.mp4",
+    pkg: {
+      title: "Pokemon Go",
+      hook: { chosen: { text: "Mega Mewtwo is real for Pokemon Go players" } },
+      script: {
+        tightened: Array.from({ length: 130 }, () => "word").join(" "),
+      },
+    },
+    scenes: Array.from({ length: 12 }, (_, i) => ({
+      type: i % 2 === 0 ? "clip" : "card.source",
+      source: `source-${i}.mp4`,
+      duration: 5,
+    })),
+    transitions: Array.from({ length: 11 }, (_, i) => ({
+      type: "cut",
+      offset: (i + 1) * 5,
+    })),
+    audioMeta: { provider: "elevenlabs", voiceId: "TX3LPaxmHKxFdv7VOQHJ" },
+    audioDurationS: 60,
+    assPath,
+    soundLayerPayload: {
+      cueCount: 3,
+      filterLines: ["sidechaincompress=threshold=0.05:ratio=4"],
+    },
+    realignedWords: Array.from({ length: 130 }, (_, i) => ({
+      word: `w${i}`,
+      start: i * 0.4,
+      end: i * 0.4 + 0.18,
+    })),
+    renderedDurationS: 60,
+    branch: "test",
+  });
+
+  assert.equal(report.auto.captionGapsOver2s.grade, "red");
+  assert.deepEqual(report.auto.captionGapsOver2s.gaps, [
+    { fromS: 1, toS: 9.5, type: "internal" },
+    { fromS: 10, toS: 60, type: "tail" },
+  ]);
+  assert.match(report.verdict.reasons.join(" "), /captionGapsOver2s/);
 });
 
 test("v2 quality report surfaces Flash Lane preflight blockers as hard quality failures", () => {
@@ -318,7 +434,8 @@ test("v2 quality report rejects unapproved studio local VoxCPM voice renders", (
     start: i * 0.4,
     end: i * 0.4 + 0.18,
   }));
-  const report = buildQualityReportV2({
+  const report = withEnv({ STUDIO_V2_LOCAL_VOICE_APPROVED: "false" }, () =>
+    buildQualityReportV2({
     storyId: "x",
     outputPath: "test/output/x.mp4",
     pkg: {
@@ -349,8 +466,9 @@ test("v2 quality report rejects unapproved studio local VoxCPM voice renders", (
     },
     realignedWords: words,
     renderedDurationS: 60,
-    branch: "test",
-  });
+      branch: "test",
+    }),
+  );
 
   assert.equal(report.auto.voicePathUsed.grade, "red");
   assert.equal(report.auto.voicePathUsed.value, "local-production-voxcpm");
@@ -399,6 +517,7 @@ test("v2 quality report allows explicitly approved studio local voice renders fo
       voiceId: "TX3LPaxmHKxFdv7VOQHJ",
       timestampSource: "local-tts-even-alignment",
       approvedLocalVoice: true,
+      acceptedLocalVoice: ACCEPTED_SLEEPY_LIAM,
     },
     audioDurationS: 60,
     assPath,
@@ -414,6 +533,120 @@ test("v2 quality report allows explicitly approved studio local voice renders fo
   assert.equal(report.auto.voicePathUsed.grade, "green");
   assert.equal(report.auto.voicePathUsed.value, "local-production-chatterbox");
   assert.notEqual(report.verdict.lane, "reject");
+  assert.ok(
+    !report.verdict.reasons.includes("unapproved local TTS voice path"),
+  );
+});
+
+test("v2 quality report rejects local TTS proof audio without accepted Sleepy Liam fingerprint", () => {
+  const assPath = tempAss(dialogue("0:00:00.00", "0:00:59.00", "word"));
+  const scenes = Array.from({ length: 12 }, (_, i) => ({
+    type: i % 3 === 0 ? "clip" : i % 3 === 1 ? "clip.frame" : "card.source",
+    source: `source-${i}.mp4`,
+    duration: 5,
+  }));
+  const transitions = Array.from({ length: 11 }, (_, i) => ({
+    type: "cut",
+    offset: (i + 1) * 5,
+  }));
+  const words = Array.from({ length: 140 }, (_, i) => ({
+    word: `w${i}`,
+    start: i * 0.4,
+    end: i * 0.4 + 0.18,
+  }));
+  const report = withEnv({ STUDIO_V2_LOCAL_VOICE_APPROVED: "false" }, () => buildQualityReportV2({
+    storyId: "x",
+    outputPath: "test/output/x.mp4",
+    pkg: {
+      title: "Pokemon Go",
+      hook: {
+        chosen: {
+          text: "Mega Mewtwo is finally real for Pokemon Go players",
+        },
+      },
+      script: {
+        tightened: Array.from({ length: 140 }, () => "word").join(" "),
+      },
+    },
+    scenes,
+    transitions,
+    audioMeta: {
+      provider: "local",
+      source: "local-production-voxcpm-path",
+      voiceId: "TX3LPaxmHKxFdv7VOQHJ",
+      timestampSource: "local-tts-even-alignment",
+      approvedLocalVoice: true,
+    },
+    audioDurationS: 60,
+    assPath,
+    soundLayerPayload: {
+      cueCount: 0,
+      filterLines: ["sidechaincompress=threshold=0.05:ratio=4"],
+    },
+    realignedWords: words,
+    renderedDurationS: 60,
+    branch: "test",
+  }));
+
+  assert.equal(report.auto.voicePathUsed.grade, "red");
+  assert.ok(
+    report.verdict.reasons.includes("local TTS voice reference unverified"),
+  );
+});
+
+test("v2 quality report accepts approved provided local TTS proof audio", () => {
+  const assPath = tempAss(dialogue("0:00:00.00", "0:00:59.00", "word"));
+  const scenes = Array.from({ length: 12 }, (_, i) => ({
+    type: i % 3 === 0 ? "clip" : i % 3 === 1 ? "clip.frame" : "card.source",
+    source: `source-${i}.mp4`,
+    duration: 5,
+  }));
+  const transitions = Array.from({ length: 11 }, (_, i) => ({
+    type: "cut",
+    offset: (i + 1) * 5,
+  }));
+  const words = Array.from({ length: 140 }, (_, i) => ({
+    word: `w${i}`,
+    start: i * 0.4,
+    end: i * 0.4 + 0.18,
+  }));
+  const report = withEnv({ STUDIO_V2_LOCAL_VOICE_APPROVED: "false" }, () => buildQualityReportV2({
+    storyId: "x",
+    outputPath: "test/output/x.mp4",
+    pkg: {
+      title: "Pokemon Go",
+      hook: {
+        chosen: {
+          text: "Mega Mewtwo is finally real for Pokemon Go players",
+        },
+      },
+      script: {
+        tightened: Array.from({ length: 140 }, () => "word").join(" "),
+      },
+    },
+    scenes,
+    transitions,
+    audioMeta: {
+      provider: "local",
+      source: "provided-local-tts-audio",
+      voiceId: "TX3LPaxmHKxFdv7VOQHJ",
+      timestampSource: "tts-alignment",
+      approvedLocalVoice: true,
+      acceptedLocalVoice: ACCEPTED_SLEEPY_LIAM,
+    },
+    audioDurationS: 60,
+    assPath,
+    soundLayerPayload: {
+      cueCount: 0,
+      filterLines: ["sidechaincompress=threshold=0.05:ratio=4"],
+    },
+    realignedWords: words,
+    renderedDurationS: 60,
+    branch: "test",
+  }));
+
+  assert.equal(report.auto.voicePathUsed.grade, "green");
+  assert.equal(report.auto.voicePathUsed.value, "approved-provided-local-tts");
   assert.ok(
     !report.verdict.reasons.includes("unapproved local TTS voice path"),
   );
@@ -555,6 +788,27 @@ test("v2 sound layer can pad the audio bed to a longer outro runtime", () => {
   );
 });
 
+test("v2 sound layer keeps the music bed below local narration clarity", () => {
+  const payload = buildSoundLayerV2({
+    scenes: [{ type: "opener", duration: 58 }, { type: "outro", duration: 4 }],
+    transitions: [{ type: "cut", offset: 58 }],
+    voiceInputIdx: 2,
+    musicInputIdx: 3,
+    audioInputsBaseIdx: 4,
+    audioPlan: { sfxCues: [] },
+    targetDurationS: 62,
+  });
+
+  assert.ok(
+    payload.filterLines.some((line) => line.includes("volume=0.075[bgm_raw]")),
+  );
+  assert.ok(
+    payload.filterLines.some((line) =>
+      line.includes("sidechaincompress=threshold=0.035:ratio=6"),
+    ),
+  );
+});
+
 test("studio production voice includes the branded spoken outro by default", () => {
   const segments = buildProductionVoiceSegments({
     hook: "Mega Mewtwo is real.",
@@ -584,6 +838,39 @@ test("studio production voice can disable the spoken outro for private tests", (
   );
 
   assert.equal(segments.some((segment) => segment.label === "outro"), false);
+});
+
+test("studio production voice does not add a second outro after a custom Pulse CTA", () => {
+  const segments = buildProductionVoiceSegments({
+    hook: "Hook.",
+    body: "Body. Follow Pulse Gaming for the next read.",
+    loop: "",
+  });
+
+  assert.equal(segments.some((segment) => segment.label === "outro"), false);
+  assert.equal(
+    segments.find((segment) => segment.label === "body").cleanText,
+    "Body. Follow Pulse Gaming for the next read.",
+  );
+});
+
+test("studio production voice dedupes repeated hook and loop segment boundaries", () => {
+  const segments = buildProductionVoiceSegments(
+    {
+      hook: "Forza Horizon 6 just put up a ridiculous Steam number.",
+      body:
+        "Forza Horizon 6 just put up a ridiculous Steam number. The Steam peak hit one hundred and thirty thousand players. Either way, Xbox finally has a racing story with hard numbers behind it.",
+      loop:
+        "Either way, Xbox finally has a racing story with hard numbers behind it.",
+    },
+    { STUDIO_V2_DISABLE_SPOKEN_OUTRO: "true" },
+  );
+
+  assert.equal(
+    segments.find((segment) => segment.label === "body").cleanText,
+    "The Steam peak hit one hundred and thirty thousand players. Either way, Xbox finally has a racing story with hard numbers behind it.",
+  );
+  assert.equal(segments.some((segment) => segment.label === "loop"), false);
 });
 
 test("v2 quality report does not penalise SFX when explicitly disabled", () => {
@@ -665,14 +952,21 @@ test("v2 audio library builds a forensic-safe studio SFX plan by default", () =>
     });
     assert.equal(plan.decisions.vibe, "verified");
     assert.match(plan.musicBed.path, /Main Background Loop 2\.wav$/);
-    assert.equal(plan.sfxCues.length, 2);
+    assert.equal(plan.sfxCues.length, 4);
     assert.equal(new Set(plan.sfxCues.map((cue) => cue.path)).size, plan.sfxCues.length);
     assert.ok(plan.sfxCues.every((cue) => cue.vol > 0 && cue.vol <= 0.16));
     assert.ok(plan.sfxCues.every((cue) => fs.existsSync(cue.path)));
+    for (let i = 1; i < plan.sfxCues.length; i++) {
+      assert.ok(
+        plan.sfxCues[i].atS - plan.sfxCues[i - 1].atS >= 2.4,
+        "studio SFX cues should be spaced far enough apart to avoid recurrence artefacts",
+      );
+    }
     assert.equal(plan.decisions.sfxMode, "studio");
     assert.equal(plan.decisions.sfxCueCount, plan.sfxCues.length);
     assert.equal(plan.decisions.forensicSafeCueCount, true);
     assert.ok(plan.decisions.sfxBreakdown.reveal >= 1);
+    assert.ok(plan.decisions.sfxBreakdown.transition >= 1);
     assert.ok(
       (plan.decisions.sfxBreakdown.boom || plan.decisions.sfxBreakdown.impact || 0) >= 1,
     );
@@ -704,6 +998,60 @@ test("v2 audio library still supports an explicit SFX off switch", () => {
   }
 });
 
+test("v2 audio library keeps four cues when the opener cut is short", () => {
+  const oldMode = process.env.STUDIO_V2_SFX_MODE;
+  delete process.env.STUDIO_V2_SFX_MODE;
+  try {
+    const scenes = [
+      { type: "opener", duration: 2.35 },
+      { type: "clip.frame", duration: 4.231 },
+      { type: "clip", duration: 2.35 },
+      { type: "still", duration: 4.452 },
+      { type: "clip.frame", duration: 3.41 },
+      { type: "still", duration: 4.771 },
+      { type: "clip.frame", duration: 4.069 },
+      { type: "still", duration: 4.049 },
+      { type: "clip.frame", duration: 4.317 },
+      { type: "still", duration: 4.356 },
+      { type: "clip.frame", duration: 4.094 },
+      { type: "clip.frame", duration: 4.15 },
+      { type: "clip.frame", duration: 4.31 },
+      { type: "clip.frame", duration: 3.293 },
+      { type: "card.takeaway", duration: 2.866 },
+    ];
+    const transitions = [
+      { type: "cut", duration: 0, offset: 2.35 },
+      { type: "dissolve", duration: 0.22, offset: 6.361 },
+      { type: "cut", duration: 0, offset: 8.711 },
+      { type: "dissolve", duration: 0.22, offset: 12.943 },
+      { type: "slideleft", duration: 0.25, offset: 16.103 },
+      { type: "dissolve", duration: 0.22, offset: 20.654 },
+      { type: "cut", duration: 0, offset: 24.723 },
+      { type: "dissolve", duration: 0.22, offset: 28.552 },
+      { type: "cut", duration: 0, offset: 32.869 },
+      { type: "slideleft", duration: 0.25, offset: 36.975 },
+      { type: "cut", duration: 0, offset: 41.069 },
+      { type: "dissolve", duration: 0.22, offset: 44.999 },
+      { type: "cut", duration: 0, offset: 49.309 },
+      { type: "dissolve", duration: 0.3, offset: 52.302 },
+    ];
+    const plan = resolveAudioPlan({
+      story: { flair: "Verified", breaking_score: 20 },
+      scenes,
+      transitions,
+    });
+
+    assert.equal(plan.sfxCues.length, 4);
+    assert.ok(plan.sfxCues.some((cue) => cue.kind === "hook-handoff"));
+    for (let i = 1; i < plan.sfxCues.length; i++) {
+      assert.ok(plan.sfxCues[i].atS - plan.sfxCues[i - 1].atS >= 2.4);
+    }
+  } finally {
+    if (oldMode === undefined) delete process.env.STUDIO_V2_SFX_MODE;
+    else process.env.STUDIO_V2_SFX_MODE = oldMode;
+  }
+});
+
 test("local TTS health summary recognises the loaded Pulse voice without leaking secrets", () => {
   const summary = summariseLocalTtsHealth(
     {
@@ -716,6 +1064,10 @@ test("local TTS health summary recognises the loaded Pulse voice without leaking
           alias: "liam",
           loaded: true,
           ref_resolved: true,
+          reference_present: true,
+          accepted_reference_id: ACTUAL_ACCEPTED_SLEEPY_LIAM.id,
+          accepted_reference_file: ACTUAL_ACCEPTED_SLEEPY_LIAM.fileName,
+          reference_sha1: ACTUAL_ACCEPTED_SLEEPY_LIAM.referenceHash,
         },
       ],
       engine_count: 1,
@@ -742,6 +1094,10 @@ test("local TTS health summary fails closed when the Pulse voice is not loaded",
           alias: "liam",
           loaded: false,
           ref_resolved: true,
+          reference_present: true,
+          accepted_reference_id: ACTUAL_ACCEPTED_SLEEPY_LIAM.id,
+          accepted_reference_file: ACTUAL_ACCEPTED_SLEEPY_LIAM.fileName,
+          reference_sha1: ACTUAL_ACCEPTED_SLEEPY_LIAM.referenceHash,
         },
       ],
       engine_count: 0,
@@ -752,6 +1108,33 @@ test("local TTS health summary fails closed when the Pulse voice is not loaded",
   assert.equal(summary.ok, false);
   assert.match(summary.reasons.join(" "), /not ready/);
   assert.match(summary.reasons.join(" "), /not loaded/);
+});
+
+test("local TTS health summary rejects Liam without the accepted Sleepy reference fingerprint", () => {
+  const summary = summariseLocalTtsHealth(
+    {
+      status: "ok",
+      ready: true,
+      phase: "ready",
+      voices: [
+        {
+          voice_id: "TX3LPaxmHKxFdv7VOQHJ",
+          alias: "liam",
+          loaded: true,
+          ref_resolved: true,
+          reference_present: true,
+          accepted_reference_id: "old-pulse-liam",
+          accepted_reference_file: "pulse_v2.wav",
+          reference_sha1: "0".repeat(40),
+        },
+      ],
+      engine_count: 1,
+    },
+    "TX3LPaxmHKxFdv7VOQHJ",
+  );
+
+  assert.equal(summary.ok, false);
+  assert.match(summary.reasons.join(" "), /accepted Sleepy Liam reference/);
 });
 
 test("v2 audio library can be held to tracked beds only with minimal mode", () => {
@@ -846,6 +1229,81 @@ test("studio local voice path caps effective VoxCPM stretch below the warble zon
   ]);
 });
 
+test("studio local voice path defaults to natural VoxCPM pacing", () => {
+  const scaled = applyLocalVoiceRateMultiplier(
+    [
+      { label: "hook", text: "Hook", rate: 1.155 },
+      { label: "body", text: "Body", rate: 1.045 },
+    ],
+    {},
+  );
+
+  assert.deepEqual(scaled, [
+    { label: "hook", text: "Hook", rate: 1 },
+    { label: "body", text: "Body", rate: 1 },
+  ]);
+});
+
+test("studio local voice path inserts native-rate pauses to reach creator rewards runtime", () => {
+  const gap = resolveLocalInterSegmentPauseS({
+    provider: "local",
+    segmentDurations: [3.36, 10.24, 7.68, 10.4, 5.44, 6.08, 8.8, 2.56],
+    env: {
+      STUDIO_V2_LOCAL_TTS_TARGET_DURATION_S: "61.2",
+      STUDIO_V2_LOCAL_TTS_MAX_INTERSEGMENT_PAUSE_S: "0.95",
+    },
+  });
+
+  assert.equal(gap, 0.949);
+});
+
+test("studio local voice path extends native pauses when narration would exceed target WPM", () => {
+  const voiceSegments = Array.from({ length: 7 }, (_, index) => ({
+    label: `segment_${index + 1}`,
+    text: Array.from({ length: index === 6 ? 15 : 27 }, () => "word").join(" "),
+  }));
+  const plan = resolveLocalInterSegmentPausePlan({
+    provider: "local",
+    segmentDurations: [8.9, 8.6, 9.1, 8.8, 9.0, 8.7, 9.2],
+    voiceSegments,
+    env: {
+      STUDIO_V2_LOCAL_TTS_TARGET_DURATION_S: "61.2",
+      STUDIO_V2_LOCAL_TTS_MAX_INTERSEGMENT_PAUSE_S: "1.1",
+    },
+  });
+
+  assert.equal(plan.wordCount, 177);
+  assert.equal(plan.targetMaxWpm, 158);
+  assert.equal(plan.targetDurationS, 67.215);
+  assert.equal(plan.gapS, 0.819);
+  assert.equal(plan.reason, "target_wpm_guard");
+});
+
+test("studio local voice path caps the final pause before the Pulse outro", () => {
+  const voiceSegments = [
+    { label: "hook", text: "Hook" },
+    { label: "body_1", text: "Body one" },
+    { label: "body_2", text: "Body two" },
+    { label: "outro", text: "Follow Pulse Gaming so you never miss a beat." },
+  ];
+  const gaps = resolveLocalInterSegmentGapSchedule({
+    interSegmentPausePlan: { gapS: 1.85, maxPauseS: 1.85 },
+    voiceSegments,
+  });
+
+  assert.deepEqual(gaps, [1.85, 1.85, 0.65]);
+});
+
+test("studio local voice path does not add artificial pauses when native runtime is already long", () => {
+  const gap = resolveLocalInterSegmentPauseS({
+    provider: "local",
+    segmentDurations: [20, 22, 21],
+    env: { STUDIO_V2_LOCAL_TTS_TARGET_DURATION_S: "61.2" },
+  });
+
+  assert.equal(gap, 0);
+});
+
 test("studio local voice path keeps Chatterbox away from VoxCPM stretch settings", () => {
   const scaled = applyLocalVoiceRateMultiplier(
     [
@@ -889,6 +1347,54 @@ test("studio local voice path chunks long body segments into timeout-safe calls"
   assert.equal(chunks.map((chunk) => chunk.text).join(" "), longBody);
 });
 
+test("studio local voice signature fingerprints accepted Sleepy Liam reference", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-local-voice-"));
+  const firstRef = path.join(dir, "pulse_liam_sleepy.wav");
+  const secondRef = path.join(dir, "pulse_liam_sleepy_v2.wav");
+  fs.writeFileSync(firstRef, "accepted sleepy liam reference");
+  fs.writeFileSync(secondRef, "different local voice reference");
+
+  const env = {
+    LOCAL_TTS_URL: "http://127.0.0.1:8765",
+    STUDIO_V2_LOCAL_VOICE_REFERENCE_ID: "pulse-sleepy-liam-test",
+    STUDIO_V2_LOCAL_VOICE_REFERENCE_FILE: firstRef,
+    STUDIO_V2_LOCAL_TTS_MIN_WPM: "105",
+  };
+  const reference = resolveAcceptedLocalVoiceReference(env);
+  assert.equal(reference.id, "pulse-sleepy-liam-test");
+  assert.equal(reference.fileName, "pulse_liam_sleepy.wav");
+  assert.equal(reference.referencePresent, true);
+  assert.match(reference.referenceHash, /^[a-f0-9]{40}$/);
+
+  const signature = buildProductionVoiceSignature({
+    provider: "local",
+    localEngine: "voxcpm2",
+    voiceSegments: [{ label: "hook", text: "Take-Two just changed course.", rate: 1 }],
+    env,
+  });
+  assert.deepEqual(signature.acceptedLocalVoice, reference);
+  assert.equal(signature.localEngine, "voxcpm2");
+  assert.deepEqual(signature.naturalInterSegmentPause, {
+    version: 4,
+    targetDurationS: 62.5,
+    targetMaxWpm: 158,
+    maxPauseS: 1.85,
+    maxOutroLeadGapS: 0.65,
+    method: "concat_inserted_silence_between_native_rate_segments_outro_capped",
+  });
+
+  const changed = buildProductionVoiceSignature({
+    provider: "local",
+    localEngine: "voxcpm2",
+    voiceSegments: [{ label: "hook", text: "Take-Two just changed course.", rate: 1 }],
+    env: { ...env, STUDIO_V2_LOCAL_VOICE_REFERENCE_FILE: secondRef },
+  });
+  assert.notEqual(
+    changed.acceptedLocalVoice.referenceHash,
+    signature.acceptedLocalVoice.referenceHash,
+  );
+});
+
 test("studio production voice implementation sends segment text after local pacing", () => {
   const src = fs.readFileSync(
     path.join(__dirname, "..", "..", "lib", "studio", "sound-layer.js"),
@@ -896,6 +1402,142 @@ test("studio production voice implementation sends segment text after local paci
   );
   assert.match(src, /productionAudio\.generateTTS\(\s*segment\.text,/);
   assert.doesNotMatch(src, /productionAudio\.generateTTS\(\s*segment\.cleanText,/);
+  assert.match(src, /signature\.acceptedLocalVoice\s*=\s*resolveAcceptedLocalVoiceReference/);
+  assert.match(src, /acceptedLocalVoice:\s*signature\.acceptedLocalVoice/);
+  assert.equal(ACCEPTED_LOCAL_VOICE_ID, "pulse-sleepy-liam-20260502");
+});
+
+test("studio production voice keeps native pause metadata available for sidecar writes", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "lib", "studio", "sound-layer.js"),
+    "utf8",
+  );
+
+  assert.match(src, /let interSegmentPausePlan = null;/);
+  assert.match(src, /interSegmentPausePlan = resolveLocalInterSegmentPausePlan\(/);
+  assert.doesNotMatch(src, /const interSegmentPausePlan = resolveLocalInterSegmentPausePlan\(/);
+});
+
+test("studio-v2 render report surfaces accepted local voice fingerprint", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-render.js"),
+    "utf8",
+  );
+  assert.match(
+    src,
+    /const voiceRenderNarration = assertStudioV2VoiceAllowedForRender/,
+  );
+  assert.match(
+    src,
+    /acceptedLocalVoice:\s*voiceRenderNarration\.acceptedLocalVoice/,
+  );
+  assert.match(src, /signatureHash:\s*voice\.signatureHash/);
+  assert.doesNotMatch(src, /dotenv"\)\.config\(\{\s*override:\s*true\s*\}\)/);
+});
+
+test("studio-v2 render blocks subtitle tail padding from hiding frozen visuals", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-render.js"),
+    "utf8",
+  );
+
+  assert.doesNotMatch(src, /ass=\$\{assRel\},tpad=stop_mode=clone/);
+  assert.match(src, /const subtitleTimelineDurationS = Math\.max/);
+  assert.match(src, /targetDurationS:\s*subtitleTimelineDurationS/);
+  assert.match(src, /buildSubtitleBaseFilter/);
+  assert.match(src, /studio_v2_scene_timeline_under_covers_subtitles/);
+  assert.match(src, /\[subtitleBase\]ass=\$\{assRel\}\[outv\]/);
+});
+
+test("studio-v2 render burns repaired subtitle words instead of mixing raw and repaired timelines", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-render.js"),
+    "utf8",
+  );
+
+  assert.match(src, /prepareSubtitleWords/);
+  assert.match(src, /realignTimestampsToScript/);
+  assert.match(src, /const subtitleTimingWords = prepareSubtitleWords/);
+  assert.match(src, /words:\s*subtitleTimingWords/);
+  assert.match(src, /realign:\s*false/);
+  assert.match(src, /realignedWords:\s*subtitleTimingWords/);
+});
+
+test("studio-v2 render can apply Visual V3 before subtitles and report it", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-render.js"),
+    "utf8",
+  );
+
+  assert.match(src, /buildVisualV3OverlayPlan/);
+  assert.match(src, /STUDIO_V3_VISUALS/);
+  assert.match(src, /buildVisualV3OverlayFilter/);
+  assert.match(src, /videoForSubtitles\s*=\s*"visualV3Base"/);
+  assert.match(src, /report\.visualV3\s*=/);
+});
+
+test("studio-v2 subtitle script prefers display text over TTS-cleaned wording", () => {
+  const oldSkipDotenv = process.env.PULSE_SKIP_DOTENV;
+  process.env.PULSE_SKIP_DOTENV = "true";
+  const { resolveSubtitleScriptText } = require("../../tools/studio-v2-render");
+
+  try {
+    const script = resolveSubtitleScriptText({
+      voice: {},
+      tsData: {
+        meta: {
+          displayText:
+            "Forza Horizon 6 just hit 130,000 concurrent players on Steam.",
+          text:
+            "Forza Horizon 6 just hit one hundred and thirty thousand concurrent players on Steam.",
+        },
+      },
+      editorial: {
+        scriptForCaption: "Fallback caption script.",
+      },
+      spokenTranscript: "",
+    });
+
+    assert.equal(
+      script,
+      "Forza Horizon 6 just hit 130,000 concurrent players on Steam.",
+    );
+  } finally {
+    if (oldSkipDotenv === undefined) delete process.env.PULSE_SKIP_DOTENV;
+    else process.env.PULSE_SKIP_DOTENV = oldSkipDotenv;
+  }
+});
+
+test("studio-v2 subtitle script falls back to editorial caption text before cached TTS text", () => {
+  const oldSkipDotenv = process.env.PULSE_SKIP_DOTENV;
+  process.env.PULSE_SKIP_DOTENV = "true";
+  const { resolveSubtitleScriptText } = require("../../tools/studio-v2-render");
+
+  try {
+    const script = resolveSubtitleScriptText({
+      voice: { editorialScriptAppliedToAudio: true },
+      tsData: {
+        meta: {
+          text:
+            "Forza Horizon 6 just hit one hundred and thirty thousand concurrent players on Steam.",
+        },
+      },
+      editorial: {
+        scriptForCaption:
+          "Forza Horizon 6 just hit 130,000 concurrent players on Steam.",
+      },
+      spokenTranscript:
+        "Forza Horizon 6 just hit one hundred and thirty thousand concurrent players on Steam.",
+    });
+
+    assert.equal(
+      script,
+      "Forza Horizon 6 just hit 130,000 concurrent players on Steam.",
+    );
+  } finally {
+    if (oldSkipDotenv === undefined) delete process.env.PULSE_SKIP_DOTENV;
+    else process.env.PULSE_SKIP_DOTENV = oldSkipDotenv;
+  }
 });
 
 test("studio-v2-render supports local VoxCPM through the production-shaped path", () => {

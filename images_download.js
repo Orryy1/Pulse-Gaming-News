@@ -9,6 +9,9 @@ const axios = require("axios");
 const { classifyOutboundUrl, safeRedirectConfig } = require("./lib/safe-url");
 const mediaPaths = require("./lib/media-paths");
 const { filterUnsafeImagesForRender } = require("./lib/thumbnail-safety");
+const {
+  inferHeadlineGameCandidates,
+} = require("./lib/game-title-inference");
 
 const CACHE_DIR = path.join("output", "image_cache");
 const VIDEO_CACHE_DIR = path.join("output", "video_cache");
@@ -81,7 +84,7 @@ function buildSteamSearchCandidates(rawTitle) {
 
   const seen = new Set();
   const out = [];
-  for (const c of rawCandidates) {
+  for (const c of [...inferHeadlineGameCandidates(base), ...rawCandidates]) {
     const cleaned = clean(c);
     if (cleaned.length > 3 && !seen.has(cleaned)) {
       seen.add(cleaned);

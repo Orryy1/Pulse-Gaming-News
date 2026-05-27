@@ -10,6 +10,7 @@ try {
 } catch {}
 
 const { ffprobeDuration } = require("../lib/studio/media-acquisition");
+const { buildVoiceMasteringFilter } = require("../lib/audio-quality");
 const {
   buildFlashLaneVoiceWorkbench,
   generateLocalVoiceCandidate,
@@ -33,7 +34,7 @@ function parseArgs(argv) {
     generateLocal: false,
     engine: process.env.LOCAL_TTS_ENGINE || process.env.STUDIO_V2_LOCAL_TTS_ENGINE || "voxcpm2",
     baseUrl: process.env.LOCAL_TTS_URL || null,
-    rate: Number(process.env.STUDIO_V2_VOICE_WORKBENCH_RATE || 1.7),
+    rate: Number(process.env.STUDIO_V2_VOICE_WORKBENCH_RATE || 1.0),
     pitchFactor: Number(process.env.STUDIO_V2_VOICE_PITCH_FACTOR || 1),
     outputDir: OUT,
     normaliseAudio: true,
@@ -215,14 +216,29 @@ function probeMedianPitch(file) {
     "import json, sys",
     "import numpy as np",
     "import librosa",
-    "y, sr = librosa.load(sys.argv[1], sr=16000, mono=True)",
+    "y, sr = librosa.load(sys.argv[1], sr=48000, mono=True)",
     "if y.size == 0:",
     "    print(json.dumps({'medianPitchHz': None}))",
     "    raise SystemExit(0)",
     "f0 = librosa.yin(y, fmin=50, fmax=300, sr=sr)",
     "f0 = f0[np.isfinite(f0)]",
     "f0 = f0[(f0 >= 50) & (f0 <= 300)]",
-    "print(json.dumps({'medianPitchHz': float(np.median(f0)) if f0.size else None}))",
+    "centroid = librosa.feature.spectral_centroid(y=y, sr=sr)[0]",
+    "rolloff = librosa.feature.spectral_rolloff(y=y, sr=sr, roll_percent=0.85)[0]",
+    "n_fft = 1024",
+    "S = np.abs(librosa.stft(y, n_fft=n_fft, hop_length=512)) ** 2",
+    "freqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)",
+    "voice_band = (freqs >= 80) & (freqs <= min(7500, sr / 2))",
+    "high_band = freqs >= 5000",
+    "total = S[voice_band].sum(axis=0)",
+    "high = S[high_band].sum(axis=0)",
+    "ratio = high / np.maximum(total, 1e-12)",
+    "print(json.dumps({",
+    "  'medianPitchHz': float(np.median(f0)) if f0.size else None,",
+    "  'spectralCentroidHz': float(np.median(centroid)) if centroid.size else None,",
+    "  'spectralRolloff85Hz': float(np.median(rolloff)) if rolloff.size else None,",
+    "  'highFrequencyRatioGt5Khz': float(np.median(ratio)) if ratio.size else None,",
+    "}))",
   ].join("\n");
   const result = spawnSync(python, ["-c", code, file], {
     encoding: "utf8",
@@ -239,10 +255,19 @@ function probeMedianPitch(file) {
 
 async function normaliseVoiceAudio({ inputPath, outputPath, pitchFactor = 1 }) {
   const filters = [];
+  const outputBitrate = "256k";
   if (Number.isFinite(Number(pitchFactor)) && Number(pitchFactor) > 0 && Number(pitchFactor) !== 1) {
     filters.push(`rubberband=pitch=${Number(pitchFactor).toFixed(3)}`);
   }
-  filters.push("loudnorm=I=-16:TP=-1.5:LRA=11");
+  filters.push(
+    buildVoiceMasteringFilter({
+      targetLufs: -16,
+      truePeak: -1.5,
+      loudnessRange: 11,
+      limiter: 0.9,
+      denoise: false,
+    }),
+  );
   const result = spawnSync(
     "ffmpeg",
     [
@@ -258,7 +283,7 @@ async function normaliseVoiceAudio({ inputPath, outputPath, pitchFactor = 1 }) {
       "-ac",
       "1",
       "-b:a",
-      "128k",
+      outputBitrate,
       outputPath,
     ],
     { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 120000 },
@@ -272,6 +297,7 @@ async function normaliseVoiceAudio({ inputPath, outputPath, pitchFactor = 1 }) {
     applied: true,
     filter: filters.join(","),
     pitchFactor: Number(pitchFactor),
+    outputBitrate,
     inputPath,
     outputPath,
   };
@@ -320,7 +346,7 @@ function printHelp() {
       "  --generate-local             Generate one local TTS candidate only when --apply-local is present",
       "  --engine <name>              Local engine label for generated candidate",
       "  --base-url <url>             Local TTS server URL, e.g. http://127.0.0.1:8766",
-      "  --rate <number>              Local voice speaking rate, default 1.7",
+      "  --rate <number>              Local voice speaking rate, default 1.0",
       "  --pitch-factor <number>      Optional local pitch correction, e.g. 1.8",
       "  --out-dir <dir>              Output directory, default test/output",
       "  --no-normalise               Do not apply local FFmpeg loudness normalisation",
@@ -347,6 +373,7 @@ async function main() {
       engine: args.engine,
       baseUrl: args.baseUrl || undefined,
       rate: args.rate,
+      approvedLocalVoice: args.approvedLocalVoice,
       durationProbe: ffprobeDuration,
       acousticProbe: probeAcoustic,
       postProcessAudio: args.normaliseAudio

@@ -313,6 +313,83 @@ test("no summary when publishNextStory returned null result", () => {
   assert.equal(s, null);
 });
 
+test("publish-window blocked result renders explicit blocked summary", () => {
+  const s = renderPublishSummary(
+    {
+      publish_window_blocked: true,
+      status: "blocked",
+      top_reason: "publish_window_blocked",
+      publish_dispatch: {
+        dispatchSource: "api_autonomous_publish",
+        nearestWindowUtc: "19:00",
+        minutesFromWindow: 213,
+        hardGateEnabled: true,
+      },
+    },
+    { jobId: 123 },
+  );
+
+  assert.equal(s.status, "failed");
+  assert.match(s.message, /Pulse Gaming Publish Attempt/);
+  assert.match(s.message, /job #123/);
+  assert.match(s.message, /Status:\s+blocked/);
+  assert.match(s.message, /api_autonomous_publish/);
+  assert.match(s.message, /Nearest window: 19:00 UTC/);
+  assert.match(s.message, /Reason: publish_window_blocked/);
+});
+
+test("publish-cooldown blocked result renders explicit blocked summary", () => {
+  const s = renderPublishSummary(
+    {
+      publish_cooldown_blocked: true,
+      status: "blocked",
+      top_reason: "publish_cooldown_blocked",
+      publish_dispatch: {
+        dispatchSource: "breaking_fast_lane",
+        cooldown: {
+          lastStoryTitle: "Recent post",
+          lastPublishedAt: "2026-05-14T19:03:00.000Z",
+          minutesSinceLastPost: 7,
+          minGapMinutes: 120,
+        },
+      },
+    },
+    { jobId: 124 },
+  );
+
+  assert.equal(s.status, "failed");
+  assert.match(s.message, /Status:\s+blocked/);
+  assert.match(s.message, /Publish blocked by cooldown policy/);
+  assert.match(s.message, /breaking_fast_lane/);
+  assert.match(s.message, /Recent post/);
+  assert.match(s.message, /7 minutes since last post/);
+});
+
+test("publish-daily-cap blocked result renders explicit blocked summary", () => {
+  const s = renderPublishSummary(
+    {
+      publish_daily_cap_blocked: true,
+      status: "blocked",
+      top_reason: "publish_daily_cap_blocked",
+      publish_dispatch: {
+        dispatchSource: "breaking_fast_lane",
+        daily_cap: {
+          publicPostCount: 11,
+          maxPublicPosts: 3,
+          windowHours: 24,
+        },
+      },
+    },
+    { jobId: 125 },
+  );
+
+  assert.equal(s.status, "failed");
+  assert.match(s.message, /Status:\s+blocked/);
+  assert.match(s.message, /Publish blocked by daily volume policy/);
+  assert.match(s.message, /Posts in window: 11/);
+  assert.match(s.message, /Daily cap: 3/);
+});
+
 // ---------- Multi-candidate fallback Discord summaries (2026-04-22) ----
 
 test("no-safe-candidate result renders failed summary with Top reason + Skipped count", () => {

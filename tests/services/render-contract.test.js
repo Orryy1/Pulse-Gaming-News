@@ -117,6 +117,133 @@ test("evaluateRenderContract: standard floor met (multi-image, 4 visuals, outro,
   assert.deepEqual(v.missing, []);
 });
 
+test("evaluateRenderContract: Studio V4 premium mode does not let legacy decks classify as premium", () => {
+  const v = c.evaluateRenderContract(
+    {
+      title: "Forza Horizon 6 Steam Peak Exposes Xbox",
+      exported_path: "/tmp/x.mp4",
+      full_script:
+        "Forza just gave Xbox the headline it needed with 178,009 Steam users and a clear source trail.",
+      distinct_visual_count: 8,
+      render_lane: "legacy_multi_image",
+      render_quality_class: "premium",
+      outro_present: true,
+      thumbnail_candidate_present: true,
+      require_studio_v4_premium_publish: true,
+      media_house_benchmark: {
+        result: "pass",
+        scores: {
+          motion_density_score: 90,
+          media_house_polish_score: 88,
+        },
+      },
+    },
+    {
+      topicalityResult: { decision: "auto", reasons: [] },
+      textHygiene: { severity: "clean", issues: [] },
+      provenanceRows: [{ accepted: 1, source_type: "steam_screenshot" }],
+    },
+  );
+
+  assert.equal(v.class, "standard");
+  assert.ok(v.premium_required);
+  assert.ok(v.premium_missing.includes("studio_v4_render_lane_required"));
+});
+
+test("evaluateRenderContract: Studio V4 premium render needs the stamped premium class and benchmark pass", () => {
+  const v = c.evaluateRenderContract(
+    {
+      title: "Forza Horizon 6 Steam Peak Exposes Xbox",
+      exported_path: "/tmp/x.mp4",
+      full_script:
+        "Forza just gave Xbox the headline it needed with 178,009 Steam users and a clear source trail.",
+      distinct_visual_count: 8,
+      render_lane: "studio_v4",
+      render_quality_class: "premium",
+      outro_present: true,
+      thumbnail_candidate_present: true,
+      require_studio_v4_premium_publish: true,
+      media_house_benchmark: {
+        result: "pass",
+        scores: {
+          motion_density_score: 90,
+          media_house_polish_score: 88,
+        },
+      },
+    },
+    {
+      topicalityResult: { decision: "auto", reasons: [] },
+      textHygiene: { severity: "clean", issues: [] },
+      provenanceRows: [{ accepted: 1, source_type: "steam_screenshot" }],
+    },
+  );
+
+  assert.equal(v.class, "premium");
+  assert.deepEqual(v.premium_missing, []);
+});
+
+test("evaluateRenderContract: Studio V4 premium can use stamped story media when provenance rows are unavailable", () => {
+  const v = c.evaluateRenderContract({
+    title: "Forza Horizon 6 Steam Peak Exposes Xbox",
+    exported_path: "/tmp/x.mp4",
+    full_script:
+      "Forza just gave Xbox the headline it needed with 178,009 Steam users and a clear source trail.",
+    distinct_visual_count: 8,
+    render_lane: "studio_v4",
+    render_quality_class: "premium",
+    outro_present: true,
+    thumbnail_candidate_present: true,
+    require_studio_v4_premium_publish: true,
+    downloaded_images: [
+      { type: "steam_screenshot", source: "steam" },
+      { type: "article_hero", source: "article" },
+    ],
+    media_house_benchmark: {
+      result: "pass",
+      scores: {
+        motion_density_score: 90,
+        media_house_polish_score: 88,
+      },
+    },
+  });
+
+  assert.equal(v.class, "premium");
+  assert.ok(v.sources_used.includes("steam_screenshot"));
+});
+
+test("evaluateRenderContract: Studio V4 premium mode demotes weak benchmark results", () => {
+  const v = c.evaluateRenderContract(
+    {
+      title: "Forza Horizon 6 Steam Peak Exposes Xbox",
+      exported_path: "/tmp/x.mp4",
+      full_script:
+        "Forza just gave Xbox the headline it needed with 178,009 Steam users and a clear source trail.",
+      distinct_visual_count: 8,
+      render_lane: "studio_v4",
+      render_quality_class: "premium",
+      outro_present: true,
+      thumbnail_candidate_present: true,
+      require_studio_v4_premium_publish: true,
+      media_house_benchmark: {
+        result: "fail",
+        scores: {
+          motion_density_score: 40,
+          media_house_polish_score: 52,
+        },
+      },
+    },
+    {
+      topicalityResult: { decision: "auto", reasons: [] },
+      textHygiene: { severity: "clean", issues: [] },
+      provenanceRows: [{ accepted: 1, source_type: "steam_screenshot" }],
+    },
+  );
+
+  assert.equal(v.class, "standard");
+  assert.ok(v.premium_missing.includes("media_house_benchmark_pass_required"));
+  assert.ok(v.premium_missing.includes("motion_density_below_v4_floor"));
+});
+
 test("evaluateRenderContract: missing outro drops to fallback", () => {
   const v = c.evaluateRenderContract({
     title: "Missing outro",
@@ -275,6 +402,41 @@ test("decideContractGate: BLOCK with floor=premium allows only premium", () => {
   assert.equal(r2.allowed, true);
 });
 
+test("decideContractGate: Studio V4 premium publish gate blocks standard renders by default", () => {
+  const r = c.decideContractGate(
+    {
+      class: "standard",
+      reasons: [],
+      missing: [],
+      premium_required: true,
+      premium_missing: ["studio_v4_render_lane_required"],
+    },
+    {},
+  );
+  assert.equal(r.allowed, false);
+  assert.match(r.reason, /premium_contract_required/);
+});
+
+test("decideContractGate: emergency fallback can allow a non-premium render but never a reject", () => {
+  const allowed = c.decideContractGate(
+    {
+      class: "standard",
+      reasons: [],
+      missing: [],
+      premium_required: true,
+      premium_missing: ["studio_v4_render_lane_required"],
+    },
+    { STUDIO_V4_ALLOW_LEGACY_FALLBACK: "true" },
+  );
+  assert.equal(allowed.allowed, true);
+
+  const rejected = c.decideContractGate(
+    { class: "reject", reasons: ["no_exported_mp4"], missing: [] },
+    { STUDIO_V4_ALLOW_LEGACY_FALLBACK: "true" },
+  );
+  assert.equal(rejected.allowed, false);
+});
+
 // ── formatContractLine ──────────────────────────────────────────
 
 test("formatContractLine: premium has no missing line", () => {
@@ -330,6 +492,38 @@ test("decideForStory: composes contract + topicality + hygiene + gate", async ()
     ["premium", "standard", "fallback"].includes(decision.verdict.class),
   );
   assert.equal(decision.gate.allowed, true);
+});
+
+test("decideForStory: story-level Studio V4 premium requirement reaches the contract gate", async () => {
+  const decision = await d.decideForStory(
+    {
+      id: "legacy-v4-required",
+      title: "Forza Horizon 6 Steam Peak Exposes Xbox",
+      exported_path: "/tmp/x.mp4",
+      full_script:
+        "Forza just gave Xbox the headline it needed with 178,009 Steam users and a clear source trail.",
+      distinct_visual_count: 8,
+      render_lane: "legacy_multi_image",
+      render_quality_class: "premium",
+      outro_present: true,
+      thumbnail_candidate_present: true,
+      require_studio_v4_premium_publish: true,
+      media_house_benchmark: {
+        result: "pass",
+        scores: {
+          motion_density_score: 90,
+          media_house_polish_score: 88,
+        },
+      },
+    },
+    {
+      provenanceRows: [{ accepted: 1, source_type: "steam_screenshot" }],
+      env: {},
+    },
+  );
+  assert.equal(decision.verdict.class, "standard");
+  assert.equal(decision.gate.allowed, false);
+  assert.match(decision.gate.reason, /premium_contract_required/);
 });
 
 test("decideForStory: missing modules → graceful default reject?", async () => {

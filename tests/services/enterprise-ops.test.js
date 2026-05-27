@@ -1,5 +1,7 @@
 const { test } = require("node:test");
 const assert = require("node:assert");
+const fs = require("node:fs");
+const path = require("node:path");
 
 const { verifyMedia } = require("../../lib/ops/media-verify");
 const {
@@ -17,12 +19,16 @@ const {
   ROUTE_ORDER,
   buildTikTokDispatchManifest,
   buildTikTokDispatchPack,
+  renderTikTokDispatchMarkdown,
 } = require("../../lib/platforms/tiktok-dispatch");
 const {
   buildSocialPlatformOperationsReport,
   renderSocialPlatformOperationsMarkdown,
 } = require("../../lib/ops/social-platform-operations");
 const { buildMonthlyReleaseRadar } = require("../../lib/formats/release-radar");
+const {
+  enrichVoiceReportForDispatch,
+} = require("../../tools/tiktok-dispatch-pack");
 
 function fakeFs(existing = {}) {
   return {
@@ -75,6 +81,39 @@ test("platform status summarises story platform fields", () => {
   });
   assert.strictEqual(report.counts.youtube.published, 1);
   assert.strictEqual(report.counts.tiktok.failed, 1);
+});
+
+test("platform status does not treat review-blocked platform IDs as published", () => {
+  const report = buildPlatformStatus({
+    stories: [
+      {
+        id: "review-blocked",
+        title: "Review blocked",
+        youtube_post_id: "yt1",
+        youtube_url: "https://youtu.be/x",
+        publish_status: "partial",
+        qa_status: "failed",
+      },
+    ],
+    platformPosts: [
+      {
+        story_id: "review-blocked",
+        platform: "youtube",
+        status: "published",
+        external_id: "yt1",
+      },
+    ],
+    platformConfig: {
+      youtube: { state: "enabled", reason: "core_upload_path" },
+      tiktok: { state: "enabled", reason: "direct_post_approved" },
+      instagram_reel: { state: "enabled", reason: "graph_credentials_present" },
+      facebook_reel: { state: "enabled", reason: "facebook_reels_enabled" },
+      twitter: { state: "enabled", reason: "x_video_enabled" },
+    },
+  });
+
+  assert.strictEqual(report.recent[0].platforms.youtube.status, "blocked_review");
+  assert.strictEqual(report.counts.youtube.blocked_review, 1);
 });
 
 test("platform status separates blocked and disabled platforms from not-published work", () => {
@@ -138,6 +177,50 @@ test("platform operational config reflects safe disabled/blocker defaults", () =
   assert.strictEqual(config.tiktok.state, "blocked_external");
   assert.strictEqual(config.facebook_reel.state, "disabled");
   assert.strictEqual(config.twitter.state, "disabled");
+  assert.strictEqual(config.threads.state, "disabled");
+  assert.strictEqual(config.threads.reason, "threads_not_configured");
+  assert.strictEqual(config.pinterest.state, "disabled");
+  assert.strictEqual(config.pinterest.reason, "pinterest_not_configured");
+});
+
+test("platform operational config reports explicit Threads and Pinterest credential gaps", () => {
+  const config = buildPlatformOperationalConfig({
+    THREADS_ENABLED: "true",
+    PINTEREST_ENABLED: "true",
+  });
+
+  assert.strictEqual(config.threads.state, "needs_credentials");
+  assert.strictEqual(config.threads.reason, "threads_credentials_missing");
+  assert.strictEqual(config.pinterest.state, "needs_credentials");
+  assert.strictEqual(config.pinterest.reason, "pinterest_credentials_missing");
+});
+
+test("platform operational config reports explicit local TikTok operator disable", () => {
+  const config = buildPlatformOperationalConfig({
+    TIKTOK_ENABLED: "false",
+    USE_BUFFER_TIKTOK: "true",
+    BUFFER_ACCESS_TOKEN: "present",
+  });
+
+  assert.strictEqual(config.tiktok.state, "disabled");
+  assert.strictEqual(config.tiktok.reason, "operator_disabled");
+});
+
+test("platform status prefers explicit TikTok operator-disabled over stale token errors", () => {
+  const report = buildPlatformStatus({
+    stories: [
+      {
+        id: "s1",
+        title: "Story",
+        tiktok_error: "old 403",
+      },
+    ],
+    platformPosts: [],
+    platformConfig: buildPlatformOperationalConfig({ TIKTOK_ENABLED: "false" }),
+  });
+
+  assert.strictEqual(report.recent[0].platforms.tiktok.status, "disabled");
+  assert.strictEqual(report.recent[0].platforms.tiktok.reason, "operator_disabled");
 });
 
 test("platform status markdown includes operational state", () => {
@@ -263,12 +346,80 @@ test("TikTok dispatch pack is upload-ready without posting", () => {
   assert.ok(pack.hashtags.includes("#gaming"));
   assert.deepStrictEqual(pack.routePriority, ROUTE_ORDER);
   assert.strictEqual(pack.routePriority.at(-1), "va_last_resort");
+  assert.strictEqual(pack.routePriority[0], "official_inbox_upload");
+  assert.strictEqual(pack.recommendedRoute, "official_inbox_upload");
   assert.match(pack.discordNotification, /TikTok Ready - HIGH PRIORITY/);
+  assert.match(pack.discordNotification, /TikTok inbox/);
   assert.strictEqual(pack.schedulerReadyJson.requires_mobile_confirmation, false);
   assert.strictEqual(pack.officialInboxJson.requires_manual_completion, true);
   assert.match(pack.officialInboxJson.endpoint, /inbox\/video\/init/);
   assert.strictEqual(pack.officialInboxJson.public_auto_publish, false);
   assert.strictEqual(pack.compatibility.virtualAssistant, "last_resort_only");
+});
+
+test("TikTok dispatch hashtags prefer entities over filler opener words", () => {
+  const pack = buildTikTokDispatchPack(
+    {
+      id: "story-tags",
+      title:
+        "Even after Ubisoft confirmed gaming's worst-kept secret of an Assassin's Creed Black Flag remake",
+      suggested_title: "Ubisoft Just Lost Control of Their Own Announcement",
+      exported_path: "output/final/story-tags.mp4",
+      thumbnail_candidate_path: "output/thumbnails/story-tags.png",
+      flair: "Verified",
+    },
+    { durationSeconds: 68, now: new Date("2026-05-15T10:00:00Z") },
+  );
+
+  assert.ok(pack.hashtags.includes("#Ubisoft"));
+  assert.ok(pack.hashtags.includes("#AssassinsCreed"));
+  assert.ok(pack.hashtags.includes("#BlackFlag"));
+  assert.ok(!pack.hashtags.includes("#Even"));
+  assert.ok(!pack.hashtags.includes("#after"));
+  assert.ok(!pack.hashtags.includes("#Lost"));
+  assert.ok(!pack.hashtags.includes("#Announcement"));
+  assert.ok(!pack.hashtags.includes("#EXPOSED"));
+  assert.equal(
+    new Set(pack.hashtags.map((tag) => tag.toLowerCase())).size,
+    pack.hashtags.length,
+  );
+});
+
+test("TikTok dispatch pack downgrades videos under the 60 second TikTok threshold", () => {
+  const pack = buildTikTokDispatchPack(
+    {
+      id: "short-story",
+      title: "Useful but too short for TikTok rewards",
+      exported_path: "output/final/short-story.mp4",
+      thumbnail_candidate_path: "output/thumbnails/short-story.png",
+      flair: "Verified",
+    },
+    { durationSeconds: 59.4, now: new Date("2026-04-28T10:00:00Z") },
+  );
+
+  assert.equal(pack.status, "tiktok_length_review_required");
+  assert.equal(pack.eligibility.creatorRewardsLengthEligible, false);
+  assert.equal(pack.eligibility.dispatchLengthReady, false);
+  assert.equal(pack.durationGate.reason, "under_60_seconds");
+  assert.equal(pack.officialInboxJson.ready_for_upload, false);
+  assert.match(pack.discordNotification, /Duration gate: under_60_seconds/);
+});
+
+test("TikTok dispatch pack refuses unknown-duration videos until probed", () => {
+  const pack = buildTikTokDispatchPack(
+    {
+      id: "unknown-duration",
+      title: "Render with no ffprobe duration",
+      exported_path: "output/final/unknown-duration.mp4",
+      thumbnail_candidate_path: "output/thumbnails/unknown-duration.png",
+    },
+    { durationSeconds: null },
+  );
+
+  assert.equal(pack.status, "duration_review_required");
+  assert.equal(pack.eligibility.creatorRewardsLengthEligible, null);
+  assert.equal(pack.durationGate.reason, "duration_unknown");
+  assert.equal(pack.officialInboxJson.ready_for_upload, false);
 });
 
 test("TikTok dispatch manifest emits a scheduler queue and sample Discord notification", () => {
@@ -289,7 +440,37 @@ test("TikTok dispatch manifest emits a scheduler queue and sample Discord notifi
   );
   assert.strictEqual(manifest.queue.length, 1);
   assert.strictEqual(manifest.queue[0].schedulerReadyJson.network, "tiktok");
+  assert.strictEqual(manifest.queue[0].officialInboxJson.mode, "official_inbox_upload");
   assert.match(manifest.sampleDiscordNotification, /Caption:/);
+});
+
+test("TikTok dispatch manifest surfaces the shared local token gate", () => {
+  const manifest = buildTikTokDispatchManifest(
+    [
+      {
+        id: "ready",
+        title: "Ready rendered short",
+        exported_path: "out.mp4",
+        image_path: "cover.png",
+      },
+    ],
+    {
+      durationByStoryId: { ready: 65 },
+      tiktokTokenStatus: {
+        ok: false,
+        reason: "expired",
+        refresh_available: true,
+        needs_reauth: false,
+      },
+    },
+  );
+
+  assert.equal(manifest.tiktokTokenGate.action, "refresh_or_sync_local_token");
+  assert.equal(manifest.statusCounts.tiktok_auth_action_required, 1);
+
+  const md = renderTikTokDispatchMarkdown(manifest);
+  assert.match(md, /TikTok Token Gate/);
+  assert.match(md, /refresh_or_sync_local_token/);
 });
 
 test("TikTok dispatch manifest prefers ready packs over higher-urgency missing assets", () => {
@@ -318,6 +499,309 @@ test("TikTok dispatch manifest prefers ready packs over higher-urgency missing a
 
   assert.equal(manifest.topPack.storyId, "ready");
   assert.equal(manifest.topPack.status, "ready_for_operator_review");
+});
+
+test("TikTok dispatch manifest treats missing cover files as not ready even when a path exists", () => {
+  const manifest = buildTikTokDispatchManifest(
+    [
+      {
+        id: "missing-cover-file",
+        title: "Rendered short with stale cover path",
+        exported_path: "out.mp4",
+        image_path: "cover.png",
+      },
+    ],
+    {
+      durationByStoryId: { "missing-cover-file": 65 },
+      assetExistenceByStoryId: {
+        "missing-cover-file": {
+          mp4Exists: true,
+          coverExists: false,
+        },
+      },
+      now: new Date("2026-04-28T10:00:00Z"),
+    },
+  );
+
+  assert.equal(manifest.topPack.status, "missing_cover");
+  assert.equal(manifest.topPack.eligibility.hasMp4, true);
+  assert.equal(manifest.topPack.eligibility.hasCoverPath, true);
+  assert.equal(manifest.topPack.eligibility.hasCover, false);
+  assert.equal(manifest.topReadyPack, null);
+});
+
+test("TikTok dispatch manifest does not produce an upload action when no pack is ready", () => {
+  const manifest = buildTikTokDispatchManifest(
+    [
+      {
+        id: "missing",
+        title: "Missing assets",
+        approved: true,
+        flair: "Verified",
+        breaking_score: 95,
+      },
+      {
+        id: "stale",
+        title: "Old rendered short",
+        exported_path: "old.mp4",
+        image_path: "cover.png",
+      },
+    ],
+    {
+      durationByStoryId: { stale: 70 },
+      renderFreshnessByStoryId: {
+        stale: { stale: true, ageHours: 240 },
+      },
+      now: new Date("2026-05-03T10:00:00Z"),
+    },
+  );
+
+  assert.equal(manifest.topReadyPack, null);
+  assert.equal(manifest.sampleDiscordNotification, null);
+});
+
+test("TikTok dispatch pack downgrades final renders without approved voice evidence", () => {
+  const pack = buildTikTokDispatchPack(
+    {
+      id: "story1",
+      title: "Old render",
+      exported_path: "output/final/story1.mp4",
+      thumbnail_candidate_path: "output/thumbnails/story1.png",
+    },
+    {
+      durationSeconds: 64,
+      voiceAudit: {
+        verdict: "review",
+        blockers: ["approved_voice_metadata_missing"],
+      },
+    },
+  );
+
+  assert.equal(pack.status, "voice_review_required");
+  assert.equal(pack.voiceGate.verdict, "review");
+  assert.ok(pack.voiceGate.blockers.includes("approved_voice_metadata_missing"));
+  assert.match(pack.discordNotification, /TikTok Review/);
+  assert.match(pack.discordNotification, /Voice gate: review/);
+});
+
+test("TikTok dispatch pack blocks explicit do-not-reuse voice audits even when warning-only", () => {
+  const pack = buildTikTokDispatchPack(
+    {
+      id: "story1",
+      title: "Render with a do-not-reuse voice warning",
+      exported_path: "output/final/story1.mp4",
+      thumbnail_candidate_path: "output/thumbnails/story1.png",
+    },
+    {
+      durationSeconds: 64,
+      voiceAudit: {
+        verdict: "review",
+        blockers: [],
+        warnings: ["voice_true_peak_too_hot"],
+        do_not_reuse_for_tiktok_dispatch: true,
+      },
+      tiktokTokenStatus: { ok: true, reason: "ok" },
+    },
+  );
+
+  assert.equal(pack.status, "voice_review_required");
+  assert.equal(pack.officialInboxJson.ready_for_upload, false);
+  assert.equal(pack.voiceGate.do_not_reuse_for_tiktok_dispatch, true);
+  assert.match(pack.discordNotification, /warnings: voice_true_peak_too_hot/);
+});
+
+test("TikTok dispatch pack allows warning-only voice gates when final audit allows reuse", () => {
+  const pack = buildTikTokDispatchPack(
+    {
+      id: "story1",
+      title: "Ready render with voice warning",
+      exported_path: "output/final/story1.mp4",
+      thumbnail_candidate_path: "output/thumbnails/story1.png",
+    },
+    {
+      durationSeconds: 64,
+      voiceAudit: {
+        verdict: "review",
+        blockers: [],
+        warnings: ["voice_true_peak_too_hot"],
+        do_not_reuse_for_tiktok_dispatch: false,
+      },
+      tiktokTokenStatus: { ok: true, reason: "ok" },
+    },
+  );
+
+  assert.equal(pack.status, "ready_for_operator_review");
+  assert.equal(pack.officialInboxJson.ready_for_upload, true);
+  assert.equal(pack.voiceGate.do_not_reuse_for_tiktok_dispatch, false);
+});
+
+test("TikTok dispatch pack blocks repeat inbox sends after a publish id is recorded", () => {
+  const pack = buildTikTokDispatchPack(
+    {
+      id: "story1",
+      title: "Already sent to TikTok inbox",
+      exported_path: "output/final/story1.mp4",
+      thumbnail_candidate_path: "output/thumbnails/story1.png",
+      tiktok_inbox_publish_id: "v_inbox_file~123",
+      tiktok_inbox_status: "SEND_TO_USER_INBOX",
+      tiktok_inbox_completion_state: "sent_to_user_inbox",
+    },
+    {
+      durationSeconds: 64,
+      voiceAudit: {
+        verdict: "pass",
+        blockers: [],
+        warnings: [],
+        do_not_reuse_for_tiktok_dispatch: false,
+      },
+      tiktokTokenStatus: { ok: true, reason: "ok" },
+    },
+  );
+
+  assert.equal(pack.status, "already_sent_to_tiktok_inbox");
+  assert.equal(pack.officialInboxJson.ready_for_upload, false);
+  assert.equal(pack.tiktokInbox.publishId, "v_inbox_file~123");
+});
+
+test("TikTok dispatch pack blocks stale news even when the render is fresh", () => {
+  const pack = buildTikTokDispatchPack(
+    {
+      id: "story1",
+      title: "Old news with a fresh render",
+      timestamp: "2026-04-20T10:00:00.000Z",
+      created_at: "2026-04-20 10:00:00",
+      exported_path: "output/final/story1.mp4",
+      thumbnail_candidate_path: "output/thumbnails/story1.png",
+    },
+    {
+      now: new Date("2026-05-15T10:00:00.000Z"),
+      durationSeconds: 64,
+      voiceAudit: {
+        verdict: "pass",
+        blockers: [],
+        warnings: [],
+        do_not_reuse_for_tiktok_dispatch: false,
+      },
+      renderFreshness: {
+        ageHours: 1,
+        lastModifiedIso: "2026-05-15T09:00:00.000Z",
+      },
+      tiktokTokenStatus: { ok: true, reason: "ok" },
+    },
+  );
+
+  assert.equal(pack.status, "stale_story_review_required");
+  assert.equal(pack.officialInboxJson.ready_for_upload, false);
+  assert.equal(pack.storyFreshness.reason, "stale_story_age_exceeds_limit");
+});
+
+test("TikTok dispatch pack blocks official inbox upload when the local token needs refresh or sync", () => {
+  const pack = buildTikTokDispatchPack(
+    {
+      id: "story1",
+      title: "Ready render but stale TikTok token",
+      exported_path: "output/final/story1.mp4",
+      thumbnail_candidate_path: "output/thumbnails/story1.png",
+    },
+    {
+      durationSeconds: 64,
+      voiceAudit: {
+        verdict: "pass",
+        blockers: [],
+        warnings: [],
+        do_not_reuse_for_tiktok_dispatch: false,
+      },
+      tiktokTokenStatus: {
+        ok: false,
+        reason: "expired",
+        expires_in_seconds: -900,
+        refresh_available: true,
+        needs_reauth: false,
+      },
+    },
+  );
+
+  assert.equal(pack.status, "tiktok_auth_action_required");
+  assert.equal(pack.tiktokTokenGate.action, "refresh_or_sync_local_token");
+  assert.equal(pack.officialInboxJson.ready_for_upload, false);
+  assert.match(pack.discordNotification, /TikTok Auth/);
+  assert.match(pack.discordNotification, /refresh_or_sync_local_token/);
+});
+
+test("TikTok dispatch pack marks stale final renders as not ready for live dispatch", () => {
+  const pack = buildTikTokDispatchPack(
+    {
+      id: "story1",
+      title: "Ancient render",
+      exported_path: "output/final/story1.mp4",
+      thumbnail_candidate_path: "output/thumbnails/story1.png",
+    },
+    {
+      durationSeconds: 70,
+      renderFreshness: {
+        stale: true,
+        ageHours: 220,
+        lastModifiedIso: "2026-04-24T12:00:00.000Z",
+      },
+      now: new Date("2026-05-03T10:00:00.000Z"),
+    },
+  );
+
+  assert.equal(pack.status, "stale_render_review_required");
+  assert.equal(pack.renderFreshness.stale, true);
+  assert.match(pack.discordNotification, /stale/i);
+  assert.equal(pack.officialInboxJson.ready_for_upload, false);
+});
+
+test("TikTok dispatch tooling loads final voice sidecar reports before gating", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "tiktok-dispatch-pack.js"),
+    "utf8",
+  );
+
+  assert.match(source, /dotenv\.config/);
+  assert.ok(
+    source.indexOf("dotenv.config") < source.indexOf("require(\"../lib/db\")"),
+    "tiktok dispatch must load .env before opening lib/db so local mirror SQLite paths are honoured",
+  );
+  assert.match(source, /loadFinalVoiceReportsByStoryId/);
+  assert.match(source, /reportsByStoryId/);
+  assert.match(source, /renderFreshnessByStoryId/);
+  assert.match(source, /assetExistenceByStoryId/);
+  assert.match(source, /inspectTokenStatus/);
+  assert.match(source, /tiktokTokenStatus/);
+});
+
+test("TikTok dispatch tooling enriches local voice reports with measurable loudness and pace", async () => {
+  const report = {
+    narration: {
+      provider: "local",
+      source: "local-tts-server",
+      audioPath: __filename,
+      approvedLocalVoice: true,
+      transcript: "One two three four five six seven eight nine ten.",
+      acoustic: {
+        durationSeconds: 5,
+        medianPitchHz: 118,
+      },
+    },
+  };
+
+  await enrichVoiceReportForDispatch(report, {
+    execFileAsync: async () => ({
+      stderr: JSON.stringify({
+        input_i: "-15.9",
+        input_tp: "-1.6",
+        input_lra: "7.2",
+      }),
+      stdout: "",
+    }),
+  });
+
+  assert.equal(report.narration.wpm, 120);
+  assert.equal(report.narration.acoustic.integratedLufs, -15.9);
+  assert.equal(report.narration.acoustic.truePeakDb, -1.6);
+  assert.equal(report.narration.acoustic.loudnessMeasured, true);
 });
 
 test("social platform operations report separates working platforms from external blockers", () => {
@@ -384,7 +868,7 @@ test("social platform operations report separates working platforms from externa
   assert.equal(report.platforms.instagram_reel.state, "working");
   assert.equal(report.platforms.facebook_reel.state, "blocked_external");
   assert.equal(report.platforms.tiktok.state, "blocked_external");
-  assert.equal(report.platforms.tiktok.safeRoutes[0].id, "third_party_scheduler_true_autopublish");
+  assert.equal(report.platforms.tiktok.safeRoutes[0].id, "official_inbox_upload");
   assert.ok(report.operatorActions.some((a) => /TikTok re-auth/.test(a)));
 
   const md = renderSocialPlatformOperationsMarkdown(report);
@@ -392,6 +876,130 @@ test("social platform operations report separates working platforms from externa
   assert.match(md, /TikTok/);
   assert.match(md, /Facebook Reels/);
   assert.doesNotMatch(md, /access_token|Bearer/);
+});
+
+test("social platform operations marks Facebook Reels working after visible Graph proof", () => {
+  const report = buildSocialPlatformOperationsReport({
+    platformStatus: {
+      operational: {
+        youtube: { state: "enabled", reason: "core_upload_path" },
+        instagram_reel: { state: "enabled", reason: "graph_credentials_present" },
+        facebook_reel: { state: "enabled", reason: "facebook_reels_enabled" },
+        tiktok: { state: "blocked_external", reason: "tiktok_direct_post_app_review" },
+        twitter: { state: "disabled", reason: "x_optional_disabled" },
+      },
+      counts: {
+        facebook_reel: { published: 1 },
+      },
+    },
+    facebookReelsEligibility: {
+      classification: {
+        verdict: "eligible_for_normal_publish",
+        reason: "visible_graph_video_or_reel_found",
+        counts: { videos: 1, reels: 1, posts: 7 },
+        page: {
+          is_published: true,
+          can_post: true,
+          fan_count: 1,
+          followers_count: 1,
+          is_verified: false,
+        },
+        green: ["visible_graph_video_or_reel_found"],
+        warnings: [],
+        hardFails: [],
+      },
+    },
+    tiktokDiagnosis: {},
+    dispatchManifest: {},
+  });
+
+  assert.equal(report.platforms.facebook_reel.state, "working");
+  assert.equal(report.platforms.facebook_reel.reason, "visible_graph_video_or_reel_found");
+  assert.ok(
+    !report.operatorActions.some((a) => /Keep automatic Facebook Reels disabled/.test(a)),
+  );
+});
+
+test("social platform operations markdown shows healthy TikTok token while direct posting remains externally blocked", () => {
+  const report = buildSocialPlatformOperationsReport({
+    platformStatus: {
+      operational: {
+        youtube: { state: "enabled", reason: "core_upload_path" },
+        instagram_reel: { state: "enabled", reason: "graph_credentials_present" },
+        facebook_reel: { state: "enabled", reason: "facebook_reels_enabled" },
+        tiktok: { state: "blocked_external", reason: "tiktok_direct_post_app_review" },
+        twitter: { state: "disabled", reason: "x_optional_disabled" },
+      },
+      counts: {},
+    },
+    facebookReelsEligibility: {
+      classification: {
+        verdict: "eligible_for_normal_publish",
+        reason: "visible_graph_video_or_reel_found",
+        counts: { videos: 1, reels: 1, posts: 7 },
+        page: { followers_count: 1, fan_count: 1 },
+      },
+    },
+    tiktokTokenStatus: {
+      ok: true,
+      reason: "ok",
+      expires_in_seconds: 50_000,
+      refresh_available: true,
+      needs_reauth: false,
+    },
+    tiktokDiagnosis: {
+      evidence: { uploadScopeRequested: true },
+    },
+    dispatchManifest: {},
+  });
+
+  assert.equal(report.platforms.tiktok.token.ok, true);
+  assert.equal(report.platforms.tiktok.state, "blocked_external");
+  assert.ok(!report.operatorActions.some((a) => /re-auth required/i.test(a)));
+
+  const md = renderSocialPlatformOperationsMarkdown(report);
+  assert.match(md, /Token: ok=true reason=ok/);
+  assert.doesNotMatch(md, /access_token|refresh_token|Bearer/);
+});
+
+test("social platform operations blocks TikTok inbox route until expired local token is refreshed", () => {
+  const report = buildSocialPlatformOperationsReport({
+    platformStatus: {
+      operational: {
+        youtube: { state: "enabled", reason: "core_upload_path" },
+        instagram_reel: { state: "enabled", reason: "graph_credentials_present" },
+        facebook_reel: { state: "enabled", reason: "facebook_reels_enabled" },
+        tiktok: { state: "blocked_external", reason: "tiktok_direct_post_app_review" },
+        twitter: { state: "disabled", reason: "x_optional_disabled" },
+      },
+      counts: {},
+    },
+    facebookReelsEligibility: {
+      classification: {
+        verdict: "eligible_for_normal_publish",
+        reason: "visible_graph_video_or_reel_found",
+        counts: { videos: 1, reels: 1, posts: 7 },
+        page: { followers_count: 1, fan_count: 1 },
+      },
+    },
+    tiktokTokenStatus: {
+      ok: false,
+      reason: "expired",
+      refresh_available: true,
+      needs_reauth: false,
+    },
+    tiktokDiagnosis: {
+      evidence: { uploadScopeRequested: true },
+    },
+    dispatchManifest: {},
+  });
+
+  assert.equal(report.platforms.tiktok.safeRoutes[0].status, "needs_token_refresh_or_sync");
+  assert.ok(report.operatorActions.some((a) => /Refresh or sync the local TikTok token/.test(a)));
+
+  const md = renderSocialPlatformOperationsMarkdown(report);
+  assert.match(md, /official_inbox_upload: status=needs_token_refresh_or_sync/);
+  assert.doesNotMatch(md, /access_token|refresh_token|Bearer/);
 });
 
 test("release radar gate rejects insufficient verified candidates", () => {

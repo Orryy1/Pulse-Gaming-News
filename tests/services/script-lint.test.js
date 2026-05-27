@@ -82,6 +82,12 @@ test("lintScript: glued sentence token → fail:glued_sentence", () => {
   assert.ok(r.failures.includes("glued_sentence"));
 });
 
+test("lintScript: hybrid spoken year fails before TTS", () => {
+  const r = lintScript(CLEAN_SCRIPT.replace("three years", "twenty 26"));
+  assert.strictEqual(r.result, "fail");
+  assert.ok(r.failures.includes("hybrid_spoken_year"));
+});
+
 test("lintScript: generic first word → fail:generic_opener", () => {
   const opener = "So here's the thing that nobody saw coming. ";
   const r = lintScript(opener + CLEAN_SCRIPT);
@@ -144,17 +150,36 @@ test("lintScript: heavy filler phrases → warn:filler_dense", () => {
   assert.ok(r.warnings.some((w) => w.startsWith("filler_dense")));
 });
 
-test("lintScript: repeated 4-gram at mid-roll → warn:repeated_phrase", () => {
+test("lintScript: repeated 4-gram at mid-roll → fail:repeated_phrase", () => {
   // "nobody saw it coming" appears once in CLEAN_SCRIPT. Add two
   // more copies to push it past the 2-occurrence threshold.
   const r = lintScript(
     CLEAN_SCRIPT + " But nobody saw it coming. And truly nobody saw it coming.",
   );
-  assert.notStrictEqual(r.result, "fail");
+  assert.strictEqual(r.result, "fail");
   assert.ok(
-    r.warnings.some((w) => w.startsWith("repeated_phrase")),
-    `got: ${r.warnings.join(", ")}`,
+    r.failures.some((w) => w.startsWith("repeated_phrase")),
+    `got: ${r.failures.join(", ")}`,
   );
+});
+
+test("lintScript: Pulse internal and fake-source boilerplate hard fails", () => {
+  const badPhrases = [
+    "A verified insider claims this is confirmed.",
+    "According to a verified Reddit post, the publisher confirmed it.",
+    "The community is buzzing because this changes everything.",
+    "But here is where it gets interesting.",
+    "For Pulse, the direction of travel is signal first.",
+    "The source context is Manual Review.",
+  ];
+  for (const phrase of badPhrases) {
+    const r = lintScript(`${CLEAN_SCRIPT} ${phrase}`);
+    assert.strictEqual(r.result, "fail", phrase);
+    assert.ok(
+      r.failures.some((failure) => failure.startsWith("banned_phrase:")),
+      `got: ${r.failures.join(", ")}`,
+    );
+  }
 });
 
 // ---------- helper behaviour ----------

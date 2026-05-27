@@ -1,0 +1,3729 @@
+{
+  "schema_version": 2,
+  "generated_at": "2026-05-27T18:30:43.382Z",
+  "repo": {
+    "root": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming",
+    "remote": "https://github.com/Orryy1/Pulse-Gaming-News.git",
+    "branch": "codex/github-reconciliation-v4-cutover",
+    "head_before_report_amend": "bcc5fff5cb0d34855178a95622ef264127226fce",
+    "origin_main": "2c7f47c5f6e7544f4a16ef7e5b4d3df1ffc7cf10",
+    "ahead_origin_main": 522,
+    "behind_origin_main": 0,
+    "github_open_pr_count_checked": true,
+    "github_open_pr_count": 0
+  },
+  "status_summary": {
+    "comparison": "git diff --name-status origin/main, including staged and unstaged reconciliation artefact updates",
+    "total_entries": 901,
+    "status_counts": {
+      "M": 235,
+      "A": 666
+    },
+    "extension_counts": {
+      ".gitignore": 1,
+      ".md": 44,
+      ".json": 10,
+      ".js": 832,
+      ".html": 2,
+      ".ps1": 1,
+      ".tsx": 4,
+      ".ts": 1,
+      ".txt": 1,
+      ".py": 5
+    },
+    "unsafe_or_generated_path_matches": []
+  },
+  "named_cutover_file_presence": [
+    {
+      "path": "lib/goal-production-cutover.js",
+      "local_exists": true,
+      "in_head": true,
+      "in_origin_main": false,
+      "status_vs_origin_main": "A"
+    },
+    {
+      "path": "tools/goal-production-cutover.js",
+      "local_exists": true,
+      "in_head": true,
+      "in_origin_main": false,
+      "status_vs_origin_main": "A"
+    },
+    {
+      "path": "lib/goal-render-input-workorder.js",
+      "local_exists": true,
+      "in_head": true,
+      "in_origin_main": false,
+      "status_vs_origin_main": "A"
+    },
+    {
+      "path": "tools/goal-render-input-workorder.js",
+      "local_exists": true,
+      "in_head": true,
+      "in_origin_main": false,
+      "status_vs_origin_main": "A"
+    },
+    {
+      "path": "tools/bridge-candidate-promotion.js",
+      "local_exists": true,
+      "in_head": true,
+      "in_origin_main": false,
+      "status_vs_origin_main": "A"
+    },
+    {
+      "path": "tools/goal-dry-run-publish.js",
+      "local_exists": true,
+      "in_head": true,
+      "in_origin_main": false,
+      "status_vs_origin_main": "A"
+    },
+    {
+      "path": "tools/render-health.js",
+      "local_exists": true,
+      "in_head": true,
+      "in_origin_main": true,
+      "status_vs_origin_main": "M"
+    },
+    {
+      "path": "PULSE_CAMPAIGN_STATUS.json",
+      "local_exists": true,
+      "in_head": true,
+      "in_origin_main": false,
+      "status_vs_origin_main": "A"
+    },
+    {
+      "path": "PULSE_CAMPAIGN_STATUS.md",
+      "local_exists": true,
+      "in_head": true,
+      "in_origin_main": false,
+      "status_vs_origin_main": "A"
+    },
+    {
+      "path": "docs/codex-main-goal.md",
+      "local_exists": true,
+      "in_head": true,
+      "in_origin_main": false,
+      "status_vs_origin_main": "A"
+    }
+  ],
+  "report_files": [
+    "github_reconciliation_report.md",
+    "changed_files_manifest.json",
+    "test_results_summary.json",
+    "pr_readiness_report.md",
+    "PLATFORM_READINESS_DOCTOR.md"
+  ],
+  "pr_readiness_verdict": "READY_TO_PUSH_AND_OPEN_DRAFT_PR_WITH_LARGE_BRANCH_WARNING",
+  "changed_files": [
+    {
+      "status": "M",
+      "path": ".gitignore"
+    },
+    {
+      "status": "M",
+      "path": "AGENTS.md"
+    },
+    {
+      "status": "A",
+      "path": "ALTERNATE_OFFICIAL_SOURCE_HANDOFF.md"
+    },
+    {
+      "status": "A",
+      "path": "ANALYTICS_CAPABILITY_DOCTOR_REPORT.md"
+    },
+    {
+      "status": "A",
+      "path": "ANALYTICS_LEARNING_STATUS.md"
+    },
+    {
+      "status": "A",
+      "path": "ASSET_ACQUISITION_PRO_V16_GAMEPLAY_STILLS_REPORT.md"
+    },
+    {
+      "status": "A",
+      "path": "FACEBOOK_REELS_STATUS.md"
+    },
+    {
+      "status": "A",
+      "path": "FLASH_LANE_CURRENT_STATE_REPORT.md"
+    },
+    {
+      "status": "A",
+      "path": "FLASH_LANE_DOWNGRADE_PLAN.md"
+    },
+    {
+      "status": "A",
+      "path": "LOCAL_CUTOVER_RUNBOOK.md"
+    },
+    {
+      "status": "A",
+      "path": "LOCAL_ENV_CLEANUP_PLAN.md"
+    },
+    {
+      "status": "A",
+      "path": "LOCAL_POSTING_READINESS.md"
+    },
+    {
+      "status": "A",
+      "path": "LOCAL_RESTART_READINESS.md"
+    },
+    {
+      "status": "A",
+      "path": "LOCAL_RESUME_POSTING_PLAN.md"
+    },
+    {
+      "status": "A",
+      "path": "LOCAL_TTS_OVERNIGHT_REPORT.md"
+    },
+    {
+      "status": "A",
+      "path": "LOCAL_TTS_PROOF_RENDER_PROMOTION_REPORT.md"
+    },
+    {
+      "status": "A",
+      "path": "LOCAL_TTS_RECOVERY_2026_05_02.md"
+    },
+    {
+      "status": "A",
+      "path": "LOCAL_TTS_SLEEPY_LIAM_LOCK_2026_05_03.md"
+    },
+    {
+      "status": "A",
+      "path": "LOCAL_TTS_STRICT_SLEEPY_LIAM_ACCEPTANCE_2026_05_03.md"
+    },
+    {
+      "status": "A",
+      "path": "LOCAL_TUNNEL_READINESS.md"
+    },
+    {
+      "status": "A",
+      "path": "LONGFORM_OVERNIGHT_ARCHITECTURE_REPORT.md"
+    },
+    {
+      "status": "A",
+      "path": "MONETISATION_OVERNIGHT_REPORT.md"
+    },
+    {
+      "status": "A",
+      "path": "MORNING_APPROVAL_QUEUE.md"
+    },
+    {
+      "status": "A",
+      "path": "MOTION_ACQUISITION_OVERNIGHT_REPORT.md"
+    },
+    {
+      "status": "A",
+      "path": "OVERNIGHT_STATUS_SNAPSHOT.md"
+    },
+    {
+      "status": "A",
+      "path": "PLATFORM_FLASH_VOICE_LANES_2026_05_02_REPORT.md"
+    },
+    {
+      "status": "A",
+      "path": "PLATFORM_READINESS_DOCTOR.md"
+    },
+    {
+      "status": "A",
+      "path": "PULSE_CAMPAIGN_STATUS.json"
+    },
+    {
+      "status": "A",
+      "path": "PULSE_CAMPAIGN_STATUS.md"
+    },
+    {
+      "status": "A",
+      "path": "SECURITY_HARDENING_AUDIT_2026-05-13.md"
+    },
+    {
+      "status": "A",
+      "path": "STUDIO_V2_MEDIA_REPAIR_ACTION_PLAN.md"
+    },
+    {
+      "status": "A",
+      "path": "STUDIO_V2_OVERNIGHT_PROMOTION_PACKET.md"
+    },
+    {
+      "status": "A",
+      "path": "STUDIO_V2_PILOT_READINESS_GATE.md"
+    },
+    {
+      "status": "A",
+      "path": "TIKTOK_OVERNIGHT_AUTOMATION_REPORT.md"
+    },
+    {
+      "status": "M",
+      "path": "TONIGHT_HANDOFF.md"
+    },
+    {
+      "status": "A",
+      "path": "TTS_AUDIO_QUALITY_FIX_REPORT.md"
+    },
+    {
+      "status": "A",
+      "path": "VISUAL_EVIDENCE_REPAIR_PLAN.md"
+    },
+    {
+      "status": "A",
+      "path": "VOICE_SHOOTOUT_OVERNIGHT_REPORT.md"
+    },
+    {
+      "status": "A",
+      "path": "YOUTUBE_ANALYTICS_INGESTION_PACKET_REPORT.md"
+    },
+    {
+      "status": "M",
+      "path": "ab_titles.js"
+    },
+    {
+      "status": "M",
+      "path": "affiliates.js"
+    },
+    {
+      "status": "M",
+      "path": "analytics.js"
+    },
+    {
+      "status": "M",
+      "path": "assemble.js"
+    },
+    {
+      "status": "M",
+      "path": "audio.js"
+    },
+    {
+      "status": "A",
+      "path": "audio/epidemic/README.md"
+    },
+    {
+      "status": "M",
+      "path": "blog/generator.js"
+    },
+    {
+      "status": "M",
+      "path": "blog/templates.js"
+    },
+    {
+      "status": "M",
+      "path": "breaking_queue.js"
+    },
+    {
+      "status": "A",
+      "path": "changed_files_manifest.json"
+    },
+    {
+      "status": "M",
+      "path": "channels/pulse-gaming.js"
+    },
+    {
+      "status": "M",
+      "path": "competitor_monitor.js"
+    },
+    {
+      "status": "A",
+      "path": "config/retention-baseline.json"
+    },
+    {
+      "status": "A",
+      "path": "config/trusted-footage-registry.json"
+    },
+    {
+      "status": "M",
+      "path": "discord/auto_post.js"
+    },
+    {
+      "status": "A",
+      "path": "docs/codex-main-goal.md"
+    },
+    {
+      "status": "A",
+      "path": "docs/local-llm-runbook.md"
+    },
+    {
+      "status": "A",
+      "path": "docs/security-deployment-safety.md"
+    },
+    {
+      "status": "M",
+      "path": "engagement.js"
+    },
+    {
+      "status": "M",
+      "path": "entities.js"
+    },
+    {
+      "status": "M",
+      "path": "experiments/hf-quote/index.html"
+    },
+    {
+      "status": "M",
+      "path": "fetch_broll.js"
+    },
+    {
+      "status": "A",
+      "path": "github_reconciliation_report.md"
+    },
+    {
+      "status": "M",
+      "path": "hunter.js"
+    },
+    {
+      "status": "M",
+      "path": "images_download.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/affiliate-targeting.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/analytics-recommendation.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/asset-acquisition-pro.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/audio-quality.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/brand-name-qa.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/bridge-candidate-promotion.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/bridge-live-rights-repair.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/bridge-preflight-stamp-repair.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/caption-emphasis.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/commercial-click-tracker.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/commercial-intelligence-engine.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/community-discussion-gate.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/controlled-frame-extraction-plan.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/controlled-frame-extraction-worker.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/creator-studio-os.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/decision-engine.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/editorial-angle-engine.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/empire-readiness-audit.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/epidemic-download-intake.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/epidemic-sound-intake.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/exact-subject-matching.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/ffmpeg-still-frame.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/format-lane-policy.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/game-title-inference.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal-affiliate-relevance-repair.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal-audio-timestamp-materializer.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal-audio-timestamp-workbench.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal-baseline-audit.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal-batch-packages.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal-breaking-news-fast-lane.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal-commercial-disclosure-repair.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal-contract.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal-daily-cadence.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal-dry-run-publisher.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal-duration-variant-repair.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal-human-review-queue.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal-landing-attribution-repair.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal-normal-duration-repair-workorder.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal-official-still-visual-repair.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal-owned-motion-materializer.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal-platform-duration-contract.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal-platform-native-pack-repair.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal-platform-variant-materializer.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal-production-cutover.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal-production-render-materializer.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal-proof-package.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal-public-copy-qa.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal-public-copy-repair.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal-real-motion-materializer.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal-render-input-workorder.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal-rss-proof-ingest.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal-sfx-evidence-repair.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal-sfx-rerender-workorder.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal-storefront-visual-repair.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal04-human-held-source-consolidation.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal04-operator-source-intake-queue.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal04-operator-source-submission-preflight.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal05-narration-readiness.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal06-rights-ledger.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal07-director-brain.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal08-visual-v4-renderer.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal09-sound-design-engine.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal10-gold-standard-forensics-engine.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal11-retention-intelligence-loop.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal12-experimentation-engine.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal13-multi-platform-publisher-engine.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal14-social-derivatives-engine.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal15-affiliate-intelligence-engine.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal16-landing-page-engine.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal17-platform-policy-engine.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal18-finance-crypto-firewall.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal19-autonomy-control-tower.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal20-anti-spam-uniqueness-engine.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal21-observability-dashboard.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal22-versioned-prompt-model-registry.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal23-security-secrets-deployment-safety.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal24-corrections-retractions-takedowns.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal25-sponsor-readiness-pack.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal26-creator-studio-brand-system.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal27-definition-missing.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal28-definition-missing.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal29-definition-missing.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal30-definition-missing.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal31-definition-missing.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal32-definition-missing.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal33-definition-missing.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal34-definition-missing.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal35-definition-missing.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal36-definition-missing.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal37-definition-missing.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal38-definition-missing.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal39-definition-missing.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal40-definition-missing.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal41-definition-missing.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/goal42-definition-missing.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/gold-standard-reference-library.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/incident-guard.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/intelligence/analytics-capability.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/intelligence/analytics-client.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/intelligence/commercial-learning-loop.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/intelligence/continuous-learning-loop.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/intelligence/learning-digest.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/intelligence/monetisation-readiness.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/intelligence/monetisation-state.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/intelligence/monetisation-tracker.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/intelligence/overnight-workshop.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/intelligence/render-health-digest.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/intelligence/retention-intelligence.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/intelligence/youtube-analytics-ingestion-packet.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/job-handlers.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/llm-client.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/llm-key.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/local-video-timeline.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/local-whisper-word-aligner.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/longform/production-dossier.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/media-house-benchmark.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/media-source-url-kind.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/motion-acquisition-pro.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/observability.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/official-direct-media-discovery.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/official-media-reference-preflight.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/official-source-intake.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/official-trailer-reference-report-files.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/official-trailer-reference-report-loader.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/official-trailer-reference-resolver.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/ops/agent-operating-rules.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/ops/alternate-official-source-handoff.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/ops/control-room.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/ops/flash-lane-current-state.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/ops/flash-lane-downgrade-planner.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/ops/local-acoustic-probe.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/ops/local-cutover-plan.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/ops/local-env-cleanup-plan.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/ops/local-liam-safety.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/ops/local-media-repair.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/ops/local-posting-readiness.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/ops/local-primary-readiness.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/ops/local-proof-tts-limits.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/ops/local-restart-readiness.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/ops/local-resume-plan.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/ops/local-script-extension.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/ops/local-tts-batch-recovery.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/ops/local-tts-publish-refresh.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/ops/local-tunnel-readiness.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/ops/local-voice-metadata.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/ops/platform-readiness-doctor.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/ops/platform-status.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/ops/produce-notification.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/ops/publish-cadence.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/ops/publish-readiness.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/ops/publish-row-repair.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/ops/queue-inspect.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/ops/script-coherence-audit.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/ops/script-failure-reprocess.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/ops/social-platform-operations.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/ops/studio-v2-motion-gap.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/ops/studio-v2-pilot-readiness-gate.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/ops/studio-v2-proof-audio-discovery.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/ops/studio-v2-proof-candidates.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/ops/visual-evidence-repair-planner.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/platforms/facebook-reels-eligibility.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/platforms/tiktok-auth-doctor.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/platforms/tiktok-automation-report.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/platforms/tiktok-cover-candidates.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/platforms/tiktok-dispatch.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/platforms/tiktok-fresh-dispatch-pack.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/platforms/tiktok-inbox-command.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/platforms/tiktok-token-maintenance.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/prl-overlays.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/public-metadata-qa.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/public-output-manifest.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/public-story.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/public-title.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/pulse-cta.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/render-audio-segment-qa.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/render-contract.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/render-decision.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/render-input-validation.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/retry.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/revenue-path-engine.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/runtime-build-info.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/scene-composer.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/scenes/quote-card.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/scenes/source-card.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/scheduler.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/scoring.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/script-coherence-qa.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/script-game-enrichment.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/services/batch-upload-preflight.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/services/content-qa.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/services/direct-upload-policy.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/services/discord-post-gate.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/services/pipeline-backlog.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/services/platform-video-qa.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/services/publish-block.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/services/publish-blocker-resolution.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/services/publish-dispatch-policy.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/services/publish-voice-qa.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/services/publish-window-policy.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/services/script-lint.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/services/short-duration-contract.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/services/short-runtime-planner.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/services/studio-governance-preflight.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/services/video-qa.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/source-bound-script-writer.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/still-image-enrichment.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/studio-enterprise-os.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/studio-governance-engine.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/studio/editorial-layer.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/studio/ffmpeg-scene-renderer.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/studio/local-gpu-pressure.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/studio/local-tts-failures.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/studio/local-tts-overnight-report.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/studio/local-tts-proof-mastering.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/studio/local-tts-proof-promoter.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/studio/local-tts-proof-report-loader.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/studio/local-tts-readiness.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/studio/local-tts-supervisor.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/studio/local-tts-voice-id.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/studio/sound-layer.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/studio/v2/approved-voice-path.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/studio/v2/audio-library.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/studio/v2/beat-aware-scene-durations.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/studio/v2/clip-duration-guard.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/studio/v2/final-voice-audit.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/studio/v2/final-voice-report-loader.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/studio/v2/flash-lane-footage-acquisition.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/studio/v2/flash-lane-footage-backbone.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/studio/v2/flash-lane-overlays.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/studio/v2/flash-lane-preflight.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/studio/v2/flash-lane-production-contract.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/studio/v2/flash-lane-visual-director.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/studio/v2/flash-lane-voice-workbench.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/studio/v2/forensic-qa-v2.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/studio/v2/gauntlet-v2.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/studio/v2/hf-card-builders.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/studio/v2/local-voice-reference.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/studio/v2/official-trailer-clip-refs.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/studio/v2/official-trailer-segment-validator.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/studio/v2/promotion-packet.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/studio/v2/proof-official-clip-safety.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/studio/v2/proof-render-safety.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/studio/v2/quality-gate-v2.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/studio/v2/quote-fit.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/studio/v2/sound-layer-v2.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/studio/v2/still-deck-ingestion.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/studio/v2/still-deck-promotion.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/studio/v2/story-package.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/studio/v2/studio-rejection-gate-v21.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/studio/v2/studio-v21-review-batch.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/studio/v2/subtitle-layer-v2.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/studio/v2/visual-v3-overlays.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/studio/v2/voice-shootout.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/studio/v4/canonical-policy.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/studio/v4/director-brain.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/studio/v4/footage-empire.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/studio/v4/licensed-direct-media-acquisition.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/studio/v4/motion-pack.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/studio/v4/proof-render.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/studio/v4/render-bridge.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/studio/v4/render-clip-materializer.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/studio/v4/render-policy.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/studio/v4/sfx-library-ingest.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/studio/v4/sfx-source-registry.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/studio/v4/sound-transition-planner.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/studio/v4/source-deficit.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/studio/v4/source-family-acquisition.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/studio/voicebox-client.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/subject-coverage.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/subtitle-timing.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/text-hygiene.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/topicality-gate.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/trusted-footage-registry.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/tts-pronunciation.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/viral-script-intelligence.js"
+    },
+    {
+      "status": "M",
+      "path": "lib/visual-content-prescan.js"
+    },
+    {
+      "status": "A",
+      "path": "lib/visual-evidence-classifier.js"
+    },
+    {
+      "status": "M",
+      "path": "package.json"
+    },
+    {
+      "status": "A",
+      "path": "pr_readiness_report.md"
+    },
+    {
+      "status": "M",
+      "path": "processor.js"
+    },
+    {
+      "status": "M",
+      "path": "public/index.html"
+    },
+    {
+      "status": "M",
+      "path": "publisher.js"
+    },
+    {
+      "status": "M",
+      "path": "run.js"
+    },
+    {
+      "status": "M",
+      "path": "scripts/prewarm-infer.ps1"
+    },
+    {
+      "status": "M",
+      "path": "server.js"
+    },
+    {
+      "status": "M",
+      "path": "src/App.tsx"
+    },
+    {
+      "status": "M",
+      "path": "src/api/auth.ts"
+    },
+    {
+      "status": "A",
+      "path": "src/components/AppErrorBoundary.tsx"
+    },
+    {
+      "status": "M",
+      "path": "src/main.tsx"
+    },
+    {
+      "status": "M",
+      "path": "src/pages/Analytics.tsx"
+    },
+    {
+      "status": "M",
+      "path": "system_prompt.txt"
+    },
+    {
+      "status": "A",
+      "path": "test/fixtures/goal/mixtape-governance-story.json"
+    },
+    {
+      "status": "A",
+      "path": "test/fixtures/goal/mixtape-rights-ledger.json"
+    },
+    {
+      "status": "A",
+      "path": "test_results_summary.json"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/ab-title-safety.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/affiliate-targeting.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/affiliates-pipeline-gate.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/agent-operating-rules.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/alternate-official-source-handoff.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/analytics-capability.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/analytics-recommendation.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/approved-voice-path.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/assemble-duration-gate.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/assemble-overlay-layout.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/assemble-subtitle-timing.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/assemble-video-clip-placement.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/asset-acquisition-exact-subject.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/asset-acquisition-pro.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/asset-acquisition-story-json.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/audio-duration-padding.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/audio-local-tts-retry.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/audio-quality.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/audio-runtime-gate.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/audio-tts-script-selection.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/auto-approve-cutover.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/autonomous-status-contract.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/batch-upload-preflight.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/beat-aware-scene-durations.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/blog-affiliate-disclosure.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/breaking-queue-dedup.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/bridge-candidate-promotion-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/bridge-candidate-promotion.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/bridge-live-rights-repair-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/bridge-live-rights-repair.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/bridge-preflight-stamp-repair.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/caption-emphasis.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/clip-duration-guard.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/commercial-click-tracker.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/commercial-intelligence-engine.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/commercial-learning-loop.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/community-discussion-gate.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/content-qa-visual-count-gate.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/content-qa.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/continuous-learning-loop.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/control-room.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/controlled-frame-extraction-plan.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/controlled-frame-extraction-worker.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/creator-studio-os.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/dashboard-auth.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/direct-upload-policy.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/discord-auto-post-lifecycle.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/discord-post-gate.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/dotenv-before-db.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/editorial-angle-engine.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/empire-readiness-audit-tool.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/empire-readiness-audit.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/enterprise-ops.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/epidemic-download-intake-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/epidemic-download-intake.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/epidemic-sound-intake-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/epidemic-sound-intake.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/exact-subject-matching.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/facebook-reels-eligibility.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/fetch-broll-safety.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/ffmpeg-still-frame.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/final-voice-audit.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/flash-lane-current-state.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/flash-lane-downgrade-planner.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/flash-lane-footage-acquisition.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/flash-lane-footage-backbone.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/flash-lane-overlays.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/flash-lane-visual-director.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/flash-lane-voice-workbench.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/frontend-error-boundary.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/game-title-inference.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-affiliate-relevance-repair.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-audio-timestamp-materializer-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-audio-timestamp-materializer.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-audio-timestamp-workbench-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-audio-timestamp-workbench.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-audio-voice-metadata-repair-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-baseline-audit.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-batch-packages.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-breaking-news-fast-lane.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-commercial-disclosure-repair.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-contract-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-contract.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-daily-cadence.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-dry-run-publisher.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-duration-variant-repair-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-duration-variant-repair.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-human-review-queue.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-landing-attribution-repair.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-normal-duration-repair-workorder.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-official-still-visual-repair.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-owned-motion-materializer-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-owned-motion-materializer.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-platform-duration-contract-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-platform-duration-contract.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-platform-native-pack-repair.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-platform-variant-materializer.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-production-cutover-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-production-cutover.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-production-render-materializer-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-production-render-materializer.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-proof-package.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-public-copy-qa.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-public-copy-repair.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-real-motion-materializer.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-render-input-workorder-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-render-input-workorder.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-rss-proof-ingest.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-sfx-evidence-repair-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-sfx-evidence-repair.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-sfx-rerender-workorder-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-sfx-rerender-workorder.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal-storefront-visual-repair.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal04-human-held-source-consolidation.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal04-operator-source-intake-queue.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal04-operator-source-submission-preflight.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal05-narration-readiness.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal06-rights-ledger-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal06-rights-ledger.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal07-director-brain-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal07-director-brain.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal08-visual-v4-renderer-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal08-visual-v4-renderer.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal09-sound-design-engine-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal09-sound-design-engine.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal10-gold-standard-forensics-engine-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal10-gold-standard-forensics-engine.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal11-retention-intelligence-loop-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal11-retention-intelligence-loop.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal12-experimentation-engine-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal12-experimentation-engine.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal13-multi-platform-publisher-engine-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal13-multi-platform-publisher-engine.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal14-social-derivatives-engine-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal14-social-derivatives-engine.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal15-affiliate-intelligence-engine-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal15-affiliate-intelligence-engine.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal16-landing-page-engine-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal16-landing-page-engine.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal17-platform-policy-engine-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal17-platform-policy-engine.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal18-finance-crypto-firewall-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal18-finance-crypto-firewall.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal19-autonomy-control-tower-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal19-autonomy-control-tower.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal20-anti-spam-uniqueness-engine-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal20-anti-spam-uniqueness-engine.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal21-observability-dashboard-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal21-observability-dashboard.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal22-versioned-prompt-model-registry-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal22-versioned-prompt-model-registry.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal23-security-secrets-deployment-safety-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal23-security-secrets-deployment-safety.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal24-corrections-retractions-takedowns-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal24-corrections-retractions-takedowns.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal25-sponsor-readiness-pack-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal25-sponsor-readiness-pack.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal26-creator-studio-brand-system-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal26-creator-studio-brand-system.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal27-definition-missing-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal27-definition-missing.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal28-definition-missing-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal28-definition-missing.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal29-definition-missing-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal29-definition-missing.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal30-definition-missing-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal30-definition-missing.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal31-definition-missing-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal31-definition-missing.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal32-definition-missing-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal32-definition-missing.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal33-definition-missing-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal33-definition-missing.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal34-definition-missing-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal34-definition-missing.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal35-definition-missing-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal35-definition-missing.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal36-definition-missing-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal36-definition-missing.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal37-definition-missing-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal37-definition-missing.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal38-definition-missing-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal38-definition-missing.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal39-definition-missing-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal39-definition-missing.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal40-definition-missing-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal40-definition-missing.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal41-definition-missing-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal41-definition-missing.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal42-definition-missing-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/goal42-definition-missing.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/gold-standard-reference-library.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/health-public-metadata.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/incident-guard.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/ingrid-publish-fixes.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/instagram-reel-polling.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/intelligence-pass.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/legacy-dashboard.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/llm-client.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/llm-key.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/local-cutover-plan.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/local-env-cleanup-plan.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/local-gpu-pressure.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/local-media-repair.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/local-mode-doctor.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/local-posting-readiness.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/local-primary-readiness.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/local-proof-tts-limits.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/local-restart-readiness.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/local-resume-plan.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/local-script-extension.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/local-tts-batch-recovery.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/local-tts-doctor.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/local-tts-failures.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/local-tts-overnight-report.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/local-tts-proof-mastering.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/local-tts-proof-promoter.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/local-tts-proof-report-loader.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/local-tts-publish-refresh.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/local-tts-readiness.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/local-tts-supervisor.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/local-tts-voice-config.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/local-tunnel-readiness.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/local-video-timeline.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/local-whisper-word-aligner.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/longform-production-dossier.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/media-house-benchmark.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/media-paths.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/monetisation-readiness.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/motion-acquisition-pro.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/next-publish-candidates.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/observability-queue-stats.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/official-direct-media-discovery.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/official-media-reference-preflight.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/official-source-intake.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/official-trailer-clip-refs.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/official-trailer-reference-report-loader.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/official-trailer-reference-resolver.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/official-trailer-segment-validator.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/overlay-card-geometry.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/overnight-workshop.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/pipeline-backlog.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/platform-outcomes.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/platform-readiness-doctor.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/platform-upload-preflight.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/platform-video-qa.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/processor-json-parse.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/processor-short-runtime.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/produce-notification.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/public-metadata-qa.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/public-news-exposure.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/public-output-manifest.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/public-route-rate-limits.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/public-static-mounts.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/publish-block.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/publish-blocker-resolution.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/publish-cadence.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/publish-dispatch-policy.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/publish-readiness.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/publish-row-repair.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/publish-status-semantics.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/publish-summary.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/publish-window-policy.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/publisher-qa-persistence.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/pulse-topicality-gate.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/quality-redesign.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/queue-inspect-report.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/render-audio-segment-qa.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/render-contract.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/render-crop-source.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/render-health-digest.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/render-image-brightness-selection.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/render-lane-metadata.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/render-regression-2026-04-29.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/retention-intelligence.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/retry.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/revenue-path-engine.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/runtime-build-info.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/script-coherence-audit.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/script-coherence-qa.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/script-failure-reprocess.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/script-lint.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/server-input-validation.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/short-duration-contract.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/short-runtime-planner.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/source-bound-script-writer.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/stabilisation-pass.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/steam-search-candidates.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/still-image-enrichment.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/studio-analytics-loop-paths.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/studio-enterprise-os-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/studio-enterprise-os-dashboard-api.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/studio-enterprise-os.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/studio-ffmpeg-scene-renderer.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/studio-governance-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/studio-governance-engine.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/studio-governance-preflight.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/studio-short-engine-v1.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/studio-v2-build-quote-card.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/studio-v2-card-treatment.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/studio-v2-ffmpeg-scene-renderer.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/studio-v2-flash-lane-preflight.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/studio-v2-forensic-qa.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/studio-v2-motion-gap.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/studio-v2-pilot-readiness-gate.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/studio-v2-promotion-packet.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/studio-v2-proof-audio-discovery.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/studio-v2-proof-candidates.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/studio-v2-proof-official-clip-safety.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/studio-v2-proof-render-safety.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/studio-v2-regressions.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/studio-v2-render-helpers.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/studio-v2-still-deck-ingestion.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/studio-v2-still-deck-promotion.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/studio-v2-story-card-builder.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/studio-v2-subtitle-layer.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/studio-v21-rejection-gate.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/studio-v21-review-batch.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/studio-v3-still-deck-wrapper.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/studio-v4-canonical-policy.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/studio-v4-director-brain.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/studio-v4-footage-empire.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/studio-v4-licensed-direct-media-acquisition.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/studio-v4-motion-pack.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/studio-v4-proof-render.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/studio-v4-render-bridge.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/studio-v4-render-clip-materializer.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/studio-v4-sfx-library-ingest-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/studio-v4-sfx-library-ingest.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/studio-v4-sfx-source-plan-cli.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/studio-v4-sfx-source-registry.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/studio-v4-sound-transition-planner.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/studio-v4-source-deficit.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/studio-v4-source-family-acquisition.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/subtitle-timing.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/system-doctor.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/text-hygiene.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/tiktok-auth-check.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/tiktok-automation-report.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/tiktok-browser-fallback.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/tiktok-cover-candidates.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/tiktok-exports.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/tiktok-fresh-dispatch-pack.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/tiktok-inbox-env-order.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/tiktok-recovery.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/tiktok-stable-route-doctor.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/tiktok-token-maintenance.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/timing-report-cadence.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/trusted-footage-registry.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/tts-pronunciation.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/video-qa.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/viral-script-intelligence.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/visual-content-prescan.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/visual-evidence-classifier.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/visual-evidence-repair-planner.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/visual-v3-overlays.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/visual-v3-proof-tool.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/voice-shootout.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/voicebox-client.test.js"
+    },
+    {
+      "status": "M",
+      "path": "tests/services/youtube-affiliate-description.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/youtube-analytics-ingestion-packet.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/youtube-auth-timeout.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tests/services/youtube-metadata-incident.test.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/alternate-official-source-handoff.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/analytics-capability-doctor.js"
+    },
+    {
+      "status": "M",
+      "path": "tools/asset-acquisition-pro.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/bridge-candidate-promotion.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/bridge-live-rights-repair.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/bridge-preflight-stamp-repair.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/commercial-learning-loop.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/continuous-learning-loop.js"
+    },
+    {
+      "status": "M",
+      "path": "tools/controlled-frame-extraction-plan.js"
+    },
+    {
+      "status": "M",
+      "path": "tools/controlled-frame-extraction-worker.js"
+    },
+    {
+      "status": "M",
+      "path": "tools/diagnostics/fb-page-content-probe.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/empire-readiness-audit.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/epidemic-download-intake.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/epidemic-sound-intake.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/final-audio-repair.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/final-voice-audit.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/flash-lane-current-state.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/flash-lane-downgrade-plan.js"
+    },
+    {
+      "status": "M",
+      "path": "tools/flash-lane-footage-acquisition.js"
+    },
+    {
+      "status": "M",
+      "path": "tools/flash-lane-voice-workbench.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal-affiliate-relevance-repair.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal-audio-timestamp-materializer.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal-audio-timestamp-workbench.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal-audio-voice-metadata-repair.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal-baseline-audit.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal-batch-packages.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal-breaking-news-fast-lane.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal-commercial-disclosure-repair.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal-daily-cadence.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal-dry-run-publish.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal-duration-variant-repair.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal-human-review-queue.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal-landing-attribution-repair.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal-normal-duration-repair-workorder.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal-official-still-visual-repair.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal-owned-motion-materializer.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal-platform-duration-contract.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal-platform-native-pack-repair.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal-platform-variant-materializer.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal-production-cutover.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal-production-render-materializer.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal-proof-package.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal-public-copy-repair.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal-real-motion-materializer.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal-render-input-workorder.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal-sfx-evidence-repair.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal-sfx-rerender-workorder.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal-storefront-visual-repair.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal04-human-held-source-consolidation.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal04-operator-source-intake-queue.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal04-operator-source-submission-preflight.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal05-narration-readiness.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal06-rights-ledger.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal07-director-brain.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal08-visual-v4-renderer.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal09-sound-design-engine.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal10-gold-standard-forensics-engine.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal11-retention-intelligence-loop.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal12-experimentation-engine.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal13-multi-platform-publisher-engine.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal14-social-derivatives-engine.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal15-affiliate-intelligence-engine.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal16-landing-page-engine.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal17-platform-policy-engine.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal18-finance-crypto-firewall.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal19-autonomy-control-tower.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal20-anti-spam-uniqueness-engine.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal21-observability-dashboard.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal22-versioned-prompt-model-registry.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal23-security-secrets-deployment-safety.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal24-corrections-retractions-takedowns.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal25-sponsor-readiness-pack.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal26-creator-studio-brand-system.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal27-definition-missing.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal28-definition-missing.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal29-definition-missing.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal30-definition-missing.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal31-definition-missing.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal32-definition-missing.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal33-definition-missing.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal34-definition-missing.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal35-definition-missing.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal36-definition-missing.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal37-definition-missing.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal38-definition-missing.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal39-definition-missing.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal40-definition-missing.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal41-definition-missing.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/goal42-definition-missing.js"
+    },
+    {
+      "status": "M",
+      "path": "tools/intelligence/run-comment-digest.js"
+    },
+    {
+      "status": "M",
+      "path": "tools/intelligence/run-monetisation-snapshot.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/local-cutover-plan.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/local-env-cleanup-plan.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/local-media-repair.js"
+    },
+    {
+      "status": "M",
+      "path": "tools/local-mode-doctor.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/local-posting-readiness.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/local-primary-readiness.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/local-restart-readiness.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/local-resume-plan.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/local-script-extension.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/local-tts-doctor.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/local-tts-overnight-report.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/local-tts-proof-mastering.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/local-tts-proof-promoter.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/local-tts-publish-refresh.js"
+    },
+    {
+      "status": "M",
+      "path": "tools/local-tts-smoke.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/local-tunnel-readiness.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/local-video-timeline.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/local_tts_voice_audition.py"
+    },
+    {
+      "status": "A",
+      "path": "tools/local_whisper_word_align.py"
+    },
+    {
+      "status": "A",
+      "path": "tools/longform-production-dossier.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/next-publish-candidates.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/official-direct-media-discovery.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/official-source-intake.js"
+    },
+    {
+      "status": "M",
+      "path": "tools/official-trailer-reference-resolver.js"
+    },
+    {
+      "status": "M",
+      "path": "tools/official-trailer-segment-validator.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/pipeline-backlog.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/platform-readiness-doctor.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/publish-blocker-resolution.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/publish-cadence-doctor.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/publish-row-repair-plan.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/render-audio-segment-audit.js"
+    },
+    {
+      "status": "M",
+      "path": "tools/render-health.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/reprocess-script-failures.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/retention-intelligence.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/revenue-paths.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/run-goal.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/script-coherence-audit.js"
+    },
+    {
+      "status": "M",
+      "path": "tools/social-platform-operations.js"
+    },
+    {
+      "status": "M",
+      "path": "tools/still-image-enrichment.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/studio-enterprise-os.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/studio-governance.js"
+    },
+    {
+      "status": "M",
+      "path": "tools/studio-v2-analytics-loop.js"
+    },
+    {
+      "status": "M",
+      "path": "tools/studio-v2-build-quote-card.js"
+    },
+    {
+      "status": "M",
+      "path": "tools/studio-v2-build-story-cards.js"
+    },
+    {
+      "status": "M",
+      "path": "tools/studio-v2-forensic-qa.js"
+    },
+    {
+      "status": "M",
+      "path": "tools/studio-v2-local-render.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/studio-v2-motion-gap.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/studio-v2-pilot-readiness-gate.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/studio-v2-promotion-packet.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/studio-v2-proof-candidates.js"
+    },
+    {
+      "status": "M",
+      "path": "tools/studio-v2-render.js"
+    },
+    {
+      "status": "M",
+      "path": "tools/studio-v2-still-deck-ingestion.js"
+    },
+    {
+      "status": "M",
+      "path": "tools/studio-v21-render.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/studio-v3-render.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/studio-v3-still-deck.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/studio-v4-licensed-direct-media.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/studio-v4-motion-pack.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/studio-v4-proof-render.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/studio-v4-sfx-library-ingest.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/studio-v4-sfx-source-plan.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/studio-v4-source-deficit.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/studio-v4-source-family-acquisition.js"
+    },
+    {
+      "status": "M",
+      "path": "tools/tiktok-auth-doctor.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/tiktok-cover-candidates.js"
+    },
+    {
+      "status": "M",
+      "path": "tools/tiktok-dispatch-pack.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/tiktok-fresh-dispatch-pack.js"
+    },
+    {
+      "status": "M",
+      "path": "tools/tiktok-inbox-upload.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/tiktok-overnight-automation-report.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/tiktok-stable-route-doctor.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/tiktok-token-maintenance.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/trusted-footage-registry.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/validate-agent-operating-rules.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/visual-evidence-repair-planner.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/visual-v3-proof.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/voice-shootout.js"
+    },
+    {
+      "status": "A",
+      "path": "tools/youtube-analytics-ingestion-packet.js"
+    },
+    {
+      "status": "M",
+      "path": "tts_server/aligner.py"
+    },
+    {
+      "status": "M",
+      "path": "tts_server/server.py"
+    },
+    {
+      "status": "M",
+      "path": "tts_server/voices.json"
+    },
+    {
+      "status": "M",
+      "path": "tts_server/voxcpm_engine.py"
+    },
+    {
+      "status": "M",
+      "path": "upload_facebook.js"
+    },
+    {
+      "status": "M",
+      "path": "upload_instagram.js"
+    },
+    {
+      "status": "M",
+      "path": "upload_tiktok.js"
+    },
+    {
+      "status": "M",
+      "path": "upload_tiktok_browser.js"
+    },
+    {
+      "status": "M",
+      "path": "upload_twitter.js"
+    },
+    {
+      "status": "M",
+      "path": "upload_youtube.js"
+    },
+    {
+      "status": "A",
+      "path": "voice_benchmark_manifest.json"
+    },
+    {
+      "status": "A",
+      "path": "voice_review_sheet.md"
+    },
+    {
+      "status": "M",
+      "path": "weekly_compile.js"
+    }
+  ],
+  "exclusions": [
+    "output/ is ignored generated proof output",
+    "test/output/ is ignored disposable proof output",
+    "tokens/ and .env are ignored secret material",
+    "Epidemic Sound binary audio under audio/epidemic is ignored; README stays reviewable",
+    "engagement_first_hour_log.json is ignored local analytics scratch data"
+  ]
+}

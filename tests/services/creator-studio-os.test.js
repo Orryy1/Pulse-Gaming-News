@@ -168,6 +168,31 @@ test("Creator Studio OS assigns premium Shorts to the Pulse Flash Lane", () => {
   assert.equal(packet.format_lane_policy.render_rules.clip_dominance_target, 0.55);
   assert.ok(packet.format_lane_policy.qa_gates.includes("approved_voice_required"));
   assert.ok(packet.format_lane_policy.render_rules.visual_backbone.includes("game_footage"));
+  assert.equal(packet.format_lane_policy.hook_discipline.speculative_language, false);
+  assert.equal(packet.format_lane_policy.hook_discipline.concrete_consequence_signal, true);
+  assert.ok(
+    !packet.format_lane_policy.warnings.includes("flash_lane_hook_uses_speculative_language"),
+  );
+});
+
+test("Creator Studio OS flags speculative Flash Lane hooks after analytics warning", () => {
+  const packet = buildProductionPacket(
+    baseStory({
+      id: "flash-speculative-hook",
+      title: "GTA 6 trailer might be closer than expected",
+      hook: "GTA 6 might be getting its next trailer soon.",
+      body: "Fans are reading into store updates and platform timing, but nothing official has been confirmed.",
+      full_script:
+        "GTA 6 might be getting its next trailer soon. Fans are reading into store updates and platform timing, but nothing official has been confirmed.",
+    }),
+  );
+
+  assert.equal(packet.format_lane_policy.lane_id, "pulse_flash_short");
+  assert.equal(packet.format_lane_policy.hook_discipline.speculative_language, true);
+  assert.ok(
+    packet.format_lane_policy.warnings.includes("flash_lane_hook_uses_speculative_language"),
+  );
+  assert.equal(packet.format_lane_policy.readiness_colour, "AMBER");
 });
 
 test("Creator Studio OS assigns release radar stories to the Pulse Briefing Lane", () => {
@@ -266,6 +291,23 @@ test("Creator Studio OS flags raw HTML entities before public render", () => {
 
   assert.equal(packet.fact_check_report.text_hygiene.severity, "warn");
   assert.ok(packet.fact_check_report.text_hygiene.issues.includes("raw_html_entity"));
+});
+
+test("Creator Studio OS repairs Pokemon mojibake and keeps the canonical accent", () => {
+  const packet = buildProductionPacket(
+    baseStory({
+      id: "pokemon-encoding",
+      title: "Pok\u00c3\u00a9mon &amp; Xbox event gets confirmed",
+      hook: "Pokemon just got a confirmed Xbox event update.",
+      full_script: "Pok\u00c3\u00a9mon just got a confirmed Xbox event update.",
+    }),
+  );
+
+  assert.equal(packet.story_dossier.title, "Pok\u00e9mon & Xbox event gets confirmed");
+  assert.ok(packet.story_dossier.entities.includes("Pok\u00e9mon"));
+  assert.ok(!packet.story_dossier.entities.includes("Pokemon"));
+  assert.ok(packet.fact_check_report.verified_facts[0].includes("Pok\u00e9mon"));
+  assert.doesNotMatch(packet.fact_check_report.verified_facts[0], /Pok\u00c3|&amp;/);
 });
 
 test("Creator Studio OS reports TikTok API blocked with dispatch pack required", () => {

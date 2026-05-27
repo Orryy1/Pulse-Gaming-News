@@ -4,9 +4,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 // Coverage for the Task 4 publish_status semantics fix:
-//   - publish_status = "published" only when all 4 core video
-//     platforms (YouTube, TikTok, Instagram Reel, Facebook Reel)
-//     have a real post id.
+//   - publish_status = "published" only when all required core video
+//     platforms have a real post id.
+//   - TikTok is normally required, but an explicit local operator
+//     disable switch makes YT/IG/FB completion enough to avoid retry loops.
 //   - Twitter/X is optional — skipped Twitter must never hold a
 //     story in "partial".
 //   - Fallback cards (IG Story, FB Card, X image) never flip
@@ -30,15 +31,18 @@ function classify({
   tiktok_post_id,
   instagram_media_id,
   facebook_post_id,
-}) {
+}, env = {}) {
   const isReal = (id) =>
     typeof id === "string" && id.length > 0 && !id.startsWith("DUPE_");
+  const tiktokDisabled = /^(false|0|no|off)$/i.test(
+    String(env.TIKTOK_ENABLED || env.TIKTOK_AUTO_UPLOAD_ENABLED || "").trim(),
+  );
   const core = [
     youtube_post_id,
-    tiktok_post_id,
     instagram_media_id,
     facebook_post_id,
   ];
+  if (!tiktokDisabled) core.splice(1, 0, tiktok_post_id);
   const done = core.filter(isReal).length;
   if (done >= core.length) return "published";
   if (done > 0) return "partial";
@@ -47,27 +51,24 @@ function classify({
 
 // ---------- source-level pin ----------
 
-test("publisher.js: uses the 4-core (YT/TT/IG/FB) isRealPostId rule", () => {
+test("publisher.js: uses the required-core isRealPostId rule", () => {
   // Fail loudly if someone reintroduces the old "5 including
   // Twitter" rule. The fix we're testing is specifically the
   // removal of twitter_post_id from the count.
   assert.match(
     src,
-    /const coreIds = \[\s*story\.youtube_post_id,\s*story\.tiktok_post_id,\s*story\.instagram_media_id,\s*story\.facebook_post_id,\s*\];/m,
-    "publisher.js must count ONLY 4 core platforms (no twitter_post_id)",
-  );
-  assert.match(
-    src,
     /function isRealPostId\(id\)/,
     "isRealPostId helper must exist",
   );
-  // And explicitly: twitter_post_id must NOT appear in the
-  // `coreIds` array.
-  const coreIdsBlock = src.match(/const coreIds = \[[^\]]*\]/s)?.[0] || "";
+  assert.match(src, /function isTikTokOperatorDisabled\(/);
+  assert.match(src, /corePostIdsForStory\(story, process\.env\)/);
+  const coreIdsBlock =
+    src.match(/function corePostIdsForStory\([\s\S]*?function countStoryPlatformsDone/)?.[0] ||
+    "";
   assert.strictEqual(
     coreIdsBlock.includes("twitter_post_id"),
     false,
-    "coreIds must not include twitter_post_id",
+    "required core IDs must not include twitter_post_id",
   );
 });
 
@@ -97,6 +98,21 @@ test("YT/IG/FB done, TikTok failed (null) → partial", () => {
   );
 });
 
+
+test("YT/IG/FB done with TikTok operator-disabled -> published", () => {
+  assert.strictEqual(
+    classify(
+      {
+        youtube_post_id: "yt_abc",
+        tiktok_post_id: null,
+        instagram_media_id: "ig_abc",
+        facebook_post_id: "fb_abc",
+      },
+      { TIKTOK_ENABLED: "false" },
+    ),
+    "published",
+  );
+});
 test("zero core done → failed", () => {
   assert.strictEqual(
     classify({
@@ -172,11 +188,9 @@ test("partial + fallback card success does not flip publish_status", () => {
   assert.strictEqual(classify(input), "partial");
 });
 
-test("TikTok cannot be configured optional (regression pin)", () => {
-  // The brief explicitly calls out that TikTok is core (not
-  // optional) per the 2026-04-19 priority reset. Walk the
-  // source to ensure the CORE_PLATFORMS list in lib/job-handlers
-  // still lists TikTok.
+test("TikTok remains visible in Discord core line even when locally skipped", () => {
+  // The local skip switch only affects retry/status semantics in
+  // publisher.js. The operator summary should still show TikTok.
   const handlers = fs.readFileSync(
     path.join(__dirname, "..", "..", "lib", "job-handlers.js"),
     "utf8",

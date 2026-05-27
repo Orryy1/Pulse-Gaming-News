@@ -22,6 +22,10 @@ const { addBreadcrumb, captureException } = require("./lib/sentry");
 const { validateVideo } = require("./lib/validate");
 const db = require("./lib/db");
 const mediaPaths = require("./lib/media-paths");
+const {
+  assertDirectUploadAllowed,
+  buildDirectUploadPolicy,
+} = require("./lib/services/direct-upload-policy");
 
 dotenv.config({ override: true });
 
@@ -448,8 +452,21 @@ module.exports = {
 };
 
 if (require.main === module) {
-  uploadAll().catch((err) => {
+  try {
+    const directPolicy = buildDirectUploadPolicy({ platform: "twitter" });
+    assertDirectUploadAllowed(directPolicy);
+    if (directPolicy.mode !== "actual_upload") {
+      console.log(
+        `[twitter] Direct upload ${directPolicy.mode}: no upload dispatched`,
+      );
+    } else {
+      uploadAll().catch((err) => {
+        console.log(`[twitter] ERROR: ${err.message}`);
+        process.exit(1);
+      });
+    }
+  } catch (err) {
     console.log(`[twitter] ERROR: ${err.message}`);
     process.exit(1);
-  });
+  }
 }

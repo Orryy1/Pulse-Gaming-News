@@ -28,6 +28,9 @@ const path = require("node:path");
 
 const PUBLISHER_PATH = path.join(__dirname, "..", "..", "publisher.js");
 const SRC = fs.readFileSync(PUBLISHER_PATH, "utf8");
+const RUN_PATH = path.join(__dirname, "..", "..", "run.js");
+const RUN_SRC = fs.readFileSync(RUN_PATH, "utf8");
+let previousPublishCadenceWarnOnly;
 
 // ---------- source-scan pins ----------
 
@@ -60,11 +63,29 @@ test("publisher.js: persistQaFail helper writes qa_failed + publish_status=faile
   );
 });
 
+test("publisher.js: Discord markers are persisted immediately after successful sends", () => {
+  assert.match(
+    SRC,
+    /markVideoDropPosted\(story\);\s*await\s+db\.upsertStory\(story\);/,
+    "video-drop marker must be persisted before any later publisher work can crash",
+  );
+  assert.match(
+    SRC,
+    /markStoryPollPosted\(story\);\s*await\s+db\.upsertStory\(story\);/,
+    "story-poll marker must be persisted before any later publisher work can crash",
+  );
+});
+
 test("publisher.js: runPreflightQa runs content-QA then video-QA and returns structured pass/fail", () => {
   const idx = SRC.indexOf("async function runPreflightQa(");
   assert.ok(idx > 0, "runPreflightQa helper must exist");
   const block = SRC.slice(idx, idx + 5500);
   assert.match(block, /runContentQa/, "runPreflightQa must call content-QA");
+  assert.match(
+    block,
+    /blockThinVisuals:\s*true/,
+    "runPreflightQa must hard-block thin visual renders before upload",
+  );
   assert.match(block, /runVideoQa/, "runPreflightQa must call video-QA");
   assert.match(
     block,
@@ -88,6 +109,34 @@ test("publisher.js: runPreflightQa runs content-QA then video-QA and returns str
   );
 });
 
+test("publisher.js: legacy batch publish delegates to canonical publishNextStory before raw uploadAll calls", () => {
+  const idx = SRC.indexOf("async function publishToAllPlatforms");
+  assert.ok(idx > 0, "publishToAllPlatforms must exist");
+  const block = SRC.slice(idx, idx + 5000);
+  const delegateIdx = block.indexOf("await publishNextStory");
+  const returnIdx = block.indexOf("return {");
+  const rawBatchIdx = block.indexOf("uploadAll");
+  assert.ok(delegateIdx > 0, "legacy publish must delegate to publishNextStory()");
+  assert.ok(returnIdx > delegateIdx, "legacy publish must return the canonical summary");
+  assert.ok(
+    rawBatchIdx === -1 || rawBatchIdx > returnIdx,
+    "raw uploadAll batch calls must be unreachable behind the canonical return",
+  );
+});
+
+test("publisher.js: retry QA bypass cannot bypass strict approved-voice mode", () => {
+  const idx = SRC.indexOf("process.env.PUBLISH_RETRY_QA_BYPASS");
+  assert.ok(idx > 0, "retry bypass branch must exist");
+  const block = SRC.slice(idx - 800, idx + 1200);
+  assert.match(block, /strictVoiceQa/, "retry bypass branch must calculate strict voice QA");
+  assert.match(block, /!strictVoiceQa/, "retry bypass must be disabled when strict voice QA is active");
+  assert.match(
+    block,
+    /publishCandidateBlocker\(candidate,\s*\{\s*strictContentQa:\s*true/,
+    "retry bypass must still respect strict content/readiness blockers",
+  );
+});
+
 test("publisher.js: publishNextStory selector skips qa_failed and publish_status=failed", () => {
   const selectorIdx = SRC.indexOf(
     "Find stories that still need publishing to at least one platform",
@@ -103,6 +152,190 @@ test("publisher.js: publishNextStory selector skips qa_failed and publish_status
     block,
     /if\s*\(\s*s\.publish_status\s*===\s*["']failed["']\s*\)\s*return\s+false/,
     "selector must skip stories with publish_status === 'failed'",
+  );
+  assert.match(
+    block,
+    /if\s*\(\s*storyIsStaleUnpublishedBacklog\(s\)\s*\)\s*return\s+false/,
+    "selector must skip stale never-published backlog rows by default",
+  );
+  assert.match(
+    SRC,
+    /env\.ALLOW_STALE_BACKLOG_PUBLISH\s*===\s*["']true["']/,
+    "stale backlog guard must have an explicit operator override",
+  );
+  assert.match(
+    SRC,
+    /if\s*\(\s*storyIsRetry\(s\)\s*\)\s*return\s+false/,
+    "stale backlog guard must not block partial publish retries",
+  );
+});
+
+test("publisher.js: optional PUBLISH_STORY_IDS pins the selector without changing default behaviour", () => {
+  const publisher = require("../../publisher.js");
+  const priv = publisher._private;
+
+  assert.deepEqual(priv.parsePublishStoryIds({}), []);
+  assert.deepEqual(
+    priv.parsePublishStoryIds({ PUBLISH_STORY_IDS: " 1tbdx3b, rss_123 ,, " }),
+    ["1tbdx3b", "rss_123"],
+  );
+  assert.equal(priv.storyMatchesPublishStoryIds({ id: "any" }, {}), true);
+  assert.equal(
+    priv.storyMatchesPublishStoryIds(
+      { id: "1tbdx3b" },
+      { PUBLISH_STORY_IDS: "1tbdx3b" },
+    ),
+    true,
+  );
+  assert.equal(
+    priv.storyMatchesPublishStoryIds(
+      { id: "other" },
+      { PUBLISH_STORY_IDS: "1tbdx3b" },
+    ),
+    false,
+  );
+});
+
+test("publisher.js: publish selector ranking follows analytics-aware next-candidate score", () => {
+  const publisher = require("../../publisher.js");
+  const priv = publisher._private;
+  const analyticsText =
+    "Tomorrow: Front corporate drama with named antagonists and concrete outcomes.";
+  const corporate = {
+    id: "corporate",
+    title: "Xbox boss Asha Sharma confirms Discord partnership after Game Pass price cut",
+    approved: true,
+    auto_approved: true,
+    exported_path: "output/final/corporate.mp4",
+    duration_seconds: 68,
+    breaking_score: 70,
+    score: 70,
+  };
+  const generic = {
+    id: "generic",
+    title: "New trailer shows another vague update that could arrive later",
+    approved: true,
+    auto_approved: true,
+    exported_path: "output/final/generic.mp4",
+    duration_seconds: 68,
+    breaking_score: 95,
+    score: 95,
+  };
+
+  const ranked = priv.sortPublishReadyStories([generic, corporate], {
+    analyticsText,
+  });
+
+  assert.equal(ranked[0].id, "corporate");
+  assert.ok(
+    priv.scorePublishSelectionStory(corporate, analyticsText) >
+      priv.scorePublishSelectionStory(generic, analyticsText),
+  );
+});
+
+test("publisher.js: Instagram Story fallback uses the exported pending-timeout classifier safely", () => {
+  const storyFallbackIdx = SRC.indexOf("Instagram Stories (static card");
+  assert.ok(storyFallbackIdx > 0, "Instagram Story fallback block must exist");
+  const block = SRC.slice(storyFallbackIdx, storyFallbackIdx + 2200);
+  assert.match(
+    block,
+    /isInstagramPendingProcessingTimeout/,
+    "fallback block must import the existing upload_instagram timeout classifier",
+  );
+  assert.match(
+    block,
+    /typeof\s+isInstagramPendingProcessingTimeoutForStory\s*===\s*["']function["']/,
+    "fallback error classification must guard the imported helper before calling it",
+  );
+  assert.match(
+    block,
+    /isInstagramPendingProcessingTimeoutForStory\(err\)\s*\?\s*["']accepted_processing["']\s*:\s*["']failed["']/,
+    "fallback pending-processing errors must be non-fatal and classified as accepted_processing",
+  );
+});
+
+test("publisher.js: core publish status is persisted before lower-reach fallback cards", () => {
+  const statusIdx = SRC.indexOf("Set publish_status from CORE video-platform outcomes only");
+  const fallbackIdx = SRC.indexOf("Story card image distribution");
+  assert.ok(statusIdx > 0, "core publish status block must exist");
+  assert.ok(fallbackIdx > statusIdx, "fallback card block must follow core status calculation");
+  const between = SRC.slice(statusIdx, fallbackIdx);
+  assert.match(
+    between,
+    /coreDone\s*>=\s*coreTotal[\s\S]*story\.publish_status\s*=\s*["']published["']/,
+    "core status block must calculate published/partial/failed before fallback work",
+  );
+  assert.match(
+    between,
+    /await\s+db\.upsertStory\(story\)/,
+    "core publish state must be upserted before any fallback card uploads can throw",
+  );
+});
+
+test("run.js: publish accepts --story-id/--story and passes storyId without bypassing publish gates", () => {
+  assert.match(
+    RUN_SRC,
+    /function\s+parsePublishStoryIdArg/,
+    "run.js should parse targeted publish arguments explicitly",
+  );
+  assert.match(
+    RUN_SRC,
+    /--story-id/,
+    "run.js publish usage should expose --story-id",
+  );
+  assert.match(
+    RUN_SRC,
+    /--story/,
+    "run.js publish usage should expose --story",
+  );
+  assert.match(
+    RUN_SRC,
+    /process\.env\.PUBLISH_STORY_IDS\s*=\s*storyId/,
+    "targeted publish should set the existing PUBLISH_STORY_IDS selector for the current process",
+  );
+  assert.match(
+    RUN_SRC,
+    /publishToAllPlatforms\(\{\s*dispatchSource:\s*["']cli_publish["'][\s\S]*storyId/,
+    "run.js must pass storyId into the canonical publisher path",
+  );
+  assert.doesNotMatch(
+    RUN_SRC,
+    /allowManualOverride:\s*true/,
+    "targeted publish must not opt into manual cadence/window overrides",
+  );
+});
+
+test("run.js: produce accepts --story-id and routes through existing produce selectors", () => {
+  assert.match(
+    RUN_SRC,
+    /async function runProduce\(\{\s*storyId\s*=\s*null\s*\}\s*=\s*\{\}\)/,
+    "run.js produce should accept an optional storyId",
+  );
+  assert.match(
+    RUN_SRC,
+    /process\.env\.PRODUCE_STORY_IDS\s*=\s*storyId/,
+    "targeted produce should set the existing PRODUCE_STORY_IDS selector",
+  );
+  assert.match(
+    RUN_SRC,
+    /case\s+["']produce["']:[\s\S]*parsePublishStoryIdArg\(process\.argv\.slice\(3\)\)/,
+    "produce should parse the same --story-id/--story form as publish",
+  );
+});
+
+test("publisher.js: duplicate published-story gate runs before upload", () => {
+  const idx = SRC.indexOf("findPublishedTitleDuplicate(candidate, stories)");
+  assert.ok(idx > 0, "published duplicate gate must exist in candidate loop");
+  const block = SRC.slice(idx, idx + 1200);
+  assert.match(
+    block,
+    /published_duplicate_story:/,
+    "duplicate gate must persist a clear publish_error reason",
+  );
+  assert.match(
+    block,
+    /continue;/,
+    "duplicate gate must skip to the next candidate without uploading",
   );
 });
 
@@ -120,7 +353,7 @@ test("publisher.js: multi-candidate loop uses MAX_PUBLISH_CANDIDATES_PER_WINDOW 
   // And the main loop must pull its slice from that constant.
   assert.match(
     SRC,
-    /ready\.slice\(0,\s*MAX_PUBLISH_CANDIDATES_PER_WINDOW\)/,
+    /sortedReady\.slice\(0,\s*MAX_PUBLISH_CANDIDATES_PER_WINDOW\)/,
     "multi-candidate loop must slice the ready list with the cap constant",
   );
   // No-safe-candidate return shape must include the fields the
@@ -142,6 +375,8 @@ const NOTIFY_RESOLVED = require.resolve("../../notify.js");
 const SENTRY_RESOLVED = require.resolve("../../lib/sentry.js");
 const PUBLISH_BLOCK_RESOLVED =
   require.resolve("../../lib/services/publish-block.js");
+const PUBLISH_WINDOW_POLICY_RESOLVED =
+  require.resolve("../../lib/services/publish-window-policy.js");
 const ENGAGEMENT_RESOLVED = require.resolve("../../engagement.js");
 const BLOG_RESOLVED = require.resolve("../../blog/generator.js");
 const DISCORD_AUTO_POST_RESOLVED =
@@ -192,6 +427,7 @@ function stubDownstreamPublisherDeps() {
     shouldPostStoryPoll: () => false,
     markVideoDropPosted: () => {},
     markStoryPollPosted: () => {},
+    isPublishFailureOrReviewBlocked: () => false,
   });
 }
 
@@ -200,6 +436,7 @@ function clearPublisherCache() {
   // live in require.cache and are picked up by publisher's top-level
   // requires on the next load — if we delete them here we'd lose the
   // stubs.
+  delete require.cache[PUBLISH_WINDOW_POLICY_RESOLVED];
   delete require.cache[PUBLISHER_RESOLVED];
 }
 
@@ -247,6 +484,9 @@ function setupMocks({
     },
   });
   stubModule(VQA_RESOLVED, {
+    buildVideoQaOptionsForStory() {
+      return {};
+    },
     async runVideoQa() {
       return vqaResult;
     },
@@ -350,6 +590,9 @@ function setupMocksPerStory({
     },
   });
   stubModule(VQA_RESOLVED, {
+    buildVideoQaOptionsForStory() {
+      return {};
+    },
     async runVideoQa() {
       return vqaResult;
     },
@@ -401,11 +644,18 @@ function setupMocksPerStory({
 }
 
 beforeEach(() => {
+  previousPublishCadenceWarnOnly = process.env.PUBLISH_CADENCE_WARN_ONLY;
+  process.env.PUBLISH_CADENCE_WARN_ONLY = "true";
   delete process.env.USE_SQLITE;
   delete process.env.USE_CANONICAL_DEDUPE;
 });
 
 afterEach(() => {
+  if (previousPublishCadenceWarnOnly === undefined) {
+    delete process.env.PUBLISH_CADENCE_WARN_ONLY;
+  } else {
+    process.env.PUBLISH_CADENCE_WARN_ONLY = previousPublishCadenceWarnOnly;
+  }
   clearPublisherCache();
 });
 
@@ -566,15 +816,27 @@ test("publishNextStory: platform-video-QA fail persists before any uploader fire
 test("multi-candidate: first QA-fails, second passes — second uploads, qa_skipped_count=1", async () => {
   const bad = {
     id: "rss_bad",
-    title: "Stale mp4",
+    title: "Xbox boss confirms Discord partnership after Game Pass price cut",
     approved: true,
     exported_path: "/tmp/bad.mp4",
+    breaking_score: 100,
   };
   const good = {
     id: "rss_good",
-    title: "Healthy mp4",
+    title: "Metroid Prime 4 Keeps Its Release Window",
     approved: true,
     exported_path: "/tmp/good.mp4",
+    breaking_score: 1,
+    canonical_subject: "Metroid Prime 4",
+    canonical_game: "Metroid Prime 4",
+    primary_source: "Nintendo",
+    source_card_label: "Nintendo",
+    full_script:
+      "Metroid Prime 4 keeps its release window, and that matters because Nintendo now has to show players what the next trailer actually proves. The useful watch point is simple: combat clarity, Switch 2 performance and a firm launch date. Follow Pulse Gaming so you never miss a beat.",
+    tts_script:
+      "Metroid Prime 4 keeps its release window, and that matters because Nintendo now has to show players what the next trailer actually proves. The useful watch point is simple: combat clarity, Switch 2 performance and a firm launch date. Follow Pulse Gaming so you never miss a beat.",
+    description:
+      "Nintendo still has Metroid Prime 4 in the release conversation. Source: Nintendo.",
   };
   // Stub content-QA: fail for `bad.id`, pass for `good.id`.
   const { publishNextStory } = setupMocksPerStory({
@@ -599,7 +861,7 @@ test("multi-candidate: first QA-fails, second passes — second uploads, qa_skip
 
   // Good story got published — result has the normal success shape
   assert.strictEqual(result.no_safe_candidate, undefined);
-  assert.strictEqual(result.title, "Healthy mp4");
+  assert.strictEqual(result.title, "Metroid Prime 4 Keeps Its Release Window");
   assert.strictEqual(result.qa_skipped_count, 1);
   assert.ok(result.qa_skipped && result.qa_skipped.length === 1);
   assert.strictEqual(result.qa_skipped[0].id, "rss_bad");
@@ -699,9 +961,10 @@ test("multi-candidate: cap stops the loop at MAX (5) even if more candidates exi
   assert.notStrictEqual(unSeen7.qa_failed, true);
 });
 
-test("multi-candidate: partial retry candidate is taken immediately (QA skipped, uploaders fire)", async () => {
-  // Partial retry: youtube already done, others missing. isRetry=true
-  // means QA is skipped (artefacts known-good from first publish).
+test("multi-candidate: partial retry candidate still runs QA before missing-platform uploads", async () => {
+  // Partial retry: YouTube already done, others missing. It still
+  // needs current QA because local cutover must not reuse stale or
+  // bad-voice artefacts just because one platform succeeded earlier.
   const partial = {
     id: "rss_partial_retry",
     title: "Retry me",
@@ -713,11 +976,10 @@ test("multi-candidate: partial retry candidate is taken immediately (QA skipped,
     instagram_media_id: null,
     facebook_post_id: null,
   };
-  // Even if QA stub would fail, the retry path must not run it.
   const { publishNextStory } = setupMocks({
     cqaResult: {
       result: "fail",
-      failures: ["WOULD_BLOCK_IF_CALLED"],
+      failures: ["approved_voice:metadata_missing"],
       warnings: [],
     },
     vqaResult: { result: "pass", failures: [], warnings: [] },
@@ -725,17 +987,15 @@ test("multi-candidate: partial retry candidate is taken immediately (QA skipped,
   });
 
   const result = await publishNextStory();
-  // Not treated as no-safe-candidate — retry proceeds.
-  assert.strictEqual(result.no_safe_candidate, undefined);
-  assert.ok(uploaderCalls.length > 0, "retry must invoke uploaders");
+  // Treated as no-safe-candidate because the retry candidate failed fresh QA.
+  assert.strictEqual(result.no_safe_candidate, true);
+  assert.deepStrictEqual(uploaderCalls, [], "retry must not invoke uploaders on QA fail");
 
-  // The partial story was NOT persisted as qa_failed — QA wasn't run.
+  // The partial story is persisted as failed so the scheduler does not keep retrying it.
   const row = dbState.stories.find((s) => s.id === "rss_partial_retry");
-  assert.notStrictEqual(
-    row.qa_failed,
-    true,
-    "retry candidate must not be qa_failed",
-  );
+  assert.strictEqual(row.qa_failed, true);
+  assert.strictEqual(row.publish_status, "failed");
+  assert.match(row.publish_error, /approved_voice:metadata_missing/);
 });
 
 test("multi-candidate: soft warnings on passing candidate do not block publish (classification audit)", async () => {
@@ -744,9 +1004,19 @@ test("multi-candidate: soft warnings on passing candidate do not block publish (
   // get attached to result.qa_warnings for the Discord summary.
   const story = {
     id: "rss_warnings",
-    title: "Warn but ship",
+    title: "Metroid Prime 4 Keeps Its Window",
     approved: true,
     exported_path: "/tmp/w.mp4",
+    canonical_subject: "Metroid Prime 4",
+    canonical_game: "Metroid Prime 4",
+    primary_source: "Nintendo",
+    source_card_label: "Nintendo",
+    full_script:
+      "Metroid Prime 4 keeps its release window, and the pressure is now on Nintendo to show a clean gameplay beat before launch. Players need a date, performance details and a reason to trust the long wait. Follow Pulse Gaming so you never miss a beat.",
+    tts_script:
+      "Metroid Prime 4 keeps its release window, and the pressure is now on Nintendo to show a clean gameplay beat before launch. Players need a date, performance details and a reason to trust the long wait. Follow Pulse Gaming so you never miss a beat.",
+    description:
+      "Nintendo still has Metroid Prime 4 in the release conversation. Source: Nintendo.",
   };
   const { publishNextStory } = setupMocks({
     cqaResult: {
@@ -870,18 +1140,23 @@ test("publishNextStory: selector skips publish_status='failed' stories (all-core
 // flag it. Keeping this replica lets us test the filter exhaustively
 // without having to boot the whole publish pipeline (which fans out
 // into engagement / blog / discord network paths even on retries).
-function selectorFilter(s) {
+function selectorFilter(s, env = {}) {
   if (!s.approved || !s.exported_path) return false;
   if (s.qa_failed === true) return false;
   if (s.publish_status === "failed") return false;
-  const platformsDone = [
+  const tiktokDisabled = /^(false|0|no|off)$/i.test(
+    String(env.TIKTOK_ENABLED || env.TIKTOK_AUTO_UPLOAD_ENABLED || "").trim(),
+  );
+  const coreIds = [
     s.youtube_post_id,
-    s.tiktok_post_id,
     s.instagram_media_id,
     s.facebook_post_id,
-    s.twitter_post_id,
-  ].filter(Boolean).length;
-  return platformsDone < 5;
+  ];
+  if (!tiktokDisabled) coreIds.splice(1, 0, s.tiktok_post_id);
+  const platformsDone = coreIds.filter(
+    (id) => typeof id === "string" && id.length > 0 && !id.startsWith("DUPE_"),
+  ).length;
+  return platformsDone < coreIds.length;
 }
 
 test("selector: partial stories remain eligible for retry (regression pin)", () => {
@@ -904,7 +1179,7 @@ test("selector: partial stories remain eligible for retry (regression pin)", () 
   );
 });
 
-test("selector: fully-published story is skipped (platformsDone === 5)", () => {
+test("selector: fully-published story is skipped", () => {
   const fullyDone = {
     approved: true,
     exported_path: "/tmp/x.mp4",
@@ -916,6 +1191,87 @@ test("selector: fully-published story is skipped (platformsDone === 5)", () => {
     twitter_post_id: "tw",
   };
   assert.strictEqual(selectorFilter(fullyDone), false);
+});
+
+test("selector: local TikTok disabled treats YT/IG/FB done as complete", () => {
+  const locallyDone = {
+    approved: true,
+    exported_path: "/tmp/x.mp4",
+    publish_status: "published",
+    youtube_post_id: "yt",
+    tiktok_post_id: null,
+    instagram_media_id: "ig",
+    facebook_post_id: "fb",
+  };
+  assert.strictEqual(selectorFilter(locallyDone, { TIKTOK_ENABLED: "false" }), false);
+});
+
+test("publishNextStory: local TikTok disabled does not retry YT/IG/FB-complete story", async () => {
+  const previous = process.env.TIKTOK_ENABLED;
+  process.env.TIKTOK_ENABLED = "false";
+  try {
+    const story = {
+      id: "rss_local_complete",
+      title: "Local complete",
+      approved: true,
+      exported_path: "/tmp/local-complete.mp4",
+      publish_status: "published",
+      youtube_post_id: "yt",
+      tiktok_post_id: null,
+      instagram_media_id: "ig",
+      facebook_post_id: "fb",
+    };
+    const { publishNextStory } = setupMocks({
+      cqaResult: { result: "pass", failures: [], warnings: [] },
+      vqaResult: { result: "pass", failures: [], warnings: [] },
+      stories: [story],
+    });
+
+    const result = await publishNextStory();
+    assert.strictEqual(result, null);
+    assert.deepStrictEqual(uploaderCalls, []);
+  } finally {
+    if (previous === undefined) delete process.env.TIKTOK_ENABLED;
+    else process.env.TIKTOK_ENABLED = previous;
+  }
+});
+
+test("publishNextStory: near-duplicate already-published story is QA-blocked before upload", async () => {
+  const published = {
+    id: "dead-space-a",
+    title:
+      '"The Numbers Aren\'t There" for Dead Space 4 to Happen, Says Former Dead Space Writer and Producer',
+    approved: true,
+    exported_path: "/tmp/a.mp4",
+    publish_status: "published",
+    youtube_post_id: "yt_dead_space",
+    instagram_media_id: "ig",
+    facebook_post_id: "fb",
+  };
+  const duplicate = {
+    id: "dead-space-b",
+    title:
+      "Dead Space 4 likely won’t happen despite a fervent fan base as it can't hit the numbers it needs, explains original producer",
+    approved: true,
+    exported_path: "/tmp/b.mp4",
+  };
+  const { publishNextStory, _private } = setupMocks({
+    cqaResult: { result: "pass", failures: [], warnings: [] },
+    vqaResult: { result: "pass", failures: [], warnings: [] },
+    stories: [published, duplicate],
+  });
+
+  assert.equal(_private.titlesNearDuplicate(published.title, duplicate.title), true);
+
+  const result = await publishNextStory();
+  assert.equal(result.no_safe_candidate, true);
+  assert.equal(result.qa_skipped_count, 1);
+  assert.match(result.top_reason, /published_duplicate_story:dead-space-a/);
+  assert.deepStrictEqual(uploaderCalls, []);
+  const persisted = dbState.upsertCalls[dbState.upsertCalls.length - 1];
+  assert.equal(persisted.id, "dead-space-b");
+  assert.equal(persisted.qa_failed, true);
+  assert.match(persisted.publish_error, /published_duplicate_story:dead-space-a/);
 });
 
 test("publishNextStory: no-safe-candidate return shape carries top_reason + qa_skipped for callers", async () => {

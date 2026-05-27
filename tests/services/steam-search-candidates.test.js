@@ -64,6 +64,18 @@ test("Billbil-kun prefix is stripped too", () => {
   );
 });
 
+test("headline-leading game before performance verbs becomes the primary candidate", () => {
+  const cands = buildSteamSearchCandidates(
+    "Marathon Drops To 15K Daily CCU Peak On Steam, Exits Top 50 On PlayStation & Top 100 On Xbox Best-Sellers Lists",
+  );
+
+  assert.equal(cands[0], "Marathon");
+  assert.ok(
+    !cands[0].toLowerCase().includes("steam"),
+    `primary candidate should be the game, not platform noise: ${cands[0]}`,
+  );
+});
+
 test("game-after-colon pattern still works ('Rumour: New Elder Scrolls leak')", () => {
   const cands = buildSteamSearchCandidates(
     "Rumour: New Elder Scrolls leak surfaces on Reddit",

@@ -205,17 +205,15 @@ async function likeTopComments(videoId, count = 5) {
   }
 }
 
-// ---------- 3. Smart auto-reply via Claude Haiku ----------
+// ---------- 3. Smart auto-reply via configured LLM ----------
 
 async function generateSmartReply(commentText, authorName, storyContext) {
   try {
-    const Anthropic = require("@anthropic-ai/sdk");
+    const { createLlmClient } = require("./lib/llm-client");
     const brand = require("./brand");
     const channelName = brand.CHANNEL_NAME || "Pulse Gaming";
 
-    const client = new Anthropic.default({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-    });
+    const client = createLlmClient();
 
     const response = await client.messages.create({
       model: "claude-haiku-4-5-20251001",
@@ -257,7 +255,7 @@ async function generateSmartReply(commentText, authorName, storyContext) {
     }
     return reply;
   } catch (err) {
-    console.log(`[engagement] Claude reply generation failed: ${err.message}`);
+    console.log(`[engagement] LLM reply generation failed: ${err.message}`);
     const fallbacks = [
       `Cheers @${authorName}, solid take`,
       `Good shout @${authorName}, thoughts on tomorrow's news?`,
@@ -452,13 +450,11 @@ async function rotatePinnedComment(videoId, story) {
   if (ageMs < 24 * 60 * 60 * 1000) return null;
 
   try {
-    const Anthropic = require("@anthropic-ai/sdk");
+    const { createLlmClient } = require("./lib/llm-client");
     const brand = require("./brand");
     const channelName = brand.CHANNEL_NAME || "Pulse Gaming";
 
-    const client = new Anthropic.default({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-    });
+    const client = createLlmClient();
 
     const response = await client.messages.create({
       model: "claude-haiku-4-5-20251001",

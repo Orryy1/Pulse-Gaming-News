@@ -12,6 +12,19 @@ function clip(label, source, mediaStartS = 30) {
   return { type: "clip", label, source, mediaStartS, duration: 4.2 };
 }
 
+function validatedClip(label, source, mediaStartS, originalStartS = mediaStartS, type = "clip") {
+  return {
+    ...clip(label, source, mediaStartS),
+    type,
+    clipTimingProvenance: {
+      clip_start_policy: "validated_segment_window",
+      segment_original_start_s: originalStartS,
+      segment_validated: true,
+      allowed_for_flash_lane: true,
+    },
+  };
+}
+
 function card(label = "card_context") {
   return { type: "card.stat", label, duration: 4.2 };
 }
@@ -45,9 +58,9 @@ test("Flash Lane Visual Director blocks two reused clip refs across a 60s plan",
 test("Flash Lane Visual Director blocks clip anchors that start inside likely ratings/logo material", () => {
   const report = buildFlashLaneVisualDirector({
     scenes: [
-      clip("safe_a", "a.m3u8", 32),
+      clip("safe_a", "a.m3u8", MIN_SAFE_CLIP_START_S),
       clip("too_early", "b.m3u8", MIN_SAFE_CLIP_START_S - 0.1),
-      clip("safe_c", "c.m3u8", 36),
+      clip("safe_c", "c.m3u8", MIN_SAFE_CLIP_START_S + 4),
       { type: "clip.frame", source: "frame.jpg", duration: 4.2 },
       card(),
       card("card_takeaway"),
@@ -63,12 +76,12 @@ test("Flash Lane Visual Director blocks clip anchors that start inside likely ra
 
 test("Flash Lane Visual Director allows diverse safe clip-led plans", () => {
   const scenes = [
-    clip("a1", "a.m3u8", 30),
-    clip("b1", "b.m3u8", 32),
-    clip("c1", "c.m3u8", 34),
-    clip("a2", "a.m3u8", 38),
-    clip("b2", "b.m3u8", 40),
-    clip("c2", "c.m3u8", 42),
+    clip("a1", "a.m3u8", 36),
+    clip("b1", "b.m3u8", 38),
+    clip("c1", "c.m3u8", 40),
+    clip("a2", "a.m3u8", 42),
+    clip("b2", "b.m3u8", 44),
+    clip("c2", "c.m3u8", 46),
     { type: "clip.frame", label: "frame_a", source: "frame-a.jpg", duration: 4.2 },
     { type: "still", label: "still_a", source: "steam-screenshot.jpg", sourceType: "steam_screenshot", duration: 4.2 },
     card("card_context"),
@@ -89,6 +102,128 @@ test("Flash Lane Visual Director allows diverse safe clip-led plans", () => {
   assert.equal(report.verdict, "allow");
   assert.equal(report.metrics.uniqueClipSources, 3);
   assert.equal(report.metrics.maxClipScenesPerSource, 2);
+});
+
+test("Flash Lane Visual Director allows four clip scenes per source when a 60s plan has three sources", () => {
+  const scenes = [
+    ...Array.from({ length: 4 }, (_, index) => clip(`a${index}`, "a.m3u8", 36 + index * 2)),
+    ...Array.from({ length: 4 }, (_, index) => clip(`b${index}`, "b.m3u8", 44 + index * 2)),
+    ...Array.from({ length: 4 }, (_, index) => clip(`c${index}`, "c.m3u8", 52 + index * 2)),
+    { type: "clip.frame", label: "frame_a", source: "frame-a.jpg", duration: 4.2 },
+  ];
+  const report = buildFlashLaneVisualDirector({
+    scenes,
+    media: {
+      clips: [
+        { path: "a.m3u8", provenance: { segment_quality_score: 90 } },
+        { path: "b.m3u8", provenance: { segment_quality_score: 89 } },
+        { path: "c.m3u8", provenance: { segment_quality_score: 91 } },
+      ],
+    },
+    narrationDurationS: 64,
+  });
+
+  assert.equal(report.verdict, "allow");
+  assert.equal(report.thresholds.maxClipScenesPerSource, 4);
+  assert.equal(report.metrics.maxClipScenesPerSource, 4);
+  assert.equal(report.metrics.maxAllowedClipScenesPerSource, 4);
+});
+
+test("Flash Lane Visual Director treats validated windows from one official trailer as distinct reusable clip refs", () => {
+  const source = "forza-official.m3u8";
+  const treatments = ["clip", "punch", "speed-ramp"];
+  const scenes = [
+    ...Array.from({ length: 3 }, (_, index) =>
+      validatedClip(`w36_${index}`, source, 36.7, 36, treatments[index]),
+    ),
+    ...Array.from({ length: 3 }, (_, index) =>
+      validatedClip(`w54_${index}`, source, 54.7, 54, treatments[index]),
+    ),
+    ...Array.from({ length: 3 }, (_, index) =>
+      validatedClip(`w84_${index}`, source, 84, 84, treatments[index]),
+    ),
+    { type: "clip.frame", label: "frame_a", source: "frame-a.jpg", duration: 4.2 },
+    { type: "still", label: "still_a", source: "forza-a.jpg", sourceType: "steam_screenshot", duration: 4.2 },
+    card("card_context"),
+  ];
+  const report = buildFlashLaneVisualDirector({
+    scenes,
+    media: {
+      clips: [
+        {
+          path: source,
+          provenance: {
+            requires_segment_validation: true,
+            segment_validated: true,
+            allowed_for_flash_lane: true,
+            segment_quality_score: 91,
+          },
+        },
+      ],
+    },
+    narrationDurationS: 64,
+  });
+
+  assert.equal(report.verdict, "allow");
+  assert.equal(report.metrics.uniqueClipSources, 3);
+  assert.equal(report.metrics.maxClipScenesPerSource, 3);
+  assert.equal(report.metrics.overusedClipSources.length, 0);
+});
+
+test("Flash Lane Visual Director blocks rating and age-slate frames even after the intro window", () => {
+  const scenes = [
+    clip("pegi_rating", "pegi-rating.m3u8", 34),
+    clip("gameplay_b1", "b.m3u8", 36),
+    clip("gameplay_c1", "c.m3u8", 38),
+    clip("gameplay_a2", "pegi-rating.m3u8", 42),
+    clip("gameplay_b2", "b.m3u8", 44),
+    clip("gameplay_c2", "c.m3u8", 46),
+    { type: "clip.frame", label: "frame_a", source: "gameplay-frame.jpg", duration: 4.2 },
+    card("card_context"),
+    card("card_takeaway"),
+  ];
+  const report = buildFlashLaneVisualDirector({
+    scenes,
+    media: { clips: [{ path: "pegi-rating.m3u8" }, { path: "b.m3u8" }, { path: "c.m3u8" }] },
+    narrationDurationS: 64,
+  });
+
+  assert.equal(report.verdict, "block");
+  assert.ok(report.blockers.includes("flash_visual_rating_slate_scene"));
+  assert.ok(report.blockers.includes("flash_visual_rating_slate_repeated"));
+  assert.equal(report.metrics.ratingSlateScenes.length, 2);
+});
+
+test("Flash Lane Visual Director blocks prescan-rejected title cards and dead frames", () => {
+  const scenes = [
+    {
+      ...clip("title_card", "a.m3u8", 34),
+      taste: { verdict: "reject", reason: "white_text_on_dark_card" },
+    },
+    clip("gameplay_b1", "b.m3u8", 36),
+    clip("gameplay_c1", "c.m3u8", 38),
+    clip("gameplay_a2", "a.m3u8", 42),
+    clip("gameplay_b2", "b.m3u8", 44),
+    clip("gameplay_c2", "c.m3u8", 46),
+    {
+      type: "clip.frame",
+      label: "dead_frame",
+      source: "dead-frame.jpg",
+      duration: 4.2,
+      provenance: { frame_taste: { verdict: "reject", reason: "dead_dark_frame" } },
+    },
+    card("card_context"),
+    card("card_takeaway"),
+  ];
+  const report = buildFlashLaneVisualDirector({
+    scenes,
+    media: { clips: [{ path: "a.m3u8" }, { path: "b.m3u8" }, { path: "c.m3u8" }] },
+    narrationDurationS: 64,
+  });
+
+  assert.equal(report.verdict, "block");
+  assert.ok(report.blockers.includes("flash_visual_bad_frame_taste"));
+  assert.equal(report.metrics.badFrameTasteScenes.length, 2);
 });
 
 test("Flash Lane Visual Director blocks unvalidated official trailer segments", () => {

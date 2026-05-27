@@ -7,7 +7,22 @@ const { addBreadcrumb, captureException } = require("./lib/sentry");
 const { validateVideo } = require("./lib/validate");
 const db = require("./lib/db");
 const mediaPaths = require("./lib/media-paths");
-const { normaliseAffiliateLinks } = require("./lib/affiliate-targeting");
+const {
+  affiliateDisclosureForLinks,
+  normaliseAffiliateLinks,
+} = require("./lib/affiliate-targeting");
+const {
+  assertBatchUploadPreflight,
+  storyIsBatchUploadCandidate,
+} = require("./lib/services/batch-upload-preflight");
+const {
+  assertDirectUploadAllowed,
+  buildDirectUploadPolicy,
+} = require("./lib/services/direct-upload-policy");
+const {
+  assertPublicMetadataSafe,
+  safePublicExcerpt,
+} = require("./lib/public-metadata-qa");
 
 dotenv.config({ override: true });
 
@@ -18,6 +33,26 @@ const CREDENTIALS_PATH = path.join(
   "youtube_credentials.json",
 );
 const PLAYLIST_PATH = path.join(__dirname, "tokens", "youtube_playlists.json");
+
+const DEFAULT_YOUTUBE_UPLOAD_TIMEOUT_MS = 10 * 60 * 1000;
+
+function getYoutubeUploadTimeoutMs(env = process.env) {
+  const raw = Number(env.YOUTUBE_UPLOAD_TIMEOUT_MS);
+  if (Number.isFinite(raw) && raw >= 30000) return Math.floor(raw);
+  return DEFAULT_YOUTUBE_UPLOAD_TIMEOUT_MS;
+}
+
+function youtubeRequestOptions(env = process.env) {
+  return { timeout: getYoutubeUploadTimeoutMs(env) };
+}
+
+function useEnvRefreshToken(oauth2Client, reason = "env_refresh_token") {
+  const refreshToken = process.env.YOUTUBE_REFRESH_TOKEN;
+  if (!refreshToken) return false;
+  console.log(`[youtube] Using refresh token from env (${reason})...`);
+  oauth2Client.setCredentials({ refresh_token: refreshToken });
+  return true;
+}
 
 // --- Playlist definitions ---
 const PLAYLIST_DEFS = [
@@ -96,16 +131,22 @@ async function getAuthClient() {
 
     if (token.expiry_date && Date.now() > token.expiry_date - 60000) {
       console.log("[youtube] Refreshing expired token...");
-      const { credentials: newToken } = await oauth2Client.refreshAccessToken();
-      await fs.ensureDir(path.dirname(TOKEN_PATH));
-      await fs.writeJson(TOKEN_PATH, newToken, { spaces: 2 });
-      oauth2Client.setCredentials(newToken);
+      try {
+        const { credentials: newToken } =
+          await oauth2Client.refreshAccessToken();
+        await fs.ensureDir(path.dirname(TOKEN_PATH));
+        await fs.writeJson(TOKEN_PATH, newToken, { spaces: 2 });
+        oauth2Client.setCredentials(newToken);
+      } catch (err) {
+        if (useEnvRefreshToken(oauth2Client, "file_token_refresh_failed")) {
+          return oauth2Client;
+        }
+        throw err;
+      }
     }
 
     return oauth2Client;
-  } else if (refreshToken) {
-    console.log("[youtube] Using refresh token from env...");
-    oauth2Client.setCredentials({ refresh_token: refreshToken });
+  } else if (useEnvRefreshToken(oauth2Client)) {
     return oauth2Client;
   }
 
@@ -187,6 +228,11 @@ function buildMetadata(story) {
     .trim();
   if (baseTitle.length > 80) baseTitle = baseTitle.substring(0, 77) + "...";
   const title = baseTitle;
+  assertPublicMetadataSafe(story, {
+    surface: "youtube",
+    publicTitle: title,
+    requireCaptionEvidence: false,
+  });
 
   const gameName = extractGameName(story.title);
   const platform = detectPlatform(story.title + " " + (story.body || ""));
@@ -198,25 +244,7 @@ function buildMetadata(story) {
 
   // --- Section 1: Keyword-rich summary (most SEO weight - first 200 chars indexed) ---
   if (story.full_script) {
-    const clean = story.full_script
-      .replace(/\n/g, " ")
-      .replace(/\[.*?\]/g, "")
-      .replace(/\s+/g, " ")
-      .trim();
-    const cutoff = clean.substring(0, 300);
-    // Find the LAST sentence boundary within 300 chars (not the first)
-    let lastSentence = -1;
-    const re = /[.!?]\s+(?=[A-Z])/g;
-    let m;
-    while ((m = re.exec(cutoff)) !== null) lastSentence = m.index;
-    if (lastSentence > 80) {
-      descLines.push(cutoff.substring(0, lastSentence + 1).trim());
-    } else {
-      const lastSpace = cutoff.lastIndexOf(" ");
-      descLines.push(
-        lastSpace > 80 ? cutoff.substring(0, lastSpace).trim() : cutoff.trim(),
-      );
-    }
+    descLines.push(safePublicExcerpt(story.full_script, 300));
   } else {
     descLines.push(story.title);
   }
@@ -224,10 +252,13 @@ function buildMetadata(story) {
 
   // --- Section 2: Affiliate CTA ---
   const affiliateLinks = normaliseAffiliateLinks(story).slice(0, 4);
+  const disclosure = affiliateDisclosureForLinks(affiliateLinks);
   if (affiliateLinks.length === 1) {
+    descLines.push(disclosure);
     descLines.push(`${affiliateLinks[0].label}: ${affiliateLinks[0].url}`);
     descLines.push("");
   } else if (affiliateLinks.length > 1) {
+    descLines.push(disclosure);
     descLines.push("Related links:");
     for (const link of affiliateLinks) {
       descLines.push(`- ${link.label}: ${link.url}`);
@@ -236,12 +267,9 @@ function buildMetadata(story) {
   }
 
   // --- Section 3: Channel identity ---
-  descLines.push(`${brand.CHANNEL_NAME} - ${brand.TAGLINE}`);
-  descLines.push(
-    brand.CTA
-      ? brand.CTA.replace(/^Follow /i, "Follow ")
-      : "Follow so you never miss an update.",
-  );
+  const identity = youtubeIdentityLines(story, brand);
+  descLines.push(identity.taglineLine);
+  descLines.push(identity.ctaLine);
   descLines.push("");
 
   // --- Section 4: Social links ---
@@ -499,18 +527,24 @@ async function uploadShort(story) {
 
       // YouTube-side dedup: check recent uploads for similar titles before uploading
       try {
-        const ch = await youtube.channels.list({
-          part: ["contentDetails"],
-          mine: true,
-        });
+        const ch = await youtube.channels.list(
+          {
+            part: ["contentDetails"],
+            mine: true,
+          },
+          youtubeRequestOptions(),
+        );
         const uploadsPlaylist =
           ch.data.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
         if (uploadsPlaylist) {
-          const recent = await youtube.playlistItems.list({
-            part: ["snippet"],
-            playlistId: uploadsPlaylist,
-            maxResults: 50,
-          });
+          const recent = await youtube.playlistItems.list(
+            {
+              part: ["snippet"],
+              playlistId: uploadsPlaylist,
+              maxResults: 50,
+            },
+            youtubeRequestOptions(),
+          );
           const recentTitles = (recent.data.items || []).map(
             (v) => v.snippet.title,
           );
@@ -623,28 +657,31 @@ async function uploadShort(story) {
 
       console.log(`[youtube] Uploading: "${title}"`);
 
-      const response = await youtube.videos.insert({
-        part: ["snippet", "status"],
-        requestBody: {
-          snippet: {
-            title,
-            description,
-            tags,
-            categoryId:
-              require("./channels").getChannel().youtubeCategory || "20",
-            defaultLanguage: "en",
-            defaultAudioLanguage: "en",
+      const response = await youtube.videos.insert(
+        {
+          part: ["snippet", "status"],
+          requestBody: {
+            snippet: {
+              title,
+              description,
+              tags,
+              categoryId:
+                require("./channels").getChannel().youtubeCategory || "20",
+              defaultLanguage: "en",
+              defaultAudioLanguage: "en",
+            },
+            status: {
+              privacyStatus: "public",
+              selfDeclaredMadeForKids: false,
+              embeddable: true,
+            },
           },
-          status: {
-            privacyStatus: "public",
-            selfDeclaredMadeForKids: false,
-            embeddable: true,
+          media: {
+            body: fs.createReadStream(exportedAbs || story.exported_path),
           },
         },
-        media: {
-          body: fs.createReadStream(exportedAbs || story.exported_path),
-        },
-      });
+        youtubeRequestOptions(),
+      );
 
       const videoId = response.data.id;
       console.log(`[youtube] Uploaded: https://youtube.com/shorts/${videoId}`);
@@ -697,15 +734,18 @@ async function uploadShort(story) {
                 `[youtube] Custom thumbnail QA warnings: ${thumbQa.warnings.join(", ")}`,
               );
             }
-            await youtube.thumbnails.set({
-              videoId,
-              media: {
-                mimeType: thumbPath.endsWith(".jpg")
-                  ? "image/jpeg"
-                  : "image/png",
-                body: fs.createReadStream(thumbPath),
+            await youtube.thumbnails.set(
+              {
+                videoId,
+                media: {
+                  mimeType: thumbPath.endsWith(".jpg")
+                    ? "image/jpeg"
+                    : "image/png",
+                  body: fs.createReadStream(thumbPath),
+                },
               },
-            });
+              youtubeRequestOptions(),
+            );
             console.log(
               `[youtube] Custom thumbnail set from ${path.basename(thumbPath)}`,
             );
@@ -720,19 +760,22 @@ async function uploadShort(story) {
       // Post pinned comment
       if (story.pinned_comment) {
         try {
-          const commentResponse = await youtube.commentThreads.insert({
-            part: ["snippet"],
-            requestBody: {
-              snippet: {
-                videoId,
-                topLevelComment: {
-                  snippet: {
-                    textOriginal: story.pinned_comment,
+          const commentResponse = await youtube.commentThreads.insert(
+            {
+              part: ["snippet"],
+              requestBody: {
+                snippet: {
+                  videoId,
+                  topLevelComment: {
+                    snippet: {
+                      textOriginal: story.pinned_comment,
+                    },
                   },
                 },
               },
             },
-          });
+            youtubeRequestOptions(),
+          );
           console.log(`[youtube] Pinned comment posted`);
         } catch (err) {
           console.log(
@@ -747,8 +790,23 @@ async function uploadShort(story) {
         url: `https://youtube.com/shorts/${videoId}`,
       };
     },
-    { label: "youtube upload" },
+    { label: "youtube upload", platform: "youtube" },
   );
+}
+
+function youtubeIdentityLines(story = {}, brand = require("./brand")) {
+  const classification = String(story.classification || story.flair || story.content_pillar || "").toLowerCase();
+  const isLeakOrRumour = /\b(leak|rumou?r)\b/.test(classification);
+  if (isLeakOrRumour) {
+    return {
+      taglineLine: `${brand.CHANNEL_NAME} - ${brand.TAGLINE}`,
+      ctaLine: "Follow Pulse Gaming for the next sourced gaming lead.",
+    };
+  }
+  return {
+    taglineLine: `${brand.CHANNEL_NAME} - Gaming stories with named sources.`,
+    ctaLine: "Follow Pulse Gaming for sharp gaming news that is worth your time.",
+  };
 }
 
 // --- Batch upload all ready stories ---
@@ -790,7 +848,7 @@ async function uploadAll() {
   }
 
   const ready = stories.filter((s) => {
-    if (!s.approved || !s.exported_path) return false;
+    if (!storyIsBatchUploadCandidate(s, null)) return false;
     if (s.youtube_post_id && !String(s.youtube_post_id).startsWith("DUPE_")) {
       // Genuinely already published — skip.
       return false;
@@ -832,6 +890,7 @@ async function uploadAll() {
   for (const story of ready) {
     const storyChannelId = story.channel_id || process.env.CHANNEL || null;
     try {
+      await assertBatchUploadPreflight(story, { platform: "youtube" });
       const result = await uploadShort(story);
       // uploadShort returns { blocked: true, reason } when the remote
       // dedupe check rejects the upload. The batch path used to stamp
@@ -941,27 +1000,30 @@ async function uploadLongform(compilation) {
 
   console.log(`[youtube] Uploading longform: "${title}"`);
 
-  const response = await youtube.videos.insert({
-    part: ["snippet", "status"],
-    requestBody: {
-      snippet: {
-        title,
-        description,
-        tags,
-        categoryId: channel.youtubeCategory || "20",
-        defaultLanguage: "en",
-        defaultAudioLanguage: "en",
+  const response = await youtube.videos.insert(
+    {
+      part: ["snippet", "status"],
+      requestBody: {
+        snippet: {
+          title,
+          description,
+          tags,
+          categoryId: channel.youtubeCategory || "20",
+          defaultLanguage: "en",
+          defaultAudioLanguage: "en",
+        },
+        status: {
+          privacyStatus: "public",
+          selfDeclaredMadeForKids: false,
+          embeddable: true,
+        },
       },
-      status: {
-        privacyStatus: "public",
-        selfDeclaredMadeForKids: false,
-        embeddable: true,
+      media: {
+        body: fs.createReadStream(videoPath),
       },
     },
-    media: {
-      body: fs.createReadStream(videoPath),
-    },
-  });
+    youtubeRequestOptions(),
+  );
 
   const videoId = response.data.id;
   const url = `https://youtube.com/watch?v=${videoId}`;
@@ -994,6 +1056,8 @@ module.exports = {
   generateAuthUrl,
   exchangeCode,
   getAuthClient,
+  getYoutubeUploadTimeoutMs,
+  youtubeRequestOptions,
   ensurePlaylists,
   addToPlaylists,
 };
@@ -1018,9 +1082,22 @@ if (require.main === module) {
     }
     exchangeCode(code).catch(console.error);
   } else {
-    uploadAll().catch((err) => {
+    try {
+      const directPolicy = buildDirectUploadPolicy({ platform: "youtube" });
+      assertDirectUploadAllowed(directPolicy);
+      if (directPolicy.mode !== "actual_upload") {
+        console.log(
+          `[youtube] Direct upload ${directPolicy.mode}: no upload dispatched`,
+        );
+      } else {
+        uploadAll().catch((err) => {
+          console.log(`[youtube] ERROR: ${err.message}`);
+          process.exit(1);
+        });
+      }
+    } catch (err) {
       console.log(`[youtube] ERROR: ${err.message}`);
       process.exit(1);
-    });
+    }
   }
 }

@@ -10,12 +10,18 @@ const cron = require("node-cron");
 const dotenv = require("dotenv");
 const { extractBearerToken, tokenMatches } = require("./lib/auth-token");
 const { getPublicUrl } = require("./lib/deployment-mode");
+const { resolveRuntimeBuildInfo } = require("./lib/runtime-build-info");
 const {
   resolveFacebookTokenPath,
   resolveInstagramTokenPath,
 } = require("./lib/token-paths");
+const { describeLlmState } = require("./lib/llm-key");
 
 dotenv.config({ override: true });
+const RUNTIME_BUILD_INFO = resolveRuntimeBuildInfo({
+  cwd: __dirname,
+  env: process.env,
+});
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -114,6 +120,24 @@ function rateLimit(maxRequests, windowMs) {
   };
 }
 
+const publicApiReadLimit = rateLimit(120, 60 * 1000);
+const publicMediaReadLimit = rateLimit(60, 60 * 1000);
+const publicWebhookLimit = rateLimit(30, 60 * 1000);
+
+function requireRailwayWebhookAuth(req, res, next) {
+  const secret = process.env.RAILWAY_WEBHOOK_SECRET;
+  if (!secret) return next();
+  const headerToken =
+    typeof req.get === "function"
+      ? req.get("x-pulse-webhook-secret")
+      : req.headers && req.headers["x-pulse-webhook-secret"];
+  const bearerToken = extractBearerToken(req.headers.authorization);
+  if (tokenMatches(headerToken, secret) || tokenMatches(bearerToken, secret)) {
+    return next();
+  }
+  return res.status(401).json({ error: "Unauthorized" });
+}
+
 // HTML escaping for safe inline rendering
 function escapeHtml(str) {
   if (!str) return "";
@@ -190,6 +214,25 @@ app.get("/approve/:id", (req, res) => {
     ? `?highlight=${encodeURIComponent(req.params.id)}&token=${encodeURIComponent(token)}`
     : `?highlight=${encodeURIComponent(req.params.id)}`;
   res.redirect("/" + q);
+});
+
+app.get("/go/:storyId/:offerId", publicApiReadLimit, async (req, res) => {
+  try {
+    const { resolveCommercialRedirect } = require("./lib/commercial-click-tracker");
+    const resolved = await resolveCommercialRedirect({
+      storyId: req.params.storyId,
+      offerId: req.params.offerId,
+      query: req.query,
+      headers: req.headers,
+      manifestDirs: [path.join(__dirname, "output", "commercial")],
+      clickLogPath: path.join(__dirname, "data", "commercial_clicks.jsonl"),
+    });
+    if (!resolved.ok) return res.status(resolved.status || 404).send("Not found");
+    return res.redirect(302, resolved.url);
+  } catch (err) {
+    console.log(`[server] /go redirect error: ${err.message}`);
+    return res.status(500).send("Redirect unavailable");
+  }
 });
 
 // --- Remote workers API (Phase 4: outbound-only polling from local box) ---
@@ -707,6 +750,39 @@ function updateStory(id, updates) {
   return stories[idx];
 }
 
+function isSafeStoryId(id) {
+  return typeof id === "string" && /^[A-Za-z0-9_-]{1,96}$/.test(id);
+}
+
+function readRequiredStoryId(req, res) {
+  const id = req.body && req.body.id;
+  if (!isSafeStoryId(id)) {
+    res.status(400).json({ error: "valid id required" });
+    return null;
+  }
+  return id;
+}
+
+function normaliseMetricCount(value) {
+  if (value === undefined) return undefined;
+  const n = Number(value);
+  if (!Number.isSafeInteger(n) || n < 0) return null;
+  return n;
+}
+
+function normaliseScheduleTime(value) {
+  if (value === undefined || value === null || value === "") {
+    return { ok: true, value: null };
+  }
+  if (typeof value !== "string") return { ok: false, value: null };
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 64) return { ok: false, value: null };
+  if (Number.isNaN(Date.parse(trimmed))) {
+    return { ok: false, value: null };
+  }
+  return { ok: true, value: trimmed };
+}
+
 // --- API Routes ---
 
 app.get("/api/health", (req, res) => {
@@ -726,21 +802,7 @@ app.get("/api/health", (req, res) => {
   // verification: `curl https://<host>/api/health | jq .build` lets
   // an operator prove which commit is actually running without
   // trawling Discord deploy banners.
-  const commitSha = process.env.RAILWAY_GIT_COMMIT_SHA || null;
-  const build = {
-    commit_sha: commitSha,
-    commit_short: commitSha ? commitSha.slice(0, 7) : null,
-    commit_message_present: !!process.env.RAILWAY_GIT_COMMIT_MESSAGE,
-    branch: process.env.RAILWAY_GIT_BRANCH || null,
-    deployment_id: process.env.RAILWAY_DEPLOYMENT_ID || null,
-    environment:
-      process.env.RAILWAY_ENVIRONMENT_NAME ||
-      process.env.RAILWAY_ENVIRONMENT ||
-      null,
-    project_id: process.env.RAILWAY_PROJECT_ID || null,
-    service_id: process.env.RAILWAY_SERVICE_ID || null,
-    node_env: process.env.NODE_ENV || null,
-  };
+  const build = RUNTIME_BUILD_INFO;
 
   // Runtime feature flags that drive dispatch/persistence behaviour.
   // Safely resolve dispatch mode without running the bootstrap path —
@@ -820,7 +882,7 @@ app.get("/api/health", (req, res) => {
 // Dashboard should call /api/news/full. If you're adding a new
 // public widget that needs a field not in PUBLIC_FIELDS, add it
 // there — do NOT bypass the sanitizer.
-app.get("/api/news", (req, res) => {
+app.get("/api/news", publicApiReadLimit, (req, res) => {
   try {
     const stories = readNews();
     const { sanitizeStoriesForPublic } = require("./lib/public-story");
@@ -894,11 +956,24 @@ app.get("/api/progress", requireAuthHeaderOrQuery, (req, res) => {
 
 app.post("/api/approve", requireAuth, rateLimit(30, 60000), (req, res) => {
   try {
-    const { id } = req.body;
-    if (!id) return res.status(400).json({ error: "id required" });
+    const id = readRequiredStoryId(req, res);
+    if (!id) return;
 
     const { story } = findStory(id);
     if (!story) return res.status(404).json({ error: "story not found" });
+
+    const scriptReviewBlocked =
+      story.script_generation_status === "review_required" ||
+      !!story.script_review_reason ||
+      /script validation failed|manual review required before production/i.test(
+        [story.body, story.full_script, story.tts_script].filter(Boolean).join("\n"),
+      );
+    if (scriptReviewBlocked) {
+      return res.status(409).json({
+        error: "script requires review",
+        reason: story.script_review_reason || "script_validation_review_required",
+      });
+    }
 
     updateStory(id, { approved: true });
     console.log(`[server] Approved: ${id}`);
@@ -959,7 +1034,7 @@ app.post(
 
     try {
       const { fullAutonomousCycle } = require("./publisher");
-      await fullAutonomousCycle();
+      await fullAutonomousCycle({ dispatchSource: "api_autonomous_run" });
     } catch (err) {
       console.log(`[server] Autonomous cycle error: ${err.message}`);
     }
@@ -1000,7 +1075,7 @@ app.post(
 
     try {
       const { publishToAllPlatforms } = require("./publisher");
-      await publishToAllPlatforms();
+      await publishToAllPlatforms({ dispatchSource: "api_autonomous_publish" });
     } catch (err) {
       console.log(`[server] Multi-platform publish error: ${err.message}`);
     }
@@ -1018,13 +1093,11 @@ app.get("/api/autonomous/status", requireAuth, (req, res) => {
       ? new Date(lastHunterRun.getTime() + HUNTER_INTERVAL_MS).toISOString()
       : null,
     schedule: {
-      hunts: "Every 3 hours (auto-produces videos after each hunt)",
-      publish: [
-        "12:00 UTC / 1:00 PM BST - lunch break + US morning",
-        "17:00 UTC / 6:00 PM BST - post-work peak + US noon",
-        "21:00 UTC / 10:00 PM BST - evening session + US afternoon",
-      ],
-      strategy: "1 Short per window = 3 Shorts/day across all platforms",
+      hunts: ["Every 3 hours"],
+      produce: "Auto-produces videos after each hunt",
+      publish: "09:00 UTC / 14:00 UTC / 19:00 UTC",
+      strategy:
+        "1 Short per window = 3 Shorts/day across all platforms",
     },
     platforms: {
       youtube: { configured: !!process.env.YOUTUBE_API_KEY },
@@ -1146,8 +1219,8 @@ app.post(
   rateLimit(30, 60000),
   async (req, res) => {
     try {
-      const { id } = req.body;
-      if (!id) return res.status(400).json({ error: "id required" });
+      const id = readRequiredStoryId(req, res);
+      if (!id) return;
 
       const { story } = findStory(id);
       if (!story) return res.status(404).json({ error: "story not found" });
@@ -1176,8 +1249,8 @@ app.post(
   rateLimit(30, 60000),
   async (req, res) => {
     try {
-      const { id } = req.body;
-      if (!id) return res.status(400).json({ error: "id required" });
+      const id = readRequiredStoryId(req, res);
+      if (!id) return;
 
       const { story } = findStory(id);
       if (!story) return res.status(404).json({ error: "story not found" });
@@ -1202,19 +1275,24 @@ app.post(
 
 // --- Schedule ---
 app.post("/api/schedule", requireAuth, rateLimit(30, 60000), (req, res) => {
-  const { id, scheduleTime } = req.body;
-  if (!id) return res.status(400).json({ error: "id required" });
+  const id = readRequiredStoryId(req, res);
+  if (!id) return;
+  const { scheduleTime } = req.body || {};
+  const normalisedSchedule = normaliseScheduleTime(scheduleTime);
+  if (!normalisedSchedule.ok) {
+    return res.status(400).json({ error: "invalid scheduleTime" });
+  }
 
-  const updated = updateStory(id, { schedule_time: scheduleTime || null });
+  const updated = updateStory(id, { schedule_time: normalisedSchedule.value });
   if (!updated) return res.status(404).json({ error: "story not found" });
 
-  res.json({ status: "scheduled", id, scheduleTime });
+  res.json({ status: "scheduled", id, scheduleTime: normalisedSchedule.value });
 });
 
 // --- Retry publish ---
 app.post("/api/retry-publish", requireAuth, rateLimit(5, 60000), (req, res) => {
-  const { id } = req.body;
-  if (!id) return res.status(400).json({ error: "id required" });
+  const id = readRequiredStoryId(req, res);
+  if (!id) return;
 
   const updated = updateStory(id, {
     publish_status: "publishing",
@@ -1256,7 +1334,10 @@ function isAuthenticatedRequest(req) {
 // Content-Type is correct. Stripping `.png` server-side lets us
 // construct uploader URLs with the extension while keeping the
 // canonical story id as the path parameter.
-app.get(/^\/api\/story-image\/([^/]+?)(?:\.png)?$/, async (req, res) => {
+app.get(
+  /^\/api\/story-image\/([^/]+?)(?:\.png)?$/,
+  publicMediaReadLimit,
+  async (req, res) => {
   try {
     const { isPubliclyVisible } = require("./lib/public-story");
     const mediaPaths = require("./lib/media-paths");
@@ -1297,7 +1378,8 @@ app.get(/^\/api\/story-image\/([^/]+?)(?:\.png)?$/, async (req, res) => {
     console.error(`[server] ERROR serving story image: ${err.message}`);
     res.status(500).json({ error: "Failed to serve image" });
   }
-});
+  },
+);
 
 // NOTE: The former `app.use("/stories", express.static(output/stories))`
 // mount was removed on 2026-04-20 after the artefact-route audit —
@@ -1323,7 +1405,10 @@ app.get(/^\/api\/story-image\/([^/]+?)(?:\.png)?$/, async (req, res) => {
 // video vs something else. Without `.mp4` in the path, IG Reel URL
 // fallback can land on the same 2207052-class error ("media URI
 // doesn't meet our requirements").
-app.get(/^\/api\/download\/([^/]+?)(?:\.mp4)?$/, async (req, res) => {
+app.get(
+  /^\/api\/download\/([^/]+?)(?:\.mp4)?$/,
+  publicMediaReadLimit,
+  async (req, res) => {
   try {
     const { isPubliclyVisible } = require("./lib/public-story");
     const mediaPaths = require("./lib/media-paths");
@@ -1378,7 +1463,8 @@ app.get(/^\/api\/download\/([^/]+?)(?:\.mp4)?$/, async (req, res) => {
     console.log(`[server] ERROR downloading: ${err.message}`);
     res.status(500).json({ error: "Download failed" });
   }
-});
+  },
+);
 
 // --- Stats ---
 //
@@ -1496,12 +1582,21 @@ app.get(
 );
 
 app.post("/api/stats/update", requireAuth, rateLimit(30, 60000), (req, res) => {
-  const { id, youtube_views, tiktok_views } = req.body;
-  if (!id) return res.status(400).json({ error: "id required" });
+  const id = readRequiredStoryId(req, res);
+  if (!id) return;
+  const { youtube_views, tiktok_views } = req.body || {};
 
   const updates = {};
-  if (youtube_views !== undefined) updates.youtube_views = youtube_views;
-  if (tiktok_views !== undefined) updates.tiktok_views = tiktok_views;
+  const youtubeViews = normaliseMetricCount(youtube_views);
+  if (youtube_views !== undefined && youtubeViews === null) {
+    return res.status(400).json({ error: "invalid youtube_views" });
+  }
+  const tiktokViews = normaliseMetricCount(tiktok_views);
+  if (tiktok_views !== undefined && tiktokViews === null) {
+    return res.status(400).json({ error: "invalid tiktok_views" });
+  }
+  if (youtubeViews !== undefined) updates.youtube_views = youtubeViews;
+  if (tiktokViews !== undefined) updates.tiktok_views = tiktokViews;
 
   const updated = updateStory(id, updates);
   if (!updated) return res.status(404).json({ error: "story not found" });
@@ -1652,14 +1747,12 @@ app.post(
 
 // --- Autonomous scheduler (built into server) ---
 async function startAutonomousScheduler() {
-  const hasKey =
-    process.env.ANTHROPIC_API_KEY &&
-    process.env.ANTHROPIC_API_KEY !== "placeholder";
-  if (!hasKey) {
+  const llmState = describeLlmState();
+  if (!llmState.ok) {
     console.log(
-      "[server] Autonomous scheduler disabled. Set ANTHROPIC_API_KEY to enable.",
+      `[server] LLM provider ${llmState.provider}/${llmState.state}; starting scheduler in limited mode. ` +
+        "LLM-dependent jobs will skip until local LLM or explicit Anthropic is configured.",
     );
-    return;
   }
 
   // Phase D: unified jobs queue is now the canonical dispatcher. The
@@ -1795,21 +1888,13 @@ async function _registerLegacyDevCronRegistry() {
 
             // Publish ONE story per window (spread across the day for algorithm)
             const { publishNextStory } = require("./publisher");
-            const result = await publishNextStory();
+            const result = await publishNextStory({
+              dispatchSource: "server_cron_publish_window",
+            });
             if (result) {
-              const errorDetails =
-                result.errors && Object.keys(result.errors).length > 0
-                  ? "\n" +
-                    Object.entries(result.errors)
-                      .map(([p, msg]) => `${p}: ${msg}`)
-                      .join("\n")
-                  : "";
-              await sendDiscord(
-                `**Pulse Gaming Published** (${windowLabels[i]})\n` +
-                  `"${result.title}"\n` +
-                  `YT: ${result.youtube ? "yes" : "FAIL"} | TT: ${result.tiktok ? "yes" : "FAIL"} | IG: ${result.instagram ? "yes" : "FAIL"} | FB: ${result.facebook ? "yes" : "FAIL"} | X: ${result.twitter ? "yes" : "FAIL"}` +
-                  errorDetails,
-              );
+              const { renderPublishSummary } = require("./lib/job-handlers");
+              const summary = renderPublishSummary(result);
+              if (summary?.message) await sendDiscord(summary.message);
             } else {
               console.log(
                 `[server-cron] No unpublished stories ready for ${windowLabels[i]}`,
@@ -2311,8 +2396,150 @@ app.get("/api/analytics/digest", requireAuth, async (req, res) => {
   }
 });
 
+app.get("/api/commercial/learning", requireAuth, async (req, res) => {
+  try {
+    const {
+      buildCommercialLearningDigest,
+      loadCommercialManifests,
+      readCommercialClickLog,
+    } = require("./lib/intelligence/commercial-learning-loop");
+    const clickLog = await readCommercialClickLog(
+      path.join(__dirname, "data", "commercial_clicks.jsonl"),
+    );
+    const manifests = await loadCommercialManifests([
+      path.join(__dirname, "output", "commercial"),
+    ]);
+    const digest = buildCommercialLearningDigest({
+      clicks: clickLog.entries,
+      manifests,
+      stories: readNews(),
+    });
+    res.json(digest);
+  } catch (err) {
+    console.log(`[server] /api/commercial/learning error: ${err.message}`);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.get("/api/revenue/paths", requireAuth, async (req, res) => {
+  try {
+    const {
+      buildRevenuePathDigest,
+      loadRevenuePathManifests,
+    } = require("./lib/revenue-path-engine");
+    const {
+      buildCommercialLearningDigest,
+      loadCommercialManifests,
+      readCommercialClickLog,
+    } = require("./lib/intelligence/commercial-learning-loop");
+    const stories = readNews();
+    const commercialManifests = await loadCommercialManifests([
+      path.join(__dirname, "output", "commercial"),
+    ]);
+    const revenueManifests = await loadRevenuePathManifests([
+      path.join(__dirname, "output", "revenue"),
+    ]);
+    const clickLog = await readCommercialClickLog(
+      path.join(__dirname, "data", "commercial_clicks.jsonl"),
+    );
+    const learningDigest = buildCommercialLearningDigest({
+      clicks: clickLog.entries,
+      manifests: commercialManifests,
+      stories,
+    });
+    const digest = buildRevenuePathDigest({
+      revenueManifests,
+      commercialManifests,
+      learningDigest,
+      stories,
+    });
+    res.json(digest);
+  } catch (err) {
+    console.log(`[server] /api/revenue/paths error: ${err.message}`);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.get("/api/studio/enterprise-os", requireAuth, async (req, res) => {
+  try {
+    const {
+      buildStudioEnterpriseOSPack,
+    } = require("./lib/studio-enterprise-os");
+    const {
+      loadGoldStandardReferenceLibrary,
+    } = require("./lib/gold-standard-reference-library");
+
+    const readJsonMaybe = async (filePath, fallback = {}) => {
+      try {
+        return await fs.readJson(filePath);
+      } catch (err) {
+        if (err && err.code === "ENOENT") return fallback;
+        throw err;
+      }
+    };
+    const loadGoldStandards = () => {
+      try {
+        return loadGoldStandardReferenceLibrary();
+      } catch {
+        return {};
+      }
+    };
+
+    const [
+      retentionBaseline,
+      revenuePathRaw,
+      commercialLearningDigest,
+      commentsDigest,
+      renderHealthRaw,
+      v4SourceDeficit,
+      v4MotionPacks,
+      costSnapshot,
+      securitySnapshot,
+      governanceSummaryRaw,
+    ] = await Promise.all([
+      readJsonMaybe(path.join(__dirname, "config", "retention-baseline.json"), {}),
+      readJsonMaybe(path.join(__dirname, "output", "revenue", "revenue-paths.json"), {}),
+      readJsonMaybe(path.join(__dirname, "output", "commercial", "commercial-learning.json"), {}),
+      readJsonMaybe(path.join(__dirname, "output", "comments", "comment-digest.json"), {}),
+      readJsonMaybe(path.join(__dirname, "test", "output", "render_health.json"), {}),
+      readJsonMaybe(path.join(__dirname, "test", "output", "studio_v4_source_deficit.json"), {}),
+      readJsonMaybe(path.join(__dirname, "output", "studio-v4", "motion-packs", "visual_v4_motion_packs.json"), {}),
+      readJsonMaybe(path.join(__dirname, "output", "enterprise-os", "cost-snapshot.json"), {}),
+      readJsonMaybe(path.join(__dirname, "output", "enterprise-os", "security-snapshot.json"), {
+        api_token_present: Boolean(process.env.API_TOKEN),
+        hardcoded_secret_findings: [],
+        env_separation: process.env.NODE_ENV || "local",
+        audit_log_enabled: true,
+        emergency_kill_switch: true,
+        rollback_renderer_available: true,
+      }),
+      readJsonMaybe(path.join(__dirname, "output", "governance", "publish_manifest.json"), {}),
+    ]);
+
+    const pack = buildStudioEnterpriseOSPack({
+      stories: readNews(),
+      retentionBaseline,
+      revenuePathDigest: revenuePathRaw.digest || revenuePathRaw,
+      commercialLearningDigest,
+      commentsDigest,
+      renderHealthSummary: renderHealthRaw.summary || renderHealthRaw,
+      v4SourceDeficit,
+      v4MotionPacks,
+      goldStandardLibrary: loadGoldStandards(),
+      costSnapshot,
+      securitySnapshot,
+      governanceSummary: governanceSummaryRaw.publish_control_tower || governanceSummaryRaw,
+    });
+    res.json(pack);
+  } catch (err) {
+    console.log(`[server] /api/studio/enterprise-os error: ${err.message}`);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // --- Blog static site ---
 app.use("/blog", express.static(path.join(__dirname, "blog", "dist")));
+app.use("/p", express.static(path.join(__dirname, "blog", "dist", "p")));
 
 // --- Engagement stats endpoint ---
 app.get("/api/engagement/stats", requireAuth, async (req, res) => {
@@ -2377,7 +2604,7 @@ app.get("/api/pipeline/backlog", requireAuth, (req, res) => {
   try {
     const stories = readNews();
     const { buildPipelineBacklog } = require("./lib/services/pipeline-backlog");
-    res.json(buildPipelineBacklog(stories));
+    res.json(buildPipelineBacklog(stories, { strictContentQa: true }));
   } catch (err) {
     console.error(`[server] /api/pipeline/backlog error: ${err.message}`);
     res.status(500).json({ error: "Internal server error" });
@@ -2630,42 +2857,47 @@ app.get("/api/compile/topics", requireAuth, async (req, res) => {
 });
 
 // --- Railway deploy webhook - forwards build/deploy failures to Discord ---
-app.post("/api/webhook/railway", rateLimit(30, 60000), async (req, res) => {
-  res.json({ ok: true });
-  try {
-    const sendDiscord = require("./notify");
-    const payload = req.body || {};
-    const status = payload.status || payload.type || "unknown";
-    const service =
-      payload.service?.name || payload.meta?.serviceName || "Pulse Gaming";
+app.post(
+  "/api/webhook/railway",
+  publicWebhookLimit,
+  requireRailwayWebhookAuth,
+  async (req, res) => {
+    res.json({ ok: true });
+    try {
+      const sendDiscord = require("./notify");
+      const payload = req.body || {};
+      const status = payload.status || payload.type || "unknown";
+      const service =
+        payload.service?.name || payload.meta?.serviceName || "Pulse Gaming";
 
-    if (
-      ["FAILED", "CRASHED", "REMOVED", "BUILD_FAILED"].includes(
-        status.toUpperCase(),
-      ) ||
-      (payload.type === "deploy" && payload.status === "FAILED")
-    ) {
-      const error =
-        payload.error || payload.meta?.error || "No details provided";
-      await sendDiscord(
-        `**Railway Deploy FAILED**\n` +
-          `Service: ${service}\n` +
-          `Status: ${status}\n` +
-          `Error: ${error}\n\n` +
-          `Check Railway dashboard for details.`,
-      );
-    } else if (
-      status.toUpperCase() === "SUCCESS" ||
-      status.toUpperCase() === "DEPLOYED"
-    ) {
-      await sendDiscord(
-        `**Railway Deploy OK** - ${service} deployed successfully`,
-      );
+      if (
+        ["FAILED", "CRASHED", "REMOVED", "BUILD_FAILED"].includes(
+          status.toUpperCase(),
+        ) ||
+        (payload.type === "deploy" && payload.status === "FAILED")
+      ) {
+        const error =
+          payload.error || payload.meta?.error || "No details provided";
+        await sendDiscord(
+          `**Railway Deploy FAILED**\n` +
+            `Service: ${service}\n` +
+            `Status: ${status}\n` +
+            `Error: ${error}\n\n` +
+            `Check Railway dashboard for details.`,
+        );
+      } else if (
+        status.toUpperCase() === "SUCCESS" ||
+        status.toUpperCase() === "DEPLOYED"
+      ) {
+        await sendDiscord(
+          `**Railway Deploy OK** - ${service} deployed successfully`,
+        );
+      }
+    } catch (err) {
+      console.log(`[server] Railway webhook error: ${err.message}`);
     }
-  } catch (err) {
-    console.log(`[server] Railway webhook error: ${err.message}`);
-  }
-});
+  },
+);
 
 // Sentry error handler (must be after all routes, before SPA fallback)
 if (sentryMw.errorHandler === "__sentry_v8__") {

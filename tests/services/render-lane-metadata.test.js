@@ -24,13 +24,31 @@ const ASSEMBLE_SRC = fs.readFileSync(
 test("assemble.js stamps render_lane on every story", () => {
   assert.match(
     ASSEMBLE_SRC,
-    /story\.render_lane\s*=\s*"legacy_multi_image"/,
-    "default render_lane must be stamped at the top of the produce loop",
+    /:\s*"legacy_multi_image"/,
+    "default render_lane must still stamp legacy_multi_image when V4 is not ready",
   );
   assert.match(
     ASSEMBLE_SRC,
     /story\.render_lane\s*=\s*"legacy_single_image_fallback"/,
     "fallback path must update render_lane when ffmpeg drops to composite-only",
+  );
+});
+
+test("assemble.js preserves Studio V4 bridge lane once V4 clips are renderable", () => {
+  assert.match(
+    ASSEMBLE_SRC,
+    /const\s+v4BridgeRenderReady\s*=\s*story\.render_lane\s*===\s*"studio_v4_director_bridge"/,
+    "assemble must detect a ready Studio V4 bridge before default lane stamping",
+  );
+  assert.match(
+    ASSEMBLE_SRC,
+    /story\.render_lane\s*=\s*v4BridgeRenderReady\s*\?\s*"studio_v4_director_bridge"\s*:\s*"legacy_multi_image"/,
+    "assemble must not overwrite the Studio V4 render lane with legacy_multi_image",
+  );
+  assert.match(
+    ASSEMBLE_SRC,
+    /materializeStudioV4BridgeClips/,
+    "assemble must materialize validated V4 media windows before handing clips to FFmpeg",
   );
 });
 
@@ -42,11 +60,39 @@ test("assemble.js stamps render_quality_class derived from inventory size", () =
   );
 });
 
+test("assemble.js gates legacy rendering through Studio V4 canonical policy", () => {
+  assert.match(
+    ASSEMBLE_SRC,
+    /buildStudioV4CanonicalPacket/,
+    "production assemble must build a Studio V4 canonical packet before legacy rendering",
+  );
+  assert.match(
+    ASSEMBLE_SRC,
+    /shouldHoldLegacyRender/,
+    "production assemble must hold legacy renders when Visual V4 motion is not ready",
+  );
+  assert.match(
+    ASSEMBLE_SRC,
+    /studio_v4_canonical_packet_path/,
+    "Studio V4 readiness packets must be persisted for operator review",
+  );
+  assert.match(
+    ASSEMBLE_SRC,
+    /loadStudioV4MotionPack/,
+    "production assemble must load validated V4 motion packs before canonical readiness",
+  );
+  assert.match(
+    ASSEMBLE_SRC,
+    /applyVisualV4MotionPackToStory/,
+    "validated V4 motion pack clips must be handed to the canonical policy",
+  );
+});
+
 test("assemble.js stamps distinct_visual_count + thumbnail_candidate_present + outro_present", () => {
   assert.match(
     ASSEMBLE_SRC,
-    /story\.distinct_visual_count\s*=\s*realImages\.length/,
-    "distinct_visual_count must alias realImages.length so dashboards have a self-describing field",
+    /story\.distinct_visual_count\s*=\s*effectiveVisualCount/,
+    "distinct_visual_count must include V4 motion clips when the bridge is render-ready",
   );
   assert.match(
     ASSEMBLE_SRC,
@@ -72,6 +118,19 @@ test("assemble.js fallback path lowers render_quality_class to fallback when sin
 
 // ── content-qa picks up outro_present ─────────────────────────────
 
+test("assemble.js can force selected legacy unstamped renders through fresh rerender", () => {
+  assert.match(
+    ASSEMBLE_SRC,
+    /FORCE_RERENDER_LEGACY_UNSTAMPED/,
+    "operator-targeted legacy rerender flag must exist",
+  );
+  assert.match(
+    ASSEMBLE_SRC,
+    /legacy unstamped render selected for fresh rerender[\s\S]{0,240}?s\.exported_path\s*=\s*null/,
+    "legacy unstamped rerender path must clear only exported_path so assemble regenerates the MP4",
+  );
+});
+
 function fakeFs(map) {
   return {
     async pathExists(p) {
@@ -90,7 +149,7 @@ function passingStory(overrides = {}) {
     title: "Test Story",
     exported_path: "/tmp/out.mp4",
     full_script:
-      "A dead franchise just got resurrected and nobody saw it coming. Big studios are responding to a shift in the market that took three years to build and thirty seconds to explode. The numbers are staggering and the timing is surgical. Ubisoft confirmed the reveal is set for later this month and the embargo lifts at midday across every major territory. Sources have verified the timeline through two separate trade outlets and an internal calendar invite that leaked last week. Players are already speculating about what this means for the series going forward, and the marketing team is quietly scrubbing old posts in preparation for the new positioning. Follow Pulse Gaming so you never miss a drop, because this one moves fast.",
+      "Nintendo just turned a Switch 2 purchase into a much simpler decision. Nintendo says the new Choose Your Game Bundle launches in early June at participating retailers for four hundred and ninety nine dollars and ninety nine cents. The key detail is the download code. Buyers can choose Mario Kart World, Donkey Kong Bananza or Pokémon Pokopia, which makes the bundle easier to explain than a normal console listing. For players waiting on a first-party reason to upgrade, this is a cleaner pitch than a vague launch-window promise. Follow Pulse Gaming so you never miss a beat.",
     tts_script: "Short clean tts variant for TTS pass.",
     image_path: "/tmp/card.png",
     render_lane: "legacy_multi_image",

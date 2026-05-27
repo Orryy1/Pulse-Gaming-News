@@ -6,12 +6,38 @@ const assert = require("node:assert/strict");
 const { SCENE_TYPES } = require("../../lib/scene-composer");
 const {
   appendStudioOutro,
+  assertStudioV2VoiceAllowedForRender,
+  buildSubtitleBaseFilter,
   boostMotionDensityForShorts,
   replaceFallbackReleaseCardsWithMotion,
   resolveMainNarrationDurationS,
+  resolveStudioV2CaptionOptions,
   resolveSubtitleScriptText,
   sumSceneDurations,
 } = require("../../tools/studio-v2-render");
+
+const ACCEPTED_SLEEPY_LIAM = {
+  id: "pulse-sleepy-liam-20260502",
+  fileName: "pulse_liam_sleepy.wav",
+  referencePresent: true,
+  referenceHash: "d".repeat(40),
+};
+
+const APPROVED_LOCAL_VOICE_MASTERING = {
+  ok: true,
+  code: "voice_mastered",
+  targetLufs: -14,
+};
+
+function proofAudioPath(name = "studio-v2-render-helper.mp3") {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const dir = path.join(process.cwd(), "test", "output", "tmp-studio-v2-render-helpers");
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, name);
+  fs.writeFileSync(file, "fake studio v2 voice bytes");
+  return file;
+}
 
 test("fallback release cards become authored motion beats when HyperFrames lane is rich", () => {
   const scenes = [
@@ -185,4 +211,159 @@ test("subtitle script text follows the actual voice transcript including outro",
   });
 
   assert.match(text, /Follow Pulse Gaming/);
+});
+
+test("subtitle script text uses cached voice metadata for transcript coverage", () => {
+  const text = resolveSubtitleScriptText({
+    voice: { editorialScriptAppliedToAudio: false },
+    tsData: {
+      meta: {
+        text: "Subnautica crossed a million sales. Follow Pulse Gaming so you never miss a beat.",
+      },
+    },
+    editorial: { scriptForCaption: "Wrong stale caption text." },
+    spokenTranscript: "Subnautica crossed a million sales.",
+  });
+
+  assert.match(text, /Subnautica crossed/);
+  assert.match(text, /Follow Pulse Gaming/);
+  assert.doesNotMatch(text, /Wrong stale/);
+});
+
+test("Studio V2 subtitle base filter blocks visual timelines that under-cover audio", () => {
+  assert.throws(
+    () =>
+      buildSubtitleBaseFilter({
+        inputLabel: "base",
+        finalVideoDurationS: 62,
+        subtitleTimelineDurationS: 64,
+      }),
+    /studio_v2_scene_timeline_under_covers_subtitles:2\.000s/,
+  );
+});
+
+test("Studio V2 subtitle base filter only pads tiny timing slop", () => {
+  assert.deepEqual(
+    buildSubtitleBaseFilter({
+      inputLabel: "base",
+      finalVideoDurationS: 63.9,
+      subtitleTimelineDurationS: 64,
+    }),
+    [
+      "[base]tpad=stop_mode=clone:stop_duration=0.100[subtitlePad]",
+      "[subtitlePad]trim=duration=64.000,setpts=PTS-STARTPTS[subtitleBase]",
+    ],
+  );
+});
+
+test("studio-v2 render passes strict Flash caption options to kinetic subtitles", () => {
+  const options = resolveStudioV2CaptionOptions();
+
+  assert.deepEqual(options, {
+    maxWordsPerPhrase: 2,
+    maxPhraseChars: 14,
+    captionCase: "upper",
+    revealMode: "word",
+    motionStyle: "flash",
+    avoidDanglingWords: true,
+    maxPhraseDurationS: 1.15,
+    minPhraseDurationS: 0.32,
+  });
+});
+
+test("studio-v2 render voice assertion rejects local audio without accepted Sleepy Liam reference", () => {
+  assert.throws(
+    () =>
+      assertStudioV2VoiceAllowedForRender({
+        voice: {
+          provider: "local",
+          source: "local-production-voxcpm-path",
+          audioPath: proofAudioPath("missing-reference.mp3"),
+        },
+        tsData: {
+          meta: {
+            text: "A clean update. Follow Pulse Gaming so you never miss a beat.",
+            acoustic: { medianPitchHz: 118 },
+          },
+        },
+        spokenTranscript: "A clean update. Follow Pulse Gaming so you never miss a beat.",
+        env: { STUDIO_V2_LOCAL_VOICE_APPROVED: "true" },
+      }),
+    /accepted Sleepy Liam voice reference/i,
+  );
+});
+
+test("studio-v2 render voice assertion rejects accepted local audio without acoustic proof", () => {
+  assert.throws(
+    () =>
+      assertStudioV2VoiceAllowedForRender({
+        voice: {
+          provider: "local",
+          source: "local-production-voxcpm-path",
+          audioPath: proofAudioPath("missing-acoustic.mp3"),
+          acceptedLocalVoice: ACCEPTED_SLEEPY_LIAM,
+          voiceMastering: APPROVED_LOCAL_VOICE_MASTERING,
+        },
+        tsData: {
+          meta: {
+            text: "A clean update. Follow Pulse Gaming so you never miss a beat.",
+            acceptedLocalVoice: ACCEPTED_SLEEPY_LIAM,
+            voiceMastering: APPROVED_LOCAL_VOICE_MASTERING,
+          },
+        },
+        spokenTranscript: "A clean update. Follow Pulse Gaming so you never miss a beat.",
+        env: { STUDIO_V2_LOCAL_VOICE_APPROVED: "true" },
+      }),
+    /missing pitch or spoken-outro verification/i,
+  );
+});
+
+test("studio-v2 render voice assertion allows approved Sleepy Liam evidence before render", () => {
+  const narration = assertStudioV2VoiceAllowedForRender({
+    voice: {
+      provider: "local",
+      source: "local-production-voxcpm-path",
+      audioPath: proofAudioPath("approved-sleepy-liam.mp3"),
+      acceptedLocalVoice: ACCEPTED_SLEEPY_LIAM,
+      voiceMastering: APPROVED_LOCAL_VOICE_MASTERING,
+    },
+    tsData: {
+      meta: {
+        text: "A clean update. Follow Pulse Gaming so you never miss a beat.",
+        acoustic: { medianPitchHz: 118, integratedLufs: -14.2 },
+        acceptedLocalVoice: ACCEPTED_SLEEPY_LIAM,
+        voiceMastering: APPROVED_LOCAL_VOICE_MASTERING,
+      },
+    },
+    spokenTranscript: "A clean update. Follow Pulse Gaming so you never miss a beat.",
+    env: { STUDIO_V2_LOCAL_VOICE_APPROVED: "true" },
+  });
+
+  assert.equal(narration.provider, "local");
+  assert.equal(narration.acceptedLocalVoice.id, "pulse-sleepy-liam-20260502");
+  assert.equal(narration.acoustic.medianPitchHz, 118);
+  assert.equal(narration.voiceMastering.code, "voice_mastered");
+});
+
+test("studio-v2 render calls voice assertion before sound-layer/ffmpeg input construction", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-render.js"),
+    "utf8",
+  );
+
+  assert.match(src, /assertNarrationAllowedForProof/);
+  assert.ok(
+    src.indexOf("const voiceRenderNarration = assertStudioV2VoiceAllowedForRender") >
+      src.indexOf("const spokenTranscript = scriptFromTimestampAlignment"),
+  );
+  assert.ok(
+    src.indexOf("const voiceRenderNarration = assertStudioV2VoiceAllowedForRender") <
+      src.indexOf("const renderStory ="),
+  );
+  assert.ok(
+    src.indexOf("const voiceRenderNarration = assertStudioV2VoiceAllowedForRender") <
+      src.indexOf("buildSoundLayerV2({"),
+  );
 });

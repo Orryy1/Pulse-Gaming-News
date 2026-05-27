@@ -5,7 +5,7 @@ const fs = require("fs-extra");
 const path = require("node:path");
 
 try {
-  require("dotenv").config({ override: true });
+  require("dotenv").config({ override: true, quiet: true });
 } catch {}
 
 const { buildDemoStories } = require("../lib/creator-studio-os");
@@ -26,13 +26,14 @@ function parseArgs(argv) {
     json: false,
     help: false,
     storyId: null,
+    storyJsonPath: null,
     allApproved: false,
     limit: 5,
     motionReport: null,
     trailerReferences: null,
     noTrailerReferences: false,
     maxReferences: 4,
-    maxReferencesPerEntity: 1,
+    maxReferencesPerEntity: null,
     maxTargetFrames: 12,
   };
   for (let i = 2; i < argv.length; i++) {
@@ -41,6 +42,7 @@ function parseArgs(argv) {
     else if (arg === "--json") args.json = true;
     else if (arg === "--all-approved") args.allApproved = true;
     else if (arg === "--story-id" || arg === "--story") args.storyId = argv[++i] || null;
+    else if (arg === "--story-json") args.storyJsonPath = argv[++i] || null;
     else if (arg === "--limit") args.limit = Math.max(1, Number(argv[++i]) || 5);
     else if (arg === "--motion-report") args.motionReport = argv[++i] || null;
     else if (arg === "--trailer-references") args.trailerReferences = argv[++i] || null;
@@ -48,7 +50,7 @@ function parseArgs(argv) {
     else if (arg === "--max-references") {
       args.maxReferences = Math.max(1, Number(argv[++i]) || args.maxReferences);
     } else if (arg === "--max-references-per-entity") {
-      args.maxReferencesPerEntity = Math.max(1, Number(argv[++i]) || args.maxReferencesPerEntity);
+      args.maxReferencesPerEntity = Math.max(1, Number(argv[++i]) || 1);
     } else if (arg === "--max-target-frames") {
       args.maxTargetFrames = Math.max(1, Number(argv[++i]) || args.maxTargetFrames);
     }
@@ -65,6 +67,7 @@ function printHelp() {
       "Options:",
       "  --fixture             Use built-in demo stories",
       "  --story-id <id>       Build a frame plan for one story id",
+      "  --story-json <p>      Use a local story override JSON",
       "  --all-approved        Include approved / auto-approved stories",
       "  --limit <n>           Limit local DB stories when not using --all-approved",
       "  --motion-report <p>   Read an existing Motion Acquisition report",
@@ -99,6 +102,11 @@ function normaliseStory(row) {
   if (!row || typeof row !== "object") return row;
   return {
     ...row,
+    id: row.id || row.story_id,
+    title: row.title || row.selected_title || row.canonical_title,
+    full_script: row.full_script || row.narration_script,
+    game_title: row.game_title || row.canonical_game || row.canonical_subject,
+    primary_entity: row.primary_entity || row.canonical_subject || row.canonical_game,
     downloaded_images: Array.isArray(row.downloaded_images)
       ? row.downloaded_images
       : parseJsonField(row.downloaded_images) || [],
@@ -120,6 +128,17 @@ function storyTime(story) {
 
 async function loadStories(args) {
   if (args.fixture) return { stories: buildDemoStories(), mode: "fixture" };
+
+  if (args.storyJsonPath) {
+    const storyJsonPath = path.resolve(ROOT, args.storyJsonPath);
+    const parsed = await fs.readJson(storyJsonPath);
+    const rows = (Array.isArray(parsed) ? parsed : [parsed]).map(normaliseStory);
+    const selected = args.storyId ? rows.filter((story) => story.id === args.storyId) : rows;
+    if (selected.length === 0) {
+      throw new Error(`story JSON did not contain requested story id: ${args.storyId}`);
+    }
+    return { stories: selected, mode: "story_json" };
+  }
 
   try {
     const db = require("../lib/db");
@@ -159,14 +178,54 @@ async function loadTrailerReferenceReport(args) {
   return readJsonIfExists(filePath);
 }
 
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function motionPlanReferenceCount(plan) {
+  return asArray(plan?.existing_references).length;
+}
+
+function trailerReferenceCountForStory(report, storyId) {
+  if (!storyId) return 0;
+  const plan = asArray(report?.plans).find((item) => item?.story_id === storyId);
+  return asArray(plan?.references).length;
+}
+
+function shouldRebuildMotionPlansFromReferences({
+  storyId,
+  explicitMotionPath,
+  plans,
+  trailerReferenceReport,
+} = {}) {
+  if (explicitMotionPath || !storyId || !trailerReferenceReport) return false;
+  return asArray(plans).some(
+    (plan) => {
+      if (plan?.story_id !== storyId) return false;
+      const motionCount = motionPlanReferenceCount(plan);
+      const trailerCount = trailerReferenceCountForStory(trailerReferenceReport, storyId);
+      return trailerCount > 0 && (motionCount === 0 || trailerCount > motionCount);
+    },
+  );
+}
+
 async function loadMotionPlans(args) {
   const explicitMotionPath = args.motionReport ? path.resolve(ROOT, args.motionReport) : null;
+  const trailerReferenceReport = await loadTrailerReferenceReport(args);
   const defaultReport = !args.fixture ? await readJsonIfExists(explicitMotionPath || DEFAULT_MOTION_REPORT) : null;
   if (defaultReport && Array.isArray(defaultReport.plans)) {
     const plans = args.storyId
       ? defaultReport.plans.filter((plan) => plan.story_id === args.storyId)
       : defaultReport.plans;
-    if (plans.length > 0 || explicitMotionPath) {
+    if (
+      (plans.length > 0 || explicitMotionPath) &&
+      !shouldRebuildMotionPlansFromReferences({
+        storyId: args.storyId,
+        explicitMotionPath,
+        plans,
+        trailerReferenceReport,
+      })
+    ) {
       return {
         plans,
         mode: "motion_report",
@@ -176,7 +235,6 @@ async function loadMotionPlans(args) {
   }
 
   const { stories, mode } = await loadStories(args);
-  const trailerReferenceReport = await loadTrailerReferenceReport(args);
   const motionReport = buildMotionAcquisitionReport(stories, {
     mode,
     officialTrailerReferenceReport: trailerReferenceReport,
@@ -209,7 +267,17 @@ async function main() {
   process.stderr.write("[frame-plan] wrote test/output/controlled_frame_extraction_v1.{json,md}\n");
 }
 
-main().catch((err) => {
-  process.stderr.write(`[frame-plan] ${err.stack || err.message}\n`);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    process.stderr.write(`[frame-plan] ${err.stack || err.message}\n`);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  loadStories,
+  loadMotionPlans,
+  normaliseStory,
+  parseArgs,
+  shouldRebuildMotionPlansFromReferences,
+};

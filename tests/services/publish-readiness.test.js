@@ -3,6 +3,7 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 
 const pr = require("../../lib/ops/publish-readiness");
@@ -44,8 +45,9 @@ test("dominantVerdict: all green stays green", () => {
 
 // ── PILLAR_NAMES contract ────────────────────────────────────────
 
-test("PILLAR_NAMES: 20 pillars (matches mission spec)", () => {
-  assert.equal(pr.PILLAR_NAMES.length, 20);
+test("PILLAR_NAMES: includes cadence plus the original readiness pillars", () => {
+  assert.equal(pr.PILLAR_NAMES.length, 21);
+  assert.ok(pr.PILLAR_NAMES.includes("publish_cadence"));
 });
 
 test("PILLAR_NAMES: includes the audit-flagged external blockers", () => {
@@ -154,8 +156,62 @@ test("buildPublishReadinessReport: empty store does not crash, returns at least 
   );
   assert.equal(report.story_count, 0);
   assert.ok(typeof report.pillars === "object");
-  assert.equal(Object.keys(report.pillars).length, 20);
+  assert.equal(Object.keys(report.pillars).length, 21);
   assert.ok(typeof report.next_action === "string");
+});
+
+test("pillarPublishCadence: over-cap cadence tells operators to hold manual publishing", async () => {
+  const now = Date.parse("2026-05-15T12:00:00.000Z");
+  const stories = [0, 1, 2, 3].map((index) => ({
+    id: `rss_${index}`,
+    title: `Story ${index}`,
+    youtube_post_id: `yt_${index}`,
+    published_at: new Date(now - index * 60 * 60 * 1000).toISOString(),
+  }));
+
+  const pillar = pr.pillarPublishCadence({
+    stories,
+    now,
+    env: {
+      AUTO_PUBLISH: "true",
+      PULSE_PRIMARY_INSTANCE: "true",
+      USE_JOB_QUEUE: "true",
+    },
+  });
+
+  assert.equal(pillar.verdict, "amber");
+  assert.match(pillar.reason, /4_posts_in_24h_over_cap_3/);
+});
+
+test("pillarFacebookReelEligibility: graph proof makes Facebook Reels green", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-fb-reels-proof-"));
+  const proofPath = path.join(dir, "facebook_reels_eligibility.json");
+  try {
+    fs.writeFileSync(
+      proofPath,
+      JSON.stringify({
+        evidence: {
+          page: { data: { can_post: true } },
+          tokenDebug: { data: { is_valid: true } },
+          videos: { count: 1 },
+          reels: { count: 1 },
+        },
+        classification: {
+          verdict: "eligible_for_normal_publish",
+          reason: "visible_graph_video_or_reel_found",
+        },
+      }),
+    );
+
+    const pillar = pr.pillarFacebookReelEligibility({
+      evidencePath: proofPath,
+    });
+
+    assert.equal(pillar.verdict, "green");
+    assert.equal(pillar.raw.mode, "graph_verified");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("buildPublishReadinessReport: db throw degrades gracefully (no throw)", async () => {
@@ -198,12 +254,22 @@ test("summariseRecentFailedCandidates: surfaces operator-grade failure reasons",
         qa_failed: false,
       },
     ],
-    { limit: 2 },
+    {
+      limit: 2,
+      now: Date.parse("2026-05-02T09:00:00.000Z"),
+      recentWindowHours: 48,
+    },
   );
 
   assert.equal(summary.count, 2);
+  assert.equal(summary.recent_count, 2);
   assert.equal(summary.shown_count, 2);
   assert.deepEqual(summary.ids, ["fresh", "old"]);
+  assert.equal(summary.latest_failed_at, "2026-05-02T08:00:00.000Z");
+  assert.deepEqual(
+    summary.reason_groups.map((g) => g.reason).sort(),
+    ["qa:duration_too_long", "qa:glued_sentence_in_tts_script"],
+  );
   assert.equal(summary.examples[0].reason, "qa:glued_sentence_in_tts_script");
   assert.equal(summary.examples[1].reason, "qa:duration_too_long (80.00s)");
   assert.equal(summary.examples[0].render_lane, "studio_v2");
@@ -218,10 +284,78 @@ test("summariseRecentFailedCandidates: count is total, ids are display-limited",
       { id: "two", qa_failed: true, qa_failures: ["b"] },
       { id: "three", qa_failed: true, qa_failures: ["c"] },
     ],
-    { limit: 2 },
+    { limit: 2, now: Date.parse("2026-05-02T09:00:00.000Z") },
   );
 
   assert.equal(summary.count, 3);
   assert.equal(summary.shown_count, 2);
   assert.deepEqual(summary.ids, ["one", "two"]);
+});
+
+test("summariseRecentFailedCandidates: active window is separate from historical total", () => {
+  const summary = pr.summariseRecentFailedCandidates(
+    [
+      {
+        id: "fresh-1",
+        qa_failed: true,
+        qa_failures: ["audio_duration_too_long (126.11s, max 74.00s)"],
+        qa_failed_at: "2026-05-02T08:00:00.000Z",
+      },
+      {
+        id: "fresh-2",
+        qa_failed: true,
+        qa_failures: ["audio_duration_too_long (104.91s, max 74.00s)"],
+        qa_failed_at: "2026-05-02T07:00:00.000Z",
+      },
+      {
+        id: "stale",
+        qa_failed: true,
+        qa_failures: ["script_runtime_too_long (119.00s, max 75.00s)"],
+        qa_failed_at: "2026-04-29T07:00:00.000Z",
+      },
+    ],
+    {
+      limit: 3,
+      now: Date.parse("2026-05-02T09:00:00.000Z"),
+      recentWindowHours: 24,
+    },
+  );
+
+  assert.equal(summary.count, 3);
+  assert.equal(summary.recent_count, 2);
+  assert.equal(summary.reason_groups.length, 1);
+  assert.deepEqual(summary.reason_groups[0], {
+    reason: "qa:audio_duration_too_long",
+    count: 2,
+  });
+});
+
+test("summariseRecentFailedCandidates: excludes repaired public rows from active failure pressure", () => {
+  const summary = pr.summariseRecentFailedCandidates(
+    [
+      {
+        id: "repaired-public",
+        qa_failed: true,
+        publish_error: "script_validation_review_required_public_row_repair",
+        public_row_repair: { reason: "public_script_validation_fallback" },
+        updated_at: "2026-05-02T08:30:00.000Z",
+      },
+      {
+        id: "active-failure",
+        qa_failed: true,
+        qa_failures: ["audio_duration_too_long (104.91s, max 74.00s)"],
+        qa_failed_at: "2026-05-02T08:00:00.000Z",
+      },
+    ],
+    {
+      limit: 5,
+      now: Date.parse("2026-05-02T09:00:00.000Z"),
+      recentWindowHours: 24,
+    },
+  );
+
+  assert.equal(summary.count, 1);
+  assert.equal(summary.repaired_public_row_count, 1);
+  assert.equal(summary.recent_count, 1);
+  assert.deepEqual(summary.ids, ["active-failure"]);
 });

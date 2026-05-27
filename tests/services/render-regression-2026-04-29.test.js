@@ -162,8 +162,13 @@ test("visual-count: assemble.js stamps qa_visual_count + qa_visual_warning on th
   );
   assert.match(
     src,
-    /story\.qa_visual_count\s*=\s*realImages\.length/,
-    "qa_visual_count must be stamped on every render",
+    /story\.qa_visual_count\s*=\s*effectiveVisualCount/,
+    "qa_visual_count must be stamped on every render from the resolved still-or-motion count",
+  );
+  assert.match(
+    src,
+    /const effectiveVisualCount[\s\S]{0,180}v4BridgeRenderReady/,
+    "qa_visual_count must keep Studio V4 motion-only renders from looking visually empty",
   );
   assert.match(
     src,

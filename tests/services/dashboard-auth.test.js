@@ -1,5 +1,7 @@
 const { test, before } = require("node:test");
 const assert = require("node:assert");
+const fs = require("node:fs");
+const path = require("node:path");
 
 // Unit tests for the dashboard's pure auth helpers. These live in
 // src/api/authCore.js as plain JS specifically so `node --test` can
@@ -187,4 +189,27 @@ test("isAuthError: true for 401, false for everything else", () => {
   assert.strictEqual(isAuthError({ status: 500 }), false);
   assert.strictEqual(isAuthError(null), false);
   assert.strictEqual(isAuthError(undefined), false);
+});
+
+// ---------- browser storage policy ----------
+
+test("browser auth stores the operator token in sessionStorage, not persistent localStorage", () => {
+  const authPath = path.join(__dirname, "..", "..", "src", "api", "auth.ts");
+  const src = fs.readFileSync(authPath, "utf8");
+
+  assert.match(
+    src,
+    /window\.sessionStorage/,
+    "dashboard token storage must be tab/session-scoped",
+  );
+  assert.doesNotMatch(
+    src,
+    /return\s+typeof\s+window\s*!==\s*["']undefined["']\s*\?\s*window\.localStorage\s*:\s*null/,
+    "dashboard token storage must not use persistent localStorage",
+  );
+  assert.match(
+    src,
+    /localStorage\.removeItem\(STORAGE_KEY\)/,
+    "legacy localStorage token must be cleared so old persistent secrets are migrated away",
+  );
 });

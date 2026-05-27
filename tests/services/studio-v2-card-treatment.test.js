@@ -6,7 +6,12 @@ const assert = require("node:assert/strict");
 const { SCENE_TYPES } = require("../../lib/scene-composer");
 const {
   buildSourceCardFilter,
+  flashLaneSourceCardLayout,
 } = require("../../lib/scenes/source-card");
+const {
+  buildQuoteBodyLayout,
+  buildQuoteCardFilter,
+} = require("../../lib/scenes/quote-card");
 const {
   buildClipFilter,
   buildSceneInput,
@@ -35,6 +40,64 @@ test("Flash Lane source cards use a stronger creator-news treatment", () => {
   assert.doesNotMatch(filter, /drawbox=[^,]*:alpha=/);
 });
 
+test("Flash Lane source cards compact long outlet labels into the card lane", () => {
+  const layout = flashLaneSourceCardLayout("GamingLeaksAndRumoursInternationalNewswire");
+  const filter = buildSourceCardFilter({
+    slot: 0,
+    duration: 4,
+    sourceLabel: "GamingLeaksAndRumoursInternationalNewswire",
+    sublabel: "News",
+    treatment: "flash_lane",
+    fontOpt: FONT_OPT,
+  });
+
+  assert.ok(layout.label.length <= 26, layout.label);
+  assert.ok(layout.labelFontSize <= 36, String(layout.labelFontSize));
+  assert.equal(layout.box.x + layout.box.w, 670);
+  assert.match(filter, /\.\.\./);
+  assert.match(filter, /fontsize=34|fontsize=36/);
+});
+
+test("quote cards adapt long quote copy instead of cutting a fixed six-line block", () => {
+  const quote = [
+    "The first few hours looked promising, but the actual concern is whether the update can keep players returning once the novelty wears off.",
+    "If the next patch does not fix progression pacing, the community reaction could turn very quickly.",
+  ].join(" ");
+  const layout = buildQuoteBodyLayout(quote);
+  const filter = buildQuoteCardFilter({
+    slot: 0,
+    duration: 4,
+    body: quote,
+    author: "LongCommenter",
+    score: 1200,
+    fontOpt: FONT_OPT,
+  });
+
+  assert.ok(layout.lines.length <= layout.maxLines, String(layout.lines.length));
+  assert.ok(layout.fontSize <= 38, String(layout.fontSize));
+  assert.ok(layout.blockTop >= 520, String(layout.blockTop));
+  assert.ok(layout.blockBottom <= 1220, String(layout.blockBottom));
+  assert.match(filter, /fontsize=3[4-8]/);
+  assert.equal(layout.truncated, true);
+  assert.match(filter, /returning once the novelty wears/);
+  assert.doesNotMatch(filter, /reaction could turn very quickly/);
+});
+
+test("Flash Lane quote cards keep the backdrop bright enough for forensic samples", () => {
+  const filter = buildQuoteCardFilter({
+    slot: 0,
+    duration: 4,
+    body: "The specs sheet is the real story here.",
+    author: "Viewer",
+    score: 120,
+    fontOpt: FONT_OPT,
+    treatment: "flash_lane",
+  });
+
+  assert.match(filter, /eq=brightness=-0\.08:saturation=0\.92:contrast=1\.12/);
+  assert.doesNotMatch(filter, /eq=brightness=-0\.45:saturation=0\.4:contrast=1\.05/);
+});
+
 test("standard source cards remain available outside Flash Lane", () => {
   const filter = buildSourceCardFilter({
     slot: 0,
@@ -48,7 +111,7 @@ test("standard source cards remain available outside Flash Lane", () => {
   assert.doesNotMatch(filter, /PULSE VERIFIED/);
 });
 
-test("Flash Lane clip badges use compact fading creator chips", () => {
+test("opt-in Flash Lane clip badges use compact fading creator chips", () => {
   const filter = buildClipFilter({
     slot: 0,
     duration: 4,
@@ -57,14 +120,16 @@ test("Flash Lane clip badges use compact fading creator chips", () => {
       entity: "GTA",
       sourceType: "steam_movie",
       source: "trailer.m3u8",
+      showEntityBadge: true,
     },
     fontOpt: FONT_OPT,
   });
 
   assert.match(filter, /OFFICIAL CLIP/);
   assert.match(filter, /GTA/);
-  assert.match(filter, /box=1:boxcolor=black@0\.46/);
-  assert.match(filter, /alpha='if\(lt\(t\\,0\.12\)/);
+  assert.match(filter, /box=1:boxcolor=black@0\.36/);
+  assert.match(filter, /enable='between\(t\\,0\.12\\,1\.16\)'/);
+  assert.doesNotMatch(filter, /text='OFFICIAL CLIP'[^,]*alpha=/);
   assert.doesNotMatch(filter, /drawbox=x=52:y=108:w=420:h=74/);
 });
 
@@ -112,7 +177,7 @@ test("Flash Lane grammar scene inputs seek the intended trailer section", () => 
   assert.match(input, /-t 8\.80/);
 });
 
-test("Flash Lane context cards do not fall back to plain release-date layout", () => {
+test("Flash Lane context cards do not fall back to plain release-date layout or engagement bait", () => {
   const filter = buildFlashStatCardFilter({
     slot: 1,
     scene: {
@@ -127,8 +192,9 @@ test("Flash Lane context cards do not fall back to plain release-date layout", (
   });
 
   assert.match(filter, /MUST KNOW/);
-  assert.match(filter, /KEEP WATCHING/);
+  assert.match(filter, /SOURCE-BACKED/);
   assert.match(filter, /WHY IT MATTERS/);
+  assert.doesNotMatch(filter, /KEEP WATCHING/);
   assert.doesNotMatch(filter, /drawbox=[^,]*:alpha=/);
 });
 
@@ -159,27 +225,35 @@ test("dispatchSceneFilter routes Flash Lane card treatment", () => {
   });
 
   assert.match(source, /SOURCE CHECK/);
-  assert.match(context, /KEEP WATCHING/);
+  assert.match(context, /SOURCE-BACKED/);
+  assert.doesNotMatch(context, /KEEP WATCHING/);
 });
 
-test("Flash Lane takeaway card stays bright enough for end-frame QA", () => {
+test("Flash Lane takeaway card stays bright and does not duplicate the exact spoken CTA", () => {
   const filter = dispatchSceneFilter({
     slot: 0,
     scene: {
       type: SCENE_TYPES.CARD_TAKEAWAY,
       label: "card_takeaway",
       duration: 4,
-      text: "FOLLOW PULSE GAMING",
-      cta: "NEVER MISS A BEAT",
+      text: "PULSE GAMING",
+      cta: "DAILY GAMING NEWS",
       cardTreatment: "flash_lane",
     },
     story: {},
     fontOpt: FONT_OPT,
   });
 
-  assert.match(filter, /NEVER MISS A BEAT/);
-  assert.match(filter, /FOLLOW PULSE GAMING/);
+  assert.match(filter, /DAILY GAMING NEWS/);
+  assert.match(filter, /PULSE GAMING/);
+  assert.doesNotMatch(filter, /FOLLOW PULSE GAMING SO YOU NEVER MISS A BEAT/);
+  assert.match(filter, /zoompan=z=min\(zoom\+0\.0012\\,1\.08\)/);
   assert.match(filter, /eq=brightness=-0\.08:saturation=1\.08:contrast=1\.14/);
+  assert.match(filter, /drawbox=x=310:y=h\/2\+70:w='if\(lt\(t\\,0\.72\)/);
+  assert.match(filter, /drawtext=text='PULSE  PULSE  PULSE  PULSE'/);
+  assert.match(filter, /mod\(t\*920\\,w\+880\)-880/);
+  assert.match(filter, /enable='gte\(t\\,1\.05\)'/);
+  assert.doesNotMatch(filter, /drawbox=x=118:y=h\/2-178:w=844:h=356:color=black@0\.34/);
   assert.doesNotMatch(filter, /drawbox=x=0:y=0:w=iw:h=400:color=black@0\.55/);
   assert.doesNotMatch(filter, /drawbox=x=0:y=h-500:w=iw:h=500:color=black@0\.55/);
   assert.doesNotMatch(filter, /drawbox=[^,]*:alpha=/);

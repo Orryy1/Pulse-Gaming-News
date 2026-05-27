@@ -1,5 +1,7 @@
 const { test } = require("node:test");
 const assert = require("node:assert");
+const fs = require("node:fs");
+const path = require("node:path");
 const express = require("express");
 const http = require("node:http");
 
@@ -7,12 +9,18 @@ const {
   buildPipelineBacklog,
   classifyStage,
   blockingReason,
+  renderPipelineBacklogMarkdown,
   nextProduceCandidate,
   nextPublishCandidate,
+  publishCandidateBlocker,
   coreDoneCount,
+  requiredCorePlatformsFromEnv,
   isRealPostId,
   MAX_STUCK,
 } = require("../../lib/services/pipeline-backlog");
+
+const PACKAGE_PATH = path.resolve(__dirname, "..", "..", "package.json");
+const TOOL_PATH = path.resolve(__dirname, "..", "..", "tools", "pipeline-backlog.js");
 
 // ---------- helpers ----------
 
@@ -43,6 +51,23 @@ test("coreDoneCount: 4 real ids → 4; DUPE_ doesn't count", () => {
       facebook_post_id: "fb",
     }),
     2,
+  );
+});
+
+test("requiredCorePlatformsFromEnv: local TikTok disable removes TikTok from backlog completion", () => {
+  const platforms = requiredCorePlatformsFromEnv({ TIKTOK_ENABLED: "false" });
+  assert.deepStrictEqual(platforms, ["youtube", "instagram", "facebook"]);
+  assert.strictEqual(
+    coreDoneCount(
+      {
+        youtube_post_id: "yt",
+        tiktok_post_id: null,
+        instagram_media_id: "ig",
+        facebook_post_id: "fb",
+      },
+      platforms,
+    ),
+    3,
   );
 });
 
@@ -110,6 +135,26 @@ test("blockingReason: qa_failed surfaces the first qa_failures entry", () => {
   );
 });
 
+test("blockingReason: qa_failed is surfaced even when script fields are missing", () => {
+  assert.strictEqual(
+    blockingReason({
+      qa_failed: true,
+      qa_failures: ["audio_duration_too_long (112.43s, max 74.00s)"],
+    }),
+    "qa:audio_duration_too_long (112.43s, max 74.00s)",
+  );
+});
+
+test("blockingReason: script-generation review is clearer than generic no_script", () => {
+  assert.strictEqual(
+    blockingReason({
+      script_generation_status: "review_required",
+      script_review_reason: "script_runtime_too_long (112.00s, max 75.00s)",
+    }),
+    "script_generation_review:script_runtime_too_long (112.00s, max 75.00s)",
+  );
+});
+
 test("blockingReason: partial_missing lists missing core platforms", () => {
   const r = blockingReason({
     full_script: "x",
@@ -126,6 +171,25 @@ test("blockingReason: partial_missing lists missing core platforms", () => {
   assert.match(r, /facebook/);
   assert.strictEqual(r.includes("youtube"), false);
   assert.strictEqual(r.includes("instagram"), false);
+});
+
+test("blockingReason: local TikTok disabled does not report TikTok as missing", () => {
+  const r = blockingReason(
+    {
+      full_script: "x",
+      approved: true,
+      exported_path: "/x",
+      publish_status: "partial",
+      youtube_post_id: "yt",
+      tiktok_post_id: null,
+      instagram_media_id: "ig",
+      facebook_post_id: null,
+    },
+    { corePlatforms: ["youtube", "instagram", "facebook"] },
+  );
+  assert.match(r, /^partial_missing:/);
+  assert.match(r, /facebook/);
+  assert.strictEqual(r.includes("tiktok"), false);
 });
 
 test("blockingReason: failed includes the publish_error", () => {
@@ -187,6 +251,292 @@ test("nextPublishCandidate: skips qa_failed stories", () => {
   assert.strictEqual(pick.id, "good");
 });
 
+test("nextPublishCandidate: uses the live selection score within the same platform bucket", () => {
+  const stories = [
+    {
+      id: "raw-score-winner",
+      approved: true,
+      exported_path: "/x",
+      full_script: "y",
+      duration_seconds: 68,
+      breaking_score: 999,
+    },
+    {
+      id: "analytics-winner",
+      approved: true,
+      exported_path: "/x",
+      full_script: "y",
+      duration_seconds: 68,
+      breaking_score: 10,
+    },
+  ];
+  const pick = nextPublishCandidate(stories, {
+    selectionScore: (story) =>
+      story.id === "analytics-winner" ? 2000 : story.breaking_score,
+  });
+  assert.strictEqual(pick.id, "analytics-winner");
+});
+
+test("nextPublishCandidate: skips under-60 Shorts even when exported", () => {
+  const stories = [
+    {
+      id: "too-short",
+      approved: true,
+      exported_path: "/x",
+      full_script: "y",
+      duration_seconds: 57.8,
+      breaking_score: 99,
+    },
+    {
+      id: "ready",
+      approved: true,
+      exported_path: "/x",
+      full_script: "y",
+      duration_seconds: 68.2,
+      breaking_score: 60,
+    },
+  ];
+  const pick = nextPublishCandidate(stories);
+  assert.strictEqual(pick.id, "ready");
+});
+
+test("nextPublishCandidate: skips frozen or unusable subtitle timelines", () => {
+  const stories = [
+    {
+      id: "frozen-captions",
+      approved: true,
+      exported_path: "/x",
+      full_script: "y",
+      duration_seconds: 68.2,
+      breaking_score: 99,
+      subtitle_timing_inspection: {
+        usable: false,
+        reason: "max_gap_too_large",
+      },
+    },
+    {
+      id: "ready",
+      approved: true,
+      exported_path: "/x",
+      full_script: "y",
+      duration_seconds: 67.4,
+      breaking_score: 60,
+      subtitle_timing_inspection: {
+        usable: true,
+        reason: "usable",
+      },
+    },
+  ];
+  const pick = nextPublishCandidate(stories);
+  assert.strictEqual(pick.id, "ready");
+});
+
+test("nextPublishCandidate: skips stale unpublished backlog rows", () => {
+  const nowMs = Date.parse("2026-05-15T12:00:00Z");
+  const stories = [
+    {
+      id: "old",
+      approved: true,
+      exported_path: "/x",
+      full_script: "y",
+      duration_seconds: 68.2,
+      created_at: "2026-04-20T12:00:00Z",
+      breaking_score: 999,
+    },
+    {
+      id: "fresh",
+      approved: true,
+      exported_path: "/x",
+      full_script: "y",
+      duration_seconds: 67.4,
+      created_at: "2026-05-15T11:00:00Z",
+      breaking_score: 60,
+    },
+  ];
+  const pick = nextPublishCandidate(stories, { nowMs });
+  assert.strictEqual(pick.id, "fresh");
+});
+
+test("nextPublishCandidate: stale news is not refreshed by a recent export", () => {
+  const nowMs = Date.parse("2026-05-15T12:00:00Z");
+  const stories = [
+    {
+      id: "old-rerendered",
+      approved: true,
+      exported_path: "/x",
+      full_script: "y",
+      duration_seconds: 68.2,
+      created_at: "2026-04-20T12:00:00Z",
+      exported_at: "2026-05-15T11:30:00Z",
+      breaking_score: 999,
+    },
+    {
+      id: "fresh",
+      approved: true,
+      exported_path: "/x",
+      full_script: "y",
+      duration_seconds: 67.4,
+      created_at: "2026-05-15T11:00:00Z",
+      breaking_score: 60,
+    },
+  ];
+  const pick = nextPublishCandidate(stories, { nowMs });
+  assert.strictEqual(pick.id, "fresh");
+});
+
+test("nextPublishCandidate: strict mode skips thin visual renders", () => {
+  const stories = [
+    {
+      id: "thin",
+      approved: true,
+      exported_path: "/x",
+      full_script: "y",
+      duration_seconds: 68.2,
+      qa_visual_count: 1,
+      qa_visual_warning: "thin_visuals_below_three",
+      breaking_score: 999,
+    },
+    {
+      id: "safe",
+      approved: true,
+      exported_path: "/x",
+      full_script: "y",
+      duration_seconds: 67.4,
+      qa_visual_count: 5,
+      breaking_score: 60,
+    },
+  ];
+  const pick = nextPublishCandidate(stories, { strictContentQa: true });
+  assert.strictEqual(pick.id, "safe");
+});
+
+test("nextPublishCandidate: skips legacy renders when Studio V4 premium publish is required", () => {
+  const stories = [
+    {
+      id: "legacy",
+      approved: true,
+      exported_path: "/x",
+      full_script: "y",
+      duration_seconds: 68.2,
+      render_lane: "legacy_multi_image",
+      render_quality_class: "standard",
+      require_studio_v4_premium_publish: true,
+      breaking_score: 999,
+    },
+    {
+      id: "v4-premium",
+      approved: true,
+      exported_path: "/x",
+      full_script: "y",
+      duration_seconds: 67.4,
+      render_lane: "studio_v4",
+      render_quality_class: "premium",
+      distinct_visual_count: 8,
+      require_studio_v4_premium_publish: true,
+      media_house_benchmark: {
+        result: "pass",
+        scores: {
+          motion_density_score: 91,
+          media_house_polish_score: 89,
+        },
+      },
+      breaking_score: 60,
+    },
+  ];
+  const pick = nextPublishCandidate(stories);
+  assert.strictEqual(pick.id, "v4-premium");
+  assert.match(
+    publishCandidateBlocker(stories[0]),
+    /^premium_contract_required:/,
+  );
+});
+
+test("publishCandidateBlocker: strict retry mode blocks public-output title failures", () => {
+  const blocker = publishCandidateBlocker(
+    {
+      id: "mixtape_bad_retry",
+      approved: true,
+      exported_path: "/x",
+      duration_seconds: 68.2,
+      title:
+        "Mixtape will be safe from a music licensing related delisting, ensured by its developer paying extra for the privilege",
+      suggested_title: "This gaming story",
+      source_type: "reddit",
+      subreddit: "Games",
+      article_url: "https://www.rockpapershotgun.com/mixtape-music-licensing",
+      full_script:
+        "This gaming story just got a source backed update. " +
+        "The useful caveat is that this is one sourced update, not a blank check to invent extra details. " +
+        "Treat the headline as confirmed only where the named source confirms it. " +
+        "Follow Pulse Gaming so you never miss a beat.",
+      suggested_thumbnail_text:
+        "MIXTAPE WILL BE SAFE FROM A MUSIC LICENSING RELATED DELISTING",
+      source_card_label: "r/Games",
+    },
+    { strictContentQa: true },
+  );
+
+  assert.match(blocker, /^public_output:/);
+});
+
+test("publishCandidateBlocker: terminal Instagram 2207076 errors require rerender before retry", () => {
+  const blocker = publishCandidateBlocker(
+    {
+      id: "ig_bad_asset",
+      approved: true,
+      exported_path: "/x",
+      duration_seconds: 68.2,
+      title: "Steam Named Vampire Survivors' Genre",
+      suggested_title: "Steam Named Vampire Survivors' Genre",
+      full_script:
+        "Steam just gave the Vampire Survivors genre a name players can actually search for. Follow Pulse Gaming so you never miss a beat.",
+      instagram_error:
+        "Instagram URL processing failed: status_code=ERROR status=Error: Media upload has failed with error code 2207076",
+    },
+    { strictContentQa: true },
+  );
+
+  assert.equal(blocker, "instagram_reel_processing_rejected_2207076_requires_rerender");
+});
+
+test("nextPublishCandidate: skips risky article-context dominated decks", () => {
+  const riskyImages = Array.from({ length: 4 }, (_, index) => ({
+    type: "article_inline",
+    source: "article",
+    url: `https://example.test/${index}.jpg`,
+    thumbnail_safety_warnings: ["article_image_relevance_review"],
+  }));
+  const stories = [
+    {
+      id: "risky",
+      approved: true,
+      exported_path: "/x",
+      full_script: "y",
+      duration_seconds: 68.2,
+      downloaded_images: JSON.stringify([
+        ...riskyImages,
+        { type: "company_logo", source: "official" },
+      ]),
+      breaking_score: 999,
+    },
+    {
+      id: "safe",
+      approved: true,
+      exported_path: "/x",
+      full_script: "y",
+      duration_seconds: 67.4,
+      downloaded_images: JSON.stringify([
+        { type: "steam_screenshot", source: "steam" },
+        { type: "steam_header", source: "steam" },
+        { type: "article_hero", source: "article" },
+      ]),
+      breaking_score: 60,
+    },
+  ];
+  const pick = nextPublishCandidate(stories);
+  assert.strictEqual(pick.id, "safe");
+});
+
 test("nextPublishCandidate: returns null when nothing eligible", () => {
   assert.strictEqual(nextPublishCandidate([]), null);
   assert.strictEqual(
@@ -203,6 +553,24 @@ test("nextPublishCandidate: returns null when nothing eligible", () => {
     ]),
     null,
   );
+});
+
+test("nextPublishCandidate: local TikTok disabled treats YT/IG/FB as complete", () => {
+  const pick = nextPublishCandidate(
+    [
+      {
+        id: "locally-complete",
+        approved: true,
+        exported_path: "/x",
+        youtube_post_id: "yt",
+        tiktok_post_id: null,
+        instagram_media_id: "ig",
+        facebook_post_id: "fb",
+      },
+    ],
+    { corePlatforms: ["youtube", "instagram", "facebook"] },
+  );
+  assert.strictEqual(pick, null);
 });
 
 // ---------- nextProduceCandidate ----------
@@ -225,6 +593,13 @@ test("nextProduceCandidate: skips qa_failed and already-produced", () => {
       exported_path: null,
       qa_failed: true,
       breaking_score: 99,
+    },
+    {
+      id: "script-review",
+      approved: true,
+      exported_path: null,
+      script_generation_status: "review_required",
+      breaking_score: 97,
     },
     {
       id: "ok",
@@ -346,6 +721,56 @@ test("buildPipelineBacklog: no editorial fields leak into stuck entries", () => 
   ]);
   const serialised = JSON.stringify(b);
   assert.strictEqual(serialised.includes("SECRET"), false);
+});
+
+test("renderPipelineBacklogMarkdown: gives a readable operator summary", () => {
+  const md = renderPipelineBacklogMarkdown({
+    generated_at: "2026-05-05T20:00:00.000Z",
+    counts: {
+      review: 1,
+      approved_not_produced: 2,
+      produced_not_published: 3,
+      partial: 4,
+      failed: 5,
+      qa_failed: 6,
+      published: 7,
+      other: 0,
+    },
+    next_produce_candidate: {
+      id: "produce-me",
+      title: "Produce me",
+      reason: "script_ready",
+    },
+    next_publish_candidate: {
+      id: "publish-me",
+      title: "Publish me",
+      eligible_because: "awaiting_first_upload",
+    },
+    stuck_top10: [
+      {
+        id: "qa-story",
+        title: "QA story",
+        stage: "qa_failed",
+        blocking_reason: "qa:audio_duration_too_long",
+      },
+    ],
+  });
+
+  assert.match(md, /Pipeline Backlog/);
+  assert.match(md, /qa_failed: 6/);
+  assert.match(md, /produce-me/);
+  assert.match(md, /publish-me/);
+  assert.match(md, /qa:audio_duration_too_long/);
+});
+
+test("ops:pipeline-backlog CLI is registered as a read-only operator command", () => {
+  const pkg = JSON.parse(fs.readFileSync(PACKAGE_PATH, "utf8"));
+  assert.equal(pkg.scripts["ops:pipeline-backlog"], "node tools/pipeline-backlog.js");
+
+  const src = fs.readFileSync(TOOL_PATH, "utf8");
+  assert.match(src, /buildPipelineBacklog/);
+  assert.match(src, /renderPipelineBacklogMarkdown/);
+  assert.doesNotMatch(src, /upsertStory|publishNextStory|uploadShort|AUTO_PUBLISH/);
 });
 
 // ---------- HTTP contract ----------

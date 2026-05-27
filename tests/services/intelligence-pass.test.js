@@ -2,10 +2,13 @@
 
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
+const path = require("node:path");
+const fs = require("fs-extra");
 
 const {
   buildAnalyticsClient,
   fixturePullForVideo,
+  mapYouTubeAnalyticsReportToSnapshot,
   SNAPSHOT_LABELS,
   REQUIRED_REAL_SCOPES,
 } = require("../../lib/intelligence/analytics-client");
@@ -40,6 +43,7 @@ const {
   median,
   confidenceFor,
 } = require("../../lib/intelligence/learning-digest");
+const { main: runCommentDigest } = require("../../tools/intelligence/run-comment-digest");
 
 // ── analytics-client ──────────────────────────────────────────────
 
@@ -75,6 +79,132 @@ test("analytics-client: fixture pullSnapshotsForVideos handles empty input", asy
   const client = buildAnalyticsClient({ mode: "fixture" });
   const rows = await client.pullSnapshotsForVideos([]);
   assert.deepEqual(rows, []);
+});
+
+test("analytics-client: maps real YouTube Analytics rows into retention fields", () => {
+  const row = mapYouTubeAnalyticsReportToSnapshot({
+    videoId: "yt_real_1",
+    label: "+24h",
+    data: {
+      columnHeaders: [
+        { name: "views" },
+        { name: "estimatedMinutesWatched" },
+        { name: "averageViewDuration" },
+        { name: "averageViewPercentage" },
+        { name: "likes" },
+        { name: "comments" },
+        { name: "subscribersGained" },
+      ],
+      rows: [[1234, 98.5, 28.4, 63.2, 45, 6, 2]],
+    },
+    snapshotAt: "2026-05-05T10:00:00.000Z",
+  });
+
+  assert.equal(row.video_id, "yt_real_1");
+  assert.equal(row.fixture, false);
+  assert.equal(row.views, 1234);
+  assert.equal(row.watch_time_seconds, 5910);
+  assert.equal(row.average_view_duration_seconds, 28.4);
+  assert.equal(row.average_percentage_viewed, 63.2);
+  assert.equal(row.likes, 45);
+  assert.equal(row.comments, 6);
+  assert.equal(row.subscribers_gained, 2);
+});
+
+test("analytics-client: real mode can use an injected YouTube Analytics client without OAuth", async () => {
+  process.env.INTELLIGENCE_REAL_MODE = "true";
+  try {
+    const client = buildAnalyticsClient({ mode: "real" });
+    const rows = await client.pullSnapshotsForVideo("yt_real_2", {
+      authClient: { fake: true },
+      label: "+24h",
+      youtubeAnalyticsClient: {
+        reports: {
+          query: async () => ({
+            data: {
+              columnHeaders: [
+                { name: "views" },
+                { name: "estimatedMinutesWatched" },
+                { name: "averageViewDuration" },
+                { name: "averageViewPercentage" },
+                { name: "likes" },
+                { name: "comments" },
+                { name: "subscribersGained" },
+              ],
+              rows: [[2000, 140, 31, 68.5, 80, 12, 3]],
+            },
+          }),
+        },
+      },
+    });
+
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].views, 2000);
+    assert.equal(rows[0].watch_time_seconds, 8400);
+    assert.equal(rows[0].average_percentage_viewed, 68.5);
+    assert.equal(rows[0].fixture, false);
+  } finally {
+    delete process.env.INTELLIGENCE_REAL_MODE;
+  }
+});
+
+test("analytics-client: real mode can pull retention intelligence inputs", async () => {
+  process.env.INTELLIGENCE_REAL_MODE = "true";
+  try {
+    const calls = [];
+    const client = buildAnalyticsClient({ mode: "real" });
+    const result = await client.pullRetentionIntelligenceInputsForVideo("yt_real_retention", {
+      authClient: { fake: true },
+      startDate: "2026-05-01",
+      endDate: "2026-05-07",
+      youtubeAnalyticsClient: {
+        reports: {
+          query: async (query) => {
+            calls.push(query);
+            if (query.dimensions === "elapsedVideoTimeRatio") {
+              return {
+                data: {
+                  columnHeaders: [
+                    { name: "elapsedVideoTimeRatio" },
+                    { name: "audienceWatchRatio" },
+                    { name: "relativeRetentionPerformance" },
+                  ],
+                  rows: [
+                    [0, 1, 1.1],
+                    [0.1, 0.66, 0.9],
+                  ],
+                },
+              };
+            }
+            return {
+              data: {
+                columnHeaders: [
+                  { name: "insightTrafficSourceType" },
+                  { name: "views" },
+                  { name: "estimatedMinutesWatched" },
+                  { name: "averageViewDuration" },
+                  { name: "averageViewPercentage" },
+                ],
+                rows: [["SHORTS", 1000, 42, 25.2, 58]],
+              },
+            };
+          },
+        },
+      },
+    });
+
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].dimensions, "elapsedVideoTimeRatio");
+    assert.equal(calls[1].dimensions, "insightTrafficSourceType");
+    assert.equal(calls[0].filters, "video==yt_real_retention");
+    assert.equal(result.videoId, "yt_real_retention");
+    assert.equal(result.retentionRows[1].audience_watch_ratio, 0.66);
+    assert.equal(result.trafficRows[0].traffic_source_type, "SHORTS");
+    assert.equal(result.safety.network_called, true);
+    assert.equal(result.safety.oauth_triggered, false);
+  } finally {
+    delete process.env.INTELLIGENCE_REAL_MODE;
+  }
 });
 
 // ── comment-classifier ────────────────────────────────────────────
@@ -196,7 +326,7 @@ test("reply-drafter: draftReply on no-reply-needed returns null", () => {
 
 // ── monetisation-tracker ──────────────────────────────────────────
 
-test("monetisation: YPP requires subs AND one watch path", () => {
+test("monetisation: full YPP requires subs AND one watch path", () => {
   const ypp = trackYPP({
     subscribers: 1500,
     shorts_views_90d: 0,
@@ -223,7 +353,23 @@ test("monetisation: YPP requires subs AND one watch path", () => {
   assert.equal(ypp4.yppEligible, false);
 });
 
+test("monetisation: expanded YPP models the early-access path separately", () => {
+  const ypp = trackYPP({
+    subscribers: 520,
+    valid_public_uploads_90d: 3,
+    shorts_views_90d: 3_100_000,
+    longform_watch_hours_12m: 0,
+  });
+  assert.equal(ypp.earlyAccessEligible, true);
+  assert.equal(ypp.yppEligible, false);
+  assert.deepEqual(ypp.earlyAccessBlockers, []);
+});
+
 test("monetisation: YPP thresholds match the documented values", () => {
+  assert.equal(YPP_THRESHOLDS.early_subscribers.value, 500);
+  assert.equal(YPP_THRESHOLDS.early_uploads_90d.value, 3);
+  assert.equal(YPP_THRESHOLDS.early_shorts_views_90d.value, 3_000_000);
+  assert.equal(YPP_THRESHOLDS.early_longform_watch_hours_12m.value, 3_000);
   assert.equal(YPP_THRESHOLDS.subscribers.value, 1000);
   assert.equal(YPP_THRESHOLDS.shorts_views_90d.value, 10_000_000);
   assert.equal(YPP_THRESHOLDS.longform_watch_hours_12m.value, 4_000);
@@ -246,8 +392,26 @@ test("monetisation: snapshot reports per-section progress without fantasy revenu
   // shape carries one.
   assert.equal(typeof s.summary.cleared, "number");
   assert.equal(typeof s.summary.ypp_eligible, "boolean");
+  assert.equal(typeof s.summary.ypp_early_access_eligible, "boolean");
   assert.ok(!("revenue" in s.summary));
   assert.ok(!("expected_revenue" in s.summary));
+});
+
+test("monetisation: TikTok Creator Rewards includes account and 60s eligibility gates", () => {
+  const s = buildMonetisationSnapshot({
+    tiktok_followers: 12_000,
+    tiktok_views_30d: 120_000,
+    tiktok_account_type: "personal",
+    tiktok_eligible_region: true,
+    tiktok_good_standing: true,
+    tiktok_payment_tax_setup: true,
+    tiktok_original_content_ready: true,
+    tiktok_latest_video_duration_seconds: 64,
+  });
+  const keys = s.sections.tiktok_creator_rewards.items.map((item) => item.milestone_key);
+  assert.ok(keys.includes("tt_personal_account"));
+  assert.ok(keys.includes("tt_one_minute_video"));
+  assert.ok(s.sections.tiktok_creator_rewards.items.every((item) => item.cleared));
 });
 
 // ── tiktok-strategy ───────────────────────────────────────────────
@@ -346,6 +510,13 @@ test("learning-digest: empty input → insufficient confidence, no crash", () =>
   assert.match(renderDigestMarkdown(d), /Learning Digest/);
 });
 
+test("learning-digest: public Markdown is ASCII-safe for operator reports", () => {
+  const d = buildLearningDigest({ snapshotsByVideo: {}, features: [] });
+  const markdown = renderDigestMarkdown(d);
+  assert.doesNotMatch(markdown, /â|Â|PokÃ/);
+  assert.match(markdown, /^# Pulse Gaming - Learning Digest/m);
+});
+
 test("learning-digest: real digest with fixture data emits all sections", () => {
   const features = [
     {
@@ -393,4 +564,12 @@ test("learning-digest: real digest with fixture data emits all sections", () => 
   assert.ok(d.by_topic.length >= 1);
   assert.equal(d.safety.auto_promote_formats, false);
   assert.equal(d.safety.auto_change_scoring_weights, false);
+});
+
+test("comment digest runner: public Markdown is ASCII-safe for operator reports", async () => {
+  const result = await runCommentDigest();
+  const markdownPath = path.join(__dirname, "..", "..", result.artefacts.md);
+  const markdown = await fs.readFile(markdownPath, "utf8");
+  assert.doesNotMatch(markdown, /â|Â|PokÃ/);
+  assert.match(markdown, /^# Pulse Gaming - Comment Digest \(FIXTURE\)/m);
 });

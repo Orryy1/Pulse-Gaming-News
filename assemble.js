@@ -3,7 +3,6 @@ const fs = require("fs-extra");
 const path = require("path");
 const dotenv = require("dotenv");
 const util = require("util");
-const db = require("./lib/db");
 
 const execAsync = util.promisify(exec);
 
@@ -11,6 +10,7 @@ if (!/^(true|1|yes|on)$/i.test(String(process.env.PULSE_SKIP_DOTENV || ""))) {
   dotenv.config({ override: true });
 }
 
+const db = require("./lib/db");
 const axios = require("axios");
 const brand = require("./brand");
 const { getChannel } = require("./channels");
@@ -18,6 +18,24 @@ const { applyProduceSelection } = require("./lib/produce-selection");
 const {
   classifyShortDuration,
 } = require("./lib/services/short-duration-contract");
+const {
+  characterAlignmentToSubtitleWords,
+  inspectSubtitleTimingWords,
+  selectSubtitleScriptText,
+} = require("./lib/subtitle-timing");
+const {
+  buildNarrationMusicMixFilter,
+  buildNarrationOnlyMixFilter,
+} = require("./lib/audio-quality");
+const { runPublishVoiceQa } = require("./lib/services/publish-voice-qa");
+const { classifyThumbnailImage } = require("./lib/thumbnail-safety");
+const {
+  computeContentHash,
+  prescanImage,
+} = require("./lib/visual-content-prescan");
+const { writeStoryManifest } = require("./lib/public-output-manifest");
+const { mediaSourceUrlKindFields } = require("./lib/media-source-url-kind");
+const { isSafeOutboundUrl } = require("./lib/safe-url");
 
 // Intro card REMOVED - first 1-2 seconds are critical for Shorts retention,
 // a branding card gives swipers a reason to leave before the hook lands
@@ -29,6 +47,66 @@ const CUSTOM_MUSIC_DIR = path.join(__dirname, "audio", "mastered");
 const MUSIC_VOLUME = 0.08; // 8% volume - quieter background
 const MAX_IMAGES = 8; // More images = more visual variety in 60s+ videos
 const FFMPEG_THREADS = 2; // Limit FFmpeg threads to stay within container memory
+const LEGACY_XFADE_DURATION = 0.5;
+const STUDIO_V4_PACKET_DIR = path.join(__dirname, "output", "studio-v4");
+const LEGACY_OVERLAY_LAYOUT = Object.freeze({
+  topLeftX: 40,
+  flairY: 60,
+  sourceY: 130,
+  commentY: 300,
+  commentLineChars: 30,
+  maxCommentLines: 4,
+});
+
+async function loadStudioV4TrustedFootageReport() {
+  const candidates = [
+    process.env.STUDIO_V4_TRUSTED_FOOTAGE_REPORT,
+    path.join(__dirname, "output", "trusted_footage_registry_report.json"),
+    path.join(__dirname, "test", "output", "trusted_footage_registry_report.json"),
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    try {
+      if (await fs.pathExists(candidate)) return await fs.readJson(candidate);
+    } catch (err) {
+      console.log(
+        `[assemble] Studio V4 trusted-footage report unreadable (${candidate}): ${err.message}`,
+      );
+    }
+  }
+  return {};
+}
+
+async function writeStudioV4CanonicalPacket(story, packet) {
+  await fs.ensureDir(STUDIO_V4_PACKET_DIR);
+  const safeId = String(story.id || "story").replace(/[^a-z0-9_-]+/gi, "_");
+  const absPath = path.join(STUDIO_V4_PACKET_DIR, `${safeId}_canonical_packet.json`);
+  await fs.writeJson(absPath, packet, { spaces: 2 });
+  return path.relative(__dirname, absPath).replace(/\\/g, "/");
+}
+
+function safeStudioV4StoryId(story) {
+  return String(story?.id || "story").replace(/[^a-z0-9_-]+/gi, "_");
+}
+
+async function loadStudioV4MotionPack(story) {
+  const safeId = safeStudioV4StoryId(story);
+  const candidates = [
+    process.env.STUDIO_V4_MOTION_PACK_PATH,
+    process.env.STUDIO_V4_MOTION_PACK_REPORT,
+    path.join(__dirname, "output", "studio-v4", "motion-packs", `${safeId}_motion_pack_manifest.json`),
+    path.join(__dirname, "test", "output", `${safeId}_motion_pack_manifest.json`),
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    try {
+      if (await fs.pathExists(candidate)) return await fs.readJson(candidate);
+    } catch (err) {
+      console.log(
+        `[assemble] Studio V4 motion pack unreadable (${candidate}): ${err.message}`,
+      );
+    }
+  }
+  return null;
+}
 
 /**
  * Generates a 15-second teaser cut from the full video.
@@ -311,6 +389,40 @@ async function getAudioDuration(audioPath) {
   }
 }
 
+function bool(value) {
+  return /^(true|1|yes|on)$/i.test(String(value || ""));
+}
+
+function assembleVoiceQaShouldBlock(env = process.env) {
+  return (
+    bool(env.STRICT_ASSEMBLE_VOICE_QA) ||
+    String(env.DEPLOYMENT_MODE || "").toLowerCase() === "local"
+  );
+}
+
+function mergeQaList(existing, next) {
+  return [...new Set([...(existing || []), ...(next || [])].filter(Boolean))];
+}
+
+async function runAssembleVoiceGuard(story, audioPathAbs) {
+  const forceStrict = assembleVoiceQaShouldBlock(process.env);
+  return runPublishVoiceQa(
+    {
+      ...story,
+      audio_path: audioPathAbs || story.audio_path,
+    },
+    {
+      fs,
+      env: {
+        ...process.env,
+        REQUIRE_APPROVED_VOICE_FOR_PUBLISH: forceStrict
+          ? "true"
+          : process.env.REQUIRE_APPROVED_VOICE_FOR_PUBLISH,
+      },
+    },
+  );
+}
+
 // --- Split script into punchy karaoke phrases (1-3 words max) ---
 function splitIntoPhrases(script) {
   if (!script) return [];
@@ -342,10 +454,12 @@ function splitIntoPhrases(script) {
 
 // --- Format seconds to ASS timestamp (H:MM:SS.cc) ---
 function assTime(seconds) {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  return `${h}:${String(m).padStart(2, "0")}:${s.toFixed(2).padStart(5, "0")}`;
+  const totalCentiseconds = Math.max(0, Math.round(Number(seconds || 0) * 100));
+  const h = Math.floor(totalCentiseconds / 360000);
+  const m = Math.floor((totalCentiseconds % 360000) / 6000);
+  const s = Math.floor((totalCentiseconds % 6000) / 100);
+  const cs = totalCentiseconds % 100;
+  return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}.${String(cs).padStart(2, "0")}`;
 }
 
 // --- Highlight key words in orange (TikTok-style) using ASS override tags ---
@@ -461,38 +575,16 @@ async function generateSubtitles(story, duration, outputDir) {
 
   let events;
 
-  if (
-    wordTimestamps &&
-    wordTimestamps.characters &&
-    wordTimestamps.character_start_times_seconds &&
-    wordTimestamps.character_end_times_seconds
-  ) {
-    // Build word list with precise start/end times from character-level data
-    const chars = wordTimestamps.characters;
-    const starts = wordTimestamps.character_start_times_seconds;
-    const ends = wordTimestamps.character_end_times_seconds;
+  const timestampWords = characterAlignmentToSubtitleWords(wordTimestamps);
+  const timestampInspection = inspectSubtitleTimingWords(timestampWords, duration, {
+    maxTrailingGapSeconds: 2,
+  });
 
-    // Group characters into words
-    const words = [];
-    let wordStart = null;
-    let wordEnd = null;
-    let wordChars = "";
-    for (let i = 0; i < chars.length; i++) {
-      if (chars[i] === " " || chars[i] === "\n") {
-        if (wordChars.length > 0) {
-          words.push({ text: wordChars, start: wordStart, end: wordEnd });
-          wordChars = "";
-          wordStart = null;
-          wordEnd = null;
-        }
-      } else {
-        if (wordStart === null) wordStart = starts[i];
-        wordEnd = ends[i];
-        wordChars += chars[i];
-      }
-    }
-    if (wordChars.length > 0)
-      words.push({ text: wordChars, start: wordStart, end: wordEnd });
+  if (timestampInspection.usable) {
+    // Build word list with precise start/end times from character-level data.
+    const words = timestampWords;
+    story.subtitle_timing_source = "timestamps";
+    story.subtitle_timing_inspection = timestampInspection;
 
     // Pre-merge word pairs and reverse TTS transforms for readable subtitles:
     // "twenty" + "26" → "2026", "19" + "dollars" + "99" → "$19.99",
@@ -913,9 +1005,14 @@ async function generateSubtitles(story, duration, outputDir) {
     );
   } else {
     // Fallback: even spacing
-    const phrases = splitIntoPhrases(story.full_script || story.hook || "");
+    const fallbackText = selectSubtitleScriptText(story, wordTimestamps);
+    const phrases = splitIntoPhrases(fallbackText);
     if (phrases.length === 0) return null;
     const phraseTime = duration / phrases.length;
+    const reason = wordTimestamps ? timestampInspection.reason : "no_timestamps_file";
+    story.subtitle_timing_source = "synthetic_fallback";
+    story.subtitle_timing_warning = reason;
+    story.subtitle_timing_inspection = timestampInspection;
 
     events = phrases
       .map((phrase, i) => {
@@ -929,13 +1026,21 @@ async function generateSubtitles(story, duration, outputDir) {
           .replace(/[,.!?;:]+$/, "") // strip trailing punctuation artifacts
           .toUpperCase();
         const highlighted = highlightKeyWords(clean);
-        return `Dialogue: 0,${start},${end},Caption,,0,0,0,,${highlighted}`;
+        const style =
+          i * phraseTime >= duration - OUTRO_DURATION ? "CaptionTop" : "Caption";
+        return `Dialogue: 0,${start},${end},${style},,0,0,0,,${highlighted}`;
       })
       .join("\n");
 
-    console.log(
-      `[assemble] Subtitles: ${phrases.length} phrases (evenly spaced - no timestamps file)`,
-    );
+    if (wordTimestamps) {
+      console.log(
+        `[assemble] Subtitles: ${phrases.length} phrases (safe fallback - timestamp sidecar rejected: ${reason})`,
+      );
+    } else {
+      console.log(
+        `[assemble] Subtitles: ${phrases.length} phrases (evenly spaced - no timestamps file)`,
+      );
+    }
   }
 
   const ass = `[Script Info]
@@ -1080,6 +1185,40 @@ function sanitizeDrawtext(text, maxLen) {
   return clean;
 }
 
+function wrapDrawtextLines(text, options = {}) {
+  const maxChars = Math.max(12, Number(options.maxChars) || 30);
+  const maxLines = Math.max(1, Number(options.maxLines) || 4);
+  const words = String(text || "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .flatMap((word) => {
+      if (word.length <= maxChars) return [word];
+      const chunks = [];
+      for (let i = 0; i < word.length; i += maxChars) {
+        chunks.push(word.slice(i, i + maxChars));
+      }
+      return chunks;
+    });
+
+  const lines = [];
+  let current = "";
+  for (const word of words) {
+    if ((current + " " + word).trim().length > maxChars && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = current ? current + " " + word : word;
+    }
+  }
+  if (current) lines.push(current);
+  if (lines.length <= maxLines) return lines;
+
+  const kept = lines.slice(0, maxLines);
+  const suffix = "...";
+  kept[maxLines - 1] = `${kept[maxLines - 1].slice(0, Math.max(0, maxChars - suffix.length)).trimEnd()}${suffix}`;
+  return kept;
+}
+
 // --- Classification badge colour ---
 function getFlairColor(classification) {
   return brand.classificationColour(classification).ffm;
@@ -1088,6 +1227,235 @@ function getFlairColor(classification) {
 function makeFootageAttributionText(companyName) {
   const company = sanitizeDrawtext(companyName || "Steam Store", 40);
   return `Footage - ${company}`;
+}
+
+function effectiveVisualTimelineDuration(
+  segmentDuration,
+  visualCount,
+  xfadeDuration = LEGACY_XFADE_DURATION,
+) {
+  const count = Math.max(1, Number(visualCount) || 1);
+  const segment = Math.max(0, Number(segmentDuration) || 0);
+  if (count <= 1) return segment;
+  return segment * count - Number(xfadeDuration) * (count - 1);
+}
+
+function planLegacySegmentDuration(
+  targetDuration,
+  visualCount,
+  xfadeDuration = LEGACY_XFADE_DURATION,
+) {
+  const count = Math.max(1, Number(visualCount) || 1);
+  const target = Math.max(0, Number(targetDuration) || 0);
+  if (count <= 1) return Math.max(4, Math.ceil(target * 100) / 100);
+  const needed = (target + Number(xfadeDuration) * (count - 1)) / count;
+  return Math.max(4, Math.ceil(needed * 100) / 100);
+}
+
+function planLegacyVisualSequence(images, videoClips, options = {}) {
+  const visualPaths = Array.isArray(images) ? [...images] : [];
+  const isVideoSlot = new Array(visualPaths.length).fill(false);
+  const clips = Array.isArray(videoClips) ? videoClips.filter(Boolean) : [];
+  const allowHookVideoSlot = options.allowHookVideoSlot === true;
+  const allowMotionOnly = options.allowMotionOnly === true;
+
+  if (allowMotionOnly && visualPaths.length === 0 && clips.length > 0) {
+    const maxSlots = Math.max(1, Number(options.maxMotionOnlySlots || MAX_IMAGES));
+    const selected = clips.slice(0, maxSlots);
+    return {
+      visualPaths: selected,
+      isVideoSlot: selected.map(() => true),
+      placements: selected.map((clip, slot) => ({
+        clip,
+        slot,
+        reason: "studio_v4_motion_only",
+      })),
+    };
+  }
+
+  if (visualPaths.length < 2 || clips.length === 0) {
+    return { visualPaths, isVideoSlot, placements: [] };
+  }
+
+  const candidateSlots = [];
+  if (allowHookVideoSlot) {
+    candidateSlots.push(0);
+  }
+  if (visualPaths.length >= 4) {
+    candidateSlots.push(Math.floor(visualPaths.length / 2));
+  }
+  if (visualPaths.length >= 5) {
+    candidateSlots.push(visualPaths.length - 1);
+  }
+  candidateSlots.push(Math.min(visualPaths.length - 1, 1));
+  if (visualPaths.length >= 6) {
+    candidateSlots.push(Math.floor(visualPaths.length * 0.75));
+  }
+
+  const slots = [];
+  for (const slot of candidateSlots) {
+    if (slot < 0 || slot >= visualPaths.length) continue;
+    if (!allowHookVideoSlot && slot === 0) continue;
+    if (slots.includes(slot)) continue;
+    slots.push(slot);
+  }
+
+  const placements = [];
+  for (let idx = 0; idx < clips.length && idx < slots.length; idx++) {
+    const slot = slots[idx];
+    visualPaths[slot] = clips[idx];
+    isVideoSlot[slot] = true;
+    placements.push({
+      clip: clips[idx],
+      slot,
+      reason:
+        slot === 0
+          ? "hook_video_slot"
+          : idx === 0
+            ? "midroll_pattern_interrupt"
+            : "late_motion_interrupt",
+    });
+  }
+
+  return { visualPaths, isVideoSlot, placements };
+}
+
+function isRenderableVideoClipPath(value) {
+  const clipPath = String(value || "").trim();
+  if (!clipPath) return false;
+  if (fs.pathExistsSync(clipPath)) return true;
+  if (!/^https?:\/\//i.test(clipPath)) return false;
+  if (!isSafeOutboundUrl(clipPath)) return false;
+  const kind = mediaSourceUrlKindFields(clipPath);
+  return kind.segment_validation_eligible === true;
+}
+
+function normaliseImageType(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "_");
+}
+
+function parseWarningList(value) {
+  if (Array.isArray(value)) return value.filter(Boolean).map(String);
+  if (typeof value !== "string" || !value.trim()) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) return parsed.filter(Boolean).map(String);
+  } catch (_) {
+    // fall through to comma split
+  }
+  return value.split(/[,\n]/).map((item) => item.trim()).filter(Boolean);
+}
+
+function storyAllowsHumanRenderImage(story, image) {
+  const verdict = classifyThumbnailImage(story, {
+    ...(image || {}),
+    likely_human: true,
+  });
+  return verdict.namedPersonAllowed === true && verdict.safeForThumbnail === true;
+}
+
+function legacyRenderImageSafetyVerdict(story, image = {}, prescan = {}) {
+  const reasons = [];
+  const warnings = [];
+  const type = normaliseImageType(image.type);
+  const safetyScore = Number(image.thumbnail_safety_score);
+  const safetyWarnings = parseWarningList(image.thumbnail_safety_warnings);
+  const classifierVerdict = classifyThumbnailImage(story, image);
+
+  if (Number.isFinite(safetyScore) && safetyScore <= 30) {
+    reasons.push("thumbnail_safety_low_score");
+  }
+
+  if (
+    type === "article_inline" &&
+    safetyWarnings.includes("article_image_relevance_review") &&
+    !classifierVerdict.isGameAsset &&
+    !classifierVerdict.isPlatformAsset
+  ) {
+    reasons.push("low_relevance_article_inline");
+  }
+
+  if (classifierVerdict.isStock && !classifierVerdict.isGameAsset) {
+    warnings.push("stock_or_generic_render_image");
+  }
+
+  const prescanHasFace =
+    prescan?.likely_has_face === true || prescan?.likely_is_stock_person === true;
+  if (prescanHasFace && !storyAllowsHumanRenderImage(story, image)) {
+    reasons.push("unsafe_face_like_render_image");
+  }
+  if (prescan?.error) warnings.push(`prescan_unavailable:${prescan.error}`);
+
+  return {
+    allow: reasons.length === 0,
+    reasons: [...new Set(reasons)],
+    warnings: [...new Set(warnings)],
+    thumbnail_safety_score: Number.isFinite(safetyScore)
+      ? safetyScore
+      : classifierVerdict.score,
+    prescan: prescan || null,
+  };
+}
+
+async function filterLegacyRenderImageEntriesForSafety(story, entries, opts = {}) {
+  const scanImage = opts.prescanImage || prescanImage;
+  const hashImage = opts.computeContentHash || computeContentHash;
+  const kept = [];
+  const rejected = [];
+  const seenHashes = new Set();
+
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    if (!entry?.path) continue;
+    let scan = entry.prescan || null;
+    if (!scan && scanImage) {
+      try {
+        scan = await scanImage(entry.path, {
+          sourceTypeHint: String(entry.image?.source || "").toLowerCase() || null,
+        });
+      } catch (err) {
+        scan = { error: `prescan_exception:${String(err.message || err).slice(0, 80)}` };
+      }
+    }
+
+    let contentHash = entry.content_hash || null;
+    if (!contentHash && hashImage) {
+      try {
+        contentHash = await hashImage(entry.path);
+      } catch (_) {
+        contentHash = null;
+      }
+    }
+
+    const verdict = legacyRenderImageSafetyVerdict(story, entry.image || {}, scan || {});
+    if (!verdict.allow) {
+      rejected.push({
+        ...entry,
+        content_hash: contentHash,
+        verdict,
+      });
+      continue;
+    }
+    if (contentHash && seenHashes.has(contentHash)) {
+      rejected.push({
+        ...entry,
+        content_hash: contentHash,
+        verdict: {
+          ...verdict,
+          allow: false,
+          reasons: ["duplicate_render_image"],
+        },
+      });
+      continue;
+    }
+    if (contentHash) seenHashes.add(contentHash);
+    kept.push({
+      ...entry,
+      content_hash: contentHash,
+      verdict,
+    });
+  }
+
+  return { kept, rejected };
 }
 
 // --- Build filter graph and command with broadcast overlays ---
@@ -1109,36 +1477,33 @@ function buildVideoCommand(
     images = images.slice(0, MAX_IMAGES);
   }
 
-  // Merge video clips into the visual sequence - hook-first strategy
-  // First clip goes to slot 0 (hook visual), second to middle for pattern interrupt
-  const videoClips = (story.video_clips || []).filter((p) =>
-    fs.pathExistsSync(p),
-  );
-  const isVideoSlot = new Array(images.length).fill(false);
-  const visualPaths = [...images];
-  if (videoClips.length > 0 && images.length >= 2) {
-    // First video clip = slot 0 (hook-first: start with gameplay, not a static image)
-    visualPaths[0] = videoClips[0];
-    isVideoSlot[0] = true;
-    console.log(`[assemble] Slot 0: using Steam trailer for hook-first visual`);
-    // Second clip (if available) goes to middle for pattern interrupt
-    if (videoClips.length > 1 && images.length >= 4) {
-      const midSlot = Math.floor(images.length / 2);
-      visualPaths[midSlot] = videoClips[1];
-      isVideoSlot[midSlot] = true;
-      console.log(
-        `[assemble] Slot ${midSlot}: using second clip for mid-roll pattern interrupt`,
-      );
-    }
+  // Merge video clips into the visual sequence. Raw Steam/IGDB trailers
+  // commonly start with black fades, rating cards or publisher bumpers; if
+  // one of those goes into slot 0, publish QA correctly rejects the render
+  // for a black segment at 0.00s. Keep the hook slot as a known-good still
+  // unless a future clip validator explicitly marks hook placement safe.
+  const videoClips = (story.video_clips || []).filter(isRenderableVideoClipPath);
+  const studioV4MotionOnly = story.render_lane === "studio_v4_director_bridge";
+  const { visualPaths, isVideoSlot, placements: videoClipPlacements } =
+    planLegacyVisualSequence(images, videoClips, {
+      allowHookVideoSlot: studioV4MotionOnly,
+      allowMotionOnly: studioV4MotionOnly,
+    });
+  for (const placement of videoClipPlacements) {
+    console.log(
+      `[assemble] Slot ${placement.slot}: using trailer clip for ${placement.reason}`,
+    );
   }
 
   const inputs = [];
   const fontOpt =
     process.platform === "win32" ? "font='Arial'" : "font='DejaVu Sans'";
-  const segmentDuration = Math.max(
-    4,
-    Math.floor(duration / visualPaths.length),
+  const segmentDuration = planLegacySegmentDuration(
+    duration,
+    visualPaths.length,
+    LEGACY_XFADE_DURATION,
   );
+  const segmentFrames = Math.ceil(segmentDuration * 30);
 
   // --- Inputs: background images + video clips ---
   // Steam trailers and IGDB clips are often shorter than the segment
@@ -1263,22 +1628,22 @@ function buildVideoCommand(
       const zoomIn = i % 2 === 0;
       // Scale zoom increment based on segment duration: reach 15% zoom over the segment's frames
       const zoomIncrement =
-        Math.round(10000 * (0.15 / (segmentDuration * 30))) / 10000;
+        Math.round(10000 * (0.15 / segmentFrames)) / 10000;
       const zoomExpr = zoomIn
         ? `z=min(zoom+${zoomIncrement}\\,1.15)`
         : `z=if(eq(on\\,1)\\,1.15\\,max(zoom-${zoomIncrement}\\,1.0))`;
       // Vary crop focus: top, centre, bottom - so same-ish images still look different
       const xPan =
         i % 3 === 0
-          ? `x=iw/2-(iw/zoom/2)`
+            ? `x=iw/2-(iw/zoom/2)`
           : i % 3 === 1
-            ? `x=(iw-iw/zoom)*on/${segmentDuration * 30}`
-            : `x=(iw-iw/zoom)*(1-on/${segmentDuration * 30})`;
+            ? `x=(iw-iw/zoom)*on/${segmentFrames}`
+            : `x=(iw-iw/zoom)*(1-on/${segmentFrames})`;
       filterParts.push(
         `[${i}:v]scale=1080:1920:force_original_aspect_ratio=increase,` +
-          `crop=1080:1920:0:${i % 3 === 0 ? "0" : i % 3 === 1 ? "(ih-oh)/2" : "ih-oh"},` +
+          `crop=1080:1920:(iw-ow)/2:${i % 3 === 0 ? "0" : i % 3 === 1 ? "(ih-oh)/2" : "ih-oh"},` +
           `zoompan=${zoomExpr}:${xPan}:y=ih/2-(ih/zoom/2):` +
-          `d=${segmentDuration * 30}:s=1080x1920:fps=30,` +
+          `d=${segmentFrames}:s=1080x1920:fps=30,` +
           `trim=duration=${segmentDuration},setpts=PTS-STARTPTS,` +
           `format=yuv420p,setsar=1[v${i}]`,
       );
@@ -1291,7 +1656,7 @@ function buildVideoCommand(
   // made the first ~8 seconds feel flashy and broken. `dissolve` blends
   // the two segments directly with no black flash between them.
   if (visualPaths.length > 1) {
-    const xfadeDur = 0.5;
+    const xfadeDur = LEGACY_XFADE_DURATION;
     let prevLabel = "v0";
     for (let i = 1; i < visualPaths.length; i++) {
       const offset = i * (segmentDuration - xfadeDur);
@@ -1330,13 +1695,13 @@ function buildVideoCommand(
   // Flair badge - top left with coloured pill
   chain.push(
     `drawtext=text='  ${flair}  ':${fontOpt}:fontcolor=white:fontsize=38:` +
-      `box=1:boxcolor=${flairColor}@0.85:boxborderw=14:x=40:y=60`,
+      `box=1:boxcolor=${flairColor}@0.85:boxborderw=14:x=${LEGACY_OVERLAY_LAYOUT.topLeftX}:y=${LEGACY_OVERLAY_LAYOUT.flairY}`,
   );
 
   // Source badge - below flair pill with visible gap
   chain.push(
     `drawtext=text='  ${source}  ':${fontOpt}:fontcolor=white@0.85:fontsize=26:` +
-      `box=1:boxcolor=${brand.MUTED_FFM}@0.6:boxborderw=8:x=40:y=130`,
+      `box=1:boxcolor=${brand.MUTED_FFM}@0.6:boxborderw=8:x=${LEGACY_OVERLAY_LAYOUT.topLeftX}:y=${LEGACY_OVERLAY_LAYOUT.sourceY}`,
   );
 
   // Brand bar removed - intro/outro cards handle branding
@@ -1361,14 +1726,14 @@ function buildVideoCommand(
   }
 
   // Source attribution overlay for video clips (strengthens fair use as news commentary)
-  if (videoClips.length > 0) {
+  if (videoClipPlacements.length > 0) {
     const company = makeFootageAttributionText(
       story.company_name || "Steam Store",
     );
     // Show footage attribution in bottom-left during video clip segments.
     for (let i = 0; i < visualPaths.length; i++) {
       if (!isVideoSlot[i]) continue;
-      const clipStart = i * segmentDuration;
+      const clipStart = i * (segmentDuration - LEGACY_XFADE_DURATION);
       const clipEnd = clipStart + segmentDuration;
       chain.push(
           `drawtext=text='  ${company}  ':${fontOpt}:fontcolor=white@0.6:fontsize=20:` +
@@ -1408,8 +1773,9 @@ function buildVideoCommand(
     const startTime = Math.floor(duration * 0.15);
     const fadeDur = 0.4;
 
-    // Y position: below the flair badge + subreddit card (those sit at y~90-155)
-    const yBase = 220;
+    // Y position: below the flair/source stack with enough room for
+    // short source labels and clip attribution to avoid top-left collisions.
+    const yBase = LEGACY_OVERLAY_LAYOUT.commentY;
 
     comments.slice(0, count).forEach((comment, ci) => {
       const text = sanitizeDrawtext(comment.body, 500);
@@ -1425,19 +1791,12 @@ function buildVideoCommand(
       const slideX = `if(lt(t-${ct}\\,${fadeDur})\\,(-20+60*(t-${ct})/${fadeDur})\\,40)`;
       const enableExpr = `between(t\\,${ct}\\,${ct + showDur})`;
 
-      // Word wrap into lines of ~30 chars - show ALL lines, no truncation
-      const words = text.split(" ");
-      const lines = [];
-      let current = "";
-      for (const word of words) {
-        if ((current + " " + word).length > 30 && current) {
-          lines.push(current);
-          current = word;
-        } else {
-          current = current ? current + " " + word : word;
-        }
-      }
-      if (current) lines.push(current);
+      // Keep quote cards bounded so long comments never spill off-frame
+      // or cover subtitles; the story itself carries full context.
+      const lines = wrapDrawtextLines(text, {
+        maxChars: LEGACY_OVERLAY_LAYOUT.commentLineChars,
+        maxLines: LEGACY_OVERLAY_LAYOUT.maxCommentLines,
+      });
 
       // Username + score header with fade + slide
       const upvotes = score > 0 ? `  ${score} pts` : "";
@@ -1532,17 +1891,19 @@ function buildVideoCommand(
 
   // --- ASS subtitles ---
   filterParts.push(`[${videoLabel}]ass=${assPathFixed}[afterass]`);
-  filterParts.push(`[afterass]copy[outv]`);
+  filterParts.push(`[afterass]scale=in_range=pc:out_range=tv,format=yuv420p,setsar=1[outv]`);
 
   // Audio mixing: narration at full volume + music at low volume
   let audioMapping;
   if (musicIdx >= 0) {
     filterParts.push(`[${audioIdx}:a]volume=1.0[voice]`);
     filterParts.push(`[${musicIdx}:a]volume=${MUSIC_VOLUME}[bgm]`);
-    filterParts.push(`[voice][bgm]amix=inputs=2:duration=first[outa]`);
+    filterParts.push(buildNarrationMusicMixFilter());
     audioMapping = `-map "[outv]" -map "[outa]"`;
   } else {
-    audioMapping = `-map "[outv]" -map ${audioIdx}:a`;
+    filterParts.push(`[${audioIdx}:a]anull[voice]`);
+    filterParts.push(buildNarrationOnlyMixFilter());
+    audioMapping = `-map "[outv]" -map "[outa]"`;
   }
 
   const filterGraph = filterParts.join(";\n");
@@ -1561,7 +1922,7 @@ function buildVideoCommand(
     // or full chroma — which our Sharp-rendered composites do.
     // Meta decoders refuse anything above 4:2:0. YouTube transcodes
     // server-side so it ignored the profile; Meta does not.
-    "-pix_fmt yuv420p -profile:v high -level:v 4.0",
+    "-pix_fmt yuv420p -profile:v high -level:v 4.0 -color_range tv -colorspace bt709 -color_primaries bt709 -color_trc bt709",
     "-c:a aac -b:a 192k",
     "-r 30 -shortest",
     "-map_metadata -1",
@@ -1629,6 +1990,31 @@ async function assemble() {
       continue;
     }
     const stat = await fs.stat(resolved);
+    const hasRenderStamp =
+      typeof s.render_lane === "string" &&
+      s.render_lane.length > 0 &&
+      typeof s.render_quality_class === "string" &&
+      s.render_quality_class.length > 0;
+    const forceLegacyUnstampedRerender =
+      /^(true|1|yes|on)$/i.test(
+        String(process.env.FORCE_RERENDER_LEGACY_UNSTAMPED || ""),
+      ) && !hasRenderStamp;
+    if (forceLegacyUnstampedRerender) {
+      console.log(
+        `[assemble] ${s.id}: legacy unstamped render selected for fresh rerender (platform ids preserved)`,
+      );
+      s.exported_path = null;
+      s.render_fallback_reason = "legacy_unstamped_force_rerender";
+      s.render_fallback_at = new Date().toISOString();
+      try {
+        await db.upsertStory(s);
+      } catch (err) {
+        console.log(
+          `[assemble] ${s.id}: failed to persist legacy unstamped rerender marker: ${err.message}`,
+        );
+      }
+      continue;
+    }
     if (stat.size < 500 * 1024) {
       console.log(
         `[assemble] ${s.id}: exported file only ${Math.round(stat.size / 1024)}KB - re-rendering`,
@@ -1709,11 +2095,34 @@ async function assemble() {
 
     const audioPathAbs =
       (await mediaPaths.resolveExisting(story.audio_path)) || story.audio_path;
+    const voiceQa = await runAssembleVoiceGuard(story, audioPathAbs);
+    story.assemble_voice_qa = voiceQa;
+    if (voiceQa.result === "fail") {
+      const reason =
+        voiceQa.failures?.[0] || "approved_voice:assemble_voice_qa_failed";
+      console.log(
+        `[assemble] ${story.id}: voice QA failed before render, skipping: ${reason}`,
+      );
+      story.qa_failed = true;
+      story.qa_failures = mergeQaList(story.qa_failures, voiceQa.failures);
+      story.qa_warnings = mergeQaList(story.qa_warnings, voiceQa.warnings);
+      story.qa_failed_at = new Date().toISOString();
+      story.publish_status = "failed";
+      story.publish_error = `qa_blocked: ${reason}`;
+      story.render_fallback_reason = `voice_contract:${reason}`;
+      skipped++;
+      continue;
+    }
+    if (voiceQa.result === "warn") {
+      story.qa_warnings = mergeQaList(story.qa_warnings, voiceQa.warnings);
+    }
+
     const audioDuration = await getAudioDuration(audioPathAbs);
     const duration = audioDuration + 1; // 1s breathing room so CTA doesn't cut off abruptly
     const durationQa = classifyShortDuration({
       audioDurationSeconds: audioDuration,
       videoDurationSeconds: duration,
+      story,
     });
     if (
       durationQa.failures.some((failure) =>
@@ -1741,20 +2150,20 @@ async function assemble() {
     // the audio check above: `story.downloaded_images[].path` is a
     // repo-relative string that only exists under MEDIA_ROOT in
     // production.
-    let realImages = [];
+    let realImageEntries = [];
     if (story.downloaded_images && story.downloaded_images.length > 0) {
       for (const img of story.downloaded_images) {
         if (!img.path || img.type === "company_logo") continue;
         const imgAbs = await mediaPaths.resolveExisting(img.path);
         if (imgAbs && (await fs.pathExists(imgAbs))) {
-          realImages.push(imgAbs);
+          realImageEntries.push({ image: img, path: imgAbs });
         }
       }
     }
 
     // If cached image files are missing (e.g. container restarted) or never downloaded, fetch them now
     if (
-      realImages.length === 0 &&
+      realImageEntries.length === 0 &&
       (story.article_image ||
         (story.game_images && story.game_images.length > 0) ||
         story.thumbnail_url)
@@ -1770,21 +2179,22 @@ async function assemble() {
         story.downloaded_images = freshImages.map((i) => ({
           path: i.path,
           type: i.type,
+          source: i.source,
         }));
         for (const img of freshImages) {
           if (!img.path || img.type === "company_logo") continue;
           const imgAbs = await mediaPaths.resolveExisting(img.path);
           if (imgAbs && (await fs.pathExists(imgAbs))) {
-            realImages.push(imgAbs);
+            realImageEntries.push({ image: img, path: imgAbs });
           }
         }
         // Store video clips for use in assembly
         if (freshClips.length > 0) {
           story.video_clips = freshClips.map((c) => c.path);
         }
-        if (realImages.length > 0) {
+        if (realImageEntries.length > 0) {
           console.log(
-            `[assemble] ${story.id}: re-downloaded ${realImages.length} images`,
+            `[assemble] ${story.id}: re-downloaded ${realImageEntries.length} images`,
           );
         }
       } catch (dlErr) {
@@ -1793,6 +2203,25 @@ async function assemble() {
         );
       }
     }
+
+    const safeRenderImages = await filterLegacyRenderImageEntriesForSafety(
+      story,
+      realImageEntries,
+    );
+    if (safeRenderImages.rejected.length > 0) {
+      const summary = safeRenderImages.rejected
+        .slice(0, 5)
+        .map((entry) => {
+          const rel = entry.image?.path || path.basename(entry.path || "");
+          const reasons = entry.verdict?.reasons || ["unknown"];
+          return `${rel}:${reasons.join("+")}`;
+        })
+        .join(", ");
+      console.log(
+        `[assemble] ${story.id}: rejected ${safeRenderImages.rejected.length} unsafe/duplicate render image(s): ${summary}`,
+      );
+    }
+    const realImages = safeRenderImages.kept.map((entry) => entry.path);
 
     if (realImages.length === 0) {
       console.log(
@@ -1804,6 +2233,105 @@ async function assemble() {
       );
     }
 
+    try {
+      const {
+        buildStudioV4CanonicalPacket,
+        applyStudioV4PacketToStory,
+        shouldHoldLegacyRender,
+        resolveStudioV4Policy,
+      } = require("./lib/studio/v4/canonical-policy");
+      const {
+        applyVisualV4MotionPackToStory,
+      } = require("./lib/studio/v4/motion-pack");
+      const {
+        buildStudioV4RenderBridge,
+        applyStudioV4RenderBridgeToStory,
+      } = require("./lib/studio/v4/render-bridge");
+      const {
+        materializeStudioV4BridgeClips,
+      } = require("./lib/studio/v4/render-clip-materializer");
+      const studioV4Policy = resolveStudioV4Policy(process.env);
+      if (studioV4Policy.enabled) {
+        const trustedFootageReport = await loadStudioV4TrustedFootageReport();
+        const visualV4MotionPack = await loadStudioV4MotionPack(story);
+        if (visualV4MotionPack) {
+          applyVisualV4MotionPackToStory(story, visualV4MotionPack);
+        }
+        const studioV4Packet = buildStudioV4CanonicalPacket({
+          story,
+          trustedFootageReport,
+          localTimeline:
+            story.local_video_timeline ||
+            story.visual_timeline ||
+            story.timeline ||
+            { duration_s: duration },
+          retentionIntelligence:
+            story.retention_intelligence ||
+            story.retention_recommendations ||
+            {},
+        });
+        applyStudioV4PacketToStory(story, studioV4Packet);
+        story.studio_v4_canonical_packet_path =
+          await writeStudioV4CanonicalPacket(story, studioV4Packet);
+
+        if (shouldHoldLegacyRender(story, studioV4Packet, studioV4Policy)) {
+          console.log(
+            `[assemble] ${story.id}: Studio V4 hold (${studioV4Packet.readiness.status}) - ${studioV4Packet.readiness.blockers.join(", ") || "not_ready"}`,
+          );
+          skipped++;
+          continue;
+        }
+
+        const rawStudioV4RenderBridge = buildStudioV4RenderBridge({
+          story,
+          canonicalPacket: studioV4Packet,
+          motionPack: visualV4MotionPack || story.visual_v4_motion_pack,
+          pathExists: (candidate) => fs.pathExistsSync(candidate),
+        });
+        const studioV4ClipMaterialization = await materializeStudioV4BridgeClips({
+          root: __dirname,
+          story,
+          bridge: rawStudioV4RenderBridge,
+        });
+        const studioV4RenderBridge = studioV4ClipMaterialization.bridge;
+        story.visual_v4_clip_materialization = {
+          status: studioV4ClipMaterialization.readiness.status,
+          materialized: studioV4ClipMaterialization.materialized.length,
+          rejected: studioV4ClipMaterialization.rejected.length,
+        };
+        applyStudioV4RenderBridgeToStory(story, studioV4RenderBridge);
+        if (studioV4RenderBridge.readiness.status === "bridge_ready") {
+          console.log(
+            `[assemble] ${story.id}: Studio V4 render bridge using ${studioV4RenderBridge.video_clips.length} director motion clip(s) (${studioV4ClipMaterialization.materialized.length} materialized)`,
+          );
+        } else {
+          story.qa_warnings = mergeQaList(story.qa_warnings, [
+            `studio_v4_render_bridge:${studioV4RenderBridge.readiness.blockers.join("|") || "not_ready"}`,
+          ]);
+          console.log(
+            `[assemble] ${story.id}: Studio V4 render bridge not ready (${studioV4RenderBridge.readiness.blockers.join(", ") || "not_ready"}), legacy visual sequence retained`,
+          );
+        }
+      }
+    } catch (err) {
+      story.qa_warnings = mergeQaList(story.qa_warnings, [
+        `studio_v4_canonical_policy_error:${err.code || "unknown"}`,
+      ]);
+      if (process.env.STUDIO_V4_CANONICAL_FAIL_OPEN === "true") {
+        console.log(
+          `[assemble] ${story.id}: Studio V4 policy errored, continuing because STUDIO_V4_CANONICAL_FAIL_OPEN=true: ${err.message}`,
+        );
+      } else {
+        story.render_fallback_reason = `studio_v4_policy_error:${err.code || err.message || "unknown"}`;
+        story.render_fallback_at = new Date().toISOString();
+        console.log(
+          `[assemble] ${story.id}: Studio V4 policy errored, holding legacy render: ${err.message}`,
+        );
+        skipped++;
+        continue;
+      }
+    }
+
     // 2026-04-29 incident: stamp visual-count metadata on the story
     // BEFORE building the filter graph so downstream observability
     // (Discord summary, dashboard, content-QA) can see how thin the
@@ -1811,11 +2339,20 @@ async function assemble() {
     // composite. This is record-only tonight — the publish gate that
     // blocks "fewer than N distinct visuals" will land in the next
     // pass once we have a publish-cycle of evidence on the new field.
-    story.qa_visual_count = realImages.length;
+    const renderableVideoClipCount = (story.video_clips || []).filter(
+      isRenderableVideoClipPath,
+    ).length;
+    const v4BridgeRenderReady =
+      story.render_lane === "studio_v4_director_bridge" &&
+      renderableVideoClipCount > 0;
+    const effectiveVisualCount = v4BridgeRenderReady
+      ? Math.max(realImages.length, renderableVideoClipCount)
+      : realImages.length;
+    story.qa_visual_count = effectiveVisualCount;
     story.qa_visual_warning =
-      realImages.length === 0
+      effectiveVisualCount === 0
         ? "no_real_images_used_composite"
-        : realImages.length < 3
+        : effectiveVisualCount < 3
           ? "thin_visuals_below_three"
           : null;
 
@@ -1840,8 +2377,10 @@ async function assemble() {
     // through to the composite-only path. Studio V2 / clip-first /
     // HyperFrames-for-MP4 are not in production today (Session 1
     // §G); when they are, add the matching label here.
-    story.render_lane = "legacy_multi_image";
-    story.distinct_visual_count = realImages.length;
+    story.render_lane = v4BridgeRenderReady
+      ? "studio_v4_director_bridge"
+      : "legacy_multi_image";
+    story.distinct_visual_count = effectiveVisualCount;
     story.outro_present = await fs.pathExists(OUTRO_CARD);
     story.thumbnail_candidate_present = !!(
       story.hf_thumbnail_path ||
@@ -1850,7 +2389,9 @@ async function assemble() {
       story.image_path
     );
     story.render_quality_class =
-      realImages.length >= 6
+      v4BridgeRenderReady
+        ? "premium"
+        : realImages.length >= 6
         ? "premium"
         : realImages.length >= 3
           ? "standard"
@@ -1874,7 +2415,7 @@ async function assemble() {
           ? [compositeImageAbs]
           : [];
 
-    if (rawImages.length === 0) {
+    if (rawImages.length === 0 && !v4BridgeRenderReady) {
       console.log(`[assemble] WARNING: No images for ${story.id}, skipping`);
       skipped++;
       continue;
@@ -1905,7 +2446,9 @@ async function assemble() {
     let preflightBad = [];
     try {
       const { validateImageBatch } = require("./lib/render-input-validation");
-      const r = await validateImageBatch(rawImages);
+      const r = rawImages.length > 0
+        ? await validateImageBatch(rawImages)
+        : { good: [], bad: [] };
       if (r.bad.length > 0) {
         preflightBad = r.bad;
         console.log(
@@ -1918,7 +2461,9 @@ async function assemble() {
       // If validation drained the deck completely, fall back to the
       // composite image if available — beats hard-skipping the
       // story.
-      if (r.good.length === 0 && compositeImageAbs) {
+      if (r.good.length === 0 && v4BridgeRenderReady) {
+        images = [];
+      } else if (r.good.length === 0 && compositeImageAbs) {
         images = [compositeImageAbs];
         story.render_fallback_reason = `class=all_inputs_invalid | inputs_validated=${rawImages.length} | inputs_bad=${r.bad.length} | detail=using_composite_only`;
         story.render_fallback_at = new Date().toISOString();
@@ -1943,10 +2488,77 @@ async function assemble() {
       `[assemble] ${story.id}: using ${images.length} real images (smart-crop disabled — hotfix 2026-04-25)`,
     );
 
+    try {
+      const {
+        selectRenderImagesForBrightness,
+      } = require("./lib/render-input-validation");
+      const brightnessSelection = await selectRenderImagesForBrightness(
+        images,
+      );
+      if (
+        brightnessSelection.dropped.length > 0 ||
+        brightnessSelection.demoted.length > 0
+      ) {
+        const changed =
+          brightnessSelection.images.length !== images.length ||
+          brightnessSelection.images.some((p, i) => p !== images[i]);
+        if (changed) {
+          images = brightnessSelection.images;
+          story.qa_visual_count = images.length;
+          story.distinct_visual_count = images.length;
+          story.render_quality_class =
+            images.length >= 6
+              ? "premium"
+              : images.length >= 3
+                ? "standard"
+                : images.length >= 1
+                  ? "fallback"
+                  : "reject";
+        }
+        story.qa_warnings = mergeQaList(story.qa_warnings, [
+          brightnessSelection.dropped.length > 0
+            ? "dark_render_images_dropped"
+            : null,
+          brightnessSelection.demoted.length > 0
+            ? "dark_render_images_demoted"
+            : null,
+        ]);
+        console.log(
+          `[assemble] ${story.id}: brightness guard ${brightnessSelection.reason}; dropped=${brightnessSelection.dropped.length}, demoted=${brightnessSelection.demoted.length}, images=${images.length}`,
+        );
+      }
+    } catch (err) {
+      console.log(
+        `[assemble] ${story.id}: brightness guard errored (continuing): ${err.message}`,
+      );
+    }
+
     // Generate ASS subtitle file
     const subsDir = path.join("output", "subs");
     await fs.ensureDir(subsDir);
     const assPath = await generateSubtitles(story, duration, subsDir);
+    try {
+      const { runMediaHouseBenchmark } = require("./lib/media-house-benchmark");
+      story.media_house_benchmark = runMediaHouseBenchmark({
+        story,
+        requireGate: false,
+      });
+      story.reference_pack_used =
+        story.media_house_benchmark.reference_pack_used || [];
+      story.media_house_polish_score =
+        story.media_house_benchmark.scores?.media_house_polish_score ?? null;
+    } catch (err) {
+      story.qa_warnings = mergeQaList(story.qa_warnings, [
+        `gold_standard_benchmark_error:${err.code || "unknown"}`,
+      ]);
+    }
+    const { path: manifestAbsPath } = await writeStoryManifest(story, {
+      outputDir: path.join(__dirname, "output", "manifests"),
+      publicTitle: story.suggested_title || story.title,
+      referenceBenchmark: story.media_house_benchmark || null,
+    });
+    const storyManifestPath = path.relative(__dirname, manifestAbsPath).replace(/\\/g, "/");
+    story.story_manifest_path = storyManifestPath;
 
     // Generate or reuse background music
     const musicPath = await ensureBackgroundMusic(duration, story);
@@ -1978,7 +2590,11 @@ async function assemble() {
 
       // DB gets the repo-relative path (unchanged contract);
       // filesystem ops use the resolved absolute target.
+      story.audio_duration = audioDuration;
+      story.duration_seconds = duration;
+      story.short_duration_contract = durationQa;
       story.exported_path = outputPath;
+      story.exported_at = new Date().toISOString();
       rendered++;
 
       const stat = await fs.stat(writeTargetPath);
@@ -2120,12 +2736,12 @@ async function assemble() {
         // Flair badge - moved higher
         fbChain.push(
           `drawtext=text='  ${flair}  ':${fontOpt}:fontcolor=white:fontsize=38:` +
-            `box=1:boxcolor=${flairColor}@0.85:boxborderw=14:x=40:y=60`,
+            `box=1:boxcolor=${flairColor}@0.85:boxborderw=14:x=${LEGACY_OVERLAY_LAYOUT.topLeftX}:y=${LEGACY_OVERLAY_LAYOUT.flairY}`,
         );
         // Source badge - below flair with visible gap
         fbChain.push(
           `drawtext=text='  ${source}  ':${fontOpt}:fontcolor=white@0.85:fontsize=26:` +
-            `box=1:boxcolor=${brand.MUTED_FFM}@0.6:boxborderw=8:x=40:y=130`,
+            `box=1:boxcolor=${brand.MUTED_FFM}@0.6:boxborderw=8:x=${LEGACY_OVERLAY_LAYOUT.topLeftX}:y=${LEGACY_OVERLAY_LAYOUT.sourceY}`,
         );
         // Brand bar removed - intro/outro cards handle branding
 
@@ -2169,7 +2785,7 @@ async function assemble() {
           const gapBetween = 2;
           const totalPerComment = showDur + gapBetween;
           const startTime = Math.floor(duration * 0.15);
-          const yBase = 220;
+          const yBase = LEGACY_OVERLAY_LAYOUT.commentY;
 
           comments.slice(0, count).forEach((comment, ci) => {
             const text = sanitizeDrawtext(comment.body, 500);
@@ -2183,18 +2799,10 @@ async function assemble() {
             const slideX = `if(lt(t-${ct}\\,${fadeDur})\\,(-20+60*(t-${ct})/${fadeDur})\\,40)`;
             const enableExpr = `between(t\\,${ct}\\,${ct + showDur})`;
 
-            const words = text.split(" ");
-            const lines = [];
-            let current = "";
-            for (const word of words) {
-              if ((current + " " + word).length > 30 && current) {
-                lines.push(current);
-                current = word;
-              } else {
-                current = current ? current + " " + word : word;
-              }
-            }
-            if (current) lines.push(current);
+            const lines = wrapDrawtextLines(text, {
+              maxChars: LEGACY_OVERLAY_LAYOUT.commentLineChars,
+              maxLines: LEGACY_OVERLAY_LAYOUT.maxCommentLines,
+            });
 
             const upvotes = score > 0 ? `  ${score} pts` : "";
             fbChain.push(
@@ -2255,9 +2863,10 @@ async function assemble() {
         // ASS subtitles LAST - on top of everything
         if (assPath && (await fs.pathExists(assPath))) {
           const assFixed = assPath.replace(/\\/g, "/").replace(/:/g, "\\\\:");
-          fbFilterParts.push(`[${fbVideoLabel}]ass=${assFixed}[outv]`);
+          fbFilterParts.push(`[${fbVideoLabel}]ass=${assFixed}[fbass]`);
+          fbFilterParts.push(`[fbass]scale=in_range=pc:out_range=tv,format=yuv420p,setsar=1[outv]`);
         } else {
-          fbFilterParts.push(`[${fbVideoLabel}]copy[outv]`);
+          fbFilterParts.push(`[${fbVideoLabel}]scale=in_range=pc:out_range=tv,format=yuv420p,setsar=1[outv]`);
         }
 
         // Audio mixing
@@ -2265,10 +2874,12 @@ async function assemble() {
         if (fbMusicIdx >= 0) {
           fbFilterParts.push(`[${fbAudioIdx}:a]volume=1.0[voice]`);
           fbFilterParts.push(`[${fbMusicIdx}:a]volume=${MUSIC_VOLUME}[bgm]`);
-          fbFilterParts.push(`[voice][bgm]amix=inputs=2:duration=first[outa]`);
+          fbFilterParts.push(buildNarrationMusicMixFilter());
           fbAudioMapping = `-map "[outv]" -map "[outa]"`;
         } else {
-          fbAudioMapping = `-map "[outv]" -map ${fbAudioIdx}:a`;
+          fbFilterParts.push(`[${fbAudioIdx}:a]anull[voice]`);
+          fbFilterParts.push(buildNarrationOnlyMixFilter());
+          fbAudioMapping = `-map "[outv]" -map "[outa]"`;
         }
 
         const fbFilterGraph = fbFilterParts.join(";\n");
@@ -2287,7 +2898,7 @@ async function assemble() {
           `-c:v libx264 -crf 21 -preset medium -threads ${FFMPEG_THREADS}`,
           // Meta-safe H.264 profile (same as primary branch) — IG
           // Reels and FB Reels refuse High 4:4:4 Predictive.
-          "-pix_fmt yuv420p -profile:v high -level:v 4.0",
+          "-pix_fmt yuv420p -profile:v high -level:v 4.0 -color_range tv -colorspace bt709 -color_primaries bt709 -color_trc bt709",
           "-c:a aac -b:a 192k -r 30 -shortest",
           `-movflags +faststart "${writeTargetPath}"`,
         ].join(" ");
@@ -2298,7 +2909,11 @@ async function assemble() {
 
         // DB gets the repo-relative path (unchanged contract);
         // filesystem ops use the resolved absolute target.
+        story.audio_duration = audioDuration;
+        story.duration_seconds = duration;
+        story.short_duration_contract = durationQa;
         story.exported_path = outputPath;
+        story.exported_at = new Date().toISOString();
         rendered++;
         console.log(
           `[assemble] Exported (single-image fallback with overlays): ${outputPath}`,
@@ -2332,9 +2947,23 @@ async function assemble() {
 
 module.exports = assemble;
 module.exports.sanitizeDrawtext = sanitizeDrawtext;
+module.exports.wrapDrawtextLines = wrapDrawtextLines;
+module.exports.LEGACY_OVERLAY_LAYOUT = LEGACY_OVERLAY_LAYOUT;
 module.exports.decodeHtmlEntities = decodeHtmlEntities;
 module.exports.asciiFallback = asciiFallback;
 module.exports.makeFootageAttributionText = makeFootageAttributionText;
+module.exports.effectiveVisualTimelineDuration = effectiveVisualTimelineDuration;
+module.exports.planLegacySegmentDuration = planLegacySegmentDuration;
+module.exports.planLegacyVisualSequence = planLegacyVisualSequence;
+module.exports.isRenderableVideoClipPath = isRenderableVideoClipPath;
+module.exports.legacyRenderImageSafetyVerdict = legacyRenderImageSafetyVerdict;
+module.exports.filterLegacyRenderImageEntriesForSafety =
+  filterLegacyRenderImageEntriesForSafety;
+module.exports.characterAlignmentToSubtitleWords =
+  characterAlignmentToSubtitleWords;
+module.exports.inspectSubtitleTimingWords = inspectSubtitleTimingWords;
+module.exports.selectSubtitleScriptText = selectSubtitleScriptText;
+module.exports.assTime = assTime;
 
 if (require.main === module) {
   assemble().catch((err) => {

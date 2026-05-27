@@ -2,9 +2,16 @@ const cron = require("node-cron");
 const fs = require("fs-extra");
 const sendDiscord = require("./notify");
 const dotenv = require("dotenv");
-const db = require("./lib/db");
 
 dotenv.config({ override: true });
+
+const db = require("./lib/db");
+const mediaPaths = require("./lib/media-paths");
+const {
+  buildProduceCompletionSummary,
+  normaliseExportPath,
+  shouldSendProduceCompletionDiscord,
+} = require("./lib/ops/produce-notification");
 
 /*
   Pulse Gaming Pipeline v2 -Autonomous Operations
@@ -12,7 +19,9 @@ dotenv.config({ override: true });
   Modes:
     hunt      -One-off Reddit + RSS fetch + script generation
     produce   -Generate audio, images, assemble videos
+              Optional: --story-id <id> or --story <id>
     publish   -Upload to YouTube, TikTok, Instagram
+              Optional: --story-id <id> or --story <id>
     schedule  -Start autonomous cron scheduler (recommended)
     full      -Run complete autonomous cycle once
     approve   -Run auto-approval pass only
@@ -92,8 +101,17 @@ async function runHunt() {
   console.log("[run] Hunt complete");
 }
 
-async function runProduce() {
+async function runProduce({ storyId = null } = {}) {
   console.log("[run] === PRODUCE MODE ===");
+
+  if (storyId) {
+    process.env.PRODUCE_STORY_IDS = storyId;
+    delete process.env.PRODUCE_STORY_LIMIT;
+    console.log(`[run] Targeting story id: ${storyId}`);
+  }
+
+  const produceStartedAtMs = Date.now();
+  const beforeStories = await db.getStories();
 
   const affiliates = require("./affiliates");
   const audio = require("./audio");
@@ -126,24 +144,87 @@ async function runProduce() {
     console.log(`[run] Thumbnail candidate batch failed (non-fatal): ${err.message}`);
   }
 
-  let exportedPaths = [];
   const stories = await db.getStories();
-  exportedPaths = stories
-    .filter((s) => s.exported_path)
-    .map((s) => s.exported_path);
-
-  await sendDiscord(
-    `**Pulse Gaming Produce Complete**\n${exportedPaths.length} videos exported:\n${exportedPaths.join("\n")}`,
+  const recentlyTouchedExportPaths = await findRecentlyTouchedExportPaths(
+    stories,
+    produceStartedAtMs,
   );
+  const summary = buildProduceCompletionSummary({
+    beforeStories,
+    afterStories: stories,
+    recentlyTouchedExportPaths,
+  });
+
+  if (shouldSendProduceCompletionDiscord(summary)) {
+    await sendDiscord(summary.message);
+  }
+  console.log(`[run] ${summary.message.replace(/\n/g, " | ")}`);
 
   console.log("[run] Produce complete");
 }
 
-async function runPublish() {
+async function findRecentlyTouchedExportPaths(stories = [], startedAtMs = Date.now()) {
+  const recentPaths = [];
+  const seen = new Set();
+  const mtimeSlackMs = 5000;
+
+  for (const story of stories || []) {
+    const exportedPath = normaliseExportPath(story && story.exported_path);
+    if (!exportedPath || seen.has(exportedPath)) continue;
+    seen.add(exportedPath);
+
+    try {
+      const resolved = await mediaPaths.resolveExisting(exportedPath);
+      if (!resolved) continue;
+      const stat = await fs.stat(resolved);
+      if (stat.mtimeMs >= startedAtMs - mtimeSlackMs) {
+        recentPaths.push(exportedPath);
+      }
+    } catch {
+      // Missing or unreadable exports are handled by publish readiness/QA.
+    }
+  }
+
+  return recentPaths;
+}
+
+function parsePublishStoryIdArg(argv = process.argv.slice(3)) {
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === "--story-id" || arg === "--story") {
+      const value = argv[i + 1];
+      if (!value || value.startsWith("--")) {
+        throw new Error(`${arg} requires a story id`);
+      }
+      return value;
+    }
+    if (arg.startsWith("--story-id=")) {
+      const value = arg.slice("--story-id=".length);
+      if (!value) throw new Error("--story-id requires a story id");
+      return value;
+    }
+    if (arg.startsWith("--story=")) {
+      const value = arg.slice("--story=".length);
+      if (!value) throw new Error("--story requires a story id");
+      return value;
+    }
+  }
+  return null;
+}
+
+async function runPublish({ storyId = null } = {}) {
   console.log("[run] === PUBLISH MODE ===");
 
+  if (storyId) {
+    process.env.PUBLISH_STORY_IDS = storyId;
+    console.log(`[run] Targeting story id: ${storyId}`);
+  }
+
   const { publishToAllPlatforms } = require("./publisher");
-  const results = await publishToAllPlatforms();
+  const results = await publishToAllPlatforms({
+    dispatchSource: "cli_publish",
+    storyId,
+  });
 
   const total =
     results.youtube.length + results.tiktok.length + results.instagram.length;
@@ -154,7 +235,7 @@ async function runFull() {
   console.log("[run] === FULL AUTONOMOUS CYCLE ===");
 
   const { fullAutonomousCycle } = require("./publisher");
-  await fullAutonomousCycle();
+  await fullAutonomousCycle({ dispatchSource: "cli_full" });
 }
 
 async function runApprove() {
@@ -466,9 +547,11 @@ if (!mode) {
     "  node run.js hunt      -Fetch Reddit + RSS stories and generate scripts",
   );
   console.log(
-    "  node run.js produce   -Generate audio, images and assemble videos",
+    "  node run.js produce [--story-id <id>] -Generate audio, images and assemble videos",
   );
-  console.log("  node run.js publish   -Upload to YouTube, TikTok, Instagram");
+  console.log(
+    "  node run.js publish [--story-id <id>] -Upload to YouTube, TikTok, Instagram",
+  );
   console.log("  node run.js full      -Run complete autonomous cycle once");
   console.log("  node run.js approve   -Run auto-approval pass");
   console.log(
@@ -491,10 +574,14 @@ if (!mode) {
         await runHunt();
         break;
       case "produce":
-        await runProduce();
+        await runProduce({
+          storyId: parsePublishStoryIdArg(process.argv.slice(3)),
+        });
         break;
       case "publish":
-        await runPublish();
+        await runPublish({
+          storyId: parsePublishStoryIdArg(process.argv.slice(3)),
+        });
         break;
       case "full":
         await runFull();

@@ -1,32 +1,19 @@
 # Manual prewarm helper for the local inference server.
 #
 # Purpose:
-#   Load the VoxCPM 2 __default__ engine (or a specific voice) BEFORE the
-#   Node jobs-runner starts claiming GPU jobs. Pays the cold-start cost
-#   (2-5 min on a Windows box with cached HF weights, up to 10 min on a
-#   cold cache) outside the INFER_TIMEOUT_MS budget so real jobs never
-#   trip the abort.
+#   Load the VoxCPM 2 __default__ engine, or a specific voice, before Node
+#   jobs start claiming GPU work. This pays the cold-start cost outside the
+#   normal inference timeout budget.
 #
 # Usage:
-#   # Default engine:
-#   pwsh scripts/prewarm-infer.ps1
-#
-#   # Specific voice id (must exist in voices.json or fall back to default):
-#   pwsh scripts/prewarm-infer.ps1 -VoiceId "TX3LPaxmHKxFdv7VOQHJ"
-#
-#   # Non-default host:
-#   pwsh scripts/prewarm-infer.ps1 -BaseUrl "http://127.0.0.1:8765"
-#
-# Expected behaviour:
-#   - First call blocks for 2-5 min while weights + AudioVAE + denoiser
-#     load. Returns 200 with { voice_id, loaded_ms, engine_count, reused: false }.
-#   - Subsequent calls return instantly with reused: true.
+#   powershell -ExecutionPolicy Bypass -File scripts\prewarm-infer.ps1
+#   powershell -ExecutionPolicy Bypass -File scripts\prewarm-infer.ps1 -VoiceId "TX3LPaxmHKxFdv7VOQHJ"
 #
 # Exit codes:
-#   0  prewarm succeeded (engine resident when script exits)
-#   1  server unreachable (uvicorn not running, wrong port, firewall)
-#   2  HTTP error from /v1/prewarm (see body for details)
-#   3  timeout before engine loaded (raise -TimeoutSec and retry)
+#   0  prewarm succeeded
+#   1  server unreachable
+#   2  HTTP or unexpected error
+#   3  timeout before engine loaded
 
 [CmdletBinding()]
 param(
@@ -40,17 +27,15 @@ $started = Get-Date
 
 Write-Host "[prewarm] target=$BaseUrl voice_id=$VoiceId timeout=${TimeoutSec}s" -ForegroundColor Cyan
 
-# Health probe first — fail fast if the server isn't up.
 try {
     $health = Invoke-RestMethod -Uri "$BaseUrl/health" -Method GET -TimeoutSec 5
     Write-Host "[prewarm] /health OK: engine_count=$($health.engine_count) voices=$($health.voices.Count)" -ForegroundColor Green
 } catch {
-    Write-Host "[prewarm] FATAL: /health unreachable at $BaseUrl — is uvicorn running?" -ForegroundColor Red
+    Write-Host "[prewarm] FATAL: /health unreachable at $BaseUrl - is uvicorn running?" -ForegroundColor Red
     Write-Host "[prewarm] error: $_" -ForegroundColor Red
     exit 1
 }
 
-# Prewarm call — this is the blocking one.
 $body = @{ voice_id = $VoiceId } | ConvertTo-Json -Compress
 try {
     $resp = Invoke-RestMethod `
@@ -62,7 +47,7 @@ try {
 } catch [System.Net.WebException] {
     $elapsed = (Get-Date) - $started
     if ($_.Exception.Status -eq "Timeout") {
-        Write-Host "[prewarm] TIMEOUT after $([int]$elapsed.TotalSeconds)s — engine still loading. Raise -TimeoutSec and retry." -ForegroundColor Yellow
+        Write-Host "[prewarm] TIMEOUT after $([int]$elapsed.TotalSeconds)s - engine still loading. Raise -TimeoutSec and retry." -ForegroundColor Yellow
         exit 3
     }
     Write-Host "[prewarm] HTTP error after $([int]$elapsed.TotalSeconds)s: $_" -ForegroundColor Red

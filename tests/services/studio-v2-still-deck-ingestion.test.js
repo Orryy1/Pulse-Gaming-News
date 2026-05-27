@@ -5,10 +5,14 @@ const assert = require("node:assert/strict");
 const fs = require("fs-extra");
 const os = require("node:os");
 const path = require("node:path");
+const sharp = require("sharp");
 
 const {
+  assertStillDeckPlanMaterialised,
   buildStillDeckMediaPackage,
   buildStoryFromStillDeckPlan,
+  materialiseMissingStillDeckAssets,
+  mergeStillDeckApplyLocalPlan,
   selectStillDeckPlan,
 } = require("../../lib/studio/v2/still-deck-ingestion");
 
@@ -79,6 +83,77 @@ test("still-deck adapter rejects missing local assets", async () => {
 
   assert.equal(pack.media.articleHeroes.length, 0);
   assert.equal(pack.rejected[0].reason, "missing_local_asset");
+});
+
+test("still-deck adapter fails fast when applied local stills disappear from the package", () => {
+  const plan = planFor("1te1oq7", [
+    {
+      local_path: "forza-a.jpg",
+      source_url: "https://cdn.akamai.steamstatic.com/steam/apps/2483190/ss_a.jpg",
+      source_type: "steam_screenshot",
+      entity: "Forza Horizon 6",
+      duplicate_hash: "forza-a",
+    },
+    {
+      local_path: "forza-b.jpg",
+      source_url: "https://cdn.akamai.steamstatic.com/steam/apps/2483190/ss_b.jpg",
+      source_type: "steam_screenshot",
+      entity: "Forza Horizon 6",
+      duplicate_hash: "forza-b",
+    },
+  ]);
+
+  assert.throws(
+    () =>
+      assertStillDeckPlanMaterialised({
+        plan,
+        packageResult: {
+          metrics: { acceptedCount: 0, acceptedFrameCount: 35 },
+          rejected: [
+            { source_type: "steam_screenshot", reason: "missing_local_asset" },
+            { source_type: "steam_screenshot", reason: "duplicate_asset" },
+          ],
+        },
+        reportPath: "test/output/asset_acquisition_v16_gameplay_stills_apply_local.json",
+      }),
+    /still_deck_applied_stills_dropped: expected 2 applied stills from test\/output\/asset_acquisition_v16_gameplay_stills_apply_local\.json but package accepted 0 stills \(missing_local_asset, duplicate_asset\)/,
+  );
+});
+
+test("still-deck adapter can materialise missing visual deck URLs before ingest", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-still-materialise-"));
+  const plan = await materialiseMissingStillDeckAssets({
+    storyId: "1szzhy9",
+    outputRoot: dir,
+    fetchImage: async () => ({
+      buffer: Buffer.from("fake-image"),
+      contentType: "image/jpeg",
+    }),
+    plan: {
+      story_id: "1szzhy9",
+      visual_deck: {
+        items: [
+          {
+            source_url: "https://cdn.example/marathon.jpg",
+            source_type: "steam_screenshot",
+            entity: "Marathon",
+            duplicate_hash: "marathon-a",
+          },
+        ],
+      },
+    },
+  });
+
+  assert.equal(plan.visual_deck.items[0].local_path.endsWith(".jpg"), true);
+  assert.equal(await fs.pathExists(plan.visual_deck.items[0].local_path), true);
+  assert.equal(plan.applied_assets.length, 1);
+  assert.equal(plan.provenance[0].action, "materialised_visual_deck_asset");
+
+  const pack = await buildStillDeckMediaPackage({
+    story: story(),
+    plan,
+  });
+  assert.equal(pack.media.articleHeroes.length, 1);
 });
 
 test("still-deck adapter rejects unsafe portrait assets", async () => {
@@ -221,6 +296,203 @@ test("still-deck adapter ingests accepted official frame extraction report into 
   assert.equal(pack.metrics.distinctFrameEntities, 1);
 });
 
+test("still-deck adapter ingests accepted segment-validation samples into trailer frames", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-segment-frame-ingest-"));
+  const localPath = await imageFile(dir, "001_Forza_03665cs.jpg");
+  const pack = await buildStillDeckMediaPackage({
+    story: story({
+      id: "1te1oq7",
+      title: "Forza Horizon 6 hits 130,000 concurrent players on Steam",
+      full_script: "Forza Horizon 6 is the exact subject.",
+    }),
+    plan: planFor("1te1oq7", []),
+    segmentValidationReport: {
+      schema_version: 1,
+      generated_at: "2026-05-17T17:56:54.451Z",
+      segments: [
+        {
+          story_id: "1te1oq7",
+          source_url: "https://video.akamai.steamstatic.com/store_trailers/forza/hls_264_master.m3u8",
+          source_type: "steam_movie",
+          entity: "Forza Horizon 6",
+          status: "validated",
+          validation_reason: "segment_samples_passed",
+          media_start_s: 36,
+          action_score: 82,
+          samples: [
+            {
+              local_path: localPath,
+              status: "accepted",
+              offset_s: 0.65,
+              seek_seconds: 36.65,
+              qa: {
+                verdict: "pass",
+                thumbnail_safe: true,
+                likely_has_face: false,
+                black_frame: false,
+                content_hash: "segment-frame-one",
+                failures: [],
+              },
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  assert.equal(pack.media.trailerFrames.length, 1);
+  assert.equal(pack.assets[0].kind, "trailer-frame");
+  assert.equal(pack.assets[0].sourceType, "official_trailer_frame");
+  assert.equal(pack.assets[0].provenance.original_source_type, "steam_movie");
+  assert.equal(pack.assets[0].provenance.content_hash, "segment-frame-one");
+  assert.equal(pack.assets[0].provenance.target_time_seconds, 36.65);
+});
+
+test("still-deck adapter rejects samples from rejected segment-validation windows", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-rejected-segment-frame-"));
+  const localPath = await imageFile(dir, "060_Forza_09065cs.jpg");
+  const pack = await buildStillDeckMediaPackage({
+    story: story({
+      id: "1tftq7f",
+      title: "Forza Horizon 6 hits 92 on Metacritic",
+      full_script: "Forza Horizon 6 is the exact subject.",
+    }),
+    plan: planFor("1tftq7f", []),
+    segmentValidationReport: {
+      schema_version: 1,
+      generated_at: "2026-05-18T18:40:29.275Z",
+      segments: [
+        {
+          story_id: "1tftq7f",
+          source_url: "https://video.akamai.steamstatic.com/store_trailers/forza/hls_264_master.m3u8",
+          source_type: "steam_movie",
+          entity: "Forza Horizon 6",
+          status: "rejected",
+          validation_reason: "segment_contains_black_frame",
+          media_start_s: 90,
+          action_score: 86.6,
+          samples: [
+            {
+              local_path: localPath,
+              status: "accepted",
+              offset_s: 0.65,
+              seek_seconds: 90.65,
+              qa: {
+                verdict: "pass",
+                thumbnail_safe: true,
+                likely_has_face: false,
+                black_frame: false,
+                content_hash: "promo-card-frame",
+                failures: [],
+              },
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  assert.equal(pack.media.trailerFrames.length, 0);
+  assert.equal(pack.rejected[0].reason, "segment_contains_black_frame");
+  assert.equal(pack.metrics.rejectedFrameCount, 1);
+});
+
+test("still-deck adapter uses one best sample per validated segment to avoid repeated trailer stills", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-segment-frame-ingest-"));
+  const weakPath = await imageFile(dir, "001_Forza_03665cs.jpg");
+  const bestPath = await imageFile(dir, "001_Forza_03835cs.jpg");
+  const pack = await buildStillDeckMediaPackage({
+    story: story({
+      id: "1te1oq7",
+      title: "Forza Horizon 6 hits 130,000 concurrent players on Steam",
+      full_script: "Forza Horizon 6 is the exact subject.",
+    }),
+    plan: planFor("1te1oq7", []),
+    segmentValidationReport: {
+      schema_version: 1,
+      generated_at: "2026-05-17T17:56:54.451Z",
+      segments: [
+        {
+          story_id: "1te1oq7",
+          source_url: "https://video.akamai.steamstatic.com/store_trailers/forza/hls_264_master.m3u8",
+          source_type: "steam_movie",
+          entity: "Forza Horizon 6",
+          status: "validated",
+          validation_reason: "segment_samples_passed",
+          action_score: 82,
+          samples: [
+            {
+              local_path: weakPath,
+              status: "accepted",
+              score: 70,
+              qa: {
+                verdict: "pass",
+                thumbnail_safe: true,
+                likely_has_face: false,
+                black_frame: false,
+                content_hash: "segment-frame-weak",
+                failures: [],
+              },
+            },
+            {
+              local_path: bestPath,
+              status: "accepted",
+              score: 94,
+              qa: {
+                verdict: "pass",
+                thumbnail_safe: true,
+                likely_has_face: false,
+                black_frame: false,
+                content_hash: "segment-frame-best",
+                failures: [],
+              },
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  assert.equal(pack.media.trailerFrames.length, 1);
+  assert.equal(pack.media.trailerFrames[0].path, bestPath);
+  assert.equal(pack.assets[0].provenance.content_hash, "segment-frame-best");
+});
+
+test("still-deck adapter accepts trusted Steam storefront trailer frame sources", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-frame-ingest-"));
+  const localPath = await imageFile(dir, "forza-storefront-frame.jpg");
+  const pack = await buildStillDeckMediaPackage({
+    story: story({
+      id: "1tftq7f",
+      title: "Forza Horizon 6 Becomes Highest Rated Game of 2026 on Metacritic",
+      full_script: "Forza Horizon 6 is the exact subject.",
+    }),
+    plan: planFor("1tftq7f", []),
+    frameReport: frameReportFor("1tftq7f", [
+      {
+        story_id: "1tftq7f",
+        source_url: "https://video.fastly.steamstatic.com/store_trailers/2483190/1133501958/clip.mp4",
+        source_type: "steam_storefront_video_reference",
+        entity: "Forza Horizon 6",
+        local_path: localPath,
+        target_time_seconds: 34,
+        status: "accepted",
+        qa: {
+          verdict: "pass",
+          thumbnail_safe: true,
+          likely_has_face: false,
+          black_frame: false,
+          content_hash: "storefront-frame-one",
+          failures: [],
+        },
+      },
+    ]),
+  });
+
+  assert.equal(pack.media.trailerFrames.length, 1);
+  assert.equal(pack.assets[0].provenance.original_source_type, "steam_storefront_video_reference");
+});
+
 test("still-deck adapter rejects QA-failed extracted frames", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-frame-ingest-"));
   const localPath = await imageFile(dir, "002_GTA_52pct.jpg");
@@ -297,6 +569,89 @@ test("still-deck adapter rejects accepted trailer frames that are title or ratin
   assert.equal(pack.metrics.rejectedFrameCount, 1);
 });
 
+test("still-deck adapter rejects accepted trailer frames with failing visual taste metadata", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-frame-ingest-"));
+  const localPath = await imageFile(dir, "004_BioShock_62pct.jpg");
+  const pack = await buildStillDeckMediaPackage({
+    story: story({
+      id: "rss_5b3abe925b27a199",
+      title: "GTA 6 owner passed on a sequel to a legacy franchise",
+      full_script: "BioShock is one of the exact subjects in this Take-Two story.",
+    }),
+    plan: planFor("rss_5b3abe925b27a199", []),
+    frameReport: frameReportFor("rss_5b3abe925b27a199", [
+      {
+        order: 1,
+        story_id: "rss_5b3abe925b27a199",
+        source_url: "https://video.akamai.steamstatic.com/store_trailers/bioshock/hls_264_master.m3u8",
+        source_type: "steam_movie",
+        entity: "BioShock",
+        local_path: localPath,
+        status: "accepted",
+        qa: {
+          verdict: "pass",
+          thumbnail_safe: true,
+          failures: [],
+          content_hash: "dead-dark-frame",
+          visual_taste: {
+            verdict: "fail",
+            reason: "dead_dark_frame",
+            score: 18.2,
+          },
+        },
+      },
+    ]),
+  });
+
+  assert.equal(pack.media.trailerFrames.length, 0);
+  assert.equal(pack.rejected[0].reason, "low_detail_official_frame");
+  assert.equal(pack.metrics.rejectedFrameCount, 1);
+});
+
+test("still-deck adapter rejects store stills with failing visual taste metadata", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-still-taste-"));
+  const localPath = await imageFile(dir, "forza-washed-still.jpg");
+  const pack = await buildStillDeckMediaPackage({
+    story: story({
+      id: "1te1oq7",
+      title: "Forza Horizon 6 immediately beats its predecessor's Steam record",
+      full_script: "Forza Horizon 6 is the exact subject in this story.",
+    }),
+    plan: planFor("1te1oq7", [
+      {
+        local_path: localPath,
+        source_url: "https://shared.akamai.steamstatic.com/forza/washed.jpg",
+        source_type: "steam_screenshot",
+        entity: "steam",
+        exact_subject_group: "Forza Horizon 6",
+        subject_match_quality: "exact_game_match",
+        counted_for_premium: true,
+        counted_for_standard: true,
+        store_match_verified: true,
+        duplicate_hash: "washed-forza-still",
+        visual_taste: {
+          verdict: "fail",
+          reason: "washed_low_detail_frame",
+          score: 80,
+        },
+      },
+    ]),
+  });
+
+  assert.equal(pack.media.articleHeroes.length, 0);
+  assert.equal(pack.rejected[0].reason, "low_detail_still_frame");
+  assert.equal(pack.metrics.acceptedCount, 0);
+});
+
+test("still-deck Flash Lane proofs run forensic QA with strict Flash subtitle density", async () => {
+  const source = await fs.readFile(
+    path.join(process.cwd(), "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+
+  assert.match(source, /runForensicQa\(\{[\s\S]*flashLane:\s*variant\s*===\s*"enriched"/);
+});
+
 test("still-deck adapter dedupes extracted frames by QA content hash", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-frame-ingest-"));
   const first = await imageFile(dir, "001_GTA_18pct.jpg");
@@ -334,6 +689,62 @@ test("still-deck adapter dedupes extracted frames by QA content hash", async () 
 
   assert.equal(pack.media.trailerFrames.length, 1);
   assert.equal(pack.rejected[0].reason, "duplicate_frame");
+});
+
+test("still-deck adapter rejects near-duplicate extracted frames by visual hash", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-frame-ingest-"));
+  const first = path.join(dir, "001_Forza_42pct.jpg");
+  const second = path.join(dir, "002_Forza_58pct.jpg");
+  await sharp({
+    create: {
+      width: 32,
+      height: 32,
+      channels: 3,
+      background: { r: 240, g: 60, b: 40 },
+    },
+  }).jpeg().toFile(first);
+  await sharp({
+    create: {
+      width: 32,
+      height: 32,
+      channels: 3,
+      background: { r: 238, g: 58, b: 42 },
+    },
+  }).jpeg().toFile(second);
+
+  const pack = await buildStillDeckMediaPackage({
+    story: story({
+      id: "1tftq7f",
+      title: "Forza Horizon 6 Becomes Highest Rated Game of 2026 on Metacritic",
+      full_script: "Forza Horizon 6 is the exact subject.",
+    }),
+    plan: planFor("1tftq7f", []),
+    frameReport: frameReportFor("1tftq7f", [
+      {
+        order: 1,
+        story_id: "1tftq7f",
+        source_url: "https://video.akamai.steamstatic.com/store_trailers/forza/hls_264_master.m3u8",
+        source_type: "steam_movie",
+        entity: "Forza Horizon 6",
+        local_path: first,
+        status: "accepted",
+        qa: { verdict: "pass", thumbnail_safe: true, content_hash: "frame-hash-a" },
+      },
+      {
+        order: 2,
+        story_id: "1tftq7f",
+        source_url: "https://video.akamai.steamstatic.com/store_trailers/forza/hls_264_master.m3u8",
+        source_type: "steam_movie",
+        entity: "Forza Horizon 6",
+        local_path: second,
+        status: "accepted",
+        qa: { verdict: "pass", thumbnail_safe: true, content_hash: "frame-hash-b" },
+      },
+    ]),
+  });
+
+  assert.equal(pack.media.trailerFrames.length, 1);
+  assert.equal(pack.rejected[0].reason, "near_duplicate_frame");
 });
 
 test("still-deck adapter ignores extracted frames for another story", async () => {
@@ -484,6 +895,259 @@ test("still-deck adapter rejects generic store assets without a game entity", as
   assert.equal(pack.rejected[0].reason, "generic_store_asset_without_game_entity");
 });
 
+test("still-deck adapter accepts verified exact-subject store assets with generic source entity", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-still-ingest-"));
+  const localPath = await imageFile(dir, "forza_steam_screenshot.jpg");
+  const pack = await buildStillDeckMediaPackage({
+    story: story({
+      id: "1te1oq7",
+      title: "Forza Horizon 6 beats its predecessor's all-time Steam record",
+      full_script: "Forza Horizon 6 has a verified Steam store signal.",
+    }),
+    plan: planFor("1te1oq7", [
+      {
+        local_path: localPath,
+        source_url: "https://cdn.akamai.steamstatic.com/steam/apps/2483190/ss_forza.jpg",
+        source_type: "steam_screenshot",
+        entity: "steam",
+        duplicate_hash: "forza-steam",
+        subject_match_quality: "exact_game_match",
+        exact_subject_group: "Forza Horizon 6",
+        counted_for_premium: true,
+        store_match_verified: true,
+      },
+    ]),
+  });
+
+  assert.equal(pack.media.articleHeroes.length, 1);
+  assert.equal(pack.media.articleHeroes[0].entity, "Forza Horizon 6");
+  assert.equal(pack.metrics.distinctEntities, 1);
+});
+
+test("still-deck adapter accepts exact-subject metadata restored from provenance", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-still-ingest-"));
+  const localPath = await imageFile(dir, "forza_apply_local.jpg");
+  const pack = await buildStillDeckMediaPackage({
+    story: story({
+      id: "1te1oq7",
+      title: "Forza Horizon 6 beats its predecessor's all-time Steam record",
+      full_script: "Forza Horizon 6 has a verified Steam store signal.",
+    }),
+    plan: {
+      story_id: "1te1oq7",
+      applied_assets: [
+        {
+          local_path: localPath,
+          source_url: "https://cdn.akamai.steamstatic.com/steam/apps/2483190/ss_forza.jpg",
+          source_type: "steam_screenshot",
+          entity: "steam",
+          store_match_verified: true,
+        },
+      ],
+      provenance: [
+        {
+          local_path: null,
+          source_url: "https://cdn.akamai.steamstatic.com/steam/apps/2483190/ss_forza.jpg",
+          source_type: "steam_screenshot",
+          entity: "Forza Horizon 6",
+          subject_match_quality: "exact_game_match",
+          exact_subject_group: "Forza Horizon 6",
+          counted_for_premium: true,
+          store_match_verified: true,
+          duplicate_hash: "forza-from-provenance",
+        },
+      ],
+    },
+  });
+
+  assert.equal(pack.media.articleHeroes.length, 1);
+  assert.equal(pack.media.articleHeroes[0].entity, "Forza Horizon 6");
+});
+
+test("still-deck adapter resolves MEDIA_ROOT-relative local assets", async () => {
+  const oldMediaRoot = process.env.MEDIA_ROOT;
+  const mediaRoot = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-media-root-"));
+  process.env.MEDIA_ROOT = mediaRoot;
+  try {
+    const relPath = path.join("output", "image_cache", "forza_media_root.jpg");
+    await imageFile(mediaRoot, relPath);
+    const pack = await buildStillDeckMediaPackage({
+      story: story({
+        id: "1te1oq7",
+        title: "Forza Horizon 6 beats its predecessor's all-time Steam record",
+        full_script: "Forza Horizon 6 has a verified Steam store signal.",
+      }),
+      plan: planFor("1te1oq7", [
+        {
+          local_path: relPath,
+          source_url: "https://cdn.akamai.steamstatic.com/steam/apps/2483190/ss_media_root.jpg",
+          source_type: "steam_screenshot",
+          entity: "Forza Horizon 6",
+          duplicate_hash: "forza-media-root",
+          subject_match_quality: "exact_game_match",
+          exact_subject_group: "Forza Horizon 6",
+          counted_for_premium: true,
+          store_match_verified: true,
+        },
+      ]),
+    });
+
+    assert.equal(pack.media.articleHeroes.length, 1);
+    assert.equal(pack.media.articleHeroes[0].path, path.join(mediaRoot, relPath));
+  } finally {
+    if (oldMediaRoot === undefined) delete process.env.MEDIA_ROOT;
+    else process.env.MEDIA_ROOT = oldMediaRoot;
+  }
+});
+
+test("still-deck adapter falls back to visual deck items from asset acquisition reports", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-still-ingest-"));
+  const localPath = await imageFile(dir, "forza_visual_deck.jpg");
+  const pack = await buildStillDeckMediaPackage({
+    story: story({
+      id: "1te1oq7",
+      title: "Forza Horizon 6 beats its predecessor's all-time Steam record",
+      full_script: "Forza Horizon 6 has a verified Steam store signal.",
+    }),
+    plan: {
+      story_id: "1te1oq7",
+      visual_deck: {
+        items: [
+          {
+            local_path: localPath,
+            source_url: "https://cdn.akamai.steamstatic.com/steam/apps/2483190/visual_deck.jpg",
+            source_type: "steam_screenshot",
+            entity: "steam",
+            subject_match_quality: "exact_game_match",
+            exact_subject_group: "Forza Horizon 6",
+            counted_for_premium: true,
+            store_match_verified: true,
+          },
+        ],
+      },
+    },
+  });
+
+  assert.equal(pack.media.articleHeroes.length, 1);
+  assert.equal(pack.media.articleHeroes[0].entity, "Forza Horizon 6");
+});
+
+test("still-deck adapter keeps existing visual deck items when apply-local adds assets", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-still-ingest-"));
+  const existingA = await imageFile(dir, "forza_existing_a.jpg");
+  const existingB = await imageFile(dir, "forza_existing_b.jpg");
+  const applied = await imageFile(dir, "forza_applied.jpg");
+  const pack = await buildStillDeckMediaPackage({
+    story: story({
+      id: "1te1oq7",
+      title: "Forza Horizon 6 beats its predecessor's all-time Steam record",
+      full_script: "Forza Horizon 6 has a verified Steam store signal.",
+    }),
+    plan: {
+      story_id: "1te1oq7",
+      applied_assets: [
+        {
+          local_path: applied,
+          source_url: "https://cdn.akamai.steamstatic.com/steam/apps/2483190/applied.jpg",
+          source_type: "steam_screenshot",
+          entity: "Forza Horizon 6",
+          duplicate_hash: "applied-forza",
+          subject_match_quality: "exact_game_match",
+          exact_subject_group: "Forza Horizon 6",
+          counted_for_premium: true,
+          store_match_verified: true,
+        },
+      ],
+      visual_deck: {
+        items: [
+          {
+            local_path: existingA,
+            source_url: "https://cdn.akamai.steamstatic.com/steam/apps/2483190/existing-a.jpg",
+            source_type: "steam_screenshot",
+            entity: "Forza Horizon 6",
+            duplicate_hash: "existing-forza-a",
+            subject_match_quality: "exact_game_match",
+            exact_subject_group: "Forza Horizon 6",
+            counted_for_premium: true,
+            store_match_verified: true,
+          },
+          {
+            local_path: existingB,
+            source_url: "https://cdn.akamai.steamstatic.com/steam/apps/2483190/existing-b.jpg",
+            source_type: "steam_screenshot",
+            entity: "Forza Horizon 6",
+            duplicate_hash: "existing-forza-b",
+            subject_match_quality: "exact_game_match",
+            exact_subject_group: "Forza Horizon 6",
+            counted_for_premium: true,
+            store_match_verified: true,
+          },
+        ],
+      },
+    },
+  });
+
+  assert.equal(pack.media.articleHeroes.length, 3);
+  assert.deepEqual(
+    pack.media.articleHeroes.map((asset) => path.basename(asset.path)).sort(),
+    ["forza_applied.jpg", "forza_existing_a.jpg", "forza_existing_b.jpg"],
+  );
+});
+
+test("mergeStillDeckApplyLocalPlan preserves base visual deck while adding apply-local output", () => {
+  const merged = mergeStillDeckApplyLocalPlan(
+    {
+      story_id: "1te1oq7",
+      visual_deck: {
+        items: [
+          { local_path: "existing-a.jpg", duplicate_hash: "existing-a" },
+          { local_path: "existing-b.jpg", duplicate_hash: "existing-b" },
+        ],
+      },
+      provenance: [{ duplicate_hash: "existing-a" }],
+    },
+    {
+      story_id: "1te1oq7",
+      applied_assets: [{ local_path: "applied.jpg", duplicate_hash: "applied" }],
+      provenance: [{ duplicate_hash: "applied" }],
+    },
+  );
+
+  assert.deepEqual(
+    merged.visual_deck.items.map((item) => item.duplicate_hash),
+    ["existing-a", "existing-b"],
+  );
+  assert.deepEqual(
+    merged.applied_assets.map((item) => item.duplicate_hash),
+    ["applied"],
+  );
+  assert.equal(merged.provenance.length, 2);
+});
+
+test("mergeStillDeckApplyLocalPlan preserves selected report stills when apply-local has no new assets", () => {
+  const merged = mergeStillDeckApplyLocalPlan(
+    {
+      story_id: "1tftq7f",
+      applied_assets: [
+        { local_path: "forza-a.jpg", duplicate_hash: "forza-a" },
+        { local_path: "forza-b.jpg", duplicate_hash: "forza-b" },
+      ],
+      provenance: [{ duplicate_hash: "forza-a" }, { duplicate_hash: "forza-b" }],
+    },
+    {
+      story_id: "1tftq7f",
+      applied_assets: [],
+      provenance: [],
+    },
+  );
+
+  assert.deepEqual(
+    merged.applied_assets.map((item) => item.duplicate_hash),
+    ["forza-a", "forza-b"],
+  );
+  assert.equal(merged.provenance.length, 2);
+});
+
 test("still-deck adapter rejects low-confidence article review images", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-still-ingest-"));
   const localPath = await imageFile(dir, "article-review.jpg");
@@ -615,4 +1279,318 @@ test("buildStoryFromStillDeckPlan creates a safe local fallback story with v1.5 
   assert.match(fallback.full_script, /Red Dead/);
   assert.match(fallback.full_script, /BioShock/);
   assert.equal(fallback.source_type, "asset_acquisition_report");
+});
+
+test("still-deck local narration uses the approved production-shaped local voice path", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+  assert.match(src, /ensureProductionLocalVoice\(/);
+  assert.match(src, /acceptedLocalVoice:\s*narration\.acceptedLocalVoice/);
+  assert.doesNotMatch(src, /generateTTS\(/);
+  assert.doesNotMatch(src, /dotenv"\)\.config\(\{\s*override:\s*true\s*\}\)/);
+});
+
+test("still-deck render reuses forced local narration across preflight and variants", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+
+  assert.match(src, /narrationCache/);
+  assert.match(src, /const narrationCacheKey =/);
+  assert.match(src, /narrationCache\.has\(narrationCacheKey\)/);
+  assert.match(src, /narrationCache\.set\(narrationCacheKey,/);
+  assert.match(src, /buildFlashLaneRenderPreflight\(\{[\s\S]*narrationCache/);
+  assert.match(src, /baselineRender = await renderStillDeckVariant\(\{[\s\S]*narrationCache/);
+  assert.match(src, /enrichedRender = await renderStillDeckVariant\(\{[\s\S]*narrationCache/);
+});
+
+test("still-deck provided narration resolves media-root relative audio and timestamps at read time", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+
+  assert.match(src, /require\("\.\.\/lib\/media-paths"\)/);
+  assert.match(src, /async function resolveReadableMediaArg/);
+  assert.match(src, /mediaPaths\.resolveExisting\(inputPath\)/);
+  assert.match(src, /else if \(arg === "--audio"\) args\.audioPath = argv\[\+\+i\] \|\| "";/);
+  assert.match(src, /else if \(arg === "--timestamps"\) args\.timestampsPath = argv\[\+\+i\] \|\| "";/);
+  assert.match(src, /const resolvedAudioPath = await resolveReadableMediaArg\(audioPath\)/);
+  assert.match(src, /await resolveReadableMediaArg\(timestampsPath\)/);
+  assert.match(src, /looksLikeLocalTtsPath\(resolvedAudioPath\)/);
+});
+
+test("still-deck supplied local narration must carry accepted voice metadata", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+
+  assert.match(src, /function sidecarMeta\(data\)/);
+  assert.match(src, /const metaRoot = sidecarMeta\(meta\)/);
+  assert.match(src, /acceptedLocalVoice:\s*metaRoot\.acceptedLocalVoice\s*\|\|\s*null/);
+  assert.match(src, /probeLocalAudioAcoustics/);
+  assert.match(src, /const acoustic =[\s\S]*metaRoot\.acoustic[\s\S]*suppliedLocalTts \? probeLocalAudioAcoustics\(resolvedAudioPath\) : null/);
+  assert.match(src, /acoustic,[\s\S]*voiceDiagnostics/);
+  assert.match(src, /const generation = metaRoot\.generation \|\| null/);
+  assert.match(src, /tempoStretch:[\s\S]*generation\?\.tempo_stretch/);
+  assert.match(src, /voiceDiagnostics:\s*metaRoot\.voiceDiagnostics\s*\|\|\s*null/);
+  assert.match(src, /approvedLocalVoice:\s*metaRoot\.approvedLocalVoice/);
+  assert.match(src, /transcript:\s*metaRoot\.transcript/);
+  assert.match(src, /displayText:\s*metaRoot\.displayText/);
+  assert.doesNotMatch(
+    src,
+    /suppliedLocalTts\s*\?\s*resolveAcceptedLocalVoiceReference\(process\.env\)/,
+  );
+});
+
+test("still-deck local narration can infer mastering from acoustic proof", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+
+  assert.match(src, /function inferVoiceMastering\(\{ explicit, acoustic \} = \{\}\)/);
+  assert.match(src, /integratedLufs >= -18 && integratedLufs <= -14/);
+  assert.match(src, /truePeakDb <= -1 && truePeakDb >= -4/);
+  assert.match(src, /source:\s*"local_acoustic_probe"/);
+  assert.match(src, /voiceMastering:\s*inferVoiceMastering\(\{ explicit: explicitVoiceMastering, acoustic \}\)/);
+});
+
+test("still-deck render path applies package readiness before ffmpeg render", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+  assert.match(src, /evaluateStillDeckRenderReadiness/);
+  assert.match(src, /render_package_gate/);
+  assert.match(src, /renderPreflightBlocked = true/);
+  assert.match(src, /args\.allowFlashDiagnosticRender/);
+});
+
+test("still-deck Flash render path passes overlay beat coverage into preflight", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+
+  assert.match(src, /const overlayPlan =[\s\S]*buildFlashLaneOverlayPlan\(\{ story: renderStory, scenes, durationS \}\)/);
+  assert.match(src, /buildFlashLaneProofPreflight\(\{\s*narration,\s*scenes,\s*media,\s*overlayPlan,/);
+  assert.match(src, /assertFlashLaneProofReady\(\s*\{\s*narration,\s*scenes,\s*media,\s*overlayPlan\s*\}/);
+});
+
+test("still-deck render path can burn Visual V3 before subtitles", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+
+  assert.match(src, /--visual-v3/);
+  assert.match(src, /buildVisualV3OverlayPlan/);
+  assert.match(src, /buildVisualV3OverlayFilter/);
+  assert.match(src, /subtitleInputLabel = "visualV3Base"/);
+  assert.match(src, /quality\.visualV3\s*=/);
+  assert.match(src, /visual_v3:/);
+});
+
+test("still-deck render path can build Visual V4 director readiness before subtitles", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+
+  assert.match(src, /buildFootageEmpirePlan/);
+  assert.match(src, /buildVisualV4DirectorPlan/);
+  assert.match(src, /buildViralScriptIntelligence/);
+  assert.match(src, /buildLocalVideoTimeline/);
+  assert.match(src, /--visual-v4/);
+  assert.match(src, /visualV4:\s*envEnabled\(process\.env\.STUDIO_V4_VISUALS\)/);
+  assert.match(
+    src,
+    /async function renderStillDeckVariant\(\{[\s\S]*?trustedFootageReport = null,[\s\S]*?visualV4 = false,/,
+  );
+  assert.match(src, /const visualV4Plan =/);
+  assert.match(src, /const viralScriptIntelligence =/);
+  assert.match(src, /buildVisualV4DirectorPlan\(\{[\s\S]*?retentionIntelligence,/);
+  assert.match(src, /quality\.visualV4\s*=/);
+  assert.match(src, /visual_v4:/);
+  assert.match(src, /studio_v4/);
+});
+
+test("still-deck Visual V3 render suppresses Flash Lane chip burn to avoid stacked text", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+
+  assert.match(src, /const shouldBurnFlashLaneOverlays = Boolean\(overlayPlan && !visualV3Plan\)/);
+  assert.match(src, /if \(shouldBurnFlashLaneOverlays\) \{/);
+  assert.match(src, /if \(overlayPlan\) quality\.flashLaneOverlays = overlayPlan/);
+});
+
+test("still-deck render path can feed retention intelligence into Visual V3", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+  const wrapper = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v3-still-deck.js"),
+    "utf8",
+  );
+
+  assert.match(src, /--retention-intelligence/);
+  assert.match(src, /retentionIntelligencePath/);
+  assert.match(src, /const retentionIntelligence =/);
+  assert.match(
+    src,
+    /async function renderStillDeckVariant\(\{[\s\S]*?retentionIntelligence = null,[\s\S]*?visualV3 = false,/,
+  );
+  assert.match(src, /retentionIntelligence,\s*\n\s*scenes,\s*\n\s*\}\)/);
+  assert.match(wrapper, /--retention-intelligence/);
+});
+
+test("still-deck ASS timeline covers the narration tail without a fixed outro cap", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+
+  assert.match(src, /function resolveSubtitleTimelineDurationS/);
+  assert.match(src, /preferNarrationDuration = false/);
+  assert.match(src, /if \(preferNarrationDuration && Number\.isFinite\(narrationDuration\)/);
+  assert.match(src, /Math\.max\(0\.1,\s*\.\.\.candidates\)/);
+  assert.match(src, /const captionDurationS = resolveSubtitleTimelineDurationS\(\{/);
+  assert.match(src, /renderDurationS:\s*initialDurationS/);
+  assert.match(src, /narrationDurationS:\s*narration\.durationS/);
+  assert.match(src, /preferNarrationDuration:\s*narration\.mode === "real_audio"/);
+  assert.doesNotMatch(src, /durationS\s*-\s*0\.6/);
+});
+
+test("still-deck render refuses long cloned subtitle tail padding and adds a caption-safe backing layer", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+
+  assert.match(src, /function buildSubtitleBaseFilter/);
+  assert.match(src, /maxPadS = 0\.35/);
+  assert.match(src, /still_deck_scene_timeline_under_covers_subtitles/);
+  assert.match(src, /if \(padDurationS > maxPadS\)/);
+  assert.match(src, /if \(padDurationS > 0\.01\)/);
+  assert.match(src, /tpad=stop_mode=clone:stop_duration=\$\{padDurationS\.toFixed\(3\)\}/);
+  assert.match(src, /trim=duration=\$\{targetDurationS\.toFixed\(3\)\}/);
+  assert.match(src, /noise=alls=2:allf=t\+u/);
+  assert.match(src, /eq=brightness=0\.006\*sin\(8\.168\*t\):eval=frame/);
+  assert.match(src, /drawbox=x=0:y=h-430:w=iw:h=430:color=black@0\.22:t=fill/);
+  assert.match(src, /const transitionDurationS = transitionCoverage\.transitionDurationS/);
+  assert.match(src, /ensureTransitionTimelineCoversCaptions/);
+  assert.match(src, /transitionCoverageExtension/);
+  assert.match(src, /const renderTimelineDurationS = Math\.max\(transitionDurationS, captionDurationS\)/);
+  assert.match(src, /const subtitleRenderDurationS = renderTimelineDurationS/);
+  assert.match(src, /buildSubtitleBaseFilter\(\{\s*inputLabel: subtitleInputLabel,/);
+  assert.match(src, /renderDurationS:\s*transitionDurationS/);
+  assert.match(src, /\[subtitleBase\]ass=\$\{assRel\},format=yuv420p\[outv\]/);
+  assert.match(src, /anullsrc=channel_layout=stereo:sample_rate=48000/);
+  assert.match(src, /-t \$\{subtitleRenderDurationS\.toFixed\(3\)\}/);
+  assert.match(src, /targetDurationS:\s*subtitleRenderDurationS/);
+  assert.match(src, /\[\$\{audioIndex\}:a\]apad,atrim=duration=\$\{subtitleRenderDurationS\.toFixed\(3\)\}/);
+});
+
+test("still-deck render keeps final MP4 audio at creator-grade AAC bitrate", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+
+  assert.match(src, /"-c:a aac -b:a 192k"/);
+  assert.doesNotMatch(src, /"-c:a aac -b:a 96k"/);
+});
+
+test("still-deck Flash captions prefer display text while aligning against real narration", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+
+  assert.match(src, /resolveStillDeckCaptionOptions/);
+  assert.match(src, /const scriptText =[\s\S]*narration\.displayText\s*\|\|\s*renderStory\.scriptForCaption\s*\|\|\s*narration\.transcript\s*\|\|\s*renderStory\.full_script/);
+  assert.match(src, /\.\.\.resolveStillDeckCaptionOptions\(\{ variant \}\)/);
+  assert.match(src, /prepareSubtitleWords/);
+  assert.match(src, /realignTimestampsToScript/);
+  assert.match(src, /realign:\s*false/);
+  assert.doesNotMatch(src, /maxPhraseChars:\s*22/);
+  assert.doesNotMatch(src, /danglingMergeMaxWords:\s*variant === "enriched" \? 3 : 2/);
+});
+
+test("still-deck Flash render path adjusts scene durations to narration word boundaries", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+
+  assert.match(src, /beat-aware-scene-durations/);
+  assert.match(src, /function alignScenesToNarrationBeats/);
+  assert.match(src, /alignSceneDurationsToWordBoundaries/);
+  assert.match(src, /scenes = alignScenesToNarrationBeats\(\{/);
+  assert.match(src, /protectClipSceneDurationsFromFreezes/);
+  assert.match(src, /clipDurationGuard/);
+  assert.match(src, /buildTransitionPlan/);
+  assert.match(src, /buildTransitionFilters/);
+  assert.match(src, /function transitionedDurationS/);
+  assert.match(src, /function ensureTransitionTimelineCoversCaptions/);
+  assert.match(src, /quickCut:\s*visualV3 && variant === "enriched"/);
+  assert.match(src, /minSceneDurationS:\s*quickCut \? 2\.2 : 2\.6/);
+  assert.match(src, /const transitionCoverage = ensureTransitionTimelineCoversCaptions\(\{/);
+});
+
+test("still-deck Flash preflight report surfaces motion and beat coverage metrics", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+
+  assert.match(src, /motion dominance:\s*\$\{metrics\.motionDominance/);
+  assert.match(src, /story beat overlays:\s*\$\{metrics\.storyBeatOverlayCount/);
+  assert.match(src, /unique clip sources:\s*\$\{visualMetrics\.uniqueClipSources/);
+  assert.match(src, /distinct scene beats:\s*\$\{visualMetrics\.distinctSceneBeats/);
+});
+
+test("still-deck report includes Flash proof render_readiness summary", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+
+  assert.match(src, /buildFlashLaneProofReadinessSummary/);
+  assert.match(src, /const renderReadiness = buildFlashLaneProofReadinessSummary\(\{/);
+  assert.match(src, /render_readiness:\s*renderReadiness/);
+  assert.match(src, /## Render Readiness/);
+  assert.match(src, /story beat overlays:\s*\$\{readiness\.storyBeatOverlayCount/);
+  assert.match(src, /unique clip sources:\s*\$\{readiness\.uniqueClipSources/);
+  assert.match(src, /distinct scene beats:\s*\$\{readiness\.distinctSceneBeats/);
+});
+
+test("still-deck report wording does not call no-render packages silent-audio proofs", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+  assert.match(src, /No render was attempted, so no narration audio was used/);
+  assert.match(src, /no MP4 render was attempted, so narration was not verified/);
+  assert.match(src, /report\.render_attempted\s*===\s*false/);
+  assert.match(src, /official trailer clips were blocked/i);
+  assert.match(src, /const visualOutput = !renderAttempted/);
+});
+
+test("still-deck diagnostic renders may use partial validated official clips explicitly", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "tools", "studio-v2-still-deck-ingestion.js"),
+    "utf8",
+  );
+
+  assert.match(src, /resolveOfficialTrailerClipRefsForProof\(\{/);
+  assert.match(src, /allowPartialValidatedOfficialClips:\s*args\.allowFlashDiagnosticRender/);
 });

@@ -119,10 +119,10 @@ test("cleanForTTS: expands review scores with slash notation for local narration
   );
 });
 
-test("cleanForTTS: speaks Hades II as part two for local voice clarity", () => {
+test("cleanForTTS: speaks Hades II as sequel for local voice clarity", () => {
   assert.equal(
     cleanForTTS("Hades II just put PlayStation and Xbox players on the same April countdown."),
-    "Hades, part two just put PlayStation and Xbox players on the same April countdown.",
+    "Hades sequel just put PlayStation and Xbox players on the same April countdown.",
   );
 });
 

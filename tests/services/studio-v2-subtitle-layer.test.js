@@ -154,11 +154,10 @@ test("realignTimestampsToScript preserves Hades II display while audio says Hade
   assert.equal(aligned[1].end, 0.62);
 });
 
-test("realignTimestampsToScript preserves Hades II display while local voice says Hades part two", () => {
+test("realignTimestampsToScript preserves Hades II display while local voice says Hades sequel", () => {
   const aligned = realignTimestampsToScript("Hades II lands on console.", [
     { word: "Hades", start: 0, end: 0.28 },
-    { word: "part", start: 0.3, end: 0.42 },
-    { word: "two", start: 0.44, end: 0.62 },
+    { word: "sequel", start: 0.3, end: 0.62 },
     { word: "lands", start: 0.66, end: 0.92 },
     { word: "on", start: 0.96, end: 1.08 },
     { word: "console", start: 1.12, end: 1.44 },

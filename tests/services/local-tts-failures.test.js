@@ -63,6 +63,12 @@ test("classifyLocalTtsFailure recognises transient socket resets and TTS timeout
   assert.equal(gpuBusy.requires_server_reset, false);
 });
 
+test("classifyLocalTtsFailure treats local HTTP 500 as recoverable server error", () => {
+  const failure = classifyLocalTtsFailure(new Error("tts_failed:Request failed with status code 500"));
+  assert.equal(failure.code, "server_error");
+  assert.equal(failure.requires_server_reset, true);
+});
+
 test("classifyLocalTtsFailure treats default voice fallback as unsafe voice", () => {
   const unknownVoice = classifyLocalTtsFailure(
     new Error("unknown voice_id='JBFqnCBsd6RMkjVDRZzb' is not registered in voices.json; refusing default fallback voice"),

@@ -4,6 +4,7 @@
 const path = require("node:path");
 const fs = require("fs-extra");
 const { ffprobeDuration } = require("../lib/studio/media-acquisition");
+const { mediaSourceUrlKindFields } = require("../lib/media-source-url-kind");
 
 try {
   require("dotenv").config({ override: true });
@@ -183,7 +184,7 @@ async function loadOptionalReferenceReport(args) {
   if (args.noReferenceReport) return { report: null, filePath: null };
   const filePath = path.resolve(ROOT, args.referenceReport || DEFAULT_REFERENCE_REPORT);
   if (!(await fs.pathExists(filePath))) return { report: null, filePath: null };
-  const report = await fs.readJson(filePath);
+  const report = normaliseReferenceReportPayload(await fs.readJson(filePath));
   return { report, filePath };
 }
 
@@ -213,8 +214,75 @@ function durationProbeEligibleReference(reference = {}) {
   if (reference.segment_validation_eligible === false) return false;
   const sourceUrl = String(reference.source_url || reference.sourceUrl || reference.local_path || "").trim();
   if (!sourceUrl) return false;
-  const urlKind = reference.source_url_kind || require("../lib/media-source-url-kind").mediaSourceUrlKindFields(sourceUrl).source_url_kind;
+  const urlKind = reference.source_url_kind || mediaSourceUrlKindFields(sourceUrl).source_url_kind;
   return ["direct_video", "hls_manifest", "dash_manifest", "local_video_file"].includes(urlKind);
+}
+
+function referenceRowsFromLicensedDirectMediaReport(report = {}) {
+  const rows = Array.isArray(report?.accepted_references)
+    ? report.accepted_references
+    : Array.isArray(report?.render_ready_sources)
+      ? report.render_ready_sources
+      : [];
+  return rows.filter((row) => row && typeof row === "object");
+}
+
+function normaliseLicensedDirectMediaReference(row = {}) {
+  const sourceUrl = String(
+    row.source_url ||
+      row.sourceUrl ||
+      row.approved_media_url ||
+      row.local_operator_file_path ||
+      row.local_path ||
+      "",
+  ).trim();
+  const urlKind = mediaSourceUrlKindFields(sourceUrl);
+  const segmentEligible =
+    row.segment_validation_eligible !== false && urlKind.segment_validation_eligible === true;
+  return {
+    ...row,
+    source_url: sourceUrl,
+    source_url_kind: row.source_url_kind || urlKind.source_url_kind,
+    segment_validation_eligible: segmentEligible,
+    segment_validation_ineligible_reason: segmentEligible
+      ? null
+      : row.segment_validation_ineligible_reason ||
+        urlKind.segment_validation_ineligible_reason ||
+        "segment_source_url_not_direct_media",
+    source_type: row.source_type || "licensed_direct_media_url",
+    provider: row.provider || "licensed_direct_media_acquisition",
+    downloads_allowed: false,
+    allowed_render_use: row.allowed_render_use || "official_direct_media_segment_candidate",
+    rights_risk_class: row.rights_risk_class || "official_direct_media",
+    provenance: {
+      ...(row.provenance || {}),
+      source: row.provenance?.source || "visual_v4_licensed_direct_media_acquisition",
+      source_url_kind: row.source_url_kind || urlKind.source_url_kind,
+      segment_validation_eligible: segmentEligible,
+    },
+  };
+}
+
+function normaliseReferenceReportPayload(report = {}) {
+  if (!report || typeof report !== "object") return report;
+  if (Array.isArray(report.plans)) return report;
+  const rows = referenceRowsFromLicensedDirectMediaReport(report);
+  if (!rows.length) return report;
+  const byStoryId = new Map();
+  for (const row of rows) {
+    const storyId = String(row.story_id || row.storyId || "").trim();
+    if (!storyId) continue;
+    if (!byStoryId.has(storyId)) byStoryId.set(storyId, []);
+    byStoryId.get(storyId).push(normaliseLicensedDirectMediaReference(row));
+  }
+  return {
+    ...report,
+    reference_report_adapter: "licensed_direct_media_accepted_references_v1",
+    plans: [...byStoryId.entries()].map(([storyId, references]) => ({
+      story_id: storyId,
+      references,
+    })),
+  };
 }
 
 async function enrichReferenceReportDurations(report = null, options = {}) {
@@ -227,10 +295,11 @@ async function enrichReferenceReportDurations(report = null, options = {}) {
     failed: 0,
     skipped_existing_duration: 0,
   };
-  if (!report || typeof report !== "object") return { report, summary };
-  const plans = Array.isArray(report.plans) ? report.plans : [];
+  const normalisedReport = normaliseReferenceReportPayload(report);
+  if (!normalisedReport || typeof normalisedReport !== "object") return { report: normalisedReport, summary };
+  const plans = Array.isArray(normalisedReport.plans) ? normalisedReport.plans : [];
   const enriched = {
-    ...report,
+    ...normalisedReport,
     plans: plans.map((plan) => ({
       ...plan,
       references: Array.isArray(plan.references) ? plan.references.map((reference) => ({ ...reference })) : [],
@@ -291,9 +360,10 @@ async function loadOptionalAcquisitionPlan(args) {
 }
 
 function buildClipRefsFromReport(frameReport, referenceReport, storyId, args = {}) {
+  const normalisedReferenceReport = normaliseReferenceReportPayload(referenceReport);
   const referenceStoryIds = [
     ...new Set(
-      (Array.isArray(referenceReport?.plans) ? referenceReport.plans : [])
+      (Array.isArray(normalisedReferenceReport?.plans) ? normalisedReferenceReport.plans : [])
         .map((plan) => plan.story_id)
         .filter(Boolean),
     ),
@@ -316,7 +386,7 @@ function buildClipRefsFromReport(frameReport, referenceReport, storyId, args = {
       maxClips: args.maxSegments,
       includeExploratoryWindows: args.includeExploratoryWindows,
       exploratoryStartSeconds: args.exploratoryStartSeconds,
-      referenceReport,
+      referenceReport: normalisedReferenceReport,
     }).map((clip) => ({
       ...clip,
       story_id: id,
@@ -496,6 +566,7 @@ module.exports = {
   balanceClipRefsAcrossStories,
   buildClipRefsFromReport,
   main,
+  normaliseReferenceReportPayload,
   parseArgs,
   reportOutputTargets,
   enrichReferenceReportDurations,

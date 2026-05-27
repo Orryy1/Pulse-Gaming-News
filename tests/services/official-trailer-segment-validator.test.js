@@ -23,6 +23,7 @@ const {
   balanceClipRefsAcrossStories,
   buildClipRefsFromReport,
   enrichReferenceReportDurations,
+  normaliseReferenceReportPayload,
   reportOutputTargets,
 } = require("../../tools/official-trailer-segment-validator");
 
@@ -192,6 +193,45 @@ test("segment validator CLI scopes batch clip refs from explicit reference repor
   const storyIds = [...new Set(refs.map((ref) => ref.story_id).filter(Boolean))].sort();
   assert.deepEqual(storyIds, ["story-a", "story-b"]);
   assert.equal(refs.some((ref) => ref.story_id === "stale-frame-story"), false);
+});
+
+test("segment validator accepts licensed direct-media acquisition reports as reference input", () => {
+  const licensedReport = {
+    execution_mode: "visual_v4_licensed_direct_media_acquisition",
+    accepted_references: [
+      {
+        story_id: "forza-licensed-ready",
+        entity: "Forza Horizon 6",
+        source_family: "forza_horizon_official_x_lowlands",
+        source_type: "licensed_direct_media_url",
+        provider: "licensed_direct_media_acquisition",
+        source_url:
+          "https://video.twimg.com/amplify_video/2047677198685933568/vid/avc1/1280x720/forza.mp4?tag=14",
+        source_url_kind: "direct_video",
+        source_duration_s: 72,
+        segment_validation_eligible: true,
+        rights_risk_class: "official_direct_media",
+      },
+    ],
+  };
+
+  const normalised = normaliseReferenceReportPayload(licensedReport);
+  assert.equal(normalised.reference_report_adapter, "licensed_direct_media_accepted_references_v1");
+  assert.equal(normalised.plans.length, 1);
+  assert.equal(normalised.plans[0].references[0].downloads_allowed, false);
+
+  const refs = buildClipRefsFromReport({}, licensedReport, null, {
+    includeExploratoryWindows: true,
+    exploratoryStartSeconds: [36],
+    candidateWindowsPerSource: 1,
+    maxSegments: 3,
+  });
+
+  assert.equal(refs.length, 1);
+  assert.equal(refs[0].story_id, "forza-licensed-ready");
+  assert.equal(refs[0].sourceType, "licensed_direct_media_url");
+  assert.equal(refs[0].path, licensedReport.accepted_references[0].source_url);
+  assert.equal(refs[0].provenance.provider, "licensed_direct_media_acquisition");
 });
 
 test("segment validator CLI balances batch clip refs across stories before segment caps", () => {

@@ -624,3 +624,69 @@ test("official source intake CLI accepts governed story_id without legacy id", a
   assert.equal(report.summary.rejected, 0);
   assert.equal(report.accepted_references[0].story_id, "package_story_ps5");
 });
+
+test("official source intake CLI filters governed story_id with --story-id", async () => {
+  const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "pulse-official-source-story-id-filter-"));
+  const storyPath = path.join(dir, "story.json");
+  const inputPath = path.join(dir, "official-sources.json");
+  const outputJson = path.join(dir, "report.json");
+  const outputMd = path.join(dir, "report.md");
+
+  fs.writeFileSync(
+    storyPath,
+    JSON.stringify({
+      story_id: "package_story_zero_company",
+      canonical_subject: "Star Wars Zero Company",
+      canonical_game: "Star Wars Zero Company",
+      title: "Star Wars Zero Company Is More Than XCOM",
+      full_script: "Star Wars Zero Company is using official gameplay as visual context for a source-safe repair pass.",
+      source_type: "rss",
+      subreddit: "PC Gamer",
+      flair: "Verified",
+      timestamp: "2026-05-07T12:00:00Z",
+    }),
+  );
+  fs.writeFileSync(
+    inputPath,
+    JSON.stringify([
+      officialEntry({
+        story_id: "package_story_zero_company",
+        entity: "Star Wars Zero Company",
+        official_source_url: "https://www.ea.com/en/games/starwars/zero-company/news/introducing-star-wars-zero-company",
+        source_type: "official_publisher_or_developer_trailer_page",
+        source_family: "ea_star_wars_zero_company_official_news_page",
+        source_owner: "Electronic Arts / Star Wars Zero Company",
+        evidence_of_officialness: "EA-hosted official Star Wars Zero Company news page.",
+        entity_match_notes: "The official page names Star Wars Zero Company.",
+      }),
+    ]),
+  );
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      "tools/official-source-intake.js",
+      "--story-json",
+      storyPath,
+      "--story-id",
+      "package_story_zero_company",
+      "--input",
+      inputPath,
+      "--output-json",
+      outputJson,
+      "--output-md",
+      outputMd,
+      "--json",
+    ],
+    {
+      cwd: path.join(__dirname, "..", ".."),
+      encoding: "utf8",
+    },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(fs.readFileSync(outputJson, "utf8"));
+  assert.equal(report.summary.accepted, 1);
+  assert.equal(report.summary.rejected, 0);
+  assert.equal(report.accepted_references[0].story_id, "package_story_zero_company");
+});

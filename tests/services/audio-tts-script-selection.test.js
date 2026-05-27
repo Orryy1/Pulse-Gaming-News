@@ -112,10 +112,17 @@ test("cleanForTTS: expands modern years without hybrid spoken digits", () => {
   );
 });
 
-test("cleanForTTS: speaks Hades II with a pause before number two for local voice clarity", () => {
+test("cleanForTTS: speaks Hades II as part two for local voice clarity", () => {
   assert.equal(
     cleanForTTS("Hades II just put PlayStation and Xbox players on the same April countdown."),
-    "Hades, number two just put PlayStation and Xbox players on the same April countdown.",
+    "Hades, part two just put PlayStation and Xbox players on the same April countdown.",
+  );
+});
+
+test("cleanForTTS: expands PS5 when it leads a spoken news line", () => {
+  assert.equal(
+    cleanForTTS("PS5 prices went up across Europe and the UK. PS5 Pro moved too."),
+    "PlayStation five prices went up across Europe and the UK. PlayStation five Pro moved too.",
   );
 });
 

@@ -89,6 +89,10 @@ function normaliseStory(row) {
   };
 }
 
+function localStoryId(story) {
+  return String(story?.id || story?.story_id || story?.storyId || "").trim();
+}
+
 async function loadStories(args) {
   if (args.fixture) {
     const stories = buildDemoStories();
@@ -99,7 +103,7 @@ async function loadStories(args) {
     const storyJsonPath = path.resolve(ROOT, args.storyJsonPath);
     const parsed = await fs.readJson(storyJsonPath);
     const rows = (Array.isArray(parsed) ? parsed : [parsed]).map(normaliseStory);
-    const selected = args.storyId ? rows.filter((story) => story.id === args.storyId) : rows;
+    const selected = args.storyId ? rows.filter((story) => localStoryId(story) === args.storyId) : rows;
     if (selected.length === 0) {
       throw new Error(`story JSON did not contain requested story id: ${args.storyId}`);
     }

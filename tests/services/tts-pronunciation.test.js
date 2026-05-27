@@ -117,14 +117,25 @@ test("Silent Hill 2 / II → Silent Hill two", () => {
   );
 });
 
-test("Hades II / 2 -> Hades, number two with a spoken break", () => {
+test("Hades II / 2 -> Hades, part two with a spoken break", () => {
   assert.equal(
     applyGamingPronunciation("Hades II finally has a console date"),
-    "Hades, number two finally has a console date",
+    "Hades, part two finally has a console date",
   );
   assert.equal(
     applyGamingPronunciation("Hades 2 finally has a console date"),
-    "Hades, number two finally has a console date",
+    "Hades, part two finally has a console date",
+  );
+});
+
+test("PlayStation hardware acronyms expand for local narration clarity", () => {
+  assert.equal(
+    applyGamingPronunciation("PS5 prices changed and PS5 Pro moved too."),
+    "PlayStation five prices changed and PlayStation five Pro moved too.",
+  );
+  assert.equal(
+    applyGamingPronunciation("PS4 support stays visible."),
+    "PlayStation four support stays visible.",
   );
 });
 

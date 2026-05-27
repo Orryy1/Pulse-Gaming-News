@@ -104,6 +104,7 @@
     "ops:goal13-multi-platform-publisher": "node tools/goal13-multi-platform-publisher-engine.js",
     "ops:goal14-social-derivatives": "node tools/goal14-social-derivatives-engine.js",
     "ops:goal15-affiliate-intelligence": "node tools/goal15-affiliate-intelligence-engine.js",
+    "ops:goal-affiliate-relevance-repair": "node tools/goal-affiliate-relevance-repair.js",
     "ops:goal16-landing-pages": "node tools/goal16-landing-page-engine.js",
     "ops:goal17-platform-policy": "node tools/goal17-platform-policy-engine.js",
     "ops:goal18-finance-crypto-firewall": "node tools/goal18-finance-crypto-firewall.js",

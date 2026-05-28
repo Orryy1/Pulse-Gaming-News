@@ -98,6 +98,18 @@ test("Visual V4 SFX library ingest classifies providers and cue roles from safe 
   assert.equal(providerForPath("C:/audio/sonniss/GameAudioGDC2024/static-glitch.wav").provider_id, "sonniss");
   assert.equal(roleForPath("C:/audio/licensed-sfx/pse/tension-riser.wav"), "riser");
   assert.equal(
+    roleForPath("C:/audio/epidemic/sfx/epidemic_impact_02_musical-stinger-rise-to-impact-horns-dramatic-hit.mp3"),
+    "impact",
+  );
+  assert.equal(
+    roleForPath("C:/audio/epidemic/sfx/epidemic_ui_tick_03_user-interface-alert-notification-select.mp3"),
+    "ui_tick",
+  );
+  assert.equal(
+    roleForPath("C:/audio/epidemic/sfx/epidemic_riser_04_designed-riser-short-build-up-horror.mp3"),
+    "",
+  );
+  assert.equal(
     roleForPath(
       "C:/audio/sonniss/GDC2024/Orbital Emitter - Cinematic Transitions for Editors Volume 2/112,StringsSectionRiser.wav",
     ),

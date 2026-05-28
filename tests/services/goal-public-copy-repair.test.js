@@ -636,6 +636,222 @@ test("public copy package repair gives leak and deal scripts recognised curiosit
   }
 });
 
+test("public copy package repair rewrites trailer scorecard blockers with story-specific narration", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-public-copy-trailer-score-"));
+  const cases = [
+    {
+      storyId: "hades-console",
+      subject: "Hades II",
+      title: "Hades II Just Broke PlayStation's Silence",
+      firstLine: "Hades II just put PlayStation and Xbox players on the same April countdown.",
+      source: "Xbox",
+      claim: "Xbox's trailer lists Hades II for Xbox and PlayStation, with an April 14 date.",
+      thumbnail: "HADES II CONSOLE DATE",
+      expected: /The catch is why controller feel matters/i,
+      forbidden: /\bHades II is not just leaving early access\b|\bThe catch is what matters after the reveal cut\b/i,
+      speechAlias: /\bHades 2 is not just leaving early access\b/i,
+    },
+    {
+      storyId: "stranger-five-eras",
+      subject: "STRANGER THAN HEAVEN Five Eras",
+      title: "Stranger Than Heaven Shows Five Eras",
+      firstLine: "Stranger Than Heaven just showed its five-era setup.",
+      source: "Xbox",
+      claim: "Xbox showed Stranger Than Heaven's Five Eras reveal during Xbox Partner Preview.",
+      thumbnail: "STRANGER FIVE ERAS",
+      expected: /The catch is why those eras matter/i,
+      forbidden: /\bThe catch is what matters after the reveal cut\b/i,
+    },
+    {
+      storyId: "star-wars-racer",
+      subject: "Star Wars: Galactic Racer",
+      title: "Star Wars Racer Date Leaked Early",
+      firstLine: "Star Wars: Galactic Racer may have leaked its own release date.",
+      source: "Rock Paper Shotgun",
+      claim: "Chuba! Star Wars: Galactic Racer's release date has been accidentally revealed early",
+      thumbnail: "STAR WARS RACER DATE LEAKED",
+      expected: /date leak is not the sell/i,
+      forbidden: /\bChuba!\b|\bThe catch is what matters after the reveal cut\b/i,
+    },
+  ];
+  const packages = [];
+  for (const item of cases) {
+    const artifactDir = path.join(root, "batch", item.storyId);
+    packages.push({ story_id: item.storyId, artifact_dir: artifactDir });
+    await fs.ensureDir(artifactDir);
+    const staleScript = `${item.firstLine} ${item.source} reports ${item.claim}. The catch is what matters after the reveal cut: whether the full mission flow can match it. Follow Pulse Gaming so you never miss a beat.`;
+    await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+      story_id: item.storyId,
+      canonical_subject: item.subject,
+      canonical_game: item.subject,
+      selected_title: item.title,
+      short_title: item.title,
+      first_spoken_line: item.firstLine,
+      primary_source: item.source,
+      confirmed_claims: [item.claim],
+      narration_script: staleScript,
+      full_script: staleScript,
+      tts_script: staleScript,
+      description: `${item.claim}. Source: ${item.source}.`,
+      thumbnail_headline: item.thumbnail,
+      thumbnail_text: item.thumbnail,
+    }, { spaces: 2 });
+    await fs.writeJson(path.join(artifactDir, "script_scorecard.json"), {
+      verdict: "rewrite_required",
+      viral_score: 62,
+      blockers: ["stale_trailer_template"],
+      warnings: ["no_curiosity_marker"],
+      scores: {
+        hook_strength: 82,
+        curiosity_gap: 35,
+        insight_density: 54,
+        source_safety: 86,
+        retention_pacing: 82,
+      },
+    }, { spaces: 2 });
+  }
+
+  const report = await repairGoalPublicCopyPackages({
+    storyPackages: packages,
+    generatedAt: "2026-05-28T18:42:00.000Z",
+  });
+
+  assert.equal(report.summary.changed_count, 3, JSON.stringify(report, null, 2));
+  for (const item of cases) {
+    const artifactDir = path.join(root, "batch", item.storyId);
+    const savedManifest = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+    const savedScorecard = await fs.readJson(path.join(artifactDir, "script_scorecard.json"));
+    assert.equal(report.changed.find((entry) => entry.story_id === item.storyId)?.status, "script_scorecard_repaired");
+    assert.match(savedManifest.narration_script, item.expected, item.storyId);
+    assert.doesNotMatch(savedManifest.narration_script, item.forbidden, item.storyId);
+    if (item.speechAlias) assert.match(savedManifest.narration_script, item.speechAlias, item.storyId);
+    assert.deepEqual(savedScorecard.blockers, [], JSON.stringify(savedScorecard, null, 2));
+    assert.ok(savedScorecard.viral_score >= 75, JSON.stringify(savedScorecard, null, 2));
+    assert.ok(savedScorecard.scores.curiosity_gap >= 70, JSON.stringify(savedScorecard, null, 2));
+  }
+});
+
+test("public copy package repair detects stale passing scorecards against current script rules", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-public-copy-stale-pass-score-"));
+  const artifactDir = path.join(root, "batch", "expanse-gameplay");
+  await fs.ensureDir(artifactDir);
+  const staleScript =
+    "The Expanse: Osiris Reborn finally showed real gameplay. " +
+    "Xbox showed The Expanse: Osiris Reborn gameplay during Xbox Partner Preview. " +
+    "The catch is what matters after the reveal cut: whether the full mission flow can match it. " +
+    "Now the camera, gunfights and scale are on screen instead of hidden behind a logo. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "expanse-gameplay",
+    canonical_subject: "The Expanse: Osiris Reborn",
+    canonical_game: "The Expanse: Osiris Reborn",
+    selected_title: "The Expanse Shows Real Gameplay",
+    first_spoken_line: "The Expanse: Osiris Reborn finally showed real gameplay.",
+    primary_source: "Xbox",
+    confirmed_claims: [
+      "Xbox showed The Expanse: Osiris Reborn gameplay during Xbox Partner Preview.",
+    ],
+    narration_script: staleScript,
+    full_script: staleScript,
+    tts_script: staleScript,
+    description: "Xbox showed The Expanse: Osiris Reborn gameplay during Xbox Partner Preview. Source: Xbox.",
+    thumbnail_headline: "EXPANSE GAMEPLAY REVEAL",
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "script_scorecard.json"), {
+    verdict: "viral_ready",
+    viral_score: 88,
+    blockers: [],
+    warnings: [],
+    scores: {
+      hook_strength: 88,
+      curiosity_gap: 87,
+      insight_density: 80,
+      source_safety: 86,
+      retention_pacing: 82,
+    },
+  }, { spaces: 2 });
+
+  const report = await repairGoalPublicCopyPackages({
+    storyPackages: [{ story_id: "expanse-gameplay", artifact_dir: artifactDir }],
+    generatedAt: "2026-05-28T18:46:00.000Z",
+  });
+
+  const savedScorecard = await fs.readJson(path.join(artifactDir, "script_scorecard.json"));
+  assert.equal(report.summary.changed_count, 1, JSON.stringify(report, null, 2));
+  assert.equal(report.changed[0].status, "script_scorecard_repaired");
+  assert.ok(!savedScorecard.blockers.includes("generic_reveal_catch_template"), JSON.stringify(savedScorecard, null, 2));
+  assert.ok(savedScorecard.viral_score >= 75, JSON.stringify(savedScorecard, null, 2));
+});
+
+test("public copy package repair rewrites Mega Mewtwo title-repeat hooks before scheduler preflight", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-public-copy-pokemon-hook-"));
+  const artifactDir = path.join(root, "batch", "mega-mewtwo");
+  await fs.ensureDir(artifactDir);
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "mega-mewtwo",
+    canonical_subject: "Pokemon Go",
+    canonical_game: "Pokemon Go",
+    selected_title: "Mega Mewtwo Is Finally Coming To Pokemon Go",
+    short_title: "Mega Mewtwo Is Finally Coming To Pokemon Go",
+    thumbnail_headline: "POKEMON GO MEGA MEWTWO",
+    first_spoken_line: "Mega Mewtwo is finally coming to Pokemon Go, and this reveal has a real catch.",
+    narration_script:
+      "Mega Mewtwo is finally coming to Pokemon Go, and this reveal has a real catch: everyone gets a fair shot, but only if Niantic handles access properly. Eurogamer reports the debut is tied to Go Fest Global, with the event free for all players. That turns it from a paid-event flex into a comeback moment for players who left the app behind. Now Niantic has to land the basics. Raid windows, regional timing and free-player access need to be clear, or the hype turns messy fast. If the rollout is clean, lapsed players may come back for the weekend. Fair access, clear timing and no paywall confusion decide whether this lands. Follow Pulse Gaming so you never miss a beat.",
+    full_script:
+      "Mega Mewtwo is finally coming to Pokemon Go, and this reveal has a real catch: everyone gets a fair shot, but only if Niantic handles access properly. Eurogamer reports the debut is tied to Go Fest Global, with the event free for all players. That turns it from a paid-event flex into a comeback moment for players who left the app behind. Now Niantic has to land the basics. Raid windows, regional timing and free-player access need to be clear, or the hype turns messy fast. If the rollout is clean, lapsed players may come back for the weekend. Fair access, clear timing and no paywall confusion decide whether this lands. Follow Pulse Gaming so you never miss a beat.",
+    tts_script:
+      "Mega Mewtwo is finally coming to Pokemon Go, and this reveal has a real catch: everyone gets a fair shot, but only if Niantic handles access properly. Eurogamer reports the debut is tied to Go Fest Global, with the event free for all players. That turns it from a paid-event flex into a comeback moment for players who left the app behind. Now Niantic has to land the basics. Raid windows, regional timing and free-player access need to be clear, or the hype turns messy fast. If the rollout is clean, lapsed players may come back for the weekend. Fair access, clear timing and no paywall confusion decide whether this lands. Follow Pulse Gaming so you never miss a beat.",
+    description:
+      "Mega Mewtwo's Pokemon Go debut was announced and Go Fest Global is free for all players. Source: Eurogamer.",
+    pinned_comment: "Source: Eurogamer.",
+    primary_source: "Eurogamer",
+    confirmed_claims: [
+      "Mega Mewtwo's Pokemon Go debut finally announced and Go Fest Global is free for all players.",
+    ],
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "script_scorecard.json"), {
+    verdict: "rewrite_required",
+    viral_score: 61,
+    blockers: ["weak_hook_repeats_headline"],
+    warnings: [],
+    scores: {
+      hook_strength: 42,
+      curiosity_gap: 93,
+      insight_density: 64,
+      source_safety: 86,
+      retention_pacing: 82,
+    },
+  }, { spaces: 2 });
+
+  const report = await repairGoalPublicCopyPackages({
+    storyPackages: [{ story_id: "mega-mewtwo", artifact_dir: artifactDir }],
+    generatedAt: "2026-05-28T17:20:00.000Z",
+  });
+
+  const savedManifest = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+  const savedScorecard = await fs.readJson(path.join(artifactDir, "script_scorecard.json"));
+  const freshScorecard = buildViralScriptIntelligence({
+    story: {
+      id: savedManifest.story_id,
+      title: savedManifest.selected_title,
+      source_name: savedManifest.primary_source,
+    },
+    script: savedManifest.narration_script,
+  });
+
+  assert.equal(report.summary.changed_count, 1, JSON.stringify(report, null, 2));
+  assert.equal(report.changed[0].status, "script_scorecard_repaired");
+  assert.match(savedManifest.selected_title, /Pokémon Go/i);
+  assert.doesNotMatch(savedManifest.selected_title, /^Mega Mewtwo Is Finally Coming/i);
+  assert.match(savedManifest.first_spoken_line, /Mega Mewtwo/i);
+  const normalTitle = savedManifest.selected_title.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
+  const normalHook = savedManifest.first_spoken_line.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
+  assert.equal(normalHook.startsWith(normalTitle), false);
+  assert.deepEqual(savedScorecard.blockers, []);
+  assert.ok(savedScorecard.viral_score >= 75, JSON.stringify(savedScorecard, null, 2));
+  assert.equal(freshScorecard.verdict, savedScorecard.verdict);
+});
+
 test("public copy package repair explains unrepaired script scorecard failures", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-public-copy-script-blocker-"));
   const artifactDir = path.join(root, "batch", "weak-script");
@@ -723,7 +939,7 @@ test("public copy repair rewrites raw official Hades trailer metadata into creat
   );
 
   assert.doesNotMatch(repaired.manifest.narration_script, /Xbox reports Hades II - Xbox/i);
-  assert.match(repaired.manifest.narration_script, /Xbox's trailer lists Hades II for Xbox and PlayStation/i);
+  assert.match(repaired.manifest.narration_script, /Xbox's trailer lists Hades 2 for Xbox and PlayStation/i);
   assert.doesNotMatch(repaired.manifest.narration_script, /For players, this only matters/i);
   assert.equal(repaired.manifest.full_script, repaired.manifest.narration_script);
   assert.equal(repaired.manifest.tts_script, repaired.manifest.narration_script);

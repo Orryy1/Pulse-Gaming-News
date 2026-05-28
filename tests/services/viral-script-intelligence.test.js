@@ -89,6 +89,79 @@ test("viral script intelligence accepts sharp non-numeric gameplay stories with 
   assert.equal(result.cta.count, 1);
 });
 
+test("viral script intelligence scores review-spread curiosity beats above the publish threshold", () => {
+  const script =
+    "Forza Horizon 6 just landed a strong PC Gamer review. " +
+    "PC Gamer reports Forza Horizon 6 review at 84 out of 100. " +
+    "Strong reviews matter here because this is when fence-sitters decide whether another Horizon is enough. " +
+    "The number is only the opening beat; repeated praise or complaints across outlets matter more. " +
+    "One high score can hide split opinions, but a steady spread says the reception is harder to dismiss. " +
+    "Until players have it, this is a strong signal, not a final verdict. " +
+    "That is what makes the score matter to players instead of becoming chart noise. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "forza-review-spread",
+      title: "Forza Horizon 6 Scores 84 On PC Gamer",
+      source_name: "PC Gamer",
+    },
+    script,
+  });
+
+  assert.notEqual(result.verdict, "rewrite_required");
+  assert.ok(result.scores.curiosity_gap >= 70, JSON.stringify(result.scores));
+  assert.ok(!result.warnings.includes("no_curiosity_marker"), JSON.stringify(result));
+  assert.deepEqual(result.blockers, []);
+});
+
+test("viral script intelligence scores platform-strategy curiosity beats above the publish threshold", () => {
+  const script =
+    "Forza Horizon 6 just turned its Steam launch into an Xbox signal. " +
+    "Xbox reports Forza Horizon 6 is already being framed as a major Steam success for Xbox. " +
+    "If Steam is where Forza takes off, Xbox has a different launch story on its hands. " +
+    "Forza Horizon 6 is becoming an Xbox-on-Steam story, not just another racing launch. " +
+    "That is the uncomfortable bit: the store where Xbox wins might not be Xbox. " +
+    "Game Pass messaging, price and release timing are the pieces that could move around that attention. " +
+    "If Microsoft leans into it, this becomes a distribution story as much as a game story. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "forza-steam-strategy",
+      title: "Forza Horizon 6 Broke Xbox's Steam Ceiling",
+      source_name: "Xbox",
+    },
+    script,
+  });
+
+  assert.notEqual(result.verdict, "rewrite_required");
+  assert.ok(result.scores.curiosity_gap >= 70, JSON.stringify(result.scores));
+  assert.ok(!result.warnings.includes("no_curiosity_marker"), JSON.stringify(result));
+  assert.deepEqual(result.blockers, []);
+});
+
+test("viral script intelligence rejects generic reveal-catch template narration", () => {
+  const script =
+    "The Expanse: Osiris Reborn finally showed real gameplay. " +
+    "Xbox showed The Expanse: Osiris Reborn gameplay during Xbox Partner Preview. " +
+    "The catch is what matters after the reveal cut: whether the full mission flow can match it. " +
+    "Now the camera, gunfights and scale are on screen instead of hidden behind a logo. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "generic-reveal-template",
+      title: "The Expanse Shows Real Gameplay",
+      source_name: "Xbox",
+    },
+    script,
+  });
+
+  assert.equal(result.verdict, "rewrite_required");
+  assert.ok(result.blockers.includes("generic_reveal_catch_template"), JSON.stringify(result));
+});
+
 test("viral script intelligence produces a concise rewrite brief for the next script pass", () => {
   const draft =
     "Today, Forza Horizon 6 is making headlines. " +

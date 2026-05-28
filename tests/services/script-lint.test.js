@@ -142,7 +142,7 @@ test("lintScript: no curiosity marker → warn:no_curiosity_marker", () => {
   assert.ok(r.warnings.includes("no_curiosity_marker"));
 });
 
-test("lintScript: recognises repaired what-matters curiosity beats", () => {
+test("lintScript: blocks generic reveal-catch template narration", () => {
   const script =
     "The Expanse: Osiris Reborn finally showed real gameplay. " +
     "Xbox showed The Expanse: Osiris Reborn gameplay during Xbox Partner Preview. " +
@@ -156,8 +156,8 @@ test("lintScript: recognises repaired what-matters curiosity beats", () => {
 
   const r = lintScript(script, { minWords: 35 });
 
-  assert.notStrictEqual(r.result, "fail", JSON.stringify(r));
-  assert.ok(!r.warnings.includes("no_curiosity_marker"), JSON.stringify(r));
+  assert.strictEqual(r.result, "fail", JSON.stringify(r));
+  assert.ok(r.failures.includes("banned_phrase:generic_reveal_catch_template"), JSON.stringify(r));
 });
 
 test("lintScript: recognises creator-native catch phrasing", () => {
@@ -185,6 +185,40 @@ test("lintScript: recognises awkward-catch phrasing", () => {
     "Game Pass messaging, price and release timing are the pieces that could move around that attention. " +
     "That makes the launch less about one storefront and more about where Microsoft wants its audience. " +
     "Players still need the live listing, the price and the platform details before treating it as settled. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const r = lintScript(script, { minWords: 35 });
+
+  assert.notStrictEqual(r.result, "fail", JSON.stringify(r));
+  assert.ok(!r.warnings.includes("no_curiosity_marker"), JSON.stringify(r));
+});
+
+test("lintScript: recognises review-score curiosity beats without template catch wording", () => {
+  const script =
+    "Forza Horizon 6 just landed a strong PC Gamer review. " +
+    "PC Gamer reports Forza Horizon 6 review at 84 out of 100. " +
+    "Strong reviews matter here because this is when fence-sitters decide whether another Horizon is enough. " +
+    "The number is only the opening beat; repeated praise or complaints across outlets matter more. " +
+    "One high score can hide split opinions, but a steady spread says the reception is harder to dismiss. " +
+    "Until players have it, this is a strong signal, not a final verdict. " +
+    "That is what makes the score matter to players instead of becoming chart noise. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const r = lintScript(script, { minWords: 35 });
+
+  assert.notStrictEqual(r.result, "fail", JSON.stringify(r));
+  assert.ok(!r.warnings.includes("no_curiosity_marker"), JSON.stringify(r));
+});
+
+test("lintScript: recognises platform-strategy curiosity beats without rage bait", () => {
+  const script =
+    "Forza Horizon 6 just turned its Steam launch into an Xbox signal. " +
+    "Xbox reports Forza Horizon 6 is already being framed as a major Steam success for Xbox. " +
+    "If Steam is where Forza takes off, Xbox has a different launch story on its hands. " +
+    "Forza Horizon 6 is becoming an Xbox-on-Steam story, not just another racing launch. " +
+    "That is the uncomfortable bit: the store where Xbox wins might not be Xbox. " +
+    "Game Pass messaging, price and release timing are the pieces that could move around that attention. " +
+    "If Microsoft leans into it, this becomes a distribution story as much as a game story. " +
     "Follow Pulse Gaming so you never miss a beat.";
 
   const r = lintScript(script, { minWords: 35 });

@@ -1115,6 +1115,103 @@ test("Studio V4 source-family acquisition rejects specific game footage on gener
   );
 });
 
+test("Studio V4 source-family acquisition rejects same-franchise wrong-game Star Wars footage", () => {
+  const report = buildStudioV4SourceFamilyAcquisitionReport({
+    motionPackReports: [
+      motionPack({
+        story_id: "star-wars-racer-gap",
+        title: "Star Wars Racer Date Leaked Early",
+        canonical_subject: "Star Wars Racer",
+        canonical_game: "Star Wars Racer",
+        clips: [],
+        motion_budget: {
+          required_motion_scenes: 5,
+          available_motion_clips: 0,
+          required_distinct_families: 4,
+          available_distinct_families: 0,
+        },
+        trusted_source_pipeline: { references_found: 0, intake_queue: [] },
+      }),
+    ],
+    trustedFootageReport: {
+      accepted_sources: [
+        {
+          source_id: "steam-star-wars-zero-company",
+          display_name: "Steam - Star Wars Zero Company announce trailer",
+          source_family: "steam_star_wars_zero_company_announce_trailer",
+          source_tier: "official",
+          source_url: "https://video.akamai.steamstatic.com/store_trailers/star_wars_zero_company/master.m3u8",
+          reference_url: "https://store.steampowered.com/app/999999/STAR_WARS_Zero_Company/",
+          source_url_kind: "hls_manifest",
+          segment_validation_eligible: true,
+          entities: ["Star Wars Zero Company", "Star Wars"],
+        },
+      ],
+      story_candidates: [],
+    },
+    referenceReport: { plans: [] },
+  });
+
+  const row = report.rows[0];
+  assert.equal(row.primary_story_entity, "Star Wars Racer");
+  assert.deepEqual(row.source_family_candidates, []);
+  assert.equal(row.official_search_actions[0].entity, "Star Wars Racer");
+  assert.match(row.official_search_actions[0].query, /Star Wars Racer/);
+});
+
+test("Studio V4 source-family acquisition rejects Forza footage for Xbox Controller deal stories", () => {
+  const report = buildStudioV4SourceFamilyAcquisitionReport({
+    motionPackReports: [
+      motionPack({
+        story_id: "xbox-controller-gap",
+        title: "Xbox Controller Deal Has One Catch",
+        canonical_subject: "Xbox Controller",
+        canonical_game: "Xbox Controller",
+        clips: [],
+        motion_budget: {
+          required_motion_scenes: 5,
+          available_motion_clips: 0,
+          required_distinct_families: 4,
+          available_distinct_families: 0,
+        },
+        trusted_source_pipeline: { references_found: 0, intake_queue: [] },
+      }),
+    ],
+    trustedFootageReport: {
+      accepted_sources: [
+        {
+          source_id: "xbox-official-youtube",
+          display_name: "Xbox official YouTube",
+          source_family: "xbox_official_youtube",
+          source_tier: "official",
+          source_url: "https://www.youtube.com/@Xbox",
+          reference_url: "https://www.youtube.com/@Xbox",
+          source_url_kind: "youtube_page",
+          entities: ["Xbox"],
+        },
+        {
+          source_id: "xbox-forza-launch-trailer",
+          display_name: "Xbox official YouTube - Forza Horizon 6 launch trailer",
+          source_family: "xbox_official_youtube_forza_horizon_6_launch_trailer",
+          source_tier: "official",
+          source_url: "https://www.youtube.com/watch?v=official",
+          reference_url: "https://www.youtube.com/watch?v=official",
+          source_url_kind: "youtube_watch",
+          entities: ["Forza Horizon 6", "Xbox"],
+        },
+      ],
+      story_candidates: [],
+    },
+    referenceReport: { plans: [] },
+  });
+
+  const row = report.rows[0];
+  assert.equal(row.primary_story_entity, "Xbox Controller");
+  assert.deepEqual(row.source_family_candidates, []);
+  assert.equal(row.official_search_actions[0].entity, "Xbox Controller");
+  assert.match(row.official_search_actions[0].query, /official product video/);
+});
+
 test("Studio V4 source-family acquisition rejects specific game footage for broad platform stories", () => {
   const report = buildStudioV4SourceFamilyAcquisitionReport({
     motionPackReports: [

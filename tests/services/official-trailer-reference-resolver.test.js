@@ -887,6 +887,70 @@ test("official trailer resolver separates source proof from direct-motion eligib
   assert.ok(plan.warnings.includes("some_references_are_provenance_only_not_direct_media"));
 });
 
+test("official trailer resolver keeps Xbox Controller as the visual target for hardware stories", async () => {
+  const story = baseStory({
+    id: "xbox-controller-reference-only",
+    title: "Xbox Controller Deal Has One Catch",
+    canonical_subject: "Xbox Controller",
+    canonical_game: "Xbox Controller",
+    full_script:
+      "Xbox controller deals are getting aggressive, but the catch is the retailer. Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  const plan = await buildOfficialTrailerReferencePlan(story, {
+    officialSourceIntakeReport: {
+      accepted_references: [
+        {
+          story_id: "xbox-controller-reference-only",
+          source_url:
+            "https://www.xbox.com/en-US/accessories/forza-horizon-6-xbox-wireless-controller-and-wireless-headset",
+          source_type: "official_platform_product_page",
+          entity: "Xbox Controller",
+          source_verified: true,
+          allowed_render_use: "reference_only_by_default",
+        },
+      ],
+    },
+  });
+
+  assert.deepEqual(plan.target_entities, ["Xbox Controller"]);
+  assert.deepEqual(plan.source_proof_covered_target_entities, ["Xbox Controller"]);
+  assert.deepEqual(plan.missing_target_entities, ["Xbox Controller"]);
+  assert.ok(plan.search_queries.includes("Xbox Controller official trailer"));
+});
+
+test("official trailer resolver does not drop Star Wars targets after a miss-a-beat CTA", async () => {
+  const story = baseStory({
+    id: "galactic-racer-reference-only",
+    title: "Star Wars Racer Date Leaked Early",
+    canonical_subject: "Star Wars: Galactic Racer",
+    canonical_game: "Star Wars: Galactic Racer",
+    full_script:
+      "Star Wars: Galactic Racer may have leaked the part players actually needed: a date. Follow Pulse Gaming so you never miss a beat.",
+    description: "Star Wars: Galactic Racer release details came from an official source page.",
+  });
+
+  const plan = await buildOfficialTrailerReferencePlan(story, {
+    officialSourceIntakeReport: {
+      accepted_references: [
+        {
+          story_id: "galactic-racer-reference-only",
+          source_url: "https://www.starwars.com/games-apps/star-wars-galactic-racer",
+          source_type: "official_game_website_media_page",
+          entity: "Star Wars: Galactic Racer",
+          source_verified: true,
+          allowed_render_use: "reference_only_by_default",
+        },
+      ],
+    },
+  });
+
+  assert.deepEqual(plan.target_entities, ["Star Wars: Galactic Racer"]);
+  assert.deepEqual(plan.source_proof_covered_target_entities, ["Star Wars: Galactic Racer"]);
+  assert.deepEqual(plan.missing_target_entities, ["Star Wars: Galactic Racer"]);
+  assert.ok(plan.search_queries.includes("Star Wars: Galactic Racer official trailer"));
+});
+
 test("official trailer resolver consumes trusted footage registry references without enabling downloads", async () => {
   const story = baseStory({
     id: "registry-forza",

@@ -322,10 +322,10 @@ test("duration variant repair does not churn safe gameplay-source claims into sh
       thumbnail_headline: "THE EXPANSE GAMEPLAY",
       first_spoken_line: "The Expanse: Osiris Reborn finally showed real gameplay.",
       narration_script: [
-        "The Expanse: Osiris Reborn finally showed real gameplay.",
+        "The Expanse: Osiris Reborn finally has real gameplay on screen.",
         "Xbox showed The Expanse: Osiris Reborn gameplay during Xbox Partner Preview.",
-        "The catch is what matters after the reveal cut: whether the full mission flow can match it.",
-        "The sharper question is whether the camera, gunfights and scale make it feel like The Expanse, not just another licensed shooter.",
+        "The catch is why mission flow matters: a famous universe only helps if the gunfights, camera weight and scale hold up outside a trailer cut.",
+        "The sharper question is whether this feels like The Expanse, not just another sci-fi shooter wearing the name.",
         "Short showcases can sell impact, but mission flow will decide whether players trust the reveal.",
         "If the full missions keep that pace, this could become more than another licensed announcement.",
         "Follow Pulse Gaming so you never miss a beat.",
@@ -834,6 +834,75 @@ test("duration variant repair reruns existing normal repairs with content signal
   assert.match(audioCalls[0], /Follow Pulse Gaming/);
 });
 
+test("duration variant repair reruns existing normal repairs when the script scorecard still blocks", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-duration-scorecard-blocker-"));
+  const artifactDir = await makePackage(root, "scorecard-blocked-existing", {
+    canonical: {
+      canonical_subject: "Star Wars: Galactic Racer",
+      canonical_game: "Star Wars: Galactic Racer",
+      selected_title: "Star Wars Racer Date Leaked Early",
+      first_spoken_line: "Star Wars: Galactic Racer may have leaked its own release date.",
+      narration_script:
+        "Star Wars: Galactic Racer may have leaked its own release date. Rock Paper Shotgun reports Chuba! Star Wars: Galactic Racer's release date has been accidentally revealed early. Star Wars: Galactic Racer now has a date leak attached to the nostalgia. A date leak is not the sell; the old arcade energy has to come back too. Follow Pulse Gaming so you never miss a beat.",
+      primary_source: "Rock Paper Shotgun",
+      confirmed_claims: ["Star Wars: Galactic Racer's release date has been accidentally revealed early."],
+      duration_variant_repaired_at: "2026-05-28T20:19:38.875Z",
+      duration_variant_repair_strategy: NORMAL_PRODUCTION_REPAIR_STRATEGY,
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "render_manifest.json"), {
+    story_id: "scorecard-blocked-existing",
+    renderer: "visual_v4_production",
+    final_publish_render: true,
+    rendered_duration_s: 43.523,
+  });
+  await fs.outputJson(path.join(artifactDir, "script_scorecard.json"), {
+    verdict: "rewrite_required",
+    blockers: ["repeated_phrase"],
+    warnings: [],
+  });
+  const audioCalls = [];
+
+  const report = await materializeDurationVariantRepairs({
+    workspaceRoot: root,
+    generatedAt: "2026-05-28T20:30:00.000Z",
+    provider: "local",
+    workOrder: {
+      jobs: [
+        {
+          ...workOrderJob("scorecard-blocked-existing", artifactDir),
+          current_duration_s: 43.523,
+          target_duration_seconds: { min: 35, max: 59 },
+        },
+      ],
+    },
+    generateTtsForStory: async ({ text, outputPath }) => {
+      audioCalls.push(text);
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 11));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignment(text),
+      });
+    },
+    renderProof: async ({ storyJson, output }) => {
+      const story = await fs.readJson(storyJson);
+      await fs.outputFile(output, Buffer.alloc(8192, 12));
+      return {
+        story_id: story.id,
+        output,
+        clips: story.video_clips.length,
+        rendered_duration_s: 43.5,
+        size_bytes: 8192,
+      };
+    },
+  });
+
+  assert.equal(report.summary.skipped_existing_count, 0);
+  assert.equal(report.summary.repaired_count, 1);
+  assert.equal(audioCalls.length, 1);
+  assert.doesNotMatch(audioCalls[0], /Star Wars: Galactic Racer now has a date leak attached|A date leak is not the sell/i);
+  assert.ok(!report.jobs[0].script_scorecard.blockers.includes("repeated_phrase"), JSON.stringify(report.jobs[0].script_scorecard));
+});
+
 test("duration variant repair reruns existing normal repairs with stale filler even when duration is in range", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-duration-stale-filler-"));
   const artifactDir = await makePackage(root, "stale-filler-existing", {
@@ -1051,6 +1120,17 @@ test("duration variant repair respects source scope for current production failu
     confirmed_claims: ["Star Wars: Galactic Racer's release date has been accidentally revealed early."],
   });
   assert.doesNotMatch(racerRepair.script, /handling|tracks|sanding off|full mission/i);
+  const racerScorecard = buildViralScriptIntelligence({
+    story_id: "star-wars-racer-date-leak",
+    selected_title: "Star Wars Racer Date Leaked Early",
+    canonical_subject: "Star Wars: Galactic Racer",
+    first_spoken_line: racerRepair.script.split(/(?<=[.!?])\s+/)[0],
+    narration_script: racerRepair.script,
+    full_script: racerRepair.script,
+    primary_source: "Rock Paper Shotgun",
+  });
+  assert.ok(!racerScorecard.blockers.includes("repeated_phrase"), JSON.stringify(racerScorecard, null, 2));
+  assert.ok((racerRepair.script.match(/\bdate leak\b/gi) || []).length <= 1, racerRepair.script);
 
   const crimsonCanonical = {
     canonical_subject: "Crimson Desert",
@@ -2321,7 +2401,39 @@ test("duration variant repair does not repeat gameplay reveal phrasing when exte
   });
 
   assert.doesNotMatch(repair.script, /finally has gameplay footage on screen/i);
+  assert.doesNotMatch(repair.script, /The catch is what matters after the reveal cut/i);
   assert.ok(!scorecard.blockers.includes("repeated_phrase"), JSON.stringify(scorecard, null, 2));
+  assert.ok(!scorecard.blockers.includes("generic_reveal_catch_template"), JSON.stringify(scorecard, null, 2));
+});
+
+test("duration variant repair does not add a second Expanse mission-flow catch", () => {
+  const repair = extendScriptToTarget(
+    {
+      canonical_subject: "The Expanse: Osiris Reborn",
+      canonical_game: "The Expanse: Osiris Reborn",
+      selected_title: "The Expanse Shows Real Gameplay",
+      narration_script: [
+        "The Expanse: Osiris Reborn finally has real gameplay on screen.",
+        "Xbox showed The Expanse: Osiris Reborn gameplay during Partner Preview, which matters because this is no longer just a logo and a licence.",
+        "The catch is why mission flow matters: a famous universe only helps if the gunfights, camera weight and scale hold up outside a trailer cut.",
+        "The real player question is whether this feels like The Expanse, or just another sci-fi shooter wearing the name.",
+        "The next long gameplay cut has to prove the rhythm.",
+        "Follow Pulse Gaming so you never miss a beat.",
+      ].join(" "),
+      primary_source: "Xbox",
+      confirmed_claims: ["Xbox showed The Expanse: Osiris Reborn gameplay during Xbox Partner Preview."],
+    },
+    {
+      current_duration_s: 29.833,
+      target_duration_seconds: { min: 35, max: 59 },
+      provider: "local",
+    },
+  );
+
+  assert.equal((repair.script.match(/\bthe catch is\b/gi) || []).length, 1);
+  assert.doesNotMatch(repair.script, /The catch is whether the camera, gunfights and ship scale/i);
+  assert.ok(repair.repaired_word_count >= 116);
+  assert.ok(repair.repaired_word_count <= 132);
 });
 
 test("duration variant repair does not pad showcase scripts with generic footage instructions", () => {

@@ -141,6 +141,12 @@ test("Epidemic intake blocks when the local subscription pack has not been downl
 test("Epidemic music role classification supports beds, stings and stems", () => {
   assert.equal(classifyMusicRole("audio/epidemic/music/breaking/urgent full mix.wav"), "bed_breaking");
   assert.equal(classifyMusicRole("audio/epidemic/stings/rumour-watch-hit.wav"), "sting_rumour");
+  assert.equal(
+    classifyMusicRole(
+      "audio/epidemic/stings/sting_verified/epidemic_sting_verified_03_user-interface-alert-notification-confirm.mp3",
+    ),
+    "sting_verified",
+  );
   assert.equal(classifyMusicRole("audio/epidemic/stems/main-news-drums.wav"), "stem");
   assert.equal(classifyMusicRole("audio/epidemic/music/main-news-loop.wav"), "bed_primary");
 

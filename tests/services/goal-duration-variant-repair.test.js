@@ -845,6 +845,7 @@ test("duration variant repair reruns existing normal repairs when the script sco
       narration_script:
         "Star Wars: Galactic Racer may have leaked its own release date. Rock Paper Shotgun reports Chuba! Star Wars: Galactic Racer's release date has been accidentally revealed early. Star Wars: Galactic Racer now has a date leak attached to the nostalgia. A date leak is not the sell; the old arcade energy has to come back too. Follow Pulse Gaming so you never miss a beat.",
       primary_source: "Rock Paper Shotgun",
+      source_card_label: "Rock Paper Shotgun",
       confirmed_claims: ["Star Wars: Galactic Racer's release date has been accidentally revealed early."],
       duration_variant_repaired_at: "2026-05-28T20:19:38.875Z",
       duration_variant_repair_strategy: NORMAL_PRODUCTION_REPAIR_STRATEGY,
@@ -2468,6 +2469,137 @@ test("duration variant repair does not pad showcase scripts with generic footage
     repair.script,
     /finally has something players can judge|movement, combat readability|UI looks like a real game|footage is the part that decides|logo sweep|next trailer shows/i,
   );
+});
+
+test("duration variant repair adds a real curiosity marker to Stranger Than Heaven showcase scripts", () => {
+  const repair = extendScriptToTarget(
+    {
+      canonical_subject: "STRANGER THAN HEAVEN Five Eras",
+      canonical_game: "STRANGER THAN HEAVEN Five Eras",
+      selected_title: "Stranger Than Heaven Shows Five Eras",
+      narration_script:
+        "Stranger Than Heaven just made its pitch harder to fake. Xbox showed Stranger Than Heaven's Five Eras reveal during Xbox Partner Preview. Follow Pulse Gaming so you never miss a beat.",
+      primary_source: "Xbox",
+      source_card_label: "Xbox",
+      confirmed_claims: ["Xbox showed Stranger Than Heaven's Five Eras reveal during Xbox Partner Preview."],
+    },
+    {
+      repair_lane: "normal_production_content_signal_repair",
+      current_duration_s: 39.867,
+      target_duration_seconds: { min: 35, max: 59 },
+      provider: "local",
+      source_blockers: ["preflight_qa_blocked:script_scorecard:no_curiosity_marker"],
+    },
+  );
+
+  const scorecard = buildViralScriptIntelligence({
+    story: {
+      id: "stranger-curiosity-repair",
+      title: "Stranger Than Heaven Shows Five Eras",
+      source_name: "Xbox",
+    },
+    script: repair.script,
+  });
+
+  assert.match(repair.script, /awkward catch|real catch|the catch/i);
+  assert.ok(!scorecard.warnings.includes("no_curiosity_marker"), JSON.stringify(scorecard, null, 2));
+  assert.doesNotMatch(repair.script, /hook has to|next beat should|public output/i);
+});
+
+test("duration variant repair compacts Stranger showcase scripts without generic reveal-catch padding", () => {
+  const staleLongScript = [
+    "Stranger Than Heaven just made its pitch harder to fake.",
+    "Xbox showed Stranger Than Heaven's Five Eras reveal during Xbox Partner Preview.",
+    "Stranger Than Heaven is swinging at more than one period piece.",
+    "Five eras is a big promise: each one needs its own texture, pace and reason to exist, not just a costume change.",
+    "That makes the reveal feel ambitious, but also easy to overpromise.",
+    "The awkward catch is whether the time jumps change the missions or just the wardrobe.",
+    "A longer cut needs to show one mission bending around the era shift instead of another stylish trailer sweep.",
+    "Until then, the reveal is exciting because the risk is obvious: five eras can feel huge, or it can feel like five outfits.",
+    "Follow Pulse Gaming so you never miss a beat.",
+  ].join(" ");
+
+  const repair = extendScriptToTarget(
+    {
+      canonical_subject: "STRANGER THAN HEAVEN Five Eras",
+      canonical_game: "STRANGER THAN HEAVEN Five Eras",
+      selected_title: "Stranger Than Heaven Shows Five Eras",
+      narration_script: staleLongScript,
+      primary_source: "Xbox",
+      source_card_label: "Xbox",
+      confirmed_claims: ["Xbox showed Stranger Than Heaven's Five Eras reveal during Xbox Partner Preview."],
+    },
+    {
+      repair_lane: "normal_production_content_signal_repair",
+      current_duration_s: 39.867,
+      target_duration_seconds: { min: 35, max: 59 },
+      provider: "local",
+      source_blockers: ["preflight_qa_blocked:script_scorecard:no_curiosity_marker"],
+    },
+  );
+
+  const scorecard = buildViralScriptIntelligence({
+    story: {
+      id: "stranger-compact-content-signal",
+      title: "Stranger Than Heaven Shows Five Eras",
+      source_name: "Xbox",
+    },
+    script: repair.script,
+  });
+
+  assert.ok(repair.repaired_word_count >= 116, repair.script);
+  assert.ok(repair.repaired_word_count <= 132, repair.script);
+  assert.match(repair.script, /awkward catch|real catch|five eras can feel huge/i);
+  assert.doesNotMatch(repair.script, /The catch is what matters after the reveal cut/i);
+  assert.ok(!scorecard.blockers.includes("generic_reveal_catch_template"), JSON.stringify(scorecard, null, 2));
+  assert.ok(!scorecard.warnings.includes("no_curiosity_marker"), JSON.stringify(scorecard, null, 2));
+});
+
+test("duration variant repair gives stale Stranger compact repairs enough local voice headroom", () => {
+  const staleCompactScript = [
+    "STRANGER THAN HEAVEN Five Eras is swinging at more than one period piece.",
+    "Xbox showed Stranger Than Heaven's Five Eras reveal during Xbox Partner Preview.",
+    "The catch is what matters after the reveal cut: combat, UI, platform list and date need to read fast.",
+    "That is enough for a watchlist, but not a day-one call yet.",
+    "A store page or firm launch window would give players something real to plan around.",
+    "A full mission and proper launch details would do more than teaser energy.",
+    "Follow Pulse Gaming so you never miss a beat.",
+  ].join(" ");
+
+  const repair = extendScriptToTarget(
+    {
+      canonical_subject: "STRANGER THAN HEAVEN Five Eras",
+      canonical_game: "STRANGER THAN HEAVEN Five Eras",
+      selected_title: "Stranger Than Heaven Shows Five Eras",
+      narration_script: staleCompactScript,
+      primary_source: "Xbox",
+      source_card_label: "Xbox",
+      confirmed_claims: ["Xbox showed Stranger Than Heaven's Five Eras reveal during Xbox Partner Preview."],
+    },
+    {
+      repair_lane: "normal_production_content_signal_repair",
+      current_duration_s: 39.867,
+      target_duration_seconds: { min: 35, max: 59 },
+      provider: "local",
+      source_blockers: ["preflight_qa_blocked:script_scorecard:no_curiosity_marker"],
+    },
+  );
+
+  const scorecard = buildViralScriptIntelligence({
+    story: {
+      id: "stranger-stale-compact-content-signal",
+      title: "Stranger Than Heaven Shows Five Eras",
+      source_name: "Xbox",
+    },
+    script: repair.script,
+  });
+
+  assert.ok(repair.repaired_word_count >= 122, repair.script);
+  assert.ok(repair.repaired_word_count <= 132, repair.script);
+  assert.doesNotMatch(repair.script, /The catch is what matters after the reveal cut/i);
+  assert.doesNotMatch(repair.script, /watchlist|store page|teaser energy/i);
+  assert.ok(!scorecard.blockers.includes("generic_reveal_catch_template"), JSON.stringify(scorecard, null, 2));
+  assert.ok(!scorecard.warnings.includes("no_curiosity_marker"), JSON.stringify(scorecard, null, 2));
 });
 
 test("duration variant repair gives Hades a curiosity hook and complete mobile headline", () => {

@@ -132,6 +132,33 @@ test("normal duration repair work order routes post-compaction topic and outro b
   assert.deepEqual(workOrder.jobs[0].target_duration_seconds, { min: 35, max: 59 });
 });
 
+test("normal duration repair work order routes scheduler script-scorecard curiosity blockers", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-normal-duration-curiosity-"));
+  const artifactDir = await makeArtifact(root, "curiosity-story", 39.867);
+
+  const workOrder = await buildNormalDurationRepairWorkOrder({
+    generatedAt: "2026-05-28T20:40:00.000Z",
+    dryRunPlan: {
+      generated_at: "2026-05-28T20:35:00.000Z",
+      blocked_stories: [
+        {
+          story_id: "curiosity-story",
+          artifact_dir: artifactDir,
+          blockers: [
+            "preflight_candidate_not_publish_ready:review",
+            "preflight_qa_blocked:script_scorecard:no_curiosity_marker",
+          ],
+        },
+      ],
+    },
+  });
+
+  assert.equal(workOrder.summary.repair_required_count, 1);
+  assert.equal(workOrder.jobs[0].repair_lane, "normal_production_content_signal_repair");
+  assert.equal(workOrder.jobs[0].current_duration_s, 39.867);
+  assert.deepEqual(workOrder.jobs[0].target_duration_seconds, { min: 35, max: 59 });
+});
+
 test("normal duration repair work order routes scheduler-missing overlong renders by manifest duration", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-normal-duration-missing-candidate-"));
   const artifactDir = await makeArtifact(root, "excluded-overlong-story", 115.2);

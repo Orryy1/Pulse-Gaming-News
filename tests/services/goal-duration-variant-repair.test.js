@@ -207,6 +207,13 @@ test("duration variant repair extends script, regenerates local audio and rerend
   const platformManifest = await fs.readJson(path.join(artifactDir, "platform_publish_manifest.json"));
   assert.equal(platformManifest.duration_contract_strategy, "retention_repair_short_cut");
   assert.deepEqual(platformManifest.outputs.youtube_shorts.target_duration_seconds, { min: 22, max: 30 });
+
+  const scriptScorecard = await fs.readJson(path.join(artifactDir, "script_scorecard.json"));
+  assert.equal(scriptScorecard.story_id, "story-duration");
+  assert.equal(scriptScorecard.generated_at, "2026-05-22T08:00:00.000Z");
+  assert.equal(scriptScorecard.repair_basis, "duration_variant_repair");
+  assert.equal(scriptScorecard.fact_lock.source_name, "IGN");
+  assert.equal(scriptScorecard.safety.no_publishing_side_effects, true);
 });
 
 test("duration variant repair restores canonical script when audio regeneration fails", async () => {

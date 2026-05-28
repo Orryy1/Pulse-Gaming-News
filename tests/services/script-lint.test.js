@@ -142,6 +142,24 @@ test("lintScript: no curiosity marker → warn:no_curiosity_marker", () => {
   assert.ok(r.warnings.includes("no_curiosity_marker"));
 });
 
+test("lintScript: recognises repaired what-matters curiosity beats", () => {
+  const script =
+    "The Expanse: Osiris Reborn finally showed real gameplay. " +
+    "Xbox showed The Expanse: Osiris Reborn gameplay during Xbox Partner Preview. " +
+    "The catch is what matters after the reveal cut: whether the full mission flow can match it. " +
+    "Now the camera, gunfights and scale are on screen instead of hidden behind a logo. " +
+    "The sharper question is what this changes for players after the headline fades. " +
+    "Short showcases can sell impact, but mission flow will decide whether players trust the reveal. " +
+    "If the full missions keep that pace, this could become more than another licensed announcement. " +
+    "One more direct play segment would show whether the combat rhythm and camera weight match the reveal. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const r = lintScript(script);
+
+  assert.notStrictEqual(r.result, "fail", JSON.stringify(r));
+  assert.ok(!r.warnings.includes("no_curiosity_marker"), JSON.stringify(r));
+});
+
 test("lintScript: heavy filler phrases → warn:filler_dense", () => {
   const r = lintScript(
     CLEAN_SCRIPT + " At the end of the day, to be honest, needless to say.",

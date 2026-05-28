@@ -6,6 +6,7 @@ const path = require("node:path");
 
 const {
   executeEpidemicSoundImplementation,
+  normaliseChannelIds,
   renderImplementationMarkdown,
 } = require("../lib/epidemic-audio-pack-materializer");
 
@@ -14,6 +15,7 @@ function parseArgs(argv = process.argv) {
     intakeReportPath: path.join("output", "epidemic-sound-intake", "epidemic_sound_intake_report.json"),
     outputDir: path.join("output", "epidemic-implementation"),
     generatedAt: new Date().toISOString(),
+    channelIds: [],
     apply: false,
     json: false,
     help: false,
@@ -23,6 +25,9 @@ function parseArgs(argv = process.argv) {
     if (arg === "--intake-report") args.intakeReportPath = argv[++index] || args.intakeReportPath;
     else if (arg === "--out-dir") args.outputDir = argv[++index] || args.outputDir;
     else if (arg === "--generated-at") args.generatedAt = argv[++index] || args.generatedAt;
+    else if (arg === "--channel" || arg === "--channels") {
+      args.channelIds = normaliseChannelIds([...args.channelIds, argv[++index] || ""]);
+    }
     else if (arg === "--apply") args.apply = true;
     else if (arg === "--json") args.json = true;
     else if (arg === "--help" || arg === "-h") args.help = true;
@@ -41,6 +46,7 @@ function usage() {
     "  --intake-report <path>  Intake report JSON. Default: output/epidemic-sound-intake/epidemic_sound_intake_report.json",
     "  --out-dir <dir>         Proof output dir. Default: output/epidemic-implementation",
     "  --generated-at <iso>    Deterministic proof timestamp",
+    "  --channel <id>[,<id>]   Channel(s) covered by retained safelist evidence. Required with --apply",
     "  --apply                 Write channels/<channel>/audio/pack.json only when the intake is PASS",
     "  --json                  Print JSON",
     "",
@@ -72,6 +78,7 @@ async function main(argv = process.argv) {
     report,
     outputDir: args.outputDir,
     generatedAt: args.generatedAt,
+    channelIds: args.channelIds,
     apply: args.apply,
   });
   if (args.json) {
@@ -80,6 +87,7 @@ async function main(argv = process.argv) {
     console.log(`Epidemic Sound implementation: ${result.plan.readiness.status}`);
     console.log(`Channel packs planned: ${result.plan.summary.channel_packs_planned}`);
     console.log(`Channel packs written: ${result.plan.summary.channel_packs_written}`);
+    console.log(`Channel scope: ${result.plan.channel_filter.requested_channel_ids.join(", ") || "(not set)"}`);
     console.log(`SFX roles covered: ${result.plan.summary.sfx_roles_covered}`);
     console.log(`Report: ${result.outputs.reportPath}`);
     console.log("Safety: local-only, no downloads, no publish, no DB mutation, no OAuth changes.");

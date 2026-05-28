@@ -66,6 +66,8 @@ test("Epidemic implementation CLI parses safe apply controls", () => {
     "--generated-at",
     "2026-05-27T19:08:00.000Z",
     "--apply",
+    "--channel",
+    "pulse-gaming,stacked",
     "--json",
   ]);
 
@@ -73,6 +75,7 @@ test("Epidemic implementation CLI parses safe apply controls", () => {
   assert.equal(args.outputDir, "output/epidemic-implementation");
   assert.equal(args.generatedAt, "2026-05-27T19:08:00.000Z");
   assert.equal(args.apply, true);
+  assert.deepEqual(args.channelIds, ["pulse-gaming", "stacked"]);
   assert.equal(args.json, true);
 });
 
@@ -138,10 +141,14 @@ test("Epidemic implementation CLI can apply a complete pass intake in a temp wor
       "--generated-at",
       "2026-05-27T19:11:00.000Z",
       "--apply",
+      "--channel",
+      "pulse-gaming",
     ]);
 
     assert.equal(plan.readiness.status, "applied");
-    assert.equal(await fs.pathExists(path.join(root, "channels", "stacked", "audio", "pack.json")), true);
+    assert.equal(plan.summary.channel_packs_written, 1);
+    assert.equal(await fs.pathExists(path.join(root, "channels", "pulse-gaming", "audio", "pack.json")), true);
+    assert.equal(await fs.pathExists(path.join(root, "channels", "stacked", "audio", "pack.json")), false);
   } finally {
     process.chdir(previousCwd);
   }

@@ -74,6 +74,55 @@ test("Epidemic intake blocks use when no safelisting evidence is retained", asyn
   assert.equal(report.rights_ledger.records[0].safelist_evidence, null);
 });
 
+test("Epidemic intake blocks partial safelist evidence with a required platform blocker", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-epidemic-partial-evidence-"));
+  const epidemicRoot = path.join(root, "audio", "epidemic");
+  const files = [
+    path.join(epidemicRoot, "music", "bed_primary", "Pulse Gaming Main News Bed.wav"),
+    path.join(epidemicRoot, "music", "bed_breaking", "Pulse Gaming Breaking Urgent Bed.wav"),
+    path.join(epidemicRoot, "stings", "sting_verified", "Verified Source Lock Sting.wav"),
+    path.join(epidemicRoot, "stings", "sting_rumour", "Rumour Watch Sting.wav"),
+    path.join(epidemicRoot, "stings", "sting_breaking", "Breaking Hit Sting.wav"),
+    path.join(epidemicRoot, "sfx", "Cinematic Impact Hit.wav"),
+    path.join(epidemicRoot, "sfx", "Editorial Fast Whoosh Transition.wav"),
+    path.join(epidemicRoot, "sfx", "UI Tick Click.wav"),
+    path.join(epidemicRoot, "sfx", "Tension Riser.wav"),
+    path.join(epidemicRoot, "sfx", "Sub Boom.wav"),
+    path.join(epidemicRoot, "sfx", "Digital Glitch Static.wav"),
+  ];
+  for (const file of files) await touchAudio(file);
+  const evidencePath = path.join(root, "proof", "epidemic_safelist_evidence.json");
+  await fs.outputJson(evidencePath, {
+    safelisted_platforms: [
+      { channel_id: "pulse-gaming", platform: "tiktok", status: "safelisted" },
+      { channel_id: "pulse-gaming", platform: "facebook", status: "safelisted" },
+      { channel_id: "pulse-gaming", platform: "instagram", status: "safelisted" },
+    ],
+    not_safelisted_platforms: [
+      {
+        channel_id: "pulse-gaming",
+        platform: "youtube",
+        status: "blocked",
+        blocker: "epidemic_youtube_google_account_link_required",
+      },
+    ],
+  });
+
+  const report = buildEpidemicSoundIntakeReport({
+    workspaceRoot: root,
+    root: epidemicRoot,
+    generatedAt: "2026-05-26T17:01:30.000Z",
+    safelistEvidence: evidencePath,
+  });
+
+  assert.equal(report.readiness.status, "blocked");
+  assert.ok(report.readiness.blockers.includes("epidemic:safelist_platform_blocked:youtube"));
+  assert.equal(report.summary.safelisted_platforms, 3);
+  assert.equal(report.summary.safelist_blocked_platforms, 1);
+  assert.equal(report.safelist_evidence_report.blocked_platforms[0].platform, "youtube");
+  assert.ok(report.music_inventory.every((asset) => asset.approval_status === "blocked_until_required_platforms_safelisted"));
+});
+
 test("Epidemic intake blocks when the local subscription pack has not been downloaded", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-epidemic-empty-"));
   const report = buildEpidemicSoundIntakeReport({

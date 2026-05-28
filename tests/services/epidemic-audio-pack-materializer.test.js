@@ -117,6 +117,7 @@ test("Epidemic implementation apply writes channel pack configs and backs up exi
     outputDir: path.join(root, "out"),
     generatedAt: "2026-05-27T19:05:00.000Z",
     apply: true,
+    channelIds: ["pulse-gaming", "stacked", "the-signal"],
   });
 
   const pulsePackPath = path.join(root, "channels", "pulse-gaming", "audio", "pack.json");
@@ -126,4 +127,56 @@ test("Epidemic implementation apply writes channel pack configs and backs up exi
   assert.equal(pulsePack.id, "pulse-gaming-epidemic-v1");
   assert.equal(pulsePack.license, "epidemic_sound_active_subscription_safelisted_channel");
   assert.equal(await fs.pathExists(`${pulsePackPath}.pre-epidemic-backup`), true);
+});
+
+test("Epidemic implementation apply requires an explicit channel scope", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-epidemic-implementation-unscoped-"));
+  const epidemicRoot = await createCompleteEpidemicRoot(root);
+  const report = buildEpidemicSoundIntakeReport({
+    workspaceRoot: root,
+    root: epidemicRoot,
+    generatedAt: "2026-05-27T19:12:00.000Z",
+    safelistEvidence: "docs/proof/epidemic-safelist.json",
+  });
+
+  const result = await executeEpidemicSoundImplementation({
+    workspaceRoot: root,
+    report,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-05-27T19:12:30.000Z",
+    apply: true,
+  });
+
+  assert.equal(result.plan.readiness.status, "blocked");
+  assert.ok(result.plan.readiness.blockers.includes("epidemic:channel_scope_required_for_apply"));
+  assert.equal(result.plan.summary.channel_packs_written, 0);
+  assert.equal(await fs.pathExists(path.join(root, "channels", "pulse-gaming", "audio", "pack.json")), false);
+});
+
+test("Epidemic implementation apply can be scoped to one safelisted channel", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-epidemic-implementation-scoped-"));
+  const epidemicRoot = await createCompleteEpidemicRoot(root);
+  const report = buildEpidemicSoundIntakeReport({
+    workspaceRoot: root,
+    root: epidemicRoot,
+    generatedAt: "2026-05-27T19:12:00.000Z",
+    safelistEvidence: "docs/proof/epidemic-safelist.json",
+  });
+
+  const result = await executeEpidemicSoundImplementation({
+    workspaceRoot: root,
+    report,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-05-27T19:13:00.000Z",
+    apply: true,
+    channelIds: ["pulse-gaming"],
+  });
+
+  assert.equal(result.plan.readiness.status, "applied");
+  assert.deepEqual(result.plan.channel_filter.requested_channel_ids, ["pulse-gaming"]);
+  assert.equal(result.plan.summary.channel_packs_planned, 1);
+  assert.equal(result.plan.summary.channel_packs_written, 1);
+  assert.equal(await fs.pathExists(path.join(root, "channels", "pulse-gaming", "audio", "pack.json")), true);
+  assert.equal(await fs.pathExists(path.join(root, "channels", "stacked", "audio", "pack.json")), false);
+  assert.equal(await fs.pathExists(path.join(root, "channels", "the-signal", "audio", "pack.json")), false);
 });

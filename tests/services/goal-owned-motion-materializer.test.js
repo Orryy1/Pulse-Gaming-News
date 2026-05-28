@@ -114,6 +114,11 @@ test("owned motion materializer keeps baked card text inside mobile safe bounds"
       block.estimated_bottom_px <= 1828,
       `${block.id} exceeds bottom safe bound at ${block.estimated_bottom_px}`,
     );
+    assert.equal(
+      block.within_card_bounds,
+      true,
+      `${block.id} exceeds its card bounds`,
+    );
   }
   assert.deepEqual(layout.text_blocks.find((block) => block.id === "headline").lines, [
     "POKEMON GO MEGA",
@@ -129,6 +134,38 @@ test("owned motion materializer keeps baked card text inside mobile safe bounds"
   assert.doesNotMatch(vf, /x=\(w-tw\)\/2:y=560/);
   assert.match(vf, /drawtext=text='POKEMON GO MEGA'/);
   assert.match(vf, /drawtext=text='MEWTWO IS'/);
+});
+
+test("owned motion materializer renders newsroom-grade motion cards instead of flat text blocks", () => {
+  const canonical = {
+    canonical_subject: "Boltgun 2",
+    thumbnail_headline: "Boltgun 2 Already Feels Loud",
+    selected_title: "Boltgun 2 Already Feels Loud",
+    primary_source: "IGN Preview",
+  };
+  const clip = {
+    id: "boltgun-owned-motion-1",
+    source_family: "boltgun_kinetic_title_card",
+    visual_purpose: "demo combat read",
+    path: "output/generated-motion/boltgun/01_kinetic_title_card.mp4",
+    durationS: 2.8,
+  };
+
+  const args = buildOwnedMotionFfmpegArgs({
+    clip,
+    canonical,
+    output: path.join("output", "generated-motion", "boltgun", "01_kinetic_title_card.mp4"),
+  });
+  const vf = args[args.indexOf("-vf") + 1];
+
+  assert.doesNotMatch(vf, /drawbox=x=70:y=488:w=940:h=284:color=0x0B0F19@0\.72:t=fill/);
+  assert.doesNotMatch(vf, /drawbox=x=98:y=820:w=884:h=148:color=black@0\.62:t=fill/);
+  assert.match(vf, /PULSE \/\/ MOTION PROOF/);
+  assert.match(vf, /SOURCE LOCK/);
+  assert.match(vf, /VERIFY/);
+  assert.match(vf, /mod\(t\*520,1540\)/);
+  assert.match(vf, /color=0x38BDF8@0\.92/);
+  assert.match(vf, /shadowcolor=black@0\.82:shadowx=3:shadowy=3/);
 });
 
 test("owned motion materializer does not cut card text mid-word", () => {

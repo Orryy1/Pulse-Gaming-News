@@ -176,6 +176,39 @@ test("Goal 14 hard-fails engagement bait, risky automated replies and weak deriv
   assert.equal(report.engagement_risk_report.verdict, "fail");
 });
 
+test("Goal 14 social derivative fallbacks avoid source-backed update phrasing", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal14-fallback-copy-"));
+  const title = "Hades II Finally Shows Console Gameplay";
+  const subject = "Hades II";
+  await makeStoryPackage(root, "story-fallback-copy", {
+    title,
+    subject,
+    outputs: {
+      x: {},
+      instagram: {},
+      threads: {},
+    },
+  });
+
+  const report = await buildGoal14SocialDerivativesEngine({
+    storyPackages: [{ story_id: "story-fallback-copy", artifact_dir: path.join(root, "story-fallback-copy") }],
+    upstreamPublisherReport: readyPublisherReport("story-fallback-copy"),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-05-28T23:15:00.000Z",
+  });
+
+  const combined = [
+    report.x_publish_pack.stories[0].concise_news_post,
+    ...report.x_publish_pack.stories[0].thread_posts,
+    report.instagram_publish_pack.stories[0].stat_card.stat,
+    report.threads_publish_pack.stories[0].discussion_post,
+  ].join(" ");
+
+  assert.doesNotMatch(combined, /source-backed update/i);
+  assert.match(combined, /Hades II/i);
+});
+
 test("Goal 14 writes required social derivative artefacts", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal14-write-"));
   const story = await makeStoryPackage(root, "story-write");

@@ -17,6 +17,8 @@ const {
   resolveReadableMediaPath,
   resolveStoryMusicCueMix,
   subtitleWordsFromTimestampPayload,
+  validateProofTimestampPayload,
+  assertProofAudioSegmentLoudness,
   resolveStorySfxCueMix,
   resolveStorySfxPaths,
 } = require("../../tools/studio-v4-proof-render");
@@ -408,6 +410,65 @@ test("Studio V4 proof renderer prefers explicit word timestamps over rough chara
 
   assert.deepEqual(words.map((word) => word.word), ["Hades", "II", "lands"]);
   assert.equal(words[1].start, 0.31);
+});
+
+test("Studio V4 proof renderer blocks local preview renders without ASR-aligned timestamps", () => {
+  assert.equal(typeof validateProofTimestampPayload, "function");
+
+  assert.throws(
+    () =>
+      validateProofTimestampPayload({
+        meta: {
+          provider: "local",
+          wordTimestampSource: "local_audio_silence_anchored",
+        },
+        words: [
+          { word: "Hades", start: 0, end: 0.2 },
+          { word: "sequel", start: 0.24, end: 0.5 },
+        ],
+      }),
+    /proof render requires local_whisper_word_alignment timestamps/,
+  );
+});
+
+test("Studio V4 proof renderer accepts strict local Whisper timestamps for review renders", () => {
+  const result = validateProofTimestampPayload({
+    meta: {
+      provider: "local",
+      wordTimestampSource: "local_whisper_word_alignment",
+    },
+    words: [
+      { word: "Hades", start: 0, end: 0.2 },
+      { word: "sequel", start: 0.24, end: 0.5 },
+    ],
+  });
+
+  assert.equal(result.word_timestamp_source, "local_whisper_word_alignment");
+  assert.equal(result.local_timing_strict, true);
+});
+
+test("Studio V4 proof renderer blocks review MP4s with mid-render voice jumps", () => {
+  assert.equal(typeof assertProofAudioSegmentLoudness, "function");
+
+  assert.throws(
+    () =>
+      assertProofAudioSegmentLoudness({
+        verdict: "fail",
+        blockers: ["voice_segment_loudness_jump"],
+      }),
+    /proof render audio segment loudness failed: voice_segment_loudness_jump/,
+  );
+});
+
+test("Studio V4 proof renderer accepts stable segment loudness evidence", () => {
+  const result = assertProofAudioSegmentLoudness({
+    verdict: "pass",
+    blockers: [],
+    metrics: { mean_range_db: 1.2 },
+  });
+
+  assert.equal(result.verdict, "pass");
+  assert.equal(result.metrics.mean_range_db, 1.2);
 });
 
 test("Studio V4 proof renderer rejects misclassified field-recording and voice SFX at mix time", async () => {

@@ -12,6 +12,7 @@ const {
   prepareStoryForGoalProof,
   writeGoalBatchPackages,
 } = require("../../lib/goal-batch-packages");
+const { evaluateGoalPublicCopy } = require("../../lib/goal-public-copy-qa");
 
 function licensedSfxAssets() {
   return [
@@ -159,6 +160,33 @@ test("goal batch packages summarise GREEN and blocked story packages honestly", 
   assert.equal(batch.summary.green_count, 1);
   assert.equal(batch.story_packages[0].verdict, "GREEN");
   assert.equal(batch.story_packages[1].verdict, "RED");
+});
+
+test("goal batch package proof preparation rewrites source-backed fallback narration before QA", () => {
+  const prepared = prepareStoryForGoalProof(
+    {
+      id: "hades-fallback",
+      canonical_subject: "Hades II",
+      canonical_game: "Hades II",
+      title: "Hades II Finally Shows Console Gameplay",
+      primary_source: "IGN",
+      article_url: "https://www.ign.com/articles/hades-ii-console-gameplay",
+      full_script: "source-backed update clean read",
+    },
+    { allowOwnedMotionFallback: true },
+  );
+
+  const manifest = {
+    ...prepared,
+    selected_title: prepared.public_title,
+    thumbnail_headline: prepared.suggested_thumbnail_text,
+    narration_script: prepared.full_script,
+    first_spoken_line: prepared.full_script.split(/(?<=[.!?])\s+/)[0],
+  };
+
+  assert.equal(prepared.public_title, "Hades II Finally Shows Console Gameplay");
+  assert.doesNotMatch(prepared.full_script, /source-backed update|this gaming story|the useful question/i);
+  assert.equal(evaluateGoalPublicCopy(manifest).verdict, "pass");
 });
 
 test("goal batch packages write per-story artefacts and goal-contract story packages", async () => {

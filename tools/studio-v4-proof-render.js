@@ -26,6 +26,9 @@ const {
   STUDIO_V4_VOICE_MIX_POLICY_VERSION,
   STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION,
 } = require("../lib/studio/v4/render-policy");
+const {
+  auditRenderedAudioSegments,
+} = require("../lib/render-audio-segment-qa");
 
 const ROOT = path.resolve(__dirname, "..");
 const TEST_OUT = path.join(ROOT, "test", "output");
@@ -586,6 +589,57 @@ function subtitleWordsFromTimestampPayload(payload = {}) {
   return wordsFromAlignment(payload?.alignment || payload);
 }
 
+function timestampPayloadMeta(payload = {}) {
+  const alignment =
+    payload?.alignment && typeof payload.alignment === "object"
+      ? payload.alignment
+      : {};
+  if (payload?.meta && typeof payload.meta === "object") return payload.meta;
+  if (alignment?.meta && typeof alignment.meta === "object") return alignment.meta;
+  return {};
+}
+
+function validateProofTimestampPayload(payload = {}) {
+  const meta = timestampPayloadMeta(payload);
+  const source = String(
+    meta.wordTimestampSource ||
+      meta.word_timestamp_source ||
+      payload.wordTimestampSource ||
+      "",
+  ).trim();
+  const provider = String(
+    meta.provider ||
+      meta.voice_provider ||
+      meta.source ||
+      payload.provider ||
+      "",
+  ).trim().toLowerCase();
+  const localTiming =
+    provider.includes("local") ||
+    /^local_/i.test(source) ||
+    source === "local_tts_segmented_alignment_normalised";
+  const localTimingStrict = !localTiming || source === "local_whisper_word_alignment";
+  if (!localTimingStrict) {
+    throw new Error(
+      `proof render requires local_whisper_word_alignment timestamps for local voice review renders; got ${source || "missing_word_timestamp_source"}`,
+    );
+  }
+  return {
+    word_timestamp_source: source || null,
+    local_timing_strict: localTimingStrict,
+  };
+}
+
+function assertProofAudioSegmentLoudness(report = {}) {
+  if (!report || report.verdict !== "pass") {
+    const blockers = Array.isArray(report?.blockers) && report.blockers.length
+      ? report.blockers.join(",")
+      : "audio_segment_loudness_unverified";
+    throw new Error(`proof render audio segment loudness failed: ${blockers}`);
+  }
+  return report;
+}
+
 function storyClipRows(story = {}) {
   const bridge = Array.isArray(story.visual_v4_bridge_video_clips)
     ? story.visual_v4_bridge_video_clips
@@ -968,6 +1022,7 @@ async function renderProof({ storyJson, output }) {
   const scenePlan = buildClipScenePlan({ clips, durationS });
   const assPath = path.join(TEST_OUT, `${story.id || "story"}_studio_v4_proof.ass`);
   const timestampData = await fs.readJson(timestampsPath);
+  const timestampValidation = validateProofTimestampPayload(timestampData);
   const scriptText = renderNarrationScriptText(story);
   const words = prepareSubtitleWords({
     words: subtitleWordsFromTimestampPayload(timestampData),
@@ -1142,6 +1197,13 @@ async function renderProof({ storyJson, output }) {
   });
 
   const finalDuration = ffprobeDuration(outputPath);
+  const audioSegmentLoudness = assertProofAudioSegmentLoudness(await auditRenderedAudioSegments({
+    storyId: story.id || null,
+    inputPath: outputPath,
+    durationS: finalDuration || durationS,
+  }));
+  const audioSegmentReportPath = path.join(TEST_OUT, `${story.id || "story"}_audio_segment_loudness_report.json`);
+  await fs.writeJson(audioSegmentReportPath, audioSegmentLoudness, { spaces: 2 });
   const stat = await fs.stat(outputPath);
   const report = {
     story_id: story.id || null,
@@ -1189,6 +1251,11 @@ async function renderProof({ storyJson, output }) {
         : null,
       policy: musicCueMix.policy || null,
     },
+    caption_timestamp_source: timestampValidation.word_timestamp_source,
+    caption_timing_strict: timestampValidation.local_timing_strict,
+    audio_segment_loudness_report: relativeReportPath(audioSegmentReportPath),
+    audio_segment_loudness_verdict: audioSegmentLoudness.verdict,
+    audio_segment_loudness_metrics: audioSegmentLoudness.metrics || {},
     local_only: true,
     no_publish_side_effects: true,
     no_db_mutation: true,
@@ -1232,5 +1299,7 @@ module.exports = {
   resolveStorySfxPaths,
   sfxPathForAsset,
   subtitleWordsFromTimestampPayload,
+  validateProofTimestampPayload,
+  assertProofAudioSegmentLoudness,
   renderProof,
 };

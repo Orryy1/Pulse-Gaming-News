@@ -17,6 +17,7 @@ const {
 const { evaluateGoalPublicCopy } = require("../../lib/goal-public-copy-qa");
 const { buildCaptionSrt } = require("../../lib/goal-public-copy-repair");
 const { runScriptCoherenceQa } = require("../../lib/script-coherence-qa");
+const { buildViralScriptIntelligence } = require("../../lib/viral-script-intelligence");
 
 function charAlignment(text) {
   const characters = [...text];
@@ -2197,10 +2198,56 @@ test("duration variant repair rewrites Expanse meta-proof narration into a clean
   assert.match(repair.script, /gameplay/i);
   assert.ok(repair.repaired_word_count >= 90);
   assert.ok(repair.repaired_word_count <= 132);
+  const scorecard = buildViralScriptIntelligence({
+    story: {
+      id: "expanse-content-signal",
+      title: "The Expanse Shows Real Gameplay",
+      source_name: "Xbox",
+    },
+    script: repair.script,
+  });
+  assert.ok(!scorecard.blockers.includes("repeated_phrase"), JSON.stringify(scorecard, null, 2));
+  assert.ok(!scorecard.warnings.includes("no_curiosity_marker"), JSON.stringify(scorecard, null, 2));
   assert.doesNotMatch(
     repair.script,
     /Footage matters here|real game behind the announcement|pitch lives or dies|licensed skin|first gameplay read|trailer quote|loop with real decisions|familiar logo|montage pace/i,
   );
+});
+
+test("duration variant repair does not repeat gameplay reveal phrasing when extending Expanse", () => {
+  const repair = extendScriptToTarget(
+    {
+      canonical_subject: "The Expanse: Osiris Reborn",
+      canonical_game: "The Expanse: Osiris Reborn",
+      selected_title: "The Expanse Shows Real Gameplay",
+      narration_script: [
+        "The Expanse: Osiris Reborn finally showed real gameplay.",
+        "Xbox showed The Expanse: Osiris Reborn gameplay during Xbox Partner Preview.",
+        "The catch is what matters after the reveal cut: whether the full mission flow can match it.",
+        "Now the camera, gunfights and scale are on screen instead of hidden behind a logo.",
+        "Follow Pulse Gaming so you never miss a beat.",
+      ].join(" "),
+      primary_source: "Xbox",
+      confirmed_claims: ["Xbox showed The Expanse: Osiris Reborn gameplay during Xbox Partner Preview."],
+    },
+    {
+      current_duration_s: 19.8,
+      target_duration_seconds: { min: 35, max: 59 },
+      provider: "local",
+    },
+  );
+
+  const scorecard = buildViralScriptIntelligence({
+    story: {
+      id: "expanse-duration-repeat",
+      title: "The Expanse Shows Real Gameplay",
+      source_name: "Xbox",
+    },
+    script: repair.script,
+  });
+
+  assert.doesNotMatch(repair.script, /finally has gameplay footage on screen/i);
+  assert.ok(!scorecard.blockers.includes("repeated_phrase"), JSON.stringify(scorecard, null, 2));
 });
 
 test("duration variant repair does not pad showcase scripts with generic footage instructions", () => {

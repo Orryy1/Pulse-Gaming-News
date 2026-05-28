@@ -366,6 +366,63 @@ test("goal dry-run publisher defers externally blocked or operator-disabled plat
   assert.ok(plan.actions.every((action) => action.no_network_upload === true));
 });
 
+test("goal dry-run publisher surfaces deferred platform enablement gaps without blocking clean enabled platforms", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-platform-enablement-gaps-"));
+  const storyPackage = await makeStoryPackage(root);
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-05-28T07:05:00.000Z",
+    platformOperationalConfig: {
+      youtube: { state: "enabled", reason: "core_upload_path" },
+      tiktok: {
+        state: "needs_credentials",
+        reason: "tiktok_local_token_refresh_or_sync_required",
+        enablement_gaps: ["tiktok_local_token_refresh_or_sync_required"],
+        enablement_next_action: "refresh_or_sync_local_token_with_operator_present_before_any_inbox_upload",
+      },
+      instagram_reel: { state: "enabled", reason: "graph_credentials_present" },
+      facebook_reel: { state: "enabled", reason: "facebook_reels_enabled" },
+      twitter: {
+        state: "disabled",
+        reason: "x_optional_disabled",
+        enablement_gaps: ["x_operator_disabled", "x_api_billing_not_declared"],
+        enablement_next_action: "keep_x_disabled_until_paid_api_and_credentials_are_confirmed",
+      },
+    },
+  });
+
+  assert.equal(plan.summary.platform_publish_now_action_count, 3);
+  assert.equal(plan.summary.blocked_action_count, 0);
+  assert.equal(plan.summary.warning_action_count, 0);
+
+  const tiktok = plan.actions.find((action) => action.platform === "tiktok");
+  const x = plan.actions.find((action) => action.platform === "x");
+  assert.equal(tiktok.action, "would_queue_when_enabled");
+  assert.deepEqual(tiktok.platform_enablement_gaps, ["tiktok_local_token_refresh_or_sync_required"]);
+  assert.match(tiktok.platform_enablement_next_action, /refresh_or_sync_local_token/);
+  assert.deepEqual(x.platform_enablement_gaps, ["x_operator_disabled", "x_api_billing_not_declared"]);
+
+  assert.deepEqual(
+    plan.platform_status_matrix.platforms.tiktok.enablement_gaps,
+    ["tiktok_local_token_refresh_or_sync_required"],
+  );
+  assert.match(
+    plan.platform_status_matrix.platforms.tiktok.enablement_next_action,
+    /refresh_or_sync_local_token/,
+  );
+  assert.deepEqual(
+    plan.platform_status_matrix.platforms.x.enablement_gaps,
+    ["x_operator_disabled", "x_api_billing_not_declared"],
+  );
+
+  await writeGoalDryRunPublishPlan(plan, { outputDir: root });
+  const markdown = await fs.readFile(path.join(root, "dry_run_publish_plan.md"), "utf8");
+  assert.match(markdown, /tiktok_local_token_refresh_or_sync_required/);
+  assert.match(markdown, /refresh_or_sync_local_token/);
+  assert.match(markdown, /x_api_billing_not_declared/);
+});
+
 test("goal dry-run publisher does not treat disabled-platform optimisation warnings as live publish warnings", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-deferred-warning-"));
   const storyPackage = await makeStoryPackage(root, "deferred-warning", "GREEN", "Forza Horizon 6 Exposes Xbox's Steam Bet");
@@ -2233,6 +2290,36 @@ test("goal dry-run CLI auto-loads platform operational state when present", asyn
 
   assert.equal(config.tiktok.state, "blocked_external");
   assert.equal(config.twitter.reason, "x_optional_disabled");
+});
+
+test("goal dry-run CLI auto-loads platform readiness doctor enablement gaps", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-platform-doctor-"));
+  const reportPath = path.join(root, "test", "output", "platform_readiness_doctor.json");
+  await fs.outputJson(reportPath, {
+    verdict: "AMBER",
+    blockers: ["tiktok_local_token_refresh_or_sync_required"],
+    platforms: {
+      tiktok: {
+        status: "needs_local_token_refresh_or_sync",
+        recommendation: "refresh_or_sync_local_token_with_operator_present_before_any_inbox_upload",
+      },
+      x: {
+        status: "operator_disabled",
+        reason: "x_optional_disabled",
+        enablement_gaps: ["x_operator_disabled", "x_api_billing_not_declared"],
+        recommendation: "keep_x_disabled_until_paid_api_and_credentials_are_confirmed",
+      },
+    },
+  });
+
+  const config = await readPlatformOperationalConfig(root);
+
+  assert.equal(config.tiktok.state, "needs_credentials");
+  assert.equal(config.tiktok.reason, "tiktok_local_token_refresh_or_sync_required");
+  assert.deepEqual(config.tiktok.enablement_gaps, ["tiktok_local_token_refresh_or_sync_required"]);
+  assert.match(config.tiktok.enablement_next_action, /refresh_or_sync_local_token/);
+  assert.equal(config.twitter.state, "disabled");
+  assert.deepEqual(config.twitter.enablement_gaps, ["x_operator_disabled", "x_api_billing_not_declared"]);
 });
 
 test("goal dry-run CLI parses prior platform status matrix without treating assumed-enabled as enabled", async () => {

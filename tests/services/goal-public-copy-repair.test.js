@@ -1960,7 +1960,7 @@ test("public copy repair syncs standalone publish packs when the aggregate manif
     canonical_game: "V Rising",
     selected_title: "V Rising Devs Are Making Another Vampire Game",
     short_title: "V Rising Devs Are Making Another Vampire Game",
-    thumbnail_headline: "V RISING DEVS ARE MAKING",
+    thumbnail_headline: "V RISING VAMPIRE GAME",
     first_spoken_line: "V Rising's developers are already building another vampire game.",
     narration_script:
       "V Rising's developers are already building another vampire game. Stunlock Studios says it is working on a new game set in the world of V Rising. Follow Pulse Gaming so you never miss a beat.",
@@ -1979,7 +1979,7 @@ test("public copy repair syncs standalone publish packs when the aggregate manif
         description:
           "Stunlock Studios says it is working on a new game set in the world of V Rising. Source: Stunlock Studios. Sources and related links: /p/v-rising-devs-are-making-another-vampire-game",
         cover_frame: {
-          headline: "V RISING DEVS ARE MAKING",
+          headline: "V RISING VAMPIRE GAME",
           source_label: "Stunlock Studios",
         },
       },
@@ -1995,7 +1995,7 @@ test("public copy repair syncs standalone publish packs when the aggregate manif
     description:
       "V Rising: Confirmed Drop. Source: Reddit. Sources and related links: /p/v-rising-devs-are-making-another-vampire-game",
     cover_frame: {
-      headline: "V RISING DEVS ARE MAKING",
+      headline: "V RISING VAMPIRE GAME",
       source_label: "Reddit",
     },
   });
@@ -2015,7 +2015,7 @@ test("public copy repair syncs standalone publish packs when the aggregate manif
         description:
           "V Rising: Confirmed Drop. Source: Reddit. Sources and related links: /p/v-rising-devs-are-making-another-vampire-game",
         cover_frame: {
-          headline: "V RISING DEVS ARE MAKING",
+          headline: "V RISING VAMPIRE GAME",
           source_label: "Reddit",
         },
       },
@@ -2716,6 +2716,69 @@ test("public copy repair rewrites broken thumbnail headlines before approval", (
 
   assert.equal(repeated.manifest.thumbnail_headline, "PS5 PRICE JUMP");
   assert.equal(evaluateGoalPublicCopy(repeated.manifest).verdict, "pass");
+
+  const vRising = repairGoalPublicCopyManifest(
+    {
+      story_id: "v-rising-thumbnail",
+      canonical_subject: "V Rising",
+      canonical_game: "V Rising",
+      selected_title: "V Rising Devs Are Making Another Vampire Game",
+      thumbnail_headline: "V RISING DEVS ARE MAKING",
+      first_spoken_line: "V Rising's developers are already building another vampire game.",
+      narration_script:
+        "V Rising's developers are already building another vampire game. Stunlock Studios says it is working on a new game set in the world of V Rising.",
+      primary_source: "Stunlock Studios",
+      description: "Stunlock Studios says it is working on another vampire game. Source: Stunlock Studios.",
+      confirmed_claims: [
+        "Stunlock Studios says it is working on a new game set in the world of V Rising.",
+      ],
+    },
+    { generatedAt: "2026-05-26T22:45:00.000Z" },
+  );
+
+  assert.equal(vRising.manifest.thumbnail_headline, "V RISING VAMPIRE GAME");
+  assert.equal(evaluateGoalPublicCopy(vRising.manifest).verdict, "pass");
+
+  const stranger = repairGoalPublicCopyManifest(
+    {
+      story_id: "stranger-five-eras-thumbnail",
+      canonical_subject: "Stranger Than Heaven",
+      canonical_game: "Stranger Than Heaven",
+      selected_title: "Stranger Than Heaven Shows Five Eras",
+      thumbnail_headline: "STRANGER THAN HEAVEN SHOWS FIVE",
+      first_spoken_line: "Stranger Than Heaven just showed its five-era setup.",
+      narration_script:
+        "Stranger Than Heaven just showed its five-era setup. Xbox showed the trailer during Partner Preview.",
+      primary_source: "Xbox",
+      description: "Stranger Than Heaven showed its five-era setup. Source: Xbox.",
+      confirmed_claims: ["Stranger Than Heaven showed its five-era setup."],
+    },
+    { generatedAt: "2026-05-26T22:45:00.000Z" },
+  );
+
+  assert.equal(stranger.manifest.thumbnail_headline, "STRANGER FIVE ERAS");
+  assert.equal(evaluateGoalPublicCopy(stranger.manifest).verdict, "pass");
+
+  const subnautica = repairGoalPublicCopyManifest(
+    {
+      story_id: "subnautica-leakers-thumbnail",
+      canonical_subject: "Subnautica 2",
+      canonical_game: "Subnautica 2",
+      canonical_title: 'Subnautica 2 Dev Responds to Pirates Leaking the Game; "I hope you rethink your life choices"',
+      selected_title: "Subnautica 2 Dev Calls Out Leakers",
+      thumbnail_headline: "SUBNAUTICA 2 DEV CALLS OUT",
+      first_spoken_line: "Subnautica 2's developer is already fighting leaked builds.",
+      narration_script:
+        "Subnautica 2's developer is already fighting leaked builds. Respawnfirst reports the studio responded after the game leaked early.",
+      primary_source: "Respawnfirst",
+      description: "Subnautica 2's developer responded to leaked builds. Source: Respawnfirst.",
+      confirmed_claims: ["Subnautica 2's developer responded after the game leaked early."],
+    },
+    { generatedAt: "2026-05-26T22:45:00.000Z" },
+  );
+
+  assert.equal(subnautica.manifest.thumbnail_headline, "SUBNAUTICA LEAKERS CALLED OUT");
+  assert.equal(evaluateGoalPublicCopy(subnautica.manifest).verdict, "pass");
 });
 
 test("public copy regeneration stays pending when the repair is newer than the last regenerated render", () => {

@@ -114,6 +114,59 @@ test("goal public copy QA blocks visibly broken thumbnail headlines", () => {
 
   assert.equal(repeatedTokenReport.verdict, "fail");
   assert.ok(repeatedTokenReport.failures.includes("public_copy:thumbnail_headline_repeated_token"));
+
+  const semanticallyCutReports = [
+    {
+      canonical_subject: "V Rising",
+      selected_title: "V Rising Devs Are Making Another Vampire Game",
+      thumbnail_headline: "V RISING DEVS ARE MAKING",
+      first_spoken_line: "V Rising's developers are already building another vampire game.",
+      narration_script:
+        "V Rising's developers are already building another vampire game. Stunlock Studios says the new project stays inside the V Rising world.",
+      description: "Stunlock Studios says it is working on another vampire game. Source: Stunlock Studios.",
+    },
+    {
+      canonical_subject: "Forza Horizon 6",
+      selected_title: "Forza Horizon 6 Premium Already Made $140M",
+      thumbnail_headline: "FORZA HORIZON 6 PREMIUM ALREADY",
+      first_spoken_line: "Forza Horizon 6 Premium Edition is already turning early access into the real launch story.",
+      narration_script:
+        "Forza Horizon 6 Premium Edition is already turning early access into the real launch story. Insider Gaming reports Premium Edition has made more than $140 million.",
+      description: "Forza Horizon 6 Premium Edition has made more than $140 million. Source: Insider Gaming.",
+    },
+    {
+      canonical_subject: "Forza Horizon 6",
+      selected_title: "Forza Horizon 6 Finally Hit Steam",
+      thumbnail_headline: "FORZA HORIZON 6 FINALLY HIT",
+      first_spoken_line: "Forza Horizon 6 just turned its Steam launch into an Xbox signal.",
+      narration_script:
+        "Forza Horizon 6 just turned its Steam launch into an Xbox signal. Steam now lists the game as available.",
+      description: "Forza Horizon 6 is available on Steam. Source: Steam.",
+    },
+    {
+      canonical_subject: "Stranger Than Heaven",
+      selected_title: "Stranger Than Heaven Shows Five Eras",
+      thumbnail_headline: "STRANGER THAN HEAVEN SHOWS FIVE",
+      first_spoken_line: "Stranger Than Heaven just showed its five-era setup.",
+      narration_script:
+        "Stranger Than Heaven just showed its five-era setup. Xbox showed the new trailer during Partner Preview.",
+      description: "Stranger Than Heaven showed its five-era setup. Source: Xbox.",
+    },
+    {
+      canonical_subject: "Subnautica 2",
+      selected_title: "Subnautica 2 Dev Calls Out Leakers",
+      thumbnail_headline: "SUBNAUTICA 2 DEV CALLS OUT",
+      first_spoken_line: "Subnautica 2's developer is already fighting leaked builds.",
+      narration_script:
+        "Subnautica 2's developer is already fighting leaked builds. Respawnfirst reports the studio responded after the game leaked early.",
+      description: "Subnautica 2's developer responded to leaked builds. Source: Respawnfirst.",
+    },
+  ].map((manifest) => evaluateGoalPublicCopy(manifest));
+
+  for (const report of semanticallyCutReports) {
+    assert.equal(report.verdict, "fail");
+    assert.ok(report.failures.includes("public_copy:thumbnail_semantically_truncated"));
+  }
 });
 
 test("goal public copy QA blocks stale identity CTA wording", () => {

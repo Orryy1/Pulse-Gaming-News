@@ -145,18 +145,46 @@ async function candidateReportIsStaleAgainstBridge(root, report = {}, filePath =
 }
 
 async function readPlatformOperationalConfig(root, explicitPath = null) {
-  const candidates = explicitPath
-    ? [path.resolve(root, explicitPath)]
-    : [
-        path.join(root, "test", "output", "platform_status.json"),
-        path.join(root, "output", "goal-contract", "platform_status.json"),
-      ];
-  for (const filePath of candidates) {
+  if (explicitPath) {
+    const filePath = path.resolve(root, explicitPath);
+    if (!(await fs.pathExists(filePath))) return null;
+    const report = await fs.readJson(filePath);
+    return report.operational ||
+      report.platform_operational_config ||
+      platformStatusMatrixToOperational(report) ||
+      platformReadinessDoctorToOperational(report) ||
+      null;
+  }
+  let operational = null;
+  const statusCandidates = [
+    path.join(root, "test", "output", "platform_status.json"),
+    path.join(root, "output", "goal-contract", "platform_status.json"),
+    path.join(root, "output", "goal-contract", "platform_status_matrix.json"),
+  ];
+  for (const filePath of statusCandidates) {
     if (!(await fs.pathExists(filePath))) continue;
     const report = await fs.readJson(filePath);
-    return report.operational || report.platform_operational_config || platformStatusMatrixToOperational(report) || null;
+    operational = report.operational ||
+      report.platform_operational_config ||
+      platformStatusMatrixToOperational(report) ||
+      null;
+    if (operational) break;
   }
-  return buildPlatformOperationalConfig(process.env);
+  operational = operational || buildPlatformOperationalConfig(process.env);
+
+  const doctorCandidates = [
+    path.join(root, "test", "output", "platform_readiness_doctor.json"),
+    path.join(root, "output", "goal-contract", "platform_readiness_doctor.json"),
+  ];
+  for (const filePath of doctorCandidates) {
+    if (!(await fs.pathExists(filePath))) continue;
+    const doctorOperational = platformReadinessDoctorToOperational(await fs.readJson(filePath));
+    if (doctorOperational) {
+      operational = mergePlatformOperationalConfig(operational, doctorOperational);
+      break;
+    }
+  }
+  return operational;
 }
 
 async function readRepairWorkOrder(root, explicitPath = null) {
@@ -200,6 +228,61 @@ function platformStatusMatrixToOperational(report = {}) {
     };
   }
   return Object.keys(operational).length ? operational : null;
+}
+
+function doctorPlatformStateToOperationalState(platform = "", status = "") {
+  const state = String(status || "").trim();
+  if (platform === "tiktok" && state === "needs_local_token_refresh_or_sync") return "needs_credentials";
+  if (platform === "x" && state === "operator_disabled") return "disabled";
+  if (state === "enabled_monitor_next_publish" || state === "enabled_verify_after_upload") return "enabled";
+  if (state === "ready_for_operator_review") return "blocked_external";
+  if (state === "blocked_by_app_review_or_direct_post_approval") return "blocked_external";
+  return state || "unknown";
+}
+
+function platformReadinessDoctorToOperational(report = {}) {
+  const platforms = report?.platforms;
+  if (!platforms || typeof platforms !== "object") return null;
+  const mapping = {
+    tiktok: "tiktok",
+    x: "twitter",
+    facebook_reel: "facebook_reel",
+    instagram_reel: "instagram_reel",
+  };
+  const operational = {};
+  for (const [platform, key] of Object.entries(mapping)) {
+    const row = platforms[platform];
+    if (!row || typeof row !== "object") continue;
+    const gaps = Array.isArray(row.enablement_gaps) ? row.enablement_gaps : [];
+    const platformBlockers = Array.isArray(report.blockers)
+      ? report.blockers.filter((blocker) => String(blocker || "").toLowerCase().startsWith(platform))
+      : [];
+    const enablementGaps = Array.from(new Set([...gaps, ...platformBlockers].filter(Boolean)));
+    operational[key] = {
+      state: doctorPlatformStateToOperationalState(platform, row.status),
+      reason: String(row.reason || row.blocker || enablementGaps[0] || row.status || "platform_readiness_doctor").trim(),
+      enablement_gaps: enablementGaps,
+      enablement_next_action: String(row.recommendation || row.next_action || "").trim(),
+    };
+  }
+  return Object.keys(operational).length ? operational : null;
+}
+
+function mergePlatformOperationalConfig(base = {}, override = {}) {
+  const merged = { ...(base || {}) };
+  for (const [key, value] of Object.entries(override || {})) {
+    const current = merged[key] && typeof merged[key] === "object" ? merged[key] : {};
+    merged[key] = {
+      ...current,
+      ...value,
+      enablement_gaps: Array.from(new Set([
+        ...((Array.isArray(current.enablement_gaps) && current.enablement_gaps) || []),
+        ...((Array.isArray(value.enablement_gaps) && value.enablement_gaps) || []),
+      ].filter(Boolean))),
+      enablement_next_action: value.enablement_next_action || current.enablement_next_action || "",
+    };
+  }
+  return merged;
 }
 
 async function main(argv = process.argv.slice(2)) {
@@ -246,5 +329,6 @@ module.exports = {
   readRepairWorkOrder,
   readStoryPackages,
   platformStatusMatrixToOperational,
+  platformReadinessDoctorToOperational,
   main,
 };

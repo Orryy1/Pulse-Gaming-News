@@ -90,8 +90,10 @@ function dryRunPlan({ artifactDir, storyId = "story-one" } = {}) {
         captions_path: captionsPath,
         cover_frame_source: videoPath,
         platform_enabled: false,
-        platform_operational_state: "disabled",
-        platform_operational_reason: "operator_disabled",
+        platform_operational_state: "needs_credentials",
+        platform_operational_reason: "tiktok_local_token_refresh_or_sync_required",
+        platform_enablement_gaps: ["tiktok_local_token_refresh_or_sync_required"],
+        platform_enablement_next_action: "refresh_or_sync_local_token_with_operator_present_before_any_inbox_upload",
         warnings: ["below_creator_rewards_duration"],
       },
       {
@@ -105,6 +107,8 @@ function dryRunPlan({ artifactDir, storyId = "story-one" } = {}) {
         platform_enabled: false,
         platform_operational_state: "disabled",
         platform_operational_reason: "x_optional_disabled",
+        platform_enablement_gaps: ["x_operator_disabled", "x_api_billing_not_declared"],
+        platform_enablement_next_action: "keep_x_disabled_until_paid_api_and_credentials_are_confirmed",
       },
     ],
     blocked_actions: [],
@@ -153,6 +157,26 @@ test("human review queue turns AMBER strict dry-run candidates into operator pac
   assert.equal(item.full_platform_verdict, "AMBER");
   assert.deepEqual(item.publish_now_platforms, ["youtube_shorts", "instagram_reels"]);
   assert.deepEqual(item.deferred_platforms, ["tiktok", "x"]);
+  assert.deepEqual(item.platform_enablement_requirements, [
+    {
+      platform: "tiktok",
+      operational_state: "needs_credentials",
+      operational_reason: "tiktok_local_token_refresh_or_sync_required",
+      enablement_gaps: ["tiktok_local_token_refresh_or_sync_required"],
+      enablement_next_action: "refresh_or_sync_local_token_with_operator_present_before_any_inbox_upload",
+      required_before_counting_platform_ready: true,
+      live_publish_allowed_before_enablement: false,
+    },
+    {
+      platform: "x",
+      operational_state: "disabled",
+      operational_reason: "x_optional_disabled",
+      enablement_gaps: ["x_operator_disabled", "x_api_billing_not_declared"],
+      enablement_next_action: "keep_x_disabled_until_paid_api_and_credentials_are_confirmed",
+      required_before_counting_platform_ready: true,
+      live_publish_allowed_before_enablement: false,
+    },
+  ]);
   assert.equal(item.public_copy.title, "Forza Horizon 6 Exposes Xbox's Steam Bet");
   assert.equal(item.public_copy.thumbnail_headline, "FORZA STEAM BET");
   assert.match(item.public_copy.script_excerpt, /Forza Horizon 6 just made Xbox/);
@@ -366,6 +390,9 @@ test("human review queue writes machine-readable artefacts and operator Markdown
   assert.match(markdown, /# Human Review Queue/);
   assert.match(markdown, /Forza Horizon 6 Exposes Xbox's Steam Bet/);
   assert.match(markdown, /Primary source: Eurogamer \(https:\/\/www\.eurogamer\.net\/forza-horizon-6-steam\)/);
+  assert.match(markdown, /Platform enablement requirements: tiktok:needs_credentials/);
+  assert.match(markdown, /tiktok_local_token_refresh_or_sync_required/);
+  assert.match(markdown, /x_api_billing_not_declared/);
   assert.match(markdown, /No uploads are triggered/);
 });
 

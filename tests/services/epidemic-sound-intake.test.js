@@ -154,4 +154,9 @@ test("Epidemic music role classification supports beds, stings and stems", () =>
   assert.equal(transition.asset_category, "sfx");
   assert.match(transition.search_url, /epidemicsound\.com\/sound-effects\//);
   assert.equal(transition.recommended_filename_prefix, "epidemic_transition_");
+  assert.equal(plan.variant_strategy.mode, "unbounded_role_variants");
+  assert.ok(plan.variant_targets.find((target) => target.role === "bed_primary").target_variants >= 6);
+  assert.ok(plan.variant_targets.find((target) => target.role === "transition").target_variants >= 4);
+  assert.ok(plan.expansion_slots.length >= 30);
+  assert.ok(plan.expansion_slots.every((slot) => slot.local_target_path.startsWith("audio/epidemic/")));
 });

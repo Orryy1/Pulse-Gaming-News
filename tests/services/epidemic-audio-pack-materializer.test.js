@@ -37,6 +37,41 @@ async function createCompleteEpidemicRoot(root) {
   return epidemicRoot;
 }
 
+test("Epidemic implementation preserves every approved audio variant by role", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-epidemic-implementation-variants-"));
+  const epidemicRoot = await createCompleteEpidemicRoot(root);
+  await touchAudio(path.join(epidemicRoot, "music", "bed_primary", "epidemic_bed_primary_second-news-loop.wav"));
+  await touchAudio(path.join(epidemicRoot, "music", "bed_breaking", "epidemic_bed_breaking_second-urgent-loop.wav"));
+  await touchAudio(path.join(epidemicRoot, "stings", "sting_verified", "epidemic_sting_verified_second-source-lock.wav"));
+  await touchAudio(path.join(epidemicRoot, "sfx", "epidemic_transition_second-clean-whoosh.wav"));
+  await touchAudio(path.join(epidemicRoot, "sfx", "epidemic_glitch_second-data-glitch.wav"));
+  const report = buildEpidemicSoundIntakeReport({
+    workspaceRoot: root,
+    root: epidemicRoot,
+    generatedAt: "2026-05-28T19:00:00.000Z",
+    safelistEvidence: "docs/proof/epidemic-safelist.md",
+  });
+
+  const plan = buildEpidemicSoundImplementationPlan({
+    workspaceRoot: root,
+    report,
+    generatedAt: "2026-05-28T19:01:00.000Z",
+    channelIds: ["pulse-gaming"],
+  });
+
+  const pack = plan.channel_packs[0];
+  assert.equal(plan.readiness.status, "ready");
+  assert.equal(pack.assets.length, 5);
+  assert.equal(pack.variants.bed_primary.length, 2);
+  assert.equal(pack.variants.bed_breaking.length, 2);
+  assert.equal(pack.variants.sting_verified.length, 2);
+  assert.equal(pack.rotation_policy.strategy, "story_id_hash");
+  assert.equal(plan.summary.music_variant_count, 8);
+  assert.equal(plan.sfx_runtime_manifest.variant_assets_by_role.transition.length, 2);
+  assert.equal(plan.sfx_runtime_manifest.variant_assets_by_role.glitch.length, 2);
+  assert.equal(plan.sfx_runtime_manifest.rotation_policy.strategy, "story_id_hash");
+});
+
 test("Epidemic implementation blocks and writes no channel packs when intake is incomplete", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-epidemic-implementation-blocked-"));
   const report = buildEpidemicSoundIntakeReport({

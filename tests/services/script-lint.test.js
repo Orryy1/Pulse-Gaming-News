@@ -154,7 +154,40 @@ test("lintScript: recognises repaired what-matters curiosity beats", () => {
     "One more direct play segment would show whether the combat rhythm and camera weight match the reveal. " +
     "Follow Pulse Gaming so you never miss a beat.";
 
-  const r = lintScript(script);
+  const r = lintScript(script, { minWords: 35 });
+
+  assert.notStrictEqual(r.result, "fail", JSON.stringify(r));
+  assert.ok(!r.warnings.includes("no_curiosity_marker"), JSON.stringify(r));
+});
+
+test("lintScript: recognises creator-native catch phrasing", () => {
+  const script =
+    "Mega Mewtwo is finally coming to Pokemon Go, and this reveal has a real catch. " +
+    "Eurogamer reports the debut is tied to Go Fest Global, with the event free for all players. " +
+    "That turns it from a paid-event flex into a comeback moment for players who left the app behind. " +
+    "Now Niantic has to land the basics. " +
+    "Raid windows, regional timing and free-player access need to be clear, or the hype turns messy fast. " +
+    "If the rollout is clean, lapsed players may come back for the weekend. " +
+    "Fair access, clear timing and no paywall confusion decide whether this lands. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const r = lintScript(script, { minWords: 35 });
+
+  assert.notStrictEqual(r.result, "fail", JSON.stringify(r));
+  assert.ok(!r.warnings.includes("no_curiosity_marker"), JSON.stringify(r));
+});
+
+test("lintScript: recognises awkward-catch phrasing", () => {
+  const script =
+    "Forza Horizon 6 has one awkward catch for Xbox. " +
+    "Steam lists the game as available now, which changes where the launch pressure sits. " +
+    "If Steam is where Forza takes off, Xbox has a different story on its hands. " +
+    "Game Pass messaging, price and release timing are the pieces that could move around that attention. " +
+    "That makes the launch less about one storefront and more about where Microsoft wants its audience. " +
+    "Players still need the live listing, the price and the platform details before treating it as settled. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const r = lintScript(script, { minWords: 35 });
 
   assert.notStrictEqual(r.result, "fail", JSON.stringify(r));
   assert.ok(!r.warnings.includes("no_curiosity_marker"), JSON.stringify(r));

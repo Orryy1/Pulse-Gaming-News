@@ -174,11 +174,18 @@ async function resolveIdentityStems(channelId, story) {
         (story.flair || "").toLowerCase() === "breaking")
     );
     const flair = (story && story.flair) || null;
+    const variantSeed =
+      story?.id ||
+      story?.source_url_hash ||
+      story?.url ||
+      story?.title ||
+      null;
     const bed = audioIdentity.resolve({
       repos,
       channelId,
       role: "bed",
       breaking: isBreaking,
+      variantSeed,
     });
     const sting = isBreaking
       ? audioIdentity.resolve({
@@ -187,6 +194,7 @@ async function resolveIdentityStems(channelId, story) {
           role: "sting",
           flair,
           breaking: true,
+          variantSeed,
         })
       : null;
     return { bed, sting, isBreaking };

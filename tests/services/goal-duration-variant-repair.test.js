@@ -305,8 +305,75 @@ test("duration variant repair skips stale work-order rows that already have a ta
     },
   });
 
-  assert.equal(report.summary.skipped_existing_count, 1);
-  assert.equal(report.jobs[0].status, "skipped_existing_duration_repair");
+  assert.equal(report.summary.repaired_count, 0);
+  assert.equal(report.summary.warning_held_count, 0);
+  assert.equal(report.summary.failed_count, 0);
+  assert.equal(report.summary.skipped_existing_count + report.summary.caption_repaired_count, 1);
+  assert.match(report.jobs[0].status, /^(skipped_existing_duration_repair|captions_repaired_existing_duration_repair)$/);
+});
+
+test("duration variant repair does not churn safe gameplay-source claims into short warning renders", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-duration-variant-gameplay-skip-"));
+  const artifactDir = await makePackage(root, "expanse-already-safe", {
+    canonical: {
+      canonical_subject: "The Expanse: Osiris Reborn",
+      canonical_game: "The Expanse: Osiris Reborn",
+      selected_title: "The Expanse Shows Real Gameplay",
+      thumbnail_headline: "THE EXPANSE GAMEPLAY",
+      first_spoken_line: "The Expanse: Osiris Reborn finally showed real gameplay.",
+      narration_script: [
+        "The Expanse: Osiris Reborn finally showed real gameplay.",
+        "Xbox showed The Expanse: Osiris Reborn gameplay during Xbox Partner Preview.",
+        "The catch is what matters after the reveal cut: whether the full mission flow can match it.",
+        "The sharper question is whether the camera, gunfights and scale make it feel like The Expanse, not just another licensed shooter.",
+        "Short showcases can sell impact, but mission flow will decide whether players trust the reveal.",
+        "If the full missions keep that pace, this could become more than another licensed announcement.",
+        "Follow Pulse Gaming so you never miss a beat.",
+      ].join(" "),
+      primary_source: "Xbox",
+      confirmed_claims: ["Xbox showed The Expanse: Osiris Reborn gameplay during Xbox Partner Preview."],
+      public_copy_repaired_at: "2026-05-28T17:22:22.489Z",
+      duration_variant_repaired_at: "2026-05-28T17:37:54.808Z",
+      duration_variant_repair_strategy: NORMAL_PRODUCTION_REPAIR_STRATEGY,
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "render_manifest.json"), {
+    story_id: "expanse-already-safe",
+    renderer: "visual_v4_production",
+    final_publish_render: true,
+    rendered_duration_s: 44.98,
+  });
+
+  const report = await materializeDurationVariantRepairs({
+    workspaceRoot: root,
+    generatedAt: "2026-05-28T17:46:00.000Z",
+    workOrder: {
+      jobs: [
+        {
+          ...workOrderJob("expanse-already-safe", artifactDir),
+          repair_lane: "normal_production_duration_floor",
+          current_duration_s: 32.333,
+          target_duration_seconds: { min: 35, max: 59 },
+          source_blockers: ["normal_production_duration_below_quality_floor:32"],
+        },
+      ],
+    },
+    generateTtsForStory: async () => {
+      throw new Error("audio must not rerun for already safe gameplay-source claims");
+    },
+    renderProof: async () => {
+      throw new Error("render must not rerun for already safe gameplay-source claims");
+    },
+  });
+
+  assert.equal(report.summary.repaired_count, 0);
+  assert.equal(report.summary.warning_held_count, 0);
+  assert.equal(report.summary.failed_count, 0);
+  assert.equal(report.summary.skipped_existing_count + report.summary.caption_repaired_count, 1);
+  assert.match(report.jobs[0].status, /^(skipped_existing_duration_repair|captions_repaired_existing_duration_repair)$/);
+  const scorecard = await fs.readJson(path.join(artifactDir, "script_scorecard.json"));
+  assert.equal(scorecard.fact_lock.source_name, "Xbox");
+  assert.deepEqual(scorecard.blockers, []);
 });
 
 test("duration variant repair reruns existing repairs when public copy is newer", async () => {

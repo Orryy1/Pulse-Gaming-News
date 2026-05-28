@@ -98,6 +98,27 @@ test("direct-media discovery expands Nintendo Cloudinary H264 poster URLs into m
   assert.equal(urls[0].source, "cloudinary_video_derivative");
 });
 
+test("direct-media discovery expands Nintendo storefront Cloudinary video poster assets into mp4 candidates", () => {
+  const urls = discoverDirectMediaUrlsFromText({
+    baseUrl: "https://www.nintendo.com/us/store/products/super-mario-rpg-switch/",
+    text: `
+      <img src="https://assets.nintendo.com/image/upload/q_auto:best/f_auto/dpr_2.0//store/software/switch/70010000068683/Video/946fb66280168f451a6b0c588f39905d721f477d9160de718f95cb222e684d5f">
+      <img src="https://assets.nintendo.com/image/upload/q_auto:best/f_auto/dpr_2.0//store/software/switch/70010000068683/Video/b41c674b67c256fd9ae8e8bd750cbb8626c592d963a63e1e94822ef399833ef3">
+      <img src="https://assets.nintendo.com/image/upload/f_auto/q_auto/Marketing/pmp-super-mario-rpg-07756b0e/backgrounds/pattern-stars-blue-2x">
+    `,
+  });
+
+  assert.deepEqual(
+    urls.map((item) => item.url),
+    [
+      "https://assets.nintendo.com/video/upload/store/software/switch/70010000068683/Video/946fb66280168f451a6b0c588f39905d721f477d9160de718f95cb222e684d5f.mp4",
+      "https://assets.nintendo.com/video/upload/store/software/switch/70010000068683/Video/b41c674b67c256fd9ae8e8bd750cbb8626c592d963a63e1e94822ef399833ef3.mp4",
+    ],
+  );
+  assert.ok(urls.every((item) => item.source_url_kind === "direct_video"));
+  assert.ok(urls.every((item) => item.source === "cloudinary_video_derivative"));
+});
+
 test("direct-media discovery matches Nintendo Cloudinary parent path context to the story entity", async () => {
   const report = await buildOfficialDirectMediaDiscoveryReport({
     entries: [

@@ -860,11 +860,97 @@ test("real motion materializer can use validated segment reports to repair a dir
   assert.equal(report.summary.materialized_story_count, 1);
   assert.equal(report.jobs[0].repair_scope, "direct_video_gap_only");
   assert.equal(report.jobs[0].direct_video_motion_clip_count, 5);
+  assert.equal(report.jobs[0].direct_video_motion_family_count, 2);
 
   const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
   assert.equal(materialised.direct_video_motion_asset_count, 5);
+  assert.equal(materialised.direct_video_motion_family_count, 2);
   assert.equal(materialised.clips.filter((clip) => clip.media_kind === "direct_video").length, 5);
   assert.equal(materialised.clips.filter((clip) => clip.media_kind === "owned_motion").length, 4);
+});
+
+test("real motion materializer reconciles stale owned-motion distinct family budgets after real media repair", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-budget-reconcile-"));
+  const storyId = "pokemon-budget-reconcile";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  await fs.ensureDir(artifactDir);
+  const sourceUrl =
+    "https://fserveu20221222.blob.core.windows.net/files/Pokemon/2016/11/clip.mp4?sv=2026-02-06";
+  const assets = Array.from({ length: 6 }, (_, index) => ({
+    id: `${storyId}-direct-${index + 1}`,
+    type: "motion_clip",
+    kind: "video",
+    source_family: `pokemon_go_official_family_${(index % 4) + 1}`,
+    path: sourceUrl,
+    source_url: sourceUrl,
+    source_kind: "direct_video",
+    source_url_kind: "direct_video",
+    source_type: "licensed_direct_media_url",
+    entity: "Pokemon Go",
+    mediaStartS: 4 + index * 2,
+    durationS: 5,
+    validated: true,
+    segmentValidationPassed: true,
+    trusted_source_matched: true,
+    rights_risk_class: "official_direct_media",
+    allowed_render_use: "official_direct_media_segment_candidate",
+  }));
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: [],
+    assets,
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    readiness: {
+      status: "v4_motion_blocked",
+      blockers: [
+        "actual_motion_clip_minimum_not_met",
+        "distinct_motion_families_minimum_not_met",
+        "no_trusted_footage_references_for_story",
+      ],
+      warnings: [],
+    },
+    motion_budget: {
+      required_motion_scenes: 6,
+      available_motion_clips: 0,
+      required_distinct_families: 9,
+      available_distinct_families: 0,
+      steam_metric_story: false,
+      review_score_story: false,
+      owned_explainer_visual_plan: true,
+    },
+    motion_inventory: {
+      accepted_local_clips: [],
+    },
+  });
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: {
+      jobs: [{
+        story_id: storyId,
+        artifact_dir: artifactDir,
+        actions: [{ action_id: "materialise_validated_real_motion_clips" }],
+      }],
+    },
+    generatedAt: "2026-05-28T13:10:00.000Z",
+    maxClips: 6,
+    execFileSync: (bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 6));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 1);
+  const footage = await fs.readJson(path.join(artifactDir, "footage_inventory.json"));
+  assert.equal(footage.motion_budget.required_motion_scenes, 6);
+  assert.equal(footage.motion_budget.available_motion_clips, 6);
+  assert.equal(footage.motion_budget.required_distinct_families, 4);
+  assert.equal(footage.motion_budget.available_distinct_families, 4);
+  assert.equal(footage.readiness.status, "v4_motion_ready");
+  assert.deepEqual(footage.readiness.blockers, []);
 });
 
 test("real motion materializer refuses to mark a story ready below motion thresholds", async () => {
@@ -889,7 +975,19 @@ test("real motion materializer refuses to mark a story ready below motion thresh
   assert.equal(report.summary.materialized_story_count, 0);
   assert.equal(report.summary.blocked_story_count, 1);
   assert.ok(report.jobs[0].blockers.includes("real_motion_clip_minimum_not_met"));
+  assert.equal(report.jobs[0].partial_evidence_path, path.join(job.artifact_dir, "partial_real_motion_evidence.json"));
   assert.equal(await fs.pathExists(path.join(job.artifact_dir, "materialised_motion_clips.json")), false);
+
+  const partial = await fs.readJson(path.join(job.artifact_dir, "partial_real_motion_evidence.json"));
+  assert.equal(partial.status, "blocked");
+  assert.equal(partial.not_publishable, true);
+  assert.equal(partial.counts_towards_final_render_readiness, false);
+  assert.equal(partial.clip_count, 2);
+  assert.equal(partial.direct_video_motion_asset_count, 2);
+  assert.equal(partial.distinct_motion_family_count, 2);
+  assert.ok(partial.blockers.includes("real_motion_clip_minimum_not_met"));
+  assert.ok(partial.clips.every((clip) => clip.materialized === true));
+  assert.ok(partial.clips.every((clip) => clip.counts_towards_motion_readiness === false));
 });
 
 test("real motion materializer writes machine-readable and operator reports", async () => {

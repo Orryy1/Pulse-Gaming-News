@@ -324,6 +324,36 @@ function extractTomorrowRecommendation(findings = "") {
   return recoMatch ? recoMatch[1].trim() : "";
 }
 
+function validateFindings(findings = "") {
+  const text = String(findings || "").trim();
+  const recommendation = extractTomorrowRecommendation(text);
+  const failures = [];
+  if (!text) failures.push("empty_findings");
+  if (!/^## Top patterns \(this window\)/im.test(text)) {
+    failures.push("missing_top_patterns_section");
+  }
+  if (!/^## Underperforming patterns/im.test(text)) {
+    failures.push("missing_underperforming_patterns_section");
+  }
+  if (!/^## Classification mix/im.test(text)) {
+    failures.push("missing_classification_mix_section");
+  }
+  if (!recommendation) {
+    failures.push("missing_actionable_recommendation");
+  }
+  if (/no actionable recommendation produced/i.test(recommendation)) {
+    failures.push("non_actionable_recommendation");
+  }
+  if (recommendation && recommendation.split(/\s+/).filter(Boolean).length > 32) {
+    failures.push("recommendation_too_long");
+  }
+  return {
+    ok: failures.length === 0,
+    recommendation,
+    failures,
+  };
+}
+
 async function runAnalyticsLoop({
   args,
   loadStoriesFn = loadStories,
@@ -355,6 +385,10 @@ async function runAnalyticsLoop({
   let fallbackReason = "";
   try {
     findings = await callLlmFn(prompt);
+    const validation = validateFindings(findings);
+    if (!validation.ok) {
+      throw new Error(`llm_output_${validation.failures.join("_")}`);
+    }
   } catch (err) {
     fallbackReason = err.message || "local analyst unavailable";
     log(`[analytics] LLM call failed, using deterministic fallback: ${fallbackReason}`);
@@ -406,6 +440,7 @@ module.exports = {
   buildDeterministicFindings,
   buildPrompt,
   extractTomorrowRecommendation,
+  validateFindings,
   appendFindings,
   getAnalyticsDbPath,
   getFindingsPath,

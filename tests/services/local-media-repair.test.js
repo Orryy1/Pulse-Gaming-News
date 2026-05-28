@@ -99,6 +99,67 @@ test("local media repair blocks overlong scripts before spending local TTS time"
   assert.equal(report.counts.blocked_runtime, 1);
 });
 
+test("local media repair blocks measured overlong audio before spending local TTS time", () => {
+  const report = buildLocalMediaRepairQueue({
+    stories: [
+      {
+        id: "rss_audio_too_long",
+        title: "Xbox confirms a long update",
+        approved: true,
+        full_script: "Xbox confirmed new details for players today. ".repeat(28),
+        audio_path: "output/audio/rss_audio_too_long.mp3",
+        exported_path: "output/final/rss_audio_too_long.mp4",
+      },
+    ],
+    mediaByStoryId: {
+      rss_audio_too_long: {
+        audioExists: true,
+        finalExists: true,
+        audioDurationSeconds: 87.8,
+        finalDurationSeconds: 87.8,
+      },
+    },
+    localTts: READY_TTS,
+  });
+
+  assert.equal(report.items[0].action, "rewrite_or_route_before_render");
+  assert.equal(report.items[0].failure_code, "duration_too_long");
+  assert.ok(report.items[0].blockers.includes("duration_too_long"));
+  assert.deepEqual(report.items[0].needs, ["shorten_or_route_to_briefing"]);
+  assert.equal(report.counts.blocked_runtime, 1);
+  assert.equal(report.counts.ready_local_repair, 0);
+});
+
+test("local media repair routes extended missing-audio shorts before spending local TTS time", () => {
+  const report = buildLocalMediaRepairQueue({
+    stories: [
+      {
+        id: "rss_extended_missing_audio",
+        title: "Valorant update gets a long source breakdown",
+        approved: true,
+        duration_lane: "pulse_extended_short",
+        full_script: "Riot confirmed a Vanguard detail players need to understand today. ".repeat(24),
+        audio_path: null,
+        exported_path: null,
+      },
+    ],
+    mediaByStoryId: {
+      rss_extended_missing_audio: {
+        audioExists: false,
+        finalExists: false,
+      },
+    },
+    localTts: READY_TTS,
+  });
+
+  assert.equal(report.items[0].runtime.route, "extended_short");
+  assert.equal(report.items[0].action, "rewrite_or_route_before_render");
+  assert.ok(report.items[0].blockers.includes("script_runtime_extended_short_not_local_repair"));
+  assert.deepEqual(report.items[0].needs, ["shorten_or_route_to_briefing"]);
+  assert.equal(report.counts.blocked_runtime, 1);
+  assert.equal(report.counts.ready_local_repair, 0);
+});
+
 test("local media repair does not treat old 100-word scripts as 60-second local Liam candidates", () => {
   const report = buildLocalMediaRepairQueue({
     stories: [

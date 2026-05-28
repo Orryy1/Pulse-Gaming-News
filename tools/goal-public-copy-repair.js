@@ -25,6 +25,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     sourceAttributionEntriesPath: null,
     providerPreference: null,
     storyIds: [],
+    reservedTitles: [],
     generatedAt: null,
     json: false,
     help: false,
@@ -41,10 +42,18 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--story-id" || arg === "--story") args.storyIds.push(argv[++i] || "");
     else if (arg === "--story-ids" || arg === "--stories") {
       args.storyIds.push(...String(argv[++i] || "").split(","));
+    } else if (arg === "--reserved-title") {
+      args.reservedTitles.push(argv[++i] || "");
+    } else if (arg === "--reserved-titles") {
+      args.reservedTitles.push(...String(argv[++i] || "").split("||"));
     } else if (arg.startsWith("--story-id=")) {
       args.storyIds.push(arg.slice("--story-id=".length));
     } else if (arg.startsWith("--story-ids=")) {
       args.storyIds.push(...arg.slice("--story-ids=".length).split(","));
+    } else if (arg.startsWith("--reserved-title=")) {
+      args.reservedTitles.push(arg.slice("--reserved-title=".length));
+    } else if (arg.startsWith("--reserved-titles=")) {
+      args.reservedTitles.push(...arg.slice("--reserved-titles=".length).split("||"));
     }
     else if (arg === "--generated-at") args.generatedAt = argv[++i] || null;
     else if (arg === "--json") args.json = true;
@@ -52,6 +61,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     else throw new Error(`Unknown argument: ${arg}`);
   }
   args.storyIds = args.storyIds.map((value) => String(value || "").trim()).filter(Boolean);
+  args.reservedTitles = args.reservedTitles.map((value) => String(value || "").trim()).filter(Boolean);
   return args;
 }
 
@@ -69,6 +79,7 @@ function usage() {
     "  --provider-preference <p> local | elevenlabs | auto",
     "  --story-id <id>          Repair one story id; repeatable",
     "  --story-ids <ids>        Comma-separated story ids",
+    "  --reserved-title <title> Title already used by another candidate; repeatable",
     "  --generated-at <iso>      Fixed timestamp",
     "  --json                    Print JSON",
     "",
@@ -155,6 +166,7 @@ async function main(argv = process.argv.slice(2)) {
     generatedAt,
     sourceAttributionEntries,
     audioWorkbench: existingWorkbench,
+    reservedTitles: args.reservedTitles,
   });
   const localTtsDoctor = await readJsonIfPresent(path.resolve(root, args.localTtsDoctorPath));
   const localTts = chooseLocalTtsStatus({

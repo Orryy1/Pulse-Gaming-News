@@ -15,12 +15,22 @@ const { scoreCandidate } = require("./next-publish-candidates");
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
 const DEFAULT_ANALYTICS_PATH = "D:\\pulse-data\\analytics_findings.md";
+const DEFAULT_CANDIDATE_REPORT_PATH = path.join(OUT, "next_publish_candidates.json");
 
 function parseArgs(argv) {
-  const args = { json: false };
-  for (const arg of argv.slice(2)) {
+  const args = {
+    json: false,
+    candidateReportPath: DEFAULT_CANDIDATE_REPORT_PATH,
+  };
+  const raw = argv.slice(2);
+  for (let i = 0; i < raw.length; i += 1) {
+    const arg = raw[i];
     if (arg === "--json") args.json = true;
     else if (arg === "--help" || arg === "-?") args.help = true;
+    else if (arg === "--candidate-report") args.candidateReportPath = raw[++i] || args.candidateReportPath;
+    else if (arg.startsWith("--candidate-report=")) {
+      args.candidateReportPath = arg.slice("--candidate-report=".length);
+    }
   }
   return args;
 }
@@ -38,10 +48,12 @@ async function main() {
       process.env.ANALYTICS_FINDINGS_PATH ||
       DEFAULT_ANALYTICS_PATH,
   );
+  const schedulerBridgeCandidateReport = readOptionalJson(args.candidateReportPath);
   const report = buildPipelineBacklog(stories, {
     corePlatforms: requiredCorePlatformsFromEnv(process.env),
     strictContentQa: true,
     selectionScore: (story) => scoreCandidate(story, { analyticsText }).score,
+    schedulerBridgeCandidateReport,
   });
   const markdown = renderPipelineBacklogMarkdown(report);
 
@@ -63,6 +75,16 @@ function readOptionalFile(target) {
     return fs.pathExistsSync(target) ? fs.readFileSync(target, "utf8") : "";
   } catch {
     return "";
+  }
+}
+
+function readOptionalJson(target) {
+  if (!target) return null;
+  try {
+    const resolved = path.resolve(target);
+    return fs.pathExistsSync(resolved) ? fs.readJsonSync(resolved) : null;
+  } catch {
+    return null;
   }
 }
 

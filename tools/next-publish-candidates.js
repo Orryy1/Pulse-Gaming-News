@@ -31,8 +31,15 @@ const DEFAULT_SOURCE_FAMILY_ACQUISITION_REPORT_PATH = path.join(
   "goal-contract",
   "studio_v4_source_family_acquisition_remaining.json",
 );
+const DEFAULT_UPSTREAM_BENCHMARK_REPORT_PATH = path.join(
+  ROOT,
+  "output",
+  "goal-10",
+  "goal10_readiness_report.json",
+);
 const DEFAULT_ANALYTICS_PATH = "D:\\pulse-data\\analytics_findings.md";
 const DEFAULT_LIMIT = 12;
+const DEFAULT_SCRIPT_SCORE_THRESHOLD = 75;
 
 const PUBLIC_PLATFORM_FIELDS = [
   "youtube_post_id",
@@ -218,6 +225,39 @@ function renderedDurationFromManifest(manifest = {}) {
     numberOrNull(manifest.video_duration_s) ??
     numberOrNull(manifest.duration_seconds)
   );
+}
+
+function selectedSfxAssetsForFreshness(sfxManifest = {}) {
+  const sourcePlan = objectValue(
+    sfxManifest.source_plan || sfxManifest.sourcePlan || sfxManifest.sourcing_plan,
+    {},
+  );
+  const selected = [
+    ...asArray(sourcePlan.selected_assets || sourcePlan.selectedAssets),
+    ...asArray(sfxManifest.selected_assets || sfxManifest.selectedAssets),
+  ];
+  const seen = new Set();
+  return selected
+    .map((asset) => ({
+      role: cleanText(asset.role || asset.sfx_role || asset.family || asset.category || "unknown")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, ""),
+      asset_id: cleanText(asset.asset_id || asset.id),
+    }))
+    .filter((asset) => asset.asset_id)
+    .filter((asset) => {
+      const key = `${asset.role}:${asset.asset_id}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => `${a.role}:${a.asset_id}`.localeCompare(`${b.role}:${b.asset_id}`));
+}
+
+function selectedSfxAssetSignature(sfxManifest = {}) {
+  const assets = selectedSfxAssetsForFreshness(sfxManifest);
+  return assets.length ? assets.map((asset) => `${asset.role}:${asset.asset_id}`).join("|") : "";
 }
 
 function renderOutputPathFromManifest(manifest = {}) {
@@ -892,6 +932,8 @@ function combinePreflightQa({
   timestampAlignment,
   bridgeArtifactFreshness,
   bridgeMotionGovernance,
+  aggregateBenchmark,
+  scriptScorecard,
 } = {}) {
   const checks = {
     content: summariseQaResult(content),
@@ -905,6 +947,8 @@ function combinePreflightQa({
   if (timestampAlignment) checks.timestamp_alignment = summariseQaResult(timestampAlignment);
   if (bridgeArtifactFreshness) checks.bridge_artifact_freshness = summariseQaResult(bridgeArtifactFreshness);
   if (bridgeMotionGovernance) checks.bridge_motion_governance = summariseQaResult(bridgeMotionGovernance);
+  if (aggregateBenchmark) checks.aggregate_benchmark = summariseQaResult(aggregateBenchmark);
+  if (scriptScorecard) checks.script_scorecard = summariseQaResult(scriptScorecard);
   const blockers = [];
   const warnings = [];
 
@@ -1195,6 +1239,163 @@ function bridgeMotionGovernancePreflightForStory(story = {}, opts = {}) {
   };
 }
 
+function aggregateBenchmarkPreflightForStory(story = {}, opts = {}) {
+  if (!story.scheduler_bridge_source) return null;
+  const report =
+    opts.upstreamBenchmarkReport ||
+    opts.aggregateBenchmarkReport ||
+    opts.goal10ReadinessReport ||
+    null;
+  if (!report || typeof report !== "object") return null;
+
+  const storyId = normaliseStoryId(story.id || story.story_id);
+  if (!storyId) {
+    return {
+      result: "fail",
+      failures: ["goal10_story_id_missing"],
+      warnings: [],
+    };
+  }
+
+  const rows = asArray(report.stories);
+  if (!rows.length) {
+    return {
+      result: "fail",
+      failures: ["goal10_report_has_no_story_rows"],
+      warnings: [],
+      evidence: {
+        goal: cleanText(report.goal || "goal10_gold_standard_forensics_engine"),
+      },
+    };
+  }
+
+  const row = rows.find((item) => normaliseStoryId(item?.story_id || item?.id) === storyId);
+  if (!row) {
+    return {
+      result: "fail",
+      failures: ["goal10_story_missing"],
+      warnings: [],
+      evidence: {
+        story_id: storyId,
+        goal: cleanText(report.goal || "goal10_gold_standard_forensics_engine"),
+      },
+    };
+  }
+
+  const status = cleanText(row.status || row.verdict || row.readiness_status).toLowerCase();
+  if (status === "ready" || status === "pass" || status === "green") {
+    return {
+      result: "pass",
+      failures: [],
+      warnings: [],
+      evidence: {
+        story_id: storyId,
+        status: row.status || "ready",
+      },
+    };
+  }
+
+  const failures = [
+    ...asArray(row.blockers),
+    ...asArray(row.direct_benchmark_blockers),
+    ...asArray(row.upstream_blockers),
+    status ? `goal10_status:${status}` : "goal10_status_not_ready",
+  ]
+    .map(cleanText)
+    .filter(Boolean);
+
+  return {
+    result: "fail",
+    failures: [...new Set(failures)],
+    warnings: asArray(row.warnings).map(cleanText).filter(Boolean),
+    evidence: {
+      story_id: storyId,
+      status: row.status || "unknown",
+      direct_benchmark_status: row.direct_benchmark_status || null,
+    },
+  };
+}
+
+function scriptScoreFromScorecard(scorecard = {}) {
+  const candidates = [
+    scorecard.viral_score,
+    scorecard.total_score,
+    scorecard.score,
+    scorecard.scores?.viral_score,
+    scorecard.scores?.total_score,
+  ];
+  for (const candidate of candidates) {
+    const n = Number(candidate);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+function embeddedScriptScorecard(story = {}) {
+  return objectValue(
+    story.script_scorecard ||
+      story.scriptScorecard ||
+      story.viral_script_scorecard ||
+      story.selected_script?.scorecard,
+    null,
+  );
+}
+
+async function scriptScorecardPreflightForStory(story = {}, opts = {}) {
+  const artifactDir = cleanText(
+    story.scheduler_bridge_artifact_dir || story.artifact_dir || story.output_dir || story.package_dir,
+  );
+  const explicitPath = cleanText(story.script_scorecard_path || story.scriptScorecardPath);
+  const scorecardPath = explicitPath || (artifactDir ? path.join(artifactDir, "script_scorecard.json") : "");
+  let scorecard = embeddedScriptScorecard(story);
+
+  if (!scorecard && scorecardPath) {
+    try {
+      scorecard = await fs.readJson(path.resolve(scorecardPath));
+    } catch {
+      return null;
+    }
+  }
+
+  if (!scorecard) return null;
+
+  const threshold =
+    Number.isFinite(Number(opts.scriptScoreThreshold))
+      ? Number(opts.scriptScoreThreshold)
+      : DEFAULT_SCRIPT_SCORE_THRESHOLD;
+  const score = scriptScoreFromScorecard(scorecard);
+  const verdict = cleanText(scorecard.verdict || scorecard.status || scorecard.result).toLowerCase();
+  const blockers = asArray(scorecard.blockers).map(cleanText).filter(Boolean);
+  const warnings = asArray(scorecard.warnings).map(cleanText).filter(Boolean);
+  const failures = [];
+
+  if (Number.isFinite(score) && score < threshold) {
+    failures.push("script_score_below_threshold");
+  }
+  if (/rewrite_required|reject|blocked|fail/.test(verdict)) {
+    failures.push(`script_verdict_${verdict}`);
+  }
+  for (const blocker of blockers) {
+    failures.push(`script_blocker:${blocker}`);
+  }
+  if (warnings.includes("no_curiosity_marker")) {
+    failures.push("no_curiosity_marker");
+  }
+
+  return {
+    result: failures.length ? "fail" : "pass",
+    failures: [...new Set(failures)],
+    warnings,
+    evidence: {
+      story_id: story.id || story.story_id || null,
+      script_scorecard_path: scorecardPath || null,
+      viral_score: score,
+      threshold,
+      verdict: scorecard.verdict || scorecard.status || scorecard.result || null,
+    },
+  };
+}
+
 async function bridgeArtifactFreshnessPreflightForStory(story = {}) {
   if (!story.scheduler_bridge_source) return null;
   const artifactDir = cleanText(
@@ -1238,14 +1439,33 @@ async function bridgeArtifactFreshnessPreflightForStory(story = {}) {
     failures.push("bridge_metadata_stale:exported_path");
   }
 
+  let currentSfxSignature = "";
+  let bridgeSfxSignature = selectedSfxAssetSignature(story.sfx_manifest || story.sound_transition_plan?.sfx || {});
+  const sfxManifestPath = artifactDir ? path.join(artifactDir, "sfx_manifest.json") : "";
+  if (sfxManifestPath && await fs.pathExists(path.resolve(sfxManifestPath))) {
+    try {
+      const currentSfxManifest = await fs.readJson(path.resolve(sfxManifestPath));
+      currentSfxSignature = selectedSfxAssetSignature(currentSfxManifest);
+      if (currentSfxSignature && bridgeSfxSignature && currentSfxSignature !== bridgeSfxSignature) {
+        failures.push("bridge_metadata_stale:sfx_manifest_selected_assets");
+      }
+    } catch {
+      // The bridge freshness gate already blocks stale evidence when it can be
+      // read. Other required-input gates own missing or malformed SFX files.
+    }
+  }
+
   return {
     result: failures.length ? "fail" : "pass",
     failures,
     warnings: [],
     evidence: {
       render_manifest_path: manifestPath,
+      sfx_manifest_path: sfxManifestPath || null,
       bridge_duration_seconds: bridgeDuration,
       render_manifest_duration_seconds: manifestDuration,
+      bridge_sfx_signature: bridgeSfxSignature || null,
+      current_sfx_signature: currentSfxSignature || null,
     },
   };
 }
@@ -1891,6 +2111,8 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
     runTimestampAlignmentQa = timestampAlignmentPreflightForStory,
     runBridgeArtifactFreshnessQa = bridgeArtifactFreshnessPreflightForStory,
     runBridgeMotionGovernanceQa = bridgeMotionGovernancePreflightForStory,
+    runAggregateBenchmarkQa = aggregateBenchmarkPreflightForStory,
+    runScriptScorecardQa = scriptScorecardPreflightForStory,
   } = opts;
 
   try {
@@ -1927,6 +2149,10 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
     const bridgeMotionGovernance = story.scheduler_bridge_source
       ? await runBridgeMotionGovernanceQa(cloneStoryForPreflight(story), opts)
       : null;
+    const aggregateBenchmark = story.scheduler_bridge_source
+      ? await runAggregateBenchmarkQa(cloneStoryForPreflight(story), opts)
+      : null;
+    const scriptScorecard = await runScriptScorecardQa(cloneStoryForPreflight(story), opts);
     return combinePreflightQa({
       content,
       video,
@@ -1938,6 +2164,8 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
       timestampAlignment,
       bridgeArtifactFreshness,
       bridgeMotionGovernance,
+      aggregateBenchmark,
+      scriptScorecard,
     });
   } catch (err) {
     return {
@@ -2303,6 +2531,7 @@ function parseArgs(argv) {
     bridgeCandidatesPath: DEFAULT_BRIDGE_CANDIDATES_PATH,
     directVideoEnrichmentWorkOrderPath: DEFAULT_DIRECT_VIDEO_ENRICHMENT_WORK_ORDER_PATH,
     sourceFamilyAcquisitionReportPath: DEFAULT_SOURCE_FAMILY_ACQUISITION_REPORT_PATH,
+    upstreamBenchmarkReportPath: DEFAULT_UPSTREAM_BENCHMARK_REPORT_PATH,
     allowLiveFallback: false,
   };
   for (let i = 2; i < argv.length; i += 1) {
@@ -2342,6 +2571,18 @@ function parseArgs(argv) {
     }
     else if (arg === "--no-source-family-acquisition") {
       args.sourceFamilyAcquisitionReportPath = null;
+    }
+    else if (arg === "--upstream-benchmark-report" || arg === "--goal10-report") {
+      args.upstreamBenchmarkReportPath = argv[++i] || null;
+    }
+    else if (arg.startsWith("--upstream-benchmark-report=")) {
+      args.upstreamBenchmarkReportPath = arg.slice("--upstream-benchmark-report=".length);
+    }
+    else if (arg.startsWith("--goal10-report=")) {
+      args.upstreamBenchmarkReportPath = arg.slice("--goal10-report=".length);
+    }
+    else if (arg === "--no-upstream-benchmark-report" || arg === "--no-goal10-report") {
+      args.upstreamBenchmarkReportPath = null;
     }
     else if (arg === "--story-id" || arg === "--story") args.storyId = normaliseStoryId(argv[++i]);
     else if (arg.startsWith("--story-id=")) args.storyId = normaliseStoryId(arg.slice("--story-id=".length));
@@ -2439,12 +2680,20 @@ async function runCli(argv = process.argv) {
     return { exitCode: 0 };
   }
 
-  const [stories, analyticsText, bridgeManifest, directVideoEnrichmentWorkOrder, sourceFamilyAcquisitionReport] = await Promise.all([
+  const [
+    stories,
+    analyticsText,
+    bridgeManifest,
+    directVideoEnrichmentWorkOrder,
+    sourceFamilyAcquisitionReport,
+    upstreamBenchmarkReport,
+  ] = await Promise.all([
     loadStories(),
     readAnalytics(args.analyticsPath),
     readBridgeCandidateManifest(args.bridgeCandidatesPath),
     readOptionalJson(args.directVideoEnrichmentWorkOrderPath),
     readOptionalJson(args.sourceFamilyAcquisitionReportPath),
+    readOptionalJson(args.upstreamBenchmarkReportPath),
   ]);
   const bridgeMotionGovernanceEvidence = {
     directVideoEnrichmentWorkOrder,
@@ -2467,8 +2716,14 @@ async function runCli(argv = process.argv) {
     bridgeManifest: selected.bridge_manifest,
   });
   if (args.preflightQa) {
-    await attachPreflightQa(report, mergedStories, { bridgeMotionGovernanceEvidence });
-    await attachStoryPreflight(report, mergedStories, args.storyId, { bridgeMotionGovernanceEvidence });
+    await attachPreflightQa(report, mergedStories, {
+      bridgeMotionGovernanceEvidence,
+      upstreamBenchmarkReport,
+    });
+    await attachStoryPreflight(report, mergedStories, args.storyId, {
+      bridgeMotionGovernanceEvidence,
+      upstreamBenchmarkReport,
+    });
   }
   const markdown = formatNextPublishCandidatesMarkdown(report);
   await fs.ensureDir(OUT);
@@ -2496,12 +2751,15 @@ module.exports = {
   DEFAULT_BRIDGE_CANDIDATES_PATH,
   DEFAULT_DIRECT_VIDEO_ENRICHMENT_WORK_ORDER_PATH,
   DEFAULT_SOURCE_FAMILY_ACQUISITION_REPORT_PATH,
+  DEFAULT_UPSTREAM_BENCHMARK_REPORT_PATH,
+  DEFAULT_SCRIPT_SCORE_THRESHOLD,
   buildNextPublishCandidatesReport,
   formatNextPublishCandidatesMarkdown,
   scoreCandidate,
   scoreAnalyticsFit,
   attachPreflightQa,
   attachStoryPreflight,
+  aggregateBenchmarkPreflightForStory,
   audioSegmentPreflightForStory,
   bridgeArtifactFreshnessPreflightForStory,
   bridgeMotionGovernancePreflightForStory,
@@ -2516,6 +2774,7 @@ module.exports = {
   readBridgeCandidates,
   readOptionalJson,
   runPreflightQaForStory,
+  scriptScorecardPreflightForStory,
   selectCandidateSourceStories,
   timestampAlignmentPreflightForStory,
   normaliseBridgeMotionGovernanceEvidence,

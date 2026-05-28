@@ -9,6 +9,7 @@ const test = require("node:test");
 
 const {
   buildGoalHumanReviewQueue,
+  renderGoalHumanReviewQueueMarkdown,
   writeGoalHumanReviewQueue,
 } = require("../../lib/goal-human-review-queue");
 
@@ -156,6 +157,7 @@ test("human review queue turns AMBER strict dry-run candidates into operator pac
   assert.equal(item.story_id, "story-one");
   assert.equal(item.full_platform_verdict, "AMBER");
   assert.deepEqual(item.publish_now_platforms, ["youtube_shorts", "instagram_reels"]);
+  assert.deepEqual(item.enabled_review_platforms, ["youtube_shorts", "instagram_reels"]);
   assert.deepEqual(item.deferred_platforms, ["tiktok", "x"]);
   assert.deepEqual(item.platform_enablement_requirements, [
     {
@@ -185,6 +187,22 @@ test("human review queue turns AMBER strict dry-run candidates into operator pac
   assert.equal(item.evidence.video_path.endsWith("visual_v4_render.mp4"), true);
   assert.equal(item.approval.operator_approval_required, true);
   assert.equal(item.approval.live_publish_allowed_before_approval, false);
+  assert.ok(item.approval.approval_requirements.includes("These are review candidates, not live publish actions."));
+});
+
+test("human review queue markdown avoids publish-now wording for review candidates", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-human-review-markdown-"));
+  const artifactDir = await makeStoryPackage(root);
+  const queue = await buildGoalHumanReviewQueue({
+    dryRunPlan: dryRunPlan({ artifactDir }),
+    generatedAt: "2026-05-28T09:10:00.000Z",
+  });
+
+  const markdown = renderGoalHumanReviewQueueMarkdown(queue);
+
+  assert.match(markdown, /Enabled review platforms: youtube_shorts, instagram_reels/);
+  assert.doesNotMatch(markdown, /Publish-now platforms/);
+  assert.match(markdown, /No live publish is allowed before operator approval/);
 });
 
 test("human review queue falls back to canonical source URL fields for operator evidence", async () => {
@@ -372,6 +390,60 @@ test("human review queue enriches missing dry-run evidence with render-input rep
   assert.equal(blocked.render_input_requirements[0].repair_lane, "owned_generated_explainer_motion_materialisation");
   assert.equal(blocked.render_input_requirements[0].auto_repairable, true);
   assert.match(blocked.render_input_requirements[0].recommended_command, /goal-owned-motion/);
+});
+
+test("human review queue propagates operator-required render-input jobs to blocked items", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-human-review-render-jobs-"));
+  const artifactDir = await makeStoryPackage(root, "dead-end-story");
+  const plan = dryRunPlan({ artifactDir, storyId: "dead-end-story" });
+  plan.actions = [];
+  plan.blocked_stories = [];
+  plan.incident_guard_report.stories[0].verdict = "pass";
+  plan.incident_guard_report.stories[0].safe_to_publish_boolean = true;
+
+  const queue = await buildGoalHumanReviewQueue({
+    dryRunPlan: plan,
+    renderInputWorkOrder: {
+      jobs: [
+        {
+          story_id: "dead-end-story",
+          status: "blocked_on_render_inputs",
+          blockers: ["public_copy_repair_required"],
+          actions: [
+            {
+              action_id: "repair_public_output_coherence",
+              status: "reject_recommended",
+              repair_lane: "reject_or_human_review_non_news_image_post",
+              exact_missing_input: "Reject the story or supply a real primary source before any render repair.",
+              recommended_command: "Reject dead-end-story from autonomous production.",
+              reason_codes: ["public_copy_repair_required"],
+              auto_repairable: false,
+              operator_approval_required: true,
+              dead_end_blocker: true,
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  assert.equal(queue.summary.review_item_count, 0);
+  assert.equal(queue.summary.blocked_item_count, 1);
+  const blocked = queue.blocked_items[0];
+  assert.equal(blocked.story_id, "dead-end-story");
+  assert.equal(blocked.operator_queue_status, "operator_required");
+  assert.equal(blocked.dead_end_blocker, true);
+  assert.equal(blocked.reject_recommended, true);
+  assert.equal(blocked.approval.operator_approval_required, true);
+  assert.equal(blocked.render_input_requirements.length, 1);
+  assert.equal(blocked.render_input_requirements[0].status, "reject_recommended");
+  assert.equal(blocked.render_input_requirements[0].operator_approval_required, true);
+  assert.equal(blocked.render_input_requirements[0].dead_end_blocker, true);
+
+  const markdown = renderGoalHumanReviewQueueMarkdown(queue);
+  assert.match(markdown, /queue: operator_required/);
+  assert.match(markdown, /dead-end: yes/);
+  assert.match(markdown, /reject: yes/);
 });
 
 test("human review queue writes machine-readable artefacts and operator Markdown", async () => {

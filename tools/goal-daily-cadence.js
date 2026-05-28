@@ -18,6 +18,7 @@ function parseArgs(argv = process.argv.slice(2)) {
   const args = {
     root: process.cwd(),
     humanReviewQueuePath: null,
+    upstreamBenchmarkReportPath: null,
     outDir: path.join(process.cwd(), "output", "goal-contract"),
     generatedAt: null,
     targetDailyShorts: 3,
@@ -28,6 +29,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     const arg = argv[i];
     if (arg === "--root") args.root = argv[++i] || args.root;
     else if (arg === "--human-review-queue") args.humanReviewQueuePath = argv[++i] || "";
+    else if (arg === "--upstream-benchmark-report") args.upstreamBenchmarkReportPath = argv[++i] || "";
     else if (arg === "--out-dir") args.outDir = argv[++i] || args.outDir;
     else if (arg === "--generated-at") args.generatedAt = argv[++i] || null;
     else if (arg === "--target-daily-shorts") args.targetDailyShorts = Number(argv[++i] || args.targetDailyShorts);
@@ -45,6 +47,7 @@ function usage() {
     "Options:",
     "  --root <dir>                  Workspace root",
     "  --human-review-queue <path>   Human review queue JSON",
+    "  --upstream-benchmark-report <path> Optional Goal 10 readiness report",
     "  --out-dir <dir>               Output directory",
     "  --generated-at <iso>          Fixed timestamp",
     "  --target-daily-shorts <n>     Number of Shorts to plan, 1-8",
@@ -65,8 +68,15 @@ async function main(argv = process.argv.slice(2)) {
     ? path.resolve(root, args.humanReviewQueuePath)
     : path.join(root, "output", "goal-contract", "human_review_queue.json");
   const humanReviewQueue = await fs.readJson(queuePath);
+  const upstreamBenchmarkPath = args.upstreamBenchmarkReportPath
+    ? path.resolve(root, args.upstreamBenchmarkReportPath)
+    : null;
+  const upstreamBenchmarkReport = upstreamBenchmarkPath && await fs.pathExists(upstreamBenchmarkPath)
+    ? await fs.readJson(upstreamBenchmarkPath)
+    : {};
   const plan = await buildGoalDailyCadencePlan({
     humanReviewQueue,
+    upstreamBenchmarkReport,
     generatedAt: args.generatedAt || new Date().toISOString(),
     targetDailyShorts: args.targetDailyShorts,
   });

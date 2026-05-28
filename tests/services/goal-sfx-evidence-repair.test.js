@@ -88,7 +88,7 @@ test("goal SFX evidence repair refuses to stamp blocked source plans", async () 
   assert.equal(report.summary.repaired_count, 0);
 });
 
-test("goal SFX evidence repair ignores missing catalogue roles that current renders do not use", async () => {
+test("goal SFX evidence repair requires every current render SFX role but ignores unused catalogue roles", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-sfx-repair-story-roles-"));
   const artifactDir = path.join(root, "output", "goal-proof", "batch", "story-source-lock");
   await fs.outputJson(path.join(root, "output", "goal-contract", "story-packages.json"), [
@@ -103,11 +103,27 @@ test("goal SFX evidence repair ignores missing catalogue roles that current rend
     required_roles: ["impact", "transition", "ui_tick", "riser"],
     selected_assets: [
       {
-        asset_id: "plain-editorial-click",
+        asset_id: "sonniss-impact-01",
+        role: "impact",
+        family: "impact",
+        provider_id: "sonniss",
+        source_url: "file://audio/sonniss/GDC2024/BluezoneCorp - Modern Cinematic Impact/Bluezone_BC0294_modern_cinematic_impact_boom_003.wav",
+        rights_basis: "sonniss_game_audio_gdc_bundle_license",
+      },
+      {
+        asset_id: "sonniss-transition-01",
+        role: "transition",
+        family: "transition",
+        provider_id: "sonniss",
+        source_url: "file://audio/sonniss/GDC2024/Orbital Emitter - Cinematic Transitions for Editors Volume 2/27,Searing.wav",
+        rights_basis: "sonniss_game_audio_gdc_bundle_license",
+      },
+      {
+        asset_id: "clean-user-interaction-click",
         role: "ui_tick",
         family: "ui_tick",
         provider_id: "sonniss",
-        source_url: "file://audio/sonniss/GDC2024/CB Sounddesign - Activation 2/UIClick_UI Click 33_CB Sounddesign_ACTIVATION2.wav",
+        source_url: "file://audio/sonniss/GDC2024/Rescopic Sound - User Interaction/UIClick_UI Click Short 03_RSCPC_USIN.wav",
         rights_basis: "sonniss_game_audio_gdc_bundle_license",
       },
     ],
@@ -115,11 +131,31 @@ test("goal SFX evidence repair ignores missing catalogue roles that current rend
   await fs.outputJson(path.join(root, "output", "goal-contract", "sfx_rights_ledger.json"), {
     records: [
       {
-        asset_id: "plain-editorial-click",
+        asset_id: "sonniss-impact-01",
+        asset_type: "sfx",
+        role: "impact",
+        provider_id: "sonniss",
+        source_url: "file://audio/sonniss/GDC2024/BluezoneCorp - Modern Cinematic Impact/Bluezone_BC0294_modern_cinematic_impact_boom_003.wav",
+        licence_basis: "sonniss_game_audio_gdc_bundle_license",
+        approval_status: "approved_for_commercial_editorial_use",
+        commercial_use_allowed: true,
+      },
+      {
+        asset_id: "sonniss-transition-01",
+        asset_type: "sfx",
+        role: "transition",
+        provider_id: "sonniss",
+        source_url: "file://audio/sonniss/GDC2024/Orbital Emitter - Cinematic Transitions for Editors Volume 2/27,Searing.wav",
+        licence_basis: "sonniss_game_audio_gdc_bundle_license",
+        approval_status: "approved_for_commercial_editorial_use",
+        commercial_use_allowed: true,
+      },
+      {
+        asset_id: "clean-user-interaction-click",
         asset_type: "sfx",
         role: "ui_tick",
         provider_id: "sonniss",
-        source_url: "file://audio/sonniss/GDC2024/CB Sounddesign - Activation 2/UIClick_UI Click 33_CB Sounddesign_ACTIVATION2.wav",
+        source_url: "file://audio/sonniss/GDC2024/Rescopic Sound - User Interaction/UIClick_UI Click Short 03_RSCPC_USIN.wav",
         licence_basis: "sonniss_game_audio_gdc_bundle_license",
         approval_status: "approved_for_commercial_editorial_use",
         commercial_use_allowed: true,
@@ -144,9 +180,13 @@ test("goal SFX evidence repair ignores missing catalogue roles that current rend
 
   assert.equal(report.readiness.status, "pass");
   assert.equal(report.summary.repaired_count, 1);
-  assert.deepEqual(sfxManifest.source_plan.required_roles, ["ui_tick"]);
+  assert.deepEqual(sfxManifest.source_plan.required_roles, ["impact", "transition", "ui_tick"]);
   assert.equal(sfxManifest.source_plan.readiness.status, "pass");
-  assert.deepEqual(sfxManifest.selected_assets.map((asset) => asset.asset_id), ["plain-editorial-click"]);
+  assert.deepEqual(sfxManifest.selected_assets.map((asset) => asset.asset_id), [
+    "sonniss-impact-01",
+    "sonniss-transition-01",
+    "clean-user-interaction-click",
+  ]);
   assert.ok(!sfxManifest.source_plan.readiness.blockers.includes("sfx_source:missing_role:riser"));
 });
 

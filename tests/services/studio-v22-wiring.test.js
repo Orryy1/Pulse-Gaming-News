@@ -45,6 +45,22 @@ test("studio_analytics_loop handler is wired", () => {
   assert.strictEqual(typeof handlers.studio_analytics_loop, "function");
 });
 
+test("studio_analytics_loop handler does not skip before deterministic fallback can run", () => {
+  const src = require("node:fs").readFileSync(
+    require("node:path").join(__dirname, "..", "..", "lib", "job-handlers.js"),
+    "utf8",
+  );
+  const match = src.match(
+    /async function handleStudioAnalyticsLoop[\s\S]*?async function handleRoundupWeekly/,
+  );
+  assert.ok(match, "could not locate handleStudioAnalyticsLoop block");
+  assert.doesNotMatch(
+    match[0],
+    /skipAnthropicDependentJob/,
+    "studio analytics must run its local deterministic fallback instead of skipping when Anthropic is unavailable",
+  );
+});
+
 // ── HF thumbnail batch helper ─────────────────────────────────────
 test("buildThumbnailsForApprovedStories is exported", () => {
   assert.strictEqual(typeof hf.buildThumbnailsForApprovedStories, "function");

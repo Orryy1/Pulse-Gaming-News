@@ -114,9 +114,24 @@ function resolvePathMaybeRoot(value) {
   return path.isAbsolute(text) ? text : path.resolve(ROOT, text);
 }
 
+function outputRelativeMediaPath(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const outputMatch = text.match(/[\\/]output[\\/].+$/i);
+  if (outputMatch) return outputMatch[0].replace(/^[\\/]/, "").replace(/\\/g, "/");
+  if (/^output[\\/]/i.test(text)) return text.replace(/\\/g, "/");
+  return "";
+}
+
 async function resolveReadableMediaPath(value) {
   const text = String(value || "").trim();
   if (!text) return "";
+  const mediaRoot = typeof mediaPaths.getMediaRoot === "function" ? mediaPaths.getMediaRoot() : null;
+  const outputRelative = mediaRoot ? outputRelativeMediaPath(text) : "";
+  if (outputRelative) {
+    const mediaResolved = await mediaPaths.resolveExisting(outputRelative);
+    if (mediaResolved && (await fs.pathExists(mediaResolved))) return mediaResolved;
+  }
   const mediaResolved = await mediaPaths.resolveExisting(text);
   if (mediaResolved && (await fs.pathExists(mediaResolved))) return mediaResolved;
   return resolvePathMaybeRoot(text);
@@ -993,6 +1008,7 @@ module.exports = {
   buildOverlayChain,
   drawtextEscape,
   renderNarrationScriptText,
+  resolveReadableMediaPath,
   resolveStorySfxCueMix,
   resolveStorySfxPaths,
   sfxPathForAsset,

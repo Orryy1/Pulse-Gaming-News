@@ -190,6 +190,7 @@
     "media:plan-motion": "node tools/motion-acquisition-pro.js",
     "media:resolve-trailers": "node tools/official-trailer-reference-resolver.js",
     "media:intake-official-sources": "node tools/official-source-intake.js",
+    "media:official-page-stills": "node tools/official-page-still-intake.js",
     "media:discover-direct-media": "node tools/official-direct-media-discovery.js",
     "media:trusted-footage": "node tools/trusted-footage-registry.js",
     "media:local-timeline": "node tools/local-video-timeline.js",

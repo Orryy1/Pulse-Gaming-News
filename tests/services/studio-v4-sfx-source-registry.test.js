@@ -528,6 +528,27 @@ test("creator-studio SFX sourcing rejects alert-confirm and activation UI ticks 
   assert.ok(plan.selected_assets[0].editorial_sfx_score > 0.7);
 });
 
+test("creator-studio SFX sourcing blocks generic activation-pack clicks for source locks", () => {
+  const plan = buildCreatorStudioSfxSourcingPlan({
+    cues: [{ id: "source", family: "source_tick", role: "ui_tick" }],
+    installedAssets: [
+      {
+        asset_id: "activation-pack-ui-click",
+        role: "ui_tick",
+        family: "ui_tick",
+        provider_id: "sonniss",
+        source_url: "file://audio/sonniss/GDC2024/CB Sounddesign - Activation 2/UIClick_UI Click 33_CB Sounddesign_ACTIVATION2.wav",
+        licence_basis: "sonniss_game_audio_gdc_bundle_license",
+        approval_status: "approved_for_commercial_editorial_use",
+      },
+    ],
+  });
+
+  assert.equal(plan.readiness.status, "blocked");
+  assert.equal(plan.selected_assets.length, 0);
+  assert.ok(plan.readiness.blockers.includes("sfx_source:missing_role:ui_tick"));
+});
+
 test("creator-studio SFX sourcing prefers compact plain UI clicks over longer select sweeps", () => {
   const plan = buildCreatorStudioSfxSourcingPlan({
     cues: [{ id: "source", family: "source_tick", role: "ui_tick" }],
@@ -542,11 +563,11 @@ test("creator-studio SFX sourcing prefers compact plain UI clicks over longer se
         approval_status: "approved_for_commercial_editorial_use",
       },
       {
-        asset_id: "plain-editorial-click",
+        asset_id: "clean-user-interaction-click",
         role: "ui_tick",
         family: "ui_tick",
         provider_id: "sonniss",
-        source_url: "file://audio/sonniss/GDC2024/CB Sounddesign - Activation 2/UIClick_UI Click 33_CB Sounddesign_ACTIVATION2.wav",
+        source_url: "file://audio/sonniss/GDC2024/Rescopic Sound - User Interaction/UIClick_UI Click Short 03_RSCPC_USIN.wav",
         licence_basis: "sonniss_game_audio_gdc_bundle_license",
         approval_status: "approved_for_commercial_editorial_use",
       },
@@ -563,6 +584,6 @@ test("creator-studio SFX sourcing prefers compact plain UI clicks over longer se
   });
 
   assert.equal(plan.readiness.status, "pass");
-  assert.equal(plan.selected_assets[0].asset_id, "plain-editorial-click");
+  assert.equal(plan.selected_assets[0].asset_id, "clean-user-interaction-click");
   assert.ok(plan.selected_assets[0].editorial_sfx_score > 0.8);
 });

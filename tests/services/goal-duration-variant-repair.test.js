@@ -27,6 +27,10 @@ function charAlignment(text) {
   };
 }
 
+function simpleWordCount(value = "") {
+  return String(value).trim().split(/\s+/).filter(Boolean).length;
+}
+
 async function makePackage(root, storyId = "story-duration", overrides = {}) {
   const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
   await fs.ensureDir(artifactDir);
@@ -365,6 +369,83 @@ test("duration variant repair reruns existing repairs when public copy is newer"
   assert.equal(renderCalls.length, 1);
   assert.match(audioCalls[0], /PC early-access story|console footnote/i);
   assert.doesNotMatch(audioCalls[0], /instant inputs|real question is brutal/i);
+});
+
+test("normal duration repair trusts stale-duration blocker over old render manifest duration", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-duration-stale-metadata-"));
+  const artifactDir = await makePackage(root, "stale-duration-story", {
+    canonical: {
+      canonical_subject: "The Expanse: Osiris Reborn",
+      canonical_game: "The Expanse: Osiris Reborn",
+      selected_title: "The Expanse Shows Real Gameplay",
+      thumbnail_headline: "EXPANSE GAMEPLAY",
+      first_spoken_line: "The Expanse: Osiris Reborn finally showed real gameplay.",
+      narration_script: [
+        "The Expanse: Osiris Reborn finally showed real gameplay.",
+        "Xbox showed The Expanse: Osiris Reborn gameplay during Xbox Partner Preview.",
+        "The catch is what this changes after the reveal.",
+        "Players need to see whether this is an RPG with pressure or a licensed montage.",
+        "Follow Pulse Gaming so you never miss a beat.",
+      ].join(" "),
+      full_script: "",
+      tts_script: "",
+      primary_source: "Xbox",
+      official_source: "Xbox",
+      confirmed_claims: ["Xbox showed The Expanse: Osiris Reborn gameplay during Xbox Partner Preview."],
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "render_manifest.json"), {
+    story_id: "stale-duration-story",
+    renderer: "visual_v4_production",
+    final_publish_render: true,
+    rendered_duration_s: 47.7,
+  });
+
+  const audioCalls = [];
+  const renderCalls = [];
+  const job = {
+    ...workOrderJob("stale-duration-story", artifactDir),
+    current_duration_s: 19.68,
+    target_duration_seconds: { min: 35, max: 59 },
+    source_blockers: [
+      "preflight_qa_blocked:video:duration_too_short (19.68s)",
+      "preflight_qa_blocked:bridge_artifact_freshness:bridge_metadata_stale:duration_seconds",
+    ],
+  };
+
+  const report = await materializeDurationVariantRepairs({
+    workspaceRoot: root,
+    generatedAt: "2026-05-22T16:25:00.000Z",
+    workOrder: { jobs: [job] },
+    provider: "local",
+    alignmentMode: "off",
+    generateTtsForStory: async ({ text, outputPath }) => {
+      audioCalls.push(text);
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 7));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignment(text),
+      });
+    },
+    renderProof: async ({ storyJson, output }) => {
+      const story = await fs.readJson(storyJson);
+      renderCalls.push(story);
+      await fs.outputFile(output, Buffer.alloc(8192, 8));
+      return {
+        story_id: story.id,
+        output,
+        clips: story.video_clips.length,
+        rendered_duration_s: simpleWordCount(story.full_script) >= 116 ? 36.2 : 29.8,
+        size_bytes: 8192,
+      };
+    },
+  });
+
+  assert.equal(report.summary.repaired_count, 1);
+  assert.equal(report.jobs[0].original_duration_s, 19.68);
+  assert.ok(report.jobs[0].appended_word_count > 0);
+  assert.ok(report.jobs[0].repaired_word_count >= 116, audioCalls[0]);
+  assert.equal(audioCalls.length, 1);
+  assert.equal(renderCalls.length, 1);
 });
 
 test("duration variant repair reruns existing repairs with noncanonical protected brand names", async () => {
@@ -1836,6 +1917,16 @@ test("duration variant repair thumbnail headline never leaves dangling or repeat
       title: "Nintendo Professor Lawsuit Just Got Weird",
       subject: "Nintendo",
       expected: "NINTENDO PROFESSOR LAWSUIT",
+    },
+    {
+      title: "The Expanse Shows Real Gameplay",
+      subject: "The Expanse: Osiris Reborn",
+      expected: "EXPANSE GAMEPLAY REVEAL",
+    },
+    {
+      title: "The Expanse: Osiris Reborn | Official Gameplay Trailer | Xbox Partner Preview 2026",
+      subject: "The Expanse: Osiris Reborn",
+      expected: "EXPANSE GAMEPLAY REVEAL",
     },
   ];
 

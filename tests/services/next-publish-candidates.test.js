@@ -1147,6 +1147,74 @@ test("bridge preflight blocks stale bridge duration metadata against current ren
   );
 });
 
+test("bridge preflight blocks stale embedded SFX evidence against current package manifest", async (t) => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-bridge-stale-sfx-"));
+  t.after(() => fs.remove(tmpDir));
+  const renderManifestPath = path.join(tmpDir, "render_manifest.json");
+  await fs.writeJson(renderManifestPath, {
+    rendered_duration_s: 44.333,
+    output_path: "D:/pulse-data/media/output/final/bridge_stale_sfx.mp4",
+  });
+  await fs.writeJson(path.join(tmpDir, "sfx_manifest.json"), {
+    source_plan: {
+      readiness: { status: "pass", blockers: [] },
+      selected_assets: [
+        {
+          asset_id: "clean-editorial-select-tick",
+          role: "ui_tick",
+          provider_id: "sonniss",
+          source_url: "file://licensed/sonniss/UIClick_Select_Middle_29.wav",
+        },
+      ],
+    },
+  });
+
+  const preflight = await runPreflightQaForStory(
+    baseStory({
+      id: "bridge_stale_sfx",
+      title: "Hades II Just Broke PlayStation's Silence",
+      scheduler_bridge_source: "goal_production_cutover",
+      render_manifest_path: renderManifestPath,
+      scheduler_bridge_artifact_dir: tmpDir,
+      exported_path: "D:/pulse-data/media/output/final/bridge_stale_sfx.mp4",
+      duration_seconds: 44.333,
+      runtime_seconds: 44.333,
+      audio_duration: 44.333,
+      sfx_manifest: {
+        source_plan: {
+          readiness: { status: "pass", blockers: [] },
+          selected_assets: [
+            {
+              asset_id: "stale-activation-pack-click",
+              role: "ui_tick",
+              provider_id: "sonniss",
+              source_url: "file://licensed/sonniss/CB Sounddesign - Activation 2/UIClick_UI Click 33.wav",
+            },
+          ],
+        },
+      },
+    }),
+    {
+      runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+      runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runBridgeMotionGovernanceQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    },
+  );
+
+  assert.equal(preflight.status, "blocked");
+  assert.ok(
+    preflight.blockers.includes(
+      "bridge_artifact_freshness:bridge_metadata_stale:sfx_manifest_selected_assets",
+    ),
+  );
+});
+
 test("bridge preflight blocks generated-only orange-card motion decks", async () => {
   const scores = {
     motion_density_score: 92,
@@ -2007,6 +2075,179 @@ test("attachPreflightQa blocks candidates without rendered-audio segment loudnes
       "audio_segment_loudness:voice_segment_loudness_jump",
     ),
   );
+});
+
+test("attachPreflightQa blocks scheduler candidates rejected by aggregate Goal 10 readiness", async () => {
+  const stories = [
+    baseStory({
+      id: "benchmark_blocked",
+      title: "Star Wars Zero Company Is More Than XCOM",
+      scheduler_bridge_source: "goal_production_cutover",
+      ...bridgeVisualEvidence("Star Wars Zero Company"),
+      sfx_manifest: bridgeSfxEvidence(),
+      rights_ledger: [{ asset_id: "star-wars-zero-company-render" }],
+      video_clips: [
+        { path: "clip-a.mp4", source_family: "official_trailer_a" },
+        { path: "clip-b.mp4", source_family: "official_trailer_b" },
+        { path: "clip-c.mp4", source_family: "official_trailer_c" },
+      ],
+    }),
+  ];
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-05-28T11:00:00.000Z",
+  });
+
+  await attachPreflightQa(report, stories, {
+    upstreamBenchmarkReport: {
+      stories: [
+        {
+          story_id: "benchmark_blocked",
+          status: "blocked",
+          blockers: [
+            "upstream:goal09_sound_design_engine_blocked",
+            "benchmark:motion_density_below_reference",
+          ],
+        },
+      ],
+    },
+    runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+  });
+
+  assert.equal(report.candidates[0].preflight_qa.status, "blocked");
+  assert.ok(
+    report.candidates[0].preflight_qa.blockers.includes(
+      "aggregate_benchmark:upstream:goal09_sound_design_engine_blocked",
+    ),
+  );
+  assert.equal(report.candidates[0].preflight_qa.checks.aggregate_benchmark.result, "fail");
+});
+
+test("attachPreflightQa blocks bridge candidates with rewrite-required script scorecards", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-script-scorecard-preflight-"));
+  await fs.writeJson(path.join(tmp, "script_scorecard.json"), {
+    verdict: "rewrite_required",
+    viral_score: 55,
+    blockers: ["duplicated_cta"],
+    scores: {
+      hook_strength: 82,
+      curiosity_gap: 35,
+      insight_density: 30,
+      source_safety: 68,
+      retention_pacing: 59,
+    },
+  });
+  const stories = [
+    baseStory({
+      id: "weak_script_bridge",
+      title: "Forza Horizon 6 Reviews Are In",
+      scheduler_bridge_source: "goal_production_cutover",
+      scheduler_bridge_artifact_dir: tmp,
+      ...bridgeVisualEvidence("Forza Horizon 6"),
+      sfx_manifest: bridgeSfxEvidence(),
+      rights_ledger: [{ asset_id: "forza-review-render" }],
+      video_clips: [
+        { path: "clip-a.mp4", source_family: "official_trailer_a" },
+        { path: "clip-b.mp4", source_family: "official_trailer_b" },
+        { path: "clip-c.mp4", source_family: "official_trailer_c" },
+      ],
+    }),
+  ];
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-05-28T11:15:00.000Z",
+  });
+
+  await attachPreflightQa(report, stories, {
+    upstreamBenchmarkReport: {
+      stories: [{ story_id: "weak_script_bridge", status: "ready", blockers: [] }],
+    },
+    runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+  });
+
+  assert.equal(report.candidates[0].preflight_qa.status, "blocked");
+  assert.ok(
+    report.candidates[0].preflight_qa.blockers.includes(
+      "script_scorecard:script_score_below_threshold",
+    ),
+  );
+  assert.equal(report.candidates[0].preflight_qa.checks.script_scorecard.result, "fail");
+});
+
+test("attachPreflightQa blocks final bridge candidates with no curiosity marker", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-script-curiosity-preflight-"));
+  await fs.writeJson(path.join(tmp, "script_scorecard.json"), {
+    verdict: "approved",
+    viral_score: 84,
+    blockers: [],
+    warnings: ["no_curiosity_marker"],
+    scores: {
+      hook_strength: 82,
+      curiosity_gap: 48,
+      insight_density: 76,
+      source_safety: 92,
+      retention_pacing: 81,
+    },
+  });
+  const stories = [
+    baseStory({
+      id: "flat_script_bridge",
+      title: "Forza Horizon 6 Reviews Are In",
+      scheduler_bridge_source: "goal_production_cutover",
+      scheduler_bridge_artifact_dir: tmp,
+      ...bridgeVisualEvidence("Forza Horizon 6"),
+      sfx_manifest: bridgeSfxEvidence(),
+      rights_ledger: [{ asset_id: "forza-review-render" }],
+      video_clips: [
+        { path: "clip-a.mp4", source_family: "official_trailer_a" },
+        { path: "clip-b.mp4", source_family: "official_trailer_b" },
+        { path: "clip-c.mp4", source_family: "official_trailer_c" },
+      ],
+    }),
+  ];
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-05-28T11:15:00.000Z",
+  });
+
+  await attachPreflightQa(report, stories, {
+    upstreamBenchmarkReport: {
+      stories: [{ story_id: "flat_script_bridge", status: "ready", blockers: [] }],
+    },
+    runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+  });
+
+  assert.equal(report.candidates[0].preflight_qa.status, "blocked");
+  assert.ok(
+    report.candidates[0].preflight_qa.blockers.includes(
+      "script_scorecard:no_curiosity_marker",
+    ),
+  );
+  assert.equal(report.candidates[0].preflight_qa.checks.script_scorecard.result, "fail");
 });
 
 test("attachPreflightQa blocks local-clone narration when word timestamps are not ASR aligned", async () => {

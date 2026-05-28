@@ -315,3 +315,59 @@ test("studio analytics loop falls back instead of throwing when the LLM fails", 
     fs.removeSync(tmp);
   }
 });
+
+test("studio analytics loop rejects malformed LLM findings and uses deterministic fallback", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-analytics-malformed-"));
+  const findingsPath = path.join(tmp, "analytics_findings.md");
+  try {
+    const rows = [
+      ["forza", "Forza Horizon 6 release timing", "Forza Horizon 6 finally has the launch detail players needed.", "Verified", 2400, 180, 30, 91],
+      ["subnautica", "Subnautica 2 balance update", "Subnautica 2 just clarified a creature balance change.", "Verified", 1500, 88, 15, 78],
+      ["lotr", "Warhorse Lord of the Rings project", "Warhorse is working on Lord of the Rings.", "Verified", 1700, 95, 20, 83],
+      ["state", "State of Play returns Tuesday", "State of Play returns Tuesday with a specific window.", "Verified", 1800, 100, 22, 84],
+      ["discussion", "What weird mechanics never returned", "Players are arguing about a strange design habit.", "Discussion", 220, 4, 1, 12],
+    ].map(([id, title, hook, flair, views, likes, comments, viralityScore]) => ({
+      id,
+      title,
+      hook,
+      flair,
+      breaking_score: 80,
+      youtube_views: views,
+      youtube_likes: likes,
+      youtube_comments: comments,
+      virality_score: viralityScore,
+      youtube_post_id: `yt_${id}`,
+      youtube_published_at: new Date().toISOString(),
+    }));
+    const posts = [];
+
+    const result = await analyticsLoop.runAnalyticsLoop({
+      args: { days: 14, dry: false },
+      loadStoriesFn: () => rows,
+      callLlmFn: async () => [
+        "## Top patterns (this window)",
+        "The data is mixed.",
+        "",
+        "## Underperforming patterns",
+        "Nothing clear.",
+      ].join("\n"),
+      postDiscordFn: async (text) => {
+        posts.push(text);
+      },
+      appendFindingsFn: (findings, payload, days) =>
+        analyticsLoop.appendFindings(findings, payload, days, { findingsPath }),
+      log: () => {},
+    });
+
+    assert.equal(result.usedFallback, true);
+    assert.match(result.fallbackReason, /missing_actionable_recommendation/);
+    assert.match(result.findings, /## Tomorrow's recommendation/);
+    assert.doesNotMatch(result.findings, /Nothing clear/);
+    assert.equal(posts.length, 1);
+    assert.match(posts[0], /Fallback:/);
+    assert.doesNotMatch(posts[0], /no actionable recommendation produced/i);
+    assert.match(await fs.readFile(findingsPath, "utf8"), /local analysis fallback/i);
+  } finally {
+    fs.removeSync(tmp);
+  }
+});

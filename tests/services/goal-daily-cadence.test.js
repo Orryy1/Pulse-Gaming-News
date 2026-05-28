@@ -90,14 +90,48 @@ test("daily cadence plans three reviewed V4 stories into canonical windows", asy
     await makeReviewItem(root, "story-c", { scriptScore: 80, visualScore: 91 }),
     await makeReviewItem(root, "story-d", { scriptScore: 78, visualScore: 88 }),
   ];
+  const blockedItem = {
+    story_id: "blocked-visual",
+    status: "blocked_from_human_approval",
+    operator_queue_status: "operator_required",
+    dead_end_blocker: false,
+    reject_recommended: false,
+    required_action: "operator_repair_or_review_required",
+    blockers: ["materialise_validated_real_motion_clips"],
+    render_input_requirements: [
+      {
+        repair_lane: "real_visual_media_required_after_owned_explainer_deck_failed_benchmark",
+        exact_missing_input: "official or licensed real visual media",
+      },
+    ],
+  };
 
   const plan = await buildGoalDailyCadencePlan({
-    humanReviewQueue: { review_items: reviewItems },
+    humanReviewQueue: { review_items: reviewItems, blocked_items: [blockedItem] },
     generatedAt: "2026-05-22T08:00:00.000Z",
     targetDailyShorts: 3,
   });
 
   assert.equal(plan.daily_content_plan.planned_story_count, 3);
+  assert.equal(plan.daily_content_plan.ready_but_unscheduled_count, 1);
+  assert.deepEqual(
+    plan.daily_content_plan.ready_but_unscheduled_items.map((item) => item.story_id),
+    ["story-d"],
+  );
+  assert.equal(plan.daily_content_plan.operator_blocked_count, 1);
+  assert.deepEqual(plan.daily_content_plan.operator_blocked_items, [
+    {
+      story_id: "blocked-visual",
+      status: "blocked_from_human_approval",
+      operator_queue_status: "operator_required",
+      dead_end_blocker: false,
+      reject_recommended: false,
+      required_action: "operator_repair_or_review_required",
+      blockers: ["materialise_validated_real_motion_clips"],
+      repair_lanes: ["real_visual_media_required_after_owned_explainer_deck_failed_benchmark"],
+      missing_inputs: ["official or licensed real visual media"],
+    },
+  ]);
   assert.equal(plan.publish_schedule.length, 3);
   assert.deepEqual(
     plan.publish_schedule.map((slot) => slot.scheduled_for_utc),
@@ -117,6 +151,8 @@ test("daily cadence plans three reviewed V4 stories into canonical windows", asy
   assert.deepEqual(plan.publish_schedule[0].deferred_platforms_not_counted, ["tiktok", "x"]);
   assert.equal(plan.cadence_quality_report.verdict, "AMBER");
   assert.equal(plan.cadence_quality_report.autonomous_publish_ready, false);
+  assert.equal(plan.cadence_quality_report.ready_but_unscheduled_count, 1);
+  assert.equal(plan.cadence_quality_report.operator_blocked_count, 1);
   assert.ok(plan.cadence_quality_report.gates.no_disabled_platform_counted_as_delivered);
 });
 
@@ -145,6 +181,36 @@ test("daily cadence rejects weak or non-GREEN review packets instead of filling 
   assert.ok(
     plan.daily_content_plan.rejected_items.find((item) => item.story_id === "red-enabled").blockers.includes("enabled_platform_verdict_not_green"),
   );
+});
+
+test("daily cadence blocks candidates that the aggregate Goal 10 benchmark report still rejects", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-cadence-goal10-"));
+  const clean = await makeReviewItem(root, "goal10-clean", { scriptScore: 84, visualScore: 93 });
+  const blocked = await makeReviewItem(root, "goal10-blocked", { scriptScore: 84, visualScore: 93 });
+
+  const plan = await buildGoalDailyCadencePlan({
+    humanReviewQueue: { review_items: [clean, blocked] },
+    upstreamBenchmarkReport: {
+      stories: [
+        { story_id: "goal10-clean", status: "ready", blockers: [] },
+        {
+          story_id: "goal10-blocked",
+          status: "blocked",
+          blockers: ["pattern:commercial_integration_missing"],
+        },
+      ],
+    },
+    generatedAt: "2026-05-22T08:00:00.000Z",
+    targetDailyShorts: 2,
+  });
+
+  assert.deepEqual(
+    plan.daily_content_plan.planned_items.map((item) => item.story_id),
+    ["goal10-clean"],
+  );
+  const rejected = plan.daily_content_plan.rejected_items.find((item) => item.story_id === "goal10-blocked");
+  assert.ok(rejected.blockers.includes("upstream_goal10_benchmark_not_ready"));
+  assert.deepEqual(rejected.upstream_benchmark_blockers, ["pattern:commercial_integration_missing"]);
 });
 
 test("daily cadence ignores stale failure arrays when current artefact verdicts and incident guard pass", async () => {
@@ -226,6 +292,9 @@ test("daily cadence writes required planning artefacts", async () => {
   assert.equal(await fs.pathExists(path.join(root, "cadence_quality_report.json")), true);
   assert.equal(await fs.pathExists(path.join(root, "daily_content_plan.md")), true);
   assert.equal(path.basename(written.dailyContentPlanPath), "daily_content_plan.json");
+  const markdown = await fs.readFile(path.join(root, "daily_content_plan.md"), "utf8");
+  assert.match(markdown, /Ready but unscheduled/);
+  assert.match(markdown, /Operator-blocked/);
 });
 
 test("daily cadence CLI is registered and emits clean JSON", async () => {
@@ -237,7 +306,18 @@ test("daily cadence CLI is registered and emits clean JSON", async () => {
 
   const result = spawnSync(
     process.execPath,
-    ["tools/goal-daily-cadence.js", "--human-review-queue", queuePath, "--out-dir", outDir, "--target-daily-shorts", "1", "--json"],
+    [
+      "tools/goal-daily-cadence.js",
+      "--human-review-queue",
+      queuePath,
+      "--out-dir",
+      outDir,
+      "--target-daily-shorts",
+      "1",
+      "--upstream-benchmark-report",
+      path.join(root, "missing-goal10.json"),
+      "--json",
+    ],
     {
       cwd: ROOT,
       encoding: "utf8",

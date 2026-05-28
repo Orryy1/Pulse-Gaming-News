@@ -14,6 +14,7 @@ const {
   drawtextEscape,
   parseArgs,
   renderNarrationScriptText,
+  resolveReadableMediaPath,
   subtitleWordsFromTimestampPayload,
   resolveStorySfxCueMix,
   resolveStorySfxPaths,
@@ -51,6 +52,29 @@ test("Studio V4 proof renderer CLI stays local and story-json driven", () => {
   assert.equal(args.storyJson, "test/output/story.json");
   assert.equal(args.output, "test/output/out.mp4");
   assert.equal(args.json, true);
+});
+
+test("Studio V4 proof renderer prefers MEDIA_ROOT for absolute legacy output audio paths", async () => {
+  assert.equal(typeof resolveReadableMediaPath, "function");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-v4-proof-media-root-"));
+  const mediaRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-v4-proof-media-root-cache-"));
+  const previousMediaRoot = process.env.MEDIA_ROOT;
+  process.env.MEDIA_ROOT = mediaRoot;
+  try {
+    const workspacePath = path.join(root, "output", "audio", "caption-drift_timestamps.json");
+    const mediaPath = path.join(mediaRoot, "output", "audio", "caption-drift_timestamps.json");
+    fs.mkdirSync(path.dirname(workspacePath), { recursive: true });
+    fs.mkdirSync(path.dirname(mediaPath), { recursive: true });
+    fs.writeFileSync(workspacePath, JSON.stringify({ words: [{ word: "stale", start: 0, end: 0.2 }] }));
+    fs.writeFileSync(mediaPath, JSON.stringify({ words: [{ word: "fresh", start: 0, end: 0.2 }] }));
+
+    const resolved = await resolveReadableMediaPath(workspacePath);
+
+    assert.equal(resolved, mediaPath);
+  } finally {
+    if (previousMediaRoot === undefined) delete process.env.MEDIA_ROOT;
+    else process.env.MEDIA_ROOT = previousMediaRoot;
+  }
 });
 
 test("Studio V4 proof renderer converts percent signs before drawtext", () => {
@@ -471,8 +495,8 @@ test("Studio V4 proof renderer picks a compact newsroom click for source locks",
     "audio",
     "sonniss",
     "GDC2024",
-    "CB Sounddesign - Activation 2",
-    "UIClick_UI Click 33_CB Sounddesign_ACTIVATION2.wav",
+    "Rescopic Sound - User Interaction",
+    "UIClick_UI Click Short 03_RSCPC_USIN.wav",
   );
   const highTechBeep = path.join(
     root,
@@ -505,7 +529,7 @@ test("Studio V4 proof renderer picks a compact newsroom click for source locks",
         approval_status: "approved_for_commercial_editorial_use",
       },
       {
-        asset_id: "plain-editorial-click",
+        asset_id: "clean-user-interaction-click",
         role: "ui_tick",
         family: "ui_tick",
         provider_id: "sonniss",
@@ -523,7 +547,7 @@ test("Studio V4 proof renderer picks a compact newsroom click for source locks",
     ],
   });
 
-  assert.deepEqual(mix.map((cue) => cue.asset_id), ["plain-editorial-click"]);
+  assert.deepEqual(mix.map((cue) => cue.asset_id), ["clean-user-interaction-click"]);
   assert.ok(mix.every((cue) => cue.volume <= 0.004));
   assert.ok(mix.every((cue) => cue.durationS <= 0.07));
 });

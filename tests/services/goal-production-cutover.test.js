@@ -517,6 +517,70 @@ test("production cutover requeues final renders when selected render deck missed
   assert.equal(plan.queue[0].selected_render_evidence.direct_video_motion_asset_count, 0);
 });
 
+test("production cutover accepts selected official product-page clips when renderer omitted media_kind", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-selected-product-page-"));
+  const storyPackage = await makeCutoverPackage(root, "selected-product-page-final", {
+    subject: "PlayStation 5",
+    title: "PlayStation 5 Storefront Just Got Louder",
+    finalPublishRender: true,
+    renderer: "visual_v4_production",
+    visualTier: "production_v4_motion",
+  });
+  const artifactDir = storyPackage.artifact_dir;
+  const audioPath = path.join(artifactDir, "narration.mp3");
+  const timestampsPath = path.join(artifactDir, "narration_timestamps.json");
+  await fs.outputFile(audioPath, Buffer.alloc(4000, 2));
+  await fs.outputJson(timestampsPath, { words: [{ word: "PlayStation", start: 0, end: 0.3 }] });
+
+  const directClips = [];
+  for (let index = 1; index <= 5; index += 1) {
+    const clipPath = path.join(artifactDir, "direct", `ps5-${index}.mp4`);
+    await fs.outputFile(clipPath, Buffer.alloc(3000, index));
+    directClips.push({
+      id: `ps5-product-page-${index}`,
+      path: clipPath,
+      source_url: `https://gmedia.playstation.com/is/content/SIEPDC/global_pdc/en/hardware/ps5/videos/ps5-overview-${index}.mp4`,
+      source_type: "official_platform_product_page",
+      source_family: `official_playstation_ps5_product_page_${index}`,
+      validated: true,
+    });
+  }
+  await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), {
+    narration_audio_path: audioPath,
+    word_timestamps_path: timestampsPath,
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    motion_inventory: {
+      accepted_local_clips: directClips.map((clip) => ({ ...clip, media_kind: "direct_video" })),
+      production_motion_clips: directClips.map((clip) => ({ ...clip, media_kind: "direct_video" })),
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    records: directClips.map((clip) => ({
+      ...clip,
+      media_kind: "direct_video",
+      asset_type: "motion_clip",
+      licence_basis: "official_reference_transformative_short",
+      commercial_use_allowed: true,
+      approval_status: "approved_for_transformative_editorial_use",
+    })),
+  });
+  await fs.outputJson(path.join(artifactDir, "visual_v4_render_story.json"), {
+    story_id: "selected-product-page-final",
+    visual_v4_bridge_video_clips: directClips,
+  });
+
+  const plan = await buildProductionRenderCutoverPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-05-28T09:20:00.000Z",
+  });
+
+  assert.equal(plan.summary.queued_final_render_count, 0, JSON.stringify(plan.queue[0], null, 2));
+  assert.equal(plan.summary.ready_final_render_count, 1, JSON.stringify(plan.blocked[0], null, 2));
+  assert.equal(plan.scheduler_bridge.candidate_count, 1);
+  assert.equal(plan.ready[0].selected_render_evidence.direct_video_motion_asset_count, 5);
+});
+
 test("production cutover requeues generated-only selected decks when real motion inputs exist", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-selected-generated-only-"));
   const storyPackage = await makeCutoverPackage(root, "selected-generated-only-final", {

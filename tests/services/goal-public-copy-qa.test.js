@@ -115,6 +115,32 @@ test("goal public copy QA blocks visibly broken thumbnail headlines", () => {
   assert.equal(repeatedTokenReport.verdict, "fail");
   assert.ok(repeatedTokenReport.failures.includes("public_copy:thumbnail_headline_repeated_token"));
 
+  const repeatedSubjectReport = evaluateGoalPublicCopy({
+    canonical_subject: "The Expanse: Osiris Reborn",
+    selected_title: "The Expanse Shows Real Gameplay",
+    thumbnail_headline: "EXPANSE: OSIRIS REBORN THE EXPANSE",
+    first_spoken_line: "The Expanse: Osiris Reborn finally showed real gameplay.",
+    narration_script:
+      "The Expanse: Osiris Reborn finally showed real gameplay. Xbox showed the new cut during Partner Preview.",
+    description: "Xbox showed The Expanse: Osiris Reborn gameplay. Source: Xbox.",
+  });
+
+  assert.equal(repeatedSubjectReport.verdict, "fail");
+  assert.ok(repeatedSubjectReport.failures.includes("public_copy:thumbnail_headline_repeated_token"));
+
+  const determinerBeforeVerbReport = evaluateGoalPublicCopy({
+    canonical_subject: "The Expanse: Osiris Reborn",
+    selected_title: "The Expanse Shows Real Gameplay",
+    thumbnail_headline: "EXPANSE: OSIRIS REBORN THE SHOWS",
+    first_spoken_line: "The Expanse: Osiris Reborn finally showed real gameplay.",
+    narration_script:
+      "The Expanse: Osiris Reborn finally showed real gameplay. Xbox showed the new cut during Partner Preview.",
+    description: "Xbox showed The Expanse: Osiris Reborn gameplay. Source: Xbox.",
+  });
+
+  assert.equal(determinerBeforeVerbReport.verdict, "fail");
+  assert.ok(determinerBeforeVerbReport.failures.includes("public_copy:thumbnail_headline_dangles"));
+
   const semanticallyCutReports = [
     {
       canonical_subject: "V Rising",

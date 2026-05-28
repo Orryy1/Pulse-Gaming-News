@@ -62,6 +62,13 @@ function parseArgs(argv) {
     searchTemplate: DEFAULT_SEARCH_TEMPLATE,
     governedVisualPlanTemplate: DEFAULT_GOVERNED_VISUAL_PLAN_TEMPLATE,
     canonicalEntityRepairTemplate: DEFAULT_CANONICAL_ENTITY_REPAIR_TEMPLATE,
+    _explicitPaths: {
+      outputJson: false,
+      intakeTemplate: false,
+      searchTemplate: false,
+      governedVisualPlanTemplate: false,
+      canonicalEntityRepairTemplate: false,
+    },
   };
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i];
@@ -96,17 +103,41 @@ function parseArgs(argv) {
       args.artifactRoot = argv[++i] || DEFAULT_ARTIFACT_ROOT;
     } else if (arg === "--output-json") {
       args.outputJson = argv[++i] || DEFAULT_OUTPUT_JSON;
+      args._explicitPaths.outputJson = true;
     } else if (arg === "--output-md") {
       args.outputMd = argv[++i] || DEFAULT_OUTPUT_MD;
     } else if (arg === "--intake-template") {
       args.intakeTemplate = argv[++i] || DEFAULT_INTAKE_TEMPLATE;
+      args._explicitPaths.intakeTemplate = true;
     } else if (arg === "--search-template" || arg === "--official-search-template") {
       args.searchTemplate = argv[++i] || DEFAULT_SEARCH_TEMPLATE;
+      args._explicitPaths.searchTemplate = true;
     } else if (arg === "--governed-visual-plan-template" || arg === "--visual-plan-template") {
       args.governedVisualPlanTemplate = argv[++i] || DEFAULT_GOVERNED_VISUAL_PLAN_TEMPLATE;
+      args._explicitPaths.governedVisualPlanTemplate = true;
     } else if (arg === "--canonical-entity-repair-template" || arg === "--entity-repair-template") {
       args.canonicalEntityRepairTemplate = argv[++i] || DEFAULT_CANONICAL_ENTITY_REPAIR_TEMPLATE;
+      args._explicitPaths.canonicalEntityRepairTemplate = true;
     }
+  }
+  applyOutputJsonTemplateDefaults(args);
+  return args;
+}
+
+function applyOutputJsonTemplateDefaults(args = {}) {
+  if (!args._explicitPaths?.outputJson) return args;
+  const outputDir = path.dirname(args.outputJson || DEFAULT_OUTPUT_JSON);
+  if (!args._explicitPaths.intakeTemplate) {
+    args.intakeTemplate = path.join(outputDir, "visual_v4_source_family_intake_template.json");
+  }
+  if (!args._explicitPaths.searchTemplate) {
+    args.searchTemplate = path.join(outputDir, "visual_v4_official_search_template.json");
+  }
+  if (!args._explicitPaths.governedVisualPlanTemplate) {
+    args.governedVisualPlanTemplate = path.join(outputDir, "visual_v4_governed_visual_plan_template.json");
+  }
+  if (!args._explicitPaths.canonicalEntityRepairTemplate) {
+    args.canonicalEntityRepairTemplate = path.join(outputDir, "visual_v4_canonical_entity_repair_template.json");
   }
   return args;
 }
@@ -174,6 +205,15 @@ function commandPathsFromArgs(args = {}) {
   const officialDirectMediaDiscoveryMd = intakeTemplate
     ? path.join(path.dirname(intakeTemplate), "official_direct_media_discovery.md")
     : null;
+  const licensedDirectMediaReport = intakeTemplate
+    ? path.join(path.dirname(intakeTemplate), "studio_v4_licensed_direct_media_acquisition.json")
+    : null;
+  const trustedFootageRegistryReport = intakeTemplate
+    ? path.join(path.dirname(intakeTemplate), "trusted_footage_registry_report.json")
+    : null;
+  const segmentValidationReport = intakeTemplate
+    ? path.join(path.dirname(intakeTemplate), "official_trailer_segment_validation_apply_local.json")
+    : null;
   return {
     sourceFamilyIntakeTemplate: commandPathFromRoot(args.intakeTemplate),
     officialSearchTemplate: commandPathFromRoot(args.searchTemplate),
@@ -181,6 +221,9 @@ function commandPathsFromArgs(args = {}) {
     officialDirectMediaIntakeTemplate: commandPathFromRoot(officialDirectMediaIntakeTemplate),
     officialDirectMediaDiscoveryJson: commandPathFromRoot(officialDirectMediaDiscoveryJson),
     officialDirectMediaDiscoveryMd: commandPathFromRoot(officialDirectMediaDiscoveryMd),
+    licensedDirectMediaReport: commandPathFromRoot(licensedDirectMediaReport),
+    trustedFootageRegistryReport: commandPathFromRoot(trustedFootageRegistryReport),
+    segmentValidationReport: commandPathFromRoot(segmentValidationReport),
   };
 }
 

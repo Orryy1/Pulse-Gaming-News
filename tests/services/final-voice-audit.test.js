@@ -184,7 +184,7 @@ test("final voice audit reviews local voice when true peak is too hot for social
   assert.equal(row.do_not_reuse_for_tiktok_dispatch, true);
 });
 
-test("final voice audit reviews local voice when segment loudness jumps mid-render", () => {
+test("final voice audit rejects local voice when segment loudness jumps mid-render", () => {
   const row = classifyFinalRenderVoice({
     mp4Path: "D:/pulse-data/media/output/final/rss_jump.mp4",
     report: {
@@ -213,8 +213,8 @@ test("final voice audit reviews local voice when segment loudness jumps mid-rend
     env: { STUDIO_V2_LOCAL_VOICE_APPROVED: "true" },
   });
 
-  assert.equal(row.verdict, "review");
-  assert.ok(row.warnings.includes("voice_segment_loudness_jump"));
+  assert.equal(row.verdict, "reject");
+  assert.ok(row.blockers.includes("voice_segment_loudness_jump"));
   assert.equal(row.do_not_reuse_for_tiktok_dispatch, true);
 });
 

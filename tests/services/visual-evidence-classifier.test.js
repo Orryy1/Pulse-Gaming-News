@@ -111,6 +111,52 @@ test("deduplicates the same direct-video clip across inventory and rights eviden
   assert.equal(profile.direct_video_motion_family_count, 1);
 });
 
+test("counts official product-page mp4 clips as direct-video evidence even when renderer omitted media_kind", () => {
+  const profile = visualEvidenceProfile({
+    footageInventory: {
+      motion_inventory: {
+        production_motion_clips: [
+          {
+            id: "ps5-product-page-motion",
+            path: "C:\\repo\\output\\video_cache\\ps5_product_page_clip.mp4",
+            source_url:
+              "https://gmedia.playstation.com/is/content/SIEPDC/global_pdc/en/hardware/ps5/videos/ps5-overview.mp4",
+            source_type: "official_platform_product_page",
+            source_family: "official_playstation_ps5_product_page",
+            validated: true,
+          },
+        ],
+      },
+    },
+  });
+
+  assert.equal(profile.direct_video_motion_asset_count, 1);
+  assert.equal(profile.direct_video_motion_family_count, 1);
+});
+
+test("counts Nintendo storefront mp4 clips as direct-video evidence when renderer omitted media_kind", () => {
+  const profile = visualEvidenceProfile({
+    footageInventory: {
+      motion_inventory: {
+        production_motion_clips: [
+          {
+            id: "nintendo-storefront-motion",
+            path: "C:\\repo\\output\\video_cache\\super_mario_rpg_clip.mp4",
+            source_url:
+              "https://assets.nintendo.com/video/upload/store/software/switch/70010000068683/Video/946fb66280168f451a6b0c588f39905d721f477d9160de718f95cb222e684d5f.mp4",
+            source_type: "platform_storefront",
+            source_family: "",
+            validated: true,
+          },
+        ],
+      },
+    },
+  });
+
+  assert.equal(profile.direct_video_motion_asset_count, 1);
+  assert.equal(profile.direct_video_motion_family_count, 1);
+});
+
 test("does not count licensed audio and SFX records as visual or motion evidence", () => {
   const profile = visualEvidenceProfile({
     rightsLedger: {

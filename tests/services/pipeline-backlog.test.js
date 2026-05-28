@@ -624,7 +624,126 @@ test("buildPipelineBacklog: empty list returns zero counts + null candidates", (
   assert.strictEqual(b.counts.published, 0);
   assert.strictEqual(b.next_produce_candidate, null);
   assert.strictEqual(b.next_publish_candidate, null);
+  assert.strictEqual(b.live_next_publish_candidate, null);
+  assert.strictEqual(b.scheduler_bridge_next_publish_candidate, null);
   assert.deepStrictEqual(b.stuck_top10, []);
+});
+
+test("buildPipelineBacklog: surfaces scheduler bridge candidate without changing live DB counts", () => {
+  const b = buildPipelineBacklog(
+    [
+      {
+        id: "live-review",
+        title: "Live DB review row",
+        approved: false,
+      },
+    ],
+    {
+      schedulerBridgeCandidateReport: {
+        bridge_candidates: {
+          count: 2,
+          mode: "authoritative_bridge_only",
+          live_fallback_used: false,
+        },
+        preflight_qa: {
+          candidates_checked: 2,
+          pass: 2,
+          blocked: 0,
+          warning: 0,
+        },
+        candidates: [
+          {
+            id: "bridge-ready",
+            title: "Hades II Just Broke PlayStation's Silence",
+            status: "publish_ready",
+            score: 97,
+            duration_seconds: 42.4,
+            preflight_qa: { status: "pass", blockers: [], warnings: [] },
+          },
+        ],
+      },
+    },
+  );
+
+  assert.strictEqual(b.counts.review, 1);
+  assert.strictEqual(b.counts.produced_not_published, 0);
+  assert.strictEqual(b.live_next_publish_candidate, null);
+  assert.deepStrictEqual(b.scheduler_bridge_publish_readiness, {
+    source: "scheduler_bridge_preflight",
+    candidate_count: 2,
+    preflight_checked_count: 2,
+    preflight_pass_count: 2,
+    preflight_blocked_count: 0,
+    preflight_warning_count: 0,
+    live_fallback_used: false,
+    mode: "authoritative_bridge_only",
+  });
+  assert.deepStrictEqual(b.scheduler_bridge_next_publish_candidate, {
+    id: "bridge-ready",
+    title: "Hades II Just Broke PlayStation's Silence",
+    eligible_because: "scheduler_bridge_preflight_pass",
+    source: "scheduler_bridge_preflight",
+    preflight_status: "pass",
+    duration_seconds: 42.4,
+  });
+  assert.strictEqual(b.next_publish_candidate.id, "bridge-ready");
+  assert.strictEqual(b.next_publish_candidate.source, "scheduler_bridge_preflight");
+});
+
+test("buildPipelineBacklog: surfaces scheduler bridge blocked candidates with repair lanes", () => {
+  const b = buildPipelineBacklog([], {
+    schedulerBridgeCandidateReport: {
+      bridge_candidates: {
+        count: 3,
+        mode: "authoritative_bridge_only",
+        live_fallback_used: false,
+      },
+      preflight_qa: {
+        candidates_checked: 3,
+        pass: 1,
+        blocked: 2,
+        warning: 0,
+      },
+      candidates: [
+        {
+          id: "weak-script",
+          title: "Forza Horizon 6 Reviews Are In",
+          status: "review",
+          duration_seconds: 39.5,
+          preflight_qa: {
+            status: "blocked",
+            blockers: ["script_scorecard:script_score_below_threshold"],
+            checks: {
+              script_scorecard: {
+                result: "fail",
+                failures: ["script_score_below_threshold", "script_verdict_rewrite_required"],
+              },
+            },
+          },
+        },
+        {
+          id: "weak-benchmark",
+          title: "Star Wars Zero Company Is More Than XCOM",
+          status: "review",
+          duration_seconds: 52.7,
+          preflight_qa: {
+            status: "blocked",
+            blockers: ["aggregate_benchmark:upstream:goal09_sound_design_engine_blocked"],
+          },
+        },
+      ],
+    },
+  });
+
+  assert.equal(b.scheduler_bridge_blocked_candidates.length, 2);
+  assert.deepEqual(b.scheduler_bridge_blocked_candidates[0].repair_lanes, [
+    "script_rewrite_and_audio_rerender",
+  ]);
+  assert.deepEqual(b.scheduler_bridge_blocked_candidates[1].repair_lanes, [
+    "sound_visual_benchmark_repair",
+  ]);
+  assert.match(renderPipelineBacklogMarkdown(b), /Scheduler Bridge Blockers/);
+  assert.match(renderPipelineBacklogMarkdown(b), /script_rewrite_and_audio_rerender/);
 });
 
 test("buildPipelineBacklog: counts across every stage", () => {
@@ -770,6 +889,8 @@ test("ops:pipeline-backlog CLI is registered as a read-only operator command", (
   const src = fs.readFileSync(TOOL_PATH, "utf8");
   assert.match(src, /buildPipelineBacklog/);
   assert.match(src, /renderPipelineBacklogMarkdown/);
+  assert.match(src, /next_publish_candidates\.json/);
+  assert.match(src, /schedulerBridgeCandidateReport/);
   assert.doesNotMatch(src, /upsertStory|publishNextStory|uploadShort|AUTO_PUBLISH/);
 });
 

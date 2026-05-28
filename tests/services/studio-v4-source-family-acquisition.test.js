@@ -16,6 +16,7 @@ const {
   hydrateMotionPacksWithCanonicalManifests,
   mergeReferenceReports,
   parseArgs,
+  commandPathsFromArgs,
 } = require("../../tools/studio-v4-source-family-acquisition");
 const packageJson = require("../../package.json");
 
@@ -1274,6 +1275,65 @@ test("Studio V4 source-family acquisition surfaces official search actions witho
   ]);
 });
 
+test("Studio V4 source-family acquisition carries dead-end work-order blockers", () => {
+  const report = buildStudioV4SourceFamilyAcquisitionReport({
+    motionPackReports: [
+      motionPack({
+        story_id: "image-post-dead-end",
+        title: "Capturing Has One Player Question",
+        canonical_subject: "Capturing",
+        clips: [],
+        motion_budget: {
+          required_motion_scenes: 5,
+          available_motion_clips: 0,
+          required_distinct_families: 4,
+          available_distinct_families: 0,
+        },
+        trusted_source_pipeline: { references_found: 0, intake_queue: [] },
+      }),
+    ],
+    trustedFootageReport: { story_candidates: [], accepted_sources: [] },
+    referenceReport: { plans: [] },
+    directVideoEnrichmentWorkOrder: {
+      jobs: [
+        {
+          story_id: "image-post-dead-end",
+          status: "blocked_on_render_inputs",
+          blockers: [
+            "public_copy_repair_required",
+            "source_label_consistency_repair_required",
+          ],
+          actions: [
+            {
+              status: "reject_recommended",
+              repair_lane: "reject_or_human_review_non_news_image_post",
+              dead_end_blocker: true,
+              operator_approval_required: true,
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  assert.equal(report.no_dead_end_blockers, false);
+  assert.equal(report.summary.dead_end_blocker_entries, 1);
+  assert.equal(report.summary.reject_recommended_entries, 1);
+  assert.equal(report.summary.operator_required_entries, 1);
+  assert.equal(report.acquisition_runway.dead_end_blocker_rows, 1);
+  assert.equal(report.acquisition_runway.reject_recommended_rows, 1);
+
+  const row = report.rows[0];
+  assert.equal(row.render_input_dead_end_blocker, true);
+  assert.equal(row.render_input_operator_required, true);
+  assert.equal(row.render_input_reject_recommended, true);
+  assert.deepEqual(row.render_input_blockers, [
+    "public_copy_repair_required",
+    "source_label_consistency_repair_required",
+  ]);
+  assert.deepEqual(row.render_input_repair_lanes, ["reject_or_human_review_non_news_image_post"]);
+});
+
 test("Studio V4 source-family acquisition extracts a game entity from a messy source-led title", () => {
   const report = buildStudioV4SourceFamilyAcquisitionReport({
     motionPackReports: [
@@ -1554,6 +1614,38 @@ test("Studio V4 source-family acquisition CLI uses the live direct-video work or
   );
 });
 
+test("Studio V4 source-family acquisition CLI derives template paths from explicit output JSON", () => {
+  const args = parseArgs([
+    "node",
+    "tools/studio-v4-source-family-acquisition.js",
+    "--output-json",
+    "output/goal-contract/studio_v4_source_family_acquisition_remaining.json",
+  ]);
+  const commandPaths = commandPathsFromArgs(args);
+  const goalContractDir = path.join("output", "goal-contract");
+
+  assert.equal(
+    args.intakeTemplate,
+    path.join(goalContractDir, "visual_v4_source_family_intake_template.json"),
+  );
+  assert.equal(
+    args.searchTemplate,
+    path.join(goalContractDir, "visual_v4_official_search_template.json"),
+  );
+  assert.equal(
+    args.governedVisualPlanTemplate,
+    path.join(goalContractDir, "visual_v4_governed_visual_plan_template.json"),
+  );
+  assert.equal(
+    args.canonicalEntityRepairTemplate,
+    path.join(goalContractDir, "visual_v4_canonical_entity_repair_template.json"),
+  );
+  assert.equal(
+    commandPaths.sourceFamilyIntakeTemplate,
+    "output/goal-contract/visual_v4_source_family_intake_template.json",
+  );
+});
+
 test("Studio V4 source-family acquisition CLI filters repeatable story IDs before writing reports", async () => {
   const root = path.join(__dirname, "..", "..");
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-source-family-"));
@@ -1727,6 +1819,15 @@ test("Studio V4 source-family acquisition CLI writes runnable next commands for 
     const officialDirectMediaIntakePath = path
       .join(tempDir, "official_direct_media_intake_template.json")
       .replace(/\\/g, "/");
+    const licensedDirectMediaReportPath = path
+      .join(tempDir, "studio_v4_licensed_direct_media_acquisition.json")
+      .replace(/\\/g, "/");
+    const trustedFootageRegistryReportPath = path
+      .join(tempDir, "trusted_footage_registry_report.json")
+      .replace(/\\/g, "/");
+    const segmentValidationReportPath = path
+      .join(tempDir, "official_trailer_segment_validation_apply_local.json")
+      .replace(/\\/g, "/");
 
     assert.match(rows["pokemon-go"].safe_next_commands[0].command, new RegExp(searchPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     assert.match(rows["pokemon-go"].safe_next_commands[0].command, new RegExp(intakePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
@@ -1742,6 +1843,9 @@ test("Studio V4 source-family acquisition CLI writes runnable next commands for 
       commandPaths: {
         sourceFamilyIntakeTemplate: intakePath,
         officialDirectMediaIntakeTemplate: officialDirectMediaIntakePath,
+        licensedDirectMediaReport: licensedDirectMediaReportPath,
+        trustedFootageRegistryReport: trustedFootageRegistryReportPath,
+        segmentValidationReport: segmentValidationReportPath,
       },
     }).rows[0];
     assert.match(
@@ -1756,6 +1860,22 @@ test("Studio V4 source-family acquisition CLI writes runnable next commands for 
       directMediaStory.safe_next_commands[1].command,
       new RegExp(officialDirectMediaIntakePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
     );
+    const resolveCommand = directMediaStory.safe_next_commands.find(
+      (item) => item.step === "resolve_trailer_references",
+    ).command;
+    assert.match(
+      resolveCommand,
+      new RegExp(licensedDirectMediaReportPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+    );
+    assert.match(
+      resolveCommand,
+      new RegExp(trustedFootageRegistryReportPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+    );
+    assert.match(
+      resolveCommand,
+      new RegExp(segmentValidationReportPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+    );
+    assert.doesNotMatch(resolveCommand, /test\/output/);
     assert.doesNotMatch(
       JSON.stringify(report.rows.flatMap((row) => row.safe_next_commands)),
       /test\/output\/visual_v4_/,

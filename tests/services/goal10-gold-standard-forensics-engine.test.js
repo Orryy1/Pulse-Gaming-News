@@ -257,6 +257,39 @@ test("Goal 10 blocks missing benchmark packs instead of inventing reference cove
   assert.equal(report.benchmark_rejection_reasons.rejections.length, 3);
 });
 
+test("Goal 10 accepts source-first tracked story pages when no affiliate disclosure is required", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal10-source-page-"));
+  const story = await makeBenchmarkStory(root, "story-source-page");
+  await fs.outputJson(path.join(story.artifact_dir, "affiliate_link_manifest.json"), {
+    disclosure_required: false,
+    commercial_intent_type: "no_safe_commercial_intent",
+    landing_page_route: "/p/source-first-story",
+    landing_page_attribution: {
+      verdict: "pass",
+      link_tracking: [
+        { platform: "youtube", landing_page_url: "/p/source-first-story?utm_source=youtube" },
+        { platform: "instagram", landing_page_url: "/p/source-first-story?utm_source=instagram" },
+      ],
+    },
+  });
+
+  const report = await buildGoal10GoldStandardForensicsEngine({
+    storyPackages: [story],
+    referenceLibrary: completeReferenceLibrary(),
+    upstreamSoundReport: { stories: [{ story_id: "story-source-page", status: "ready", blockers: [] }] },
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-05-25T23:35:45.269Z",
+  });
+
+  assert.equal(report.stories[0].status, "ready");
+  assert.equal(
+    report.stories[0].pattern_data.commercial_integration.value,
+    "source_first_tracked_story_page",
+  );
+  assert.ok(!report.stories[0].blockers.includes("pattern:commercial_integration_missing"));
+});
+
 test("Goal 10 writes the required forensic benchmark artefacts", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal10-write-"));
   const story = await makeBenchmarkStory(root, "story-ready");

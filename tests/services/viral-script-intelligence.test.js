@@ -133,3 +133,18 @@ test("viral script intelligence rejects instruction-like buyer advice narration"
   assert.ok(result.blockers.includes("instruction_like_buyer_advice"));
   assert.ok(result.rewrite_recommendations.some((item) => /story consequence/i.test(item)));
 });
+
+test("viral script intelligence treats source names as present despite casing differences", () => {
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "mario-deal",
+      title: "Super Mario RPG Drops To $15",
+      source_name: "Gamestop",
+    },
+    script:
+      "Super Mario RPG just dropped to $15 at GameStop. GameStop lists Super Mario RPG at $15, 70% off its listed price. The catch is what matters: platform, seller and timing can change the value before players act. For anyone who skipped the physical Switch copy, that is a real pickup point while the listing holds. Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  assert.equal(result.scores.source_safety, 86);
+  assert.notEqual(result.verdict, "rewrite_required");
+});

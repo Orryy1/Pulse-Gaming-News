@@ -105,6 +105,46 @@ test("goal audio materializer generates local audio, word timestamps and updates
   assert.equal(report.safety.no_publish_triggered, true);
 });
 
+test("goal audio materializer syncs canonical narration metadata after public-copy repair", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-canonical-sync-"));
+  const repairedScript = "The Expanse finally showed real gameplay.";
+  const artifactDir = await makePackage(root, "story-canonical-sync", {
+    selected_title: "The Expanse Shows Real Gameplay",
+    narration_script: repairedScript,
+    tts_script: repairedScript,
+    word_count: 135,
+    public_copy_repaired_at: "2026-05-28T09:07:00.000Z",
+    duration_variant_repaired_at: "2026-05-28T08:00:00.000Z",
+    duration_variant_extension: {
+      repaired_word_count: 135,
+      target_word_count: 130,
+    },
+  });
+
+  await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    workbenchReport: {
+      local_tts: { verdict: "green", ready: true },
+      jobs: [workbenchJob("story-canonical-sync", artifactDir)],
+    },
+    generatedAt: "2026-05-28T09:15:00.000Z",
+    generateTtsForStory: async ({ text, outputPath }) => {
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 1));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignment(text),
+      });
+      return { ok: true };
+    },
+  });
+
+  const canonical = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+  assert.equal(canonical.word_count, repairedScript.split(/\s+/).length);
+  assert.equal(canonical.tts_word_count, repairedScript.split(/\s+/).length);
+  assert.equal(canonical.audio_word_timestamp_count, repairedScript.split(/\s+/).length);
+  assert.equal(canonical.duration_variant_status, "invalidated_requires_repair");
+  assert.equal(canonical.duration_variant_invalidated_reason, "narration_script_changed_after_duration_variant_repair");
+});
+
 test("goal audio materializer anchors local word timestamps to measured speech pauses", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-anchored-"));
   const script =

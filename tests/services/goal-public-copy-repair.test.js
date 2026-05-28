@@ -424,6 +424,261 @@ test("public copy repair gives leaked hardware stories a curiosity beat", () => 
   assert.ok(intelligence.viral_score >= 75, JSON.stringify(intelligence, null, 2));
 });
 
+test("public copy repair produces script-score-safe rewrites for scheduler-blocked review and price stories", () => {
+  const cases = [
+    {
+      story_id: "forza-review-thread",
+      canonical_subject: "Forza Horizon 6",
+      selected_title: "Forza Horizon 6 Reviews Are In",
+      primary_source: "PC Gamer",
+      confirmed_claims: ["Forza Horizon 6 reviews are now in."],
+      expectedHook: /catch|problem|risk/i,
+    },
+    {
+      story_id: "ps5-price-rise",
+      canonical_subject: "PS5",
+      selected_title: "PS5 Prices Went Up In Europe",
+      primary_source: "PlayStation Blog",
+      confirmed_claims: [
+        "Sony announced updated PS5, PS5 Digital Edition, PS5 Pro and PlayStation Portal recommended retail prices effective April 2, 2026, including Europe and the UK.",
+      ],
+      expectedHook: /problem|risk/i,
+    },
+    {
+      story_id: "crimson-live",
+      canonical_subject: "Crimson Desert",
+      selected_title: "Crimson Desert Is Already Live",
+      primary_source: "GameSpot",
+      confirmed_claims: ["Crimson Desert launched on March 19, 2026 after Pearl Abyss announced the launch timing."],
+      expectedHook: /risk|problem/i,
+    },
+  ];
+
+  for (const manifest of cases) {
+    const repaired = repairGoalPublicCopyManifest(manifest, {
+      generatedAt: "2026-05-28T12:30:00.000Z",
+    });
+    const intelligence = buildViralScriptIntelligence({
+      story: {
+        id: manifest.story_id,
+        title: repaired.manifest.selected_title,
+        source_name: repaired.manifest.primary_source,
+      },
+      script: repaired.manifest.narration_script,
+    });
+
+    assert.match(repaired.manifest.first_spoken_line, manifest.expectedHook, manifest.story_id);
+    assert.equal(intelligence.blockers.length, 0, JSON.stringify({ story: manifest.story_id, intelligence }, null, 2));
+    assert.ok(intelligence.viral_score >= 75, JSON.stringify({ story: manifest.story_id, intelligence }, null, 2));
+  }
+});
+
+test("public copy package repair refreshes stale script scorecards before scheduler preflight", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-public-copy-script-score-"));
+  const artifactDir = path.join(root, "batch", "v-rising");
+  await fs.ensureDir(artifactDir);
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "v-rising",
+    canonical_subject: "V Rising",
+    selected_title: "V Rising Devs Are Making Another Vampire Game",
+    first_spoken_line: "V Rising's developers are already building another vampire game.",
+    primary_source: "GameSpot",
+    confirmed_claims: [
+      "Stunlock Studios says it is working on a new game set in the world of V Rising, with V Rising itself moving to balance and bug-fix support rather than a new content update.",
+    ],
+    narration_script:
+      "V Rising's developers are already building another vampire game. GameSpot reports Stunlock Studios is making a new game set in the world of V Rising, while V Rising itself shifts towards balance and bug-fix support. That shifts the fan question from the next patch to how far Stunlock can stretch its vampire world. Follow Pulse Gaming so you never miss a beat.",
+    full_script:
+      "V Rising's developers are already building another vampire game. GameSpot reports Stunlock Studios is making a new game set in the world of V Rising, while V Rising itself shifts towards balance and bug-fix support. That shifts the fan question from the next patch to how far Stunlock can stretch its vampire world. Follow Pulse Gaming so you never miss a beat.",
+    tts_script:
+      "V Rising's developers are already building another vampire game. GameSpot reports Stunlock Studios is making a new game set in the world of V Rising, while V Rising itself shifts towards balance and bug-fix support. That shifts the fan question from the next patch to how far Stunlock can stretch its vampire world. Follow Pulse Gaming so you never miss a beat.",
+    description:
+      "V Rising: Stunlock Studios says it is working on a new game set in the world of V Rising. Source: GameSpot.",
+    thumbnail_headline: "V RISING VAMPIRE GAME",
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "script_scorecard.json"), {
+    verdict: "rewrite_required",
+    viral_score: 55,
+    blockers: ["stale_scorecard"],
+  }, { spaces: 2 });
+
+  const report = await repairGoalPublicCopyPackages({
+    storyPackages: [{ story_id: "v-rising", artifact_dir: artifactDir }],
+    generatedAt: "2026-05-28T12:31:00.000Z",
+  });
+
+  assert.equal(report.summary.changed_count, 1);
+  assert.match(report.changed[0].status, /^script_scorecard_(?:refreshed|repaired)$/);
+  const savedScorecard = await fs.readJson(path.join(artifactDir, "script_scorecard.json"));
+  assert.notEqual(savedScorecard.verdict, "rewrite_required");
+  assert.ok(savedScorecard.viral_score >= 75, JSON.stringify(savedScorecard, null, 2));
+});
+
+test("public copy package repair rewrites no-curiosity script scorecards before scheduler preflight", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-public-copy-curiosity-score-"));
+  const artifactDir = path.join(root, "batch", "subnautica-bonus");
+  await fs.ensureDir(artifactDir);
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "subnautica-bonus",
+    canonical_subject: "Subnautica 2",
+    selected_title: "Subnautica 2 Bonus Fight Got Bigger",
+    first_spoken_line: "Subnautica 2's bonus fight now looks bigger than the sequel hype.",
+    primary_source: "Aftermath",
+    confirmed_claims: [
+      "Aftermath reports Subnautica 2's developers appear to be in line for a $250 million bonus.",
+    ],
+    narration_script:
+      "Subnautica 2's bonus fight now looks bigger than the sequel hype. Aftermath reports Subnautica 2's developers appear to be in line for a $250 million bonus. Fans are watching the sequel and the payout fight at the same time, which makes every official update land heavier. Follow Pulse Gaming so you never miss a beat.",
+    full_script:
+      "Subnautica 2's bonus fight now looks bigger than the sequel hype. Aftermath reports Subnautica 2's developers appear to be in line for a $250 million bonus. Fans are watching the sequel and the payout fight at the same time, which makes every official update land heavier. Follow Pulse Gaming so you never miss a beat.",
+    tts_script:
+      "Subnautica 2's bonus fight now looks bigger than the sequel hype. Aftermath reports Subnautica 2's developers appear to be in line for a $250 million bonus. Fans are watching the sequel and the payout fight at the same time, which makes every official update land heavier. Follow Pulse Gaming so you never miss a beat.",
+    description:
+      "Subnautica 2: Aftermath reports Subnautica 2's developers appear to be in line for a $250 million bonus. Source: Aftermath.",
+    thumbnail_headline: "SUBNAUTICA BONUS FIGHT",
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "script_scorecard.json"), {
+    verdict: "tighten_before_tts",
+    viral_score: 82,
+    blockers: [],
+    warnings: ["no_curiosity_marker"],
+    scores: {
+      hook_strength: 100,
+      curiosity_gap: 65,
+      insight_density: 64,
+      source_safety: 86,
+      retention_pacing: 93,
+    },
+  }, { spaces: 2 });
+
+  const report = await repairGoalPublicCopyPackages({
+    storyPackages: [{ story_id: "subnautica-bonus", artifact_dir: artifactDir }],
+    generatedAt: "2026-05-28T12:35:00.000Z",
+  });
+
+  assert.equal(report.summary.changed_count, 1);
+  assert.equal(report.changed[0].status, "script_scorecard_repaired");
+  const savedManifest = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+  const savedScorecard = await fs.readJson(path.join(artifactDir, "script_scorecard.json"));
+  assert.match(savedManifest.narration_script, /\bThe catch\b/i);
+  assert.ok(savedScorecard.scores.curiosity_gap >= 70, JSON.stringify(savedScorecard, null, 2));
+  assert.ok(!savedScorecard.warnings.includes("no_curiosity_marker"), JSON.stringify(savedScorecard, null, 2));
+});
+
+test("public copy package repair gives leak and deal scripts recognised curiosity markers", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-public-copy-curiosity-classes-"));
+  const cases = [
+    {
+      storyId: "subnautica-leak",
+      subject: "Subnautica 2",
+      title: "Subnautica 2 Dev Calls Out Leakers",
+      firstLine: "Subnautica 2's developer is already fighting leaked builds.",
+      source: "Respawnfirst",
+      claim: "A Subnautica 2 developer responded after leaked builds started spreading before launch.",
+    },
+    {
+      storyId: "mario-deal",
+      subject: "Super Mario RPG",
+      title: "Super Mario RPG Drops To $15",
+      firstLine: "Super Mario RPG just dropped to $15 at GameStop.",
+      source: "Gamestop",
+      claim: "GameStop lists Super Mario RPG at $15, 70% off its listed price.",
+    },
+  ];
+  const packages = [];
+  for (const item of cases) {
+    const artifactDir = path.join(root, "batch", item.storyId);
+    packages.push({ story_id: item.storyId, artifact_dir: artifactDir });
+    await fs.ensureDir(artifactDir);
+    const script = `${item.firstLine} ${item.source} reports ${item.claim} Players should check the source before reacting. Follow Pulse Gaming so you never miss a beat.`;
+    await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+      story_id: item.storyId,
+      canonical_subject: item.subject,
+      canonical_game: item.subject,
+      selected_title: item.title,
+      first_spoken_line: item.firstLine,
+      primary_source: item.source,
+      confirmed_claims: [item.claim],
+      narration_script: script,
+      full_script: script,
+      tts_script: script,
+      description: `${item.claim} Source: ${item.source}.`,
+      thumbnail_headline: item.title.toUpperCase(),
+    }, { spaces: 2 });
+    await fs.writeJson(path.join(artifactDir, "script_scorecard.json"), {
+      verdict: "tighten_before_tts",
+      viral_score: 82,
+      blockers: [],
+      warnings: ["no_curiosity_marker"],
+      scores: {
+        hook_strength: 100,
+        curiosity_gap: 65,
+        insight_density: 64,
+        source_safety: 86,
+        retention_pacing: 93,
+      },
+    }, { spaces: 2 });
+  }
+
+  const report = await repairGoalPublicCopyPackages({
+    storyPackages: packages,
+    generatedAt: "2026-05-28T16:55:00.000Z",
+  });
+
+  assert.equal(report.summary.changed_count, 2, JSON.stringify(report, null, 2));
+  for (const item of cases) {
+    const artifactDir = path.join(root, "batch", item.storyId);
+    const savedManifest = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+    const savedScorecard = await fs.readJson(path.join(artifactDir, "script_scorecard.json"));
+    assert.match(savedManifest.narration_script, /\bThe catch is (?:what matters|what this changes)\b/i);
+    assert.ok(savedScorecard.scores.curiosity_gap >= 70, JSON.stringify(savedScorecard, null, 2));
+    assert.ok(!savedScorecard.warnings.includes("no_curiosity_marker"), JSON.stringify(savedScorecard, null, 2));
+  }
+});
+
+test("public copy package repair explains unrepaired script scorecard failures", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-public-copy-script-blocker-"));
+  const artifactDir = path.join(root, "batch", "weak-script");
+  await fs.ensureDir(artifactDir);
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "weak-script",
+    canonical_subject: "Forza Horizon 6",
+    selected_title: "Forza Horizon 6",
+    first_spoken_line: "Forza Horizon 6.",
+    primary_source: "PC Gamer",
+    confirmed_claims: ["PC Gamer scored Forza Horizon 6 at 84."],
+    narration_script:
+      "Forza Horizon 6. PC Gamer scored Forza Horizon 6 at 84. Forza Horizon 6. Follow Pulse Gaming so you never miss a beat.",
+    full_script:
+      "Forza Horizon 6. PC Gamer scored Forza Horizon 6 at 84. Forza Horizon 6. Follow Pulse Gaming so you never miss a beat.",
+    tts_script:
+      "Forza Horizon 6. PC Gamer scored Forza Horizon 6 at 84. Forza Horizon 6. Follow Pulse Gaming so you never miss a beat.",
+    description: "Forza Horizon 6 scored 84 on PC Gamer. Source: PC Gamer.",
+    thumbnail_headline: "FORZA HORIZON 6",
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "script_scorecard.json"), {
+    verdict: "tighten_before_tts",
+    viral_score: 82,
+    blockers: [],
+    warnings: ["no_curiosity_marker"],
+    scores: {
+      hook_strength: 55,
+      curiosity_gap: 35,
+      insight_density: 30,
+      source_safety: 86,
+      retention_pacing: 65,
+    },
+  }, { spaces: 2 });
+
+  const report = await repairGoalPublicCopyPackages({
+    storyPackages: [{ story_id: "weak-script", artifact_dir: artifactDir }],
+    generatedAt: "2026-05-28T12:40:00.000Z",
+  });
+
+  assert.equal(report.summary.blocked_count, 1);
+  assert.ok(report.blocked[0].blockers.length > 0, JSON.stringify(report.blocked[0], null, 2));
+});
+
 test("public copy repair rewrites confirmed-claim memo language before rerender", () => {
   const repaired = repairGoalPublicCopyManifest(
     {
@@ -546,6 +801,12 @@ test("public copy repair writes changed packages and emits regeneration work ord
     description: "I've only played a couple hours of Warhammer 40,000: Boltgun 2. Source: IGN.",
   });
   await fs.outputJson(path.join(artifactDir, "visual_v4_render_story.json"), {
+    title: "Boltgun 2 Already Feels Loud",
+    thumbnail_headline: "BOLTGUN 2 ALREADY FEELS LOUD",
+    first_frame_text: "BOLTGUN 2 ALREADY FEELS LOUD",
+    mobile_hook_text: "Warhammer 40,000: Boltgun 2 already feels loud in its new demo.",
+    narration_script: "Warhammer 40,000: Boltgun 2 already feels loud in its new demo.",
+    full_script: "Warhammer 40,000: Boltgun 2 already feels loud in its new demo.",
     video_clips: ["clip-a.mp4", "clip-b.mp4"],
   });
   await fs.outputJson(path.join(artifactDir, "platform_publish_manifest.json"), {
@@ -581,6 +842,7 @@ test("public copy repair writes changed packages and emits regeneration work ord
   });
   const updated = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
   const platform = await fs.readJson(path.join(artifactDir, "platform_publish_manifest.json"));
+  const renderStory = await fs.readJson(path.join(artifactDir, "visual_v4_render_story.json"));
   const captions = await fs.readFile(path.join(artifactDir, "captions.srt"), "utf8");
   const workbench = buildAudioRegenerationWorkbench(report, {
     localTts: { ready: true, verdict: "green" },
@@ -597,6 +859,10 @@ test("public copy repair writes changed packages and emits regeneration work ord
   assert.doesNotMatch(JSON.stringify(platform.outputs), /Already Feels Loud|source_locked_update|practical catch/i);
   assert.equal(platform.outputs.tiktok.conversational_hook, updated.first_spoken_line);
   assert.equal(platform.outputs.instagram_reels.cover_frame.headline, "BOLTGUN 2 LEAVES THE CORRIDORS");
+  assert.equal(renderStory.title, "Boltgun 2 Leaves The Corridors");
+  assert.equal(renderStory.thumbnail_headline, "BOLTGUN 2 LEAVES THE CORRIDORS");
+  assert.equal(renderStory.first_frame_text, "BOLTGUN 2 LEAVES THE CORRIDORS");
+  assert.equal(renderStory.narration_script, updated.narration_script);
   assert.equal(workbench.jobs[0].status, "requires_audio_timestamp_generation");
   assert.equal(workOrder.jobs[0].status, "ready_for_final_render_job");
   assert.deepEqual(workOrder.jobs[0].evidence.materialised_motion_clip_paths, ["clip-a.mp4", "clip-b.mp4"]);
@@ -791,7 +1057,7 @@ test("public copy repair accepts official attribution for short product subjects
   assert.equal(report.summary.changed_count, 1);
   assert.equal(report.summary.blocked_count, 0);
   assert.equal(updated.selected_title, "PS5 Prices Went Up In Europe");
-  assert.equal(updated.first_spoken_line, "PS5 prices went up across Europe and the UK.");
+  assert.equal(updated.first_spoken_line, "PS5 prices went up, but the problem is how wide Sony made the list.");
   assert.equal(updated.thumbnail_headline, "PS5 PRICE JUMP");
   assert.equal(updated.primary_source, "PlayStation Blog");
   assert.equal(updated.source_card_label, "PlayStation Blog");
@@ -963,9 +1229,18 @@ test("public copy repair CLI filters packages by repeatable story id", async () 
     "second-story",
     "--story-ids",
     "third-story, fourth-story",
+    "--reserved-title",
+    "Forza Horizon 6 Scores 84 On PC Gamer",
+    "--reserved-titles",
+    "Helldivers 2 Is Getting Warhammer Gear||Lego Batman Is Chasing Arkham",
   ]);
 
   assert.deepEqual(args.storyIds, ["target-story", "second-story", "third-story", "fourth-story"]);
+  assert.deepEqual(args.reservedTitles, [
+    "Forza Horizon 6 Scores 84 On PC Gamer",
+    "Helldivers 2 Is Getting Warhammer Gear",
+    "Lego Batman Is Chasing Arkham",
+  ]);
 });
 
 test("public copy repair CLI only mutates selected story packages", async () => {
@@ -2217,6 +2492,46 @@ test("public copy repair gives duplicate package titles distinct subject-safe va
   assert.equal(evaluateGoalPublicCopy(second).verdict, "pass");
 });
 
+test("public copy repair can reserve an already-used title during targeted duplicate repair", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-copy-repair-reserved-title-"));
+  const artifactDir = path.join(root, "duplicate");
+  await fs.ensureDir(artifactDir);
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "forza-review-thread",
+    canonical_subject: "Forza Horizon 6",
+    canonical_game: "Forza Horizon 6",
+    canonical_title: "'Forza Horizon 6' - Review Thread",
+    selected_title: "Forza Horizon 6 Scores 84 On PC Gamer",
+    title_candidates: [
+      "Forza Horizon 6 Scores 84 On PC Gamer",
+      "Forza Horizon 6 Reviews Are In",
+      "Forza Horizon 6 Reviews Just Sent A Signal",
+    ],
+    thumbnail_headline: "FORZA HORIZON 6 SCORES 84",
+    first_spoken_line: "The Forza Horizon 6 review wave has a catch: it cannot prove launch demand yet.",
+    narration_script:
+      "The Forza Horizon 6 review wave has a catch: it cannot prove launch demand yet. PC Gamer published its Forza Horizon 6 review, with GameSpot and VGC also weighing in.",
+    description:
+      "PC Gamer published its Forza Horizon 6 review, with GameSpot and VGC also weighing in. Source: PC Gamer.",
+    primary_source: "PC Gamer",
+    confirmed_claims: [
+      "PC Gamer published its Forza Horizon 6 review, with GameSpot and VGC also weighing in.",
+    ],
+  });
+
+  const report = await repairGoalPublicCopyPackages({
+    storyPackages: [{ story_id: "forza-review-thread", artifact_dir: artifactDir }],
+    reservedTitles: ["Forza Horizon 6 Scores 84 On PC Gamer"],
+    generatedAt: "2026-05-28T13:35:00.000Z",
+  });
+  const updated = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+
+  assert.equal(report.summary.changed_count, 1);
+  assert.equal(updated.selected_title, "Forza Horizon 6 Reviews Are In");
+  assert.notEqual(updated.selected_title, "Forza Horizon 6 Scores 84 On PC Gamer");
+  assert.equal(evaluateGoalPublicCopy(updated).verdict, "pass");
+});
+
 test("public copy repair turns malformed Paranormal Activity quote copy into a factual description", () => {
   const repaired = repairGoalPublicCopyManifest(
     {
@@ -2716,6 +3031,70 @@ test("public copy repair rewrites broken thumbnail headlines before approval", (
 
   assert.equal(repeated.manifest.thumbnail_headline, "PS5 PRICE JUMP");
   assert.equal(evaluateGoalPublicCopy(repeated.manifest).verdict, "pass");
+
+  const repeatedSubject = repairGoalPublicCopyManifest(
+    {
+      story_id: "expanse-thumbnail",
+      canonical_subject: "The Expanse: Osiris Reborn",
+      canonical_game: "The Expanse: Osiris Reborn",
+      selected_title: "The Expanse Shows Real Gameplay",
+      thumbnail_headline: "EXPANSE: OSIRIS REBORN THE EXPANSE",
+      thumbnail_text: "EXPANSE: OSIRIS REBORN THE EXPANSE",
+      first_spoken_line: "The Expanse: Osiris Reborn finally showed real gameplay.",
+      narration_script:
+        "The Expanse: Osiris Reborn finally showed real gameplay. Xbox showed the new cut during Partner Preview.",
+      primary_source: "Xbox",
+      description: "Xbox showed The Expanse: Osiris Reborn gameplay. Source: Xbox.",
+      confirmed_claims: ["Xbox showed The Expanse: Osiris Reborn gameplay during Partner Preview."],
+    },
+    { generatedAt: "2026-05-26T22:45:00.000Z" },
+  );
+
+  assert.equal(repeatedSubject.manifest.thumbnail_headline, "EXPANSE GAMEPLAY REVEAL");
+  assert.equal(repeatedSubject.manifest.thumbnail_text, "EXPANSE GAMEPLAY REVEAL");
+  assert.equal(evaluateGoalPublicCopy(repeatedSubject.manifest).verdict, "pass");
+
+  const durationExpandedScript = [
+    "The Expanse: Osiris Reborn finally showed real gameplay.",
+    "Xbox showed The Expanse: Osiris Reborn gameplay during Xbox Partner Preview.",
+    "Now the camera, gunfights and scale are on screen instead of hidden behind a logo.",
+    "The sharper question is whether the camera, gunfights and scale make it feel like The Expanse, not just another licensed shooter.",
+    "Short showcases can sell impact, but mission flow will decide whether players trust the reveal.",
+    "If the full missions keep that pace, this could become more than another licensed announcement.",
+    "One more direct play segment would show whether the combat rhythm and camera weight match the reveal.",
+    "Release timing and platform detail turn curiosity into something viewers can actually act on.",
+    "Follow Pulse Gaming so you never miss a beat.",
+  ].join(" ");
+  const thumbnailOnly = repairGoalPublicCopyManifest(
+    {
+      story_id: "expanse-thumbnail-only",
+      canonical_subject: "The Expanse: Osiris Reborn",
+      canonical_game: "The Expanse: Osiris Reborn",
+      selected_title: "The Expanse Shows Real Gameplay",
+      thumbnail_headline: "EXPANSE: OSIRIS REBORN THE SHOWS",
+      thumbnail_text: "EXPANSE: OSIRIS REBORN THE SHOWS",
+      first_spoken_line: "The Expanse: Osiris Reborn finally showed real gameplay.",
+      narration_script: durationExpandedScript,
+      full_script: durationExpandedScript,
+      tts_script: durationExpandedScript,
+      word_count: durationExpandedScript.split(/\s+/).length,
+      tts_word_count: durationExpandedScript.split(/\s+/).length,
+      primary_source: "Xbox",
+      official_source: "Xbox",
+      description: "Xbox showed The Expanse: Osiris Reborn gameplay. Source: Xbox.",
+      confirmed_claims: ["Xbox showed The Expanse: Osiris Reborn gameplay during Xbox Partner Preview."],
+      duration_variant_repaired_at: "2026-05-28T11:25:09.544Z",
+      duration_variant_repair_strategy: "normal_production_safe_script_expansion",
+    },
+    { generatedAt: "2026-05-28T11:30:00.000Z" },
+  );
+
+  assert.equal(thumbnailOnly.manifest.thumbnail_headline, "EXPANSE GAMEPLAY REVEAL");
+  assert.equal(thumbnailOnly.manifest.narration_script, durationExpandedScript);
+  assert.equal(thumbnailOnly.manifest.full_script, durationExpandedScript);
+  assert.equal(thumbnailOnly.manifest.tts_script, durationExpandedScript);
+  assert.equal(thumbnailOnly.manifest.word_count, durationExpandedScript.split(/\s+/).length);
+  assert.equal(evaluateGoalPublicCopy(thumbnailOnly.manifest).verdict, "pass");
 
   const vRising = repairGoalPublicCopyManifest(
     {

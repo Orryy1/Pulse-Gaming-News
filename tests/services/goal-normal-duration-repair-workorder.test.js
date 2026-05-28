@@ -221,6 +221,51 @@ test("normal duration repair work order routes cutover duration-floor queue entr
   assert.equal(workOrder.source_cutover_generated_at, "2026-05-27T01:05:00.000Z");
 });
 
+test("normal duration repair work order prefers fresh cutover rerender jobs over stale held blockers", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-normal-duration-cutover-rerender-"));
+  const artifactDir = await makeArtifact(root, "fresh-cutover-short", 15.04);
+
+  const workOrder = await buildNormalDurationRepairWorkOrder({
+    generatedAt: "2026-05-28T11:30:00.000Z",
+    dryRunPlan: {
+      generated_at: "2026-05-28T10:55:00.000Z",
+      blocked_stories: [],
+      held_stories: [
+        {
+          story_id: "fresh-cutover-short",
+          artifact_dir: artifactDir,
+          blockers: [
+            "visual_v4_motion_pack_blocked:v4_motion_blocked",
+            "public_copy_newer_than_render",
+          ],
+        },
+      ],
+    },
+    cutoverPlan: {
+      generated_at: "2026-05-28T11:22:56.655Z",
+      normal_duration_rerender_work_order: {
+        jobs: [
+          {
+            story_id: "fresh-cutover-short",
+            artifact_dir: artifactDir,
+            status: "needs_duration_variant_rerender",
+            current_duration_s: 15.04,
+            source_blockers: ["normal_production_duration_below_quality_floor:15"],
+          },
+        ],
+      },
+    },
+  });
+
+  assert.equal(workOrder.summary.cutover_duration_job_count, 1);
+  assert.equal(workOrder.summary.repair_required_count, 1);
+  assert.equal(workOrder.summary.skipped_count, 0);
+  assert.equal(workOrder.jobs[0].story_id, "fresh-cutover-short");
+  assert.equal(workOrder.jobs[0].repair_lane, "normal_production_duration_floor");
+  assert.equal(workOrder.jobs[0].current_duration_s, 15.04);
+  assert.deepEqual(workOrder.jobs[0].source_blockers, ["normal_production_duration_below_quality_floor:15"]);
+});
+
 test("normal duration repair work order routes held duration-floor stories with co-blockers without clearing them", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-normal-duration-held-incident-"));
   const artifactDir = await makeArtifact(root, "held-motion-incident", 19.2);

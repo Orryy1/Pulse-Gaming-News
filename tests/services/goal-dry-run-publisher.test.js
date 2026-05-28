@@ -347,16 +347,33 @@ test("goal dry-run publisher defers externally blocked or operator-disabled plat
   assert.equal(plan.summary.blocked_action_count, 0);
   assert.equal(plan.summary.planned_action_count, 7);
   assert.equal(plan.summary.platform_publish_now_action_count, 3);
+  assert.equal(plan.summary.platform_enabled_dry_run_action_count, 3);
+  assert.equal(plan.summary.human_review_required_action_count, 3);
+  assert.equal(plan.summary.live_publish_allowed_action_count, 0);
   assert.equal(plan.summary.platform_deferred_action_count, 4);
   assert.equal(plan.overall_verdict, "AMBER");
   assert.equal(plan.ready_for_unattended_publish, false);
   assert.ok(plan.readiness_reasons.includes("platform_actions_deferred_until_enabled"));
+  assert.equal(plan.safe_publish_plan.live_publish_allowed_from_this_plan, false);
+  assert.equal(plan.safe_publish_plan.required_next_step, "operator_human_review_for_enabled_actions");
 
   const tiktok = plan.actions.find((action) => action.platform === "tiktok");
   const x = plan.actions.find((action) => action.platform === "x");
+  const enabledActions = plan.actions.filter((action) => action.action === "would_publish");
+
+  assert.equal(enabledActions.length, 3);
+  assert.ok(enabledActions.every((action) => action.live_publish_allowed_from_dry_run === false));
+  assert.ok(enabledActions.every((action) => action.requires_human_review_before_live_publish === true));
+  assert.ok(enabledActions.every((action) => action.live_execution_gate === "operator_human_review_required"));
+  assert.deepEqual(
+    plan.platform_status_matrix.platforms.youtube_shorts.live_execution_gate_reasons,
+    ["platform_actions_deferred_until_enabled"],
+  );
 
   assert.equal(tiktok.action, "would_queue_when_enabled");
   assert.equal(tiktok.platform_enabled, false);
+  assert.equal(tiktok.requires_human_review_before_live_publish, false);
+  assert.equal(tiktok.live_execution_gate, "platform_enablement_required");
   assert.equal(tiktok.platform_operational_state, "blocked_external");
   assert.equal(tiktok.platform_operational_reason, "tiktok_direct_post_app_review");
   assert.equal(x.action, "would_queue_when_enabled");
@@ -932,6 +949,58 @@ test("goal dry-run publisher deduplicates repeated story blockers in reports", a
     1,
   );
   assert.equal(new Set(blockers).size, blockers.length);
+});
+
+test("goal dry-run publisher preserves scheduler QA check failures on blocked stories", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-preflight-checks-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "aggregate-blocked",
+    "GREEN",
+    "Star Wars Zero Company Is More Than XCOM",
+  );
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-05-28T12:07:00.000Z",
+    requireSchedulerPreflight: true,
+    candidatePreflightReport: {
+      candidates: [
+        {
+          id: "aggregate-blocked",
+          status: "review",
+          preflight_qa: {
+            status: "blocked",
+            blockers: ["aggregate_benchmark:upstream:goal09_sound_design_engine_blocked"],
+            checks: {
+              aggregate_benchmark: {
+                result: "fail",
+                failures: [
+                  "upstream:goal09_sound_design_engine_blocked",
+                  "upstream:goal08_visual_v4_renderer_blocked",
+                  "director:unsuitable_duration",
+                  "render:sfx_mix_policy_stale",
+                  "render:visual_design_policy_stale",
+                  "visual:gold_standard:motion_density_below_reference",
+                ],
+              },
+            },
+          },
+        },
+      ],
+    },
+  });
+
+  const blocked = plan.blocked_stories.find((story) => story.story_id === "aggregate-blocked");
+  assert.ok(blocked);
+  assert.deepEqual(blocked.scheduler_preflight.checks.aggregate_benchmark.failures, [
+    "upstream:goal09_sound_design_engine_blocked",
+    "upstream:goal08_visual_v4_renderer_blocked",
+    "director:unsuitable_duration",
+    "render:sfx_mix_policy_stale",
+    "render:visual_design_policy_stale",
+    "visual:gold_standard:motion_density_below_reference",
+  ]);
 });
 
 test("goal dry-run publisher blocks clean packages when scheduler preflight is required but missing", async () => {
@@ -1942,6 +2011,106 @@ test("goal dry-run publisher blocks final packages without licensed creator-stud
   assert.equal(plan.summary.blocked_story_count, 1);
   assert.ok(plan.blocked_stories[0].blockers.includes("incident:sfx_source_quality_unresolved"));
   assert.ok(plan.blocked_stories[0].blockers.includes("sfx_source:local_bespoke_or_generated_only"));
+  assert.equal(plan.summary.planned_action_count, 0);
+});
+
+test("goal dry-run publisher blocks rendered SFX cues that lack sourced creator-studio roles", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-sfx-role-coverage-"));
+  const storyPackage = await makeStoryPackage(root, "thin-sfx-roles", "GREEN", "Hades II Just Broke PlayStation's Silence", {
+    canonicalSubject: "Hades II",
+  });
+  await fs.outputJson(path.join(storyPackage.artifact_dir, "sfx_manifest.json"), {
+    cue_count: 8,
+    source_plan: {
+      readiness: { status: "pass", blockers: [] },
+      required_roles: ["ui_tick"],
+      covered_roles: ["ui_tick"],
+      selected_assets: [
+        {
+          asset_id: "sonniss-tick-01",
+          role: "ui_tick",
+          provider_id: "sonniss",
+          rights_basis: "sonniss_game_audio_gdc_bundle_license",
+        },
+      ],
+    },
+  });
+  await fs.outputJson(path.join(storyPackage.artifact_dir, "visual_v4_render_story.json"), {
+    sound_transition_plan: {
+      sfx: {
+        cues: [
+          { target_kind: "hook_slam", family: "impact" },
+          { target_kind: "motion_clip", family: "whoosh" },
+          { target_kind: "source_lock", family: "source_tick" },
+          { target_kind: "context_caveat", family: "sub_hit" },
+        ],
+      },
+    },
+    sfx_asset_inventory: [
+      {
+        asset_id: "sonniss-tick-01",
+        role: "ui_tick",
+        provider_id: "sonniss",
+        rights_basis: "sonniss_game_audio_gdc_bundle_license",
+      },
+    ],
+  });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-05-28T08:05:00.000Z",
+  });
+
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 1);
+  assert.ok(plan.blocked_stories[0].blockers.includes("incident:sfx_source_quality_unresolved"));
+  assert.ok(plan.blocked_stories[0].blockers.includes("sfx_source:missing_role:impact"));
+  assert.ok(plan.blocked_stories[0].blockers.includes("sfx_source:missing_role:transition"));
+  assert.ok(plan.blocked_stories[0].blockers.includes("sfx_source:missing_role:sub_hit"));
+  assert.equal(plan.summary.planned_action_count, 0);
+});
+
+test("goal dry-run publisher blocks stale renders missing newly approved SFX assets", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-sfx-stale-render-"));
+  const storyPackage = await makeStoryPackage(root, "stale-sfx-render", "GREEN", "Hades II Just Broke PlayStation's Silence", {
+    canonicalSubject: "Hades II",
+  });
+  await fs.outputJson(path.join(storyPackage.artifact_dir, "sfx_manifest.json"), {
+    cue_count: 8,
+    source_plan: {
+      readiness: { status: "pass", blockers: [] },
+      required_roles: ["impact", "transition", "ui_tick"],
+      covered_roles: ["impact", "transition", "ui_tick"],
+      selected_assets: [
+        { asset_id: "boom-impact-01", role: "impact", provider_id: "boom_library", rights_basis: "boom_library_media_license" },
+        { asset_id: "soundly-transition-01", role: "transition", provider_id: "soundly", rights_basis: "soundly_pro_commercial_use" },
+        { asset_id: "sonniss-tick-01", role: "ui_tick", provider_id: "sonniss", rights_basis: "sonniss_game_audio_gdc_bundle_license" },
+      ],
+    },
+  });
+  await fs.outputJson(path.join(storyPackage.artifact_dir, "visual_v4_render_story.json"), {
+    sound_transition_plan: {
+      sfx: {
+        cues: [
+          { target_kind: "hook_slam", family: "impact" },
+          { target_kind: "motion_clip", family: "whoosh" },
+          { target_kind: "source_lock", family: "source_tick" },
+        ],
+      },
+    },
+    sfx_asset_inventory: [
+      { asset_id: "sonniss-tick-01", role: "ui_tick", provider_id: "sonniss", rights_basis: "sonniss_game_audio_gdc_bundle_license" },
+    ],
+  });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-05-28T08:10:00.000Z",
+  });
+
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 1);
+  assert.ok(plan.blocked_stories[0].blockers.includes("sfx_render_asset_mismatch"));
   assert.equal(plan.summary.planned_action_count, 0);
 });
 

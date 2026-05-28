@@ -81,6 +81,7 @@ function segment({
   family,
   index,
   storyId = "forza-v4-pack",
+  entity = "Forza Horizon 6",
   sourceUrl = null,
   actionScore = 88,
   validated = true,
@@ -104,7 +105,7 @@ function segment({
     source_family: family,
     source_type: sourceType,
     provider: family === "steam" ? "steam" : family,
-    entity: "Forza Horizon 6",
+    entity,
     store_app_id: family === "steam" ? "2483190" : null,
     movie_id: `${family}-${index}`,
     reference_title: referenceTitle || `${family} trailer ${index}`,
@@ -341,6 +342,47 @@ test("Visual V4 motion pack accepts official product motion for hardware stories
 
   assert.equal(pack.clips.length, 1);
   assert.equal(pack.clips[0].source_type, "official_platform_product_page");
+  assert.equal(pack.clips[0].provenance.segment_motion_class, "official_product_motion");
+  assert.ok(
+    !pack.rejected_candidates.some(
+      (candidate) => candidate.reason === "segment_not_gameplay_action",
+    ),
+  );
+});
+
+test("Visual V4 motion pack accepts official game storefront product motion when it matches the canonical game", () => {
+  const pack = buildVisualV4MotionPack({
+    story: {
+      id: "expanse-osiris-reborn",
+      title: "The Expanse Shows Real Gameplay",
+      canonical_subject: "The Expanse: Osiris Reborn",
+      canonical_game: "The Expanse: Osiris Reborn",
+      full_script:
+        "The Expanse: Osiris Reborn is finally showing real gameplay. Owlcat's official storefront video gives the story enough real motion to judge the new RPG properly.",
+    },
+    trustedFootageReport: trustedReport("expanse-osiris-reborn", [
+      "xbox_store_the_expanse_osiris_reborn",
+    ]),
+    segmentValidationReport: segmentReport([
+      segment({
+        storyId: "expanse-osiris-reborn",
+        family: "xbox_store_the_expanse_osiris_reborn",
+        entity: "The Expanse: Osiris Reborn",
+        index: 1,
+        sourceUrl: "https://cdn.trailers.xboxservices.com/the-expanse-osiris-reborn.m3u8",
+        sourceType: "official_platform_product_page",
+        motionClass: "official_product_motion",
+        validationReason: "official_product_motion_samples_passed",
+        actionScore: 81.9,
+        start: 36,
+        duration: 5,
+      }),
+    ]),
+    generatedAt: "2026-05-28T10:45:00.000Z",
+  });
+
+  assert.equal(pack.clips.length, 1);
+  assert.equal(pack.clips[0].source_family, "xbox_store_the_expanse_osiris_reborn");
   assert.equal(pack.clips[0].provenance.segment_motion_class, "official_product_motion");
   assert.ok(
     !pack.rejected_candidates.some(

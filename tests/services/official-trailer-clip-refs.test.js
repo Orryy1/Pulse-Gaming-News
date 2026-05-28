@@ -769,6 +769,62 @@ test("official clip refs deep-scan alternate official sources from a resolver re
   assert.equal(refs[1].provenance.movie_name, "Gameplay Update Trailer");
 });
 
+test("official clip refs preserve resolver metadata when frame reports have the same bare source URL", () => {
+  const sourceUrl = "https://video.akamai.steamstatic.com/store_trailers/3727390/2016455987/hash/hls_264_master.m3u8";
+  const refs = buildOfficialTrailerClipsFromFrameReport(
+    {
+      plans: [
+        {
+          story_id: "story-1",
+          frames: [
+            acceptedFrame({
+              source_url: sourceUrl,
+              source_type: "steam_movie",
+              entity: "The Expanse: Osiris Reborn",
+              target_time_seconds: 45,
+            }),
+          ],
+        },
+      ],
+    },
+    "story-1",
+    {
+      includeExploratoryWindows: true,
+      exploratoryStartSeconds: [52],
+      referenceReport: {
+        plans: [
+          {
+            story_id: "story-1",
+            references: [
+              {
+                source_type: "steam_movie",
+                provider: "steam",
+                source_url: sourceUrl,
+                entity: "The Expanse: Osiris Reborn",
+                movie_name: "Gameplay Trailer",
+                movie_id: "2016455987",
+                store_app_id: "3727390",
+                store_app_title: "The Expanse: Osiris Reborn",
+                source_family: "steam_3727390_2016455987",
+                downloads_allowed: false,
+              },
+            ],
+          },
+        ],
+      },
+      maxClips: 8,
+    },
+  );
+
+  const exploratory = refs.find((ref) => ref.provenance.exploratory_scan === true);
+  assert.ok(exploratory);
+  assert.equal(exploratory.provenance.reference_report_source, true);
+  assert.equal(exploratory.provenance.movie_name, "Gameplay Trailer");
+  assert.equal(exploratory.provenance.movie_id, "2016455987");
+  assert.equal(exploratory.provenance.store_app_id, "3727390");
+  assert.equal(exploratory.provenance.source_family, "steam_3727390_2016455987");
+});
+
 test("official clip refs skip resolver references that are only rating-board material", () => {
   const refs = buildOfficialTrailerClipsFromFrameReport(
     { plans: [{ story_id: "story-1", frames: [] }] },
@@ -1549,6 +1605,53 @@ test("official clip refs include validated deep-scan segments even when no accep
   );
   assert.ok(refs.every((ref) => ref.provenance.segment_validated === true));
   assert.ok(refs.every((ref) => ref.provenance.segment_selection_policy === "validated_deep_scan_segment"));
+});
+
+test("official clip refs deep-scan direct video from platform storefront references", () => {
+  const sourceA = "https://assets.nintendo.com/video/upload/store/software/switch/game/Video/a.mp4";
+  const sourceB = "https://assets.nintendo.com/video/upload/store/software/switch/game/Video/b.mp4";
+  const refs = buildOfficialTrailerClipsFromFrameReport(
+    { plans: [{ story_id: "story-1", frames: [] }] },
+    "story-1",
+    {
+      maxClips: 4,
+      includeExploratoryWindows: true,
+      exploratoryStartSeconds: [36],
+      referenceReport: {
+        plans: [
+          {
+            story_id: "story-1",
+            references: [
+              {
+                source_url: sourceA,
+                source_type: "platform_storefront",
+                source_family: "nintendo_store_game_video_a",
+                source_url_kind: "direct_video",
+                source_duration_s: 60,
+                segment_validation_eligible: true,
+                entity: "Super Mario RPG",
+              },
+              {
+                source_url: sourceB,
+                source_type: "platform_storefront",
+                source_family: "nintendo_store_game_video_b",
+                source_url_kind: "direct_video",
+                source_duration_s: 45,
+                segment_validation_eligible: true,
+                entity: "Super Mario RPG",
+              },
+            ],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.deepEqual(
+    refs.map((ref) => ref.sourceFamily),
+    ["nintendo_store_game_video_a", "nintendo_store_game_video_b"],
+  );
+  assert.ok(refs.every((ref) => ref.provenance.reference_report_source === true));
 });
 
 test("official clip refs prefer deep-scan gameplay segments over late frame-anchored windows", () => {

@@ -171,6 +171,23 @@ test("realignTimestampsToScript preserves Hades II display while local voice say
   assert.equal(aligned[1].end, 0.62);
 });
 
+test("realignTimestampsToScript preserves Hades 2 display while local voice says Hades sequel", () => {
+  const aligned = realignTimestampsToScript("Hades 2 lands on console.", [
+    { word: "Hades", start: 0, end: 0.28 },
+    { word: "sequel", start: 0.3, end: 0.62 },
+    { word: "lands", start: 0.66, end: 0.92 },
+    { word: "on", start: 0.96, end: 1.08 },
+    { word: "console", start: 1.12, end: 1.44 },
+  ]);
+
+  assert.deepEqual(
+    aligned.map((word) => word.word),
+    ["Hades", "2", "lands", "on", "console."],
+  );
+  assert.equal(aligned[1].start, 0.3);
+  assert.equal(aligned[1].end, 0.62);
+});
+
 test("realignTimestampsToScript repairs local Whisper brand-name misrecognition", () => {
   const aligned = realignTimestampsToScript("Follow Pulse Gaming so you never miss a beat.", [
     { word: "Follow", start: 41.3, end: 41.3 },

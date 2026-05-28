@@ -142,7 +142,7 @@ test("Visual V4 transition planner uses varied transitions and forbids empty rec
   assert.ok(plan.transitions.max_same_family_run <= 2);
 });
 
-test("Visual V4 sound planner sources only materialised newsroom tick cues for current renders", () => {
+test("Visual V4 sound planner blocks renders when only newsroom tick cues are sourced", () => {
   const plan = buildVisualV4SoundTransitionPlan({
     shotPlan: shotPlan(),
     durationS: 58,
@@ -160,10 +160,12 @@ test("Visual V4 sound planner sources only materialised newsroom tick cues for c
     ],
   });
 
-  assert.equal(plan.readiness.verdict, "pass");
-  assert.deepEqual(plan.sfx.source_plan.required_roles, ["ui_tick"]);
+  assert.equal(plan.readiness.verdict, "blocked");
+  assert.deepEqual(plan.sfx.source_plan.required_roles, ["impact", "sub_hit", "transition", "ui_tick"]);
   assert.deepEqual(plan.sfx.source_plan.covered_roles, ["ui_tick"]);
-  assert.deepEqual(plan.sfx.source_plan.readiness.blockers, []);
+  assert.ok(plan.sfx.source_plan.readiness.blockers.includes("sfx_source:missing_role:impact"));
+  assert.ok(plan.sfx.source_plan.readiness.blockers.includes("sfx_source:missing_role:transition"));
+  assert.ok(plan.sfx.source_plan.readiness.blockers.includes("sfx_source:missing_role:sub_hit"));
   assert.ok(plan.sfx.cues.some((cue) => cue.family === "impact"));
 });
 

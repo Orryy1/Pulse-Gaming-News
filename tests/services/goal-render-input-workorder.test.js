@@ -414,6 +414,58 @@ test("render input work order stops auto-looping exhausted real-motion materiali
   assert.equal(workOrder.summary.operator_required_jobs, 2);
 });
 
+test("render input work order surfaces partial real-motion evidence without treating it as publishable", () => {
+  const partialEvidencePath = "C:/repo/output/goal-proof/batch/partial-official-motion/partial_real_motion_evidence.json";
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-05-28T09:45:00.000Z",
+      queue: [
+        blockedQueueItem({
+          story_id: "partial-official-motion",
+          title: "Xbox Controller Deal Has One Catch",
+          render_input_blockers: [
+            "real_visual_motion_clips_missing",
+            "real_visual_motion_families_insufficient",
+          ],
+        }),
+      ],
+    },
+    realMotionMaterializationReport: {
+      jobs: [
+        {
+          story_id: "partial-official-motion",
+          status: "blocked",
+          blockers: ["real_motion_clip_minimum_not_met", "real_motion_family_minimum_not_met"],
+          candidate_count: 3,
+          materialized_count: 3,
+          distinct_motion_family_count: 1,
+          direct_video_motion_clip_count: 3,
+          partial_evidence_path: partialEvidencePath,
+          partial_evidence_clip_count: 3,
+          partial_evidence_counts_towards_final_render_readiness: false,
+        },
+      ],
+    },
+    generatedAt: "2026-05-28T09:46:00.000Z",
+  });
+
+  const action = workOrder.jobs[0].actions[0];
+
+  assert.equal(action.action_id, "materialise_validated_real_motion_clips");
+  assert.equal(action.repair_lane, "additional_official_motion_family_required");
+  assert.equal(action.auto_repairable, false);
+  assert.equal(action.operator_approval_required, true);
+  assert.match(action.exact_missing_input, /at least 5 validated real-motion clips/i);
+  assert.equal(action.evidence.partial_evidence_path, partialEvidencePath);
+  assert.equal(action.evidence.partial_evidence_clip_count, 3);
+  assert.equal(action.evidence.partial_evidence_counts_towards_final_render_readiness, false);
+  assert.equal(action.evidence.materialized_count, 3);
+  assert.equal(action.evidence.distinct_motion_family_count, 1);
+  assert.equal(action.evidence.direct_video_motion_clip_count, 3);
+  assert.equal(workOrder.summary.auto_repairable_jobs, 0);
+  assert.equal(workOrder.summary.operator_required_jobs, 1);
+});
+
 test("render input work order marks resolved official references as segment-validation repair", () => {
   const workOrder = buildGoalRenderInputWorkOrder({
     cutoverPlan: {
@@ -674,6 +726,161 @@ test("render input work order stops rerunning owned motion after generated-only 
   assert.match(action.recommended_command, /do not rerun owned-motion/i);
   assert.ok(action.evidence.owned_explainer_motion_ready);
   assert.ok(action.evidence.cutover_blockers.includes("scheduler_candidate_benchmark_not_pass"));
+});
+
+test("render input work order exposes official search actions after generated-only deck fails benchmark", () => {
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-05-28T10:00:00.000Z",
+      blocked: [
+        {
+          story_id: "xbox-controller-owned-deck",
+          title: "Xbox Controller Deal Has One Catch",
+          artifact_dir: "C:/repo/output/goal-proof/batch/xbox-controller-owned-deck",
+          blockers: [
+            "benchmark_not_pass",
+            "benchmark_below_production_threshold:motion_density_score",
+            "benchmark_below_production_threshold:media_house_polish_score",
+          ],
+          owned_explainer_motion_ready: true,
+          owned_explainer_exception_approved: true,
+          visual_evidence_profile: {
+            generated_only_motion_deck: true,
+            real_media_asset_count: 0,
+            real_motion_asset_count: 0,
+            direct_video_motion_asset_count: 0,
+            blockers: [
+              "visual_evidence:generated_only_motion_deck",
+              "visual_evidence:no_real_visual_media_asset",
+            ],
+          },
+        },
+      ],
+    },
+    sourceFamilyAcquisitionReport: {
+      rows: [
+        {
+          story_id: "xbox-controller-owned-deck",
+          primary_story_entity: "Xbox Controller",
+          source_family_candidates: [],
+          official_search_actions: [
+            {
+              query: "Xbox Controller official product video",
+              status: "official_search_required",
+              accepted_source_types: [
+                "official_product_page",
+                "official_platform_channel",
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    generatedAt: "2026-05-28T10:01:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.real_motion_materialisation_jobs, 1);
+  assert.equal(workOrder.summary.auto_repairable_jobs, 0);
+  assert.equal(workOrder.summary.operator_required_jobs, 1);
+  const action = workOrder.jobs[0].actions[0];
+  assert.equal(action.action_id, "materialise_validated_real_motion_clips");
+  assert.equal(action.repair_lane, "official_source_search_after_generated_only_benchmark_failure");
+  assert.equal(action.auto_repairable, false);
+  assert.equal(action.operator_approval_required, true);
+  assert.match(action.recommended_command, /visual_v4_official_search_template_remaining\.json/);
+  assert.match(action.recommended_command, /do not rerun owned-motion/i);
+  assert.equal(action.evidence.official_search_action_count, 1);
+  assert.equal(action.evidence.first_query, "Xbox Controller official product video");
+  assert.equal(action.evidence.primary_story_entity, "Xbox Controller");
+});
+
+test("render input work order exposes official direct-media gaps after generated-only deck fails benchmark", () => {
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-05-28T10:10:00.000Z",
+      blocked: [
+        {
+          story_id: "xbox-controller-family-known",
+          title: "Xbox Controller Deal Has One Catch",
+          artifact_dir: "C:/repo/output/goal-proof/batch/xbox-controller-family-known",
+          blockers: [
+            "benchmark_not_pass",
+            "benchmark_below_production_threshold:motion_density_score",
+          ],
+          owned_explainer_motion_ready: true,
+          owned_explainer_exception_approved: true,
+          visual_evidence_profile: {
+            generated_only_motion_deck: true,
+            real_media_asset_count: 0,
+            real_motion_asset_count: 0,
+            blockers: [
+              "visual_evidence:generated_only_motion_deck",
+              "visual_evidence:no_real_visual_media_asset",
+            ],
+          },
+        },
+      ],
+    },
+    sourceFamilyAcquisitionReport: {
+      rows: [
+        {
+          story_id: "xbox-controller-family-known",
+          primary_story_entity: "Xbox Controller",
+          source_family_candidates: [
+            {
+              source_family: "xbox_official_youtube_forza_horizon_6_launch_trailer",
+              source_url: "https://www.youtube.com/watch?v=oYhaW-Vr4wg",
+              source_url_kind: "youtube_watch",
+              status: "needs_direct_media_url",
+            },
+            {
+              source_family: "xbox_wire_forza_horizon_6_developer_direct_breakdown",
+              source_url: "https://news.xbox.com/en-us/2026/01/22/forza-horizon-6-developer-direct-breakdown-interview/",
+              source_url_kind: "html_or_unknown_page",
+              status: "needs_direct_media_url",
+            },
+          ],
+          official_search_actions: [],
+          source_search_blockers: [],
+        },
+      ],
+    },
+    realMotionMaterializationReport: {
+      jobs: [
+        {
+          story_id: "xbox-controller-family-known",
+          status: "blocked",
+          blockers: ["real_motion_clip_minimum_not_met", "real_motion_family_minimum_not_met"],
+          materialized_count: 3,
+          distinct_motion_family_count: 1,
+          direct_video_motion_clip_count: 3,
+          partial_evidence_path:
+            "C:/repo/output/goal-proof/batch/xbox-controller-family-known/partial_real_motion_evidence.json",
+          partial_evidence_clip_count: 3,
+          partial_evidence_counts_towards_final_render_readiness: false,
+        },
+      ],
+    },
+    generatedAt: "2026-05-28T10:11:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.real_motion_materialisation_jobs, 1);
+  assert.equal(workOrder.summary.auto_repairable_jobs, 0);
+  assert.equal(workOrder.summary.operator_required_jobs, 1);
+  const action = workOrder.jobs[0].actions[0];
+  assert.equal(action.action_id, "materialise_validated_real_motion_clips");
+  assert.equal(action.repair_lane, "official_direct_media_search_after_generated_only_benchmark_failure");
+  assert.equal(action.auto_repairable, false);
+  assert.equal(action.operator_approval_required, true);
+  assert.match(action.recommended_command, /direct-media URL/i);
+  assert.match(action.recommended_command, /do not rerun owned-motion/i);
+  assert.equal(action.evidence.source_family_candidate_count, 2);
+  assert.equal(action.evidence.first_source_family, "xbox_official_youtube_forza_horizon_6_launch_trailer");
+  assert.equal(action.evidence.primary_story_entity, "Xbox Controller");
+  assert.equal(action.evidence.partial_evidence_clip_count, 3);
+  assert.equal(action.evidence.partial_evidence_counts_towards_final_render_readiness, false);
+  assert.equal(action.evidence.direct_video_motion_clip_count, 3);
+  assert.equal(action.evidence.distinct_motion_family_count, 1);
 });
 
 test("render input work order routes stale owned motion through owned motion rematerialisation", () => {
@@ -1026,6 +1233,226 @@ test("render input work order names direct-video floor gaps after real motion ex
   assert.equal(action.evidence.direct_video_motion_clip_floor, 5);
 });
 
+test("render input work order prefers fresh real-motion direct counts over stale cutover evidence", () => {
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-05-28T10:50:00.000Z",
+      queue: [
+        blockedQueueItem({
+          story_id: "expanse-direct-refresh",
+          title: "The Expanse Shows Real Gameplay",
+          render_input_blockers: ["direct_video_motion_clip_floor_not_met"],
+          render_input_evidence: {
+            real_visual_motion_clip_count: 8,
+            real_motion_input_readiness: {
+              has_direct_video_motion: true,
+              direct_video_motion_asset_count: 2,
+              direct_video_motion_family_count: 2,
+              direct_video_motion_clip_floor: 5,
+              direct_video_motion_clip_floor_met: false,
+              materialised_real_motion_clip_floor_met: true,
+            },
+          },
+        }),
+      ],
+    },
+    realMotionMaterializationReport: {
+      jobs: [
+        {
+          story_id: "expanse-direct-refresh",
+          status: "materialized",
+          candidate_count: 12,
+          materialized_count: 8,
+          distinct_motion_family_count: 8,
+          direct_video_motion_clip_count: 3,
+          direct_video_motion_family_count: 3,
+          total_direct_video_motion_asset_count: 3,
+          total_direct_video_motion_family_count: 3,
+          total_motion_clip_count: 8,
+        },
+      ],
+    },
+    generatedAt: "2026-05-28T10:51:00.000Z",
+  });
+
+  const action = workOrder.jobs[0].actions[0];
+  assert.equal(action.repair_lane, "additional_direct_video_motion_required");
+  assert.equal(action.evidence.direct_video_motion_asset_count, 3);
+  assert.equal(action.evidence.direct_video_motion_family_count, 3);
+  assert.equal(action.evidence.direct_video_motion_clip_count, 3);
+  assert.equal(action.evidence.total_direct_video_motion_family_count, 3);
+  assert.equal(action.evidence.materialized_count, 8);
+  assert.match(action.recommended_command, /Find 2 more rights-backed official direct-video sources/i);
+});
+
+test("render input work order uses fresh materialised direct-video count even when stale cutover evidence is higher", () => {
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-05-28T14:57:00.000Z",
+      queue: [
+        blockedQueueItem({
+          story_id: "controller-single-cinemagraph",
+          title: "Xbox Controller Deal Has One Catch",
+          render_input_blockers: ["direct_video_motion_clip_floor_not_met"],
+          render_input_evidence: {
+            real_visual_motion_clip_count: 6,
+            visual_evidence_profile: {
+              direct_video_motion_asset_count: 2,
+              direct_video_motion_family_count: 1,
+            },
+            real_motion_input_readiness: {
+              has_direct_video_motion: true,
+              direct_video_motion_asset_count: 2,
+              direct_video_motion_family_count: 1,
+              direct_video_motion_clip_floor: 5,
+              direct_video_motion_clip_floor_met: false,
+              materialised_real_motion_clip_floor_met: true,
+            },
+          },
+        }),
+      ],
+    },
+    realMotionMaterializationReport: {
+      jobs: [
+        {
+          story_id: "controller-single-cinemagraph",
+          status: "materialized",
+          candidate_count: 7,
+          materialized_count: 6,
+          distinct_motion_family_count: 6,
+          direct_video_motion_clip_count: 1,
+          direct_video_motion_family_count: 1,
+          total_direct_video_motion_asset_count: 1,
+          total_direct_video_motion_family_count: 1,
+          total_motion_clip_count: 6,
+        },
+      ],
+    },
+    generatedAt: "2026-05-28T15:05:00.000Z",
+  });
+
+  const action = workOrder.jobs[0].actions[0];
+  assert.equal(action.repair_lane, "additional_direct_video_motion_required");
+  assert.equal(action.evidence.direct_video_motion_asset_count, 1);
+  assert.equal(action.evidence.stale_cutover_direct_video_motion_asset_count, 2);
+  assert.equal(action.evidence.missing_direct_video_motion_clip_count, 4);
+  assert.match(action.recommended_command, /Find 4 more rights-backed official direct-video sources/i);
+});
+
+test("render input work order refreshes stale cutover after fresh real-motion clears the direct-video floor", () => {
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-05-28T10:50:00.000Z",
+      queue: [
+        blockedQueueItem({
+          story_id: "expanse-direct-cleared",
+          title: "The Expanse Shows Real Gameplay",
+          render_input_blockers: ["direct_video_motion_clip_floor_not_met"],
+          render_input_evidence: {
+            real_visual_motion_clip_count: 8,
+            real_motion_input_readiness: {
+              has_direct_video_motion: true,
+              direct_video_motion_asset_count: 2,
+              direct_video_motion_family_count: 2,
+              direct_video_motion_clip_floor: 5,
+              direct_video_motion_clip_floor_met: false,
+              materialised_real_motion_clip_floor_met: true,
+            },
+          },
+        }),
+      ],
+    },
+    realMotionMaterializationReport: {
+      jobs: [
+        {
+          story_id: "expanse-direct-cleared",
+          status: "materialized",
+          candidate_count: 14,
+          materialized_count: 8,
+          distinct_motion_family_count: 7,
+          direct_video_motion_clip_count: 5,
+          direct_video_motion_family_count: 4,
+          total_direct_video_motion_asset_count: 5,
+          total_direct_video_motion_family_count: 4,
+          total_motion_clip_count: 8,
+        },
+      ],
+    },
+    generatedAt: "2026-05-28T11:18:00.000Z",
+  });
+
+  assert.deepEqual(
+    workOrder.jobs[0].actions.map((action) => action.action_id),
+    ["refresh_stale_render_qa_state"],
+  );
+  assert.equal(workOrder.jobs[0].actions[0].repair_lane, "stale_cutover_after_real_motion_repair");
+  assert.equal(workOrder.jobs[0].actions[0].auto_repairable, true);
+  assert.equal(workOrder.summary.real_motion_materialisation_jobs, 0);
+  assert.equal(workOrder.summary.stale_qa_refresh_jobs, 1);
+});
+
+test("render input work order refreshes stale generated-only cutover after fresh direct-video motion exists", () => {
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-05-28T13:49:00.000Z",
+      queue: [
+        blockedQueueItem({
+          story_id: "mario-storefront-repaired",
+          title: "Super Mario RPG Drops To $15",
+          render_input_blockers: [
+            "visual_evidence:generated_only_motion_deck",
+            "visual_evidence:no_real_visual_media_asset",
+          ],
+          render_input_evidence: {
+            cutover_blockers: [
+              "benchmark_not_pass",
+              "benchmark_below_production_threshold:motion_density_score",
+              "benchmark_below_production_threshold:media_house_polish_score",
+            ],
+            owned_explainer_motion_ready: true,
+            owned_explainer_exception_approved: true,
+            visual_evidence_profile: {
+              generated_only_motion_deck: true,
+              real_media_asset_count: 0,
+              direct_video_motion_asset_count: 0,
+              blockers: [
+                "visual_evidence:generated_only_motion_deck",
+                "visual_evidence:no_real_visual_media_asset",
+              ],
+            },
+          },
+        }),
+      ],
+    },
+    realMotionMaterializationReport: {
+      jobs: [
+        {
+          story_id: "mario-storefront-repaired",
+          status: "materialized",
+          candidate_count: 11,
+          materialized_count: 11,
+          distinct_motion_family_count: 6,
+          direct_video_motion_clip_count: 11,
+          direct_video_motion_family_count: 6,
+          total_direct_video_motion_asset_count: 11,
+          total_direct_video_motion_family_count: 6,
+          total_motion_clip_count: 11,
+        },
+      ],
+    },
+    generatedAt: "2026-05-28T14:35:00.000Z",
+  });
+
+  assert.deepEqual(
+    workOrder.jobs[0].actions.map((action) => action.action_id),
+    ["refresh_stale_render_qa_state"],
+  );
+  assert.equal(workOrder.jobs[0].actions[0].repair_lane, "stale_cutover_after_real_motion_repair");
+  assert.equal(workOrder.jobs[0].actions[0].auto_repairable, true);
+  assert.equal(workOrder.summary.real_motion_materialisation_jobs, 0);
+  assert.equal(workOrder.summary.stale_qa_refresh_jobs, 1);
+});
+
 test("render input work order converts incident guard blockers into repair lanes", () => {
   const workOrder = buildGoalRenderInputWorkOrder({
     incidentGuardReport: {
@@ -1332,6 +1759,237 @@ test("render input work order routes strict dry-run bridge motion blockers into 
   assert.equal(action.operator_approval_required, false);
 });
 
+test("render input work order routes strict dry-run script and sound benchmark blockers into repair backlog", () => {
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-05-28T12:00:00.000Z",
+      queue: [],
+    },
+    dryRunPlan: {
+      generated_at: "2026-05-28T12:05:00.000Z",
+      blocked_stories: [
+        {
+          story_id: "script-weak-story",
+          artifact_dir: "C:/repo/output/goal-proof/batch/script-weak-story",
+          blockers: [
+            "preflight_candidate_not_publish_ready:review",
+            "preflight_qa_blocked:script_scorecard:script_score_below_threshold",
+          ],
+          incident_guard: {
+            evidence: {
+              title: "Forza Horizon 6 Reviews Are In",
+              canonical_subject: "Forza Horizon 6",
+            },
+          },
+        },
+        {
+          story_id: "sound-stale-story",
+          artifact_dir: "C:/repo/output/goal-proof/batch/sound-stale-story",
+          blockers: [
+            "preflight_candidate_not_publish_ready:review",
+            "preflight_qa_blocked:aggregate_benchmark:upstream:goal09_sound_design_engine_blocked",
+          ],
+          incident_guard: {
+            evidence: {
+              title: "Star Wars Zero Company Is More Than XCOM",
+              canonical_subject: "Star Wars Zero Company",
+            },
+          },
+        },
+      ],
+    },
+    generatedAt: "2026-05-28T12:06:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.story_count, 2);
+  assert.equal(workOrder.summary.script_scorecard_repair_jobs, 1);
+  assert.equal(workOrder.summary.sound_benchmark_repair_jobs, 1);
+  assert.equal(workOrder.summary.auto_repairable_jobs, 2);
+  assert.equal(workOrder.repair_backlog.summary.total_items, 2);
+
+  const scriptJob = workOrder.jobs.find((job) => job.story_id === "script-weak-story");
+  assert.ok(scriptJob.blockers.includes("script_scorecard_repair_required"));
+  assert.equal(scriptJob.actions[0].action_id, "repair_script_scorecard");
+  assert.equal(scriptJob.actions[0].repair_lane, "script_rewrite_and_audio_rerender");
+  assert.match(scriptJob.actions[0].recommended_command, /ops:goal-public-copy-repair/);
+  assert.match(scriptJob.actions[0].post_repair_validation_command, /ops:next-publish-candidates/);
+
+  const soundJob = workOrder.jobs.find((job) => job.story_id === "sound-stale-story");
+  assert.ok(soundJob.blockers.includes("sound_design_benchmark_repair_required"));
+  assert.equal(soundJob.actions[0].action_id, "repair_sound_design_benchmark");
+  assert.equal(soundJob.actions[0].repair_lane, "sound_visual_benchmark_repair");
+  assert.match(soundJob.actions[0].recommended_command, /ops:goal-sfx-evidence-repair/);
+  assert.match(soundJob.actions[0].post_repair_validation_command, /ops:goal10-gold-standard-forensics/);
+});
+
+test("render input work order routes aggregate visual benchmark failures away from sound-only repair", () => {
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-05-28T12:00:00.000Z",
+      queue: [],
+    },
+    dryRunPlan: {
+      generated_at: "2026-05-28T12:08:00.000Z",
+      blocked_stories: [
+        {
+          story_id: "aggregate-visual-story",
+          artifact_dir: "C:/repo/output/goal-proof/batch/aggregate-visual-story",
+          blockers: [
+            "preflight_candidate_not_publish_ready:review",
+            "preflight_qa_blocked:aggregate_benchmark:upstream:goal09_sound_design_engine_blocked",
+          ],
+          scheduler_preflight: {
+            status: "blocked",
+            blockers: ["aggregate_benchmark:upstream:goal09_sound_design_engine_blocked"],
+            checks: {
+              aggregate_benchmark: {
+                result: "fail",
+                failures: [
+                  "upstream:goal09_sound_design_engine_blocked",
+                  "upstream:goal08_visual_v4_renderer_blocked",
+                  "upstream:goal07_director_brain_blocked",
+                  "director:unsuitable_duration",
+                  "render:sfx_mix_policy_stale",
+                  "render:visual_design_policy_stale",
+                  "visual:gold_standard:motion_density_below_reference",
+                  "visual:weak_motion_density",
+                ],
+              },
+            },
+          },
+          incident_guard: {
+            evidence: {
+              title: "Star Wars Zero Company Is More Than XCOM",
+              canonical_subject: "Star Wars Zero Company",
+            },
+          },
+        },
+      ],
+    },
+    generatedAt: "2026-05-28T12:09:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.aggregate_benchmark_repair_jobs, 1);
+  assert.equal(workOrder.summary.sound_benchmark_repair_jobs, 0);
+  const job = workOrder.jobs.find((entry) => entry.story_id === "aggregate-visual-story");
+  assert.ok(job.blockers.includes("aggregate_benchmark_repair_required"));
+  assert.ok(!job.blockers.includes("sound_design_benchmark_repair_required"));
+  assert.deepEqual(
+    job.evidence.scheduler_preflight_failures.slice(-8),
+    [
+      "upstream:goal09_sound_design_engine_blocked",
+      "upstream:goal08_visual_v4_renderer_blocked",
+      "upstream:goal07_director_brain_blocked",
+      "director:unsuitable_duration",
+      "render:sfx_mix_policy_stale",
+      "render:visual_design_policy_stale",
+      "visual:gold_standard:motion_density_below_reference",
+      "visual:weak_motion_density",
+    ],
+  );
+  assert.equal(job.actions[0].action_id, "repair_aggregate_benchmark");
+  assert.equal(job.actions[0].repair_lane, "aggregate_visual_director_benchmark_refresh");
+  assert.match(job.actions[0].recommended_command, /ops:goal-production-render/);
+  assert.match(job.actions[0].post_repair_validation_command, /ops:next-publish-candidates/);
+});
+
+test("render input work order routes public-copy-newer scheduler blockers to audio freshness repair", () => {
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-05-28T12:00:00.000Z",
+      queue: [],
+    },
+    dryRunPlan: {
+      generated_at: "2026-05-28T12:10:00.000Z",
+      blocked_stories: [
+        {
+          story_id: "fresh-copy-stale-render",
+          artifact_dir: "C:/repo/output/goal-proof/batch/fresh-copy-stale-render",
+          blockers: ["public_copy_newer_than_render"],
+          scheduler_preflight: {
+            status: "blocked",
+            blockers: ["public_copy_newer_than_render"],
+            checks: {
+              public_copy: { result: "pass", failures: [], warnings: [] },
+              bridge_artifact_freshness: {
+                result: "fail",
+                failures: ["public_copy_newer_than_render"],
+                warnings: [],
+              },
+            },
+          },
+          incident_guard: {
+            evidence: {
+              title: "Crimson Desert Is Already Live",
+              canonical_subject: "Crimson Desert",
+            },
+          },
+        },
+      ],
+    },
+    generatedAt: "2026-05-28T12:11:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.audio_timestamp_jobs, 1);
+  assert.equal(workOrder.summary.public_output_repair_jobs, 0);
+  const job = workOrder.jobs.find((entry) => entry.story_id === "fresh-copy-stale-render");
+  assert.ok(job.blockers.includes("final_narration_audio_stale_after_public_copy_repair"));
+  assert.ok(job.blockers.includes("word_timestamps_stale_after_public_copy_repair"));
+  assert.ok(!job.blockers.includes("public_copy_repair_required"));
+  assert.deepEqual(
+    job.actions.map((action) => action.action_id),
+    ["generate_final_narration_audio_and_word_timestamps"],
+  );
+  assert.match(job.actions[0].recommended_command, /ops:goal-audio-timestamps/);
+});
+
+test("render input work order routes dry-run title duplicates to event deduplication repair", () => {
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-05-28T13:20:00.000Z",
+      queue: [],
+    },
+    dryRunPlan: {
+      generated_at: "2026-05-28T13:21:00.000Z",
+      blocked_stories: [
+        {
+          story_id: "forza-duplicate",
+          title: "Forza Horizon 6 Scores 84 On PC Gamer",
+          artifact_dir: "C:/repo/output/goal-proof/batch/forza-duplicate",
+          blockers: ["title_duplicate:Forza Horizon 6 Scores 84 On PC Gamer"],
+          scheduler_preflight: {
+            status: "pass",
+            blockers: [],
+            checks: {
+              aggregate_benchmark: { result: "pass", failures: [], warnings: [] },
+            },
+          },
+          incident_guard: {
+            evidence: {
+              title: "Forza Horizon 6 Scores 84 On PC Gamer",
+              canonical_subject: "Forza Horizon 6",
+            },
+          },
+        },
+      ],
+    },
+    generatedAt: "2026-05-28T13:22:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.duplicate_title_repair_jobs, 1);
+  const job = workOrder.jobs.find((entry) => entry.story_id === "forza-duplicate");
+  assert.ok(job.blockers.includes("duplicate_title_repair_required"));
+  assert.equal(job.actions[0].action_id, "resolve_duplicate_title_or_event");
+  assert.equal(job.actions[0].repair_lane, "event_deduplication_or_angle_split");
+  assert.equal(job.actions[0].operator_approval_required, true);
+  assert.match(job.actions[0].recommended_command, /goal-public-copy-repair/);
+  assert.match(job.actions[0].recommended_command, /--reserved-title "Forza Horizon 6 Scores 84 On PC Gamer"/);
+  assert.match(job.actions[0].post_repair_validation_command, /goal-dry-run-publish/);
+  assert.deepEqual(job.evidence.scheduler_preflight_blockers, [
+    "title_duplicate:Forza Horizon 6 Scores 84 On PC Gamer",
+  ]);
+});
+
 test("render input work order converts Goal 03 missing artefacts into executable repair lanes", () => {
   const workOrder = buildGoalRenderInputWorkOrder({
     cutoverPlan: {
@@ -1562,6 +2220,48 @@ test("render input work order routes scheduler visual-evidence blockers to real 
     workOrder.jobs[0].actions.map((action) => action.action_id),
     ["materialise_validated_real_motion_clips"],
   );
+});
+
+test("render input work order routes plain benchmark failures with generated-only evidence to real motion repair", () => {
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-05-28T08:30:00.000Z",
+      blocked: [
+        {
+          story_id: "plain-generated-only-cutover-story",
+          title: "Xbox Controller Deal Has One Catch",
+          artifact_dir: "C:/repo/output/goal-proof/batch/plain-generated-only-cutover-story",
+          blockers: [
+            "benchmark_not_pass",
+            "benchmark_below_production_threshold:motion_density_score",
+            "benchmark_below_production_threshold:media_house_polish_score",
+          ],
+          visual_evidence_profile: {
+            generated_only_motion_deck: true,
+            real_media_asset_count: 0,
+            real_motion_asset_count: 0,
+            direct_video_motion_asset_count: 0,
+            blockers: [
+              "visual_evidence:generated_only_motion_deck",
+              "visual_evidence:no_real_visual_media_asset",
+            ],
+          },
+        },
+      ],
+    },
+    generatedAt: "2026-05-28T08:31:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.story_count, 1);
+  assert.equal(workOrder.summary.real_motion_materialisation_jobs, 1);
+  assert.equal(workOrder.summary.auto_repairable_jobs, 1);
+  const job = workOrder.jobs[0];
+  assert.ok(job.blockers.includes("visual_evidence:generated_only_motion_deck"));
+  assert.ok(job.blockers.includes("visual_evidence:no_real_visual_media_asset"));
+  const action = job.actions[0];
+  assert.equal(action.action_id, "materialise_validated_real_motion_clips");
+  assert.equal(action.repair_lane, "validated_real_motion_materialisation");
+  assert.equal(action.auto_repairable, true);
 });
 
 test("render input work order does not let final-publish incident blockers stop a ready final-render job", () => {

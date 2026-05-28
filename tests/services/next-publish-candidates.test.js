@@ -426,6 +426,10 @@ test("next publish CLI defaults to the scheduler bridge candidate overlay", () =
   assert.equal(args.bridgeCandidatesPath, DEFAULT_BRIDGE_CANDIDATES_PATH);
   assert.equal(args.directVideoEnrichmentWorkOrderPath, DEFAULT_DIRECT_VIDEO_ENRICHMENT_WORK_ORDER_PATH);
   assert.equal(args.sourceFamilyAcquisitionReportPath, DEFAULT_SOURCE_FAMILY_ACQUISITION_REPORT_PATH);
+  assert.equal(
+    args.sourceFamilyAcquisitionReportPath,
+    path.join(process.cwd(), "output", "goal-contract", "studio_v4_source_family_acquisition_remaining.json"),
+  );
 });
 
 test("next publish report can focus candidate ranking on one story id", () => {

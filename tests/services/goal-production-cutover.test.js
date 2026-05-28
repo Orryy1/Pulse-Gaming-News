@@ -2492,6 +2492,129 @@ test("production cutover requeues final renders when audio and timestamp fingerp
   assert.equal(plan.queue[0].render_input_evidence.word_timestamps_fingerprint_matches_render, false);
 });
 
+test("production cutover does not route stale final renders to source acquisition when selected render deck satisfies motion budget", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-selected-render-motion-ready-"));
+  const storyPackage = await makeCutoverPackage(root, "selected-render-motion-ready", {
+    finalPublishRender: true,
+    renderer: "visual_v4_production",
+    visualTier: "production_v4_motion",
+    subject: "Pokémon Go",
+    title: "Mega Mewtwo Is Finally Coming To Pokémon Go",
+  });
+  const artifactDir = storyPackage.artifact_dir;
+  const audioPath = path.join(artifactDir, "narration.mp3");
+  const timestampsPath = path.join(artifactDir, "narration_timestamps.json");
+  const motionDir = path.join(artifactDir, "motion");
+  const selectedDir = path.join(artifactDir, "selected-render");
+  const oldAudio = Buffer.alloc(4000, 2);
+  const oldTimestamps = Buffer.from(JSON.stringify({ words: [{ word: "Mega", start: 0, end: 0.4 }] }));
+  await fs.outputFile(audioPath, oldAudio);
+  await fs.outputFile(timestampsPath, oldTimestamps);
+
+  const inventoryClips = [];
+  for (let index = 1; index <= 13; index += 1) {
+    const clipPath = path.join(motionDir, `clip-${index}.mp4`);
+    await fs.outputFile(clipPath, Buffer.alloc(3000, index));
+    inventoryClips.push({
+      id: `inventory-${index}`,
+      path: clipPath,
+      source_url: `https://cdn.example.test/pokemon-go/inventory-${index}.mp4`,
+      source_type: "official_trailer_segment",
+      media_kind: "direct_video",
+      source_family: `reused_family_${(index % 7) + 1}`,
+      rights_risk_class: "official_reference_transformative_short",
+      validated: true,
+    });
+  }
+
+  const selectedRenderClips = [];
+  for (let index = 1; index <= 13; index += 1) {
+    const clipPath = path.join(selectedDir, `selected-${index}.mp4`);
+    await fs.outputFile(clipPath, Buffer.alloc(3000, index + 20));
+    selectedRenderClips.push({
+      id: `selected-${index}`,
+      path: clipPath,
+      source_url: `https://cdn.example.test/pokemon-go/selected-${index}.mp4`,
+      source_type: "official_trailer_segment",
+      media_kind: "direct_video",
+      source_family: `selected_family_${index}`,
+      rights_risk_class: "official_reference_transformative_short",
+      validated: true,
+    });
+  }
+
+  await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), {
+    narration_audio_path: audioPath,
+    word_timestamps_path: timestampsPath,
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    motion_budget: {
+      required_motion_scenes: 13,
+      required_distinct_families: 13,
+    },
+    motion_inventory: {
+      accepted_local_clips: inventoryClips,
+      production_motion_clips: inventoryClips,
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    records: [...inventoryClips, ...selectedRenderClips].map((clip) => ({
+      ...clip,
+      asset_type: "motion_clip",
+      licence_basis: "official_reference_transformative_short",
+      commercial_use_allowed: true,
+      approval_status: "approved_for_transformative_editorial_use",
+    })),
+  });
+  await fs.outputJson(path.join(artifactDir, "visual_v4_render_story.json"), {
+    selected_render_clips: selectedRenderClips,
+  });
+  await fs.outputJson(path.join(artifactDir, "render_manifest.json"), {
+    story_id: "selected-render-motion-ready",
+    renderer: "visual_v4_production",
+    visual_tier: "production_v4_motion",
+    final_publish_render: true,
+    sfx_mix_policy_version: STUDIO_V4_SFX_MIX_POLICY_VERSION,
+    voice_mix_policy_version: STUDIO_V4_VOICE_MIX_POLICY_VERSION,
+    visual_design_policy_version: STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION,
+    output_path: path.join(artifactDir, "visual_v4_render.mp4"),
+    rendered_duration_s: 43.2,
+    input_fingerprint: {
+      algorithm: "sha256",
+      audio_sha256: crypto.createHash("sha256").update(oldAudio).digest("hex"),
+      word_timestamps_sha256: crypto.createHash("sha256").update(oldTimestamps).digest("hex"),
+      audio_size_bytes: oldAudio.length,
+      word_timestamps_size_bytes: oldTimestamps.length,
+    },
+  });
+
+  await fs.outputFile(audioPath, Buffer.alloc(5000, 7));
+  await fs.outputJson(timestampsPath, {
+    words: [
+      { word: "Mega", start: 0, end: 0.36 },
+      { word: "Mewtwo", start: 0.36, end: 0.82 },
+    ],
+  });
+
+  const plan = await buildProductionRenderCutoverPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-05-28T05:45:00.000Z",
+  });
+
+  assert.equal(plan.queue[0].status, "needs_final_render");
+  assert.ok(plan.queue[0].blockers.includes("final_render_word_timestamps_fingerprint_mismatch"));
+  assert.equal(plan.queue[0].render_input_status, "ready_for_final_render_job");
+  assert.deepEqual(plan.queue[0].render_input_blockers, []);
+  assert.equal(plan.queue[0].render_input_evidence.selected_render_input_motion_ready, true);
+  assert.deepEqual(
+    plan.queue[0].render_input_evidence.selected_render_input_motion_blockers_cleared.sort(),
+    [
+      "materialised_motion_families_insufficient",
+      "real_visual_motion_families_insufficient",
+    ].sort(),
+  );
+});
+
 test("production cutover does not inflate materialised motion counts with duplicate paths", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-duplicate-motion-"));
   const storyPackage = await makeCutoverPackage(root, "duplicate-motion-story");

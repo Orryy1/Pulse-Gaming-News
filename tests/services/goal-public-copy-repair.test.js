@@ -1751,6 +1751,47 @@ test("public copy repair stops generating production-note narration lines", () =
         "A GameSir G7 Pro deal is available through AliExpress",
       ],
     },
+    {
+      story_id: "xbox-feedback-production-note",
+      canonical_subject: "Xbox",
+      canonical_game: "Xbox",
+      canonical_title:
+        "Microsoft Launches Xbox Player Voice to Gather Feedback, Fans Immediately Demand Exclusives",
+      selected_title: "Xbox Fans Used Feedback To Demand Exclusives",
+      primary_source: "IGN",
+      description:
+        "IGN reports Microsoft launched Xbox Player Voice to gather feedback and fans immediately demanded exclusives. Source: IGN.",
+      confirmed_claims: [
+        "Microsoft launched Xbox Player Voice to gather feedback and fans immediately demanded exclusives",
+      ],
+    },
+    {
+      story_id: "nintendo-lawsuit-production-note",
+      canonical_subject: "Nintendo",
+      canonical_game: "Nintendo",
+      canonical_title:
+        "An Iowa man filed a lawsuit against Nintendo of America and The Pokemon Company International after being denied Pokemon Professor status",
+      selected_title: "Nintendo Professor Lawsuit Just Got Weird",
+      primary_source: "Dexerto",
+      description:
+        "Dexerto reports an Iowa man sued Nintendo of America and The Pokemon Company International after being denied Pokemon Professor status. Source: Dexerto.",
+      confirmed_claims: [
+        "An Iowa man sued Nintendo of America and The Pokemon Company International after being denied Pokemon Professor status",
+      ],
+    },
+    {
+      story_id: "kadokawa-stake-production-note",
+      canonical_subject: "Kadokawa",
+      canonical_game: "Kadokawa",
+      canonical_title: "Oasis Management raised its Kadokawa stake above Sony's stake",
+      selected_title: "Kadokawa Stake Just Passed Sony",
+      primary_source: "Automaton West",
+      description:
+        "Automaton West reports Oasis Management raised its Kadokawa stake above Sony's stake. Source: Automaton West.",
+      confirmed_claims: [
+        "Oasis Management raised its Kadokawa stake above Sony's stake",
+      ],
+    },
   ];
 
   for (const manifest of cases) {
@@ -1762,7 +1803,7 @@ test("public copy repair stops generating production-note narration lines", () =
     assert.equal(qa.verdict, "pass", `${manifest.story_id}: ${qa.failures.join(", ")}`);
     assert.doesNotMatch(
       repaired.manifest.narration_script,
-      /the news is simple|title-card promise|player watchlist story|first gameplay cut|another logo reveal|changes the version people were actually|clearer public hook|bit players will argue over/i,
+      /the news is simple|title-card promise|player watchlist story|first gameplay cut|another logo reveal|changes the version people were actually|clearer public hook|bit players will argue over|one concrete change worth remembering|clean shape:\s*what changed|source visible and no extra lore/i,
       manifest.story_id,
     );
   }

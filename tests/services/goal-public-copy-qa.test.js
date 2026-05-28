@@ -190,6 +190,20 @@ test("goal public copy QA blocks formulaic repair filler from public narration",
   assert.ok(report.failures.includes("public_copy:formulaic_public_narration"));
 });
 
+test("goal public copy QA blocks concrete-change production-note narration", () => {
+  const report = evaluateGoalPublicCopy({
+    canonical_subject: "Xbox",
+    selected_title: "Xbox Fans Used Feedback To Demand Exclusives",
+    first_spoken_line: "Xbox asked for feedback and immediately got the exclusives argument.",
+    narration_script:
+      "Xbox asked for feedback and immediately got the exclusives argument. IGN reports Microsoft launched Xbox Player Voice to gather feedback. Xbox now has one concrete change worth remembering after the scroll moves on. Follow Pulse Gaming so you never miss a beat.",
+    description: "IGN reports Microsoft launched Xbox Player Voice to gather feedback. Source: IGN.",
+  });
+
+  assert.equal(report.verdict, "fail");
+  assert.ok(report.failures.includes("public_copy:formulaic_public_narration"));
+});
+
 test("goal public copy QA blocks TTS-hostile Hades filler from public narration", () => {
   const report = evaluateGoalPublicCopy({
     canonical_subject: "Hades II",

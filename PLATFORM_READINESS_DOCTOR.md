@@ -2,7 +2,7 @@
 
 Read-only diagnostic. It performs no OAuth, token mutation, uploads or posts.
 
-Generated: 2026-05-27T18:29:31.463Z
+Generated: 2026-05-28T06:31:51.513Z
 Verdict: AMBER
 
 ## Blockers

@@ -46,8 +46,9 @@ test("dominantVerdict: all green stays green", () => {
 // ── PILLAR_NAMES contract ────────────────────────────────────────
 
 test("PILLAR_NAMES: includes cadence plus the original readiness pillars", () => {
-  assert.equal(pr.PILLAR_NAMES.length, 21);
+  assert.equal(pr.PILLAR_NAMES.length, 22);
   assert.ok(pr.PILLAR_NAMES.includes("publish_cadence"));
+  assert.ok(pr.PILLAR_NAMES.includes("strict_dry_run_control"));
 });
 
 test("PILLAR_NAMES: includes the audit-flagged external blockers", () => {
@@ -143,6 +144,7 @@ test("buildPublishReadinessReport: empty store does not crash, returns at least 
   // We use a fake DB and let the real pillars run. They should
   // gracefully degrade to amber/unknown, never throw.
   const report = await pr.buildPublishReadinessReport({
+    skipOperationalPillars: true,
     db: {
       async getStories() {
         return [];
@@ -156,8 +158,115 @@ test("buildPublishReadinessReport: empty store does not crash, returns at least 
   );
   assert.equal(report.story_count, 0);
   assert.ok(typeof report.pillars === "object");
-  assert.equal(Object.keys(report.pillars).length, 21);
+  assert.equal(Object.keys(report.pillars).length, 22);
   assert.ok(typeof report.next_action === "string");
+});
+
+test("pillarStrictDryRunControl: amber dry-run requires human review, not generic publish-possible wording", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-strict-dry-run-"));
+  const planPath = path.join(dir, "dry_run_publish_plan.json");
+  try {
+    fs.writeFileSync(
+      planPath,
+      JSON.stringify({
+        generated_at: "2026-05-28T05:55:00.000Z",
+        overall_verdict: "AMBER",
+        ready_for_unattended_publish: false,
+        readiness_reasons: [
+          "platform_actions_deferred_until_enabled",
+          "stories_quarantined_or_operator_held",
+        ],
+        summary: {
+          ready_story_count: 21,
+          blocked_story_count: 0,
+          held_story_count: 7,
+          skipped_story_count: 2,
+          platform_publish_now_action_count: 63,
+          platform_deferred_action_count: 84,
+          blocked_action_count: 0,
+          warning_action_count: 0,
+        },
+        platform_upload_preflight_report: {
+          summary: {
+            disabled_platform_count: 4,
+          },
+        },
+        safety: {
+          no_publish_triggered: true,
+          no_network_uploads: true,
+          no_db_mutation: true,
+          no_oauth_or_token_change: true,
+          dry_run_only: true,
+        },
+      }),
+    );
+
+    const pillar = pr.pillarStrictDryRunControl({
+      planPath,
+      now: Date.parse("2026-05-28T06:00:00.000Z"),
+    });
+
+    assert.equal(pillar.verdict, "amber");
+    assert.match(pillar.reason, /human_review_required/);
+    assert.equal(pillar.raw.ready_story_count, 21);
+    assert.equal(pillar.raw.disabled_platform_count, 4);
+
+    const nextAction = pr.resolvePublishReadinessNextAction({
+      overall: "amber",
+      pillars: {
+        publish_cadence: { verdict: "green" },
+        strict_dry_run_control: pillar,
+      },
+    });
+
+    assert.match(nextAction, /Do not publish unattended/);
+    assert.match(nextAction, /HUMAN_REVIEW/);
+    assert.doesNotMatch(nextAction, /Publish possible/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("pillarStrictDryRunControl: red when strict dry-run has active blockers", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-strict-dry-run-red-"));
+  const planPath = path.join(dir, "dry_run_publish_plan.json");
+  try {
+    fs.writeFileSync(
+      planPath,
+      JSON.stringify({
+        generated_at: "2026-05-28T05:55:00.000Z",
+        overall_verdict: "RED",
+        ready_for_unattended_publish: false,
+        summary: {
+          ready_story_count: 20,
+          blocked_story_count: 1,
+          held_story_count: 7,
+          skipped_story_count: 2,
+          platform_publish_now_action_count: 60,
+          platform_deferred_action_count: 84,
+          blocked_action_count: 1,
+          warning_action_count: 0,
+        },
+        safety: {
+          no_publish_triggered: true,
+          no_network_uploads: true,
+          no_db_mutation: true,
+          no_oauth_or_token_change: true,
+          dry_run_only: true,
+        },
+      }),
+    );
+
+    const pillar = pr.pillarStrictDryRunControl({
+      planPath,
+      now: Date.parse("2026-05-28T06:00:00.000Z"),
+    });
+
+    assert.equal(pillar.verdict, "red");
+    assert.match(pillar.reason, /strict_dry_run_blocked/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("pillarPublishCadence: over-cap cadence tells operators to hold manual publishing", async () => {
@@ -216,6 +325,7 @@ test("pillarFacebookReelEligibility: graph proof makes Facebook Reels green", ()
 
 test("buildPublishReadinessReport: db throw degrades gracefully (no throw)", async () => {
   const report = await pr.buildPublishReadinessReport({
+    skipOperationalPillars: true,
     db: {
       async getStories() {
         throw new Error("db down");

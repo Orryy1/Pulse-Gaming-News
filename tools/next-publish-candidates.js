@@ -27,9 +27,9 @@ const DEFAULT_DIRECT_VIDEO_ENRICHMENT_WORK_ORDER_PATH = path.join(
 );
 const DEFAULT_SOURCE_FAMILY_ACQUISITION_REPORT_PATH = path.join(
   ROOT,
-  "test",
   "output",
-  "studio_v4_source_family_acquisition.json",
+  "goal-contract",
+  "studio_v4_source_family_acquisition_remaining.json",
 );
 const DEFAULT_ANALYTICS_PATH = "D:\\pulse-data\\analytics_findings.md";
 const DEFAULT_LIMIT = 12;

@@ -1292,6 +1292,73 @@ test("goal audio materializer retries Whisper when mid-script ASR insertions exc
   }
 });
 
+test("goal audio materializer accepts tiny ASR insertions on long high-coverage Whisper alignment", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-whisper-long-insertions-"));
+  const script = [
+    "Nintendo Professor Lawsuit Just Got Weird.",
+    "Dexerto reports an Iowa man filed a lawsuit against Nintendo of America and The Pokemon Company International after being denied Pokemon Professor status.",
+    "The odd part is the target: a fan programme rejection, not Nintendo's usual fight over ROMs or clone games.",
+    "Nintendo is a strange legal fight, not another normal Nintendo takedown story.",
+    "The unusual part is the target: a fan programme rejection, not a ROM site or a clone game.",
+    "That makes it a community access dispute around one of Pokemon's official programmes.",
+    "It is small compared with Nintendo's biggest legal fights, but weird enough to watch.",
+    "If either side answers, the story changes from odd filing to clearer dispute.",
+    "Follow Pulse Gaming so you never miss a beat.",
+  ].join(" ");
+  const artifactDir = await makePackage(root, "story-whisper-long-insertions", {
+    selected_title: "Nintendo Professor Lawsuit Just Got Weird",
+    narration_script: script,
+  });
+  const expectedWords = script.split(/\s+/);
+  const actualWords = [
+    ...expectedWords.slice(0, 28),
+    "now",
+    ...expectedWords.slice(28, 71),
+    "still",
+    ...expectedWords.slice(71, 102),
+    "briefly",
+    ...expectedWords.slice(102),
+  ];
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    workbenchReport: {
+      local_tts: { verdict: "green", ready: true },
+      jobs: [workbenchJob("story-whisper-long-insertions", artifactDir)],
+    },
+    generatedAt: "2026-05-28T06:20:00.000Z",
+    alignmentMode: "whisper",
+    alignWordsWithAudio: async () => ({
+      ok: true,
+      source: "local_whisper_word_alignment",
+      model: "small.en",
+      transcript: actualWords.join(" "),
+      words: actualWords.map((word, index) => ({
+        word,
+        start: Number((index * 0.25).toFixed(3)),
+        end: Number((index * 0.25 + 0.17).toFixed(3)),
+      })),
+    }),
+    generateTtsForStory: async ({ text, outputPath }) => {
+      const audioPath = path.join(root, outputPath);
+      await fs.outputFile(audioPath, Buffer.alloc(4096, 1));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignment(text),
+      });
+      return { ok: true };
+    },
+  });
+
+  assert.equal(report.summary.materialized_count, 1);
+  assert.equal(report.summary.failed_count, 0);
+  const timestamps = await fs.readJson(
+    path.join(root, "output", "audio", "story-whisper-long-insertions_timestamps.json"),
+  );
+  assert.equal(timestamps.meta.wordTimestampSource, "local_whisper_word_alignment");
+  assert.equal(timestamps.meta.timestampWhisperAlignment.script_inserted_actual_word_count, 3);
+  assert.equal(timestamps.words.length, expectedWords.length);
+});
+
 test("goal audio materializer uses configured stronger Whisper fallbacks before rejecting clean speech", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-default-whisper-fallback-"));
   const script =
@@ -2255,6 +2322,11 @@ test("goal audio materializer does not regenerate when fresh MEDIA_ROOT audio su
     assert.equal(report.summary.skipped_existing_count, 1);
     assert.equal(report.jobs[0].status, "skipped_existing_ready_pair");
     assert.equal(report.jobs[0].audio_size_bytes, 4096);
+    const manifest = await fs.readJson(path.join(artifactDir, "audio_manifest.json"));
+    assert.equal(
+      manifest.resolved_word_timestamps_path,
+      path.join(mediaRoot, "output", "audio", "story-audio_timestamps.json"),
+    );
   } finally {
     if (originalMediaRoot === undefined) delete process.env.MEDIA_ROOT;
     else process.env.MEDIA_ROOT = originalMediaRoot;
@@ -2323,6 +2395,71 @@ test("goal audio materializer promotes fresh generated workspace audio over stal
   }
 });
 
+test("goal audio materializer does not overwrite fresh MEDIA_ROOT generation with stale workspace copies", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-media-fresh-root-"));
+  const mediaRoot = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-media-root-fresh-root-"));
+  const originalMediaRoot = process.env.MEDIA_ROOT;
+  process.env.MEDIA_ROOT = mediaRoot;
+  const storyId = "story-media-root-fresh";
+  const script =
+    "Xbox asked for feedback and immediately got the exclusives argument. The uncomfortable part is that fans skipped the survey framing and went straight to Xbox's platform promise.";
+  try {
+    const artifactDir = await makePackage(root, storyId, {
+      selected_title: "Xbox Fans Used Feedback To Demand Exclusives",
+      canonical_subject: "Xbox",
+      narration_script: script,
+      public_copy_repaired_at: "2026-05-28T03:10:00.000Z",
+    });
+    const workspaceAudioPath = path.join(root, "output", "audio", `${storyId}.mp3`);
+    const workspaceTimestampPath = path.join(root, "output", "audio", `${storyId}_timestamps.json`);
+    await fs.outputFile(workspaceAudioPath, Buffer.alloc(2048, 1));
+    await fs.outputJson(workspaceTimestampPath, {
+      alignment: charAlignment("Old stale narration that must not be promoted."),
+    });
+    const staleTime = new Date("2026-05-28T03:00:00.000Z");
+    await fs.utimes(workspaceAudioPath, staleTime, staleTime);
+    await fs.utimes(workspaceTimestampPath, staleTime, staleTime);
+
+    const report = await materializeGoalAudioTimestamps({
+      workspaceRoot: root,
+      workbenchReport: {
+        local_tts: { verdict: "green", ready: true },
+        jobs: [workbenchJob(storyId, artifactDir)],
+      },
+      generatedAt: "2026-05-28T03:12:00.000Z",
+      force: true,
+      promoteGeneratedMediaRoot: true,
+      alignmentMode: "whisper",
+      alignWordsWithAudio: async ({ audioPath, scriptText }) => {
+        assert.equal((await fs.stat(audioPath)).size, 4096);
+        return {
+          ok: true,
+          source: "local_whisper_word_alignment",
+          model: "tiny.en",
+          transcript: scriptText,
+          words: whisperWordsFromScript(scriptText),
+        };
+      },
+      generateTtsForStory: async ({ text, outputPath }) => {
+        await fs.outputFile(path.join(mediaRoot, outputPath), Buffer.alloc(4096, 2));
+        await fs.outputJson(path.join(mediaRoot, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+          alignment: charAlignment(text),
+        });
+        return { ok: true };
+      },
+    });
+
+    assert.equal(report.summary.materialized_count, 1);
+    assert.equal((await fs.stat(path.join(mediaRoot, "output", "audio", `${storyId}.mp3`))).size, 4096);
+    const manifest = await fs.readJson(path.join(artifactDir, "audio_manifest.json"));
+    assert.equal(manifest.word_timestamp_source, "local_whisper_word_alignment");
+    assert.equal(manifest.timestamp_whisper_alignment.script_inserted_actual_word_count, 0);
+  } finally {
+    if (originalMediaRoot === undefined) delete process.env.MEDIA_ROOT;
+    else process.env.MEDIA_ROOT = originalMediaRoot;
+  }
+});
+
 test("goal audio materializer normalises an existing media-root character alignment without regenerating", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-normalise-"));
   const mediaRoot = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-media-root-normalise-"));
@@ -2358,6 +2495,11 @@ test("goal audio materializer normalises an existing media-root character alignm
     assert.ok(timestamps.words.length >= 5);
     const manifest = await fs.readJson(path.join(artifactDir, "audio_manifest.json"));
     assert.equal(manifest.word_timestamps_path, "output/audio/story-audio_timestamps.json");
+    assert.equal(manifest.word_timestamp_source, "local_alignment_normalised");
+    assert.equal(
+      manifest.resolved_word_timestamps_path,
+      path.join(mediaRoot, "output", "audio", "story-audio_timestamps.json"),
+    );
   } finally {
     if (originalMediaRoot === undefined) delete process.env.MEDIA_ROOT;
     else process.env.MEDIA_ROOT = originalMediaRoot;
@@ -2433,6 +2575,12 @@ test("goal audio materializer realigns existing local audio with Whisper without
   assert.equal(timestamps.words[0].start, 0.12);
   const manifest = await fs.readJson(path.join(artifactDir, "audio_manifest.json"));
   assert.equal(manifest.word_timestamps_path, "output/audio/story-audio_timestamps.json");
+  assert.equal(manifest.word_timestamp_source, "local_whisper_word_alignment");
+  assert.equal(manifest.timestamp_whisper_alignment.repaired, true);
+  assert.equal(
+    manifest.resolved_word_timestamps_path,
+    path.join(root, "output", "audio", "story-audio_timestamps.json"),
+  );
   assert.equal(manifest.voice_provider, "existing");
 });
 

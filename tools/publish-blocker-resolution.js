@@ -11,9 +11,14 @@ const {
   formatPublishBlockerResolutionMarkdown,
 } = require("../lib/services/publish-blocker-resolution");
 const {
+  DEFAULT_BRIDGE_CANDIDATES_PATH,
+  DEFAULT_DIRECT_VIDEO_ENRICHMENT_WORK_ORDER_PATH,
+  DEFAULT_SOURCE_FAMILY_ACQUISITION_REPORT_PATH,
   attachPreflightQa,
   buildNextPublishCandidatesReport,
+  readBridgeCandidateManifest,
   runPreflightQaForStory,
+  selectCandidateSourceStories,
 } = require("./next-publish-candidates");
 
 const ROOT = path.resolve(__dirname, "..");
@@ -31,6 +36,10 @@ function parseArgs(argv) {
     apply: false,
     operatorConfirmed: false,
     analyticsPath: DEFAULT_ANALYTICS_PATH,
+    bridgeCandidatesPath: DEFAULT_BRIDGE_CANDIDATES_PATH,
+    allowLiveFallback: false,
+    directVideoEnrichmentWorkOrderPath: DEFAULT_DIRECT_VIDEO_ENRICHMENT_WORK_ORDER_PATH,
+    sourceFamilyAcquisitionReportPath: DEFAULT_SOURCE_FAMILY_ACQUISITION_REPORT_PATH,
     governanceManifest: path.join(OUT, "governance_1thsxw7", "publish_manifest.json"),
     renderStory: path.join(OUT, "story_1thsxw7_v4_render_ready.json"),
     renderPath: path.join(OUT, "studio_v4_1thsxw7_fresh_ready_proof.mp4"),
@@ -52,6 +61,29 @@ function parseArgs(argv) {
     else if (arg.startsWith("--limit=")) args.limit = Number(arg.slice("--limit=".length) || args.limit);
     else if (arg === "--analytics") args.analyticsPath = argv[++i] || args.analyticsPath;
     else if (arg.startsWith("--analytics=")) args.analyticsPath = arg.slice("--analytics=".length);
+    else if (arg === "--bridge" || arg === "--bridge-candidates") {
+      args.bridgeCandidatesPath = argv[++i] || args.bridgeCandidatesPath;
+    } else if (arg.startsWith("--bridge=")) {
+      args.bridgeCandidatesPath = arg.slice("--bridge=".length);
+    } else if (arg.startsWith("--bridge-candidates=")) {
+      args.bridgeCandidatesPath = arg.slice("--bridge-candidates=".length);
+    } else if (arg === "--no-bridge" || arg === "--no-bridge-candidates") {
+      args.bridgeCandidatesPath = null;
+    } else if (arg === "--allow-live-fallback") {
+      args.allowLiveFallback = true;
+    } else if (arg === "--direct-video-work-order") {
+      args.directVideoEnrichmentWorkOrderPath = argv[++i] || "";
+    } else if (arg.startsWith("--direct-video-work-order=")) {
+      args.directVideoEnrichmentWorkOrderPath = arg.slice("--direct-video-work-order=".length);
+    } else if (arg === "--no-direct-video-work-order") {
+      args.directVideoEnrichmentWorkOrderPath = "";
+    } else if (arg === "--source-family-acquisition") {
+      args.sourceFamilyAcquisitionReportPath = argv[++i] || "";
+    } else if (arg.startsWith("--source-family-acquisition=")) {
+      args.sourceFamilyAcquisitionReportPath = arg.slice("--source-family-acquisition=".length);
+    } else if (arg === "--no-source-family-acquisition") {
+      args.sourceFamilyAcquisitionReportPath = "";
+    }
     else if (arg === "--governance-manifest") args.governanceManifest = argv[++i] || "";
     else if (arg.startsWith("--governance-manifest=")) {
       args.governanceManifest = arg.slice("--governance-manifest=".length);
@@ -268,6 +300,45 @@ function buildPromotionApplyPreview({ promotionPlan = {}, dbPath = "", preApplyP
   };
 }
 
+function buildPublishResolutionCandidateContext({
+  stories = [],
+  analyticsText = "",
+  analyticsPath = DEFAULT_ANALYTICS_PATH,
+  bridgeManifest = {},
+  directVideoEnrichmentWorkOrder = null,
+  sourceFamilyAcquisitionReport = null,
+  limit = 40,
+  storyId = "",
+  allowLiveFallback = false,
+} = {}) {
+  const selected = selectCandidateSourceStories({
+    liveStories: stories,
+    bridgeCandidates: bridgeManifest?.candidates,
+    bridgeManifest: {
+      ...bridgeManifest,
+      allowLiveFallback,
+    },
+  });
+  const mergedStories = selected.stories;
+  const bridgeMotionGovernanceEvidence = {
+    directVideoEnrichmentWorkOrder,
+    sourceFamilyAcquisitionReport,
+  };
+  const candidateReport = buildNextPublishCandidatesReport(mergedStories, {
+    analyticsText,
+    analyticsPath,
+    limit: Math.max(1000, Number(limit) || 40),
+    storyId,
+    bridgeManifest: selected.bridge_manifest,
+  });
+  return {
+    selected,
+    mergedStories,
+    bridgeMotionGovernanceEvidence,
+    candidateReport,
+  };
+}
+
 async function runCli(argv = process.argv) {
   const args = parseArgs(argv);
   if (args.help) {
@@ -276,21 +347,42 @@ async function runCli(argv = process.argv) {
   }
 
   const db = require("../lib/db");
-  const [stories, analyticsText, governanceManifest, v4SourceDeficit] = await Promise.all([
+  const [
+    stories,
+    analyticsText,
+    governanceManifest,
+    v4SourceDeficit,
+    bridgeManifest,
+    directVideoEnrichmentWorkOrder,
+    sourceFamilyAcquisitionReport,
+  ] = await Promise.all([
     db.getStories(),
     readOptionalText(args.analyticsPath),
     readOptionalJson(args.governanceManifest),
     readOptionalJson(args.v4SourceDeficit),
+    readBridgeCandidateManifest(args.bridgeCandidatesPath),
+    readOptionalJson(args.directVideoEnrichmentWorkOrderPath),
+    readOptionalJson(args.sourceFamilyAcquisitionReportPath),
   ]);
-  const candidateReport = buildNextPublishCandidatesReport(stories, {
+  const candidateContext = buildPublishResolutionCandidateContext({
+    stories,
     analyticsText,
     analyticsPath: args.analyticsPath,
-    limit: Math.max(1000, args.limit),
+    bridgeManifest,
+    directVideoEnrichmentWorkOrder,
+    sourceFamilyAcquisitionReport,
+    limit: args.limit,
+    storyId: args.storyId,
+    allowLiveFallback: args.allowLiveFallback,
   });
-  await attachPreflightQa(candidateReport, stories);
+  const candidateReport = candidateContext.candidateReport;
+  const mergedStories = candidateContext.mergedStories;
+  await attachPreflightQa(candidateReport, mergedStories, {
+    bridgeMotionGovernanceEvidence: candidateContext.bridgeMotionGovernanceEvidence,
+  });
   const resolutionInputs = publishResolutionInputsFromCandidateReport(candidateReport);
   const plan = buildPublishBlockerResolutionPlan({
-    stories,
+    stories: mergedStories,
     excluded: resolutionInputs.excluded,
     candidateCount: resolutionInputs.candidateCount,
     governanceGreenStoryIds: governanceGreenIdsFromManifest(governanceManifest),
@@ -407,6 +499,7 @@ if (require.main === module) {
 module.exports = {
   runCli,
   parseArgs,
+  buildPublishResolutionCandidateContext,
   buildPromotionApplyPreview,
   governanceGreenIdsFromManifest,
   normaliseLaneFilter,

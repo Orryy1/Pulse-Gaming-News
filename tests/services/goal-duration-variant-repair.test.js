@@ -1244,6 +1244,46 @@ test("duration variant repair does not reintroduce internal source-policy langua
   );
 });
 
+test("duration variant repair expands ownership-pressure stories without generic repair filler", () => {
+  const canonical = {
+    canonical_subject: "Kadokawa",
+    canonical_game: "Kadokawa",
+    selected_title: "Kadokawa Stake Just Passed Sony",
+    thumbnail_headline: "KADOKAWA STAKE FIGHT",
+    first_spoken_line: "Kadokawa's activist investor now has a bigger stake than Sony.",
+    narration_script:
+      "Kadokawa's activist investor now has a bigger stake than Sony. Automaton West reported that Oasis Management raised its Kadokawa stake to 11.85%, exceeding Sony's stake. The player-facing part is control: ownership pressure can change which projects get funded, delayed or pushed wider. Follow Pulse Gaming so you never miss a beat.",
+    description: "Oasis Management raised its Kadokawa stake to 11.85%, exceeding Sony's stake. Source: Automaton West.",
+    primary_source: "Automaton West",
+    confirmed_claims: [
+      "Oasis Management raised its Kadokawa stake to 11.85%, exceeding Sony's stake.",
+    ],
+  };
+  const repair = extendScriptToTarget(canonical, {
+    repair_lane: "normal_production_duration_floor",
+    current_duration_s: 21.44,
+    target_duration_seconds: { min: 35, max: 59 },
+    provider: "local",
+  });
+  const qa = evaluateGoalPublicCopy({
+    ...canonical,
+    narration_script: repair.script,
+    full_script: repair.script,
+    tts_script: repair.script,
+    first_spoken_line: repair.script.split(/(?<=[.!?])\s+/)[0],
+  });
+
+  assert.ok(repair.repaired_word_count >= 118, repair.script);
+  assert.ok(repair.repaired_word_count <= 135, repair.script);
+  assert.equal(qa.verdict, "pass", JSON.stringify(qa.failures));
+  assert.match(repair.script, /Oasis Management|Sony|Kadokawa/);
+  assert.match(repair.script, /Anime|Elden Ring|FromSoftware|publishing/i);
+  assert.doesNotMatch(
+    repair.script,
+    /one concrete change worth remembering|clean shape|source visible|extra lore|combat rhythm|camera weight|source-backed|named source/i,
+  );
+});
+
 test("duration variant content-signal repair keeps normal production headroom while removing source-policy language", () => {
   const repair = extendScriptToTarget(
     {

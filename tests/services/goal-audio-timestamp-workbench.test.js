@@ -525,6 +525,63 @@ test("audio timestamp workbench routes inserted ASR words to narration regenerat
   assert.equal(report.jobs[0].timestamps.reason, "asr_inserted_words_above_threshold");
 });
 
+test("audio timestamp workbench blocks fresh files when Whisper aligned an old repaired script", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-workbench-old-script-"));
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", "story-audio");
+  const audioDir = path.join(root, "output", "audio");
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "story-audio",
+    public_copy_repaired_at: "2026-05-28T03:14:20.000Z",
+    narration_script:
+      "Kadokawa's activist investor now has a bigger stake than Sony. The player-facing part is control. Follow Pulse Gaming so you never miss a beat.",
+  });
+  await fs.outputFile(path.join(audioDir, "story-audio.mp3"), Buffer.alloc(2048, 1));
+  await fs.outputJson(path.join(audioDir, "story-audio_timestamps.json"), {
+    words: [
+      { word: "Kadokawa", start: 0, end: 0.2 },
+      { word: "now", start: 0.21, end: 0.4 },
+    ],
+    meta: {
+      wordTimestampSource: "local_whisper_word_alignment",
+      timestampWhisperAlignment: {
+        repaired: true,
+        model: "base.en",
+        transcript:
+          "Kadokawa now has one concrete change worth remembering after the scroll moves on. Kadokawa has one concrete change worth remembering.",
+        script_expected_word_count: 126,
+        script_actual_word_count: 126,
+        script_matched_word_count: 126,
+        script_inserted_actual_word_count: 0,
+      },
+    },
+  });
+  const newTime = new Date("2026-05-28T03:20:45.000Z");
+  await fs.utimes(path.join(audioDir, "story-audio.mp3"), newTime, newTime);
+  await fs.utimes(path.join(audioDir, "story-audio_timestamps.json"), newTime, newTime);
+
+  const report = await buildGoalAudioTimestampWorkbench({
+    workspaceRoot: root,
+    workOrder: {
+      jobs: [
+        audioJob({
+          artifact_dir: artifactDir,
+          blockers: [],
+        }),
+      ],
+    },
+    localTtsDoctorReport: { verdict: "green" },
+    providerPreference: "local",
+    generatedAt: "2026-05-28T03:35:00.000Z",
+  });
+
+  assert.equal(report.summary.ready_audio_timestamp_pair_count, 0);
+  assert.equal(report.summary.requires_generation_count, 1);
+  assert.equal(report.jobs[0].status, "requires_audio_timestamp_generation");
+  assert.deepEqual(report.jobs[0].missing, ["narration_audio", "word_timestamps"]);
+  assert.equal(report.jobs[0].audio.reason, "timestamp_transcript_mismatch_after_canonical_repair");
+  assert.equal(report.jobs[0].timestamps.reason, "timestamp_transcript_mismatch_after_canonical_repair");
+});
+
 test("audio timestamp workbench does not let legacy timing files hide bad ASR regeneration evidence", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-workbench-asr-evidence-priority-"));
   const audioDir = path.join(root, "output", "audio");

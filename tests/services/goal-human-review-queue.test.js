@@ -163,6 +163,39 @@ test("human review queue turns AMBER strict dry-run candidates into operator pac
   assert.equal(item.approval.live_publish_allowed_before_approval, false);
 });
 
+test("human review queue falls back to canonical source URL fields for operator evidence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-human-review-source-urls-"));
+  const artifactDir = await makeStoryPackage(root, "source-url-story");
+  const canonicalPath = path.join(artifactDir, "canonical_story_manifest.json");
+  const canonical = await fs.readJson(canonicalPath);
+  await fs.writeJson(canonicalPath, {
+    ...canonical,
+    primary_source: "Xbox",
+    primary_source_url: "https://www.youtube.com/watch?v=LBxjH-lZjEo",
+    official_source: "Xbox Wire",
+    official_source_url: "https://news.xbox.com/the-expanse-osiris-reborn",
+    discovery_source: "YouTube",
+    discovery_source_url: "https://www.youtube.com/@Xbox",
+    secondary_sources: ["IGN"],
+    secondary_source_urls: ["https://www.ign.com/articles/the-expanse-osiris-reborn-gameplay"],
+  }, { spaces: 2 });
+
+  const queue = await buildGoalHumanReviewQueue({
+    dryRunPlan: dryRunPlan({ artifactDir, storyId: "source-url-story" }),
+    generatedAt: "2026-05-28T08:20:00.000Z",
+  });
+
+  const item = queue.review_items[0];
+  assert.equal(item.source_list.primary.name, "Xbox");
+  assert.equal(item.source_list.primary.url, "https://www.youtube.com/watch?v=LBxjH-lZjEo");
+  assert.equal(item.source_list.official.name, "Xbox Wire");
+  assert.equal(item.source_list.official.url, "https://news.xbox.com/the-expanse-osiris-reborn");
+  assert.equal(item.source_list.discovery.name, "YouTube");
+  assert.equal(item.source_list.discovery.url, "https://www.youtube.com/@Xbox");
+  assert.equal(item.source_list.secondary[0].name, "IGN");
+  assert.equal(item.source_list.secondary[0].url, "https://www.ign.com/articles/the-expanse-osiris-reborn-gameplay");
+});
+
 test("human review queue attaches TikTok creator rewards repair work orders to duration warnings", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-human-review-tiktok-repair-"));
   const artifactDir = await makeStoryPackage(root);
@@ -332,6 +365,7 @@ test("human review queue writes machine-readable artefacts and operator Markdown
   const markdown = await fs.readFile(path.join(root, "human_review_queue.md"), "utf8");
   assert.match(markdown, /# Human Review Queue/);
   assert.match(markdown, /Forza Horizon 6 Exposes Xbox's Steam Bet/);
+  assert.match(markdown, /Primary source: Eurogamer \(https:\/\/www\.eurogamer\.net\/forza-horizon-6-steam\)/);
   assert.match(markdown, /No uploads are triggered/);
 });
 

@@ -126,6 +126,13 @@ test("cleanForTTS: speaks Hades II as sequel for local voice clarity", () => {
   );
 });
 
+test("cleanForTTS: normalises Stranger Than Heaven title casing for local clone clarity", () => {
+  assert.equal(
+    cleanForTTS("STRANGER THAN HEAVEN Five Eras is swinging at more than one period piece."),
+    "Stranger Than Heaven Five Eras is swinging at more than one period piece.",
+  );
+});
+
 test("cleanForTTS: expands PS5 when it leads a spoken news line", () => {
   assert.equal(
     cleanForTTS("PS5 prices went up across Europe and the UK. PS5 Pro moved too."),

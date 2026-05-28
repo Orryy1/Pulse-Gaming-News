@@ -58,6 +58,9 @@ test("buildVoiceboxGenerateStreamRequest omits engine unless explicitly configur
   assert.equal(request.data.text, "Pulse Gaming local Voicebox proof.");
   assert.equal(request.data.language, "en");
   assert.equal(request.data.normalize, true);
+  assert.equal(request.headers.Connection, "close");
+  assert.equal(request.httpAgent.keepAlive, false);
+  assert.equal(request.httpsAgent.keepAlive, false);
   assert.equal(Object.prototype.hasOwnProperty.call(request.data, "engine"), false);
 });
 

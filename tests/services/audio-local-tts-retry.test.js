@@ -149,6 +149,48 @@ test("requestTtsWithRetry: retries local ECONNRESET once and returns the respons
   assert.equal(response.data.audio_base64, "abc");
 });
 
+test("requestTtsWithRetry: isolates local TTS sockets during batch generation", async () => {
+  const seen = [];
+  const response = await requestTtsWithRetry({
+    provider: "local",
+    requestConfig: {
+      method: "POST",
+      url: "http://127.0.0.1:8765/v1/text-to-speech/liam/with-timestamps",
+      headers: { "Content-Type": "application/json" },
+    },
+    request: async (config) => {
+      seen.push(config);
+      return { data: { audio_base64: "abc" } };
+    },
+  });
+
+  assert.equal(response.data.audio_base64, "abc");
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].headers.Connection, "close");
+  assert.equal(seen[0].httpAgent.keepAlive, false);
+  assert.equal(seen[0].httpsAgent.keepAlive, false);
+});
+
+test("requestTtsWithRetry: leaves remote provider socket policy untouched", async () => {
+  const seen = [];
+  await requestTtsWithRetry({
+    provider: "elevenlabs",
+    requestConfig: {
+      url: "https://api.elevenlabs.io/v1/text-to-speech/voice/with-timestamps",
+      headers: { "Content-Type": "application/json" },
+    },
+    request: async (config) => {
+      seen.push(config);
+      return { data: { audio_base64: "abc" } };
+    },
+  });
+
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].headers.Connection, undefined);
+  assert.equal(seen[0].httpAgent, undefined);
+  assert.equal(seen[0].httpsAgent, undefined);
+});
+
 test("requestTtsWithRetry: does not retry remote provider socket errors", async () => {
   let calls = 0;
   await assert.rejects(

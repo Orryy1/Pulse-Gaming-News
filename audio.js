@@ -62,6 +62,9 @@ const {
   requestVoiceboxSpeech,
 } = require("./lib/studio/voicebox-client");
 const {
+  withLocalTtsSocketIsolation,
+} = require("./lib/studio/local-tts-http");
+const {
   masterTtsAudioFile,
   shouldMasterTtsAudio,
 } = require("./lib/audio-quality");
@@ -830,7 +833,9 @@ async function requestTtsWithRetry({
   let lastError;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      return await request(requestConfig);
+      return await request(
+        isLocal ? withLocalTtsSocketIsolation(requestConfig) : requestConfig,
+      );
     } catch (err) {
       lastError = err;
       const retryable = isLocal && isRetryableLocalTtsError(err);

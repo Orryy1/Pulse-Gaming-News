@@ -1232,6 +1232,49 @@ test("render input work order routes short final renders to normal-duration repa
   assert.match(action.recommended_command, /--story-id short-final-render/);
 });
 
+test("render input work order does not reintroduce stale dry-run blockers after fresh cutover", () => {
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-05-28T04:42:51.097Z",
+      blocked: [
+        {
+          story_id: "duration-repaired-story",
+          title: "Kadokawa Stake Just Passed Sony",
+          artifact_dir: "C:/repo/output/goal-proof/batch/duration-repaired-story",
+          status: "blocked",
+          blockers: [
+            "benchmark_not_pass",
+            "benchmark_below_production_threshold:motion_density_score",
+          ],
+          rendered_duration_s: 50.267,
+        },
+      ],
+    },
+    dryRunPlan: {
+      generated_at: "2026-05-28T02:24:59.679Z",
+      blocked_stories: [
+        {
+          story_id: "duration-repaired-story",
+          title: "Kadokawa Stake Just Passed Sony",
+          artifact_dir: "C:/repo/output/goal-proof/batch/duration-repaired-story",
+          blockers: [
+            "preflight_candidate_not_publish_ready:review",
+            "preflight_qa_blocked:bridge_motion_governance:direct_video_enrichment_required",
+          ],
+          rendered_duration_s: 21.44,
+        },
+      ],
+    },
+    generatedAt: "2026-05-28T04:43:07.881Z",
+  });
+
+  assert.equal(workOrder.summary.story_count, 0);
+  assert.equal(workOrder.summary.real_motion_materialisation_jobs, 0);
+  assert.equal(workOrder.summary.normal_duration_repair_jobs, 0);
+  assert.equal(workOrder.source_dry_run_loaded, false);
+  assert.equal(workOrder.source_dry_run_ignored_as_stale, true);
+});
+
 test("render input work order routes strict dry-run bridge motion blockers into repair backlog", () => {
   const workOrder = buildGoalRenderInputWorkOrder({
     cutoverPlan: {

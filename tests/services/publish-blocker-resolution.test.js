@@ -10,6 +10,7 @@ const {
   formatPublishBlockerResolutionMarkdown,
 } = require("../../lib/services/publish-blocker-resolution");
 const {
+  buildPublishResolutionCandidateContext,
   buildPromotionApplyPreview,
   normaliseLaneFilter,
   parseArgs,
@@ -185,6 +186,7 @@ test("publish blocker resolution fallback explains when publishable candidates a
 
   assert.equal(plan.fresh_content_fallback.enabled, false);
   assert.match(plan.fresh_content_fallback.reason, /Publishable candidates already exist/);
+  assert.match(plan.publish_runway.next_action, /HUMAN_REVIEW|guarded scheduler/);
 });
 
 test("publish blocker resolution runway measures the whole backlog, not just returned rows", () => {
@@ -258,6 +260,53 @@ test("publish blocker resolution inputs count only preflight-passing candidates 
       ["warn", "preflight_warning:content:review_required"],
     ],
   );
+});
+
+test("publish blocker resolution candidate context honours authoritative scheduler bridge candidates", () => {
+  const context = buildPublishResolutionCandidateContext({
+    stories: [
+      {
+        id: "live-only",
+        title: "Live Only Story",
+        approved: true,
+        auto_approved: true,
+        exported_path: "live.mp4",
+        duration_seconds: 42,
+      },
+      {
+        id: "bridge-ready",
+        title: "Old Live Title",
+        approved: false,
+      },
+    ],
+    bridgeManifest: {
+      requested: true,
+      exists: true,
+      candidate_count: 1,
+      candidates: [
+        {
+          id: "bridge-ready",
+          title: "Bridge Ready Story Has Motion",
+          approved: true,
+          auto_approved: true,
+          exported_path: "bridge.mp4",
+          duration_seconds: 44,
+          duration_lane: "normal_production",
+          audio_path: "bridge.mp3",
+          scheduler_bridge_source: "scheduler_bridge_candidates",
+        },
+      ],
+    },
+    limit: 20,
+  });
+  const inputs = publishResolutionInputsFromCandidateReport(context.candidateReport);
+
+  assert.equal(context.selected.bridge_manifest.mode, "authoritative_bridge_only");
+  assert.equal(context.selected.bridge_manifest.live_db_rows_ignored, 1);
+  assert.equal(context.mergedStories.length, 1);
+  assert.equal(context.mergedStories[0].id, "bridge-ready");
+  assert.equal(context.candidateReport.bridge_candidates.authoritative, true);
+  assert.equal(inputs.candidateCount, 1);
 });
 
 test("publish blocker resolution markdown is operator-readable", () => {

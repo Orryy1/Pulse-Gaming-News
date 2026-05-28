@@ -420,6 +420,54 @@ test("goal dry-run publisher still surfaces enabled-platform publish warnings in
   assert.ok(plan.readiness_reasons.includes("platform_or_preflight_warnings"));
 });
 
+test("goal dry-run publisher clears stale TikTok creator-rewards warnings when the long variant is materialised", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-tiktok-variant-warning-"));
+  const storyPackage = await makeStoryPackage(root, "tiktok-long-ready", "GREEN", "Forza Horizon 6 Tops Metacritic This Year");
+  const artifactDir = storyPackage.artifact_dir;
+  const variantDir = path.join(artifactDir, "platform_variants", "tiktok_creator_rewards");
+  await fs.ensureDir(variantDir);
+  const variantVideoPath = path.join(variantDir, "visual_v4_render_tiktok_creator_rewards.mp4");
+  const variantCaptionsPath = path.join(variantDir, "captions_tiktok_creator_rewards.srt");
+  await fs.outputFile(variantVideoPath, Buffer.alloc(1500, 3));
+  await fs.outputFile(variantCaptionsPath, "1\n00:00:00,000 --> 00:00:01,000\nForza.\n");
+
+  const manifestPath = path.join(artifactDir, "platform_publish_manifest.json");
+  const manifest = await fs.readJson(manifestPath);
+  manifest.outputs.tiktok = {
+    ...manifest.outputs.tiktok,
+    publish_duration_seconds: { min: 15, max: 90 },
+    duration_warnings: ["below_creator_rewards_duration"],
+    creator_rewards_eligible: false,
+    creator_rewards_duration_seconds: { min: 61, max: 90 },
+    technical_duration_seconds: 64.483,
+    variant_video_path: variantVideoPath,
+    variant_captions_path: variantCaptionsPath,
+    platform_variant_render: {
+      status: "ready",
+      platform: "tiktok",
+      variant_type: "tiktok_creator_rewards",
+      output_path: variantVideoPath,
+      captions_path: variantCaptionsPath,
+      duration_s: 64.483,
+      creator_rewards_duration_seconds: { min: 61, max: 90 },
+    },
+  };
+  await fs.writeJson(manifestPath, manifest, { spaces: 2 });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-05-28T06:20:00.000Z",
+    platformOperationalConfig: allPlatformsEnabled(),
+  });
+
+  const tiktok = plan.actions.find((action) => action.platform === "tiktok");
+  assert.equal(tiktok.video_duration_s, 64.483);
+  assert.equal(tiktok.creator_rewards_eligible, true);
+  assert.deepEqual(tiktok.warnings, []);
+  assert.equal(plan.summary.warning_action_count, 0);
+  assert.ok(!plan.readiness_reasons.includes("platform_or_preflight_warnings"));
+});
+
 test("goal dry-run publisher emits standalone platform preflight and status matrix evidence", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-platform-matrix-"));
   const storyPackage = await makeStoryPackage(root);
@@ -1041,6 +1089,71 @@ test("goal dry-run publisher explains missing scheduler candidates with render-i
   assert.equal(plan.blocked_stories[0].render_input_requirements.length, 1);
   assert.equal(plan.blocked_stories[0].render_input_requirements[0].repair_lane, "additional_direct_video_motion_required");
   assert.equal(plan.blocked_stories[0].render_input_requirements[0].operator_approval_required, true);
+});
+
+test("goal dry-run publisher holds generated-only benchmark failures for operator source review", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-operator-source-hold-"));
+  const readyPackage = await makeStoryPackage(root, "bridge-ready", "GREEN", "Forza Horizon 6 Exposes Xbox's Steam Bet");
+  const sourceReviewPackage = await makeStoryPackage(
+    root,
+    "source-review-needed",
+    "GREEN",
+    "Super Mario RPG Drops To $15",
+  );
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [readyPackage, sourceReviewPackage],
+    generatedAt: "2026-05-28T06:05:00.000Z",
+    platformOperationalConfig: allPlatformsEnabled(),
+    candidatePreflightReport: {
+      candidates: [
+        {
+          id: "bridge-ready",
+          status: "publish_ready",
+          preflight_qa: { status: "pass", blockers: [], warnings: [] },
+        },
+      ],
+    },
+    repairWorkOrder: {
+      jobs: [
+        {
+          story_id: "source-review-needed",
+          status: "blocked_on_render_inputs",
+          blockers: ["visual_evidence:generated_only_motion_deck", "visual_evidence:no_real_visual_media_asset"],
+          actions: [
+            {
+              action_id: "materialise_validated_real_motion_clips",
+              status: "operator_required",
+              repair_lane: "real_visual_media_required_after_owned_explainer_deck_failed_benchmark",
+              exact_missing_input:
+                "official or licensed real visual media, or human-review rejection for a generated-only explainer deck that failed benchmark",
+              auto_repairable: false,
+              operator_approval_required: true,
+              dead_end_blocker: false,
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  assert.equal(plan.summary.ready_story_count, 1);
+  assert.equal(plan.summary.blocked_story_count, 0);
+  assert.equal(plan.summary.held_story_count, 1);
+  assert.equal(plan.overall_verdict, "AMBER");
+  assert.ok(plan.readiness_reasons.includes("stories_quarantined_or_operator_held"));
+  assert.ok(!plan.readiness_reasons.includes("stories_blocked"));
+  assert.equal(plan.held_stories[0].story_id, "source-review-needed");
+  assert.equal(plan.held_stories[0].status, "held_for_operator_source_review");
+  assert.ok(plan.held_stories[0].hold_reasons.includes("preflight_candidate_missing"));
+  assert.ok(plan.held_stories[0].hold_reasons.includes("operator_source_review_required"));
+  assert.ok(plan.held_stories[0].repair_lanes.includes("real_visual_media_required_after_owned_explainer_deck_failed_benchmark"));
+  assert.equal(plan.held_stories[0].operator_approval_required, true);
+  assert.deepEqual(plan.held_stories[0].blockers, [
+    "preflight_candidate_missing",
+    "render_input_blocked:visual_evidence:generated_only_motion_deck",
+    "render_input_blocked:visual_evidence:no_real_visual_media_asset",
+  ]);
 });
 
 test("goal dry-run publisher accepts legacy publish-ready scheduler reports without embedded preflight QA", async () => {

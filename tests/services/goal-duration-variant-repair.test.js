@@ -2551,6 +2551,8 @@ test("duration variant repair compacts Stranger showcase scripts without generic
   assert.ok(repair.repaired_word_count <= 132, repair.script);
   assert.match(repair.script, /awkward catch|real catch|five eras can feel huge/i);
   assert.doesNotMatch(repair.script, /The catch is what matters after the reveal cut/i);
+  assert.doesNotMatch(repair.script, /source-checked gaming update/i);
+  assert.ok(scorecard.scores.curiosity_gap >= 70, JSON.stringify(scorecard, null, 2));
   assert.ok(!scorecard.blockers.includes("generic_reveal_catch_template"), JSON.stringify(scorecard, null, 2));
   assert.ok(!scorecard.warnings.includes("no_curiosity_marker"), JSON.stringify(scorecard, null, 2));
 });
@@ -2598,6 +2600,7 @@ test("duration variant repair gives stale Stranger compact repairs enough local 
   assert.ok(repair.repaired_word_count <= 132, repair.script);
   assert.doesNotMatch(repair.script, /The catch is what matters after the reveal cut/i);
   assert.doesNotMatch(repair.script, /watchlist|store page|teaser energy/i);
+  assert.ok(scorecard.scores.curiosity_gap >= 70, JSON.stringify(scorecard, null, 2));
   assert.ok(!scorecard.blockers.includes("generic_reveal_catch_template"), JSON.stringify(scorecard, null, 2));
   assert.ok(!scorecard.warnings.includes("no_curiosity_marker"), JSON.stringify(scorecard, null, 2));
 });

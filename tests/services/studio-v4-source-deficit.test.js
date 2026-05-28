@@ -145,6 +145,52 @@ test("Studio V4 source deficit report turns blocked motion packs into specific a
   );
 });
 
+test("Studio V4 source deficit counts governed visual plans as operator-required blockers", () => {
+  const report = buildStudioV4SourceDeficitReport({
+    generatedAt: "2026-05-28T21:05:00.000Z",
+    motionPackReports: [
+      {
+        story_id: "kadokawa-stake",
+        title: "Kadokawa Stake Just Passed Sony",
+        readiness: {
+          status: "v4_motion_blocked",
+          blockers: [
+            "actual_motion_clip_minimum_not_met",
+            "distinct_motion_families_minimum_not_met",
+          ],
+        },
+        clips: [],
+        motion_budget: {
+          available_motion_clips: 0,
+          required_motion_scenes: 5,
+          available_distinct_families: 0,
+          required_distinct_families: 4,
+        },
+      },
+    ],
+    sourceFamilyReport: {
+      rows: [
+        {
+          story_id: "kadokawa-stake",
+          source_family_candidates: [],
+          governed_visual_plan: {
+            story_id: "kadokawa-stake",
+            plan_type: "corporate_transaction_owned_explainer_plan",
+            operator_approval_required: true,
+            render_gate_status: "blocked_until_operator_approved_source_media",
+          },
+        },
+      ],
+    },
+  });
+
+  assert.equal(report.summary.blocked_stories, 1);
+  assert.equal(report.summary.licence_or_operator_required, 1);
+  assert.equal(report.rows[0].acquisition_counts.licence_or_operator_required, 1);
+  assert.equal(report.rows[0].governed_visual_plan.operator_approval_required, true);
+  assert.match(renderStudioV4SourceDeficitMarkdown(report), /Licence\/operator required: 1/);
+});
+
 test("Studio V4 source deficit report accepts direct media carried by source-family candidates", () => {
   const report = buildStudioV4SourceDeficitReport({
     motionPackReports: [

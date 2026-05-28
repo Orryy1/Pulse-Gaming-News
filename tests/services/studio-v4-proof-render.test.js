@@ -15,6 +15,7 @@ const {
   parseArgs,
   renderNarrationScriptText,
   resolveReadableMediaPath,
+  resolveStoryMusicCueMix,
   subtitleWordsFromTimestampPayload,
   resolveStorySfxCueMix,
   resolveStorySfxPaths,
@@ -194,6 +195,99 @@ test("Studio V4 proof renderer schedules SFX by editorial role with narration-sa
   assert.ok(mix.every((cue) => cue.volume <= 0.016));
   assert.ok(mix.every((cue) => cue.durationS <= 0.14));
   assert.deepEqual(mix.map((cue) => cue.delayMs), [2750]);
+});
+
+test("Studio V4 proof renderer resolves Epidemic music beds and stings from the channel pack", async () => {
+  assert.equal(typeof resolveStoryMusicCueMix, "function");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-v4-music-pack-"));
+  const epidemicRoot = path.join(root, "audio", "epidemic");
+  const bedA = path.join(epidemicRoot, "music", "bed_primary", "a.mp3");
+  const bedB = path.join(epidemicRoot, "music", "bed_primary", "b.mp3");
+  const breakingBed = path.join(epidemicRoot, "music", "bed_breaking", "breaking.mp3");
+  const verifiedSting = path.join(epidemicRoot, "stings", "sting_verified", "verified.mp3");
+  for (const file of [bedA, bedB, breakingBed, verifiedSting]) {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, Buffer.alloc(128, 1));
+  }
+
+  const mix = await resolveStoryMusicCueMix(
+    {
+      id: "story-alpha",
+      channel_id: "pulse-gaming",
+      flair: "Verified",
+    },
+    {
+      workspaceRoot: root,
+      packConfigs: [
+        {
+          id: "pulse-gaming-epidemic-v1",
+          channel_id: "pulse-gaming",
+          root_path: "audio/epidemic",
+          variants: {
+            bed_primary: [
+              { role: "bed_primary", filename: "music/bed_primary/a.mp3", provider_id: "epidemic_sound" },
+              { role: "bed_primary", filename: "music/bed_primary/b.mp3", provider_id: "epidemic_sound" },
+            ],
+            bed_breaking: [
+              { role: "bed_breaking", filename: "music/bed_breaking/breaking.mp3", provider_id: "epidemic_sound" },
+            ],
+            sting_verified: [
+              { role: "sting_verified", filename: "stings/sting_verified/verified.mp3", provider_id: "epidemic_sound" },
+            ],
+          },
+        },
+      ],
+    },
+  );
+
+  assert.equal(mix.provider_id, "epidemic_sound");
+  assert.equal(mix.bed.role, "bed_primary");
+  assert.match(mix.bed.path, /audio[\\/]epidemic[\\/]music[\\/]bed_primary[\\/][ab]\.mp3$/);
+  assert.equal(mix.sting.role, "sting_verified");
+  assert.equal(mix.policy.duck_under_narration, true);
+  assert.equal(mix.policy.raw_bed_volume <= 0.12, true);
+});
+
+test("Studio V4 proof renderer unlocks richer SFX only for curated Epidemic packs", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-sfx-epidemic-rich-"));
+  const files = {
+    impact: path.join(root, "audio", "epidemic", "sfx", "epidemic_impact_hit.wav"),
+    transition: path.join(root, "audio", "epidemic", "sfx", "epidemic_transition_whoosh.wav"),
+    ui: path.join(root, "audio", "epidemic", "sfx", "epidemic_ui_tick_ui-click-short.wav"),
+    sub: path.join(root, "audio", "epidemic", "sfx", "epidemic_sub_hit_boom.wav"),
+    glitch: path.join(root, "audio", "epidemic", "sfx", "epidemic_glitch_static.wav"),
+  };
+  for (const [index, file] of Object.values(files).entries()) {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, Buffer.alloc(128, index + 1));
+  }
+
+  const mix = await resolveStorySfxCueMix({
+    sound_transition_plan: {
+      sfx: {
+        cues: [
+          { target_kind: "hook_slam", family: "impact", atS: 0 },
+          { target_kind: "motion_clip", family: "whoosh", atS: 0.35 },
+          { target_kind: "source_lock", family: "source_tick", atS: 2.75 },
+          { target_kind: "proof_card", family: "sub_hit", atS: 4.5 },
+          { target_kind: "pattern_interrupt", family: "glitch", atS: 12.1 },
+        ],
+      },
+    },
+    sfx_asset_inventory: [
+      { asset_id: "epidemic-impact", role: "impact", provider_id: "epidemic_sound", source_url: pathToFileURL(files.impact).href, approval_status: "approved_for_commercial_editorial_use" },
+      { asset_id: "epidemic-transition", role: "transition", provider_id: "epidemic_sound", source_url: pathToFileURL(files.transition).href, approval_status: "approved_for_commercial_editorial_use" },
+      { asset_id: "epidemic-ui", role: "ui_tick", provider_id: "epidemic_sound", source_url: pathToFileURL(files.ui).href, approval_status: "approved_for_commercial_editorial_use" },
+      { asset_id: "epidemic-sub", role: "sub_hit", provider_id: "epidemic_sound", source_url: pathToFileURL(files.sub).href, approval_status: "approved_for_commercial_editorial_use" },
+      { asset_id: "epidemic-glitch", role: "glitch", provider_id: "epidemic_sound", source_url: pathToFileURL(files.glitch).href, approval_status: "approved_for_commercial_editorial_use" },
+    ],
+  });
+
+  assert.deepEqual(mix.map((cue) => cue.role), ["impact", "transition", "ui_tick", "sub_hit", "glitch"]);
+  assert.deepEqual(mix.map((cue) => cue.target_kind), ["hook_slam", "motion_clip", "source_lock", "proof_card", "pattern_interrupt"]);
+  assert.ok(mix.every((cue) => cue.volume <= 0.055));
+  assert.ok(mix.find((cue) => cue.role === "ui_tick").volume <= 0.004);
+  assert.ok(mix.every((cue) => cue.durationS <= 0.55));
 });
 
 test("Studio V4 proof renderer uses only source-lock ticks when cue timing is absent", async () => {
@@ -548,6 +642,60 @@ test("Studio V4 proof renderer picks a compact newsroom click for source locks",
   });
 
   assert.deepEqual(mix.map((cue) => cue.asset_id), ["clean-user-interaction-click"]);
+  assert.ok(mix.every((cue) => cue.volume <= 0.004));
+  assert.ok(mix.every((cue) => cue.durationS <= 0.07));
+});
+
+test("Studio V4 proof renderer accepts clean Epidemic interface clicks for source locks", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-sfx-epidemic-source-lock-"));
+  const cleanClick = path.join(
+    root,
+    "audio",
+    "epidemic",
+    "sfx",
+    "epidemic_ui_tick_03_user-interface-click-standard-short-clean-variations-epidemic-sound.mp3",
+  );
+  const alertClick = path.join(
+    root,
+    "audio",
+    "epidemic",
+    "sfx",
+    "epidemic_ui_tick_alert-notification-confirm-positive-epidemic-sound.mp3",
+  );
+  for (const [index, file] of [alertClick, cleanClick].entries()) {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, Buffer.alloc(128, index + 1));
+  }
+
+  const mix = await resolveStorySfxCueMix({
+    sound_transition_plan: {
+      sfx: {
+        cues: [
+          { target_kind: "source_lock", family: "source_tick", atS: 2.75 },
+        ],
+      },
+    },
+    sfx_asset_inventory: [
+      {
+        asset_id: "epidemic-alert-confirm",
+        role: "ui_tick",
+        family: "ui_tick",
+        provider_id: "epidemic_sound",
+        source_url: pathToFileURL(alertClick).href,
+        approval_status: "approved_for_commercial_editorial_use",
+      },
+      {
+        asset_id: "epidemic-clean-interface-click",
+        role: "ui_tick",
+        family: "ui_tick",
+        provider_id: "epidemic_sound",
+        source_url: pathToFileURL(cleanClick).href,
+        approval_status: "approved_for_commercial_editorial_use",
+      },
+    ],
+  });
+
+  assert.deepEqual(mix.map((cue) => cue.asset_id), ["epidemic-clean-interface-click"]);
   assert.ok(mix.every((cue) => cue.volume <= 0.004));
   assert.ok(mix.every((cue) => cue.durationS <= 0.07));
 });

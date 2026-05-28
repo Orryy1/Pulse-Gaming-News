@@ -2118,6 +2118,17 @@ test("Studio V4 source-family acquisition avoids fake gameplay searches for non-
   });
 
   const rows = Object.fromEntries(report.rows.map((row) => [row.story_id, row]));
+  assert.ok(report.summary.governed_visual_plan_entries >= 3, JSON.stringify(report.summary));
+  assert.equal(
+    report.summary.operator_required_entries,
+    report.summary.governed_visual_plan_entries,
+    JSON.stringify(report.summary),
+  );
+  assert.equal(
+    report.acquisition_runway.operator_required_rows,
+    report.summary.governed_visual_plan_entries,
+    JSON.stringify(report.acquisition_runway),
+  );
   assert.match(rows["ps5-price"].official_search_actions[0].query, /official product video/i);
   assert.doesNotMatch(rows["ps5-price"].official_search_actions[0].query, /gameplay/i);
   assert.equal(rows["ps5-price"].governed_visual_plan.plan_type, "platform_product_visual_plan");

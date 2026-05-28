@@ -18,6 +18,10 @@ const {
   minimumScoreForRole,
 } = require("../lib/studio/v4/sfx-source-registry");
 const {
+  discoverPackConfigs,
+  selectVariantAsset,
+} = require("../lib/audio-identity");
+const {
   STUDIO_V4_SFX_MIX_POLICY_VERSION,
   STUDIO_V4_VOICE_MIX_POLICY_VERSION,
   STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION,
@@ -57,6 +61,29 @@ const SFX_MIX_PROFILE = {
   riser: { delayMs: 12600, volume: 0.034, durationS: 0.55 },
 };
 const EARNED_SFX_TARGET_KINDS = new Set(["source_lock", "review_score_card", "steam_chart"]);
+const EPIDEMIC_EARNED_SFX_TARGET_KINDS = new Set([
+  "context_caveat",
+  "hook_slam",
+  "motion_clip",
+  "pattern_interrupt",
+  "price_snap",
+  "proof_card",
+  "review_score_card",
+  "source_lock",
+  "steam_chart",
+]);
+const MUSIC_MIX_POLICY = {
+  version: "epidemic_sidechain_ducked_bed_v1",
+  raw_bed_volume: 0.1,
+  ducked_bed_output_volume: 0.26,
+  sting_volume: 0.035,
+  sting_duration_s: 0.62,
+  duck_under_narration: true,
+  sidechain_threshold: 0.035,
+  sidechain_ratio: 5.5,
+  sidechain_attack_ms: 18,
+  sidechain_release_ms: 420,
+};
 
 function loadDotenvForCli() {
   try {
@@ -114,6 +141,12 @@ function resolvePathMaybeRoot(value) {
   return path.isAbsolute(text) ? text : path.resolve(ROOT, text);
 }
 
+function relativeReportPath(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  return path.relative(ROOT, text).replace(/\\/g, "/");
+}
+
 function outputRelativeMediaPath(value) {
   const text = String(value || "").trim();
   if (!text) return "";
@@ -150,6 +183,12 @@ function sfxAssetsFromStory(story = {}) {
     if (Array.isArray(value) && value.length) return value.filter(Boolean);
   }
   return [];
+}
+
+function storyHasCuratedEpidemicSfx(story = {}) {
+  return sfxAssetsFromStory(story).some((asset) =>
+    String(asset.provider_id || asset.provider || "").toLowerCase() === "epidemic_sound",
+  );
 }
 
 function sfxPathForAsset(asset = {}) {
@@ -227,14 +266,17 @@ function sourceLockSfxScore(candidate = {}) {
   if (candidate.role !== "ui_tick") return -Infinity;
   const text = sfxSearchText(candidate.asset, candidate.path);
   let score = candidate.editorialScore || 0;
-  if (/\b(?:uiclick ui click|ui click)\b/.test(text) && !/\b(?:alert|confirm|data|progress|voice|vox|high tech beep|beep|plastic|window|zoom|activation ui click|activation user interface)\b/.test(text)) {
+  const cleanInterfaceClick =
+    /\b(?:uiclick ui click|ui click|user interface click|interface click|click standard short|short clean)\b/.test(text) &&
+    !/\b(?:alert|confirm|data|progress|voice|vox|high tech beep|beep|plastic|window|zoom|activation ui click|activation user interface)\b/.test(text);
+  if (cleanInterfaceClick) {
     score += 0.7;
   }
   if (/\buser interaction\b/.test(text)) score += 0.5;
-  if (/\b(?:ui click|uiclick|select middle|select)\b/.test(text)) score += 0.35;
+  if (/\b(?:ui click|uiclick|user interface click|interface click|select middle|select)\b/.test(text)) score += 0.35;
   if (/\bselect middle\b/.test(text)) score -= 0.2;
   if (/\b(?:confirm middle|confirm|activation|alert|glitch|high tech beep|scanner|alien|kawaii|clock|voice|target acquired|calculation loop)\b/.test(text)) {
-    if (!/\b(?:uiclick ui click|ui click)\b/.test(text)) score -= 1.15;
+    if (!cleanInterfaceClick) score -= 1.15;
   }
   return score;
 }
@@ -259,6 +301,9 @@ function soundCueRequestsFromStory(story = {}) {
     story.visual_v4_director_plan?.sound_transition_plan?.sfx?.cues ||
     story.director_plan?.sound_transition_plan?.sfx?.cues ||
     [];
+  const earnedTargetKinds = storyHasCuratedEpidemicSfx(story)
+    ? EPIDEMIC_EARNED_SFX_TARGET_KINDS
+    : EARNED_SFX_TARGET_KINDS;
   return Array.isArray(cues)
     ? cues
         .map((cue) => ({
@@ -267,8 +312,135 @@ function soundCueRequestsFromStory(story = {}) {
           delayMs: Math.round(Math.max(0, Number(cue.atS || cue.startS || 0)) * 1000),
           durationS: Number(cue.durationS || cue.duration_s || 0) || null,
         }))
-        .filter((cue) => EARNED_SFX_TARGET_KINDS.has(cue.target_kind))
+        .filter((cue) => earnedTargetKinds.has(cue.target_kind))
     : [];
+}
+
+function storyVariantSeed(story = {}) {
+  return String(
+    story.id ||
+      story.story_id ||
+      story.source_url_hash ||
+      story.url ||
+      story.title ||
+      "story",
+  );
+}
+
+function storyChannelId(story = {}) {
+  return String(story.channel_id || story.channelId || process.env.CHANNEL || "pulse-gaming");
+}
+
+function isBreakingStory(story = {}) {
+  const text = [
+    story.classification,
+    story.content_pillar,
+    story.flair,
+    story.title,
+  ].join(" ").toLowerCase();
+  return Boolean(
+    story.breaking_fast_track ||
+      story.breaking === true ||
+      Number(story.breaking_score || 0) >= 80 ||
+      /\bbreaking\b/.test(text),
+  );
+}
+
+function stingRoleForStory(story = {}) {
+  if (isBreakingStory(story)) return "sting_breaking";
+  const flair = String(story.flair || story.content_pillar || "").toLowerCase();
+  if (/\bverified\b|\bconfirmed\b/.test(flair)) return "sting_verified";
+  if (/\brumou?r\b|\breportedly\b/.test(flair)) return "sting_rumour";
+  return "";
+}
+
+function resolvePackAssetPath(packConfig = {}, asset = {}, workspaceRoot = ROOT) {
+  const rootPath = packConfig.root_path || "";
+  const resolvedRoot = path.isAbsolute(rootPath)
+    ? rootPath
+    : path.resolve(workspaceRoot, rootPath || ".");
+  return path.resolve(resolvedRoot, asset.filename || "");
+}
+
+async function selectedPackAsset(packConfig = {}, role = "", { seed = "", workspaceRoot = ROOT } = {}) {
+  const asset = selectVariantAsset(packConfig, role, { seed });
+  if (!asset?.filename) return null;
+  const assetPath = resolvePackAssetPath(packConfig, asset, workspaceRoot);
+  if (!(await fs.pathExists(assetPath))) return null;
+  return {
+    role,
+    asset_id: asset.asset_id || null,
+    provider_id: asset.provider_id || "epidemic_sound",
+    filename: asset.filename,
+    path: assetPath,
+    variant_index: asset.variant_index ?? null,
+    variant_count: asset.variant_count ?? null,
+    selection_strategy: asset.selection_strategy || null,
+  };
+}
+
+async function resolveStoryMusicCueMix(story = {}, {
+  workspaceRoot = ROOT,
+  packConfigs = null,
+} = {}) {
+  const packs = Array.isArray(packConfigs) ? packConfigs : discoverPackConfigs();
+  const channelId = storyChannelId(story);
+  const pack = packs.find((candidate) => String(candidate.channel_id || "") === channelId);
+  const seed = storyVariantSeed(story);
+  if (pack) {
+    const bedRoles = isBreakingStory(story)
+      ? ["bed_breaking", "bed_primary"]
+      : ["bed_primary", "bed_breaking"];
+    let bed = null;
+    for (const role of bedRoles) {
+      bed = await selectedPackAsset(pack, role, { seed, workspaceRoot });
+      if (bed) break;
+    }
+    const stingRole = stingRoleForStory(story);
+    const sting = stingRole
+      ? await selectedPackAsset(pack, stingRole, { seed, workspaceRoot })
+      : null;
+    if (bed) {
+      return {
+        provider_id: bed.provider_id || "epidemic_sound",
+        channel_id: channelId,
+        pack_id: pack.id || null,
+        bed,
+        sting,
+        policy: { ...MUSIC_MIX_POLICY },
+      };
+    }
+  }
+
+  const legacyPath = path.join(ROOT, "audio", "mastered", "Main Background Loop 1.wav");
+  if (await fs.pathExists(legacyPath)) {
+    return {
+      provider_id: "legacy_local",
+      channel_id: channelId,
+      pack_id: "legacy-mastered",
+      bed: {
+        role: "bed_primary",
+        asset_id: "legacy_main_background_loop_1",
+        provider_id: "legacy_local",
+        filename: "audio/mastered/Main Background Loop 1.wav",
+        path: legacyPath,
+        variant_index: 0,
+        variant_count: 1,
+        selection_strategy: "legacy_fallback",
+      },
+      sting: null,
+      policy: { ...MUSIC_MIX_POLICY, version: "legacy_sidechain_ducked_bed_v1" },
+    };
+  }
+
+  return {
+    provider_id: "none",
+    channel_id: channelId,
+    pack_id: null,
+    bed: null,
+    sting: null,
+    policy: { ...MUSIC_MIX_POLICY },
+  };
 }
 
 async function resolveStorySfxCueMix(story = {}, { limit = 6 } = {}) {
@@ -831,8 +1003,9 @@ async function renderProof({ storyJson, output }) {
   }
   const voiceIdx = scenePlan.scenes.length;
   ffmpegArgs.push("-i", audioPath);
-  const musicPath = path.join(ROOT, "audio", "mastered", "Main Background Loop 1.wav");
-  const hasMusic = await fs.pathExists(musicPath);
+  const musicCueMix = await resolveStoryMusicCueMix(story);
+  const musicPath = musicCueMix.bed?.path || "";
+  const hasMusic = musicPath && (await fs.pathExists(musicPath));
   const musicIdx = hasMusic ? ffmpegArgs.filter((item) => item === "-i").length : -1;
   if (hasMusic) {
     ffmpegArgs.push(
@@ -844,6 +1017,10 @@ async function renderProof({ storyJson, output }) {
       musicPath,
     );
   }
+  const stingPath = musicCueMix.sting?.path || "";
+  const hasSting = stingPath && (await fs.pathExists(stingPath));
+  const stingIdx = hasSting ? ffmpegArgs.filter((item) => item === "-i").length : -1;
+  if (hasSting) ffmpegArgs.push("-i", stingPath);
   const sfxCueMix = await resolveStorySfxCueMix(story, { limit: 6 });
   const sfxStartIdx = ffmpegArgs.filter((item) => item === "-i").length;
   for (const cue of sfxCueMix) ffmpegArgs.push("-i", cue.path);
@@ -878,15 +1055,31 @@ async function renderProof({ storyJson, output }) {
   }));
   filterParts.push(`[overlayBase]ass=${assPathFilter(assPath)},format=yuv420p[outv]`);
 
-  const audioMixInputs = [
-    `[${voiceIdx}:a]highpass=f=70,volume=0.86,acompressor=threshold=-30dB:ratio=5.5:attack=4:release=260:makeup=1,alimiter=limit=0.68:level=disabled,loudnorm=I=-17:TP=-2.5:LRA=5[a_voice]`,
-  ];
+  const audioMixInputs = [];
   const mixLabels = ["[a_voice]"];
   if (hasMusic) {
+    audioMixInputs.push(`[${voiceIdx}:a]asplit=2[a_voice_in][a_voice_sc]`);
     audioMixInputs.push(
-      `[${musicIdx}:a]volume=0.026,atrim=duration=${durationS.toFixed(3)}[a_music]`,
+      `[a_voice_in]highpass=f=70,volume=0.86,acompressor=threshold=-30dB:ratio=5.5:attack=4:release=260:makeup=1,alimiter=limit=0.68:level=disabled,loudnorm=I=-17:TP=-2.5:LRA=5[a_voice]`,
+    );
+    audioMixInputs.push(
+      `[${musicIdx}:a]volume=${MUSIC_MIX_POLICY.raw_bed_volume.toFixed(3)},atrim=duration=${durationS.toFixed(3)}[a_music_raw]`,
+    );
+    audioMixInputs.push(
+      `[a_music_raw][a_voice_sc]sidechaincompress=threshold=${MUSIC_MIX_POLICY.sidechain_threshold}:ratio=${MUSIC_MIX_POLICY.sidechain_ratio}:attack=${MUSIC_MIX_POLICY.sidechain_attack_ms}:release=${MUSIC_MIX_POLICY.sidechain_release_ms}:knee=3:level_sc=1,volume=${MUSIC_MIX_POLICY.ducked_bed_output_volume.toFixed(3)}[a_music]`,
     );
     mixLabels.push("[a_music]");
+  } else {
+    audioMixInputs.push(
+      `[${voiceIdx}:a]highpass=f=70,volume=0.86,acompressor=threshold=-30dB:ratio=5.5:attack=4:release=260:makeup=1,alimiter=limit=0.68:level=disabled,loudnorm=I=-17:TP=-2.5:LRA=5[a_voice]`,
+    );
+  }
+  if (hasSting) {
+    const stingDuration = Math.max(0.18, Math.min(MUSIC_MIX_POLICY.sting_duration_s, 0.8));
+    audioMixInputs.push(
+      `[${stingIdx}:a]volume=${MUSIC_MIX_POLICY.sting_volume.toFixed(3)},atrim=duration=${stingDuration.toFixed(3)},afade=t=in:st=0:d=0.01,afade=t=out:st=${Math.max(0.02, stingDuration - 0.08).toFixed(3)}:d=0.08,atrim=duration=${durationS.toFixed(3)}[a_sting]`,
+    );
+    mixLabels.push("[a_sting]");
   }
   for (let i = 0; i < sfxCueMix.length; i++) {
     const cue = sfxCueMix[i];
@@ -971,6 +1164,31 @@ async function renderProof({ storyJson, output }) {
       volume: cue.volume,
       durationS: cue.durationS,
     })),
+    selected_music_cues: {
+      provider_id: musicCueMix.provider_id || null,
+      pack_id: musicCueMix.pack_id || null,
+      bed: musicCueMix.bed
+        ? {
+            role: musicCueMix.bed.role,
+            asset_id: musicCueMix.bed.asset_id,
+            path: relativeReportPath(musicCueMix.bed.path),
+            variant_index: musicCueMix.bed.variant_index,
+            variant_count: musicCueMix.bed.variant_count,
+            selection_strategy: musicCueMix.bed.selection_strategy,
+          }
+        : null,
+      sting: musicCueMix.sting
+        ? {
+            role: musicCueMix.sting.role,
+            asset_id: musicCueMix.sting.asset_id,
+            path: relativeReportPath(musicCueMix.sting.path),
+            variant_index: musicCueMix.sting.variant_index,
+            variant_count: musicCueMix.sting.variant_count,
+            selection_strategy: musicCueMix.sting.selection_strategy,
+          }
+        : null,
+      policy: musicCueMix.policy || null,
+    },
     local_only: true,
     no_publish_side_effects: true,
     no_db_mutation: true,
@@ -1009,6 +1227,7 @@ module.exports = {
   drawtextEscape,
   renderNarrationScriptText,
   resolveReadableMediaPath,
+  resolveStoryMusicCueMix,
   resolveStorySfxCueMix,
   resolveStorySfxPaths,
   sfxPathForAsset,

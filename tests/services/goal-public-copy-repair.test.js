@@ -731,6 +731,45 @@ test("public copy package repair rewrites trailer scorecard blockers with story-
   }
 });
 
+test("public copy repair avoids generic reveal-cut filler for ordinary gameplay trailers", () => {
+  const repaired = repairGoalPublicCopyManifest(
+    {
+      story_id: "generic-gameplay-trailer",
+      canonical_subject: "Test Game",
+      canonical_game: "Test Game",
+      selected_title: "Test Game Shows Real Gameplay",
+      first_spoken_line: "Test Game finally showed real gameplay.",
+      primary_source: "Xbox",
+      source_card_label: "Xbox",
+      confirmed_claims: [
+        "Xbox showed Test Game real gameplay during its latest showcase.",
+      ],
+      description: "Xbox showed Test Game real gameplay. Source: Xbox.",
+    },
+    { generatedAt: "2026-05-28T19:10:00.000Z" },
+  );
+
+  assert.equal(repaired.after.verdict, "pass", repaired.after.failures.join(", "));
+  assert.doesNotMatch(repaired.manifest.narration_script, /The catch is what matters after the reveal cut/i);
+  assert.match(
+    repaired.manifest.narration_script,
+    /The catch is whether Test Game still has weight when the trailer stops jumping between money shots/i,
+  );
+  assert.match(repaired.manifest.narration_script, /\bTest Game\b/);
+
+  const staleQa = evaluateGoalPublicCopy({
+    ...repaired.manifest,
+    narration_script:
+      "Test Game finally showed real gameplay. Xbox reports Test Game gameplay. The catch is what matters after the reveal cut: whether the full mission flow can match it.",
+    full_script:
+      "Test Game finally showed real gameplay. Xbox reports Test Game gameplay. The catch is what matters after the reveal cut: whether the full mission flow can match it.",
+    tts_script:
+      "Test Game finally showed real gameplay. Xbox reports Test Game gameplay. The catch is what matters after the reveal cut: whether the full mission flow can match it.",
+  });
+  assert.equal(staleQa.verdict, "fail");
+  assert.ok(staleQa.failures.includes("public_copy:formulaic_public_narration"), JSON.stringify(staleQa));
+});
+
 test("public copy package repair detects stale passing scorecards against current script rules", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-public-copy-stale-pass-score-"));
   const artifactDir = path.join(root, "batch", "expanse-gameplay");

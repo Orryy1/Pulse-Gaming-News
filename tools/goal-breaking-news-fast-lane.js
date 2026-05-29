@@ -6,7 +6,9 @@ require("dotenv").config({ quiet: true });
 const path = require("node:path");
 const fs = require("fs-extra");
 const {
+  buildBreakingNewsFastLaneOverview,
   buildGoalBreakingNewsFastLanePlan,
+  writeBreakingNewsFastLaneOverview,
   writeGoalBreakingNewsFastLanePlan,
 } = require("../lib/goal-breaking-news-fast-lane");
 
@@ -52,13 +54,19 @@ async function main(argv = process.argv.slice(2)) {
     console.log(usage());
     return null;
   }
-  if (!args.storyPath) throw new Error("--story is required");
-  const story = await fs.readJson(path.resolve(args.storyPath));
   const platformStatePath = args.platformStatePath ||
     (await fs.pathExists(path.join("output", "goal-contract", "platform_status_matrix.json"))
       ? path.join("output", "goal-contract", "platform_status_matrix.json")
       : "");
   const platformState = await readJsonIfPresent(platformStatePath, {});
+  if (!args.storyPath) {
+    const overview = buildBreakingNewsFastLaneOverview({ platformState });
+    await writeBreakingNewsFastLaneOverview(overview, { outputDir: args.outDir });
+    if (args.json) process.stdout.write(`${JSON.stringify(overview, null, 2)}\n`);
+    else console.log(`Breaking fast-lane overview: ${overview.verdict} (${overview.required_input} required)`);
+    return overview;
+  }
+  const story = await fs.readJson(path.resolve(args.storyPath));
   const plan = await buildGoalBreakingNewsFastLanePlan({ story, platformState });
   await writeGoalBreakingNewsFastLanePlan(plan, { outputDir: args.outDir });
   if (args.json) process.stdout.write(`${JSON.stringify(plan, null, 2)}\n`);

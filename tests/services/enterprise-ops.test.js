@@ -65,6 +65,28 @@ test("media verifier flags zero-byte and tiny MP4 artefacts", async () => {
   assert.ok(report.issues.some((i) => i.issue === "zero_byte"));
 });
 
+test("media verifier checks final caption sidecars for publish actions", async () => {
+  const report = await verifyMedia({
+    fs: fakeFs({
+      "/tmp/final.mp4": 500_000,
+    }),
+    stories: [
+      {
+        id: "publish-action",
+        exported_path: "/tmp/final.mp4",
+        captions_path: "/tmp/missing.srt",
+      },
+    ],
+  });
+
+  assert.strictEqual(report.verdict, "review");
+  assert.ok(
+    report.issues.some(
+      (issue) => issue.field === "captions_path" && issue.issue === "missing",
+    ),
+  );
+});
+
 test("platform status summarises story platform fields", () => {
   const report = buildPlatformStatus({
     stories: [

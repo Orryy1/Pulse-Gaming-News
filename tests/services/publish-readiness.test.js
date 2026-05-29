@@ -30,6 +30,16 @@ test("dominantVerdict: amber wins over green when no red", () => {
   assert.equal(pr.dominantVerdict(["green", "amber"]), "amber");
 });
 
+test("dominantVerdict: review and warn count as amber", () => {
+  assert.equal(pr.dominantVerdict(["green", "review"]), "amber");
+  assert.equal(pr.dominantVerdict(["green", "warn"]), "amber");
+});
+
+test("dominantVerdict: fail and blocked count as red", () => {
+  assert.equal(pr.dominantVerdict(["green", "fail"]), "red");
+  assert.equal(pr.dominantVerdict(["green", "blocked"]), "red");
+});
+
 test("dominantVerdict: unknown alone returns unknown (never silent green)", () => {
   assert.equal(pr.dominantVerdict(["unknown"]), "unknown");
   assert.equal(pr.dominantVerdict(["unknown", "unknown"]), "unknown");
@@ -60,6 +70,119 @@ test("PILLAR_NAMES: includes the audit-flagged external blockers", () => {
 test("PILLAR_NAMES: includes the security + docs drift pillars", () => {
   assert.ok(pr.PILLAR_NAMES.includes("security_blockers"));
   assert.ok(pr.PILLAR_NAMES.includes("docs_drift"));
+});
+
+test("summariseSystemDoctorReason: surfaces blocker and finding evidence", () => {
+  assert.equal(
+    pr.summariseSystemDoctorReason({
+      blockers: ["production_health_unavailable_or_not_ok"],
+      findings: ["local_branch_ahead_18"],
+    }),
+    "production_health_unavailable_or_not_ok",
+  );
+  assert.equal(
+    pr.summariseSystemDoctorReason({
+      blockers: [],
+      findings: ["local_branch_ahead_18"],
+      advisories: ["github_cli_auth_not_persistent"],
+    }),
+    "local_branch_ahead_18",
+  );
+});
+
+test("summariseMediaVerifyReason: surfaces issue counts and top issue families", () => {
+  assert.equal(
+    pr.summariseMediaVerifyReason({
+      issueCount: 4,
+      issues: [
+        { issue: "missing" },
+        { issue: "missing" },
+        { issue: "tiny_mp4" },
+        { issue: "zero_byte" },
+      ],
+    }),
+    "4_media_path_issues: missing x2, tiny_mp4 x1, zero_byte x1",
+  );
+});
+
+test("summarisePlatformStatusReason: surfaces disabled and credential gaps", () => {
+  assert.equal(
+    pr.summarisePlatformStatusReason({
+      summary: {
+        disabled_platforms: ["tiktok", "twitter", "threads", "pinterest"],
+        needs_credentials_platforms: ["tiktok"],
+      },
+      operational: {
+        tiktok: { state: "needs_credentials", reason: "local_token_expired" },
+        twitter: { state: "disabled", reason: "x_optional_disabled" },
+        threads: { state: "disabled", reason: "threads_not_configured" },
+        pinterest: { state: "disabled", reason: "pinterest_not_configured" },
+      },
+    }),
+    "needs_credentials: tiktok=local_token_expired; disabled: pinterest=pinterest_not_configured, threads=threads_not_configured, twitter=x_optional_disabled",
+  );
+});
+
+test("summariseTiktokExternalBlockReason: surfaces platform doctor token and approval gaps", () => {
+  assert.equal(
+    pr.summariseTiktokExternalBlockReason({
+      blockers: ["tiktok_local_token_refresh_or_sync_required"],
+      platforms: {
+        tiktok: {
+          no_post_readiness: {
+            direct_post: {
+              blocker: "direct_post_approval_not_declared",
+            },
+          },
+          recommendation: "refresh_or_sync_local_token_with_operator_present_before_any_inbox_upload",
+        },
+      },
+    }),
+    "tiktok_local_token_refresh_or_sync_required; direct_post_approval_not_declared; next=refresh_or_sync_local_token_with_operator_present_before_any_inbox_upload",
+  );
+});
+
+test("buildMediaVerifyStoriesFromDryRunPlan: scopes verification to current action media", () => {
+  const rows = pr.buildMediaVerifyStoriesFromDryRunPlan({
+    safety: {
+      no_publish_triggered: true,
+      no_network_uploads: true,
+      no_db_mutation: true,
+      no_oauth_or_token_change: true,
+      dry_run_only: true,
+    },
+    actions: [
+      {
+        story_id: "story1",
+        platform: "youtube_shorts",
+        action: "would_publish",
+        video_path: "C:/renders/story1.mp4",
+        captions_path: "C:/renders/story1.srt",
+        cover_frame_source: "C:/renders/story1.mp4",
+      },
+      {
+        story_id: "story1",
+        platform: "x",
+        action: "would_queue_when_enabled",
+        video_path: "C:/renders/story1_x.mp4",
+        captions_path: "C:/renders/story1_x.srt",
+      },
+      {
+        story_id: "blocked",
+        platform: "youtube_shorts",
+        action: "blocked",
+        video_path: "C:/renders/blocked.mp4",
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    rows.map((row) => row.id),
+    ["story1:youtube_shorts", "story1:x"],
+  );
+  assert.equal(rows[0].exported_path, "C:/renders/story1.mp4");
+  assert.equal(rows[0].captions_path, "C:/renders/story1.srt");
+  assert.equal(rows[0].cover_frame_source, "C:/renders/story1.mp4");
 });
 
 test("tools/publish-readiness.js loads .env for local operator runs", () => {
@@ -139,6 +262,24 @@ test("formatPublishReadinessMarkdown: unknown verdict surfaces in pillar list", 
 });
 
 // ── buildPublishReadinessReport with empty DB ────────────────────
+
+test("formatPublishReadinessMarkdown: non-standard review verdict is printed as amber", () => {
+  const md = pr.formatPublishReadinessMarkdown({
+    overall_verdict: "amber",
+    pillars: {
+      media_verify: { verdict: "review", reason: "media_verify_review" },
+    },
+    blockers: [],
+    advisory: ["media_verify: media_verify_review"],
+    recently_improved: [],
+    next_action: "Operator review required.",
+    story_count: 5,
+    generated_at: "2026-04-30T22:00:00Z",
+  });
+
+  assert.match(md, /media_verify: amber/);
+  assert.doesNotMatch(md, /media_verify: review/);
+});
 
 test("buildPublishReadinessReport: empty store does not crash, returns at least one pillar", async () => {
   // We use a fake DB and let the real pillars run. They should

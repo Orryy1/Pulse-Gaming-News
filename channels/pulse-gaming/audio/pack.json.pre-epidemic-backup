@@ -1,0 +1,65 @@
+{
+  "id": "pulse-gaming-epidemic-v1",
+  "channel_id": "pulse-gaming",
+  "name": "Pulse Gaming Epidemic Sound",
+  "root_path": "audio/epidemic",
+  "license": "epidemic_sound_active_subscription_safelisted_channel",
+  "_note": "Generated from a PASS Epidemic Sound intake report. Keep safelist evidence with the proof package before publishing.",
+  "assets": [
+    {
+      "role": "bed_primary",
+      "filename": "music/bed_primary/epidemic_bed_primary_carbon_truvio_full_mix.wav",
+      "duration_ms": null,
+      "loudness_lufs": null,
+      "license": "epidemic_sound_active_subscription_safelisted_channel",
+      "provider_id": "epidemic_sound",
+      "asset_id": "epidemic_sound_bed_primary_f3666a5e4a41",
+      "safelist_evidence": "output/epidemic-implementation/safelist_evidence/epidemic_safelist_evidence.json",
+      "notes": "Epidemic Sound bed_primary"
+    },
+    {
+      "role": "bed_breaking",
+      "filename": "music/bed_breaking/epidemic_bed_breaking_lights_flashing_by_marten_moses_full_mix.wav",
+      "duration_ms": null,
+      "loudness_lufs": null,
+      "license": "epidemic_sound_active_subscription_safelisted_channel",
+      "provider_id": "epidemic_sound",
+      "asset_id": "epidemic_sound_bed_breaking_17db41480775",
+      "safelist_evidence": "output/epidemic-implementation/safelist_evidence/epidemic_safelist_evidence.json",
+      "notes": "Epidemic Sound bed_breaking"
+    },
+    {
+      "role": "sting_verified",
+      "filename": "stings/sting_verified/epidemic_sting_verified_source_lock_positive_sting.wav",
+      "duration_ms": null,
+      "loudness_lufs": null,
+      "license": "epidemic_sound_active_subscription_safelisted_channel",
+      "provider_id": "epidemic_sound",
+      "asset_id": "epidemic_sound_sting_verified_0ef411ba58b5",
+      "safelist_evidence": "output/epidemic-implementation/safelist_evidence/epidemic_safelist_evidence.json",
+      "notes": "Epidemic Sound sting_verified"
+    },
+    {
+      "role": "sting_rumour",
+      "filename": "stings/sting_rumour/epidemic_sting_rumour_rumour_watch_tension_sting.wav",
+      "duration_ms": null,
+      "loudness_lufs": null,
+      "license": "epidemic_sound_active_subscription_safelisted_channel",
+      "provider_id": "epidemic_sound",
+      "asset_id": "epidemic_sound_sting_rumour_0c27cce81145",
+      "safelist_evidence": "output/epidemic-implementation/safelist_evidence/epidemic_safelist_evidence.json",
+      "notes": "Epidemic Sound sting_rumour"
+    },
+    {
+      "role": "sting_breaking",
+      "filename": "stings/sting_breaking/epidemic_sting_breaking_breaking_dry_impact_sting.wav",
+      "duration_ms": null,
+      "loudness_lufs": null,
+      "license": "epidemic_sound_active_subscription_safelisted_channel",
+      "provider_id": "epidemic_sound",
+      "asset_id": "epidemic_sound_sting_breaking_f9979ada6d4f",
+      "safelist_evidence": "output/epidemic-implementation/safelist_evidence/epidemic_safelist_evidence.json",
+      "notes": "Epidemic Sound sting_breaking"
+    }
+  ]
+}

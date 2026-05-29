@@ -224,3 +224,23 @@ test("breaking fast lane writes required artefacts and exposes a CLI", async () 
   const pkg = await fs.readJson(path.resolve(__dirname, "../../package.json"));
   assert.equal(pkg.scripts["ops:goal-breaking-news"], "node tools/goal-breaking-news-fast-lane.js");
 });
+
+test("breaking fast lane CLI without --story writes a safe overview instead of failing", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-breaking-fast-lane-overview-"));
+  const outDir = path.join(root, "out");
+
+  const cli = spawnSync(
+    process.execPath,
+    ["tools/goal-breaking-news-fast-lane.js", "--out-dir", outDir, "--json"],
+    { cwd: path.resolve(__dirname, "../.."), encoding: "utf8" },
+  );
+
+  assert.equal(cli.status, 0, cli.stderr);
+  const stdout = JSON.parse(cli.stdout);
+  assert.equal(stdout.mode, "BREAKING_NEWS_FAST_LANE_OVERVIEW");
+  assert.equal(stdout.verdict, "AMBER");
+  assert.equal(stdout.required_input, "story_manifest");
+  assert.equal(stdout.safety.no_network_uploads, true);
+  assert.equal(await fs.pathExists(path.join(outDir, "breaking_news_fast_lane_overview.json")), true);
+  assert.equal(await fs.pathExists(path.join(outDir, "breaking_news_fast_lane_overview.md")), true);
+});

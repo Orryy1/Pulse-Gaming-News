@@ -1,0 +1,349 @@
+{
+  "id": "pulse-gaming-epidemic-v1",
+  "channel_id": "pulse-gaming",
+  "name": "Pulse Gaming Epidemic Sound",
+  "root_path": "audio/epidemic",
+  "license": "epidemic_sound_active_subscription_safelisted_channel",
+  "_note": "Generated from a PASS Epidemic Sound intake report. Keep safelist evidence with the proof package before publishing.",
+  "rotation_policy": {
+    "strategy": "story_id_hash",
+    "seed_fields": [
+      "story.id",
+      "story.url",
+      "channel_id",
+      "role"
+    ],
+    "fallback": "first_variant_per_role"
+  },
+  "assets": [
+    {
+      "role": "bed_primary",
+      "filename": "music/bed_primary/epidemic_bed_primary_02_gaining-season-lupus-nocte.mp3",
+      "duration_ms": null,
+      "loudness_lufs": null,
+      "license": "epidemic_sound_active_subscription_safelisted_channel",
+      "provider_id": "epidemic_sound",
+      "asset_id": "epidemic_sound_bed_primary_451d947ad7c4",
+      "safelist_evidence": "output/epidemic-implementation/safelist_evidence/epidemic_safelist_evidence.json",
+      "variant_index": 0,
+      "variant_count": 6,
+      "notes": "Epidemic Sound bed_primary",
+      "default_variant": true
+    },
+    {
+      "role": "bed_breaking",
+      "filename": "music/bed_breaking/epidemic_bed_breaking_02_bulletin-world-out-to-the-world.mp3",
+      "duration_ms": null,
+      "loudness_lufs": null,
+      "license": "epidemic_sound_active_subscription_safelisted_channel",
+      "provider_id": "epidemic_sound",
+      "asset_id": "epidemic_sound_bed_breaking_80562874919a",
+      "safelist_evidence": "output/epidemic-implementation/safelist_evidence/epidemic_safelist_evidence.json",
+      "variant_index": 0,
+      "variant_count": 4,
+      "notes": "Epidemic Sound bed_breaking",
+      "default_variant": true
+    },
+    {
+      "role": "sting_verified",
+      "filename": "stings/sting_verified/epidemic_sting_verified_02_user-interface-beep-notification-confirm-positive-epidemic-sound.mp3",
+      "duration_ms": null,
+      "loudness_lufs": null,
+      "license": "epidemic_sound_active_subscription_safelisted_channel",
+      "provider_id": "epidemic_sound",
+      "asset_id": "epidemic_sound_sting_verified_8fb672b26920",
+      "safelist_evidence": "output/epidemic-implementation/safelist_evidence/epidemic_safelist_evidence.json",
+      "variant_index": 0,
+      "variant_count": 3,
+      "notes": "Epidemic Sound sting_verified",
+      "default_variant": true
+    },
+    {
+      "role": "sting_rumour",
+      "filename": "stings/sting_rumour/epidemic_sting_rumour_02_musical-sample-stringed-stinger-impact-suspenseful-mysterious-eastern-style-epidemic-sound.mp3",
+      "duration_ms": null,
+      "loudness_lufs": null,
+      "license": "epidemic_sound_active_subscription_safelisted_channel",
+      "provider_id": "epidemic_sound",
+      "asset_id": "epidemic_sound_sting_rumour_8115630912a9",
+      "safelist_evidence": "output/epidemic-implementation/safelist_evidence/epidemic_safelist_evidence.json",
+      "variant_index": 0,
+      "variant_count": 3,
+      "notes": "Epidemic Sound sting_rumour",
+      "default_variant": true
+    },
+    {
+      "role": "sting_breaking",
+      "filename": "stings/sting_breaking/epidemic_sting_breaking_02_glass-break-glass-break-hit-epidemic-sound.mp3",
+      "duration_ms": null,
+      "loudness_lufs": null,
+      "license": "epidemic_sound_active_subscription_safelisted_channel",
+      "provider_id": "epidemic_sound",
+      "asset_id": "epidemic_sound_sting_breaking_7ef18f1d2312",
+      "safelist_evidence": "output/epidemic-implementation/safelist_evidence/epidemic_safelist_evidence.json",
+      "variant_index": 0,
+      "variant_count": 3,
+      "notes": "Epidemic Sound sting_breaking",
+      "default_variant": true
+    }
+  ],
+  "variants": {
+    "bed_primary": [
+      {
+        "role": "bed_primary",
+        "filename": "music/bed_primary/epidemic_bed_primary_02_gaining-season-lupus-nocte.mp3",
+        "duration_ms": null,
+        "loudness_lufs": null,
+        "license": "epidemic_sound_active_subscription_safelisted_channel",
+        "provider_id": "epidemic_sound",
+        "asset_id": "epidemic_sound_bed_primary_451d947ad7c4",
+        "safelist_evidence": "output/epidemic-implementation/safelist_evidence/epidemic_safelist_evidence.json",
+        "variant_index": 0,
+        "variant_count": 6,
+        "notes": "Epidemic Sound bed_primary"
+      },
+      {
+        "role": "bed_primary",
+        "filename": "music/bed_primary/epidemic_bed_primary_03_moon-traffic-autohacker.mp3",
+        "duration_ms": null,
+        "loudness_lufs": null,
+        "license": "epidemic_sound_active_subscription_safelisted_channel",
+        "provider_id": "epidemic_sound",
+        "asset_id": "epidemic_sound_bed_primary_8cdd7388c5d0",
+        "safelist_evidence": "output/epidemic-implementation/safelist_evidence/epidemic_safelist_evidence.json",
+        "variant_index": 1,
+        "variant_count": 6,
+        "notes": "Epidemic Sound bed_primary"
+      },
+      {
+        "role": "bed_primary",
+        "filename": "music/bed_primary/epidemic_bed_primary_04_antigen-marten-moses.mp3",
+        "duration_ms": null,
+        "loudness_lufs": null,
+        "license": "epidemic_sound_active_subscription_safelisted_channel",
+        "provider_id": "epidemic_sound",
+        "asset_id": "epidemic_sound_bed_primary_b41b070abdd0",
+        "safelist_evidence": "output/epidemic-implementation/safelist_evidence/epidemic_safelist_evidence.json",
+        "variant_index": 2,
+        "variant_count": 6,
+        "notes": "Epidemic Sound bed_primary"
+      },
+      {
+        "role": "bed_primary",
+        "filename": "music/bed_primary/epidemic_bed_primary_05_ninja-skills-ava-low.mp3",
+        "duration_ms": null,
+        "loudness_lufs": null,
+        "license": "epidemic_sound_active_subscription_safelisted_channel",
+        "provider_id": "epidemic_sound",
+        "asset_id": "epidemic_sound_bed_primary_eff63701f501",
+        "safelist_evidence": "output/epidemic-implementation/safelist_evidence/epidemic_safelist_evidence.json",
+        "variant_index": 3,
+        "variant_count": 6,
+        "notes": "Epidemic Sound bed_primary"
+      },
+      {
+        "role": "bed_primary",
+        "filename": "music/bed_primary/epidemic_bed_primary_06_fall-into-my-arms-slct-remix-instrumental-version-duty-division.mp3",
+        "duration_ms": null,
+        "loudness_lufs": null,
+        "license": "epidemic_sound_active_subscription_safelisted_channel",
+        "provider_id": "epidemic_sound",
+        "asset_id": "epidemic_sound_bed_primary_bd09ace8a0c2",
+        "safelist_evidence": "output/epidemic-implementation/safelist_evidence/epidemic_safelist_evidence.json",
+        "variant_index": 4,
+        "variant_count": 6,
+        "notes": "Epidemic Sound bed_primary"
+      },
+      {
+        "role": "bed_primary",
+        "filename": "music/bed_primary/epidemic_bed_primary_carbon_truvio_full_mix.wav",
+        "duration_ms": null,
+        "loudness_lufs": null,
+        "license": "epidemic_sound_active_subscription_safelisted_channel",
+        "provider_id": "epidemic_sound",
+        "asset_id": "epidemic_sound_bed_primary_f3666a5e4a41",
+        "safelist_evidence": "output/epidemic-implementation/safelist_evidence/epidemic_safelist_evidence.json",
+        "variant_index": 5,
+        "variant_count": 6,
+        "notes": "Epidemic Sound bed_primary"
+      }
+    ],
+    "bed_breaking": [
+      {
+        "role": "bed_breaking",
+        "filename": "music/bed_breaking/epidemic_bed_breaking_02_bulletin-world-out-to-the-world.mp3",
+        "duration_ms": null,
+        "loudness_lufs": null,
+        "license": "epidemic_sound_active_subscription_safelisted_channel",
+        "provider_id": "epidemic_sound",
+        "asset_id": "epidemic_sound_bed_breaking_80562874919a",
+        "safelist_evidence": "output/epidemic-implementation/safelist_evidence/epidemic_safelist_evidence.json",
+        "variant_index": 0,
+        "variant_count": 4,
+        "notes": "Epidemic Sound bed_breaking"
+      },
+      {
+        "role": "bed_breaking",
+        "filename": "music/bed_breaking/epidemic_bed_breaking_03_eye-of-the-newscaster-out-to-the-world.mp3",
+        "duration_ms": null,
+        "loudness_lufs": null,
+        "license": "epidemic_sound_active_subscription_safelisted_channel",
+        "provider_id": "epidemic_sound",
+        "asset_id": "epidemic_sound_bed_breaking_ab078914256d",
+        "safelist_evidence": "output/epidemic-implementation/safelist_evidence/epidemic_safelist_evidence.json",
+        "variant_index": 1,
+        "variant_count": 4,
+        "notes": "Epidemic Sound bed_breaking"
+      },
+      {
+        "role": "bed_breaking",
+        "filename": "music/bed_breaking/epidemic_bed_breaking_04_big-announcement-out-to-the-world.mp3",
+        "duration_ms": null,
+        "loudness_lufs": null,
+        "license": "epidemic_sound_active_subscription_safelisted_channel",
+        "provider_id": "epidemic_sound",
+        "asset_id": "epidemic_sound_bed_breaking_91aeb94e039a",
+        "safelist_evidence": "output/epidemic-implementation/safelist_evidence/epidemic_safelist_evidence.json",
+        "variant_index": 2,
+        "variant_count": 4,
+        "notes": "Epidemic Sound bed_breaking"
+      },
+      {
+        "role": "bed_breaking",
+        "filename": "music/bed_breaking/epidemic_bed_breaking_lights_flashing_by_marten_moses_full_mix.wav",
+        "duration_ms": null,
+        "loudness_lufs": null,
+        "license": "epidemic_sound_active_subscription_safelisted_channel",
+        "provider_id": "epidemic_sound",
+        "asset_id": "epidemic_sound_bed_breaking_17db41480775",
+        "safelist_evidence": "output/epidemic-implementation/safelist_evidence/epidemic_safelist_evidence.json",
+        "variant_index": 3,
+        "variant_count": 4,
+        "notes": "Epidemic Sound bed_breaking"
+      }
+    ],
+    "sting_verified": [
+      {
+        "role": "sting_verified",
+        "filename": "stings/sting_verified/epidemic_sting_verified_02_user-interface-beep-notification-confirm-positive-epidemic-sound.mp3",
+        "duration_ms": null,
+        "loudness_lufs": null,
+        "license": "epidemic_sound_active_subscription_safelisted_channel",
+        "provider_id": "epidemic_sound",
+        "asset_id": "epidemic_sound_sting_verified_8fb672b26920",
+        "safelist_evidence": "output/epidemic-implementation/safelist_evidence/epidemic_safelist_evidence.json",
+        "variant_index": 0,
+        "variant_count": 3,
+        "notes": "Epidemic Sound sting_verified"
+      },
+      {
+        "role": "sting_verified",
+        "filename": "stings/sting_verified/epidemic_sting_verified_03_user-interface-alert-notification-computer-select-chord-positive-ascend-confirm-epidemic-s.mp3",
+        "duration_ms": null,
+        "loudness_lufs": null,
+        "license": "epidemic_sound_active_subscription_safelisted_channel",
+        "provider_id": "epidemic_sound",
+        "asset_id": "epidemic_sound_sting_verified_b42a94dcc425",
+        "safelist_evidence": "output/epidemic-implementation/safelist_evidence/epidemic_safelist_evidence.json",
+        "variant_index": 1,
+        "variant_count": 3,
+        "notes": "Epidemic Sound sting_verified"
+      },
+      {
+        "role": "sting_verified",
+        "filename": "stings/sting_verified/epidemic_sting_verified_source_lock_positive_sting.wav",
+        "duration_ms": null,
+        "loudness_lufs": null,
+        "license": "epidemic_sound_active_subscription_safelisted_channel",
+        "provider_id": "epidemic_sound",
+        "asset_id": "epidemic_sound_sting_verified_0ef411ba58b5",
+        "safelist_evidence": "output/epidemic-implementation/safelist_evidence/epidemic_safelist_evidence.json",
+        "variant_index": 2,
+        "variant_count": 3,
+        "notes": "Epidemic Sound sting_verified"
+      }
+    ],
+    "sting_rumour": [
+      {
+        "role": "sting_rumour",
+        "filename": "stings/sting_rumour/epidemic_sting_rumour_02_musical-sample-stringed-stinger-impact-suspenseful-mysterious-eastern-style-epidemic-sound.mp3",
+        "duration_ms": null,
+        "loudness_lufs": null,
+        "license": "epidemic_sound_active_subscription_safelisted_channel",
+        "provider_id": "epidemic_sound",
+        "asset_id": "epidemic_sound_sting_rumour_8115630912a9",
+        "safelist_evidence": "output/epidemic-implementation/safelist_evidence/epidemic_safelist_evidence.json",
+        "variant_index": 0,
+        "variant_count": 3,
+        "notes": "Epidemic Sound sting_rumour"
+      },
+      {
+        "role": "sting_rumour",
+        "filename": "stings/sting_rumour/epidemic_sting_rumour_03_designed-eerie-dark-mysterious-suspense-impact-hit-epidemic-sound.mp3",
+        "duration_ms": null,
+        "loudness_lufs": null,
+        "license": "epidemic_sound_active_subscription_safelisted_channel",
+        "provider_id": "epidemic_sound",
+        "asset_id": "epidemic_sound_sting_rumour_d0a3090ad1cf",
+        "safelist_evidence": "output/epidemic-implementation/safelist_evidence/epidemic_safelist_evidence.json",
+        "variant_index": 1,
+        "variant_count": 3,
+        "notes": "Epidemic Sound sting_rumour"
+      },
+      {
+        "role": "sting_rumour",
+        "filename": "stings/sting_rumour/epidemic_sting_rumour_rumour_watch_tension_sting.wav",
+        "duration_ms": null,
+        "loudness_lufs": null,
+        "license": "epidemic_sound_active_subscription_safelisted_channel",
+        "provider_id": "epidemic_sound",
+        "asset_id": "epidemic_sound_sting_rumour_0c27cce81145",
+        "safelist_evidence": "output/epidemic-implementation/safelist_evidence/epidemic_safelist_evidence.json",
+        "variant_index": 2,
+        "variant_count": 3,
+        "notes": "Epidemic Sound sting_rumour"
+      }
+    ],
+    "sting_breaking": [
+      {
+        "role": "sting_breaking",
+        "filename": "stings/sting_breaking/epidemic_sting_breaking_02_glass-break-glass-break-hit-epidemic-sound.mp3",
+        "duration_ms": null,
+        "loudness_lufs": null,
+        "license": "epidemic_sound_active_subscription_safelisted_channel",
+        "provider_id": "epidemic_sound",
+        "asset_id": "epidemic_sound_sting_breaking_7ef18f1d2312",
+        "safelist_evidence": "output/epidemic-implementation/safelist_evidence/epidemic_safelist_evidence.json",
+        "variant_index": 0,
+        "variant_count": 3,
+        "notes": "Epidemic Sound sting_breaking"
+      },
+      {
+        "role": "sting_breaking",
+        "filename": "stings/sting_breaking/epidemic_sting_breaking_03_glass-break-sequence-impact-hit-crash-break-03-epidemic-sound.mp3",
+        "duration_ms": null,
+        "loudness_lufs": null,
+        "license": "epidemic_sound_active_subscription_safelisted_channel",
+        "provider_id": "epidemic_sound",
+        "asset_id": "epidemic_sound_sting_breaking_9f882f5e4c57",
+        "safelist_evidence": "output/epidemic-implementation/safelist_evidence/epidemic_safelist_evidence.json",
+        "variant_index": 1,
+        "variant_count": 3,
+        "notes": "Epidemic Sound sting_breaking"
+      },
+      {
+        "role": "sting_breaking",
+        "filename": "stings/sting_breaking/epidemic_sting_breaking_breaking_dry_impact_sting.wav",
+        "duration_ms": null,
+        "loudness_lufs": null,
+        "license": "epidemic_sound_active_subscription_safelisted_channel",
+        "provider_id": "epidemic_sound",
+        "asset_id": "epidemic_sound_sting_breaking_f9979ada6d4f",
+        "safelist_evidence": "output/epidemic-implementation/safelist_evidence/epidemic_safelist_evidence.json",
+        "variant_index": 2,
+        "variant_count": 3,
+        "notes": "Epidemic Sound sting_breaking"
+      }
+    ]
+  }
+}

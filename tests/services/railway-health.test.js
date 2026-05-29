@@ -299,6 +299,19 @@ test("railway health treats missing local queue auth as advisory", () => {
   assert.ok(report.advisories.some((a) => a.code === "queue_stats_not_checked"));
 });
 
+test("railway health reviews CLI auth failure instead of faking a missing deployment", () => {
+  const report = buildRailwayHealthReport({
+    deployments: [],
+    deploymentAccessIssue: "Unauthorized. Please run railway login again.",
+    health: { ok: true, status: 200, body: { status: "ok" } },
+  });
+
+  assert.equal(report.verdict, "review");
+  assert.equal(report.hardFails.some((item) => item.code === "deployment_missing"), false);
+  assert.equal(report.warnings.some((item) => item.code === "railway_deployment_access_unavailable"), true);
+  assert.equal(report.deploymentAccess.ok, false);
+});
+
 test("railway health treats queue stats auth failure as advisory", () => {
   const report = buildRailwayHealthReport({
     deployments: [{ id: "dep_1", status: "SUCCESS", meta: { commitHash: "abc123" } }],

@@ -154,18 +154,30 @@ function shouldFetchQueueStats() {
 async function main() {
   await fs.ensureDir(OUTPUT_DIR);
 
-  const deployments = JSON.parse(runRailway(["deployment", "list", "--limit", "5", "--json"]));
-  const appLogs = parseRailwayJsonLines(
-    runRailway(["logs", "--lines", "200", "--json", "--latest"], { optional: true }),
-  );
-  const buildLogs = parseRailwayJsonLines(
-    runRailway(["logs", "--build", "--lines", "200", "--json", "--latest"], {
-      optional: true,
-    }),
-  );
-  const httpLogs = parseRailwayJsonLines(
-    runRailway(["logs", "--http", "--lines", "120", "--json"], { optional: true }),
-  );
+  let deployments = [];
+  let deploymentAccessIssue = null;
+  try {
+    deployments = JSON.parse(runRailway(["deployment", "list", "--limit", "5", "--json"]));
+  } catch (err) {
+    deploymentAccessIssue = err.message || String(err);
+  }
+  const appLogs = deploymentAccessIssue
+    ? []
+    : parseRailwayJsonLines(
+        runRailway(["logs", "--lines", "200", "--json", "--latest"], { optional: true }),
+      );
+  const buildLogs = deploymentAccessIssue
+    ? []
+    : parseRailwayJsonLines(
+        runRailway(["logs", "--build", "--lines", "200", "--json", "--latest"], {
+          optional: true,
+        }),
+      );
+  const httpLogs = deploymentAccessIssue
+    ? []
+    : parseRailwayJsonLines(
+        runRailway(["logs", "--http", "--lines", "120", "--json"], { optional: true }),
+      );
   const healthUrl = loadHealthUrl();
   const health = await fetchHealth(healthUrl);
   const queueFetch = shouldFetchQueueStats()
@@ -178,6 +190,7 @@ async function main() {
 
   const report = buildRailwayHealthReport({
     deployments,
+    deploymentAccessIssue,
     health,
     queueStats: queueFetch.ok ? queueFetch.body : null,
     queueStatsIssue: queueFetch.ok ? null : queueFetch.issue,

@@ -116,6 +116,38 @@ test("platform status does not treat review-blocked platform IDs as published", 
   assert.strictEqual(report.counts.youtube.blocked_review, 1);
 });
 
+test("platform status keeps operator-disabled socials visible on review-blocked stories", () => {
+  const report = buildPlatformStatus({
+    stories: [
+      {
+        id: "review-blocked",
+        title: "Review blocked",
+        publish_status: "partial",
+        qa_status: "failed",
+      },
+    ],
+    platformConfig: {
+      youtube: { state: "enabled", reason: "core_upload_path" },
+      tiktok: { state: "disabled", reason: "operator_disabled" },
+      instagram_reel: { state: "enabled", reason: "graph_credentials_present" },
+      facebook_reel: { state: "enabled", reason: "facebook_reels_enabled" },
+      twitter: { state: "disabled", reason: "x_optional_disabled" },
+      threads: { state: "disabled", reason: "threads_not_configured" },
+      pinterest: { state: "disabled", reason: "pinterest_not_configured" },
+    },
+  });
+
+  assert.strictEqual(report.recent[0].platforms.youtube.status, "blocked_review");
+  assert.strictEqual(report.recent[0].platforms.tiktok.status, "disabled");
+  assert.strictEqual(report.recent[0].platforms.twitter.status, "disabled");
+  assert.strictEqual(report.recent[0].platforms.threads.status, "disabled");
+  assert.strictEqual(report.recent[0].platforms.pinterest.status, "disabled");
+  assert.strictEqual(report.counts.tiktok.disabled, 1);
+  assert.strictEqual(report.counts.twitter.disabled, 1);
+  assert.strictEqual(report.counts.threads.disabled, 1);
+  assert.strictEqual(report.counts.pinterest.disabled, 1);
+});
+
 test("platform status separates blocked and disabled platforms from not-published work", () => {
   const report = buildPlatformStatus({
     stories: [
@@ -137,6 +169,37 @@ test("platform status separates blocked and disabled platforms from not-publishe
   assert.strictEqual(report.counts.facebook_reel.disabled, 2);
   assert.strictEqual(report.counts.twitter.disabled, 2);
   assert.strictEqual(report.counts.instagram_reel.not_published, 2);
+});
+
+test("platform status counts all configured socials and marks disabled platform state amber", () => {
+  const report = buildPlatformStatus({
+    stories: [{ id: "a", title: "A" }],
+    platformConfig: {
+      youtube: { state: "enabled", reason: "core_upload_path" },
+      tiktok: { state: "needs_credentials", reason: "tiktok_local_token_refresh_or_sync_required" },
+      instagram_reel: { state: "enabled", reason: "graph_credentials_present" },
+      facebook_reel: { state: "enabled", reason: "facebook_reels_enabled" },
+      twitter: { state: "disabled", reason: "x_optional_disabled" },
+      threads: { state: "disabled", reason: "threads_not_configured" },
+      pinterest: { state: "disabled", reason: "pinterest_not_configured" },
+    },
+  });
+
+  assert.strictEqual(report.verdict, "amber");
+  assert.strictEqual(report.summary.platform_count, 7);
+  assert.strictEqual(report.summary.enabled_platform_count, 3);
+  assert.strictEqual(report.summary.disabled_platform_count, 3);
+  assert.strictEqual(report.summary.needs_credentials_platform_count, 1);
+  assert.deepStrictEqual(report.summary.disabled_platforms.sort(), ["pinterest", "threads", "twitter"]);
+  assert.strictEqual(report.counts.threads.disabled, 1);
+  assert.strictEqual(report.counts.pinterest.disabled, 1);
+  assert.strictEqual(report.counts.tiktok.needs_credentials, 1);
+
+  const md = renderPlatformStatusMarkdown(report);
+  assert.match(md, /Verdict: amber/);
+  assert.match(md, /Disabled platforms: 3/);
+  assert.match(md, /threads: disabled=1/);
+  assert.match(md, /pinterest: disabled=1/);
 });
 
 test("platform status uses platform_posts rows as the newest structured truth", () => {

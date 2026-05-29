@@ -97,8 +97,8 @@ async function loadInputs(args) {
       "output/goal-contract/story-packages.json",
     ], []),
     dryRunPlan: await readJsonIfPresent(root, args.dryRunPlanPath, [
-      "output/goal-01/dry_run_publish_plan.json",
       "output/goal-contract/dry_run_publish_plan.json",
+      "output/goal-01/dry_run_publish_plan.json",
     ], {}),
     renderInputWorkOrder: await readJsonIfPresent(root, args.renderInputWorkOrderPath, [
       "output/goal-contract/render_input_work_order.json",
@@ -122,12 +122,12 @@ async function loadInputs(args) {
       "output/goal-19/bridge_health_report.json",
     ], {}),
     platformStatusMatrix: await readJsonIfPresent(root, args.platformStatusMatrixPath, [
-      "output/goal-01/platform_status_matrix.json",
       "output/goal-contract/platform_status_matrix.json",
+      "output/goal-01/platform_status_matrix.json",
     ], {}),
     publishVerdict: await readJsonIfPresent(root, args.publishVerdictPath, [
-      "output/goal-01/publish_verdict.json",
       "output/goal-contract/publish_verdict.json",
+      "output/goal-01/publish_verdict.json",
     ], {}),
     analyticsReport: await readJsonIfPresent(root, args.analyticsReportPath, [
       "output/goal-contract/retention_intelligence.json",

@@ -384,6 +384,35 @@ test("goal dry-run publisher defers externally blocked or operator-disabled plat
   assert.ok(plan.actions.every((action) => action.no_network_upload === true));
 });
 
+test("goal dry-run markdown separates enabled actions from deferred platform enablement", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-platform-action-copy-"));
+  const storyPackage = await makeStoryPackage(root);
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-05-28T07:15:00.000Z",
+    platformOperationalConfig: {
+      youtube: { state: "enabled", reason: "core_upload_path" },
+      tiktok: { state: "blocked_external", reason: "tiktok_direct_post_app_review" },
+      instagram_reel: { state: "enabled", reason: "graph_credentials_present" },
+      facebook_reel: { state: "enabled", reason: "facebook_reels_enabled" },
+      twitter: { state: "disabled", reason: "x_optional_disabled" },
+    },
+  });
+
+  await writeGoalDryRunPublishPlan(plan, { outputDir: root });
+  const markdown = await fs.readFile(path.join(root, "dry_run_publish_plan.md"), "utf8");
+
+  assert.equal(plan.summary.planned_action_count, 7);
+  assert.equal(plan.summary.platform_publish_now_action_count, 3);
+  assert.equal(plan.summary.platform_deferred_action_count, 4);
+  assert.doesNotMatch(markdown, /^Planned actions:/m);
+  assert.match(markdown, /^Candidate platform actions \(enabled \+ deferred\): 7$/m);
+  assert.match(markdown, /^Enabled actions requiring human review: 3$/m);
+  assert.match(markdown, /^Deferred until platform enablement: 4$/m);
+  assert.match(markdown, /^Live publish actions allowed by this dry run: 0$/m);
+});
+
 test("goal dry-run publisher surfaces deferred platform enablement gaps without blocking clean enabled platforms", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-platform-enablement-gaps-"));
   const storyPackage = await makeStoryPackage(root);

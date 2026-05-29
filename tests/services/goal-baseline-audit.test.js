@@ -13,6 +13,7 @@ const {
   buildImmediateRepairOrder,
   writeBaselineAuditArtifacts,
 } = require("../../lib/goal-baseline-audit");
+const { loadInputs } = require("../../tools/goal-baseline-audit");
 
 function fixtureInputs() {
   return {
@@ -269,4 +270,123 @@ test("writeBaselineAuditArtifacts emits the required Goal 02 JSON and Markdown a
   assert.equal(taxonomy.categories.render_inputs.count >= 1, true);
   assert.equal(repairOrder[0].blocker_type, "missing_final_narration_audio");
   assert.equal(matrix.publish_control_truth.status, "RED");
+});
+
+test("baseline audit separates enabled and deferred platform actions in publish-control truth", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-baseline-audit-platform-actions-"));
+  const outDir = path.join(tmp, "goal-02");
+  const inputs = fixtureInputs();
+  inputs.dryRunPlan.summary.planned_action_count = 7;
+  inputs.dryRunPlan.summary.candidate_platform_action_count = 7;
+  inputs.dryRunPlan.summary.platform_publish_now_action_count = 3;
+  inputs.dryRunPlan.summary.platform_enabled_dry_run_action_count = 3;
+  inputs.dryRunPlan.summary.human_review_required_action_count = 3;
+  inputs.dryRunPlan.summary.enabled_human_review_action_count = 3;
+  inputs.dryRunPlan.summary.platform_deferred_action_count = 4;
+  inputs.dryRunPlan.summary.deferred_platform_enablement_action_count = 4;
+  inputs.dryRunPlan.summary.live_publish_allowed_action_count = 0;
+  inputs.publishVerdict = {
+    verdict: "AMBER",
+    safe_to_publish_boolean: false,
+  };
+
+  const report = buildBaselineAuditReport(inputs);
+  await writeBaselineAuditArtifacts(report, { outDir });
+  const auditMd = await fs.readFile(path.join(outDir, "baseline_audit_report.md"), "utf8");
+
+  assert.equal(report.publish_control_truth.planned_action_count, 7);
+  assert.equal(report.publish_control_truth.candidate_platform_action_count, 7);
+  assert.equal(report.publish_control_truth.enabled_platform_dry_run_action_count, 3);
+  assert.equal(report.publish_control_truth.enabled_human_review_action_count, 3);
+  assert.equal(report.publish_control_truth.deferred_platform_enablement_action_count, 4);
+  assert.equal(report.publish_control_truth.live_publish_allowed_action_count, 0);
+  assert.doesNotMatch(auditMd, /^Planned actions:/m);
+  assert.match(auditMd, /^- Candidate platform actions \(enabled \+ deferred\): 7$/m);
+  assert.match(auditMd, /^- Enabled actions requiring human review: 3$/m);
+  assert.match(auditMd, /^- Deferred until platform enablement: 4$/m);
+  assert.match(auditMd, /^- Live publish actions allowed by this dry run: 0$/m);
+});
+
+test("baseline audit input loader prefers current goal-contract proof over stale goal-01 outputs", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-baseline-audit-input-order-"));
+  await fs.outputJson(path.join(root, "output", "goal-01", "dry_run_publish_plan.json"), {
+    generated_at: "2026-05-24T08:55:34.708Z",
+    summary: { ready_story_count: 0 },
+  });
+  await fs.outputJson(path.join(root, "output", "goal-contract", "dry_run_publish_plan.json"), {
+    generated_at: "2026-05-29T02:54:30.499Z",
+    summary: { ready_story_count: 12 },
+  });
+  await fs.outputJson(path.join(root, "output", "goal-01", "publish_verdict.json"), {
+    generated_at: "2026-05-24T08:55:34.708Z",
+    verdict: "RED",
+  });
+  await fs.outputJson(path.join(root, "output", "goal-contract", "publish_verdict.json"), {
+    generated_at: "2026-05-29T02:54:30.499Z",
+    verdict: "AMBER",
+  });
+  await fs.outputJson(path.join(root, "output", "goal-01", "platform_status_matrix.json"), {
+    generated_at: "2026-05-24T08:55:34.708Z",
+    overall_verdict: "RED",
+  });
+  await fs.outputJson(path.join(root, "output", "goal-contract", "platform_status_matrix.json"), {
+    generated_at: "2026-05-29T02:54:30.499Z",
+    overall_verdict: "AMBER",
+  });
+
+  const inputs = await loadInputs({ root });
+
+  assert.equal(inputs.dryRunPlan.generated_at, "2026-05-29T02:54:30.499Z");
+  assert.equal(inputs.dryRunPlan.summary.ready_story_count, 12);
+  assert.equal(inputs.publishVerdict.verdict, "AMBER");
+  assert.equal(inputs.platformStatusMatrix.overall_verdict, "AMBER");
+});
+
+test("baseline audit does not promote skipped rejected-story evidence into active repair debt", () => {
+  const inputs = fixtureInputs();
+  inputs.storyPackages = [];
+  inputs.dryRunPlan = {
+    summary: {
+      story_count: 2,
+      ready_story_count: 1,
+      blocked_story_count: 0,
+      skipped_story_count: 1,
+    },
+    ready_stories: [{ story_id: "ready-story" }],
+    skipped_stories: [{ story_id: "rejected-story", reason: "reject_visually_unsupported_candidate" }],
+    incident_guard_report: {
+      stories: [
+        {
+          story_id: "ready-story",
+          verdict: "pass",
+          file_evidence: {
+            materialised_motion_ready: true,
+            word_timestamps_ready: true,
+            narration_ready: true,
+            rights_ledger_ready: true,
+          },
+        },
+        {
+          story_id: "rejected-story",
+          verdict: "fail",
+          disaster_upload_blockers: ["incident:materialised_motion_missing"],
+          file_evidence: {
+            materialised_motion_ready: false,
+            word_timestamps_ready: true,
+            narration_ready: true,
+            rights_ledger_ready: true,
+          },
+        },
+      ],
+    },
+  };
+
+  const report = buildBaselineAuditReport(inputs);
+  const repairOrder = buildImmediateRepairOrder(report);
+
+  assert.equal(report.dry_run_package_truth.missing_materialised_motion_clips_count, 0);
+  assert.equal(
+    repairOrder.some((item) => item.blocker_type === "missing_materialised_motion_clips"),
+    false,
+  );
 });

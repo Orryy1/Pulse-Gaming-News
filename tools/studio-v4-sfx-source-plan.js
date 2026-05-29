@@ -22,10 +22,12 @@ const DEFAULT_CUES = [
 
 function parseArgs(argv = process.argv.slice(2)) {
   const args = {
+    root: ROOT,
     sfxManifestPath: null,
     ingestReportPath: null,
     installedAssetsPath: null,
     rightsLedgerPath: null,
+    defaultEvidence: true,
     outDir: path.join(ROOT, "output", "goal-contract"),
     generatedAt: null,
     json: false,
@@ -33,10 +35,12 @@ function parseArgs(argv = process.argv.slice(2)) {
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
-    if (arg === "--sfx-manifest") args.sfxManifestPath = argv[++i] || null;
+    if (arg === "--root") args.root = argv[++i] || args.root;
+    else if (arg === "--sfx-manifest") args.sfxManifestPath = argv[++i] || null;
     else if (arg === "--ingest-report") args.ingestReportPath = argv[++i] || null;
     else if (arg === "--installed-assets") args.installedAssetsPath = argv[++i] || null;
     else if (arg === "--rights-ledger") args.rightsLedgerPath = argv[++i] || null;
+    else if (arg === "--no-default-evidence") args.defaultEvidence = false;
     else if (arg === "--out-dir") args.outDir = argv[++i] || args.outDir;
     else if (arg === "--generated-at") args.generatedAt = argv[++i] || null;
     else if (arg === "--json") args.json = true;
@@ -53,10 +57,12 @@ function usage() {
     "Builds a local-only SFX sourcing plan for Visual V4. It does not download assets, publish, mutate DB rows or touch OAuth.",
     "",
     "Options:",
+    "  --root <dir>              Workspace root for default evidence files",
     "  --sfx-manifest <path>     Optional manifest containing existing planned cues",
     "  --ingest-report <path>    Optional SFX library ingest report with asset inventory and rights ledger",
     "  --installed-assets <path>  Optional installed asset inventory JSON",
     "  --rights-ledger <path>     Optional rights ledger JSON for installed assets",
+    "  --no-default-evidence     Do not auto-load output/goal-contract SFX evidence",
     "  --out-dir <dir>",
     "  --generated-at <iso>",
     "  --json",
@@ -92,15 +98,45 @@ function ledgerRecordsFrom(value) {
   return [];
 }
 
-async function readJsonIfPresent(filePath) {
+function truthy(value) {
+  return /^(true|1|yes|on)$/i.test(String(value || ""));
+}
+
+function resolveInputPath(root, filePath) {
   if (!filePath) return null;
-  return fs.readJson(path.resolve(filePath));
+  return path.isAbsolute(filePath) ? filePath : path.resolve(root || ROOT, filePath);
+}
+
+function defaultEvidencePaths(root) {
+  const goalDir = path.join(path.resolve(root || ROOT), "output", "goal-contract");
+  return {
+    ingestReportPath: path.join(goalDir, "sfx_library_ingest_report.json"),
+    installedAssetsPath: path.join(goalDir, "sfx_asset_inventory.json"),
+    rightsLedgerPath: path.join(goalDir, "sfx_rights_ledger.json"),
+  };
+}
+
+async function readJsonIfPresent(filePath, root = ROOT) {
+  if (!filePath) return null;
+  const resolved = resolveInputPath(root, filePath);
+  if (!await fs.pathExists(resolved)) return null;
+  return fs.readJson(resolved);
 }
 
 async function installedEvidenceFromArgs(args = {}) {
-  const ingestReport = await readJsonIfPresent(args.ingestReportPath);
-  const installedAssetsInput = await readJsonIfPresent(args.installedAssetsPath);
-  const rightsLedgerInput = await readJsonIfPresent(args.rightsLedgerPath);
+  const root = path.resolve(args.root || ROOT);
+  const useDefaults = args.defaultEvidence !== false && !truthy(process.env.PULSE_SKIP_DEFAULT_SFX_EVIDENCE);
+  const defaults = useDefaults ? defaultEvidencePaths(root) : {};
+  const ingestReportPath = args.ingestReportPath || defaults.ingestReportPath;
+  const installedAssetsPath = args.installedAssetsPath || defaults.installedAssetsPath;
+  const rightsLedgerPath = args.rightsLedgerPath || defaults.rightsLedgerPath;
+  const evidenceSources = [];
+  const ingestReport = await readJsonIfPresent(ingestReportPath, root);
+  if (ingestReport) evidenceSources.push(path.basename(resolveInputPath(root, ingestReportPath)));
+  const installedAssetsInput = await readJsonIfPresent(installedAssetsPath, root);
+  if (installedAssetsInput) evidenceSources.push(path.basename(resolveInputPath(root, installedAssetsPath)));
+  const rightsLedgerInput = await readJsonIfPresent(rightsLedgerPath, root);
+  if (rightsLedgerInput) evidenceSources.push(path.basename(resolveInputPath(root, rightsLedgerPath)));
 
   const installedAssets = [
     ...arrayFromReport(ingestReport, ["asset_inventory", "installed_assets", "assets"]),
@@ -111,7 +147,7 @@ async function installedEvidenceFromArgs(args = {}) {
     ...ledgerRecordsFrom(rightsLedgerInput),
   ];
 
-  return { installedAssets, rightsLedger };
+  return { installedAssets, rightsLedger, evidenceSources: Array.from(new Set(evidenceSources)) };
 }
 
 function renderMarkdown(plan = {}) {
@@ -165,14 +201,16 @@ async function main(argv = process.argv.slice(2)) {
     console.log(usage());
     return { help: true };
   }
-  const cues = await cuesFromManifest(args.sfxManifestPath);
-  const { installedAssets, rightsLedger } = await installedEvidenceFromArgs(args);
+  const root = path.resolve(args.root || ROOT);
+  const cues = await cuesFromManifest(args.sfxManifestPath ? resolveInputPath(root, args.sfxManifestPath) : null);
+  const { installedAssets, rightsLedger, evidenceSources } = await installedEvidenceFromArgs({ ...args, root });
   const plan = buildCreatorStudioSfxSourcingPlan({
     cues,
     installedAssets,
     rightsLedger,
     generatedAt: args.generatedAt || new Date().toISOString(),
   });
+  plan.evidence_sources = evidenceSources;
   const outputs = await writePlan(plan, { outDir: args.outDir });
   if (args.json) console.log(JSON.stringify({ plan, outputs }, null, 2));
   else {

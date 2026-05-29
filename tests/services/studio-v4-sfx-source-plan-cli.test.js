@@ -29,7 +29,7 @@ test("SFX source-plan CLI writes a safe operator sourcing manifest", async () =>
     {
       cwd: ROOT,
       encoding: "utf8",
-      env: { ...process.env },
+      env: { ...process.env, PULSE_SKIP_DEFAULT_SFX_EVIDENCE: "1" },
     },
   );
 
@@ -49,6 +49,8 @@ test("SFX source-plan CLI parses manifest and output arguments", () => {
   const args = parseArgs([
     "--sfx-manifest",
     "sfx_manifest.json",
+    "--root",
+    "workspace-root",
     "--ingest-report",
     "sfx_library_ingest_report.json",
     "--out-dir",
@@ -59,10 +61,65 @@ test("SFX source-plan CLI parses manifest and output arguments", () => {
   ]);
 
   assert.equal(args.sfxManifestPath, "sfx_manifest.json");
+  assert.equal(args.root, "workspace-root");
   assert.equal(args.ingestReportPath, "sfx_library_ingest_report.json");
   assert.equal(args.outDir, "out");
   assert.equal(args.generatedAt, "2026-05-23T18:46:00.000Z");
   assert.equal(args.json, true);
+});
+
+test("SFX source-plan CLI auto-loads default goal-contract evidence from the selected root", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-v4-sfx-source-plan-defaults-"));
+  const goalDir = path.join(root, "output", "goal-contract");
+  await fs.ensureDir(goalDir);
+  const roles = ["impact", "transition", "ui_tick", "sub_hit", "glitch"];
+  const assetInventory = roles.map((role) => ({
+    asset_id: `default_${role}`,
+    role,
+    family: role,
+    provider_id: "sonniss",
+    source_url: `file:///licensed/default-${role}.wav`,
+    licence_basis: "sonniss_game_audio_gdc_bundle_license",
+    approval_status: "approved_for_commercial_editorial_use",
+    commercial_use_allowed: true,
+  }));
+  await fs.writeJson(path.join(goalDir, "sfx_asset_inventory.json"), assetInventory);
+  await fs.writeJson(path.join(goalDir, "sfx_rights_ledger.json"), {
+    records: assetInventory.map((asset) => ({
+      asset_id: asset.asset_id,
+      licence_basis: asset.licence_basis,
+      allowed_use: "finished_editorial_video_only",
+      approval_status: "approved_for_commercial_editorial_use",
+      commercial_use_allowed: true,
+    })),
+  });
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      "tools/studio-v4-sfx-source-plan.js",
+      "--root",
+      root,
+      "--out-dir",
+      goalDir,
+      "--generated-at",
+      "2026-05-29T04:20:00.000Z",
+      "--json",
+    ],
+    {
+      cwd: ROOT,
+      encoding: "utf8",
+      env: { ...process.env },
+    },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.plan.readiness.status, "pass");
+  assert.deepEqual(parsed.plan.covered_roles, roles.sort());
+  assert.equal(parsed.plan.selected_assets.length, roles.length);
+  assert.equal(parsed.plan.evidence_sources.includes("sfx_asset_inventory.json"), true);
+  assert.equal(parsed.plan.evidence_sources.includes("sfx_rights_ledger.json"), true);
 });
 
 test("SFX source-plan CLI can certify installed licensed assets from ingest report", async () => {

@@ -456,7 +456,11 @@ test("human review queue writes machine-readable artefacts and operator Markdown
   assert.equal(await fs.pathExists(path.join(root, "human_review_queue.md")), true);
   assert.equal(await fs.pathExists(path.join(root, "safe_publish_plan.json")), true);
   assert.equal(await fs.pathExists(path.join(root, "approval_requirements.json")), true);
+  assert.equal(await fs.pathExists(path.join(root, "review_packet_manifest.json")), true);
+  assert.equal(await fs.pathExists(path.join(root, "operator_decision_log.json")), true);
   assert.equal(path.basename(written.jsonPath), "human_review_queue.json");
+  assert.equal(path.basename(written.reviewPacketManifestPath), "review_packet_manifest.json");
+  assert.equal(path.basename(written.operatorDecisionLogPath), "operator_decision_log.json");
 
   const markdown = await fs.readFile(path.join(root, "human_review_queue.md"), "utf8");
   assert.match(markdown, /# Human Review Queue/);
@@ -466,6 +470,27 @@ test("human review queue writes machine-readable artefacts and operator Markdown
   assert.match(markdown, /tiktok_local_token_refresh_or_sync_required/);
   assert.match(markdown, /x_api_billing_not_declared/);
   assert.match(markdown, /No uploads are triggered/);
+
+  const packetManifest = await fs.readJson(path.join(root, "review_packet_manifest.json"));
+  assert.equal(packetManifest.mode, "HUMAN_REVIEW");
+  assert.equal(packetManifest.review_packets.length, 1);
+  assert.equal(packetManifest.review_packets[0].story_id, "story-one");
+  assert.deepEqual(packetManifest.review_packets[0].required_operator_checks, [
+    "watch_first_three_seconds",
+    "verify_title_thumbnail_opening_source_parity",
+    "verify_enabled_platforms_only",
+    "confirm_no_disabled_platform_counted_ready",
+    "record_approve_or_reject_decision",
+  ]);
+  assert.equal(packetManifest.review_packets[0].artefacts.video_path.endsWith("visual_v4_render.mp4"), true);
+  assert.equal(packetManifest.review_packets[0].artefacts.canonical_manifest_path.endsWith("canonical_story_manifest.json"), true);
+  assert.equal(packetManifest.safety.no_live_publish_from_manifest, true);
+
+  const decisionLog = await fs.readJson(path.join(root, "operator_decision_log.json"));
+  assert.equal(decisionLog.mode, "HUMAN_REVIEW_DECISION_LOG");
+  assert.deepEqual(decisionLog.decisions, []);
+  assert.equal(decisionLog.decision_template.operator, "");
+  assert.equal(decisionLog.safety.no_live_publish_from_log, true);
 });
 
 test("human review queue CLI is registered and emits clean JSON", async () => {

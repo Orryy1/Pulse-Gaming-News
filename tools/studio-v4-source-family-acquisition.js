@@ -127,17 +127,20 @@ function parseArgs(argv) {
 function applyOutputJsonTemplateDefaults(args = {}) {
   if (!args._explicitPaths?.outputJson) return args;
   const outputDir = path.dirname(args.outputJson || DEFAULT_OUTPUT_JSON);
+  const outputBase = path.basename(args.outputJson || "").toLowerCase();
+  const reportSuffix = outputBase.includes("_remaining") ? "_remaining" : "";
+  const templateName = (stem) => `${stem}${reportSuffix}.json`;
   if (!args._explicitPaths.intakeTemplate) {
-    args.intakeTemplate = path.join(outputDir, "visual_v4_source_family_intake_template.json");
+    args.intakeTemplate = path.join(outputDir, templateName("visual_v4_source_family_intake_template"));
   }
   if (!args._explicitPaths.searchTemplate) {
-    args.searchTemplate = path.join(outputDir, "visual_v4_official_search_template.json");
+    args.searchTemplate = path.join(outputDir, templateName("visual_v4_official_search_template"));
   }
   if (!args._explicitPaths.governedVisualPlanTemplate) {
-    args.governedVisualPlanTemplate = path.join(outputDir, "visual_v4_governed_visual_plan_template.json");
+    args.governedVisualPlanTemplate = path.join(outputDir, templateName("visual_v4_governed_visual_plan_template"));
   }
   if (!args._explicitPaths.canonicalEntityRepairTemplate) {
-    args.canonicalEntityRepairTemplate = path.join(outputDir, "visual_v4_canonical_entity_repair_template.json");
+    args.canonicalEntityRepairTemplate = path.join(outputDir, templateName("visual_v4_canonical_entity_repair_template"));
   }
   return args;
 }

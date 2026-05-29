@@ -108,6 +108,56 @@ test("Goal 22 CLI writes registry artefacts", async () => {
   assert.equal(await fs.pathExists(path.join(outDir, "video_lineage_manifest.json")), true);
 });
 
+test("Goal 22 CLI keeps upstream skipped rows out of active blockers", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal22-cli-skipped-"));
+  const readyStory = await makeStory(root, "story-ready");
+  const skippedStory = await makeStory(root, "story-skipped");
+  await fs.writeJson(path.join(root, "story-skipped", "platform_policy_report.json"), { story_id: "story-skipped" });
+  await fs.writeJson(path.join(root, "story-skipped", "audio_manifest.json"), {
+    story_id: "story-skipped",
+    voice_model: "local_voice_model_v1",
+  });
+  const storyPackagesPath = path.join(root, "story-packages.json");
+  const upstreamPath = path.join(root, "goal21.json");
+  const outDir = path.join(root, "out");
+  await fs.outputJson(storyPackagesPath, [readyStory, skippedStory]);
+  await fs.outputJson(upstreamPath, {
+    verdict: "PASS",
+    stories: [
+      { story_id: "story-ready", status: "ready", blockers: [] },
+      {
+        story_id: "story-skipped",
+        status: "skipped",
+        skipped_status: "visual_source_rejected",
+        skipped_reason: "reject_visually_unsupported_candidate",
+        blockers: [],
+      },
+    ],
+  });
+
+  const result = await main([
+    "--story-packages",
+    storyPackagesPath,
+    "--upstream-observability-report",
+    upstreamPath,
+    "--out-dir",
+    outDir,
+    "--workspace",
+    root,
+    "--generated-at",
+    "2026-05-26T05:37:44.999Z",
+    "--git-commit",
+    "abcdef1234567890",
+  ]);
+
+  assert.equal(result.report.verdict, "PASS");
+  assert.equal(result.report.direct_registry_verdict, "PASS");
+  assert.equal(result.report.summary.active_story_count, 1);
+  assert.equal(result.report.summary.skipped_story_count, 1);
+  assert.equal(result.report.summary.blocked_story_count, 0);
+  assert.deepEqual(result.report.direct_risk_counts, {});
+});
+
 test("Goal 22 operator command is registered", () => {
   assert.equal(
     packageJson.scripts["ops:goal22-versioned-prompt-model-registry"],

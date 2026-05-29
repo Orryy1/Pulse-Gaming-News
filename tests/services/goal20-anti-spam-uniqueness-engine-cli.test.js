@@ -59,6 +59,8 @@ test("Goal 20 CLI parses anti-spam inputs", () => {
     "output/goal-contract/story-packages.json",
     "--upstream-control-tower-report",
     "output/goal-19/goal19_readiness_report.json",
+    "--upstream-social-derivatives-report",
+    "output/goal-14/goal14_readiness_report.json",
     "--out-dir",
     "output/goal-20",
     "--workspace",
@@ -70,9 +72,11 @@ test("Goal 20 CLI parses anti-spam inputs", () => {
 
   assert.equal(args.storyPackagesPath, "output/goal-contract/story-packages.json");
   assert.equal(args.upstreamControlTowerReportPath, "output/goal-19/goal19_readiness_report.json");
+  assert.equal(args.upstreamSocialDerivativesReportPath, "output/goal-14/goal14_readiness_report.json");
   assert.equal(args.outDir, "output/goal-20");
   assert.equal(args.workspaceRoot, ".");
   assert.equal(args.generatedAt, "2026-05-26T04:37:23.858Z");
+  assert.equal(args.deferDuplicateCandidates, true);
   assert.equal(args.json, true);
 });
 
@@ -81,10 +85,16 @@ test("Goal 20 CLI writes anti-spam artefacts", async () => {
   const story = await makeStory(root, "story-cli");
   const storyPackagesPath = path.join(root, "story-packages.json");
   const upstreamPath = path.join(root, "goal19.json");
+  const socialPath = path.join(root, "goal14.json");
   const outDir = path.join(root, "out");
   await fs.outputJson(storyPackagesPath, [story]);
   await fs.outputJson(upstreamPath, {
     stories: [{ story_id: "story-cli", verdict: "RED", blockers: ["upstream:goal18_finance_crypto_firewall_blocked"] }],
+  });
+  await fs.outputJson(socialPath, {
+    carousel_manifest: {
+      stories: [{ story_id: "story-cli", format_signature: "cover>source_proof>quote_card>story_prompt" }],
+    },
   });
 
   const result = await main([
@@ -92,6 +102,8 @@ test("Goal 20 CLI writes anti-spam artefacts", async () => {
     storyPackagesPath,
     "--upstream-control-tower-report",
     upstreamPath,
+    "--upstream-social-derivatives-report",
+    socialPath,
     "--out-dir",
     outDir,
     "--workspace",

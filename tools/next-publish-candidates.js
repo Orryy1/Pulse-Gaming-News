@@ -10,6 +10,10 @@ const {
   RETENTION_DURATION_LANE,
   resolveDurationLane,
 } = require("../lib/services/short-duration-contract");
+const {
+  characterAlignmentToSubtitleWords,
+  inspectSubtitleTimingWords,
+} = require("../lib/subtitle-timing");
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
@@ -36,6 +40,12 @@ const DEFAULT_UPSTREAM_BENCHMARK_REPORT_PATH = path.join(
   "output",
   "goal-10",
   "goal10_readiness_report.json",
+);
+const DEFAULT_UPSTREAM_ANTI_SPAM_REPORT_PATH = path.join(
+  ROOT,
+  "output",
+  "goal-20",
+  "goal20_readiness_report.json",
 );
 const DEFAULT_ANALYTICS_PATH = "D:\\pulse-data\\analytics_findings.md";
 const DEFAULT_LIMIT = 12;
@@ -503,6 +513,33 @@ function pendingAudioReason(story = {}) {
   return "pending_audio";
 }
 
+function upstreamSkippedStoryMap(report = {}) {
+  const rows = [
+    ...asArray(report.stories),
+    ...asArray(report.rows),
+  ];
+  const map = new Map();
+  for (const row of rows) {
+    const storyId = normaliseStoryId(row?.story_id || row?.id);
+    if (!storyId) continue;
+    const status = cleanText(row.status || row.verdict || row.direct_uniqueness_status).toLowerCase();
+    if (status !== "skipped") continue;
+    map.set(storyId, {
+      status: cleanText(row.skipped_status || row.status || "skipped") || "skipped",
+      reason: cleanText(row.skipped_reason || row.reason || "upstream_skipped"),
+    });
+  }
+  return map;
+}
+
+function upstreamSkippedReason(story = {}, report = {}) {
+  const storyId = normaliseStoryId(story.id || story.story_id);
+  if (!storyId) return null;
+  const row = upstreamSkippedStoryMap(report).get(storyId);
+  if (!row) return null;
+  return `upstream_skipped:${row.status}:${row.reason}`;
+}
+
 function parseStoryPublishAgeMs(story = {}, now = Date.now()) {
   const raw =
     story.approved_at ||
@@ -661,6 +698,8 @@ function exclusionReason(story = {}, options = {}) {
   if (publicFields.length > 0) {
     return `already_has_public_platform_id:${publicFields.join(",")}`;
   }
+  const upstreamSkip = upstreamSkippedReason(story, options.upstreamAntiSpamReport || {});
+  if (upstreamSkip) return upstreamSkip;
   if (story.stale_scheduler_bridge_candidate === true) {
     return "stale_scheduler_bridge_candidate:not_in_current_bridge";
   }
@@ -913,12 +952,16 @@ function summariseQaResult(result = {}) {
       warnings: [],
     };
   }
-  return {
+  const summary = {
     result: result.result || result.status || "unknown",
     failures: Array.isArray(result.failures) ? result.failures : [],
     warnings: Array.isArray(result.warnings) ? result.warnings : [],
     reason: result.reason || null,
   };
+  if (result.evidence && typeof result.evidence === "object" && !Array.isArray(result.evidence)) {
+    summary.evidence = result.evidence;
+  }
+  return summary;
 }
 
 function combinePreflightQa({
@@ -1652,6 +1695,66 @@ function timestampPayloadAsrAligned(payload = {}, source = "", story = {}) {
   );
 }
 
+function timestampWordsForPayload(payload = {}) {
+  if (Array.isArray(payload?.words)) {
+    return payload.words
+      .map((word) => ({
+        text: cleanText(word?.word || word?.text || word?.token),
+        start: numberOrNull(word?.start ?? word?.start_s ?? word?.start_time),
+        end: numberOrNull(word?.end ?? word?.end_s ?? word?.end_time),
+      }))
+      .filter((word) => word.text && word.start != null && word.end != null && word.end >= word.start);
+  }
+  return characterAlignmentToSubtitleWords(payload?.alignment || payload);
+}
+
+function timestampInspectionDurationSeconds(story = {}, payload = {}, words = []) {
+  const meta = payload?.meta || payload?.alignment?.meta || {};
+  const maxWordEnd = Math.max(0, ...words.map((word) => Number(word.end)).filter(Number.isFinite));
+  const durationMetadataIgnored = Boolean(meta?.timestampDurationMetadataIgnored);
+  const candidates = durationMetadataIgnored
+    ? [
+        storyDurationSeconds(story),
+        numberOrNull(meta?.timestampDurationMetadataIgnored?.last_word_end_s),
+        maxWordEnd,
+      ]
+    : [
+        numberOrNull(meta?.acoustic?.durationSeconds),
+        numberOrNull(meta?.durationSeconds),
+        numberOrNull(meta?.audio_duration_seconds),
+        numberOrNull(meta?.audioDurationSeconds),
+        numberOrNull(payload?.duration_seconds),
+        numberOrNull(payload?.durationSeconds),
+        storyDurationSeconds(story),
+        maxWordEnd,
+      ];
+  return candidates.find((value) => Number.isFinite(value) && value > 0) || null;
+}
+
+function timestampTimingInspectionForPayload(payload = {}, story = {}) {
+  const words = timestampWordsForPayload(payload);
+  const duration = timestampInspectionDurationSeconds(story, payload, words);
+  const inspection = inspectSubtitleTimingWords(words, duration, {
+    maxGapLimitSeconds: 2.2,
+    maxTrailingGapSeconds: 1.0,
+    maxZeroDurationWordRatio: 0.04,
+    maxNonMonotonicWords: 0,
+  });
+  return {
+    words,
+    duration,
+    inspection,
+    evidence: {
+      word_timestamp_word_count: inspection.wordCount,
+      word_timestamp_timing_reason: inspection.reason,
+      word_timestamp_max_gap_seconds: inspection.maxGapSeconds,
+      word_timestamp_zero_duration_ratio: inspection.zeroDurationWordRatio,
+      word_timestamp_trailing_gap_seconds: inspection.trailingGapSeconds,
+      word_timestamp_coverage_ratio: inspection.coverageRatio,
+    },
+  };
+}
+
 async function timestampAlignmentPreflightForStory(story = {}) {
   if (!shouldRunIncidentGuardForStory(story)) return null;
   const artifactDir = artifactDirForStory(story);
@@ -1687,14 +1790,28 @@ async function timestampAlignmentPreflightForStory(story = {}) {
   }
 
   if (timestampPayloadAsrAligned(payload, source, story)) {
+    const timing = timestampTimingInspectionForPayload(payload, story);
+    const baseEvidence = {
+      word_timestamp_source: source || "local_whisper_word_alignment",
+      word_timestamp_alignment_required: "local_whisper_word_alignment",
+      ...timing.evidence,
+    };
+    if (!timing.inspection.usable) {
+      return {
+        result: "fail",
+        failures: [`word_timestamps_timing_unusable:${timing.inspection.reason}`],
+        warnings: [],
+        evidence: {
+          ...baseEvidence,
+          word_timestamps_path: timestampEvidence.path || null,
+        },
+      };
+    }
     return {
       result: "pass",
       failures: [],
       warnings: [],
-      evidence: {
-        word_timestamp_source: source || "local_whisper_word_alignment",
-        word_timestamp_alignment_required: "local_whisper_word_alignment",
-      },
+      evidence: baseEvidence,
     };
   }
 
@@ -2532,6 +2649,7 @@ function parseArgs(argv) {
     directVideoEnrichmentWorkOrderPath: DEFAULT_DIRECT_VIDEO_ENRICHMENT_WORK_ORDER_PATH,
     sourceFamilyAcquisitionReportPath: DEFAULT_SOURCE_FAMILY_ACQUISITION_REPORT_PATH,
     upstreamBenchmarkReportPath: DEFAULT_UPSTREAM_BENCHMARK_REPORT_PATH,
+    upstreamAntiSpamReportPath: DEFAULT_UPSTREAM_ANTI_SPAM_REPORT_PATH,
     allowLiveFallback: false,
   };
   for (let i = 2; i < argv.length; i += 1) {
@@ -2583,6 +2701,18 @@ function parseArgs(argv) {
     }
     else if (arg === "--no-upstream-benchmark-report" || arg === "--no-goal10-report") {
       args.upstreamBenchmarkReportPath = null;
+    }
+    else if (arg === "--upstream-anti-spam-report" || arg === "--goal20-report") {
+      args.upstreamAntiSpamReportPath = argv[++i] || null;
+    }
+    else if (arg.startsWith("--upstream-anti-spam-report=")) {
+      args.upstreamAntiSpamReportPath = arg.slice("--upstream-anti-spam-report=".length);
+    }
+    else if (arg.startsWith("--goal20-report=")) {
+      args.upstreamAntiSpamReportPath = arg.slice("--goal20-report=".length);
+    }
+    else if (arg === "--no-upstream-anti-spam-report" || arg === "--no-goal20-report") {
+      args.upstreamAntiSpamReportPath = null;
     }
     else if (arg === "--story-id" || arg === "--story") args.storyId = normaliseStoryId(argv[++i]);
     else if (arg.startsWith("--story-id=")) args.storyId = normaliseStoryId(arg.slice("--story-id=".length));
@@ -2687,6 +2817,7 @@ async function runCli(argv = process.argv) {
     directVideoEnrichmentWorkOrder,
     sourceFamilyAcquisitionReport,
     upstreamBenchmarkReport,
+    upstreamAntiSpamReport,
   ] = await Promise.all([
     loadStories(),
     readAnalytics(args.analyticsPath),
@@ -2694,6 +2825,7 @@ async function runCli(argv = process.argv) {
     readOptionalJson(args.directVideoEnrichmentWorkOrderPath),
     readOptionalJson(args.sourceFamilyAcquisitionReportPath),
     readOptionalJson(args.upstreamBenchmarkReportPath),
+    readOptionalJson(args.upstreamAntiSpamReportPath),
   ]);
   const bridgeMotionGovernanceEvidence = {
     directVideoEnrichmentWorkOrder,
@@ -2714,6 +2846,7 @@ async function runCli(argv = process.argv) {
     limit: args.limit,
     storyId: args.storyId,
     bridgeManifest: selected.bridge_manifest,
+    upstreamAntiSpamReport,
   });
   if (args.preflightQa) {
     await attachPreflightQa(report, mergedStories, {
@@ -2752,6 +2885,7 @@ module.exports = {
   DEFAULT_DIRECT_VIDEO_ENRICHMENT_WORK_ORDER_PATH,
   DEFAULT_SOURCE_FAMILY_ACQUISITION_REPORT_PATH,
   DEFAULT_UPSTREAM_BENCHMARK_REPORT_PATH,
+  DEFAULT_UPSTREAM_ANTI_SPAM_REPORT_PATH,
   DEFAULT_SCRIPT_SCORE_THRESHOLD,
   buildNextPublishCandidatesReport,
   formatNextPublishCandidatesMarkdown,

@@ -346,7 +346,20 @@ test("real motion materializer hydrates ready V4 motion packs into local direct-
   });
   await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
     story_id: storyId,
-    motion_inventory: {},
+    motion_inventory: {
+      accepted_local_clips: Array.from({ length: 4 }, (_, index) => ({
+        id: `existing-still-${index + 1}`,
+        path: path.join(artifactDir, `existing-still-${index + 1}.mp4`),
+        source_url: `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1962700/ss_${index + 1}.jpg`,
+        source_family: `steam_screenshot_1962700_${index + 1}`,
+        media_kind: "visual_still",
+        source_type: "steam_screenshot",
+        durationS: 3,
+        mediaStartS: 0,
+        materialized: true,
+        counts_towards_motion_readiness: true,
+      })),
+    },
   });
   const clips = Array.from({ length: 5 }, (_, index) => ({
     id: `hades-steam-hls-${index + 1}`,
@@ -409,6 +422,358 @@ test("real motion materializer hydrates ready V4 motion packs into local direct-
   assert.equal(rights.verdict, "pass");
   assert.equal(rights.records.length, 5);
   assert.ok(rights.records.every((record) => record.source_url.includes("video.akamai.steamstatic.com")));
+});
+
+test("real motion materializer expands one validated official trailer into multiple direct-video windows", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-window-floor-"));
+  const storyId = "subnautica-window-floor";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  await fs.ensureDir(artifactDir);
+  const sourceUrl =
+    "https://video.akamai.steamstatic.com/store_trailers/1962700/1381761660/hash/hls_264_master.m3u8?t=1778770818";
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    assets: [
+      {
+        id: "subnautica-official-steam-window",
+        type: "motion_clip",
+        source_family: "steam_1962700_1381761660",
+        path: sourceUrl,
+        source_url: sourceUrl,
+        source_kind: "hls_manifest",
+        source_url_kind: "hls_manifest",
+        source_type: "steam_movie",
+        provider: "steam",
+        entity: "Subnautica 2",
+        mediaStartS: 0,
+        durationS: 3,
+        validated: true,
+        segmentValidationPassed: true,
+        trusted_source_matched: false,
+        rights_risk_class: "official_reference_only",
+      },
+    ],
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    motion_inventory: {
+      accepted_local_clips: Array.from({ length: 4 }, (_, index) => ({
+        id: `existing-still-${index + 1}`,
+        path: path.join(artifactDir, `existing-still-${index + 1}.mp4`),
+        source_url: `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1962700/ss_${index + 1}.jpg`,
+        source_family: `steam_screenshot_1962700_${index + 1}`,
+        media_kind: "visual_still",
+        source_type: "steam_screenshot",
+        durationS: 3,
+        mediaStartS: 0,
+        materialized: true,
+        counts_towards_motion_readiness: true,
+      })),
+    },
+  });
+
+  const calls = [];
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: {
+      jobs: [
+        {
+          story_id: storyId,
+          title: "Subnautica 2 Reportedly Leaked Early",
+          artifact_dir: artifactDir,
+          status: "blocked_on_render_inputs",
+          blockers: ["direct_video_motion_clip_floor_not_met"],
+          actions: [
+            {
+              action_id: "materialise_validated_real_motion_clips",
+              reason_codes: ["direct_video_motion_clip_floor_not_met"],
+              evidence: {
+                direct_video_motion_clip_floor: 5,
+              },
+            },
+          ],
+        },
+      ],
+    },
+    minClips: 5,
+    generatedAt: "2026-05-29T02:05:00.000Z",
+    execFileSync: (bin, args) => {
+      calls.push({ bin, args });
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, calls.length));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 3 : null),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 1);
+  assert.equal(report.summary.materialized_clip_count, 5);
+  assert.equal(calls.length, 5);
+  assert.deepEqual(calls.map((call) => call.args[call.args.indexOf("-ss") + 1]), [
+    "0",
+    "3.50",
+    "7",
+    "10.50",
+    "14",
+  ]);
+
+  const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
+  assert.equal(materialised.clip_count, 9);
+  assert.equal(materialised.direct_video_motion_asset_count, 5);
+  assert.equal(materialised.direct_video_motion_family_count, 1);
+  assert.equal(materialised.clips.filter((clip) => clip.media_kind === "direct_video").length, 5);
+});
+
+test("real motion materializer samples before a late official trailer window when forward windows fail", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-late-window-"));
+  const storyId = "late-official-trailer-window";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  await fs.ensureDir(artifactDir);
+  const sourceUrl =
+    "https://video.akamai.steamstatic.com/store_trailers/2075800/876175/hash/hls_264_master.m3u8?t=1745411378";
+  await fs.outputJson(path.join(root, "output", "studio-v4", "motion-packs", `${storyId}_motion_pack_manifest.json`), {
+    story_id: storyId,
+    readiness: { status: "v4_motion_blocked", blockers: ["direct_video_motion_clip_floor_not_met"] },
+    clips: [
+      {
+        id: "late-steam-trailer-window",
+        type: "motion_clip",
+        source_family: "steam_2075800_876175",
+        path: sourceUrl,
+        source_url: sourceUrl,
+        source_kind: "hls_manifest",
+        source_url_kind: "hls_manifest",
+        source_type: "steam_movie",
+        provider: "steam",
+        entity: "Star Wars Zero Company",
+        mediaStartS: 120,
+        durationS: 5,
+        validated: true,
+        segmentValidationPassed: true,
+        trusted_source_matched: false,
+        rights_risk_class: "official_reference_only",
+      },
+    ],
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: [],
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    motion_inventory: {
+      accepted_local_clips: Array.from({ length: 4 }, (_, index) => ({
+        id: `existing-still-${index + 1}`,
+        path: path.join(artifactDir, `existing-still-${index + 1}.mp4`),
+        source_url: `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/2075800/ss_${index + 1}.jpg`,
+        source_family: `steam_screenshot_2075800_${index + 1}`,
+        media_kind: "visual_still",
+        source_type: "steam_screenshot",
+        durationS: 3,
+        mediaStartS: 0,
+        materialized: true,
+        counts_towards_motion_readiness: true,
+      })),
+    },
+  });
+
+  const starts = [];
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: {
+      jobs: [
+        {
+          story_id: storyId,
+          artifact_dir: artifactDir,
+          status: "blocked_on_render_inputs",
+          blockers: ["direct_video_motion_clip_floor_not_met"],
+          actions: [
+            {
+              action_id: "materialise_validated_real_motion_clips",
+              reason_codes: ["direct_video_motion_clip_floor_not_met"],
+              evidence: { direct_video_motion_clip_floor: 5 },
+            },
+          ],
+        },
+      ],
+    },
+    minClips: 5,
+    maxClips: 8,
+    generatedAt: "2026-05-29T02:20:00.000Z",
+    execFileSync: (bin, args) => {
+      const start = Number(args[args.indexOf("-ss") + 1]);
+      starts.push(start);
+      if (start > 131) return;
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, Math.max(1, Math.round(start))));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 1);
+  assert.equal(report.jobs[0].direct_video_motion_clip_count, 5);
+  assert.deepEqual(starts.slice(0, 5), [120, 114.5, 125.5, 109, 131]);
+});
+
+test("real motion materializer includes pending original direct candidates while expanding the direct-video floor", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-pending-original-"));
+  const storyId = "pending-original-direct-window";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  await fs.ensureDir(artifactDir);
+  const sourceUrl =
+    "https://video.akamai.steamstatic.com/store_trailers/4078430/1546933311/hash/hls_264_master.m3u8";
+  await fs.outputJson(path.join(root, "output", "studio-v4", "motion-packs", `${storyId}_motion_pack_manifest.json`), {
+    story_id: storyId,
+    readiness: { status: "v4_motion_blocked", blockers: ["direct_video_motion_clip_floor_not_met"] },
+    clips: [
+      {
+        id: "official-window-a",
+        type: "motion_clip",
+        source_family: "steam_4078430_1546933311",
+        path: sourceUrl,
+        source_url: sourceUrl,
+        source_kind: "hls_manifest",
+        source_url_kind: "hls_manifest",
+        source_type: "igdb_video",
+        provider: "steam",
+        mediaStartS: 42,
+        durationS: 5,
+        validated: true,
+        segmentValidationPassed: true,
+      },
+      {
+        id: "official-window-b",
+        type: "motion_clip",
+        source_family: "steam_4078430_1546933311",
+        path: sourceUrl,
+        source_url: sourceUrl,
+        source_kind: "hls_manifest",
+        source_url_kind: "hls_manifest",
+        source_type: "igdb_video",
+        provider: "steam",
+        mediaStartS: 52,
+        durationS: 5,
+        validated: true,
+        segmentValidationPassed: true,
+      },
+    ],
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), { verdict: "pass", records: [] });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    motion_inventory: {
+      accepted_local_clips: Array.from({ length: 4 }, (_, index) => ({
+        id: `existing-still-${index + 1}`,
+        path: path.join(artifactDir, `existing-still-${index + 1}.mp4`),
+        source_url: `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/4078430/ss_${index + 1}.jpg`,
+        source_family: `steam_screenshot_4078430_${index + 1}`,
+        media_kind: "visual_still",
+        source_type: "steam_screenshot",
+        durationS: 3,
+        materialized: true,
+      })),
+    },
+  });
+
+  const starts = [];
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: {
+      jobs: [{
+        story_id: storyId,
+        artifact_dir: artifactDir,
+        blockers: ["direct_video_motion_clip_floor_not_met"],
+        actions: [{
+          action_id: "materialise_validated_real_motion_clips",
+          reason_codes: ["direct_video_motion_clip_floor_not_met"],
+          evidence: { direct_video_motion_clip_floor: 5 },
+        }],
+      }],
+    },
+    minClips: 5,
+    generatedAt: "2026-05-29T02:45:00.000Z",
+    execFileSync: (bin, args) => {
+      const start = Number(args[args.indexOf("-ss") + 1]);
+      starts.push(start);
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, Math.max(1, Math.round(start))));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 1);
+  assert.equal(report.jobs[0].direct_video_motion_clip_count, 5);
+  assert.ok(starts.includes(52));
+});
+
+test("real motion materializer expands official product-page direct MP4 windows", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-product-page-"));
+  const storyId = "official-product-page-direct-window";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  await fs.ensureDir(artifactDir);
+  const sourceUrl = "https://assets.xboxservices.com/assets/example-controller-product-page.mp4";
+  await fs.outputJson(path.join(root, "output", "studio-v4", "motion-packs", `${storyId}_motion_pack_manifest.json`), {
+    story_id: storyId,
+    readiness: { status: "v4_motion_blocked", blockers: ["direct_video_motion_clip_floor_not_met"] },
+    clips: [
+      {
+        id: "xbox-product-page-window",
+        type: "motion_clip",
+        source_family: "xbox_controller_product_page",
+        path: sourceUrl,
+        source_url: sourceUrl,
+        source_kind: "direct_video",
+        source_url_kind: "direct_video",
+        source_type: "official_platform_product_page",
+        provider: "xbox",
+        mediaStartS: 4,
+        durationS: 5,
+        validated: true,
+        segmentValidationPassed: true,
+      },
+    ],
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), { verdict: "pass", records: [] });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    motion_inventory: {
+      accepted_local_clips: Array.from({ length: 4 }, (_, index) => ({
+        id: `existing-still-${index + 1}`,
+        path: path.join(artifactDir, `existing-still-${index + 1}.mp4`),
+        source_url: `https://assets.xboxservices.com/assets/controller-still-${index + 1}.jpg`,
+        source_family: `xbox_controller_still_${index + 1}`,
+        media_kind: "visual_still",
+        source_type: "official_press_kit_stills",
+        durationS: 3,
+        materialized: true,
+      })),
+    },
+  });
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: {
+      jobs: [{
+        story_id: storyId,
+        artifact_dir: artifactDir,
+        blockers: ["direct_video_motion_clip_floor_not_met"],
+        actions: [{
+          action_id: "materialise_validated_real_motion_clips",
+          reason_codes: ["direct_video_motion_clip_floor_not_met"],
+          evidence: { direct_video_motion_clip_floor: 3 },
+        }],
+      }],
+    },
+    minClips: 5,
+    generatedAt: "2026-05-29T03:00:00.000Z",
+    execFileSync: (bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 7));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 1);
+  assert.equal(report.jobs[0].direct_video_motion_clip_count, 3);
 });
 
 test("real motion materializer does not re-count its own materialized rights records as fresh candidates", async () => {

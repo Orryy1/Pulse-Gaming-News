@@ -181,6 +181,53 @@ test("fresh TikTok CLI voice narration falls back to local timestamp sidecar evi
   assert.match(narration.transcript, /Follow Pulse Gaming/);
 });
 
+test("fresh TikTok CLI approved audio carries local mastering evidence from timestamps sidecar", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "fresh-tiktok-approved-audio-"));
+  const audio = path.join(dir, "rss_approved_local.mp3");
+  const timestamps = path.join(dir, "rss_approved_local_timestamps.json");
+  await fs.writeFile(audio, "fake audio");
+  await fs.writeJson(timestamps, {
+    characters: ["F", "o", "l", "l", "o", "w"],
+    meta: {
+      provider: "local",
+      source: "local-tts-server",
+      transcript:
+        "This approved local narration has mastered evidence. Follow Pulse Gaming so you never miss a beat.",
+      approvedLocalVoice: true,
+      acceptedLocalVoice: {
+        id: "pulse-sleepy-liam-20260502",
+        fileName: "pulse_liam_sleepy.wav",
+        referencePresent: true,
+        referenceHash: "4bb87b65b64213fd8447ef1146eda42035b89f51",
+      },
+      acoustic: {
+        medianPitchHz: 128,
+        integratedLufs: -16.2,
+        truePeakDb: -2.12,
+      },
+      voiceMastering: {
+        ok: true,
+        code: "voice_mastered",
+        targetLufs: -16,
+        truePeak: -2.2,
+      },
+    },
+  });
+
+  const narration = await buildVoiceNarration({
+    approvedAudio: audio,
+    timestampsJson: timestamps,
+  });
+
+  assert.equal(narration.provider, "local");
+  assert.equal(narration.source, "local-tts-server");
+  assert.equal(narration.approvedLocalVoice, true);
+  assert.equal(narration.voiceMastering.code, "voice_mastered");
+  assert.equal(narration.acoustic.integratedLufs, -16.2);
+  assert.equal(narration.acoustic.truePeakDb, -2.12);
+  assert.match(narration.transcript, /Follow Pulse Gaming/);
+});
+
 test("fresh TikTok dispatch pack honours explicit voice do-not-reuse audits", () => {
   const result = buildFreshTikTokDispatchPack({
     story: { id: "voice-risk", title: "Voice risk should not reach TikTok inbox" },

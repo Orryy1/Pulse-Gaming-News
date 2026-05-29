@@ -1211,6 +1211,67 @@ test("official trailer segment validator accepts official hardware lifestyle pro
   assert.ok(report.segments[0].action_score >= 64);
 });
 
+test("official trailer segment validator accepts clean official controller detail motion", async () => {
+  const outputRoot = tempOutputRoot("official-controller-detail-motion");
+  await cleanTempRoot(outputRoot);
+  let call = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        path: "https://assets.xboxservices.com/assets/c9/c8/xbox-controller-share-button.mp4",
+        sourceType: "official_platform_product_page",
+        sourceDurationS: 8.31,
+        mediaStartS: 4,
+        entity: "Xbox Controller",
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: fakeExtractor,
+      inspectFrame: async (outputPath) => {
+        call += 1;
+        const samples = [
+          { edge_density: 0.1379, saturation_mean: 0.3064, score: 83.3, action: 64.7, dark: 0.2397 },
+          { edge_density: 0.1307, saturation_mean: 0.304, score: 82.3, action: 63.7, dark: 0.2528 },
+          { edge_density: 0.1478, saturation_mean: 0.3061, score: 84.4, action: 65.8, dark: 0.2846 },
+        ];
+        const sample = samples[call - 1] || samples[0];
+        return {
+          ...passingQa(outputPath),
+          content_hash: `official-controller-detail-${call}`,
+          gameplay_action_score: sample.action,
+          gameplay_action_candidate: false,
+          gameplay_action_reason: "official_controller_detail_motion_not_gameplay",
+          prescan: {
+            likely_is_logo: false,
+            text_overlay_likelihood: 0,
+            white_text_on_dark_likelihood: 0,
+            edge_density: sample.edge_density,
+            saturation_mean: sample.saturation_mean,
+            dark_pixel_ratio: sample.dark,
+            bright_pixel_ratio: 0.181,
+            letterbox_bar_ratio: 0,
+          },
+          visual_taste: {
+            verdict: "pass",
+            reason: "taste_passed",
+            score: sample.score,
+            tags: ["product_motion", "hardware_detail"],
+          },
+        };
+      },
+    },
+  );
+
+  assert.equal(report.summary.segments_validated, 1);
+  assert.equal(report.segments[0].validation_reason, "official_product_motion_samples_passed");
+  assert.equal(report.segments[0].segment_motion_class, "official_product_motion");
+  assert.equal(report.segments[0].allowed_for_flash_lane, true);
+  assert.ok(report.segments[0].action_score >= 64);
+});
+
 test("official trailer segment validator rejects explicitly blurred windows", async () => {
   const outputRoot = tempOutputRoot("blurred-window");
   await cleanTempRoot(outputRoot);

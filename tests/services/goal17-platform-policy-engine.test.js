@@ -179,6 +179,20 @@ function readyLandingReport(storyId) {
   };
 }
 
+function skippedLandingReport(storyId) {
+  return {
+    stories: [
+      {
+        story_id: storyId,
+        status: "skipped",
+        skipped_status: "visual_source_deferred",
+        skipped_reason: "defer_until_rights_backed_media_available",
+        blockers: [],
+      },
+    ],
+  };
+}
+
 test("Goal 17 checks platform policy but preserves upstream landing blockers", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal17-upstream-blocked-"));
   const story = await makeStoryPackage(root, "story-policy");
@@ -207,6 +221,72 @@ test("Goal 17 checks platform policy but preserves upstream landing blockers", a
   assert.equal(report.disclosure_requirements.stories[0].requirements.affiliate.present, true);
   assert.equal(report.publish_blockers.publish_allowed, false);
   assert.equal(report.publish_blockers.safety.no_publish_action, true);
+});
+
+test("Goal 17 excludes upstream-skipped stories from active platform policy blockers", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal17-skipped-"));
+  const readyStory = await makeStoryPackage(root, "story-ready");
+  const skippedStory = await makeStoryPackage(root, "story-skipped", {
+    platformPolicyReport: {
+      ...safePolicyReport("story-skipped"),
+      finance_crypto_firewall: { verdict: "fail", failures: ["finance_crypto:promotion_without_approval"], warnings: [], vertical: "crypto" },
+    },
+  });
+
+  const report = await buildGoal17PlatformPolicyEngine({
+    storyPackages: [readyStory, skippedStory],
+    upstreamLandingReport: {
+      stories: [
+        { story_id: "story-ready", status: "ready", blockers: [] },
+        ...skippedLandingReport("story-skipped").stories,
+      ],
+    },
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-05-29T01:02:00.000Z",
+  });
+
+  const skipped = report.stories.find((story) => story.story_id === "story-skipped");
+
+  assert.equal(report.verdict, "PASS");
+  assert.equal(report.direct_policy_verdict, "PASS");
+  assert.equal(report.summary.story_count, 2);
+  assert.equal(report.summary.active_story_count, 1);
+  assert.equal(report.summary.skipped_story_count, 1);
+  assert.equal(report.summary.policy_ready_story_count, 1);
+  assert.equal(skipped.status, "skipped");
+  assert.deepEqual(report.blocker_counts, {});
+  assert.equal(report.platform_policy_report.stories.length, 1);
+  assert.equal(report.disclosure_requirements.stories.length, 1);
+});
+
+test("Goal 17 does not route retail game stock wording into finance review", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal17-retail-stock-"));
+  const story = await makeStoryPackage(root, "story-retail-stock", {
+    title: "Super Mario RPG Drops To $15",
+    subject: "Super Mario RPG",
+    canonical: {
+      selected_title: "Super Mario RPG Drops To $15",
+      canonical_subject: "Super Mario RPG",
+      description: "GameStop lists Super Mario RPG at $15 while stock and region can change quickly.",
+      narration_script: "Super Mario RPG just dropped to $15 at GameStop. Stock, region and condition can move faster than the headline.",
+      commercial_intelligence: { vertical: "gaming", disclosure_required: true },
+    },
+  });
+
+  const report = await buildGoal17PlatformPolicyEngine({
+    storyPackages: [story],
+    upstreamLandingReport: readyLandingReport("story-retail-stock"),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-05-29T01:03:00.000Z",
+  });
+
+  assert.equal(report.verdict, "PASS");
+  assert.equal(report.direct_policy_verdict, "PASS");
+  assert.equal(report.stories[0].evidence.finance_crypto_vertical, "non_financial");
+  assert.equal(report.stories[0].policy_checks.finance_crypto_risk.status, "pass");
+  assert.deepEqual(report.direct_risk_counts, {});
 });
 
 test("Goal 17 hard-fails unsafe platform policy evidence", async () => {

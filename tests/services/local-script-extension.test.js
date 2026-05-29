@@ -255,6 +255,25 @@ test("local script extension never adds internal Pulse strategy boilerplate", ()
   assert.ok(!draft.manual_review_flags.some((flag) => /abstract_signal_language/i.test(flag)));
 });
 
+test("local script extension never adds policy-memo padding to public narration", () => {
+  const draft = extendScriptToLocalFlash({
+    story: {
+      id: "rss_public_padding",
+      title: "Hades II finally shows console gameplay",
+      subreddit: "PlayStation Blog",
+      content_pillar: "Confirmed Drop",
+      full_script: variedScript("Hades II", 17),
+    },
+    queueItem: queueItem("rss_public_padding", 136),
+    env: {},
+  });
+
+  assert.doesNotMatch(
+    draft.proposed_full_script,
+    /the useful question|source material stays|player-facing question is simple/i,
+  );
+});
+
 test("local script extension refuses generic padding on underwritten scripts", () => {
   const draft = extendScriptToLocalFlash({
     story: {

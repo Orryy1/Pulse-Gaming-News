@@ -1723,23 +1723,23 @@ test("Studio V4 source-family acquisition CLI derives template paths from explic
 
   assert.equal(
     args.intakeTemplate,
-    path.join(goalContractDir, "visual_v4_source_family_intake_template.json"),
+    path.join(goalContractDir, "visual_v4_source_family_intake_template_remaining.json"),
   );
   assert.equal(
     args.searchTemplate,
-    path.join(goalContractDir, "visual_v4_official_search_template.json"),
+    path.join(goalContractDir, "visual_v4_official_search_template_remaining.json"),
   );
   assert.equal(
     args.governedVisualPlanTemplate,
-    path.join(goalContractDir, "visual_v4_governed_visual_plan_template.json"),
+    path.join(goalContractDir, "visual_v4_governed_visual_plan_template_remaining.json"),
   );
   assert.equal(
     args.canonicalEntityRepairTemplate,
-    path.join(goalContractDir, "visual_v4_canonical_entity_repair_template.json"),
+    path.join(goalContractDir, "visual_v4_canonical_entity_repair_template_remaining.json"),
   );
   assert.equal(
     commandPaths.sourceFamilyIntakeTemplate,
-    "output/goal-contract/visual_v4_source_family_intake_template.json",
+    "output/goal-contract/visual_v4_source_family_intake_template_remaining.json",
   );
 });
 
@@ -2190,6 +2190,79 @@ test("Studio V4 source-family acquisition avoids fake gameplay searches for non-
   const markdown = renderStudioV4SourceFamilyAcquisitionMarkdown(report);
   assert.match(markdown, /kadokawa-stake .*approve_governed_visual_plan/);
   assert.match(markdown, /pokemon-go .*fill_official_source_intake_from_search_template/);
+});
+
+test("Studio V4 source-family acquisition surfaces accepted secondary hardware references", () => {
+  const report = buildStudioV4SourceFamilyAcquisitionReport({
+    motionPackReports: [
+      motionPack({
+        story_id: "xbox-accessory-story",
+        title: "Xbox Controller Deal Has One Catch",
+        canonical_subject: "Xbox Controller",
+        canonical_game: "Xbox Controller",
+        trusted_source_pipeline: { intake_queue: [] },
+        clips: [
+          {
+            id: "existing-controller-loop",
+            entity: "Xbox Controller",
+            source_family: "xbox_forza_horizon_6_controller_headset_product_page",
+            source_url: "https://cms-assets.xboxservices.com/assets/c3/4c/controller-loop.mp4",
+            source_url_kind: "direct_video",
+            validated: true,
+          },
+        ],
+        motion_budget: {
+          required_motion_scenes: 5,
+          available_motion_clips: 1,
+          required_distinct_families: 4,
+          available_distinct_families: 1,
+        },
+      }),
+    ],
+    referenceReport: {
+      plans: [
+        {
+          story_id: "xbox-accessory-story",
+          title: "FH6 limited-edition Xbox controller and headset have just leaked",
+          references: [
+            {
+              provider: "official_intake",
+              entity: "Xbox Controller",
+              source_type: "official_platform_product_page",
+              source_family: "xbox_wireless_controller_official_product_page",
+              source_url: "https://assets.xboxservices.com/assets/c9/c8/controller-share-button.mp4",
+              reference_page_url: "https://www.xbox.com/accessories/controllers/xbox-wireless-controller/",
+              source_url_kind: "direct_video",
+              segment_validation_eligible: true,
+            },
+            {
+              provider: "official_intake",
+              entity: "Xbox Wireless Headset",
+              source_type: "official_platform_product_page",
+              source_family: "xbox_wireless_headset_official_product_page",
+              source_url: "https://cms-assets.xboxservices.com/assets/53/f8/headset-audio-untethered.mp4",
+              reference_page_url: "https://www.xbox.com/en-US/accessories/headsets/xbox-wireless-headset",
+              source_url_kind: "direct_video",
+              segment_validation_eligible: true,
+            },
+          ],
+        },
+      ],
+    },
+    generatedAt: "2026-05-28T22:15:00.000Z",
+  });
+
+  const families = report.rows[0].source_family_candidates.map((candidate) => candidate.source_family);
+  assert.ok(families.includes("xbox_wireless_controller_official_product_page"));
+  assert.ok(families.includes("xbox_wireless_headset_official_product_page"));
+  assert.ok(
+    report.source_intake_template.entries.some(
+      (entry) =>
+        entry.source_family === "xbox_wireless_headset_official_product_page" &&
+        entry.entity === "Xbox Wireless Headset" &&
+        entry.direct_media_url_if_available.endsWith("headset-audio-untethered.mp4"),
+    ),
+  );
 });
 
 test("Studio V4 source-family acquisition stops suggesting governed visual plans after owned explainer decks fail benchmark", () => {

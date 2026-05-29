@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const { spawnSync } = require("node:child_process");
 const fs = require("fs-extra");
 const os = require("node:os");
 const path = require("node:path");
@@ -10,6 +11,8 @@ const {
   buildGoal05NarrationReadiness,
   writeGoal05NarrationReadiness,
 } = require("../../lib/goal05-narration-readiness");
+
+const ROOT = path.resolve(__dirname, "..", "..");
 
 async function makeReadyPackage(root, storyId = "story-audio", overrides = {}) {
   const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
@@ -163,4 +166,71 @@ test("Goal 05 readiness writes the required machine and human proof artefacts", 
   const markdown = await fs.readFile(written.readinessMarkdown, "utf8");
   assert.match(markdown, /Goal 05 Narration Readiness/);
   assert.match(markdown, /story-write: ready/);
+});
+
+test("Goal 05 CLI auto-loads fresh materialization beside a stale workbench", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal05-cli-materialized-"));
+  const storyId = "story-materialized";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  await fs.ensureDir(path.join(root, "output", "goal-contract"));
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: storyId,
+    narration_script: "Hades 2 lands.",
+  });
+  await fs.outputFile(path.join(root, "output", "audio", `${storyId}.mp3`), Buffer.alloc(4096, 1));
+  await fs.outputJson(path.join(root, "output", "audio", `${storyId}_timestamps.json`), {
+    words: [
+      { word: "Hades", start: 0, end: 0.32 },
+      { word: "2", start: 0.34, end: 0.52 },
+      { word: "lands", start: 0.54, end: 0.9 },
+    ],
+  });
+  await fs.outputJson(path.join(root, "output", "goal-contract", "audio_timestamp_workbench.json"), {
+    local_tts: { verdict: "green", ready: true },
+    jobs: [
+      {
+        story_id: storyId,
+        title: "Hades 2 Lands On Console",
+        artifact_dir: artifactDir,
+        status: "requires_audio_timestamp_generation",
+        missing: ["narration_audio", "word_timestamps"],
+      },
+    ],
+  });
+  await fs.outputJson(path.join(root, "output", "goal-contract", "audio_timestamp_materialization_report.json"), {
+    local_tts: { verdict: "green", ready: true },
+    jobs: [
+      {
+        story_id: storyId,
+        title: "Hades 2 Lands On Console",
+        status: "materialized",
+        audio_path: `output/audio/${storyId}.mp3`,
+        word_timestamps_path: `output/audio/${storyId}_timestamps.json`,
+        provider: "local",
+      },
+    ],
+  });
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      path.join(ROOT, "tools", "goal05-narration-readiness.js"),
+      "--workbench",
+      path.join(root, "output", "goal-contract", "audio_timestamp_workbench.json"),
+      "--workspace",
+      root,
+      "--out-dir",
+      path.join(root, "goal-05"),
+      "--json",
+    ],
+    { cwd: ROOT, encoding: "utf8", env: { ...process.env, PULSE_SKIP_DOTENV: "1" } },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.verdict, "PASS");
+  assert.equal(parsed.summary.ready_story_count, 1);
+  assert.equal(parsed.stories[0].status, "ready");
+  assert.equal(parsed.stories[0].artifact_dir, artifactDir);
+  assert.equal(await fs.pathExists(path.join(artifactDir, "caption_manifest.json")), true);
 });

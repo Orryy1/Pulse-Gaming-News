@@ -111,6 +111,96 @@ test("deduplicates the same direct-video clip across inventory and rights eviden
   assert.equal(profile.direct_video_motion_family_count, 1);
 });
 
+test("deduplicates direct-video rights records that omit source family but share the same file", () => {
+  const clip = {
+    id: "subnautica-window-1",
+    path: "C:\\repo\\output\\video_cache\\subnautica_clip_1.mp4",
+    source_url:
+      "https://video.akamai.steamstatic.com/store_trailers/1962700/1381761660/hash/hls_264_master.m3u8",
+    source_type: "steam_movie",
+    media_kind: "direct_video",
+    source_url_kind: "hls_manifest",
+    source_family: "steam_1962700_1381761660",
+  };
+  const profile = visualEvidenceProfile({
+    rightsLedger: {
+      records: [
+        {
+          asset_id: "subnautica-window-1",
+          path: clip.path,
+          source_url: clip.source_url,
+          source_type: clip.source_type,
+          licence_basis: "official_source_transformative_editorial_use",
+          approval_status: "approved_for_transformative_editorial_use",
+        },
+      ],
+    },
+    footageInventory: {
+      motion_inventory: {
+        accepted_local_clips: [clip],
+        production_motion_clips: [clip],
+      },
+    },
+  });
+
+  assert.equal(profile.direct_video_motion_asset_count, 1);
+  assert.equal(profile.direct_video_motion_family_count, 1);
+});
+
+test("deduplicating selected render fallbacks preserves richer direct-video metadata", () => {
+  const localPath = "C:\\repo\\output\\video_cache\\star_wars_window.mp4";
+  const sourceUrl =
+    "https://video.akamai.steamstatic.com/store_trailers/2075800/876175/hash/hls_264_master.m3u8";
+  const profile = visualEvidenceProfile({
+    footageInventory: {
+      motion_inventory: {
+        production_motion_clips: [
+          {
+            id: "steam-trailer-window",
+            path: localPath,
+            source_url: sourceUrl,
+            source_type: "steam_movie",
+            media_kind: "",
+          },
+          {
+            id: "selected_render_clip_1",
+            path: localPath,
+            source_type: "selected_render_motion_clip",
+            source_family: "selected_render_clip_1",
+            validated: true,
+          },
+        ],
+      },
+    },
+  });
+
+  assert.equal(profile.asset_count, 1);
+  assert.equal(profile.direct_video_motion_asset_count, 1);
+  assert.equal(profile.direct_video_motion_family_count, 1);
+});
+
+test("same local fixture path with different source URLs remains distinct evidence", () => {
+  const localPath = "C:\\repo\\output\\video_cache\\official_motion_fixture.mp4";
+  const profile = visualEvidenceProfile({
+    footageInventory: {
+      motion_inventory: {
+        production_motion_clips: Array.from({ length: 5 }, (_, index) => ({
+          id: `official-motion-${index + 1}`,
+          path: localPath,
+          source_url: `https://cdn.example.test/official-${index + 1}.mp4`,
+          source_type: "official_trailer_segment",
+          source_family: `official_family_${index + 1}`,
+          media_kind: "direct_video",
+        })),
+      },
+    },
+  });
+
+  assert.equal(profile.asset_count, 5);
+  assert.equal(profile.direct_video_motion_asset_count, 5);
+  assert.equal(profile.direct_video_motion_family_count, 5);
+});
+
 test("counts official product-page mp4 clips as direct-video evidence even when renderer omitted media_kind", () => {
   const profile = visualEvidenceProfile({
     footageInventory: {

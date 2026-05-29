@@ -8,6 +8,7 @@ const test = require("node:test");
 
 const {
   materializeGoalAudioTimestamps,
+  normaliseTimestampFile,
   repairMergedSegmentVoiceMetadata,
   _testables,
   writeGoalAudioTimestampMaterializationReport,
@@ -212,11 +213,12 @@ test("goal audio materializer sends spoken pronunciation text while preserving d
   });
 
   assert.equal(report.summary.materialized_count, 1);
-  assert.equal(calls[0].text, "Hades sequel finally has a PlayStation and Xbox date.");
+  assert.equal(calls[0].text, "Hades, two finally has a PlayStation and Xbox date.");
   const timestamps = await fs.readJson(path.join(root, "output", "audio", "story-hades-spoken_timestamps.json"));
   assert.equal(timestamps.meta.text, script);
-  assert.equal(timestamps.meta.transcript, "Hades sequel finally has a PlayStation and Xbox date.");
-  assert.ok(timestamps.words.some((word) => word.word === "sequel"));
+  assert.equal(timestamps.meta.transcript, "Hades, two finally has a PlayStation and Xbox date.");
+  assert.equal(timestamps.words.filter((word) => /^Hades/i.test(word.word) || word.word === "two").length, 2);
+  assert.ok(timestamps.words.some((word) => word.word === "two"));
 });
 
 test("goal audio materializer segments long local-clone narration before strict Whisper validation", async () => {
@@ -890,13 +892,13 @@ test("goal audio materializer prefers local Whisper word alignment when configur
       source: "local_whisper_word_alignment",
       model: "tiny.en",
       words: [
-        { word: "Hades", start: 0.18, end: 0.42 },
-        { word: "sequel", start: 0.44, end: 0.82 },
+        { word: "Hades,", start: 0.18, end: 0.42 },
+        { word: "two", start: 0.44, end: 0.66 },
         { word: "lands", start: 0.86, end: 1.1 },
         { word: "on", start: 1.14, end: 1.25 },
         { word: "console.", start: 1.28, end: 1.6 },
       ],
-      transcript: "Hades sequel lands on console.",
+      transcript: "Hades, two lands on console.",
     }),
     generateTtsForStory: async ({ text, outputPath }) => {
       const audioPath = path.join(root, outputPath);
@@ -912,8 +914,9 @@ test("goal audio materializer prefers local Whisper word alignment when configur
   const timestamps = await fs.readJson(path.join(root, "output", "audio", "story-whisper_timestamps.json"));
   assert.equal(timestamps.meta.wordTimestampSource, "local_whisper_word_alignment");
   assert.equal(timestamps.meta.timestampWhisperAlignment.model, "tiny.en");
-  assert.equal(timestamps.words[1].word, "sequel");
+  assert.equal(timestamps.words[1].word, "two");
   assert.equal(timestamps.words[1].start, 0.44);
+  assert.equal(timestamps.words[1].end, 0.66);
 });
 
 test("goal audio materializer blocks generated local audio when requested Whisper alignment fails", async () => {
@@ -2275,7 +2278,7 @@ test("goal audio materializer regenerates existing pairs that predate repaired d
   });
 
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].text, "Hades sequel just turned its console date into the real story.");
+  assert.equal(calls[0].text, "Hades, two just turned its console date into the real story.");
   assert.equal(report.summary.materialized_count, 1);
   assert.equal(report.jobs[0].status, "materialized");
   assert.equal(report.jobs[0].reason, "existing_pair_stale_after_duration_variant_repair");
@@ -2749,6 +2752,38 @@ test("goal audio materializer repairs zero-duration local Whisper words before c
     timestamps.words.filter((word) => word.end - word.start <= 0.03).length,
     0,
   );
+});
+
+test("normaliseTimestampFile does not clamp long aligned words to stale segment duration metadata", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-stale-duration-"));
+  const timestampPath = path.join(root, "timestamps.json");
+  const script = Array.from({ length: 90 }, (_, index) => `word${index + 1}`).join(" ");
+  const words = script.split(/\s+/).map((word, index) => ({
+    word,
+    start: Number((index * 0.42).toFixed(3)),
+    end: Number((index * 0.42 + 0.24).toFixed(3)),
+  }));
+  await fs.outputJson(timestampPath, {
+    words,
+    meta: {
+      acoustic: { durationSeconds: 4.48 },
+    },
+  });
+
+  await normaliseTimestampFile(timestampPath, {
+    generatedAt: "2026-05-28T22:40:00.000Z",
+    text: script,
+    provider: "local",
+    alignmentMode: "off",
+  });
+
+  const normalised = await fs.readJson(timestampPath);
+  assert.equal(normalised.words.length, words.length);
+  assert.ok(
+    normalised.words.at(-1).end > 37,
+    `expected the last timestamp to keep the long alignment span, got ${normalised.words.at(-1).end}`,
+  );
+  assert.equal(normalised.meta.timestampDurationClamp, undefined);
 });
 
 test("goal audio materializer writes JSON and Markdown reports", async () => {

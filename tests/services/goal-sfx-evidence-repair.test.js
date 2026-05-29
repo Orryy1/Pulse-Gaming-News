@@ -353,6 +353,62 @@ test("goal SFX evidence repair rotates approved SFX variants by story id", async
   assert.equal(first.source_plan.anti_repetition.variant_source, "story_id_hash");
 });
 
+test("goal SFX evidence repair avoids duplicate SFX combinations across a batch", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-sfx-repair-combo-"));
+  const firstDir = path.join(root, "output", "goal-proof", "batch", "story-0");
+  const secondDir = path.join(root, "output", "goal-proof", "batch", "story-1");
+  await fs.outputJson(path.join(root, "output", "goal-contract", "story-packages.json"), [
+    { story_id: "story-0", artifact_dir: firstDir },
+    { story_id: "story-1", artifact_dir: secondDir },
+  ]);
+  await fs.outputJson(path.join(root, "output", "goal-contract", "sfx_source_plan.json"), {
+    readiness: { status: "pass", blockers: [] },
+    required_roles: ["impact", "transition", "ui_tick"],
+    selected_assets: [
+      { asset_id: "impact-a", role: "impact", provider_id: "sonniss", source_url: "file://audio/sonniss/Modern Cinematic Impact/modern_cinematic_impact_boom_001.wav", rights_basis: "sonniss_game_audio_gdc_bundle_license" },
+      { asset_id: "transition-a", role: "transition", provider_id: "sonniss", source_url: "file://audio/sonniss/Distinct Whooshes/WHSH_Pure SciFi-Whoosh Fast 01.wav", rights_basis: "sonniss_game_audio_gdc_bundle_license" },
+      { asset_id: "ui-a", role: "ui_tick", provider_id: "sonniss", source_url: "file://audio/sonniss/User Interaction/UIClick_UI Click Short 03.wav", rights_basis: "sonniss_game_audio_gdc_bundle_license" },
+    ],
+  });
+  await fs.outputJson(path.join(root, "output", "goal-contract", "sfx_rights_ledger.json"), {
+    records: [
+      { asset_id: "impact-a", role: "impact", provider_id: "sonniss", source_url: "file://audio/sonniss/Modern Cinematic Impact/modern_cinematic_impact_boom_001.wav", licence_basis: "sonniss_game_audio_gdc_bundle_license", approval_status: "approved_for_commercial_editorial_use", commercial_use_allowed: true },
+      { asset_id: "impact-b", role: "impact", provider_id: "sonniss", source_url: "file://audio/sonniss/Modern Cinematic Impact/modern_cinematic_impact_percussion_002.wav", licence_basis: "sonniss_game_audio_gdc_bundle_license", approval_status: "approved_for_commercial_editorial_use", commercial_use_allowed: true },
+      { asset_id: "transition-a", role: "transition", provider_id: "sonniss", source_url: "file://audio/sonniss/Distinct Whooshes/WHSH_Pure SciFi-Whoosh Fast 01.wav", licence_basis: "sonniss_game_audio_gdc_bundle_license", approval_status: "approved_for_commercial_editorial_use", commercial_use_allowed: true },
+      { asset_id: "transition-b", role: "transition", provider_id: "sonniss", source_url: "file://audio/sonniss/Cinematic Transitions for Editors Volume 2/27,Searing.wav", licence_basis: "sonniss_game_audio_gdc_bundle_license", approval_status: "approved_for_commercial_editorial_use", commercial_use_allowed: true },
+      { asset_id: "ui-a", role: "ui_tick", provider_id: "sonniss", source_url: "file://audio/sonniss/User Interaction/UIClick_UI Click Short 03.wav", licence_basis: "sonniss_game_audio_gdc_bundle_license", approval_status: "approved_for_commercial_editorial_use", commercial_use_allowed: true },
+      { asset_id: "ui-b", role: "ui_tick", provider_id: "sonniss", source_url: "file://audio/sonniss/User Interaction/UIClick_Select Middle 29.wav", licence_basis: "sonniss_game_audio_gdc_bundle_license", approval_status: "approved_for_commercial_editorial_use", commercial_use_allowed: true },
+    ],
+  });
+  const director = {
+    sound_transition_plan: {
+      sfx: {
+        cues: [
+          { target_kind: "hook_slam", family: "impact" },
+          { target_kind: "source_lock", family: "source_tick" },
+          { target_kind: "motion_clip", family: "whoosh" },
+        ],
+      },
+    },
+  };
+  for (const artifactDir of [firstDir, secondDir]) {
+    await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), { sfx_cue_count: 3 });
+    await fs.outputJson(path.join(artifactDir, "director_beat_map.json"), director);
+  }
+
+  await repairGoalSfxEvidence({
+    root,
+    generatedAt: "2026-05-29T00:58:00.000Z",
+  });
+
+  const first = await fs.readJson(path.join(firstDir, "sfx_manifest.json"));
+  const second = await fs.readJson(path.join(secondDir, "sfx_manifest.json"));
+  const signature = (manifest) => manifest.selected_assets.map((asset) => `${asset.role}:${asset.asset_id}`).sort().join("|");
+
+  assert.notEqual(signature(first), signature(second));
+  assert.equal(second.source_plan.anti_repetition.collision_avoidance, "batch_signature_rotation");
+});
+
 test("goal SFX evidence repair keeps variant rotation inside the top editorial SFX tier", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-sfx-repair-variant-quality-"));
   const firstDir = path.join(root, "output", "goal-proof", "batch", "story-alpha");

@@ -229,6 +229,97 @@ test("Goal 11 turns complete local retention metrics into diagnoses, rules and r
   assert.equal(report.experiment_results.status, "planned_only");
 });
 
+test("Goal 11 treats clean pre-publish candidates without live metrics as analytics-pending, not blocked", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal11-prepublish-"));
+  const readyStory = await makeStoryPackage(root, "story-ready", {
+    title: "The Expanse Shows Real Gameplay",
+    primary_source: "Xbox",
+    first_frame_text: "EXPANSE GAMEPLAY",
+    platform_outputs: {
+      youtube_shorts: { cta_style: "identity_follow" },
+      instagram_reels: { cta_style: "bio_link" },
+      facebook_reels: { cta_style: "follow_page" },
+    },
+  });
+  const skippedStory = await makeStoryPackage(root, "story-skipped", {
+    motionDensityScore: 44,
+  });
+  await fs.outputJson(path.join(readyStory.artifact_dir, "director_beat_map.json"), {
+    shot_plan: [
+      {
+        id: "opener",
+        kind: "opener",
+        type: "opener",
+        startS: 0,
+        durationS: 2.4,
+        source: "expanse-trailer-a.mp4",
+        mediaStartS: 12.5,
+        text: "EXPANSE GAMEPLAY",
+      },
+      {
+        id: "clip-b",
+        kind: "clip",
+        type: "clip",
+        startS: 2.4,
+        durationS: 3,
+        source: "expanse-trailer-b.mp4",
+        mediaStartS: 31,
+      },
+      {
+        id: "source",
+        kind: "source_lock",
+        type: "card.source",
+        startS: 5.4,
+        durationS: 2.2,
+      },
+    ],
+  });
+
+  const report = await buildGoal11RetentionIntelligenceLoop({
+    storyPackages: [readyStory, skippedStory],
+    upstreamBenchmarkReport: {
+      stories: [
+        { story_id: "story-ready", status: "ready", blockers: [] },
+        {
+          story_id: "story-skipped",
+          status: "skipped",
+          skipped_status: "visual_source_deferred",
+          skipped_reason: "defer_until_rights_backed_media_available",
+          blockers: [],
+        },
+      ],
+    },
+    metricsManifest: { stories: [] },
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-05-28T23:58:00.000Z",
+  });
+
+  const ready = report.stories.find((story) => story.story_id === "story-ready");
+  const skipped = report.stories.find((story) => story.story_id === "story-skipped");
+
+  assert.equal(report.verdict, "PASS");
+  assert.equal(report.summary.story_count, 2);
+  assert.equal(report.summary.active_story_count, 1);
+  assert.equal(report.summary.skipped_story_count, 1);
+  assert.equal(report.summary.retention_ready_story_count, 1);
+  assert.equal(report.summary.analytics_pending_story_count, 1);
+  assert.equal(report.summary.blocked_story_count, 0);
+  assert.equal(ready.status, "ready");
+  assert.equal(ready.direct_retention_status, "pass");
+  assert.equal(ready.metrics_status, "pending");
+  assert.ok(!ready.blockers.includes("retention:analytics_missing"));
+  assert.equal(skipped.status, "skipped");
+  assert.deepEqual(report.blocker_counts, {});
+  assert.equal(report.learning_rules.status, "pending_live_metrics_static_guidance_ready");
+  assert.equal(report.future_render_recommendations.status, "ready_for_future_render_rules");
+  assert.ok(
+    report.future_render_recommendations.stories
+      .find((story) => story.story_id === "story-ready")
+      .recommendations.some((recommendation) => recommendation.id === "preserve_current_benchmark_profile_until_live_metrics_arrive"),
+  );
+});
+
 test("Goal 11 writes required retention loop artefacts", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal11-write-"));
   const story = await makeStoryPackage(root, "story-write");

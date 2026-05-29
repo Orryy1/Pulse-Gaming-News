@@ -20,6 +20,7 @@ function parseArgs(argv = process.argv.slice(2)) {
   const args = {
     storyPackagesPath: path.join(ROOT, "output", "goal-contract", "story-packages.json"),
     upstreamAntiSpamReportPath: path.join(ROOT, "output", "goal-20", "goal20_readiness_report.json"),
+    upstreamPlatformPolicyReportPath: path.join(ROOT, "output", "goal-17", "platform_policy_report.json"),
     outDir: path.join(ROOT, "output", "goal-21"),
     workspaceRoot: ROOT,
     generatedAt: null,
@@ -30,6 +31,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     const arg = argv[index];
     if (arg === "--story-packages") args.storyPackagesPath = argv[++index] || args.storyPackagesPath;
     else if (arg === "--upstream-anti-spam-report") args.upstreamAntiSpamReportPath = argv[++index] || args.upstreamAntiSpamReportPath;
+    else if (arg === "--upstream-platform-policy-report") args.upstreamPlatformPolicyReportPath = argv[++index] || args.upstreamPlatformPolicyReportPath;
     else if (arg === "--out-dir") args.outDir = argv[++index] || args.outDir;
     else if (arg === "--workspace") args.workspaceRoot = argv[++index] || args.workspaceRoot;
     else if (arg === "--generated-at") args.generatedAt = argv[++index] || null;
@@ -47,6 +49,7 @@ function usage() {
     "Options:",
     "  --story-packages <path>             Story package manifest",
     "  --upstream-anti-spam-report <path>  Goal 20 readiness report",
+    "  --upstream-platform-policy-report <path>  Goal 17 aggregate platform policy report",
     "  --out-dir <dir>                     Output directory for Goal 21 proof",
     "  --workspace <dir>                   Workspace root for relative package paths",
     "  --generated-at <iso>                Fixed timestamp for deterministic reports",
@@ -69,9 +72,11 @@ async function main(argv = process.argv.slice(2)) {
   }
   const storyPackages = await readJsonIfPresent(path.resolve(args.storyPackagesPath), []);
   const upstreamAntiSpamReport = await readJsonIfPresent(path.resolve(args.upstreamAntiSpamReportPath), {});
+  const upstreamPlatformPolicyReport = await readJsonIfPresent(path.resolve(args.upstreamPlatformPolicyReportPath), {});
   const report = await buildGoal21ObservabilityDashboard({
     storyPackages,
     upstreamAntiSpamReport,
+    upstreamPlatformPolicyReport,
     workspaceRoot: path.resolve(args.workspaceRoot),
     outputDir: path.resolve(args.outDir),
     generatedAt: args.generatedAt || new Date().toISOString(),

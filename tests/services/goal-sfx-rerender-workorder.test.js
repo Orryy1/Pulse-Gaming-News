@@ -121,6 +121,48 @@ test("SFX rerender work order blocks candidates that still lack final render inp
   assert.equal(workOrder.jobs[0].actions[0].action_id, "repair_sfx_rerender_inputs");
 });
 
+test("SFX rerender work order includes held dry-run stories when package artefacts are available", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-sfx-workorder-held-"));
+  const artifactDir = await makeBridgePackage(root, "story-held");
+
+  const workOrder = await buildGoalSfxRerenderWorkOrder({
+    workspaceRoot: root,
+    generatedAt: "2026-05-23T22:31:30.000Z",
+    bridgeCandidates: [
+      {
+        story_id: "story-held",
+        title: "Xbox Fans Used Feedback To Demand Exclusives",
+        artifact_dir: artifactDir,
+        audio_path: "output/audio/story-held.mp3",
+        timestamps_path: "output/audio/story-held_timestamps.json",
+        visual_v4_bridge_video_clips: [
+          { path: path.join(artifactDir, "clip-1.mp4") },
+          { path: path.join(artifactDir, "clip-2.mp4") },
+          { path: path.join(artifactDir, "clip-3.mp4") },
+        ],
+      },
+    ],
+    dryRunPlan: {
+      blocked_stories: [
+        {
+          story_id: "different-blocked-story",
+          blockers: ["sfx_render_asset_mismatch"],
+        },
+      ],
+      held_stories: [
+        {
+          story_id: "story-held",
+          blockers: ["sfx_render_asset_mismatch", "incident:motion_density_too_low"],
+        },
+      ],
+    },
+  });
+
+  assert.equal(workOrder.summary.story_count, 1);
+  assert.equal(workOrder.summary.ready_for_final_render_job_count, 1);
+  assert.equal(workOrder.jobs[0].story_id, "story-held");
+});
+
 test("SFX rerender work order writes JSON and markdown artefacts", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-sfx-workorder-write-"));
   const outDir = path.join(root, "out");

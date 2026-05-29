@@ -467,6 +467,62 @@ test("Visual V4 motion pack accepts validated hardware lifestyle product motion"
   );
 });
 
+test("Visual V4 motion pack can clear a hardware accessory story with two distinct official product-motion families", () => {
+  const pack = buildVisualV4MotionPack({
+    story: {
+      id: "xbox-controller-accessory-story",
+      title: "Xbox Controller Deal Has One Catch",
+      canonical_subject: "Xbox Controller",
+      canonical_game: "Xbox Controller",
+      full_script:
+        "The Forza Horizon 6 Xbox controller and headset leak is a hardware story, not a gameplay review.",
+    },
+    trustedFootageReport: trustedReport("xbox-controller-accessory-story", [
+      "xbox_wireless_controller_official_product_page",
+      "xbox_forza_horizon_6_controller_headset_product_page",
+    ]),
+    segmentValidationReport: segmentReport([
+      segment({
+        storyId: "xbox-controller-accessory-story",
+        family: "xbox_wireless_controller_official_product_page",
+        entity: "Xbox Controller",
+        index: 1,
+        sourceUrl: "https://cms-assets.xboxservices.com/controller-detail.mp4",
+        sourceType: "official_platform_product_page",
+        motionClass: "official_product_motion",
+        validationReason: "official_product_motion_samples_passed",
+        actionScore: 65.1,
+        start: 4,
+        duration: 4.2,
+      }),
+      segment({
+        storyId: "xbox-controller-accessory-story",
+        family: "xbox_forza_horizon_6_controller_headset_product_page",
+        entity: "Xbox Controller",
+        index: 2,
+        sourceUrl: "https://cms-assets.xboxservices.com/forza-accessory-detail.mp4",
+        sourceType: "official_platform_product_page",
+        motionClass: "official_product_motion",
+        validationReason: "official_product_motion_samples_passed",
+        actionScore: 68.1,
+        start: 5.75,
+        duration: 4.2,
+      }),
+    ]),
+    generatedAt: "2026-05-28T11:20:00.000Z",
+  });
+
+  assert.equal(pack.clips.length, 2);
+  assert.equal(pack.readiness.status, "v4_motion_ready");
+  assert.equal(pack.motion_budget.product_motion_story, true);
+  assert.equal(pack.motion_budget.required_motion_scenes, 2);
+  assert.equal(pack.motion_budget.required_distinct_families, 2);
+  assert.equal(pack.motion_budget.available_official_product_motion_clips, 2);
+  assert.equal(pack.motion_budget.available_official_product_motion_families, 2);
+  assert.equal(pack.readiness.blockers.includes("actual_motion_clip_minimum_not_met"), false);
+  assert.equal(pack.readiness.blockers.includes("distinct_motion_families_minimum_not_met"), false);
+});
+
 test("Visual V4 motion pack accepts official storefront cinematic motion without relabelling it as gameplay", () => {
   const pack = buildVisualV4MotionPack({
     story: {

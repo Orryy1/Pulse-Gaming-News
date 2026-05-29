@@ -108,6 +108,20 @@ function readyPolicyReport(storyId) {
   };
 }
 
+function skippedPolicyReport(storyId) {
+  return {
+    stories: [
+      {
+        story_id: storyId,
+        status: "skipped",
+        skipped_status: "visual_source_deferred",
+        skipped_reason: "defer_until_rights_backed_media_available",
+        blockers: [],
+      },
+    ],
+  };
+}
+
 test("Goal 18 preserves Goal 17 blockers while direct finance checks pass", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal18-upstream-blocked-"));
   const story = await makeStoryPackage(root, "story-gaming");
@@ -132,6 +146,95 @@ test("Goal 18 preserves Goal 17 blockers while direct finance checks pass", asyn
   assert.equal(report.finance_crypto_risk_report.stories[0].status, "clear");
   assert.equal(report.blocked_claims.stories[0].blocked_claims.length, 0);
   assert.equal(report.compliance_required_actions.safety.no_publish_action, true);
+});
+
+test("Goal 18 excludes upstream-skipped stories from active firewall blockers", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal18-skipped-"));
+  const readyStory = await makeStoryPackage(root, "story-ready");
+  const skippedStory = await makeStoryPackage(root, "story-skipped", {
+    canonical: {
+      selected_title: "Bitcoin Game Token Will Pump",
+      canonical_subject: "Bitcoin game token",
+      vertical: "crypto",
+      description: "This token will pump.",
+      narration_script: "Buy this token now before it pumps.",
+    },
+    affiliate: {
+      story_id: "story-skipped",
+      vertical: "crypto",
+      disclosure_required: false,
+      primary_link: { label: "Exchange", url: "https://exchange.example/ref", tracking_url: "/go/story-skipped/exchange" },
+      fallback_links: [],
+      disclosure_copy: { short: "", landing: "" },
+    },
+  });
+
+  const report = await buildGoal18FinanceCryptoFirewall({
+    storyPackages: [readyStory, skippedStory],
+    upstreamPolicyReport: {
+      stories: [
+        { story_id: "story-ready", status: "ready", blockers: [] },
+        ...skippedPolicyReport("story-skipped").stories,
+      ],
+    },
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-05-29T01:16:00.000Z",
+  });
+
+  const skipped = report.stories.find((story) => story.story_id === "story-skipped");
+
+  assert.equal(report.verdict, "PASS");
+  assert.equal(report.direct_finance_crypto_verdict, "PASS");
+  assert.equal(report.summary.story_count, 2);
+  assert.equal(report.summary.active_story_count, 1);
+  assert.equal(report.summary.skipped_story_count, 1);
+  assert.equal(report.summary.finance_crypto_ready_story_count, 1);
+  assert.equal(skipped.status, "skipped");
+  assert.deepEqual(report.blocker_counts, {});
+  assert.equal(report.finance_crypto_risk_report.stories.length, 1);
+  assert.equal(report.blocked_claims.stories.length, 1);
+});
+
+test("Goal 18 does not treat retail game stock wording as finance", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal18-retail-stock-"));
+  const story = await makeStoryPackage(root, "story-retail-stock", {
+    title: "Super Mario RPG Drops To $15",
+    subject: "Super Mario RPG",
+    canonical: {
+      selected_title: "Super Mario RPG Drops To $15",
+      canonical_subject: "Super Mario RPG",
+      description: "GameStop lists Super Mario RPG at $15 while stock and region can change quickly.",
+      narration_script: "Super Mario RPG just dropped to $15 at GameStop. Stock, region and condition can move faster than the headline.",
+      commercial_intelligence: { vertical: "gaming", disclosure_required: true },
+    },
+    affiliate: {
+      story_id: "story-retail-stock",
+      vertical: "gaming",
+      disclosure_required: true,
+      primary_link: {
+        label: "Mario games",
+        url: "https://www.amazon.co.uk/s?k=Super%20Mario%20Nintendo%20Switch%20game&tag=orryy-21",
+        tracking_url: "/go/story-retail-stock/mario-games",
+      },
+      fallback_links: [],
+      disclosure_copy: { short: "Affiliate links may earn us a commission.", landing: "Affiliate links may earn us a commission." },
+    },
+  });
+
+  const report = await buildGoal18FinanceCryptoFirewall({
+    storyPackages: [story],
+    upstreamPolicyReport: readyPolicyReport("story-retail-stock"),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-05-29T01:17:00.000Z",
+  });
+
+  assert.equal(report.verdict, "PASS");
+  assert.equal(report.direct_finance_crypto_verdict, "PASS");
+  assert.equal(report.summary.finance_crypto_topic_story_count, 0);
+  assert.equal(report.stories[0].finance_crypto_risk.vertical, "non_financial");
+  assert.deepEqual(report.direct_risk_counts, {});
 });
 
 test("Goal 18 hard-blocks unsafe finance and crypto promotion", async () => {

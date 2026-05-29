@@ -117,6 +117,26 @@ test("RSS proof ingest extracts useful game subjects from long article titles", 
   );
 });
 
+test("RSS proof ingest writes creator-native proof scripts instead of policy memo phrasing", () => {
+  const stories = buildRssProofStories([
+    {
+      title: "Hades II finally shows console gameplay in new PlayStation trailer",
+      url: "https://blog.playstation.com/hades-ii-console-gameplay",
+      source_name: "PlayStation Blog",
+      description: "Console gameplay reveal",
+      timestamp: "2026-05-21T09:00:00.000Z",
+    },
+  ]);
+
+  assert.equal(stories.length, 1);
+  assert.doesNotMatch(
+    stories[0].full_script,
+    /the useful question|gave players the update they needed|source-backed update|this gaming story/i,
+  );
+  assert.match(stories[0].full_script, /Hades II/i);
+  assert.match(stories[0].full_script, /PlayStation Blog/i);
+});
+
 test("RSS proof ingest keeps advertiser-unfriendly article wording out of narration", () => {
   const stories = buildRssProofStories([
     {

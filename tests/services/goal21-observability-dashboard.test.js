@@ -167,6 +167,22 @@ function blockedGoal20(...storyIds) {
   };
 }
 
+function skippedGoal20(storyId) {
+  return {
+    verdict: "PARTIAL",
+    stories: [
+      {
+        story_id: storyId,
+        status: "skipped",
+        skipped_status: "anti_spam_duplicate_deferred",
+        skipped_reason: "deferred_by_goal20_duplicate_cluster",
+        blockers: [],
+        warnings: [],
+      },
+    ],
+  };
+}
+
 test("Goal 21 preserves Goal 20 blockers while complete observability checks pass", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal21-upstream-"));
   const story = await makeStoryPackage(root, "story-a", { renderTimeMs: 18342 });
@@ -194,7 +210,7 @@ test("Goal 21 preserves Goal 20 blockers while complete observability checks pas
   assert.equal(report.blocked_content_report.stories[0].story_id, "story-a");
 });
 
-test("Goal 21 blocks missing live metrics and never fakes zero revenue or profit", async () => {
+test("Goal 21 treats unpublished live metrics as unavailable without faking zero revenue or profit", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal21-missing-"));
   const story = await makeStoryPackage(root, "story-b", {
     liveMetrics: false,
@@ -209,27 +225,75 @@ test("Goal 21 blocks missing live metrics and never fakes zero revenue or profit
     generatedAt: "2026-05-26T05:07:35.093Z",
   });
 
-  assert.equal(report.verdict, "BLOCKED");
-  assert.equal(report.direct_observability_verdict, "BLOCKED");
-  for (const blocker of [
-    "observability:render_time_missing",
-    "observability:platform_performance_missing",
-    "observability:retention_missing",
-    "observability:views_missing",
-    "observability:followers_missing",
-    "observability:comments_missing",
-    "observability:shares_missing",
-    "observability:clicks_missing",
-    "observability:cost_missing",
-    "observability:revenue_missing",
-    "observability:profit_missing",
-  ]) {
-    assert.ok(report.stories[0].direct_observability_blockers.includes(blocker), blocker);
-  }
+  assert.equal(report.verdict, "PASS");
+  assert.equal(report.direct_observability_verdict, "PASS");
+  assert.deepEqual(report.stories[0].direct_observability_blockers, []);
+  assert.equal(report.stories[0].metrics.views.status, "not_available");
   assert.equal(report.stories[0].metrics.revenue.value, null);
   assert.equal(report.stories[0].metrics.profit.value, null);
   assert.equal(report.revenue_report.totals.revenue.status, "not_available");
   assert.equal(report.revenue_report.totals.revenue.value, null);
+});
+
+test("Goal 21 uses aggregate platform policy evidence when per-story policy files are absent", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal21-policy-index-"));
+  const story = await makeStoryPackage(root, "story-policy", {
+    liveMetrics: false,
+    revenueMetrics: false,
+  });
+  await fs.remove(path.join(story.artifact_dir, "platform_policy_report.json"));
+
+  const report = await buildGoal21ObservabilityDashboard({
+    storyPackages: [story],
+    upstreamAntiSpamReport: readyGoal20("story-policy"),
+    upstreamPlatformPolicyReport: {
+      stories: [
+        {
+          story_id: "story-policy",
+          status: "pass",
+          blockers: [],
+          checks: {
+            affiliate_disclosure: { status: "pass", blockers: [] },
+            x_automation_spam: { status: "pass", blockers: [] },
+          },
+        },
+      ],
+    },
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-05-29T02:34:00.000Z",
+  });
+
+  assert.equal(report.verdict, "PASS");
+  assert.equal(report.direct_observability_verdict, "PASS");
+  assert.equal(report.stories[0].metrics.policy_risk.status, "available");
+  assert.equal(report.stories[0].metrics.policy_risk.value.verdict, "pass");
+  assert.deepEqual(report.blocker_counts, {});
+});
+
+test("Goal 21 excludes upstream-skipped stories from active observability blockers", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal21-skipped-"));
+  const story = await makeStoryPackage(root, "story-skipped", {
+    liveMetrics: false,
+    revenueMetrics: false,
+  });
+
+  const report = await buildGoal21ObservabilityDashboard({
+    storyPackages: [story],
+    upstreamAntiSpamReport: skippedGoal20("story-skipped"),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-05-29T02:21:00.000Z",
+  });
+
+  assert.equal(report.verdict, "FAIL");
+  assert.equal(report.summary.story_count, 1);
+  assert.equal(report.summary.active_story_count, 0);
+  assert.equal(report.summary.skipped_story_count, 1);
+  assert.equal(report.summary.blocked_story_count, 0);
+  assert.equal(report.stories[0].status, "skipped");
+  assert.equal(report.stories[0].skipped_status, "anti_spam_duplicate_deferred");
+  assert.deepEqual(report.blocker_counts, {});
 });
 
 test("Goal 21 aggregates recurring failure reasons into blocked-content reporting", async () => {
@@ -239,14 +303,20 @@ test("Goal 21 aggregates recurring failure reasons into blocked-content reportin
 
   const report = await buildGoal21ObservabilityDashboard({
     storyPackages: [storyA, storyB],
-    upstreamAntiSpamReport: blockedGoal20("story-b"),
+    upstreamAntiSpamReport: {
+      verdict: "PARTIAL",
+      stories: [
+        ...readyGoal20("story-a").stories,
+        ...blockedGoal20("story-b").stories,
+      ],
+    },
     workspaceRoot: root,
     outputDir: path.join(root, "out"),
     generatedAt: "2026-05-26T05:07:35.093Z",
   });
 
-  assert.equal(report.blocked_content_report.summary.blocked_story_count, 2);
-  assert.equal(report.recurring_failure_reasons["observability:views_missing"], 1);
+  assert.equal(report.blocked_content_report.summary.blocked_story_count, 1);
+  assert.equal(report.recurring_failure_reasons["observability:views_missing"], undefined);
   assert.equal(report.recurring_failure_reasons["upstream:goal20_anti_spam_uniqueness_blocked"], 1);
   assert.equal(report.recurring_failure_reasons["anti_spam:repeated_title_structure"], 1);
 });

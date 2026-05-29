@@ -64,6 +64,7 @@ async function makeStoryPackage(
     thumbnail_headline: `${subject.toUpperCase()} ANGLE`,
     primary_source: { name: "Eurogamer", url: "https://www.eurogamer.net/example" },
     discovery_source: { name: "RSS", url: "https://www.eurogamer.net/feed" },
+    ...(options.canonicalPatch || {}),
   });
   await fs.outputJson(path.join(artifactDir, "publish_verdict.json"), {
     verdict,
@@ -1174,7 +1175,80 @@ test("goal dry-run publisher still blocks a clean package that is missing schedu
   assert.ok(plan.blocked_stories[0].blockers.includes("preflight_candidate_missing"));
 });
 
-test("goal dry-run publisher explains missing scheduler candidates with render-input repair requirements", async () => {
+test("goal dry-run publisher treats upstream anti-spam preflight exclusions as skipped", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-upstream-skipped-"));
+  const storyPackage = await makeStoryPackage(root, "duplicate-deferred", "GREEN", "Forza Horizon 6 Reviews Are In");
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-05-29T00:45:00.000Z",
+    platformOperationalConfig: allPlatformsEnabled(),
+    candidatePreflightReport: {
+      candidates: [],
+      excluded: [
+        {
+          id: "duplicate-deferred",
+          reason: "upstream_skipped:anti_spam_duplicate_deferred:deferred_by_goal20_duplicate_cluster",
+        },
+      ],
+    },
+  });
+
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 0);
+  assert.equal(plan.summary.skipped_story_count, 1);
+  assert.equal(plan.summary.planned_action_count, 0);
+  assert.equal(plan.skipped_stories[0].story_id, "duplicate-deferred");
+  assert.equal(plan.skipped_stories[0].status, "anti_spam_duplicate_deferred");
+  assert.equal(plan.skipped_stories[0].reason, "deferred_by_goal20_duplicate_cluster");
+});
+
+test("goal dry-run publisher honours Goal20 skipped rows when scheduler only lists active bridge candidates", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-goal20-report-skip-"));
+  const activeStory = await makeStoryPackage(root, "active-story", "GREEN", "Hades II Just Broke PlayStation's Silence");
+  const skippedStory = await makeStoryPackage(root, "duplicate-deferred", "GREEN", "Forza Horizon 6 Reviews Are In", {
+    renderStorySfxAssets: [
+      { asset_id: "old-impact", role: "impact", provider_id: "sonniss", rights_basis: "sonniss_game_audio_gdc_bundle_license" },
+    ],
+  });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [activeStory, skippedStory],
+    generatedAt: "2026-05-29T01:10:00.000Z",
+    platformOperationalConfig: allPlatformsEnabled(),
+    requireSchedulerPreflight: true,
+    candidatePreflightReport: {
+      candidates: [
+        {
+          id: "active-story",
+          status: "publish_ready",
+          preflight_qa: { status: "pass", blockers: [], warnings: [] },
+        },
+      ],
+      excluded: [],
+    },
+    upstreamAntiSpamReport: {
+      stories: [
+        {
+          story_id: "duplicate-deferred",
+          status: "skipped",
+          skipped_status: "anti_spam_duplicate_deferred",
+          skipped_reason: "deferred_by_goal20_duplicate_cluster",
+        },
+      ],
+    },
+  });
+
+  assert.equal(plan.summary.ready_story_count, 1);
+  assert.equal(plan.summary.held_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 0);
+  assert.equal(plan.summary.skipped_story_count, 1);
+  assert.equal(plan.skipped_stories[0].story_id, "duplicate-deferred");
+  assert.equal(plan.skipped_stories[0].status, "anti_spam_duplicate_deferred");
+  assert.equal(plan.skipped_stories[0].reason, "deferred_by_goal20_duplicate_cluster");
+});
+
+test("goal dry-run publisher holds operator-gated direct-video media gaps with render-input repair requirements", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-missing-preflight-workorder-"));
   const storyPackage = await makeStoryPackage(root, "motion-floor-missing", "GREEN", "Forza Horizon 6 Scores 84 On PC Gamer");
 
@@ -1209,12 +1283,14 @@ test("goal dry-run publisher explains missing scheduler candidates with render-i
   });
 
   assert.equal(plan.summary.ready_story_count, 0);
-  assert.equal(plan.summary.blocked_story_count, 1);
-  assert.ok(plan.blocked_stories[0].blockers.includes("preflight_candidate_missing"));
-  assert.ok(plan.blocked_stories[0].blockers.includes("render_input_blocked:direct_video_motion_clip_floor_not_met"));
-  assert.equal(plan.blocked_stories[0].render_input_requirements.length, 1);
-  assert.equal(plan.blocked_stories[0].render_input_requirements[0].repair_lane, "additional_direct_video_motion_required");
-  assert.equal(plan.blocked_stories[0].render_input_requirements[0].operator_approval_required, true);
+  assert.equal(plan.summary.blocked_story_count, 0);
+  assert.equal(plan.summary.held_story_count, 1);
+  assert.ok(plan.held_stories[0].hold_reasons.includes("preflight_candidate_missing"));
+  assert.ok(plan.held_stories[0].hold_reasons.includes("operator_source_review_required"));
+  assert.ok(plan.held_stories[0].blockers.includes("render_input_blocked:direct_video_motion_clip_floor_not_met"));
+  assert.equal(plan.held_stories[0].render_input_requirements.length, 1);
+  assert.equal(plan.held_stories[0].render_input_requirements[0].repair_lane, "additional_direct_video_motion_required");
+  assert.equal(plan.held_stories[0].render_input_requirements[0].operator_approval_required, true);
 });
 
 test("goal dry-run publisher holds generated-only benchmark failures for operator source review", async () => {
@@ -1282,6 +1358,225 @@ test("goal dry-run publisher holds generated-only benchmark failures for operato
   ]);
 });
 
+test("goal dry-run publisher skips visually unsupported stories after a source-review artefact", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-visual-source-reject-"));
+  const readyPackage = await makeStoryPackage(root, "bridge-ready", "GREEN", "Forza Horizon 6 Exposes Xbox's Steam Bet");
+  const sourceReviewPackage = await makeStoryPackage(
+    root,
+    "source-review-needed",
+    "GREEN",
+    "Super Mario RPG Drops To $15",
+  );
+  await fs.outputJson(path.join(sourceReviewPackage.artifact_dir, "visual_source_review.json"), {
+    schema_version: 1,
+    story_id: "source-review-needed",
+    decision: "defer_until_rights_backed_media_available",
+    reason: "no rights-backed real visual media is available",
+    safety: {
+      no_publish_triggered: true,
+      no_db_mutation: true,
+      no_oauth_or_token_change: true,
+    },
+  });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [readyPackage, sourceReviewPackage],
+    generatedAt: "2026-05-28T23:50:00.000Z",
+    platformOperationalConfig: allPlatformsEnabled(),
+    candidatePreflightReport: {
+      candidates: [
+        {
+          id: "bridge-ready",
+          status: "publish_ready",
+          preflight_qa: { status: "pass", blockers: [], warnings: [] },
+        },
+      ],
+    },
+    repairWorkOrder: {
+      jobs: [
+        {
+          story_id: "source-review-needed",
+          status: "blocked_on_render_inputs",
+          blockers: ["visual_evidence:generated_only_motion_deck", "visual_evidence:no_real_visual_media_asset"],
+          actions: [
+            {
+              action_id: "materialise_validated_real_motion_clips",
+              status: "operator_required",
+              repair_lane: "real_visual_media_required_after_owned_explainer_deck_failed_benchmark",
+              auto_repairable: false,
+              operator_approval_required: true,
+              dead_end_blocker: false,
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  assert.equal(plan.summary.ready_story_count, 1);
+  assert.equal(plan.summary.held_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 0);
+  assert.equal(plan.summary.skipped_story_count, 1);
+  assert.equal(plan.skipped_stories[0].story_id, "source-review-needed");
+  assert.equal(plan.skipped_stories[0].status, "visual_source_deferred");
+  assert.equal(plan.skipped_stories[0].reason, "defer_until_rights_backed_media_available");
+  assert.equal(plan.overall_verdict, "GREEN");
+});
+
+test("goal dry-run publisher holds stale current-news incident failures when a repair lane exists", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-stale-temporal-hold-"));
+  const readyPackage = await makeStoryPackage(
+    root,
+    "bridge-ready",
+    "GREEN",
+    "Forza Horizon 6 Exposes Xbox's Steam Bet",
+  );
+  const stalePackage = await makeStoryPackage(
+    root,
+    "stale-current-news",
+    "GREEN",
+    "Crimson Desert Is Already Live",
+    {
+      canonicalPatch: {
+        canonical_subject: "Crimson Desert",
+        selected_title: "Crimson Desert Is Already Live",
+        first_spoken_line: "Crimson Desert is already live on PC and console.",
+        narration_script:
+          "Crimson Desert is already live, and the player question is whether the launch timing still matters.",
+        confirmed_claims: ["Crimson Desert launched on March 19, 2026."],
+        allowed_public_wording: ["Crimson Desert is already live."],
+      },
+    },
+  );
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [readyPackage, stalePackage],
+    generatedAt: "2026-05-28T22:57:00.000Z",
+    platformOperationalConfig: allPlatformsEnabled(),
+    candidatePreflightReport: {
+      candidates: [
+        {
+          id: "bridge-ready",
+          status: "publish_ready",
+          preflight_qa: { status: "pass", blockers: [], warnings: [] },
+        },
+        {
+          id: "stale-current-news",
+          status: "publish_ready",
+          preflight_qa: { status: "pass", blockers: [], warnings: [] },
+        },
+      ],
+    },
+    repairWorkOrder: {
+      jobs: [
+        {
+          story_id: "stale-current-news",
+          status: "blocked_on_render_inputs",
+          blockers: ["stale_temporal_story_review_required"],
+          actions: [
+            {
+              action_id: "review_stale_temporal_story",
+              status: "human_review_required",
+              repair_lane: "stale_temporal_story_human_review",
+              exact_missing_input: "reject, defer or source-backed reframe",
+              auto_repairable: false,
+              operator_approval_required: true,
+              dead_end_blocker: false,
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  assert.equal(plan.summary.ready_story_count, 1);
+  assert.equal(plan.summary.blocked_story_count, 0);
+  assert.equal(plan.summary.held_story_count, 1);
+  assert.equal(plan.summary.incident_guard_failed_story_count, 0);
+  assert.equal(plan.summary.quarantined_incident_guard_failed_story_count, 1);
+  assert.equal(plan.summary.total_incident_guard_failed_story_count, 1);
+  assert.equal(plan.overall_verdict, "AMBER");
+  assert.ok(plan.readiness_reasons.includes("stories_quarantined_or_operator_held"));
+  assert.ok(!plan.readiness_reasons.includes("incident_guard_failed"));
+  assert.equal(plan.held_stories[0].story_id, "stale-current-news");
+  assert.equal(plan.held_stories[0].status, "held_for_operator_source_review");
+  assert.ok(plan.held_stories[0].repair_lanes.includes("stale_temporal_story_human_review"));
+  assert.ok(plan.held_stories[0].blockers.includes("incident:stale_temporal_claim"));
+  assert.ok(plan.held_stories[0].blockers.includes("incident:current_wording_on_old_event"));
+});
+
+test("goal dry-run publisher skips stale current-news stories after a reject review artefact", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-stale-temporal-reject-"));
+  const readyPackage = await makeStoryPackage(
+    root,
+    "bridge-ready",
+    "GREEN",
+    "Forza Horizon 6 Exposes Xbox's Steam Bet",
+  );
+  const stalePackage = await makeStoryPackage(
+    root,
+    "stale-current-news",
+    "GREEN",
+    "Crimson Desert Is Already Live",
+    {
+      canonicalPatch: {
+        canonical_subject: "Crimson Desert",
+        selected_title: "Crimson Desert Is Already Live",
+        first_spoken_line: "Crimson Desert is already live on PC and console.",
+        narration_script:
+          "Crimson Desert is already live, and the player question is whether the launch timing still matters.",
+        confirmed_claims: ["Crimson Desert launched on March 19, 2026."],
+        allowed_public_wording: ["Crimson Desert is already live."],
+      },
+    },
+  );
+  await fs.outputJson(path.join(stalePackage.artifact_dir, "stale_temporal_review.json"), {
+    schema_version: 1,
+    story_id: "stale-current-news",
+    decision: "reject_stale_current_news_candidate",
+    reason: "current-news wording relies on an old dated event",
+    safety: {
+      no_publish_triggered: true,
+      no_db_mutation: true,
+      no_oauth_or_token_change: true,
+    },
+  });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [readyPackage, stalePackage],
+    generatedAt: "2026-05-28T23:30:00.000Z",
+    platformOperationalConfig: allPlatformsEnabled(),
+    candidatePreflightReport: {
+      candidates: [
+        {
+          id: "bridge-ready",
+          status: "publish_ready",
+          preflight_qa: { status: "pass", blockers: [], warnings: [] },
+        },
+        {
+          id: "stale-current-news",
+          status: "review",
+          preflight_qa: {
+            status: "blocked",
+            blockers: ["incident_guard:incident:stale_temporal_claim"],
+            warnings: [],
+          },
+        },
+      ],
+    },
+  });
+
+  assert.equal(plan.summary.ready_story_count, 1);
+  assert.equal(plan.summary.held_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 0);
+  assert.equal(plan.summary.skipped_story_count, 1);
+  assert.equal(plan.summary.incident_guard_failed_story_count, 0);
+  assert.equal(plan.skipped_stories[0].story_id, "stale-current-news");
+  assert.equal(plan.skipped_stories[0].status, "stale_temporal_rejected");
+  assert.equal(plan.skipped_stories[0].reason, "reject_stale_current_news_candidate");
+  assert.equal(plan.overall_verdict, "GREEN");
+});
+
 test("goal dry-run publisher accepts legacy publish-ready scheduler reports without embedded preflight QA", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-legacy-preflight-"));
   const storyPackage = await makeStoryPackage(root, "bridge-ready-story", "GREEN", "Forza Horizon 6 Reaches Steam");
@@ -1312,7 +1607,7 @@ test("goal dry-run publisher accepts legacy publish-ready scheduler reports with
   assert.equal(plan.summary.planned_action_count, 7);
 });
 
-test("goal dry-run publisher preserves scheduler preflight warnings without blocking publish-ready candidates", async () => {
+test("goal dry-run publisher holds bridge candidates with stale source-family preflight warnings", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-preflight-warning-"));
   const storyPackage = await makeStoryPackage(root, "warning-ready-story", "GREEN", "Steam Controller Date May Have Leaked");
 
@@ -1335,11 +1630,15 @@ test("goal dry-run publisher preserves scheduler preflight warnings without bloc
     },
   });
 
-  assert.equal(plan.summary.ready_story_count, 1);
+  assert.equal(plan.summary.ready_story_count, 0);
   assert.equal(plan.summary.blocked_story_count, 0);
+  assert.equal(plan.summary.held_story_count, 1);
   assert.equal(plan.overall_verdict, "AMBER");
-  assert.ok(plan.actions[0].warnings.includes("preflight_qa_warn:bridge_motion_governance:stale_source_family_evidence_ignored"));
-  assert.ok(plan.platform_status_matrix.platforms.youtube_shorts.warnings.includes("preflight_qa_warn:bridge_motion_governance:stale_source_family_evidence_ignored"));
+  assert.equal(plan.held_stories[0].story_id, "warning-ready-story");
+  assert.equal(plan.held_stories[0].status, "held_for_scheduler_warning");
+  assert.ok(plan.held_stories[0].hold_reasons.includes("preflight_warning_requires_operator_review"));
+  assert.ok(plan.held_stories[0].blockers.includes("preflight_qa_warn:bridge_motion_governance:stale_source_family_evidence_ignored"));
+  assert.equal(plan.summary.planned_action_count, 0);
 });
 
 test("goal dry-run publisher trusts refreshed artefact verdict over stale package snapshot", async () => {
@@ -1697,6 +1996,87 @@ test("goal dry-run publisher blocks newer external V4 motion-pack blockers", asy
   assert.ok(
     plan.blocked_stories[0].blockers.includes(
       "visual_v4_motion_pack:actual_motion_clip_minimum_not_met",
+    ),
+  );
+});
+
+test("goal dry-run publisher lets final render evidence supersede stale motion-pack minimum blockers", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-motion-pack-final-evidence-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "final-evidence-story",
+    "GREEN",
+    "Subnautica 2 Dev Calls Out Leakers",
+    { canonicalSubject: "Subnautica 2" },
+  );
+  const artifactDir = storyPackage.artifact_dir;
+  const clips = Array.from({ length: 5 }, (_, index) => ({
+    id: `subnautica-real-motion-${index + 1}`,
+    type: "motion_clip",
+    path: `output/video_cache/subnautica-real-motion-${index + 1}.mp4`,
+    source_url:
+      index < 2
+        ? `https://cdn.example.test/subnautica-official-video-${index + 1}.mp4`
+        : `https://cdn.example.test/subnautica-official-screenshot-motion-${index + 1}.mp4`,
+    source_type: index < 2 ? "official_trailer_segment" : "official_screenshot_motion",
+    source_url_kind: "direct_video",
+    media_kind: "direct_video",
+    source_family: `subnautica_official_family_${index + 1}`,
+    rights_risk_class: "official_reference_only",
+    validated: true,
+    segmentValidationPassed: true,
+  }));
+  await fs.outputJson(path.join(artifactDir, "visual_v4_render_story.json"), {
+    video_clips: clips,
+    visual_v4_bridge_video_clips: clips,
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    motion_budget: {
+      required_motion_scenes: 5,
+      required_distinct_families: 4,
+    },
+    motion_inventory: {
+      production_motion_clips: clips,
+      accepted_local_clips: clips,
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    records: clips.map((clip) => ({
+      ...clip,
+      asset_type: "motion_clip",
+      licence_basis: "official_source_transformative_editorial_use",
+      commercial_use_allowed: true,
+      approval_status: "approved_for_transformative_editorial_use",
+    })),
+  });
+  const motionPackRoot = path.join(root, "motion-packs");
+  await fs.outputJson(path.join(motionPackRoot, "final-evidence-story_motion_pack_manifest.json"), {
+    story_id: "final-evidence-story",
+    generated_at: "2026-05-23T14:00:00.000Z",
+    readiness: {
+      status: "v4_motion_blocked",
+      blockers: [
+        "actual_motion_clip_minimum_not_met",
+        "distinct_motion_families_minimum_not_met",
+      ],
+    },
+    motion_budget: {
+      required_motion_scenes: 5,
+      required_distinct_families: 4,
+    },
+  });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-05-23T14:05:00.000Z",
+    motionPackRoot,
+  });
+
+  assert.equal(plan.summary.ready_story_count, 1);
+  assert.equal(plan.summary.blocked_story_count, 0);
+  assert.ok(
+    plan.ready_stories[0].warnings.includes(
+      "external_motion_pack_minimums_superseded_by_final_render_evidence",
     ),
   );
 });
@@ -2196,7 +2576,7 @@ test("goal dry-run publisher blocks local Whisper misrecognising Hades II as Had
     meta: {
       wordTimestampSource: "local_whisper_word_alignment",
       transcript:
-        "Hades number two just exposed a sharper gaming story. The source points to a clear player signal.",
+        "Hades, two just exposed a sharper gaming story. The source points to a clear player signal.",
     },
     words: [
       { word: "Hades", start: 0, end: 0.2 },

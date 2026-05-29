@@ -168,9 +168,20 @@ async function readTranscript(args) {
     const payload = await fs.readJson(resolvePath(args.timestampsJson));
     if (typeof payload.transcript === "string") return payload.transcript;
     if (typeof payload.text === "string") return payload.text;
+    if (typeof payload.meta?.transcript === "string") return payload.meta.transcript;
     if (Array.isArray(payload.characters)) return payload.characters.join("");
   }
   return "";
+}
+
+async function readTimestampEvidence(args) {
+  if (!args.timestampsJson) return {};
+  try {
+    const payload = await fs.readJson(resolvePath(args.timestampsJson));
+    return payload && typeof payload === "object" ? payload : {};
+  } catch {
+    return {};
+  }
 }
 
 async function buildVoiceNarration(args, context = {}) {
@@ -186,15 +197,40 @@ async function buildVoiceNarration(args, context = {}) {
     const enriched = await enrichVoiceReportForDispatch(report);
     return extractNarrationEvidence(enriched || {});
   }
+  const timestampEvidence = await readTimestampEvidence(args);
+  const timestampMeta =
+    timestampEvidence.meta && typeof timestampEvidence.meta === "object"
+      ? timestampEvidence.meta
+      : {};
   const transcript = await readTranscript(args);
   const medianPitchHz = Number(args.medianPitchHz);
+  const acoustic =
+    timestampMeta.acoustic && typeof timestampMeta.acoustic === "object"
+      ? {
+          ...timestampMeta.acoustic,
+          ...(Number.isFinite(medianPitchHz) ? { medianPitchHz } : {}),
+        }
+      : Number.isFinite(medianPitchHz)
+        ? { medianPitchHz }
+        : {};
   return {
-    provider: "local",
-    source: "local-production-voxcpm",
+    provider: timestampMeta.provider || "local",
+    source: timestampMeta.source || "local-production-voxcpm",
     audioPath: resolvePath(args.approvedAudio),
-    approvedLocalVoice: true,
-    acceptedLocalVoice: resolveAcceptedLocalVoiceReference(process.env),
-    acoustic: Number.isFinite(medianPitchHz) ? { medianPitchHz } : {},
+    approvedLocalVoice: timestampMeta.approvedLocalVoice !== false,
+    acceptedLocalVoice:
+      timestampMeta.acceptedLocalVoice ||
+      timestampMeta.localVoiceReference ||
+      resolveAcceptedLocalVoiceReference(process.env),
+    acoustic,
+    voiceMastering:
+      timestampMeta.voiceMastering ||
+      timestampMeta.voice_mastering ||
+      timestampMeta.mastering ||
+      null,
+    generation: timestampMeta.generation || null,
+    tempoStretch: timestampMeta.tempoStretch || timestampMeta.tempo_stretch || null,
+    voiceSettings: timestampMeta.voiceSettings || timestampMeta.voice_settings || null,
     transcript,
   };
 }

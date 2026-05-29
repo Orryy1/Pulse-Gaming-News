@@ -22,6 +22,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     candidateReportPath: null,
     platformStatusPath: null,
     repairWorkOrderPath: null,
+    antiSpamReportPath: null,
     motionPackRoot: null,
     requireSchedulerPreflight: true,
     outDir: path.join(process.cwd(), "output", "goal-contract"),
@@ -38,6 +39,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     }
     else if (arg === "--platform-status") args.platformStatusPath = argv[++i] || "";
     else if (arg === "--repair-work-order") args.repairWorkOrderPath = argv[++i] || "";
+    else if (arg === "--anti-spam-report") args.antiSpamReportPath = argv[++i] || "";
     else if (arg === "--motion-pack-root") args.motionPackRoot = argv[++i] || "";
     else if (arg === "--no-scheduler-preflight") args.requireSchedulerPreflight = false;
     else if (arg === "--out-dir") args.outDir = argv[++i] || args.outDir;
@@ -59,6 +61,7 @@ function usage() {
     "  --candidate-report <path> Scheduler next-publish preflight report",
     "  --platform-status <path>  Platform operational status report",
     "  --repair-work-order <path> Render input repair work order",
+    "  --anti-spam-report <path>  Goal20 anti-spam readiness report",
     "  --motion-pack-root <dir>  Story-scoped V4 motion pack manifest directory",
     "  --no-scheduler-preflight  Diagnostic mode only; do not require scheduler preflight evidence",
     "  --out-dir <dir>           Output directory",
@@ -198,6 +201,17 @@ async function readRepairWorkOrder(root, explicitPath = null) {
   return null;
 }
 
+async function readAntiSpamReport(root, explicitPath = null) {
+  const candidates = explicitPath
+    ? [path.resolve(root, explicitPath)]
+    : [path.join(root, "output", "goal-20", "goal20_readiness_report.json")];
+  for (const filePath of candidates) {
+    if (!(await fs.pathExists(filePath))) continue;
+    return fs.readJson(filePath);
+  }
+  return null;
+}
+
 function matrixStateToOperationalState(value = "") {
   const state = String(value || "").trim();
   if (state === "ready_now") return "enabled";
@@ -292,11 +306,12 @@ async function main(argv = process.argv.slice(2)) {
     return { help: true };
   }
   const root = path.resolve(args.root);
-  const [storyPackages, candidatePreflightReport, platformOperationalConfig, repairWorkOrder] = await Promise.all([
+  const [storyPackages, candidatePreflightReport, platformOperationalConfig, repairWorkOrder, upstreamAntiSpamReport] = await Promise.all([
     readStoryPackages(root, args.storyPackagesPath),
     readCandidateReport(root, args.candidateReportPath),
     readPlatformOperationalConfig(root, args.platformStatusPath),
     readRepairWorkOrder(root, args.repairWorkOrderPath),
+    readAntiSpamReport(root, args.antiSpamReportPath),
   ]);
   const plan = await buildGoalDryRunPublishPlan({
     storyPackages,
@@ -304,6 +319,7 @@ async function main(argv = process.argv.slice(2)) {
     requireSchedulerPreflight: args.requireSchedulerPreflight,
     platformOperationalConfig,
     repairWorkOrder,
+    upstreamAntiSpamReport,
     motionPackRoot: path.resolve(root, args.motionPackRoot || path.join("output", "studio-v4", "motion-packs")),
     generatedAt: args.generatedAt || new Date().toISOString(),
   });
@@ -327,6 +343,7 @@ module.exports = {
   readCandidateReport,
   readPlatformOperationalConfig,
   readRepairWorkOrder,
+  readAntiSpamReport,
   readStoryPackages,
   platformStatusMatrixToOperational,
   platformReadinessDoctorToOperational,

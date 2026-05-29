@@ -235,6 +235,90 @@ test("goal proof package proves each social pack is platform-native rather than 
   );
 });
 
+test("goal proof package records a story-format signature for anti-spam variation", () => {
+  const dealStory = greenStory();
+  dealStory.id = "mario-deal-proof";
+  dealStory.canonical_subject = "Super Mario RPG";
+  dealStory.canonical_game = "Super Mario RPG";
+  dealStory.canonical_angle = "price access deal";
+  dealStory.public_title = "Super Mario RPG Drops To $15";
+  dealStory.title = "Super Mario RPG Drops To $15";
+
+  const gameplayStory = greenStory();
+  gameplayStory.id = "expanse-gameplay-proof";
+  gameplayStory.canonical_subject = "The Expanse: Osiris Reborn";
+  gameplayStory.canonical_game = "The Expanse: Osiris Reborn";
+  gameplayStory.canonical_angle = "first real gameplay reveal";
+  gameplayStory.public_title = "The Expanse Shows Real Gameplay";
+  gameplayStory.title = "The Expanse Shows Real Gameplay";
+
+  const dealPack = buildGoalProofPackage({
+    story: dealStory,
+    rightsLedger: rightsForGreenStory(dealStory),
+    generatedAt: "2026-05-29T01:25:00.000Z",
+  });
+  const gameplayPack = buildGoalProofPackage({
+    story: gameplayStory,
+    rightsLedger: rightsForGreenStory(gameplayStory),
+    generatedAt: "2026-05-29T01:25:00.000Z",
+  });
+
+  const dealSignature = dealPack.platform_publish_manifest.platform_native_evidence.format_signature;
+  const gameplaySignature = gameplayPack.platform_publish_manifest.platform_native_evidence.format_signature;
+
+  assert.match(dealSignature, /game price watch/);
+  assert.match(gameplaySignature, /gameplay showcase/);
+  assert.notEqual(dealSignature, gameplaySignature);
+});
+
+test("goal proof package separates adjacent story formats for anti-spam variation", () => {
+  const tacticsStory = greenStory();
+  tacticsStory.id = "star-wars-tactics-proof";
+  tacticsStory.canonical_subject = "Star Wars Zero Company";
+  tacticsStory.canonical_game = "Star Wars Zero Company";
+  tacticsStory.canonical_angle = "tactics comparison";
+  tacticsStory.public_title = "Star Wars Zero Company Is More Than XCOM";
+  tacticsStory.title = "Star Wars Zero Company Is More Than XCOM";
+
+  const productionStory = greenStory();
+  productionStory.id = "pragmata-handmade-proof";
+  productionStory.canonical_subject = "Pragmata";
+  productionStory.canonical_game = "Pragmata";
+  productionStory.canonical_angle = "handmade production process";
+  productionStory.public_title = "Pragmata's AI-Look Stage Was Handmade";
+  productionStory.title = "Pragmata's AI-Look Stage Was Handmade";
+
+  const hardwareDateStory = greenStory();
+  hardwareDateStory.id = "steam-controller-date-proof";
+  hardwareDateStory.canonical_subject = "Steam Controller";
+  hardwareDateStory.canonical_game = "Steam Controller";
+  hardwareDateStory.canonical_angle = "hardware release date leak";
+  hardwareDateStory.public_title = "Steam Controller Date May Have Leaked";
+  hardwareDateStory.title = "Steam Controller Date May Have Leaked";
+
+  const releaseDateStory = greenStory();
+  releaseDateStory.id = "star-wars-racer-date-proof";
+  releaseDateStory.canonical_subject = "Star Wars Racer";
+  releaseDateStory.canonical_game = "Star Wars Racer";
+  releaseDateStory.canonical_angle = "release date leak";
+  releaseDateStory.public_title = "Star Wars Racer Date Leaked Early";
+  releaseDateStory.title = "Star Wars Racer Date Leaked Early";
+
+  const signatures = [tacticsStory, productionStory, hardwareDateStory, releaseDateStory].map((story) =>
+    buildGoalProofPackage({
+      story,
+      rightsLedger: rightsForGreenStory(story),
+      generatedAt: "2026-05-29T02:10:00.000Z",
+    }).platform_publish_manifest.platform_native_evidence.format_signature,
+  );
+
+  assert.match(signatures[0], /tactics comparison/);
+  assert.match(signatures[1], /creative process/);
+  assert.match(signatures[2], /hardware release watch/);
+  assert.match(signatures[3], /release date watch/);
+  assert.equal(new Set(signatures).size, signatures.length);
+});
+
 test("goal proof package never exposes internal source-lock placeholders in social packs", () => {
   const story = greenStory();
   story.id = "star-fox-placeholder-angle";

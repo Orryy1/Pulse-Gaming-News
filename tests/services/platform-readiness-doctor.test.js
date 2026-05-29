@@ -10,6 +10,9 @@ const {
   classifyInstagramReadinessError,
   renderPlatformReadinessDoctorMarkdown,
 } = require("../../lib/ops/platform-readiness-doctor");
+const {
+  buildCurrentTikTokAutomationReport,
+} = require("../../tools/platform-readiness-doctor");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 
@@ -55,6 +58,85 @@ test("platform readiness doctor keeps TikTok OAuth success separate from local t
   assert.match(md, /TikTok/);
   assert.match(md, /needs_local_token_refresh_or_sync/);
   assert.doesNotMatch(md, /must-not-leak|access_token|refresh_token|Bearer/);
+});
+
+test("platform readiness doctor CLI evidence prefers fresh token-blocked TikTok packs over stale overnight snapshots", () => {
+  const report = buildCurrentTikTokAutomationReport({
+    generatedAt: "2026-05-28T22:45:00.000Z",
+    env: { TIKTOK_DIRECT_POST_APPROVED: "false" },
+    tiktokTokenStatus: {
+      ok: false,
+      reason: "expired",
+      refresh_available: true,
+      needs_reauth: false,
+      needs_refresh_or_sync: true,
+      expires_in_seconds: -120,
+    },
+    existingAutomationReport: {
+      dispatchGate: {
+        topReadyPack: {
+          storyId: "stale_overnight_story",
+          status: "ready_for_operator_review",
+          mp4: "output/final/stale_overnight_story.mp4",
+          eligibility: { durationSeconds: 68.2 },
+        },
+      },
+    },
+    dispatchManifest: {
+      count: 1,
+      statusCounts: { ready_for_operator_review: 1 },
+      topReadyPack: {
+        storyId: "stale_manifest_story",
+        status: "ready_for_operator_review",
+        mp4: "output/final/stale_manifest_story.mp4",
+        eligibility: { durationSeconds: 60.7 },
+      },
+    },
+    freshDispatchPack: {
+      dispatchPack: {
+        storyId: "fresh_current_story",
+        status: "tiktok_auth_action_required",
+        mp4: "output/goal-proof/batch/fresh_current_story/tiktok.mp4",
+        cover: "test/output/tiktok-fresh-dispatch/fresh_current_story_cover.jpg",
+        eligibility: {
+          durationSeconds: 75.88,
+          captionReady: true,
+          dispatchLengthReady: true,
+          hasMp4: true,
+          hasCover: true,
+        },
+        voiceGate: {
+          verdict: "pass",
+          blockers: [],
+          warnings: [],
+          do_not_reuse_for_tiktok_dispatch: false,
+        },
+        creativeGate: {
+          blocks_dispatch: false,
+          blockers: [],
+        },
+      },
+      inboxPlan: {
+        status: "not_ready",
+        dry_run: true,
+        will_upload_to_tiktok: false,
+        blockers: ["dispatch_pack_tiktok_auth_action_required"],
+      },
+      creativeReview: {
+        operator_visual_review_required: true,
+        blockers: [],
+      },
+      safety: {
+        public_post_created: false,
+      },
+    },
+  });
+
+  assert.equal(report.dispatchGate.source, "fresh_local_dispatch_pack");
+  assert.equal(report.dispatchGate.topReadyPack.storyId, "fresh_current_story");
+  assert.equal(report.noPostReadiness.dispatchCreative.storyId, "fresh_current_story");
+  assert.equal(report.noPostReadiness.dispatchCreative.status, "ready_for_operator_visual_review");
+  assert.deepEqual(report.blockers, ["refresh_or_sync_local_token"]);
 });
 
 test("platform readiness doctor renders TikTok no-post readiness lanes separately", () => {
@@ -214,6 +296,50 @@ test("platform readiness doctor blocks TikTok inbox when the selected pack still
   assert.equal(report.platforms.tiktok.pack.status, "creative_review_required");
   assert.ok(report.blockers.includes("tiktok_creative_review_required"));
   assert.match(renderPlatformReadinessDoctorMarkdown(report), /creative_review_required_before_inbox/);
+});
+
+test("platform readiness doctor does not treat visual-review routing as a creative blocker without blocker evidence", () => {
+  const report = buildPlatformReadinessDoctor({
+    tiktokTokenStatus: {
+      ok: false,
+      reason: "expired",
+      refresh_available: true,
+      needs_reauth: false,
+      needs_refresh_or_sync: true,
+    },
+    tiktokAutomationReport: {
+      dispatchGate: {
+        topReadyPack: {
+          storyId: "fresh-current",
+          status: "tiktok_auth_action_required",
+          durationSeconds: 75.88,
+          mp4: "output/goal-proof/batch/fresh-current/tiktok.mp4",
+          cover: "test/output/tiktok-fresh-dispatch/fresh-current-cover.jpg",
+          creativeReviewRequired: true,
+          creativeBlockers: [],
+        },
+      },
+      noPostReadiness: {
+        officialInbox: {
+          status: "needs_local_token_refresh_or_sync",
+          ready_pack_present: true,
+          public_auto_publish: false,
+        },
+        dispatchCreative: {
+          status: "ready_for_operator_visual_review",
+          storyId: "fresh-current",
+          blockers: [],
+        },
+      },
+      blockers: ["refresh_or_sync_local_token"],
+    },
+  });
+
+  assert.equal(report.platforms.tiktok.official_inbox_route, "prepared_not_executed");
+  assert.equal(report.platforms.tiktok.pack.story_id, "fresh-current");
+  assert.equal(report.platforms.tiktok.pack.creative_review_required, false);
+  assert.deepEqual(report.platforms.tiktok.no_post_readiness.dispatch_creative.blockers, []);
+  assert.ok(!report.blockers.includes("tiktok_creative_review_required"));
 });
 
 test("platform readiness doctor does not coerce unknown TikTok pack duration to zero", () => {

@@ -189,6 +189,30 @@ test("goal batch package proof preparation rewrites source-backed fallback narra
   assert.equal(evaluateGoalPublicCopy(manifest).verdict, "pass");
 });
 
+test("goal batch package proof preparation avoids source-backed fallback claim when title is missing", () => {
+  const prepared = prepareStoryForGoalProof(
+    {
+      id: "hades-missing-title",
+      canonical_subject: "Hades II",
+      canonical_game: "Hades II",
+      primary_source: "PlayStation Blog",
+      article_url: "https://blog.playstation.com/hades-ii-console-details",
+      full_script: "clean read",
+    },
+    { allowOwnedMotionFallback: true },
+  );
+
+  const combined = [
+    prepared.public_title,
+    prepared.suggested_title,
+    prepared.full_script,
+    prepared.description,
+  ].join("\n");
+
+  assert.doesNotMatch(combined, /source-backed update|this gaming story/i);
+  assert.match(prepared.full_script, /Hades II/i);
+});
+
 test("goal batch packages write per-story artefacts and goal-contract story packages", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-batch-"));
   const ready = greenStory("green-one");

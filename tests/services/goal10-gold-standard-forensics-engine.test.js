@@ -290,6 +290,48 @@ test("Goal 10 accepts source-first tracked story pages when no affiliate disclos
   assert.ok(!report.stories[0].blockers.includes("pattern:commercial_integration_missing"));
 });
 
+test("Goal 10 excludes Goal 09 skipped stories from active benchmark blockers", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal10-skipped-"));
+  const readyStory = await makeBenchmarkStory(root, "story-ready");
+  const skippedStory = await makeBenchmarkStory(root, "story-skipped", {
+    motionDensityScore: 40,
+    firstThreeScore: 44,
+    visualResult: "fail",
+    visualFailures: ["gold_standard:visual_evidence:generated_only_motion_deck"],
+  });
+
+  const report = await buildGoal10GoldStandardForensicsEngine({
+    storyPackages: [readyStory, skippedStory],
+    referenceLibrary: completeReferenceLibrary(),
+    upstreamSoundReport: {
+      stories: [
+        { story_id: "story-ready", status: "ready", blockers: [] },
+        {
+          story_id: "story-skipped",
+          status: "skipped",
+          skipped_status: "visual_source_deferred",
+          skipped_reason: "defer_until_rights_backed_media_available",
+          blockers: [],
+        },
+      ],
+    },
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-05-28T23:55:00.000Z",
+  });
+
+  assert.equal(report.verdict, "PASS");
+  assert.equal(report.summary.story_count, 2);
+  assert.equal(report.summary.active_story_count, 1);
+  assert.equal(report.summary.skipped_story_count, 1);
+  assert.equal(report.summary.blocked_story_count, 0);
+  assert.equal(report.stories.find((story) => story.story_id === "story-skipped").status, "skipped");
+  assert.equal(report.benchmark_comparison_report.stories.find((story) => story.story_id === "story-skipped").status, "skipped");
+  assert.equal(report.pulse_render_benchmark_report.stories.find((story) => story.story_id === "story-skipped").status, "skipped");
+  assert.deepEqual(report.blocker_counts, {});
+  assert.equal(report.benchmark_rejection_reasons.rejections.length, 0);
+});
+
 test("Goal 10 writes the required forensic benchmark artefacts", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal10-write-"));
   const story = await makeBenchmarkStory(root, "story-ready");

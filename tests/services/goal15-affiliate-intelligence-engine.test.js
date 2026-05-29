@@ -323,6 +323,49 @@ test("Goal 15 hard-fails stale affiliate offers that do not match the story subj
   assert.equal(report.blocker_counts["affiliate:story_product_mismatch"], 1);
 });
 
+test("Goal 15 hard-fails racing offers caused only by incidental source-title wording", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal15-incidental-forza-"));
+  const route = "/p/subnautica-leak";
+  const affiliate = safeAffiliate("subnautica-leak", route);
+  affiliate.commercial_intent_type = "racing_game_setup";
+  affiliate.product_category = "racing wheel";
+  affiliate.primary_link.id = "racing-wheel";
+  affiliate.primary_link.label = "Racing wheel";
+  affiliate.primary_link.query = "racing wheel PS5 Xbox PC";
+  affiliate.primary_link.product_category = "racing wheel";
+  affiliate.primary_link.category = "racing wheel";
+  affiliate.primary_link.story_relevance = 92;
+  affiliate.relevance_score = 92;
+
+  await makeStoryPackage(root, "subnautica-leak", {
+    title: "Subnautica 2 Reportedly Leaked Early",
+    subject: "Subnautica 2",
+    affiliate,
+  });
+  const canonicalPath = path.join(root, "subnautica-leak", "canonical_story_manifest.json");
+  const canonical = await fs.readJson(canonicalPath);
+  canonical.canonical_title =
+    "After Forza Horizon 6, Now Subnautica 2 Has Reportedly Leaked 48 Hours Ahead of Launch";
+  canonical.selected_title = "Subnautica 2 Reportedly Leaked Early";
+  canonical.canonical_subject = "Subnautica 2";
+  canonical.canonical_game = "Subnautica 2";
+  canonical.canonical_angle = "racing_game_setup";
+  canonical.confirmed_claims = ["Subnautica 2 reportedly appeared online before launch."];
+  await fs.writeJson(canonicalPath, canonical, { spaces: 2 });
+
+  const report = await buildGoal15AffiliateIntelligenceEngine({
+    storyPackages: [{ story_id: "subnautica-leak", artifact_dir: path.join(root, "subnautica-leak") }],
+    upstreamSocialReport: readySocialReport("subnautica-leak"),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-05-29T01:50:00.000Z",
+  });
+
+  assert.equal(report.verdict, "BLOCKED");
+  assert.equal(report.stories[0].direct_affiliate_status, "blocked");
+  assert.ok(report.stories[0].direct_affiliate_blockers.includes("affiliate:story_product_mismatch"));
+});
+
 test("Goal 15 accepts link-level tracking when aggregate tracking maps are not backfilled", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal15-link-level-tracking-"));
   const route = "/p/story-link-tracking";
@@ -342,6 +385,46 @@ test("Goal 15 accepts link-level tracking when aggregate tracking maps are not b
   assert.equal(report.blocker_counts["affiliate:missing_tracking"], undefined);
   assert.equal(report.affiliate_tracking_map.stories[0].story_page, affiliate.primary_link.tracking_url);
   assert.ok(report.affiliate_tracking_map.stories[0].platforms.youtube);
+});
+
+test("Goal 15 excludes upstream-skipped stories from active affiliate blockers", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal15-skipped-"));
+  const readyStory = await makeStoryPackage(root, "story-ready");
+  const skippedStory = await makeStoryPackage(root, "story-skipped", {
+    affiliate: null,
+  });
+
+  const report = await buildGoal15AffiliateIntelligenceEngine({
+    storyPackages: [readyStory, skippedStory],
+    upstreamSocialReport: {
+      stories: [
+        { story_id: "story-ready", status: "ready", blockers: [] },
+        {
+          story_id: "story-skipped",
+          status: "skipped",
+          skipped_status: "visual_source_deferred",
+          skipped_reason: "defer_until_rights_backed_media_available",
+          blockers: [],
+        },
+      ],
+    },
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-05-29T00:30:00.000Z",
+  });
+
+  const skipped = report.stories.find((story) => story.story_id === "story-skipped");
+
+  assert.equal(report.verdict, "PASS");
+  assert.equal(report.direct_affiliate_verdict, "PASS");
+  assert.equal(report.summary.story_count, 2);
+  assert.equal(report.summary.active_story_count, 1);
+  assert.equal(report.summary.skipped_story_count, 1);
+  assert.equal(report.summary.affiliate_ready_story_count, 1);
+  assert.equal(skipped.status, "skipped");
+  assert.deepEqual(report.blocker_counts, {});
+  assert.equal(report.disclosure_manifest.stories.length, 1);
+  assert.equal(report.affiliate_link_manifest.stories.length, 1);
 });
 
 test("Goal 15 writes required affiliate intelligence artefacts", async () => {

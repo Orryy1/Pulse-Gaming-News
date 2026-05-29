@@ -142,6 +142,50 @@ test("Goal 09 blocks full sound readiness when upstream Visual V4 is blocked", a
   assert.equal(report.loudness_report.stories[0].status, "pass");
 });
 
+test("Goal 09 excludes strict dry-run skipped stories from active sound blockers", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal09-skipped-"));
+  const readyStory = await makeSoundStory(root, "story-ready");
+  const skippedStory = await makeSoundStory(root, "story-skipped", {
+    loudnessVerdict: "fail",
+    loudnessBlockers: ["audio_segment_loudness_unverified"],
+    validSegments: 0,
+  });
+
+  const report = await buildGoal09SoundDesignEngine({
+    storyPackages: [readyStory, skippedStory],
+    upstreamVisualReport: {
+      stories: [
+        { story_id: "story-ready", status: "ready", blockers: [] },
+        { story_id: "story-skipped", status: "blocked", blockers: ["visual:generated_only_motion_deck"] },
+      ],
+    },
+    dryRunPlan: {
+      skipped_stories: [
+        {
+          story_id: "story-skipped",
+          status: "visual_source_deferred",
+          reason: "defer_until_rights_backed_media_available",
+        },
+      ],
+    },
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-05-28T23:45:00.000Z",
+  });
+
+  assert.equal(report.verdict, "PASS");
+  assert.equal(report.summary.story_count, 2);
+  assert.equal(report.summary.active_story_count, 1);
+  assert.equal(report.summary.skipped_story_count, 1);
+  assert.equal(report.summary.blocked_story_count, 0);
+  assert.equal(report.stories.find((story) => story.story_id === "story-skipped").status, "skipped");
+  assert.equal(report.audio_plan.stories.find((story) => story.story_id === "story-skipped").status, "skipped");
+  assert.equal(report.sfx_manifest.stories.find((story) => story.story_id === "story-skipped").status, "skipped");
+  assert.equal(report.loudness_report.stories.find((story) => story.story_id === "story-skipped").status, "skipped");
+  assert.equal(report.audio_quality_scorecard.stories.find((story) => story.story_id === "story-skipped").status, "skipped");
+  assert.deepEqual(report.blocker_counts, {});
+});
+
 test("Goal 09 accepts compact source-lock SFX manifests when all required roles are covered", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal09-source-lock-sfx-"));
   const story = await makeSoundStory(root, "story-source-lock-sfx", {

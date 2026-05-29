@@ -19,7 +19,7 @@ const ROOT = path.resolve(__dirname, "..");
 function parseArgs(argv = process.argv.slice(2)) {
   const args = {
     workbenchPath: path.join(ROOT, "output", "goal-contract", "audio_timestamp_workbench.json"),
-    materializationPath: "",
+    materializationPath: null,
     outDir: path.join(ROOT, "output", "goal-05"),
     workspaceRoot: ROOT,
     generatedAt: null,
@@ -66,8 +66,15 @@ async function main(argv = process.argv.slice(2)) {
     return { help: true };
   }
   const workbenchReport = await readJsonIfPresent(path.resolve(args.workbenchPath));
-  const materializationReport = args.materializationPath
-    ? await readJsonIfPresent(path.resolve(args.materializationPath), null)
+  const inferredMaterializationPath = path.join(
+    path.dirname(path.resolve(args.workbenchPath)),
+    "audio_timestamp_materialization_report.json",
+  );
+  const materializationPath = args.materializationPath === ""
+    ? ""
+    : args.materializationPath || inferredMaterializationPath;
+  const materializationReport = materializationPath
+    ? await readJsonIfPresent(path.resolve(materializationPath), null)
     : null;
   const report = await buildGoal05NarrationReadiness({
     workbenchReport,

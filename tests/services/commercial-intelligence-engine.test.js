@@ -150,6 +150,61 @@ test("Commercial Intelligence Engine does not let stale racing context override 
   assert.ok(manifest.relevance_score >= 70);
 });
 
+test("Commercial Intelligence Engine ignores incidental Forza wording when the public story is Subnautica", () => {
+  const manifest = buildAffiliateLinkManifest({
+    story: {
+      id: "subnautica-leak",
+      selected_title: "Subnautica 2 Reportedly Leaked Early",
+      canonical_title: "After Forza Horizon 6, Now Subnautica 2 Has Reportedly Leaked 48 Hours Ahead of Launch",
+      canonical_subject: "Subnautica 2",
+      canonical_game: "Subnautica 2",
+      canonical_angle: "racing_game_setup",
+      narration_script:
+        "Subnautica 2 reportedly leaked before launch. Rough leaked material can shape expectations before the official build gets a fair look.",
+      confirmed_claims: ["Subnautica 2 reportedly appeared online before launch."],
+      primary_source: "Respawnfirst",
+    },
+    tag: "pulsegaming-21",
+  });
+
+  assert.equal(manifest.vertical, "gaming");
+  assert.equal(manifest.commercial_intent_type, "no_safe_commercial_intent");
+  assert.equal(manifest.primary_link, null);
+  assert.doesNotMatch(
+    manifest.candidate_links.map((link) => `${link.label} ${link.query}`).join(" "),
+    /racing wheel|game pass|xbox controller/i,
+  );
+});
+
+test("Commercial Intelligence Engine treats Forza-branded Xbox controller stories as accessory offers", () => {
+  const manifest = buildAffiliateLinkManifest({
+    story: {
+      id: "xbox-controller-accessory",
+      selected_title: "Xbox Controller Deal Has One Catch",
+      canonical_title: "FH6 limited-edition Xbox controller and headset have just leaked",
+      canonical_subject: "Xbox Controller",
+      canonical_game: "Xbox Controller",
+      canonical_angle: "racing_game_setup",
+      narration_script:
+        "Xbox controller deals are getting aggressive, but the catch is the retailer. Xbox lists official Forza Horizon 6 limited-edition Xbox Wireless Controller and Xbox Wireless Headset accessories.",
+      confirmed_claims: [
+        "Xbox lists official Forza Horizon 6 limited-edition Xbox Wireless Controller and Xbox Wireless Headset accessories.",
+      ],
+      primary_source: "Xbox",
+    },
+    tag: "pulsegaming-21",
+  });
+
+  assert.equal(manifest.vertical, "gaming");
+  assert.equal(manifest.commercial_intent_type, "controller_accessory_context");
+  assert.match(manifest.primary_link?.label || "", /controller/i);
+  assert.notEqual(manifest.primary_link?.product_category, "racing wheel");
+  assert.doesNotMatch(
+    manifest.candidate_links.map((link) => `${link.label} ${link.query}`).join(" "),
+    /racing wheel/i,
+  );
+});
+
 test("Commercial Intelligence Engine keeps gaming stories with camera wording out of tech creator offers", () => {
   const manifest = buildAffiliateLinkManifest({
     story: {

@@ -117,14 +117,14 @@ test("Silent Hill 2 / II → Silent Hill two", () => {
   );
 });
 
-test("Hades II / 2 -> Hades sequel to avoid local clone 'tattoo' blending", () => {
+test("Hades II / 2 -> Hades, two to avoid local clone tattoo blending without adding subtitle drift", () => {
   assert.equal(
     applyGamingPronunciation("Hades II finally has a console date"),
-    "Hades sequel finally has a console date",
+    "Hades, two finally has a console date",
   );
   assert.equal(
     applyGamingPronunciation("Hades 2 finally has a console date"),
-    "Hades sequel finally has a console date",
+    "Hades, two finally has a console date",
   );
 });
 

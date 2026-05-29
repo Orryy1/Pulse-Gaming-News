@@ -222,6 +222,51 @@ test("Goal 16 hard-fails landing pages that cannot prove source, summary, embed 
   assert.equal(report.disclosure_block.verdict, "fail");
 });
 
+test("Goal 16 excludes upstream-skipped stories from active landing blockers", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal16-skipped-"));
+  const readyStory = await makeStoryPackage(root, "story-ready");
+  const skippedStory = await makeStoryPackage(root, "story-skipped", {
+    landing: {
+      story_id: "story-skipped",
+      landing_page_route: "/p/story-skipped",
+      link_pack: { source_links: [] },
+      disclosure_block: { required: true, copy: { short: "", landing: "" } },
+    },
+  });
+
+  const report = await buildGoal16LandingPageEngine({
+    storyPackages: [readyStory, skippedStory],
+    upstreamAffiliateReport: {
+      stories: [
+        { story_id: "story-ready", status: "ready", blockers: [] },
+        {
+          story_id: "story-skipped",
+          status: "skipped",
+          skipped_status: "visual_source_deferred",
+          skipped_reason: "defer_until_rights_backed_media_available",
+          blockers: [],
+        },
+      ],
+    },
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-05-29T00:35:00.000Z",
+  });
+
+  const skipped = report.stories.find((story) => story.story_id === "story-skipped");
+
+  assert.equal(report.verdict, "PASS");
+  assert.equal(report.direct_landing_verdict, "PASS");
+  assert.equal(report.summary.story_count, 2);
+  assert.equal(report.summary.active_story_count, 1);
+  assert.equal(report.summary.skipped_story_count, 1);
+  assert.equal(report.summary.landing_ready_story_count, 1);
+  assert.equal(skipped.status, "skipped");
+  assert.deepEqual(report.blocker_counts, {});
+  assert.equal(report.landing_page_manifest.stories.length, 1);
+  assert.equal(report.disclosure_block.stories.length, 1);
+});
+
 test("Goal 16 writes required landing-page artefacts", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal16-write-"));
   const story = await makeStoryPackage(root, "story-write");

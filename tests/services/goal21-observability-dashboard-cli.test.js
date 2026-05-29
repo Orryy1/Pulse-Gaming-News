@@ -78,6 +78,8 @@ test("Goal 21 CLI parses observability inputs", () => {
     "output/goal-contract/story-packages.json",
     "--upstream-anti-spam-report",
     "output/goal-20/goal20_readiness_report.json",
+    "--upstream-platform-policy-report",
+    "output/goal-17/platform_policy_report.json",
     "--out-dir",
     "output/goal-21",
     "--workspace",
@@ -89,6 +91,7 @@ test("Goal 21 CLI parses observability inputs", () => {
 
   assert.equal(args.storyPackagesPath, "output/goal-contract/story-packages.json");
   assert.equal(args.upstreamAntiSpamReportPath, "output/goal-20/goal20_readiness_report.json");
+  assert.equal(args.upstreamPlatformPolicyReportPath, "output/goal-17/platform_policy_report.json");
   assert.equal(args.outDir, "output/goal-21");
   assert.equal(args.workspaceRoot, ".");
   assert.equal(args.generatedAt, "2026-05-26T05:07:35.093Z");
@@ -100,18 +103,22 @@ test("Goal 21 CLI writes observability artefacts", async () => {
   const story = await makeStory(root, "story-cli");
   const storyPackagesPath = path.join(root, "story-packages.json");
   const upstreamPath = path.join(root, "goal20.json");
+  const policyPath = path.join(root, "goal17.json");
   const outDir = path.join(root, "out");
   await fs.outputJson(storyPackagesPath, [story]);
   await fs.outputJson(upstreamPath, {
     verdict: "BLOCKED",
     stories: [{ story_id: "story-cli", status: "blocked", blockers: ["anti_spam:repeated_title_structure"] }],
   });
+  await fs.outputJson(policyPath, { stories: [{ story_id: "story-cli", status: "pass", blockers: [] }] });
 
   const result = await main([
     "--story-packages",
     storyPackagesPath,
     "--upstream-anti-spam-report",
     upstreamPath,
+    "--upstream-platform-policy-report",
+    policyPath,
     "--out-dir",
     outDir,
     "--workspace",

@@ -460,3 +460,70 @@ test("Visual V4 Director adds proof-card beats but does not benchmark generated-
   assert.ok(plan.media_house_benchmark.warnings.some((warning) => /visual_evidence/.test(warning)));
   assert.ok(plan.media_house_benchmark.scores.card_hierarchy_score >= 65);
 });
+
+test("Visual V4 Director uses story-specific proof cards instead of generic source-lock cards", () => {
+  const storyCases = [
+    {
+      story: {
+        id: "zero-company",
+        canonical_subject: "Star Wars Zero Company",
+        title: "Star Wars Zero Company Is More Than XCOM",
+        full_script: "Star Wars Zero Company is more than XCOM because the tactics pitch changes the angle.",
+      },
+      label: /TACTICS CHECK/,
+    },
+    {
+      story: {
+        id: "pragmata",
+        canonical_subject: "Pragmata",
+        title: "Pragmata's AI-Look Stage Was Handmade",
+        full_script: "Pragmata's AI-look stage was handmade, not an AI generation shortcut.",
+      },
+      label: /HANDMADE STAGE/,
+    },
+    {
+      story: {
+        id: "steam-controller",
+        canonical_subject: "Steam Controller",
+        title: "Steam Controller Date May Have Leaked",
+        full_script: "Steam Controller may have leaked its own release date.",
+      },
+      label: /DATE LEAK/,
+    },
+    {
+      story: {
+        id: "star-wars-racer",
+        canonical_subject: "Star Wars Racer",
+        title: "Star Wars Racer Date Leaked Early",
+        full_script: "Star Wars Racer may have leaked its own release date before the official post.",
+      },
+      label: /RELEASE DATE/,
+    },
+    {
+      story: {
+        id: "subnautica",
+        canonical_subject: "Subnautica 2",
+        title: "Subnautica 2 Reportedly Leaked Early",
+        full_script: "Subnautica 2 reportedly leaked before launch.",
+      },
+      label: /LEAKED BUILD/,
+    },
+  ];
+
+  for (const item of storyCases) {
+    const footagePlan = buildFootageEmpirePlan({
+      story: item.story,
+      trustedFootageReport: trustedReport(),
+      localMotionClips: localClips(8),
+    });
+    const plan = buildVisualV4DirectorPlan({
+      story: item.story,
+      footagePlan,
+      sfxAssetInventory: licensedSfxAssets(),
+    });
+    const proof = plan.shot_plan.find((shot) => shot.kind === "proof_card");
+    assert.ok(proof);
+    assert.match(proof.label, item.label);
+    assert.notEqual(proof.label, "SOURCE LOCKED");
+  }
+});

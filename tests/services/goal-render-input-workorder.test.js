@@ -1990,6 +1990,146 @@ test("render input work order routes dry-run title duplicates to event deduplica
   ]);
 });
 
+test("render input work order routes stale current-news incident failures to human review", () => {
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-05-28T21:44:00.000Z",
+      queue: [],
+    },
+    dryRunPlan: {
+      generated_at: "2026-05-28T22:57:00.000Z",
+      blocked_stories: [
+        {
+          story_id: "stale-launch-story",
+          title: "Crimson Desert Is Already Live",
+          artifact_dir: "C:/repo/output/goal-proof/batch/stale-launch-story",
+          blockers: [
+            "incident:stale_temporal_claim",
+            "incident:current_wording_on_old_event",
+          ],
+          scheduler_preflight: {
+            status: "pass",
+            blockers: [],
+            checks: {
+              public_copy: { result: "pass", failures: [], warnings: [] },
+            },
+          },
+          incident_guard: {
+            evidence: {
+              title: "Crimson Desert Is Already Live",
+              canonical_subject: "Crimson Desert",
+              temporal_freshness: {
+                stale_dated_claims: [
+                  {
+                    date_text: "March 19, 2026",
+                    age_days: 70,
+                  },
+                ],
+              },
+            },
+          },
+        },
+      ],
+    },
+    generatedAt: "2026-05-28T22:58:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.stale_temporal_review_jobs, 1);
+  const job = workOrder.jobs.find((entry) => entry.story_id === "stale-launch-story");
+  assert.ok(job.blockers.includes("stale_temporal_story_review_required"));
+  assert.equal(job.actions[0].action_id, "review_stale_temporal_story");
+  assert.equal(job.actions[0].repair_lane, "stale_temporal_story_human_review");
+  assert.equal(job.actions[0].operator_approval_required, true);
+  assert.equal(job.actions[0].auto_repairable, false);
+  assert.match(job.actions[0].recommended_command, /goal-public-copy-repair/);
+  assert.match(job.actions[0].recommended_command, /stale-launch-story/);
+  assert.deepEqual(job.evidence.scheduler_preflight_blockers, [
+    "incident:stale_temporal_claim",
+    "incident:current_wording_on_old_event",
+  ]);
+});
+
+test("render input work order does not reopen stale temporal stories already rejected by review", () => {
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-05-28T21:44:00.000Z",
+      queue: [],
+    },
+    dryRunPlan: {
+      generated_at: "2026-05-28T22:57:00.000Z",
+      skipped_stories: [
+        {
+          story_id: "stale-launch-story",
+          status: "stale_temporal_rejected",
+          reason: "reject_stale_current_news_candidate",
+        },
+      ],
+    },
+    incidentGuardReport: {
+      generated_at: "2026-05-28T22:57:00.000Z",
+      stories: [
+        {
+          story_id: "stale-launch-story",
+          artifact_dir: "C:/repo/output/goal-proof/batch/stale-launch-story",
+          disaster_upload_blockers: [
+            "incident:stale_temporal_claim",
+            "incident:current_wording_on_old_event",
+          ],
+          file_evidence: {},
+        },
+      ],
+    },
+    generatedAt: "2026-05-28T22:58:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.story_count, 0);
+  assert.equal(workOrder.summary.stale_temporal_review_jobs, 0);
+  assert.equal(workOrder.repair_backlog.summary.total_items, 0);
+});
+
+test("render input work order does not reopen visual source stories already deferred by review", () => {
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-05-28T21:44:00.000Z",
+      blocked: [
+        {
+          story_id: "visual-source-story",
+          title: "Xbox Fans Used Feedback To Demand Exclusives",
+          artifact_dir: "C:/repo/output/goal-proof/batch/visual-source-story",
+          blockers: [
+            "visual_evidence:generated_only_motion_deck",
+            "visual_evidence:no_real_visual_media_asset",
+          ],
+          visual_evidence_profile: {
+            generated_only_motion_deck: true,
+            motion_asset_count: 8,
+            real_media_asset_count: 0,
+            blockers: [
+              "visual_evidence:generated_only_motion_deck",
+              "visual_evidence:no_real_visual_media_asset",
+            ],
+          },
+        },
+      ],
+    },
+    dryRunPlan: {
+      generated_at: "2026-05-28T22:57:00.000Z",
+      skipped_stories: [
+        {
+          story_id: "visual-source-story",
+          status: "visual_source_deferred",
+          reason: "defer_until_rights_backed_media_available",
+        },
+      ],
+    },
+    generatedAt: "2026-05-28T22:58:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.story_count, 0);
+  assert.equal(workOrder.summary.real_motion_materialisation_jobs, 0);
+  assert.equal(workOrder.repair_backlog.summary.total_items, 0);
+});
+
 test("render input work order converts Goal 03 missing artefacts into executable repair lanes", () => {
   const workOrder = buildGoalRenderInputWorkOrder({
     cutoverPlan: {
@@ -2038,6 +2178,103 @@ test("render input work order converts Goal 03 missing artefacts into executable
   assert.equal(
     workOrder.post_repair_validation_plan.items.every((item) => item.validation_command),
     true,
+  );
+});
+
+test("render input work order converts held stale source-family dry-run warnings into operator repair lanes", () => {
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-05-28T21:44:00.000Z",
+      queue: [],
+    },
+    dryRunPlan: {
+      generated_at: "2026-05-28T21:50:00.000Z",
+      held_stories: [
+        {
+          story_id: "source-warning-story",
+          title: "Xbox Controller Deal Has One Catch",
+          artifact_dir: "C:/repo/output/goal-proof/batch/source-warning-story",
+          status: "held_for_scheduler_warning",
+          hold_reasons: ["preflight_warning_requires_operator_review"],
+          blockers: ["preflight_qa_warn:bridge_motion_governance:stale_source_family_evidence_ignored"],
+          incident_guard: {
+            evidence: {
+              canonical_subject: "Xbox Controller",
+              title: "Xbox Controller Deal Has One Catch",
+            },
+          },
+        },
+      ],
+    },
+    generatedAt: "2026-05-28T21:51:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.story_count, 1);
+  assert.equal(workOrder.summary.operator_required_jobs, 1);
+  assert.equal(workOrder.repair_backlog.summary.total_items, 1);
+  assert.equal(workOrder.jobs[0].story_id, "source-warning-story");
+  assert.ok(workOrder.jobs[0].blockers.includes("source_family_evidence_stale"));
+  assert.equal(workOrder.jobs[0].actions[0].action_id, "refresh_source_family_governance_evidence");
+  assert.equal(workOrder.jobs[0].actions[0].repair_lane, "refresh_bridge_source_family_evidence");
+  assert.equal(workOrder.jobs[0].actions[0].operator_approval_required, true);
+  assert.match(workOrder.jobs[0].actions[0].recommended_command, /v4-source-family-acquisition/);
+  assert.match(workOrder.jobs[0].actions[0].post_repair_validation_command, /goal-dry-run-publish/);
+});
+
+test("render input work order does not turn held generated-only benchmark failures into auto refresh work", () => {
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-05-28T21:44:00.000Z",
+      blocked: [
+        {
+          story_id: "generated-held-story",
+          title: "Xbox Exclusives Are Back Under Review",
+          artifact_dir: "C:/repo/output/goal-proof/batch/generated-held-story",
+          blockers: [
+            "benchmark_not_pass",
+            "benchmark_below_production_threshold:motion_density_score",
+            "benchmark_below_production_threshold:media_house_polish_score",
+          ],
+          owned_explainer_motion_ready: true,
+          owned_explainer_exception_approved: true,
+          visual_evidence_profile: {
+            asset_count: 26,
+            motion_asset_count: 26,
+            generated_motion_asset_count: 26,
+            real_media_asset_count: 0,
+            generated_only_motion_deck: true,
+            blockers: [
+              "visual_evidence:generated_only_motion_deck",
+              "visual_evidence:no_real_visual_media_asset",
+            ],
+          },
+        },
+      ],
+    },
+    dryRunPlan: {
+      generated_at: "2026-05-28T21:50:00.000Z",
+      held_stories: [
+        {
+          story_id: "generated-held-story",
+          title: "Xbox Exclusives Are Back Under Review",
+          status: "held_for_operator_source_review",
+          hold_reasons: ["preflight_candidate_missing", "operator_source_review_required"],
+          blockers: [
+            "incident:benchmark_qa_failed",
+            "incident:motion_density_too_low",
+            "incident:below_benchmark_polish",
+          ],
+        },
+      ],
+    },
+    generatedAt: "2026-05-28T21:51:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.story_count, 1);
+  assert.equal(workOrder.summary.aggregate_benchmark_repair_jobs, 0);
+  assert.deepEqual(
+    workOrder.jobs[0].actions.map((action) => action.action_id),
+    ["materialise_validated_real_motion_clips"],
   );
 });
 

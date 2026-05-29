@@ -2152,11 +2152,10 @@ test("production cutover requeues final renders when TTS pronunciation policy ma
   await fs.outputJson(timestampsPath, {
     words: [
       { word: "Hades", start: 0, end: 0.4 },
-      { word: "number", start: 0.4, end: 0.55 },
-      { word: "two", start: 0.55, end: 0.7 },
+      { word: "sequel", start: 0.4, end: 0.7 },
     ],
     meta: {
-      transcript: "Hades, number two finally has a console date players can plan around.",
+      transcript: "Hades sequel finally has a console date players can plan around.",
     },
   });
   const acceptedLocalClips = [];
@@ -2191,7 +2190,7 @@ test("production cutover requeues final renders when TTS pronunciation policy ma
   assert.equal(plan.queue[0].force_final_render, true);
   assert.ok(plan.queue[0].render_input_blockers.includes("final_narration_audio_stale_after_pronunciation_repair"));
   assert.ok(plan.queue[0].render_input_blockers.includes("word_timestamps_stale_after_pronunciation_repair"));
-  assert.equal(plan.queue[0].render_input_evidence.tts_pronunciation_expected_transcript, "Hades sequel finally has a console date players can plan around.");
+  assert.equal(plan.queue[0].render_input_evidence.tts_pronunciation_expected_transcript, "Hades, two finally has a console date players can plan around.");
 });
 
 test("production cutover requeues final renders when ASR word timestamps contain semantic misrecognitions", async () => {

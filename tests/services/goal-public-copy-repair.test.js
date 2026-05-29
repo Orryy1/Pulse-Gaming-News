@@ -47,6 +47,35 @@ test("caption SRT uses word timestamps instead of evenly distributing full sente
   assert.doesNotMatch(srt, /Paul Skaming/);
 });
 
+test("caption SRT keeps a protected game title together when local TTS expands the number", () => {
+  const srt = buildCaptionSrt(
+    "Hades 2 is not just leaving early access.",
+    5,
+    {
+      words: [
+        { word: "Hades", start: 0, end: 0.3 },
+        { word: "number", start: 0.3, end: 0.68 },
+        { word: "two", start: 0.68, end: 1.06 },
+        { word: "is", start: 1.06, end: 1.2 },
+        { word: "not", start: 1.2, end: 1.4 },
+        { word: "just", start: 1.4, end: 1.62 },
+        { word: "leaving", start: 1.62, end: 2.04 },
+        { word: "early", start: 2.04, end: 2.32 },
+        { word: "access.", start: 2.32, end: 2.72 },
+      ],
+      maxWordsPerPhrase: 2,
+      maxPhraseChars: 18,
+      maxPhraseDurationS: 1.05,
+      danglingMergeMaxWords: 2,
+    },
+  );
+
+  assert.match(srt, /00:00:00,000 --> 00:00:01,060\nHades 2/);
+  assert.match(srt, /00:00:01,060 --> 00:00:01,400\nis not/);
+  assert.doesNotMatch(srt, /\nHades\n\n2\n/);
+  assert.doesNotMatch(srt, /\n2 is\n/);
+});
+
 test("public copy repair turns a quote fragment Kickstarter story into usable copy", () => {
   const repaired = repairGoalPublicCopyManifest(
     {

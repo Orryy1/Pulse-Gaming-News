@@ -219,3 +219,105 @@ test("platform-native pack repair fixes stale subject/source drift even when old
   assert.match(repaired.outputs.threads.discussion_post, /Subnautica 2/);
   assert.doesNotMatch(JSON.stringify(repaired.outputs), /Source:\s*Youtube/i);
 });
+
+test("platform-native pack repair refreshes passed evidence missing story-format signatures", async () => {
+  const { storyPackages, root } = await legacyArtifact();
+  const artifactDir = storyPackages[0].artifact_dir;
+  const manifestPath = path.join(artifactDir, "platform_publish_manifest.json");
+  const manifest = await fs.readJson(manifestPath);
+  manifest.platform_native_evidence = {
+    verdict: "pass",
+    platforms: [{ platform: "youtube_shorts", status: "pass" }],
+    blind_duplicate_pairs: [],
+  };
+  await fs.writeJson(manifestPath, manifest, { spaces: 2 });
+
+  const dryRun = await repairPlatformNativePacks({
+    storyPackages,
+    generatedAt: "2026-05-29T01:25:00.000Z",
+    apply: false,
+  });
+
+  assert.equal(dryRun.summary.repairable_count, 1);
+  assert.equal(dryRun.items[0].status, "repairable");
+
+  const applied = await repairPlatformNativePacks({
+    storyPackages,
+    generatedAt: "2026-05-29T01:26:00.000Z",
+    apply: true,
+    backupRoot: path.join(root, "backups-format-signature"),
+  });
+
+  assert.equal(applied.summary.repaired_count, 1);
+  const repaired = await fs.readJson(manifestPath);
+  assert.match(repaired.platform_native_evidence.format_signature, /platform access|game price watch/);
+});
+
+test("platform-native pack repair refreshes stale affiliate disclosure and landing route evidence", async () => {
+  const { storyPackages, root } = await legacyArtifact();
+  const artifactDir = storyPackages[0].artifact_dir;
+  const affiliatePath = path.join(artifactDir, "affiliate_link_manifest.json");
+  await fs.writeJson(affiliatePath, {
+    story_id: "story-native",
+    disclosure_required: false,
+    primary_link: null,
+    fallback_links: [],
+    disclosure_copy: {
+      short: "No affiliate links are attached to this story.",
+      landing: "This page is editorial first.",
+    },
+    landing_page_route: "/p/story-native-clean",
+  });
+  await fs.writeJson(path.join(artifactDir, "landing_page_manifest.json"), {
+    story_id: "story-native",
+    landing_page_slug: "story-native-clean",
+    landing_page_route: "/p/story-native-clean",
+  });
+
+  const manifestPath = path.join(artifactDir, "platform_publish_manifest.json");
+  const manifest = await fs.readJson(manifestPath);
+  manifest.platform_native_evidence = {
+    verdict: "pass",
+    platforms: [{ platform: "youtube_shorts", status: "pass" }],
+    blind_duplicate_pairs: [],
+    format_signature: "platform access old signature",
+  };
+  manifest.outputs.youtube_shorts = {
+    ...manifest.outputs.youtube_shorts,
+    disclosure_status: {
+      required: true,
+      type: "affiliate",
+      caption: "Affiliate links may earn us a commission.",
+    },
+    description: "Forza Horizon 6. Sources and related links: /p/old-affiliate-route",
+    profile_or_landing_page_cta: "Story sources and related links: /p/old-affiliate-route",
+  };
+  manifest.outputs.tiktok = {
+    ...manifest.outputs.tiktok,
+    disclosure_flag: "commercial_content_disclosure_required",
+    product_link_eligibility: "review_required",
+  };
+  await fs.writeJson(manifestPath, manifest, { spaces: 2 });
+
+  const dryRun = await repairPlatformNativePacks({
+    storyPackages,
+    generatedAt: "2026-05-29T02:00:00.000Z",
+    apply: false,
+  });
+
+  assert.equal(dryRun.summary.repairable_count, 1);
+  assert.equal(dryRun.items[0].affiliate_output_stale, true);
+
+  const applied = await repairPlatformNativePacks({
+    storyPackages,
+    generatedAt: "2026-05-29T02:01:00.000Z",
+    apply: true,
+    backupRoot: path.join(root, "backups-affiliate-stale"),
+  });
+
+  assert.equal(applied.summary.repaired_count, 1);
+  const repaired = await fs.readJson(manifestPath);
+  assert.equal(repaired.outputs.youtube_shorts.disclosure_status.required, false);
+  assert.equal(repaired.outputs.tiktok.product_link_eligibility, "not_used");
+  assert.match(repaired.outputs.youtube_shorts.profile_or_landing_page_cta, /story-native-clean/);
+});

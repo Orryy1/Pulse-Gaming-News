@@ -127,6 +127,37 @@ test("breaking fast lane accepts 0-1 source confidence scores as percentages", a
   assert.equal(plan.breaking_news_manifest.source_strength.source_confidence_score, 90);
 });
 
+test("breaking fast lane treats official string primary sources with URL fallbacks as source-strong", async () => {
+  const plan = await buildGoalBreakingNewsFastLanePlan({
+    story: officialStory({
+      story_id: "xbox-official-trailer",
+      canonical_subject: "The Expanse: Osiris Reborn",
+      canonical_game: "The Expanse: Osiris Reborn",
+      canonical_company: "Xbox",
+      selected_title: "The Expanse Shows Real Gameplay",
+      first_spoken_line: "The Expanse: Osiris Reborn finally has real gameplay on screen.",
+      primary_source: "Xbox",
+      primary_source_url: "https://www.youtube.com/watch?v=official",
+      official_source: "Xbox",
+      secondary_sources: [],
+      source_confidence_score: 0.9,
+      confirmed_claims: ["Xbox showed The Expanse: Osiris Reborn gameplay during Partner Preview."],
+      breaking_news_flag: true,
+      urgency_level: "high",
+    }),
+    platformState: { platforms: { threads: { operational_state: "ready" } } },
+  });
+
+  assert.equal(plan.breaking_news_manifest.verdict, "AMBER");
+  assert.equal(plan.rejection_reasons.includes("insufficient_breaking_source_pattern"), false);
+  assert.equal(plan.breaking_news_manifest.source_strength.has_official_source, true);
+  assert.equal(plan.breaking_news_manifest.source_strength.primary_source_reliability, "official");
+  assert.equal(plan.breaking_news_manifest.source_strength.reliable_independent_source_count, 1);
+  assert.equal(plan.follow_up_v4_plan.source_lock.url, "https://www.youtube.com/watch?v=official");
+  assert.equal(plan.correction_watch.watch_sources[0].url, "https://www.youtube.com/watch?v=official");
+  assert.equal(plan.correction_watch.watch_sources.length, 1);
+});
+
 test("breaking fast lane treats ready_now assumed-enabled platforms as reviewable", async () => {
   const plan = await buildGoalBreakingNewsFastLanePlan({
     story: officialStory(),

@@ -20,6 +20,7 @@ function parseArgs(argv = process.argv.slice(2)) {
   const args = {
     storyPackagesPath: path.join(ROOT, "output", "goal-contract", "story-packages.json"),
     upstreamVisualReportPath: path.join(ROOT, "output", "goal-08", "goal08_readiness_report.json"),
+    dryRunPlanPath: path.join(ROOT, "output", "goal-contract", "dry_run_publish_plan.json"),
     outDir: path.join(ROOT, "output", "goal-09"),
     workspaceRoot: ROOT,
     generatedAt: null,
@@ -30,6 +31,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     const arg = argv[index];
     if (arg === "--story-packages") args.storyPackagesPath = argv[++index] || args.storyPackagesPath;
     else if (arg === "--upstream-visual-report") args.upstreamVisualReportPath = argv[++index] || args.upstreamVisualReportPath;
+    else if (arg === "--dry-run-plan") args.dryRunPlanPath = argv[++index] || "";
     else if (arg === "--out-dir") args.outDir = argv[++index] || args.outDir;
     else if (arg === "--workspace") args.workspaceRoot = argv[++index] || args.workspaceRoot;
     else if (arg === "--generated-at") args.generatedAt = argv[++index] || null;
@@ -47,6 +49,7 @@ function usage() {
     "Options:",
     "  --story-packages <path>          Story package manifest",
     "  --upstream-visual-report <path>  Goal 08 readiness report",
+    "  --dry-run-plan <path>            Optional strict dry-run plan used to keep skipped stories out of active blockers",
     "  --out-dir <dir>                  Output directory for Goal 09 proof",
     "  --workspace <dir>                Workspace root for relative package paths",
     "  --generated-at <iso>             Fixed timestamp for deterministic reports",
@@ -69,9 +72,13 @@ async function main(argv = process.argv.slice(2)) {
   }
   const storyPackages = await readJsonIfPresent(path.resolve(args.storyPackagesPath), []);
   const upstreamVisualReport = await readJsonIfPresent(path.resolve(args.upstreamVisualReportPath), {});
+  const dryRunPlan = args.dryRunPlanPath
+    ? await readJsonIfPresent(path.resolve(args.dryRunPlanPath), {})
+    : {};
   const report = await buildGoal09SoundDesignEngine({
     storyPackages,
     upstreamVisualReport,
+    dryRunPlan,
     workspaceRoot: path.resolve(args.workspaceRoot),
     outputDir: path.resolve(args.outDir),
     generatedAt: args.generatedAt || new Date().toISOString(),

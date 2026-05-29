@@ -183,6 +183,126 @@ test("daily cadence rejects weak or non-GREEN review packets instead of filling 
   );
 });
 
+test("daily cadence rejects old event dates with current-news wording", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-cadence-stale-temporal-"));
+  const staleLaunch = await makeReviewItem(root, "stale-launch", {
+    title: "Crimson Desert Is Already Live",
+    scriptScore: 92,
+    visualScore: 96,
+    firstThreeScore: 100,
+    motionScore: 100,
+    canonicalSubject: "Crimson Desert",
+    canonical: {
+      confirmed_claims: [
+        "Crimson Desert launched on March 19, 2026 after Pearl Abyss announced the launch timing.",
+      ],
+      selected_title: "Crimson Desert Is Already Live",
+      thumbnail_headline: "CRIMSON DESERT IS ALREADY LIVE",
+      first_spoken_line: "Crimson Desert is out now after years of trailer hype.",
+      narration_script:
+        "Crimson Desert is out now after years of trailer hype. GameSpot reports Crimson Desert launched on March 19, 2026.",
+      description: "Crimson Desert is out now after Pearl Abyss confirmed the launch timing.",
+    },
+  });
+  const freshStory = await makeReviewItem(root, "fresh-story", {
+    title: "Fresh Game Just Got Its Console Date",
+    scriptScore: 88,
+    visualScore: 93,
+    canonicalSubject: "Fresh Game",
+    canonical: {
+      confirmed_claims: ["Fresh Game was dated on May 27, 2026."],
+      selected_title: "Fresh Game Just Got Its Console Date",
+      first_spoken_line: "Fresh Game just got its console date.",
+      narration_script: "Fresh Game just got its console date. The announcement landed on May 27, 2026.",
+    },
+  });
+
+  const plan = await buildGoalDailyCadencePlan({
+    humanReviewQueue: { review_items: [staleLaunch, freshStory] },
+    generatedAt: "2026-05-28T08:00:00.000Z",
+    targetDailyShorts: 2,
+  });
+
+  assert.deepEqual(
+    plan.daily_content_plan.planned_items.map((item) => item.story_id),
+    ["fresh-story"],
+  );
+  const rejected = plan.daily_content_plan.rejected_items.find((item) => item.story_id === "stale-launch");
+  assert.ok(rejected.blockers.includes("cadence_stale_explicit_date"));
+  assert.ok(rejected.blockers.includes("cadence_current_wording_on_old_event"));
+  assert.equal(rejected.freshness.oldest_temporal_claim_age_days >= 60, true);
+});
+
+test("daily cadence does not schedule repeated same-subject stories into one day", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-cadence-subject-diversity-"));
+  const forzaRelease = await makeReviewItem(root, "forza-release", {
+    title: "Forza Horizon 6 Finally Hit Steam",
+    canonicalSubject: "Forza Horizon 6",
+    scriptScore: 94,
+    visualScore: 96,
+    motionScore: 100,
+  });
+  const forzaReviews = await makeReviewItem(root, "forza-reviews", {
+    title: "Forza Horizon 6 Reviews Are In",
+    canonicalSubject: "Forza Horizon 6",
+    scriptScore: 93,
+    visualScore: 96,
+    motionScore: 100,
+  });
+  const forzaMetacritic = await makeReviewItem(root, "forza-metacritic", {
+    title: "Forza Horizon 6 Tops Metacritic This Year",
+    canonicalSubject: "Forza Horizon 6",
+    scriptScore: 92,
+    visualScore: 97,
+    motionScore: 100,
+  });
+  const pokemon = await makeReviewItem(root, "pokemon", {
+    title: "Mega Mewtwo Is Finally Coming To Pokémon Go",
+    canonicalSubject: "Pokémon Go",
+    scriptScore: 91,
+    visualScore: 95,
+    motionScore: 100,
+    canonical: {
+      first_spoken_line: "Pokémon Go starts fast with a clear player consequence.",
+      narration_script:
+        "Pokémon Go starts fast with a clear player consequence. The source points to a clear signal worth watching today.",
+      description: "Pokémon Go has a source-safe gaming angle. Source: Eurogamer.",
+    },
+  });
+  const hades = await makeReviewItem(root, "hades", {
+    title: "Hades II Just Broke PlayStation's Silence",
+    canonicalSubject: "Hades II",
+    scriptScore: 90,
+    visualScore: 95,
+    motionScore: 100,
+  });
+
+  const plan = await buildGoalDailyCadencePlan({
+    humanReviewQueue: {
+      review_items: [forzaRelease, forzaReviews, forzaMetacritic, pokemon, hades],
+    },
+    generatedAt: "2026-05-28T08:00:00.000Z",
+    targetDailyShorts: 3,
+  });
+
+  assert.deepEqual(
+    plan.daily_content_plan.planned_items.map((item) => item.story_id),
+    ["forza-release", "pokemon", "hades"],
+  );
+  assert.deepEqual(
+    plan.daily_content_plan.planned_items.map((item) => item.cadence_subject_key),
+    ["forza horizon 6", "pokemon go", "hades ii"],
+  );
+  const deferredForza = plan.daily_content_plan.ready_but_unscheduled_items
+    .filter((item) => item.cadence_subject_key === "forza horizon 6");
+  assert.equal(deferredForza.length, 2);
+  assert.ok(deferredForza.every((item) =>
+    item.warnings.includes("cadence_subject_cap_deferred:forza horizon 6"),
+  ));
+  assert.equal(plan.cadence_quality_report.gates.no_repeated_subjects_scheduled, true);
+  assert.equal(plan.cadence_quality_report.subject_diversity.deferred_same_subject_count, 2);
+});
+
 test("daily cadence blocks candidates that the aggregate Goal 10 benchmark report still rejects", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-cadence-goal10-"));
   const clean = await makeReviewItem(root, "goal10-clean", { scriptScore: 84, visualScore: 93 });

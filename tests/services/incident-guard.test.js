@@ -177,6 +177,59 @@ test("incident guard passes only when public copy, final inputs and platform evi
   assert.deepEqual(report.disaster_upload_blockers, []);
 });
 
+test("incident guard blocks stale current-news wording on old event dates", () => {
+  const report = evaluateIncidentGuard({
+    story_id: "crimson-desert-stale-live",
+    generated_at: "2026-05-28T12:00:00.000Z",
+    canonical_story_manifest: {
+      story_id: "crimson-desert-stale-live",
+      canonical_subject: "Crimson Desert",
+      canonical_game: "Crimson Desert",
+      selected_title: "Crimson Desert Is Already Live",
+      thumbnail_headline: "CRIMSON DESERT IS ALREADY LIVE",
+      first_spoken_line: "Crimson Desert is out now after years of trailer hype.",
+      narration_script:
+        "Crimson Desert is out now after years of trailer hype. GameSpot reports Crimson Desert launched on March 19, 2026 after Pearl Abyss confirmed the launch timing.",
+      description: "Crimson Desert is out now after Pearl Abyss confirmed the launch timing. Source: GameSpot.",
+      primary_source: { name: "GameSpot", url: "https://www.gamespot.com/example" },
+      discovery_source: { name: "Reddit", url: "https://www.reddit.com/r/Games/example" },
+      confirmed_claims: [
+        "Crimson Desert launched on March 19, 2026 after Pearl Abyss confirmed the launch timing.",
+      ],
+    },
+    render_manifest: {
+      final_publish_render: true,
+      render_lane: "visual_v4_production",
+      render_quality_class: "premium",
+      visual_count: 8,
+    },
+    ...cleanVisualEvidence("Crimson Desert"),
+    sfx_manifest: cleanSfxEvidence(),
+    publish_verdict: { verdict: "GREEN" },
+    platform_publish_manifest: {
+      publish_status: "GREEN",
+      platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts"] },
+      outputs: {
+        youtube_shorts: { title: "Crimson Desert Is Already Live" },
+      },
+    },
+    file_evidence: {
+      mp4_ready: true,
+      captions_ready: true,
+      narration_ready: true,
+      word_timestamps_ready: true,
+      materialised_motion_ready: true,
+      distinct_motion_families_ready: true,
+      rights_ledger_ready: true,
+    },
+  });
+
+  assert.equal(report.safe_to_publish_boolean, false);
+  assert.ok(report.disaster_upload_blockers.includes("incident:stale_temporal_claim"));
+  assert.ok(report.disaster_upload_blockers.includes("incident:current_wording_on_old_event"));
+  assert.equal(report.evidence.temporal_freshness.oldest_temporal_claim_age_days >= 60, true);
+});
+
 test("incident guard blocks stale production renderer policy versions in dry-run and publish gates", () => {
   const report = evaluateIncidentGuard({
     story_id: "stale-render-policy",

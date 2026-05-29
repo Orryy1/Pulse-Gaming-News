@@ -8,6 +8,7 @@ const {
   DEFAULT_BRIDGE_CANDIDATES_PATH,
   DEFAULT_DIRECT_VIDEO_ENRICHMENT_WORK_ORDER_PATH,
   DEFAULT_SOURCE_FAMILY_ACQUISITION_REPORT_PATH,
+  DEFAULT_UPSTREAM_ANTI_SPAM_REPORT_PATH,
   buildNextPublishCandidatesReport,
   attachPreflightQa,
   attachStoryPreflight,
@@ -292,6 +293,47 @@ test("next publish report excludes rows with existing public platform ids and QA
   assert.deepEqual(report.candidates.map((row) => row.id), ["clean"]);
 });
 
+test("next publish report excludes upstream anti-spam deferred bridge candidates", () => {
+  const report = buildNextPublishCandidatesReport(
+    [
+      baseStory({
+        id: "duplicate_deferred",
+        title: "Forza Horizon 6 Reviews Are In",
+        auto_approved: true,
+        scheduler_bridge_source: "goal_production_cutover",
+      }),
+      baseStory({
+        id: "clean_bridge",
+        title: "Xbox Controller Deal Has One Catch",
+        auto_approved: true,
+        scheduler_bridge_source: "goal_production_cutover",
+      }),
+    ],
+    {
+      analyticsText,
+      generatedAt: "2026-05-29T00:45:00.000Z",
+      upstreamAntiSpamReport: {
+        stories: [
+          {
+            story_id: "duplicate_deferred",
+            status: "skipped",
+            skipped_status: "anti_spam_duplicate_deferred",
+            skipped_reason: "deferred_by_goal20_duplicate_cluster",
+            blockers: [],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.deepEqual(report.candidates.map((row) => row.id), ["clean_bridge"]);
+  assert.deepEqual(report.excluded.map((row) => row.id), ["duplicate_deferred"]);
+  assert.equal(
+    report.excluded[0].reason,
+    "upstream_skipped:anti_spam_duplicate_deferred:deferred_by_goal20_duplicate_cluster",
+  );
+});
+
 test("next publish report distinguishes pending local audio from generic missing MP4", () => {
   const report = buildNextPublishCandidatesReport(
     [
@@ -430,6 +472,11 @@ test("next publish CLI defaults to the scheduler bridge candidate overlay", () =
     args.sourceFamilyAcquisitionReportPath,
     path.join(process.cwd(), "output", "goal-contract", "studio_v4_source_family_acquisition_remaining.json"),
   );
+  assert.equal(
+    args.upstreamAntiSpamReportPath,
+    path.join(process.cwd(), "output", "goal-20", "goal20_readiness_report.json"),
+  );
+  assert.equal(args.upstreamAntiSpamReportPath, DEFAULT_UPSTREAM_ANTI_SPAM_REPORT_PATH);
 });
 
 test("next publish report can focus candidate ranking on one story id", () => {
@@ -2327,6 +2374,183 @@ test("attachPreflightQa blocks local-clone narration when word timestamps are no
   assert.equal(report.candidates[0].preflight_qa.checks.timestamp_alignment.result, "fail");
 });
 
+test("attachPreflightQa blocks ASR-labelled local timestamps with unusable word timing", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-timestamp-gap-preflight-"));
+  const timestampsPath = path.join(tmp, "local_whisper_gap_timestamps.json");
+  await fs.writeJson(timestampsPath, {
+    words: [
+      { word: "Hades", start: 0, end: 0.26 },
+      { word: "number", start: 0.27, end: 0.52 },
+      { word: "two", start: 0.53, end: 0.72 },
+      { word: "changed", start: 14.4, end: 14.78 },
+      { word: "launch", start: 14.8, end: 15.12 },
+    ],
+    meta: {
+      transcript: "Hades number two changed launch.",
+      wordTimestampSource: "local_whisper_word_alignment",
+      timestampWhisperAlignment: { repaired: true },
+    },
+  });
+
+  const stories = [
+    baseStory({
+      id: "local_timestamp_gap",
+      title: "Forza Horizon 6 Reviews Are In",
+      selected_title: "Forza Horizon 6 Reviews Are In",
+      canonical_subject: "Forza Horizon 6",
+      first_spoken_line: "Forza Horizon 6 reviews are finally in.",
+      full_script: "Forza Horizon 6 reviews are finally in. The player-facing question is whether the PC score changes what Xbox players expect next.",
+      duration_seconds: 46,
+      duration_lane: "normal_production",
+      min_video_duration_seconds: 35,
+      target_video_duration_seconds_min: 35,
+      target_video_duration_seconds_max: 60,
+      max_video_duration_seconds: 60,
+      auto_approved: true,
+      scheduler_bridge_source: "goal_production_cutover",
+      scheduler_bridge_artifact_dir: tmp,
+      render_lane: "visual_v4_production",
+      render_quality_class: "premium",
+      exported_path: "D:/pulse-data/media/output/final/local_timestamp_gap.mp4",
+      audio_path: "D:/pulse-data/media/output/audio/local_timestamp_gap.mp3",
+      timestamps_path: timestampsPath,
+      manual_caption_path: "D:/pulse-data/media/output/captions/local_timestamp_gap.srt",
+      audio_manifest: {
+        voice_provider: "local_tts",
+      },
+      publish_verdict: { verdict: "GREEN" },
+      platform_publish_manifest: {
+        publish_status: "GREEN",
+        platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts"] },
+        outputs: {
+          youtube_shorts: { title: "Forza Horizon 6 Reviews Are In" },
+        },
+      },
+      ...bridgeVisualEvidence("Forza Horizon 6"),
+      sfx_manifest: bridgeSfxEvidence(),
+      rights_ledger: [{ asset_id: "local-timestamp-gap-render" }],
+      video_clips: [
+        { path: "clip-a.mp4", source_family: "official_trailer_a" },
+        { path: "clip-b.mp4", source_family: "official_trailer_b" },
+        { path: "clip-c.mp4", source_family: "official_trailer_c" },
+      ],
+    }),
+  ];
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-05-28T23:30:00.000Z",
+  });
+
+  await attachPreflightQa(report, stories, {
+    runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+  });
+
+  const check = report.candidates[0].preflight_qa.checks.timestamp_alignment;
+  assert.equal(report.candidates[0].preflight_qa.status, "blocked");
+  assert.equal(check.result, "fail");
+  assert.ok(
+    report.candidates[0].preflight_qa.blockers.includes(
+      "timestamp_alignment:word_timestamps_timing_unusable:max_gap_too_large",
+    ),
+  );
+  assert.equal(check.evidence.word_timestamp_source, "local_whisper_word_alignment");
+  assert.equal(check.evidence.word_timestamp_timing_reason, "max_gap_too_large");
+});
+
+test("attachPreflightQa ignores stale segment acoustic duration when timestamp materializer marked it ignored", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-timestamp-stale-duration-"));
+  const timestampsPath = path.join(tmp, "local_whisper_stale_duration_timestamps.json");
+  const words = Array.from({ length: 42 }, (_, index) => ({
+    word: `word${index + 1}`,
+    start: Number((index * 1.02).toFixed(2)),
+    end: Number((index * 1.02 + 0.34).toFixed(2)),
+  }));
+  words[words.length - 1].end = 43.14;
+  await fs.writeJson(timestampsPath, {
+    words,
+    meta: {
+      transcript: words.map((word) => word.word).join(" "),
+      wordTimestampSource: "local_whisper_word_alignment",
+      timestampWhisperAlignment: { repaired: true },
+      acoustic: { durationSeconds: 14.08 },
+      timestampDurationMetadataIgnored: {
+        reason: "metadata_duration_shorter_than_word_timeline",
+        metadata_duration_s: 14.08,
+        last_word_end_s: 43.14,
+      },
+    },
+  });
+
+  const stories = [
+    baseStory({
+      id: "local_stale_segment_duration",
+      title: "Hades II Changed Its Launch Plan",
+      selected_title: "Hades II Changed Its Launch Plan",
+      canonical_subject: "Hades II",
+      full_script: words.map((word) => word.word).join(" "),
+      duration_seconds: 43.21,
+      duration_lane: "normal_production",
+      min_video_duration_seconds: 35,
+      target_video_duration_seconds_min: 35,
+      target_video_duration_seconds_max: 60,
+      max_video_duration_seconds: 60,
+      auto_approved: true,
+      scheduler_bridge_source: "goal_production_cutover",
+      scheduler_bridge_artifact_dir: tmp,
+      render_lane: "visual_v4_production",
+      render_quality_class: "premium",
+      timestamps_path: timestampsPath,
+      audio_manifest: {
+        voice_provider: "local_tts",
+      },
+      publish_verdict: { verdict: "GREEN" },
+      platform_publish_manifest: {
+        publish_status: "GREEN",
+        platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts"] },
+        outputs: {
+          youtube_shorts: { title: "Hades II Changed Its Launch Plan" },
+        },
+      },
+      ...bridgeVisualEvidence("Hades II"),
+      sfx_manifest: bridgeSfxEvidence(),
+      rights_ledger: [{ asset_id: "local-stale-duration-render" }],
+      video_clips: [
+        { path: "clip-a.mp4", source_family: "official_trailer_a" },
+        { path: "clip-b.mp4", source_family: "official_trailer_b" },
+        { path: "clip-c.mp4", source_family: "official_trailer_c" },
+      ],
+    }),
+  ];
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-05-29T00:10:00.000Z",
+  });
+
+  await attachPreflightQa(report, stories, {
+    runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+  });
+
+  const check = report.candidates[0].preflight_qa.checks.timestamp_alignment;
+  assert.equal(report.candidates[0].preflight_qa.status, "pass");
+  assert.equal(check.result, "pass");
+  assert.equal(check.evidence.word_timestamp_timing_reason, "usable");
+  assert.equal(check.evidence.word_timestamp_source, "local_whisper_word_alignment");
+});
+
 test("attachPreflightQa prefers MEDIA_ROOT ASR timestamps over stale repo fallback timestamps", async () => {
   const previousMediaRoot = process.env.MEDIA_ROOT;
   const mediaRoot = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-media-root-timestamps-"));
@@ -2361,6 +2585,7 @@ test("attachPreflightQa prefers MEDIA_ROOT ASR timestamps over stale repo fallba
       transcript: "Xbox opened a public feedback channel.",
       wordTimestampSource: "local_whisper_word_alignment",
       timestampWhisperAlignment: { repaired: true },
+      acoustic: { durationSeconds: 1.1 },
     },
   });
 
@@ -2421,6 +2646,10 @@ test("attachPreflightQa prefers MEDIA_ROOT ASR timestamps over stale repo fallba
 
     assert.equal(report.candidates[0].preflight_qa.status, "pass");
     assert.equal(report.candidates[0].preflight_qa.checks.timestamp_alignment.result, "pass");
+    assert.equal(
+      report.candidates[0].preflight_qa.checks.timestamp_alignment.evidence.word_timestamp_source,
+      "local_whisper_word_alignment",
+    );
   } finally {
     if (previousMediaRoot === undefined) delete process.env.MEDIA_ROOT;
     else process.env.MEDIA_ROOT = previousMediaRoot;

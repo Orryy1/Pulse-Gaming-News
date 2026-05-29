@@ -264,6 +264,79 @@ test("Goal 13 hard-fails duplicate, disclosure, title, affiliate, policy, tracki
   assert.ok(report.platform_risk_report.risks.length >= 8);
 });
 
+test("Goal 13 treats no-affiliate editorial story pages as clean and skips upstream-quarantined stories", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal13-no-affiliate-"));
+  const readyStory = await makeStoryPackage(root, "story-editorial", {
+    disclosureRequired: false,
+    affiliateRelevance: "no_safe_commercial_intent",
+  });
+  const skippedStory = await makeStoryPackage(root, "story-skipped", {
+    disclosureRequired: false,
+    affiliateRelevance: "unrelated",
+  });
+  for (const story of [readyStory, skippedStory]) {
+    const affiliatePath = path.join(story.artifact_dir, "affiliate_link_manifest.json");
+    const affiliate = await fs.readJson(affiliatePath);
+    affiliate.commercial_intent_type = "no_safe_commercial_intent";
+    affiliate.primary_link = null;
+    affiliate.candidate_links = [];
+    affiliate.relevance_score = 0;
+    affiliate.disclosure_copy = {
+      short: "No affiliate links are attached to this story.",
+      landing: "This page is editorial first. If we add affiliate links later, they will be labelled clearly.",
+    };
+    await fs.writeJson(affiliatePath, affiliate, { spaces: 2 });
+  }
+  const landingPath = path.join(readyStory.artifact_dir, "landing_page_manifest.json");
+  const landing = await fs.readJson(landingPath);
+  landing.disclosure_block = {
+    required: false,
+    copy: {
+      short: "No affiliate links are attached to this story.",
+      landing: "This page is editorial first. If we add affiliate links later, they will be labelled clearly.",
+    },
+  };
+  await fs.writeJson(landingPath, landing, { spaces: 2 });
+  const platformPath = path.join(readyStory.artifact_dir, "platform_publish_manifest.json");
+  const platform = await fs.readJson(platformPath);
+  platform.outputs.youtube_shorts.description += " No affiliate links are attached.";
+  await fs.writeJson(platformPath, platform, { spaces: 2 });
+
+  const report = await buildGoal13MultiPlatformPublisherEngine({
+    storyPackages: [readyStory, skippedStory],
+    upstreamExperimentReport: {
+      stories: [
+        { story_id: "story-editorial", status: "ready", blockers: [] },
+        {
+          story_id: "story-skipped",
+          status: "skipped",
+          skipped_status: "visual_source_deferred",
+          skipped_reason: "defer_until_rights_backed_media_available",
+          blockers: [],
+        },
+      ],
+    },
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-05-29T00:16:00.000Z",
+  });
+
+  const ready = report.stories.find((story) => story.story_id === "story-editorial");
+  const skipped = report.stories.find((story) => story.story_id === "story-skipped");
+
+  assert.equal(report.verdict, "PASS");
+  assert.equal(report.direct_platform_verdict, "PASS");
+  assert.equal(report.summary.story_count, 2);
+  assert.equal(report.summary.active_story_count, 1);
+  assert.equal(report.summary.skipped_story_count, 1);
+  assert.equal(report.summary.platform_ready_story_count, 1);
+  assert.equal(ready.status, "ready");
+  assert.equal(ready.disclosure_required, false);
+  assert.deepEqual(ready.direct_platform_blockers, []);
+  assert.equal(skipped.status, "skipped");
+  assert.deepEqual(report.blocker_counts, {});
+});
+
 test("Goal 13 writes required publisher artefacts", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal13-write-"));
   const story = await makeStoryPackage(root, "story-write");

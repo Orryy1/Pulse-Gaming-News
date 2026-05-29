@@ -205,6 +205,88 @@ test("Goal 12 scores complete local variant metrics and records a winner without
   assert.equal(report.safety.no_external_posting, true);
 });
 
+test("Goal 12 treats clean planned variants without live experiment metrics as pending, not blocked", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal12-pending-"));
+  const readyStory = await makeStoryPackage(root, "story-ready");
+  const skippedStory = await makeStoryPackage(root, "story-skipped");
+
+  const report = await buildGoal12ExperimentationEngine({
+    storyPackages: [readyStory, skippedStory],
+    upstreamRetentionReport: {
+      stories: [
+        { story_id: "story-ready", status: "ready", blockers: [], metrics_status: "pending" },
+        {
+          story_id: "story-skipped",
+          status: "skipped",
+          skipped_status: "visual_source_deferred",
+          skipped_reason: "defer_until_rights_backed_media_available",
+          blockers: [],
+        },
+      ],
+    },
+    futureRenderRecommendations: {
+      stories: [
+        {
+          story_id: "story-ready",
+          status: "ready_for_next_render",
+          recommendations: [
+            {
+              id: "preserve_current_benchmark_profile_until_live_metrics_arrive",
+              action: "Keep the current benchmark-approved profile until live metrics arrive.",
+            },
+          ],
+        },
+      ],
+    },
+    variantMetricsManifest: { stories: [] },
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-05-29T00:04:00.000Z",
+  });
+
+  const ready = report.stories.find((story) => story.story_id === "story-ready");
+  const skipped = report.stories.find((story) => story.story_id === "story-skipped");
+
+  assert.equal(report.verdict, "PASS");
+  assert.equal(report.summary.story_count, 2);
+  assert.equal(report.summary.active_story_count, 1);
+  assert.equal(report.summary.skipped_story_count, 1);
+  assert.equal(report.summary.experiment_ready_story_count, 1);
+  assert.equal(report.summary.planned_pending_metrics_story_count, 1);
+  assert.equal(report.summary.winner_ready_story_count, 0);
+  assert.equal(ready.status, "ready");
+  assert.equal(ready.experiment_status, "planned_pending_metrics");
+  assert.deepEqual(ready.direct_experiment_blockers, []);
+  assert.equal(skipped.status, "skipped");
+  assert.deepEqual(report.blocker_counts, {});
+  assert.equal(report.winner_report.status, "pending_variant_metrics_no_winner_yet");
+  assert.equal(report.rule_update_recommendations.status, "pending_winners");
+});
+
+test("Goal 12 fallback hook copy avoids banned source-backed phrasing", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal12-copy-"));
+  const story = await makeStoryPackage(root, "story-copy");
+  await fs.outputJson(path.join(story.artifact_dir, "canonical_story_manifest.json"), {
+    story_id: "story-copy",
+    selected_title: "",
+    canonical_subject: "Hades II",
+    primary_source: "PlayStation Blog",
+  });
+
+  const report = await buildGoal12ExperimentationEngine({
+    storyPackages: [story],
+    upstreamRetentionReport: blockedRetentionReport("story-copy"),
+    variantMetricsManifest: { stories: [] },
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-05-26T00:36:06.701Z",
+  });
+
+  const combined = JSON.stringify(report.experiment_manifest);
+  assert.doesNotMatch(combined, /source-backed update|pulse gaming source update/i);
+  assert.match(report.stories[0].base.hook, /Hades II/i);
+});
+
 test("Goal 12 writes required experimentation artefacts", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal12-write-"));
   const story = await makeStoryPackage(root, "story-write");

@@ -7,6 +7,12 @@ require("dotenv").config({ override: true, quiet: true });
 const { inspectTokenStatus } = require("../upload_tiktok");
 const { buildPlatformOperationalConfig } = require("../lib/ops/platform-status");
 const {
+  buildTikTokAuthDoctorReport,
+} = require("../lib/platforms/tiktok-auth-doctor");
+const {
+  buildTikTokAutomationReport,
+} = require("../lib/platforms/tiktok-automation-report");
+const {
   buildPlatformReadinessDoctor,
   renderPlatformReadinessDoctorMarkdown,
 } = require("../lib/ops/platform-readiness-doctor");
@@ -29,12 +35,64 @@ async function readJsonIfExists(filePath) {
   return fs.readJson(filePath);
 }
 
+function hasDispatchEvidence(report = {}) {
+  return Boolean(
+    report?.dispatchGate?.topReadyPack ||
+      report?.dispatchGate?.topPack ||
+      report?.noPostReadiness?.dispatchCreative?.storyId,
+  );
+}
+
+function hasFreshOrManifestEvidence({ dispatchManifest = {}, freshDispatchPack = {} } = {}) {
+  return Boolean(
+    freshDispatchPack?.dispatchPack ||
+      dispatchManifest?.topReadyPack ||
+      dispatchManifest?.topPack ||
+      (Array.isArray(dispatchManifest?.packs) && dispatchManifest.packs.length),
+  );
+}
+
+function buildCurrentTikTokAutomationReport({
+  generatedAt = new Date().toISOString(),
+  env = process.env,
+  tiktokTokenStatus = {},
+  existingAutomationReport = {},
+  dispatchManifest = {},
+  freshDispatchPack = {},
+} = {}) {
+  if (!hasFreshOrManifestEvidence({ dispatchManifest, freshDispatchPack })) {
+    return existingAutomationReport || {};
+  }
+  const authDoctorReport = buildTikTokAuthDoctorReport({
+    env,
+    tokenStatus: tiktokTokenStatus,
+    tokenStatusMode: "inspected",
+  });
+  const current = buildTikTokAutomationReport({
+    generatedAt,
+    authDoctorReport,
+    dispatchManifest,
+    freshDispatchPack,
+  });
+  return hasDispatchEvidence(current) ? current : existingAutomationReport || current;
+}
+
 async function main() {
   await fs.ensureDir(OUT);
   const tiktokTokenStatus = await inspectTokenStatus();
-  const tiktokAutomationReport = await readJsonIfExists(
+  const existingTikTokAutomationReport = await readJsonIfExists(
     path.join(OUT, "tiktok_overnight_automation_report.json"),
   );
+  const dispatchManifest = await readJsonIfExists(path.join(OUT, "tiktok_dispatch_manifest.json"));
+  const freshDispatchPack = await readJsonIfExists(
+    path.join(OUT, "tiktok-fresh-dispatch", "tiktok_fresh_dispatch_pack.json"),
+  );
+  const tiktokAutomationReport = buildCurrentTikTokAutomationReport({
+    tiktokTokenStatus,
+    existingAutomationReport: existingTikTokAutomationReport,
+    dispatchManifest,
+    freshDispatchPack,
+  });
   const facebookEligibilityReport = await readJsonIfExists(
     path.join(OUT, "facebook_reels_eligibility.json"),
   );
@@ -76,4 +134,7 @@ if (require.main === module) {
   });
 }
 
-module.exports = { main };
+module.exports = {
+  buildCurrentTikTokAutomationReport,
+  main,
+};

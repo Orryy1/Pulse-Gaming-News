@@ -166,6 +166,59 @@ test("Goal 22 blocks missing required version fields instead of inventing lineag
   assert.equal(report.production_audit_log.entries[0].publish_allowed_by_goal22, false);
 });
 
+test("Goal 22 carries Goal 21 skipped stories without blocking active lineage", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal22-skipped-"));
+  const readyStory = await makeStoryPackage(root, "story-ready");
+  const skippedStory = await makeStoryPackage(root, "story-skipped");
+  await fs.writeJson(path.join(root, "story-skipped", "platform_policy_report.json"), { story_id: "story-skipped" });
+  await fs.writeJson(path.join(root, "story-skipped", "audio_manifest.json"), {
+    story_id: "story-skipped",
+    voice_model: "local_voice_model_v1",
+  });
+
+  const report = await buildGoal22VersionedPromptModelRegistry({
+    storyPackages: [readyStory, skippedStory],
+    upstreamObservabilityReport: {
+      verdict: "PASS",
+      stories: [
+        { story_id: "story-ready", status: "ready", blockers: [] },
+        {
+          story_id: "story-skipped",
+          status: "skipped",
+          skipped_status: "visual_source_rejected",
+          skipped_reason: "reject_visually_unsupported_candidate",
+          blockers: [],
+        },
+      ],
+    },
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-05-26T05:37:44.999Z",
+    gitContext: { commit: "abcdef1234567890", branch: "main", dirty: false },
+  });
+
+  const skipped = report.stories.find((story) => story.story_id === "story-skipped");
+
+  assert.equal(report.verdict, "PASS");
+  assert.equal(report.direct_registry_verdict, "PASS");
+  assert.equal(report.summary.story_count, 2);
+  assert.equal(report.summary.active_story_count, 1);
+  assert.equal(report.summary.skipped_story_count, 1);
+  assert.equal(report.summary.version_registry_ready_story_count, 1);
+  assert.equal(report.summary.blocked_story_count, 0);
+  assert.equal(report.summary.direct_registry_blocked_story_count, 0);
+  assert.deepEqual(report.blocker_counts, {});
+  assert.deepEqual(report.direct_risk_counts, {});
+  assert.equal(skipped.status, "skipped");
+  assert.equal(skipped.direct_registry_status, "skipped");
+  assert.equal(skipped.upstream_status, "skipped");
+  assert.equal(skipped.skipped_status, "visual_source_rejected");
+  assert.equal(skipped.skipped_reason, "reject_visually_unsupported_candidate");
+  assert.deepEqual(skipped.blockers, []);
+  assert.equal(skipped.lineage_complete, false);
+  assert.deepEqual(report.model_prompt_registry.missing_field_counts, {});
+});
+
 test("Goal 22 writes required registry artefacts", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal22-write-"));
   const story = await makeStoryPackage(root, "story-write");

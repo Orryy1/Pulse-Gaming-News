@@ -349,3 +349,83 @@ test("Footage Empire counts signed direct MP4 URLs as renderable motion", () => 
   assert.equal(plan.motion_inventory.accepted_local_clips[0].source_kind, "video_file");
   assert.equal(plan.motion_inventory.rejected_local_assets.length, 0);
 });
+
+test("Footage Empire uses a narrower product-motion budget for hardware accessory stories only", () => {
+  const plan = buildFootageEmpirePlan({
+    story: {
+      id: "xbox-controller-accessory-story",
+      title: "Xbox Controller Deal Has One Catch",
+      canonical_subject: "Xbox Controller",
+      canonical_game: "Xbox Controller",
+      full_script:
+        "The Forza Horizon 6 Xbox controller and headset leak is a hardware story, not a gameplay review.",
+    },
+    trustedFootageReport: {
+      accepted_sources: [
+        {
+          source_id: "xbox-controller-product-page",
+          display_name: "Xbox controller official product page",
+          source_tier: "official",
+          source_family: "xbox_wireless_controller_official_product_page",
+          reference_url: "https://www.xbox.com/en-US/accessories/controllers",
+          source_url_kind: "direct_video",
+          segment_validation_eligible: true,
+          entities: ["Xbox Controller"],
+          allowed_render_use: "reference_only_by_default",
+          rights_risk_class: "official_reference_only",
+        },
+        {
+          source_id: "forza-accessory-product-page",
+          display_name: "Forza Horizon 6 accessory product page",
+          source_tier: "official",
+          source_family: "xbox_forza_horizon_6_controller_headset_product_page",
+          reference_url:
+            "https://www.xbox.com/en-US/accessories/forza-horizon-6-xbox-wireless-controller-and-wireless-headset",
+          source_url_kind: "direct_video",
+          segment_validation_eligible: true,
+          entities: ["Xbox Controller"],
+          allowed_render_use: "reference_only_by_default",
+          rights_risk_class: "official_reference_only",
+        },
+      ],
+    },
+    localMotionClips: [
+      {
+        id: "controller-detail",
+        source_family: "xbox_wireless_controller_official_product_page",
+        path: "https://cms-assets.xboxservices.com/controller-detail.mp4",
+        durationS: 4.2,
+        validated: true,
+        source_type: "official_platform_product_page",
+        allowed_render_use: "reference_only_by_default",
+        rights_risk_class: "official_reference_only",
+        provenance: {
+          segment_motion_class: "official_product_motion",
+          validation_reason: "official_product_motion_samples_passed",
+        },
+      },
+      {
+        id: "forza-accessory-detail",
+        source_family: "xbox_forza_horizon_6_controller_headset_product_page",
+        path: "https://cms-assets.xboxservices.com/forza-accessory-detail.mp4",
+        durationS: 4.4,
+        validated: true,
+        source_type: "official_platform_product_page",
+        allowed_render_use: "reference_only_by_default",
+        rights_risk_class: "official_reference_only",
+        provenance: {
+          segment_motion_class: "official_product_motion",
+          validation_reason: "official_product_motion_samples_passed",
+        },
+      },
+    ],
+  });
+
+  assert.equal(plan.readiness.status, "v4_motion_ready");
+  assert.equal(plan.motion_budget.product_motion_story, true);
+  assert.equal(plan.motion_budget.required_motion_scenes, 2);
+  assert.equal(plan.motion_budget.required_distinct_families, 2);
+  assert.equal(plan.motion_budget.available_official_product_motion_clips, 2);
+  assert.equal(plan.motion_budget.available_official_product_motion_families, 2);
+  assert.ok(plan.readiness.warnings.includes("product_story_limited_motion_budget_requires_premium_owned_motion"));
+});

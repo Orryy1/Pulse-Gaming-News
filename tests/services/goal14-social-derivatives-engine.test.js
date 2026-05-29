@@ -209,6 +209,138 @@ test("Goal 14 social derivative fallbacks avoid source-backed update phrasing", 
   assert.match(combined, /Hades II/i);
 });
 
+test("Goal 14 varies Instagram carousel roles and order across stories", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal14-carousel-variation-"));
+  const storyA = await makeStoryPackage(root, "story-score", {
+    title: "Forza Horizon 6 Scores 84 On PC Gamer",
+    subject: "Forza Horizon 6",
+  });
+  const storyB = await makeStoryPackage(root, "story-leak", {
+    title: "Subnautica 2 Reportedly Leaked Early",
+    subject: "Subnautica 2",
+  });
+
+  const report = await buildGoal14SocialDerivativesEngine({
+    storyPackages: [storyA, storyB],
+    upstreamPublisherReport: {
+      stories: [
+        { story_id: "story-score", status: "ready", blockers: [] },
+        { story_id: "story-leak", status: "ready", blockers: [] },
+      ],
+    },
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-05-29T01:31:00.000Z",
+  });
+
+  const scoreCarousel = report.carousel_manifest.stories.find((story) => story.story_id === "story-score");
+  const leakCarousel = report.carousel_manifest.stories.find((story) => story.story_id === "story-leak");
+  const scoreInstagram = report.instagram_publish_pack.stories.find((story) => story.story_id === "story-score");
+  const leakInstagram = report.instagram_publish_pack.stories.find((story) => story.story_id === "story-leak");
+
+  assert.equal(report.verdict, "PASS");
+  assert.ok(scoreCarousel.format_signature);
+  assert.ok(leakCarousel.format_signature);
+  assert.notEqual(scoreCarousel.format_signature, leakCarousel.format_signature);
+  assert.notDeepEqual(
+    scoreCarousel.cards.map((card) => card.type),
+    leakCarousel.cards.map((card) => card.type),
+  );
+  assert.equal(scoreInstagram.carousel_companion.format_signature, scoreCarousel.format_signature);
+  assert.equal(leakInstagram.carousel_companion.format_signature, leakCarousel.format_signature);
+});
+
+test("Goal 14 rewrites stale generic X hot takes into story-native posts", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal14-x-variation-"));
+  const first = socialOutputs({
+    title: "Forza Horizon 6 Reviews Are In",
+    subject: "Forza Horizon 6",
+    route: "/p/story-forza",
+  });
+  const second = socialOutputs({
+    title: "Subnautica 2 Dev Calls Out Leakers",
+    subject: "Subnautica 2",
+    route: "/p/story-subnautica",
+  });
+  first.x.hot_take_post = "Forza Horizon 6 reviews are in. I want the next official beat to show whether this actually changes the game, the launch or the platform plan.";
+  second.x.hot_take_post = "Subnautica 2's developer is already fighting leaked builds. I want the next official beat to show whether this actually changes the game, the launch or the platform plan.";
+  const storyA = await makeStoryPackage(root, "story-forza", {
+    title: "Forza Horizon 6 Reviews Are In",
+    subject: "Forza Horizon 6",
+    outputs: first,
+  });
+  const storyB = await makeStoryPackage(root, "story-subnautica", {
+    title: "Subnautica 2 Dev Calls Out Leakers",
+    subject: "Subnautica 2",
+    outputs: second,
+  });
+
+  const report = await buildGoal14SocialDerivativesEngine({
+    storyPackages: [storyA, storyB],
+    upstreamPublisherReport: {
+      stories: [
+        { story_id: "story-forza", status: "ready", blockers: [] },
+        { story_id: "story-subnautica", status: "ready", blockers: [] },
+      ],
+    },
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-05-29T01:52:00.000Z",
+  });
+
+  const xPosts = report.x_publish_pack.stories.map((story) => story.hot_take_post);
+  assert.equal(report.verdict, "PASS");
+  assert.equal(new Set(xPosts).size, 2);
+  for (const post of xPosts) {
+    assert.doesNotMatch(post, /I want the next official beat/i);
+    assert.doesNotMatch(post, /useful next beat/i);
+  }
+});
+
+test("Goal 14 excludes upstream-skipped stories from active derivative blockers", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal14-skipped-"));
+  const readyStory = await makeStoryPackage(root, "story-ready");
+  const skippedStory = await makeStoryPackage(root, "story-skipped", {
+    imageCards: { story_id: "story-skipped", platforms: [], headline: "" },
+    carousel: { platform: "instagram", story_id: "story-skipped", cards: [] },
+  });
+
+  const report = await buildGoal14SocialDerivativesEngine({
+    storyPackages: [readyStory, skippedStory],
+    upstreamPublisherReport: {
+      stories: [
+        { story_id: "story-ready", status: "ready", blockers: [] },
+        {
+          story_id: "story-skipped",
+          status: "skipped",
+          skipped_status: "visual_source_deferred",
+          skipped_reason: "defer_until_rights_backed_media_available",
+          blockers: [],
+        },
+      ],
+    },
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-05-29T00:22:00.000Z",
+  });
+
+  const ready = report.stories.find((story) => story.story_id === "story-ready");
+  const skipped = report.stories.find((story) => story.story_id === "story-skipped");
+
+  assert.equal(report.verdict, "PASS");
+  assert.equal(report.direct_derivative_verdict, "PASS");
+  assert.equal(report.summary.story_count, 2);
+  assert.equal(report.summary.active_story_count, 1);
+  assert.equal(report.summary.skipped_story_count, 1);
+  assert.equal(report.summary.social_derivative_ready_story_count, 1);
+  assert.equal(ready.status, "ready");
+  assert.equal(skipped.status, "skipped");
+  assert.deepEqual(report.blocker_counts, {});
+  assert.equal(report.engagement_risk_report.verdict, "pass");
+  assert.equal(report.x_publish_pack.stories.length, 1);
+  assert.equal(report.carousel_manifest.stories.length, 1);
+});
+
 test("Goal 14 writes required social derivative artefacts", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal14-write-"));
   const story = await makeStoryPackage(root, "story-write");

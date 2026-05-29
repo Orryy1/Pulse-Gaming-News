@@ -5,6 +5,7 @@ const path = require("node:path");
 const fs = require("fs-extra");
 
 const {
+  buildSourceStatusReportFromStoryPackages,
   buildGoal24CorrectionsRetractionsTakedowns,
   renderGoal24CorrectionsRetractionsTakedownsMarkdown,
   writeGoal24CorrectionsRetractionsTakedowns,
@@ -68,7 +69,18 @@ async function main(argv = process.argv.slice(2)) {
   }
   const storyPackages = await readJsonIfPresent(path.resolve(args.storyPackagesPath), []);
   const upstreamSecurityReport = await readJsonIfPresent(path.resolve(args.upstreamSecurityReportPath), {});
-  const sourceStatusReport = await readJsonIfPresent(path.resolve(args.sourceStatusReportPath), {});
+  const resolvedSourceStatusPath = path.resolve(args.sourceStatusReportPath);
+  const sourceStatusReport = await fs.pathExists(resolvedSourceStatusPath)
+    ? await readJsonIfPresent(resolvedSourceStatusPath, {})
+    : await buildSourceStatusReportFromStoryPackages({
+      storyPackages,
+      upstreamSecurityReport,
+      workspaceRoot: path.resolve(args.workspaceRoot),
+      generatedAt: args.generatedAt || new Date().toISOString(),
+    });
+  if (!(await fs.pathExists(resolvedSourceStatusPath))) {
+    await fs.outputJson(resolvedSourceStatusPath, sourceStatusReport, { spaces: 2 });
+  }
   const report = await buildGoal24CorrectionsRetractionsTakedowns({
     storyPackages,
     upstreamSecurityReport,

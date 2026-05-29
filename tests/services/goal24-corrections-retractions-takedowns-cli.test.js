@@ -87,6 +87,55 @@ test("Goal 24 CLI writes correction and takedown artefacts", async () => {
   assert.equal(await fs.pathExists(path.join(outDir, "takedown_response_log.json")), true);
 });
 
+test("Goal 24 CLI generates a locked-source status report when none exists", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal24-cli-source-status-"));
+  const storyDir = path.join(root, "story-cli");
+  const storyPackagesPath = path.join(root, "story-packages.json");
+  const upstreamPath = path.join(root, "goal23.json");
+  const sourceStatusPath = path.join(root, "out", "source_status_report.json");
+  const outDir = path.join(root, "out");
+  await fs.outputJson(path.join(storyDir, "canonical_story_manifest.json"), {
+    story_id: "story-cli",
+    selected_title: "Mixtape Release Date Changed",
+    canonical_subject: "Mixtape",
+    primary_source: "Example News",
+    primary_source_url: "https://example.com/story-cli",
+  });
+  await fs.outputJson(path.join(storyDir, "platform_publish_manifest.json"), {
+    story_id: "story-cli",
+    operating_mode: "DRY_RUN_PUBLISH",
+    outputs: {
+      youtube_shorts: { title: "Mixtape Release Date Changed" },
+    },
+  });
+  await fs.outputJson(storyPackagesPath, [{ story_id: "story-cli", artifact_dir: storyDir }]);
+  await fs.outputJson(upstreamPath, {
+    verdict: "PASS",
+    stories: [{ story_id: "story-cli", status: "ready", blockers: [] }],
+  });
+
+  const result = await main([
+    "--story-packages",
+    storyPackagesPath,
+    "--upstream-security-report",
+    upstreamPath,
+    "--source-status-report",
+    sourceStatusPath,
+    "--out-dir",
+    outDir,
+    "--workspace",
+    root,
+    "--generated-at",
+    "2026-05-26T06:38:01.097Z",
+  ]);
+
+  assert.equal(result.report.verdict, "PASS");
+  assert.equal(await fs.pathExists(sourceStatusPath), true);
+  const sourceStatus = await fs.readJson(sourceStatusPath);
+  assert.equal(sourceStatus.stories[0].source_status, "current");
+  assert.equal(sourceStatus.stories[0].monitor_status, "baseline_from_locked_source");
+});
+
 test("Goal 24 operator command is registered", () => {
   assert.equal(
     packageJson.scripts["ops:goal24-corrections-retractions-takedowns"],

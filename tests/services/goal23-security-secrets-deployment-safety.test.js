@@ -53,6 +53,16 @@ function blockedGoal22(...storyIds) {
   };
 }
 
+function mixedGoal22({ ready = [], skipped = [] } = {}) {
+  return {
+    verdict: "PASS",
+    stories: [
+      ...ready.map((storyId) => ({ story_id: storyId, status: "ready", blockers: [] })),
+      ...skipped.map((storyId) => ({ story_id: storyId, status: "skipped", skipped_reason: "upstream_duplicate" })),
+    ],
+  };
+}
+
 test("Goal 23 preserves Goal 22 blockers while direct deployment safety passes", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal23-upstream-"));
   const report = await buildGoal23SecuritySecretsDeploymentSafety({
@@ -75,6 +85,32 @@ test("Goal 23 preserves Goal 22 blockers while direct deployment safety passes",
   assert.ok(report.stories[0].blockers.includes("versioning:audio_model_missing"));
   assert.equal(report.deployment_safety_report.publish_allowed_by_goal23, false);
   assert.equal(report.secrets_scan_report.secret_values_exposed, false);
+});
+
+test("Goal 23 preserves Goal 22 skipped stories instead of turning them into blockers", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal23-skipped-"));
+  const report = await buildGoal23SecuritySecretsDeploymentSafety({
+    storyPackages: [
+      { story_id: "ready-story", artifact_dir: path.join(root, "ready-story") },
+      { story_id: "skipped-story", artifact_dir: path.join(root, "skipped-story") },
+    ],
+    upstreamRegistryReport: mixedGoal22({ ready: ["ready-story"], skipped: ["skipped-story"] }),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-05-26T06:07:56.332Z",
+    securitySnapshot: completeSecuritySnapshot(),
+    sourceScan: { findings: [], scanned_file_count: 0 },
+    dryRunPlan: { mode: "DRY_RUN_PUBLISH", actions: [] },
+  });
+
+  assert.equal(report.verdict, "PASS");
+  assert.equal(report.summary.security_ready_story_count, 1);
+  assert.equal(report.summary.skipped_story_count, 1);
+  assert.equal(report.summary.blocked_story_count, 0);
+  const skipped = report.stories.find((story) => story.story_id === "skipped-story");
+  assert.equal(skipped.status, "skipped");
+  assert.equal(skipped.upstream_status, "skipped");
+  assert.deepEqual(skipped.blockers, []);
 });
 
 test("Goal 23 blocks high-confidence hard-coded tokens and redacts scan output", async () => {

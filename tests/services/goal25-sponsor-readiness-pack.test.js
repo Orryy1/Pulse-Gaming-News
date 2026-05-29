@@ -5,8 +5,11 @@ const fs = require("fs-extra");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const Database = require("better-sqlite3");
 
 const {
+  buildSponsorPerformanceSnapshotFromSignals,
+  buildSponsorPerformanceSnapshotFromLocalSources,
   buildGoal25SponsorReadinessPack,
   writeGoal25SponsorReadinessPack,
 } = require("../../lib/goal25-sponsor-readiness-pack");
@@ -72,6 +75,16 @@ function blockedGoal24(...storyIds) {
   };
 }
 
+function mixedGoal24({ ready = [], skipped = [] } = {}) {
+  return {
+    verdict: "PASS",
+    stories: [
+      ...ready.map((storyId) => ({ story_id: storyId, status: "ready", blockers: [] })),
+      ...skipped.map((storyId) => ({ story_id: storyId, status: "skipped", skipped_reason: "upstream_duplicate" })),
+    ],
+  };
+}
+
 function completePerformanceSnapshot(overrides = {}) {
   return {
     subscribers: 7200,
@@ -129,6 +142,137 @@ test("Goal 25 preserves Goal 24 blockers while direct sponsor pack inputs pass",
   assert.ok(report.stories[0].blockers.includes("corrections:source_status_signal_missing"));
   assert.equal(report.sponsor_media_kit.ready_for_outreach, false);
   assert.equal(report.safety.no_sponsor_outreach_sent, true);
+});
+
+test("Goal 25 preserves Goal 24 skipped stories instead of turning them into sponsor blockers", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal25-skipped-"));
+  const ready = await makeStoryPackage(root, "ready-story");
+  const skipped = await makeStoryPackage(root, "skipped-story");
+
+  const report = await buildGoal25SponsorReadinessPack({
+    storyPackages: [ready, skipped],
+    upstreamCorrectionsReport: mixedGoal24({ ready: ["ready-story"], skipped: ["skipped-story"] }),
+    performanceSnapshot: completePerformanceSnapshot({
+      story_metrics: {
+        "ready-story": { views: 91000, average_view_duration_seconds: 32, platform: "youtube_shorts" },
+      },
+    }),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-05-26T07:08:16.908Z",
+  });
+
+  assert.equal(report.verdict, "PASS");
+  assert.equal(report.summary.sponsor_ready_story_count, 1);
+  assert.equal(report.summary.skipped_story_count, 1);
+  assert.equal(report.summary.blocked_story_count, 0);
+  const skippedStory = report.stories.find((story) => story.story_id === "skipped-story");
+  assert.equal(skippedStory.status, "skipped");
+  assert.equal(skippedStory.upstream_status, "skipped");
+  assert.deepEqual(skippedStory.blockers, []);
+});
+
+test("Goal 25 derives a sponsor performance snapshot from verified channel and analytics signals", () => {
+  const snapshot = buildSponsorPerformanceSnapshotFromSignals({
+    channelStats: { subscribers: 17, views: 43176, videos: 91, source: "youtube_public_api:@PulseGMG" },
+    analyticsSnapshots: [
+      {
+        story_id: "story-a",
+        title: "Mixtape Release Date Changed",
+        content_pillar: "gaming_news",
+        youtube_views: 120,
+        instagram_views: 20,
+        tiktok_views: 0,
+        youtube_comments: 2,
+        instagram_comments: 1,
+        tiktok_comments: 0,
+        total_views: 140,
+      },
+      {
+        story_id: "story-b",
+        title: "Steam Deck Gets A Useful Update",
+        content_pillar: "hardware",
+        youtube_views: 80,
+        instagram_views: 10,
+        tiktok_views: 0,
+        youtube_comments: 1,
+        instagram_comments: 0,
+        tiktok_comments: 0,
+        total_views: 90,
+      },
+    ],
+    retentionReports: [
+      { story_id: "story-a", durationS: 60, traffic: { weighted_average_percentage_viewed: 0.5 } },
+      { story_id: "story-b", durationS: 40, traffic: { shorts_average_percentage_viewed: 0.75 } },
+    ],
+    generatedAt: "2026-05-26T07:08:16.908Z",
+  });
+
+  assert.equal(snapshot.subscribers, 17);
+  assert.equal(snapshot.shorts_views_90d, 230);
+  assert.equal(snapshot.average_views, 115);
+  assert.equal(snapshot.average_view_duration_seconds, 30);
+  assert.equal(snapshot.average_view_percentage, 62.5);
+  assert.equal(snapshot.comments_per_view, 4 / 230);
+  assert.deepEqual(snapshot.platform_reach, {
+    youtube_shorts: 200,
+    instagram_reels: 30,
+    tiktok: 0,
+  });
+  assert.equal(snapshot.vertical_breakdown.gaming_news, 1);
+  assert.equal(snapshot.vertical_breakdown.hardware, 1);
+  assert.equal(snapshot.audience_summary.core, "gaming news viewers");
+  assert.equal(snapshot.provenance.channel_stats, "youtube_public_api:@PulseGMG");
+});
+
+test("Goal 25 reads sponsor performance inputs from local analytics and retention artefacts", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal25-local-snapshot-"));
+  const dbPath = path.join(root, "pulse.db");
+  const retentionDir = path.join(root, "retention");
+  const db = new Database(dbPath);
+  db.exec(`
+    CREATE TABLE analytics_snapshots (
+      story_id TEXT,
+      title TEXT,
+      content_pillar TEXT,
+      youtube_views INTEGER,
+      instagram_views INTEGER,
+      tiktok_views INTEGER,
+      youtube_comments INTEGER,
+      instagram_comments INTEGER,
+      tiktok_comments INTEGER,
+      total_views INTEGER,
+      published_at TEXT,
+      updated_at TEXT
+    );
+  `);
+  db.prepare(`
+    INSERT INTO analytics_snapshots
+    (story_id, title, content_pillar, youtube_views, instagram_views, tiktok_views, youtube_comments, instagram_comments, tiktok_comments, total_views, published_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run("story-a", "Mixtape Release Date Changed", "gaming_news", 120, 20, 0, 2, 1, 0, 140, "2026-05-20T00:00:00.000Z", "2026-05-20T00:00:00.000Z");
+  db.close();
+  await fs.outputJson(path.join(retentionDir, "story-a.json"), {
+    story_id: "story-a",
+    durationS: 60,
+    traffic: { weighted_average_percentage_viewed: 0.5 },
+  });
+
+  const snapshot = await buildSponsorPerformanceSnapshotFromLocalSources({
+    dbPath,
+    retentionDir,
+    channelStats: { subscribers: 17, source: "youtube_public_api:@PulseGMG" },
+    generatedAt: "2026-05-26T07:08:16.908Z",
+    now: new Date("2026-05-29T00:00:00.000Z"),
+  });
+
+  assert.equal(snapshot.subscribers, 17);
+  assert.equal(snapshot.shorts_views_90d, 140);
+  assert.equal(snapshot.average_views, 140);
+  assert.equal(snapshot.average_view_duration_seconds, 30);
+  assert.equal(snapshot.average_view_percentage, 50);
+  assert.equal(snapshot.provenance.analytics_rows, 1);
+  assert.equal(snapshot.provenance.retention_reports, 1);
 });
 
 test("Goal 25 builds a complete draft sponsor pack when metrics and brand safety are verified", async () => {

@@ -5,6 +5,7 @@ const path = require("node:path");
 const fs = require("fs-extra");
 
 const {
+  buildSponsorPerformanceSnapshotFromLocalSources,
   buildGoal25SponsorReadinessPack,
   renderGoal25SponsorReadinessMarkdown,
   writeGoal25SponsorReadinessPack,
@@ -60,15 +61,58 @@ async function readJsonIfPresent(filePath, fallback) {
   return fs.readJson(filePath);
 }
 
+async function fetchPublicYoutubeChannelStats({ apiKey, handle = "@PulseGMG" } = {}) {
+  if (!apiKey) return { source: "youtube_public_api_key_missing" };
+  try {
+    const { google } = require("googleapis");
+    const youtube = google.youtube({ version: "v3", auth: apiKey });
+    const response = await youtube.channels.list({
+      part: "snippet,statistics",
+      forHandle: handle,
+    });
+    const channel = response.data.items?.[0];
+    if (!channel) return { source: `youtube_public_api:${handle}:not_found` };
+    return {
+      source: `youtube_public_api:${handle}`,
+      channel_id: channel.id,
+      title: channel.snippet?.title || null,
+      subscribers: Number(channel.statistics?.subscriberCount || 0),
+      views: Number(channel.statistics?.viewCount || 0),
+      videos: Number(channel.statistics?.videoCount || 0),
+    };
+  } catch (error) {
+    return {
+      source: `youtube_public_api:${handle}:error`,
+      warning: error.message,
+    };
+  }
+}
+
 async function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
   if (args.help) {
     console.log(usage());
     return { help: true };
   }
+  require("dotenv").config({ quiet: true });
   const storyPackages = await readJsonIfPresent(path.resolve(args.storyPackagesPath), []);
   const upstreamCorrectionsReport = await readJsonIfPresent(path.resolve(args.upstreamCorrectionsReportPath), {});
-  const performanceSnapshot = await readJsonIfPresent(path.resolve(args.performanceSnapshotPath), {});
+  const resolvedPerformancePath = path.resolve(args.performanceSnapshotPath);
+  let performanceSnapshot = await readJsonIfPresent(resolvedPerformancePath, null);
+  if (!performanceSnapshot) {
+    const pulseDataRoot = process.env.PULSE_DATA_ROOT || process.env.PULSE_DATA_DIR || "D:\\pulse-data";
+    const channelStats = await fetchPublicYoutubeChannelStats({
+      apiKey: process.env.YOUTUBE_API_KEY,
+      handle: process.env.PULSE_YOUTUBE_HANDLE || "@PulseGMG",
+    });
+    performanceSnapshot = await buildSponsorPerformanceSnapshotFromLocalSources({
+      dbPath: process.env.SQLITE_DB_PATH || path.join(pulseDataRoot, "pulse.db"),
+      retentionDir: path.join(pulseDataRoot, "learning", "retention-intelligence"),
+      channelStats,
+      generatedAt: args.generatedAt || new Date().toISOString(),
+    });
+    await fs.outputJson(resolvedPerformancePath, performanceSnapshot, { spaces: 2 });
+  }
   const report = await buildGoal25SponsorReadinessPack({
     storyPackages,
     upstreamCorrectionsReport,

@@ -35,6 +35,16 @@ function blockedGoal25(...storyIds) {
   };
 }
 
+function mixedGoal25({ ready = [], skipped = [] } = {}) {
+  return {
+    verdict: "PASS",
+    stories: [
+      ...ready.map((storyId) => ({ story_id: storyId, status: "ready", blockers: [] })),
+      ...skipped.map((storyId) => ({ story_id: storyId, status: "skipped", skipped_reason: "upstream_duplicate" })),
+    ],
+  };
+}
+
 function completeBrandSnapshot(overrides = {}) {
   return {
     logo_usage: {
@@ -117,6 +127,30 @@ test("Goal 26 preserves Goal 25 blockers while direct brand system passes", asyn
   assert.ok(report.stories[0].blockers.includes("upstream:goal25_sponsor_readiness_pack_blocked"));
   assert.ok(report.stories[0].blockers.includes("sponsor:required_metrics_missing"));
   assert.equal(report.brand_system_manifest.publish_allowed_by_goal26, false);
+});
+
+test("Goal 26 preserves Goal 25 skipped stories instead of turning them into brand blockers", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal26-skipped-"));
+  const report = await buildGoal26CreatorStudioBrandSystem({
+    storyPackages: [
+      { story_id: "ready-story", artifact_dir: path.join(root, "ready-story") },
+      { story_id: "skipped-story", artifact_dir: path.join(root, "skipped-story") },
+    ],
+    upstreamSponsorReport: mixedGoal25({ ready: ["ready-story"], skipped: ["skipped-story"] }),
+    brandSnapshot: completeBrandSnapshot(),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-05-26T07:38:30.333Z",
+  });
+
+  assert.equal(report.verdict, "PASS");
+  assert.equal(report.summary.brand_ready_story_count, 1);
+  assert.equal(report.summary.skipped_story_count, 1);
+  assert.equal(report.summary.blocked_story_count, 0);
+  const skipped = report.stories.find((story) => story.story_id === "skipped-story");
+  assert.equal(skipped.status, "skipped");
+  assert.equal(skipped.upstream_status, "skipped");
+  assert.deepEqual(skipped.blockers, []);
 });
 
 test("Goal 26 builds the full Creator Studio brand contract", async () => {

@@ -343,6 +343,136 @@ Ownable formats:
 
 Outputs: `brand_system_manifest.json`, `visual_style_guide.md`, `editorial_style_guide.md`, `recurring_format_registry.json`.
 
+### 27. Daily Cadence Engine
+
+Create a daily planning gate that turns governed, scheduler-visible candidates into a publish schedule without forcing weak content to fill a quota. Normal mode may plan 3-8 strong gaming-news Shorts/Reels per day, 1-3 richer explainers where warranted, X/Threads/card derivatives for major stories, selected Instagram carousel posts, breaking-news fast posts when urgency is high and weekly recap or evergreen affiliate formats where they fit.
+
+The cadence engine must reject volume for volume's sake. It should require minimum story score, source confidence, visual readiness, script score, benchmark score, complete platform packs, no duplicate event, no disabled platform counted as delivered, no thin or fallback render, no generic public copy and no RED verdict.
+
+Outputs: `daily_content_plan.json`, `publish_schedule.json`, `cadence_quality_report.json`.
+
+Acceptance: the cadence report must separate ready, skipped, blocked and human-review stories; preserve upstream skipped rows; count only enabled platform actions as deliverable; keep all live posting disabled in LOCAL_PROOF or DRY_RUN_PUBLISH; and explain why the plan does or does not meet the daily target.
+
+### 28. Event and Source Deduplication
+
+Detect when several feeds, Reddit posts or articles describe the same event. Merge them into one stronger story, split them only when the angle is genuinely different, update an existing story when the facts have moved and reject repeat candidates that would trip platform duplicate checks.
+
+Outputs: `deduplication_report.json`, `merge_plan.json`, `angle_split_plan.json`, `rejected_duplicate_stories.json`.
+
+Acceptance: duplicate candidates must not reach render or publish planning unless the report records a clear angle split, source cluster, canonical subject and claim difference.
+
+### 29. Breaking News Fast Lane
+
+Create a separate fast lane for urgent stories. It can produce source-safe X/Threads/card posts, Instagram/Facebook story cards and a short source-card video before the full V4 render is ready, but it must use stricter source confidence and a correction watch.
+
+Outputs: `breaking_news_manifest.json`, `fast_publish_pack.json`, `follow_up_v4_plan.json`, `correction_watch.json`.
+
+Acceptance: no fast-lane output may present Reddit-only or anonymous claims as fact, add affiliate CTAs before facts settle, skip correction planning or bypass platform policy checks.
+
+### 30. Narration, Voice and Word Timestamps
+
+Make final narration a hard production input. Every candidate must have final voice audio, clean transcript, word timestamps, caption chunks, loudness checks, fallback voice evidence and pronunciation rules for difficult game names.
+
+Outputs: `narration_manifest.json`, `word_timestamps.json`, `caption_manifest.json`, `voice_quality_report.json`, `tts_doctor_report.json`.
+
+Acceptance: missing audio, missing timestamps, transcript drift, malformed captions, clipped voice, buried voice or unsafe local TTS state blocks publishing.
+
+### 31. Owned and Generated Motion Materialiser
+
+Turn abstract visual plans into real owned/generated motion assets: kinetic title cards, source cards, quote cards, stat cards, chart slams, branded wipes, social cards, carousel slides and X image cards.
+
+Outputs: `owned_motion_manifest.json`, `materialised_motion_clips.json`, `distinct_motion_family_report.json`, `render_input_work_order.json`.
+
+Acceptance: a final render cannot pass if materialised motion is missing, too static, visually duplicated, unmatched to the story, article dominated or missing a rights record.
+
+### 32. Render Health and Queue Observability
+
+Report live database health separately from governed V4 bridge readiness. The digest must distinguish live DB stamped renders, unstamped legacy rows, final V4 bridge candidates, final production renders, missing MP4s, missing timestamps, missing motion, missing rights records and platform-disabled actions.
+
+Outputs: `render_health_report.json`, `bridge_health_report.json`, `live_db_health_report.json`, `production_cutover_digest.json`, `discord_digest_payload.json`.
+
+Acceptance: bridge artefacts must not be mixed into live DB percentages, and no report may call a candidate ready unless scheduler preflight agrees.
+
+### 33. Repair Backlog Orchestration
+
+Route blockers into repair lanes for missing MP4s, final narration, word timestamps, materialised motion, distinct motion families, thin visuals, risky article context, script timeouts, local LLM fallback, stale QA, platform re-encode, duplicate merge, source mismatch, captions and rights records.
+
+Outputs: `repair_backlog.json`, `auto_repair_plan.json`, `render_input_work_order.json`, `repair_results.json`.
+
+Acceptance: each work order must name story ID, blocker type, repair lane, missing input, command, expected artefact, DB mutation status, operator approval status and post-repair validation command.
+
+### 34. Production Cutover Bridge
+
+Expose governed V4 packages to the scheduler without pretending they are live DB rows. Bridge candidates must include final MP4 evidence, narration, timestamps, captions, rights, motion materialisation, platform packs, source manifest, control tower verdict, benchmark score and bridge/live state.
+
+Outputs: `scheduler_bridge_candidates.json`, `production_render_cutover_plan.json`, `strict_dry_run_publish_plan.json`, `bridge_preflight_report.json`.
+
+Acceptance: bridge candidates cannot bypass scheduler preflight, count as published, lose rights visibility or claim readiness from package files alone.
+
+### 35. Platform Upload Reliability
+
+Validate platform packages before scale. Check enabled state, credentials without leaking secrets, media format, duration, aspect ratio, codec, file size, captions, descriptions, disclosures, retry policy and repair lane for each platform.
+
+Outputs: `platform_upload_preflight_report.json`, `platform_failure_repair_plan.json`, `platform_status_matrix.json`.
+
+Acceptance: disabled platforms must stay visible but cannot count as deliverable, and Instagram/Meta, TikTok, X, YouTube and Facebook failures must produce classified repair actions.
+
+### 36. Platform Enablement and Operator Control
+
+Keep TikTok, X, Threads, Pinterest and any future platform behind explicit operator enablement. The system may inspect readiness, generate work orders and dry-run actions, but it must not mutate OAuth state or post externally from LOCAL_PROOF.
+
+Outputs: `platform_enablement_work_order.json`, `operator_enablement_checklist.json`, `platform_guardrail_report.json`.
+
+Acceptance: no platform may move from disabled to deliverable without recorded operator action, credential/scope evidence, kill-switch status and control-tower GREEN or human-approved AMBER state.
+
+### 37. Human Review Queue and Approval Workflow
+
+Queue GREEN and AMBER candidates for operator review with the title, thumbnail, first frame, script, source list, platform packs, risk reasons and suggested fixes. RED candidates stay blocked.
+
+Outputs: `human_review_queue.json`, `approval_requirements.json`, `review_packet_manifest.json`, `operator_decision_log.json`.
+
+Acceptance: HUMAN_REVIEW cannot publish by itself, AMBER requires a recorded operator decision and RED cannot be approved without a new passing artefact set.
+
+### 38. Local Proof Test Video Review Lane
+
+Generate local-only test renders for operator review without changing production rows or posting. The lane must show the exact current renderer, narration, captions, cards, SFX and quality reports.
+
+Outputs: `local_test_video_manifest.json`, `test_render_review_pack.json`, `operator_feedback_log.json`, `test_render_qa_report.json`.
+
+Acceptance: local proof renders must be labelled as non-publish artefacts and cannot be counted as final production renders unless they later pass the full cutover bridge.
+
+### 39. Analytics Fallback and Rule Update Engine
+
+When the local LLM or analytics model fails, the system must still produce deterministic fallback diagnosis, separate technical failure from lack of insight and persist future rules for story selection, hooks, pacing, duration, platform variants and affiliate CTAs.
+
+Outputs: `analytics_fallback_report.json`, `learning_rules.json`, `future_render_recommendations.json`, `rule_update_recommendations.json`.
+
+Acceptance: analytics failures may not produce "no actionable recommendation" without an explicit technical-failure reason and deterministic fallback recommendations.
+
+### 40. Production Incident Response
+
+Treat catastrophic uploads, placeholder copy, source mismatch, bad audio, broken captions, weak first frame, wrong platform package or unsafe public claims as incidents. Produce a correction, takedown or rollback plan before the next live action.
+
+Outputs: `incident_report.json`, `incident_blockers.json`, `rollback_plan.json`, `post_incident_rule_update.json`.
+
+Acceptance: incidents must block autopublish until the new rule is test-backed, the affected content is logged and the control tower returns a defensible status.
+
+### 41. Thirty-Story Acceptance Proof
+
+Prove the system across at least 30 distinct gaming stories. Each story needs the canonical manifest, source/claim data, script, footage, rights, motion, director plan, narration, timestamps, captions, V4 render, platform packs, policy, benchmark, coherence, platform preflight, verdict, analytics plan and correction path.
+
+Outputs: `thirty_story_acceptance_matrix.json`, `acceptance_gap_report.json`, `acceptance_evidence_index.json`.
+
+Acceptance: at least 30 stories must be preflighted, at least 10 must be clean GREEN in strict dry-run and there must be zero false-green publish actions.
+
+### 42. Final Production Readiness Decision
+
+Produce the final readiness decision for the autonomous studio. The decision must combine scheduler preflight, render QA, rights QA, policy QA, benchmark QA, platform upload QA, security, kill switch, human-review history, analytics and rollback readiness.
+
+Outputs: `final_production_readiness_report.json`, `go_live_decision.json`, `remaining_blockers.json`, `next_operating_mode_plan.json`.
+
+Acceptance: the system is not production-ready unless it can schedule high-quality Pulse Gaming videos at regular intervals with strict guardrails, platform-native packs, proof artefacts, breaking-news fast lane, correction path and no unreviewed live publishing.
+
 ## Acceptance criteria
 
 The system is not complete until it can produce a governed, publish-ready package for at least 30 different gaming stories.

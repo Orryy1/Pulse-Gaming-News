@@ -7,6 +7,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const {
+  buildSourceStatusReportFromStoryPackages,
   buildGoal24CorrectionsRetractionsTakedowns,
   writeGoal24CorrectionsRetractionsTakedowns,
 } = require("../../lib/goal24-corrections-retractions-takedowns");
@@ -81,6 +82,16 @@ function blockedGoal23(...storyIds) {
   };
 }
 
+function mixedGoal23({ ready = [], skipped = [] } = {}) {
+  return {
+    verdict: "PASS",
+    stories: [
+      ...ready.map((storyId) => ({ story_id: storyId, status: "ready", blockers: [] })),
+      ...skipped.map((storyId) => ({ story_id: storyId, status: "skipped", skipped_reason: "upstream_duplicate" })),
+    ],
+  };
+}
+
 test("Goal 24 preserves Goal 23 blockers while direct correction monitoring passes", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal24-upstream-"));
   const story = await makeStoryPackage(root, "story-a");
@@ -105,6 +116,96 @@ test("Goal 24 preserves Goal 23 blockers while direct correction monitoring pass
   assert.ok(report.stories[0].blockers.includes("security:token_rotation_plan_missing"));
   assert.equal(report.correction_queue.items.length, 0);
   assert.equal(report.takedown_response_log.entries.length, 0);
+});
+
+test("Goal 24 preserves Goal 23 skipped stories instead of turning them into blockers", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal24-skipped-"));
+  const ready = await makeStoryPackage(root, "ready-story");
+  const skipped = await makeStoryPackage(root, "skipped-story");
+
+  const report = await buildGoal24CorrectionsRetractionsTakedowns({
+    storyPackages: [ready, skipped],
+    upstreamSecurityReport: mixedGoal23({ ready: ["ready-story"], skipped: ["skipped-story"] }),
+    sourceStatusReport: {
+      generated_at: "2026-05-26T06:38:01.097Z",
+      stories: [{ story_id: "ready-story", source_status: "unchanged" }],
+    },
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-05-26T06:38:01.097Z",
+  });
+
+  assert.equal(report.verdict, "PASS");
+  assert.equal(report.summary.correction_ready_story_count, 1);
+  assert.equal(report.summary.skipped_story_count, 1);
+  assert.equal(report.summary.blocked_story_count, 0);
+  assert.equal(report.summary.correction_queue_item_count, 0);
+  const skippedStory = report.stories.find((story) => story.story_id === "skipped-story");
+  assert.equal(skippedStory.status, "skipped");
+  assert.equal(skippedStory.upstream_status, "skipped");
+  assert.deepEqual(skippedStory.blockers, []);
+});
+
+test("Goal 24 source-status report clears unpublished active stories without clearing skipped rows", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal24-source-status-"));
+  const ready = await makeStoryPackage(root, "ready-story");
+  const skipped = await makeStoryPackage(root, "skipped-story");
+  const sourceStatusReport = await buildSourceStatusReportFromStoryPackages({
+    storyPackages: [ready, skipped],
+    upstreamSecurityReport: mixedGoal23({ ready: ["ready-story"], skipped: ["skipped-story"] }),
+    workspaceRoot: root,
+    generatedAt: "2026-05-26T06:38:01.097Z",
+  });
+
+  assert.equal(sourceStatusReport.stories.length, 1);
+  assert.equal(sourceStatusReport.summary.current_count, 1);
+  assert.equal(sourceStatusReport.summary.skipped_story_count, 1);
+  assert.equal(sourceStatusReport.stories[0].story_id, "ready-story");
+  assert.equal(sourceStatusReport.stories[0].source_status, "current");
+  assert.equal(sourceStatusReport.stories[0].monitor_status, "baseline_from_locked_source");
+
+  const report = await buildGoal24CorrectionsRetractionsTakedowns({
+    storyPackages: [ready, skipped],
+    upstreamSecurityReport: mixedGoal23({ ready: ["ready-story"], skipped: ["skipped-story"] }),
+    sourceStatusReport,
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-05-26T06:38:01.097Z",
+  });
+
+  assert.equal(report.verdict, "PASS");
+  assert.equal(report.summary.correction_ready_story_count, 1);
+  assert.equal(report.summary.skipped_story_count, 1);
+  assert.equal(report.summary.blocked_story_count, 0);
+});
+
+test("Goal 24 source-status report does not auto-clear already public stories", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal24-public-source-status-"));
+  const story = await makeStoryPackage(root, "public-story", {
+    youtubePostId: "yt-123",
+    youtubeUrl: "https://youtube.example/watch?v=yt-123",
+  });
+  const sourceStatusReport = await buildSourceStatusReportFromStoryPackages({
+    storyPackages: [story],
+    upstreamSecurityReport: readyGoal23("public-story"),
+    workspaceRoot: root,
+    generatedAt: "2026-05-26T06:38:01.097Z",
+  });
+
+  assert.equal(sourceStatusReport.stories[0].source_status, "unknown");
+  assert.equal(sourceStatusReport.stories[0].monitor_status, "live_public_source_check_required");
+
+  const report = await buildGoal24CorrectionsRetractionsTakedowns({
+    storyPackages: [story],
+    upstreamSecurityReport: readyGoal23("public-story"),
+    sourceStatusReport,
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-05-26T06:38:01.097Z",
+  });
+
+  assert.equal(report.verdict, "BLOCKED");
+  assert.ok(report.stories[0].direct_corrections_blockers.includes("corrections:source_status_unknown"));
 });
 
 test("Goal 24 turns debunked source signals into draft-only correction and takedown plans", async () => {

@@ -450,6 +450,34 @@ test("source-bound-only reprocess builds a clean local repair row", async () => 
   assert.match(rows[0].full_script, /GamesRadar reports/);
 });
 
+test("source-bound-only reprocess repairs Bungie active-development narration without review-score drift", async () => {
+  const { parseArgs, reprocessCandidate } = require("../../tools/reprocess-script-failures");
+  const rows = await reprocessCandidate(
+    {
+      id: "bungie_active_development",
+      title:
+        "\"Almost All\" Of Bungie Reportedly Didn't Know Destiny 2 Was Ending Active Development Until It Was Announced",
+      source_type: "reddit",
+      subreddit: "GamingLeaksAndRumours",
+      article_url:
+        "https://thegamepost.com/bungie-destiny-2-active-development-ending/",
+      description:
+        "The Game Post reports that almost all Bungie staff did not know Destiny 2 was ending active development until the announcement went public.",
+      audio_path: "output/audio/bungie_active_development.mp3",
+      exported_path: "output/final/bungie_active_development.mp4",
+    },
+    parseArgs(["--source-bound-only"]),
+  );
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].script_generation_status, "script_ready");
+  assert.equal(rows[0].audio_path, null);
+  assert.equal(rows[0].exported_path, null);
+  assert.match(rows[0].full_script, /Destiny 2/i);
+  assert.match(rows[0].full_script, /The Game Post reports/i);
+  assert.doesNotMatch(rows[0].full_script, /review score|critic badge|Metacritic|store-banner/i);
+});
+
 test("processor clears stale review metadata after a successful reprocess", () => {
   const source = fs.readFileSync(path.join(ROOT, "processor.js"), "utf8");
   assert.match(source, /script_generation_status:\s*requiresScriptReview/);

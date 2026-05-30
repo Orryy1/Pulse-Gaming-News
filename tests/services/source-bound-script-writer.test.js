@@ -31,7 +31,7 @@ const SOURCE = fs.readFileSync(
 );
 
 const INSTRUCTION_LIKE_PUBLIC_SCRIPT_RE =
-  /core detail plainly|keep the claim tight|anything outside the report|outside the narration|outside the script|fake certainty|question is practical|what players can actually do with it|source line|decision filter|useful version is narrow|if the source is right|useful take is not blind hype/i;
+  /core detail plainly|keep the claim tight|anything outside the report|outside the narration|outside the script|fake certainty|question is practical|what players can actually do with it|source line|decision filter|useful version is narrow|if the source is right|useful take is not blind hype|headline is only the doorway|listing or patch|how players read the next trailer/i;
 
 test("source-bound fallback builds a validated Forza script from an article-backed Reddit story", () => {
   const story = {
@@ -125,6 +125,73 @@ test("source-bound fallback does not narrate editorial instructions", () => {
   assert.match(script.full_script, /Resident Evil Requiem/i);
   assert.match(script.full_script, /IGN/i);
   assert.doesNotMatch(script.full_script, INSTRUCTION_LIKE_PUBLIC_SCRIPT_RE);
+});
+
+test("source-bound fallback treats Bungie active-development reports as a live-service trust story", () => {
+  const story = {
+    id: "bungie_active_development",
+    title:
+      "\"Almost All\" Of Bungie Reportedly Didn't Know Destiny 2 Was Ending Active Development Until It Was Announced",
+    source_type: "reddit",
+    subreddit: "GamingLeaksAndRumours",
+    article_url:
+      "https://thegamepost.com/bungie-destiny-2-active-development-ending/",
+  };
+
+  const script = buildSourceBoundFallbackScript(story, {
+    runtimeProfile: LOCAL_PROFILE,
+    sourceMaterial:
+      "The Game Post reports that almost all Bungie staff did not know Destiny 2 was ending active development until the announcement went public.",
+  });
+
+  assert.ok(script);
+  assert.match(script.full_script, /Destiny 2/i);
+  assert.match(script.full_script, /Bungie/i);
+  assert.match(script.full_script, /The Game Post reports/i);
+  assert.match(script.hook, /Destiny 2/i);
+  assert.doesNotMatch(script.full_script, /Almost All Of Bungie/i);
+  assert.doesNotMatch(script.full_script, /review score|critic badge|Metacritic|store-banner|trailer, listing or patch/i);
+  assert.doesNotMatch(script.full_script, INSTRUCTION_LIKE_PUBLIC_SCRIPT_RE);
+  assert.ok(script.word_count >= 180 && script.word_count <= 220);
+
+  const lint = lintScript(script.full_script, {
+    minWords: LOCAL_PROFILE.minWords,
+    maxWords: LOCAL_PROFILE.maxWords,
+  });
+  assert.deepEqual(lint.failures, []);
+
+  const runtime = classifyShortScriptRuntime({
+    text: script.full_script,
+    secondsPerWord: LOCAL_PROFILE.secondsPerWord,
+  });
+  assert.equal(runtime.result, "pass");
+});
+
+test("source-bound fallback treats Bungie layoff reports as a separate studio-pressure story", () => {
+  const story = {
+    id: "bungie_layoffs",
+    title: "Bungie Plans Layoffs After Ending 'Destiny 2' Development",
+    source_type: "reddit",
+    subreddit: "gaming",
+    article_url:
+      "https://www.bloomberg.com/news/articles/2026-05-21/bungie-plans-layoffs-after-ending-destiny-2-development",
+  };
+
+  const script = buildSourceBoundFallbackScript(story, {
+    runtimeProfile: LOCAL_PROFILE,
+    sourceMaterial:
+      "Bloomberg reports Bungie is planning layoffs after ending Destiny 2 development.",
+  });
+
+  assert.ok(script);
+  assert.match(script.full_script, /Destiny 2/i);
+  assert.match(script.full_script, /Bungie/i);
+  assert.match(script.full_script, /Bloomberg reports/i);
+  assert.match(script.hook, /jobs|layoffs|Bungie/i);
+  assert.doesNotMatch(script.full_script, /staff only learned|announcement went public|almost all Bungie staff/i);
+  assert.doesNotMatch(script.full_script, /review score|critic badge|Metacritic|store-banner/i);
+  assert.doesNotMatch(script.full_script, INSTRUCTION_LIKE_PUBLIC_SCRIPT_RE);
+  assert.ok(script.word_count >= 180 && script.word_count <= 220);
 });
 
 test("source-bound fallback refuses general community Reddit posts without article backing", () => {

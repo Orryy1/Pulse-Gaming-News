@@ -37,12 +37,15 @@ async function makeNarrationQaFixture(root, options = {}) {
     narration_script:
       "Hades II finally hits console, and the real question is how much this changes Supergiant's launch plan.",
   });
-  await fs.outputJson(path.join(artifactDir, "narration_manifest.json"), {
-    story_id: storyId,
-    audio_path: "narration.mp3",
-    transcript:
-      "Hades II finally hits console, and the real question is how much this changes Supergiant's launch plan.",
-  });
+  if (options.includeNarrationManifest !== false) {
+    await fs.outputJson(path.join(artifactDir, "narration_manifest.json"), {
+      story_id: storyId,
+      status: "ready",
+      audio_path: "narration.mp3",
+      transcript:
+        "Hades II finally hits console, and the real question is how much this changes Supergiant's launch plan.",
+    });
+  }
   await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), {
     story_id: storyId,
     status: "ready",
@@ -51,6 +54,8 @@ async function makeNarrationQaFixture(root, options = {}) {
     word_timestamps_path: "word_timestamps.json",
     word_timestamp_count: audioWordCount,
     materialized_at: "2026-05-29T02:42:52.956Z",
+    ...(options.resolvedAudioPath ? { resolved_narration_audio_path: options.resolvedAudioPath } : {}),
+    ...(options.resolvedTimestampPath ? { resolved_word_timestamps_path: options.resolvedTimestampPath } : {}),
   });
   await fs.outputJson(path.join(artifactDir, "caption_manifest.json"), {
     story_id: storyId,
@@ -137,6 +142,48 @@ test("narration QA repair keeps caption timing drift blocked", async () => {
   assert.equal(report.summary.remaining_blocked_count, 1);
   assert.ok(report.rows[0].remaining_blockers.includes("caption_manifest_word_count_mismatch"));
   assert.ok(report.rows[0].remaining_blockers.includes("voice_quality_report_not_pass"));
+});
+
+test("narration QA repair materialises a missing narration manifest from current audio evidence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-narration-manifest-repair-"));
+  const resolvedAudioPath = path.join(root, "media", "audio", "hades.mp3");
+  const resolvedTimestampPath = path.join(root, "media", "audio", "hades_timestamps.json");
+  await fs.outputFile(resolvedAudioPath, Buffer.alloc(1800, 1));
+  await fs.outputJson(resolvedTimestampPath, { words: [{ word: "Hades", start: 0, end: 0.3 }] });
+  const fixture = await makeNarrationQaFixture(root, {
+    includeNarrationManifest: false,
+    voiceQualityWordCount: 129,
+    resolvedAudioPath,
+    resolvedTimestampPath,
+  });
+  fixture.dryRunPlan.blocked_stories[0].blockers = [
+    "narration_manifest_missing",
+    "incident:narration_missing",
+    "voice_quality_report_stale_after_audio",
+    "voice_quality_word_count_mismatch",
+  ];
+
+  const report = await repairNarrationQaArtifacts({
+    dryRunPlan: fixture.dryRunPlan,
+    generatedAt: "2026-05-31T01:08:00.000Z",
+    apply: true,
+  });
+
+  assert.equal(report.summary.target_count, 1);
+  assert.equal(report.summary.written_count, 1);
+  assert.equal(report.summary.narration_manifest_written_count, 1);
+  assert.equal(report.rows[0].narration_manifest_result, "ready");
+  assert.equal(await fs.pathExists(path.join(fixture.artifactDir, "narration_manifest.json")), true);
+
+  const narrationManifest = await fs.readJson(path.join(fixture.artifactDir, "narration_manifest.json"));
+  assert.equal(narrationManifest.status, "ready");
+  assert.equal(narrationManifest.audio_path, "narration.mp3");
+  assert.equal(narrationManifest.resolved_audio_path, resolvedAudioPath);
+  assert.equal(narrationManifest.resolved_word_timestamps_path, resolvedTimestampPath);
+  assert.equal(narrationManifest.word_timestamp_count, 125);
+  assert.match(narrationManifest.transcript, /Hades II finally hits console/);
+  assert.equal(narrationManifest.safety.no_publish_triggered, true);
+  assert.equal(narrationManifest.safety.no_db_mutation, true);
 });
 
 test("narration QA repair CLI defaults to report-only mode", async () => {

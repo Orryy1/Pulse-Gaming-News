@@ -2499,6 +2499,56 @@ test("goal dry-run publisher blocks rendered packages that lack final narration,
   assert.ok(plan.summary.incident_guard_failed_story_count >= 1);
 });
 
+test("goal dry-run publisher blocks final renders without a narration manifest even when audio evidence exists", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-missing-narration-manifest-"));
+  const storyPackage = await makeStoryPackage(root, "missing-narration-manifest", "GREEN", "Hades II Just Broke PlayStation's Silence", {
+    canonicalSubject: "Hades II",
+  });
+  await fs.remove(path.join(storyPackage.artifact_dir, "narration_manifest.json"));
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-05-31T01:20:00.000Z",
+    platformOperationalConfig: {
+      youtube: { state: "enabled", reason: "core_upload_path" },
+    },
+  });
+
+  assert.equal(plan.overall_verdict, "RED");
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.ok(plan.blocked_stories[0].blockers.includes("narration_manifest_missing"));
+  assert.ok(plan.blocked_stories[0].blockers.includes("incident:narration_missing"));
+});
+
+test("goal dry-run publisher blocks stale narration manifests after audio regeneration", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-stale-narration-manifest-"));
+  const storyPackage = await makeStoryPackage(root, "stale-narration-manifest", "GREEN", "Hades II Just Broke PlayStation's Silence", {
+    canonicalSubject: "Hades II",
+    audioMaterializedAt: "2026-05-31T01:30:00.000Z",
+    audioWordCount: 125,
+  });
+  const narrationPath = path.join(storyPackage.artifact_dir, "narration_manifest.json");
+  const narrationManifest = await fs.readJson(narrationPath);
+  await fs.writeJson(narrationPath, {
+    ...narrationManifest,
+    generated_at: "2026-05-31T01:00:00.000Z",
+    word_timestamp_count: 124,
+  }, { spaces: 2 });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-05-31T01:35:00.000Z",
+    platformOperationalConfig: {
+      youtube: { state: "enabled", reason: "core_upload_path" },
+    },
+  });
+
+  assert.equal(plan.overall_verdict, "RED");
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.ok(plan.blocked_stories[0].blockers.includes("narration_manifest_stale_after_audio"));
+  assert.ok(plan.blocked_stories[0].blockers.includes("narration_manifest_word_count_mismatch"));
+});
+
 test("goal dry-run publisher blocks final packages without licensed creator-studio SFX evidence", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-sfx-source-"));
   const storyPackage = await makeStoryPackage(root, "local-sfx-only", "GREEN", "Helldivers 2 Won't Get Space Marines", {

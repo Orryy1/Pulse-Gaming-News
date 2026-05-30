@@ -54,6 +54,7 @@ function renderMarkdown(report = {}) {
     `Mode: ${report.mode || "unknown"}`,
     `Targets: ${report.summary?.target_count || 0}`,
     `Written: ${report.summary?.written_count || 0}`,
+    `Narration manifests written: ${report.summary?.narration_manifest_written_count || 0}`,
     `Fresh after repair: ${report.summary?.freshness_pass_count || 0}`,
     `Still blocked: ${report.summary?.remaining_blocked_count || 0}`,
     "",

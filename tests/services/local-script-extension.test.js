@@ -274,6 +274,45 @@ test("local script extension never adds policy-memo padding to public narration"
   );
 });
 
+test("local script extension routes runtime-valid policy-memo narration to review", () => {
+  const draft = extendScriptToLocalFlash({
+    story: {
+      id: "bungie_generic_padding",
+      title:
+        "\"Almost All\" Of Bungie Reportedly Didn't Know Destiny 2 Was Ending Active Development Until It Was Announced",
+      source_name: "The Game Post",
+      content_pillar: "Source Breakdown",
+      full_script: [
+        "Almost All Of Bungie just got a score its publisher can market hard.",
+        "The Game Post reports that Almost All Of Bungie is now sitting on a major review score in the current review conversation.",
+        "That is not just a critic badge.",
+        "The useful read is about attention: a strong score can shift a game from another release into the title people feel they should check.",
+        "The catch is that review momentum still has to survive real players, patches and the first wider weekend.",
+        "For players, the value is knowing whether the hype has evidence behind it before the storefront banners arrive.",
+        "The split matters: a score can earn attention, but players still need to see whether the wider audience agrees.",
+        "That gives the story a cleaner test: does the launch keep building after the first headline fades?",
+        "For players, that is the difference between a news recap and a decision filter.",
+        "The useful take is not blind hype.",
+        "It is separating a real proof point from a marketing line.",
+        "If the source is right, this gives players a better filter for the next wave of promotion.",
+      ].join(" "),
+    },
+    queueItem: queueItem("bungie_generic_padding", 196),
+    env: {},
+  });
+
+  assert.equal(draft.runtime.result, "pass");
+  assert.equal(draft.action, "review_extended_script");
+  assert.ok(
+    draft.manual_review_flags.includes("public_copy_blocked:decision_filter"),
+    draft.manual_review_flags.join(", "),
+  );
+  assert.ok(
+    draft.manual_review_flags.includes("public_copy_blocked:generic_marketing_line"),
+    draft.manual_review_flags.join(", "),
+  );
+});
+
 test("local script extension refuses generic padding on underwritten scripts", () => {
   const draft = extendScriptToLocalFlash({
     story: {

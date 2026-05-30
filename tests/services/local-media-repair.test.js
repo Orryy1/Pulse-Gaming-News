@@ -74,6 +74,24 @@ test("local media repair queues approved stale voice renders for local Liam rege
   assert.equal(report.items[0].action, "ready_local_audio_render_repair");
   assert.ok(report.items[0].needs.includes("regenerate_audio_with_sleepy_liam"));
   assert.ok(report.items[0].needs.includes("rerender_video_local"));
+  assert.deepEqual(report.items[0].repair_work_order, {
+    story_id: "rss_voice_bad",
+    blocker_type: "demonic_low_voice_risk",
+    repair_lane: "local_audio_regeneration",
+    exact_missing_input: [
+      "approved Sleepy Liam narration audio",
+      "local final render rerun",
+    ],
+    recommended_command:
+      "npm run ops:local-media-repair -- --story-id rss_voice_bad --apply-local-audio --apply-limit 1",
+    expected_output: "test/output/local-media-repair/audio/rss_voice_bad_liam.mp3",
+    db_mutation_required: false,
+    db_mutation_status: "not_required",
+    operator_approval_required: false,
+    operator_approval_status: "not_required",
+    post_repair_validation_command:
+      "npm run ops:local-media-repair -- --story-id rss_voice_bad --dry-run",
+  });
   assert.equal(report.safety.posts_to_platforms, false);
   assert.equal(report.safety.mutates_production_db, false);
 });

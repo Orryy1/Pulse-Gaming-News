@@ -53,6 +53,12 @@ async function makeStoryPackage(
   const subject = options.canonicalSubject || inferFixtureSubject(title);
   const renderGeneratedAt = options.renderGeneratedAt || "2026-05-24T20:00:00.000Z";
   const audioSegmentGeneratedAt = options.audioSegmentGeneratedAt || "2026-05-24T20:05:00.000Z";
+  const audioMaterializedAt = options.audioMaterializedAt || "2026-05-24T19:55:00.000Z";
+  const captionGeneratedAt = options.captionGeneratedAt || "2026-05-24T20:06:00.000Z";
+  const voiceQualityGeneratedAt = options.voiceQualityGeneratedAt || "2026-05-24T20:07:00.000Z";
+  const audioWordCount = options.audioWordCount || 3;
+  const captionWordCount = options.captionWordCount || audioWordCount;
+  const voiceQualityWordCount = options.voiceQualityWordCount || audioWordCount;
   await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
     story_id: id,
     canonical_subject: subject,
@@ -203,6 +209,40 @@ async function makeStoryPackage(
     audio_path: "narration.mp3",
     transcript:
       `${subject} just exposed a sharper gaming story. The source points to a clear player signal that is worth watching before the next upload cycle.`,
+  });
+  await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), {
+    status: "ready",
+    voice_status: "materialized",
+    narration_audio_path: "narration.mp3",
+    word_timestamps_path: "word_timestamps.json",
+    word_timestamp_count: audioWordCount,
+    materialized_at: audioMaterializedAt,
+    word_timestamp_source: "local_whisper_word_alignment",
+  });
+  await fs.outputJson(path.join(artifactDir, "caption_manifest.json"), {
+    schema_version: 1,
+    story_id: id,
+    generated_at: captionGeneratedAt,
+    caption_srt_path: path.join(artifactDir, "captions.srt"),
+    word_timestamps_path: path.join(artifactDir, "word_timestamps.json"),
+    timing_source: "word_timestamps",
+    word_count: captionWordCount,
+  });
+  await fs.outputJson(path.join(artifactDir, "voice_quality_report.json"), {
+    story_id: id,
+    generated_at: voiceQualityGeneratedAt,
+    verdict: options.voiceQualityVerdict || "PASS",
+    checks: {
+      narration_audio_present: true,
+      narration_audio_usable: true,
+      word_timestamps_present: true,
+      captions_well_formed: true,
+      transcript_available: true,
+    },
+    warnings: [],
+    audio_size_bytes: 1500,
+    word_timestamp_count: voiceQualityWordCount,
+    caption_chunk_count: 1,
   });
   await fs.outputJson(path.join(artifactDir, "word_timestamps.json"), {
     words: [
@@ -2442,6 +2482,7 @@ test("goal dry-run publisher blocks rendered packages that lack final narration,
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-incident-inputs-"));
   const storyPackage = await makeStoryPackage(root, "missing-final-inputs", "GREEN", "Forza Horizon 6 Exposes Xbox's Steam Bet");
   await fs.remove(path.join(storyPackage.artifact_dir, "narration_manifest.json"));
+  await fs.remove(path.join(storyPackage.artifact_dir, "audio_manifest.json"));
   await fs.remove(path.join(storyPackage.artifact_dir, "word_timestamps.json"));
   await fs.remove(path.join(storyPackage.artifact_dir, "owned_motion_manifest.json"));
 
@@ -2629,6 +2670,54 @@ test("goal dry-run publisher blocks stale audio loudness reports after final ren
   assert.equal(plan.overall_verdict, "RED");
   assert.equal(plan.summary.ready_story_count, 0);
   assert.ok(plan.blocked_stories[0].blockers.includes("audio_segment_loudness_report_stale_after_render"));
+});
+
+test("goal dry-run publisher blocks stale voice QA reports after audio regeneration", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-stale-voice-report-"));
+  const storyPackage = await makeStoryPackage(root, "stale-voice-report-story", "GREEN", "Hades II Finally Hits Console", {
+    canonicalSubject: "Hades II",
+    audioMaterializedAt: "2026-05-29T02:42:52.956Z",
+    captionGeneratedAt: "2026-05-29T02:46:21.461Z",
+    voiceQualityGeneratedAt: "2026-05-28T23:40:22.491Z",
+    audioWordCount: 125,
+    captionWordCount: 125,
+    voiceQualityWordCount: 129,
+  });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-05-31T00:20:00.000Z",
+    platformOperationalConfig: {
+      youtube: { state: "enabled", reason: "core_upload_path" },
+    },
+  });
+
+  assert.equal(plan.overall_verdict, "RED");
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.ok(plan.blocked_stories[0].blockers.includes("voice_quality_report_stale_after_audio"));
+  assert.ok(plan.blocked_stories[0].blockers.includes("voice_quality_report_stale_after_captions"));
+  assert.ok(plan.blocked_stories[0].blockers.includes("voice_quality_word_count_mismatch"));
+});
+
+test("goal dry-run publisher blocks caption manifests that drift from final word timestamps", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-caption-word-drift-"));
+  const storyPackage = await makeStoryPackage(root, "caption-word-drift-story", "GREEN", "Forza Horizon 6 Finally Hit Steam", {
+    audioWordCount: 125,
+    captionWordCount: 118,
+    voiceQualityWordCount: 125,
+  });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-05-31T00:21:00.000Z",
+    platformOperationalConfig: {
+      youtube: { state: "enabled", reason: "core_upload_path" },
+    },
+  });
+
+  assert.equal(plan.overall_verdict, "RED");
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.ok(plan.blocked_stories[0].blockers.includes("caption_manifest_word_count_mismatch"));
 });
 
 test("goal dry-run publisher blocks local voice timestamps that are not ASR-aligned", async () => {

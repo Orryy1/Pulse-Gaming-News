@@ -156,6 +156,18 @@ test("platform enablement work order aggregates deferred platforms without marki
   assert.ok(report.platforms.x.operator_actions.includes("Confirm paid X API/billing access before enabling the operator switch."));
   assert.ok(report.platforms.threads.operator_actions.includes("Configure the Threads platform integration before counting this platform as ready."));
   assert.ok(report.platforms.pinterest.operator_actions.includes("Configure the Pinterest platform integration before counting this platform as ready."));
+  assert.equal(report.operator_enablement_checklist.platforms.length, 4);
+  assert.equal(report.operator_enablement_checklist.platforms[0].platform, "tiktok");
+  assert.equal(report.operator_enablement_checklist.platforms[0].operator_actions.length >= 2, true);
+  assert.deepEqual(report.operator_enablement_checklist.platforms[0].validation_commands, [
+    "npm run tiktok:auth-doctor",
+    "npm run ops:platform-doctor",
+    "npm run ops:goal-dry-run-publish",
+  ]);
+  assert.equal(report.platform_guardrail_report.summary.deferred_platform_count, 4);
+  assert.equal(report.platform_guardrail_report.summary.live_publish_actions_allowed, 0);
+  assert.equal(report.platform_guardrail_report.guardrails.disabled_platforms_not_publishable, "pass");
+  assert.equal(report.platform_guardrail_report.guardrails.operator_enablement_required, "pass");
   assert.deepEqual(report.safety, {
     no_publish_triggered: true,
     no_network_uploads: true,
@@ -190,6 +202,10 @@ test("platform enablement work order writer and CLI emit machine-readable artefa
   const artefacts = await writeGoalPlatformEnablementWorkOrder(report, { outputDir: outDir });
   assert.equal(await fs.pathExists(artefacts.jsonPath), true);
   assert.equal(await fs.pathExists(artefacts.mdPath), true);
+  assert.equal(await fs.pathExists(path.join(outDir, "operator_enablement_checklist.json")), true);
+  assert.equal(await fs.pathExists(path.join(outDir, "platform_guardrail_report.json")), true);
+  assert.equal(path.basename(artefacts.operatorEnablementChecklistPath), "operator_enablement_checklist.json");
+  assert.equal(path.basename(artefacts.platformGuardrailReportPath), "platform_guardrail_report.json");
 
   const result = spawnSync(
     process.execPath,

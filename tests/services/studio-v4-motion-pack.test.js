@@ -564,7 +564,13 @@ test("Visual V4 motion pack accepts official storefront cinematic motion without
 
 test("Visual V4 motion pack rejects official product motion when the story needs gameplay evidence", () => {
   const pack = buildVisualV4MotionPack({
-    story: forzaStory(),
+    story: forzaStory({
+      title: "Forza Horizon 6 Shows Official Motion",
+      suggested_title: "Forza Horizon 6 Shows Official Motion",
+      suggested_thumbnail_text: "FORZA MOTION",
+      full_script:
+        "Forza Horizon 6 has a clean official-media story. The clips are separate validated motion windows, not a player-count metric package.",
+    }),
     trustedFootageReport: trustedReport("forza-v4-pack", ["playstation_ps5_product_page"]),
     segmentValidationReport: segmentReport([
       segment({
@@ -907,6 +913,105 @@ test("Visual V4 motion pack can use separate windows from one source asset witho
   assert.equal(pack.motion_budget.available_distinct_families, 1);
   assert.equal(pack.readiness.blockers.includes("actual_motion_clip_minimum_not_met"), false);
   assert.equal(pack.readiness.blockers.includes("distinct_motion_families_minimum_not_met"), true);
+});
+
+test("Visual V4 motion pack tops up ready packs with extra repeat windows for premium benchmark density", () => {
+  const families = ["steam_alpha", "steam_beta", "steam_gamma", "steam_delta"];
+  const sourceUrls = {
+    steam_alpha:
+      "https://video.akamai.steamstatic.com/store_trailers/2483190/1001/hash/hls_264_master.m3u8",
+    steam_beta:
+      "https://video.akamai.steamstatic.com/store_trailers/2483190/1002/hash/hls_264_master.m3u8",
+    steam_gamma:
+      "https://video.akamai.steamstatic.com/store_trailers/2483190/1003/hash/hls_264_master.m3u8",
+    steam_delta:
+      "https://video.akamai.steamstatic.com/store_trailers/2483190/1004/hash/hls_264_master.m3u8",
+  };
+  const pack = buildVisualV4MotionPack({
+    story: forzaStory({
+      title: "Forza Horizon 6 Shows Official Motion",
+      suggested_title: "Forza Horizon 6 Shows Official Motion",
+      suggested_thumbnail_text: "FORZA MOTION",
+      full_script:
+        "Forza Horizon 6 has a clean official-media story. The clips are separate validated motion windows, not a player-count metric package.",
+    }),
+    trustedFootageReport: trustedReport("forza-v4-pack", families),
+    segmentValidationReport: segmentReport(
+      families.flatMap((family, familyIndex) =>
+        [40, 46].map((start, windowIndex) =>
+          segment({
+            family,
+            index: familyIndex * 2 + windowIndex + 1,
+            sourceUrl: sourceUrls[family],
+            start,
+            actionScore: 90 - familyIndex,
+          }),
+        ),
+      ),
+    ),
+    generatedAt: "2026-05-26T09:20:00.000Z",
+  });
+
+  assert.equal(pack.readiness.status, "v4_motion_ready");
+  assert.equal(pack.clips.length, 8);
+  assert.equal(pack.motion_budget.available_motion_clips, 8);
+  assert.equal(pack.motion_budget.available_distinct_families, 4);
+});
+
+test("Visual V4 motion pack accepts materialised Steam still-motion topups without relabelling them as gameplay", () => {
+  const previousMotionPack = {
+    clips: [
+      {
+        id: "steam-still-motion-1",
+        type: "motion_clip",
+        source_family: "steam_still_destiny_hero",
+        path: "output/video_cache/destiny_hero_motion.mp4",
+        source_url: "https://cdn.akamai.steamstatic.com/steam/apps/1085660/library_hero.jpg",
+        source_type: "steam_screenshot_derived_motion",
+        provider: "steam",
+        entity: "Destiny 2",
+        mediaStartS: 0,
+        durationS: 3.2,
+        validated: true,
+        segmentValidationPassed: true,
+        allowed_render_use: "screenshot_derived_editorial_motion",
+        rights_risk_class: "steam_storefront_promotional_editorial_use",
+        provenance: {
+          story_id: "destiny-still-topup",
+          segment_motion_class: "screenshot_derived_motion_clip",
+          segment_action_score: 76,
+          validation_reason: "screenshot_derived_motion_materialized",
+        },
+      },
+    ],
+  };
+
+  const pack = buildVisualV4MotionPack({
+    story: forzaStory({
+      id: "destiny-still-topup",
+      title: "Destiny 2 Needs Clearer Answers",
+      suggested_title: "Destiny 2 Needs Clearer Answers",
+      suggested_thumbnail_text: "DESTINY ANSWERS",
+      canonical_subject: "Destiny 2",
+      canonical_game: "Destiny 2",
+      full_script:
+        "Destiny 2 needs clearer answers from Bungie. The story is about support, trust and what players can still expect.",
+    }),
+    trustedFootageReport: trustedReport("destiny-still-topup", [
+      "steam_still_destiny_hero",
+    ]),
+    previousMotionPack,
+    segmentValidationReport: segmentReport([]),
+    generatedAt: "2026-05-30T22:30:00.000Z",
+  });
+
+  assert.equal(pack.clips.length, 1);
+  assert.equal(pack.clips[0].source_family, "steam_still_destiny_hero");
+  assert.equal(
+    pack.clips[0].provenance.segment_motion_class,
+    "screenshot_derived_motion_clip",
+  );
+  assert.equal(pack.rejected_candidates.length, 0);
 });
 
 test("Visual V4 motion pack maximises non-overlapping repeat windows before scoring near-duplicates", () => {

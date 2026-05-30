@@ -1,7 +1,10 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const os = require("node:os");
+const path = require("node:path");
 const test = require("node:test");
+const fs = require("fs-extra");
 
 const {
   buildGovernanceGreenApprovalPromotionPlan,
@@ -12,6 +15,7 @@ const {
 const {
   buildPublishResolutionCandidateContext,
   buildPromotionApplyPreview,
+  hydrateStaleTemporalReviewArtifacts,
   normaliseLaneFilter,
   parseArgs,
   publishResolutionInputsFromCandidateReport,
@@ -48,6 +52,7 @@ test("publish blocker resolution maps common production blockers to concrete rec
     ["instagram story upload failed after 3 attempts: Only photo or video can be accepted", "platform_media_repair"],
     ["Instagram URL processing failed: status_code=ERROR status=Error: Media upload has failed with error code 2207076", "platform_media_repair"],
     ["missing_mp4", "produce_or_render"],
+    ["incident_guard:incident:stale_temporal_claim", "stale_temporal_review"],
   ];
 
   for (const [reason, expectedLane] of cases) {
@@ -83,6 +88,62 @@ test("publish blocker resolution rechecks stale exact-CTA failures when the curr
   assert.equal(item.can_apply_automatically, true);
   assert.equal(item.safety_gate, "fresh_preflight_required_no_db_mutation");
   assert.match(item.safe_next_command, /next-publish-candidates/);
+});
+
+test("publish blocker resolution treats reviewed stale temporal rejects as already handled", () => {
+  const item = classifyPublishBlocker({
+    story: {
+      id: "stale-reviewed",
+      title: "Crimson Desert Is Already Live",
+      stale_temporal_review: {
+        decision: "reject_stale_current_news_candidate",
+      },
+    },
+    reason: "incident_guard:incident:stale_temporal_claim",
+  });
+
+  assert.equal(item.resolution_lane, "already_handled");
+  assert.equal(item.safety_gate, "read_only_state_check");
+  assert.equal(item.can_apply_automatically, false);
+});
+
+test("publish blocker resolution treats upstream skipped rows as already handled", () => {
+  const item = classifyPublishBlocker({
+    story: {
+      id: "duplicate-reviewed",
+      title: "Forza Horizon 6 Reviews Are In",
+    },
+    reason: "upstream_skipped:anti_spam_duplicate_deferred:deferred_by_goal20_duplicate_cluster",
+  });
+
+  assert.equal(item.resolution_lane, "already_handled");
+  assert.equal(item.safety_gate, "read_only_state_check");
+  assert.equal(item.can_apply_automatically, false);
+});
+
+test("publish blocker resolution hydrates stale temporal review artefacts for repair reports", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-publish-unblock-stale-review-"));
+  const reviewPath = path.join(
+    root,
+    "output",
+    "goal-proof",
+    "batch",
+    "reviewed-stale",
+    "stale_temporal_review.json",
+  );
+  await fs.outputJson(reviewPath, {
+    schema_version: 1,
+    story_id: "reviewed-stale",
+    decision: "reject_stale_current_news_candidate",
+  });
+  const stories = [{ id: "reviewed-stale", title: "Reviewed Stale Story" }];
+
+  await hydrateStaleTemporalReviewArtifacts(stories, { root });
+
+  assert.equal(
+    stories[0].stale_temporal_review.decision,
+    "reject_stale_current_news_candidate",
+  );
 });
 
 test("publish blocker resolution still rewrites source-backed missing-CTA failures when the script has no approved CTA", () => {
@@ -307,6 +368,116 @@ test("publish blocker resolution candidate context honours authoritative schedul
   assert.equal(context.mergedStories[0].id, "bridge-ready");
   assert.equal(context.candidateReport.bridge_candidates.authoritative, true);
   assert.equal(inputs.candidateCount, 1);
+});
+
+test("publish blocker resolution candidate context honours upstream anti-spam duplicate skips", () => {
+  const context = buildPublishResolutionCandidateContext({
+    stories: [],
+    bridgeManifest: {
+      requested: true,
+      exists: true,
+      candidate_count: 1,
+      candidates: [
+        {
+          id: "duplicate-story",
+          title: "Forza Horizon 6 Reviews Are In",
+          approved: true,
+          auto_approved: true,
+          exported_path: "bridge.mp4",
+          duration_seconds: 44,
+          duration_lane: "normal_production",
+          audio_path: "bridge.mp3",
+        },
+      ],
+    },
+    upstreamAntiSpamReport: {
+      rows: [
+        {
+          story_id: "duplicate-story",
+          status: "skipped",
+          skipped_status: "anti_spam_duplicate_deferred",
+          skipped_reason: "deferred_by_goal20_duplicate_cluster",
+        },
+      ],
+    },
+    limit: 20,
+  });
+  const inputs = publishResolutionInputsFromCandidateReport(context.candidateReport);
+
+  assert.equal(inputs.candidateCount, 0);
+  assert.deepEqual(
+    inputs.excluded.map((row) => [row.id, row.reason]),
+    [
+      [
+        "duplicate-story",
+        "upstream_skipped:anti_spam_duplicate_deferred:deferred_by_goal20_duplicate_cluster",
+      ],
+    ],
+  );
+});
+
+test("publish blocker resolution surfaces a requested live-row blocker outside the authoritative bridge", () => {
+  const context = buildPublishResolutionCandidateContext({
+    stories: [
+      {
+        id: "stale-live-row",
+        title: "Destiny 2 Needs Fresh Source Review",
+        approved: true,
+        auto_approved: true,
+        approved_at: "2026-04-01T10:00:00.000Z",
+        created_at: "2026-04-01T10:00:00.000Z",
+        exported_path: "output/final/stale-live-row.mp4",
+        audio_path: "output/audio/stale-live-row.mp3",
+        duration_seconds: 64,
+      },
+      {
+        id: "bridge-ready",
+        title: "Bridge Ready Story",
+        approved: true,
+        auto_approved: true,
+      },
+    ],
+    bridgeManifest: {
+      requested: true,
+      exists: true,
+      candidate_count: 1,
+      candidates: [
+        {
+          id: "bridge-ready",
+          title: "Bridge Ready Story",
+          approved: true,
+          auto_approved: true,
+          exported_path: "bridge.mp4",
+          duration_seconds: 44,
+          duration_lane: "normal_production",
+          audio_path: "bridge.mp3",
+        },
+      ],
+    },
+    storyId: "stale-live-row",
+    limit: 20,
+  });
+  const inputs = publishResolutionInputsFromCandidateReport(context.candidateReport);
+  const plan = buildPublishBlockerResolutionPlan({
+    stories: context.mergedStories,
+    excluded: inputs.excluded,
+    candidateCount: inputs.candidateCount,
+  });
+
+  assert.equal(context.selected.bridge_manifest.mode, "authoritative_bridge_only");
+  assert.equal(inputs.candidateCount, 0);
+  assert.ok(
+    inputs.excluded.some(
+      (row) =>
+        row.id === "stale-live-row" &&
+        row.reason === "stale_unpublished_backlog",
+    ),
+  );
+  assert.deepEqual(plan.priority_items.map((item) => item.story_id), [
+    "stale-live-row",
+  ]);
+  assert.equal(plan.priority_items[0].resolution_lane, "stale_story_refresh");
+  assert.equal(plan.priority_items[0].can_apply_automatically, true);
 });
 
 test("publish blocker resolution markdown is operator-readable", () => {

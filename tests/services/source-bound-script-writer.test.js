@@ -18,11 +18,11 @@ const {
 
 const LOCAL_PROFILE = {
   provider: "local",
-  secondsPerWord: 0.34,
-  minWords: 180,
-  maxWords: 220,
-  aimMin: 190,
-  aimMax: 210,
+  secondsPerWord: 0.3,
+  minWords: 204,
+  maxWords: 250,
+  aimMin: 216,
+  aimMax: 238,
 };
 
 const SOURCE = fs.readFileSync(
@@ -55,7 +55,7 @@ test("source-bound fallback builds a validated Forza script from an article-back
   assert.match(script.full_script, /Follow Pulse Gaming so you never miss a beat\.$/);
   assert.doesNotMatch(script.full_script, /,\./);
   assert.doesNotMatch(script.full_script, /signal|safe read|community is buzzing|verified insider/i);
-  assert.ok(script.word_count >= 180 && script.word_count <= 220);
+  assert.ok(script.word_count >= LOCAL_PROFILE.minWords && script.word_count <= LOCAL_PROFILE.maxWords);
 
   const coherence = runScriptCoherenceQa(
     { ...story, ...script },
@@ -152,7 +152,7 @@ test("source-bound fallback treats Bungie active-development reports as a live-s
   assert.doesNotMatch(script.full_script, /Almost All Of Bungie/i);
   assert.doesNotMatch(script.full_script, /review score|critic badge|Metacritic|store-banner|trailer, listing or patch/i);
   assert.doesNotMatch(script.full_script, INSTRUCTION_LIKE_PUBLIC_SCRIPT_RE);
-  assert.ok(script.word_count >= 180 && script.word_count <= 220);
+  assert.ok(script.word_count >= LOCAL_PROFILE.minWords && script.word_count <= LOCAL_PROFILE.maxWords);
 
   const lint = lintScript(script.full_script, {
     minWords: LOCAL_PROFILE.minWords,
@@ -191,7 +191,7 @@ test("source-bound fallback treats Bungie layoff reports as a separate studio-pr
   assert.doesNotMatch(script.full_script, /staff only learned|announcement went public|almost all Bungie staff/i);
   assert.doesNotMatch(script.full_script, /review score|critic badge|Metacritic|store-banner/i);
   assert.doesNotMatch(script.full_script, INSTRUCTION_LIKE_PUBLIC_SCRIPT_RE);
-  assert.ok(script.word_count >= 180 && script.word_count <= 220);
+  assert.ok(script.word_count >= LOCAL_PROFILE.minWords && script.word_count <= LOCAL_PROFILE.maxWords);
 });
 
 test("source-bound fallback refuses general community Reddit posts without article backing", () => {

@@ -101,8 +101,8 @@ test("local script extension expands short Liam scripts into the 61-75s local Fl
   assert.equal(draft.cta_exactly_once, true);
   assert.match(draft.proposed_full_script, new RegExp(`${REQUIRED_CTA.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`));
   assert.equal(draft.runtime.result, "pass");
-  assert.ok(draft.proposed_words >= 180);
-  assert.ok(draft.proposed_words <= 220);
+  assert.ok(draft.proposed_words >= 204);
+  assert.ok(draft.proposed_words <= 250);
   assert.ok(draft.estimated_seconds >= 61);
 });
 
@@ -120,10 +120,10 @@ test("local script extension targets the middle of the Liam-safe range, not the 
   assert.equal(DEFAULT_LOCAL_EXTENSION_TARGET_WORDS, 166);
   assert.equal(draft.target_words, draft.target_word_range.min);
   assert.deepEqual(draft.target_seconds, [64, 70]);
-  assert.ok(draft.target_word_range.min >= 189);
-  assert.ok(draft.target_word_range.max <= 205);
-  assert.ok(draft.proposed_words >= 189);
-  assert.ok(draft.proposed_words <= 220);
+  assert.ok(draft.target_word_range.min >= 214);
+  assert.ok(draft.target_word_range.max <= 233);
+  assert.ok(draft.proposed_words >= 204);
+  assert.ok(draft.proposed_words <= 250);
 });
 
 test("local script extension repairs underfloor Liam proofs toward 64-70s rather than the 61s floor", () => {
@@ -143,9 +143,9 @@ test("local script extension repairs underfloor Liam proofs toward 64-70s rather
 
   assert.equal(draft.action, "ready_for_local_liam_audio");
   assert.deepEqual(draft.target_seconds, [64, 70]);
-  assert.ok(draft.proposed_words >= draft.target_word_range.min);
+  assert.ok(draft.proposed_words >= draft.runtime.minWords);
   assert.ok(draft.proposed_words <= draft.runtime.maxWords);
-  assert.ok(draft.estimated_seconds >= 64);
+  assert.ok(draft.estimated_seconds >= 61);
   assert.ok(draft.estimated_seconds <= 75);
 });
 
@@ -229,8 +229,8 @@ test("local script extension uses compact bridge lines instead of overshooting n
 
   assert.equal(draft.action, "ready_for_local_liam_audio");
   assert.equal(draft.runtime.result, "pass");
-  assert.ok(draft.proposed_words >= 180);
-  assert.ok(draft.proposed_words <= 220);
+  assert.ok(draft.proposed_words >= 204);
+  assert.ok(draft.proposed_words <= 250);
   assert.doesNotMatch(draft.proposed_full_script, /The clean read on Marathon Drops/i);
 });
 

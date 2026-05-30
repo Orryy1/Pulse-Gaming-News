@@ -62,11 +62,11 @@ test("processor validate: Pulse local Liam budget is provider-aware", () => {
     ttsProvider: "local",
   });
   assert.ok(
-    tooShort.some((e) => e.includes("outside 180-220 Flash Lane range")),
+    tooShort.some((e) => e.includes("outside 204-250 Flash Lane range")),
     `got: ${tooShort.join(", ")}`,
   );
 
-  const pass = processor.validate(script(190), "pulse-gaming", {
+  const pass = processor.validate(script(216), "pulse-gaming", {
     ttsProvider: "local",
   });
   assert.deepEqual(pass, []);
@@ -156,7 +156,7 @@ test("processor validate: rejects scripts where exact CTA is metadata-only", () 
 });
 
 test("processor ensurePulseExactCta appends exact spoken CTA and strips promo clutter", () => {
-  const item = script(190);
+  const item = script(216);
   item.cta = "Following Pulse Gaming so you never misses a beat.";
   item.full_script =
     "Forza Horizon 6 hit a concrete Steam record today. Don’t miss out on the latest gaming news and breaking revelations.";
@@ -171,10 +171,10 @@ test("processor ensurePulseExactCta appends exact spoken CTA and strips promo cl
   assert.deepEqual(
     processor.validate(
       {
-        ...script(190),
+        ...script(216),
         cta: item.cta,
-        full_script: `${words(181)} ${item.cta}`,
-        word_count: 190,
+        full_script: `${words(207)} ${item.cta}`,
+        word_count: 216,
       },
       "pulse-gaming",
       { ttsProvider: "local" },
@@ -241,15 +241,15 @@ test("processor validate: non-Pulse channels keep their existing word-count cont
   assert.deepEqual(errors, []);
 });
 
-test("processor editor prompt: Pulse uses active local Flash Lane budget, not old 155-185 range", () => {
+test("processor editor prompt: Pulse uses active local Flash Lane budget, not old 180-220 range", () => {
   const instruction = processor.editorWordCountInstruction({
     id: "pulse-gaming",
   }, {
     ttsProvider: "local",
   });
 
-  assert.match(instruction, /180-220/);
-  assert.doesNotMatch(instruction, /155-185/);
+  assert.match(instruction, /204-250/);
+  assert.doesNotMatch(instruction, /180-220/);
   assert.match(instruction, /Do not expand it/);
 });
 
@@ -372,14 +372,14 @@ test("processor final validation failure routes story to review instead of accep
 
 test("processor validation retry feedback gives concrete rewrite guidance", () => {
   const feedback = processor.buildValidationRetryFeedback([
-    "Actual spoken word count 100 outside 180-220 Flash Lane range",
+    "Actual spoken word count 100 outside 204-250 Flash Lane range",
     "script_coherence:vague_filler:community_is_buzzing",
     "script_coherence:missing_exact_cta_in_script",
   ], { ttsProvider: "local" });
 
   assert.match(feedback, /VALIDATION REWRITE BRIEF/);
-  assert.match(feedback, /Rewrite full_script as 180-220 cleaned spoken words/);
-  assert.match(feedback, /Aim for 190-210 words/);
+  assert.match(feedback, /Rewrite full_script as 204-250 cleaned spoken words/);
+  assert.match(feedback, /Aim for 216-238 words/);
   assert.match(feedback, /source-backed facts only/);
   assert.match(feedback, /angle-first/i);
   assert.match(feedback, /hot take/i);

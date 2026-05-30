@@ -108,6 +108,28 @@ async function loadStudioV4MotionPack(story) {
   return null;
 }
 
+async function loadStudioV4SfxRuntimeManifest() {
+  const candidates = [
+    process.env.STUDIO_V4_SFX_RUNTIME_MANIFEST,
+    path.join(
+      __dirname,
+      "output",
+      "epidemic-implementation",
+      "epidemic_sfx_runtime_manifest.json",
+    ),
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    try {
+      if (await fs.pathExists(candidate)) return await fs.readJson(candidate);
+    } catch (err) {
+      console.log(
+        `[assemble] Studio V4 SFX runtime manifest unreadable (${candidate}): ${err.message}`,
+      );
+    }
+  }
+  return null;
+}
+
 /**
  * Generates a 15-second teaser cut from the full video.
  * Takes the first 13s + 2s "Full story on YouTube" card.
@@ -2258,12 +2280,19 @@ async function assemble() {
       const {
         materializeStudioV4BridgeClips,
       } = require("./lib/studio/v4/render-clip-materializer");
+      const {
+        applyEpidemicSfxRuntimeManifestToStory,
+      } = require("./lib/studio/v4/epidemic-sfx-runtime");
       const studioV4Policy = resolveStudioV4Policy(process.env);
       if (studioV4Policy.enabled) {
         const trustedFootageReport = await loadStudioV4TrustedFootageReport();
         const visualV4MotionPack = await loadStudioV4MotionPack(story);
+        const sfxRuntimeManifest = await loadStudioV4SfxRuntimeManifest();
         if (visualV4MotionPack) {
           applyVisualV4MotionPackToStory(story, visualV4MotionPack);
+        }
+        if (sfxRuntimeManifest) {
+          applyEpidemicSfxRuntimeManifestToStory(story, sfxRuntimeManifest);
         }
         const studioV4Packet = buildStudioV4CanonicalPacket({
           story,

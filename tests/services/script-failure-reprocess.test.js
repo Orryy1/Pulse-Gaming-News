@@ -265,7 +265,7 @@ test("classifyReprocessedStory separates script-ready from still-review rows", (
 
 test("isPersistableScriptReady prevents apply-local from writing review placeholders", () => {
   const readyScript = `${Array.from(
-    { length: 175 },
+    { length: 210 },
     (_, i) => `subnautica_fact_${i + 1}`,
   ).join(" ")} Follow Pulse Gaming so you never miss a beat.`;
 
@@ -282,7 +282,7 @@ test("isPersistableScriptReady prevents apply-local from writing review placehol
       script_generation_status: "script_ready",
       full_script: readyScript,
       cta: "Follow Pulse Gaming so you never miss a beat.",
-      word_count: 184,
+      word_count: 219,
     }),
     true,
   );
@@ -308,7 +308,7 @@ test("isPersistableScriptReady prevents apply-local from writing review placehol
       script_generation_status: "script_ready",
       full_script: `${"The community is buzzing about this update. ".repeat(25)}Follow Pulse Gaming so you never miss a beat.`,
       cta: "Follow Pulse Gaming so you never miss a beat.",
-      word_count: 184,
+      word_count: 219,
     }),
     false,
   );

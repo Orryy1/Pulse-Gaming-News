@@ -244,6 +244,42 @@ test("Studio V4 canonical packet is ready when motion, captions, source lock and
   assert.equal(shouldHoldLegacyRender(forzaStory(), packet), false);
 });
 
+test("Studio V4 canonical benchmark does not score stale legacy images outside the V4 render plan", () => {
+  const {
+    buildStudioV4CanonicalPacket,
+  } = require("../../lib/studio/v4/canonical-policy");
+  const clips = localMotionClips(8).map((clip, index) => ({
+    ...clip,
+    source_family: `steam_v4_family_${index + 1}`,
+    path: `https://video.akamai.steamstatic.com/store_trailers/2483190/${1000 + index}/hash/hls_264_master.m3u8`,
+    source_url: `https://video.akamai.steamstatic.com/store_trailers/2483190/${1000 + index}/hash/hls_264_master.m3u8`,
+    source_type: "steam_movie",
+    provider: "steam",
+  }));
+  const packet = buildStudioV4CanonicalPacket({
+    story: forzaStory({
+      video_clips: null,
+      downloaded_images: [
+        { path: "output/image_cache/story_article.webp", source: "article" },
+        { path: "output/image_cache/story_inline.webp", source: "article" },
+      ],
+      sfx_asset_inventory: licensedSfxAssets(),
+    }),
+    trustedFootageReport: trustedReport(),
+    localTimeline: localTimeline(),
+    localMotionClips: clips,
+    generatedAt: "2026-05-19T09:00:00.000Z",
+  });
+
+  assert.equal(packet.readiness.status, "ready_for_studio_v4_render");
+  assert.equal(packet.media_house_benchmark.result, "pass");
+  assert.ok(packet.media_house_benchmark.scores.rights_risk_score >= 90);
+  assert.equal(
+    packet.media_house_benchmark.failures.includes("gold_standard:rights_risk_above_reference"),
+    false,
+  );
+});
+
 test("Studio V4 emergency fallback can allow legacy rendering without weakening readiness metadata", () => {
   const {
     buildStudioV4CanonicalPacket,

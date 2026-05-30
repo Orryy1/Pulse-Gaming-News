@@ -14,6 +14,8 @@ const {
   DEFAULT_BRIDGE_CANDIDATES_PATH,
   DEFAULT_DIRECT_VIDEO_ENRICHMENT_WORK_ORDER_PATH,
   DEFAULT_SOURCE_FAMILY_ACQUISITION_REPORT_PATH,
+  DEFAULT_UPSTREAM_ANTI_SPAM_REPORT_PATH,
+  DEFAULT_UPSTREAM_BENCHMARK_REPORT_PATH,
   attachPreflightQa,
   buildNextPublishCandidatesReport,
   readBridgeCandidateManifest,
@@ -40,6 +42,8 @@ function parseArgs(argv) {
     allowLiveFallback: false,
     directVideoEnrichmentWorkOrderPath: DEFAULT_DIRECT_VIDEO_ENRICHMENT_WORK_ORDER_PATH,
     sourceFamilyAcquisitionReportPath: DEFAULT_SOURCE_FAMILY_ACQUISITION_REPORT_PATH,
+    upstreamAntiSpamReportPath: DEFAULT_UPSTREAM_ANTI_SPAM_REPORT_PATH,
+    upstreamBenchmarkReportPath: DEFAULT_UPSTREAM_BENCHMARK_REPORT_PATH,
     governanceManifest: path.join(OUT, "governance_1thsxw7", "publish_manifest.json"),
     renderStory: path.join(OUT, "story_1thsxw7_v4_render_ready.json"),
     renderPath: path.join(OUT, "studio_v4_1thsxw7_fresh_ready_proof.mp4"),
@@ -83,6 +87,22 @@ function parseArgs(argv) {
       args.sourceFamilyAcquisitionReportPath = arg.slice("--source-family-acquisition=".length);
     } else if (arg === "--no-source-family-acquisition") {
       args.sourceFamilyAcquisitionReportPath = "";
+    } else if (arg === "--upstream-anti-spam-report" || arg === "--goal20-report") {
+      args.upstreamAntiSpamReportPath = argv[++i] || "";
+    } else if (arg.startsWith("--upstream-anti-spam-report=")) {
+      args.upstreamAntiSpamReportPath = arg.slice("--upstream-anti-spam-report=".length);
+    } else if (arg.startsWith("--goal20-report=")) {
+      args.upstreamAntiSpamReportPath = arg.slice("--goal20-report=".length);
+    } else if (arg === "--no-upstream-anti-spam-report" || arg === "--no-goal20-report") {
+      args.upstreamAntiSpamReportPath = "";
+    } else if (arg === "--upstream-benchmark-report" || arg === "--goal10-report") {
+      args.upstreamBenchmarkReportPath = argv[++i] || "";
+    } else if (arg.startsWith("--upstream-benchmark-report=")) {
+      args.upstreamBenchmarkReportPath = arg.slice("--upstream-benchmark-report=".length);
+    } else if (arg.startsWith("--goal10-report=")) {
+      args.upstreamBenchmarkReportPath = arg.slice("--goal10-report=".length);
+    } else if (arg === "--no-upstream-benchmark-report" || arg === "--no-goal10-report") {
+      args.upstreamBenchmarkReportPath = "";
     }
     else if (arg === "--governance-manifest") args.governanceManifest = argv[++i] || "";
     else if (arg.startsWith("--governance-manifest=")) {
@@ -221,6 +241,32 @@ function resolveFromRoot(filePath) {
   return path.resolve(ROOT, filePath);
 }
 
+function staleTemporalReviewPathForStory(story = {}, { root = ROOT } = {}) {
+  const storyId = String(story?.id || story?.story_id || "").trim();
+  if (!storyId) return "";
+  const artifactDir = String(story.artifact_dir || "").trim();
+  if (artifactDir) return path.join(artifactDir, "stale_temporal_review.json");
+  return path.join(root, "output", "goal-proof", "batch", storyId, "stale_temporal_review.json");
+}
+
+async function hydrateStaleTemporalReviewArtifacts(stories = [], { root = ROOT } = {}) {
+  const rows = Array.isArray(stories) ? stories : [];
+  await Promise.all(
+    rows.map(async (story) => {
+      if (!story || story.stale_temporal_review) return;
+      const reviewPath = staleTemporalReviewPathForStory(story, { root });
+      if (!reviewPath) return;
+      try {
+        if (await fs.pathExists(reviewPath)) {
+          story.stale_temporal_review = await fs.readJson(reviewPath);
+        }
+      } catch {
+        // Missing or malformed review artefacts stay visible as repair work.
+      }
+    }),
+  );
+}
+
 function renderHasAudioStream(filePath) {
   const resolved = resolveFromRoot(filePath);
   if (!resolved || !fs.pathExistsSync(resolved)) return false;
@@ -307,6 +353,7 @@ function buildPublishResolutionCandidateContext({
   bridgeManifest = {},
   directVideoEnrichmentWorkOrder = null,
   sourceFamilyAcquisitionReport = null,
+  upstreamAntiSpamReport = null,
   limit = 40,
   storyId = "",
   allowLiveFallback = false,
@@ -319,7 +366,8 @@ function buildPublishResolutionCandidateContext({
       allowLiveFallback,
     },
   });
-  const mergedStories = selected.stories;
+  const requestedStoryId = String(storyId || "").trim();
+  const mergedStories = [...selected.stories];
   const bridgeMotionGovernanceEvidence = {
     directVideoEnrichmentWorkOrder,
     sourceFamilyAcquisitionReport,
@@ -330,7 +378,45 @@ function buildPublishResolutionCandidateContext({
     limit: Math.max(1000, Number(limit) || 40),
     storyId,
     bridgeManifest: selected.bridge_manifest,
+    upstreamAntiSpamReport,
   });
+  if (requestedStoryId && !mergedStories.some((story) => String(story?.id || "") === requestedStoryId)) {
+    const requestedLiveStory = (Array.isArray(stories) ? stories : []).find(
+      (story) => String(story?.id || "") === requestedStoryId,
+    );
+    if (requestedLiveStory) {
+      mergedStories.push(requestedLiveStory);
+      const liveOnlyReport = buildNextPublishCandidatesReport([requestedLiveStory], {
+        analyticsText,
+        analyticsPath,
+        limit: 1,
+        storyId: requestedStoryId,
+        bridgeManifest: { requested: false, exists: false },
+        upstreamAntiSpamReport,
+      });
+      const liveExclusion = (Array.isArray(liveOnlyReport.excluded)
+        ? liveOnlyReport.excluded
+        : []).find((row) => String(row?.id || "") === requestedStoryId);
+      const liveCandidate = (Array.isArray(liveOnlyReport.candidates)
+        ? liveOnlyReport.candidates
+        : []).find((row) => String(row?.id || "") === requestedStoryId);
+      const excluded = Array.isArray(candidateReport.excluded)
+        ? candidateReport.excluded
+        : [];
+      excluded.push({
+        id: requestedStoryId,
+        title: requestedLiveStory.title || liveExclusion?.title || liveCandidate?.title || "",
+        reason: liveExclusion?.reason || "stale_scheduler_bridge_candidate:not_in_current_bridge",
+        scheduler_bridge_source: "live_row_repair_context",
+      });
+      candidateReport.excluded = excluded;
+      candidateReport.repair_context = {
+        ...(candidateReport.repair_context || {}),
+        requested_live_row_outside_authoritative_bridge: true,
+        requested_story_id: requestedStoryId,
+      };
+    }
+  }
   return {
     selected,
     mergedStories,
@@ -355,6 +441,8 @@ async function runCli(argv = process.argv) {
     bridgeManifest,
     directVideoEnrichmentWorkOrder,
     sourceFamilyAcquisitionReport,
+    upstreamAntiSpamReport,
+    upstreamBenchmarkReport,
   ] = await Promise.all([
     db.getStories(),
     readOptionalText(args.analyticsPath),
@@ -363,6 +451,8 @@ async function runCli(argv = process.argv) {
     readBridgeCandidateManifest(args.bridgeCandidatesPath),
     readOptionalJson(args.directVideoEnrichmentWorkOrderPath),
     readOptionalJson(args.sourceFamilyAcquisitionReportPath),
+    readOptionalJson(args.upstreamAntiSpamReportPath),
+    readOptionalJson(args.upstreamBenchmarkReportPath),
   ]);
   const candidateContext = buildPublishResolutionCandidateContext({
     stories,
@@ -371,14 +461,17 @@ async function runCli(argv = process.argv) {
     bridgeManifest,
     directVideoEnrichmentWorkOrder,
     sourceFamilyAcquisitionReport,
+    upstreamAntiSpamReport,
     limit: args.limit,
     storyId: args.storyId,
     allowLiveFallback: args.allowLiveFallback,
   });
   const candidateReport = candidateContext.candidateReport;
   const mergedStories = candidateContext.mergedStories;
+  await hydrateStaleTemporalReviewArtifacts(mergedStories);
   await attachPreflightQa(candidateReport, mergedStories, {
     bridgeMotionGovernanceEvidence: candidateContext.bridgeMotionGovernanceEvidence,
+    upstreamBenchmarkReport,
   });
   const resolutionInputs = publishResolutionInputsFromCandidateReport(candidateReport);
   const plan = buildPublishBlockerResolutionPlan({
@@ -502,6 +595,7 @@ module.exports = {
   buildPublishResolutionCandidateContext,
   buildPromotionApplyPreview,
   governanceGreenIdsFromManifest,
+  hydrateStaleTemporalReviewArtifacts,
   normaliseLaneFilter,
   publishResolutionInputsFromCandidateReport,
   v4ReadyIdsFromSourceDeficit,

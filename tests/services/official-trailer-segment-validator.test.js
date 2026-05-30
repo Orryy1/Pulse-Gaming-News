@@ -1044,6 +1044,83 @@ test("official trailer segment validator labels clean storefront cinematic motio
   assert.ok(report.segments[0].action_score >= 62);
 });
 
+test("official trailer segment validator accepts short muted high-detail storefront cinematic motion", async () => {
+  const outputRoot = tempOutputRoot("official-steam-muted-cinematic-motion");
+  await cleanTempRoot(outputRoot);
+  let call = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        path: "https://video.akamai.steamstatic.com/store_trailers/1085660/490319/hash/hls_264_master.m3u8",
+        sourceType: "steam_movie",
+        movieName: "Destiny Calls - EN-GB",
+        sourceDurationS: 72.5,
+        mediaStartS: 62,
+        durationS: 3,
+        entity: "Destiny 2",
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: fakeExtractor,
+      inspectFrame: async (outputPath) => {
+        call += 1;
+        const samples = [
+          {
+            edge_density: 0.245,
+            saturation_mean: 0.147,
+            dark_pixel_ratio: 0.105,
+            bright_pixel_ratio: 0.361,
+            score: 88.4,
+          },
+          {
+            edge_density: 0.183,
+            saturation_mean: 0.128,
+            dark_pixel_ratio: 0.056,
+            bright_pixel_ratio: 0.349,
+            score: 80.1,
+          },
+          {
+            edge_density: 0.181,
+            saturation_mean: 0.119,
+            dark_pixel_ratio: 0.03,
+            bright_pixel_ratio: 0.29,
+            score: 84.2,
+          },
+        ];
+        const sample = samples[call - 1] || samples[0];
+        return {
+          ...passingQa(outputPath),
+          content_hash: `destiny-muted-cinematic-${call}`,
+          prescan: {
+            likely_is_logo: false,
+            text_overlay_likelihood: 0,
+            white_text_on_dark_likelihood: 0,
+            edge_density: sample.edge_density,
+            saturation_mean: sample.saturation_mean,
+            dark_pixel_ratio: sample.dark_pixel_ratio,
+            bright_pixel_ratio: sample.bright_pixel_ratio,
+            letterbox_bar_ratio: 0,
+          },
+          visual_taste: {
+            verdict: "pass",
+            reason: "taste_passed",
+            score: sample.score,
+            tags: ["detail_rich"],
+          },
+        };
+      },
+    },
+  );
+
+  assert.equal(report.summary.segments_validated, 1);
+  assert.equal(report.segments[0].validation_reason, "official_storefront_cinematic_motion_samples_passed");
+  assert.equal(report.segments[0].segment_motion_class, "official_storefront_cinematic_motion");
+  assert.equal(report.segments[0].allowed_for_flash_lane, true);
+});
+
 test("official trailer segment validator labels official product page motion without pretending it is gameplay", async () => {
   const outputRoot = tempOutputRoot("official-product-motion");
   await cleanTempRoot(outputRoot);

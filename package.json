@@ -132,6 +132,7 @@
     "ops:goal-normal-duration-repair-workorder": "node tools/goal-normal-duration-repair-workorder.js",
     "ops:goal-normal-duration-repair": "node tools/goal-duration-variant-repair.js --normal-production",
     "ops:goal-public-copy-repair": "node tools/goal-public-copy-repair.js",
+    "ops:goal-coherence-artifact-repair": "node tools/goal-coherence-artifact-repair.js",
     "ops:goal-sfx-evidence-repair": "node tools/goal-sfx-evidence-repair.js",
     "ops:goal-sfx-rerender-workorder": "node tools/goal-sfx-rerender-workorder.js",
     "ops:bridge-candidate-promotion": "node tools/bridge-candidate-promotion.js",

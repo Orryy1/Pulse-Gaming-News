@@ -31,6 +31,20 @@ async function makeStoryPackage(root, storyId = "story-one") {
     discovery_source: { name: "RSS", url: "https://www.eurogamer.net/feed" },
     secondary_sources: [{ name: "Xbox Wire", url: "https://news.xbox.com/forza-horizon-6" }],
   });
+  await fs.outputJson(path.join(artifactDir, "coherence_report.json"), {
+    result: "pass",
+    failures: [],
+    warnings: [],
+    manifest: {
+      selected_title: "Forza Horizon 6 Exposes Xbox's Steam Bet",
+      thumbnail_headline: "FORZA STEAM BET",
+      first_spoken_line: "Forza Horizon 6 just made Xbox's Steam plan harder to ignore.",
+      narration_script:
+        "Forza Horizon 6 just made Xbox's Steam plan harder to ignore. The useful bit for players is simple: this is no longer just an Xbox Store story.",
+      description: "Forza Horizon 6 has a platform story worth watching. Source: Eurogamer.",
+      source_card_label: "Eurogamer",
+    },
+  });
   await fs.outputFile(path.join(artifactDir, "visual_v4_render.mp4"), Buffer.alloc(1500, 1));
   await fs.outputFile(path.join(artifactDir, "captions.srt"), "1\n00:00:00,000 --> 00:00:01,000\nForza.\n");
   await fs.outputJson(path.join(artifactDir, "platform_publish_manifest.json"), {
@@ -341,6 +355,35 @@ test("human review queue keeps blocked dry-run stories out of approval packets",
   );
   assert.equal(queue.blocked_items[0].source_intake_requirements.licensed_media_template_entries.length, 1);
   assert.equal(queue.safe_publish_plan.can_publish_without_operator, false);
+});
+
+test("human review queue blocks stale public coherence artefacts before operator approval", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-human-review-stale-coherence-"));
+  const artifactDir = await makeStoryPackage(root, "stale-coherence-story");
+  await fs.outputJson(path.join(artifactDir, "coherence_report.json"), {
+    result: "pass",
+    failures: [],
+    manifest: {
+      selected_title: "Old title",
+      thumbnail_headline: "OLD THUMB",
+      first_spoken_line: "Old first line.",
+      narration_script: "Old script.",
+      description: "Old description.",
+      source_card_label: "Reddit",
+    },
+  });
+
+  const queue = await buildGoalHumanReviewQueue({
+    dryRunPlan: dryRunPlan({ artifactDir, storyId: "stale-coherence-story" }),
+    generatedAt: "2026-05-30T23:28:00.000Z",
+  });
+
+  assert.equal(queue.summary.review_item_count, 0);
+  assert.equal(queue.summary.blocked_item_count, 1);
+  assert.equal(queue.blocked_items[0].story_id, "stale-coherence-story");
+  assert.ok(queue.blocked_items[0].blockers.includes("stale_public_output_coherence_report"));
+  assert.ok(queue.blocked_items[0].blockers.includes("stale_public_output_coherence_field:selected_title"));
+  assert.equal(queue.blocked_items[0].approval.live_publish_allowed_before_repair, false);
 });
 
 test("human review queue enriches missing dry-run evidence with render-input repair detail", async () => {

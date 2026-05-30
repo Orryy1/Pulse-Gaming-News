@@ -130,6 +130,20 @@ async function makeStoryPackage(
     scores: visualScores,
     failures: options.benchmarkFailures || [],
   });
+  await fs.outputJson(path.join(artifactDir, "coherence_report.json"), {
+    result: options.coherenceResult || "pass",
+    failures: options.coherenceFailures || [],
+    warnings: [],
+    manifest: {
+      selected_title: title,
+      thumbnail_headline: `${subject.toUpperCase()} ANGLE`,
+      first_spoken_line: `${subject} just exposed a sharper gaming story.`,
+      narration_script:
+        `${subject} just exposed a sharper gaming story. The source points to a clear player signal that is worth watching before the next upload cycle.`,
+      description: `${subject} has a new source-safe gaming angle. Source: Eurogamer.`,
+      source_card_label: "Eurogamer",
+    },
+  });
   await fs.outputJson(path.join(artifactDir, "sfx_manifest.json"), {
     cue_count: 8,
     source_plan: {
@@ -235,6 +249,7 @@ async function makeStoryPackage(
       "platform_policy_report.json",
       "visual_quality_report.json",
       "benchmark_report.json",
+      "coherence_report.json",
       "render_manifest.json",
     ],
     artifact_dir: artifactDir,
@@ -1772,6 +1787,40 @@ test("goal dry-run publisher blocks packages without post-render visual QA proof
   assert.equal(plan.summary.blocked_story_count, 1);
   assert.ok(plan.blocked_stories[0].blockers.includes("missing_artefact:visual_quality_report.json"));
   assert.ok(plan.blocked_stories[0].blockers.includes("incident:post_render_visual_qa_missing"));
+});
+
+test("goal dry-run publisher blocks stale on-disk public coherence reports", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-stale-coherence-"));
+  const storyPackage = await makeStoryPackage(root, "stale-coherence-story");
+  await fs.outputJson(path.join(storyPackage.artifact_dir, "coherence_report.json"), {
+    result: "pass",
+    failures: [],
+    manifest: {
+      selected_title: "Old title that used to pass",
+      thumbnail_headline: "OLD THUMB",
+      first_spoken_line: "Old opening line.",
+      narration_script: "Old script that does not match the canonical manifest.",
+      description: "Old description.",
+      source_card_label: "Reddit",
+    },
+  });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-05-30T23:20:00.000Z",
+    platformOperationalConfig: allPlatformsEnabled(),
+  });
+
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 1);
+  assert.ok(plan.blocked_stories[0].blockers.includes("stale_public_output_coherence_report"));
+  assert.ok(
+    plan.blocked_stories[0].blockers.includes("stale_public_output_coherence_field:first_spoken_line"),
+  );
+  assert.equal(plan.public_output_coherence_report?.verdict, "fail");
+  assert.ok(
+    plan.public_output_coherence_report.stories[0].blockers.includes("stale_public_output_coherence_report"),
+  );
 });
 
 test("goal dry-run publisher blocks packages with weak first-frame visual evidence", async () => {

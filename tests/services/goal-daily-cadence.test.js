@@ -19,7 +19,7 @@ async function makeReviewItem(root, storyId, quality = {}) {
   await fs.ensureDir(artifactDir);
   const title = quality.title || `${storyId} Strong Gaming Angle`;
   const canonicalSubject = quality.canonicalSubject || storyId;
-  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+  const canonicalManifest = {
     story_id: storyId,
     canonical_subject: canonicalSubject,
     selected_title: title,
@@ -30,7 +30,8 @@ async function makeReviewItem(root, storyId, quality = {}) {
     primary_source: { name: "Eurogamer", url: "https://www.eurogamer.net/example" },
     discovery_source: { name: "RSS", url: "https://www.eurogamer.net/feed" },
     ...(quality.canonical || {}),
-  });
+  };
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), canonicalManifest);
   await fs.outputJson(path.join(artifactDir, "publish_verdict.json"), {
     verdict: quality.publishVerdict || "GREEN",
     can_auto_publish: true,
@@ -58,6 +59,14 @@ async function makeReviewItem(root, storyId, quality = {}) {
   await fs.outputJson(path.join(artifactDir, "coherence_report.json"), {
     result: quality.coherence || "pass",
     failures: [],
+    manifest: {
+      selected_title: canonicalManifest.selected_title,
+      thumbnail_headline: canonicalManifest.thumbnail_headline,
+      first_spoken_line: canonicalManifest.first_spoken_line,
+      narration_script: canonicalManifest.narration_script,
+      description: canonicalManifest.description,
+      source_card_label: canonicalManifest.source_card_label || "Eurogamer",
+    },
   });
   await fs.outputJson(path.join(artifactDir, "uniqueness_report.json"), {
     verdict: quality.uniqueness || "pass",
@@ -357,8 +366,16 @@ test("daily cadence ignores stale failure arrays when current artefact verdicts 
     failures: ["old_benchmark_failure_before_refresh"],
   });
   await fs.outputJson(path.join(item.artifact_dir, "coherence_report.json"), {
-    result: "fail",
-    failures: ["old_thumbnail_subject_failure_before_public_copy_repair"],
+    result: "pass",
+    failures: [],
+    manifest: {
+      selected_title: "Forza Horizon 6 Exposes Xbox's Steam Bet",
+      thumbnail_headline: "FORZA HORIZON 6 ANGLE",
+      first_spoken_line: "Forza Horizon 6 starts fast with a clear player consequence.",
+      narration_script: "Forza Horizon 6 starts fast with a clear player consequence. The source points to a clear signal worth watching today.",
+      description: "Forza Horizon 6 has a source-safe gaming angle. Source: Eurogamer.",
+      source_card_label: "Eurogamer",
+    },
   });
 
   const plan = await buildGoalDailyCadencePlan({
@@ -370,6 +387,39 @@ test("daily cadence ignores stale failure arrays when current artefact verdicts 
   assert.equal(plan.daily_content_plan.planned_story_count, 1);
   assert.equal(plan.daily_content_plan.rejected_items.length, 0);
   assert.deepEqual(plan.daily_content_plan.planned_items[0].blockers, []);
+});
+
+test("daily cadence rejects stale public coherence artefacts before scheduling", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-cadence-stale-coherence-"));
+  const item = await makeReviewItem(root, "stale-coherence-story", {
+    title: "Forza Horizon 6 Exposes Xbox's Steam Bet",
+    canonicalSubject: "Forza Horizon 6",
+  });
+  await fs.outputJson(path.join(item.artifact_dir, "coherence_report.json"), {
+    result: "pass",
+    failures: [],
+    manifest: {
+      selected_title: "Old title",
+      thumbnail_headline: "OLD THUMB",
+      first_spoken_line: "Old first line.",
+      narration_script: "Old script.",
+      description: "Old description.",
+      source_card_label: "Reddit",
+    },
+  });
+
+  const plan = await buildGoalDailyCadencePlan({
+    humanReviewQueue: { review_items: [item] },
+    generatedAt: "2026-05-30T23:35:00.000Z",
+    targetDailyShorts: 1,
+  });
+
+  assert.equal(plan.daily_content_plan.planned_story_count, 0);
+  assert.equal(plan.daily_content_plan.rejected_items.length, 1);
+  assert.ok(plan.daily_content_plan.rejected_items[0].blockers.includes("stale_public_output_coherence_report"));
+  assert.ok(
+    plan.daily_content_plan.rejected_items[0].blockers.includes("stale_public_output_coherence_field:first_spoken_line"),
+  );
 });
 
 test("daily cadence still rejects current public-copy coherence failures", async () => {

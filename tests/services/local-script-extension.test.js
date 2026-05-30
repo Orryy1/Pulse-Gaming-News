@@ -311,6 +311,53 @@ test("local script extension routes runtime-valid policy-memo narration to revie
     draft.manual_review_flags.includes("public_copy_blocked:generic_marketing_line"),
     draft.manual_review_flags.join(", "),
   );
+  assert.equal(draft.source_bound_rewrite_work_order.story_id, "bungie_generic_padding");
+  assert.equal(draft.source_bound_rewrite_work_order.blocker_type, "public_copy_blocked");
+  assert.equal(draft.source_bound_rewrite_work_order.repair_lane, "source_bound_script_rewrite");
+  assert.match(
+    draft.source_bound_rewrite_work_order.recommended_command,
+    /ops:reprocess-script-failures -- --story-id bungie_generic_padding --force-story --source-bound-only --dry-run --json/,
+  );
+  assert.equal(draft.source_bound_rewrite_work_order.db_mutation_required, false);
+  assert.equal(draft.source_bound_rewrite_work_order.operator_approval_required, true);
+});
+
+test("local script extension plan gives source-bound rewrite commands for unsafe review drafts", () => {
+  const plan = buildLocalScriptExtensionPlan({
+    queueReport: {
+      items: [queueItem("bungie_generic_padding", 196)],
+    },
+    storiesById: {
+      bungie_generic_padding: {
+        id: "bungie_generic_padding",
+        title:
+          "\"Almost All\" Of Bungie Reportedly Didn't Know Destiny 2 Was Ending Active Development Until It Was Announced",
+        source_type: "reddit",
+        subreddit: "GamingLeaksAndRumours",
+        article_url: "https://thegamepost.com/bungie-destiny-2-active-development-ending/",
+        full_script: [
+          "Almost All Of Bungie just got a score its publisher can market hard.",
+          "Thegamepost reports that Almost All Of Bungie is now sitting on a major review score in the current review conversation.",
+          "That gives the story a cleaner test: does the launch keep building after the first headline fades?",
+          "The useful take is not blind hype.",
+          "It is separating a real proof point from a marketing line.",
+          "If the source is right, this gives players a better filter for the next wave of promotion.",
+        ].join(" "),
+      },
+    },
+    env: {},
+  });
+
+  assert.equal(plan.counts.review, 1);
+  assert.equal(plan.counts.source_bound_rewrite_work_orders, 1);
+  assert.equal(
+    plan.drafts[0].source_bound_rewrite_work_order.recommended_command,
+    "npm run ops:reprocess-script-failures -- --story-id bungie_generic_padding --force-story --source-bound-only --dry-run --json",
+  );
+  assert.match(
+    renderLocalScriptExtensionMarkdown(plan),
+    /Source-bound rewrite: `npm run ops:reprocess-script-failures -- --story-id bungie_generic_padding --force-story --source-bound-only --dry-run --json`/,
+  );
 });
 
 test("local script extension refuses generic padding on underwritten scripts", () => {

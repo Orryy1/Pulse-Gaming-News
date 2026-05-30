@@ -1,6 +1,8 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const fs = require("fs-extra");
+const path = require("node:path");
 const test = require("node:test");
 
 const {
@@ -13,6 +15,8 @@ const {
   normaliseCandidates,
   parseArgs,
 } = require("../../tools/render-audio-segment-audit");
+
+const ROOT = path.resolve(__dirname, "..", "..");
 
 test("render audio segment QA parses ffmpeg volumedetect output", () => {
   const stats = parseVolumedetectStats(`
@@ -107,4 +111,12 @@ test("render audio segment audit CLI accepts story package manifests", () => {
   assert.deepEqual(normaliseCandidates({ story_packages: [{ story_id: "one" }] }), [
     { story_id: "one" },
   ]);
+});
+
+test("render audio segment audit command is registered for operator repair runs", async () => {
+  const pkg = await fs.readJson(path.join(ROOT, "package.json"));
+  assert.equal(
+    pkg.scripts["ops:render-audio-segment-audit"],
+    "node tools/render-audio-segment-audit.js",
+  );
 });

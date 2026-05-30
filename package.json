@@ -135,6 +135,7 @@
     "ops:goal-coherence-artifact-repair": "node tools/goal-coherence-artifact-repair.js",
     "ops:goal-sfx-evidence-repair": "node tools/goal-sfx-evidence-repair.js",
     "ops:goal-sfx-rerender-workorder": "node tools/goal-sfx-rerender-workorder.js",
+    "ops:render-audio-segment-audit": "node tools/render-audio-segment-audit.js",
     "ops:bridge-candidate-promotion": "node tools/bridge-candidate-promotion.js",
     "ops:bridge-live-rights-repair": "node tools/bridge-live-rights-repair.js",
     "ops:bridge-preflight-stamp-repair": "node tools/bridge-preflight-stamp-repair.js",

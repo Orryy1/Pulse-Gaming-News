@@ -51,6 +51,8 @@ async function makeStoryPackage(
   const artifactDir = path.join(root, id);
   await fs.ensureDir(artifactDir);
   const subject = options.canonicalSubject || inferFixtureSubject(title);
+  const renderGeneratedAt = options.renderGeneratedAt || "2026-05-24T20:00:00.000Z";
+  const audioSegmentGeneratedAt = options.audioSegmentGeneratedAt || "2026-05-24T20:05:00.000Z";
   await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
     story_id: id,
     canonical_subject: subject,
@@ -98,6 +100,8 @@ async function makeStoryPackage(
     renderer: options.renderer || "visual_v4_production",
     ...currentRenderPolicyManifest(),
     output: "visual_v4_render.mp4",
+    output_path: path.join(artifactDir, "visual_v4_render.mp4"),
+    generated_at: renderGeneratedAt,
     final_publish_render: options.finalPublishRender !== false,
     visual_tier: options.visualTier || "production_v4_motion",
     render_lane: options.renderLane || "visual_v4_production",
@@ -181,6 +185,8 @@ async function makeStoryPackage(
   if (options.audioSegmentReport !== false) {
     await fs.outputJson(path.join(artifactDir, "audio_segment_loudness_report.json"), {
       verdict: options.audioSegmentVerdict || "pass",
+      generated_at: audioSegmentGeneratedAt,
+      input_path: path.join(artifactDir, "visual_v4_render.mp4"),
       blockers: options.audioSegmentBlockers || [],
       warnings: [],
       metrics: {
@@ -2046,7 +2052,11 @@ test("goal dry-run publisher blocks newer external V4 motion-pack blockers", asy
     "motion-pack-blocked-story",
     "GREEN",
     "Hades II Broke PlayStation's Silence",
-    { canonicalSubject: "Hades II" },
+    {
+      canonicalSubject: "Hades II",
+      renderGeneratedAt: "2026-05-23T13:50:00.000Z",
+      audioSegmentGeneratedAt: "2026-05-23T13:55:00.000Z",
+    },
   );
   const motionPackRoot = path.join(root, "motion-packs");
   await fs.outputJson(path.join(motionPackRoot, "motion-pack-blocked-story_motion_pack_manifest.json"), {
@@ -2085,7 +2095,11 @@ test("goal dry-run publisher lets final render evidence supersede stale motion-p
     "final-evidence-story",
     "GREEN",
     "Subnautica 2 Dev Calls Out Leakers",
-    { canonicalSubject: "Subnautica 2" },
+    {
+      canonicalSubject: "Subnautica 2",
+      renderGeneratedAt: "2026-05-23T13:50:00.000Z",
+      audioSegmentGeneratedAt: "2026-05-23T13:55:00.000Z",
+    },
   );
   const artifactDir = storyPackage.artifact_dir;
   const clips = Array.from({ length: 5 }, (_, index) => ({
@@ -2594,6 +2608,27 @@ test("goal dry-run publisher blocks final renders with unstable spoken audio lev
       "audio_segment_loudness:voice_segment_loudness_jump",
     ),
   );
+});
+
+test("goal dry-run publisher blocks stale audio loudness reports after final render regeneration", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-stale-audio-report-"));
+  const storyPackage = await makeStoryPackage(root, "stale-audio-report-story", "GREEN", "Hades II Finally Hits Console", {
+    canonicalSubject: "Hades II",
+    renderGeneratedAt: "2026-05-29T02:45:50.865Z",
+    audioSegmentGeneratedAt: "2026-05-28T20:01:50.601Z",
+  });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-05-30T23:50:00.000Z",
+    platformOperationalConfig: {
+      youtube: { state: "enabled", reason: "core_upload_path" },
+    },
+  });
+
+  assert.equal(plan.overall_verdict, "RED");
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.ok(plan.blocked_stories[0].blockers.includes("audio_segment_loudness_report_stale_after_render"));
 });
 
 test("goal dry-run publisher blocks local voice timestamps that are not ASR-aligned", async () => {

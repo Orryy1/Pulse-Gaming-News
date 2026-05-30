@@ -24,6 +24,7 @@ test("classifyPublishRowIssue: failed rows carrying platform IDs need manual rep
     publish_status: "failed",
     publish_error: "TikTok 403",
     youtube_post_id: "yt_123",
+    published_at: "2026-05-14T22:00:00.000Z",
   });
 
   assert.equal(row.severity, "amber");
@@ -89,6 +90,26 @@ test("classifyPublishRowIssue: repaired script-validation fallback rows are ambe
   );
 });
 
+test("classifyPublishRowIssue: public platform IDs without publish timestamps are amber metadata repairs", () => {
+  const row = classifyPublishRowIssue({
+    id: "missing_publish_time",
+    title: "Uploaded but timestamp missing",
+    youtube_post_id: "yt_123",
+  });
+
+  assert.equal(row.severity, "amber");
+  assert.ok(row.issues.includes("public_row_missing_publish_timestamp"));
+  assert.equal(row.recommended_action, "repair_publish_timestamp_metadata");
+  assert.equal(row.apply_status, "blocked_until_operator_confirms_timestamp_source");
+  assert.equal(row.timestamp_repair.required_before_cadence_trust, true);
+  assert.deepEqual(row.timestamp_repair.acceptable_sources, [
+    "platform_api_published_at",
+    "youtube_studio_publish_time",
+    "platform_posts_table",
+    "operator_verified_upload_time",
+  ]);
+});
+
 test("buildPublishRowRepairPlan: ignores clean public rows", () => {
   const plan = buildPublishRowRepairPlan({
     now: "2026-05-14T20:00:00.000Z",
@@ -116,6 +137,30 @@ test("buildPublishRowRepairPlan: ignores clean public rows", () => {
   assert.equal(plan.rows[0].story_id, "bad");
   assert.match(plan.repair_sql_preview, /UPDATE stories/);
   assert.match(plan.repair_sql_preview, /'bad'/);
+});
+
+test("buildPublishRowRepairPlan: reports missing publish timestamp rows separately", () => {
+  const plan = buildPublishRowRepairPlan({
+    now: "2026-05-30T22:58:00.000Z",
+    stories: [
+      {
+        id: "missing_publish_time",
+        title: "Uploaded but timestamp missing",
+        youtube_post_id: "yt_123",
+      },
+      {
+        id: "clean_public",
+        title: "Clean public",
+        youtube_post_id: "yt_good",
+        published_at: "2026-05-30T20:00:00.000Z",
+      },
+    ],
+  });
+
+  assert.equal(plan.summary.public_rows_missing_publish_timestamp, 1);
+  assert.equal(plan.rows[0].story_id, "missing_publish_time");
+  assert.match(plan.inspection_sql, /youtube_published_at/);
+  assert.match(plan.rows[0].recommended_command, /ops:publish-row-repair/);
 });
 
 test("buildScriptFallbackRepairSql: only targets red public fallback rows and preserves platform ids", () => {

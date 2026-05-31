@@ -16,7 +16,8 @@ const {
 
 const ROOT = path.resolve(__dirname, "..", "..");
 
-function visualStripReport({ framePath, exists = true } = {}) {
+function visualStripReport({ framePath, exists = true, artifactDir = "" } = {}) {
+  const videoPath = artifactDir ? path.join(artifactDir, "visual_v4_render.mp4") : "";
   return {
     schema_version: 1,
     generated_at: "2026-05-31T23:00:00.000Z",
@@ -37,6 +38,7 @@ function visualStripReport({ framePath, exists = true } = {}) {
         status: exists ? "frames_extracted" : "frame_extraction_failed",
         first_spoken_line: "Hades two just changed the launch fight.",
         thumbnail_headline: "HADES LAUNCH FIGHT THAT WILL DEFINITELY CLIP",
+        video_path: videoPath,
         frame_targets: [0, 1, 2, 3].map((timestamp) => ({
           timestamp_seconds: timestamp,
           output_path: framePath || path.join(ROOT, "missing.jpg"),
@@ -55,6 +57,39 @@ function visualStripReport({ framePath, exists = true } = {}) {
       approval_omitted_from_visual_strip: true,
     },
   };
+}
+
+async function writeReadyRenderEvidence(artifactDir, storyId = "story-one") {
+  await fs.ensureDir(artifactDir);
+  const audioPath = path.join(artifactDir, "audio.mp3");
+  const timestampsPath = path.join(artifactDir, "word_timestamps.json");
+  const clipPaths = [
+    path.join(artifactDir, "clip-1.mp4"),
+    path.join(artifactDir, "clip-2.mp4"),
+    path.join(artifactDir, "clip-3.mp4"),
+  ];
+  await fs.writeFile(audioPath, Buffer.alloc(2048, 1));
+  await fs.writeJson(timestampsPath, [{ word: "Hades", start: 0, end: 0.25 }], { spaces: 2 });
+  for (const clipPath of clipPaths) {
+    await fs.writeFile(clipPath, Buffer.alloc(2048, 2));
+  }
+  await fs.writeJson(path.join(artifactDir, "audio_manifest.json"), {
+    story_id: storyId,
+    resolved_narration_audio_path: audioPath,
+    resolved_word_timestamps_path: timestampsPath,
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    story_id: storyId,
+    status: "ready",
+    clips: clipPaths.map((clipPath, index) => ({
+      id: `clip-${index + 1}`,
+      path: clipPath,
+      motion_family: `family-${index + 1}`,
+      counts_towards_motion_readiness: true,
+      materialized: true,
+    })),
+  }, { spaces: 2 });
+  return { audioPath, timestampsPath, clipPaths };
 }
 
 test("visual strip QA flags weak first frame and possible edge text cutoff", async () => {
@@ -111,12 +146,70 @@ test("visual strip QA flags weak first frame and possible edge text cutoff", asy
   assert.ok(card.repair_recommendations.includes("open_full_video_before_any_approval"));
   assert.equal(report.visual_repair_work_order.summary.job_count, 1);
   assert.equal(report.visual_repair_work_order.summary.ready_for_repair_count, 1);
+  assert.equal(report.visual_repair_work_order.summary.ready_for_final_render_job_count, 0);
+  assert.equal(report.visual_repair_work_order.summary.blocked_input_count, 1);
   assert.equal(report.visual_repair_work_order.jobs[0].story_id, "story-one");
   assert.equal(report.visual_repair_work_order.jobs[0].blocker_type, "visual_strip_qa_warning");
+  assert.equal(report.visual_repair_work_order.jobs[0].status, "blocked_on_rerender_inputs");
   assert.equal(report.visual_repair_work_order.jobs[0].operator_approval_required, false);
   assert.equal(report.visual_repair_work_order.jobs[0].db_mutation_required, false);
-  assert.match(report.visual_repair_work_order.jobs[0].recommended_command, /ops:goal-production-render/);
+  assert.doesNotMatch(report.visual_repair_work_order.jobs[0].recommended_command, /ops:goal-production-render/);
+  assert.match(report.visual_repair_work_order.jobs[0].recommended_command, /ops:goal-render-inputs/);
   assert.match(report.visual_repair_work_order.jobs[0].post_repair_validation_command, /ops:goal-human-review-visual-strip-qa/);
+});
+
+test("visual strip QA emits executable production render jobs when flagged cards have final render evidence", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-strip-qa-render-job-"));
+  const artifactDir = path.join(dir, "story-one");
+  const framePath = path.join(dir, "frame.jpg");
+  await fs.writeFile(framePath, "fake image bytes");
+  const evidence = await writeReadyRenderEvidence(artifactDir);
+
+  const report = await buildHumanReviewVisualStripQaReport({
+    visualStripReport: visualStripReport({ framePath, artifactDir }),
+    generatedAt: "2026-05-31T23:02:00.000Z",
+    analyseFrame: async (_file, frame) => ({
+      width: 360,
+      height: 640,
+      prescan: frame.timestamp_seconds === 0
+        ? {
+            edge_density: 0.02,
+            dark_pixel_ratio: 0.82,
+            bright_pixel_ratio: 0.01,
+            text_overlay_likelihood: 0.03,
+            white_text_on_dark_likelihood: 0.1,
+          }
+        : {
+            edge_density: 0.22,
+            dark_pixel_ratio: 0.2,
+            bright_pixel_ratio: 0.08,
+            text_overlay_likelihood: 0.08,
+            white_text_on_dark_likelihood: 0.12,
+          },
+      border: {
+        text_cutoff_risk_score: 0.02,
+        edge_touch_ratio: 0.01,
+        bright_edge_ratio: 0.01,
+      },
+    }),
+  });
+
+  const job = report.visual_repair_work_order.jobs[0];
+  assert.equal(job.status, "ready_for_final_render_job");
+  assert.equal(job.artifact_dir, artifactDir);
+  assert.equal(job.force_final_render, true);
+  assert.equal(job.evidence.narration_audio_path, evidence.audioPath);
+  assert.equal(job.evidence.word_timestamps_path, evidence.timestampsPath);
+  assert.deepEqual(job.evidence.materialised_motion_clip_paths, evidence.clipPaths);
+  assert.equal(job.evidence.materialised_motion_clip_count, 3);
+  assert.equal(job.evidence.distinct_motion_family_count, 3);
+  assert.equal(job.actions[0].action_id, "run_visual_v4_production_render");
+  assert.equal(job.actions[0].status, "ready_after_inputs");
+  assert.match(job.recommended_command, /ops:goal-production-render/);
+  assert.match(job.recommended_command, /--work-order output\/goal-contract\/human_review_visual_repair_work_order\.json/);
+  assert.doesNotMatch(job.recommended_command, /--story-id story-one/);
+  assert.equal(report.visual_repair_work_order.summary.ready_for_final_render_job_count, 1);
+  assert.equal(report.visual_repair_work_order.summary.blocked_input_count, 0);
 });
 
 test("visual strip QA hard-blocks missing frame evidence without pretending review is complete", async () => {

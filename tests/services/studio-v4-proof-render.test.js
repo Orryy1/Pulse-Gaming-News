@@ -916,7 +916,27 @@ test("Studio V4 proof renderer reports current SFX, voice and visual design poli
   assert.match(source, /visual_design_policy_version:\s*STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION/);
   assert.equal(STUDIO_V4_SFX_MIX_POLICY_VERSION, "source_lock_news_tick_v6");
   assert.equal(STUDIO_V4_VOICE_MIX_POLICY_VERSION, "local_voice_levelled_v2");
-  assert.equal(STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION, "newsroom_safe_vertical_compose_v6");
+  assert.equal(STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION, "newsroom_safe_vertical_compose_v7");
+});
+
+test("Studio V4 overlay chain brightens the opening instead of globally darkening first frames", () => {
+  const chain = buildOverlayChain({
+    story: {
+      canonical_subject: "Steam Controller",
+      primary_source: "Eurogamer",
+      first_frame_text: "STEAM CONTROLLER DATE LEAK",
+      thumbnail_headline: "STEAM CONTROLLER DATE LEAK",
+      proof_card_primary: "DATE WINDOW WATCH",
+      proof_card_secondary: "PRICE AND COMPATIBILITY",
+    },
+    inputLabel: "base",
+    outputLabel: "overlayBase",
+    durationS: 24,
+    fontOpt: "font='Arial'",
+  });
+
+  assert.match(chain, /eq=brightness='if\(lt\(t\\,3\.3\)\\,0\.055\\,-0\.015\)':contrast=1\.10:saturation=1\.20:eval=frame/);
+  assert.doesNotMatch(chain, /eq=brightness=-0\.045/);
 });
 
 test("Studio V4 overlay chain uses layered premium plates instead of flat orange blocks", () => {

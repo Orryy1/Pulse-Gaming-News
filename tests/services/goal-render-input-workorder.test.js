@@ -2207,8 +2207,73 @@ test("render input work order routes dry-run duration failures to normal-duratio
   assert.ok(job.blockers.includes("normal_production_duration_below_quality_floor:30"));
   assert.deepEqual(
     job.actions.map((action) => action.action_id),
-    ["repair_normal_production_duration", "refresh_stale_render_qa_state"],
+    [
+      "repair_normal_production_duration",
+      "refresh_audio_segment_loudness_qa",
+      "refresh_stale_render_qa_state",
+    ],
   );
+});
+
+test("render input work order routes stale dry-run audio QA to dedicated refresh lanes", () => {
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-05-31T21:40:00.000Z",
+      queue: [],
+    },
+    dryRunPlan: {
+      generated_at: "2026-05-31T21:45:00.000Z",
+      blocked_stories: [
+        {
+          story_id: "voice-stale-after-caption",
+          title: "The Expanse Shows Real Gameplay",
+          artifact_dir: "C:/repo/output/goal-proof/batch/voice-stale-after-caption",
+          blockers: [
+            "audio_segment_loudness_report_stale_after_render",
+            "voice_quality_report_stale_after_captions",
+          ],
+          scheduler_preflight: {
+            status: "blocked",
+            blockers: [],
+            checks: {},
+          },
+          incident_guard: {
+            evidence: {
+              title: "The Expanse Shows Real Gameplay",
+              canonical_subject: "The Expanse: Osiris Reborn",
+              file_evidence: {
+                mp4_ready: true,
+                captions_ready: true,
+                narration_ready: true,
+                word_timestamps_ready: true,
+                materialised_motion_ready: true,
+                distinct_motion_families_ready: true,
+                rights_ledger_ready: true,
+                word_timestamps_asr_aligned: true,
+              },
+            },
+          },
+        },
+      ],
+    },
+    generatedAt: "2026-05-31T21:46:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.audio_segment_qa_refresh_jobs, 1);
+  assert.equal(workOrder.summary.narration_qa_refresh_jobs, 1);
+  assert.equal(workOrder.summary.stale_qa_refresh_jobs, 0);
+  const job = workOrder.jobs.find((entry) => entry.story_id === "voice-stale-after-caption");
+  assert.deepEqual(
+    job.actions.map((action) => action.action_id),
+    [
+      "refresh_audio_segment_loudness_qa",
+      "refresh_narration_voice_quality_qa",
+    ],
+  );
+  assert.match(job.actions[0].recommended_command, /ops:render-audio-segment-audit/);
+  assert.match(job.actions[1].recommended_command, /ops:goal-narration-qa-repair/);
+  assert.doesNotMatch(job.actions[0].recommended_command, /goal-production-cutover/);
+  assert.doesNotMatch(job.actions[1].recommended_command, /goal-production-cutover/);
 });
 
 test("render input work order routes dry-run title duplicates to event deduplication repair", () => {

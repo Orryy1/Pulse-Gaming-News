@@ -232,6 +232,7 @@ test("buildControlRoomReport: amber pillars elevate verdict to amber", async () 
     platformStatus: mockPillar("green"),
     mediaVerify: mockPillar("amber", "missing_paths"),
     renderHealth: mockPillar("green"),
+    strictDryRun: () => ({ ok: true, verdict: "green" }),
     recentPublish: () => ({ ok: true, verdict: "green" }),
   });
   assert.equal(report.verdict, "amber");

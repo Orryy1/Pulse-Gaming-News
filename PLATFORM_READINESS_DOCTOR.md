@@ -2,7 +2,7 @@
 
 Read-only diagnostic. It performs no OAuth, token mutation, uploads or posts.
 
-Generated: 2026-05-31T18:29:18.575Z
+Generated: 2026-05-31T21:50:00.421Z
 Verdict: AMBER
 
 ## Blockers
@@ -14,7 +14,7 @@ Verdict: AMBER
 - Official inbox route: prepared_not_executed
 - Public direct post: blocked_until_tiktok_app_review_or_direct_post_approval
 - Recommendation: refresh_or_sync_local_token_with_operator_present_before_any_inbox_upload
-- Ready pack: 1s4denn (65.2s)
+- Ready pack: 1s4denn (75.9s)
 
 ### TikTok No-Post Readiness
 

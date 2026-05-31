@@ -947,7 +947,7 @@ function buildOverlayChain({ story, inputLabel, outputLabel, durationS, fontOpt 
   const blockById = Object.fromEntries(layout.text_blocks.map((block) => [block.id, block]));
   const suppressStoryCards = usesOwnedGeneratedMotionDeck(story);
   return [
-    `[${inputLabel}]eq=brightness=-0.045:contrast=1.08:saturation=1.16,drawbox=x=0:y=0:w=iw:h=230:color=black@0.34:t=fill,drawbox=x=0:y=138:w=iw:h=164:color=black@0.56:t=fill,drawbox=x=0:y=ih-430:w=iw:h=430:color=black@0.52:t=fill,drawbox=x=0:y=ih-315:w=iw:h=315:color=black@0.66:t=fill`,
+    `[${inputLabel}]eq=brightness='if(lt(t\\,3.3)\\,0.055\\,-0.015)':contrast=1.10:saturation=1.20:eval=frame,drawbox=x=0:y=0:w=iw:h=230:color=black@0.34:t=fill,drawbox=x=0:y=138:w=iw:h=164:color=black@0.56:t=fill,drawbox=x=0:y=ih-430:w=iw:h=430:color=black@0.52:t=fill,drawbox=x=0:y=ih-315:w=iw:h=315:color=black@0.66:t=fill`,
     `drawbox=x=0:y=0:w=44:h=ih:color=0x0B0F19@0.72:t=fill`,
     `drawbox=x=iw-44:y=0:w=44:h=ih:color=0x0B0F19@0.72:t=fill`,
     `drawbox=x=44:y='mod(t*240\\,1920)-420':w=3:h=420:color=0x38BDF8@0.34:t=fill`,

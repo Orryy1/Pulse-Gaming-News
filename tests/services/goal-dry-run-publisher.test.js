@@ -635,6 +635,7 @@ test("goal dry-run publisher clears stale TikTok creator-rewards warnings when t
       captions_path: variantCaptionsPath,
       duration_s: 64.483,
       creator_rewards_duration_seconds: { min: 61, max: 90 },
+      generated_at: "2026-05-24T20:10:00.000Z",
     },
   };
   await fs.writeJson(manifestPath, manifest, { spaces: 2 });
@@ -835,6 +836,10 @@ test("goal dry-run publisher uses a platform-specific variant render when durati
   await fs.outputFile(variantCaptionsPath, "1\n00:00:00,000 --> 00:00:01,000\nForza.\n");
   const manifestPath = path.join(storyPackage.artifact_dir, "platform_publish_manifest.json");
   const manifest = await fs.readJson(manifestPath);
+  manifest.outputs.tiktok = {
+    ...manifest.outputs.tiktok,
+    publish_duration_seconds: { min: 15, max: 90 },
+  };
   manifest.outputs.instagram_reels = {
     ...manifest.outputs.instagram_reels,
     variant_video_path: variantPath,
@@ -845,6 +850,8 @@ test("goal dry-run publisher uses a platform-specific variant render when durati
       source_video_path: path.join(storyPackage.artifact_dir, "visual_v4_render.mp4"),
       captions_path: variantCaptionsPath,
       duration_s: 44.8,
+      generated_at: "2026-05-24T20:10:00.000Z",
+      source_duration_s: 47.3,
     },
   };
   await fs.writeJson(manifestPath, manifest, { spaces: 2 });
@@ -867,6 +874,68 @@ test("goal dry-run publisher uses a platform-specific variant render when durati
   assert.equal(instagram.captions_path, variantCaptionsPath);
   assert.deepEqual(instagram.blockers, []);
   assert.equal(plan.blocked_actions.some((action) => action.platform === "instagram_reels"), false);
+});
+
+test("goal dry-run publisher blocks stale platform-specific variants after the final render changes", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-platform-variant-stale-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "instagram-variant-stale",
+    "GREEN",
+    "The Expanse: Osiris Reborn Shows Real Gameplay",
+    {
+      renderedDurationS: 40.333,
+      canonicalSubject: "The Expanse: Osiris Reborn",
+      renderGeneratedAt: "2026-05-31T07:03:20.707Z",
+      audioSegmentGeneratedAt: "2026-05-31T07:04:00.000Z",
+      captionGeneratedAt: "2026-05-31T07:04:10.000Z",
+      voiceQualityGeneratedAt: "2026-05-31T07:04:20.000Z",
+    },
+  );
+  const variantPath = path.join(storyPackage.artifact_dir, "platform_variants", "instagram_reels", "visual_v4_render_instagram_reels.mp4");
+  const variantCaptionsPath = path.join(storyPackage.artifact_dir, "platform_variants", "instagram_reels", "captions_instagram_reels.srt");
+  await fs.outputFile(variantPath, Buffer.alloc(1500, 3));
+  await fs.outputFile(variantCaptionsPath, "1\n00:00:00,000 --> 00:00:01,000\nThe Expanse.\n");
+  const manifestPath = path.join(storyPackage.artifact_dir, "platform_publish_manifest.json");
+  const manifest = await fs.readJson(manifestPath);
+  manifest.outputs.instagram_reels = {
+    ...manifest.outputs.instagram_reels,
+    variant_video_path: variantPath,
+    variant_captions_path: variantCaptionsPath,
+    technical_duration_seconds: 44.8,
+    platform_variant_render: {
+      status: "ready",
+      source_video_path: path.join(storyPackage.artifact_dir, "visual_v4_render.mp4"),
+      captions_path: variantCaptionsPath,
+      duration_s: 44.8,
+      source_duration_s: 47.04,
+      generated_at: "2026-05-27T13:19:04.119Z",
+    },
+  };
+  await fs.writeJson(manifestPath, manifest, { spaces: 2 });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-05-31T07:30:00.000Z",
+    platformOperationalConfig: {
+      instagram_reel: { state: "enabled", reason: "graph_credentials_present" },
+    },
+  });
+
+  const instagram = plan.blocked_actions.find((action) => action.platform === "instagram_reels");
+
+  assert.ok(instagram, JSON.stringify({
+    summary: plan.summary,
+    blocked_stories: plan.blocked_stories,
+    blocked_actions: plan.blocked_actions,
+    actions: plan.actions,
+  }, null, 2));
+  assert.ok(instagram.blockers.includes("platform_variant_stale_after_render:instagram_reels"));
+  assert.ok(instagram.blockers.includes("platform_variant_source_duration_mismatch:instagram_reels"));
+  assert.equal(plan.summary.ready_story_count, 1);
+  assert.equal(plan.summary.blocked_story_count, 0);
+  assert.ok(plan.summary.blocked_action_count >= 1);
+  assert.equal(plan.overall_verdict, "RED");
 });
 
 test("goal dry-run publisher blocks platform-specific variant renders that lack matching captions", async () => {
@@ -1215,6 +1284,53 @@ test("goal dry-run publisher quarantines work-order dead-end blockers without hi
   assert.equal(plan.held_stories[0].status, "quarantined_by_repair_work_order");
   assert.ok(plan.held_stories[0].hold_reasons.includes("dead_end_repair_work_order"));
   assert.ok(plan.held_stories[0].repair_lanes.includes("reject_or_human_review_non_news_image_post"));
+});
+
+test("goal dry-run coherence report separates active readiness from quarantined debt", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-coherence-scope-"));
+  const readyPackage = await makeStoryPackage(root, "bridge-ready", "GREEN", "Forza Horizon 6 Exposes Xbox's Steam Bet");
+  const deadEndPackage = await makeStoryPackage(root, "image-post-dead-end", "RED", "Capturing Has One Player Question", {
+    coherenceResult: "fail",
+    coherenceFailures: ["public_output:canonical_subject_missing_from_title"],
+  });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [readyPackage, deadEndPackage],
+    generatedAt: "2026-05-27T11:55:00.000Z",
+    platformOperationalConfig: allPlatformsEnabled(),
+    repairWorkOrder: {
+      jobs: [
+        {
+          story_id: "image-post-dead-end",
+          status: "blocked_on_render_inputs",
+          actions: [
+            {
+              action_id: "repair_public_output_coherence",
+              status: "reject_recommended",
+              repair_lane: "reject_or_human_review_non_news_image_post",
+              dead_end_blocker: true,
+              operator_approval_required: true,
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  assert.equal(plan.public_output_coherence_report.verdict, "fail");
+  assert.equal(plan.public_output_coherence_report.active_verdict, "pass");
+  assert.equal(plan.public_output_coherence_report.failed_story_count, 1);
+  assert.equal(plan.public_output_coherence_report.active_failed_story_count, 0);
+  assert.equal(plan.public_output_coherence_report.quarantined_failed_story_count, 1);
+  assert.equal(
+    plan.public_output_coherence_report.stories.find((story) => story.story_id === "bridge-ready").readiness_scope,
+    "active",
+  );
+  assert.equal(
+    plan.public_output_coherence_report.stories.find((story) => story.story_id === "image-post-dead-end")
+      .readiness_scope,
+    "quarantined",
+  );
 });
 
 test("goal dry-run publisher keeps dead-end repair lanes visible on stories already held by scheduler preflight", async () => {
@@ -2946,7 +3062,7 @@ test("goal dry-run publisher blocks local Whisper misrecognising Hades II as Had
     meta: {
       wordTimestampSource: "local_whisper_word_alignment",
       transcript:
-        "Hades, two just exposed a sharper gaming story. The source points to a clear player signal.",
+        "Hades two just exposed a sharper gaming story. The source points to a clear player signal.",
     },
     words: [
       { word: "Hades", start: 0, end: 0.2 },

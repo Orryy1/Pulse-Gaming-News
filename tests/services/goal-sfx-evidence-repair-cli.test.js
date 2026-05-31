@@ -56,6 +56,8 @@ test("goal SFX evidence repair CLI parses safe controls", () => {
     "out/sfx_source_plan.json",
     "--sfx-rights-ledger",
     "out/sfx_rights_ledger.json",
+    "--epidemic-sfx-runtime",
+    "out/epidemic_sfx_runtime_manifest.json",
     "--dry-run",
     "--json",
   ]);
@@ -64,6 +66,7 @@ test("goal SFX evidence repair CLI parses safe controls", () => {
   assert.equal(args.storyPackagesPath, "out/story-packages.json");
   assert.equal(args.sfxSourcePlanPath, "out/sfx_source_plan.json");
   assert.equal(args.sfxRightsLedgerPath, "out/sfx_rights_ledger.json");
+  assert.equal(args.epidemicSfxRuntimeManifestPath, "out/epidemic_sfx_runtime_manifest.json");
   assert.equal(args.dryRun, true);
   assert.equal(args.json, true);
 });

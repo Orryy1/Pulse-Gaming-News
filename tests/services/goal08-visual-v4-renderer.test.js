@@ -10,6 +10,9 @@ const {
   buildGoal08VisualV4Renderer,
   writeGoal08VisualV4Renderer,
 } = require("../../lib/goal08-visual-v4-renderer");
+const {
+  currentRenderPolicyManifest,
+} = require("../../lib/studio/v4/render-policy");
 
 async function makeStory(root, storyId, overrides = {}) {
   const artifactDir = path.join(root, storyId);
@@ -25,9 +28,7 @@ async function makeStory(root, storyId, overrides = {}) {
     file_size_bytes: overrides.outputSize || 4096,
     rendered_duration_s: 42,
     clips: overrides.clips || 8,
-    sfx_mix_policy_version: "source_lock_news_tick_v6",
-    voice_mix_policy_version: "local_voice_levelled_v2",
-    visual_design_policy_version: "newsroom_bounded_text_v3",
+    ...currentRenderPolicyManifest(),
     safety: {
       no_publish_triggered: true,
       no_db_mutation: true,

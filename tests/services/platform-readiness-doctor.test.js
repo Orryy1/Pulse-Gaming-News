@@ -139,6 +139,89 @@ test("platform readiness doctor CLI evidence prefers fresh token-blocked TikTok 
   assert.deepEqual(report.blockers, ["refresh_or_sync_local_token"]);
 });
 
+test("platform readiness doctor CLI evidence prefers strict dry-run TikTok actions over stale fresh dispatch packs", () => {
+  const report = buildCurrentTikTokAutomationReport({
+    generatedAt: "2026-05-31T17:10:00.000Z",
+    env: { TIKTOK_DIRECT_POST_APPROVED: "false" },
+    tiktokTokenStatus: {
+      ok: false,
+      reason: "expired",
+      refresh_available: true,
+      needs_reauth: false,
+      needs_refresh_or_sync: true,
+      expires_in_seconds: -120,
+    },
+    existingAutomationReport: {
+      dispatchGate: {
+        topReadyPack: {
+          storyId: "stale_overnight_story",
+          status: "ready_for_operator_review",
+          mp4: "output/final/stale_overnight_story.mp4",
+          eligibility: { durationSeconds: 68.2 },
+        },
+      },
+    },
+    freshDispatchPack: {
+      dispatchPack: {
+        storyId: "stale_fresh_story",
+        status: "tiktok_auth_action_required",
+        mp4: "output/goal-proof/batch/stale_fresh_story/tiktok.mp4",
+        cover: "test/output/tiktok-fresh-dispatch/stale_fresh_story_cover.jpg",
+        eligibility: {
+          durationSeconds: 75.886,
+          captionReady: true,
+          dispatchLengthReady: true,
+          hasMp4: true,
+          hasCover: true,
+        },
+        voiceGate: { verdict: "pass", blockers: [], warnings: [] },
+        creativeGate: { blocks_dispatch: false, blockers: [] },
+      },
+      inboxPlan: {
+        status: "not_ready",
+        dry_run: true,
+        will_upload_to_tiktok: false,
+        blockers: ["dispatch_pack_tiktok_auth_action_required"],
+      },
+      creativeReview: { operator_visual_review_required: true, blockers: [] },
+      safety: { public_post_created: false },
+    },
+    strictDryRunPlan: {
+      mode: "DRY_RUN_PUBLISH",
+      safety: {
+        no_publish_triggered: true,
+        no_network_uploads: true,
+        no_db_mutation: true,
+        no_oauth_or_token_change: true,
+      },
+      actions: [
+        {
+          story_id: "current_dry_run_story",
+          platform: "tiktok",
+          action: "would_queue_when_enabled",
+          mode: "DRY_RUN_PUBLISH",
+          title: "Current TikTok Proof Cut",
+          video_path: "output/goal-proof/batch/current_dry_run_story/platform_variants/tiktok_creator_rewards/current.mp4",
+          cover_frame_source: "output/goal-proof/batch/current_dry_run_story/platform_variants/tiktok_creator_rewards/current.mp4",
+          video_duration_s: 65.159,
+          blockers: [],
+          warnings: [],
+          no_network_upload: true,
+          platform_enabled: false,
+          platform_operational_state: "needs_credentials",
+        },
+      ],
+    },
+  });
+
+  assert.equal(report.dispatchGate.source, "strict_dry_run_tiktok_action");
+  assert.equal(report.dispatchGate.topReadyPack.storyId, "current_dry_run_story");
+  assert.equal(report.dispatchGate.topReadyPack.durationSeconds, 65.159);
+  assert.equal(report.noPostReadiness.dispatchCreative.storyId, "current_dry_run_story");
+  assert.equal(report.noPostReadiness.dispatchCreative.status, "ready_for_operator_visual_review");
+  assert.deepEqual(report.blockers, ["refresh_or_sync_local_token"]);
+});
+
 test("platform readiness doctor renders TikTok no-post readiness lanes separately", () => {
   const report = buildPlatformReadinessDoctor({
     generatedAt: "2026-05-13T08:30:00.000Z",

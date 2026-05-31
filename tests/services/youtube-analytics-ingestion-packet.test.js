@@ -13,6 +13,9 @@ const {
   buildYouTubeAnalyticsIngestionPacket,
   renderYouTubeAnalyticsIngestionMarkdown,
 } = require("../../lib/intelligence/youtube-analytics-ingestion-packet");
+const {
+  resolvePacketVideosFromStories,
+} = require("../../tools/youtube-analytics-ingestion-packet");
 
 test("youtube analytics packet: blocked until yt-analytics.readonly is granted", () => {
   const packet = buildYouTubeAnalyticsIngestionPacket({
@@ -120,6 +123,39 @@ test("youtube analytics packet: granted scope produces a dry-run plan without ne
   assert.equal(packet.safety.oauth_triggered, false);
 });
 
+test("youtube analytics packet: real mode blocks fixture video IDs", () => {
+  const packet = buildYouTubeAnalyticsIngestionPacket({
+    videoIds: ["fixture-short-001"],
+    tokenStatus: { exists: true, yt_analytics_scope: "granted" },
+    env: {
+      INTELLIGENCE_ANALYTICS_MODE: "real",
+      INTELLIGENCE_REAL_MODE: "true",
+    },
+  });
+
+  assert.equal(packet.verdict, "BLOCKED");
+  assert.equal(packet.status, "fixture_video_ids_not_real_mode_ready");
+  assert.equal(packet.video_count, 1);
+  assert.equal(packet.planned_queries.length, 0);
+  assert.match(packet.next_actions[0], /real published YouTube video IDs/i);
+  assert.equal(packet.safety.network_called, false);
+});
+
+test("youtube analytics packet: real mode blocks empty target lists", () => {
+  const packet = buildYouTubeAnalyticsIngestionPacket({
+    videoIds: [],
+    tokenStatus: { exists: true, yt_analytics_scope: "granted" },
+    env: {
+      INTELLIGENCE_ANALYTICS_MODE: "real",
+      INTELLIGENCE_REAL_MODE: "true",
+    },
+  });
+
+  assert.equal(packet.verdict, "BLOCKED");
+  assert.equal(packet.status, "no_real_youtube_video_ids");
+  assert.equal(packet.planned_queries.length, 0);
+});
+
 test("youtube analytics packet: Markdown is operator-readable and ASCII-safe", () => {
   const packet = buildYouTubeAnalyticsIngestionPacket({
     videoIds: ["yt1"],
@@ -137,4 +173,55 @@ test("youtube analytics packet: local operator command is registered", () => {
     packageJson.scripts["ops:youtube-analytics-packet"],
     "node tools/youtube-analytics-ingestion-packet.js",
   );
+});
+
+test("youtube analytics packet: operator command defaults to real published DB targets", () => {
+  const videos = resolvePacketVideosFromStories({
+    args: { fixture: false, videos: [], limit: 2 },
+    now: Date.parse("2026-05-31T12:00:00.000Z"),
+    stories: [
+      {
+        id: "old",
+        title: "Old video",
+        youtube_post_id: "yt_old",
+        youtube_published_at: "2025-01-01T12:00:00.000Z",
+      },
+      {
+        id: "dupe",
+        title: "Duplicate video",
+        youtube_post_id: "DUPE_yt_dupe",
+        youtube_published_at: "2026-05-30T12:00:00.000Z",
+      },
+      {
+        id: "newer",
+        title: "Newer video",
+        youtube_post_id: "yt_newer",
+        youtube_published_at: "2026-05-30T12:00:00.000Z",
+      },
+      {
+        id: "latest",
+        title: "Latest video",
+        youtube_post_id: "yt_latest",
+        youtube_published_at: "2026-05-31T09:00:00.000Z",
+      },
+    ],
+  });
+
+  assert.deepEqual(videos, ["yt_latest", "yt_newer"]);
+});
+
+test("youtube analytics packet: fixture targets require explicit fixture mode", () => {
+  const videos = resolvePacketVideosFromStories({
+    args: { fixture: true, videos: [], limit: 2 },
+    stories: [
+      {
+        id: "latest",
+        title: "Latest video",
+        youtube_post_id: "yt_latest",
+        youtube_published_at: "2026-05-31T09:00:00.000Z",
+      },
+    ],
+  });
+
+  assert.deepEqual(videos, ["fixture-short-001", "fixture-short-002"]);
 });

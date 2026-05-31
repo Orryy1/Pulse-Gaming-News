@@ -806,6 +806,64 @@ test("incident guard blocks weak first-frame and source-lock evidence despite GR
   assert.ok(report.disaster_upload_blockers.includes("incident:below_benchmark_polish"));
 });
 
+test("incident guard blocks cut-off text and caption collision frame rules", () => {
+  const report = evaluateIncidentGuard({
+    story_id: "frame-rules-risk",
+    canonical_story_manifest: {
+      story_id: "frame-rules-risk",
+      canonical_subject: "Forza Horizon 6",
+      selected_title: "Forza Horizon 6 Exposes Xbox's Steam Bet",
+      thumbnail_headline: "FORZA STEAM BET",
+      first_spoken_line: "Forza Horizon 6 just made Xbox's Steam plan harder to ignore.",
+      narration_script:
+        "Forza Horizon 6 just made Xbox's Steam plan harder to ignore. GamesRadar reports the early Steam numbers and the price is the awkward catch.",
+      description: "GamesRadar reports the early Steam numbers for Forza Horizon 6. Source: GamesRadar.",
+      primary_source: "GamesRadar",
+      discovery_source: "GamesRadar",
+    },
+    render_manifest: {
+      final_publish_render: true,
+      render_lane: "visual_v4_production",
+      render_quality_class: "premium",
+      visual_count: 8,
+    },
+    ...cleanVisualEvidence("Forza Horizon 6"),
+    visual_quality_report: {
+      ...cleanVisualEvidence("Forza Horizon 6").visual_quality_report,
+      frame_rules: {
+        first_frame_subject: "Forza Horizon 6",
+        first_frame_text: "FORZA STEAM BET",
+        source_locks_readable: true,
+        text_objects_within_safe_bounds: false,
+        source_labels_mobile_readable: false,
+        caption_overlay_clear: false,
+      },
+    },
+    publish_verdict: { verdict: "GREEN" },
+    platform_publish_manifest: {
+      publish_status: "GREEN",
+      platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts"] },
+      outputs: {
+        youtube_shorts: { title: "Forza Horizon 6 Exposes Xbox's Steam Bet" },
+      },
+    },
+    file_evidence: {
+      mp4_ready: true,
+      captions_ready: true,
+      narration_ready: true,
+      word_timestamps_ready: true,
+      materialised_motion_ready: true,
+      distinct_motion_families_ready: true,
+      rights_ledger_ready: true,
+    },
+  });
+
+  assert.equal(report.safe_to_publish_boolean, false);
+  assert.ok(report.disaster_upload_blockers.includes("incident:text_cutoff_risk"));
+  assert.ok(report.disaster_upload_blockers.includes("incident:source_label_unreadable"));
+  assert.ok(report.disaster_upload_blockers.includes("incident:caption_overlay_collision_risk"));
+});
+
 test("incident guard blocks public copy that names a different reporting source than the primary source", () => {
   const report = evaluateIncidentGuard({
     story_id: "dawn-of-war-source-mismatch",

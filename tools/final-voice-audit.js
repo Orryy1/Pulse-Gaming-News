@@ -28,16 +28,27 @@ function parseArgs(argv) {
   return args;
 }
 
+async function collectMp4s(dir, depth = 3) {
+  if (depth < 0 || !(await fs.pathExists(dir))) return [];
+  const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
+  const files = [];
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isFile() && /\.mp4$/i.test(entry.name)) {
+      const stat = await fs.stat(fullPath);
+      files.push({ fullPath, mtimeMs: stat.mtimeMs });
+    }
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    files.push(...(await collectMp4s(path.join(dir, entry.name), depth - 1)));
+  }
+  return files;
+}
+
 async function listMp4s(finalDir, limit) {
   if (!(await fs.pathExists(finalDir))) return [];
-  const entries = await fs.readdir(finalDir);
-  const files = await Promise.all(entries
-    .filter((entry) => /\.mp4$/i.test(entry))
-    .map(async (entry) => {
-      const fullPath = path.join(finalDir, entry);
-      const stat = await fs.stat(fullPath);
-      return { fullPath, mtimeMs: stat.mtimeMs };
-    }));
+  const files = await collectMp4s(finalDir);
   files.sort((a, b) => b.mtimeMs - a.mtimeMs || a.fullPath.localeCompare(b.fullPath));
   const mp4s = files.map((file) => file.fullPath);
   return Number.isFinite(limit) && limit > 0 ? mp4s.slice(0, limit) : mp4s;

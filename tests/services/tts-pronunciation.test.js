@@ -117,14 +117,29 @@ test("Silent Hill 2 / II → Silent Hill two", () => {
   );
 });
 
-test("Hades II / 2 -> Hades, two to avoid local clone tattoo blending without adding subtitle drift", () => {
+test("Hades II / 2 -> Hades two without comma artefacts or subtitle drift", () => {
   assert.equal(
     applyGamingPronunciation("Hades II finally has a console date"),
-    "Hades, two finally has a console date",
+    "Hades two finally has a console date",
   );
   assert.equal(
     applyGamingPronunciation("Hades 2 finally has a console date"),
-    "Hades, two finally has a console date",
+    "Hades two finally has a console date",
+  );
+});
+
+test("Stranger Than Heaven Five Eras avoids Eris/heiress ASR drift in local narration", () => {
+  assert.equal(
+    applyGamingPronunciation("Xbox showed Stranger Than Heaven's Five Eras reveal."),
+    "Xbox showed Stranger Than Heaven's five era reveal.",
+  );
+  assert.equal(
+    applyGamingPronunciation("Stranger Than Heaven Five Eras works only if five eras change missions."),
+    "Stranger Than Heaven five era setup works only if five time periods change missions.",
+  );
+  assert.equal(
+    applyGamingPronunciation("STRANGER THAN HEAVEN Five Eras is swinging at more than one period piece."),
+    "Stranger Than Heaven five era setup is swinging at more than one period piece.",
   );
 });
 

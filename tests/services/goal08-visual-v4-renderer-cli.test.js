@@ -7,6 +7,9 @@ const path = require("node:path");
 const test = require("node:test");
 
 const { main, parseArgs } = require("../../tools/goal08-visual-v4-renderer");
+const {
+  currentRenderPolicyManifest,
+} = require("../../lib/studio/v4/render-policy");
 
 test("Goal 08 CLI parses story package and upstream director arguments", () => {
   const args = parseArgs([
@@ -43,9 +46,7 @@ test("Goal 08 CLI writes local-proof renderer artefacts", async () => {
     visual_tier: "production_v4_motion",
     final_publish_render: true,
     output_path: path.join(artifactDir, "visual_v4_render.mp4"),
-    sfx_mix_policy_version: "source_lock_news_tick_v6",
-    voice_mix_policy_version: "local_voice_levelled_v2",
-    visual_design_policy_version: "newsroom_bounded_text_v3",
+    ...currentRenderPolicyManifest(),
     safety: {
       no_publish_triggered: true,
       no_db_mutation: true,

@@ -27,6 +27,7 @@ const {
   STUDIO_V4_VOICE_MIX_POLICY_VERSION,
   STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION,
 } = require("../../lib/studio/v4/render-policy");
+const { buildKineticAss } = require("../../lib/studio/v2/subtitle-layer-v2");
 const proofRenderLib = require("../../lib/studio/v4/proof-render");
 
 test("Studio V4 proof renderer plans motion-only scenes across full narration", () => {
@@ -248,6 +249,66 @@ test("Studio V4 proof renderer resolves Epidemic music beds and stings from the 
   assert.equal(mix.sting.role, "sting_verified");
   assert.equal(mix.policy.duck_under_narration, true);
   assert.equal(mix.policy.raw_bed_volume <= 0.12, true);
+});
+
+test("Studio V4 proof renderer keeps flash captions above lower-third and bottom-edge risk", () => {
+  const ass = buildKineticAss({
+    story: { title: "Hades II Just Broke PlayStation's Silence" },
+    words: [
+      { word: "Hades", start: 0, end: 0.2 },
+      { word: "two", start: 0.22, end: 0.42 },
+      { word: "lands", start: 0.5, end: 0.72 },
+      { word: "on", start: 0.75, end: 0.86 },
+      { word: "PlayStation", start: 0.9, end: 1.2 },
+    ],
+    duration: 2,
+    scriptText: "Hades II lands on PlayStation.",
+    captionCase: "upper",
+    revealMode: "word",
+    motionStyle: "flash",
+  });
+
+  assert.match(ass, /Style: Pop,Impact,82,/);
+  assert.match(ass, /\\move\(540,1378,540,1342,0,130\)/);
+  assert.doesNotMatch(ass, /\\move\(540,1484,540,1450,0,130\)/);
+});
+
+test("Studio V4 proof renderer masks baked-in source text zones before overlays", () => {
+  const chain = buildOverlayChain({
+    story: {
+      id: "source-text-risk",
+      title: "Hades II Just Broke PlayStation's Silence",
+      canonical_subject: "Hades II",
+      primary_source: "Xbox",
+    },
+    inputLabel: "base",
+    outputLabel: "overlayBase",
+    durationS: 30,
+    fontOpt: "font='Arial'",
+  });
+
+  assert.match(chain, /drawbox=x=0:y=138:w=iw:h=164:color=black@0\.56:t=fill/);
+  assert.match(chain, /drawbox=x=0:y=ih-430:w=iw:h=430:color=black@0\.52:t=fill/);
+  assert.match(chain, /drawbox=x=0:y=ih-315:w=iw:h=315:color=black@0\.66:t=fill/);
+});
+
+test("Studio V4 proof renderer masks vertical frame edges before text audits", () => {
+  const chain = buildOverlayChain({
+    story: {
+      id: "frame-edge-risk",
+      title: "Subnautica 2 Reportedly Leaked Early",
+      canonical_subject: "Subnautica 2",
+      primary_source: "RespawnFirst",
+    },
+    inputLabel: "base",
+    outputLabel: "overlayBase",
+    durationS: 30,
+    fontOpt: "font='Arial'",
+  });
+
+  assert.match(chain, /drawbox=x=0:y=0:w=44:h=ih:color=0x0B0F19@0\.72:t=fill/);
+  assert.match(chain, /drawbox=x=iw-44:y=0:w=44:h=ih:color=0x0B0F19@0\.72:t=fill/);
+  assert.doesNotMatch(chain, /drawbox=x=0:y=0:w=18:h=ih:color=0x0B0F19@0\.52:t=fill/);
 });
 
 test("Studio V4 proof renderer unlocks richer SFX only for curated Epidemic packs", async () => {
@@ -804,13 +865,17 @@ test("Studio V4 overlay chain avoids raw straight apostrophes inside ffmpeg draw
   assert.doesNotMatch(chain, /ASSASSIN\\'S|ASSASSIN'S/);
 });
 
-test("Studio V4 proof renderer clamps JPEG-derived inputs to upload-safe yuv420p", () => {
+test("Studio V4 proof renderer keeps source footage inside a safe vertical compose", () => {
   const source = fs.readFileSync(
     path.join(__dirname, "..", "..", "tools", "studio-v4-proof-render.js"),
     "utf8",
   );
 
-  assert.match(source, /scale=1080:1920:force_original_aspect_ratio=increase:in_range=pc:out_range=tv/);
+  assert.match(source, /split=2\[bgsrc\$\{i\}\]\[fgsrc\$\{i\}\]/);
+  assert.match(source, /boxblur=32:1/);
+  assert.match(source, /scale=1010:1780:force_original_aspect_ratio=decrease:in_range=pc:out_range=tv/);
+  assert.match(source, /overlay=\(W-w\)\/2:\(H-h\)\/2/);
+  assert.doesNotMatch(source, /crop=1080:1920:\(iw-1080\)\/2:\(ih-1920\)\/2/);
   assert.match(source, /\[overlayBase\]ass=\$\{assPathFilter\(assPath\)\},format=yuv420p\[outv\]/);
   assert.match(source, /"-pix_fmt",\s*"yuv420p"/);
 });
@@ -851,7 +916,7 @@ test("Studio V4 proof renderer reports current SFX, voice and visual design poli
   assert.match(source, /visual_design_policy_version:\s*STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION/);
   assert.equal(STUDIO_V4_SFX_MIX_POLICY_VERSION, "source_lock_news_tick_v6");
   assert.equal(STUDIO_V4_VOICE_MIX_POLICY_VERSION, "local_voice_levelled_v2");
-  assert.equal(STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION, "newsroom_bounded_text_v3");
+  assert.equal(STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION, "newsroom_safe_vertical_compose_v6");
 });
 
 test("Studio V4 overlay chain uses layered premium plates instead of flat orange blocks", () => {
@@ -897,7 +962,7 @@ test("Studio V4 overlay chain adds newsroom-grade labels and layered glass rails
   assert.match(chain, /VERIFY/);
   assert.match(chain, /PROOF BEAT/);
   assert.match(chain, /PLAYER READ/);
-  assert.match(chain, /color=0x0B0F19@0\.52/);
+  assert.match(chain, /color=0x0B0F19@0\.72/);
   assert.match(chain, /color=0x38BDF8@0\.34/);
   assert.doesNotMatch(chain, /color=0xFF6B1A@0\.88:t=fill/);
 });

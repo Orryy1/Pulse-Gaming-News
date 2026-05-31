@@ -2279,7 +2279,7 @@ test("production cutover requeues final renders when TTS pronunciation policy ma
   assert.equal(plan.queue[0].force_final_render, true);
   assert.ok(plan.queue[0].render_input_blockers.includes("final_narration_audio_stale_after_pronunciation_repair"));
   assert.ok(plan.queue[0].render_input_blockers.includes("word_timestamps_stale_after_pronunciation_repair"));
-  assert.equal(plan.queue[0].render_input_evidence.tts_pronunciation_expected_transcript, "Hades, two finally has a console date players can plan around.");
+  assert.equal(plan.queue[0].render_input_evidence.tts_pronunciation_expected_transcript, "Hades two finally has a console date players can plan around.");
 });
 
 test("production cutover requeues final renders when ASR word timestamps contain semantic misrecognitions", async () => {

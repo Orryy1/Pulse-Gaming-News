@@ -1954,6 +1954,70 @@ test("render input work order routes aggregate visual benchmark failures away fr
   assert.match(job.actions[0].post_repair_validation_command, /ops:next-publish-candidates/);
 });
 
+test("render input work order rerenders visual-policy-stale finals instead of refreshing old MP4 evidence", () => {
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-05-31T12:00:00.000Z",
+      queue: [],
+    },
+    dryRunPlan: {
+      generated_at: "2026-05-31T12:08:00.000Z",
+      blocked_stories: [
+        {
+          story_id: "visual-policy-story",
+          artifact_dir: "C:/repo/output/goal-proof/batch/visual-policy-story",
+          blockers: ["incident:visual_design_policy_stale"],
+          scheduler_preflight: {
+            status: "pass",
+            blockers: [],
+            checks: {
+              bridge_artifact_freshness: {
+                result: "pass",
+                evidence: {
+                  render_manifest_path: "C:/repo/output/goal-proof/batch/visual-policy-story/render_manifest.json",
+                },
+              },
+            },
+          },
+          incident_guard: {
+            evidence: {
+              title: "Hades II Just Broke PlayStation's Silence",
+              canonical_subject: "Hades II",
+              file_evidence: {
+                mp4_ready: true,
+                narration_ready: true,
+                word_timestamps_ready: true,
+                materialised_motion_ready: true,
+                distinct_motion_families_ready: true,
+                rights_ledger_ready: true,
+                word_timestamps_asr_aligned: true,
+              },
+            },
+          },
+        },
+      ],
+    },
+    generatedAt: "2026-05-31T12:09:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.ready_for_final_render_job_count, 1);
+  assert.equal(workOrder.summary.blocked_on_render_inputs_count, 0);
+  assert.equal(workOrder.summary.aggregate_benchmark_repair_jobs, 0);
+  const job = workOrder.jobs[0];
+  assert.equal(job.status, "ready_for_final_render_job");
+  assert.equal(job.force_final_render, true);
+  assert.deepEqual(job.blockers, ["visual_design_policy_rerender_required"]);
+  assert.equal(job.evidence.narration_audio_path, "output/audio/visual-policy-story.mp3");
+  assert.equal(job.evidence.word_timestamps_path, "output/audio/visual-policy-story_timestamps.json");
+  assert.deepEqual(
+    job.actions.map((action) => action.action_id),
+    ["run_visual_v4_production_render"],
+  );
+  assert.equal(job.actions[0].force, true);
+  assert.match(job.actions[0].recommended_command, /ops:goal-production-render/);
+  assert.doesNotMatch(job.actions[0].recommended_command, /refresh-quality-only/);
+});
+
 test("render input work order routes public-copy-newer scheduler blockers to audio freshness repair", () => {
   const workOrder = buildGoalRenderInputWorkOrder({
     cutoverPlan: {
@@ -2002,6 +2066,149 @@ test("render input work order routes public-copy-newer scheduler blockers to aud
     ["generate_final_narration_audio_and_word_timestamps"],
   );
   assert.match(job.actions[0].recommended_command, /ops:goal-audio-timestamps/);
+});
+
+test("render input work order routes public-copy-newer with fresh final inputs to final render", () => {
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-05-28T12:00:00.000Z",
+      queue: [],
+    },
+    dryRunPlan: {
+      generated_at: "2026-05-28T12:10:00.000Z",
+      blocked_stories: [
+        {
+          story_id: "fresh-copy-ready-inputs",
+          artifact_dir: "C:/repo/output/goal-proof/batch/fresh-copy-ready-inputs",
+          blockers: ["public_copy_newer_than_render"],
+          scheduler_preflight: {
+            status: "blocked",
+            blockers: ["public_copy_newer_than_render"],
+            checks: {
+              public_copy: { result: "pass", failures: [], warnings: [] },
+              timestamp_alignment: {
+                result: "pass",
+                failures: [],
+                warnings: [],
+                evidence: {
+                  word_timestamp_source: "local_whisper_word_alignment",
+                  word_timestamp_alignment_required: "local_whisper_word_alignment",
+                },
+              },
+              bridge_artifact_freshness: {
+                result: "fail",
+                failures: ["public_copy_newer_than_render"],
+                warnings: [],
+                evidence: {
+                  render_manifest_path:
+                    "C:/repo/output/goal-proof/batch/fresh-copy-ready-inputs/render_manifest.json",
+                },
+              },
+            },
+          },
+          incident_guard: {
+            evidence: {
+              title: "The Expanse Shows Real Gameplay",
+              canonical_subject: "The Expanse: Osiris Reborn",
+              file_evidence: {
+                mp4_ready: true,
+                captions_ready: true,
+                narration_ready: true,
+                word_timestamps_ready: true,
+                materialised_motion_ready: true,
+                distinct_motion_families_ready: true,
+                rights_ledger_ready: true,
+                word_timestamps_asr_aligned: true,
+              },
+            },
+          },
+        },
+      ],
+    },
+    generatedAt: "2026-05-28T12:11:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.ready_for_final_render_job_count, 1);
+  assert.equal(workOrder.summary.audio_timestamp_jobs, 0);
+  const job = workOrder.jobs.find((entry) => entry.story_id === "fresh-copy-ready-inputs");
+  assert.equal(job.status, "ready_for_final_render_job");
+  assert.equal(job.force_final_render, true);
+  assert.deepEqual(
+    job.actions.map((action) => action.action_id),
+    ["run_visual_v4_production_render"],
+  );
+  assert.equal(job.actions[0].force, true);
+});
+
+test("render input work order routes dry-run duration failures to normal-duration repair", () => {
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-05-28T12:00:00.000Z",
+      queue: [],
+    },
+    dryRunPlan: {
+      generated_at: "2026-05-28T12:10:00.000Z",
+      blocked_stories: [
+        {
+          story_id: "short-dry-run-render",
+          artifact_dir: "C:/repo/output/goal-proof/batch/short-dry-run-render",
+          blockers: [
+            "audio_segment_loudness_report_stale_after_render",
+            "normal_production_duration_below_quality_floor:30",
+            "preflight_candidate_not_publish_ready:review",
+            "preflight_qa_blocked:video:duration_too_short (29.98s)",
+            "preflight_qa_blocked:bridge_artifact_freshness:bridge_metadata_stale:duration_seconds",
+          ],
+          scheduler_preflight: {
+            status: "blocked",
+            blockers: [
+              "video:duration_too_short (29.98s)",
+              "bridge_artifact_freshness:bridge_metadata_stale:duration_seconds",
+            ],
+            checks: {
+              video: {
+                result: "fail",
+                failures: ["duration_too_short (29.98s)"],
+                warnings: [],
+              },
+              bridge_artifact_freshness: {
+                result: "fail",
+                failures: ["bridge_metadata_stale:duration_seconds"],
+                warnings: [],
+              },
+            },
+          },
+          incident_guard: {
+            evidence: {
+              title: "The Expanse Shows Real Gameplay",
+              canonical_subject: "The Expanse: Osiris Reborn",
+              file_evidence: {
+                mp4_ready: true,
+                captions_ready: true,
+                narration_ready: true,
+                word_timestamps_ready: true,
+                materialised_motion_ready: true,
+                distinct_motion_families_ready: true,
+                rights_ledger_ready: true,
+                word_timestamps_asr_aligned: true,
+              },
+            },
+          },
+        },
+      ],
+    },
+    generatedAt: "2026-05-28T12:11:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.normal_duration_repair_jobs, 1);
+  assert.equal(workOrder.summary.audio_timestamp_jobs, 0);
+  const job = workOrder.jobs.find((entry) => entry.story_id === "short-dry-run-render");
+  assert.equal(job.status, "blocked_on_render_inputs");
+  assert.ok(job.blockers.includes("normal_production_duration_below_quality_floor:30"));
+  assert.deepEqual(
+    job.actions.map((action) => action.action_id),
+    ["repair_normal_production_duration", "refresh_stale_render_qa_state"],
+  );
 });
 
 test("render input work order routes dry-run title duplicates to event deduplication repair", () => {

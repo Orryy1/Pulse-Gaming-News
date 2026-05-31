@@ -88,6 +88,51 @@ test("coherence artifact repair rewrites stale reports from the current canonica
   assert.deepEqual(audit.blockers, []);
 });
 
+test("coherence artifact repair refuses to greenlight stale render snapshots", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-coherence-artifact-stale-render-"));
+  const artifactDir = await makeCoherenceArtifactFixture(root, "stale-render-story");
+  await fs.outputJson(path.join(artifactDir, "render_manifest.json"), {
+    generated_at: "2026-05-30T23:40:00.000Z",
+    input_fingerprint: {
+      canonical_snapshot: {
+        selected_title: "Forza Horizon 6 Exposes Xbox's Steam Bet",
+        thumbnail_headline: "FORZA STEAM BET",
+        first_spoken_line: "Forza Horizon 6 just made Xbox's Steam plan harder to ignore.",
+        narration_script:
+          "Forza Horizon 6 just made Xbox's Steam plan harder to ignore. This is the older rendered narration.",
+        description: "Forza Horizon 6 has a platform story worth watching. Source: Eurogamer.",
+        primary_source: { name: "Eurogamer", url: "https://www.eurogamer.net/forza-horizon-6" },
+      },
+    },
+  }, { spaces: 2 });
+
+  const report = await repairCoherenceArtifacts({
+    dryRunPlan: {
+      blocked_stories: [
+        {
+          story_id: "stale-render-story",
+          artifact_dir: artifactDir,
+          blockers: ["stale_public_output_coherence_report", "public_copy_newer_than_render"],
+        },
+      ],
+    },
+    generatedAt: "2026-05-30T23:47:00.000Z",
+    apply: true,
+  });
+
+  assert.equal(report.summary.target_count, 1);
+  assert.equal(report.summary.written_count, 1);
+  assert.equal(report.summary.freshness_pass_count, 0);
+  assert.equal(report.summary.remaining_blocked_count, 1);
+  assert.ok(report.rows[0].remaining_blockers.includes("coherence_report_failure:render_snapshot_stale"));
+  assert.ok(report.rows[0].remaining_blockers.includes("coherence_report_failure:render_snapshot_stale_field:narration_script"));
+
+  const repaired = await fs.readJson(path.join(artifactDir, "coherence_report.json"));
+  assert.equal(repaired.result, "fail");
+  assert.ok(repaired.failures.includes("render_snapshot_stale"));
+  assert.ok(repaired.failures.includes("render_snapshot_stale_field:narration_script"));
+});
+
 test("current coherence report stays failed when current public copy is unsafe", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-coherence-artifact-bad-copy-"));
   const artifactDir = await makeCoherenceArtifactFixture(root, "bad-copy");

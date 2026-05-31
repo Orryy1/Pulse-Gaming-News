@@ -14,6 +14,9 @@ const {
   buildYouTubeAnalyticsIngestionPacket,
   renderYouTubeAnalyticsIngestionMarkdown,
 } = require("../lib/intelligence/youtube-analytics-ingestion-packet");
+const {
+  selectPublishedVideoTargets,
+} = require("../lib/intelligence/continuous-learning-loop");
 const { readTokenStatus } = require("./analytics-capability-doctor");
 
 function parseArgs(argv = process.argv.slice(2)) {
@@ -21,10 +24,12 @@ function parseArgs(argv = process.argv.slice(2)) {
     fixture: false,
     videos: [],
     limit: 5,
+    json: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--fixture") args.fixture = true;
+    else if (arg === "--json") args.json = true;
     else if (arg === "--video" && argv[i + 1]) args.videos.push(argv[++i]);
     else if (arg.startsWith("--video=")) args.videos.push(arg.slice(8));
     else if (arg === "--limit" && argv[i + 1]) args.limit = Number(argv[++i]);
@@ -45,13 +50,39 @@ function fixtureVideos(limit = 5) {
   ].slice(0, limit);
 }
 
+function resolvePacketVideosFromStories({
+  args = {},
+  stories = [],
+  now = Date.now(),
+} = {}) {
+  if (Array.isArray(args.videos) && args.videos.length) return args.videos;
+  if (args.fixture) return fixtureVideos(args.limit);
+  return selectPublishedVideoTargets(stories, {
+    now,
+    maxAgeDays: 45,
+    limit: args.limit,
+  }).map((target) => target.video_id);
+}
+
+async function readStoriesForPacket() {
+  try {
+    return await require("../lib/db").getStories();
+  } catch {
+    return [];
+  }
+}
+
 async function main(argv = process.argv.slice(2)) {
   await fs.ensureDir(OUT_DIR);
   const args = parseArgs(argv);
   const tokenStatus = args.fixture
     ? { exists: true, yt_analytics_scope: "granted" }
     : await readTokenStatus();
-  const videos = args.videos.length ? args.videos : fixtureVideos(args.limit);
+  const stories = args.fixture || args.videos.length ? [] : await readStoriesForPacket();
+  const videos = resolvePacketVideosFromStories({
+    args,
+    stories,
+  });
 
   const packet = buildYouTubeAnalyticsIngestionPacket({
     videoIds: videos,
@@ -69,6 +100,9 @@ async function main(argv = process.argv.slice(2)) {
   console.log(`[youtube-analytics-packet] queries=${packet.planned_queries.length}`);
   console.log(`[youtube-analytics-packet] md=${path.relative(ROOT, mdPath)}`);
   console.log(`[youtube-analytics-packet] json=${path.relative(ROOT, jsonPath)}`);
+  if (args.json) {
+    process.stdout.write(`${JSON.stringify(packet, null, 2)}\n`);
+  }
   return {
     packet,
     artefacts: {
@@ -85,4 +119,9 @@ if (require.main === module) {
   });
 }
 
-module.exports = { parseArgs, main };
+module.exports = {
+  fixtureVideos,
+  main,
+  parseArgs,
+  resolvePacketVideosFromStories,
+};

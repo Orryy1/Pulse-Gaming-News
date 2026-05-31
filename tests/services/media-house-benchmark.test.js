@@ -131,6 +131,47 @@ test("media-house benchmark preserves director caption policy when story fields 
   assert.ok(!benchmark.failures.includes("gold_standard:caption_legibility_below_reference"));
 });
 
+test("media-house benchmark fails frame layout rules before cut-off public text can pass", () => {
+  const { runMediaHouseBenchmark } = require("../../lib/media-house-benchmark");
+
+  const benchmark = runMediaHouseBenchmark({
+    story: {
+      id: "frame_layout_fail",
+      title: "Forza Horizon 6 Steam Numbers Skyrocket",
+      suggested_title: "Forza Horizon 6 Steam Numbers Skyrocket",
+      hook: "Forza Horizon 6 just exposed the Xbox problem everyone wanted.",
+      full_script:
+        "Forza Horizon 6 just exposed the Xbox problem everyone wanted. GamesRadar reports 130,000 concurrent Steam players. That number matters because paid early access is already beating older Forza launches.",
+      suggested_thumbnail_text:
+        "FORZA HORIZON SIX STEAM NUMBERS HAVE BECOME A MASSIVE PLATFORM ARGUMENT",
+      source_card_label:
+        "A very long syndicated discovery headline that is not a mobile source label",
+      video_clips: Array.from({ length: 8 }, (_, index) => ({
+        rights_risk_class: "storefront_promotional_video",
+        source_url: `https://cdn.example.com/clip-${index}.mp4`,
+      })),
+      clean_manual_captions: true,
+      subtitle_timing_source: "timestamps",
+    },
+    directorPlan: {
+      ...strongDirectorPlan(),
+      caption_policy: {
+        ...strongDirectorPlan().caption_policy,
+        avoid_lower_third_collisions: false,
+      },
+    },
+    requireGate: true,
+  });
+
+  assert.equal(benchmark.result, "fail");
+  assert.equal(benchmark.frame_rules.text_objects_within_safe_bounds, false);
+  assert.equal(benchmark.frame_rules.source_labels_mobile_readable, false);
+  assert.equal(benchmark.frame_rules.caption_overlay_clear, false);
+  assert.ok(benchmark.failures.includes("gold_standard:text_safe_bounds_below_reference"));
+  assert.ok(benchmark.failures.includes("gold_standard:source_label_mobile_readability_below_reference"));
+  assert.ok(benchmark.failures.includes("gold_standard:caption_overlay_collision_risk"));
+});
+
 test("media-house benchmark recognises distinctive subtitle tokens in canonical subjects", () => {
   const { runMediaHouseBenchmark } = require("../../lib/media-house-benchmark");
 

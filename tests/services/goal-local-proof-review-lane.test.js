@@ -91,6 +91,90 @@ test("local proof review lane blocks missing review video files", async () => {
   assert.ok(report.test_render_qa_report.items[0].blockers.includes("local_proof_video_missing"));
 });
 
+test("local proof review lane can build a first-seconds visual review manifest", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-local-proof-visual-review-"));
+  const queue = await reviewQueueFixture(root);
+  const visualReviewDir = path.join(root, "visual-review");
+  const extracted = [];
+  const builtSheets = [];
+
+  const report = await buildGoalLocalProofReviewLane({
+    humanReviewQueue: queue,
+    generatedAt: "2026-05-29T05:03:00.000Z",
+    buildVisualReviewSheet: true,
+    visualReviewDir,
+    frameTimesS: [0, 1.5, 3],
+    deps: {
+      extractVideoFrame: async ({ inputPath, outputPath, timeS }) => {
+        extracted.push({ inputPath, outputPath, timeS });
+        await fs.outputFile(outputPath, Buffer.alloc(256, 2));
+        return outputPath;
+      },
+      buildContactSheet: async ({ images, outPath }) => {
+        builtSheets.push({ images, outPath });
+        await fs.outputFile(outPath, Buffer.alloc(512, 3));
+        return outPath;
+      },
+      analyseReviewFrame: async ({ framePath, storyId, timeS }) => ({
+        story_id: storyId,
+        time_s: timeS,
+        path: framePath,
+        verdict: "pass",
+        blockers: [],
+        risk_flags: [],
+        metrics: {},
+      }),
+    },
+  });
+
+  assert.equal(report.summary.visual_review_frame_count, 3);
+  assert.equal(report.visual_review_manifest.status, "ready");
+  assert.equal(report.visual_review_manifest.contact_sheet_exists, true);
+  assert.equal(report.visual_review_manifest.frames.length, 3);
+  assert.deepEqual(report.visual_review_manifest.frame_times_s, [0, 1.5, 3]);
+  assert.equal(extracted.length, 3);
+  assert.equal(builtSheets[0].images.length, 3);
+  assert.equal(report.visual_review_manifest.safety.live_publish_allowed, false);
+});
+
+test("local proof visual review blocks frame audit text-cutoff risks", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-local-proof-frame-audit-"));
+  const queue = await reviewQueueFixture(root);
+  const visualReviewDir = path.join(root, "visual-review");
+
+  const report = await buildGoalLocalProofReviewLane({
+    humanReviewQueue: queue,
+    generatedAt: "2026-05-29T05:04:00.000Z",
+    buildVisualReviewSheet: true,
+    visualReviewDir,
+    frameTimesS: [0],
+    deps: {
+      extractVideoFrame: async ({ outputPath }) => {
+        await fs.outputFile(outputPath, Buffer.alloc(256, 2));
+        return outputPath;
+      },
+      buildContactSheet: async ({ outPath }) => {
+        await fs.outputFile(outPath, Buffer.alloc(512, 3));
+        return outPath;
+      },
+      analyseReviewFrame: async ({ framePath, storyId, timeS }) => ({
+        story_id: storyId,
+        time_s: timeS,
+        path: framePath,
+        verdict: "blocked",
+        blockers: ["frame_text_cutoff_risk"],
+        risk_flags: ["right_edge_bright_text"],
+        metrics: { edge_bright_pixel_ratio: 0.08 },
+      }),
+    },
+  });
+
+  assert.equal(report.visual_review_manifest.status, "blocked");
+  assert.ok(report.visual_review_manifest.blockers.includes("story-one:frame_text_cutoff_risk_t0"));
+  assert.equal(report.visual_review_manifest.frame_audit[0].verdict, "blocked");
+  assert.deepEqual(report.visual_review_manifest.frame_audit[0].risk_flags, ["right_edge_bright_text"]);
+});
+
 test("local proof review lane writes Goal 38 artefacts and CLI is registered", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-local-proof-write-"));
   const queue = await reviewQueueFixture(root);

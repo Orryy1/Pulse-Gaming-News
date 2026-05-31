@@ -15,6 +15,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     packageRoot: null,
     sfxSourcePlanPath: null,
     sfxRightsLedgerPath: null,
+    epidemicSfxRuntimeManifestPath: null,
     outDir: path.join(process.cwd(), "output", "goal-contract"),
     generatedAt: null,
     dryRun: false,
@@ -28,6 +29,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--package-root") args.packageRoot = argv[++i] || "";
     else if (arg === "--sfx-source-plan") args.sfxSourcePlanPath = argv[++i] || "";
     else if (arg === "--sfx-rights-ledger") args.sfxRightsLedgerPath = argv[++i] || "";
+    else if (arg === "--epidemic-sfx-runtime") args.epidemicSfxRuntimeManifestPath = argv[++i] || "";
     else if (arg === "--out-dir") args.outDir = argv[++i] || args.outDir;
     else if (arg === "--generated-at") args.generatedAt = argv[++i] || null;
     else if (arg === "--dry-run") args.dryRun = true;
@@ -51,6 +53,7 @@ function usage() {
     "  --package-root <dir>",
     "  --sfx-source-plan <path>",
     "  --sfx-rights-ledger <path>",
+    "  --epidemic-sfx-runtime <path>",
     "  --out-dir <dir>",
     "  --generated-at <iso>",
     "  --dry-run",
@@ -70,6 +73,7 @@ async function main(argv = process.argv.slice(2)) {
     packageRoot: args.packageRoot,
     sfxSourcePlanPath: args.sfxSourcePlanPath,
     sfxRightsLedgerPath: args.sfxRightsLedgerPath,
+    epidemicSfxRuntimeManifestPath: args.epidemicSfxRuntimeManifestPath,
     generatedAt: args.generatedAt || new Date().toISOString(),
     dryRun: args.dryRun,
   });

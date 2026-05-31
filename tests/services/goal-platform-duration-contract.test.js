@@ -19,6 +19,7 @@ async function makePackage(root, id, durationS, manifestOverrides = {}) {
     story_id: id,
     rendered_duration_s: durationS,
     final_publish_render: true,
+    ...(manifestOverrides.render_manifest || {}),
   });
   await fs.outputJson(path.join(artifactDir, "platform_publish_manifest.json"), {
     schema_version: 1,
@@ -141,6 +142,76 @@ test("platform duration contract repair does not request platform variant alread
   assert.equal(report.variant_repair_work_order.jobs.length, 0);
 });
 
+test("platform duration contract repair regenerates stale platform variants after the base render changes", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-duration-contract-platform-stale-"));
+  const artifactDir = path.join(root, "ps5-price-stale");
+  const variantPath = path.join(artifactDir, "platform_variants", "instagram_reels", "visual_v4_render_instagram_reels.mp4");
+  const storyPackage = await makePackage(root, "ps5-price-stale", 46.733, {
+    render_manifest: {
+      generated_at: "2026-05-31T07:00:00.000Z",
+    },
+    outputs: {
+      instagram_reels: {
+        duration_seconds: { min: 25, max: 45 },
+        variant_video_path: variantPath,
+        platform_variant_render: {
+          output_path: variantPath,
+          duration_s: 44.8,
+          source_duration_s: 48.1,
+          generated_at: "2026-05-27T13:19:04.119Z",
+        },
+      },
+    },
+  });
+  await fs.ensureDir(path.dirname(variantPath));
+  await fs.writeFile(variantPath, Buffer.alloc(2048));
+
+  const report = await repairGoalPlatformDurationContracts({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-05-31T07:35:00.000Z",
+  });
+
+  assert.equal(report.summary.variant_repair_required_count, 1);
+  assert.equal(report.variant_repair_work_order.jobs[0].story_id, "ps5-price-stale");
+  assert.equal(report.variant_repair_work_order.jobs[0].platform, "instagram_reels");
+});
+
+test("platform duration contract repair regenerates stale variants even when base duration is already valid", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-duration-contract-platform-stale-valid-base-"));
+  const artifactDir = path.join(root, "expanse-ig-stale");
+  const variantPath = path.join(artifactDir, "platform_variants", "instagram_reels", "visual_v4_render_instagram_reels.mp4");
+  const storyPackage = await makePackage(root, "expanse-ig-stale", 40.333, {
+    render_manifest: {
+      generated_at: "2026-05-31T07:03:20.707Z",
+    },
+    outputs: {
+      instagram_reels: {
+        duration_seconds: { min: 25, max: 45 },
+        variant_video_path: variantPath,
+        platform_variant_render: {
+          output_path: variantPath,
+          duration_s: 44.8,
+          source_duration_s: 47.04,
+          generated_at: "2026-05-27T13:19:04.119Z",
+        },
+      },
+    },
+  });
+  await fs.ensureDir(path.dirname(variantPath));
+  await fs.writeFile(variantPath, Buffer.alloc(2048));
+
+  const report = await repairGoalPlatformDurationContracts({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-05-31T07:35:30.000Z",
+  });
+
+  assert.equal(report.summary.variant_repair_required_count, 1);
+  const job = report.variant_repair_work_order.jobs[0];
+  assert.equal(job.story_id, "expanse-ig-stale");
+  assert.equal(job.platform, "instagram_reels");
+  assert.equal(job.target_duration_s, 40.333);
+});
+
 test("platform duration contract repair emits TikTok creator rewards variant work orders separately from hard publish repairs", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-duration-contract-tiktok-rewards-"));
   const storyPackage = await makePackage(root, "expanse-gameplay", 44.8);
@@ -164,6 +235,35 @@ test("platform duration contract repair emits TikTok creator rewards variant wor
   assert.equal(job.minimum_extension_seconds, 16.2);
   assert.ok(job.actions.includes("write_tiktok_specific_script_extension_source_safely"));
   assert.equal(job.safety.no_publish_triggered, true);
+});
+
+test("platform duration contract repair separates active TikTok rewards work from quarantined package debt", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-duration-contract-scope-"));
+  const activePackage = await makePackage(root, "active-expanse", 44.8);
+  const quarantinedPackage = await makePackage(root, "quarantined-expanse", 44.8);
+
+  const report = await repairGoalPlatformDurationContracts({
+    storyPackages: [activePackage, quarantinedPackage],
+    activeStoryIds: ["active-expanse"],
+    generatedAt: "2026-05-31T17:20:00.000Z",
+  });
+
+  assert.equal(report.summary.tiktok_creator_rewards_variant_required_count, 2);
+  assert.equal(report.summary.active_tiktok_creator_rewards_variant_required_count, 1);
+  assert.equal(report.summary.quarantined_tiktok_creator_rewards_variant_required_count, 1);
+  assert.equal(report.updated.find((item) => item.story_id === "active-expanse").readiness_scope, "active");
+  assert.equal(
+    report.updated.find((item) => item.story_id === "quarantined-expanse").readiness_scope,
+    "quarantined",
+  );
+  assert.equal(
+    report.tiktok_creator_rewards_variant_work_order.jobs.find((job) => job.story_id === "active-expanse").readiness_scope,
+    "active",
+  );
+  assert.equal(
+    report.tiktok_creator_rewards_variant_work_order.jobs.find((job) => job.story_id === "quarantined-expanse").readiness_scope,
+    "quarantined",
+  );
 });
 
 test("platform duration contract repair preserves ready TikTok creator rewards variants", async () => {
@@ -209,6 +309,52 @@ test("platform duration contract repair preserves ready TikTok creator rewards v
   assert.equal(updated.outputs.tiktok.technical_duration_seconds, 67.549);
   assert.deepEqual(updated.outputs.tiktok.duration_warnings, []);
   assert.equal(updated.outputs.tiktok.platform_variant_render.variant_type, "tiktok_creator_rewards");
+});
+
+test("platform duration contract repair regenerates stale TikTok creator rewards variants", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-duration-contract-tiktok-stale-"));
+  const artifactDir = path.join(root, "expanse-gameplay-stale");
+  const variantPath = path.join(
+    artifactDir,
+    "platform_variants",
+    "tiktok_creator_rewards",
+    "visual_v4_render_tiktok_creator_rewards.mp4",
+  );
+  const storyPackage = await makePackage(root, "expanse-gameplay-stale", 44.8, {
+    render_manifest: {
+      generated_at: "2026-05-31T07:03:20.707Z",
+    },
+    outputs: {
+      tiktok: {
+        duration_seconds: { min: 61, max: 90 },
+        creator_rewards_eligible: true,
+        duration_warnings: [],
+        technical_duration_seconds: 67.549,
+        variant_video_path: variantPath,
+        platform_variant_render: {
+          status: "ready",
+          variant_type: "tiktok_creator_rewards",
+          output_path: variantPath,
+          duration_s: 67.549,
+          source_duration_s: 47.04,
+          generated_at: "2026-05-27T18:57:47.672Z",
+          base_render_mutated: false,
+        },
+      },
+    },
+  });
+  await fs.ensureDir(path.dirname(variantPath));
+  await fs.writeFile(variantPath, Buffer.alloc(2048));
+
+  const report = await repairGoalPlatformDurationContracts({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-05-31T07:36:00.000Z",
+  });
+
+  assert.equal(report.summary.tiktok_creator_rewards_variant_required_count, 1);
+  const job = report.tiktok_creator_rewards_variant_work_order.jobs[0];
+  assert.equal(job.story_id, "expanse-gameplay-stale");
+  assert.equal(job.status, "needs_tiktok_creator_rewards_variant");
 });
 
 test("platform duration contract repair blocks too-short renders instead of bending the gate", async () => {

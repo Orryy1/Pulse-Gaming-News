@@ -21,6 +21,9 @@ function parseArgs(argv = process.argv.slice(2)) {
     outDir: path.join(process.cwd(), "output", "goal-contract"),
     generatedAt: null,
     maxItems: 30,
+    buildVisualReviewSheet: false,
+    visualReviewDir: null,
+    frameTimesS: [0, 1.5, 3],
     json: false,
     help: false,
   };
@@ -31,6 +34,14 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--out-dir") args.outDir = argv[++i] || args.outDir;
     else if (arg === "--generated-at") args.generatedAt = argv[++i] || null;
     else if (arg === "--max-items") args.maxItems = Number(argv[++i] || args.maxItems);
+    else if (arg === "--build-visual-review-sheet") args.buildVisualReviewSheet = true;
+    else if (arg === "--visual-review-dir") args.visualReviewDir = argv[++i] || "";
+    else if (arg === "--frame-times") {
+      args.frameTimesS = String(argv[++i] || "")
+        .split(",")
+        .map((value) => Number(value.trim()))
+        .filter((value) => Number.isFinite(value) && value >= 0);
+    }
     else if (arg === "--json") args.json = true;
     else if (arg === "--help" || arg === "-h") args.help = true;
     else throw new Error(`Unknown argument: ${arg}`);
@@ -48,6 +59,9 @@ function usage() {
     "  --out-dir <dir>                  Output directory",
     "  --generated-at <iso>             Fixed timestamp",
     "  --max-items <n>                  Maximum review videos",
+    "  --build-visual-review-sheet      Extract first-seconds frames and contact sheet",
+    "  --visual-review-dir <dir>        Output directory for review frames/contact sheet",
+    "  --frame-times <csv>              Frame timestamps in seconds, default 0,1.5,3",
     "  --json                           Print JSON",
     "",
     "Local-proof review only. Does not publish, mutate DB rows or touch OAuth/token settings.",
@@ -69,6 +83,9 @@ async function main(argv = process.argv.slice(2)) {
     humanReviewQueue,
     generatedAt: args.generatedAt || new Date().toISOString(),
     maxItems: args.maxItems,
+    buildVisualReviewSheet: args.buildVisualReviewSheet,
+    visualReviewDir: args.visualReviewDir ? path.resolve(root, args.visualReviewDir) : null,
+    frameTimesS: args.frameTimesS,
   });
   const artefacts = await writeGoalLocalProofReviewLane(report, {
     outputDir: path.resolve(root, args.outDir),

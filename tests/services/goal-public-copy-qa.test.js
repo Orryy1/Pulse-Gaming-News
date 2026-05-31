@@ -187,6 +187,15 @@ test("goal public copy QA blocks visibly broken thumbnail headlines", () => {
         "Subnautica 2's developer is already fighting leaked builds. Respawnfirst reports the studio responded after the game leaked early.",
       description: "Subnautica 2's developer responded to leaked builds. Source: Respawnfirst.",
     },
+    {
+      canonical_subject: "Xbox Controller",
+      selected_title: "Xbox Controller Deal Has One Catch",
+      thumbnail_headline: "XBOX CONTROLLER DEAL HAS ONE",
+      first_spoken_line: "Xbox controller deals are getting aggressive, but the catch is the retailer.",
+      narration_script:
+        "Xbox controller deals are getting aggressive, but the catch is the retailer. Xbox lists the official controller, while the discount comes through a shop offer.",
+      description: "Xbox controller deals are live at selected retailers. Source: Xbox.",
+    },
   ].map((manifest) => evaluateGoalPublicCopy(manifest));
 
   for (const report of semanticallyCutReports) {

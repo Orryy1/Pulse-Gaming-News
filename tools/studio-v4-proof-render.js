@@ -947,9 +947,10 @@ function buildOverlayChain({ story, inputLabel, outputLabel, durationS, fontOpt 
   const blockById = Object.fromEntries(layout.text_blocks.map((block) => [block.id, block]));
   const suppressStoryCards = usesOwnedGeneratedMotionDeck(story);
   return [
-    `[${inputLabel}]eq=brightness=-0.045:contrast=1.08:saturation=1.16,drawbox=x=0:y=0:w=iw:h=230:color=black@0.34:t=fill,drawbox=x=0:y=ih-280:w=iw:h=280:color=black@0.44:t=fill`,
-    `drawbox=x=0:y=0:w=18:h=ih:color=0x0B0F19@0.52:t=fill`,
-    `drawbox=x=18:y='mod(t*240\\,1920)-420':w=3:h=420:color=0x38BDF8@0.34:t=fill`,
+    `[${inputLabel}]eq=brightness=-0.045:contrast=1.08:saturation=1.16,drawbox=x=0:y=0:w=iw:h=230:color=black@0.34:t=fill,drawbox=x=0:y=138:w=iw:h=164:color=black@0.56:t=fill,drawbox=x=0:y=ih-430:w=iw:h=430:color=black@0.52:t=fill,drawbox=x=0:y=ih-315:w=iw:h=315:color=black@0.66:t=fill`,
+    `drawbox=x=0:y=0:w=44:h=ih:color=0x0B0F19@0.72:t=fill`,
+    `drawbox=x=iw-44:y=0:w=44:h=ih:color=0x0B0F19@0.72:t=fill`,
+    `drawbox=x=44:y='mod(t*240\\,1920)-420':w=3:h=420:color=0x38BDF8@0.34:t=fill`,
     `drawbox=x='-260+mod(t*520\\,1540)':y=0:w=210:h=ih:color=white@0.055:t=fill`,
     `drawbox=x='940-mod(t*340\\,1220)':y=0:w=92:h=ih:color=0xFF6B1A@0.055:t=fill`,
     `drawbox=x=42:y=44:w=996:h=98:color=0x111827@0.58:t=fill`,
@@ -1088,7 +1089,10 @@ async function renderProof({ storyJson, output }) {
   for (const scene of scenePlan.scenes) {
     const i = scene.index;
     filterParts.push(
-      `[${i}:v]scale=1080:1920:force_original_aspect_ratio=increase:in_range=pc:out_range=tv,crop=1080:1920:(iw-1080)/2:(ih-1920)/2,trim=duration=${scene.durationS},setpts=PTS-STARTPTS,fps=${FPS},format=yuv420p,setsar=1[v${i}]`,
+      `[${i}:v]split=2[bgsrc${i}][fgsrc${i}]`,
+      `[bgsrc${i}]scale=1080:1920:force_original_aspect_ratio=increase:in_range=pc:out_range=tv,crop=w=1080:h=1920:x=(iw-1080)/2:y=(ih-1920)/2,boxblur=32:1,eq=brightness=-0.10:saturation=1.18,fps=${FPS},format=yuv420p,setsar=1[bg${i}]`,
+      `[fgsrc${i}]scale=1010:1780:force_original_aspect_ratio=decrease:in_range=pc:out_range=tv,fps=${FPS},format=yuv420p,setsar=1[fg${i}]`,
+      `[bg${i}][fg${i}]overlay=(W-w)/2:(H-h)/2,trim=duration=${scene.durationS},setpts=PTS-STARTPTS,fps=${FPS},format=yuv420p,setsar=1[v${i}]`,
     );
   }
   let prev = "v0";

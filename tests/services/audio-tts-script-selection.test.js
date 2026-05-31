@@ -119,17 +119,17 @@ test("cleanForTTS: expands review scores with slash notation for local narration
   );
 });
 
-test("cleanForTTS: speaks Hades II as Hades, two for local voice clarity and caption parity", () => {
+test("cleanForTTS: speaks Hades II as Hades two without comma artefacts", () => {
   assert.equal(
     cleanForTTS("Hades II just put PlayStation and Xbox players on the same April countdown."),
-    "Hades, two just put PlayStation and Xbox players on the same April countdown.",
+    "Hades two just put PlayStation and Xbox players on the same April countdown.",
   );
 });
 
 test("cleanForTTS: normalises Stranger Than Heaven title casing for local clone clarity", () => {
   assert.equal(
     cleanForTTS("STRANGER THAN HEAVEN Five Eras is swinging at more than one period piece."),
-    "Stranger Than Heaven Five Eras is swinging at more than one period piece.",
+    "Stranger Than Heaven five era setup is swinging at more than one period piece.",
   );
 });
 

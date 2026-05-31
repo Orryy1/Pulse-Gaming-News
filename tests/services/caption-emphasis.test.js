@@ -5,7 +5,7 @@ const assert = require("node:assert/strict");
 
 const { realignTimestampsToScript } = require("../../lib/caption-emphasis");
 
-test("caption emphasis realignment preserves Hades II while local voice says Hades, two", () => {
+test("caption emphasis realignment preserves Hades II while local voice says Hades two", () => {
   const aligned = realignTimestampsToScript("Hades II lands on console.", [
     { word: "Hades", start: 0, end: 0.28 },
     { word: "two", start: 0.3, end: 0.5 },

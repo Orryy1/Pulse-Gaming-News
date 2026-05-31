@@ -10,6 +10,7 @@ const {
   buildFinalVoiceAudit,
   classifyFinalRenderVoice,
   renderFinalVoiceAuditMarkdown,
+  storyIdFromPath,
 } = require("../../lib/studio/v2/final-voice-audit");
 const {
   loadFinalVoiceReportsByStoryId,
@@ -91,6 +92,23 @@ test("final voice audit report is readable and does not mutate media", () => {
   const md = renderFinalVoiceAuditMarkdown(report);
   assert.match(md, /Final Voice Audit/);
   assert.match(md, /approved_voice_metadata_missing/);
+});
+
+test("final voice audit does not report GREEN when no MP4s were inspected", () => {
+  const report = buildFinalVoiceAudit({ files: [] });
+
+  assert.equal(report.verdict, "AMBER");
+  assert.ok(report.inspection_blockers.includes("no_final_mp4s_inspected"));
+  const md = renderFinalVoiceAuditMarkdown(report);
+  assert.match(md, /no_final_mp4s_inspected/);
+});
+
+test("final voice audit derives story IDs from nested proof render paths", () => {
+  const storyId = storyIdFromPath(
+    "C:/repo/output/goal-proof/batch/1s4denn/visual_v4_render.mp4",
+  );
+
+  assert.equal(storyId, "1s4denn");
 });
 
 test("final voice audit markdown surfaces pitch, loudness, true peak, outro and WPM evidence", () => {
@@ -290,6 +308,137 @@ test("final voice report loader falls back to local TTS timestamp metadata", asy
   assert.equal(report.rows[0].do_not_reuse_for_tiktok_dispatch, false);
 });
 
+test("final voice report loader reads nested proof narration manifests before generic QA reports", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "final-voice-proof-manifest-"));
+  const batchDir = path.join(dir, "batch");
+  const storyDir = path.join(batchDir, "1s4denn");
+  await fs.ensureDir(storyDir);
+  const mp4 = path.join(storyDir, "visual_v4_render.mp4");
+  const timestampsPath = path.join(storyDir, "word_timestamps.json");
+  await fs.writeFile(mp4, "fake mp4");
+  await fs.writeJson(path.join(storyDir, "audio_segment_loudness_report.json"), {
+    story_id: "1s4denn",
+    verdict: "pass",
+    metrics: { max_adjacent_rise_db: 0.6 },
+    segments: [
+      { mean_volume_db: -16.2 },
+      { mean_volume_db: -16.1 },
+    ],
+  });
+  await fs.writeJson(timestampsPath, {
+    characters: ["F", "o", "l", "l", "o", "w"],
+    meta: {
+      provider: "local",
+      source: "local-tts-server",
+      approvedLocalVoice: true,
+      acceptedLocalVoice: {
+        id: "pulse-sleepy-liam-20260502",
+        fileName: "pulse_liam_sleepy.wav",
+        referencePresent: true,
+        referenceHash: "4bb87b65b64213fd8447ef1146eda42035b89f51",
+      },
+      acoustic: {
+        medianPitchHz: 118,
+        integratedLufs: -15.8,
+        truePeakDb: -1.4,
+        durationSeconds: 60,
+      },
+      voiceMastering: { ok: true, code: "voice_mastered", targetLufs: -16 },
+      wpm: 168,
+    },
+  });
+  await fs.writeJson(path.join(storyDir, "narration_manifest.json"), {
+    provider: "local_tts",
+    resolved_audio_path: path.join(storyDir, "narration.mp3"),
+    final_transcript: "A clean local render. Follow Pulse Gaming so you never miss a beat.",
+    resolved_word_timestamps_path: timestampsPath,
+  });
+
+  const reports = await loadFinalVoiceReportsByStoryId([mp4], {
+    finalDir: batchDir,
+    outputDirs: [],
+  });
+  const report = buildFinalVoiceAudit({
+    files: [mp4],
+    reportsByStoryId: reports,
+  });
+
+  assert.equal(reports["1s4denn"].source, "goal_proof_narration_manifest");
+  assert.equal(report.counts.pass, 1);
+});
+
+test("final voice report loader prefers rich local-clone timestamp evidence over sparse stale sidecars", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "final-voice-rich-timestamps-"));
+  const oldMediaRoot = process.env.MEDIA_ROOT;
+  const mediaRoot = path.join(dir, "media");
+  const batchDir = path.join(dir, "batch");
+  const storyId = "1voicepref";
+  const storyDir = path.join(batchDir, storyId);
+  const mediaAudioDir = path.join(mediaRoot, "output", "audio");
+  await fs.ensureDir(storyDir);
+  await fs.ensureDir(mediaAudioDir);
+  const mp4 = path.join(storyDir, "visual_v4_render.mp4");
+  const sparseTimestampsPath = path.join(storyDir, "sparse_timestamps.json");
+  const richTimestampRel = path.join("output", "audio", `${storyId}_timestamps.json`);
+  const richTimestampsPath = path.join(mediaAudioDir, `${storyId}_timestamps.json`);
+  await fs.writeFile(mp4, "fake mp4");
+  await fs.writeJson(sparseTimestampsPath, {
+    characters: ["F", "o", "l", "l", "o", "w"],
+    meta: {
+      wordTimestampSource: "stale-local-copy",
+    },
+  });
+  await fs.writeJson(richTimestampsPath, {
+    characters: ["F", "o", "l", "l", "o", "w"],
+    meta: {
+      provider: "local",
+      source: "local-tts-server",
+      text: "A clean local render. Follow Pulse Gaming so you never miss a beat.",
+      approvedLocalVoice: true,
+      acceptedLocalVoice: {
+        id: "pulse-sleepy-liam-20260502",
+        fileName: "pulse_liam_sleepy.wav",
+        referencePresent: true,
+        referenceHash: "4bb87b65b64213fd8447ef1146eda42035b89f51",
+      },
+      acoustic: {
+        medianPitchHz: 118,
+        integratedLufs: -15.8,
+        truePeakDb: -1.4,
+        durationSeconds: 60,
+      },
+      voiceMastering: { ok: true, code: "voice_mastered", targetLufs: -16 },
+      wpm: 168,
+    },
+  });
+  await fs.writeJson(path.join(storyDir, "narration_manifest.json"), {
+    provider: "local_tts",
+    resolved_audio_path: path.join(storyDir, "narration.mp3"),
+    final_transcript: "A clean local render. Follow Pulse Gaming so you never miss a beat.",
+    resolved_word_timestamps_path: sparseTimestampsPath,
+    word_timestamps_path: richTimestampRel,
+  });
+
+  try {
+    process.env.MEDIA_ROOT = mediaRoot;
+    const reports = await loadFinalVoiceReportsByStoryId([mp4], {
+      finalDir: batchDir,
+      outputDirs: [],
+    });
+    const report = buildFinalVoiceAudit({
+      files: [mp4],
+      reportsByStoryId: reports,
+    });
+
+    assert.equal(reports[storyId].timestampPath, richTimestampsPath);
+    assert.equal(report.counts.pass, 1);
+    assert.equal(report.rows[0].do_not_reuse_for_tiktok_dispatch, false);
+  } finally {
+    if (oldMediaRoot === undefined) delete process.env.MEDIA_ROOT;
+    else process.env.MEDIA_ROOT = oldMediaRoot;
+  }
+});
+
 test("final voice audit CLI inspects newest MP4s first when limited", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "final-voice-newest-"));
   const oldMp4 = path.join(dir, "aaa_old.mp4");
@@ -304,4 +453,16 @@ test("final voice audit CLI inspects newest MP4s first when limited", async () =
   const files = await listMp4s(dir, 1);
 
   assert.deepEqual(files, [newMp4]);
+});
+
+test("final voice audit CLI discovers nested proof MP4s", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "final-voice-nested-"));
+  const storyDir = path.join(dir, "1s4denn");
+  await fs.ensureDir(storyDir);
+  const nestedMp4 = path.join(storyDir, "visual_v4_render.mp4");
+  await fs.writeFile(nestedMp4, "nested");
+
+  const files = await listMp4s(dir);
+
+  assert.deepEqual(files, [nestedMp4]);
 });

@@ -314,7 +314,7 @@ test("TikTok creator-rewards materializer uses story-specific context instead of
       },
       mustMatch: /console version angle|repeat attempts|port still has to feel immediate/i,
       wordRange: { min: 178, max: 195 },
-      mustSpeak: /Hades, two just put PlayStation and Xbox players/i,
+      mustSpeak: /Hades two just put PlayStation and Xbox players/i,
     },
     {
       storyId: "creator-rewards-same-world-new-game",
@@ -393,6 +393,25 @@ test("TikTok creator-rewards materializer uses story-specific context instead of
       wordRange: { min: 180, max: 205 },
     },
     {
+      storyId: "creator-rewards-squad-tactics",
+      canonical: {
+        canonical_subject: "Star Wars Zero Company",
+        canonical_game: "Star Wars Zero Company",
+        selected_title: "Star Wars Zero Company Is More Than XCOM",
+        thumbnail_headline: "STAR WARS TACTICS CATCH",
+        first_spoken_line: "Star Wars Zero Company is trying to be more than Star Wars XCOM.",
+        narration_script:
+          "Star Wars Zero Company is trying to be more than Star Wars XCOM. PC Gamer reports Star Wars Zero Company is more than just 'Star Wars XCOM'—it feels like Mass Effect but with turn-based tactics and permadeath. The catch is what this changes for players after the headline fades. Follow Pulse Gaming so you never miss a beat.",
+        primary_source: "PC Gamer",
+        confirmed_claims: [
+          "PC Gamer reports Star Wars Zero Company is more than just 'Star Wars XCOM'—it feels like Mass Effect but with turn-based tactics and permadeath.",
+        ],
+      },
+      mustMatch: /squad layer|Mass Effect comparison|permadeath matters/i,
+      mustNotMatch: /players have to judge the footage|at phone speed|generic reveal|footage has to make it clear/i,
+      wordRange: { min: 190, max: 215 },
+    },
+    {
       storyId: "creator-rewards-corporate-stake",
       canonical: {
         canonical_subject: "Kadokawa",
@@ -447,6 +466,7 @@ test("TikTok creator-rewards materializer uses story-specific context instead of
       },
       mustMatch: /retailer discount story|physical Switch RPG|listed price|Collectors and late Switch buyers/i,
       mustNotMatch: /same hardware costs more|compare the live retailer price|force a buy|the catch is not drama|a good deal cut should/i,
+      mustNotSpeak: /turning a sale into pressure to buy/i,
       wordRange: { min: 190, max: 215 },
     },
     {
@@ -581,6 +601,7 @@ test("TikTok creator-rewards materializer uses story-specific context instead of
       mustMatch: /different time periods|each era changes missions|design pressure/i,
       wordRange: { min: 180, max: 198 },
       mustSpeak: /Stranger Than Heaven just showed its five era setup/i,
+      mustNotSpeak: /\bfive\s+eras\b|\bFive\s+Eras\b/,
       mustNotMatch: /score only lands|review into a victory lap|verdict room to breathe|time jumps|colo(?:u)?r grade|pretending the game is proven/i,
     },
   ];
@@ -655,7 +676,77 @@ test("TikTok creator-rewards materializer uses story-specific context instead of
       `${item.storyId}: expected compact local TTS text, got ${wordCount(audioCalls[0].text)} words`,
     );
     if (item.mustSpeak) assert.match(audioCalls[0].text, item.mustSpeak);
+    if (item.mustNotSpeak) assert.doesNotMatch(audioCalls[0].text, item.mustNotSpeak);
   }
+});
+
+test("TikTok creator-rewards materializer keeps handmade art-direction stories above the 61s floor", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-tiktok-creator-rewards-handmade-art-"));
+  const storyPackage = await makePackage(root, "creator-rewards-pragmata-art");
+  const canonicalPath = path.join(storyPackage.artifact_dir, "canonical_story_manifest.json");
+  const canonical = await fs.readJson(canonicalPath);
+  await fs.writeJson(canonicalPath, {
+    ...canonical,
+    canonical_subject: "Pragmata",
+    canonical_game: "Pragmata",
+    selected_title: "Pragmata's AI-Look Stage Was Handmade",
+    thumbnail_headline: "PRAGMATA HANDMADE",
+    first_spoken_line: "Pragmata's AI-looking stage was actually handmade by developers.",
+    narration_script:
+      "Pragmata's AI-looking stage was actually handmade by developers. Automaton Media reports Pragmata's New York stage was handmade by developers to look AI generated. That flips the read: the strange texture is art direction, not a machine shortcut. For a game already fighting a long wait, that craft detail makes the next gameplay showing feel less disposable. Follow Pulse Gaming so you never miss a beat.",
+    primary_source: "Automaton Media",
+    confirmed_claims: [
+      "Automaton Media reports Pragmata's New York stage was handmade by developers to look AI generated.",
+    ],
+  }, { spaces: 2 });
+  const audioCalls = [];
+
+  const report = await materializeTiktokCreatorRewardsVariants({
+    workspaceRoot: root,
+    generatedAt: "2026-05-27T20:06:00.000Z",
+    workOrder: {
+      jobs: [
+        {
+          story_id: storyPackage.story_id,
+          title: "Pragmata's AI-Look Stage Was Handmade",
+          artifact_dir: storyPackage.artifact_dir,
+          status: "needs_tiktok_creator_rewards_variant",
+          platform: "tiktok",
+          current_duration_s: 48.966,
+          target_duration_seconds: { min: 61, max: 75 },
+        },
+      ],
+    },
+    alignmentMode: "off",
+    generateTtsForStory: async ({ text, outputPath }) => {
+      audioCalls.push({ text, outputPath });
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 4));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignment(text),
+      });
+    },
+    renderProof: async ({ storyJson, output }) => {
+      const story = await fs.readJson(storyJson);
+      await fs.outputFile(output, Buffer.alloc(8192, 5));
+      const scriptWords = wordCount(story.full_script);
+      return {
+        story_id: story.id,
+        output,
+        clips: story.video_clips.length,
+        rendered_duration_s: scriptWords >= 165 ? 62.4 : 53.5,
+        size_bytes: 8192,
+      };
+    },
+  });
+
+  assert.equal(report.summary.materialized_count, 1, JSON.stringify(report.jobs[0]));
+  assert.equal(report.summary.failed_count, 0);
+  assert.ok(
+    wordCount(audioCalls[0].text) >= 165,
+    `handmade art-direction TikTok variant must clear the local 61s floor; got ${wordCount(audioCalls[0].text)} words`,
+  );
+  assert.match(audioCalls[0].text, /handmade weirdness|deliberate aesthetic|machine shortcut/i);
+  assert.doesNotMatch(audioCalls[0].text, /players have to judge the footage|at phone speed|direct play segment/i);
 });
 
 test("TikTok creator-rewards materializer preserves audio failure diagnostics", async () => {

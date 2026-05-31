@@ -107,6 +107,65 @@ test("platform variant materializer leaves in-window renders alone", async () =>
   assert.equal(report.summary.materialized_count, 0);
 });
 
+test("platform variant materializer refreshes stale in-window platform variants", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-platform-stale-variant-"));
+  const storyPackage = await makePackage(root, "ig-stale-variant", 40.333);
+  const artifactDir = storyPackage.artifact_dir;
+  const variantDir = path.join(artifactDir, "platform_variants", "instagram_reels");
+  const oldVariantPath = path.join(variantDir, "visual_v4_render_instagram_reels.mp4");
+  const oldCaptionsPath = path.join(variantDir, "captions_instagram_reels.srt");
+  await fs.outputFile(oldVariantPath, Buffer.alloc(2200, 2));
+  await fs.outputFile(oldCaptionsPath, "1\n00:00:00,000 --> 00:00:01,000\nOld caption.\n");
+  await fs.outputJson(path.join(artifactDir, "render_manifest.json"), {
+    story_id: "ig-stale-variant",
+    output_path: path.join(artifactDir, "visual_v4_render.mp4"),
+    rendered_duration_s: 40.333,
+    final_publish_render: true,
+    renderer: "visual_v4_production",
+    visual_tier: "production_v4_motion",
+    generated_at: "2026-05-31T07:03:20.707Z",
+  });
+  await fs.outputJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+    story_id: "ig-stale-variant",
+    publish_status: "GREEN",
+    outputs: {
+      instagram_reels: {
+        publish_duration_seconds: { min: 15, max: 45 },
+        variant_video_path: oldVariantPath,
+        variant_captions_path: oldCaptionsPath,
+        technical_duration_seconds: 44.8,
+        platform_variant_render: {
+          status: "ready",
+          output_path: oldVariantPath,
+          captions_path: oldCaptionsPath,
+          duration_s: 44.8,
+          source_duration_s: 47.04,
+          generated_at: "2026-05-27T13:19:04.119Z",
+        },
+      },
+    },
+  });
+
+  const report = await materializeGoalPlatformVariants({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-05-31T09:30:00.000Z",
+    variantRenderer: async ({ outputPath, targetDurationS }) => {
+      assert.equal(targetDurationS, 40.333);
+      await fs.outputFile(outputPath, Buffer.alloc(2400, 3));
+    },
+    probeDuration: async () => 40.333,
+  });
+
+  assert.equal(report.summary.variant_job_count, 1);
+  assert.equal(report.summary.materialized_count, 1);
+  const manifest = await fs.readJson(path.join(artifactDir, "platform_publish_manifest.json"));
+  const instagram = manifest.outputs.instagram_reels;
+  assert.equal(instagram.platform_variant_render.generated_at, "2026-05-31T09:30:00.000Z");
+  assert.equal(instagram.platform_variant_render.source_duration_s, 40.333);
+  assert.equal(instagram.technical_duration_seconds, 40.333);
+  assert.doesNotMatch(await fs.readFile(instagram.variant_captions_path, "utf8"), /Old caption/);
+});
+
 test("platform variant materializer refreshes stale variant captions without rerendering in-window video", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-platform-caption-refresh-"));
   const storyPackage = await makePackage(root, "ig-caption-refresh", 39.2);

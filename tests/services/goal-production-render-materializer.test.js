@@ -448,17 +448,17 @@ test("goal production render materializer refreshes stale quality reports withou
   });
 
   const clips = Array.from({ length: 8 }, (_, index) => ({
-    id: `owned-motion-${index + 1}`,
-    asset_id: `owned-motion-${index + 1}`,
-    path: path.join(artifactDir, `owned-motion-${index + 1}.mp4`),
-    local_materialized_path: path.join(artifactDir, `owned-motion-${index + 1}.mp4`),
-    source_url: `local://pulse-generated-motion/xbox-quality-refresh/${index + 1}`,
-    source_type: "internally_generated_motion_graphic",
-    source_family: `owned_motion_${index + 1}`,
-    motion_family: `owned_motion_${index + 1}`,
-    media_kind: "owned_explainer_motion",
-    licence_basis: "owned_generated_editorial_motion_graphic",
-    rights_basis: "owned_generated_editorial_motion_graphic",
+    id: `steam-motion-${index + 1}`,
+    asset_id: `steam-motion-${index + 1}`,
+    path: path.join(artifactDir, `steam-motion-${index + 1}.mp4`),
+    local_materialized_path: path.join(artifactDir, `steam-motion-${index + 1}.mp4`),
+    source_url: `https://video.akamai.steamstatic.com/store_trailers/xbox-quality-refresh/${index + 1}/hls_264_master.m3u8`,
+    source_type: "steam_movie",
+    source_family: `steam_movie_xbox_quality_refresh_${index + 1}`,
+    motion_family: `steam_movie_xbox_quality_refresh_${index + 1}`,
+    media_kind: "direct_video",
+    licence_basis: "official_storefront_reference_editorial_use",
+    rights_basis: "official_storefront_reference_editorial_use",
     counts_towards_motion_readiness: true,
     materialized: true,
   }));
@@ -485,8 +485,10 @@ test("goal production render materializer refreshes stale quality reports withou
       path: clip.path,
       source_url: clip.source_url,
       source_type: clip.source_type,
-      licence_basis: "owned_generated_editorial_motion_graphic",
-      allowed_use: "owned_editorial_motion_graphic",
+      media_kind: clip.media_kind,
+      source_family: clip.source_family,
+      licence_basis: clip.licence_basis,
+      allowed_use: "official_storefront_editorial_reference",
       commercial_use_allowed: true,
       approval_status: "approved_for_commercial_editorial_use",
       risk_score: 0.01,
@@ -508,6 +510,21 @@ test("goal production render materializer refreshes stale quality reports withou
     scores: { rights_risk_score: 0 },
     failures: ["gold_standard:rights_risk_above_reference"],
   });
+  await fs.outputJson(path.join(artifactDir, "forensic_qa_report.json"), {
+    schema_version: 1,
+    story_id: "xbox-quality-refresh",
+    verdict: "blocked_or_rewrite_required",
+    checks: {
+      rights: "fail",
+      footage: "v4_motion_blocked",
+      benchmark: "fail",
+    },
+    blockers: [
+      "rights:no_rights_record",
+      "actual_motion_clip_minimum_not_met",
+      "gold_standard:rights_risk_above_reference",
+    ],
+  });
 
   const refresh = await refreshFinalRenderQualityOnly({
     storyId: "xbox-quality-refresh",
@@ -520,6 +537,106 @@ test("goal production render materializer refreshes stale quality reports withou
   const refreshedBenchmark = await fs.readJson(path.join(artifactDir, "benchmark_report.json"));
   assert.ok(refreshedBenchmark.scores.rights_risk_score >= 90);
   assert.ok(!refreshedBenchmark.failures.includes("gold_standard:rights_risk_above_reference"));
+  const refreshedForensics = await fs.readJson(path.join(artifactDir, "forensic_qa_report.json"));
+  assert.equal(refreshedForensics.verdict, "post_render_forensics_passed");
+  assert.equal(refreshedForensics.result, "pass");
+  assert.deepEqual(refreshedForensics.blockers, []);
+  assert.equal(refreshedForensics.checks.benchmark, "pass");
+  assert.equal(refreshedForensics.checks.final_render_mp4, "pass");
+  assert.equal(refreshedForensics.evidence.motion_clip_count >= 5, true);
+  assert.equal(refreshedForensics.repair_source, "post_render_quality_refresh");
+  const refreshedRenderManifest = await fs.readJson(path.join(artifactDir, "render_manifest.json"));
+  assert.equal(refreshedRenderManifest.quality_gate_status, "post_render_forensics_passed");
+  assert.equal(refreshedRenderManifest.post_render_quality_refreshed_at, "2026-05-26T08:00:00.000Z");
+});
+
+test("goal production render quality refresh repairs stale duration lineage without rerendering", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-refresh-duration-stamp-"));
+  const artifactDir = await makePackage(root, "refresh-duration-stamp");
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "refresh-duration-stamp",
+    canonical_subject: "Hades II",
+    selected_title: "Hades II Just Broke PlayStation's Silence",
+    thumbnail_headline: "HADES II CONSOLE DATE",
+    primary_source: "Xbox",
+    confirmed_claims: [
+      "Xbox's trailer lists Hades II for Xbox and PlayStation, with an April 14 date.",
+    ],
+    narration_script: "Hades II finally has a console date players can plan around.",
+    first_spoken_line: "Hades II finally has a console date players can plan around.",
+    description: "Hades II finally has a console date. Source: Xbox.",
+    duration_variant_status: "invalidated_requires_repair",
+    duration_variant_invalidated_at: "2026-05-22T09:59:00.000Z",
+    duration_variant_repaired_at: "2026-05-22T10:00:00.000Z",
+  });
+  await fs.outputFile(path.join(artifactDir, "visual_v4_render.mp4"), Buffer.alloc(4096, 5));
+  await fs.outputJson(path.join(artifactDir, "render_manifest.json"), {
+    story_id: "refresh-duration-stamp",
+    renderer: "visual_v4_production",
+    visual_tier: "production_v4_motion",
+    final_publish_render: true,
+    output: "visual_v4_render.mp4",
+    generated_at: "2026-05-22T10:05:00.000Z",
+    rendered_duration_s: 42,
+    clips: 2,
+  });
+  const clips = Array.from({ length: 3 }, (_, index) => ({
+    id: `duration-stamp-motion-${index + 1}`,
+    asset_id: `duration-stamp-motion-${index + 1}`,
+    path: path.join(artifactDir, `duration-stamp-motion-${index + 1}.mp4`),
+    source_url: `local://pulse-generated-motion/duration-stamp/${index + 1}`,
+    source_type: "internally_generated_motion_graphic",
+    source_family: `duration_stamp_motion_${index + 1}`,
+    motion_family: `duration_stamp_motion_${index + 1}`,
+    media_kind: "owned_explainer_motion",
+    licence_basis: "owned_generated_editorial_motion_graphic",
+    rights_basis: "owned_generated_editorial_motion_graphic",
+    counts_towards_motion_readiness: true,
+    materialized: true,
+  }));
+  for (const clip of clips) await fs.outputFile(clip.path, Buffer.alloc(1024, 6));
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips,
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    motion_inventory: {
+      accepted_local_clips: clips,
+      production_motion_clips: clips,
+      distinct_source_families: clips.map((clip) => clip.source_family),
+      allow_owned_explainer_motion_only: true,
+    },
+    motion_budget: {
+      allow_owned_explainer_motion_only: true,
+      owned_explainer_visual_plan: true,
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    records: clips.map((clip) => ({
+      asset_id: clip.asset_id,
+      path: clip.path,
+      source_url: clip.source_url,
+      source_type: clip.source_type,
+      licence_basis: clip.licence_basis,
+      allowed_use: "owned_editorial_motion_graphic",
+      commercial_use_allowed: true,
+      approval_status: "approved_for_commercial_editorial_use",
+      risk_score: 0.01,
+    })),
+  });
+
+  const report = await refreshFinalRenderQualityOnly({
+    artifactDir,
+    storyId: "refresh-duration-stamp",
+    generatedAt: "2026-05-22T10:06:00.000Z",
+  });
+
+  const canonical = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+  assert.equal(report.status, "quality_refreshed");
+  assert.equal(report.safety.renderer_invoked, false);
+  assert.equal(canonical.duration_variant_status, "repaired_rendered");
+  assert.equal(canonical.duration_variant_final_render_regenerated_at, "2026-05-22T10:05:00.000Z");
+  assert.equal(canonical.duration_variant_regeneration_status, "quality_refreshed");
 });
 
 test("goal production render materializer prefers real materialised clips over stale generated-card evidence", async () => {
@@ -907,6 +1024,64 @@ test("goal production render materializer stamps public-copy regeneration when r
   assert.equal(secondReport.summary.skipped_existing_count, 1);
   assert.equal(afterSkip.public_copy_final_render_regenerated_at, "2026-05-22T07:02:00.000Z");
   assert.equal(afterSkip.public_copy_regeneration_completed_at, "2026-05-22T07:02:00.000Z");
+});
+
+test("goal production render materializer clears stale duration invalidation after final render", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-duration-stamp-"));
+  const artifactDir = await makePackage(root);
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "story-final",
+    canonical_subject: "Hades II",
+    selected_title: "Hades II Just Broke PlayStation's Silence",
+    narration_script: "Hades II finally has a console date players can plan around.",
+    first_spoken_line: "Hades II finally has a console date players can plan around.",
+    description: "Hades II finally has a console date. Source: Xbox.",
+    primary_source: "Xbox",
+    duration_variant_status: "invalidated_requires_repair",
+    duration_variant_invalidated_at: "2026-05-22T07:00:00.000Z",
+    duration_variant_invalidated_reason: "narration_script_changed_after_duration_variant_repair",
+    duration_variant_repaired_at: "2026-05-22T07:01:00.000Z",
+  });
+  const job = readyJob("story-final", artifactDir);
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-05-22T07:02:00.000Z",
+    renderProof: async ({ output }) => {
+      await fs.outputFile(output, Buffer.alloc(4096, 5));
+      return { clips: 2, rendered_duration_s: 42 };
+    },
+  });
+
+  const canonical = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+  assert.equal(report.summary.rendered_count, 1);
+  assert.equal(canonical.duration_variant_status, "repaired_rendered");
+  assert.equal(canonical.duration_variant_final_render_regenerated_at, "2026-05-22T07:02:00.000Z");
+  assert.equal(canonical.duration_variant_regeneration_status, "rendered");
+
+  delete canonical.duration_variant_status;
+  delete canonical.duration_variant_final_render_regenerated_at;
+  delete canonical.duration_variant_regeneration_status;
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    ...canonical,
+    duration_variant_status: "invalidated_requires_repair",
+  }, { spaces: 2 });
+
+  const secondReport = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-05-22T07:03:00.000Z",
+    renderProof: async () => {
+      throw new Error("should not rerender final output");
+    },
+  });
+
+  const afterSkip = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+  assert.equal(secondReport.summary.skipped_existing_count, 1);
+  assert.equal(afterSkip.duration_variant_status, "repaired_rendered");
+  assert.equal(afterSkip.duration_variant_final_render_regenerated_at, "2026-05-22T07:02:00.000Z");
+  assert.equal(afterSkip.duration_variant_regeneration_status, "skipped_existing_final_render");
 });
 
 test("goal production render materializer rerenders existing final MP4s without current input fingerprint", async () => {

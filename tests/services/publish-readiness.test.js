@@ -56,10 +56,12 @@ test("dominantVerdict: all green stays green", () => {
 // ── PILLAR_NAMES contract ────────────────────────────────────────
 
 test("PILLAR_NAMES: includes cadence plus the original readiness pillars", () => {
-  assert.equal(pr.PILLAR_NAMES.length, 23);
+  assert.equal(pr.PILLAR_NAMES.length, 25);
   assert.ok(pr.PILLAR_NAMES.includes("publish_cadence"));
   assert.ok(pr.PILLAR_NAMES.includes("strict_dry_run_control"));
   assert.ok(pr.PILLAR_NAMES.includes("repair_backlog"));
+  assert.ok(pr.PILLAR_NAMES.includes("platform_duration_contract"));
+  assert.ok(pr.PILLAR_NAMES.includes("final_voice_audit"));
 });
 
 test("PILLAR_NAMES: includes the audit-flagged external blockers", () => {
@@ -319,7 +321,7 @@ test("buildPublishReadinessReport: empty store does not crash, returns at least 
   );
   assert.equal(report.story_count, 0);
   assert.ok(typeof report.pillars === "object");
-  assert.equal(Object.keys(report.pillars).length, 23);
+  assert.equal(Object.keys(report.pillars).length, 25);
   assert.ok(typeof report.next_action === "string");
 });
 
@@ -513,6 +515,104 @@ test("pillarRepairBacklog: amber when generated repair work remains", () => {
   }
 });
 
+test("pillarRepairBacklog: green when render repair work is superseded by clean current evidence", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-repair-backlog-superseded-"));
+  const backlogPath = path.join(dir, "repair_backlog.json");
+  const planPath = path.join(dir, "dry_run_publish_plan.json");
+  const productionRenderReportPath = path.join(dir, "production_render_materialization_report.json");
+  try {
+    fs.writeFileSync(
+      backlogPath,
+      JSON.stringify({
+        generated_at: "2026-05-31T10:00:00.000Z",
+        summary: {
+          total_items: 2,
+          auto_repairable_items: 2,
+          operator_required_items: 0,
+          dead_end_items: 0,
+          lane_counts: {
+            visual_v4_production_render: 2,
+          },
+        },
+        items: [
+          {
+            story_id: "ready-one",
+            repair_lane: "visual_v4_production_render",
+            blocker_type: "run_visual_v4_production_render",
+            auto_repairable: true,
+          },
+          {
+            story_id: "ready-two",
+            repair_lane: "visual_v4_production_render",
+            blocker_type: "run_visual_v4_production_render",
+            auto_repairable: true,
+          },
+        ],
+      }),
+    );
+    fs.writeFileSync(
+      productionRenderReportPath,
+      JSON.stringify({
+        generated_at: "2026-05-31T10:10:00.000Z",
+        source_work_order_generated_at: "2026-05-31T10:00:00.000Z",
+        summary: {
+          candidate_count: 2,
+          rendered_count: 2,
+          failed_count: 0,
+          skipped_existing_count: 0,
+        },
+        safety: {
+          no_publish_triggered: true,
+          no_network_uploads: true,
+          no_db_mutation: true,
+          no_oauth_or_token_change: true,
+          no_gate_weakened: true,
+        },
+        jobs: [
+          { story_id: "ready-one", status: "rendered" },
+          { story_id: "ready-two", status: "rendered" },
+        ],
+      }),
+    );
+    fs.writeFileSync(
+      planPath,
+      JSON.stringify({
+        generated_at: "2026-05-31T10:20:00.000Z",
+        overall_verdict: "AMBER",
+        ready_for_unattended_publish: false,
+        summary: {
+          ready_story_count: 2,
+          blocked_story_count: 0,
+          blocked_action_count: 0,
+          held_story_count: 0,
+          skipped_story_count: 0,
+        },
+        safety: {
+          no_publish_triggered: true,
+          no_network_uploads: true,
+          no_db_mutation: true,
+          no_oauth_or_token_change: true,
+          dry_run_only: true,
+        },
+      }),
+    );
+
+    const pillar = pr.pillarRepairBacklog({
+      repairBacklogPath: backlogPath,
+      strictDryRunPlanPath: planPath,
+      productionRenderReportPath,
+      now: Date.parse("2026-05-31T10:30:00.000Z"),
+    });
+
+    assert.equal(pillar.verdict, "green");
+    assert.equal(pillar.raw.readiness_scope, "superseded_by_clean_strict_dry_run");
+    assert.equal(pillar.raw.active_publish_blocker_items, 0);
+    assert.equal(pillar.raw.superseded_repair_items, 2);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("pillarRepairBacklog: green only when the generated backlog is empty", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-repair-backlog-empty-"));
   const backlogPath = path.join(dir, "repair_backlog.json");
@@ -540,6 +640,349 @@ test("pillarRepairBacklog: green only when the generated backlog is empty", () =
     assert.equal(pillar.verdict, "green");
     assert.equal(pillar.reason, undefined);
     assert.equal(pillar.raw.total_items, 0);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("pillarRepairBacklog: quarantined dead-end debt is amber when strict dry-run has clean active candidates", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-repair-backlog-quarantined-"));
+  const backlogPath = path.join(dir, "repair_backlog.json");
+  const planPath = path.join(dir, "dry_run_publish_plan.json");
+  try {
+    fs.writeFileSync(
+      backlogPath,
+      JSON.stringify({
+        generated_at: "2026-05-31T10:00:00.000Z",
+        summary: {
+          total_items: 2,
+          auto_repairable_items: 0,
+          operator_required_items: 2,
+          dead_end_blocker_items: 1,
+          publish_blocker_resolution_items: 0,
+          lane_counts: {
+            reject_or_human_review_non_news_image_post: 1,
+            official_direct_media_search_after_generated_only_benchmark_failure: 1,
+          },
+        },
+        items: [
+          {
+            story_id: "bad-image-post",
+            repair_lane: "reject_or_human_review_non_news_image_post",
+            operator_approval_required: true,
+            dead_end_blocker: true,
+          },
+          {
+            story_id: "generated-only",
+            repair_lane: "official_direct_media_search_after_generated_only_benchmark_failure",
+            operator_approval_required: true,
+          },
+        ],
+      }),
+    );
+    fs.writeFileSync(
+      planPath,
+      JSON.stringify({
+        generated_at: "2026-05-31T10:05:00.000Z",
+        overall_verdict: "AMBER",
+        ready_for_unattended_publish: false,
+        summary: {
+          ready_story_count: 13,
+          blocked_story_count: 0,
+          blocked_action_count: 0,
+          held_story_count: 0,
+          skipped_story_count: 17,
+          quarantined_incident_guard_failed_story_count: 17,
+        },
+        safety: {
+          no_publish_triggered: true,
+          no_network_uploads: true,
+          no_db_mutation: true,
+          no_oauth_or_token_change: true,
+          dry_run_only: true,
+        },
+      }),
+    );
+
+    const pillar = pr.pillarRepairBacklog({
+      repairBacklogPath: backlogPath,
+      strictDryRunPlanPath: planPath,
+      now: Date.parse("2026-05-31T10:30:00.000Z"),
+    });
+
+    assert.equal(pillar.verdict, "amber");
+    assert.match(pillar.reason, /quarantined_debt/);
+    assert.equal(pillar.raw.readiness_scope, "quarantined_debt");
+    assert.equal(pillar.raw.active_publish_blocker_items, 0);
+    assert.equal(pillar.raw.dead_end_items, 1);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("pillarRepairBacklog: dead-end debt stays red without clean strict dry-run evidence", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-repair-backlog-active-red-"));
+  const backlogPath = path.join(dir, "repair_backlog.json");
+  const planPath = path.join(dir, "dry_run_publish_plan.json");
+  try {
+    fs.writeFileSync(
+      backlogPath,
+      JSON.stringify({
+        generated_at: "2026-05-31T10:00:00.000Z",
+        summary: {
+          total_items: 1,
+          auto_repairable_items: 0,
+          operator_required_items: 1,
+          dead_end_blocker_items: 1,
+          publish_blocker_resolution_items: 0,
+        },
+        items: [
+          {
+            story_id: "bad-image-post",
+            repair_lane: "reject_or_human_review_non_news_image_post",
+            operator_approval_required: true,
+            dead_end_blocker: true,
+          },
+        ],
+      }),
+    );
+    fs.writeFileSync(
+      planPath,
+      JSON.stringify({
+        generated_at: "2026-05-31T10:05:00.000Z",
+        overall_verdict: "RED",
+        summary: {
+          ready_story_count: 13,
+          blocked_story_count: 1,
+          blocked_action_count: 0,
+        },
+        safety: {
+          no_publish_triggered: true,
+          no_network_uploads: true,
+          no_db_mutation: true,
+          no_oauth_or_token_change: true,
+          dry_run_only: true,
+        },
+      }),
+    );
+
+    const pillar = pr.pillarRepairBacklog({
+      repairBacklogPath: backlogPath,
+      strictDryRunPlanPath: planPath,
+      now: Date.parse("2026-05-31T10:30:00.000Z"),
+    });
+
+    assert.equal(pillar.verdict, "red");
+    assert.notEqual(pillar.raw.readiness_scope, "quarantined_debt");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("pillarPlatformDurationContract: labels active and quarantined duration debt separately", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-platform-duration-readiness-"));
+  const reportPath = path.join(dir, "platform_duration_contract_report.json");
+  try {
+    fs.writeFileSync(
+      reportPath,
+      JSON.stringify({
+        generated_at: "2026-05-31T10:00:00.000Z",
+        summary: {
+          package_count: 3,
+          blocked_count: 1,
+          active_variant_repair_required_count: 0,
+          quarantined_variant_repair_required_count: 0,
+          active_tiktok_creator_rewards_variant_required_count: 0,
+          quarantined_tiktok_creator_rewards_variant_required_count: 2,
+        },
+        blocked: [
+          {
+            story_id: "old-story",
+            readiness_scope: "quarantined",
+            blockers: ["missing_render_duration"],
+          },
+        ],
+        tiktok_creator_rewards_variant_work_order: {
+          jobs: [
+            { story_id: "old-one", readiness_scope: "quarantined" },
+            { story_id: "old-two", readiness_scope: "quarantined" },
+          ],
+        },
+        safety: {
+          no_publish_triggered: true,
+          no_network_uploads: true,
+          no_db_mutation: true,
+          no_oauth_or_token_change: true,
+        },
+      }),
+    );
+
+    const pillar = pr.pillarPlatformDurationContract({
+      reportPath,
+      now: Date.parse("2026-05-31T10:30:00.000Z"),
+    });
+
+    assert.equal(pillar.verdict, "green");
+    assert.match(pillar.reason, /active_duration_clean/);
+    assert.match(pillar.reason, /quarantined_blocked=1/);
+    assert.match(pillar.reason, /quarantined_tiktok_creator_rewards_variants=2/);
+    assert.equal(pillar.raw.active_blocked_count, 0);
+    assert.equal(pillar.raw.quarantined_blocked_count, 1);
+    assert.equal(pillar.raw.active_tiktok_creator_rewards_variant_required_count, 0);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("pillarPlatformDurationContract: active duration blockers are red", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-platform-duration-active-red-"));
+  const reportPath = path.join(dir, "platform_duration_contract_report.json");
+  try {
+    fs.writeFileSync(
+      reportPath,
+      JSON.stringify({
+        generated_at: "2026-05-31T10:00:00.000Z",
+        summary: {
+          package_count: 1,
+          blocked_count: 1,
+          active_variant_repair_required_count: 0,
+          active_tiktok_creator_rewards_variant_required_count: 0,
+        },
+        blocked: [
+          {
+            story_id: "active-story",
+            readiness_scope: "active",
+            blockers: ["missing_render_duration"],
+          },
+        ],
+        safety: {
+          no_publish_triggered: true,
+          no_network_uploads: true,
+          no_db_mutation: true,
+          no_oauth_or_token_change: true,
+        },
+      }),
+    );
+
+    const pillar = pr.pillarPlatformDurationContract({
+      reportPath,
+      now: Date.parse("2026-05-31T10:30:00.000Z"),
+    });
+
+    assert.equal(pillar.verdict, "red");
+    assert.match(pillar.reason, /active_duration_blockers=1/);
+    assert.equal(pillar.raw.active_blocked_count, 1);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("pillarFinalVoiceAudit: active clean voice rows stay green while quarantined debt remains visible", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-final-voice-active-green-"));
+  const auditPath = path.join(dir, "final_voice_audit.json");
+  const manifestPath = path.join(dir, "local_test_video_manifest.json");
+  const activeVideo = path.join(dir, "active", "visual_v4_render.mp4");
+  const oldVideo = path.join(dir, "old", "visual_v4_render.mp4");
+  try {
+    fs.mkdirSync(path.dirname(activeVideo), { recursive: true });
+    fs.mkdirSync(path.dirname(oldVideo), { recursive: true });
+    fs.writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        videos: [{ story_id: "active-story", video_path: activeVideo }],
+      }),
+    );
+    fs.writeFileSync(
+      auditPath,
+      JSON.stringify({
+        generated_at: "2026-05-31T10:00:00.000Z",
+        rows: [
+          {
+            story_id: "active-story",
+            mp4_path: activeVideo,
+            verdict: "pass",
+            blockers: [],
+            warnings: [],
+          },
+          {
+            story_id: "old-story",
+            mp4_path: oldVideo,
+            verdict: "review",
+            blockers: ["approved_voice_metadata_missing"],
+            warnings: [],
+          },
+        ],
+        safety: {
+          read_only: true,
+          mutates_media: false,
+          mutates_production_db: false,
+          mutates_tokens: false,
+          posts_to_platforms: false,
+        },
+      }),
+    );
+
+    const pillar = pr.pillarFinalVoiceAudit({
+      auditPath,
+      localTestManifestPath: manifestPath,
+      now: Date.parse("2026-05-31T10:30:00.000Z"),
+    });
+
+    assert.equal(pillar.verdict, "green");
+    assert.match(pillar.reason, /active_voice_clean/);
+    assert.match(pillar.reason, /quarantined_review=1/);
+    assert.equal(pillar.raw.active_pass_count, 1);
+    assert.equal(pillar.raw.quarantined_review_count, 1);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("pillarFinalVoiceAudit: active voice reject is red", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-final-voice-active-red-"));
+  const auditPath = path.join(dir, "final_voice_audit.json");
+  const manifestPath = path.join(dir, "local_test_video_manifest.json");
+  const activeVideo = path.join(dir, "active", "visual_v4_render.mp4");
+  try {
+    fs.mkdirSync(path.dirname(activeVideo), { recursive: true });
+    fs.writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        videos: [{ story_id: "active-story", video_path: activeVideo }],
+      }),
+    );
+    fs.writeFileSync(
+      auditPath,
+      JSON.stringify({
+        generated_at: "2026-05-31T10:00:00.000Z",
+        rows: [
+          {
+            story_id: "active-story",
+            mp4_path: activeVideo,
+            verdict: "reject",
+            blockers: ["local_tts_voice_reference_unverified"],
+            warnings: [],
+          },
+        ],
+        safety: {
+          read_only: true,
+          mutates_media: false,
+          mutates_production_db: false,
+          mutates_tokens: false,
+          posts_to_platforms: false,
+        },
+      }),
+    );
+
+    const pillar = pr.pillarFinalVoiceAudit({
+      auditPath,
+      localTestManifestPath: manifestPath,
+      now: Date.parse("2026-05-31T10:30:00.000Z"),
+    });
+
+    assert.equal(pillar.verdict, "red");
+    assert.match(pillar.reason, /active_voice_reject=1/);
+    assert.equal(pillar.raw.active_reject_count, 1);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

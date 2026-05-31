@@ -912,9 +912,9 @@ test("buildKineticAss can add TikTok-native Flash motion styling", () => {
     motionStyle: "flash",
   });
 
-  assert.match(ass, /\\move\(540,1484,540,1450,0,130\)/);
+  assert.match(ass, /\\move\(540,1378,540,1342,0,130\)/);
   assert.match(ass, /\\fad\(35,70\)/);
-  assert.match(ass, /\\bord8\\shad5/);
+  assert.match(ass, /\\bord6\\shad4/);
   assert.match(ass, /\\t\(0,130,\\fscx106\\fscy106\)/);
 });
 

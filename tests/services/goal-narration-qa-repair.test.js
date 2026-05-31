@@ -187,6 +187,49 @@ test("narration QA repair refreshes stale caption manifests when caption evidenc
   assert.equal(captionManifest.safety.no_db_mutation, true);
 });
 
+test("narration QA repair replaces stale caption word count with current aligned timestamp count", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-narration-qa-repair-stale-caption-count-"));
+  const fixture = await makeNarrationQaFixture(root, {
+    audioWordCount: 97,
+    captionWordCount: 126,
+    voiceQualityWordCount: 126,
+  });
+  await fs.outputJson(path.join(fixture.artifactDir, "caption_manifest.json"), {
+    story_id: fixture.storyId,
+    generated_at: "2026-05-31T01:00:00.000Z",
+    caption_srt_path: "captions.srt",
+    word_timestamps_path: "word_timestamps.json",
+    word_count: 126,
+    word_timestamp_count: 126,
+    timestamp_whisper_alignment: {
+      repaired: true,
+      strategy: "local_whisper_word_alignment",
+      word_count: 97,
+    },
+  });
+  fixture.dryRunPlan.blocked_stories[0].blockers = [
+    "caption_manifest_word_count_mismatch",
+    "voice_quality_word_count_mismatch",
+  ];
+
+  const report = await repairNarrationQaArtifacts({
+    dryRunPlan: fixture.dryRunPlan,
+    generatedAt: "2026-05-31T01:14:00.000Z",
+    apply: true,
+  });
+
+  assert.equal(report.summary.freshness_pass_count, 1);
+  assert.equal(report.summary.remaining_blocked_count, 0);
+
+  const captionManifest = await fs.readJson(path.join(fixture.artifactDir, "caption_manifest.json"));
+  assert.equal(captionManifest.word_count, 97);
+  assert.equal(captionManifest.word_timestamp_count, 97);
+
+  const voiceQuality = await fs.readJson(path.join(fixture.artifactDir, "voice_quality_report.json"));
+  assert.equal(voiceQuality.verdict, "PASS");
+  assert.equal(voiceQuality.word_timestamp_count, 97);
+});
+
 test("narration QA repair materialises a missing narration manifest from current audio evidence", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-narration-manifest-repair-"));
   const resolvedAudioPath = path.join(root, "media", "audio", "hades.mp3");

@@ -252,6 +252,32 @@ test("human review queue falls back to canonical source URL fields for operator 
   assert.equal(item.source_list.secondary[0].url, "https://www.ign.com/articles/the-expanse-osiris-reborn-gameplay");
 });
 
+test("human review queue sanitises truncated YouTube source names in operator evidence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-human-review-source-names-"));
+  const artifactDir = await makeStoryPackage(root, "source-name-story");
+  const canonicalPath = path.join(artifactDir, "canonical_story_manifest.json");
+  const canonical = await fs.readJson(canonicalPath);
+  await fs.writeJson(canonicalPath, {
+    ...canonical,
+    primary_source: "Xbox",
+    primary_source_url: "https://youtu.be/PGqkjDoyI8o",
+    official_source: "Youtu",
+    official_source_url: "https://youtu.be/PGqkjDoyI8o",
+    discovery_source: "Youtu",
+    discovery_source_url: "https://www.youtube.com/@Xbox",
+  }, { spaces: 2 });
+
+  const queue = await buildGoalHumanReviewQueue({
+    dryRunPlan: dryRunPlan({ artifactDir, storyId: "source-name-story" }),
+    generatedAt: "2026-05-28T08:20:00.000Z",
+  });
+
+  const item = queue.review_items[0];
+  assert.equal(item.source_list.primary.name, "Xbox");
+  assert.equal(item.source_list.official.name, "YouTube");
+  assert.equal(item.source_list.discovery.name, "YouTube");
+});
+
 test("human review queue attaches TikTok creator rewards repair work orders to duration warnings", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-human-review-tiktok-repair-"));
   const artifactDir = await makeStoryPackage(root);

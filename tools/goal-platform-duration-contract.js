@@ -14,6 +14,7 @@ function parseArgs(argv = process.argv.slice(2)) {
   const args = {
     root: process.cwd(),
     storyPackagesPath: null,
+    dryRunPlanPath: null,
     outDir: path.join(process.cwd(), "output", "goal-contract"),
     generatedAt: null,
     json: false,
@@ -23,6 +24,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     const arg = argv[i];
     if (arg === "--root") args.root = argv[++i] || args.root;
     else if (arg === "--story-packages") args.storyPackagesPath = argv[++i] || "";
+    else if (arg === "--dry-run-plan") args.dryRunPlanPath = argv[++i] || "";
     else if (arg === "--out-dir") args.outDir = argv[++i] || args.outDir;
     else if (arg === "--generated-at") args.generatedAt = argv[++i] || null;
     else if (arg === "--json") args.json = true;
@@ -39,6 +41,7 @@ function usage() {
     "Options:",
     "  --root <dir>              Workspace root",
     "  --story-packages <path>   Story package manifest",
+    "  --dry-run-plan <path>      Strict dry-run plan for active/quarantined scope",
     "  --out-dir <dir>           Output directory",
     "  --generated-at <iso>      Fixed timestamp",
     "  --json                    Print JSON",
@@ -56,6 +59,19 @@ async function readStoryPackages(root, explicitPath = null) {
   return value;
 }
 
+async function readJsonIfExists(filePath) {
+  if (!filePath) return null;
+  try {
+    if (await fs.pathExists(filePath)) return await fs.readJson(filePath);
+  } catch {}
+  return null;
+}
+
+function activeStoryIdsFromDryRunPlan(plan = null) {
+  const actions = Array.isArray(plan?.actions) ? plan.actions : [];
+  return [...new Set(actions.map((action) => String(action?.story_id || action?.storyId || "").trim()).filter(Boolean))];
+}
+
 async function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
   if (args.help) {
@@ -64,9 +80,14 @@ async function main(argv = process.argv.slice(2)) {
   }
   const root = path.resolve(args.root);
   const storyPackages = await readStoryPackages(root, args.storyPackagesPath);
+  const dryRunPlanPath = args.dryRunPlanPath
+    ? path.resolve(root, args.dryRunPlanPath)
+    : path.join(root, "output", "goal-contract", "dry_run_publish_plan.json");
+  const dryRunPlan = await readJsonIfExists(dryRunPlanPath);
   const report = await repairGoalPlatformDurationContracts({
     storyPackages,
     generatedAt: args.generatedAt || new Date().toISOString(),
+    activeStoryIds: dryRunPlan ? activeStoryIdsFromDryRunPlan(dryRunPlan) : null,
   });
   const artefacts = await writeGoalPlatformDurationContractReport(report, {
     outputDir: path.resolve(root, args.outDir),
@@ -84,6 +105,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  activeStoryIdsFromDryRunPlan,
   parseArgs,
   readStoryPackages,
   main,

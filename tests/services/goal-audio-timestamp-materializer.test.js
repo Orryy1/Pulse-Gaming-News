@@ -146,6 +146,55 @@ test("goal audio materializer syncs canonical narration metadata after public-co
   assert.equal(canonical.duration_variant_invalidated_reason, "narration_script_changed_after_duration_variant_repair");
 });
 
+test("goal audio materializer refreshes stale narration and caption manifests after audio regeneration", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-manifest-refresh-"));
+  const script = "Hades II finally has a PlayStation and Xbox date.";
+  const artifactDir = await makePackage(root, "story-manifest-refresh", {
+    selected_title: "Hades II Just Broke PlayStation's Silence",
+    narration_script: script,
+  });
+  await fs.outputJson(path.join(artifactDir, "narration_manifest.json"), {
+    status: "ready",
+    generated_at: "2026-05-22T05:00:00.000Z",
+    transcript: "Hades, two finally has a PlayStation and Xbox date.",
+    final_transcript: "Hades, two finally has a PlayStation and Xbox date.",
+    word_timestamps_path: "output/audio/story-manifest-refresh_timestamps.json",
+  });
+  await fs.outputJson(path.join(artifactDir, "caption_manifest.json"), {
+    status: "ready",
+    generated_at: "2026-05-22T05:00:00.000Z",
+    word_timestamps_path: "output/audio/story-manifest-refresh_timestamps.json",
+  });
+
+  await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    workbenchReport: {
+      local_tts: { verdict: "green", ready: true },
+      jobs: [workbenchJob("story-manifest-refresh", artifactDir)],
+    },
+    generatedAt: "2026-05-22T06:00:50.000Z",
+    generateTtsForStory: async ({ text, outputPath }) => {
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 1));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignment(text),
+      });
+      return { ok: true };
+    },
+  });
+
+  const narration = await fs.readJson(path.join(artifactDir, "narration_manifest.json"));
+  assert.equal(narration.generated_at, "2026-05-22T06:00:50.000Z");
+  assert.equal(narration.transcript, "Hades two finally has a PlayStation and Xbox date.");
+  assert.equal(narration.final_transcript, "Hades two finally has a PlayStation and Xbox date.");
+  assert.equal(narration.word_timestamp_source, "local_alignment_normalised");
+  assert.doesNotMatch(narration.transcript, /Hades, two/);
+
+  const captions = await fs.readJson(path.join(artifactDir, "caption_manifest.json"));
+  assert.equal(captions.generated_at, "2026-05-22T06:00:50.000Z");
+  assert.equal(captions.word_timestamp_source, "local_alignment_normalised");
+  assert.equal(captions.transcript, "Hades two finally has a PlayStation and Xbox date.");
+});
+
 test("goal audio materializer anchors local word timestamps to measured speech pauses", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-anchored-"));
   const script =
@@ -213,10 +262,10 @@ test("goal audio materializer sends spoken pronunciation text while preserving d
   });
 
   assert.equal(report.summary.materialized_count, 1);
-  assert.equal(calls[0].text, "Hades, two finally has a PlayStation and Xbox date.");
+  assert.equal(calls[0].text, "Hades two finally has a PlayStation and Xbox date.");
   const timestamps = await fs.readJson(path.join(root, "output", "audio", "story-hades-spoken_timestamps.json"));
   assert.equal(timestamps.meta.text, script);
-  assert.equal(timestamps.meta.transcript, "Hades, two finally has a PlayStation and Xbox date.");
+  assert.equal(timestamps.meta.transcript, "Hades two finally has a PlayStation and Xbox date.");
   assert.equal(timestamps.words.filter((word) => /^Hades/i.test(word.word) || word.word === "two").length, 2);
   assert.ok(timestamps.words.some((word) => word.word === "two"));
 });
@@ -898,7 +947,7 @@ test("goal audio materializer prefers local Whisper word alignment when configur
         { word: "on", start: 1.14, end: 1.25 },
         { word: "console.", start: 1.28, end: 1.6 },
       ],
-      transcript: "Hades, two lands on console.",
+      transcript: "Hades two lands on console.",
     }),
     generateTtsForStory: async ({ text, outputPath }) => {
       const audioPath = path.join(root, outputPath);
@@ -1797,6 +1846,25 @@ test("goal audio materializer treats null Whisper timing anchors as unusable", (
   assert.equal(_testables.timingFromToken({ timing: null }), null);
 });
 
+test("goal audio materializer reconciles split GameStop TTS text with merged Whisper ASR", () => {
+  const script = "Game Stop lists Super Mario RPG at 15 dollars. Game Stop updates the listing.";
+  const words = "GameStop lists Super Mario RPG at 15 dollars GameStop updates the listing"
+    .split(/\s+/)
+    .map((word, index) => ({
+      word,
+      start: index * 0.25,
+      end: index * 0.25 + 0.16,
+    }));
+
+  const reconciled = _testables.reconcileWhisperWordsToScript({ words, scriptText: script });
+
+  assert.equal(reconciled.ok, true);
+  assert.equal(reconciled.coverage.inserted_actual_word_count, 0);
+  assert.equal(reconciled.words.length, words.length);
+  assert.equal(reconciled.words[0].word, "GameStop");
+  assert.equal(reconciled.words[8].word, "GameStop");
+});
+
 test("goal audio materializer uses ElevenLabs fallback selected by the workbench", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-elevenlabs-"));
   const artifactDir = await makePackage(root, "story-elevenlabs");
@@ -2278,7 +2346,7 @@ test("goal audio materializer regenerates existing pairs that predate repaired d
   });
 
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].text, "Hades, two just turned its console date into the real story.");
+  assert.equal(calls[0].text, "Hades two just turned its console date into the real story.");
   assert.equal(report.summary.materialized_count, 1);
   assert.equal(report.jobs[0].status, "materialized");
   assert.equal(report.jobs[0].reason, "existing_pair_stale_after_duration_variant_repair");

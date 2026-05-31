@@ -198,6 +198,154 @@ test("goal SFX evidence repair prefers package-scoped Epidemic SFX assets from r
   assert.equal(sfxManifest.source_plan.readiness.status, "pass");
 });
 
+test("goal SFX evidence repair merges the retained Epidemic runtime manifest over stale package SFX", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-sfx-repair-epidemic-runtime-"));
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", "story-hades");
+  await fs.outputJson(path.join(root, "output", "goal-contract", "story-packages.json"), [
+    { story_id: "story-hades", artifact_dir: artifactDir },
+  ]);
+  await fs.outputJson(path.join(root, "output", "goal-contract", "sfx_source_plan.json"), {
+    readiness: { status: "pass", blockers: [] },
+    required_roles: ["impact", "transition", "ui_tick"],
+    selected_assets: [
+      {
+        asset_id: "old-sonniss-impact",
+        role: "impact",
+        provider_id: "sonniss",
+        source_url: "file://audio/sonniss/Modern Cinematic Impact/impact.wav",
+        rights_basis: "sonniss_game_audio_gdc_bundle_license",
+      },
+    ],
+  });
+  await fs.outputJson(path.join(root, "output", "goal-contract", "sfx_rights_ledger.json"), {
+    records: [
+      {
+        asset_id: "old-sonniss-impact",
+        asset_type: "sfx",
+        role: "impact",
+        provider_id: "sonniss",
+        source_url: "file://audio/sonniss/Modern Cinematic Impact/impact.wav",
+        licence_basis: "sonniss_game_audio_gdc_bundle_license",
+        approval_status: "approved_for_commercial_editorial_use",
+        commercial_use_allowed: true,
+      },
+    ],
+  });
+  await fs.outputJson(path.join(root, "output", "epidemic-implementation", "epidemic_sfx_runtime_manifest.json"), {
+    readiness: { status: "ready", blockers: [] },
+    required_roles: ["impact", "transition", "ui_tick"],
+    covered_roles: ["impact", "transition", "ui_tick"],
+    variant_assets_by_role: {
+      impact: [
+        {
+          asset_id: "epidemic-impact",
+          role: "impact",
+          family: "impact",
+          provider_id: "epidemic_sound",
+          source_url: "file://audio/epidemic/sfx/epidemic_impact_editorial_hit.wav",
+          license: "epidemic_sound_active_subscription_safelisted_channel",
+          approval_status: "approved_for_commercial_editorial_use",
+        },
+      ],
+      transition: [
+        {
+          asset_id: "epidemic-transition",
+          role: "transition",
+          family: "transition",
+          provider_id: "epidemic_sound",
+          source_url: "file://audio/epidemic/sfx/epidemic_transition_clean_whoosh.wav",
+          license: "epidemic_sound_active_subscription_safelisted_channel",
+          approval_status: "approved_for_commercial_editorial_use",
+        },
+      ],
+      ui_tick: [
+        {
+          asset_id: "epidemic-ui",
+          role: "ui_tick",
+          family: "ui_tick",
+          provider_id: "epidemic_sound",
+          source_url: "file://audio/epidemic/sfx/epidemic_ui_tick_source_tick.wav",
+          license: "epidemic_sound_active_subscription_safelisted_channel",
+          approval_status: "approved_for_commercial_editorial_use",
+        },
+      ],
+    },
+    rights_records: [
+      {
+        asset_id: "epidemic-impact",
+        asset_type: "sfx",
+        role: "impact",
+        provider_id: "epidemic_sound",
+        source_url: "file://audio/epidemic/sfx/epidemic_impact_editorial_hit.wav",
+        licence_basis: "epidemic_sound_active_subscription_safelisted_channel",
+        approval_status: "approved_for_commercial_editorial_use",
+        commercial_use_allowed: true,
+      },
+      {
+        asset_id: "epidemic-transition",
+        asset_type: "sfx",
+        role: "transition",
+        provider_id: "epidemic_sound",
+        source_url: "file://audio/epidemic/sfx/epidemic_transition_clean_whoosh.wav",
+        licence_basis: "epidemic_sound_active_subscription_safelisted_channel",
+        approval_status: "approved_for_commercial_editorial_use",
+        commercial_use_allowed: true,
+      },
+      {
+        asset_id: "epidemic-ui",
+        asset_type: "sfx",
+        role: "ui_tick",
+        provider_id: "epidemic_sound",
+        source_url: "file://audio/epidemic/sfx/epidemic_ui_tick_source_tick.wav",
+        licence_basis: "epidemic_sound_active_subscription_safelisted_channel",
+        approval_status: "approved_for_commercial_editorial_use",
+        commercial_use_allowed: true,
+      },
+    ],
+  });
+  await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), { sfx_cue_count: 3 });
+  await fs.outputJson(path.join(artifactDir, "director_beat_map.json"), {
+    sound_transition_plan: {
+      sfx: {
+        cues: [
+          { target_kind: "hook_slam", family: "impact" },
+          { target_kind: "motion_clip", family: "whoosh" },
+          { target_kind: "source_lock", family: "source_tick" },
+        ],
+      },
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    records: [
+      {
+        asset_id: "stale-package-click",
+        asset_type: "sfx",
+        role: "ui_tick",
+        provider_id: "sonniss",
+        source_url: "file://audio/sonniss/Tiny Gears/tiny_gears_small_mechanism_click_003.wav",
+        licence_basis: "sonniss_game_audio_gdc_bundle_license",
+        approval_status: "approved_for_commercial_editorial_use",
+        commercial_use_allowed: true,
+      },
+    ],
+  });
+
+  await repairGoalSfxEvidence({ root });
+
+  const sfxManifest = await fs.readJson(path.join(artifactDir, "sfx_manifest.json"));
+  assert.deepEqual(
+    sfxManifest.selected_assets.map((asset) => asset.provider_id),
+    ["epidemic_sound", "epidemic_sound", "epidemic_sound"],
+  );
+  assert.equal(sfxManifest.source_plan.readiness.status, "pass");
+  const rightsLedger = await fs.readJson(path.join(artifactDir, "rights_ledger.json"));
+  assert.equal(
+    rightsLedger.records.some((record) => record.asset_id === "stale-package-click"),
+    false,
+  );
+  assert.ok(rightsLedger.records.some((record) => record.asset_id === "epidemic-ui"));
+});
+
 test("goal SFX evidence repair refuses to stamp blocked source plans", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-sfx-repair-blocked-"));
   await fs.outputJson(path.join(root, "output", "goal-contract", "story-packages.json"), [
@@ -535,6 +683,160 @@ test("goal SFX evidence repair avoids duplicate SFX combinations across a batch"
 
   assert.notEqual(signature(first), signature(second));
   assert.equal(second.source_plan.anti_repetition.collision_avoidance, "batch_signature_rotation");
+});
+
+test("goal SFX evidence repair balances individual SFX asset use across a batch", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-sfx-repair-asset-balance-"));
+  const storyIds = ["story-0", "story-1", "story-5", "story-6"];
+  await fs.outputJson(path.join(root, "output", "goal-contract", "story-packages.json"), storyIds.map((storyId) => ({
+    story_id: storyId,
+    artifact_dir: path.join(root, "output", "goal-proof", "batch", storyId),
+  })));
+  await fs.outputJson(path.join(root, "output", "goal-contract", "sfx_source_plan.json"), {
+    readiness: { status: "pass", blockers: [] },
+    required_roles: ["impact"],
+    selected_assets: [
+      {
+        asset_id: "impact-a",
+        role: "impact",
+        family: "impact",
+        provider_id: "sonniss",
+        source_url: "file://audio/sonniss/Modern Cinematic Impact/modern_cinematic_impact_boom_001.wav",
+        rights_basis: "sonniss_game_audio_gdc_bundle_license",
+      },
+    ],
+  });
+  await fs.outputJson(path.join(root, "output", "goal-contract", "sfx_rights_ledger.json"), {
+    records: [
+      {
+        asset_id: "impact-a",
+        role: "impact",
+        family: "impact",
+        provider_id: "sonniss",
+        source_url: "file://audio/sonniss/Modern Cinematic Impact/modern_cinematic_impact_boom_001.wav",
+        licence_basis: "sonniss_game_audio_gdc_bundle_license",
+        approval_status: "approved_for_commercial_editorial_use",
+        commercial_use_allowed: true,
+      },
+      {
+        asset_id: "impact-b",
+        role: "impact",
+        family: "impact",
+        provider_id: "sonniss",
+        source_url: "file://audio/sonniss/Modern Cinematic Impact/modern_cinematic_impact_percussion_002.wav",
+        licence_basis: "sonniss_game_audio_gdc_bundle_license",
+        approval_status: "approved_for_commercial_editorial_use",
+        commercial_use_allowed: true,
+      },
+    ],
+  });
+  for (const storyId of storyIds) {
+    await fs.outputJson(path.join(root, "output", "goal-proof", "batch", storyId, "audio_manifest.json"), {
+      sfx_cue_count: 1,
+    });
+  }
+
+  await repairGoalSfxEvidence({
+    root,
+    generatedAt: "2026-05-31T06:25:00.000Z",
+  });
+
+  const selected = [];
+  for (const storyId of storyIds) {
+    const manifest = await fs.readJson(path.join(root, "output", "goal-proof", "batch", storyId, "sfx_manifest.json"));
+    selected.push(manifest.selected_assets[0].asset_id);
+  }
+  const counts = selected.reduce((acc, assetId) => {
+    acc[assetId] = (acc[assetId] || 0) + 1;
+    return acc;
+  }, {});
+
+  assert.deepEqual(counts, { "impact-a": 2, "impact-b": 2 });
+});
+
+test("goal SFX evidence repair widens the premium variant pool before overusing one impact", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-sfx-repair-impact-pool-"));
+  const storyIds = ["story-0", "story-1", "story-5", "story-6"];
+  await fs.outputJson(path.join(root, "output", "goal-contract", "story-packages.json"), storyIds.map((storyId) => ({
+    story_id: storyId,
+    artifact_dir: path.join(root, "output", "goal-proof", "batch", storyId),
+  })));
+  await fs.outputJson(path.join(root, "output", "goal-contract", "sfx_source_plan.json"), {
+    readiness: { status: "pass", blockers: [] },
+    required_roles: ["impact"],
+    selected_assets: [
+      {
+        asset_id: "epidemic-impact-top",
+        role: "impact",
+        family: "impact",
+        provider_id: "epidemic_sound",
+        source_url: "file://audio/epidemic/sfx/epidemic_impact_04_designed-impact-cinematic-impact-hit-slam-braam-epidemic-sound.mp3",
+        rights_basis: "epidemic_sound_active_subscription_safelisted_channel",
+      },
+    ],
+  });
+  await fs.outputJson(path.join(root, "output", "goal-contract", "sfx_rights_ledger.json"), {
+    records: [
+      {
+        asset_id: "epidemic-impact-top",
+        role: "impact",
+        family: "impact",
+        provider_id: "epidemic_sound",
+        source_url: "file://audio/epidemic/sfx/epidemic_impact_04_designed-impact-cinematic-impact-hit-slam-braam-epidemic-sound.mp3",
+        licence_basis: "epidemic_sound_active_subscription_safelisted_channel",
+        approval_status: "approved_for_commercial_editorial_use",
+        commercial_use_allowed: true,
+      },
+      {
+        asset_id: "epidemic-impact-designed",
+        role: "impact",
+        family: "impact",
+        provider_id: "epidemic_sound",
+        source_url: "file://audio/epidemic/sfx/epidemic_impact_03_designed-stinger-cinematic-hit-short-build-then-hit-epidemic-sound.mp3",
+        licence_basis: "epidemic_sound_active_subscription_safelisted_channel",
+        approval_status: "approved_for_commercial_editorial_use",
+        commercial_use_allowed: true,
+      },
+      {
+        asset_id: "epidemic-impact-horns",
+        role: "impact",
+        family: "impact",
+        provider_id: "epidemic_sound",
+        source_url: "file://audio/epidemic/sfx/epidemic_impact_02_musical-stinger-rise-to-impact-horns-dramatic-hit-suspense-epidemic-sound.mp3",
+        licence_basis: "epidemic_sound_active_subscription_safelisted_channel",
+        approval_status: "approved_for_commercial_editorial_use",
+        commercial_use_allowed: true,
+      },
+      {
+        asset_id: "epidemic-impact-editorial",
+        role: "impact",
+        family: "impact",
+        provider_id: "epidemic_sound",
+        source_url: "file://audio/epidemic/sfx/epidemic_impact_editorial_hit.wav",
+        licence_basis: "epidemic_sound_active_subscription_safelisted_channel",
+        approval_status: "approved_for_commercial_editorial_use",
+        commercial_use_allowed: true,
+      },
+    ],
+  });
+  for (const storyId of storyIds) {
+    await fs.outputJson(path.join(root, "output", "goal-proof", "batch", storyId, "audio_manifest.json"), {
+      sfx_cue_count: 1,
+    });
+  }
+
+  await repairGoalSfxEvidence({
+    root,
+    generatedAt: "2026-05-31T06:40:00.000Z",
+  });
+
+  const selected = [];
+  for (const storyId of storyIds) {
+    const manifest = await fs.readJson(path.join(root, "output", "goal-proof", "batch", storyId, "sfx_manifest.json"));
+    selected.push(manifest.selected_assets[0].asset_id);
+  }
+
+  assert.ok(new Set(selected).size >= 3);
 });
 
 test("goal SFX evidence repair keeps variant rotation inside the top editorial SFX tier", async () => {

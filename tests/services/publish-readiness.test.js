@@ -56,11 +56,12 @@ test("dominantVerdict: all green stays green", () => {
 // ── PILLAR_NAMES contract ────────────────────────────────────────
 
 test("PILLAR_NAMES: includes cadence plus the original readiness pillars", () => {
-  assert.equal(pr.PILLAR_NAMES.length, 30);
+  assert.equal(pr.PILLAR_NAMES.length, 31);
   assert.ok(pr.PILLAR_NAMES.includes("publish_cadence"));
   assert.ok(pr.PILLAR_NAMES.includes("strict_dry_run_control"));
   assert.ok(pr.PILLAR_NAMES.includes("human_review_decision_sheet"));
   assert.ok(pr.PILLAR_NAMES.includes("human_review_operator_index"));
+  assert.ok(pr.PILLAR_NAMES.includes("human_review_console"));
   assert.ok(pr.PILLAR_NAMES.includes("human_review_approval_gate"));
   assert.ok(pr.PILLAR_NAMES.includes("guarded_dispatch_preflight"));
   assert.ok(pr.PILLAR_NAMES.includes("guarded_dispatch_executor_preflight"));
@@ -326,7 +327,7 @@ test("buildPublishReadinessReport: empty store does not crash, returns at least 
   );
   assert.equal(report.story_count, 0);
   assert.ok(typeof report.pillars === "object");
-  assert.equal(Object.keys(report.pillars).length, 30);
+  assert.equal(Object.keys(report.pillars).length, 31);
   assert.ok(typeof report.next_action === "string");
 });
 
@@ -508,6 +509,66 @@ test("pillarHumanReviewOperatorIndex: missing review artefacts remain amber but 
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("pillarHumanReviewConsole: actionable watch cards stay amber and point at the console", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-readiness-human-review-console-"));
+  const reportPath = path.join(dir, "human_review_console.json");
+  fs.writeFileSync(
+    reportPath,
+    JSON.stringify(
+      {
+        generated_at: "2026-05-31T22:00:00.000Z",
+        verdict: "AMBER",
+        safe_to_publish_boolean: false,
+        summary: {
+          card_count: 13,
+          ready_card_count: 13,
+          actionable_card_count: 13,
+          missing_artefact_card_count: 0,
+          blocked_input_count: 0,
+        },
+        next_step: "watch_console_cards_then_record_operator_decisions",
+        safety: {
+          no_publish_triggered: true,
+          no_network_uploads: true,
+          no_db_mutation: true,
+          no_oauth_or_token_change: true,
+          approval_omitted_from_console: true,
+        },
+      },
+      null,
+      2,
+    ),
+  );
+
+  const pillar = pr.pillarHumanReviewConsole({
+    reportPath,
+    now: Date.parse("2026-05-31T22:10:00.000Z"),
+  });
+
+  assert.equal(pillar.verdict, "amber");
+  assert.equal(pillar.reason, "13_human_review_console_cards_actionable");
+  assert.equal(pillar.raw.actionable_card_count, 13);
+  assert.equal(pillar.raw.safety_intact, true);
+
+  const nextAction = pr.resolvePublishReadinessNextAction({
+    overall: "amber",
+    pillars: {
+      human_review_console: pillar,
+      human_review_operator_index: {
+        verdict: "amber",
+        raw: { ready_for_operator_review_count: 13 },
+      },
+      human_review_approval_gate: {
+        verdict: "amber",
+        raw: { review_packet_count: 13, decision_count: 0 },
+      },
+    },
+  });
+  assert.match(nextAction, /Open the human review console/);
+  assert.match(nextAction, /13/);
+  assert.match(nextAction, /does not publish or mutate tokens/);
 });
 
 test("pillarStrictDryRunControl: amber dry-run requires human review, not generic publish-possible wording", () => {

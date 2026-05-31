@@ -14,6 +14,17 @@ const pulseGamingChannel = require("../channels/pulse-gaming");
 
 const ROOT = path.resolve(__dirname, "..");
 
+function dotenvSkipped() {
+  return /^(true|1|yes|on)$/i.test(String(process.env.PULSE_SKIP_DOTENV || ""));
+}
+
+function loadDotenvForCli() {
+  if (dotenvSkipped()) return;
+  try {
+    require("dotenv").config({ override: true });
+  } catch {}
+}
+
 function parseArgs(argv = process.argv.slice(2)) {
   const args = {
     storiesFile: path.join(ROOT, "daily_news.json"),
@@ -26,6 +37,8 @@ function parseArgs(argv = process.argv.slice(2)) {
     generatedAt: null,
     liveRss: false,
     rssPerFeed: 8,
+    dbStories: false,
+    storyIds: [],
     json: false,
     help: false,
   };
@@ -41,6 +54,10 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--generated-at") args.generatedAt = argv[++i] || null;
     else if (arg === "--live-rss") args.liveRss = true;
     else if (arg === "--rss-per-feed") args.rssPerFeed = Number(argv[++i] || args.rssPerFeed);
+    else if (arg === "--db-stories") args.dbStories = true;
+    else if (arg === "--story-id" || arg === "--story" || arg === "--story-ids") {
+      args.storyIds.push(...normaliseStoryIds(argv[++i] || ""));
+    }
     else if (arg === "--json") args.json = true;
     else if (arg === "--help" || arg === "-h") args.help = true;
     else throw new Error(`Unknown argument: ${arg}`);
@@ -66,6 +83,8 @@ function usage() {
     "  --generated-at <iso>",
     "  --live-rss                 Prepend current source-backed RSS proof candidates from Pulse Gaming feeds",
     "  --rss-per-feed <n>          Defaults to 8 when --live-rss is set",
+    "  --db-stories               Read story rows from the configured local DB instead of daily_news.json",
+    "  --story-id <id[,id]>        Package only the named story IDs; may be repeated",
     "  --json",
   ].join("\n");
 }
@@ -75,6 +94,44 @@ function asStoryArray(value) {
   if (Array.isArray(value?.stories)) return value.stories;
   if (Array.isArray(value?.items)) return value.items;
   return [];
+}
+
+function storyIdFor(story) {
+  return String(story?.id || story?.story_id || "").trim();
+}
+
+function normaliseStoryIds(value) {
+  if (Array.isArray(value)) return value.flatMap((item) => normaliseStoryIds(item));
+  return String(value || "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+}
+
+function dedupeStoriesById(stories = []) {
+  const seen = new Set();
+  const out = [];
+  for (const story of stories) {
+    const id = storyIdFor(story);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(story);
+  }
+  return out;
+}
+
+function selectStoriesForGoalBatch({
+  baseStories = [],
+  dbStories = [],
+  liveRssStories = [],
+  useDbStories = false,
+  storyIds = [],
+} = {}) {
+  const wanted = new Set(normaliseStoryIds(storyIds));
+  const sourceStories = useDbStories ? asStoryArray(dbStories) : asStoryArray(baseStories);
+  const merged = dedupeStoriesById([...asStoryArray(liveRssStories), ...sourceStories]);
+  if (!wanted.size) return merged;
+  return merged.filter((story) => wanted.has(storyIdFor(story)));
 }
 
 async function loadMotionPackByStory(dirPath) {
@@ -120,7 +177,9 @@ async function main(argv = process.argv.slice(2)) {
     console.log(usage());
     return { help: true };
   }
-  const baseStories = asStoryArray(await fs.readJson(path.resolve(args.storiesFile)));
+  loadDotenvForCli();
+  const baseStories = args.dbStories ? [] : asStoryArray(await fs.readJson(path.resolve(args.storiesFile)));
+  const dbStories = args.dbStories ? await require("../lib/db").getStories() : [];
   const liveRssStories = args.liveRss
     ? await fetchRssProofStories({
         feeds: pulseGamingChannel.rssFeeds || [],
@@ -139,7 +198,14 @@ async function main(argv = process.argv.slice(2)) {
     })),
   };
   const motionPackByStory = await loadMotionPackByStory(args.v4MotionPackDir);
-  const stories = augmentStoriesWithRevenuePaths([...liveRssStories, ...baseStories], revenuePathsWithManifests, args.limit);
+  const selectedStories = selectStoriesForGoalBatch({
+    baseStories,
+    dbStories,
+    liveRssStories,
+    useDbStories: args.dbStories,
+    storyIds: args.storyIds,
+  });
+  const stories = augmentStoriesWithRevenuePaths(selectedStories, revenuePathsWithManifests, args.limit);
   const batch = buildGoalBatchPackages({
     stories,
     limit: args.limit,
@@ -170,6 +236,8 @@ if (require.main === module) {
 module.exports = {
   loadRevenueManifestByStory,
   loadMotionPackByStory,
+  normaliseStoryIds,
+  selectStoriesForGoalBatch,
   parseArgs,
   main,
 };

@@ -1087,6 +1087,34 @@ test("duration variant repair respects source scope for current production failu
   });
   assert.doesNotMatch(vRisingRepair.script, /Frame-rate clips|matchmaking|If the fix misses|patch notes/i);
 
+  const valorantRepair = assertDurationRepairPublicCopyPass({
+    canonical_subject: "Valorant",
+    canonical_game: "Valorant",
+    canonical_angle: "anti_cheat_trust",
+    selected_title: "Valorant's Vanguard Trust Problem",
+    narration_script:
+      "Valorant's Vanguard update has a nasty trust problem. PCGamesN reports the anti-cheat drama centres on cheaters claiming bricked PCs, with Riot firing back using the paperweight line. The headline is funny, but the real story is heavier: Vanguard runs deep enough that every scare becomes a trust test for legitimate players too.",
+    primary_source: "PCGamesN",
+    confirmed_claims: [
+      "Valorant's new Vanguard update seems to be bricking cheaters' PCs. Riot's response? \"Congrats on your $6k paperweights\"",
+    ],
+  });
+  assert.match(valorantRepair.script, /Vanguard|anti-cheat|Riot/i);
+  assert.doesNotMatch(valorantRepair.script, /Frame-rate clips|matchmaking|balance complaints|patch notes/i);
+  const valorantScorecard = buildViralScriptIntelligence({
+    story: {
+      id: "valorant-vanguard-trust",
+      title: "Valorant's Vanguard Trust Problem",
+      source_name: "PCGamesN",
+    },
+    script: valorantRepair.script,
+  });
+  assert.ok(
+    !valorantScorecard.warnings.includes("no_curiosity_marker"),
+    JSON.stringify(valorantScorecard, null, 2),
+  );
+  assert.ok(valorantScorecard.scores.curiosity_gap >= 70, JSON.stringify(valorantScorecard, null, 2));
+
   const subnauticaRepair = assertDurationRepairPublicCopyPass({
     canonical_subject: "Subnautica 2",
     canonical_game: "Subnautica 2",

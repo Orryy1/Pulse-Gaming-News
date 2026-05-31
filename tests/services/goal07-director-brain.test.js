@@ -202,6 +202,102 @@ test("Goal 07 director brain blocks upstream director holds without pretending t
   assert.ok(report.stories[0].blockers.includes("director:distinct_motion_families_minimum_not_met"));
 });
 
+test("Goal 07 director brain clears stale official-product motion holds when the current shot plan proves the minimums", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal07-stale-motion-"));
+  const repaired = readyDirectorPlan("story-stale-motion");
+  repaired.readiness = {
+    status: "director_blocked",
+    blockers: [
+      "official_product_motion_clip_minimum_not_met",
+      "official_product_motion_family_minimum_not_met",
+    ],
+    warnings: ["product_story_limited_motion_budget_requires_premium_owned_motion"],
+  };
+  const storyPackage = await makePackage(root, "story-stale-motion", repaired);
+
+  const report = await buildGoal07DirectorBrain({
+    storyPackages: [storyPackage],
+    workspaceRoot: root,
+    outputDir: path.join(root, "goal-07"),
+    generatedAt: "2026-05-25T22:11:30.000Z",
+  });
+
+  assert.equal(report.verdict, "PASS");
+  assert.equal(report.stories[0].status, "ready");
+  assert.equal(report.stories[0].metrics.motion_shot_count, 5);
+  assert.equal(report.stories[0].metrics.distinct_motion_family_count, 5);
+  assert.ok(!report.stories[0].blockers.includes("director:official_product_motion_clip_minimum_not_met"));
+  assert.ok(!report.stories[0].blockers.includes("director:official_product_motion_family_minimum_not_met"));
+});
+
+test("Goal 07 director brain clears stale actual-motion holds when current benchmarked direct-video evidence proves the shortened render", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal07-shortened-direct-motion-"));
+  const repaired = readyDirectorPlan("story-shortened-direct-motion");
+  const extraMotion = Array.from({ length: 6 }, (_, index) => ({
+    id: `motion_clip_extra_${index + 1}`,
+    kind: "motion_clip",
+    startS: 31 + index * 2,
+    durationS: 1.8,
+    source_family: `direct_video_family_${(index % 6) + 1}`,
+    media_path: `output/video/direct-${index + 1}.mp4`,
+  }));
+  repaired.shot_plan = repaired.shot_plan.concat(extraMotion);
+  repaired.sfx_plan.cues = repaired.sfx_plan.cues.concat(
+    extraMotion.map((shot, index) => ({
+      id: `sfx_extra_${index + 1}`,
+      target: shot.id,
+      target_kind: "motion_clip",
+      atS: shot.startS,
+      family: index % 2 ? "transition_hit" : "whoosh",
+    })),
+  );
+  repaired.sfx_plan.cue_count = repaired.sfx_plan.cues.length;
+  repaired.shot_budget = {
+    ...repaired.shot_budget,
+    min_actual_motion_clips: 13,
+    available_motion_clips: 11,
+    min_distinct_motion_families: 6,
+    available_distinct_motion_families: 6,
+  };
+  repaired.readiness = {
+    status: "director_blocked",
+    blockers: ["actual_motion_clip_minimum_not_met"],
+    warnings: [],
+  };
+  repaired.media_house_benchmark = {
+    result: "pass",
+    failures: [],
+    scores: {
+      motion_density_score: 100,
+      media_house_polish_score: 95,
+    },
+    thresholds: {
+      motion_density_score: 75,
+      media_house_polish_score: 75,
+    },
+    visual_evidence_profile: {
+      direct_video_motion_asset_count: 11,
+      direct_video_motion_family_count: 6,
+      generated_only_motion_deck: false,
+      blockers: [],
+    },
+  };
+  const storyPackage = await makePackage(root, "story-shortened-direct-motion", repaired);
+
+  const report = await buildGoal07DirectorBrain({
+    storyPackages: [storyPackage],
+    workspaceRoot: root,
+    outputDir: path.join(root, "goal-07"),
+    generatedAt: "2026-05-25T22:11:45.000Z",
+  });
+
+  assert.equal(report.verdict, "PASS");
+  assert.equal(report.stories[0].status, "ready");
+  assert.equal(report.stories[0].metrics.motion_shot_count, 11);
+  assert.equal(report.stories[0].metrics.distinct_motion_family_count, 11);
+  assert.ok(!report.stories[0].blockers.includes("director:actual_motion_clip_minimum_not_met"));
+});
+
 test("Goal 07 director brain blocks weak first seconds, card-heavy edits and missing SFX coverage", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal07-weak-"));
   const weak = readyDirectorPlan("story-weak");

@@ -359,6 +359,162 @@ test("Studio Governance Engine uses V4 bridge provenance instead of rights-less 
   assert.equal(report.publish_manifest.publish_status, "GREEN");
 });
 
+test("Studio Governance Engine scopes final V4 rights checks to director-selected render assets", () => {
+  const selectedPath = "C:/render-cache/valorant-selected-official-motion.mp4";
+  const sameIdUnusedPath = "C:/render-cache/valorant-unused-same-id-motion.mp4";
+  const unusedStillPath = "C:/render-cache/valorant-unused-igdb-still.mp4";
+  const selectedSource =
+    "https://cmsassets.rgpub.io/sanity/files/dsfx7636/news/valorant-official-motion.mp4";
+  const story = cleanStory({
+    id: "valorant-v4-final",
+    canonical_subject: "Valorant",
+    canonical_angle: "Vanguard anti-cheat trust problem",
+    public_title: "Valorant's Vanguard Trust Problem",
+    suggested_title: "Valorant's Vanguard Trust Problem",
+    suggested_thumbnail_text: "VALORANT VANGUARD PANIC",
+    thumbnail_source_label: "PCGamesN",
+    source_card_label: "PCGamesN",
+    primary_source: "PCGamesN",
+    discovery_source: "r/pcgaming",
+    article_url: "https://www.pcgamesn.com/valorant/vanguard-update-bricking-pcs-riot-response",
+    description: "Valorant's Vanguard update has a trust problem. Source: PCGamesN.",
+    full_script:
+      "Valorant's Vanguard update has a nasty trust problem. " +
+      "PCGamesN reports the anti-cheat drama centres on cheaters claiming bricked PCs. " +
+      "Riot fired back with the paperweight line, but the bigger player question is trust. " +
+      "Follow Pulse Gaming for the gaming stories behind the headline.",
+    render_lane: "visual_v4_production",
+    visual_v4_director_plan: {
+      shot_plan: [
+        {
+          id: "motion_clip_01",
+          kind: "motion_clip",
+          motion_pack_clip_id: "selected_official_motion",
+          media_path: selectedPath,
+        },
+      ],
+    },
+    visual_v4_bridge_video_clips: [
+      {
+        id: "selected_official_motion",
+        path: selectedPath,
+        source_url: selectedSource,
+        source_type: "licensed_direct_media_url",
+        source_family: "riot_valorant_official_motion",
+      },
+      {
+        id: "selected_official_motion",
+        path: sameIdUnusedPath,
+        source_url: "https://cmsassets.rgpub.io/sanity/files/dsfx7636/news/unused-official-motion.mp4",
+        source_type: "licensed_direct_media_url",
+        source_family: "riot_valorant_unused_official_motion",
+      },
+      {
+        id: "unused_igdb_still",
+        path: unusedStillPath,
+        source_url: "C:/image-cache/valorant-igdb-still.jpg",
+        source_type: "screenshot",
+        source_family: "igdb_valorant_still",
+      },
+    ],
+    video_clips: [
+      {
+        id: "selected_official_motion",
+        path: selectedPath,
+        source_url: selectedSource,
+        source_type: "licensed_direct_media_url",
+        source_family: "riot_valorant_official_motion",
+      },
+      {
+        id: "selected_official_motion",
+        path: sameIdUnusedPath,
+        source_url: "https://cmsassets.rgpub.io/sanity/files/dsfx7636/news/unused-official-motion.mp4",
+        source_type: "licensed_direct_media_url",
+        source_family: "riot_valorant_unused_official_motion",
+      },
+      {
+        id: "unused_igdb_still",
+        path: unusedStillPath,
+        source_url: "C:/image-cache/valorant-igdb-still.jpg",
+        source_type: "screenshot",
+        source_family: "igdb_valorant_still",
+      },
+    ],
+  });
+
+  const assets = collectPublishAssets(story).filter((asset) => asset.kind === "video");
+  assert.deepEqual(
+    assets.map((asset) => asset.asset_id),
+    ["selected_official_motion"],
+  );
+
+  const report = buildStudioGovernanceReport({
+    story,
+    rightsLedger: [
+      {
+        asset_id: "selected_official_motion",
+        path: selectedPath,
+        source_url: selectedSource,
+        source_type: "licensed_direct_media_url",
+        licence_basis: "official_reference_transformative_short",
+        allowed_platforms: ["youtube", "tiktok", "instagram", "facebook"],
+        commercial_use_allowed: true,
+        risk_score: 0.18,
+      },
+      {
+        asset_id: "unused_igdb_still",
+        path: unusedStillPath,
+        source_type: "screenshot",
+        licence_basis: "",
+        allowed_platforms: ["youtube", "tiktok", "instagram", "facebook"],
+        commercial_use_allowed: true,
+        risk_score: 0.5,
+      },
+      {
+        asset_id: "valorant-v4-final_audio_path",
+        path: story.audio_path,
+        source_type: "local_tts_voice",
+        licence_basis: "owned_local_voice_model",
+        allowed_platforms: ["youtube", "tiktok", "instagram", "facebook"],
+        commercial_use_allowed: true,
+        risk_score: 0.05,
+      },
+    ],
+    generatedAt: "2026-05-31T02:00:00.000Z",
+  });
+
+  assert.equal(report.rights_ledger.verdict, "pass");
+  assert.equal(report.publish_manifest.publish_status, "GREEN");
+
+  const missingSelectedRights = buildStudioGovernanceReport({
+    story,
+    rightsLedger: [
+      {
+        asset_id: "unused_igdb_still",
+        path: unusedStillPath,
+        source_type: "screenshot",
+        licence_basis: "",
+        allowed_platforms: ["youtube", "tiktok", "instagram", "facebook"],
+        commercial_use_allowed: true,
+        risk_score: 0.5,
+      },
+      {
+        asset_id: "valorant-v4-final_audio_path",
+        path: story.audio_path,
+        source_type: "local_tts_voice",
+        licence_basis: "owned_local_voice_model",
+        allowed_platforms: ["youtube", "tiktok", "instagram", "facebook"],
+        commercial_use_allowed: true,
+        risk_score: 0.05,
+      },
+    ],
+    generatedAt: "2026-05-31T02:00:00.000Z",
+  });
+
+  assert.equal(missingSelectedRights.rights_ledger.verdict, "fail");
+  assert.ok(missingSelectedRights.rejection_reasons.reason_codes.includes("rights:no_rights_record"));
+});
+
 test("Studio Governance Engine preserves repaired canonical manifests during refresh", () => {
   const canonical = {
     story_id: "1sqpa86",

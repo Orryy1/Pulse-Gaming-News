@@ -24,6 +24,9 @@ const {
   createLocalTtsBatchRecovery,
 } = require("../lib/ops/local-tts-batch-recovery");
 const {
+  loadLocalTtsProofReports,
+} = require("../lib/studio/local-tts-proof-report-loader");
+const {
   DEFAULT_LOCAL_TTS_URL,
   fetchLocalTtsHealth,
 } = require("../lib/studio/local-tts-readiness");
@@ -109,11 +112,33 @@ async function writeReport(outDir, name, report) {
   return { jsonPath, mdPath };
 }
 
+function safeDbBackupTimestamp(value = new Date().toISOString()) {
+  return String(value || new Date().toISOString()).replace(/[:.]/g, "-");
+}
+
+function buildLocalTtsPublishRefreshDbBackupPath(dbPath, generatedAt = new Date().toISOString()) {
+  if (!dbPath) return null;
+  return path.join(
+    path.dirname(dbPath),
+    "backups",
+    `pulse-pre-local-tts-publish-refresh-${safeDbBackupTimestamp(generatedAt)}.db`,
+  );
+}
+
+async function backupLocalTtsPublishRefreshDb({ db, generatedAt = new Date().toISOString() } = {}) {
+  const backupPath = buildLocalTtsPublishRefreshDbBackupPath(db?.DB_PATH, generatedAt);
+  if (!backupPath) return null;
+  await fs.ensureDir(path.dirname(backupPath));
+  await db.getDb().backup(backupPath);
+  return backupPath;
+}
+
 async function main() {
   const args = parseArgs(process.argv);
   const db = require("../lib/db");
   const outDir = path.resolve(args.outDir || OUT);
   const stories = await db.getStories();
+  const localTtsProofReports = await loadLocalTtsProofReports({ outDir });
   const selected = args.storyIds.length
     ? stories.filter((story) => args.storyIds.includes(String(story.id)))
     : Number.isFinite(args.limit) && args.limit > 0
@@ -123,6 +148,7 @@ async function main() {
     stories,
     storyIds: args.storyIds.length ? args.storyIds : selected.map((story) => story.id),
     allowPublishedRepair: args.allowPublishedRepair,
+    localTtsProofReports,
     dryRun: !args.applyLocal,
   });
   const planPaths = await writeReport(outDir, "local_tts_publish_refresh_plan", plan);
@@ -135,23 +161,44 @@ async function main() {
   if (!args.storyIds.length) {
     throw new Error("--apply-local requires explicit --story id(s)");
   }
-
-  process.env.TTS_PROVIDER = "local";
-  process.env.PULSE_SKIP_DOTENV = "true";
-  const audio = require("../audio");
-  const brand = require("../brand");
-  const ttsLimits = applyLocalProofTtsLimits();
-  console.log(
-    `[local-tts-publish-refresh] local_tts_timeout_ms=${ttsLimits.local_tts_timeout_ms} attempts=${ttsLimits.local_tts_request_attempts}`,
-  );
-  const localTts = await fetchLocalTtsHealth({
-    baseUrl: process.env.LOCAL_TTS_URL || DEFAULT_LOCAL_TTS_URL,
-    voiceId: brand.voiceId || process.env.ELEVENLABS_VOICE_ID || "default",
-    timeoutMs: Number(process.env.LOCAL_TTS_HEALTH_TIMEOUT_MS || 5000),
+  const dbBackupPath = await backupLocalTtsPublishRefreshDb({
+    db,
+    generatedAt: plan.generated_at,
   });
-  const voiceSafety = classifyLocalLiamSafety(localTts);
-  if (voiceSafety.safe !== true) {
-    throw new Error(`local Liam voice is not safe: ${voiceSafety.code || "unsafe_voice"}`);
+  if (dbBackupPath) {
+    console.log(`[local-tts-publish-refresh] db_backup=${path.relative(ROOT, dbBackupPath)}`);
+  }
+
+  const audio = require("../audio");
+  const needsGeneration = plan.items.some(
+    (item) => item.action === "refresh_audio_and_rerender" && !item.proof_audio_path,
+  );
+  let brand = null;
+  let recoverLocalTts = null;
+  if (needsGeneration) {
+    process.env.TTS_PROVIDER = "local";
+    process.env.PULSE_SKIP_DOTENV = "true";
+    brand = require("../brand");
+    const ttsLimits = applyLocalProofTtsLimits();
+    console.log(
+      `[local-tts-publish-refresh] local_tts_timeout_ms=${ttsLimits.local_tts_timeout_ms} attempts=${ttsLimits.local_tts_request_attempts}`,
+    );
+    const localTts = await fetchLocalTtsHealth({
+      baseUrl: process.env.LOCAL_TTS_URL || DEFAULT_LOCAL_TTS_URL,
+      voiceId: brand.voiceId || process.env.ELEVENLABS_VOICE_ID || "default",
+      timeoutMs: Number(process.env.LOCAL_TTS_HEALTH_TIMEOUT_MS || 5000),
+    });
+    const voiceSafety = classifyLocalLiamSafety(localTts);
+    if (voiceSafety.safe !== true) {
+      throw new Error(`local Liam voice is not safe: ${voiceSafety.code || "unsafe_voice"}`);
+    }
+    recoverLocalTts = createLocalTtsBatchRecovery({
+      root: ROOT,
+      voiceId: brand.voiceId || process.env.ELEVENLABS_VOICE_ID || "default",
+      baseUrl: process.env.LOCAL_TTS_URL || DEFAULT_LOCAL_TTS_URL,
+    });
+  } else {
+    console.log("[local-tts-publish-refresh] using approved local proof audio; local TTS generation not required");
   }
 
   const storiesById = Object.fromEntries(stories.map((story) => [story.id, story]));
@@ -162,14 +209,11 @@ async function main() {
     cleanText: audio.cleanForTTS,
     selectRawTtsScript: audio.selectRawTtsScript,
     getAudioDuration: audio.getAudioDuration,
-    recoverLocalTts: createLocalTtsBatchRecovery({
-      root: ROOT,
-      voiceId: brand.voiceId || process.env.ELEVENLABS_VOICE_ID || "default",
-      baseUrl: process.env.LOCAL_TTS_URL || DEFAULT_LOCAL_TTS_URL,
-    }),
+    recoverLocalTts,
     persistStory: (story) => db.upsertStory(story),
     backupRoot: path.join(outDir, "local-tts-publish-refresh", "backups"),
   });
+  applyReport.db_backup_path = dbBackupPath;
   const applyPaths = await writeReport(outDir, "local_tts_publish_refresh_apply", applyReport);
   console.log(
     `[local-tts-publish-refresh] applied=${applyReport.applied.length} skipped=${applyReport.skipped.length}`,
@@ -231,3 +275,10 @@ if (require.main === module) {
     process.exit(1);
   });
 }
+
+module.exports = {
+  backupLocalTtsPublishRefreshDb,
+  buildLocalTtsPublishRefreshDbBackupPath,
+  main,
+  safeDbBackupTimestamp,
+};

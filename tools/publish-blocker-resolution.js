@@ -216,6 +216,119 @@ function normaliseLaneFilter(value) {
   return aliases[lane] || lane;
 }
 
+function cleanText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function truthy(value) {
+  return value === true ||
+    value === 1 ||
+    /^(true|1|yes)$/i.test(String(value || "").trim());
+}
+
+function parseFailureList(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => parseFailureList(item));
+  }
+  if (typeof value === "string") {
+    const text = value.trim();
+    if (!text) return [];
+    if (/^\[/.test(text)) {
+      try {
+        const parsed = JSON.parse(text);
+        return parseFailureList(parsed);
+      } catch {
+        // fall through to plain text
+      }
+    }
+    return [text];
+  }
+  return [String(value)];
+}
+
+function isQaFailedLiveBacklogRow(story = {}) {
+  const publishStatus = cleanText(story.publish_status).toLowerCase();
+  const qaStatus = cleanText(story.qa_status).toLowerCase();
+  return truthy(story.qa_failed) ||
+    publishStatus === "qa_failed" ||
+    qaStatus === "qa_failed" ||
+    qaStatus === "failed";
+}
+
+function qaFailedBacklogReason(story = {}) {
+  const failures = [
+    ...parseFailureList(story.qa_failures),
+    ...parseFailureList(story.content_qa_failures),
+    ...parseFailureList(story.video_qa_failures),
+  ].map(cleanText).filter(Boolean);
+  const reason = failures[0] ||
+    cleanText(story.publish_error) ||
+    cleanText(story.script_review_reason) ||
+    cleanText(story.qa_status) ||
+    "qa_failed";
+  return /^qa[:_]/i.test(reason) ? reason : `qa:${reason}`;
+}
+
+function appendQaFailedBacklogRepairContext({
+  candidateReport = {},
+  mergedStories = [],
+  stories = [],
+  requestedStoryId = "",
+} = {}) {
+  const wantedStoryId = cleanText(requestedStoryId);
+  const mergedIds = new Set(
+    (Array.isArray(mergedStories) ? mergedStories : [])
+      .map((story) => cleanText(story?.id))
+      .filter(Boolean),
+  );
+  const candidateIds = new Set(
+    (Array.isArray(candidateReport.candidates) ? candidateReport.candidates : [])
+      .map((row) => cleanText(row?.id))
+      .filter(Boolean),
+  );
+  const excluded = Array.isArray(candidateReport.excluded)
+    ? candidateReport.excluded
+    : [];
+  const excludedIds = new Set(
+    excluded.map((row) => cleanText(row?.id)).filter(Boolean),
+  );
+  const appended = [];
+
+  for (const story of Array.isArray(stories) ? stories : []) {
+    const id = cleanText(story?.id);
+    if (!id) continue;
+    if (wantedStoryId && id !== wantedStoryId) continue;
+    if (!isQaFailedLiveBacklogRow(story)) continue;
+    if (!mergedIds.has(id)) {
+      mergedStories.push(story);
+      mergedIds.add(id);
+    }
+    if (!candidateIds.has(id) && !excludedIds.has(id)) {
+      excluded.push({
+        id,
+        title: cleanText(story.title),
+        reason: qaFailedBacklogReason(story),
+        scheduler_bridge_source: "live_qa_failed_backlog",
+      });
+      excludedIds.add(id);
+      appended.push(id);
+    }
+  }
+
+  if (appended.length > 0 || !Array.isArray(candidateReport.excluded)) {
+    candidateReport.excluded = excluded;
+  }
+  if (appended.length > 0) {
+    candidateReport.repair_context = {
+      ...(candidateReport.repair_context || {}),
+      qa_failed_live_backlog_outside_authoritative_bridge: true,
+      qa_failed_backlog_count: Number(candidateReport.repair_context?.qa_failed_backlog_count || 0) + appended.length,
+    };
+  }
+  return appended;
+}
+
 function fileExistsFromRoot(filePath) {
   if (!filePath) return false;
   try {
@@ -379,6 +492,12 @@ function buildPublishResolutionCandidateContext({
     storyId,
     bridgeManifest: selected.bridge_manifest,
     upstreamAntiSpamReport,
+  });
+  appendQaFailedBacklogRepairContext({
+    candidateReport,
+    mergedStories,
+    stories,
+    requestedStoryId,
   });
   if (requestedStoryId && !mergedStories.some((story) => String(story?.id || "") === requestedStoryId)) {
     const requestedLiveStory = (Array.isArray(stories) ? stories : []).find(

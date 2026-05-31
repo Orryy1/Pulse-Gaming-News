@@ -234,6 +234,40 @@ test("segment validator accepts licensed direct-media acquisition reports as ref
   assert.equal(refs[0].provenance.provider, "licensed_direct_media_acquisition");
 });
 
+test("segment validator does not preflight-block ultra-short official direct media windows", async () => {
+  const licensedReport = {
+    execution_mode: "visual_v4_licensed_direct_media_acquisition",
+    accepted_references: [
+      {
+        story_id: "valorant-short",
+        entity: "Valorant",
+        source_family: "riot_valorant_official_short_clip",
+        source_type: "licensed_direct_media_url",
+        provider: "licensed_direct_media_acquisition",
+        source_url: "https://cmsassets.rgpub.io/sanity/files/game/valorant-short.mp4",
+        source_url_kind: "direct_video",
+        source_duration_s: 6,
+        segment_validation_eligible: true,
+        rights_risk_class: "official_direct_media",
+      },
+    ],
+  };
+  const refs = buildClipRefsFromReport({}, licensedReport, "valorant-short", {
+    includeExploratoryWindows: true,
+    exploratoryStartSeconds: [0, 1, 2],
+    candidateWindowsPerSource: 1,
+    maxSegments: 4,
+  });
+
+  assert.ok(refs.length >= 1);
+  const report = await runOfficialTrailerSegmentValidation(refs, {
+    outputRoot: tempOutputRoot("ultra-short-dry-run"),
+  });
+
+  assert.equal(report.summary.segments_would_validate, refs.length);
+  assert.equal(report.segments.some((segment) => segment.validation_reason === "segment_starts_in_trailer_intro_or_rating_window"), false);
+});
+
 test("segment validator CLI balances batch clip refs across stories before segment caps", () => {
   const refs = [
     clip({ story_id: "story-a", storyId: "story-a", mediaStartS: 36 }),

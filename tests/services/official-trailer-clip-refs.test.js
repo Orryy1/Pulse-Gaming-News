@@ -206,6 +206,42 @@ test("exploratory refs use source-relative windows for short licensed direct med
   assert.ok(refs.every((ref) => ref.sourceFamily === "official_x_short_social_clip"));
 });
 
+test("exploratory refs keep ultra-short official direct media eligible for local validation", () => {
+  const refs = buildExploratoryClipRefs(
+    {
+      plans: [],
+    },
+    "story-1",
+    {
+      referenceReport: {
+        plans: [
+          {
+            story_id: "story-1",
+            references: [
+              {
+                source_url: "https://cmsassets.rgpub.io/sanity/files/game/valorant-short.mp4",
+                source_type: "licensed_direct_media_url",
+                source_family: "riot_valorant_official_short_clip",
+                entity: "Valorant",
+                source_duration_s: 6,
+                downloads_allowed: false,
+                segment_validation_eligible: true,
+              },
+            ],
+          },
+        ],
+      },
+      exploratoryStartSeconds: [0, 1, 2],
+    },
+  );
+
+  assert.ok(refs.length >= 1);
+  assert.ok(refs.every((ref) => ref.mediaStartS >= 1.68));
+  assert.ok(refs.every((ref) => ref.mediaStartS <= 1.75));
+  assert.ok(refs.every((ref) => ref.mediaStartS + 4.15 <= ref.sourceDurationS));
+  assert.ok(refs.every((ref) => ref.sourceFamily === "riot_valorant_official_short_clip"));
+});
+
 test("exploratory refs skip no-duration Steam microtrailers from frame reports", () => {
   const refs = buildExploratoryClipRefs(
     {

@@ -8,6 +8,7 @@ const test = require("node:test");
 
 const {
   buildGoalRenderInputWorkOrder,
+  renderGoalRenderInputWorkOrderMarkdown,
   writeGoalRenderInputWorkOrder,
 } = require("../../lib/goal-render-input-workorder");
 
@@ -76,6 +77,66 @@ test("render input work order maps queued blockers to exact local actions", () =
     ["run_visual_v4_production_render"],
   );
   assert.equal(workOrder.safety.no_publish_triggered, true);
+});
+
+test("render input work order preserves publish-blocker repair backlog when render queue is empty", () => {
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-05-31T02:30:00.000Z",
+      queue: [],
+      blocked: [],
+    },
+    dryRunPlan: {
+      generated_at: "2026-05-31T02:35:00.000Z",
+      blocked_stories: [],
+      held_stories: [],
+    },
+    publishBlockerResolutionPlan: {
+      generated_at: "2026-05-31T02:40:00.000Z",
+      publish_runway: {
+        status: "publishable_now",
+      },
+      repair_orchestration: {
+        stages: [
+          {
+            id: "auto_repair_backlog",
+            items: [
+              {
+                story_id: "qa-motion",
+                title: "Helldivers 2 Won't Get Space Marines",
+                blocker_type: "qa:gold_standard:motion_density_below_reference",
+                repair_lane: "visual_v4_motion_enrichment",
+                exact_missing_input: "distinct V4 motion clips and source families",
+                recommended_command: "npm run ops:v4-source-deficit -- --story-id qa-motion --json",
+                expected_output: "updated V4 motion/source work order",
+                db_mutation_required: false,
+                operator_approval_required: false,
+                post_repair_validation_command:
+                  "npm run ops:next-publish-candidates -- --preflight-qa --story-id qa-motion",
+              },
+            ],
+          },
+        ],
+      },
+    },
+    generatedAt: "2026-05-31T02:41:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.story_count, 0);
+  assert.equal(workOrder.summary.publish_blocker_resolution_repair_items, 1);
+  assert.equal(workOrder.repair_backlog.summary.total_items, 1);
+  assert.equal(workOrder.repair_backlog.summary.auto_repairable_items, 1);
+  assert.equal(workOrder.auto_repair_plan.status, "auto_repairable_jobs_available");
+  const item = workOrder.repair_backlog.items[0];
+  assert.equal(item.story_id, "qa-motion");
+  assert.equal(item.source, "publish_blocker_resolution");
+  assert.equal(item.repair_lane, "visual_v4_motion_enrichment");
+  assert.equal(item.db_mutation_needed, false);
+  assert.equal(item.operator_approval_required, false);
+  assert.match(item.post_repair_validation_command, /next-publish-candidates/);
+  const markdown = renderGoalRenderInputWorkOrderMarkdown(workOrder);
+  assert.match(markdown, /Publish blocker repair items: 1/);
+  assert.match(markdown, /qa-motion/);
 });
 
 test("render input work order routes stale repaired-copy audio through the audio regeneration lane", () => {

@@ -1,6 +1,6 @@
 # Local Resume Posting Plan
 
-Generated: 2026-05-15T01:39:47.217Z
+Generated: 2026-05-31T00:49:03.584Z
 Verdict: GREEN
 Status: ready_to_resume_local_automatic_posting
 Safety: read-only plan; does not edit .env, start Cloudflare, switch primary, mutate tokens, post, touch Railway or trigger OAuth
@@ -9,7 +9,7 @@ Safety: read-only plan; does not edit .env, start Cloudflare, switch primary, mu
 - Pulse can resume local automatic posting once the operator intentionally starts the local primary path. Railway stays standby only.
 - Railway stays standby only. The target is this PC running Pulse locally.
 - Local Liam is the target voice. ElevenLabs is only a temporary bridge while local coverage improves.
-- Current safe production lane: legacy_standard_lane.
+- Current safe production lane: studio_v2_pilot_candidate.
 
 ## Readiness
 - can_resume_local_automatic_posting: true
@@ -29,30 +29,33 @@ Safety: read-only plan; does not edit .env, start Cloudflare, switch primary, mu
 - YouTube: working
 - Instagram Reel: working
 - Facebook Reel: working
-- TikTok: blocked_external; token_ok=true; route=ready_pending_explicit_upload_approval; blocks_core_resume=false
+- TikTok: blocked_external; token_ok=false; route=prepared_not_executed; blocks_core_resume=false
 
 ## Quality Lane
-- ready_flash_proof_count: 0
-- local_voice_ready_count: 7
-- repair_media_first_count: 7
-- repair_voice_first_count: 12
+- ready_flash_proof_count: 1
+- local_voice_ready_count: 10
+- repair_media_first_count: 9
+- repair_voice_first_count: 0
 
 ### Closest Studio V2 Candidates
-- 1t0zhng: audio_ready=true; exact=24; clips=4; next=acquire_motion_frames_or_exact_subject_assets
-- rss_2d69aa8506934c5e: audio_ready=true; exact=0; clips=0; next=acquire_motion_frames_or_exact_subject_assets
+- 1t0zhng: audio_ready=true; exact=24; clips=13; next=run_local_studio_v2_proof
+- 1tb5izu: audio_ready=true; exact=0; clips=0; next=acquire_motion_frames_or_exact_subject_assets
 - rss_6edbb38dc280fc96: audio_ready=true; exact=0; clips=0; next=acquire_motion_frames_or_exact_subject_assets
 - rss_7945f462187bd7f8: audio_ready=true; exact=0; clips=0; next=acquire_motion_frames_or_exact_subject_assets
-- rss_ef7e6e464509e0bc: audio_ready=true; exact=0; clips=0; next=acquire_motion_frames_or_exact_subject_assets
+- 1tb2q61: audio_ready=true; exact=0; clips=0; next=acquire_motion_frames_or_exact_subject_assets
 
 ## Approved Local Liam Audio Proofs
 - rss_ef7e6e464509e0bc: 73.92s; audio=test/output/local-script-extension/audio/rss_ef7e6e464509e0bc_liam_extended.mp3; safe_to_publish_now=false; requires clean local MP4 rerender
+- 1tk1lpr: 71.52s; audio=test/output/local-media-repair/audio/1tk1lpr_liam.mp3; safe_to_publish_now=false; requires clean local MP4 rerender
 - 1t0zhng: 71.52s; audio=test/output/local-script-extension/audio/1t0zhng_liam_extended.mp3; safe_to_publish_now=false; requires clean local MP4 rerender
 - rss_7945f462187bd7f8: 70.56s; audio=test/output/local-media-repair/audio/rss_7945f462187bd7f8_liam.mp3; safe_to_publish_now=false; requires clean local MP4 rerender
 - 1tcabvy: 69.44s; audio=test/output/local-media-repair/audio/1tcabvy_liam.mp3; safe_to_publish_now=false; requires clean local MP4 rerender
 - rss_2d69aa8506934c5e: 68.48s; audio=test/output/local-script-extension/audio/rss_2d69aa8506934c5e_liam_extended.mp3; safe_to_publish_now=false; requires clean local MP4 rerender
-- 1tb5izu: 67.52s; audio=test/output/local-script-extension/audio/1tb5izu_liam_extended.mp3; safe_to_publish_now=false; requires clean local MP4 rerender
+- 1tkzdfq: 68.16s; audio=test/output/local-media-repair/audio/1tkzdfq_liam.mp3; safe_to_publish_now=false; requires clean local MP4 rerender
 - rss_1b7c404fc657548f: 66.08s; audio=test/output/local-script-extension/audio/rss_1b7c404fc657548f_liam_extended.mp3; safe_to_publish_now=false; requires clean local MP4 rerender
+- 1tkik53: 65.6s; audio=test/output/local-script-extension/audio/1tkik53_liam_extended.mp3; safe_to_publish_now=false; requires clean local MP4 rerender
 - 1tb2q61: 63.36s; audio=test/output/local-media-repair/audio/1tb2q61_liam.mp3; safe_to_publish_now=false; requires clean local MP4 rerender
+- 1tb5izu: 62.72s; audio=test/output/local-media-repair/audio/1tb5izu_liam.mp3; safe_to_publish_now=false; requires clean local MP4 rerender
 - rss_6d8aaac7eccad2ff: 62.72s; audio=test/output/local-script-extension/audio/rss_6d8aaac7eccad2ff_liam_extended.mp3; safe_to_publish_now=false; requires clean local MP4 rerender
 - rss_6edbb38dc280fc96: 62.08s; audio=test/output/local-script-extension/audio/rss_6edbb38dc280fc96_liam_extended.mp3; safe_to_publish_now=false; requires clean local MP4 rerender
 
@@ -63,12 +66,11 @@ Safety: read-only plan; does not edit .env, start Cloudflare, switch primary, mu
 - 1t186u4: duration_too_short; duration=60.8
 - 1tb3i1r: duration_too_short; duration=57.76
 - 1tbdx3b: connection_reset; duration=unknown
-- rss_2d69aa8506934c5e: tts_timeout; duration=unknown
-- 1tb5izu: connection_reset; duration=unknown
+- 1t186u4: tts_timeout; duration=unknown
+- 1tgr15g: tts_timeout; duration=unknown
 
 ## Warnings
 - TikTok is not a blocker for resuming YouTube/Instagram/Facebook, but automated TikTok remains blocked.
-- No Studio V2 Flash proof candidate is ready; resume posting should use the safer legacy/standard lane until media repair catches up.
 
 ## Next Actions
 - Keep Railway standby only; do not restore Railway as the active publisher.
@@ -81,6 +83,7 @@ Safety: read-only plan; does not edit .env, start Cloudflare, switch primary, mu
 ## Morning Approval Queue
 - local_primary_cutover: approve_when_ready
 - temporary_elevenlabs_bridge: allow_temporarily_but_keep_local_liam_as_target
+- tiktok_route_recovery: prepare_tooling_now_operator_test_later
 
 ## Commands
 - local_posting_readiness: `npm run ops:local-posting-readiness`

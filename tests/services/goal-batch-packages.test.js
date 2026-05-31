@@ -12,6 +12,10 @@ const {
   prepareStoryForGoalProof,
   writeGoalBatchPackages,
 } = require("../../lib/goal-batch-packages");
+const {
+  parseArgs: parseGoalBatchArgs,
+  selectStoriesForGoalBatch,
+} = require("../../tools/goal-batch-packages");
 const { evaluateGoalPublicCopy } = require("../../lib/goal-public-copy-qa");
 
 function licensedSfxAssets() {
@@ -162,6 +166,31 @@ test("goal batch packages summarise GREEN and blocked story packages honestly", 
   assert.equal(batch.story_packages[1].verdict, "RED");
 });
 
+test("goal batch CLI can select repaired live DB stories for governed packaging", () => {
+  const args = parseGoalBatchArgs([
+    "--db-stories",
+    "--story-id",
+    "1tkik53,rss_story",
+    "--limit",
+    "2",
+  ]);
+  assert.equal(args.dbStories, true);
+  assert.deepEqual(args.storyIds, ["1tkik53", "rss_story"]);
+
+  const selected = selectStoriesForGoalBatch({
+    dbStories: [
+      { id: "1tkik53", title: "Valorant Vanguard Trust Problem" },
+      { id: "other", title: "Other Story" },
+    ],
+    baseStories: [{ id: "daily", title: "Daily Story" }],
+    liveRssStories: [{ id: "rss_story", title: "RSS Proof Story" }],
+    useDbStories: true,
+    storyIds: args.storyIds,
+  });
+
+  assert.deepEqual(selected.map((story) => story.id), ["rss_story", "1tkik53"]);
+});
+
 test("goal batch package proof preparation rewrites source-backed fallback narration before QA", () => {
   const prepared = prepareStoryForGoalProof(
     {
@@ -211,6 +240,57 @@ test("goal batch package proof preparation avoids source-backed fallback claim w
 
   assert.doesNotMatch(combined, /source-backed update|this gaming story/i);
   assert.match(prepared.full_script, /Hades II/i);
+});
+
+test("goal batch package proof preparation repairs generic DB subjects before script QA", () => {
+  const prepared = prepareStoryForGoalProof({
+    id: "1tkik53",
+    title:
+      "Valorant's new Vanguard update seems to be bricking cheaters' PCs. Riot's response? \"Congrats on your $6k paperweights\"",
+    canonical_subject: "This story",
+    canonical_game: "This story",
+    source_type: "rss",
+    source_name: "PCGamesN",
+    article_url: "https://www.pcgamesn.com/valorant/vanguard-update-bricking-pcs-riot-response",
+    pinned_comment: "Source: r/pcgaming | Verified gaming news daily",
+    suggested_title: "Valorant's Vanguard Fight",
+    suggested_thumbnail_text: "VANGUARD PANIC",
+    full_script:
+      "This story finally has something specific to judge. PCGamesN says Valorant's new Vanguard update seems to be bricking cheaters' PCs. Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  assert.equal(prepared.canonical_subject, "Valorant");
+  assert.equal(prepared.canonical_game, "Valorant");
+  assert.equal(prepared.public_title, "Valorant's Vanguard Trust Problem");
+  assert.equal(prepared.suggested_thumbnail_text, "VALORANT VANGUARD PANIC");
+  assert.equal(prepared.pinned_comment, "Source: PCGamesN.");
+  assert.match(prepared.full_script, /^Valorant's Vanguard update has a nasty trust problem\./);
+  assert.doesNotMatch(prepared.full_script, /\bThis story\b|something specific to judge|floating headline/i);
+  assert.doesNotMatch(prepared.description, /^This story:/i);
+});
+
+test("goal batch package platform packs do not revive stale identity CTAs", () => {
+  const batch = buildGoalBatchPackages({
+    stories: [
+      {
+        id: "1tkik53",
+        title:
+          "Valorant's new Vanguard update seems to be bricking cheaters' PCs. Riot's response? \"Congrats on your $6k paperweights\"",
+        canonical_subject: "This story",
+        source_type: "rss",
+        source_name: "PCGamesN",
+        article_url: "https://www.pcgamesn.com/valorant/vanguard-update-bricking-pcs-riot-response",
+        suggested_thumbnail_text: "VANGUARD PANIC",
+        full_script:
+          "This story finally has something specific to judge. PCGamesN says Valorant's new Vanguard update seems to be bricking cheaters' PCs. Follow Pulse Gaming so you never miss a beat.",
+      },
+    ],
+    generatedAt: "2026-05-31T01:05:00.000Z",
+  });
+
+  const youtubePack = batch.packages[0].platform_publish_manifest.outputs.youtube_shorts;
+  assert.equal(youtubePack.cta, "Follow Pulse Gaming so you never miss a beat.");
+  assert.doesNotMatch(JSON.stringify(youtubePack), /gaming stories behind the headline/i);
 });
 
 test("goal batch packages write per-story artefacts and goal-contract story packages", async () => {

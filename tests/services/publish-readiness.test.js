@@ -56,9 +56,10 @@ test("dominantVerdict: all green stays green", () => {
 // ── PILLAR_NAMES contract ────────────────────────────────────────
 
 test("PILLAR_NAMES: includes cadence plus the original readiness pillars", () => {
-  assert.equal(pr.PILLAR_NAMES.length, 22);
+  assert.equal(pr.PILLAR_NAMES.length, 23);
   assert.ok(pr.PILLAR_NAMES.includes("publish_cadence"));
   assert.ok(pr.PILLAR_NAMES.includes("strict_dry_run_control"));
+  assert.ok(pr.PILLAR_NAMES.includes("repair_backlog"));
 });
 
 test("PILLAR_NAMES: includes the audit-flagged external blockers", () => {
@@ -139,6 +140,25 @@ test("summariseTiktokExternalBlockReason: surfaces platform doctor token and app
       },
     }),
     "tiktok_local_token_refresh_or_sync_required; direct_post_approval_not_declared; next=refresh_or_sync_local_token_with_operator_present_before_any_inbox_upload",
+  );
+});
+
+test("summariseRepairBacklogReason: surfaces auto-repair lanes and dead-end blockers", () => {
+  assert.equal(
+    pr.summariseRepairBacklogReason({
+      summary: {
+        total_items: 5,
+        auto_repairable_items: 4,
+        operator_required_items: 1,
+        dead_end_items: 1,
+        lane_counts: {
+          audio_regeneration: 2,
+          rights_ledger_repair: 1,
+          visual_v4_motion_enrichment: 1,
+        },
+      },
+    }),
+    "5_open_repair_items: 4_auto, 1_operator, 1_dead_end; top_lanes: audio_regeneration x2, rights_ledger_repair x1, visual_v4_motion_enrichment x1",
   );
 });
 
@@ -299,7 +319,7 @@ test("buildPublishReadinessReport: empty store does not crash, returns at least 
   );
   assert.equal(report.story_count, 0);
   assert.ok(typeof report.pillars === "object");
-  assert.equal(Object.keys(report.pillars).length, 22);
+  assert.equal(Object.keys(report.pillars).length, 23);
   assert.ok(typeof report.next_action === "string");
 });
 
@@ -368,6 +388,33 @@ test("pillarStrictDryRunControl: amber dry-run requires human review, not generi
   }
 });
 
+test("resolvePublishReadinessNextAction: repairable backlog takes priority over expanding cadence", () => {
+  const nextAction = pr.resolvePublishReadinessNextAction({
+    overall: "amber",
+    pillars: {
+      publish_cadence: { verdict: "green" },
+      strict_dry_run_control: {
+        verdict: "amber",
+        raw: {
+          ready_story_count: 12,
+          ready_for_unattended_publish: false,
+        },
+      },
+      repair_backlog: {
+        verdict: "amber",
+        raw: {
+          total_items: 66,
+          auto_repairable_items: 66,
+        },
+      },
+    },
+  });
+
+  assert.match(nextAction, /auto-repair backlog/);
+  assert.match(nextAction, /66 repairable/);
+  assert.match(nextAction, /Do not publish unattended/);
+});
+
 test("pillarStrictDryRunControl: red when strict dry-run has active blockers", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-strict-dry-run-red-"));
   const planPath = path.join(dir, "dry_run_publish_plan.json");
@@ -405,6 +452,94 @@ test("pillarStrictDryRunControl: red when strict dry-run has active blockers", (
 
     assert.equal(pillar.verdict, "red");
     assert.match(pillar.reason, /strict_dry_run_blocked/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("pillarRepairBacklog: amber when generated repair work remains", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-repair-backlog-"));
+  const backlogPath = path.join(dir, "repair_backlog.json");
+  try {
+    fs.writeFileSync(
+      backlogPath,
+      JSON.stringify({
+        generated_at: "2026-05-31T10:00:00.000Z",
+        summary: {
+          total_items: 3,
+          auto_repairable_items: 2,
+          operator_required_items: 1,
+          dead_end_items: 0,
+          lane_counts: {
+            audio_regeneration: 2,
+            rights_ledger_repair: 1,
+          },
+        },
+        items: [
+          {
+            story_id: "audio-one",
+            repair_lane: "audio_regeneration",
+            auto_repairable: true,
+          },
+          {
+            story_id: "audio-two",
+            repair_lane: "audio_regeneration",
+            auto_repairable: true,
+          },
+          {
+            story_id: "rights-one",
+            repair_lane: "rights_ledger_repair",
+            operator_approval_required: true,
+          },
+        ],
+      }),
+    );
+
+    const pillar = pr.pillarRepairBacklog({
+      repairBacklogPath: backlogPath,
+      now: Date.parse("2026-05-31T10:30:00.000Z"),
+    });
+
+    assert.equal(pillar.verdict, "amber");
+    assert.match(pillar.reason, /3_open_repair_items/);
+    assert.equal(pillar.raw.auto_repairable_items, 2);
+    assert.equal(pillar.raw.operator_required_items, 1);
+    assert.deepEqual(pillar.raw.top_lanes[0], {
+      lane: "audio_regeneration",
+      count: 2,
+    });
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("pillarRepairBacklog: green only when the generated backlog is empty", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-repair-backlog-empty-"));
+  const backlogPath = path.join(dir, "repair_backlog.json");
+  try {
+    fs.writeFileSync(
+      backlogPath,
+      JSON.stringify({
+        generated_at: "2026-05-31T10:00:00.000Z",
+        summary: {
+          total_items: 0,
+          auto_repairable_items: 0,
+          operator_required_items: 0,
+          dead_end_items: 0,
+          lane_counts: {},
+        },
+        items: [],
+      }),
+    );
+
+    const pillar = pr.pillarRepairBacklog({
+      repairBacklogPath: backlogPath,
+      now: Date.parse("2026-05-31T10:30:00.000Z"),
+    });
+
+    assert.equal(pillar.verdict, "green");
+    assert.equal(pillar.reason, undefined);
+    assert.equal(pillar.raw.total_items, 0);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

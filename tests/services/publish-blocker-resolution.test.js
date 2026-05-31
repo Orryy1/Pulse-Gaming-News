@@ -47,6 +47,8 @@ test("publish blocker resolution maps common production blockers to concrete rec
     ["qa_failure:script_generation_review:Actual spoken word count 172 outside 180-220 Flash Lane range", "script_runtime_rewrite"],
     ["qa_failure:script_generation_review:script_coherence:top_comment_used_as_fact", "canonical_script_rewrite"],
     ["qa_failure:thin_visuals_blocked:thin_visuals_below_three", "visual_v4_motion_enrichment"],
+    ["qa:gold_standard:motion_density_below_reference", "visual_v4_motion_enrichment"],
+    ["qa:gold_standard:rights_risk_above_reference", "rights_ledger_repair"],
     ["content_qa:risky_article_context_dominated_deck (5 risky article images, 0 safe non-article images)", "visual_v4_motion_enrichment"],
     ["qa_failure:script_generation_review:script_generation_error:Bad control character in string literal", "script_generation_retry"],
     ["instagram story upload failed after 3 attempts: Only photo or video can be accepted", "platform_media_repair"],
@@ -69,6 +71,103 @@ test("publish blocker resolution maps common production blockers to concrete rec
     assert.equal(item.dead_end, false, reason);
     assert.ok(item.safe_next_command, reason);
   }
+});
+
+test("publish blocker resolution treats rights-risk QA failures as auto-repairable rights ledger work", () => {
+  const plan = buildPublishBlockerResolutionPlan({
+    stories: [
+      {
+        id: "rights-risk",
+        title: "Star Fox Just Got A Switch 2 Route",
+        qa_failed: true,
+        qa_failures: ["gold_standard:rights_risk_above_reference"],
+      },
+    ],
+    excluded: [
+      {
+        id: "rights-risk",
+        title: "Star Fox Just Got A Switch 2 Route",
+        reason: "qa:gold_standard:rights_risk_above_reference",
+      },
+    ],
+    candidateCount: 12,
+    limit: 10,
+  });
+
+  assert.equal(plan.priority_items[0].resolution_lane, "rights_ledger_repair");
+  assert.equal(plan.priority_items[0].can_apply_automatically, true);
+  assert.match(plan.priority_items[0].safe_next_command, /bridge-live-rights-repair/);
+  assert.equal(plan.repair_orchestration.counts.auto_repair_backlog, 1);
+  assert.equal(plan.publish_runway.repairable_backlog, 1);
+});
+
+test("publish blocker repair orchestration emits operator work-order fields", () => {
+  const plan = buildPublishBlockerResolutionPlan({
+    stories: [
+      {
+        id: "motion-gap",
+        title: "Helldivers 2 Won't Get Space Marines",
+        qa_failed: true,
+        qa_failures: ["gold_standard:motion_density_below_reference"],
+      },
+    ],
+    excluded: [
+      {
+        id: "motion-gap",
+        title: "Helldivers 2 Won't Get Space Marines",
+        reason: "qa:gold_standard:motion_density_below_reference",
+      },
+    ],
+    candidateCount: 0,
+    limit: 10,
+  });
+
+  const autoStage = plan.repair_orchestration.stages.find((stage) => stage.id === "auto_repair_backlog");
+  const workOrder = autoStage.items[0];
+
+  assert.equal(workOrder.story_id, "motion-gap");
+  assert.equal(workOrder.blocker_type, "qa:gold_standard:motion_density_below_reference");
+  assert.equal(workOrder.repair_lane, "visual_v4_motion_enrichment");
+  assert.match(workOrder.exact_missing_input, /motion/i);
+  assert.match(workOrder.recommended_command, /ops:v4-source-deficit/);
+  assert.match(workOrder.expected_output, /motion/i);
+  assert.equal(workOrder.db_mutation_required, false);
+  assert.equal(workOrder.operator_approval_required, false);
+  assert.match(workOrder.post_repair_validation_command, /next-publish-candidates/);
+});
+
+test("publish blocker repair orchestration keeps manual triage blockers visible", () => {
+  const plan = buildPublishBlockerResolutionPlan({
+    stories: [
+      {
+        id: "manual-story",
+        title: "Unmapped Upload Failure",
+        qa_failed: true,
+      },
+    ],
+    excluded: [
+      {
+        id: "manual-story",
+        title: "Unmapped Upload Failure",
+        reason: "qa:unmapped_platform_failure",
+      },
+    ],
+    candidateCount: 0,
+    limit: 10,
+  });
+
+  const operatorStage = plan.repair_orchestration.stages.find((stage) => stage.id === "operator_review_backlog");
+  assert.ok(operatorStage);
+  assert.equal(operatorStage.requires_operator_confirmation, true);
+  assert.equal(plan.repair_orchestration.counts.operator_review_backlog, 1);
+
+  const workOrder = operatorStage.items[0];
+  assert.equal(workOrder.story_id, "manual-story");
+  assert.equal(workOrder.repair_lane, "manual_triage");
+  assert.equal(workOrder.operator_approval_required, true);
+  assert.equal(workOrder.db_mutation_required, false);
+  assert.match(workOrder.exact_missing_input, /operator triage/i);
+  assert.match(workOrder.post_repair_validation_command, /publish-unblock/);
 });
 
 test("publish blocker resolution rechecks stale exact-CTA failures when the current script has an approved identity CTA", () => {
@@ -368,6 +467,55 @@ test("publish blocker resolution candidate context honours authoritative schedul
   assert.equal(context.mergedStories[0].id, "bridge-ready");
   assert.equal(context.candidateReport.bridge_candidates.authoritative, true);
   assert.equal(inputs.candidateCount, 1);
+});
+
+test("publish blocker resolution candidate context includes QA-failed live backlog outside the authoritative bridge", () => {
+  const context = buildPublishResolutionCandidateContext({
+    stories: [
+      {
+        id: "qa-rights",
+        title: "Star Fox Just Got A Switch 2 Route",
+        qa_failed: true,
+        qa_failures: ["gold_standard:rights_risk_above_reference"],
+      },
+      {
+        id: "bridge-ready",
+        title: "Bridge Ready Story",
+        approved: true,
+      },
+    ],
+    bridgeManifest: {
+      requested: true,
+      exists: true,
+      candidate_count: 1,
+      candidates: [
+        {
+          id: "bridge-ready",
+          title: "Bridge Ready Story",
+          approved: true,
+          auto_approved: true,
+          exported_path: "bridge.mp4",
+          duration_seconds: 44,
+          duration_lane: "normal_production",
+          audio_path: "bridge.mp3",
+        },
+      ],
+    },
+    limit: 20,
+  });
+  const inputs = publishResolutionInputsFromCandidateReport(context.candidateReport);
+  const plan = buildPublishBlockerResolutionPlan({
+    stories: context.mergedStories,
+    excluded: inputs.excluded,
+    candidateCount: inputs.candidateCount,
+    limit: 20,
+  });
+
+  assert.ok(context.mergedStories.some((story) => story.id === "qa-rights"));
+  assert.ok(inputs.excluded.some((row) => row.id === "qa-rights"));
+  const item = plan.priority_items.find((row) => row.story_id === "qa-rights");
+  assert.equal(item.resolution_lane, "rights_ledger_repair");
+  assert.equal(item.can_apply_automatically, true);
 });
 
 test("publish blocker resolution candidate context honours upstream anti-spam duplicate skips", () => {

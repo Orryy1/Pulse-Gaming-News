@@ -460,6 +460,85 @@ test("incident guard blocks environmental SFX assets even when a stale source pl
   assert.ok(report.disaster_upload_blockers.includes("sfx_source:rejected_selected_asset:impact"));
 });
 
+test("incident guard accepts retained Epidemic Sound editorial SFX selected by the source plan", () => {
+  const report = evaluateIncidentGuard({
+    story_id: "epidemic-sfx-clean",
+    canonical_story_manifest: {
+      story_id: "epidemic-sfx-clean",
+      canonical_subject: "Valorant",
+      selected_title: "Valorant's Vanguard Trust Problem",
+      thumbnail_headline: "VALORANT VANGUARD PANIC",
+      first_spoken_line: "Valorant's Vanguard update has a nasty trust problem.",
+      narration_script:
+        "Valorant's Vanguard update has a nasty trust problem. PCGamesN reports the anti-cheat drama centres on cheaters claiming bricked PCs, with Riot firing back using the paperweight line.",
+      description: "Valorant's Vanguard update has a trust problem. Source: PCGamesN.",
+      primary_source: "PCGamesN",
+      discovery_source: "r/pcgaming",
+    },
+    render_manifest: {
+      final_publish_render: true,
+      render_lane: "visual_v4_production",
+      render_quality_class: "premium",
+      visual_count: 8,
+    },
+    ...cleanVisualEvidence("Valorant"),
+    sfx_manifest: {
+      cue_count: 8,
+      source_plan: {
+        readiness: { status: "pass", blockers: [] },
+        selected_assets: [
+          {
+            asset_id: "epidemic_sound_impact_f2a7574692c8",
+            role: "impact",
+            provider_id: "epidemic_sound",
+            source_url:
+              "file://C:/Users/MORR/gaming-studio/pulse-gaming/audio/epidemic/sfx/epidemic_impact_04_designed-impact-cinematic-impact-hit-slam-braam-epidemic-sound.mp3",
+            rights_basis: "epidemic_sound_active_subscription_safelisted_channel",
+          },
+          {
+            asset_id: "epidemic_sound_transition_779c85c2a5fa",
+            role: "transition",
+            provider_id: "epidemic_sound",
+            source_url:
+              "file://C:/Users/MORR/gaming-studio/pulse-gaming/audio/epidemic/sfx/epidemic_transition_clean_whoosh.wav",
+            rights_basis: "epidemic_sound_active_subscription_safelisted_channel",
+          },
+          {
+            asset_id: "epidemic_sound_ui_tick_7122dccdf4c0",
+            role: "ui_tick",
+            provider_id: "epidemic_sound",
+            source_url:
+              "file://C:/Users/MORR/gaming-studio/pulse-gaming/audio/epidemic/sfx/epidemic_ui_tick_source_tick.wav",
+            rights_basis: "epidemic_sound_active_subscription_safelisted_channel",
+          },
+        ],
+      },
+    },
+    publish_verdict: { verdict: "GREEN" },
+    platform_publish_manifest: {
+      publish_status: "GREEN",
+      platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts"] },
+      outputs: {
+        youtube_shorts: { title: "Valorant's Vanguard Trust Problem" },
+      },
+    },
+    file_evidence: {
+      mp4_ready: true,
+      captions_ready: true,
+      narration_ready: true,
+      word_timestamps_ready: true,
+      materialised_motion_ready: true,
+      distinct_motion_families_ready: true,
+      rights_ledger_ready: true,
+    },
+  });
+
+  assert.equal(report.safe_to_publish_boolean, true);
+  assert.ok(!report.disaster_upload_blockers.includes("incident:sfx_selected_asset_not_editorial"));
+  assert.ok(!report.disaster_upload_blockers.includes("sfx_source:rejected_selected_asset:transition"));
+  assert.ok(!report.disaster_upload_blockers.includes("sfx_source:rejected_selected_asset:ui_tick"));
+});
+
 test("incident guard blocks final renders without rights-ledger evidence", () => {
   const report = evaluateIncidentGuard({
     story_id: "rights-missing",

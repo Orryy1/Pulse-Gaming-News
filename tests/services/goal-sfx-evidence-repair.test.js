@@ -70,6 +70,134 @@ test("goal SFX evidence repair stamps story packages and merges SFX rights recor
   assert.equal(report.safety.no_db_mutation, true);
 });
 
+test("goal SFX evidence repair prefers package-scoped Epidemic SFX assets from rights-ledger assets", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-sfx-repair-epidemic-assets-"));
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", "story-valorant");
+  await fs.outputJson(path.join(root, "output", "goal-contract", "story-packages.json"), [
+    { story_id: "story-valorant", artifact_dir: artifactDir },
+  ]);
+  await fs.outputJson(path.join(root, "output", "goal-contract", "sfx_source_plan.json"), {
+    readiness: { status: "pass", blockers: [] },
+    required_roles: ["impact", "transition", "ui_tick"],
+    selected_assets: [
+      {
+        asset_id: "sonniss-impact-01",
+        role: "impact",
+        provider_id: "sonniss",
+        source_url: "file://audio/sonniss/Modern Cinematic Impact/impact.wav",
+        rights_basis: "sonniss_game_audio_gdc_bundle_license",
+      },
+      {
+        asset_id: "sonniss-transition-01",
+        role: "transition",
+        provider_id: "sonniss",
+        source_url: "file://audio/sonniss/Cinematic Transitions for Editors/searing.wav",
+        rights_basis: "sonniss_game_audio_gdc_bundle_license",
+      },
+      {
+        asset_id: "sonniss-ui-01",
+        role: "ui_tick",
+        provider_id: "sonniss",
+        source_url: "file://audio/sonniss/User Interaction/select.wav",
+        rights_basis: "sonniss_game_audio_gdc_bundle_license",
+      },
+    ],
+  });
+  await fs.outputJson(path.join(root, "output", "goal-contract", "sfx_rights_ledger.json"), {
+    records: [
+      {
+        asset_id: "sonniss-impact-01",
+        asset_type: "sfx",
+        role: "impact",
+        provider_id: "sonniss",
+        source_url: "file://audio/sonniss/Modern Cinematic Impact/impact.wav",
+        licence_basis: "sonniss_game_audio_gdc_bundle_license",
+        approval_status: "approved_for_commercial_editorial_use",
+        commercial_use_allowed: true,
+      },
+      {
+        asset_id: "sonniss-transition-01",
+        asset_type: "sfx",
+        role: "transition",
+        provider_id: "sonniss",
+        source_url: "file://audio/sonniss/Cinematic Transitions for Editors/searing.wav",
+        licence_basis: "sonniss_game_audio_gdc_bundle_license",
+        approval_status: "approved_for_commercial_editorial_use",
+        commercial_use_allowed: true,
+      },
+      {
+        asset_id: "sonniss-ui-01",
+        asset_type: "sfx",
+        role: "ui_tick",
+        provider_id: "sonniss",
+        source_url: "file://audio/sonniss/User Interaction/select.wav",
+        licence_basis: "sonniss_game_audio_gdc_bundle_license",
+        approval_status: "approved_for_commercial_editorial_use",
+        commercial_use_allowed: true,
+      },
+    ],
+  });
+  await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), { sfx_cue_count: 3 });
+  await fs.outputJson(path.join(artifactDir, "director_beat_map.json"), {
+    sound_transition_plan: {
+      sfx: {
+        cues: [
+          { target_kind: "hook_slam", family: "impact" },
+          { target_kind: "motion_clip", family: "whoosh" },
+          { target_kind: "source_lock", family: "source_tick" },
+        ],
+      },
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    assets: [
+      {
+        asset_id: "epidemic-impact",
+        asset_type: "sfx",
+        role: "impact",
+        provider_id: "epidemic_sound",
+        source_url: "file://audio/epidemic/sfx/epidemic_impact_editorial_hit.wav",
+        licence_basis: "epidemic_sound_active_subscription_safelisted_channel",
+        approval_status: "approved_for_commercial_editorial_use",
+        commercial_use_allowed: true,
+        safelist_evidence: "output/epidemic-implementation/safelist_evidence/epidemic_safelist_evidence.json",
+      },
+      {
+        asset_id: "epidemic-transition",
+        asset_type: "sfx",
+        role: "transition",
+        provider_id: "epidemic_sound",
+        source_url: "file://audio/epidemic/sfx/epidemic_transition_clean_whoosh.wav",
+        licence_basis: "epidemic_sound_active_subscription_safelisted_channel",
+        approval_status: "approved_for_commercial_editorial_use",
+        commercial_use_allowed: true,
+        safelist_evidence: "output/epidemic-implementation/safelist_evidence/epidemic_safelist_evidence.json",
+      },
+      {
+        asset_id: "epidemic-ui",
+        asset_type: "sfx",
+        role: "ui_tick",
+        provider_id: "epidemic_sound",
+        source_url: "file://audio/epidemic/sfx/epidemic_ui_tick_source_tick.wav",
+        licence_basis: "epidemic_sound_active_subscription_safelisted_channel",
+        approval_status: "approved_for_commercial_editorial_use",
+        commercial_use_allowed: true,
+        safelist_evidence: "output/epidemic-implementation/safelist_evidence/epidemic_safelist_evidence.json",
+      },
+    ],
+  });
+
+  await repairGoalSfxEvidence({ root });
+
+  const sfxManifest = await fs.readJson(path.join(artifactDir, "sfx_manifest.json"));
+  assert.deepEqual(
+    sfxManifest.selected_assets.map((asset) => asset.provider_id),
+    ["epidemic_sound", "epidemic_sound", "epidemic_sound"],
+  );
+  assert.deepEqual(sfxManifest.source_plan.required_roles, ["impact", "transition", "ui_tick"]);
+  assert.equal(sfxManifest.source_plan.readiness.status, "pass");
+});
+
 test("goal SFX evidence repair refuses to stamp blocked source plans", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-sfx-repair-blocked-"));
   await fs.outputJson(path.join(root, "output", "goal-contract", "story-packages.json"), [

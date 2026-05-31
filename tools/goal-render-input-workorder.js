@@ -17,6 +17,8 @@ function parseArgs(argv = process.argv.slice(2)) {
     cutoverPlanPath: path.join(ROOT, "output", "goal-contract", "production_render_cutover_plan.json"),
     dryRunPlanPath: path.join(ROOT, "output", "goal-contract", "dry_run_publish_plan.json"),
     dryRunPlanExplicit: false,
+    publishBlockerResolutionPath: path.join(ROOT, "test", "output", "publish_blocker_resolution.json"),
+    publishBlockerResolutionExplicit: false,
     incidentGuardPath: path.join(ROOT, "output", "goal-contract", "incident_guard_report.json"),
     incidentGuardExplicit: false,
     sourceFamilyAcquisitionPath: null,
@@ -41,6 +43,11 @@ function parseArgs(argv = process.argv.slice(2)) {
       args.dryRunPlanExplicit = true;
     }
     else if (arg === "--no-dry-run-plan") args.dryRunPlanPath = null;
+    else if (arg === "--publish-blocker-resolution") {
+      args.publishBlockerResolutionPath = argv[++i] || args.publishBlockerResolutionPath;
+      args.publishBlockerResolutionExplicit = true;
+    }
+    else if (arg === "--no-publish-blocker-resolution") args.publishBlockerResolutionPath = null;
     else if (arg === "--incident-guard") {
       args.incidentGuardPath = argv[++i] || args.incidentGuardPath;
       args.incidentGuardExplicit = true;
@@ -82,6 +89,10 @@ function usage() {
     "  --cutover-plan <path>   Production cutover plan JSON",
     "  --dry-run-plan <path>   Strict dry-run publish plan JSON",
     "  --no-dry-run-plan       Do not merge strict dry-run blocked candidates",
+    "  --publish-blocker-resolution <path>",
+    "                          Merge publish-unblock repair backlog context",
+    "  --no-publish-blocker-resolution",
+    "                          Do not merge publish-unblock repair backlog context",
     "  --incident-guard <path> Incident guard report JSON",
     "  --source-family-acquisition <path>",
     "                          Visual V4 source-family acquisition report",
@@ -173,6 +184,12 @@ async function main(argv = process.argv.slice(2)) {
   const dryRunPlan = shouldLoadDryRunPlan
     ? await readJsonIfPresent(path.resolve(args.dryRunPlanPath), null)
     : null;
+  const shouldLoadPublishBlockerResolution =
+    args.publishBlockerResolutionPath &&
+    (args.publishBlockerResolutionExplicit || usingDefaultCutoverPath);
+  const publishBlockerResolutionPlan = shouldLoadPublishBlockerResolution
+    ? await readJsonIfPresent(path.resolve(args.publishBlockerResolutionPath), null)
+    : null;
   const shouldLoadDefaultIncidentGuard =
     args.incidentGuardExplicit || usingDefaultCutoverPath;
   const incidentGuardReport = shouldLoadDefaultIncidentGuard
@@ -198,6 +215,7 @@ async function main(argv = process.argv.slice(2)) {
   const workOrder = buildGoalRenderInputWorkOrder({
     cutoverPlan,
     dryRunPlan,
+    publishBlockerResolutionPlan,
     incidentGuardReport,
     sourceFamilyAcquisitionReport,
     segmentValidationReports: segmentValidationReports.filter(Boolean),

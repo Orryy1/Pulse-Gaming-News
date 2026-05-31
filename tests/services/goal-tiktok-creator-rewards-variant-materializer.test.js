@@ -279,6 +279,25 @@ test("TikTok creator-rewards materializer uses story-specific context instead of
       wordRange: { min: 185, max: 205 },
     },
     {
+      storyId: "creator-rewards-anti-cheat-trust",
+      canonical: {
+        canonical_subject: "Valorant",
+        canonical_game: "Valorant",
+        selected_title: "Valorant's Vanguard Trust Problem",
+        thumbnail_headline: "VANGUARD TRUST PROBLEM",
+        first_spoken_line: "Valorant's Vanguard update has a nasty trust problem.",
+        narration_script:
+          "Valorant's Vanguard update has a nasty trust problem. PCGamesN reports Valorant's new Vanguard update seems to be bricking cheaters' PCs. Riot's response? \"Congrats on your $6k paperweights\". The catch is what this changes for Valorant players: Riot can dunk on cheaters and still leave normal players asking how much control Vanguard should have. Follow Pulse Gaming so you never miss a beat.",
+        primary_source: "PCGamesN",
+        confirmed_claims: [
+          "PCGamesN reports Valorant's new Vanguard update seems to be bricking cheaters' PCs.",
+        ],
+      },
+      mustMatch: /competitive integrity|player confidence|software staying explainable/i,
+      wordRange: { min: 185, max: 205 },
+      mustNotMatch: /players have to judge the footage|at phone speed|generic reveal/i,
+    },
+    {
       storyId: "creator-rewards-hades-console-date",
       canonical: {
         canonical_subject: "Hades II",

@@ -83,6 +83,7 @@
     "ops:goal-stale-temporal-review": "node tools/goal-stale-temporal-review.js",
     "ops:goal-visual-source-review": "node tools/goal-visual-source-review.js",
     "ops:goal-human-review": "node tools/goal-human-review-queue.js",
+    "ops:goal-human-review-decisions": "node tools/goal-human-review-decision-sheet.js",
     "ops:goal-human-review-approval": "node tools/goal-human-review-approval-gate.js",
     "ops:goal-guarded-dispatch-preflight": "node tools/goal-guarded-dispatch-preflight.js",
     "ops:goal-local-proof-review": "node tools/goal-local-proof-review-lane.js",

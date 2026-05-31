@@ -56,9 +56,10 @@ test("dominantVerdict: all green stays green", () => {
 // ── PILLAR_NAMES contract ────────────────────────────────────────
 
 test("PILLAR_NAMES: includes cadence plus the original readiness pillars", () => {
-  assert.equal(pr.PILLAR_NAMES.length, 27);
+  assert.equal(pr.PILLAR_NAMES.length, 28);
   assert.ok(pr.PILLAR_NAMES.includes("publish_cadence"));
   assert.ok(pr.PILLAR_NAMES.includes("strict_dry_run_control"));
+  assert.ok(pr.PILLAR_NAMES.includes("human_review_decision_sheet"));
   assert.ok(pr.PILLAR_NAMES.includes("human_review_approval_gate"));
   assert.ok(pr.PILLAR_NAMES.includes("guarded_dispatch_preflight"));
   assert.ok(pr.PILLAR_NAMES.includes("repair_backlog"));
@@ -323,8 +324,102 @@ test("buildPublishReadinessReport: empty store does not crash, returns at least 
   );
   assert.equal(report.story_count, 0);
   assert.ok(typeof report.pillars === "object");
-  assert.equal(Object.keys(report.pillars).length, 27);
+  assert.equal(Object.keys(report.pillars).length, 28);
   assert.ok(typeof report.next_action === "string");
+});
+
+test("pillarHumanReviewDecisionSheet: pending decisions stay amber with exact counts", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-human-review-decision-sheet-pillar-"));
+  const reportPath = path.join(dir, "human_review_decision_sheet.json");
+  try {
+    fs.writeFileSync(
+      reportPath,
+      JSON.stringify({
+        generated_at: "2026-05-31T18:30:00.000Z",
+        mode: "HUMAN_REVIEW_DECISION_SHEET",
+        verdict: "AMBER",
+        safe_to_publish_boolean: false,
+        summary: {
+          decision_slot_count: 13,
+          pending_decision_count: 13,
+          already_decided_count: 0,
+          blocked_input_count: 0,
+        },
+        safe_publish_plan: {
+          live_publish_allowed_from_this_tool: false,
+          can_publish_without_operator: false,
+          required_next_step: "record_operator_decisions_in_operator_decision_log",
+          safety: {
+            no_publish_triggered: true,
+            no_network_uploads: true,
+            no_db_mutation: true,
+            no_oauth_or_token_change: true,
+          },
+        },
+        safety: {
+          no_publish_triggered: true,
+          no_network_uploads: true,
+          no_db_mutation: true,
+          no_oauth_or_token_change: true,
+        },
+      }),
+    );
+
+    const pillar = pr.pillarHumanReviewDecisionSheet({
+      reportPath,
+      now: Date.parse("2026-05-31T18:35:00.000Z"),
+    });
+
+    assert.equal(pillar.verdict, "amber");
+    assert.equal(pillar.reason, "13_operator_decisions_pending");
+    assert.equal(pillar.raw.decision_slot_count, 13);
+    assert.equal(pillar.raw.pending_decision_count, 13);
+    assert.equal(pillar.raw.safety_intact, true);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("pillarHumanReviewDecisionSheet: missing safety contract is red", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-human-review-decision-sheet-red-"));
+  const reportPath = path.join(dir, "human_review_decision_sheet.json");
+  try {
+    fs.writeFileSync(
+      reportPath,
+      JSON.stringify({
+        generated_at: "2026-05-31T18:30:00.000Z",
+        mode: "HUMAN_REVIEW_DECISION_SHEET",
+        verdict: "AMBER",
+        safe_to_publish_boolean: false,
+        summary: { decision_slot_count: 1, pending_decision_count: 1 },
+        safe_publish_plan: {
+          live_publish_allowed_from_this_tool: false,
+          safety: {
+            no_publish_triggered: true,
+            no_network_uploads: false,
+            no_db_mutation: true,
+            no_oauth_or_token_change: true,
+          },
+        },
+        safety: {
+          no_publish_triggered: true,
+          no_network_uploads: false,
+          no_db_mutation: true,
+          no_oauth_or_token_change: true,
+        },
+      }),
+    );
+
+    const pillar = pr.pillarHumanReviewDecisionSheet({
+      reportPath,
+      now: Date.parse("2026-05-31T18:35:00.000Z"),
+    });
+
+    assert.equal(pillar.verdict, "red");
+    assert.equal(pillar.reason, "human_review_decision_sheet_safety_contract_missing");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("pillarStrictDryRunControl: amber dry-run requires human review, not generic publish-possible wording", () => {

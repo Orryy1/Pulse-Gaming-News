@@ -13,6 +13,8 @@ test("tts_server start.bat uses a windowless idempotent launcher", () => {
   assert.match(source, /server_stdout\.log/i);
   assert.match(source, /server_stderr\.log/i);
   assert.match(source, /server_start\.lock/i);
+  assert.match(source, /TTS_START_LOCK_TTL_MINUTES=30/i);
+  assert.match(source, /pulse-gaming tts_server starting/i);
   assert.match(source, /ConvertTo-Json/i);
   assert.match(source, /started_at/i);
   assert.match(source, /127\.0\.0\.1:8765\/health/i);

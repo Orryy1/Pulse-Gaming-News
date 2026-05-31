@@ -9,6 +9,7 @@ const path = require("node:path");
 const {
   buildLocalTtsStartSpec,
   classifyLocalTtsDoctorAction,
+  hasRecentLocalTtsBootAttempt,
   renderLocalTtsDoctorMarkdown,
   resolveLocalTtsRuntimePaths,
   startLocalTtsServer,
@@ -133,6 +134,56 @@ test("startLocalTtsServer skips duplicate starts while a fresh start lock exists
   assert.equal(result.skipped, true);
   assert.equal(result.reason, "start_lock_active");
   assert.equal(result.pid, null);
+});
+
+test("startLocalTtsServer skips restart loops after a recent boot log entry", async () => {
+  const root = tempRoot();
+  const logsDir = path.join(root, "tts_server", "logs");
+  fs.mkdirSync(logsDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(logsDir, "server_stderr.log"),
+    [
+      "2026-05-31 16:24:20,014 [tts_server] INFO: [boot] pulse-gaming tts_server starting ts=2026-05-31T15:24:20Z device=cuda",
+      "2026-05-31 16:24:21,100 [voxcpm] INFO: Loading VoxCPM 2 from openbmb/VoxCPM2 on cuda...",
+    ].join("\n"),
+  );
+
+  let spawned = false;
+  const result = await startLocalTtsServer({
+    root,
+    platform: "win32",
+    env: {},
+    now: Date.parse("2026-05-31T15:39:19Z"),
+    spawnImpl: () => {
+      spawned = true;
+      return { pid: 12345, unref() {} };
+    },
+  });
+
+  assert.equal(spawned, false);
+  assert.equal(result.skipped, true);
+  assert.equal(result.reason, "recent_boot_cooldown");
+  assert.equal(result.pid, null);
+  assert.equal(result.recent_boot.lastBootAt, "2026-05-31T15:24:20.000Z");
+});
+
+test("hasRecentLocalTtsBootAttempt ignores old boot log entries", () => {
+  const root = tempRoot();
+  const logsDir = path.join(root, "tts_server", "logs");
+  fs.mkdirSync(logsDir, { recursive: true });
+  const stderrPath = path.join(logsDir, "server_stderr.log");
+  fs.writeFileSync(
+    stderrPath,
+    "2026-05-31 09:30:20,704 [tts_server] INFO: [boot] pulse-gaming tts_server starting ts=2026-05-31T08:30:20Z device=cuda\n",
+  );
+
+  const recent = hasRecentLocalTtsBootAttempt(stderrPath, {
+    now: Date.parse("2026-05-31T10:30:21Z"),
+    cooldownMs: 30 * 60 * 1000,
+  });
+
+  assert.equal(recent.recent, false);
+  assert.equal(recent.lastBootAt, "2026-05-31T08:30:20.000Z");
 });
 
 test("startLocalTtsServer honours a fresh non-json lock from the batch launcher", async () => {

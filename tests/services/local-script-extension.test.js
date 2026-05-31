@@ -101,8 +101,8 @@ test("local script extension expands short Liam scripts into the 61-75s local Fl
   assert.equal(draft.cta_exactly_once, true);
   assert.match(draft.proposed_full_script, new RegExp(`${REQUIRED_CTA.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`));
   assert.equal(draft.runtime.result, "pass");
-  assert.ok(draft.proposed_words >= 204);
-  assert.ok(draft.proposed_words <= 250);
+  assert.ok(draft.proposed_words >= draft.runtime.minWords);
+  assert.ok(draft.proposed_words <= draft.runtime.maxWords);
   assert.ok(draft.estimated_seconds >= 61);
 });
 
@@ -120,10 +120,31 @@ test("local script extension targets the middle of the Liam-safe range, not the 
   assert.equal(DEFAULT_LOCAL_EXTENSION_TARGET_WORDS, 166);
   assert.equal(draft.target_words, draft.target_word_range.min);
   assert.deepEqual(draft.target_seconds, [64, 70]);
-  assert.ok(draft.target_word_range.min >= 214);
-  assert.ok(draft.target_word_range.max <= 233);
-  assert.ok(draft.proposed_words >= 204);
-  assert.ok(draft.proposed_words <= 250);
+  assert.ok(draft.target_word_range.min >= 183);
+  assert.ok(draft.target_word_range.max <= 200);
+  assert.ok(draft.proposed_words >= draft.runtime.minWords);
+  assert.ok(draft.proposed_words <= draft.runtime.maxWords);
+});
+
+test("local script extension uses conservative Liam proof pacing instead of optimistic 200 WPM planning", () => {
+  const draft = extendScriptToLocalFlash({
+    story: {
+      id: "valorant_vanguard",
+      title: "Valorant Vanguard update needs careful anti-cheat wording",
+      full_script: variedScript("Valorant", 20),
+    },
+    queueItem: queueItem("valorant_vanguard", 190),
+    env: {},
+  });
+
+  assert.equal(draft.action, "ready_for_local_liam_audio");
+  assert.deepEqual(draft.target_seconds, [64, 70]);
+  assert.ok(draft.target_word_range.min >= 183);
+  assert.ok(draft.target_word_range.max <= 200);
+  assert.ok(draft.proposed_words >= draft.runtime.minWords);
+  assert.ok(draft.proposed_words <= draft.runtime.maxWords);
+  assert.ok(draft.estimated_seconds >= 61);
+  assert.ok(draft.estimated_seconds <= 75);
 });
 
 test("local script extension repairs underfloor Liam proofs toward 64-70s rather than the 61s floor", () => {
@@ -529,7 +550,7 @@ test("local script extension plan can explicitly recover a measured-short proof 
       title: "MindsEye update drops today",
       subreddit: "GameSpot",
       content_pillar: "Confirmed Drop",
-        full_script: variedScript("MindsEye", 26),
+        full_script: variedScript("MindsEye", 20),
       },
     },
     storyId: "measured_short",

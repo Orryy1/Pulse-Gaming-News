@@ -252,6 +252,54 @@ test("source-bound fallback rewrites Mixtape as a viewer-facing preservation sto
   );
 });
 
+test("source-bound fallback turns Valorant Vanguard panic into a source-safe anti-cheat trust story", () => {
+  const story = {
+    id: "1tkik53",
+    title:
+      "Valorant's new Vanguard update seems to be bricking cheaters' PCs. Riot's response? \"Congrats on your $6k paperweights\"",
+    source_type: "reddit",
+    subreddit: "pcgaming",
+    article_url:
+      "https://www.pcgamesn.com/valorant/vanguard-update-bricking-cheaters-pcs",
+  };
+
+  const script = buildSourceBoundFallbackScript(story, {
+    env: { TTS_PROVIDER: "local" },
+    sourceMaterial:
+      "PCGamesN reports Riot says Vanguard cannot brick a PC, but the anti-cheat update can block DMA cheat hardware. Riot said it would not and cannot impact normal PC functionality.",
+  });
+
+  assert.ok(script);
+  assert.match(script.hook, /Valorant|Vanguard/i);
+  assert.match(script.full_script, /PCGamesN reports/i);
+  assert.match(script.full_script, /Vanguard/i);
+  assert.match(script.full_script, /DMA cheat hardware/i);
+  assert.match(script.full_script, /kernel-level anti-cheat/i);
+  assert.match(script.full_script, /Follow Pulse Gaming so you never miss a beat\.$/);
+  assert.doesNotMatch(script.full_script, /has a new detail players should clock|another update exists|fades into the feed/i);
+  assert.doesNotMatch(script.full_script, /bricking cheaters' PCs\./i);
+  assert.doesNotMatch(script.full_script, /This isn't|This is not|source-backed update|safe read|useful version|boring, exact explanations/i);
+  assert.ok(script.word_count >= 175 && script.word_count <= 214);
+
+  const coherence = runScriptCoherenceQa(
+    { ...story, ...script },
+    { requireCtaField: true, requireFullScriptCta: true },
+  );
+  assert.equal(coherence.result, "pass", coherence.failures.join(", "));
+
+  const lint = lintScript(script.full_script, {
+    minWords: 175,
+    maxWords: 214,
+  });
+  assert.deepEqual(lint.failures, []);
+
+  const runtime = classifyShortScriptRuntime({
+    text: script.full_script,
+    secondsPerWord: 0.35,
+  });
+  assert.equal(runtime.result, "pass");
+});
+
 test("source-bound fallback source does not carry internal analyst-note phrases", () => {
   assert.doesNotMatch(
     SOURCE,

@@ -27,6 +27,7 @@ const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
 const DEFAULT_REPROCESS_LLM_TIMEOUT_MS = 30_000;
 const DEFAULT_REPROCESS_MAX_ATTEMPTS = 1;
+const DEFAULT_SOURCE_BOUND_LOCAL_SECONDS_PER_WORD = 0.35;
 
 function backupFileName(now = new Date()) {
   return `pulse-pre-script-failure-reprocess-${now.toISOString().replace(/[:.]/g, "-")}.db`;
@@ -160,10 +161,11 @@ function isPersistableScriptReady(row = {}, env = process.env) {
   if (Number(row.word_count || 0) <= 0) return false;
 
   const provider = String(env.TTS_PROVIDER || "elevenlabs").trim().toLowerCase();
+  const secondsPerWord = sourceBoundPersistSecondsPerWord(row, provider, env);
   const runtime = classifyShortScriptRuntime({
     text: scriptText,
     story: row,
-    secondsPerWord: secondsPerWordForTtsProvider(provider, env),
+    secondsPerWord,
   });
   if (runtime.result !== "pass" || runtime.shouldGenerateShortAudio === false) {
     return false;
@@ -184,6 +186,19 @@ function isPersistableScriptReady(row = {}, env = process.env) {
     },
   );
   return coherence.failures.length === 0;
+}
+
+function sourceBoundPersistSecondsPerWord(row = {}, provider = "", env = process.env) {
+  const isLocal = /^(local|voxcpm|voicebox)$/i.test(String(provider || ""));
+  const isSourceBound = /source_bound/i.test(String(row.script_source || ""));
+  if (!isLocal || !isSourceBound) return secondsPerWordForTtsProvider(provider, env);
+  const override = Number(
+    env.SOURCE_BOUND_SECONDS_PER_WORD ||
+      env.SOURCE_BOUND_LOCAL_SECONDS_PER_WORD ||
+      env.LOCAL_SCRIPT_EXTENSION_SECONDS_PER_WORD,
+  );
+  if (Number.isFinite(override) && override > 0) return override;
+  return DEFAULT_SOURCE_BOUND_LOCAL_SECONDS_PER_WORD;
 }
 
 async function reprocessCandidate(candidate, args) {

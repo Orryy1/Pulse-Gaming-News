@@ -426,6 +426,34 @@ test("prepareScriptRepairRow clears stale audio and render outputs", () => {
   assert.ok(row.title_variants.includes("Forza 6 Just Beat Horizon 5"));
 });
 
+test("source-bound local scripts below old 200 WPM floor are still persistable when Liam pacing passes", () => {
+  const { isPersistableScriptReady } = require("../../tools/reprocess-script-failures");
+  const { buildSourceBoundFallbackScript } = require("../../lib/source-bound-script-writer");
+  const story = {
+    id: "valorant_vanguard",
+    title:
+      "Valorant's new Vanguard update seems to be bricking cheaters' PCs. Riot's response? \"Congrats on your $6k paperweights\"",
+    source_type: "reddit",
+    subreddit: "pcgaming",
+    article_url:
+      "https://www.pcgamesn.com/valorant/vanguard-update-bricking-cheaters-pcs",
+  };
+  const script = buildSourceBoundFallbackScript(story, {
+    env: { TTS_PROVIDER: "local" },
+    sourceMaterial:
+      "PCGamesN reports Riot says Vanguard cannot brick a PC, but the anti-cheat update can block DMA cheat hardware.",
+  });
+
+  assert.ok(script.word_count < 204, `expected conservative local script, got ${script.word_count}`);
+  assert.equal(
+    isPersistableScriptReady(
+      { ...story, ...script, tts_script: script.full_script },
+      { TTS_PROVIDER: "local" },
+    ),
+    true,
+  );
+});
+
 test("source-bound-only reprocess builds a clean local repair row", async () => {
   const { parseArgs, reprocessCandidate } = require("../../tools/reprocess-script-failures");
   const rows = await reprocessCandidate(

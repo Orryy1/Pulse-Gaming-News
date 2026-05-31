@@ -32,7 +32,11 @@ if "%ERRORLEVEL%"=="0" (
     exit /b 0
 )
 
-echo %DATE% %TIME% > "%TTS_START_LOCK%"
+powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "$payload = @{ started_at = (Get-Date).ToUniversalTime().ToString('o'); pid = $null; launcher = 'start.bat' } | ConvertTo-Json -Compress; Set-Content -LiteralPath '%TTS_START_LOCK%' -Value $payload -Encoding ASCII"
+if errorlevel 1 (
+    echo ERROR: failed to write local TTS start lock.
+    exit /b 1
+)
 
 set "TTS_PYTHON=%~dp0venv\Scripts\pythonw.exe"
 if not exist "%TTS_PYTHON%" set "TTS_PYTHON=%~dp0venv\Scripts\python.exe"

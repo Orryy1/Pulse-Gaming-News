@@ -135,6 +135,28 @@ test("startLocalTtsServer skips duplicate starts while a fresh start lock exists
   assert.equal(result.pid, null);
 });
 
+test("startLocalTtsServer honours a fresh non-json lock from the batch launcher", async () => {
+  const root = tempRoot();
+  const logsDir = path.join(root, "tts_server", "logs");
+  fs.mkdirSync(logsDir, { recursive: true });
+  fs.writeFileSync(path.join(logsDir, "server_start.lock"), "Sun 31/05/2026 12:00:00");
+
+  let spawned = false;
+  const result = await startLocalTtsServer({
+    root,
+    platform: "win32",
+    env: {},
+    spawnImpl: () => {
+      spawned = true;
+      return { pid: 12345, unref() {} };
+    },
+  });
+
+  assert.equal(spawned, false);
+  assert.equal(result.skipped, true);
+  assert.equal(result.reason, "start_lock_active");
+});
+
 test("renderLocalTtsDoctorMarkdown is operator-readable and local-only", () => {
   const md = renderLocalTtsDoctorMarkdown({
     verdict: "amber",

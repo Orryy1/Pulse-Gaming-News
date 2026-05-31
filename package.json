@@ -86,6 +86,7 @@
     "ops:goal-human-review-decisions": "node tools/goal-human-review-decision-sheet.js",
     "ops:goal-human-review-approval": "node tools/goal-human-review-approval-gate.js",
     "ops:goal-guarded-dispatch-preflight": "node tools/goal-guarded-dispatch-preflight.js",
+    "ops:goal-guarded-dispatch-executor-preflight": "node tools/goal-guarded-dispatch-executor-preflight.js",
     "ops:goal-local-proof-review": "node tools/goal-local-proof-review-lane.js",
     "ops:goal-platform-enablement": "node tools/goal-platform-enablement-workorder.js",
     "ops:goal-daily-cadence": "node tools/goal-daily-cadence.js",

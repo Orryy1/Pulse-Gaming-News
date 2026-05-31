@@ -56,12 +56,13 @@ test("dominantVerdict: all green stays green", () => {
 // ── PILLAR_NAMES contract ────────────────────────────────────────
 
 test("PILLAR_NAMES: includes cadence plus the original readiness pillars", () => {
-  assert.equal(pr.PILLAR_NAMES.length, 28);
+  assert.equal(pr.PILLAR_NAMES.length, 29);
   assert.ok(pr.PILLAR_NAMES.includes("publish_cadence"));
   assert.ok(pr.PILLAR_NAMES.includes("strict_dry_run_control"));
   assert.ok(pr.PILLAR_NAMES.includes("human_review_decision_sheet"));
   assert.ok(pr.PILLAR_NAMES.includes("human_review_approval_gate"));
   assert.ok(pr.PILLAR_NAMES.includes("guarded_dispatch_preflight"));
+  assert.ok(pr.PILLAR_NAMES.includes("guarded_dispatch_executor_preflight"));
   assert.ok(pr.PILLAR_NAMES.includes("repair_backlog"));
   assert.ok(pr.PILLAR_NAMES.includes("platform_duration_contract"));
   assert.ok(pr.PILLAR_NAMES.includes("final_voice_audit"));
@@ -324,7 +325,7 @@ test("buildPublishReadinessReport: empty store does not crash, returns at least 
   );
   assert.equal(report.story_count, 0);
   assert.ok(typeof report.pillars === "object");
-  assert.equal(Object.keys(report.pillars).length, 28);
+  assert.equal(Object.keys(report.pillars).length, 29);
   assert.ok(typeof report.next_action === "string");
 });
 
@@ -757,6 +758,154 @@ test("pillarGuardedDispatchPreflight: dispatch-ready approved actions are green"
     assert.equal(pillar.verdict, "green");
     assert.equal(pillar.raw.dispatch_ready_action_count, 2);
     assert.equal(pillar.raw.ready_for_guarded_dispatch, true);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("pillarGuardedDispatchExecutorPreflight: ready actions require explicit selection before handoff", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-guarded-executor-pillar-amber-"));
+  const reportPath = path.join(dir, "guarded_dispatch_executor_preflight_report.json");
+  try {
+    fs.writeFileSync(
+      reportPath,
+      JSON.stringify({
+        generated_at: "2026-05-31T18:00:00.000Z",
+        mode: "GUARDED_DISPATCH_EXECUTOR_PREFLIGHT",
+        verdict: "AMBER",
+        safe_to_publish_boolean: false,
+        summary: {
+          dispatch_ready_action_count: 2,
+          selected_action_count: 0,
+          handoff_ready_action_count: 0,
+          blocked_selected_action_count: 0,
+        },
+        advisory: ["explicit_action_ids_required"],
+        executor_plan: {
+          ready_for_live_executor_handoff: false,
+          live_publish_allowed_from_this_tool: false,
+          required_next_step: "select_explicit_dispatch_action_ids",
+          safety: {
+            no_publish_triggered: true,
+            no_network_uploads: true,
+            no_db_mutation: true,
+            no_oauth_or_token_change: true,
+          },
+        },
+        safety: {
+          no_publish_triggered: true,
+          no_network_uploads: true,
+          no_db_mutation: true,
+          no_oauth_or_token_change: true,
+        },
+      }),
+    );
+
+    const pillar = pr.pillarGuardedDispatchExecutorPreflight({
+      reportPath,
+      now: Date.parse("2026-05-31T18:05:00.000Z"),
+    });
+
+    assert.equal(pillar.verdict, "amber");
+    assert.equal(pillar.reason, "explicit_action_ids_required");
+    assert.equal(pillar.raw.ready_for_live_executor_handoff, false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("pillarGuardedDispatchExecutorPreflight: blocked selected actions are red", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-guarded-executor-pillar-red-"));
+  const reportPath = path.join(dir, "guarded_dispatch_executor_preflight_report.json");
+  try {
+    fs.writeFileSync(
+      reportPath,
+      JSON.stringify({
+        generated_at: "2026-05-31T18:00:00.000Z",
+        mode: "GUARDED_DISPATCH_EXECUTOR_PREFLIGHT",
+        verdict: "RED",
+        safe_to_publish_boolean: false,
+        summary: {
+          dispatch_ready_action_count: 1,
+          selected_action_count: 1,
+          handoff_ready_action_count: 0,
+          blocked_selected_action_count: 1,
+        },
+        executor_plan: {
+          ready_for_live_executor_handoff: false,
+          live_publish_allowed_from_this_tool: false,
+          safety: {
+            no_publish_triggered: true,
+            no_network_uploads: true,
+            no_db_mutation: true,
+            no_oauth_or_token_change: true,
+          },
+        },
+        safety: {
+          no_publish_triggered: true,
+          no_network_uploads: true,
+          no_db_mutation: true,
+          no_oauth_or_token_change: true,
+        },
+      }),
+    );
+
+    const pillar = pr.pillarGuardedDispatchExecutorPreflight({
+      reportPath,
+      now: Date.parse("2026-05-31T18:05:00.000Z"),
+    });
+
+    assert.equal(pillar.verdict, "red");
+    assert.equal(pillar.reason, "guarded_dispatch_executor_preflight_blocked");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("pillarGuardedDispatchExecutorPreflight: handoff-ready selected actions are green but not publish authority", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-guarded-executor-pillar-green-"));
+  const reportPath = path.join(dir, "guarded_dispatch_executor_preflight_report.json");
+  try {
+    fs.writeFileSync(
+      reportPath,
+      JSON.stringify({
+        generated_at: "2026-05-31T18:00:00.000Z",
+        mode: "GUARDED_DISPATCH_EXECUTOR_PREFLIGHT",
+        verdict: "GREEN",
+        safe_to_publish_boolean: false,
+        summary: {
+          dispatch_ready_action_count: 1,
+          selected_action_count: 1,
+          handoff_ready_action_count: 1,
+          blocked_selected_action_count: 0,
+        },
+        executor_plan: {
+          ready_for_live_executor_handoff: true,
+          live_publish_allowed_from_this_tool: false,
+          safety: {
+            no_publish_triggered: true,
+            no_network_uploads: true,
+            no_db_mutation: true,
+            no_oauth_or_token_change: true,
+          },
+        },
+        safety: {
+          no_publish_triggered: true,
+          no_network_uploads: true,
+          no_db_mutation: true,
+          no_oauth_or_token_change: true,
+        },
+      }),
+    );
+
+    const pillar = pr.pillarGuardedDispatchExecutorPreflight({
+      reportPath,
+      now: Date.parse("2026-05-31T18:05:00.000Z"),
+    });
+
+    assert.equal(pillar.verdict, "green");
+    assert.equal(pillar.raw.handoff_ready_action_count, 1);
+    assert.equal(pillar.raw.live_publish_allowed_from_this_tool, false);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

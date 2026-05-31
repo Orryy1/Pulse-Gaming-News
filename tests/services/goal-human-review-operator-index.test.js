@@ -94,6 +94,29 @@ function decisionSheet(slots = [slot()]) {
   };
 }
 
+function reviewPacketManifest(packets = [{
+  packet_id: "story-one:human_review",
+  story_id: "story-one",
+  title: "Forza Horizon 6 Exposes Xbox's Steam Bet",
+  enabled_review_platforms: ["youtube_shorts", "facebook_reels"],
+  deferred_platforms: ["tiktok", "x"],
+  blocked_platforms: ["instagram_reels"],
+}]) {
+  return {
+    schema_version: 1,
+    generated_at: "2026-05-31T19:01:00.000Z",
+    mode: "HUMAN_REVIEW",
+    review_packets: packets,
+    blocked_packets: [],
+    safety: {
+      no_live_publish_from_manifest: true,
+      no_network_uploads: true,
+      no_db_mutation: true,
+      no_oauth_or_token_change: true,
+    },
+  };
+}
+
 function fingerprint(filePath) {
   return `sha256:${crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex")}`;
 }
@@ -161,6 +184,23 @@ test("operator index routes missing review artefacts to repair instead of approv
   assert.equal(card.recommended_next_decision, "request_repairs");
   assert.ok(card.blockers.includes("missing_review_artefact:video_path"));
   assert.match(card.decision_commands.request_repairs_dry_run, /request_repairs/);
+});
+
+test("operator index rejects stale decision-sheet platform approvals", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-human-review-index-stale-platforms-"));
+  const proof = await createProofFiles(dir);
+  const index = buildHumanReviewOperatorIndex({
+    decisionSheet: decisionSheet([slot({ review_artefact_paths: proof })]),
+    reviewPacketManifest: reviewPacketManifest(),
+    generatedAt: "2026-05-31T19:03:00.000Z",
+  });
+
+  assert.equal(index.verdict, "RED");
+  assert.equal(index.summary.review_card_count, 0);
+  assert.equal(index.summary.blocked_input_count, 1);
+  assert.ok(index.blockers.includes("decision_sheet_platforms_stale:story-one"));
+  assert.equal(index.next_step, "repair_operator_index_inputs");
+  assert.equal(index.safety.no_network_uploads, true);
 });
 
 test("operator index writes JSON and markdown contact-sheet artefacts", async () => {

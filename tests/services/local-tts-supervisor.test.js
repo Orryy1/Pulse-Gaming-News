@@ -12,6 +12,7 @@ const {
   hasRecentLocalTtsBootAttempt,
   renderLocalTtsDoctorMarkdown,
   resolveLocalTtsRuntimePaths,
+  resolveWindowlessPythonPath,
   startLocalTtsServer,
 } = require("../../lib/studio/local-tts-supervisor");
 
@@ -45,6 +46,32 @@ test("resolveLocalTtsRuntimePaths falls back to console python when pythonw is u
     paths.pythonPath,
     path.join(root, "tts_server", "venv", "Scripts", "python.exe"),
   );
+});
+
+test("resolveLocalTtsRuntimePaths upgrades env console python override to pythonw on Windows", () => {
+  const root = tempRoot();
+  const python = path.join(root, "tts_server", "venv", "Scripts", "python.exe");
+  const paths = resolveLocalTtsRuntimePaths({
+    root,
+    platform: "win32",
+    env: { LOCAL_TTS_PYTHON: python },
+  });
+
+  assert.equal(
+    paths.pythonPath,
+    path.join(root, "tts_server", "venv", "Scripts", "pythonw.exe"),
+  );
+});
+
+test("resolveWindowlessPythonPath honours explicit console debugging opt-in", () => {
+  const root = tempRoot();
+  const python = path.join(root, "tts_server", "venv", "Scripts", "python.exe");
+  const selected = resolveWindowlessPythonPath(python, {
+    platform: "win32",
+    env: { LOCAL_TTS_ALLOW_CONSOLE: "1" },
+  });
+
+  assert.equal(selected, python);
 });
 
 test("buildLocalTtsStartSpec starts uvicorn on localhost without shell quoting", () => {

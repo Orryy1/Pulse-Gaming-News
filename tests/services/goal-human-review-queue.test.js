@@ -204,6 +204,115 @@ test("human review queue turns AMBER strict dry-run candidates into operator pac
   assert.ok(item.approval.approval_requirements.includes("These are review candidates, not live publish actions."));
 });
 
+test("human review queue keeps blocked platform variants out while queuing clean enabled platforms", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-human-review-platform-subset-"));
+  const artifactDir = await makeStoryPackage(root, "platform-subset-story");
+  const plan = dryRunPlan({ artifactDir, storyId: "platform-subset-story" });
+  const baseVideoPath = path.join(artifactDir, "visual_v4_render.mp4");
+  const baseCaptionsPath = path.join(artifactDir, "captions.srt");
+  plan.actions = [
+    {
+      story_id: "platform-subset-story",
+      platform: "youtube_shorts",
+      action: "would_publish",
+      title: "Forza Horizon 6 Exposes Xbox's Steam Bet",
+      video_path: baseVideoPath,
+      captions_path: baseCaptionsPath,
+      cover_frame_source: baseVideoPath,
+      platform_enabled: true,
+      platform_operational_state: "enabled",
+      blockers: [],
+    },
+    {
+      story_id: "platform-subset-story",
+      platform: "facebook_reels",
+      action: "would_publish",
+      title: "Forza Horizon 6 Exposes Xbox's Steam Bet",
+      video_path: baseVideoPath,
+      captions_path: baseCaptionsPath,
+      cover_frame_source: baseVideoPath,
+      platform_enabled: true,
+      platform_operational_state: "enabled",
+      blockers: [],
+    },
+  ];
+  plan.blocked_actions = [
+    {
+      story_id: "platform-subset-story",
+      platform: "instagram_reels",
+      action: "blocked",
+      title: "Forza Horizon 6 Exposes Xbox's Steam Bet",
+      video_path: path.join(artifactDir, "platform_variants", "instagram_reels", "visual_v4_render_instagram_reels.mp4"),
+      captions_path: path.join(artifactDir, "platform_variants", "instagram_reels", "captions_instagram_reels.srt"),
+      platform_enabled: true,
+      platform_operational_state: "enabled",
+      platform_operational_reason: "enabled_monitor_next_publish",
+      blockers: ["platform_variant_stale_after_render:instagram_reels"],
+      live_execution_gate: "blocked",
+      live_publish_allowed_from_dry_run: false,
+    },
+    {
+      story_id: "platform-subset-story",
+      platform: "tiktok",
+      action: "blocked",
+      title: "Forza Horizon 6 Exposes Xbox's Steam Bet",
+      video_path: path.join(artifactDir, "platform_variants", "tiktok_creator_rewards", "visual_v4_render_tiktok.mp4"),
+      captions_path: path.join(artifactDir, "platform_variants", "tiktok_creator_rewards", "captions_tiktok.srt"),
+      platform_enabled: false,
+      platform_operational_state: "needs_credentials",
+      platform_operational_reason: "tiktok_local_token_refresh_or_sync_required",
+      platform_enablement_gaps: ["tiktok_local_token_refresh_or_sync_required"],
+      platform_enablement_next_action: "refresh_or_sync_local_token_with_operator_present_before_any_inbox_upload",
+      blockers: ["platform_variant_stale_after_render:tiktok"],
+      live_execution_gate: "blocked",
+      live_publish_allowed_from_dry_run: false,
+    },
+  ];
+
+  const queue = await buildGoalHumanReviewQueue({
+    dryRunPlan: plan,
+    generatedAt: "2026-05-31T19:20:00.000Z",
+  });
+
+  assert.equal(queue.summary.review_item_count, 1);
+  assert.equal(queue.summary.blocked_item_count, 0);
+  assert.equal(queue.summary.publish_now_action_count, 2);
+  const item = queue.review_items[0];
+  assert.equal(item.enabled_platform_verdict, "GREEN");
+  assert.equal(item.full_platform_verdict, "AMBER");
+  assert.deepEqual(item.enabled_review_platforms, ["youtube_shorts", "facebook_reels"]);
+  assert.deepEqual(item.blocked_platforms, ["instagram_reels", "tiktok"]);
+  assert.deepEqual(
+    item.platform_blocked_requirements.map((requirement) => ({
+      platform: requirement.platform,
+      blockers: requirement.blockers,
+      platform_enabled: requirement.platform_enabled,
+      live_publish_allowed_before_repair: requirement.live_publish_allowed_before_repair,
+    })),
+    [
+      {
+        platform: "instagram_reels",
+        blockers: ["platform_variant_stale_after_render:instagram_reels"],
+        platform_enabled: true,
+        live_publish_allowed_before_repair: false,
+      },
+      {
+        platform: "tiktok",
+        blockers: ["platform_variant_stale_after_render:tiktok"],
+        platform_enabled: false,
+        live_publish_allowed_before_repair: false,
+      },
+    ],
+  );
+  assert.deepEqual(queue.review_packet_manifest.review_packets[0].enabled_review_platforms, [
+    "youtube_shorts",
+    "facebook_reels",
+  ]);
+  assert.deepEqual(queue.review_packet_manifest.review_packets[0].blocked_platforms, ["instagram_reels", "tiktok"]);
+  assert.equal(queue.safe_publish_plan.can_publish_without_operator, false);
+  assert.equal(queue.safety.no_network_uploads, true);
+});
+
 test("human review queue markdown avoids publish-now wording for review candidates", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-human-review-markdown-"));
   const artifactDir = await makeStoryPackage(root);

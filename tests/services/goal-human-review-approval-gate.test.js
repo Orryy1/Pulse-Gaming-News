@@ -238,6 +238,77 @@ test("approval gate converts a valid operator decision into enabled-platform gua
   assert.equal(report.safety.no_network_uploads, true);
 });
 
+test("approval gate allows an enabled-platform decision when other story platforms are blocked", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-human-review-subset-approval-"));
+  const packet = reviewPacket({
+    artefacts: await proofArtefacts(root),
+    verdict: "AMBER",
+    enabled_review_platforms: ["youtube_shorts"],
+    deferred_platforms: ["tiktok"],
+    blocked_platforms: ["instagram_reels"],
+  });
+  const report = buildHumanReviewApprovalGate({
+    humanReviewQueue: humanReviewQueue(packet),
+    reviewPacketManifest: reviewPacketManifest(packet),
+    operatorDecisionLog: {
+      mode: "HUMAN_REVIEW_DECISION_LOG",
+      decisions: [
+        decision({
+          approved_platforms: ["youtube_shorts"],
+          reviewed_artefact_fingerprints: fingerprintMap(packet.artefacts),
+        }),
+      ],
+      safety: {
+        no_live_publish_from_log: true,
+        no_network_uploads: true,
+        no_db_mutation: true,
+        no_oauth_or_token_change: true,
+      },
+    },
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.summary.approved_action_count, 1);
+  assert.deepEqual(report.approved_actions.map((action) => action.platform), ["youtube_shorts"]);
+  assert.equal(report.approved_actions[0].live_publish_allowed_from_gate, false);
+  assert.equal(report.safe_publish_plan.guarded_dispatch_eligible, true);
+  assert.equal(report.safe_publish_plan.live_publish_allowed_from_this_tool, false);
+});
+
+test("approval gate still rejects a decision that approves a blocked platform", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-human-review-blocked-platform-approval-"));
+  const packet = reviewPacket({
+    artefacts: await proofArtefacts(root),
+    verdict: "AMBER",
+    enabled_review_platforms: ["youtube_shorts"],
+    blocked_platforms: ["instagram_reels"],
+  });
+  const report = buildHumanReviewApprovalGate({
+    humanReviewQueue: humanReviewQueue(packet),
+    reviewPacketManifest: reviewPacketManifest(packet),
+    operatorDecisionLog: {
+      mode: "HUMAN_REVIEW_DECISION_LOG",
+      decisions: [
+        decision({
+          approved_platforms: ["youtube_shorts", "instagram_reels"],
+          reviewed_artefact_fingerprints: fingerprintMap(packet.artefacts),
+        }),
+      ],
+      safety: {
+        no_live_publish_from_log: true,
+        no_network_uploads: true,
+        no_db_mutation: true,
+        no_oauth_or_token_change: true,
+      },
+    },
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.summary.invalid_decision_count, 1);
+  assert.equal(report.summary.approved_action_count, 0);
+  assert.ok(report.blocked_decisions[0].blockers.includes("approved_platform_is_blocked:instagram_reels"));
+});
+
 test("approval gate rejects decisions that approve disabled or deferred platforms", () => {
   const report = buildHumanReviewApprovalGate({
     humanReviewQueue: humanReviewQueue(),

@@ -18,6 +18,7 @@ function parseArgs(argv = process.argv.slice(2)) {
   const args = {
     root: process.cwd(),
     decisionSheetPath: null,
+    reviewPacketManifestPath: null,
     outDir: path.join(process.cwd(), "output", "goal-contract"),
     generatedAt: null,
     json: false,
@@ -27,6 +28,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     const arg = argv[i];
     if (arg === "--root") args.root = argv[++i] || args.root;
     else if (arg === "--decision-sheet") args.decisionSheetPath = argv[++i] || "";
+    else if (arg === "--review-packet-manifest") args.reviewPacketManifestPath = argv[++i] || "";
     else if (arg === "--out-dir") args.outDir = argv[++i] || args.outDir;
     else if (arg === "--generated-at") args.generatedAt = argv[++i] || null;
     else if (arg === "--json") args.json = true;
@@ -43,6 +45,7 @@ function usage() {
     "Options:",
     "  --root <dir>             Workspace root",
     "  --decision-sheet <path>  human_review_decision_sheet.json",
+    "  --review-packet-manifest <path>  Current review_packet_manifest.json for stale-sheet checks",
     "  --out-dir <dir>          Output directory",
     "  --generated-at <iso>     Fixed timestamp",
     "  --json                   Print JSON",
@@ -53,6 +56,11 @@ function usage() {
 
 async function readJson(filePath, label) {
   if (!await fs.pathExists(filePath)) throw new Error(`${label} not found: ${filePath}`);
+  return fs.readJson(filePath);
+}
+
+async function readJsonIfPresent(filePath) {
+  if (!filePath || !await fs.pathExists(filePath)) return null;
   return fs.readJson(filePath);
 }
 
@@ -67,8 +75,14 @@ async function main(argv = process.argv.slice(2)) {
   const decisionSheetPath = args.decisionSheetPath
     ? path.resolve(root, args.decisionSheetPath)
     : path.join(root, "output", "goal-contract", "human_review_decision_sheet.json");
+  const reviewPacketManifestPath = args.reviewPacketManifestPath
+    ? path.resolve(root, args.reviewPacketManifestPath)
+    : args.decisionSheetPath
+      ? null
+      : path.join(root, "output", "goal-contract", "review_packet_manifest.json");
   const index = buildHumanReviewOperatorIndex({
     decisionSheet: await readJson(decisionSheetPath, "human review decision sheet"),
+    reviewPacketManifest: await readJsonIfPresent(reviewPacketManifestPath),
     generatedAt: args.generatedAt || new Date().toISOString(),
   });
   const artefacts = await writeHumanReviewOperatorIndex(index, {

@@ -1249,6 +1249,143 @@ test("pillarStrictDryRunControl: red when strict dry-run has active blockers", (
   }
 });
 
+test("pillarStrictDryRunControl: amber when only non-review platform variants are blocked", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-strict-dry-run-review-platform-only-"));
+  const planPath = path.join(dir, "dry_run_publish_plan.json");
+  try {
+    fs.writeFileSync(
+      planPath,
+      JSON.stringify({
+        generated_at: "2026-05-31T22:00:00.000Z",
+        overall_verdict: "RED",
+        ready_for_unattended_publish: false,
+        summary: {
+          ready_story_count: 13,
+          blocked_story_count: 0,
+          held_story_count: 0,
+          skipped_story_count: 17,
+          platform_publish_now_action_count: 29,
+          platform_deferred_action_count: 39,
+          human_review_required_action_count: 29,
+          live_publish_allowed_action_count: 0,
+          blocked_action_count: 2,
+          warning_action_count: 0,
+        },
+        actions: [
+          {
+            story_id: "story-one",
+            platform: "youtube_shorts",
+            action: "would_publish",
+            platform_enabled: true,
+            blockers: [],
+            live_execution_gate: "human_review_required",
+          },
+        ],
+        blocked_actions: [
+          {
+            story_id: "story-one",
+            platform: "tiktok",
+            action: "blocked",
+            blockers: ["platform_variant_stale_after_render:tiktok"],
+            live_execution_gate: "blocked",
+            live_publish_allowed_from_dry_run: false,
+          },
+          {
+            story_id: "story-one",
+            platform: "instagram_reels",
+            action: "blocked",
+            blockers: ["platform_variant_stale_after_render:instagram_reels"],
+            live_execution_gate: "blocked",
+            live_publish_allowed_from_dry_run: false,
+          },
+        ],
+        safety: {
+          no_publish_triggered: true,
+          no_network_uploads: true,
+          no_db_mutation: true,
+          no_oauth_or_token_change: true,
+          dry_run_only: true,
+        },
+      }),
+    );
+
+    const pillar = pr.pillarStrictDryRunControl({
+      planPath,
+      now: Date.parse("2026-05-31T22:05:00.000Z"),
+    });
+
+    assert.equal(pillar.verdict, "amber");
+    assert.equal(pillar.ok, true);
+    assert.equal(pillar.reason, "human_review_ready_with_platform_variant_blockers");
+    assert.equal(pillar.raw.live_publish_allowed_action_count, 0);
+    assert.deepEqual(pillar.raw.blocked_action_reason_groups, [
+      { reason: "platform_variant_stale_after_render:instagram_reels", count: 1 },
+      { reason: "platform_variant_stale_after_render:tiktok", count: 1 },
+    ]);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("pillarStrictDryRunControl: red when blocked actions include final render inputs", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-strict-dry-run-final-render-red-"));
+  const planPath = path.join(dir, "dry_run_publish_plan.json");
+  try {
+    fs.writeFileSync(
+      planPath,
+      JSON.stringify({
+        generated_at: "2026-05-31T22:00:00.000Z",
+        overall_verdict: "RED",
+        ready_for_unattended_publish: false,
+        summary: {
+          ready_story_count: 12,
+          blocked_story_count: 0,
+          platform_publish_now_action_count: 24,
+          human_review_required_action_count: 24,
+          live_publish_allowed_action_count: 0,
+          blocked_action_count: 1,
+        },
+        actions: [
+          {
+            story_id: "story-one",
+            platform: "youtube_shorts",
+            action: "would_publish",
+            platform_enabled: true,
+            blockers: [],
+          },
+        ],
+        blocked_actions: [
+          {
+            story_id: "story-two",
+            platform: "youtube_shorts",
+            action: "blocked",
+            blockers: ["final_render_input:missing_mp4"],
+            live_execution_gate: "blocked",
+            live_publish_allowed_from_dry_run: false,
+          },
+        ],
+        safety: {
+          no_publish_triggered: true,
+          no_network_uploads: true,
+          no_db_mutation: true,
+          no_oauth_or_token_change: true,
+          dry_run_only: true,
+        },
+      }),
+    );
+
+    const pillar = pr.pillarStrictDryRunControl({
+      planPath,
+      now: Date.parse("2026-05-31T22:05:00.000Z"),
+    });
+
+    assert.equal(pillar.verdict, "red");
+    assert.match(pillar.reason, /strict_dry_run_blocked/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("pillarRepairBacklog: amber when generated repair work remains", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-repair-backlog-"));
   const backlogPath = path.join(dir, "repair_backlog.json");

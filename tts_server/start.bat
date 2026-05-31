@@ -46,7 +46,20 @@ if errorlevel 1 (
 )
 
 set "TTS_PYTHON=%~dp0venv\Scripts\pythonw.exe"
-if not exist "%TTS_PYTHON%" set "TTS_PYTHON=%~dp0venv\Scripts\python.exe"
+set "TTS_ALLOW_CONSOLE="
+if /I "%LOCAL_TTS_ALLOW_CONSOLE%"=="1" set "TTS_ALLOW_CONSOLE=1"
+if /I "%LOCAL_TTS_ALLOW_CONSOLE%"=="true" set "TTS_ALLOW_CONSOLE=1"
+if /I "%LOCAL_TTS_ALLOW_CONSOLE%"=="yes" set "TTS_ALLOW_CONSOLE=1"
+if /I "%LOCAL_TTS_ALLOW_CONSOLE%"=="on" set "TTS_ALLOW_CONSOLE=1"
+if not exist "%TTS_PYTHON%" (
+    if defined TTS_ALLOW_CONSOLE (
+        set "TTS_PYTHON=%~dp0venv\Scripts\python.exe"
+    ) else (
+        del "%TTS_START_LOCK%" >nul 2>nul
+        echo ERROR: pythonw.exe not found. Refusing to open a visible local TTS console. Set LOCAL_TTS_ALLOW_CONSOLE=1 only for manual debugging.
+        exit /b 1
+    )
+)
 
 powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "$argsList = @('-m','uvicorn','server:app','--host',$env:TTS_HOST,'--port',$env:TTS_PORT,'--log-level','info'); Start-Process -FilePath $env:TTS_PYTHON -ArgumentList $argsList -WorkingDirectory $env:TTS_ROOT -WindowStyle Hidden -RedirectStandardOutput $env:TTS_STDOUT -RedirectStandardError $env:TTS_STDERR"
 if errorlevel 1 (

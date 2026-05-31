@@ -37,14 +37,14 @@ test("resolveLocalTtsRuntimePaths uses the windowless repo venv python on Window
   assert.match(paths.stderrPath, /server_stderr\.log$/);
 });
 
-test("resolveLocalTtsRuntimePaths falls back to console python when pythonw is unavailable", () => {
+test("resolveLocalTtsRuntimePaths keeps the windowless path when pythonw is unavailable by default", () => {
   const root = tempRoot();
   fs.rmSync(path.join(root, "tts_server", "venv", "Scripts", "pythonw.exe"));
   const paths = resolveLocalTtsRuntimePaths({ root, platform: "win32", env: {} });
 
   assert.equal(
     paths.pythonPath,
-    path.join(root, "tts_server", "venv", "Scripts", "python.exe"),
+    path.join(root, "tts_server", "venv", "Scripts", "pythonw.exe"),
   );
 });
 

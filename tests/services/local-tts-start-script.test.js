@@ -14,6 +14,8 @@ test("tts_server start.bat uses a windowless idempotent launcher", () => {
   assert.match(source, /server_stderr\.log/i);
   assert.match(source, /server_start\.lock/i);
   assert.match(source, /TTS_START_LOCK_TTL_MINUTES=30/i);
+  assert.match(source, /LOCAL_TTS_ALLOW_CONSOLE/i);
+  assert.match(source, /pythonw\.exe not found/i);
   assert.match(source, /pulse-gaming tts_server starting/i);
   assert.match(source, /ConvertTo-Json/i);
   assert.match(source, /started_at/i);
@@ -21,4 +23,5 @@ test("tts_server start.bat uses a windowless idempotent launcher", () => {
   assert.match(source, /already running/i);
   assert.doesNotMatch(source, /^call\s+venv\\Scripts\\activate\.bat\s*$/im);
   assert.doesNotMatch(source, /^python\s+-m\s+uvicorn\s+server:app/im);
+  assert.doesNotMatch(source, /if\s+not\s+exist\s+"%TTS_PYTHON%"\s+set\s+"TTS_PYTHON=.*python\.exe"/i);
 });

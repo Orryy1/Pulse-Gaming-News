@@ -100,6 +100,64 @@ test("selectReprocessableScriptFailureStories also targets fixable validation re
   assert.match(rows[0].script_failure_reprocess_reason, /Hook too long/);
 });
 
+test("selectReprocessableScriptFailureStories targets current publish blocker repairs", () => {
+  const rows = selectReprocessableScriptFailureStories({
+    stories: [
+      {
+        id: "duration-too-long",
+        title: "Runtime needs tightening",
+        script_validation_errors: ["qa:duration_too_long"],
+      },
+      {
+        id: "audio-too-long",
+        title: "Audio runtime needs tightening",
+        publish_error: "content_qa:audio_duration_too_long",
+      },
+      {
+        id: "glued-tts",
+        source_type: "rss",
+        subreddit: "IGN",
+        title: "Source-backed story has glued narration",
+        publish_error: "content_qa:glued_sentence_in_tts_script",
+      },
+      {
+        id: "placeholder-public-copy",
+        source_type: "reddit",
+        subreddit: "pcgaming",
+        article_url: "https://www.eurogamer.net/real-source",
+        title: "Article-backed story has placeholder copy",
+        publish_error: "content_qa:public_output:placeholder_title",
+      },
+      {
+        id: "published-placeholder",
+        source_type: "rss",
+        subreddit: "GameSpot",
+        title: "Already public row stays untouched",
+        publish_error: "content_qa:public_output:placeholder_title",
+        youtube_post_id: "yt_public",
+      },
+      {
+        id: "community-placeholder",
+        source_type: "reddit",
+        subreddit: "gaming",
+        title: "Unsourced community thread stays out of source-bound repair",
+        publish_error: "content_qa:public_output:placeholder_title",
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    rows.map((row) => row.id),
+    [
+      "duration-too-long",
+      "audio-too-long",
+      "glued-tts",
+      "placeholder-public-copy",
+    ],
+  );
+  assert.match(rows[3].script_failure_reprocess_reason, /placeholder_title/);
+});
+
 test("selectReprocessableScriptFailureStories targets source-backed coherence repairs only", () => {
   const rows = selectReprocessableScriptFailureStories({
     stories: [

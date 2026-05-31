@@ -44,8 +44,12 @@ test("publish blocker resolution turns not-approved V4 green stories into approv
 test("publish blocker resolution maps common production blockers to concrete recovery lanes", () => {
   const cases = [
     ["qa_failure:audio_generation_failed:tts_timeout", "audio_regeneration"],
+    ["qa:approved_voice:local_voice_mastering_missing", "voice_mastering_repair"],
     ["qa_failure:script_generation_review:Actual spoken word count 172 outside 180-220 Flash Lane range", "script_runtime_rewrite"],
     ["qa_failure:script_generation_review:script_coherence:top_comment_used_as_fact", "canonical_script_rewrite"],
+    ["qa:script_validation_review_required_public_row_repair", "stale_script_qa_recheck"],
+    ["qa:public_output:placeholder_title", "public_copy_package_repair"],
+    ["qa:glued_sentence_in_tts_script", "canonical_script_rewrite"],
     ["qa_failure:thin_visuals_blocked:thin_visuals_below_three", "visual_v4_motion_enrichment"],
     ["qa:gold_standard:motion_density_below_reference", "visual_v4_motion_enrichment"],
     ["qa:gold_standard:rights_risk_above_reference", "rights_ledger_repair"],
@@ -53,17 +57,21 @@ test("publish blocker resolution maps common production blockers to concrete rec
     ["qa_failure:script_generation_review:script_generation_error:Bad control character in string literal", "script_generation_retry"],
     ["instagram story upload failed after 3 attempts: Only photo or video can be accepted", "platform_media_repair"],
     ["Instagram URL processing failed: status_code=ERROR status=Error: Media upload has failed with error code 2207076", "platform_media_repair"],
+    ["qa:video_pixel_format_not_yuv420p (yuvj420p)", "platform_media_repair"],
     ["missing_mp4", "produce_or_render"],
     ["incident_guard:incident:stale_temporal_claim", "stale_temporal_review"],
   ];
 
   for (const [reason, expectedLane] of cases) {
+    const sourceBacked =
+      /top_comment_used_as_fact|glued_sentence_in_tts_script|public_output/.test(reason);
     const item = classifyPublishBlocker({
       story: {
         id: "story-1",
         title: "Test Story",
-        source_type: /top_comment_used_as_fact/.test(reason) ? "rss" : "",
-        article_url: /top_comment_used_as_fact/.test(reason) ? "https://www.eurogamer.net/story" : "",
+        source_type: sourceBacked ? "rss" : "",
+        article_url: sourceBacked ? "https://www.eurogamer.net/story" : "",
+        exported_path: /approved_voice/.test(reason) ? "output/final/story-1.mp4" : "",
       },
       reason,
     });
@@ -71,6 +79,70 @@ test("publish blocker resolution maps common production blockers to concrete rec
     assert.equal(item.dead_end, false, reason);
     assert.ok(item.safe_next_command, reason);
   }
+});
+
+test("publish blocker repair orchestration routes mechanical voice and media blockers out of manual triage", () => {
+  const plan = buildPublishBlockerResolutionPlan({
+    stories: [
+      {
+        id: "voice-story",
+        title: "Voice Story",
+        source_type: "rss",
+        article_url: "https://www.ign.com/articles/voice",
+        exported_path: "output/final/voice-story.mp4",
+      },
+      { id: "pixel-story", title: "Pixel Story" },
+      { id: "public-row", title: "Public Row Story", source_type: "rss", article_url: "https://www.eurogamer.net/public-row" },
+      { id: "glued-story", title: "Glued Story", source_type: "rss", article_url: "https://www.pcgamer.com/glued" },
+      { id: "package-copy", title: "Package Copy Story", source_type: "rss", article_url: "https://www.ign.com/articles/package" },
+    ],
+    excluded: [
+      { id: "voice-story", title: "Voice Story", reason: "qa:approved_voice:local_voice_mastering_missing" },
+      { id: "pixel-story", title: "Pixel Story", reason: "qa:video_pixel_format_not_yuv420p (yuvj420p)" },
+      { id: "public-row", title: "Public Row Story", reason: "qa:script_validation_review_required_public_row_repair" },
+      { id: "glued-story", title: "Glued Story", reason: "qa:glued_sentence_in_tts_script" },
+      { id: "package-copy", title: "Package Copy Story", reason: "qa:public_output:placeholder_title" },
+    ],
+    candidateCount: 0,
+    limit: 10,
+  });
+
+  assert.equal(plan.recovery_lanes.voice_mastering_repair, 1);
+  assert.equal(plan.recovery_lanes.platform_media_repair, 1);
+  assert.equal(plan.recovery_lanes.stale_script_qa_recheck, 1);
+  assert.equal(plan.recovery_lanes.canonical_script_rewrite, 1);
+  assert.equal(plan.repair_orchestration.counts.operator_review_backlog, 0);
+  assert.equal(plan.repair_orchestration.counts.auto_repair_backlog, 5);
+
+  const autoStage = plan.repair_orchestration.stages.find((stage) => stage.id === "auto_repair_backlog");
+  const voice = autoStage.items.find((item) => item.story_id === "voice-story");
+  const glued = autoStage.items.find((item) => item.story_id === "glued-story");
+  const packageCopy = autoStage.items.find((item) => item.story_id === "package-copy");
+  assert.match(voice.recommended_command, /voice:repair-final-audio/);
+  assert.equal(voice.operator_approval_required, false);
+  assert.match(glued.recommended_command, /--source-bound-only/);
+  assert.match(glued.recommended_command, /--force-story/);
+  assert.equal(packageCopy.repair_lane, "public_copy_package_repair");
+  assert.match(packageCopy.recommended_command, /goal-public-copy-repair/);
+});
+
+test("approved-voice blockers without a final render stay in render repair lane", () => {
+  const item = classifyPublishBlocker({
+    story: {
+      id: "voice-no-final",
+      title: "Voice Story Without Final",
+      source_type: "rss",
+      article_url: "https://www.ign.com/articles/voice",
+      audio_path: "output/audio/voice-no-final.mp3",
+      exported_path: "",
+    },
+    reason: "qa:approved_voice:local_voice_mastering_missing",
+    v4ReadyStoryIds: new Set(["voice-no-final"]),
+  });
+
+  assert.equal(item.resolution_lane, "produce_or_render");
+  assert.equal(item.safety_gate, "render_and_governance_required");
+  assert.match(item.safe_next_command, /ops:goal-production-render/);
 });
 
 test("publish blocker resolution treats rights-risk QA failures as auto-repairable rights ledger work", () => {
@@ -347,6 +419,27 @@ test("publish blocker resolution fallback explains when publishable candidates a
   assert.equal(plan.fresh_content_fallback.enabled, false);
   assert.match(plan.fresh_content_fallback.reason, /Publishable candidates already exist/);
   assert.match(plan.publish_runway.next_action, /HUMAN_REVIEW|guarded scheduler/);
+});
+
+test("publish blocker resolution does not auto-repair stale excluded rows missing from the live story set", () => {
+  const plan = buildPublishBlockerResolutionPlan({
+    stories: [{ id: "current-story", title: "Current Story" }],
+    excluded: [
+      {
+        id: "stale-story",
+        title: "Old placeholder-title blocker",
+        reason: "qa:public_output:placeholder_title",
+      },
+    ],
+    candidateCount: 0,
+  });
+
+  assert.equal(plan.summary.auto_repairable_items, 0);
+  assert.equal(plan.recovery_lanes.already_handled, 1);
+  assert.equal(plan.priority_items[0].story_id, "stale-story");
+  assert.equal(plan.priority_items[0].resolution_lane, "already_handled");
+  assert.equal(plan.priority_items[0].can_apply_automatically, false);
+  assert.match(plan.priority_items[0].action, /stale/i);
 });
 
 test("publish blocker resolution runway measures the whole backlog, not just returned rows", () => {

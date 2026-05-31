@@ -21,6 +21,7 @@ test("bridge live rights repair CLI parses dry-run and apply arguments", () => {
     "story-a",
     "--limit",
     "4",
+    "--dry-run",
     "--apply",
     "--operator-confirmed",
     "--json",
@@ -30,6 +31,7 @@ test("bridge live rights repair CLI parses dry-run and apply arguments", () => {
   assert.equal(args.generatedAt, "2026-05-22T08:50:00.000Z");
   assert.equal(args.storyId, "story-a");
   assert.equal(args.limit, 4);
+  assert.equal(args.dryRun, true);
   assert.equal(args.apply, true);
   assert.equal(args.operatorConfirmed, true);
   assert.equal(args.json, true);

@@ -48,11 +48,13 @@ function parseArgs(argv = process.argv.slice(2)) {
 }
 
 function numberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
 
 function needsAudioRepair(acoustic = {}) {
+  if (acoustic?.ok === false) return false;
   const lufs = numberOrNull(acoustic.integratedLufs);
   const peak = numberOrNull(acoustic.truePeakDb);
   return (
@@ -183,7 +185,7 @@ function renderMarkdown(report) {
     `Generated: ${report.generatedAt}`,
     `Mode: ${report.mode}`,
     `Stories inspected: ${report.rows.length}`,
-    `Repairs applied: ${report.counts.applied}`,
+    `Repairs applied: ${report.counts?.applied || 0}`,
     "",
     "## Rows",
   ];

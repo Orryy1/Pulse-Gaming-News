@@ -28,6 +28,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     limit: 0,
     apply: false,
     operatorConfirmed: false,
+    dryRun: true,
     json: false,
     help: false,
   };
@@ -37,6 +38,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--generated-at") args.generatedAt = argv[++i] || args.generatedAt;
     else if (arg === "--story-id") args.storyId = argv[++i] || "";
     else if (arg === "--limit") args.limit = Number(argv[++i] || 0);
+    else if (arg === "--dry-run") args.dryRun = true;
     else if (arg === "--apply") args.apply = true;
     else if (arg === "--operator-confirmed") args.operatorConfirmed = true;
     else if (arg === "--json") args.json = true;
@@ -58,6 +60,7 @@ function usage() {
     "  --generated-at <iso>     Fixed timestamp for deterministic reports",
     "  --story-id <id>          Repair one story id",
     "  --limit <n>              Inspect at most n candidates; 0 means all",
+    "  --dry-run                Explicit no-op flag; dry-run is already the default",
     "  --apply                  Apply eligible repairs to SQLite",
     "  --operator-confirmed     Required with --apply",
     "  --json                   Print JSON report",

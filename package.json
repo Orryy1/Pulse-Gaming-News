@@ -89,6 +89,7 @@
     "ops:goal-breaking-news": "node tools/goal-breaking-news-fast-lane.js",
     "ops:goal-production-cutover": "node tools/goal-production-cutover.js",
     "ops:goal-render-inputs": "node tools/goal-render-input-workorder.js",
+    "ops:auto-repair-runner": "node tools/auto-repair-runner.js",
     "ops:goal-owned-motion": "node tools/goal-owned-motion-materializer.js",
     "ops:goal-storefront-visuals": "node tools/goal-storefront-visual-repair.js",
     "ops:goal-official-stills": "node tools/goal-official-still-visual-repair.js",

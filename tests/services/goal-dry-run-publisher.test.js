@@ -24,7 +24,7 @@ const { currentRenderPolicyManifest } = require("../../lib/studio/v4/render-poli
 
 function inferFixtureSubject(title = "Forza Horizon 6") {
   const match = String(title).match(
-    /^(.+?)\s+(?:Already|Brings|Exposes|Finally|Has|Is|Just|May|Now|Reaches|Will|Gets|Raises|Walked)\b/,
+    /^(.+?)\s+(?:Already|Brings|Drops|Exposes|Finally|Gets|Has|Is|Just|Leaves|May|Now|Raises|Reaches|Scores|Tops|Walked|Will)\b/,
   );
   return (match ? match[1] : title).trim();
 }
@@ -59,20 +59,41 @@ async function makeStoryPackage(
   const audioWordCount = options.audioWordCount || 3;
   const captionWordCount = options.captionWordCount || audioWordCount;
   const voiceQualityWordCount = options.voiceQualityWordCount || audioWordCount;
+  const defaultFirstLine = `${subject} just gave players a concrete warning.`;
+  const defaultScript =
+    `${defaultFirstLine} Eurogamer reports ${subject} now has a source-safe update players can actually use. ` +
+    "The catch is what changes next: timing, access and platform support decide whether this becomes useful or just another headline. " +
+    "That gives the story a clear player impact without stretching beyond the source. Follow Pulse Gaming so you never miss a beat.";
   await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
     story_id: id,
     canonical_subject: subject,
     canonical_title: `${subject} - the long raw article headline with extra source words`,
     short_title: title,
     selected_title: title,
-    first_spoken_line: `${subject} just exposed a sharper gaming story.`,
-    narration_script:
-      `${subject} just exposed a sharper gaming story. The source points to a clear player signal that is worth watching before the next upload cycle.`,
+    first_spoken_line: defaultFirstLine,
+    narration_script: defaultScript,
     description: `${subject} has a new source-safe gaming angle. Source: Eurogamer.`,
     thumbnail_headline: `${subject.toUpperCase()} ANGLE`,
     primary_source: { name: "Eurogamer", url: "https://www.eurogamer.net/example" },
     discovery_source: { name: "RSS", url: "https://www.eurogamer.net/feed" },
     ...(options.canonicalPatch || {}),
+  });
+  await fs.outputJson(path.join(artifactDir, "script_scorecard.json"), {
+    schema_version: 1,
+    execution_mode: "viral_script_intelligence_v1",
+    story_id: id,
+    verdict: options.scriptVerdict || "viral_ready",
+    viral_score: options.scriptScore || 86,
+    scores: {
+      hook_strength: options.hookStrengthScore || 86,
+      curiosity_gap: options.curiosityGapScore || 86,
+      insight_density: options.insightDensityScore || 86,
+      source_safety: options.sourceSafetyScore || 86,
+      retention_pacing: options.retentionPacingScore || 86,
+    },
+    blockers: options.scriptBlockers || [],
+    warnings: [],
+    generated_at: options.scriptScorecardGeneratedAt || "2026-05-24T20:08:00.000Z",
   });
   await fs.outputJson(path.join(artifactDir, "publish_verdict.json"), {
     verdict,
@@ -147,9 +168,8 @@ async function makeStoryPackage(
     manifest: {
       selected_title: title,
       thumbnail_headline: `${subject.toUpperCase()} ANGLE`,
-      first_spoken_line: `${subject} just exposed a sharper gaming story.`,
-      narration_script:
-        `${subject} just exposed a sharper gaming story. The source points to a clear player signal that is worth watching before the next upload cycle.`,
+      first_spoken_line: defaultFirstLine,
+      narration_script: defaultScript,
       description: `${subject} has a new source-safe gaming angle. Source: Eurogamer.`,
       source_card_label: "Eurogamer",
     },
@@ -207,8 +227,7 @@ async function makeStoryPackage(
   await fs.outputJson(path.join(artifactDir, "narration_manifest.json"), {
     status: "ready",
     audio_path: "narration.mp3",
-    transcript:
-      `${subject} just exposed a sharper gaming story. The source points to a clear player signal that is worth watching before the next upload cycle.`,
+    transcript: defaultScript,
   });
   await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), {
     status: "ready",
@@ -2245,6 +2264,34 @@ test("goal dry-run publisher blocks packages with rough public copy", async () =
   assert.ok(plan.blocked_stories[0].blockers.includes("public_copy:malformed_quote_title"));
 });
 
+test("goal dry-run publisher blocks formulaic hooks even when a stale script scorecard says green", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-formula-hook-"));
+  const storyPackage = await makeStoryPackage(root, "formula-hook-story", "GREEN", "Hades II Just Broke PlayStation's Silence", {
+    canonicalSubject: "Hades II",
+    canonicalPatch: {
+      first_spoken_line: "Hades 2 is not just leaving early access.",
+      narration_script:
+        "Hades 2 is not just leaving early access. Xbox's trailer lists Hades II for Xbox and PlayStation, with an April 14 date. The useful part is the console timing: PlayStation and Xbox players would land on the same day instead of waiting on a late port. The catch is controller feel, because Hades lives or dies on dodge timing and clean combat reads. Follow Pulse Gaming so you never miss a beat.",
+      primary_source: { name: "Xbox", url: "https://www.youtube.com/watch?v=example" },
+    },
+    scriptVerdict: "viral_ready",
+    scriptScore: 91,
+  });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-05-31T02:05:00.000Z",
+    platformOperationalConfig: {
+      youtube: { state: "enabled", reason: "core_upload_path" },
+    },
+  });
+
+  assert.equal(plan.overall_verdict, "RED");
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.ok(plan.blocked_stories[0].blockers.includes("script_scorecard:formulaic_not_just_hook"));
+  assert.ok(plan.blocked_stories[0].blockers.includes("script_scorecard:script_verdict_rewrite_required"));
+});
+
 test("goal dry-run publisher blocks stale platform packs before publish actions", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-platform-stale-copy-"));
   const storyPackage = await makeStoryPackage(
@@ -3058,6 +3105,30 @@ test("goal dry-run CLI treats array bridge candidates as freshness evidence", as
   const report = await readCandidateReport(root);
 
   assert.equal(report, null);
+});
+
+test("goal dry-run CLI accepts preflight reports written moments after array bridge refresh", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-array-bridge-write-skew-"));
+  const bridgePath = path.join(root, "output", "goal-contract", "scheduler_bridge_candidates.json");
+  const reportPath = path.join(root, "test", "output", "next_publish_candidates.json");
+  await fs.outputJson(bridgePath, [{ id: "story-one" }]);
+  await fs.outputJson(reportPath, {
+    generated_at: "2026-05-23T08:00:00.000Z",
+    candidates: [
+      {
+        id: "story-one",
+        status: "publish_ready",
+        preflight_qa: { status: "pass", blockers: [] },
+      },
+    ],
+  });
+
+  const bridgeTime = new Date("2026-05-23T08:00:03.000Z");
+  await fs.utimes(bridgePath, bridgeTime, bridgeTime);
+
+  const report = await readCandidateReport(root);
+
+  assert.equal(report.candidates[0].id, "story-one");
 });
 
 test("goal dry-run CLI honours explicitly supplied preflight reports", async () => {

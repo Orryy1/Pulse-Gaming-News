@@ -15,6 +15,8 @@ const {
 } = require("../lib/goal-dry-run-publisher");
 const { buildPlatformOperationalConfig } = require("../lib/ops/platform-status");
 
+const CANDIDATE_REPORT_BRIDGE_WRITE_SKEW_MS = 10_000;
+
 function parseArgs(argv = process.argv.slice(2)) {
   const args = {
     root: process.cwd(),
@@ -144,7 +146,7 @@ async function candidateReportIsStaleAgainstBridge(root, report = {}, filePath =
   if (bridgeGeneratedAt == null) return false;
   const reportGeneratedAt = await reportGeneratedAtMs(report, filePath);
   if (reportGeneratedAt == null) return false;
-  return reportGeneratedAt + 1000 < bridgeGeneratedAt;
+  return reportGeneratedAt + CANDIDATE_REPORT_BRIDGE_WRITE_SKEW_MS < bridgeGeneratedAt;
 }
 
 async function readPlatformOperationalConfig(root, explicitPath = null) {

@@ -676,9 +676,9 @@ test("public copy package repair rewrites trailer scorecard blockers with story-
       source: "Xbox",
       claim: "Xbox's trailer lists Hades II for Xbox and PlayStation, with an April 14 date.",
       thumbnail: "HADES II CONSOLE DATE",
-      expected: /The catch is why controller feel matters/i,
-      forbidden: /\bHades II is not just leaving early access\b|\bThe catch is what matters after the reveal cut\b/i,
-      speechAlias: /\bHades 2 is not just leaving early access\b/i,
+      expected: /The catch is controller feel/i,
+      forbidden: /\bHades (?:II|2) is not just leaving early access\b|\bThe catch is what matters after the reveal cut\b/i,
+      speechAlias: /\bHades II hits Xbox and PlayStation on the same April clock\b/i,
     },
     {
       storyId: "stranger-five-eras",
@@ -1007,7 +1007,9 @@ test("public copy repair rewrites raw official Hades trailer metadata into creat
   );
 
   assert.doesNotMatch(repaired.manifest.narration_script, /Xbox reports Hades II - Xbox/i);
-  assert.match(repaired.manifest.narration_script, /Xbox's trailer lists Hades 2 for Xbox and PlayStation/i);
+  assert.match(repaired.manifest.narration_script, /Hades II hits Xbox and PlayStation on the same April clock/i);
+  assert.match(repaired.manifest.narration_script, /Xbox's trailer lists Supergiant's sequel for both consoles on April 14/i);
+  assert.doesNotMatch(repaired.manifest.narration_script, /not just leaving early access/i);
   assert.doesNotMatch(repaired.manifest.narration_script, /For players, this only matters/i);
   assert.equal(repaired.manifest.full_script, repaired.manifest.narration_script);
   assert.equal(repaired.manifest.tts_script, repaired.manifest.narration_script);

@@ -207,6 +207,29 @@ test("viral script intelligence rejects instruction-like buyer advice narration"
   assert.ok(result.rewrite_recommendations.some((item) => /story consequence/i.test(item)));
 });
 
+test("viral script intelligence rejects formulaic not-just hooks", () => {
+  const script =
+    "Hades 2 is not just leaving early access. " +
+    "Xbox's trailer lists Hades II for Xbox and PlayStation, with an April 14 date. " +
+    "The useful part is the console timing: PlayStation and Xbox players would land on the same day instead of waiting on a late port. " +
+    "The catch is controller feel, because Hades lives or dies on dodge timing and clean combat reads. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "hades-not-just-hook",
+      title: "Hades II Just Broke PlayStation's Silence",
+      source_name: "Xbox",
+    },
+    script,
+  });
+
+  assert.equal(result.verdict, "rewrite_required");
+  assert.ok(result.blockers.includes("formulaic_not_just_hook"));
+  assert.ok(result.scores.hook_strength < 55);
+  assert.ok(result.rewrite_recommendations.some((item) => /specific consequence/i.test(item)));
+});
+
 test("viral script intelligence treats source names as present despite casing differences", () => {
   const result = buildViralScriptIntelligence({
     story: {

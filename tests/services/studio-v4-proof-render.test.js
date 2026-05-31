@@ -873,7 +873,7 @@ test("Studio V4 proof renderer keeps source footage inside a safe vertical compo
 
   assert.match(source, /split=2\[bgsrc\$\{i\}\]\[fgsrc\$\{i\}\]/);
   assert.match(source, /boxblur=32:1/);
-  assert.match(source, /scale=1010:1780:force_original_aspect_ratio=decrease:in_range=pc:out_range=tv/);
+  assert.match(source, /scale=940:1660:force_original_aspect_ratio=decrease:in_range=pc:out_range=tv/);
   assert.match(source, /overlay=\(W-w\)\/2:\(H-h\)\/2/);
   assert.doesNotMatch(source, /crop=1080:1920:\(iw-1080\)\/2:\(ih-1920\)\/2/);
   assert.match(source, /\[overlayBase\]ass=\$\{assPathFilter\(assPath\)\},format=yuv420p\[outv\]/);
@@ -916,7 +916,7 @@ test("Studio V4 proof renderer reports current SFX, voice and visual design poli
   assert.match(source, /visual_design_policy_version:\s*STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION/);
   assert.equal(STUDIO_V4_SFX_MIX_POLICY_VERSION, "source_lock_news_tick_v6");
   assert.equal(STUDIO_V4_VOICE_MIX_POLICY_VERSION, "local_voice_levelled_v2");
-  assert.equal(STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION, "newsroom_safe_vertical_compose_v7");
+  assert.equal(STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION, "newsroom_safe_vertical_compose_v8");
 });
 
 test("Studio V4 overlay chain brightens the opening instead of globally darkening first frames", () => {

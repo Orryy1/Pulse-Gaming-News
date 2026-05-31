@@ -16,10 +16,12 @@ const {
   generateLocalVoiceCandidate,
   renderFlashLaneVoiceWorkbenchMarkdown,
 } = require("../lib/studio/v2/flash-lane-voice-workbench");
+const {
+  resolveLocalAcousticProbePythonPath,
+} = require("../lib/ops/local-acoustic-probe");
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
-const LOCAL_TTS_PYTHON = path.join(ROOT, "tts_server", "venv", "Scripts", "python.exe");
 
 function parseArgs(argv) {
   const args = {
@@ -211,7 +213,7 @@ function probeAcoustic(file) {
 }
 
 function probeMedianPitch(file) {
-  const python = fs.existsSync(LOCAL_TTS_PYTHON) ? LOCAL_TTS_PYTHON : "python";
+  const python = resolveLocalAcousticProbePythonPath({ root: ROOT });
   const code = [
     "import json, sys",
     "import numpy as np",

@@ -74,6 +74,20 @@ test("resolveWindowlessPythonPath honours explicit console debugging opt-in", ()
   assert.equal(selected, python);
 });
 
+test("resolveLocalTtsRuntimePaths honours console debugging opt-in for default venv", () => {
+  const root = tempRoot();
+  const paths = resolveLocalTtsRuntimePaths({
+    root,
+    platform: "win32",
+    env: { LOCAL_TTS_ALLOW_CONSOLE: "1" },
+  });
+
+  assert.equal(
+    paths.pythonPath,
+    path.join(root, "tts_server", "venv", "Scripts", "python.exe"),
+  );
+});
+
 test("buildLocalTtsStartSpec starts uvicorn on localhost without shell quoting", () => {
   const root = tempRoot();
   const spec = buildLocalTtsStartSpec({

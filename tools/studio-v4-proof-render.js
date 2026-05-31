@@ -1091,7 +1091,7 @@ async function renderProof({ storyJson, output }) {
     filterParts.push(
       `[${i}:v]split=2[bgsrc${i}][fgsrc${i}]`,
       `[bgsrc${i}]scale=1080:1920:force_original_aspect_ratio=increase:in_range=pc:out_range=tv,crop=w=1080:h=1920:x=(iw-1080)/2:y=(ih-1920)/2,boxblur=32:1,eq=brightness=-0.10:saturation=1.18,fps=${FPS},format=yuv420p,setsar=1[bg${i}]`,
-      `[fgsrc${i}]scale=1010:1780:force_original_aspect_ratio=decrease:in_range=pc:out_range=tv,fps=${FPS},format=yuv420p,setsar=1[fg${i}]`,
+      `[fgsrc${i}]scale=940:1660:force_original_aspect_ratio=decrease:in_range=pc:out_range=tv,fps=${FPS},format=yuv420p,setsar=1[fg${i}]`,
       `[bg${i}][fg${i}]overlay=(W-w)/2:(H-h)/2,trim=duration=${scene.durationS},setpts=PTS-STARTPTS,fps=${FPS},format=yuv420p,setsar=1[v${i}]`,
     );
   }

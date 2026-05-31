@@ -293,7 +293,7 @@ test("goal production render materializer prefers real motion clips carried only
   });
 
   const calls = [];
-  await materializeGoalProductionRenders({
+  const report = await materializeGoalProductionRenders({
     workspaceRoot: root,
     workOrder: {
       jobs: [
@@ -719,7 +719,7 @@ test("goal production render materializer prefers real materialised clips over s
     },
   });
   const calls = [];
-  await materializeGoalProductionRenders({
+  const report = await materializeGoalProductionRenders({
     workspaceRoot: root,
     workOrder: { jobs: [staleJob] },
     generatedAt: "2026-05-22T10:30:00.000Z",
@@ -743,6 +743,115 @@ test("goal production render materializer prefers real materialised clips over s
   assert.ok(refreshedBenchmark.scores.rights_risk_score >= 90);
   assert.ok(!refreshedBenchmark.failures.includes("gold_standard:rights_risk_above_reference"));
   assert.equal(refreshedBenchmark.visual_evidence_profile.generated_only_motion_deck, false);
+});
+
+test("goal production render materializer puts direct video before still-derived motion for first-frame repairs", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-direct-first-"));
+  const artifactDir = await makePackage(root, "direct-video-first-frame");
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "direct-video-first-frame",
+    canonical_subject: "Pragmata",
+    selected_title: "Pragmata Stage Was Handmade",
+    thumbnail_headline: "PRAGMATA STAGE HANDMADE",
+    primary_source: "Automaton Media",
+    confirmed_claims: ["Pragmata's stage was handmade by developers."],
+    narration_script:
+      "Pragmata's AI-looking stage was handmade by developers. That matters because players were already arguing about whether Capcom had used generative shortcuts.",
+    first_spoken_line: "Pragmata's AI-looking stage was handmade by developers.",
+    description:
+      "Pragmata's stage was handmade by developers, according to Automaton Media. This short focuses on the player-facing art pipeline debate and source-safe context.",
+  });
+
+  const stillClips = [];
+  for (let index = 0; index < 4; index += 1) {
+    const clipPath = path.join(root, "output", "video_cache", `pragmata-still-${index + 1}.mp4`);
+    await fs.outputFile(clipPath, Buffer.alloc(2048, index + 10));
+    stillClips.push({
+      id: `pragmata-still-${index + 1}`,
+      path: clipPath,
+      local_materialized_path: clipPath,
+      source_url: `https://shared.akamai.steamstatic.com/store_item_assets/pragmata/shot-${index + 1}.jpg`,
+      source_type: "steam_screenshot",
+      source_family: `steam_screenshot_pragmata_${index + 1}`,
+      motion_family: `steam_screenshot_pragmata_${index + 1}`,
+      media_kind: "visual_still",
+      rights_basis: "steam_storefront_promotional_editorial_use",
+      counts_towards_motion_readiness: true,
+    });
+  }
+
+  const directClips = [];
+  for (let index = 0; index < 4; index += 1) {
+    const clipPath = path.join(root, "output", "video_cache", `pragmata-direct-${index + 1}.mp4`);
+    await fs.outputFile(clipPath, Buffer.alloc(2048, index + 30));
+    directClips.push({
+      id: `pragmata-direct-${index + 1}`,
+      path: clipPath,
+      local_materialized_path: clipPath,
+      source_url: `https://shared.akamai.steamstatic.com/store_item_assets/pragmata/movie-${index + 1}.mp4`,
+      source_type: "steam_movie",
+      source_family: `steam_movie_pragmata_${index + 1}`,
+      motion_family: `steam_movie_pragmata_${index + 1}`,
+      media_kind: "direct_video",
+      rights_basis: "steam_storefront_promotional_editorial_use",
+      counts_towards_motion_readiness: true,
+    });
+  }
+
+  const allClips = [...stillClips, ...directClips];
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips: allClips,
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    motion_inventory: {
+      production_motion_clips: allClips,
+      distinct_source_families: allClips.map((clip) => clip.source_family),
+      trusted_local_source_families: allClips.map((clip) => clip.source_family),
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    records: allClips.map((clip) => ({
+      asset_id: clip.id,
+      asset_type: clip.media_kind === "direct_video" ? "motion_clip" : "screenshot_derived_motion_clip",
+      kind: "video",
+      path: clip.path,
+      source_url: clip.source_url,
+      source_type: clip.source_type,
+      source_family: clip.source_family,
+      licence_basis: "steam_storefront_promotional_editorial_use",
+      commercial_use_allowed: true,
+      approval_status: "approved_for_transformative_editorial_use",
+    })),
+  });
+
+  const calls = [];
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: {
+      jobs: [
+        readyJob("direct-video-first-frame", artifactDir, {
+          evidence: {
+            ...readyJob("direct-video-first-frame", artifactDir).evidence,
+            materialised_motion_clip_paths: allClips.map((clip) => clip.path),
+            materialised_motion_clip_count: allClips.length,
+            distinct_motion_family_count: allClips.length,
+          },
+        }),
+      ],
+    },
+    generatedAt: "2026-05-31T22:55:00.000Z",
+    renderProof: async ({ storyJson, output }) => {
+      const story = await fs.readJson(storyJson);
+      calls.push(story);
+      await fs.outputFile(output, Buffer.alloc(4096, 8));
+      return { story_id: story.id, output, clips: story.video_clips.length, rendered_duration_s: 40, size_bytes: 4096 };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1, JSON.stringify(report.jobs));
+  assert.deepEqual(calls[0].video_clips.slice(0, 4), directClips.map((clip) => clip.path));
+  assert.deepEqual(calls[0].video_clips.slice(4, 8), stillClips.map((clip) => clip.path));
 });
 
 test("goal production render materializer tops up limited real clips with owned kinetic motion", async () => {

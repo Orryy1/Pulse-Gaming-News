@@ -84,6 +84,7 @@
     "ops:goal-visual-source-review": "node tools/goal-visual-source-review.js",
     "ops:goal-human-review": "node tools/goal-human-review-queue.js",
     "ops:goal-human-review-decisions": "node tools/goal-human-review-decision-sheet.js",
+    "ops:goal-record-operator-decision": "node tools/goal-operator-decision-recorder.js",
     "ops:goal-human-review-approval": "node tools/goal-human-review-approval-gate.js",
     "ops:goal-guarded-dispatch-preflight": "node tools/goal-guarded-dispatch-preflight.js",
     "ops:goal-guarded-dispatch-executor-preflight": "node tools/goal-guarded-dispatch-executor-preflight.js",

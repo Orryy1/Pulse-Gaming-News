@@ -18,20 +18,32 @@ function tempRoot() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-local-tts-"));
   fs.mkdirSync(path.join(root, "tts_server", "venv", "Scripts"), { recursive: true });
   fs.writeFileSync(path.join(root, "tts_server", "venv", "Scripts", "python.exe"), "");
+  fs.writeFileSync(path.join(root, "tts_server", "venv", "Scripts", "pythonw.exe"), "");
   return root;
 }
 
-test("resolveLocalTtsRuntimePaths uses the repo venv python when present", () => {
+test("resolveLocalTtsRuntimePaths uses the windowless repo venv python on Windows when present", () => {
   const root = tempRoot();
   const paths = resolveLocalTtsRuntimePaths({ root, platform: "win32", env: {} });
 
   assert.equal(paths.serverDir, path.join(root, "tts_server"));
   assert.equal(
     paths.pythonPath,
-    path.join(root, "tts_server", "venv", "Scripts", "python.exe"),
+    path.join(root, "tts_server", "venv", "Scripts", "pythonw.exe"),
   );
   assert.match(paths.stdoutPath, /server_stdout\.log$/);
   assert.match(paths.stderrPath, /server_stderr\.log$/);
+});
+
+test("resolveLocalTtsRuntimePaths falls back to console python when pythonw is unavailable", () => {
+  const root = tempRoot();
+  fs.rmSync(path.join(root, "tts_server", "venv", "Scripts", "pythonw.exe"));
+  const paths = resolveLocalTtsRuntimePaths({ root, platform: "win32", env: {} });
+
+  assert.equal(
+    paths.pythonPath,
+    path.join(root, "tts_server", "venv", "Scripts", "python.exe"),
+  );
 });
 
 test("buildLocalTtsStartSpec starts uvicorn on localhost without shell quoting", () => {
@@ -90,11 +102,37 @@ test("startLocalTtsServer spawns detached hidden local process and returns logs"
   });
 
   assert.equal(result.pid, 12345);
-  assert.equal(captured.cmd.endsWith("python.exe"), true);
+  assert.equal(captured.cmd.endsWith("pythonw.exe"), true);
   assert.equal(captured.opts.detached, true);
   assert.equal(captured.opts.windowsHide, true);
   assert.equal(captured.opts.cwd, path.join(root, "tts_server"));
   assert.match(result.spec.stdoutPath, /server_stdout\.log$/);
+});
+
+test("startLocalTtsServer skips duplicate starts while a fresh start lock exists", async () => {
+  const root = tempRoot();
+  const logsDir = path.join(root, "tts_server", "logs");
+  fs.mkdirSync(logsDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(logsDir, "server_start.lock"),
+    JSON.stringify({ started_at: new Date().toISOString(), pid: 1111 }),
+  );
+
+  let spawned = false;
+  const result = await startLocalTtsServer({
+    root,
+    platform: "win32",
+    env: {},
+    spawnImpl: () => {
+      spawned = true;
+      return { pid: 12345, unref() {} };
+    },
+  });
+
+  assert.equal(spawned, false);
+  assert.equal(result.skipped, true);
+  assert.equal(result.reason, "start_lock_active");
+  assert.equal(result.pid, null);
 });
 
 test("renderLocalTtsDoctorMarkdown is operator-readable and local-only", () => {

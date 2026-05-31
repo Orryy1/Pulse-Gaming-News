@@ -202,7 +202,7 @@ function probeAcoustic(file) {
       "null",
       "-",
     ],
-    { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 45000 },
+    { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 45000, windowsHide: true },
   );
   return {
     ...parseAstats([result.stderr, result.stdout, result.error?.message].filter(Boolean).join("\n")),
@@ -244,6 +244,7 @@ function probeMedianPitch(file) {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
     timeout: 120000,
+    windowsHide: true,
   });
   if (result.status !== 0) return { medianPitchHz: null };
   try {
@@ -286,7 +287,7 @@ async function normaliseVoiceAudio({ inputPath, outputPath, pitchFactor = 1 }) {
       outputBitrate,
       outputPath,
     ],
-    { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 120000 },
+    { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 120000, windowsHide: true },
   );
   if (result.status !== 0) {
     throw new Error(

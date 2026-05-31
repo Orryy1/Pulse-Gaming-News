@@ -262,6 +262,21 @@ test("Pulse Studio local TTS paths request high-bitrate source audio before mast
   assert.doesNotMatch(workbenchSource, /output_format:\s*"mp3_44100_128"/);
 });
 
+test("Pulse flash-lane voice workbench hides Windows subprocess probes", () => {
+  const workbenchSource = fs.readFileSync(
+    path.join(ROOT, "tools", "flash-lane-voice-workbench.js"),
+    "utf8",
+  );
+  const calls = [...workbenchSource.matchAll(/spawnSync\([\s\S]*?\n\s*\);/g)].map(
+    (match) => match[0],
+  );
+
+  assert.equal(calls.length >= 3, true);
+  for (const call of calls) {
+    assert.match(call, /windowsHide:\s*true/);
+  }
+});
+
 test("Pulse Studio local production voice metadata stays at native Liam rate", () => {
   const soundLayerSource = fs.readFileSync(
     path.join(ROOT, "lib", "studio", "sound-layer.js"),

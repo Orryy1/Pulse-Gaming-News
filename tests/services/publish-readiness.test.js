@@ -56,10 +56,11 @@ test("dominantVerdict: all green stays green", () => {
 // ── PILLAR_NAMES contract ────────────────────────────────────────
 
 test("PILLAR_NAMES: includes cadence plus the original readiness pillars", () => {
-  assert.equal(pr.PILLAR_NAMES.length, 26);
+  assert.equal(pr.PILLAR_NAMES.length, 27);
   assert.ok(pr.PILLAR_NAMES.includes("publish_cadence"));
   assert.ok(pr.PILLAR_NAMES.includes("strict_dry_run_control"));
   assert.ok(pr.PILLAR_NAMES.includes("human_review_approval_gate"));
+  assert.ok(pr.PILLAR_NAMES.includes("guarded_dispatch_preflight"));
   assert.ok(pr.PILLAR_NAMES.includes("repair_backlog"));
   assert.ok(pr.PILLAR_NAMES.includes("platform_duration_contract"));
   assert.ok(pr.PILLAR_NAMES.includes("final_voice_audit"));
@@ -322,7 +323,7 @@ test("buildPublishReadinessReport: empty store does not crash, returns at least 
   );
   assert.equal(report.story_count, 0);
   assert.ok(typeof report.pillars === "object");
-  assert.equal(Object.keys(report.pillars).length, 26);
+  assert.equal(Object.keys(report.pillars).length, 27);
   assert.ok(typeof report.next_action === "string");
 });
 
@@ -512,6 +513,155 @@ test("pillarHumanReviewApprovalGate: invalid decisions are red", () => {
 
     assert.equal(pillar.verdict, "red");
     assert.equal(pillar.reason, "human_review_approval_gate_invalid_decisions");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("pillarGuardedDispatchPreflight: no approved actions stays amber and cannot dispatch", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-guarded-dispatch-pillar-empty-"));
+  const reportPath = path.join(dir, "guarded_dispatch_preflight_report.json");
+  try {
+    fs.writeFileSync(
+      reportPath,
+      JSON.stringify({
+        generated_at: "2026-05-31T18:00:00.000Z",
+        mode: "GUARDED_DISPATCH_PREFLIGHT",
+        verdict: "AMBER",
+        safe_to_publish_boolean: false,
+        summary: {
+          approved_action_count: 0,
+          dispatch_ready_action_count: 0,
+          blocked_action_count: 0,
+          safety_blocker_count: 0,
+        },
+        advisory: ["no_operator_approved_actions"],
+        guarded_dispatch_plan: {
+          ready_for_guarded_dispatch: false,
+          live_publish_allowed_from_this_tool: false,
+          required_next_step: "record_operator_approved_actions_before_guarded_dispatch",
+          safety: {
+            no_publish_triggered: true,
+            no_network_uploads: true,
+            no_db_mutation: true,
+            no_oauth_or_token_change: true,
+          },
+        },
+        safety: {
+          no_publish_triggered: true,
+          no_network_uploads: true,
+          no_db_mutation: true,
+          no_oauth_or_token_change: true,
+        },
+      }),
+    );
+
+    const pillar = pr.pillarGuardedDispatchPreflight({
+      reportPath,
+      now: Date.parse("2026-05-31T18:05:00.000Z"),
+    });
+
+    assert.equal(pillar.verdict, "amber");
+    assert.equal(pillar.reason, "no_operator_approved_actions");
+    assert.equal(pillar.raw.ready_for_guarded_dispatch, false);
+    assert.equal(pillar.raw.dispatch_ready_action_count, 0);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("pillarGuardedDispatchPreflight: stale or mismatched approved actions are red", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-guarded-dispatch-pillar-red-"));
+  const reportPath = path.join(dir, "guarded_dispatch_preflight_report.json");
+  try {
+    fs.writeFileSync(
+      reportPath,
+      JSON.stringify({
+        generated_at: "2026-05-31T18:00:00.000Z",
+        mode: "GUARDED_DISPATCH_PREFLIGHT",
+        verdict: "RED",
+        safe_to_publish_boolean: false,
+        summary: {
+          approved_action_count: 1,
+          dispatch_ready_action_count: 0,
+          blocked_action_count: 1,
+          safety_blocker_count: 0,
+        },
+        guarded_dispatch_plan: {
+          ready_for_guarded_dispatch: false,
+          live_publish_allowed_from_this_tool: false,
+          safety: {
+            no_publish_triggered: true,
+            no_network_uploads: true,
+            no_db_mutation: true,
+            no_oauth_or_token_change: true,
+          },
+        },
+        safety: {
+          no_publish_triggered: true,
+          no_network_uploads: true,
+          no_db_mutation: true,
+          no_oauth_or_token_change: true,
+        },
+      }),
+    );
+
+    const pillar = pr.pillarGuardedDispatchPreflight({
+      reportPath,
+      now: Date.parse("2026-05-31T18:05:00.000Z"),
+    });
+
+    assert.equal(pillar.verdict, "red");
+    assert.equal(pillar.reason, "guarded_dispatch_preflight_blocked");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("pillarGuardedDispatchPreflight: dispatch-ready approved actions are green", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-guarded-dispatch-pillar-green-"));
+  const reportPath = path.join(dir, "guarded_dispatch_preflight_report.json");
+  try {
+    fs.writeFileSync(
+      reportPath,
+      JSON.stringify({
+        generated_at: "2026-05-31T18:00:00.000Z",
+        mode: "GUARDED_DISPATCH_PREFLIGHT",
+        verdict: "GREEN",
+        safe_to_publish_boolean: false,
+        summary: {
+          approved_action_count: 2,
+          dispatch_ready_action_count: 2,
+          blocked_action_count: 0,
+          safety_blocker_count: 0,
+        },
+        guarded_dispatch_plan: {
+          ready_for_guarded_dispatch: true,
+          live_publish_allowed_from_this_tool: false,
+          safety: {
+            no_publish_triggered: true,
+            no_network_uploads: true,
+            no_db_mutation: true,
+            no_oauth_or_token_change: true,
+          },
+        },
+        safety: {
+          no_publish_triggered: true,
+          no_network_uploads: true,
+          no_db_mutation: true,
+          no_oauth_or_token_change: true,
+        },
+      }),
+    );
+
+    const pillar = pr.pillarGuardedDispatchPreflight({
+      reportPath,
+      now: Date.parse("2026-05-31T18:05:00.000Z"),
+    });
+
+    assert.equal(pillar.verdict, "green");
+    assert.equal(pillar.raw.dispatch_ready_action_count, 2);
+    assert.equal(pillar.raw.ready_for_guarded_dispatch, true);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

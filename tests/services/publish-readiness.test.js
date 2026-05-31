@@ -639,6 +639,12 @@ test("pillarHumanReviewConsole: visual strip evidence is surfaced before operato
           red_card_count: 0,
           amber_card_count: 4,
         },
+        visual_repair_work_order: {
+          summary: {
+            job_count: 4,
+            ready_for_repair_count: 4,
+          },
+        },
         safety: {
           no_publish_triggered: true,
           no_network_uploads: true,
@@ -661,6 +667,7 @@ test("pillarHumanReviewConsole: visual strip evidence is surfaced before operato
   assert.equal(pillar.raw.visual_strip.safety_intact, true);
   assert.equal(pillar.raw.visual_strip_qa.risk_card_count, 4);
   assert.equal(pillar.raw.visual_strip_qa.frame_warning_count, 7);
+  assert.equal(pillar.raw.visual_strip_qa.visual_repair_work_order_job_count, 4);
   assert.equal(pillar.raw.visual_strip_qa.safety_intact, true);
 
   const nextAction = pr.resolvePublishReadinessNextAction({
@@ -680,6 +687,7 @@ test("pillarHumanReviewConsole: visual strip evidence is surfaced before operato
 
   assert.match(nextAction, /visual strip QA report/);
   assert.match(nextAction, /4 risky cards, 7 frame warnings/);
+  assert.match(nextAction, /human_review_visual_repair_work_order\.md/);
   assert.match(nextAction, /human_review_visual_strip_qa_report\.html/);
   assert.match(nextAction, /human_review_visual_strip_report\.html/);
 });

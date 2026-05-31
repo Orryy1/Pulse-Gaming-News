@@ -109,6 +109,14 @@ test("visual strip QA flags weak first frame and possible edge text cutoff", asy
   assert.ok(card.risk_reasons.includes("possible_edge_text_cutoff"));
   assert.ok(card.risk_reasons.includes("thumbnail_headline_mobile_readability_risk"));
   assert.ok(card.repair_recommendations.includes("open_full_video_before_any_approval"));
+  assert.equal(report.visual_repair_work_order.summary.job_count, 1);
+  assert.equal(report.visual_repair_work_order.summary.ready_for_repair_count, 1);
+  assert.equal(report.visual_repair_work_order.jobs[0].story_id, "story-one");
+  assert.equal(report.visual_repair_work_order.jobs[0].blocker_type, "visual_strip_qa_warning");
+  assert.equal(report.visual_repair_work_order.jobs[0].operator_approval_required, false);
+  assert.equal(report.visual_repair_work_order.jobs[0].db_mutation_required, false);
+  assert.match(report.visual_repair_work_order.jobs[0].recommended_command, /ops:goal-production-render/);
+  assert.match(report.visual_repair_work_order.jobs[0].post_repair_validation_command, /ops:goal-human-review-visual-strip-qa/);
 });
 
 test("visual strip QA hard-blocks missing frame evidence without pretending review is complete", async () => {
@@ -120,6 +128,9 @@ test("visual strip QA hard-blocks missing frame evidence without pretending revi
   assert.equal(report.summary.blocked_card_count, 1);
   assert.equal(report.cards[0].verdict, "RED");
   assert.ok(report.cards[0].risk_reasons.includes("missing_visual_strip_frame"));
+  assert.equal(report.visual_repair_work_order.summary.job_count, 1);
+  assert.equal(report.visual_repair_work_order.jobs[0].repair_lane, "visual_strip_frame_regeneration");
+  assert.match(report.visual_repair_work_order.jobs[0].recommended_command, /goal-human-review-visual-strip/);
 });
 
 test("visual strip QA HTML is local-only and exposes no approval surface", async () => {
@@ -158,6 +169,8 @@ test("visual strip QA writer and CLI emit local proof artefacts", async () => {
 
   assert.equal(await fs.pathExists(written.jsonPath), true);
   assert.equal(await fs.pathExists(written.htmlPath), true);
+  assert.equal(await fs.pathExists(path.join(outDir, "human_review_visual_repair_work_order.json")), true);
+  assert.equal(await fs.pathExists(path.join(outDir, "human_review_visual_repair_work_order.md")), true);
 
   const result = spawnSync(
     process.execPath,
@@ -180,6 +193,7 @@ test("visual strip QA writer and CLI emit local proof artefacts", async () => {
   const parsed = JSON.parse(result.stdout);
   assert.equal(parsed.safe_to_publish_boolean, false);
   assert.equal(await fs.pathExists(path.join(outDir, "human_review_visual_strip_qa_report.html")), true);
+  assert.equal(await fs.pathExists(path.join(outDir, "human_review_visual_repair_work_order.json")), true);
 
   const pkg = await fs.readJson(path.join(ROOT, "package.json"));
   assert.equal(pkg.scripts["ops:goal-human-review-visual-strip-qa"], "node tools/goal-human-review-visual-strip-qa.js");

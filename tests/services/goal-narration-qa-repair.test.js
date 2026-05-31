@@ -144,6 +144,49 @@ test("narration QA repair keeps caption timing drift blocked", async () => {
   assert.ok(report.rows[0].remaining_blockers.includes("voice_quality_report_not_pass"));
 });
 
+test("narration QA repair refreshes stale caption manifests when caption evidence still matches audio", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-narration-qa-repair-stale-caption-"));
+  const fixture = await makeNarrationQaFixture(root);
+  await fs.outputJson(path.join(fixture.artifactDir, "audio_manifest.json"), {
+    story_id: fixture.storyId,
+    status: "ready",
+    voice_status: "materialized",
+    narration_audio_path: "narration.mp3",
+    word_timestamps_path: "word_timestamps.json",
+    word_timestamp_count: 125,
+    materialized_at: "2026-05-31T01:00:00.000Z",
+  });
+  await fs.outputJson(path.join(fixture.artifactDir, "caption_manifest.json"), {
+    story_id: fixture.storyId,
+    generated_at: "2026-05-30T23:59:00.000Z",
+    caption_srt_path: "captions.srt",
+    word_timestamps_path: "word_timestamps.json",
+    word_count: 125,
+  });
+  fixture.dryRunPlan.blocked_stories[0].blockers = [
+    "caption_manifest_stale_after_audio",
+    "voice_quality_report_stale_after_captions",
+  ];
+
+  const report = await repairNarrationQaArtifacts({
+    dryRunPlan: fixture.dryRunPlan,
+    generatedAt: "2026-05-31T01:12:00.000Z",
+    apply: true,
+  });
+
+  assert.equal(report.summary.target_count, 1);
+  assert.equal(report.summary.freshness_pass_count, 1);
+  assert.equal(report.summary.remaining_blocked_count, 0);
+  assert.equal(report.rows[0].caption_manifest_written, true);
+
+  const captionManifest = await fs.readJson(path.join(fixture.artifactDir, "caption_manifest.json"));
+  assert.equal(captionManifest.generated_at, "2026-05-31T01:12:00.000Z");
+  assert.equal(captionManifest.word_count, 125);
+  assert.equal(captionManifest.repair_source, "current_caption_file_and_audio_manifest");
+  assert.equal(captionManifest.safety.no_publish_triggered, true);
+  assert.equal(captionManifest.safety.no_db_mutation, true);
+});
+
 test("narration QA repair materialises a missing narration manifest from current audio evidence", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-narration-manifest-repair-"));
   const resolvedAudioPath = path.join(root, "media", "audio", "hades.mp3");

@@ -1415,7 +1415,7 @@ async function scriptScorecardPreflightForStory(story = {}, opts = {}) {
   if (Number.isFinite(score) && score < threshold) {
     failures.push("script_score_below_threshold");
   }
-  if (/rewrite_required|reject|blocked|fail/.test(verdict)) {
+  if (/rewrite_required|tighten_before_tts|reject|blocked|fail/.test(verdict)) {
     failures.push(`script_verdict_${verdict}`);
   }
   for (const blocker of blockers) {

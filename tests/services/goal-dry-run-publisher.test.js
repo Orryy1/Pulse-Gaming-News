@@ -435,6 +435,7 @@ test("goal dry-run publisher defers externally blocked or operator-disabled plat
   assert.equal(plan.overall_verdict, "AMBER");
   assert.equal(plan.ready_for_unattended_publish, false);
   assert.ok(plan.readiness_reasons.includes("platform_actions_deferred_until_enabled"));
+  assert.ok(plan.readiness_reasons.includes("enabled_platform_actions_require_human_review"));
   assert.equal(plan.safe_publish_plan.live_publish_allowed_from_this_plan, false);
   assert.equal(plan.safe_publish_plan.required_next_step, "operator_human_review_for_enabled_actions");
 
@@ -448,7 +449,7 @@ test("goal dry-run publisher defers externally blocked or operator-disabled plat
   assert.ok(enabledActions.every((action) => action.live_execution_gate === "operator_human_review_required"));
   assert.deepEqual(
     plan.platform_status_matrix.platforms.youtube_shorts.live_execution_gate_reasons,
-    ["platform_actions_deferred_until_enabled"],
+    ["platform_actions_deferred_until_enabled", "enabled_platform_actions_require_human_review"],
   );
 
   assert.equal(tiktok.action, "would_queue_when_enabled");
@@ -1818,6 +1819,51 @@ test("goal dry-run publisher skips stories the scheduler excluded because they a
   assert.equal(plan.skipped_stories[0].reason, "already_has_public_platform_id:youtube_post_id,youtube_url");
 });
 
+test("goal dry-run publisher ignores stale visual-source defers after newer rights-backed final render evidence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-stale-visual-source-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "repaired-visual-source",
+    "GREEN",
+    "Forza Horizon 6 Reaches Steam",
+    {
+      canonicalSubject: "Forza Horizon 6",
+      renderGeneratedAt: "2026-05-24T20:00:00.000Z",
+    },
+  );
+  await fs.outputJson(path.join(storyPackage.artifact_dir, "visual_source_review.json"), {
+    schema_version: 1,
+    story_id: "repaired-visual-source",
+    generated_at: "2026-05-23T02:48:23.141Z",
+    decision: "defer_until_rights_backed_media_available",
+    reason: "rights-backed real visual media is not available yet",
+    visual_source_blockers: ["direct_video_motion_clip_floor_not_met"],
+  });
+  await fs.outputJson(path.join(storyPackage.artifact_dir, "rights_ledger.json"), {
+    records: [1, 2, 3].map((index) => ({
+      asset_id: `official-trailer-segment-${index}`,
+      asset_type: "video_clip",
+      path: `output/video_cache/repaired-visual-source-official-trailer-segment-${index}.mp4`,
+      source_url: `https://cdn.example.com/official-trailer-segment-${index}.mp4`,
+      source_type: "official_trailer_segment",
+      source_family: `official_trailer_segment_${index}`,
+      licence_basis: "official_store_trailer_transformative_editorial_use",
+      allowed_platforms: ["youtube", "tiktok", "instagram", "facebook", "x", "threads", "pinterest"],
+      commercial_use_allowed: true,
+      approval_status: "approved",
+    })),
+  });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-05-31T06:05:00.000Z",
+  });
+
+  assert.equal(plan.summary.ready_story_count, 1);
+  assert.equal(plan.summary.skipped_story_count, 0);
+  assert.equal(plan.ready_stories[0].story_id, "repaired-visual-source");
+});
+
 test("goal dry-run publisher blocks non-GREEN or incomplete packages", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-blocked-"));
   const blocked = await makeStoryPackage(root, "blocked-story", "RED");
@@ -2290,6 +2336,31 @@ test("goal dry-run publisher blocks formulaic hooks even when a stale script sco
   assert.equal(plan.summary.ready_story_count, 0);
   assert.ok(plan.blocked_stories[0].blockers.includes("script_scorecard:formulaic_not_just_hook"));
   assert.ok(plan.blocked_stories[0].blockers.includes("script_scorecard:script_verdict_rewrite_required"));
+});
+
+test("goal dry-run publisher blocks scripts still marked tighten before TTS", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-tighten-script-"));
+  const storyPackage = await makeStoryPackage(root, "tighten-script-story", "GREEN", "Hades II Just Broke PlayStation's Silence", {
+    canonicalSubject: "Hades II",
+    scriptVerdict: "tighten_before_tts",
+    scriptScore: 84,
+  });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-05-31T04:46:00.000Z",
+    platformOperationalConfig: {
+      youtube: { state: "enabled", reason: "core_upload_path" },
+    },
+  });
+
+  assert.equal(plan.overall_verdict, "RED");
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 1);
+  assert.ok(
+    plan.blocked_stories[0].blockers.includes("script_scorecard:script_verdict_tighten_before_tts"),
+  );
+  assert.equal(plan.summary.planned_action_count, 0);
 });
 
 test("goal dry-run publisher blocks stale platform packs before publish actions", async () => {

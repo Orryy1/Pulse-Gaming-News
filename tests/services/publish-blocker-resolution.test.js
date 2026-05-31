@@ -611,6 +611,56 @@ test("publish blocker resolution candidate context includes QA-failed live backl
   assert.equal(item.can_apply_automatically, true);
 });
 
+test("publish blocker resolution does not auto-repair stale public-row QA labels outside the authoritative bridge", () => {
+  const context = buildPublishResolutionCandidateContext({
+    stories: [
+      {
+        id: "legacy-public-row",
+        title: "Old Public Row Repair Label",
+        qa_failed: true,
+        qa_failures: ["script_validation_review_required_public_row_repair"],
+      },
+      {
+        id: "bridge-ready",
+        title: "Bridge Ready Story",
+        approved: true,
+      },
+    ],
+    bridgeManifest: {
+      requested: true,
+      exists: true,
+      candidate_count: 1,
+      candidates: [
+        {
+          id: "bridge-ready",
+          title: "Bridge Ready Story",
+          approved: true,
+          auto_approved: true,
+          exported_path: "bridge.mp4",
+          duration_seconds: 44,
+          duration_lane: "normal_production",
+          audio_path: "bridge.mp3",
+        },
+      ],
+    },
+    limit: 20,
+  });
+  const inputs = publishResolutionInputsFromCandidateReport(context.candidateReport);
+  const plan = buildPublishBlockerResolutionPlan({
+    stories: context.mergedStories,
+    excluded: inputs.excluded,
+    candidateCount: inputs.candidateCount,
+    limit: 20,
+  });
+
+  const item = plan.priority_items.find((row) => row.story_id === "legacy-public-row");
+  assert.ok(item);
+  assert.match(item.blocker, /^live_db_legacy_debt:/);
+  assert.equal(item.resolution_lane, "already_handled");
+  assert.equal(item.can_apply_automatically, false);
+  assert.equal(plan.repair_orchestration.counts.auto_repair_backlog, 0);
+});
+
 test("publish blocker resolution candidate context honours upstream anti-spam duplicate skips", () => {
   const context = buildPublishResolutionCandidateContext({
     stories: [],

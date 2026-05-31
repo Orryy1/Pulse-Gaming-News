@@ -186,6 +186,39 @@ test("Goal 09 excludes strict dry-run skipped stories from active sound blockers
   assert.deepEqual(report.blocker_counts, {});
 });
 
+test("Goal 09 ignores stale strict dry-run skips once current Visual V4 evidence is ready", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal09-stale-skip-"));
+  const repairedStory = await makeSoundStory(root, "story-repaired");
+
+  const report = await buildGoal09SoundDesignEngine({
+    storyPackages: [repairedStory],
+    upstreamVisualReport: {
+      stories: [
+        { story_id: "story-repaired", status: "ready", blockers: [] },
+      ],
+    },
+    dryRunPlan: {
+      skipped_stories: [
+        {
+          story_id: "story-repaired",
+          status: "visual_source_deferred",
+          reason: "defer_until_rights_backed_media_available",
+        },
+      ],
+    },
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-05-31T06:00:00.000Z",
+  });
+
+  assert.equal(report.verdict, "PASS");
+  assert.equal(report.summary.active_story_count, 1);
+  assert.equal(report.summary.skipped_story_count, 0);
+  assert.equal(report.summary.sound_ready_story_count, 1);
+  assert.equal(report.stories[0].status, "ready");
+  assert.equal(report.stories[0].direct_sound_status, "pass");
+});
+
 test("Goal 09 accepts compact source-lock SFX manifests when all required roles are covered", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal09-source-lock-sfx-"));
   const story = await makeSoundStory(root, "story-source-lock-sfx", {

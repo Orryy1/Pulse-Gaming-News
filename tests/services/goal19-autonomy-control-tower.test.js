@@ -178,11 +178,11 @@ test("Goal 19 excludes upstream-skipped stories from active control tower blocke
   assert.equal(report.rejection_reasons.stories.length, 1);
 });
 
-test("Goal 19 accepts local viral script verdicts and materialised footage evidence", async () => {
+test("Goal 19 accepts final viral script verdicts and materialised footage evidence", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-local-contract-"));
   const story = await makeControlStory(root, "story-local-contract", {
     scriptScorecard: {
-      verdict: "tighten_before_tts",
+      verdict: "viral_ready",
       viral_score: 83,
       blockers: [],
       warnings: [],
@@ -226,6 +226,31 @@ test("Goal 19 accepts local viral script verdicts and materialised footage evide
   assert.equal(report.stories[0].control_inputs.script_scorecard.status, "pass");
   assert.equal(report.stories[0].control_inputs.footage_inventory.status, "pass");
   assert.deepEqual(report.direct_risk_counts, {});
+});
+
+test("Goal 19 blocks scripts still marked tighten before TTS", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-tighten-script-"));
+  const story = await makeControlStory(root, "story-tighten-script", {
+    scriptScorecard: {
+      verdict: "tighten_before_tts",
+      viral_score: 83,
+      blockers: [],
+      warnings: [],
+      scores: { hook_strength: 82, curiosity_gap: 87 },
+    },
+  });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18("story-tighten-script"),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-05-31T04:47:00.000Z",
+  });
+
+  assert.equal(report.verdict, "BLOCKED");
+  assert.equal(report.stories[0].control_inputs.script_scorecard.status, "fail");
+  assert.ok(report.stories[0].blockers.includes("control:script_scorecard_not_pass"));
 });
 
 test("Goal 19 accepts final post-render motion forensics when pre-render motion budgets are stale", async () => {

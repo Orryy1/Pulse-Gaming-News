@@ -860,6 +860,95 @@ test("production cutover separates direct-video floor failures from real-media c
   assert.equal(plan.queue[0].render_input_blockers.includes("real_visual_motion_clips_missing"), false);
 });
 
+test("production cutover accepts official product-page video plus official still motion for accessory stories", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-product-page-hybrid-"));
+  const storyPackage = await makeCutoverPackage(root, "xbox-controller-product-hybrid", {
+    subject: "Xbox Controller",
+    title: "Xbox Controller Deal Has One Catch",
+    primarySource: "Xbox",
+    primarySourceUrl: "https://www.xbox.com/en-US/accessories/forza-horizon-6-xbox-wireless-controller-and-wireless-headset",
+  });
+  const artifactDir = storyPackage.artifact_dir;
+  const audioPath = path.join(artifactDir, "narration.mp3");
+  const timestampsPath = path.join(artifactDir, "narration_timestamps.json");
+  await fs.outputFile(audioPath, Buffer.alloc(4000, 2));
+  await fs.outputJson(timestampsPath, { words: [{ word: "Xbox", start: 0, end: 0.3 }] });
+
+  const clips = [];
+  for (let index = 1; index <= 2; index += 1) {
+    const clipPath = path.join(artifactDir, "product-video", `xbox-product-${index}.mp4`);
+    await fs.outputFile(clipPath, Buffer.alloc(3000, index));
+    clips.push({
+      id: `xbox-product-direct-${index}`,
+      path: clipPath,
+      source_url: `https://cms-assets.xboxservices.com/assets/product-${index}.mp4`,
+      source_type: "official_platform_product_page",
+      media_kind: "direct_video",
+      source_url_kind: "direct_video",
+      source_family: `xbox_official_product_video_${index}`,
+      validated: true,
+      materialized: true,
+    });
+  }
+  for (let index = 1; index <= 6; index += 1) {
+    const clipPath = path.join(artifactDir, "official-stills", `xbox-still-${index}.mp4`);
+    await fs.outputFile(clipPath, Buffer.alloc(3000, index + 10));
+    clips.push({
+      id: `xbox-product-still-${index}`,
+      path: clipPath,
+      source_url: `https://cms-assets.xboxservices.com/assets/product-still-${index}.jpg`,
+      source_type: "official_press_kit_stills",
+      media_kind: "visual_still",
+      source_family: `xbox_official_still_${index}`,
+      rights_basis: "source_documented_transformative_editorial_use",
+      validated: true,
+      materialized: true,
+    });
+  }
+
+  await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), {
+    narration_audio_path: audioPath,
+    word_timestamps_path: timestampsPath,
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    motion_budget: {
+      required_motion_scenes: 13,
+      required_distinct_families: 6,
+      available_motion_clips: 8,
+      available_distinct_families: 8,
+    },
+    motion_inventory: {
+      accepted_local_clips: clips,
+      production_motion_clips: clips,
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    records: clips.map((clip) => ({
+      ...clip,
+      asset_type: clip.media_kind === "direct_video" ? "motion_clip" : "screenshot_derived_motion_clip",
+      licence_basis:
+        clip.media_kind === "direct_video"
+          ? "official_source_transformative_editorial_use"
+          : "source_documented_transformative_editorial_use",
+      commercial_use_allowed: true,
+      approval_status: "approved_for_transformative_editorial_use",
+      risk_score: 0.08,
+    })),
+  });
+
+  const plan = await buildProductionRenderCutoverPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-05-31T06:00:00.000Z",
+  });
+
+  assert.equal(plan.summary.queued_final_render_count, 1);
+  assert.equal(plan.summary.final_render_input_ready_count, 1);
+  assert.equal(plan.queue[0].render_input_status, "ready_for_final_render_job");
+  assert.equal(plan.queue[0].render_input_blockers.includes("direct_video_motion_clip_floor_not_met"), false);
+  assert.equal(plan.queue[0].render_input_blockers.includes("materialised_motion_clips_missing"), false);
+  assert.equal(plan.queue[0].render_input_evidence.real_motion_input_readiness.direct_video_motion_clip_floor, 2);
+});
+
 test("production cutover carries governed SFX evidence into scheduler bridge candidates", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-sfx-bridge-"));
   const storyPackage = await makeCutoverPackage(root, "sfx-bridge-ready", {
@@ -3262,6 +3351,154 @@ test("production cutover exposes the actual selected render deck to scheduler pr
   assert.match(candidate.video_clips[0].rights_basis, /official_reference/);
   assert.equal(candidate.video_clips[0].counts_towards_motion_readiness, true);
   assert.equal(candidate.video_clips[5].source_type, "internally_generated_motion_graphic");
+});
+
+test("production cutover does not let still-image audit rows overwrite selected motion rights evidence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-rights-audit-"));
+  const ready = await makeCutoverPackage(root, "rights-audit-story", {
+    finalPublishRender: true,
+    renderer: "visual_v4_production",
+    visualTier: "production_v4_motion",
+    subject: "The Expanse: Osiris Reborn",
+    title: "The Expanse Shows Real Gameplay",
+  });
+  const artifactDir = ready.artifact_dir;
+  const directClips = Array.from({ length: 6 }, (_, index) => ({
+    id: `direct_clip_${index + 1}`,
+    path: path.join(artifactDir, `direct-clip-${index + 1}.mp4`),
+    source_url: `https://video.akamai.steamstatic.com/store_trailers/3727390/${index + 1}/hls_264_master.m3u8`,
+    source_type: "steam_movie",
+    media_kind: "direct_video",
+    source_url_kind: "direct_video",
+    source_family: `steam_trailer_${index + 1}`,
+    rights_risk_class: "official_reference_transformative_short",
+    licence_basis: "official_reference_transformative_short",
+    counts_towards_motion_readiness: true,
+    validated: true,
+  }));
+  const stillClips = Array.from({ length: 6 }, (_, index) => ({
+    id: `steam_screenshot_${index + 1}`,
+    path: path.join(artifactDir, `still-motion-${index + 1}.mp4`),
+    source_url: index < 2
+      ? `output\\image_cache\\rights_audit_cached_steam_${index + 1}.jpg`
+      : `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/3727390/shot-${index + 1}.jpg`,
+    source_type: "screenshot",
+    media_kind: "visual_still",
+    source_family: "",
+    validated: true,
+  }));
+  const selectedClips = [...directClips, ...stillClips];
+  for (const clip of selectedClips) {
+    await fs.outputFile(clip.path, Buffer.alloc(3000, 4));
+  }
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "rights-audit-story",
+    canonical_subject: "The Expanse: Osiris Reborn",
+    canonical_game: "The Expanse: Osiris Reborn",
+    primary_source: "Xbox Wire",
+    primary_source_url: "https://news.xbox.com/example/expanse-gameplay",
+    selected_title: "The Expanse Shows Real Gameplay",
+    thumbnail_headline: "EXPANSE GAMEPLAY",
+    first_spoken_line: "The Expanse: Osiris Reborn finally showed real gameplay.",
+    narration_script:
+      "The Expanse: Osiris Reborn finally showed real gameplay. Xbox showed the game in motion, and that matters because licensed sci-fi games often hide the playable bit for too long. Follow Pulse Gaming so you never miss a beat.",
+    description: "The Expanse finally showed real gameplay. Source: Xbox Wire.",
+    source_card_label: "Xbox Wire",
+  });
+  await fs.outputJson(path.join(artifactDir, "render_manifest.json"), {
+    story_id: "rights-audit-story",
+    renderer: "visual_v4_production",
+    visual_tier: "production_v4_motion",
+    final_publish_render: true,
+    sfx_mix_policy_version: STUDIO_V4_SFX_MIX_POLICY_VERSION,
+    voice_mix_policy_version: STUDIO_V4_VOICE_MIX_POLICY_VERSION,
+    visual_design_policy_version: STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION,
+    output_path: path.join(artifactDir, "visual_v4_render.mp4"),
+    rendered_duration_s: 42.2,
+    clips: 12,
+  });
+  await fs.outputJson(path.join(artifactDir, "visual_v4_render_story.json"), {
+    story_id: "rights-audit-story",
+    visual_v4_bridge_video_clips: selectedClips,
+    video_clips: selectedClips.map((clip) => clip.path),
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    motion_inventory: {
+      production_motion_clips: directClips,
+      accepted_local_clips: directClips,
+    },
+  });
+  const directRightsRecords = directClips.map((clip) => ({
+      asset_id: clip.id,
+      asset_type: "motion_clip",
+      kind: "video",
+      path: clip.path,
+      source_url: clip.source_url,
+      source_type: clip.source_type,
+      licence_basis: "official_reference_transformative_short",
+      allowed_use: "short_transformative_editorial_reference",
+      approval_status: "approved_for_transformative_editorial_use",
+      commercial_use_allowed: true,
+      risk_score: 0.2,
+  }));
+  const safeStillMotionRecords = stillClips.map((clip) => ({
+    asset_id: clip.id,
+    asset_type: "screenshot_derived_motion_clip",
+    kind: "video",
+    path: clip.path,
+    source_url: clip.source_url,
+    source_type: "screenshot",
+    licence_basis: "source_documented_transformative_editorial_use",
+    allowed_use: "screenshot_derived_editorial_motion",
+    approval_status: "approved_for_transformative_editorial_use",
+    commercial_use_allowed: true,
+    risk_score: 0.32,
+    evidence_reference: clip.source_url.startsWith("http")
+      ? clip.source_url
+      : "retained_storefront_source_record:steam_appdetails",
+  }));
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    records: [
+      ...directRightsRecords,
+      ...stillClips.map((clip) => ({
+      asset_id: clip.id,
+      kind: "visual",
+      path: "",
+      source_url: clip.source_url,
+      source_type: "screenshot",
+      rights_risk_class: "",
+      source_family: "",
+      })),
+    ],
+    rights_ledger: [
+      ...directRightsRecords,
+      ...safeStillMotionRecords,
+    ],
+    matched_assets: safeStillMotionRecords,
+  });
+
+  const plan = await buildProductionRenderCutoverPlan({
+    storyPackages: [ready],
+    generatedAt: "2026-05-31T08:20:00.000Z",
+  });
+
+  assert.equal(plan.summary.scheduler_bridge_candidate_count, 1);
+  const candidate = plan.scheduler_bridge.candidates[0];
+  const benchmark = plan.ready[0].scheduler_candidate_benchmark_report;
+  assert.equal(benchmark.result, "pass");
+  assert.ok(benchmark.scores.rights_risk_score >= 90);
+  assert.ok(!benchmark.failures.includes("gold_standard:rights_risk_above_reference"));
+  assert.equal(candidate.rights_ledger.filter((record) =>
+    !record.licence_basis && !record.license_basis && !record.rights_basis,
+  ).length, 0);
+  for (const clip of stillClips) {
+    const record = candidate.rights_ledger.find((item) =>
+      item.asset_id === clip.id && item.path === clip.path,
+    );
+    assert.equal(record.asset_type, "screenshot_derived_motion_clip");
+    assert.equal(record.licence_basis, "source_documented_transformative_editorial_use");
+    assert.equal(record.approval_status, "approved_for_transformative_editorial_use");
+  }
 });
 
 test("production cutover records ElevenLabs narration rights when final audio uses ElevenLabs", async () => {

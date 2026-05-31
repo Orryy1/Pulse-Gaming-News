@@ -298,6 +298,76 @@ test("Goal 07 director brain clears stale actual-motion holds when current bench
   assert.ok(!report.stories[0].blockers.includes("director:actual_motion_clip_minimum_not_met"));
 });
 
+test("Goal 07 director brain accepts official product-page hybrid motion when direct proof and real media families cover the final plan", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal07-product-hybrid-motion-"));
+  const repaired = readyDirectorPlan("story-product-hybrid-motion");
+  const extraMotion = Array.from({ length: 3 }, (_, index) => ({
+    id: `official_still_motion_${index + 1}`,
+    kind: "motion_clip",
+    startS: 31 + index * 2,
+    durationS: 1.8,
+    source_family: `official_still_family_${index + 1}`,
+    media_path: `output/video/official-still-${index + 1}.mp4`,
+  }));
+  repaired.shot_plan = repaired.shot_plan.concat(extraMotion);
+  repaired.sfx_plan.cues = repaired.sfx_plan.cues.concat(
+    extraMotion.map((shot, index) => ({
+      id: `sfx_official_still_${index + 1}`,
+      target: shot.id,
+      target_kind: "motion_clip",
+      atS: shot.startS,
+      family: index % 2 ? "transition_hit" : "whoosh",
+    })),
+  );
+  repaired.sfx_plan.cue_count = repaired.sfx_plan.cues.length;
+  repaired.shot_budget = {
+    ...repaired.shot_budget,
+    min_actual_motion_clips: 13,
+    available_motion_clips: 8,
+    min_distinct_motion_families: 6,
+    available_distinct_motion_families: 8,
+  };
+  repaired.readiness = {
+    status: "director_blocked",
+    blockers: ["actual_motion_clip_minimum_not_met"],
+    warnings: ["product_page_hybrid_motion_uses_official_stills_after_direct_video_floor"],
+  };
+  repaired.media_house_benchmark = {
+    result: "pass",
+    failures: [],
+    scores: {
+      motion_density_score: 100,
+      media_house_polish_score: 92,
+    },
+    thresholds: {
+      motion_density_score: 75,
+      media_house_polish_score: 75,
+    },
+    visual_evidence_profile: {
+      direct_video_motion_asset_count: 2,
+      direct_video_motion_family_count: 2,
+      real_motion_asset_count: 20,
+      real_media_family_count: 14,
+      generated_only_motion_deck: false,
+      blockers: [],
+    },
+  };
+  const storyPackage = await makePackage(root, "story-product-hybrid-motion", repaired);
+
+  const report = await buildGoal07DirectorBrain({
+    storyPackages: [storyPackage],
+    workspaceRoot: root,
+    outputDir: path.join(root, "goal-07"),
+    generatedAt: "2026-05-25T22:11:50.000Z",
+  });
+
+  assert.equal(report.verdict, "PASS");
+  assert.equal(report.stories[0].status, "ready");
+  assert.equal(report.stories[0].metrics.motion_shot_count, 8);
+  assert.equal(report.stories[0].metrics.distinct_motion_family_count, 8);
+  assert.ok(!report.stories[0].blockers.includes("director:actual_motion_clip_minimum_not_met"));
+});
+
 test("Goal 07 director brain blocks weak first seconds, card-heavy edits and missing SFX coverage", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal07-weak-"));
   const weak = readyDirectorPlan("story-weak");

@@ -594,6 +594,53 @@ test("public copy package repair rewrites no-curiosity script scorecards before 
   assert.ok(!savedScorecard.warnings.includes("no_curiosity_marker"), JSON.stringify(savedScorecard, null, 2));
 });
 
+test("public copy package repair treats tighten-before-TTS scorecards as not publish-ready", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-public-copy-tighten-score-"));
+  const artifactDir = path.join(root, "batch", "expanse-gameplay");
+  await fs.ensureDir(artifactDir);
+  const script =
+    "The Expanse: Osiris Reborn finally has real gameplay on screen. Xbox showed The Expanse: Osiris Reborn gameplay during Partner Preview. The catch is what changes now: this is no longer just a logo and a licence, so the combat, scale and dialogue have to carry the name. Follow Pulse Gaming so you never miss a beat.";
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "expanse-gameplay",
+    canonical_subject: "The Expanse: Osiris Reborn",
+    selected_title: "The Expanse Shows Real Gameplay",
+    first_spoken_line: "The Expanse: Osiris Reborn finally has real gameplay on screen.",
+    primary_source: "Xbox",
+    confirmed_claims: [
+      "Xbox showed The Expanse: Osiris Reborn gameplay during Partner Preview.",
+    ],
+    narration_script: script,
+    full_script: script,
+    tts_script: script,
+    description: "Xbox showed The Expanse: Osiris Reborn gameplay during Xbox Partner Preview. Source: Xbox.",
+    thumbnail_headline: "EXPANSE GAMEPLAY REVEAL",
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "script_scorecard.json"), {
+    verdict: "tighten_before_tts",
+    viral_score: 83,
+    blockers: [],
+    warnings: [],
+    scores: {
+      hook_strength: 82,
+      curiosity_gap: 87,
+      insight_density: 78,
+      source_safety: 86,
+      retention_pacing: 82,
+    },
+  }, { spaces: 2 });
+
+  const report = await repairGoalPublicCopyPackages({
+    storyPackages: [{ story_id: "expanse-gameplay", artifact_dir: artifactDir }],
+    generatedAt: "2026-05-31T04:50:00.000Z",
+  });
+
+  assert.equal(report.summary.changed_count, 1, JSON.stringify(report, null, 2));
+  assert.equal(report.changed[0].status, "script_scorecard_repaired");
+  const savedScorecard = await fs.readJson(path.join(artifactDir, "script_scorecard.json"));
+  assert.notEqual(savedScorecard.verdict, "tighten_before_tts");
+  assert.ok(savedScorecard.viral_score >= 85, JSON.stringify(savedScorecard, null, 2));
+});
+
 test("public copy package repair gives leak and deal scripts recognised curiosity markers", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-public-copy-curiosity-classes-"));
   const cases = [

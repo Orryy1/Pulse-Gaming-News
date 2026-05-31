@@ -270,6 +270,10 @@ function qaFailedBacklogReason(story = {}) {
   return /^qa[:_]/i.test(reason) ? reason : `qa:${reason}`;
 }
 
+function isLegacyLiveDbOnlyQaReason(reason = "") {
+  return /script_validation_review_required_public_row_repair/i.test(String(reason || ""));
+}
+
 function appendQaFailedBacklogRepairContext({
   candidateReport = {},
   mergedStories = [],
@@ -305,10 +309,13 @@ function appendQaFailedBacklogRepairContext({
       mergedIds.add(id);
     }
     if (!candidateIds.has(id) && !excludedIds.has(id)) {
+      const reason = qaFailedBacklogReason(story);
       excluded.push({
         id,
         title: cleanText(story.title),
-        reason: qaFailedBacklogReason(story),
+        reason: isLegacyLiveDbOnlyQaReason(reason)
+          ? `live_db_legacy_debt:${reason.replace(/^qa[:_]?/i, "")}`
+          : reason,
         scheduler_bridge_source: "live_qa_failed_backlog",
       });
       excludedIds.add(id);

@@ -158,6 +158,32 @@ test("breaking fast lane treats official string primary sources with URL fallbac
   assert.equal(plan.correction_watch.watch_sources.length, 1);
 });
 
+test("breaking fast lane does not treat article URL keywords as official or independent source evidence", async () => {
+  const plan = await buildGoalBreakingNewsFastLanePlan({
+    story: officialStory({
+      story_id: "steam-controller-eurogamer",
+      canonical_subject: "Steam Controller",
+      canonical_game: "Steam Controller",
+      canonical_company: "Valve",
+      selected_title: "Steam Controller Date May Have Leaked",
+      first_spoken_line: "Steam Controller release timing may have leaked through a retail listing.",
+      primary_source: "Eurogamer",
+      primary_source_url: "https://www.eurogamer.net/steam-controller-release-date-leak",
+      official_source: "Eurogamer",
+      secondary_sources: [],
+      source_confidence_score: 0.9,
+      confirmed_claims: ["The Steam Controller release date may have leaked online."],
+    }),
+    platformState: { platforms: { instagram_reels: { operational_state: "ready" } } },
+  });
+
+  assert.equal(plan.breaking_news_manifest.source_strength.primary_source_reliability, "reliable_publication");
+  assert.equal(plan.breaking_news_manifest.source_strength.official_source_count, 0);
+  assert.equal(plan.breaking_news_manifest.source_strength.reliable_independent_source_count, 1);
+  assert.equal(plan.breaking_news_manifest.source_strength.has_two_independent_reliable_sources, false);
+  assert.equal(plan.follow_up_v4_plan.source_lock.reliability, "reliable_publication");
+});
+
 test("breaking fast lane treats ready_now assumed-enabled platforms as reviewable", async () => {
   const plan = await buildGoalBreakingNewsFastLanePlan({
     story: officialStory(),
@@ -243,4 +269,98 @@ test("breaking fast lane CLI without --story writes a safe overview instead of f
   assert.equal(stdout.safety.no_network_uploads, true);
   assert.equal(await fs.pathExists(path.join(outDir, "breaking_news_fast_lane_overview.json")), true);
   assert.equal(await fs.pathExists(path.join(outDir, "breaking_news_fast_lane_overview.md")), true);
+});
+
+test("breaking fast lane CLI can auto-select a current source-safe review candidate", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-breaking-fast-lane-auto-select-"));
+  const storyDir = path.join(root, "stories");
+  const outDir = path.join(root, "out");
+  await fs.ensureDir(storyDir);
+
+  const blockedStory = officialStory({
+    story_id: "reddit-fast-rumour",
+    canonical_subject: "Switch 2",
+    selected_title: "Switch 2 Rumour Spreads Online",
+    first_spoken_line: "Switch 2 rumours are moving fast online.",
+    primary_source: {
+      name: "Reddit",
+      url: "https://www.reddit.com/r/GamingLeaksAndRumours/comments/example",
+      type: "discussion",
+      reliability: "community_discussion",
+    },
+    official_source: null,
+    secondary_sources: [],
+    source_confidence_score: 40,
+  });
+  const selectedStory = officialStory({
+    story_id: "official-fast-story",
+    canonical_subject: "State of Play",
+    selected_title: "PlayStation Locks Its Next State Of Play",
+    first_spoken_line: "PlayStation just put State of Play back on the calendar.",
+    source_confidence_score: 95,
+  });
+  const blockedPath = path.join(storyDir, "blocked.json");
+  const selectedPath = path.join(storyDir, "selected.json");
+  const queuePath = path.join(root, "human_review_queue.json");
+  const platformPath = path.join(root, "platform_state.json");
+
+  await fs.writeJson(blockedPath, blockedStory, { spaces: 2 });
+  await fs.writeJson(selectedPath, selectedStory, { spaces: 2 });
+  await fs.writeJson(queuePath, {
+    review_items: [
+      {
+        story_id: blockedStory.story_id,
+        evidence: { canonical_manifest_path: blockedPath },
+        enabled_review_platforms: ["instagram_reels", "facebook_reels"],
+      },
+      {
+        story_id: selectedStory.story_id,
+        evidence: { canonical_manifest_path: selectedPath },
+        enabled_review_platforms: ["instagram_reels", "facebook_reels"],
+      },
+    ],
+  }, { spaces: 2 });
+  await fs.writeJson(platformPath, {
+    platforms: {
+      x: { operational_state: "disabled" },
+      threads: { operational_state: "ready" },
+      instagram_reels: { operational_state: "ready" },
+      facebook_reels: { operational_state: "ready" },
+    },
+  }, { spaces: 2 });
+
+  const cli = spawnSync(
+    process.execPath,
+    [
+      "tools/goal-breaking-news-fast-lane.js",
+      "--auto-select-current",
+      "--human-review-queue",
+      queuePath,
+      "--platform-state",
+      platformPath,
+      "--out-dir",
+      outDir,
+      "--json",
+    ],
+    { cwd: path.resolve(__dirname, "../.."), encoding: "utf8" },
+  );
+
+  assert.equal(cli.status, 0, cli.stderr);
+  const stdout = JSON.parse(cli.stdout);
+  assert.equal(stdout.breaking_news_manifest.story_id, "official-fast-story");
+  assert.equal(stdout.breaking_news_candidate_queue.selected_story_id, "official-fast-story");
+  assert.equal(stdout.breaking_news_candidate_queue.candidates.length, 2);
+  assert.equal(
+    stdout.breaking_news_candidate_queue.candidates.find((candidate) => candidate.story_id === "reddit-fast-rumour")
+      .eligible_for_fast_lane,
+    false,
+  );
+  assert.deepEqual(stdout.fast_publish_pack.publish_now_platforms, [
+    "threads",
+    "instagram_story_card",
+    "facebook_card",
+  ]);
+  assert.equal(stdout.safety.no_network_uploads, true);
+  assert.equal(await fs.pathExists(path.join(outDir, "breaking_news_candidate_queue.json")), true);
+  assert.equal(await fs.pathExists(path.join(outDir, "fast_publish_pack.json")), true);
 });

@@ -2237,6 +2237,66 @@ test("attachPreflightQa blocks bridge candidates with rewrite-required script sc
   assert.equal(report.candidates[0].preflight_qa.checks.script_scorecard.result, "fail");
 });
 
+test("attachPreflightQa blocks bridge candidates when script scorecard still needs tightening", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-script-tighten-preflight-"));
+  await fs.writeJson(path.join(tmp, "script_scorecard.json"), {
+    verdict: "tighten_before_tts",
+    viral_score: 84,
+    blockers: [],
+    warnings: [],
+    scores: {
+      hook_strength: 78,
+      curiosity_gap: 72,
+      insight_density: 76,
+      source_safety: 92,
+      retention_pacing: 80,
+    },
+  });
+  const stories = [
+    baseStory({
+      id: "tighten_script_bridge",
+      title: "Hades II Just Broke PlayStation's Silence",
+      scheduler_bridge_source: "goal_production_cutover",
+      scheduler_bridge_artifact_dir: tmp,
+      ...bridgeVisualEvidence("Hades II"),
+      sfx_manifest: bridgeSfxEvidence(),
+      rights_ledger: [{ asset_id: "hades-render" }],
+      video_clips: [
+        { path: "clip-a.mp4", source_family: "official_trailer_a" },
+        { path: "clip-b.mp4", source_family: "official_trailer_b" },
+        { path: "clip-c.mp4", source_family: "official_trailer_c" },
+      ],
+    }),
+  ];
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-05-31T04:45:00.000Z",
+  });
+
+  await attachPreflightQa(report, stories, {
+    upstreamBenchmarkReport: {
+      stories: [{ story_id: "tighten_script_bridge", status: "ready", blockers: [] }],
+    },
+    runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+  });
+
+  assert.equal(report.candidates[0].preflight_qa.status, "blocked");
+  assert.ok(
+    report.candidates[0].preflight_qa.blockers.includes(
+      "script_scorecard:script_verdict_tighten_before_tts",
+    ),
+  );
+  assert.equal(report.candidates[0].preflight_qa.checks.script_scorecard.result, "fail");
+});
+
 test("attachPreflightQa blocks final bridge candidates with no curiosity marker", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-script-curiosity-preflight-"));
   await fs.writeJson(path.join(tmp, "script_scorecard.json"), {

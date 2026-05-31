@@ -56,9 +56,10 @@ test("dominantVerdict: all green stays green", () => {
 // ── PILLAR_NAMES contract ────────────────────────────────────────
 
 test("PILLAR_NAMES: includes cadence plus the original readiness pillars", () => {
-  assert.equal(pr.PILLAR_NAMES.length, 25);
+  assert.equal(pr.PILLAR_NAMES.length, 26);
   assert.ok(pr.PILLAR_NAMES.includes("publish_cadence"));
   assert.ok(pr.PILLAR_NAMES.includes("strict_dry_run_control"));
+  assert.ok(pr.PILLAR_NAMES.includes("human_review_approval_gate"));
   assert.ok(pr.PILLAR_NAMES.includes("repair_backlog"));
   assert.ok(pr.PILLAR_NAMES.includes("platform_duration_contract"));
   assert.ok(pr.PILLAR_NAMES.includes("final_voice_audit"));
@@ -321,7 +322,7 @@ test("buildPublishReadinessReport: empty store does not crash, returns at least 
   );
   assert.equal(report.story_count, 0);
   assert.ok(typeof report.pillars === "object");
-  assert.equal(Object.keys(report.pillars).length, 25);
+  assert.equal(Object.keys(report.pillars).length, 26);
   assert.ok(typeof report.next_action === "string");
 });
 
@@ -385,6 +386,132 @@ test("pillarStrictDryRunControl: amber dry-run requires human review, not generi
     assert.match(nextAction, /Do not publish unattended/);
     assert.match(nextAction, /HUMAN_REVIEW/);
     assert.doesNotMatch(nextAction, /Publish possible/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("pillarHumanReviewApprovalGate: no recorded decisions stays amber and blocks guarded dispatch", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-human-review-approval-pillar-"));
+  const reportPath = path.join(dir, "human_review_approval_gate_report.json");
+  try {
+    fs.writeFileSync(
+      reportPath,
+      JSON.stringify({
+        generated_at: "2026-05-31T18:00:00.000Z",
+        mode: "HUMAN_REVIEW_APPROVAL_GATE",
+        verdict: "AMBER",
+        safe_to_publish_boolean: false,
+        summary: {
+          review_packet_count: 13,
+          decision_count: 0,
+          approved_story_count: 0,
+          approved_action_count: 0,
+          pending_review_packet_count: 13,
+          invalid_decision_count: 0,
+        },
+        advisory: [
+          "no_recorded_operator_decisions",
+          "review_packets_still_pending_operator_decision",
+        ],
+        safe_publish_plan: {
+          guarded_dispatch_eligible: false,
+          live_publish_allowed_from_this_tool: false,
+          required_next_step: "record_operator_decisions_before_guarded_dispatch",
+          safety: {
+            no_publish_triggered: true,
+            no_network_uploads: true,
+            no_db_mutation: true,
+            no_oauth_or_token_change: true,
+          },
+        },
+        safety: {
+          no_publish_triggered: true,
+          no_network_uploads: true,
+          no_db_mutation: true,
+          no_oauth_or_token_change: true,
+        },
+      }),
+    );
+
+    const pillar = pr.pillarHumanReviewApprovalGate({
+      reportPath,
+      now: Date.parse("2026-05-31T18:05:00.000Z"),
+    });
+
+    assert.equal(pillar.verdict, "amber");
+    assert.equal(pillar.reason, "no_recorded_operator_decisions");
+    assert.equal(pillar.raw.review_packet_count, 13);
+    assert.equal(pillar.raw.approved_action_count, 0);
+    assert.equal(pillar.raw.guarded_dispatch_eligible, false);
+
+    const nextAction = pr.resolvePublishReadinessNextAction({
+      overall: "amber",
+      pillars: {
+        publish_cadence: { verdict: "green" },
+        final_voice_audit: { verdict: "green" },
+        strict_dry_run_control: {
+          verdict: "amber",
+          raw: {
+            ready_story_count: 13,
+            ready_for_unattended_publish: false,
+          },
+        },
+        human_review_approval_gate: pillar,
+      },
+    });
+
+    assert.match(nextAction, /Record operator decisions/);
+    assert.match(nextAction, /does not publish or mutate tokens/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("pillarHumanReviewApprovalGate: invalid decisions are red", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-human-review-approval-red-"));
+  const reportPath = path.join(dir, "human_review_approval_gate_report.json");
+  try {
+    fs.writeFileSync(
+      reportPath,
+      JSON.stringify({
+        generated_at: "2026-05-31T18:00:00.000Z",
+        mode: "HUMAN_REVIEW_APPROVAL_GATE",
+        verdict: "RED",
+        safe_to_publish_boolean: false,
+        summary: {
+          review_packet_count: 1,
+          decision_count: 1,
+          approved_action_count: 0,
+          pending_review_packet_count: 0,
+          invalid_decision_count: 1,
+        },
+        safe_publish_plan: {
+          guarded_dispatch_eligible: false,
+          live_publish_allowed_from_this_tool: false,
+          safety: {
+            no_publish_triggered: true,
+            no_network_uploads: true,
+            no_db_mutation: true,
+            no_oauth_or_token_change: true,
+          },
+        },
+        safety: {
+          no_publish_triggered: true,
+          no_network_uploads: true,
+          no_db_mutation: true,
+          no_oauth_or_token_change: true,
+        },
+      }),
+    );
+
+    const pillar = pr.pillarHumanReviewApprovalGate({
+      reportPath,
+      now: Date.parse("2026-05-31T18:05:00.000Z"),
+    });
+
+    assert.equal(pillar.verdict, "red");
+    assert.equal(pillar.reason, "human_review_approval_gate_invalid_decisions");
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

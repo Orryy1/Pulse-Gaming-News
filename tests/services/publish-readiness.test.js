@@ -56,10 +56,11 @@ test("dominantVerdict: all green stays green", () => {
 // ── PILLAR_NAMES contract ────────────────────────────────────────
 
 test("PILLAR_NAMES: includes cadence plus the original readiness pillars", () => {
-  assert.equal(pr.PILLAR_NAMES.length, 29);
+  assert.equal(pr.PILLAR_NAMES.length, 30);
   assert.ok(pr.PILLAR_NAMES.includes("publish_cadence"));
   assert.ok(pr.PILLAR_NAMES.includes("strict_dry_run_control"));
   assert.ok(pr.PILLAR_NAMES.includes("human_review_decision_sheet"));
+  assert.ok(pr.PILLAR_NAMES.includes("human_review_operator_index"));
   assert.ok(pr.PILLAR_NAMES.includes("human_review_approval_gate"));
   assert.ok(pr.PILLAR_NAMES.includes("guarded_dispatch_preflight"));
   assert.ok(pr.PILLAR_NAMES.includes("guarded_dispatch_executor_preflight"));
@@ -325,7 +326,7 @@ test("buildPublishReadinessReport: empty store does not crash, returns at least 
   );
   assert.equal(report.story_count, 0);
   assert.ok(typeof report.pillars === "object");
-  assert.equal(Object.keys(report.pillars).length, 29);
+  assert.equal(Object.keys(report.pillars).length, 30);
   assert.ok(typeof report.next_action === "string");
 });
 
@@ -418,6 +419,92 @@ test("pillarHumanReviewDecisionSheet: missing safety contract is red", () => {
 
     assert.equal(pillar.verdict, "red");
     assert.equal(pillar.reason, "human_review_decision_sheet_safety_contract_missing");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("pillarHumanReviewOperatorIndex: artefact-complete pending cards stay amber with counts", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-human-review-index-pillar-"));
+  const reportPath = path.join(dir, "human_review_operator_index.json");
+  try {
+    fs.writeFileSync(
+      reportPath,
+      JSON.stringify({
+        generated_at: "2026-05-31T18:40:00.000Z",
+        mode: "HUMAN_REVIEW_OPERATOR_INDEX",
+        verdict: "AMBER",
+        safe_to_publish_boolean: false,
+        summary: {
+          review_card_count: 13,
+          pending_review_count: 13,
+          ready_for_operator_review_count: 13,
+          missing_artefact_card_count: 0,
+          already_decided_count: 0,
+          blocked_input_count: 0,
+        },
+        review_cards: [],
+        safety: {
+          no_publish_triggered: true,
+          no_network_uploads: true,
+          no_db_mutation: true,
+          no_oauth_or_token_change: true,
+        },
+      }),
+    );
+
+    const pillar = pr.pillarHumanReviewOperatorIndex({
+      reportPath,
+      now: Date.parse("2026-05-31T18:45:00.000Z"),
+    });
+
+    assert.equal(pillar.verdict, "amber");
+    assert.equal(pillar.reason, "13_operator_review_cards_ready");
+    assert.equal(pillar.raw.review_card_count, 13);
+    assert.equal(pillar.raw.ready_for_operator_review_count, 13);
+    assert.equal(pillar.raw.missing_artefact_card_count, 0);
+    assert.equal(pillar.raw.safety_intact, true);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("pillarHumanReviewOperatorIndex: missing review artefacts remain amber but cannot approve", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-human-review-index-missing-"));
+  const reportPath = path.join(dir, "human_review_operator_index.json");
+  try {
+    fs.writeFileSync(
+      reportPath,
+      JSON.stringify({
+        generated_at: "2026-05-31T18:40:00.000Z",
+        mode: "HUMAN_REVIEW_OPERATOR_INDEX",
+        verdict: "AMBER",
+        safe_to_publish_boolean: false,
+        summary: {
+          review_card_count: 2,
+          pending_review_count: 2,
+          ready_for_operator_review_count: 1,
+          missing_artefact_card_count: 1,
+          already_decided_count: 0,
+          blocked_input_count: 0,
+        },
+        safety: {
+          no_publish_triggered: true,
+          no_network_uploads: true,
+          no_db_mutation: true,
+          no_oauth_or_token_change: true,
+        },
+      }),
+    );
+
+    const pillar = pr.pillarHumanReviewOperatorIndex({
+      reportPath,
+      now: Date.parse("2026-05-31T18:45:00.000Z"),
+    });
+
+    assert.equal(pillar.verdict, "amber");
+    assert.equal(pillar.reason, "1_review_cards_missing_artefacts");
+    assert.equal(pillar.raw.missing_artefact_card_count, 1);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

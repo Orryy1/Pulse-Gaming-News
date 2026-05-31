@@ -625,6 +625,32 @@ test("pillarHumanReviewConsole: visual strip evidence is surfaced before operato
       2,
     ),
   );
+  fs.writeFileSync(
+    path.join(dir, "human_review_visual_strip_qa_report.json"),
+    JSON.stringify(
+      {
+        generated_at: "2026-05-31T22:06:00.000Z",
+        verdict: "AMBER",
+        safe_to_publish_boolean: false,
+        summary: {
+          card_count: 13,
+          risk_card_count: 4,
+          frame_warning_count: 7,
+          red_card_count: 0,
+          amber_card_count: 4,
+        },
+        safety: {
+          no_publish_triggered: true,
+          no_network_uploads: true,
+          no_db_mutation: true,
+          no_oauth_or_token_change: true,
+          approval_omitted_from_visual_strip_qa: true,
+        },
+      },
+      null,
+      2,
+    ),
+  );
 
   const pillar = pr.pillarHumanReviewConsole({
     reportPath,
@@ -633,6 +659,9 @@ test("pillarHumanReviewConsole: visual strip evidence is surfaced before operato
 
   assert.equal(pillar.raw.visual_strip.extracted_frame_count, 52);
   assert.equal(pillar.raw.visual_strip.safety_intact, true);
+  assert.equal(pillar.raw.visual_strip_qa.risk_card_count, 4);
+  assert.equal(pillar.raw.visual_strip_qa.frame_warning_count, 7);
+  assert.equal(pillar.raw.visual_strip_qa.safety_intact, true);
 
   const nextAction = pr.resolvePublishReadinessNextAction({
     overall: "amber",
@@ -649,8 +678,9 @@ test("pillarHumanReviewConsole: visual strip evidence is surfaced before operato
     },
   });
 
-  assert.match(nextAction, /visual strip report/);
-  assert.match(nextAction, /52 extracted first-3s frames/);
+  assert.match(nextAction, /visual strip QA report/);
+  assert.match(nextAction, /4 risky cards, 7 frame warnings/);
+  assert.match(nextAction, /human_review_visual_strip_qa_report\.html/);
   assert.match(nextAction, /human_review_visual_strip_report\.html/);
 });
 

@@ -87,6 +87,7 @@
     "ops:goal-human-review-index": "node tools/goal-human-review-operator-index.js",
     "ops:goal-human-review-console": "node tools/goal-human-review-console.js",
     "ops:goal-human-review-visual-strip": "node tools/goal-human-review-visual-strip.js",
+    "ops:goal-human-review-visual-strip-qa": "node tools/goal-human-review-visual-strip-qa.js",
     "ops:goal-record-operator-decision": "node tools/goal-operator-decision-recorder.js",
     "ops:goal-human-review-approval": "node tools/goal-human-review-approval-gate.js",
     "ops:goal-guarded-dispatch-preflight": "node tools/goal-guarded-dispatch-preflight.js",

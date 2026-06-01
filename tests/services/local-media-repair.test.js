@@ -18,7 +18,10 @@ const {
 } = require("../../lib/studio/v2/local-voice-reference");
 const {
   DEFAULT_LOCAL_MEDIA_REPAIR_TTS_TIMEOUT_MS,
+  applyActiveProofMediaFacts,
   existingMediaFacts,
+  loadActiveFinalVoiceAuditByStoryId,
+  loadActiveLocalProofRepairStories,
   parseArgs: parseLocalMediaRepairArgs,
 } = require("../../tools/local-media-repair");
 
@@ -618,6 +621,242 @@ test("local media repair CLI reuses existing local Liam repair audio before retr
     "local_final_render_repair",
   );
   assert.ok(!report.items[0].needs.includes("regenerate_audio_with_sleepy_liam"));
+});
+
+test("local media repair CLI routes active proof voice pace rejects into repair work orders", async () => {
+  const dir = path.join(ROOT, "test", "output", "tmp-local-media-active-voice");
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.mkdirSync(dir, { recursive: true });
+  const activeMp4 = path.join(dir, "proof", "1s4denn", "visual_v4_render.mp4");
+  const oldMp4 = path.join(dir, "old", "1s4denn.mp4");
+  fs.mkdirSync(path.dirname(activeMp4), { recursive: true });
+  fs.mkdirSync(path.dirname(oldMp4), { recursive: true });
+  fs.writeFileSync(activeMp4, "active proof");
+  fs.writeFileSync(oldMp4, "old proof");
+  const auditPath = path.join(dir, "final_voice_audit.json");
+  const manifestPath = path.join(dir, "local_test_video_manifest.json");
+  fs.writeFileSync(
+    auditPath,
+    JSON.stringify({
+      rows: [
+        {
+          story_id: "1s4denn",
+          mp4_path: oldMp4,
+          verdict: "pass",
+          blockers: [],
+          warnings: [],
+        },
+        {
+          story_id: "1s4denn",
+          mp4_path: activeMp4,
+          verdict: "reject",
+          blockers: ["voice_pace_too_fast"],
+          warnings: [],
+          voice_path: { wpm: 472, provider: "local" },
+        },
+        {
+          story_id: "quarantined-only",
+          mp4_path: path.join(dir, "quarantine", "bad.mp4"),
+          verdict: "reject",
+          blockers: ["voice_pace_too_fast"],
+          warnings: [],
+        },
+      ],
+    }),
+  );
+  fs.writeFileSync(
+    manifestPath,
+    JSON.stringify({
+      videos: [
+        {
+          story_id: "1s4denn",
+          video_path: activeMp4,
+          publish_status: "not_publishable_local_proof",
+        },
+      ],
+    }),
+  );
+
+  const activeVoiceAuditByStoryId = await loadActiveFinalVoiceAuditByStoryId({
+    auditPath,
+    localTestManifestPath: manifestPath,
+  });
+  const report = buildLocalMediaRepairQueue({
+    stories: [
+      {
+        id: "1s4denn",
+        title: "The Expanse Shows Real Gameplay",
+        approved: true,
+        full_script: "The Expanse has a sharper gameplay reveal today. ".repeat(24),
+        audio_path: "output/audio/1s4denn.mp3",
+        exported_path: "output/final/1s4denn.mp4",
+        breaking_score: 91,
+      },
+    ],
+    mediaByStoryId: {
+      "1s4denn": {
+        audioExists: true,
+        finalExists: true,
+        audioDurationSeconds: 65.4,
+        finalDurationSeconds: 65.4,
+      },
+    },
+    voiceAuditByStoryId: activeVoiceAuditByStoryId,
+    localTts: READY_TTS,
+  });
+
+  assert.deepEqual(Object.keys(activeVoiceAuditByStoryId), ["1s4denn"]);
+  assert.equal(activeVoiceAuditByStoryId["1s4denn"].readiness_scope, "active_local_proof");
+  assert.equal(report.items[0].action, "ready_local_audio_render_repair");
+  assert.ok(report.items[0].blockers.includes("voice_pace_too_fast"));
+  assert.equal(report.items[0].repair_work_order.blocker_type, "voice_pace_too_fast");
+  assert.equal(report.items[0].repair_work_order.repair_lane, "local_audio_regeneration");
+  assert.equal(report.items[0].repair_work_order.operator_approval_required, false);
+  assert.match(
+    report.items[0].repair_work_order.recommended_command,
+    /ops:local-media-repair -- --story-id 1s4denn --apply-local-audio/,
+  );
+});
+
+test("local media repair CLI adds active proof videos missing from DB-backed story rows", async () => {
+  const dir = path.join(ROOT, "test", "output", "tmp-local-media-proof-stories");
+  fs.rmSync(dir, { recursive: true, force: true });
+  const proofDir = path.join(dir, "proof", "1s49ty7");
+  fs.mkdirSync(proofDir, { recursive: true });
+  const activeMp4 = path.join(proofDir, "visual_v4_render.mp4");
+  const audioPath = path.join(proofDir, "narration.mp3");
+  fs.writeFileSync(activeMp4, "active proof");
+  fs.writeFileSync(audioPath, "audio");
+  fs.writeFileSync(
+    path.join(proofDir, "canonical_story_manifest.json"),
+    JSON.stringify({
+      story_id: "1s49ty7",
+      canonical_game: "Star Wars Zero Company",
+      vertical: "gaming",
+      selected_title: "Star Wars Zero Company Is More Than XCOM",
+      narration_script: "Star Wars Zero Company is not just XCOM with a logo. ".repeat(22),
+      source_confidence_score: 0.9,
+    }),
+  );
+  fs.writeFileSync(
+    path.join(proofDir, "narration_manifest.json"),
+    JSON.stringify({
+      resolved_audio_path: audioPath,
+      final_transcript: "Star Wars Zero Company is not just XCOM with a logo. ".repeat(22),
+    }),
+  );
+  const manifestPath = path.join(dir, "local_test_video_manifest.json");
+  fs.writeFileSync(
+    manifestPath,
+    JSON.stringify({
+      videos: [
+        {
+          story_id: "1s49ty7",
+          title: "Star Wars Zero Company Is More Than XCOM",
+          video_path: activeMp4,
+          publish_status: "not_publishable_local_proof",
+        },
+      ],
+    }),
+  );
+
+  const stories = await loadActiveLocalProofRepairStories({
+    localTestManifestPath: manifestPath,
+    existingStoryIds: new Set(["already-in-db"]),
+  });
+  const report = buildLocalMediaRepairQueue({
+    stories,
+    mediaByStoryId: {
+      "1s49ty7": {
+        audioExists: true,
+        finalExists: true,
+        audioDurationSeconds: 65.4,
+        finalDurationSeconds: 65.4,
+      },
+    },
+    voiceAuditByStoryId: {
+      "1s49ty7": {
+        verdict: "reject",
+        blockers: ["voice_pace_too_fast"],
+        warnings: [],
+        readiness_scope: "active_local_proof",
+      },
+    },
+    localTts: READY_TTS,
+  });
+
+  assert.equal(stories.length, 1);
+  assert.equal(stories[0].id, "1s49ty7");
+  assert.equal(stories[0].local_proof_repair, true);
+  assert.equal(stories[0].publish_status, "not_publishable_local_proof");
+  assert.equal(stories[0].approved, true);
+  assert.equal(report.items[0].action, "ready_local_audio_render_repair");
+  assert.equal(report.items[0].repair_scope, "active_local_proof");
+  assert.equal(report.items[0].local_proof_repair, true);
+  assert.equal(report.items[0].publish_status, "not_publishable_local_proof");
+  assert.equal(report.items[0].repair_work_order.repair_lane, "local_audio_regeneration");
+});
+
+test("local media repair CLI uses active proof media facts when DB final paths are missing", () => {
+  const activeMp4 = path.join(ROOT, "test", "output", "active-proof-existing-db.mp4");
+  const activeAudio = path.join(ROOT, "test", "output", "active-proof-existing-db.mp3");
+  const mediaByStoryId = {
+    "1sqpa86": {
+      audioExists: true,
+      finalExists: false,
+      audioPath: activeAudio,
+      finalPath: null,
+      audioDurationSeconds: 42.4,
+      finalDurationSeconds: null,
+    },
+  };
+
+  applyActiveProofMediaFacts({
+    mediaByStoryId,
+    activeProofVoiceAuditByStoryId: {
+      "1sqpa86": {
+        story_id: "1sqpa86",
+        readiness_scope: "active_local_proof",
+        mp4_path: activeMp4,
+        verdict: "reject",
+        blockers: ["voice_pace_too_fast"],
+        voice_path: { audio_path: activeAudio, wpm: 451 },
+      },
+    },
+    existsSync: (filePath) => filePath === activeMp4 || filePath === activeAudio,
+    measureDuration: (filePath) => (filePath === activeMp4 ? 42.4 : 42.4),
+  });
+
+  const report = buildLocalMediaRepairQueue({
+    stories: [
+      {
+        id: "1sqpa86",
+        title: "Xbox Controller Deal Has One Catch",
+        approved: true,
+        full_script: "Xbox has a controller deal players should check carefully. ".repeat(24),
+        audio_path: activeAudio,
+        exported_path: null,
+      },
+    ],
+    mediaByStoryId,
+    voiceAuditByStoryId: {
+      "1sqpa86": {
+        verdict: "reject",
+        blockers: ["voice_pace_too_fast"],
+        warnings: [],
+        readiness_scope: "active_local_proof",
+      },
+    },
+    localTts: READY_TTS,
+  });
+
+  assert.equal(mediaByStoryId["1sqpa86"].finalExists, true);
+  assert.equal(mediaByStoryId["1sqpa86"].finalPath, activeMp4);
+  assert.equal(report.items[0].repair_scope, "active_local_proof");
+  assert.equal(report.items[0].local_proof_repair, true);
+  assert.ok(report.items[0].blockers.includes("voice_pace_too_fast"));
+  assert.ok(report.items[0].needs.includes("regenerate_audio_with_sleepy_liam"));
+  assert.ok(report.items[0].needs.includes("rerender_video_local"));
 });
 
 test("local media repair CLI accepts an explicit TTS timeout", () => {

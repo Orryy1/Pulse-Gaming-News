@@ -44,6 +44,9 @@ const {
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
+const GOAL_CONTRACT_OUT = path.join(ROOT, "output", "goal-contract");
+const DEFAULT_FINAL_VOICE_AUDIT_PATH = path.join(GOAL_CONTRACT_OUT, "final_voice_audit.json");
+const DEFAULT_LOCAL_TEST_VIDEO_MANIFEST_PATH = path.join(GOAL_CONTRACT_OUT, "local_test_video_manifest.json");
 const DEFAULT_LOCAL_MEDIA_REPAIR_TTS_TIMEOUT_MS = 120_000;
 
 function parseArgs(argv) {
@@ -142,6 +145,156 @@ function resolveExistingLocalRepairAudio(story, opts = {}) {
   };
 }
 
+function normalizeFileKey(filePath) {
+  if (!filePath || typeof filePath !== "string") return null;
+  return path.normalize(path.resolve(filePath)).toLowerCase();
+}
+
+function activeLocalProofVideoPathSet(manifest = {}) {
+  const paths = new Set();
+  const videos = Array.isArray(manifest.videos) ? manifest.videos : [];
+  for (const video of videos) {
+    const key = normalizeFileKey(video?.video_path || video?.videoPath);
+    if (key) paths.add(key);
+  }
+  return paths;
+}
+
+function voiceAuditSeverity(row = {}) {
+  const verdict = String(row.verdict || "").toLowerCase();
+  if (verdict === "reject") return 30;
+  if (verdict === "review") return 20;
+  if (verdict === "pass") return 10;
+  return 0;
+}
+
+function preferVoiceAuditRow(a, b) {
+  if (!a) return b;
+  if (!b) return a;
+  const score = (row) =>
+    voiceAuditSeverity(row) +
+    (Array.isArray(row.blockers) && row.blockers.length ? 4 : 0) +
+    (Array.isArray(row.warnings) && row.warnings.length ? 1 : 0);
+  return score(b) > score(a) ? b : a;
+}
+
+function voiceAuditByStoryIdFromRows(rows = {}) {
+  const byStoryId = {};
+  for (const row of Array.isArray(rows) ? rows : []) {
+    if (!row?.story_id) continue;
+    byStoryId[row.story_id] = preferVoiceAuditRow(byStoryId[row.story_id], row);
+  }
+  return byStoryId;
+}
+
+async function loadJsonIfExists(filePath) {
+  if (!filePath) return null;
+  const resolved = path.resolve(filePath);
+  if (!(await fs.pathExists(resolved))) return null;
+  return fs.readJson(resolved);
+}
+
+async function readProofSidecars(videoPath) {
+  const dir = path.dirname(path.resolve(videoPath));
+  const [canonical, narration] = await Promise.all([
+    loadJsonIfExists(path.join(dir, "canonical_story_manifest.json")),
+    loadJsonIfExists(path.join(dir, "narration_manifest.json")),
+  ]);
+  return { dir, canonical: canonical || {}, narration: narration || {} };
+}
+
+function textFromProofSidecars({ canonical = {}, narration = {} } = {}) {
+  return (
+    canonical.tts_script ||
+    canonical.full_script ||
+    canonical.narration_script ||
+    narration.final_transcript ||
+    narration.transcript ||
+    ""
+  );
+}
+
+async function loadActiveLocalProofRepairStories({
+  localTestManifestPath = DEFAULT_LOCAL_TEST_VIDEO_MANIFEST_PATH,
+  existingStoryIds = new Set(),
+  storyIdFilter = new Set(),
+} = {}) {
+  const manifest = await loadJsonIfExists(localTestManifestPath);
+  const videos = Array.isArray(manifest?.videos) ? manifest.videos : [];
+  const existing = existingStoryIds instanceof Set ? existingStoryIds : new Set(existingStoryIds || []);
+  const filter = storyIdFilter instanceof Set ? storyIdFilter : new Set(storyIdFilter || []);
+  const stories = [];
+  for (const video of videos) {
+    const storyId = String(video?.story_id || "").trim();
+    const videoPath = video?.video_path || video?.videoPath;
+    if (!storyId || !videoPath) continue;
+    if (existing.has(storyId)) continue;
+    if (filter.size > 0 && !filter.has(storyId)) continue;
+    const sidecars = await readProofSidecars(videoPath);
+    const script = textFromProofSidecars(sidecars);
+    stories.push({
+      id: storyId,
+      title:
+        video.title ||
+        sidecars.canonical.selected_title ||
+        sidecars.canonical.short_title ||
+        sidecars.canonical.canonical_title ||
+        storyId,
+      approved: true,
+      auto_approved: false,
+      local_proof_repair: true,
+      repair_scope: "active_local_proof",
+      publish_status: video.publish_status || "not_publishable_local_proof",
+      full_script: script,
+      tts_script: script,
+      body: [
+        sidecars.canonical.canonical_subject,
+        sidecars.canonical.canonical_game,
+        sidecars.canonical.canonical_company,
+      ].filter(Boolean).join(" "),
+      subreddit:
+        sidecars.canonical.vertical === "gaming" || sidecars.canonical.canonical_game
+          ? "gaming"
+          : undefined,
+      content_pillar:
+        sidecars.canonical.vertical === "gaming" || sidecars.canonical.canonical_game
+          ? "gaming"
+          : sidecars.canonical.canonical_angle,
+      word_count: Number(sidecars.canonical.word_count || 0) || undefined,
+      source_confidence_score: sidecars.canonical.source_confidence_score ?? null,
+      audio_path:
+        sidecars.narration.resolved_audio_path ||
+        sidecars.narration.audio_path ||
+        null,
+      exported_path: path.resolve(videoPath),
+      breaking_score: 0,
+    });
+  }
+  return stories;
+}
+
+async function loadActiveFinalVoiceAuditByStoryId({
+  auditPath = DEFAULT_FINAL_VOICE_AUDIT_PATH,
+  localTestManifestPath = DEFAULT_LOCAL_TEST_VIDEO_MANIFEST_PATH,
+} = {}) {
+  const [audit, manifest] = await Promise.all([
+    loadJsonIfExists(auditPath),
+    loadJsonIfExists(localTestManifestPath),
+  ]);
+  if (!audit || !manifest) return {};
+  const activePaths = activeLocalProofVideoPathSet(manifest);
+  if (activePaths.size === 0) return {};
+  const activeRows = (Array.isArray(audit.rows) ? audit.rows : [])
+    .filter((row) => activePaths.has(normalizeFileKey(row?.mp4_path)))
+    .map((row) => ({
+      ...row,
+      readiness_scope: "active_local_proof",
+      source_report_path: path.resolve(auditPath),
+      local_test_manifest_path: path.resolve(localTestManifestPath),
+    }));
+  return voiceAuditByStoryIdFromRows(activeRows);
+}
+
 function existingMediaFacts(story, opts = {}) {
   const resolveExistingSync = opts.resolveExistingSync || mediaPaths.resolveExistingSync;
   const existsSync = opts.existsSync || fs.existsSync;
@@ -178,6 +331,38 @@ function existingMediaFacts(story, opts = {}) {
   };
 }
 
+function applyActiveProofMediaFacts({
+  mediaByStoryId = {},
+  activeProofVoiceAuditByStoryId = {},
+  existsSync = fs.existsSync,
+  measureDuration = ffprobeDuration,
+} = {}) {
+  for (const [storyId, audit] of Object.entries(activeProofVoiceAuditByStoryId || {})) {
+    if (audit?.readiness_scope !== "active_local_proof") continue;
+    const media = mediaByStoryId[storyId] || {};
+    const mp4Path = audit.mp4_path ? path.resolve(audit.mp4_path) : null;
+    const audioPath = audit.voice_path?.audio_path
+      ? path.resolve(audit.voice_path.audio_path)
+      : null;
+    if (mp4Path && existsSync(mp4Path) && !media.finalExists) {
+      media.finalExists = true;
+      media.finalPath = mp4Path;
+      media.finalDurationSeconds = measureDuration(mp4Path);
+      media.activeProofFinalPath = mp4Path;
+      media.activeProofMediaEvidence = true;
+    }
+    if (audioPath && existsSync(audioPath) && !media.audioExists) {
+      media.audioExists = true;
+      media.audioPath = audioPath;
+      media.audioDurationSeconds = measureDuration(audioPath);
+      media.activeProofAudioPath = audioPath;
+      media.activeProofMediaEvidence = true;
+    }
+    mediaByStoryId[storyId] = media;
+  }
+  return mediaByStoryId;
+}
+
 async function main() {
   const args = parseArgs(process.argv);
   const db = require("../lib/db");
@@ -197,11 +382,16 @@ async function main() {
     Number.isFinite(args.limit) && args.limit > 0
       ? filteredStories.slice(0, args.limit)
       : filteredStories;
+  const activeProofStories = await loadActiveLocalProofRepairStories({
+    existingStoryIds: new Set(stories.map((story) => story.id)),
+    storyIdFilter,
+  });
+  const repairStories = [...stories, ...activeProofStories];
 
   const mediaByStoryId = Object.fromEntries(
-    stories.map((story) => [story.id, existingMediaFacts(story)]),
+    repairStories.map((story) => [story.id, existingMediaFacts(story)]),
   );
-  const finalFiles = stories
+  const finalFiles = repairStories
     .map((story) => mediaByStoryId[story.id]?.finalPath || story.exported_path)
     .filter(Boolean);
   const reportsByStoryId = await loadFinalVoiceReportsByStoryId(finalFiles, {
@@ -214,6 +404,12 @@ async function main() {
   const voiceAuditByStoryId = Object.fromEntries(
     finalVoiceAudit.rows.map((row) => [row.story_id, row]),
   );
+  const activeProofVoiceAuditByStoryId = await loadActiveFinalVoiceAuditByStoryId();
+  Object.assign(voiceAuditByStoryId, activeProofVoiceAuditByStoryId);
+  applyActiveProofMediaFacts({
+    mediaByStoryId,
+    activeProofVoiceAuditByStoryId,
+  });
   const voiceId = brand.voiceId || process.env.ELEVENLABS_VOICE_ID || "default";
   const localTts = await fetchLocalTtsHealth({
     baseUrl: process.env.LOCAL_TTS_URL || DEFAULT_LOCAL_TTS_URL,
@@ -225,7 +421,7 @@ async function main() {
   const audio = require("../audio");
 
   const report = buildLocalMediaRepairQueue({
-    stories,
+    stories: repairStories,
     mediaByStoryId,
     voiceAuditByStoryId,
     localTts,
@@ -236,7 +432,7 @@ async function main() {
   const mdPath = path.join(outDir, "local_media_repair_queue.md");
   await fs.writeJson(jsonPath, report, { spaces: 2 });
   await fs.writeFile(mdPath, renderLocalMediaRepairMarkdown(report), "utf8");
-  const storiesById = Object.fromEntries(stories.map((story) => [story.id, story]));
+  const storiesById = Object.fromEntries(repairStories.map((story) => [story.id, story]));
   const resetPlan = buildStaleAudioQaFailureResetPlan({
     report,
     storiesById,
@@ -345,6 +541,9 @@ if (require.main === module) {
 
 module.exports = {
   DEFAULT_LOCAL_MEDIA_REPAIR_TTS_TIMEOUT_MS,
+  applyActiveProofMediaFacts,
   existingMediaFacts,
+  loadActiveFinalVoiceAuditByStoryId,
+  loadActiveLocalProofRepairStories,
   parseArgs,
 };

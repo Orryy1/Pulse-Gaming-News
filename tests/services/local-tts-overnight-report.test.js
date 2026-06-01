@@ -227,6 +227,45 @@ test("local TTS overnight report creates a local-only recovery plan for short pr
   assert.match(markdown, /retry_tts_story_ids=rss_reset, rss_timeout/);
 });
 
+test("local TTS overnight report creates duration repair work orders for overlong proofs", () => {
+  const report = buildLocalTtsOvernightReport({
+    doctorReport: DOCTOR_GREEN,
+    audioApply: {
+      applied: [
+        {
+          story_id: "rss_overlong",
+          duration_seconds: 78.4,
+          duration_verdict: "reject_duration",
+          failure_code: "duration_too_long",
+          text_word_count: 214,
+          local_voice_reference: ACCEPTED_REF,
+          ...PASSING_PROOF,
+        },
+      ],
+      skipped: [],
+    },
+  });
+
+  assert.equal(report.verdict, "AMBER");
+  assert.deepEqual(report.recovery_plan.shorten_script_story_ids, ["rss_overlong"]);
+  assert.equal(report.recovery_plan.work_orders.length, 1);
+  assert.deepEqual(report.recovery_plan.work_orders[0], {
+    work_order_id: "local_audio_duration_repair:rss_overlong",
+    story_id: "rss_overlong",
+    blocker_type: "duration_too_long",
+    repair_lane: "local_audio_duration_repair",
+    exact_missing_input: "64-70 second local Liam-safe narration text and fresh timestamped proof audio",
+    recommended_command:
+      "npm run ops:reprocess-script-failures -- --story-id rss_overlong --force-story --source-bound-only --dry-run --json",
+    expected_output: "test/output/script_failure_reprocess.json",
+    db_mutation_required: false,
+    operator_approval_required: true,
+    external_posting_risk: false,
+    post_repair_validation_command:
+      "npm run ops:local-script-extension -- --story-id rss_overlong --dry-run",
+  });
+});
+
 test("local TTS overnight report flags proofs outside the preferred 64-70s target without rejecting 61-75s audio", () => {
   const report = buildLocalTtsOvernightReport({
     doctorReport: DOCTOR_GREEN,

@@ -658,6 +658,8 @@ test("human review queue writes machine-readable artefacts and operator Markdown
   assert.equal(packetManifest.review_packets[0].story_id, "story-one");
   assert.deepEqual(packetManifest.review_packets[0].required_operator_checks, [
     "watch_first_three_seconds",
+    "inspect_first_three_second_visual_strip",
+    "confirm_visual_strip_qa_green_or_request_repairs",
     "verify_title_thumbnail_opening_source_parity",
     "verify_enabled_platforms_only",
     "confirm_no_disabled_platform_counted_ready",
@@ -665,6 +667,14 @@ test("human review queue writes machine-readable artefacts and operator Markdown
   ]);
   assert.equal(packetManifest.review_packets[0].artefacts.video_path.endsWith("visual_v4_render.mp4"), true);
   assert.equal(packetManifest.review_packets[0].artefacts.canonical_manifest_path.endsWith("canonical_story_manifest.json"), true);
+  assert.equal(
+    packetManifest.review_packets[0].artefacts.human_review_visual_strip_report_path.endsWith("human_review_visual_strip_report.json"),
+    true,
+  );
+  assert.equal(
+    packetManifest.review_packets[0].artefacts.human_review_visual_strip_qa_report_path.endsWith("human_review_visual_strip_qa_report.json"),
+    true,
+  );
   assert.equal(packetManifest.safety.no_live_publish_from_manifest, true);
 
   const decisionLog = await fs.readJson(path.join(root, "operator_decision_log.json"));

@@ -63,6 +63,8 @@ function packet(overrides = {}) {
       captions_path: "C:\\proof\\story-one\\captions.srt",
       canonical_manifest_path: "C:\\proof\\story-one\\canonical_story_manifest.json",
       platform_publish_manifest_path: "C:\\proof\\story-one\\platform_publish_manifest.json",
+      human_review_visual_strip_report_path: "C:\\proof\\goal-contract\\human_review_visual_strip_report.json",
+      human_review_visual_strip_qa_report_path: "C:\\proof\\goal-contract\\human_review_visual_strip_qa_report.json",
     },
     required_operator_checks: [
       "watch_first_three_seconds",
@@ -160,9 +162,16 @@ test("decision sheet turns every pending review packet into a non-publishing dec
       "captions_path",
       "canonical_manifest_path",
       "platform_publish_manifest_path",
+      "human_review_visual_strip_report_path",
+      "human_review_visual_strip_qa_report_path",
     ],
   );
+  assert.match(
+    slot.operator_decision_recorder_commands.approve_enabled_platforms_dry_run,
+    /human_review_visual_strip_report_path,human_review_visual_strip_qa_report_path/,
+  );
   assert.ok(slot.validation_rules.includes("Approvals may only include allowed_approval_platforms."));
+  assert.ok(slot.validation_rules.includes("Fresh first-three-second visual strip and QA reports must be reviewed before approval."));
   assert.ok(sheet.safety.no_network_uploads);
 });
 

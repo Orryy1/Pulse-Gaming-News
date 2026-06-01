@@ -2,6 +2,18 @@
 setlocal
 REM Launch the local TTS server without leaving a visible Python console open.
 
+set "TTS_ROOT=%~dp0"
+set "TTS_START_SCRIPT=%~f0"
+
+if /I "%~1"=="--pulse-hidden-inner" (
+    shift
+) else (
+    if not defined LOCAL_TTS_ALLOW_LAUNCHER_CONSOLE (
+        powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "$argsList = @('/d','/s','/c','\"' + $env:TTS_START_SCRIPT + '\" --pulse-hidden-inner'); Start-Process -FilePath $env:ComSpec -ArgumentList $argsList -WorkingDirectory $env:TTS_ROOT -WindowStyle Hidden"
+        exit /b %ERRORLEVEL%
+    )
+)
+
 cd /d "%~dp0"
 
 if not exist "venv\Scripts\python.exe" (
@@ -12,7 +24,6 @@ if not exist "venv\Scripts\python.exe" (
 set "TTS_HOST=127.0.0.1"
 set "TTS_PORT=8765"
 set "TTS_HEALTH_URL=http://127.0.0.1:8765/health"
-set "TTS_ROOT=%~dp0"
 set "TTS_LOG_DIR=%~dp0logs"
 set "TTS_STDOUT=%TTS_LOG_DIR%\server_stdout.log"
 set "TTS_STDERR=%TTS_LOG_DIR%\server_stderr.log"

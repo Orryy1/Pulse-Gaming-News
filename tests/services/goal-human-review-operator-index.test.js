@@ -175,6 +175,32 @@ test("operator index turns pending decisions into non-publishing review cards", 
   assert.equal(card.approval_guard.dispatch_still_requires_approval_gate, true);
 });
 
+test("operator index exposes visual strip artefacts without blocking the first extraction pass", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-human-review-index-visual-"));
+  const proof = {
+    ...await createProofFiles(dir),
+    human_review_visual_strip_report_path: path.join(dir, "human_review_visual_strip_report.json"),
+    human_review_visual_strip_qa_report_path: path.join(dir, "human_review_visual_strip_qa_report.json"),
+  };
+  const index = buildHumanReviewOperatorIndex({
+    decisionSheet: decisionSheet([
+      slot({
+        review_artefact_paths: proof,
+        required_reviewed_artefacts: Object.keys(proof).map((key) => ({ key })),
+      }),
+    ]),
+  });
+
+  assert.equal(index.summary.ready_for_operator_review_count, 1);
+  assert.equal(index.summary.missing_artefact_card_count, 0);
+  const card = index.review_cards[0];
+  assert.equal(card.review_status, "ready_for_operator_review");
+  assert.equal(card.open_targets.human_review_visual_strip_report_path.exists, false);
+  assert.equal(card.open_targets.human_review_visual_strip_qa_report_path.exists, false);
+  assert.ok(!card.blockers.includes("missing_review_artefact:human_review_visual_strip_report_path"));
+  assert.ok(!card.blockers.includes("missing_review_artefact:human_review_visual_strip_qa_report_path"));
+});
+
 test("operator index routes missing review artefacts to repair instead of approval", () => {
   const index = buildHumanReviewOperatorIndex({
     decisionSheet: decisionSheet(),

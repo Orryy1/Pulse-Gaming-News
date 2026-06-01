@@ -38,3 +38,14 @@ test("tts_server start.bat hides every helper powershell probe", () => {
     assert.match(line, /-WindowStyle\s+Hidden/i, line);
   }
 });
+
+
+test("tts_server start.bat self-relaunches through a hidden inner batch invocation", () => {
+  const source = fs.readFileSync(startBat, "utf8");
+
+  assert.match(source, /--pulse-hidden-inner/i);
+  assert.match(source, /LOCAL_TTS_ALLOW_LAUNCHER_CONSOLE/i);
+  assert.match(source, /TTS_START_SCRIPT/i);
+  assert.match(source, /Start-Process[\s\S]*\$env:ComSpec/i);
+  assert.match(source, /-WindowStyle\s+Hidden/i);
+});

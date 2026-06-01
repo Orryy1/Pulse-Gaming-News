@@ -41,6 +41,52 @@ async function proofArtefacts(root, storyId = "story-one") {
   return artefacts;
 }
 
+async function visualReviewArtefacts(root, storyId = "story-one") {
+  const dir = path.join(root, "goal-contract");
+  await fs.ensureDir(dir);
+  const visualStripPath = path.join(dir, "human_review_visual_strip_report.json");
+  const visualStripQaPath = path.join(dir, "human_review_visual_strip_qa_report.json");
+  await fs.writeJson(visualStripPath, {
+    schema_version: 1,
+    generated_at: "2026-05-31T20:01:00.000Z",
+    mode: "HUMAN_REVIEW_VISUAL_STRIP",
+    source_console_dry_run_generated_at: "2026-05-31T20:00:00.000Z",
+    verdict: "AMBER",
+    safe_to_publish_boolean: false,
+    summary: { extracted_frame_count: 4, failed_card_count: 0 },
+    cards: [{ story_id: storyId, status: "frames_extracted", frame_targets: [{ exists: true }] }],
+    safety: {
+      no_publish_triggered: true,
+      no_network_uploads: true,
+      no_db_mutation: true,
+      no_oauth_or_token_change: true,
+      approval_omitted_from_visual_strip: true,
+    },
+  }, { spaces: 2 });
+  await fs.writeJson(visualStripQaPath, {
+    schema_version: 1,
+    generated_at: "2026-05-31T20:02:00.000Z",
+    mode: "HUMAN_REVIEW_VISUAL_STRIP_QA",
+    source_visual_strip_generated_at: "2026-05-31T20:01:00.000Z",
+    source_console_dry_run_generated_at: "2026-05-31T20:00:00.000Z",
+    verdict: "GREEN",
+    safe_to_publish_boolean: false,
+    summary: { risk_card_count: 0, frame_warning_count: 0, red_card_count: 0 },
+    cards: [{ story_id: storyId, verdict: "GREEN", risk_reasons: [] }],
+    safety: {
+      no_publish_triggered: true,
+      no_network_uploads: true,
+      no_db_mutation: true,
+      no_oauth_or_token_change: true,
+      approval_omitted_from_visual_strip_qa: true,
+    },
+  }, { spaces: 2 });
+  return {
+    human_review_visual_strip_report_path: visualStripPath,
+    human_review_visual_strip_qa_report_path: visualStripQaPath,
+  };
+}
+
 function fingerprint(filePath) {
   return `sha256:${crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex")}`;
 }
@@ -74,6 +120,7 @@ function reviewPacketManifest() {
   return {
     schema_version: 1,
     generated_at: "2026-05-31T20:00:00.000Z",
+    source_dry_run_generated_at: "2026-05-31T20:00:00.000Z",
     mode: "HUMAN_REVIEW",
     review_packets: [packet()],
     blocked_packets: [],
@@ -149,6 +196,28 @@ test("operator decision recorder dry-runs a valid explicit approval without writ
   assert.deepEqual(report.proposed_decision.approved_platforms, ["youtube_shorts", "instagram_reels"]);
   assert.equal(report.proposed_decision.reviewed_artefact_fingerprints.video_path, fingerprintMap(artefacts).video_path);
   assert.equal(report.updated_operator_decision_log.safety.no_network_uploads, true);
+});
+
+test("operator decision recorder requires fresh visual strip and QA evidence when the packet exposes it", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-decision-recorder-visual-evidence-"));
+  const artefacts = {
+    ...await proofArtefacts(root),
+    ...await visualReviewArtefacts(root),
+  };
+  const report = buildOperatorDecisionRecorder({
+    reviewPacketManifest: reviewPacketManifestWithPacket(packet({ artefacts })),
+    operatorDecisionLog: decisionLog(),
+    decisionInput: approvalInput({
+      reviewed_artefact_fingerprints: fingerprintMap(artefacts),
+    }),
+    apply: false,
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.proposed_decision, null);
+  assert.ok(report.blockers.includes("required_artefact_not_reviewed:human_review_visual_strip_report_path"));
+  assert.ok(report.blockers.includes("required_artefact_not_reviewed:human_review_visual_strip_qa_report_path"));
+  assert.equal(report.write_plan.would_write_operator_decision_log, false);
 });
 
 test("operator decision recorder rejects disabled platform approvals and missing artefact review", () => {

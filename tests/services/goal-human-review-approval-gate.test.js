@@ -41,6 +41,52 @@ async function proofArtefacts(root, storyId = "story-one") {
   return artefacts;
 }
 
+async function visualReviewArtefacts(root, storyId = "story-one") {
+  const dir = path.join(root, "goal-contract");
+  await fs.ensureDir(dir);
+  const visualStripPath = path.join(dir, "human_review_visual_strip_report.json");
+  const visualStripQaPath = path.join(dir, "human_review_visual_strip_qa_report.json");
+  await fs.writeJson(visualStripPath, {
+    schema_version: 1,
+    generated_at: "2026-05-31T18:01:00.000Z",
+    mode: "HUMAN_REVIEW_VISUAL_STRIP",
+    source_console_dry_run_generated_at: "2026-05-31T18:00:00.000Z",
+    verdict: "AMBER",
+    safe_to_publish_boolean: false,
+    summary: { extracted_frame_count: 4, failed_card_count: 0 },
+    cards: [{ story_id: storyId, status: "frames_extracted", frame_targets: [{ exists: true }] }],
+    safety: {
+      no_publish_triggered: true,
+      no_network_uploads: true,
+      no_db_mutation: true,
+      no_oauth_or_token_change: true,
+      approval_omitted_from_visual_strip: true,
+    },
+  }, { spaces: 2 });
+  await fs.writeJson(visualStripQaPath, {
+    schema_version: 1,
+    generated_at: "2026-05-31T18:02:00.000Z",
+    mode: "HUMAN_REVIEW_VISUAL_STRIP_QA",
+    source_visual_strip_generated_at: "2026-05-31T18:01:00.000Z",
+    source_console_dry_run_generated_at: "2026-05-31T18:00:00.000Z",
+    verdict: "GREEN",
+    safe_to_publish_boolean: false,
+    summary: { risk_card_count: 0, frame_warning_count: 0, red_card_count: 0 },
+    cards: [{ story_id: storyId, verdict: "GREEN", risk_reasons: [] }],
+    safety: {
+      no_publish_triggered: true,
+      no_network_uploads: true,
+      no_db_mutation: true,
+      no_oauth_or_token_change: true,
+      approval_omitted_from_visual_strip_qa: true,
+    },
+  }, { spaces: 2 });
+  return {
+    human_review_visual_strip_report_path: visualStripPath,
+    human_review_visual_strip_qa_report_path: visualStripQaPath,
+  };
+}
+
 function fingerprint(filePath) {
   return `sha256:${crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex")}`;
 }
@@ -100,6 +146,7 @@ function reviewPacketManifest(packet = reviewPacket()) {
   return {
     schema_version: 1,
     generated_at: "2026-05-31T18:00:00.000Z",
+    source_dry_run_generated_at: "2026-05-31T18:00:00.000Z",
     mode: "HUMAN_REVIEW",
     review_packets: [packet],
     blocked_packets: [],
@@ -236,6 +283,36 @@ test("approval gate converts a valid operator decision into enabled-platform gua
   assert.equal(report.safe_publish_plan.guarded_dispatch_eligible, true);
   assert.equal(report.safe_publish_plan.live_publish_allowed_from_this_tool, false);
   assert.equal(report.safety.no_network_uploads, true);
+});
+
+test("approval gate blocks approvals that skip required visual strip and QA review evidence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-human-review-visual-evidence-"));
+  const packet = reviewPacket({
+    artefacts: {
+      ...await proofArtefacts(root),
+      ...await visualReviewArtefacts(root),
+    },
+  });
+  const report = buildHumanReviewApprovalGate({
+    humanReviewQueue: humanReviewQueue(packet),
+    reviewPacketManifest: reviewPacketManifest(packet),
+    operatorDecisionLog: {
+      mode: "HUMAN_REVIEW_DECISION_LOG",
+      decisions: [decision({ reviewed_artefact_fingerprints: fingerprintMap(packet.artefacts) })],
+      safety: {
+        no_live_publish_from_log: true,
+        no_network_uploads: true,
+        no_db_mutation: true,
+        no_oauth_or_token_change: true,
+      },
+    },
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.summary.invalid_decision_count, 1);
+  assert.equal(report.summary.approved_action_count, 0);
+  assert.ok(report.blocked_decisions[0].blockers.includes("required_artefact_not_reviewed:human_review_visual_strip_report_path"));
+  assert.ok(report.blocked_decisions[0].blockers.includes("required_artefact_not_reviewed:human_review_visual_strip_qa_report_path"));
 });
 
 test("approval gate allows an enabled-platform decision when other story platforms are blocked", async () => {

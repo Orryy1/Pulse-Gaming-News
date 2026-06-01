@@ -113,6 +113,7 @@ async function main(argv = process.argv.slice(2)) {
     tiktokCreatorRewardsRepairReport,
     renderInputWorkOrder,
     operatorSourceQueue,
+    visualReviewEvidenceDir: path.resolve(root, args.outDir),
   });
   const artefacts = await writeGoalHumanReviewQueue(queue, {
     outputDir: path.resolve(root, args.outDir),

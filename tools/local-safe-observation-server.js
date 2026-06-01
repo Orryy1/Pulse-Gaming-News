@@ -9,6 +9,10 @@ const {
   buildSafeObservationPowerShellScript,
 } = require("../lib/ops/local-safe-observation-launcher");
 
+function psSingleQuote(value) {
+  return `'${String(value || "").replace(/'/g, "''")}'`;
+}
+
 function parseArgs(argv = process.argv.slice(2)) {
   const opts = {
     json: false,
@@ -48,13 +52,27 @@ function writeSafeObservationScript({ cwd = process.cwd(), scriptPath, logPath }
   };
 }
 
-function startSafeObservationScript({ cwd = process.cwd(), scriptPath }) {
-  const child = spawn(
+function startSafeObservationScript({
+  cwd = process.cwd(),
+  scriptPath,
+  spawnImpl = spawn,
+}) {
+  const command = [
+    "Start-Process",
+    "-FilePath",
+    psSingleQuote("powershell.exe"),
+    "-ArgumentList",
+    `@('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ${psSingleQuote(scriptPath)})`,
+    "-WindowStyle Hidden",
+    "-WorkingDirectory",
+    psSingleQuote(cwd),
+  ].join(" ");
+  const child = spawnImpl(
     "powershell.exe",
-    ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", scriptPath],
+    ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
     {
       cwd,
-      detached: true,
+      detached: false,
       env: buildSafeObservationEnv(process.env),
       stdio: "ignore",
       windowsHide: true,
@@ -64,7 +82,8 @@ function startSafeObservationScript({ cwd = process.cwd(), scriptPath }) {
   return {
     pid: child.pid,
     windows_hide: true,
-    detached: true,
+    detached: false,
+    launch_method: "windows_start_process_hidden",
   };
 }
 

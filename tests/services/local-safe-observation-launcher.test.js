@@ -10,6 +10,9 @@ const {
   buildSafeObservationEnv,
   buildSafeObservationPowerShellScript,
 } = require("../../lib/ops/local-safe-observation-launcher");
+const {
+  startSafeObservationScript,
+} = require("../../tools/local-safe-observation-server");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 
@@ -73,4 +76,36 @@ test("ops:local-safe-observation-server command is registered", () => {
     pkg.scripts["ops:local-safe-observation-server"],
     "node tools/local-safe-observation-server.js",
   );
+});
+
+test("startSafeObservationScript delegates to hidden Windows Start-Process", () => {
+  let captured = null;
+  const result = startSafeObservationScript({
+    cwd: ROOT,
+    scriptPath: "C:\\safe\\start.ps1",
+    spawnImpl(file, args, opts) {
+      captured = { file, args, opts };
+      return {
+        pid: 1234,
+        unrefCalled: false,
+        unref() {
+          this.unrefCalled = true;
+        },
+      };
+    },
+  });
+
+  assert.equal(result.pid, 1234);
+  assert.equal(captured.file, "powershell.exe");
+  assert.deepEqual(captured.args.slice(0, 4), [
+    "-NoProfile",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-Command",
+  ]);
+  assert.match(captured.args[4], /Start-Process -FilePath 'powershell\.exe'/);
+  assert.match(captured.args[4], /-WindowStyle Hidden/);
+  assert.match(captured.args[4], /-File', 'C:\\safe\\start\.ps1'/);
+  assert.equal(captured.opts.windowsHide, true);
+  assert.equal(captured.opts.detached, false);
 });

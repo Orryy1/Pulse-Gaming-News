@@ -118,6 +118,56 @@ test("local posting readiness treats public local health as an active tunnel", (
   assert.ok(report.blockers.includes("local instance is still mirror mode, not primary"));
 });
 
+test("local posting readiness blocks safe observation runtime even when env flags are enabled", () => {
+  const report = buildLocalPostingReadiness({
+    cutoverPlan: {
+      verdict: "red",
+      env: {
+        duplicate_keys: [],
+        flags: {
+          primary: true,
+          use_job_queue: true,
+          auto_publish: true,
+        },
+      },
+      cloudflared: { tunnel_info: "Active connections: 1" },
+      health: {
+        local: {
+          ok: true,
+          status: 200,
+          json: {
+            deployment: { mode: "local", primary: false },
+            runtime: { auto_publish: false, safe_observation_mode: true },
+          },
+        },
+        public: {
+          ok: true,
+          status: 200,
+          json: { deployment: { mode: "local", primary: false } },
+        },
+      },
+    },
+    primaryReadiness: {
+      checks: {
+        primary_enabled: true,
+        use_job_queue_enabled: true,
+        auto_publish_enabled: true,
+      },
+    },
+    ttsReport: greenTts(),
+  });
+
+  assert.equal(report.verdict, "amber");
+  assert.equal(report.readiness.configured_primary_enabled, true);
+  assert.equal(report.readiness.configured_auto_publish_enabled, true);
+  assert.equal(report.readiness.safe_observation_mode, true);
+  assert.equal(report.readiness.primary_enabled, false);
+  assert.equal(report.readiness.auto_publish_enabled, false);
+  assert.ok(report.blockers.includes("local server is running safe observation mode, not primary posting mode"));
+  assert.ok(report.blockers.includes("running local server reports primary=false"));
+  assert.ok(report.blockers.includes("running local server reports AUTO_PUBLISH=false"));
+});
+
 test("local posting readiness blocks if Liam proof batch is missing", () => {
   const report = buildLocalPostingReadiness({
     cutoverPlan: {

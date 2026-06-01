@@ -1,6 +1,6 @@
 # Local Resume Posting Plan
 
-Generated: 2026-06-01T03:13:04.494Z
+Generated: 2026-06-01T03:17:18.068Z
 Verdict: AMBER
 Status: local_resume_blocked_but_recoverable
 Safety: read-only plan; does not edit .env, start Cloudflare, switch primary, mutate tokens, post, touch Railway or trigger OAuth
@@ -13,20 +13,20 @@ Safety: read-only plan; does not edit .env, start Cloudflare, switch primary, mu
 
 ## Readiness
 - can_resume_local_automatic_posting: false
-- local_posting_verdict: GREEN
+- local_posting_verdict: AMBER
 - local_restart_verdict: RED
 - local_health: true
 - public_health: false
 - local_posting_health: true
-- public_posting_health: true
+- public_posting_health: false
 - local_restart_health: true
 - public_restart_health: false
 - scheduler_visible_console_risk_count: 1
-- tunnel_connected: true
+- tunnel_connected: false
 - duplicate_control_keys: none
-- primary_enabled: true
+- primary_enabled: false
 - queue_enabled: true
-- auto_publish_enabled: true
+- auto_publish_enabled: false
 - local_tts_green: true
 - local_voice_ready_count: 6
 - core_platform_ready: true
@@ -75,6 +75,13 @@ Safety: read-only plan; does not edit .env, start Cloudflare, switch primary, mu
 - 1t186u4: tts_timeout; duration=unknown
 
 ## Blockers
+- pulse.orryy.com Cloudflare tunnel is not connected to this PC
+- public pulse.orryy.com health check is not reaching local Pulse
+- local server is running safe observation mode, not primary posting mode
+- running local server reports primary=false
+- running local server reports AUTO_PUBLISH=false
+- local instance is still mirror mode, not primary
+- local AUTO_PUBLISH is disabled
 - local restart readiness is red: public server is not reporting primary=true
 
 ## Warnings
@@ -84,6 +91,7 @@ Safety: read-only plan; does not edit .env, start Cloudflare, switch primary, mu
 ## Next Actions
 - Keep Railway standby only; do not restore Railway as the active publisher.
 - Keep building local Liam; treat ElevenLabs as a temporary bridge only while local voice coverage improves.
+- Resolve local cutover blockers in order: duplicate .env switches, Cloudflare tunnel, public health, primary flag, queue flag, AUTO_PUBLISH flag.
 - Resume with the safe standard/legacy lane first; do not switch Studio V2 into production until a promotion packet is green.
 - Rerender locally with approved local Liam proof MP3s, then QA the MP4 before any DB promotion.
 - Use TikTok dispatch/inbox tooling only after token refresh/sync and creative-review blocker are resolved; do not rely on Railway.

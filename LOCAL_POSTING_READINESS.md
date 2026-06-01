@@ -1,8 +1,8 @@
 # Local Posting Readiness
 
-Generated: 2026-05-20T23:32:29.056Z
-Verdict: GREEN
-Status: ready_to_resume_local_posting
+Generated: 2026-06-01T03:17:16.800Z
+Verdict: AMBER
+Status: local_foundation_ready_cutover_blocked
 Safety: read-only report; does not edit .env, start primary jobs, post, mutate DB, touch Railway or trigger OAuth
 
 ## Strategy
@@ -12,17 +12,33 @@ Safety: read-only report; does not edit .env, start primary jobs, post, mutate D
 
 ## Readiness
 - local_health: true
-- public_health: true
-- tunnel_connected: true
+- public_health: false
+- tunnel_connected: false
 - duplicate_control_keys: none
-- primary_enabled: true
+- configured_primary_enabled: true
+- configured_queue_enabled: true
+- configured_auto_publish_enabled: true
+- running_primary_enabled: false
+- running_auto_publish_enabled: false
+- safe_observation_mode: true
+- primary_enabled: false
 - queue_enabled: true
-- auto_publish_enabled: true
+- auto_publish_enabled: false
 - local_tts_green: true
 - local_voice_ready_count: 6
 
+## Blockers
+- pulse.orryy.com Cloudflare tunnel is not connected to this PC
+- public pulse.orryy.com health check is not reaching local Pulse
+- local server is running safe observation mode, not primary posting mode
+- running local server reports primary=false
+- running local server reports AUTO_PUBLISH=false
+- local instance is still mirror mode, not primary
+- local AUTO_PUBLISH is disabled
+
 ## Warnings
 - local TTS has recovered from at least one timeout; keep the supervisor/watchdog enabled
+- local cutover plan is still red; use it as the authoritative blocker list before posting
 
 ## Next Steps
 - Keep Railway as standby only; do not restore it as the active publisher for cost reasons.

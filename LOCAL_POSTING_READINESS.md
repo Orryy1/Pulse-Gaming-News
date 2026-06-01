@@ -1,6 +1,6 @@
 # Local Posting Readiness
 
-Generated: 2026-06-01T04:16:25.490Z
+Generated: 2026-06-01T04:24:15.958Z
 Verdict: RED
 Status: not_ready
 Safety: read-only report; does not edit .env, start primary jobs, post, mutate DB, touch Railway or trigger OAuth

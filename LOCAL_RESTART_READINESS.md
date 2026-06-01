@@ -1,12 +1,12 @@
 # Local Restart Readiness
 
-Generated: 2026-06-01T04:16:25.499Z
+Generated: 2026-06-01T04:24:15.969Z
 Verdict: RED
 Safety: read-only; does not restart the server, edit env vars, mutate DB rows, touch Railway or post
 
 ## Build Match
-- Current commit: 924ed82
-- Local running commit: 924ed82 (matches)
+- Current commit: cfc2450
+- Local running commit: cfc2450 (matches)
 - Public running commit: unknown (does not match)
 
 ## Runtime

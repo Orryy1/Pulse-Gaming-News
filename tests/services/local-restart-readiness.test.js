@@ -479,4 +479,8 @@ test("ops:local-restart-readiness command is registered", () => {
     pkg.scripts["ops:local-restart-readiness"],
     "node tools/local-restart-readiness.js",
   );
+  assert.equal(
+    pkg.scripts["ops:windows-scheduler-repair"],
+    "node tools/windows-scheduler-hidden-launcher-repair.js",
+  );
 });

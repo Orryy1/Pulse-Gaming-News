@@ -22,6 +22,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     generatedAt: null,
     storyIds: [],
     refreshExisting: false,
+    dryRun: false,
     json: false,
     help: false,
   };
@@ -31,9 +32,13 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--story-packages") args.storyPackagesPath = argv[++i] || args.storyPackagesPath;
     else if (arg === "--out-dir") args.outDir = argv[++i] || args.outDir;
     else if (arg === "--root") args.root = argv[++i] || args.root;
-    else if (arg === "--story-id") args.storyIds.push(argv[++i]);
+    else if (arg === "--story-id") {
+      const value = argv[++i] || "";
+      args.storyIds.push(...String(value).split(",").map((item) => item.trim()).filter(Boolean));
+    }
     else if (arg === "--generated-at") args.generatedAt = argv[++i] || null;
     else if (arg === "--refresh-existing") args.refreshExisting = true;
+    else if (arg === "--dry-run") args.dryRun = true;
     else if (arg === "--json") args.json = true;
     else if (arg === "--help" || arg === "-h") args.help = true;
     else throw new Error(`Unknown argument: ${arg}`);
@@ -53,6 +58,7 @@ function usage() {
     "  --story-id <id>       Optional story id filter; repeatable",
     "  --generated-at <iso>  Fixed timestamp for deterministic reports",
     "  --refresh-existing    Regenerate usable owned/generated clips with current renderer policy",
+    "  --dry-run             Plan only; do not invoke ffmpeg or alter story package evidence",
     "  --json                Print JSON report",
   ].join("\n");
 }
@@ -131,6 +137,80 @@ async function ownedMotionEvidencePresent(artifactDir) {
     ...asArray(footageInventory.motion_inventory?.production_motion_clips),
   ];
   return clips.some(isOwnedGeneratedMotion);
+}
+
+function clipsFromFootageInventory(footage = {}) {
+  const clips = [
+    ...asArray(footage?.motion_inventory?.accepted_local_clips),
+    ...asArray(footage?.motion_inventory?.production_motion_clips),
+    ...asArray(footage?.accepted_local_clips),
+    ...asArray(footage?.production_motion_clips),
+  ];
+  const rows = [];
+  const seen = new Set();
+  for (const clip of clips) {
+    const key = cleanText(clip.id || clip.local_materialized_path || clip.path || clip.source_url);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    rows.push(clip);
+  }
+  return rows;
+}
+
+async function buildDryRunOwnedMotionMaterializationReport(workOrder = {}, {
+  generatedAt = new Date().toISOString(),
+} = {}) {
+  const stories = [];
+  for (const job of asArray(workOrder.jobs).filter(isOwnedMotionJob)) {
+    const artifactDir = cleanText(job.artifact_dir);
+    const footage = await readJsonIfPresent(path.join(artifactDir, "footage_inventory.json"), {});
+    const canonical = await readJsonIfPresent(path.join(artifactDir, "canonical_story_manifest.json"), {});
+    const plannedClips = clipsFromFootageInventory(footage).filter(isOwnedGeneratedMotion);
+    stories.push({
+      story_id: cleanText(job.story_id),
+      title: cleanText(job.title || canonical.selected_title),
+      artifact_dir: artifactDir,
+      status: "dry_run_planned",
+      planned_clip_count: plannedClips.length,
+      planned_clips: plannedClips.map((clip) => ({
+        clip_id: cleanText(clip.id),
+        path: cleanText(clip.path || clip.local_materialized_path),
+        source_family: cleanText(clip.source_family || clip.motion_family),
+        source_type: cleanText(clip.source_type),
+      })),
+      materialized: [],
+      existing: [],
+      skipped: [],
+      failed: [],
+    });
+  }
+  const plannedClipCount = stories.reduce((sum, story) => sum + story.planned_clip_count, 0);
+  return {
+    schema_version: 1,
+    generated_at: generatedAt,
+    mode: "OWNED_GENERATED_MOTION_MATERIALIZATION_DRY_RUN",
+    dry_run: true,
+    summary: {
+      source_story_package_count: workOrder.summary?.source_story_package_count || workOrder.source_story_package_count || null,
+      story_count: stories.length,
+      planned_clip_count: plannedClipCount,
+      materialized_clip_count: 0,
+      existing_clip_count: 0,
+      failed_clip_count: 0,
+      skipped_non_owned_clip_count: 0,
+    },
+    stories,
+    safety: {
+      no_publish_triggered: true,
+      no_network_uploads: true,
+      no_external_media_downloads: true,
+      no_db_mutation: true,
+      no_oauth_or_token_change: true,
+      no_rights_gate_weakened: true,
+      no_story_package_mutation: true,
+      no_ffmpeg_invoked: true,
+    },
+  };
 }
 
 async function deriveOwnedMotionWorkOrderFromStoryPackages(storyPackages = [], {
@@ -232,14 +312,17 @@ async function main(argv = process.argv.slice(2), overrides = {}) {
   if (args.storyIds.length) {
     workOrder.jobs = (workOrder.jobs || []).filter((job) => args.storyIds.includes(String(job.story_id || "")));
   }
-  const report = await materializeGoalOwnedMotionClips({
-    root: path.resolve(args.root),
-    workOrder,
-    generatedAt: args.generatedAt || new Date().toISOString(),
-    execFileSync: overrides.execFileSync,
-    ffprobeDuration: overrides.ffprobeDuration,
-    refreshExisting: args.refreshExisting,
-  });
+  const generatedAt = args.generatedAt || new Date().toISOString();
+  const report = args.dryRun
+    ? await buildDryRunOwnedMotionMaterializationReport(workOrder, { generatedAt })
+    : await materializeGoalOwnedMotionClips({
+        root: path.resolve(args.root),
+        workOrder,
+        generatedAt,
+        execFileSync: overrides.execFileSync,
+        ffprobeDuration: overrides.ffprobeDuration,
+        refreshExisting: args.refreshExisting,
+      });
   const written = await writeGoalOwnedMotionMaterializationReport(report, {
     outputDir: path.resolve(args.outDir),
     workOrder,
@@ -257,6 +340,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  buildDryRunOwnedMotionMaterializationReport,
   deriveOwnedMotionWorkOrderFromStoryPackages,
   main,
   parseArgs,

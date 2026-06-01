@@ -20,6 +20,9 @@ test("goal render input work-order CLI parses dry local arguments", () => {
     "real-motion.json",
     "--dry-run-plan",
     "dry-run.json",
+    "--story-id",
+    "story-cli",
+    "--dry-run",
     "--json",
   ]);
 
@@ -28,6 +31,8 @@ test("goal render input work-order CLI parses dry local arguments", () => {
   assert.equal(args.generatedAt, "2026-05-22T04:15:00.000Z");
   assert.equal(args.realMotionMaterializationPath, "real-motion.json");
   assert.equal(args.dryRunPlanPath, "dry-run.json");
+  assert.deepEqual(args.storyIds, ["story-cli"]);
+  assert.equal(args.dryRun, true);
   assert.equal(args.json, true);
 });
 
@@ -214,4 +219,55 @@ test("goal render input work-order CLI includes strict dry-run blocked candidate
   assert.equal(result.workOrder.summary.owned_motion_materialisation_jobs, 1);
   assert.equal(result.workOrder.repair_backlog.items[0].story_id, "xbox-feedback");
   assert.equal(result.workOrder.repair_backlog.items[0].repair_lane, "owned_generated_explainer_motion_materialisation");
+});
+
+test("goal render input work-order CLI scopes report output by story id", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-render-input-story-filter-"));
+  const cutoverPath = path.join(root, "cutover.json");
+  const outDir = path.join(root, "out");
+  await fs.outputJson(cutoverPath, {
+    generated_at: "2026-06-01T09:00:00.000Z",
+    queue: [
+      {
+        story_id: "story-keep",
+        title: "Hades 2 Patch Changes Boons",
+        render_input_status: "blocked",
+        render_input_blockers: ["final_narration_audio_missing", "word_timestamps_missing"],
+      },
+      {
+        story_id: "story-skip",
+        title: "Valorant Vanguard Update Hits PCs",
+        render_input_status: "blocked",
+        render_input_blockers: ["materialised_motion_clips_missing"],
+      },
+    ],
+  });
+
+  const originalLog = console.log;
+  console.log = () => {};
+  let result;
+  try {
+    result = await main([
+      "--cutover-plan",
+      cutoverPath,
+      "--story-id",
+      "story-keep",
+      "--out-dir",
+      outDir,
+      "--generated-at",
+      "2026-06-01T09:05:00.000Z",
+      "--dry-run",
+      "--json",
+    ]);
+  } finally {
+    console.log = originalLog;
+  }
+
+  assert.equal(result.workOrder.summary.story_count, 1);
+  assert.equal(result.workOrder.summary.audio_timestamp_jobs, 1);
+  assert.equal(result.workOrder.summary.owned_motion_materialisation_jobs, 0);
+  assert.deepEqual(result.workOrder.jobs.map((job) => job.story_id), ["story-keep"]);
+  assert.deepEqual(result.workOrder.repair_backlog.items.map((item) => item.story_id), ["story-keep"]);
+  assert.equal(result.workOrder.dry_run, true);
+  assert.equal(result.workOrder.safety.no_publish_triggered, true);
 });

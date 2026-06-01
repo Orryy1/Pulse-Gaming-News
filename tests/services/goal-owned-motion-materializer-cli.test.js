@@ -21,6 +21,7 @@ test("goal owned motion materializer CLI parses local arguments", () => {
     "--story-packages",
     "story-packages.json",
     "--refresh-existing",
+    "--dry-run",
     "--json",
   ]);
 
@@ -30,6 +31,7 @@ test("goal owned motion materializer CLI parses local arguments", () => {
   assert.equal(args.generatedAt, "2026-05-22T05:20:00.000Z");
   assert.equal(args.storyPackagesPath, "story-packages.json");
   assert.equal(args.refreshExisting, true);
+  assert.equal(args.dryRun, true);
   assert.equal(args.json, true);
 });
 
@@ -226,4 +228,82 @@ test("goal owned motion materializer CLI derives jobs from governed story packag
   assert.equal(generatedWorkOrder.summary.real_motion_materialisation_jobs, undefined);
   assert.equal(generatedWorkOrder.jobs.length, 2);
   assert.equal(generatedWorkOrder.jobs[0].actions[0].action_id, "materialise_owned_generated_motion_clips");
+});
+
+test("goal owned motion materializer CLI dry-runs without materialising clips", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-owned-motion-dry-run-"));
+  const artifactDir = path.join(root, "story-package");
+  const outDir = path.join(root, "out");
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "dry-story",
+    canonical_subject: "Hades 2",
+    selected_title: "Hades 2 Patch Changes Boons",
+    thumbnail_headline: "HADES 2 BOON PATCH",
+    primary_source: "Steam",
+    primary_source_url: "https://store.steampowered.com/news/app/1145350",
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: "dry-story",
+    motion_inventory: {
+      accepted_local_clips: [
+        {
+          id: "dry-story-owned-motion-1",
+          source_family: "dry_story_hook_slam",
+          path: "output/generated-motion/dry-story/hook_slam.mp4",
+          source_url: "local://pulse-generated-motion/dry-story/hook_slam",
+          source_type: "internally_generated_motion_graphic",
+          rights_risk_class: "owned_generated_motion",
+          durationS: 2.8,
+          validated: true,
+        },
+      ],
+    },
+  });
+  const workOrderPath = path.join(root, "work-order.json");
+  await fs.outputJson(workOrderPath, {
+    jobs: [
+      {
+        story_id: "dry-story",
+        title: "Hades 2 Patch Changes Boons",
+        artifact_dir: artifactDir,
+        actions: [{ action_id: "materialise_owned_generated_motion_clips" }],
+      },
+    ],
+  });
+
+  const originalLog = console.log;
+  console.log = () => {};
+  let result;
+  try {
+    result = await main([
+      "--work-order",
+      workOrderPath,
+      "--story-id",
+      "dry-story",
+      "--out-dir",
+      outDir,
+      "--root",
+      root,
+      "--generated-at",
+      "2026-06-01T09:30:00.000Z",
+      "--dry-run",
+      "--json",
+    ], {
+      execFileSync: () => {
+        throw new Error("ffmpeg must not run during dry-run");
+      },
+    });
+  } finally {
+    console.log = originalLog;
+  }
+
+  assert.equal(result.report.dry_run, true);
+  assert.equal(result.report.mode, "OWNED_GENERATED_MOTION_MATERIALIZATION_DRY_RUN");
+  assert.equal(result.report.summary.story_count, 1);
+  assert.equal(result.report.summary.planned_clip_count, 1);
+  assert.equal(result.report.summary.materialized_clip_count, 0);
+  assert.equal(result.report.stories[0].status, "dry_run_planned");
+  assert.equal(await fs.pathExists(path.join(root, "output", "generated-motion", "dry-story", "hook_slam.mp4")), false);
+  assert.equal(await fs.pathExists(path.join(artifactDir, "materialised_motion_clips.json")), false);
+  assert.equal(await fs.pathExists(path.join(outDir, "owned_motion_materialization_report.json")), true);
 });

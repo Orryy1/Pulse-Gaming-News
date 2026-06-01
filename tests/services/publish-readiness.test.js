@@ -2296,6 +2296,37 @@ test("buildPublishReadinessReport: db throw degrades gracefully (no throw)", asy
   assert.equal(report.story_count, 0);
 });
 
+test("buildPublishReadinessReport: stale recent publish amber has an operator-readable reason", async () => {
+  const report = await pr.buildPublishReadinessReport({
+    skipOperationalPillars: true,
+    now: Date.parse("2026-06-01T12:00:00.000Z"),
+    db: {
+      async getStories() {
+        return [
+          {
+            id: "stale-video",
+            title: "Stale Published Story",
+            youtube_post_id: "yt_stale",
+            published_at: "2026-05-29T12:00:00.000Z",
+          },
+        ];
+      },
+    },
+    env: {},
+  });
+
+  assert.equal(report.pillars.recent_publish.verdict, "amber");
+  assert.match(
+    report.pillars.recent_publish.reason,
+    /latest_publish_stale_72h_exceeds_48h_threshold: stale-video/,
+  );
+  assert.ok(
+    report.advisory.some((line) =>
+      /recent_publish: latest_publish_stale_72h_exceeds_48h_threshold: stale-video/.test(line),
+    ),
+  );
+});
+
 test("summariseRecentFailedCandidates: surfaces operator-grade failure reasons", () => {
   const summary = pr.summariseRecentFailedCandidates(
     [

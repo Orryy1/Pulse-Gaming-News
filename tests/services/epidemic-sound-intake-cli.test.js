@@ -34,44 +34,38 @@ test("Epidemic intake CLI writes machine-readable and human-readable proof artef
   await touchAudio(path.join(epidemicRoot, "sfx", "Sub Boom.wav"));
   await touchAudio(path.join(epidemicRoot, "sfx", "Digital Glitch Static.wav"));
 
-  const previousCwd = process.cwd();
-  process.chdir(root);
-  try {
-    const { report, outputs } = await main([
-      "node",
-      "tools/epidemic-sound-intake.js",
-      "--root",
-      epidemicRoot,
-      "--out-dir",
-      outDir,
-      "--generated-at",
-      "2026-05-26T17:03:00.000Z",
-      "--safelist-evidence",
-      "https://help.epidemicsound.com/hc/en-us/articles/26248340314258-Safelisting",
-    ]);
+  const { report, outputs } = await main([
+    "node",
+    "tools/epidemic-sound-intake.js",
+    "--root",
+    epidemicRoot,
+    "--out-dir",
+    outDir,
+    "--generated-at",
+    "2026-05-26T17:03:00.000Z",
+    "--safelist-evidence",
+    "https://help.epidemicsound.com/hc/en-us/articles/26248340314258-Safelisting",
+  ]);
 
-    assert.equal(report.readiness.status, "pass");
-    assert.equal(await fs.pathExists(outputs.reportPath), true);
-    assert.equal(await fs.pathExists(outputs.musicInventoryPath), true);
-    assert.equal(await fs.pathExists(outputs.rightsLedgerPath), true);
-    assert.equal(await fs.pathExists(outputs.audioPackCandidatesPath), true);
-    assert.equal(await fs.pathExists(outputs.downloadPlanPath), true);
-    assert.equal(await fs.pathExists(outputs.browserQueuePath), true);
-    assert.equal(await fs.pathExists(outputs.markdownPath), true);
-    assert.equal(await fs.pathExists(outputs.downloadCockpitPath), true);
-    const markdown = await fs.readFile(outputs.markdownPath, "utf8");
-    assert.match(markdown, /Readiness: pass/);
-    assert.match(markdown, /No downloads were started/);
-    const cockpit = await fs.readFile(outputs.downloadCockpitPath, "utf8");
-    assert.match(cockpit, /Epidemic Sound Download Cockpit/);
-    assert.match(cockpit, /music\/bed_primary/);
-    assert.match(cockpit, /sound-effects/);
-    const queue = await fs.readJson(outputs.browserQueuePath);
-    assert.equal(queue.slots.find((slot) => slot.role === "impact").asset_category, "sfx");
-    assert.match(queue.slots.find((slot) => slot.role === "impact").search_url, /sound-effects/);
-  } finally {
-    process.chdir(previousCwd);
-  }
+  assert.equal(report.readiness.status, "pass");
+  assert.equal(await fs.pathExists(outputs.reportPath), true);
+  assert.equal(await fs.pathExists(outputs.musicInventoryPath), true);
+  assert.equal(await fs.pathExists(outputs.rightsLedgerPath), true);
+  assert.equal(await fs.pathExists(outputs.audioPackCandidatesPath), true);
+  assert.equal(await fs.pathExists(outputs.downloadPlanPath), true);
+  assert.equal(await fs.pathExists(outputs.browserQueuePath), true);
+  assert.equal(await fs.pathExists(outputs.markdownPath), true);
+  assert.equal(await fs.pathExists(outputs.downloadCockpitPath), true);
+  const markdown = await fs.readFile(outputs.markdownPath, "utf8");
+  assert.match(markdown, /Readiness: pass/);
+  assert.match(markdown, /No downloads were started/);
+  const cockpit = await fs.readFile(outputs.downloadCockpitPath, "utf8");
+  assert.match(cockpit, /Epidemic Sound Download Cockpit/);
+  assert.match(cockpit, /music\/bed_primary/);
+  assert.match(cockpit, /sound-effects/);
+  const queue = await fs.readJson(outputs.browserQueuePath);
+  assert.equal(queue.slots.find((slot) => slot.role === "impact").asset_category, "sfx");
+  assert.match(queue.slots.find((slot) => slot.role === "impact").search_url, /sound-effects/);
 });
 
 test("Epidemic intake CLI parses local-only safety arguments", () => {

@@ -153,6 +153,48 @@ test("summariseCadence exposes restart-critical publish counters", () => {
   assert.equal(summary.invalid_public_story_rows, 2);
 });
 
+test("local restart readiness separates recent failed platform rows from historical cleanup debt", async () => {
+  const cadenceReport = cleanCadence({
+    failed_rows_with_platform_ids: 22,
+    failed_rows_with_platform_ids_recent: 0,
+    failed_rows_with_platform_ids_historical: 22,
+    repaired_failed_rows_with_platform_ids: 11,
+  });
+  const report = await buildLocalRestartReadiness({
+    cwd: ROOT,
+    env: {
+      PORT: "3001",
+      LOCAL_PUBLIC_URL: "https://pulse.orryy.com",
+      PUBLISH_REQUIRE_WINDOW: "true",
+      PUBLISH_REQUIRE_MIN_GAP: "true",
+      PUBLISH_REQUIRE_DAILY_CAP: "true",
+    },
+    currentBuild: {
+      commit_sha: "abcdef1234567890",
+      commit_short: "abcdef1",
+      branch: "codex/test",
+    },
+    localHealth: healthy("abcdef1234567890"),
+    publicHealth: healthy("abcdef1234567890"),
+    cadenceReport,
+    gitStatus: { clean: true, changed_count: 0, changed_files: [] },
+    windowsSchedulerHygiene: cleanSchedulerHygiene(),
+  });
+
+  assert.equal(report.verdict, "green");
+  assert.equal(report.cadence.failed_rows_with_platform_ids, 22);
+  assert.equal(report.cadence.failed_rows_with_platform_ids_recent, 0);
+  assert.equal(report.cadence.failed_rows_with_platform_ids_historical, 22);
+  assert.equal(report.cadence.repaired_failed_rows_with_platform_ids, 11);
+  assert.deepEqual(report.warnings, []);
+
+  const md = formatLocalRestartReadinessMarkdown(report);
+  assert.match(md, /Failed rows with platform IDs: 22/);
+  assert.match(md, /Recent failed rows with platform IDs: 0/);
+  assert.match(md, /Historical failed rows with platform IDs: 22/);
+  assert.match(md, /Repaired failed rows retained for audit: 11/);
+});
+
 test("Windows scheduler hygiene flags Pulse tasks that launch visible python consoles", () => {
   const hygiene = buildWindowsSchedulerHygiene({
     platform: "win32",

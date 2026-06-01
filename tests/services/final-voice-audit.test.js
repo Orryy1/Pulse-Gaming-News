@@ -399,6 +399,68 @@ test("final voice report loader reads nested proof narration manifests before ge
   assert.equal(report.counts.pass, 1);
 });
 
+test("final voice report loader recomputes proof WPM from word timeline when acoustic duration metadata is stale", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "final-voice-proof-word-span-"));
+  const storyDir = path.join(dir, "batch", "1s4denn");
+  await fs.ensureDir(storyDir);
+  const mp4 = path.join(storyDir, "visual_v4_render.mp4");
+  const timestampsPath = path.join(storyDir, "word_timestamps.json");
+  const transcript = `${Array.from({ length: 111 }, (_, index) => `word${index + 1}`).join(" ")} Follow Pulse Gaming so you never miss a beat.`;
+  await fs.writeFile(mp4, "fake mp4");
+  await fs.writeJson(timestampsPath, {
+    alignment: {
+      words: [
+        { word: "word1", start: 0.04, end: 0.16 },
+        { word: "beat.", start: 41.54, end: 41.74 },
+      ],
+    },
+    meta: {
+      provider: "local",
+      source: "local-tts-server",
+      text: transcript,
+      approvedLocalVoice: true,
+      acceptedLocalVoice: {
+        id: "pulse-sleepy-liam-20260502",
+        fileName: "pulse_liam_sleepy.wav",
+        referencePresent: true,
+        referenceHash: "4bb87b65b64213fd8447ef1146eda42035b89f51",
+      },
+      acoustic: {
+        medianPitchHz: 118,
+        integratedLufs: -16.1,
+        truePeakDb: -2.2,
+        durationSeconds: 11.52,
+      },
+      timestampDurationMetadataIgnored: {
+        reason: "metadata_duration_shorter_than_word_timeline",
+        metadata_duration_s: 11.52,
+        last_word_end_s: 41.74,
+      },
+      voiceMastering: { ok: true, code: "voice_mastered", targetLufs: -16 },
+    },
+  });
+  await fs.writeJson(path.join(storyDir, "narration_manifest.json"), {
+    provider: "local_tts",
+    resolved_audio_path: path.join(storyDir, "narration.mp3"),
+    final_transcript: transcript,
+    resolved_word_timestamps_path: timestampsPath,
+  });
+
+  const reports = await loadFinalVoiceReportsByStoryId([mp4], {
+    finalDir: path.join(dir, "batch"),
+    outputDirs: [],
+  });
+  const report = buildFinalVoiceAudit({
+    files: [mp4],
+    reportsByStoryId: reports,
+  });
+
+  assert.equal(report.counts.pass, 1);
+  assert.equal(reports["1s4denn"].narration.acoustic.durationSeconds, 41.7);
+  assert.equal(report.rows[0].voice_path.wpm, 173);
+  assert.equal(report.rows[0].do_not_reuse_for_tiktok_dispatch, false);
+});
+
 test("final voice report loader prefers rich local-clone timestamp evidence over sparse stale sidecars", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "final-voice-rich-timestamps-"));
   const oldMediaRoot = process.env.MEDIA_ROOT;

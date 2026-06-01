@@ -14,7 +14,12 @@ const {
 } = require("../lib/studio/v2/final-voice-report-loader");
 
 const ROOT = path.resolve(__dirname, "..");
-const OUT = path.join(ROOT, "test", "output");
+const OUT = path.join(ROOT, "output", "goal-contract");
+const TEST_OUT = path.join(ROOT, "test", "output");
+
+function defaultOutDir() {
+  return OUT;
+}
 
 function parseArgs(argv) {
   const args = {};
@@ -64,13 +69,13 @@ async function main() {
         ? path.join(process.env.MEDIA_ROOT, "output", "final")
         : "D:/pulse-data/media/output/final"),
   );
-  const outDir = path.resolve(args.outDir || OUT);
+  const outDir = path.resolve(args.outDir || defaultOutDir());
   await fs.ensureDir(outDir);
 
   const files = await listMp4s(finalDir, args.limit);
   const reportsByStoryId = await loadFinalVoiceReportsByStoryId(files, {
     finalDir,
-    outputDirs: [outDir, OUT],
+    outputDirs: [...new Set([outDir, OUT, TEST_OUT])],
   });
   const report = buildFinalVoiceAudit({ files, reportsByStoryId });
   const jsonPath = path.join(outDir, "final_voice_audit.json");
@@ -97,5 +102,6 @@ if (require.main === module) {
 }
 
 module.exports = {
+  defaultOutDir,
   listMp4s,
 };

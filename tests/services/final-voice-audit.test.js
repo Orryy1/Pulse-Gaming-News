@@ -17,6 +17,7 @@ const {
 } = require("../../lib/studio/v2/final-voice-report-loader");
 const {
   listMp4s,
+  defaultOutDir,
 } = require("../../tools/final-voice-audit");
 
 test("final voice audit marks legacy MP4s without approved voice evidence as not reusable", () => {
@@ -170,6 +171,36 @@ test("final voice audit derives local WPM from transcript and acoustic duration 
   assert.equal(row.voice_path.wpm, 19);
   assert.equal(row.warnings.includes("voice_pace_unverified"), false);
   assert.equal(row.do_not_reuse_for_tiktok_dispatch, false);
+});
+
+test("final voice audit rejects impossible local voice pace instead of counting it as reusable", () => {
+  const row = classifyFinalRenderVoice({
+    mp4Path: "D:/pulse-data/media/output/final/rss_too_fast.mp4",
+    report: {
+      narration: {
+        provider: "local",
+        source: "local-tts-server",
+        audioPath: "D:/pulse-data/media/output/audio/rss_too_fast.mp3",
+        approvedLocalVoice: true,
+        acceptedLocalVoice: {
+          id: "pulse-sleepy-liam-20260502",
+          fileName: "pulse_liam_sleepy.wav",
+          referencePresent: true,
+          referenceHash: "c".repeat(40),
+        },
+        acoustic: { medianPitchHz: 118, integratedLufs: -16.1, truePeakDb: -2.1 },
+        voiceMastering: { ok: true, code: "voice_mastered", targetLufs: -16 },
+        transcript: "A clean local render. Follow Pulse Gaming so you never miss a beat.",
+        wpm: 430,
+      },
+    },
+    env: { STUDIO_V2_LOCAL_VOICE_APPROVED: "true" },
+  });
+
+  assert.equal(row.verdict, "reject");
+  assert.ok(row.blockers.includes("voice_pace_too_fast"));
+  assert.equal(row.voice_path.wpm, 430);
+  assert.equal(row.do_not_reuse_for_tiktok_dispatch, true);
 });
 
 test("final voice audit reviews local voice when true peak is too hot for social transcodes", () => {
@@ -465,4 +496,10 @@ test("final voice audit CLI discovers nested proof MP4s", async () => {
   const files = await listMp4s(dir);
 
   assert.deepEqual(files, [nestedMp4]);
+});
+
+test("final voice audit CLI defaults to the control-tower artefact directory", () => {
+  const dir = defaultOutDir();
+
+  assert.match(dir.replace(/\\/g, "/"), /\/output\/goal-contract$/);
 });

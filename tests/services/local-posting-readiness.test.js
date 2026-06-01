@@ -5,6 +5,7 @@ const {
   buildLocalPostingReadiness,
   formatLocalPostingReadinessMarkdown,
 } = require("../../lib/ops/local-posting-readiness");
+const { parseArgs } = require("../../tools/local-posting-readiness");
 
 function greenTts() {
   return {
@@ -340,4 +341,13 @@ test("local posting readiness markdown is operator readable", () => {
   assert.match(markdown, /Railway: standby\/optional only/);
   assert.match(markdown, /ElevenLabs is a temporary bridge/);
   assert.match(markdown, /cloudflared tunnel --config D:\/pulse-data\/cloudflared-pulse\.yml/);
+});
+
+test("local posting readiness does not update tracked root report unless explicitly requested", () => {
+  assert.equal(parseArgs(["node", "tools/local-posting-readiness.js", "--json"]).writeRootReport, false);
+  assert.equal(
+    parseArgs(["node", "tools/local-posting-readiness.js", "--json", "--write-root-report"])
+      .writeRootReport,
+    true,
+  );
 });

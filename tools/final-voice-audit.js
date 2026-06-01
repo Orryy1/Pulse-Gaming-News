@@ -16,17 +16,24 @@ const {
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "output", "goal-contract");
 const TEST_OUT = path.join(ROOT, "test", "output");
+const LOCAL_TEST_MANIFEST = path.join(OUT, "local_test_video_manifest.json");
 
 function defaultOutDir() {
   return OUT;
 }
 
+function defaultLocalTestManifestPath() {
+  return LOCAL_TEST_MANIFEST;
+}
+
 function parseArgs(argv) {
-  const args = {};
+  const args = { includeLocalTestManifest: true };
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--final-dir") args.finalDir = argv[++i];
     else if (arg === "--out-dir") args.outDir = argv[++i];
+    else if (arg === "--local-test-manifest") args.localTestManifestPath = argv[++i];
+    else if (arg === "--skip-local-test-manifest") args.includeLocalTestManifest = false;
     else if (arg === "--limit") args.limit = Number(argv[++i]);
     else if (arg === "--json") args.json = true;
   }
@@ -59,6 +66,37 @@ async function listMp4s(finalDir, limit) {
   return Number.isFinite(limit) && limit > 0 ? mp4s.slice(0, limit) : mp4s;
 }
 
+function manifestVideoPaths(manifest = {}) {
+  const videos = Array.isArray(manifest.videos) ? manifest.videos : [];
+  return videos
+    .map((video) => video?.video_path || video?.videoPath)
+    .filter((file) => typeof file === "string" && /\.mp4$/i.test(file))
+    .map((file) => path.resolve(file));
+}
+
+async function listLocalTestManifestMp4s(manifestPath = defaultLocalTestManifestPath()) {
+  try {
+    const resolved = path.resolve(manifestPath);
+    if (!(await fs.pathExists(resolved))) return [];
+    return manifestVideoPaths(await fs.readJson(resolved));
+  } catch (_) {
+    return [];
+  }
+}
+
+async function listAuditMp4s({
+  finalDir,
+  limit,
+  localTestManifestPath = defaultLocalTestManifestPath(),
+  includeLocalTestManifest = true,
+} = {}) {
+  const files = await listMp4s(finalDir, limit);
+  if (includeLocalTestManifest) {
+    files.push(...(await listLocalTestManifestMp4s(localTestManifestPath)));
+  }
+  return [...new Set(files)];
+}
+
 async function main() {
   dotenv.config({ override: true });
   const args = parseArgs(process.argv);
@@ -72,7 +110,12 @@ async function main() {
   const outDir = path.resolve(args.outDir || defaultOutDir());
   await fs.ensureDir(outDir);
 
-  const files = await listMp4s(finalDir, args.limit);
+  const files = await listAuditMp4s({
+    finalDir,
+    limit: args.limit,
+    localTestManifestPath: args.localTestManifestPath || defaultLocalTestManifestPath(),
+    includeLocalTestManifest: args.includeLocalTestManifest,
+  });
   const reportsByStoryId = await loadFinalVoiceReportsByStoryId(files, {
     finalDir,
     outputDirs: [...new Set([outDir, OUT, TEST_OUT])],
@@ -102,6 +145,9 @@ if (require.main === module) {
 }
 
 module.exports = {
+  defaultLocalTestManifestPath,
   defaultOutDir,
+  listAuditMp4s,
+  listLocalTestManifestMp4s,
   listMp4s,
 };

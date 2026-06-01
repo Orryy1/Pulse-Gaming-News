@@ -18,6 +18,7 @@ const {
 const {
   listMp4s,
   defaultOutDir,
+  listAuditMp4s,
 } = require("../../tools/final-voice-audit");
 
 test("final voice audit marks legacy MP4s without approved voice evidence as not reusable", () => {
@@ -496,6 +497,36 @@ test("final voice audit CLI discovers nested proof MP4s", async () => {
   const files = await listMp4s(dir);
 
   assert.deepEqual(files, [nestedMp4]);
+});
+
+test("final voice audit CLI includes active local proof manifest videos", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "final-voice-active-manifest-"));
+  const finalDir = path.join(dir, "final");
+  const proofDir = path.join(dir, "proof", "1s4denn");
+  await fs.ensureDir(finalDir);
+  await fs.ensureDir(proofDir);
+  const productionMp4 = path.join(finalDir, "rss_live.mp4");
+  const activeMp4 = path.join(proofDir, "visual_v4_render.mp4");
+  const manifestPath = path.join(dir, "local_test_video_manifest.json");
+  await fs.writeFile(productionMp4, "production");
+  await fs.writeFile(activeMp4, "active proof");
+  await fs.writeJson(manifestPath, {
+    videos: [
+      {
+        story_id: "1s4denn",
+        video_path: activeMp4,
+        safety: { can_count_as_final_production_render: false },
+      },
+    ],
+  });
+
+  const files = await listAuditMp4s({
+    finalDir,
+    localTestManifestPath: manifestPath,
+  });
+
+  assert.ok(files.includes(productionMp4));
+  assert.ok(files.includes(activeMp4));
 });
 
 test("final voice audit CLI defaults to the control-tower artefact directory", () => {

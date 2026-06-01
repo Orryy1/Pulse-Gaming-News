@@ -230,6 +230,42 @@ test("viral script intelligence rejects formulaic not-just hooks", () => {
   assert.ok(result.rewrite_recommendations.some((item) => /specific consequence/i.test(item)));
 });
 
+test("viral script intelligence rejects repeated source recaps after the payoff", () => {
+  const script =
+    "Stranger Than Heaven just made its pitch harder to fake. " +
+    "Xbox showed the Five Eras reveal during Xbox Partner Preview, and that is a bigger promise than another stylish trailer. " +
+    "The catch is why those eras matter: each one has to change how you investigate, fight and move, or it becomes a costume swap. " +
+    "The next gameplay cut needs proof, not just another beautiful decade jump. " +
+    "Xbox showed Stranger Than Heaven's Five Eras reveal during Xbox Partner Preview. " +
+    "Five eras is a big promise: each one needs its own texture, pace and reason to exist, not just a costume change. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: { id: "stranger", title: "Stranger Than Heaven Shows Five Eras", source_name: "Xbox" },
+    script,
+  });
+
+  assert.equal(result.verdict, "rewrite_required");
+  assert.ok(result.blockers.includes("duplicated_source_attribution"));
+});
+
+test("viral script intelligence rejects malformed source attribution and stale CTA", () => {
+  const script =
+    "Capturing Has One Player Question. " +
+    "I reports Capturing mewtwo in the office shh pokemon red game boy color og. " +
+    "The practical question is whether this changes what people buy, wishlist, reinstall or wait on. " +
+    "Follow Pulse Gaming for the gaming stories behind the headline.";
+
+  const result = buildViralScriptIntelligence({
+    story: { id: "bad-capture", title: "Capturing Has One Player Question", source_name: "IGN" },
+    script,
+  });
+
+  assert.equal(result.verdict, "rewrite_required");
+  assert.ok(result.blockers.includes("malformed_source_attribution"));
+  assert.ok(result.blockers.includes("missing_exact_cta"));
+});
+
 test("viral script intelligence treats source names as present despite casing differences", () => {
   const result = buildViralScriptIntelligence({
     story: {

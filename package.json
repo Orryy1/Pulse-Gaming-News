@@ -166,6 +166,7 @@
     "ops:publish-row-repair": "node tools/publish-row-repair-plan.js",
     "ops:reprocess-script-failures": "node tools/reprocess-script-failures.js",
     "ops:script-coherence-audit": "node tools/script-coherence-audit.js",
+    "ops:transcript-audience-audit": "node tools/transcript-audience-audit.js",
     "ops:creator-studio": "node tools/creator-studio-control-room.js",
     "ops:asset-acquisition": "node tools/asset-acquisition-pro.js",
     "ops:motion-acquisition": "node tools/motion-acquisition-pro.js",

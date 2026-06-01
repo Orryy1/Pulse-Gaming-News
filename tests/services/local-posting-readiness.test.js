@@ -135,6 +135,58 @@ test("local posting readiness treats public local health as an active tunnel", (
   assert.ok(report.blockers.includes("local instance is still mirror mode, not primary"));
 });
 
+test("local posting readiness prefers fresh tunnel health over stale cutover health", () => {
+  const report = buildLocalPostingReadiness({
+    cutoverPlan: {
+      verdict: "red",
+      env: {
+        duplicate_keys: [],
+        flags: {
+          primary: true,
+          use_job_queue: true,
+          auto_publish: true,
+        },
+      },
+      cloudflared: { tunnel_info: "Your tunnel does not have any active connection." },
+      health: {
+        local: { ok: true, status: 200 },
+        public: { ok: false, status: 530 },
+      },
+    },
+    tunnelReadiness: {
+      verdict: "green",
+      tunnel: { status: "active" },
+      health: {
+        local: {
+          ok: true,
+          status: 200,
+          json: {
+            deployment: { mode: "local", primary: false },
+            runtime: { auto_publish: false, safe_observation_mode: true },
+          },
+        },
+        public: {
+          ok: true,
+          status: 200,
+          json: {
+            deployment: { mode: "local", primary: false },
+            runtime: { auto_publish: false, safe_observation_mode: true },
+          },
+        },
+      },
+    },
+    ttsReport: greenTts(),
+  });
+
+  assert.equal(report.verdict, "amber");
+  assert.equal(report.readiness.public_health, true);
+  assert.equal(report.readiness.tunnel_connected, true);
+  assert.ok(!report.blockers.includes("pulse.orryy.com Cloudflare tunnel is not connected to this PC"));
+  assert.ok(!report.blockers.includes("public pulse.orryy.com health check is not reaching local Pulse"));
+  assert.ok(report.blockers.includes("local server is running safe observation mode, not primary posting mode"));
+  assert.ok(report.blockers.includes("running local server reports primary=false"));
+});
+
 test("local posting readiness blocks safe observation runtime even when env flags are enabled", () => {
   const report = buildLocalPostingReadiness({
     cutoverPlan: {

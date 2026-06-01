@@ -7,6 +7,7 @@ const path = require("node:path");
 
 const {
   applyWindowsSchedulerHiddenLauncherRepair,
+  buildElevatedRepairPacket,
   buildWindowsSchedulerHiddenLauncherRepairPlan,
   formatWindowsSchedulerHiddenLauncherRepairMarkdown,
 } = require("../../lib/ops/windows-scheduler-hidden-launcher-repair");
@@ -74,6 +75,29 @@ test("scheduler hidden launcher markdown exposes backups, apply command and elev
   assert.match(md, /scheduler_task_backups/);
   assert.match(md, /Requires elevated PowerShell: true/);
   assert.match(md, /ops:windows-scheduler-repair -- --apply --operator-confirmed/);
+});
+
+test("scheduler hidden launcher plan carries a self-contained elevated repair packet", () => {
+  const plan = buildWindowsSchedulerHiddenLauncherRepairPlan({
+    cwd: ROOT,
+    platform: "win32",
+    generatedAt: "2026-06-01T07:11:30.000Z",
+    scheduledTasks: [riskyTask()],
+  });
+  const packet = buildElevatedRepairPacket(plan, {
+    cwd: ROOT,
+    outDir: path.join(ROOT, "test", "output"),
+  });
+
+  assert.equal(packet.work_order_count, 1);
+  assert.match(packet.script_path, /windows_scheduler_hidden_launcher_repair_elevated\.ps1$/);
+  assert.match(packet.run_command, /powershell\.exe/);
+  assert.match(packet.validation_command, /ops:local-restart-readiness -- --json/);
+  assert.match(packet.script, /Windows Scheduler Hidden Launcher Repair/);
+  assert.match(packet.script, /Administrator/);
+  assert.match(packet.script, /Export-ScheduledTask[\s\S]+Set-ScheduledTask/);
+  assert.match(packet.script, /New-ScheduledTaskAction -Execute 'pythonw\.exe'/);
+  assert.match(packet.script, /No tokens, OAuth, DB rows or platform posts are changed/);
 });
 
 test("scheduler hidden launcher apply refuses broad OS mutation without confirmation", () => {

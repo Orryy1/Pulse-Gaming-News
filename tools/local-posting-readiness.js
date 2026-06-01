@@ -49,6 +49,7 @@ async function main() {
   const report = buildLocalPostingReadiness({
     cutoverPlan: readJsonIfExists(path.join(outDir, "local_cutover_plan.json")),
     primaryReadiness: readJsonIfExists(path.join(outDir, "local_primary_readiness.json")),
+    tunnelReadiness: readJsonIfExists(path.join(outDir, "local_tunnel_readiness.json")),
     ttsReport: readJsonIfExists(path.join(outDir, "local_tts_overnight_report.json")),
     ttsDoctorReport: readJsonIfExists(path.join(outDir, "local_tts_doctor.json")),
   });

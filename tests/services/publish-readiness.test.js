@@ -313,6 +313,72 @@ test("pillarLocalPostingReadiness: stale local posting artefacts keep cutover am
   }
 });
 
+test("pillarLocalPostingReadiness: passes fresh tunnel evidence into aggregate report", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-local-posting-tunnel-"));
+  const cutoverPath = path.join(dir, "local_cutover_plan.json");
+  const ttsPath = path.join(dir, "local_tts_overnight_report.json");
+  const tunnelPath = path.join(dir, "local_tunnel_readiness.json");
+  try {
+    fs.writeFileSync(
+      cutoverPath,
+      JSON.stringify({
+        verdict: "red",
+        env: { flags: { primary: true, use_job_queue: true, auto_publish: true } },
+        cloudflared: { tunnel_info: "Your tunnel does not have any active connection." },
+        health: {
+          local: { ok: true, status: 200 },
+          public: { ok: false, status: 530 },
+        },
+      }),
+    );
+    fs.writeFileSync(
+      tunnelPath,
+      JSON.stringify({
+        verdict: "green",
+        tunnel: { status: "active" },
+        health: {
+          local: {
+            ok: true,
+            status: 200,
+            json: {
+              runtime: { safe_observation_mode: true, auto_publish: false },
+              deployment: { mode: "local", primary: false },
+            },
+          },
+          public: {
+            ok: true,
+            status: 200,
+            json: {
+              runtime: { safe_observation_mode: true, auto_publish: false },
+              deployment: { mode: "local", primary: false },
+            },
+          },
+        },
+      }),
+    );
+    fs.writeFileSync(
+      ttsPath,
+      JSON.stringify({ verdict: "green", proof_batch: { voice_ready_count: 6 } }),
+    );
+
+    const pillar = pr.pillarLocalPostingReadiness({
+      localCutoverPlanPath: cutoverPath,
+      localTunnelReadinessPath: tunnelPath,
+      localTtsReportPath: ttsPath,
+      now: Date.parse("2026-06-01T05:00:00.000Z"),
+    });
+
+    assert.equal(pillar.verdict, "amber");
+    assert.equal(pillar.raw.readiness.public_health, true);
+    assert.equal(pillar.raw.readiness.tunnel_connected, true);
+    assert.doesNotMatch(pillar.reason, /Cloudflare tunnel is not connected/);
+    assert.doesNotMatch(pillar.reason, /public_health=false/);
+    assert.match(pillar.reason, /safe observation mode/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("summariseRepairBacklogReason: surfaces auto-repair lanes and dead-end blockers", () => {
   assert.equal(
     pr.summariseRepairBacklogReason({

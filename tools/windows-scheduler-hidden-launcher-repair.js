@@ -7,6 +7,7 @@ require("dotenv").config({ quiet: true });
 
 const {
   applyWindowsSchedulerHiddenLauncherRepair,
+  buildElevatedRepairPacket,
   buildWindowsSchedulerHiddenLauncherRepairPlan,
   formatWindowsSchedulerHiddenLauncherRepairMarkdown,
 } = require("../lib/ops/windows-scheduler-hidden-launcher-repair");
@@ -59,6 +60,16 @@ async function main() {
     cwd: ROOT,
     outDir: OUT,
   });
+  const elevatedPacket = buildElevatedRepairPacket(plan, {
+    cwd: ROOT,
+    outDir: OUT,
+  });
+  if (elevatedPacket.work_order_count > 0) {
+    const { script, ...packetSummary } = elevatedPacket;
+    plan.elevated_repair_packet = packetSummary;
+    await fs.ensureDir(path.dirname(elevatedPacket.script_path));
+    await fs.writeFile(elevatedPacket.script_path, script, "utf8");
+  }
   if (args.apply) {
     plan.mode = "apply_os_task_scheduler_mutation";
     plan.apply_result = applyWindowsSchedulerHiddenLauncherRepair({

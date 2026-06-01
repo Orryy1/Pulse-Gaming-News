@@ -193,6 +193,7 @@
     "ops:visual-repair": "node tools/visual-evidence-repair-planner.js",
     "ops:standard-overlay": "node tools/standard-short-creator-overlay.js",
     "ops:local-doctor": "node tools/local-mode-doctor.js",
+    "ops:local-safe-observation-server": "node tools/local-safe-observation-server.js",
     "ops:local-primary-readiness": "node tools/local-primary-readiness.js",
     "ops:local-cutover-plan": "node tools/local-cutover-plan.js",
     "ops:local-env-plan": "node tools/local-env-cleanup-plan.js",

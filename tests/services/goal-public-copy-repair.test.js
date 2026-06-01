@@ -1227,7 +1227,13 @@ test("public copy repair routes Reddit-primary blockers into source attribution 
   assert.equal(workOrder.jobs[0].db_mutation_required, false);
   assert.equal(workOrder.jobs[0].operator_approval_required, true);
   assert.equal(workOrder.jobs[1].blocker_type, "public_copy:non_news_image_post_source");
-  assert.match(workOrder.jobs[1].exact_missing_input, /non-image/i);
+  assert.equal(workOrder.jobs[1].repair_lane, "reject_or_human_review_non_news_image_post");
+  assert.equal(workOrder.jobs[1].dead_end_blocker, true);
+  assert.equal(workOrder.jobs[1].operator_approval_required, true);
+  assert.match(workOrder.jobs[1].recommended_command, /human review/i);
+  assert.match(workOrder.jobs[1].exact_missing_input, /not a source-backed gaming news story/i);
+  assert.equal(workOrder.summary.official_source_intake_required_count, 1);
+  assert.equal(workOrder.summary.reject_or_human_review_count, 1);
 });
 
 test("public copy repair applies verified non-Reddit source attribution before rewriting Reddit-primary copy", async () => {

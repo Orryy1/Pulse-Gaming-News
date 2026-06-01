@@ -1333,6 +1333,51 @@ test("goal dry-run coherence report separates active readiness from quarantined 
   );
 });
 
+test("goal dry-run writer preserves quarantined scope in standalone coherence report", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-coherence-write-"));
+  const outDir = path.join(root, "out");
+  const readyPackage = await makeStoryPackage(root, "bridge-ready", "GREEN", "Forza Horizon 6 Exposes Xbox's Steam Bet");
+  const deadEndPackage = await makeStoryPackage(root, "image-post-dead-end", "RED", "Capturing Has One Player Question", {
+    coherenceResult: "fail",
+    coherenceFailures: ["public_output:canonical_subject_missing_from_title"],
+  });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [readyPackage, deadEndPackage],
+    generatedAt: "2026-05-27T11:57:00.000Z",
+    platformOperationalConfig: allPlatformsEnabled(),
+    repairWorkOrder: {
+      jobs: [
+        {
+          story_id: "image-post-dead-end",
+          status: "blocked_on_render_inputs",
+          actions: [
+            {
+              action_id: "repair_public_output_coherence",
+              status: "reject_recommended",
+              repair_lane: "reject_or_human_review_non_news_image_post",
+              dead_end_blocker: true,
+              operator_approval_required: true,
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  await writeGoalDryRunPublishPlan(plan, { outputDir: outDir });
+  const standalone = await fs.readJson(path.join(outDir, "public_output_coherence_report.json"));
+
+  assert.equal(standalone.active_verdict, "pass");
+  assert.equal(standalone.active_failed_story_count, 0);
+  assert.equal(standalone.quarantined_story_count, 1);
+  assert.equal(standalone.quarantined_failed_story_count, 1);
+  assert.equal(
+    standalone.stories.find((story) => story.story_id === "image-post-dead-end").readiness_scope,
+    "quarantined",
+  );
+});
+
 test("goal dry-run publisher keeps dead-end repair lanes visible on stories already held by scheduler preflight", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-work-order-preheld-"));
   const readyPackage = await makeStoryPackage(root, "bridge-ready", "GREEN", "Forza Horizon 6 Exposes Xbox's Steam Bet");

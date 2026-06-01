@@ -56,8 +56,9 @@ test("dominantVerdict: all green stays green", () => {
 // ── PILLAR_NAMES contract ────────────────────────────────────────
 
 test("PILLAR_NAMES: includes cadence plus the original readiness pillars", () => {
-  assert.equal(pr.PILLAR_NAMES.length, 32);
+  assert.equal(pr.PILLAR_NAMES.length, 33);
   assert.ok(pr.PILLAR_NAMES.includes("local_restart_readiness"));
+  assert.ok(pr.PILLAR_NAMES.includes("local_posting_readiness"));
   assert.ok(pr.PILLAR_NAMES.includes("publish_cadence"));
   assert.ok(pr.PILLAR_NAMES.includes("strict_dry_run_control"));
   assert.ok(pr.PILLAR_NAMES.includes("human_review_decision_sheet"));
@@ -226,6 +227,30 @@ test("summariseLocalRestartReadinessReason: surfaces local health and scheduler 
     }),
     "localhost /api/health is not reachable; scheduler_visible_console_risks=1: Orryy-PulseGaming",
   );
+});
+
+test("pillarLocalPostingReadiness: surfaces runtime cutover blockers", () => {
+  const pillar = pr.pillarLocalPostingReadiness({
+    report: {
+      verdict: "amber",
+      status: "local_foundation_ready_cutover_blocked",
+      readiness: {
+        safe_observation_mode: true,
+        running_primary_enabled: false,
+        running_auto_publish_enabled: false,
+      },
+      blockers: [
+        "local server is running safe observation mode, not primary posting mode",
+        "running local server reports primary=false",
+        "running local server reports AUTO_PUBLISH=false",
+      ],
+    },
+  });
+
+  assert.equal(pillar.verdict, "amber");
+  assert.match(pillar.reason, /safe observation mode/);
+  assert.match(pillar.reason, /primary=false/);
+  assert.equal(pillar.raw.readiness.safe_observation_mode, true);
 });
 
 test("summariseRepairBacklogReason: surfaces auto-repair lanes and dead-end blockers", () => {
@@ -464,7 +489,7 @@ test("buildPublishReadinessReport: empty store does not crash, returns at least 
   );
   assert.equal(report.story_count, 0);
   assert.ok(typeof report.pillars === "object");
-  assert.equal(Object.keys(report.pillars).length, 32);
+  assert.equal(Object.keys(report.pillars).length, 33);
   assert.ok(typeof report.next_action === "string");
 });
 

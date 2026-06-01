@@ -1,6 +1,6 @@
 # Local Posting Readiness
 
-Generated: 2026-06-01T03:17:16.800Z
+Generated: 2026-06-01T03:31:02.744Z
 Verdict: AMBER
 Status: local_foundation_ready_cutover_blocked
 Safety: read-only report; does not edit .env, start primary jobs, post, mutate DB, touch Railway or trigger OAuth

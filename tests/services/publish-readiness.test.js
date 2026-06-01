@@ -170,6 +170,66 @@ test("summariseRepairBacklogReason: surfaces auto-repair lanes and dead-end bloc
   );
 });
 
+test("pillarRenderMetadata separates active bridge renders from quarantined render debt", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-render-metadata-scope-"));
+  const planPath = path.join(dir, "dry_run_publish_plan.json");
+  const bridgePath = path.join(dir, "scheduler_bridge_candidates.json");
+  try {
+    fs.writeFileSync(
+      planPath,
+      JSON.stringify({
+        generated_at: "2026-06-01T00:00:00.000Z",
+        ready_stories: [{ story_id: "active-v4" }],
+        skipped_stories: [{ story_id: "skipped-legacy", reason: "stale_temporal_rejected" }],
+        blocked_stories: [],
+        held_stories: [],
+        safety: {
+          no_publish_triggered: true,
+          no_network_uploads: true,
+          no_db_mutation: true,
+          no_oauth_or_token_change: true,
+          dry_run_only: true,
+        },
+      }),
+    );
+    fs.writeFileSync(
+      bridgePath,
+      JSON.stringify([
+        {
+          id: "active-v4",
+          exported_path: "C:/renders/active-v4.mp4",
+          render_lane: "visual_v4_production",
+          render_quality_class: "premium",
+        },
+      ]),
+    );
+
+    const pillar = pr.pillarRenderMetadata({
+      strictDryRunPlanPath: planPath,
+      schedulerBridgeCandidatesPath: bridgePath,
+      stories: [
+        {
+          id: "skipped-legacy",
+          exported_path: "C:/renders/skipped-legacy.mp4",
+          render_lane: "legacy_multi_image",
+          render_quality_class: "fallback",
+        },
+      ],
+    });
+
+    assert.equal(pillar.verdict, "green");
+    assert.equal(pillar.raw.readiness_scope, "strict_dry_run_scoped");
+    assert.deepEqual(pillar.raw.active.lane_counts, { visual_v4_production: 1 });
+    assert.deepEqual(pillar.raw.active.class_counts, { premium: 1 });
+    assert.deepEqual(pillar.raw.quarantined.lane_counts, { legacy_multi_image: 1 });
+    assert.deepEqual(pillar.raw.quarantined.class_counts, { fallback: 1 });
+    assert.equal(pillar.raw.active_legacy_or_fallback_count, 0);
+    assert.equal(pillar.raw.quarantined_legacy_or_fallback_count, 1);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("buildMediaVerifyStoriesFromDryRunPlan: scopes verification to current action media", () => {
   const rows = pr.buildMediaVerifyStoriesFromDryRunPlan({
     safety: {

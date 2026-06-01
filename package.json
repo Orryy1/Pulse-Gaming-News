@@ -200,6 +200,7 @@
     "ops:local-tunnel-readiness": "node tools/local-tunnel-readiness.js",
     "ops:local-posting-readiness": "node tools/local-posting-readiness.js",
     "ops:local-restart-readiness": "node tools/local-restart-readiness.js",
+    "ops:controlled-restart-pack": "node tools/controlled-restart-pack.js",
     "ops:windows-scheduler-repair": "node tools/windows-scheduler-hidden-launcher-repair.js",
     "ops:local-resume-plan": "node tools/local-resume-plan.js",
     "ops:local-media-repair": "node tools/local-media-repair.js",

@@ -9,6 +9,7 @@ const {
   formatLocalResumePlanMarkdown,
 } = require("../lib/ops/local-resume-plan");
 const { buildLocalPostingReadiness } = require("../lib/ops/local-posting-readiness");
+const { buildLocalRestartReadiness } = require("../lib/ops/local-restart-readiness");
 const { loadLocalTtsProofReports } = require("../lib/studio/local-tts-proof-report-loader");
 
 const ROOT = path.resolve(__dirname, "..");
@@ -59,6 +60,7 @@ async function main() {
 
   const report = buildLocalResumePlan({
     localPostingReadiness: await resolveLocalPostingReadiness(OUT),
+    localRestartReadiness: await buildLocalRestartReadiness({ cwd: ROOT }),
     platformDoctor: await readJsonIfExists(path.join(OUT, "platform_readiness_doctor.json")),
     socialOps: await readJsonIfExists(path.join(OUT, "social_platform_operations.json")),
     proofCandidates: await readJsonIfExists(path.join(OUT, "studio_v2_proof_candidates.json")),

@@ -278,6 +278,34 @@ test("local resume plan can go green without TikTok direct posting", () => {
   assert.match(report.warnings.join("\n"), /automated TikTok remains blocked/);
 });
 
+test("local resume plan blocks stale green posting readiness when restart readiness is red", () => {
+  const report = buildLocalResumePlan({
+    localPostingReadiness: greenLocalPosting(),
+    localRestartReadiness: {
+      verdict: "red",
+      blockers: ["localhost /api/health is not reachable"],
+      windows_scheduler_hygiene: {
+        visible_console_risk_count: 1,
+        risk_task_names: ["Orryy-PulseGaming"],
+      },
+    },
+    socialOps: workingSocialOps(),
+    ttsReport: greenTts(),
+  });
+
+  assert.equal(report.verdict, "amber");
+  assert.equal(report.readiness.can_resume_local_automatic_posting, false);
+  assert.equal(report.readiness.local_restart_verdict, "RED");
+  assert.match(report.blockers.join("\n"), /local restart readiness is red/);
+  assert.match(report.blockers.join("\n"), /localhost \/api\/health is not reachable/);
+  assert.match(report.warnings.join("\n"), /Orryy-PulseGaming/);
+  assert.equal(
+    report.morning_approval_queue.find((item) => item.decision === "local_primary_cutover")
+      .recommendation,
+    "wait_until_local_resume_plan_is_green",
+  );
+});
+
 test("local resume plan blocks zero local voice-ready proofs", () => {
   const report = buildLocalResumePlan({
     localPostingReadiness: {

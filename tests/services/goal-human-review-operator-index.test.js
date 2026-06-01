@@ -162,7 +162,14 @@ test("operator index turns pending decisions into non-publishing review cards", 
   const card = index.review_cards[0];
   assert.equal(card.story_id, "story-one");
   assert.equal(card.review_status, "ready_for_operator_review");
-  assert.equal(card.recommended_next_decision, "operator_watch_then_decide");
+  assert.equal(
+    card.recommended_next_decision,
+    "watch_first_3s_then_choose_approve_reject_or_repair_enabled_platforms",
+  );
+  assert.equal(
+    card.recommended_decision_reason,
+    "3_enabled_platforms_reviewable; 2_deferred_or_disabled_platforms_excluded",
+  );
   assert.equal(card.open_targets.video_path.path, proof.video_path);
   assert.equal(card.open_targets.video_path.exists, true);
   assert.equal(card.open_targets.video_path.sha256, fingerprint(proof.video_path));
@@ -212,7 +219,8 @@ test("operator index routes missing review artefacts to repair instead of approv
 
   const card = index.review_cards[0];
   assert.equal(card.review_status, "missing_review_artefacts");
-  assert.equal(card.recommended_next_decision, "request_repairs");
+  assert.equal(card.recommended_next_decision, "request_repairs_missing_review_artefacts");
+  assert.equal(card.recommended_decision_reason, "5_missing_review_artefacts");
   assert.ok(card.blockers.includes("missing_review_artefact:video_path"));
   assert.match(card.decision_commands.request_repairs_dry_run, /request_repairs/);
 });

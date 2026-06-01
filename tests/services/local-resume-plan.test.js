@@ -284,6 +284,10 @@ test("local resume plan blocks stale green posting readiness when restart readin
     localRestartReadiness: {
       verdict: "red",
       blockers: ["localhost /api/health is not reachable"],
+      running: {
+        local: { ok: false },
+        public: { ok: true },
+      },
       windows_scheduler_hygiene: {
         visible_console_risk_count: 1,
         risk_task_names: ["Orryy-PulseGaming"],
@@ -296,6 +300,10 @@ test("local resume plan blocks stale green posting readiness when restart readin
   assert.equal(report.verdict, "amber");
   assert.equal(report.readiness.can_resume_local_automatic_posting, false);
   assert.equal(report.readiness.local_restart_verdict, "RED");
+  assert.equal(report.readiness.local_health, false);
+  assert.equal(report.readiness.public_health, true);
+  assert.equal(report.readiness.local_posting_health, true);
+  assert.equal(report.readiness.local_restart_health, false);
   assert.match(report.blockers.join("\n"), /local restart readiness is red/);
   assert.match(report.blockers.join("\n"), /localhost \/api\/health is not reachable/);
   assert.match(report.warnings.join("\n"), /Orryy-PulseGaming/);

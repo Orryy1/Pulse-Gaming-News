@@ -182,6 +182,18 @@ const TENS = [
   "ninety",
 ];
 
+const MODERN_DECADE_WORDS = {
+  10: "tens",
+  20: "twenties",
+  30: "thirties",
+  40: "forties",
+  50: "fifties",
+  60: "sixties",
+  70: "seventies",
+  80: "eighties",
+  90: "nineties",
+};
+
 function belowHundredToWords(value) {
   const number = Number(value);
   if (!Number.isInteger(number) || number < 0 || number >= 100) return String(value);
@@ -225,6 +237,11 @@ function integerToSpokenWords(value) {
     parts.push(`${remainder < 100 ? "and " : ""}${belowThousandToWords(remainder)}`);
   }
   return parts.join(" ");
+}
+
+function modernDecadeToSpokenWords(value) {
+  const number = Number(value);
+  return MODERN_DECADE_WORDS[number] || `${belowHundredToWords(number)}s`;
 }
 
 function expandCommaFormattedNumbers(text) {
@@ -436,6 +453,12 @@ function cleanForTTS(raw) {
       // shape oddly while leaving years and small sequel numbers alone.
       .replace(/\b\d{1,3}(?:,\d{3})+\b/g, (match) =>
         expandCommaFormattedNumbers(match),
+      )
+      .replace(/\b20(10|20|30|40|50|60|70|80|90)s\b/gi, (_, suffix) =>
+        `twenty ${modernDecadeToSpokenWords(suffix)}`,
+      )
+      .replace(/\btwenty\s+(10|20|30|40|50|60|70|80|90)s\b/gi, (_, suffix) =>
+        `twenty ${modernDecadeToSpokenWords(suffix)}`,
       )
       // Years
       .replace(/(\d{4})/g, (match) => {

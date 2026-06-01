@@ -112,6 +112,13 @@ test("cleanForTTS: expands modern years without hybrid spoken digits", () => {
   );
 });
 
+test("cleanForTTS: repairs hybrid decade wording before local narration", () => {
+  assert.equal(
+    cleanForTTS("Nintendo made the call in the twenty 10s, before the 2020s took over."),
+    "Nintendo made the call in the twenty tens, before the twenty twenties took over.",
+  );
+});
+
 test("cleanForTTS: expands review scores with slash notation for local narration", () => {
   assert.equal(
     cleanForTTS("PC Gamer scored Forza Horizon 6 at 84/100."),

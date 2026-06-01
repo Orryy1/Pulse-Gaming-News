@@ -332,6 +332,57 @@ test("local script extension blocks generic duration padding before audio genera
   assert.equal(draft.source_bound_rewrite_work_order.operator_approval_required, true);
 });
 
+test("local script extension repairs hybrid spoken years before public-copy QA", () => {
+  const draft = extendScriptToLocalFlash({
+    story: {
+      id: "oblivion_year_repair",
+      title: "Oblivion Remastered is still waiting on a fix",
+      source_name: "Digital Foundry",
+      content_pillar: "Source Breakdown",
+      full_script: variedScript("Oblivion Remastered", 25).replace(
+        "Oblivion Remastered has a confirmed update today.",
+        "Oblivion Remastered has an April twenty 25 technical problem players can still feel today.",
+      ),
+      source_bound_extension_sentences: sourceBoundExtensionLines("Oblivion Remastered"),
+    },
+    queueItem: queueItem("oblivion_year_repair", 170),
+    env: {},
+  });
+
+  assert.doesNotMatch(draft.proposed_full_script, /\btwenty\s+\d{2}\b/i);
+  assert.match(draft.proposed_full_script, /April twenty twenty five technical problem/i);
+  assert.ok(
+    !draft.manual_review_flags.includes("script_coherence:hybrid_spoken_year"),
+    draft.manual_review_flags.join(", "),
+  );
+  assert.ok(
+    !draft.manual_review_flags.includes("script_lint:hybrid_spoken_year"),
+    draft.manual_review_flags.join(", "),
+  );
+});
+
+test("local script extension prefers longer source-bound segment script over stale short tts_script", () => {
+  const draft = extendScriptToLocalFlash({
+    story: {
+      id: "segmented_base_script",
+      title: "Forza Horizon 6 just broke Xbox's Steam ceiling",
+      source_name: "SteamDB",
+      tts_script:
+        "Forza Horizon 6 hit a Steam record. Follow Pulse Gaming so you never miss a beat.",
+      hook: "Forza Horizon 6 just gave Xbox the Steam number it needed.",
+      body: `${variedScript("Forza Horizon 6", 19)} [PAUSE] SteamDB is the source for the player-count claim.`,
+      loop: "Either way, Xbox finally has a racing story with hard numbers behind it.",
+    },
+    queueItem: queueItem("segmented_base_script", 80),
+    env: {},
+  });
+
+  assert.match(draft.proposed_full_script, /SteamDB is the source for the player-count claim/);
+  assert.match(draft.proposed_full_script, /Xbox finally has a racing story with hard numbers/);
+  assert.doesNotMatch(draft.proposed_full_script, /\[PAUSE\]/);
+  assert.equal(draft.action, "ready_for_local_liam_audio");
+});
+
 test("local script extension routes runtime-valid policy-memo narration to review", () => {
   const draft = extendScriptToLocalFlash({
     story: {
@@ -584,6 +635,45 @@ test("local script extension plan skips stories with existing voice-ready proofs
   assert.match(renderLocalScriptExtensionMarkdown(plan), /already_ready: existing_voice_ready_proof/);
 });
 
+test("local script extension plan does not re-offer matching failed local audio proofs as ready", () => {
+  const script = [
+    "Hades II finally has a console date.",
+    variedScript("Hades II", 20),
+  ].join(" ");
+  const plan = buildLocalScriptExtensionPlan({
+    queueReport: {
+      items: [queueItem("hades_overlong_proof", 180)],
+    },
+    storiesById: {
+      hades_overlong_proof: {
+        id: "hades_overlong_proof",
+        title: "Hades II finally has a console date",
+        full_script: script,
+      },
+    },
+    cleanText: (text) => String(text).replace(/\bHades\s+(?:II|2)\b/g, "Hades two"),
+    existingRejectedProofsById: {
+      hades_overlong_proof: {
+        story_id: "hades_overlong_proof",
+        failure_code: "duration_too_long",
+        verdict: "reject_duration_too_long",
+        transcript: [
+          "Hades sequel finally has a console date.",
+          variedScript("Hades sequel", 20),
+          REQUIRED_CTA,
+        ].join(" "),
+      },
+    },
+    env: {},
+  });
+
+  assert.equal(plan.counts.ready, 0);
+  assert.equal(plan.counts.review, 1);
+  assert.equal(plan.drafts[0].action, "review_extended_script");
+  assert.ok(plan.drafts[0].manual_review_flags.includes("local_audio_proof:duration_too_long"));
+  assert.equal(plan.drafts[0].source_bound_rewrite_work_order.blocker_type, "local_audio_duration_repair");
+});
+
 test("local script extension plan can target one story without bulk audio work", () => {
   const plan = buildLocalScriptExtensionPlan({
     queueReport: {
@@ -730,6 +820,46 @@ test("apply local script extension audio writes ready Liam proofs only", async (
   assert.equal(result.applied[0].duration_verdict, "pass");
   assert.equal(result.safety.mutates_production_db, false);
   assert.equal(result.safety.posts_to_platforms, false);
+});
+
+test("apply local script extension audio sends local-clone-safe Hades wording to TTS", async () => {
+  const generated = [];
+  const stamped = [];
+  const result = await applyLocalScriptExtensionAudio({
+    plan: {
+      drafts: [
+        {
+          story_id: "hades_clone_safe",
+          action: "ready_for_local_liam_audio",
+          proposed_full_script: "Hades II finally has a console date. Follow Pulse Gaming so you never miss a beat.",
+          proposed_words: 190,
+          estimated_seconds: 64.2,
+        },
+      ],
+    },
+    cleanText: (text) => String(text).replace(/\bHades\s+(?:II|2)\b/g, "Hades two"),
+    generateTts: async (text, outputRel, rate) => {
+      generated.push({ text, outputRel, rate });
+    },
+    stampVoiceMeta: async (args) => {
+      stamped.push(args);
+      return {
+        stamped: true,
+        transcript: args.text,
+        spoken_outro_present: true,
+        acoustic: { medianPitchHz: 118 },
+        local_voice_reference: { referencePresent: true },
+      };
+    },
+    measureDuration: async () => 65.8,
+    localTts: READY_TTS,
+  });
+
+  assert.equal(generated.length, 1);
+  assert.equal(generated[0].text, "Hades sequel finally has a console date. Follow Pulse Gaming so you never miss a beat.");
+  assert.equal(stamped[0].text, generated[0].text);
+  assert.equal(result.applied[0].transcript, generated[0].text);
+  assert.equal(result.applied[0].failure_code, null);
 });
 
 test("apply local script extension audio stamps accepted Sleepy Liam metadata", async () => {

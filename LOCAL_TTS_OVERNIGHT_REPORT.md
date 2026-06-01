@@ -1,6 +1,6 @@
 # Local TTS Overnight Report
 
-Generated: 2026-06-01T04:11:21.949Z
+Generated: 2026-06-01T04:46:16.912Z
 Verdict: AMBER
 Expected local voice: pulse-sleepy-liam-20260502
 Local proof preferred duration: 64-70s preferred, 61-75s accepted
@@ -10,8 +10,8 @@ Local proof preferred duration: 64-70s preferred, 61-75s accepted
 - reason=local TTS is ready with the accepted voice loaded
 
 ## Proof Batch
-- applied=27 voice_ready=14 rejected=8 skipped=6 superseded=7
-- failures=duration_too_short:8, connection_reset:2, tts_timeout:4
+- applied=30 voice_ready=16 rejected=9 skipped=6 superseded=7
+- failures=duration_too_short:8, duration_too_long:1, connection_reset:2, tts_timeout:4
 - superseded_failures=duration_too_short:4, duration_too_long:1, tts_timeout:1, connection_reset:1
 
 ## Voice-Ready MP3s
@@ -21,7 +21,8 @@ Local proof preferred duration: 64-70s preferred, 61-75s accepted
 - 1tb2q61: source=local_media_repair | measured=63.36s | target=below_target | estimated=60.58s | 177 words | 168 WPM | pitch=105.66Hz | outro=true | D:\pulse-data\media\test\output\local-media-repair\audio\1tb2q61_liam.mp3
 - 1tcabvy: source=local_media_repair | measured=69.44s | target=pass | estimated=63.01s | 184 words | 159 WPM | pitch=95.28Hz | outro=true | D:\pulse-data\media\test\output\local-media-repair\audio\1tcabvy_liam.mp3
 - 1tb5izu: source=local_media_repair | measured=62.72s | target=below_target | estimated=65.27s | 191 words | 183 WPM | pitch=98.3Hz | outro=true | D:\pulse-data\media\test\output\local-media-repair\audio\1tb5izu_liam.mp3
-- 1tkik53: source=local_script_extension | measured=66.72s | target=pass | estimated=69.65s | 198 words | 178 WPM | pitch=107.74Hz | outro=true | test/output/local-script-extension/audio/1tkik53_liam_extended.mp3
+- 1tf39iq: source=local_script_extension | measured=66.24s | target=pass | estimated=68.9s | 196 words | 178 WPM | pitch=99.05Hz | outro=true | test/output/local-script-extension/audio/1tf39iq_liam_extended.mp3
+- 1thb9qp: source=local_script_extension | measured=64s | target=pass | estimated=74.63s | 212 words | 199 WPM | pitch=106.06Hz | outro=true | test/output/local-script-extension/audio/1thb9qp_liam_extended.mp3
 - 1t0zhng: source=local_script_extension | measured=71.52s | target=above_target | estimated=67.75s | 198 words | 166 WPM | pitch=95.02Hz | outro=true | test/output/local-script-extension/audio/1t0zhng_liam_extended.mp3
 - rss_ef7e6e464509e0bc: source=local_script_extension | measured=73.92s | target=above_target | estimated=68.4s | 200 words | 162 WPM | pitch=102.43Hz | outro=true | test/output/local-script-extension/audio/rss_ef7e6e464509e0bc_liam_extended.mp3
 - rss_6edbb38dc280fc96: source=local_script_extension | measured=62.08s | target=below_target | estimated=68.62s | 201 words | 194 WPM | pitch=100.79Hz | outro=true | test/output/local-script-extension/audio/rss_6edbb38dc280fc96_liam_extended.mp3
@@ -29,6 +30,7 @@ Local proof preferred duration: 64-70s preferred, 61-75s accepted
 - rss_1b7c404fc657548f: source=local_script_extension | measured=66.08s | target=pass | estimated=68.16s | 199 words | 181 WPM | pitch=100.72Hz | outro=true | test/output/local-script-extension/audio/rss_1b7c404fc657548f_liam_extended.mp3
 - rss_2d69aa8506934c5e: source=local_script_extension | measured=68.48s | target=pass | estimated=68.82s | 201 words | 176 WPM | pitch=103.22Hz | outro=true | test/output/local-script-extension/audio/rss_2d69aa8506934c5e_liam_extended.mp3
 - 1tb13l5: source=local_script_extension | measured=64.8s | target=pass | estimated=64.75s | 184 words | 170 WPM | pitch=102.89Hz | outro=true | test/output/local-script-extension/audio/1tb13l5_liam_extended.mp3
+- 1tkik53: source=local_script_extension | measured=66.72s | target=pass | estimated=69.65s | 198 words | 178 WPM | pitch=107.74Hz | outro=true | test/output/local-script-extension/audio/1tkik53_liam_extended.mp3
 
 ## Unresolved Rejected Proofs
 - 1t186u4: source=local_media_repair | reject_duration_too_short (duration_too_short)
@@ -38,6 +40,7 @@ Local proof preferred duration: 64-70s preferred, 61-75s accepted
 - 1tb3i1r: source=local_media_repair | reject_duration_too_short (duration_too_short)
 - 1tk1lpr: source=local_media_repair | reject_duration_too_short (duration_too_short)
 - 1tkzdfq: source=local_media_repair | reject_duration_too_short (duration_too_short)
+- 1thnwdq: source=local_script_extension | reject_duration_too_long (duration_too_long)
 - 1tayii3: source=local_script_extension | reject_duration_too_short (duration_too_short)
 
 ## Skipped

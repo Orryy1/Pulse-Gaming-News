@@ -88,6 +88,15 @@ function existingReadyStoryIds(report = {}) {
     .map((row) => row.story_id);
 }
 
+function existingRejectedProofsById(report = {}) {
+  const out = {};
+  for (const row of report.proof_batch?.applied || []) {
+    if (!row?.story_id || row.verdict === "voice_ready" || !row.failure_code) continue;
+    out[row.story_id] = row;
+  }
+  return out;
+}
+
 async function main() {
   const args = parseArgs(process.argv);
   const outDir = path.resolve(args.outDir || OUT);
@@ -114,6 +123,7 @@ async function main() {
     limit: args.limit,
     storyId: args.storyId,
     existingReadyStoryIds: existingReadyStoryIds(overnightReport),
+    existingRejectedProofsById: existingRejectedProofsById(overnightReport),
   });
   const jsonPath = path.join(outDir, "local_script_extension_plan.json");
   const mdPath = path.join(outDir, "local_script_extension_plan.md");
@@ -129,6 +139,7 @@ async function main() {
     const applyReport = await applyLocalScriptExtensionAudio({
       plan,
       generateTts: audio.generateTTS,
+      cleanText: audio.cleanForTTS,
       acousticProbe: probeLocalAudioAcoustics,
       recoverLocalTts: createLocalTtsBatchRecovery({
         root: ROOT,

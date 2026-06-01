@@ -132,6 +132,56 @@ test("summarisePlatformStatusReason: surfaces disabled and credential gaps", () 
   );
 });
 
+test("applyStrictPlatformEvidenceToStatus: TikTok doctor/preflight evidence outranks stale disabled status", () => {
+  const staleStatus = {
+    summary: {
+      disabled_platforms: ["tiktok", "twitter"],
+      needs_credentials_platforms: [],
+    },
+    operational: {
+      tiktok: { state: "disabled", reason: "operator_disabled" },
+      twitter: { state: "disabled", reason: "x_optional_disabled" },
+    },
+  };
+
+  const patched = pr.applyStrictPlatformEvidenceToStatus(staleStatus, {
+    strictDryRunPlan: {
+      platform_operational_config: {
+        tiktok: {
+          state: "needs_credentials",
+          reason: "tiktok_local_token_refresh_or_sync_required",
+          enablement_next_action:
+            "refresh_or_sync_local_token_with_operator_present_before_any_inbox_upload",
+        },
+      },
+      platform_status_matrix: {
+        platforms: {
+          tiktok: {
+            operational_state: "needs_credentials",
+            operational_reason: "tiktok_local_token_refresh_or_sync_required",
+          },
+        },
+      },
+    },
+    platformDoctor: {
+      platforms: {
+        tiktok: {
+          status: "needs_local_token_refresh_or_sync",
+          recommendation:
+            "refresh_or_sync_local_token_with_operator_present_before_any_inbox_upload",
+        },
+      },
+    },
+  });
+
+  assert.equal(
+    pr.summarisePlatformStatusReason(patched),
+    "needs_credentials: tiktok=tiktok_local_token_refresh_or_sync_required; disabled: twitter=x_optional_disabled",
+  );
+  assert.deepEqual(staleStatus.summary.needs_credentials_platforms, []);
+  assert.equal(staleStatus.operational.tiktok.reason, "operator_disabled");
+});
+
 test("summariseTiktokExternalBlockReason: surfaces platform doctor token and approval gaps", () => {
   assert.equal(
     pr.summariseTiktokExternalBlockReason({

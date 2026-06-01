@@ -1,6 +1,6 @@
 # Local Posting Readiness
 
-Generated: 2026-06-01T04:24:15.958Z
+Generated: 2026-06-01T04:52:01.859Z
 Verdict: RED
 Status: not_ready
 Safety: read-only report; does not edit .env, start primary jobs, post, mutate DB, touch Railway or trigger OAuth
@@ -25,7 +25,7 @@ Safety: read-only report; does not edit .env, start primary jobs, post, mutate D
 - queue_enabled: true
 - auto_publish_enabled: false
 - local_tts_green: false
-- local_voice_ready_count: 14
+- local_voice_ready_count: 16
 
 ## Blockers
 - pulse.orryy.com Cloudflare tunnel is not connected to this PC

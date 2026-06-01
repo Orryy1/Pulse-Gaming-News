@@ -253,6 +253,66 @@ test("pillarLocalPostingReadiness: surfaces runtime cutover blockers", () => {
   assert.equal(pillar.raw.readiness.safe_observation_mode, true);
 });
 
+test("pillarLocalPostingReadiness: stale local posting artefacts keep cutover amber", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-local-posting-stale-"));
+  const cutoverPath = path.join(dir, "local_cutover_plan.json");
+  const primaryPath = path.join(dir, "local_primary_readiness.json");
+  const ttsPath = path.join(dir, "local_tts_overnight_report.json");
+  const localHealth = {
+    ok: true,
+    json: {
+      runtime: { safe_observation_mode: false, auto_publish: true },
+      deployment: { mode: "local", primary: true },
+    },
+  };
+  try {
+    fs.writeFileSync(
+      cutoverPath,
+      JSON.stringify({
+        verdict: "green",
+        env: { flags: { primary: true, use_job_queue: true, auto_publish: true } },
+        health: {
+          local: localHealth,
+          public: { ok: true, json: { deployment: { mode: "local", primary: true } } },
+        },
+        cloudflared: { tunnel_info: "Active connections: 1" },
+      }),
+    );
+    fs.writeFileSync(
+      primaryPath,
+      JSON.stringify({
+        checks: {
+          primary_enabled: true,
+          use_job_queue_enabled: true,
+          auto_publish_enabled: true,
+        },
+        health: { local: localHealth },
+        duplicate_env_keys: [],
+      }),
+    );
+    fs.writeFileSync(
+      ttsPath,
+      JSON.stringify({ verdict: "green", proof_batch: { voice_ready_count: 6 } }),
+    );
+    const old = new Date("2026-06-01T00:00:00.000Z");
+    fs.utimesSync(ttsPath, old, old);
+
+    const pillar = pr.pillarLocalPostingReadiness({
+      localCutoverPlanPath: cutoverPath,
+      localPrimaryReadinessPath: primaryPath,
+      localTtsReportPath: ttsPath,
+      now: Date.parse("2026-06-01T05:00:00.000Z"),
+      maxArtifactAgeHours: 2,
+    });
+
+    assert.equal(pillar.verdict, "amber");
+    assert.match(pillar.reason, /local_posting_artifacts_stale=local_tts_overnight_report/);
+    assert.equal(pillar.raw.artifact_freshness.stale_count, 1);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("summariseRepairBacklogReason: surfaces auto-repair lanes and dead-end blockers", () => {
   assert.equal(
     pr.summariseRepairBacklogReason({

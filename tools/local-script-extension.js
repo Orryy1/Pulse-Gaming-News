@@ -29,6 +29,9 @@ const {
   archiveLocalTtsProofReport,
 } = require("../lib/studio/local-tts-proof-report-loader");
 const mediaPaths = require("../lib/media-paths");
+const {
+  loadActiveLocalProofRepairStories,
+} = require("./local-media-repair");
 
 function parseArgs(argv) {
   const args = {
@@ -83,18 +86,57 @@ async function readJsonIfExists(filePath) {
 }
 
 function existingReadyStoryIds(report = {}) {
-  return (report.proof_batch?.applied || [])
+  return ((report && report.proof_batch?.applied) || [])
     .filter((row) => row?.verdict === "voice_ready" && row.story_id)
     .map((row) => row.story_id);
 }
 
 function existingRejectedProofsById(report = {}) {
   const out = {};
-  for (const row of report.proof_batch?.applied || []) {
+  for (const row of ((report && report.proof_batch?.applied) || [])) {
     if (!row?.story_id || row.verdict === "voice_ready" || !row.failure_code) continue;
     out[row.story_id] = row;
   }
   return out;
+}
+
+function activeProofStoryIdsFromQueue(queueReport = {}) {
+  const ids = new Set();
+  for (const item of queueReport?.items || []) {
+    if (
+      item?.repair_scope === "active_local_proof" ||
+      item?.local_proof_repair === true ||
+      item?.voice_audit?.readiness_scope === "active_local_proof"
+    ) {
+      const id = String(item.story_id || "").trim();
+      if (id) ids.add(id);
+    }
+  }
+  return ids;
+}
+
+async function buildStoriesByIdWithActiveProof({
+  stories = [],
+  queueReport = {},
+  localTestManifestPath,
+} = {}) {
+  const storiesById = Object.fromEntries((stories || []).map((story) => [story.id, story]));
+  const activeStoryIds = activeProofStoryIdsFromQueue(queueReport);
+  if (activeStoryIds.size === 0) return storiesById;
+  const proofStories = await loadActiveLocalProofRepairStories({
+    localTestManifestPath,
+    existingStoryIds: new Set(),
+    storyIdFilter: activeStoryIds,
+  });
+  for (const story of proofStories) {
+    if (!story?.id) continue;
+    storiesById[story.id] = {
+      ...(storiesById[story.id] || {}),
+      ...story,
+      db_story_present: Boolean(storiesById[story.id]),
+    };
+  }
+  return storiesById;
 }
 
 async function main() {
@@ -111,8 +153,12 @@ async function main() {
   const db = require("../lib/db");
   const audio = require("../audio");
   const stories = await db.getStories();
-  const storiesById = Object.fromEntries((stories || []).map((story) => [story.id, story]));
   const queueReport = await fs.readJson(queuePath);
+  const storiesById = await buildStoriesByIdWithActiveProof({
+    stories,
+    queueReport,
+    localTestManifestPath: path.join(outDir, "local_test_video_manifest.json"),
+  });
   const overnightReport = await readJsonIfExists(
     path.join(outDir, "local_tts_overnight_report.json"),
   );
@@ -177,3 +223,11 @@ if (require.main === module) {
     process.exit(1);
   });
 }
+
+module.exports = {
+  activeProofStoryIdsFromQueue,
+  buildStoriesByIdWithActiveProof,
+  existingReadyStoryIds,
+  existingRejectedProofsById,
+  parseArgs,
+};

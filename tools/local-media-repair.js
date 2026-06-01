@@ -214,6 +214,108 @@ function textFromProofSidecars({ canonical = {}, narration = {} } = {}) {
   );
 }
 
+function asTextArray(value) {
+  if (Array.isArray(value)) return value.map((item) => String(item || "").trim()).filter(Boolean);
+  if (typeof value === "string" && value.trim()) return [value.trim()];
+  return [];
+}
+
+function sentenceText(value) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .replace(/\s+([.!?])/g, "$1")
+    .trim()
+    .replace(/[.!?]*$/, ".");
+}
+
+function escapeRegex(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function firstProofClaim(canonical = {}) {
+  return (
+    asTextArray(canonical.confirmed_claims)[0] ||
+    asTextArray(canonical.claim_inventory?.confirmed)[0] ||
+    asTextArray(canonical.allowed_public_wording)[0] ||
+    canonical.description ||
+    ""
+  );
+}
+
+function proofFocusForCanonical(canonical = {}) {
+  const hay = [
+    canonical.selected_title,
+    canonical.canonical_subject,
+    canonical.canonical_game,
+    firstProofClaim(canonical),
+  ].join(" ").toLowerCase();
+  if (/\b(controller|headset|deal|price|sale|discount|drops?|stock|pre[- ]?order)\b/.test(hay)) {
+    return "price, stock and whether the deal is actually worth chasing";
+  }
+  if (/\b(date|release|launch|coming|leaked early|accidentally revealed)\b/.test(hay)) {
+    return "date, platform and whether the next store page confirms the timing";
+  }
+  if (/\b(gameplay|trailer|preview|showcase|footage|reveal)\b/.test(hay)) {
+    return "controls, pacing and what happens between the trailer cuts";
+  }
+  if (/\b(composer|developer|studio|job|focus|layoff|cancel|support)\b/.test(hay)) {
+    return "who is still making it and whether the studio's next move matches the claim";
+  }
+  return "timing, access and what players can verify next";
+}
+
+function sourceBoundExtensionSentencesFromCanonical(canonical = {}) {
+  const subject =
+    canonical.canonical_subject ||
+    canonical.canonical_game ||
+    canonical.selected_title ||
+    canonical.short_title ||
+    "";
+  const source = canonical.primary_source || canonical.official_source || canonical.source_card_label || "";
+  const claim = firstProofClaim(canonical);
+  if (!subject || !claim) return [];
+  const proofFocus = proofFocusForCanonical(canonical);
+  const publicClaim = sentenceText(
+    subject
+      ? claim
+          .replace(new RegExp(escapeRegex(subject), "gi"), "the game")
+          .replace(/\bthe game gameplay\b/gi, "gameplay")
+      : claim,
+  ).replace(/[.]$/, "");
+  const sourcePrefix = source ? `${source} gives the hard fact` : "The source gives the hard fact";
+  return [
+    sentenceText(
+      `${sourcePrefix}: ${publicClaim} That keeps the short on what players can see, not on a bigger promise the source has not made`,
+    ),
+    sentenceText(
+      `For players, the next proof point is ${proofFocus}, because the game only gets real traction when the next clip answers that without hiding behind quick cuts`,
+    ),
+    sentenceText(
+      `That gives the story a sharper question: whether this is one strong reveal moment, or whether the actual play, access and presentation can hold up for a full segment`,
+    ),
+    sentenceText(
+      `The next official update has to make that obvious fast, because viewers will judge the feel before they care about the wider pitch`,
+    ),
+    sentenceText(
+      `Until then, the clean angle is simple: the project has attention, but the next proof decides how much of that attention turns into real player interest`,
+    ),
+  ];
+}
+
+function compactExtensionSentencesFromCanonical(canonical = {}) {
+  const subject =
+    canonical.canonical_subject ||
+    canonical.canonical_game ||
+    canonical.selected_title ||
+    canonical.short_title ||
+    "";
+  if (!subject) return [];
+  return [
+    sentenceText("This still needs one longer proof point before the hype settles"),
+    sentenceText(`The next official update decides whether this becomes a watchlist story`),
+  ];
+}
+
 async function loadActiveLocalProofRepairStories({
   localTestManifestPath = DEFAULT_LOCAL_TEST_VIDEO_MANIFEST_PATH,
   existingStoryIds = new Set(),
@@ -260,6 +362,16 @@ async function loadActiveLocalProofRepairStories({
         sidecars.canonical.vertical === "gaming" || sidecars.canonical.canonical_game
           ? "gaming"
           : sidecars.canonical.canonical_angle,
+      source_bound_extension_sentences: [
+        ...asTextArray(sidecars.canonical.source_bound_extension_sentences),
+        ...asTextArray(sidecars.canonical.local_script_extension_sentences),
+        ...sourceBoundExtensionSentencesFromCanonical(sidecars.canonical),
+      ],
+      source_bound_compact_sentences: [
+        ...asTextArray(sidecars.canonical.source_bound_compact_sentences),
+        ...asTextArray(sidecars.canonical.local_script_extension_compact_sentences),
+        ...compactExtensionSentencesFromCanonical(sidecars.canonical),
+      ],
       word_count: Number(sidecars.canonical.word_count || 0) || undefined,
       source_confidence_score: sidecars.canonical.source_confidence_score ?? null,
       audio_path:

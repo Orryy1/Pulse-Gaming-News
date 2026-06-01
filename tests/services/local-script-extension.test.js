@@ -17,6 +17,11 @@ const {
 const {
   resolveAcceptedLocalVoiceReference,
 } = require("../../lib/studio/v2/local-voice-reference");
+const {
+  buildStoriesByIdWithActiveProof,
+  existingReadyStoryIds,
+  existingRejectedProofsById,
+} = require("../../tools/local-script-extension");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const ACCEPTED_SLEEPY_LIAM = resolveAcceptedLocalVoiceReference();
@@ -613,6 +618,157 @@ test("local script extension plan only consumes repair queue extension items", (
   assert.equal(plan.drafts[0].story_id, "rss_short");
   assert.equal(plan.safety.mutates_production_db, false);
   assert.equal(plan.safety.posts_to_platforms, false);
+});
+
+test("local script extension CLI tolerates missing overnight proof report", () => {
+  assert.deepEqual(existingReadyStoryIds(null), []);
+  assert.deepEqual(existingRejectedProofsById(null), {});
+});
+
+test("local script extension CLI uses active proof sidecars for proof repair rows", async () => {
+  const dir = path.join(ROOT, "test", "output", "tmp-local-script-extension-active-proof");
+  fs.rmSync(dir, { recursive: true, force: true });
+  const proofDir = path.join(dir, "proof", "1s4denn");
+  fs.mkdirSync(proofDir, { recursive: true });
+  const activeMp4 = path.join(proofDir, "visual_v4_render.mp4");
+  fs.writeFileSync(activeMp4, "active proof");
+  fs.writeFileSync(
+    path.join(proofDir, "canonical_story_manifest.json"),
+    JSON.stringify({
+      story_id: "1s4denn",
+      canonical_game: "The Expanse: Osiris Reborn",
+      vertical: "gaming",
+      selected_title: "The Expanse Shows Real Gameplay",
+      tts_script: variedScript("The Expanse", 25),
+      source_bound_extension_sentences: sourceBoundExtensionLines("The Expanse"),
+      source_bound_compact_sentences: [
+        "The next proof point is whether the combat rhythm holds outside the trailer cut.",
+      ],
+      source_confidence_score: 0.9,
+    }),
+  );
+  const manifestPath = path.join(dir, "local_test_video_manifest.json");
+  fs.writeFileSync(
+    manifestPath,
+    JSON.stringify({
+      videos: [
+        {
+          story_id: "1s4denn",
+          title: "The Expanse Shows Real Gameplay",
+          video_path: activeMp4,
+          publish_status: "not_publishable_local_proof",
+        },
+      ],
+    }),
+  );
+  const queueReport = {
+    items: [
+      {
+        story_id: "1s4denn",
+        title: "The Expanse Shows Real Gameplay",
+        action: "extend_script_before_local_repair",
+        repair_scope: "active_local_proof",
+        local_proof_repair: true,
+        runtime: { wordCount: 120 },
+      },
+    ],
+  };
+
+  const storiesById = await buildStoriesByIdWithActiveProof({
+    stories: [
+      {
+        id: "1s4denn",
+        title: "Stale DB Row",
+        full_script: "Too short.",
+      },
+    ],
+    queueReport,
+    localTestManifestPath: manifestPath,
+  });
+  const plan = buildLocalScriptExtensionPlan({
+    queueReport,
+    storiesById,
+    env: {},
+  });
+
+  assert.equal(storiesById["1s4denn"].local_proof_repair, true);
+  assert.equal(storiesById["1s4denn"].repair_scope, "active_local_proof");
+  assert.match(storiesById["1s4denn"].full_script, /The Expanse has a confirmed update today/);
+  assert.equal(plan.counts.total, 1);
+  assert.equal(plan.drafts[0].story_id, "1s4denn");
+  assert.notEqual(plan.drafts[0].base_script_present, false);
+  assert.ok(!plan.drafts[0].manual_review_flags.includes("missing_base_script"));
+});
+
+test("local script extension CLI builds source-bound context from active proof manifests", async () => {
+  const dir = path.join(ROOT, "test", "output", "tmp-local-script-extension-proof-context");
+  fs.rmSync(dir, { recursive: true, force: true });
+  const proofDir = path.join(dir, "proof", "1s4denn");
+  fs.mkdirSync(proofDir, { recursive: true });
+  const activeMp4 = path.join(proofDir, "visual_v4_render.mp4");
+  fs.writeFileSync(activeMp4, "active proof");
+  fs.writeFileSync(
+    path.join(proofDir, "canonical_story_manifest.json"),
+    JSON.stringify({
+      story_id: "1s4denn",
+      canonical_subject: "The Expanse: Osiris Reborn",
+      canonical_game: "The Expanse: Osiris Reborn",
+      vertical: "gaming",
+      primary_source: "Xbox",
+      selected_title: "The Expanse Shows Real Gameplay",
+      confirmed_claims: [
+        "Xbox showed The Expanse: Osiris Reborn gameplay during Partner Preview.",
+      ],
+      tts_script: [
+        "The Expanse: Osiris Reborn finally has real gameplay on screen.",
+        "Xbox showed The Expanse: Osiris Reborn gameplay during Partner Preview.",
+        "The player question is whether this feels like The Expanse or just another sci fi shooter wearing the name.",
+      ].join(" "),
+    }),
+  );
+  const manifestPath = path.join(dir, "local_test_video_manifest.json");
+  fs.writeFileSync(
+    manifestPath,
+    JSON.stringify({
+      videos: [
+        {
+          story_id: "1s4denn",
+          title: "The Expanse Shows Real Gameplay",
+          video_path: activeMp4,
+          publish_status: "not_publishable_local_proof",
+        },
+      ],
+    }),
+  );
+  const queueReport = {
+    items: [
+      {
+        story_id: "1s4denn",
+        title: "The Expanse Shows Real Gameplay",
+        action: "extend_script_before_local_repair",
+        repair_scope: "active_local_proof",
+        local_proof_repair: true,
+        runtime: { wordCount: 45 },
+      },
+    ],
+  };
+
+  const storiesById = await buildStoriesByIdWithActiveProof({
+    stories: [],
+    queueReport,
+    localTestManifestPath: manifestPath,
+  });
+  const plan = buildLocalScriptExtensionPlan({
+    queueReport,
+    storiesById,
+    env: {},
+  });
+
+  assert.equal(plan.counts.ready, 1);
+  assert.equal(plan.drafts[0].action, "ready_for_local_liam_audio");
+  assert.match(plan.drafts[0].proposed_full_script, /Xbox gives the hard fact/);
+  assert.match(plan.drafts[0].proposed_full_script, /The Expanse: Osiris Reborn/);
+  assert.doesNotMatch(plan.drafts[0].proposed_full_script, /official listing, patch note or platform page changes the picture/i);
 });
 
 test("local script extension plan skips stories with existing voice-ready proofs", () => {

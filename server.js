@@ -12,12 +12,22 @@ const { extractBearerToken, tokenMatches } = require("./lib/auth-token");
 const { getPublicUrl } = require("./lib/deployment-mode");
 const { resolveRuntimeBuildInfo } = require("./lib/runtime-build-info");
 const {
+  applySafeObservationMode,
+  isSafeObservationMode,
+} = require("./lib/safe-observation-mode");
+const {
   resolveFacebookTokenPath,
   resolveInstagramTokenPath,
 } = require("./lib/token-paths");
 const { describeLlmState } = require("./lib/llm-key");
 
 dotenv.config({ override: true });
+const SAFE_OBSERVATION_MODE = applySafeObservationMode(process.env);
+if (SAFE_OBSERVATION_MODE.applied) {
+  console.log(
+    "[server] PULSE_SAFE_OBSERVATION_MODE=true - forcing local mirror health-only startup with posting disabled",
+  );
+}
 const RUNTIME_BUILD_INFO = resolveRuntimeBuildInfo({
   cwd: __dirname,
   env: process.env,
@@ -837,6 +847,7 @@ app.get("/api/health", (req, res) => {
     use_sqlite: process.env.USE_SQLITE === "true",
     use_job_queue_explicit: process.env.USE_JOB_QUEUE || null,
     auto_publish: process.env.AUTO_PUBLISH === "true",
+    safe_observation_mode: isSafeObservationMode(process.env),
     dispatch: dispatchMode,
     sqlite_db_path: sqliteDbPath ? "(configured)" : null,
     sqlite_db_path_redacted: !!sqliteDbPath,
@@ -2952,9 +2963,16 @@ const server = app.listen(PORT, () => {
     }
   })();
 
-  startAutonomousScheduler().catch((err) => {
-    console.log(`[server] Autonomous scheduler startup error: ${err.message}`);
-  });
+  if (isSafeObservationMode(process.env)) {
+    schedulerRunning = false;
+    console.log(
+      "[server] Safe observation mode active - scheduler and jobs runner skipped",
+    );
+  } else {
+    startAutonomousScheduler().catch((err) => {
+      console.log(`[server] Autonomous scheduler startup error: ${err.message}`);
+    });
+  }
 
   // Start Discord bot alongside the server
   if (!primaryInstance) {

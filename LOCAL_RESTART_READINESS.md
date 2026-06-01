@@ -1,12 +1,12 @@
 # Local Restart Readiness
 
-Generated: 2026-06-01T04:52:01.881Z
+Generated: 2026-06-01T05:16:32.981Z
 Verdict: RED
 Safety: read-only; does not restart the server, edit env vars, mutate DB rows, touch Railway or post
 
 ## Build Match
-- Current commit: 16d0478
-- Local running commit: 16d0478 (matches)
+- Current commit: caf664b
+- Local running commit: caf664b (matches)
 - Public running commit: unknown (does not match)
 
 ## Runtime
@@ -81,7 +81,6 @@ Safety: read-only; does not restart the server, edit env vars, mutate DB rows, t
 - public /api/health is not reachable
 
 ## Warnings
-- 1 uncommitted file(s) are present; commit code changes before restart for reproducibility
 - 22 failed row(s) still carry platform IDs
 - 5 Pulse/Orryy-related Windows scheduled task(s) can launch visible console windows
 

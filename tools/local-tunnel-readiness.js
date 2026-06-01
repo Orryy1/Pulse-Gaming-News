@@ -14,8 +14,20 @@ const { fetchJson } = require("../lib/ops/local-primary-readiness");
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
 
-function hasFlag(name) {
-  return process.argv.includes(name);
+function parseArgs(argv = process.argv) {
+  const args = {
+    json: false,
+    writeRootReport: false,
+    help: false,
+  };
+  for (let i = 2; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === "--json") args.json = true;
+    else if (arg === "--write-root-report") args.writeRootReport = true;
+    else if (arg === "--help" || arg === "-?") args.help = true;
+    else throw new Error(`Unknown argument: ${arg}`);
+  }
+  return args;
 }
 
 function readIfExists(filePath) {
@@ -53,7 +65,18 @@ function resolveCloudflaredPath() {
 }
 
 async function main() {
-  const jsonOnly = hasFlag("--json");
+  const args = parseArgs(process.argv);
+  if (args.help) {
+    process.stdout.write(
+      [
+        "Usage: node tools/local-tunnel-readiness.js [--json] [--write-root-report]",
+        "  --json               Print JSON instead of markdown",
+        "  --write-root-report  Also update tracked LOCAL_TUNNEL_READINESS.md",
+        "",
+      ].join("\n"),
+    );
+    return;
+  }
   const configPath =
     process.env.PULSE_CLOUDFLARED_CONFIG || "D:/pulse-data/cloudflared-pulse.yml";
   const configText = readIfExists(configPath);
@@ -83,16 +106,28 @@ async function main() {
   await fs.writeJson(path.join(OUT, "local_tunnel_readiness.json"), report, {
     spaces: 2,
   });
-  await fs.writeFile(path.join(OUT, "local_tunnel_readiness.md"), markdown);
-  await fs.writeFile(path.join(ROOT, "LOCAL_TUNNEL_READINESS.md"), markdown);
+  await fs.writeFile(
+    path.join(OUT, "local_tunnel_readiness.md"),
+    markdown,
+    "utf8",
+  );
+  if (args.writeRootReport) {
+    await fs.writeFile(
+      path.join(ROOT, "LOCAL_TUNNEL_READINESS.md"),
+      markdown,
+      "utf8",
+    );
+  }
 
-  if (jsonOnly) {
+  if (args.json) {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   } else {
     process.stdout.write(markdown);
   }
   if (report.verdict === "red") process.exitCode = 2;
 }
+
+module.exports = { parseArgs };
 
 if (require.main === module) {
   main().catch((err) => {

@@ -7,6 +7,14 @@ const {
   formatLocalTunnelReadinessMarkdown,
   parseCloudflaredVersion,
 } = require("../../lib/ops/local-tunnel-readiness");
+const {
+  parseArgs: parseLocalTunnelReadinessArgs,
+} = require("../../tools/local-tunnel-readiness");
+
+const fs = require("node:fs");
+const path = require("node:path");
+
+const ROOT = path.resolve(__dirname, "..", "..");
 
 test("parseCloudflaredVersion extracts installed version", () => {
   assert.deepEqual(parseCloudflaredVersion("cloudflared version 2025.8.1"), {
@@ -90,4 +98,19 @@ test("local tunnel readiness markdown is operator-readable and non-mutating", ()
   assert.match(markdown, /Safety: read-only/);
   assert.match(markdown, /Controlled Start Command/);
   assert.match(markdown, /Do not flip local primary, queue or AUTO_PUBLISH/);
+});
+
+test("ops:local-tunnel-readiness does not write tracked root reports by default", () => {
+  const args = parseLocalTunnelReadinessArgs(["node", "tool", "--json"]);
+  assert.equal(args.writeRootReport, false);
+
+  const source = fs.readFileSync(
+    path.join(ROOT, "tools", "local-tunnel-readiness.js"),
+    "utf8",
+  );
+  assert.match(source, /--write-root-report/);
+  assert.doesNotMatch(
+    source,
+    /await fs\.writeFile\(path\.join\(ROOT, "LOCAL_TUNNEL_READINESS\.md"\), markdown\);/,
+  );
 });

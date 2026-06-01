@@ -83,6 +83,15 @@ function variedScript(subject, count = 24) {
     .join(" ");
 }
 
+function sourceBoundExtensionLines(subject) {
+  return [
+    `${subject} needs the extra context because this update changes what players should watch next.`,
+    `For viewers, the real test is timing, access and whether the official follow-up confirms the same direction.`,
+    `That gives the short a real ending instead of stretching the headline past the evidence.`,
+    `The next signal to watch is a store page, patch note or studio post tied to ${subject}.`,
+  ];
+}
+
 test("local script extension expands short Liam scripts into the 61-75s local Flash range", () => {
   const draft = extendScriptToLocalFlash({
     story: {
@@ -91,6 +100,7 @@ test("local script extension expands short Liam scripts into the 61-75s local Fl
       subreddit: "GameSpot",
       content_pillar: "Confirmed Drop",
       full_script: variedScript("GTA 6", 17),
+      source_bound_extension_sentences: sourceBoundExtensionLines("GTA 6"),
     },
     queueItem: queueItem("rss_short", 136),
     cleanText: (text) => text.replace(/\bGTA\s*6\b/gi, "G T A six"),
@@ -131,7 +141,7 @@ test("local script extension uses conservative Liam proof pacing instead of opti
     story: {
       id: "valorant_vanguard",
       title: "Valorant Vanguard update needs careful anti-cheat wording",
-      full_script: variedScript("Valorant", 20),
+      full_script: variedScript("Valorant", 25),
     },
     queueItem: queueItem("valorant_vanguard", 190),
     env: {},
@@ -153,6 +163,7 @@ test("local script extension repairs underfloor Liam proofs toward 64-70s rather
       id: "rss_underfloor",
       title: "Xbox confirms a new update",
       full_script: variedScript("Xbox", 21),
+      source_bound_extension_sentences: sourceBoundExtensionLines("Xbox"),
     },
     queueItem: {
       ...queueItem("rss_underfloor", 168),
@@ -293,6 +304,32 @@ test("local script extension never adds policy-memo padding to public narration"
     draft.proposed_full_script,
     /the useful question|source material stays|player-facing question is simple/i,
   );
+});
+
+test("local script extension blocks generic duration padding before audio generation", () => {
+  const draft = extendScriptToLocalFlash({
+    story: {
+      id: "hades_generic_padding",
+      title: "Hades II finally shows console gameplay",
+      subreddit: "PlayStation Blog",
+      content_pillar: "Confirmed Drop",
+      full_script: variedScript("Hades II", 17),
+    },
+    queueItem: queueItem("hades_generic_padding", 136),
+    env: {},
+  });
+
+  assert.equal(draft.action, "review_extended_script");
+  assert.ok(
+    draft.manual_review_flags.includes("insufficient_story_specific_extension_material") ||
+      draft.manual_review_flags.some((flag) => /^runtime_/.test(flag)),
+    draft.manual_review_flags.join(", "),
+  );
+  assert.doesNotMatch(
+    draft.proposed_full_script,
+    /official listing, patch note or platform page changes the picture|open question is what changes next|that is why the timing matters|that is the clean consequence/i,
+  );
+  assert.equal(draft.source_bound_rewrite_work_order.operator_approval_required, true);
 });
 
 test("local script extension routes runtime-valid policy-memo narration to review", () => {
@@ -530,7 +567,7 @@ test("local script extension plan skips stories with existing voice-ready proofs
       needs_repair: {
         id: "needs_repair",
         title: "Needs repair story",
-        full_script: variedScript("PlayStation", 17),
+        full_script: variedScript("PlayStation", 25),
       },
     },
     existingReadyStoryIds: ["already_ready"],
@@ -581,10 +618,11 @@ test("local script extension plan can explicitly recover a measured-short proof 
     storiesById: {
       measured_short: {
         id: "measured_short",
-      title: "MindsEye update drops today",
-      subreddit: "GameSpot",
-      content_pillar: "Confirmed Drop",
+        title: "MindsEye update drops today",
+        subreddit: "GameSpot",
+        content_pillar: "Confirmed Drop",
         full_script: variedScript("MindsEye", 20),
+        source_bound_extension_sentences: sourceBoundExtensionLines("MindsEye"),
       },
     },
     storyId: "measured_short",

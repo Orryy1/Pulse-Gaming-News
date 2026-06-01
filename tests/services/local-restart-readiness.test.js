@@ -180,6 +180,36 @@ test("Windows scheduler hygiene flags Pulse tasks that launch visible python con
   assert.equal(hygiene.relevant_task_count, 2);
   assert.equal(hygiene.visible_console_risk_count, 1);
   assert.deepEqual(hygiene.risk_task_names, ["Orryy-PulseGaming"]);
+  assert.equal(hygiene.repair_work_orders.length, 1);
+  assert.deepEqual(hygiene.repair_work_orders[0], {
+    work_order_id: "windows_scheduler_hidden_launcher:Orryy-PulseGaming",
+    story_id: null,
+    blocker_type: "visible_console_scheduler_launcher",
+    repair_lane: "windows_scheduler_hidden_launcher",
+    task_name: "Orryy-PulseGaming",
+    task_path: "\\",
+    exact_missing_input:
+      "Task Scheduler action can launch a visible console for a Pulse automation.",
+    current_execute: "python",
+    current_arguments: "\"C:\\Claude\\orryy-expansion\\agents\\run_daily.py\" pulse_gaming",
+    current_working_directory: "C:\\Claude\\orryy-expansion",
+    risk_reasons: ["launches_console_python"],
+    backup_command:
+      "Export-ScheduledTask -TaskName 'Orryy-PulseGaming' -TaskPath '\\' | Out-File -FilePath 'test\\output\\scheduler_task_backups\\Orryy-PulseGaming.xml' -Encoding utf8",
+    recommended_command:
+      "Set-ScheduledTask -TaskName 'Orryy-PulseGaming' -TaskPath '\\' -Action (New-ScheduledTaskAction -Execute 'pythonw.exe' -Argument '\"C:\\Claude\\orryy-expansion\\agents\\run_daily.py\" pulse_gaming' -WorkingDirectory 'C:\\Claude\\orryy-expansion')",
+    expected_output:
+      "Orryy-PulseGaming uses a windowless Python launcher and no longer opens visible terminal windows.",
+    db_mutation_required: false,
+    os_mutation_required: true,
+    token_or_oauth_mutation_required: false,
+    external_posting_risk: false,
+    operator_approval_required: true,
+    requires_elevated_shell: true,
+    permission_note:
+      "Run from an elevated PowerShell session if Set-ScheduledTask returns Access is denied.",
+    post_repair_validation_command: "npm run ops:local-restart-readiness -- --json",
+  });
   assert.match(
     hygiene.tasks[0].recommended_action,
     /pythonw\.exe or a hidden launcher/i,
@@ -344,6 +374,44 @@ test("formatLocalRestartReadinessMarkdown is operator readable", async () => {
   assert.match(md, /Publish window hard gate: enabled/);
   assert.match(md, /Daily-cap hard gate: enabled/);
   assert.match(md, /Safety: read-only/);
+});
+
+test("formatLocalRestartReadinessMarkdown includes scheduler repair work orders", async () => {
+  const report = await buildLocalRestartReadiness({
+    cwd: ROOT,
+    env: {
+      LOCAL_PUBLIC_URL: "https://pulse.orryy.com",
+      PUBLISH_REQUIRE_WINDOW: "true",
+      PUBLISH_REQUIRE_MIN_GAP: "true",
+      PUBLISH_REQUIRE_DAILY_CAP: "true",
+    },
+    currentBuild: { commit_sha: "abcdef1234567890", commit_short: "abcdef1" },
+    localHealth: healthy("abcdef1234567890"),
+    publicHealth: healthy("abcdef1234567890"),
+    cadenceReport: cleanCadence(),
+    gitStatus: { clean: true, changed_count: 0, changed_files: [] },
+    windowsSchedulerHygiene: buildWindowsSchedulerHygiene({
+      platform: "win32",
+      cwd: ROOT,
+      scheduledTasks: [
+        {
+          task_name: "Orryy-PulseGaming",
+          task_path: "\\",
+          execute: "python",
+          arguments: "\"C:\\Claude\\orryy-expansion\\agents\\run_daily.py\" pulse_gaming",
+          working_directory: "C:\\Claude\\orryy-expansion",
+        },
+      ],
+    }),
+  });
+
+  const md = formatLocalRestartReadinessMarkdown(report);
+  assert.match(md, /## Windows Scheduler Repair Work Orders/);
+  assert.match(md, /windows_scheduler_hidden_launcher:Orryy-PulseGaming/);
+  assert.match(md, /Set-ScheduledTask -TaskName 'Orryy-PulseGaming'/);
+  assert.match(md, /Requires elevated PowerShell: true/);
+  assert.match(md, /Export-ScheduledTask -TaskName 'Orryy-PulseGaming'/);
+  assert.match(md, /Operator approval required: true/);
 });
 
 test("buildGitStatus reports changed files without shell parsing", () => {

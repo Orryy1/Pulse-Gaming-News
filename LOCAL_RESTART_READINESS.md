@@ -1,11 +1,11 @@
 # Local Restart Readiness
 
-Generated: 2026-06-01T02:46:33.507Z
+Generated: 2026-06-01T03:02:59.600Z
 Verdict: RED
 Safety: read-only; does not restart the server, edit env vars, mutate DB rows, touch Railway or post
 
 ## Build Match
-- Current commit: 650f303
+- Current commit: f210bd0
 - Local running commit: unknown (does not match)
 - Public running commit: unknown (does not match)
 
@@ -29,6 +29,16 @@ Safety: read-only; does not restart the server, edit env vars, mutate DB rows, t
 - Relevant Pulse tasks: 1
 - Visible-console risks: 1
 - Risk tasks: Orryy-PulseGaming
+
+## Windows Scheduler Repair Work Orders
+- Work order: windows_scheduler_hidden_launcher:Orryy-PulseGaming
+  - Task: \Orryy-PulseGaming
+  - Blocker: visible_console_scheduler_launcher
+  - Operator approval required: true
+  - Requires elevated PowerShell: true
+  - Backup: `Export-ScheduledTask -TaskName 'Orryy-PulseGaming' -TaskPath '\' | Out-File -FilePath 'test\output\scheduler_task_backups\Orryy-PulseGaming.xml' -Encoding utf8`
+  - Command: `Set-ScheduledTask -TaskName 'Orryy-PulseGaming' -TaskPath '\' -Action (New-ScheduledTaskAction -Execute 'pythonw.exe' -Argument '"C:\Claude\orryy-expansion\agents\run_daily.py" pulse_gaming')`
+  - Validate: `npm run ops:local-restart-readiness -- --json`
 
 ## Cadence Gates
 - Publish window hard gate: enabled

@@ -1,8 +1,8 @@
 # Local Posting Readiness
 
-Generated: 2026-06-01T03:31:02.744Z
-Verdict: AMBER
-Status: local_foundation_ready_cutover_blocked
+Generated: 2026-06-01T04:11:42.317Z
+Verdict: RED
+Status: not_ready
 Safety: read-only report; does not edit .env, start primary jobs, post, mutate DB, touch Railway or trigger OAuth
 
 ## Strategy
@@ -24,8 +24,8 @@ Safety: read-only report; does not edit .env, start primary jobs, post, mutate D
 - primary_enabled: false
 - queue_enabled: true
 - auto_publish_enabled: false
-- local_tts_green: true
-- local_voice_ready_count: 6
+- local_tts_green: false
+- local_voice_ready_count: 14
 
 ## Blockers
 - pulse.orryy.com Cloudflare tunnel is not connected to this PC
@@ -35,6 +35,7 @@ Safety: read-only report; does not edit .env, start primary jobs, post, mutate D
 - running local server reports AUTO_PUBLISH=false
 - local instance is still mirror mode, not primary
 - local AUTO_PUBLISH is disabled
+- local Liam TTS readiness is not green
 
 ## Warnings
 - local TTS has recovered from at least one timeout; keep the supervisor/watchdog enabled

@@ -77,6 +77,17 @@ function ffprobeDuration(file) {
   }
 }
 
+async function readJsonIfExists(filePath) {
+  if (!(await fs.pathExists(filePath))) return null;
+  return fs.readJson(filePath);
+}
+
+function existingReadyStoryIds(report = {}) {
+  return (report.proof_batch?.applied || [])
+    .filter((row) => row?.verdict === "voice_ready" && row.story_id)
+    .map((row) => row.story_id);
+}
+
 async function main() {
   const args = parseArgs(process.argv);
   const outDir = path.resolve(args.outDir || OUT);
@@ -93,12 +104,16 @@ async function main() {
   const stories = await db.getStories();
   const storiesById = Object.fromEntries((stories || []).map((story) => [story.id, story]));
   const queueReport = await fs.readJson(queuePath);
+  const overnightReport = await readJsonIfExists(
+    path.join(outDir, "local_tts_overnight_report.json"),
+  );
   const plan = buildLocalScriptExtensionPlan({
     queueReport,
     storiesById,
     cleanText: audio.cleanForTTS,
     limit: args.limit,
     storyId: args.storyId,
+    existingReadyStoryIds: existingReadyStoryIds(overnightReport),
   });
   const jsonPath = path.join(outDir, "local_script_extension_plan.json");
   const mdPath = path.join(outDir, "local_script_extension_plan.md");

@@ -513,6 +513,40 @@ test("local script extension plan only consumes repair queue extension items", (
   assert.equal(plan.safety.posts_to_platforms, false);
 });
 
+test("local script extension plan skips stories with existing voice-ready proofs", () => {
+  const plan = buildLocalScriptExtensionPlan({
+    queueReport: {
+      items: [
+        queueItem("already_ready", 136),
+        queueItem("needs_repair", 136),
+      ],
+    },
+    storiesById: {
+      already_ready: {
+        id: "already_ready",
+        title: "Already repaired story",
+        full_script: variedScript("Xbox", 17),
+      },
+      needs_repair: {
+        id: "needs_repair",
+        title: "Needs repair story",
+        full_script: variedScript("PlayStation", 17),
+      },
+    },
+    existingReadyStoryIds: ["already_ready"],
+    env: {},
+  });
+
+  assert.equal(plan.counts.total, 2);
+  assert.equal(plan.counts.ready, 1);
+  assert.equal(plan.counts.skipped_existing_ready, 1);
+  assert.equal(plan.drafts.length, 1);
+  assert.equal(plan.drafts[0].story_id, "needs_repair");
+  assert.equal(plan.skipped[0].story_id, "already_ready");
+  assert.equal(plan.skipped[0].failure_code, "existing_voice_ready_proof");
+  assert.match(renderLocalScriptExtensionMarkdown(plan), /already_ready: existing_voice_ready_proof/);
+});
+
 test("local script extension plan can target one story without bulk audio work", () => {
   const plan = buildLocalScriptExtensionPlan({
     queueReport: {
@@ -613,6 +647,8 @@ test("local script extension CLI is local-only and does not publish", () => {
   assert.match(tool, /createLocalTtsBatchRecovery/);
   assert.match(tool, /recoverLocalTts/);
   assert.match(tool, /local_script_extension_audio_apply\.json/);
+  assert.match(tool, /local_tts_overnight_report\.json/);
+  assert.match(tool, /existingReadyStoryIds/);
   assert.doesNotMatch(tool, /postShort|uploadShort|publishAll|autonomous\/publish/);
 });
 

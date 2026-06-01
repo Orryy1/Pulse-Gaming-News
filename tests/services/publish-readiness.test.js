@@ -135,12 +135,18 @@ test("summarisePlatformStatusReason: surfaces disabled and credential gaps", () 
 test("applyStrictPlatformEvidenceToStatus: TikTok doctor/preflight evidence outranks stale disabled status", () => {
   const staleStatus = {
     summary: {
+      disabled_platform_count: 2,
+      needs_credentials_platform_count: 0,
       disabled_platforms: ["tiktok", "twitter"],
       needs_credentials_platforms: [],
     },
     operational: {
       tiktok: { state: "disabled", reason: "operator_disabled" },
       twitter: { state: "disabled", reason: "x_optional_disabled" },
+    },
+    counts: {
+      tiktok: { disabled: 3 },
+      twitter: { disabled: 3 },
     },
   };
 
@@ -180,6 +186,12 @@ test("applyStrictPlatformEvidenceToStatus: TikTok doctor/preflight evidence outr
   );
   assert.deepEqual(staleStatus.summary.needs_credentials_platforms, []);
   assert.equal(staleStatus.operational.tiktok.reason, "operator_disabled");
+  assert.deepEqual(patched.summary.disabled_platforms, ["twitter"]);
+  assert.equal(patched.summary.disabled_platform_count, 1);
+  assert.equal(patched.summary.needs_credentials_platform_count, 1);
+  assert.deepEqual(patched.counts.tiktok, { needs_credentials: 3 });
+  assert.equal(patched.operational.tiktok.operator_state, "disabled");
+  assert.equal(patched.operational.tiktok.operator_reason, "operator_disabled");
 });
 
 test("summariseTiktokExternalBlockReason: surfaces platform doctor token and approval gaps", () => {

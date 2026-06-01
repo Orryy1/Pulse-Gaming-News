@@ -224,6 +224,41 @@ test("platform status counts all configured socials and marks disabled platform 
   assert.match(md, /pinterest: disabled=1/);
 });
 
+test("platform status overlays TikTok token-readiness evidence without hiding operator disable", () => {
+  const report = buildPlatformStatus({
+    stories: [{ id: "a", title: "A" }],
+    platformConfig: {
+      youtube: { state: "enabled", reason: "core_upload_path" },
+      tiktok: { state: "disabled", reason: "operator_disabled" },
+      instagram_reel: { state: "enabled", reason: "graph_credentials_present" },
+      facebook_reel: { state: "enabled", reason: "facebook_reels_enabled" },
+      twitter: { state: "disabled", reason: "x_optional_disabled" },
+      threads: { state: "disabled", reason: "threads_not_configured" },
+      pinterest: { state: "disabled", reason: "pinterest_not_configured" },
+    },
+    platformReadinessDoctor: {
+      platforms: {
+        tiktok: {
+          status: "needs_local_token_refresh_or_sync",
+          recommendation: "refresh_or_sync_local_token_with_operator_present_before_any_inbox_upload",
+        },
+      },
+    },
+  });
+
+  assert.strictEqual(report.operational.tiktok.state, "needs_credentials");
+  assert.strictEqual(report.operational.tiktok.reason, "tiktok_local_token_refresh_or_sync_required");
+  assert.strictEqual(report.operational.tiktok.operator_state, "disabled");
+  assert.strictEqual(report.operational.tiktok.operator_reason, "operator_disabled");
+  assert.strictEqual(report.operational.tiktok.effective_readiness_source, "platform_readiness_doctor");
+  assert.deepStrictEqual(report.summary.needs_credentials_platforms, ["tiktok"]);
+  assert.deepStrictEqual(report.summary.disabled_platforms.sort(), ["pinterest", "threads", "twitter"]);
+  assert.strictEqual(report.counts.tiktok.needs_credentials, 1);
+
+  const md = renderPlatformStatusMarkdown(report);
+  assert.match(md, /tiktok: needs_credentials \(tiktok_local_token_refresh_or_sync_required; operator=disabled\/operator_disabled\)/);
+});
+
 test("platform status uses platform_posts rows as the newest structured truth", () => {
   const report = buildPlatformStatus({
     stories: [{ id: "story1", title: "Story 1" }],

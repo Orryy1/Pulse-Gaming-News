@@ -12,6 +12,15 @@ const {
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
 
+async function readJsonIfExists(filePath) {
+  try {
+    if (!(await fs.pathExists(filePath))) return null;
+    return await fs.readJson(filePath);
+  } catch {
+    return null;
+  }
+}
+
 async function main() {
   await fs.ensureDir(OUT);
   const db = require("../lib/db");
@@ -31,6 +40,7 @@ async function main() {
     stories,
     platformPosts,
     platformConfig: buildPlatformOperationalConfig(process.env),
+    platformReadinessDoctor: await readJsonIfExists(path.join(OUT, "platform_readiness_doctor.json")),
   });
   const jsonPath = path.join(OUT, "platform_status.json");
   const mdPath = path.join(OUT, "platform_status.md");

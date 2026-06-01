@@ -313,3 +313,114 @@ test("controlled restart pack rejects duplicate-title and timing-uncertain candi
     assert.ok(rejected["timing-risk"].includes("asr_or_caption_timing_not_proven"));
   });
 });
+
+test("controlled restart pack rejects internally framed narration before restart approval", async () => {
+  await withTempDir(async (root) => {
+    const ids = ["clean-a", "internal-copy", "clean-b"];
+    for (const id of ids) {
+      await writeStory(root, id, `Restart ${id} Clean Title`, {
+        script: id === "internal-copy"
+          ? "This is a price story. The clean angle is the discount and whether it fits the audience watching this short. Right now the news is the offer itself, not a hard sell."
+          : `Restart ${id} Clean Title opens with the game, the consequence and the player question before the source proof.`,
+      });
+    }
+
+    const candidates = ids.map((id, index) => ({
+      id,
+      title: `Restart ${id} Clean Title`,
+      status: "publish_ready",
+      score: 120 - index,
+      duration_seconds: 43,
+      source: {
+        exported_path: path.join(root, "output", "goal-proof", "batch", id, "visual_v4_render.mp4"),
+      },
+      preflight_qa: {
+        status: "pass",
+        blockers: [],
+        warnings: [],
+        checks: {
+          timestamp_alignment: {
+            result: "pass",
+            evidence: { source: "local_whisper_word_alignment" },
+          },
+        },
+      },
+    }));
+
+    const report = await buildControlledRestartPack({
+      root,
+      generatedAt: "2026-06-01T12:00:00.000Z",
+      candidateLimit: 2,
+      candidateReport: { candidates },
+      strictDryRunPlan: {
+        actions: ids.flatMap((id) => [
+          action(id, "youtube_shorts", true),
+          action(id, "instagram_reels", true),
+          action(id, "facebook_reels", true),
+        ]),
+      },
+    });
+
+    assert.deepEqual(report.selected_restart_candidates.map((candidate) => candidate.story_id), [
+      "clean-a",
+      "clean-b",
+    ]);
+    const rejected = report.rejected_restart_candidates.find((candidate) => candidate.story_id === "internal-copy");
+    assert.ok(rejected.blockers.includes("internal_audience_or_editorial_scaffold_language"));
+  });
+});
+
+test("controlled restart pack rejects roman-numeral titles without pronunciation evidence", async () => {
+  await withTempDir(async (root) => {
+    const ids = ["safe-title", "roman-title", "safe-title-two"];
+    await writeStory(root, "safe-title", "Restart Safe Title Works");
+    await writeStory(root, "roman-title", "Hades II Breaks Console Silence", {
+      subject: "Hades II",
+      script: "Hades II lands on console with a clear date and a player-facing reason to care.",
+    });
+    await writeStory(root, "safe-title-two", "Restart Second Safe Title");
+
+    const candidates = ids.map((id, index) => ({
+      id,
+      title: id === "roman-title" ? "Hades II Breaks Console Silence" : `Restart ${id} Clean Title`,
+      status: "publish_ready",
+      score: 130 - index,
+      duration_seconds: 43,
+      source: {
+        exported_path: path.join(root, "output", "goal-proof", "batch", id, "visual_v4_render.mp4"),
+      },
+      preflight_qa: {
+        status: "pass",
+        blockers: [],
+        warnings: [],
+        checks: {
+          timestamp_alignment: {
+            result: "pass",
+            evidence: { source: "local_whisper_word_alignment" },
+          },
+        },
+      },
+    }));
+
+    const report = await buildControlledRestartPack({
+      root,
+      generatedAt: "2026-06-01T12:00:00.000Z",
+      candidateLimit: 2,
+      candidateReport: { candidates },
+      strictDryRunPlan: {
+        actions: ids.flatMap((id) => [
+          action(id, "youtube_shorts", true),
+          action(id, "instagram_reels", true),
+          action(id, "facebook_reels", true),
+        ]),
+      },
+    });
+
+    assert.deepEqual(report.selected_restart_candidates.map((candidate) => candidate.story_id), [
+      "safe-title",
+      "safe-title-two",
+    ]);
+    const rejected = report.rejected_restart_candidates.find((candidate) => candidate.story_id === "roman-title");
+    assert.ok(rejected.blockers.includes("tts_pronunciation_evidence_missing_for_roman_numeral_title"));
+  });
+});

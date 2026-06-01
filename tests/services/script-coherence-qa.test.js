@@ -330,6 +330,26 @@ test("script coherence blocks paraphrased internal interpretation language", () 
   );
 });
 
+test("script coherence blocks restart-pack editorial scaffolding in public narration", () => {
+  const qa = runScriptCoherenceQa(
+    {
+      title: "Xbox Controller Deal Has One Catch",
+      source_type: "rss",
+      subreddit: "IGN",
+      cta: "Follow Pulse Gaming so you never miss a beat",
+      full_script:
+        "Xbox controller deals are getting aggressive, but the catch is the retailer. Xbox lists official Forza Horizon 6 limited-edition Xbox Wireless Controller and Xbox Wireless Headset accessories. If Steam is where Forza takes off, Xbox has a different launch story on its hands. Xbox Controller is a price story because the cost of jumping in has changed. Anyone already building that setup now has a lower entry point; everyone else still needs a reason to care. The clean angle is the discount, the platform and whether it fits the audience watching this short. If the listing changes, the story changes with it. Right now the news is the offer itself, not a hard sell. Follow Pulse Gaming so you never miss a beat.",
+    },
+    { requireCtaField: true, requireFullScriptCta: true },
+  );
+
+  assert.equal(qa.result, "fail");
+  assert.ok(
+    qa.failures.includes("script_coherence:vague_filler:internal_audience_scaffold"),
+    qa.failures.join(", "),
+  );
+});
+
 test("script coherence blocks overused clickbait pivots that make stories sound generic", () => {
   const qa = runScriptCoherenceQa(
     {

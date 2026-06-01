@@ -619,3 +619,13 @@ test("platform readiness doctor command is registered and read-only", () => {
   assert.match(tool, /platform_readiness_doctor\.json/);
   assert.match(tool, /no OAuth, token mutation, uploads or posts/i);
 });
+
+test("platform readiness doctor root markdown is opt-in to avoid timestamp-only git churn", () => {
+  const tool = fs.readFileSync(path.join(ROOT, "tools", "platform-readiness-doctor.js"), "utf8");
+
+  assert.match(tool, /--write-root-md/);
+  assert.match(tool, /writeRootMarkdown/);
+  const rootWriteIndex = tool.indexOf('await fs.writeFile(rootPath, markdown, "utf8");');
+  assert.notEqual(rootWriteIndex, -1);
+  assert.notEqual(tool.lastIndexOf("if (writeRootMarkdown)", rootWriteIndex), -1);
+});

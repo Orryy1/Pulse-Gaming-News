@@ -223,13 +223,21 @@ async function main() {
   const jsonPath = path.join(OUT, "platform_readiness_doctor.json");
   const mdPath = path.join(OUT, "platform_readiness_doctor.md");
   const rootPath = path.join(ROOT, "PLATFORM_READINESS_DOCTOR.md");
+  const writeRootMarkdown =
+    hasFlag("--write-root-md") ||
+    String(process.env.PLATFORM_DOCTOR_WRITE_ROOT_MD || "").toLowerCase() === "true";
   const markdown = renderPlatformReadinessDoctorMarkdown(report);
   await fs.writeJson(jsonPath, report, { spaces: 2 });
   await fs.writeFile(mdPath, markdown, "utf8");
-  await fs.writeFile(rootPath, markdown, "utf8");
+  if (writeRootMarkdown) {
+    await fs.writeFile(rootPath, markdown, "utf8");
+  }
   console.log(`[platform-doctor] verdict=${report.verdict}`);
   console.log(`[platform-doctor] json=${path.relative(ROOT, jsonPath)}`);
   console.log(`[platform-doctor] md=${path.relative(ROOT, mdPath)}`);
+  if (writeRootMarkdown) {
+    console.log(`[platform-doctor] root_md=${path.relative(ROOT, rootPath)}`);
+  }
   console.log("[platform-doctor] no OAuth, token mutation, uploads or posts");
 }
 

@@ -13,6 +13,22 @@ function greenTts() {
   };
 }
 
+function greenDoctor() {
+  return {
+    verdict: "green",
+    before: {
+      ok: true,
+      ready: true,
+      voice: {
+        alias: "liam",
+        loaded: true,
+        refResolved: true,
+        present: true,
+      },
+    },
+  };
+}
+
 test("local posting readiness keeps Railway as standby and ElevenLabs temporary", () => {
   const report = buildLocalPostingReadiness({
     cutoverPlan: {
@@ -203,6 +219,107 @@ test("local posting readiness blocks if Liam proof batch is missing", () => {
   assert.equal(report.verdict, "red");
   assert.ok(report.blockers.includes("local Liam TTS readiness is not green"));
   assert.ok(report.blockers.includes("no local Liam voice-ready proof MP3s are available"));
+});
+
+test("local posting readiness accepts green live Liam doctor inside amber overnight report", () => {
+  const report = buildLocalPostingReadiness({
+    cutoverPlan: {
+      verdict: "red",
+      env: {
+        duplicate_keys: [],
+        flags: {
+          primary: true,
+          use_job_queue: true,
+          auto_publish: true,
+        },
+      },
+      cloudflared: { tunnel_info: "Active connections: 1" },
+      health: {
+        local: {
+          ok: true,
+          status: 200,
+          json: {
+            deployment: { mode: "local", primary: false },
+            runtime: { auto_publish: false, safe_observation_mode: true },
+          },
+        },
+        public: {
+          ok: true,
+          status: 200,
+          json: { deployment: { mode: "local", primary: false } },
+        },
+      },
+    },
+    primaryReadiness: {
+      checks: {
+        primary_enabled: true,
+        use_job_queue_enabled: true,
+        auto_publish_enabled: true,
+      },
+    },
+    ttsReport: {
+      verdict: "AMBER",
+      doctor: {
+        verdict: "green",
+        local_ready: true,
+        voice: { alias: "liam", loaded: true, ref_resolved: true },
+      },
+      proof_batch: {
+        voice_ready_count: 16,
+        superseded_failure_counts: { tts_timeout: 1 },
+      },
+    },
+  });
+
+  assert.equal(report.verdict, "amber");
+  assert.equal(report.readiness.local_tts_green, true);
+  assert.equal(report.readiness.local_tts_evidence_source, "overnight_doctor");
+  assert.equal(report.readiness.local_tts_report_verdict, "AMBER");
+  assert.ok(!report.blockers.includes("local Liam TTS readiness is not green"));
+  assert.ok(
+    report.warnings.includes(
+      "local Liam service is green but the overnight proof batch still has repair work",
+    ),
+  );
+});
+
+test("local posting readiness accepts fresh standalone doctor when overnight report is stale", () => {
+  const report = buildLocalPostingReadiness({
+    cutoverPlan: {
+      verdict: "green",
+      env: {
+        duplicate_keys: [],
+        flags: {
+          primary: true,
+          use_job_queue: true,
+          auto_publish: true,
+        },
+      },
+      cloudflared: { tunnel_info: "Active connections: 2" },
+      health: {
+        local: { ok: true, status: 200 },
+        public: { ok: true, status: 200 },
+      },
+    },
+    primaryReadiness: {
+      checks: {
+        primary_enabled: true,
+        use_job_queue_enabled: true,
+        auto_publish_enabled: true,
+      },
+      health: {
+        local: { ok: true, status: 200 },
+        public: { ok: true, status: 200 },
+      },
+    },
+    ttsReport: { verdict: "RED", proof_batch: { voice_ready_count: 4 } },
+    ttsDoctorReport: greenDoctor(),
+  });
+
+  assert.equal(report.verdict, "green");
+  assert.equal(report.readiness.local_tts_green, true);
+  assert.equal(report.readiness.local_tts_evidence_source, "doctor_report");
+  assert.ok(!report.blockers.includes("local Liam TTS readiness is not green"));
 });
 
 test("local posting readiness markdown is operator readable", () => {

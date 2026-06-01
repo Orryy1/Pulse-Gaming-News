@@ -32,11 +32,18 @@ async function resolveLocalPostingReadiness(outDir = OUT) {
   const cutoverPlan = await readJsonIfExists(path.join(outDir, "local_cutover_plan.json"));
   const primaryReadiness = await readJsonIfExists(path.join(outDir, "local_primary_readiness.json"));
   const ttsReport = await readJsonIfExists(path.join(outDir, "local_tts_overnight_report.json"));
-  if (cutoverPlan?.generated_at || primaryReadiness?.generated_at || ttsReport?.generated_at) {
+  const ttsDoctorReport = await readJsonIfExists(path.join(outDir, "local_tts_doctor.json"));
+  if (
+    cutoverPlan?.generated_at ||
+    primaryReadiness?.generated_at ||
+    ttsReport?.generated_at ||
+    ttsDoctorReport?.generated_at
+  ) {
     return buildLocalPostingReadiness({
       cutoverPlan,
       primaryReadiness,
       ttsReport,
+      ttsDoctorReport,
     });
   }
 
@@ -47,6 +54,7 @@ async function resolveLocalPostingReadiness(outDir = OUT) {
     cutoverPlan,
     primaryReadiness,
     ttsReport,
+    ttsDoctorReport,
   });
 }
 

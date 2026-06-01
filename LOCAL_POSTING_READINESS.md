@@ -1,8 +1,8 @@
 # Local Posting Readiness
 
-Generated: 2026-06-01T04:52:01.859Z
-Verdict: RED
-Status: not_ready
+Generated: 2026-06-01T05:33:53.978Z
+Verdict: AMBER
+Status: local_foundation_ready_cutover_blocked
 Safety: read-only report; does not edit .env, start primary jobs, post, mutate DB, touch Railway or trigger OAuth
 
 ## Strategy
@@ -24,7 +24,10 @@ Safety: read-only report; does not edit .env, start primary jobs, post, mutate D
 - primary_enabled: false
 - queue_enabled: true
 - auto_publish_enabled: false
-- local_tts_green: false
+- local_tts_green: true
+- local_tts_evidence_source: doctor_report
+- local_tts_report_verdict: AMBER
+- local_tts_doctor_verdict: green
 - local_voice_ready_count: 16
 
 ## Blockers
@@ -35,10 +38,10 @@ Safety: read-only report; does not edit .env, start primary jobs, post, mutate D
 - running local server reports AUTO_PUBLISH=false
 - local instance is still mirror mode, not primary
 - local AUTO_PUBLISH is disabled
-- local Liam TTS readiness is not green
 
 ## Warnings
 - local TTS has recovered from at least one timeout; keep the supervisor/watchdog enabled
+- local Liam service is green but the overnight proof batch still has repair work
 - local cutover plan is still red; use it as the authoritative blocker list before posting
 
 ## Next Steps

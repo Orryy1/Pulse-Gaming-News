@@ -22,6 +22,9 @@ function visualStripReport({ framePath, exists = true, artifactDir = "" } = {}) 
     schema_version: 1,
     generated_at: "2026-05-31T23:00:00.000Z",
     mode: "HUMAN_REVIEW_VISUAL_STRIP",
+    source_console_generated_at: "2026-05-31T22:59:00.000Z",
+    source_console_dry_run_generated_at: "2026-05-31T22:58:00.000Z",
+    source_strict_dry_run_generated_at: "2026-05-31T22:58:00.000Z",
     verdict: "AMBER",
     safe_to_publish_boolean: false,
     summary: {
@@ -132,6 +135,10 @@ test("visual strip QA flags weak first frame and possible edge text cutoff", asy
   });
 
   assert.equal(report.mode, "HUMAN_REVIEW_VISUAL_STRIP_QA");
+  assert.equal(report.source_visual_strip_generated_at, "2026-05-31T23:00:00.000Z");
+  assert.equal(report.source_console_generated_at, "2026-05-31T22:59:00.000Z");
+  assert.equal(report.source_console_dry_run_generated_at, "2026-05-31T22:58:00.000Z");
+  assert.equal(report.source_strict_dry_run_generated_at, "2026-05-31T22:58:00.000Z");
   assert.equal(report.safe_to_publish_boolean, false);
   assert.equal(report.verdict, "AMBER");
   assert.equal(report.summary.risk_card_count, 1);

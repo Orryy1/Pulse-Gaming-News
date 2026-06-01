@@ -802,6 +802,95 @@ test("pillarHumanReviewConsole: visual strip evidence is surfaced before operato
   assert.match(nextAction, /human_review_visual_strip_report\.html/);
 });
 
+test("pillarHumanReviewConsole: stale visual strip evidence must be regenerated before operator review", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-readiness-human-review-stale-strip-"));
+  const reportPath = path.join(dir, "human_review_console.json");
+  fs.writeFileSync(
+    reportPath,
+    JSON.stringify(
+      {
+        generated_at: "2026-05-31T22:10:00.000Z",
+        source_operator_index_dry_run_generated_at: "2026-05-31T22:09:00.000Z",
+        source_strict_dry_run_generated_at: "2026-05-31T22:09:00.000Z",
+        verdict: "AMBER",
+        safe_to_publish_boolean: false,
+        summary: {
+          card_count: 13,
+          ready_card_count: 13,
+          actionable_card_count: 13,
+          missing_artefact_card_count: 0,
+          blocked_input_count: 0,
+        },
+        safety: {
+          no_publish_triggered: true,
+          no_network_uploads: true,
+          no_db_mutation: true,
+          no_oauth_or_token_change: true,
+          approval_omitted_from_console: true,
+        },
+      },
+      null,
+      2,
+    ),
+  );
+  fs.writeFileSync(
+    path.join(dir, "human_review_visual_strip_report.json"),
+    JSON.stringify(
+      {
+        generated_at: "2026-05-31T22:05:00.000Z",
+        source_console_generated_at: "2026-05-31T22:00:00.000Z",
+        source_console_dry_run_generated_at: "2026-05-31T22:00:00.000Z",
+        source_strict_dry_run_generated_at: "2026-05-31T22:00:00.000Z",
+        verdict: "AMBER",
+        safe_to_publish_boolean: false,
+        summary: {
+          card_count: 13,
+          extracted_card_count: 13,
+          failed_card_count: 0,
+          extracted_frame_count: 52,
+        },
+        safety: {
+          no_publish_triggered: true,
+          no_network_uploads: true,
+          no_db_mutation: true,
+          no_oauth_or_token_change: true,
+          approval_omitted_from_visual_strip: true,
+        },
+      },
+      null,
+      2,
+    ),
+  );
+
+  const pillar = pr.pillarHumanReviewConsole({
+    reportPath,
+    now: Date.parse("2026-05-31T22:12:00.000Z"),
+  });
+
+  assert.equal(pillar.verdict, "amber");
+  assert.equal(pillar.reason, "human_review_visual_strip_stale_after_console");
+  assert.equal(pillar.raw.visual_strip.stale, true);
+  assert.equal(pillar.raw.visual_strip.stale_reason, "source_console_generated_at_older_than_console");
+
+  const nextAction = pr.resolvePublishReadinessNextAction({
+    overall: "amber",
+    pillars: {
+      human_review_console: pillar,
+      human_review_operator_index: {
+        verdict: "amber",
+        raw: { ready_for_operator_review_count: 13 },
+      },
+      human_review_approval_gate: {
+        verdict: "amber",
+        raw: { review_packet_count: 13, decision_count: 0 },
+      },
+    },
+  });
+
+  assert.match(nextAction, /Regenerate the human review visual strip/);
+  assert.doesNotMatch(nextAction, /Open the visual strip report at/);
+});
+
 test("pillarStrictDryRunControl: amber dry-run requires human review, not generic publish-possible wording", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-strict-dry-run-"));
   const planPath = path.join(dir, "dry_run_publish_plan.json");

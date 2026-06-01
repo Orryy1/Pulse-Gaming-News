@@ -37,6 +37,7 @@ data/
 tts_server/diag/
 tts_server/server.log
 tts_server/server.log.*
+tts_server/logs/
 tts_server/faulthandler.*.log
 tts_server/boot_state.json
 tts_server/venv/

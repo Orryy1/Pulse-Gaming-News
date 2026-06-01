@@ -208,6 +208,38 @@ test("startLocalTtsServer skips restart loops after a recent boot log entry", as
   assert.equal(result.recent_boot.lastBootAt, "2026-05-31T15:24:20.000Z");
 });
 
+test("startLocalTtsServer retries during cooldown when the lock pid is dead", async () => {
+  const root = tempRoot();
+  const logsDir = path.join(root, "tts_server", "logs");
+  fs.mkdirSync(logsDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(logsDir, "server_start.lock"),
+    JSON.stringify({ started_at: "2026-05-31T23:24:14.994Z", pid: 53492 }),
+  );
+  fs.writeFileSync(
+    path.join(logsDir, "server_stderr.log"),
+    "2026-06-01 00:24:37,019 [tts_server] INFO: [boot] pulse-gaming tts_server starting ts=2026-05-31T23:24:37Z device=cuda\n",
+  );
+
+  let captured = null;
+  const result = await startLocalTtsServer({
+    root,
+    platform: "win32",
+    env: {},
+    now: Date.parse("2026-05-31T23:50:31Z"),
+    processExists: () => false,
+    spawnImpl: (cmd, args, opts) => {
+      captured = { cmd, args, opts };
+      return { pid: 77777, unref() {} };
+    },
+  });
+
+  assert.equal(result.pid, 77777);
+  assert.equal(result.skipped, undefined);
+  assert.equal(captured.cmd.endsWith("pythonw.exe"), true);
+  assert.equal(captured.opts.windowsHide, true);
+});
+
 test("hasRecentLocalTtsBootAttempt ignores old boot log entries", () => {
   const root = tempRoot();
   const logsDir = path.join(root, "tts_server", "logs");

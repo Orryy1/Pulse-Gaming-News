@@ -206,6 +206,43 @@ test("goal production render materializer renders ready jobs and writes a final 
   assert.equal(manifest.safety.no_local_proof_promoted_to_final, true);
 });
 
+test("goal production render materializer passes visual safe-margin repair intent to renderer", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-safe-margins-"));
+  const artifactDir = await makePackage(root, "safe-margin-rerender");
+  const calls = [];
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: {
+      jobs: [
+        readyJob("safe-margin-rerender", artifactDir, {
+          repair_lane: "visual_safe_text_margin_rerender",
+          blocker_types: ["possible_edge_text_cutoff"],
+        }),
+      ],
+    },
+    generatedAt: "2026-06-01T00:18:00.000Z",
+    force: true,
+    renderProof: async ({ storyJson, output }) => {
+      const story = await fs.readJson(storyJson);
+      calls.push(story);
+      await fs.outputFile(output, Buffer.alloc(4096, 18));
+      return {
+        story_id: story.id,
+        output,
+        clips: story.video_clips.length,
+        rendered_duration_s: 24,
+        size_bytes: 4096,
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1);
+  assert.equal(calls[0].render_safe_text_margins, true);
+  assert.equal(calls[0].visual_repair_lane, "visual_safe_text_margin_rerender");
+  assert.deepEqual(calls[0].visual_repair_blocker_types, ["possible_edge_text_cutoff"]);
+});
+
 test("goal production render materializer replaces generic proof cards with story-specific source proof", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-proof-copy-"));
   const artifactDir = await makePackage(root, "hades-proof-card");

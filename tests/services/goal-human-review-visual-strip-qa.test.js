@@ -158,6 +158,46 @@ test("visual strip QA flags weak first frame and possible edge text cutoff", asy
   assert.match(report.visual_repair_work_order.jobs[0].post_repair_validation_command, /ops:goal-human-review-visual-strip-qa/);
 });
 
+test("visual strip QA warns on borderline edge text risk before obvious cutoff", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-strip-qa-borderline-"));
+  const framePath = path.join(dir, "frame.jpg");
+  await fs.writeFile(framePath, "fake image bytes");
+  const report = await buildHumanReviewVisualStripQaReport({
+    visualStripReport: visualStripReport({ framePath }),
+    generatedAt: "2026-06-01T00:12:00.000Z",
+    analyseFrame: async (_file, frame) => ({
+      width: 360,
+      height: 640,
+      prescan: {
+        edge_density: 0.16,
+        dark_pixel_ratio: 0.2,
+        bright_pixel_ratio: 0.02,
+        text_overlay_likelihood: 0.02,
+        white_text_on_dark_likelihood: 0.08,
+      },
+      border: frame.timestamp_seconds === 2
+        ? {
+            text_cutoff_risk_score: 0.43,
+            edge_touch_ratio: 0.16,
+            bright_edge_ratio: 0.01,
+          }
+        : {
+            text_cutoff_risk_score: 0.12,
+            edge_touch_ratio: 0.03,
+            bright_edge_ratio: 0.01,
+          },
+    }),
+  });
+
+  assert.equal(report.verdict, "AMBER");
+  assert.equal(report.summary.risk_card_count, 1);
+  assert.equal(report.summary.frame_warning_count, 1);
+  assert.equal(report.cards[0].verdict, "AMBER");
+  assert.ok(report.cards[0].risk_reasons.includes("possible_edge_text_cutoff"));
+  assert.ok(report.cards[0].repair_recommendations.includes("rerender_with_safe_text_margins"));
+  assert.equal(report.visual_repair_work_order.summary.safe_text_margin_rerender_count, 1);
+});
+
 test("visual strip QA emits executable production render jobs when flagged cards have final render evidence", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-strip-qa-render-job-"));
   const artifactDir = path.join(dir, "story-one");

@@ -311,6 +311,26 @@ test("Studio V4 proof renderer masks vertical frame edges before text audits", (
   assert.doesNotMatch(chain, /drawbox=x=0:y=0:w=18:h=ih:color=0x0B0F19@0\.52:t=fill/);
 });
 
+test("Studio V4 proof renderer widens edge masks for safe-margin repair renders", () => {
+  const chain = buildOverlayChain({
+    story: {
+      id: "frame-edge-safe-margin",
+      title: "Star Wars Racer Date Leaked Early",
+      canonical_subject: "Star Wars Racer",
+      primary_source: "Game Rant",
+      render_safe_text_margins: true,
+    },
+    inputLabel: "base",
+    outputLabel: "overlayBase",
+    durationS: 30,
+    fontOpt: "font='Arial'",
+  });
+
+  assert.match(chain, /drawbox=x=0:y=0:w=72:h=ih:color=0x0B0F19@0\.80:t=fill/);
+  assert.match(chain, /drawbox=x=iw-72:y=0:w=72:h=ih:color=0x0B0F19@0\.80:t=fill/);
+  assert.doesNotMatch(chain, /drawbox=x=0:y=0:w=44:h=ih:color=0x0B0F19@0\.72:t=fill/);
+});
+
 test("Studio V4 proof renderer unlocks richer SFX only for curated Epidemic packs", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-sfx-epidemic-rich-"));
   const files = {

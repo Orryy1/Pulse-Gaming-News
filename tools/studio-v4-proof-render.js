@@ -802,6 +802,7 @@ function fitOverlayTextBlock({
 }
 
 function buildOverlayLayout({ story = {} } = {}) {
+  const safeMarginMode = story.render_safe_text_margins === true;
   const source = sourceLabelFor(story);
   const title = firstText(story.canonical_subject, story.title, "PULSE GAMING");
   const hook = firstText(
@@ -835,9 +836,9 @@ function buildOverlayLayout({ story = {} } = {}) {
     fitOverlayTextBlock({
       id: "top_subject",
       value: title,
-      x: 66,
+      x: safeMarginMode ? 88 : 66,
       y: 65,
-      maxWidthPx: 710,
+      maxWidthPx: safeMarginMode ? 660 : 710,
       maxLines: 1,
       preferredFontSizePx: 40,
       minFontSizePx: 28,
@@ -846,9 +847,9 @@ function buildOverlayLayout({ story = {} } = {}) {
     fitOverlayTextBlock({
       id: "top_source_lock",
       value: `SOURCE LOCK  ${source}`,
-      x: 66,
+      x: safeMarginMode ? 88 : 66,
       y: 114,
-      maxWidthPx: 820,
+      maxWidthPx: safeMarginMode ? 760 : 820,
       maxLines: 1,
       preferredFontSizePx: 24,
       minFontSizePx: 18,
@@ -858,9 +859,9 @@ function buildOverlayLayout({ story = {} } = {}) {
       id: "hook_card",
       value: hook,
       fallback: title,
-      x: 82,
+      x: safeMarginMode ? 112 : 82,
       y: 292,
-      maxWidthPx: 860,
+      maxWidthPx: safeMarginMode ? 800 : 860,
       maxLines: 2,
       preferredFontSizePx: 56,
       minFontSizePx: 42,
@@ -870,9 +871,9 @@ function buildOverlayLayout({ story = {} } = {}) {
       id: "headline_card",
       value: headline,
       fallback: hook,
-      x: 92,
+      x: safeMarginMode ? 122 : 92,
       y: 558,
-      maxWidthPx: 760,
+      maxWidthPx: safeMarginMode ? 700 : 760,
       maxLines: 2,
       preferredFontSizePx: 58,
       minFontSizePx: 42,
@@ -881,9 +882,9 @@ function buildOverlayLayout({ story = {} } = {}) {
     fitOverlayTextBlock({
       id: "headline_source",
       value: source,
-      x: 92,
+      x: safeMarginMode ? 122 : 92,
       y: 672,
-      maxWidthPx: 780,
+      maxWidthPx: safeMarginMode ? 700 : 780,
       maxLines: 1,
       preferredFontSizePx: 24,
       minFontSizePx: 18,
@@ -892,9 +893,9 @@ function buildOverlayLayout({ story = {} } = {}) {
     fitOverlayTextBlock({
       id: "proof_primary",
       value: proofPrimary,
-      x: 98,
+      x: safeMarginMode ? 124 : 98,
       y: 850,
-      maxWidthPx: 560,
+      maxWidthPx: safeMarginMode ? 520 : 560,
       maxLines: 2,
       preferredFontSizePx: 40,
       minFontSizePx: 30,
@@ -903,9 +904,9 @@ function buildOverlayLayout({ story = {} } = {}) {
     fitOverlayTextBlock({
       id: "proof_secondary",
       value: proofSecondary,
-      x: 118,
+      x: safeMarginMode ? 142 : 118,
       y: 1048,
-      maxWidthPx: 540,
+      maxWidthPx: safeMarginMode ? 500 : 540,
       maxLines: 2,
       preferredFontSizePx: 40,
       minFontSizePx: 30,
@@ -946,11 +947,15 @@ function buildOverlayChain({ story, inputLabel, outputLabel, durationS, fontOpt 
   const layout = buildOverlayLayout({ story });
   const blockById = Object.fromEntries(layout.text_blocks.map((block) => [block.id, block]));
   const suppressStoryCards = usesOwnedGeneratedMotionDeck(story);
+  const safeMarginMode = story.render_safe_text_margins === true;
+  const sideMaskWidth = safeMarginMode ? 72 : 44;
+  const sideMaskAlpha = safeMarginMode ? "0.80" : "0.72";
+  const accentRailX = safeMarginMode ? 72 : 44;
   return [
     `[${inputLabel}]eq=brightness='if(lt(t\\,3.3)\\,0.055\\,-0.015)':contrast=1.10:saturation=1.20:eval=frame,drawbox=x=0:y=0:w=iw:h=230:color=black@0.34:t=fill,drawbox=x=0:y=138:w=iw:h=164:color=black@0.56:t=fill,drawbox=x=0:y=ih-430:w=iw:h=430:color=black@0.52:t=fill,drawbox=x=0:y=ih-315:w=iw:h=315:color=black@0.66:t=fill`,
-    `drawbox=x=0:y=0:w=44:h=ih:color=0x0B0F19@0.72:t=fill`,
-    `drawbox=x=iw-44:y=0:w=44:h=ih:color=0x0B0F19@0.72:t=fill`,
-    `drawbox=x=44:y='mod(t*240\\,1920)-420':w=3:h=420:color=0x38BDF8@0.34:t=fill`,
+    `drawbox=x=0:y=0:w=${sideMaskWidth}:h=ih:color=0x0B0F19@${sideMaskAlpha}:t=fill`,
+    `drawbox=x=iw-${sideMaskWidth}:y=0:w=${sideMaskWidth}:h=ih:color=0x0B0F19@${sideMaskAlpha}:t=fill`,
+    `drawbox=x=${accentRailX}:y='mod(t*240\\,1920)-420':w=3:h=420:color=0x38BDF8@0.34:t=fill`,
     `drawbox=x='-260+mod(t*520\\,1540)':y=0:w=210:h=ih:color=white@0.055:t=fill`,
     `drawbox=x='940-mod(t*340\\,1220)':y=0:w=92:h=ih:color=0xFF6B1A@0.055:t=fill`,
     `drawbox=x=42:y=44:w=996:h=98:color=0x111827@0.58:t=fill`,

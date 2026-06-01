@@ -1,16 +1,16 @@
 # Local Restart Readiness
 
-Generated: 2026-06-01T03:02:59.600Z
+Generated: 2026-06-01T03:11:12.750Z
 Verdict: RED
 Safety: read-only; does not restart the server, edit env vars, mutate DB rows, touch Railway or post
 
 ## Build Match
-- Current commit: f210bd0
-- Local running commit: unknown (does not match)
+- Current commit: f6ba57e
+- Local running commit: f6ba57e (matches)
 - Public running commit: unknown (does not match)
 
 ## Runtime
-- Local health: fail
+- Local health: pass (200)
 - Public health: fail (530)
 - Public mode: unknown
 - Public primary: unknown
@@ -46,11 +46,9 @@ Safety: read-only; does not restart the server, edit env vars, mutate DB rows, t
 - Daily-cap hard gate: enabled
 
 ## Blockers
-- localhost /api/health is not reachable
 - public /api/health is not reachable
 
 ## Warnings
-- 3 uncommitted file(s) are present; commit code changes before restart for reproducibility
 - 22 failed row(s) still carry platform IDs
 - 1 Pulse-related Windows scheduled task(s) can launch visible console windows
 

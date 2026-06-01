@@ -1,6 +1,6 @@
 # Local Resume Posting Plan
 
-Generated: 2026-06-01T03:05:50.010Z
+Generated: 2026-06-01T03:13:04.494Z
 Verdict: AMBER
 Status: local_resume_blocked_but_recoverable
 Safety: read-only plan; does not edit .env, start Cloudflare, switch primary, mutate tokens, post, touch Railway or trigger OAuth
@@ -15,11 +15,11 @@ Safety: read-only plan; does not edit .env, start Cloudflare, switch primary, mu
 - can_resume_local_automatic_posting: false
 - local_posting_verdict: GREEN
 - local_restart_verdict: RED
-- local_health: false
+- local_health: true
 - public_health: false
 - local_posting_health: true
 - public_posting_health: true
-- local_restart_health: false
+- local_restart_health: true
 - public_restart_health: false
 - scheduler_visible_console_risk_count: 1
 - tunnel_connected: true
@@ -75,7 +75,7 @@ Safety: read-only plan; does not edit .env, start Cloudflare, switch primary, mu
 - 1t186u4: tts_timeout; duration=unknown
 
 ## Blockers
-- local restart readiness is red: localhost /api/health is not reachable; public /api/health is not reachable
+- local restart readiness is red: public server is not reporting primary=true
 
 ## Warnings
 - Windows scheduled task hygiene risk: 1 visible-console Pulse launcher(s) (Orryy-PulseGaming)

@@ -314,6 +314,34 @@ test("local resume plan blocks stale green posting readiness when restart readin
   );
 });
 
+test("local resume plan marks public restart health false when public endpoint is not primary", () => {
+  const report = buildLocalResumePlan({
+    localPostingReadiness: greenLocalPosting(),
+    localRestartReadiness: {
+      verdict: "red",
+      blockers: ["public server is not reporting primary=true"],
+      running: {
+        local: { ok: true, matches_current_commit: true },
+        public: { ok: true, matches_current_commit: true },
+      },
+      windows_scheduler_hygiene: {
+        visible_console_risk_count: 0,
+      },
+    },
+    socialOps: workingSocialOps(),
+    ttsReport: greenTts(),
+  });
+
+  assert.equal(report.verdict, "amber");
+  assert.equal(report.readiness.can_resume_local_automatic_posting, false);
+  assert.equal(report.readiness.local_restart_verdict, "RED");
+  assert.equal(report.readiness.local_health, true);
+  assert.equal(report.readiness.public_health, false);
+  assert.equal(report.readiness.local_restart_health, true);
+  assert.equal(report.readiness.public_restart_health, false);
+  assert.match(report.blockers.join("\n"), /public server is not reporting primary=true/);
+});
+
 test("local resume plan blocks zero local voice-ready proofs", () => {
   const report = buildLocalResumePlan({
     localPostingReadiness: {

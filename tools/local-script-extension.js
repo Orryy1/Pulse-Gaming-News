@@ -38,6 +38,7 @@ function parseArgs(argv) {
     limit: null,
     applyLimit: null,
     applyLocalAudio: false,
+    activeLocalProofOnly: false,
     outDir: OUT,
     queue: null,
     storyId: null,
@@ -49,6 +50,13 @@ function parseArgs(argv) {
     else if (arg === "--out-dir") args.outDir = argv[++i];
     else if (arg === "--queue") args.queue = argv[++i];
     else if (arg === "--story" || arg === "--story-id") args.storyId = argv[++i] || null;
+    else if (arg === "--active-local-proof") args.activeLocalProofOnly = true;
+    else if (arg === "--scope") {
+      const scope = String(argv[++i] || "").trim().toLowerCase();
+      if (scope === "active-local-proof" || scope === "active_local_proof") {
+        args.activeLocalProofOnly = true;
+      }
+    }
     else if (arg === "--apply-local-audio") args.applyLocalAudio = true;
     else if (arg === "--dry-run") {
       // Dry-run is the default mode; --apply-local-audio only writes local proof MP3s.
@@ -170,6 +178,7 @@ async function main() {
     storyId: args.storyId,
     existingReadyStoryIds: existingReadyStoryIds(overnightReport),
     existingRejectedProofsById: existingRejectedProofsById(overnightReport),
+    activeLocalProofOnly: args.activeLocalProofOnly,
   });
   const jsonPath = path.join(outDir, "local_script_extension_plan.json");
   const mdPath = path.join(outDir, "local_script_extension_plan.md");

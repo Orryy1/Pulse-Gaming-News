@@ -119,6 +119,34 @@ test("local TTS batch recovery reports unsafe final state without hiding the fai
   assert.match(result.failure_message, /wrong voice/);
 });
 
+test("local TTS batch recovery does not let recent boot cooldown block a server-down restart", async () => {
+  const startCalls = [];
+  const recover = createLocalTtsBatchRecovery({
+    voiceId: "voice",
+    env: {
+      LOCAL_TTS_RECENT_BOOT_COOLDOWN_MS: "1800000",
+    },
+    fetchHealth: async () => ({ status: "unreachable", ready: false, voice: {} }),
+    startServer: async (options = {}) => {
+      startCalls.push(options.env);
+      return { pid: 4321, spec: { stdoutPath: "stdout.log", stderrPath: "stderr.log" } };
+    },
+    waitForHealth: async () => SAFE_HEALTH,
+    classifySafety: safety,
+  });
+
+  const result = await recover({
+    storyId: "rss_retry",
+    failure: { code: "server_down" },
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.action, "start");
+  assert.equal(result.started.pid, 4321);
+  assert.equal(startCalls.length, 1);
+  assert.equal(startCalls[0].LOCAL_TTS_RECENT_BOOT_COOLDOWN_MS, "1000");
+});
+
 test("local TTS generation does not recover/retry after a timeout", async () => {
   const recoveries = [];
   let attempts = 0;

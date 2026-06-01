@@ -21,6 +21,7 @@ const {
   buildStoriesByIdWithActiveProof,
   existingReadyStoryIds,
   existingRejectedProofsById,
+  parseArgs,
 } = require("../../tools/local-script-extension");
 
 const ROOT = path.resolve(__dirname, "..", "..");
@@ -132,11 +133,12 @@ test("local script extension targets the middle of the Liam-safe range, not the 
     env: {},
   });
 
-  assert.equal(DEFAULT_LOCAL_EXTENSION_TARGET_WORDS, 166);
-  assert.equal(draft.target_words, draft.target_word_range.min);
+  assert.equal(DEFAULT_LOCAL_EXTENSION_TARGET_WORDS, 212);
+  assert.ok(draft.target_words >= draft.target_word_range.min);
+  assert.ok(draft.target_words <= draft.target_word_range.max);
   assert.deepEqual(draft.target_seconds, [64, 70]);
-  assert.ok(draft.target_word_range.min >= 183);
-  assert.ok(draft.target_word_range.max <= 200);
+  assert.ok(draft.target_word_range.min >= 204);
+  assert.ok(draft.target_word_range.max <= 222);
   assert.ok(draft.proposed_words >= draft.runtime.minWords);
   assert.ok(draft.proposed_words <= draft.runtime.maxWords);
 });
@@ -154,8 +156,8 @@ test("local script extension uses conservative Liam proof pacing instead of opti
 
   assert.equal(draft.action, "ready_for_local_liam_audio");
   assert.deepEqual(draft.target_seconds, [64, 70]);
-  assert.ok(draft.target_word_range.min >= 183);
-  assert.ok(draft.target_word_range.max <= 200);
+  assert.ok(draft.target_word_range.min >= 204);
+  assert.ok(draft.target_word_range.max <= 222);
   assert.ok(draft.proposed_words >= draft.runtime.minWords);
   assert.ok(draft.proposed_words <= draft.runtime.maxWords);
   assert.ok(draft.estimated_seconds >= 61);
@@ -723,6 +725,8 @@ test("local script extension CLI builds source-bound context from active proof m
         "The Expanse: Osiris Reborn finally has real gameplay on screen.",
         "Xbox showed The Expanse: Osiris Reborn gameplay during Partner Preview.",
         "The player question is whether this feels like The Expanse or just another sci fi shooter wearing the name.",
+        "The trailer finally moves past logos and shows actual movement.",
+        "That matters because this is the first useful read on the game feel.",
       ].join(" "),
     }),
   );
@@ -769,6 +773,88 @@ test("local script extension CLI builds source-bound context from active proof m
   assert.match(plan.drafts[0].proposed_full_script, /Xbox gives the hard fact/);
   assert.match(plan.drafts[0].proposed_full_script, /The Expanse: Osiris Reborn/);
   assert.doesNotMatch(plan.drafts[0].proposed_full_script, /official listing, patch note or platform page changes the picture/i);
+});
+
+test("local script extension blocks internal source-policy phrases before Liam audio", () => {
+  const plan = buildLocalScriptExtensionPlan({
+    queueReport: {
+      items: [queueItem("unsafe_policy_script", 190)],
+    },
+    storiesById: {
+      unsafe_policy_script: {
+        id: "unsafe_policy_script",
+        title: "Forza Horizon 6 Hits A Steam Milestone",
+        full_script: [
+          variedScript("Forza Horizon 6", 21),
+          "The key is not to overclaim it.",
+          "Treat the headline as confirmed only where the named source confirms it.",
+          "Everything else stays in the wait and see column until an official post backs it up.",
+        ].join(" "),
+      },
+    },
+  });
+
+  assert.equal(plan.counts.ready, 0);
+  assert.equal(plan.counts.review, 1);
+  assert.equal(plan.drafts[0].action, "review_extended_script");
+  assert.ok(
+    plan.drafts[0].manual_review_flags.some((flag) =>
+      /internal_source_policy_language|source_policy_language|wait_and_see_column/.test(flag),
+    ),
+  );
+  assert.equal(plan.drafts[0].source_bound_rewrite_work_order.blocker_type, "public_copy_blocked");
+});
+
+test("local script extension can scope planning to active local proof rows", () => {
+  const plan = buildLocalScriptExtensionPlan({
+    queueReport: {
+      items: [
+        {
+          ...queueItem("broad_backlog_story", 190),
+          repair_scope: "database_backlog",
+        },
+        {
+          ...queueItem("active_proof_story", 190),
+          repair_scope: "active_local_proof",
+          local_proof_repair: true,
+        },
+      ],
+    },
+    storiesById: {
+      broad_backlog_story: {
+        id: "broad_backlog_story",
+        title: "Broad Backlog Story",
+        full_script: variedScript("Broad backlog story", 25),
+      },
+      active_proof_story: {
+        id: "active_proof_story",
+        title: "Active Proof Story",
+        full_script: variedScript("Active proof story", 25),
+      },
+    },
+    activeLocalProofOnly: true,
+    env: {},
+  });
+
+  assert.equal(plan.counts.total, 1);
+  assert.equal(plan.drafts.length, 1);
+  assert.equal(plan.drafts[0].story_id, "active_proof_story");
+});
+
+test("local script extension CLI parses active local proof scope", () => {
+  const args = parseArgs([
+    "node",
+    "tools/local-script-extension.js",
+    "--scope",
+    "active-local-proof",
+    "--apply-local-audio",
+    "--apply-limit",
+    "4",
+  ]);
+
+  assert.equal(args.activeLocalProofOnly, true);
+  assert.equal(args.applyLocalAudio, true);
+  assert.equal(args.applyLimit, 4);
 });
 
 test("local script extension plan skips stories with existing voice-ready proofs", () => {
@@ -822,6 +908,10 @@ test("local script extension plan does not re-offer matching failed local audio 
       },
     },
     cleanText: (text) => String(text).replace(/\bHades\s+(?:II|2)\b/g, "Hades two"),
+    env: {
+      LOCAL_EXTENSION_SECONDS_PER_WORD: "0.35",
+      LOCAL_SCRIPT_EXTENSION_TARGET_WORDS: "166",
+    },
     existingRejectedProofsById: {
       hades_overlong_proof: {
         story_id: "hades_overlong_proof",
@@ -834,7 +924,6 @@ test("local script extension plan does not re-offer matching failed local audio 
         ].join(" "),
       },
     },
-    env: {},
   });
 
   assert.equal(plan.counts.ready, 0);
@@ -1187,6 +1276,46 @@ test("apply local script extension audio marks underfloor proofs rejected", asyn
 
   assert.equal(result.applied[0].duration_verdict, "reject_duration");
   assert.equal(result.applied[0].failure_code, "duration_too_short");
+});
+
+test("apply local script extension audio skips internal source-policy narration before TTS", async () => {
+  let generated = 0;
+  const result = await applyLocalScriptExtensionAudio({
+    plan: {
+      drafts: [
+        {
+          story_id: "unsafe_before_tts",
+          action: "ready_for_local_liam_audio",
+          proposed_full_script: [
+            "Forza Horizon 6 just put up a wild Steam number.",
+            "The key is not to overclaim it.",
+            "Treat the headline as confirmed only where the named source confirms it.",
+            "Everything else stays in the wait and see column until an official post backs it up.",
+            "Follow Pulse Gaming so you never miss a beat.",
+          ].join(" "),
+          proposed_words: 190,
+          estimated_seconds: 66.5,
+        },
+      ],
+    },
+    generateTts: async () => {
+      generated += 1;
+    },
+    measureDuration: async () => 66.4,
+    localTts: READY_TTS,
+  });
+
+  assert.equal(generated, 0);
+  assert.equal(result.applied.length, 0);
+  assert.equal(result.skipped.length, 1);
+  assert.equal(result.skipped[0].story_id, "unsafe_before_tts");
+  assert.equal(result.skipped[0].reason, "public_copy_blocked_before_tts");
+  assert.equal(result.skipped[0].failure_code, "public_copy_blocked");
+  assert.ok(
+    result.skipped[0].blocking_flags.some((flag) =>
+      /internal_source_policy_language|source_policy_language|wait_and_see_column/.test(flag),
+    ),
+  );
 });
 
 test("apply local script extension audio records TTS failures and keeps going", async () => {

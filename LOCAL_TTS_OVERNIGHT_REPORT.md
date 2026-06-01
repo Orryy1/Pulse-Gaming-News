@@ -1,6 +1,6 @@
 # Local TTS Overnight Report
 
-Generated: 2026-06-01T05:02:42.090Z
+Generated: 2026-06-01T05:12:02.616Z
 Verdict: AMBER
 Expected local voice: pulse-sleepy-liam-20260502
 Local proof preferred duration: 64-70s preferred, 61-75s accepted
@@ -74,6 +74,59 @@ Local proof preferred duration: 64-70s preferred, 61-75s accepted
 - notes:
   - duration_too_short proofs should be repaired by local script extension before another Studio V2 proof render
   - timeout/reset stories can be retried locally after the TTS server health check is green
+
+## Recovery Work Orders
+- local_audio_duration_repair:1t186u4: duration_too_short via local_audio_duration_repair
+  - command: `npm run ops:local-script-extension -- --story-id 1t186u4 --dry-run`
+  - validate: `npm run ops:local-script-extension -- --story-id 1t186u4 --apply-local-audio --apply-limit 1`
+- local_audio_duration_repair:rss_c4cabfc862af7b64: duration_too_short via local_audio_duration_repair
+  - command: `npm run ops:local-script-extension -- --story-id rss_c4cabfc862af7b64 --dry-run`
+  - validate: `npm run ops:local-script-extension -- --story-id rss_c4cabfc862af7b64 --apply-local-audio --apply-limit 1`
+- local_audio_duration_repair:1tb3i1r: duration_too_short via local_audio_duration_repair
+  - command: `npm run ops:local-script-extension -- --story-id 1tb3i1r --dry-run`
+  - validate: `npm run ops:local-script-extension -- --story-id 1tb3i1r --apply-local-audio --apply-limit 1`
+- local_audio_duration_repair:1tk1lpr: duration_too_short via local_audio_duration_repair
+  - command: `npm run ops:local-script-extension -- --story-id 1tk1lpr --dry-run`
+  - validate: `npm run ops:local-script-extension -- --story-id 1tk1lpr --apply-local-audio --apply-limit 1`
+- local_audio_duration_repair:1tkzdfq: duration_too_short via local_audio_duration_repair
+  - command: `npm run ops:local-script-extension -- --story-id 1tkzdfq --dry-run`
+  - validate: `npm run ops:local-script-extension -- --story-id 1tkzdfq --apply-local-audio --apply-limit 1`
+- local_audio_duration_repair:1tayii3: duration_too_short via local_audio_duration_repair
+  - command: `npm run ops:local-script-extension -- --story-id 1tayii3 --dry-run`
+  - validate: `npm run ops:local-script-extension -- --story-id 1tayii3 --apply-local-audio --apply-limit 1`
+- local_audio_duration_repair:1thnwdq: duration_too_long via local_audio_duration_repair
+  - command: `npm run ops:reprocess-script-failures -- --story-id 1thnwdq --force-story --source-bound-only --dry-run --json`
+  - validate: `npm run ops:local-script-extension -- --story-id 1thnwdq --dry-run`
+- local_tts_retry:1tbdx3b: local_tts_transport_failure via local_tts_retry
+  - preflight: `npm run ops:local-script-extension -- --story-id 1tbdx3b --dry-run`
+  - command: `npm run ops:local-script-extension -- --story-id 1tbdx3b --dry-run`
+  - apply: `npm run ops:local-script-extension -- --story-id 1tbdx3b --apply-local-audio --apply-limit 1`
+  - validate: `npm run tts:overnight-report -- --json`
+- local_tts_retry:1t186u4: local_tts_transport_failure via local_tts_retry
+  - preflight: `npm run ops:local-script-extension -- --story-id 1t186u4 --dry-run`
+  - command: `npm run ops:local-script-extension -- --story-id 1t186u4 --dry-run`
+  - apply: `npm run ops:local-script-extension -- --story-id 1t186u4 --apply-local-audio --apply-limit 1`
+  - validate: `npm run tts:overnight-report -- --json`
+- local_tts_retry:1tgr15g: local_tts_transport_failure via local_tts_retry
+  - preflight: `npm run ops:local-script-extension -- --story-id 1tgr15g --dry-run`
+  - command: `npm run ops:local-script-extension -- --story-id 1tgr15g --dry-run`
+  - apply: `npm run ops:local-script-extension -- --story-id 1tgr15g --apply-local-audio --apply-limit 1`
+  - validate: `npm run tts:overnight-report -- --json`
+- local_tts_retry:1tk1lpr: local_tts_transport_failure via local_tts_retry
+  - preflight: `npm run ops:local-script-extension -- --story-id 1tk1lpr --dry-run`
+  - command: `npm run ops:local-script-extension -- --story-id 1tk1lpr --dry-run`
+  - apply: `npm run ops:local-script-extension -- --story-id 1tk1lpr --apply-local-audio --apply-limit 1`
+  - validate: `npm run tts:overnight-report -- --json`
+- local_tts_retry:1tkzdfq: local_tts_transport_failure via local_tts_retry
+  - preflight: `npm run ops:local-script-extension -- --story-id 1tkzdfq --dry-run`
+  - command: `npm run ops:local-script-extension -- --story-id 1tkzdfq --dry-run`
+  - apply: `npm run ops:local-script-extension -- --story-id 1tkzdfq --apply-local-audio --apply-limit 1`
+  - validate: `npm run tts:overnight-report -- --json`
+- local_tts_retry:1te1oq7: local_tts_transport_failure via local_tts_retry
+  - preflight: `npm run ops:local-script-extension -- --story-id 1te1oq7 --dry-run`
+  - command: `npm run ops:local-script-extension -- --story-id 1te1oq7 --dry-run`
+  - apply: `npm run ops:local-script-extension -- --story-id 1te1oq7 --apply-local-audio --apply-limit 1`
+  - validate: `npm run tts:overnight-report -- --json`
 
 ## Safety
 - Local proof/reporting only.

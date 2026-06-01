@@ -218,6 +218,35 @@ test("local TTS overnight report creates a local-only recovery plan for short pr
   assert.equal(report.proof_batch.superseded_skipped_count, 1);
   assert.deepEqual(report.recovery_plan.extend_script_story_ids, ["rss_short"]);
   assert.deepEqual(report.recovery_plan.retry_tts_story_ids, ["rss_reset", "rss_timeout"]);
+  assert.deepEqual(
+    report.recovery_plan.work_orders
+      .filter((order) => order.repair_lane === "local_tts_retry")
+      .map((order) => ({
+        story_id: order.story_id,
+        preflight_required: order.preflight_required,
+        preflight_command: order.preflight_command,
+        recommended_command: order.recommended_command,
+        apply_command: order.apply_command,
+      })),
+    [
+      {
+        story_id: "rss_reset",
+        preflight_required: true,
+        preflight_command: "npm run ops:local-script-extension -- --story-id rss_reset --dry-run",
+        recommended_command: "npm run ops:local-script-extension -- --story-id rss_reset --dry-run",
+        apply_command:
+          "npm run ops:local-script-extension -- --story-id rss_reset --apply-local-audio --apply-limit 1",
+      },
+      {
+        story_id: "rss_timeout",
+        preflight_required: true,
+        preflight_command: "npm run ops:local-script-extension -- --story-id rss_timeout --dry-run",
+        recommended_command: "npm run ops:local-script-extension -- --story-id rss_timeout --dry-run",
+        apply_command:
+          "npm run ops:local-script-extension -- --story-id rss_timeout --apply-local-audio --apply-limit 1",
+      },
+    ],
+  );
   assert.equal(report.recovery_plan.blocked_by_voice_quality, false);
   assert.match(report.recovery_plan.commands[0], /ops:local-media-repair -- --dry-run/);
   assert.match(report.recovery_plan.commands[1], /ops:local-script-extension -- --dry-run/);
@@ -225,6 +254,10 @@ test("local TTS overnight report creates a local-only recovery plan for short pr
   assert.match(markdown, /## Superseded Failed Attempts/);
   assert.match(markdown, /extend_script_story_ids=rss_short/);
   assert.match(markdown, /retry_tts_story_ids=rss_reset, rss_timeout/);
+  assert.match(markdown, /## Recovery Work Orders/);
+  assert.match(markdown, /local_tts_retry:rss_reset/);
+  assert.match(markdown, /preflight: `npm run ops:local-script-extension -- --story-id rss_reset --dry-run`/);
+  assert.match(markdown, /apply: `npm run ops:local-script-extension -- --story-id rss_reset --apply-local-audio --apply-limit 1`/);
 });
 
 test("local TTS overnight report creates duration repair work orders for overlong proofs", () => {

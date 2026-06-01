@@ -459,13 +459,27 @@ test("local script extension plan gives source-bound rewrite commands for unsafe
 
   assert.equal(plan.counts.review, 1);
   assert.equal(plan.counts.source_bound_rewrite_work_orders, 1);
+  assert.ok(Array.isArray(plan.source_bound_rewrite_work_orders));
+  assert.equal(plan.source_bound_rewrite_work_orders.length, 1);
+  assert.equal(plan.source_bound_rewrite_work_orders[0].story_id, "bungie_generic_padding");
+  assert.equal(plan.source_bound_rewrite_work_orders[0].repair_lane, "source_bound_script_rewrite");
+  assert.equal(plan.source_bound_rewrite_work_orders[0].auto_repairable, true);
+  assert.equal(plan.source_bound_rewrite_work_orders[0].db_mutation_required, false);
   assert.equal(
     plan.drafts[0].source_bound_rewrite_work_order.recommended_command,
+    "npm run ops:reprocess-script-failures -- --story-id bungie_generic_padding --force-story --source-bound-only --dry-run --json",
+  );
+  assert.equal(
+    plan.source_bound_rewrite_work_orders[0].recommended_command,
     "npm run ops:reprocess-script-failures -- --story-id bungie_generic_padding --force-story --source-bound-only --dry-run --json",
   );
   assert.match(
     renderLocalScriptExtensionMarkdown(plan),
     /Source-bound rewrite: `npm run ops:reprocess-script-failures -- --story-id bungie_generic_padding --force-story --source-bound-only --dry-run --json`/,
+  );
+  assert.match(
+    renderLocalScriptExtensionMarkdown(plan),
+    /## Source-Bound Rewrite Work Orders/,
   );
 });
 

@@ -151,6 +151,40 @@ test("auto repair runner accepts publish-unblock repair orchestration output", (
   assert.equal(runPlan.items[0].command_safety.safe, true);
 });
 
+test("auto repair runner accepts local script-extension source-bound rewrite work orders", () => {
+  const runPlan = buildAutoRepairRunPlan({
+    schema_version: 1,
+    generated_at: "2026-06-01T06:00:00.000Z",
+    mode: "LOCAL_SCRIPT_EXTENSION_PLAN",
+    source_bound_rewrite_work_orders: [
+      {
+        story_id: "script-review",
+        title: "Script Review",
+        blocker_type: "public_copy_blocked",
+        repair_lane: "source_bound_script_rewrite",
+        recommended_command:
+          "npm run ops:reprocess-script-failures -- --story-id script-review --force-story --source-bound-only --dry-run --json",
+        post_repair_validation_command:
+          "npm run ops:local-script-extension -- --story-id script-review --dry-run",
+        auto_repairable: true,
+        operator_approval_required: true,
+        db_mutation_required: false,
+      },
+    ],
+  }, {
+    lane: "source_bound_script_rewrite",
+    generatedAt: "2026-06-01T06:05:00.000Z",
+  });
+
+  assert.equal(runPlan.summary.total_items_considered, 1);
+  assert.equal(runPlan.summary.source_auto_repairable_items, 1);
+  assert.equal(runPlan.summary.selected_items, 1);
+  assert.equal(runPlan.summary.safe_executable_items, 1);
+  assert.equal(runPlan.items[0].source, "local_script_extension.source_bound_rewrite_work_orders");
+  assert.equal(runPlan.items[0].execute_command.script, "ops:reprocess-script-failures");
+  assert.equal(runPlan.items[0].execute_command.args.at(-2), "--dry-run");
+});
+
 test("auto repair runner keeps unsafe commands visible but not executable", () => {
   const runPlan = buildAutoRepairRunPlan(planFixture(), {
     generatedAt: "2026-05-31T01:00:00.000Z",

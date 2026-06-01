@@ -88,6 +88,37 @@ test("coherence artifact repair rewrites stale reports from the current canonica
   assert.deepEqual(audit.blockers, []);
 });
 
+test("coherence artifact repair targets quarantined public-output report rows", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-coherence-artifact-quarantined-"));
+  const artifactDir = await makeCoherenceArtifactFixture(root, "quarantined-story");
+
+  const report = await repairCoherenceArtifacts({
+    dryRunPlan: {
+      public_output_coherence_report: {
+        stories: [
+          {
+            story_id: "quarantined-story",
+            artifact_dir: artifactDir,
+            readiness_scope: "quarantined",
+            blockers: [
+              "stale_public_output_coherence_report",
+              "stale_public_output_coherence_field:first_spoken_line",
+            ],
+          },
+        ],
+      },
+    },
+    generatedAt: "2026-06-01T00:35:00.000Z",
+    apply: false,
+  });
+
+  assert.equal(report.summary.target_count, 1);
+  assert.equal(report.rows[0].story_id, "quarantined-story");
+  assert.equal(report.rows[0].artifact_dir, artifactDir);
+  assert.equal(report.rows[0].written, false);
+  assert.equal(report.rows[0].repaired_report_result, "pass");
+});
+
 test("coherence artifact repair refuses to greenlight stale render snapshots", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-coherence-artifact-stale-render-"));
   const artifactDir = await makeCoherenceArtifactFixture(root, "stale-render-story");

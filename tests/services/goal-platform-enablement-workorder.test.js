@@ -131,6 +131,12 @@ test("platform enablement work order aggregates deferred platforms without marki
   });
 
   assert.equal(report.mode, "PLATFORM_ENABLEMENT_WORK_ORDER");
+  assert.equal(report.verdict, "AMBER");
+  assert.equal(report.safe_to_publish_boolean, false);
+  assert.equal(report.publish_authority, "none");
+  assert.match(report.readiness_reason, /4_deferred_platforms_require_operator_enablement/);
+  assert.match(report.readiness_reason, /5_deferred_actions/);
+  assert.match(report.readiness_reason, /live_publish_actions_allowed=0/);
   assert.equal(report.summary.deferred_platform_count, 4);
   assert.equal(report.summary.total_deferred_actions, 5);
   assert.equal(report.summary.live_publish_actions_allowed, 0);
@@ -166,6 +172,7 @@ test("platform enablement work order aggregates deferred platforms without marki
   ]);
   assert.equal(report.platform_guardrail_report.summary.deferred_platform_count, 4);
   assert.equal(report.platform_guardrail_report.summary.live_publish_actions_allowed, 0);
+  assert.equal(report.platform_guardrail_report.verdict, "AMBER");
   assert.equal(report.platform_guardrail_report.guardrails.disabled_platforms_not_publishable, "pass");
   assert.equal(report.platform_guardrail_report.guardrails.operator_enablement_required, "pass");
   assert.deepEqual(report.safety, {
@@ -180,6 +187,8 @@ test("platform enablement work order aggregates deferred platforms without marki
   assert.doesNotMatch(serialised, /must-not-leak|also-secret|access_token|refresh_token|Bearer/);
 
   const markdown = renderGoalPlatformEnablementWorkOrderMarkdown(report);
+  assert.match(markdown, /Verdict: AMBER/);
+  assert.match(markdown, /Safe to publish: false/);
   assert.match(markdown, /Enabled human-review platforms: youtube_shorts, instagram_reels/);
   assert.match(markdown, /Deferred platform action counts: tiktok=2, x=1, threads=1, pinterest=1/);
   assert.match(markdown, /TikTok/);
@@ -226,6 +235,9 @@ test("platform enablement work order writer and CLI emit machine-readable artefa
 
   assert.equal(result.status, 0, result.stderr);
   const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.verdict, "AMBER");
+  assert.equal(parsed.safe_to_publish_boolean, false);
+  assert.equal(parsed.publish_authority, "none");
   assert.equal(parsed.summary.deferred_platform_count, 4);
   assert.equal(await fs.pathExists(path.join(outDir, "platform_enablement_work_order.json")), true);
   assert.equal(await fs.pathExists(path.join(outDir, "platform_enablement_work_order.md")), true);

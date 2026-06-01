@@ -56,7 +56,8 @@ test("dominantVerdict: all green stays green", () => {
 // ── PILLAR_NAMES contract ────────────────────────────────────────
 
 test("PILLAR_NAMES: includes cadence plus the original readiness pillars", () => {
-  assert.equal(pr.PILLAR_NAMES.length, 31);
+  assert.equal(pr.PILLAR_NAMES.length, 32);
+  assert.ok(pr.PILLAR_NAMES.includes("local_restart_readiness"));
   assert.ok(pr.PILLAR_NAMES.includes("publish_cadence"));
   assert.ok(pr.PILLAR_NAMES.includes("strict_dry_run_control"));
   assert.ok(pr.PILLAR_NAMES.includes("human_review_decision_sheet"));
@@ -210,6 +211,20 @@ test("summariseTiktokExternalBlockReason: surfaces platform doctor token and app
       },
     }),
     "tiktok_local_token_refresh_or_sync_required; direct_post_approval_not_declared; next=refresh_or_sync_local_token_with_operator_present_before_any_inbox_upload",
+  );
+});
+
+test("summariseLocalRestartReadinessReason: surfaces local health and scheduler hygiene risks", () => {
+  assert.equal(
+    pr.summariseLocalRestartReadinessReason({
+      blockers: ["localhost /api/health is not reachable"],
+      warnings: ["1 Pulse-related Windows scheduled task(s) can launch visible console windows"],
+      windows_scheduler_hygiene: {
+        visible_console_risk_count: 1,
+        risk_task_names: ["Orryy-PulseGaming"],
+      },
+    }),
+    "localhost /api/health is not reachable; scheduler_visible_console_risks=1: Orryy-PulseGaming",
   );
 });
 
@@ -449,7 +464,7 @@ test("buildPublishReadinessReport: empty store does not crash, returns at least 
   );
   assert.equal(report.story_count, 0);
   assert.ok(typeof report.pillars === "object");
-  assert.equal(Object.keys(report.pillars).length, 31);
+  assert.equal(Object.keys(report.pillars).length, 32);
   assert.ok(typeof report.next_action === "string");
 });
 

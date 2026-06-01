@@ -22,10 +22,11 @@ const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
 
 function parseArgs(argv) {
-  const args = { json: false, help: false };
+  const args = { json: false, help: false, writeRootReport: false };
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--json") args.json = true;
+    else if (arg === "--write-root-report") args.writeRootReport = true;
     else if (arg === "--help" || arg === "-?") args.help = true;
   }
   return args;
@@ -33,8 +34,9 @@ function parseArgs(argv) {
 
 function printHelp() {
   process.stdout.write(
-    "Usage: node tools/local-restart-readiness.js [--json]\n" +
-      "  --json   Print JSON instead of markdown\n",
+    "Usage: node tools/local-restart-readiness.js [--json] [--write-root-report]\n" +
+      "  --json               Print JSON instead of markdown\n" +
+      "  --write-root-report  Also update tracked LOCAL_RESTART_READINESS.md\n",
   );
 }
 
@@ -57,7 +59,13 @@ async function main() {
     markdown,
     "utf8",
   );
-  await fs.writeFile(path.join(ROOT, "LOCAL_RESTART_READINESS.md"), markdown, "utf8");
+  if (args.writeRootReport) {
+    await fs.writeFile(
+      path.join(ROOT, "LOCAL_RESTART_READINESS.md"),
+      markdown,
+      "utf8",
+    );
+  }
 
   if (args.json) {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
@@ -69,9 +77,11 @@ async function main() {
     process.stderr.write(
       `[local-restart-readiness] md=${path.join(OUT, "local_restart_readiness.md")}\n`,
     );
-    process.stderr.write(
-      `[local-restart-readiness] report=${path.join(ROOT, "LOCAL_RESTART_READINESS.md")}\n`,
-    );
+    if (args.writeRootReport) {
+      process.stderr.write(
+        `[local-restart-readiness] report=${path.join(ROOT, "LOCAL_RESTART_READINESS.md")}\n`,
+      );
+    }
   }
 
   if (report.verdict === "red") process.exitCode = 2;

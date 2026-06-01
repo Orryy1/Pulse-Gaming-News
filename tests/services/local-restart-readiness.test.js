@@ -14,6 +14,9 @@ const {
   formatLocalRestartReadinessMarkdown,
   summariseCadence,
 } = require("../../lib/ops/local-restart-readiness");
+const {
+  parseArgs: parseLocalRestartReadinessArgs,
+} = require("../../tools/local-restart-readiness");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 
@@ -482,5 +485,20 @@ test("ops:local-restart-readiness command is registered", () => {
   assert.equal(
     pkg.scripts["ops:windows-scheduler-repair"],
     "node tools/windows-scheduler-hidden-launcher-repair.js",
+  );
+});
+
+test("ops:local-restart-readiness does not write tracked root reports by default", () => {
+  const args = parseLocalRestartReadinessArgs(["node", "tool", "--json"]);
+  assert.equal(args.writeRootReport, false);
+
+  const source = fs.readFileSync(
+    path.join(ROOT, "tools", "local-restart-readiness.js"),
+    "utf8",
+  );
+  assert.match(source, /--write-root-report/);
+  assert.doesNotMatch(
+    source,
+    /await fs\.writeFile\(path\.join\(ROOT, "LOCAL_RESTART_READINESS\.md"\), markdown, "utf8"\);/,
   );
 });

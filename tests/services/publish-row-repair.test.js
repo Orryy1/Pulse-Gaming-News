@@ -14,6 +14,10 @@ const {
   classifyPublishRowIssue,
   formatPublishRowRepairMarkdown,
 } = require("../../lib/ops/publish-row-repair");
+const {
+  parseArgs,
+  validateApplyArgs,
+} = require("../../tools/publish-row-repair-plan");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 
@@ -163,6 +167,78 @@ test("buildPublishRowRepairPlan: reports missing publish timestamp rows separate
   assert.match(plan.rows[0].recommended_command, /ops:publish-row-repair/);
 });
 
+test("buildPublishRowRepairPlan: filters targeted story IDs and emits repair work orders", () => {
+  const plan = buildPublishRowRepairPlan({
+    now: "2026-06-01T06:40:00.000Z",
+    storyIds: ["bad_public"],
+    stories: [
+      {
+        id: "bad_public",
+        title: "Script failed but posted",
+        published_at: "2026-05-14T02:00:00.000Z",
+        instagram_media_id: "ig_123",
+        body: "Script validation failed. Manual review required before production.",
+      },
+      {
+        id: "other_bad",
+        title: "Other bad row",
+        published_at: "2026-05-14T02:00:00.000Z",
+        youtube_post_id: "yt_123",
+        body: "Script validation failed. Manual review required before production.",
+      },
+    ],
+  });
+
+  assert.equal(plan.summary.requested_story_ids.length, 1);
+  assert.equal(plan.summary.repair_candidates, 1);
+  assert.equal(plan.rows[0].story_id, "bad_public");
+  assert.equal(plan.work_orders.length, 1);
+  assert.deepEqual(plan.work_orders[0], {
+    work_order_id: "publish_row_repair:bad_public",
+    story_id: "bad_public",
+    blocker_type: "public_script_validation_fallback",
+    repair_lane: "publish_row_public_fallback_review",
+    exact_missing_input:
+      "Public platform row contains script-validation fallback copy and must be reviewed before DB repair.",
+    platforms: ["instagram"],
+    severity: "red",
+    recommended_command:
+      "npm run ops:publish-row-repair -- --story-id bad_public --json",
+    apply_command:
+      "npm run ops:publish-row-repair -- --story-id bad_public --apply --operator-confirmed --json",
+    expected_output:
+      "After platform review, the story row is marked failed/QA-failed while preserving real platform IDs.",
+    db_mutation_required: true,
+    operator_approval_required: true,
+    token_or_oauth_mutation_required: false,
+    external_posting_risk: false,
+    platform_ids_preserved: true,
+    post_repair_validation_command:
+      "npm run ops:publish-row-repair -- --story-id bad_public --json && npm run ops:publish-cadence -- --hours 24",
+  });
+});
+
+test("formatPublishRowRepairMarkdown: includes per-row repair work orders", () => {
+  const plan = buildPublishRowRepairPlan({
+    now: "2026-06-01T06:44:00.000Z",
+    stories: [
+      {
+        id: "bad_public",
+        title: "Script failed but posted",
+        published_at: "2026-05-14T02:00:00.000Z",
+        instagram_media_id: "ig_123",
+        body: "Script validation failed. Manual review required before production.",
+      },
+    ],
+  });
+  const md = formatPublishRowRepairMarkdown(plan);
+
+  assert.match(md, /## Repair Work Orders/);
+  assert.match(md, /publish_row_repair:bad_public/);
+  assert.match(md, /--story-id bad_public --apply --operator-confirmed/);
+  assert.match(md, /platform IDs preserved/i);
+});
+
 test("buildScriptFallbackRepairSql: only targets red public fallback rows and preserves platform ids", () => {
   const sql = buildScriptFallbackRepairSql([
     {
@@ -295,4 +371,30 @@ test("ops:publish-row-repair command is registered and dry-run named", () => {
   assert.match(tool, /publish_row_repair_apply_requires_operator_confirmed_flag/);
   assert.match(tool, /publish_row_repair_plan\.json/);
   assert.match(tool, /publish_row_repair_preview\.sql/);
+});
+
+test("publish-row-repair CLI parses targeted story IDs and blocks broad apply", () => {
+  assert.deepEqual(
+    parseArgs([
+      "node",
+      "tools/publish-row-repair-plan.js",
+      "--story-id",
+      "one",
+      "--story-ids=two,three",
+      "--json",
+    ]).storyIds,
+    ["one", "two", "three"],
+  );
+
+  assert.throws(
+    () => validateApplyArgs({ apply: true, operatorConfirmed: true, storyIds: [] }),
+    /publish_row_repair_apply_requires_story_id/,
+  );
+  assert.doesNotThrow(() =>
+    validateApplyArgs({
+      apply: true,
+      operatorConfirmed: true,
+      storyIds: ["bad_public"],
+    }),
+  );
 });

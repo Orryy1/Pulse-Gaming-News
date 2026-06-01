@@ -3090,6 +3090,108 @@ test("goal dry-run publisher blocks local voice timestamps that are not ASR-alig
   );
 });
 
+test("goal dry-run publisher accepts local Whisper alignment.words timestamp payloads", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-alignment-words-"));
+  const storyPackage = await makeStoryPackage(root, "alignment-words-story", "GREEN", "Forza Horizon 6 Finally Hit Steam");
+  await fs.outputJson(path.join(storyPackage.artifact_dir, "audio_manifest.json"), {
+    status: "ready",
+    provider: "local",
+    voice_provider: "local_voicebox",
+    narration_audio_path: "narration.mp3",
+    word_timestamps_path: "word_timestamps.json",
+    word_timestamp_count: 3,
+  });
+  await fs.outputJson(path.join(storyPackage.artifact_dir, "word_timestamps.json"), {
+    meta: {
+      wordTimestampSource: "local_whisper_word_alignment",
+      transcript:
+        "Forza Horizon 6 just exposed a sharper gaming story. The source points to a clear player signal.",
+    },
+    alignment: {
+      words: [
+        { word: "Forza", start: 0, end: 0.2 },
+        { word: "Horizon", start: 0.21, end: 0.42 },
+        { word: "6", start: 0.43, end: 0.5 },
+      ],
+    },
+  });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-05-26T09:15:00.000Z",
+    platformOperationalConfig: {
+      youtube: { state: "enabled", reason: "core_upload_path" },
+    },
+  });
+
+  assert.equal(plan.summary.ready_story_count, 1);
+  assert.equal(plan.summary.blocked_story_count, 0);
+  assert.equal(plan.incident_guard_report.stories[0].file_evidence.word_timestamps_ready, true);
+  assert.equal(plan.incident_guard_report.stories[0].file_evidence.word_timestamps_asr_aligned, true);
+});
+
+test("goal dry-run publisher prefers ASR word alignment over stale media-root timestamp sidecars", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-media-root-timestamps-"));
+  const previousCwd = process.cwd();
+  const previousMediaRoot = process.env.MEDIA_ROOT;
+  const mediaRoot = path.join(root, "media-root");
+  const storyPackage = await makeStoryPackage(root, "media-root-timestamps-story", "GREEN", "Forza Horizon 6 Finally Hit Steam");
+  const staleMediaRootPath = path.join(mediaRoot, "output", "audio", "media-root-timestamps-story_timestamps.json");
+  const repairedWorkspacePath = path.join(root, "output", "audio", "media-root-timestamps-story_timestamps.json");
+  await fs.outputJson(staleMediaRootPath, {
+    meta: {
+      wordTimestampSource: "local_audio_silence_anchored",
+      transcript: "Forza Horizon 6 finally hit Steam.",
+    },
+    characters: ["F", "o", "r", "z", "a"],
+    character_start_times_seconds: [0, 0.1, 0.2, 0.3, 0.4],
+    character_end_times_seconds: [0.1, 0.2, 0.3, 0.4, 0.5],
+  });
+  await fs.outputJson(repairedWorkspacePath, {
+    meta: {
+      wordTimestampSource: "local_whisper_word_alignment",
+      transcript:
+        "Forza Horizon 6 just exposed a sharper gaming story. The source points to a clear player signal.",
+    },
+    alignment: {
+      words: [
+        { word: "Forza", start: 0, end: 0.2 },
+        { word: "Horizon", start: 0.21, end: 0.42 },
+        { word: "6", start: 0.43, end: 0.5 },
+      ],
+    },
+  });
+  await fs.outputJson(path.join(storyPackage.artifact_dir, "audio_manifest.json"), {
+    status: "ready",
+    provider: "local",
+    voice_provider: "local_voicebox",
+    narration_audio_path: "narration.mp3",
+    word_timestamps_path: "output/audio/media-root-timestamps-story_timestamps.json",
+    word_timestamp_count: 3,
+  });
+
+  try {
+    process.chdir(root);
+    process.env.MEDIA_ROOT = mediaRoot;
+    const plan = await buildGoalDryRunPublishPlan({
+      storyPackages: [storyPackage],
+      generatedAt: "2026-05-26T09:16:00.000Z",
+      platformOperationalConfig: {
+        youtube: { state: "enabled", reason: "core_upload_path" },
+      },
+    });
+
+    assert.equal(plan.summary.ready_story_count, 1);
+    assert.equal(plan.summary.blocked_story_count, 0);
+    assert.equal(plan.incident_guard_report.stories[0].file_evidence.word_timestamps_ready, true);
+    assert.equal(plan.incident_guard_report.stories[0].file_evidence.word_timestamps_asr_aligned, true);
+  } finally {
+    process.chdir(previousCwd);
+    if (previousMediaRoot === undefined) delete process.env.MEDIA_ROOT;
+    else process.env.MEDIA_ROOT = previousMediaRoot;
+  }
+});
+
 test("goal dry-run publisher blocks local Whisper misrecognising Hades II as Hades tattoo", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-hades-timing-"));
   const storyPackage = await makeStoryPackage(root, "hades-timing-story", "GREEN", "Hades II Finally Hits Console", {

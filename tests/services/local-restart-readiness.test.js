@@ -197,7 +197,7 @@ test("Windows scheduler hygiene flags Pulse tasks that launch visible python con
     backup_command:
       "Export-ScheduledTask -TaskName 'Orryy-PulseGaming' -TaskPath '\\' | Out-File -FilePath 'test\\output\\scheduler_task_backups\\Orryy-PulseGaming.xml' -Encoding utf8",
     recommended_command:
-      "Set-ScheduledTask -TaskName 'Orryy-PulseGaming' -TaskPath '\\' -Action (New-ScheduledTaskAction -Execute 'pythonw.exe' -Argument '\"C:\\Claude\\orryy-expansion\\agents\\run_daily.py\" pulse_gaming' -WorkingDirectory 'C:\\Claude\\orryy-expansion')",
+      "Set-ScheduledTask -TaskName 'Orryy-PulseGaming' -TaskPath '\\' -Action (New-ScheduledTaskAction -Execute 'pythonw.exe' -Argument '\"C:\\Claude\\orryy-expansion\\agents\\run_daily.py\" pulse_gaming' -WorkingDirectory 'C:\\Claude\\orryy-expansion') -ErrorAction Stop",
     expected_output:
       "Orryy-PulseGaming uses a windowless Python launcher and no longer opens visible terminal windows.",
     db_mutation_required: false,
@@ -213,6 +213,50 @@ test("Windows scheduler hygiene flags Pulse tasks that launch visible python con
   assert.match(
     hygiene.tasks[0].recommended_action,
     /pythonw\.exe or a hidden launcher/i,
+  );
+});
+
+test("Windows scheduler hygiene flags the whole Orryy scheduler namespace", () => {
+  const hygiene = buildWindowsSchedulerHygiene({
+    platform: "win32",
+    cwd: ROOT,
+    scheduledTasks: [
+      {
+        task_name: "Orryy-MusicScout",
+        task_path: "\\",
+        state: "Ready",
+        execute: "python",
+        arguments: "\"C:\\Claude\\orryy-expansion\\agents\\run_daily.py\" orryy_scout",
+      },
+      {
+        task_name: "Orryy-PulseGaming",
+        task_path: "\\",
+        state: "Ready",
+        execute: "python",
+        arguments: "\"C:\\Claude\\orryy-expansion\\agents\\run_daily.py\" pulse_gaming",
+      },
+      {
+        task_name: "UnrelatedPython",
+        task_path: "\\",
+        state: "Ready",
+        execute: "python",
+        arguments: "\"C:\\tools\\maintenance.py\"",
+      },
+    ],
+  });
+
+  assert.equal(hygiene.relevant_task_count, 2);
+  assert.equal(hygiene.visible_console_risk_count, 2);
+  assert.deepEqual(hygiene.risk_task_names, [
+    "Orryy-MusicScout",
+    "Orryy-PulseGaming",
+  ]);
+  assert.deepEqual(hygiene.tasks[0].relevance_reasons, [
+    "references_orryy_scheduler_namespace",
+  ]);
+  assert.match(
+    hygiene.repair_work_orders[0].recommended_command,
+    /-ErrorAction Stop$/,
   );
 });
 
@@ -347,7 +391,7 @@ test("local restart readiness warns when Windows scheduler can spawn visible TTS
   assert.equal(report.windows_scheduler_hygiene.visible_console_risk_count, 1);
   assert.ok(
     report.warnings.includes(
-      "1 Pulse-related Windows scheduled task(s) can launch visible console windows",
+      "1 Pulse/Orryy-related Windows scheduled task(s) can launch visible console windows",
     ),
   );
 });

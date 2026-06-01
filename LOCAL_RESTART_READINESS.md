@@ -1,12 +1,12 @@
 # Local Restart Readiness
 
-Generated: 2026-06-01T03:15:22.344Z
+Generated: 2026-06-01T03:29:19.482Z
 Verdict: RED
 Safety: read-only; does not restart the server, edit env vars, mutate DB rows, touch Railway or post
 
 ## Build Match
-- Current commit: ce13cf6
-- Local running commit: ce13cf6 (matches)
+- Current commit: ca74893
+- Local running commit: ca74893 (matches)
 - Public running commit: unknown (does not match)
 
 ## Runtime
@@ -26,18 +26,50 @@ Safety: read-only; does not restart the server, edit env vars, mutate DB rows, t
 
 ## Windows Scheduler Hygiene
 - Inspection: ok
-- Relevant Pulse tasks: 1
-- Visible-console risks: 1
-- Risk tasks: Orryy-PulseGaming
+- Relevant Pulse/Orryy tasks: 5
+- Visible-console risks: 5
+- Risk tasks: Orryy-GTA6Evening, Orryy-GTA6Morning, Orryy-MusicScout, Orryy-PulseGaming, Orryy-SleepyEmpire
 
 ## Windows Scheduler Repair Work Orders
+- Work order: windows_scheduler_hidden_launcher:Orryy-GTA6Evening
+  - Task: \Orryy-GTA6Evening
+  - Blocker: visible_console_scheduler_launcher
+  - Operator approval required: true
+  - Requires elevated PowerShell: true
+  - Backup: `Export-ScheduledTask -TaskName 'Orryy-GTA6Evening' -TaskPath '\' | Out-File -FilePath 'test\output\scheduler_task_backups\Orryy-GTA6Evening.xml' -Encoding utf8`
+  - Command: `Set-ScheduledTask -TaskName 'Orryy-GTA6Evening' -TaskPath '\' -Action (New-ScheduledTaskAction -Execute 'pythonw.exe' -Argument '"C:\Claude\orryy-expansion\agents\run_daily.py" gta6_domination') -ErrorAction Stop`
+  - Validate: `npm run ops:local-restart-readiness -- --json`
+- Work order: windows_scheduler_hidden_launcher:Orryy-GTA6Morning
+  - Task: \Orryy-GTA6Morning
+  - Blocker: visible_console_scheduler_launcher
+  - Operator approval required: true
+  - Requires elevated PowerShell: true
+  - Backup: `Export-ScheduledTask -TaskName 'Orryy-GTA6Morning' -TaskPath '\' | Out-File -FilePath 'test\output\scheduler_task_backups\Orryy-GTA6Morning.xml' -Encoding utf8`
+  - Command: `Set-ScheduledTask -TaskName 'Orryy-GTA6Morning' -TaskPath '\' -Action (New-ScheduledTaskAction -Execute 'pythonw.exe' -Argument '"C:\Claude\orryy-expansion\agents\run_daily.py" gta6_domination') -ErrorAction Stop`
+  - Validate: `npm run ops:local-restart-readiness -- --json`
+- Work order: windows_scheduler_hidden_launcher:Orryy-MusicScout
+  - Task: \Orryy-MusicScout
+  - Blocker: visible_console_scheduler_launcher
+  - Operator approval required: true
+  - Requires elevated PowerShell: true
+  - Backup: `Export-ScheduledTask -TaskName 'Orryy-MusicScout' -TaskPath '\' | Out-File -FilePath 'test\output\scheduler_task_backups\Orryy-MusicScout.xml' -Encoding utf8`
+  - Command: `Set-ScheduledTask -TaskName 'Orryy-MusicScout' -TaskPath '\' -Action (New-ScheduledTaskAction -Execute 'pythonw.exe' -Argument '"C:\Claude\orryy-expansion\agents\run_daily.py" orryy_scout') -ErrorAction Stop`
+  - Validate: `npm run ops:local-restart-readiness -- --json`
 - Work order: windows_scheduler_hidden_launcher:Orryy-PulseGaming
   - Task: \Orryy-PulseGaming
   - Blocker: visible_console_scheduler_launcher
   - Operator approval required: true
   - Requires elevated PowerShell: true
   - Backup: `Export-ScheduledTask -TaskName 'Orryy-PulseGaming' -TaskPath '\' | Out-File -FilePath 'test\output\scheduler_task_backups\Orryy-PulseGaming.xml' -Encoding utf8`
-  - Command: `Set-ScheduledTask -TaskName 'Orryy-PulseGaming' -TaskPath '\' -Action (New-ScheduledTaskAction -Execute 'pythonw.exe' -Argument '"C:\Claude\orryy-expansion\agents\run_daily.py" pulse_gaming')`
+  - Command: `Set-ScheduledTask -TaskName 'Orryy-PulseGaming' -TaskPath '\' -Action (New-ScheduledTaskAction -Execute 'pythonw.exe' -Argument '"C:\Claude\orryy-expansion\agents\run_daily.py" pulse_gaming') -ErrorAction Stop`
+  - Validate: `npm run ops:local-restart-readiness -- --json`
+- Work order: windows_scheduler_hidden_launcher:Orryy-SleepyEmpire
+  - Task: \Orryy-SleepyEmpire
+  - Blocker: visible_console_scheduler_launcher
+  - Operator approval required: true
+  - Requires elevated PowerShell: true
+  - Backup: `Export-ScheduledTask -TaskName 'Orryy-SleepyEmpire' -TaskPath '\' | Out-File -FilePath 'test\output\scheduler_task_backups\Orryy-SleepyEmpire.xml' -Encoding utf8`
+  - Command: `Set-ScheduledTask -TaskName 'Orryy-SleepyEmpire' -TaskPath '\' -Action (New-ScheduledTaskAction -Execute 'pythonw.exe' -Argument '"C:\Claude\orryy-expansion\agents\run_daily.py" sleepy_empire') -ErrorAction Stop`
   - Validate: `npm run ops:local-restart-readiness -- --json`
 
 ## Cadence Gates
@@ -49,9 +81,9 @@ Safety: read-only; does not restart the server, edit env vars, mutate DB rows, t
 - public /api/health is not reachable
 
 ## Warnings
-- 2 uncommitted file(s) are present; commit code changes before restart for reproducibility
+- 3 uncommitted file(s) are present; commit code changes before restart for reproducibility
 - 22 failed row(s) still carry platform IDs
-- 1 Pulse-related Windows scheduled task(s) can launch visible console windows
+- 5 Pulse/Orryy-related Windows scheduled task(s) can launch visible console windows
 
 Recommendation: do_not_restart_primary_until_blockers_are_cleared
 

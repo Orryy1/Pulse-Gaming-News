@@ -112,22 +112,69 @@ function ffprobeDuration(file) {
   }
 }
 
-function existingMediaFacts(story) {
+function localRepairAudioRelPath(storyId) {
+  return path.join(
+    "test",
+    "output",
+    "local-media-repair",
+    "audio",
+    `${String(storyId || "unknown").replace(/[^a-z0-9_-]+/gi, "_").slice(0, 96)}_liam.mp3`,
+  );
+}
+
+function localRepairTimestampsPath(audioPath) {
+  return String(audioPath || "").replace(/\.mp3$/i, "_timestamps.json");
+}
+
+function resolveExistingLocalRepairAudio(story, opts = {}) {
+  const resolveExistingSync = opts.resolveExistingSync || mediaPaths.resolveExistingSync;
+  const existsSync = opts.existsSync || fs.existsSync;
+  const storyId = story?.id;
+  if (!storyId) return null;
+  const audioRel = localRepairAudioRelPath(storyId);
+  const audioAbs = resolveExistingSync(audioRel);
+  const timestampAbs = localRepairTimestampsPath(audioAbs);
+  if (!audioAbs || !existsSync(audioAbs) || !existsSync(timestampAbs)) return null;
+  return {
+    audioRel,
+    audioAbs,
+    timestampAbs,
+  };
+}
+
+function existingMediaFacts(story, opts = {}) {
+  const resolveExistingSync = opts.resolveExistingSync || mediaPaths.resolveExistingSync;
+  const existsSync = opts.existsSync || fs.existsSync;
+  const measureDuration = opts.measureDuration || ffprobeDuration;
   const audioAbs = story.audio_path
-    ? mediaPaths.resolveExistingSync(story.audio_path)
+    ? resolveExistingSync(story.audio_path)
     : null;
   const finalAbs = story.exported_path
-    ? mediaPaths.resolveExistingSync(story.exported_path)
+    ? resolveExistingSync(story.exported_path)
     : null;
-  const audioExists = Boolean(audioAbs && fs.existsSync(audioAbs));
-  const finalExists = Boolean(finalAbs && fs.existsSync(finalAbs));
+  const recoveredLocalRepairAudio =
+    audioAbs && existsSync(audioAbs)
+      ? null
+      : resolveExistingLocalRepairAudio(story, {
+          resolveExistingSync,
+          existsSync,
+        });
+  const selectedAudioAbs = audioAbs && existsSync(audioAbs)
+    ? audioAbs
+    : recoveredLocalRepairAudio?.audioAbs || audioAbs;
+  const audioExists = Boolean(selectedAudioAbs && existsSync(selectedAudioAbs));
+  const finalExists = Boolean(finalAbs && existsSync(finalAbs));
   return {
     audioExists,
     finalExists,
-    audioPath: audioAbs || story.audio_path || null,
+    audioPath: selectedAudioAbs || story.audio_path || null,
     finalPath: finalAbs || story.exported_path || null,
-    audioDurationSeconds: audioExists ? ffprobeDuration(audioAbs) : null,
-    finalDurationSeconds: finalExists ? ffprobeDuration(finalAbs) : null,
+    audioDurationSeconds: audioExists ? measureDuration(selectedAudioAbs) : null,
+    finalDurationSeconds: finalExists ? measureDuration(finalAbs) : null,
+    recoveredLocalRepairAudio: Boolean(recoveredLocalRepairAudio),
+    localRepairAudioPath: recoveredLocalRepairAudio?.audioAbs || null,
+    localRepairTimestampsPath: recoveredLocalRepairAudio?.timestampAbs || null,
+    localRepairTimestampsExist: Boolean(recoveredLocalRepairAudio?.timestampAbs),
   };
 }
 
@@ -298,5 +345,6 @@ if (require.main === module) {
 
 module.exports = {
   DEFAULT_LOCAL_MEDIA_REPAIR_TTS_TIMEOUT_MS,
+  existingMediaFacts,
   parseArgs,
 };

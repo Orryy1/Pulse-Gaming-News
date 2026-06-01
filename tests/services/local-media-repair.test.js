@@ -18,6 +18,7 @@ const {
 } = require("../../lib/studio/v2/local-voice-reference");
 const {
   DEFAULT_LOCAL_MEDIA_REPAIR_TTS_TIMEOUT_MS,
+  existingMediaFacts,
   parseArgs: parseLocalMediaRepairArgs,
 } = require("../../tools/local-media-repair");
 
@@ -566,6 +567,57 @@ test("local media repair CLI bounds backlog TTS repair by default", () => {
 
   assert.equal(args.applyLocalAudio, true);
   assert.equal(args.ttsTimeoutMs, DEFAULT_LOCAL_MEDIA_REPAIR_TTS_TIMEOUT_MS);
+});
+
+test("local media repair CLI reuses existing local Liam repair audio before retrying TTS", () => {
+  const story = {
+    id: "rss_recovered_audio",
+    title: "Xbox confirms a new update",
+    approved: true,
+    full_script: "Xbox confirmed a useful player detail today. ".repeat(26),
+    audio_path: null,
+    exported_path: null,
+  };
+  const mediaRoot = "D:\\pulse-data\\media";
+  const expectedAudio = path.join(
+    mediaRoot,
+    "test",
+    "output",
+    "local-media-repair",
+    "audio",
+    "rss_recovered_audio_liam.mp3",
+  );
+  const expectedTimestamps = expectedAudio.replace(/\.mp3$/, "_timestamps.json");
+  const existing = new Set([expectedAudio, expectedTimestamps].map((item) => path.normalize(item)));
+  const facts = existingMediaFacts(story, {
+    resolveExistingSync: (storedPath) => path.join(mediaRoot, storedPath),
+    existsSync: (filePath) => existing.has(path.normalize(filePath)),
+    measureDuration: () => 66.1,
+  });
+
+  assert.equal(facts.audioExists, true);
+  assert.equal(facts.audioPath, expectedAudio);
+  assert.equal(facts.audioDurationSeconds, 66.1);
+  assert.equal(facts.recoveredLocalRepairAudio, true);
+  assert.equal(facts.localRepairTimestampsExist, true);
+
+  const report = buildLocalMediaRepairQueue({
+    stories: [story],
+    mediaByStoryId: {
+      rss_recovered_audio: facts,
+    },
+    localTts: READY_TTS,
+  });
+
+  assert.equal(report.items[0].action, "ready_local_audio_render_repair");
+  assert.deepEqual(report.items[0].needs, ["rerender_video_local"]);
+  assert.equal(report.items[0].media.recoveredLocalRepairAudio, true);
+  assert.equal(report.items[0].media.localRepairTimestampsExist, true);
+  assert.equal(
+    report.items[0].repair_work_order.repair_lane,
+    "local_final_render_repair",
+  );
+  assert.ok(!report.items[0].needs.includes("regenerate_audio_with_sleepy_liam"));
 });
 
 test("local media repair CLI accepts an explicit TTS timeout", () => {

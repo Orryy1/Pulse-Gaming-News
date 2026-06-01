@@ -891,6 +891,108 @@ test("pillarHumanReviewConsole: stale visual strip evidence must be regenerated 
   assert.doesNotMatch(nextAction, /Open the visual strip report at/);
 });
 
+test("pillarHumanReviewConsole: two-pass visual strip remains fresh when dry-run lineage matches", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-readiness-human-review-two-pass-strip-"));
+  const reportPath = path.join(dir, "human_review_console.json");
+  fs.writeFileSync(
+    reportPath,
+    JSON.stringify(
+      {
+        generated_at: "2026-05-31T22:10:00.000Z",
+        source_operator_index_dry_run_generated_at: "2026-05-31T22:00:00.000Z",
+        source_strict_dry_run_generated_at: "2026-05-31T22:00:00.000Z",
+        verdict: "AMBER",
+        safe_to_publish_boolean: false,
+        summary: {
+          card_count: 13,
+          ready_card_count: 13,
+          actionable_card_count: 13,
+          missing_artefact_card_count: 0,
+          blocked_input_count: 0,
+        },
+        safety: {
+          no_publish_triggered: true,
+          no_network_uploads: true,
+          no_db_mutation: true,
+          no_oauth_or_token_change: true,
+          approval_omitted_from_console: true,
+        },
+      },
+      null,
+      2,
+    ),
+  );
+  fs.writeFileSync(
+    path.join(dir, "human_review_visual_strip_report.json"),
+    JSON.stringify(
+      {
+        generated_at: "2026-05-31T22:05:00.000Z",
+        source_console_generated_at: "2026-05-31T22:04:00.000Z",
+        source_console_dry_run_generated_at: "2026-05-31T22:00:00.000Z",
+        source_strict_dry_run_generated_at: "2026-05-31T22:00:00.000Z",
+        verdict: "AMBER",
+        safe_to_publish_boolean: false,
+        summary: {
+          card_count: 13,
+          extracted_card_count: 13,
+          failed_card_count: 0,
+          extracted_frame_count: 52,
+        },
+        safety: {
+          no_publish_triggered: true,
+          no_network_uploads: true,
+          no_db_mutation: true,
+          no_oauth_or_token_change: true,
+          approval_omitted_from_visual_strip: true,
+        },
+      },
+      null,
+      2,
+    ),
+  );
+  fs.writeFileSync(
+    path.join(dir, "human_review_visual_strip_qa_report.json"),
+    JSON.stringify(
+      {
+        generated_at: "2026-05-31T22:06:00.000Z",
+        source_visual_strip_generated_at: "2026-05-31T22:05:00.000Z",
+        source_console_generated_at: "2026-05-31T22:04:00.000Z",
+        source_console_dry_run_generated_at: "2026-05-31T22:00:00.000Z",
+        source_strict_dry_run_generated_at: "2026-05-31T22:00:00.000Z",
+        verdict: "GREEN",
+        safe_to_publish_boolean: false,
+        summary: {
+          card_count: 13,
+          risk_card_count: 0,
+          frame_warning_count: 0,
+          red_card_count: 0,
+          amber_card_count: 0,
+        },
+        safety: {
+          no_publish_triggered: true,
+          no_network_uploads: true,
+          no_db_mutation: true,
+          no_oauth_or_token_change: true,
+          approval_omitted_from_visual_strip_qa: true,
+        },
+      },
+      null,
+      2,
+    ),
+  );
+
+  const pillar = pr.pillarHumanReviewConsole({
+    reportPath,
+    now: Date.parse("2026-05-31T22:12:00.000Z"),
+  });
+
+  assert.equal(pillar.verdict, "amber");
+  assert.equal(pillar.reason, "13_human_review_console_cards_actionable");
+  assert.equal(pillar.raw.visual_strip.stale, false);
+  assert.equal(pillar.raw.visual_strip.stale_reason, null);
+  assert.equal(pillar.raw.visual_strip_qa.stale, false);
+});
+
 test("pillarStrictDryRunControl: amber dry-run requires human review, not generic publish-possible wording", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-strict-dry-run-"));
   const planPath = path.join(dir, "dry_run_publish_plan.json");

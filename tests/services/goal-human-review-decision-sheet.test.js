@@ -175,6 +175,47 @@ test("decision sheet turns every pending review packet into a non-publishing dec
   assert.ok(sheet.safety.no_network_uploads);
 });
 
+test("decision sheet gives reject and repair decisions controlled apply templates", () => {
+  const sheet = buildHumanReviewDecisionSheet({
+    reviewPacketManifest: reviewPacketManifest(),
+    operatorDecisionLog: operatorDecisionLog(),
+    generatedAt: "2026-05-31T18:35:00.000Z",
+  });
+
+  const slot = sheet.decision_slots[0];
+  assert.match(
+    slot.operator_decision_recorder_commands.reject_apply_template,
+    /--decision reject/,
+  );
+  assert.match(
+    slot.operator_decision_recorder_commands.reject_apply_template,
+    /--rejected-platforms youtube_shorts,instagram_reels,facebook_reels/,
+  );
+  assert.match(
+    slot.operator_decision_recorder_commands.reject_apply_template,
+    /--apply/,
+  );
+  assert.match(
+    slot.operator_decision_recorder_commands.request_repairs_apply_template,
+    /--decision request_repairs/,
+  );
+  assert.match(
+    slot.operator_decision_recorder_commands.request_repairs_apply_template,
+    /--repair-requested "<repair request>"/,
+  );
+  assert.match(
+    slot.operator_decision_recorder_commands.request_repairs_apply_template,
+    /--apply/,
+  );
+
+  const markdown = renderHumanReviewDecisionSheetMarkdown(sheet);
+  assert.match(markdown, /Reject template:/);
+  assert.match(markdown, /Repair request template:/);
+  assert.match(markdown, /--decision reject/);
+  assert.match(markdown, /--decision request_repairs/);
+  assert.match(markdown, /This sheet records decisions only\. It cannot publish/);
+});
+
 test("decision sheet includes exact artefact fingerprints in recorder commands when files exist", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-human-review-fingerprints-"));
   const artefacts = await proofArtefacts(dir);

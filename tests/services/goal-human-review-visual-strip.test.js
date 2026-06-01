@@ -66,6 +66,8 @@ async function createConsoleBundle(root, { missingVideo = false } = {}) {
 test("visual strip plan creates four first-3s frame targets per actionable review card", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-review-strip-plan-"));
   const consoleBundle = await createConsoleBundle(dir);
+  consoleBundle.source_operator_index_dry_run_generated_at = "2026-05-31T22:00:00.000Z";
+  consoleBundle.source_strict_dry_run_generated_at = "2026-05-31T22:00:00.000Z";
   const report = buildHumanReviewVisualStripPlan({
     consoleBundle,
     outputDir: path.join(dir, "out"),
@@ -73,6 +75,9 @@ test("visual strip plan creates four first-3s frame targets per actionable revie
   });
 
   assert.equal(report.mode, "HUMAN_REVIEW_VISUAL_STRIP");
+  assert.equal(report.source_console_generated_at, "2026-05-31T22:05:00.000Z");
+  assert.equal(report.source_console_dry_run_generated_at, "2026-05-31T22:00:00.000Z");
+  assert.equal(report.source_strict_dry_run_generated_at, "2026-05-31T22:00:00.000Z");
   assert.equal(report.safe_to_publish_boolean, false);
   assert.equal(report.summary.card_count, 1);
   assert.equal(report.summary.extractable_card_count, 1);
@@ -86,6 +91,23 @@ test("visual strip plan creates four first-3s frame targets per actionable revie
   assert.equal(card.status, "ready_for_frame_extraction");
   assert.deepEqual(card.frame_targets.map((frame) => frame.timestamp_seconds), [0, 1, 2, 3]);
   assert.ok(card.frame_targets.every((frame) => frame.output_path.includes("human-review-visual-strips")));
+});
+
+test("visual strip plan blocks unsafe or stale console inputs before frame extraction", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-review-strip-console-red-"));
+  const consoleBundle = await createConsoleBundle(dir);
+  consoleBundle.verdict = "RED";
+  consoleBundle.blockers = ["human_review_console_source_stale_after_strict_dry_run"];
+
+  const report = buildHumanReviewVisualStripPlan({
+    consoleBundle,
+    outputDir: path.join(dir, "out"),
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.summary.card_count, 0);
+  assert.ok(report.blockers.includes("human_review_console_input_blocked"));
+  assert.equal(report.next_step, "repair_human_review_console_inputs");
 });
 
 test("visual strip plan blocks missing videos instead of marking review evidence usable", async () => {

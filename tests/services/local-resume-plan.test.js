@@ -8,8 +8,10 @@ const {
   summarizeLocalTtsProofReports,
 } = require("../../lib/ops/local-resume-plan");
 const {
+  parseArgs,
   resolveLocalPostingReadiness,
   resolveLocalTtsProofReports,
+  shouldWriteRootReport,
 } = require("../../tools/local-resume-plan");
 
 function greenLocalPosting() {
@@ -160,6 +162,20 @@ test("local resume plan tool derives amber posting readiness when the readiness 
   assert.equal(readiness.readiness.local_health, true);
   assert.equal(readiness.readiness.public_health, true);
   assert.equal(readiness.readiness.tunnel_connected, true);
+});
+
+test("local resume plan JSON mode does not rewrite the tracked root report by default", () => {
+  assert.deepEqual(parseArgs(["node", "tool", "--json"]), {
+    json: true,
+    help: false,
+    writeRootReport: false,
+  });
+  assert.equal(shouldWriteRootReport(parseArgs(["node", "tool", "--json"])), false);
+  assert.equal(
+    shouldWriteRootReport(parseArgs(["node", "tool", "--json", "--write-root-report"])),
+    true,
+  );
+  assert.equal(shouldWriteRootReport(parseArgs(["node", "tool"])), true);
 });
 
 test("local resume plan tool rebuilds posting readiness instead of trusting stale JSON", async (t) => {

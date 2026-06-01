@@ -15,6 +15,41 @@ const { loadLocalTtsProofReports } = require("../lib/studio/local-tts-proof-repo
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
 
+function parseArgs(argv = process.argv) {
+  const args = {
+    json: false,
+    help: false,
+    writeRootReport: true,
+  };
+  let rootWriteExplicit = false;
+  for (let i = 2; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === "--json") args.json = true;
+    else if (arg === "--write-root-report") {
+      args.writeRootReport = true;
+      rootWriteExplicit = true;
+    } else if (arg === "--no-root-report") {
+      args.writeRootReport = false;
+      rootWriteExplicit = true;
+    } else if (arg === "--help" || arg === "-?") args.help = true;
+  }
+  if (args.json && !rootWriteExplicit) args.writeRootReport = false;
+  return args;
+}
+
+function shouldWriteRootReport(args = {}) {
+  return args.writeRootReport === true;
+}
+
+function printHelp() {
+  process.stdout.write(
+    "Usage: node tools/local-resume-plan.js [--json] [--write-root-report|--no-root-report]\n" +
+      "  --json               Print JSON and write test/output proof artefacts only by default\n" +
+      "  --write-root-report  Also update LOCAL_RESUME_POSTING_PLAN.md\n" +
+      "  --no-root-report     Do not update the tracked root Markdown report\n",
+  );
+}
+
 async function readJsonIfExists(filePath) {
   try {
     if (!(await fs.pathExists(filePath))) return {};
@@ -63,7 +98,11 @@ async function resolveLocalTtsProofReports(outDir = OUT) {
 }
 
 async function main() {
-  const jsonOnly = process.argv.includes("--json");
+  const args = parseArgs(process.argv);
+  if (args.help) {
+    printHelp();
+    return;
+  }
   await fs.ensureDir(OUT);
 
   const report = buildLocalResumePlan({
@@ -83,15 +122,19 @@ async function main() {
 
   await fs.writeJson(jsonPath, report, { spaces: 2 });
   await fs.writeFile(mdPath, markdown, "utf8");
-  await fs.writeFile(rootPath, markdown, "utf8");
+  if (shouldWriteRootReport(args)) {
+    await fs.writeFile(rootPath, markdown, "utf8");
+  }
 
-  if (jsonOnly) {
+  if (args.json) {
     process.stdout.write(JSON.stringify(report, null, 2) + "\n");
   } else {
     process.stdout.write(markdown + "\n");
     process.stderr.write(`[local-resume-plan] json=${jsonPath}\n`);
     process.stderr.write(`[local-resume-plan] md=${mdPath}\n`);
-    process.stderr.write(`[local-resume-plan] report=${rootPath}\n`);
+    if (shouldWriteRootReport(args)) {
+      process.stderr.write(`[local-resume-plan] report=${rootPath}\n`);
+    }
   }
 }
 
@@ -104,7 +147,9 @@ if (require.main === module) {
 
 module.exports = {
   hasUsablePostingReadiness,
+  parseArgs,
   readJsonIfExists,
   resolveLocalPostingReadiness,
   resolveLocalTtsProofReports,
+  shouldWriteRootReport,
 };

@@ -8,6 +8,7 @@ const path = require("node:path");
 const {
   buildGitStatus,
   buildLocalRestartReadiness,
+  buildWindowsSchedulerHygiene,
   cadenceHardGateState,
   commitsMatch,
   formatLocalRestartReadinessMarkdown,
@@ -47,6 +48,19 @@ function cleanCadence(overrides = {}) {
       invalid_public_story_rows: 0,
       ...overrides,
     },
+  };
+}
+
+function cleanSchedulerHygiene() {
+  return {
+    platform: "win32",
+    inspected: true,
+    query_status: "provided",
+    relevant_task_count: 0,
+    visible_console_risk_count: 0,
+    risk_task_names: [],
+    tasks: [],
+    recommendation: "scheduler_hygiene_clean",
   };
 }
 
@@ -136,6 +150,56 @@ test("summariseCadence exposes restart-critical publish counters", () => {
   assert.equal(summary.invalid_public_story_rows, 2);
 });
 
+test("Windows scheduler hygiene flags Pulse tasks that launch visible python consoles", () => {
+  const hygiene = buildWindowsSchedulerHygiene({
+    platform: "win32",
+    cwd: ROOT,
+    scheduledTasks: [
+      {
+        task_name: "Orryy-PulseGaming",
+        task_path: "\\",
+        state: "Ready",
+        execute: "python",
+        arguments: "\"C:\\Claude\\orryy-expansion\\agents\\run_daily.py\" pulse_gaming",
+        working_directory: "C:\\Claude\\orryy-expansion",
+      },
+      {
+        task_name: "PulseHiddenTts",
+        task_path: "\\",
+        state: "Ready",
+        execute:
+          "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\tts_server\\venv\\Scripts\\pythonw.exe",
+        arguments: "-m uvicorn server:app",
+        working_directory:
+          "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\tts_server",
+      },
+    ],
+  });
+
+  assert.equal(hygiene.inspected, true);
+  assert.equal(hygiene.relevant_task_count, 2);
+  assert.equal(hygiene.visible_console_risk_count, 1);
+  assert.deepEqual(hygiene.risk_task_names, ["Orryy-PulseGaming"]);
+  assert.match(
+    hygiene.tasks[0].recommended_action,
+    /pythonw\.exe or a hidden launcher/i,
+  );
+});
+
+test("Windows scheduler hygiene does not report clean when Task Scheduler query fails", () => {
+  const hygiene = buildWindowsSchedulerHygiene({
+    platform: "win32",
+    cwd: ROOT,
+    execFileSyncImpl() {
+      throw new Error("scheduled task query failed");
+    },
+  });
+
+  assert.equal(hygiene.inspected, true);
+  assert.equal(hygiene.query_status, "failed");
+  assert.equal(hygiene.recommendation, "inspect_task_scheduler_manually");
+});
+
 test("local restart readiness blocks stale running build and disabled cadence gates", async () => {
   const report = await buildLocalRestartReadiness({
     cwd: ROOT,
@@ -160,6 +224,7 @@ test("local restart readiness blocks stale running build and disabled cadence ga
       invalid_public_story_rows: 1,
     }),
     gitStatus: { clean: true, changed_count: 0, changed_files: [] },
+    windowsSchedulerHygiene: cleanSchedulerHygiene(),
   });
 
   assert.equal(report.verdict, "red");
@@ -206,10 +271,55 @@ test("local restart readiness is green when build, health, cadence and gates are
     publicHealth: healthy("abcdef1234567890"),
     cadenceReport: cleanCadence(),
     gitStatus: { clean: true, changed_count: 0, changed_files: [] },
+    windowsSchedulerHygiene: cleanSchedulerHygiene(),
   });
 
   assert.equal(report.verdict, "green");
   assert.equal(report.restart_recommendation, "controlled_restart_ready");
+});
+
+test("local restart readiness warns when Windows scheduler can spawn visible TTS consoles", async () => {
+  const report = await buildLocalRestartReadiness({
+    cwd: ROOT,
+    env: {
+      PORT: "3001",
+      LOCAL_PUBLIC_URL: "https://pulse.orryy.com",
+      PUBLISH_REQUIRE_WINDOW: "true",
+      PUBLISH_REQUIRE_MIN_GAP: "true",
+      PUBLISH_REQUIRE_DAILY_CAP: "true",
+    },
+    currentBuild: {
+      commit_sha: "abcdef1234567890",
+      commit_short: "abcdef1",
+      branch: "codex/test",
+    },
+    localHealth: healthy("abcdef1234567890"),
+    publicHealth: healthy("abcdef1234567890"),
+    cadenceReport: cleanCadence(),
+    gitStatus: { clean: true, changed_count: 0, changed_files: [] },
+    windowsSchedulerHygiene: buildWindowsSchedulerHygiene({
+      platform: "win32",
+      cwd: ROOT,
+      scheduledTasks: [
+        {
+          task_name: "PulseVisibleTts",
+          execute:
+            "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\tts_server\\venv\\Scripts\\python.exe",
+          arguments: "-m uvicorn server:app",
+          working_directory:
+            "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\tts_server",
+        },
+      ],
+    }),
+  });
+
+  assert.equal(report.verdict, "amber");
+  assert.equal(report.windows_scheduler_hygiene.visible_console_risk_count, 1);
+  assert.ok(
+    report.warnings.includes(
+      "1 Pulse-related Windows scheduled task(s) can launch visible console windows",
+    ),
+  );
 });
 
 test("formatLocalRestartReadinessMarkdown is operator readable", async () => {
@@ -226,6 +336,7 @@ test("formatLocalRestartReadinessMarkdown is operator readable", async () => {
     publicHealth: healthy("abcdef1234567890"),
     cadenceReport: cleanCadence(),
     gitStatus: { clean: true, changed_count: 0, changed_files: [] },
+    windowsSchedulerHygiene: cleanSchedulerHygiene(),
   });
   const md = formatLocalRestartReadinessMarkdown(report);
   assert.match(md, /# Local Restart Readiness/);

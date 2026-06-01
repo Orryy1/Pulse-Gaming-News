@@ -189,6 +189,28 @@ test("human review console turns review cards into a local-only watch bundle", a
   assert.equal(card.review_guard.can_approve_from_console, false);
 });
 
+test("human review console blocks stale operator index after a newer strict dry-run", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-human-review-console-stale-"));
+  const files = await createReviewFiles(dir);
+  const index = operatorIndex(files);
+  index.generated_at = "2026-06-01T00:28:48.838Z";
+  index.source_dry_run_generated_at = "2026-06-01T00:28:37.938Z";
+
+  const consoleBundle = buildHumanReviewConsole({
+    operatorIndex: index,
+    strictDryRunPlan: {
+      generated_at: "2026-06-01T01:03:55.657Z",
+      mode: "DRY_RUN_PUBLISH",
+    },
+    generatedAt: "2026-06-01T01:04:16.455Z",
+  });
+
+  assert.equal(consoleBundle.verdict, "RED");
+  assert.equal(consoleBundle.summary.actionable_card_count, 0);
+  assert.ok(consoleBundle.blockers.includes("human_review_console_source_stale_after_strict_dry_run"));
+  assert.equal(consoleBundle.next_step, "regenerate_human_review_queue_index_and_console");
+});
+
 test("human review console refuses unsafe operator index contracts", () => {
   const index = operatorIndex({ video: "", captions: "", canonical: "", platform: "" });
   index.safe_to_publish_boolean = true;
@@ -240,6 +262,7 @@ test("human review console CLI is registered and emits JSON", async () => {
       indexPath,
       "--out-dir",
       outDir,
+      "--no-strict-dry-run-plan",
       "--json",
     ],
     {

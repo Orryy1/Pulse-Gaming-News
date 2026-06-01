@@ -25,3 +25,16 @@ test("tts_server start.bat uses a windowless idempotent launcher", () => {
   assert.doesNotMatch(source, /^python\s+-m\s+uvicorn\s+server:app/im);
   assert.doesNotMatch(source, /if\s+not\s+exist\s+"%TTS_PYTHON%"\s+set\s+"TTS_PYTHON=.*python\.exe"/i);
 });
+
+test("tts_server start.bat hides every helper powershell probe", () => {
+  const source = fs.readFileSync(startBat, "utf8");
+  const powershellLines = source
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => /^powershell(?:\.exe)?\b/i.test(line));
+
+  assert.ok(powershellLines.length > 0, "expected powershell helper calls in start.bat");
+  for (const line of powershellLines) {
+    assert.match(line, /-WindowStyle\s+Hidden/i, line);
+  }
+});

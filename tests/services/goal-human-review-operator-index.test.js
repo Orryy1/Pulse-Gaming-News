@@ -74,6 +74,8 @@ function decisionSheet(slots = [slot()]) {
   return {
     schema_version: 1,
     generated_at: "2026-05-31T18:40:00.000Z",
+    source_dry_run_generated_at: "2026-05-31T18:20:00.000Z",
+    source_review_packet_manifest_generated_at: "2026-05-31T18:30:00.000Z",
     mode: "HUMAN_REVIEW_DECISION_SHEET",
     verdict: "AMBER",
     safe_to_publish_boolean: false,
@@ -148,6 +150,9 @@ test("operator index turns pending decisions into non-publishing review cards", 
 
   assert.equal(index.mode, "HUMAN_REVIEW_OPERATOR_INDEX");
   assert.equal(index.verdict, "AMBER");
+  assert.equal(index.source_dry_run_generated_at, "2026-05-31T18:20:00.000Z");
+  assert.equal(index.source_decision_sheet_generated_at, "2026-05-31T18:40:00.000Z");
+  assert.equal(index.source_review_packet_manifest_generated_at, "2026-05-31T18:30:00.000Z");
   assert.equal(index.safe_to_publish_boolean, false);
   assert.equal(index.summary.pending_review_count, 1);
   assert.equal(index.summary.ready_for_operator_review_count, 1);

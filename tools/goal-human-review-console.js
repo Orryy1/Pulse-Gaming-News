@@ -18,6 +18,8 @@ function parseArgs(argv = process.argv.slice(2)) {
   const args = {
     root: process.cwd(),
     operatorIndexPath: null,
+    strictDryRunPlanPath: null,
+    strictDryRunPlanEnabled: true,
     outDir: path.join(process.cwd(), "output", "goal-contract"),
     generatedAt: null,
     json: false,
@@ -27,6 +29,8 @@ function parseArgs(argv = process.argv.slice(2)) {
     const arg = argv[i];
     if (arg === "--root") args.root = argv[++i] || args.root;
     else if (arg === "--operator-index") args.operatorIndexPath = argv[++i] || "";
+    else if (arg === "--strict-dry-run-plan") args.strictDryRunPlanPath = argv[++i] || "";
+    else if (arg === "--no-strict-dry-run-plan") args.strictDryRunPlanEnabled = false;
     else if (arg === "--out-dir") args.outDir = argv[++i] || args.outDir;
     else if (arg === "--generated-at") args.generatedAt = argv[++i] || null;
     else if (arg === "--json") args.json = true;
@@ -43,6 +47,8 @@ function usage() {
     "Options:",
     "  --root <dir>              Workspace root",
     "  --operator-index <path>   human_review_operator_index.json",
+    "  --strict-dry-run-plan <path> dry_run_publish_plan.json freshness source",
+    "  --no-strict-dry-run-plan  Disable strict dry-run freshness comparison",
     "  --out-dir <dir>           Output directory",
     "  --generated-at <iso>      Fixed timestamp",
     "  --json                    Print JSON",
@@ -53,6 +59,11 @@ function usage() {
 
 async function readJson(filePath, label) {
   if (!await fs.pathExists(filePath)) throw new Error(`${label} not found: ${filePath}`);
+  return fs.readJson(filePath);
+}
+
+async function readOptionalJson(filePath) {
+  if (!filePath || !await fs.pathExists(filePath)) return null;
   return fs.readJson(filePath);
 }
 
@@ -67,8 +78,14 @@ async function main(argv = process.argv.slice(2)) {
   const operatorIndexPath = args.operatorIndexPath
     ? path.resolve(root, args.operatorIndexPath)
     : path.join(root, "output", "goal-contract", "human_review_operator_index.json");
+  const strictDryRunPlanPath = args.strictDryRunPlanPath
+    ? path.resolve(root, args.strictDryRunPlanPath)
+    : path.join(root, "output", "goal-contract", "dry_run_publish_plan.json");
   const consoleBundle = buildHumanReviewConsole({
     operatorIndex: await readJson(operatorIndexPath, "human review operator index"),
+    strictDryRunPlan: args.strictDryRunPlanEnabled
+      ? await readOptionalJson(strictDryRunPlanPath)
+      : null,
     generatedAt: args.generatedAt || new Date().toISOString(),
   });
   const artefacts = await writeHumanReviewConsole(consoleBundle, {

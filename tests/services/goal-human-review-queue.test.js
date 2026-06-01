@@ -162,6 +162,8 @@ test("human review queue turns AMBER strict dry-run candidates into operator pac
   assert.equal(queue.mode, "HUMAN_REVIEW");
   assert.equal(queue.summary.review_item_count, 1);
   assert.equal(queue.summary.ready_for_unattended_publish, false);
+  assert.equal(queue.source_dry_run_generated_at, "2026-05-22T18:10:00.000Z");
+  assert.equal(queue.summary.source_dry_run_generated_at, "2026-05-22T18:10:00.000Z");
   assert.equal(queue.summary.publish_now_action_count, 2);
   assert.equal(queue.summary.deferred_platform_action_count, 2);
   assert.equal(queue.safe_publish_plan.can_publish_without_operator, false);
@@ -202,6 +204,7 @@ test("human review queue turns AMBER strict dry-run candidates into operator pac
   assert.equal(item.approval.operator_approval_required, true);
   assert.equal(item.approval.live_publish_allowed_before_approval, false);
   assert.ok(item.approval.approval_requirements.includes("These are review candidates, not live publish actions."));
+  assert.equal(queue.review_packet_manifest.source_dry_run_generated_at, "2026-05-22T18:10:00.000Z");
 });
 
 test("human review queue keeps blocked platform variants out while queuing clean enabled platforms", async () => {

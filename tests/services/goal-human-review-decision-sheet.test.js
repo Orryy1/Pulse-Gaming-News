@@ -79,6 +79,7 @@ function reviewPacketManifest(packets = [packet()]) {
   return {
     schema_version: 1,
     generated_at: "2026-05-31T18:30:00.000Z",
+    source_dry_run_generated_at: "2026-05-31T18:20:00.000Z",
     mode: "HUMAN_REVIEW",
     review_packets: packets,
     blocked_packets: [],
@@ -115,6 +116,8 @@ test("decision sheet turns every pending review packet into a non-publishing dec
 
   assert.equal(sheet.mode, "HUMAN_REVIEW_DECISION_SHEET");
   assert.equal(sheet.verdict, "AMBER");
+  assert.equal(sheet.source_dry_run_generated_at, "2026-05-31T18:20:00.000Z");
+  assert.equal(sheet.source_review_packet_manifest_generated_at, "2026-05-31T18:30:00.000Z");
   assert.equal(sheet.safe_to_publish_boolean, false);
   assert.equal(sheet.summary.decision_slot_count, 1);
   assert.equal(sheet.summary.pending_decision_count, 1);

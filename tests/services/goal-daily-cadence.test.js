@@ -192,6 +192,46 @@ test("daily cadence rejects weak or non-GREEN review packets instead of filling 
   );
 });
 
+test("daily cadence rejects review packets blocked by the current strict dry-run plan", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-cadence-strict-dry-run-"));
+  const ready = await makeReviewItem(root, "strict-ready", { scriptScore: 90, visualScore: 96 });
+  const staleButLocallyClean = await makeReviewItem(root, "strict-blocked", { scriptScore: 91, visualScore: 97 });
+
+  const plan = await buildGoalDailyCadencePlan({
+    humanReviewQueue: { review_items: [ready, staleButLocallyClean] },
+    dryRunPublishPlan: {
+      generated_at: "2026-06-07T19:50:45.036Z",
+      ready_stories: [{ story_id: "strict-ready" }],
+      blocked_stories: [
+        {
+          story_id: "strict-blocked",
+          blockers: [
+            "preflight_candidate_not_publish_ready:review",
+            "preflight_qa_blocked:bridge_artifact_freshness:bridge_metadata_stale:duration_seconds",
+          ],
+        },
+      ],
+    },
+    generatedAt: "2026-06-07T20:00:00.000Z",
+    targetDailyShorts: 2,
+  });
+
+  assert.deepEqual(
+    plan.daily_content_plan.planned_items.map((item) => item.story_id),
+    ["strict-ready"],
+  );
+  const rejected = plan.daily_content_plan.rejected_items.find((item) => item.story_id === "strict-blocked");
+  assert.ok(rejected.blockers.includes("strict_dry_run_story_blocked"));
+  assert.ok(rejected.blockers.includes("preflight_candidate_not_publish_ready:review"));
+  assert.ok(
+    rejected.blockers.includes(
+      "preflight_qa_blocked:bridge_artifact_freshness:bridge_metadata_stale:duration_seconds",
+    ),
+  );
+  assert.equal(plan.cadence_quality_report.verdict, "RED");
+  assert.equal(plan.cadence_quality_report.gates.strict_dry_run_blocks_respected, true);
+});
+
 test("daily cadence rejects old event dates with current-news wording", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-cadence-stale-temporal-"));
   const staleLaunch = await makeReviewItem(root, "stale-launch", {

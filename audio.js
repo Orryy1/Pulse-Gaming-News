@@ -789,6 +789,9 @@ function resolveVoiceSettingsForProvider(
       settings.speaking_rate,
       env,
     );
+  } else {
+    const requestedSpeed = finiteNumber(settings.speaking_rate ?? settings.speed, 1.0);
+    settings.speed = clamp(requestedSpeed, 0.7, 1.2);
   }
   return settings;
 }

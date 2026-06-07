@@ -10,6 +10,8 @@ function parseArgs(argv = process.argv.slice(2)) {
   const args = {
     root: process.cwd(),
     dryRunPlanPath: null,
+    bridgeCandidatesPath: null,
+    includeBridgeCandidates: false,
     outDir: path.join(process.cwd(), "output", "goal-contract"),
     generatedAt: null,
     apply: false,
@@ -20,6 +22,10 @@ function parseArgs(argv = process.argv.slice(2)) {
     const arg = argv[i];
     if (arg === "--root") args.root = argv[++i] || args.root;
     else if (arg === "--dry-run-plan") args.dryRunPlanPath = argv[++i] || "";
+    else if (arg === "--bridge-candidates") args.bridgeCandidatesPath = argv[++i] || "";
+    else if (arg === "--include-bridge-candidates" || arg === "--all-bridge-candidates") {
+      args.includeBridgeCandidates = true;
+    }
     else if (arg === "--out-dir") args.outDir = argv[++i] || args.outDir;
     else if (arg === "--generated-at") args.generatedAt = argv[++i] || null;
     else if (arg === "--apply") args.apply = true;
@@ -37,6 +43,8 @@ function usage() {
     "Options:",
     "  --root <dir>             Workspace root",
     "  --dry-run-plan <path>    Strict dry-run publish plan",
+    "  --bridge-candidates <path> Scheduler bridge candidates",
+    "  --include-bridge-candidates Refresh every scheduler bridge candidate too",
     "  --out-dir <dir>          Output report directory",
     "  --generated-at <iso>     Fixed timestamp",
     "  --apply                  Rewrite stale voice_quality_report.json files",
@@ -68,6 +76,9 @@ function renderMarkdown(report = {}) {
     if (row.remaining_blockers?.length) {
       lines.push(`  blockers: ${row.remaining_blockers.join(", ")}`);
     }
+    if (row.cadence?.spoken_wpm) {
+      lines.push(`  cadence: ${row.cadence.spoken_wpm} WPM; ${row.cadence.status}`);
+    }
   }
   return `${lines.join("\n")}\n`;
 }
@@ -82,9 +93,17 @@ async function main(argv = process.argv.slice(2)) {
   const dryRunPlanPath = args.dryRunPlanPath
     ? path.resolve(root, args.dryRunPlanPath)
     : path.join(root, "output", "goal-contract", "dry_run_publish_plan.json");
+  const bridgeCandidatesPath = args.bridgeCandidatesPath
+    ? path.resolve(root, args.bridgeCandidatesPath)
+    : path.join(root, "output", "goal-contract", "scheduler_bridge_candidates.json");
   const dryRunPlan = await fs.readJson(dryRunPlanPath);
+  const bridgeCandidates = args.includeBridgeCandidates && await fs.pathExists(bridgeCandidatesPath)
+    ? await fs.readJson(bridgeCandidatesPath)
+    : {};
   const report = await repairNarrationQaArtifacts({
     dryRunPlan,
+    bridgeCandidates,
+    includeBridgeCandidates: args.includeBridgeCandidates,
     generatedAt: args.generatedAt || new Date().toISOString(),
     apply: args.apply,
   });

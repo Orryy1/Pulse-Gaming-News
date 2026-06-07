@@ -174,6 +174,16 @@ test("Pulse local TTS request rate is capped before server base-speed multiplica
     {},
   );
   assert.equal(eleven.speaking_rate, 1.68);
+  assert.equal(eleven.speed, 1.2);
+
+  const slowerEleven = resolveVoiceSettingsForProvider(
+    "elevenlabs",
+    { speaking_rate: 1.1 },
+    0.92,
+    {},
+  );
+  assert.equal(slowerEleven.speaking_rate, 0.92);
+  assert.equal(slowerEleven.speed, 0.92);
 });
 
 test("Pulse local TTS can be deliberately slowed for too-short Liam proofs", () => {

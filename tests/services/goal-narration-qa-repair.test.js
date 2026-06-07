@@ -8,9 +8,11 @@ const { spawnSync } = require("node:child_process");
 const fs = require("fs-extra");
 
 const {
+  buildCurrentVoiceQualityReport,
   repairNarrationQaArtifacts,
 } = require("../../lib/goal-narration-qa-repair");
 const { auditNarrationQaArtifacts } = require("../../lib/narration-qa-artifact");
+const { analyseNarrationCadence } = require("../../lib/narration-cadence-qa");
 const packageJson = require("../../package.json");
 
 async function makeNarrationQaFixture(root, options = {}) {
@@ -53,6 +55,7 @@ async function makeNarrationQaFixture(root, options = {}) {
     narration_audio_path: "narration.mp3",
     word_timestamps_path: "word_timestamps.json",
     word_timestamp_count: audioWordCount,
+    ...(options.audioDurationSeconds ? { audio_duration_seconds: options.audioDurationSeconds } : {}),
     materialized_at: "2026-05-29T02:42:52.956Z",
     ...(options.resolvedAudioPath ? { resolved_narration_audio_path: options.resolvedAudioPath } : {}),
     ...(options.resolvedTimestampPath ? { resolved_word_timestamps_path: options.resolvedTimestampPath } : {}),
@@ -270,6 +273,100 @@ test("narration QA repair materialises a missing narration manifest from current
   assert.match(narrationManifest.transcript, /Hades II finally hits console/);
   assert.equal(narrationManifest.safety.no_publish_triggered, true);
   assert.equal(narrationManifest.safety.no_db_mutation, true);
+});
+
+test("narration voice QA blocks unnaturally rushed cadence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-narration-cadence-rushed-"));
+  const fixture = await makeNarrationQaFixture(root, {
+    audioWordCount: 130,
+    audioDurationSeconds: 40,
+  });
+  await fs.outputJson(path.join(fixture.artifactDir, "caption_manifest.json"), {
+    story_id: fixture.storyId,
+    generated_at: "2026-05-31T01:00:00.000Z",
+    caption_srt_path: "captions.srt",
+    word_timestamps_path: "word_timestamps.json",
+    word_count: 130,
+  });
+
+  const built = await buildCurrentVoiceQualityReport({
+    artifactDir: fixture.artifactDir,
+    generatedAt: "2026-05-31T01:16:00.000Z",
+  });
+
+  assert.equal(built.voiceQualityReport.verdict, "FAIL");
+  assert.equal(built.voiceQualityReport.cadence.spoken_wpm, 195);
+  assert.ok(built.voiceQualityReport.blockers.includes("voice_cadence:wpm_too_fast"));
+});
+
+test("narration voice QA accepts natural spoken cadence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-narration-cadence-natural-"));
+  const fixture = await makeNarrationQaFixture(root, {
+    audioWordCount: 130,
+    audioDurationSeconds: 50,
+  });
+  await fs.outputJson(path.join(fixture.artifactDir, "caption_manifest.json"), {
+    story_id: fixture.storyId,
+    generated_at: "2026-05-31T01:00:00.000Z",
+    caption_srt_path: "captions.srt",
+    word_timestamps_path: "word_timestamps.json",
+    word_count: 130,
+  });
+
+  const built = await buildCurrentVoiceQualityReport({
+    artifactDir: fixture.artifactDir,
+    generatedAt: "2026-05-31T01:17:00.000Z",
+  });
+
+  assert.equal(built.voiceQualityReport.verdict, "PASS");
+  assert.equal(built.voiceQualityReport.cadence.spoken_wpm, 156);
+  assert.deepEqual(built.voiceQualityReport.blockers, []);
+});
+
+test("narration cadence QA prefers probed audio duration over compressed timestamp spans", async () => {
+  const cadence = await analyseNarrationCadence({
+    audioManifest: { word_timestamp_count: 130 },
+    timestampPayload: {
+      words: [
+        { word: "first", start: 0, end: 0.12 },
+        { word: "last", start: 3.6, end: 3.84 },
+      ],
+    },
+    transcript: "A natural narration read should be judged against the real audio file duration.",
+    audioPath: "narration.mp3",
+    durationProbe: async () => 50,
+    generatedAt: "2026-05-31T01:17:30.000Z",
+  });
+
+  assert.equal(cadence.duration_source, "ffprobe");
+  assert.equal(cadence.duration_seconds, 50);
+  assert.equal(cadence.spoken_wpm, 156);
+  assert.deepEqual(cadence.blockers, []);
+});
+
+test("narration QA repair can proactively refresh scheduler bridge candidates", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-narration-qa-bridge-"));
+  const fixture = await makeNarrationQaFixture(root, {
+    audioWordCount: 130,
+    audioDurationSeconds: 40,
+  });
+
+  const report = await repairNarrationQaArtifacts({
+    dryRunPlan: { blocked_stories: [] },
+    bridgeCandidates: [{ id: fixture.storyId, scheduler_bridge_artifact_dir: fixture.artifactDir }],
+    includeBridgeCandidates: true,
+    generatedAt: "2026-05-31T01:18:00.000Z",
+    apply: true,
+  });
+
+  assert.equal(report.summary.target_count, 1);
+  assert.equal(report.summary.remaining_blocked_count, 1);
+  assert.ok(report.rows[0].remaining_blockers.includes("voice_quality_report_not_pass"));
+  assert.ok(report.rows[0].repaired_report_blockers.includes("voice_cadence:wpm_too_fast"));
+
+  const voiceQuality = await fs.readJson(path.join(fixture.artifactDir, "voice_quality_report.json"));
+  assert.equal(voiceQuality.verdict, "FAIL");
+  assert.equal(voiceQuality.cadence.spoken_wpm, 195);
 });
 
 test("narration QA repair CLI defaults to report-only mode", async () => {

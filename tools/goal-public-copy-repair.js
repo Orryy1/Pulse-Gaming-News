@@ -4,6 +4,10 @@
 const path = require("node:path");
 const fs = require("fs-extra");
 
+if (!/^(true|1|yes|on)$/i.test(String(process.env.PULSE_SKIP_DOTENV || ""))) {
+  require("dotenv").config({ override: true });
+}
+
 const {
   repairGoalPublicCopyPackages,
   buildAudioRegenerationWorkbench,
@@ -181,7 +185,9 @@ async function main(argv = process.argv.slice(2)) {
   });
   const audioWorkbench = buildAudioRegenerationWorkbench(report, {
     localTts,
-    elevenlabsTts: existingWorkbench.elevenlabs_tts || summariseElevenLabsTts(process.env, { providerPreference }),
+    elevenlabsTts: String(providerPreference || "").toLowerCase() === "elevenlabs"
+      ? summariseElevenLabsTts(process.env, { providerPreference })
+      : existingWorkbench.elevenlabs_tts || summariseElevenLabsTts(process.env, { providerPreference }),
     providerPreference,
   });
   const renderWorkOrder = await buildProductionRerenderWorkOrder(report);

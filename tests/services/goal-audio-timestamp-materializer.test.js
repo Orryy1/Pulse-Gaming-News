@@ -106,6 +106,36 @@ test("goal audio materializer generates local audio, word timestamps and updates
   assert.equal(report.safety.no_publish_triggered, true);
 });
 
+test("goal audio materializer passes an explicit TTS rate to narration generation", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-rate-"));
+  const artifactDir = await makePackage(root, "story-rate");
+  const calls = [];
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    provider: "elevenlabs",
+    ttsRate: 0.92,
+    workbenchReport: {
+      elevenlabs_tts: { verdict: "green", ready: true },
+      jobs: [workbenchJob("story-rate", artifactDir)],
+    },
+    generatedAt: "2026-05-22T06:00:10.000Z",
+    generateTtsForStory: async ({ text, outputPath, rate, provider }) => {
+      calls.push({ text, outputPath, rate, provider });
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 1));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignment(text),
+      });
+      return { ok: true };
+    },
+  });
+
+  assert.equal(report.summary.materialized_count, 1);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].provider, "elevenlabs");
+  assert.equal(calls[0].rate, 0.92);
+});
+
 test("goal audio materializer syncs canonical narration metadata after public-copy repair", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-canonical-sync-"));
   const repairedScript = "The Expanse finally showed real gameplay.";

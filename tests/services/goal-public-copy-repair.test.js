@@ -1714,6 +1714,79 @@ test("public copy repair CLI prefers fresh local TTS doctor over stale ElevenLab
   assert.equal(result.audioWorkbench.provider_preference, "local");
 });
 
+test("public copy repair CLI honours explicit ElevenLabs preference over stale workbench provider state", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-copy-elevenlabs-explicit-cli-"));
+  const artifactDir = path.join(root, "story");
+  const outDir = path.join(root, "out");
+  const staleWorkbenchPath = path.join(root, "audio_timestamp_workbench.json");
+  await fs.ensureDir(artifactDir);
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "expanse-copy",
+    canonical_subject: "The Expanse: Osiris Reborn",
+    canonical_game: "The Expanse: Osiris Reborn",
+    selected_title: "The Expanse Has One Gameplay Question",
+    first_spoken_line: "The Expanse: Osiris Reborn finally has real gameplay on screen.",
+    narration_script:
+      "The Expanse: Osiris Reborn finally has real gameplay on screen. The practical question is whether the missions feel like The Expanse once the trailer cut ends.",
+    description: "Xbox showed The Expanse: Osiris Reborn gameplay. Source: Xbox.",
+    primary_source: "Xbox",
+    confirmed_claims: ["Xbox showed The Expanse: Osiris Reborn gameplay."],
+  });
+  await fs.outputJson(path.join(root, "story-packages.json"), [
+    { story_id: "expanse-copy", artifact_dir: artifactDir },
+  ]);
+  await fs.outputJson(staleWorkbenchPath, {
+    local_tts: { ready: true, verdict: "green" },
+    elevenlabs_tts: {
+      provider: "elevenlabs",
+      ready: false,
+      allowed: false,
+      configured: true,
+      missing: [],
+      reason: "external ElevenLabs generation requires --provider elevenlabs; local clone is default",
+      secret_values_exposed: false,
+    },
+    provider_preference: "auto",
+  });
+
+  const originalLog = console.log;
+  const originalKey = process.env.ELEVENLABS_API_KEY;
+  const originalVoice = process.env.ELEVENLABS_VOICE_ID;
+  let result;
+  console.log = () => {};
+  process.env.ELEVENLABS_API_KEY = "test-elevenlabs-key";
+  process.env.ELEVENLABS_VOICE_ID = "test-elevenlabs-voice";
+  try {
+    result = await runPublicCopyRepairCli([
+      "--root",
+      root,
+      "--story-packages",
+      "story-packages.json",
+      "--audio-workbench",
+      staleWorkbenchPath,
+      "--out-dir",
+      outDir,
+      "--provider-preference",
+      "elevenlabs",
+      "--generated-at",
+      "2026-05-23T19:31:00.000Z",
+      "--json",
+    ]);
+  } finally {
+    console.log = originalLog;
+    if (originalKey === undefined) delete process.env.ELEVENLABS_API_KEY;
+    else process.env.ELEVENLABS_API_KEY = originalKey;
+    if (originalVoice === undefined) delete process.env.ELEVENLABS_VOICE_ID;
+    else process.env.ELEVENLABS_VOICE_ID = originalVoice;
+  }
+
+  assert.equal(result.audioWorkbench.provider_preference, "elevenlabs");
+  assert.equal(result.audioWorkbench.elevenlabs_tts.ready, true);
+  assert.equal(result.audioWorkbench.elevenlabs_tts.allowed, true);
+  assert.equal(result.audioWorkbench.summary.elevenlabs_generation_count, 1);
+  assert.equal(result.audioWorkbench.jobs[0].tts_provider, "elevenlabs");
+});
+
 test("public copy repair workbench routes regenerated narration to ElevenLabs when local TTS is down", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-copy-repair-elevenlabs-workbench-"));
   const artifactDir = path.join(root, "story");

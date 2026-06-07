@@ -31,6 +31,8 @@ test("goal audio timestamp materializer CLI parses local batch arguments", () =>
     "story-two",
     "--provider",
     "elevenlabs",
+    "--tts-rate",
+    "0.92",
     "--json",
   ]);
 
@@ -41,6 +43,7 @@ test("goal audio timestamp materializer CLI parses local batch arguments", () =>
   assert.equal(args.limit, 2);
   assert.deepEqual(args.storyIds, ["story-one", "story-two"]);
   assert.equal(args.provider, "elevenlabs");
+  assert.equal(args.ttsRate, 0.92);
   assert.equal(args.json, true);
 });
 

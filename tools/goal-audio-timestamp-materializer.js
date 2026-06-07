@@ -24,6 +24,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     generatedAt: null,
     limit: 0,
     provider: "auto",
+    ttsRate: null,
     storyIds: [],
     alignmentMode: "whisper",
     force: false,
@@ -39,6 +40,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--generated-at") args.generatedAt = argv[++i] || null;
     else if (arg === "--limit") args.limit = Number(argv[++i] || 0);
     else if (arg === "--provider") args.provider = argv[++i] || args.provider;
+    else if (arg === "--tts-rate") args.ttsRate = Number(argv[++i] || 0) || null;
     else if (arg === "--story-id") {
       const storyId = argv[++i];
       if (storyId) args.storyIds.push(storyId);
@@ -65,6 +67,7 @@ function usage() {
     "  --limit <n>           Generate at most n stories; 0 means all candidates",
     "  --story-id <id>       Generate only this story; repeatable",
     "  --provider <auto|local|elevenlabs>  Narration provider preference; auto uses the provider selected by the workbench",
+    "  --tts-rate <number>    Explicit speaking-rate override for regenerated narration",
     "  --alignment <whisper|silence|auto|off>  Local word-timing alignment mode; default whisper for CLI materialisation",
     "  --force               Regenerate even if an audio/timestamp pair exists",
     "  --inspect-only        Do not call local TTS; write a pending-generation report",
@@ -122,6 +125,7 @@ async function main(argv = process.argv.slice(2)) {
     force: args.force,
     inspectOnly: args.inspectOnly,
     provider: args.provider,
+    ttsRate: args.ttsRate,
     alignmentMode: args.alignmentMode,
   });
   const written = await writeGoalAudioTimestampMaterializationReport(report, {

@@ -13,17 +13,115 @@ const brand = require("./brand");
 const OUTPUT_DIR = path.join("output", "stories");
 const CACHE_DIR = path.join("output", "image_cache");
 
-// --- Build Instagram Story SVG ---
-function buildStorySvg(title, flair, heroImageBase64, hasHero, classification) {
-  const classInfo = brand.classificationColour(classification || flair);
-  const flairColour = classInfo.hex;
-  const flairLabel = classInfo.label;
+function cleanText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
 
-  const escapedTitle = title
+function safeStem(value) {
+  return cleanText(value || "story").replace(/[^a-z0-9_-]+/gi, "_") || "story";
+}
+
+function escapeXml(text) {
+  return cleanText(text)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+async function readJsonIfPresent(filePath, fsImpl = fs) {
+  if (!filePath) return {};
+  try {
+    if (!(await fsImpl.pathExists(filePath))) return {};
+    return await fsImpl.readJson(filePath);
+  } catch {
+    return {};
+  }
+}
+
+function sourceName(source) {
+  if (!source) return "";
+  if (typeof source === "string") return cleanText(source);
+  return cleanText(source.name || source.label || source.publisher || source.source);
+}
+
+async function resolveGovernedStoryCardCopy(story = {}, opts = {}) {
+  const fsImpl = opts.fs || fs;
+  const storyId = safeStem(story.id || story.story_id);
+  const artifactRoot = opts.artifactRoot || path.join("output", "goal-proof", "batch");
+  const candidateDirs = [
+    story.artifact_dir,
+    story.goal_artifact_dir,
+    story.goal_proof_dir,
+    story.platform_pack_dir,
+    story.story_package_dir,
+    storyId ? path.join(artifactRoot, storyId) : null,
+  ].filter(Boolean);
+
+  let artifactDir = null;
+  for (const candidate of candidateDirs) {
+    if (await fsImpl.pathExists(candidate)) {
+      artifactDir = candidate;
+      break;
+    }
+  }
+
+  const instagramPack = artifactDir
+    ? await readJsonIfPresent(path.join(artifactDir, "instagram_publish_pack.json"), fsImpl)
+    : {};
+  const platformManifest = artifactDir
+    ? await readJsonIfPresent(path.join(artifactDir, "platform_publish_manifest.json"), fsImpl)
+    : {};
+  const imageCardManifest = artifactDir
+    ? await readJsonIfPresent(path.join(artifactDir, "image_card_manifest.json"), fsImpl)
+    : {};
+  const canonical = artifactDir
+    ? await readJsonIfPresent(path.join(artifactDir, "canonical_story_manifest.json"), fsImpl)
+    : {};
+  const platformInstagram =
+    platformManifest.outputs?.instagram_reels ||
+    platformManifest.outputs?.instagram ||
+    {};
+  const instagram = Object.keys(instagramPack).length ? instagramPack : platformInstagram;
+  const cover = instagram.cover_frame || {};
+
+  const headline =
+    cleanText(cover.headline) ||
+    cleanText(imageCardManifest.headline) ||
+    cleanText(canonical.suggested_thumbnail_text || canonical.thumbnail_headline) ||
+    cleanText(story.suggested_thumbnail_text) ||
+    cleanText(canonical.selected_title || canonical.canonical_title) ||
+    cleanText(story.title);
+  const sourceLabel =
+    cleanText(cover.source_label) ||
+    sourceName(canonical.primary_source) ||
+    cleanText(canonical.source_card_label) ||
+    cleanText(story.source_card_label || story.thumbnail_source_label || story.subreddit);
+  const hasInstagramPack = cleanText(cover.headline) || Object.keys(instagram).length > 0;
+
+  return {
+    title: headline || cleanText(story.title),
+    sourceLabel,
+    subject:
+      cleanText(cover.subject) ||
+      cleanText(canonical.canonical_subject || canonical.canonical_game || canonical.canonical_company),
+    artifactDir,
+    source: hasInstagramPack
+      ? "platform_native_instagram_publish_pack"
+      : cleanText(imageCardManifest.headline)
+        ? "image_card_manifest"
+        : "story_row",
+  };
+}
+
+// --- Build Instagram Story SVG ---
+function buildStorySvg(title, flair, heroImageBase64, hasHero, classification, options = {}) {
+  const classInfo = brand.classificationColour(classification || flair);
+  const flairColour = classInfo.hex;
+  const flairLabel = classInfo.label;
+
+  const escapedTitle = escapeXml(title);
+  const escapedSource = escapeXml(options.sourceLabel);
 
   // Word-wrap title - wider layout for stories (max ~22 chars per line)
   const words = escapedTitle.split(" ");
@@ -43,6 +141,18 @@ function buildStorySvg(title, flair, heroImageBase64, hasHero, classification) {
     .slice(0, 4)
     .map((line, i) => `<tspan x="540" dy="${i === 0 ? 0 : 68}">${line}</tspan>`)
     .join("");
+  const titleLineCount = Math.max(1, Math.min(lines.length, 4));
+  const sourceY = Math.min(1110, 880 + (titleLineCount - 1) * 68 + 70);
+  const sourceLine = escapedSource
+    ? `
+  <text x="540" y="${sourceY}" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
+        font-size="24" font-weight="700" letter-spacing="1" fill="${brand.MUTED}" opacity="0.9">Source: ${escapedSource}</text>
+  `
+    : "";
+  const dividerY = escapedSource ? 1165 : 1140;
+  const newVideoY = escapedSource ? 1245 : 1220;
+  const ctaY = escapedSource ? 1305 : 1280;
+  const ctaTextY = escapedSource ? 1350 : 1325;
 
   const heroSection = hasHero
     ? `
@@ -112,16 +222,18 @@ function buildStorySvg(title, flair, heroImageBase64, hasHero, classification) {
         font-size="56" font-weight="900" fill="${brand.TEXT}" filter="url(#shadow)"
         letter-spacing="-1">${titleTspans}</text>
 
+  ${sourceLine}
+
   <!-- Amber accent divider -->
-  <rect x="390" y="1140" width="300" height="3" rx="1.5" fill="${brand.PRIMARY}" opacity="0.7"/>
+  <rect x="390" y="${dividerY}" width="300" height="3" rx="1.5" fill="${brand.PRIMARY}" opacity="0.7"/>
 
   <!-- NEW VIDEO prompt -->
-  <text x="540" y="1220" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
+  <text x="540" y="${newVideoY}" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
         font-size="24" font-weight="700" letter-spacing="6" fill="${brand.PRIMARY}" opacity="0.9">NEW VIDEO</text>
 
   <!-- Watch now CTA -->
-  <rect x="340" y="1280" width="400" height="70" rx="35" fill="${brand.PRIMARY}" opacity="0.9"/>
-  <text x="540" y="1325" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
+  <rect x="340" y="${ctaY}" width="400" height="70" rx="35" fill="${brand.PRIMARY}" opacity="0.9"/>
+  <text x="540" y="${ctaTextY}" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
         font-size="24" font-weight="800" letter-spacing="2" fill="white">WATCH NOW</text>
 
   <!-- Swipe up indicator -->
@@ -147,6 +259,114 @@ function buildStorySvg(title, flair, heroImageBase64, hasHero, classification) {
 </svg>`;
 }
 
+async function generateStoryImagesForStories(stories = [], opts = {}) {
+  const fsImpl = opts.fs || fs;
+  const log = opts.log || console.log;
+  const outputDir = opts.outputDir || OUTPUT_DIR;
+  const writePath = opts.writePath || ((relPath) => mediaPaths.writePath(relPath));
+  const resolveExisting = opts.resolveExisting || ((relPath) => mediaPaths.resolveExisting(relPath));
+  const outputDirAbs = writePath(outputDir);
+  await fsImpl.ensureDir(outputDirAbs);
+
+  const toProcess = stories.filter(
+    (s) => s && s.approved === true && s.exported_path && !s.story_image_path,
+  );
+  let generated = 0;
+
+  for (const story of toProcess) {
+    log(
+      `[stories] Generating Story image: ${cleanText(story.title).substring(0, 50)}...`,
+    );
+    const storyCardCopy = await resolveGovernedStoryCardCopy(story, {
+      ...opts,
+      fs: fsImpl,
+    });
+
+    // Try to load hero image from cache.
+    // Preferred types first (article_hero -> capsule -> hero -> key_art ->
+    // screenshot -> reddit_thumb) then fall through to ANY non-logo
+    // downloaded image.
+    let heroBase64 = null;
+    const preferredOrder = [
+      "article_hero",
+      "capsule",
+      "hero",
+      "key_art",
+      "screenshot",
+      "reddit_thumb",
+    ];
+    if (story.downloaded_images && story.downloaded_images.length > 0) {
+      const candidates = story.downloaded_images.filter(
+        (i) => i.path && i.type !== "company_logo",
+      );
+      const safeRanked = rankThumbnailCandidates(story, candidates).map(
+        (r) => r.image,
+      );
+      const orderedCandidates =
+        safeRanked.length > 0
+          ? safeRanked
+          : candidates.sort((a, b) => {
+              const ai = preferredOrder.indexOf(a.type);
+              const bi = preferredOrder.indexOf(b.type);
+              const av = ai === -1 ? 999 : ai;
+              const bv = bi === -1 ? 999 : bi;
+              return av - bv;
+            });
+      for (const heroImg of orderedCandidates) {
+        const heroAbs = await resolveExisting(heroImg.path);
+        if (!heroAbs || !(await fsImpl.pathExists(heroAbs))) continue;
+        try {
+          const buf = await fsImpl.readFile(heroAbs);
+          heroBase64 = buf.toString("base64");
+          break;
+        } catch (err) {
+          log(
+            `[stories] Could not read ${heroImg.type} (${heroImg.path}): ${err.message}`,
+          );
+        }
+      }
+    }
+    if (!heroBase64) {
+      log(
+        `[stories] ${story.id}: no hero image available (downloaded_images=${story.downloaded_images?.length || 0})`,
+      );
+    }
+
+    const svg = buildStorySvg(
+      storyCardCopy.title || story.title,
+      story.flair,
+      heroBase64,
+      !!heroBase64,
+      story.classification,
+      { sourceLabel: storyCardCopy.sourceLabel },
+    );
+
+    const stem = safeStem(story.id);
+    const svgPath = path.join(outputDir, `${stem}_story.svg`);
+    const pngPath = path.join(outputDir, `${stem}_story.png`);
+    const svgWriteAbs = writePath(svgPath);
+    const pngWriteAbs = writePath(pngPath);
+    await fsImpl.ensureDir(path.dirname(svgWriteAbs));
+    await fsImpl.writeFile(svgWriteAbs, svg, "utf-8");
+
+    try {
+      const sharp = require("sharp");
+      await sharp(Buffer.from(svg)).png({ quality: 95 }).toFile(pngWriteAbs);
+
+      story.story_image_path = pngPath;
+      story.story_image_source = storyCardCopy.source;
+      log(`[stories] Saved: ${pngPath}`);
+    } catch (err) {
+      log(`[stories] Sharp conversion failed: ${err.message}`);
+      story.story_image_path = svgPath;
+      story.story_image_source = storyCardCopy.source;
+    }
+    generated += 1;
+  }
+
+  return { generated, considered: toProcess.length };
+}
+
 async function generateStoryImages() {
   console.log("[stories] === Instagram Story Image Generator ===");
 
@@ -161,9 +381,6 @@ async function generateStoryImages() {
   // OUTPUT_DIR is the repo-relative base ("output/stories") that
   // lands in DB rows. The physical target dir may live under
   // MEDIA_ROOT on Railway — resolve it before ensuring.
-  const outputDirAbs = mediaPaths.writePath(OUTPUT_DIR);
-  await fs.ensureDir(outputDirAbs);
-
   const toProcess = applyProduceSelection(
     stories.filter(
       (s) => s.approved === true && s.exported_path && !s.story_image_path,
@@ -172,6 +389,20 @@ async function generateStoryImages() {
   );
 
   console.log(`[stories] ${toProcess.length} stories need Story images`);
+
+  const result = await generateStoryImagesForStories(toProcess);
+
+  await db.saveStories(stories);
+  console.log(`[stories] Generated ${result.generated} Story images`);
+
+  // Story images are auto-approved - no Discord gate needed.
+  // Images are generated, saved, and ready for use immediately.
+  if (result.generated > 0) {
+    console.log(
+      `[stories] ${result.generated} Story images ready (auto-approved)`,
+    );
+  }
+  return;
 
   for (const story of toProcess) {
     console.log(
@@ -274,7 +505,12 @@ async function generateStoryImages() {
   }
 }
 
-module.exports = { generateStoryImages, buildStorySvg };
+module.exports = {
+  generateStoryImages,
+  generateStoryImagesForStories,
+  buildStorySvg,
+  resolveGovernedStoryCardCopy,
+};
 
 if (require.main === module) {
   generateStoryImages().catch((err) => {

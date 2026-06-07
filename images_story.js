@@ -11,7 +11,6 @@ dotenv.config({ override: true });
 const brand = require("./brand");
 
 const OUTPUT_DIR = path.join("output", "stories");
-const CACHE_DIR = path.join("output", "image_cache");
 
 function cleanText(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
@@ -114,21 +113,12 @@ async function resolveGovernedStoryCardCopy(story = {}, opts = {}) {
   };
 }
 
-// --- Build Instagram Story SVG ---
-function buildStorySvg(title, flair, heroImageBase64, hasHero, classification, options = {}) {
-  const classInfo = brand.classificationColour(classification || flair);
-  const flairColour = classInfo.hex;
-  const flairLabel = classInfo.label;
-
-  const escapedTitle = escapeXml(title);
-  const escapedSource = escapeXml(options.sourceLabel);
-
-  // Word-wrap title - wider layout for stories (max ~22 chars per line)
-  const words = escapedTitle.split(" ");
+function wrapTextForCard(text, maxCharsPerLine = 22, maxLines = 4) {
+  const words = cleanText(text).split(" ").filter(Boolean);
   const lines = [];
   let current = "";
   for (const word of words) {
-    if ((current + " " + word).length > 22 && current) {
+    if ((current + " " + word).length > maxCharsPerLine && current) {
       lines.push(current);
       current = word;
     } else {
@@ -136,17 +126,24 @@ function buildStorySvg(title, flair, heroImageBase64, hasHero, classification, o
     }
   }
   if (current) lines.push(current);
+  return lines.slice(0, maxLines);
+}
 
+function buildStorySvg(title, flair, heroImageBase64, hasHero, classification, options = {}) {
+  const classInfo = brand.classificationColour(classification || flair);
+  const flairColour = classInfo.hex;
+  const flairLabel = classInfo.label;
+  const lines = wrapTextForCard(title);
   const titleTspans = lines
-    .slice(0, 4)
-    .map((line, i) => `<tspan x="540" dy="${i === 0 ? 0 : 68}">${line}</tspan>`)
+    .map((line, i) => `<tspan x="540" dy="${i === 0 ? 0 : 68}">${escapeXml(line)}</tspan>`)
     .join("");
-  const titleLineCount = Math.max(1, Math.min(lines.length, 4));
+  const escapedSource = escapeXml(options.sourceLabel);
+  const titleLineCount = Math.max(1, lines.length);
   const sourceY = Math.min(1110, 880 + (titleLineCount - 1) * 68 + 70);
   const sourceLine = escapedSource
     ? `
   <text x="540" y="${sourceY}" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
-        font-size="24" font-weight="700" letter-spacing="1" fill="${brand.MUTED}" opacity="0.9">Source: ${escapedSource}</text>
+        font-size="24" font-weight="700" letter-spacing="1" fill="${brand.TEXT}" opacity="0.68">Source: ${escapedSource}</text>
   `
     : "";
   const dividerY = escapedSource ? 1165 : 1140;
@@ -259,17 +256,68 @@ function buildStorySvg(title, flair, heroImageBase64, hasHero, classification, o
 </svg>`;
 }
 
+async function loadHeroBase64(story = {}, opts = {}) {
+  const fsImpl = opts.fs || fs;
+  const log = opts.log || console.log;
+  const resolveExisting = opts.resolveExisting || ((relPath) => mediaPaths.resolveExisting(relPath));
+  const preferredOrder = [
+    "article_hero",
+    "capsule",
+    "hero",
+    "key_art",
+    "screenshot",
+    "reddit_thumb",
+  ];
+
+  if (!Array.isArray(story.downloaded_images) || story.downloaded_images.length === 0) {
+    log(
+      `[stories] ${story.id}: no hero image available (downloaded_images=${story.downloaded_images?.length || 0})`,
+    );
+    return null;
+  }
+
+  const candidates = story.downloaded_images.filter(
+    (image) => image.path && image.type !== "company_logo",
+  );
+  const safeRanked = rankThumbnailCandidates(story, candidates).map((ranked) => ranked.image);
+  const orderedCandidates =
+    safeRanked.length > 0
+      ? safeRanked
+      : candidates.sort((a, b) => {
+          const ai = preferredOrder.indexOf(a.type);
+          const bi = preferredOrder.indexOf(b.type);
+          return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+        });
+
+  for (const heroImg of orderedCandidates) {
+    const heroAbs = await resolveExisting(heroImg.path);
+    if (!heroAbs || !(await fsImpl.pathExists(heroAbs))) continue;
+    try {
+      const buf = await fsImpl.readFile(heroAbs);
+      return buf.toString("base64");
+    } catch (err) {
+      log(
+        `[stories] Could not read ${heroImg.type} (${heroImg.path}): ${err.message}`,
+      );
+    }
+  }
+
+  log(
+    `[stories] ${story.id}: no hero image available (downloaded_images=${story.downloaded_images?.length || 0})`,
+  );
+  return null;
+}
+
 async function generateStoryImagesForStories(stories = [], opts = {}) {
   const fsImpl = opts.fs || fs;
   const log = opts.log || console.log;
   const outputDir = opts.outputDir || OUTPUT_DIR;
   const writePath = opts.writePath || ((relPath) => mediaPaths.writePath(relPath));
-  const resolveExisting = opts.resolveExisting || ((relPath) => mediaPaths.resolveExisting(relPath));
   const outputDirAbs = writePath(outputDir);
   await fsImpl.ensureDir(outputDirAbs);
 
   const toProcess = stories.filter(
-    (s) => s && s.approved === true && s.exported_path && !s.story_image_path,
+    (story) => story && story.approved === true && story.exported_path && !story.story_image_path,
   );
   let generated = 0;
 
@@ -281,57 +329,11 @@ async function generateStoryImagesForStories(stories = [], opts = {}) {
       ...opts,
       fs: fsImpl,
     });
-
-    // Try to load hero image from cache.
-    // Preferred types first (article_hero -> capsule -> hero -> key_art ->
-    // screenshot -> reddit_thumb) then fall through to ANY non-logo
-    // downloaded image.
-    let heroBase64 = null;
-    const preferredOrder = [
-      "article_hero",
-      "capsule",
-      "hero",
-      "key_art",
-      "screenshot",
-      "reddit_thumb",
-    ];
-    if (story.downloaded_images && story.downloaded_images.length > 0) {
-      const candidates = story.downloaded_images.filter(
-        (i) => i.path && i.type !== "company_logo",
-      );
-      const safeRanked = rankThumbnailCandidates(story, candidates).map(
-        (r) => r.image,
-      );
-      const orderedCandidates =
-        safeRanked.length > 0
-          ? safeRanked
-          : candidates.sort((a, b) => {
-              const ai = preferredOrder.indexOf(a.type);
-              const bi = preferredOrder.indexOf(b.type);
-              const av = ai === -1 ? 999 : ai;
-              const bv = bi === -1 ? 999 : bi;
-              return av - bv;
-            });
-      for (const heroImg of orderedCandidates) {
-        const heroAbs = await resolveExisting(heroImg.path);
-        if (!heroAbs || !(await fsImpl.pathExists(heroAbs))) continue;
-        try {
-          const buf = await fsImpl.readFile(heroAbs);
-          heroBase64 = buf.toString("base64");
-          break;
-        } catch (err) {
-          log(
-            `[stories] Could not read ${heroImg.type} (${heroImg.path}): ${err.message}`,
-          );
-        }
-      }
-    }
-    if (!heroBase64) {
-      log(
-        `[stories] ${story.id}: no hero image available (downloaded_images=${story.downloaded_images?.length || 0})`,
-      );
-    }
-
+    const heroBase64 = await loadHeroBase64(story, {
+      ...opts,
+      fs: fsImpl,
+      log,
+    });
     const svg = buildStorySvg(
       storyCardCopy.title || story.title,
       story.flair,
@@ -352,7 +354,6 @@ async function generateStoryImagesForStories(stories = [], opts = {}) {
     try {
       const sharp = require("sharp");
       await sharp(Buffer.from(svg)).png({ quality: 95 }).toFile(pngWriteAbs);
-
       story.story_image_path = pngPath;
       story.story_image_source = storyCardCopy.source;
       log(`[stories] Saved: ${pngPath}`);
@@ -370,137 +371,28 @@ async function generateStoryImagesForStories(stories = [], opts = {}) {
 async function generateStoryImages() {
   console.log("[stories] === Instagram Story Image Generator ===");
 
-  // Phase 3C JSON-shrink: read through canonical store rather than
-  // checking daily_news.json directly.
   const stories = await db.getStories();
   if (!Array.isArray(stories) || stories.length === 0) {
     console.log("[stories] No stories in canonical store");
     return;
   }
 
-  // OUTPUT_DIR is the repo-relative base ("output/stories") that
-  // lands in DB rows. The physical target dir may live under
-  // MEDIA_ROOT on Railway — resolve it before ensuring.
   const toProcess = applyProduceSelection(
     stories.filter(
-      (s) => s.approved === true && s.exported_path && !s.story_image_path,
+      (story) => story.approved === true && story.exported_path && !story.story_image_path,
     ),
     { stage: "stories", log: console.log },
   );
 
   console.log(`[stories] ${toProcess.length} stories need Story images`);
-
   const result = await generateStoryImagesForStories(toProcess);
 
   await db.saveStories(stories);
   console.log(`[stories] Generated ${result.generated} Story images`);
 
-  // Story images are auto-approved - no Discord gate needed.
-  // Images are generated, saved, and ready for use immediately.
   if (result.generated > 0) {
     console.log(
       `[stories] ${result.generated} Story images ready (auto-approved)`,
-    );
-  }
-  return;
-
-  for (const story of toProcess) {
-    console.log(
-      `[stories] Generating Story image: ${story.title.substring(0, 50)}...`,
-    );
-
-    // Try to load hero image from cache.
-    // Preferred types first (article_hero → capsule → hero → key_art →
-    // screenshot → reddit_thumb) then fall through to ANY non-logo
-    // downloaded image. The previous strict whitelist silently fell
-    // through to a black placeholder whenever the available types
-    // didn't match, which is how movie/industry stories with only
-    // inline screenshots or reddit thumbnails ended up with no hero.
-    let heroBase64 = null;
-    const preferredOrder = [
-      "article_hero",
-      "capsule",
-      "hero",
-      "key_art",
-      "screenshot",
-      "reddit_thumb",
-    ];
-    if (story.downloaded_images && story.downloaded_images.length > 0) {
-      const candidates = story.downloaded_images.filter(
-        (i) => i.path && i.type !== "company_logo",
-      );
-      const safeRanked = rankThumbnailCandidates(story, candidates).map(
-        (r) => r.image,
-      );
-      const orderedCandidates =
-        safeRanked.length > 0
-          ? safeRanked
-          : candidates.sort((a, b) => {
-              const ai = preferredOrder.indexOf(a.type);
-              const bi = preferredOrder.indexOf(b.type);
-              const av = ai === -1 ? 999 : ai;
-              const bv = bi === -1 ? 999 : bi;
-              return av - bv;
-            });
-      for (const heroImg of orderedCandidates) {
-        // Downloaded cache paths go through media-paths too —
-        // MEDIA_ROOT when set, repo-root fallback for legacy rows.
-        const heroAbs = await mediaPaths.resolveExisting(heroImg.path);
-        if (!heroAbs || !(await fs.pathExists(heroAbs))) continue;
-        try {
-          const buf = await fs.readFile(heroAbs);
-          heroBase64 = buf.toString("base64");
-          break;
-        } catch (err) {
-          console.log(
-            `[stories] Could not read ${heroImg.type} (${heroImg.path}): ${err.message}`,
-          );
-        }
-      }
-    }
-    if (!heroBase64) {
-      console.log(
-        `[stories] ${story.id}: no hero image available (downloaded_images=${story.downloaded_images?.length || 0})`,
-      );
-    }
-
-    const svg = buildStorySvg(
-      story.title,
-      story.flair,
-      heroBase64,
-      !!heroBase64,
-      story.classification,
-    );
-
-    // DB stores the repo-relative path (unchanged contract). The
-    // physical write target resolves through media-paths so it
-    // lands under MEDIA_ROOT (e.g. /data/media) when set.
-    const svgPath = path.join(OUTPUT_DIR, `${story.id}_story.svg`);
-    const pngPath = path.join(OUTPUT_DIR, `${story.id}_story.png`);
-    const svgWriteAbs = mediaPaths.writePath(svgPath);
-    const pngWriteAbs = mediaPaths.writePath(pngPath);
-    await fs.writeFile(svgWriteAbs, svg, "utf-8");
-
-    try {
-      const sharp = require("sharp");
-      await sharp(Buffer.from(svg)).png({ quality: 95 }).toFile(pngWriteAbs);
-
-      story.story_image_path = pngPath;
-      console.log(`[stories] Saved: ${pngPath}`);
-    } catch (err) {
-      console.log(`[stories] Sharp conversion failed: ${err.message}`);
-      story.story_image_path = svgPath;
-    }
-  }
-
-  await db.saveStories(stories);
-  console.log(`[stories] Generated ${toProcess.length} Story images`);
-
-  // Story images are auto-approved - no Discord gate needed.
-  // Images are generated, saved, and ready for use immediately.
-  if (toProcess.length > 0) {
-    console.log(
-      `[stories] ${toProcess.length} Story images ready (auto-approved)`,
     );
   }
 }

@@ -285,7 +285,7 @@ function sourceBoundExtensionSentencesFromCanonical(canonical = {}) {
   const sourcePrefix = source ? `${source} gives the hard fact` : "The source gives the hard fact";
   return [
     sentenceText(
-      `${sourcePrefix}: ${publicClaim} That keeps the short on what players can see, not on a bigger promise the source has not made`,
+      `${sourcePrefix}: ${publicClaim}. That keeps the short on what players can see, not on a bigger promise the source has not made`,
     ),
     sentenceText(
       `For players, the next proof point is ${proofFocus}, because the game only gets real traction when the next clip answers that without hiding behind quick cuts`,
@@ -297,7 +297,7 @@ function sourceBoundExtensionSentencesFromCanonical(canonical = {}) {
       `The next official update has to make that obvious fast, because viewers will judge the feel before they care about the wider pitch`,
     ),
     sentenceText(
-      `Until then, the clean angle is simple: the project has attention, but the next proof decides how much of that attention turns into real player interest`,
+      `Until then, the strongest public fact is simple: the project has attention, but the next proof decides how much of that attention turns into real player interest`,
     ),
   ];
 }

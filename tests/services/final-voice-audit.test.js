@@ -340,6 +340,47 @@ test("final voice report loader falls back to local TTS timestamp metadata", asy
   assert.equal(report.rows[0].do_not_reuse_for_tiktok_dispatch, false);
 });
 
+test("final voice report loader preserves ElevenLabs managed voice metadata", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "final-voice-elevenlabs-meta-"));
+  const finalDir = path.join(dir, "output", "final");
+  const audioDir = path.join(dir, "output", "audio");
+  await fs.ensureDir(finalDir);
+  await fs.ensureDir(audioDir);
+  const mp4 = path.join(finalDir, "rss_elevenlabs.mp4");
+  await fs.writeFile(mp4, "fake mp4");
+  await fs.writeJson(path.join(audioDir, "rss_elevenlabs_timestamps.json"), {
+    words: [
+      { word: "Follow", start: 0.02, end: 0.32 },
+      { word: "beat.", start: 4.7, end: 4.94 },
+    ],
+    meta: {
+      provider: "elevenlabs",
+      source: "elevenlabs-production-path",
+      transcript: "A clean managed voice render. Follow Pulse Gaming so you never miss a beat.",
+      elevenlabs: {
+        voiceId: "pNInz6obpgDQGcFmaJgB",
+        modelId: "eleven_multilingual_v2",
+      },
+    },
+  });
+
+  const reports = await loadFinalVoiceReportsByStoryId([mp4], {
+    finalDir,
+    outputDirs: [],
+  });
+  const report = buildFinalVoiceAudit({
+    files: [mp4],
+    reportsByStoryId: reports,
+  });
+
+  assert.equal(reports.rss_elevenlabs.source, "audio_timestamp_sidecar");
+  assert.equal(reports.rss_elevenlabs.narration.elevenlabs.voiceId, "pNInz6obpgDQGcFmaJgB");
+  assert.equal(report.counts.pass, 1);
+  assert.equal(report.rows[0].verdict, "pass");
+  assert.deepEqual(report.rows[0].warnings, []);
+  assert.equal(report.rows[0].do_not_reuse_for_tiktok_dispatch, false);
+});
+
 test("final voice report loader reads nested proof narration manifests before generic QA reports", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "final-voice-proof-manifest-"));
   const batchDir = path.join(dir, "batch");

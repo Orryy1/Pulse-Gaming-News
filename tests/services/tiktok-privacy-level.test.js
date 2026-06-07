@@ -112,24 +112,18 @@ test("TIKTOK_DEFAULT_PRIVACY_LEVEL is PUBLIC_TO_EVERYONE (post-audit goal)", () 
 
 // ---------- source-scan pins -----------------------------------
 
-test("upload_tiktok.js: privacy_level comes from the resolver, not a hard-coded string (source-scan)", () => {
+test("upload_tiktok.js: privacy_level is resolved then creator-info validated (source-scan)", () => {
   const src = fs.readFileSync(
     path.join(__dirname, "..", "..", "upload_tiktok.js"),
     "utf8",
   );
-  // The init-request post_info block must call
+  // The live path resolves the desired privacy level, then validates it
   // `resolveTikTokPrivacyLevel()` — not a bare string literal.
-  // If a future edit reverts to `privacy_level: "PUBLIC_TO_EVERYONE"`
-  // hard-coded, this test catches it.
-  const match = src.match(
-    /post_info\s*:\s*\{[^}]*?privacy_level\s*:\s*([\s\S]+?),\s*disable_duet/,
-  );
-  assert.ok(match, "init request's post_info block must contain privacy_level");
-  const privacyLevelValue = match[1];
-  assert.ok(
-    /resolveTikTokPrivacyLevel\(\)/.test(privacyLevelValue),
-    `privacy_level must be computed from resolveTikTokPrivacyLevel(), got: ${privacyLevelValue.slice(0, 120)}`,
-  );
+  assert.match(src, /const privacyLevel = \(\(\) => \{/);
+  assert.match(src, /resolveTikTokPrivacyLevel\(\)/);
+  assert.match(src, /buildDirectPostInitRequest\(\{\s*caption,\s*privacyLevel,/);
+  assert.match(src, /privacy_level_option_mismatch/);
+  assert.match(src, /privacy_level_from_creator_info: true/);
 });
 
 test('upload_tiktok.js: no orphan `privacy_level: "PUBLIC_TO_EVERYONE"` literal in the request-building code (regression pin)', () => {

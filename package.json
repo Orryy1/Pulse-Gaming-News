@@ -116,6 +116,7 @@
     "ops:goal08-visual-v4-renderer": "node tools/goal08-visual-v4-renderer.js",
     "ops:goal09-sound-design-engine": "node tools/goal09-sound-design-engine.js",
     "ops:goal10-gold-standard-forensics": "node tools/goal10-gold-standard-forensics-engine.js",
+    "ops:competitor-forensics-lab": "node tools/competitor-forensics-lab.js",
     "ops:goal11-retention-intelligence": "node tools/goal11-retention-intelligence-loop.js",
     "ops:goal12-experimentation-engine": "node tools/goal12-experimentation-engine.js",
     "ops:goal13-multi-platform-publisher": "node tools/goal13-multi-platform-publisher-engine.js",

@@ -47,6 +47,29 @@ async function makeControlStory(root, storyId, overrides = {}) {
   });
   await fs.outputJson(path.join(artifactDir, "visual_quality_report.json"), overrides.visualQuality || passGate());
   await fs.outputJson(path.join(artifactDir, "benchmark_report.json"), overrides.benchmark || passGate({ result: "pass" }));
+  await fs.outputJson(path.join(artifactDir, "pulse_media_house_score.json"), overrides.pulseMediaHouseScore || {
+    verdict: "GREEN",
+    status: "pass",
+    hard_failures: [],
+    scores: {
+      title_strength_score: 88,
+      first_frame_score: 86,
+      first_3_seconds_score: 88,
+      script_punch_score: 87,
+      narration_quality_score: 84,
+      motion_density_score: 88,
+      transition_energy_score: 86,
+      sound_design_score: 84,
+      mobile_readability_score: 89,
+      brand_recognition_score: 82,
+      source_trust_score: 91,
+      commercial_trust_score: 86,
+      ending_payoff_score: 84,
+      competitor_parity_score: 85,
+      competitor_surpass_score: 78,
+      overall_media_house_score: 86,
+    },
+  });
   await fs.outputJson(path.join(artifactDir, "platform_policy_report.json"), overrides.policyReport || {
     verdict: "pass",
     publish_blockers: [],
@@ -377,6 +400,49 @@ test("Goal 19 hard-blocks incomplete direct control inputs", async () => {
   }
   assert.equal(report.approval_requirements.stories[0].status, "blocked_until_repairs");
   assert.equal(report.publish_verdict.stories[0].publish_action, "none_blocked");
+});
+
+test("Goal 19 hard-blocks weak Pulse Media-House Score before GREEN", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-media-house-"));
+  const story = await makeControlStory(root, "story-media-house", {
+    pulseMediaHouseScore: {
+      verdict: "RED",
+      status: "fail",
+      hard_failures: ["media_house:first_3_seconds_weak"],
+      scores: {
+        title_strength_score: 81,
+        first_frame_score: 72,
+        first_3_seconds_score: 44,
+        script_punch_score: 68,
+        narration_quality_score: 70,
+        motion_density_score: 78,
+        transition_energy_score: 75,
+        sound_design_score: 72,
+        mobile_readability_score: 80,
+        brand_recognition_score: 76,
+        source_trust_score: 88,
+        commercial_trust_score: 80,
+        ending_payoff_score: 62,
+        competitor_parity_score: 55,
+        competitor_surpass_score: 41,
+        overall_media_house_score: 60,
+      },
+    },
+  });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18("story-media-house"),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-06-07T12:00:00.000Z",
+  });
+
+  assert.equal(REQUIRED_CONTROL_INPUTS.includes("pulse_media_house_score"), true);
+  assert.equal(report.verdict, "BLOCKED");
+  assert.equal(report.stories[0].final_verdict, "RED");
+  assert.equal(report.stories[0].control_inputs.pulse_media_house_score.status, "fail");
+  assert.ok(report.stories[0].blockers.includes("control:pulse_media_house_score_not_pass"));
 });
 
 test("Goal 19 returns AMBER when safe output still needs human approval", async () => {

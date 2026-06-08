@@ -140,6 +140,17 @@ test("cleanForTTS: removes title-colon pauses inside canonical game names", () =
   );
 });
 
+test("cleanForTTS: removes hyphen pause from Gears of War E-Day while keeping the title together", () => {
+  assert.equal(
+    cleanForTTS("Gears of War E-Day finally has new footage."),
+    "Gears of War E Day finally has new footage.",
+  );
+  assert.equal(
+    cleanForTTS("Gears of War. E-Day finally has new footage."),
+    "Gears of War E Day finally has new footage.",
+  );
+});
+
 test("cleanForTTS: normalises Stranger Than Heaven title casing for local clone clarity", () => {
   assert.equal(
     cleanForTTS("STRANGER THAN HEAVEN Five Eras is swinging at more than one period piece."),

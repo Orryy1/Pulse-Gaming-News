@@ -1308,6 +1308,19 @@ test("studio local voice path caps pauses between split game-title fragments", (
   assert.deepEqual(gaps, [0.18, 0.18]);
 });
 
+test("studio local voice path caps pauses before title suffixes like Gears of War E-Day", () => {
+  const voiceSegments = [
+    { label: "hook", text: "Gears of War" },
+    { label: "body", text: "E-Day finally has new footage" },
+  ];
+  const gaps = resolveLocalInterSegmentGapSchedule({
+    interSegmentPausePlan: { gapS: 1.85, maxPauseS: 1.85 },
+    voiceSegments,
+  });
+
+  assert.deepEqual(gaps, [0.18]);
+});
+
 test("studio local voice path keeps normal hook/body pauses intact", () => {
   const voiceSegments = [
     { label: "hook", text: "Big news" },

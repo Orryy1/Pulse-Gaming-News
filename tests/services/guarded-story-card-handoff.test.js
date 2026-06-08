@@ -172,3 +172,40 @@ test("guarded story-card handoff is idempotent when Story actions already exist"
   assert.equal(report.summary.total_story_card_action_count, 2);
   assert.equal(report.executor_plan.handoff_ready_actions.length, existingActions.length);
 });
+
+test("guarded story-card handoff regenerates stale missing Story image paths", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-story-card-handoff-stale-"));
+  const staleImageRel = path.join("output", "stories", "rss_story_story.png");
+  const generatedImageRel = path.join("output", "stories", "rss_story_story.png");
+  const generatedImageAbs = path.join(root, generatedImageRel);
+  const generatedStories = [];
+
+  const report = await buildGuardedStoryCardHandoff({
+    root,
+    executorPlan: executorPlan("rss_story"),
+    stories: [
+      {
+        id: "rss_story",
+        title: "Steam Controller Date May Have Leaked",
+        approved: true,
+        story_image_path: staleImageRel,
+      },
+    ],
+    materializeCards: true,
+    generatedAt: "2026-06-08T12:55:00.000Z",
+    cardGenerator: async (stories) => {
+      assert.equal(stories[0].story_image_path, "");
+      generatedStories.push(...stories.map((story) => story.id));
+      await fs.outputFile(generatedImageAbs, Buffer.alloc(2048, 1));
+      stories[0].story_image_path = generatedImageRel;
+      return { generated: 1, considered: stories.length };
+    },
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.deepEqual(generatedStories, ["rss_story"]);
+  assert.equal(report.summary.generated_story_card_count, 1);
+  assert.equal(report.summary.blocked_story_card_count, 0);
+  assert.equal(report.summary.appended_story_card_action_count, 2);
+  assert.equal(report.executor_plan.handoff_ready_actions[3].story_image_path, generatedImageRel);
+});

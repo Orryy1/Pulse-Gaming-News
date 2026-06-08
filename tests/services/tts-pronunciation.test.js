@@ -143,6 +143,21 @@ test("Stranger Than Heaven Five Eras avoids Eris/heiress ASR drift in local narr
   );
 });
 
+test("Gears of War E-Day title variants stay one connected phrase", () => {
+  assert.equal(
+    applyGamingPronunciation("Gears of War. E-Day finally showed new footage."),
+    "Gears of War E-Day finally showed new footage.",
+  );
+  assert.equal(
+    applyGamingPronunciation("Gears of War: E-Day finally showed new footage."),
+    "Gears of War E-Day finally showed new footage.",
+  );
+  assert.equal(
+    applyGamingPronunciation("Gears of War E Day finally showed new footage."),
+    "Gears of War E-Day finally showed new footage.",
+  );
+});
+
 test("PlayStation hardware acronyms expand for local narration clarity", () => {
   assert.equal(
     applyGamingPronunciation("PS5 prices changed and PS5 Pro moved too."),

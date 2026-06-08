@@ -96,6 +96,46 @@ test("realignTimestampsToScript preserves modern year display over spoken year e
   assert.equal(aligned[4].end, 1.62);
 });
 
+test("buildKineticAss restores PlayStation hardware numerals from spoken-form caption scripts", () => {
+  const ass = buildKineticAss({
+    story: { title: "PlayStation 5 Price Shift" },
+    words: [
+      { word: "PlayStation", start: 0, end: 0.3 },
+      { word: "five", start: 0.32, end: 0.52 },
+      { word: "prices", start: 0.54, end: 0.82 },
+      { word: "moved.", start: 0.84, end: 1.1 },
+    ],
+    duration: 2,
+    scriptText: "PlayStation five prices moved.",
+  });
+
+  const text = extractAssDialogueText(ass).join(" ");
+  assert.match(text, /PlayStation/);
+  assert.match(text, /5/);
+  assert.doesNotMatch(text, /\bfive\b/i);
+});
+
+test("buildKineticAss restores Gears of War E-Day title formatting from spoken captions", () => {
+  const ass = buildKineticAss({
+    story: { title: "Gears of War E-Day" },
+    words: [
+      { word: "Gears", start: 0, end: 0.24 },
+      { word: "of", start: 0.25, end: 0.34 },
+      { word: "War", start: 0.35, end: 0.56 },
+      { word: "E", start: 0.57, end: 0.68 },
+      { word: "Day", start: 0.69, end: 0.9 },
+      { word: "returns.", start: 0.92, end: 1.2 },
+    ],
+    duration: 2,
+    scriptText: "Gears of War E Day returns.",
+  });
+
+  const text = extractAssDialogueText(ass).join(" ");
+  assert.match(text, /Gears/);
+  assert.match(text, /E-Day/);
+  assert.doesNotMatch(text, /\bE Day\b/);
+});
+
 test("prepareSubtitleWords keeps real numeric timings across natural local-TTS pauses", () => {
   const scriptText =
     "GamesRadar reports the early-access launch hit 130,000 concurrent players on Steam. It is only the premium launch crowd.";

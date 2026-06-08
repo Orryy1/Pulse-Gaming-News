@@ -241,6 +241,81 @@ test("guarded live dispatch executor applies only the selected Instagram action 
   ]);
 });
 
+test("guarded live dispatch executor posts Discord handoff alerts after a new guarded upload", async () => {
+  const persistedSnapshots = [];
+  const discordCalls = [];
+  const generatedAt = "2026-06-08T10:05:00.000Z";
+
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan(),
+    stories: [story()],
+    actionIds: ["story-one:youtube_shorts"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+    uploaders: {
+      youtube_shorts: {
+        uploadShort: async () => ({
+          platform: "youtube",
+          videoId: "yt_1",
+          url: "https://youtube.com/shorts/yt_1",
+        }),
+      },
+    },
+    db: {
+      upsertStory: async (nextStory) => {
+        persistedSnapshots.push({ ...nextStory });
+      },
+    },
+    discordPoster: {
+      postVideoUpload: async (nextStory) => {
+        discordCalls.push(["video_drop", nextStory.id, nextStory.youtube_url]);
+        return { id: "discord_video_1" };
+      },
+      postStoryPoll: async (nextStory) => {
+        discordCalls.push(["story_poll", nextStory.id, nextStory.published_at]);
+        return { id: "discord_poll_1" };
+      },
+    },
+    discordGate: {
+      shouldPostVideoDrop(nextStory) {
+        return !!nextStory.youtube_url && !nextStory.discord_video_drop_posted_at;
+      },
+      shouldPostStoryPoll(nextStory) {
+        return !!nextStory.published_at && !nextStory.discord_story_poll_posted_at;
+      },
+      markVideoDropPosted(nextStory, now) {
+        nextStory.discord_video_drop_posted_at = now.toISOString();
+      },
+      markStoryPollPosted(nextStory, now) {
+        nextStory.discord_story_poll_posted_at = now.toISOString();
+      },
+    },
+    generatedAt,
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.summary.upload_attempt_count, 1);
+  assert.equal(report.summary.db_mutation_count, 1);
+  assert.equal(report.summary.discord_alert_attempt_count, 2);
+  assert.equal(report.summary.discord_alert_post_count, 2);
+  assert.deepEqual(discordCalls, [
+    ["video_drop", "story-one", "https://youtube.com/shorts/yt_1"],
+    ["story_poll", "story-one", generatedAt],
+  ]);
+  assert.equal(persistedSnapshots.length, 3);
+  assert.equal(persistedSnapshots[0].youtube_post_id, "yt_1");
+  assert.equal(persistedSnapshots[0].discord_video_drop_posted_at, undefined);
+  assert.equal(persistedSnapshots[1].discord_video_drop_posted_at, generatedAt);
+  assert.equal(persistedSnapshots[2].discord_story_poll_posted_at, generatedAt);
+  assert.deepEqual(report.actions[0].discord_alerts, [
+    { kind: "video_drop", outcome: "posted", db_mutated: true },
+    { kind: "story_poll", outcome: "posted", db_mutated: true },
+  ]);
+});
+
 test("guarded live dispatch executor applies Instagram Story cards through the image uploader", async () => {
   let instagramStoryCalls = 0;
   const persistedSnapshots = [];

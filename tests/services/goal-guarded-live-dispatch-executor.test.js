@@ -326,6 +326,79 @@ test("guarded live dispatch executor hydrates missing DB stories from canonical 
   assert.equal(report.summary.db_mutation_count, 0);
 });
 
+test("guarded live dispatch executor supplements DB rows with canonical manifest source labels before upload", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-live-source-label-"));
+  const manifestPath = path.join(root, "canonical_story_manifest.json");
+  await fs.writeJson(manifestPath, {
+    story_id: "story-one",
+    canonical_subject: "The Expanse: Osiris Reborn",
+    canonical_game: "The Expanse: Osiris Reborn",
+    selected_title: "The Expanse Shows Real Gameplay",
+    primary_source: "Xbox",
+    source_card_label: "Xbox",
+    primary_source_url: "https://www.youtube.com/watch?v=example",
+    narration_script:
+      "The Expanse: Osiris Reborn finally has real gameplay on screen. Xbox showed combat, dialogue choices and the ship setting in one focused reveal.",
+    thumbnail_text: "EXPANSE GAMEPLAY",
+    description:
+      "Xbox showed The Expanse: Osiris Reborn gameplay during Xbox Partner Preview. Source: Xbox.",
+    pinned_comment: "Source: Xbox.",
+    canonical_angle: "Confirmed Drop",
+  });
+
+  let uploadedStory = null;
+  let preUploadInstagramError = null;
+  let persisted = null;
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("instagram_reels", { canonical_manifest_path: manifestPath }),
+      ],
+    }),
+    stories: [
+      story({
+        url: "https://www.youtube.com/watch?v=example",
+        source_card_label: "",
+        primary_source: "",
+        instagram_error:
+          "instagram upload failed after 3 attempts: Public metadata QA failed for instagram: public_copy:malformed_primary_source_label",
+      }),
+    ],
+    actionIds: ["story-one:instagram_reels"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+    uploaders: {
+      instagram_reels: {
+        uploadShort: async (storyForUpload) => {
+          uploadedStory = storyForUpload;
+          preUploadInstagramError = storyForUpload.instagram_error;
+          assert.equal(storyForUpload.primary_source, "Xbox");
+          assert.equal(storyForUpload.source_card_label, "Xbox");
+          assert.equal(storyForUpload.primary_source_url, "https://www.youtube.com/watch?v=example");
+          assert.equal(storyForUpload._guarded_story_source, "db+canonical_manifest");
+          return { platform: "instagram", mediaId: "ig_media_1" };
+        },
+      },
+    },
+    db: {
+      upsertStory: async (nextStory) => {
+        persisted = nextStory;
+      },
+    },
+    generatedAt: "2026-06-08T10:25:00.000Z",
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.actions[0].outcome, "new_upload");
+  assert.equal(preUploadInstagramError, "instagram upload failed after 3 attempts: Public metadata QA failed for instagram: public_copy:malformed_primary_source_label");
+  assert.equal(uploadedStory.instagram_error, null);
+  assert.equal(persisted.instagram_error, null);
+  assert.equal(persisted.instagram_media_id, "ig_media_1");
+});
+
 test("selectNextGuardedLiveAction skips already-stamped platforms and returns the next unpublished action", async () => {
   const selection = await selectNextGuardedLiveAction({
     executorPlan: executorPlan({

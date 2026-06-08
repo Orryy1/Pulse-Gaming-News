@@ -16,12 +16,22 @@ const {
   isSafeObservationMode,
 } = require("./lib/safe-observation-mode");
 const {
+  applyPrimaryRuntimeHold,
+  isPrimaryRuntimeHold,
+} = require("./lib/primary-runtime-hold");
+const {
   resolveFacebookTokenPath,
   resolveInstagramTokenPath,
 } = require("./lib/token-paths");
 const { describeLlmState } = require("./lib/llm-key");
 
 dotenv.config({ override: true });
+const PRIMARY_RUNTIME_HOLD = applyPrimaryRuntimeHold(process.env);
+if (PRIMARY_RUNTIME_HOLD.applied) {
+  console.log(
+    "[server] PULSE_PRIMARY_RUNTIME_HOLD=true - reporting local primary while posting, scheduler and Discord bot stay disabled",
+  );
+}
 const SAFE_OBSERVATION_MODE = applySafeObservationMode(process.env);
 if (SAFE_OBSERVATION_MODE.applied) {
   console.log(
@@ -848,6 +858,7 @@ app.get("/api/health", (req, res) => {
     use_job_queue_explicit: process.env.USE_JOB_QUEUE || null,
     auto_publish: process.env.AUTO_PUBLISH === "true",
     safe_observation_mode: isSafeObservationMode(process.env),
+    primary_runtime_hold: isPrimaryRuntimeHold(process.env),
     dispatch: dispatchMode,
     sqlite_db_path: sqliteDbPath ? "(configured)" : null,
     sqlite_db_path_redacted: !!sqliteDbPath,
@@ -2968,6 +2979,11 @@ const server = app.listen(PORT, () => {
     console.log(
       "[server] Safe observation mode active - scheduler and jobs runner skipped",
     );
+  } else if (isPrimaryRuntimeHold(process.env)) {
+    schedulerRunning = false;
+    console.log(
+      "[server] Primary runtime hold active - scheduler and jobs runner skipped",
+    );
   } else {
     startAutonomousScheduler().catch((err) => {
       console.log(`[server] Autonomous scheduler startup error: ${err.message}`);
@@ -2977,6 +2993,8 @@ const server = app.listen(PORT, () => {
   // Start Discord bot alongside the server
   if (!primaryInstance) {
     console.log("[server] Discord bot skipped - non-primary mirror");
+  } else if (isPrimaryRuntimeHold(process.env)) {
+    console.log("[server] Discord bot skipped - primary runtime hold");
   } else if (process.env.DISCORD_BOT_TOKEN && process.env.DISCORD_GUILD_ID) {
     try {
       const botProcess = spawn("node", ["discord/bot.js"], {

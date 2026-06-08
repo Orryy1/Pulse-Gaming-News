@@ -1055,6 +1055,18 @@ app.post(
     res.json({ status: "started", message: "Full autonomous cycle initiated" });
 
     try {
+      const {
+        guardedLivePublishArmed,
+        handleGuardedLiveDispatchPublish,
+      } = require("./lib/job-handlers");
+      if (guardedLivePublishArmed(process.env)) {
+        await handleGuardedLiveDispatchPublish(
+          { id: "api_autonomous_run" },
+          { log: (msg) => console.log(`[server] ${msg}`) },
+        );
+        return;
+      }
+
       const { fullAutonomousCycle } = require("./publisher");
       await fullAutonomousCycle({ dispatchSource: "api_autonomous_run" });
     } catch (err) {
@@ -1096,6 +1108,18 @@ app.post(
     });
 
     try {
+      const {
+        guardedLivePublishArmed,
+        handleGuardedLiveDispatchPublish,
+      } = require("./lib/job-handlers");
+      if (guardedLivePublishArmed(process.env)) {
+        await handleGuardedLiveDispatchPublish(
+          { id: "api_autonomous_publish" },
+          { log: (msg) => console.log(`[server] ${msg}`) },
+        );
+        return;
+      }
+
       const { publishToAllPlatforms } = require("./publisher");
       await publishToAllPlatforms({ dispatchSource: "api_autonomous_publish" });
     } catch (err) {

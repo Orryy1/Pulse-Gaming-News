@@ -72,6 +72,13 @@ test("publisher direct routes are centrally gated and carry precise source metad
   assert.match(publisher, /publish_dispatch_blocked/);
   assert.match(server, /dispatchSource:\s*"api_autonomous_run"/);
   assert.match(server, /dispatchSource:\s*"api_autonomous_publish"/);
+  assert.match(server, /guardedLivePublishArmed\(process\.env\)/);
+  assert.match(server, /handleGuardedLiveDispatchPublish/);
+  assert.ok(
+    server.indexOf("guardedLivePublishArmed(process.env)") <
+      server.indexOf("publishToAllPlatforms({ dispatchSource: \"api_autonomous_publish\" })"),
+    "guarded live dispatch branch must run before legacy API publish fallback",
+  );
   assert.match(run, /dispatchSource:\s*"cli_full"/);
   assert.match(run, /dispatchSource:\s*"cli_publish"/);
   assert.match(breaking, /dispatchSource:\s*"breaking_fast_lane"/);

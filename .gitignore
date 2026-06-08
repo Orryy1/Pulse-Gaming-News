@@ -98,3 +98,4 @@ youtube.js
 # --- Claude Code / editor local state ---
 .claude/settings.local.json
 .claude/launch.json
+.codex-remote-attachments/

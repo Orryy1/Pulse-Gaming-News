@@ -262,6 +262,60 @@ test("buildPublishCadenceReport: historical failed rows with platform IDs are cl
   );
 });
 
+test("buildPublishCadenceReport: counts published platform_posts when story timestamps are missing", () => {
+  const report = buildPublishCadenceReport({
+    now: "2026-05-15T00:00:00.000Z",
+    windowHours: 24,
+    stories: [
+      {
+        id: "story-without-stamp",
+        title: "Posted but story row was not stamped",
+      },
+    ],
+    platformPosts: [
+      {
+        id: 42,
+        story_id: "story-without-stamp",
+        title: "Posted but story row was not stamped",
+        platform: "instagram_reel",
+        status: "published",
+        external_id: "ig_42",
+        published_at: "2026-05-14T23:00:00.000Z",
+      },
+    ],
+    jobs: [],
+  });
+
+  assert.equal(report.summary.published_count, 1);
+  assert.equal(report.summary.platform_post_events, 1);
+  assert.equal(report.publish_events[0].source, "platform_posts");
+  assert.deepEqual(report.publish_events[0].platforms, ["instagram"]);
+});
+
+test("buildPublishCadenceReport: zero recent DB posts is telemetry-incomplete when platform IDs exist", () => {
+  const report = buildPublishCadenceReport({
+    now: "2026-06-08T09:00:00.000Z",
+    windowHours: 48,
+    stories: [
+      {
+        id: "old-public",
+        title: "Historical public row",
+        published_at: "2026-05-22T14:00:00.000Z",
+        youtube_post_id: "yt_old",
+      },
+    ],
+    jobs: [],
+  });
+
+  assert.equal(report.verdict, "amber");
+  assert.equal(report.summary.published_count, 0);
+  assert.equal(report.telemetry.story_rows_with_platform_ids, 1);
+  assert.equal(report.telemetry.platform_truth_checked, false);
+  assert.ok(report.telemetry.limitations.includes("external_platform_inventory_not_checked"));
+  assert.match(report.advisory.join("\n"), /not proof that no platform posts happened/i);
+  assert.match(formatPublishCadenceMarkdown(report), /Telemetry Scope/);
+});
+
 test("computeNextSafePublishWindow: waits until cap clears then picks next canonical window", () => {
   const next = computeNextSafePublishWindow({
     nowDate: "2026-05-15T00:53:00.000Z",

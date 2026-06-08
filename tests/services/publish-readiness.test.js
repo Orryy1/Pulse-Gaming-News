@@ -53,6 +53,154 @@ test("dominantVerdict: all green stays green", () => {
   assert.equal(pr.dominantVerdict(["green", "green", "green"]), "green");
 });
 
+test("applyEnabledPlatformAutoPublishReadinessScope: guarded enabled-platform handoff clears advisory AMBERs", () => {
+  const pillars = {
+    publish_cadence: {
+      verdict: "amber",
+      reason: "1_off_schedule",
+      raw: {
+        summary: {
+          published_count: 1,
+          off_schedule_count: 1,
+          burst_pairs: 0,
+          failed_rows_with_platform_ids_recent: 0,
+          invalid_public_story_rows: 0,
+        },
+        thresholds: {
+          max_recommended_posts_per_24h: 3,
+        },
+      },
+    },
+    strict_dry_run_control: {
+      verdict: "amber",
+      reason: "human_review_required_or_platforms_deferred",
+      raw: {
+        safety_intact: true,
+        ready_for_unattended_publish: false,
+        ready_story_count: 11,
+        blocked_story_count: 0,
+        platform_publish_now_action_count: 33,
+        platform_deferred_action_count: 44,
+        blocked_action_count: 0,
+        human_review_required_action_count: 33,
+        live_publish_allowed_action_count: 0,
+        disabled_platform_count: 3,
+        reviewable_enabled_action_count: 33,
+      },
+    },
+    human_review_approval_gate: {
+      verdict: "green",
+      raw: {
+        approved_action_count: 33,
+        invalid_decision_count: 0,
+        guarded_dispatch_eligible: true,
+      },
+    },
+    guarded_dispatch_preflight: {
+      verdict: "green",
+      raw: {
+        dispatch_ready_action_count: 33,
+        blocked_action_count: 0,
+        safety_blocker_count: 0,
+        ready_for_guarded_dispatch: true,
+      },
+    },
+    guarded_dispatch_executor_preflight: {
+      verdict: "green",
+      raw: {
+        handoff_ready_action_count: 33,
+        blocked_selected_action_count: 0,
+        ready_for_live_executor_handoff: true,
+      },
+    },
+    platform_status: {
+      verdict: "amber",
+      reason: "disabled: pinterest=pinterest_not_configured, threads=threads_not_configured, tiktok=operator_disabled, twitter=x_optional_disabled",
+      raw: {
+        summary: {
+          needs_credentials_platform_count: 0,
+          blocked_external_platform_count: 0,
+          disabled_platform_count: 4,
+          disabled_platforms: ["pinterest", "threads", "tiktok", "twitter"],
+        },
+        operational: {
+          youtube: { state: "enabled", reason: "core_upload_path" },
+          instagram_reel: { state: "enabled", reason: "graph_credentials_present" },
+          facebook_reel: { state: "enabled", reason: "facebook_reels_enabled" },
+          tiktok: { state: "disabled", reason: "operator_disabled" },
+          twitter: { state: "disabled", reason: "x_optional_disabled" },
+          threads: { state: "disabled", reason: "threads_not_configured" },
+          pinterest: { state: "disabled", reason: "pinterest_not_configured" },
+        },
+      },
+    },
+    tiktok_external_block: {
+      verdict: "amber",
+      reason: "direct_post_approval_not_declared",
+      raw: {
+        tiktok_status: "token_ready",
+      },
+    },
+  };
+
+  const scoped = pr.applyEnabledPlatformAutoPublishReadinessScope(pillars);
+
+  assert.equal(scoped.scope.name, "enabled_platform_guarded_handoff");
+  assert.deepEqual(scoped.scope.overridden_pillars.sort(), [
+    "platform_status",
+    "publish_cadence",
+    "strict_dry_run_control",
+    "tiktok_external_block",
+  ].sort());
+  assert.equal(scoped.pillars.publish_cadence.verdict, "green");
+  assert.equal(scoped.pillars.strict_dry_run_control.verdict, "green");
+  assert.equal(scoped.pillars.platform_status.verdict, "green");
+  assert.equal(scoped.pillars.tiktok_external_block.verdict, "green");
+  assert.equal(
+    scoped.pillars.tiktok_external_block.raw.deferred_reason,
+    "direct_post_approval_not_declared",
+  );
+});
+
+test("applyEnabledPlatformAutoPublishReadinessScope: core platform credential gaps stay amber", () => {
+  const pillars = {
+    human_review_approval_gate: {
+      verdict: "green",
+      raw: { approved_action_count: 3, invalid_decision_count: 0, guarded_dispatch_eligible: true },
+    },
+    guarded_dispatch_preflight: {
+      verdict: "green",
+      raw: { dispatch_ready_action_count: 3, blocked_action_count: 0, safety_blocker_count: 0, ready_for_guarded_dispatch: true },
+    },
+    guarded_dispatch_executor_preflight: {
+      verdict: "green",
+      raw: { handoff_ready_action_count: 3, blocked_selected_action_count: 0, ready_for_live_executor_handoff: true },
+    },
+    platform_status: {
+      verdict: "amber",
+      reason: "needs_credentials: instagram_reel=instagram_graph_credentials_missing",
+      raw: {
+        summary: {
+          needs_credentials_platform_count: 1,
+          needs_credentials_platforms: ["instagram_reel"],
+          disabled_platform_count: 0,
+          blocked_external_platform_count: 0,
+        },
+        operational: {
+          youtube: { state: "enabled" },
+          instagram_reel: { state: "needs_credentials" },
+          facebook_reel: { state: "enabled" },
+        },
+      },
+    },
+  };
+
+  const scoped = pr.applyEnabledPlatformAutoPublishReadinessScope(pillars);
+
+  assert.equal(scoped.pillars.platform_status.verdict, "amber");
+  assert.equal(scoped.scope.overridden_pillars.includes("platform_status"), false);
+});
+
 // ── PILLAR_NAMES contract ────────────────────────────────────────
 
 test("PILLAR_NAMES: includes cadence plus the original readiness pillars", () => {

@@ -241,6 +241,72 @@ test("guarded live dispatch executor applies only the selected Instagram action 
   ]);
 });
 
+test("guarded live dispatch executor applies Instagram Story cards through the image uploader", async () => {
+  let instagramStoryCalls = 0;
+  const persistedSnapshots = [];
+  const platformPostCalls = [];
+  const generatedAt = "2026-06-08T11:20:00.000Z";
+
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("instagram_story", {
+          video_path: "",
+          captions_path: "",
+          first_frame_source: "",
+          image_path: "output/stories/story-one_story.png",
+          story_image_path: "output/stories/story-one_story.png",
+        }),
+      ],
+    }),
+    stories: [story({ youtube_post_id: "yt_existing" })],
+    actionIds: ["story-one:instagram_story"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+    uploaders: {
+      instagram_story: {
+        uploadStoryImage: async (storyForUpload) => {
+          instagramStoryCalls += 1;
+          assert.equal(storyForUpload.story_image_path, "output/stories/story-one_story.png");
+          assert.equal(persistedSnapshots[0].story_image_path, "output/stories/story-one_story.png");
+          return { platform: "instagram_story", mediaId: "ig_story_1" };
+        },
+      },
+    },
+    db: {
+      upsertStory: async (nextStory) => {
+        persistedSnapshots.push({ ...nextStory });
+      },
+    },
+    platformPosts: {
+      ensurePending(storyId, platform, options = {}) {
+        platformPostCalls.push(["ensurePending", storyId, platform, options.idempotencyKey]);
+        return { id: 23 };
+      },
+      markPublished(id, result = {}) {
+        platformPostCalls.push(["markPublished", id, result.externalId, result.externalUrl || null]);
+      },
+    },
+    generatedAt,
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.actions[0].outcome, "new_upload");
+  assert.equal(report.actions[0].external_id, "ig_story_1");
+  assert.equal(instagramStoryCalls, 1);
+  assert.equal(persistedSnapshots.length, 2);
+  assert.equal(persistedSnapshots[1].instagram_story_id, "ig_story_1");
+  assert.equal(persistedSnapshots[1].instagram_story_error, null);
+  assert.equal(persistedSnapshots[1].instagram_story_published_at, generatedAt);
+  assert.deepEqual(platformPostCalls, [
+    ["ensurePending", "story-one", "instagram_story", "story-one:instagram_story"],
+    ["markPublished", 23, "ig_story_1", null],
+  ]);
+});
+
 test("guarded live dispatch executor skips already-published selected actions without upload", async () => {
   let uploadCalls = 0;
   let upsertCalls = 0;

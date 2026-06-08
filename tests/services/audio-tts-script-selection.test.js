@@ -133,6 +133,13 @@ test("cleanForTTS: speaks Hades II as Hades two without comma artefacts", () => 
   );
 });
 
+test("cleanForTTS: removes title-colon pauses inside canonical game names", () => {
+  assert.equal(
+    cleanForTTS("The Expanse: Osiris Reborn finally showed real gameplay."),
+    "The Expanse Osiris Reborn finally showed real gameplay.",
+  );
+});
+
 test("cleanForTTS: normalises Stranger Than Heaven title casing for local clone clarity", () => {
   assert.equal(
     cleanForTTS("STRANGER THAN HEAVEN Five Eras is swinging at more than one period piece."),

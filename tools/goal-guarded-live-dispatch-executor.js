@@ -71,7 +71,7 @@ function usage() {
     "  PULSE_GUARDED_LIVE_DISPATCH_ENABLED=true",
     "  PULSE_EMERGENCY_KILL_SWITCH=clear",
     "",
-    "This executor only supports youtube_shorts, instagram_reels and facebook_reels handoff actions.",
+    "This executor supports youtube_shorts, instagram_reels, facebook_reels, instagram_story and facebook_story handoff actions.",
   ].join("\n");
 }
 

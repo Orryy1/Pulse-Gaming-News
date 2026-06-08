@@ -315,6 +315,80 @@ test("controlled restart pack rejects duplicate-title and timing-uncertain candi
   });
 });
 
+test("controlled restart pack accepts rights records and caption word-count timing evidence", async () => {
+  await withTempDir(async (root) => {
+    const id = "records-and-caption-ready";
+    await writeStory(root, id, "Restart Records Caption Ready");
+    const dir = path.join(root, "output", "goal-proof", "batch", id);
+    await fs.writeJson(path.join(dir, "rights_ledger.json"), {
+      verdict: "pass",
+      failures: [],
+      warnings: [],
+      records: [
+        { asset_id: "record-1", approval_status: "approved_for_transformative_editorial_use" },
+        { asset_id: "record-2", approval_status: "approved_for_transformative_editorial_use" },
+      ],
+    });
+    await fs.writeJson(path.join(dir, "narration_manifest.json"), {
+      status: "ready",
+      provider: "elevenlabs",
+      word_timestamp_source: "elevenlabs_alignment_normalised",
+      word_timestamp_count: 0,
+    });
+    await fs.writeJson(path.join(dir, "caption_manifest.json"), {
+      status: "ready",
+      timing_source: "word_timestamps",
+      word_timestamp_count: 118,
+      blockers: [],
+    });
+
+    const report = await buildControlledRestartPack({
+      root,
+      generatedAt: "2026-06-01T12:00:00.000Z",
+      candidateLimit: 1,
+      candidateReport: {
+        candidates: [
+          {
+            id,
+            title: "Restart Records Caption Ready",
+            status: "publish_ready",
+            score: 100,
+            duration_seconds: 44,
+            source: {
+              exported_path: path.join(dir, "visual_v4_render.mp4"),
+            },
+            preflight_qa: {
+              status: "pass",
+              blockers: [],
+              warnings: [],
+              checks: {
+                timestamp_alignment: {
+                  result: "pass",
+                  evidence: { source: "elevenlabs_alignment_normalised" },
+                },
+              },
+            },
+          },
+        ],
+      },
+      strictDryRunPlan: {
+        overall_verdict: "AMBER",
+        actions: [
+          action(id, "youtube_shorts", true),
+          action(id, "instagram_reels", true),
+          action(id, "facebook_reels", true),
+          action(id, "tiktok", false),
+        ],
+      },
+      platformStatusMatrix: {},
+    });
+
+    assert.equal(report.verdict, "AMBER");
+    assert.deepEqual(report.selected_restart_candidates.map((candidate) => candidate.story_id), [id]);
+    assert.equal(report.rejected_restart_candidates.length, 0);
+  });
+});
+
 test("controlled restart pack rejects internally framed narration before restart approval", async () => {
   await withTempDir(async (root) => {
     const ids = ["clean-a", "internal-copy", "clean-b"];

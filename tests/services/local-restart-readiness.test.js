@@ -20,18 +20,34 @@ const {
 
 const ROOT = path.resolve(__dirname, "..", "..");
 
-function healthy(commit = "abcdef1234567890") {
+function healthy(commit = "abcdef1234567890", overrides = {}) {
+  const runtime = {
+    auto_publish: true,
+    use_job_queue_explicit: "true",
+    safe_observation_mode: false,
+    controlled_restart_no_scheduler_mode: false,
+    dispatch: {
+      mode: "queue",
+      strict: true,
+      reason: "queue_guarded",
+    },
+    ...(overrides.runtime || {}),
+  };
   return {
     ok: true,
     status: 200,
     json: {
       status: "ok",
+      schedulerActive: overrides.schedulerActive ?? true,
       deployment: { mode: "local", primary: true },
       build: {
         commit_sha: commit,
         commit_short: commit.slice(0, 7),
         branch: "codex/test",
+        ...(overrides.build || {}),
       },
+      runtime,
+      ...(overrides.json || {}),
     },
   };
 }
@@ -369,6 +385,142 @@ test("local restart readiness blocks stale running build and disabled cadence ga
       "public script-validation fallback rows need repair before a clean resume",
     ),
   );
+});
+
+test("local restart readiness blocks runtime ownership drift even when commit matches", async () => {
+  const drifted = healthy("abcdef1234567890", {
+    schedulerActive: false,
+    runtime: {
+      auto_publish: false,
+      use_job_queue_explicit: "false",
+      controlled_restart_no_scheduler_mode: true,
+      dispatch: {
+        mode: "legacy_dev",
+        strict: false,
+        reason: "dev_explicit_legacy_opt_in",
+      },
+    },
+  });
+  const report = await buildLocalRestartReadiness({
+    cwd: ROOT,
+    env: {
+      PORT: "3001",
+      LOCAL_PUBLIC_URL: "https://pulse.orryy.com",
+      AUTO_PUBLISH: "true",
+      USE_JOB_QUEUE: "true",
+      PULSE_PRIMARY_INSTANCE: "true",
+      PULSE_SAFE_OBSERVATION_MODE: "false",
+      PUBLISH_REQUIRE_WINDOW: "true",
+      PUBLISH_REQUIRE_MIN_GAP: "true",
+      PUBLISH_REQUIRE_DAILY_CAP: "true",
+    },
+    currentBuild: {
+      commit_sha: "abcdef1234567890",
+      commit_short: "abcdef1",
+      branch: "codex/test",
+    },
+    localHealth: drifted,
+    publicHealth: drifted,
+    cadenceReport: cleanCadence(),
+    gitStatus: { clean: true, changed_count: 0, changed_files: [] },
+    windowsSchedulerHygiene: cleanSchedulerHygiene(),
+  });
+
+  assert.equal(report.verdict, "red");
+  assert.ok(
+    report.blockers.includes("running local server AUTO_PUBLISH=false but expected true"),
+  );
+  assert.ok(
+    report.blockers.includes("running local server USE_JOB_QUEUE=false but expected true"),
+  );
+  assert.ok(
+    report.blockers.includes("running local server schedulerActive=false but expected true"),
+  );
+  assert.ok(
+    report.blockers.includes("running local server is in controlled restart no-scheduler mode"),
+  );
+  assert.ok(
+    report.blockers.includes("running local server dispatch mode=legacy_dev, expected queue"),
+  );
+  assert.ok(
+    report.blockers.includes("public server AUTO_PUBLISH=false but expected true"),
+  );
+  assert.equal(
+    report.running.local.runtime_ownership.facts.dispatch_mode,
+    "legacy_dev",
+  );
+});
+
+test("local restart readiness blocks branch drift even when commit still matches", async () => {
+  const report = await buildLocalRestartReadiness({
+    cwd: ROOT,
+    env: {
+      PORT: "3001",
+      LOCAL_PUBLIC_URL: "https://pulse.orryy.com",
+      PUBLISH_REQUIRE_WINDOW: "true",
+      PUBLISH_REQUIRE_MIN_GAP: "true",
+      PUBLISH_REQUIRE_DAILY_CAP: "true",
+    },
+    currentBuild: {
+      commit_sha: "abcdef1234567890",
+      commit_short: "abcdef1",
+      branch: "codex/approved",
+    },
+    localHealth: healthy("abcdef1234567890", {
+      build: { branch: "codex/wrong-runtime" },
+    }),
+    publicHealth: healthy("abcdef1234567890", {
+      build: { branch: "codex/wrong-runtime" },
+    }),
+    cadenceReport: cleanCadence(),
+    gitStatus: { clean: true, changed_count: 0, changed_files: [] },
+    windowsSchedulerHygiene: cleanSchedulerHygiene(),
+  });
+
+  assert.equal(report.verdict, "red");
+  assert.ok(
+    report.blockers.includes(
+      "running local server branch codex/wrong-runtime does not match current branch codex/approved",
+    ),
+  );
+  assert.ok(
+    report.blockers.includes(
+      "public server branch codex/wrong-runtime does not match current branch codex/approved",
+    ),
+  );
+});
+
+test("local restart readiness is green for the approved queue runtime flags", async () => {
+  const report = await buildLocalRestartReadiness({
+    cwd: ROOT,
+    env: {
+      PORT: "3001",
+      LOCAL_PUBLIC_URL: "https://pulse.orryy.com",
+      AUTO_PUBLISH: "true",
+      USE_JOB_QUEUE: "true",
+      PULSE_PRIMARY_INSTANCE: "true",
+      PULSE_SAFE_OBSERVATION_MODE: "false",
+      PUBLISH_REQUIRE_WINDOW: "true",
+      PUBLISH_REQUIRE_MIN_GAP: "true",
+      PUBLISH_REQUIRE_DAILY_CAP: "true",
+    },
+    currentBuild: {
+      commit_sha: "abcdef1234567890",
+      commit_short: "abcdef1",
+      branch: "codex/test",
+    },
+    localHealth: healthy("abcdef1234567890"),
+    publicHealth: healthy("abcdef1234567890"),
+    cadenceReport: cleanCadence(),
+    gitStatus: { clean: true, changed_count: 0, changed_files: [] },
+    windowsSchedulerHygiene: cleanSchedulerHygiene(),
+  });
+
+  assert.equal(report.verdict, "green");
+  assert.equal(report.expected_runtime.AUTO_PUBLISH, true);
+  assert.equal(report.expected_runtime.USE_JOB_QUEUE, true);
+  assert.equal(report.expected_runtime.schedulerActive, true);
+  assert.equal(report.expected_runtime.dispatch_mode, "queue");
 });
 
 test("local restart readiness is green when build, health, cadence and gates are clean", async () => {

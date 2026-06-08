@@ -20,6 +20,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     humanReviewQueuePath: null,
     reviewPacketManifestPath: null,
     operatorDecisionLogPath: null,
+    strictDryRunPlanPath: null,
     outDir: path.join(process.cwd(), "output", "goal-contract"),
     generatedAt: null,
     json: false,
@@ -31,6 +32,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--human-review-queue") args.humanReviewQueuePath = argv[++i] || "";
     else if (arg === "--review-packet-manifest") args.reviewPacketManifestPath = argv[++i] || "";
     else if (arg === "--operator-decision-log") args.operatorDecisionLogPath = argv[++i] || "";
+    else if (arg === "--strict-dry-run-plan") args.strictDryRunPlanPath = argv[++i] || "";
     else if (arg === "--out-dir") args.outDir = argv[++i] || args.outDir;
     else if (arg === "--generated-at") args.generatedAt = argv[++i] || null;
     else if (arg === "--json") args.json = true;
@@ -49,6 +51,7 @@ function usage() {
     "  --human-review-queue <path>          human_review_queue.json",
     "  --review-packet-manifest <path>      review_packet_manifest.json",
     "  --operator-decision-log <path>       operator_decision_log.json",
+    "  --strict-dry-run-plan <path>          dry_run_publish_plan.json",
     "  --out-dir <dir>                      Output directory",
     "  --generated-at <iso>                 Fixed timestamp",
     "  --json                               Print JSON",
@@ -60,6 +63,11 @@ function usage() {
 
 async function readJson(filePath, label) {
   if (!await fs.pathExists(filePath)) throw new Error(`${label} not found: ${filePath}`);
+  return fs.readJson(filePath);
+}
+
+async function readOptionalJson(filePath) {
+  if (!filePath || !await fs.pathExists(filePath)) return {};
   return fs.readJson(filePath);
 }
 
@@ -79,11 +87,15 @@ async function main(argv = process.argv.slice(2)) {
   const operatorDecisionLogPath = args.operatorDecisionLogPath
     ? path.resolve(root, args.operatorDecisionLogPath)
     : path.join(root, "output", "goal-contract", "operator_decision_log.json");
+  const strictDryRunPlanPath = args.strictDryRunPlanPath
+    ? path.resolve(root, args.strictDryRunPlanPath)
+    : path.join(root, "output", "goal-contract", "dry_run_publish_plan.json");
 
   const report = buildHumanReviewApprovalGate({
     humanReviewQueue: await readJson(humanReviewQueuePath, "human review queue"),
     reviewPacketManifest: await readJson(reviewPacketManifestPath, "review packet manifest"),
     operatorDecisionLog: await readJson(operatorDecisionLogPath, "operator decision log"),
+    strictDryRunPlan: await readOptionalJson(strictDryRunPlanPath),
     generatedAt: args.generatedAt || new Date().toISOString(),
   });
   const artefacts = await writeHumanReviewApprovalGate(report, {

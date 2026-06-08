@@ -285,6 +285,66 @@ test("approval gate converts a valid operator decision into enabled-platform gua
   assert.equal(report.safety.no_network_uploads, true);
 });
 
+test("approval gate inherits strict dry-run platform media paths for guarded dispatch", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-human-review-strict-media-"));
+  const packet = await reviewPacketWithProof(root);
+  const instagramDir = path.join(root, "platform_variants", "instagram_reels");
+  await fs.ensureDir(instagramDir);
+  const instagramVideo = path.join(instagramDir, "visual_v4_render_instagram_reels.mp4");
+  const instagramCaptions = path.join(instagramDir, "captions_instagram_reels.srt");
+  await fs.writeFile(instagramVideo, "instagram-video-v1");
+  await fs.writeFile(instagramCaptions, "instagram-caption-v1");
+
+  const report = buildHumanReviewApprovalGate({
+    humanReviewQueue: humanReviewQueue(packet),
+    reviewPacketManifest: reviewPacketManifest(packet),
+    operatorDecisionLog: {
+      mode: "HUMAN_REVIEW_DECISION_LOG",
+      decisions: [decision({ reviewed_artefact_fingerprints: fingerprintMap(packet.artefacts) })],
+      safety: {
+        no_live_publish_from_log: true,
+        no_network_uploads: true,
+        no_db_mutation: true,
+        no_oauth_or_token_change: true,
+      },
+    },
+    strictDryRunPlan: {
+      mode: "DRY_RUN_PUBLISH",
+      actions: [
+        {
+          action: "would_publish",
+          story_id: "story-one",
+          platform: "instagram_reels",
+          video_path: instagramVideo,
+          captions_path: instagramCaptions,
+          cover_frame_source: instagramVideo,
+        },
+      ],
+      safety: {
+        no_publish_triggered: true,
+        no_network_uploads: true,
+        no_db_mutation: true,
+        no_oauth_or_token_change: true,
+        dry_run_only: true,
+      },
+    },
+    generatedAt: "2026-05-31T18:10:00.000Z",
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  const youtube = report.approved_actions.find((action) => action.platform === "youtube_shorts");
+  const instagram = report.approved_actions.find((action) => action.platform === "instagram_reels");
+  assert.equal(youtube.video_path, packet.artefacts.video_path);
+  assert.equal(youtube.captions_path, packet.artefacts.captions_path);
+  assert.equal(youtube.platform_media_source, "review_packet_artefacts");
+  assert.equal(instagram.video_path, instagramVideo);
+  assert.equal(instagram.captions_path, instagramCaptions);
+  assert.equal(instagram.first_frame_source, instagramVideo);
+  assert.equal(instagram.reviewed_review_packet_video_path, packet.artefacts.video_path);
+  assert.equal(instagram.reviewed_review_packet_captions_path, packet.artefacts.captions_path);
+  assert.equal(instagram.platform_media_source, "strict_dry_run_platform_action");
+});
+
 test("approval gate blocks approvals that skip required visual strip and QA review evidence", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-human-review-visual-evidence-"));
   const packet = reviewPacket({

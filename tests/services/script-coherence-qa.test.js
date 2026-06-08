@@ -350,6 +350,26 @@ test("script coherence blocks restart-pack editorial scaffolding in public narra
   );
 });
 
+test("script coherence blocks public narration that says producer notes out loud", () => {
+  const qa = runScriptCoherenceQa(
+    {
+      title: "Doom The Dark Ages Gets A New Reveal",
+      source_type: "rss",
+      subreddit: "IGN",
+      cta: "Follow Pulse Gaming so you never miss a beat",
+      full_script:
+        "Doom The Dark Ages just showed a new campaign beat. IGN reports the latest reveal puts the new shield saw front and centre. The hook here is that this gives fans something concrete to argue about after the trailer. Follow Pulse Gaming so you never miss a beat.",
+    },
+    { requireCtaField: true, requireFullScriptCta: true },
+  );
+
+  assert.equal(qa.result, "fail");
+  assert.ok(
+    qa.failures.includes("script_coherence:vague_filler:public_narration_meta_language"),
+    qa.failures.join(", "),
+  );
+});
+
 test("script coherence blocks overused clickbait pivots that make stories sound generic", () => {
   const qa = runScriptCoherenceQa(
     {

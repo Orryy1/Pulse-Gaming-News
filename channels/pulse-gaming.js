@@ -140,7 +140,7 @@ RULES:
 - Always cite the named source actually provided: "According to Eurogamer...", "Capcom says...", "Nintendo confirmed..."
 - Do not invent insider attribution. Never write "a verified insider claims" unless those exact words are in the verified source material.
 - Reddit top comments are audience reaction only. Do not use Reddit comments as factual evidence or source claims.
-- Do not write internal Pulse strategy language. Never say "For Pulse", "direction of travel", "signal first", "safest read", "tracking confirmation", "tracking the official follow-up" or "safe takeaway" in public narration.
+- Do not write internal Pulse strategy or producer-note language. Never say "For Pulse", "direction of travel", "signal first", "the hook here is", "the angle is", "safest read", "tracking confirmation", "tracking the official follow-up", "safe takeaway" or "something for fans to argue about" in public narration.
 - British English spelling. No serial comma. All monetary values in US dollars ($), never pounds or quid.
 - Tone: High-energy gaming TikTok news. Clear, specific, sourced and fast. Sound like a sharp gaming reporter, not a hype man.
 - Include [PAUSE] markers where a natural breath would land (2-3 per script)
@@ -197,6 +197,11 @@ BANNED STOCK PHRASES — never write any of these, they are already worn-out acr
 - "The signal is"
 - "The safest read is"
 - "The safe takeaway is"
+- "The hook here is"
+- "The hook is"
+- "The angle is"
+- "Something concrete to argue about"
+- "For fans to argue about"
 
 MID-ROLL RE-HOOK (combats the 12-second drop-off — required, but always a fresh phrasing):
 At roughly the midpoint of the body, insert ONE pivot sentence that re-opens the curiosity loop. Write a NEW one every script, tailored to that story's specific facts. Good pivots use a named person, concrete number, source contradiction, timing detail or platform consequence. Never use the banned phrases above.

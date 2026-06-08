@@ -274,9 +274,11 @@ test("Pulse channel prompt bans internal strategy boilerplate from narration", (
     "utf8",
   );
 
-  assert.match(channelSource, /Do not write internal Pulse strategy language/);
+  assert.match(channelSource, /Do not write internal Pulse strategy or producer-note language/);
   assert.match(channelSource, /direction of travel/);
   assert.match(channelSource, /signal first/);
+  assert.match(channelSource, /the hook here is/);
+  assert.match(channelSource, /something for fans to argue about/);
   assert.match(channelSource, /safe takeaway/);
   assert.match(channelSource, /High-energy gaming TikTok news/);
   assert.doesNotMatch(channelSource, /slightly conspiratorial/);
@@ -327,7 +329,9 @@ test("fallback system prompt bans fake insider attribution and internal strategy
 
   assert.doesNotMatch(fallbackPrompt, /A verified insider claims/);
   assert.match(fallbackPrompt, /Do not invent insider attribution/);
-  assert.match(fallbackPrompt, /Do not write internal Pulse strategy language/);
+  assert.match(fallbackPrompt, /Do not write internal Pulse strategy or producer-note language/);
+  assert.match(fallbackPrompt, /the hook here is/);
+  assert.match(fallbackPrompt, /for fans to argue about/);
   assert.match(fallbackPrompt, /community is buzzing/);
 });
 

@@ -87,6 +87,7 @@ const {
 } = require("../lib/studio/v2/sound-layer-v2");
 const {
   buildKineticAss,
+  normaliseCaptionDisplayText,
   prepareSubtitleWords,
   realignTimestampsToScript,
 } = require("../lib/studio/v2/subtitle-layer-v2");
@@ -955,7 +956,7 @@ function resolveSubtitleScriptText({
   const transcriptHasSpokenOutro =
     /follow pulse gaming/i.test(transcriptText || "") &&
     !/follow pulse gaming/i.test(editorialText || "");
-  return (
+  const selected =
     displayText ||
     (voice?.editorialScriptAppliedToAudio === true
       ? transcriptHasSpokenOutro
@@ -963,8 +964,8 @@ function resolveSubtitleScriptText({
         : editorialText
       : "") ||
     transcriptText ||
-    ""
-  );
+    "";
+  return normaliseCaptionDisplayText(selected);
 }
 
 function resolveStudioV2CaptionOptions() {

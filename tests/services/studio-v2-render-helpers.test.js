@@ -230,6 +230,23 @@ test("subtitle script text uses cached voice metadata for transcript coverage", 
   assert.doesNotMatch(text, /Wrong stale/);
 });
 
+test("subtitle script text converts spoken modern years back to display years", () => {
+  const text = resolveSubtitleScriptText({
+    voice: { editorialScriptAppliedToAudio: false },
+    tsData: {
+      meta: {
+        text:
+          "The sequel launches in twenty twenty seven. Follow Pulse Gaming so you never miss a beat.",
+      },
+    },
+    editorial: {},
+    spokenTranscript: "",
+  });
+
+  assert.match(text, /in 2027\./);
+  assert.doesNotMatch(text, /twenty twenty seven/i);
+});
+
 test("Studio V2 subtitle base filter blocks visual timelines that under-cover audio", () => {
   assert.throws(
     () =>

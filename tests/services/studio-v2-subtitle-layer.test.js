@@ -77,6 +77,25 @@ test("realignTimestampsToScript preserves numeric display tokens over spoken num
   assert.equal(aligned[4].end, 1.98);
 });
 
+test("realignTimestampsToScript preserves modern year display over spoken year expansions", () => {
+  const aligned = realignTimestampsToScript("The sequel launches in 2027.", [
+    { word: "The", start: 0, end: 0.12 },
+    { word: "sequel", start: 0.14, end: 0.46 },
+    { word: "launches", start: 0.48, end: 0.82 },
+    { word: "in", start: 0.84, end: 0.94 },
+    { word: "twenty", start: 0.96, end: 1.16 },
+    { word: "twenty", start: 1.18, end: 1.38 },
+    { word: "seven", start: 1.4, end: 1.62 },
+  ]);
+
+  assert.deepEqual(
+    aligned.map((word) => word.word),
+    ["The", "sequel", "launches", "in", "2027."],
+  );
+  assert.equal(aligned[4].start, 0.96);
+  assert.equal(aligned[4].end, 1.62);
+});
+
 test("prepareSubtitleWords keeps real numeric timings across natural local-TTS pauses", () => {
   const scriptText =
     "GamesRadar reports the early-access launch hit 130,000 concurrent players on Steam. It is only the premium launch crowd.";
@@ -256,6 +275,31 @@ test("buildKineticAss burns numeric captions while audio speaks the expanded num
   assert.doesNotMatch(captions, /ONE/);
   assert.doesNotMatch(captions, /THIRTY/);
   assert.doesNotMatch(captions, /THOUSAND/);
+});
+
+test("buildKineticAss repairs spoken modern year transcripts for display captions", () => {
+  const ass = buildKineticAss({
+    story: { title: "Subnautica 2" },
+    words: [
+      { word: "The", start: 0, end: 0.12 },
+      { word: "sequel", start: 0.14, end: 0.46 },
+      { word: "launches", start: 0.48, end: 0.82 },
+      { word: "in", start: 0.84, end: 0.94 },
+      { word: "twenty", start: 0.96, end: 1.16 },
+      { word: "twenty", start: 1.18, end: 1.38 },
+      { word: "seven", start: 1.4, end: 1.62 },
+    ],
+    duration: 2,
+    scriptText: "The sequel launches in twenty twenty seven.",
+    maxWordsPerPhrase: 2,
+    maxPhraseChars: 14,
+    captionCase: "upper",
+    revealMode: "phrase",
+  });
+
+  const captions = extractAssDialogueText(ass).join(" ");
+  assert.match(captions, /2027/);
+  assert.doesNotMatch(captions, /TWENTY/);
 });
 
 test("buildKineticAss burns currency captions while audio speaks dollars", () => {

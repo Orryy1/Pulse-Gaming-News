@@ -166,6 +166,7 @@ test("guarded live dispatch executor applies only the selected Instagram action 
   let youtubeCalls = 0;
   let facebookCalls = 0;
   let persisted = null;
+  const platformPostCalls = [];
   const generatedAt = "2026-06-08T10:00:00.000Z";
 
   const report = await runGuardedLiveDispatchExecutor({
@@ -209,6 +210,15 @@ test("guarded live dispatch executor applies only the selected Instagram action 
         persisted = nextStory;
       },
     },
+    platformPosts: {
+      ensurePending(storyId, platform, options = {}) {
+        platformPostCalls.push(["ensurePending", storyId, platform, options.idempotencyKey]);
+        return { id: 17 };
+      },
+      markPublished(id, result = {}) {
+        platformPostCalls.push(["markPublished", id, result.externalId, result.externalUrl || null]);
+      },
+    },
     generatedAt,
   });
 
@@ -225,6 +235,10 @@ test("guarded live dispatch executor applies only the selected Instagram action 
   assert.equal(persisted.instagram_error, null);
   assert.equal(persisted.instagram_published_at, generatedAt);
   assert.equal(persisted.published_at, generatedAt);
+  assert.deepEqual(platformPostCalls, [
+    ["ensurePending", "story-one", "instagram_reel", "story-one:instagram_reels"],
+    ["markPublished", 17, "ig_media_1", null],
+  ]);
 });
 
 test("guarded live dispatch executor skips already-published selected actions without upload", async () => {

@@ -998,13 +998,43 @@ test("Studio V4 overlay chain adds newsroom-grade labels and layered glass rails
     fontOpt: "font='Arial'",
   });
 
-  assert.match(chain, /PULSE \/\/ NEWSWIRE/);
-  assert.match(chain, /VERIFY/);
+  assert.doesNotMatch(chain, /PULSE \/\/ NEWSWIRE/);
+  assert.doesNotMatch(chain, /drawtext=text='VERIFY'/);
+  assert.match(chain, /PULSE VERIFIED/);
   assert.match(chain, /PROOF BEAT/);
   assert.match(chain, /PLAYER READ/);
   assert.match(chain, /color=0x0B0F19@0\.72/);
   assert.match(chain, /color=0x38BDF8@0\.34/);
   assert.doesNotMatch(chain, /color=0xFF6B1A@0\.88:t=fill/);
+});
+
+test("Studio V4 overlay chain keeps opening metadata below Instagram top chrome", () => {
+  const story = {
+    canonical_subject: "The Expanse: Osiris Reborn",
+    primary_source: "Xbox",
+    first_frame_text: "EXPANSE GAMEPLAY REVEAL",
+    thumbnail_headline: "EXPANSE GAMEPLAY REVEAL",
+  };
+  const layout = buildOverlayLayout({ story });
+  const chain = buildOverlayChain({
+    story,
+    inputLabel: "base",
+    outputLabel: "overlayBase",
+    durationS: 24,
+    fontOpt: "font='Arial'",
+  });
+
+  assert.equal(layout.frame.instagram_top_chrome_safe_px, 240);
+  for (const block of layout.text_blocks) {
+    assert.ok(
+      block.y >= layout.frame.instagram_top_chrome_safe_px,
+      `${block.id} starts inside Instagram top chrome at ${block.y}`,
+    );
+  }
+  assert.doesNotMatch(chain, /drawbox=x=42:y=44:w=996:h=98/);
+  assert.doesNotMatch(chain, /drawtext=text='THE EXPANSE\\: OSIRIS REBORN'.*y=65/);
+  assert.match(chain, /drawtext=text='PULSE VERIFIED'.*y=268/);
+  assert.match(chain, /drawtext=text='SOURCE LOCK\s+XBOX'.*y=268/);
 });
 
 test("Studio V4 overlay chain avoids large flat text cards over real footage", () => {
@@ -1080,8 +1110,9 @@ test("Studio V4 overlay chain avoids duplicate story cards over owned generated 
     fontOpt: "font='Arial'",
   });
 
-  assert.match(chain, /PULSE \/\/ NEWSWIRE/);
-  assert.match(chain, /SOURCE LOCK/);
+  assert.doesNotMatch(chain, /PULSE \/\/ NEWSWIRE/);
+  assert.doesNotMatch(chain, /SOURCE LOCK/);
+  assert.match(chain, /PULSE GAMING/);
   assert.doesNotMatch(chain, /MEWTWO IS/);
   assert.doesNotMatch(chain, /PROOF BEAT|PLAYER READ/);
   assert.doesNotMatch(chain, /x=50:y=248:w=980/);

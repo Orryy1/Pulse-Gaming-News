@@ -38,6 +38,7 @@ const FRAME_WIDTH_PX = 1080;
 const FRAME_HEIGHT_PX = 1920;
 const SAFE_RIGHT_PX = 42;
 const SAFE_BOTTOM_PX = 92;
+const INSTAGRAM_TOP_CHROME_SAFE_PX = 240;
 
 const SFX_ROLE_ORDER = ["ui_tick", "transition"];
 const FALLBACK_SFX_CUE_LIMIT = 1;
@@ -834,37 +835,26 @@ function buildOverlayLayout({ story = {} } = {}) {
   );
   const blocks = [
     fitOverlayTextBlock({
-      id: "top_subject",
-      value: title,
-      x: safeMarginMode ? 88 : 66,
-      y: 65,
-      maxWidthPx: safeMarginMode ? 660 : 710,
-      maxLines: 1,
-      preferredFontSizePx: 40,
-      minFontSizePx: 28,
-      lineGapPx: 5,
-    }),
-    fitOverlayTextBlock({
       id: "top_source_lock",
       value: `SOURCE LOCK  ${source}`,
-      x: safeMarginMode ? 88 : 66,
-      y: 114,
-      maxWidthPx: safeMarginMode ? 760 : 820,
+      x: safeMarginMode ? 348 : 328,
+      y: 268,
+      maxWidthPx: safeMarginMode ? 560 : 610,
       maxLines: 1,
-      preferredFontSizePx: 24,
-      minFontSizePx: 18,
+      preferredFontSizePx: 20,
+      minFontSizePx: 16,
       lineGapPx: 5,
     }),
     fitOverlayTextBlock({
       id: "hook_card",
       value: hook,
       fallback: title,
-      x: safeMarginMode ? 112 : 82,
-      y: 292,
-      maxWidthPx: safeMarginMode ? 800 : 860,
+      x: safeMarginMode ? 122 : 92,
+      y: 326,
+      maxWidthPx: safeMarginMode ? 790 : 830,
       maxLines: 2,
-      preferredFontSizePx: 56,
-      minFontSizePx: 42,
+      preferredFontSizePx: 54,
+      minFontSizePx: 40,
       lineGapPx: 8,
     }),
     fitOverlayTextBlock({
@@ -917,6 +907,7 @@ function buildOverlayLayout({ story = {} } = {}) {
     frame: {
       width_px: FRAME_WIDTH_PX,
       height_px: FRAME_HEIGHT_PX,
+      instagram_top_chrome_safe_px: INSTAGRAM_TOP_CHROME_SAFE_PX,
       safe_right_px: FRAME_WIDTH_PX - SAFE_RIGHT_PX,
       safe_bottom_px: FRAME_HEIGHT_PX - SAFE_BOTTOM_PX,
     },
@@ -951,6 +942,11 @@ function buildOverlayChain({ story, inputLabel, outputLabel, durationS, fontOpt 
   const sideMaskWidth = safeMarginMode ? 72 : 44;
   const sideMaskAlpha = safeMarginMode ? "0.80" : "0.72";
   const accentRailX = safeMarginMode ? 72 : 44;
+  const openingCardX = safeMarginMode ? 82 : 70;
+  const openingCardW = safeMarginMode ? 916 : 940;
+  const openingCardY = 252;
+  const openingCardH = 214;
+  const openingChipX = safeMarginMode ? 102 : 90;
   return [
     `[${inputLabel}]eq=brightness='if(lt(t\\,3.3)\\,0.055\\,-0.015)':contrast=1.10:saturation=1.20:eval=frame,drawbox=x=0:y=0:w=iw:h=230:color=black@0.34:t=fill,drawbox=x=0:y=138:w=iw:h=164:color=black@0.56:t=fill,drawbox=x=0:y=ih-430:w=iw:h=430:color=black@0.52:t=fill,drawbox=x=0:y=ih-315:w=iw:h=315:color=black@0.66:t=fill`,
     `drawbox=x=0:y=0:w=${sideMaskWidth}:h=ih:color=0x0B0F19@${sideMaskAlpha}:t=fill`,
@@ -958,21 +954,18 @@ function buildOverlayChain({ story, inputLabel, outputLabel, durationS, fontOpt 
     `drawbox=x=${accentRailX}:y='mod(t*240\\,1920)-420':w=3:h=420:color=0x38BDF8@0.34:t=fill`,
     `drawbox=x='-260+mod(t*520\\,1540)':y=0:w=210:h=ih:color=white@0.055:t=fill`,
     `drawbox=x='940-mod(t*340\\,1220)':y=0:w=92:h=ih:color=0xFF6B1A@0.055:t=fill`,
-    `drawbox=x=42:y=44:w=996:h=98:color=0x111827@0.58:t=fill`,
-    `drawbox=x=42:y=44:w=996:h=98:color=0x0B0F19@0.34:t=fill`,
-    `drawbox=x=42:y=44:w=996:h=98:color=0xF8FAFC@0.16:t=2`,
-    `drawbox=x=42:y=44:w='if(lt(t\\,0.38)\\,1\\,1+(996-1)*(t-0.38)/0.34)':h=4:color=0x38BDF8@0.92:t=fill`,
-    `drawtext=text='PULSE // NEWSWIRE':${fontOpt}:fontcolor=0x38BDF8:fontsize=18:x=66:y=53:shadowcolor=black@0.78:shadowx=2:shadowy=2`,
-    ...drawtextLinesForBlock(blockById.top_subject, { fontOpt, fontcolor: "white" }),
-    `drawtext=text='VERIFY':${fontOpt}:fontcolor=white@0.72:fontsize=17:x=w-tw-68:y=57:shadowcolor=black@0.72:shadowx=2:shadowy=2`,
-    ...drawtextLinesForBlock(blockById.top_source_lock, { fontOpt, fontcolor: "0xFFB15C" }),
     ...(suppressStoryCards ? [] : [
-    `drawbox=x=50:y=248:w=980:h=220:color=0x0B0F19@0.50:t=fill:enable='between(t,0,3.3)'`,
-    `drawbox=x=50:y=248:w=980:h=220:color=0xF8FAFC@0.18:t=2:enable='between(t,0,3.3)'`,
-    `drawbox=x=50:y=248:w=96:h=3:color=0xF8FAFC@0.88:t=fill:enable='between(t,0,3.3)'`,
-    `drawbox=x=50:y=248:w='if(lt(t\\,0.18)\\,1\\,1+(980-1)*(t-0.18)/0.30)':h=5:color=0x38BDF8@0.92:t=fill:enable='between(t,0,3.3)'`,
-    `drawbox=x=50:y=462:w=620:h=5:color=0xFF6B1A@0.72:t=fill:enable='between(t,0,3.3)'`,
-    `drawbox=x='74+mod(t*380\\,820)':y=254:w=120:h=206:color=white@0.050:t=fill:enable='between(t,0,3.3)'`,
+    `drawbox=x=${openingCardX}:y=${openingCardY}:w=${openingCardW}:h=${openingCardH}:color=0x111827@0.58:t=fill:enable='between(t,0,3.3)'`,
+    `drawbox=x=${openingCardX}:y=${openingCardY}:w=${openingCardW}:h=${openingCardH}:color=0x0B0F19@0.18:t=fill:enable='between(t,0,3.3)'`,
+    `drawbox=x=${openingCardX}:y=${openingCardY}:w=${openingCardW}:h=${openingCardH}:color=0xF8FAFC@0.16:t=2:enable='between(t,0,3.3)'`,
+    `drawbox=x=${openingCardX}:y=${openingCardY}:w=118:h=3:color=0xF8FAFC@0.88:t=fill:enable='between(t,0,3.3)'`,
+    `drawbox=x=${openingCardX}:y=${openingCardY}:w='if(lt(t\\,0.18)\\,1\\,1+(${openingCardW}-1)*(t-0.18)/0.30)':h=5:color=0x38BDF8@0.92:t=fill:enable='between(t,0,3.3)'`,
+    `drawbox=x=${openingCardX}:y=${openingCardY + openingCardH - 6}:w=600:h=5:color=0xFF6B1A@0.68:t=fill:enable='between(t,0,3.3)'`,
+    `drawbox=x=${openingChipX}:y=264:w=210:h=36:color=0x38BDF8@0.16:t=fill:enable='between(t,0,3.3)'`,
+    `drawbox=x=${openingChipX}:y=264:w=210:h=36:color=0x38BDF8@0.56:t=2:enable='between(t,0,3.3)'`,
+    `drawtext=text='PULSE VERIFIED':${fontOpt}:fontcolor=0xBEEBFF:fontsize=18:x=${openingChipX + 16}:y=268:shadowcolor=black@0.72:shadowx=2:shadowy=2:enable='between(t,0,3.3)'`,
+    ...drawtextLinesForBlock(blockById.top_source_lock, { fontOpt, fontcolor: "0xFFB15C", enable: "between(t,0,3.3)", shadow: false }),
+    `drawbox=x='${openingCardX + 24}+mod(t*380\\,760)':y=${openingCardY + 12}:w=92:h=${openingCardH - 24}:color=white@0.046:t=fill:enable='between(t,0,3.3)'`,
     ...drawtextLinesForBlock(blockById.hook_card, { fontOpt, fontcolor: "white", enable: "between(t,0,3.3)" }),
     `drawbox=x=64:y=520:w=956:h=222:color=0x0B0F19@0.48:t=fill:enable='between(t,4.0,8.4)'`,
     `drawbox=x=64:y=520:w=956:h=222:color=0xF8FAFC@0.16:t=2:enable='between(t,4.0,8.4)'`,

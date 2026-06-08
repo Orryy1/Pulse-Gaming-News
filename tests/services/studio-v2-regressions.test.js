@@ -1294,6 +1294,33 @@ test("studio local voice path caps the final pause before the Pulse outro", () =
   assert.deepEqual(gaps, [1.85, 1.85, 0.65]);
 });
 
+test("studio local voice path caps pauses between split game-title fragments", () => {
+  const voiceSegments = [
+    { label: "hook", text: "DOOM" },
+    { label: "body", text: "The Dark Ages" },
+    { label: "loop", text: "Revelations hits today" },
+  ];
+  const gaps = resolveLocalInterSegmentGapSchedule({
+    interSegmentPausePlan: { gapS: 1.85, maxPauseS: 1.85 },
+    voiceSegments,
+  });
+
+  assert.deepEqual(gaps, [0.18, 0.18]);
+});
+
+test("studio local voice path keeps normal hook/body pauses intact", () => {
+  const voiceSegments = [
+    { label: "hook", text: "Big news" },
+    { label: "body", text: "This report finally has the detail." },
+  ];
+  const gaps = resolveLocalInterSegmentGapSchedule({
+    interSegmentPausePlan: { gapS: 1.85, maxPauseS: 1.85 },
+    voiceSegments,
+  });
+
+  assert.deepEqual(gaps, [1.85]);
+});
+
 test("studio local voice path does not add artificial pauses when native runtime is already long", () => {
   const gap = resolveLocalInterSegmentPauseS({
     provider: "local",

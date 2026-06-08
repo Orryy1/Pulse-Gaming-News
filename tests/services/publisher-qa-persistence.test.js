@@ -254,6 +254,28 @@ test("publisher.js: Instagram Story fallback uses the exported pending-timeout c
   );
 });
 
+test("publisher.js: Instagram Reel hard failures persist durable error evidence", () => {
+  const idx = SRC.indexOf("Instagram upload failed");
+  assert.ok(idx > 0, "Instagram Reel hard-failure block must exist");
+  const block = SRC.slice(idx, idx + 1400);
+
+  assert.match(
+    block,
+    /story\.instagram_error\s*=\s*err\.message/,
+    "Instagram hard failures must stamp story.instagram_error",
+  );
+  assert.match(
+    block,
+    /result\.platform_outcomes\.instagram\s*=\s*["']failed["']/,
+    "Instagram hard failures must keep the outcome terminal",
+  );
+  assert.match(
+    block,
+    /await\s+db\.upsertStory\(story\)/,
+    "Instagram hard failures must be persisted before later publisher work can obscure them",
+  );
+});
+
 test("publisher.js: core publish status is persisted before lower-reach fallback cards", () => {
   const statusIdx = SRC.indexOf("Set publish_status from CORE video-platform outcomes only");
   const fallbackIdx = SRC.indexOf("Story card image distribution");

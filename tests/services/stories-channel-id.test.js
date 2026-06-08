@@ -220,3 +220,55 @@ test("round-trip: channel_id lands in the real column, not _extra", async () => 
     ctx.cleanup();
   }
 });
+
+test("round-trip: nullable platform errors clear stale _extra diagnostics", async () => {
+  const ctx = loadDbWithTempFile();
+  try {
+    ctx.handle
+      .prepare(
+        `INSERT OR IGNORE INTO channels (id, name) VALUES ('pulse-gaming', 'Pulse Gaming')`,
+      )
+      .run();
+    await ctx.db.upsertStory({
+      id: "test_instagram_error_clear",
+      title: "Instagram error clear",
+      url: "https://example.com/ig-clear",
+      channel_id: "pulse-gaming",
+      instagram_error: "Instagram processing failed: error code 2207076",
+    });
+
+    const initialRow = ctx.handle
+      .prepare(`SELECT _extra FROM stories WHERE id = ?`)
+      .get("test_instagram_error_clear");
+    assert.strictEqual(
+      JSON.parse(initialRow._extra).instagram_error,
+      "Instagram processing failed: error code 2207076",
+    );
+
+    const story = ctx.db
+      .getStoriesSync()
+      .find((r) => r.id === "test_instagram_error_clear");
+    await ctx.db.upsertStory({
+      ...story,
+      instagram_media_id: "ig_fixed",
+      instagram_error: null,
+    });
+
+    const persisted = ctx.db
+      .getStoriesSync()
+      .find((r) => r.id === "test_instagram_error_clear");
+    assert.strictEqual(persisted.instagram_media_id, "ig_fixed");
+    assert.strictEqual(
+      persisted.instagram_error,
+      null,
+      "cleared Instagram errors must round-trip as null instead of stale _extra text",
+    );
+
+    const clearedRow = ctx.handle
+      .prepare(`SELECT _extra FROM stories WHERE id = ?`)
+      .get("test_instagram_error_clear");
+    assert.strictEqual(JSON.parse(clearedRow._extra).instagram_error, null);
+  } finally {
+    ctx.cleanup();
+  }
+});

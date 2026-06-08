@@ -2039,6 +2039,17 @@ async function _publishNextStoryInner({ publishDispatch = null, storyId = null }
       story.instagram_error = err.message;
       result.errors.instagram = err.message;
       result.platform_outcomes.instagram = "failed";
+      try {
+        await db.upsertStory(story);
+      } catch (persistErr) {
+        console.log(
+          `[publisher] Failed to persist Instagram upload error: ${persistErr.message}`,
+        );
+        captureException(persistErr, {
+          step: "publishNextStory.instagram_error_upsert",
+          storyId: story.id,
+        });
+      }
     }
   }
 

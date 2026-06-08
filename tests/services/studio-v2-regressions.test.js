@@ -1347,6 +1347,46 @@ test("studio local voice path chunks long body segments into timeout-safe calls"
   assert.equal(chunks.map((chunk) => chunk.text).join(" "), longBody);
 });
 
+test("studio local voice path never splits the Pulse Gaming outro phrase", () => {
+  const text =
+    "one two three four five six Follow Pulse Gaming so you never miss a beat.";
+  const chunks = splitLongVoiceSegments(
+    [{ label: "outro", text, rate: 1.3 }],
+    { maxWords: 8, maxChars: 500 },
+  );
+
+  assert.ok(chunks.length > 1);
+  assert.equal(chunks.map((chunk) => chunk.text).join(" "), text);
+  assert.ok(
+    chunks.some((chunk) => /\bFollow Pulse Gaming\b/.test(chunk.text)),
+    "Follow Pulse Gaming must stay inside one generated TTS chunk",
+  );
+  assert.doesNotMatch(
+    chunks.map((chunk) => chunk.text).join(" | "),
+    /Follow Pulse \| Gaming/,
+  );
+});
+
+test("studio local voice path keeps multi-word game titles inside one TTS chunk", () => {
+  const text =
+    "one two three four five six Forza Horizon 6 is pulling players back today.";
+  const chunks = splitLongVoiceSegments(
+    [{ label: "body", text, rate: 1.3 }],
+    { maxWords: 8, maxChars: 500 },
+  );
+
+  assert.ok(chunks.length > 1);
+  assert.equal(chunks.map((chunk) => chunk.text).join(" "), text);
+  assert.ok(
+    chunks.some((chunk) => /\bForza Horizon 6\b/.test(chunk.text)),
+    "Forza Horizon 6 must stay inside one generated TTS chunk",
+  );
+  assert.doesNotMatch(
+    chunks.map((chunk) => chunk.text).join(" | "),
+    /Forza Horizon \| 6/,
+  );
+});
+
 test("studio local voice signature fingerprints accepted Sleepy Liam reference", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-local-voice-"));
   const firstRef = path.join(dir, "pulse_liam_sleepy.wav");

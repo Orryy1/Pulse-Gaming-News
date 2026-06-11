@@ -51,6 +51,25 @@ test("buildAffiliateStack combines franchise and platform targeting", () => {
   assert.ok(links.length <= 4);
 });
 
+test("buildAffiliateStack prioritises story-specific game and platform searches", () => {
+  const links = buildAffiliateStack(
+    {
+      title: "Gears of War E-Day Xbox trailer finally shows the prequel",
+      canonical_game: "Gears of War E-Day",
+      full_script:
+        "Gears of War E-Day is the Xbox story today, with players checking editions and release details.",
+    },
+    { tag: "pulsegaming-21" },
+  );
+
+  assert.equal(links[0].label, "Gears of War E-Day on Xbox");
+  assert.equal(links[0].query, "Gears of War E-Day Xbox");
+  assert.equal(links[0].specificity, "story_platform_search");
+  assert.equal(links[0].exact_product_claim, false);
+  assert.ok(links[0].confidence >= 80);
+  assert.ok(!links.some((link) => link.query === "Xbox Series X games"));
+});
+
 test("buildPinnedComment uses non-reddit RSS sources without fake r/ prefix", () => {
   const story = { source_type: "rss", subreddit: "Eurogamer" };
   const links = buildAffiliateStack(

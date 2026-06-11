@@ -63,6 +63,54 @@ test("Commercial Intelligence Engine builds a story-matched gaming link manifest
   assert.equal(manifest.rejection_reasons.length, 0);
 });
 
+test("Commercial Intelligence Engine prefers hyper-specific Amazon story searches over generic game links", () => {
+  const manifest = buildAffiliateLinkManifest({
+    story: {
+      id: "gears-eday",
+      title: "Gears of War E-Day Xbox trailer finally shows the prequel",
+      canonical_game: "Gears of War E-Day",
+      full_script:
+        "Gears of War E-Day is the Xbox story today, with players checking editions, release details and Game Pass context.",
+      source_card_label: "Xbox",
+    },
+    tag: "pulsegaming-21",
+  });
+
+  assert.equal(manifest.commercial_intent_type, "story_specific_game_interest");
+  assert.equal(manifest.primary_affiliate_angle, "Story-specific game and platform buying checks");
+  assert.equal(manifest.primary_link.label, "Gears of War E-Day on Xbox");
+  assert.equal(manifest.primary_link.query, "Gears of War E-Day Xbox");
+  assert.equal(manifest.primary_link.specificity, "story_platform_search");
+  assert.equal(manifest.primary_link.exact_product_claim, false);
+  assert.match(manifest.primary_link.url, /Gears%20of%20War%20E-Day%20Xbox/);
+  assert.equal(manifest.primary_link.story_specific, true);
+  assert.ok(manifest.primary_link.affiliate_score >= 70);
+  assert.ok(
+    !manifest.candidate_links.some((link) =>
+      /video game editions PS5 Xbox Nintendo Switch/i.test(link.query),
+    ),
+  );
+});
+
+test("Commercial Intelligence Engine turns colon game titles into clean platform searches", () => {
+  const manifest = buildAffiliateLinkManifest({
+    story: {
+      id: "expanse-osiris",
+      title: "The Expanse: Osiris Reborn Xbox gameplay reveal puts players back in space",
+      canonical_game: "The Expanse: Osiris Reborn",
+      full_script:
+        "The Expanse: Osiris Reborn is showing Xbox gameplay, with players checking release details and editions.",
+    },
+    tag: "pulsegaming-21",
+  });
+
+  assert.equal(manifest.commercial_intent_type, "story_specific_game_interest");
+  assert.equal(manifest.primary_link.label, "The Expanse Osiris Reborn on Xbox");
+  assert.equal(manifest.primary_link.query, "The Expanse Osiris Reborn Xbox");
+  assert.equal(manifest.primary_link.exact_product_claim, false);
+  assert.match(manifest.primary_link.url, /The%20Expanse%20Osiris%20Reborn%20Xbox/);
+});
+
 test("Commercial Intelligence Engine builds per-platform landing-page attribution", () => {
   const manifest = buildAffiliateLinkManifest({
     story: {

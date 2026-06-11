@@ -25,6 +25,8 @@ function health(overrides = {}) {
       runtime: {
         auto_publish: true,
         use_job_queue_explicit: "true",
+        guarded_live_dispatch_enabled: true,
+        emergency_kill_switch_clear: true,
         safe_observation_mode: false,
         controlled_restart_no_scheduler_mode: false,
         dispatch: {
@@ -90,6 +92,48 @@ test("runtime sentinel passes only when live owner, commit and scheduler mode ma
   assert.match(md, /Runtime Ownership Sentinel/);
   assert.match(md, /Verdict: GREEN/);
   assert.match(md, /Port owner PID: 34076/);
+});
+
+test("runtime sentinel fails red when queue auto-publish is not guarded-live armed", () => {
+  const unguardedHealth = health({
+    json: {
+      runtime: {
+        auto_publish: true,
+        use_job_queue_explicit: "true",
+        guarded_live_dispatch_enabled: false,
+        emergency_kill_switch_clear: false,
+        safe_observation_mode: false,
+        controlled_restart_no_scheduler_mode: false,
+        dispatch: {
+          mode: "queue",
+          strict: true,
+          reason: "queue_guarded",
+        },
+      },
+    },
+  });
+  const report = buildRuntimeOwnershipSentinel({
+    now: new Date("2026-06-11T19:05:00Z"),
+    expectedBuild: {
+      commit_sha: "abcdef1234567890",
+      commit_short: "abcdef1",
+      branch: "codex/live",
+    },
+    env: {
+      PORT: "3001",
+      AUTO_PUBLISH: "true",
+      USE_JOB_QUEUE: "true",
+      PULSE_PRIMARY_INSTANCE: "true",
+    },
+    localHealth: unguardedHealth,
+    publicHealth: unguardedHealth,
+    processSnapshot: goodProcessSnapshot,
+  });
+
+  assert.equal(report.verdict, "red");
+  assert.ok(report.blockers.some((line) => /guarded live dispatch/i.test(line)));
+  assert.ok(report.blockers.some((line) => /kill switch/i.test(line)));
+  assert.equal(report.scheduler_window_readiness.safe_to_observe_next_window, false);
 });
 
 test("runtime sentinel fails red for wrong runtime drift and legacy dispatch", () => {

@@ -857,6 +857,12 @@ app.get("/api/health", (req, res) => {
     use_sqlite: process.env.USE_SQLITE === "true",
     use_job_queue_explicit: process.env.USE_JOB_QUEUE || null,
     auto_publish: process.env.AUTO_PUBLISH === "true",
+    guarded_live_dispatch_enabled:
+      process.env.PULSE_GUARDED_LIVE_DISPATCH_ENABLED === "true",
+    emergency_kill_switch_clear:
+      String(process.env.PULSE_EMERGENCY_KILL_SWITCH || process.env.PULSE_KILL_SWITCH || "")
+        .trim()
+        .toLowerCase() === "clear",
     safe_observation_mode: isSafeObservationMode(process.env),
     primary_runtime_hold: isPrimaryRuntimeHold(process.env),
     dispatch: dispatchMode,

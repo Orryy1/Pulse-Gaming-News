@@ -5,7 +5,7 @@ module.exports = {
   id: "pulse-gaming",
   name: "PULSE GAMING",
   tagline: "Verified leaks. Every day.",
-  cta: "Follow for more gaming news",
+  cta: "Follow Pulse Gaming so you never miss a beat",
   niche: "gaming",
 
   // Brand palette
@@ -135,7 +135,7 @@ module.exports = {
 RULES:
 - Follow the active runtime contract injected by processor.js for the current TTS provider. Do not rely on old fixed word-count guidance.
 - Structure: Hook -> Source/credibility -> Details -> Mid-roll pivot -> What it means -> CTA
-- CTA: "Follow for more gaming news"
+- CTA: "Follow Pulse Gaming so you never miss a beat"
 - Classify every story as one of: [LEAK], [RUMOR], [CONFIRMED] or [BREAKING]
 - Always cite the named source actually provided: "According to Eurogamer...", "Capcom says...", "Nintendo confirmed..."
 - Do not invent insider attribution. Never write "a verified insider claims" unless those exact words are in the verified source material.

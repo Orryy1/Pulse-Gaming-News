@@ -137,9 +137,9 @@ function firstNonBlank(...values) {
   return null;
 }
 
-const LEGACY_SPOKEN_OUTRO_TEXT = "Follow Pulse Gaming so you never miss a beat";
-const SPOKEN_OUTRO_TEXT = "Follow for more gaming news";
+const SPOKEN_OUTRO_TEXT = "Follow Pulse Gaming so you never miss a beat";
 const TTS_PULSE_BRAND_CTA_RE = /\bFollow\s+Pulse[\s,;:.\-]*Gaming\b[^.!?]*(?:[.!?]|$)/gi;
+const TTS_SHORT_NEWS_CTA_RE = /\bFollow\s+for\s+more\s+gaming\s+news\b(?:[.!?]|$)/gi;
 
 function hasSpokenOutro(text) {
   const normalised = String(text || "")
@@ -148,10 +148,7 @@ function hasSpokenOutro(text) {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
-  return (
-    normalised.includes("follow pulse gaming so you never miss a beat") ||
-    normalised.includes("follow for more gaming news")
-  );
+  return normalised.includes("follow pulse gaming so you never miss a beat");
 }
 
 const ONES = [
@@ -399,6 +396,7 @@ function cleanForTTS(raw) {
       .replace(/[\u2028\u2029]/g, " ")
       .replace(/\[PAUSE\]/gi, ", ")
       .replace(TTS_PULSE_BRAND_CTA_RE, `${SPOKEN_OUTRO_TEXT}.`)
+      .replace(TTS_SHORT_NEWS_CTA_RE, `${SPOKEN_OUTRO_TEXT}.`)
       .replace(/\[VISUAL:[^\]]*\]/gi, "")
       .replace(/\.{2,}/g, ".")
       // Ensure space after sentence-ending periods (LLM sometimes omits: "2026.The")
@@ -574,8 +572,6 @@ function selectRawTtsScript(story) {
 const SPOKEN_OUTRO = `${SPOKEN_OUTRO_TEXT}.`;
 const TERMINAL_PULSE_CTA_RE =
   /\b(?:Follow\s+for\s+more\s+gaming\s+news|Follow\s+Pulse(?:\s+|\s*\[PAUSE\]\s*|[\s,;:.\-]+)Gaming\b[^.!?]*)(?:[.!?]\s*)?$/i;
-const TERMINAL_LEGACY_PULSE_CTA_RE =
-  /\s*Follow\s+Pulse(?:\s+|\s*\[PAUSE\]\s*|[\s,;:.\-]+)Gaming\b[^.!?]*(?:[.!?]\s*)?$/i;
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -583,14 +579,14 @@ function escapeRegExp(value) {
 
 function stripTerminalSpokenOutros(script) {
   const outroRe = new RegExp(
-    `(?:\\s*(?:${escapeRegExp(SPOKEN_OUTRO_TEXT)}|${escapeRegExp(LEGACY_SPOKEN_OUTRO_TEXT)})\\.?\\s*)+$`,
+    `(?:\\s*${escapeRegExp(SPOKEN_OUTRO_TEXT)}\\.?\\s*)+$`,
     "i",
   );
   let next = String(script || "").trim();
   let previous = "";
   while (next && next !== previous) {
     previous = next;
-    next = next.replace(outroRe, "").replace(TERMINAL_LEGACY_PULSE_CTA_RE, "").trim();
+    next = next.replace(outroRe, "").replace(TERMINAL_PULSE_CTA_RE, "").trim();
   }
   return next;
 }
@@ -618,9 +614,6 @@ function ensureSpokenOutro(script) {
   const cleanScript = collapseAdjacentDuplicateSentences(String(script || "").trim());
   const withoutTerminalOutros = stripTerminalSpokenOutros(cleanScript);
   if (!withoutTerminalOutros) return SPOKEN_OUTRO;
-  if (TERMINAL_PULSE_CTA_RE.test(withoutTerminalOutros)) {
-    return withoutTerminalOutros.replace(/\s+/g, " ").trim();
-  }
   return `${withoutTerminalOutros} ${SPOKEN_OUTRO}`.replace(/\s+/g, " ").trim();
 }
 

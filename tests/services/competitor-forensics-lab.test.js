@@ -64,6 +64,34 @@ test("competitor lab reviews 20 channels and 100 videos without copied assets", 
   assert.ok(report.hook_forensics.patterns.some((pattern) => pattern.pulse_rule_id));
 });
 
+test("competitor lab emits production grammar patterns without copied assets", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-competitor-grammar-"));
+  const report = await buildCompetitorForensicsLab({
+    registry: fixtureRegistry(),
+    metadataInventory: fixtureVideos(),
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-06-07T12:00:00.000Z",
+  });
+
+  const categories = report.production_grammar_patterns.categories.map((item) => item.category);
+  assert.deepEqual(categories, [
+    "title",
+    "hook",
+    "first_frame",
+    "shot_length",
+    "caption_style",
+    "sfx_transition",
+    "thumbnail_layout",
+    "posting_time",
+    "topic_choice",
+    "outlier_diagnostics",
+    "flop_diagnostics",
+  ]);
+  assert.equal(report.production_grammar_patterns.safety.no_copied_assets_stored, true);
+  assert.equal(report.production_grammar_patterns.safety.patterns_only, true);
+  assert.ok(report.production_grammar_patterns.categories.every((item) => item.pulse_application));
+});
+
 test("competitor lab writes every required artefact", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-competitor-lab-write-"));
   const report = await buildCompetitorForensicsLab({
@@ -77,4 +105,8 @@ test("competitor lab writes every required artefact", async () => {
   for (const file of Object.values(written)) {
     assert.equal(await fs.pathExists(file), true, file);
   }
+  assert.equal(
+    await fs.pathExists(path.join(root, "out", "production_grammar_patterns.json")),
+    true,
+  );
 });

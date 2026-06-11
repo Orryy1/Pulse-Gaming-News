@@ -357,6 +357,67 @@ test("Goal 09 blocks semantically wrong SFX even when role coverage passes", asy
   assert.equal(report.sfx_manifest.stories[0].status, "blocked");
 });
 
+test("Goal 09 blocks ElevenLabs generated SFX without governance proof", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal09-elevenlabs-ungoverned-"));
+  const story = await makeSoundStory(root, "story-ungoverned-elevenlabs", {
+    selectedAssets: [
+      { asset_id: "el-impact", role: "impact", provider_id: "elevenlabs_sfx", approval_status: "approved_for_commercial_editorial_use" },
+      { asset_id: "el-transition", role: "transition", provider_id: "elevenlabs_sfx", approval_status: "approved_for_commercial_editorial_use" },
+      { asset_id: "el-ui", role: "ui_tick", provider_id: "elevenlabs_sfx", approval_status: "approved_for_commercial_editorial_use" },
+    ],
+  });
+
+  const report = await buildGoal09SoundDesignEngine({
+    storyPackages: [story],
+    upstreamVisualReport: {
+      stories: [{ story_id: "story-ungoverned-elevenlabs", status: "ready", blockers: [] }],
+    },
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-06-11T08:40:00.000Z",
+  });
+
+  assert.equal(report.verdict, "BLOCKED");
+  assert.ok(report.stories[0].direct_sound_blockers.includes("sound:elevenlabs_sfx_governance_missing"));
+  assert.equal(report.sfx_manifest.stories[0].status, "blocked");
+});
+
+test("Goal 09 accepts ElevenLabs generated SFX when governance proof is attached", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal09-elevenlabs-governed-"));
+  const governance = {
+    sidecar_path: "audio/elevenlabs/sfx/asset.elevenlabs-sfx.json",
+    sha256: "abc123",
+    sha256_verified: true,
+    prompt: "Clean source-lock tick for gaming news.",
+    model: "operator_selected_elevenlabs_sfx_model",
+    generation_time: "2026-06-11T08:40:00.000Z",
+    rights_note: "Generated for Pulse Gaming editorial videos under retained ElevenLabs terms.",
+    loudness_qc_status: "pass",
+    reuse_status: "within_reuse_limit",
+  };
+  const story = await makeSoundStory(root, "story-governed-elevenlabs", {
+    selectedAssets: [
+      { asset_id: "el-impact", role: "impact", provider_id: "elevenlabs_sfx", approval_status: "approved_for_commercial_editorial_use", elevenlabs_governance: governance, editorial_sfx_score: 0.82 },
+      { asset_id: "el-transition", role: "transition", provider_id: "elevenlabs_sfx", approval_status: "approved_for_commercial_editorial_use", elevenlabs_governance: governance, editorial_sfx_score: 0.82 },
+      { asset_id: "el-ui", role: "ui_tick", provider_id: "elevenlabs_sfx", approval_status: "approved_for_commercial_editorial_use", elevenlabs_governance: governance, editorial_sfx_score: 0.82 },
+    ],
+  });
+
+  const report = await buildGoal09SoundDesignEngine({
+    storyPackages: [story],
+    upstreamVisualReport: {
+      stories: [{ story_id: "story-governed-elevenlabs", status: "ready", blockers: [] }],
+    },
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-06-11T08:40:00.000Z",
+  });
+
+  assert.equal(report.verdict, "PASS");
+  assert.ok(!report.stories[0].direct_sound_blockers.includes("sound:elevenlabs_sfx_governance_missing"));
+  assert.equal(report.sfx_manifest.stories[0].status, "pass");
+});
+
 test("Goal 09 writes the required sound design artefacts as JSON and Markdown", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal09-write-"));
   const story = await makeSoundStory(root, "story-ready");

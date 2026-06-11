@@ -105,6 +105,7 @@ test("Goal 14 CLI writes social derivative artefacts", async () => {
   assert.equal(await fs.pathExists(path.join(outDir, "x_publish_pack.json")), true);
   assert.equal(await fs.pathExists(path.join(outDir, "instagram_publish_pack.json")), true);
   assert.equal(await fs.pathExists(path.join(outDir, "threads_publish_pack.json")), true);
+  assert.equal(await fs.pathExists(path.join(outDir, "pinterest_publish_pack.json")), true);
   assert.equal(await fs.pathExists(path.join(outDir, "image_card_manifest.json")), true);
   assert.equal(await fs.pathExists(path.join(outDir, "carousel_manifest.json")), true);
   assert.equal(await fs.pathExists(path.join(outDir, "engagement_risk_report.json")), true);

@@ -122,8 +122,17 @@ test("Goal 14 prepares social derivatives but blocks full readiness when Goal 13
   assert.equal(report.summary.x_pack_story_count, 1);
   assert.equal(report.summary.instagram_pack_story_count, 1);
   assert.equal(report.summary.threads_pack_story_count, 1);
+  assert.equal(report.summary.pinterest_pack_story_count, 1);
   assert.equal(report.x_publish_pack.stories[0].thread_posts.length, 3);
   assert.ok(report.x_publish_pack.stories[0].poll_candidate);
+  assert.equal(report.pinterest_publish_pack.stories[0].platform, "pinterest");
+  assert.equal(report.pinterest_publish_pack.stories[0].landing_page_link, "/p/story-blocked");
+  assert.ok(report.pinterest_publish_pack.stories[0].pin_ideas.length >= 3);
+  assert.doesNotMatch(
+    report.pinterest_publish_pack.stories[0].pin_ideas.map((pin) => pin.title).join(" "),
+    /\b(?:breaking|urgent|just dropped|watch now)\b/i,
+  );
+  assert.equal(report.pinterest_publish_pack.safety.no_external_posting, true);
   assert.ok(report.carousel_manifest.stories[0].cards.some((card) => card.type === "quote_card"));
   assert.ok(report.carousel_manifest.stories[0].cards.some((card) => card.type === "stat_card"));
   assert.ok(report.carousel_manifest.stories[0].cards.some((card) => card.type === "story_prompt"));
@@ -338,6 +347,7 @@ test("Goal 14 excludes upstream-skipped stories from active derivative blockers"
   assert.deepEqual(report.blocker_counts, {});
   assert.equal(report.engagement_risk_report.verdict, "pass");
   assert.equal(report.x_publish_pack.stories.length, 1);
+  assert.equal(report.pinterest_publish_pack.stories.length, 1);
   assert.equal(report.carousel_manifest.stories.length, 1);
 });
 
@@ -360,6 +370,7 @@ test("Goal 14 writes required social derivative artefacts", async () => {
   assert.equal(await fs.pathExists(written.xPublishPack), true);
   assert.equal(await fs.pathExists(written.instagramPublishPack), true);
   assert.equal(await fs.pathExists(written.threadsPublishPack), true);
+  assert.equal(await fs.pathExists(written.pinterestPublishPack), true);
   assert.equal(await fs.pathExists(written.imageCardManifest), true);
   assert.equal(await fs.pathExists(written.carouselManifest), true);
   assert.equal(await fs.pathExists(written.engagementRiskReport), true);

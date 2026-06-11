@@ -783,6 +783,50 @@ test("selectNextGuardedLiveAction skips actions blocked by the last-second quali
   ]);
 });
 
+test("selectNextGuardedLiveAction skips stale source-age actions and advances to fresh candidates", async () => {
+  const selection = await selectNextGuardedLiveAction({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("instagram_reels", {
+          action_id: "stale-story:instagram_reels",
+          story_id: "stale-story",
+          video_path: "output/final/stale-story/instagram_reels.mp4",
+        }),
+        action("youtube_shorts", {
+          action_id: "fresh-story:youtube_shorts",
+          story_id: "fresh-story",
+          video_path: "output/final/fresh-story/youtube_shorts.mp4",
+        }),
+      ],
+    }),
+    stories: [
+      story({
+        id: "stale-story",
+        title: "Forza Horizon 6 Scores 84 On PC Gamer",
+        timestamp: "2026-05-14T12:02:03.000Z",
+      }),
+      story({
+        id: "fresh-story",
+        title: "Halo Campaign Evolved Makes PS5 The Real Story",
+        timestamp: "2026-06-11T18:50:00.000Z",
+      }),
+    ],
+    runActionQualityGate: passActionQualityGate,
+    actionQualityGateOptions: {
+      now: "2026-06-11T19:16:00.000Z",
+      maxSourceAgeHours: 168,
+    },
+  });
+
+  assert.equal(selection.exhausted, false);
+  assert.equal(selection.action_id, "fresh-story:youtube_shorts");
+  assert.equal(selection.skipped_actions[0].reason, "stale_source_age");
+  assert.ok(
+    selection.skipped_actions[0].blockers.includes("source_age_exceeds_limit"),
+    JSON.stringify(selection.skipped_actions[0].blockers),
+  );
+});
+
 test("guarded live dispatch executor blocks explicit live actions that fail last-second quality", async () => {
   let uploadCalls = 0;
   let upsertCalls = 0;
@@ -826,6 +870,53 @@ test("guarded live dispatch executor blocks explicit live actions that fail last
     "last_second_quality_gate_failed",
     "video:freeze_segment_too_long (0.80s @ 32.67s)",
   ]);
+});
+
+test("guarded live dispatch executor blocks explicit stale source-age actions before upload", async () => {
+  let uploadCalls = 0;
+  let upsertCalls = 0;
+
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan(),
+    stories: [
+      story({
+        timestamp: "2026-05-14T12:02:03.000Z",
+      }),
+    ],
+    actionIds: ["story-one:youtube_shorts"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+    uploaders: {
+      youtube_shorts: {
+        uploadShort: async () => {
+          uploadCalls += 1;
+          throw new Error("uploader must not be called for stale source actions");
+        },
+      },
+    },
+    db: {
+      upsertStory: async () => {
+        upsertCalls += 1;
+      },
+    },
+    runActionQualityGate: passActionQualityGate,
+    actionQualityGateOptions: {
+      now: "2026-06-11T19:16:00.000Z",
+      maxSourceAgeHours: 168,
+    },
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.summary.blocked_action_count, 1);
+  assert.equal(report.summary.upload_attempt_count, 0);
+  assert.equal(report.summary.db_mutation_count, 0);
+  assert.equal(uploadCalls, 0);
+  assert.equal(upsertCalls, 0);
+  assert.ok(report.blocked_actions[0].blockers.includes("last_second_source_freshness_failed"));
+  assert.ok(report.blocked_actions[0].blockers.includes("source_age_exceeds_limit"));
 });
 
 test("default action quality gate hydrates render-manifest proof before content QA", async () => {

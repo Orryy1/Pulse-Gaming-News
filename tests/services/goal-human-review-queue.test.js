@@ -684,6 +684,61 @@ test("human review queue writes machine-readable artefacts and operator Markdown
   assert.equal(decisionLog.safety.no_live_publish_from_log, true);
 });
 
+test("human review queue writer preserves existing operator decisions on regeneration", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-human-review-preserve-decisions-"));
+  const artifactDir = await makeStoryPackage(root);
+  const existingDecision = {
+    story_id: "story-one",
+    operator: "MORR via Codex",
+    decision: "approve_enabled_platforms",
+    approved_platforms: ["youtube_shorts", "instagram_reels"],
+    rejected_platforms: [],
+    repair_requested: "",
+    reviewed_artefacts: ["video_path", "captions_path"],
+    reviewed_artefact_fingerprints: {
+      video_path: "sha256:video",
+      captions_path: "sha256:captions",
+    },
+    risk_acceptance_notes: "Existing approval must survive review queue regeneration.",
+    decided_at: "2026-06-11T18:37:35.901Z",
+  };
+  await fs.writeJson(path.join(root, "operator_decision_log.json"), {
+    schema_version: 1,
+    generated_at: "2026-06-11T18:37:35.901Z",
+    mode: "HUMAN_REVIEW_DECISION_LOG",
+    decisions: [existingDecision],
+    decision_template: {
+      story_id: "",
+      operator: "",
+      decision: "approve_enabled_platforms | reject | request_repairs",
+      approved_platforms: [],
+      rejected_platforms: [],
+      repair_requested: "",
+      reviewed_artefacts: [],
+      risk_acceptance_notes: "",
+      decided_at: "",
+    },
+    safety: {
+      no_live_publish_from_log: true,
+      no_network_uploads: true,
+      no_db_mutation: true,
+      no_oauth_or_token_change: true,
+    },
+  }, { spaces: 2 });
+
+  const queue = await buildGoalHumanReviewQueue({
+    dryRunPlan: dryRunPlan({ artifactDir }),
+    generatedAt: "2026-06-11T18:39:00.000Z",
+  });
+  await writeGoalHumanReviewQueue(queue, { outputDir: root });
+
+  const decisionLog = await fs.readJson(path.join(root, "operator_decision_log.json"));
+  assert.equal(decisionLog.mode, "HUMAN_REVIEW_DECISION_LOG");
+  assert.equal(decisionLog.decisions.length, 1);
+  assert.deepEqual(decisionLog.decisions[0], existingDecision);
+  assert.equal(decisionLog.safety.no_live_publish_from_log, true);
+});
+
 test("human review queue CLI is registered and emits clean JSON", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-human-review-cli-"));
   const artifactDir = await makeStoryPackage(root);

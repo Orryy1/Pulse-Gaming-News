@@ -162,6 +162,81 @@ test("applyEnabledPlatformAutoPublishReadinessScope: guarded enabled-platform ha
   );
 });
 
+test("applyEnabledPlatformAutoPublishReadinessScope: scheduler-ready approvals downgrade non-selected strict dry-run RED", () => {
+  const pillars = {
+    publish_cadence: {
+      verdict: "green",
+      raw: {
+        summary: {
+          published_count: 0,
+          off_schedule_count: 0,
+          burst_pairs: 0,
+          failed_rows_with_platform_ids_recent: 0,
+          invalid_public_story_rows: 0,
+        },
+      },
+    },
+    strict_dry_run_control: {
+      verdict: "red",
+      reason: "strict_dry_run_blocked",
+      raw: {
+        safety_intact: true,
+        ready_for_unattended_publish: false,
+        ready_story_count: 1,
+        blocked_story_count: 9,
+        platform_publish_now_action_count: 3,
+        platform_deferred_action_count: 4,
+        blocked_action_count: 0,
+        human_review_required_action_count: 3,
+        live_publish_allowed_action_count: 0,
+        disabled_platform_count: 4,
+        reviewable_enabled_action_count: 3,
+      },
+    },
+    human_review_approval_gate: {
+      verdict: "green",
+      raw: {
+        approved_action_count: 3,
+        invalid_decision_count: 0,
+        guarded_dispatch_eligible: true,
+      },
+    },
+    guarded_dispatch_preflight: {
+      verdict: "green",
+      raw: {
+        dispatch_ready_action_count: 3,
+        blocked_action_count: 0,
+        safety_blocker_count: 0,
+        ready_for_guarded_dispatch: true,
+      },
+    },
+    guarded_dispatch_executor_preflight: {
+      verdict: "amber",
+      reason: "explicit_action_ids_required",
+      raw: {
+        dispatch_ready_action_count: 3,
+        selected_action_count: 0,
+        handoff_ready_action_count: 0,
+        blocked_selected_action_count: 0,
+        ready_for_live_executor_handoff: false,
+      },
+    },
+  };
+
+  const scoped = pr.applyEnabledPlatformAutoPublishReadinessScope(pillars);
+
+  assert.equal(scoped.scope.name, "enabled_platform_guarded_scheduler_window");
+  assert.equal(scoped.scope.guard_ready, true);
+  assert.ok(scoped.scope.overridden_pillars.includes("strict_dry_run_control"));
+  assert.equal(scoped.pillars.strict_dry_run_control.verdict, "amber");
+  assert.equal(
+    scoped.pillars.strict_dry_run_control.reason,
+    "non_selected_candidate_blockers_held_by_guarded_scheduler_scope",
+  );
+  assert.equal(scoped.pillars.strict_dry_run_control.raw.previous_verdict, "red");
+  assert.equal(scoped.pillars.strict_dry_run_control.raw.blocked_story_count_still_visible, 9);
+});
+
 test("applyEnabledPlatformAutoPublishReadinessScope: core platform credential gaps stay amber", () => {
   const pillars = {
     human_review_approval_gate: {
@@ -1832,6 +1907,52 @@ test("resolvePublishReadinessNextAction: repairable backlog takes priority over 
   assert.match(nextAction, /auto-repair backlog/);
   assert.match(nextAction, /66 repairable/);
   assert.match(nextAction, /Do not publish unattended/);
+});
+
+test("resolvePublishReadinessNextAction: scheduler-scoped approval does not require manual executor IDs", () => {
+  const nextAction = pr.resolvePublishReadinessNextAction({
+    overall: "amber",
+    pillars: {
+      publish_cadence: { verdict: "green" },
+      final_voice_audit: { verdict: "green" },
+      strict_dry_run_control: {
+        verdict: "amber",
+        reason: "non_selected_candidate_blockers_held_by_guarded_scheduler_scope",
+        raw: {
+          enabled_platform_scope_override: "non_selected_candidate_blockers_held_by_guarded_scheduler_scope",
+          ready_story_count: 1,
+          ready_for_unattended_publish: false,
+        },
+      },
+      human_review_approval_gate: {
+        verdict: "green",
+        raw: {
+          approved_action_count: 3,
+          guarded_dispatch_eligible: true,
+        },
+      },
+      guarded_dispatch_preflight: {
+        verdict: "green",
+        raw: {
+          dispatch_ready_action_count: 3,
+          ready_for_guarded_dispatch: true,
+        },
+      },
+      guarded_dispatch_executor_preflight: {
+        verdict: "amber",
+        reason: "explicit_action_ids_required",
+        raw: {
+          dispatch_ready_action_count: 3,
+          selected_action_count: 0,
+          blocked_selected_action_count: 0,
+        },
+      },
+    },
+  });
+
+  assert.match(nextAction, /normal guarded scheduler/);
+  assert.match(nextAction, /manual executor handoff/);
+  assert.doesNotMatch(nextAction, /Select explicit guarded dispatch action IDs before any live executor handoff/);
 });
 
 test("pillarStrictDryRunControl: red when strict dry-run has active blockers", () => {

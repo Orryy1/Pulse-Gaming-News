@@ -6,8 +6,11 @@ const path = require("node:path");
 require("dotenv").config({ quiet: true, override: true });
 
 const {
+  buildDailyStudioReport,
+  buildDiscordOperationsSummary,
   buildSchedulerWindowReadiness,
   buildNormalOperationsReport,
+  formatDailyStudioReportMarkdown,
   formatNormalOperationsMarkdown,
   formatSchedulerWindowReadinessMarkdown,
 } = require("../lib/ops/normal-operations");
@@ -234,10 +237,16 @@ async function main() {
   const postWindow = postWindowReport(report);
   const plan = nextDayPlan(report);
   const schedulerWindow = buildSchedulerWindowReadiness(report);
+  const dailyStudio = buildDailyStudioReport(report);
+  const discordSummary = buildDiscordOperationsSummary(report);
 
   await Promise.all([
     fs.writeJson(path.join(outDir, "normal_operations_report.json"), report, { spaces: 2 }),
     fs.writeFile(path.join(outDir, "normal_operations_report.md"), markdown, "utf8"),
+    fs.writeJson(path.join(outDir, "daily_studio_report.json"), dailyStudio, { spaces: 2 }),
+    fs.writeFile(path.join(outDir, "daily_studio_report.md"), formatDailyStudioReportMarkdown(dailyStudio), "utf8"),
+    fs.writeJson(path.join(outDir, "discord_operations_summary.json"), discordSummary, { spaces: 2 }),
+    fs.writeFile(path.join(outDir, "discord_operations_summary.md"), `${discordSummary.message}\n`, "utf8"),
     fs.writeJson(path.join(outDir, "fresh_candidate_queue.json"), candidateReport, { spaces: 2 }),
     fs.writeJson(path.join(outDir, "candidate_buffer_report.json"), candidate, { spaces: 2 }),
     fs.writeFile(path.join(outDir, "candidate_buffer_report.md"), formatCandidateBufferMarkdown(candidate), "utf8"),

@@ -1071,3 +1071,167 @@ test("scheduler publish handler uses guarded executor when live guarded auto-pub
     }
   }
 });
+
+test("scheduler publish handler adapts scheduler dispatch plan when explicit executor plan is empty", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-live-scheduler-plan-"));
+  const executorPlanPath = path.join(root, "guarded_dispatch_executor_plan.json");
+  const schedulerPlanPath = path.join(root, "guarded_dispatch_plan.json");
+  await fs.writeJson(executorPlanPath, executorPlan({
+    ready_for_live_executor_handoff: false,
+    required_next_step: "select_explicit_dispatch_action_ids",
+    handoff_ready_action_count: 0,
+    handoff_ready_actions: [],
+  }), { spaces: 2 });
+  await fs.writeJson(schedulerPlanPath, {
+    mode: "GUARDED_DISPATCH_PREFLIGHT",
+    generated_at: "2026-06-11T18:47:41.635Z",
+    ready_for_guarded_dispatch: true,
+    live_publish_allowed_from_this_tool: false,
+    safety: {
+      no_publish_triggered: true,
+      no_network_uploads: true,
+      no_db_mutation: true,
+      no_oauth_or_token_change: true,
+    },
+    dispatch_ready_actions: [
+      {
+        story_id: "story-one",
+        platform: "youtube_shorts",
+        title: "Forza Horizon 6 Exposes Xbox's Steam Bet",
+        video_path: "output/final/story-one/youtube.mp4",
+        captions_path: "output/final/story-one/captions.srt",
+        first_frame_source: "output/final/story-one/frame.png",
+        canonical_manifest_path: "output/final/story-one/canonical.json",
+        platform_publish_manifest_path: "output/final/story-one/platform.json",
+        live_publish_allowed_from_preflight: false,
+        requires_guarded_live_dispatch_executor: true,
+        requires_last_second_kill_switch_check: true,
+        requires_last_second_platform_recheck: true,
+      },
+    ],
+  }, { spaces: 2 });
+
+  const jobHandlersPath = require.resolve("../../lib/job-handlers");
+  const executorPath = require.resolve("../../lib/goal-guarded-live-dispatch-executor");
+  const publisherPath = require.resolve("../../publisher");
+  const dbPath = require.resolve("../../lib/db");
+  const notifyPath = require.resolve("../../notify");
+  const originalCache = new Map([
+    [jobHandlersPath, require.cache[jobHandlersPath]],
+    [executorPath, require.cache[executorPath]],
+    [publisherPath, require.cache[publisherPath]],
+    [dbPath, require.cache[dbPath]],
+    [notifyPath, require.cache[notifyPath]],
+  ]);
+  const originalEnv = {
+    AUTO_PUBLISH: process.env.AUTO_PUBLISH,
+    PULSE_GUARDED_LIVE_DISPATCH_ENABLED: process.env.PULSE_GUARDED_LIVE_DISPATCH_ENABLED,
+    PULSE_EMERGENCY_KILL_SWITCH: process.env.PULSE_EMERGENCY_KILL_SWITCH,
+    PULSE_GUARDED_EXECUTOR_PLAN_PATH: process.env.PULSE_GUARDED_EXECUTOR_PLAN_PATH,
+    PULSE_GUARDED_DISPATCH_PLAN_PATH: process.env.PULSE_GUARDED_DISPATCH_PLAN_PATH,
+  };
+
+  let selected = false;
+  let executed = false;
+  try {
+    process.env.AUTO_PUBLISH = "true";
+    process.env.PULSE_GUARDED_LIVE_DISPATCH_ENABLED = "true";
+    process.env.PULSE_EMERGENCY_KILL_SWITCH = "clear";
+    process.env.PULSE_GUARDED_EXECUTOR_PLAN_PATH = executorPlanPath;
+    process.env.PULSE_GUARDED_DISPATCH_PLAN_PATH = schedulerPlanPath;
+
+    require.cache[executorPath] = {
+      id: executorPath,
+      filename: executorPath,
+      loaded: true,
+      exports: {
+        async selectNextGuardedLiveAction({ executorPlan: plan, stories }) {
+          selected = true;
+          assert.equal(plan.source_mode, "scheduler_scoped_guarded_dispatch_plan");
+          assert.equal(plan.ready_for_live_executor_handoff, true);
+          assert.equal(plan.handoff_ready_actions.length, 1);
+          assert.equal(plan.handoff_ready_actions[0].action_id, "story-one:youtube_shorts");
+          assert.equal(plan.handoff_ready_actions[0].requires_live_executor_command, true);
+          assert.equal(stories[0].id, "story-one");
+          return {
+            exhausted: false,
+            action_id: "story-one:youtube_shorts",
+            action: plan.handoff_ready_actions[0],
+            skipped_actions: [],
+          };
+        },
+        async runGuardedLiveDispatchExecutor(options) {
+          executed = true;
+          assert.equal(options.apply, true);
+          assert.deepEqual(options.actionIds, ["story-one:youtube_shorts"]);
+          return {
+            verdict: "GREEN",
+            actions: [
+              {
+                action_id: "story-one:youtube_shorts",
+                story_id: "story-one",
+                platform: "youtube_shorts",
+                outcome: "new_upload",
+                external_id: "yt_1",
+              },
+            ],
+            blocked_actions: [],
+            summary: {
+              upload_attempt_count: 1,
+              db_mutation_count: 1,
+            },
+          };
+        },
+        async writeGuardedLiveDispatchExecutorReport() {
+          return {};
+        },
+      },
+    };
+    require.cache[dbPath] = {
+      id: dbPath,
+      filename: dbPath,
+      loaded: true,
+      exports: {
+        async getStories() {
+          return [story()];
+        },
+      },
+    };
+    require.cache[publisherPath] = {
+      id: publisherPath,
+      filename: publisherPath,
+      loaded: true,
+      exports: {
+        async publishNextStory() {
+          throw new Error("legacy publisher must not run when scheduler dispatch plan is available");
+        },
+      },
+    };
+    require.cache[notifyPath] = {
+      id: notifyPath,
+      filename: notifyPath,
+      loaded: true,
+      exports: async () => {},
+    };
+    delete require.cache[jobHandlersPath];
+
+    const { handlers } = require("../../lib/job-handlers");
+    const result = await handlers.publish({ id: 43 }, { log() {} });
+
+    assert.equal(selected, true);
+    assert.equal(executed, true);
+    assert.equal(result.guarded_live_dispatch, true);
+    assert.equal(result.status, "green");
+    assert.equal(result.action_id, "story-one:youtube_shorts");
+    assert.equal(result.outcome, "new_upload");
+  } finally {
+    for (const [id, entry] of originalCache.entries()) {
+      if (entry) require.cache[id] = entry;
+      else delete require.cache[id];
+    }
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});

@@ -227,6 +227,44 @@ test("breaking fast lane blocks affiliate CTAs before facts stabilise", async ()
   assert.equal(plan.rejection_reasons.includes("affiliate_cta_not_allowed_in_breaking_fast_post"), true);
 });
 
+test("breaking fast lane exposes governed fast card, fast short and full follow-up modes", async () => {
+  const plan = await buildGoalBreakingNewsFastLanePlan({
+    story: officialStory(),
+    platformState: {
+      platforms: {
+        threads: { operational_state: "ready" },
+        instagram_reels: { operational_state: "ready" },
+        facebook_reels: { operational_state: "ready" },
+      },
+    },
+  });
+
+  assert.deepEqual(
+    plan.mode_matrix.modes.map((mode) => mode.mode),
+    ["FAST_CARD", "FAST_SHORT", "FULL_V4_FOLLOW_UP"],
+  );
+  assert.equal(plan.mode_matrix.modes[0].duration_seconds, null);
+  assert.deepEqual(plan.mode_matrix.modes[1].duration_seconds, { min: 20, max: 35 });
+  assert.deepEqual(plan.mode_matrix.modes[2].duration_seconds, { min: 40, max: 70 });
+  assert.equal(plan.mode_matrix.modes.every((mode) => mode.operator_approval_required), true);
+  assert.equal(plan.source_confirmation_gate.verdict, "PASS");
+  assert.equal(plan.source_confirmation_gate.no_reddit_only_facts, true);
+  assert.equal(plan.source_confirmation_gate.allowed_source_patterns.includes("official_source"), true);
+  assert.equal(plan.affiliate_cta_suppression_report.verdict, "PASS");
+  assert.equal(plan.affiliate_cta_suppression_report.affiliate_cta_allowed, false);
+});
+
+test("breaking fast lane writes mode, source confirmation and affiliate suppression artefacts", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-breaking-fast-lane-proof-"));
+  const outDir = path.join(root, "out");
+  const plan = await buildGoalBreakingNewsFastLanePlan({ story: officialStory() });
+  await writeGoalBreakingNewsFastLanePlan(plan, { outputDir: outDir });
+
+  assert.equal(await fs.pathExists(path.join(outDir, "breaking_news_mode_matrix.json")), true);
+  assert.equal(await fs.pathExists(path.join(outDir, "source_confirmation_gate.json")), true);
+  assert.equal(await fs.pathExists(path.join(outDir, "affiliate_cta_suppression_report.json")), true);
+});
+
 test("breaking fast lane writes required artefacts and exposes a CLI", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-breaking-fast-lane-"));
   const storyPath = path.join(root, "story.json");

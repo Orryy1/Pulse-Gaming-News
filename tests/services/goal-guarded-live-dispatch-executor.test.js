@@ -481,6 +481,80 @@ test("guarded live dispatch executor hydrates missing DB stories from canonical 
   assert.equal(report.summary.db_mutation_count, 0);
 });
 
+test("guarded live dispatch executor persists canonical story before structured platform evidence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-live-fk-"));
+  const manifestPath = path.join(root, "canonical_story_manifest.json");
+  await fs.writeJson(manifestPath, {
+    story_id: "story-one",
+    selected_title: "Deus Ex Composer Says The Jobs Vanished",
+    primary_source_url: "https://www.example.com/deus-ex",
+    narration_script: "The Deus Ex composer says the jobs vanished after the studio cuts.",
+    thumbnail_text: "DEUS EX JOBS VANISHED",
+    description: "A source-backed Deus Ex update. Source: Example.",
+    pinned_comment: "Source: Example.",
+    canonical_angle: "Source Breakdown",
+  });
+
+  const persistedIds = new Set();
+  const persistedSnapshots = [];
+  const platformPostCalls = [];
+
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("youtube_shorts", { canonical_manifest_path: manifestPath }),
+      ],
+    }),
+    stories: [],
+    actionIds: ["story-one:youtube_shorts"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+    uploaders: {
+      youtube_shorts: {
+        uploadShort: async () => ({
+          platform: "youtube",
+          videoId: "yt_fk_safe",
+          url: "https://youtube.com/shorts/yt_fk_safe",
+        }),
+      },
+    },
+    db: {
+      upsertStory: async (nextStory) => {
+        persistedIds.add(nextStory.id);
+        persistedSnapshots.push({ ...nextStory });
+      },
+    },
+    platformPosts: {
+      ensurePending(storyId, platform, options = {}) {
+        if (!persistedIds.has(storyId)) {
+          throw new Error("FOREIGN KEY constraint failed");
+        }
+        platformPostCalls.push(["ensurePending", storyId, platform, options.idempotencyKey]);
+        return { id: 29 };
+      },
+      markPublished(id, result = {}) {
+        platformPostCalls.push(["markPublished", id, result.externalId, result.externalUrl || null]);
+      },
+    },
+    generatedAt: "2026-06-11T14:00:02.003Z",
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.actions[0].outcome, "new_upload");
+  assert.equal(report.actions[0].external_id, "yt_fk_safe");
+  assert.equal(report.actions[0].platform_post_recorded, true);
+  assert.equal(report.summary.upload_attempt_count, 1);
+  assert.equal(report.summary.db_mutation_count, 1);
+  assert.equal(persistedSnapshots[0].youtube_post_id, "yt_fk_safe");
+  assert.deepEqual(platformPostCalls, [
+    ["ensurePending", "story-one", "youtube", "story-one:youtube_shorts"],
+    ["markPublished", 29, "yt_fk_safe", "https://youtube.com/shorts/yt_fk_safe"],
+  ]);
+});
+
 test("guarded live dispatch executor supplements DB rows with canonical manifest source labels before upload", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-live-source-label-"));
   const manifestPath = path.join(root, "canonical_story_manifest.json");

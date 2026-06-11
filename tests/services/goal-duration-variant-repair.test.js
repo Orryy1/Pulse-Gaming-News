@@ -276,7 +276,7 @@ test("duration variant repair skips stale work-order rows that already have a ta
       duration_variant_repaired_at: "2026-05-22T08:06:00.000Z",
       duration_variant_repair_strategy: "retention_target_safe_script_extension",
       narration_script:
-        "Star Fox has a Switch 2 camera deal. IGN reports the Nintendo Switch 2 Camera is discounted for Memorial Day. The discount matters because Switch 2 owners need to know whether the camera is actually part of the setup. Follow Pulse Gaming for the gaming stories behind the headline.",
+        "Star Fox has a Switch 2 camera deal. IGN reports the Nintendo Switch 2 Camera is discounted for Memorial Day. The discount matters because Switch 2 owners need to know whether the camera is actually part of the setup. Follow Pulse Gaming so you never miss a beat.",
     },
   });
   await fs.outputJson(path.join(artifactDir, "render_manifest.json"), {
@@ -288,7 +288,7 @@ test("duration variant repair skips stale work-order rows that already have a ta
   await fs.outputFile(
     path.join(artifactDir, "captions.srt"),
     buildCaptionSrt(
-      "Star Fox has a Switch 2 camera deal. IGN reports the Nintendo Switch 2 Camera is discounted for Memorial Day. The discount matters because Switch 2 owners need to know whether the camera is actually part of the setup. Follow Pulse Gaming for the gaming stories behind the headline.",
+      "Star Fox has a Switch 2 camera deal. IGN reports the Nintendo Switch 2 Camera is discounted for Memorial Day. The discount matters because Switch 2 owners need to know whether the camera is actually part of the setup. Follow Pulse Gaming so you never miss a beat.",
       23.25,
     ),
   );
@@ -533,11 +533,11 @@ test("duration variant repair reruns existing repairs with noncanonical protecte
       thumbnail_headline: "POKEMON GO MEGA MEWTWO",
       first_spoken_line: "Mega Mewtwo is finally coming to Pokemon Go.",
       narration_script:
-        "Mega Mewtwo is finally coming to Pokemon Go. Eurogamer reports Mega Mewtwo's Pokemon Go debut has been announced and Go Fest Global is free for players. Niantic now has to make the raid timing clear for players. Follow Pulse Gaming for the gaming stories behind the headline.",
+        "Mega Mewtwo is finally coming to Pokemon Go. Eurogamer reports Mega Mewtwo's Pokemon Go debut has been announced and Go Fest Global is free for players. Niantic now has to make the raid timing clear for players. Follow Pulse Gaming so you never miss a beat.",
       full_script:
-        "Mega Mewtwo is finally coming to Pokemon Go. Eurogamer reports Mega Mewtwo's Pokemon Go debut has been announced and Go Fest Global is free for players. Niantic now has to make the raid timing clear for players. Follow Pulse Gaming for the gaming stories behind the headline.",
+        "Mega Mewtwo is finally coming to Pokemon Go. Eurogamer reports Mega Mewtwo's Pokemon Go debut has been announced and Go Fest Global is free for players. Niantic now has to make the raid timing clear for players. Follow Pulse Gaming so you never miss a beat.",
       tts_script:
-        "Mega Mewtwo is finally coming to Pokemon Go. Eurogamer reports Mega Mewtwo's Pokemon Go debut has been announced and Go Fest Global is free for players. Niantic now has to make the raid timing clear for players. Follow Pulse Gaming for the gaming stories behind the headline.",
+        "Mega Mewtwo is finally coming to Pokemon Go. Eurogamer reports Mega Mewtwo's Pokemon Go debut has been announced and Go Fest Global is free for players. Niantic now has to make the raid timing clear for players. Follow Pulse Gaming so you never miss a beat.",
       duration_variant_repaired_at: "2026-05-25T04:00:00.000Z",
       duration_variant_repair_strategy: NORMAL_PRODUCTION_REPAIR_STRATEGY,
       primary_source: "Eurogamer",
@@ -602,7 +602,7 @@ test("duration variant repair refreshes stale captions on otherwise valid existi
       duration_variant_repaired_at: "2026-05-23T08:30:00.000Z",
       duration_variant_repair_strategy: NORMAL_PRODUCTION_REPAIR_STRATEGY,
       narration_script:
-        "Forza Horizon 6 just turned its Steam launch into an Xbox signal. IGN reports Forza Horizon 6 is already being framed as a major Steam success for Xbox. Follow Pulse Gaming for the gaming stories behind the headline.",
+        "Forza Horizon 6 just turned its Steam launch into an Xbox signal. IGN reports Forza Horizon 6 is already being framed as a major Steam success for Xbox. Follow Pulse Gaming so you never miss a beat.",
       canonical_subject: "Forza Horizon 6",
       canonical_game: "Forza Horizon 6",
       selected_title: "Forza Horizon 6 Broke Xbox's Steam Ceiling",
@@ -656,7 +656,7 @@ test("duration variant repair refreshes normal publish duration windows on exist
       duration_variant_repaired_at: "2026-05-23T08:30:00.000Z",
       duration_variant_repair_strategy: NORMAL_PRODUCTION_REPAIR_STRATEGY,
       narration_script:
-        "Forza Horizon 6 just turned its Steam launch into an Xbox signal. IGN reports Forza Horizon 6 is already being framed as a major Steam success for Xbox. Follow Pulse Gaming for the gaming stories behind the headline.",
+        "Forza Horizon 6 just turned its Steam launch into an Xbox signal. IGN reports Forza Horizon 6 is already being framed as a major Steam success for Xbox. Follow Pulse Gaming so you never miss a beat.",
       canonical_subject: "Forza Horizon 6",
       canonical_game: "Forza Horizon 6",
       selected_title: "Forza Horizon 6 Broke Xbox's Steam Ceiling",
@@ -684,7 +684,7 @@ test("duration variant repair refreshes normal publish duration windows on exist
       "",
       "3",
       "00:00:36,200 --> 00:00:54,300",
-      "Follow Pulse Gaming for the gaming stories behind the headline.",
+      "Follow Pulse Gaming so you never miss a beat.",
       "",
     ].join("\n"),
   );
@@ -911,7 +911,7 @@ test("duration variant repair reruns existing normal repairs with stale filler e
       duration_variant_repaired_at: "2026-05-23T07:29:48.797Z",
       duration_variant_repair_strategy: NORMAL_PRODUCTION_REPAIR_STRATEGY,
       narration_script:
-        "Forza Horizon 6 just turned its Steam launch into an Xbox signal. IGN reports Forza Horizon 6 is already being framed as a major Steam success for Xbox. The watch point is whether Steam attention changes how Xbox times the wider launch push. Follow Pulse Gaming for the gaming stories behind the headline. The detail to watch is timing: when Forza Horizon 6 appears and which platforms are actually included. That matters more than the headline if you are deciding what to wishlist, download or ignore next. A trailer is useful, but the release window and platform list decide whether this becomes day-one news. If the next official update adds pricing, access or a date, that is the version that deserves the bigger push. IGN leaves one player-facing detail to track: Forza Horizon 6 is already being framed as a major Steam success for Xbox..",
+        "Forza Horizon 6 just turned its Steam launch into an Xbox signal. IGN reports Forza Horizon 6 is already being framed as a major Steam success for Xbox. The watch point is whether Steam attention changes how Xbox times the wider launch push. Follow Pulse Gaming so you never miss a beat. The detail to watch is timing: when Forza Horizon 6 appears and which platforms are actually included. That matters more than the headline if you are deciding what to wishlist, download or ignore next. A trailer is useful, but the release window and platform list decide whether this becomes day-one news. If the next official update adds pricing, access or a date, that is the version that deserves the bigger push. IGN leaves one player-facing detail to track: Forza Horizon 6 is already being framed as a major Steam success for Xbox..",
       canonical_subject: "Forza Horizon 6",
       canonical_game: "Forza Horizon 6",
       selected_title: "Forza Horizon 6 Broke Xbox's Steam Ceiling",
@@ -927,7 +927,7 @@ test("duration variant repair reruns existing normal repairs with stale filler e
   });
   await fs.outputFile(
     path.join(artifactDir, "captions.srt"),
-    "1\n00:00:00,000 --> 00:00:07,000\nFollow Pulse Gaming for the gaming stories behind the headline.\n",
+    "1\n00:00:00,000 --> 00:00:07,000\nFollow Pulse Gaming so you never miss a beat.\n",
   );
   const audioCalls = [];
 
@@ -1303,7 +1303,7 @@ test("duration variant repair removes mismatched access filler from gameplay sho
       canonical_game: "The Expanse: Osiris Reborn",
       selected_title: "The Expanse Shows Real Gameplay",
       narration_script:
-        "The Expanse: Osiris Reborn finally showed real gameplay. Xbox showed The Expanse: Osiris Reborn gameplay during Xbox Partner Preview. The Expanse: Osiris Reborn turns premium access into the story, because the paid tier is starting to look like launch day. The tension is whether early access feels like a bonus or the real starting line. Follow Pulse Gaming for the gaming stories behind the headline.",
+        "The Expanse: Osiris Reborn finally showed real gameplay. Xbox showed The Expanse: Osiris Reborn gameplay during Xbox Partner Preview. The Expanse: Osiris Reborn turns premium access into the story, because the paid tier is starting to look like launch day. The tension is whether early access feels like a bonus or the real starting line. Follow Pulse Gaming so you never miss a beat.",
       primary_source: "Xbox",
       source_card_label: "Xbox",
       confirmed_claims: [
@@ -1485,7 +1485,7 @@ test("duration variant repair does not reintroduce internal source-policy langua
       canonical_game: "Forza Horizon 6",
       selected_title: "Forza Horizon 6 Reviews Are In",
       narration_script:
-        "Forza Horizon 6 reviews are finally in. PC Gamer published its Forza Horizon 6 review, with GameSpot and VGC also weighing in. Strong reviews matter here because this is when fence-sitters decide whether another Horizon is enough. Follow Pulse Gaming for the gaming stories behind the headline.",
+        "Forza Horizon 6 reviews are finally in. PC Gamer published its Forza Horizon 6 review, with GameSpot and VGC also weighing in. Strong reviews matter here because this is when fence-sitters decide whether another Horizon is enough. Follow Pulse Gaming so you never miss a beat.",
       primary_source: "PC Gamer",
       source_card_label: "PC Gamer",
       confirmed_claims: [
@@ -1556,7 +1556,7 @@ test("duration variant content-signal repair keeps normal production headroom wh
       canonical_game: "Forza Horizon 6",
       selected_title: "Forza Horizon 6 Reviews Are In",
       narration_script:
-        "Forza Horizon 6 reviews are finally in. PC Gamer published its Forza Horizon 6 review, with GameSpot and VGC also weighing in. PC Gamer is the source line, and the player decision is the reason this is worth the extra seconds. The confirmed claim is simple: PC Gamer published its Forza Horizon 6 review, with GameSpot and VGC also weighing in. Follow Pulse Gaming for the gaming stories behind the headline.",
+        "Forza Horizon 6 reviews are finally in. PC Gamer published its Forza Horizon 6 review, with GameSpot and VGC also weighing in. PC Gamer is the source line, and the player decision is the reason this is worth the extra seconds. The confirmed claim is simple: PC Gamer published its Forza Horizon 6 review, with GameSpot and VGC also weighing in. Follow Pulse Gaming so you never miss a beat.",
       primary_source: "PC Gamer",
       source_card_label: "PC Gamer",
       confirmed_claims: [
@@ -2018,7 +2018,7 @@ test("duration variant repair gives near-floor local renders enough lift to clea
     "Forza Horizon 6 just turned its Steam launch into an Xbox signal.",
     "IGN reports Forza Horizon 6 is already being framed as a major Steam success for Xbox.",
     "The question is whether Steam attention changes the wider launch push.",
-    "Follow Pulse Gaming for the gaming stories behind the headline.",
+    "Follow Pulse Gaming so you never miss a beat.",
   ].join(" ");
 
   const repair = extendScriptToTarget(
@@ -2122,7 +2122,7 @@ test("duration variant repair thumbnail headline never leaves dangling or repeat
       selected_title: item.title,
       thumbnail_headline: headline,
       first_spoken_line: `${item.subject} has a confirmed update.`,
-      narration_script: `${item.subject} has a confirmed update. IGN reports the confirmed detail. Follow Pulse Gaming for the gaming stories behind the headline.`,
+      narration_script: `${item.subject} has a confirmed update. IGN reports the confirmed detail. Follow Pulse Gaming so you never miss a beat.`,
       description: "Confirmed detail. Source: IGN.",
       primary_source: "IGN",
       confirmed_claims: ["Confirmed detail"],
@@ -2142,7 +2142,7 @@ test("duration variant repair treats Pokemon Go event unlocks as live events, no
         "Eurogamer reports Mega Mewtwo's Pokemon Go debut has been announced and Go Fest Global is free for players.",
         "A better showing would make Pokemon Go readable fast: combat, UI, platform list and date.",
         "A full mission and proper launch details would do more than teaser energy.",
-        "Follow Pulse Gaming for the gaming stories behind the headline.",
+        "Follow Pulse Gaming so you never miss a beat.",
       ].join(" "),
       primary_source: "Eurogamer",
       confirmed_claims: [
@@ -2278,7 +2278,7 @@ test("duration variant repair tightens showcase stories without adding deal fill
     "That is why the useful play is to treat the headline as a price check, not a victory lap.",
     "The only firm read for now is this: Xbox showed The Expanse: Osiris Reborn gameplay during Xbox Partner Preview.",
     "The next thing to watch is whether the store page, official post or platform listing changes the practical call.",
-    "Follow Pulse Gaming for the gaming stories behind the headline.",
+    "Follow Pulse Gaming so you never miss a beat.",
   ].join(" ");
 
   const repair = extendScriptToTarget(
@@ -2319,7 +2319,7 @@ test("duration variant repair strips meta edit instructions from gameplay script
     "The details that matter are the discount, the platform and whether the deal is live where players can use it.",
     "That keeps the commercial angle useful without turning the short into an advert.",
     "The Expanse: Osiris Reborn stays worth tracking because the next official detail could change the launch, access or value story.",
-    "Follow Pulse Gaming for the gaming stories behind the headline.",
+    "Follow Pulse Gaming so you never miss a beat.",
   ].join(" ");
 
   const repair = extendScriptToTarget(
@@ -2356,7 +2356,7 @@ test("duration variant repair rewrites Expanse meta-proof narration into a clean
     "That makes the first gameplay read sharper than another trailer quote.",
     "Players need to see a loop with real decisions before this feels like more than a familiar logo.",
     "A longer gameplay cut can prove whether the pitch survives beyond montage pace.",
-    "Follow Pulse Gaming for the gaming stories behind the headline.",
+    "Follow Pulse Gaming so you never miss a beat.",
   ].join(" ");
 
   const repair = extendScriptToTarget(
@@ -2472,7 +2472,7 @@ test("duration variant repair does not pad showcase scripts with generic footage
     "Hades II finally has something players can judge on screen.",
     "The first test is movement, combat readability and whether the UI looks like a real game.",
     "A date or platform list helps, but footage is the part that decides whether the reveal has weight.",
-    "Follow Pulse Gaming for the gaming stories behind the headline.",
+    "Follow Pulse Gaming so you never miss a beat.",
   ].join(" ");
 
   const repair = extendScriptToTarget(
@@ -2652,7 +2652,7 @@ test("duration variant repair gives Hades a curiosity hook and complete mobile h
         "Hades II finally has something players can judge on screen.",
         "The first test is movement, combat readability and whether the UI looks like a real game.",
         "A longer public showing would say more than another quick trailer.",
-        "Follow Pulse Gaming for the gaming stories behind the headline.",
+        "Follow Pulse Gaming so you never miss a beat.",
       ].join(" "),
       primary_source: "Xbox",
       official_source: "Xbox",
@@ -2682,7 +2682,7 @@ test("duration variant repair turns controller-date leaks into hardware news ins
       canonical_game: "Steam Controller",
       selected_title: "Steam Controller Date May Have Leaked",
       narration_script:
-        "Steam Controller release timing may have leaked early. Eurogamer reports The Steam controller release date may have been leaked online. The hook has to stay tied to the named game, the source and the concrete detail viewers can repeat. Follow Pulse Gaming for the gaming stories behind the headline.",
+        "Steam Controller release timing may have leaked early. Eurogamer reports The Steam controller release date may have been leaked online. The hook has to stay tied to the named game, the source and the concrete detail viewers can repeat. Follow Pulse Gaming so you never miss a beat.",
       primary_source: "Eurogamer",
       confirmed_claims: ["The Steam controller release date may have been leaked online."],
     },
@@ -2705,7 +2705,7 @@ test("duration variant repair keeps handmade art-direction stories out of job-ma
       canonical_game: "Pragmata",
       selected_title: "Pragmata's AI-Look Stage Was Handmade",
       narration_script:
-        "Pragmata's AI-looking stage was actually handmade by developers. Automaton Media reports Pragmata's newly revealed New York stage was painstakingly made by human developers to look AI generated. Pragmata is not just nostalgia here; it is the familiar name attached to a rough games job market. When veteran credits are still fighting for interviews, the story stops being abstract. Follow Pulse Gaming for the gaming stories behind the headline.",
+        "Pragmata's AI-looking stage was actually handmade by developers. Automaton Media reports Pragmata's newly revealed New York stage was painstakingly made by human developers to look AI generated. Pragmata is not just nostalgia here; it is the familiar name attached to a rough games job market. When veteran credits are still fighting for interviews, the story stops being abstract. Follow Pulse Gaming so you never miss a beat.",
       primary_source: "Automaton Media",
       confirmed_claims: [
         "Pragmata's newly revealed New York stage was painstakingly made by human developers to look AI generated.",
@@ -2733,7 +2733,7 @@ test("duration variant repair keeps publisher bonus disputes out of job-market f
       canonical_game: "Subnautica 2",
       selected_title: "Subnautica 2 Bonus Fight Got Bigger",
       narration_script:
-        "Subnautica 2 is keeping one of its strangest survival rules. Aftermath reports Sure Seems Like Subnautica 2's Developers Are Going To Get Their $250 Million Bonus. Subnautica 2 is not just nostalgia here; it is the familiar name attached to a rough games job market. Follow Pulse Gaming for the gaming stories behind the headline.",
+        "Subnautica 2 is keeping one of its strangest survival rules. Aftermath reports Sure Seems Like Subnautica 2's Developers Are Going To Get Their $250 Million Bonus. Subnautica 2 is not just nostalgia here; it is the familiar name attached to a rough games job market. Follow Pulse Gaming so you never miss a beat.",
       primary_source: "Aftermath",
       confirmed_claims: ["Sure Seems Like Subnautica 2's Developers Are Going To Get Their $250 Million Bonus."],
     },
@@ -2762,7 +2762,7 @@ test("duration variant repair does not pad publisher bonus disputes with repeate
         "Subnautica 2's bonus fight now looks bigger than the sequel hype.",
         "Aftermath reports Subnautica 2's developers appear to be in line for a $250 million bonus.",
         "Fans are watching the sequel and the payout fight at the same time, which makes every official update land heavier.",
-        "Follow Pulse Gaming for the gaming stories behind the headline.",
+        "Follow Pulse Gaming so you never miss a beat.",
       ].join(" "),
       primary_source: "Aftermath",
       confirmed_claims: ["Subnautica 2's developers appear to be in line for a $250 million bonus."],
@@ -2791,7 +2791,7 @@ test("duration variant repair gives near-floor ElevenLabs renders a small lift i
     "Xbox showed The Expanse: Osiris Reborn gameplay during Xbox Partner Preview.",
     "The next beat is simple: release timing, platforms and whether the next showing backs up the gameplay pitch.",
     "That is enough for a watchlist, but not enough for a day-one call yet.",
-    "Follow Pulse Gaming for the gaming stories behind the headline.",
+    "Follow Pulse Gaming so you never miss a beat.",
   ].join(" ");
 
   const repair = extendScriptToTarget(

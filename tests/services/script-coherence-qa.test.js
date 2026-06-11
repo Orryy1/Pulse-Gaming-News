@@ -31,7 +31,7 @@ test("script coherence does not double-count hook/body/loop mirrored in full_scr
   assert.equal(qa.result, "pass", qa.failures.join(", "));
 });
 
-test("script coherence accepts the identity CTA for adult gaming news positioning", () => {
+test("script coherence rejects the stale identity CTA", () => {
   const story = {
     title: "Forza Horizon 6 Just Broke Xbox's Steam Ceiling",
     source_type: "rss",
@@ -46,7 +46,9 @@ test("script coherence accepts the identity CTA for adult gaming news positionin
     requireFullScriptCta: true,
   });
 
-  assert.equal(qa.result, "pass", qa.failures.join(", "));
+  assert.equal(qa.result, "fail");
+  assert.ok(qa.failures.includes("script_coherence:cta_not_exact"));
+  assert.ok(qa.failures.includes("script_coherence:missing_exact_cta_in_script"));
 });
 
 test("script coherence still catches true repeated sentences inside full_script", () => {

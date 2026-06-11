@@ -111,7 +111,7 @@ function greenStory(id = "green-one") {
     transformative_edit_evidence: true,
     audio_path: `output/audio/${id}.mp3`,
     full_script:
-      "Forza Horizon 6 just gave Xbox the paid access warning it needed. GamesRadar+ reports 178,009 concurrent Steam players and a 92 Metacritic aggregate. The catch is that this happened before the standard launch, with some players paying $120. That means demand is real, but the final ceiling is not settled yet. Follow Pulse Gaming so you never miss a beat.",
+      "Forza Horizon 6 just gave Xbox the paid access warning it needed. GamesRadar+ reports 178,009 concurrent Steam players and a 92 Metacritic aggregate. The catch is that this happened before the standard launch, with some players paying $120. That split matters because paid early demand proves attention, but it does not prove the wider audience is already locked in. If the cheaper wave holds, this becomes a real momentum story instead of a premium-week screenshot. Follow Pulse Gaming so you never miss a beat.",
     video_clips: clips,
     sfx_asset_inventory: licensedSfxAssets(),
     affiliate_link_manifest: { story_id: id, vertical: "gaming", disclosure_required: false },
@@ -426,7 +426,7 @@ test("goal batch packages hydrate existing Visual V4 motion packs instead of usi
     audio_path: "output/audio/forza-rich-restore.mp3",
     sfx_asset_inventory: licensedSfxAssets(),
     full_script:
-      "Forza Horizon 6 just gave Xbox the paid access warning it needed. GamesRadar+ reports a major Steam peak during Premium Edition early access. That makes the number a paid-access stress test, not the final demand ceiling. Follow Pulse Gaming so you never miss a beat.",
+      "Forza Horizon 6 just gave Xbox the paid access warning it needed. GamesRadar+ reports a major Steam peak during Premium Edition early access. The catch is whether that paid-access crowd turns into wider demand once the cheaper route opens. That split matters because a premium spike proves attention, but not long-term retention. If the standard launch holds, this becomes a real Xbox momentum story instead of a one-week Steam screenshot. Follow Pulse Gaming so you never miss a beat.",
   };
   const clips = Array.from({ length: 5 }, (_, index) => ({
     id: `v4-motion-${index + 1}`,

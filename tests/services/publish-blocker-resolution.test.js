@@ -244,7 +244,7 @@ test("publish blocker repair orchestration keeps manual triage blockers visible"
   assert.match(workOrder.post_repair_validation_command, /publish-unblock/);
 });
 
-test("publish blocker resolution rechecks stale exact-CTA failures when the current script has an approved identity CTA", () => {
+test("publish blocker resolution holds stale identity CTA failures for rewrite triage", () => {
   const item = classifyPublishBlocker({
     story: {
       id: "identity-cta",
@@ -256,11 +256,11 @@ test("publish blocker resolution rechecks stale exact-CTA failures when the curr
     reason: "qa_failure:script_generation_review:script_coherence:missing_exact_cta_in_script",
   });
 
-  assert.equal(item.resolution_lane, "stale_script_qa_recheck");
+  assert.equal(item.resolution_lane, "manual_triage");
   assert.equal(item.dead_end, false);
-  assert.equal(item.can_apply_automatically, true);
-  assert.equal(item.safety_gate, "fresh_preflight_required_no_db_mutation");
-  assert.match(item.safe_next_command, /next-publish-candidates/);
+  assert.equal(item.can_apply_automatically, false);
+  assert.equal(item.safety_gate, "source_backed_rewrite_or_reject_required");
+  assert.match(item.safe_next_command, /pipeline-backlog/);
 });
 
 test("publish blocker resolution treats reviewed stale temporal rejects as already handled", () => {

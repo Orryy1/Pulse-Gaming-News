@@ -91,13 +91,12 @@ test("viral script intelligence accepts sharp non-numeric gameplay stories with 
 
 test("viral script intelligence scores review-spread curiosity beats above the publish threshold", () => {
   const script =
-    "Forza Horizon 6 just landed a strong PC Gamer review. " +
+    "Forza Horizon 6 just got the score Xbox needed before launch. " +
     "PC Gamer reports Forza Horizon 6 review at 84 out of 100. " +
-    "Strong reviews matter here because this is when fence-sitters decide whether another Horizon is enough. " +
-    "The number is only the opening beat; repeated praise or complaints across outlets matter more. " +
-    "One high score can hide split opinions, but a steady spread says the reception is harder to dismiss. " +
-    "Until players have it, this is a strong signal, not a final verdict. " +
-    "That is what makes the score matter to players instead of becoming chart noise. " +
+    "That matters because review scores do not sell a racing game alone; they give hesitant players permission to care. " +
+    "The catch is that an 84 still has to beat real player fatigue once the first weekend lands. " +
+    "The debate is whether an 84 proves Horizon is still elite or just comfortably familiar. " +
+    "If more outlets line up behind that score, Xbox gets a cleaner launch argument than another trailer could buy. " +
     "Follow Pulse Gaming so you never miss a beat.";
 
   const result = buildViralScriptIntelligence({
@@ -230,6 +229,76 @@ test("viral script intelligence rejects formulaic not-just hooks", () => {
   assert.ok(result.rewrite_recommendations.some((item) => /specific consequence/i.test(item)));
 });
 
+test("viral script intelligence rejects producer-scaffold language even when facts are sourced", () => {
+  const script =
+    "V Rising has a new sequel-sized problem. " +
+    "IGN reports Stunlock Studios is working on a new game set in the V Rising universe while the original moves to balance and bug-fix support. " +
+    "Here's what matters now: the support plan becomes part of the next game story. " +
+    "Fans are no longer just asking about the next patch. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "v-rising-scaffold",
+      title: "V Rising Studio Is Working On A New Game",
+      source_name: "IGN",
+    },
+    script,
+  });
+
+  assert.equal(result.verdict, "rewrite_required");
+  assert.ok(result.blockers.includes("producer_scaffold_language"), JSON.stringify(result));
+  assert.ok(
+    result.rewrite_recommendations.some((item) => /producer-note/i.test(item)),
+    JSON.stringify(result.rewrite_recommendations),
+  );
+});
+
+test("viral script intelligence rejects competent but hollow scripts without debate or payoff", () => {
+  const script =
+    "Super Mario RPG just dropped to $15 at GameStop. " +
+    "GameStop lists Super Mario RPG at $15, 70% off its listed price. " +
+    "Stock, platform and seller details can move fast. " +
+    "For players, this is a useful deal to check while the listing holds. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "mario-deal-hollow",
+      title: "Super Mario RPG Drops To $15",
+      source_name: "GameStop",
+    },
+    script,
+  });
+
+  assert.equal(result.verdict, "rewrite_required");
+  assert.ok(result.blockers.includes("missing_debate_trigger"), JSON.stringify(result));
+  assert.ok(result.blockers.includes("missing_story_specific_payoff"), JSON.stringify(result));
+});
+
+test("viral script intelligence approves scripts with player stakes, argument and payoff", () => {
+  const script =
+    "V Rising fans just got sequel news with a nasty trade-off. " +
+    "IGN reports Stunlock Studios is working on a new game set in the V Rising universe while the original moves to balance and bug-fix support. " +
+    "That is exciting if you wanted the world to grow, but rough if you were waiting for another major content drop. " +
+    "The real debate is whether this is smart studio focus or a quiet way of moving on from the game people already bought. " +
+    "If the new project keeps V Rising's survival tension without abandoning current players, Stunlock has a universe instead of one hit. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "v-rising-world-class",
+      title: "V Rising Studio Is Working On A New Game",
+      source_name: "IGN",
+    },
+    script,
+  });
+
+  assert.equal(result.verdict, "viral_ready", JSON.stringify(result, null, 2));
+  assert.ok(result.viral_score >= 85, JSON.stringify(result.scores));
+  assert.deepEqual(result.blockers, []);
+});
+
 test("viral script intelligence rejects repeated source recaps after the payoff", () => {
   const script =
     "Stranger Than Heaven just made its pitch harder to fake. " +
@@ -274,11 +343,11 @@ test("viral script intelligence treats source names as present despite casing di
       source_name: "Gamestop",
     },
     script:
-      "Super Mario RPG just dropped to $15 at GameStop. GameStop lists Super Mario RPG at $15, 70% off its listed price. The catch is what matters: platform, seller and timing can change the value before players act. For anyone who skipped the physical Switch copy, that is a real pickup point while the listing holds. Follow Pulse Gaming so you never miss a beat.",
+      "Super Mario RPG just dropped to $15 at GameStop. GameStop lists Super Mario RPG at $15, 70% off its listed price. The trade-off is timing: physical Switch copies can vanish fast when a price cut turns into a rush. The debate is whether this is finally cheap enough to buy again, or still too late for players waiting on Switch 2. If the listing holds, GameStop has turned an old RPG into a real impulse-buy test. Follow Pulse Gaming so you never miss a beat.",
   });
 
   assert.equal(result.scores.source_safety, 86);
-  assert.notEqual(result.verdict, "rewrite_required");
+  assert.equal(result.verdict, "viral_ready", JSON.stringify(result, null, 2));
 });
 
 test("viral script intelligence recognises subscription runway stories as high-value debate scripts", () => {

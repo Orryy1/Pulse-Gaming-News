@@ -329,7 +329,7 @@ test("isPersistableScriptReady prevents apply-local from writing review placehol
     "It is who counted: people willing to move early, pay attention and in some cases spend $120 before the cheap wave lands. " +
     "That makes the launch harder to dismiss as trailer hype, because paid early demand carries more weight than wishlist noise. " +
     "The catch is that early-access peaks can cool down quickly once the first weekend ends. " +
-    "For players, the takeaway is simple: watch whether the spike turns into retention before calling it a long-term win. " +
+    "For players, the real question is whether the spike turns into retention before anyone calls it a long-term win. " +
     "The split matters: reviews point to quality, while early Steam numbers show who paid attention before the cheaper route opened. " +
     "The next pressure point is the normal launch: it either builds on the premium crowd or exposes a short-lived spike. " +
     "The stronger read separates the proof point from launch-week theatre. " +

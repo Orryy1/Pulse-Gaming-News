@@ -706,7 +706,7 @@ test("public copy package repair gives leak and deal scripts recognised curiosit
     const artifactDir = path.join(root, "batch", item.storyId);
     const savedManifest = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
     const savedScorecard = await fs.readJson(path.join(artifactDir, "script_scorecard.json"));
-    assert.match(savedManifest.narration_script, /\bThe catch is (?:what matters|what this changes)\b/i);
+    assert.match(savedManifest.narration_script, /\b(?:The catch is (?:what matters|what this changes)|The trade-off is)\b/i);
     assert.ok(savedScorecard.scores.curiosity_gap >= 70, JSON.stringify(savedScorecard, null, 2));
     assert.ok(!savedScorecard.warnings.includes("no_curiosity_marker"), JSON.stringify(savedScorecard, null, 2));
   }

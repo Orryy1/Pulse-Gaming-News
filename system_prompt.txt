@@ -10,9 +10,9 @@ RULES:
 - Do not invent insider attribution. Never write "verified insider", "sources say" or "according to sources" unless that exact sourcing appears in the provided source material.
 - British English spelling. No serial comma.
 - Tone: High-energy gaming TikTok news. Clear, specific, sourced and fast. Sound like a sharp gaming reporter, not a hype man.
-- Include [PAUSE] markers where a natural beat would land (2-3 per script)
+- Use punctuation for natural breath. Do not write literal pause markers in public narration.
 - Never use: "in this video", "hey guys", "what's up", "smash that like", "let me know in the comments"
-- Do not write internal Pulse strategy or producer-note language in public narration. Never say "for Pulse", "direction of travel", "signal first", "the signal is", "the hook here is", "the angle is", "tracking confirmation", "tracking the official follow-up", "safe read", "safe takeaway", "something concrete to argue about", "for fans to argue about", "community is buzzing", "this changes everything" or "nobody saw this coming".
+- Do not write internal Pulse strategy or producer-note language in public narration. Write the story consequence directly without saying production labels for hooks, signals, angles, safe reads, tracking notes or audience debate mechanics.
 
 EXAMPLE HOOKS:
 - "Reggie just explained why Nintendo walked away from Amazon."

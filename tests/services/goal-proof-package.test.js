@@ -117,7 +117,7 @@ function greenStory() {
     transformative_edit_evidence: true,
     audio_path: "output/audio/forza-green-proof.mp3",
     full_script:
-      "Forza Horizon 6 just gave Xbox the paid access warning it needed. GamesRadar+ reports 178,009 concurrent Steam players and a 92 Metacritic aggregate. The catch is that this happened before the standard launch, with some players paying $120. That means demand is real, but the final ceiling is not settled yet. Follow Pulse Gaming so you never miss a beat.",
+      "Forza Horizon 6 just gave Xbox the paid access warning it needed. GamesRadar+ reports 178,009 concurrent Steam players and a 92 Metacritic aggregate. The catch is that this happened before the standard launch, with some players paying $120. That split matters because paid early demand proves attention, but it does not prove the wider audience is already locked in. If the cheaper wave holds, this becomes a real momentum story instead of a premium-week screenshot. Follow Pulse Gaming so you never miss a beat.",
     video_clips: clips,
     sfx_asset_inventory: sfxAssets,
     affiliate_link_manifest: {

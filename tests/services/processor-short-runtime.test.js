@@ -274,12 +274,13 @@ test("Pulse channel prompt bans internal strategy boilerplate from narration", (
     "utf8",
   );
 
-  assert.match(channelSource, /Do not write internal Pulse strategy or producer-note language/);
-  assert.match(channelSource, /direction of travel/);
-  assert.match(channelSource, /signal first/);
-  assert.match(channelSource, /the hook here is/);
-  assert.match(channelSource, /something for fans to argue about/);
-  assert.match(channelSource, /safe takeaway/);
+  assert.match(channelSource, /Do not write internal Pulse strategy, producer notes/);
+  assert.match(channelSource, /without narrating production labels/i);
+  assert.match(channelSource, /producer notes/i);
+  assert.doesNotMatch(channelSource, /the hook here is/);
+  assert.doesNotMatch(channelSource, /something for fans to argue about/);
+  assert.doesNotMatch(channelSource, /for fans to argue about/);
+  assert.doesNotMatch(channelSource, /the signal is/);
   assert.match(channelSource, /High-energy gaming TikTok news/);
   assert.doesNotMatch(channelSource, /slightly conspiratorial/);
   assert.doesNotMatch(channelSource, /nobody noticed this/);
@@ -330,9 +331,10 @@ test("fallback system prompt bans fake insider attribution and internal strategy
   assert.doesNotMatch(fallbackPrompt, /A verified insider claims/);
   assert.match(fallbackPrompt, /Do not invent insider attribution/);
   assert.match(fallbackPrompt, /Do not write internal Pulse strategy or producer-note language/);
-  assert.match(fallbackPrompt, /the hook here is/);
-  assert.match(fallbackPrompt, /for fans to argue about/);
-  assert.match(fallbackPrompt, /community is buzzing/);
+  assert.match(fallbackPrompt, /without saying production labels/i);
+  assert.doesNotMatch(fallbackPrompt, /the hook here is/);
+  assert.doesNotMatch(fallbackPrompt, /for fans to argue about/);
+  assert.doesNotMatch(fallbackPrompt, /something concrete to argue about/);
 });
 
 test("processor editor prompt: non-Pulse channels keep legacy long-form short range", () => {

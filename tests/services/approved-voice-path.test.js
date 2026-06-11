@@ -258,7 +258,7 @@ test("approved voice path approves existing production audio", () => {
   assert.deepEqual(result.blockers, []);
 });
 
-test("approved voice path accepts the identity CTA outro", () => {
+test("approved voice path rejects the stale identity CTA outro", () => {
   const result = evaluateApprovedVoicePath({
     narration: {
       provider: "elevenlabs",
@@ -270,9 +270,9 @@ test("approved voice path accepts the identity CTA outro", () => {
     },
   });
 
-  assert.equal(result.verdict, "approved_for_studio_v2_proof");
-  assert.deepEqual(result.blockers, []);
-  assert.equal(result.transcript.spoken_outro_present, true);
+  assert.equal(result.verdict, "rejected");
+  assert.ok(result.blockers.includes("spoken_outro_missing"));
+  assert.equal(result.transcript.spoken_outro_present, false);
 });
 
 test("approved voice path markdown is readable for operators", () => {

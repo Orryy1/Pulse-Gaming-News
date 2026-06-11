@@ -61,9 +61,10 @@ async function makeStoryPackage(
   const voiceQualityWordCount = options.voiceQualityWordCount || audioWordCount;
   const defaultFirstLine = `${subject} just gave players a concrete warning.`;
   const defaultScript =
-    `${defaultFirstLine} Eurogamer reports ${subject} now has a source-safe update players can actually use. ` +
-    "The catch is what changes next: timing, access and platform support decide whether this becomes useful or just another headline. " +
-    "That gives the story a clear player impact without stretching beyond the source. Follow Pulse Gaming so you never miss a beat.";
+    `${defaultFirstLine} Eurogamer reports ${subject} now has a confirmed update with a real player consequence. ` +
+    "The catch is whether timing, access and platform support make the update useful or leave it as headline noise. " +
+    "That split gives players something concrete to judge before the next trailer, store page or launch window changes the stakes. " +
+    "If the next proof lands, this becomes a practical release story instead of another passing reveal. Follow Pulse Gaming so you never miss a beat.";
   await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
     story_id: id,
     canonical_subject: subject,

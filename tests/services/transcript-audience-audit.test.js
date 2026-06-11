@@ -40,7 +40,7 @@ test("transcript audience audit separates viral-ready scripts from rewrite-requi
       root,
       "good",
       "The Expanse Shows Real Gameplay",
-      "The Expanse: Osiris Reborn finally has real gameplay on screen. Xbox showed The Expanse: Osiris Reborn gameplay during Partner Preview, which matters because this is no longer just a logo and a licence. The catch is why mission flow matters: a famous universe only helps if the gunfights, camera weight and scale hold up outside a trailer cut. The real player question is whether this feels like The Expanse, or just another sci-fi shooter wearing the name. Follow Pulse Gaming so you never miss a beat.",
+      "The Expanse: Osiris Reborn finally has real gameplay on screen. Xbox showed The Expanse: Osiris Reborn gameplay during Partner Preview, which matters because this is no longer just a logo and a licence. The trade-off is brutal: a famous universe only helps if the gunfights, camera weight and scale hold up outside a trailer cut. The real player question is whether this feels like The Expanse, or just another sci-fi shooter wearing the name. If the mission flow holds, this becomes a licensed game players can judge on play instead of branding. Follow Pulse Gaming so you never miss a beat.",
     );
     await writeStory(
       root,
@@ -105,6 +105,30 @@ test("transcript audience audit rejects generic source-bound padding", async () 
     const row = report.stories.find((story) => story.story_id === "gta-subscription");
     assert.ok(
       row.blockers.includes("script_coherence:vague_filler:generic_source_bound_padding"),
+      row.blockers.join(", "),
+    );
+  });
+});
+
+test("transcript audience audit rejects producer scaffold and low-payoff narration", async () => {
+  await withTempDir(async (root) => {
+    await writeStory(
+      root,
+      "v-rising-scaffold",
+      "V Rising Studio Is Working On A New Game",
+      "V Rising has a new sequel-sized problem. IGN reports Stunlock Studios is working on a new game set in the V Rising universe while the original moves to balance and bug-fix support. Here's what matters now: the support plan becomes part of the next game story. Fans are no longer just asking about the next patch. Follow Pulse Gaming so you never miss a beat.",
+      "IGN",
+    );
+
+    const report = await auditGeneratedTranscripts({ root });
+
+    assert.equal(report.summary.total, 1);
+    assert.equal(report.summary.pass, 0);
+    assert.equal(report.summary.rewrite_required, 1);
+    const row = report.stories.find((story) => story.story_id === "v-rising-scaffold");
+    assert.ok(row.blockers.includes("producer_scaffold_language"), row.blockers.join(", "));
+    assert.ok(
+      row.blockers.includes("script_coherence:vague_filler:producer_scaffold_language"),
       row.blockers.join(", "),
     );
   });

@@ -167,6 +167,7 @@
     "ops:render-contract": "node tools/render-contract-report.js",
     "ops:publish-readiness": "node tools/publish-readiness.js",
     "ops:publish-cadence": "node tools/publish-cadence-doctor.js",
+    "ops:normal-operations": "node tools/normal-operations-report.js",
     "ops:next-publish-candidates": "node tools/next-publish-candidates.js --preflight-qa",
     "ops:publish-unblock": "node tools/publish-blocker-resolution.js",
     "ops:publish-row-repair": "node tools/publish-row-repair-plan.js",

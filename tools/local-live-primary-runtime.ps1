@@ -16,6 +16,10 @@ if ($existing) {
 
 Set-Location -LiteralPath $RepoRoot
 
+$logDir = Join-Path $RepoRoot "output/runtime"
+New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+$logPath = Join-Path $logDir "pulse-live-primary-runtime.log"
+
 $env:PORT = "$Port"
 $env:DEPLOYMENT_MODE = "local"
 $env:PULSE_PRIMARY_INSTANCE = "true"
@@ -30,4 +34,4 @@ $env:PULSE_SAFE_OBSERVATION_MODE = "false"
 $env:PULSE_PRIMARY_RUNTIME_HOLD = "false"
 $env:PULSE_GUARDED_EXECUTOR_PLAN_PATH = "output/goal-contract/guarded_dispatch_executor_plan.json"
 
-& node server.js
+& node server.js *>> $logPath

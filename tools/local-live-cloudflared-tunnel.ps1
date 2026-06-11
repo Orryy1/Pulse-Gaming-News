@@ -19,4 +19,7 @@ if (-not (Test-Path -LiteralPath $cloudflared)) {
   $cloudflared = "cloudflared"
 }
 
-& $cloudflared tunnel --config $ConfigPath run
+$logPath = "D:/pulse-data/cloudflared-pulse-live.log"
+New-Item -ItemType Directory -Force -Path (Split-Path -Parent $logPath) | Out-Null
+
+& $cloudflared tunnel --config $ConfigPath run *>> $logPath

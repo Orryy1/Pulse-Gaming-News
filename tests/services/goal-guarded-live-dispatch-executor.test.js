@@ -8,6 +8,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const {
+  defaultActionQualityGate,
   selectNextGuardedLiveAction,
   runGuardedLiveDispatchExecutor,
 } = require("../../lib/goal-guarded-live-dispatch-executor");
@@ -82,6 +83,10 @@ function story(overrides = {}) {
   };
 }
 
+async function passActionQualityGate() {
+  return { result: "pass", blockers: [], checks: {} };
+}
+
 test("guarded live dispatch executor dry-run never uploads or mutates DB", async () => {
   let uploadCalls = 0;
   let upsertCalls = 0;
@@ -108,6 +113,7 @@ test("guarded live dispatch executor dry-run never uploads or mutates DB", async
         upsertCalls += 1;
       },
     },
+    runActionQualityGate: passActionQualityGate,
     generatedAt: "2026-06-08T09:35:00.000Z",
   });
 
@@ -149,6 +155,7 @@ test("guarded live dispatch executor refuses apply when not armed or kill switch
         upsertCalls += 1;
       },
     },
+    runActionQualityGate: passActionQualityGate,
   });
 
   assert.equal(report.verdict, "RED");
@@ -219,6 +226,7 @@ test("guarded live dispatch executor applies only the selected Instagram action 
         platformPostCalls.push(["markPublished", id, result.externalId, result.externalUrl || null]);
       },
     },
+    runActionQualityGate: passActionQualityGate,
     generatedAt,
   });
 
@@ -293,6 +301,7 @@ test("guarded live dispatch executor posts Discord handoff alerts after a new gu
         nextStory.discord_story_poll_posted_at = now.toISOString();
       },
     },
+    runActionQualityGate: passActionQualityGate,
     generatedAt,
   });
 
@@ -365,6 +374,7 @@ test("guarded live dispatch executor applies Instagram Story cards through the i
         platformPostCalls.push(["markPublished", id, result.externalId, result.externalUrl || null]);
       },
     },
+    runActionQualityGate: passActionQualityGate,
     generatedAt,
   });
 
@@ -408,6 +418,7 @@ test("guarded live dispatch executor skips already-published selected actions wi
         upsertCalls += 1;
       },
     },
+    runActionQualityGate: passActionQualityGate,
   });
 
   assert.equal(report.verdict, "GREEN");
@@ -437,6 +448,7 @@ test("guarded live dispatch executor blocks unsupported platforms from live appl
         throw new Error("unsupported platform must not mutate DB");
       },
     },
+    runActionQualityGate: passActionQualityGate,
   });
 
   assert.equal(report.verdict, "RED");
@@ -471,6 +483,7 @@ test("guarded live dispatch executor hydrates missing DB stories from canonical 
       PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
       PULSE_EMERGENCY_KILL_SWITCH: "clear",
     },
+    runActionQualityGate: passActionQualityGate,
     generatedAt: "2026-06-08T10:20:00.000Z",
   });
 
@@ -539,6 +552,7 @@ test("guarded live dispatch executor persists canonical story before structured 
         platformPostCalls.push(["markPublished", id, result.externalId, result.externalUrl || null]);
       },
     },
+    runActionQualityGate: passActionQualityGate,
     generatedAt: "2026-06-11T14:00:02.003Z",
   });
 
@@ -617,6 +631,7 @@ test("guarded live dispatch executor supplements DB rows with canonical manifest
         persisted = nextStory;
       },
     },
+    runActionQualityGate: passActionQualityGate,
     generatedAt: "2026-06-08T10:25:00.000Z",
   });
 
@@ -644,6 +659,7 @@ test("selectNextGuardedLiveAction skips already-stamped platforms and returns th
         facebook_post_id: null,
       }),
     ],
+    runActionQualityGate: passActionQualityGate,
   });
 
   assert.equal(selection.exhausted, false);
@@ -669,6 +685,7 @@ test("selectNextGuardedLiveAction skips previous hard platform failures", async 
         facebook_post_id: null,
       }),
     ],
+    runActionQualityGate: passActionQualityGate,
   });
 
   assert.equal(selection.exhausted, false);
@@ -706,6 +723,7 @@ test("selectNextGuardedLiveAction quarantines story-level public copy failures a
         title: "Halo Campaign Evolved Makes PS5 The Real Story",
       }),
     ],
+    runActionQualityGate: passActionQualityGate,
   });
 
   assert.equal(selection.exhausted, false);
@@ -719,6 +737,165 @@ test("selectNextGuardedLiveAction quarantines story-level public copy failures a
     ],
   );
   assert.match(selection.skipped_actions[0].error, /Public metadata QA failed/);
+});
+
+test("selectNextGuardedLiveAction skips actions blocked by the last-second quality gate", async () => {
+  const selection = await selectNextGuardedLiveAction({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("instagram_reels", {
+          action_id: "bad-story:instagram_reels",
+          story_id: "bad-story",
+          video_path: "output/final/bad-story/instagram_reels.mp4",
+        }),
+        action("youtube_shorts", {
+          action_id: "good-story:youtube_shorts",
+          story_id: "good-story",
+          video_path: "output/final/good-story/youtube_shorts.mp4",
+        }),
+      ],
+    }),
+    stories: [
+      story({ id: "bad-story", title: "Deus Ex Composer Says The Jobs Vanished" }),
+      story({ id: "good-story", title: "Halo Campaign Evolved Makes PS5 The Real Story" }),
+    ],
+    runActionQualityGate: async ({ action }) => {
+      if (action.story_id === "bad-story") {
+        return {
+          result: "fail",
+          blockers: [
+            "content:script_coherence:vague_filler:abstract_industry_bridge",
+            "video:black_segment_too_long (1.70s @ 21.90s)",
+          ],
+          checks: { video: { result: "fail" } },
+        };
+      }
+      return passActionQualityGate();
+    },
+  });
+
+  assert.equal(selection.exhausted, false);
+  assert.equal(selection.action_id, "good-story:youtube_shorts");
+  assert.equal(selection.skipped_actions[0].reason, "last_second_quality_gate_failed");
+  assert.deepEqual(selection.skipped_actions[0].blockers, [
+    "content:script_coherence:vague_filler:abstract_industry_bridge",
+    "video:black_segment_too_long (1.70s @ 21.90s)",
+  ]);
+});
+
+test("guarded live dispatch executor blocks explicit live actions that fail last-second quality", async () => {
+  let uploadCalls = 0;
+  let upsertCalls = 0;
+
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan(),
+    stories: [story({ title: "Deus Ex Composer Says The Jobs Vanished" })],
+    actionIds: ["story-one:youtube_shorts"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+    uploaders: {
+      youtube_shorts: {
+        uploadShort: async () => {
+          uploadCalls += 1;
+          throw new Error("uploader must not be called after quality gate failure");
+        },
+      },
+    },
+    db: {
+      upsertStory: async () => {
+        upsertCalls += 1;
+      },
+    },
+    runActionQualityGate: async () => ({
+      result: "fail",
+      blockers: ["video:freeze_segment_too_long (0.80s @ 32.67s)"],
+      checks: { video: { result: "fail" } },
+    }),
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.summary.blocked_action_count, 1);
+  assert.equal(report.summary.upload_attempt_count, 0);
+  assert.equal(report.summary.db_mutation_count, 0);
+  assert.equal(uploadCalls, 0);
+  assert.equal(upsertCalls, 0);
+  assert.deepEqual(report.blocked_actions[0].blockers, [
+    "last_second_quality_gate_failed",
+    "video:freeze_segment_too_long (0.80s @ 32.67s)",
+  ]);
+});
+
+test("default action quality gate hydrates render-manifest proof before content QA", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-quality-hydrate-"));
+  const manifestPath = path.join(root, "canonical_story_manifest.json");
+  const mp4Path = path.join(root, "visual_v4_render.mp4");
+  const audioPath = path.join(root, "voice.mp3");
+  const timestampsPath = path.join(root, "voice_timestamps.json");
+  await fs.writeFile(mp4Path, "fake mp4");
+  await fs.writeFile(audioPath, "fake audio");
+  await fs.writeJson(timestampsPath, []);
+  await fs.writeJson(manifestPath, {
+    story_id: "story-one",
+    selected_title: "Forza Horizon 6 Scores 84 On PC Gamer",
+    narration_script:
+      "Forza Horizon 6 just landed a strong PC Gamer review. Follow Pulse Gaming so you never miss a beat.",
+    thumbnail_headline: "FORZA HORIZON 6 SCORES 84",
+    primary_source: "PC Gamer",
+    primary_source_url: "https://www.pcgamer.com/example",
+  });
+  await fs.writeJson(path.join(root, "render_manifest.json"), {
+    story_id: "story-one",
+    renderer: "visual_v4_production",
+    visual_tier: "production_v4_motion",
+    final_publish_render: true,
+    rendered_duration_s: 51.409,
+    input_evidence: {
+      narration_audio_path: audioPath,
+      word_timestamps_path: timestampsPath,
+    },
+  });
+
+  const seenStories = [];
+  const selection = await selectNextGuardedLiveAction({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("youtube_shorts", {
+          canonical_manifest_path: manifestPath,
+          video_path: mp4Path,
+        }),
+      ],
+    }),
+    stories: [
+      story({
+        audio_path: "",
+        render_lane: "",
+        render_quality_class: "",
+        suggested_thumbnail_text: "PC GAMER REVIEW",
+        thumbnail_text: "PC GAMER REVIEW",
+      }),
+    ],
+    runActionQualityGate: defaultActionQualityGate,
+    actionQualityGateOptions: {
+      runContentQa: async (qaStory) => {
+        seenStories.push(qaStory);
+        return { result: "pass", failures: [], warnings: [] };
+      },
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      buildVideoQaOptionsForStory: () => ({}),
+    },
+  });
+
+  assert.equal(selection.action_id, "story-one:youtube_shorts");
+  assert.equal(seenStories.length, 1);
+  assert.equal(seenStories[0].audio_path, audioPath);
+  assert.equal(seenStories[0].word_timestamps_path, timestampsPath);
+  assert.equal(seenStories[0].render_lane, "production_v4_motion");
+  assert.equal(seenStories[0].render_quality_class, "production_v4_motion");
+  assert.equal(seenStories[0].duration_seconds, 51.409);
+  assert.equal(seenStories[0].suggested_thumbnail_text, "FORZA HORIZON 6 SCORES 84");
 });
 
 test("guarded live dispatch executor CLI writes dry-run reports and package script is registered", async () => {

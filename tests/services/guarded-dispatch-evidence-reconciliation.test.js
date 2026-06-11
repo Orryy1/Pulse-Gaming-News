@@ -11,6 +11,10 @@ const {
   selectNextGuardedLiveAction,
 } = require("../../lib/goal-guarded-live-dispatch-executor");
 
+async function passActionQualityGate() {
+  return { result: "pass", blockers: [], checks: {} };
+}
+
 function action(storyId, platform, overrides = {}) {
   return {
     action_id: `${storyId}:${platform}`,
@@ -50,6 +54,7 @@ test("reconciliation treats legacy YouTube result as terminal even when platform
     },
     stories,
     allowedPlatforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+    runActionQualityGate: passActionQualityGate,
   });
 
   const report = buildGuardedDispatchEvidenceReconciliationReport({
@@ -106,6 +111,39 @@ test("reconciliation fails if selector would retry the already-uploaded YouTube 
   assert.ok(
     report.blockers.includes("selector_would_retry_existing_youtube_action"),
   );
+});
+
+test("reconciliation does not fail poison-story terminal state when narrowed handoff excludes it", () => {
+  const story = {
+    id: "1s4j81q",
+    title: "Deus Ex Composer Says The Jobs Vanished",
+    youtube_post_id: "U4XB3MEaCg0",
+  };
+  const report = buildGuardedDispatchEvidenceReconciliationReport({
+    story,
+    stories: [story],
+    platformRows: [],
+    selector: {
+      action_id: "1tcw2rk:youtube_shorts",
+      action: action("1tcw2rk", "youtube_shorts"),
+      skipped_actions: [],
+    },
+    runtimeSentinel: {
+      verdict: "green",
+      scheduler_window_readiness: { safe_to_observe_next_window: true },
+    },
+    queueInspect: { verdict: "pass" },
+    publishCadence: { verdict: "green" },
+    publishReadiness: { overall_verdict: "amber" },
+  });
+
+  assert.equal(report.poison_action_terminal_state.verdict, "not_applicable");
+  assert.equal(report.poison_action_terminal_state.terminal_or_held, true);
+  assert.equal(
+    report.blockers.includes("poison_story_not_seen_in_selector_skip_list"),
+    false,
+  );
+  assert.equal(report.verdict, "partial");
 });
 
 test("platform_posts integrity separates aggregate historical gaps from target gaps", () => {

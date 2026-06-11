@@ -370,6 +370,35 @@ test("script coherence blocks public narration that says producer notes out loud
   );
 });
 
+test("script coherence blocks abstracted source-person stories that drop the named subject", () => {
+  const qa = runScriptCoherenceQa(
+    {
+      title:
+        "It's brutal out there: Deus Ex and Unreal composer says he's submitted 50 resumes and gotten one interview in the last year",
+      source_title:
+        "It's brutal out there: Deus Ex and Unreal composer says he's submitted 50 resumes and gotten one interview in the last year",
+      source_type: "rss",
+      subreddit: "PC Gamer",
+      source_body:
+        "This is Alexander Brandon, the man behind Deus Ex and Unreal's iconic soundtracks. Brandon submitted 50 job applications and received exactly one interview.",
+      cta: "Follow Pulse Gaming so you never miss a beat",
+      full_script:
+        "A Deus Ex composer says the games job market has gone brutally quiet. PC Gamer reports the composer submitted 50 resumes and got one interview in the last year. That number lands because the credits are not obscure. They are attached to games people still recognise. Here's what matters: the talent squeeze sits behind sequels, remakes and new studios players still ask for. Fewer stable specialist jobs means fewer experienced people staying around to shape those games. One resume story is not the whole industry, but it is a sharp warning from inside it. Follow Pulse Gaming so you never miss a beat.",
+    },
+    { requireCtaField: true, requireFullScriptCta: true },
+  );
+
+  assert.equal(qa.result, "fail");
+  assert.ok(
+    qa.failures.includes("script_coherence:named_source_subject_missing:Alexander Brandon"),
+    qa.failures.join(", "),
+  );
+  assert.ok(
+    qa.failures.includes("script_coherence:vague_filler:abstract_industry_bridge"),
+    qa.failures.join(", "),
+  );
+});
+
 test("script coherence blocks overused clickbait pivots that make stories sound generic", () => {
   const qa = runScriptCoherenceQa(
     {

@@ -6,12 +6,15 @@ const {
   classifyVideoQa,
   parseFfprobeDuration,
   parseBlackdetectOutput,
+  parseFreezedetectOutput,
   DEFAULT_MIN_DURATION_SECONDS,
   DEFAULT_MIN_RETENTION_SHORT_SECONDS,
   DEFAULT_MIN_NORMAL_PRODUCTION_SECONDS,
   DEFAULT_MAX_NORMAL_PRODUCTION_SECONDS,
   DEFAULT_MAX_DURATION_SECONDS,
   DEFAULT_MAX_BLACK_SEGMENT_SECONDS,
+  DEFAULT_MAX_FREEZE_SEGMENT_SECONDS,
+  DEFAULT_MAX_CUMULATIVE_FREEZE_SECONDS,
   buildVideoQaOptionsForStory,
 } = require("../../lib/services/video-qa");
 
@@ -60,6 +63,22 @@ test("parseBlackdetectOutput: returns empty array on empty/no-match input", () =
   assert.deepStrictEqual(parseBlackdetectOutput(""), []);
   assert.deepStrictEqual(parseBlackdetectOutput("some unrelated log"), []);
   assert.deepStrictEqual(parseBlackdetectOutput(null), []);
+});
+
+test("parseFreezedetectOutput: parses freeze start, duration and end triples", () => {
+  const stderr = `
+    [freezedetect @ 0x123] lavfi.freezedetect.freeze_start: 21.9
+    [freezedetect @ 0x123] lavfi.freezedetect.freeze_duration: 0.766667
+    [freezedetect @ 0x123] lavfi.freezedetect.freeze_end: 22.666667
+    [freezedetect @ 0x123] lavfi.freezedetect.freeze_start: 32.666667
+    [freezedetect @ 0x123] lavfi.freezedetect.freeze_duration: 0.8
+    [freezedetect @ 0x123] lavfi.freezedetect.freeze_end: 33.466667
+  `;
+
+  assert.deepStrictEqual(parseFreezedetectOutput(stderr), [
+    { start: 21.9, end: 22.666667, duration: 0.766667 },
+    { start: 32.666667, end: 33.466667, duration: 0.8 },
+  ]);
 });
 
 test("buildVideoQaOptionsForStory only permits short retention edits when metadata says so", () => {
@@ -190,6 +209,34 @@ test("classifyVideoQa: multiple short mid-segments under 2s each → pass", () =
   assert.strictEqual(r.result, "pass");
 });
 
+test("classifyVideoQa blocks choppy renders with mid black and freeze debt", () => {
+  const r = classifyVideoQa({
+    durationSeconds: 40.91,
+    minDuration: 35,
+    maxDuration: 60,
+    blackSegments: [{ start: 21.9, end: 23.6, duration: 1.7 }],
+    freezeSegments: [
+      { start: 21.9, end: 22.433333, duration: 0.533333 },
+      { start: 22.633333, end: 23.4, duration: 0.766667 },
+      { start: 32.666667, end: 33.466667, duration: 0.8 },
+    ],
+  });
+
+  assert.strictEqual(r.result, "fail");
+  assert.ok(
+    r.failures.some((f) => f.startsWith("black_segment_too_long")),
+    `got: ${r.failures.join(", ")}`,
+  );
+  assert.ok(
+    r.failures.some((f) => f.startsWith("freeze_segment_too_long")),
+    `got: ${r.failures.join(", ")}`,
+  );
+  assert.ok(
+    r.failures.some((f) => f.startsWith("cumulative_freeze_too_high")),
+    `got: ${r.failures.join(", ")}`,
+  );
+});
+
 test("classifyVideoQa: short duration AND long black → both failures captured", () => {
   const r = classifyVideoQa({
     durationSeconds: 15,
@@ -274,6 +321,35 @@ test("runVideoQa: short video (15s) + mid black → fail with both reasons", asy
   assert.strictEqual(r.failures.length, 2);
 });
 
+test("runVideoQa parses full-render freeze and black evidence from ffmpeg output", async () => {
+  const r = await runVideoQa("/tmp/x.mp4", {
+    fs: fakeFs({ "/tmp/x.mp4": true }),
+    minDuration: 35,
+    maxDuration: 60,
+    exec: stubExec((cmd) => {
+      if (cmd.includes("ffprobe")) {
+        return { stdout: "duration=40.91\n", stderr: "" };
+      }
+      return {
+        stdout: `
+          [blackdetect @ 0x0] black_start:21.9 black_end:23.6 black_duration:1.7
+          [freezedetect @ 0x0] lavfi.freezedetect.freeze_start: 21.9
+          [freezedetect @ 0x0] lavfi.freezedetect.freeze_duration: 0.766667
+          [freezedetect @ 0x0] lavfi.freezedetect.freeze_end: 22.666667
+          [freezedetect @ 0x0] lavfi.freezedetect.freeze_start: 32.666667
+          [freezedetect @ 0x0] lavfi.freezedetect.freeze_duration: 0.8
+          [freezedetect @ 0x0] lavfi.freezedetect.freeze_end: 33.466667
+        `,
+        stderr: "",
+      };
+    }),
+  });
+
+  assert.strictEqual(r.result, "fail");
+  assert.ok(r.failures.some((f) => f.startsWith("black_segment_too_long")));
+  assert.ok(r.failures.some((f) => f.startsWith("freeze_segment_too_long")));
+});
+
 test("runVideoQa: opening-only black (1s) → warn", async () => {
   const r = await runVideoQa("/tmp/x.mp4", {
     fs: fakeFs({ "/tmp/x.mp4": true }),
@@ -318,5 +394,7 @@ test("runVideoQa: ffmpeg blackdetect exit code non-zero but output parseable →
 test("Thresholds are conservative defaults", () => {
   assert.strictEqual(DEFAULT_MIN_DURATION_SECONDS, 40);
   assert.strictEqual(DEFAULT_MAX_DURATION_SECONDS, 75);
-  assert.strictEqual(DEFAULT_MAX_BLACK_SEGMENT_SECONDS, 2);
+  assert.strictEqual(DEFAULT_MAX_BLACK_SEGMENT_SECONDS, 1.2);
+  assert.strictEqual(DEFAULT_MAX_FREEZE_SEGMENT_SECONDS, 0.65);
+  assert.strictEqual(DEFAULT_MAX_CUMULATIVE_FREEZE_SECONDS, 1.4);
 });

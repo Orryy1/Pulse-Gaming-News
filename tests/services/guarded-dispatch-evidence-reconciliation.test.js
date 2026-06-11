@@ -146,6 +146,52 @@ test("reconciliation does not fail poison-story terminal state when narrowed han
   assert.equal(report.verdict, "partial");
 });
 
+test("reconciliation allows scheduler-window scope without a preselected executor action", () => {
+  const story = {
+    id: "1s4j81q",
+    title: "Deus Ex Composer Says The Jobs Vanished",
+    youtube_post_id: "U4XB3MEaCg0",
+    youtube_url: "https://youtube.com/shorts/U4XB3MEaCg0",
+    published_at: "2026-06-11T14:00:02.003Z",
+  };
+  const report = buildGuardedDispatchEvidenceReconciliationReport({
+    story,
+    stories: [story],
+    platformRows: [],
+    selector: {
+      exhausted: true,
+      action_id: null,
+      action: null,
+      reason: "no_unpublished_guarded_actions",
+      skipped_actions: [],
+    },
+    runtimeSentinel: {
+      verdict: "green",
+      scheduler_window_readiness: { safe_to_observe_next_window: true },
+    },
+    queueInspect: { verdict: "pass" },
+    publishCadence: {
+      verdict: "amber",
+      next_safe_publish: { next_safe_publish_at_utc: "2026-06-11T19:00:00.000Z" },
+    },
+    publishReadiness: {
+      overall_verdict: "amber",
+      readiness_scope: {
+        name: "enabled_platform_guarded_scheduler_window",
+        guard_ready: true,
+      },
+    },
+  });
+
+  assert.equal(report.next_window_scheduler_verification.safe_to_observe_next_window, true);
+  assert.equal(
+    report.next_window_scheduler_verification.blockers.includes("no_next_guarded_live_action"),
+    false,
+  );
+  assert.equal(report.verdict, "partial");
+  assert.equal(report.summary.target_structured_evidence_gap, true);
+});
+
 test("platform_posts integrity separates aggregate historical gaps from target gaps", () => {
   const report = buildPlatformPostsIntegrityReport({
     stories: [

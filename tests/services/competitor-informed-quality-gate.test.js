@@ -196,6 +196,35 @@ test("competitor-informed quality gate blocks poor SFX/audio", async () => {
   assert.ok(report.stories[0].blockers.includes("media_house:poor_sfx_audio"));
 });
 
+test("competitor-informed quality gate applies Footage Empire v2 source-lock evidence by story", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-quality-gate-footage-"));
+  const story = await makeGateStory(root, "footage-red-story");
+  const report = await buildCompetitorInformedQualityGate({
+    storyPackages: [story],
+    outputDir: path.join(root, "out"),
+    workspaceRoot: root,
+    generatedAt: "2026-06-07T12:00:00.000Z",
+    footageEmpireReport: {
+      verdict: "red",
+      rows: [
+        {
+          story_id: "footage-red-story",
+          verdict: "red",
+          blockers: ["trusted_footage_story_mismatch_or_missing"],
+          motion: { available_motion_clips: 0, available_distinct_families: 0 },
+          trusted_sources: { references_found: 0 },
+          rights_coverage: { verdict: "pass", approved_family_count: 0 },
+        },
+      ],
+    },
+  });
+
+  assert.equal(report.verdict, "BLOCKED");
+  assert.ok(report.stories[0].blockers.includes("media_house:source_lock_not_verified"));
+  assert.equal(report.stories[0].pulse_media_house_score.source_lock_report.status, "blocked");
+  assert.equal(report.stories[0].source_material.footage_empire_v2_present, true);
+});
+
 test("competitor-informed quality gate writes required integration artefacts", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-quality-gate-write-"));
   const story = await makeGateStory(root, "write-story");

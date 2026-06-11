@@ -87,6 +87,9 @@ test("strong Pulse-original package passes competitor-informed score", () => {
   assert.ok(report.scores.overall_media_house_score >= 85);
   assert.ok(report.scores.competitor_parity_score >= 80);
   assert.ok(report.scores.competitor_surpass_score >= 75);
+  assert.ok(report.scores.source_lock_score >= 80);
+  assert.equal(report.source_lock_report.status, "pass");
+  assert.equal(report.production_grammar_alignment_report.status, "pass");
   assert.deepEqual(report.hard_failures, []);
 });
 
@@ -138,6 +141,29 @@ test("poor SFX and audio fail even when visuals pass", () => {
 
   assert.equal(report.verdict, "RED");
   assert.ok(report.hard_failures.includes("media_house:poor_sfx_audio"));
+});
+
+test("Footage Empire v2 red evidence blocks source-locked media-house approval", () => {
+  const report = buildPulseMediaHouseScore(strongStory({
+    footageEmpireV2: {
+      verdict: "red",
+      blockers: [
+        "no_trusted_footage_references_for_story",
+        "trusted_footage_story_mismatch_or_missing",
+      ],
+      motion: { available_motion_clips: 0, available_distinct_families: 0 },
+      trusted_sources: { references_found: 0 },
+      rights_coverage: { verdict: "pass", approved_family_count: 0 },
+    },
+  }));
+
+  assert.equal(report.verdict, "RED");
+  assert.ok(report.scores.source_lock_score < 70);
+  assert.ok(report.hard_failures.includes("media_house:source_lock_not_verified"));
+  assert.deepEqual(report.source_lock_report.blockers, [
+    "no_trusted_footage_references_for_story",
+    "trusted_footage_story_mismatch_or_missing",
+  ]);
 });
 
 module.exports = {

@@ -62,6 +62,7 @@ async function makeControlStory(root, storyId, overrides = {}) {
       sound_design_score: 84,
       mobile_readability_score: 89,
       brand_recognition_score: 82,
+      source_lock_score: 91,
       source_trust_score: 91,
       commercial_trust_score: 86,
       ending_payoff_score: 84,
@@ -420,6 +421,7 @@ test("Goal 19 hard-blocks weak Pulse Media-House Score before GREEN", async () =
         sound_design_score: 72,
         mobile_readability_score: 80,
         brand_recognition_score: 76,
+        source_lock_score: 88,
         source_trust_score: 88,
         commercial_trust_score: 80,
         ending_payoff_score: 62,
@@ -443,6 +445,47 @@ test("Goal 19 hard-blocks weak Pulse Media-House Score before GREEN", async () =
   assert.equal(report.stories[0].final_verdict, "RED");
   assert.equal(report.stories[0].control_inputs.pulse_media_house_score.status, "fail");
   assert.ok(report.stories[0].blockers.includes("control:pulse_media_house_score_not_pass"));
+});
+
+test("Goal 19 hard-blocks Pulse Media-House Score with missing source-lock score", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-media-house-source-lock-"));
+  const story = await makeControlStory(root, "story-media-house-source-lock", {
+    pulseMediaHouseScore: {
+      verdict: "GREEN",
+      status: "pass",
+      hard_failures: [],
+      scores: {
+        title_strength_score: 88,
+        first_frame_score: 86,
+        first_3_seconds_score: 88,
+        script_punch_score: 87,
+        narration_quality_score: 84,
+        motion_density_score: 88,
+        transition_energy_score: 86,
+        sound_design_score: 84,
+        mobile_readability_score: 89,
+        brand_recognition_score: 82,
+        source_trust_score: 91,
+        commercial_trust_score: 86,
+        ending_payoff_score: 84,
+        competitor_parity_score: 85,
+        competitor_surpass_score: 78,
+        overall_media_house_score: 86,
+      },
+    },
+  });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18("story-media-house-source-lock"),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-06-07T12:00:00.000Z",
+  });
+
+  assert.equal(report.verdict, "BLOCKED");
+  assert.equal(report.stories[0].control_inputs.pulse_media_house_score.status, "fail");
+  assert.equal(report.stories[0].control_inputs.pulse_media_house_score.evidence.source_lock_score, 0);
 });
 
 test("Goal 19 returns AMBER when safe output still needs human approval", async () => {

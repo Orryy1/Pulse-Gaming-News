@@ -16,6 +16,8 @@ function parseArgs(argv = process.argv.slice(2)) {
   const args = {
     storyPackagesPath: path.join(ROOT, "output", "goal-contract", "story-packages.json"),
     rulebookPath: path.join(ROOT, "output", "competitor-forensics-lab", "pulse_upgrade_rulebook.json"),
+    productionGrammarPath: path.join(ROOT, "output", "competitor-forensics-lab", "production_grammar_patterns.json"),
+    footageEmpireReportPath: path.join(ROOT, "output", "footage-empire-v2", "footage_empire_v2_report.json"),
     outDir: path.join(ROOT, "output", "competitor-quality-gate"),
     workspaceRoot: ROOT,
     generatedAt: null,
@@ -26,6 +28,8 @@ function parseArgs(argv = process.argv.slice(2)) {
     const arg = argv[index];
     if (arg === "--story-packages") args.storyPackagesPath = argv[++index] || args.storyPackagesPath;
     else if (arg === "--rulebook") args.rulebookPath = argv[++index] || args.rulebookPath;
+    else if (arg === "--production-grammar") args.productionGrammarPath = argv[++index] || args.productionGrammarPath;
+    else if (arg === "--footage-empire-report") args.footageEmpireReportPath = argv[++index] || args.footageEmpireReportPath;
     else if (arg === "--out-dir") args.outDir = argv[++index] || args.outDir;
     else if (arg === "--workspace") args.workspaceRoot = argv[++index] || args.workspaceRoot;
     else if (arg === "--generated-at") args.generatedAt = argv[++index] || null;
@@ -43,6 +47,8 @@ function usage() {
     "Options:",
     "  --story-packages <path>   Story package manifest",
     "  --rulebook <path>         Pulse upgrade rulebook from competitor lab",
+    "  --production-grammar <path> Competitor production grammar pattern report",
+    "  --footage-empire-report <path> Footage Empire v2 source-lock report",
     "  --out-dir <dir>           Output directory",
     "  --workspace <dir>         Workspace root for relative artefact dirs",
     "  --generated-at <iso>      Fixed timestamp",
@@ -69,9 +75,13 @@ async function main(argv = process.argv.slice(2)) {
   }
   const storyPackages = await readJsonIfPresent(args.storyPackagesPath, []);
   const rulebook = await readJsonIfPresent(args.rulebookPath, {});
+  const productionGrammar = await readJsonIfPresent(args.productionGrammarPath, {});
+  const footageEmpireReport = await readJsonIfPresent(args.footageEmpireReportPath, {});
   const report = await buildCompetitorInformedQualityGate({
     storyPackages,
     rulebook,
+    productionGrammar,
+    footageEmpireReport,
     workspaceRoot: path.resolve(args.workspaceRoot),
     outputDir: path.resolve(args.outDir),
     generatedAt: args.generatedAt || new Date().toISOString(),

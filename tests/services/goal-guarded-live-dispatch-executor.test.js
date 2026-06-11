@@ -591,7 +591,7 @@ test("selectNextGuardedLiveAction skips previous hard platform failures", async 
       story({
         youtube_error: "duplicate_blocked: Similar to existing upload",
         instagram_error:
-          "instagram upload failed after 3 attempts: Public metadata QA failed for instagram",
+          "instagram upload failed after 3 attempts: Meta container processing failed",
         facebook_post_id: null,
       }),
     ],
@@ -603,7 +603,48 @@ test("selectNextGuardedLiveAction skips previous hard platform failures", async 
     selection.skipped_actions.map((item) => item.reason),
     ["duplicate_blocked", "previous_platform_failure"],
   );
-  assert.match(selection.skipped_actions[1].error, /Public metadata QA failed/);
+  assert.match(selection.skipped_actions[1].error, /Meta container processing failed/);
+});
+
+test("selectNextGuardedLiveAction quarantines story-level public copy failures across platforms", async () => {
+  const selection = await selectNextGuardedLiveAction({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("youtube_shorts"),
+        action("instagram_reels"),
+        action("facebook_reels"),
+        action("youtube_shorts", {
+          action_id: "story-two:youtube_shorts",
+          story_id: "story-two",
+          video_path: "output/final/story-two/youtube.mp4",
+          platform_publish_manifest_path: "output/final/story-two/youtube_shorts.json",
+        }),
+      ],
+    }),
+    stories: [
+      story({
+        instagram_error:
+          "instagram upload failed after 3 attempts: Public metadata QA failed for instagram: script_coherence:repeated_sentence:the useful followup is a named update",
+        facebook_post_id: null,
+      }),
+      story({
+        id: "story-two",
+        title: "Halo Campaign Evolved Makes PS5 The Real Story",
+      }),
+    ],
+  });
+
+  assert.equal(selection.exhausted, false);
+  assert.equal(selection.action_id, "story-two:youtube_shorts");
+  assert.deepEqual(
+    selection.skipped_actions.map((item) => item.reason),
+    [
+      "previous_story_public_copy_failure",
+      "previous_story_public_copy_failure",
+      "previous_story_public_copy_failure",
+    ],
+  );
+  assert.match(selection.skipped_actions[0].error, /Public metadata QA failed/);
 });
 
 test("guarded live dispatch executor CLI writes dry-run reports and package script is registered", async () => {

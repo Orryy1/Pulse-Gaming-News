@@ -356,4 +356,16 @@ test("Goal 25 writes all sponsor readiness artefacts", async () => {
   assert.equal(await fs.pathExists(written.sponsorMediaKit), true);
   assert.equal(await fs.pathExists(written.sponsorPitchPack), true);
   assert.equal(await fs.pathExists(written.brandSafetyReport), true);
+  assert.equal(await fs.pathExists(written.audienceStats), true);
+  assert.equal(await fs.pathExists(written.sponsorSafeExamples), true);
+  assert.equal(await fs.pathExists(written.pricingBands), true);
+  assert.equal(await fs.pathExists(written.disclosurePlan), true);
+
+  const audienceStats = await fs.readJson(written.audienceStats);
+  const pricingBands = await fs.readJson(written.pricingBands);
+  const disclosurePlan = await fs.readJson(written.disclosurePlan);
+
+  assert.equal(audienceStats.subscribers, 7200);
+  assert.equal(pricingBands.status, "draft_operator_review");
+  assert.equal(disclosurePlan.operator_review_required, true);
 });

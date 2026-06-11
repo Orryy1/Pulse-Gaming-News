@@ -20,6 +20,9 @@ const {
 const { buildQueueReport } = require("../lib/ops/queue-inspect");
 const { buildPublishCadenceReportFromDb } = require("../lib/ops/publish-cadence");
 const { buildLocalRestartReadiness } = require("../lib/ops/local-restart-readiness");
+const {
+  buildRuntimeOwnershipSentinelFromEnvironment,
+} = require("../lib/ops/runtime-ownership-sentinel");
 const { selectNextGuardedLiveAction } = require("../lib/goal-guarded-live-dispatch-executor");
 const nextCandidates = require("./next-publish-candidates");
 
@@ -222,12 +225,17 @@ async function main() {
     buildGuardedSelection(),
   ]);
   const localRestartReport = await buildLocalRestartReadiness({ cwd: ROOT, cadenceReport });
+  const runtimeSentinelReport = await buildRuntimeOwnershipSentinelFromEnvironment({
+    cwd: ROOT,
+    env: process.env,
+  });
 
   const report = buildNormalOperationsReport({
     readinessReport,
     queueReport,
     cadenceReport,
     localRestartReport,
+    runtimeSentinelReport,
     platformReport,
     candidateReport,
     guardedSelection,

@@ -91,6 +91,34 @@ test("buildRuntimeOwnership requires current public primary queue runtime", () =
   assert.equal(report.facts.dispatch_mode, "queue");
 });
 
+test("buildRuntimeOwnership can consume the runtime sentinel PID and tunnel report", () => {
+  const report = buildRuntimeOwnership(null, {
+    verdict: "green",
+    expected: {
+      commit_short: "abc1234",
+      branch: "codex/live",
+    },
+    summary: {
+      commit_short: "abc1234",
+      branch: "codex/live",
+      primary: true,
+      auto_publish: true,
+      use_job_queue_explicit: "true",
+      scheduler_active: true,
+      dispatch_mode: "queue",
+      port_owner_pid: 34076,
+      cloudflared_present: true,
+    },
+    blockers: [],
+    warnings: [],
+  });
+
+  assert.equal(report.verdict, "green");
+  assert.equal(report.expected_commit, "abc1234");
+  assert.equal(report.facts.port_owner_pid, 34076);
+  assert.equal(report.facts.cloudflared_present, true);
+});
+
 test("buildNormalOperationsReport composes a newsroom operations verdict", () => {
   const report = buildNormalOperationsReport({
     generatedAt: "2026-06-11T09:30:00.000Z",

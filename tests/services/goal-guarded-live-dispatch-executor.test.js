@@ -578,6 +578,34 @@ test("selectNextGuardedLiveAction skips already-stamped platforms and returns th
   assert.equal(selection.skipped_actions[0].action_id, "story-one:youtube_shorts");
 });
 
+test("selectNextGuardedLiveAction skips previous hard platform failures", async () => {
+  const selection = await selectNextGuardedLiveAction({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("youtube_shorts"),
+        action("instagram_reels"),
+        action("facebook_reels"),
+      ],
+    }),
+    stories: [
+      story({
+        youtube_error: "duplicate_blocked: Similar to existing upload",
+        instagram_error:
+          "instagram upload failed after 3 attempts: Public metadata QA failed for instagram",
+        facebook_post_id: null,
+      }),
+    ],
+  });
+
+  assert.equal(selection.exhausted, false);
+  assert.equal(selection.action_id, "story-one:facebook_reels");
+  assert.deepEqual(
+    selection.skipped_actions.map((item) => item.reason),
+    ["duplicate_blocked", "previous_platform_failure"],
+  );
+  assert.match(selection.skipped_actions[1].error, /Public metadata QA failed/);
+});
+
 test("guarded live dispatch executor CLI writes dry-run reports and package script is registered", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-live-cli-"));
   const planPath = path.join(root, "guarded_dispatch_executor_plan.json");

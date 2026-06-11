@@ -53,7 +53,7 @@ test("selectRawTtsScript: restores the required spoken outro for source scripts 
 
   assert.equal(
     selectRawTtsScript(story),
-    "Subnautica 2 just passed a million sales. Follow Pulse Gaming so you never miss a beat.",
+    "Subnautica 2 just passed a million sales. Follow for more gaming news.",
   );
 });
 
@@ -73,12 +73,12 @@ test("selectRawTtsScript: removes adjacent duplicate opener and duplicate spoken
     1,
   );
   assert.equal(
-    (selected.match(/Follow Pulse Gaming so you never miss a beat/g) || []).length,
+    (selected.match(/Follow for more gaming news/g) || []).length,
     1,
   );
   assert.equal(
     selected,
-    `${opener} GamesRadar reports the early access launch hit a new Steam peak. Follow Pulse Gaming so you never miss a beat.`,
+    `${opener} GamesRadar reports the early access launch hit a new Steam peak. Follow for more gaming news.`,
   );
 });
 
@@ -87,14 +87,28 @@ test("ensureSpokenOutro: collapses repeated terminal CTAs to exactly one", () =>
     ensureSpokenOutro(
       "A clean gaming update. Follow Pulse Gaming so you never miss a beat. Follow Pulse Gaming so you never miss a beat.",
     ),
-    "A clean gaming update. Follow Pulse Gaming so you never miss a beat.",
+    "A clean gaming update. Follow for more gaming news.",
   );
 });
 
-test("ensureSpokenOutro: keeps a custom terminal Pulse CTA without adding the default", () => {
+test("ensureSpokenOutro: normalises a custom terminal Pulse CTA to the approved spoken outro", () => {
   assert.equal(
     ensureSpokenOutro("A clean gaming update. Follow Pulse Gaming for the next read."),
-    "A clean gaming update. Follow Pulse Gaming for the next read.",
+    "A clean gaming update. Follow for more gaming news.",
+  );
+});
+
+test("ensureSpokenOutro: replaces pause-marked Pulse Gaming terminal CTA", () => {
+  assert.equal(
+    ensureSpokenOutro("A clean gaming update. Follow Pulse [PAUSE] Gaming so you never miss a beat."),
+    "A clean gaming update. Follow for more gaming news.",
+  );
+});
+
+test("cleanForTTS: removes Pulse Gaming outro pauses from generated narration", () => {
+  assert.equal(
+    cleanForTTS("Follow Pulse [PAUSE] Gaming so you never miss a beat."),
+    "Follow for more gaming news.",
   );
 });
 

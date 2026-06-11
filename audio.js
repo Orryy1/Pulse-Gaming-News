@@ -137,13 +137,21 @@ function firstNonBlank(...values) {
   return null;
 }
 
+const LEGACY_SPOKEN_OUTRO_TEXT = "Follow Pulse Gaming so you never miss a beat";
+const SPOKEN_OUTRO_TEXT = "Follow for more gaming news";
+const TTS_PULSE_BRAND_CTA_RE = /\bFollow\s+Pulse[\s,;:.\-]*Gaming\b[^.!?]*(?:[.!?]|$)/gi;
+
 function hasSpokenOutro(text) {
-  return String(text || "")
+  const normalised = String(text || "")
     .toLowerCase()
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, " ")
-    .includes("follow pulse gaming so you never miss a beat");
+    .trim();
+  return (
+    normalised.includes("follow pulse gaming so you never miss a beat") ||
+    normalised.includes("follow for more gaming news")
+  );
 }
 
 const ONES = [
@@ -277,6 +285,14 @@ function collapseAdjacentDuplicateSentences(text) {
   return deduped.join(" ").replace(/\s+/g, " ").trim();
 }
 
+function normalisePulseBrandCtaForTts(text) {
+  return String(text || "").replace(TTS_PULSE_BRAND_CTA_RE, (match) => {
+    const trimmed = match.trim();
+    const terminal = /[!?]$/.test(trimmed) ? trimmed.slice(-1) : ".";
+    return `${SPOKEN_OUTRO_TEXT}${terminal}`;
+  });
+}
+
 function buildTtsAlignmentMeta({
   existingMeta = {},
   provider,
@@ -382,6 +398,7 @@ function cleanForTTS(raw) {
       // subtitles with ROLLOUT.JOURNALISTS joined.
       .replace(/[\u2028\u2029]/g, " ")
       .replace(/\[PAUSE\]/gi, ", ")
+      .replace(TTS_PULSE_BRAND_CTA_RE, `${SPOKEN_OUTRO_TEXT}.`)
       .replace(/\[VISUAL:[^\]]*\]/gi, "")
       .replace(/\.{2,}/g, ".")
       // Ensure space after sentence-ending periods (LLM sometimes omits: "2026.The")
@@ -500,7 +517,7 @@ function cleanForTTS(raw) {
       .replace(/,\s*,/g, ",")
       .replace(/,\s+\./g, ".")
       .trim();
-  return collapseAdjacentDuplicateSentences(cleaned);
+  return collapseAdjacentDuplicateSentences(normalisePulseBrandCtaForTts(cleaned));
 }
 
 function assertBrandNameQaForTts(story, fields) {
@@ -554,10 +571,11 @@ function selectRawTtsScript(story) {
   return ensureSpokenOutro(preferred);
 }
 
-const SPOKEN_OUTRO_TEXT = "Follow Pulse Gaming so you never miss a beat";
 const SPOKEN_OUTRO = `${SPOKEN_OUTRO_TEXT}.`;
 const TERMINAL_PULSE_CTA_RE =
-  /\bFollow\s+Pulse\s+Gaming\b[^.!?]*(?:[.!?]\s*)?$/i;
+  /\b(?:Follow\s+for\s+more\s+gaming\s+news|Follow\s+Pulse(?:\s+|\s*\[PAUSE\]\s*|[\s,;:.\-]+)Gaming\b[^.!?]*)(?:[.!?]\s*)?$/i;
+const TERMINAL_LEGACY_PULSE_CTA_RE =
+  /\s*Follow\s+Pulse(?:\s+|\s*\[PAUSE\]\s*|[\s,;:.\-]+)Gaming\b[^.!?]*(?:[.!?]\s*)?$/i;
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -565,10 +583,16 @@ function escapeRegExp(value) {
 
 function stripTerminalSpokenOutros(script) {
   const outroRe = new RegExp(
-    `(?:\\s*${escapeRegExp(SPOKEN_OUTRO_TEXT)}\\.?\\s*)+$`,
+    `(?:\\s*(?:${escapeRegExp(SPOKEN_OUTRO_TEXT)}|${escapeRegExp(LEGACY_SPOKEN_OUTRO_TEXT)})\\.?\\s*)+$`,
     "i",
   );
-  return String(script || "").replace(outroRe, "").trim();
+  let next = String(script || "").trim();
+  let previous = "";
+  while (next && next !== previous) {
+    previous = next;
+    next = next.replace(outroRe, "").replace(TERMINAL_LEGACY_PULSE_CTA_RE, "").trim();
+  }
+  return next;
 }
 
 function wordCount(text) {
@@ -624,7 +648,7 @@ function buildDeterministicDurationPadding(story, { attempt = 1 } = {}) {
     );
   } else {
     lines.push(
-      "The useful follow-up is a named update from the studio, store page or platform holder.",
+      "Players should watch for a named update from the studio, store page or platform holder.",
     );
   }
 
@@ -1722,7 +1746,7 @@ async function generateAudio() {
             messages: [
               {
                 role: "user",
-                content: `Rewrite this script to be ${runtimePlan.minWords}-${runtimePlan.maxWords} spoken words for a 61-75 second gaming Short. It was too short at ${story.word_count} words.\n\n${story.full_script}\n\nStory: ${story.title}\nKeep the same classification: ${story.classification}. Keep the CTA exactly: Follow Pulse Gaming so you never miss a beat.`,
+                content: `Rewrite this script to be ${runtimePlan.minWords}-${runtimePlan.maxWords} spoken words for a 61-75 second gaming Short. It was too short at ${story.word_count} words.\n\n${story.full_script}\n\nStory: ${story.title}\nKeep the same classification: ${story.classification}. Keep the CTA exactly: ${SPOKEN_OUTRO_TEXT}.`,
               },
             ],
           });

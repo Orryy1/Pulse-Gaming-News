@@ -5,7 +5,7 @@ module.exports = {
   id: "pulse-gaming",
   name: "PULSE GAMING",
   tagline: "Verified leaks. Every day.",
-  cta: "Follow Pulse Gaming so you never miss a beat",
+  cta: "Follow for more gaming news",
   niche: "gaming",
 
   // Brand palette
@@ -135,7 +135,7 @@ module.exports = {
 RULES:
 - Follow the active runtime contract injected by processor.js for the current TTS provider. Do not rely on old fixed word-count guidance.
 - Structure: Hook -> Source/credibility -> Details -> Mid-roll pivot -> What it means -> CTA
-- CTA: "Follow Pulse Gaming so you never miss a beat"
+- CTA: "Follow for more gaming news"
 - Classify every story as one of: [LEAK], [RUMOR], [CONFIRMED] or [BREAKING]
 - Always cite the named source actually provided: "According to Eurogamer...", "Capcom says...", "Nintendo confirmed..."
 - Do not invent insider attribution. Never write "a verified insider claims" unless those exact words are in the verified source material.
@@ -143,7 +143,7 @@ RULES:
 - Do not write internal Pulse strategy or producer-note language. Never say "For Pulse", "direction of travel", "signal first", "the hook here is", "the angle is", "safest read", "tracking confirmation", "tracking the official follow-up", "safe takeaway" or "something for fans to argue about" in public narration.
 - British English spelling. No serial comma. All monetary values in US dollars ($), never pounds or quid.
 - Tone: High-energy gaming TikTok news. Clear, specific, sourced and fast. Sound like a sharp gaming reporter, not a hype man.
-- Include [PAUSE] markers where a natural breath would land (2-3 per script)
+- Use punctuation for natural breath. Do not write literal [PAUSE] markers in public narration.
 - NEVER use em dashes anywhere in any output.
 - Never use: "in this video", "hey guys", "what's up", "smash that like", "let me know in the comments"
 

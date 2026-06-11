@@ -320,6 +320,84 @@ test("Goal 11 treats clean pre-publish candidates without live metrics as analyt
   );
 });
 
+test("Goal 11 uses shallow platform snapshots without blocking deep-retention readiness", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal11-shallow-"));
+  const story = await makeStoryPackage(root, "story-shallow", {
+    title: "Halo Campaign Evolved Makes PS5 Real",
+    primary_source: "YouTube",
+    first_frame_text: "HALO PS5",
+    platform_outputs: {
+      youtube_shorts: { cta_style: "identity_follow" },
+      instagram_reels: { cta_style: "bio_link" },
+      facebook_reels: { cta_style: "follow_page" },
+    },
+  });
+  await fs.outputJson(path.join(story.artifact_dir, "director_beat_map.json"), {
+    shot_plan: [
+      {
+        id: "opener",
+        kind: "opener",
+        type: "opener",
+        startS: 0,
+        durationS: 2.4,
+        source: "halo-campaign-a.mp4",
+        mediaStartS: 12.5,
+        text: "HALO PS5",
+      },
+      {
+        id: "clip-b",
+        kind: "clip",
+        type: "clip",
+        startS: 2.4,
+        durationS: 3,
+        source: "halo-campaign-b.mp4",
+        mediaStartS: 31,
+      },
+      {
+        id: "source",
+        kind: "source_lock",
+        type: "card.source",
+        startS: 5.4,
+        durationS: 2.2,
+      },
+    ],
+  });
+
+  const report = await buildGoal11RetentionIntelligenceLoop({
+    storyPackages: [story],
+    upstreamBenchmarkReport: {
+      stories: [{ story_id: "story-shallow", status: "ready", blockers: [] }],
+    },
+    metricsManifest: {
+      source: "sqlite_platform_metric_snapshots_read_only",
+      stories: [
+        {
+          story_id: "story-shallow",
+          platform: "youtube",
+          views: 807,
+          likes: 4,
+          comments: 0,
+          shares: null,
+          partial_metrics_only: true,
+          analytics_depth: "shallow_platform_snapshot",
+        },
+      ],
+    },
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-06-11T12:15:00.000Z",
+  });
+
+  assert.equal(report.verdict, "PASS");
+  assert.equal(report.stories[0].metrics_status, "shallow");
+  assert.deepEqual(report.stories[0].direct_retention_blockers, []);
+  assert.equal(report.daily_retention_report.summary.analytics_observed_story_count, 1);
+  assert.equal(report.daily_retention_report.platforms[0].platform, "youtube");
+  assert.equal(report.daily_retention_report.platforms[0].total_views, 807);
+  assert.ok(report.title_pattern_winners.patterns.length > 0);
+  assert.ok(report.hook_pattern_winners.patterns.length > 0);
+});
+
 test("Goal 11 writes required retention loop artefacts", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal11-write-"));
   const story = await makeStoryPackage(root, "story-write");
@@ -345,4 +423,97 @@ test("Goal 11 writes required retention loop artefacts", async () => {
   assert.equal(await fs.pathExists(written.experimentResults), true);
   const retentionReport = await fs.readJson(written.retentionReport);
   assert.equal(retentionReport.stories[0].story_id, "story-write");
+});
+
+test("Goal 11 writes v2 daily learning artefacts for winners, recommendations and kill-list", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal11-v2-"));
+  const strongStory = await makeStoryPackage(root, "story-winner", {
+    title: "Forza Horizon 6 Just Broke Steam",
+    primary_source: "Steam",
+    first_frame_text: "FORZA STEAM",
+    platform_outputs: {
+      youtube_shorts: { cta_style: "identity_follow" },
+      instagram_reels: { cta_style: "bio_link" },
+      facebook_reels: { cta_style: "follow_page" },
+    },
+  });
+  await fs.outputJson(path.join(strongStory.artifact_dir, "director_beat_map.json"), {
+    shot_plan: [
+      { id: "opener", kind: "opener", type: "opener", startS: 0, durationS: 2.2, source: "forza-a.mp4", mediaStartS: 10, text: "FORZA STEAM" },
+      { id: "proof", kind: "clip", type: "clip", startS: 2.2, durationS: 2.5, source: "forza-b.mp4", mediaStartS: 25 },
+      { id: "source", kind: "source_lock", type: "card.source", startS: 4.7, durationS: 2 },
+    ],
+  });
+  const weakStory = await makeStoryPackage(root, "story-kill", {
+    title: "This gaming story",
+    primary_source: "",
+    first_frame_text: "THIS GAMING STORY HAS A LOT OF TEXT",
+    motionDensityScore: 48,
+    sourceLockScore: 40,
+  });
+  const outputDir = path.join(root, "out");
+  const report = await buildGoal11RetentionIntelligenceLoop({
+    storyPackages: [strongStory, weakStory],
+    upstreamBenchmarkReport: {
+      stories: [
+        { story_id: "story-winner", status: "ready", blockers: [] },
+        { story_id: "story-kill", status: "ready", blockers: [] },
+      ],
+    },
+    metricsManifest: {
+      stories: [
+        completeMetrics("story-winner", {
+          views: 4200,
+          impressions: 7300,
+          average_view_duration_seconds: 26,
+          first_3_second_drop_off: 0.08,
+          stayed_to_watch: 62,
+          swipe_away: 38,
+          likes: 190,
+          comments: 22,
+          shares: 30,
+          saves: 11,
+          follows: 4,
+          retention_curve: [
+            { elapsed_video_time_ratio: 0, audience_watch_ratio: 1 },
+            { elapsed_video_time_ratio: 0.075, audience_watch_ratio: 0.91 },
+            { elapsed_video_time_ratio: 0.15, audience_watch_ratio: 0.84 },
+            { elapsed_video_time_ratio: 0.35, audience_watch_ratio: 0.71 },
+          ],
+        }),
+        completeMetrics("story-kill", {
+          views: 180,
+          impressions: 4400,
+          average_view_duration_seconds: 8,
+          first_3_second_drop_off: 0.51,
+          stayed_to_watch: 26,
+          swipe_away: 74,
+          likes: 1,
+          comments: 0,
+          shares: 0,
+          saves: 0,
+          follows: 0,
+        }),
+      ],
+    },
+    workspaceRoot: root,
+    outputDir,
+    generatedAt: "2026-06-11T12:00:00.000Z",
+  });
+
+  const written = await writeGoal11RetentionIntelligenceLoop(report, { outputDir });
+  const daily = await fs.readJson(written.dailyRetentionReport);
+  const titleWinners = await fs.readJson(written.titlePatternWinners);
+  const hookWinners = await fs.readJson(written.hookPatternWinners);
+  const killList = await fs.readJson(written.formatKillList);
+  const nextUpload = await fs.readFile(written.nextUploadRecommendations, "utf8");
+
+  assert.equal(await fs.pathExists(written.dailyRetentionReport), true);
+  assert.equal(await fs.pathExists(written.nextUploadRecommendations), true);
+  assert.equal(daily.summary.metrics_ready_story_count, 2);
+  assert.ok(titleWinners.patterns.some((pattern) => pattern.pattern === "named_entity_consequence"));
+  assert.ok(hookWinners.patterns.some((pattern) => pattern.pattern === "named_subject_source_or_number"));
+  assert.ok(killList.formats.some((format) => format.id === "generic_or_missing_title"));
+  assert.match(nextUpload, /^# Next Upload Recommendations/m);
+  assert.match(nextUpload, /story-winner/);
 });

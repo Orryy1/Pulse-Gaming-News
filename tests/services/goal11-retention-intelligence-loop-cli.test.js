@@ -8,7 +8,11 @@ const test = require("node:test");
 
 const packageJson = require("../../package.json");
 process.env.PULSE_SKIP_DOTENV = "true";
-const { main, parseArgs } = require("../../tools/goal11-retention-intelligence-loop");
+const {
+  buildMetricsManifestFromSnapshotRows,
+  main,
+  parseArgs,
+} = require("../../tools/goal11-retention-intelligence-loop");
 
 async function makeStory(root, storyId) {
   const artifactDir = path.join(root, storyId);
@@ -109,6 +113,11 @@ test("Goal 11 CLI parses local-proof inputs", () => {
     "output/goal-10/goal10_readiness_report.json",
     "--metrics",
     "output/analytics/retention_metrics.json",
+    "--db-path",
+    "D:/pulse-data/pulse.db",
+    "--db-snapshots-limit",
+    "25",
+    "--no-db-snapshots",
     "--out-dir",
     "output/goal-11",
     "--workspace",
@@ -121,10 +130,39 @@ test("Goal 11 CLI parses local-proof inputs", () => {
   assert.equal(args.storyPackagesPath, "output/goal-contract/story-packages.json");
   assert.equal(args.upstreamBenchmarkReportPath, "output/goal-10/goal10_readiness_report.json");
   assert.equal(args.metricsPath, "output/analytics/retention_metrics.json");
+  assert.equal(args.dbPath, "D:/pulse-data/pulse.db");
+  assert.equal(args.dbSnapshotsLimit, 25);
+  assert.equal(args.useDbSnapshots, false);
   assert.equal(args.outDir, "output/goal-11");
   assert.equal(args.workspaceRoot, ".");
   assert.equal(args.generatedAt, "2026-05-26T00:05:54.376Z");
   assert.equal(args.json, true);
+});
+
+test("Goal 11 CLI sanitises read-only SQLite snapshot rows into shallow metrics", () => {
+  const manifest = buildMetricsManifestFromSnapshotRows([
+    {
+      story_id: "story-snapshot",
+      title: "Halo Campaign Evolved Makes PS5 Real",
+      platform: "youtube",
+      external_id: "yt123",
+      views: 807,
+      likes: 4,
+      comments: 0,
+      shares: null,
+      watch_time_seconds: null,
+      retention_percent: null,
+      snapshot_at: "2026-06-11T09:57:21.015Z",
+      raw_json: "{\"token\":\"never expose\"}",
+    },
+  ], { generatedAt: "2026-06-11T12:20:00.000Z" });
+
+  assert.equal(manifest.source, "sqlite_platform_metric_snapshots_read_only");
+  assert.equal(manifest.stories[0].partial_metrics_only, true);
+  assert.equal(manifest.stories[0].analytics_depth, "shallow_platform_snapshot");
+  assert.equal(manifest.stories[0].views, 807);
+  assert.equal(Object.prototype.hasOwnProperty.call(manifest.stories[0], "raw_json"), false);
+  assert.equal(manifest.safety.no_db_mutation, true);
 });
 
 test("Goal 11 CLI writes retention intelligence loop artefacts", async () => {

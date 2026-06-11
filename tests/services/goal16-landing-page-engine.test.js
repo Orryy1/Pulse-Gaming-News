@@ -288,3 +288,70 @@ test("Goal 16 writes required landing-page artefacts", async () => {
   assert.equal(await fs.pathExists(written.disclosureBlock), true);
   assert.equal(await fs.pathExists(written.revenueTracking), true);
 });
+
+test("Goal 16 exposes UK/US commerce route maps and zeroed revenue attribution for operations", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal16-commerce-routes-"));
+  const storyId = "commerce-xbox-route";
+  const route = "/p/commerce-xbox-route";
+  const affiliate = safeAffiliate(storyId, route);
+  affiliate.fallback_links.push({
+    id: "amazon_us_controller",
+    label: "Xbox controller US",
+    url: "https://www.amazon.com/s?k=xbox+controller&tag=pulsegaming-20",
+    tracking_url: "/go/commerce-xbox-route/controller-us?region=US&platform=story_page&cta=controller",
+    merchant: "Amazon US",
+    product_category: "controller",
+  });
+  const story = await makeStoryPackage(root, storyId, { affiliate });
+
+  const report = await buildGoal16LandingPageEngine({
+    storyPackages: [story],
+    upstreamAffiliateReport: readyAffiliateReport(storyId),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-06-11T08:00:00.000Z",
+  });
+
+  const routeMap = report.commerce_route_map.stories[0];
+  const attribution = report.revenue_attribution_manifest.stories[0];
+
+  assert.equal(report.summary.uk_us_route_map_story_count, 1);
+  assert.equal(report.summary.revenue_attribution_manifest_story_count, 1);
+  assert.equal(report.commerce_route_map.verdict, "pass");
+  assert.equal(routeMap.story_id, storyId);
+  assert.equal(routeMap.landing_page_route, route);
+  assert.equal(routeMap.regions.UK.status, "offer_route_available");
+  assert.match(routeMap.regions.UK.route, /racing-wheel/);
+  assert.equal(routeMap.regions.US.status, "offer_route_available");
+  assert.match(routeMap.regions.US.route, /controller-us/);
+  assert.match(routeMap.platform_routes.youtube, /utm_source=youtube/);
+  assert.equal(routeMap.newsletter_capture.enabled, true);
+  assert.equal(routeMap.disclosure.required, true);
+  assert.ok(routeMap.source_link_count >= 2);
+  assert.equal(routeMap.safety.no_live_geo_redirect_mutation, true);
+  assert.equal(attribution.story_id, storyId);
+  assert.equal(attribution.primary_offer_id, "racing-wheel");
+  assert.equal(attribution.platforms.youtube.clicks, 0);
+  assert.equal(attribution.platforms.instagram.clicks, 0);
+  assert.equal(attribution.revenue.amount, 0);
+  assert.equal(attribution.no_fantasy_revenue_projection, true);
+  assert.equal(report.revenue_attribution_manifest.safety.no_affiliate_network_reporting_pull, true);
+});
+
+test("Goal 16 writes commerce route and revenue attribution manifests", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal16-commerce-write-"));
+  const story = await makeStoryPackage(root, "story-commerce-write");
+  const outputDir = path.join(root, "out");
+  const report = await buildGoal16LandingPageEngine({
+    storyPackages: [story],
+    upstreamAffiliateReport: readyAffiliateReport("story-commerce-write"),
+    workspaceRoot: root,
+    outputDir,
+    generatedAt: "2026-06-11T08:00:00.000Z",
+  });
+
+  const written = await writeGoal16LandingPageEngine(report, { outputDir });
+
+  assert.equal(await fs.pathExists(written.commerceRouteMap), true);
+  assert.equal(await fs.pathExists(written.revenueAttributionManifest), true);
+});

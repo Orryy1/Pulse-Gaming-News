@@ -170,6 +170,7 @@
     "ops:render-contract": "node tools/render-contract-report.js",
     "ops:publish-readiness": "node tools/publish-readiness.js",
     "ops:publish-cadence": "node tools/publish-cadence-doctor.js",
+    "ops:guarded-dispatch-reconcile": "node tools/guarded-dispatch-evidence-reconciliation.js",
     "ops:normal-operations": "node tools/normal-operations-report.js",
     "ops:candidate-supply": "node tools/candidate-supply-engine.js",
     "ops:runtime-sentinel": "node tools/runtime-ownership-sentinel.js",

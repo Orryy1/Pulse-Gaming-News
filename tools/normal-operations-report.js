@@ -6,8 +6,10 @@ const path = require("node:path");
 require("dotenv").config({ quiet: true, override: true });
 
 const {
+  buildSchedulerWindowReadiness,
   buildNormalOperationsReport,
   formatNormalOperationsMarkdown,
+  formatSchedulerWindowReadinessMarkdown,
 } = require("../lib/ops/normal-operations");
 const {
   buildPublishReadinessReport,
@@ -231,6 +233,7 @@ async function main() {
   const candidate = candidateBufferReport(report);
   const postWindow = postWindowReport(report);
   const plan = nextDayPlan(report);
+  const schedulerWindow = buildSchedulerWindowReadiness(report);
 
   await Promise.all([
     fs.writeJson(path.join(outDir, "normal_operations_report.json"), report, { spaces: 2 }),
@@ -238,8 +241,11 @@ async function main() {
     fs.writeJson(path.join(outDir, "fresh_candidate_queue.json"), candidateReport, { spaces: 2 }),
     fs.writeJson(path.join(outDir, "candidate_buffer_report.json"), candidate, { spaces: 2 }),
     fs.writeFile(path.join(outDir, "candidate_buffer_report.md"), formatCandidateBufferMarkdown(candidate), "utf8"),
+    fs.writeJson(path.join(outDir, "runtime_ownership_status.json"), report.layers?.runtime_ownership || {}, { spaces: 2 }),
     fs.writeJson(path.join(outDir, "post_window_verification.json"), postWindow, { spaces: 2 }),
     fs.writeFile(path.join(outDir, "post_window_verification.md"), formatPostWindowMarkdown(postWindow), "utf8"),
+    fs.writeJson(path.join(outDir, "scheduler_window_readiness.json"), schedulerWindow, { spaces: 2 }),
+    fs.writeFile(path.join(outDir, "scheduler_window_readiness.md"), formatSchedulerWindowReadinessMarkdown(schedulerWindow), "utf8"),
     fs.writeJson(path.join(outDir, "next_day_publish_plan.json"), plan, { spaces: 2 }),
     fs.writeFile(path.join(outDir, "next_day_publish_plan.md"), formatNextDayPlanMarkdown(plan), "utf8"),
   ]);

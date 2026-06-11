@@ -34,4 +34,7 @@ $env:PULSE_SAFE_OBSERVATION_MODE = "false"
 $env:PULSE_PRIMARY_RUNTIME_HOLD = "false"
 $env:PULSE_GUARDED_EXECUTOR_PLAN_PATH = "output/goal-contract/guarded_dispatch_executor_plan.json"
 
+Add-Content -LiteralPath $logPath -Value ("{0} node_start repo={1} port={2}" -f (Get-Date).ToUniversalTime().ToString("s"), $RepoRoot, $Port)
 & node server.js *>> $logPath
+$exitCode = $LASTEXITCODE
+Add-Content -LiteralPath $logPath -Value ("{0} node_exit code={1}" -f (Get-Date).ToUniversalTime().ToString("s"), $exitCode)

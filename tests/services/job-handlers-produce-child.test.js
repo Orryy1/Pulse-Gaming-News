@@ -64,3 +64,27 @@ test("produce job handler fails the job when the child process exits non-zero", 
     /produce child process failed with code 7: fatal produce failure/,
   );
 });
+
+test("analytics job handler runs the analytics CLI in a child process", async () => {
+  let captured = null;
+  const logs = [];
+  const { handlers } = loadHandlersWithSpawn((command, args, options) => {
+    captured = { command, args, options };
+    return fakeChild({ stdout: "[analytics] === ANALYTICS PASS COMPLETE ===\n" });
+  });
+
+  const result = await handlers.analytics(
+    { id: 44, kind: "analytics" },
+    { log: (line) => logs.push(line) },
+  );
+
+  assert.equal(captured.command, process.execPath);
+  assert.deepEqual(captured.args, ["analytics.js"]);
+  assert.equal(captured.options.cwd, path.resolve(__dirname, "..", ".."));
+  assert.equal(captured.options.windowsHide, true);
+  assert.equal(result.ok, true);
+  assert.equal(result.mode, "child_process");
+  assert.equal(result.exit_code, 0);
+  assert.match(result.stdout_tail, /ANALYTICS PASS COMPLETE/);
+  assert.ok(logs.some((line) => line.includes("[analytics-child] [analytics] === ANALYTICS PASS COMPLETE ===")));
+});

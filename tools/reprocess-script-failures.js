@@ -16,7 +16,11 @@ const {
 } = require("../lib/services/short-runtime-planner");
 const {
   buildSourceBoundFallbackScript,
+  sourceNameFromUrl,
 } = require("../lib/source-bound-script-writer");
+const {
+  buildViralScriptIntelligence,
+} = require("../lib/viral-script-intelligence");
 const {
   buildScriptFailureReprocessReport,
   formatScriptFailureReprocessMarkdown,
@@ -185,7 +189,21 @@ function isPersistableScriptReady(row = {}, env = process.env) {
       requireFullScriptCta: requirePulseCta,
     },
   );
-  return coherence.failures.length === 0;
+  if (coherence.failures.length > 0) return false;
+
+  const transcriptQuality = buildViralScriptIntelligence({
+    story: {
+      ...row,
+      source_name:
+        row.source_name ||
+        row.primary_source ||
+        sourceNameFromUrl(row.article_url || row.source_url || row.url) ||
+        row.subreddit ||
+        row.source,
+    },
+    script: scriptText,
+  });
+  return transcriptQuality.verdict === "viral_ready";
 }
 
 function sourceBoundPersistSecondsPerWord(row = {}, provider = "", env = process.env) {

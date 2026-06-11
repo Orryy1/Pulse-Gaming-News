@@ -300,10 +300,53 @@ test("source-bound fallback turns Valorant Vanguard panic into a source-safe ant
   assert.equal(runtime.result, "pass");
 });
 
+test("source-bound fallback turns subscription access into a concrete player-debate story", () => {
+  const story = {
+    id: "rss_600fca97d3e40552",
+    title: "GTA 5 Joins A Subscription Ahead Of GTA 6 Launch",
+    source_type: "rss",
+    subreddit: "GameSpot",
+    article_url:
+      "https://www.gamespot.com/articles/gta-5-joins-a-subscription-ahead-of-gta-6-launch/",
+  };
+
+  const script = buildSourceBoundFallbackScript(story, {
+    env: { TTS_PROVIDER: "local" },
+    sourceName: "GameSpot",
+    runtimeProfile: {
+      provider: "local",
+      secondsPerWord: 0.35,
+      minWords: 175,
+      maxWords: 214,
+      aimMin: 185,
+      aimMax: 205,
+    },
+  });
+
+  assert.ok(script);
+  assert.match(script.hook, /GTA 5/i);
+  assert.match(script.full_script, /GameSpot reports/i);
+  assert.match(script.full_script, /subscription/i);
+  assert.match(script.full_script, /GTA 6/i);
+  assert.match(script.full_script, /worth reinstalling|wait for GTA 6|reinstall/i);
+  assert.match(script.full_script, /back catalogue|warm-up/i);
+  assert.match(script.full_script, /Follow Pulse Gaming so you never miss a beat\.$/);
+  assert.doesNotMatch(
+    script.full_script,
+    /new detail players should clock|player-facing detail|separating from the noise|reason to exist beyond repeating the feed|fades into the feed|stronger short keeps/i,
+  );
+
+  const coherence = runScriptCoherenceQa(
+    { ...story, ...script },
+    { requireCtaField: true, requireFullScriptCta: true },
+  );
+  assert.equal(coherence.result, "pass", coherence.failures.join(", "));
+});
+
 test("source-bound fallback source does not carry internal analyst-note phrases", () => {
   assert.doesNotMatch(
     SOURCE,
-    /source-backed update|not a blank cheque|not a blank check|invent extra details|named source confirms|wait-and-see column|Reddit reaction into evidence|core detail plainly|keep the claim tight|anything outside the report|fake certainty|what players can actually do with it/i,
+    /source-backed update|not a blank cheque|not a blank check|invent extra details|named source confirms|wait-and-see column|Reddit reaction into evidence|core detail plainly|keep the claim tight|anything outside the report|fake certainty|what players can actually do with it|player-facing detail|separating from the noise|reason to exist beyond repeating the feed|fades into the feed|stronger short keeps/i,
   );
 });
 
@@ -314,6 +357,7 @@ test("sourceNameFromUrl gives readable publisher names", () => {
   );
   assert.equal(sourceNameFromUrl("https://twistedvoxel.com/example"), "Twisted Voxel");
   assert.equal(sourceNameFromUrl("https://www.pcgamer.com/example"), "PC Gamer");
+  assert.equal(sourceNameFromUrl("https://www.gamespot.com/articles/example/"), "GameSpot");
   assert.equal(sourceNameFromUrl("https://youtu.be/PGqkjDoyI8o"), "YouTube");
   assert.equal(sourceNameFromUrl("https://www.youtube.com/watch?v=LBxjH-lZjEo"), "YouTube");
 });

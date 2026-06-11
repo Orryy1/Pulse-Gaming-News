@@ -322,10 +322,38 @@ test("classifyReprocessedStory separates script-ready from still-review rows", (
 });
 
 test("isPersistableScriptReady prevents apply-local from writing review placeholders", () => {
-  const readyScript = `${Array.from(
-    { length: 210 },
-    (_, i) => `subnautica_fact_${i + 1}`,
-  ).join(" ")} Follow Pulse Gaming so you never miss a beat.`;
+  const readyScript =
+    "Forza Horizon 6's paid crowd just sent a loud warning. " +
+    "GamesRadar reports that Forza Horizon 6 posted 130,000 Steam players before the standard audience fully arrived. " +
+    "The uncomfortable detail is not just the number. " +
+    "It is who counted: people willing to move early, pay attention and in some cases spend $120 before the cheap wave lands. " +
+    "That makes the launch harder to dismiss as trailer hype, because paid early demand carries more weight than wishlist noise. " +
+    "The catch is that early-access peaks can cool down quickly once the first weekend ends. " +
+    "For players, the takeaway is simple: watch whether the spike turns into retention before calling it a long-term win. " +
+    "The split matters: reviews point to quality, while early Steam numbers show who paid attention before the cheaper route opened. " +
+    "The next pressure point is the normal launch: it either builds on the premium crowd or exposes a short-lived spike. " +
+    "The stronger read separates the proof point from launch-week theatre. " +
+    "That gives players a clearer way to judge the next marketing wave. " +
+    "If the next wave holds, this becomes a momentum story, not just a leaderboard screenshot. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+  const tightenOnlyScript =
+    "GTA 5 just became the GTA 6 waiting room. " +
+    "GameSpot reports GTA 5 has joined a subscription service ahead of GTA 6. " +
+    "That is the useful bit: Rockstar can keep old players close without asking everyone to buy the same game again. " +
+    "The catch is that subscription libraries move, so this is access, not ownership. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+  const fullLengthTightenOnlyScript =
+    "Nintendo just made one Switch 2 setting harder to ignore. " +
+    "IGN reports Nintendo has updated its Switch 2 support notes with a new controller setting for players. " +
+    "The useful part is simple: this is not a new game announcement, but it does change how people set up the console before a busy release month. " +
+    "The catch is that settings stories only matter when they remove friction players actually feel. " +
+    "A quiet menu change can still save time if it stops people digging through options before a download, update or local multiplayer session. " +
+    "For players, the question is whether Nintendo explains the setting clearly enough that normal users find it without a forum thread. " +
+    "That is the small but real payoff here: console launches do not only live on giant trailers. " +
+    "They also live on boring settings that either disappear into the background or annoy people every time they pick up a controller. " +
+    "If this update makes setup cleaner, it earns its place. " +
+    "If it stays buried, most players will never know it exists. " +
+    "Follow Pulse Gaming so you never miss a beat.";
 
   assert.equal(
     isPersistableScriptReady({
@@ -340,9 +368,36 @@ test("isPersistableScriptReady prevents apply-local from writing review placehol
       script_generation_status: "script_ready",
       full_script: readyScript,
       cta: "Follow Pulse Gaming so you never miss a beat.",
-      word_count: 219,
+      word_count: 196,
+      source_name: "GamesRadar",
+      title:
+        "Forza Horizon 6 immediately beats its predecessor's all-time Steam record with 130,000 concurrent players",
+      script_source: "source_bound_fallback",
     }),
     true,
+  );
+  assert.equal(
+    isPersistableScriptReady({
+      script_generation_status: "script_ready",
+      full_script: tightenOnlyScript,
+      cta: "Follow Pulse Gaming so you never miss a beat.",
+      word_count: 53,
+      source_name: "GameSpot",
+      title: "GTA 5 Joins A Subscription Ahead Of GTA 6 Launch",
+    }),
+    false,
+  );
+  assert.equal(
+    isPersistableScriptReady({
+      script_generation_status: "script_ready",
+      full_script: fullLengthTightenOnlyScript,
+      cta: "Follow Pulse Gaming so you never miss a beat.",
+      word_count: 182,
+      source_name: "IGN",
+      title: "Nintendo Updates A Switch 2 Controller Setting",
+      script_source: "source_bound_fallback",
+    }),
+    false,
   );
   assert.equal(
     isPersistableScriptReady({

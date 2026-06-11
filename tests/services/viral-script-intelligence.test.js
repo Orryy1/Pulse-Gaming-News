@@ -280,3 +280,56 @@ test("viral script intelligence treats source names as present despite casing di
   assert.equal(result.scores.source_safety, 86);
   assert.notEqual(result.verdict, "rewrite_required");
 });
+
+test("viral script intelligence recognises subscription runway stories as high-value debate scripts", () => {
+  const script =
+    "GTA 5 just became the GTA 6 waiting room. " +
+    "GameSpot reports GTA 5 has joined a subscription service ahead of GTA 6. " +
+    "That is the useful bit: Rockstar can keep old players close without asking everyone to buy the same game again. " +
+    "For lapsed players, subscription access lowers the friction. " +
+    "For Take-Two, it keeps Los Santos active while the sequel owns the calendar. " +
+    "The catch is that subscription libraries move, so this is access, not ownership. " +
+    "The debate is simple: is this worth jumping back into, or are you better off waiting for GTA 6? " +
+    "If people reinstall now, GTA 5 stops looking like old back catalogue and starts working like a warm-up act for GTA 6. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "gta-subscription-runway",
+      title: "GTA 5 Joins A Subscription Ahead Of GTA 6 Launch",
+      source_name: "GameSpot",
+    },
+    script,
+  });
+
+  assert.equal(result.verdict, "viral_ready", JSON.stringify(result, null, 2));
+  assert.ok(result.viral_score >= 85, JSON.stringify(result.scores));
+  assert.ok(result.scores.insight_density >= 80, JSON.stringify(result.scores));
+  assert.deepEqual(result.blockers, []);
+});
+
+test("viral script intelligence recognises anti-cheat trust stories as publishable when sourced", () => {
+  const script =
+    "Valorant's anti-cheat fight just got nastier. " +
+    "PCGamesN reports Riot says Vanguard cannot brick a PC, but the update can block DMA cheat hardware. " +
+    "That distinction matters because the scary claim is PC damage, while Riot is drawing a line between a broken computer and hardware used to bypass anti-cheat. " +
+    "Kernel-level anti-cheat sits deep in Windows, so every heavy-handed update becomes bigger than one ban wave. " +
+    "The actual split is cheat devices versus normal PCs; Riot needs to keep that line impossible to miss. " +
+    "If Riot wants this to land cleanly, the next message has to explain exactly what Vanguard touches and what it cannot touch. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "valorant-vanguard-trust",
+      title:
+        "Valorant's new Vanguard update seems to be bricking cheaters' PCs",
+      source_name: "PCGamesN",
+    },
+    script,
+  });
+
+  assert.equal(result.verdict, "viral_ready", JSON.stringify(result, null, 2));
+  assert.ok(result.viral_score >= 85, JSON.stringify(result.scores));
+  assert.ok(result.scores.insight_density >= 80, JSON.stringify(result.scores));
+  assert.deepEqual(result.blockers, []);
+});

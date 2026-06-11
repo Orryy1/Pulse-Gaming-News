@@ -63,3 +63,49 @@ test("transcript audience audit separates viral-ready scripts from rewrite-requi
     assert.match(markdown, /Rewrite Required/);
   });
 });
+
+test("transcript audience audit rejects abstract review-score filler", async () => {
+  await withTempDir(async (root) => {
+    await writeStory(
+      root,
+      "forza-review",
+      "Forza Horizon 6 Scores 84 On PC Gamer",
+      "Forza Horizon 6 just landed a strong PC Gamer review. PC Gamer reports Forza Horizon 6 review (PC Gamer: 84/100). Strong reviews matter here because this is when fence-sitters decide whether another Horizon is enough. Forza Horizon 6 is in verdict territory now, not pre-launch noise. The number is only the opening beat; repeated praise or complaints across outlets matter more. One high score can hide split opinions, but a steady spread says the reception is harder to dismiss. Until players have it, this is a strong signal, not a final verdict. That is what makes the score matter to players instead of becoming chart noise. A score this high changes the launch conversation, but it still has to survive real players. Follow Pulse Gaming so you never miss a beat.",
+      "PC Gamer",
+    );
+
+    const report = await auditGeneratedTranscripts({ root });
+
+    assert.equal(report.summary.total, 1);
+    assert.equal(report.summary.pass, 0);
+    assert.equal(report.summary.rewrite_required, 1);
+    const row = report.stories.find((story) => story.story_id === "forza-review");
+    assert.ok(
+      row.blockers.includes("script_coherence:vague_filler:review_score_abstraction"),
+      row.blockers.join(", "),
+    );
+  });
+});
+
+test("transcript audience audit rejects generic source-bound padding", async () => {
+  await withTempDir(async (root) => {
+    await writeStory(
+      root,
+      "gta-subscription",
+      "GTA 5 Joins A Subscription Ahead Of GTA 6 Launch",
+      "GTA 6 has a new detail players should clock. GameSpot reports a new GTA 6 update with a player-facing detail still worth separating from the noise. The interesting part is not that another update exists. It is whether this changes timing, access, trust or what players should pay attention to next. That gives the story a reason to exist beyond repeating the feed. Until another source adds more, this stays a tight update instead of a hype cycle. The next thing to watch is whether the official follow-up gives players a clear date, platform detail or gameplay proof. That is where a small update either becomes useful or fades into the feed. The stronger short keeps the subject named and the consequence visible from the first line. Follow Pulse Gaming so you never miss a beat.",
+      "GameSpot",
+    );
+
+    const report = await auditGeneratedTranscripts({ root });
+
+    assert.equal(report.summary.total, 1);
+    assert.equal(report.summary.pass, 0);
+    assert.equal(report.summary.rewrite_required, 1);
+    const row = report.stories.find((story) => story.story_id === "gta-subscription");
+    assert.ok(
+      row.blockers.includes("script_coherence:vague_filler:generic_source_bound_padding"),
+      row.blockers.join(", "),
+    );
+  });
+});

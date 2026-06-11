@@ -52,6 +52,8 @@ test("publish blocker resolution maps common production blockers to concrete rec
     ["qa:glued_sentence_in_tts_script", "canonical_script_rewrite"],
     ["qa_failure:thin_visuals_blocked:thin_visuals_below_three", "visual_v4_motion_enrichment"],
     ["qa:gold_standard:motion_density_below_reference", "visual_v4_motion_enrichment"],
+    ["preflight_qa_blocked:video:freeze_segment_too_long (0.77s @ 0.47s)", "visual_v4_motion_enrichment"],
+    ["video:cumulative_freeze_too_high (6.93s)", "visual_v4_motion_enrichment"],
     ["qa:gold_standard:rights_risk_above_reference", "rights_ledger_repair"],
     ["content_qa:risky_article_context_dominated_deck (5 risky article images, 0 safe non-article images)", "visual_v4_motion_enrichment"],
     ["qa_failure:script_generation_review:script_generation_error:Bad control character in string literal", "script_generation_retry"],

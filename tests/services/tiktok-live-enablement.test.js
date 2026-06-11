@@ -515,3 +515,152 @@ test("TikTok live enablement report artefact writer emits the requested JSON and
 
   assert.equal(path.basename(artefacts.readinessJsonPath), "tiktok_readiness_report.json");
 });
+
+test("TikTok enablement status separates repo blockers from external operator blockers", () => {
+  const {
+    buildTikTokEnablementStatus,
+  } = require("../../lib/platforms/tiktok-live-enablement");
+
+  const status = buildTikTokEnablementStatus({
+    readinessReport: {
+      generated_at: "2026-06-11T09:00:00.000Z",
+      classification: "TIKTOK_APP_AUDIT_REQUIRED",
+      token: {
+        status: "ok",
+        refresh_available: true,
+        needs_reauth: false,
+      },
+      creator_info: {
+        available: true,
+        public_to_everyone_available: true,
+        private_only_available: true,
+        privacy_level_options: ["PUBLIC_TO_EVERYONE", "SELF_ONLY"],
+        max_video_post_duration_sec: 300,
+      },
+      public_posting: {
+        allowed_now: false,
+        direct_post_approval_declared: false,
+        blocker: "direct_post_approval_not_declared",
+      },
+      private_test: {
+        self_only_available: true,
+        allowed_by_this_report: false,
+      },
+      blockers: [
+        {
+          code: "tiktok_app_audit_required",
+          message: "Public Direct Post approval is not declared.",
+          external: true,
+        },
+      ],
+    },
+    platformPreflight: {
+      operational_state: "blocked_external",
+      publishable_now_count: 0,
+      queued_when_enabled_count: 2,
+      blocked_count: 0,
+      candidate_package_gaps: [],
+      platform_enablement_gaps: ["tiktok_app_audit_required"],
+    },
+    publishPack: {
+      candidate_pack_summary: {
+        total: 2,
+        ready_for_direct_post_count: 0,
+        queued_when_enabled_count: 2,
+        blocked_count: 0,
+        creator_rewards_suitable_61_90_count: 1,
+      },
+    },
+    durationVariantReport: {
+      tiktok_actions: [
+        {
+          story_id: "ready-61",
+          creator_rewards_window: { status: "ready_61_90s" },
+        },
+        {
+          story_id: "short-43",
+          creator_rewards_window: { status: "below_61s" },
+        },
+      ],
+    },
+  });
+
+  assert.equal(status.platform, "tiktok");
+  assert.equal(status.classification, "TIKTOK_APP_AUDIT_REQUIRED");
+  assert.equal(status.live_publish_allowed, false);
+  assert.equal(status.counted_as_live_enabled_platform, false);
+  assert.equal(status.public_posting_state, "blocked_external_public_direct_post");
+  assert.deepEqual(status.repo_side_blockers, []);
+  assert.deepEqual(status.external_operator_blockers.map((blocker) => blocker.code), [
+    "tiktok_app_audit_required",
+  ]);
+  assert.equal(status.duration_variant_summary.ready_61_90s_count, 1);
+  assert.equal(status.duration_variant_summary.below_61s_count, 1);
+});
+
+test("TikTok artefact writer emits enablement, creator-info, direct-post and operator-blocker JSON", async () => {
+  const {
+    writeTikTokLiveEnablementArtifacts,
+  } = require("../../lib/platforms/tiktok-live-enablement");
+
+  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-tiktok-enable-status-"));
+  const artefacts = await writeTikTokLiveEnablementArtifacts({
+    outputDir: outDir,
+    readinessReport: {
+      classification: "TIKTOK_TOKEN_REFRESH_REQUIRED",
+      creator_info: { available: false, privacy_level_options: [] },
+      public_posting: { allowed_now: false, blocker: "creator_info_or_scope_not_ready" },
+      blockers: [
+        {
+          code: "tiktok_token_expired_refreshable",
+          message: "Token refresh is available.",
+          local: true,
+        },
+      ],
+    },
+    publishPack: {
+      candidate_pack_summary: {
+        total: 1,
+        ready_for_direct_post_count: 0,
+        queued_when_enabled_count: 0,
+        blocked_count: 1,
+        creator_rewards_suitable_61_90_count: 0,
+      },
+    },
+    platformPreflight: {
+      operational_state: "needs_credentials",
+      publishable_now_count: 0,
+      queued_when_enabled_count: 0,
+      blocked_count: 1,
+      platform_enablement_gaps: ["tiktok_token_expired_refreshable"],
+      candidate_package_gaps: ["creator_info_required_for_privacy_selection"],
+    },
+    durationVariantReport: { tiktok_actions: [] },
+    testsRunSummary: { commands: [] },
+  });
+
+  for (const name of [
+    "tiktok_enablement_report.json",
+    "tiktok_creator_info_status.json",
+    "tiktok_direct_post_readiness.json",
+    "tiktok_operator_blockers.json",
+  ]) {
+    assert.equal(await fs.pathExists(path.join(outDir, name)), true, name);
+  }
+
+  const enablement = await fs.readJson(path.join(outDir, "tiktok_enablement_report.json"));
+  assert.equal(enablement.live_publish_allowed, false);
+  assert.equal(enablement.counted_as_live_enabled_platform, false);
+  assert.deepEqual(enablement.repo_side_blockers.map((blocker) => blocker.code), [
+    "tiktok_token_expired_refreshable",
+    "creator_info_required_for_privacy_selection",
+  ]);
+
+  const directPost = await fs.readJson(path.join(outDir, "tiktok_direct_post_readiness.json"));
+  assert.equal(directPost.public.allowed_now, false);
+  assert.equal(directPost.live_execution_gate, "platform_enablement_required");
+
+  const operatorBlockers = await fs.readJson(path.join(outDir, "tiktok_operator_blockers.json"));
+  assert.deepEqual(operatorBlockers.external_operator_blockers, []);
+  assert.equal(path.basename(artefacts.enablementReportPath), "tiktok_enablement_report.json");
+});

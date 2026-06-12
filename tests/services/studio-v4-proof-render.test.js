@@ -42,6 +42,26 @@ test("Studio V4 proof renderer plans motion-only scenes across full narration", 
   assert.deepEqual(plan.scenes.map((scene) => scene.path), ["a.mp4", "b.mp4", "c.mp4"]);
 });
 
+test("Studio V4 proof renderer caps direct clip dwell to avoid choppy source holds", () => {
+  const plan = buildClipScenePlan({
+    clips: ["a.mp4", "b.mp4", "c.mp4", "d.mp4", "e.mp4", "f.mp4", "g.mp4", "h.mp4"],
+    durationS: 42.237,
+    xfadeS: 0.25,
+    maxSceneDurationS: 3,
+  });
+
+  assert.equal(plan.scenes.length, 16);
+  assert.ok(plan.segmentDurationS <= 3);
+  assert.deepEqual(
+    plan.scenes.slice(0, 10).map((scene) => scene.path),
+    ["a.mp4", "b.mp4", "c.mp4", "d.mp4", "e.mp4", "f.mp4", "g.mp4", "h.mp4", "a.mp4", "b.mp4"],
+  );
+  assert.deepEqual(
+    plan.scenes.map((scene) => scene.index),
+    Array.from({ length: 16 }, (_, index) => index),
+  );
+});
+
 test("Studio V4 proof renderer CLI stays local and story-json driven", () => {
   const args = parseArgs([
     "node",

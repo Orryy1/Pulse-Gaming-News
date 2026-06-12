@@ -34,6 +34,8 @@ const ROOT = path.resolve(__dirname, "..");
 const TEST_OUT = path.join(ROOT, "test", "output");
 const FPS = 30;
 const XFADE_S = 0.25;
+const DIRECT_CLIP_MAX_VISIBLE_DWELL_S = 2.1;
+const DIRECT_CLIP_MAX_SCENES = 24;
 const FRAME_WIDTH_PX = 1080;
 const FRAME_HEIGHT_PX = 1920;
 const SAFE_RIGHT_PX = 42;
@@ -519,22 +521,33 @@ async function resolveStorySfxPaths(story = {}, { limit = 6 } = {}) {
   return mix.map((cue) => cue.path);
 }
 
-function buildClipScenePlan({ clips = [], durationS, xfadeS = XFADE_S } = {}) {
-  const cleanClips = clips.filter(Boolean);
+function buildClipScenePlan({
+  clips = [],
+  durationS,
+  xfadeS = XFADE_S,
+  maxSceneDurationS = null,
+  maxScenes = DIRECT_CLIP_MAX_SCENES,
+} = {}) {
+  const cleanClips = clips.filter(Boolean).slice(0, 8);
   if (!cleanClips.length) {
     return { scenes: [], segmentDurationS: 0, xfadeS };
   }
   const duration = Math.max(1, Number(durationS) || 1);
-  const count = Math.min(cleanClips.length, 8);
+  let count = cleanClips.length;
+  const maxDwell = Number(maxSceneDurationS);
+  if (Number.isFinite(maxDwell) && maxDwell > xfadeS + 0.1) {
+    const requiredCount = Math.ceil((duration - xfadeS) / (maxDwell - xfadeS));
+    count = Math.max(count, Math.min(Number(maxScenes) || DIRECT_CLIP_MAX_SCENES, requiredCount));
+  }
   const segmentDurationS = Number(
     ((duration + xfadeS * Math.max(0, count - 1)) / count).toFixed(2),
   );
   return {
     segmentDurationS,
     xfadeS,
-    scenes: cleanClips.slice(0, count).map((clip, index) => ({
+    scenes: Array.from({ length: count }, (_, index) => ({
       index,
-      path: clip,
+      path: cleanClips[index % cleanClips.length],
       durationS: segmentDurationS,
     })),
   };
@@ -1018,7 +1031,12 @@ async function renderProof({ storyJson, output }) {
   if (!Number.isFinite(durationS) || durationS <= 0) {
     throw new Error(`invalid audio duration: ${audioPath}`);
   }
-  const scenePlan = buildClipScenePlan({ clips, durationS });
+  const scenePlan = buildClipScenePlan({
+    clips,
+    durationS,
+    maxSceneDurationS: DIRECT_CLIP_MAX_VISIBLE_DWELL_S,
+    maxScenes: DIRECT_CLIP_MAX_SCENES,
+  });
   const assPath = path.join(TEST_OUT, `${story.id || "story"}_studio_v4_proof.ass`);
   const timestampData = await fs.readJson(timestampsPath);
   const timestampValidation = validateProofTimestampPayload(timestampData);

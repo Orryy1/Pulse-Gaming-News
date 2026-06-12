@@ -335,6 +335,69 @@ test("real motion materializer accepts segment-validated official direct-media i
   assert.equal(rows[0].mediaStartS, 10.28);
 });
 
+test("real motion materializer does not materialize validated segment rows from another story", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-story-scope-"));
+  const storyId = "target-story";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  await fs.ensureDir(artifactDir);
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: [],
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    motion_inventory: {
+      accepted_local_clips: [],
+    },
+  });
+
+  const sourceUrl =
+    "https://video.akamai.steamstatic.com/store_trailers/1145350/695850/hash/hls_264_master.m3u8?t=1715021703";
+  const segmentValidationReport = {
+    segments: Array.from({ length: 5 }, (_, index) => ({
+      story_id: "different-story",
+      status: "validated",
+      segment_validated: true,
+      allowed_for_flash_lane: true,
+      source_url: sourceUrl,
+      source_url_kind: "hls_manifest",
+      source_type: "licensed_direct_media_url",
+      provider: "official_intake",
+      source_family: `other_story_family_${index + 1}`,
+      entity: "Other Game",
+      media_start_s: index * 5,
+      duration_s: 5,
+      source_duration_s: 90,
+      rights_risk_class: "official_direct_media",
+      allowed_render_use: "official_direct_media_segment_candidate",
+    })),
+  };
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: {
+      jobs: [{
+        story_id: storyId,
+        artifact_dir: artifactDir,
+        actions: [{ action_id: "materialise_validated_real_motion_clips" }],
+      }],
+    },
+    segmentValidationReport,
+    generatedAt: "2026-06-12T02:30:00.000Z",
+    execFileSync: (bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 8));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0);
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.equal(report.jobs[0].story_id, storyId);
+  assert.deepEqual(report.jobs[0].blockers, ["validated_direct_media_candidates_missing"]);
+  assert.equal(await fs.pathExists(path.join(artifactDir, "materialised_motion_clips.json")), false);
+});
+
 test("real motion materializer hydrates ready V4 motion packs into local direct-video clips", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-pack-"));
   const storyId = "hades-motion-pack";

@@ -1885,9 +1885,14 @@ function publicCopyManifestForStory(story = {}) {
     description: cleanText(story.description),
     thumbnail_headline: cleanText(story.suggested_thumbnail_text || story.thumbnail_text || story.thumbnail_headline),
     primary_source: story.primary_source || story.source_card_label || story.source_name || null,
+    primary_source_url: cleanText(story.primary_source_url || story.source_url || story.article_url || story.url),
     discovery_source: story.discovery_source || null,
     official_source: story.official_source || story.official_confirmation_source || null,
     secondary_sources: Array.isArray(story.secondary_sources) ? story.secondary_sources : [],
+    confirmed_claims: asArray(story.confirmed_claims),
+    unconfirmed_claims: asArray(story.unconfirmed_claims),
+    prohibited_claims: asArray(story.prohibited_claims),
+    claim_inventory: objectValue(story.claim_inventory, {}),
   };
 }
 

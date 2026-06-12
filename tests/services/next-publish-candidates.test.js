@@ -1154,6 +1154,39 @@ test("bridge preflight accepts visual QA and benchmark evidence from scheduler c
   assert.deepEqual(preflight.blockers, []);
 });
 
+test("preflight public copy preserves confirmed claims for specific detail checks", async () => {
+  const preflight = await runPreflightQaForStory(
+    baseStory({
+      id: "source_backed_specific_detail",
+      title: "Halo: Campaign Evolved Shows The Real Remake Test",
+      selected_title: "Halo: Campaign Evolved Shows The Real Remake Test",
+      canonical_subject: "Halo: Campaign Evolved",
+      canonical_game: "Halo: Campaign Evolved",
+      first_spoken_line: "Halo's remake debate finally has a real stress test.",
+      description: "Xbox Wire showed a Halo: Campaign Evolved demo. Source: Xbox Wire.",
+      full_script:
+        "Halo's remake debate finally has a real stress test. Xbox Wire says Halo: Campaign Evolved supports cross-progression across Xbox, Windows PC, Steam and PlayStation 5.",
+      primary_source: "Xbox Wire",
+      discovery_source: "Xbox Wire",
+      confirmed_claims: [
+        "Xbox Wire says Halo: Campaign Evolved supports cross-play and cross-progression across Xbox Series X|S, Windows PC, Steam and PlayStation 5.",
+      ],
+    }),
+    {
+      runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    },
+  );
+
+  assert.equal(preflight.checks.public_copy.result, "pass");
+  assert.equal(preflight.status, "pass");
+});
+
 test("bridge preflight blocks stale bridge duration metadata against current render manifest", async (t) => {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-bridge-stale-"));
   t.after(() => fs.remove(tmpDir));

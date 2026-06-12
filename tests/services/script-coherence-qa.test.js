@@ -553,3 +553,75 @@ test("script coherence blocks hybrid spoken years and generic success-padding fr
     qa.failures.join(", "),
   );
 });
+
+test("script coherence blocks cross-story editorial template leakage", () => {
+  const qa = runScriptCoherenceQa(
+    {
+      title: "Dragon's Dogma 2 gets first of two major updates",
+      source_type: "rss",
+      subreddit: "Polygon",
+      article_url: "https://www.polygon.com/dragons-dogma-2-june-2026-update-fast-travel-fix/",
+      cta: "Follow Pulse Gaming so you never miss a beat",
+      full_script:
+        "Forza just gave Xbox the headline it badly needed. " +
+        "Polygon says Forza Horizon 6 has moved to the top of Metacritic's 2026 list. " +
+        "A top score does not prove sales, retention or Game Pass engagement. " +
+        "Follow Pulse Gaming so you never miss a beat.",
+    },
+    { requireCtaField: true, requireFullScriptCta: true },
+  );
+
+  assert.equal(qa.result, "fail");
+  assert.ok(
+    qa.failures.includes("script_coherence:cross_story_template_leak:forza_horizon_6"),
+    qa.failures.join(", "),
+  );
+  assert.ok(
+    qa.failures.includes("script_coherence:source_url_subject_conflict:dragons_dogma_2"),
+    qa.failures.join(", "),
+  );
+});
+
+test("script coherence blocks subscription and paid-crowd templates without matching source context", () => {
+  const qa = runScriptCoherenceQa(
+    {
+      title: "Today's Top Deals: Switch 2 and Xbox Series X consoles",
+      source_type: "rss",
+      subreddit: "IGN",
+      article_url: "https://www.ign.com/articles/best-deals-for-june-11-2026",
+      cta: "Follow Pulse Gaming so you never miss a beat",
+      full_script:
+        "Nintendo Switch 2 just became easier to try, but there is a catch. " +
+        "IGN reports Nintendo Switch 2 has joined a subscription service. " +
+        "That changes the first decision from buying the game to deciding whether it is worth the download. " +
+        "Follow Pulse Gaming so you never miss a beat.",
+    },
+    { requireCtaField: true, requireFullScriptCta: true },
+  );
+
+  assert.equal(qa.result, "fail");
+  assert.ok(
+    qa.failures.includes("script_coherence:contextless_editorial_template:subscription_access"),
+    qa.failures.join(", "),
+  );
+  assert.ok(
+    qa.failures.includes("script_coherence:source_url_subject_conflict:best_deals"),
+    qa.failures.join(", "),
+  );
+});
+
+test("script coherence does not block named game scripts when no source context exists", () => {
+  const qa = runScriptCoherenceQa(
+    {
+      title: "Runtime fixture",
+      cta: "Follow Pulse Gaming so you never miss a beat",
+      full_script:
+        "Forza Horizon 6 finally has a release window. " +
+        "The important part is whether Xbox can turn that date into a clean first-party win. " +
+        "Follow Pulse Gaming so you never miss a beat.",
+    },
+    { requireCtaField: true, requireFullScriptCta: true },
+  );
+
+  assert.equal(qa.result, "pass");
+});

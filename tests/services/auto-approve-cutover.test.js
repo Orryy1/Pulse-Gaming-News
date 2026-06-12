@@ -465,6 +465,68 @@ test("script review metadata in _extra blocks otherwise-auto stories", async () 
   assert.equal(storyRow.auto_approved, 0);
 });
 
+test("live script coherence QA blocks otherwise-auto stories", async () => {
+  const repos = makeRepos();
+  seedStory(repos.db, {
+    id: "live-coherence-block",
+    title: "Dragon's Dogma 2 gets first of two major updates",
+    url: "https://www.polygon.com/dragons-dogma-2-june-2026-update-fast-travel-fix/",
+    flair: "News",
+    subreddit: "Polygon",
+    source_type: "rss",
+    score: 3000,
+    num_comments: 450,
+    breaking_score: 96,
+    article_image: "https://cdn/dragons-dogma-2.jpg",
+    game_images: JSON.stringify([
+      "https://steam/dragons-dogma-2-keyart.jpg",
+      "https://steam/dragons-dogma-2-screenshot.jpg",
+    ]),
+    hook: "Forza just gave Xbox the headline it badly needed.",
+    full_script:
+      "Forza just gave Xbox the headline it badly needed. " +
+      "Polygon says Forza Horizon 6 has moved to the top of Metacritic's 2026 list. " +
+      "A top score does not prove sales, retention or Game Pass engagement. " +
+      "Follow Pulse Gaming so you never miss a beat.",
+    cta: "Follow Pulse Gaming so you never miss a beat",
+    timestamp: new Date().toISOString(),
+  });
+
+  await autoApprove({
+    repos,
+    env: { NODE_ENV: "production", USE_SQLITE: "true" },
+  });
+
+  const scoreRow = repos.db
+    .prepare(
+      `SELECT decision, total, decision_reason, inputs FROM story_scores
+       WHERE story_id = 'live-coherence-block'
+       ORDER BY scored_at DESC LIMIT 1`,
+    )
+    .get();
+
+  assert.equal(scoreRow.decision, "review");
+  assert.ok(scoreRow.total >= 75, `fixture should otherwise be auto-tier, got total=${scoreRow.total}`);
+  assert.match(
+    scoreRow.decision_reason,
+    /script_review:script_coherence:cross_story_template_leak:forza_horizon_6/,
+  );
+
+  const inputs = JSON.parse(scoreRow.inputs);
+  assert.match(
+    inputs.live_script_coherence_auto_block,
+    /script_review:script_coherence:cross_story_template_leak:forza_horizon_6/,
+  );
+
+  const storyRow = repos.db
+    .prepare(
+      `SELECT approved, auto_approved FROM stories WHERE id = 'live-coherence-block'`,
+    )
+    .get();
+  assert.equal(storyRow.approved, 0);
+  assert.equal(storyRow.auto_approved, 0);
+});
+
 test("empty script validation errors in _extra do not block repaired scripts", async () => {
   const repos = makeRepos();
   seedStory(repos.db, {

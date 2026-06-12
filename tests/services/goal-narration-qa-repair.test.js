@@ -92,6 +92,29 @@ async function makeNarrationQaFixture(root, options = {}) {
   };
 }
 
+function transcriptWithWordCount(count) {
+  const words = Array.from({ length: count }, (_, index) => `word${index + 1}`);
+  const sentences = [];
+  for (let i = 0; i < words.length; i += 11) {
+    sentences.push(`${words.slice(i, i + 11).join(" ")}.`);
+  }
+  return sentences.join(" ");
+}
+
+function wordTimeline(count, durationSeconds) {
+  const step = durationSeconds / count;
+  return Array.from({ length: count }, (_, index) => {
+    const start = Number((index * step).toFixed(3));
+    return {
+      word: `word${index + 1}`,
+      start,
+      end: index === count - 1
+        ? durationSeconds
+        : Number(Math.min(durationSeconds, start + step * 0.72).toFixed(3)),
+    };
+  });
+}
+
 test("narration QA repair rewrites stale reports from current audio and captions", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-narration-qa-repair-"));
   const fixture = await makeNarrationQaFixture(root);
@@ -367,6 +390,64 @@ test("narration QA repair can proactively refresh scheduler bridge candidates", 
   const voiceQuality = await fs.readJson(path.join(fixture.artifactDir, "voice_quality_report.json"));
   assert.equal(voiceQuality.verdict, "FAIL");
   assert.equal(voiceQuality.cadence.spoken_wpm, 195);
+});
+
+test("narration voice QA accepts sparse audio manifests when narration evidence has resolved paths", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-narration-sparse-audio-manifest-"));
+  const fixture = await makeNarrationQaFixture(root, {
+    audioWordCount: 110,
+    captionWordCount: 110,
+    voiceQualityWordCount: 110,
+  });
+  const resolvedAudioPath = path.join(root, "media", "audio", "sparse.mp3");
+  const resolvedTimestampPath = path.join(root, "media", "audio", "sparse_timestamps.json");
+  const transcript = transcriptWithWordCount(110);
+  await fs.outputFile(resolvedAudioPath, Buffer.alloc(1800, 1));
+  await fs.outputJson(resolvedTimestampPath, {
+    meta: {
+      acoustic: { durationSeconds: 13.92 },
+      voiceDiagnostics: { metrics: { duration_s: 13.92 } },
+    },
+    words: wordTimeline(110, 42),
+  });
+  await fs.outputJson(path.join(fixture.artifactDir, "audio_manifest.json"), {
+    story_id: fixture.storyId,
+    status: "ready",
+    voice_status: "materialized",
+    music_bed: "local_editorial_energy_bed",
+    mix_rules: { narration_priority: true },
+  });
+  await fs.outputJson(path.join(fixture.artifactDir, "narration_manifest.json"), {
+    story_id: fixture.storyId,
+    status: "ready",
+    narration_audio_path: "output/audio/sparse.mp3",
+    word_timestamps_path: "output/audio/sparse_timestamps.json",
+    resolved_narration_audio_path: resolvedAudioPath,
+    resolved_word_timestamps_path: resolvedTimestampPath,
+    word_timestamp_count: 110,
+    transcript,
+  });
+  await fs.outputJson(path.join(fixture.artifactDir, "caption_manifest.json"), {
+    story_id: fixture.storyId,
+    generated_at: "2026-05-31T01:00:00.000Z",
+    caption_srt_path: "captions.srt",
+    word_timestamps_path: resolvedTimestampPath,
+    word_count: 110,
+  });
+
+  const built = await buildCurrentVoiceQualityReport({
+    artifactDir: fixture.artifactDir,
+    generatedAt: "2026-05-31T01:19:00.000Z",
+  });
+
+  assert.equal(built.voiceQualityReport.verdict, "PASS");
+  assert.equal(built.voiceQualityReport.word_timestamp_count, 110);
+  assert.equal(built.voiceQualityReport.checks.narration_audio_present, true);
+  assert.equal(built.voiceQualityReport.checks.word_timestamps_present, true);
+  assert.equal(built.voiceQualityReport.cadence.duration_seconds, 42);
+  assert.equal(built.voiceQualityReport.cadence.duration_source, "timestamps");
+  assert.equal(built.voiceQualityReport.cadence.spoken_wpm, 157.1);
+  assert.deepEqual(built.voiceQualityReport.blockers, []);
 });
 
 test("narration QA repair CLI defaults to report-only mode", async () => {

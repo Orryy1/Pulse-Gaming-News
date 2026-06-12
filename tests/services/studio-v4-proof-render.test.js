@@ -62,6 +62,22 @@ test("Studio V4 proof renderer caps direct clip dwell to avoid choppy source hol
   );
 });
 
+test("Studio V4 proof renderer keeps 50s direct-motion renders under the dwell cap", () => {
+  const plan = buildClipScenePlan({
+    clips: ["a.mp4", "b.mp4", "c.mp4", "d.mp4", "e.mp4", "f.mp4", "g.mp4", "h.mp4"],
+    durationS: 50.6,
+    xfadeS: 0.25,
+    maxSceneDurationS: 2.1,
+  });
+
+  assert.ok(plan.scenes.length > 24);
+  assert.ok(plan.segmentDurationS <= 2.1);
+  assert.deepEqual(
+    plan.scenes.slice(24, 28).map((scene) => scene.path),
+    ["a.mp4", "b.mp4", "c.mp4", "d.mp4"],
+  );
+});
+
 test("Studio V4 proof renderer CLI stays local and story-json driven", () => {
   const args = parseArgs([
     "node",

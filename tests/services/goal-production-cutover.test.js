@@ -1907,6 +1907,48 @@ test("production cutover uses standard output audio paths when the audio manifes
   }
 });
 
+test("production cutover bridge preserves narration manifest audio evidence when audio manifest is sparse", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-bridge-narration-"));
+  const storyPackage = await makeCutoverPackage(root, "bridge-narration-story", {
+    finalPublishRender: true,
+    renderer: "visual_v4_production",
+    visualTier: "production_v4_motion",
+  });
+  const artifactDir = storyPackage.artifact_dir;
+  const audioPath = path.join(artifactDir, "narration.mp3");
+  const timestampsPath = path.join(artifactDir, "narration_timestamps.json");
+  await fs.outputFile(audioPath, Buffer.alloc(5000, 2));
+  await fs.outputJson(timestampsPath, {
+    words: [{ word: "Forza", start: 0, end: 0.4 }],
+    meta: { wordTimestampSource: "local_whisper_word_alignment" },
+  });
+  await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), {
+    story_id: "bridge-narration-story",
+    narration_audio_path: null,
+    word_timestamps_path: null,
+  });
+  await fs.outputJson(path.join(artifactDir, "narration_manifest.json"), {
+    story_id: "bridge-narration-story",
+    status: "ready",
+    narration_audio_path: audioPath,
+    word_timestamps_path: timestampsPath,
+    word_timestamp_count: 1,
+    word_timestamp_source: "local_whisper_word_alignment",
+  });
+
+  const plan = await buildProductionRenderCutoverPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-05-22T09:14:00.000Z",
+  });
+
+  assert.equal(plan.summary.scheduler_bridge_candidate_count, 1);
+  const candidate = plan.scheduler_bridge.candidates[0];
+  assert.equal(candidate.audio_path, audioPath);
+  assert.equal(candidate.timestamps_path, timestampsPath);
+  assert.equal(candidate.word_timestamps_path, timestampsPath);
+  assert.equal(candidate.audio_duration, candidate.duration_seconds);
+});
+
 test("production cutover blocks local TTS timestamps that are not ASR aligned", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-local-asr-required-"));
   const storyPackage = await makeCutoverPackage(root, "local-asr-required", {
@@ -3265,6 +3307,67 @@ test("production cutover preserves normal production duration lane in bridge can
   assert.deepEqual(candidate.affiliate_links, []);
   assert.equal(candidate.min_video_duration_seconds, 35);
   assert.equal(candidate.duration_seconds, 46.4);
+});
+
+test("production cutover infers normal production lane for 50s Visual V4 renders", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-infer-normal-duration-"));
+  const ready = await makeCutoverPackage(root, "inferred-normal-duration-story", {
+    finalPublishRender: true,
+    renderer: "visual_v4_production",
+    visualTier: "production_v4_motion",
+    subject: "Stranger Than Heaven",
+    title: "Stranger Than Heaven Gives RGG A Real Combat Reset",
+  });
+  const artifactDir = ready.artifact_dir;
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "inferred-normal-duration-story",
+    canonical_subject: "Stranger Than Heaven",
+    canonical_game: "Stranger Than Heaven",
+    canonical_angle: "RGG combat reset has player-facing proof",
+    primary_source: "Xbox Wire",
+    selected_title: "Stranger Than Heaven Gives RGG A Real Combat Reset",
+    thumbnail_headline: "STRANGER THAN HEAVEN RGG'S COMBAT",
+    narration_script:
+      "Stranger Than Heaven puts RGG's biggest risk in the street fights. Xbox Wire says the combat has to carry more of the game this time.",
+    description: "Stranger Than Heaven has a combat reset to prove. Source: Xbox Wire.",
+    source_card_label: "Xbox Wire",
+  });
+  await fs.outputJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+    publish_status: "GREEN",
+  });
+  await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), {
+    narration_audio_path: path.join(artifactDir, "narration.mp3"),
+    word_timestamps_path: path.join(artifactDir, "narration_timestamps.json"),
+  });
+  await fs.outputFile(path.join(artifactDir, "narration.mp3"), Buffer.alloc(4000, 2));
+  await fs.outputJson(path.join(artifactDir, "narration_timestamps.json"), {
+    words: [{ word: "Stranger", start: 0, end: 0.3 }],
+  });
+  await fs.outputJson(path.join(artifactDir, "render_manifest.json"), {
+    story_id: "inferred-normal-duration-story",
+    renderer: "visual_v4_production",
+    visual_tier: "production_v4_motion",
+    final_publish_render: true,
+    sfx_mix_policy_version: STUDIO_V4_SFX_MIX_POLICY_VERSION,
+    voice_mix_policy_version: STUDIO_V4_VOICE_MIX_POLICY_VERSION,
+    visual_design_policy_version: STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION,
+    output_path: path.join(artifactDir, "visual_v4_render.mp4"),
+    rendered_duration_s: 50.6,
+    clips: 28,
+  });
+
+  const plan = await buildProductionRenderCutoverPlan({
+    storyPackages: [ready],
+    generatedAt: "2026-06-12T07:30:00.000Z",
+  });
+
+  assert.equal(plan.summary.scheduler_bridge_candidate_count, 1);
+  const candidate = plan.scheduler_bridge.candidates[0];
+  assert.equal(candidate.duration_lane, "normal_production");
+  assert.equal(candidate.allow_retention_short_video, false);
+  assert.equal(candidate.min_video_duration_seconds, 35);
+  assert.equal(candidate.max_video_duration_seconds, 60);
+  assert.equal(candidate.duration_seconds, 50.6);
 });
 
 test("production cutover exposes the actual selected render deck to scheduler preflight", async () => {

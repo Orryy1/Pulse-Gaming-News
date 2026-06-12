@@ -265,6 +265,56 @@ test("Goal 09 accepts compact source-lock SFX manifests when all required roles 
   assert.equal(report.sfx_manifest.stories[0].status, "pass");
 });
 
+test("Goal 09 accepts narration manifest audio evidence when audio manifest is sparse", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal09-narration-fallback-"));
+  const story = await makeSoundStory(root, "story-narration-fallback");
+  const audioPath = path.join(story.artifact_dir, "narration.mp3");
+  const timestampsPath = path.join(story.artifact_dir, "narration_timestamps.json");
+  await fs.outputFile(audioPath, Buffer.alloc(5000, 2));
+  await fs.outputJson(timestampsPath, {
+    words: [{ word: "Forza", start: 0, end: 0.4 }],
+  });
+  await fs.outputJson(path.join(story.artifact_dir, "audio_manifest.json"), {
+    story_id: "story-narration-fallback",
+    narration_audio_path: null,
+    word_timestamps_path: null,
+    mix_rules: {
+      narration_priority: true,
+      duck_under_narration: true,
+      limiter: true,
+    },
+    safety: {
+      no_publishing_side_effects: true,
+      oauth_triggered: false,
+      production_db_mutated: false,
+    },
+  });
+  await fs.outputJson(path.join(story.artifact_dir, "narration_manifest.json"), {
+    story_id: "story-narration-fallback",
+    status: "ready",
+    narration_audio_path: audioPath,
+    word_timestamps_path: timestampsPath,
+    voice_status: "materialized",
+    word_timestamp_count: 1,
+  });
+
+  const report = await buildGoal09SoundDesignEngine({
+    storyPackages: [story],
+    upstreamVisualReport: {
+      stories: [{ story_id: "story-narration-fallback", status: "ready", blockers: [] }],
+    },
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-06-12T06:45:00.000Z",
+  });
+
+  assert.equal(report.verdict, "PASS");
+  assert.equal(report.summary.direct_sound_pass_story_count, 1);
+  assert.equal(report.stories[0].direct_sound_status, "pass");
+  assert.equal(report.stories[0].audio.narration_audio_path, audioPath);
+  assert.equal(report.stories[0].audio.word_timestamps_path, timestampsPath);
+});
+
 test("Goal 09 reports loudness, policy and repeated SFX failures", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal09-hard-fail-"));
   const story = await makeSoundStory(root, "story-sound-fail", {

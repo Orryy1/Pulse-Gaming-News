@@ -293,6 +293,102 @@ test("goal batch package platform packs do not revive stale identity CTAs", () =
   assert.doesNotMatch(JSON.stringify(youtubePack), /gaming stories behind the headline/i);
 });
 
+test("goal batch packages preserve fresh intake source objects and selected titles", () => {
+  const story = {
+    id: "fresh_xbox_halo_campaign_evolved_demo_20260610",
+    title: "Halo: Campaign Evolved Shows The Real Remake Test",
+    canonical_subject: "Halo: Campaign Evolved",
+    canonical_game: "Halo: Campaign Evolved",
+    freshness_gate: "pass",
+    primary_source: {
+      name: "Xbox Wire",
+      url: "https://news.xbox.com/en-us/2026/06/10/halo-campaign-evolved-hands-on-demo-2/",
+      type: "official_platform_news",
+    },
+    source_type: "official_platform_news",
+    full_script:
+      "Halo: Campaign Evolved finally has a real remake test. Xbox Wire says the hands-on demo shows how the campaign is being rebuilt rather than simply repackaged. The pressure point is simple: fans can forgive nostalgia, but only if the new combat rhythm still feels like Halo. Follow Pulse Gaming so you never miss a beat.",
+  };
+
+  const prepared = prepareStoryForGoalProof(story, { allowOwnedMotionFallback: true });
+  const batch = buildGoalBatchPackages({
+    stories: [story],
+    generatedAt: "2026-06-12T00:10:00.000Z",
+    allowOwnedMotionFallback: true,
+  });
+  const serialised = JSON.stringify(batch.packages[0]);
+
+  assert.equal(prepared.primary_source, "Xbox Wire");
+  assert.equal(prepared.article_url, "https://news.xbox.com/en-us/2026/06/10/halo-campaign-evolved-hands-on-demo-2/");
+  assert.equal(prepared.public_title, "Halo: Campaign Evolved Shows The Real Remake Test");
+  assert.equal(batch.packages[0].canonical_story_manifest.primary_source, "Xbox Wire");
+  assert.equal(batch.packages[0].canonical_story_manifest.short_title, "Halo: Campaign Evolved Shows The Real Remake Test");
+  assert.doesNotMatch(serialised, /\[object Object\]/);
+});
+
+test("goal batch packages keep fresh cover headlines subject-safe and avoid weak title fallbacks", () => {
+  const batch = buildGoalBatchPackages({
+    stories: [
+      {
+        id: "fresh_xbox_minecraft_dungeons_ii_20260610",
+        title: "Minecraft Dungeons II Is Xbox's Quiet Co-Op Power Play",
+        canonical_subject: "Minecraft Dungeons II",
+        canonical_game: "Minecraft Dungeons II",
+        freshness_gate: "pass",
+        primary_source: {
+          name: "Xbox Wire",
+          url: "https://news.xbox.com/en-us/2026/06/10/minecraft-dungeons-2-arpg-details-demo-xbox-games-showcase-2026/",
+        },
+        thumbnail_headline: "XBOX'S CO-OP BET",
+        full_script:
+          "Minecraft Dungeons II just made Xbox's co-op pitch more interesting. Xbox Wire says the sequel supports local multiplayer, online friends and matchmaking across major platforms. That matters because Game Pass only helps if the game also works where families and friend groups already play. Follow Pulse Gaming so you never miss a beat.",
+      },
+      {
+        id: "fresh_xbox_alien_isolation_2_20260610",
+        title: "Alien: Isolation 2 Is Being Judged On The One Thing It Cannot Fake",
+        canonical_subject: "Alien: Isolation 2",
+        canonical_game: "Alien: Isolation 2",
+        freshness_gate: "pass",
+        primary_source: {
+          name: "Xbox Wire",
+          url: "https://news.xbox.com/en-us/2026/06/10/alien-isolation-2-poised-to-deliver-another-bold-chapter/",
+        },
+        thumbnail_headline: "CAN IT STILL SCARE?",
+        full_script:
+          "Alien: Isolation 2 has one test it cannot fake. Xbox Wire says Creative Assembly showed the prologue and talked through the sequel's design at Summer Game Fest. The player impact is obvious: if the creature is predictable, the whole promise collapses. Follow Pulse Gaming so you never miss a beat.",
+      },
+    ],
+    generatedAt: "2026-06-12T00:20:00.000Z",
+  });
+
+  const minecraft = batch.packages[0].canonical_story_manifest;
+  const alien = batch.packages[1].canonical_story_manifest;
+
+  assert.match(minecraft.thumbnail_headline, /Minecraft Dungeons II/i);
+  assert.equal(alien.short_title, "Alien: Isolation 2 Has One Fear Test");
+  assert.doesNotMatch(alien.short_title, /Just Got A New Signal/i);
+});
+
+test("goal batch packages avoid double-prefixing distinctive thumbnail subject tokens", () => {
+  const prepared = prepareStoryForGoalProof({
+    id: "fresh_ps_resident_evil_veronica_20260608",
+    title: "Resident Evil Veronica Just Got The Camera Detail That Matters",
+    canonical_subject: "Resident Evil Veronica",
+    canonical_game: "Resident Evil Veronica",
+    freshness_gate: "pass",
+    primary_source: {
+      name: "PlayStation Blog",
+      url: "https://blog.playstation.com/2026/06/08/summer-game-fest-2026-hands-on-and-more-details-on-11-upcoming-ps5-games/",
+    },
+    thumbnail_headline: "VERONICA'S REAL CLUE",
+    full_script:
+      "Resident Evil Veronica just got the detail that matters more than the announcement trailer. PlayStation Blog says Capcom confirmed the remake is third-person. That tells players what kind of fear Capcom is chasing. Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  assert.equal(prepared.thumbnail_headline, "VERONICA'S REAL CLUE");
+  assert.doesNotMatch(prepared.thumbnail_headline, /VERONICA\s+VERONICA/i);
+});
+
 test("goal batch packages write per-story artefacts and goal-contract story packages", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-batch-"));
   const ready = greenStory("green-one");

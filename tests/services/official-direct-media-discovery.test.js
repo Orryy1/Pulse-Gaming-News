@@ -367,6 +367,31 @@ test("direct-media discovery rejects title-like media URLs that do not match the
   assert.deepEqual(report.output_template.entries[0].direct_media_url_if_available, "");
 });
 
+test("direct-media discovery rejects short distinctive wrong-game media slugs", async () => {
+  const report = await buildOfficialDirectMediaDiscoveryReport({
+    entries: [
+      {
+        story_id: "forza-gap",
+        entity: "Forza Horizon 6",
+        source_family: "ign_forza_horizon_6_quick_resume",
+        official_source_url: "https://www.ign.example/articles/forza-quick-resume",
+      },
+    ],
+    fetchText: async () => ({
+      ok: true,
+      status: 200,
+      text: '<source src="https://cdn.jsdelivr.net/gh/kaydf/kcd2/kcd2-hero.mp4">',
+    }),
+    probeMedia: async () => ({ duration_seconds: 7, width: 2350, height: 1080 }),
+  });
+
+  assert.equal(report.summary.discovered, 0);
+  assert.equal(report.rows[0].status, "no_direct_media_found");
+  assert.equal(report.rows[0].rejection_reason, "entity_mismatch_direct_media_candidates");
+  assert.equal(report.rows[0].entity_mismatch_candidate_count, 1);
+  assert.equal(report.output_template.entries[0].direct_media_url_if_available, "");
+});
+
 test("direct-media discovery retries blocked official pages with a neutral fetch", async () => {
   const originalFetch = global.fetch;
   const calls = [];

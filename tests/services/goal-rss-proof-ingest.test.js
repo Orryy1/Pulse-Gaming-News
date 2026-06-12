@@ -137,6 +137,36 @@ test("RSS proof ingest writes creator-native proof scripts instead of policy mem
   assert.match(stories[0].full_script, /PlayStation Blog/i);
 });
 
+test("RSS proof ingest blocks weak scaffold narration phrases", () => {
+  const stories = buildRssProofStories([
+    {
+      title: "Valor Mortis Gets Short Delay to Avoid September's Onslaught of Game Releases",
+      url: "https://www.ign.com/articles/valor-mortis-delay",
+      source_name: "IGN",
+      description: "Release date delay",
+      timestamp: "2026-06-12T09:00:00.000Z",
+    },
+    {
+      title: "In 007 First Light, The Best Part Of Being Bond Is The Boring Stuff",
+      url: "https://www.gamespot.com/articles/007-first-light-bond-boring-stuff",
+      source_name: "GameSpot",
+      description: "Hands-on preview",
+      timestamp: "2026-06-12T09:00:00.000Z",
+    },
+  ]);
+
+  assert.equal(stories.length, 2);
+  for (const story of stories) {
+    assert.doesNotMatch(
+      story.full_script,
+      /finally has something (?:concrete|specific) to judge|concrete detail players can argue|source-backed update|angle moves with it/i,
+    );
+    assert.match(story.full_script, /Follow Pulse Gaming so you never miss a beat\./);
+  }
+  assert.match(stories[0].full_script, /delay|September/i);
+  assert.match(stories[1].full_script, /007 First Light|Bond/i);
+});
+
 test("RSS proof ingest keeps advertiser-unfriendly article wording out of narration", () => {
   const stories = buildRssProofStories([
     {

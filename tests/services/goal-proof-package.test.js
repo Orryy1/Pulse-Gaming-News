@@ -271,6 +271,30 @@ test("goal proof package records a story-format signature for anti-spam variatio
   assert.notEqual(dealSignature, gameplaySignature);
 });
 
+test("goal proof package falls back to story source evidence when governance evidence is empty", () => {
+  const story = greenStory();
+  story.id = "source-evidence-proof";
+  story.primary_source = "Xbox Wire";
+  story.source_name = "Xbox Wire";
+  story.primary_source_url = "https://news.xbox.com/en-us/2026/06/10/halo-campaign-evolved-hands-on-demo-2/";
+  story.source_published_at = "2026-06-10T00:00:00.000Z";
+  story.confirmed_claims = [
+    "Xbox Wire says Halo: Campaign Evolved showed Assault on the Control Room in hands-on demo form.",
+  ];
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-06-12T10:00:00.000Z",
+  });
+
+  assert.equal(pack.source_manifest.primary_source.name, "Xbox Wire");
+  assert.equal(pack.source_manifest.primary_source.url, story.primary_source_url);
+  assert.equal(pack.source_manifest.primary_source.published_at, story.source_published_at);
+  assert.deepEqual(pack.source_manifest.blockers, []);
+  assert.deepEqual(pack.claim_inventory.confirmed, story.confirmed_claims);
+});
+
 test("goal proof package separates adjacent story formats for anti-spam variation", () => {
   const tacticsStory = greenStory();
   tacticsStory.id = "star-wars-tactics-proof";

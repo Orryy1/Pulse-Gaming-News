@@ -269,6 +269,30 @@ test("goal batch package proof preparation repairs generic DB subjects before sc
   assert.doesNotMatch(prepared.description, /^This story:/i);
 });
 
+test("goal batch package proof preparation does not revive weak scaffold narration", () => {
+  const prepared = prepareStoryForGoalProof({
+    id: "rss_valor_mortis_delay",
+    title: "Valor Mortis Gets Short Delay to Avoid September's Onslaught of Game Releases",
+    canonical_subject: "Valor Mortis",
+    canonical_game: "Valor Mortis",
+    source_type: "rss",
+    source_name: "IGN",
+    article_url: "https://www.ign.com/articles/valor-mortis-gets-short-delay-to-avoid-septembers-onslaught-of-game-releases",
+    suggested_title: "Valor Mortis Just Got A Date",
+    suggested_thumbnail_text: "VALOR MORTIS",
+    full_script:
+      "Valor Mortis finally has something specific to judge. IGN says Valor Mortis gets a short delay. Valor Mortis now has a concrete detail players can argue with, instead of another floating headline. Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  assert.equal(prepared.canonical_subject, "Valor Mortis");
+  assert.match(prepared.full_script, /^Valor Mortis just blinked/i);
+  assert.doesNotMatch(
+    prepared.full_script,
+    /finally has something (?:concrete|specific) to judge|concrete detail players can argue|floating headline|platform, price or gameplay detail/i,
+  );
+  assert.match(prepared.full_script, /Follow Pulse Gaming so you never miss a beat\./);
+});
+
 test("goal batch package platform packs do not revive stale identity CTAs", () => {
   const batch = buildGoalBatchPackages({
     stories: [

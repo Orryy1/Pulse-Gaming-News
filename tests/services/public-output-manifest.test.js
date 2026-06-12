@@ -69,6 +69,7 @@ test("buildStoryManifest emits the full canonical story manifest contract", () =
       unconfirmed_claims: ["Future store pricing is unknown"],
       prohibited_claims: ["Mixtape can never be delisted for any reason"],
       allowed_public_wording: ["Mixtape's developer says the music rights were secured in perpetuity."],
+      source_published_at: "2026-06-10T12:00:00.000Z",
       platform_ctas: {
         youtube: "Story links are on the channel page.",
         x: "Sources and setup links are below.",
@@ -91,6 +92,7 @@ test("buildStoryManifest emits the full canonical story manifest contract", () =
     "discovery_source",
     "official_source",
     "source_confidence_score",
+    "source_published_at",
     "claim_inventory",
     "confirmed_claims",
     "unconfirmed_claims",
@@ -121,6 +123,7 @@ test("buildStoryManifest emits the full canonical story manifest contract", () =
   assert.deepEqual(manifest.secondary_sources, ["VGC", "GamesRadar"]);
   assert.deepEqual(manifest.claim_inventory.confirmed, manifest.confirmed_claims);
   assert.ok(manifest.source_confidence_score >= 0.8);
+  assert.equal(manifest.source_published_at, "2026-06-10T12:00:00.000Z");
   assert.equal(manifest.platform_ctas.youtube, "Story links are on the channel page.");
   assert.equal(manifest.affiliate_pack_id, "affiliate_mixtape_rps");
   assert.equal(manifest.rights_manifest_id, "rights_mixtape_rps");

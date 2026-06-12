@@ -1325,6 +1325,145 @@ test("duration variant repair removes mismatched access filler from gameplay sho
   );
 });
 
+test("duration variant repair gives Halo Campaign Evolved a story-specific payoff", () => {
+  const repair = extendScriptToTarget(
+    {
+      canonical_subject: "Halo: Campaign Evolved",
+      canonical_game: "Halo: Campaign Evolved",
+      selected_title: "Halo Campaign Evolved Has One Real Test",
+      narration_script:
+        "Halo: Campaign Evolved has the one remake test that cannot be solved with prettier levels. PC Gamer compared the new gameplay with the original, which is exactly where the pressure lives. For Halo fans, the rifle rhythm, enemy dance and movement speed matter more than any shiny lighting pass. If those details feel wrong, nostalgia turns against the remake fast. If they feel right, Xbox has a cleaner way to sell the same campaign to people who know every corridor already. Follow Pulse Gaming so you never miss a beat.",
+      primary_source: "PC Gamer",
+      source_card_label: "PC Gamer",
+      confirmed_claims: [
+        "PC Gamer compared the new Halo remake gameplay with the original to nitpick the differences.",
+      ],
+    },
+    {
+      current_duration_s: 27.533,
+      target_duration_seconds: { min: 35, max: 59 },
+      provider: "local",
+    },
+  );
+
+  assert.match(repair.script, /Halo: Campaign Evolved/);
+  assert.match(repair.script, /muscle memory|pistol rhythm|trust rebuild/i);
+  assert.match(repair.script, /Follow Pulse Gaming so you never miss a beat\.$/);
+  assert.doesNotMatch(
+    repair.script,
+    /finally has footage players can judge|clip puts the pitch on screen|where hype either turns into trust|world reads clearly in a short/i,
+  );
+  const qa = evaluateGoalPublicCopy({
+    canonical_subject: "Halo: Campaign Evolved",
+    canonical_game: "Halo: Campaign Evolved",
+    selected_title: "Halo Campaign Evolved Has One Real Test",
+    thumbnail_headline: "HALO CAMPAIGN EVOLVED",
+    first_spoken_line: repair.script.split(/(?<=[.!?])\s+/)[0],
+    narration_script: repair.script,
+    full_script: repair.script,
+    tts_script: repair.script,
+    description: "Halo: Campaign Evolved gameplay compared with the original. Source: PC Gamer.",
+    primary_source: "PC Gamer",
+    confirmed_claims: [
+      "PC Gamer compared the new Halo remake gameplay with the original to nitpick the differences.",
+    ],
+  });
+  assert.equal(qa.verdict, "pass", JSON.stringify(qa.failures));
+  const scorecard = buildViralScriptIntelligence({
+    story: {
+      id: "halo-campaign-evolved",
+      title: "Halo Campaign Evolved Has One Real Test",
+      source_name: "PC Gamer",
+    },
+    script: repair.script,
+  });
+  assert.equal(scorecard.verdict, "viral_ready", JSON.stringify(scorecard, null, 2));
+  assert.ok(
+    !scorecard.blockers.includes("missing_story_specific_payoff"),
+    JSON.stringify(scorecard, null, 2),
+  );
+
+  const compactRepair = extendScriptToTarget(
+    {
+      canonical_subject: "Halo: Campaign Evolved",
+      canonical_game: "Halo: Campaign Evolved",
+      selected_title: "Halo Campaign Evolved Has One Real Test",
+      narration_script:
+        "Halo: Campaign Evolved has the one remake test that cannot be solved with prettier levels. PC Gamer compared the new gameplay with the original, which is exactly where the pressure lives. For Halo fans, the rifle rhythm, enemy dance and movement speed matter more than any shiny lighting pass. If those details feel wrong, nostalgia turns against the remake fast. If they feel right, Xbox has a cleaner way to sell the same campaign to people who know every corridor already. PC Gamer compared the new Halo remake gameplay with the original to nitpick the differences. That comparison is the useful part, because Halo remakes live or die on muscle memory. The remake can change lighting, UI and camera polish, but it cannot make the pistol rhythm feel like a different game. Follow Pulse Gaming so you never miss a beat.",
+      primary_source: "PC Gamer",
+      source_card_label: "PC Gamer",
+      confirmed_claims: [
+        "PC Gamer compared the new Halo remake gameplay with the original to nitpick the differences.",
+      ],
+    },
+    {
+      current_duration_s: 46.887,
+      target_duration_seconds: { min: 35, max: 59 },
+      repair_lane: "normal_production_content_signal_repair",
+      source_blockers: ["script_scorecard:missing_story_specific_payoff"],
+      provider: "local",
+    },
+  );
+  assert.match(compactRepair.script, /pistol rhythm|trust rebuilt/i);
+  assert.doesNotMatch(compactRepair.script, /still needs one uninterrupted play beat|hype fully settles/i);
+  const compactScorecard = buildViralScriptIntelligence({
+    story: {
+      id: "halo-campaign-evolved",
+      title: "Halo Campaign Evolved Has One Real Test",
+      source_name: "PC Gamer",
+    },
+    script: compactRepair.script,
+  });
+  assert.equal(compactScorecard.verdict, "viral_ready", JSON.stringify(compactScorecard, null, 2));
+  assert.ok(
+    compactRepair.repaired_word_count <= 120,
+    `expected compact local TTS repair to stay under cadence-safe word count, got ${compactRepair.repaired_word_count}: ${compactRepair.script}`,
+  );
+
+  const alreadyCompactRepair = extendScriptToTarget(
+    {
+      canonical_subject: "Halo: Campaign Evolved",
+      canonical_game: "Halo: Campaign Evolved",
+      selected_title: "Halo Campaign Evolved Has One Real Test",
+      narration_script:
+        "Halo: Campaign Evolved has the one remake test that cannot be solved with prettier levels. PC Gamer reports I watched the new Halo remake gameplay, then replayed the original to nitpick the differences. That matters because Halo lives on muscle memory. For fans, the pistol rhythm, enemy dance and movement speed are the whole point. The catch is simple. If that feel changes, Xbox has a remake that looks modern but loses trust. If it holds, old players get a reason to return and new players get the cleanest entry point. But if the rhythm survives, Halo: Campaign Evolved starts looking like trust rebuilt instead of prettier nostalgia. Follow Pulse Gaming so you never miss a beat.",
+      primary_source: "PC Gamer",
+      source_card_label: "PC Gamer",
+      confirmed_claims: [
+        "PC Gamer compared the new Halo remake gameplay with the original to nitpick the differences.",
+      ],
+    },
+    {
+      current_duration_s: 39.709,
+      target_duration_seconds: { min: 35, max: 59 },
+      repair_lane: "normal_production_content_signal_repair",
+      source_blockers: ["script_scorecard:missing_story_specific_payoff"],
+      provider: "local",
+    },
+  );
+  const finalNonCtaSentence = alreadyCompactRepair.script
+    .replace(/Follow Pulse Gaming so you never miss a beat\.$/, "")
+    .trim()
+    .split(/(?<=[.!?])\s+/)
+    .filter(Boolean)
+    .at(-1);
+  assert.match(finalNonCtaSentence, /trust rebuilt|prettier nostalgia/i);
+  assert.doesNotMatch(finalNonCtaSentence, /comparison matters|muscle memory, not prettier lighting/i);
+  const alreadyCompactScorecard = buildViralScriptIntelligence({
+    story: {
+      id: "halo-campaign-evolved",
+      title: "Halo Campaign Evolved Has One Real Test",
+      source_name: "PC Gamer",
+    },
+    script: alreadyCompactRepair.script,
+  });
+  assert.equal(
+    alreadyCompactScorecard.verdict,
+    "viral_ready",
+    JSON.stringify(alreadyCompactScorecard, null, 2),
+  );
+});
+
 test("duration variant repair expands games-industry job stories without gameplay buyer filler", () => {
   const repair = extendScriptToTarget(
     {

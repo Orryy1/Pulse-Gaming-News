@@ -285,7 +285,7 @@ test("goal batch package proof preparation does not revive weak scaffold narrati
   });
 
   assert.equal(prepared.canonical_subject, "Valor Mortis");
-  assert.match(prepared.full_script, /^Valor Mortis just blinked/i);
+  assert.match(prepared.full_script, /^Valor Mortis just admitted the release calendar/i);
   assert.doesNotMatch(
     prepared.full_script,
     /finally has something (?:concrete|specific) to judge|concrete detail players can argue|floating headline|platform, price or gameplay detail/i,
@@ -310,10 +310,10 @@ test("goal batch package proof preparation rejects cross-story contaminated scri
   assert.equal(prepared.canonical_game, "Dragon's Dogma 2");
   assert.doesNotMatch(prepared.public_title, /forza/i);
   assert.doesNotMatch(prepared.public_title, /expensive|subscription|metacritic/i);
-  assert.equal(prepared.public_title, "Dragon's Dogma 2 Just Got A Content Push");
+  assert.equal(prepared.public_title, "Dragon's Dogma 2 Has One Dark Arisen Test");
   assert.doesNotMatch(prepared.full_script, /Forza Horizon 6|Metacritic's 2026 list/i);
   assert.match(prepared.full_script, /Dragon's Dogma 2/i);
-  assert.match(prepared.full_script, /Polygon says Dragon's Dogma 2 gets first of 2 major updates/i);
+  assert.match(prepared.full_script, /Polygon says the first of two major updates is arriving/i);
 });
 
 test("goal batch package proof titles ignore stale script cues from other stories", () => {
@@ -443,6 +443,128 @@ test("goal batch package proof preparation resolves current franchise subjects f
   assert.equal(gears.canonical_subject, "Gears Of War: E-Day");
   assert.match(gears.full_script, /Gears Of War: E-Day/i);
   assert.doesNotMatch(gears.full_script, /paid crowd|Steam player spike/i);
+});
+
+test("goal batch package proof preparation repairs current scored story subjects, titles and scripts", () => {
+  const cases = [
+    {
+      story: {
+        id: "rss_resident_evil_code_veronica",
+        title:
+          "Despite its trailer, Capcom says its Resident Evil - Code: Veronica remake is third-person and taking its cue from Resident Evil 2",
+        source_type: "rss",
+        source_name: "Eurogamer",
+        article_url: "https://www.eurogamer.net/resident-evil-veronica-first-person",
+        full_script:
+          "Forza just gave Xbox the headline it badly needed. Polygon says Forza Horizon 6 has moved to the top of Metacritic's 2026 list.",
+      },
+      subject: "Resident Evil Code: Veronica",
+      title: "Code Veronica Just Answered The Camera Question",
+      required: [/third-person/i, /Resident Evil 2/i, /first-person trailer/i],
+      forbidden: /Forza Horizon 6|Metacritic/i,
+    },
+    {
+      story: {
+        id: "rss_valor_mortis_delay",
+        title:
+          "September Is So Busy For Games That One Of Them Just Got Delayed To Avoid The Others (And GTA 6)",
+        source_type: "rss",
+        source_name: "GameSpot",
+        article_url:
+          "https://www.gamespot.com/articles/september-is-so-busy-for-games-that-one-of-them-just-got-delayed-to-avoid-the-others-and-gta-6/",
+        description:
+          "Developer One More Level delayed Valor Mortis from September 24 to October 13 after the release calendar became crowded.",
+        full_script:
+          "GTA 6 just blinked in one of the year's most crowded release windows. Follow Pulse Gaming so you never miss a beat.",
+      },
+      subject: "Valor Mortis",
+      title: "Valor Mortis Just Dodged September",
+      required: [/September 24/i, /October 13/i, /crowded/i],
+      forbidden: /^GTA 6 just blinked/i,
+    },
+    {
+      story: {
+        id: "rss_quake_champions_update",
+        title:
+          "Quake Champions gets a huge update and free battle pass to celebrate the 30th anniversary of Quake",
+        source_type: "rss",
+        source_name: "PC Gamer",
+        article_url:
+          "https://www.pcgamer.com/games/fps/quake-champions-gets-a-huge-update-and-free-battle-pass-to-celebrate-the-30th-anniversary-of-quake/",
+        full_script:
+          "Quake Champions finally has something specific to judge. PC Gamer says Quake Champions gets a huge update. Follow Pulse Gaming so you never miss a beat.",
+      },
+      subject: "Quake Champions",
+      title: "Quake Champions Is Testing A Comeback",
+      required: [/free battle pass/i, /30th birthday|30th anniversary/i, /arena/i],
+      forbidden: /matchmaking|hit queue|something specific to judge/i,
+    },
+    {
+      story: {
+        id: "rss_gta5_subscription",
+        title: "GTA 5 Joins A Subscription Ahead Of GTA 6 Launch",
+        source_type: "rss",
+        source_name: "GameSpot",
+        article_url:
+          "https://www.gamespot.com/articles/gta-5-joins-a-subscription-ahead-of-gta-6-launch/",
+        full_script:
+          "GTA 5 just became the GTA 6 waiting room. GameSpot reports GTA 5 has joined a subscription service ahead of GTA 6. Follow Pulse Gaming so you never miss a beat.",
+      },
+      subject: "GTA 5",
+      title: "GTA 5 Became The GTA 6 Waiting Room",
+      required: [/subscription/i, /GTA 6/i],
+      forbidden: /More Expensive/i,
+    },
+    {
+      story: {
+        id: "rss_elder_scrolls_current",
+        title: "The Elder Scrolls 6 gets disappointing update from Xbox chief",
+        source_type: "rss",
+        source_name: "Polygon",
+        article_url: "https://www.polygon.com/the-elder-scrolls-6-release-xbox-matt-booty/",
+        full_script:
+          "Forza just gave Xbox the headline it badly needed. Polygon says Forza Horizon 6 has moved to the top of Metacritic's 2026 list.",
+      },
+      subject: "The Elder Scrolls 6",
+      title: "The Elder Scrolls 6 Just Dropped A New Clue",
+      required: [/words without proof/i, /re-reveal/i, /silence is ending/i],
+      forbidden: /The debate is whether|Forza Horizon 6|Metacritic/i,
+    },
+    {
+      story: {
+        id: "rss_runescape_dragonwilds",
+        title:
+          "Ahead of its 1.0 launch, RuneScape: Dragonwilds fits in one more, scorching hot update later this month",
+        source_type: "rss",
+        source_name: "Rock Paper Shotgun",
+        article_url:
+          "https://www.rockpapershotgun.com/ahead-of-its-10-launch-runescape-dragonwilds-fits-in-one-more-scorching-hot-update-later-this-month",
+        full_script:
+          "Subnautica 2 just got a score its publisher can market hard. Follow Pulse Gaming so you never miss a beat.",
+      },
+      subject: "RuneScape: Dragonwilds",
+      title: "Dragonwilds Has One Last Early Access Test",
+      required: [/1\.0 launch/i, /update/i, /Early Access/i],
+      forbidden: /Subnautica 2|review score/i,
+    },
+  ];
+
+  for (const item of cases) {
+    const prepared = prepareStoryForGoalProof(item.story);
+    assert.equal(prepared.canonical_subject, item.subject);
+    assert.equal(prepared.canonical_game, item.subject);
+    assert.equal(prepared.public_title, item.title);
+    for (const pattern of item.required) assert.match(prepared.full_script, pattern);
+    assert.doesNotMatch(prepared.full_script, item.forbidden);
+    assert.match(prepared.full_script, /Follow Pulse Gaming so you never miss a beat\./);
+    assert.equal(evaluateGoalPublicCopy({
+      ...prepared,
+      selected_title: prepared.public_title,
+      thumbnail_headline: prepared.thumbnail_headline,
+      narration_script: prepared.full_script,
+      first_spoken_line: prepared.first_spoken_line,
+    }).verdict, "pass");
+  }
 });
 
 test("goal batch package platform packs do not revive stale identity CTAs", () => {

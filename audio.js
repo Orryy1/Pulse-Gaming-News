@@ -422,6 +422,8 @@ function cleanForTTS(raw) {
       // Game titles and acronyms - spell out for clear TTS pronunciation
       .replace(/\bGTA\s*VI\b/gi, "G T A six")
       .replace(/\bGTA\s*6\b/gi, "G T A six")
+      .replace(/\bGTA\s*V\b/gi, "G T A five")
+      .replace(/\bGTA\s*5\b/gi, "G T A five")
       .replace(/\bGTA\b/g, "G T A")
       // Compound hyphenated words: join with space, no dash (prevents TTS pauses)
       .replace(/(\w)-(\w)/g, "$1 $2")

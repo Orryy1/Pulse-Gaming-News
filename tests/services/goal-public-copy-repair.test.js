@@ -215,6 +215,71 @@ test("public copy repair corrects Steam Controller stories misfiled as Steam Dec
   assert.match(repaired.manifest.first_spoken_line, /^Steam Controller\b/);
 });
 
+test("public copy repair gives GTA subscription stories a specific debate payoff instead of generic filler", () => {
+  const repaired = repairGoalPublicCopyManifest(
+    {
+      story_id: "gta-subscription",
+      canonical_subject: "GTA 5",
+      canonical_game: "GTA 5",
+      canonical_title: "GTA 5 joins subscription service ahead of GTA 6 launch",
+      primary_source_url: "https://www.gamespot.com/articles/gta-5-joins-a-subscription-ahead-of-gta-6-launch/",
+      selected_title: "GTA 5 Became The GTA 6 Waiting Room",
+      first_spoken_line: "GTA 5 just became the GTA 6 waiting room.",
+      primary_source: "GameSpot",
+      description: "GTA 5 has joined a subscription service ahead of GTA 6. Source: GameSpot.",
+      confirmed_claims: [
+        "GTA 5 has joined a subscription service ahead of GTA 6.",
+      ],
+    },
+    { generatedAt: "2026-06-12T19:40:00.000Z" },
+  );
+
+  const script = repaired.manifest.narration_script;
+  assert.match(script, /^GTA 5 just became the GTA 6 waiting room\./);
+  assert.match(script, /GameSpot says GTA 5 has joined a subscription service ahead of GTA 6/);
+  assert.match(script, /subscription access can vanish/i);
+  assert.match(script, /warm-up act for GTA 6/i);
+  assert.doesNotMatch(script, /concrete next step|background noise|vague update/i);
+  assert.equal((script.match(/Follow Pulse Gaming so you never miss a beat/g) || []).length, 1);
+  assert.ok(script.split(/\s+/).length >= 95);
+  assert.ok(script.split(/\s+/).length <= 130);
+  assert.equal(evaluateGoalPublicCopy(repaired.manifest).verdict, "pass");
+  assert.equal(runScriptCoherenceQa(repaired.manifest).result, "pass");
+});
+
+test("public copy repair gives Valor Mortis release-window stories a player-stakes payoff", () => {
+  const repaired = repairGoalPublicCopyManifest(
+    {
+      story_id: "valor-mortis-delay",
+      canonical_subject: "Valor Mortis",
+      canonical_game: "Valor Mortis",
+      canonical_title: "September Is So Busy For Games That One Of Them Just Got Delayed To Avoid The Others And GTA 6",
+      primary_source_url: "https://www.gamespot.com/articles/september-is-so-busy-for-games-that-one-of-them-just-got-delayed-to-avoid-the-others-and-gta-6/",
+      selected_title: "Valor Mortis Just Dodged September",
+      first_spoken_line: "Valor Mortis just admitted the release calendar is part of the boss fight.",
+      primary_source: "GameSpot",
+      description: "Valor Mortis moved from September 24 to October 13. Source: GameSpot.",
+      confirmed_claims: [
+        "One More Level moved Valor Mortis from September 24 to October 13 after September became a crowded release window.",
+      ],
+    },
+    { generatedAt: "2026-06-12T20:38:00.000Z" },
+  );
+
+  const script = repaired.manifest.narration_script;
+  assert.match(script, /^Valor Mortis just did something smarter than pretending September is empty\./);
+  assert.match(script, /moved it from September 24 to October 13/i);
+  assert.match(script, /good games can die if they pick the wrong week/i);
+  assert.match(script, /backlog guilt/i);
+  assert.match(script, /how many smaller games are about to get buried/i);
+  assert.doesNotMatch(script, /part of the boss fight|concrete next step|source-backed update/i);
+  assert.equal((script.match(/Follow Pulse Gaming so you never miss a beat/g) || []).length, 1);
+  assert.ok(script.split(/\s+/).length >= 95);
+  assert.ok(script.split(/\s+/).length <= 130);
+  assert.equal(evaluateGoalPublicCopy(repaired.manifest).verdict, "pass");
+  assert.equal(runScriptCoherenceQa(repaired.manifest).result, "pass");
+});
+
 test("public copy package repair rewrites canonical entity mismatches before platform sync", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-copy-canonical-mismatch-"));
   const artifactDir = path.join(root, "story");

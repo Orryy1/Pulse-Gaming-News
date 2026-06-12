@@ -136,6 +136,33 @@ test("buildKineticAss restores Gears of War E-Day title formatting from spoken c
   assert.doesNotMatch(text, /\bE Day\b/);
 });
 
+test("buildKineticAss restores GTA sequel digits from spoken captions", () => {
+  const ass = buildKineticAss({
+    story: { title: "GTA 5 Became The GTA 6 Waiting Room" },
+    words: [
+      { word: "G", start: 0, end: 0.08 },
+      { word: "T", start: 0.09, end: 0.17 },
+      { word: "A", start: 0.18, end: 0.26 },
+      { word: "five", start: 0.27, end: 0.44 },
+      { word: "became", start: 0.46, end: 0.72 },
+      { word: "G", start: 0.74, end: 0.82 },
+      { word: "T", start: 0.83, end: 0.91 },
+      { word: "A", start: 0.92, end: 1 },
+      { word: "six", start: 1.01, end: 1.18 },
+      { word: "bait.", start: 1.2, end: 1.4 },
+    ],
+    duration: 2,
+    scriptText: "G T A five became G T A six bait.",
+  });
+
+  const text = extractAssDialogueText(ass).join(" ");
+  assert.match(text, /GTA/);
+  assert.match(text, /5/);
+  assert.match(text, /6/);
+  assert.doesNotMatch(text, /\bfive\b/i);
+  assert.doesNotMatch(text, /\bsix\b/i);
+});
+
 test("prepareSubtitleWords keeps real numeric timings across natural local-TTS pauses", () => {
   const scriptText =
     "GamesRadar reports the early-access launch hit 130,000 concurrent players on Steam. It is only the premium launch crowd.";

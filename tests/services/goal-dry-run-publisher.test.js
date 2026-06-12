@@ -467,6 +467,43 @@ test("goal dry-run publisher defers externally blocked or operator-disabled plat
   assert.ok(plan.actions.every((action) => action.no_network_upload === true));
 });
 
+test("goal dry-run publisher treats disabled-platform duration misses as deferred warnings", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-disabled-duration-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "disabled-tiktok-duration",
+    "GREEN",
+    "Dragonwilds Has One Last Early Access Test",
+    { renderedDurationS: 44 },
+  );
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-12T20:40:00.000Z",
+    platformOperationalConfig: {
+      youtube: { state: "enabled", reason: "core_upload_path" },
+      tiktok: { state: "needs_credentials", reason: "tiktok_deferred" },
+      instagram_reel: { state: "enabled", reason: "graph_credentials_present" },
+      facebook_reel: { state: "enabled", reason: "facebook_reels_enabled" },
+      twitter: { state: "disabled", reason: "x_optional_disabled" },
+      threads: { state: "disabled", reason: "threads_optional_disabled" },
+      pinterest: { state: "disabled", reason: "pinterest_optional_disabled" },
+    },
+  });
+
+  const tiktok = plan.actions.find((action) => action.platform === "tiktok");
+
+  assert.equal(plan.summary.ready_story_count, 1);
+  assert.equal(plan.summary.blocked_story_count, 0);
+  assert.equal(plan.summary.blocked_action_count, 0);
+  assert.equal(tiktok.action, "would_queue_when_enabled");
+  assert.deepEqual(tiktok.blockers, []);
+  assert.ok(
+    tiktok.warnings.includes("platform_duration_deferred_until_enabled:tiktok:61"),
+  );
+  assert.ok(!plan.readiness_reasons.includes("platform_actions_blocked"));
+});
+
 test("goal dry-run markdown separates enabled actions from deferred platform enablement", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-platform-action-copy-"));
   const storyPackage = await makeStoryPackage(root);
@@ -805,6 +842,7 @@ test("goal dry-run publisher blocks platform actions when final render duration 
   const plan = await buildGoalDryRunPublishPlan({
     storyPackages: [storyPackage],
     generatedAt: "2026-05-22T01:50:00.000Z",
+    platformOperationalConfig: allPlatformsEnabled(),
   });
 
   assert.equal(plan.summary.ready_story_count, 1);

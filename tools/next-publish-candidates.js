@@ -973,6 +973,7 @@ function combinePreflightQa({
   governance,
   publicCopy,
   incidentGuard,
+  voiceQuality,
   audioSegment,
   timestampAlignment,
   bridgeArtifactFreshness,
@@ -989,6 +990,7 @@ function combinePreflightQa({
   };
   if (publicCopy) checks.public_copy = summariseQaResult(publicCopy);
   if (incidentGuard) checks.incident_guard = summariseQaResult(incidentGuard);
+  if (voiceQuality) checks.voice_quality = summariseQaResult(voiceQuality);
   if (audioSegment) checks.audio_segment_loudness = summariseQaResult(audioSegment);
   if (timestampAlignment) checks.timestamp_alignment = summariseQaResult(timestampAlignment);
   if (bridgeArtifactFreshness) checks.bridge_artifact_freshness = summariseQaResult(bridgeArtifactFreshness);
@@ -1676,6 +1678,53 @@ async function audioSegmentPreflightForStory(story = {}) {
   }
 }
 
+async function voiceQualityPreflightForStory(story = {}) {
+  const embedded =
+    story.voice_quality_report ||
+    story.narration_voice_quality_report ||
+    story.voiceQualityReport ||
+    null;
+  const explicitPath = cleanText(
+    story.voice_quality_report_path || story.narration_voice_quality_report_path,
+  );
+  const artifactDir = artifactDirForStory(story);
+  const reportPath = explicitPath || (artifactDir ? path.join(artifactDir, "voice_quality_report.json") : "");
+
+  let report = embedded && typeof embedded === "object" ? embedded : null;
+  if (!report && reportPath) {
+    try {
+      report = await fs.readJson(path.resolve(reportPath));
+    } catch {
+      report = null;
+    }
+  }
+  if (!report) return null;
+
+  const verdict = cleanText(report.verdict || report.status || report.result).toLowerCase();
+  const blockers = [
+    ...asArray(report.blockers || report.failures),
+    ...asArray(report.cadence?.blockers),
+  ].map(cleanText).filter(Boolean);
+  const warnings = [
+    ...asArray(report.warnings),
+    ...asArray(report.cadence?.warnings),
+  ].map(cleanText).filter(Boolean);
+  const failed =
+    blockers.length > 0 ||
+    ["fail", "failed", "blocked", "red"].includes(verdict);
+
+  return {
+    result: failed ? "fail" : "pass",
+    failures: [...new Set(blockers.length ? blockers : failed ? ["voice_quality_not_pass"] : [])],
+    warnings: [...new Set(warnings)],
+    evidence: {
+      voice_quality_report_path: reportPath || null,
+      verdict: report.verdict || report.status || report.result || null,
+      spoken_wpm: numberOrNull(report.cadence?.spoken_wpm),
+    },
+  };
+}
+
 function firstObjectValue(...values) {
   for (const value of values) {
     const parsed = objectValue(value, null);
@@ -2347,6 +2396,7 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
     runSourceAgeQa = sourceAgePreflightForStory,
     runPublicCopyQa = (manifest) => require("../lib/goal-public-copy-qa").evaluateGoalPublicCopy(manifest),
     runIncidentGuard = incidentGuardPreflightForStory,
+    runVoiceQualityQa = voiceQualityPreflightForStory,
     runAudioSegmentQa = audioSegmentPreflightForStory,
     runTimestampAlignmentQa = timestampAlignmentPreflightForStory,
     runBridgeArtifactFreshnessQa = bridgeArtifactFreshnessPreflightForStory,
@@ -2382,6 +2432,7 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
       await runPublicCopyQa(publicCopyManifestForStory(publicCopyStory)),
     );
     const incidentGuard = await runIncidentGuard(cloneStoryForPreflight(story));
+    const voiceQuality = await runVoiceQualityQa(cloneStoryForPreflight(story));
     const audioSegment = await runAudioSegmentQa(cloneStoryForPreflight(story));
     const timestampAlignment = await runTimestampAlignmentQa(cloneStoryForPreflight(story));
     const bridgeArtifactFreshness = story.scheduler_bridge_source
@@ -2402,6 +2453,7 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
       governance,
       publicCopy,
       incidentGuard,
+      voiceQuality,
       audioSegment,
       timestampAlignment,
       bridgeArtifactFreshness,
@@ -3059,6 +3111,7 @@ module.exports = {
   sourceAgePreflightForStory,
   selectCandidateSourceStories,
   timestampAlignmentPreflightForStory,
+  voiceQualityPreflightForStory,
   normaliseBridgeMotionGovernanceEvidence,
   summariseQaResult,
   runCli,

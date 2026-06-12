@@ -2261,6 +2261,45 @@ test("attachPreflightQa blocks candidates without rendered-audio segment loudnes
   );
 });
 
+test("attachPreflightQa blocks candidates with failed voice quality evidence", async () => {
+  const stories = [
+    baseStory({
+      id: "voice_too_fast",
+      title: "GTA 5 Became The GTA 6 Waiting Room",
+      voice_quality_report: {
+        verdict: "FAIL",
+        blockers: ["voice_cadence:wpm_too_fast"],
+        warnings: ["voice_cadence:dense_sentences_at_fast_pace"],
+        cadence: {
+          spoken_wpm: 209.7,
+          blockers: ["voice_cadence:wpm_too_fast"],
+        },
+      },
+    }),
+  ];
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-06-12T20:45:00.000Z",
+  });
+
+  await attachPreflightQa(report, stories, {
+    runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+  });
+
+  assert.equal(report.candidates[0].preflight_qa.status, "blocked");
+  assert.equal(report.candidates[0].status, "review");
+  assert.ok(
+    report.candidates[0].preflight_qa.blockers.includes(
+      "voice_quality:voice_cadence:wpm_too_fast",
+    ),
+  );
+});
+
 test("attachPreflightQa blocks scheduler candidates rejected by aggregate Goal 10 readiness", async () => {
   const stories = [
     baseStory({

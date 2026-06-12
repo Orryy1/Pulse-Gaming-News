@@ -953,6 +953,64 @@ test("goal audio materializer aligns expanded PlayStation hardware names when Wh
   );
 });
 
+test("goal audio materializer aligns GTA sequel numbers in spoken form while preserving display text", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-gta-spoken-"));
+  const script = "GTA 5 just became the GTA 6 waiting room.";
+  const artifactDir = await makePackage(root, "story-gta-spoken", {
+    selected_title: "GTA 5 Became The GTA 6 Waiting Room",
+    narration_script: script,
+  });
+  const calls = [];
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    workbenchReport: {
+      local_tts: { verdict: "green", ready: true },
+      jobs: [workbenchJob("story-gta-spoken", artifactDir)],
+    },
+    generatedAt: "2026-06-12T19:30:00.000Z",
+    alignmentMode: "whisper",
+    alignWordsWithAudio: async () => ({
+      ok: true,
+      source: "local_whisper_word_alignment",
+      model: "tiny.en",
+      transcript: "G T A five just became the G T A six waiting room.",
+      words: [
+        { word: "G", start: 0.08, end: 0.16 },
+        { word: "T", start: 0.18, end: 0.26 },
+        { word: "A", start: 0.28, end: 0.36 },
+        { word: "five", start: 0.38, end: 0.56 },
+        { word: "just", start: 0.58, end: 0.72 },
+        { word: "became", start: 0.74, end: 1 },
+        { word: "the", start: 1.02, end: 1.14 },
+        { word: "G", start: 1.16, end: 1.24 },
+        { word: "T", start: 1.26, end: 1.34 },
+        { word: "A", start: 1.36, end: 1.44 },
+        { word: "six", start: 1.46, end: 1.64 },
+        { word: "waiting", start: 1.66, end: 1.96 },
+        { word: "room.", start: 1.98, end: 2.22 },
+      ],
+    }),
+    generateTtsForStory: async ({ text, outputPath }) => {
+      calls.push({ text, outputPath });
+      const audioPath = path.join(root, outputPath);
+      await fs.outputFile(audioPath, Buffer.alloc(4096, 1));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignment(text),
+      });
+      return { ok: true };
+    },
+  });
+
+  assert.equal(calls[0].text, "G T A five just became the G T A six waiting room.");
+  assert.equal(report.summary.materialized_count, 1);
+  const timestamps = await fs.readJson(path.join(root, "output", "audio", "story-gta-spoken_timestamps.json"));
+  assert.equal(timestamps.meta.text, script);
+  assert.equal(timestamps.meta.transcript, "G T A five just became the G T A six waiting room.");
+  assert.equal(timestamps.meta.wordTimestampSource, "local_whisper_word_alignment");
+  assert.equal(timestamps.meta.timestampWhisperAlignment.script_inserted_actual_word_count, 0);
+});
+
 test("goal audio materializer aligns hyphenated script words when Whisper splits them", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-hyphen-split-"));
   const script = "Every big first-party announcement carries the same platform question.";

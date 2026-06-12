@@ -1,0 +1,63 @@
+{
+  "schema_version": 2,
+  "generated_at": "2026-06-12T18:48:11.143Z",
+  "verdict": "PASS_FOR_GREEN_BUFFER",
+  "summary": {
+    "green_candidate_count": 3,
+    "strict_dry_run_public_output_coherence": "pass",
+    "dragonwilds_voice_quality_fresh": true,
+    "gta_blocked_for_asr_insertions": true
+  },
+  "green_candidates": [
+    {
+      "story_id": "rss_0b39e0171f59712c",
+      "title": "Dragonwilds Has One Last Early Access Test",
+      "script_score": 94,
+      "preflight_status": "pass",
+      "transcript_gate": "pass"
+    },
+    {
+      "story_id": "fresh_xbox_halo_campaign_evolved_demo_20260610",
+      "title": "Halo: Campaign Evolved Shows The Real Remake Test",
+      "script_score": 90,
+      "preflight_status": "pass",
+      "transcript_gate": "pass"
+    },
+    {
+      "story_id": "fresh_xbox_stranger_than_heaven_20260611",
+      "title": "Stranger Than Heaven Gives RGG A Real Combat Reset",
+      "script_score": 94,
+      "preflight_status": "pass",
+      "transcript_gate": "pass"
+    }
+  ],
+  "repaired_guards": [
+    "viewer-facing scripts only; internal QA/scaffold phrasing remains blocked",
+    "CTA preserved as: Follow Pulse Gaming so you never miss a beat",
+    "Dragonwilds first line repaired to avoid colon/title pause cadence",
+    "number and acronym-sensitive captions remain hard-gated by Whisper alignment"
+  ],
+  "held_for_transcript_or_caption": [
+    {
+      "story_id": "rss_600fca97d3e40552",
+      "title": "GTA 5 Became The GTA 6 Waiting Room",
+      "blocker_class": "tts_caption",
+      "detail": "Official/direct GTA motion was materialised, but local Whisper alignment rejected the narration because ASR inserted words above the zero-insert threshold.",
+      "evidence": {
+        "motion_materialized_story_count": 1,
+        "motion_materialized_clip_count": 8,
+        "tts_materialized_count": 0,
+        "tts_failed_count": 1,
+        "alignment_error": "whisper_inserted_asr_words_above_threshold",
+        "inserted_actual_word_count": 9,
+        "coverage_ratio": 0.928
+      }
+    },
+    {
+      "story_id": "rss_eabd1bead492f47d",
+      "title": "Dragon's Dogma 2 Update Needs Real Proof",
+      "blocker_class": "tts_motion",
+      "detail": "Fresh source, but audio/timestamps and direct motion are not publish-ready."
+    }
+  ]
+}

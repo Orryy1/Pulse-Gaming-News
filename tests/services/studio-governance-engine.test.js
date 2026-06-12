@@ -287,6 +287,45 @@ test("Studio Governance Engine blocks finance and crypto promotion without appro
   assert.ok(report.rejection_reasons.reason_codes.includes("finance_crypto:promotion_without_approval"));
 });
 
+test("Studio Governance Engine does not treat stale finance metadata as a blocker for game stories", () => {
+  const story = cleanStory({
+    id: "dragonwilds-governance",
+    channel_id: "stacked",
+    canonical_subject: "RuneScape: Dragonwilds",
+    canonical_game: "RuneScape: Dragonwilds",
+    public_title: "Dragonwilds Has One Last Early Access Test",
+    suggested_title: "Dragonwilds Has One Last Early Access Test",
+    suggested_thumbnail_text: "DRAGONWILDS LAST TEST",
+    full_script:
+      "RuneScape: Dragonwilds is getting one last chance to win back the people who bounced off Early Access. Players judge survival games after ten minutes of chopping, crafting, fighting and asking if the survival rhythm has finally clicked. Follow Pulse Gaming so you never miss a beat.",
+    description: "RuneScape: Dragonwilds has another major update coming before full launch. Source: Rock Paper Shotgun.",
+    affiliate_link_manifest: {
+      story_id: "dragonwilds-governance",
+      vertical: "finance",
+      disclosure_required: false,
+      primary_link: null,
+      fallback_links: [],
+      compliance: {
+        finance_or_crypto: true,
+        review_required: true,
+      },
+      platform_disclosure: {
+        youtube: { affiliate_disclosure_required: false },
+      },
+    },
+  });
+
+  const report = buildStudioGovernanceReport({
+    story,
+    rightsLedger: rightsLedgerFor(story),
+    generatedAt: "2026-05-20T09:11:00.000Z",
+  });
+
+  assert.equal(report.finance_crypto_firewall.vertical, "non_financial");
+  assert.equal(report.finance_crypto_firewall.verdict, "pass");
+  assert.ok(!report.publish_control_tower.warnings.includes("commercial:finance_or_crypto_review_required"));
+});
+
 test("Studio Governance Engine uses V4 bridge provenance instead of rights-less materialised clip strings", () => {
   const sourceUrl = "https://video.twimg.com/amplify_video/forza/vid/avc1/1280x720/gameplay.mp4";
   const story = cleanStory({

@@ -1,0 +1,106 @@
+{
+  "schema_version": 2,
+  "generated_at": "2026-06-12T18:48:11.143Z",
+  "verdict": "PASS_FOR_GREEN_BUFFER",
+  "summary": {
+    "bridge_candidate_count": 3,
+    "bridge_premium_count": 3,
+    "bridge_direct_video_motion_count": 3,
+    "direct_video_gap_story_ids": [],
+    "dragonwilds_visual_quality_result": "pass",
+    "gta_motion_materialized_clip_count": 8
+  },
+  "green_visual_candidates": [
+    {
+      "story_id": "rss_0b39e0171f59712c",
+      "title": "Dragonwilds Has One Last Early Access Test",
+      "exported_path": "output/overnight-fresh-green-buffer/live-scored-proof-batch/rss_0b39e0171f59712c/visual_v4_render.mp4",
+      "duration_seconds": 46.344
+    },
+    {
+      "story_id": "fresh_xbox_halo_campaign_evolved_demo_20260610",
+      "title": "Halo: Campaign Evolved Shows The Real Remake Test",
+      "exported_path": "output/overnight-fresh-green-buffer/goal-proof-batch/fresh_xbox_halo_campaign_evolved_demo_20260610/visual_v4_render.mp4",
+      "duration_seconds": 43.9
+    },
+    {
+      "story_id": "fresh_xbox_stranger_than_heaven_20260611",
+      "title": "Stranger Than Heaven Gives RGG A Real Combat Reset",
+      "exported_path": "output/overnight-fresh-green-buffer/expanded-goal-proof-batch/fresh_xbox_stranger_than_heaven_20260611/visual_v4_render.mp4",
+      "duration_seconds": 50.6
+    }
+  ],
+  "successful_repairs": [
+    {
+      "story_id": "rss_0b39e0171f59712c",
+      "title": "Dragonwilds Has One Last Early Access Test",
+      "result": "rerendered with faster direct-motion dwell; freeze/choppy blocker cleared",
+      "duration_seconds": 46.344,
+      "visual_quality_result": "pass"
+    },
+    {
+      "story_id": "rss_600fca97d3e40552",
+      "title": "GTA 5 Became The GTA 6 Waiting Room",
+      "result": "official/direct motion materialised but candidate remains blocked by TTS/caption alignment",
+      "materialized_clip_count": 8
+    }
+  ],
+  "still_blocked": [
+    {
+      "story_id": "rss_2922a1471f7897be",
+      "title": "Gears E-Day Is Xbox's Comeback Test",
+      "blocker_class": "motion",
+      "status": "blocked",
+      "detail": "Fresh source, but official/direct video motion floor is not met safely.",
+      "next_action": "Acquire/validate official Gears E-Day direct motion before rendering."
+    },
+    {
+      "story_id": "rss_aa1c4b00ddd7c28c",
+      "title": "Valor Mortis Shows The Soulslike Test",
+      "blocker_class": "motion",
+      "status": "blocked",
+      "detail": "Only one story-correct validated direct segment was found; motion diversity floor not met.",
+      "next_action": "Find additional official/direct motion or hold."
+    },
+    {
+      "story_id": "rss_97ea52eac6466a01",
+      "title": "Fable Delay Is Xbox's GTA 6 Problem",
+      "blocker_class": "motion",
+      "status": "blocked",
+      "detail": "Fresh source, but direct motion floor not met.",
+      "next_action": "Validate official Fable direct motion before render."
+    },
+    {
+      "story_id": "rss_c9e8b69ee7d15384",
+      "title": "The Elder Scrolls 6 Still Has No Real Date",
+      "blocker_class": "motion",
+      "status": "blocked",
+      "detail": "Fresh source, but direct-video motion evidence is missing.",
+      "next_action": "Hold until official/direct visual evidence is available."
+    },
+    {
+      "story_id": "rss_eabd1bead492f47d",
+      "title": "Dragon's Dogma 2 Update Needs Real Proof",
+      "blocker_class": "tts_motion",
+      "status": "blocked",
+      "detail": "Fresh source, but audio/timestamps and direct motion are not publish-ready.",
+      "next_action": "Regenerate local voice/timestamps and acquire direct motion."
+    },
+    {
+      "story_id": "rss_7391381aa4dd5606",
+      "title": "Quake Champions Is Testing A Comeback",
+      "blocker_class": "motion",
+      "status": "blocked",
+      "detail": "Fresh source, but materialised direct motion is missing.",
+      "next_action": "Acquire official Quake Champions motion or hold."
+    },
+    {
+      "story_id": "rss_1a5c9eee2fc739b5",
+      "title": "Code Veronica Just Answered The Camera Question",
+      "blocker_class": "motion_audio",
+      "status": "blocked",
+      "detail": "Fresh source, but motion evidence and/or final narration proof remains stale.",
+      "next_action": "Refresh final narration proof and validate official/direct motion."
+    }
+  ]
+}

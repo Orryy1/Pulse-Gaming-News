@@ -111,6 +111,33 @@ test("Commercial Intelligence Engine turns colon game titles into clean platform
   assert.match(manifest.primary_link.url, /The%20Expanse%20Osiris%20Reborn%20Xbox/);
 });
 
+test("Commercial Intelligence Engine keeps RuneScape Dragonwilds in gaming even under stacked channel env", () => {
+  const previousChannel = process.env.CHANNEL;
+  process.env.CHANNEL = "stacked";
+  try {
+    const manifest = buildAffiliateLinkManifest({
+      story: {
+        id: "dragonwilds-test",
+        title: "Dragonwilds Has One Last Early Access Test",
+        canonical_subject: "RuneScape: Dragonwilds",
+        canonical_game: "RuneScape: Dragonwilds",
+        full_script:
+          "RuneScape: Dragonwilds is getting one last chance to win back the people who bounced off Early Access. Players judge survival games after ten minutes of chopping, crafting, fighting and asking if the survival rhythm has finally clicked.",
+        source_card_label: "Rock Paper Shotgun",
+      },
+      tag: "pulsegaming-21",
+    });
+
+    assert.equal(manifest.vertical, "gaming");
+    assert.equal(manifest.compliance.finance_or_crypto, false);
+    assert.equal(manifest.compliance.review_required, false);
+    assert.ok(!manifest.rejection_reasons.includes("finance_compliance_review_required"));
+  } finally {
+    if (previousChannel === undefined) delete process.env.CHANNEL;
+    else process.env.CHANNEL = previousChannel;
+  }
+});
+
 test("Commercial Intelligence Engine builds per-platform landing-page attribution", () => {
   const manifest = buildAffiliateLinkManifest({
     story: {

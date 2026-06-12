@@ -271,6 +271,86 @@ test("official trailer resolver ignores score-table comparison games as source t
   assert.ok(!plan.search_queries.includes("Pok\u00e9mon official trailer"));
 });
 
+test("official trailer resolver uses explicit canonical subjects as motion targets", async () => {
+  const plan = await buildOfficialTrailerReferencePlan(
+    baseStory({
+      canonical_subject: "RuneScape: Dragonwilds",
+      canonical_game: "RuneScape: Dragonwilds",
+      title: "Dragonwilds Has One Last Early Access Test",
+      full_script:
+        "RuneScape: Dragonwilds is trying to make one last Early Access impression before its 1.0 launch.",
+    }),
+    {
+      steamLookup: async () => {
+        throw new Error("no steam lookup should happen without a verified store target");
+      },
+    },
+  );
+
+  assert.deepEqual(plan.target_entities, ["RuneScape: Dragonwilds"]);
+  assert.deepEqual(plan.missing_target_entities, ["RuneScape: Dragonwilds"]);
+  assert.equal(plan.motion_reference_readiness, "official_search_required");
+  assert.ok(plan.search_queries.includes("RuneScape: Dragonwilds official trailer"));
+  assert.ok(plan.planned_searches.every((item) => item.entity === "RuneScape: Dragonwilds"));
+});
+
+test("official trailer resolver does not use broad context games as canonical-story footage", async () => {
+  const plan = await buildOfficialTrailerReferencePlan(
+    baseStory({
+      canonical_subject: "Fable",
+      canonical_game: "Fable",
+      title: "Fable Delay Is Xbox's GTA 6 Problem",
+      full_script:
+        "Fable's delay is starting to look less like weakness and more like survival. Avoiding GTA 6 makes sense.",
+      game_images: [verifiedSteamAsset("GTA", "3240220", "Grand Theft Auto V Enhanced")],
+    }),
+    {
+      steamLookup: async () => {
+        throw new Error("mismatched GTA target should not be looked up for Fable");
+      },
+    },
+  );
+
+  assert.deepEqual(plan.target_entities, ["Fable"]);
+  assert.deepEqual(plan.verified_store_targets, []);
+  assert.deepEqual(plan.references, []);
+  assert.deepEqual(plan.missing_target_entities, ["Fable"]);
+  assert.equal(plan.motion_reference_readiness, "official_search_required");
+  assert.ok(plan.search_queries.includes("Fable official trailer"));
+  assert.ok(!plan.search_queries.includes("GTA official trailer"));
+});
+
+test("official trailer resolver still accepts GTA store movies for canonical GTA stories", async () => {
+  const plan = await buildOfficialTrailerReferencePlan(
+    baseStory({
+      canonical_subject: "GTA 5",
+      canonical_game: "GTA 5",
+      title: "GTA 5 Became The GTA 6 Waiting Room",
+      full_script:
+        "GTA 5 just became Rockstar's GTA 6 waiting room. Subscription access changes the reinstall argument.",
+      game_images: [verifiedSteamAsset("GTA", "3240220", "Grand Theft Auto V Enhanced")],
+    }),
+    {
+      steamLookup: async () => ({
+        success: true,
+        title: "Grand Theft Auto V Enhanced",
+        movies: [
+          {
+            id: 1,
+            name: "Official Trailer",
+            mp4: { max: "https://cdn.example/gta-v.mp4" },
+          },
+        ],
+      }),
+    },
+  );
+
+  assert.deepEqual(plan.target_entities, ["GTA 5"]);
+  assert.equal(plan.verified_store_targets.length, 1);
+  assert.equal(plan.references.length, 1);
+  assert.equal(plan.motion_reference_readiness, "official_reference_found");
+});
+
 test("official trailer resolver recognises v1.5 applied-local Steam still assets", async () => {
   const plan = await buildOfficialTrailerReferencePlan(
     baseStory({

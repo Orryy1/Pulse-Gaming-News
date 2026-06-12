@@ -143,6 +143,69 @@ function assertDurationRepairPublicCopyPass(canonical, job = {}) {
   return repair;
 }
 
+test("normal duration repair extends Dragonwilds without ASR-fragile title repeats", () => {
+  const canonical = {
+      story_id: "dragonwilds",
+      canonical_subject: "RuneScape: Dragonwilds",
+      canonical_game: "RuneScape: Dragonwilds",
+      selected_title: "Dragonwilds Has One Last Early Access Test",
+      primary_source: "Rock Paper Shotgun",
+      confirmed_claims: [
+        "Rock Paper Shotgun says RuneScape: Dragonwilds has another major update coming later this month before full launch.",
+      ],
+      narration_script:
+        "RuneScape: Dragonwilds is getting one last chance to win back the people who bounced off Early Access. Rock Paper Shotgun says the survival spin-off has another major update coming later this month before full launch. The catch is brutally practical: players do not judge survival games by a patch note. They judge them after ten minutes of chopping, crafting, fighting and asking if the loop has finally clicked. The game has to prove it is a RuneScape game people can actually main, not a side experiment they try for a weekend and leave. If the loop feels sharper now, launch day has a foundation. If it does not, full launch starts by asking players to trust it again. Follow Pulse Gaming so you never miss a beat.",
+    };
+  const repair = extendScriptToTarget(
+    canonical,
+    {
+      current_duration_s: 28.16,
+      target_duration_seconds: { min: 35, max: 59 },
+    },
+  );
+
+  assert.match(repair.script, /real trust test/i);
+  assert.match(repair.script, /sample for one weekend/i);
+  assert.doesNotMatch(repair.script, /RuneScape:\s*Dragonwilds has to survive players now/i);
+  assert.doesNotMatch(repair.script, /has to survive players now/i);
+  assert.equal(evaluateGoalPublicCopy({
+    canonical_subject: "RuneScape: Dragonwilds",
+    selected_title: "Dragonwilds Has One Last Early Access Test",
+    narration_script: repair.script,
+    full_script: repair.script,
+    tts_script: repair.script,
+    first_spoken_line: repair.script.split(/(?<=[.!?])\s+/)[0],
+    description: "RuneScape: Dragonwilds has a major update before full launch. Source: Rock Paper Shotgun.",
+    thumbnail_headline: "DRAGONWILDS EARLY ACCESS",
+  }).verdict, "pass");
+  assert.equal(buildViralScriptIntelligence({
+    story: {
+      id: "dragonwilds",
+      title: "Dragonwilds Has One Last Early Access Test",
+      source_name: "Rock Paper Shotgun",
+    },
+    script: repair.script,
+  }).blockers.length, 0);
+
+  const compactRepair = extendScriptToTarget(
+    {
+      ...canonical,
+      narration_script:
+        "RuneScape: Dragonwilds is getting one last chance to win back the people who bounced off Early Access. Rock Paper Shotgun reports Ahead of its 1.0 launch, RuneScape: Dragonwilds fits in one more, scorching hot update later this month. RuneScape: Dragonwilds has to show up in normal play, not just in the notes. Reaction clips after launch will decide whether this was a fix or another patch headline. That gives the short a gameplay consequence instead of a checklist. Follow Pulse Gaming so you never miss a beat.",
+    },
+    {
+      current_duration_s: 43.21,
+      target_duration_seconds: { min: 35, max: 59 },
+      repair_lane: "normal_production_content_signal_repair",
+      source_blockers: ["script_scorecard:missing_story_specific_payoff"],
+    },
+  );
+  assert.match(compactRepair.script, /real trust test/i);
+  assert.match(compactRepair.script, /sample for one weekend/i);
+  assert.doesNotMatch(compactRepair.script, /\b1\.0\b|Ahead of its 1\.0 launch|has to show up in normal play/i);
+  assert.doesNotMatch(compactRepair.script, /Dragonwilds has to show up|Dragonwilds has to survive/i);
+});
+
 test("duration variant repair extends script, regenerates local audio and rerenders without publish side effects", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-duration-variant-"));
   const artifactDir = await makePackage(root);

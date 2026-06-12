@@ -1,0 +1,149 @@
+{
+  "schema_version": 2,
+  "generated_at": "2026-06-12T18:48:11.143Z",
+  "verdict": "PARTIAL",
+  "target": {
+    "minimum_green_candidates": 5,
+    "stretch_green_candidates": 10
+  },
+  "summary": {
+    "green_candidate_count": 3,
+    "scheduler_preflight_pass_count": 3,
+    "strict_dry_run_ready_story_count": 3,
+    "enabled_platform_dry_run_action_count": 9,
+    "enabled_platform_blocker_count": 0,
+    "deferred_platform_action_count": 10,
+    "live_publish_allowed_action_count": 0
+  },
+  "candidates": [
+    {
+      "story_id": "rss_0b39e0171f59712c",
+      "title": "Dragonwilds Has One Last Early Access Test",
+      "status": "publish_ready",
+      "score": 114,
+      "duration_seconds": 46.344,
+      "source_published_at": "2026-06-11T21:58:53.000Z",
+      "source_age_hours": 20.76,
+      "preflight_status": "pass",
+      "blockers": [],
+      "warnings": [],
+      "script_score": 94,
+      "artifact_dir": "output/overnight-fresh-green-buffer/live-scored-proof-batch/rss_0b39e0171f59712c",
+      "exported_path": "output/overnight-fresh-green-buffer/live-scored-proof-batch/rss_0b39e0171f59712c/visual_v4_render.mp4"
+    },
+    {
+      "story_id": "fresh_xbox_halo_campaign_evolved_demo_20260610",
+      "title": "Halo: Campaign Evolved Shows The Real Remake Test",
+      "status": "publish_ready",
+      "score": 106,
+      "duration_seconds": 43.9,
+      "source_published_at": null,
+      "source_age_hours": null,
+      "preflight_status": "pass",
+      "blockers": [],
+      "warnings": [],
+      "script_score": 90,
+      "artifact_dir": "output/overnight-fresh-green-buffer/goal-proof-batch/fresh_xbox_halo_campaign_evolved_demo_20260610",
+      "exported_path": "output/overnight-fresh-green-buffer/goal-proof-batch/fresh_xbox_halo_campaign_evolved_demo_20260610/visual_v4_render.mp4"
+    },
+    {
+      "story_id": "fresh_xbox_stranger_than_heaven_20260611",
+      "title": "Stranger Than Heaven Gives RGG A Real Combat Reset",
+      "status": "publish_ready",
+      "score": 86,
+      "duration_seconds": 50.6,
+      "source_published_at": null,
+      "source_age_hours": null,
+      "preflight_status": "pass",
+      "blockers": [],
+      "warnings": [],
+      "script_score": 94,
+      "artifact_dir": "output/overnight-fresh-green-buffer/expanded-goal-proof-batch/fresh_xbox_stranger_than_heaven_20260611",
+      "exported_path": "output/overnight-fresh-green-buffer/expanded-goal-proof-batch/fresh_xbox_stranger_than_heaven_20260611/visual_v4_render.mp4"
+    }
+  ],
+  "enabled_platforms": [
+    {
+      "platform": "youtube_shorts",
+      "status": "ready_now",
+      "operational_state": "enabled",
+      "publish_now_action_count": 3,
+      "blockers": [],
+      "warnings": []
+    },
+    {
+      "platform": "instagram_reels",
+      "status": "ready_now",
+      "operational_state": "enabled",
+      "publish_now_action_count": 3,
+      "blockers": [],
+      "warnings": []
+    },
+    {
+      "platform": "facebook_reels",
+      "status": "ready_now",
+      "operational_state": "enabled",
+      "publish_now_action_count": 3,
+      "blockers": [],
+      "warnings": []
+    }
+  ],
+  "deferred_platforms": [
+    {
+      "platform": "tiktok",
+      "status": "blocked",
+      "operational_state": "needs_credentials",
+      "deferred_action_count": 1,
+      "blocked_action_count": 2,
+      "blockers": [
+        "platform_duration_below_min:tiktok:61"
+      ],
+      "warnings": [
+        "below_creator_rewards_duration"
+      ],
+      "enablement_gaps": [
+        "tiktok_local_token_refresh_or_sync_required"
+      ]
+    },
+    {
+      "platform": "x",
+      "status": "deferred_until_platform_enabled",
+      "operational_state": "disabled",
+      "deferred_action_count": 3,
+      "blocked_action_count": 0,
+      "blockers": [],
+      "warnings": [],
+      "enablement_gaps": [
+        "x_operator_disabled",
+        "x_api_billing_not_declared"
+      ]
+    },
+    {
+      "platform": "threads",
+      "status": "deferred_until_platform_enabled",
+      "operational_state": "disabled",
+      "deferred_action_count": 3,
+      "blocked_action_count": 0,
+      "blockers": [],
+      "warnings": [],
+      "enablement_gaps": []
+    },
+    {
+      "platform": "pinterest",
+      "status": "deferred_until_platform_enabled",
+      "operational_state": "disabled",
+      "deferred_action_count": 3,
+      "blocked_action_count": 0,
+      "blockers": [],
+      "warnings": [],
+      "enablement_gaps": []
+    }
+  ],
+  "safety": {
+    "no_publish_triggered": true,
+    "no_network_uploads": true,
+    "no_db_mutation": true,
+    "no_oauth_or_token_change": true,
+    "dry_run_only": true
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "schema_version": 2,
+  "generated_at": "2026-06-12T18:48:11.143Z",
+  "verdict": "PASS",
+  "totals": {
+    "stories_seen": 3,
+    "candidates": 3,
+    "excluded": 0,
+    "returned": 3,
+    "pending_audio": 0
+  },
+  "preflight_qa": {
+    "enabled": true,
+    "mode": "read_only",
+    "candidates_checked": 3,
+    "blocked": 0,
+    "warning": 0,
+    "pass": 3,
+    "bridge_motion_governance": {
+      "enabled": true,
+      "direct_video_enrichment_story_count": 0,
+      "blocked_motion_pack_story_count": 6,
+      "canonical_entity_repair_story_count": 1,
+      "owned_explainer_exception_story_count": 4
+    }
+  },
+  "candidates": [
+    {
+      "story_id": "rss_0b39e0171f59712c",
+      "title": "Dragonwilds Has One Last Early Access Test",
+      "status": "publish_ready",
+      "score": 114,
+      "duration_seconds": 46.344,
+      "source_published_at": "2026-06-11T21:58:53.000Z",
+      "source_age_hours": 20.76,
+      "preflight_status": "pass",
+      "blockers": [],
+      "warnings": [],
+      "script_score": 94,
+      "artifact_dir": "output/overnight-fresh-green-buffer/live-scored-proof-batch/rss_0b39e0171f59712c",
+      "exported_path": "output/overnight-fresh-green-buffer/live-scored-proof-batch/rss_0b39e0171f59712c/visual_v4_render.mp4"
+    },
+    {
+      "story_id": "fresh_xbox_halo_campaign_evolved_demo_20260610",
+      "title": "Halo: Campaign Evolved Shows The Real Remake Test",
+      "status": "publish_ready",
+      "score": 106,
+      "duration_seconds": 43.9,
+      "source_published_at": null,
+      "source_age_hours": null,
+      "preflight_status": "pass",
+      "blockers": [],
+      "warnings": [],
+      "script_score": 90,
+      "artifact_dir": "output/overnight-fresh-green-buffer/goal-proof-batch/fresh_xbox_halo_campaign_evolved_demo_20260610",
+      "exported_path": "output/overnight-fresh-green-buffer/goal-proof-batch/fresh_xbox_halo_campaign_evolved_demo_20260610/visual_v4_render.mp4"
+    },
+    {
+      "story_id": "fresh_xbox_stranger_than_heaven_20260611",
+      "title": "Stranger Than Heaven Gives RGG A Real Combat Reset",
+      "status": "publish_ready",
+      "score": 86,
+      "duration_seconds": 50.6,
+      "source_published_at": null,
+      "source_age_hours": null,
+      "preflight_status": "pass",
+      "blockers": [],
+      "warnings": [],
+      "script_score": 94,
+      "artifact_dir": "output/overnight-fresh-green-buffer/expanded-goal-proof-batch/fresh_xbox_stranger_than_heaven_20260611",
+      "exported_path": "output/overnight-fresh-green-buffer/expanded-goal-proof-batch/fresh_xbox_stranger_than_heaven_20260611/visual_v4_render.mp4"
+    }
+  ],
+  "safety": {
+    "mode": "read_only",
+    "db_mutation": false,
+    "posting": false,
+    "oauth": false,
+    "token_printing": false
+  }
+}

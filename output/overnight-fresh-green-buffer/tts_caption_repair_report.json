@@ -1,0 +1,57 @@
+{
+  "schema_version": 2,
+  "generated_at": "2026-06-12T18:48:11.143Z",
+  "verdict": "PARTIAL",
+  "summary": {
+    "local_tts_doctor_verdict_for_gta_run": "green",
+    "green_candidate_tts_count": 3,
+    "audio_segment_loudness_verdict": "GREEN",
+    "dragonwilds_voice_quality_verdict": "PASS",
+    "dragonwilds_spoken_wpm": 147.6,
+    "dragonwilds_longest_pause_seconds": 0.76,
+    "gta_tts_failed_count": 1
+  },
+  "green_rows": [
+    {
+      "story_id": "rss_0b39e0171f59712c",
+      "title": "Dragonwilds Has One Last Early Access Test",
+      "timestamp_alignment": "pass",
+      "audio_segment_loudness": "pass"
+    },
+    {
+      "story_id": "fresh_xbox_halo_campaign_evolved_demo_20260610",
+      "title": "Halo: Campaign Evolved Shows The Real Remake Test",
+      "timestamp_alignment": "pass",
+      "audio_segment_loudness": "pass"
+    },
+    {
+      "story_id": "fresh_xbox_stranger_than_heaven_20260611",
+      "title": "Stranger Than Heaven Gives RGG A Real Combat Reset",
+      "timestamp_alignment": "pass",
+      "audio_segment_loudness": "pass"
+    }
+  ],
+  "blocked_rows": [
+    {
+      "story_id": "rss_600fca97d3e40552",
+      "title": "GTA 5 Became The GTA 6 Waiting Room",
+      "result": "blocked",
+      "blockers": [
+        "whisper_inserted_asr_words_above_threshold"
+      ],
+      "coverage_ratio": 0.928,
+      "inserted_actual_word_count": 9
+    }
+  ],
+  "safety": {
+    "no_publish_triggered": true,
+    "no_platform_uploads": true,
+    "no_network_uploads": true,
+    "no_db_mutation": true,
+    "no_oauth_or_token_change": true,
+    "no_gate_weakened": true,
+    "no_tts_generation_triggered": true,
+    "local_tts_only": true,
+    "external_tts_provider_used": null
+  }
+}

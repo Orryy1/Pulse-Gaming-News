@@ -1,0 +1,233 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-06-12T18:44:45.223Z",
+  "overall_verdict": "RED",
+  "summary": {
+    "platform_count": 7,
+    "publish_now_action_count": 9,
+    "platform_enabled_dry_run_action_count": 9,
+    "human_review_required_action_count": 9,
+    "live_publish_allowed_action_count": 0,
+    "deferred_action_count": 10,
+    "blocked_action_count": 2,
+    "disabled_platform_count": 4,
+    "unknown_platform_count": 0
+  },
+  "platforms": {
+    "youtube_shorts": {
+      "platform": "youtube_shorts",
+      "status": "ready_now",
+      "operational_state": "enabled",
+      "operational_reason": "core_upload_path",
+      "publishable_now_count": 3,
+      "publish_now_action_count": 3,
+      "enabled_dry_run_action_count": 3,
+      "human_review_required_action_count": 3,
+      "live_publish_allowed_action_count": 0,
+      "queued_when_enabled_count": 0,
+      "deferred_action_count": 0,
+      "blocked_action_count": 0,
+      "planned_story_ids": [
+        "fresh_xbox_stranger_than_heaven_20260611",
+        "fresh_xbox_halo_campaign_evolved_demo_20260610",
+        "rss_0b39e0171f59712c"
+      ],
+      "blocked_story_ids": [],
+      "blockers": [],
+      "warnings": [],
+      "live_execution_gate_reasons": [
+        "platform_actions_blocked",
+        "platform_actions_deferred_until_enabled",
+        "enabled_platform_actions_require_human_review"
+      ],
+      "enablement_gaps": [],
+      "enablement_next_action": null
+    },
+    "tiktok": {
+      "platform": "tiktok",
+      "status": "blocked",
+      "operational_state": "needs_credentials",
+      "operational_reason": "tiktok_local_token_refresh_or_sync_required",
+      "publishable_now_count": 0,
+      "publish_now_action_count": 0,
+      "enabled_dry_run_action_count": 0,
+      "human_review_required_action_count": 0,
+      "live_publish_allowed_action_count": 0,
+      "queued_when_enabled_count": 1,
+      "deferred_action_count": 1,
+      "blocked_action_count": 2,
+      "planned_story_ids": [
+        "fresh_xbox_stranger_than_heaven_20260611"
+      ],
+      "blocked_story_ids": [
+        "fresh_xbox_halo_campaign_evolved_demo_20260610",
+        "rss_0b39e0171f59712c"
+      ],
+      "blockers": [
+        "platform_duration_below_min:tiktok:61"
+      ],
+      "warnings": [
+        "below_creator_rewards_duration"
+      ],
+      "live_execution_gate_reasons": [
+        "tiktok_local_token_refresh_or_sync_required"
+      ],
+      "enablement_gaps": [
+        "tiktok_local_token_refresh_or_sync_required"
+      ],
+      "enablement_next_action": "refresh_or_sync_local_token_with_operator_present_before_any_inbox_upload"
+    },
+    "instagram_reels": {
+      "platform": "instagram_reels",
+      "status": "ready_now",
+      "operational_state": "enabled",
+      "operational_reason": "enabled_monitor_next_publish",
+      "publishable_now_count": 3,
+      "publish_now_action_count": 3,
+      "enabled_dry_run_action_count": 3,
+      "human_review_required_action_count": 3,
+      "live_publish_allowed_action_count": 0,
+      "queued_when_enabled_count": 0,
+      "deferred_action_count": 0,
+      "blocked_action_count": 0,
+      "planned_story_ids": [
+        "fresh_xbox_stranger_than_heaven_20260611",
+        "fresh_xbox_halo_campaign_evolved_demo_20260610",
+        "rss_0b39e0171f59712c"
+      ],
+      "blocked_story_ids": [],
+      "blockers": [],
+      "warnings": [],
+      "live_execution_gate_reasons": [
+        "platform_actions_blocked",
+        "platform_actions_deferred_until_enabled",
+        "enabled_platform_actions_require_human_review"
+      ],
+      "enablement_gaps": [],
+      "enablement_next_action": null
+    },
+    "facebook_reels": {
+      "platform": "facebook_reels",
+      "status": "ready_now",
+      "operational_state": "enabled",
+      "operational_reason": "facebook_reels_enabled",
+      "publishable_now_count": 3,
+      "publish_now_action_count": 3,
+      "enabled_dry_run_action_count": 3,
+      "human_review_required_action_count": 3,
+      "live_publish_allowed_action_count": 0,
+      "queued_when_enabled_count": 0,
+      "deferred_action_count": 0,
+      "blocked_action_count": 0,
+      "planned_story_ids": [
+        "fresh_xbox_stranger_than_heaven_20260611",
+        "fresh_xbox_halo_campaign_evolved_demo_20260610",
+        "rss_0b39e0171f59712c"
+      ],
+      "blocked_story_ids": [],
+      "blockers": [],
+      "warnings": [],
+      "live_execution_gate_reasons": [
+        "platform_actions_blocked",
+        "platform_actions_deferred_until_enabled",
+        "enabled_platform_actions_require_human_review"
+      ],
+      "enablement_gaps": [],
+      "enablement_next_action": "watch_next_normal_publish_and_trust_verifier_not_finish_phase_alone"
+    },
+    "x": {
+      "platform": "x",
+      "status": "deferred_until_platform_enabled",
+      "operational_state": "disabled",
+      "operational_reason": "x_optional_disabled",
+      "publishable_now_count": 0,
+      "publish_now_action_count": 0,
+      "enabled_dry_run_action_count": 0,
+      "human_review_required_action_count": 0,
+      "live_publish_allowed_action_count": 0,
+      "queued_when_enabled_count": 3,
+      "deferred_action_count": 3,
+      "blocked_action_count": 0,
+      "planned_story_ids": [
+        "fresh_xbox_stranger_than_heaven_20260611",
+        "fresh_xbox_halo_campaign_evolved_demo_20260610",
+        "rss_0b39e0171f59712c"
+      ],
+      "blocked_story_ids": [],
+      "blockers": [],
+      "warnings": [],
+      "live_execution_gate_reasons": [
+        "x_optional_disabled",
+        "x_operator_disabled",
+        "x_api_billing_not_declared"
+      ],
+      "enablement_gaps": [
+        "x_operator_disabled",
+        "x_api_billing_not_declared"
+      ],
+      "enablement_next_action": "keep_x_disabled_until_paid_api_and_credentials_are_confirmed"
+    },
+    "threads": {
+      "platform": "threads",
+      "status": "deferred_until_platform_enabled",
+      "operational_state": "disabled",
+      "operational_reason": "threads_not_configured",
+      "publishable_now_count": 0,
+      "publish_now_action_count": 0,
+      "enabled_dry_run_action_count": 0,
+      "human_review_required_action_count": 0,
+      "live_publish_allowed_action_count": 0,
+      "queued_when_enabled_count": 3,
+      "deferred_action_count": 3,
+      "blocked_action_count": 0,
+      "planned_story_ids": [
+        "fresh_xbox_stranger_than_heaven_20260611",
+        "fresh_xbox_halo_campaign_evolved_demo_20260610",
+        "rss_0b39e0171f59712c"
+      ],
+      "blocked_story_ids": [],
+      "blockers": [],
+      "warnings": [],
+      "live_execution_gate_reasons": [
+        "threads_not_configured"
+      ],
+      "enablement_gaps": [],
+      "enablement_next_action": null
+    },
+    "pinterest": {
+      "platform": "pinterest",
+      "status": "deferred_until_platform_enabled",
+      "operational_state": "disabled",
+      "operational_reason": "pinterest_not_configured",
+      "publishable_now_count": 0,
+      "publish_now_action_count": 0,
+      "enabled_dry_run_action_count": 0,
+      "human_review_required_action_count": 0,
+      "live_publish_allowed_action_count": 0,
+      "queued_when_enabled_count": 3,
+      "deferred_action_count": 3,
+      "blocked_action_count": 0,
+      "planned_story_ids": [
+        "fresh_xbox_stranger_than_heaven_20260611",
+        "fresh_xbox_halo_campaign_evolved_demo_20260610",
+        "rss_0b39e0171f59712c"
+      ],
+      "blocked_story_ids": [],
+      "blockers": [],
+      "warnings": [],
+      "live_execution_gate_reasons": [
+        "pinterest_not_configured"
+      ],
+      "enablement_gaps": [],
+      "enablement_next_action": null
+    }
+  },
+  "safety": {
+    "dry_run_only": true,
+    "no_network_uploads": true,
+    "no_public_posts": true,
+    "no_db_mutation": true,
+    "no_oauth_or_token_change": true
+  },
+  "generated_copy_at": "2026-06-12T18:48:11.143Z"
+}

@@ -1,0 +1,259 @@
+{
+  "schema_version": 2,
+  "generated_at": "2026-06-12T18:48:11.143Z",
+  "verdict": "PARTIAL",
+  "headline": "Fresh GREEN candidate buffer rebuilt to 3 strict-ready stories; below 5-candidate target because additional fresh stories remain motion or TTS/caption blocked.",
+  "summary": {
+    "discord_scoring_digest_seen": {
+      "scored": 23,
+      "auto": 13,
+      "review": 7,
+      "defer": 2,
+      "reject": 1,
+      "hard_stop": 1,
+      "average_total": 71.8
+    },
+    "candidate_supply_verdict": "amber",
+    "candidate_supply_warnings": [
+      "green_ready_candidates_below_target:3/10",
+      "source_safe_candidates_below_target:3/6",
+      "fresh_source_backed_stories_below_daily_target:7/10"
+    ],
+    "green_candidate_count": 3,
+    "minimum_target": 5,
+    "stretch_target": 10,
+    "strict_dry_run_ready_story_count": 3,
+    "strict_dry_run_blocked_story_count": 0,
+    "enabled_platform_dry_run_action_count": 9,
+    "enabled_platform_blocker_count": 0,
+    "deferred_platform_action_count": 10,
+    "blocked_disabled_platform_action_count": 2,
+    "queue_inspect_verdict": "pass",
+    "platform_doctor_verdict": "AMBER",
+    "publish_cadence_verdict": "amber",
+    "publish_readiness_global_note": "Global publish readiness remains RED if the running local/public server is not on the current dirty worktree or AUTO_PUBLISH runtime state mismatches; candidate-buffer readiness is separate from runtime ownership.",
+    "render_health_bridge_candidates": 3,
+    "render_health_bridge_premium": 3,
+    "render_health_live_db_unstamped_24h": 49
+  },
+  "green_candidates": [
+    {
+      "story_id": "rss_0b39e0171f59712c",
+      "title": "Dragonwilds Has One Last Early Access Test",
+      "status": "publish_ready",
+      "score": 114,
+      "duration_seconds": 46.344,
+      "source_published_at": "2026-06-11T21:58:53.000Z",
+      "source_age_hours": 20.76,
+      "preflight_status": "pass",
+      "blockers": [],
+      "warnings": [],
+      "script_score": 94,
+      "artifact_dir": "output/overnight-fresh-green-buffer/live-scored-proof-batch/rss_0b39e0171f59712c",
+      "exported_path": "output/overnight-fresh-green-buffer/live-scored-proof-batch/rss_0b39e0171f59712c/visual_v4_render.mp4"
+    },
+    {
+      "story_id": "fresh_xbox_halo_campaign_evolved_demo_20260610",
+      "title": "Halo: Campaign Evolved Shows The Real Remake Test",
+      "status": "publish_ready",
+      "score": 106,
+      "duration_seconds": 43.9,
+      "source_published_at": null,
+      "source_age_hours": null,
+      "preflight_status": "pass",
+      "blockers": [],
+      "warnings": [],
+      "script_score": 90,
+      "artifact_dir": "output/overnight-fresh-green-buffer/goal-proof-batch/fresh_xbox_halo_campaign_evolved_demo_20260610",
+      "exported_path": "output/overnight-fresh-green-buffer/goal-proof-batch/fresh_xbox_halo_campaign_evolved_demo_20260610/visual_v4_render.mp4"
+    },
+    {
+      "story_id": "fresh_xbox_stranger_than_heaven_20260611",
+      "title": "Stranger Than Heaven Gives RGG A Real Combat Reset",
+      "status": "publish_ready",
+      "score": 86,
+      "duration_seconds": 50.6,
+      "source_published_at": null,
+      "source_age_hours": null,
+      "preflight_status": "pass",
+      "blockers": [],
+      "warnings": [],
+      "script_score": 94,
+      "artifact_dir": "output/overnight-fresh-green-buffer/expanded-goal-proof-batch/fresh_xbox_stranger_than_heaven_20260611",
+      "exported_path": "output/overnight-fresh-green-buffer/expanded-goal-proof-batch/fresh_xbox_stranger_than_heaven_20260611/visual_v4_render.mp4"
+    }
+  ],
+  "enabled_platforms": [
+    {
+      "platform": "youtube_shorts",
+      "status": "ready_now",
+      "operational_state": "enabled",
+      "publish_now_action_count": 3,
+      "blockers": [],
+      "warnings": []
+    },
+    {
+      "platform": "instagram_reels",
+      "status": "ready_now",
+      "operational_state": "enabled",
+      "publish_now_action_count": 3,
+      "blockers": [],
+      "warnings": []
+    },
+    {
+      "platform": "facebook_reels",
+      "status": "ready_now",
+      "operational_state": "enabled",
+      "publish_now_action_count": 3,
+      "blockers": [],
+      "warnings": []
+    }
+  ],
+  "deferred_platforms": [
+    {
+      "platform": "tiktok",
+      "status": "blocked",
+      "operational_state": "needs_credentials",
+      "deferred_action_count": 1,
+      "blocked_action_count": 2,
+      "blockers": [
+        "platform_duration_below_min:tiktok:61"
+      ],
+      "warnings": [
+        "below_creator_rewards_duration"
+      ],
+      "enablement_gaps": [
+        "tiktok_local_token_refresh_or_sync_required"
+      ]
+    },
+    {
+      "platform": "x",
+      "status": "deferred_until_platform_enabled",
+      "operational_state": "disabled",
+      "deferred_action_count": 3,
+      "blocked_action_count": 0,
+      "blockers": [],
+      "warnings": [],
+      "enablement_gaps": [
+        "x_operator_disabled",
+        "x_api_billing_not_declared"
+      ]
+    },
+    {
+      "platform": "threads",
+      "status": "deferred_until_platform_enabled",
+      "operational_state": "disabled",
+      "deferred_action_count": 3,
+      "blocked_action_count": 0,
+      "blockers": [],
+      "warnings": [],
+      "enablement_gaps": []
+    },
+    {
+      "platform": "pinterest",
+      "status": "deferred_until_platform_enabled",
+      "operational_state": "disabled",
+      "deferred_action_count": 3,
+      "blocked_action_count": 0,
+      "blockers": [],
+      "warnings": [],
+      "enablement_gaps": []
+    }
+  ],
+  "blockers": [
+    {
+      "story_id": "rss_600fca97d3e40552",
+      "title": "GTA 5 Became The GTA 6 Waiting Room",
+      "blocker_class": "tts_caption",
+      "status": "motion_repaired_but_not_green",
+      "detail": "Official/direct GTA motion was materialised, but local Whisper alignment rejected the narration because ASR inserted words above the zero-insert threshold.",
+      "evidence": {
+        "motion_materialized_story_count": 1,
+        "motion_materialized_clip_count": 8,
+        "tts_materialized_count": 0,
+        "tts_failed_count": 1,
+        "alignment_error": "whisper_inserted_asr_words_above_threshold",
+        "inserted_actual_word_count": 9,
+        "coverage_ratio": 0.928
+      },
+      "next_action": "Rewrite pronunciation-sensitive GTA script tokens and regenerate local voice/timestamps; do not promote until Whisper alignment passes with no inserted ASR words."
+    },
+    {
+      "story_id": "rss_2922a1471f7897be",
+      "title": "Gears E-Day Is Xbox's Comeback Test",
+      "blocker_class": "motion",
+      "status": "blocked",
+      "detail": "Fresh source, but official/direct video motion floor is not met safely.",
+      "next_action": "Acquire/validate official Gears E-Day direct motion before rendering."
+    },
+    {
+      "story_id": "rss_aa1c4b00ddd7c28c",
+      "title": "Valor Mortis Shows The Soulslike Test",
+      "blocker_class": "motion",
+      "status": "blocked",
+      "detail": "Only one story-correct validated direct segment was found; motion diversity floor not met.",
+      "next_action": "Find additional official/direct motion or hold."
+    },
+    {
+      "story_id": "rss_97ea52eac6466a01",
+      "title": "Fable Delay Is Xbox's GTA 6 Problem",
+      "blocker_class": "motion",
+      "status": "blocked",
+      "detail": "Fresh source, but direct motion floor not met.",
+      "next_action": "Validate official Fable direct motion before render."
+    },
+    {
+      "story_id": "rss_c9e8b69ee7d15384",
+      "title": "The Elder Scrolls 6 Still Has No Real Date",
+      "blocker_class": "motion",
+      "status": "blocked",
+      "detail": "Fresh source, but direct-video motion evidence is missing.",
+      "next_action": "Hold until official/direct visual evidence is available."
+    },
+    {
+      "story_id": "rss_eabd1bead492f47d",
+      "title": "Dragon's Dogma 2 Update Needs Real Proof",
+      "blocker_class": "tts_motion",
+      "status": "blocked",
+      "detail": "Fresh source, but audio/timestamps and direct motion are not publish-ready.",
+      "next_action": "Regenerate local voice/timestamps and acquire direct motion."
+    },
+    {
+      "story_id": "rss_7391381aa4dd5606",
+      "title": "Quake Champions Is Testing A Comeback",
+      "blocker_class": "motion",
+      "status": "blocked",
+      "detail": "Fresh source, but materialised direct motion is missing.",
+      "next_action": "Acquire official Quake Champions motion or hold."
+    },
+    {
+      "story_id": "rss_1a5c9eee2fc739b5",
+      "title": "Code Veronica Just Answered The Camera Question",
+      "blocker_class": "motion_audio",
+      "status": "blocked",
+      "detail": "Fresh source, but motion evidence and/or final narration proof remains stale.",
+      "next_action": "Refresh final narration proof and validate official/direct motion."
+    }
+  ],
+  "artefacts": {
+    "fresh_candidate_queue": "output/overnight-fresh-green-buffer/fresh_candidate_queue.json",
+    "blocked_candidate_report": "output/overnight-fresh-green-buffer/blocked_candidate_report.json",
+    "stale_source_rejection_report": "output/overnight-fresh-green-buffer/stale_source_rejection_report.json",
+    "transcript_coherence_report": "output/overnight-fresh-green-buffer/transcript_coherence_report.json",
+    "visual_motion_repair_report": "output/overnight-fresh-green-buffer/visual_motion_repair_report.json",
+    "tts_caption_repair_report": "output/overnight-fresh-green-buffer/tts_caption_repair_report.json",
+    "strict_dry_run_publish_plan": "output/overnight-fresh-green-buffer/strict_dry_run_publish_plan.json",
+    "scheduler_preflight_report": "output/overnight-fresh-green-buffer/scheduler_preflight_report.json",
+    "platform_status_matrix": "output/overnight-fresh-green-buffer/platform_status_matrix.json",
+    "next_publish_candidates": "output/overnight-fresh-green-buffer/next_publish_candidates.json"
+  },
+  "safety": {
+    "no_manual_publish": true,
+    "no_platform_uploads": true,
+    "no_production_db_mutation": true,
+    "no_oauth_or_token_change": true,
+    "no_disabled_platform_enabled": true,
+    "no_gate_weakened": true
+  },
+  "next_operator_action": "Let the guarded scheduler continue only if runtime readiness is non-red; continue candidate supply repairs starting with GTA TTS/caption alignment and motion floors for Gears/Valor/Fable."
+}

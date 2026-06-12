@@ -1,0 +1,128 @@
+{
+  "window_hours": 24,
+  "total_in_window": 49,
+  "stamped": 0,
+  "unstamped": 49,
+  "quality": {
+    "premium": 0,
+    "standard": 0,
+    "fallback": 0,
+    "reject": 0
+  },
+  "lane": {
+    "legacy_multi_image": 0,
+    "legacy_single_image_fallback": 0,
+    "other": 0
+  },
+  "outro": {
+    "present": 0,
+    "missing": 0,
+    "unknown": 0
+  },
+  "thumbnail": {
+    "present": 0,
+    "missing": 0
+  },
+  "visual_count": {
+    "min": null,
+    "max": null,
+    "median": null,
+    "mean": null
+  },
+  "thin_count": 0,
+  "percentages": {
+    "quality": {
+      "premium": 0,
+      "standard": 0,
+      "fallback": 0,
+      "reject": 0
+    },
+    "lane": {
+      "legacy_multi_image": 0,
+      "legacy_single_image_fallback": 0,
+      "other": 0
+    },
+    "outro": {
+      "present": 0,
+      "missing": 0,
+      "unknown": 0
+    },
+    "thumbnail": {
+      "present": 0,
+      "missing": 0
+    },
+    "thin": 0
+  },
+  "bridge": {
+    "candidate_count": 3,
+    "total_in_window": 3,
+    "stamped": 3,
+    "unstamped": 0,
+    "quality": {
+      "premium": 3,
+      "standard": 0,
+      "fallback": 0,
+      "reject": 0,
+      "other": 0
+    },
+    "lane": {
+      "visual_v4_production": 3
+    },
+    "visual_count": {
+      "min": 8,
+      "max": 28,
+      "median": 26,
+      "mean": 20.7
+    },
+    "thin_count": 0,
+    "visual_evidence": {
+      "real_media_ready_count": 3,
+      "generated_only_motion_deck_count": 0,
+      "no_real_visual_media_asset_count": 0,
+      "direct_video_motion_count": 3,
+      "screenshot_derived_only_count": 0,
+      "direct_video_story_ids": [
+        "fresh_xbox_stranger_than_heaven_20260611",
+        "fresh_xbox_halo_campaign_evolved_demo_20260610",
+        "rss_0b39e0171f59712c"
+      ],
+      "direct_video_gap_story_ids": [],
+      "generated_only_story_ids": [],
+      "no_real_visual_media_story_ids": [],
+      "screenshot_derived_only_story_ids": []
+    },
+    "direct_video_enrichment_work_order": {
+      "schema_version": 1,
+      "generated_at": "2026-06-12T18:44:47.501Z",
+      "execution_mode": "local_repair_planning_only",
+      "summary": {
+        "job_count": 0,
+        "quality_gap_count": 0,
+        "blocking_current_dry_run_count": 0
+      },
+      "safety": {
+        "local_only": true,
+        "external_download_started": false,
+        "production_db_mutated": false,
+        "oauth_or_token_mutated": false,
+        "social_posting_triggered": false,
+        "publish_permission_granted": false
+      },
+      "jobs": []
+    },
+    "percentages": {
+      "quality": {
+        "premium": 100,
+        "standard": 0,
+        "fallback": 0,
+        "reject": 0,
+        "other": 0
+      },
+      "lane": {
+        "visual_v4_production": 100
+      },
+      "thin": 0
+    }
+  },
+  "generated_copy_at": "2026-06-12T18:48:11.143Z"
+}

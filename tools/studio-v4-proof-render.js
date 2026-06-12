@@ -34,8 +34,8 @@ const ROOT = path.resolve(__dirname, "..");
 const TEST_OUT = path.join(ROOT, "test", "output");
 const FPS = 30;
 const XFADE_S = 0.25;
-const DIRECT_CLIP_MAX_VISIBLE_DWELL_S = 2.1;
-const DIRECT_CLIP_MAX_SCENES = 32;
+const DEFAULT_DIRECT_CLIP_MAX_VISIBLE_DWELL_S = 1.5;
+const DEFAULT_DIRECT_CLIP_MAX_SCENES = 40;
 const FRAME_WIDTH_PX = 1080;
 const FRAME_HEIGHT_PX = 1920;
 const SAFE_RIGHT_PX = 42;
@@ -114,6 +114,25 @@ function parseArgs(argv = process.argv) {
     else if (arg === "--json") args.json = true;
   }
   return args;
+}
+
+function positiveEnvNumber(name, fallback) {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function directClipMaxVisibleDwellS() {
+  return positiveEnvNumber(
+    "STUDIO_V4_DIRECT_CLIP_MAX_VISIBLE_DWELL_S",
+    DEFAULT_DIRECT_CLIP_MAX_VISIBLE_DWELL_S,
+  );
+}
+
+function directClipMaxScenes() {
+  return Math.max(
+    8,
+    Math.round(positiveEnvNumber("STUDIO_V4_DIRECT_CLIP_MAX_SCENES", DEFAULT_DIRECT_CLIP_MAX_SCENES)),
+  );
 }
 
 function printHelp() {
@@ -526,7 +545,7 @@ function buildClipScenePlan({
   durationS,
   xfadeS = XFADE_S,
   maxSceneDurationS = null,
-  maxScenes = DIRECT_CLIP_MAX_SCENES,
+  maxScenes = DEFAULT_DIRECT_CLIP_MAX_SCENES,
 } = {}) {
   const cleanClips = clips.filter(Boolean).slice(0, 8);
   if (!cleanClips.length) {
@@ -1034,8 +1053,8 @@ async function renderProof({ storyJson, output }) {
   const scenePlan = buildClipScenePlan({
     clips,
     durationS,
-    maxSceneDurationS: DIRECT_CLIP_MAX_VISIBLE_DWELL_S,
-    maxScenes: DIRECT_CLIP_MAX_SCENES,
+    maxSceneDurationS: directClipMaxVisibleDwellS(),
+    maxScenes: directClipMaxScenes(),
   });
   const assPath = path.join(TEST_OUT, `${story.id || "story"}_studio_v4_proof.ass`);
   const timestampData = await fs.readJson(timestampsPath);
@@ -1317,6 +1336,8 @@ module.exports = {
   resolveStoryMusicCueMix,
   resolveStorySfxCueMix,
   resolveStorySfxPaths,
+  directClipMaxScenes,
+  directClipMaxVisibleDwellS,
   sfxPathForAsset,
   subtitleWordsFromTimestampPayload,
   validateProofTimestampPayload,

@@ -21,6 +21,8 @@ const {
   assertProofAudioSegmentLoudness,
   resolveStorySfxCueMix,
   resolveStorySfxPaths,
+  directClipMaxScenes,
+  directClipMaxVisibleDwellS,
 } = require("../../tools/studio-v4-proof-render");
 const {
   STUDIO_V4_SFX_MIX_POLICY_VERSION,
@@ -76,6 +78,49 @@ test("Studio V4 proof renderer keeps 50s direct-motion renders under the dwell c
     plan.scenes.slice(24, 28).map((scene) => scene.path),
     ["a.mp4", "b.mp4", "c.mp4", "d.mp4"],
   );
+});
+
+test("Studio V4 proof renderer defaults to fast direct-motion cuts", () => {
+  const previousDwell = process.env.STUDIO_V4_DIRECT_CLIP_MAX_VISIBLE_DWELL_S;
+  const previousScenes = process.env.STUDIO_V4_DIRECT_CLIP_MAX_SCENES;
+  delete process.env.STUDIO_V4_DIRECT_CLIP_MAX_VISIBLE_DWELL_S;
+  delete process.env.STUDIO_V4_DIRECT_CLIP_MAX_SCENES;
+  try {
+    assert.equal(directClipMaxVisibleDwellS(), 1.5);
+    assert.equal(directClipMaxScenes(), 40);
+
+    const plan = buildClipScenePlan({
+      clips: ["a.mp4", "b.mp4", "c.mp4", "d.mp4", "e.mp4", "f.mp4", "g.mp4", "h.mp4"],
+      durationS: 46.344,
+      xfadeS: 0.25,
+      maxSceneDurationS: directClipMaxVisibleDwellS(),
+      maxScenes: directClipMaxScenes(),
+    });
+
+    assert.ok(plan.scenes.length >= 37);
+    assert.ok(plan.segmentDurationS <= 1.5);
+  } finally {
+    if (previousDwell === undefined) delete process.env.STUDIO_V4_DIRECT_CLIP_MAX_VISIBLE_DWELL_S;
+    else process.env.STUDIO_V4_DIRECT_CLIP_MAX_VISIBLE_DWELL_S = previousDwell;
+    if (previousScenes === undefined) delete process.env.STUDIO_V4_DIRECT_CLIP_MAX_SCENES;
+    else process.env.STUDIO_V4_DIRECT_CLIP_MAX_SCENES = previousScenes;
+  }
+});
+
+test("Studio V4 proof renderer accepts explicit direct-motion dwell overrides", () => {
+  const previousDwell = process.env.STUDIO_V4_DIRECT_CLIP_MAX_VISIBLE_DWELL_S;
+  const previousScenes = process.env.STUDIO_V4_DIRECT_CLIP_MAX_SCENES;
+  process.env.STUDIO_V4_DIRECT_CLIP_MAX_VISIBLE_DWELL_S = "1.25";
+  process.env.STUDIO_V4_DIRECT_CLIP_MAX_SCENES = "48";
+  try {
+    assert.equal(directClipMaxVisibleDwellS(), 1.25);
+    assert.equal(directClipMaxScenes(), 48);
+  } finally {
+    if (previousDwell === undefined) delete process.env.STUDIO_V4_DIRECT_CLIP_MAX_VISIBLE_DWELL_S;
+    else process.env.STUDIO_V4_DIRECT_CLIP_MAX_VISIBLE_DWELL_S = previousDwell;
+    if (previousScenes === undefined) delete process.env.STUDIO_V4_DIRECT_CLIP_MAX_SCENES;
+    else process.env.STUDIO_V4_DIRECT_CLIP_MAX_SCENES = previousScenes;
+  }
 });
 
 test("Studio V4 proof renderer CLI stays local and story-json driven", () => {

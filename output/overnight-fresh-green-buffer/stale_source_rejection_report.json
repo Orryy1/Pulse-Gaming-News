@@ -1,0 +1,86 @@
+{
+  "schema_version": 2,
+  "generated_at": "2026-06-12T18:48:11.143Z",
+  "policy_hours": 168,
+  "accepted_current_source_count": 10,
+  "stale_rejected_count": 0,
+  "accepted_sources": [
+    {
+      "story_id": "rss_0b39e0171f59712c",
+      "title": "Dragonwilds Has One Last Early Access Test",
+      "source": "Rock Paper Shotgun",
+      "source_published_at": "2026-06-11T21:58:53.000Z",
+      "source_url": "https://www.rockpapershotgun.com/ahead-of-its-10-launch-runescape-dragonwilds-fits-in-one-more-scorching-hot-update-later-this-month"
+    },
+    {
+      "story_id": "rss_1a5c9eee2fc739b5",
+      "title": "Code Veronica Just Answered The Camera Question",
+      "source": "Eurogamer",
+      "source_published_at": "2026-06-10T15:00:00.000Z",
+      "source_url": "https://www.eurogamer.net/resident-evil-veronica-first-person"
+    },
+    {
+      "story_id": "rss_2922a1471f7897be",
+      "title": "Gears E-Day Is Xbox's Comeback Test",
+      "source": "Kotaku",
+      "source_published_at": "2026-06-11T20:40:24.000Z",
+      "source_url": "https://kotaku.com/everything-we-know-about-gears-of-war-e-day-xboxs-big-exclusive-for-2026-2000705633"
+    },
+    {
+      "story_id": "rss_600fca97d3e40552",
+      "title": "GTA 5 Became The GTA 6 Waiting Room",
+      "source": "GameSpot",
+      "source_published_at": "2026-06-11T19:17:41.000Z",
+      "source_url": "https://www.gamespot.com/articles/gta-5-joins-a-subscription-ahead-of-gta-6-launch/"
+    },
+    {
+      "story_id": "rss_69ddf61145913a73",
+      "title": "Halo Campaign Evolved Has One Real Test",
+      "source": "PC Gamer",
+      "source_published_at": "2026-06-11T23:57:01.000Z",
+      "source_url": "https://www.pcgamer.com/games/fps/i-watched-the-new-halo-remake-gameplay-then-replayed-the-original-to-nitpick-the-differences/"
+    },
+    {
+      "story_id": "rss_7391381aa4dd5606",
+      "title": "Quake Champions Is Testing A Comeback",
+      "source": "PC Gamer",
+      "source_published_at": "2026-06-11T20:23:04.000Z",
+      "source_url": "https://www.pcgamer.com/games/fps/quake-champions-gets-a-huge-update-and-free-battle-pass-to-celebrate-the-30th-anniversary-of-quake/"
+    },
+    {
+      "story_id": "rss_97ea52eac6466a01",
+      "title": "Fable Delay Is Xbox's GTA 6 Problem",
+      "source": "GameSpot",
+      "source_published_at": "2026-06-11T15:27:02.000Z",
+      "source_url": "https://www.gamespot.com/articles/fable-reboot-delay-was-disappointing-to-the-devs-but-avoiding-gta-6-makes-sense/"
+    },
+    {
+      "story_id": "rss_aa1c4b00ddd7c28c",
+      "title": "Valor Mortis Just Dodged September",
+      "source": "GameSpot",
+      "source_published_at": "2026-06-11T15:52:18.000Z",
+      "source_url": "https://www.gamespot.com/articles/september-is-so-busy-for-games-that-one-of-them-just-got-delayed-to-avoid-the-others-and-gta-6/"
+    },
+    {
+      "story_id": "rss_c9e8b69ee7d15384",
+      "title": "The Elder Scrolls 6 Just Dropped A New Clue",
+      "source": "Polygon",
+      "source_published_at": "2026-06-11T13:49:46.000Z",
+      "source_url": "https://www.polygon.com/the-elder-scrolls-6-release-xbox-matt-booty/"
+    },
+    {
+      "story_id": "rss_eabd1bead492f47d",
+      "title": "Dragon's Dogma 2 Has One Dark Arisen Test",
+      "source": "Polygon",
+      "source_published_at": "2026-06-10T19:39:25.000Z",
+      "source_url": "https://www.polygon.com/dragons-dogma-2-june-2026-update-fast-travel-fix/"
+    }
+  ],
+  "stale_rejected_sources": [],
+  "gate": {
+    "no_source_older_than_7_days_promoted": true,
+    "no_reddit_only_confirmation_promoted": true,
+    "title_source_mismatch_hard_fail_active": true,
+    "old_backlog_not_promoted": true
+  }
+}

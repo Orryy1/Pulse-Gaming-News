@@ -543,6 +543,101 @@ test("public copy package repair refreshes stale script scorecards before schedu
   assert.ok(savedScorecard.viral_score >= 75, JSON.stringify(savedScorecard, null, 2));
 });
 
+test("public copy package repair gives Dragonwilds update scripts player stakes before scheduler preflight", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-public-copy-dragonwilds-score-"));
+  const artifactDir = path.join(root, "batch", "dragonwilds");
+  await fs.ensureDir(artifactDir);
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "dragonwilds",
+    canonical_subject: "RuneScape: Dragonwilds",
+    canonical_game: "RuneScape: Dragonwilds",
+    selected_title: "Dragonwilds Has One Last Early Access Test",
+    first_spoken_line: "RuneScape: Dragonwilds is trying to make one last Early Access impression before its 1.0 launch.",
+    primary_source: "Rock Paper Shotgun",
+    confirmed_claims: [
+      "Ahead of its 1.0 launch, RuneScape: Dragonwilds fits in one more, scorching hot update later this month",
+    ],
+    narration_script:
+      "RuneScape: Dragonwilds is trying to make one last Early Access impression before its 1.0 launch. Rock Paper Shotgun says the survival spin-off is getting another major update later this month ahead of that launch. Patch size is the boring part. What matters is whether gathering, crafting and combat still feel good in the tenth hour, not just the first trailer minute. If this update lands, Dragonwilds gets momentum before 1.0. If it does not, launch day has to do all the convincing by itself. Follow Pulse Gaming so you never miss a beat.",
+    full_script:
+      "RuneScape: Dragonwilds is trying to make one last Early Access impression before its 1.0 launch. Rock Paper Shotgun says the survival spin-off is getting another major update later this month ahead of that launch. Patch size is the boring part. What matters is whether gathering, crafting and combat still feel good in the tenth hour, not just the first trailer minute. If this update lands, Dragonwilds gets momentum before 1.0. If it does not, launch day has to do all the convincing by itself. Follow Pulse Gaming so you never miss a beat.",
+    tts_script:
+      "RuneScape: Dragonwilds is trying to make one last Early Access impression before its 1.0 launch. Rock Paper Shotgun says the survival spin-off is getting another major update later this month ahead of that launch. Patch size is the boring part. What matters is whether gathering, crafting and combat still feel good in the tenth hour, not just the first trailer minute. If this update lands, Dragonwilds gets momentum before 1.0. If it does not, launch day has to do all the convincing by itself. Follow Pulse Gaming so you never miss a beat.",
+    description:
+      "RuneScape: Dragonwilds fits in one more update before 1.0. Source: Rock Paper Shotgun.",
+    thumbnail_headline: "DRAGONWILDS EARLY ACCESS",
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "script_scorecard.json"), {
+    verdict: "rewrite_required",
+    viral_score: 78,
+    blockers: ["missing_relatable_stakes"],
+  }, { spaces: 2 });
+
+  const report = await repairGoalPublicCopyPackages({
+    storyPackages: [{ story_id: "dragonwilds", artifact_dir: artifactDir }],
+    generatedAt: "2026-06-12T16:20:00.000Z",
+  });
+
+  assert.equal(report.summary.changed_count, 1);
+  assert.equal(report.changed[0].status, "script_scorecard_repaired");
+  const savedManifest = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+  const savedScorecard = await fs.readJson(path.join(artifactDir, "script_scorecard.json"));
+  assert.equal(savedScorecard.verdict, "viral_ready");
+  assert.equal(savedScorecard.blockers.length, 0, JSON.stringify(savedScorecard, null, 2));
+  assert.match(savedManifest.first_spoken_line, /RuneScape Dragonwilds is getting one last chance/i);
+  assert.match(savedManifest.narration_script, /survival games are not judged by patch notes/i);
+  assert.match(savedManifest.narration_script, /starts feeling like homework/i);
+  assert.match(savedManifest.narration_script, /the rhythm feels sharper/i);
+  assert.match(savedManifest.narration_script, /sample for one weekend/i);
+  assert.match(savedManifest.narration_script, /before full launch/i);
+  assert.match(savedManifest.narration_script, /It has to prove this is a RuneScape game/i);
+  assert.doesNotMatch(savedManifest.narration_script, /Dragonwilds has to prove/i);
+  assert.doesNotMatch(savedManifest.narration_script, /\bloop\b/i);
+  assert.doesNotMatch(savedManifest.narration_script, /\b1\.0\b/);
+  assert.doesNotMatch(savedManifest.narration_script, /Patch size is the boring part|momentum before 1\.0/i);
+});
+
+test("public copy package repair rewrites Dragonwilds loop phrasing even when scorecard is green", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-public-copy-dragonwilds-loop-"));
+  const artifactDir = path.join(root, "batch", "dragonwilds-loop");
+  await fs.ensureDir(artifactDir);
+  const script =
+    "RuneScape: Dragonwilds is getting one last chance to win back the people who bounced off Early Access. Rock Paper Shotgun says the survival spin-off has another major update coming later this month before full launch. The catch is brutally practical: players do not judge survival games by a patch note. They judge them after ten minutes of chopping, crafting, fighting and asking if the loop has finally clicked. The game has to prove it is a RuneScape game people can actually main, not a side experiment they try for a weekend and leave. If the loop feels sharper now, launch day has a foundation. If it does not, full launch starts by asking players to trust it again. Follow Pulse Gaming so you never miss a beat.";
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "dragonwilds-loop",
+    canonical_subject: "RuneScape: Dragonwilds",
+    canonical_game: "RuneScape: Dragonwilds",
+    selected_title: "Dragonwilds Has One Last Early Access Test",
+    first_spoken_line: "RuneScape: Dragonwilds is getting one last chance to win back the people who bounced off Early Access.",
+    primary_source: "Rock Paper Shotgun",
+    confirmed_claims: [
+      "RuneScape: Dragonwilds has another major update coming later this month before full launch.",
+    ],
+    narration_script: script,
+    full_script: script,
+    tts_script: script,
+    description: "RuneScape: Dragonwilds has another major update before full launch. Source: Rock Paper Shotgun.",
+    thumbnail_headline: "DRAGONWILDS EARLY ACCESS",
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "script_scorecard.json"), {
+    verdict: "viral_ready",
+    viral_score: 88,
+    blockers: [],
+    warnings: [],
+  }, { spaces: 2 });
+
+  const report = await repairGoalPublicCopyPackages({
+    storyPackages: [{ story_id: "dragonwilds-loop", artifact_dir: artifactDir }],
+    generatedAt: "2026-06-12T16:58:00.000Z",
+  });
+
+  const savedManifest = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+  assert.equal(report.summary.changed_count, 1);
+  assert.match(report.changed[0].status, /changed|script_scorecard_repaired/);
+  assert.match(savedManifest.narration_script, /starts feeling like homework/i);
+  assert.doesNotMatch(savedManifest.narration_script, /\bloop\b/i);
+});
+
 test("public copy package repair rewrites no-curiosity script scorecards before scheduler preflight", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-public-copy-curiosity-score-"));
   const artifactDir = path.join(root, "batch", "subnautica-bonus");

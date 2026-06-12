@@ -119,7 +119,9 @@ test("real motion materializer can scope repair to selected story ids", async ()
   assert.deepEqual(report.jobs.map((job) => job.story_id), ["selected-story"]);
   assert.equal(report.summary.materialized_story_count, 1);
   assert.equal(await fs.pathExists(path.join(selectedJob.artifact_dir, "materialised_motion_clips.json")), true);
+  assert.equal(await fs.pathExists(path.join(selectedJob.artifact_dir, "distinct_motion_family_report.json")), true);
   assert.equal(await fs.pathExists(path.join(skippedJob.artifact_dir, "materialised_motion_clips.json")), false);
+  assert.equal(await fs.pathExists(path.join(skippedJob.artifact_dir, "distinct_motion_family_report.json")), false);
 });
 
 test("real motion materializer CLI accepts repeatable story-id filters", () => {
@@ -215,6 +217,10 @@ test("real motion materializer can refresh a requested ready story from its moti
   const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
   assert.equal(materialised.clip_count, 6);
   assert.equal(materialised.distinct_motion_family_count, 6);
+  const familyReport = await fs.readJson(path.join(artifactDir, "distinct_motion_family_report.json"));
+  assert.equal(familyReport.summary.distinct_motion_family_count, 6);
+  assert.equal(familyReport.summary.direct_video_motion_family_count, 6);
+  assert.deepEqual(familyReport.distinct_motion_families, materialised.distinct_motion_families);
 });
 
 test("real motion materializer accepts segment-validated official Steam motion-pack clips", async () => {

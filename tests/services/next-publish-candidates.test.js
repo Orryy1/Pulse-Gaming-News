@@ -15,6 +15,7 @@ const {
   combinePreflightQa,
   formatNextPublishCandidatesMarkdown,
   parseArgs,
+  resolveUpstreamBenchmarkReportPath,
   runPreflightQaForStory,
   scoreAnalyticsFit,
   mergeBridgeCandidates,
@@ -477,6 +478,33 @@ test("next publish CLI defaults to the scheduler bridge candidate overlay", () =
     path.join(process.cwd(), "output", "goal-20", "goal20_readiness_report.json"),
   );
   assert.equal(args.upstreamAntiSpamReportPath, DEFAULT_UPSTREAM_ANTI_SPAM_REPORT_PATH);
+});
+
+test("next publish CLI resolves sibling Goal 10 evidence for custom bridge paths", async (t) => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-bridge-goal10-"));
+  t.after(async () => {
+    await fs.remove(tmpDir);
+  });
+  const bridgePath = path.join(tmpDir, "goal-contract", "scheduler_bridge_candidates.json");
+  const siblingGoal10 = path.join(tmpDir, "goal-10", "goal10_readiness_report.json");
+  const explicitGoal10 = path.join(tmpDir, "operator-goal10.json");
+  await fs.ensureDir(path.dirname(bridgePath));
+  await fs.outputJson(siblingGoal10, { stories: [{ story_id: "bridge-one", status: "ready" }] });
+  await fs.outputJson(explicitGoal10, { stories: [] });
+
+  const args = parseArgs(["node", "tools/next-publish-candidates.js", "--bridge", bridgePath]);
+  const resolved = await resolveUpstreamBenchmarkReportPath(args);
+  assert.equal(resolved, siblingGoal10);
+
+  const explicit = parseArgs([
+    "node",
+    "tools/next-publish-candidates.js",
+    "--bridge",
+    bridgePath,
+    "--goal10-report",
+    explicitGoal10,
+  ]);
+  assert.equal(await resolveUpstreamBenchmarkReportPath(explicit), explicitGoal10);
 });
 
 test("next publish report can focus candidate ranking on one story id", () => {

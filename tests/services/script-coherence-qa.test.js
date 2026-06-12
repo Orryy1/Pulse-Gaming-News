@@ -372,6 +372,26 @@ test("script coherence blocks public narration that says producer notes out loud
   );
 });
 
+test("script coherence blocks generated player-consequence placeholders", () => {
+  const qa = runScriptCoherenceQa(
+    {
+      title: "Quake Champions Gets A Huge Update",
+      source_type: "rss",
+      subreddit: "PC Gamer",
+      cta: "Follow Pulse Gaming so you never miss a beat",
+      full_script:
+        "Quake Champions just became a value test, not just a catalogue listing. PC Gamer says the shooter has a huge update and free battle pass. That is the gap to watch now: hype is easy, but the player consequence has to show up on screen. Follow Pulse Gaming so you never miss a beat.",
+    },
+    { requireCtaField: true, requireFullScriptCta: true },
+  );
+
+  assert.equal(qa.result, "fail");
+  assert.ok(
+    qa.failures.includes("script_coherence:vague_filler:generated_player_consequence_placeholder"),
+    qa.failures.join(", "),
+  );
+});
+
 test("script coherence blocks abstracted source-person stories that drop the named subject", () => {
   const qa = runScriptCoherenceQa(
     {

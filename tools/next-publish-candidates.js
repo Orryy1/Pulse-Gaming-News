@@ -2654,6 +2654,7 @@ function parseArgs(argv) {
     directVideoEnrichmentWorkOrderPath: DEFAULT_DIRECT_VIDEO_ENRICHMENT_WORK_ORDER_PATH,
     sourceFamilyAcquisitionReportPath: DEFAULT_SOURCE_FAMILY_ACQUISITION_REPORT_PATH,
     upstreamBenchmarkReportPath: DEFAULT_UPSTREAM_BENCHMARK_REPORT_PATH,
+    upstreamBenchmarkReportPathExplicit: false,
     upstreamAntiSpamReportPath: DEFAULT_UPSTREAM_ANTI_SPAM_REPORT_PATH,
     allowLiveFallback: false,
   };
@@ -2697,15 +2698,19 @@ function parseArgs(argv) {
     }
     else if (arg === "--upstream-benchmark-report" || arg === "--goal10-report") {
       args.upstreamBenchmarkReportPath = argv[++i] || null;
+      args.upstreamBenchmarkReportPathExplicit = true;
     }
     else if (arg.startsWith("--upstream-benchmark-report=")) {
       args.upstreamBenchmarkReportPath = arg.slice("--upstream-benchmark-report=".length);
+      args.upstreamBenchmarkReportPathExplicit = true;
     }
     else if (arg.startsWith("--goal10-report=")) {
       args.upstreamBenchmarkReportPath = arg.slice("--goal10-report=".length);
+      args.upstreamBenchmarkReportPathExplicit = true;
     }
     else if (arg === "--no-upstream-benchmark-report" || arg === "--no-goal10-report") {
       args.upstreamBenchmarkReportPath = null;
+      args.upstreamBenchmarkReportPathExplicit = true;
     }
     else if (arg === "--upstream-anti-spam-report" || arg === "--goal20-report") {
       args.upstreamAntiSpamReportPath = argv[++i] || null;
@@ -2724,6 +2729,21 @@ function parseArgs(argv) {
     else if (arg.startsWith("--story=")) args.storyId = normaliseStoryId(arg.slice("--story=".length));
   }
   return args;
+}
+
+function siblingGoal10ReportPathForBridge(bridgeCandidatesPath) {
+  if (!bridgeCandidatesPath) return null;
+  const bridgeDir = path.dirname(path.resolve(bridgeCandidatesPath));
+  const parentDir = path.dirname(bridgeDir);
+  if (path.basename(bridgeDir).toLowerCase() !== "goal-contract") return null;
+  return path.join(parentDir, "goal-10", "goal10_readiness_report.json");
+}
+
+async function resolveUpstreamBenchmarkReportPath(args = {}) {
+  if (args.upstreamBenchmarkReportPathExplicit) return args.upstreamBenchmarkReportPath || null;
+  const siblingPath = siblingGoal10ReportPathForBridge(args.bridgeCandidatesPath);
+  if (siblingPath && await fs.pathExists(siblingPath)) return siblingPath;
+  return args.upstreamBenchmarkReportPath || null;
 }
 
 async function readAnalytics(pathname) {
@@ -2815,6 +2835,7 @@ async function runCli(argv = process.argv) {
     return { exitCode: 0 };
   }
 
+  const upstreamBenchmarkReportPath = await resolveUpstreamBenchmarkReportPath(args);
   const [
     stories,
     analyticsText,
@@ -2829,7 +2850,7 @@ async function runCli(argv = process.argv) {
     readBridgeCandidateManifest(args.bridgeCandidatesPath),
     readOptionalJson(args.directVideoEnrichmentWorkOrderPath),
     readOptionalJson(args.sourceFamilyAcquisitionReportPath),
-    readOptionalJson(args.upstreamBenchmarkReportPath),
+    readOptionalJson(upstreamBenchmarkReportPath),
     readOptionalJson(args.upstreamAntiSpamReportPath),
   ]);
   const bridgeMotionGovernanceEvidence = {
@@ -2912,6 +2933,7 @@ module.exports = {
   readBridgeCandidateManifest,
   readBridgeCandidates,
   readOptionalJson,
+  resolveUpstreamBenchmarkReportPath,
   runPreflightQaForStory,
   scriptScorecardPreflightForStory,
   selectCandidateSourceStories,

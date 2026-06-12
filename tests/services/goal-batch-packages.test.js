@@ -293,6 +293,158 @@ test("goal batch package proof preparation does not revive weak scaffold narrati
   assert.match(prepared.full_script, /Follow Pulse Gaming so you never miss a beat\./);
 });
 
+test("goal batch package proof preparation rejects cross-story contaminated scripts", () => {
+  const prepared = prepareStoryForGoalProof({
+    id: "rss_dragons_dogma_contaminated",
+    title: "Dragon's Dogma 2 gets first of 2 major updates ahead of Dark Arisen DLC",
+    source_type: "rss",
+    source_name: "Polygon",
+    article_url: "https://www.polygon.com/dragons-dogma-2-june-2026-update-fast-travel-fix/",
+    suggested_title: "Forza's Xbox Moment",
+    suggested_thumbnail_text: "XBOX NEEDED THIS",
+    full_script:
+      "Forza just gave Xbox the headline it badly needed. Polygon says Forza Horizon 6 has moved to the top of Metacritic's 2026 list. Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  assert.equal(prepared.canonical_subject, "Dragon's Dogma 2");
+  assert.equal(prepared.canonical_game, "Dragon's Dogma 2");
+  assert.doesNotMatch(prepared.public_title, /forza/i);
+  assert.doesNotMatch(prepared.public_title, /expensive|subscription|metacritic/i);
+  assert.equal(prepared.public_title, "Dragon's Dogma 2 Just Got A Content Push");
+  assert.doesNotMatch(prepared.full_script, /Forza Horizon 6|Metacritic's 2026 list/i);
+  assert.match(prepared.full_script, /Dragon's Dogma 2/i);
+  assert.match(prepared.full_script, /Polygon says Dragon's Dogma 2 gets first of 2 major updates/i);
+});
+
+test("goal batch package proof titles ignore stale script cues from other stories", () => {
+  const prepared = prepareStoryForGoalProof({
+    id: "rss_elder_scrolls_contaminated",
+    title: "The Elder Scrolls 6 gets a disappointing update from Xbox chief",
+    source_type: "rss",
+    source_name: "PC Gamer",
+    article_url: "https://www.pcgamer.com/games/rpg/the-elder-scrolls-6-xbox-chief-update/",
+    suggested_title: "GTA 5 Joins A Subscription Ahead Of GTA 6 Launch",
+    full_script:
+      "GTA 5 just entered the subscription waiting room. PC Gamer says GTA 5 joins a subscription ahead of GTA 6 launch. Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  assert.equal(prepared.canonical_subject, "The Elder Scrolls 6");
+  assert.equal(prepared.public_title, "The Elder Scrolls 6 Just Dropped A New Clue");
+  assert.doesNotMatch(prepared.public_title, /GTA|subscription|expensive/i);
+  assert.doesNotMatch(prepared.full_script, /GTA 5|GTA 6|subscription waiting room/i);
+});
+
+test("goal batch package proof preparation writes story-specific current scored scripts", () => {
+  const cases = [
+    {
+      name: "Dragon's Dogma 2",
+      story: {
+        id: "rss_dragons_dogma_update",
+        title: "Dragon's Dogma 2 gets first of 2 major updates ahead of Dark Arisen DLC",
+        source_type: "rss",
+        source_name: "Polygon",
+        article_url: "https://www.polygon.com/dragons-dogma-2-june-2026-update-fast-travel-fix/",
+        full_script:
+          "Forza just gave Xbox the headline it badly needed. Metacritic says Forza Horizon 6 moved up.",
+      },
+      required: [/Dragon's Dogma 2/i, /major updates/i, /fast travel|pain point|Dark Arisen/i],
+    },
+    {
+      name: "The Elder Scrolls 6",
+      story: {
+        id: "rss_elder_scrolls_update",
+        title: "The Elder Scrolls 6 gets a disappointing update from Xbox chief",
+        source_type: "rss",
+        source_name: "PC Gamer",
+        article_url: "https://www.pcgamer.com/games/rpg/the-elder-scrolls-6-xbox-chief-update/",
+        full_script:
+          "GTA 5 just entered the subscription waiting room. PC Gamer says GTA 5 joins a subscription ahead of GTA 6 launch.",
+      },
+      required: [/The Elder Scrolls 6/i, /Xbox chief|reveal|silence|fans/i],
+    },
+    {
+      name: "Gears Of War: E-Day",
+      story: {
+        id: "rss_gears_current",
+        title: "Everything We Know About Gears Of War: E-Day, Xbox's Big Exclusive For 2026",
+        source_type: "rss",
+        source_name: "Kotaku",
+        article_url:
+          "https://kotaku.com/everything-we-know-about-gears-of-war-e-day-xboxs-big-exclusive-for-2026-2000705633",
+        full_script:
+          "Everything We Know About Gears Of War: E-Day, Xbox's Big Exclusive For 2026's paid crowd just sent a loud warning.",
+      },
+      required: [/Gears Of War: E-Day/i, /Xbox exclusive|2026|prequel|why/i],
+    },
+    {
+      name: "Fable",
+      story: {
+        id: "rss_fable_delay",
+        title: "Fable Reboot Delay Was Disappointing To The Devs, But Avoiding GTA 6 Makes Sense",
+        source_type: "rss",
+        source_name: "GameSpot",
+        article_url: "https://www.gamespot.com/articles/fable-reboot-delay-was-disappointing-to-the-devs-but-avoiding-gta-6-makes-sense/",
+        full_script: "Fable has a date update. Follow Pulse Gaming so you never miss a beat.",
+      },
+      required: [/Fable/i, /GTA 6/i, /debate|argument|judged on its own terms/i],
+    },
+    {
+      name: "Nintendo",
+      story: {
+        id: "rss_nintendo_scalpers",
+        title: "Nintendo fights scalpers with new Nintendo Switch 2 buying restrictions",
+        source_type: "rss",
+        source_name: "Polygon",
+        article_url: "https://www.polygon.com/nintendo-switch-2-scalper-buying-restrictions/",
+        full_script: "Nintendo now has footage to judge: pace, readability and whether the moment-to-moment play has weight.",
+      },
+      required: [/Nintendo/i, /scalpers|restrictions|playtime|real fans/i],
+    },
+  ];
+
+  for (const item of cases) {
+    const prepared = prepareStoryForGoalProof(item.story);
+    for (const required of item.required) {
+      assert.match(prepared.full_script, required, item.name);
+    }
+    assert.match(prepared.full_script, /Follow Pulse Gaming so you never miss a beat\./, item.name);
+    assert.doesNotMatch(
+      prepared.full_script,
+      /strangest pitch|sharper entry point|change a real player choice|buy, wait, reinstall or skip|repackages something familiar|moment-to-moment play has weight/i,
+      item.name,
+    );
+  }
+});
+
+test("goal batch package proof preparation resolves current franchise subjects from titles", () => {
+  const halo = prepareStoryForGoalProof({
+    id: "rss_halo_remake",
+    title: "I watched the new Halo remake gameplay, then replayed the original to nitpick the differences",
+    source_type: "rss",
+    source_name: "PC Gamer",
+    article_url:
+      "https://www.pcgamer.com/games/fps/i-watched-the-new-halo-remake-gameplay-then-replayed-the-original-to-nitpick-the-differences/",
+    full_script:
+      "This Game is the name to watch here. Follow Pulse Gaming so you never miss a beat.",
+  });
+  const gears = prepareStoryForGoalProof({
+    id: "rss_gears_e_day",
+    title: "Everything We Know About Gears Of War: E-Day, Xbox's Big Exclusive For 2026",
+    source_type: "rss",
+    source_name: "Kotaku",
+    article_url:
+      "https://kotaku.com/everything-we-know-about-gears-of-war-e-day-xboxs-big-exclusive-for-2026-2000705633",
+    full_script:
+      "Everything We Know About Gears Of War: E-Day, Xbox's Big Exclusive For 2026's paid crowd just sent a loud warning. Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  assert.equal(halo.canonical_subject, "Halo: Campaign Evolved");
+  assert.doesNotMatch(halo.full_script, /^This Game is the name to watch here/i);
+  assert.equal(gears.canonical_subject, "Gears Of War: E-Day");
+  assert.match(gears.full_script, /Gears Of War: E-Day/i);
+  assert.doesNotMatch(gears.full_script, /paid crowd|Steam player spike/i);
+});
+
 test("goal batch package platform packs do not revive stale identity CTAs", () => {
   const batch = buildGoalBatchPackages({
     stories: [

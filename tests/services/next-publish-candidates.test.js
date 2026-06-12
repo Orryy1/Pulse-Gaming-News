@@ -1182,6 +1182,45 @@ test("bridge preflight accepts visual QA and benchmark evidence from scheduler c
   assert.deepEqual(preflight.blockers, []);
 });
 
+test("preflight governance uses enabled scheduler platforms instead of deferred TikTok by default", async () => {
+  let governanceOptions = null;
+  const pass = async () => ({ result: "pass", failures: [], warnings: [] });
+  const preflight = await runPreflightQaForStory(
+    baseStory({
+      id: "enabled_platform_scope",
+      title: "Mina The Hollower Ending Points At The Sequel Risk",
+      first_spoken_line: "Mina the Hollower may have hidden its sequel problem inside the ending.",
+      description: "GameSpot published a spoiler interview with Yacht Club. Source: GameSpot.",
+      full_script:
+        "Mina the Hollower may have hidden its sequel problem inside the ending. GameSpot published a spoiler interview with Yacht Club that changes how players read the sequel hook.",
+    }),
+    {
+      runSourceAgeQa: pass,
+      runContentQa: pass,
+      runVideoQa: pass,
+      buildVideoQaOptionsForStory: () => ({}),
+      runPlatformVideoQa: pass,
+      runStudioGovernancePreflight: async (_story, options) => {
+        governanceOptions = options;
+        return { result: "pass", failures: [], warnings: [] };
+      },
+      runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+      runIncidentGuard: pass,
+      runVoiceQualityQa: pass,
+      runAudioSegmentQa: pass,
+      runTimestampAlignmentQa: pass,
+      runScriptScorecardQa: pass,
+      env: {
+        TIKTOK_ENABLED: "false",
+        TIKTOK_AUTO_UPLOAD_ENABLED: "false",
+      },
+    },
+  );
+
+  assert.equal(preflight.status, "pass");
+  assert.deepEqual(governanceOptions.platforms, ["youtube", "instagram", "facebook"]);
+});
+
 test("bridge preflight blocks source evidence older than seven days without approval", async () => {
   const preflight = await runPreflightQaForStory(
     baseStory({

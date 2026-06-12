@@ -51,6 +51,7 @@ const DEFAULT_ANALYTICS_PATH = "D:\\pulse-data\\analytics_findings.md";
 const DEFAULT_LIMIT = 12;
 const DEFAULT_SCRIPT_SCORE_THRESHOLD = 75;
 const DEFAULT_SOURCE_AGE_POLICY_HOURS = 168;
+const DEFAULT_ENABLED_SCHEDULER_GOVERNANCE_PLATFORMS = ["youtube", "instagram", "facebook"];
 
 const PUBLIC_PLATFORM_FIELDS = [
   "youtube_post_id",
@@ -61,6 +62,27 @@ const PUBLIC_PLATFORM_FIELDS = [
   "twitter_post_id",
   "x_post_id",
 ];
+
+function envEnabled(value) {
+  return /^(1|true|yes|on)$/i.test(String(value || "").trim());
+}
+
+function schedulerGovernancePlatforms(env = process.env) {
+  const platforms = [...DEFAULT_ENABLED_SCHEDULER_GOVERNANCE_PLATFORMS];
+  if (envEnabled(env?.TIKTOK_ENABLED) && envEnabled(env?.TIKTOK_AUTO_UPLOAD_ENABLED)) {
+    platforms.splice(1, 0, "tiktok");
+  }
+  return platforms;
+}
+
+function schedulerStudioGovernanceOptions(opts = {}) {
+  const supplied = opts.studioGovernanceOptions || {};
+  if (Array.isArray(supplied.platforms) && supplied.platforms.length > 0) return supplied;
+  return {
+    ...supplied,
+    platforms: schedulerGovernancePlatforms(opts.env || process.env),
+  };
+}
 
 const BRIDGE_REPLACED_MEDIA_FIELDS = [
   "downloaded_images",
@@ -2426,7 +2448,7 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
     );
     const governance = await runStudioGovernancePreflight(
       governanceStory,
-      opts.studioGovernanceOptions || {},
+      schedulerStudioGovernanceOptions(opts),
     );
     const publicCopy = summarisePublicCopyQaResult(
       await runPublicCopyQa(publicCopyManifestForStory(publicCopyStory)),

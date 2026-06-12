@@ -562,6 +562,62 @@ test("Visual V4 motion pack accepts official storefront cinematic motion without
   );
 });
 
+test("Visual V4 motion pack honours validator-approved Steam storefront trailer motion threshold", () => {
+  const sourceUrl =
+    "https://video.akamai.steamstatic.com/store_trailers/3240220/840632/e563e0e788371fcadb925449e0ed485937ddb129/1750825067/hls_264_master.m3u8?t=1740681453";
+  const pack = buildVisualV4MotionPack({
+    story: {
+      id: "gta-subscription-story",
+      title: "GTA 5 Joins A Subscription Ahead Of GTA 6 Launch",
+      suggested_title: "GTA 5 Joins A Subscription Ahead Of GTA 6 Launch",
+      suggested_thumbnail_text: "GTA 5 SUBSCRIPTION",
+      canonical_subject: "Grand Theft Auto V Enhanced",
+      canonical_game: "Grand Theft Auto V Enhanced",
+      full_script:
+        "GTA 5 just became the GTA 6 waiting room. GameSpot reports GTA 5 has joined a subscription service ahead of GTA 6.",
+    },
+    trustedFootageReport: trustedReport("gta-subscription-story", ["steam_3240220_840632"]),
+    segmentValidationReport: segmentReport([
+      {
+        story_id: "gta-subscription-story",
+        clip_key: `${sourceUrl}|grand_theft_auto_v_enhanced|8.40`,
+        source_url: sourceUrl,
+        source_type: "steam_movie",
+        provider: "steam",
+        source_family: null,
+        entity: "Grand Theft Auto V Enhanced",
+        reference_title: "Cluckin' Bell Farm Raid",
+        movie_id: "840632",
+        store_app_id: "3240220",
+        store_app_title: "Grand Theft Auto V Enhanced",
+        media_start_s: 8.4,
+        duration_s: 5,
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+        segment_motion_class: "gameplay_action",
+        action_score: 64.9,
+        action_sample_count: 0,
+        validation_reason: "official_storefront_trailer_motion_samples_passed",
+        samples: [
+          { local_path: "test/output/gta/a.jpg" },
+          { local_path: "test/output/gta/b.jpg" },
+          { local_path: "test/output/gta/c.jpg" },
+        ],
+      },
+    ]),
+    generatedAt: "2026-06-12T13:08:00.000Z",
+  });
+
+  assert.equal(pack.clips.length, 1);
+  assert.equal(pack.clips[0].source_family, "steam_3240220_840632");
+  assert.equal(
+    pack.rejected_candidates.some(
+      (candidate) => candidate.reason === "segment_action_score_too_low",
+    ),
+    false,
+  );
+});
+
 test("Visual V4 motion pack rejects official product motion when the story needs gameplay evidence", () => {
   const pack = buildVisualV4MotionPack({
     story: forzaStory({
@@ -723,6 +779,75 @@ test("Visual V4 motion pack treats validated official direct media as trust evid
   );
   assert.equal(pack.readiness.blockers.includes("actual_motion_clip_minimum_not_met"), true);
   assert.equal(pack.readiness.blockers.includes("distinct_motion_families_minimum_not_met"), true);
+});
+
+test("Visual V4 motion pack recognises licensed direct-media acquisition rows as trusted official references", () => {
+  const mediaUrl =
+    "https://cdn.trailers.xboxservices.com/trailers/00000000-0000-0000-0000-000000000000/is/content/microsoftassets/beastro-AVS.m3u8?packagedStreaming=true";
+  const pack = buildVisualV4MotionPack({
+    story: forzaStory({
+      id: "beastro-pack",
+      title: "Beastro Turns Cozy Cooking Into A Card Game",
+      suggested_title: "Beastro Turns Cozy Cooking Into A Card Game",
+      suggested_thumbnail_text: "BEASTRO CARD KITCHEN",
+      canonical_subject: "Beastro",
+      canonical_game: "Beastro",
+      full_script:
+        "Beastro turns cooking into a card game, which gives Xbox a stranger Game Pass pitch than another farming sim.",
+    }),
+    trustedFootageReport: {
+      rows: [
+        {
+          story_id: "beastro-pack",
+          entity: "Beastro",
+          source_family: "xbox_product_beastro",
+          source_type: "official_platform_product_page",
+          source_owner: "Xbox",
+          source_tier: "official_platform_storefront",
+          status: "ready_for_segment_validation",
+          access_mode: "approved_direct_media_url",
+          rights_gate: "official_source",
+          official_source_url: "https://www.xbox.com/en-us/games/store/beastro/9njrsc0b0k88",
+          approved_media_url: mediaUrl,
+          source_url_kind: "hls_manifest",
+          segment_validation_eligible: true,
+        },
+      ],
+    },
+    segmentValidationReport: segmentReport([
+      {
+        story_id: "beastro-pack",
+        clip_key: `${mediaUrl}|beastro|42.00`,
+        source_url: mediaUrl,
+        source_family: "xbox_product_beastro",
+        source_type: "licensed_direct_media_url",
+        provider: "licensed_direct_media_acquisition",
+        entity: "Beastro",
+        media_start_s: 42,
+        duration_s: 5,
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+        segment_motion_class: "gameplay_action",
+        action_score: 84,
+        action_sample_count: 3,
+        validation_reason: "segment_samples_passed",
+        samples: [
+          { local_path: "test/output/beastro/a.jpg" },
+          { local_path: "test/output/beastro/b.jpg" },
+          { local_path: "test/output/beastro/c.jpg" },
+        ],
+      },
+    ]),
+    generatedAt: "2026-06-12T12:55:00.000Z",
+  });
+
+  assert.equal(pack.clips.length, 1);
+  assert.equal(pack.clips[0].trusted_source_matched, true);
+  assert.equal(pack.trusted_source_pipeline.references_found, 1);
+  assert.equal(
+    pack.readiness.blockers.includes("no_trusted_footage_references_for_story"),
+    false,
+  );
 });
 
 test("Visual V4 motion pack rejects promo-card source families as fake motion", () => {

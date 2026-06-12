@@ -19,6 +19,7 @@ const {
   readPlatformOperationalConfig,
   readRepairWorkOrder,
   readStoryPackages,
+  mergePreflightCandidateStoryPackages,
 } = require("../../tools/goal-dry-run-publish");
 const { currentRenderPolicyManifest } = require("../../lib/studio/v4/render-policy");
 
@@ -3394,6 +3395,40 @@ test("goal dry-run CLI prefers current production cutover story packages by defa
 
   assert.equal(packages.length, 1);
   assert.equal(packages[0].story_id, "fresh-cutover-package");
+});
+
+test("goal dry-run CLI merges publish-ready scheduler candidates with exported artefact paths", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-merge-preflight-packages-"));
+  const existing = await makeStoryPackage(root, "existing-cutover", "GREEN", "Existing Cutover Story Works");
+  const scheduler = await makeStoryPackage(root, "scheduler-ready", "GREEN", "Scheduler Ready Story Works");
+
+  const packages = mergePreflightCandidateStoryPackages(
+    [existing],
+    {
+      candidates: [
+        {
+          id: "existing-cutover",
+          status: "publish_ready",
+          source: { exported_path: path.join(existing.artifact_dir, "visual_v4_render.mp4") },
+        },
+        {
+          id: "scheduler-ready",
+          status: "publish_ready",
+          source: { exported_path: path.join(scheduler.artifact_dir, "visual_v4_render.mp4") },
+        },
+        {
+          id: "review-only",
+          status: "review",
+          source: { exported_path: path.join(root, "review-only", "visual_v4_render.mp4") },
+        },
+      ],
+    },
+    root,
+  );
+
+  assert.deepEqual(packages.map((item) => item.story_id), ["existing-cutover", "scheduler-ready"]);
+  assert.equal(packages[1].artifact_dir, scheduler.artifact_dir);
+  assert.equal(packages[1].scheduler_preflight_package_source, "candidate_exported_path");
 });
 
 test("goal dry-run CLI skips stale auto-loaded scheduler preflight reports", async () => {

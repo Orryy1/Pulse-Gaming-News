@@ -1182,6 +1182,82 @@ test("bridge preflight accepts visual QA and benchmark evidence from scheduler c
   assert.deepEqual(preflight.blockers, []);
 });
 
+test("bridge preflight blocks source evidence older than seven days without approval", async () => {
+  const preflight = await runPreflightQaForStory(
+    baseStory({
+      id: "stale_source_bridge",
+      title: "Hot Wheels Infinite Rush Could Be Toy-Car Forza",
+      selected_title: "Hot Wheels Infinite Rush Could Be Toy-Car Forza",
+      canonical_subject: "Hot Wheels Infinite Rush",
+      first_spoken_line: "Hot Wheels Infinite Rush sounds like a toy advert until the details kick in.",
+      description: "Xbox Wire revealed Hot Wheels Infinite Rush. Source: Xbox Wire.",
+      full_script:
+        "Hot Wheels Infinite Rush sounds like a toy advert until the details kick in. Xbox Wire says the racer is built around four open islands.",
+      source_published_at: "2026-06-05T00:00:00.000Z",
+      scheduler_bridge_source: "goal_production_cutover",
+    }),
+    {
+      nowMs: Date.parse("2026-06-12T10:30:00.000Z"),
+      runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+      runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+      runBridgeMotionGovernanceQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runAggregateBenchmarkQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runScriptScorecardQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    },
+  );
+
+  assert.equal(preflight.status, "blocked");
+  assert.ok(preflight.blockers.includes("source_age:source_age_exceeds_policy"));
+  assert.equal(preflight.checks.source_age.evidence.policy_hours, 168);
+});
+
+test("bridge preflight keeps operator-approved evergreen stale sources as warnings", async () => {
+  const preflight = await runPreflightQaForStory(
+    baseStory({
+      id: "evergreen_stale_source_bridge",
+      title: "Hot Wheels Infinite Rush Could Be Toy-Car Forza",
+      selected_title: "Hot Wheels Infinite Rush Could Be Toy-Car Forza",
+      canonical_subject: "Hot Wheels Infinite Rush",
+      first_spoken_line: "Hot Wheels Infinite Rush sounds like a toy advert until the details kick in.",
+      description: "Xbox Wire revealed Hot Wheels Infinite Rush. Source: Xbox Wire.",
+      full_script:
+        "Hot Wheels Infinite Rush sounds like a toy advert until the details kick in. Xbox Wire says the racer is built around four open islands.",
+      source_published_at: "2026-06-05T00:00:00.000Z",
+      scheduler_bridge_source: "goal_production_cutover",
+      stale_temporal_review: {
+        decision: "approve_stale_with_current_relevance",
+        operator_approved: true,
+      },
+    }),
+    {
+      nowMs: Date.parse("2026-06-12T10:30:00.000Z"),
+      runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+      runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+      runBridgeMotionGovernanceQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runAggregateBenchmarkQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runScriptScorecardQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    },
+  );
+
+  assert.equal(preflight.status, "warn");
+  assert.deepEqual(preflight.blockers, []);
+  assert.ok(preflight.warnings.includes("source_age:source_age_exceeds_policy_operator_approved"));
+});
+
 test("preflight public copy preserves confirmed claims for specific detail checks", async () => {
   const preflight = await runPreflightQaForStory(
     baseStory({

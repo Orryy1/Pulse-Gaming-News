@@ -3128,6 +3128,7 @@ test("production cutover emits scheduler bridge candidates for ready final rende
     canonical_angle: "Steam launch hit a new Xbox ceiling",
     primary_source: "SteamDB",
     primary_source_url: "https://steamdb.info/app/123456/charts/",
+    source_published_at: "2026-05-22T01:15:00.000Z",
     selected_title: "Forza Horizon 6 Just Broke Xbox's Steam Ceiling",
     thumbnail_headline: "FORZA BROKE STEAM",
     narration_script:
@@ -3216,6 +3217,7 @@ test("production cutover emits scheduler bridge candidates for ready final rende
   assert.equal(candidate.auto_approved, true);
   assert.equal(candidate.render_lane, "visual_v4_production");
   assert.equal(candidate.render_quality_class, "premium");
+  assert.equal(candidate.source_published_at, "2026-05-22T01:15:00.000Z");
   assert.equal(candidate.allow_retention_short_video, true);
   assert.equal(candidate.duration_lane, "pulse_retention_short");
   assert.equal(candidate.duration_seconds, 44.4);

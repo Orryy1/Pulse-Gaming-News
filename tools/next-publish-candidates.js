@@ -50,6 +50,7 @@ const DEFAULT_UPSTREAM_ANTI_SPAM_REPORT_PATH = path.join(
 const DEFAULT_ANALYTICS_PATH = "D:\\pulse-data\\analytics_findings.md";
 const DEFAULT_LIMIT = 12;
 const DEFAULT_SCRIPT_SCORE_THRESHOLD = 75;
+const DEFAULT_SOURCE_AGE_POLICY_HOURS = 168;
 
 const PUBLIC_PLATFORM_FIELDS = [
   "youtube_post_id",
@@ -965,6 +966,7 @@ function summariseQaResult(result = {}) {
 }
 
 function combinePreflightQa({
+  sourceAge,
   content,
   video,
   platform,
@@ -979,6 +981,7 @@ function combinePreflightQa({
   scriptScorecard,
 } = {}) {
   const checks = {
+    ...(sourceAge ? { source_age: summariseQaResult(sourceAge) } : {}),
     content: summariseQaResult(content),
     video: summariseQaResult(video),
     platform: summariseQaResult(platform),
@@ -1435,6 +1438,120 @@ async function scriptScorecardPreflightForStory(story = {}, opts = {}) {
       viral_score: score,
       threshold,
       verdict: scorecard.verdict || scorecard.status || scorecard.result || null,
+    },
+  };
+}
+
+function parsedSourcePublishedAt(story = {}) {
+  const candidates = [
+    story.source_published_at,
+    story.published_at,
+    story.primary_source_published_at,
+    story.primary_source?.published_at,
+    story.source_manifest?.source_published_at,
+    story.source_manifest?.primary_source?.published_at,
+    story.canonical_story_manifest?.source_published_at,
+    story.timestamp,
+  ];
+  for (const candidate of candidates) {
+    const parsed = Date.parse(cleanText(candidate));
+    if (Number.isFinite(parsed)) return { value: cleanText(candidate), ms: parsed };
+  }
+  return null;
+}
+
+function staleSourceApprovalStatus(story = {}) {
+  const review = objectValue(
+    story.stale_temporal_review ||
+      story.stale_source_review ||
+      story.evergreen_review ||
+      story.source_age_review,
+    {},
+  );
+  const decision = cleanText(
+    review.decision ||
+      review.status ||
+      story.stale_temporal_review_decision ||
+      story.stale_source_review_decision ||
+      story.evergreen_review_decision,
+  ).toLowerCase();
+  const explicitApproval =
+    story.evergreen_approved === true ||
+    story.operator_approved_evergreen === true ||
+    story.stale_source_operator_approved === true ||
+    story.stale_temporal_operator_approved === true ||
+    review.operator_approved === true ||
+    review.approved === true;
+  const approvalDecision =
+    /^(approve_evergreen|approved_evergreen|approve_stale_evergreen|operator_approved_evergreen|approve_current_relevance|approved_current_relevance|approve_stale_with_current_relevance|approved_stale_with_current_relevance)$/i.test(
+      decision,
+    );
+  return {
+    approved: explicitApproval || approvalDecision,
+    decision: decision || null,
+  };
+}
+
+async function sourceAgePreflightForStory(story = {}, opts = {}) {
+  const sourceManifest = objectValue(story.source_manifest, {});
+  const freshnessGate = cleanText(sourceManifest.freshness_gate || story.freshness_gate).toLowerCase();
+  const published = parsedSourcePublishedAt(story);
+  if (!published && freshnessGate !== "blocked") return null;
+
+  const policyHours = Number.isFinite(Number(story.source_age_policy_hours))
+    ? Number(story.source_age_policy_hours)
+    : Number.isFinite(Number(sourceManifest.source_age_policy_hours))
+      ? Number(sourceManifest.source_age_policy_hours)
+      : DEFAULT_SOURCE_AGE_POLICY_HOURS;
+  const nowMs = Number.isFinite(Number(opts.nowMs))
+    ? Number(opts.nowMs)
+    : opts.now instanceof Date
+      ? opts.now.getTime()
+      : Date.now();
+  const ageHours = published
+    ? Math.max(0, Number(((nowMs - published.ms) / 36e5).toFixed(2)))
+    : null;
+  const approval = staleSourceApprovalStatus(story);
+  const stale =
+    freshnessGate === "blocked" ||
+    (Number.isFinite(ageHours) && ageHours > policyHours);
+
+  if (!stale) {
+    return {
+      result: "pass",
+      failures: [],
+      warnings: [],
+      evidence: {
+        source_published_at: published?.value || null,
+        age_hours: ageHours,
+        policy_hours: policyHours,
+      },
+    };
+  }
+
+  if (approval.approved) {
+    return {
+      result: "warn",
+      failures: [],
+      warnings: ["source_age_exceeds_policy_operator_approved"],
+      evidence: {
+        source_published_at: published?.value || null,
+        age_hours: ageHours,
+        policy_hours: policyHours,
+        stale_source_decision: approval.decision,
+      },
+    };
+  }
+
+  return {
+    result: "fail",
+    failures: ["source_age_exceeds_policy"],
+    warnings: [],
+    evidence: {
+      source_published_at: published?.value || null,
+      age_hours: ageHours,
+      policy_hours: policyHours,
+      freshness_gate: freshnessGate || null,
     },
   };
 }
@@ -2227,6 +2344,7 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
     buildVideoQaOptionsForStory = require("../lib/services/video-qa").buildVideoQaOptionsForStory,
     runPlatformVideoQa = require("../lib/services/platform-video-qa").runPlatformVideoQa,
     runStudioGovernancePreflight = require("../lib/services/studio-governance-preflight").runStudioGovernancePreflight,
+    runSourceAgeQa = sourceAgePreflightForStory,
     runPublicCopyQa = (manifest) => require("../lib/goal-public-copy-qa").evaluateGoalPublicCopy(manifest),
     runIncidentGuard = incidentGuardPreflightForStory,
     runAudioSegmentQa = audioSegmentPreflightForStory,
@@ -2243,6 +2361,7 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
     const platformStory = cloneStoryForPreflight(story);
     const governanceStory = cloneStoryForPreflight(story);
     const publicCopyStory = cloneStoryForPreflight(story);
+    const sourceAge = await runSourceAgeQa(cloneStoryForPreflight(story), opts);
     const content = await runContentQa(contentStory, {
       blockThinVisuals: true,
       ...(opts.contentQaOptions || {}),
@@ -2276,6 +2395,7 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
       : null;
     const scriptScorecard = await runScriptScorecardQa(cloneStoryForPreflight(story), opts);
     return combinePreflightQa({
+      sourceAge,
       content,
       video,
       platform,
@@ -2936,6 +3056,7 @@ module.exports = {
   resolveUpstreamBenchmarkReportPath,
   runPreflightQaForStory,
   scriptScorecardPreflightForStory,
+  sourceAgePreflightForStory,
   selectCandidateSourceStories,
   timestampAlignmentPreflightForStory,
   normaliseBridgeMotionGovernanceEvidence,

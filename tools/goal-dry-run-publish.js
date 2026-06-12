@@ -301,6 +301,42 @@ function mergePlatformOperationalConfig(base = {}, override = {}) {
   return merged;
 }
 
+function cleanText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function mergePreflightCandidateStoryPackages(storyPackages = [], candidatePreflightReport = null, root = process.cwd()) {
+  const merged = Array.isArray(storyPackages) ? [...storyPackages] : [];
+  const seen = new Set(
+    merged
+      .map((item) => cleanText(item?.story_id || item?.id))
+      .filter(Boolean),
+  );
+  const candidates = Array.isArray(candidatePreflightReport?.candidates)
+    ? candidatePreflightReport.candidates
+    : [];
+  for (const candidate of candidates) {
+    const storyId = cleanText(candidate?.id || candidate?.story_id);
+    if (!storyId || seen.has(storyId)) continue;
+    if (cleanText(candidate.status) !== "publish_ready") continue;
+    const exportedPath = cleanText(candidate.source?.exported_path || candidate.exported_path || candidate.final_mp4_path);
+    if (!exportedPath) continue;
+    const resolvedExportedPath = path.isAbsolute(exportedPath)
+      ? exportedPath
+      : path.resolve(root, exportedPath);
+    const artifactDir = path.dirname(resolvedExportedPath);
+    merged.push({
+      story_id: storyId,
+      artifact_dir: artifactDir,
+      scheduler_preflight_package_source: "candidate_exported_path",
+      no_publish_triggered: true,
+      no_db_mutation: true,
+    });
+    seen.add(storyId);
+  }
+  return merged;
+}
+
 async function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
   if (args.help) {
@@ -315,8 +351,13 @@ async function main(argv = process.argv.slice(2)) {
     readRepairWorkOrder(root, args.repairWorkOrderPath),
     readAntiSpamReport(root, args.antiSpamReportPath),
   ]);
-  const plan = await buildGoalDryRunPublishPlan({
+  const mergedStoryPackages = mergePreflightCandidateStoryPackages(
     storyPackages,
+    candidatePreflightReport,
+    root,
+  );
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: mergedStoryPackages,
     candidatePreflightReport,
     requireSchedulerPreflight: args.requireSchedulerPreflight,
     platformOperationalConfig,
@@ -347,6 +388,7 @@ module.exports = {
   readRepairWorkOrder,
   readAntiSpamReport,
   readStoryPackages,
+  mergePreflightCandidateStoryPackages,
   platformStatusMatrixToOperational,
   platformReadinessDoctorToOperational,
   main,

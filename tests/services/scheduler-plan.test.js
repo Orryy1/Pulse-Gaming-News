@@ -153,17 +153,19 @@ test("buildSchedulerPlan: surfaces every DEFAULT_SCHEDULE", () => {
   }
 });
 
-test("buildSchedulerPlan: cadence_status reflects the 3x publish windows shipped in Task 3", () => {
+test("buildSchedulerPlan: cadence_status reflects the 5x guarded growth windows", () => {
   const plan = buildSchedulerPlan(DEFAULT_SCHEDULES);
   assert.strictEqual(plan.cadence_status.morning_publish, true);
+  assert.strictEqual(plan.cadence_status.late_morning_publish, true);
   assert.strictEqual(plan.cadence_status.afternoon_publish, true);
+  assert.strictEqual(plan.cadence_status.mid_afternoon_publish, true);
   assert.strictEqual(plan.cadence_status.evening_publish, true);
-  assert.strictEqual(plan.cadence_status.daily_publish_slots, 3);
+  assert.strictEqual(plan.cadence_status.daily_publish_slots, 5);
 });
 
 test("buildSchedulerPlan: by_lane includes at least normal + hunt + maintenance", () => {
   const plan = buildSchedulerPlan(DEFAULT_SCHEDULES);
-  assert.ok(plan.by_lane.normal >= 6, "3 produce + 3 publish = 6 normal");
+  assert.ok(plan.by_lane.normal >= 10, "5 produce + 5 publish = 10 normal");
   assert.ok(plan.by_lane.hunt >= 4, "4+ hunt windows");
   assert.ok(plan.by_lane.maintenance >= 1);
 });
@@ -277,7 +279,7 @@ test("GET /api/scheduler/plan: authenticated returns schedule list + cadence sta
     );
     // Publish windows surfaced with "normal" lane.
     const publishWindows = body.schedules.filter((s) => s.kind === "publish");
-    assert.strictEqual(publishWindows.length, 3);
+    assert.strictEqual(publishWindows.length, 5);
     for (const p of publishWindows) assert.strictEqual(p.lane, "normal");
   } finally {
     server.close();

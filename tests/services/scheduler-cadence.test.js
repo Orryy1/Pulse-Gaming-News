@@ -3,50 +3,75 @@ const assert = require("node:assert");
 
 const { DEFAULT_SCHEDULES } = require("../../lib/scheduler");
 
-// Lock the three-windows-a-day cadence Task 3 introduced in place.
-// The previous single publish_primary at 19:00 UTC produced one
-// Short per day; this suite pins the addition of morning +
-// afternoon windows without breaking the long-standing 19:00
-// idempotency key.
+// Lock the guarded growth cadence in place. The previous single
+// publish_primary at 19:00 UTC produced one Short per day, then Task 3
+// added 09/14/19. Growth cadence adds two extra guarded windows without
+// breaking the long-standing 19:00 idempotency key.
 
 function byName(name) {
   return DEFAULT_SCHEDULES.find((s) => s.name === name);
 }
 
-test("schedules: three produce windows exist (morning / afternoon / primary)", () => {
-  const names = ["produce_morning", "produce_afternoon", "produce_primary"];
-  for (const n of names) {
-    assert.ok(byName(n), `missing schedule: ${n}`);
-  }
-});
-
-test("schedules: three publish windows exist (morning / afternoon / primary)", () => {
-  const names = ["publish_morning", "publish_afternoon", "publish_primary"];
-  for (const n of names) {
-    assert.ok(byName(n), `missing schedule: ${n}`);
-  }
-});
-
-test("schedules: each publish window fires 1h AFTER its produce pair", () => {
-  const pairs = [
-    ["produce_morning", "publish_morning", 8, 9],
-    ["produce_afternoon", "publish_afternoon", 13, 14],
-    ["produce_primary", "publish_primary", 18, 19],
+test("schedules: five produce windows exist for guarded growth cadence", () => {
+  const names = [
+    "produce_morning",
+    "produce_late_morning",
+    "produce_afternoon",
+    "produce_mid_afternoon",
+    "produce_primary",
   ];
-  for (const [prodName, pubName, prodHour, pubHour] of pairs) {
+  for (const n of names) {
+    assert.ok(byName(n), `missing schedule: ${n}`);
+  }
+});
+
+test("schedules: five publish windows exist for guarded growth cadence", () => {
+  const names = [
+    "publish_morning",
+    "publish_late_morning",
+    "publish_afternoon",
+    "publish_mid_afternoon",
+    "publish_primary",
+  ];
+  for (const n of names) {
+    assert.ok(byName(n), `missing schedule: ${n}`);
+  }
+});
+
+test("schedules: each growth publish window has a produce lead-in", () => {
+  const pairs = [
+    ["produce_morning", "publish_morning", "0 8 * * *", "0 9 * * *"],
+    ["produce_late_morning", "publish_late_morning", "30 10 * * *", "0 11 * * *"],
+    ["produce_afternoon", "publish_afternoon", "0 13 * * *", "0 14 * * *"],
+    ["produce_mid_afternoon", "publish_mid_afternoon", "0 15 * * *", "0 16 * * *"],
+    ["produce_primary", "publish_primary", "0 18 * * *", "0 19 * * *"],
+  ];
+  for (const [prodName, pubName, prodCron, pubCron] of pairs) {
     const p = byName(prodName);
     const q = byName(pubName);
     assert.ok(p && q, `pair ${prodName}/${pubName} missing`);
-    assert.strictEqual(p.cron_expr, `0 ${prodHour} * * *`);
-    assert.strictEqual(q.cron_expr, `0 ${pubHour} * * *`);
+    assert.strictEqual(p.cron_expr, prodCron);
+    assert.strictEqual(q.cron_expr, pubCron);
   }
 });
 
 test("schedules: produce kind is 'produce' and publish kind is 'publish'", () => {
-  for (const n of ["produce_morning", "produce_afternoon", "produce_primary"]) {
+  for (const n of [
+    "produce_morning",
+    "produce_late_morning",
+    "produce_afternoon",
+    "produce_mid_afternoon",
+    "produce_primary",
+  ]) {
     assert.strictEqual(byName(n).kind, "produce");
   }
-  for (const n of ["publish_morning", "publish_afternoon", "publish_primary"]) {
+  for (const n of [
+    "publish_morning",
+    "publish_late_morning",
+    "publish_afternoon",
+    "publish_mid_afternoon",
+    "publish_primary",
+  ]) {
     assert.strictEqual(byName(n).kind, "publish");
   }
 });
@@ -91,10 +116,22 @@ test("schedules: produce/publish priorities unchanged (regression)", () => {
   // produce has priority 30 (lower urgency than publish 20).
   // If a future reshuffling changes this, the runner could
   // process publish before its prerequisite produce.
-  for (const n of ["produce_morning", "produce_afternoon", "produce_primary"]) {
+  for (const n of [
+    "produce_morning",
+    "produce_late_morning",
+    "produce_afternoon",
+    "produce_mid_afternoon",
+    "produce_primary",
+  ]) {
     assert.strictEqual(byName(n).priority, 30);
   }
-  for (const n of ["publish_morning", "publish_afternoon", "publish_primary"]) {
+  for (const n of [
+    "publish_morning",
+    "publish_late_morning",
+    "publish_afternoon",
+    "publish_mid_afternoon",
+    "publish_primary",
+  ]) {
     assert.strictEqual(byName(n).priority, 20);
   }
 });

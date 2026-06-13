@@ -1147,9 +1147,9 @@ app.get("/api/autonomous/status", requireAuth, (req, res) => {
     schedule: {
       hunts: ["Every 3 hours"],
       produce: "Auto-produces videos after each hunt",
-      publish: "09:00 UTC / 14:00 UTC / 19:00 UTC",
+      publish: "09:00 UTC / 11:00 UTC / 14:00 UTC / 16:00 UTC / 19:00 UTC",
       strategy:
-        "1 Short per window = 3 Shorts/day across all platforms",
+        "1 Short per window = up to 5 Shorts/day across enabled platforms",
     },
     platforms: {
       youtube: { configured: !!process.env.YOUTUBE_API_KEY },

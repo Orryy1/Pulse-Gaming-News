@@ -22,10 +22,12 @@ const DAY_NAMES = [
 // labels said "07:00 / 13:00 / 19:00" which was legacy from before
 // cadence Task 3 shipped morning/afternoon/evening at 09/14/19 UTC.
 const DEFAULT_SCHEDULE = {
-  crons: ["0 9 * * *", "0 14 * * *", "0 19 * * *"],
+  crons: ["0 9 * * *", "0 11 * * *", "0 14 * * *", "0 16 * * *", "0 19 * * *"],
   labels: [
     "09:00 UTC - default morning (canonical scheduler)",
+    "11:00 UTC - default late morning (canonical scheduler)",
     "14:00 UTC - default afternoon (canonical scheduler)",
+    "16:00 UTC - default mid-afternoon (canonical scheduler)",
     "19:00 UTC - default evening (canonical scheduler)",
   ],
   confidence: "low",

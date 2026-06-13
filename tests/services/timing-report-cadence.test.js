@@ -6,7 +6,8 @@ const path = require("node:path");
 // Task 10 coverage: the timing report must not contradict
 // lib/scheduler.js. Two specific regressions being pinned:
 //   1. DEFAULT_SCHEDULE in optimal_timing.js used "07:00 / 13:00 /
-//      19:00" before Task 3 of the cadence session shipped 09/14/19.
+//      19:00" before Task 3 of the cadence session shipped 09/14/19,
+//      then growth cadence moved the canonical list to 09/11/14/16/19.
 //   2. The report's "Active Schedule" section used to render the
 //      analytics-derived recommendation; it now reads the
 //      canonical scheduler so operators see what ACTUALLY fires.
@@ -14,10 +15,12 @@ const path = require("node:path");
 const { DEFAULT_SCHEDULE } = require("../../optimal_timing");
 const { DEFAULT_SCHEDULES } = require("../../lib/scheduler");
 
-test("DEFAULT_SCHEDULE: crons match the canonical 3x publish windows (09/14/19 UTC)", () => {
+test("DEFAULT_SCHEDULE: crons match the canonical 5x publish windows", () => {
   assert.deepStrictEqual(DEFAULT_SCHEDULE.crons, [
     "0 9 * * *",
+    "0 11 * * *",
     "0 14 * * *",
+    "0 16 * * *",
     "0 19 * * *",
   ]);
 });
@@ -33,11 +36,13 @@ test("DEFAULT_SCHEDULE: labels reference the canonical scheduler, not legacy 07/
       `DEFAULT_SCHEDULE label still references legacy 07:00: "${label}"`,
     );
   }
-  // And at least one label mentions each of 09/14/19 so they
+  // And at least one label mentions each canonical growth window so they
   // match what lib/scheduler.js actually registers.
   const joined = DEFAULT_SCHEDULE.labels.join(" ");
   assert.match(joined, /09:00/);
+  assert.match(joined, /11:00/);
   assert.match(joined, /14:00/);
+  assert.match(joined, /16:00/);
   assert.match(joined, /19:00/);
 });
 
@@ -110,7 +115,7 @@ test("optimal_timing.js source: no hard-coded 07:00/13:00 in Active Schedule ren
   );
 });
 
-test("server autonomous status reports canonical 09/14/19 publish windows", () => {
+test("server autonomous status reports canonical 5x publish windows", () => {
   const src = fs.readFileSync(
     path.join(__dirname, "..", "..", "server.js"),
     "utf8",
@@ -121,7 +126,9 @@ test("server autonomous status reports canonical 09/14/19 publish windows", () =
 
   assert.ok(statusBlock, "autonomous status endpoint not found");
   assert.match(statusBlock[0], /09:00 UTC/);
+  assert.match(statusBlock[0], /11:00 UTC/);
   assert.match(statusBlock[0], /14:00 UTC/);
+  assert.match(statusBlock[0], /16:00 UTC/);
   assert.match(statusBlock[0], /19:00 UTC/);
-  assert.doesNotMatch(statusBlock[0], /12:00 UTC|17:00 UTC|21:00 UTC/);
+  assert.doesNotMatch(statusBlock[0], /07:00 UTC|13:00 UTC|21:00 UTC/);
 });

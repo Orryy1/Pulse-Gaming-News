@@ -4,11 +4,21 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
+  DEFAULT_EXPECTED_HOURS_UTC,
   buildPublishCadenceReport,
   classifyPublishEvent,
   computeNextSafePublishWindow,
   formatPublishCadenceMarkdown,
 } = require("../../lib/ops/publish-cadence");
+
+test("default cadence policy uses five guarded growth windows", () => {
+  assert.deepEqual(DEFAULT_EXPECTED_HOURS_UTC, [9, 11, 14, 16, 19]);
+  const next = computeNextSafePublishWindow({
+    nowDate: "2026-06-13T10:22:00.000Z",
+    publishEvents: [],
+  });
+  assert.equal(next.next_safe_publish_at_utc, "2026-06-13T11:00:00.000Z");
+});
 
 test("classifyPublishEvent: scheduled when close to a configured UTC window", () => {
   const event = classifyPublishEvent({

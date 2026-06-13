@@ -2665,7 +2665,7 @@ test("pillarFinalVoiceAudit: active voice reject is red", () => {
 
 test("pillarPublishCadence: over-cap cadence tells operators to hold manual publishing", async () => {
   const now = Date.parse("2026-05-15T12:00:00.000Z");
-  const stories = [0, 1, 2, 3].map((index) => ({
+  const stories = [0, 1, 2, 3, 4, 5].map((index) => ({
     id: `rss_${index}`,
     title: `Story ${index}`,
     youtube_post_id: `yt_${index}`,
@@ -2683,7 +2683,7 @@ test("pillarPublishCadence: over-cap cadence tells operators to hold manual publ
   });
 
   assert.equal(pillar.verdict, "amber");
-  assert.match(pillar.reason, /4_posts_in_24h_over_cap_3/);
+  assert.match(pillar.reason, /6_posts_in_24h_over_cap_5/);
 });
 
 test("pillarFacebookReelEligibility: graph proof makes Facebook Reels green", () => {

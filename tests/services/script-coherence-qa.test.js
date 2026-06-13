@@ -260,6 +260,64 @@ test("script coherence blocks hedged stories being overclaimed as confirmed payo
   );
 });
 
+test("script coherence blocks speculative sequel talk becoming a made-up numbered sequel title", () => {
+  const qa = runScriptCoherenceQa(
+    {
+      title: "Mina The Hollower Ending Points At The Sequel Risk",
+      source_type: "rss",
+      source_name: "GameSpot",
+      source_title: "Mina the Hollower spoiler interview",
+      confirmed_claims: [
+        "GameSpot says its spoiler interview with Yacht Club gets into sequel talk and Chrono Trigger-style ideas.",
+      ],
+      cta: "Follow Pulse Gaming so you never miss a beat",
+      full_script:
+        "Mina the Hollower may have hidden its sequel problem inside the ending. For players, that changes whether Mina 2 feels like an instant wishlist. Follow Pulse Gaming so you never miss a beat.",
+    },
+    { requireCtaField: true, requireFullScriptCta: true },
+  );
+
+  assert.equal(qa.result, "fail");
+  assert.ok(
+    qa.failures.includes("script_coherence:unsupported_numbered_sequel_claim:Mina 2"),
+    qa.failures.join(", "),
+  );
+});
+
+test("script coherence allows numbered sequel titles when source context names them", () => {
+  const qa = runScriptCoherenceQa(
+    {
+      title: "Hades II Hits Consoles In April",
+      source_type: "rss",
+      source_name: "Xbox",
+      source_title: "Hades II launches on Xbox and PlayStation on April 14",
+      cta: "Follow Pulse Gaming so you never miss a beat",
+      full_script:
+        "Hades II hits Xbox and PlayStation on the same April clock. The sequel lands on both consoles, so the launch fight is controller feel. Follow Pulse Gaming so you never miss a beat.",
+    },
+    { requireCtaField: true, requireFullScriptCta: true },
+  );
+
+  assert.equal(qa.result, "pass", qa.failures.join(", "));
+});
+
+test("script coherence allows common sequel-title expansions when the abbreviation is sourced", () => {
+  const qa = runScriptCoherenceQa(
+    {
+      title: "GTA 5 Became Rockstar's GTA 6 Warm-Up",
+      source_type: "rss",
+      source_name: "GameSpot",
+      source_title: "GTA 5 launches on subscription ahead of GTA 6",
+      cta: "Follow Pulse Gaming so you never miss a beat",
+      full_script:
+        "Rockstar's Grand Theft Auto 6 is the looming sequel context here. GTA 5 became the warm-up, not the final verdict. Follow Pulse Gaming so you never miss a beat.",
+    },
+    { requireCtaField: true, requireFullScriptCta: true },
+  );
+
+  assert.equal(qa.result, "pass", qa.failures.join(", "));
+});
+
 test("script coherence blocks generic uncertainty boilerplate and internal Pulse framing", () => {
   const qa = runScriptCoherenceQa(
     {

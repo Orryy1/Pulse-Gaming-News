@@ -13,13 +13,16 @@ const {
   isPlaceholderPublicTitle,
   isRawArticleTitleShape,
   resolvePublicTitle,
+  titleMatchesStorySubject,
 } = require("./lib/public-title");
 
 const BANNED_TITLE_VARIANT_RE =
-  /(?:\byou won'?t believe\b|\bwon'?t believe this\b|\bshocking\b|\binsane\b|\bcrazy\b|\bmind[- ]?blowing\b|\bexplained\b|\bwhat happens next\b|\?!|!!)/i;
+  /(?:\byou won'?t believe\b|\bwon'?t believe this\b|\bshocking\b|\binsane\b|\bcrazy\b|\bmind[- ]?blowing\b|\bexplained\b|\bwhat happens next\b|\bhuge\b|\bsecret\?\b|\bincoming!?\b|\?!|!!|!)/i;
 
 function cleanTitleVariant(value) {
   const title = String(value || "")
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201c\u201d]/g, '"')
     .replace(/[\u2013\u2014]/g, ",")
     .replace(/\s+/g, " ")
     .trim();
@@ -122,7 +125,7 @@ function getBestTitle(story) {
 
   const index = story.active_title_index || 0;
   const active = cleanTitleVariant(story.title_variants[index] || story.title_variants[0]);
-  return active || resolved;
+  return active && titleMatchesStorySubject(active, story) ? active : resolved;
 }
 
 // --- Check views and swap title if underperforming ---

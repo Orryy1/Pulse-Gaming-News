@@ -8,6 +8,7 @@ const {
   fallbackTitleVariants,
   getBestTitle,
 } = require("../../ab_titles");
+const { resolvePublicTitle } = require("../../lib/public-title");
 
 test("cleanTitleVariant rejects clickbait YouTube title shapes", () => {
   assert.equal(cleanTitleVariant("Horizon 6 Shatters Records?! (You Won't Believe This)"), "");
@@ -45,4 +46,22 @@ test("getBestTitle repairs raw Bullet Heaven headlines before upload", () => {
   });
 
   assert.equal(title, "Steam Named Vampire Survivors' Genre");
+});
+
+test("getBestTitle skips stale title variants that contradict the canonical subject", () => {
+  const story = {
+    title: "Dragonwilds Has One Last Early Access Test",
+    suggested_title: "Dragonwilds Has One Last Early Access Test",
+    canonical_subject: "RuneScape: Dragonwilds",
+    canonical_game: "RuneScape: Dragonwilds",
+    title_variants: [
+      "Subnautica 2's Review Signal",
+      "Dragonwilds Secret? HUGE Update Incoming!",
+      "RuneScape's Next Level? You Won't Believe This",
+    ],
+    active_title_index: 0,
+  };
+
+  assert.equal(resolvePublicTitle(story), "Dragonwilds Has One Last Early Access Test");
+  assert.equal(getBestTitle(story), "Dragonwilds Has One Last Early Access Test");
 });

@@ -23,6 +23,7 @@ function probe({ video = {}, audio = {} } = {}) {
       {
         codec_type: "audio",
         codec_name: "aac",
+        sample_rate: "48000",
         ...audio,
       },
     ],
@@ -92,6 +93,19 @@ test("classifyPlatformVideoQa rejects non-AAC MP4 audio", () => {
   );
   assert.strictEqual(result.result, "fail");
   assert.ok(result.failures.includes("audio_codec_not_aac (mp3)"));
+});
+
+test("classifyPlatformVideoQa rejects high-rate AAC that can transcode poorly on social platforms", () => {
+  const result = classifyPlatformVideoQa(
+    probe({
+      audio: {
+        sample_rate: "96000",
+      },
+    }),
+  );
+
+  assert.strictEqual(result.result, "fail");
+  assert.ok(result.failures.includes("audio_sample_rate_too_high_for_social (96000)"));
 });
 
 test("runPlatformVideoQa resolves an existing file and classifies ffprobe JSON", async () => {

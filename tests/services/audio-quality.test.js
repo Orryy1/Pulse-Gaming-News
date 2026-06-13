@@ -59,6 +59,8 @@ test("buildFinalVideoAudioRepairArgs: remasters final MP4 audio without re-encod
   assert.ok(args.includes("-af"));
   assert.match(args[args.indexOf("-af") + 1], /loudnorm=I=-15:TP=-2\.5:LRA=8/);
   assert.match(args[args.indexOf("-af") + 1], /alimiter=limit=0\.74:level=disabled/);
+  assert.ok(args.includes("-ar"));
+  assert.equal(args[args.indexOf("-ar") + 1], "48000");
   assert.ok(args.includes("-movflags"));
   assert.equal(args[args.length - 1], "output.mp4");
 });

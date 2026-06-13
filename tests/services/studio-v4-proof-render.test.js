@@ -23,6 +23,7 @@ const {
   resolveStorySfxPaths,
   directClipMaxScenes,
   directClipMaxVisibleDwellS,
+  buildFinalSocialAudioMixFilter,
 } = require("../../tools/studio-v4-proof-render");
 const {
   STUDIO_V4_SFX_MIX_POLICY_VERSION,
@@ -121,6 +122,18 @@ test("Studio V4 proof renderer accepts explicit direct-motion dwell overrides", 
     if (previousScenes === undefined) delete process.env.STUDIO_V4_DIRECT_CLIP_MAX_SCENES;
     else process.env.STUDIO_V4_DIRECT_CLIP_MAX_SCENES = previousScenes;
   }
+});
+
+test("Studio V4 proof renderer final mix pins social audio to 48 kHz", () => {
+  assert.equal(typeof buildFinalSocialAudioMixFilter, "function");
+
+  const filter = buildFinalSocialAudioMixFilter(["[a_voice]", "[a_music]"]);
+
+  assert.match(filter, /amix=inputs=2:duration=first/);
+  assert.match(filter, /normalize=0/);
+  assert.match(filter, /loudnorm=I=-16:TP=-2:LRA=6/);
+  assert.match(filter, /alimiter=limit=0\.80:level=disabled/);
+  assert.match(filter, /aresample=48000\[outa\]$/);
 });
 
 test("Studio V4 proof renderer CLI stays local and story-json driven", () => {

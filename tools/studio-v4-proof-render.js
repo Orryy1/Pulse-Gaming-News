@@ -41,6 +41,7 @@ const FRAME_HEIGHT_PX = 1920;
 const SAFE_RIGHT_PX = 42;
 const SAFE_BOTTOM_PX = 92;
 const INSTAGRAM_TOP_CHROME_SAFE_PX = 240;
+const SOCIAL_AUDIO_SAMPLE_RATE = 48000;
 
 const SFX_ROLE_ORDER = ["ui_tick", "transition"];
 const FALLBACK_SFX_CUE_LIMIT = 1;
@@ -119,6 +120,14 @@ function parseArgs(argv = process.argv) {
 function positiveEnvNumber(name, fallback) {
   const value = Number(process.env[name]);
   return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function buildFinalSocialAudioMixFilter(mixLabels, { outputLabel = "outa" } = {}) {
+  if (!Array.isArray(mixLabels) || mixLabels.length === 0) {
+    throw new Error("final_social_audio_mix_labels_missing");
+  }
+  const safeOutputLabel = String(outputLabel || "outa").replace(/[^A-Za-z0-9_]/g, "") || "outa";
+  return `${mixLabels.join("")}amix=inputs=${mixLabels.length}:duration=first:dropout_transition=0:normalize=0,loudnorm=I=-16:TP=-2:LRA=6,alimiter=limit=0.80:level=disabled,aresample=${SOCIAL_AUDIO_SAMPLE_RATE}[${safeOutputLabel}]`;
 }
 
 function directClipMaxVisibleDwellS() {
@@ -1187,9 +1196,7 @@ async function renderProof({ storyJson, output }) {
     mixLabels.push(`[${label}]`);
   }
   filterParts.push(...audioMixInputs);
-  filterParts.push(
-    `${mixLabels.join("")}amix=inputs=${mixLabels.length}:duration=first:dropout_transition=0:normalize=0,loudnorm=I=-16:TP=-2:LRA=6,alimiter=limit=0.80:level=disabled[outa]`,
-  );
+  filterParts.push(buildFinalSocialAudioMixFilter(mixLabels));
 
   const filterPath = path.join(TEST_OUT, `${story.id || "story"}_studio_v4_proof_filter.txt`);
   await fs.writeFile(filterPath, filterParts.join(";\n"), "utf8");
@@ -1213,6 +1220,8 @@ async function renderProof({ storyJson, output }) {
     "high",
     "-level:v",
     "4.0",
+    "-ar",
+    String(SOCIAL_AUDIO_SAMPLE_RATE),
     "-c:a",
     "aac",
     "-b:a",
@@ -1330,6 +1339,7 @@ module.exports = {
   buildOverlayLayout,
   buildClipScenePlan,
   buildOverlayChain,
+  buildFinalSocialAudioMixFilter,
   drawtextEscape,
   renderNarrationScriptText,
   resolveReadableMediaPath,

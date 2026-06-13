@@ -498,6 +498,40 @@ test("formatDigest: bridge candidates make unstamped live debt explicit", () => 
   assert.match(md, /live DB still has no stamped rows/);
 });
 
+test("formatDigest: active V4 bridge health leads over unstamped legacy debt", () => {
+  const now = new Date().toISOString();
+  const directClips = Array.from({ length: 5 }, (_, index) => ({
+    id: `direct-${index + 1}`,
+    path: `/tmp/direct-${index + 1}.mp4`,
+    source_url: `https://cdn.example.test/gameplay-${index + 1}.mp4`,
+    source_type: "official_trailer_segment",
+    rights_risk_class: "official_reference_only",
+    source_family: `official_video_${index + 1}`,
+  }));
+  const legacyRows = Array.from({ length: 50 }, () =>
+    story({ render_quality_class: undefined, render_lane: undefined }),
+  );
+
+  const md = digest.formatDigest(
+    digest.buildRenderHealthSummary(legacyRows, {
+      bridgeCandidates: Array.from({ length: 5 }, (_, index) => ({
+        id: `bridge-${index + 1}`,
+        approved_at: now,
+        render_quality_class: "premium",
+        render_lane: "visual_v4_production",
+        qa_visual_count: 8,
+        visual_v4_bridge_video_clips: directClips,
+        rights_ledger: directClips,
+      })),
+    }),
+  );
+
+  assert.match(md, /Bridge V4 final renders: 5 stamped \(5 candidates\)/);
+  assert.match(md, /direct-video motion 5\/5/);
+  assert.match(md, /Legacy DB rows: 0 stamped, 50 unstamped/);
+  assert.doesNotMatch(md, /No stamped stories in window/);
+});
+
 test("formatDigest: high thin-rate triggers 'hold off' operator hint", () => {
   const stories = [
     story({ distinct_visual_count: 1 }),

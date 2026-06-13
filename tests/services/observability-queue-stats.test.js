@@ -5,6 +5,7 @@ const assert = require("node:assert/strict");
 const Database = require("better-sqlite3");
 
 const {
+  buildScoringDigestMessage,
   getQueueStats,
   getScoringDigest,
   redactQueueError,
@@ -240,4 +241,24 @@ test("getScoringDigest uses latest score per story and hides community near-miss
     Date.now = originalNow;
     db.close();
   }
+});
+
+test("buildScoringDigestMessage keeps full titles visible in Discord digest", () => {
+  const longTitle =
+    "Ninja Scroll Gets Exclusive 4K Restoration and New Trailer Ahead of Theatrical Release This Summer";
+
+  const message = buildScoringDigestMessage({
+    window_hours: 24,
+    scored: 1,
+    by_decision: { review: 1 },
+    hard_stops: 0,
+    avg_total: 77,
+    top: [{ story_id: "story-long", title: longTitle, total: 77, decision: "review" }],
+    near_miss: [{ story_id: "story-long", title: longTitle, total: 70, decision: "review" }],
+  });
+
+  assert.match(message, new RegExp(longTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.doesNotMatch(message, /Ahead of Thea\s*$/m);
+  assert.match(message, /- `77` \(review\)\n  Ninja Scroll/);
+  assert.match(message, /- `70`\n  Ninja Scroll/);
 });

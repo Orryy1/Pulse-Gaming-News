@@ -120,7 +120,7 @@ export function ensureToken(): string {
   let raw: string | null;
   try {
     raw = window.prompt(
-      "Pulse API token required for this action.\n\nPaste the API_TOKEN from the Railway environment:",
+      "Pulse API token required for this action.\n\nPaste the API_TOKEN from the active Pulse runtime environment. For the current local/tunnel setup, that means the local .env on the Pulse machine, not Railway.\n\nDo not paste this token into chat.",
     );
   } catch {
     throw new Error(

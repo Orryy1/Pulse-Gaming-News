@@ -1,43 +1,35 @@
 # Overnight Fresh GREEN Buffer Report
 
-Generated: 2026-06-12T18:48:11.143Z
-Verdict: PARTIAL
+Generated: 2026-06-13T00:27:36.293Z
 
-## Result
+## Verdict
 
-- GREEN candidates: 3 / 5 minimum, 10 stretch
-- Strict dry-run ready stories: 3
-- Enabled-platform dry-run actions: 9
-- Enabled-platform hard blockers: 0
-- Deferred disabled-platform actions: 10
-- Queue inspect: pass
-- Platform doctor: AMBER
-- Publish cadence: amber
+PARTIAL for live uploading, PASS for candidate buffer.
 
-## GREEN Candidates
+The fresh candidate buffer now has 5 scheduler-preflight candidates and strict dry-run exposes 15 enabled-platform actions for YouTube Shorts, Instagram Reels and Facebook Reels with 0 blocked actions.
 
-- rss_0b39e0171f59712c: Dragonwilds Has One Last Early Access Test (46.344s, script score 94, preflight pass)
-- fresh_xbox_halo_campaign_evolved_demo_20260610: Halo: Campaign Evolved Shows The Real Remake Test (43.9s, script score 90, preflight pass)
-- fresh_xbox_stranger_than_heaven_20260611: Stranger Than Heaven Gives RGG A Real Combat Reset (50.6s, script score 94, preflight pass)
+Live uploads remain held because publish readiness is RED while the local/public runtime health endpoint is unreachable and a public script-validation fallback row repair is still required before clean resume. No publishing, DB mutation, credential mutation or disabled-platform enablement was performed.
 
-## Remaining Blockers
+## Counts
 
-- rss_600fca97d3e40552: GTA 5 Became The GTA 6 Waiting Room ? tts_caption; Official/direct GTA motion was materialised, but local Whisper alignment rejected the narration because ASR inserted words above the zero-insert threshold.
-- rss_2922a1471f7897be: Gears E-Day Is Xbox's Comeback Test ? motion; Fresh source, but official/direct video motion floor is not met safely.
-- rss_aa1c4b00ddd7c28c: Valor Mortis Shows The Soulslike Test ? motion; Only one story-correct validated direct segment was found; motion diversity floor not met.
-- rss_97ea52eac6466a01: Fable Delay Is Xbox's GTA 6 Problem ? motion; Fresh source, but direct motion floor not met.
-- rss_c9e8b69ee7d15384: The Elder Scrolls 6 Still Has No Real Date ? motion; Fresh source, but direct-video motion evidence is missing.
-- rss_eabd1bead492f47d: Dragon's Dogma 2 Update Needs Real Proof ? tts_motion; Fresh source, but audio/timestamps and direct motion are not publish-ready.
-- rss_7391381aa4dd5606: Quake Champions Is Testing A Comeback ? motion; Fresh source, but materialised direct motion is missing.
-- rss_1a5c9eee2fc739b5: Code Veronica Just Answered The Camera Question ? motion_audio; Fresh source, but motion evidence and/or final narration proof remains stale.
+- Fresh bridge candidates: 5
+- Scheduler preflight pass: 5
+- Strict dry-run ready stories: 5
+- Strict dry-run blocked stories: 0
+- Enabled-platform dry-run actions: 15
+- Deferred disabled-platform actions: 20
+- Blocked actions: 0
 
-## Notes
+## Upload Timing
 
-- Today's Discord scoring digest is alive again: 23 scored, 13 auto, 7 review, 2 defer, 1 reject, 1 hard-stop.
-- Render-health Discord still shows live DB stamped-row debt, but the bridge view is clean: 3/3 premium Visual V4 with direct video motion.
-- Dragonwilds was repaired from stale voice/caption proof to strict-ready; GTA 5 was not promoted because Whisper alignment inserted ASR words.
-- No manual publishing, DB mutation, OAuth/token mutation, billing change or disabled-platform enablement occurred.
+The next canonical scheduler window is 2026-06-13 09:00 UTC / 10:00 UK, but only if publish readiness is non-red before that window. If the runtime and public-row repair are not cleared before 10:00 UK, the next clean windows are 15:00 UK and 20:00 UK.
 
-## Next Action
+## Remaining Live Blockers
 
-Let the guarded scheduler continue only if runtime readiness is non-red; continue candidate supply repairs starting with GTA TTS/caption alignment and motion floors for Gears/Valor/Fable.
+- localhost/public API health is unreachable on port 3001.
+- Public script-validation fallback row repair is required for clean resume.
+- TikTok/X/Threads/Pinterest remain deferred and must not be counted as live.
+
+## Safety
+
+No manual publish was triggered. No production DB rows were mutated. No OAuth, token, billing or platform settings were changed.

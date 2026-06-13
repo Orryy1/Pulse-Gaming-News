@@ -1,89 +1,15 @@
 {
-  "schema_version": 2,
-  "generated_at": "2026-06-12T18:48:11.143Z",
-  "verdict": "PARTIAL",
+  "schema_version": 1,
+  "generated_at": "2026-06-13T00:27:36.291Z",
   "summary": {
-    "green_candidate_count": 3,
-    "minimum_target": 5,
-    "blocked_candidate_count": 8,
     "strict_dry_run_blocked_story_count": 0,
-    "strict_dry_run_blocked_action_count": 2,
-    "enabled_platform_blocked_action_count": 0
+    "blocked_action_count": 0,
+    "live_readiness_blockers_remain": true
   },
-  "blocked_candidates": [
-    {
-      "story_id": "rss_600fca97d3e40552",
-      "title": "GTA 5 Became The GTA 6 Waiting Room",
-      "blocker_class": "tts_caption",
-      "status": "motion_repaired_but_not_green",
-      "detail": "Official/direct GTA motion was materialised, but local Whisper alignment rejected the narration because ASR inserted words above the zero-insert threshold.",
-      "evidence": {
-        "motion_materialized_story_count": 1,
-        "motion_materialized_clip_count": 8,
-        "tts_materialized_count": 0,
-        "tts_failed_count": 1,
-        "alignment_error": "whisper_inserted_asr_words_above_threshold",
-        "inserted_actual_word_count": 9,
-        "coverage_ratio": 0.928
-      },
-      "next_action": "Rewrite pronunciation-sensitive GTA script tokens and regenerate local voice/timestamps; do not promote until Whisper alignment passes with no inserted ASR words."
-    },
-    {
-      "story_id": "rss_2922a1471f7897be",
-      "title": "Gears E-Day Is Xbox's Comeback Test",
-      "blocker_class": "motion",
-      "status": "blocked",
-      "detail": "Fresh source, but official/direct video motion floor is not met safely.",
-      "next_action": "Acquire/validate official Gears E-Day direct motion before rendering."
-    },
-    {
-      "story_id": "rss_aa1c4b00ddd7c28c",
-      "title": "Valor Mortis Shows The Soulslike Test",
-      "blocker_class": "motion",
-      "status": "blocked",
-      "detail": "Only one story-correct validated direct segment was found; motion diversity floor not met.",
-      "next_action": "Find additional official/direct motion or hold."
-    },
-    {
-      "story_id": "rss_97ea52eac6466a01",
-      "title": "Fable Delay Is Xbox's GTA 6 Problem",
-      "blocker_class": "motion",
-      "status": "blocked",
-      "detail": "Fresh source, but direct motion floor not met.",
-      "next_action": "Validate official Fable direct motion before render."
-    },
-    {
-      "story_id": "rss_c9e8b69ee7d15384",
-      "title": "The Elder Scrolls 6 Still Has No Real Date",
-      "blocker_class": "motion",
-      "status": "blocked",
-      "detail": "Fresh source, but direct-video motion evidence is missing.",
-      "next_action": "Hold until official/direct visual evidence is available."
-    },
-    {
-      "story_id": "rss_eabd1bead492f47d",
-      "title": "Dragon's Dogma 2 Update Needs Real Proof",
-      "blocker_class": "tts_motion",
-      "status": "blocked",
-      "detail": "Fresh source, but audio/timestamps and direct motion are not publish-ready.",
-      "next_action": "Regenerate local voice/timestamps and acquire direct motion."
-    },
-    {
-      "story_id": "rss_7391381aa4dd5606",
-      "title": "Quake Champions Is Testing A Comeback",
-      "blocker_class": "motion",
-      "status": "blocked",
-      "detail": "Fresh source, but materialised direct motion is missing.",
-      "next_action": "Acquire official Quake Champions motion or hold."
-    },
-    {
-      "story_id": "rss_1a5c9eee2fc739b5",
-      "title": "Code Veronica Just Answered The Camera Question",
-      "blocker_class": "motion_audio",
-      "status": "blocked",
-      "detail": "Fresh source, but motion evidence and/or final narration proof remains stale.",
-      "next_action": "Refresh final narration proof and validate official/direct motion."
-    }
-  ],
-  "note": "Strict dry-run blocked actions are TikTok duration/enablement only. Enabled YouTube/Instagram/Facebook actions have no hard blockers."
+  "blocked_stories": [],
+  "live_readiness_blockers": [
+    "localhost /api/health unreachable",
+    "public /api/health unreachable",
+    "public script-validation fallback row repair required before clean resume"
+  ]
 }

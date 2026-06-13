@@ -248,6 +248,36 @@ test("production cutover queues proof renders instead of treating them as publis
   assert.equal(plan.safety.no_publish_triggered, true);
 });
 
+test("production cutover governance refresh scopes rights to enabled live platforms", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-platform-scope-"));
+  const storyPackage = await makeCutoverPackage(root, "enabled-platform-scope", {
+    finalPublishRender: true,
+    renderer: "visual_v4_production",
+    visualTier: "production_v4_motion",
+  });
+  const rightsPath = path.join(storyPackage.artifact_dir, "rights_ledger.json");
+  const rightsRecords = await fs.readJson(rightsPath);
+  await fs.writeJson(
+    rightsPath,
+    rightsRecords.map((record) => ({
+      ...record,
+      allowed_platforms: ["youtube", "instagram", "facebook"],
+    })),
+    { spaces: 2 },
+  );
+
+  const plan = await buildProductionRenderCutoverPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-13T00:00:00.000Z",
+  });
+
+  assert.equal(plan.summary.ready_final_render_count, 1);
+  assert.equal(plan.ready[0].publish_verdict, "GREEN");
+  assert.equal(plan.ready[0].scheduler_candidate.publish_verdict.verdict, "GREEN");
+  assert.equal(plan.ready[0].scheduler_candidate.platform_publish_manifest.publish_status, "GREEN");
+  assert.deepEqual(plan.ready[0].scheduler_candidate.publish_verdict.reason_codes, []);
+});
+
 test("production cutover blocks final renders backed only by generated card motion", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-generated-only-"));
   const storyPackage = await makeCutoverPackage(root, "generated-only-final", {

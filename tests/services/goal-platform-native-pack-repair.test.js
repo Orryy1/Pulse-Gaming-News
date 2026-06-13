@@ -321,3 +321,58 @@ test("platform-native pack repair refreshes stale affiliate disclosure and landi
   assert.equal(repaired.outputs.tiktok.product_link_eligibility, "not_used");
   assert.match(repaired.outputs.youtube_shorts.profile_or_landing_page_cta, /story-native-clean/);
 });
+
+test("platform-native repair derives Facebook Reels duration from render manifest", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-platform-native-repair-"));
+  const artifactDir = path.join(tmp, "story");
+  await fs.ensureDir(artifactDir);
+
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "story_duration_from_render",
+    canonical_subject: "Mina the Hollower",
+    selected_title: "Mina The Hollower Ending Points At The Sequel Risk",
+    primary_source: { name: "GameSpot" },
+    first_spoken_line: "Mina the Hollower may have hidden its sequel problem inside the ending.",
+    narration_script:
+      "Mina the Hollower may have hidden its sequel problem inside the ending. Follow Pulse Gaming so you never miss a beat.",
+    thumbnail_headline: "MINA SEQUEL RISK",
+  });
+  await fs.writeJson(path.join(artifactDir, "render_manifest.json"), {
+    rendered_duration_s: 51.266,
+  });
+  await fs.writeJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+    outputs: {
+      facebook_reels: {
+        platform: "facebook_reels",
+        native_role: "context_first_reel",
+        explanatory_framing: "Mina the Hollower matters because of the ending.",
+        page_caption: "Mina the Hollower: sequel risk. Source: GameSpot.",
+        link_routing_strategy: "page_caption_or_comment_link",
+      },
+    },
+    platform_native_evidence: { verdict: "fail" },
+  });
+  await fs.writeJson(path.join(artifactDir, "platform_variant_scorecard.json"), {});
+  await fs.writeJson(path.join(artifactDir, "affiliate_link_manifest.json"), {});
+  await fs.writeJson(path.join(artifactDir, "landing_page_manifest.json"), {
+    landing_page_slug: "mina-the-hollower-sequel-risk",
+  });
+
+  await repairPlatformNativePacks({
+    storyPackages: [{ story_id: "story_duration_from_render", artifact_dir: artifactDir }],
+    apply: true,
+    backupRoot: path.join(tmp, "backups"),
+    generatedAt: "2026-06-13T00:00:00.000Z",
+  });
+
+  const facebookPack = await fs.readJson(path.join(artifactDir, "facebook_publish_pack.json"));
+  const platformManifest = await fs.readJson(path.join(artifactDir, "platform_publish_manifest.json"));
+  const facebookEvidence = platformManifest.platform_native_evidence.platforms.find(
+    (platform) => platform.platform === "facebook_reels",
+  );
+
+  assert.equal(facebookPack.duration_seconds, 51.266);
+  assert.equal(facebookEvidence.status, "pass");
+  assert.deepEqual(facebookEvidence.missing_fields, []);
+  assert.equal(platformManifest.platform_native_evidence.verdict, "pass");
+});

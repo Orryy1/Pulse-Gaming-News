@@ -1,233 +1,1133 @@
 {
-  "schema_version": 1,
-  "generated_at": "2026-06-12T18:44:45.223Z",
-  "overall_verdict": "RED",
-  "summary": {
-    "platform_count": 7,
-    "publish_now_action_count": 9,
-    "platform_enabled_dry_run_action_count": 9,
-    "human_review_required_action_count": 9,
-    "live_publish_allowed_action_count": 0,
-    "deferred_action_count": 10,
-    "blocked_action_count": 2,
-    "disabled_platform_count": 4,
-    "unknown_platform_count": 0
+  "platform_status": {
+    "generatedAt": "2026-06-13T00:25:58.158Z",
+    "verdict": "amber",
+    "storyCount": 347,
+    "summary": {
+      "platform_count": 7,
+      "enabled_platform_count": 3,
+      "disabled_platform_count": 3,
+      "needs_credentials_platform_count": 1,
+      "blocked_external_platform_count": 0,
+      "enabled_platforms": [
+        "youtube",
+        "instagram_reel",
+        "facebook_reel"
+      ],
+      "disabled_platforms": [
+        "twitter",
+        "threads",
+        "pinterest"
+      ],
+      "needs_credentials_platforms": [
+        "tiktok"
+      ],
+      "blocked_external_platforms": []
+    },
+    "operational": {
+      "youtube": {
+        "state": "enabled",
+        "reason": "core_upload_path"
+      },
+      "tiktok": {
+        "state": "needs_credentials",
+        "reason": "tiktok_local_token_refresh_or_sync_required",
+        "operator_state": "disabled",
+        "operator_reason": "operator_disabled",
+        "enablement_next_action": "refresh_or_sync_local_token_with_operator_present_before_any_inbox_upload",
+        "effective_readiness_source": "platform_readiness_doctor"
+      },
+      "instagram_reel": {
+        "state": "enabled",
+        "reason": "graph_credentials_present"
+      },
+      "facebook_reel": {
+        "state": "enabled",
+        "reason": "facebook_reels_enabled"
+      },
+      "twitter": {
+        "state": "disabled",
+        "reason": "x_optional_disabled"
+      },
+      "threads": {
+        "state": "disabled",
+        "reason": "threads_not_configured"
+      },
+      "pinterest": {
+        "state": "disabled",
+        "reason": "pinterest_not_configured"
+      }
+    },
+    "counts": {
+      "youtube": {
+        "blocked_review": 193,
+        "not_published": 145,
+        "published": 9
+      },
+      "tiktok": {
+        "needs_credentials": 347
+      },
+      "instagram_reel": {
+        "blocked_review": 193,
+        "not_published": 145,
+        "published": 9
+      },
+      "facebook_reel": {
+        "blocked_review": 193,
+        "not_published": 145,
+        "published": 9
+      },
+      "twitter": {
+        "disabled": 347
+      },
+      "threads": {
+        "disabled": 347
+      },
+      "pinterest": {
+        "disabled": 347
+      }
+    },
+    "recent": [
+      {
+        "storyId": "rss_8a0cac7b23f66b51",
+        "title": "Final Fantasy 14 gets a major update announced in Trail to the Heavens, bringing new story quests, raids, and job",
+        "platforms": {
+          "youtube": {
+            "status": "blocked_review",
+            "reason": "publish_failure_or_review_required"
+          },
+          "tiktok": {
+            "status": "needs_credentials",
+            "reason": "tiktok_local_token_refresh_or_sync_required"
+          },
+          "instagram_reel": {
+            "status": "blocked_review",
+            "reason": "publish_failure_or_review_required"
+          },
+          "facebook_reel": {
+            "status": "blocked_review",
+            "reason": "publish_failure_or_review_required"
+          },
+          "twitter": {
+            "status": "disabled",
+            "reason": "x_optional_disabled"
+          },
+          "threads": {
+            "status": "disabled",
+            "reason": "threads_not_configured"
+          },
+          "pinterest": {
+            "status": "disabled",
+            "reason": "pinterest_not_configured"
+          }
+        }
+      },
+      {
+        "storyId": "1sqqorh",
+        "title": "Confirmed: Xbox officially announces Forza Horizon 6 limited edition controller and headset",
+        "platforms": {
+          "youtube": {
+            "status": "not_published"
+          },
+          "tiktok": {
+            "status": "needs_credentials",
+            "reason": "tiktok_local_token_refresh_or_sync_required"
+          },
+          "instagram_reel": {
+            "status": "not_published"
+          },
+          "facebook_reel": {
+            "status": "not_published"
+          },
+          "twitter": {
+            "status": "disabled",
+            "reason": "x_optional_disabled"
+          },
+          "threads": {
+            "status": "disabled",
+            "reason": "threads_not_configured"
+          },
+          "pinterest": {
+            "status": "disabled",
+            "reason": "pinterest_not_configured"
+          }
+        }
+      },
+      {
+        "storyId": "rss_867bd793e3d9ca6f",
+        "title": "Elden Ring Movie Release Date and Full Cast Announced",
+        "platforms": {
+          "youtube": {
+            "status": "blocked_review",
+            "reason": "publish_failure_or_review_required"
+          },
+          "tiktok": {
+            "status": "needs_credentials",
+            "reason": "tiktok_local_token_refresh_or_sync_required"
+          },
+          "instagram_reel": {
+            "status": "blocked_review",
+            "reason": "publish_failure_or_review_required"
+          },
+          "facebook_reel": {
+            "status": "blocked_review",
+            "reason": "publish_failure_or_review_required"
+          },
+          "twitter": {
+            "status": "disabled",
+            "reason": "x_optional_disabled"
+          },
+          "threads": {
+            "status": "disabled",
+            "reason": "threads_not_configured"
+          },
+          "pinterest": {
+            "status": "disabled",
+            "reason": "pinterest_not_configured"
+          }
+        }
+      },
+      {
+        "storyId": "rss_c2a8490603007983",
+        "title": "Elden Ring movie cast announced, with Alien: Romulus, The Last of Us and Ex Machina actors all on board",
+        "platforms": {
+          "youtube": {
+            "status": "blocked_review",
+            "reason": "publish_failure_or_review_required"
+          },
+          "tiktok": {
+            "status": "needs_credentials",
+            "reason": "tiktok_local_token_refresh_or_sync_required"
+          },
+          "instagram_reel": {
+            "status": "blocked_review",
+            "reason": "publish_failure_or_review_required"
+          },
+          "facebook_reel": {
+            "status": "blocked_review",
+            "reason": "publish_failure_or_review_required"
+          },
+          "twitter": {
+            "status": "disabled",
+            "reason": "x_optional_disabled"
+          },
+          "threads": {
+            "status": "disabled",
+            "reason": "threads_not_configured"
+          },
+          "pinterest": {
+            "status": "disabled",
+            "reason": "pinterest_not_configured"
+          }
+        }
+      },
+      {
+        "storyId": "rss_bcd200c58b30c9ac",
+        "title": "Xbox Game Pass April 2026 Wave 2 Lineup Announced",
+        "platforms": {
+          "youtube": {
+            "status": "blocked_review",
+            "reason": "publish_failure_or_review_required"
+          },
+          "tiktok": {
+            "status": "needs_credentials",
+            "reason": "tiktok_local_token_refresh_or_sync_required"
+          },
+          "instagram_reel": {
+            "status": "blocked_review",
+            "reason": "publish_failure_or_review_required"
+          },
+          "facebook_reel": {
+            "status": "blocked_review",
+            "reason": "publish_failure_or_review_required"
+          },
+          "twitter": {
+            "status": "disabled",
+            "reason": "x_optional_disabled"
+          },
+          "threads": {
+            "status": "disabled",
+            "reason": "threads_not_configured"
+          },
+          "pinterest": {
+            "status": "disabled",
+            "reason": "pinterest_not_configured"
+          }
+        }
+      },
+      {
+        "storyId": "rss_b3f062e0219da5bc",
+        "title": "ID@Xbox Presented by IGN April 2026 Showcase Announced: Here's How to Watch and What to Expect",
+        "platforms": {
+          "youtube": {
+            "status": "blocked_review",
+            "reason": "publish_failure_or_review_required"
+          },
+          "tiktok": {
+            "status": "needs_credentials",
+            "reason": "tiktok_local_token_refresh_or_sync_required"
+          },
+          "instagram_reel": {
+            "status": "blocked_review",
+            "reason": "publish_failure_or_review_required"
+          },
+          "facebook_reel": {
+            "status": "blocked_review",
+            "reason": "publish_failure_or_review_required"
+          },
+          "twitter": {
+            "status": "disabled",
+            "reason": "x_optional_disabled"
+          },
+          "threads": {
+            "status": "disabled",
+            "reason": "threads_not_configured"
+          },
+          "pinterest": {
+            "status": "disabled",
+            "reason": "pinterest_not_configured"
+          }
+        }
+      },
+      {
+        "storyId": "rss_d315ffb796d920cd",
+        "title": "Nioh 3 to get free update with high-difficulty side missions, rarer accessories, and new skills",
+        "platforms": {
+          "youtube": {
+            "status": "blocked_review",
+            "reason": "publish_failure_or_review_required"
+          },
+          "tiktok": {
+            "status": "needs_credentials",
+            "reason": "tiktok_local_token_refresh_or_sync_required"
+          },
+          "instagram_reel": {
+            "status": "blocked_review",
+            "reason": "publish_failure_or_review_required"
+          },
+          "facebook_reel": {
+            "status": "blocked_review",
+            "reason": "publish_failure_or_review_required"
+          },
+          "twitter": {
+            "status": "disabled",
+            "reason": "x_optional_disabled"
+          },
+          "threads": {
+            "status": "disabled",
+            "reason": "threads_not_configured"
+          },
+          "pinterest": {
+            "status": "disabled",
+            "reason": "pinterest_not_configured"
+          }
+        }
+      },
+      {
+        "storyId": "1sqpa86",
+        "title": "FH6 limited-edition Xbox controller and headset have just leaked",
+        "platforms": {
+          "youtube": {
+            "status": "not_published"
+          },
+          "tiktok": {
+            "status": "needs_credentials",
+            "reason": "tiktok_local_token_refresh_or_sync_required"
+          },
+          "instagram_reel": {
+            "status": "not_published"
+          },
+          "facebook_reel": {
+            "status": "not_published"
+          },
+          "twitter": {
+            "status": "disabled",
+            "reason": "x_optional_disabled"
+          },
+          "threads": {
+            "status": "disabled",
+            "reason": "threads_not_configured"
+          },
+          "pinterest": {
+            "status": "disabled",
+            "reason": "pinterest_not_configured"
+          }
+        }
+      },
+      {
+        "storyId": "rss_a2de4630d01fd257",
+        "title": "Dragon Ball Xenoverse 3 Announced for PC and Consoles in First Trailer",
+        "platforms": {
+          "youtube": {
+            "status": "blocked_review",
+            "reason": "publish_failure_or_review_required"
+          },
+          "tiktok": {
+            "status": "needs_credentials",
+            "reason": "tiktok_local_token_refresh_or_sync_required"
+          },
+          "instagram_reel": {
+            "status": "blocked_review",
+            "reason": "publish_failure_or_review_required"
+          },
+          "facebook_reel": {
+            "status": "blocked_review",
+            "reason": "publish_failure_or_review_required"
+          },
+          "twitter": {
+            "status": "disabled",
+            "reason": "x_optional_disabled"
+          },
+          "threads": {
+            "status": "disabled",
+            "reason": "threads_not_configured"
+          },
+          "pinterest": {
+            "status": "disabled",
+            "reason": "pinterest_not_configured"
+          }
+        }
+      },
+      {
+        "storyId": "rss_e0ab0fad0d267887",
+        "title": "Announced, Delayed, Disappeared: The Games Still In Limbo",
+        "platforms": {
+          "youtube": {
+            "status": "not_published"
+          },
+          "tiktok": {
+            "status": "needs_credentials",
+            "reason": "tiktok_local_token_refresh_or_sync_required"
+          },
+          "instagram_reel": {
+            "status": "not_published"
+          },
+          "facebook_reel": {
+            "status": "not_published"
+          },
+          "twitter": {
+            "status": "disabled",
+            "reason": "x_optional_disabled"
+          },
+          "threads": {
+            "status": "disabled",
+            "reason": "threads_not_configured"
+          },
+          "pinterest": {
+            "status": "disabled",
+            "reason": "pinterest_not_configured"
+          }
+        }
+      },
+      {
+        "storyId": "rss_4e0991dd7dc22a57",
+        "title": "Surprise! Nintendo launches new pop-up store in London",
+        "platforms": {
+          "youtube": {
+            "status": "blocked_review",
+            "reason": "publish_failure_or_review_required"
+          },
+          "tiktok": {
+            "status": "needs_credentials",
+            "reason": "tiktok_local_token_refresh_or_sync_required"
+          },
+          "instagram_reel": {
+            "status": "blocked_review",
+            "reason": "publish_failure_or_review_required"
+          },
+          "facebook_reel": {
+            "status": "blocked_review",
+            "reason": "publish_failure_or_review_required"
+          },
+          "twitter": {
+            "status": "disabled",
+            "reason": "x_optional_disabled"
+          },
+          "threads": {
+            "status": "disabled",
+            "reason": "threads_not_configured"
+          },
+          "pinterest": {
+            "status": "disabled",
+            "reason": "pinterest_not_configured"
+          }
+        }
+      },
+      {
+        "storyId": "rss_60b58c29a07be301",
+        "title": "The sequel to flying city-builder Airborne Kingdom just hit 1.0 with a huge update and a 50% discount",
+        "platforms": {
+          "youtube": {
+            "status": "blocked_review",
+            "reason": "publish_failure_or_review_required"
+          },
+          "tiktok": {
+            "status": "needs_credentials",
+            "reason": "tiktok_local_token_refresh_or_sync_required"
+          },
+          "instagram_reel": {
+            "status": "blocked_review",
+            "reason": "publish_failure_or_review_required"
+          },
+          "facebook_reel": {
+            "status": "blocked_review",
+            "reason": "publish_failure_or_review_required"
+          },
+          "twitter": {
+            "status": "disabled",
+            "reason": "x_optional_disabled"
+          },
+          "threads": {
+            "status": "disabled",
+            "reason": "threads_not_configured"
+          },
+          "pinterest": {
+            "status": "disabled",
+            "reason": "pinterest_not_configured"
+          }
+        }
+      },
+      {
+        "storyId": "rss_4347e2c99b0756ef",
+        "title": "Every Sequel (And A Handful Of Non-Sequels) Announced During Hollywood’s E3 Week",
+        "platforms": {
+          "youtube": {
+            "status": "not_published"
+          },
+          "tiktok": {
+            "status": "needs_credentials",
+            "reason": "tiktok_local_token_refresh_or_sync_required"
+          },
+          "instagram_reel": {
+            "status": "not_published"
+          },
+          "facebook_reel": {
+            "status": "not_published"
+          },
+          "twitter": {
+            "status": "disabled",
+            "reason": "x_optional_disabled"
+          },
+          "threads": {
+            "status": "disabled",
+            "reason": "threads_not_configured"
+          },
+          "pinterest": {
+            "status": "disabled",
+            "reason": "pinterest_not_configured"
+          }
+        }
+      },
+      {
+        "storyId": "1sprapo",
+        "title": "THQ Nordic has 7 unnannounced Switch 2 games on their site",
+        "platforms": {
+          "youtube": {
+            "status": "blocked_review",
+            "reason": "publish_failure_or_review_required"
+          },
+          "tiktok": {
+            "status": "needs_credentials",
+            "reason": "tiktok_local_token_refresh_or_sync_required"
+          },
+          "instagram_reel": {
+            "status": "blocked_review",
+            "reason": "publish_failure_or_review_required"
+          },
+          "facebook_reel": {
+            "status": "blocked_review",
+            "reason": "publish_failure_or_review_required"
+          },
+          "twitter": {
+            "status": "disabled",
+            "reason": "x_optional_disabled"
+          },
+          "threads": {
+            "status": "disabled",
+            "reason": "threads_not_configured"
+          },
+          "pinterest": {
+            "status": "disabled",
+            "reason": "pinterest_not_configured"
+          }
+        }
+      },
+      {
+        "storyId": "1sp6ac6",
+        "title": "Grace's VA may have slipped up and leaked her in the upcoming DLC",
+        "platforms": {
+          "youtube": {
+            "status": "not_published"
+          },
+          "tiktok": {
+            "status": "needs_credentials",
+            "reason": "tiktok_local_token_refresh_or_sync_required"
+          },
+          "instagram_reel": {
+            "status": "not_published"
+          },
+          "facebook_reel": {
+            "status": "not_published"
+          },
+          "twitter": {
+            "status": "disabled",
+            "reason": "x_optional_disabled"
+          },
+          "threads": {
+            "status": "disabled",
+            "reason": "threads_not_configured"
+          },
+          "pinterest": {
+            "status": "disabled",
+            "reason": "pinterest_not_configured"
+          }
+        }
+      },
+      {
+        "storyId": "1sojcmy",
+        "title": "Tom Henderson on Black Flag remake: reveal set for April 23rd, Embargo lifts 12:15 PM ET, media are impressed with the game, current-gen only and exclusive game details",
+        "platforms": {
+          "youtube": {
+            "status": "blocked_review",
+            "reason": "publish_failure_or_review_required"
+          },
+          "tiktok": {
+            "status": "needs_credentials",
+            "reason": "tiktok_local_token_refresh_or_sync_required"
+          },
+          "instagram_reel": {
+            "status": "blocked_review",
+            "reason": "publish_failure_or_review_required"
+          },
+          "facebook_reel": {
+            "status": "blocked_review",
+            "reason": "publish_failure_or_review_required"
+          },
+          "twitter": {
+            "status": "disabled",
+            "reason": "x_optional_disabled"
+          },
+          "threads": {
+            "status": "disabled",
+            "reason": "threads_not_configured"
+          },
+          "pinterest": {
+            "status": "disabled",
+            "reason": "pinterest_not_configured"
+          }
+        }
+      },
+      {
+        "storyId": "1sok7zk",
+        "title": "Tom Henderson on Ubisoft: Splinter Cell remake delayed, next big game after Black Flag is Ghost Recon, Far Cry \"going through hell\" and Rayman remake going well",
+        "platforms": {
+          "youtube": {
+            "status": "not_published"
+          },
+          "tiktok": {
+            "status": "needs_credentials",
+            "reason": "tiktok_local_token_refresh_or_sync_required"
+          },
+          "instagram_reel": {
+            "status": "not_published"
+          },
+          "facebook_reel": {
+            "status": "not_published"
+          },
+          "twitter": {
+            "status": "disabled",
+            "reason": "x_optional_disabled"
+          },
+          "threads": {
+            "status": "disabled",
+            "reason": "threads_not_configured"
+          },
+          "pinterest": {
+            "status": "disabled",
+            "reason": "pinterest_not_configured"
+          }
+        }
+      },
+      {
+        "storyId": "1soogj9",
+        "title": "Dlc 1 of mouse P.I for hire has had its enemy roster leaked",
+        "platforms": {
+          "youtube": {
+            "status": "not_published"
+          },
+          "tiktok": {
+            "status": "needs_credentials",
+            "reason": "tiktok_local_token_refresh_or_sync_required"
+          },
+          "instagram_reel": {
+            "status": "not_published"
+          },
+          "facebook_reel": {
+            "status": "not_published"
+          },
+          "twitter": {
+            "status": "disabled",
+            "reason": "x_optional_disabled"
+          },
+          "threads": {
+            "status": "disabled",
+            "reason": "threads_not_configured"
+          },
+          "pinterest": {
+            "status": "disabled",
+            "reason": "pinterest_not_configured"
+          }
+        }
+      },
+      {
+        "storyId": "1sn90sx",
+        "title": "Mafia 2 remake and Mafia: The Old Country sequel in-development",
+        "platforms": {
+          "youtube": {
+            "status": "not_published"
+          },
+          "tiktok": {
+            "status": "needs_credentials",
+            "reason": "tiktok_local_token_refresh_or_sync_required"
+          },
+          "instagram_reel": {
+            "status": "not_published"
+          },
+          "facebook_reel": {
+            "status": "not_published"
+          },
+          "twitter": {
+            "status": "disabled",
+            "reason": "x_optional_disabled"
+          },
+          "threads": {
+            "status": "disabled",
+            "reason": "threads_not_configured"
+          },
+          "pinterest": {
+            "status": "disabled",
+            "reason": "pinterest_not_configured"
+          }
+        }
+      },
+      {
+        "storyId": "1sm0mb9",
+        "title": "Billbil-kun: Horizon Zero Dawn Remastered leaked into April’s Ps Plus Extra and Premium lineup",
+        "platforms": {
+          "youtube": {
+            "status": "blocked_review",
+            "reason": "publish_failure_or_review_required"
+          },
+          "tiktok": {
+            "status": "needs_credentials",
+            "reason": "tiktok_local_token_refresh_or_sync_required"
+          },
+          "instagram_reel": {
+            "status": "blocked_review",
+            "reason": "publish_failure_or_review_required"
+          },
+          "facebook_reel": {
+            "status": "blocked_review",
+            "reason": "publish_failure_or_review_required"
+          },
+          "twitter": {
+            "status": "disabled",
+            "reason": "x_optional_disabled"
+          },
+          "threads": {
+            "status": "disabled",
+            "reason": "threads_not_configured"
+          },
+          "pinterest": {
+            "status": "disabled",
+            "reason": "pinterest_not_configured"
+          }
+        }
+      }
+    ]
   },
-  "platforms": {
-    "youtube_shorts": {
-      "platform": "youtube_shorts",
-      "status": "ready_now",
-      "operational_state": "enabled",
-      "operational_reason": "core_upload_path",
-      "publishable_now_count": 3,
-      "publish_now_action_count": 3,
-      "enabled_dry_run_action_count": 3,
-      "human_review_required_action_count": 3,
-      "live_publish_allowed_action_count": 0,
-      "queued_when_enabled_count": 0,
-      "deferred_action_count": 0,
-      "blocked_action_count": 0,
-      "planned_story_ids": [
-        "fresh_xbox_stranger_than_heaven_20260611",
-        "fresh_xbox_halo_campaign_evolved_demo_20260610",
-        "rss_0b39e0171f59712c"
-      ],
-      "blocked_story_ids": [],
-      "blockers": [],
-      "warnings": [],
-      "live_execution_gate_reasons": [
-        "platform_actions_blocked",
-        "platform_actions_deferred_until_enabled",
-        "enabled_platform_actions_require_human_review"
-      ],
-      "enablement_gaps": [],
-      "enablement_next_action": null
+  "platform_doctor": {
+    "schema_version": 1,
+    "generated_at": "2026-06-13T00:23:29.753Z",
+    "mode": "read_only_platform_readiness_doctor",
+    "verdict": "AMBER",
+    "blockers": [
+      "tiktok_local_token_refresh_or_sync_required"
+    ],
+    "platforms": {
+      "tiktok": {
+        "status": "needs_local_token_refresh_or_sync",
+        "browser_oauth_may_be_ok": true,
+        "official_inbox_route": "prepared_not_executed",
+        "public_direct_post": "blocked_until_tiktok_app_review_or_direct_post_approval",
+        "no_post_readiness": {
+          "browser_oauth": {
+            "status": "reported_success",
+            "completed_at": null,
+            "evidence": "auth_doctor_operator_action",
+            "local_token_proven": false,
+            "local_token_status": "expired_but_refreshable"
+          },
+          "local_token": {
+            "status": "expired_but_refreshable",
+            "next_action": "refresh_or_sync_local_token",
+            "refresh_available": true,
+            "needs_reauth": false
+          },
+          "official_inbox": {
+            "status": "needs_local_token_refresh_or_sync",
+            "ready_pack_present": true,
+            "public_auto_publish": false
+          },
+          "direct_post": {
+            "status": "blocked_by_app_review_or_direct_post_approval",
+            "blocker": "direct_post_approval_not_declared"
+          },
+          "dispatch_creative": {
+            "status": "ready_for_operator_review",
+            "story_id": "1s4denn",
+            "blockers": []
+          }
+        },
+        "token": {
+          "ok": false,
+          "reason": "expired",
+          "expires_in_seconds": -380737,
+          "refresh_available": true,
+          "needs_reauth": false
+        },
+        "pack": {
+          "story_id": "1s4denn",
+          "status": "tiktok_auth_action_required",
+          "duration_seconds": 75.886,
+          "mp4_present": true,
+          "cover_present": true,
+          "creative_review_required": false
+        },
+        "recommendation": "refresh_or_sync_local_token_with_operator_present_before_any_inbox_upload"
+      },
+      "x": {
+        "status": "operator_disabled",
+        "reason": "x_optional_disabled",
+        "public_auto_publish": false,
+        "network_calls_allowed": false,
+        "enablement_gaps": [
+          "x_operator_disabled",
+          "x_api_billing_not_declared"
+        ],
+        "no_post_readiness": {
+          "operator_switch": {
+            "status": "disabled",
+            "required_env": "TWITTER_ENABLED"
+          },
+          "credential_set": {
+            "status": "present",
+            "missing_count": 0,
+            "required_count": 4
+          },
+          "api_billing": {
+            "status": "not_declared",
+            "accepted_envs": [
+              "TWITTER_API_BILLING_CONFIRMED",
+              "X_API_BILLING_CONFIRMED",
+              "X_PAID_API_CONFIRMED"
+            ]
+          },
+          "direct_post": {
+            "status": "blocked_until_enablement_complete",
+            "public_auto_publish": false,
+            "network_calls_allowed": false
+          }
+        },
+        "recommendation": "keep_x_disabled_until_paid_api_and_credentials_are_confirmed"
+      },
+      "facebook_reel": {
+        "status": "enabled_verify_after_upload",
+        "reason": "facebook_reels_enabled",
+        "manual_reel_upload_observed": true,
+        "manual_proof_note": "read_only_graph_eligibility_visible_reel_or_video_found",
+        "graph_eligibility": {
+          "verdict": "eligible_for_normal_publish",
+          "reason": "visible_graph_video_or_reel_found",
+          "visible_reel_or_video_found": true,
+          "token_valid": true,
+          "page_can_post": true,
+          "videos_count": 1,
+          "reels_count": 1
+        },
+        "verifier_contract": {
+          "requires_ready_status": true,
+          "requires_permalink_or_published_flag": true,
+          "treats_complete_without_permalink_as_not_live": true,
+          "avoids_false_success": true
+        },
+        "recommendation": "watch_next_normal_publish_and_trust_verifier_not_finish_phase_alone"
+      },
+      "instagram_reel": {
+        "status": "enabled_monitor_next_publish",
+        "last_error": {
+          "category": "no_recent_error",
+          "error_code": null,
+          "summary": null,
+          "url_fallback_allowed": false,
+          "retry_same_mp4_recommended": false,
+          "next_action": "monitor_next_publish"
+        },
+        "fallback_policy": "do_not_resubmit_same_rejected_mp4"
+      }
     },
-    "tiktok": {
-      "platform": "tiktok",
-      "status": "blocked",
-      "operational_state": "needs_credentials",
-      "operational_reason": "tiktok_local_token_refresh_or_sync_required",
-      "publishable_now_count": 0,
-      "publish_now_action_count": 0,
-      "enabled_dry_run_action_count": 0,
-      "human_review_required_action_count": 0,
-      "live_publish_allowed_action_count": 0,
-      "queued_when_enabled_count": 1,
-      "deferred_action_count": 1,
-      "blocked_action_count": 2,
-      "planned_story_ids": [
-        "fresh_xbox_stranger_than_heaven_20260611"
-      ],
-      "blocked_story_ids": [
-        "fresh_xbox_halo_campaign_evolved_demo_20260610",
-        "rss_0b39e0171f59712c"
-      ],
-      "blockers": [
-        "platform_duration_below_min:tiktok:61"
-      ],
-      "warnings": [
-        "below_creator_rewards_duration"
-      ],
-      "live_execution_gate_reasons": [
-        "tiktok_local_token_refresh_or_sync_required"
-      ],
-      "enablement_gaps": [
-        "tiktok_local_token_refresh_or_sync_required"
-      ],
-      "enablement_next_action": "refresh_or_sync_local_token_with_operator_present_before_any_inbox_upload"
-    },
-    "instagram_reels": {
-      "platform": "instagram_reels",
-      "status": "ready_now",
-      "operational_state": "enabled",
-      "operational_reason": "enabled_monitor_next_publish",
-      "publishable_now_count": 3,
-      "publish_now_action_count": 3,
-      "enabled_dry_run_action_count": 3,
-      "human_review_required_action_count": 3,
-      "live_publish_allowed_action_count": 0,
-      "queued_when_enabled_count": 0,
-      "deferred_action_count": 0,
-      "blocked_action_count": 0,
-      "planned_story_ids": [
-        "fresh_xbox_stranger_than_heaven_20260611",
-        "fresh_xbox_halo_campaign_evolved_demo_20260610",
-        "rss_0b39e0171f59712c"
-      ],
-      "blocked_story_ids": [],
-      "blockers": [],
-      "warnings": [],
-      "live_execution_gate_reasons": [
-        "platform_actions_blocked",
-        "platform_actions_deferred_until_enabled",
-        "enabled_platform_actions_require_human_review"
-      ],
-      "enablement_gaps": [],
-      "enablement_next_action": null
-    },
-    "facebook_reels": {
-      "platform": "facebook_reels",
-      "status": "ready_now",
-      "operational_state": "enabled",
-      "operational_reason": "facebook_reels_enabled",
-      "publishable_now_count": 3,
-      "publish_now_action_count": 3,
-      "enabled_dry_run_action_count": 3,
-      "human_review_required_action_count": 3,
-      "live_publish_allowed_action_count": 0,
-      "queued_when_enabled_count": 0,
-      "deferred_action_count": 0,
-      "blocked_action_count": 0,
-      "planned_story_ids": [
-        "fresh_xbox_stranger_than_heaven_20260611",
-        "fresh_xbox_halo_campaign_evolved_demo_20260610",
-        "rss_0b39e0171f59712c"
-      ],
-      "blocked_story_ids": [],
-      "blockers": [],
-      "warnings": [],
-      "live_execution_gate_reasons": [
-        "platform_actions_blocked",
-        "platform_actions_deferred_until_enabled",
-        "enabled_platform_actions_require_human_review"
-      ],
-      "enablement_gaps": [],
-      "enablement_next_action": "watch_next_normal_publish_and_trust_verifier_not_finish_phase_alone"
-    },
-    "x": {
-      "platform": "x",
-      "status": "deferred_until_platform_enabled",
-      "operational_state": "disabled",
-      "operational_reason": "x_optional_disabled",
-      "publishable_now_count": 0,
-      "publish_now_action_count": 0,
-      "enabled_dry_run_action_count": 0,
-      "human_review_required_action_count": 0,
-      "live_publish_allowed_action_count": 0,
-      "queued_when_enabled_count": 3,
-      "deferred_action_count": 3,
-      "blocked_action_count": 0,
-      "planned_story_ids": [
-        "fresh_xbox_stranger_than_heaven_20260611",
-        "fresh_xbox_halo_campaign_evolved_demo_20260610",
-        "rss_0b39e0171f59712c"
-      ],
-      "blocked_story_ids": [],
-      "blockers": [],
-      "warnings": [],
-      "live_execution_gate_reasons": [
-        "x_optional_disabled",
-        "x_operator_disabled",
-        "x_api_billing_not_declared"
-      ],
-      "enablement_gaps": [
-        "x_operator_disabled",
-        "x_api_billing_not_declared"
-      ],
-      "enablement_next_action": "keep_x_disabled_until_paid_api_and_credentials_are_confirmed"
-    },
-    "threads": {
-      "platform": "threads",
-      "status": "deferred_until_platform_enabled",
-      "operational_state": "disabled",
-      "operational_reason": "threads_not_configured",
-      "publishable_now_count": 0,
-      "publish_now_action_count": 0,
-      "enabled_dry_run_action_count": 0,
-      "human_review_required_action_count": 0,
-      "live_publish_allowed_action_count": 0,
-      "queued_when_enabled_count": 3,
-      "deferred_action_count": 3,
-      "blocked_action_count": 0,
-      "planned_story_ids": [
-        "fresh_xbox_stranger_than_heaven_20260611",
-        "fresh_xbox_halo_campaign_evolved_demo_20260610",
-        "rss_0b39e0171f59712c"
-      ],
-      "blocked_story_ids": [],
-      "blockers": [],
-      "warnings": [],
-      "live_execution_gate_reasons": [
-        "threads_not_configured"
-      ],
-      "enablement_gaps": [],
-      "enablement_next_action": null
-    },
-    "pinterest": {
-      "platform": "pinterest",
-      "status": "deferred_until_platform_enabled",
-      "operational_state": "disabled",
-      "operational_reason": "pinterest_not_configured",
-      "publishable_now_count": 0,
-      "publish_now_action_count": 0,
-      "enabled_dry_run_action_count": 0,
-      "human_review_required_action_count": 0,
-      "live_publish_allowed_action_count": 0,
-      "queued_when_enabled_count": 3,
-      "deferred_action_count": 3,
-      "blocked_action_count": 0,
-      "planned_story_ids": [
-        "fresh_xbox_stranger_than_heaven_20260611",
-        "fresh_xbox_halo_campaign_evolved_demo_20260610",
-        "rss_0b39e0171f59712c"
-      ],
-      "blocked_story_ids": [],
-      "blockers": [],
-      "warnings": [],
-      "live_execution_gate_reasons": [
-        "pinterest_not_configured"
-      ],
-      "enablement_gaps": [],
-      "enablement_next_action": null
+    "enablement_gaps": [
+      "x_operator_disabled",
+      "x_api_billing_not_declared"
+    ],
+    "safety": {
+      "read_only": true,
+      "no_oauth_triggered": true,
+      "no_token_mutation": true,
+      "no_social_uploads": true,
+      "no_public_posts": true,
+      "no_production_db_mutation": true
     }
   },
-  "safety": {
-    "dry_run_only": true,
-    "no_network_uploads": true,
-    "no_public_posts": true,
-    "no_db_mutation": true,
-    "no_oauth_or_token_change": true
-  },
-  "generated_copy_at": "2026-06-12T18:48:11.143Z"
+  "dry_run_platform_status_matrix": {
+    "schema_version": 1,
+    "generated_at": "2026-06-13T00:25:39.021Z",
+    "overall_verdict": "AMBER",
+    "summary": {
+      "platform_count": 7,
+      "publish_now_action_count": 15,
+      "platform_enabled_dry_run_action_count": 15,
+      "human_review_required_action_count": 15,
+      "live_publish_allowed_action_count": 0,
+      "deferred_action_count": 20,
+      "blocked_action_count": 0,
+      "disabled_platform_count": 4,
+      "unknown_platform_count": 0
+    },
+    "platforms": {
+      "youtube_shorts": {
+        "platform": "youtube_shorts",
+        "status": "ready_now",
+        "operational_state": "enabled",
+        "operational_reason": "core_upload_path",
+        "publishable_now_count": 5,
+        "publish_now_action_count": 5,
+        "enabled_dry_run_action_count": 5,
+        "human_review_required_action_count": 5,
+        "live_publish_allowed_action_count": 0,
+        "queued_when_enabled_count": 0,
+        "deferred_action_count": 0,
+        "blocked_action_count": 0,
+        "planned_story_ids": [
+          "fresh_xbox_stranger_than_heaven_20260611",
+          "fresh_xbox_halo_campaign_evolved_demo_20260610",
+          "rss_0b39e0171f59712c",
+          "rss_cf6510dd2d65c4dc",
+          "rss_600fca97d3e40552"
+        ],
+        "blocked_story_ids": [],
+        "blockers": [],
+        "warnings": [],
+        "live_execution_gate_reasons": [
+          "platform_actions_deferred_until_enabled",
+          "enabled_platform_actions_require_human_review"
+        ],
+        "enablement_gaps": [],
+        "enablement_next_action": null
+      },
+      "tiktok": {
+        "platform": "tiktok",
+        "status": "deferred_until_platform_enabled",
+        "operational_state": "needs_credentials",
+        "operational_reason": "tiktok_local_token_refresh_or_sync_required",
+        "publishable_now_count": 0,
+        "publish_now_action_count": 0,
+        "enabled_dry_run_action_count": 0,
+        "human_review_required_action_count": 0,
+        "live_publish_allowed_action_count": 0,
+        "queued_when_enabled_count": 5,
+        "deferred_action_count": 5,
+        "blocked_action_count": 0,
+        "planned_story_ids": [
+          "fresh_xbox_stranger_than_heaven_20260611",
+          "fresh_xbox_halo_campaign_evolved_demo_20260610",
+          "rss_0b39e0171f59712c",
+          "rss_cf6510dd2d65c4dc",
+          "rss_600fca97d3e40552"
+        ],
+        "blocked_story_ids": [],
+        "blockers": [],
+        "warnings": [
+          "below_creator_rewards_duration",
+          "platform_duration_deferred_until_enabled:tiktok:61"
+        ],
+        "live_execution_gate_reasons": [
+          "tiktok_local_token_refresh_or_sync_required"
+        ],
+        "enablement_gaps": [
+          "tiktok_local_token_refresh_or_sync_required"
+        ],
+        "enablement_next_action": "refresh_or_sync_local_token_with_operator_present_before_any_inbox_upload"
+      },
+      "instagram_reels": {
+        "platform": "instagram_reels",
+        "status": "ready_now",
+        "operational_state": "enabled",
+        "operational_reason": "enabled_monitor_next_publish",
+        "publishable_now_count": 5,
+        "publish_now_action_count": 5,
+        "enabled_dry_run_action_count": 5,
+        "human_review_required_action_count": 5,
+        "live_publish_allowed_action_count": 0,
+        "queued_when_enabled_count": 0,
+        "deferred_action_count": 0,
+        "blocked_action_count": 0,
+        "planned_story_ids": [
+          "fresh_xbox_stranger_than_heaven_20260611",
+          "fresh_xbox_halo_campaign_evolved_demo_20260610",
+          "rss_0b39e0171f59712c",
+          "rss_cf6510dd2d65c4dc",
+          "rss_600fca97d3e40552"
+        ],
+        "blocked_story_ids": [],
+        "blockers": [],
+        "warnings": [],
+        "live_execution_gate_reasons": [
+          "platform_actions_deferred_until_enabled",
+          "enabled_platform_actions_require_human_review"
+        ],
+        "enablement_gaps": [],
+        "enablement_next_action": null
+      },
+      "facebook_reels": {
+        "platform": "facebook_reels",
+        "status": "ready_now",
+        "operational_state": "enabled",
+        "operational_reason": "facebook_reels_enabled",
+        "publishable_now_count": 5,
+        "publish_now_action_count": 5,
+        "enabled_dry_run_action_count": 5,
+        "human_review_required_action_count": 5,
+        "live_publish_allowed_action_count": 0,
+        "queued_when_enabled_count": 0,
+        "deferred_action_count": 0,
+        "blocked_action_count": 0,
+        "planned_story_ids": [
+          "fresh_xbox_stranger_than_heaven_20260611",
+          "fresh_xbox_halo_campaign_evolved_demo_20260610",
+          "rss_0b39e0171f59712c",
+          "rss_cf6510dd2d65c4dc",
+          "rss_600fca97d3e40552"
+        ],
+        "blocked_story_ids": [],
+        "blockers": [],
+        "warnings": [],
+        "live_execution_gate_reasons": [
+          "platform_actions_deferred_until_enabled",
+          "enabled_platform_actions_require_human_review"
+        ],
+        "enablement_gaps": [],
+        "enablement_next_action": "watch_next_normal_publish_and_trust_verifier_not_finish_phase_alone"
+      },
+      "x": {
+        "platform": "x",
+        "status": "deferred_until_platform_enabled",
+        "operational_state": "disabled",
+        "operational_reason": "x_optional_disabled",
+        "publishable_now_count": 0,
+        "publish_now_action_count": 0,
+        "enabled_dry_run_action_count": 0,
+        "human_review_required_action_count": 0,
+        "live_publish_allowed_action_count": 0,
+        "queued_when_enabled_count": 5,
+        "deferred_action_count": 5,
+        "blocked_action_count": 0,
+        "planned_story_ids": [
+          "fresh_xbox_stranger_than_heaven_20260611",
+          "fresh_xbox_halo_campaign_evolved_demo_20260610",
+          "rss_0b39e0171f59712c",
+          "rss_cf6510dd2d65c4dc",
+          "rss_600fca97d3e40552"
+        ],
+        "blocked_story_ids": [],
+        "blockers": [],
+        "warnings": [],
+        "live_execution_gate_reasons": [
+          "x_optional_disabled",
+          "x_operator_disabled",
+          "x_api_billing_not_declared"
+        ],
+        "enablement_gaps": [
+          "x_operator_disabled",
+          "x_api_billing_not_declared"
+        ],
+        "enablement_next_action": "keep_x_disabled_until_paid_api_and_credentials_are_confirmed"
+      },
+      "threads": {
+        "platform": "threads",
+        "status": "deferred_until_platform_enabled",
+        "operational_state": "disabled",
+        "operational_reason": "threads_not_configured",
+        "publishable_now_count": 0,
+        "publish_now_action_count": 0,
+        "enabled_dry_run_action_count": 0,
+        "human_review_required_action_count": 0,
+        "live_publish_allowed_action_count": 0,
+        "queued_when_enabled_count": 5,
+        "deferred_action_count": 5,
+        "blocked_action_count": 0,
+        "planned_story_ids": [
+          "fresh_xbox_stranger_than_heaven_20260611",
+          "fresh_xbox_halo_campaign_evolved_demo_20260610",
+          "rss_0b39e0171f59712c",
+          "rss_cf6510dd2d65c4dc",
+          "rss_600fca97d3e40552"
+        ],
+        "blocked_story_ids": [],
+        "blockers": [],
+        "warnings": [],
+        "live_execution_gate_reasons": [
+          "threads_not_configured"
+        ],
+        "enablement_gaps": [],
+        "enablement_next_action": null
+      },
+      "pinterest": {
+        "platform": "pinterest",
+        "status": "deferred_until_platform_enabled",
+        "operational_state": "disabled",
+        "operational_reason": "pinterest_not_configured",
+        "publishable_now_count": 0,
+        "publish_now_action_count": 0,
+        "enabled_dry_run_action_count": 0,
+        "human_review_required_action_count": 0,
+        "live_publish_allowed_action_count": 0,
+        "queued_when_enabled_count": 5,
+        "deferred_action_count": 5,
+        "blocked_action_count": 0,
+        "planned_story_ids": [
+          "fresh_xbox_stranger_than_heaven_20260611",
+          "fresh_xbox_halo_campaign_evolved_demo_20260610",
+          "rss_0b39e0171f59712c",
+          "rss_cf6510dd2d65c4dc",
+          "rss_600fca97d3e40552"
+        ],
+        "blocked_story_ids": [],
+        "blockers": [],
+        "warnings": [],
+        "live_execution_gate_reasons": [
+          "pinterest_not_configured"
+        ],
+        "enablement_gaps": [],
+        "enablement_next_action": null
+      }
+    },
+    "safety": {
+      "dry_run_only": true,
+      "no_network_uploads": true,
+      "no_public_posts": true,
+      "no_db_mutation": true,
+      "no_oauth_or_token_change": true
+    }
+  }
 }

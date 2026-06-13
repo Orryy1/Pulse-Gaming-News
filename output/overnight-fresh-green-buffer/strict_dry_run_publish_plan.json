@@ -1,40 +1,39 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-06-12T18:44:45.223Z",
+  "generated_at": "2026-06-13T00:25:39.021Z",
   "mode": "DRY_RUN_PUBLISH",
-  "overall_verdict": "RED",
+  "overall_verdict": "AMBER",
   "ready_for_unattended_publish": false,
   "readiness_reasons": [
-    "platform_actions_blocked",
     "platform_actions_deferred_until_enabled",
     "enabled_platform_actions_require_human_review"
   ],
   "summary": {
-    "story_count": 3,
-    "ready_story_count": 3,
+    "story_count": 5,
+    "ready_story_count": 5,
     "blocked_story_count": 0,
     "held_story_count": 0,
     "skipped_story_count": 0,
-    "planned_action_count": 19,
-    "candidate_platform_action_count": 19,
-    "platform_publish_now_action_count": 9,
-    "platform_enabled_dry_run_action_count": 9,
-    "platform_deferred_action_count": 10,
-    "deferred_platform_enablement_action_count": 10,
-    "human_review_required_action_count": 9,
-    "enabled_human_review_action_count": 9,
+    "planned_action_count": 35,
+    "candidate_platform_action_count": 35,
+    "platform_publish_now_action_count": 15,
+    "platform_enabled_dry_run_action_count": 15,
+    "platform_deferred_action_count": 20,
+    "deferred_platform_enablement_action_count": 20,
+    "human_review_required_action_count": 15,
+    "enabled_human_review_action_count": 15,
     "live_publish_allowed_action_count": 0,
-    "blocked_action_count": 2,
-    "warning_action_count": 1,
+    "blocked_action_count": 0,
+    "warning_action_count": 4,
     "publish_now_warning_action_count": 0,
-    "deferred_warning_action_count": 1,
+    "deferred_warning_action_count": 4,
     "incident_guard_failed_story_count": 0,
     "quarantined_incident_guard_failed_story_count": 0,
     "total_incident_guard_failed_story_count": 0,
-    "incident_guard_passed_story_count": 3,
+    "incident_guard_passed_story_count": 5,
     "scheduler_preflight_required": true,
     "scheduler_preflight_report_loaded": true,
-    "preflight_checked_story_count": 3
+    "preflight_checked_story_count": 5
   },
   "actions": [
     {
@@ -74,7 +73,6 @@
       "requires_human_review_before_live_publish": true,
       "live_execution_gate": "operator_human_review_required",
       "live_execution_gate_reasons": [
-        "platform_actions_blocked",
         "platform_actions_deferred_until_enabled",
         "enabled_platform_actions_require_human_review"
       ]
@@ -160,7 +158,6 @@
       "requires_human_review_before_live_publish": true,
       "live_execution_gate": "operator_human_review_required",
       "live_execution_gate_reasons": [
-        "platform_actions_blocked",
         "platform_actions_deferred_until_enabled",
         "enabled_platform_actions_require_human_review"
       ]
@@ -202,7 +199,6 @@
       "requires_human_review_before_live_publish": true,
       "live_execution_gate": "operator_human_review_required",
       "live_execution_gate_reasons": [
-        "platform_actions_blocked",
         "platform_actions_deferred_until_enabled",
         "enabled_platform_actions_require_human_review"
       ]
@@ -357,9 +353,52 @@
       "requires_human_review_before_live_publish": true,
       "live_execution_gate": "operator_human_review_required",
       "live_execution_gate_reasons": [
-        "platform_actions_blocked",
         "platform_actions_deferred_until_enabled",
         "enabled_platform_actions_require_human_review"
+      ]
+    },
+    {
+      "story_id": "fresh_xbox_halo_campaign_evolved_demo_20260610",
+      "platform": "tiktok",
+      "action": "would_queue_when_enabled",
+      "mode": "DRY_RUN_PUBLISH",
+      "title": "Halo: Campaign Evolved Shows The Real Remake Test",
+      "video_path": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\goal-proof-batch\\fresh_xbox_halo_campaign_evolved_demo_20260610\\visual_v4_render.mp4",
+      "captions_path": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\goal-proof-batch\\fresh_xbox_halo_campaign_evolved_demo_20260610\\captions.srt",
+      "cover_frame_source": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\goal-proof-batch\\fresh_xbox_halo_campaign_evolved_demo_20260610\\visual_v4_render.mp4",
+      "description": "Halo: Campaign Evolved: Halo: Campaign Evolved Shows The Real Remake Test Source: Xbox Wire.",
+      "landing_page_slug": "halo-campaign-evolved-fresh-xbox-halo-campaign-evolved-demo-20260610",
+      "disclosure_requirements": {},
+      "duration_window": {
+        "min": 61,
+        "max": 90
+      },
+      "strategic_duration_window": {
+        "min": 61,
+        "max": 90
+      },
+      "video_duration_s": 43.9,
+      "platform_variant_render_generated_at": null,
+      "platform_variant_source_duration_s": null,
+      "duration_strategy": null,
+      "creator_rewards_eligible": false,
+      "platform_enabled": false,
+      "platform_operational_state": "needs_credentials",
+      "platform_operational_reason": "tiktok_local_token_refresh_or_sync_required",
+      "platform_enablement_gaps": [
+        "tiktok_local_token_refresh_or_sync_required"
+      ],
+      "platform_enablement_next_action": "refresh_or_sync_local_token_with_operator_present_before_any_inbox_upload",
+      "warnings": [
+        "platform_duration_deferred_until_enabled:tiktok:61"
+      ],
+      "blockers": [],
+      "no_network_upload": true,
+      "live_publish_allowed_from_dry_run": false,
+      "requires_human_review_before_live_publish": false,
+      "live_execution_gate": "platform_enablement_required",
+      "live_execution_gate_reasons": [
+        "tiktok_local_token_refresh_or_sync_required"
       ]
     },
     {
@@ -399,7 +438,6 @@
       "requires_human_review_before_live_publish": true,
       "live_execution_gate": "operator_human_review_required",
       "live_execution_gate_reasons": [
-        "platform_actions_blocked",
         "platform_actions_deferred_until_enabled",
         "enabled_platform_actions_require_human_review"
       ]
@@ -441,7 +479,6 @@
       "requires_human_review_before_live_publish": true,
       "live_execution_gate": "operator_human_review_required",
       "live_execution_gate_reasons": [
-        "platform_actions_blocked",
         "platform_actions_deferred_until_enabled",
         "enabled_platform_actions_require_human_review"
       ]
@@ -596,9 +633,52 @@
       "requires_human_review_before_live_publish": true,
       "live_execution_gate": "operator_human_review_required",
       "live_execution_gate_reasons": [
-        "platform_actions_blocked",
         "platform_actions_deferred_until_enabled",
         "enabled_platform_actions_require_human_review"
+      ]
+    },
+    {
+      "story_id": "rss_0b39e0171f59712c",
+      "platform": "tiktok",
+      "action": "would_queue_when_enabled",
+      "mode": "DRY_RUN_PUBLISH",
+      "title": "Dragonwilds Has One Last Early Access Test",
+      "video_path": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\live-scored-proof-batch\\rss_0b39e0171f59712c\\visual_v4_render.mp4",
+      "captions_path": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\live-scored-proof-batch\\rss_0b39e0171f59712c\\captions.srt",
+      "cover_frame_source": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\live-scored-proof-batch\\rss_0b39e0171f59712c\\visual_v4_render.mp4",
+      "description": "Ahead of its 1.0 launch, RuneScape: Dragonwilds fits in one more, scorching hot update later this month. Source: Rock Paper Shotgun.",
+      "landing_page_slug": "ahead-of-its-1-0-launch-runescape-dragonwilds-fits-in-one-more-scorching-hot-update-later-this-m",
+      "disclosure_requirements": {},
+      "duration_window": {
+        "min": 61,
+        "max": 90
+      },
+      "strategic_duration_window": {
+        "min": 61,
+        "max": 90
+      },
+      "video_duration_s": 46.344,
+      "platform_variant_render_generated_at": null,
+      "platform_variant_source_duration_s": null,
+      "duration_strategy": null,
+      "creator_rewards_eligible": false,
+      "platform_enabled": false,
+      "platform_operational_state": "needs_credentials",
+      "platform_operational_reason": "tiktok_local_token_refresh_or_sync_required",
+      "platform_enablement_gaps": [
+        "tiktok_local_token_refresh_or_sync_required"
+      ],
+      "platform_enablement_next_action": "refresh_or_sync_local_token_with_operator_present_before_any_inbox_upload",
+      "warnings": [
+        "platform_duration_deferred_until_enabled:tiktok:61"
+      ],
+      "blockers": [],
+      "no_network_upload": true,
+      "live_publish_allowed_from_dry_run": false,
+      "requires_human_review_before_live_publish": false,
+      "live_execution_gate": "platform_enablement_required",
+      "live_execution_gate_reasons": [
+        "tiktok_local_token_refresh_or_sync_required"
       ]
     },
     {
@@ -635,7 +715,6 @@
       "requires_human_review_before_live_publish": true,
       "live_execution_gate": "operator_human_review_required",
       "live_execution_gate_reasons": [
-        "platform_actions_blocked",
         "platform_actions_deferred_until_enabled",
         "enabled_platform_actions_require_human_review"
       ]
@@ -677,7 +756,6 @@
       "requires_human_review_before_live_publish": true,
       "live_execution_gate": "operator_human_review_required",
       "live_execution_gate_reasons": [
-        "platform_actions_blocked",
         "platform_actions_deferred_until_enabled",
         "enabled_platform_actions_require_human_review"
       ]
@@ -794,74 +872,57 @@
       "live_execution_gate_reasons": [
         "pinterest_not_configured"
       ]
-    }
-  ],
-  "blocked_actions": [
+    },
     {
-      "story_id": "fresh_xbox_halo_campaign_evolved_demo_20260610",
-      "platform": "tiktok",
-      "action": "blocked",
+      "story_id": "rss_cf6510dd2d65c4dc",
+      "platform": "youtube_shorts",
+      "action": "would_publish",
       "mode": "DRY_RUN_PUBLISH",
-      "title": "Halo: Campaign Evolved Shows The Real Remake Test",
-      "video_path": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\goal-proof-batch\\fresh_xbox_halo_campaign_evolved_demo_20260610\\visual_v4_render.mp4",
-      "captions_path": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\goal-proof-batch\\fresh_xbox_halo_campaign_evolved_demo_20260610\\captions.srt",
-      "cover_frame_source": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\goal-proof-batch\\fresh_xbox_halo_campaign_evolved_demo_20260610\\visual_v4_render.mp4",
-      "description": "Halo: Campaign Evolved: Halo: Campaign Evolved Shows The Real Remake Test Source: Xbox Wire.",
-      "landing_page_slug": "halo-campaign-evolved-fresh-xbox-halo-campaign-evolved-demo-20260610",
+      "title": "Mina The Hollower Ending Points At The Sequel Risk",
+      "video_path": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\live-rss-proof-batch-20260612-night\\rss_cf6510dd2d65c4dc\\visual_v4_render.mp4",
+      "captions_path": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\live-rss-proof-batch-20260612-night\\rss_cf6510dd2d65c4dc\\captions.srt",
+      "cover_frame_source": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\live-rss-proof-batch-20260612-night\\rss_cf6510dd2d65c4dc\\visual_v4_render.mp4",
+      "description": "GameSpot's spoiler interview with Yacht Club points at where Mina the Hollower could go next. For players, the sequel question is whether Mina 2 becomes an instant wishlist or a wait-and-see follow-up.",
+      "landing_page_slug": "mina-the-hollower-spoiler-interview-rss-cf6510dd2d65c4dc",
       "disclosure_requirements": {},
-      "duration_window": {
-        "min": 61,
-        "max": 90
-      },
-      "strategic_duration_window": {
-        "min": 61,
-        "max": 90
-      },
-      "video_duration_s": 43.9,
+      "duration_window": 51.266,
+      "strategic_duration_window": 51.266,
+      "video_duration_s": 51.266,
       "platform_variant_render_generated_at": null,
       "platform_variant_source_duration_s": null,
       "duration_strategy": null,
       "creator_rewards_eligible": false,
-      "platform_enabled": false,
-      "platform_operational_state": "needs_credentials",
-      "platform_operational_reason": "tiktok_local_token_refresh_or_sync_required",
-      "platform_enablement_gaps": [
-        "tiktok_local_token_refresh_or_sync_required"
-      ],
-      "platform_enablement_next_action": "refresh_or_sync_local_token_with_operator_present_before_any_inbox_upload",
+      "platform_enabled": true,
+      "platform_operational_state": "enabled",
+      "platform_operational_reason": "core_upload_path",
+      "platform_enablement_gaps": [],
+      "platform_enablement_next_action": null,
       "warnings": [],
-      "blockers": [
-        "platform_duration_below_min:tiktok:61"
-      ],
+      "blockers": [],
       "no_network_upload": true,
       "live_publish_allowed_from_dry_run": false,
-      "requires_human_review_before_live_publish": false,
-      "live_execution_gate": "blocked",
+      "requires_human_review_before_live_publish": true,
+      "live_execution_gate": "operator_human_review_required",
       "live_execution_gate_reasons": [
-        "platform_duration_below_min:tiktok:61"
+        "platform_actions_deferred_until_enabled",
+        "enabled_platform_actions_require_human_review"
       ]
     },
     {
-      "story_id": "rss_0b39e0171f59712c",
+      "story_id": "rss_cf6510dd2d65c4dc",
       "platform": "tiktok",
-      "action": "blocked",
+      "action": "would_queue_when_enabled",
       "mode": "DRY_RUN_PUBLISH",
-      "title": "Dragonwilds Has One Last Early Access Test",
-      "video_path": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\live-scored-proof-batch\\rss_0b39e0171f59712c\\visual_v4_render.mp4",
-      "captions_path": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\live-scored-proof-batch\\rss_0b39e0171f59712c\\captions.srt",
-      "cover_frame_source": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\live-scored-proof-batch\\rss_0b39e0171f59712c\\visual_v4_render.mp4",
-      "description": "Ahead of its 1.0 launch, RuneScape: Dragonwilds fits in one more, scorching hot update later this month. Source: Rock Paper Shotgun.",
-      "landing_page_slug": "ahead-of-its-1-0-launch-runescape-dragonwilds-fits-in-one-more-scorching-hot-update-later-this-m",
+      "title": "Mina The Hollower Ending Points At The Sequel Risk",
+      "video_path": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\live-rss-proof-batch-20260612-night\\rss_cf6510dd2d65c4dc\\visual_v4_render.mp4",
+      "captions_path": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\live-rss-proof-batch-20260612-night\\rss_cf6510dd2d65c4dc\\captions.srt",
+      "cover_frame_source": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\live-rss-proof-batch-20260612-night\\rss_cf6510dd2d65c4dc\\visual_v4_render.mp4",
+      "description": "GameSpot's spoiler interview with Yacht Club points at where Mina the Hollower could go next. For players, the sequel question is whether Mina 2 becomes an instant wishlist or a wait-and-see follow-up.",
+      "landing_page_slug": "mina-the-hollower-spoiler-interview-rss-cf6510dd2d65c4dc",
       "disclosure_requirements": {},
-      "duration_window": {
-        "min": 61,
-        "max": 90
-      },
-      "strategic_duration_window": {
-        "min": 61,
-        "max": 90
-      },
-      "video_duration_s": 46.344,
+      "duration_window": 51.266,
+      "strategic_duration_window": 51.266,
+      "video_duration_s": 51.266,
       "platform_variant_render_generated_at": null,
       "platform_variant_source_duration_s": null,
       "duration_strategy": null,
@@ -874,18 +935,471 @@
       ],
       "platform_enablement_next_action": "refresh_or_sync_local_token_with_operator_present_before_any_inbox_upload",
       "warnings": [],
-      "blockers": [
-        "platform_duration_below_min:tiktok:61"
-      ],
+      "blockers": [],
       "no_network_upload": true,
       "live_publish_allowed_from_dry_run": false,
       "requires_human_review_before_live_publish": false,
-      "live_execution_gate": "blocked",
+      "live_execution_gate": "platform_enablement_required",
       "live_execution_gate_reasons": [
-        "platform_duration_below_min:tiktok:61"
+        "tiktok_local_token_refresh_or_sync_required"
+      ]
+    },
+    {
+      "story_id": "rss_cf6510dd2d65c4dc",
+      "platform": "instagram_reels",
+      "action": "would_publish",
+      "mode": "DRY_RUN_PUBLISH",
+      "title": "Mina The Hollower Ending Points At The Sequel Risk",
+      "video_path": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\live-rss-proof-batch-20260612-night\\rss_cf6510dd2d65c4dc\\visual_v4_render.mp4",
+      "captions_path": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\live-rss-proof-batch-20260612-night\\rss_cf6510dd2d65c4dc\\captions.srt",
+      "cover_frame_source": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\live-rss-proof-batch-20260612-night\\rss_cf6510dd2d65c4dc\\visual_v4_render.mp4",
+      "description": "GameSpot's spoiler interview with Yacht Club points at where Mina the Hollower could go next. For players, the sequel question is whether Mina 2 becomes an instant wishlist or a wait-and-see follow-up.",
+      "landing_page_slug": "mina-the-hollower-spoiler-interview-rss-cf6510dd2d65c4dc",
+      "disclosure_requirements": {},
+      "duration_window": 51.266,
+      "strategic_duration_window": 51.266,
+      "video_duration_s": 51.266,
+      "platform_variant_render_generated_at": null,
+      "platform_variant_source_duration_s": null,
+      "duration_strategy": null,
+      "creator_rewards_eligible": false,
+      "platform_enabled": true,
+      "platform_operational_state": "enabled",
+      "platform_operational_reason": "enabled_monitor_next_publish",
+      "platform_enablement_gaps": [],
+      "platform_enablement_next_action": null,
+      "warnings": [],
+      "blockers": [],
+      "no_network_upload": true,
+      "live_publish_allowed_from_dry_run": false,
+      "requires_human_review_before_live_publish": true,
+      "live_execution_gate": "operator_human_review_required",
+      "live_execution_gate_reasons": [
+        "platform_actions_deferred_until_enabled",
+        "enabled_platform_actions_require_human_review"
+      ]
+    },
+    {
+      "story_id": "rss_cf6510dd2d65c4dc",
+      "platform": "facebook_reels",
+      "action": "would_publish",
+      "mode": "DRY_RUN_PUBLISH",
+      "title": "Mina The Hollower Ending Points At The Sequel Risk",
+      "video_path": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\live-rss-proof-batch-20260612-night\\rss_cf6510dd2d65c4dc\\visual_v4_render.mp4",
+      "captions_path": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\live-rss-proof-batch-20260612-night\\rss_cf6510dd2d65c4dc\\captions.srt",
+      "cover_frame_source": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\live-rss-proof-batch-20260612-night\\rss_cf6510dd2d65c4dc\\visual_v4_render.mp4",
+      "description": "GameSpot's spoiler interview with Yacht Club points at where Mina the Hollower could go next. For players, the sequel question is whether Mina 2 becomes an instant wishlist or a wait-and-see follow-up.",
+      "landing_page_slug": "mina-the-hollower-spoiler-interview-rss-cf6510dd2d65c4dc",
+      "disclosure_requirements": {},
+      "duration_window": 51.266,
+      "strategic_duration_window": 51.266,
+      "video_duration_s": 51.266,
+      "platform_variant_render_generated_at": null,
+      "platform_variant_source_duration_s": null,
+      "duration_strategy": null,
+      "creator_rewards_eligible": false,
+      "platform_enabled": true,
+      "platform_operational_state": "enabled",
+      "platform_operational_reason": "facebook_reels_enabled",
+      "platform_enablement_gaps": [],
+      "platform_enablement_next_action": "watch_next_normal_publish_and_trust_verifier_not_finish_phase_alone",
+      "warnings": [],
+      "blockers": [],
+      "no_network_upload": true,
+      "live_publish_allowed_from_dry_run": false,
+      "requires_human_review_before_live_publish": true,
+      "live_execution_gate": "operator_human_review_required",
+      "live_execution_gate_reasons": [
+        "platform_actions_deferred_until_enabled",
+        "enabled_platform_actions_require_human_review"
+      ]
+    },
+    {
+      "story_id": "rss_cf6510dd2d65c4dc",
+      "platform": "x",
+      "action": "would_queue_when_enabled",
+      "mode": "DRY_RUN_PUBLISH",
+      "title": "Mina The Hollower Ending Points At The Sequel Risk",
+      "video_path": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\live-rss-proof-batch-20260612-night\\rss_cf6510dd2d65c4dc\\visual_v4_render.mp4",
+      "captions_path": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\live-rss-proof-batch-20260612-night\\rss_cf6510dd2d65c4dc\\captions.srt",
+      "cover_frame_source": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\live-rss-proof-batch-20260612-night\\rss_cf6510dd2d65c4dc\\visual_v4_render.mp4",
+      "description": "GameSpot's spoiler interview with Yacht Club points at where Mina the Hollower could go next. For players, the sequel question is whether Mina 2 becomes an instant wishlist or a wait-and-see follow-up.",
+      "landing_page_slug": "mina-the-hollower-spoiler-interview-rss-cf6510dd2d65c4dc",
+      "disclosure_requirements": {},
+      "duration_window": null,
+      "strategic_duration_window": null,
+      "video_duration_s": 51.266,
+      "platform_variant_render_generated_at": null,
+      "platform_variant_source_duration_s": null,
+      "duration_strategy": null,
+      "creator_rewards_eligible": false,
+      "platform_enabled": false,
+      "platform_operational_state": "disabled",
+      "platform_operational_reason": "x_optional_disabled",
+      "platform_enablement_gaps": [
+        "x_operator_disabled",
+        "x_api_billing_not_declared"
+      ],
+      "platform_enablement_next_action": "keep_x_disabled_until_paid_api_and_credentials_are_confirmed",
+      "warnings": [],
+      "blockers": [],
+      "no_network_upload": true,
+      "live_publish_allowed_from_dry_run": false,
+      "requires_human_review_before_live_publish": false,
+      "live_execution_gate": "platform_enablement_required",
+      "live_execution_gate_reasons": [
+        "x_optional_disabled",
+        "x_operator_disabled",
+        "x_api_billing_not_declared"
+      ]
+    },
+    {
+      "story_id": "rss_cf6510dd2d65c4dc",
+      "platform": "threads",
+      "action": "would_queue_when_enabled",
+      "mode": "DRY_RUN_PUBLISH",
+      "title": "Mina The Hollower Ending Points At The Sequel Risk",
+      "video_path": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\live-rss-proof-batch-20260612-night\\rss_cf6510dd2d65c4dc\\visual_v4_render.mp4",
+      "captions_path": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\live-rss-proof-batch-20260612-night\\rss_cf6510dd2d65c4dc\\captions.srt",
+      "cover_frame_source": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\live-rss-proof-batch-20260612-night\\rss_cf6510dd2d65c4dc\\visual_v4_render.mp4",
+      "description": "GameSpot's spoiler interview with Yacht Club points at where Mina the Hollower could go next. For players, the sequel question is whether Mina 2 becomes an instant wishlist or a wait-and-see follow-up.",
+      "landing_page_slug": "mina-the-hollower-spoiler-interview-rss-cf6510dd2d65c4dc",
+      "disclosure_requirements": {},
+      "duration_window": null,
+      "strategic_duration_window": null,
+      "video_duration_s": 51.266,
+      "platform_variant_render_generated_at": null,
+      "platform_variant_source_duration_s": null,
+      "duration_strategy": null,
+      "creator_rewards_eligible": false,
+      "platform_enabled": false,
+      "platform_operational_state": "disabled",
+      "platform_operational_reason": "threads_not_configured",
+      "platform_enablement_gaps": [],
+      "platform_enablement_next_action": null,
+      "warnings": [],
+      "blockers": [],
+      "no_network_upload": true,
+      "live_publish_allowed_from_dry_run": false,
+      "requires_human_review_before_live_publish": false,
+      "live_execution_gate": "platform_enablement_required",
+      "live_execution_gate_reasons": [
+        "threads_not_configured"
+      ]
+    },
+    {
+      "story_id": "rss_cf6510dd2d65c4dc",
+      "platform": "pinterest",
+      "action": "would_queue_when_enabled",
+      "mode": "DRY_RUN_PUBLISH",
+      "title": "Mina The Hollower Ending Points At The Sequel Risk",
+      "video_path": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\live-rss-proof-batch-20260612-night\\rss_cf6510dd2d65c4dc\\visual_v4_render.mp4",
+      "captions_path": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\live-rss-proof-batch-20260612-night\\rss_cf6510dd2d65c4dc\\captions.srt",
+      "cover_frame_source": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\live-rss-proof-batch-20260612-night\\rss_cf6510dd2d65c4dc\\visual_v4_render.mp4",
+      "description": "GameSpot's spoiler interview with Yacht Club points at where Mina the Hollower could go next. For players, the sequel question is whether Mina 2 becomes an instant wishlist or a wait-and-see follow-up.",
+      "landing_page_slug": "mina-the-hollower-spoiler-interview-rss-cf6510dd2d65c4dc",
+      "disclosure_requirements": {},
+      "duration_window": null,
+      "strategic_duration_window": null,
+      "video_duration_s": 51.266,
+      "platform_variant_render_generated_at": null,
+      "platform_variant_source_duration_s": null,
+      "duration_strategy": null,
+      "creator_rewards_eligible": false,
+      "platform_enabled": false,
+      "platform_operational_state": "disabled",
+      "platform_operational_reason": "pinterest_not_configured",
+      "platform_enablement_gaps": [],
+      "platform_enablement_next_action": null,
+      "warnings": [],
+      "blockers": [],
+      "no_network_upload": true,
+      "live_publish_allowed_from_dry_run": false,
+      "requires_human_review_before_live_publish": false,
+      "live_execution_gate": "platform_enablement_required",
+      "live_execution_gate_reasons": [
+        "pinterest_not_configured"
+      ]
+    },
+    {
+      "story_id": "rss_600fca97d3e40552",
+      "platform": "youtube_shorts",
+      "action": "would_publish",
+      "mode": "DRY_RUN_PUBLISH",
+      "title": "GTA 5 Became Rockstar's GTA 6 Warm-Up",
+      "video_path": "output\\overnight-fresh-green-buffer\\live-scored-proof-batch\\rss_600fca97d3e40552\\visual_v4_render.mp4",
+      "captions_path": "output\\overnight-fresh-green-buffer\\live-scored-proof-batch\\rss_600fca97d3e40552\\captions.srt",
+      "cover_frame_source": "output\\overnight-fresh-green-buffer\\live-scored-proof-batch\\rss_600fca97d3e40552\\visual_v4_render.mp4",
+      "description": "GTA 5 Joins A Subscription Ahead Of GTA 6 Launch. Source: GameSpot.",
+      "landing_page_slug": "gta-5-joins-a-subscription-ahead-of-gta-6-launch",
+      "disclosure_requirements": {},
+      "duration_window": {
+        "min": 35,
+        "max": 60
+      },
+      "strategic_duration_window": {
+        "min": 35,
+        "max": 60
+      },
+      "video_duration_s": 47.766,
+      "platform_variant_render_generated_at": null,
+      "platform_variant_source_duration_s": null,
+      "duration_strategy": null,
+      "creator_rewards_eligible": false,
+      "platform_enabled": true,
+      "platform_operational_state": "enabled",
+      "platform_operational_reason": "core_upload_path",
+      "platform_enablement_gaps": [],
+      "platform_enablement_next_action": null,
+      "warnings": [],
+      "blockers": [],
+      "no_network_upload": true,
+      "live_publish_allowed_from_dry_run": false,
+      "requires_human_review_before_live_publish": true,
+      "live_execution_gate": "operator_human_review_required",
+      "live_execution_gate_reasons": [
+        "platform_actions_deferred_until_enabled",
+        "enabled_platform_actions_require_human_review"
+      ]
+    },
+    {
+      "story_id": "rss_600fca97d3e40552",
+      "platform": "tiktok",
+      "action": "would_queue_when_enabled",
+      "mode": "DRY_RUN_PUBLISH",
+      "title": "GTA 5 Became Rockstar's GTA 6 Warm-Up",
+      "video_path": "output\\overnight-fresh-green-buffer\\live-scored-proof-batch\\rss_600fca97d3e40552\\visual_v4_render.mp4",
+      "captions_path": "output\\overnight-fresh-green-buffer\\live-scored-proof-batch\\rss_600fca97d3e40552\\captions.srt",
+      "cover_frame_source": "output\\overnight-fresh-green-buffer\\live-scored-proof-batch\\rss_600fca97d3e40552\\visual_v4_render.mp4",
+      "description": "GTA 5 Joins A Subscription Ahead Of GTA 6 Launch. Source: GameSpot.",
+      "landing_page_slug": "gta-5-joins-a-subscription-ahead-of-gta-6-launch",
+      "disclosure_requirements": {},
+      "duration_window": {
+        "min": 61,
+        "max": 90
+      },
+      "strategic_duration_window": {
+        "min": 61,
+        "max": 90
+      },
+      "video_duration_s": 47.766,
+      "platform_variant_render_generated_at": null,
+      "platform_variant_source_duration_s": null,
+      "duration_strategy": null,
+      "creator_rewards_eligible": false,
+      "platform_enabled": false,
+      "platform_operational_state": "needs_credentials",
+      "platform_operational_reason": "tiktok_local_token_refresh_or_sync_required",
+      "platform_enablement_gaps": [
+        "tiktok_local_token_refresh_or_sync_required"
+      ],
+      "platform_enablement_next_action": "refresh_or_sync_local_token_with_operator_present_before_any_inbox_upload",
+      "warnings": [
+        "platform_duration_deferred_until_enabled:tiktok:61"
+      ],
+      "blockers": [],
+      "no_network_upload": true,
+      "live_publish_allowed_from_dry_run": false,
+      "requires_human_review_before_live_publish": false,
+      "live_execution_gate": "platform_enablement_required",
+      "live_execution_gate_reasons": [
+        "tiktok_local_token_refresh_or_sync_required"
+      ]
+    },
+    {
+      "story_id": "rss_600fca97d3e40552",
+      "platform": "instagram_reels",
+      "action": "would_publish",
+      "mode": "DRY_RUN_PUBLISH",
+      "title": "GTA 5 Became Rockstar's GTA 6 Warm-Up",
+      "video_path": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\live-scored-proof-batch\\rss_600fca97d3e40552\\platform_variants\\instagram_reels\\visual_v4_render_instagram_reels.mp4",
+      "captions_path": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\live-scored-proof-batch\\rss_600fca97d3e40552\\platform_variants\\instagram_reels\\captions_instagram_reels.srt",
+      "cover_frame_source": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\live-scored-proof-batch\\rss_600fca97d3e40552\\platform_variants\\instagram_reels\\visual_v4_render_instagram_reels.mp4",
+      "description": "GTA 5 Joins A Subscription Ahead Of GTA 6 Launch. Source: GameSpot.",
+      "landing_page_slug": "gta-5-joins-a-subscription-ahead-of-gta-6-launch",
+      "disclosure_requirements": {},
+      "duration_window": 44.8,
+      "strategic_duration_window": {
+        "min": 25,
+        "max": 45
+      },
+      "video_duration_s": 44.8,
+      "platform_variant_render_generated_at": "2026-06-13T00:08:11.170Z",
+      "platform_variant_source_duration_s": 47.766,
+      "duration_strategy": null,
+      "creator_rewards_eligible": false,
+      "platform_enabled": true,
+      "platform_operational_state": "enabled",
+      "platform_operational_reason": "enabled_monitor_next_publish",
+      "platform_enablement_gaps": [],
+      "platform_enablement_next_action": null,
+      "warnings": [],
+      "blockers": [],
+      "no_network_upload": true,
+      "live_publish_allowed_from_dry_run": false,
+      "requires_human_review_before_live_publish": true,
+      "live_execution_gate": "operator_human_review_required",
+      "live_execution_gate_reasons": [
+        "platform_actions_deferred_until_enabled",
+        "enabled_platform_actions_require_human_review"
+      ]
+    },
+    {
+      "story_id": "rss_600fca97d3e40552",
+      "platform": "facebook_reels",
+      "action": "would_publish",
+      "mode": "DRY_RUN_PUBLISH",
+      "title": "GTA 5 Became Rockstar's GTA 6 Warm-Up",
+      "video_path": "output\\overnight-fresh-green-buffer\\live-scored-proof-batch\\rss_600fca97d3e40552\\visual_v4_render.mp4",
+      "captions_path": "output\\overnight-fresh-green-buffer\\live-scored-proof-batch\\rss_600fca97d3e40552\\captions.srt",
+      "cover_frame_source": "output\\overnight-fresh-green-buffer\\live-scored-proof-batch\\rss_600fca97d3e40552\\visual_v4_render.mp4",
+      "description": "GTA 5 Joins A Subscription Ahead Of GTA 6 Launch. Source: GameSpot.",
+      "landing_page_slug": "gta-5-joins-a-subscription-ahead-of-gta-6-launch",
+      "disclosure_requirements": {},
+      "duration_window": {
+        "min": 35,
+        "max": 60
+      },
+      "strategic_duration_window": {
+        "min": 35,
+        "max": 60
+      },
+      "video_duration_s": 47.766,
+      "platform_variant_render_generated_at": null,
+      "platform_variant_source_duration_s": null,
+      "duration_strategy": null,
+      "creator_rewards_eligible": false,
+      "platform_enabled": true,
+      "platform_operational_state": "enabled",
+      "platform_operational_reason": "facebook_reels_enabled",
+      "platform_enablement_gaps": [],
+      "platform_enablement_next_action": "watch_next_normal_publish_and_trust_verifier_not_finish_phase_alone",
+      "warnings": [],
+      "blockers": [],
+      "no_network_upload": true,
+      "live_publish_allowed_from_dry_run": false,
+      "requires_human_review_before_live_publish": true,
+      "live_execution_gate": "operator_human_review_required",
+      "live_execution_gate_reasons": [
+        "platform_actions_deferred_until_enabled",
+        "enabled_platform_actions_require_human_review"
+      ]
+    },
+    {
+      "story_id": "rss_600fca97d3e40552",
+      "platform": "x",
+      "action": "would_queue_when_enabled",
+      "mode": "DRY_RUN_PUBLISH",
+      "title": "GTA 5 Became Rockstar's GTA 6 Warm-Up",
+      "video_path": "output\\overnight-fresh-green-buffer\\live-scored-proof-batch\\rss_600fca97d3e40552\\visual_v4_render.mp4",
+      "captions_path": "output\\overnight-fresh-green-buffer\\live-scored-proof-batch\\rss_600fca97d3e40552\\captions.srt",
+      "cover_frame_source": "output\\overnight-fresh-green-buffer\\live-scored-proof-batch\\rss_600fca97d3e40552\\visual_v4_render.mp4",
+      "description": "GTA 5 Joins A Subscription Ahead Of GTA 6 Launch. Source: GameSpot.",
+      "landing_page_slug": "gta-5-joins-a-subscription-ahead-of-gta-6-launch",
+      "disclosure_requirements": {},
+      "duration_window": {
+        "min": 25,
+        "max": 60
+      },
+      "strategic_duration_window": {
+        "min": 25,
+        "max": 60
+      },
+      "video_duration_s": 47.766,
+      "platform_variant_render_generated_at": null,
+      "platform_variant_source_duration_s": null,
+      "duration_strategy": null,
+      "creator_rewards_eligible": false,
+      "platform_enabled": false,
+      "platform_operational_state": "disabled",
+      "platform_operational_reason": "x_optional_disabled",
+      "platform_enablement_gaps": [
+        "x_operator_disabled",
+        "x_api_billing_not_declared"
+      ],
+      "platform_enablement_next_action": "keep_x_disabled_until_paid_api_and_credentials_are_confirmed",
+      "warnings": [],
+      "blockers": [],
+      "no_network_upload": true,
+      "live_publish_allowed_from_dry_run": false,
+      "requires_human_review_before_live_publish": false,
+      "live_execution_gate": "platform_enablement_required",
+      "live_execution_gate_reasons": [
+        "x_optional_disabled",
+        "x_operator_disabled",
+        "x_api_billing_not_declared"
+      ]
+    },
+    {
+      "story_id": "rss_600fca97d3e40552",
+      "platform": "threads",
+      "action": "would_queue_when_enabled",
+      "mode": "DRY_RUN_PUBLISH",
+      "title": "GTA 5 Became Rockstar's GTA 6 Warm-Up",
+      "video_path": "output\\overnight-fresh-green-buffer\\live-scored-proof-batch\\rss_600fca97d3e40552\\visual_v4_render.mp4",
+      "captions_path": "output\\overnight-fresh-green-buffer\\live-scored-proof-batch\\rss_600fca97d3e40552\\captions.srt",
+      "cover_frame_source": "output\\overnight-fresh-green-buffer\\live-scored-proof-batch\\rss_600fca97d3e40552\\visual_v4_render.mp4",
+      "description": "GTA 5 Joins A Subscription Ahead Of GTA 6 Launch. Source: GameSpot.",
+      "landing_page_slug": "gta-5-joins-a-subscription-ahead-of-gta-6-launch",
+      "disclosure_requirements": {},
+      "duration_window": null,
+      "strategic_duration_window": null,
+      "video_duration_s": 47.766,
+      "platform_variant_render_generated_at": null,
+      "platform_variant_source_duration_s": null,
+      "duration_strategy": null,
+      "creator_rewards_eligible": false,
+      "platform_enabled": false,
+      "platform_operational_state": "disabled",
+      "platform_operational_reason": "threads_not_configured",
+      "platform_enablement_gaps": [],
+      "platform_enablement_next_action": null,
+      "warnings": [],
+      "blockers": [],
+      "no_network_upload": true,
+      "live_publish_allowed_from_dry_run": false,
+      "requires_human_review_before_live_publish": false,
+      "live_execution_gate": "platform_enablement_required",
+      "live_execution_gate_reasons": [
+        "threads_not_configured"
+      ]
+    },
+    {
+      "story_id": "rss_600fca97d3e40552",
+      "platform": "pinterest",
+      "action": "would_queue_when_enabled",
+      "mode": "DRY_RUN_PUBLISH",
+      "title": "GTA 5 Became Rockstar's GTA 6 Warm-Up",
+      "video_path": "output\\overnight-fresh-green-buffer\\live-scored-proof-batch\\rss_600fca97d3e40552\\visual_v4_render.mp4",
+      "captions_path": "output\\overnight-fresh-green-buffer\\live-scored-proof-batch\\rss_600fca97d3e40552\\captions.srt",
+      "cover_frame_source": "output\\overnight-fresh-green-buffer\\live-scored-proof-batch\\rss_600fca97d3e40552\\visual_v4_render.mp4",
+      "description": "GTA 5 Joins A Subscription Ahead Of GTA 6 Launch. Source: GameSpot.",
+      "landing_page_slug": "gta-5-joins-a-subscription-ahead-of-gta-6-launch",
+      "disclosure_requirements": {},
+      "duration_window": null,
+      "strategic_duration_window": null,
+      "video_duration_s": 47.766,
+      "platform_variant_render_generated_at": null,
+      "platform_variant_source_duration_s": null,
+      "duration_strategy": null,
+      "creator_rewards_eligible": false,
+      "platform_enabled": false,
+      "platform_operational_state": "disabled",
+      "platform_operational_reason": "pinterest_not_configured",
+      "platform_enablement_gaps": [],
+      "platform_enablement_next_action": null,
+      "warnings": [],
+      "blockers": [],
+      "no_network_upload": true,
+      "live_publish_allowed_from_dry_run": false,
+      "requires_human_review_before_live_publish": false,
+      "live_execution_gate": "platform_enablement_required",
+      "live_execution_gate_reasons": [
+        "pinterest_not_configured"
       ]
     }
   ],
+  "blocked_actions": [],
   "ready_stories": [
     {
       "story_id": "fresh_xbox_stranger_than_heaven_20260611",
@@ -985,6 +1499,72 @@
         "word_timestamp_source": "local_whisper_word_alignment",
         "word_timestamps_asr_aligned": true
       }
+    },
+    {
+      "story_id": "rss_cf6510dd2d65c4dc",
+      "artifact_dir": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\live-rss-proof-batch-20260612-night\\rss_cf6510dd2d65c4dc",
+      "warnings": [],
+      "visual_evidence_profile": {
+        "asset_count": 11,
+        "motion_asset_count": 11,
+        "generated_motion_asset_count": 0,
+        "real_media_asset_count": 11,
+        "real_motion_asset_count": 11,
+        "direct_video_motion_asset_count": 5,
+        "generated_motion_family_count": 0,
+        "real_media_family_count": 6,
+        "direct_video_motion_family_count": 2,
+        "generated_only_motion_deck": false,
+        "blockers": [],
+        "owned_explainer_motion_ready": false,
+        "owned_explainer_exception_approved": false
+      },
+      "file_evidence": {
+        "mp4_ready": true,
+        "captions_ready": true,
+        "narration_ready": true,
+        "word_timestamps_ready": true,
+        "materialised_motion_ready": true,
+        "distinct_motion_families_ready": true,
+        "materialised_motion_clip_count": 24,
+        "distinct_motion_family_count": 13,
+        "rights_ledger_ready": true,
+        "word_timestamp_source": "local_whisper_word_alignment",
+        "word_timestamps_asr_aligned": true
+      }
+    },
+    {
+      "story_id": "rss_600fca97d3e40552",
+      "artifact_dir": "output/overnight-fresh-green-buffer/live-scored-proof-batch/rss_600fca97d3e40552",
+      "warnings": [],
+      "visual_evidence_profile": {
+        "asset_count": 20,
+        "motion_asset_count": 8,
+        "generated_motion_asset_count": 0,
+        "real_media_asset_count": 19,
+        "real_motion_asset_count": 8,
+        "direct_video_motion_asset_count": 6,
+        "generated_motion_family_count": 0,
+        "real_media_family_count": 14,
+        "direct_video_motion_family_count": 3,
+        "generated_only_motion_deck": false,
+        "blockers": [],
+        "owned_explainer_motion_ready": false,
+        "owned_explainer_exception_approved": false
+      },
+      "file_evidence": {
+        "mp4_ready": true,
+        "captions_ready": true,
+        "narration_ready": true,
+        "word_timestamps_ready": true,
+        "materialised_motion_ready": true,
+        "distinct_motion_families_ready": true,
+        "materialised_motion_clip_count": 24,
+        "distinct_motion_family_count": 16,
+        "rights_ledger_ready": true,
+        "word_timestamp_source": "local_whisper_word_alignment",
+        "word_timestamps_asr_aligned": true
+      }
     }
   ],
   "blocked_stories": [],
@@ -992,9 +1572,9 @@
   "skipped_stories": [],
   "incident_guard_report": {
     "schema_version": 1,
-    "generated_at": "2026-06-12T18:44:45.223Z",
-    "story_count": 3,
-    "passed_story_count": 3,
+    "generated_at": "2026-06-13T00:25:39.021Z",
+    "story_count": 5,
+    "passed_story_count": 5,
     "failed_story_count": 0,
     "stories": [
       {
@@ -1101,27 +1681,97 @@
           "word_timestamp_source": "local_whisper_word_alignment",
           "word_timestamps_asr_aligned": true
         }
+      },
+      {
+        "story_id": "rss_cf6510dd2d65c4dc",
+        "artifact_dir": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\live-rss-proof-batch-20260612-night\\rss_cf6510dd2d65c4dc",
+        "verdict": "pass",
+        "safe_to_publish_boolean": true,
+        "disaster_upload_blockers": [],
+        "warnings": [],
+        "public_output_coherence_report": {
+          "verdict": "pass",
+          "blockers": [],
+          "artifact_freshness": {
+            "status": "fresh",
+            "report_path": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\live-rss-proof-batch-20260612-night\\rss_cf6510dd2d65c4dc\\coherence_report.json",
+            "report_present": true,
+            "result": "pass",
+            "blockers": [],
+            "warnings": [],
+            "mismatched_fields": [],
+            "missing_fields": []
+          }
+        },
+        "file_evidence": {
+          "mp4_ready": true,
+          "captions_ready": true,
+          "narration_ready": true,
+          "word_timestamps_ready": true,
+          "materialised_motion_ready": true,
+          "distinct_motion_families_ready": true,
+          "materialised_motion_clip_count": 24,
+          "distinct_motion_family_count": 13,
+          "rights_ledger_ready": true,
+          "word_timestamp_source": "local_whisper_word_alignment",
+          "word_timestamps_asr_aligned": true
+        }
+      },
+      {
+        "story_id": "rss_600fca97d3e40552",
+        "artifact_dir": "output/overnight-fresh-green-buffer/live-scored-proof-batch/rss_600fca97d3e40552",
+        "verdict": "pass",
+        "safe_to_publish_boolean": true,
+        "disaster_upload_blockers": [],
+        "warnings": [],
+        "public_output_coherence_report": {
+          "verdict": "pass",
+          "blockers": [],
+          "artifact_freshness": {
+            "status": "fresh",
+            "report_path": "output\\overnight-fresh-green-buffer\\live-scored-proof-batch\\rss_600fca97d3e40552\\coherence_report.json",
+            "report_present": true,
+            "result": "pass",
+            "blockers": [],
+            "warnings": [],
+            "mismatched_fields": [],
+            "missing_fields": []
+          }
+        },
+        "file_evidence": {
+          "mp4_ready": true,
+          "captions_ready": true,
+          "narration_ready": true,
+          "word_timestamps_ready": true,
+          "materialised_motion_ready": true,
+          "distinct_motion_families_ready": true,
+          "materialised_motion_clip_count": 24,
+          "distinct_motion_family_count": 16,
+          "rights_ledger_ready": true,
+          "word_timestamp_source": "local_whisper_word_alignment",
+          "word_timestamps_asr_aligned": true
+        }
       }
     ]
   },
   "disaster_upload_blockers": {
     "schema_version": 1,
-    "generated_at": "2026-06-12T18:44:45.223Z",
+    "generated_at": "2026-06-13T00:25:39.021Z",
     "blocked_story_count": 0,
     "stories": []
   },
   "platform_upload_preflight_report": {
     "schema_version": 1,
-    "generated_at": "2026-06-12T18:44:45.223Z",
-    "overall_verdict": "RED",
+    "generated_at": "2026-06-13T00:25:39.021Z",
+    "overall_verdict": "AMBER",
     "summary": {
       "platform_count": 7,
-      "publish_now_action_count": 9,
-      "platform_enabled_dry_run_action_count": 9,
-      "human_review_required_action_count": 9,
+      "publish_now_action_count": 15,
+      "platform_enabled_dry_run_action_count": 15,
+      "human_review_required_action_count": 15,
       "live_publish_allowed_action_count": 0,
-      "deferred_action_count": 10,
-      "blocked_action_count": 2,
+      "deferred_action_count": 20,
+      "blocked_action_count": 0,
       "disabled_platform_count": 4,
       "unknown_platform_count": 0
     },
@@ -1131,10 +1781,10 @@
         "status": "ready_now",
         "operational_state": "enabled",
         "operational_reason": "core_upload_path",
-        "publishable_now_count": 3,
-        "publish_now_action_count": 3,
-        "enabled_dry_run_action_count": 3,
-        "human_review_required_action_count": 3,
+        "publishable_now_count": 5,
+        "publish_now_action_count": 5,
+        "enabled_dry_run_action_count": 5,
+        "human_review_required_action_count": 5,
         "live_publish_allowed_action_count": 0,
         "queued_when_enabled_count": 0,
         "deferred_action_count": 0,
@@ -1142,13 +1792,14 @@
         "planned_story_ids": [
           "fresh_xbox_stranger_than_heaven_20260611",
           "fresh_xbox_halo_campaign_evolved_demo_20260610",
-          "rss_0b39e0171f59712c"
+          "rss_0b39e0171f59712c",
+          "rss_cf6510dd2d65c4dc",
+          "rss_600fca97d3e40552"
         ],
         "blocked_story_ids": [],
         "blockers": [],
         "warnings": [],
         "live_execution_gate_reasons": [
-          "platform_actions_blocked",
           "platform_actions_deferred_until_enabled",
           "enabled_platform_actions_require_human_review"
         ],
@@ -1157,7 +1808,7 @@
       },
       "tiktok": {
         "platform": "tiktok",
-        "status": "blocked",
+        "status": "deferred_until_platform_enabled",
         "operational_state": "needs_credentials",
         "operational_reason": "tiktok_local_token_refresh_or_sync_required",
         "publishable_now_count": 0,
@@ -1165,21 +1816,21 @@
         "enabled_dry_run_action_count": 0,
         "human_review_required_action_count": 0,
         "live_publish_allowed_action_count": 0,
-        "queued_when_enabled_count": 1,
-        "deferred_action_count": 1,
-        "blocked_action_count": 2,
+        "queued_when_enabled_count": 5,
+        "deferred_action_count": 5,
+        "blocked_action_count": 0,
         "planned_story_ids": [
-          "fresh_xbox_stranger_than_heaven_20260611"
-        ],
-        "blocked_story_ids": [
+          "fresh_xbox_stranger_than_heaven_20260611",
           "fresh_xbox_halo_campaign_evolved_demo_20260610",
-          "rss_0b39e0171f59712c"
+          "rss_0b39e0171f59712c",
+          "rss_cf6510dd2d65c4dc",
+          "rss_600fca97d3e40552"
         ],
-        "blockers": [
-          "platform_duration_below_min:tiktok:61"
-        ],
+        "blocked_story_ids": [],
+        "blockers": [],
         "warnings": [
-          "below_creator_rewards_duration"
+          "below_creator_rewards_duration",
+          "platform_duration_deferred_until_enabled:tiktok:61"
         ],
         "live_execution_gate_reasons": [
           "tiktok_local_token_refresh_or_sync_required"
@@ -1194,10 +1845,10 @@
         "status": "ready_now",
         "operational_state": "enabled",
         "operational_reason": "enabled_monitor_next_publish",
-        "publishable_now_count": 3,
-        "publish_now_action_count": 3,
-        "enabled_dry_run_action_count": 3,
-        "human_review_required_action_count": 3,
+        "publishable_now_count": 5,
+        "publish_now_action_count": 5,
+        "enabled_dry_run_action_count": 5,
+        "human_review_required_action_count": 5,
         "live_publish_allowed_action_count": 0,
         "queued_when_enabled_count": 0,
         "deferred_action_count": 0,
@@ -1205,13 +1856,14 @@
         "planned_story_ids": [
           "fresh_xbox_stranger_than_heaven_20260611",
           "fresh_xbox_halo_campaign_evolved_demo_20260610",
-          "rss_0b39e0171f59712c"
+          "rss_0b39e0171f59712c",
+          "rss_cf6510dd2d65c4dc",
+          "rss_600fca97d3e40552"
         ],
         "blocked_story_ids": [],
         "blockers": [],
         "warnings": [],
         "live_execution_gate_reasons": [
-          "platform_actions_blocked",
           "platform_actions_deferred_until_enabled",
           "enabled_platform_actions_require_human_review"
         ],
@@ -1223,10 +1875,10 @@
         "status": "ready_now",
         "operational_state": "enabled",
         "operational_reason": "facebook_reels_enabled",
-        "publishable_now_count": 3,
-        "publish_now_action_count": 3,
-        "enabled_dry_run_action_count": 3,
-        "human_review_required_action_count": 3,
+        "publishable_now_count": 5,
+        "publish_now_action_count": 5,
+        "enabled_dry_run_action_count": 5,
+        "human_review_required_action_count": 5,
         "live_publish_allowed_action_count": 0,
         "queued_when_enabled_count": 0,
         "deferred_action_count": 0,
@@ -1234,13 +1886,14 @@
         "planned_story_ids": [
           "fresh_xbox_stranger_than_heaven_20260611",
           "fresh_xbox_halo_campaign_evolved_demo_20260610",
-          "rss_0b39e0171f59712c"
+          "rss_0b39e0171f59712c",
+          "rss_cf6510dd2d65c4dc",
+          "rss_600fca97d3e40552"
         ],
         "blocked_story_ids": [],
         "blockers": [],
         "warnings": [],
         "live_execution_gate_reasons": [
-          "platform_actions_blocked",
           "platform_actions_deferred_until_enabled",
           "enabled_platform_actions_require_human_review"
         ],
@@ -1257,13 +1910,15 @@
         "enabled_dry_run_action_count": 0,
         "human_review_required_action_count": 0,
         "live_publish_allowed_action_count": 0,
-        "queued_when_enabled_count": 3,
-        "deferred_action_count": 3,
+        "queued_when_enabled_count": 5,
+        "deferred_action_count": 5,
         "blocked_action_count": 0,
         "planned_story_ids": [
           "fresh_xbox_stranger_than_heaven_20260611",
           "fresh_xbox_halo_campaign_evolved_demo_20260610",
-          "rss_0b39e0171f59712c"
+          "rss_0b39e0171f59712c",
+          "rss_cf6510dd2d65c4dc",
+          "rss_600fca97d3e40552"
         ],
         "blocked_story_ids": [],
         "blockers": [],
@@ -1289,13 +1944,15 @@
         "enabled_dry_run_action_count": 0,
         "human_review_required_action_count": 0,
         "live_publish_allowed_action_count": 0,
-        "queued_when_enabled_count": 3,
-        "deferred_action_count": 3,
+        "queued_when_enabled_count": 5,
+        "deferred_action_count": 5,
         "blocked_action_count": 0,
         "planned_story_ids": [
           "fresh_xbox_stranger_than_heaven_20260611",
           "fresh_xbox_halo_campaign_evolved_demo_20260610",
-          "rss_0b39e0171f59712c"
+          "rss_0b39e0171f59712c",
+          "rss_cf6510dd2d65c4dc",
+          "rss_600fca97d3e40552"
         ],
         "blocked_story_ids": [],
         "blockers": [],
@@ -1316,13 +1973,15 @@
         "enabled_dry_run_action_count": 0,
         "human_review_required_action_count": 0,
         "live_publish_allowed_action_count": 0,
-        "queued_when_enabled_count": 3,
-        "deferred_action_count": 3,
+        "queued_when_enabled_count": 5,
+        "deferred_action_count": 5,
         "blocked_action_count": 0,
         "planned_story_ids": [
           "fresh_xbox_stranger_than_heaven_20260611",
           "fresh_xbox_halo_campaign_evolved_demo_20260610",
-          "rss_0b39e0171f59712c"
+          "rss_0b39e0171f59712c",
+          "rss_cf6510dd2d65c4dc",
+          "rss_600fca97d3e40552"
         ],
         "blocked_story_ids": [],
         "blockers": [],
@@ -1344,16 +2003,16 @@
   },
   "platform_status_matrix": {
     "schema_version": 1,
-    "generated_at": "2026-06-12T18:44:45.223Z",
-    "overall_verdict": "RED",
+    "generated_at": "2026-06-13T00:25:39.021Z",
+    "overall_verdict": "AMBER",
     "summary": {
       "platform_count": 7,
-      "publish_now_action_count": 9,
-      "platform_enabled_dry_run_action_count": 9,
-      "human_review_required_action_count": 9,
+      "publish_now_action_count": 15,
+      "platform_enabled_dry_run_action_count": 15,
+      "human_review_required_action_count": 15,
       "live_publish_allowed_action_count": 0,
-      "deferred_action_count": 10,
-      "blocked_action_count": 2,
+      "deferred_action_count": 20,
+      "blocked_action_count": 0,
       "disabled_platform_count": 4,
       "unknown_platform_count": 0
     },
@@ -1363,10 +2022,10 @@
         "status": "ready_now",
         "operational_state": "enabled",
         "operational_reason": "core_upload_path",
-        "publishable_now_count": 3,
-        "publish_now_action_count": 3,
-        "enabled_dry_run_action_count": 3,
-        "human_review_required_action_count": 3,
+        "publishable_now_count": 5,
+        "publish_now_action_count": 5,
+        "enabled_dry_run_action_count": 5,
+        "human_review_required_action_count": 5,
         "live_publish_allowed_action_count": 0,
         "queued_when_enabled_count": 0,
         "deferred_action_count": 0,
@@ -1374,13 +2033,14 @@
         "planned_story_ids": [
           "fresh_xbox_stranger_than_heaven_20260611",
           "fresh_xbox_halo_campaign_evolved_demo_20260610",
-          "rss_0b39e0171f59712c"
+          "rss_0b39e0171f59712c",
+          "rss_cf6510dd2d65c4dc",
+          "rss_600fca97d3e40552"
         ],
         "blocked_story_ids": [],
         "blockers": [],
         "warnings": [],
         "live_execution_gate_reasons": [
-          "platform_actions_blocked",
           "platform_actions_deferred_until_enabled",
           "enabled_platform_actions_require_human_review"
         ],
@@ -1389,7 +2049,7 @@
       },
       "tiktok": {
         "platform": "tiktok",
-        "status": "blocked",
+        "status": "deferred_until_platform_enabled",
         "operational_state": "needs_credentials",
         "operational_reason": "tiktok_local_token_refresh_or_sync_required",
         "publishable_now_count": 0,
@@ -1397,21 +2057,21 @@
         "enabled_dry_run_action_count": 0,
         "human_review_required_action_count": 0,
         "live_publish_allowed_action_count": 0,
-        "queued_when_enabled_count": 1,
-        "deferred_action_count": 1,
-        "blocked_action_count": 2,
+        "queued_when_enabled_count": 5,
+        "deferred_action_count": 5,
+        "blocked_action_count": 0,
         "planned_story_ids": [
-          "fresh_xbox_stranger_than_heaven_20260611"
-        ],
-        "blocked_story_ids": [
+          "fresh_xbox_stranger_than_heaven_20260611",
           "fresh_xbox_halo_campaign_evolved_demo_20260610",
-          "rss_0b39e0171f59712c"
+          "rss_0b39e0171f59712c",
+          "rss_cf6510dd2d65c4dc",
+          "rss_600fca97d3e40552"
         ],
-        "blockers": [
-          "platform_duration_below_min:tiktok:61"
-        ],
+        "blocked_story_ids": [],
+        "blockers": [],
         "warnings": [
-          "below_creator_rewards_duration"
+          "below_creator_rewards_duration",
+          "platform_duration_deferred_until_enabled:tiktok:61"
         ],
         "live_execution_gate_reasons": [
           "tiktok_local_token_refresh_or_sync_required"
@@ -1426,10 +2086,10 @@
         "status": "ready_now",
         "operational_state": "enabled",
         "operational_reason": "enabled_monitor_next_publish",
-        "publishable_now_count": 3,
-        "publish_now_action_count": 3,
-        "enabled_dry_run_action_count": 3,
-        "human_review_required_action_count": 3,
+        "publishable_now_count": 5,
+        "publish_now_action_count": 5,
+        "enabled_dry_run_action_count": 5,
+        "human_review_required_action_count": 5,
         "live_publish_allowed_action_count": 0,
         "queued_when_enabled_count": 0,
         "deferred_action_count": 0,
@@ -1437,13 +2097,14 @@
         "planned_story_ids": [
           "fresh_xbox_stranger_than_heaven_20260611",
           "fresh_xbox_halo_campaign_evolved_demo_20260610",
-          "rss_0b39e0171f59712c"
+          "rss_0b39e0171f59712c",
+          "rss_cf6510dd2d65c4dc",
+          "rss_600fca97d3e40552"
         ],
         "blocked_story_ids": [],
         "blockers": [],
         "warnings": [],
         "live_execution_gate_reasons": [
-          "platform_actions_blocked",
           "platform_actions_deferred_until_enabled",
           "enabled_platform_actions_require_human_review"
         ],
@@ -1455,10 +2116,10 @@
         "status": "ready_now",
         "operational_state": "enabled",
         "operational_reason": "facebook_reels_enabled",
-        "publishable_now_count": 3,
-        "publish_now_action_count": 3,
-        "enabled_dry_run_action_count": 3,
-        "human_review_required_action_count": 3,
+        "publishable_now_count": 5,
+        "publish_now_action_count": 5,
+        "enabled_dry_run_action_count": 5,
+        "human_review_required_action_count": 5,
         "live_publish_allowed_action_count": 0,
         "queued_when_enabled_count": 0,
         "deferred_action_count": 0,
@@ -1466,13 +2127,14 @@
         "planned_story_ids": [
           "fresh_xbox_stranger_than_heaven_20260611",
           "fresh_xbox_halo_campaign_evolved_demo_20260610",
-          "rss_0b39e0171f59712c"
+          "rss_0b39e0171f59712c",
+          "rss_cf6510dd2d65c4dc",
+          "rss_600fca97d3e40552"
         ],
         "blocked_story_ids": [],
         "blockers": [],
         "warnings": [],
         "live_execution_gate_reasons": [
-          "platform_actions_blocked",
           "platform_actions_deferred_until_enabled",
           "enabled_platform_actions_require_human_review"
         ],
@@ -1489,13 +2151,15 @@
         "enabled_dry_run_action_count": 0,
         "human_review_required_action_count": 0,
         "live_publish_allowed_action_count": 0,
-        "queued_when_enabled_count": 3,
-        "deferred_action_count": 3,
+        "queued_when_enabled_count": 5,
+        "deferred_action_count": 5,
         "blocked_action_count": 0,
         "planned_story_ids": [
           "fresh_xbox_stranger_than_heaven_20260611",
           "fresh_xbox_halo_campaign_evolved_demo_20260610",
-          "rss_0b39e0171f59712c"
+          "rss_0b39e0171f59712c",
+          "rss_cf6510dd2d65c4dc",
+          "rss_600fca97d3e40552"
         ],
         "blocked_story_ids": [],
         "blockers": [],
@@ -1521,13 +2185,15 @@
         "enabled_dry_run_action_count": 0,
         "human_review_required_action_count": 0,
         "live_publish_allowed_action_count": 0,
-        "queued_when_enabled_count": 3,
-        "deferred_action_count": 3,
+        "queued_when_enabled_count": 5,
+        "deferred_action_count": 5,
         "blocked_action_count": 0,
         "planned_story_ids": [
           "fresh_xbox_stranger_than_heaven_20260611",
           "fresh_xbox_halo_campaign_evolved_demo_20260610",
-          "rss_0b39e0171f59712c"
+          "rss_0b39e0171f59712c",
+          "rss_cf6510dd2d65c4dc",
+          "rss_600fca97d3e40552"
         ],
         "blocked_story_ids": [],
         "blockers": [],
@@ -1548,13 +2214,15 @@
         "enabled_dry_run_action_count": 0,
         "human_review_required_action_count": 0,
         "live_publish_allowed_action_count": 0,
-        "queued_when_enabled_count": 3,
-        "deferred_action_count": 3,
+        "queued_when_enabled_count": 5,
+        "deferred_action_count": 5,
         "blocked_action_count": 0,
         "planned_story_ids": [
           "fresh_xbox_stranger_than_heaven_20260611",
           "fresh_xbox_halo_campaign_evolved_demo_20260610",
-          "rss_0b39e0171f59712c"
+          "rss_0b39e0171f59712c",
+          "rss_cf6510dd2d65c4dc",
+          "rss_600fca97d3e40552"
         ],
         "blocked_story_ids": [],
         "blockers": [],
@@ -1572,16 +2240,15 @@
       "no_public_posts": true,
       "no_db_mutation": true,
       "no_oauth_or_token_change": true
-    },
-    "generated_copy_at": "2026-06-12T18:48:11.143Z"
+    }
   },
   "public_output_coherence_report": {
     "schema_version": 1,
-    "generated_at": "2026-06-12T18:44:45.223Z",
+    "generated_at": "2026-06-13T00:25:39.021Z",
     "verdict": "pass",
     "active_verdict": "pass",
-    "story_count": 3,
-    "active_story_count": 3,
+    "story_count": 5,
+    "active_story_count": 5,
     "quarantined_story_count": 0,
     "failed_story_count": 0,
     "active_failed_story_count": 0,
@@ -1610,6 +2277,22 @@
         "blockers": [],
         "readiness_scope": "active",
         "quarantine_status": null
+      },
+      {
+        "story_id": "rss_cf6510dd2d65c4dc",
+        "artifact_dir": "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\output\\overnight-fresh-green-buffer\\live-rss-proof-batch-20260612-night\\rss_cf6510dd2d65c4dc",
+        "verdict": "pass",
+        "blockers": [],
+        "readiness_scope": "active",
+        "quarantine_status": null
+      },
+      {
+        "story_id": "rss_600fca97d3e40552",
+        "artifact_dir": "output/overnight-fresh-green-buffer/live-scored-proof-batch/rss_600fca97d3e40552",
+        "verdict": "pass",
+        "blockers": [],
+        "readiness_scope": "active",
+        "quarantine_status": null
       }
     ]
   },
@@ -1618,14 +2301,13 @@
     "mode": "DRY_RUN_PUBLISH",
     "live_publish_allowed_from_this_plan": false,
     "ready_for_unattended_publish": false,
-    "required_next_step": "repair_blocked_platform_actions",
-    "publish_ready_action_count": 9,
-    "human_review_required_action_count": 9,
-    "deferred_action_count": 10,
-    "blocked_action_count": 2,
+    "required_next_step": "operator_human_review_for_enabled_actions",
+    "publish_ready_action_count": 15,
+    "human_review_required_action_count": 15,
+    "deferred_action_count": 20,
+    "blocked_action_count": 0,
     "live_publish_allowed_action_count": 0,
     "readiness_reasons": [
-      "platform_actions_blocked",
       "platform_actions_deferred_until_enabled",
       "enabled_platform_actions_require_human_review"
     ]
@@ -1682,6 +2364,5 @@
     "no_db_mutation": true,
     "no_oauth_or_token_change": true,
     "dry_run_only": true
-  },
-  "generated_copy_at": "2026-06-12T18:48:11.143Z"
+  }
 }

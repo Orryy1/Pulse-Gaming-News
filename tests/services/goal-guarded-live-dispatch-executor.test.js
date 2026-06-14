@@ -1078,6 +1078,90 @@ test("guarded live dispatch executor blocks public metadata QA failures before u
   );
 });
 
+test("guarded live dispatch executor hydrates canonical claim evidence before public metadata QA", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-claims-"));
+  const canonicalManifestPath = path.join(tmp, "canonical_story_manifest.json");
+  await fs.writeJson(canonicalManifestPath, {
+    story_id: "story-one",
+    canonical_subject: "Halo: Campaign Evolved",
+    canonical_game: "Halo: Campaign Evolved",
+    selected_title: "Halo: Campaign Evolved Shows The Real Remake Test",
+    canonical_title: "Halo: Campaign Evolved Shows The Real Remake Test",
+    primary_source: "Xbox Wire",
+    primary_source_url: "https://news.xbox.com/en-us/2026/06/10/halo-campaign-evolved-hands-on-demo-2/",
+    source_published_at: "2026-06-10T00:00:00.000Z",
+    narration_script:
+      "Halo Campaign Evolved's remake debate finally has a real stress test. Xbox Wire says Halo Studios showed Assault on the Control Room hands-on. The remake launches July 28, with early access July 23 for Premium Edition owners. Follow Pulse Gaming so you never miss a beat.",
+    full_script:
+      "Halo Campaign Evolved's remake debate finally has a real stress test. Xbox Wire says Halo Studios showed Assault on the Control Room hands-on. The remake launches July 28, with early access July 23 for Premium Edition owners. Follow Pulse Gaming so you never miss a beat.",
+    tts_script:
+      "Halo Campaign Evolved's remake debate finally has a real stress test. Xbox Wire says Halo Studios showed Assault on the Control Room hands-on. The remake launches July 28, with early access July 23 for Premium Edition owners. Follow Pulse Gaming so you never miss a beat.",
+    first_spoken_line: "Halo Campaign Evolved's remake debate finally has a real stress test.",
+    thumbnail_text: "HALO'S REAL TEST",
+    claim_inventory: {
+      confirmed: [
+        "Xbox Wire says Halo: Campaign Evolved showed Assault on the Control Room in hands-on demo form.",
+        "Xbox Wire says Halo: Campaign Evolved launches on July 28, 2026 with early access beginning July 23, 2026 for Premium Edition owners.",
+      ],
+      unconfirmed: [],
+      prohibited: [],
+    },
+    confirmed_claims: [
+      "Xbox Wire says Halo: Campaign Evolved showed Assault on the Control Room in hands-on demo form.",
+      "Xbox Wire says Halo: Campaign Evolved launches on July 28, 2026 with early access beginning July 23, 2026 for Premium Edition owners.",
+    ],
+  }, { spaces: 2 });
+
+  let uploadCalls = 0;
+  let upsertCalls = 0;
+
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("youtube_shorts", {
+          title: "Halo: Campaign Evolved Shows The Real Remake Test",
+          canonical_manifest_path: canonicalManifestPath,
+        }),
+      ],
+    }),
+    stories: [story()],
+    actionIds: ["story-one:youtube_shorts"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+    uploaders: {
+      youtube_shorts: {
+        uploadShort: async () => {
+          uploadCalls += 1;
+          return { platform: "youtube", videoId: "yt_claims", url: "https://youtube.com/shorts/yt_claims" };
+        },
+      },
+    },
+    db: {
+      upsertStory: async () => {
+        upsertCalls += 1;
+      },
+    },
+    runActionQualityGate: defaultActionQualityGate,
+    actionQualityGateOptions: {
+      runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      buildVideoQaOptionsForStory: () => ({}),
+    },
+    discord: { post: async () => ({ ok: true }) },
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.summary.completed_action_count, 1);
+  assert.equal(report.summary.upload_attempt_count, 1);
+  assert.equal(report.summary.db_mutation_count, 1);
+  assert.equal(uploadCalls, 1);
+  assert.equal(upsertCalls, 1);
+  assert.equal(report.actions[0].outcome, "new_upload");
+});
+
 test("guarded live dispatch executor blocks explicit stale source-age actions before upload", async () => {
   let uploadCalls = 0;
   let upsertCalls = 0;

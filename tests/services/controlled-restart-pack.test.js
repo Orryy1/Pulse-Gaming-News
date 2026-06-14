@@ -33,7 +33,7 @@ async function writeStory(root, id, title, overrides = {}) {
     thumbnail_headline: overrides.thumbnail || title.toUpperCase(),
     first_spoken_line: overrides.firstSpokenLine || `${title} starts fast.`,
     narration_script: overrides.script ||
-      `Xbox just turned ${title} into a gameplay trust test. ${overrides.source || "Official Source"} reports ${title}. The catch is whether the next cut shows combat, camera and scale clearly enough for players to believe the pitch. That split matters because licence hype can win a headline, but only visible play proves the game is worth watching. If the next footage lands, this becomes a real release signal instead of a logo reveal. Follow Pulse Gaming so you never miss a beat.`,
+      `Xbox just turned ${title} into a gameplay trust test. ${overrides.source || "Official Source"} reports direct footage with combat, camera movement and scale visible in the same cut. That matters because licence hype can win a headline, but only visible play proves the game is worth watching. The risk is practical: if the next cut hides mission flow, players still cannot judge the pitch. If the footage lands, this becomes a real release signal instead of a logo reveal. Follow Pulse Gaming so you never miss a beat.`,
     description: overrides.description || `${title}. Source: ${overrides.source || "Official Source"}.`,
     primary_source: overrides.source || "Official Source",
     secondary_sources: overrides.secondary_sources || [],
@@ -128,7 +128,13 @@ function action(storyId, platform, enabled = true) {
 test("controlled restart pack selects three clean enabled-platform candidates and defers disabled platforms", async () => {
   await withTempDir(async (root) => {
     const ids = ["story-a", "story-b", "story-c", "story-d"];
-    const titleFor = (id) => `Strong ${id} Restart Title`;
+    const titles = {
+      "story-a": "Clockwork Revolution Shows Time-Bending Combat",
+      "story-b": "Fable Shows Combat And Town Choices",
+      "story-c": "State Of Decay 3 Shows Co-op Base Survival",
+      "story-d": "Ninja Gaiden 4 Shows Boss Combat",
+    };
+    const titleFor = (id) => titles[id];
     for (const id of ids) await writeStory(root, id, titleFor(id));
 
     const report = await buildControlledRestartPack({

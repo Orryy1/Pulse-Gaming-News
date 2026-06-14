@@ -154,6 +154,9 @@ ANGLE-FIRST EDITORIAL CONTRACT:
 - The hook must create a curiosity gap, the middle must sharpen the tension and the final payoff must make the viewer feel they learned something useful.
 - Clickbait means packaging and curiosity, not fake facts. Never invent drama, numbers, dates or motives.
 - Never use analyst-note fallback language. The script must sound like public reporting, not a risk note, fallback summary, source label or internal editorial memo.
+- Do not use stock pivot lines like "The catch is simple", "The debate is simple" or "The real question is". Say the actual contradiction, player split or consequence directly.
+- For gameplay, remake, trailer, demo and hands-on stories, put a tangible source detail before release dates or platform lists: combat, vehicles, co-op, level design, camera feel, enemies, mission structure or another specific playable change.
+- Do not open with abstract test language like "the debate has a real stress test". Open on the named mission, feature, price, footage, date or player consequence.
 
 HOOK: THIS IS THE MOST IMPORTANT PART OF THE SCRIPT.
 The first 3 WORDS decide whether the viewer keeps watching. Those three words must stop the scroll. The first sentence must open a knowledge gap — the viewer must think "wait, WHAT?" and feel unable to scroll away.
@@ -194,6 +197,10 @@ BANNED STOCK PHRASES — never write any of these, they are already worn-out acr
 - "Nobody is talking about this"
 - "This is bigger than you think"
 - "But hold on" / "But wait"
+- "The catch is simple"
+- "The debate is simple"
+- "The real question is"
+- "The debate finally has a real stress test"
 - Any sentence that names the hook, signal, angle, safe read or audience argument instead of giving the actual fact.
 
 MID-ROLL RE-HOOK (combats the 12-second drop-off — required, but always a fresh phrasing):

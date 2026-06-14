@@ -158,6 +158,17 @@ test("Gears of War E-Day title variants stay one connected phrase", () => {
   );
 });
 
+test("colon-separated game titles lose the TTS pause but keep the title words", () => {
+  assert.equal(
+    applyGamingPronunciation("The Expanse: Osiris Reborn shows real gameplay."),
+    "The Expanse Osiris Reborn shows real gameplay.",
+  );
+  assert.equal(
+    applyGamingPronunciation("Halo: Campaign Evolved has a demo."),
+    "Halo Campaign Evolved has a demo.",
+  );
+});
+
 test("PlayStation hardware acronyms expand for local narration clarity", () => {
   assert.equal(
     applyGamingPronunciation("PS5 prices changed and PS5 Pro moved too."),

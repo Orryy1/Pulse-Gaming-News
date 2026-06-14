@@ -1086,10 +1086,9 @@ test("production cutover refreshes scheduler caption SRT from word timestamps", 
   const captions = await fs.readFile(path.join(artifactDir, "captions.srt"), "utf8");
   assert.match(captions, /00:00:00,000 --> 00:00:00,780\nHades II/);
   assert.match(captions, /00:00:00,780 --> 00:00:01,220\njust hit/);
-  assert.match(captions, /00:00:03,500 --> 00:00:04,040\nFollow Pulse/);
-  assert.match(captions, /00:00:04,040 --> 00:00:04,480\nGaming/);
+  assert.match(captions, /00:00:03,500 --> 00:00:04,480\nFollow Pulse Gaming\./);
   assert.doesNotMatch(captions, /Hades II just/);
-  assert.doesNotMatch(captions, /Paul Skaming|00:00:00,000 --> 00:00:01,000\nForza/);
+  assert.doesNotMatch(captions, /Paul Skaming|00:00:04,040 --> 00:00:04,480\nGaming|00:00:00,000 --> 00:00:01,000\nForza/);
   const captionManifest = await fs.readJson(path.join(artifactDir, "caption_manifest.json"));
   assert.equal(captionManifest.timing_source, "word_timestamps");
   assert.equal(plan.scheduler_bridge.candidates[0].caption_path, path.join(artifactDir, "captions.srt"));

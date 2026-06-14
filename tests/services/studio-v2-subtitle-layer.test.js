@@ -810,6 +810,26 @@ test("buildWordPopDialogues uses hard spaces so short punches do not wrap", () =
   assert.match(dialogues[0], /just\\h/);
 });
 
+test("groupIntoPhrases keeps Pulse Gaming together even with a local TTS gap", () => {
+  const phrases = groupIntoPhrases(
+    [
+      { word: "Follow", start: 0, end: 0.28 },
+      { word: "Pulse", start: 0.3, end: 0.56 },
+      { word: "Gaming", start: 1.28, end: 1.62 },
+      { word: "so", start: 1.64, end: 1.74 },
+      { word: "you", start: 1.76, end: 1.88 },
+    ],
+    {
+      maxWordsPerPhrase: 2,
+      maxPhraseChars: 22,
+      maxPhraseDurationS: 1.05,
+    },
+  );
+
+  const captionTexts = phrases.map((phrase) => phrase.words.map((word) => word.word).join(" "));
+  assert.deepEqual(captionTexts.slice(0, 2), ["Follow Pulse Gaming", "so you"]);
+});
+
 test("buildKineticAss supports Flash captions capped at two-word punches", () => {
   const ass = buildKineticAss({
     story: { title: "GTA Red Dead BioShock" },

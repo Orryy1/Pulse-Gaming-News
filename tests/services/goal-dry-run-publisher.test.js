@@ -66,7 +66,7 @@ async function makeStoryPackage(
     "The catch is whether timing, access and platform support make the update useful or leave it as headline noise. " +
     "That split gives players something concrete to judge before the next trailer, store page or launch window changes the stakes. " +
     "If the next proof lands, this becomes a practical release story instead of another passing reveal. Follow Pulse Gaming so you never miss a beat.";
-  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+  const canonicalManifest = {
     story_id: id,
     canonical_subject: subject,
     canonical_title: `${subject} - the long raw article headline with extra source words`,
@@ -79,6 +79,9 @@ async function makeStoryPackage(
     primary_source: { name: "Eurogamer", url: "https://www.eurogamer.net/example" },
     discovery_source: { name: "RSS", url: "https://www.eurogamer.net/feed" },
     ...(options.canonicalPatch || {}),
+  };
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    ...canonicalManifest,
   });
   await fs.outputJson(path.join(artifactDir, "script_scorecard.json"), {
     schema_version: 1,
@@ -169,10 +172,12 @@ async function makeStoryPackage(
     warnings: [],
     manifest: {
       selected_title: title,
-      thumbnail_headline: `${subject.toUpperCase()} ANGLE`,
-      first_spoken_line: defaultFirstLine,
-      narration_script: defaultScript,
-      description: `${subject} has a new source-safe gaming angle. Source: Eurogamer.`,
+      thumbnail_headline: canonicalManifest.thumbnail_headline,
+      first_spoken_line: options.coherenceMatchesCanonical ? canonicalManifest.first_spoken_line : defaultFirstLine,
+      narration_script: options.coherenceMatchesCanonical ? canonicalManifest.narration_script : defaultScript,
+      description: options.coherenceMatchesCanonical
+        ? canonicalManifest.description
+        : `${subject} has a new source-safe gaming angle. Source: Eurogamer.`,
       source_card_label: "Eurogamer",
     },
   });
@@ -930,6 +935,13 @@ test("goal dry-run publisher blocks stale platform-specific variants after the f
       audioSegmentGeneratedAt: "2026-05-31T07:04:00.000Z",
       captionGeneratedAt: "2026-05-31T07:04:10.000Z",
       voiceQualityGeneratedAt: "2026-05-31T07:04:20.000Z",
+      coherenceMatchesCanonical: true,
+      canonicalPatch: {
+        first_spoken_line: "The Expanse: Osiris Reborn finally puts cockpit UI, camera weight and gunfights on screen.",
+        narration_script:
+          "The Expanse: Osiris Reborn finally puts cockpit UI, camera weight and gunfights on screen. Xbox showed direct gameplay with ship interiors, squad movement and combat readability instead of another logo sweep. That matters because a famous licence only helps if the missions feel heavy, political and dangerous once the trailer cut ends. For players, the useful split is whether this looks like The Expanse in motion or just another sci-fi shooter wearing the name. If the mission flow holds, this becomes a licensed game people can judge on play instead of branding. Follow Pulse Gaming so you never miss a beat.",
+        first_spoken_line_source: "test_fixture",
+      },
     },
   );
   const variantPath = path.join(storyPackage.artifact_dir, "platform_variants", "instagram_reels", "visual_v4_render_instagram_reels.mp4");

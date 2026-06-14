@@ -89,6 +89,59 @@ test("viral script intelligence accepts sharp non-numeric gameplay stories with 
   assert.equal(result.cta.count, 1);
 });
 
+test("viral script intelligence rejects abstract title-test narration before TTS", () => {
+  const script =
+    "Halo Campaign Evolved's remake debate finally has a real stress test. " +
+    "Xbox Wire says Halo Studios showed Assault on the Control Room hands-on. " +
+    "This mission is where nostalgia turns into chaos or expensive cosplay. " +
+    "The remake launches July 28, with early access July 23 for Premium Edition owners. " +
+    "Cross-play and cross-progression put Xbox, PC, Steam and PlayStation players in the same conversation. " +
+    "The catch is simple. " +
+    "Are vehicles, co-op and enemy encounters still carrying the memory, or is this sharper scenery? " +
+    "If Assault on the Control Room still erupts, this is a remake. " +
+    "If it only looks cleaner, it is a museum piece. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "halo-abstract-test",
+      title: "Halo: Campaign Evolved Shows The Real Remake Test",
+      source_name: "Xbox Wire",
+    },
+    script,
+  });
+
+  assert.equal(result.verdict, "rewrite_required");
+  assert.ok(result.blockers.includes("generic_catch_is_simple"), JSON.stringify(result));
+  assert.ok(result.blockers.includes("abstract_title_test_hook"), JSON.stringify(result));
+  assert.ok(result.blockers.includes("missing_early_concrete_source_detail"), JSON.stringify(result));
+});
+
+test("viral script intelligence approves concrete gameplay-first rewrite", () => {
+  const script =
+    "Halo's remake has one brutal test: Assault on the Control Room. " +
+    "Xbox Wire played the new version ahead of its July 28 launch, and this is not just a prettier snow level. " +
+    "The original mission worked because the sandbox kept breaking open: Scorpion tanks, Banshees, Marines, Covenant ambushes and long Forerunner corridors. " +
+    "The remake is cutting some repetition, giving Marines proper tank support and building around modern co-op across Xbox, PC and PlayStation. " +
+    "That is where fans will split. " +
+    "If the chaos still feels player-made, Halo: Campaign Evolved is a real remake. " +
+    "If it only looks cleaner, it is a museum piece with better lighting. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "halo-concrete-rewrite",
+      title: "Halo: Campaign Evolved Shows The Real Remake Test",
+      source_name: "Xbox Wire",
+    },
+    script,
+  });
+
+  assert.equal(result.verdict, "viral_ready", JSON.stringify(result, null, 2));
+  assert.ok(result.viral_score >= 85, JSON.stringify(result.scores));
+  assert.deepEqual(result.blockers, []);
+});
+
 test("viral script intelligence scores review-spread curiosity beats above the publish threshold", () => {
   const script =
     "Forza Horizon 6 just got the score Xbox needed before launch. " +
@@ -358,7 +411,7 @@ test("viral script intelligence recognises subscription runway stories as high-v
     "For lapsed players, subscription access lowers the friction. " +
     "For Take-Two, it keeps Los Santos active while the sequel owns the calendar. " +
     "The catch is that subscription libraries move, so this is access, not ownership. " +
-    "The debate is simple: is this worth jumping back into, or are you better off waiting for GTA 6? " +
+    "That is the argument: jump back into Los Santos now, or wait for GTA 6 to make the return feel new. " +
     "If people reinstall now, GTA 5 stops looking like old back catalogue and starts working like a warm-up act for GTA 6. " +
     "Follow Pulse Gaming so you never miss a beat.";
 

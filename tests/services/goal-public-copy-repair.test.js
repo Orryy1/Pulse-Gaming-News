@@ -76,6 +76,33 @@ test("caption SRT keeps a protected game title together when local TTS expands t
   assert.doesNotMatch(srt, /\n2 is\n/);
 });
 
+test("caption SRT protects Pulse Gaming as one brand phrase", () => {
+  const srt = buildCaptionSrt(
+    "Follow Pulse Gaming so you never miss a beat.",
+    5,
+    {
+      words: [
+        { word: "Follow", start: 0, end: 0.28 },
+        { word: "Pulse", start: 0.3, end: 0.56 },
+        { word: "Gaming", start: 1.28, end: 1.62 },
+        { word: "so", start: 1.64, end: 1.74 },
+        { word: "you", start: 1.76, end: 1.88 },
+        { word: "never", start: 1.9, end: 2.12 },
+        { word: "miss", start: 2.14, end: 2.32 },
+        { word: "a", start: 2.34, end: 2.42 },
+        { word: "beat.", start: 2.44, end: 2.7 },
+      ],
+      maxWordsPerPhrase: 2,
+      maxPhraseChars: 22,
+      maxPhraseDurationS: 1.05,
+    },
+  );
+
+  assert.match(srt, /Follow Pulse Gaming/);
+  assert.doesNotMatch(srt, /\nFollow Pulse\n\n/);
+  assert.doesNotMatch(srt, /\nGaming so\n/);
+});
+
 test("public copy repair turns a quote fragment Kickstarter story into usable copy", () => {
   const repaired = repairGoalPublicCopyManifest(
     {
@@ -895,7 +922,7 @@ test("public copy package repair rewrites trailer scorecard blockers with story-
       source: "Xbox",
       claim: "Xbox showed Stranger Than Heaven's Five Eras reveal during Xbox Partner Preview.",
       thumbnail: "STRANGER FIVE ERAS",
-      expected: /The catch is why those eras matter/i,
+      expected: /every era has to change investigation, fights and movement/i,
       forbidden: /\bThe catch is what matters after the reveal cut\b/i,
     },
     {

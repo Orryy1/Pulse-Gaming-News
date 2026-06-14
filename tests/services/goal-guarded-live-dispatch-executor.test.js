@@ -822,6 +822,51 @@ test("selectNextGuardedLiveAction skips actions blocked by the last-second quali
   ]);
 });
 
+test("selectNextGuardedLiveAction skips pre-fix local TTS packages with slowed narration", async (t) => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-slow-local-tts-"));
+  t.after(() => fs.remove(tmp));
+  const slowTimestampsPath = path.join(tmp, "slow_timestamps.json");
+  await fs.writeJson(slowTimestampsPath, {
+    meta: {
+      source: "local_whisper_word_alignment",
+      localTts: { speakingRate: 0.82 },
+      voiceDiagnostics: { effective_rate: 0.82 },
+    },
+    words: [{ word: "GTA", start: 0, end: 0.2 }],
+  });
+
+  const selection = await selectNextGuardedLiveAction({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("facebook_reels", {
+          action_id: "slow-story:facebook_reels",
+          story_id: "slow-story",
+          video_path: path.join(tmp, "slow-facebook.mp4"),
+          word_timestamps_path: slowTimestampsPath,
+        }),
+        action("youtube_shorts", {
+          action_id: "clean-story:youtube_shorts",
+          story_id: "clean-story",
+          video_path: path.join(tmp, "clean-youtube.mp4"),
+        }),
+      ],
+    }),
+    stories: [
+      story({ id: "slow-story", title: "GTA 5 Became Rockstar's GTA 6 Warm-Up" }),
+      story({ id: "clean-story", title: "Halo Campaign Evolved Makes PS5 The Real Story" }),
+    ],
+    runActionQualityGate: passActionQualityGate,
+  });
+
+  assert.equal(selection.exhausted, false);
+  assert.equal(selection.action_id, "clean-story:youtube_shorts");
+  assert.equal(selection.skipped_actions[0].reason, "local_tts_speed_below_native");
+  assert.deepEqual(selection.skipped_actions[0].blockers, [
+    "local_tts_speaking_rate_below_native:0.82",
+  ]);
+  assert.equal(selection.skipped_actions[0].evidence.local_tts_speaking_rate, 0.82);
+});
+
 test("selectNextGuardedLiveAction skips stale source-age actions and advances to fresh candidates", async () => {
   const selection = await selectNextGuardedLiveAction({
     executorPlan: executorPlan({
@@ -908,6 +953,60 @@ test("guarded live dispatch executor blocks explicit live actions that fail last
   assert.deepEqual(report.blocked_actions[0].blockers, [
     "last_second_quality_gate_failed",
     "video:freeze_segment_too_long (0.80s @ 32.67s)",
+  ]);
+});
+
+test("guarded live dispatch executor blocks explicit slowed local TTS actions before upload", async (t) => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-explicit-slow-local-tts-"));
+  t.after(() => fs.remove(tmp));
+  const slowTimestampsPath = path.join(tmp, "story-one_timestamps.json");
+  await fs.writeJson(slowTimestampsPath, {
+    meta: {
+      source: "local_whisper_word_alignment",
+      localTts: { speakingRate: 0.82 },
+      voiceDiagnostics: { effective_rate: 0.82 },
+    },
+    words: [{ word: "GTA", start: 0, end: 0.2 }],
+  });
+
+  let uploadCalls = 0;
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("facebook_reels", {
+          word_timestamps_path: slowTimestampsPath,
+          video_path: path.join(tmp, "facebook.mp4"),
+        }),
+      ],
+    }),
+    stories: [story({ title: "GTA 5 Became Rockstar's GTA 6 Warm-Up" })],
+    actionIds: ["story-one:facebook_reels"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+    uploaders: {
+      facebook_reels: {
+        uploadShort: async () => {
+          uploadCalls += 1;
+          return { platform: "facebook", videoId: "fb_1" };
+        },
+      },
+    },
+    db: {
+      upsertStory: async () => {},
+    },
+    runActionQualityGate: passActionQualityGate,
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.summary.blocked_action_count, 1);
+  assert.equal(report.summary.upload_attempt_count, 0);
+  assert.equal(uploadCalls, 0);
+  assert.deepEqual(report.blocked_actions[0].blockers, [
+    "last_second_local_tts_speed_failed",
+    "local_tts_speaking_rate_below_native:0.82",
   ]);
 });
 

@@ -63,7 +63,7 @@ test("publish window watchdog is GREEN only when runtime, queue and readiness ag
       },
     },
     publishReadiness: {
-      overall_verdict: "amber",
+      overall_verdict: "green",
       blockers: [],
       next_action:
         "Guarded enabled-platform dispatch is ready. Let the scheduler run.",
@@ -79,6 +79,88 @@ test("publish window watchdog is GREEN only when runtime, queue and readiness ag
   assert.equal(report.safe_to_publish_window, true);
   assert.equal(report.enabled_dry_run_action_count, 9);
   assert.equal(report.executor_handoff_action_count, 9);
+});
+
+test("publish window watchdog surfaces advisory AMBER without blocking guarded publishing", () => {
+  const report = buildPublishWindowWatchdogReport({
+    generatedAt: "2026-06-14T13:55:00.000Z",
+    windowLabel: "publish_afternoon",
+    runtimeSentinel: {
+      verdict: "green",
+      blockers: [],
+      scheduler_window_readiness: {
+        safe_to_observe_next_window: true,
+        hold_scheduler_or_dispatch: false,
+        next_action: "observe_guarded_scheduler_window",
+      },
+      scheduler_proof: {
+        enabled_dry_run_action_count: 9,
+        executor_handoff_action_count: 9,
+        missing_from_executor_count: 0,
+      },
+    },
+    publishReadiness: {
+      overall_verdict: "amber",
+      blockers: [],
+      advisory: ["cadence: observe normal publish window"],
+      next_action:
+        "Guarded enabled-platform dispatch is ready. Let the scheduler run.",
+      readiness_scope: { name: "enabled_platform_guarded_handoff", guard_ready: true },
+    },
+    queueReport: {
+      verdict: "pass",
+      blockers: [],
+    },
+  });
+
+  assert.equal(report.verdict, "amber");
+  assert.equal(report.safe_to_publish_window, true);
+  assert.equal(report.hold_scheduler_or_dispatch, false);
+  assert.deepEqual(report.blockers, []);
+  assert.deepEqual(report.advisory, [
+    "publish_readiness: cadence: observe normal publish window",
+  ]);
+});
+
+test("publish window watchdog does not call skipped queue proof GREEN", () => {
+  const report = buildPublishWindowWatchdogReport({
+    generatedAt: "2026-06-14T13:55:00.000Z",
+    windowLabel: "publish_afternoon",
+    runtimeSentinel: {
+      verdict: "green",
+      blockers: [],
+      scheduler_window_readiness: {
+        safe_to_observe_next_window: true,
+        hold_scheduler_or_dispatch: false,
+        next_action: "observe_guarded_scheduler_window",
+      },
+      scheduler_proof: {
+        enabled_dry_run_action_count: 9,
+        executor_handoff_action_count: 9,
+        missing_from_executor_count: 0,
+      },
+    },
+    publishReadiness: {
+      overall_verdict: "green",
+      blockers: [],
+      next_action: "Guarded enabled-platform dispatch is ready.",
+      readiness_scope: { name: "enabled_platform_guarded_handoff", guard_ready: true },
+    },
+    queueReport: {
+      verdict: "skip",
+      reason: "USE_SQLITE_not_enabled",
+      blockers: [],
+    },
+  });
+
+  assert.equal(report.verdict, "amber");
+  assert.equal(report.safe_to_publish_window, true);
+  assert.equal(report.hold_scheduler_or_dispatch, false);
+  assert.equal(report.queue_verdict, "skip");
+  assert.equal(report.queue_inspect_reason, "USE_SQLITE_not_enabled");
+  assert.deepEqual(report.advisory, [
+    "queue_inspect: queue proof unavailable: USE_SQLITE_not_enabled",
+  ]);
 });
 
 test("publish window watchdog Discord message is operator-readable", () => {

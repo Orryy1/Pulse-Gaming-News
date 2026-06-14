@@ -717,7 +717,7 @@ test("next publish report default includes every authoritative bridge candidate"
       id: `bridge_story_${index + 1}`,
       title: `Xbox bridge story ${index + 1} names a concrete outcome`,
       auto_approved: true,
-      duration_seconds: 42,
+      duration_seconds: 66,
       duration_lane: "normal_production",
       min_video_duration_seconds: 35,
       target_video_duration_seconds_min: 35,
@@ -748,7 +748,7 @@ test("next publish report still honours an explicit bridge candidate limit", () 
       id: `bridge_limited_${index + 1}`,
       title: `Nintendo bridge story ${index + 1} names a concrete outcome`,
       auto_approved: true,
-      duration_seconds: 42,
+      duration_seconds: 50,
       duration_lane: "normal_production",
       min_video_duration_seconds: 35,
       target_video_duration_seconds_min: 35,
@@ -2391,6 +2391,83 @@ test("attachPreflightQa blocks candidates with failed voice quality evidence", a
       "voice_quality:voice_cadence:wpm_too_fast",
     ),
   );
+});
+
+test("attachPreflightQa blocks local TTS candidates rendered below native rate", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-local-tts-rate-preflight-"));
+  const timestampsPath = path.join(tmp, "slow_local_tts_timestamps.json");
+  await fs.writeJson(timestampsPath, {
+    words: [
+      { word: "GTA", start: 0, end: 0.32 },
+      { word: "5", start: 0.34, end: 0.48 },
+      { word: "became", start: 0.5, end: 0.82 },
+      { word: "news", start: 0.84, end: 1.12 },
+    ],
+    meta: {
+      wordTimestampSource: "local_whisper_word_alignment",
+      timestampWhisperAlignment: { repaired: true },
+      localTts: { speakingRate: 0.82 },
+      voiceDiagnostics: { effective_rate: 0.82 },
+    },
+  });
+  const stories = [
+    baseStory({
+      id: "slow_local_tts",
+      title: "GTA 5 Became The GTA 6 Waiting Room",
+      selected_title: "GTA 5 Became The GTA 6 Waiting Room",
+      canonical_subject: "GTA 5",
+      first_spoken_line: "GTA 5 became news.",
+      full_script: "GTA 5 became news.",
+      duration_seconds: 66,
+      auto_approved: true,
+      require_incident_guard: true,
+      scheduler_bridge_artifact_dir: tmp,
+      timestamps_path: timestampsPath,
+      audio_manifest: { voice_provider: "local_tts" },
+      publish_verdict: { verdict: "GREEN" },
+      platform_publish_manifest: {
+        publish_status: "GREEN",
+        platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts"] },
+        outputs: {
+          youtube_shorts: { title: "GTA 5 Became The GTA 6 Waiting Room" },
+        },
+      },
+      ...bridgeVisualEvidence("GTA 5"),
+      sfx_manifest: bridgeSfxEvidence(),
+      rights_ledger: [{ asset_id: "slow-local-tts-render" }],
+      video_clips: [
+        { path: "clip-a.mp4", source_family: "official_trailer_a" },
+        { path: "clip-b.mp4", source_family: "official_trailer_b" },
+        { path: "clip-c.mp4", source_family: "official_trailer_c" },
+      ],
+    }),
+  ];
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-06-14T16:45:00.000Z",
+  });
+
+  await attachPreflightQa(report, stories, {
+    runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+  });
+
+  const check = report.candidates[0].preflight_qa.checks.timestamp_alignment;
+  assert.equal(report.candidates[0].preflight_qa.status, "blocked");
+  assert.equal(check.result, "fail");
+  assert.ok(
+    report.candidates[0].preflight_qa.blockers.includes(
+      "timestamp_alignment:local_tts_speaking_rate_below_native:0.82",
+    ),
+  );
+  assert.equal(check.evidence.local_tts_speaking_rate, 0.82);
 });
 
 test("attachPreflightQa blocks scheduler candidates rejected by aggregate Goal 10 readiness", async () => {

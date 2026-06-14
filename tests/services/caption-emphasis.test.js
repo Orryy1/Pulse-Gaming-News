@@ -39,3 +39,38 @@ test("caption emphasis repairs spoken modern year transcripts for display captio
   assert.match(ass, /2027/);
   assert.doesNotMatch(ass, /twenty twenty seven/i);
 });
+
+test("caption emphasis collapses spoken acronym letters back to GTA digits", () => {
+  const words = [
+    { word: "G", start: 0, end: 0.1 },
+    { word: "T", start: 0.12, end: 0.22 },
+    { word: "A", start: 0.24, end: 0.34 },
+    { word: "five", start: 0.36, end: 0.58 },
+    { word: "became", start: 0.6, end: 0.9 },
+    { word: "G", start: 1, end: 1.1 },
+    { word: "T", start: 1.12, end: 1.22 },
+    { word: "A", start: 1.24, end: 1.34 },
+    { word: "six", start: 1.36, end: 1.58 },
+  ];
+
+  const aligned = realignTimestampsToScript("GTA 5 became GTA 6", words);
+
+  assert.deepEqual(
+    aligned.map((word) => word.word),
+    ["GTA", "5", "became", "GTA", "6"],
+  );
+
+  const ass = buildAss({
+    story: { title: "GTA 5" },
+    scriptText: "GTA 5 became GTA 6",
+    words,
+    duration: 3,
+  });
+
+  assert.match(ass, /GTA/);
+  assert.match(ass, /5/);
+  assert.match(ass, /6/);
+  assert.doesNotMatch(ass, /\bG\s+T\s+A\b/i);
+  assert.doesNotMatch(ass, /\bfive\b/i);
+  assert.doesNotMatch(ass, /\bsix\b/i);
+});

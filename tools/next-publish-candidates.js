@@ -1945,6 +1945,27 @@ function timestampTimingInspectionForPayload(payload = {}, story = {}) {
   };
 }
 
+function localTtsSpeakingRateForPayload(payload = {}) {
+  const meta = payload?.meta || payload?.alignment?.meta || {};
+  const values = [
+    meta?.localTts?.speakingRate,
+    meta?.localTts?.speaking_rate,
+    meta?.voiceDiagnostics?.effective_rate,
+    meta?.voiceDiagnostics?.effectiveRate,
+    meta?.speakingRate,
+    meta?.speaking_rate,
+  ];
+  for (const value of values) {
+    const number = numberOrNull(value);
+    if (number != null) return number;
+  }
+  return null;
+}
+
+function formatRateForBlocker(value) {
+  return Number(value).toFixed(2);
+}
+
 async function timestampAlignmentPreflightForStory(story = {}) {
   if (!shouldRunIncidentGuardForStory(story)) return null;
   const artifactDir = artifactDirForStory(story);
@@ -1970,12 +1991,30 @@ async function timestampAlignmentPreflightForStory(story = {}) {
 
   const payload = timestampEvidence.payload || {};
   const source = timestampSourceForPayload(payload, story);
-  if (!localVoiceTimingRequired({ story, source })) {
+  const requiresLocalTimingForPayload = localVoiceTimingRequired({ story, source });
+  if (!requiresLocalTimingForPayload) {
     return {
       result: "pass",
       failures: [],
       warnings: [],
       evidence: source ? { word_timestamp_source: source } : {},
+    };
+  }
+
+  const localTtsSpeakingRate = localTtsSpeakingRateForPayload(payload);
+  const minNativeLocalTtsRate = 0.98;
+  if (localTtsSpeakingRate != null && localTtsSpeakingRate < minNativeLocalTtsRate) {
+    return {
+      result: "fail",
+      failures: [`local_tts_speaking_rate_below_native:${formatRateForBlocker(localTtsSpeakingRate)}`],
+      warnings: [],
+      evidence: {
+        word_timestamp_source: source || "unknown",
+        word_timestamp_alignment_required: "local_whisper_word_alignment",
+        word_timestamps_path: timestampEvidence.path || null,
+        local_tts_speaking_rate: localTtsSpeakingRate,
+        local_tts_min_native_rate: minNativeLocalTtsRate,
+      },
     };
   }
 

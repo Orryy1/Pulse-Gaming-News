@@ -767,6 +767,14 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+function allowLocalTtsSpeedEffects(env = process.env) {
+  return (
+    isTruthy(env.LOCAL_TTS_ALLOW_SPEED_EFFECTS) ||
+    isTruthy(env.STUDIO_V2_LOCAL_TTS_ALLOW_SPEED_EFFECTS) ||
+    isTruthy(env.PULSE_LOCAL_TTS_ALLOW_SPEED_EFFECTS)
+  );
+}
+
 function resolveLocalTtsSpeakingRate(rate, env = process.env) {
   const requested = finiteNumber(rate, 1.0);
   const baseSpeed = finiteNumber(
@@ -774,21 +782,27 @@ function resolveLocalTtsSpeakingRate(rate, env = process.env) {
       env.STUDIO_V2_LOCAL_TTS_BASE_SPEED,
     1.0,
   );
-  const minRequestRate = clamp(
-    finiteNumber(
-      env.LOCAL_TTS_MIN_SPEAKING_RATE ||
-        env.STUDIO_V2_LOCAL_TTS_MIN_SPEAKING_RATE,
-      0.7,
-    ),
-    0.5,
-    1.0,
-  );
-  const effectiveCap = finiteNumber(
+  const speedEffectsAllowed = allowLocalTtsSpeedEffects(env);
+  const minRequestRate = speedEffectsAllowed
+    ? clamp(
+        finiteNumber(
+          env.LOCAL_TTS_MIN_SPEAKING_RATE ||
+            env.STUDIO_V2_LOCAL_TTS_MIN_SPEAKING_RATE,
+          0.7,
+        ),
+        0.5,
+        1.0,
+      )
+    : 1.0;
+  let effectiveCap = finiteNumber(
     env.LOCAL_TTS_EFFECTIVE_RATE_CAP ||
       env.STUDIO_V2_LOCAL_TTS_EFFECTIVE_RATE_CAP,
     1.0,
   );
   const serverBase = baseSpeed > 0 ? baseSpeed : 1.0;
+  if (!speedEffectsAllowed && effectiveCap < serverBase) {
+    effectiveCap = serverBase;
+  }
   const maxRequestRate = clamp(effectiveCap / serverBase, minRequestRate, 1.25);
   return clamp(requested, minRequestRate, maxRequestRate);
 }

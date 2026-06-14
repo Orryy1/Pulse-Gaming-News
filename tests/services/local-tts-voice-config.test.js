@@ -186,7 +186,7 @@ test("Pulse local TTS request rate is capped before server base-speed multiplica
   assert.equal(slowerEleven.speed, 0.92);
 });
 
-test("Pulse local TTS can be deliberately slowed for too-short Liam proofs", () => {
+test("Pulse local TTS refuses sub-native production speed caps by default", () => {
   process.env.PULSE_SKIP_DOTENV = "true";
   const {
     resolveVoiceSettingsForProvider,
@@ -197,6 +197,26 @@ test("Pulse local TTS can be deliberately slowed for too-short Liam proofs", () 
     { speaking_rate: 1.1 },
     1.1,
     {
+      LOCAL_TTS_MIN_SPEAKING_RATE: "0.65",
+      LOCAL_TTS_EFFECTIVE_RATE_CAP: "0.75",
+    },
+  );
+
+  assert.equal(local.speaking_rate, 1.0);
+});
+
+test("Pulse local TTS speed effects require explicit proof-only override", () => {
+  process.env.PULSE_SKIP_DOTENV = "true";
+  const {
+    resolveVoiceSettingsForProvider,
+  } = require("../../audio");
+
+  const local = resolveVoiceSettingsForProvider(
+    "local",
+    { speaking_rate: 1.1 },
+    1.1,
+    {
+      LOCAL_TTS_ALLOW_SPEED_EFFECTS: "true",
       LOCAL_TTS_MIN_SPEAKING_RATE: "0.65",
       LOCAL_TTS_EFFECTIVE_RATE_CAP: "0.75",
     },

@@ -12,6 +12,8 @@ test("local live primary runtime launcher supports explicit safe restart", () =>
   const script = fs.readFileSync(SCRIPT_PATH, "utf8");
 
   assert.match(script, /\[switch\]\$Restart/);
+  assert.match(script, /try\s*\{\s*[\s\S]*Add-Content/);
+  assert.match(script, /Logging must never block replacing a stale server process/);
   assert.match(script, /existing_listener_noop/);
   assert.match(script, /-not\s+\$Restart/);
   assert.match(script, /\$process\.CommandLine\s+-notmatch\s+"server\\\.js"/);

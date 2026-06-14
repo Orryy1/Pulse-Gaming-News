@@ -16,7 +16,12 @@ $logPath = Join-Path $logDir "pulse-live-primary-runtime.log"
 
 function Write-RuntimeLog {
   param([string]$Message)
-  Add-Content -LiteralPath $logPath -Value ("{0} {1}" -f (Get-Date).ToUniversalTime().ToString("s"), $Message)
+  try {
+    Add-Content -LiteralPath $logPath -Value ("{0} {1}" -f (Get-Date).ToUniversalTime().ToString("s"), $Message)
+  } catch {
+    # The active node process may hold the combined runtime log open during a restart.
+    # Logging must never block replacing a stale server process.
+  }
 }
 
 $existing = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |

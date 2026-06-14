@@ -1011,6 +1011,58 @@ test("attachPreflightQa blocks malformed public copy before scheduler promotion"
   assert.equal(report.candidates[0].status, "review");
 });
 
+test("attachPreflightQa blocks public metadata QA failures before scheduler promotion", async () => {
+  const stories = [
+    baseStory({
+      id: "unsafe_halo_metadata",
+      title: "Halo: Campaign Evolved Shows The Real Remake Test",
+      selected_title: "Halo: Campaign Evolved Shows The Real Remake Test",
+      suggested_title: "Halo: Campaign Evolved Shows The Real Remake Test",
+      canonical_subject: "Halo: Campaign Evolved",
+      canonical_game: "Halo: Campaign Evolved",
+      first_spoken_line: "Halo Campaign Evolved's remake debate finally has a real stress test.",
+      description: "Xbox Wire showed Halo Campaign Evolved hands-on. Source: Xbox Wire.",
+      primary_source: "Xbox Wire",
+      source_card_label: "Xbox Wire",
+      url: "https://news.xbox.com/en-us/2026/06/10/halo-campaign-evolved-hands-on-demo-2/",
+      duration_seconds: 44,
+      duration_lane: "pulse_retention_short",
+      allow_retention_short_video: true,
+      full_script:
+        "Halo Campaign Evolved's remake debate finally has a real stress test. Xbox Wire says Halo Studios showed Assault on the Control Room hands-on. The remake launches July 28, with early access July 23 for Premium Edition owners. Follow Pulse Gaming so you never miss a beat.",
+      tts_script:
+        "Halo Campaign Evolved's remake debate finally has a real stress test. Xbox Wire says Halo Studios showed Assault on the Control Room hands-on. The remake launches July 28, with early access July 23 for Premium Edition owners. Follow Pulse Gaming so you never miss a beat.",
+    }),
+  ];
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-06-14T14:05:00.000Z",
+  });
+
+  await attachPreflightQa(report, stories, {
+    runSourceAgeQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runIncidentGuard: async () => null,
+    runVoiceQualityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runScriptScorecardQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+  });
+
+  assert.equal(report.candidates[0].preflight_qa.status, "blocked");
+  assert.ok(
+    report.candidates[0].preflight_qa.blockers.includes(
+      "public_metadata:public_copy:unanchored_premium_edition_claim",
+    ),
+    JSON.stringify(report.candidates[0].preflight_qa.blockers),
+  );
+  assert.equal(report.candidates[0].status, "review");
+});
+
 test("attachPreflightQa blocks V4 bridge deal candidates without commercial disclosure evidence", async () => {
   const stories = [
     baseStory({
@@ -1205,6 +1257,7 @@ test("preflight governance uses enabled scheduler platforms instead of deferred 
         return { result: "pass", failures: [], warnings: [] };
       },
       runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+      runPublicMetadataQa: pass,
       runIncidentGuard: pass,
       runVoiceQualityQa: pass,
       runAudioSegmentQa: pass,
@@ -2289,6 +2342,7 @@ test("attachPreflightQa blocks candidates without rendered-audio segment loudnes
     runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
     runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
     runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
     runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
   });
 
@@ -2378,6 +2432,7 @@ test("attachPreflightQa blocks scheduler candidates rejected by aggregate Goal 1
     runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
     runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
     runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
     runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
     runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
     runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
@@ -2635,6 +2690,7 @@ test("attachPreflightQa blocks local-clone narration when word timestamps are no
     runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
     runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
     runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
     runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
     runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
     runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
@@ -2814,6 +2870,7 @@ test("attachPreflightQa ignores stale segment acoustic duration when timestamp m
     runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
     runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
     runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
     runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
     runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
     runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
@@ -2960,6 +3017,7 @@ test("attachPreflightQa keeps read-only preflight mutations off source stories",
     },
     runVideoQa: async (_path, _opts) => ({ result: "pass", failures: [], warnings: [] }),
     runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
     runStudioGovernancePreflight: async (story) => {
       story.content_qa_failures = ["mutated_inside_governance"];
       return { result: "pass", failures: [], warnings: [] };

@@ -911,6 +911,74 @@ test("guarded live dispatch executor blocks explicit live actions that fail last
   ]);
 });
 
+test("guarded live dispatch executor blocks public metadata QA failures before upload", async () => {
+  let uploadCalls = 0;
+  let upsertCalls = 0;
+
+  const unsafeHaloStory = story({
+    title: "Halo: Campaign Evolved Shows The Real Remake Test",
+    suggested_title: "Halo: Campaign Evolved Shows The Real Remake Test",
+    canonical_subject: "Halo: Campaign Evolved",
+    canonical_game: "Halo: Campaign Evolved",
+    source_type: "Xbox Wire",
+    subreddit: "Xbox Wire",
+    url: "https://news.xbox.com/en-us/2026/06/10/halo-campaign-evolved-hands-on-demo-2/",
+    full_script:
+      "Halo Campaign Evolved's remake debate finally has a real stress test. Xbox Wire says Halo Studios showed Assault on the Control Room hands-on. The remake launches July 28, with early access July 23 for Premium Edition owners. Follow Pulse Gaming so you never miss a beat.",
+    tts_script:
+      "Halo Campaign Evolved's remake debate finally has a real stress test. Xbox Wire says Halo Studios showed Assault on the Control Room hands-on. The remake launches July 28, with early access July 23 for Premium Edition owners. Follow Pulse Gaming so you never miss a beat.",
+    suggested_thumbnail_text: "HALO'S REAL TEST",
+    subtitle_timing_source: "timestamps",
+    subtitle_timing_inspection: { usable: true },
+  });
+
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan(),
+    stories: [unsafeHaloStory],
+    actionIds: ["story-one:youtube_shorts"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+    uploaders: {
+      youtube_shorts: {
+        uploadShort: async () => {
+          uploadCalls += 1;
+          throw new Error("uploader must not be called after public metadata QA fails");
+        },
+      },
+    },
+    db: {
+      upsertStory: async () => {
+        upsertCalls += 1;
+      },
+    },
+    runActionQualityGate: defaultActionQualityGate,
+    actionQualityGateOptions: {
+      runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      buildVideoQaOptionsForStory: () => ({}),
+    },
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.summary.blocked_action_count, 1);
+  assert.equal(report.summary.upload_attempt_count, 0);
+  assert.equal(report.summary.db_mutation_count, 0);
+  assert.equal(uploadCalls, 0);
+  assert.equal(upsertCalls, 0);
+  assert.ok(
+    report.blocked_actions[0].blockers.includes("last_second_quality_gate_failed"),
+  );
+  assert.ok(
+    report.blocked_actions[0].blockers.includes(
+      "public_metadata:public_copy:unanchored_premium_edition_claim",
+    ),
+    JSON.stringify(report.blocked_actions[0].blockers),
+  );
+});
+
 test("guarded live dispatch executor blocks explicit stale source-age actions before upload", async () => {
   let uploadCalls = 0;
   let upsertCalls = 0;
@@ -1015,6 +1083,7 @@ test("default action quality gate hydrates render-manifest proof before content 
       },
       runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       buildVideoQaOptionsForStory: () => ({}),
+      runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
     },
   });
 

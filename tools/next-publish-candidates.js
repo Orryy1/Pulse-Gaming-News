@@ -994,6 +994,7 @@ function combinePreflightQa({
   platform,
   governance,
   publicCopy,
+  publicMetadata,
   incidentGuard,
   voiceQuality,
   audioSegment,
@@ -1011,6 +1012,7 @@ function combinePreflightQa({
     governance: summariseQaResult(governance),
   };
   if (publicCopy) checks.public_copy = summariseQaResult(publicCopy);
+  if (publicMetadata) checks.public_metadata = summariseQaResult(publicMetadata);
   if (incidentGuard) checks.incident_guard = summariseQaResult(incidentGuard);
   if (voiceQuality) checks.voice_quality = summariseQaResult(voiceQuality);
   if (audioSegment) checks.audio_segment_loudness = summariseQaResult(audioSegment);
@@ -2417,6 +2419,15 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
     runStudioGovernancePreflight = require("../lib/services/studio-governance-preflight").runStudioGovernancePreflight,
     runSourceAgeQa = sourceAgePreflightForStory,
     runPublicCopyQa = (manifest) => require("../lib/goal-public-copy-qa").evaluateGoalPublicCopy(manifest),
+    runPublicMetadataQa = (qaStory, qaOptions = {}) => {
+      const { collectPublicMetadataFailures } = require("../lib/public-metadata-qa");
+      const failures = collectPublicMetadataFailures(qaStory, qaOptions);
+      return {
+        result: failures.length ? "fail" : "pass",
+        failures,
+        warnings: [],
+      };
+    },
     runIncidentGuard = incidentGuardPreflightForStory,
     runVoiceQualityQa = voiceQualityPreflightForStory,
     runAudioSegmentQa = audioSegmentPreflightForStory,
@@ -2433,6 +2444,7 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
     const platformStory = cloneStoryForPreflight(story);
     const governanceStory = cloneStoryForPreflight(story);
     const publicCopyStory = cloneStoryForPreflight(story);
+    const publicMetadataStory = cloneStoryForPreflight(story);
     const sourceAge = await runSourceAgeQa(cloneStoryForPreflight(story), opts);
     const content = await runContentQa(contentStory, {
       blockThinVisuals: true,
@@ -2453,6 +2465,15 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
     const publicCopy = summarisePublicCopyQaResult(
       await runPublicCopyQa(publicCopyManifestForStory(publicCopyStory)),
     );
+    const publicMetadata = await runPublicMetadataQa(publicMetadataStory, {
+      surface: "scheduler_preflight",
+      publicTitle:
+        publicMetadataStory.public_title ||
+        publicMetadataStory.upload_title ||
+        publicMetadataStory.suggested_title ||
+        publicMetadataStory.title,
+      ...(opts.publicMetadataQaOptions || {}),
+    });
     const incidentGuard = await runIncidentGuard(cloneStoryForPreflight(story));
     const voiceQuality = await runVoiceQualityQa(cloneStoryForPreflight(story));
     const audioSegment = await runAudioSegmentQa(cloneStoryForPreflight(story));
@@ -2474,6 +2495,7 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
       platform,
       governance,
       publicCopy,
+      publicMetadata,
       incidentGuard,
       voiceQuality,
       audioSegment,

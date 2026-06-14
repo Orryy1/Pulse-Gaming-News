@@ -12,6 +12,16 @@ const {
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "output", "runtime-ownership");
+const GOAL_CONTRACT_OUT = path.join(ROOT, "output", "goal-contract");
+
+async function readOptionalJson(filePath) {
+  try {
+    if (!await fs.pathExists(filePath)) return null;
+    return fs.readJson(filePath);
+  } catch {
+    return null;
+  }
+}
 
 function parseArgs(argv) {
   const args = { json: false, help: false };
@@ -40,6 +50,11 @@ async function main() {
   const report = await buildRuntimeOwnershipSentinelFromEnvironment({
     cwd: ROOT,
     env: process.env,
+    schedulerProof: {
+      dryRunPlan: await readOptionalJson(path.join(GOAL_CONTRACT_OUT, "dry_run_publish_plan.json")),
+      guardedDispatchPlan: await readOptionalJson(path.join(GOAL_CONTRACT_OUT, "guarded_dispatch_plan.json")),
+      executorPlan: await readOptionalJson(path.join(GOAL_CONTRACT_OUT, "guarded_dispatch_executor_plan.json")),
+    },
   });
   const markdown = formatRuntimeOwnershipSentinelMarkdown(report);
 

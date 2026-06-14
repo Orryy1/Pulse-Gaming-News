@@ -125,6 +125,24 @@ test("visual strip plan blocks missing videos instead of marking review evidence
   assert.ok(report.cards[0].blockers.includes("video_file_missing"));
 });
 
+test("visual strip plan still refreshes evidence for already-decided current cards", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-review-strip-decided-"));
+  const consoleBundle = await createConsoleBundle(dir);
+  consoleBundle.summary.ready_card_count = 0;
+  consoleBundle.summary.actionable_card_count = 0;
+  consoleBundle.cards[0].review_status = "already_decided";
+  consoleBundle.cards[0].actionable = false;
+
+  const report = buildHumanReviewVisualStripPlan({
+    consoleBundle,
+    outputDir: path.join(dir, "out"),
+  });
+
+  assert.equal(report.summary.extractable_card_count, 1);
+  assert.equal(report.summary.blocked_card_count, 0);
+  assert.equal(report.cards[0].status, "ready_for_frame_extraction");
+});
+
 test("visual strip extraction uses hidden ffmpeg execFile calls and records extracted frames", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-review-strip-extract-"));
   const consoleBundle = await createConsoleBundle(dir);

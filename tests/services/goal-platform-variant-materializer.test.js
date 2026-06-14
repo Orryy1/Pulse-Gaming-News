@@ -88,6 +88,32 @@ test("platform variant materializer creates probe-backed overlong platform varia
   assert.doesNotMatch(captions, /00:00:47,000/);
 });
 
+test("platform variant materializer writes resolvable variant paths for relative artifact dirs", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-platform-variant-relative-"));
+  const storyPackage = await makePackage(root, "ig-relative-dir", 47.2);
+  const relativeArtifactDir = path.relative(process.cwd(), storyPackage.artifact_dir);
+
+  const report = await materializeGoalPlatformVariants({
+    storyPackages: [{ ...storyPackage, artifact_dir: relativeArtifactDir }],
+    generatedAt: "2026-05-23T00:22:30.000Z",
+    variantRenderer: async ({ outputPath }) => {
+      await fs.outputFile(outputPath, Buffer.alloc(2200, 2));
+    },
+    probeDuration: async () => 44.8,
+  });
+
+  assert.equal(report.summary.variant_job_count, 1);
+  assert.equal(report.summary.materialized_count, 1);
+
+  const manifest = await fs.readJson(path.join(storyPackage.artifact_dir, "platform_publish_manifest.json"));
+  const instagram = manifest.outputs.instagram_reels;
+
+  assert.equal(path.isAbsolute(instagram.variant_video_path), true);
+  assert.equal(path.isAbsolute(instagram.platform_variant_render.output_path), true);
+  assert.equal(await fs.pathExists(instagram.variant_video_path), true);
+  assert.equal(await fs.pathExists(instagram.platform_variant_render.output_path), true);
+});
+
 test("platform variant materializer leaves in-window renders alone", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-platform-variant-none-"));
   const storyPackage = await makePackage(root, "ig-in-window", 39.2);

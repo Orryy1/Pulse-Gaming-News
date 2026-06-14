@@ -668,6 +668,45 @@ test("selectNextGuardedLiveAction skips already-stamped platforms and returns th
   assert.equal(selection.skipped_actions[0].action_id, "story-one:youtube_shorts");
 });
 
+test("selectNextGuardedLiveAction skips platforms already published in structured platform_posts", async () => {
+  const selection = await selectNextGuardedLiveAction({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("youtube_shorts"),
+        action("instagram_reels"),
+        action("facebook_reels"),
+      ],
+    }),
+    stories: [
+      story({
+        youtube_post_id: null,
+        instagram_media_id: null,
+        facebook_post_id: null,
+      }),
+    ],
+    platformPosts: {
+      getByStoryPlatform(storyId, platform) {
+        if (storyId === "story-one" && platform === "youtube") {
+          return {
+            story_id: "story-one",
+            platform: "youtube",
+            status: "published",
+            external_id: "yt_structured",
+          };
+        }
+        return null;
+      },
+    },
+    runActionQualityGate: passActionQualityGate,
+  });
+
+  assert.equal(selection.exhausted, false);
+  assert.equal(selection.action_id, "story-one:instagram_reels");
+  assert.equal(selection.skipped_actions[0].reason, "already_published");
+  assert.equal(selection.skipped_actions[0].external_id, "yt_structured");
+  assert.equal(selection.skipped_actions[0].evidence_source, "platform_posts");
+});
+
 test("selectNextGuardedLiveAction skips previous hard platform failures", async () => {
   const selection = await selectNextGuardedLiveAction({
     executorPlan: executorPlan({

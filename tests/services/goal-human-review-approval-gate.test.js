@@ -285,6 +285,50 @@ test("approval gate converts a valid operator decision into enabled-platform gua
   assert.equal(report.safety.no_network_uploads, true);
 });
 
+test("approval gate ignores stale decisions that are not in the current review packet manifest", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-human-review-stale-decision-"));
+  const packet = reviewPacket({
+    story_id: "fresh-story",
+    packet_id: "fresh-story:human_review",
+    artefacts: await proofArtefacts(root, "fresh-story"),
+  });
+  const report = buildHumanReviewApprovalGate({
+    humanReviewQueue: humanReviewQueue(packet),
+    reviewPacketManifest: reviewPacketManifest(packet),
+    operatorDecisionLog: {
+      mode: "HUMAN_REVIEW_DECISION_LOG",
+      decisions: [
+        decision({
+          story_id: "old-story",
+          approved_platforms: ["youtube_shorts", "tiktok"],
+          reviewed_artefacts: [],
+          reviewed_artefact_fingerprints: {},
+        }),
+        decision({
+          story_id: "fresh-story",
+          reviewed_artefact_fingerprints: fingerprintMap(packet.artefacts),
+        }),
+      ],
+      safety: {
+        no_live_publish_from_log: true,
+        no_network_uploads: true,
+        no_db_mutation: true,
+        no_oauth_or_token_change: true,
+      },
+    },
+    generatedAt: "2026-05-31T18:10:00.000Z",
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.summary.decision_count, 2);
+  assert.equal(report.summary.ignored_stale_decision_count, 1);
+  assert.equal(report.summary.invalid_decision_count, 0);
+  assert.equal(report.summary.pending_review_packet_count, 0);
+  assert.deepEqual(report.ignored_stale_decisions.map((item) => item.story_id), ["old-story"]);
+  assert.ok(report.advisory.includes("stale_operator_decisions_ignored"));
+  assert.deepEqual(report.approved_actions.map((action) => action.story_id), ["fresh-story", "fresh-story"]);
+});
+
 test("approval gate inherits strict dry-run platform media paths for guarded dispatch", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-human-review-strict-media-"));
   const packet = await reviewPacketWithProof(root);

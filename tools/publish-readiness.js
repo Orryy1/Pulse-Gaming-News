@@ -28,6 +28,7 @@ const {
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
+const CONTRACT_OUT = path.join(ROOT, "output", "goal-contract");
 
 function parseArgs(argv) {
   const args = { json: false, discord: false, help: false };
@@ -55,11 +56,22 @@ async function main() {
 
   try {
     await fs.ensureDir(OUT);
+    await fs.ensureDir(CONTRACT_OUT);
     await fs.writeJson(path.join(OUT, "publish_readiness.json"), report, {
       spaces: 2,
     });
     await fs.writeFile(
       path.join(OUT, "publish_readiness.md"),
+      markdown,
+      "utf-8",
+    );
+    await fs.writeJson(
+      path.join(CONTRACT_OUT, "publish_readiness_report.json"),
+      report,
+      { spaces: 2 },
+    );
+    await fs.writeFile(
+      path.join(CONTRACT_OUT, "publish_readiness_report.md"),
       markdown,
       "utf-8",
     );

@@ -731,6 +731,13 @@ test("tools/publish-readiness.js loads .env for local operator runs", () => {
 
 // ── formatPublishReadinessMarkdown ───────────────────────────────
 
+test("tools/publish-readiness.js refreshes the canonical goal-contract report", () => {
+  const src = fs.readFileSync(TOOL_PATH, "utf8");
+  assert.match(src, /CONTRACT_OUT/);
+  assert.match(src, /publish_readiness_report\.json/);
+  assert.match(src, /publish_readiness_report\.md/);
+});
+
 test("formatPublishReadinessMarkdown: green report uses green glyph", () => {
   const md = pr.formatPublishReadinessMarkdown({
     overall_verdict: "green",
@@ -1907,6 +1914,58 @@ test("resolvePublishReadinessNextAction: repairable backlog takes priority over 
   assert.match(nextAction, /auto-repair backlog/);
   assert.match(nextAction, /66 repairable/);
   assert.match(nextAction, /Do not publish unattended/);
+});
+
+test("resolvePublishReadinessNextAction: ready guarded handoff takes priority over stale advisory backlog", () => {
+  const nextAction = pr.resolvePublishReadinessNextAction({
+    overall: "amber",
+    pillars: {
+      publish_cadence: { verdict: "green" },
+      human_review_approval_gate: {
+        verdict: "green",
+        raw: {
+          approved_action_count: 9,
+          invalid_decision_count: 0,
+          guarded_dispatch_eligible: true,
+        },
+      },
+      guarded_dispatch_preflight: {
+        verdict: "green",
+        raw: {
+          dispatch_ready_action_count: 9,
+          blocked_action_count: 0,
+          safety_blocker_count: 0,
+          ready_for_guarded_dispatch: true,
+        },
+      },
+      guarded_dispatch_executor_preflight: {
+        verdict: "green",
+        raw: {
+          handoff_ready_action_count: 9,
+          blocked_selected_action_count: 0,
+          ready_for_live_executor_handoff: true,
+        },
+      },
+      strict_dry_run_control: {
+        verdict: "green",
+        raw: {
+          ready_story_count: 3,
+          blocked_action_count: 0,
+        },
+      },
+      repair_backlog: {
+        verdict: "amber",
+        raw: {
+          total_items: 1,
+          auto_repairable_items: 1,
+        },
+      },
+    },
+  });
+
+  assert.match(nextAction, /Guarded enabled-platform dispatch is ready/);
+  assert.doesNotMatch(nextAction, /auto-repair backlog/);
+  assert.doesNotMatch(nextAction, /Do not publish unattended/);
 });
 
 test("resolvePublishReadinessNextAction: scheduler-scoped approval does not require manual executor IDs", () => {

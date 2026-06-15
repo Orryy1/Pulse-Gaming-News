@@ -337,6 +337,78 @@ test("Goal 13 treats no-affiliate editorial story pages as clean and skips upstr
   assert.deepEqual(report.blocker_counts, {});
 });
 
+test("Goal 13 does not require affiliate disclosure for explicit no-offer story pages", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal13-no-offer-copy-"));
+  const story = await makeStoryPackage(root, "story-no-offer", {
+    disclosureRequired: false,
+    affiliateRelevance: "no_safe_commercial_intent",
+  });
+  await fs.outputJson(path.join(story.artifact_dir, "affiliate_link_manifest.json"), {});
+  const landingPath = path.join(story.artifact_dir, "landing_page_manifest.json");
+  const landing = await fs.readJson(landingPath);
+  landing.disclosure_block = {
+    required: false,
+    copy: { short: "No affiliate link is attached to this story." },
+  };
+  landing.attribution_manifest = {
+    verdict: "pass",
+    platforms: Object.fromEntries(
+      [
+        ["youtube", "youtube"],
+        ["tiktok", "tiktok"],
+        ["instagram", "instagram"],
+        ["facebook", "facebook"],
+        ["x", "x"],
+        ["threads", "threads"],
+        ["pinterest", "pinterest"],
+      ].map(([key, source]) => [
+        key,
+        {
+          tracking_key: `story-no-offer:${source}:story_page`,
+          landing_page_url: `/p/story-no-offer?utm_source=${source}`,
+          disclosure_required: false,
+          disclosure_copy: null,
+        },
+      ]),
+    ),
+  };
+  await fs.writeJson(landingPath, landing, { spaces: 2 });
+  const platformPath = path.join(story.artifact_dir, "platform_publish_manifest.json");
+  const platform = await fs.readJson(platformPath);
+  platform.outputs.youtube_shorts.disclosure_status = {
+    required: false,
+    type: "none",
+    caption: "No affiliate link is attached to this story.",
+  };
+  platform.outputs.instagram_reels.disclosure_status = {
+    required: false,
+    type: "none",
+    caption: "No affiliate link is attached to this story.",
+  };
+  platform.outputs.facebook_reels.disclosure_status = {
+    required: false,
+    type: "none",
+    caption: "No affiliate link is attached to this story.",
+  };
+  platform.outputs.tiktok.disclosure_flag = "affiliate_not_required";
+  platform.outputs.tiktok.commercial_content_setting_recommendation = "not_required";
+  await fs.writeJson(platformPath, platform, { spaces: 2 });
+
+  const report = await buildGoal13MultiPlatformPublisherEngine({
+    storyPackages: [story],
+    upstreamExperimentReport: readyExperimentReport("story-no-offer"),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-06-15T10:00:00.000Z",
+  });
+
+  assert.equal(report.verdict, "PASS");
+  assert.equal(report.stories[0].status, "ready");
+  assert.equal(report.stories[0].disclosure_required, false);
+  assert.deepEqual(report.stories[0].direct_platform_blockers, []);
+  assert.equal(report.blocker_counts["platform:missing_disclosure"], undefined);
+});
+
 test("Goal 13 writes required publisher artefacts", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal13-write-"));
   const story = await makeStoryPackage(root, "story-write");

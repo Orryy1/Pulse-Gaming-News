@@ -1311,6 +1311,67 @@ function bridgeMotionGovernancePreflightForStory(story = {}, opts = {}) {
   };
 }
 
+function benchmarkReportPathForStory(story = {}) {
+  const explicit = cleanText(story.benchmark_report_path || story.benchmarkReportPath);
+  if (explicit) return path.resolve(ROOT, explicit);
+  const artifactDir = cleanText(
+    story.scheduler_bridge_artifact_dir ||
+      story.artifact_dir ||
+      story.artifactDir ||
+      story.output_dir ||
+      story.outputDir,
+  );
+  if (!artifactDir) return null;
+  return path.join(path.resolve(ROOT, artifactDir), "benchmark_report.json");
+}
+
+function localBenchmarkPreflightForStory(story = {}) {
+  const reportPath = benchmarkReportPathForStory(story);
+  if (!reportPath || !fs.existsSync(reportPath)) return null;
+  let report = null;
+  try {
+    report = fs.readJsonSync(reportPath);
+  } catch {
+    return {
+      result: "fail",
+      failures: ["local_benchmark_report_unreadable"],
+      warnings: [],
+      evidence: { benchmark_report_path: reportPath },
+    };
+  }
+
+  const status = cleanText(report.result || report.status || report.verdict).toLowerCase();
+  const failures = [
+    ...asArray(report.failures),
+    ...asArray(report.blockers),
+  ].map(cleanText).filter(Boolean);
+
+  if ((status === "pass" || status === "ready" || status === "green") && failures.length === 0) {
+    return {
+      result: "pass",
+      failures: [],
+      warnings: [
+        "goal10_aggregate_index_stale_local_benchmark_used",
+        ...asArray(report.warnings).map(cleanText).filter(Boolean),
+      ],
+      evidence: {
+        benchmark_report_path: reportPath,
+        local_benchmark_result: report.result || report.status || report.verdict || "pass",
+      },
+    };
+  }
+
+  return {
+    result: "fail",
+    failures: failures.length ? failures : [status ? `local_benchmark_status:${status}` : "local_benchmark_status_not_ready"],
+    warnings: asArray(report.warnings).map(cleanText).filter(Boolean),
+    evidence: {
+      benchmark_report_path: reportPath,
+      local_benchmark_result: report.result || report.status || report.verdict || "unknown",
+    },
+  };
+}
+
 function aggregateBenchmarkPreflightForStory(story = {}, opts = {}) {
   if (!story.scheduler_bridge_source) return null;
   const report =
@@ -1331,6 +1392,8 @@ function aggregateBenchmarkPreflightForStory(story = {}, opts = {}) {
 
   const rows = asArray(report.stories);
   if (!rows.length) {
+    const local = localBenchmarkPreflightForStory(story);
+    if (local) return local;
     return {
       result: "fail",
       failures: ["goal10_report_has_no_story_rows"],
@@ -1343,6 +1406,8 @@ function aggregateBenchmarkPreflightForStory(story = {}, opts = {}) {
 
   const row = rows.find((item) => normaliseStoryId(item?.story_id || item?.id) === storyId);
   if (!row) {
+    const local = localBenchmarkPreflightForStory(story);
+    if (local) return local;
     return {
       result: "fail",
       failures: ["goal10_story_missing"],

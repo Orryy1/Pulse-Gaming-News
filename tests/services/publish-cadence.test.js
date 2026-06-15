@@ -302,6 +302,61 @@ test("buildPublishCadenceReport: counts published platform_posts when story time
   assert.deepEqual(report.publish_events[0].platforms, ["instagram"]);
 });
 
+test("buildPublishCadenceReport: counts multi-platform rows for one story as one video publish", () => {
+  const report = buildPublishCadenceReport({
+    now: "2026-06-15T09:30:00.000Z",
+    windowHours: 24,
+    minRecommendedGapMinutes: 120,
+    maxRecommendedPostsPer24h: 5,
+    stories: [
+      {
+        id: "halo-remake",
+        title: "Halo: Campaign Evolved Shows The Real Remake Test",
+      },
+    ],
+    platformPosts: [
+      {
+        id: 8,
+        story_id: "halo-remake",
+        title: "Halo: Campaign Evolved Shows The Real Remake Test",
+        platform: "youtube",
+        status: "published",
+        external_id: "yt_halo",
+        published_at: "2026-06-14T21:47:11.000Z",
+      },
+      {
+        id: 9,
+        story_id: "halo-remake",
+        title: "Halo: Campaign Evolved Shows The Real Remake Test",
+        platform: "instagram_reel",
+        status: "published",
+        external_id: "ig_halo",
+        published_at: "2026-06-14T21:48:49.000Z",
+      },
+      {
+        id: 10,
+        story_id: "halo-remake",
+        title: "Halo: Campaign Evolved Shows The Real Remake Test",
+        platform: "facebook_reel",
+        status: "published",
+        external_id: "fb_halo",
+        published_at: "2026-06-14T21:50:15.000Z",
+      },
+    ],
+    jobs: [
+      { id: 41680, kind: "publish", run_at: "2026-06-14 19:00:00", status: "done" },
+    ],
+  });
+
+  assert.equal(report.summary.published_count, 1);
+  assert.equal(report.summary.platform_post_events, 1);
+  assert.equal(report.summary.burst_pairs, 0);
+  assert.equal(report.publish_events.length, 1);
+  assert.deepEqual(report.publish_events[0].platforms, ["youtube", "instagram", "facebook"]);
+  assert.deepEqual(report.publish_events[0].platform_post_ids, [8, 9, 10]);
+  assert.equal(report.next_safe_publish.blockers.length, 0);
+});
+
 test("buildPublishCadenceReport: zero recent DB posts is telemetry-incomplete when platform IDs exist", () => {
   const report = buildPublishCadenceReport({
     now: "2026-06-08T09:00:00.000Z",
@@ -344,6 +399,25 @@ test("computeNextSafePublishWindow: waits until cap clears then picks next canon
   assert.equal(next.earliest_possible_at_utc, "2026-05-15T07:05:00.000Z");
   assert.equal(next.next_safe_publish_at_utc, "2026-05-15T09:00:00.000Z");
   assert.equal(next.blockers[0].type, "post_cap");
+});
+
+test("computeNextSafePublishWindow: omits cap blockers that already cleared", () => {
+  const next = computeNextSafePublishWindow({
+    nowDate: "2026-06-15T09:34:00.000Z",
+    expectedHoursUtc: [9, 11, 14, 16, 19],
+    minRecommendedGapMinutes: 120,
+    maxRecommendedPostsPer24h: 5,
+    publishEvents: [
+      { id: "old_a", published_at: "2026-06-13T14:00:10.000Z" },
+      { id: "old_b", published_at: "2026-06-13T16:00:00.000Z" },
+      { id: "recent_a", published_at: "2026-06-14T16:00:07.000Z" },
+      { id: "recent_b", published_at: "2026-06-14T21:47:11.000Z" },
+      { id: "recent_c", published_at: "2026-06-14T23:07:06.000Z" },
+    ],
+  });
+
+  assert.equal(next.next_safe_publish_at_utc, "2026-06-15T11:00:00.000Z");
+  assert.deepEqual(next.blockers, []);
 });
 
 test("formatPublishCadenceMarkdown: renders operator-readable warnings", () => {

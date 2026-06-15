@@ -9,6 +9,7 @@ const {
   DEFAULT_DIRECT_VIDEO_ENRICHMENT_WORK_ORDER_PATH,
   DEFAULT_SOURCE_FAMILY_ACQUISITION_REPORT_PATH,
   DEFAULT_UPSTREAM_ANTI_SPAM_REPORT_PATH,
+  aggregateBenchmarkPreflightForStory,
   buildNextPublishCandidatesReport,
   attachPreflightQa,
   attachStoryPreflight,
@@ -2537,6 +2538,37 @@ test("attachPreflightQa blocks scheduler candidates rejected by aggregate Goal 1
     ),
   );
   assert.equal(report.candidates[0].preflight_qa.checks.aggregate_benchmark.result, "fail");
+});
+
+test("aggregate benchmark preflight accepts current local benchmark when aggregate index is stale", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-local-benchmark-preflight-"));
+  await fs.writeJson(path.join(tmp, "benchmark_report.json"), {
+    result: "pass",
+    failures: [],
+    scores: {
+      media_house_polish_score: 96,
+      motion_density_score: 91,
+    },
+  });
+
+  const result = await aggregateBenchmarkPreflightForStory(
+    {
+      id: "local_benchmark_ready",
+      title: "Alien Isolation 2 Has One Horror Risk",
+      scheduler_bridge_source: "goal_production_cutover",
+      scheduler_bridge_artifact_dir: tmp,
+    },
+    {
+      upstreamBenchmarkReport: {
+        goal: "goal10_gold_standard_forensics_engine",
+        stories: [],
+      },
+    },
+  );
+
+  assert.equal(result.result, "pass");
+  assert.deepEqual(result.failures, []);
+  assert.ok(result.warnings.includes("goal10_aggregate_index_stale_local_benchmark_used"));
 });
 
 test("attachPreflightQa blocks bridge candidates with rewrite-required script scorecards", async () => {

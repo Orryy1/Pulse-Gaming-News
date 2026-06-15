@@ -2717,6 +2717,88 @@ test("attachPreflightQa blocks cross-story direct motion when visual provenance 
   );
 });
 
+test("attachPreflightQa blocks direct motion when cache sidecar source does not match the subject", async () => {
+  const clipPath = path.join(
+    "test",
+    "output",
+    "next-publish-candidates-sidecar-mismatch",
+    "fresh_xbox_minecraft_dungeons_ii_20260610_v4_clip_1_segment_direct_motion_3.mp4",
+  );
+  await fs.ensureDir(path.dirname(clipPath));
+  await fs.writeJson(`${clipPath}.json`, {
+    schema_version: 1,
+    render_signature: "studio_v4_clip_materializer_accurate_seek_v2",
+    source_url: "https://blog.playstation.com/uploads/2026/06/f60a5d20687eba81e1dfcf15db93bd7dba411b24.mp4",
+    source_family: "playstation_blog_wuchang_fallen_feathers_media",
+    media_start_s: 8,
+    duration_s: 5,
+  });
+
+  const stories = [
+    baseStory({
+      id: "minecraft_sidecar_wrong_motion",
+      title: "Minecraft Dungeons II Has A Co-Op Risk",
+      selected_title: "Minecraft Dungeons II Has A Co-Op Risk",
+      canonical_subject: "Minecraft Dungeons II",
+      canonical_game: "Minecraft Dungeons II",
+      primary_source_url:
+        "https://news.xbox.com/en-us/2026/06/10/minecraft-dungeons-2-arpg-details-demo-xbox-games-showcase-2026/",
+      scheduler_bridge_source: "goal_production_cutover",
+      visual_v4_bridge_video_clips: [clipPath],
+      video_clips: [clipPath],
+      rights_ledger: {
+        verdict: "pass",
+        assets: [
+          {
+            id: "segment_direct_motion_3",
+            path: clipPath,
+            source_url:
+              "local://existing-official-direct-motion/fresh_xbox_minecraft_dungeons_ii_20260610/fresh_xbox_minecraft_dungeons_ii_20260610_v4_clip_1_segment_direct_motion_3.mp4",
+            source_family: "xbox_product_minecraft_dungeons_ii_media_02_6a5c6baf",
+            source_type: "licensed_direct_media_url",
+            media_kind: "direct_video",
+            rights_basis: "official_direct_media",
+          },
+        ],
+      },
+      ...bridgeVisualEvidence("Minecraft Dungeons II"),
+      sfx_manifest: bridgeSfxEvidence(),
+    }),
+  ];
+
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-06-15T19:25:00.000Z",
+  });
+
+  await attachPreflightQa(report, stories, {
+    runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVoiceQualityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+    runAggregateBenchmarkQa: async () => null,
+  });
+
+  assert.equal(report.candidates[0].preflight_qa.status, "blocked");
+  assert.ok(
+    report.candidates[0].preflight_qa.blockers.includes(
+      "visual_entity_match:direct_motion_subject_mismatch",
+    ),
+  );
+  assert.match(
+    report.candidates[0].preflight_qa.checks.visual_entity_match.evidence
+      .mismatched_motion_assets[0].provenance_text,
+    /playstation|wuchang/i,
+  );
+});
+
 test("attachPreflightQa blocks scheduler candidates rejected by aggregate Goal 10 readiness", async () => {
   const stories = [
     baseStory({

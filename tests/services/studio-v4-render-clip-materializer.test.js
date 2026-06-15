@@ -50,6 +50,11 @@ test("Studio V4 clip materializer cuts safe direct media into local render clips
     "-t",
     "2.85",
   ]);
+  const sidecar = await fs.readJson(`${result.bridge.video_clips[0].path}.json`);
+  assert.equal(sidecar.story_id, "forza-v4");
+  assert.equal(sidecar.clip_id, "clip-1");
+  assert.equal(sidecar.source_family, "forza_official_x");
+  assert.equal(sidecar.source_url, directUrl);
 });
 
 test("Studio V4 clip materializer refreshes stale cache entries when source timing changes", async () => {

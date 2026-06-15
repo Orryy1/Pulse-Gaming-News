@@ -1444,8 +1444,81 @@ function visualAssetPathKey(asset = {}) {
   ).replace(/\\/g, "/").toLowerCase();
 }
 
+function visualAssetPathCandidates(asset = {}) {
+  const values = typeof asset === "string"
+    ? [asset]
+    : [
+        asset.path,
+        asset.local_path,
+        asset.local_materialized_path,
+        asset.local_materialised_path,
+        asset.file_path,
+        asset.media_path,
+      ];
+  return [...new Set(values.map(cleanText).filter(Boolean))];
+}
+
+function resolveLocalVisualAssetPath(value = "") {
+  const text = cleanText(value);
+  if (!text || /^local:\/\//i.test(text) || /^https?:\/\//i.test(text) || /^file:\/\//i.test(text)) return "";
+  const normalised = text.replace(/\//g, path.sep);
+  return path.isAbsolute(normalised) ? normalised : path.resolve(ROOT, normalised);
+}
+
+function readVisualAssetSidecar(asset = {}) {
+  for (const candidate of visualAssetPathCandidates(asset)) {
+    const resolved = resolveLocalVisualAssetPath(candidate);
+    if (!resolved) continue;
+    const sidecarPath = `${resolved}.json`;
+    try {
+      if (!fs.existsSync(sidecarPath)) continue;
+      const sidecar = fs.readJsonSync(sidecarPath);
+      if (sidecar && typeof sidecar === "object" && !Array.isArray(sidecar)) {
+        return { ...sidecar, source_sidecar_path: sidecarPath };
+      }
+    } catch {
+      // Sidecar evidence is optional, but unreadable sidecars should not crash
+      // read-only scheduler preflight.
+    }
+  }
+  return null;
+}
+
+function enrichVisualAssetWithSidecar(asset = {}) {
+  const normalised = typeof asset === "string" ? { path: asset } : { ...asset };
+  const sidecar = readVisualAssetSidecar(normalised);
+  if (!sidecar) return normalised;
+  const sidecarSourceUrl = cleanText(sidecar.source_url || sidecar.url);
+  const sidecarSourceFamily = cleanText(sidecar.source_family || sidecar.motion_family || sidecar.family);
+  return {
+    ...normalised,
+    source_sidecar_path: cleanText(sidecar.source_sidecar_path),
+    source_sidecar_signature: cleanText(sidecar.render_signature || sidecar.generator),
+    sidecar_source_url: sidecarSourceUrl,
+    sidecar_source_family: sidecarSourceFamily,
+    sidecar_media_start_s: sidecar.media_start_s ?? sidecar.mediaStartS ?? null,
+    sidecar_duration_s: sidecar.duration_s ?? sidecar.durationS ?? null,
+    original_source_url: externalSourceValue(
+      sidecarSourceUrl,
+      normalised.original_source_url,
+      normalised.source_url,
+      normalised.url,
+    ),
+    original_source_family: richerFamilyValue(
+      sidecarSourceFamily,
+      normalised.original_source_family,
+      normalised.source_family,
+      normalised.motion_family,
+      normalised.family,
+    ),
+  };
+}
+
 function mergeVisualAssetProvenance(existing = {}, incoming = {}) {
-  const merged = { ...existing, ...incoming };
+  const merged = {
+    ...enrichVisualAssetWithSidecar(existing),
+    ...enrichVisualAssetWithSidecar(incoming),
+  };
   merged.source_url = externalSourceValue(
     existing.source_url || existing.url,
     incoming.source_url || incoming.url,
@@ -1459,7 +1532,7 @@ function mergeVisualAssetProvenance(existing = {}, incoming = {}) {
     existing.motion_family || existing.source_family || existing.family,
     incoming.motion_family || incoming.source_family || incoming.family,
   );
-  return merged;
+  return enrichVisualAssetWithSidecar(merged);
 }
 
 function dedupeVisualAssetsByPath(assets = []) {
@@ -1467,7 +1540,7 @@ function dedupeVisualAssetsByPath(assets = []) {
   const unkeyed = [];
   for (const asset of asArray(assets)) {
     if (!asset) continue;
-    const normalised = typeof asset === "string" ? { path: asset } : asset;
+    const normalised = enrichVisualAssetWithSidecar(asset);
     const key = visualAssetPathKey(normalised);
     if (!key) {
       unkeyed.push(normalised);
@@ -1494,6 +1567,8 @@ function visualAssetProvenanceText(asset = {}) {
     asset.media_title,
     asset.title,
     asset.name,
+    asset.sidecar_source_family,
+    !isLocalOrGeneratedReference(asset.sidecar_source_url) ? asset.sidecar_source_url : "",
     !isLocalOrGeneratedReference(asset.source_url) ? asset.source_url : "",
     !isLocalOrGeneratedReference(asset.url) ? asset.url : "",
     asset.original_source_family,
@@ -1502,8 +1577,18 @@ function visualAssetProvenanceText(asset = {}) {
   return cleanText(values.filter(Boolean).join(" ")).toLowerCase();
 }
 
+function visualAssetSidecarProvenanceText(asset = {}) {
+  if (!asset.source_sidecar_path) return "";
+  const values = [
+    asset.sidecar_source_family,
+    !isLocalOrGeneratedReference(asset.sidecar_source_url) ? asset.sidecar_source_url : "",
+  ];
+  return cleanText(values.filter(Boolean).join(" ")).toLowerCase();
+}
+
 function visualAssetSubjectLocked(asset = {}, subjectTokens = []) {
-  const provenance = visualAssetProvenanceText(asset);
+  const sidecarProvenance = visualAssetSidecarProvenanceText(asset);
+  const provenance = sidecarProvenance || visualAssetProvenanceText(asset);
   if (!provenance) return false;
   return subjectTokens.some((token) =>
     new RegExp(`(^|[^a-z0-9])${token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`).test(provenance),
@@ -1560,7 +1645,12 @@ async function visualEntityPreflightForStory(story = {}) {
   if (!directMotionAssets.length) return null;
 
   const mismatched = directMotionAssets
-    .filter((asset) => !visualAssetSubjectLocked(asset, lockTokens))
+    .filter((asset) =>
+      !visualAssetSubjectLocked(
+        asset,
+        asset.source_sidecar_path ? subjectTokens : lockTokens,
+      )
+    )
     .map((asset) => ({
       id: cleanText(asset.id || asset.asset_id),
       source_family: cleanText(asset.source_family || asset.motion_family || asset.family),
@@ -1591,6 +1681,16 @@ async function visualEntityPreflightForStory(story = {}) {
       canonical_subject_tokens: subjectTokens,
       source_lock_tokens: sourceLockTokens,
       direct_motion_asset_count: directMotionAssets.length,
+      direct_motion_assets: directMotionAssets.slice(0, 8).map((asset) => ({
+        id: cleanText(asset.id || asset.asset_id),
+        source_family: cleanText(asset.source_family || asset.motion_family || asset.family),
+        source_url: cleanText(asset.source_url || asset.url),
+        path: cleanText(asset.path || asset.local_path || asset.media_path),
+        sidecar_source_family: cleanText(asset.sidecar_source_family),
+        sidecar_source_url: cleanText(asset.sidecar_source_url),
+        source_sidecar_path: cleanText(asset.source_sidecar_path),
+        provenance_text: visualAssetProvenanceText(asset).slice(0, 240),
+      })),
     },
   };
 }

@@ -2,6 +2,8 @@
 
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("fs-extra");
+const path = require("node:path");
 
 const digest = require("../../lib/intelligence/render-health-digest");
 
@@ -412,6 +414,61 @@ test("buildRenderHealthSummary: bridge visual evidence uses the shared direct-vi
   assert.equal(r.bridge.visual_evidence.direct_video_motion_count, 1);
   assert.deepEqual(r.bridge.visual_evidence.direct_video_story_ids, ["ps5-product-page"]);
   assert.deepEqual(r.bridge.visual_evidence.direct_video_gap_story_ids, []);
+});
+
+test("buildRenderHealthSummary: sidecar subject mismatches do not count as healthy direct video", async () => {
+  const clipPath = path.join(
+    "test",
+    "output",
+    "render-health-sidecar-mismatch",
+    "fresh_xbox_minecraft_dungeons_ii_20260610_v4_clip_1_segment_direct_motion_3.mp4",
+  );
+  await fs.ensureDir(path.dirname(clipPath));
+  await fs.writeJson(`${clipPath}.json`, {
+    schema_version: 1,
+    render_signature: "studio_v4_clip_materializer_accurate_seek_v2",
+    source_url: "https://blog.playstation.com/uploads/2026/06/wuchang-fallen-feathers.mp4",
+    source_family: "playstation_blog_wuchang_fallen_feathers_media",
+  });
+
+  const r = digest.buildRenderHealthSummary([], {
+    bridgeCandidates: [
+      {
+        id: "minecraft-sidecar-mismatch",
+        title: "Minecraft Dungeons II Has A Co-Op Risk",
+        canonical_subject: "Minecraft Dungeons II",
+        approved_at: new Date().toISOString(),
+        render_quality_class: "premium",
+        render_lane: "visual_v4_production",
+        qa_visual_count: 8,
+        visual_v4_bridge_video_clips: [
+          {
+            id: "direct-1",
+            path: clipPath,
+            source_url: "local://existing-official-direct-motion/minecraft/direct-1.mp4",
+            source_type: "official_trailer_segment",
+            source_url_kind: "direct_video",
+            media_kind: "direct_video",
+            rights_risk_class: "official_reference_only",
+            source_family: "xbox_product_minecraft_dungeons_ii_media",
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.equal(r.bridge.visual_evidence.direct_video_motion_count, 0);
+  assert.equal(r.bridge.visual_evidence.direct_video_subject_mismatch_count, 1);
+  assert.deepEqual(r.bridge.visual_evidence.direct_video_subject_mismatch_story_ids, [
+    "minecraft-sidecar-mismatch",
+  ]);
+  assert.deepEqual(r.bridge.visual_evidence.direct_video_gap_story_ids, [
+    "minecraft-sidecar-mismatch",
+  ]);
+  assert.match(
+    digest.formatDigest(r),
+    /direct-video subject mismatch 1/,
+  );
 });
 
 test("buildRenderHealthSummary: bridge direct-video gaps become enrichment work orders", () => {

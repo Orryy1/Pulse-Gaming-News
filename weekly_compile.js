@@ -24,6 +24,10 @@ const MIN_STORIES = 8;
 const MAX_STORIES = 12;
 const LONGFORM_MIN_DURATION_SECONDS = 10 * 60;
 const LONGFORM_MIN_VIDEO_BITRATE = 1500000;
+const LONGFORM_MIN_WORDS = 1200;
+const LONGFORM_MIN_WEEKLY_SEGMENTS = 8;
+const LONGFORM_MIN_TOPIC_SEGMENTS = 6;
+const LONGFORM_MIN_VISUAL_READY_RATIO = 0.75;
 
 function truthy(value) {
   return /^(true|1|yes|on)$/i.test(String(value || '').trim());
@@ -43,20 +47,184 @@ function requiredLongformPublishFlag(kind) {
   return null;
 }
 
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function cleanText(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function wordCount(text) {
+  return cleanText(text).split(/\s+/).filter(Boolean).length;
+}
+
+function minimumLongformSegments(kind) {
+  return kind === 'topic_compilation' ? LONGFORM_MIN_TOPIC_SEGMENTS : LONGFORM_MIN_WEEKLY_SEGMENTS;
+}
+
+function hasEnoughWeeklyStories(stories = []) {
+  return asArray(stories).length >= LONGFORM_MIN_WEEKLY_SEGMENTS;
+}
+
+function hasCompleteSourceEvidence(row = {}) {
+  const sourceUrl = cleanText(row.source_url || row.url);
+  const publisher = cleanText(row.publisher || row.source_name || row.source);
+  const confidence = cleanText(row.confidence || row.source_confidence || row.flair_confidence).toLowerCase();
+  return (
+    /^https?:\/\//i.test(sourceUrl) &&
+    publisher &&
+    !/^unknown$/i.test(publisher) &&
+    !['rumour', 'rumor', 'unknown', ''].includes(confidence)
+  );
+}
+
+function hasReadyLongformVisual(row = {}) {
+  const exactAssets = Number(
+    row.exact_subject_assets ||
+      row.exact_subject_asset_count ||
+      row.exact_assets ||
+      0,
+  );
+  const clips = Number(row.validated_clips || row.validated_clip_count || row.clip_count || 0);
+  const score = Number(row.visual_strength_score || row.visual_score || 0);
+  const missing = asArray(row.missing).filter(Boolean);
+  return missing.length === 0 && (clips >= 1 || exactAssets >= 3 || score >= 75);
+}
+
+function longformSourceConfidence(story = {}) {
+  const raw = cleanText(
+    story.flair_confidence ||
+      story.source_confidence ||
+      story.classification ||
+      story.flair ||
+      story.source_type,
+  ).toLowerCase();
+  if (/rumou?r/.test(raw)) return 'rumour';
+  if (/highly likely|likely/.test(raw)) return 'likely';
+  if (/verified|confirmed|official|news|rss/.test(raw)) return 'confirmed';
+  return raw || 'unknown';
+}
+
+function longformStoryMedia(story = {}) {
+  const inventory = story.media_inventory || story.mediaInventory || {};
+  const downloadedImages = asArray(story.downloaded_images).filter(
+    (image) => image && image.type !== 'company_logo',
+  );
+  const exactAssets = Number(
+    inventory.exact_subject_asset_count ||
+      story.exact_subject_asset_count ||
+      story.premium_countable_asset_count ||
+      downloadedImages.length ||
+      0,
+  );
+  const validatedClips = Number(
+    inventory.validated_clip_count ||
+      inventory.clip_count ||
+      story.validated_clip_count ||
+      story.clip_count ||
+      0,
+  );
+  const visualScore = Number(
+    inventory.visual_strength_score ||
+      story.visual_strength_score ||
+      (validatedClips > 0 ? 85 : exactAssets >= 3 ? 78 : exactAssets > 0 ? 55 : 0),
+  );
+  const missing = [];
+  if (exactAssets < 3 && validatedClips < 1 && visualScore < 75) {
+    missing.push('exact_subject_media_or_validated_motion');
+  }
+  return {
+    exact_subject_assets: exactAssets,
+    validated_clips: validatedClips,
+    visual_strength_score: visualScore,
+    missing,
+  };
+}
+
+function buildLongformEvidence({
+  selectedStories = [],
+  segments = [],
+  chapterTimestamps = [],
+} = {}) {
+  const storyById = new Map(asArray(selectedStories).map((story) => [story.id, story]));
+  const orderedStories = asArray(segments).length
+    ? asArray(segments).map((segment) => storyById.get(segment.story_id) || segment)
+    : asArray(selectedStories);
+  const sourcePack = orderedStories.map((story) => ({
+    story_id: story.story_id || story.id || null,
+    title: cleanText(story.title),
+    publisher: cleanText(story.source_name || story.publisher || story.subreddit || story.source || 'unknown'),
+    source_url: story.source_url || story.url || null,
+    confidence: longformSourceConfidence(story),
+  }));
+  const visualPlan = orderedStories.map((story) => ({
+    story_id: story.story_id || story.id || null,
+    title: cleanText(story.title),
+    ...longformStoryMedia(story),
+  }));
+  return {
+    segmentCount: orderedStories.length,
+    chapterTimestamps: asArray(chapterTimestamps),
+    sourcePack,
+    visualPlan,
+  };
+}
+
 function buildLongformQualityReport({
   kind = 'weekly_roundup',
   durationSeconds = 0,
   scriptText = '',
   videoProbe = {},
+  segmentCount = null,
+  chapterTimestamps = null,
+  sourcePack = null,
+  visualPlan = null,
 } = {}) {
   const text = String(scriptText || '');
   const duration = Number(durationSeconds) || 0;
   const bitrate = Number(videoProbe.videoBitrate || videoProbe.bit_rate || 0);
+  const words = wordCount(text);
+  const minimumSegments = minimumLongformSegments(kind);
+  const chapters = asArray(chapterTimestamps);
+  const sources = asArray(sourcePack);
+  const visuals = asArray(visualPlan);
+  const resolvedSegmentCount = Number(segmentCount) || Math.max(sources.length, visuals.length, 0);
+  const sourceReadyCount = sources.filter(hasCompleteSourceEvidence).length;
+  const visualReadyCount = visuals.filter(hasReadyLongformVisual).length;
   const blockers = [];
   const warnings = [];
 
   if (duration < LONGFORM_MIN_DURATION_SECONDS) {
     blockers.push('duration_under_10_minutes');
+  }
+  if (words < LONGFORM_MIN_WORDS) {
+    blockers.push('thin_longform_editorial_script');
+  }
+  if (resolvedSegmentCount < minimumSegments) {
+    blockers.push('too_few_longform_segments');
+  }
+  if (chapters.length && chapters.length < Math.min(resolvedSegmentCount + 1, minimumSegments + 1)) {
+    blockers.push('insufficient_chapter_plan');
+  }
+  if (!chapters.length && resolvedSegmentCount > 0) {
+    blockers.push('insufficient_chapter_plan');
+  }
+  if (sources.length && sourceReadyCount < minimumSegments) {
+    blockers.push('source_pack_incomplete');
+  }
+  if (!sources.length && resolvedSegmentCount > 0) {
+    blockers.push('source_pack_incomplete');
+  }
+  if (
+    visuals.length &&
+    (visualReadyCount < Math.ceil(resolvedSegmentCount * LONGFORM_MIN_VISUAL_READY_RATIO) ||
+      visualReadyCount < minimumSegments)
+  ) {
+    blockers.push('weak_longform_visual_plan');
+  }
+  if (!visuals.length && resolvedSegmentCount > 0) {
+    blockers.push('weak_longform_visual_plan');
   }
   if (/\[[^\]]*(placeholder|teaser|upcoming game release|todo)[^\]]*\]/i.test(text)) {
     blockers.push('placeholder_public_copy');
@@ -80,9 +248,17 @@ function buildLongformQualityReport({
     verdict: blockers.length ? 'fail' : warnings.length ? 'warn' : 'pass',
     duration_seconds: duration,
     min_duration_seconds: LONGFORM_MIN_DURATION_SECONDS,
+    word_count: words,
+    min_word_count: LONGFORM_MIN_WORDS,
+    segment_count: resolvedSegmentCount || null,
+    min_segment_count: minimumSegments,
+    chapter_count: chapters.length || null,
+    source_ready_count: sources.length ? sourceReadyCount : null,
+    visual_ready_count: visuals.length ? visualReadyCount : null,
+    min_visual_ready_ratio: LONGFORM_MIN_VISUAL_READY_RATIO,
     video_bitrate: bitrate || null,
     min_video_bitrate: LONGFORM_MIN_VIDEO_BITRATE,
-    blockers,
+    blockers: [...new Set(blockers)],
     warnings,
   };
 }
@@ -365,9 +541,13 @@ async function compileWeekly() {
 
   // 2. Select top stories
   const selectedStories = selectTopStories(stories, history);
-  if (selectedStories.length < 3) {
-    console.log('[weekly] Aborting - not enough stories for a compilation');
-    await sendDiscord('**Weekly Roundup** - Not enough published stories this week. Skipping compilation.');
+  if (!hasEnoughWeeklyStories(selectedStories)) {
+    console.log(
+      `[weekly] Aborting - ${selectedStories.length} eligible stories for a weekly longform (need ${LONGFORM_MIN_WEEKLY_SEGMENTS})`,
+    );
+    await sendDiscord(
+      `**Weekly Roundup** - Not enough source-safe published stories for a 10-minute longform (${selectedStories.length}/${LONGFORM_MIN_WEEKLY_SEGMENTS}). Skipping compilation.`,
+    );
     return null;
   }
 
@@ -417,11 +597,17 @@ async function compileWeekly() {
 
   await assembleLongform(compilation);
   const videoProbe = await getVideoProbe(outputPath);
+  const longformEvidence = buildLongformEvidence({
+    selectedStories,
+    segments,
+    chapterTimestamps: script.chapter_timestamps,
+  });
   const qualityReport = buildLongformQualityReport({
     kind: 'weekly_roundup',
     durationSeconds: duration,
     scriptText: script.full_script,
     videoProbe,
+    ...longformEvidence,
   });
   await fs.writeJson(path.join(outputDir, 'weekly_roundup_quality_report.json'), qualityReport, { spaces: 2 });
 
@@ -456,6 +642,7 @@ async function compileWeekly() {
     audio_path: audioPath,
     output_path: outputPath,
     quality_report: qualityReport,
+    longform_evidence: longformEvidence,
     chapter_timestamps: script.chapter_timestamps,
     youtube_video_id: uploadResult?.videoId || null,
     youtube_url: uploadResult?.url || null,
@@ -641,11 +828,17 @@ async function compileByTopic(topicName) {
 
   await assembleLongform(compilation);
   const videoProbe = await getVideoProbe(outputPath);
+  const longformEvidence = buildLongformEvidence({
+    selectedStories: selected,
+    segments,
+    chapterTimestamps: script.chapter_timestamps,
+  });
   const qualityReport = buildLongformQualityReport({
     kind: 'topic_compilation',
     durationSeconds: duration,
     scriptText: script.full_script,
     videoProbe,
+    ...longformEvidence,
   });
   await fs.writeJson(path.join(outputDir, `${slug}_quality_report.json`), qualityReport, { spaces: 2 });
 
@@ -682,6 +875,7 @@ async function compileByTopic(topicName) {
     audio_path: audioPath,
     output_path: outputPath,
     quality_report: qualityReport,
+    longform_evidence: longformEvidence,
     chapter_timestamps: script.chapter_timestamps,
     youtube_video_id: uploadResult?.videoId || null,
     youtube_url: uploadResult?.url || null,
@@ -786,6 +980,9 @@ module.exports = {
     buildLongformQualityReport,
     shouldUploadLongform,
     longformUploadStatus,
+    buildLongformEvidence,
+    minimumLongformSegments,
+    hasEnoughWeeklyStories,
     getVideoProbe,
     requiredLongformPublishFlag,
   },

@@ -934,19 +934,10 @@ async function uploadAll() {
   return results;
 }
 
-// --- Upload a longform compilation as a regular YouTube video (NOT a Short) ---
-async function uploadLongform(compilation) {
-  const auth = await getAuthClient();
-  const youtube = google.youtube({ version: "v3", auth });
-  const brand = require("./brand");
-  const { getChannel } = require("./channels");
-  const channel = getChannel();
-
-  const videoPath = compilation.output_path || compilation.outputPath;
-  if (!videoPath || !(await fs.pathExists(videoPath))) {
-    throw new Error(`Video file not found: ${videoPath}`);
-  }
-
+function buildLongformUploadMetadata(
+  compilation = {},
+  { channel = require("./channels").getChannel(), brand: brandOverride = require("./brand") } = {},
+) {
   // Title: "Gaming News Roundup - Week of April 5, 2026"
   const titleDate =
     compilation.title_date ||
@@ -955,7 +946,29 @@ async function uploadLongform(compilation) {
       day: "numeric",
       year: "numeric",
     });
-  const title = `${channel.niche.charAt(0).toUpperCase() + channel.niche.slice(1)} News Roundup - Week of ${titleDate}`;
+  const title =
+    compilation.youtube_title ||
+    compilation.title ||
+    `${channel.niche.charAt(0).toUpperCase() + channel.niche.slice(1)} News Roundup - Week of ${titleDate}`;
+
+  if (compilation.youtube_description || compilation.description) {
+    return {
+      title,
+      description: compilation.youtube_description || compilation.description,
+      tags:
+        compilation.youtube_tags ||
+        compilation.tags ||
+        [
+          channel.niche + " news roundup",
+          channel.name.toLowerCase(),
+          "weekly roundup",
+          channel.niche + " weekly",
+          channel.niche + " news compilation",
+          "gaming news this week",
+        ].filter(Boolean),
+      privacyStatus: compilation.privacyStatus || "public",
+    };
+  }
 
   // Description with chapter timestamps
   const descLines = [];
@@ -975,9 +988,9 @@ async function uploadLongform(compilation) {
     descLines.push("");
   }
 
-  descLines.push(`${brand.CHANNEL_NAME} - ${brand.TAGLINE}`);
+  descLines.push(`${brandOverride.CHANNEL_NAME} - ${brandOverride.TAGLINE}`);
   descLines.push(
-    brand.CTA ? brand.CTA : "Subscribe so you never miss a roundup.",
+    brandOverride.CTA ? brandOverride.CTA : "Subscribe so you never miss a roundup.",
   );
   descLines.push("");
 
@@ -998,6 +1011,27 @@ async function uploadLongform(compilation) {
     "gaming news this week",
   ].filter(Boolean);
 
+  return {
+    title,
+    description,
+    tags,
+    privacyStatus: compilation.privacyStatus || "public",
+  };
+}
+
+// --- Upload a longform compilation as a regular YouTube video (NOT a Short) ---
+async function uploadLongform(compilation) {
+  const auth = await getAuthClient();
+  const youtube = google.youtube({ version: "v3", auth });
+
+  const videoPath = compilation.output_path || compilation.outputPath;
+  if (!videoPath || !(await fs.pathExists(videoPath))) {
+    throw new Error(`Video file not found: ${videoPath}`);
+  }
+
+  const metadata = buildLongformUploadMetadata(compilation);
+  const { title, description, tags, privacyStatus } = metadata;
+
   console.log(`[youtube] Uploading longform: "${title}"`);
 
   const response = await youtube.videos.insert(
@@ -1013,7 +1047,7 @@ async function uploadLongform(compilation) {
           defaultAudioLanguage: "en",
         },
         status: {
-          privacyStatus: "public",
+          privacyStatus,
           selfDeclaredMadeForKids: false,
           embeddable: true,
         },
@@ -1051,6 +1085,7 @@ module.exports = {
   uploadShort,
   uploadAll,
   uploadLongform,
+  buildLongformUploadMetadata,
   buildMetadata,
   postCommunityImage,
   generateAuthUrl,

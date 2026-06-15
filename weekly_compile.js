@@ -319,7 +319,7 @@ async function getAudioDuration(audioPath) {
 async function getVideoProbe(videoPath) {
   try {
     const { stdout } = await execAsync(
-      `ffprobe -v error -select_streams v:0 -show_entries stream=width,height,bit_rate,avg_frame_rate -of json "${videoPath}"`,
+      `ffprobe -v error -select_streams v:0 -show_entries stream=width,height,bit_rate,avg_frame_rate:format=duration -of json "${videoPath}"`,
       { timeout: 10000 }
     );
     const parsed = JSON.parse(stdout || '{}');
@@ -329,6 +329,7 @@ async function getVideoProbe(videoPath) {
       height: Number(stream.height) || null,
       videoBitrate: Number(stream.bit_rate) || null,
       avgFrameRate: stream.avg_frame_rate || null,
+      durationSeconds: Number(parsed.format?.duration) || null,
     };
   } catch (err) {
     return {
@@ -336,6 +337,7 @@ async function getVideoProbe(videoPath) {
       height: null,
       videoBitrate: null,
       avgFrameRate: null,
+      durationSeconds: null,
       error: err.message,
     };
   }

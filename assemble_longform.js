@@ -12,6 +12,51 @@ const brand = require("./brand");
 const { getChannel } = require("./channels");
 
 const MUSIC_VOLUME = 0.12;
+const LONGFORM_VIDEO_CODEC_ARGS =
+  "-c:v libx264 -preset medium -b:v 3500k -maxrate 5000k -bufsize 7000k";
+
+function roundSeconds(value) {
+  return Math.round(Number(value || 0) * 1000) / 1000;
+}
+
+function longformVideoCodecArgs() {
+  return LONGFORM_VIDEO_CODEC_ARGS;
+}
+
+function longformSegmentDuration({
+  duration,
+  segmentCount,
+  introDur = 5,
+  outroDur = 5,
+  chapterCardDur = 2,
+} = {}) {
+  const count = Math.max(1, Number(segmentCount) || 1);
+  const totalDuration = Math.max(0, Number(duration) || 0);
+  const totalCardTime = count * chapterCardDur;
+  const contentTime = Math.max(0, totalDuration - introDur - outroDur - totalCardTime);
+  return Math.max(5, roundSeconds(contentTime / count));
+}
+
+function mediaPathFromEntry(entry) {
+  if (!entry) return null;
+  if (typeof entry === "string") return entry;
+  return entry.path || entry.abs_path || entry.file || entry.local_path || null;
+}
+
+async function existingMotionClipPaths(segment = {}, story = {}) {
+  const candidates = [
+    ...(Array.isArray(segment.motion_clips) ? segment.motion_clips : []),
+    ...(Array.isArray(story.motion_clips) ? story.motion_clips : []),
+    ...(Array.isArray(story.visual_v4_local_motion_clips) ? story.visual_v4_local_motion_clips : []),
+  ];
+  const out = [];
+  for (const entry of candidates) {
+    const mediaPath = mediaPathFromEntry(entry);
+    if (!mediaPath) continue;
+    if (await fs.pathExists(mediaPath)) out.push(mediaPath);
+  }
+  return [...new Set(out)];
+}
 
 // --- Get audio duration via ffprobe ---
 async function getAudioDuration(audioPath) {
@@ -336,8 +381,12 @@ async function ensureLongformMusic(duration) {
 async function assembleLongform(compilation) {
   console.log("[longform] === Longform Video Assembly ===");
 
-  const { stories, audioPath, outputPath, duration, segments, dateRange } =
-    compilation;
+  const { stories, audioPath, outputPath, segments, dateRange } = compilation;
+  let duration = Number(compilation.duration) || 600;
+  if (audioPath && (await fs.pathExists(audioPath))) {
+    duration = (await getAudioDuration(audioPath)) || duration;
+    compilation.duration = duration;
+  }
 
   const channel = getChannel();
   const channelName = sanitizeDrawtext(channel.name || "PULSE GAMING", 30);
@@ -421,6 +470,8 @@ async function assembleLongform(compilation) {
         `[card${si}]`,
     );
 
+    const storyMotionClips = await existingMotionClipPaths(seg, storyObj);
+
     // Ken Burns image segments for this story
     let storyImages = [];
     if (
@@ -447,13 +498,41 @@ async function assembleLongform(compilation) {
       storyImages.push(storyObj.image_path);
     }
 
-    // Calculate how long this segment's images should play
-    // We distribute the remaining time (total - intro - outro - chapter cards) proportionally
-    const totalCardTime = segments.length * CHAPTER_CARD_DUR;
-    const contentTime = duration - INTRO_DUR - OUTRO_DUR - totalCardTime;
-    const segDuration = Math.max(5, Math.floor(contentTime / segments.length));
+    // Calculate against actual narration duration so ffmpeg -shortest does not chop later stories.
+    const segDuration = longformSegmentDuration({
+      duration,
+      segmentCount: segments.length,
+      introDur: INTRO_DUR,
+      outroDur: OUTRO_DUR,
+      chapterCardDur: CHAPTER_CARD_DUR,
+    });
 
-    if (storyImages.length === 0) {
+    if (storyMotionClips.length > 0) {
+      const clipSegDur = Math.max(
+        4,
+        roundSeconds(segDuration / storyMotionClips.length),
+      );
+      const motionLabels = [];
+      for (let mi = 0; mi < storyMotionClips.length; mi++) {
+        inputs.push(
+          `-stream_loop -1 -t ${clipSegDur} -i "${storyMotionClips[mi].replace(/\\/g, "/")}"`,
+        );
+        const clipIdx = inputIdx++;
+        filterParts.push(
+          `[${clipIdx}:v]scale=1920:1080:force_original_aspect_ratio=increase,` +
+            `crop=1920:1080,fps=30,format=yuv420p,setsar=1,` +
+            `trim=duration=${clipSegDur},setpts=PTS-STARTPTS[motion${si}_${mi}]`,
+        );
+        motionLabels.push(`motion${si}_${mi}`);
+      }
+      if (motionLabels.length > 1) {
+        filterParts.push(
+          `${motionLabels.map((label) => `[${label}]`).join("")}concat=n=${motionLabels.length}:v=1:a=0[seg${si}]`,
+        );
+      } else {
+        filterParts.push(`[${motionLabels[0]}]copy[seg${si}]`);
+      }
+    } else if (storyImages.length === 0) {
       // No images - render a DESIGNED chapter card rather than a
       // near-black colour solid with faint text.
       //
@@ -490,7 +569,7 @@ async function assembleLongform(compilation) {
       // Ken Burns on each image, then concatenate
       const imgSegDur = Math.max(
         3,
-        Math.floor(segDuration / storyImages.length),
+        roundSeconds(segDuration / storyImages.length),
       );
       const imgLabels = [];
 
@@ -503,17 +582,18 @@ async function assembleLongform(compilation) {
         const zoomIn = ii % 2 === 0;
         const zoomExpr = zoomIn
           ? `z=min(zoom+0.0005\\,1.1)`
-          : `z=if(eq(on\\,1)\\,1.1\\,max(zoom-0.0005\\,1.0))`;
+            : `z=if(eq(on\\,1)\\,1.1\\,max(zoom-0.0005\\,1.0))`;
+        const zoomFrames = Math.max(1, Math.round(imgSegDur * 30));
         const xPan =
           ii % 2 === 0
             ? `x=iw/2-(iw/zoom/2)`
-            : `x=(iw-iw/zoom)*on/${imgSegDur * 30}`;
+            : `x=(iw-iw/zoom)*on/${zoomFrames}`;
 
         filterParts.push(
           `[${imgIdx}:v]scale=1920:1080:force_original_aspect_ratio=increase,` +
             `crop=1920:1080,` +
             `zoompan=${zoomExpr}:${xPan}:y=ih/2-(ih/zoom/2):` +
-            `d=${imgSegDur * 30}:s=1920x1080:fps=30,` +
+            `d=${zoomFrames}:s=1920x1080:fps=30,` +
             `format=yuv420p,setsar=1[img${si}_${ii}]`,
         );
         imgLabels.push(`img${si}_${ii}`);
@@ -603,7 +683,7 @@ async function assembleLongform(compilation) {
     inputs.join(" "),
     `-filter_complex_script "${filterScriptPath.replace(/\\/g, "/")}"`,
     audioMapping,
-    "-c:v libx264 -crf 21 -preset medium",
+    longformVideoCodecArgs(),
     "-c:a aac -b:a 192k",
     "-r 30 -shortest",
     `-movflags +faststart "${outputPath}"`,
@@ -629,7 +709,13 @@ async function assembleLongform(compilation) {
   }
 }
 
-module.exports = { assembleLongform, chapterTime };
+module.exports = {
+  assembleLongform,
+  chapterTime,
+  existingMotionClipPaths,
+  longformSegmentDuration,
+  longformVideoCodecArgs,
+};
 
 if (require.main === module) {
   console.log("[longform] This module is not meant to be run directly.");

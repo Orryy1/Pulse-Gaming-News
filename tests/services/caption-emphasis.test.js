@@ -74,3 +74,24 @@ test("caption emphasis collapses spoken acronym letters back to GTA digits", () 
   assert.doesNotMatch(ass, /\bfive\b/i);
   assert.doesNotMatch(ass, /\bsix\b/i);
 });
+
+test("caption emphasis restores Beastro display title from local TTS helper spelling", () => {
+  const ass = buildAss({
+    story: { title: "Beastro" },
+    scriptText: "Beastrow wins if it makes strategy feel generous.",
+    words: [
+      { word: "Beastrow", start: 0, end: 0.42 },
+      { word: "wins", start: 0.44, end: 0.62 },
+      { word: "if", start: 0.64, end: 0.72 },
+      { word: "it", start: 0.74, end: 0.82 },
+      { word: "makes", start: 0.84, end: 1 },
+      { word: "strategy", start: 1.02, end: 1.36 },
+      { word: "feel", start: 1.38, end: 1.56 },
+      { word: "generous", start: 1.58, end: 1.94 },
+    ],
+    duration: 3,
+  });
+
+  assert.match(ass, /Beastro/);
+  assert.doesNotMatch(ass, /Beastrow/i);
+});

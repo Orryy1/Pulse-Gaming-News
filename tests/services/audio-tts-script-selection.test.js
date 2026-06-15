@@ -186,6 +186,13 @@ test("cleanForTTS: normalises Stranger Than Heaven title casing for local clone 
   );
 });
 
+test("cleanForTTS: protects Beastro from local ASR title drift", () => {
+  assert.equal(
+    cleanForTTS("Beastro wins if it makes strategy feel generous."),
+    "Beastrow wins if it makes strategy feel generous.",
+  );
+});
+
 test("cleanForTTS: expands PS5 when it leads a spoken news line", () => {
   assert.equal(
     cleanForTTS("PS5 prices went up across Europe and the UK. PS5 Pro moved too."),

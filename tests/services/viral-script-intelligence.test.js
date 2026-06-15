@@ -142,6 +142,31 @@ test("viral script intelligence approves concrete gameplay-first rewrite", () =>
   assert.deepEqual(result.blockers, []);
 });
 
+test("viral script intelligence accepts concrete horror gameplay stakes", () => {
+  const script =
+    "Alien: Isolation 2 has one brutal test: can it still make you wait? " +
+    "Xbox Wire played the prologue and says the demo leans on Xenomorph pressure, stealth and the moment where moving too early feels like your mistake. " +
+    "That is the whole trick. " +
+    "Better lighting means nothing if the creature feels scripted. " +
+    "Fans need to believe it heard them, changed route and ruined a plan they thought was safe. " +
+    "If the sequel keeps that doubt alive, Creative Assembly has a horror comeback. " +
+    "If players spot the pattern, the nightmare turns into a route guide. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "alien-isolation-2-horror-risk",
+      title: "Alien Isolation 2 Has One Horror Risk",
+      source_name: "Xbox Wire",
+    },
+    script,
+  });
+
+  assert.equal(result.verdict, "viral_ready", JSON.stringify(result, null, 2));
+  assert.ok(result.viral_score >= 85, JSON.stringify(result.scores));
+  assert.deepEqual(result.blockers, []);
+});
+
 test("viral script intelligence scores review-spread curiosity beats above the publish threshold", () => {
   const script =
     "Forza Horizon 6 just got the score Xbox needed before launch. " +
@@ -305,6 +330,97 @@ test("viral script intelligence rejects producer-scaffold language even when fac
     result.rewrite_recommendations.some((item) => /producer-note/i.test(item)),
     JSON.stringify(result.rewrite_recommendations),
   );
+});
+
+test("viral script intelligence rejects public narration that says internal hook or signal labels aloud", () => {
+  const script =
+    "Nintendo's next Direct has one problem it cannot trailer around. " +
+    "VGC reports Nintendo is preparing a June showcase with Switch 2 software still thin after launch. " +
+    "The hook here is that players need a reason to keep the new hardware in the dock. " +
+    "The signal is whether Nintendo shows playable dates instead of another logo reel. " +
+    "That gives fans something to argue about before the next preorder wave. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "nintendo-internal-labels",
+      title: "Nintendo Direct Needs A Switch 2 Answer",
+      source_name: "VGC",
+    },
+    script,
+  });
+
+  assert.equal(result.verdict, "rewrite_required", JSON.stringify(result, null, 2));
+  assert.ok(result.blockers.includes("producer_scaffold_language"), JSON.stringify(result));
+  assert.ok(result.blockers.includes("internal_audience_scaffold"), JSON.stringify(result));
+  assert.ok(result.rewrite_recommendations.some((item) => /producer-note/i.test(item)));
+});
+
+test("viral script intelligence rejects persuasive authority tropes masquerading as insight", () => {
+  const script =
+    "Game Pass just got a bigger problem than price. " +
+    "The Verge reports Microsoft is reshuffling day-one messaging around several Xbox releases. " +
+    "The real question is whether subscribers still trust the promise. " +
+    "At its core, this is about the future of Xbox's value proposition. " +
+    "What really matters is whether players feel the service still respects their time. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "game-pass-authority-tropes",
+      title: "Game Pass Messaging Has A Trust Problem",
+      source_name: "The Verge",
+    },
+    script,
+  });
+
+  assert.equal(result.verdict, "rewrite_required", JSON.stringify(result, null, 2));
+  assert.ok(result.blockers.includes("persuasive_authority_trope"), JSON.stringify(result));
+  assert.ok(result.scores.insight_density < 70, JSON.stringify(result.scores));
+});
+
+test("viral script intelligence rejects source-neutral catch templates that could fit any story", () => {
+  const script =
+    "Crimson Desert is past the trailer hype, and the risk is the real build. " +
+    "GameSpot reports Crimson Desert launched on March 19, 2026 after Pearl Abyss announced the launch timing. " +
+    "The catch is whether players get a concrete next step, or just another vague update. " +
+    "But now the shipped build has to carry the spectacle: combat, performance and scale, not just trailer shots. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "crimson-generic-catch",
+      title: "Crimson Desert Is Already Live",
+      source_name: "GameSpot",
+    },
+    script,
+  });
+
+  assert.equal(result.verdict, "rewrite_required", JSON.stringify(result, null, 2));
+  assert.ok(result.blockers.includes("source_neutral_catch_template"), JSON.stringify(result));
+  assert.ok(result.scores.curiosity_gap < 70, JSON.stringify(result.scores));
+});
+
+test("viral script intelligence rejects raw article-title recitation as narration", () => {
+  const script =
+    "Forza Horizon 6 just landed strong reviews, but the catch is launch demand. " +
+    "PC Gamer reports Forza Horizon 6 review (PC Gamer: 84/100). " +
+    "The catch is whether that score still means as much once the wider player base arrives. " +
+    "That means fence-sitters get a cleaner signal, but review scores still do not prove the wider launch holds. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "forza-raw-title-recitation",
+      title: "Forza Horizon 6 Scores 84 On PC Gamer",
+      source_name: "PC Gamer",
+    },
+    script,
+  });
+
+  assert.equal(result.verdict, "rewrite_required", JSON.stringify(result, null, 2));
+  assert.ok(result.blockers.includes("source_title_recitation"), JSON.stringify(result));
+  assert.ok(result.blockers.includes("repeated_catch_pivot"), JSON.stringify(result));
 });
 
 test("viral script intelligence rejects competent but hollow scripts without debate or payoff", () => {

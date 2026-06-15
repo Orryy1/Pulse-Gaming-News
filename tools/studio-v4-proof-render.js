@@ -1026,8 +1026,23 @@ function buildOverlayChain({ story, inputLabel, outputLabel, durationS, fontOpt 
     ...drawtextLinesForBlock(blockById.proof_secondary, { fontOpt, fontcolor: "white", enable: "between(t,16.0,19.3)" }),
     ]),
     `drawtext=text='PULSE GAMING':${fontOpt}:fontcolor=white@0.78:fontsize=28:x=w-tw-42:y=h-92:shadowcolor=black@0.70:shadowx=2:shadowy=2`,
+    `noise=alls=2:allf=t+u`,
     `trim=duration=${Number(durationS).toFixed(3)},setpts=PTS-STARTPTS[${outputLabel}]`,
   ].join(",");
+}
+
+function buildSceneCompositeFilterParts(scene = {}) {
+  const index = Number(scene.index);
+  const i = Number.isFinite(index) && index >= 0 ? Math.floor(index) : 0;
+  const duration = Number(scene.durationS);
+  const durationS = Number.isFinite(duration) && duration > 0 ? duration.toFixed(2) : "1.00";
+
+  return [
+    `[${i}:v]split=2[bgsrc${i}][fgsrc${i}]`,
+    `[bgsrc${i}]scale=1080:1920:force_original_aspect_ratio=increase:in_range=pc:out_range=tv,crop=w=1080:h=1920:x=(iw-1080)/2:y=(ih-1920)/2,boxblur=32:1,eq=brightness=-0.10:saturation=1.18,fps=${FPS},format=yuv420p,setsar=1[bg${i}]`,
+    `[fgsrc${i}]scale=940:1660:force_original_aspect_ratio=decrease:in_range=pc:out_range=tv,fps=${FPS},format=yuv420p,setsar=1[fg${i}]`,
+    `[bg${i}][fg${i}]overlay=x='(W-w)/2+sin(t*2.20+${i})*10':y='(H-h)/2+cos(t*1.70+${i})*8':eval=frame,noise=alls=3:allf=t+u,trim=duration=${durationS},setpts=PTS-STARTPTS,fps=${FPS},format=yuv420p,setsar=1[v${i}]`,
+  ];
 }
 
 async function renderProof({ storyJson, output }) {
@@ -1131,13 +1146,7 @@ async function renderProof({ storyJson, output }) {
       : "font='DejaVu Sans'";
   const filterParts = [];
   for (const scene of scenePlan.scenes) {
-    const i = scene.index;
-    filterParts.push(
-      `[${i}:v]split=2[bgsrc${i}][fgsrc${i}]`,
-      `[bgsrc${i}]scale=1080:1920:force_original_aspect_ratio=increase:in_range=pc:out_range=tv,crop=w=1080:h=1920:x=(iw-1080)/2:y=(ih-1920)/2,boxblur=32:1,eq=brightness=-0.10:saturation=1.18,fps=${FPS},format=yuv420p,setsar=1[bg${i}]`,
-      `[fgsrc${i}]scale=940:1660:force_original_aspect_ratio=decrease:in_range=pc:out_range=tv,fps=${FPS},format=yuv420p,setsar=1[fg${i}]`,
-      `[bg${i}][fg${i}]overlay=(W-w)/2:(H-h)/2,trim=duration=${scene.durationS},setpts=PTS-STARTPTS,fps=${FPS},format=yuv420p,setsar=1[v${i}]`,
-    );
+    filterParts.push(...buildSceneCompositeFilterParts(scene));
   }
   let prev = "v0";
   for (let i = 1; i < scenePlan.scenes.length; i++) {
@@ -1338,6 +1347,7 @@ module.exports = {
   parseArgs,
   buildOverlayLayout,
   buildClipScenePlan,
+  buildSceneCompositeFilterParts,
   buildOverlayChain,
   buildFinalSocialAudioMixFilter,
   drawtextEscape,

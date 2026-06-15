@@ -10,6 +10,7 @@ const { pathToFileURL } = require("node:url");
 const {
   buildOverlayLayout,
   buildClipScenePlan,
+  buildSceneCompositeFilterParts,
   buildOverlayChain,
   drawtextEscape,
   parseArgs,
@@ -108,6 +109,21 @@ test("Studio V4 proof renderer defaults to fast direct-motion cuts", () => {
   }
 });
 
+test("Studio V4 proof renderer adds per-scene drift before composing quiet clips", () => {
+  assert.equal(typeof buildSceneCompositeFilterParts, "function");
+
+  const filters = buildSceneCompositeFilterParts({
+    index: 3,
+    durationS: 1.42,
+  });
+  const composite = filters.join(";");
+
+  assert.match(composite, /overlay=x='\(W-w\)\/2\+sin\(t\*2\.20\+3\)\*10'/);
+  assert.match(composite, /:y='\(H-h\)\/2\+cos\(t\*1\.70\+3\)\*8':eval=frame/);
+  assert.match(composite, /noise=alls=3:allf=t\+u/);
+  assert.match(composite, /trim=duration=1\.42/);
+});
+
 test("Studio V4 proof renderer accepts explicit direct-motion dwell overrides", () => {
   const previousDwell = process.env.STUDIO_V4_DIRECT_CLIP_MAX_VISIBLE_DWELL_S;
   const previousScenes = process.env.STUDIO_V4_DIRECT_CLIP_MAX_SCENES;
@@ -134,6 +150,24 @@ test("Studio V4 proof renderer final mix pins social audio to 48 kHz", () => {
   assert.match(filter, /loudnorm=I=-16:TP=-2:LRA=6/);
   assert.match(filter, /alimiter=limit=0\.80:level=disabled/);
   assert.match(filter, /aresample=48000\[outa\]$/);
+});
+
+test("Studio V4 overlay chain adds temporal grain to prevent static-frame holds", () => {
+  const chain = buildOverlayChain({
+    story: {
+      id: "anti-freeze",
+      title: "Anti Freeze Test",
+      primary_source: "Xbox Wire",
+      canonical_subject: "Anti Freeze",
+    },
+    inputLabel: "base",
+    outputLabel: "out",
+    durationS: 42,
+    fontOpt: "font='Arial'",
+  });
+
+  assert.match(chain, /noise=alls=2:allf=t\+u/);
+  assert.match(chain, /trim=duration=42\.000,setpts=PTS-STARTPTS\[out\]/);
 });
 
 test("Studio V4 proof renderer CLI stays local and story-json driven", () => {
@@ -988,7 +1022,8 @@ test("Studio V4 proof renderer keeps source footage inside a safe vertical compo
   assert.match(source, /split=2\[bgsrc\$\{i\}\]\[fgsrc\$\{i\}\]/);
   assert.match(source, /boxblur=32:1/);
   assert.match(source, /scale=940:1660:force_original_aspect_ratio=decrease:in_range=pc:out_range=tv/);
-  assert.match(source, /overlay=\(W-w\)\/2:\(H-h\)\/2/);
+  assert.match(source, /overlay=x='\(W-w\)\/2\+sin\(t\*2\.20\+\$\{i\}\)\*10'/);
+  assert.match(source, /:y='\(H-h\)\/2\+cos\(t\*1\.70\+\$\{i\}\)\*8':eval=frame/);
   assert.doesNotMatch(source, /crop=1080:1920:\(iw-1080\)\/2:\(ih-1920\)\/2/);
   assert.match(source, /\[overlayBase\]ass=\$\{assPathFilter\(assPath\)\},format=yuv420p\[outv\]/);
   assert.match(source, /"-pix_fmt",\s*"yuv420p"/);

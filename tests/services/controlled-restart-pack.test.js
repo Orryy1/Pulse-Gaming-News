@@ -471,7 +471,7 @@ test("controlled restart pack rejects internally framed narration before restart
       await writeStory(root, id, `Restart ${id} Clean Title`, {
         script: id === "internal-copy"
           ? "This is a price story. The clean angle is the discount and whether it fits the audience watching this short. Right now the news is the offer itself, not a hard sell."
-          : `Xbox just turned Restart ${id} Clean Title into a gameplay trust test. Official Source reports Restart ${id} Clean Title. The catch is whether the next cut shows combat, camera and scale clearly enough for players to believe the pitch. That split matters because licence hype can win a headline, but only visible play proves the game is worth watching. If the next footage lands, this becomes a real release signal instead of a logo reveal. Follow Pulse Gaming so you never miss a beat.`,
+          : `Restart ${id} has one useful test now: visible gameplay. Official Source says the latest preview shows combat, camera work and a full-scale mission instead of another logo beat. That matters because players can judge whether the pitch actually holds once the trailer stops cutting around the action. Fans will split on whether the licence is carrying the reveal or the play itself is doing the work. If the next footage keeps that clarity, this becomes a real release signal instead of a logo reveal. Follow Pulse Gaming so you never miss a beat.`,
       });
     }
 

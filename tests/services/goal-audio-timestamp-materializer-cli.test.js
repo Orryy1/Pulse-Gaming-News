@@ -33,6 +33,12 @@ test("goal audio timestamp materializer CLI parses local batch arguments", () =>
     "elevenlabs",
     "--tts-rate",
     "0.92",
+    "--local-tts-segmented-word-threshold",
+    "20",
+    "--local-tts-segment-max-words",
+    "12",
+    "--local-tts-segment-gap-s",
+    "0.4",
     "--json",
   ]);
 
@@ -44,6 +50,9 @@ test("goal audio timestamp materializer CLI parses local batch arguments", () =>
   assert.deepEqual(args.storyIds, ["story-one", "story-two"]);
   assert.equal(args.provider, "elevenlabs");
   assert.equal(args.ttsRate, 0.92);
+  assert.equal(args.localTtsSegmentedWordThreshold, 20);
+  assert.equal(args.localTtsSegmentMaxWords, 12);
+  assert.equal(args.localTtsSegmentGapS, 0.4);
   assert.equal(args.json, true);
 });
 
@@ -146,6 +155,24 @@ test("goal audio timestamp materializer configures long local TTS batch timeouts
   assert.equal(env.LOCAL_TTS_START_WAIT_MS, "120000");
   assert.equal(env.LOCAL_TTS_PREWARM_TIMEOUT_MS, "600000");
   assert.equal(env.LOCAL_WHISPER_MODELS, "tiny.en,base.en,small.en");
+  assert.equal(env.LOCAL_TTS_SEGMENTED_MATERIALIZER, "true");
+  assert.equal(env.LOCAL_TTS_SEGMENTED_WORD_THRESHOLD, "20");
+  assert.equal(env.LOCAL_TTS_SEGMENT_MAX_WORDS, "12");
+  assert.equal(env.LOCAL_TTS_SEGMENT_GAP_S, "0.4");
+});
+
+test("goal audio timestamp materializer preserves explicit local TTS segmentation tuning", () => {
+  const env = {
+    LOCAL_TTS_SEGMENTED_WORD_THRESHOLD: "80",
+    LOCAL_TTS_SEGMENT_MAX_WORDS: "24",
+    LOCAL_TTS_SEGMENT_GAP_S: "0.18",
+  };
+  configureLocalTtsBatchEnv(env);
+
+  assert.equal(env.LOCAL_TTS_SEGMENTED_MATERIALIZER, "true");
+  assert.equal(env.LOCAL_TTS_SEGMENTED_WORD_THRESHOLD, "80");
+  assert.equal(env.LOCAL_TTS_SEGMENT_MAX_WORDS, "24");
+  assert.equal(env.LOCAL_TTS_SEGMENT_GAP_S, "0.18");
 });
 
 test("goal audio timestamp materializer auto mode keeps local Liam as the default voice path", () => {

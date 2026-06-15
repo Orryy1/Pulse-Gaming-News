@@ -167,6 +167,37 @@ test("goal batch packages summarise GREEN and blocked story packages honestly", 
   assert.equal(batch.story_packages[1].verdict, "RED");
 });
 
+test("goal batch packages carry SFX inventory rights into governance", () => {
+  const ready = greenStory("sfx-ledger-one");
+  ready.sfx_assets = undefined;
+  ready.sfx_asset_inventory = licensedSfxAssets();
+  ready.sfx_rights_ledger = ready.sfx_asset_inventory.map((asset) => ({
+    ...asset,
+    asset_type: "sfx",
+    allowed_platforms: ["youtube", "tiktok", "instagram", "facebook", "x", "threads", "pinterest"],
+    risk_score: 0.08,
+    evidence_file: `rights/${asset.asset_id}.json`,
+  }));
+
+  const motionAndNarrationRights = rightsFor({ ...ready, sfx_asset_inventory: [] });
+  const batch = buildGoalBatchPackages({
+    stories: [ready],
+    rightsLedgerByStory: { [ready.id]: motionAndNarrationRights },
+    generatedAt: "2026-05-21T20:05:00.000Z",
+  });
+
+  assert.equal(batch.packages[0].rights_ledger.metrics.asset_count, 14);
+  assert.ok(
+    batch.packages[0].rights_ledger.matched_assets.some((asset) => asset.asset_id === "boom-impact-01"),
+  );
+  assert.equal(batch.story_packages[0].verdict, "GREEN");
+  assert.equal(batch.packages[0].publish_verdict.verdict, "GREEN");
+  assert.doesNotMatch(
+    batch.packages[0].publish_verdict.reason_codes.join("\n"),
+    /rights:no_rights_record/,
+  );
+});
+
 test("goal proof package publish verdict turns RED when transcript scorecard blocks", () => {
   const story = {
     ...greenStory("weak-transcript"),

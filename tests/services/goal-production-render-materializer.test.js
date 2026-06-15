@@ -206,6 +206,50 @@ test("goal production render materializer renders ready jobs and writes a final 
   assert.equal(manifest.safety.no_local_proof_promoted_to_final, true);
 });
 
+test("goal production render materializer persists renderer loudness evidence beside the story package", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-loudness-"));
+  const artifactDir = await makePackage(root, "story-loudness");
+  const scratchReportPath = path.join(root, "scratch", "story-loudness_audio_segment_loudness_report.json");
+  await fs.outputJson(scratchReportPath, {
+    story_id: "story-loudness",
+    verdict: "pass",
+    generated_at: "2026-06-15T04:00:00.000Z",
+    blockers: [],
+    metrics: {
+      max_segment_lufs_delta: 1.8,
+    },
+  });
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [readyJob("story-loudness", artifactDir)] },
+    generatedAt: "2026-06-15T04:01:00.000Z",
+    renderProof: async ({ storyJson, output }) => {
+      const story = await fs.readJson(storyJson);
+      await fs.outputFile(output, Buffer.alloc(4096, 4));
+      return {
+        story_id: story.id,
+        output,
+        clips: story.video_clips.length,
+        rendered_duration_s: 24,
+        size_bytes: 4096,
+        audio_segment_loudness_report: scratchReportPath,
+      };
+    },
+  });
+
+  const persistedPath = path.join(artifactDir, "audio_segment_loudness_report.json");
+  assert.equal(report.summary.rendered_count, 1);
+  assert.equal(report.jobs[0].audio_segment_loudness_report_path, persistedPath);
+  assert.equal(await fs.pathExists(persistedPath), true);
+
+  const persisted = await fs.readJson(persistedPath);
+  assert.equal(persisted.verdict, "pass");
+  assert.equal(persisted.story_id, "story-loudness");
+  assert.equal(persisted.persisted_for_story_id, "story-loudness");
+  assert.equal(persisted.persisted_from_render_report, true);
+});
+
 test("goal production render materializer passes visual safe-margin repair intent to renderer", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-safe-margins-"));
   const artifactDir = await makePackage(root, "safe-margin-rerender");

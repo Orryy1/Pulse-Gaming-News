@@ -25,6 +25,10 @@ function parseArgs(argv = process.argv.slice(2)) {
     limit: 0,
     provider: "auto",
     ttsRate: null,
+    localTtsSegmentedMaterializer: null,
+    localTtsSegmentedWordThreshold: null,
+    localTtsSegmentMaxWords: null,
+    localTtsSegmentGapS: null,
     storyIds: [],
     alignmentMode: "whisper",
     force: false,
@@ -41,6 +45,10 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--limit") args.limit = Number(argv[++i] || 0);
     else if (arg === "--provider") args.provider = argv[++i] || args.provider;
     else if (arg === "--tts-rate") args.ttsRate = Number(argv[++i] || 0) || null;
+    else if (arg === "--local-tts-segmented-materializer") args.localTtsSegmentedMaterializer = argv[++i] || null;
+    else if (arg === "--local-tts-segmented-word-threshold") args.localTtsSegmentedWordThreshold = Number(argv[++i] || 0) || null;
+    else if (arg === "--local-tts-segment-max-words") args.localTtsSegmentMaxWords = Number(argv[++i] || 0) || null;
+    else if (arg === "--local-tts-segment-gap-s") args.localTtsSegmentGapS = Number(argv[++i] || 0) || null;
     else if (arg === "--story-id") {
       const storyId = argv[++i];
       if (storyId) args.storyIds.push(storyId);
@@ -68,6 +76,10 @@ function usage() {
     "  --story-id <id>       Generate only this story; repeatable",
     "  --provider <auto|local|elevenlabs>  Narration provider preference; auto uses the provider selected by the workbench",
     "  --tts-rate <number>    Explicit speaking-rate override for regenerated narration",
+    "  --local-tts-segmented-materializer <true|false>  Enable sentence-level local TTS materialisation",
+    "  --local-tts-segmented-word-threshold <n>         Segment local TTS scripts at or above this word count",
+    "  --local-tts-segment-max-words <n>                Maximum words per local TTS segment",
+    "  --local-tts-segment-gap-s <seconds>              Natural gap inserted between local TTS segments",
     "  --alignment <whisper|silence|auto|off>  Local word-timing alignment mode; default whisper for CLI materialisation",
     "  --force               Regenerate even if an audio/timestamp pair exists",
     "  --inspect-only        Do not call local TTS; write a pending-generation report",
@@ -94,6 +106,10 @@ function configureLocalTtsBatchEnv(env = process.env) {
   setMinimumMs(env, "LOCAL_TTS_PREWARM_TIMEOUT_MS", 600000);
   env.LOCAL_TTS_OUTPUT_FORMAT = env.LOCAL_TTS_OUTPUT_FORMAT || "mp3_44100_256";
   env.LOCAL_WHISPER_MODELS = env.LOCAL_WHISPER_MODELS || "tiny.en,base.en,small.en";
+  env.LOCAL_TTS_SEGMENTED_MATERIALIZER = env.LOCAL_TTS_SEGMENTED_MATERIALIZER || "true";
+  env.LOCAL_TTS_SEGMENTED_WORD_THRESHOLD = env.LOCAL_TTS_SEGMENTED_WORD_THRESHOLD || "20";
+  env.LOCAL_TTS_SEGMENT_MAX_WORDS = env.LOCAL_TTS_SEGMENT_MAX_WORDS || "12";
+  env.LOCAL_TTS_SEGMENT_GAP_S = env.LOCAL_TTS_SEGMENT_GAP_S || "0.4";
   return env;
 }
 
@@ -127,6 +143,10 @@ async function main(argv = process.argv.slice(2)) {
     provider: args.provider,
     ttsRate: args.ttsRate,
     alignmentMode: args.alignmentMode,
+    localTtsSegmentedMaterializer: args.localTtsSegmentedMaterializer,
+    localTtsSegmentedWordThreshold: args.localTtsSegmentedWordThreshold,
+    localTtsSegmentMaxWords: args.localTtsSegmentMaxWords,
+    localTtsSegmentGapS: args.localTtsSegmentGapS,
   });
   const written = await writeGoalAudioTimestampMaterializationReport(report, {
     outputDir: path.resolve(args.outDir),

@@ -3088,3 +3088,26 @@ test("duration variant repair writes JSON and Markdown reports", async () => {
   assert.match(markdown, /Duration Variant Repair/);
   assert.equal(renderDurationVariantRepairMarkdown(report).includes("Candidates: 0"), true);
 });
+
+test("duration variant repair accepts platform duration contract jobs", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-platform-duration-contract-job-"));
+  const artifactDir = await makePackage(root, "story-platform-duration");
+  const job = {
+    ...workOrderJob("story-platform-duration", artifactDir),
+    status: "needs_platform_duration_variant",
+    platform: "instagram_reels",
+    max_duration_s: 45,
+    target_duration_s: 44.8,
+  };
+
+  const report = await materializeDurationVariantRepairs({
+    workOrder: { jobs: [job] },
+    workspaceRoot: root,
+    generatedAt: "2026-06-15T05:44:00.000Z",
+    inspectOnly: true,
+  });
+
+  assert.equal(report.summary.candidate_count, 1);
+  assert.equal(report.summary.inspect_only_count, 1);
+  assert.equal(report.jobs[0].story_id, "story-platform-duration");
+});

@@ -8,6 +8,7 @@ const path = require("node:path");
 
 const pr = require("../../lib/ops/publish-readiness");
 const TOOL_PATH = path.resolve(__dirname, "..", "..", "tools", "publish-readiness.js");
+const publishReadinessTool = require("../../tools/publish-readiness");
 
 // 2026-04-30 mission: ops:publish-readiness must give one
 // GREEN/AMBER/RED verdict per pillar combination, never mutate
@@ -847,6 +848,22 @@ test("buildPublishReadinessReport: empty store does not crash, returns at least 
   assert.ok(typeof report.pillars === "object");
   assert.equal(Object.keys(report.pillars).length, 33);
   assert.ok(typeof report.next_action === "string");
+});
+
+test("publish-readiness CLI parses explicit current artefact paths", () => {
+  const args = publishReadinessTool.parseArgs([
+    "--json",
+    "--dry-run-plan",
+    "output/current/dry_run_publish_plan.json",
+    "--bridge-candidates=output/current/scheduler_bridge_candidates.json",
+    "--platform-duration-contract",
+    "output/current/platform_duration_contract_report.json",
+  ]);
+
+  assert.equal(args.json, true);
+  assert.match(args.strictDryRunPlanPath, /output[\\/]current[\\/]dry_run_publish_plan\.json$/);
+  assert.match(args.schedulerBridgeCandidatesPath, /output[\\/]current[\\/]scheduler_bridge_candidates\.json$/);
+  assert.match(args.platformDurationContractPath, /output[\\/]current[\\/]platform_duration_contract_report\.json$/);
 });
 
 test("pillarHumanReviewDecisionSheet: pending decisions stay amber with exact counts", () => {

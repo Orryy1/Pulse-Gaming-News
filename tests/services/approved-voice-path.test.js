@@ -275,6 +275,25 @@ test("approved voice path rejects the stale identity CTA outro", () => {
   assert.equal(result.transcript.spoken_outro_present, false);
 });
 
+test("approved voice path rejects misheard Pulse Gaming outro transcripts", () => {
+  const result = evaluateApprovedVoicePath({
+    narration: {
+      provider: "local",
+      source: "local-production-voxcpm-path",
+      audioPath: audioFile("misheard-pulse-gaming.mp3"),
+      transcript: "Fable looks alive. Follow Paul's gaming, so you never miss a beat.",
+      acoustic: { medianPitchHz: 118 },
+      acceptedLocalVoice: ACCEPTED_SLEEPY_LIAM,
+      voiceMastering: { ok: true, code: "voice_mastered", targetLufs: -16 },
+    },
+    env: { STUDIO_V2_LOCAL_VOICE_APPROVED: "true" },
+  });
+
+  assert.equal(result.verdict, "rejected");
+  assert.ok(result.blockers.includes("spoken_outro_misheard"));
+  assert.equal(result.transcript.spoken_outro_misheard, true);
+});
+
 test("approved voice path markdown is readable for operators", () => {
   const result = evaluateApprovedVoicePath({
     narration: {

@@ -507,6 +507,20 @@ test("next publish CLI resolves sibling Goal 10 evidence for custom bridge paths
   assert.equal(await resolveUpstreamBenchmarkReportPath(explicit), explicitGoal10);
 });
 
+test("next publish CLI resolves local Goal 10 evidence for cutover bridge paths", async (t) => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-bridge-cutover-goal10-"));
+  t.after(async () => {
+    await fs.remove(tmpDir);
+  });
+  const bridgePath = path.join(tmpDir, "worldclass-cutover-20260615", "scheduler_bridge_candidates.json");
+  const localGoal10 = path.join(tmpDir, "worldclass-cutover-20260615", "goal10_readiness_report.json");
+  await fs.ensureDir(path.dirname(bridgePath));
+  await fs.outputJson(localGoal10, { stories: [{ story_id: "cutover-one", status: "ready" }] });
+
+  const args = parseArgs(["node", "tools/next-publish-candidates.js", "--bridge", bridgePath]);
+  assert.equal(await resolveUpstreamBenchmarkReportPath(args), localGoal10);
+});
+
 test("next publish report can focus candidate ranking on one story id", () => {
   const report = buildNextPublishCandidatesReport(
     [

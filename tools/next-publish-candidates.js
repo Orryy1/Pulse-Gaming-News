@@ -2986,18 +2986,21 @@ function parseArgs(argv) {
   return args;
 }
 
-function siblingGoal10ReportPathForBridge(bridgeCandidatesPath) {
+async function localGoal10ReportPathForBridge(bridgeCandidatesPath) {
   if (!bridgeCandidatesPath) return null;
   const bridgeDir = path.dirname(path.resolve(bridgeCandidatesPath));
+  const localPath = path.join(bridgeDir, "goal10_readiness_report.json");
+  if (await fs.pathExists(localPath)) return localPath;
   const parentDir = path.dirname(bridgeDir);
-  if (path.basename(bridgeDir).toLowerCase() !== "goal-contract") return null;
-  return path.join(parentDir, "goal-10", "goal10_readiness_report.json");
+  const siblingPath = path.join(parentDir, "goal-10", "goal10_readiness_report.json");
+  if (await fs.pathExists(siblingPath)) return siblingPath;
+  return null;
 }
 
 async function resolveUpstreamBenchmarkReportPath(args = {}) {
   if (args.upstreamBenchmarkReportPathExplicit) return args.upstreamBenchmarkReportPath || null;
-  const siblingPath = siblingGoal10ReportPathForBridge(args.bridgeCandidatesPath);
-  if (siblingPath && await fs.pathExists(siblingPath)) return siblingPath;
+  const siblingPath = await localGoal10ReportPathForBridge(args.bridgeCandidatesPath);
+  if (siblingPath) return siblingPath;
   return args.upstreamBenchmarkReportPath || null;
 }
 

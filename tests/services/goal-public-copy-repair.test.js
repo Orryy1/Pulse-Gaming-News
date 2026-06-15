@@ -307,6 +307,202 @@ test("public copy repair gives Valor Mortis release-window stories a player-stak
   assert.equal(runScriptCoherenceQa(repaired.manifest).result, "pass");
 });
 
+test("public copy repair does not generate source-neutral catch filler for generic launch stories", () => {
+  const repaired = repairGoalPublicCopyManifest(
+    {
+      story_id: "crimson-desert-launch",
+      canonical_subject: "Crimson Desert",
+      canonical_game: "Crimson Desert",
+      canonical_title: "Crimson Desert launched on March 19, 2026 after Pearl Abyss announced the launch timing",
+      selected_title: "Crimson Desert Is Already Live",
+      first_spoken_line: "Crimson Desert is past the trailer hype, and the risk is the real build.",
+      primary_source: "GameSpot",
+      description: "Crimson Desert launched on March 19, 2026. Source: GameSpot.",
+      confirmed_claims: [
+        "Crimson Desert launched on March 19, 2026 after Pearl Abyss announced the launch timing.",
+      ],
+    },
+    { generatedAt: "2026-06-15T02:10:00.000Z" },
+  );
+
+  const script = repaired.manifest.narration_script;
+  assert.doesNotMatch(script, /concrete next step|just another vague update/i);
+  const scorecard = buildViralScriptIntelligence({
+    story: {
+      id: "crimson-desert-launch",
+      title: repaired.manifest.selected_title,
+      source_name: "GameSpot",
+    },
+    script,
+  });
+  assert.ok(!scorecard.blockers.includes("source_neutral_catch_template"), JSON.stringify(scorecard, null, 2));
+});
+
+test("public copy repair paraphrases review headline recitations before narration QA", () => {
+  const repaired = repairGoalPublicCopyManifest(
+    {
+      story_id: "forza-review-headline",
+      canonical_subject: "Forza Horizon 6",
+      canonical_game: "Forza Horizon 6",
+      canonical_title: "Forza Horizon 6 review (PC Gamer: 84/100)",
+      selected_title: "Forza Horizon 6 Scores 84 On PC Gamer",
+      first_spoken_line: "Forza Horizon 6 just landed strong reviews, but launch demand is the harder test.",
+      primary_source: "PC Gamer",
+      description: "Forza Horizon 6 review (PC Gamer: 84/100). Source: PC Gamer.",
+      confirmed_claims: ["Forza Horizon 6 review (PC Gamer: 84/100)."],
+    },
+    { generatedAt: "2026-06-15T02:10:00.000Z" },
+  );
+
+  const script = repaired.manifest.narration_script;
+  assert.doesNotMatch(script, /PC Gamer reports Forza Horizon 6 review \(PC Gamer/i);
+  assert.ok((script.match(/\bthe catch is\b/gi) || []).length <= 1, script);
+  const scorecard = buildViralScriptIntelligence({
+    story: {
+      id: "forza-review-headline",
+      title: repaired.manifest.selected_title,
+      source_name: "PC Gamer",
+    },
+    script,
+  });
+  assert.ok(!scorecard.blockers.includes("source_title_recitation"), JSON.stringify(scorecard, null, 2));
+  assert.ok(!scorecard.blockers.includes("repeated_catch_pivot"), JSON.stringify(scorecard, null, 2));
+});
+
+test("public copy repair rewrites Halo remake stories into concrete mission-led scripts", () => {
+  const repaired = repairGoalPublicCopyManifest(
+    {
+      story_id: "halo-remake-demo",
+      canonical_subject: "Halo: Campaign Evolved",
+      canonical_game: "Halo: Campaign Evolved",
+      selected_title: "Halo: Campaign Evolved Shows The Real Remake Test",
+      primary_source: "Xbox Wire",
+      primary_source_url:
+        "https://news.xbox.com/en-us/2026/06/10/halo-campaign-evolved-hands-on-demo-2/",
+      confirmed_claims: [
+        "Xbox Wire says Halo Studios showed Assault on the Control Room in hands-on demo form.",
+        "Xbox Wire says the remake launches globally on July 28, 2026 with early access on July 23 for Premium Edition owners.",
+        "Xbox Wire says the game supports cross-play and cross-progression across Xbox Series X|S, Windows PC, Steam and PlayStation 5.",
+      ],
+    },
+    { generatedAt: "2026-06-15T02:30:00.000Z" },
+  );
+
+  const script = repaired.manifest.narration_script;
+  assert.match(script, /^Halo's remake has one brutal test: Assault on the Control Room\./);
+  assert.match(script, /tanks, Marines, Banshees, Covenant pressure and long Forerunner routes/i);
+  assert.doesNotMatch(script, /real remake test|changes what players buy|background noise|the hook here is|the signal is/i);
+  assert.equal(evaluateGoalPublicCopy(repaired.manifest).verdict, "pass");
+  const scorecard = buildViralScriptIntelligence({
+    story: {
+      id: "halo-remake-demo",
+      title: repaired.manifest.selected_title,
+      source_name: "Xbox Wire",
+    },
+    script,
+  });
+  assert.equal(scorecard.verdict, "viral_ready", JSON.stringify(scorecard, null, 2));
+  assert.ok(scorecard.viral_score >= 85, JSON.stringify(scorecard.scores));
+});
+
+test("public copy repair rewrites Gears E-Day headline recaps into player-stakes scripts", () => {
+  const repaired = repairGoalPublicCopyManifest(
+    {
+      story_id: "gears-e-day-recap",
+      canonical_subject: "Gears of War: E-Day",
+      canonical_game: "Gears of War: E-Day",
+      canonical_title: "Everything We Know About Gears Of War: E-Day, Xbox's Big Exclusive For 2026",
+      selected_title: "Gears Of War: E-Day Just Got A New Signal",
+      primary_source: "Kotaku",
+      confirmed_claims: [
+        "Everything We Know About Gears Of War: E-Day, Xbox's Big Exclusive For 2026",
+      ],
+    },
+    { generatedAt: "2026-06-15T02:31:00.000Z" },
+  );
+
+  const script = repaired.manifest.narration_script;
+  assert.equal(repaired.manifest.selected_title, "Gears E-Day Has To Make Xbox Feel Dangerous");
+  assert.match(script, /^Gears of War: E-Day has to make Xbox's safest exclusive feel dangerous again\./);
+  assert.match(script, /old Gears fans need to feel that fear before release/i);
+  assert.doesNotMatch(script, /Everything We Know|Just Got A New Signal|changes what players buy|background noise/i);
+  assert.equal(evaluateGoalPublicCopy(repaired.manifest).verdict, "pass");
+  const scorecard = buildViralScriptIntelligence({
+    story: {
+      id: "gears-e-day-recap",
+      title: repaired.manifest.selected_title,
+      source_name: "Kotaku",
+    },
+    script,
+  });
+  assert.equal(scorecard.verdict, "viral_ready", JSON.stringify(scorecard, null, 2));
+});
+
+test("public copy repair rewrites Mina spoiler-interview recaps into payoff-led scripts", () => {
+  const repaired = repairGoalPublicCopyManifest(
+    {
+      story_id: "mina-spoiler-interview",
+      canonical_subject: "Mina the Hollower",
+      canonical_game: "Mina the Hollower",
+      canonical_title: "Mina The Hollower Spoiler Interview: Sequel Talk, Chrono Trigger Homages, And That Ending",
+      selected_title: "Mina The Hollower Ending Points At The Sequel Risk",
+      primary_source: "GameSpot",
+      confirmed_claims: [
+        "Mina The Hollower Spoiler Interview: Sequel Talk, Chrono Trigger Homages, And That Ending",
+      ],
+    },
+    { generatedAt: "2026-06-15T02:32:00.000Z" },
+  );
+
+  const script = repaired.manifest.narration_script;
+  assert.match(script, /^Mina the Hollower's ending is already doing sequel work\./);
+  assert.match(script, /Yacht Club has something rarer than nostalgia/i);
+  assert.doesNotMatch(script, /Spoiler Interview|changes what players buy|talent squeeze|background noise/i);
+  assert.equal(evaluateGoalPublicCopy(repaired.manifest).verdict, "pass");
+  const scorecard = buildViralScriptIntelligence({
+    story: {
+      id: "mina-spoiler-interview",
+      title: repaired.manifest.selected_title,
+      source_name: "GameSpot",
+    },
+    script,
+  });
+  assert.equal(scorecard.verdict, "viral_ready", JSON.stringify(scorecard, null, 2));
+});
+
+test("public copy repair rewrites Quake update recaps into retention-stakes scripts", () => {
+  const repaired = repairGoalPublicCopyManifest(
+    {
+      story_id: "quake-update",
+      canonical_subject: "Quake Champions",
+      canonical_game: "Quake Champions",
+      canonical_title: "Quake Champions gets a huge update and free battle pass to celebrate the anniversary",
+      selected_title: "Quake Champions gets a huge update and free battle pass to celebrate the",
+      primary_source: "PC Gamer",
+      confirmed_claims: [
+        "Quake Champions gets a huge update and free battle pass to celebrate the anniversary.",
+      ],
+    },
+    { generatedAt: "2026-06-15T02:33:00.000Z" },
+  );
+
+  const script = repaired.manifest.narration_script;
+  assert.equal(repaired.manifest.selected_title, "Quake Champions Tests A Real Comeback");
+  assert.match(script, /^Quake Champions just put its comeback claim on trial\./);
+  assert.match(script, /queue health, netcode and whether the fights still feel brutally fair/i);
+  assert.doesNotMatch(script, /changes what players buy|background noise|gets a huge update and free battle pass to celebrate the\./i);
+  assert.equal(evaluateGoalPublicCopy(repaired.manifest).verdict, "pass");
+  const scorecard = buildViralScriptIntelligence({
+    story: {
+      id: "quake-update",
+      title: repaired.manifest.selected_title,
+      source_name: "PC Gamer",
+    },
+    script,
+  });
+  assert.equal(scorecard.verdict, "viral_ready", JSON.stringify(scorecard, null, 2));
+});
+
 test("public copy package repair rewrites canonical entity mismatches before platform sync", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-copy-canonical-mismatch-"));
   const artifactDir = path.join(root, "story");

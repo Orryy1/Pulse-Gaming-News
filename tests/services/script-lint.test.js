@@ -362,3 +362,19 @@ test("BANNED_PHRASES: every entry has { re, reason }", () => {
     assert.ok(typeof entry.reason === "string" && entry.reason.length > 0);
   }
 });
+
+test("lintScript: recognises whether-or-just mission tension as a curiosity marker", () => {
+  const script =
+    "Halo's remake has one brutal test: Assault on the Control Room. " +
+    "Xbox Wire says Halo Studios showed the snowy mission in hands-on demo form, with the July 28 launch now tied to cross-play across Xbox, PC, Steam and PlayStation 5. " +
+    "This is the mission fans use as a lie detector: whether tanks, Marines, Banshees, Covenant pressure and long Forerunner routes still create chaos, or just expose a prettier corridor. " +
+    "Cleaner corridors help only if the sandbox still feels player-made. " +
+    "If the remake keeps that chaos while removing the worst repetition, Combat Evolved has a real second life. " +
+    "If it loses it, the prettiest snow level in the world will not save the pitch. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const r = lintScript(script, { minWords: 35 });
+
+  assert.notStrictEqual(r.result, "fail", JSON.stringify(r));
+  assert.ok(!r.warnings.includes("no_curiosity_marker"), JSON.stringify(r));
+});

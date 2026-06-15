@@ -31,10 +31,36 @@ const OUT = path.join(ROOT, "test", "output");
 const CONTRACT_OUT = path.join(ROOT, "output", "goal-contract");
 
 function parseArgs(argv) {
-  const args = { json: false, discord: false, help: false };
-  for (const a of argv.slice(2)) {
+  const args = {
+    json: false,
+    discord: false,
+    help: false,
+    strictDryRunPlanPath: null,
+    schedulerBridgeCandidatesPath: null,
+    platformDurationContractPath: null,
+  };
+  const values = Array.isArray(argv) && argv[0]?.startsWith("--") ? argv : argv.slice(2);
+  for (let index = 0; index < values.length; index += 1) {
+    const a = values[index];
     if (a === "--json") args.json = true;
     else if (a === "--discord") args.discord = true;
+    else if (a === "--dry-run-plan" || a === "--strict-dry-run-plan") {
+      args.strictDryRunPlanPath = path.resolve(ROOT, values[++index] || "");
+    } else if (a.startsWith("--dry-run-plan=")) {
+      args.strictDryRunPlanPath = path.resolve(ROOT, a.slice("--dry-run-plan=".length));
+    } else if (a.startsWith("--strict-dry-run-plan=")) {
+      args.strictDryRunPlanPath = path.resolve(ROOT, a.slice("--strict-dry-run-plan=".length));
+    } else if (a === "--bridge-candidates" || a === "--scheduler-bridge-candidates") {
+      args.schedulerBridgeCandidatesPath = path.resolve(ROOT, values[++index] || "");
+    } else if (a.startsWith("--bridge-candidates=")) {
+      args.schedulerBridgeCandidatesPath = path.resolve(ROOT, a.slice("--bridge-candidates=".length));
+    } else if (a.startsWith("--scheduler-bridge-candidates=")) {
+      args.schedulerBridgeCandidatesPath = path.resolve(ROOT, a.slice("--scheduler-bridge-candidates=".length));
+    } else if (a === "--platform-duration-contract") {
+      args.platformDurationContractPath = path.resolve(ROOT, values[++index] || "");
+    } else if (a.startsWith("--platform-duration-contract=")) {
+      args.platformDurationContractPath = path.resolve(ROOT, a.slice("--platform-duration-contract=".length));
+    }
     else if (a === "--help" || a === "-?") args.help = true;
   }
   return args;
@@ -46,12 +72,19 @@ async function main() {
     process.stdout.write(
       "Usage: node tools/publish-readiness.js [--json] [--discord]\n" +
         "  --json     Emit the full JSON report to stdout\n" +
-        "  --discord  Also post the markdown verdict to Discord\n",
+        "  --discord  Also post the markdown verdict to Discord\n" +
+        "  --dry-run-plan <path>  Strict dry-run plan to evaluate\n" +
+        "  --bridge-candidates <path>  Scheduler bridge candidates to evaluate\n" +
+        "  --platform-duration-contract <path>  Platform duration contract report\n",
     );
     return;
   }
 
-  const report = await buildPublishReadinessReport();
+  const report = await buildPublishReadinessReport({
+    strictDryRunPlanPath: args.strictDryRunPlanPath || undefined,
+    schedulerBridgeCandidatesPath: args.schedulerBridgeCandidatesPath || undefined,
+    platformDurationContractPath: args.platformDurationContractPath || undefined,
+  });
   const markdown = formatPublishReadinessMarkdown(report);
 
   try {
@@ -101,7 +134,14 @@ async function main() {
   if (report.overall_verdict === "red") process.exit(2);
 }
 
-main().catch((err) => {
-  process.stderr.write(`[publish-readiness] ${err.stack || err.message}\n`);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    process.stderr.write(`[publish-readiness] ${err.stack || err.message}\n`);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  parseArgs,
+  main,
+};

@@ -339,3 +339,131 @@ test("guarded publish handler blocks before upload when watchdog is RED", async 
     }
   }
 });
+
+test("guarded publish handler reports exhausted selector blockers", async () => {
+  const os = require("node:os");
+  const fs = require("fs-extra");
+  const path = require("node:path");
+  const jobHandlersPath = require.resolve("../../lib/job-handlers");
+  const watchdogPath = require.resolve("../../lib/ops/publish-window-watchdog");
+  const executorPath = require.resolve("../../lib/goal-guarded-live-dispatch-executor");
+  const dbPath = require.resolve("../../lib/db");
+  const notifyPath = require.resolve("../../notify");
+  const originalCache = new Map([
+    [jobHandlersPath, require.cache[jobHandlersPath]],
+    [watchdogPath, require.cache[watchdogPath]],
+    [executorPath, require.cache[executorPath]],
+    [dbPath, require.cache[dbPath]],
+    [notifyPath, require.cache[notifyPath]],
+  ]);
+  const originalEnv = {
+    AUTO_PUBLISH: process.env.AUTO_PUBLISH,
+    PULSE_GUARDED_LIVE_DISPATCH_ENABLED: process.env.PULSE_GUARDED_LIVE_DISPATCH_ENABLED,
+    PULSE_EMERGENCY_KILL_SWITCH: process.env.PULSE_EMERGENCY_KILL_SWITCH,
+    PULSE_GUARDED_EXECUTOR_PLAN_PATH: process.env.PULSE_GUARDED_EXECUTOR_PLAN_PATH,
+  };
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-exhausted-"));
+  const planPath = path.join(tmp, "guarded_dispatch_executor_plan.json");
+  const sent = [];
+  try {
+    await fs.writeJson(planPath, {
+      mode: "GUARDED_DISPATCH_EXECUTOR_PREFLIGHT",
+      handoff_ready_actions: [
+        {
+          action_id: "story1:youtube_shorts",
+          story_id: "story1",
+          platform: "youtube_shorts",
+        },
+      ],
+    });
+    process.env.AUTO_PUBLISH = "true";
+    process.env.PULSE_GUARDED_LIVE_DISPATCH_ENABLED = "true";
+    process.env.PULSE_EMERGENCY_KILL_SWITCH = "clear";
+    process.env.PULSE_GUARDED_EXECUTOR_PLAN_PATH = planPath;
+
+    require.cache[watchdogPath] = {
+      id: watchdogPath,
+      filename: watchdogPath,
+      loaded: true,
+      exports: {
+        async runPublishWindowWatchdog() {
+          return {
+            verdict: "green",
+            safe_to_publish_window: true,
+            blockers: [],
+          };
+        },
+      },
+    };
+    require.cache[executorPath] = {
+      id: executorPath,
+      filename: executorPath,
+      loaded: true,
+      exports: {
+        async selectNextGuardedLiveAction() {
+          return {
+            exhausted: true,
+            reason: "no_unpublished_guarded_actions",
+            skipped_actions: [
+              {
+                action_id: "story1:youtube_shorts",
+                story_id: "story1",
+                platform: "youtube_shorts",
+                reason: "last_second_quality_gate_failed",
+                blockers: ["video:duration_too_short (38.58s)"],
+              },
+            ],
+          };
+        },
+      },
+    };
+    require.cache[dbPath] = {
+      id: dbPath,
+      filename: dbPath,
+      loaded: true,
+      exports: {
+        async getStories() {
+          return [];
+        },
+      },
+    };
+    require.cache[notifyPath] = {
+      id: notifyPath,
+      filename: notifyPath,
+      loaded: true,
+      exports: async (message) => sent.push(message),
+    };
+    delete require.cache[jobHandlersPath];
+
+    const { handlers } = require("../../lib/job-handlers");
+    const result = await handlers.publish({ id: 88 }, { log() {} });
+
+    assert.equal(result.guarded_live_dispatch, true);
+    assert.equal(result.skipped, true);
+    assert.equal(result.status, "blocked");
+    assert.equal(result.reason, "no_unpublished_guarded_actions");
+    assert.equal(result.skipped_action_count, 1);
+    assert.deepEqual(result.skipped_actions, [
+      {
+        action_id: "story1:youtube_shorts",
+        story_id: "story1",
+        platform: "youtube_shorts",
+        reason: "last_second_quality_gate_failed",
+        blockers: ["video:duration_too_short (38.58s)"],
+      },
+    ]);
+    assert.equal(sent.length, 1);
+    assert.match(sent[0], /Guarded Publish Held/);
+    assert.match(sent[0], /video:duration_too_short \(38\.58s\)/);
+  } finally {
+    for (const [id, entry] of originalCache.entries()) {
+      if (entry) require.cache[id] = entry;
+      else delete require.cache[id];
+    }
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    await fs.remove(tmp);
+  }
+});

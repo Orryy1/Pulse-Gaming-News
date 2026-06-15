@@ -237,6 +237,7 @@
     "media:validate-trailer-segments": "node tools/official-trailer-segment-validator.js",
     "media:inventory": "node tools/media-inventory-report.js",
     "format:release-radar": "node tools/monthly-release-radar.js",
+    "format:pulse-release-radar": "node tools/pulse-release-radar.js",
     "creative:visual-qa": "node tools/creative/run-visual-qa.js",
     "creative:thumbnails": "node tools/creative/build-thumbnail-candidates.js",
     "creative:release-radar": "node tools/creative/build-monthly-release-radar.js",

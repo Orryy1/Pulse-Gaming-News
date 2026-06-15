@@ -23,6 +23,43 @@ const COMPILATION_PATH = path.join(__dirname, 'weekly_compilation.json');
 const MIN_STORIES = 8;
 const MAX_STORIES = 12;
 
+function truthy(value) {
+  return /^(true|1|yes|on)$/i.test(String(value || '').trim());
+}
+
+function shouldRunWeeklyJob({ env = process.env, payload = {} } = {}) {
+  return (
+    truthy(env.WEEKLY_ROUNDUP_JOB_ENABLED) ||
+    truthy(payload.operator_approved) ||
+    truthy(payload.allow_weekly_roundup)
+  );
+}
+
+function requiredLongformPublishFlag(kind) {
+  if (kind === 'weekly_roundup') return 'WEEKLY_ROUNDUP_AUTO_PUBLISH';
+  if (kind === 'topic_compilation') return 'TOPIC_COMPILATION_AUTO_PUBLISH';
+  return null;
+}
+
+function shouldUploadLongform({ kind = 'weekly_roundup', env = process.env } = {}) {
+  const kindFlag = requiredLongformPublishFlag(kind);
+  return (
+    truthy(env.AUTO_PUBLISH) &&
+    truthy(env.LONGFORM_AUTO_PUBLISH) &&
+    Boolean(kindFlag) &&
+    truthy(env[kindFlag])
+  );
+}
+
+function longformUploadStatus(kind, env = process.env) {
+  const kindFlag = requiredLongformPublishFlag(kind);
+  if (!truthy(env.AUTO_PUBLISH)) return 'AUTO_PUBLISH off';
+  if (!truthy(env.LONGFORM_AUTO_PUBLISH)) return 'LONGFORM_AUTO_PUBLISH not enabled';
+  if (!kindFlag) return `unknown longform kind: ${kind}`;
+  if (!truthy(env[kindFlag])) return `${kindFlag} not enabled`;
+  return 'enabled';
+}
+
 // --- Load helpers (delegated to db layer, feature-flagged) ---
 
 async function loadDailyNews() {
@@ -300,7 +337,8 @@ async function compileWeekly() {
 
   // 8. Upload as regular YouTube video (not Short)
   let uploadResult = null;
-  if (process.env.AUTO_PUBLISH === 'true') {
+  const uploadStatus = longformUploadStatus('weekly_roundup');
+  if (shouldUploadLongform({ kind: 'weekly_roundup' })) {
     try {
       const { uploadLongform } = require('./upload_youtube');
       uploadResult = await uploadLongform({
@@ -314,7 +352,7 @@ async function compileWeekly() {
       console.log(`[weekly] YouTube upload failed: ${err.message}`);
     }
   } else {
-    console.log('[weekly] AUTO_PUBLISH is off - skipping YouTube upload');
+    console.log(`[weekly] Longform auto-upload blocked - ${uploadStatus}`);
   }
 
   // 9. Save compilation data
@@ -338,7 +376,7 @@ async function compileWeekly() {
   await sendDiscord(
     `**Weekly Roundup Compiled**\n` +
     `${selectedStories.length} stories, ${Math.round(duration / 60)} minutes\n` +
-    `${uploadResult ? `YouTube: ${uploadResult.url}` : 'Not uploaded (AUTO_PUBLISH off)'}`
+    `${uploadResult ? `YouTube: ${uploadResult.url}` : `Not uploaded (${uploadStatus})`}`
   );
 
   console.log('[weekly] === WEEKLY COMPILATION COMPLETE ===');
@@ -512,9 +550,10 @@ async function compileByTopic(topicName) {
 
   await assembleLongform(compilation);
 
-  // 8. Upload if AUTO_PUBLISH is on
+  // 8. Upload only when longform auto-publish has its own explicit consent
   let uploadResult = null;
-  if (process.env.AUTO_PUBLISH === 'true') {
+  const uploadStatus = longformUploadStatus('topic_compilation');
+  if (shouldUploadLongform({ kind: 'topic_compilation' })) {
     try {
       const { uploadLongform } = require('./upload_youtube');
       uploadResult = await uploadLongform({
@@ -528,6 +567,8 @@ async function compileByTopic(topicName) {
     } catch (err) {
       console.log(`[topic-compile] YouTube upload failed: ${err.message}`);
     }
+  } else {
+    console.log(`[topic-compile] Longform auto-upload blocked - ${uploadStatus}`);
   }
 
   // 9. Save compilation data
@@ -558,7 +599,7 @@ async function compileByTopic(topicName) {
   await sendDiscord(
     `**Topic Compilation: "${topicName}"**\n` +
     `${selected.length} stories, ${Math.round(duration / 60)} minutes\n` +
-    `${uploadResult ? `YouTube: ${uploadResult.url}` : 'Not uploaded (AUTO_PUBLISH off)'}`
+    `${uploadResult ? `YouTube: ${uploadResult.url}` : `Not uploaded (${uploadStatus})`}`
   );
 
   console.log(`[topic-compile] === TOPIC COMPILATION COMPLETE: "${topicName}" ===`);
@@ -635,7 +676,18 @@ Output ONLY valid JSON with no preamble and no markdown backticks:
   return script;
 }
 
-module.exports = { compileWeekly, identifyCompilableTopics, selectTopicStories, compileByTopic };
+module.exports = {
+  compileWeekly,
+  identifyCompilableTopics,
+  selectTopicStories,
+  compileByTopic,
+  _private: {
+    shouldRunWeeklyJob,
+    shouldUploadLongform,
+    longformUploadStatus,
+    requiredLongformPublishFlag,
+  },
+};
 
 if (require.main === module) {
   compileWeekly().catch(err => {

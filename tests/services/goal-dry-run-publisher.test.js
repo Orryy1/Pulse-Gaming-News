@@ -1295,6 +1295,48 @@ test("goal dry-run publisher quarantines unsafe packages excluded from scheduler
   assert.equal(plan.summary.planned_action_count, 7);
 });
 
+test("goal dry-run publisher blocks package-level RED quarantine even when internal artefacts and preflight are ready", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-package-policy-"));
+  const readyPackage = await makeStoryPackage(root, "policy-ready", "GREEN", "Forza Horizon 6 Exposes Xbox's Steam Bet");
+  const quarantinedPackage = await makeStoryPackage(root, "policy-held", "GREEN", "Alien Isolation 2 Has One Horror Risk");
+  quarantinedPackage.verdict = "RED";
+  quarantinedPackage.quarantine_status = "held_visual_source_mismatch";
+  quarantinedPackage.blockers = [
+    "visual_source_entity_mismatch",
+    "polluted_cached_direct_motion",
+  ];
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [readyPackage, quarantinedPackage],
+    generatedAt: "2026-06-15T17:50:00.000Z",
+    platformOperationalConfig: allPlatformsEnabled(),
+    candidatePreflightReport: {
+      candidates: [
+        {
+          id: "policy-ready",
+          status: "publish_ready",
+          preflight_qa: { status: "pass", blockers: [], warnings: [] },
+        },
+        {
+          id: "policy-held",
+          status: "publish_ready",
+          preflight_qa: { status: "pass", blockers: [], warnings: [] },
+        },
+      ],
+    },
+  });
+
+  assert.equal(plan.summary.ready_story_count, 1);
+  assert.equal(plan.summary.blocked_story_count, 1);
+  assert.equal(plan.summary.planned_action_count, 7);
+  assert.equal(plan.ready_stories[0].story_id, "policy-ready");
+  assert.equal(plan.blocked_stories[0].story_id, "policy-held");
+  assert.ok(plan.blocked_stories[0].blockers.includes("story_package_verdict:red"));
+  assert.ok(plan.blocked_stories[0].blockers.includes("story_package_quarantined:held_visual_source_mismatch"));
+  assert.ok(plan.blocked_stories[0].blockers.includes("story_package:visual_source_entity_mismatch"));
+  assert.ok(plan.blocked_stories[0].blockers.includes("story_package:polluted_cached_direct_motion"));
+});
+
 test("goal dry-run publisher quarantines work-order dead-end blockers without hiding clean candidates", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-work-order-quarantine-"));
   const readyPackage = await makeStoryPackage(root, "bridge-ready", "GREEN", "Forza Horizon 6 Exposes Xbox's Steam Bet");

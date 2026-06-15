@@ -248,6 +248,46 @@ test("production cutover queues proof renders instead of treating them as publis
   assert.equal(plan.safety.no_publish_triggered, true);
 });
 
+test("production cutover blocks RED or quarantined story packages before scheduler bridge", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-package-hold-"));
+  const heldPackage = await makeCutoverPackage(root, "held-story", {
+    finalPublishRender: true,
+    renderer: "visual_v4_production",
+    visualTier: "production_v4_motion",
+    title: "Alien Isolation 2 Has One Horror Risk",
+    subject: "Alien: Isolation 2",
+  });
+  Object.assign(heldPackage, {
+    verdict: "RED",
+    quarantine_status: "held_visual_source_mismatch",
+    blockers: ["visual_source_entity_mismatch", "polluted_cached_direct_motion"],
+  });
+  const readyPackage = await makeCutoverPackage(root, "ready-story", {
+    finalPublishRender: true,
+    renderer: "visual_v4_production",
+    visualTier: "production_v4_motion",
+  });
+
+  const plan = await buildProductionRenderCutoverPlan({
+    storyPackages: [heldPackage, readyPackage],
+    generatedAt: "2026-06-15T17:45:00.000Z",
+  });
+
+  assert.equal(plan.summary.story_count, 2);
+  assert.equal(plan.summary.ready_final_render_count, 1);
+  assert.equal(plan.summary.blocked_count, 1);
+  assert.equal(plan.summary.scheduler_bridge_candidate_count, 1);
+  assert.equal(plan.ready[0].story_id, "ready-story");
+  assert.equal(plan.blocked[0].story_id, "held-story");
+  assert.ok(plan.blocked[0].blockers.includes("story_package_verdict:red"));
+  assert.ok(plan.blocked[0].blockers.includes("story_package_quarantined:held_visual_source_mismatch"));
+  assert.ok(plan.blocked[0].blockers.includes("story_package:visual_source_entity_mismatch"));
+  assert.deepEqual(
+    plan.scheduler_bridge.candidates.map((candidate) => candidate.id),
+    ["ready-story"],
+  );
+});
+
 test("production cutover governance refresh scopes rights to enabled live platforms", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-platform-scope-"));
   const storyPackage = await makeCutoverPackage(root, "enabled-platform-scope", {

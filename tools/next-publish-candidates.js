@@ -999,6 +999,7 @@ function combinePreflightQa({
   voiceQuality,
   audioSegment,
   timestampAlignment,
+  visualEntityMatch,
   bridgeArtifactFreshness,
   bridgeMotionGovernance,
   aggregateBenchmark,
@@ -1017,6 +1018,7 @@ function combinePreflightQa({
   if (voiceQuality) checks.voice_quality = summariseQaResult(voiceQuality);
   if (audioSegment) checks.audio_segment_loudness = summariseQaResult(audioSegment);
   if (timestampAlignment) checks.timestamp_alignment = summariseQaResult(timestampAlignment);
+  if (visualEntityMatch) checks.visual_entity_match = summariseQaResult(visualEntityMatch);
   if (bridgeArtifactFreshness) checks.bridge_artifact_freshness = summariseQaResult(bridgeArtifactFreshness);
   if (bridgeMotionGovernance) checks.bridge_motion_governance = summariseQaResult(bridgeMotionGovernance);
   if (aggregateBenchmark) checks.aggregate_benchmark = summariseQaResult(aggregateBenchmark);
@@ -1307,6 +1309,288 @@ function bridgeMotionGovernancePreflightForStory(story = {}, opts = {}) {
       v4_motion_pack_blocked: activeFailures.includes("v4_motion_pack_blocked"),
       canonical_entity_repair_required: activeFailures.includes("canonical_entity_repair_required"),
       stale_failures: [...new Set(staleFailures)],
+    },
+  };
+}
+
+const VISUAL_ENTITY_STOPWORDS = new Set([
+  "the",
+  "and",
+  "for",
+  "with",
+  "from",
+  "this",
+  "that",
+  "game",
+  "games",
+  "gaming",
+  "official",
+  "trailer",
+  "gameplay",
+  "direct",
+  "motion",
+  "clip",
+  "media",
+  "product",
+  "page",
+  "showcase",
+  "demo",
+  "xbox",
+  "wire",
+  "playstation",
+  "nintendo",
+  "steam",
+  "video",
+  "story",
+  "news",
+  "update",
+]);
+
+function visualEntityTokenise(value = "") {
+  return cleanText(value)
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .split(/\s+/)
+    .filter((token) =>
+      token &&
+      !VISUAL_ENTITY_STOPWORDS.has(token) &&
+      (token.length >= 3 || /^\d+$/.test(token))
+    );
+}
+
+function visualSubjectTokensForStory(story = {}) {
+  const subject = cleanText(
+    story.canonical_subject ||
+      story.canonical_game ||
+      story.game_title ||
+      story.primary_game ||
+      "",
+  );
+  const fallbackTitle = cleanText(
+    story.selected_title ||
+      story.public_title ||
+      story.upload_title ||
+      story.title ||
+      "",
+  );
+  const tokens = visualEntityTokenise(subject || fallbackTitle);
+  if (tokens.includes("gta")) tokens.push("grand", "theft", "auto");
+  return [...new Set(tokens)];
+}
+
+function visualSourceLockTokensForStory(story = {}) {
+  const url = cleanText(
+    story.primary_source_url ||
+      story.source_url ||
+      story.article_url ||
+      story.url ||
+      "",
+  );
+  if (!url) return [];
+  try {
+    const parsed = new URL(url);
+    const pathTokens = visualEntityTokenise(parsed.pathname);
+    const numericIds = parsed.pathname.match(/\b\d{5,}\b/g) || [];
+    return [...new Set([...pathTokens, ...numericIds])];
+  } catch {
+    return [];
+  }
+}
+
+function isLocalOrGeneratedReference(value = "") {
+  const text = cleanText(value).toLowerCase().replace(/\\/g, "/");
+  return (
+    !text ||
+    text.startsWith("local://") ||
+    text.startsWith("file://") ||
+    text.startsWith("output/") ||
+    text.includes("/output/") ||
+    /^[a-z]:\//i.test(text)
+  );
+}
+
+function genericMotionFamily(value = "") {
+  return /^(?:direct_motion|selected_render_clip|production_motion|bridge_shot_family|v4_motion_family|motion_clip)[_-]?\d*$/i.test(
+    cleanText(value),
+  );
+}
+
+function externalSourceValue(...values) {
+  for (const value of values) {
+    const text = cleanText(value);
+    if (text && !isLocalOrGeneratedReference(text)) return text;
+  }
+  return cleanText(values.find(Boolean));
+}
+
+function richerFamilyValue(...values) {
+  for (const value of values) {
+    const text = cleanText(value);
+    if (text && !genericMotionFamily(text)) return text;
+  }
+  return cleanText(values.find(Boolean));
+}
+
+function visualAssetPathKey(asset = {}) {
+  if (typeof asset === "string") return cleanText(asset).replace(/\\/g, "/").toLowerCase();
+  return cleanText(
+    asset.path ||
+      asset.local_path ||
+      asset.local_materialized_path ||
+      asset.local_materialised_path ||
+      asset.file_path ||
+      asset.media_path,
+  ).replace(/\\/g, "/").toLowerCase();
+}
+
+function mergeVisualAssetProvenance(existing = {}, incoming = {}) {
+  const merged = { ...existing, ...incoming };
+  merged.source_url = externalSourceValue(
+    existing.source_url || existing.url,
+    incoming.source_url || incoming.url,
+  );
+  merged.url = externalSourceValue(existing.url, incoming.url);
+  merged.source_family = richerFamilyValue(
+    existing.source_family || existing.motion_family || existing.family,
+    incoming.source_family || incoming.motion_family || incoming.family,
+  );
+  merged.motion_family = richerFamilyValue(
+    existing.motion_family || existing.source_family || existing.family,
+    incoming.motion_family || incoming.source_family || incoming.family,
+  );
+  return merged;
+}
+
+function dedupeVisualAssetsByPath(assets = []) {
+  const byPath = new Map();
+  const unkeyed = [];
+  for (const asset of asArray(assets)) {
+    if (!asset) continue;
+    const normalised = typeof asset === "string" ? { path: asset } : asset;
+    const key = visualAssetPathKey(normalised);
+    if (!key) {
+      unkeyed.push(normalised);
+      continue;
+    }
+    byPath.set(
+      key,
+      byPath.has(key)
+        ? mergeVisualAssetProvenance(byPath.get(key), normalised)
+        : { ...normalised },
+    );
+  }
+  return [...byPath.values(), ...unkeyed];
+}
+
+function visualAssetProvenanceText(asset = {}) {
+  const values = [
+    asset.source_family,
+    asset.motion_family,
+    asset.family,
+    asset.trusted_footage_source_id,
+    asset.source_id,
+    asset.source_title,
+    asset.media_title,
+    asset.title,
+    asset.name,
+    !isLocalOrGeneratedReference(asset.source_url) ? asset.source_url : "",
+    !isLocalOrGeneratedReference(asset.url) ? asset.url : "",
+    asset.original_source_family,
+    !isLocalOrGeneratedReference(asset.original_source_url) ? asset.original_source_url : "",
+  ];
+  return cleanText(values.filter(Boolean).join(" ")).toLowerCase();
+}
+
+function visualAssetSubjectLocked(asset = {}, subjectTokens = []) {
+  const provenance = visualAssetProvenanceText(asset);
+  if (!provenance) return false;
+  return subjectTokens.some((token) =>
+    new RegExp(`(^|[^a-z0-9])${token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`).test(provenance),
+  );
+}
+
+async function readArtifactJsonObjectForStory(story = {}, fileName = "") {
+  const artifactDir = artifactDirForStory(story);
+  if (!artifactDir || !fileName) return {};
+  const filePath = path.resolve(ROOT, artifactDir, fileName);
+  try {
+    if (!(await fs.pathExists(filePath))) return {};
+    const value = await fs.readJson(filePath);
+    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  } catch {
+    return {};
+  }
+}
+
+async function visualEntityPreflightForStory(story = {}) {
+  if (!shouldRunIncidentGuardForStory(story)) return null;
+  const subjectTokens = visualSubjectTokensForStory(story);
+  const sourceLockTokens = visualSourceLockTokensForStory(story);
+  const lockTokens = [...new Set([...subjectTokens, ...sourceLockTokens])];
+  if (!lockTokens.length) return null;
+
+  const [renderStory, footageInventoryArtifact, rightsLedgerArtifact, directorArtifact] = await Promise.all([
+    readArtifactJsonObjectForStory(story, "visual_v4_render_story.json"),
+    readArtifactJsonObjectForStory(story, "footage_inventory.json"),
+    readArtifactJsonObjectForStory(story, "rights_ledger.json"),
+    readArtifactJsonObjectForStory(story, "director_beat_map.json"),
+  ]);
+  const footageInventory = objectValue(story.footage_inventory, footageInventoryArtifact);
+  const rightsLedger = objectValue(story.rights_ledger || story.rights_records, rightsLedgerArtifact);
+  const directorPlan = objectValue(story.visual_v4_director_plan || story.director_plan, directorArtifact);
+  const assets = dedupeVisualAssetsByPath([
+    ...asArray(story.visual_v4_bridge_video_clips),
+    ...asArray(story.video_clips),
+    ...asArray(renderStory.visual_v4_bridge_video_clips),
+    ...asArray(renderStory.video_clips),
+    ...asArray(footageInventory.motion_inventory?.accepted_local_clips),
+    ...asArray(footageInventory.motion_inventory?.production_motion_clips),
+    ...asArray(footageInventory.accepted_local_clips),
+    ...asArray(footageInventory.production_motion_clips),
+    ...rightsLedgerRecords(rightsLedger),
+    ...asArray(directorPlan.shot_plan).map((shot) => ({
+      ...shot,
+      path: shot.path || shot.media_path || shot.file_path,
+      source_url: shot.source_url || shot.url,
+    })),
+  ]);
+  const { isDirectVideoMotionAsset } = require("../lib/visual-evidence-classifier");
+  const directMotionAssets = assets.filter(isDirectVideoMotionAsset);
+  if (!directMotionAssets.length) return null;
+
+  const mismatched = directMotionAssets
+    .filter((asset) => !visualAssetSubjectLocked(asset, lockTokens))
+    .map((asset) => ({
+      id: cleanText(asset.id || asset.asset_id),
+      source_family: cleanText(asset.source_family || asset.motion_family || asset.family),
+      source_url: cleanText(asset.source_url || asset.url),
+      path: cleanText(asset.path || asset.local_path || asset.media_path),
+      provenance_text: visualAssetProvenanceText(asset).slice(0, 240),
+    }));
+
+  if (mismatched.length) {
+    return {
+      result: "fail",
+      failures: ["direct_motion_subject_mismatch"],
+      warnings: [],
+      evidence: {
+        canonical_subject_tokens: subjectTokens,
+        source_lock_tokens: sourceLockTokens,
+        direct_motion_asset_count: directMotionAssets.length,
+        mismatched_motion_assets: mismatched.slice(0, 8),
+      },
+    };
+  }
+
+  return {
+    result: "pass",
+    failures: [],
+    warnings: [],
+    evidence: {
+      canonical_subject_tokens: subjectTokens,
+      source_lock_tokens: sourceLockTokens,
+      direct_motion_asset_count: directMotionAssets.length,
     },
   };
 }
@@ -1767,6 +2051,139 @@ async function audioSegmentPreflightForStory(story = {}) {
   }
 }
 
+function numberFromFirst(...values) {
+  for (const value of values) {
+    const number = numberOrNull(value);
+    if (number != null) return number;
+  }
+  return null;
+}
+
+function localTtsSegmentationEvidence({ story = {}, report = {}, audioManifest = {}, timestampPayload = {} } = {}) {
+  const meta = timestampPayload?.meta || timestampPayload?.alignment?.meta || {};
+  const wordCounts = [
+    ...asArray(meta.segment_word_counts),
+    ...asArray(audioManifest.segment_word_counts),
+    ...asArray(report.segment_word_counts),
+  ]
+    .map((value) => numberOrNull(value))
+    .filter((value) => value != null);
+  const segmentCount = numberFromFirst(
+    meta.segment_count,
+    audioManifest.segment_count,
+    report.segment_count,
+    wordCounts.length ? wordCounts.length : null,
+  );
+  const segmented = Boolean(
+    meta.segmentedLocalTtsMaterialized === true ||
+      audioManifest.segmentedLocalTtsMaterialized === true ||
+      report.segmentedLocalTtsMaterialized === true ||
+      (segmentCount != null && segmentCount > 1 && wordCounts.length > 1),
+  );
+  const provider = cleanText(
+    story.voice_provider ||
+      story.tts_provider ||
+      audioManifest.voice_provider ||
+      audioManifest.provider ||
+      report.provider ||
+      meta.provider ||
+      "",
+  ).toLowerCase();
+  const local = Boolean(
+    provider.includes("local") ||
+      meta.localTts ||
+      audioManifest.voice_provider === "local_tts" ||
+      story.local_tts === true ||
+      story.local_voice === true,
+  );
+  const minWords = wordCounts.length ? Math.min(...wordCounts) : null;
+  const maxWords = wordCounts.length ? Math.max(...wordCounts) : null;
+  const segmentGapS = numberFromFirst(meta.segment_gap_s, audioManifest.segment_gap_s, report.segment_gap_s);
+  return {
+    local,
+    segmented,
+    segment_count: segmentCount,
+    min_segment_words: minWords,
+    max_segment_words: maxWords,
+    segment_gap_s: segmentGapS,
+  };
+}
+
+function localTtsSegmentationFailures(evidence = {}) {
+  if (!evidence.local || !evidence.segmented) return [];
+  const failures = [];
+  const count = Number(evidence.segment_count);
+  const minWords = Number(evidence.min_segment_words);
+  if (
+    (Number.isFinite(count) && count >= 10) ||
+    (Number.isFinite(count) && count >= 8 && Number.isFinite(minWords) && minWords < 10)
+  ) {
+    failures.push("local_tts_micro_segmented_narration");
+  }
+  return failures;
+}
+
+function timestampWordsForCadence(payload = {}) {
+  const words = Array.isArray(payload.words)
+    ? payload.words
+    : Array.isArray(payload.alignment?.words)
+      ? payload.alignment.words
+      : [];
+  return words
+    .map((word) => ({
+      start: Number(word?.start),
+      end: Number(word?.end),
+    }))
+    .filter((word) =>
+      Number.isFinite(word.start) &&
+      Number.isFinite(word.end) &&
+      word.end > word.start,
+    );
+}
+
+function timestampCadenceEvidence(payload = {}) {
+  const words = timestampWordsForCadence(payload);
+  if (words.length < 20) return null;
+  const firstStart = Math.min(...words.map((word) => word.start));
+  const lastEnd = Math.max(...words.map((word) => word.end));
+  const durationSeconds = lastEnd - firstStart;
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return null;
+  return {
+    word_count: words.length,
+    duration_seconds: Number(durationSeconds.toFixed(3)),
+    spoken_wpm: Number((words.length / (durationSeconds / 60)).toFixed(1)),
+  };
+}
+
+function timestampCadenceFailures(cadence = {}, report = {}) {
+  if (!cadence) return [];
+  const thresholds = report.cadence?.thresholds || {};
+  const minPublishable = numberOrNull(thresholds.min_publishable_wpm) ?? 110;
+  const maxPublishable = numberOrNull(thresholds.max_publishable_wpm) ?? 175;
+  const wpm = numberOrNull(cadence.spoken_wpm);
+  if (wpm === null) return [];
+  const failures = [];
+  if (wpm < minPublishable) failures.push("voice_cadence:wpm_too_slow");
+  if (wpm > maxPublishable) failures.push("voice_cadence:wpm_too_fast");
+  return failures;
+}
+
+function timestampCadenceWarnings(cadence = {}, report = {}) {
+  if (!cadence) return [];
+  const warnings = [];
+  const currentWpm = numberOrNull(cadence.spoken_wpm);
+  const reportedWpm = numberOrNull(report.cadence?.spoken_wpm);
+  if (currentWpm !== null && reportedWpm !== null && Math.abs(currentWpm - reportedWpm) >= 8) {
+    warnings.push("voice_quality_report_cadence_stale");
+  }
+  const thresholds = report.cadence?.thresholds || {};
+  const maxTarget = numberOrNull(thresholds.max_target_wpm) ?? 162;
+  const minTarget = numberOrNull(thresholds.min_target_wpm) ?? 130;
+  if (currentWpm !== null && currentWpm > maxTarget) warnings.push("voice_cadence:above_target_wpm");
+  if (currentWpm !== null && currentWpm < minTarget) warnings.push("voice_cadence:below_target_wpm");
+  return warnings;
+}
+
 async function voiceQualityPreflightForStory(story = {}) {
   const embedded =
     story.voice_quality_report ||
@@ -1789,14 +2206,33 @@ async function voiceQualityPreflightForStory(story = {}) {
   }
   if (!report) return null;
 
+  const audioManifest = firstObjectValue(
+    story.audio_manifest,
+    story.final_audio_manifest,
+    await readArtifactJsonObjectForStory(story, "audio_manifest.json"),
+  );
+  const timestampEvidence = await readTimestampPayloadForStory(story);
+  const segmentationEvidence = localTtsSegmentationEvidence({
+    story,
+    report,
+    audioManifest,
+    timestampPayload: timestampEvidence.payload || {},
+  });
+  const segmentationFailures = localTtsSegmentationFailures(segmentationEvidence);
+  const currentCadence = timestampCadenceEvidence(timestampEvidence.payload || {});
+  const currentCadenceFailures = timestampCadenceFailures(currentCadence, report);
+  const currentCadenceWarnings = timestampCadenceWarnings(currentCadence, report);
   const verdict = cleanText(report.verdict || report.status || report.result).toLowerCase();
   const blockers = [
     ...asArray(report.blockers || report.failures),
     ...asArray(report.cadence?.blockers),
+    ...segmentationFailures,
+    ...currentCadenceFailures,
   ].map(cleanText).filter(Boolean);
   const warnings = [
     ...asArray(report.warnings),
     ...asArray(report.cadence?.warnings),
+    ...currentCadenceWarnings,
   ].map(cleanText).filter(Boolean);
   const failed =
     blockers.length > 0 ||
@@ -1810,6 +2246,21 @@ async function voiceQualityPreflightForStory(story = {}) {
       voice_quality_report_path: reportPath || null,
       verdict: report.verdict || report.status || report.result || null,
       spoken_wpm: numberOrNull(report.cadence?.spoken_wpm),
+      ...(currentCadence
+        ? {
+            current_spoken_wpm: currentCadence.spoken_wpm,
+            current_word_timestamp_count: currentCadence.word_count,
+            current_timing_duration_seconds: currentCadence.duration_seconds,
+          }
+        : {}),
+      ...(segmentationEvidence.segmented
+        ? {
+            local_tts_segment_count: segmentationEvidence.segment_count,
+            local_tts_min_segment_words: segmentationEvidence.min_segment_words,
+            local_tts_max_segment_words: segmentationEvidence.max_segment_words,
+            local_tts_segment_gap_s: segmentationEvidence.segment_gap_s,
+          }
+        : {}),
     },
   };
 }
@@ -2536,6 +2987,7 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
     runVoiceQualityQa = voiceQualityPreflightForStory,
     runAudioSegmentQa = audioSegmentPreflightForStory,
     runTimestampAlignmentQa = timestampAlignmentPreflightForStory,
+    runVisualEntityQa = visualEntityPreflightForStory,
     runBridgeArtifactFreshnessQa = bridgeArtifactFreshnessPreflightForStory,
     runBridgeMotionGovernanceQa = bridgeMotionGovernancePreflightForStory,
     runAggregateBenchmarkQa = aggregateBenchmarkPreflightForStory,
@@ -2582,6 +3034,7 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
     const voiceQuality = await runVoiceQualityQa(cloneStoryForPreflight(story));
     const audioSegment = await runAudioSegmentQa(cloneStoryForPreflight(story));
     const timestampAlignment = await runTimestampAlignmentQa(cloneStoryForPreflight(story));
+    const visualEntityMatch = await runVisualEntityQa(cloneStoryForPreflight(story));
     const bridgeArtifactFreshness = story.scheduler_bridge_source
       ? await runBridgeArtifactFreshnessQa(cloneStoryForPreflight(story))
       : null;
@@ -2604,6 +3057,7 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
       voiceQuality,
       audioSegment,
       timestampAlignment,
+      visualEntityMatch,
       bridgeArtifactFreshness,
       bridgeMotionGovernance,
       aggregateBenchmark,
@@ -3262,6 +3716,7 @@ module.exports = {
   sourceAgePreflightForStory,
   selectCandidateSourceStories,
   timestampAlignmentPreflightForStory,
+  visualEntityPreflightForStory,
   voiceQualityPreflightForStory,
   normaliseBridgeMotionGovernanceEvidence,
   summariseQaResult,

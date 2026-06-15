@@ -44,6 +44,63 @@ test("topic longform upload requires explicit longform and topic consent", () =>
   );
 });
 
+test("weekly longform quality gate rejects short placeholder-ridden output", () => {
+  const report = weeklyCompile._private.buildLongformQualityReport({
+    kind: "weekly_roundup",
+    durationSeconds: 100,
+    scriptText:
+      "WELCOME BACK TO PULSE GAMING NNFIRST UP, A PLACEHOLDER. NEXT WEEK WE DELVE INTO [TEASER - UPCOMING GAME RELEASE].",
+    videoProbe: {
+      width: 1920,
+      height: 1080,
+      videoBitrate: 64118,
+    },
+  });
+
+  assert.equal(report.verdict, "fail");
+  assert.ok(report.blockers.includes("duration_under_10_minutes"));
+  assert.ok(report.blockers.includes("placeholder_public_copy"));
+  assert.ok(report.blockers.includes("newline_escape_artifact"));
+  assert.ok(report.blockers.includes("legacy_low_bitrate_visual"));
+});
+
+test("weekly longform quality gate accepts real 10-minute editorial output", () => {
+  const report = weeklyCompile._private.buildLongformQualityReport({
+    kind: "weekly_roundup",
+    durationSeconds: 642,
+    scriptText:
+      "This week in gaming had one clear argument: the biggest announcements were less about spectacle and more about trust. " +
+      "Each chapter names the game, the source and the player consequence before moving to the next beat. " +
+      "The final section pays off the opening by explaining which story actually changes what players should watch next.",
+    videoProbe: {
+      width: 1920,
+      height: 1080,
+      videoBitrate: 6500000,
+    },
+  });
+
+  assert.equal(report.verdict, "pass");
+  assert.deepEqual(report.blockers, []);
+});
+
+test("longform upload consent cannot override a failed longform quality report", () => {
+  assert.equal(
+    weeklyCompile._private.shouldUploadLongform({
+      kind: "weekly_roundup",
+      env: {
+        AUTO_PUBLISH: "true",
+        LONGFORM_AUTO_PUBLISH: "true",
+        WEEKLY_ROUNDUP_AUTO_PUBLISH: "true",
+      },
+      qualityReport: {
+        verdict: "fail",
+        blockers: ["duration_under_10_minutes"],
+      },
+    }),
+    false,
+  );
+});
+
 test("scheduled weekly job is disabled unless explicitly enabled", () => {
   assert.equal(
     weeklyCompile._private.shouldRunWeeklyJob({

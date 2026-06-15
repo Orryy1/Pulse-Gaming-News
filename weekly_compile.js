@@ -22,6 +22,8 @@ const COMPILATION_PATH = path.join(__dirname, 'weekly_compilation.json');
 
 const MIN_STORIES = 8;
 const MAX_STORIES = 12;
+const LONGFORM_MIN_DURATION_SECONDS = 10 * 60;
+const LONGFORM_MIN_VIDEO_BITRATE = 1500000;
 
 function truthy(value) {
   return /^(true|1|yes|on)$/i.test(String(value || '').trim());
@@ -41,8 +43,57 @@ function requiredLongformPublishFlag(kind) {
   return null;
 }
 
-function shouldUploadLongform({ kind = 'weekly_roundup', env = process.env } = {}) {
+function buildLongformQualityReport({
+  kind = 'weekly_roundup',
+  durationSeconds = 0,
+  scriptText = '',
+  videoProbe = {},
+} = {}) {
+  const text = String(scriptText || '');
+  const duration = Number(durationSeconds) || 0;
+  const bitrate = Number(videoProbe.videoBitrate || videoProbe.bit_rate || 0);
+  const blockers = [];
+  const warnings = [];
+
+  if (duration < LONGFORM_MIN_DURATION_SECONDS) {
+    blockers.push('duration_under_10_minutes');
+  }
+  if (/\[[^\]]*(placeholder|teaser|upcoming game release|todo)[^\]]*\]/i.test(text)) {
+    blockers.push('placeholder_public_copy');
+  }
+  if (/\\n/i.test(text) || /(?:^|[^A-Z])NN[A-Z]/.test(text)) {
+    blockers.push('newline_escape_artifact');
+  }
+  if (/\b(welcome back to pulse gaming|weekly dose of everything gaming news|hit that subscribe button)\b/i.test(text)) {
+    blockers.push('generic_longform_scaffold');
+  }
+  if (bitrate > 0 && bitrate < LONGFORM_MIN_VIDEO_BITRATE) {
+    blockers.push('legacy_low_bitrate_visual');
+  }
+  if (!videoProbe.width || !videoProbe.height) {
+    warnings.push('video_probe_dimensions_missing');
+  }
+
+  return {
+    schema_version: 1,
+    kind,
+    verdict: blockers.length ? 'fail' : warnings.length ? 'warn' : 'pass',
+    duration_seconds: duration,
+    min_duration_seconds: LONGFORM_MIN_DURATION_SECONDS,
+    video_bitrate: bitrate || null,
+    min_video_bitrate: LONGFORM_MIN_VIDEO_BITRATE,
+    blockers,
+    warnings,
+  };
+}
+
+function shouldUploadLongform({
+  kind = 'weekly_roundup',
+  env = process.env,
+  qualityReport = null,
+} = {}) {
   const kindFlag = requiredLongformPublishFlag(kind);
+  if (qualityReport && qualityReport.verdict === 'fail') return false;
   return (
     truthy(env.AUTO_PUBLISH) &&
     truthy(env.LONGFORM_AUTO_PUBLISH) &&
@@ -51,8 +102,14 @@ function shouldUploadLongform({ kind = 'weekly_roundup', env = process.env } = {
   );
 }
 
-function longformUploadStatus(kind, env = process.env) {
+function longformUploadStatus(kind, env = process.env, qualityReport = null) {
   const kindFlag = requiredLongformPublishFlag(kind);
+  if (qualityReport && qualityReport.verdict === 'fail') {
+    const reasons = Array.isArray(qualityReport.blockers)
+      ? qualityReport.blockers.join(',')
+      : 'quality_gate_failed';
+    return `longform quality gate failed: ${reasons}`;
+  }
   if (!truthy(env.AUTO_PUBLISH)) return 'AUTO_PUBLISH off';
   if (!truthy(env.LONGFORM_AUTO_PUBLISH)) return 'LONGFORM_AUTO_PUBLISH not enabled';
   if (!kindFlag) return `unknown longform kind: ${kind}`;
@@ -80,6 +137,31 @@ async function getAudioDuration(audioPath) {
     return parseFloat(stdout.trim()) || 600;
   } catch (err) {
     return 600;
+  }
+}
+
+async function getVideoProbe(videoPath) {
+  try {
+    const { stdout } = await execAsync(
+      `ffprobe -v error -select_streams v:0 -show_entries stream=width,height,bit_rate,avg_frame_rate -of json "${videoPath}"`,
+      { timeout: 10000 }
+    );
+    const parsed = JSON.parse(stdout || '{}');
+    const stream = Array.isArray(parsed.streams) ? parsed.streams[0] || {} : {};
+    return {
+      width: Number(stream.width) || null,
+      height: Number(stream.height) || null,
+      videoBitrate: Number(stream.bit_rate) || null,
+      avgFrameRate: stream.avg_frame_rate || null,
+    };
+  } catch (err) {
+    return {
+      width: null,
+      height: null,
+      videoBitrate: null,
+      avgFrameRate: null,
+      error: err.message,
+    };
   }
 }
 
@@ -334,11 +416,19 @@ async function compileWeekly() {
   };
 
   await assembleLongform(compilation);
+  const videoProbe = await getVideoProbe(outputPath);
+  const qualityReport = buildLongformQualityReport({
+    kind: 'weekly_roundup',
+    durationSeconds: duration,
+    scriptText: script.full_script,
+    videoProbe,
+  });
+  await fs.writeJson(path.join(outputDir, 'weekly_roundup_quality_report.json'), qualityReport, { spaces: 2 });
 
   // 8. Upload as regular YouTube video (not Short)
   let uploadResult = null;
-  const uploadStatus = longformUploadStatus('weekly_roundup');
-  if (shouldUploadLongform({ kind: 'weekly_roundup' })) {
+  const uploadStatus = longformUploadStatus('weekly_roundup', process.env, qualityReport);
+  if (shouldUploadLongform({ kind: 'weekly_roundup', qualityReport })) {
     try {
       const { uploadLongform } = require('./upload_youtube');
       uploadResult = await uploadLongform({
@@ -365,6 +455,7 @@ async function compileWeekly() {
     duration_seconds: duration,
     audio_path: audioPath,
     output_path: outputPath,
+    quality_report: qualityReport,
     chapter_timestamps: script.chapter_timestamps,
     youtube_video_id: uploadResult?.videoId || null,
     youtube_url: uploadResult?.url || null,
@@ -549,11 +640,19 @@ async function compileByTopic(topicName) {
   };
 
   await assembleLongform(compilation);
+  const videoProbe = await getVideoProbe(outputPath);
+  const qualityReport = buildLongformQualityReport({
+    kind: 'topic_compilation',
+    durationSeconds: duration,
+    scriptText: script.full_script,
+    videoProbe,
+  });
+  await fs.writeJson(path.join(outputDir, `${slug}_quality_report.json`), qualityReport, { spaces: 2 });
 
   // 8. Upload only when longform auto-publish has its own explicit consent
   let uploadResult = null;
-  const uploadStatus = longformUploadStatus('topic_compilation');
-  if (shouldUploadLongform({ kind: 'topic_compilation' })) {
+  const uploadStatus = longformUploadStatus('topic_compilation', process.env, qualityReport);
+  if (shouldUploadLongform({ kind: 'topic_compilation', qualityReport })) {
     try {
       const { uploadLongform } = require('./upload_youtube');
       uploadResult = await uploadLongform({
@@ -582,6 +681,7 @@ async function compileByTopic(topicName) {
     duration_seconds: duration,
     audio_path: audioPath,
     output_path: outputPath,
+    quality_report: qualityReport,
     chapter_timestamps: script.chapter_timestamps,
     youtube_video_id: uploadResult?.videoId || null,
     youtube_url: uploadResult?.url || null,
@@ -683,8 +783,10 @@ module.exports = {
   compileByTopic,
   _private: {
     shouldRunWeeklyJob,
+    buildLongformQualityReport,
     shouldUploadLongform,
     longformUploadStatus,
+    getVideoProbe,
     requiredLongformPublishFlag,
   },
 };

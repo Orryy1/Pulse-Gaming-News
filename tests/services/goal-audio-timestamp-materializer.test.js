@@ -537,6 +537,29 @@ test("local-clone segment splitter does not strand short comma-ending retry frag
   );
 });
 
+test("local-clone segment splitter clamps tiny max word settings to avoid choppy micro-segments", () => {
+  const script = [
+    "Fable has an open-world risk players will judge on day one.",
+    "Xbox Wire says Albion's Living Population system covers more than one thousand NPCs, each with a personality and a life that moves while you are elsewhere.",
+    "That is not a background feature.",
+    "It is the fantasy.",
+    "Fable only works if the world remembers whether you were charming, cruel, ridiculous or a total problem.",
+    "Players will judge those routines, repeated dialogue and brittle reactions until the promise cracks, or until Albion starts creating stories worth retelling.",
+    "If it feels alive, Xbox gets a world people talk about for months.",
+    "If it feels staged, the headline becomes a bug-hunt.",
+    "Follow Pulse Gaming so you never miss a beat.",
+  ].join(" ");
+
+  const segments = _testables.splitLocalTtsSegments(script, { maxWords: 8 });
+
+  assert.ok(segments.length <= 8, segments.join(" | "));
+  assert.equal(
+    segments.some((segment) => segment.trim().split(/\s+/).length < 6),
+    false,
+    segments.join(" | "),
+  );
+});
+
 test("goal audio voice metadata repair restores approved local metadata from segment sidecars", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-voice-meta-repair-"));
   const storyId = "story-voice-meta-repair";

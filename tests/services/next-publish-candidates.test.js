@@ -2408,6 +2408,147 @@ test("attachPreflightQa blocks candidates with failed voice quality evidence", a
   );
 });
 
+test("attachPreflightQa blocks stale voice reports when current timestamps prove narration is too fast", async () => {
+  const words = Array.from({ length: 101 }, (_, index) => ({
+    word: `w${index + 1}`,
+    start: Number((index * 0.31).toFixed(2)),
+    end: Number((index * 0.31 + 0.18).toFixed(2)),
+  }));
+  words[words.length - 1].end = 31.44;
+  const stories = [
+    baseStory({
+      id: "stale_voice_report_fast_current_timestamps",
+      title: "Minecraft Dungeons II Has A Co-Op Risk",
+      canonical_subject: "Minecraft Dungeons II",
+      voice_quality_report: {
+        verdict: "PASS",
+        blockers: [],
+        warnings: [],
+        cadence: {
+          spoken_wpm: 150.9,
+          blockers: [],
+          warnings: [],
+        },
+      },
+      audio_manifest: {
+        voice_provider: "local_tts",
+      },
+      word_timestamps_payload: {
+        words,
+        meta: {
+          wordTimestampSource: "local_whisper_word_alignment",
+          timestampWhisperAlignment: {
+            repaired: true,
+            script_inserted_actual_word_count: 0,
+            script_trailing_actual_word_count: 0,
+          },
+        },
+      },
+    }),
+  ];
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-06-15T13:45:00.000Z",
+  });
+
+  await attachPreflightQa(report, stories, {
+    runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+    runAggregateBenchmarkQa: async () => null,
+  });
+
+  assert.equal(report.candidates[0].preflight_qa.status, "blocked");
+  assert.ok(
+    report.candidates[0].preflight_qa.blockers.includes(
+      "voice_quality:voice_cadence:wpm_too_fast",
+    ),
+  );
+  assert.equal(
+    report.candidates[0].preflight_qa.checks.voice_quality.evidence.current_spoken_wpm,
+    192.7,
+  );
+  assert.ok(
+    report.candidates[0].preflight_qa.checks.voice_quality.warnings.includes(
+      "voice_quality_report_cadence_stale",
+    ),
+  );
+});
+
+test("attachPreflightQa blocks micro-segmented local TTS that sounds choppy despite normal WPM", async () => {
+  const stories = [
+    baseStory({
+      id: "micro_segmented_local_tts",
+      title: "Fable Has A 1,000 NPC Risk",
+      canonical_subject: "Fable",
+      scheduler_bridge_source: "goal_production_cutover",
+      voice_quality_report: {
+        verdict: "PASS",
+        blockers: [],
+        warnings: [],
+        cadence: {
+          spoken_wpm: 152.5,
+          blockers: [],
+          warnings: [],
+        },
+      },
+      audio_manifest: {
+        voice_provider: "local_tts",
+      },
+      word_timestamps_payload: {
+        words: [
+          { word: "Fable", start: 0, end: 0.28 },
+          { word: "has", start: 0.3, end: 0.44 },
+          { word: "risk", start: 0.46, end: 0.7 },
+        ],
+        meta: {
+          wordTimestampSource: "local_whisper_word_alignment",
+          timestampWhisperAlignment: { repaired: true },
+          localTts: { speakingRate: 1 },
+          segmentedLocalTtsMaterialized: true,
+          segment_count: 14,
+          segment_word_counts: [12, 8, 8, 8, 12, 8, 9, 8, 8, 6, 8, 9, 6, 9],
+          segment_gap_s: 0.08,
+        },
+      },
+    }),
+  ];
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-06-15T13:20:00.000Z",
+  });
+
+  await attachPreflightQa(report, stories, {
+    runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+    runAggregateBenchmarkQa: async () => null,
+  });
+
+  assert.equal(report.candidates[0].preflight_qa.status, "blocked");
+  assert.ok(
+    report.candidates[0].preflight_qa.blockers.includes(
+      "voice_quality:local_tts_micro_segmented_narration",
+    ),
+  );
+  assert.equal(
+    report.candidates[0].preflight_qa.checks.voice_quality.evidence.local_tts_segment_count,
+    14,
+  );
+});
+
 test("attachPreflightQa blocks local TTS candidates rendered below native rate", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-local-tts-rate-preflight-"));
   const timestampsPath = path.join(tmp, "slow_local_tts_timestamps.json");
@@ -2483,6 +2624,97 @@ test("attachPreflightQa blocks local TTS candidates rendered below native rate",
     ),
   );
   assert.equal(check.evidence.local_tts_speaking_rate, 0.82);
+});
+
+test("attachPreflightQa blocks cross-story direct motion when visual provenance does not match the subject", async () => {
+  const clipPath = "output/video_cache/fresh_xbox_fable_living_population_20260610_v4_clip_1.mp4";
+  const stories = [
+    baseStory({
+      id: "fable_wrong_motion",
+      title: "Fable Has A 1,000 NPC Risk",
+      selected_title: "Fable Has A 1,000 NPC Risk",
+      canonical_subject: "Fable",
+      scheduler_bridge_source: "goal_production_cutover",
+      render_lane: "visual_v4_production",
+      render_quality_class: "premium",
+      visual_v4_bridge_video_clips: [
+        {
+          id: "fable_direct_motion_1",
+          path: clipPath,
+          source_url:
+            "local://existing-official-direct-motion/fresh_xbox_fable_living_population_20260610/fable_clip.mp4",
+          source_type: "licensed_direct_media_url",
+          source_family: "direct_motion_1",
+          media_kind: "direct_video",
+        },
+      ],
+      video_clips: [clipPath],
+      footage_inventory: {
+        motion_inventory: {
+          accepted_local_clips: [
+            {
+              id: "segment_direct_motion_1",
+              path: clipPath,
+              source_url:
+                "https://cms-assets.xboxservices.com/assets/6a/5c/6a5c6baf-4d18-4639-b58e-e04d1d027d5e.mp4",
+              source_family: "xbox_product_minecraft_dungeons_ii_media_02_6a5c6baf",
+              source_type: "licensed_direct_media_url",
+              media_kind: "direct_video",
+              rights_basis: "official_direct_media",
+            },
+          ],
+        },
+      },
+      rights_ledger: {
+        verdict: "pass",
+        assets: [
+          {
+            id: "segment_direct_motion_1",
+            path: clipPath,
+            source_url:
+              "https://cms-assets.xboxservices.com/assets/6a/5c/6a5c6baf-4d18-4639-b58e-e04d1d027d5e.mp4",
+            source_family: "xbox_product_minecraft_dungeons_ii_media_02_6a5c6baf",
+            source_type: "licensed_direct_media_url",
+            media_kind: "direct_video",
+            rights_basis: "official_direct_media",
+          },
+        ],
+      },
+      ...bridgeVisualEvidence("Fable"),
+      sfx_manifest: bridgeSfxEvidence(),
+    }),
+  ];
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-06-15T13:25:00.000Z",
+  });
+
+  await attachPreflightQa(report, stories, {
+    runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVoiceQualityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+    runAggregateBenchmarkQa: async () => null,
+  });
+
+  assert.equal(report.candidates[0].preflight_qa.status, "blocked");
+  assert.ok(
+    report.candidates[0].preflight_qa.blockers.includes(
+      "visual_entity_match:direct_motion_subject_mismatch",
+    ),
+  );
+  assert.equal(
+    report.candidates[0].preflight_qa.checks.visual_entity_match.evidence.mismatched_motion_assets[0]
+      .source_family,
+    "xbox_product_minecraft_dungeons_ii_media_02_6a5c6baf",
+  );
 });
 
 test("attachPreflightQa blocks scheduler candidates rejected by aggregate Goal 10 readiness", async () => {

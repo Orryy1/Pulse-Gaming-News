@@ -2029,6 +2029,10 @@ test("goal dry-run publisher skips stories the scheduler excluded because they a
   assert.equal(plan.summary.blocked_story_count, 0);
   assert.equal(plan.summary.skipped_story_count, 1);
   assert.equal(plan.summary.planned_action_count, 0);
+  assert.equal(plan.overall_verdict, "AMBER");
+  assert.equal(plan.ready_for_unattended_publish, false);
+  assert.ok(plan.readiness_reasons.includes("no_enabled_platform_publish_actions"));
+  assert.equal(plan.safe_publish_plan.required_next_step, "rebuild_fresh_green_candidate_buffer");
   assert.equal(plan.skipped_stories[0].reason, "already_has_public_platform_id:youtube_post_id,youtube_url");
 });
 

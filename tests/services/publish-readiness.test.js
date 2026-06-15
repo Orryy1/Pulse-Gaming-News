@@ -1968,6 +1968,53 @@ test("resolvePublishReadinessNextAction: ready guarded handoff takes priority ov
   assert.doesNotMatch(nextAction, /Do not publish unattended/);
 });
 
+test("resolvePublishReadinessNextAction: zero current dry-run actions do not claim guarded dispatch is ready", () => {
+  const nextAction = pr.resolvePublishReadinessNextAction({
+    overall: "amber",
+    pillars: {
+      publish_cadence: { verdict: "green" },
+      strict_dry_run_control: {
+        verdict: "amber",
+        reason: "strict_dry_run_not_publish_ready",
+        raw: {
+          ready_story_count: 0,
+          platform_publish_now_action_count: 0,
+          reviewable_enabled_action_count: 0,
+          blocked_action_count: 0,
+        },
+      },
+      human_review_approval_gate: {
+        verdict: "green",
+        raw: {
+          approved_action_count: 9,
+          invalid_decision_count: 0,
+          guarded_dispatch_eligible: true,
+        },
+      },
+      guarded_dispatch_preflight: {
+        verdict: "green",
+        raw: {
+          dispatch_ready_action_count: 9,
+          blocked_action_count: 0,
+          safety_blocker_count: 0,
+          ready_for_guarded_dispatch: true,
+        },
+      },
+      guarded_dispatch_executor_preflight: {
+        verdict: "green",
+        raw: {
+          handoff_ready_action_count: 9,
+          blocked_selected_action_count: 0,
+          ready_for_live_executor_handoff: true,
+        },
+      },
+    },
+  });
+
+  assert.doesNotMatch(nextAction, /Guarded enabled-platform dispatch is ready/);
+  assert.match(nextAction, /fresh GREEN candidate buffer|strict dry-run/i);
+});
+
 test("resolvePublishReadinessNextAction: scheduler-scoped approval does not require manual executor IDs", () => {
   const nextAction = pr.resolvePublishReadinessNextAction({
     overall: "amber",

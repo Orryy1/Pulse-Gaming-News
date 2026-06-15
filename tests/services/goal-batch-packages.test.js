@@ -12,6 +12,7 @@ const {
   prepareStoryForGoalProof,
   writeGoalBatchPackages,
 } = require("../../lib/goal-batch-packages");
+const { buildGoalProofPackage } = require("../../lib/goal-proof-package");
 const {
   parseArgs: parseGoalBatchArgs,
   selectStoriesForGoalBatch,
@@ -164,6 +165,80 @@ test("goal batch packages summarise GREEN and blocked story packages honestly", 
   assert.equal(batch.summary.green_count, 1);
   assert.equal(batch.story_packages[0].verdict, "GREEN");
   assert.equal(batch.story_packages[1].verdict, "RED");
+});
+
+test("goal proof package publish verdict turns RED when transcript scorecard blocks", () => {
+  const story = {
+    ...greenStory("weak-transcript"),
+    full_script:
+      "This story should stay in review until it has a named game, studio or platform subject. The source may be real, but Pulse needs the actual subject before this becomes a video. Follow Pulse Gaming so you never miss a beat.",
+  };
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsFor(story),
+    generatedAt: "2026-05-21T20:05:00.000Z",
+  });
+
+  assert.equal(pack.script_scorecard.verdict, "rewrite_required");
+  assert.equal(pack.publish_verdict.verdict, "RED");
+  assert.equal(pack.publish_verdict.can_auto_publish, false);
+  assert.ok(pack.publish_verdict.reason_codes.some((code) => code.startsWith("script_scorecard:")));
+  assert.equal(pack.platform_publish_manifest.publish_status, "RED");
+});
+
+test("goal proof package publish verdict turns RED when motion quality blocks", () => {
+  const story = {
+    ...greenStory("weak-motion"),
+    video_clips: [],
+    visual_v4_local_motion_clips: [],
+    motion_clips: [],
+  };
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsFor(story),
+    generatedAt: "2026-05-21T20:05:00.000Z",
+  });
+
+  assert.equal(pack.script_scorecard.verdict, "viral_ready");
+  assert.equal(pack.publish_verdict.verdict, "RED");
+  assert.equal(pack.publish_verdict.can_auto_publish, false);
+  assert.ok(pack.publish_verdict.reason_codes.includes("footage:v4_motion_blocked"));
+  assert.equal(pack.platform_publish_manifest.publish_status, "RED");
+});
+
+test("goal proof package publish verdict turns RED when local TTS was tempo-stretched", () => {
+  const story = {
+    ...greenStory("stretched-voice"),
+    audio_manifest: {
+      approved_voice_path: {
+        verdict: "rejected",
+        blockers: ["local_tts_tempo_stretch_applied"],
+      },
+      narration: {
+        provider: "local",
+        generation: {
+          tempo_stretch: {
+            applied: true,
+            input_duration_s: 42.4,
+            output_duration_s: 50.8,
+          },
+        },
+      },
+    },
+  };
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsFor(story),
+    generatedAt: "2026-05-21T20:05:00.000Z",
+  });
+
+  assert.equal(pack.publish_verdict.verdict, "RED");
+  assert.equal(pack.publish_verdict.can_auto_publish, false);
+  assert.ok(pack.publish_verdict.reason_codes.includes("audio:local_tts_tempo_stretch_applied"));
+  assert.equal(pack.platform_publish_manifest.publish_status, "RED");
 });
 
 test("goal batch CLI can select repaired live DB stories for governed packaging", () => {
@@ -400,10 +475,25 @@ test("goal batch package proof preparation writes story-specific current scored 
       },
       required: [/Nintendo/i, /scalpers|restrictions|playtime|real fans/i],
     },
+    {
+      name: "Forza Horizon 6 save warning",
+      story: {
+        id: "rss_forza_save_warning",
+        title: "Forza Horizon 6 players advised to apply new patch to avoid losing save data and progress",
+        source_type: "rss",
+        source_name: "Eurogamer",
+        article_url: "https://www.eurogamer.net/forza-horizon-6-lost-save-issues",
+        full_script:
+          "Forza Horizon 6 is getting a content push that has to prove it is more than maintenance.",
+      },
+      title: "Forza Horizon 6 Has A Save-Wipe Warning",
+      required: [/save data and progress/i, /progress loss/i, /garage|tune|rare unlock/i],
+    },
   ];
 
   for (const item of cases) {
     const prepared = prepareStoryForGoalProof(item.story);
+    if (item.title) assert.equal(prepared.public_title, item.title, item.name);
     for (const required of item.required) {
       assert.match(prepared.full_script, required, item.name);
     }
@@ -437,12 +527,34 @@ test("goal batch package proof preparation resolves current franchise subjects f
     full_script:
       "Everything We Know About Gears Of War: E-Day, Xbox's Big Exclusive For 2026's paid crowd just sent a loud warning. Follow Pulse Gaming so you never miss a beat.",
   });
+  const enginefall = prepareStoryForGoalProof({
+    id: "rss_enginefall_preview",
+    title: "Enginefall preview: Snowpiercer meets Rust is the most innovative survival game in years",
+    source_type: "rss",
+    source_name: "Polygon",
+    article_url: "https://www.polygon.com/enginefall-preview",
+    canonical_subject: "Enginefall preview",
+    full_script:
+      "Enginefall preview has the one kind of reveal fans cannot hand-wave: actual play. Follow Pulse Gaming so you never miss a beat.",
+  });
+  const penguin = prepareStoryForGoalProof({
+    id: "rss_penguin_colony_demo",
+    title: "Penguin Colony's demo shows life as a flightless bird is lonely, scary, awkward, and cosmically intriguing",
+    source_type: "rss",
+    source_name: "Rock Paper Shotgun",
+    article_url: "https://www.rockpapershotgun.com/penguin-colony-demo",
+    canonical_subject: "Penguin Colony's demo",
+    full_script:
+      "Penguin Colony's demo has the one kind of reveal fans cannot hand-wave: actual play. Follow Pulse Gaming so you never miss a beat.",
+  });
 
   assert.equal(halo.canonical_subject, "Halo: Campaign Evolved");
   assert.doesNotMatch(halo.full_script, /^This Game is the name to watch here/i);
   assert.equal(gears.canonical_subject, "Gears Of War: E-Day");
   assert.match(gears.full_script, /Gears Of War: E-Day/i);
   assert.doesNotMatch(gears.full_script, /paid crowd|Steam player spike/i);
+  assert.equal(enginefall.canonical_subject, "Enginefall");
+  assert.equal(penguin.canonical_subject, "Penguin Colony");
 });
 
 test("goal batch package proof preparation repairs current scored story subjects, titles and scripts", () => {

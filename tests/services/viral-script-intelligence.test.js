@@ -608,3 +608,26 @@ test("viral script intelligence approves update scripts with concrete player-vis
   assert.ok(result.viral_score >= 85, JSON.stringify(result.scores));
   assert.deepEqual(result.blockers, []);
 });
+
+test("viral script intelligence approves save-loss patch scripts with concrete player stakes", () => {
+  const script =
+    "Forza Horizon 6 has the kind of bug players do not forgive quickly. " +
+    "Eurogamer says players are being told to apply a new patch to avoid losing save data and progress. " +
+    "That is bigger than a normal hotfix because progress loss attacks the one thing racing games ask for most: time. " +
+    "The useful test is simple. If the patch stops the wipe, this becomes a scary week. " +
+    "If it does not, every garage, tune and rare unlock feels less safe. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "forza-save-loss",
+      title: "Forza Horizon 6 Has A Save-Wipe Warning",
+      source_name: "Eurogamer",
+    },
+    script,
+  });
+
+  assert.equal(result.verdict, "viral_ready", JSON.stringify(result, null, 2));
+  assert.ok(result.viral_score >= 75, JSON.stringify(result.scores));
+  assert.deepEqual(result.blockers, []);
+});

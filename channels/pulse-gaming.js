@@ -157,6 +157,7 @@ ANGLE-FIRST EDITORIAL CONTRACT:
 - Do not use stock pivot lines like "The catch is simple", "The debate is simple" or "The real question is". Say the actual contradiction, player split or consequence directly.
 - For gameplay, remake, trailer, demo and hands-on stories, put a tangible source detail before release dates or platform lists: combat, vehicles, co-op, level design, camera feel, enemies, mission structure or another specific playable change.
 - Do not open with abstract test language like "the debate has a real stress test". Open on the named mission, feature, price, footage, date or player consequence.
+- Never let a vague update story pass as insight. If the source only says "major update", "last chance" or "coming later this month", the script must name the exact player-visible change from the source: feature, mode, mechanic, date, price, platform change or playable proof. If the source does not provide that proof, make the uncertainty the story instead of pretending the update is concrete.
 
 HOOK: THIS IS THE MOST IMPORTANT PART OF THE SCRIPT.
 The first 3 WORDS decide whether the viewer keeps watching. Those three words must stop the scroll. The first sentence must open a knowledge gap — the viewer must think "wait, WHAT?" and feel unable to scroll away.

@@ -291,6 +291,9 @@ test("Pulse channel prompt requires angle-first scripts with useful hot takes", 
   assert.match(pulseChannel.systemPrompt, /hot take/i);
   assert.match(pulseChannel.systemPrompt, /curiosity gap/i);
   assert.match(pulseChannel.systemPrompt, /payoff/i);
+  assert.match(pulseChannel.systemPrompt, /vague update/i);
+  assert.match(pulseChannel.systemPrompt, /player-visible change/i);
+  assert.match(pulseChannel.systemPrompt, /feature, mode, mechanic, date, price, platform change or playable proof/i);
 });
 
 test("processor quality scorer penalises banned stock pivots instead of rewarding them", () => {

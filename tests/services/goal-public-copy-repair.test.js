@@ -635,7 +635,7 @@ test("public copy package repair refreshes stale script scorecards before schedu
   assert.ok(savedScorecard.viral_score >= 75, JSON.stringify(savedScorecard, null, 2));
 });
 
-test("public copy package repair gives Dragonwilds update scripts player stakes before scheduler preflight", async () => {
+test("public copy package repair blocks Dragonwilds update scripts without concrete source proof before scheduler preflight", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-public-copy-dragonwilds-score-"));
   const artifactDir = path.join(root, "batch", "dragonwilds");
   await fs.ensureDir(artifactDir);
@@ -670,26 +670,22 @@ test("public copy package repair gives Dragonwilds update scripts player stakes 
     generatedAt: "2026-06-12T16:20:00.000Z",
   });
 
-  assert.equal(report.summary.changed_count, 1);
-  assert.equal(report.changed[0].status, "script_scorecard_repaired");
+  assert.equal(report.summary.changed_count, 0);
+  assert.equal(report.summary.blocked_count, 1);
+  assert.equal(report.blocked[0].status, "blocked");
+  assert.ok(
+    report.blocked[0].blockers.includes("script_scorecard:vague_update_without_concrete_proof"),
+    JSON.stringify(report.blocked[0], null, 2),
+  );
   const savedManifest = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
   const savedScorecard = await fs.readJson(path.join(artifactDir, "script_scorecard.json"));
-  assert.equal(savedScorecard.verdict, "viral_ready");
-  assert.equal(savedScorecard.blockers.length, 0, JSON.stringify(savedScorecard, null, 2));
-  assert.match(savedManifest.first_spoken_line, /RuneScape Dragonwilds is getting one last chance/i);
-  assert.match(savedManifest.narration_script, /survival games are not judged by patch notes/i);
-  assert.match(savedManifest.narration_script, /starts feeling like homework/i);
-  assert.match(savedManifest.narration_script, /the rhythm feels sharper/i);
-  assert.match(savedManifest.narration_script, /sample for one weekend/i);
-  assert.match(savedManifest.narration_script, /before full launch/i);
-  assert.match(savedManifest.narration_script, /It has to prove this is a RuneScape game/i);
-  assert.doesNotMatch(savedManifest.narration_script, /Dragonwilds has to prove/i);
-  assert.doesNotMatch(savedManifest.narration_script, /\bloop\b/i);
-  assert.doesNotMatch(savedManifest.narration_script, /\b1\.0\b/);
-  assert.doesNotMatch(savedManifest.narration_script, /Patch size is the boring part|momentum before 1\.0/i);
+  assert.equal(savedScorecard.verdict, "rewrite_required");
+  assert.deepEqual(savedScorecard.blockers, ["missing_relatable_stakes"]);
+  assert.match(savedManifest.narration_script, /Rock Paper Shotgun says the survival spin-off is getting another major update/i);
+  assert.doesNotMatch(savedManifest.narration_script, /RuneScape Dragonwilds is getting one last chance to win back Early Access players/i);
 });
 
-test("public copy package repair rewrites Dragonwilds loop phrasing even when scorecard is green", async () => {
+test("public copy package repair blocks old Dragonwilds loop phrasing even when cached scorecard is green", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-public-copy-dragonwilds-loop-"));
   const artifactDir = path.join(root, "batch", "dragonwilds-loop");
   await fs.ensureDir(artifactDir);
@@ -724,10 +720,13 @@ test("public copy package repair rewrites Dragonwilds loop phrasing even when sc
   });
 
   const savedManifest = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
-  assert.equal(report.summary.changed_count, 1);
-  assert.match(report.changed[0].status, /changed|script_scorecard_repaired/);
-  assert.match(savedManifest.narration_script, /starts feeling like homework/i);
-  assert.doesNotMatch(savedManifest.narration_script, /\bloop\b/i);
+  assert.equal(report.summary.changed_count, 0);
+  assert.equal(report.summary.blocked_count, 1);
+  assert.ok(
+    report.blocked[0].blockers.includes("script_scorecard:vague_update_without_concrete_proof"),
+    JSON.stringify(report.blocked[0], null, 2),
+  );
+  assert.equal(savedManifest.narration_script, script);
 });
 
 test("public copy package repair rewrites no-curiosity script scorecards before scheduler preflight", async () => {

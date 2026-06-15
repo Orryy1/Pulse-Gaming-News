@@ -1339,12 +1339,14 @@ test("scheduler publish handler uses guarded executor when live guarded auto-pub
   const publisherPath = require.resolve("../../publisher");
   const dbPath = require.resolve("../../lib/db");
   const notifyPath = require.resolve("../../notify");
+  const watchdogPath = require.resolve("../../lib/ops/publish-window-watchdog");
   const originalCache = new Map([
     [jobHandlersPath, require.cache[jobHandlersPath]],
     [executorPath, require.cache[executorPath]],
     [publisherPath, require.cache[publisherPath]],
     [dbPath, require.cache[dbPath]],
     [notifyPath, require.cache[notifyPath]],
+    [watchdogPath, require.cache[watchdogPath]],
   ]);
   const originalEnv = {
     AUTO_PUBLISH: process.env.AUTO_PUBLISH,
@@ -1431,6 +1433,20 @@ test("scheduler publish handler uses guarded executor when live guarded auto-pub
       loaded: true,
       exports: async () => {},
     };
+    require.cache[watchdogPath] = {
+      id: watchdogPath,
+      filename: watchdogPath,
+      loaded: true,
+      exports: {
+        async runPublishWindowWatchdog() {
+          return {
+            verdict: "green",
+            safe_to_publish_window: true,
+            blockers: [],
+          };
+        },
+      },
+    };
     delete require.cache[jobHandlersPath];
 
     const { handlers } = require("../../lib/job-handlers");
@@ -1498,12 +1514,14 @@ test("scheduler publish handler adapts scheduler dispatch plan when explicit exe
   const publisherPath = require.resolve("../../publisher");
   const dbPath = require.resolve("../../lib/db");
   const notifyPath = require.resolve("../../notify");
+  const watchdogPath = require.resolve("../../lib/ops/publish-window-watchdog");
   const originalCache = new Map([
     [jobHandlersPath, require.cache[jobHandlersPath]],
     [executorPath, require.cache[executorPath]],
     [publisherPath, require.cache[publisherPath]],
     [dbPath, require.cache[dbPath]],
     [notifyPath, require.cache[notifyPath]],
+    [watchdogPath, require.cache[watchdogPath]],
   ]);
   const originalEnv = {
     AUTO_PUBLISH: process.env.AUTO_PUBLISH,
@@ -1595,6 +1613,20 @@ test("scheduler publish handler adapts scheduler dispatch plan when explicit exe
       loaded: true,
       exports: async () => {},
     };
+    require.cache[watchdogPath] = {
+      id: watchdogPath,
+      filename: watchdogPath,
+      loaded: true,
+      exports: {
+        async runPublishWindowWatchdog() {
+          return {
+            verdict: "green",
+            safe_to_publish_window: true,
+            blockers: [],
+          };
+        },
+      },
+    };
     delete require.cache[jobHandlersPath];
 
     const { handlers } = require("../../lib/job-handlers");
@@ -1673,12 +1705,14 @@ test("scheduler publish handler prefers newer scheduler dispatch plan over stale
   const publisherPath = require.resolve("../../publisher");
   const dbPath = require.resolve("../../lib/db");
   const notifyPath = require.resolve("../../notify");
+  const watchdogPath = require.resolve("../../lib/ops/publish-window-watchdog");
   const originalCache = new Map([
     [jobHandlersPath, require.cache[jobHandlersPath]],
     [executorPath, require.cache[executorPath]],
     [publisherPath, require.cache[publisherPath]],
     [dbPath, require.cache[dbPath]],
     [notifyPath, require.cache[notifyPath]],
+    [watchdogPath, require.cache[watchdogPath]],
   ]);
   const originalEnv = {
     AUTO_PUBLISH: process.env.AUTO_PUBLISH,
@@ -1765,6 +1799,20 @@ test("scheduler publish handler prefers newer scheduler dispatch plan over stale
       filename: notifyPath,
       loaded: true,
       exports: async () => {},
+    };
+    require.cache[watchdogPath] = {
+      id: watchdogPath,
+      filename: watchdogPath,
+      loaded: true,
+      exports: {
+        async runPublishWindowWatchdog() {
+          return {
+            verdict: "green",
+            safe_to_publish_window: true,
+            blockers: [],
+          };
+        },
+      },
     };
     delete require.cache[jobHandlersPath];
 

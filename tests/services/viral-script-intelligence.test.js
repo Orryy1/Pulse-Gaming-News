@@ -455,3 +455,53 @@ test("viral script intelligence recognises anti-cheat trust stories as publishab
   assert.ok(result.scores.insight_density >= 80, JSON.stringify(result.scores));
   assert.deepEqual(result.blockers, []);
 });
+
+test("viral script intelligence rejects polished but vague update narration", () => {
+  const script =
+    "RuneScape Dragonwilds is getting one last chance to win back Early Access players. " +
+    "Rock Paper Shotgun says the survival spin-off has another major update coming later this month before full launch. " +
+    "The risk is practical. " +
+    "Survival games are not judged by patch notes. " +
+    "They are judged when chopping, crafting and fighting either clicks, or starts feeling like homework. " +
+    "It has to prove this is a RuneScape game people can actually main, not a side experiment they sample for one weekend. " +
+    "If the rhythm feels sharper, launch day has a foundation. " +
+    "If it does not, full launch starts by asking players to trust it again. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "dragonwilds-vague-update",
+      title: "Dragonwilds Has One Last Early Access Test",
+      source_name: "Rock Paper Shotgun",
+    },
+    script,
+  });
+
+  assert.equal(result.verdict, "rewrite_required", JSON.stringify(result, null, 2));
+  assert.ok(result.blockers.includes("vague_update_without_concrete_proof"), JSON.stringify(result));
+  assert.ok(result.blockers.includes("soft_payoff_language"), JSON.stringify(result));
+});
+
+test("viral script intelligence approves update scripts with concrete player-visible proof", () => {
+  const script =
+    "RuneScape Dragonwilds has one last chance to prove its survival loop is not homework. " +
+    "Rock Paper Shotgun says the next Early Access update is adding the heat system players have been waiting on before 1.0. " +
+    "That is not just balance polish; it changes how long you can push into dangerous zones before crafting stops being a menu and starts becoming a survival problem. " +
+    "The argument is whether Dragonwilds can feel like a real RuneScape main game, or just a familiar name wrapped around another tree-punching loop. " +
+    "If the heat update makes exploration riskier without slowing everything down, launch suddenly has a reason to pull lapsed players back. " +
+    "If it does not, 1.0 starts with a trust problem. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "dragonwilds-concrete-update",
+      title: "Dragonwilds Has One Last Early Access Test",
+      source_name: "Rock Paper Shotgun",
+    },
+    script,
+  });
+
+  assert.equal(result.verdict, "viral_ready", JSON.stringify(result, null, 2));
+  assert.ok(result.viral_score >= 85, JSON.stringify(result.scores));
+  assert.deepEqual(result.blockers, []);
+});

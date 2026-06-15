@@ -143,7 +143,7 @@ function assertDurationRepairPublicCopyPass(canonical, job = {}) {
   return repair;
 }
 
-test("normal duration repair extends Dragonwilds without ASR-fragile title repeats", () => {
+test("normal duration repair holds Dragonwilds when update source lacks concrete proof", () => {
   const canonical = {
       story_id: "dragonwilds",
       canonical_subject: "RuneScape: Dragonwilds",
@@ -178,14 +178,19 @@ test("normal duration repair extends Dragonwilds without ASR-fragile title repea
     description: "RuneScape: Dragonwilds has a major update before full launch. Source: Rock Paper Shotgun.",
     thumbnail_headline: "DRAGONWILDS EARLY ACCESS",
   }).verdict, "pass");
-  assert.equal(buildViralScriptIntelligence({
+  const scorecard = buildViralScriptIntelligence({
     story: {
       id: "dragonwilds",
       title: "Dragonwilds Has One Last Early Access Test",
       source_name: "Rock Paper Shotgun",
     },
     script: repair.script,
-  }).blockers.length, 0);
+  });
+  assert.equal(scorecard.verdict, "rewrite_required");
+  assert.ok(
+    scorecard.blockers.includes("vague_update_without_concrete_proof"),
+    JSON.stringify(scorecard, null, 2),
+  );
 
   const compactRepair = extendScriptToTarget(
     {

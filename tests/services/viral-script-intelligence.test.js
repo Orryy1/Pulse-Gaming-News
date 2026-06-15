@@ -482,6 +482,109 @@ test("viral script intelligence rejects polished but vague update narration", ()
   assert.ok(result.blockers.includes("soft_payoff_language"), JSON.stringify(result));
 });
 
+test("viral script intelligence rejects generic fallback watchlist sludge", () => {
+  const script =
+    "Over Hill's Next Fest demo just picked up a player-facing detail worth watching. " +
+    "PC Gamer says Over the Hill's Next Fest demo promises a stylized off-roading game for people who actually like to drive. " +
+    "The important bit is whether this changes what people buy, play, wait for or skip. " +
+    "That is the gap to watch now: hype is easy, but the player consequence has to show up on screen. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "over-hill-template-sludge",
+      title: "Over Hill's Next Fest Demo Deal Has One Catch",
+      source_name: "PC Gamer",
+    },
+    script,
+  });
+
+  assert.equal(result.verdict, "rewrite_required", JSON.stringify(result, null, 2));
+  assert.ok(result.blockers.includes("generic_fallback_watchlist_language"), JSON.stringify(result));
+});
+
+test("viral script intelligence rejects vague platform-source attribution and HTML entities", () => {
+  const script =
+    "Hades II has the one kind of reveal fans cannot hand-wave: actual play. " +
+    "YouTube says Hades II - Xbox &amp; PlayStation Trailer. " +
+    "Players can finally judge the specifics on screen: camera distance, attack timing and whether fights stay readable when they get busy. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "hades-youtube-says",
+      title: "Hades II Just Broke PlayStation's Silence",
+      source_name: "YouTube",
+    },
+    script,
+  });
+
+  assert.equal(result.verdict, "rewrite_required", JSON.stringify(result, null, 2));
+  assert.ok(result.blockers.includes("vague_source_attribution"), JSON.stringify(result));
+  assert.ok(result.blockers.includes("html_entity_in_public_script"), JSON.stringify(result));
+});
+
+test("viral script intelligence rejects ungrounded speculative source phrasing", () => {
+  const script =
+    "PlayStation's about to make your PS5 look like a bargain. " +
+    "Sources suggest Sony is planning another price hike across Europe in the coming months. " +
+    "The timing is curious given mid-gen refresh rumours and console market pressure. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "playstation-sources-suggest",
+      title: "PlayStation Just Got More Expensive",
+      source_name: "Reddit",
+    },
+    script,
+  });
+
+  assert.equal(result.verdict, "rewrite_required", JSON.stringify(result, null, 2));
+  assert.ok(result.blockers.includes("ungrounded_speculative_attribution"), JSON.stringify(result));
+  assert.ok(result.blockers.includes("vague_source_attribution"), JSON.stringify(result));
+});
+
+test("viral script intelligence rejects generated placeholder title templates", () => {
+  const script =
+    "Forza Horizon 6 should stay in review until it has a sharper player consequence. " +
+    "GameSpot says Forza Horizon 6 Signals A New Peak For Open World Driving Games. " +
+    "The source is real, but the angle does not yet have a must-watch player consequence. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "forza-placeholder-title",
+      title: "Forza Horizon 6 Just Got A New Signal",
+      source_name: "GameSpot",
+    },
+    script,
+  });
+
+  assert.equal(result.verdict, "rewrite_required", JSON.stringify(result, null, 2));
+  assert.ok(result.blockers.includes("generic_title_template"), JSON.stringify(result));
+});
+
+test("viral script intelligence rejects article-fragment subjects as narration hooks", () => {
+  const script =
+    "Hide-and-seek game where you paint just blinked in one of the year's most crowded release windows. " +
+    "PCGamer says the body-paint stealth game sold a million copies in four days. " +
+    "The argument is whether that sudden spike turns into an actual player base. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "article-fragment-subject",
+      title: "Hide-and-seek game where you paint your body to blend in sells a million copies in four days",
+      source_name: "PCGamer",
+    },
+    script,
+  });
+
+  assert.equal(result.verdict, "rewrite_required", JSON.stringify(result, null, 2));
+  assert.ok(result.blockers.includes("title_fragment_subject_language"), JSON.stringify(result));
+});
+
 test("viral script intelligence approves update scripts with concrete player-visible proof", () => {
   const script =
     "RuneScape Dragonwilds has one last chance to prove its survival loop is not homework. " +

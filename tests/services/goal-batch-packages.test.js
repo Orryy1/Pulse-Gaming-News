@@ -985,3 +985,93 @@ test("goal batch packages diversify repeated fallback title patterns across a ba
   assert.equal(Math.max(...Object.values(suffixCounts)), 3);
   assert.ok(new Set(titles).size > 3);
 });
+
+test("goal batch package fallback scripts avoid generic watchlist sludge", () => {
+  const prepared = prepareStoryForGoalProof({
+    id: "over-hill-next-fest",
+    title: "Over the Hill's Next Fest demo promises stylized off-roading",
+    canonical_subject: "Over the Hill",
+    source_name: "PC Gamer",
+    source_type: "rss",
+    article_url: "https://www.pcgamer.com/games/racing/over-the-hills-next-fest-demo/",
+    full_script: "",
+  });
+
+  assert.doesNotMatch(
+    prepared.full_script,
+    /picked up a player-facing detail|important bit is whether|gap to watch|new signal|new reason to watch/i,
+  );
+  assert.match(prepared.full_script, /Over the Hill/i);
+  assert.match(prepared.full_script, /PC Gamer/i);
+});
+
+test("goal batch package generic RSS fallback stays review-held instead of pretending to be must-watch", () => {
+  const prepared = prepareStoryForGoalProof({
+    id: "rpg-maker-forums-closing",
+    title: "RPG Maker forums are closing, nearly 15 years of resources at risk",
+    canonical_subject: "RPG Maker forums",
+    source_name: "Eurogamer",
+    source_type: "rss",
+    article_url: "https://www.eurogamer.net/rpg-maker-forums-archive",
+    full_script: "",
+  });
+
+  assert.doesNotMatch(
+    prepared.full_script,
+    /picked up a player-facing detail|important bit is whether|gap to watch|new signal|new reason to watch/i,
+  );
+  assert.match(prepared.full_script, /Eurogamer/i);
+  assert.match(prepared.full_script, /review/i);
+});
+
+test("goal batch package does not turn article-description fragments into narration subjects", () => {
+  const prepared = prepareStoryForGoalProof({
+    id: "bodypaint-hide-seek",
+    title: "Hide-and-seek game where you paint your body to blend in sells a million copies in four days",
+    canonical_subject: "Hide-and-seek game where you paint",
+    source_name: "PCGamer",
+    source_type: "rss",
+    article_url: "https://www.pcgamer.com/games/action/hide-and-seek-paint-game-million-copies/",
+    full_script: "",
+  });
+
+  assert.equal(prepared.canonical_subject, "This Game");
+  assert.doesNotMatch(
+    prepared.full_script,
+    /Hide-and-seek game where you paint just blinked|Hide-and-seek game where you paint should stay/i,
+  );
+  assert.match(prepared.full_script, /should stay in review/i);
+});
+
+test("goal batch package extracts named subjects from awkward feed headlines", () => {
+  const expanse = prepareStoryForGoalProof({
+    id: "expanse-osiris",
+    title: "The Expanse: Osiris Reborn | Official Gameplay Trailer | Xbox Partner Preview 2026",
+    source_name: "Xbox",
+    source_type: "rss",
+    article_url: "https://news.xbox.com/en-us/example-expanse",
+    full_script: "",
+  });
+  const composer = prepareStoryForGoalProof({
+    id: "deus-ex-composer",
+    title:
+      "It's brutal out there: Deus Ex and Unreal composer says he's submitted 50 resumes and gotten one interview in the last year",
+    source_name: "PC Gamer",
+    source_type: "rss",
+    article_url: "https://www.pcgamer.com/games/example-deus-ex-composer",
+    full_script: "",
+  });
+  const nintendo = prepareStoryForGoalProof({
+    id: "nintendo-style",
+    title: "Nintendo, You Better Not Be Giving Up On Style",
+    source_name: "Kotaku",
+    source_type: "rss",
+    article_url: "https://kotaku.com/example-nintendo-style",
+    full_script: "",
+  });
+
+  assert.equal(expanse.canonical_subject, "The Expanse: Osiris Reborn");
+  assert.equal(composer.canonical_subject, "Deus Ex Composer");
+  assert.equal(nintendo.canonical_subject, "Nintendo");
+  assert.doesNotMatch(`${expanse.full_script}\n${composer.full_script}\n${nintendo.full_script}`, /\bIt should stay|^Nintendo, You Better Not Be|^Xbox has/m);
+});

@@ -2518,6 +2518,98 @@ test("pillarRepairBacklog: quarantined dead-end debt is amber when strict dry-ru
   }
 });
 
+test("pillarRepairBacklog: guarded scheduler scope holds old auto-repair debt when enabled actions are clean", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-repair-backlog-guarded-held-"));
+  const backlogPath = path.join(dir, "repair_backlog.json");
+  const planPath = path.join(dir, "dry_run_publish_plan.json");
+  try {
+    fs.writeFileSync(
+      backlogPath,
+      JSON.stringify({
+        generated_at: "2026-05-31T10:00:00.000Z",
+        summary: {
+          total_items: 4,
+          auto_repairable_items: 3,
+          operator_required_items: 1,
+          dead_end_blocker_items: 1,
+          publish_blocker_resolution_items: 0,
+          lane_counts: {
+            public_output_coherence_repair: 2,
+            visual_v4_production_render: 1,
+            reject_or_human_review_non_news_image_post: 1,
+          },
+        },
+        items: [
+          {
+            story_id: "old-copy-one",
+            repair_lane: "public_output_coherence_repair",
+            auto_repairable: true,
+          },
+          {
+            story_id: "old-copy-two",
+            repair_lane: "public_output_coherence_repair",
+            auto_repairable: true,
+          },
+          {
+            story_id: "old-render",
+            repair_lane: "visual_v4_production_render",
+            auto_repairable: true,
+          },
+          {
+            story_id: "old-image-post",
+            repair_lane: "reject_or_human_review_non_news_image_post",
+            operator_approval_required: true,
+            dead_end_blocker: true,
+          },
+        ],
+      }),
+    );
+    fs.writeFileSync(
+      planPath,
+      JSON.stringify({
+        generated_at: "2026-05-31T10:05:00.000Z",
+        overall_verdict: "RED",
+        ready_for_unattended_publish: false,
+        summary: {
+          ready_story_count: 5,
+          blocked_story_count: 3,
+          held_story_count: 15,
+          skipped_story_count: 8,
+          platform_publish_now_action_count: 15,
+          platform_enabled_dry_run_action_count: 15,
+          blocked_action_count: 0,
+          human_review_required_action_count: 15,
+          enabled_human_review_action_count: 15,
+          live_publish_allowed_action_count: 0,
+        },
+        safety: {
+          no_publish_triggered: true,
+          no_network_uploads: true,
+          no_db_mutation: true,
+          no_oauth_or_token_change: true,
+          dry_run_only: true,
+        },
+      }),
+    );
+
+    const pillar = pr.pillarRepairBacklog({
+      repairBacklogPath: backlogPath,
+      strictDryRunPlanPath: planPath,
+      now: Date.parse("2026-05-31T10:30:00.000Z"),
+    });
+
+    assert.equal(pillar.verdict, "amber");
+    assert.match(pillar.reason, /guarded_scheduler_scope_holds_repair_backlog/);
+    assert.equal(pillar.raw.readiness_scope, "guarded_scheduler_scope_held_repair_backlog");
+    assert.equal(pillar.raw.active_publish_blocker_items, 0);
+    assert.equal(pillar.raw.scoped_repair_items_visible, 4);
+    assert.equal(pillar.raw.strict_dry_run_context.platform_publish_now_action_count, 15);
+    assert.equal(pillar.raw.strict_dry_run_context.active_blocked_action_count, 0);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("pillarRepairBacklog: dead-end debt stays red without clean strict dry-run evidence", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-repair-backlog-active-red-"));
   const backlogPath = path.join(dir, "repair_backlog.json");

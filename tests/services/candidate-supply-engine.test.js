@@ -6,8 +6,11 @@ const test = require("node:test");
 const {
   buildCandidateSupplyReport,
   buildOfficialSourceWatchlist,
+  candidateSupplyMonitorNeedsRepair,
   fingerprintTitle,
+  formatCandidateSupplyMonitorDiscord,
   formatCandidateSupplyMarkdown,
+  shouldNotifyCandidateSupplyMonitor,
 } = require("../../lib/ops/candidate-supply");
 
 function candidate(id, overrides = {}) {
@@ -183,4 +186,28 @@ test("buildCandidateSupplyReport uses bridge source-age evidence for near-expiry
   assert.ok(report.warnings.includes("durable_green_ready_candidates_below_target:0/1"));
   assert.equal(report.next_action, "refresh_fresh_source_intake_and_promote_new_green_candidates_before_expiring_backlog");
   assert.match(formatCandidateSupplyMarkdown(report), /Durable GREEN-ready candidates: 0\/1/);
+});
+
+test("candidate supply monitor treats covered windows without reserve as actionable AMBER", () => {
+  const now = new Date("2026-06-16T22:00:00.000Z");
+  const candidateReport = {
+    generated_at: now.toISOString(),
+    totals: { stories_seen: 5, returned: 5, pending_audio: 0 },
+    candidates: Array.from({ length: 5 }, (_, index) => candidate(`ready-${index + 1}`)),
+  };
+
+  const report = buildCandidateSupplyReport({
+    stories: [],
+    candidateReport,
+    channelConfig: {},
+    now,
+  });
+
+  assert.equal(report.verdict, "amber");
+  assert.equal(report.candidate_buffer.publish_window_runway.covered_publish_windows_24h, 5);
+  assert.equal(report.candidate_buffer.publish_window_runway.reserve_candidates, 0);
+  assert.equal(candidateSupplyMonitorNeedsRepair(report), true);
+  assert.equal(shouldNotifyCandidateSupplyMonitor(report, { post_discord_on_red: true }), true);
+  assert.match(formatCandidateSupplyMonitorDiscord(report), /Runway: 5\/5 windows \| reserve 0\/5/);
+  assert.match(formatCandidateSupplyMonitorDiscord(report), /Warnings:/);
 });

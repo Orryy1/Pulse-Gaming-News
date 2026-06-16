@@ -423,6 +423,27 @@ test("publish blocker resolution fallback explains when publishable candidates a
   assert.match(plan.publish_runway.next_action, /HUMAN_REVIEW|guarded scheduler/);
 });
 
+test("publish blocker resolution treats five-window coverage without reserve as a refill requirement", () => {
+  const plan = buildPublishBlockerResolutionPlan({
+    stories: Array.from({ length: 5 }, (_, index) => ({
+      id: `ready-${index + 1}`,
+      title: `Ready Story ${index + 1}`,
+    })),
+    excluded: [],
+    candidateCount: 5,
+  });
+
+  assert.equal(plan.publish_runway.status, "publishable_now_reserve_short");
+  assert.equal(plan.publish_runway.publishable_now, 5);
+  assert.equal(plan.publish_runway.publish_windows_24h, 5);
+  assert.equal(plan.publish_runway.covered_publish_windows_24h, 5);
+  assert.equal(plan.publish_runway.uncovered_publish_windows_24h, 0);
+  assert.equal(plan.publish_runway.reserve_candidates, 0);
+  assert.equal(plan.publish_runway.reserve_shortfall, 5);
+  assert.equal(plan.publish_runway.fresh_content_needed, true);
+  assert.match(plan.publish_runway.next_action, /Refill/);
+});
+
 test("publish blocker resolution does not auto-repair stale excluded rows missing from the live story set", () => {
   const plan = buildPublishBlockerResolutionPlan({
     stories: [{ id: "current-story", title: "Current Story" }],

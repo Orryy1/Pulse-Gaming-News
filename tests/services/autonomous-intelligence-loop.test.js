@@ -16,6 +16,9 @@ function schedule(name) {
 
 test("scheduler registers the full autonomous intelligence loop", () => {
   assert.equal(schedule("candidate_supply_monitor_2h")?.kind, "candidate_supply_monitor");
+  assert.equal(schedule("candidate_supply_monitor_2h")?.payload.post_discord_on_amber, true);
+  assert.equal(schedule("candidate_supply_monitor_2h")?.payload.enqueue_repair_on_amber, true);
+  assert.equal(schedule("candidate_supply_monitor_2h")?.payload.repair_limit, 8);
   assert.equal(schedule("competitor_forensics_daily")?.kind, "competitor_forensics_lab");
   assert.equal(schedule("competitor_quality_gate_daily")?.kind, "competitor_quality_gate");
   assert.equal(schedule("commercial_learning_daily")?.kind, "commercial_learning_loop");

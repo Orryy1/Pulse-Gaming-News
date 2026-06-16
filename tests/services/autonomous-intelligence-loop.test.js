@@ -16,13 +16,16 @@ function schedule(name) {
 
 test("scheduler registers the full autonomous intelligence loop", () => {
   assert.equal(schedule("candidate_supply_monitor_2h")?.kind, "candidate_supply_monitor");
+  assert.equal(schedule("candidate_supply_monitor_2h")?.cron_expr, "5 * * * *");
   assert.equal(schedule("candidate_supply_monitor_2h")?.payload.post_discord_on_amber, true);
   assert.equal(schedule("candidate_supply_monitor_2h")?.payload.enqueue_repair_on_amber, true);
-  assert.equal(schedule("candidate_supply_monitor_2h")?.payload.repair_limit, 8);
+  assert.equal(schedule("candidate_supply_monitor_2h")?.payload.repair_limit, 10);
   assert.equal(schedule("competitor_forensics_daily")?.kind, "competitor_forensics_lab");
   assert.equal(schedule("competitor_quality_gate_daily")?.kind, "competitor_quality_gate");
   assert.equal(schedule("commercial_learning_daily")?.kind, "commercial_learning_loop");
   assert.equal(schedule("safe_auto_repair_runner_2h")?.kind, "safe_auto_repair_runner");
+  assert.equal(schedule("safe_auto_repair_runner_2h")?.cron_expr, "35 * * * *");
+  assert.equal(schedule("safe_auto_repair_runner_2h")?.payload.limit, 8);
 
   assert.equal(typeof handlers.candidate_supply_monitor, "function");
   assert.equal(typeof handlers.competitor_forensics_lab, "function");

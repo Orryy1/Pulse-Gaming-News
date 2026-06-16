@@ -4331,3 +4331,29 @@ test("public copy repair promotes truncated YouTube source labels to the officia
   assert.doesNotMatch(repaired.manifest.narration_script, /Youtu reports/i);
   assert.match(repaired.manifest.narration_script, /Xbox Partner Preview/i);
 });
+
+test("public copy repair turns test-framed stories into consequence hooks instead of title repeats", () => {
+  const repaired = repairGoalPublicCopyManifest({
+    story_id: "fresh_xbox_beastro_20260611",
+    canonical_subject: "Beastro",
+    canonical_game: "Beastro",
+    selected_title: "Beastro Has A Cozy Deckbuilding Test",
+    first_spoken_line:
+      "Xbox just put a cosy deckbuilder on Game Pass, and the real question is whether it can make card battles feel human.",
+    narration_script:
+      "Xbox just put a cosy deckbuilder on Game Pass, and the real question is whether it can make card battles feel human. The game is Beastro, and Xbox Wire says it is out now, with cooking, farming and village care feeding the cards you take beyond the wall.",
+    description:
+      "Beastro is out now on Xbox and Game Pass, mixing village care, cooking, farming and card battles around Caretakers defending a wall. Source: Xbox Wire.",
+    primary_source: "Xbox Wire",
+    source_card_label: "Xbox Wire",
+    confirmed_claims: [
+      "Beastro is out now on Xbox and Game Pass, mixing village care, cooking, farming and card battles around Caretakers defending a wall.",
+    ],
+  });
+
+  assert.equal(repaired.after.verdict, "pass", repaired.after.failures.join(", "));
+  assert.match(repaired.manifest.first_spoken_line, /^Beastro\b/);
+  assert.match(repaired.manifest.first_spoken_line, /Game Pass|card battles|deckbuilding/i);
+  assert.notEqual(repaired.manifest.first_spoken_line, "Beastro Has A Cozy Deckbuilding Test.");
+  assert.doesNotMatch(repaired.manifest.narration_script, /^Beastro Has A Cozy Deckbuilding Test\./);
+});

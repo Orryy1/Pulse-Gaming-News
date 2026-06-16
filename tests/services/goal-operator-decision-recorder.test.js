@@ -367,6 +367,7 @@ test("operator decision recorder writes reports and applies decision log only wh
   });
   await writeOperatorDecisionRecorder(apply, { outputDir: root });
   const updated = await fs.readJson(logPath);
+  assert.equal(apply.write_plan.did_write_operator_decision_log, true);
   assert.equal(updated.decisions.length, 1);
   assert.equal(updated.decisions[0].story_id, "story-one");
   assert.equal(await fs.pathExists(path.join(root, "operator_decision_log.backup.json")), true);

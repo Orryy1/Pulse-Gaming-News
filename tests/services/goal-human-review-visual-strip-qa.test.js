@@ -9,6 +9,7 @@ const sharp = require("sharp");
 const test = require("node:test");
 
 const {
+  buildHumanReviewVisualRepairWorkOrder,
   buildHumanReviewVisualStripQaReport,
   renderHumanReviewVisualStripQaHtml,
   writeHumanReviewVisualStripQaReport,
@@ -257,6 +258,59 @@ test("visual strip QA emits executable production render jobs when flagged cards
   assert.doesNotMatch(job.recommended_command, /--story-id story-one/);
   assert.equal(report.visual_repair_work_order.summary.ready_for_final_render_job_count, 1);
   assert.equal(report.visual_repair_work_order.summary.blocked_input_count, 0);
+});
+
+test("visual repair work order can use scheduler bridge video clips as rerender motion evidence", async () => {
+  const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-strip-bridge-motion-"));
+  const artifactDir = path.join(workspaceRoot, "story-one");
+  await fs.ensureDir(artifactDir);
+  await fs.ensureDir(path.join(workspaceRoot, "output", "goal-contract"));
+  const audioPath = path.join(artifactDir, "audio.mp3");
+  const timestampsPath = path.join(artifactDir, "word_timestamps.json");
+  const clipPaths = [
+    path.join(artifactDir, "bridge-clip-1.mp4"),
+    path.join(artifactDir, "bridge-clip-2.mp4"),
+    path.join(artifactDir, "bridge-clip-3.mp4"),
+  ];
+  await fs.writeFile(audioPath, Buffer.alloc(2048, 1));
+  await fs.writeJson(timestampsPath, [{ word: "Beastro", start: 0, end: 0.25 }], { spaces: 2 });
+  for (const clipPath of clipPaths) await fs.writeFile(clipPath, Buffer.alloc(2048, 2));
+  await fs.writeJson(path.join(artifactDir, "audio_manifest.json"), {
+    resolved_narration_audio_path: audioPath,
+    resolved_word_timestamps_path: timestampsPath,
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(workspaceRoot, "output", "goal-contract", "scheduler_bridge_candidates.json"), {
+    candidates: [
+      {
+        story_id: "story-one",
+        artifact_dir: artifactDir,
+        visual_v4_bridge_video_clips: clipPaths.map((clipPath, index) => ({
+          id: `bridge-clip-${index + 1}`,
+          path: clipPath,
+          source_family: `bridge-family-${index + 1}`,
+          validated: true,
+        })),
+      },
+    ],
+  }, { spaces: 2 });
+
+  const workOrder = await buildHumanReviewVisualRepairWorkOrder([
+    {
+      story_id: "story-one",
+      title: "Beastro Has A Cozy Deckbuilding Test",
+      artifact_dir: artifactDir,
+      risk_reasons: ["possible_edge_text_cutoff"],
+    },
+  ], {
+    workspaceRoot,
+    generatedAt: "2026-06-16T21:50:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.ready_for_final_render_job_count, 1);
+  assert.equal(workOrder.summary.blocked_input_count, 0);
+  assert.equal(workOrder.jobs[0].status, "ready_for_final_render_job");
+  assert.deepEqual(workOrder.jobs[0].evidence.materialised_motion_clip_paths, clipPaths);
+  assert.equal(workOrder.jobs[0].evidence.distinct_motion_family_count, 3);
 });
 
 test("visual strip QA hard-blocks missing frame evidence without pretending review is complete", async () => {

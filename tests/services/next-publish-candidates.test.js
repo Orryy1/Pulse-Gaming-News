@@ -274,10 +274,16 @@ test("next publish report ranks clean approved candidates by approval, duration 
   assert.ok(report.candidates[0].reasons.includes("auto_approved"));
 });
 
-test("next publish report excludes rows with existing public platform ids and QA failures", () => {
+test("next publish report excludes fully published rows and rows with QA failures", () => {
   const report = buildNextPublishCandidatesReport(
     [
-      baseStory({ id: "already_youtube", youtube_post_id: "yt_live_123" }),
+      baseStory({
+        id: "already_all_enabled",
+        youtube_post_id: "yt_live_123",
+        youtube_url: "https://youtube.com/shorts/yt_live_123",
+        instagram_media_id: "ig_live_123",
+        facebook_post_id: "fb_live_123",
+      }),
       baseStory({
         id: "qa_failed",
         qa_failed: true,
@@ -290,9 +296,32 @@ test("next publish report excludes rows with existing public platform ids and QA
 
   assert.deepEqual(
     report.excluded.map((row) => row.id).sort(),
-    ["already_youtube", "qa_failed"],
+    ["already_all_enabled", "qa_failed"],
   );
   assert.deepEqual(report.candidates.map((row) => row.id), ["clean"]);
+});
+
+test("next publish report keeps partial platform stories eligible for missing enabled platforms", () => {
+  const report = buildNextPublishCandidatesReport(
+    [
+      baseStory({
+        id: "youtube_only_needs_reels",
+        title: "Mina The Hollower Has A Sequel Risk",
+        youtube_post_id: "yt_live_123",
+        youtube_url: "https://youtube.com/shorts/yt_live_123",
+      }),
+    ],
+    { analyticsText, generatedAt: "2026-06-16T10:15:00.000Z" },
+  );
+
+  assert.equal(report.excluded.length, 0);
+  assert.equal(report.candidates[0].id, "youtube_only_needs_reels");
+  assert.deepEqual(report.candidates[0].source.already_published_platforms, ["youtube_shorts"]);
+  assert.deepEqual(
+    report.candidates[0].source.missing_enabled_platforms,
+    ["instagram_reels", "facebook_reels"],
+  );
+  assert.ok(report.candidates[0].reasons.includes("partial_platform_completion"));
 });
 
 test("next publish report excludes upstream anti-spam deferred bridge candidates", () => {
@@ -586,6 +615,8 @@ test("next publish report preserves already-public bridge exclusions beyond the 
     scheduler_bridge_source: "scheduler_bridge_candidates",
     youtube_post_id: "yt-live",
     youtube_url: "https://youtube.com/shorts/live",
+    instagram_media_id: "ig-live",
+    facebook_post_id: "fb-live",
   });
 
   const report = buildNextPublishCandidatesReport([...excludedNoise, bridgedAlreadyPublic], {
@@ -1738,6 +1769,96 @@ test("bridge preflight blocks direct-video enrichment work-order gaps before sch
   );
 });
 
+test("bridge preflight does not hard-block non-blocking direct-video quality-gap work orders", async () => {
+  const scores = {
+    motion_density_score: 92,
+    first_3_seconds_hook_score: 88,
+    source_lock_quality_score: 86,
+    caption_legibility_score: 94,
+    card_hierarchy_score: 84,
+    media_house_polish_score: 90,
+  };
+  const { clips, rightsLedger, footageInventory } = ownedExplainerFixture(
+    "bridge_direct_video_quality_gap",
+  );
+  const preflight = await runPreflightQaForStory(
+    baseStory({
+      id: "bridge_direct_video_quality_gap",
+      title: "Beastro Has A Cozy Deckbuilding Test",
+      selected_title: "Beastro Has A Cozy Deckbuilding Test",
+      canonical_subject: "Beastro",
+      first_spoken_line: "Beastro just got a small test that says a lot about Xbox's indie strategy.",
+      description: "Xbox Wire confirmed Beastro's latest demo details. Source: Xbox Wire.",
+      full_script:
+        "Beastro just got a small test that says a lot about Xbox's indie strategy. Xbox Wire confirmed the demo details and the useful player question is whether the cosy deckbuilding loop has enough bite.",
+      scheduler_bridge_source: "goal_production_cutover",
+      render_lane: "visual_v4_production",
+      render_quality_class: "premium",
+      qa_visual_count: 5,
+      visual_v4_render_bridge_clip_count: 5,
+      exported_path: "D:/pulse-data/media/output/final/bridge_direct_video_quality_gap.mp4",
+      audio_path: "D:/pulse-data/media/output/audio/bridge_direct_video_quality_gap.mp3",
+      timestamps_path: "D:/pulse-data/media/output/audio/bridge_direct_video_quality_gap_timestamps.json",
+      manual_caption_path: "D:/pulse-data/media/output/captions/bridge_direct_video_quality_gap.srt",
+      primary_source: "Xbox Wire",
+      primary_source_url: "https://news.xbox.com/en-us/2026/06/11/beastro-demo-example",
+      discovery_source: "Xbox Wire",
+      publish_verdict: { verdict: "GREEN" },
+      platform_publish_manifest: {
+        publish_status: "GREEN",
+        platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts"] },
+        outputs: {
+          youtube_shorts: { title: "Beastro Has A Cozy Deckbuilding Test" },
+        },
+      },
+      visual_quality_report: {
+        result: "pass",
+        scores,
+        frame_rules: {
+          first_frame_subject: "Beastro",
+          first_frame_text: "BEASTRO DEMO TEST",
+          source_locks_readable: true,
+        },
+        failures: [],
+      },
+      media_house_benchmark: {
+        result: "pass",
+        scores,
+        failures: [],
+      },
+      sfx_manifest: bridgeSfxEvidence(),
+      rights_ledger: JSON.stringify(rightsLedger),
+      footage_inventory: JSON.stringify(footageInventory),
+      visual_v4_bridge_video_clips: JSON.stringify(clips),
+      video_clips: JSON.stringify(clips),
+    }),
+    {
+      bridgeMotionGovernanceEvidence: {
+        direct_video_enrichment_work_order: {
+          jobs: [
+            {
+              story_id: "bridge_direct_video_quality_gap",
+              blocker_type: "visual_evidence:direct_video_motion_missing",
+              quality_gap: true,
+              blocking_current_dry_run: false,
+            },
+          ],
+        },
+      },
+      runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+    },
+  );
+
+  assert.notEqual(preflight.status, "blocked");
+  assert.ok(
+    !preflight.blockers.includes("bridge_motion_governance:direct_video_enrichment_required"),
+  );
+});
+
 test("bridge preflight ignores stale source-family motion blockers when current bridge clips prove direct video", async () => {
   const scores = {
     motion_density_score: 96,
@@ -2481,10 +2602,10 @@ test("attachPreflightQa blocks stale voice reports when current timestamps prove
   );
 });
 
-test("attachPreflightQa blocks micro-segmented local TTS that sounds choppy despite normal WPM", async () => {
+test("attachPreflightQa blocks segmented local TTS that can drift between sentences despite normal WPM", async () => {
   const stories = [
     baseStory({
-      id: "micro_segmented_local_tts",
+      id: "segmented_local_tts",
       title: "Fable Has A 1,000 NPC Risk",
       canonical_subject: "Fable",
       scheduler_bridge_source: "goal_production_cutover",
@@ -2512,8 +2633,8 @@ test("attachPreflightQa blocks micro-segmented local TTS that sounds choppy desp
           timestampWhisperAlignment: { repaired: true },
           localTts: { speakingRate: 1 },
           segmentedLocalTtsMaterialized: true,
-          segment_count: 14,
-          segment_word_counts: [12, 8, 8, 8, 12, 8, 9, 8, 8, 6, 8, 9, 6, 9],
+          segment_count: 6,
+          segment_word_counts: [15, 21, 10, 20, 24, 14],
           segment_gap_s: 0.08,
         },
       },
@@ -2540,12 +2661,80 @@ test("attachPreflightQa blocks micro-segmented local TTS that sounds choppy desp
   assert.equal(report.candidates[0].preflight_qa.status, "blocked");
   assert.ok(
     report.candidates[0].preflight_qa.blockers.includes(
-      "voice_quality:local_tts_micro_segmented_narration",
+      "voice_quality:local_tts_segmented_voice_continuity_unverified",
     ),
   );
   assert.equal(
     report.candidates[0].preflight_qa.checks.voice_quality.evidence.local_tts_segment_count,
-    14,
+    6,
+  );
+});
+
+test("attachPreflightQa does not treat Whisper alignment segments as stitched local TTS chunks", async () => {
+  const stories = [
+    baseStory({
+      id: "single_take_local_tts",
+      title: "Beastro Has A Cozy Deckbuilding Test",
+      canonical_subject: "Beastro",
+      scheduler_bridge_source: "goal_production_cutover",
+      voice_quality_report: {
+        verdict: "PASS",
+        blockers: [],
+        warnings: [],
+        cadence: {
+          spoken_wpm: 157,
+          blockers: [],
+          warnings: [],
+        },
+      },
+      audio_manifest: {
+        voice_provider: "local_tts",
+      },
+      word_timestamps_payload: {
+        words: [
+          { word: "Beastro", start: 0, end: 0.32 },
+          { word: "wins", start: 0.34, end: 0.54 },
+          { word: "cleanly", start: 0.56, end: 0.9 },
+        ],
+        meta: {
+          wordTimestampSource: "local_whisper_word_alignment",
+          timestampWhisperAlignment: {
+            repaired: true,
+            segment_count: 4,
+          },
+          localTts: { speakingRate: 1 },
+          segment_count: 4,
+        },
+      },
+    }),
+  ];
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-06-16T12:45:00.000Z",
+  });
+
+  await attachPreflightQa(report, stories, {
+    runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+    runAggregateBenchmarkQa: async () => null,
+  });
+
+  assert.equal(
+    report.candidates[0].preflight_qa.blockers.includes(
+      "voice_quality:local_tts_segmented_voice_continuity_unverified",
+    ),
+    false,
+  );
+  assert.equal(
+    report.candidates[0].preflight_qa.checks.voice_quality.evidence.local_tts_segment_count,
+    undefined,
   );
 });
 
@@ -2715,6 +2904,98 @@ test("attachPreflightQa blocks cross-story direct motion when visual provenance 
       .source_family,
     "xbox_product_minecraft_dungeons_ii_media_02_6a5c6baf",
   );
+});
+
+test("attachPreflightQa accepts local official direct motion when trusted intake entity matches the subject", async () => {
+  const clipPath =
+    "output/video_cache/fresh_xbox_beastro_20260611_v4_clip_1_segment_direct_motion_1_9ed48b982ca0.mp4";
+  const localReference =
+    "local://existing-official-direct-motion/fresh_xbox_beastro_20260611/fresh_xbox_beastro_20260611_v4_clip_1_segment_direct_motion_1_9ed48b982ca0.mp4";
+  const stories = [
+    baseStory({
+      id: "fresh_xbox_beastro_20260611",
+      title: "Beastro Has A Cozy Deckbuilding Test",
+      selected_title: "Beastro Has A Cozy Deckbuilding Test",
+      canonical_subject: "Beastro",
+      canonical_game: "Beastro",
+      scheduler_bridge_source: "goal_production_cutover",
+      render_lane: "visual_v4_production",
+      render_quality_class: "premium",
+      auto_approved: true,
+      visual_v4_bridge_video_clips: [
+        {
+          id: "fresh_xbox_beastro_20260611_direct_motion_1",
+          path: clipPath,
+          source_url: localReference,
+          source_type: "licensed_direct_media_url",
+          source_family: "",
+          media_kind: "direct_video",
+        },
+      ],
+      video_clips: [clipPath],
+      footage_inventory: {
+        trusted_source_pipeline: {
+          intake_queue: [
+            {
+              source_id: "segment_direct_motion_1",
+              display_name: "direct_motion_1",
+              entity: "Beastro",
+              entities: ["Beastro"],
+              source_family: "direct_motion_1",
+              source_tier: "official",
+              reference_url: localReference,
+              intake_mode: "local_reference_to_motion_pack",
+              rights_risk_class: "official_reference_transformative_editorial_use",
+            },
+          ],
+        },
+      },
+      rights_ledger: {
+        verdict: "pass",
+        assets: [
+          {
+            id: "segment_direct_motion_1",
+            path: clipPath,
+            source_url: localReference,
+            source_family: "direct_motion_1",
+            source_type: "licensed_direct_media_url",
+            media_kind: "direct_video",
+            rights_basis: "official_reference_transformative_editorial_use",
+          },
+        ],
+      },
+      ...bridgeVisualEvidence("Beastro"),
+      sfx_manifest: bridgeSfxEvidence(),
+    }),
+  ];
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-06-16T09:55:00.000Z",
+  });
+
+  await attachPreflightQa(report, stories, {
+    runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVoiceQualityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+    runAggregateBenchmarkQa: async () => null,
+  });
+
+  const visualEntity = report.candidates[0].preflight_qa.checks.visual_entity_match;
+  assert.equal(visualEntity.result, "pass");
+  assert.ok(
+    !report.candidates[0].preflight_qa.blockers.includes(
+      "visual_entity_match:direct_motion_subject_mismatch",
+    ),
+  );
+  assert.match(visualEntity.evidence.direct_motion_assets[0].provenance_text, /beastro/);
 });
 
 test("attachPreflightQa blocks direct motion when cache sidecar source does not match the subject", async () => {

@@ -63,6 +63,25 @@ const PUBLIC_PLATFORM_FIELDS = [
   "x_post_id",
 ];
 
+const PUBLIC_PLATFORM_FIELD_GROUPS = {
+  youtube_shorts: ["youtube_post_id", "youtube_url"],
+  tiktok: ["tiktok_post_id"],
+  instagram_reels: ["instagram_media_id"],
+  facebook_reels: ["facebook_post_id"],
+  x: ["twitter_post_id", "x_post_id"],
+};
+
+const SCHEDULER_PLATFORM_TO_PUBLISH_PLATFORM = {
+  youtube: "youtube_shorts",
+  instagram: "instagram_reels",
+  facebook: "facebook_reels",
+  tiktok: "tiktok",
+  x: "x",
+  twitter: "x",
+  threads: "threads",
+  pinterest: "pinterest",
+};
+
 function envEnabled(value) {
   return /^(1|true|yes|on)$/i.test(String(value || "").trim());
 }
@@ -226,6 +245,29 @@ function realPlatformId(value) {
 
 function existingPublicPlatformFields(story = {}) {
   return PUBLIC_PLATFORM_FIELDS.filter((field) => realPlatformId(story[field]));
+}
+
+function publishedPlatformNames(story = {}) {
+  return Object.entries(PUBLIC_PLATFORM_FIELD_GROUPS)
+    .filter(([, fields]) => fields.some((field) => realPlatformId(story[field])))
+    .map(([platform]) => platform);
+}
+
+function enabledPublishPlatformNames(options = {}) {
+  return schedulerGovernancePlatforms(options.env || process.env)
+    .map((platform) => SCHEDULER_PLATFORM_TO_PUBLISH_PLATFORM[platform] || platform)
+    .filter(Boolean);
+}
+
+function missingEnabledPublishPlatformNames(story = {}, options = {}) {
+  const published = new Set(publishedPlatformNames(story));
+  return enabledPublishPlatformNames(options).filter((platform) => !published.has(platform));
+}
+
+function hasCompletedEnabledPublishPlatforms(story = {}, options = {}) {
+  const publicFields = existingPublicPlatformFields(story);
+  if (!publicFields.length) return false;
+  return missingEnabledPublishPlatformNames(story, options).length === 0;
 }
 
 function numberOrNull(value) {
@@ -718,7 +760,7 @@ function approvalScore(story = {}) {
 
 function exclusionReason(story = {}, options = {}) {
   const publicFields = existingPublicPlatformFields(story);
-  if (publicFields.length > 0) {
+  if (hasCompletedEnabledPublishPlatforms(story, options)) {
     return `already_has_public_platform_id:${publicFields.join(",")}`;
   }
   const upstreamSkip = upstreamSkippedReason(story, options.upstreamAntiSpamReport || {});
@@ -753,6 +795,8 @@ function scoreCandidate(story = {}, options = {}) {
   const approval = approvalScore(story);
   const platform = platformReadiness(story);
   const tiktok = tiktokInboxReadiness(story);
+  const alreadyPublishedPlatforms = publishedPlatformNames(story);
+  const missingEnabledPlatforms = missingEnabledPublishPlatformNames(story, options);
   const baseScore = Number(story.breaking_score || story.score || 0) * 0.12;
   const score = Math.round(
     approval.score +
@@ -767,6 +811,9 @@ function scoreCandidate(story = {}, options = {}) {
     approval.reason,
     duration.reason,
     story.scheduler_bridge_source ? "scheduler_bridge_candidate" : null,
+    alreadyPublishedPlatforms.length > 0 && missingEnabledPlatforms.length > 0
+      ? "partial_platform_completion"
+      : null,
     ...analytics.reasons,
     ...platform.reasons,
     ...tiktok.reasons,
@@ -791,6 +838,9 @@ function scoreCandidate(story = {}, options = {}) {
       source_type: story.source_type || null,
       content_pillar: story.content_pillar || null,
       exported_path: story.exported_path || null,
+      already_published_platforms: alreadyPublishedPlatforms,
+      missing_enabled_platforms: missingEnabledPlatforms,
+      public_platform_fields: existingPublicPlatformFields(story),
     },
   };
 }
@@ -1096,6 +1146,21 @@ function rowAllowsOwnedExplainerMotionException(row = {}) {
   });
 }
 
+function explicitFalse(value) {
+  if (value === false) return true;
+  if (typeof value !== "string") return false;
+  const normalised = value.trim().toLowerCase();
+  return normalised === "false" || normalised === "0" || normalised === "no" || normalised === "off";
+}
+
+function bridgeMotionWorkOrderJobBlocksCurrentDryRun(job = {}) {
+  return !(
+    explicitFalse(job.blocking_current_dry_run) ||
+    explicitFalse(job.blocks_current_dry_run) ||
+    explicitFalse(job.blockingCurrentDryRun)
+  );
+}
+
 function normaliseBridgeMotionGovernanceEvidence(value = {}) {
   const directVideoEnrichmentStoryIds = new Set();
   const blockedMotionPackStoryIds = new Set();
@@ -1128,11 +1193,11 @@ function normaliseBridgeMotionGovernanceEvidence(value = {}) {
       .map(cleanText)
       .join(" ")
       .toLowerCase();
-    if (
+    const requestsDirectVideoEnrichment =
       blockerText.includes("direct_video") ||
       blockerText.includes("direct-video") ||
-      blockerText.includes("direct video")
-    ) {
+      blockerText.includes("direct video");
+    if (bridgeMotionWorkOrderJobBlocksCurrentDryRun(job) && requestsDirectVideoEnrichment) {
       addStoryIdToSet(directVideoEnrichmentStoryIds, job.story_id || job.id);
     }
   }
@@ -1563,14 +1628,19 @@ function visualAssetProvenanceText(asset = {}) {
     asset.family,
     asset.trusted_footage_source_id,
     asset.source_id,
+    asset.entity,
+    ...asArray(asset.entities),
     asset.source_title,
     asset.media_title,
     asset.title,
     asset.name,
+    asset.display_name,
+    asset.source_tier,
     asset.sidecar_source_family,
     !isLocalOrGeneratedReference(asset.sidecar_source_url) ? asset.sidecar_source_url : "",
     !isLocalOrGeneratedReference(asset.source_url) ? asset.source_url : "",
     !isLocalOrGeneratedReference(asset.url) ? asset.url : "",
+    !isLocalOrGeneratedReference(asset.reference_url) ? asset.reference_url : "",
     asset.original_source_family,
     !isLocalOrGeneratedReference(asset.original_source_url) ? asset.original_source_url : "",
   ];
@@ -1586,13 +1656,132 @@ function visualAssetSidecarProvenanceText(asset = {}) {
   return cleanText(values.filter(Boolean).join(" ")).toLowerCase();
 }
 
-function visualAssetSubjectLocked(asset = {}, subjectTokens = []) {
-  const sidecarProvenance = visualAssetSidecarProvenanceText(asset);
-  const provenance = sidecarProvenance || visualAssetProvenanceText(asset);
+const OPAQUE_SIDECAR_PROVENANCE_TOKENS = new Set([
+  "akamai",
+  "akamaized",
+  "assets",
+  "asset",
+  "avs",
+  "cdn",
+  "com",
+  "content",
+  "dash",
+  "fastly",
+  "hls",
+  "https",
+  "http",
+  "is",
+  "m3u8",
+  "master",
+  "media",
+  "microsoft",
+  "microsoftassets",
+  "mp4",
+  "packagedstreaming",
+  "store",
+  "steamstatic",
+  "trailers",
+  "true",
+  "uploads",
+  "www",
+  "xboxservices",
+]);
+
+function provenanceContainsSubjectToken(provenance = "", subjectTokens = []) {
   if (!provenance) return false;
   return subjectTokens.some((token) =>
     new RegExp(`(^|[^a-z0-9])${token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`).test(provenance),
   );
+}
+
+function sidecarProvenanceLooksOpaque(provenance = "") {
+  const tokens = visualEntityTokenise(provenance).filter(Boolean);
+  if (!tokens.length) return true;
+  return tokens.every((token) =>
+    OPAQUE_SIDECAR_PROVENANCE_TOKENS.has(token) ||
+    /^[a-f0-9]{4,}$/i.test(token) ||
+    /^[0-9]+$/.test(token)
+  );
+}
+
+function visualAssetSubjectLocked(asset = {}, subjectTokens = []) {
+  const sidecarProvenance = visualAssetSidecarProvenanceText(asset);
+  const provenance = visualAssetProvenanceText(asset);
+  if (sidecarProvenance) {
+    if (provenanceContainsSubjectToken(sidecarProvenance, subjectTokens)) return true;
+    return sidecarProvenanceLooksOpaque(sidecarProvenance) &&
+      provenanceContainsSubjectToken(provenance, subjectTokens);
+  }
+  return provenanceContainsSubjectToken(provenance, subjectTokens);
+}
+
+function visualAssetBasename(value = "") {
+  const text = cleanText(value).replace(/\\/g, "/");
+  if (!text) return "";
+  const withoutQuery = text.split(/[?#]/)[0];
+  return cleanText(withoutQuery.slice(withoutQuery.lastIndexOf("/") + 1)).toLowerCase();
+}
+
+function visualAssetIdentityValues(asset = {}) {
+  if (!asset || typeof asset !== "object") return [];
+  return [
+    asset.source_family,
+    asset.motion_family,
+    asset.family,
+    asset.id,
+    asset.asset_id,
+    asset.motion_pack_clip_id,
+    asset.source_id,
+    asset.trusted_footage_source_id,
+    visualAssetBasename(asset.path || asset.local_path || asset.media_path || asset.file_path),
+    visualAssetBasename(asset.source_url || asset.url || asset.reference_url),
+  ].map((value) => cleanText(value).toLowerCase()).filter(Boolean);
+}
+
+function trustedSourceIntakeAssets(footageInventory = {}) {
+  return [
+    ...asArray(footageInventory.trusted_source_pipeline?.intake_queue),
+    ...asArray(footageInventory.trusted_sources?.intake_queue),
+  ].map((item) => {
+    const referenceUrl = cleanText(item.reference_url || item.source_url || item.url);
+    return {
+      id: cleanText(item.source_id || item.id || item.asset_id),
+      asset_id: cleanText(item.source_id || item.asset_id || item.id),
+      source_id: cleanText(item.source_id || item.id),
+      source_family: cleanText(item.source_family || item.family || item.display_name),
+      motion_family: cleanText(item.source_family || item.family || item.display_name),
+      source_url: referenceUrl,
+      reference_url: referenceUrl,
+      source_type: cleanText(
+        item.source_type ||
+          (/^local:\/\/existing-official-direct-motion\//i.test(referenceUrl)
+            ? "licensed_direct_media_url"
+            : item.intake_mode || item.source_url_kind),
+      ),
+      media_kind: cleanText(item.media_kind || "direct_video"),
+      source_title: cleanText(item.source_title || item.display_name || item.title),
+      display_name: cleanText(item.display_name),
+      entity: cleanText(item.entity),
+      entities: asArray(item.entities).map(cleanText).filter(Boolean),
+      source_tier: cleanText(item.source_tier),
+      rights_risk_class: cleanText(item.rights_risk_class),
+      rights_basis: cleanText(item.rights_basis || item.licence_basis || item.license_basis),
+    };
+  }).filter((item) =>
+    visualAssetIdentityValues(item).length &&
+    (item.entity || item.entities.length || item.source_title || item.reference_url)
+  );
+}
+
+function enrichVisualAssetsWithTrustedSourceIntake(assets = [], intakeAssets = []) {
+  if (!intakeAssets.length) return assets;
+  return assets.map((asset) => {
+    const assetValues = new Set(visualAssetIdentityValues(asset));
+    const match = intakeAssets.find((intake) =>
+      visualAssetIdentityValues(intake).some((value) => assetValues.has(value))
+    );
+    return match ? mergeVisualAssetProvenance(asset, match) : asset;
+  });
 }
 
 async function readArtifactJsonObjectForStory(story = {}, fileName = "") {
@@ -1624,7 +1813,8 @@ async function visualEntityPreflightForStory(story = {}) {
   const footageInventory = objectValue(story.footage_inventory, footageInventoryArtifact);
   const rightsLedger = objectValue(story.rights_ledger || story.rights_records, rightsLedgerArtifact);
   const directorPlan = objectValue(story.visual_v4_director_plan || story.director_plan, directorArtifact);
-  const assets = dedupeVisualAssetsByPath([
+  const trustedIntakeAssets = trustedSourceIntakeAssets(footageInventory);
+  const assets = enrichVisualAssetsWithTrustedSourceIntake(dedupeVisualAssetsByPath([
     ...asArray(story.visual_v4_bridge_video_clips),
     ...asArray(story.video_clips),
     ...asArray(renderStory.visual_v4_bridge_video_clips),
@@ -1639,7 +1829,7 @@ async function visualEntityPreflightForStory(story = {}) {
       path: shot.path || shot.media_path || shot.file_path,
       source_url: shot.source_url || shot.url,
     })),
-  ]);
+  ]), trustedIntakeAssets);
   const { isDirectVideoMotionAsset } = require("../lib/visual-evidence-classifier");
   const directMotionAssets = assets.filter(isDirectVideoMotionAsset);
   if (!directMotionAssets.length) return null;
@@ -2168,16 +2358,25 @@ function localTtsSegmentationEvidence({ story = {}, report = {}, audioManifest =
   ]
     .map((value) => numberOrNull(value))
     .filter((value) => value != null);
+  const explicitLocalTtsSegmented = Boolean(
+    meta.segmentedLocalTtsMaterialized === true ||
+      audioManifest.segmentedLocalTtsMaterialized === true ||
+      report.segmentedLocalTtsMaterialized === true,
+  );
   const segmentCount = numberFromFirst(
-    meta.segment_count,
-    audioManifest.segment_count,
-    report.segment_count,
+    meta.local_tts_segment_count,
+    meta.tts_segment_count,
+    audioManifest.local_tts_segment_count,
+    audioManifest.tts_segment_count,
+    report.local_tts_segment_count,
+    report.tts_segment_count,
+    explicitLocalTtsSegmented ? meta.segment_count : null,
+    explicitLocalTtsSegmented ? audioManifest.segment_count : null,
+    explicitLocalTtsSegmented ? report.segment_count : null,
     wordCounts.length ? wordCounts.length : null,
   );
   const segmented = Boolean(
-    meta.segmentedLocalTtsMaterialized === true ||
-      audioManifest.segmentedLocalTtsMaterialized === true ||
-      report.segmentedLocalTtsMaterialized === true ||
+    explicitLocalTtsSegmented ||
       (segmentCount != null && segmentCount > 1 && wordCounts.length > 1),
   );
   const provider = cleanText(
@@ -2199,6 +2398,15 @@ function localTtsSegmentationEvidence({ story = {}, report = {}, audioManifest =
   const minWords = wordCounts.length ? Math.min(...wordCounts) : null;
   const maxWords = wordCounts.length ? Math.max(...wordCounts) : null;
   const segmentGapS = numberFromFirst(meta.segment_gap_s, audioManifest.segment_gap_s, report.segment_gap_s);
+  const continuityVerified = Boolean(
+    meta.segment_voice_continuity_verified === true ||
+      meta.local_tts_segment_voice_continuity_verified === true ||
+      meta.voiceContinuity?.verified === true ||
+      audioManifest.segment_voice_continuity_verified === true ||
+      audioManifest.local_tts_segment_voice_continuity_verified === true ||
+      report.segment_voice_continuity_verified === true ||
+      report.local_tts_segment_voice_continuity_verified === true,
+  );
   return {
     local,
     segmented,
@@ -2206,6 +2414,7 @@ function localTtsSegmentationEvidence({ story = {}, report = {}, audioManifest =
     min_segment_words: minWords,
     max_segment_words: maxWords,
     segment_gap_s: segmentGapS,
+    continuity_verified: continuityVerified,
   };
 }
 
@@ -2214,6 +2423,9 @@ function localTtsSegmentationFailures(evidence = {}) {
   const failures = [];
   const count = Number(evidence.segment_count);
   const minWords = Number(evidence.min_segment_words);
+  if (evidence.continuity_verified !== true && Number.isFinite(count) && count > 1) {
+    failures.push("local_tts_segmented_voice_continuity_unverified");
+  }
   if (
     (Number.isFinite(count) && count >= 10) ||
     (Number.isFinite(count) && count >= 8 && Number.isFinite(minWords) && minWords < 10)

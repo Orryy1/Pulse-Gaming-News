@@ -103,6 +103,37 @@ test("caption SRT protects Pulse Gaming as one brand phrase", () => {
   assert.doesNotMatch(srt, /\nGaming so\n/);
 });
 
+test("caption SRT keeps protected game names instead of phonetic ASR spellings", () => {
+  const srt = buildCaptionSrt(
+    "Beastro is the Game Pass card game. Beastro wins if strategy feels generous.",
+    8,
+    {
+      words: [
+        { word: "Beastrow", start: 0, end: 0.68 },
+        { word: "is", start: 0.68, end: 0.9 },
+        { word: "the", start: 0.9, end: 1.06 },
+        { word: "Game", start: 1.06, end: 1.38 },
+        { word: "Pass", start: 1.38, end: 1.7 },
+        { word: "card", start: 1.7, end: 2.02 },
+        { word: "game.", start: 2.02, end: 2.36 },
+        { word: "Bistro", start: 3.1, end: 3.72 },
+        { word: "wins", start: 3.72, end: 4.02 },
+        { word: "if", start: 4.02, end: 4.2 },
+        { word: "strategy", start: 4.2, end: 4.78 },
+        { word: "feels", start: 4.78, end: 5.1 },
+        { word: "generous.", start: 5.1, end: 5.68 },
+      ],
+      maxWordsPerPhrase: 2,
+      maxPhraseChars: 18,
+      maxPhraseDurationS: 1.05,
+    },
+  );
+
+  assert.match(srt, /Beastro is/);
+  assert.match(srt, /Beastro wins/);
+  assert.doesNotMatch(srt, /Beastrow|Bistro/);
+});
+
 test("public copy repair turns a quote fragment Kickstarter story into usable copy", () => {
   const repaired = repairGoalPublicCopyManifest(
     {

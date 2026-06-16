@@ -326,6 +326,7 @@ test("goal audio materializer segments long local-clone narration before strict 
       },
       generatedAt: "2026-05-27T10:00:00.000Z",
       alignmentMode: "whisper",
+      localTtsSegmentedMaterializer: true,
       localTtsSegmentedWordThreshold: 20,
       localTtsSegmentMaxWords: 18,
       getAudioDuration: async () => 2.5,
@@ -390,6 +391,69 @@ test("goal audio materializer segments long local-clone narration before strict 
     if (originalMediaRoot === undefined) delete process.env.MEDIA_ROOT;
     else process.env.MEDIA_ROOT = originalMediaRoot;
   }
+});
+
+test("goal audio materializer keeps production local TTS as a single take unless segmentation is explicit", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-single-take-"));
+  const script = [
+    "Beastro's Xbox launch is not just cosy background noise.",
+    "It matters because Game Pass keeps needing smaller games that still explain themselves instantly.",
+    "The whole pitch is simple: cook, serve and survive a deckbuilding restaurant run.",
+    "That makes it easier to sell than another vague creature collector, but harder to sustain if the loop feels thin.",
+    "The useful question is whether Beastro becomes a repeatable comfort game or just a cute one-night curiosity.",
+  ].join(" ");
+  const artifactDir = await makePackage(root, "story-single-take", {
+    selected_title: "Beastro Has A Cozy Deckbuilding Test",
+    narration_script: script,
+  });
+  const calls = [];
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    workbenchReport: {
+      local_tts: { verdict: "green", ready: true },
+      jobs: [workbenchJob("story-single-take", artifactDir)],
+    },
+    generatedAt: "2026-06-16T12:30:00.000Z",
+    alignmentMode: "whisper",
+    localTtsSegmentedWordThreshold: 20,
+    localTtsSegmentMaxWords: 18,
+    getAudioDuration: async () => 38,
+    alignWordsWithAudio: async ({ scriptText }) => ({
+      ok: true,
+      source: "local_whisper_word_alignment",
+      model: "tiny.en",
+      transcript: scriptText,
+      words: whisperWordsFromScript(scriptText),
+    }),
+    generateTtsForStory: async ({ text, outputPath }) => {
+      calls.push({ text, outputPath });
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 1));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: {
+          ...charAlignment(text),
+          meta: {
+            provider: "local",
+            source: "local-production-voxcpm-path",
+            approvedLocalVoice: true,
+            acceptedLocalVoice: ACCEPTED_SLEEPY_LIAM,
+          },
+        },
+      });
+      return { ok: true };
+    },
+  });
+
+  assert.equal(report.summary.materialized_count, 1);
+  assert.equal(report.jobs[0].status, "materialized");
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].text, /^Beastrow's Xbox launch is not just cosy background noise\./);
+  assert.match(calls[0].text, /Beastrow becomes a repeatable comfort game/);
+  assert.equal(calls[0].outputPath, "output/audio/story-single-take.mp3");
+  const timestamps = await fs.readJson(path.join(root, "output", "audio", "story-single-take_timestamps.json"));
+  assert.notEqual(timestamps.meta.segmentedLocalTtsMaterialized, true);
+  assert.equal(timestamps.meta.segment_count, undefined);
+  assert.equal(timestamps.meta.wordTimestampSource, "local_whisper_word_alignment");
 });
 
 test("goal audio materializer avoids tiny trailing local-clone TTS segments", async () => {
@@ -637,6 +701,7 @@ test("goal audio materializer shrinks local-clone segments after strict ASR retr
     },
     generatedAt: "2026-05-27T13:30:00.000Z",
     alignmentMode: "whisper",
+    localTtsSegmentedMaterializer: true,
     localTtsSegmentedWordThreshold: 20,
     localTtsSegmentMaxWords: 30,
     getAudioDuration: async () => 1.5,
@@ -705,6 +770,7 @@ test("goal audio materializer makes a smaller third local-clone pass after a ret
     },
     generatedAt: "2026-05-27T13:50:00.000Z",
     alignmentMode: "whisper",
+    localTtsSegmentedMaterializer: true,
     localTtsSegmentedWordThreshold: 20,
     localTtsSegmentMaxWords: 30,
     getAudioDuration: async () => 1.2,

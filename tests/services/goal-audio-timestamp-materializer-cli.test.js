@@ -141,7 +141,7 @@ test("goal audio timestamp materializer CLI can run in inspect-only mode without
   assert.equal(await fs.pathExists(path.join(root, "out", "audio_timestamp_materialization_report.json")), true);
 });
 
-test("goal audio timestamp materializer configures long local TTS batch timeouts", () => {
+test("goal audio timestamp materializer configures long local TTS batch timeouts without segmented production voice by default", () => {
   const env = {
     LOCAL_TTS_TIMEOUT_MS: "120000",
     LOCAL_TTS_START_WAIT_MS: "45000",
@@ -155,14 +155,15 @@ test("goal audio timestamp materializer configures long local TTS batch timeouts
   assert.equal(env.LOCAL_TTS_START_WAIT_MS, "120000");
   assert.equal(env.LOCAL_TTS_PREWARM_TIMEOUT_MS, "600000");
   assert.equal(env.LOCAL_WHISPER_MODELS, "tiny.en,base.en,small.en");
-  assert.equal(env.LOCAL_TTS_SEGMENTED_MATERIALIZER, "true");
-  assert.equal(env.LOCAL_TTS_SEGMENTED_WORD_THRESHOLD, "20");
-  assert.equal(env.LOCAL_TTS_SEGMENT_MAX_WORDS, "12");
-  assert.equal(env.LOCAL_TTS_SEGMENT_GAP_S, "0.4");
+  assert.equal(env.LOCAL_TTS_SEGMENTED_MATERIALIZER, "false");
+  assert.equal(Object.prototype.hasOwnProperty.call(env, "LOCAL_TTS_SEGMENTED_WORD_THRESHOLD"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(env, "LOCAL_TTS_SEGMENT_MAX_WORDS"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(env, "LOCAL_TTS_SEGMENT_GAP_S"), false);
 });
 
-test("goal audio timestamp materializer preserves explicit local TTS segmentation tuning", () => {
+test("goal audio timestamp materializer preserves explicit opt-in local TTS segmentation tuning", () => {
   const env = {
+    LOCAL_TTS_SEGMENTED_MATERIALIZER: "true",
     LOCAL_TTS_SEGMENTED_WORD_THRESHOLD: "80",
     LOCAL_TTS_SEGMENT_MAX_WORDS: "24",
     LOCAL_TTS_SEGMENT_GAP_S: "0.18",

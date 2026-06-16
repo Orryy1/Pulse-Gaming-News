@@ -287,6 +287,86 @@ test("goal production render materializer passes visual safe-margin repair inten
   assert.deepEqual(calls[0].visual_repair_blocker_types, ["possible_edge_text_cutoff"]);
 });
 
+test("goal production render materializer rotates risky opener only for visual safe-margin repair", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-opener-rotation-"));
+  const normalArtifactDir = await makePackage(root, "normal-opener-order");
+  const repairArtifactDir = await makePackage(root, "safe-margin-opener-rotation");
+  const clipNames = ["clip-1.mp4", "clip-2.mp4", "clip-3.mp4", "clip-4.mp4"];
+
+  async function writeOfficialMotionPack(artifactDir) {
+    for (const clipName of clipNames) {
+      await fs.outputFile(path.join(artifactDir, clipName), Buffer.alloc(2048, clipName.charCodeAt(5)));
+    }
+    await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+      status: "ready",
+      clips: clipNames.map((clipName, index) => ({
+        id: `direct-motion-${index + 1}`,
+        path: path.join(artifactDir, clipName),
+        source_type: "official_trailer",
+        source_url: `https://publisher.example/beastro/trailer-${index + 1}.mp4`,
+        media_kind: "direct_video",
+        source_family: `beastro_direct_motion_${index + 1}`,
+      })),
+    });
+  }
+
+  await writeOfficialMotionPack(normalArtifactDir);
+  await writeOfficialMotionPack(repairArtifactDir);
+
+  const normalCalls = [];
+  const normalReport = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [readyJob("normal-opener-order", normalArtifactDir)] },
+    generatedAt: "2026-06-16T09:20:00.000Z",
+    force: true,
+    renderProof: async ({ storyJson, output }) => {
+      const story = await fs.readJson(storyJson);
+      normalCalls.push(story);
+      await fs.outputFile(output, Buffer.alloc(4096, 19));
+      return {
+        story_id: story.id,
+        output,
+        clips: story.video_clips.length,
+        rendered_duration_s: 24,
+        size_bytes: 4096,
+      };
+    },
+  });
+
+  const repairCalls = [];
+  const repairReport = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: {
+      jobs: [
+        readyJob("safe-margin-opener-rotation", repairArtifactDir, {
+          repair_lane: "visual_safe_text_margin_rerender",
+          blocker_types: ["possible_edge_text_cutoff"],
+        }),
+      ],
+    },
+    generatedAt: "2026-06-16T09:21:00.000Z",
+    force: true,
+    renderProof: async ({ storyJson, output }) => {
+      const story = await fs.readJson(storyJson);
+      repairCalls.push(story);
+      await fs.outputFile(output, Buffer.alloc(4096, 20));
+      return {
+        story_id: story.id,
+        output,
+        clips: story.video_clips.length,
+        rendered_duration_s: 24,
+        size_bytes: 4096,
+      };
+    },
+  });
+
+  assert.equal(normalReport.summary.rendered_count, 1);
+  assert.equal(repairReport.summary.rendered_count, 1);
+  assert.equal(normalCalls[0].video_clips[0], path.join(normalArtifactDir, "clip-1.mp4"));
+  assert.equal(repairCalls[0].video_clips[0], path.join(repairArtifactDir, "clip-2.mp4"));
+  assert.equal(repairCalls[0].video_clips.at(-1), path.join(repairArtifactDir, "clip-1.mp4"));
+});
+
 test("goal production render materializer replaces generic proof cards with story-specific source proof", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-proof-copy-"));
   const artifactDir = await makePackage(root, "hades-proof-card");

@@ -2078,6 +2078,38 @@ test("goal dry-run publisher skips stories the scheduler excluded because they a
   assert.equal(plan.skipped_stories[0].reason, "already_has_public_platform_id:youtube_post_id,youtube_url");
 });
 
+test("goal dry-run publisher skips already-published platforms but keeps missing enabled platforms", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-partial-platforms-"));
+  const storyPackage = {
+    ...(await makeStoryPackage(root, "partial-platform-story", "GREEN", "Mina The Hollower Has A Sequel Risk")),
+    already_published_platforms: ["youtube_shorts"],
+  };
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-16T10:20:00.000Z",
+    candidatePreflightReport: {
+      candidates: [
+        {
+          id: "partial-platform-story",
+          status: "publish_ready",
+          preflight_qa: { status: "pass", blockers: [], warnings: [] },
+          source: {
+            already_published_platforms: ["youtube_shorts"],
+            missing_enabled_platforms: ["instagram_reels", "facebook_reels"],
+          },
+        },
+      ],
+    },
+  });
+
+  assert.equal(plan.summary.ready_story_count, 1);
+  assert.ok(!plan.actions.some((action) => action.platform === "youtube_shorts"));
+  assert.ok(plan.actions.some((action) => action.platform === "instagram_reels"));
+  assert.ok(plan.actions.some((action) => action.platform === "facebook_reels"));
+  assert.ok(plan.ready_stories[0].already_published_platforms.includes("youtube_shorts"));
+});
+
 test("goal dry-run publisher ignores stale visual-source defers after newer rights-backed final render evidence", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-stale-visual-source-"));
   const storyPackage = await makeStoryPackage(

@@ -305,6 +305,22 @@ function cleanText(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
 }
 
+function asArray(value) {
+  return Array.isArray(value) ? value.filter(Boolean) : [];
+}
+
+function uniqueCleanStrings(values = []) {
+  const seen = new Set();
+  const output = [];
+  for (const value of asArray(values)) {
+    const text = cleanText(value);
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    output.push(text);
+  }
+  return output;
+}
+
 function mergePreflightCandidateStoryPackages(storyPackages = [], candidatePreflightReport = null, root = process.cwd()) {
   const merged = Array.isArray(storyPackages) ? [...storyPackages] : [];
   const seen = new Set(
@@ -328,6 +344,16 @@ function mergePreflightCandidateStoryPackages(storyPackages = [], candidatePrefl
     merged.push({
       story_id: storyId,
       artifact_dir: artifactDir,
+      already_published_platforms: uniqueCleanStrings([
+        ...asArray(candidate.already_published_platforms),
+        ...asArray(candidate.published_platforms),
+        ...asArray(candidate.source?.already_published_platforms),
+        ...asArray(candidate.source?.published_platforms),
+      ]),
+      missing_enabled_platforms: uniqueCleanStrings([
+        ...asArray(candidate.missing_enabled_platforms),
+        ...asArray(candidate.source?.missing_enabled_platforms),
+      ]),
       scheduler_preflight_package_source: "candidate_exported_path",
       no_publish_triggered: true,
       no_db_mutation: true,

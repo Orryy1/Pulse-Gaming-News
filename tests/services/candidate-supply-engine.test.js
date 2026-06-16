@@ -21,6 +21,14 @@ function candidate(id, overrides = {}) {
       source_type: "rss",
       exported_path: `output/goal-proof/batch/${id}/visual_v4_render.mp4`,
     },
+    source_manifest: {
+      primary_source: {
+        name: "IGN",
+        url: `https://www.ign.com/articles/${id}`,
+        published_at: "2026-06-11T09:00:00.000Z",
+      },
+      source_age_policy_hours: 168,
+    },
     preflight_qa: { status: "pass", blockers: [] },
     ...overrides,
   };
@@ -98,4 +106,81 @@ test("buildCandidateSupplyReport scores supply, dedupes stories and enforces gre
   assert.equal(report.dedupe.duplicate_group_count, 1);
   assert.ok(report.priority_scorecards[0].visual_availability_score > 0);
   assert.match(formatCandidateSupplyMarkdown(report), /Candidate Supply Engine/);
+});
+
+test("buildCandidateSupplyReport uses bridge source-age evidence for near-expiry runway warnings", () => {
+  const now = new Date("2026-06-16T22:00:00.000Z");
+  const candidateReport = {
+    generated_at: now.toISOString(),
+    totals: { stories_seen: 1, returned: 1, pending_audio: 0 },
+    candidates: [
+      candidate("fresh_xbox_alien_isolation_2_20260610", {
+        title: "Alien Isolation 2 Has One Horror Risk",
+        source_manifest: {
+          primary_source: {
+            name: "Xbox Wire",
+            url: "https://news.xbox.com/en-us/2026/06/10/alien-isolation-2-poised-to-deliver-another-bold-chapter/",
+            published_at: "2026-06-10T00:00:00.000Z",
+          },
+          source_age_policy_hours: 168,
+        },
+        preflight_qa: {
+          status: "pass",
+          blockers: [],
+          checks: {
+            source_age: {
+              result: "pass",
+              evidence: {
+                source_published_at: "2026-06-10T00:00:00.000Z",
+                policy_hours: 168,
+              },
+            },
+          },
+        },
+      }),
+      candidate("fresh_xbox_fable_living_population_20260610", {
+        title: "Fable Has A 1,000 NPC Risk",
+        status: "review",
+        preflight_qa: {
+          status: "blocked",
+          blockers: ["visual_entity_match:direct_motion_subject_mismatch"],
+          checks: {
+            source_age: {
+              result: "pass",
+              evidence: {
+                source_published_at: "2026-06-10T00:00:00.000Z",
+                policy_hours: 168,
+              },
+            },
+          },
+        },
+      }),
+    ],
+  };
+
+  const report = buildCandidateSupplyReport({
+    stories: [],
+    candidateReport,
+    channelConfig: {},
+    now,
+    targets: {
+      greenReadyCandidates: 1,
+      sourceSafeCandidates: 1,
+      v4ReadyCandidates: 1,
+      freshSourceBackedStories: 0,
+    },
+  });
+
+  assert.equal(report.summary.green_ready_candidates, 1);
+  assert.equal(report.summary.ready_candidates_expiring_within_24h, 1);
+  assert.equal(report.summary.non_ready_candidates_expiring_within_24h, 1);
+  assert.equal(report.summary.durable_green_ready_candidates, 0);
+  assert.equal(report.priority_scorecards[0].age_hours, 166);
+  assert.equal(report.priority_scorecards[0].source_age_policy_hours, 168);
+  assert.equal(report.priority_scorecards[0].source_age_expires_in_hours, 2);
+  assert.ok(report.warnings.includes("ready_candidates_expiring_within_24h:1"));
+  assert.ok(report.warnings.includes("non_ready_candidates_expiring_within_24h:1"));
+  assert.ok(report.warnings.includes("durable_green_ready_candidates_below_target:0/1"));
+  assert.equal(report.next_action, "refresh_fresh_source_intake_and_promote_new_green_candidates_before_expiring_backlog");
+  assert.match(formatCandidateSupplyMarkdown(report), /Durable GREEN-ready candidates: 0\/1/);
 });

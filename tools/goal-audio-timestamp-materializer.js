@@ -97,11 +97,16 @@ function setMinimumMs(env, key, minimum) {
   if (!Number.isFinite(current) || current < minimum) env[key] = String(minimum);
 }
 
+function setMinimumInteger(env, key, minimum) {
+  const current = Number(env[key]);
+  if (!Number.isInteger(current) || current < minimum) env[key] = String(minimum);
+}
+
 function configureLocalTtsBatchEnv(env = process.env) {
   env.TTS_PROVIDER = "local";
   env.PULSE_LOCAL_TTS_ONLY = "true";
   setMinimumMs(env, "LOCAL_TTS_TIMEOUT_MS", 900000);
-  env.LOCAL_TTS_REQUEST_ATTEMPTS = env.LOCAL_TTS_REQUEST_ATTEMPTS || "1";
+  setMinimumInteger(env, "LOCAL_TTS_REQUEST_ATTEMPTS", 3);
   setMinimumMs(env, "LOCAL_TTS_START_WAIT_MS", 120000);
   setMinimumMs(env, "LOCAL_TTS_PREWARM_TIMEOUT_MS", 600000);
   env.LOCAL_TTS_OUTPUT_FORMAT = env.LOCAL_TTS_OUTPUT_FORMAT || "mp3_44100_256";

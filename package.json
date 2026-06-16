@@ -172,6 +172,7 @@
     "ops:publish-cadence": "node tools/publish-cadence-doctor.js",
     "ops:guarded-dispatch-reconcile": "node tools/guarded-dispatch-evidence-reconciliation.js",
     "ops:normal-operations": "node tools/normal-operations-report.js",
+    "ops:autonomous-feedback": "node tools/autonomous-feedback-monitor.js",
     "ops:candidate-supply": "node tools/candidate-supply-engine.js",
     "ops:fresh-green-buffer-promote": "node tools/fresh-green-buffer-local-promotion.js",
     "ops:runtime-sentinel": "node tools/runtime-ownership-sentinel.js",

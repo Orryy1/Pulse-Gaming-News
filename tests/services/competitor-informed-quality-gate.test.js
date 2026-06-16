@@ -196,6 +196,28 @@ test("competitor-informed quality gate blocks poor SFX/audio", async () => {
   assert.ok(report.stories[0].blockers.includes("media_house:poor_sfx_audio"));
 });
 
+test("competitor-informed quality gate blocks tiny placeholder final videos", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-quality-gate-tiny-video-"));
+  const story = await makeGateStory(root, "tiny-video", {
+    canonical: {
+      final_duration_seconds: 2.4,
+      video_duration_seconds: 2.4,
+    },
+  });
+  await fs.writeFile(path.join(story.artifact_dir, "visual_v4_render.mp4"), Buffer.alloc(22000));
+
+  const report = await buildCompetitorInformedQualityGate({
+    storyPackages: [story],
+    outputDir: path.join(root, "out"),
+    workspaceRoot: root,
+    generatedAt: "2026-06-07T12:00:00.000Z",
+  });
+
+  assert.equal(report.verdict, "BLOCKED");
+  assert.ok(report.stories[0].blockers.includes("media_house:final_video_placeholder_or_too_short"));
+  assert.equal(report.stories[0].pulse_media_house_score.final_video_report.status, "blocked");
+});
+
 test("competitor-informed quality gate applies Footage Empire v2 source-lock evidence by story", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-quality-gate-footage-"));
   const story = await makeGateStory(root, "footage-red-story");

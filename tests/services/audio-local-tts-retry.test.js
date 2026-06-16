@@ -24,9 +24,42 @@ const {
 test("isRetryableLocalTtsError: recognises transient local socket resets", () => {
   assert.equal(isRetryableLocalTtsError({ code: "ECONNRESET" }), true);
   assert.equal(isRetryableLocalTtsError(new Error("read ECONNRESET")), true);
+  assert.equal(
+    isRetryableLocalTtsError(
+      new Error(
+        "Request failed with status code 500: voice_qa_all_candidates_rejected: median_f0_hz=94.81 below min_median_f0_hz=95.0",
+      ),
+    ),
+    true,
+  );
   assert.equal(isRetryableLocalTtsError({ code: "ETIMEDOUT" }), false);
   assert.equal(isRetryableLocalTtsError(new Error("timeout of 300000ms exceeded")), false);
   assert.equal(isRetryableLocalTtsError(new Error("HTTP 400")), false);
+});
+
+test("requestTtsWithRetry: retries local voice-QA candidate rejection without changing provider", async () => {
+  let calls = 0;
+  const response = await requestTtsWithRetry({
+    provider: "local",
+    attempts: 3,
+    retryDelayMs: 0,
+    log: null,
+    requestConfig: {
+      method: "POST",
+      url: "http://127.0.0.1:8765/v1/text-to-speech/liam/with-timestamps",
+      data: { text: "Pulse Gaming local TTS retry test." },
+    },
+    request: async () => {
+      calls += 1;
+      if (calls === 1) {
+        throw new Error("voice_qa_all_candidates_rejected: median_f0_hz=94.81 below min_median_f0_hz=95.0");
+      }
+      return { data: { audio_base64: "ok" } };
+    },
+  });
+
+  assert.equal(calls, 2);
+  assert.deepEqual(response, { data: { audio_base64: "ok" } });
 });
 
 test("shouldUseDynamicPacingForProvider: disables split pacing for local Liam", () => {

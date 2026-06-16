@@ -24,7 +24,7 @@ test("Pulse VoxCPM voice map carries Sleepy-proven safety parameters", () => {
   assert.equal(pulse.use_prompt_text, false);
   assert.equal(pulse.voice_qa.enabled, true);
   assert.equal(pulse.voice_qa.min_median_f0_hz >= 95, true);
-  assert.equal(pulse.voice_qa.retry_same_reference, false);
+  assert.equal(pulse.voice_qa.retry_same_reference, true);
   assert.equal(pulse.voice_qa.fallback_without_reference, false);
   assert.equal(typeof pulse.ref_voice_text, "string");
   assert.match(pulse.ref_voice_text, /Metro/i);

@@ -151,7 +151,7 @@ test("goal audio timestamp materializer configures long local TTS batch timeouts
   assert.equal(env.TTS_PROVIDER, "local");
   assert.equal(env.PULSE_LOCAL_TTS_ONLY, "true");
   assert.equal(env.LOCAL_TTS_TIMEOUT_MS, "900000");
-  assert.equal(env.LOCAL_TTS_REQUEST_ATTEMPTS, "1");
+  assert.equal(env.LOCAL_TTS_REQUEST_ATTEMPTS, "3");
   assert.equal(env.LOCAL_TTS_START_WAIT_MS, "120000");
   assert.equal(env.LOCAL_TTS_PREWARM_TIMEOUT_MS, "600000");
   assert.equal(env.LOCAL_WHISPER_MODELS, "tiny.en,base.en,small.en");

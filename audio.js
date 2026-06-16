@@ -834,7 +834,8 @@ function isRetryableLocalTtsError(err) {
   const message = String(err?.message || "");
   return (
     code === "ECONNRESET" ||
-    /ECONNRESET|socket hang up/i.test(message)
+    /ECONNRESET|socket hang up/i.test(message) ||
+    /voice_qa_all_candidates_rejected/i.test(message)
   );
 }
 

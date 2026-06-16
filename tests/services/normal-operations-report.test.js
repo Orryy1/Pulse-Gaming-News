@@ -44,7 +44,42 @@ test("buildCandidateBuffer marks a full ready V4 queue green", () => {
   assert.equal(report.counts.ready_candidates, 10);
   assert.equal(report.counts.source_safe_candidates, 10);
   assert.equal(report.counts.v4_ready_candidates, 10);
+  assert.equal(report.publish_window_runway.ready_for_next_24h_boolean, true);
+  assert.equal(report.publish_window_runway.covered_publish_windows_24h, 5);
+  assert.equal(report.publish_window_runway.reserve_candidates, 5);
   assert.equal(report.blockers.length, 0);
+});
+
+test("buildCandidateBuffer exposes daily publish-window runway separately from reserve depth", () => {
+  const report = buildCandidateBuffer({
+    generated_at: "2026-06-16T22:00:00.000Z",
+    totals: { stories_seen: 9, returned: 5, pending_audio: 0, excluded: 0 },
+    candidates: Array.from({ length: 5 }, (_, index) => candidate(`window-${index + 1}`)),
+  });
+
+  assert.equal(report.verdict, "amber");
+  assert.equal(report.counts.ready_candidates, 5);
+  assert.equal(report.publish_window_runway.publish_windows_24h, 5);
+  assert.equal(report.publish_window_runway.ready_for_next_24h_boolean, true);
+  assert.equal(report.publish_window_runway.covered_publish_windows_24h, 5);
+  assert.equal(report.publish_window_runway.uncovered_publish_windows_24h, 0);
+  assert.equal(report.publish_window_runway.reserve_candidates, 0);
+  assert.ok(report.warnings.includes("ready_candidates_below_target:5/10"));
+  assert.ok(report.warnings.includes("publish_window_reserve_empty"));
+});
+
+test("buildCandidateBuffer warns when the next 24h publish windows are under-covered", () => {
+  const report = buildCandidateBuffer({
+    generated_at: "2026-06-16T22:00:00.000Z",
+    totals: { stories_seen: 9, returned: 4, pending_audio: 0, excluded: 0 },
+    candidates: Array.from({ length: 4 }, (_, index) => candidate(`thin-${index + 1}`)),
+  });
+
+  assert.equal(report.verdict, "amber");
+  assert.equal(report.publish_window_runway.ready_for_next_24h_boolean, false);
+  assert.equal(report.publish_window_runway.covered_publish_windows_24h, 4);
+  assert.equal(report.publish_window_runway.uncovered_publish_windows_24h, 1);
+  assert.ok(report.warnings.includes("publish_window_runway_short:4/5"));
 });
 
 test("buildCandidateBuffer flags an empty buffer red", () => {
@@ -55,6 +90,7 @@ test("buildCandidateBuffer flags an empty buffer red", () => {
 
   assert.equal(report.verdict, "red");
   assert.ok(report.blockers.includes("candidate_buffer_empty"));
+  assert.equal(report.publish_window_runway.ready_for_next_24h_boolean, false);
 });
 
 test("buildRuntimeOwnership requires current public primary queue runtime", () => {
@@ -229,6 +265,7 @@ test("buildDailyStudioReport turns normal operations into an operator handoff", 
   assert.equal(daily.verdict, "amber");
   assert.equal(daily.scheduler_window.ready_for_next_window_boolean, true);
   assert.equal(daily.candidate_buffer.ready_candidates, 10);
+  assert.equal(daily.candidate_buffer.publish_window_runway.ready_for_next_24h_boolean, true);
   assert.equal(daily.post_evidence.publish_jobs_seen, 4);
   assert.equal(daily.guarded_scheduler.selected_action, "story-1:youtube_shorts");
   assert.deepEqual(daily.safety.do_not_touch.includes("Do not mutate OAuth, tokens, credentials or billing."), true);
@@ -290,6 +327,7 @@ test("buildSchedulerWindowReadiness allows advisory-only amber windows", () => {
   assert.equal(readiness.ready_for_next_window_boolean, true);
   assert.equal(readiness.next_action, "observe_next_scheduler_window");
   assert.equal(readiness.selected_action.platform, "youtube_shorts");
+  assert.equal(readiness.publish_window_runway.ready_for_next_24h_boolean, true);
   assert.deepEqual(readiness.blockers, []);
   assert.ok(readiness.advisory.includes("publish_readiness_amber"));
   assert.ok(readiness.advisory.includes("platform_health_amber"));

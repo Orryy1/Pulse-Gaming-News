@@ -79,6 +79,45 @@ test("publish window watchdog is GREEN only when runtime, queue and readiness ag
   assert.equal(report.safe_to_publish_window, true);
   assert.equal(report.enabled_dry_run_action_count, 9);
   assert.equal(report.executor_handoff_action_count, 9);
+  assert.equal(report.action_runway.ready_for_next_24h_boolean, true);
+  assert.equal(report.action_runway.covered_publish_windows_24h, 5);
+});
+
+test("publish window watchdog warns when executor handoff cannot cover the next day", () => {
+  const report = buildPublishWindowWatchdogReport({
+    generatedAt: "2026-06-14T13:55:00.000Z",
+    windowLabel: "publish_afternoon",
+    runtimeSentinel: {
+      verdict: "green",
+      blockers: [],
+      scheduler_window_readiness: {
+        safe_to_observe_next_window: true,
+        hold_scheduler_or_dispatch: false,
+        next_action: "observe_guarded_scheduler_window",
+      },
+      scheduler_proof: {
+        enabled_dry_run_action_count: 3,
+        executor_handoff_action_count: 3,
+        missing_from_executor_count: 0,
+      },
+    },
+    publishReadiness: {
+      overall_verdict: "green",
+      blockers: [],
+      next_action: "Guarded enabled-platform dispatch is ready.",
+      readiness_scope: { name: "enabled_platform_guarded_handoff", guard_ready: true },
+    },
+    queueReport: {
+      verdict: "pass",
+      blockers: [],
+    },
+  });
+
+  assert.equal(report.verdict, "amber");
+  assert.equal(report.safe_to_publish_window, true);
+  assert.equal(report.action_runway.ready_for_next_24h_boolean, false);
+  assert.equal(report.action_runway.uncovered_publish_windows_24h, 2);
+  assert.ok(report.advisory.includes("scheduler_runway: executor_action_runway_short:3/5"));
 });
 
 test("publish window watchdog surfaces advisory AMBER without blocking guarded publishing", () => {
@@ -182,6 +221,7 @@ test("publish window watchdog Discord message is operator-readable", () => {
   assert.match(message, /Status:\s+green/);
   assert.match(message, /Safe:\s+yes/);
   assert.match(message, /Actions:\s+9 dry-run \/ 9 handoff/);
+  assert.match(message, /Runway:\s+5\/5 windows/);
 });
 
 test("scheduler registers watchdog checks before every guarded publish window", () => {

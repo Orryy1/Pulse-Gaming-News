@@ -23,5 +23,5 @@ test("longform assembler fits all story segments into the actual audio duration"
     segmentCount: 10,
   });
 
-  assert.equal(segmentDuration, 62.308);
+  assert.equal(segmentDuration, 65.308);
 });

@@ -100,6 +100,8 @@ test("Pulse Release Radar builds a review-ready 10 game long-form package", () =
   assert.equal(pack.readiness.verdict, "READY_FOR_OPERATOR_REVIEW");
   assert.equal(pack.ready_candidates.length, 10);
   assert.ok(pack.longform.estimated_runtime_seconds >= 600);
+  assert.match(pack.longform.script, /A famous name only gets you into the conversation/i);
+  assert.match(pack.longform.script, /once the trailer music stops/i);
   assert.equal(pack.longform.segments[0].rank, 1);
   assert.match(pack.longform.script, /^1\. Verified Game/m);
   assert.doesNotMatch(pack.longform.script, /^0\./m);

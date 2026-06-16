@@ -23,12 +23,21 @@ function longformVideoCodecArgs() {
   return LONGFORM_VIDEO_CODEC_ARGS;
 }
 
+function longformMotionFilterChain(inputLabel, outputLabel) {
+  return (
+    `[${inputLabel}:v]scale=2020:1136:force_original_aspect_ratio=increase,` +
+    `crop=1920:1080:x='(iw-ow)/2+30*sin(n/75)':y='(ih-oh)/2+18*cos(n/90)',` +
+    `fps=30,format=yuv420p,setsar=1,` +
+    `trim=duration=__DURATION__,setpts=PTS-STARTPTS[${outputLabel}]`
+  );
+}
+
 function longformSegmentDuration({
   duration,
   segmentCount,
-  introDur = 5,
-  outroDur = 5,
-  chapterCardDur = 2,
+  introDur = 0,
+  outroDur = 0,
+  chapterCardDur = 0,
 } = {}) {
   const count = Math.max(1, Number(segmentCount) || 1);
   const totalDuration = Math.max(0, Number(duration) || 0);
@@ -416,38 +425,18 @@ async function assembleLongform(compilation) {
   const filterParts = [];
   let inputIdx = 0;
 
-  // Timings
-  const INTRO_DUR = 5;
-  const CHAPTER_CARD_DUR = 2;
-  const OUTRO_DUR = 5;
-
-  // --- Intro card (colour source with drawtext) ---
-  inputs.push(
-    `-f lavfi -t ${INTRO_DUR} -i "color=c=0x0D0D0F:s=1920x1080:r=30"`,
-  );
-  const introIdx = inputIdx++;
-
-  const dateRangeClean = sanitizeDrawtext(dateRange || "This Week", 40);
-  filterParts.push(
-    `[${introIdx}:v]` +
-      `drawbox=x=0:y=ih/2-2:w=iw:h=4:color=${primaryFFM}@0.8:t=fill,` +
-      `drawtext=text='${channelName}':${fontOpt}:fontcolor=${textFFM}:fontsize=72:x=(w-tw)/2:y=(h-th)/2-80,` +
-      `drawtext=text='WEEKLY ROUNDUP':${fontOpt}:fontcolor=${primaryFFM}:fontsize=48:x=(w-tw)/2:y=(h-th)/2+10,` +
-      `drawtext=text='${dateRangeClean}':${fontOpt}:fontcolor=${textFFM}@0.7:fontsize=32:x=(w-tw)/2:y=(h-th)/2+80` +
-      `[intro]`,
-  );
+  // Timings: longform review renders should stay motion-led. Static
+  // intro/chapter/outro cards made the output look like slow stills and
+  // triggered black/freeze QA. Chapters live in YouTube metadata instead.
+  const INTRO_DUR = 0;
+  const CHAPTER_CARD_DUR = 0;
+  const OUTRO_DUR = 0;
 
   // --- Story segments with chapter title cards ---
   const segLabels = [];
   for (let si = 0; si < segments.length; si++) {
     const seg = segments[si];
     const storyObj = stories.find((s) => s.id === seg.story_id);
-
-    // Chapter title card
-    inputs.push(
-      `-f lavfi -t ${CHAPTER_CARD_DUR} -i "color=c=0x0D0D0F:s=1920x1080:r=30"`,
-    );
-    const cardIdx = inputIdx++;
 
     const classInfo = channel.classificationColour
       ? channel.classificationColour(
@@ -460,15 +449,6 @@ async function assembleLongform(compilation) {
     );
     const badgeLabel = sanitizeDrawtext(classInfo.label, 20);
     const badgeFFM = classInfo.ffm;
-
-    filterParts.push(
-      `[${cardIdx}:v]` +
-        `drawbox=x=0:y=ih/2+30:w=300:h=3:color=${primaryFFM}@0.8:t=fill,` +
-        `drawtext=text='  ${badgeLabel}  ':${fontOpt}:fontcolor=white:fontsize=28:` +
-        `box=1:boxcolor=${badgeFFM}@0.85:boxborderw=10:x=60:y=(h-th)/2-50,` +
-        `drawtext=text='${chTitle}':${fontOpt}:fontcolor=${textFFM}:fontsize=44:x=60:y=(h-th)/2+10` +
-        `[card${si}]`,
-    );
 
     const storyMotionClips = await existingMotionClipPaths(seg, storyObj);
 
@@ -519,9 +499,10 @@ async function assembleLongform(compilation) {
         );
         const clipIdx = inputIdx++;
         filterParts.push(
-          `[${clipIdx}:v]scale=1920:1080:force_original_aspect_ratio=increase,` +
-            `crop=1920:1080,fps=30,format=yuv420p,setsar=1,` +
-            `trim=duration=${clipSegDur},setpts=PTS-STARTPTS[motion${si}_${mi}]`,
+          longformMotionFilterChain(String(clipIdx), `motion${si}_${mi}`).replace(
+            "__DURATION__",
+            String(clipSegDur),
+          ),
         );
         motionLabels.push(`motion${si}_${mi}`);
       }
@@ -616,27 +597,18 @@ async function assembleLongform(compilation) {
       }
     }
 
-    // Push both card and segment labels in order
-    segLabels.push(`card${si}`);
+    filterParts.push(
+      `[seg${si}]` +
+        `drawtext=text='${chTitle}':${fontOpt}:fontcolor=${textFFM}:fontsize=34:` +
+        `box=1:boxcolor=0x000000@0.42:boxborderw=10:x=48:y=42,` +
+        `drawtext=text='${badgeLabel}':${fontOpt}:fontcolor=white:fontsize=22:` +
+        `box=1:boxcolor=${badgeFFM}@0.82:boxborderw=8:x=48:y=98[segout${si}]`,
+    );
     segLabels.push(`seg${si}`);
   }
 
-  // --- Outro card ---
-  inputs.push(
-    `-f lavfi -t ${OUTRO_DUR} -i "color=c=0x0D0D0F:s=1920x1080:r=30"`,
-  );
-  const outroIdx = inputIdx++;
-
-  filterParts.push(
-    `[${outroIdx}:v]` +
-      `drawbox=x=0:y=ih/2-2:w=iw:h=4:color=${primaryFFM}@0.8:t=fill,` +
-      `drawtext=text='SUBSCRIBE':${fontOpt}:fontcolor=${primaryFFM}:fontsize=64:x=(w-tw)/2:y=(h-th)/2-40,` +
-      `drawtext=text='${channelName}':${fontOpt}:fontcolor=${textFFM}:fontsize=36:x=(w-tw)/2:y=(h-th)/2+40` +
-      `[outro]`,
-  );
-
-  // --- Concatenate all: intro + (card + segment) * N + outro ---
-  const concatLabels = ["intro", ...segLabels, "outro"];
+  // --- Concatenate all motion-led segments ---
+  const concatLabels = segments.map((_, si) => `segout${si}`);
   const concatCount = concatLabels.length;
   const concatInput = concatLabels.map((l) => `[${l}]`).join("");
   filterParts.push(`${concatInput}concat=n=${concatCount}:v=1:a=0[rawvid]`);
@@ -713,6 +685,7 @@ module.exports = {
   assembleLongform,
   chapterTime,
   existingMotionClipPaths,
+  longformMotionFilterChain,
   longformSegmentDuration,
   longformVideoCodecArgs,
 };

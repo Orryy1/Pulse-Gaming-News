@@ -17,6 +17,7 @@ const ROOT = path.resolve(__dirname, "..");
 const DEFAULT_INPUT = path.join(ROOT, "data", "release-radar", "july-2026-candidates.json");
 const DEFAULT_OUT = path.join(ROOT, "output", "release-radar", "july-2026");
 const execFileAsync = util.promisify(execFile);
+const LONGFORM_MOTION_CLIP_SECONDS = 24;
 
 function parseArgs(argv = process.argv.slice(2)) {
   const args = {
@@ -235,6 +236,7 @@ function buildReleaseRadarLongformCompilation(pack = {}, { outDir = DEFAULT_OUT 
     channelName: "Pulse Gaming",
     chapter_timestamps: pack.longform?.chapters || [],
     title_date: pack.month_label || null,
+    privacyStatus: "private",
     intro: "",
     outro: "",
   };
@@ -387,7 +389,7 @@ async function cutMotionClip({ sourcePath, outputPath, startS, durationS = 8 }) 
 function motionClipStarts(durationS, count = 3, clipDurationS = 8) {
   const duration = Number(durationS) || 0;
   if (duration <= clipDurationS + 4) return [0];
-  const resolvedCount = Math.max(1, Math.min(count, Math.floor((duration - 4) / clipDurationS)));
+  const resolvedCount = Math.max(1, Number(count) || 1);
   const safeStart = Math.min(8, Math.max(0, duration - clipDurationS));
   const safeEnd = Math.max(safeStart, duration - clipDurationS - 4);
   return Array.from({ length: resolvedCount }, (_, index) => {
@@ -449,19 +451,22 @@ async function materializeReleaseRadarMotion(compilation, pack = {}, { outDir = 
       entry.raw_path = rawPath;
       const duration = await ffprobeDuration(rawPath);
       entry.source_duration_seconds = duration;
-      const starts = motionClipStarts(duration, 3, 8);
+      const starts = motionClipStarts(duration, 3, LONGFORM_MOTION_CLIP_SECONDS);
       for (let index = 0; index < starts.length; index += 1) {
         const outputPath = path.join(clipDir, `${base}-${String(index + 1).padStart(2, "0")}.mp4`);
         await cutMotionClip({
           sourcePath: rawPath,
           outputPath,
           startS: starts[index],
-          durationS: Math.min(8, Math.max(4, Number(duration || 8) - starts[index])),
+          durationS: Math.min(
+            LONGFORM_MOTION_CLIP_SECONDS,
+            Math.max(4, Number(duration || LONGFORM_MOTION_CLIP_SECONDS) - starts[index]),
+          ),
         });
         entry.clips.push({
           path: outputPath,
           start_seconds: Math.round(starts[index] * 100) / 100,
-          duration_seconds: 8,
+          duration_seconds: LONGFORM_MOTION_CLIP_SECONDS,
           source_url: selectedSourceUrl,
           source_type: "official_direct_motion",
         });

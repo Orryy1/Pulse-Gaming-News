@@ -6,7 +6,10 @@ const fs = require("fs-extra");
 const os = require("node:os");
 const path = require("node:path");
 
-const { existingMotionClipPaths } = require("../../assemble_longform");
+const {
+  existingMotionClipPaths,
+  longformMotionFilterChain,
+} = require("../../assemble_longform");
 
 test("longform assembler prefers existing motion clips from segment and story evidence", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-longform-motion-"));
@@ -29,3 +32,11 @@ test("longform assembler prefers existing motion clips from segment and story ev
   assert.deepEqual(clips.sort(), [segmentClip, storyClip].sort());
 });
 
+test("longform motion clips get subtle crop movement to avoid frozen stills", () => {
+  const filter = longformMotionFilterChain("0", "out").replace("__DURATION__", "21");
+
+  assert.match(filter, /scale=2020:1136/);
+  assert.match(filter, /sin\(n\/75\)/);
+  assert.match(filter, /cos\(n\/90\)/);
+  assert.match(filter, /trim=duration=21/);
+});

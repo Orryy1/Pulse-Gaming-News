@@ -108,6 +108,7 @@ test("Pulse Release Radar builds a longform compilation and quality evidence fro
   assert.equal(compilation.segments.length, 10);
   assert.equal(compilation.duration, pack.longform.estimated_runtime_seconds);
   assert.match(compilation.title, /Best New Games Coming in July 2026/i);
+  assert.equal(compilation.privacyStatus, "private");
   assert.equal(evidence.segmentCount, 10);
   assert.equal(evidence.sourcePack[0].confidence, "confirmed");
   assert.equal(evidence.visualPlan.every((item) => item.validated_clips >= 1), true);
@@ -202,6 +203,7 @@ test("Pulse Release Radar render flags and official image candidates are determi
 test("Pulse Release Radar motion QA blocks still-led longform packages", () => {
   assert.deepEqual(motionClipStarts(60, 3, 8).length, 3);
   assert.equal(motionClipStarts(9, 3, 8).length, 1);
+  assert.equal(motionClipStarts(55, 3, 24).length, 3);
 
   const pass = buildReleaseRadarMotionQa(
     Array.from({ length: 10 }, (_, index) => ({

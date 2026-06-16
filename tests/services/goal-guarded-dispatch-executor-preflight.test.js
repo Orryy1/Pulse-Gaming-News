@@ -150,6 +150,54 @@ test("executor preflight requires explicit action ids before any handoff", async
   assert.equal(report.executor_plan.required_next_step, "select_explicit_dispatch_action_ids");
 });
 
+test("executor preflight can explicitly hand off the full dispatch-ready runway", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-executor-full-runway-"));
+  const files = await evidenceFiles(root);
+  const plan = guardedDispatchPlan(files);
+  plan.dispatch_ready_actions.push({
+    ...plan.dispatch_ready_actions[0],
+    story_id: "story-two",
+    platform: "instagram_reels",
+    title: "GTA 6 Delay Becomes The First Argument",
+  });
+  const matrix = platformStatusMatrix({
+    youtube_shorts: {
+      planned_story_ids: ["story-one"],
+    },
+  });
+  matrix.platforms.instagram_reels = {
+    platform: "instagram_reels",
+    status: "ready_now",
+    operational_state: "enabled",
+    blocked_action_count: 0,
+    deferred_action_count: 0,
+    planned_story_ids: ["story-two"],
+  };
+
+  const report = buildGuardedDispatchExecutorPreflight({
+    guardedDispatchPlan: plan,
+    platformStatusMatrix: matrix,
+    selectAllDispatchReady: true,
+    selectedActionIds: [],
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.summary.dispatch_ready_action_count, 2);
+  assert.equal(report.summary.selected_action_count, 2);
+  assert.equal(report.summary.handoff_ready_action_count, 2);
+  assert.deepEqual(
+    report.handoff_ready_actions.map((action) => action.action_id),
+    ["story-one:youtube_shorts", "story-two:instagram_reels"],
+  );
+  assert.ok(report.advisory.includes("selected_all_dispatch_ready_actions"));
+  assert.equal(report.executor_plan.ready_for_live_executor_handoff, true);
+  assert.equal(report.safe_to_publish_boolean, false);
+});
+
 test("executor preflight rejects selected actions when executor is not armed or kill switch is not clear", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-executor-unarmed-"));
   const files = await evidenceFiles(root);

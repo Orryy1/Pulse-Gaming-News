@@ -167,6 +167,53 @@ test("autonomous feedback holds scheduler when Discord wrong-motion feedback is 
   assert.deepEqual(report.blockers, ["discord_feedback:direct_motion_gap_current:fresh_xbox_beastro_20260611"]);
 });
 
+test("autonomous feedback does not hold the selected publish window for non-selected repair-lane motion gaps", () => {
+  const report = buildAutonomousFeedbackReport({
+    generatedAt: "2026-06-16T22:25:00.000Z",
+    normalOperationsReport: normalOps({
+      guarded_selection: {
+        action_id: "fresh_xbox_beastro_20260611:youtube_shorts",
+        exhausted: false,
+      },
+    }),
+    candidateReport: {
+      candidates: [
+        currentCandidate(),
+        {
+          id: "fresh_xbox_alien_isolation_2_20260610",
+          title: "Alien Isolation 2 Has One Horror Risk",
+          status: "review",
+          preflight_qa: {
+            status: "fail",
+            blockers: ["visual_entity_match_failed"],
+            checks: {
+              visual_entity_match: {
+                result: "fail",
+                evidence: { direct_motion_asset_count: 0 },
+              },
+            },
+          },
+        },
+      ],
+    },
+    discordDigestPayload: {
+      generated_at: "2026-06-16T22:02:14.091Z",
+      summary: {
+        scheduler_bridge_direct_video_gap_count: 2,
+        scheduler_bridge_direct_video_subject_mismatch_count: 1,
+      },
+      markdown:
+        "Direct-video gap sample: fresh_xbox_beastro_20260611, fresh_xbox_alien_isolation_2_20260610.",
+    },
+  });
+
+  assert.equal(report.discord_feedback.real_blocker_count, 0);
+  assert.equal(report.discord_feedback.items[0].state, "superseded_by_current_preflight");
+  assert.equal(report.discord_feedback.items[1].state, "backlog_repair_candidate_not_selected");
+  assert.ok(!report.blockers.includes("discord_feedback:direct_motion_gap_current:fresh_xbox_alien_isolation_2_20260610"));
+  assert.equal(report.current_action, "observe_next_scheduler_window");
+});
+
 test("autonomous feedback alerts on completed publish jobs with no newer platform evidence", () => {
   const report = buildAutonomousFeedbackReport({
     generatedAt: "2026-06-16T15:20:00.000Z",
@@ -253,6 +300,55 @@ test("autonomous feedback treats current TTS and caption materialisation failure
   assert.match(formatAutonomousFeedbackDiscord(report), /TTS\/captions: 1 failed materialisations/);
 });
 
+test("autonomous feedback supersedes stale TTS failures when current preflight proves voice and timestamps pass", () => {
+  const report = buildAutonomousFeedbackReport({
+    generatedAt: "2026-06-16T22:20:00.000Z",
+    normalOperationsReport: normalOps(),
+    candidateReport: {
+      generated_at: "2026-06-16T22:14:52.178Z",
+      candidates: [
+        {
+          id: "fresh_xbox_beastro_20260611",
+          status: "publish_ready",
+          preflight_qa: {
+            status: "pass",
+            blockers: [],
+            checks: {
+              voice_quality: { result: "pass", warnings: ["voice_cadence:above_target_wpm"] },
+              timestamp_alignment: { result: "pass", warnings: [] },
+            },
+          },
+        },
+      ],
+    },
+    ttsCaptionReport: {
+      generated_at: "2026-06-16T16:44:24.195Z",
+      summary: {
+        failed_count: 1,
+      },
+      jobs: [
+        {
+          story_id: "fresh_xbox_beastro_20260611",
+          title: "Beastro Has A Cozy Deckbuilding Test",
+          status: "failed",
+          error: "local_whisper_word_alignment_failed",
+        },
+      ],
+    },
+  });
+
+  assert.notEqual(report.current_action, "repair_tts_caption_blockers");
+  assert.equal(report.tts_caption_feedback.failed_count, 0);
+  assert.equal(report.tts_caption_feedback.superseded_count, 1);
+  assert.equal(report.tts_caption_feedback.blocks_publishing, false);
+  assert.ok(
+    !report.blockers.includes(
+      "tts_caption:fresh_xbox_beastro_20260611:caption_alignment_failed",
+    ),
+  );
+  assert.match(formatAutonomousFeedbackDiscord(report), /TTS\/captions: 0 failed materialisations/);
+});
+
 test("autonomous feedback escalates zero live candidates when safe repair runway exists", () => {
   const report = buildAutonomousFeedbackReport({
     generatedAt: "2026-06-16T17:30:00.000Z",
@@ -303,6 +399,39 @@ test("autonomous feedback escalates zero live candidates when safe repair runway
   assert.ok(report.blockers.includes("publish_runway:no_live_candidates_with_repairable_backlog"));
   assert.equal(report.publish_runway_feedback.repairable_backlog, 107);
   assert.match(formatAutonomousFeedbackDiscord(report), /Runway: 0 live \| 107 repairable/);
+});
+
+test("autonomous feedback surfaces durable supply and expiring backlog in Discord", () => {
+  const report = buildAutonomousFeedbackReport({
+    generatedAt: "2026-06-16T22:10:00.000Z",
+    normalOperationsReport: normalOps(),
+    candidateSupplyReport: {
+      generated_at: "2026-06-16T22:06:24.000Z",
+      verdict: "amber",
+      summary: {
+        fresh_source_backed_stories_24h: 7,
+        green_ready_candidates: 5,
+        durable_green_ready_candidates: 5,
+        ready_candidates_expiring_within_24h: 0,
+        non_ready_candidates_expiring_within_24h: 3,
+        v4_ready_candidates: 5,
+      },
+      next_action: "refresh_fresh_source_intake_and_promote_new_green_candidates_before_expiring_backlog",
+      warnings: [
+        "non_ready_candidates_expiring_within_24h:3",
+        "durable_green_ready_candidates_below_target:5/10",
+      ],
+    },
+  });
+
+  assert.equal(report.market_intelligence.candidate_supply.green_ready_candidates, 5);
+  assert.equal(report.market_intelligence.candidate_supply.durable_green_ready_candidates, 5);
+  assert.equal(report.market_intelligence.candidate_supply.non_ready_candidates_expiring_within_24h, 3);
+  assert.equal(
+    report.market_intelligence.candidate_supply.next_action,
+    "refresh_fresh_source_intake_and_promote_new_green_candidates_before_expiring_backlog",
+  );
+  assert.match(formatAutonomousFeedbackDiscord(report), /candidate=amber \(5 durable GREEN, 3 expiring non-ready\)/);
 });
 
 test("scheduler has an autonomous feedback monitor schedule", () => {

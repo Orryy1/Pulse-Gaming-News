@@ -450,6 +450,80 @@ test("narration voice QA accepts sparse audio manifests when narration evidence 
   assert.deepEqual(built.voiceQualityReport.blockers, []);
 });
 
+test("narration voice QA preserves repaired segmented local TTS continuity evidence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-narration-qa-segmented-voice-"));
+  const fixture = await makeNarrationQaFixture(root, {
+    audioWordCount: 24,
+    captionWordCount: 24,
+    voiceQualityWordCount: 24,
+  });
+  const resolvedTimestampPath = path.join(root, "output", "audio", `${fixture.storyId}_timestamps.json`);
+  const transcript = transcriptWithWordCount(24);
+  await fs.outputJson(path.join(fixture.artifactDir, "canonical_story_manifest.json"), {
+    story_id: fixture.storyId,
+    selected_title: "Hades II Finally Hits Console",
+    canonical_subject: "Hades II",
+    narration_script: transcript,
+  });
+  await fs.outputJson(resolvedTimestampPath, {
+    words: wordTimeline(24, 10),
+    meta: {
+      provider: "local",
+      source: "local-tts-server",
+      segmentedLocalTtsMaterialized: true,
+      segment_count: 3,
+      segment_word_counts: [8, 8, 8],
+      segment_gap_s: 0.5,
+      wordTimestampSource: "local_whisper_word_alignment",
+      voiceMetadataRepair: {
+        repaired: true,
+        strategy: "merged_segment_local_voice_sidecar_evidence",
+        segment_count: 3,
+      },
+    },
+  });
+  await fs.outputJson(path.join(fixture.artifactDir, "audio_manifest.json"), {
+    story_id: fixture.storyId,
+    status: "ready",
+    voice_status: "materialized",
+    voice_provider: "local_tts",
+    narration_audio_path: "narration.mp3",
+    word_timestamps_path: "output/audio/voice-repair-story_timestamps.json",
+    resolved_word_timestamps_path: resolvedTimestampPath,
+    word_timestamp_count: 24,
+    materialized_at: "2026-05-31T01:00:00.000Z",
+  });
+  await fs.outputJson(path.join(fixture.artifactDir, "narration_manifest.json"), {
+    story_id: fixture.storyId,
+    status: "ready",
+    audio_path: "narration.mp3",
+    resolved_word_timestamps_path: resolvedTimestampPath,
+    transcript,
+  });
+  await fs.outputJson(path.join(fixture.artifactDir, "caption_manifest.json"), {
+    story_id: fixture.storyId,
+    generated_at: "2026-05-31T01:10:00.000Z",
+    caption_srt_path: "captions.srt",
+    word_timestamps_path: resolvedTimestampPath,
+    word_count: 24,
+    word_timestamp_count: 24,
+  });
+
+  const built = await buildCurrentVoiceQualityReport({
+    artifactDir: fixture.artifactDir,
+    generatedAt: "2026-05-31T01:20:00.000Z",
+  });
+
+  assert.equal(built.voiceQualityReport.verdict, "PASS");
+  assert.equal(built.voiceQualityReport.segmentedLocalTtsMaterialized, true);
+  assert.equal(built.voiceQualityReport.local_tts_segment_count, 3);
+  assert.equal(built.voiceQualityReport.segment_count, 3);
+  assert.deepEqual(built.voiceQualityReport.segment_word_counts, [8, 8, 8]);
+  assert.equal(built.voiceQualityReport.segment_gap_s, 0.5);
+  assert.equal(built.voiceQualityReport.local_tts_segment_voice_continuity_verified, true);
+  assert.equal(built.voiceQualityReport.segment_voice_continuity_verified, true);
+});
+
 test("narration QA repair CLI defaults to report-only mode", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-narration-qa-repair-cli-"));
   const fixture = await makeNarrationQaFixture(root);

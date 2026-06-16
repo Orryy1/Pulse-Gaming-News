@@ -1441,6 +1441,11 @@ function visualSubjectTokensForStory(story = {}) {
   );
   const tokens = visualEntityTokenise(subject || fallbackTitle);
   if (tokens.includes("gta")) tokens.push("grand", "theft", "auto");
+  if (tokens.includes("gta")) {
+    for (const token of tokens) {
+      if (/^\d+$/.test(token)) tokens.push(`gta${token}`);
+    }
+  }
   return [...new Set(tokens)];
 }
 

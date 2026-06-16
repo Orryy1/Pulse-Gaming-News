@@ -21,6 +21,7 @@ const {
   scoreAnalyticsFit,
   mergeBridgeCandidates,
   selectCandidateSourceStories,
+  visualEntityPreflightForStory,
 } = require("../../tools/next-publish-candidates");
 
 const analyticsText = [
@@ -2996,6 +2997,55 @@ test("attachPreflightQa accepts local official direct motion when trusted intake
     ),
   );
   assert.match(visualEntity.evidence.direct_motion_assets[0].provenance_text, /beastro/);
+});
+
+test("visual entity preflight accepts compact GTA 6 source-family aliases", async () => {
+  const clipPath = path.join(
+    "test",
+    "output",
+    "next-publish-candidates-gta6-compact-sidecar",
+    "fresh_gta6_release_reconfirm_20260616_v4_clip_1_segment_official_motion_1.mp4",
+  );
+  await fs.ensureDir(path.dirname(clipPath));
+  await fs.writeFile(clipPath, "placeholder");
+  await fs.writeJson(`${clipPath}.json`, {
+    schema_version: 1,
+    source_url: "https://www.youtube.com/watch?v=VQRLujxTm3c",
+    source_type: "official_youtube_trailer_local_editorial_clip",
+    source_family: "fresh_gta6_release_reconfirm_20260616_official_motion_1",
+    rights_basis: "official_reference_transformative_editorial_use",
+  });
+
+  const result = await visualEntityPreflightForStory(
+    baseStory({
+      id: "fresh_gta6_release_reconfirm_20260616",
+      title: "GTA 6 Delay Becomes The First Argument",
+      canonical_subject: "GTA 6",
+      canonical_game: "GTA 6",
+      primary_source_url:
+        "https://www.gamespot.com/articles/gta-6-release-date-confirmed-again-by-ceo-who-also-explains-why-its-taking-so-long/",
+      scheduler_bridge_source: "goal_production_cutover",
+      visual_v4_bridge_video_clips: [
+        {
+          id: "segment_official_motion_1",
+          path: clipPath,
+          source_url: "https://www.youtube.com/watch?v=VQRLujxTm3c",
+          source_type: "licensed_direct_media_url",
+          media_kind: "direct_video",
+          rights_basis: "official_reference_transformative_editorial_use",
+        },
+      ],
+      video_clips: [clipPath],
+      rights_ledger: {
+        verdict: "pass",
+        assets: [],
+      },
+    }),
+  );
+
+  assert.equal(result.result, "pass");
+  assert.ok(!result.failures.includes("direct_motion_subject_mismatch"));
+  assert.match(result.evidence.direct_motion_assets[0].provenance_text, /gta6/);
 });
 
 test("attachPreflightQa blocks direct motion when cache sidecar source does not match the subject", async () => {

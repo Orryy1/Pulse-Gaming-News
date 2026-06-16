@@ -134,6 +134,50 @@ test("caption SRT keeps protected game names instead of phonetic ASR spellings",
   assert.doesNotMatch(srt, /Beastrow|Bistro/);
 });
 
+test("caption SRT normalises hardware, years and GTA acronym-number ASR", () => {
+  const srt = buildCaptionSrt(
+    "The GTA 6 delay hits PlayStation 5 in 2027. Gears of War E-Day needs RTX 2060 hardware.",
+    12,
+    {
+      words: [
+        { word: "The", start: 0, end: 0.2 },
+        { word: "G", start: 0.2, end: 0.34 },
+        { word: "T", start: 0.34, end: 0.48 },
+        { word: "A", start: 0.48, end: 0.62 },
+        { word: "six", start: 0.62, end: 0.9 },
+        { word: "delay", start: 0.9, end: 1.2 },
+        { word: "hits", start: 1.2, end: 1.46 },
+        { word: "PlayStation", start: 1.46, end: 1.94 },
+        { word: "five", start: 1.94, end: 2.2 },
+        { word: "in", start: 2.2, end: 2.36 },
+        { word: "twenty", start: 2.36, end: 2.72 },
+        { word: "twenty", start: 2.72, end: 3.08 },
+        { word: "seven.", start: 3.08, end: 3.48 },
+        { word: "Gears", start: 4.1, end: 4.42 },
+        { word: "of", start: 4.42, end: 4.56 },
+        { word: "War", start: 4.56, end: 4.84 },
+        { word: "E", start: 4.84, end: 5.02 },
+        { word: "Day", start: 5.02, end: 5.3 },
+        { word: "needs", start: 5.3, end: 5.62 },
+        { word: "RTX", start: 5.62, end: 5.96 },
+        { word: "twenty", start: 5.96, end: 6.28 },
+        { word: "sixty", start: 6.28, end: 6.64 },
+        { word: "hardware.", start: 6.64, end: 7.1 },
+      ],
+      maxWordsPerPhrase: 5,
+      maxPhraseChars: 32,
+      maxPhraseDurationS: 2.4,
+    },
+  );
+
+  assert.match(srt, /GTA 6/);
+  assert.match(srt, /PlayStation 5/);
+  assert.match(srt, /2027/);
+  assert.match(srt, /Gears of War E-Day/);
+  assert.match(srt, /RTX 2060/);
+  assert.doesNotMatch(srt, /G T A|PlayStation five|twenty twenty seven|twenty sixty|E Day/);
+});
+
 test("public copy repair turns a quote fragment Kickstarter story into usable copy", () => {
   const repaired = repairGoalPublicCopyManifest(
     {

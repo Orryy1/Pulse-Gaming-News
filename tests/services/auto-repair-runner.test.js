@@ -262,6 +262,26 @@ test("auto repair runner resolves npm scripts through npm_execpath without shell
   assert.equal(resolved.shell, false);
 });
 
+test("auto repair runner resolves npm scripts through an explicit npm CLI path when launched outside npm", () => {
+  const resolved = resolveExecutableCommand({
+    executable: "npm",
+    args: ["run", "ops:next-publish-candidates", "--", "--json"],
+  }, {
+    npmCliPath: "C:/node/node_modules/npm/bin/npm-cli.js",
+    nodeExecPath: "C:/node/node.exe",
+  });
+
+  assert.equal(resolved.executable, "C:/node/node.exe");
+  assert.deepEqual(resolved.args, [
+    "C:/node/node_modules/npm/bin/npm-cli.js",
+    "run",
+    "ops:next-publish-candidates",
+    "--",
+    "--json",
+  ]);
+  assert.equal(resolved.shell, false);
+});
+
 test("auto repair runner dry-run execution does not call the command runner", async () => {
   const runPlan = buildAutoRepairRunPlan(planFixture(), {
     lane: "audio_regeneration",

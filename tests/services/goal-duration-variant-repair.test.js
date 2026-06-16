@@ -1988,6 +1988,65 @@ test("duration variant repair repairs stale fail rights ledgers when assets alre
   assert.equal(await fs.pathExists(path.join(artifactDir, "rights_ledger.json.pre_duration_variant_repair.json")), true);
 });
 
+test("duration variant repair accepts official reference transformative motion rights rows", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-duration-official-reference-rights-"));
+  const artifactDir = await makePackage(root, "official-reference-normal-floor");
+  const clipPath = path.join(artifactDir, "official-reference-motion.mp4");
+  await fs.outputFile(clipPath, Buffer.alloc(4096, 16));
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    matched_assets: [
+      {
+        asset_id: "official-reference-motion-1",
+        kind: "video",
+        path: clipPath,
+        source_url: "local://existing-official-direct-motion/official-reference-normal-floor/clip.mp4",
+        rights_record_id: "official-reference-motion-1",
+        licence_basis: "official_reference_transformative_editorial_use",
+        risk_score: 0.12,
+      },
+    ],
+  });
+
+  const renderedStories = [];
+  const report = await materializeDurationVariantRepairs({
+    workspaceRoot: root,
+    generatedAt: "2026-05-23T08:25:00.000Z",
+    provider: "elevenlabs",
+    workOrder: {
+      jobs: [
+        {
+          ...workOrderJob("official-reference-normal-floor", artifactDir),
+          current_duration_s: 34.1,
+          target_duration_seconds: { min: 35, max: 59 },
+        },
+      ],
+    },
+    generateTtsForStory: async ({ text, outputPath }) => {
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 17));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignment(text),
+      });
+    },
+    renderProof: async ({ storyJson, output }) => {
+      const story = await fs.readJson(storyJson);
+      renderedStories.push(story);
+      await fs.outputFile(output, Buffer.alloc(8192, 18));
+      return {
+        story_id: story.id,
+        output,
+        clips: story.video_clips.length,
+        rendered_duration_s: 37.1,
+        size_bytes: 8192,
+      };
+    },
+  });
+
+  assert.equal(report.summary.repaired_count, 1);
+  assert.equal(report.summary.blocked_count, 0);
+  assert.deepEqual(renderedStories[0].video_clips, [clipPath]);
+});
+
 test("duration variant repair can add a second normal-production pass to already extended scripts", async () => {
   const base = [
     "Star Fox has a Switch 2 camera deal.",

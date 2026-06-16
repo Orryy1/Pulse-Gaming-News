@@ -1218,3 +1218,33 @@ test("goal batch package extracts named subjects from awkward feed headlines", (
   assert.equal(nintendo.canonical_subject, "Nintendo");
   assert.doesNotMatch(`${expanse.full_script}\n${composer.full_script}\n${nintendo.full_script}`, /\bIt should stay|^Nintendo, You Better Not Be|^Xbox has/m);
 });
+
+test("goal batch preparation preserves a viral-ready non-subject hook instead of forcing a weaker opener", () => {
+  const script = [
+    "One bad ten-minute demo can bury a good game.",
+    "That is the real pressure behind Steam Next Fest this week.",
+    "Valve's event is live, but the fight starts after players hit install.",
+    "A great demo gives you one mechanic you want to talk about.",
+    "A weak one exposes every rough edge before the game has a second chance.",
+    "For indies, this is the trade-off: wishlists can appear in minutes, but doubt moves just as fast.",
+    "If a hidden gem is going to break out on PC, this is where players judge whether the promise is real.",
+    "That turns every demo into a trust fight players will decide in minutes.",
+    "Follow Pulse Gaming so you never miss a beat.",
+  ].join(" ");
+
+  const prepared = prepareStoryForGoalProof({
+    id: "steam-next-fest-trust-fight",
+    title: "Steam Next Fest Turns Demos Into A Trust Fight",
+    canonical_subject: "Steam Next Fest",
+    source_name: "Steam",
+    source_type: "official_platform_event",
+    article_url: "https://store.steampowered.com/sale/nextfest",
+    source_published_at: "2026-06-15T17:00:00.000Z",
+    full_script: script,
+    tts_script: script,
+  });
+
+  assert.equal(prepared.full_script, script);
+  assert.equal(prepared.hook, "One bad ten-minute demo can bury a good game.");
+  assert.doesNotMatch(prepared.first_spoken_line, /^Steam Next Fest has the one kind/i);
+});

@@ -114,6 +114,36 @@ test("platform variant materializer writes resolvable variant paths for relative
   assert.equal(await fs.pathExists(instagram.platform_variant_render.output_path), true);
 });
 
+test("platform variant materializer accepts scheduler bridge artifact dirs", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-platform-variant-bridge-"));
+  const storyPackage = await makePackage(root, "ig-bridge-dir", 46.4);
+
+  const report = await materializeGoalPlatformVariants({
+    storyPackages: [
+      {
+        story_id: storyPackage.story_id,
+        scheduler_bridge_artifact_dir: storyPackage.artifact_dir,
+      },
+    ],
+    generatedAt: "2026-06-16T21:20:00.000Z",
+    variantRenderer: async ({ outputPath, targetDurationS }) => {
+      assert.equal(targetDurationS, 44.8);
+      await fs.outputFile(outputPath, Buffer.alloc(2300, 2));
+    },
+    probeDuration: async () => 44.8,
+  });
+
+  assert.equal(report.summary.blocked_count, 0);
+  assert.equal(report.summary.variant_job_count, 1);
+  assert.equal(report.summary.materialized_count, 1);
+
+  const manifest = await fs.readJson(path.join(storyPackage.artifact_dir, "platform_publish_manifest.json"));
+  const instagram = manifest.outputs.instagram_reels;
+  assert.match(instagram.variant_video_path, /visual_v4_render_instagram_reels\.mp4$/);
+  assert.equal(instagram.platform_variant_render.source_duration_s, 46.4);
+  assert.equal(instagram.platform_variant_render.duration_s, 44.8);
+});
+
 test("platform variant materializer leaves in-window renders alone", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-platform-variant-none-"));
   const storyPackage = await makePackage(root, "ig-in-window", 39.2);

@@ -68,6 +68,22 @@ test("fresh buffer promotion writes local package work orders without publish or
   assert.ok(fs.existsSync(written.reportMd));
   assert.ok(fs.existsSync(path.join(outDir, "packages", "fresh_xbox_halo_campaign_evolved_demo_20260610", "canonical_story_manifest.json")));
   assert.ok(fs.existsSync(path.join(outDir, "packages", "fresh_xbox_halo_campaign_evolved_demo_20260610", "render_readiness_work_order.json")));
+
+  const canonical = JSON.parse(
+    fs.readFileSync(
+      path.join(outDir, "packages", "fresh_xbox_halo_campaign_evolved_demo_20260610", "canonical_story_manifest.json"),
+      "utf8",
+    ),
+  );
+  assert.equal(canonical.public_title, "Halo: Campaign Evolved Shows The Real Remake Test");
+  assert.match(canonical.description, /Xbox Wire says Halo: Campaign Evolved/);
+  assert.equal(canonical.public_copy.title, "Halo: Campaign Evolved Shows The Real Remake Test");
+
+  const storyPackages = JSON.parse(fs.readFileSync(written.storyPackages, "utf8"));
+  assert.equal(storyPackages[0].verdict, "ready");
+  assert.equal(storyPackages[0].status, "ready_for_render_proof");
+  assert.match(storyPackages[0].description, /Xbox Wire says Halo: Campaign Evolved/);
+  assert.deepEqual(storyPackages[0].blockers, []);
 });
 
 test("fresh buffer promotion CLI is registered and defaults to overnight output", () => {

@@ -2018,6 +2018,48 @@ test("production cutover bridge preserves narration manifest audio evidence when
   assert.equal(candidate.audio_duration, candidate.duration_seconds);
 });
 
+test("production cutover bridge accepts narration manifest audio_path fallback", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-bridge-audio-path-"));
+  const storyPackage = await makeCutoverPackage(root, "bridge-audio-path-story", {
+    finalPublishRender: true,
+    renderer: "visual_v4_production",
+    visualTier: "production_v4_motion",
+  });
+  const artifactDir = storyPackage.artifact_dir;
+  const audioPath = path.join(artifactDir, "narration.mp3");
+  const timestampsPath = path.join(artifactDir, "narration_timestamps.json");
+  await fs.outputFile(audioPath, Buffer.alloc(5000, 2));
+  await fs.outputJson(timestampsPath, {
+    words: [{ word: "Steam", start: 0, end: 0.4 }],
+    meta: { wordTimestampSource: "local_whisper_word_alignment" },
+  });
+  await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), {
+    story_id: "bridge-audio-path-story",
+    narration_audio_path: null,
+    word_timestamps_path: null,
+  });
+  await fs.outputJson(path.join(artifactDir, "narration_manifest.json"), {
+    story_id: "bridge-audio-path-story",
+    status: "ready",
+    audio_path: audioPath,
+    word_timestamps_path: timestampsPath,
+    word_timestamp_count: 1,
+    word_timestamp_source: "local_whisper_word_alignment",
+  });
+
+  const plan = await buildProductionRenderCutoverPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-05-22T09:15:00.000Z",
+  });
+
+  assert.equal(plan.summary.scheduler_bridge_candidate_count, 1);
+  const candidate = plan.scheduler_bridge.candidates[0];
+  assert.equal(candidate.audio_path, audioPath);
+  assert.equal(candidate.narration_audio_path, audioPath);
+  assert.equal(candidate.timestamps_path, timestampsPath);
+  assert.equal(candidate.word_timestamps_path, timestampsPath);
+});
+
 test("production cutover blocks local TTS timestamps that are not ASR aligned", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-local-asr-required-"));
   const storyPackage = await makeCutoverPackage(root, "local-asr-required", {

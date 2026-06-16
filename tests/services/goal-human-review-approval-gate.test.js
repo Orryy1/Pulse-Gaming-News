@@ -97,6 +97,15 @@ function fingerprintMap(artefacts) {
   );
 }
 
+function optionalVisualFingerprintMap(artefacts) {
+  return Object.fromEntries(
+    [
+      "human_review_visual_strip_report_path",
+      "human_review_visual_strip_qa_report_path",
+    ].map((key) => [key, fingerprint(artefacts[key])]),
+  );
+}
+
 function reviewPacket(overrides = {}) {
   const artefacts = {
     video_path: "C:\\proof\\story-one\\visual_v4_render.mp4",
@@ -417,6 +426,61 @@ test("approval gate blocks approvals that skip required visual strip and QA revi
   assert.equal(report.summary.approved_action_count, 0);
   assert.ok(report.blocked_decisions[0].blockers.includes("required_artefact_not_reviewed:human_review_visual_strip_report_path"));
   assert.ok(report.blocked_decisions[0].blockers.includes("required_artefact_not_reviewed:human_review_visual_strip_qa_report_path"));
+});
+
+test("approval gate scopes visual strip risks to the approved story card", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-human-review-per-card-"));
+  const artefacts = {
+    ...await proofArtefacts(root),
+    ...await visualReviewArtefacts(root),
+  };
+  const strip = await fs.readJson(artefacts.human_review_visual_strip_report_path);
+  strip.cards.push({ story_id: "story-two", status: "frames_extracted", frame_targets: [{ exists: true }] });
+  await fs.writeJson(artefacts.human_review_visual_strip_report_path, strip, { spaces: 2 });
+  const qa = await fs.readJson(artefacts.human_review_visual_strip_qa_report_path);
+  qa.summary = { ...qa.summary, risk_card_count: 1, frame_warning_count: 1 };
+  qa.cards.push({
+    story_id: "story-two",
+    verdict: "AMBER",
+    risk_reasons: ["possible_edge_text_cutoff"],
+    warning_frame_count: 1,
+  });
+  await fs.writeJson(artefacts.human_review_visual_strip_qa_report_path, qa, { spaces: 2 });
+  const packet = reviewPacket({ artefacts });
+
+  const report = buildHumanReviewApprovalGate({
+    humanReviewQueue: humanReviewQueue(packet),
+    reviewPacketManifest: reviewPacketManifest(packet),
+    operatorDecisionLog: {
+      mode: "HUMAN_REVIEW_DECISION_LOG",
+      decisions: [
+        decision({
+          reviewed_artefacts: [
+            ...REQUIRED_ARTEFACT_KEYS,
+            "human_review_visual_strip_report_path",
+            "human_review_visual_strip_qa_report_path",
+          ],
+          reviewed_artefact_fingerprints: {
+            ...fingerprintMap(artefacts),
+            ...optionalVisualFingerprintMap(artefacts),
+          },
+        }),
+      ],
+      safety: {
+        no_live_publish_from_log: true,
+        no_network_uploads: true,
+        no_db_mutation: true,
+        no_oauth_or_token_change: true,
+      },
+    },
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.summary.approved_story_count, 1);
+  assert.equal(report.summary.approved_action_count, 2);
+  assert.equal(report.summary.invalid_decision_count, 0);
+  assert.equal(report.safe_publish_plan.guarded_dispatch_eligible, true);
+  assert.deepEqual(report.blocked_decisions, []);
 });
 
 test("approval gate allows an enabled-platform decision when other story platforms are blocked", async () => {

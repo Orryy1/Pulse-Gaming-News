@@ -97,6 +97,15 @@ function fingerprintMap(artefacts) {
   );
 }
 
+function optionalVisualFingerprintMap(artefacts) {
+  return Object.fromEntries(
+    [
+      "human_review_visual_strip_report_path",
+      "human_review_visual_strip_qa_report_path",
+    ].map((key) => [key, fingerprint(artefacts[key])]),
+  );
+}
+
 function packet(overrides = {}) {
   return {
     packet_id: "story-one:human_review",
@@ -218,6 +227,48 @@ test("operator decision recorder requires fresh visual strip and QA evidence whe
   assert.ok(report.blockers.includes("required_artefact_not_reviewed:human_review_visual_strip_report_path"));
   assert.ok(report.blockers.includes("required_artefact_not_reviewed:human_review_visual_strip_qa_report_path"));
   assert.equal(report.write_plan.would_write_operator_decision_log, false);
+});
+
+test("operator decision recorder does not let unrelated AMBER visual strip cards block a GREEN packet", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-decision-recorder-per-card-"));
+  const artefacts = {
+    ...await proofArtefacts(root),
+    ...await visualReviewArtefacts(root),
+  };
+  const strip = await fs.readJson(artefacts.human_review_visual_strip_report_path);
+  strip.cards.push({ story_id: "story-two", status: "frames_extracted", frame_targets: [{ exists: true }] });
+  await fs.writeJson(artefacts.human_review_visual_strip_report_path, strip, { spaces: 2 });
+  const qa = await fs.readJson(artefacts.human_review_visual_strip_qa_report_path);
+  qa.summary = { ...qa.summary, risk_card_count: 1, frame_warning_count: 1 };
+  qa.cards.push({
+    story_id: "story-two",
+    verdict: "AMBER",
+    risk_reasons: ["possible_edge_text_cutoff"],
+    warning_frame_count: 1,
+  });
+  await fs.writeJson(artefacts.human_review_visual_strip_qa_report_path, qa, { spaces: 2 });
+
+  const report = buildOperatorDecisionRecorder({
+    reviewPacketManifest: reviewPacketManifestWithPacket(packet({ artefacts })),
+    operatorDecisionLog: decisionLog(),
+    decisionInput: approvalInput({
+      reviewed_artefacts: [
+        ...REQUIRED_ARTEFACT_KEYS,
+        "human_review_visual_strip_report_path",
+        "human_review_visual_strip_qa_report_path",
+      ],
+      reviewed_artefact_fingerprints: {
+        ...fingerprintMap(artefacts),
+        ...optionalVisualFingerprintMap(artefacts),
+      },
+    }),
+    apply: false,
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.proposed_decision.story_id, "story-one");
+  assert.equal(report.write_plan.would_write_operator_decision_log, true);
+  assert.ok(!report.blockers.includes("human_review_visual_strip_qa_has_frame_risks"));
 });
 
 test("operator decision recorder rejects disabled platform approvals and missing artefact review", () => {

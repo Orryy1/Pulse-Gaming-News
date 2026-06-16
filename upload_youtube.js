@@ -967,6 +967,7 @@ function buildLongformUploadMetadata(
           "gaming news this week",
         ].filter(Boolean),
       privacyStatus: compilation.privacyStatus || "public",
+      categoryId: channel.youtubeCategory || "20",
     };
   }
 
@@ -1016,6 +1017,7 @@ function buildLongformUploadMetadata(
     description,
     tags,
     privacyStatus: compilation.privacyStatus || "public",
+    categoryId: channel.youtubeCategory || "20",
   };
 }
 
@@ -1030,7 +1032,7 @@ async function uploadLongform(compilation) {
   }
 
   const metadata = buildLongformUploadMetadata(compilation);
-  const { title, description, tags, privacyStatus } = metadata;
+  const { title, description, tags, privacyStatus, categoryId } = metadata;
 
   console.log(`[youtube] Uploading longform: "${title}"`);
 
@@ -1042,7 +1044,7 @@ async function uploadLongform(compilation) {
           title,
           description,
           tags,
-          categoryId: channel.youtubeCategory || "20",
+          categoryId,
           defaultLanguage: "en",
           defaultAudioLanguage: "en",
         },

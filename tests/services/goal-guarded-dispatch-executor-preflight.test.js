@@ -336,3 +336,171 @@ test("executor preflight writes machine-readable reports and CLI emits JSON", as
     "node tools/goal-guarded-dispatch-executor-preflight.js",
   );
 });
+
+test("executor preflight preserves an existing GREEN executor plan during non-live diagnostic runs", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-executor-preserve-green-"));
+  const files = await evidenceFiles(root);
+  const outDir = path.join(root, "out");
+
+  const green = buildGuardedDispatchExecutorPreflight({
+    guardedDispatchPlan: guardedDispatchPlan(files),
+    platformStatusMatrix: platformStatusMatrix(),
+    selectedActionIds: ["story-one:youtube_shorts"],
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+    generatedAt: "2026-06-16T08:45:00.000Z",
+  });
+  await writeGuardedDispatchExecutorPreflight(green, { outputDir: outDir });
+  const executorPlanPath = path.join(outDir, "guarded_dispatch_executor_plan.json");
+  const originalExecutorPlan = await fs.readJson(executorPlanPath);
+  assert.equal(originalExecutorPlan.ready_for_live_executor_handoff, true);
+  assert.equal(originalExecutorPlan.handoff_ready_action_count, 1);
+
+  const diagnostic = buildGuardedDispatchExecutorPreflight({
+    guardedDispatchPlan: guardedDispatchPlan(files),
+    platformStatusMatrix: platformStatusMatrix(),
+    selectedActionIds: [],
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+    generatedAt: "2026-06-16T08:50:00.000Z",
+  });
+  assert.equal(diagnostic.verdict, "AMBER");
+
+  const written = await writeGuardedDispatchExecutorPreflight(diagnostic, {
+    outputDir: outDir,
+    preserveExistingReadyExecutorPlanOnContextOnlyNonGreen: true,
+  });
+
+  const preservedExecutorPlan = await fs.readJson(executorPlanPath);
+  assert.equal(preservedExecutorPlan.generated_at, "2026-06-16T08:45:00.000Z");
+  assert.equal(preservedExecutorPlan.ready_for_live_executor_handoff, true);
+  assert.equal(preservedExecutorPlan.handoff_ready_action_count, 1);
+  assert.equal(written.executorPlanPreserved, true);
+  assert.equal(path.basename(written.nonGreenExecutorPlanPath), "guarded_dispatch_executor_plan.non_green.json");
+  assert.equal(await fs.pathExists(written.nonGreenExecutorPlanPath), true);
+
+  const report = await fs.readJson(path.join(outDir, "guarded_dispatch_executor_preflight_report.json"));
+  assert.equal(report.verdict, "AMBER");
+  assert.ok(report.advisory.includes("explicit_action_ids_required"));
+});
+
+test("executor preflight CLI preserves an existing GREEN plan unless overwrite is explicit", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-executor-cli-preserve-"));
+  const files = await evidenceFiles(root);
+  const planPath = path.join(root, "guarded_dispatch_plan.json");
+  const platformPath = path.join(root, "platform_status_matrix.json");
+  const outDir = path.join(root, "out");
+  await fs.writeJson(planPath, guardedDispatchPlan(files), { spaces: 2 });
+  await fs.writeJson(platformPath, platformStatusMatrix(), { spaces: 2 });
+
+  const greenResult = spawnSync(
+    process.execPath,
+    [
+      "tools/goal-guarded-dispatch-executor-preflight.js",
+      "--guarded-dispatch-plan",
+      planPath,
+      "--platform-status-matrix",
+      platformPath,
+      "--action-id",
+      "story-one:youtube_shorts",
+      "--out-dir",
+      outDir,
+      "--generated-at",
+      "2026-06-16T09:00:00.000Z",
+      "--json",
+    ],
+    {
+      cwd: ROOT,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PULSE_SKIP_DOTENV: "1",
+        PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+        PULSE_EMERGENCY_KILL_SWITCH: "clear",
+      },
+    },
+  );
+  assert.equal(greenResult.status, 0, greenResult.stderr);
+
+  const diagnosticResult = spawnSync(
+    process.execPath,
+    [
+      "tools/goal-guarded-dispatch-executor-preflight.js",
+      "--guarded-dispatch-plan",
+      planPath,
+      "--platform-status-matrix",
+      platformPath,
+      "--out-dir",
+      outDir,
+      "--generated-at",
+      "2026-06-16T09:05:00.000Z",
+      "--json",
+    ],
+    {
+      cwd: ROOT,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PULSE_SKIP_DOTENV: "1",
+        PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+        PULSE_EMERGENCY_KILL_SWITCH: "clear",
+      },
+    },
+  );
+  assert.equal(diagnosticResult.status, 0, diagnosticResult.stderr);
+  assert.equal(JSON.parse(diagnosticResult.stdout).verdict, "AMBER");
+
+  const executorPlan = await fs.readJson(path.join(outDir, "guarded_dispatch_executor_plan.json"));
+  assert.equal(executorPlan.generated_at, "2026-06-16T09:00:00.000Z");
+  assert.equal(executorPlan.ready_for_live_executor_handoff, true);
+  assert.equal(await fs.pathExists(path.join(outDir, "guarded_dispatch_executor_plan.non_green.json")), true);
+});
+
+test("executor preflight allows real platform drift to replace the executor plan", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-executor-platform-overwrite-"));
+  const files = await evidenceFiles(root);
+  const outDir = path.join(root, "out");
+
+  const green = buildGuardedDispatchExecutorPreflight({
+    guardedDispatchPlan: guardedDispatchPlan(files),
+    platformStatusMatrix: platformStatusMatrix(),
+    selectedActionIds: ["story-one:youtube_shorts"],
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+  });
+  await writeGuardedDispatchExecutorPreflight(green, { outputDir: outDir });
+
+  const platformDrift = buildGuardedDispatchExecutorPreflight({
+    guardedDispatchPlan: guardedDispatchPlan(files),
+    platformStatusMatrix: platformStatusMatrix({
+      youtube_shorts: {
+        status: "deferred_until_platform_enabled",
+        operational_state: "disabled",
+        deferred_action_count: 1,
+      },
+    }),
+    selectedActionIds: ["story-one:youtube_shorts"],
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+  });
+  assert.equal(platformDrift.verdict, "RED");
+
+  const written = await writeGuardedDispatchExecutorPreflight(platformDrift, {
+    outputDir: outDir,
+    preserveExistingReadyExecutorPlanOnContextOnlyNonGreen: true,
+  });
+
+  const currentExecutorPlan = await fs.readJson(path.join(outDir, "guarded_dispatch_executor_plan.json"));
+  assert.equal(written.executorPlanPreserved, false);
+  assert.equal(currentExecutorPlan.ready_for_live_executor_handoff, false);
+  assert.equal(currentExecutorPlan.blocked_selected_action_count, 1);
+  assert.ok(currentExecutorPlan.blocked_selected_actions[0].blockers.includes("platform_not_ready_now:youtube_shorts"));
+});

@@ -21,6 +21,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     platformStatusMatrixPath: null,
     actionIds: [],
     selectAllDispatchReady: false,
+    allowNonGreenPlanOverwrite: false,
     outDir: path.join(process.cwd(), "output", "goal-contract"),
     generatedAt: null,
     json: false,
@@ -36,6 +37,8 @@ function parseArgs(argv = process.argv.slice(2)) {
       args.actionIds.push(...String(argv[++i] || "").split(","));
     } else if (arg === "--select-all-dispatch-ready") {
       args.selectAllDispatchReady = true;
+    } else if (arg === "--allow-non-green-plan-overwrite") {
+      args.allowNonGreenPlanOverwrite = true;
     } else if (arg === "--out-dir") args.outDir = argv[++i] || args.outDir;
     else if (arg === "--generated-at") args.generatedAt = argv[++i] || null;
     else if (arg === "--json") args.json = true;
@@ -57,6 +60,7 @@ function usage() {
     "  --action-id <story:platform>     Explicit action to hand off; repeatable",
     "  --action-ids <csv>               Explicit action IDs as comma-separated values",
     "  --select-all-dispatch-ready      Explicitly hand off every dispatch-ready action",
+    "  --allow-non-green-plan-overwrite Allow AMBER/RED context-only diagnostics to replace an existing GREEN executor plan",
     "  --out-dir <dir>                  Output directory",
     "  --generated-at <iso>             Fixed timestamp",
     "  --json                           Print JSON",
@@ -95,6 +99,7 @@ async function main(argv = process.argv.slice(2)) {
   });
   const artefacts = await writeGuardedDispatchExecutorPreflight(report, {
     outputDir: path.resolve(root, args.outDir),
+    preserveExistingReadyExecutorPlanOnContextOnlyNonGreen: !args.allowNonGreenPlanOverwrite,
   });
   if (args.json) console.log(JSON.stringify(report, null, 2));
   else console.log(renderGuardedDispatchExecutorPreflightMarkdown(report).trimEnd());

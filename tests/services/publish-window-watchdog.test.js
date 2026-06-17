@@ -4,7 +4,10 @@ const assert = require("node:assert");
 const {
   buildPublishWindowWatchdogReport,
   formatPublishWindowWatchdogDiscord,
+  refreshGuardedExecutorHandoffProof,
   watchdogNeedsRunwayRepair,
+  watchdogNeedsExecutorHandoffRefresh,
+  runPublishWindowWatchdog,
 } = require("../../lib/ops/publish-window-watchdog");
 const { DEFAULT_SCHEDULES } = require("../../lib/scheduler");
 
@@ -168,6 +171,213 @@ test("publish window watchdog warns when executor handoff cannot cover the next 
   assert.equal(report.action_runway.uncovered_publish_windows_24h, 2);
   assert.ok(report.advisory.includes("scheduler_runway: executor_action_runway_short:3/5"));
   assert.equal(watchdogNeedsRunwayRepair(report), true);
+});
+
+test("publish window watchdog recognises stale executor handoff as refreshable", () => {
+  const report = buildPublishWindowWatchdogReport({
+    generatedAt: "2026-06-17T15:55:00.000Z",
+    windowLabel: "publish_mid_afternoon",
+    runtimeSentinel: {
+      verdict: "red",
+      blockers: [
+        "guarded dispatch plan is newer than executor handoff by 401 minutes",
+      ],
+      scheduler_window_readiness: {
+        hold_scheduler_or_dispatch: true,
+      },
+    },
+    publishReadiness: {
+      overall_verdict: "green",
+      blockers: [],
+      readiness_scope: { name: "enabled_platform_guarded_handoff", guard_ready: true },
+    },
+    queueReport: {
+      verdict: "pass",
+      blockers: [],
+    },
+  });
+
+  assert.equal(report.safe_to_publish_window, false);
+  assert.equal(watchdogNeedsExecutorHandoffRefresh(report), true);
+});
+
+test("publish window watchdog does not refresh unrelated hard blockers", () => {
+  const report = buildPublishWindowWatchdogReport({
+    generatedAt: "2026-06-17T15:55:00.000Z",
+    windowLabel: "publish_mid_afternoon",
+    runtimeSentinel: {
+      verdict: "red",
+      blockers: [
+        "public runtime commit f293b24 does not match approved f4d7a87",
+        "guarded dispatch plan is newer than executor handoff by 401 minutes",
+      ],
+      scheduler_window_readiness: {
+        hold_scheduler_or_dispatch: true,
+      },
+    },
+    publishReadiness: {
+      overall_verdict: "green",
+      blockers: [],
+      readiness_scope: { name: "enabled_platform_guarded_handoff", guard_ready: true },
+    },
+    queueReport: {
+      verdict: "pass",
+      blockers: [],
+    },
+  });
+
+  assert.equal(watchdogNeedsExecutorHandoffRefresh(report), false);
+});
+
+test("publish window watchdog can refresh executor handoff from current guarded dispatch plan", async () => {
+  const os = require("node:os");
+  const fs = require("fs-extra");
+  const path = require("node:path");
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-handoff-refresh-"));
+  const guardedDispatchPlanPath = path.join(tmp, "guarded_dispatch_plan.json");
+  const executorPlanPath = path.join(tmp, "guarded_dispatch_executor_plan.json");
+  try {
+    await fs.writeJson(guardedDispatchPlanPath, {
+      schema_version: 1,
+      generated_at: "2026-06-17T15:50:00.000Z",
+      mode: "GUARDED_DISPATCH_PREFLIGHT",
+      ready_for_guarded_dispatch: true,
+      live_publish_allowed_from_this_tool: false,
+      dispatch_ready_actions: [
+        {
+          story_id: "fresh-story",
+          platform: "youtube_shorts",
+          title: "Fresh Story",
+          video_path: __filename,
+          captions_path: __filename,
+          first_frame_source: __filename,
+          canonical_manifest_path: __filename,
+          platform_publish_manifest_path: __filename,
+        },
+      ],
+      safety: {
+        no_publish_triggered: true,
+        no_network_uploads: true,
+        no_db_mutation: true,
+        no_oauth_or_token_change: true,
+      },
+    }, { spaces: 2 });
+
+    const refresh = await refreshGuardedExecutorHandoffProof({
+      generatedAt: "2026-06-17T15:55:00.000Z",
+      guardedDispatchPlanPath,
+      executorPlanPath,
+      refreshReportPath: path.join(tmp, "refresh.json"),
+    });
+    const executorPlan = await fs.readJson(executorPlanPath);
+
+    assert.equal(refresh.refreshed, true);
+    assert.equal(refresh.handoff_ready_action_count, 1);
+    assert.equal(executorPlan.ready_for_live_executor_handoff, true);
+    assert.equal(executorPlan.source_mode, "publish_window_watchdog_auto_refresh");
+    assert.equal(executorPlan.handoff_ready_actions[0].action_id, "fresh-story:youtube_shorts");
+  } finally {
+    await fs.remove(tmp);
+  }
+});
+
+test("publish window watchdog rechecks after stale executor handoff refresh", async () => {
+  const os = require("node:os");
+  const fs = require("fs-extra");
+  const path = require("node:path");
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-watchdog-refresh-"));
+  const guardedDispatchPlanPath = path.join(tmp, "guarded_dispatch_plan.json");
+  const executorPlanPath = path.join(tmp, "guarded_dispatch_executor_plan.json");
+  let runtimeChecks = 0;
+  try {
+    await fs.writeJson(guardedDispatchPlanPath, {
+      schema_version: 1,
+      generated_at: "2026-06-17T15:50:00.000Z",
+      mode: "GUARDED_DISPATCH_PREFLIGHT",
+      ready_for_guarded_dispatch: true,
+      live_publish_allowed_from_this_tool: false,
+      dispatch_ready_actions: [
+        {
+          story_id: "fresh-story",
+          platform: "youtube_shorts",
+          title: "Fresh Story",
+          video_path: __filename,
+          captions_path: __filename,
+          first_frame_source: __filename,
+          canonical_manifest_path: __filename,
+          platform_publish_manifest_path: __filename,
+        },
+      ],
+      safety: {
+        no_publish_triggered: true,
+        no_network_uploads: true,
+        no_db_mutation: true,
+        no_oauth_or_token_change: true,
+      },
+    }, { spaces: 2 });
+
+    const report = await runPublishWindowWatchdog({
+      generatedAt: "2026-06-17T15:55:00.000Z",
+      windowLabel: "publish_mid_afternoon",
+      postDiscord: false,
+      notifyGreen: false,
+      buildRuntimeSentinel: async () => {
+        runtimeChecks += 1;
+        if (runtimeChecks === 1) {
+          return {
+            verdict: "red",
+            blockers: ["guarded dispatch plan is newer than executor handoff by 401 minutes"],
+            scheduler_window_readiness: {
+              safe_to_observe_next_window: false,
+              hold_scheduler_or_dispatch: true,
+            },
+            scheduler_proof: {
+              enabled_dry_run_action_count: 1,
+              executor_handoff_action_count: 0,
+              enabled_dry_run_story_count: 1,
+              executor_handoff_story_count: 0,
+            },
+          };
+        }
+        return {
+          verdict: "green",
+          blockers: [],
+          scheduler_window_readiness: {
+            safe_to_observe_next_window: true,
+            hold_scheduler_or_dispatch: false,
+          },
+          scheduler_proof: {
+            enabled_dry_run_action_count: 1,
+            executor_handoff_action_count: 1,
+            enabled_dry_run_story_count: 1,
+            executor_handoff_story_count: 1,
+          },
+        };
+      },
+      buildReadiness: () => ({
+        overall_verdict: "green",
+        blockers: [],
+        readiness_scope: { name: "enabled_platform_guarded_handoff", guard_ready: true },
+      }),
+      buildQueue: () => ({
+        verdict: "pass",
+        blockers: [],
+      }),
+      executorHandoffRefresh: {
+        guardedDispatchPlanPath,
+        executorPlanPath,
+        refreshReportPath: path.join(tmp, "refresh.json"),
+      },
+    });
+
+    assert.equal(runtimeChecks, 2);
+    assert.equal(report.verdict, "amber");
+    assert.equal(report.safe_to_publish_window, true);
+    assert.equal(report.handoff_refresh.refreshed, true);
+    assert.equal(report.executor_handoff_action_count, 1);
+  } finally {
+    await fs.remove(tmp);
+  }
 });
 
 test("publish window watchdog surfaces advisory AMBER without blocking guarded publishing", () => {

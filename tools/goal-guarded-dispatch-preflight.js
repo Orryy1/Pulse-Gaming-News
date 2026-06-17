@@ -20,6 +20,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     approvalGateReportPath: null,
     strictDryRunPlanPath: null,
     platformStatusMatrixPath: null,
+    transcriptAudienceReportPath: null,
     outDir: path.join(process.cwd(), "output", "goal-contract"),
     generatedAt: null,
     json: false,
@@ -31,6 +32,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--approval-gate-report") args.approvalGateReportPath = argv[++i] || "";
     else if (arg === "--strict-dry-run-plan") args.strictDryRunPlanPath = argv[++i] || "";
     else if (arg === "--platform-status-matrix") args.platformStatusMatrixPath = argv[++i] || "";
+    else if (arg === "--transcript-audience-report") args.transcriptAudienceReportPath = argv[++i] || "";
     else if (arg === "--out-dir") args.outDir = argv[++i] || args.outDir;
     else if (arg === "--generated-at") args.generatedAt = argv[++i] || null;
     else if (arg === "--json") args.json = true;
@@ -49,6 +51,7 @@ function usage() {
     "  --approval-gate-report <path>    human_review_approval_gate_report.json",
     "  --strict-dry-run-plan <path>     dry_run_publish_plan.json",
     "  --platform-status-matrix <path>  platform_status_matrix.json",
+    "  --transcript-audience-report <path> transcript_audience_audit.json",
     "  --out-dir <dir>                  Output directory",
     "  --generated-at <iso>             Fixed timestamp",
     "  --json                           Print JSON",
@@ -60,6 +63,11 @@ function usage() {
 
 async function readJson(filePath, label) {
   if (!await fs.pathExists(filePath)) throw new Error(`${label} not found: ${filePath}`);
+  return fs.readJson(filePath);
+}
+
+async function readOptionalJson(filePath) {
+  if (!filePath || !await fs.pathExists(filePath)) return null;
   return fs.readJson(filePath);
 }
 
@@ -79,11 +87,15 @@ async function main(argv = process.argv.slice(2)) {
   const platformStatusMatrixPath = args.platformStatusMatrixPath
     ? path.resolve(root, args.platformStatusMatrixPath)
     : path.join(root, "output", "goal-contract", "platform_status_matrix.json");
+  const transcriptAudienceReportPath = args.transcriptAudienceReportPath
+    ? path.resolve(root, args.transcriptAudienceReportPath)
+    : path.join(root, "output", "transcript-audience-audit", "transcript_audience_audit.json");
 
   const report = buildGuardedDispatchPreflight({
     approvalGateReport: await readJson(approvalGateReportPath, "human review approval gate report"),
     strictDryRunPlan: await readJson(strictDryRunPlanPath, "strict dry-run plan"),
     platformStatusMatrix: await readJson(platformStatusMatrixPath, "platform status matrix"),
+    transcriptAudienceReport: await readOptionalJson(transcriptAudienceReportPath),
     generatedAt: args.generatedAt || new Date().toISOString(),
   });
   const artefacts = await writeGuardedDispatchPreflight(report, {

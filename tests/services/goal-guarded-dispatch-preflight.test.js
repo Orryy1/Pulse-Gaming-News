@@ -161,6 +161,35 @@ function platformStatusMatrix() {
   };
 }
 
+function transcriptAudienceReport(verdict = "pass", blockers = []) {
+  return {
+    schema_version: 1,
+    generated_at: "2026-05-31T18:00:00.000Z",
+    summary: { total: 1, pass: verdict === "pass" ? 1 : 0, rewrite_required: verdict === "pass" ? 0 : 1 },
+    stories: [
+      {
+        story_id: "story-one",
+        title: "Forza Horizon 6 Exposes Xbox's Steam Bet",
+        verdict,
+        blockers,
+      },
+    ],
+  };
+}
+
+function transcriptAudienceRows(rows = []) {
+  return {
+    schema_version: 1,
+    generated_at: "2026-05-31T18:00:00.000Z",
+    summary: {
+      total: rows.length,
+      pass: rows.filter((row) => row.verdict === "pass").length,
+      rewrite_required: rows.filter((row) => row.verdict !== "pass").length,
+    },
+    stories: rows,
+  };
+}
+
 test("guarded dispatch preflight stays AMBER when no operator-approved actions exist", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-dispatch-empty-"));
   const media = await makeMedia(root);
@@ -174,7 +203,7 @@ test("guarded dispatch preflight stays AMBER when no operator-approved actions e
   assert.equal(report.verdict, "AMBER");
   assert.equal(report.summary.approved_action_count, 0);
   assert.equal(report.summary.dispatch_ready_action_count, 0);
-  assert.deepEqual(report.advisory, ["no_operator_approved_actions"]);
+  assert.ok(report.advisory.includes("no_operator_approved_actions"));
   assert.equal(report.guarded_dispatch_plan.ready_for_guarded_dispatch, false);
   assert.equal(report.guarded_dispatch_plan.live_publish_allowed_from_this_tool, false);
 });
@@ -197,6 +226,63 @@ test("guarded dispatch preflight passes only enabled-platform actions still pres
   assert.equal(report.guarded_dispatch_plan.ready_for_guarded_dispatch, true);
   assert.equal(report.guarded_dispatch_plan.live_publish_allowed_from_this_tool, false);
   assert.equal(report.safety.no_network_uploads, true);
+});
+
+test("guarded dispatch preflight holds rewrite-required transcript audience rows", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-dispatch-transcript-"));
+  const media = await makeMedia(root);
+  const report = buildGuardedDispatchPreflight({
+    approvalGateReport: approvalGateReport(media),
+    strictDryRunPlan: strictDryRunPlan(media),
+    platformStatusMatrix: platformStatusMatrix(),
+    transcriptAudienceReport: transcriptAudienceReport("rewrite_required", ["mass_audience:figurative_payoff"]),
+    generatedAt: "2026-05-31T18:15:00.000Z",
+  });
+
+  assert.equal(report.verdict, "AMBER");
+  assert.equal(report.summary.dispatch_ready_action_count, 0);
+  assert.equal(report.summary.held_action_count, 1);
+  assert.equal(report.summary.transcript_held_action_count, 1);
+  assert.equal(report.summary.blocked_action_count, 0);
+  assert.ok(report.held_actions[0].blockers.includes("transcript_audience:mass_audience:figurative_payoff"));
+});
+
+test("guarded dispatch preflight keeps clean actions ready while holding weak transcripts", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-dispatch-transcript-mixed-"));
+  const weakMedia = await makeMedia(root, "story-one");
+  const cleanMedia = await makeMedia(root, "story-two");
+  const weakAction = approvedAction(weakMedia);
+  const cleanAction = approvedAction(cleanMedia, {
+    story_id: "story-two",
+    title: "Gears E-Day Has A 130GB Problem",
+  });
+  const platformMatrix = platformStatusMatrix();
+  platformMatrix.platforms.youtube_shorts.planned_story_ids = ["story-one", "story-two"];
+  const report = buildGuardedDispatchPreflight({
+    approvalGateReport: approvalGateReport(weakMedia, [weakAction, cleanAction]),
+    strictDryRunPlan: strictDryRunPlan(weakMedia, [weakAction, cleanAction]),
+    platformStatusMatrix: platformMatrix,
+    transcriptAudienceReport: transcriptAudienceRows([
+      {
+        story_id: "story-one",
+        title: "Stranger Than Heaven Has RGG Combat Risk",
+        verdict: "rewrite_required",
+        blockers: ["mass_audience:figurative_payoff"],
+      },
+      {
+        story_id: "story-two",
+        title: "Gears E-Day Has A 130GB Problem",
+        verdict: "pass",
+        blockers: [],
+      },
+    ]),
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.summary.dispatch_ready_action_count, 1);
+  assert.equal(report.summary.held_action_count, 1);
+  assert.equal(report.dispatch_ready_actions[0].story_id, "story-two");
+  assert.equal(report.held_actions[0].story_id, "story-one");
 });
 
 test("guarded dispatch preflight rejects approved actions for disabled or deferred platforms", async () => {
@@ -306,6 +392,8 @@ test("guarded dispatch preflight CLI is registered and emits clean JSON", async 
   await fs.writeJson(approvalPath, approvalGateReport(media), { spaces: 2 });
   await fs.writeJson(strictPath, strictDryRunPlan(media), { spaces: 2 });
   await fs.writeJson(platformPath, platformStatusMatrix(), { spaces: 2 });
+  const transcriptPath = path.join(root, "transcript_audience_audit.json");
+  await fs.writeJson(transcriptPath, transcriptAudienceReport(), { spaces: 2 });
 
   const result = spawnSync(
     process.execPath,
@@ -317,6 +405,8 @@ test("guarded dispatch preflight CLI is registered and emits clean JSON", async 
       strictPath,
       "--platform-status-matrix",
       platformPath,
+      "--transcript-audience-report",
+      transcriptPath,
       "--out-dir",
       outDir,
       "--json",

@@ -176,6 +176,55 @@ test("transcript audience audit rejects public safety scaffold padding", async (
   });
 });
 
+test("transcript audience audit rejects critic-style figurative payoff", async () => {
+  await withTempDir(async (root) => {
+    await writeStory(
+      root,
+      "gta-figurative",
+      "GTA 6 Delay Becomes The First Argument",
+      "The GTA 6 delay is now something players can measure. GameSpot says Take-Two is still pointing to November 19, 2026. Rockstar has bought time, but it has also raised the bar for density, performance and polish. If the world feels impossible to fake, the wait becomes part of the legend. If not, the delay becomes the first argument. Follow Pulse Gaming so you never miss a beat.",
+      "GameSpot",
+    );
+
+    const report = await auditGeneratedTranscripts({ root });
+
+    assert.equal(report.summary.total, 1);
+    assert.equal(report.summary.pass, 0);
+    assert.equal(report.summary.rewrite_required, 1);
+    const row = report.stories.find((story) => story.story_id === "gta-figurative");
+    assert.ok(row.blockers.includes("mass_audience:figurative_payoff"), row.blockers.join(", "));
+  });
+});
+
+test("transcript audience audit includes current trailer repair goal-proof batches", async () => {
+  await withTempDir(async (root) => {
+    const dir = path.join(
+      root,
+      "output",
+      "autonomous-feedback-monitor",
+      "fresh-trailer-repair-20260616",
+      "goal-proof-batch",
+      "fresh_current_trailer_story",
+    );
+    await fs.ensureDir(dir);
+    await fs.writeJson(path.join(dir, "canonical_story_manifest.json"), {
+      story_id: "fresh_current_trailer_story",
+      selected_title: "Gears E-Day Has A 130GB Problem",
+      primary_source: "PC Gamer",
+      narration_script:
+        "Gears of War E-Day just made its PC version a storage test. PC Gamer says the requirements list a 130 GB SSD install and RTX 2060-era hardware as the minimum floor. That matters because players now know whether launch night starts with a download or a clean-out. Follow Pulse Gaming so you never miss a beat.",
+    });
+    await fs.writeJson(path.join(dir, "source_manifest.json"), {
+      primary_source: { name: "PC Gamer", url: "https://example.test/story" },
+    });
+
+    const report = await auditGeneratedTranscripts({ root });
+
+    assert.equal(report.summary.total, 1);
+    assert.ok(report.stories.some((story) => story.story_id === "fresh_current_trailer_story"));
+  });
+});
+
 test("transcript audience audit includes current fresh proof batch folders", async () => {
   await withTempDir(async (root) => {
     await writeStory(

@@ -7,6 +7,7 @@ const {
   buildRuntimeOwnershipSentinel,
   formatRuntimeOwnershipSentinelMarkdown,
   normaliseProcessSnapshot,
+  queryRuntimeProcessSnapshot,
 } = require("../../lib/ops/runtime-ownership-sentinel");
 
 function health(overrides = {}) {
@@ -268,4 +269,28 @@ test("process snapshots normalise PID, server ownership and tunnel evidence", ()
   assert.equal(snapshot.port_owner_pid, 1234);
   assert.equal(snapshot.port_owner?.is_server_js, true);
   assert.equal(snapshot.cloudflared.length, 1);
+});
+
+test("runtime process query uses configurable timeout to avoid false RED probes", () => {
+  if (process.platform !== "win32") return;
+  let timeoutSeen = 0;
+  const snapshot = queryRuntimeProcessSnapshot({
+    port: 3001,
+    env: { PULSE_RUNTIME_PROCESS_QUERY_TIMEOUT_MS: "30000" },
+    execFileSyncImpl(_file, _args, options) {
+      timeoutSeen = options.timeout;
+      return JSON.stringify({
+        port: 3001,
+        port_owner_pid: 88768,
+        processes: [
+          { pid: 88768, name: "node.exe", command_line: "node server.js" },
+          { pid: 9476, name: "cloudflared.exe", command_line: "cloudflared tunnel run pulse" },
+        ],
+        query_status: "ok",
+      });
+    },
+  });
+
+  assert.equal(timeoutSeen, 30000);
+  assert.equal(snapshot.port_owner_pid, 88768);
 });

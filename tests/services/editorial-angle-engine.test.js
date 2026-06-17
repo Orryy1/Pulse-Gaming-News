@@ -102,6 +102,33 @@ test("source-bound fallback uses angle-first script before conservative recap pr
   assert.doesNotMatch(script.full_script, /So the clean read is this|broader launch data/i);
 });
 
+test("source-bound release-date scripts do not invent Steam performance angles", () => {
+  const story = {
+    id: "hellraiser-release-date",
+    title:
+      "Hellraiser: Revival hooks a release date with trailer full of Doom-like glory kills and otherworldly powers",
+    source_type: "rss",
+    article_url: "https://www.eurogamer.net/hellraiser-revival-release-date-trailer",
+  };
+  const sourceMaterial =
+    "Clive Barker's Hellraiser: Revival was announced a year ago, and developer diaries have fed us scraps of information since, but we've been lacking a release date until now. " +
+    "Hellraiser: Revival launches on PC (Steam), PlayStation 5, and Xbox Series X/S on 8th October, 2026.";
+
+  const script = buildSourceBoundFallbackScript(story, {
+    sourceMaterial,
+    sourceName: "Eurogamer",
+    runtimeProfile: LOCAL_PROFILE,
+  });
+
+  assert.ok(script);
+  assert.match(script.full_script, /Hellraiser: Revival/i);
+  assert.match(script.full_script, /8th October|October 8|8 October/i);
+  assert.doesNotMatch(
+    script.full_script,
+    /paid crowd|Steam player spike|standard audience|early-access|cheaper wave|leaderboard screenshot/i,
+  );
+});
+
 test("angle-first script does not read like a public copy instruction sheet", () => {
   const story = {
     id: "resident_evil_requiem_preview",

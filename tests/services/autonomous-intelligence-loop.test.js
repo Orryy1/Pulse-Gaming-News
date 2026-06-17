@@ -20,6 +20,8 @@ test("scheduler registers the full autonomous intelligence loop", () => {
   assert.equal(schedule("candidate_supply_monitor_2h")?.payload.post_discord_on_amber, true);
   assert.equal(schedule("candidate_supply_monitor_2h")?.payload.enqueue_repair_on_amber, true);
   assert.equal(schedule("candidate_supply_monitor_2h")?.payload.enqueue_hunt_on_runway_gap, true);
+  assert.equal(schedule("candidate_supply_monitor_2h")?.payload.enqueue_fresh_review_script_repair, true);
+  assert.equal(schedule("candidate_supply_monitor_2h")?.payload.fresh_review_script_repair_limit, 6);
   assert.equal(schedule("candidate_supply_monitor_2h")?.payload.repair_limit, 10);
   assert.equal(schedule("competitor_forensics_daily")?.kind, "competitor_forensics_lab");
   assert.equal(schedule("competitor_quality_gate_daily")?.kind, "competitor_quality_gate");
@@ -33,6 +35,7 @@ test("scheduler registers the full autonomous intelligence loop", () => {
   assert.equal(typeof handlers.competitor_quality_gate, "function");
   assert.equal(typeof handlers.commercial_learning_loop, "function");
   assert.equal(typeof handlers.safe_auto_repair_runner, "function");
+  assert.equal(typeof handlers.fresh_review_script_repair, "function");
 });
 
 test("candidate supply monitor enqueues fresh intake and repair when runway has no reserve", async () => {
@@ -136,6 +139,8 @@ test("candidate supply monitor enqueues fresh intake and repair when runway has 
           limit: 30,
           enqueue_repair_on_amber: true,
           enqueue_hunt_on_runway_gap: true,
+          enqueue_fresh_review_script_repair: true,
+          fresh_review_script_repair_limit: 6,
           repair_limit: 10,
         },
       },
@@ -155,12 +160,17 @@ test("candidate supply monitor enqueues fresh intake and repair when runway has 
     assert.equal(result.status, "amber");
     assert.equal(result.repair_enqueued, true);
     assert.equal(result.fresh_intake_enqueued, true);
-    assert.equal(enqueued.length, 2);
+    assert.equal(result.fresh_review_script_repair_enqueued, true);
+    assert.equal(enqueued.length, 3);
     assert.equal(enqueued[0].kind, "hunt");
     assert.equal(enqueued[0].payload.reason, "candidate_supply_monitor_fresh_intake");
     assert.equal(enqueued[0].idempotency_key, "candidate_supply_hunt:2026-06-17:08");
-    assert.equal(enqueued[1].kind, "safe_auto_repair_runner");
-    assert.equal(enqueued[1].payload.reason, "candidate_supply_monitor_reserve_refill");
+    assert.equal(enqueued[1].kind, "fresh_review_script_repair");
+    assert.equal(enqueued[1].payload.reason, "candidate_supply_monitor_fresh_review_script_repair");
+    assert.equal(enqueued[1].payload.limit, 6);
+    assert.equal(enqueued[1].idempotency_key, "candidate_supply_fresh_review_script_repair:2026-06-17:08");
+    assert.equal(enqueued[2].kind, "safe_auto_repair_runner");
+    assert.equal(enqueued[2].payload.reason, "candidate_supply_monitor_reserve_refill");
   } finally {
     for (const [cachePath, entry] of originalCache.entries()) {
       if (entry) require.cache[cachePath] = entry;

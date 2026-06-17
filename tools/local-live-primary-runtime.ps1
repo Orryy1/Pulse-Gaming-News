@@ -47,6 +47,16 @@ if ($existing -and $Restart) {
 
 Set-Location -LiteralPath $RepoRoot
 
+$commitSha = ""
+$branchName = ""
+try {
+  $commitSha = (& git -C $RepoRoot rev-parse HEAD 2>$null).Trim()
+  $branchName = (& git -C $RepoRoot rev-parse --abbrev-ref HEAD 2>$null).Trim()
+} catch {
+  $commitSha = ""
+  $branchName = ""
+}
+
 $env:PORT = "$Port"
 $env:DEPLOYMENT_MODE = "local"
 $env:PULSE_PRIMARY_INSTANCE = "true"
@@ -61,6 +71,8 @@ $env:PULSE_SAFE_OBSERVATION_MODE = "false"
 $env:PULSE_PRIMARY_RUNTIME_HOLD = "false"
 $env:PULSE_GUARDED_EXECUTOR_PLAN_PATH = "output/goal-contract/guarded_dispatch_executor_plan.json"
 $env:PULSE_RESET_SCHEDULES_ON_BOOT = "true"
+if ($commitSha) { $env:RAILWAY_GIT_COMMIT_SHA = $commitSha }
+if ($branchName) { $env:RAILWAY_GIT_BRANCH = $branchName }
 
 Write-RuntimeLog ("node_start repo={0} port={1}" -f $RepoRoot, $Port)
 & node server.js *>> $logPath

@@ -173,6 +173,7 @@
     "ops:guarded-dispatch-reconcile": "node tools/guarded-dispatch-evidence-reconciliation.js",
     "ops:normal-operations": "node tools/normal-operations-report.js",
     "ops:autonomous-feedback": "node tools/autonomous-feedback-monitor.js",
+    "ops:discord-feedback-ingestion": "node tools/discord-feedback-ingestion.js",
     "ops:candidate-supply": "node tools/candidate-supply-engine.js",
     "ops:fresh-review-script-repair": "node tools/fresh-review-script-repair.js",
     "ops:fresh-green-buffer-promote": "node tools/fresh-green-buffer-local-promotion.js",

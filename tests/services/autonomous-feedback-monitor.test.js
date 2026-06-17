@@ -1,6 +1,9 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const fs = require("fs-extra");
+const os = require("node:os");
+const path = require("node:path");
 const test = require("node:test");
 
 const {
@@ -165,6 +168,74 @@ test("autonomous feedback holds scheduler when Discord wrong-motion feedback is 
   assert.equal(report.current_action, "hold_scheduler_and_repair_current_candidate");
   assert.equal(report.discord_feedback.real_blocker_count, 1);
   assert.deepEqual(report.blockers, ["discord_feedback:direct_motion_gap_current:fresh_xbox_beastro_20260611"]);
+});
+
+test("autonomous feedback holds selected candidate when live Discord ingestion reports quality issue", () => {
+  const report = buildAutonomousFeedbackReport({
+    generatedAt: "2026-06-17T10:20:00.000Z",
+    normalOperationsReport: normalOps(),
+    candidateReport: {
+      candidates: [currentCandidate()],
+    },
+    ingestedDiscordFeedbackReport: {
+      capability: { status: "loaded" },
+      summary: {
+        messages_seen: 1,
+        actionable_count: 1,
+        blocking_count: 1,
+        stale_count: 0,
+        unmatched_count: 0,
+      },
+      items: [
+        {
+          story_id: "fresh_xbox_beastro_20260611",
+          categories: ["tts_voice_quality", "transcript_confusing"],
+          state: "current_selected_feedback_blocker",
+          blocks_publishing: true,
+          action: "hold_selected_candidate_and_repair_feedback_issue",
+        },
+      ],
+    },
+  });
+
+  assert.equal(report.verdict, "red");
+  assert.equal(report.current_action, "hold_scheduler_and_apply_discord_feedback");
+  assert.ok(
+    report.blockers.includes("discord_ingested_feedback:fresh_xbox_beastro_20260611:tts_voice_quality"),
+    report.blockers.join(", "),
+  );
+  assert.match(formatAutonomousFeedbackDiscord(report), /Live Discord ingest: loaded \| 1 actionable \| 1 blocking/);
+});
+
+test("autonomous feedback holds selected candidate when transcript audience audit fails it", () => {
+  const report = buildAutonomousFeedbackReport({
+    generatedAt: "2026-06-17T10:20:00.000Z",
+    normalOperationsReport: normalOps(),
+    candidateReport: {
+      candidates: [currentCandidate()],
+    },
+    transcriptAudienceReport: {
+      summary: { total: 1, pass: 0, rewrite_required: 1 },
+      stories: [
+        {
+          story_id: "fresh_xbox_beastro_20260611",
+          title: "Beastro Has A Cozy Deckbuilding Test",
+          verdict: "rewrite_required",
+          blockers: ["mass_audience:tts_transcript_subject_drift"],
+        },
+      ],
+    },
+  });
+
+  assert.equal(report.verdict, "red");
+  assert.equal(report.current_action, "repair_transcript_audience_blockers");
+  assert.ok(
+    report.blockers.includes(
+      "transcript_audience:fresh_xbox_beastro_20260611:mass_audience:tts_transcript_subject_drift",
+    ),
+    report.blockers.join(", "),
+  );
+  assert.match(formatAutonomousFeedbackDiscord(report), /Transcripts: 1 rewrite required \| 1 current blockers/);
 });
 
 test("autonomous feedback does not hold the selected publish window for non-selected repair-lane motion gaps", () => {
@@ -347,6 +418,64 @@ test("autonomous feedback supersedes stale TTS failures when current preflight p
     ),
   );
   assert.match(formatAutonomousFeedbackDiscord(report), /TTS\/captions: 0 failed materialisations/);
+});
+
+test("autonomous feedback supersedes stale TTS failures when newer story proof artefacts pass", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "autonomous-feedback-audio-proof-"));
+  const artifactDir = path.join(root, "fresh_xbox_beastro_20260611");
+  await fs.ensureDir(artifactDir);
+  await fs.writeFile(path.join(artifactDir, "visual_v4_render.mp4"), "");
+  await fs.writeJson(path.join(artifactDir, "voice_quality_report.json"), {
+    generated_at: "2026-06-16T23:27:47.950Z",
+    verdict: "PASS",
+    blockers: [],
+  });
+  await fs.writeJson(path.join(artifactDir, "caption_manifest.json"), {
+    generated_at: "2026-06-16T23:27:47.950Z",
+    status: "ready",
+    blockers: [],
+    word_timestamp_count: 118,
+    checks: { word_timestamps_present: true },
+  });
+  await fs.writeJson(path.join(artifactDir, "narration_manifest.json"), {
+    generated_at: "2026-06-16T23:27:47.950Z",
+    status: "ready",
+    blockers: [],
+    checks: { word_timestamps_present: true },
+  });
+
+  const report = buildAutonomousFeedbackReport({
+    generatedAt: "2026-06-17T13:20:00.000Z",
+    normalOperationsReport: normalOps(),
+    candidateReport: {
+      generated_at: "2026-06-17T07:13:46.029Z",
+      candidates: [
+        {
+          id: "fresh_xbox_beastro_20260611",
+          status: "publish_ready",
+          source: {
+            exported_path: path.join(artifactDir, "visual_v4_render.mp4"),
+          },
+        },
+      ],
+    },
+    ttsCaptionReport: {
+      generated_at: "2026-06-16T16:44:24.195Z",
+      jobs: [
+        {
+          story_id: "fresh_xbox_beastro_20260611",
+          title: "Beastro Has A Cozy Deckbuilding Test",
+          status: "failed",
+          error: "local_whisper_word_alignment_failed",
+        },
+      ],
+    },
+  });
+
+  assert.equal(report.tts_caption_feedback.failed_count, 0);
+  assert.equal(report.tts_caption_feedback.superseded_count, 1);
+  assert.equal(report.tts_caption_feedback.blocks_publishing, false);
+  assert.ok(!report.blockers.includes("tts_caption:fresh_xbox_beastro_20260611:caption_alignment_failed"));
 });
 
 test("autonomous feedback escalates zero live candidates when safe repair runway exists", () => {

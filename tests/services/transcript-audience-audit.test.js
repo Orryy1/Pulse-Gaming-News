@@ -133,3 +133,132 @@ test("transcript audience audit rejects producer scaffold and low-payoff narrati
     );
   });
 });
+
+test("transcript audience audit rejects abstract mass-audience confusion", async () => {
+  await withTempDir(async (root) => {
+    await writeStory(
+      root,
+      "beastro-abstract",
+      "Beastro Has A Cozy Deckbuilding Test",
+      "Beastro has a signal problem. This matters because the update changes the wider conversation around trust, timing and discovery. The useful part is the context, because the detail gives players a cleaner way to judge the direction. That is where the story becomes more than a feed update. If the next beat lands, the conversation shifts again. Follow Pulse Gaming so you never miss a beat.",
+      "Xbox Wire",
+    );
+
+    const report = await auditGeneratedTranscripts({ root });
+
+    assert.equal(report.summary.total, 1);
+    assert.equal(report.summary.pass, 0);
+    assert.equal(report.summary.rewrite_required, 1);
+    const row = report.stories.find((story) => story.story_id === "beastro-abstract");
+    assert.ok(row.blockers.includes("mass_audience:abstract_payoff"), row.blockers.join(", "));
+    assert.ok(row.blockers.includes("mass_audience:low_concrete_detail"), row.blockers.join(", "));
+    assert.ok(row.blockers.includes("mass_audience:unclear_referents"), row.blockers.join(", "));
+  });
+});
+
+test("transcript audience audit rejects public safety scaffold padding", async () => {
+  await withTempDir(async (root) => {
+    await writeStory(
+      root,
+      "beastro-scaffold",
+      "Beastro Has A Cozy Deckbuilding Test",
+      "Beastro is the Game Pass test for players who usually bounce off card games. Xbox Wire says it is out now on Xbox and Game Pass, mixing village care, cooking, farming and card battles around Caretakers defending a wall. The player-facing consequence matters more than stretching the headline beyond the source. Players should watch for a named update from the studio, store page or platform holder. That means the claim still needs official confirmation before players treat it as locked in. Until that appears, the honest angle is what has changed for players today. Follow Pulse Gaming so you never miss a beat.",
+      "Xbox Wire",
+    );
+
+    const report = await auditGeneratedTranscripts({ root });
+
+    assert.equal(report.summary.total, 1);
+    assert.equal(report.summary.pass, 0);
+    assert.equal(report.summary.rewrite_required, 1);
+    const row = report.stories.find((story) => story.story_id === "beastro-scaffold");
+    assert.ok(row.blockers.includes("mass_audience:public_safety_scaffold"), row.blockers.join(", "));
+  });
+});
+
+test("transcript audience audit includes current fresh proof batch folders", async () => {
+  await withTempDir(async (root) => {
+    await writeStory(
+      root,
+      "old_batch_story",
+      "Old Batch Story Has A Real Hook",
+      "Old Batch Story gives players one clear thing to judge. Xbox Wire says the demo adds campaign co-op, a new boss and a release date. That matters because players can decide whether to wait or jump in now. Follow Pulse Gaming so you never miss a beat.",
+      "Xbox Wire",
+    );
+    const freshDir = path.join(
+      root,
+      "output",
+      "autonomous-feedback-monitor",
+      "fresh-goal-proof",
+      "batch",
+      "fresh_current_story",
+    );
+    await fs.ensureDir(freshDir);
+    await fs.writeJson(path.join(freshDir, "canonical_story_manifest.json"), {
+      story_id: "fresh_current_story",
+      selected_title: "Fresh Current Story Has A Real Hook",
+      primary_source: "Xbox Wire",
+      narration_script:
+        "Fresh Current Story gives players one clear thing to judge. Xbox Wire says the demo adds campaign co-op, a new boss and a release date. That matters because players can decide whether to wait or jump in now. Follow Pulse Gaming so you never miss a beat.",
+    });
+
+    const report = await auditGeneratedTranscripts({ root });
+
+    assert.equal(report.summary.total, 2);
+    assert.ok(report.stories.some((story) => story.story_id === "fresh_current_story"));
+  });
+});
+
+test("transcript audience audit normalises recoverable spoken title aliases before subject checks", async () => {
+  await withTempDir(async (root) => {
+    const dir = path.join(root, "output", "goal-proof", "batch", "beastro-drift");
+    await fs.ensureDir(dir);
+    await fs.writeJson(path.join(dir, "canonical_story_manifest.json"), {
+      story_id: "beastro-drift",
+      canonical_subject: "Beastro",
+      selected_title: "Beastro Has A Cozy Deckbuilding Test",
+      primary_source: "Xbox Wire",
+      narration_script:
+        "Beastro is the Game Pass test for players who usually bounce off card games. Xbox Wire says the demo mixes cooking, farming and card battles. Follow Pulse Gaming so you never miss a beat.",
+    });
+    await fs.writeJson(path.join(dir, "narration_manifest.json"), {
+      final_transcript:
+        "Beastrow is the Game Pass test for players who usually bounce off card games. Xbox Wire says the demo mixes cooking, farming and card battles. Follow Pulse Gaming so you never miss a beat.",
+    });
+
+    const report = await auditGeneratedTranscripts({ root });
+
+    assert.equal(report.summary.total, 1);
+    const row = report.stories[0];
+    assert.equal(row.first_line.startsWith("Beastro"), true);
+    assert.match(row.raw_transcript, /^Beastrow/);
+    assert.equal(row.blockers.includes("mass_audience:tts_transcript_subject_drift"), false);
+  });
+});
+
+test("transcript audience audit still fails unrecoverable subject drift", async () => {
+  await withTempDir(async (root) => {
+    const dir = path.join(root, "output", "goal-proof", "batch", "beastro-wrong-subject");
+    await fs.ensureDir(dir);
+    await fs.writeJson(path.join(dir, "canonical_story_manifest.json"), {
+      story_id: "beastro-wrong-subject",
+      canonical_subject: "Beastro",
+      selected_title: "Beastro Has A Cozy Deckbuilding Test",
+      primary_source: "Xbox Wire",
+      narration_script:
+        "Beastro is the Game Pass test for players who usually bounce off card games. Xbox Wire says the demo mixes cooking, farming and card battles. Follow Pulse Gaming so you never miss a beat.",
+    });
+    await fs.writeJson(path.join(dir, "narration_manifest.json"), {
+      final_transcript:
+        "Bistro is the Game Pass test for players who usually bounce off card games. Xbox Wire says the demo mixes cooking, farming and card battles. Follow Pulse Gaming so you never miss a beat.",
+    });
+
+    const report = await auditGeneratedTranscripts({ root });
+
+    assert.equal(report.summary.total, 1);
+    assert.equal(report.summary.pass, 0);
+    const row = report.stories[0];
+    assert.equal(row.first_line.startsWith("Bistro"), true);
+    assert.ok(row.blockers.includes("mass_audience:tts_transcript_subject_drift"), row.blockers.join(", "));
+  });
+});

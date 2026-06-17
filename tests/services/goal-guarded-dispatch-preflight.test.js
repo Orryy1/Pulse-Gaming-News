@@ -230,6 +230,34 @@ test("guarded dispatch preflight rejects stale approvals missing from current st
   assert.equal(report.guarded_dispatch_plan.ready_for_guarded_dispatch, false);
 });
 
+test("guarded dispatch preflight ignores approvals for already-published platforms", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-dispatch-already-published-"));
+  const media = await makeMedia(root);
+  const strictPlan = {
+    ...strictDryRunPlan(media, []),
+    ready_stories: [
+      {
+        story_id: "story-one",
+        already_published_platforms: ["youtube_shorts"],
+        missing_enabled_platforms: ["instagram_reels", "facebook_reels"],
+      },
+    ],
+  };
+  const report = buildGuardedDispatchPreflight({
+    approvalGateReport: approvalGateReport(media),
+    strictDryRunPlan: strictPlan,
+    platformStatusMatrix: platformStatusMatrix(),
+  });
+
+  assert.equal(report.verdict, "AMBER");
+  assert.equal(report.summary.blocked_action_count, 0);
+  assert.equal(report.summary.dispatch_ready_action_count, 0);
+  assert.equal(report.summary.ignored_already_published_action_count, 1);
+  assert.equal(report.ignored_already_published_actions[0].reason, "already_published_platform_action");
+  assert.ok(report.advisory.includes("approved_already_published_actions_ignored"));
+  assert.equal(report.guarded_dispatch_plan.ready_for_guarded_dispatch, false);
+});
+
 test("guarded dispatch preflight rejects media path drift and missing media", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-dispatch-media-"));
   const media = await makeMedia(root);

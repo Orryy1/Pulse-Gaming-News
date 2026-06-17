@@ -2080,10 +2080,12 @@ test("goal dry-run publisher skips stories the scheduler excluded because they a
 
 test("goal dry-run publisher skips already-published platforms but keeps missing enabled platforms", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-partial-platforms-"));
-  const storyPackage = {
-    ...(await makeStoryPackage(root, "partial-platform-story", "GREEN", "Mina The Hollower Has A Sequel Risk")),
-    already_published_platforms: ["youtube_shorts"],
-  };
+  const storyPackage = await makeStoryPackage(
+    root,
+    "partial-platform-story",
+    "GREEN",
+    "Mina The Hollower Has A Sequel Risk",
+  );
 
   const plan = await buildGoalDryRunPublishPlan({
     storyPackages: [storyPackage],
@@ -2108,6 +2110,7 @@ test("goal dry-run publisher skips already-published platforms but keeps missing
   assert.ok(plan.actions.some((action) => action.platform === "instagram_reels"));
   assert.ok(plan.actions.some((action) => action.platform === "facebook_reels"));
   assert.ok(plan.ready_stories[0].already_published_platforms.includes("youtube_shorts"));
+  assert.deepEqual(plan.ready_stories[0].missing_enabled_platforms, ["instagram_reels", "facebook_reels"]);
 });
 
 test("goal dry-run publisher ignores stale visual-source defers after newer rights-backed final render evidence", async () => {

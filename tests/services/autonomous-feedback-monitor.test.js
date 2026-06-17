@@ -341,6 +341,33 @@ test("autonomous feedback treats exhausted guarded selection as a live scheduler
   assert.equal(report.scheduler.ready_for_next_window_boolean, false);
 });
 
+test("autonomous feedback prefers current guarded dispatch action over stale scheduler selection", () => {
+  const report = buildAutonomousFeedbackReport({
+    generatedAt: "2026-06-17T13:45:00.000Z",
+    normalOperationsReport: normalOps({
+      guarded_selection: {
+        action_id: "fresh_xbox_beastro_20260611:youtube_shorts",
+        exhausted: false,
+      },
+    }),
+    guardedDispatchPreflightReport: {
+      verdict: "GREEN",
+      dispatch_ready_actions: [
+        {
+          story_id: "fresh_steam_next_fest_demo_discovery_20260616",
+          platform: "youtube_shorts",
+          title: "Steam Next Fest Turns Demos Into A Trust Fight",
+        },
+      ],
+    },
+  });
+
+  assert.equal(
+    report.scheduler.selected_action,
+    "fresh_steam_next_fest_demo_discovery_20260616:youtube_shorts",
+  );
+});
+
 test("autonomous feedback treats current TTS and caption materialisation failures as blockers", () => {
   const report = buildAutonomousFeedbackReport({
     generatedAt: "2026-06-16T17:00:00.000Z",

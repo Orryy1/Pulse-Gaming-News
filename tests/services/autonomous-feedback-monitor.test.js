@@ -311,6 +311,60 @@ test("autonomous feedback alerts on completed publish jobs with no newer platfor
   assert.equal(report.verdict, "red");
 });
 
+test("recent jobs loader reads current jobs schema without requiring legacy result_summary column", async () => {
+  const reposPath = require.resolve("../../lib/repositories");
+  const monitorPath = require.resolve("../../lib/ops/autonomous-feedback-monitor");
+  const originalRepos = require.cache[reposPath];
+  const originalMonitor = require.cache[monitorPath];
+  const statements = [];
+  try {
+    require.cache[reposPath] = {
+      id: reposPath,
+      filename: reposPath,
+      loaded: true,
+      exports: {
+        getRepos() {
+          return {
+            db: {
+              prepare(sql) {
+                statements.push(sql);
+                if (/result_summary/i.test(sql)) {
+                  throw new Error("no such column: result_summary");
+                }
+                return {
+                  all(limit) {
+                    assert.equal(limit, 3);
+                    return [
+                      {
+                        id: 101,
+                        kind: "publish",
+                        status: "done",
+                        completed_at: "2026-06-17T16:00:09.000Z",
+                      },
+                    ];
+                  },
+                };
+              },
+            },
+          };
+        },
+      },
+    };
+    delete require.cache[monitorPath];
+    const { recentJobsFromDb } = require("../../lib/ops/autonomous-feedback-monitor");
+    const rows = await recentJobsFromDb({ limit: 3 });
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].id, 101);
+    assert.ok(statements[0].includes("last_error"));
+    assert.ok(!statements[0].includes("result_summary"));
+  } finally {
+    if (originalRepos) require.cache[reposPath] = originalRepos;
+    else delete require.cache[reposPath];
+    if (originalMonitor) require.cache[monitorPath] = originalMonitor;
+    else delete require.cache[monitorPath];
+  }
+});
+
 test("autonomous feedback treats exhausted guarded selection as a live scheduler blocker", () => {
   const report = buildAutonomousFeedbackReport({
     generatedAt: "2026-06-16T16:05:00.000Z",

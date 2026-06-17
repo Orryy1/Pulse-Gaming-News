@@ -473,12 +473,11 @@ test("guarded publish handler blocks before upload when watchdog is RED", async 
     delete require.cache[jobHandlersPath];
 
     const { handlers } = require("../../lib/job-handlers");
-    const result = await handlers.publish({ id: 77 }, { log() {} });
+    await assert.rejects(
+      () => handlers.publish({ id: 77 }, { log() {} }),
+      /publish_window_watchdog_blocked:publish_window_watchdog_red/,
+    );
 
-    assert.equal(result.status, "blocked");
-    assert.equal(result.publish_window_blocked, true);
-    assert.equal(result.top_reason, "publish_window_watchdog_red");
-    assert.deepEqual(result.blockers, ["runtime_sentinel: wrong commit"]);
     assert.equal(sent.length, 1);
     assert.match(sent[0], /Publish held before upload/);
     assert.match(sent[0], /wrong commit/);
@@ -590,22 +589,11 @@ test("guarded publish handler reports exhausted selector blockers", async () => 
     delete require.cache[jobHandlersPath];
 
     const { handlers } = require("../../lib/job-handlers");
-    const result = await handlers.publish({ id: 88 }, { log() {} });
+    await assert.rejects(
+      () => handlers.publish({ id: 88 }, { log() {} }),
+      /guarded_publish_window_failed:none:no_unpublished_guarded_actions/,
+    );
 
-    assert.equal(result.guarded_live_dispatch, true);
-    assert.equal(result.skipped, true);
-    assert.equal(result.status, "blocked");
-    assert.equal(result.reason, "no_unpublished_guarded_actions");
-    assert.equal(result.skipped_action_count, 1);
-    assert.deepEqual(result.skipped_actions, [
-      {
-        action_id: "story1:youtube_shorts",
-        story_id: "story1",
-        platform: "youtube_shorts",
-        reason: "last_second_quality_gate_failed",
-        blockers: ["video:duration_too_short (38.58s)"],
-      },
-    ]);
     assert.equal(sent.length, 1);
     assert.match(sent[0], /Guarded Publish Held/);
     assert.match(sent[0], /video:duration_too_short \(38\.58s\)/);

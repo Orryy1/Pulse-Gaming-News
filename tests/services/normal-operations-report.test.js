@@ -82,6 +82,27 @@ test("buildCandidateBuffer warns when the next 24h publish windows are under-cov
   assert.ok(report.warnings.includes("publish_window_runway_short:4/5"));
 });
 
+test("buildCandidateBuffer distinguishes covered expiring runway from missed windows", () => {
+  const report = buildCandidateBuffer({
+    generated_at: "2026-06-16T22:00:00.000Z",
+    totals: { stories_seen: 9, returned: 5, pending_audio: 0, excluded: 0 },
+    candidates: Array.from({ length: 5 }, (_, index) =>
+      candidate(`expiring-${index + 1}`, {
+        source_age_expires_in_hours: index < 2 ? 12 : 72,
+      }),
+    ),
+  });
+
+  assert.equal(report.verdict, "amber");
+  assert.equal(report.publish_window_runway.ready_for_next_24h_boolean, false);
+  assert.equal(report.publish_window_runway.covered_publish_windows_24h, 5);
+  assert.equal(report.publish_window_runway.uncovered_publish_windows_24h, 0);
+  assert.equal(report.publish_window_runway.status, "covered_with_expiring_candidates");
+  assert.equal(report.publish_window_runway.ready_candidates_expiring_within_24h, 2);
+  assert.ok(report.warnings.includes("ready_candidates_expiring_within_24h:2"));
+  assert.ok(!report.warnings.includes("publish_window_runway_short:5/5"));
+});
+
 test("buildCandidateBuffer flags an empty buffer red", () => {
   const report = buildCandidateBuffer({
     totals: { stories_seen: 0, returned: 0, pending_audio: 0 },

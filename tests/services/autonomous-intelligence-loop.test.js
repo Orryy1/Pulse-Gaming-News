@@ -19,6 +19,7 @@ test("scheduler registers the full autonomous intelligence loop", () => {
   assert.equal(schedule("candidate_supply_monitor_2h")?.cron_expr, "5 * * * *");
   assert.equal(schedule("candidate_supply_monitor_2h")?.payload.post_discord_on_amber, true);
   assert.equal(schedule("candidate_supply_monitor_2h")?.payload.enqueue_repair_on_amber, true);
+  assert.equal(schedule("candidate_supply_monitor_2h")?.payload.enqueue_hunt_on_runway_gap, true);
   assert.equal(schedule("candidate_supply_monitor_2h")?.payload.repair_limit, 10);
   assert.equal(schedule("competitor_forensics_daily")?.kind, "competitor_forensics_lab");
   assert.equal(schedule("competitor_quality_gate_daily")?.kind, "competitor_quality_gate");
@@ -32,6 +33,140 @@ test("scheduler registers the full autonomous intelligence loop", () => {
   assert.equal(typeof handlers.competitor_quality_gate, "function");
   assert.equal(typeof handlers.commercial_learning_loop, "function");
   assert.equal(typeof handlers.safe_auto_repair_runner, "function");
+});
+
+test("candidate supply monitor enqueues fresh intake and repair when runway has no reserve", async () => {
+  const jobHandlersPath = require.resolve("../../lib/job-handlers");
+  const candidateSupplyPath = require.resolve("../../lib/ops/candidate-supply");
+  const candidateEnginePath = require.resolve("../../tools/candidate-supply-engine");
+  const fsExtraPath = require.resolve("fs-extra");
+  const originalCache = new Map([
+    [jobHandlersPath, require.cache[jobHandlersPath]],
+    [candidateSupplyPath, require.cache[candidateSupplyPath]],
+    [candidateEnginePath, require.cache[candidateEnginePath]],
+    [fsExtraPath, require.cache[fsExtraPath]],
+  ]);
+  const enqueued = [];
+  const fakeReport = {
+    generated_at: "2026-06-17T08:05:00.000Z",
+    verdict: "amber",
+    summary: {
+      fresh_source_backed_stories_24h: 11,
+      green_ready_candidates: 5,
+      durable_green_ready_candidates: 3,
+      source_safe_candidates: 5,
+      v4_ready_candidates: 5,
+    },
+    targets: {
+      fresh_source_backed_stories_per_day: 10,
+      green_ready_candidates: 10,
+      source_safe_candidates: 6,
+      v4_ready_candidates: 3,
+    },
+    candidate_buffer: {
+      publish_window_runway: {
+        status: "covered_no_reserve",
+        publish_windows_24h: 5,
+        covered_publish_windows_24h: 5,
+        uncovered_publish_windows_24h: 0,
+        reserve_candidates: 0,
+        reserve_target: 5,
+      },
+    },
+    official_source_watchlist: {},
+    priority_scorecards: [],
+    dedupe: {},
+    blockers: [],
+    warnings: ["publish_window_reserve_empty", "durable_green_ready_candidates_below_target:3/10"],
+  };
+
+  try {
+    require.cache[fsExtraPath] = {
+      id: fsExtraPath,
+      filename: fsExtraPath,
+      loaded: true,
+      exports: {
+        ensureDir: async () => {},
+        writeJson: async () => {},
+        writeFile: async () => {},
+      },
+    };
+    require.cache[candidateEnginePath] = {
+      id: candidateEnginePath,
+      filename: candidateEnginePath,
+      loaded: true,
+      exports: {
+        async buildFreshCandidateReport() {
+          return { report: { totals: { returned: 5 }, candidates: [] }, stories: [] };
+        },
+      },
+    };
+    require.cache[candidateSupplyPath] = {
+      id: candidateSupplyPath,
+      filename: candidateSupplyPath,
+      loaded: true,
+      exports: {
+        buildCandidateSupplyReport() {
+          return fakeReport;
+        },
+        candidateSupplyMonitorNeedsRepair() {
+          return true;
+        },
+        candidateSupplyMonitorNeedsFreshIntake() {
+          return true;
+        },
+        formatCandidateSupplyMonitorDiscord() {
+          return "candidate monitor";
+        },
+        formatCandidateSupplyMarkdown() {
+          return "# Candidate Supply";
+        },
+        shouldNotifyCandidateSupplyMonitor() {
+          return false;
+        },
+      },
+    };
+    delete require.cache[jobHandlersPath];
+
+    const { handlers: mockedHandlers } = require("../../lib/job-handlers");
+    const result = await mockedHandlers.candidate_supply_monitor(
+      {
+        channel_id: "pulse-gaming",
+        payload: {
+          limit: 30,
+          enqueue_repair_on_amber: true,
+          enqueue_hunt_on_runway_gap: true,
+          repair_limit: 10,
+        },
+      },
+      {
+        log() {},
+        repos: {
+          jobs: {
+            enqueue(job) {
+              enqueued.push(job);
+              return { id: enqueued.length };
+            },
+          },
+        },
+      },
+    );
+
+    assert.equal(result.status, "amber");
+    assert.equal(result.repair_enqueued, true);
+    assert.equal(result.fresh_intake_enqueued, true);
+    assert.equal(enqueued.length, 2);
+    assert.equal(enqueued[0].kind, "hunt");
+    assert.equal(enqueued[0].payload.reason, "candidate_supply_monitor_fresh_intake");
+    assert.equal(enqueued[0].idempotency_key, "candidate_supply_hunt:2026-06-17:08");
+    assert.equal(enqueued[1].kind, "safe_auto_repair_runner");
+    assert.equal(enqueued[1].payload.reason, "candidate_supply_monitor_reserve_refill");
+  } finally {
+    for (const [cachePath, entry] of originalCache.entries()) {
+      if (entry) require.cache[cachePath] = entry;
+      else delete require.cache[cachePath];
+    }
+  }
 });
 
 test("autonomous feedback surfaces market intelligence without blocking publishing by itself", () => {

@@ -60,6 +60,7 @@ $env:PULSE_EMERGENCY_KILL_SWITCH = "clear"
 $env:PULSE_SAFE_OBSERVATION_MODE = "false"
 $env:PULSE_PRIMARY_RUNTIME_HOLD = "false"
 $env:PULSE_GUARDED_EXECUTOR_PLAN_PATH = "output/goal-contract/guarded_dispatch_executor_plan.json"
+$env:PULSE_RESET_SCHEDULES_ON_BOOT = "true"
 
 Write-RuntimeLog ("node_start repo={0} port={1}" -f $RepoRoot, $Port)
 & node server.js *>> $logPath

@@ -6,6 +6,7 @@ const test = require("node:test");
 const {
   buildCandidateSupplyReport,
   buildOfficialSourceWatchlist,
+  candidateSupplyMonitorNeedsFreshIntake,
   candidateSupplyMonitorNeedsRepair,
   fingerprintTitle,
   formatCandidateSupplyMonitorDiscord,
@@ -207,7 +208,36 @@ test("candidate supply monitor treats covered windows without reserve as actiona
   assert.equal(report.candidate_buffer.publish_window_runway.covered_publish_windows_24h, 5);
   assert.equal(report.candidate_buffer.publish_window_runway.reserve_candidates, 0);
   assert.equal(candidateSupplyMonitorNeedsRepair(report), true);
+  assert.equal(candidateSupplyMonitorNeedsFreshIntake(report), true);
   assert.equal(shouldNotifyCandidateSupplyMonitor(report, { post_discord_on_red: true }), true);
   assert.match(formatCandidateSupplyMonitorDiscord(report), /Runway: 5\/5 windows \| reserve 0\/5/);
   assert.match(formatCandidateSupplyMonitorDiscord(report), /Warnings:/);
+});
+
+test("candidate supply monitor does not trigger fresh intake when runway has reserve", () => {
+  const now = new Date("2026-06-16T22:00:00.000Z");
+  const candidateReport = {
+    generated_at: now.toISOString(),
+    totals: { stories_seen: 10, returned: 10, pending_audio: 0 },
+    candidates: Array.from({ length: 10 }, (_, index) => candidate(`ready-${index + 1}`)),
+  };
+
+  const report = buildCandidateSupplyReport({
+    stories: Array.from({ length: 10 }, (_, index) => ({
+      id: `rss-${index + 1}`,
+      title: `Official Publisher Story ${index + 1}`,
+      source_type: "rss",
+      subreddit: "IGN",
+      url: `https://www.ign.com/articles/official-publisher-story-${index + 1}`,
+      timestamp: "2026-06-16T18:00:00.000Z",
+    })),
+    candidateReport,
+    channelConfig: {},
+    now,
+  });
+
+  assert.equal(report.verdict, "green");
+  assert.equal(report.candidate_buffer.publish_window_runway.status, "covered_with_reserve");
+  assert.equal(candidateSupplyMonitorNeedsRepair(report), false);
+  assert.equal(candidateSupplyMonitorNeedsFreshIntake(report), false);
 });

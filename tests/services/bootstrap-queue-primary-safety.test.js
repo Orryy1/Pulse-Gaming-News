@@ -53,6 +53,71 @@ function tempSqlitePath(prefix) {
   return path.join(dir, "pulse-test.db");
 }
 
+test("bootstrap-queue: env flag resets persisted schedule payloads on boot", async () => {
+  const bootstrapPath = path.resolve(__dirname, "..", "..", "lib", "bootstrap-queue.js");
+  const schedulerPath = path.resolve(__dirname, "..", "..", "lib", "scheduler.js");
+  const reposPath = path.resolve(__dirname, "..", "..", "lib", "repositories", "index.js");
+  const originalCache = new Map([
+    [bootstrapPath, require.cache[bootstrapPath]],
+    [schedulerPath, require.cache[schedulerPath]],
+    [reposPath, require.cache[reposPath]],
+  ]);
+  const seedCalls = [];
+  try {
+    require.cache[schedulerPath] = {
+      id: schedulerPath,
+      filename: schedulerPath,
+      loaded: true,
+      exports: {
+        seed(options) {
+          seedCalls.push(options);
+        },
+        start() {
+          throw new Error("scheduler should not start in this test");
+        },
+      },
+    };
+    require.cache[reposPath] = {
+      id: reposPath,
+      filename: reposPath,
+      loaded: true,
+      exports: {
+        getRepos() {
+          return {};
+        },
+      },
+    };
+
+    await withEnv(
+      {
+        USE_SQLITE: "true",
+        PULSE_PRIMARY_INSTANCE: "true",
+        PULSE_RESET_SCHEDULES_ON_BOOT: "true",
+      },
+      async () => {
+        const bootstrap = loadFreshBootstrap();
+        try {
+          await bootstrap.start({
+            runScheduler: false,
+            runRunner: false,
+            autoSeed: true,
+            log() {},
+          });
+          assert.equal(seedCalls.length, 1);
+          assert.equal(seedCalls[0].reset, true);
+        } finally {
+          await bootstrap.stop().catch(() => {});
+        }
+      },
+    );
+  } finally {
+    for (const [cachePath, entry] of originalCache.entries()) {
+      if (entry) require.cache[cachePath] = entry;
+      else delete require.cache[cachePath];
+    }
+  }
+});
+
 test("bootstrap-queue: PULSE_PRIMARY_INSTANCE=false refuses to start scheduler+runner", async () => {
   await withEnv(
     {

@@ -178,6 +178,175 @@ test("caption SRT normalises hardware, years and GTA acronym-number ASR", () => 
   assert.doesNotMatch(srt, /G T A|PlayStation five|twenty twenty seven|twenty sixty|E Day/);
 });
 
+test("caption SRT keeps Gears E-Day specs captions numeric after local TTS expansion", () => {
+  const srt = buildCaptionSrt(
+    "Gears of War E-Day just made its PC version a storage test. The new requirements list a 130 GB SSD install, with RTX 2060-era hardware as the minimum floor. That is not shocking for a 2026 blockbuster, but it changes the real conversation. If E-Day looks this heavy, players will accept the size.",
+    32,
+    {
+      words: [
+        { word: "Gears", start: 0, end: 0.28 },
+        { word: "of", start: 0.34, end: 0.4 },
+        { word: "War", start: 0.44, end: 0.66 },
+        { word: "E", start: 0.8, end: 0.88 },
+        { word: "Day", start: 0.92, end: 1.12 },
+        { word: "just", start: 1.22, end: 1.42 },
+        { word: "made", start: 1.46, end: 1.6 },
+        { word: "its", start: 1.64, end: 1.74 },
+        { word: "PC", start: 1.8, end: 2.19 },
+        { word: "version", start: 2.25, end: 2.61 },
+        { word: "a", start: 2.71, end: 2.75 },
+        { word: "storage", start: 2.81, end: 3.21 },
+        { word: "test.", start: 3.27, end: 3.55 },
+        { word: "The", start: 4.61, end: 4.71 },
+        { word: "new", start: 4.75, end: 4.87 },
+        { word: "requirements", start: 4.91, end: 5.47 },
+        { word: "list", start: 5.55, end: 5.77 },
+        { word: "a", start: 5.77, end: 6.07 },
+        { word: "130", start: 6.11, end: 6.35 },
+        { word: "GB", start: 6.73, end: 7.23 },
+        { word: "SSD", start: 7.45, end: 7.77 },
+        { word: "install,", start: 7.83, end: 8.28 },
+        { word: "with", start: 8.4, end: 8.54 },
+        { word: "RTX", start: 8.72, end: 9.16 },
+        { word: "twenty", start: 9.22, end: 9.48 },
+        { word: "sixty", start: 9.54, end: 9.86 },
+        { word: "era", start: 9.96, end: 10.16 },
+        { word: "hardware", start: 10.2, end: 10.62 },
+        { word: "as", start: 10.72, end: 10.82 },
+        { word: "the", start: 10.84, end: 10.92 },
+        { word: "minimum", start: 10.96, end: 11.3 },
+        { word: "floor.", start: 11.34, end: 11.56 },
+        { word: "That", start: 13.14, end: 13.28 },
+        { word: "is", start: 13.34, end: 13.42 },
+        { word: "not", start: 13.48, end: 13.68 },
+        { word: "shocking", start: 13.76, end: 14.18 },
+        { word: "for", start: 14.24, end: 14.38 },
+        { word: "a", start: 14.42, end: 14.44 },
+        { word: "twenty", start: 14.52, end: 14.76 },
+        { word: "twenty", start: 14.8, end: 15.0 },
+        { word: "six", start: 15.06, end: 15.26 },
+        { word: "blockbuster,", start: 15.32, end: 15.99 },
+        { word: "but", start: 16.55, end: 16.65 },
+        { word: "it", start: 16.69, end: 16.73 },
+        { word: "changes", start: 16.83, end: 17.21 },
+        { word: "the", start: 17.25, end: 17.33 },
+        { word: "real", start: 17.43, end: 17.65 },
+        { word: "conversation.", start: 17.71, end: 18.35 },
+        { word: "If", start: 26.52, end: 26.58 },
+        { word: "E", start: 26.74, end: 26.8 },
+        { word: "Day", start: 26.84, end: 27.0 },
+        { word: "looks", start: 27.04, end: 27.24 },
+        { word: "this", start: 27.28, end: 27.44 },
+        { word: "heavy,", start: 27.48, end: 27.74 },
+        { word: "players", start: 32.12, end: 32.31 },
+        { word: "will", start: 32.32, end: 32.35 },
+        { word: "accept", start: 32.36, end: 32.39 },
+        { word: "the", start: 32.4, end: 32.43 },
+        { word: "size.", start: 32.44, end: 32.47 },
+      ],
+      maxWordsPerPhrase: 3,
+      maxPhraseChars: 24,
+      maxPhraseDurationS: 1.6,
+      danglingMergeMaxWords: 3,
+    },
+  );
+
+  assert.match(srt, /RTX 2060-era/);
+  assert.match(srt, /2026/);
+  assert.match(srt, /If E-Day/);
+  assert.doesNotMatch(srt, /twenty\s+sixty|twenty\s+twenty\s+six|2020 six|E Day/);
+});
+
+test("public copy repair gives Gears E-Day specs stories a clearer player-impact script", () => {
+  const repaired = repairGoalPublicCopyManifest(
+    {
+      story_id: "fresh_gears_eday_pc_specs_20260616",
+      canonical_subject: "Gears Of War: E-Day",
+      canonical_game: "Gears of War E-Day",
+      canonical_title: "Gears E-Day Has A 130GB Problem",
+      selected_title: "Gears E-Day Has A 130GB Problem",
+      primary_source: "PC Gamer",
+      confirmed_claims: [
+        "PC Gamer reports Gears of War E-Day PC requirements list a 130 GB SSD install.",
+        "The listed minimum GPU floor includes RTX 2060-era hardware.",
+      ],
+      narration_script:
+        "Gears of War E-Day just made its PC version a storage test. The new requirements list a 130 GB SSD install, with RTX 2060-era hardware as the minimum floor.",
+    },
+    { generatedAt: "2026-06-18T09:30:00.000Z" },
+  );
+
+  assert.match(repaired.manifest.narration_script, /^Gears of War E-Day just turned PC specs into the story\./);
+  assert.match(repaired.manifest.narration_script, /PC Gamer says/);
+  assert.match(repaired.manifest.narration_script, /130 GB SSD install/);
+  assert.match(repaired.manifest.narration_script, /RTX 2060-era/);
+  assert.match(repaired.manifest.narration_script, /what players have to delete before launch night/);
+  assert.match(repaired.manifest.narration_script, /weight, not bloat/);
+  assert.match(repaired.manifest.narration_script, /Follow Pulse Gaming so you never miss a beat\.$/);
+  assert.ok(repaired.manifest.narration_script.split(/\s+/).length >= 120);
+});
+
+test("public copy repair can force a quality rewrite for clean Gears E-Day specs packages", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-copy-gears-quality-rewrite-"));
+  const artifactDir = path.join(root, "story");
+  await fs.ensureDir(artifactDir);
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "fresh_gears_eday_pc_specs_20260616",
+    canonical_subject: "Gears Of War: E-Day",
+    canonical_game: "Gears of War E-Day",
+    canonical_title: "Gears E-Day Has A 130GB Problem",
+    selected_title: "Gears E-Day Has A 130GB Problem",
+    short_title: "Gears E-Day Has A 130GB Problem",
+    thumbnail_headline: "GEARS E-DAY PC TEST",
+    first_spoken_line: "Gears of War E-Day just made its PC version a storage test.",
+    narration_script:
+      "Gears of War E-Day just made its PC version a storage test. The new requirements list a 130 GB SSD install, with RTX 2060-era hardware as the minimum floor. That is not shocking for a 2026 blockbuster, but it changes the real conversation. The catch is not just can my PC run it. It is what else gets deleted before launch night. For Xbox, the upside is clear: if E-Day looks this heavy because the campaign is dense, cinematic and technically serious, players will accept the size. If it feels bloated, that install number becomes the first complaint. Follow Pulse Gaming so you never miss a beat.",
+    description:
+      "PC Gamer reports Gears of War E-Day PC requirements list a 130 GB SSD install. Source: PC Gamer.",
+    primary_source: "PC Gamer",
+    source_card_label: "PC Gamer",
+    confirmed_claims: [
+      "PC Gamer reports Gears of War E-Day PC requirements list a 130 GB SSD install.",
+      "The listed minimum GPU floor includes RTX 2060-era hardware.",
+    ],
+  });
+  await fs.outputJson(path.join(artifactDir, "visual_v4_render_story.json"), {
+    video_clips: ["clip-a.mp4", "clip-b.mp4"],
+  });
+  await fs.outputJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+    outputs: {
+      youtube_shorts: {
+        title: "Gears E-Day Has A 130GB Problem",
+        description:
+          "PC Gamer reports Gears of War E-Day PC requirements list a 130 GB SSD install. Source: PC Gamer.",
+      },
+    },
+  });
+
+  const report = await repairGoalPublicCopyPackages({
+    storyPackages: [{ story_id: "fresh_gears_eday_pc_specs_20260616", artifact_dir: artifactDir }],
+    generatedAt: "2026-06-18T10:15:00.000Z",
+    forceQualityRewriteStoryIds: ["fresh_gears_eday_pc_specs_20260616"],
+  });
+  const updated = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+  const srt = await fs.readFile(path.join(artifactDir, "captions.srt"), "utf8");
+  const workbench = buildAudioRegenerationWorkbench(report, {
+    localTts: { ready: true, verdict: "green" },
+  });
+  const renderWorkOrder = await buildProductionRerenderWorkOrder(report);
+
+  assert.equal(report.summary.changed_count, 1);
+  assert.equal(report.changed[0].status, "quality_rewrite_pending_audio_rerender");
+  assert.equal(report.changed[0].public_copy_regeneration_pending, true);
+  assert.match(updated.narration_script, /^Gears of War E-Day just turned PC specs into the story\./);
+  assert.match(updated.narration_script, /E-Day has to make 130 GB feel like weight, not bloat\./);
+  assert.match(srt, /RTX 2060-era/);
+  assert.match(srt, /2026/);
+  assert.deepEqual(workbench.jobs.map((job) => job.story_id), ["fresh_gears_eday_pc_specs_20260616"]);
+  assert.deepEqual(renderWorkOrder.jobs.map((job) => job.story_id), ["fresh_gears_eday_pc_specs_20260616"]);
+  assert.equal(renderWorkOrder.summary.ready_for_final_render_job_count, 1);
+});
+
 test("public copy repair turns a quote fragment Kickstarter story into usable copy", () => {
   const repaired = repairGoalPublicCopyManifest(
     {
@@ -2029,6 +2198,7 @@ test("public copy repair CLI filters packages by repeatable story id", async () 
     "Forza Horizon 6 Scores 84 On PC Gamer",
     "--reserved-titles",
     "Helldivers 2 Is Getting Warhammer Gear||Lego Batman Is Chasing Arkham",
+    "--force-quality-rewrite",
   ]);
 
   assert.deepEqual(args.storyIds, ["target-story", "second-story", "third-story", "fourth-story"]);
@@ -2037,6 +2207,7 @@ test("public copy repair CLI filters packages by repeatable story id", async () 
     "Helldivers 2 Is Getting Warhammer Gear",
     "Lego Batman Is Chasing Arkham",
   ]);
+  assert.equal(args.forceQualityRewrite, true);
 });
 
 test("public copy repair CLI only mutates selected story packages", async () => {

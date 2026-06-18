@@ -30,6 +30,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     providerPreference: null,
     storyIds: [],
     reservedTitles: [],
+    forceQualityRewrite: false,
     generatedAt: null,
     json: false,
     help: false,
@@ -43,6 +44,8 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--local-tts-doctor") args.localTtsDoctorPath = argv[++i] || args.localTtsDoctorPath;
     else if (arg === "--source-attribution-entries") args.sourceAttributionEntriesPath = argv[++i] || null;
     else if (arg === "--provider-preference") args.providerPreference = argv[++i] || null;
+    else if (arg === "--force-quality-rewrite") args.forceQualityRewrite = true;
+    else if (arg === "--force-rewrite") args.forceQualityRewrite = true;
     else if (arg === "--story-id" || arg === "--story") args.storyIds.push(argv[++i] || "");
     else if (arg === "--story-ids" || arg === "--stories") {
       args.storyIds.push(...String(argv[++i] || "").split(","));
@@ -84,6 +87,7 @@ function usage() {
     "  --story-id <id>          Repair one story id; repeatable",
     "  --story-ids <ids>        Comma-separated story ids",
     "  --reserved-title <title> Title already used by another candidate; repeatable",
+    "  --force-quality-rewrite Force selected story ids through a public-copy quality rewrite",
     "  --generated-at <iso>      Fixed timestamp",
     "  --json                    Print JSON",
     "",
@@ -162,6 +166,9 @@ async function main(argv = process.argv.slice(2)) {
     await readStoryPackages(root, args.storyPackagesPath),
     args.storyIds,
   );
+  if (args.forceQualityRewrite && args.storyIds.length === 0) {
+    throw new Error("--force-quality-rewrite requires at least one --story-id");
+  }
   const sourceAttributionEntries = await readSourceAttributionEntries(root, args.sourceAttributionEntriesPath);
   const generatedAt = args.generatedAt || new Date().toISOString();
   const existingWorkbench = await readJsonIfPresent(path.resolve(root, args.existingAudioWorkbenchPath));
@@ -171,6 +178,7 @@ async function main(argv = process.argv.slice(2)) {
     sourceAttributionEntries,
     audioWorkbench: existingWorkbench,
     reservedTitles: args.reservedTitles,
+    forceQualityRewriteStoryIds: args.forceQualityRewrite ? args.storyIds : [],
   });
   const localTtsDoctor = await readJsonIfPresent(path.resolve(root, args.localTtsDoctorPath));
   const localTts = chooseLocalTtsStatus({

@@ -157,6 +157,7 @@
     "ops:goal-sfx-rerender-workorder": "node tools/goal-sfx-rerender-workorder.js",
     "ops:render-audio-segment-audit": "node tools/render-audio-segment-audit.js",
     "ops:bridge-candidate-promotion": "node tools/bridge-candidate-promotion.js",
+    "ops:bridge-candidate-metadata-refresh": "node tools/bridge-candidate-metadata-refresh.js",
     "ops:bridge-live-rights-repair": "node tools/bridge-live-rights-repair.js",
     "ops:bridge-preflight-stamp-repair": "node tools/bridge-preflight-stamp-repair.js",
     "ops:goal": "node tools/run-goal.js",

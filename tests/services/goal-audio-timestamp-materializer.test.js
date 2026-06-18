@@ -195,6 +195,10 @@ test("goal audio materializer refreshes stale narration and caption manifests af
     generated_at: "2026-05-22T05:00:00.000Z",
     word_timestamps_path: "output/audio/story-manifest-refresh_timestamps.json",
   });
+  await fs.outputFile(
+    path.join(artifactDir, "captions.srt"),
+    "1\n00:00:00,000 --> 00:00:01,000\nHades, two stale caption.\n",
+  );
 
   await materializeGoalAudioTimestamps({
     workspaceRoot: root,
@@ -223,6 +227,11 @@ test("goal audio materializer refreshes stale narration and caption manifests af
   assert.equal(captions.generated_at, "2026-05-22T06:00:50.000Z");
   assert.equal(captions.word_timestamp_source, "local_alignment_normalised");
   assert.equal(captions.transcript, "Hades two finally has a PlayStation and Xbox date.");
+  assert.equal(captions.caption_srt_path, path.join(artifactDir, "captions.srt"));
+  const srt = await fs.readFile(path.join(artifactDir, "captions.srt"), "utf8");
+  assert.match(srt, /Hades II finally/);
+  assert.match(srt, /has a PlayStation/);
+  assert.doesNotMatch(srt, /stale caption|Hades, two/);
 });
 
 test("goal audio materializer anchors local word timestamps to measured speech pauses", async () => {

@@ -299,6 +299,17 @@ test("classifyReprocessedStory separates script-ready from still-review rows", (
   });
   assert.deepEqual(
     classifyReprocessedStory({
+      full_script: "A generated source-bound briefing script.",
+      word_count: 186,
+      format_route: "review_or_briefing",
+    }),
+    {
+      status: "still_review",
+      reason: "format_route_not_short:review_or_briefing",
+    },
+  );
+  assert.deepEqual(
+    classifyReprocessedStory({
       full_script: "A generated script that still failed persistence.",
       word_count: 8,
       reprocess_persisted: false,
@@ -430,7 +441,16 @@ test("isPersistableScriptReady prevents apply-local from writing review placehol
 test("buildScriptFailureReprocessReport is safe by default", () => {
   const report = buildScriptFailureReprocessReport({
     candidates: [{ id: "retry" }],
-    results: [{ id: "retry", title: "Retry", full_script: "Script", word_count: 1 }],
+    results: [
+      { id: "retry", title: "Retry", full_script: "Script", word_count: 1 },
+      {
+        id: "briefing",
+        title: "Briefing",
+        full_script: "Longer source-bound script",
+        word_count: 186,
+        format_route: "review_or_briefing",
+      },
+    ],
   });
 
   assert.equal(report.mode, "dry_run");
@@ -438,6 +458,9 @@ test("buildScriptFailureReprocessReport is safe by default", () => {
   assert.equal(report.safety.social_posting, false);
   assert.equal(report.safety.db_mutation, false);
   assert.equal(report.summary.script_ready, 1);
+  assert.equal(report.summary.still_review, 1);
+  assert.equal(report.rows[1].status, "still_review");
+  assert.equal(report.rows[1].reason, "format_route_not_short:review_or_briefing");
 });
 
 test("formatScriptFailureReprocessMarkdown is operator-readable", () => {

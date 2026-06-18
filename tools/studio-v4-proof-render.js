@@ -1039,9 +1039,9 @@ function buildSceneCompositeFilterParts(scene = {}) {
 
   return [
     `[${i}:v]split=2[bgsrc${i}][fgsrc${i}]`,
-    `[bgsrc${i}]scale=1080:1920:force_original_aspect_ratio=increase:in_range=pc:out_range=tv,crop=w=1080:h=1920:x=(iw-1080)/2:y=(ih-1920)/2,boxblur=32:1,eq=brightness=-0.10:saturation=1.18,fps=${FPS},format=yuv420p,setsar=1[bg${i}]`,
-    `[fgsrc${i}]scale=940:1660:force_original_aspect_ratio=decrease:in_range=pc:out_range=tv,fps=${FPS},format=yuv420p,setsar=1[fg${i}]`,
-    `[bg${i}][fg${i}]overlay=x='(W-w)/2+sin(t*2.20+${i})*10':y='(H-h)/2+cos(t*1.70+${i})*8':eval=frame,noise=alls=3:allf=t+u,trim=duration=${durationS},setpts=PTS-STARTPTS,fps=${FPS},format=yuv420p,setsar=1[v${i}]`,
+    `[bgsrc${i}]scale=1260:2240:force_original_aspect_ratio=increase:in_range=pc:out_range=tv,crop=w=1080:h=1920:x='(iw-1080)*(0.50+0.42*sin(t*0.31+${i}))':y='(ih-1920)*(0.50+0.42*cos(t*0.23+${i}))',boxblur=32:1,eq=brightness=-0.015:saturation=1.26:contrast=1.12,fps=${FPS},format=yuv420p,setsar=1[bg${i}]`,
+    `[fgsrc${i}]scale=1000:1760:force_original_aspect_ratio=decrease:in_range=pc:out_range=tv,eq=brightness=0.055:saturation=1.12:contrast=1.10,unsharp=5:5:0.38:3:3:0.12,fps=${FPS},format=yuv420p,setsar=1[fg${i}]`,
+    `[bg${i}][fg${i}]overlay=x='(W-w)/2+sin(t*3.10+${i})*34':y='(H-h)/2+cos(t*2.40+${i})*24':eval=frame,noise=alls=4:allf=t+u,trim=duration=${durationS},setpts=PTS-STARTPTS,fps=${FPS},format=yuv420p,setsar=1[v${i}]`,
   ];
 }
 

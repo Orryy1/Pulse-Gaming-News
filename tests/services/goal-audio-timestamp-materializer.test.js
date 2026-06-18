@@ -136,6 +136,66 @@ test("goal audio materializer passes an explicit TTS rate to narration generatio
   assert.equal(calls[0].rate, 0.92);
 });
 
+test("goal audio materializer force-regenerates a workbench ready pair", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-force-ready-"));
+  const artifactDir = await makePackage(root, "story-force-ready", {
+    selected_title: "GTA VI Cover Art Just Got Revealed",
+    narration_script: "Rockstar just made Grand Theft Auto VI feel real in one image.",
+    tts_script: "Rockstar just made Grand Theft Auto Six feel real in one image.",
+  });
+  await fs.outputFile(path.join(root, "output", "audio", "story-force-ready.mp3"), Buffer.alloc(4096, 1));
+  await fs.outputJson(path.join(root, "output", "audio", "story-force-ready_timestamps.json"), {
+    words: [{ word: "stale", start: 0, end: 0.2 }],
+    meta: {
+      transcript: "stale copy",
+      wordTimestampSource: "elevenlabs_alignment_normalised",
+    },
+  });
+  const calls = [];
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    provider: "elevenlabs",
+    force: true,
+    workbenchReport: {
+      elevenlabs_tts: { verdict: "green", ready: true },
+      jobs: [
+        {
+          ...workbenchJob("story-force-ready", artifactDir),
+          status: "ready_audio_timestamp_pair",
+          audio: {
+            path: path.join(root, "output", "audio", "story-force-ready.mp3"),
+            exists: true,
+            usable: true,
+          },
+          timestamps: {
+            path: path.join(root, "output", "audio", "story-force-ready_timestamps.json"),
+            exists: true,
+            usable: true,
+            word_count: 1,
+          },
+        },
+      ],
+    },
+    generatedAt: "2026-05-22T06:00:20.000Z",
+    generateTtsForStory: async ({ text, outputPath, provider }) => {
+      calls.push({ text, outputPath, provider });
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 2));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignment(text),
+      });
+      return { ok: true };
+    },
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].provider, "elevenlabs");
+  assert.match(calls[0].text, /Grand Theft Auto Six/);
+  assert.equal(report.summary.candidate_count, 1);
+  assert.equal(report.summary.materialized_count, 1);
+  assert.equal(report.jobs[0].provider, "elevenlabs");
+});
+
 test("goal audio materializer syncs canonical narration metadata after public-copy repair", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-canonical-sync-"));
   const repairedScript = "The Expanse finally showed real gameplay.";
@@ -232,6 +292,43 @@ test("goal audio materializer refreshes stale narration and caption manifests af
   assert.match(srt, /Hades II finally/);
   assert.match(srt, /has a PlayStation/);
   assert.doesNotMatch(srt, /stale caption|Hades, two/);
+});
+
+test("goal audio materializer separates spoken TTS text from display captions", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-display-captions-"));
+  const displayScript = "Grand Theft Auto VI pre orders open on June 25.";
+  const spokenScript = "Grand Theft Auto Six pre orders open on June 25.";
+  const artifactDir = await makePackage(root, "story-display-captions", {
+    selected_title: "Grand Theft Auto VI Cover Art",
+    narration_script: displayScript,
+    tts_script: spokenScript,
+  });
+
+  const calls = [];
+  await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    workbenchReport: {
+      local_tts: { verdict: "green", ready: true },
+      jobs: [workbenchJob("story-display-captions", artifactDir)],
+    },
+    generatedAt: "2026-05-22T06:00:55.000Z",
+    generateTtsForStory: async ({ text, outputPath }) => {
+      calls.push(text);
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 1));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignment(text),
+      });
+      return { ok: true };
+    },
+  });
+
+  assert.deepEqual(calls, [spokenScript]);
+  const captions = await fs.readFile(path.join(artifactDir, "captions.srt"), "utf8");
+  assert.match(captions, /Grand Theft Auto/);
+  assert.match(captions, /\bVI\b/);
+  assert.match(captions, /June/);
+  assert.match(captions, /\b25\./);
+  assert.doesNotMatch(captions, /Grand Theft Auto Six/);
 });
 
 test("goal audio materializer anchors local word timestamps to measured speech pauses", async () => {

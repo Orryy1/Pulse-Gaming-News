@@ -178,6 +178,36 @@ test("caption SRT normalises hardware, years and GTA acronym-number ASR", () => 
   assert.doesNotMatch(srt, /G T A|PlayStation five|twenty twenty seven|twenty sixty|E Day/);
 });
 
+test("caption SRT restores Grand Theft Auto roman numerals from spoken words", () => {
+  const srt = buildCaptionSrt(
+    "Grand Theft Auto VI cover art just became the first thing players judge.",
+    8,
+    {
+      words: [
+        { word: "Grand", start: 0, end: 0.28 },
+        { word: "Theft", start: 0.32, end: 0.56 },
+        { word: "Auto", start: 0.6, end: 0.84 },
+        { word: "Six", start: 0.9, end: 1.1 },
+        { word: "cover", start: 1.16, end: 1.44 },
+        { word: "art", start: 1.5, end: 1.74 },
+        { word: "just", start: 1.8, end: 2.02 },
+        { word: "became", start: 2.08, end: 2.42 },
+        { word: "the", start: 2.48, end: 2.62 },
+        { word: "first", start: 2.68, end: 2.92 },
+        { word: "thing", start: 2.98, end: 3.22 },
+        { word: "players", start: 3.28, end: 3.66 },
+        { word: "judge.", start: 3.72, end: 4.1 },
+      ],
+      maxWordsPerPhrase: 4,
+      maxPhraseChars: 32,
+      maxPhraseDurationS: 2.2,
+    },
+  );
+
+  assert.match(srt, /Grand Theft Auto VI/);
+  assert.doesNotMatch(srt, /Grand Theft Auto Six/);
+});
+
 test("caption SRT keeps Gears E-Day specs captions numeric after local TTS expansion", () => {
   const srt = buildCaptionSrt(
     "Gears of War E-Day just made its PC version a storage test. The new requirements list a 130 GB SSD install, with RTX 2060-era hardware as the minimum floor. That is not shocking for a 2026 blockbuster, but it changes the real conversation. If E-Day looks this heavy, players will accept the size.",

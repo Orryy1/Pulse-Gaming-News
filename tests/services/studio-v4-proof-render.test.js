@@ -109,7 +109,7 @@ test("Studio V4 proof renderer defaults to fast direct-motion cuts", () => {
   }
 });
 
-test("Studio V4 proof renderer adds per-scene drift before composing quiet clips", () => {
+test("Studio V4 proof renderer adds strong per-scene motion before composing quiet clips", () => {
   assert.equal(typeof buildSceneCompositeFilterParts, "function");
 
   const filters = buildSceneCompositeFilterParts({
@@ -118,9 +118,11 @@ test("Studio V4 proof renderer adds per-scene drift before composing quiet clips
   });
   const composite = filters.join(";");
 
-  assert.match(composite, /overlay=x='\(W-w\)\/2\+sin\(t\*2\.20\+3\)\*10'/);
-  assert.match(composite, /:y='\(H-h\)\/2\+cos\(t\*1\.70\+3\)\*8':eval=frame/);
-  assert.match(composite, /noise=alls=3:allf=t\+u/);
+  assert.match(composite, /scale=1260:2240:force_original_aspect_ratio=increase/);
+  assert.match(composite, /crop=w=1080:h=1920:x='\(iw-1080\)\*\(0\.50\+0\.42\*sin\(t\*0\.31\+3\)\)'/);
+  assert.match(composite, /overlay=x='\(W-w\)\/2\+sin\(t\*3\.10\+3\)\*34'/);
+  assert.match(composite, /:y='\(H-h\)\/2\+cos\(t\*2\.40\+3\)\*24':eval=frame/);
+  assert.match(composite, /noise=alls=4:allf=t\+u/);
   assert.match(composite, /trim=duration=1\.42/);
 });
 
@@ -1021,9 +1023,10 @@ test("Studio V4 proof renderer keeps source footage inside a safe vertical compo
 
   assert.match(source, /split=2\[bgsrc\$\{i\}\]\[fgsrc\$\{i\}\]/);
   assert.match(source, /boxblur=32:1/);
-  assert.match(source, /scale=940:1660:force_original_aspect_ratio=decrease:in_range=pc:out_range=tv/);
-  assert.match(source, /overlay=x='\(W-w\)\/2\+sin\(t\*2\.20\+\$\{i\}\)\*10'/);
-  assert.match(source, /:y='\(H-h\)\/2\+cos\(t\*1\.70\+\$\{i\}\)\*8':eval=frame/);
+  assert.match(source, /scale=1000:1760:force_original_aspect_ratio=decrease:in_range=pc:out_range=tv/);
+  assert.match(source, /crop=w=1080:h=1920:x='\(iw-1080\)\*\(0\.50\+0\.42\*sin\(t\*0\.31\+\$\{i\}\)\)'/);
+  assert.match(source, /overlay=x='\(W-w\)\/2\+sin\(t\*3\.10\+\$\{i\}\)\*34'/);
+  assert.match(source, /:y='\(H-h\)\/2\+cos\(t\*2\.40\+\$\{i\}\)\*24':eval=frame/);
   assert.doesNotMatch(source, /crop=1080:1920:\(iw-1080\)\/2:\(ih-1920\)\/2/);
   assert.match(source, /\[overlayBase\]ass=\$\{assPathFilter\(assPath\)\},format=yuv420p\[outv\]/);
   assert.match(source, /"-pix_fmt",\s*"yuv420p"/);

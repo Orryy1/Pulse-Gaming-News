@@ -816,6 +816,24 @@ test("goal public copy QA blocks stale full_script and tts_script after narratio
   assert.ok(report.failures.includes("public_copy:formulaic_public_narration"));
 });
 
+test("goal public copy QA allows pronunciation-only TTS script differences", () => {
+  const narration =
+    "Rockstar Games just revealed the official Grand Theft Auto VI cover art. Pre orders open on June 25. Follow Pulse Gaming so you never miss a beat.";
+  const report = evaluateGoalPublicCopy({
+    canonical_subject: "Grand Theft Auto VI",
+    selected_title: "Grand Theft Auto VI Cover Art Is Official",
+    first_spoken_line: "Rockstar Games just revealed the official Grand Theft Auto VI cover art.",
+    narration_script: narration,
+    full_script: narration,
+    tts_script:
+      "Rockstar Games just revealed the official Grand Theft Auto Six cover art. Pre orders open on June 25. Follow Pulse Gaming so you never miss a beat.",
+    description: "Rockstar Games revealed the official Grand Theft Auto VI cover art. Source: Rockstar Games.",
+    primary_source: "Rockstar Games",
+  });
+
+  assert.ok(!report.failures.includes("public_copy:tts_script_diverges_from_narration"));
+});
+
 test("goal public copy QA blocks source-process narration that reads like internal notes", () => {
   const report = evaluateGoalPublicCopy({
     canonical_subject: "Spellcasters Chronicles",

@@ -580,6 +580,85 @@ test("goal production render materializer refreshes benchmark from actual materi
   assert.ok(refreshedDirector.transition_plan.planned.length >= 5);
 });
 
+test("goal production render quality refresh builds director motion shots from selected real clips when footage plan is missing", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-derived-footage-plan-"));
+  const artifactDir = await makePackage(root, "derived-footage-plan");
+  await fs.outputFile(path.join(artifactDir, "visual_v4_render.mp4"), Buffer.alloc(4096, 16));
+  await fs.outputJson(path.join(artifactDir, "render_manifest.json"), {
+    story_id: "derived-footage-plan",
+    renderer: "visual_v4_production",
+    visual_tier: "production_v4_motion",
+    final_publish_render: true,
+    output: "visual_v4_render.mp4",
+    output_path: path.join(artifactDir, "visual_v4_render.mp4"),
+    rendered_duration_s: 38,
+    clips: 8,
+  });
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "derived-footage-plan",
+    canonical_subject: "Grand Theft Auto VI",
+    selected_title: "Grand Theft Auto VI Cover Art Just Made It Real",
+    thumbnail_headline: "GTA 6 COVER",
+    primary_source: "Rockstar Games",
+    source_card_label: "Rockstar Games",
+    confirmed_claims: ["Rockstar Games revealed the official Grand Theft Auto VI cover art."],
+    narration_script:
+      "Grand Theft Auto VI just got its official cover art, and that matters more than a normal box image. Rockstar Games revealed the artwork today, and pre orders open on June 25.",
+    first_spoken_line:
+      "Grand Theft Auto VI just got its official cover art, and that matters more than a normal box image.",
+    description: "Rockstar Games revealed the official Grand Theft Auto VI cover art. Source: Rockstar Games.",
+  });
+
+  const clips = Array.from({ length: 8 }, (_, index) => ({
+    id: `rockstar-motion-${index + 1}`,
+    asset_id: `rockstar-motion-${index + 1}`,
+    path: path.join(artifactDir, `rockstar-motion-${index + 1}.mp4`),
+    local_materialized_path: path.join(artifactDir, `rockstar-motion-${index + 1}.mp4`),
+    source_url: "https://www.youtube.com/watch?v=EiQEBYDox_k",
+    source_type: "official_trailer_segment",
+    source_family: `rockstar_cover_art_segment_${index + 1}`,
+    media_kind: "official_video",
+    licence_basis: "official_publisher_reference_editorial_commentary",
+    rights_basis: "official_publisher_reference_editorial_commentary",
+    allowed_use: "short_form_editorial_news_coverage",
+    commercial_use_allowed: true,
+    approval_status: "approved_for_transformative_editorial_use",
+    counts_towards_motion_readiness: true,
+    risk_score: 0.12,
+    durationS: 4,
+  }));
+  for (const clip of clips) await fs.outputFile(clip.path, Buffer.alloc(2048, 21));
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips,
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    records: clips,
+  });
+  await fs.outputJson(path.join(artifactDir, "sfx_manifest.json"), {
+    source_plan: {
+      selected_assets: licensedSfxAssets(),
+    },
+  });
+
+  const refresh = await refreshFinalRenderQualityOnly({
+    storyId: "derived-footage-plan",
+    artifactDir,
+    generatedAt: "2026-06-18T15:20:00.000Z",
+  });
+
+  assert.equal(refresh.status, "quality_refreshed");
+  assert.equal(refresh.director_motion_shot_count >= 5, true);
+  const refreshedDirector = await fs.readJson(path.join(artifactDir, "director_beat_map.json"));
+  assert.equal(refreshedDirector.shot_budget.available_motion_clips >= 5, true);
+  assert.equal(
+    refreshedDirector.shot_plan.filter((shot) => shot.kind === "motion_clip").length >= 5,
+    true,
+  );
+  const refreshedBenchmark = await fs.readJson(path.join(artifactDir, "benchmark_report.json"));
+  assert.equal(refreshedBenchmark.visual_evidence_profile.direct_video_motion_asset_count >= 5, true);
+});
+
 test("goal production render materializer refreshes stale quality reports without rerendering", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-quality-refresh-"));
   const artifactDir = await makePackage(root, "xbox-quality-refresh");
@@ -1013,6 +1092,94 @@ test("goal production render materializer puts direct video before still-derived
   assert.equal(report.summary.rendered_count, 1, JSON.stringify(report.jobs));
   assert.deepEqual(calls[0].video_clips.slice(0, 4), directClips.map((clip) => clip.path));
   assert.deepEqual(calls[0].video_clips.slice(4, 8), stillClips.map((clip) => clip.path));
+});
+
+test("goal production render materializer filters tiny official YouTube slate clips when enough motion remains", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-filter-slates-"));
+  const artifactDir = await makePackage(root, "filter-official-slates");
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "filter-official-slates",
+    canonical_subject: "Grand Theft Auto VI",
+    selected_title: "Grand Theft Auto VI Cover Art Is The Biggest Clue Yet",
+    thumbnail_headline: "GRAND THEFT AUTO VI",
+    primary_source: "Rockstar Games",
+    confirmed_claims: ["Rockstar Games revealed the official cover art."],
+    narration_script:
+      "Rockstar just made Grand Theft Auto VI feel real in one image. The official cover art is out, and pre orders open on June 25.",
+    first_spoken_line: "Rockstar just made Grand Theft Auto VI feel real in one image.",
+    description: "Rockstar Games revealed the official cover art. Source: Rockstar Games.",
+  });
+
+  const clips = [];
+  for (let index = 0; index < 8; index += 1) {
+    const isSlate = index === 0 || index === 1 || index >= 6;
+    const clipPath = path.join(root, "output", "video_cache", `gta-official-${index + 1}.mp4`);
+    await fs.outputFile(clipPath, Buffer.alloc(isSlate ? 96_000 : 210_000, index + 1));
+    clips.push({
+      id: `gta-official-${index + 1}`,
+      path: clipPath,
+      local_materialized_path: clipPath,
+      source_url: "https://www.youtube.com/watch?v=EiQEBYDox_k",
+      source_type: "official_youtube_channel_url",
+      source_family: `rockstar_official_cover_art_reveal_segment_${index + 1}`,
+      media_kind: "official_trailer_motion_clip",
+      rights_basis: "official_publisher_youtube_reference_for_editorial_news_coverage",
+      counts_towards_motion_readiness: true,
+    });
+  }
+
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips,
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    motion_inventory: {
+      production_motion_clips: clips,
+      distinct_source_families: clips.map((clip) => clip.source_family),
+      trusted_local_source_families: clips.map((clip) => clip.source_family),
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    records: clips.map((clip) => ({
+      asset_id: clip.id,
+      asset_type: "motion_clip",
+      kind: "video",
+      path: clip.path,
+      source_url: clip.source_url,
+      source_type: clip.source_type,
+      source_family: clip.source_family,
+      licence_basis: "official_publisher_reference_editorial_commentary",
+      commercial_use_allowed: true,
+      approval_status: "approved_for_transformative_editorial_use",
+    })),
+  });
+
+  const calls = [];
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: {
+      jobs: [
+        readyJob("filter-official-slates", artifactDir, {
+          evidence: {
+            ...readyJob("filter-official-slates", artifactDir).evidence,
+            materialised_motion_clip_paths: clips.map((clip) => clip.path),
+            materialised_motion_clip_count: clips.length,
+            distinct_motion_family_count: clips.length,
+          },
+        }),
+      ],
+    },
+    generatedAt: "2026-06-18T16:05:00.000Z",
+    renderProof: async ({ storyJson, output }) => {
+      const story = await fs.readJson(storyJson);
+      calls.push(story);
+      await fs.outputFile(output, Buffer.alloc(4096, 8));
+      return { story_id: story.id, output, clips: story.video_clips.length, rendered_duration_s: 40, size_bytes: 4096 };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1, JSON.stringify(report.jobs));
+  assert.deepEqual(calls[0].video_clips, clips.slice(2, 6).map((clip) => clip.path));
 });
 
 test("goal production render materializer tops up limited real clips with owned kinetic motion", async () => {

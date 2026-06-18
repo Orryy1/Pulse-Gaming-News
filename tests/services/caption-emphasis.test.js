@@ -75,6 +75,47 @@ test("caption emphasis collapses spoken acronym letters back to GTA digits", () 
   assert.doesNotMatch(ass, /\bsix\b/i);
 });
 
+test("caption emphasis restores Grand Theft Auto roman numerals from spoken local TTS words", () => {
+  const ass = buildAss({
+    story: { title: "Grand Theft Auto VI Cover Art" },
+    scriptText: "Grand Theft Auto Six just revealed its cover.",
+    words: [
+      { word: "Grand", start: 0, end: 0.14 },
+      { word: "Theft", start: 0.16, end: 0.32 },
+      { word: "Auto", start: 0.34, end: 0.52 },
+      { word: "Six", start: 0.54, end: 0.7 },
+      { word: "just", start: 0.72, end: 0.88 },
+      { word: "revealed", start: 0.9, end: 1.2 },
+      { word: "its", start: 1.22, end: 1.34 },
+      { word: "cover.", start: 1.36, end: 1.7 },
+    ],
+    duration: 3,
+  });
+
+  assert.match(ass, /Grand Theft Auto VI/i);
+  assert.doesNotMatch(ass, /Grand Theft Auto Six/i);
+});
+
+test("caption emphasis restores spoken two-digit dates to script digits", () => {
+  const ass = buildAss({
+    story: { title: "Grand Theft Auto VI Pre Orders" },
+    scriptText: "Pre orders open on June 25.",
+    words: [
+      { word: "Pre", start: 0, end: 0.16 },
+      { word: "orders", start: 0.18, end: 0.48 },
+      { word: "open", start: 0.5, end: 0.78 },
+      { word: "on", start: 0.8, end: 0.94 },
+      { word: "June", start: 0.96, end: 1.18 },
+      { word: "twenty", start: 1.2, end: 1.44 },
+      { word: "five.", start: 1.46, end: 1.72 },
+    ],
+    duration: 3,
+  });
+
+  assert.match(ass, /June[\s\S]*25/i);
+  assert.doesNotMatch(ass, /twenty five/i);
+});
+
 test("caption emphasis restores Beastro display title from local TTS helper spelling", () => {
   const ass = buildAss({
     story: { title: "Beastro" },

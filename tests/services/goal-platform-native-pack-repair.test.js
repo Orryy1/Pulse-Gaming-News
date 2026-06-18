@@ -93,6 +93,40 @@ test("platform-native pack repair upgrades legacy candidate artefacts with backu
   assert.equal(await fs.pathExists(path.join(storyPackages[0].artifact_dir, "threads_publish_pack.json")), true);
 });
 
+test("platform-native pack repair creates missing platform manifests when target copy passes", async () => {
+  const { storyPackages, root } = await legacyArtifact();
+  const artifactDir = storyPackages[0].artifact_dir;
+  await fs.remove(path.join(artifactDir, "platform_publish_manifest.json"));
+  await fs.remove(path.join(artifactDir, "platform_variant_scorecard.json"));
+  await fs.writeJson(path.join(artifactDir, "render_manifest.json"), {
+    rendered_duration_s: 42.4,
+  });
+
+  const dryRun = await repairPlatformNativePacks({
+    storyPackages,
+    generatedAt: "2026-06-18T15:05:00.000Z",
+    apply: false,
+  });
+
+  assert.equal(dryRun.summary.repairable_count, 1);
+  assert.equal(dryRun.items[0].status, "repairable");
+  assert.deepEqual(dryRun.items[0].target_public_copy_failures, []);
+
+  const applied = await repairPlatformNativePacks({
+    storyPackages,
+    generatedAt: "2026-06-18T15:06:00.000Z",
+    apply: true,
+    backupRoot: path.join(root, "backups-missing-platform-manifest"),
+  });
+
+  assert.equal(applied.summary.repaired_count, 1);
+  const manifest = await fs.readJson(path.join(artifactDir, "platform_publish_manifest.json"));
+  assert.equal(manifest.platform_native_evidence.verdict, "pass");
+  assert.equal(await fs.pathExists(path.join(artifactDir, "youtube_publish_pack.json")), true);
+  assert.equal(await fs.pathExists(path.join(artifactDir, "instagram_publish_pack.json")), true);
+  assert.equal(await fs.pathExists(path.join(artifactDir, "facebook_publish_pack.json")), true);
+});
+
 test("platform-native pack repair fixes placeholder social copy even when old evidence passed", async () => {
   const { storyPackages, root } = await legacyArtifact();
   const artifactDir = storyPackages[0].artifact_dir;

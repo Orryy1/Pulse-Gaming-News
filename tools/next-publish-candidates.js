@@ -375,7 +375,7 @@ function durationVerdict(story = {}) {
   if (durationLane === RETENTION_DURATION_LANE || story.allow_retention_short_video === true) {
     const hardMin = numberOrNull(story.min_video_duration_seconds) ?? 15;
     const targetMin = numberOrNull(story.target_video_duration_seconds_min) ?? 22;
-    const targetMax = numberOrNull(story.target_video_duration_seconds_max) ?? 45;
+    const targetMax = numberOrNull(story.target_video_duration_seconds_max) ?? 60;
     const max = numberOrNull(story.max_video_duration_seconds) ?? 75;
     if (duration < hardMin) {
       return {

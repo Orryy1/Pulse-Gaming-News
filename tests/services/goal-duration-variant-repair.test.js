@@ -3155,8 +3155,8 @@ test("duration variant repair accepts platform duration contract jobs", async ()
     ...workOrderJob("story-platform-duration", artifactDir),
     status: "needs_platform_duration_variant",
     platform: "instagram_reels",
-    max_duration_s: 45,
-    target_duration_s: 44.8,
+    max_duration_s: 60,
+    target_duration_s: 59.8,
   };
 
   const report = await materializeDurationVariantRepairs({

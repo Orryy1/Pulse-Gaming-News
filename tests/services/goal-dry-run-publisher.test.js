@@ -115,7 +115,7 @@ async function makeStoryPackage(
     outputs: {
       youtube_shorts: { duration_seconds: { min: 35, max: 60 }, cta: "Open the story page for sources and platform notes." },
       tiktok: { duration_seconds: { min: 61, max: 90 } },
-      instagram_reels: { duration_seconds: { min: 25, max: 45 } },
+      instagram_reels: { duration_seconds: { min: 25, max: 60 } },
       facebook_reels: { duration_seconds: { min: 35, max: 60 } },
       x: { duration_seconds: { min: 25, max: 60 } },
     },

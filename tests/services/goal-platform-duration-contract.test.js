@@ -29,7 +29,7 @@ async function makePackage(root, id, durationS, manifestOverrides = {}) {
     outputs: {
       youtube_shorts: { duration_seconds: { min: 35, max: 60 } },
       tiktok: { duration_seconds: { min: 61, max: 90 } },
-      instagram_reels: { duration_seconds: { min: 25, max: 45 } },
+      instagram_reels: { duration_seconds: { min: 25, max: 60 } },
       facebook_reels: { duration_seconds: { min: 35, max: 60 } },
       x: { duration_seconds: { min: 25, max: 60 } },
       ...manifestOverrides.outputs,
@@ -68,8 +68,34 @@ test("platform duration contract repair updates package manifests without publis
   assert.equal(updated.operating_mode, "DRY_RUN_PUBLISH");
   assert.equal(updated.duration_contract_strategy, "retention_repair_short_cut");
   assert.equal(updated.outputs.youtube_shorts.publish_duration_seconds.min, 15);
+  assert.equal(updated.outputs.instagram_reels.publish_duration_seconds.max, 60);
   assert.equal(updated.outputs.tiktok.creator_rewards_eligible, false);
   assert.ok(updated.outputs.tiktok.duration_warnings.includes("below_creator_rewards_duration"));
+});
+
+test("platform duration contract repair overwrites stale Instagram legacy duration windows", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-duration-contract-stale-ig-"));
+  const storyPackage = await makePackage(root, "gears-stale-ig", 51.736, {
+    outputs: {
+      instagram_reels: {
+        duration_seconds: { min: 25, max: 45 },
+        strategic_duration_seconds: { min: 25, max: 45 },
+      },
+    },
+  });
+
+  const report = await repairGoalPlatformDurationContracts({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-18T20:05:00.000Z",
+  });
+
+  assert.equal(report.summary.updated_count, 1);
+  assert.equal(report.summary.active_variant_repair_required_count, 0);
+
+  const updated = await fs.readJson(path.join(storyPackage.artifact_dir, "platform_publish_manifest.json"));
+  assert.equal(updated.outputs.instagram_reels.publish_duration_seconds.max, 60);
+  assert.equal(updated.outputs.instagram_reels.duration_seconds.max, 60);
+  assert.equal(updated.outputs.instagram_reels.strategic_duration_seconds.max, 30);
 });
 
 test("platform duration contract repair emits rerender work orders for sub-target cuts", async () => {
@@ -92,9 +118,9 @@ test("platform duration contract repair emits rerender work orders for sub-targe
   );
 });
 
-test("platform duration contract repair emits platform variant jobs when a platform max is exceeded", async () => {
+test("platform duration contract repair accepts clearer 50-60s Instagram Reels without a platform variant", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-duration-contract-platform-variant-"));
-  const storyPackage = await makePackage(root, "ps5-price", 46.733);
+  const storyPackage = await makePackage(root, "gears-eday", 51.736);
 
   const report = await repairGoalPlatformDurationContracts({
     storyPackages: [storyPackage],
@@ -102,14 +128,28 @@ test("platform duration contract repair emits platform variant jobs when a platf
   });
 
   assert.equal(report.summary.updated_count, 1);
-  assert.equal(report.summary.variant_repair_required_count, 1);
-  assert.equal(report.variant_repair_work_order.jobs.length, 1);
-  assert.equal(report.variant_repair_work_order.jobs[0].story_id, "ps5-price");
-  assert.equal(report.variant_repair_work_order.jobs[0].status, "needs_platform_duration_variant");
-  assert.equal(report.variant_repair_work_order.jobs[0].platform, "instagram_reels");
-  assert.equal(report.variant_repair_work_order.jobs[0].target_duration_s, 44.8);
+  assert.equal(report.summary.variant_repair_required_count, 0);
+  assert.equal(report.variant_repair_work_order.jobs.length, 0);
+});
+
+test("platform duration contract repair emits platform variant jobs when the 60s Instagram cap is exceeded", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-duration-contract-platform-variant-long-"));
+  const storyPackage = await makePackage(root, "ps5-price", 66.733);
+
+  const report = await repairGoalPlatformDurationContracts({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-05-27T02:35:00.000Z",
+  });
+
+  assert.equal(report.summary.updated_count, 1);
+  assert.equal(report.summary.variant_repair_required_count, 3);
+  assert.equal(report.variant_repair_work_order.jobs.length, 3);
+  const instagramJob = report.variant_repair_work_order.jobs.find((job) => job.platform === "instagram_reels");
+  assert.equal(instagramJob.story_id, "ps5-price");
+  assert.equal(instagramJob.status, "needs_platform_duration_variant");
+  assert.equal(instagramJob.target_duration_s, 59.8);
   assert.ok(
-    report.variant_repair_work_order.jobs[0].actions.includes("materialize_platform_specific_duration_variant"),
+    instagramJob.actions.includes("materialize_platform_specific_duration_variant"),
   );
 });
 
@@ -385,14 +425,14 @@ test("platform duration contract repair writes JSON and Markdown reports", async
 
 test("platform duration contract report writes platform trim jobs with scalar target durations", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-duration-contract-platform-write-"));
-  const storyPackage = await makePackage(root, "forza-platform-trim", 45.133);
+  const storyPackage = await makePackage(root, "forza-platform-trim", 61.133);
   const report = await repairGoalPlatformDurationContracts({ storyPackages: [storyPackage] });
 
   assert.equal(report.variant_repair_work_order.jobs[0].status, "needs_platform_duration_variant");
-  assert.equal(report.variant_repair_work_order.jobs[0].target_duration_s, 44.8);
+  assert.equal(report.variant_repair_work_order.jobs[0].target_duration_s, 59.8);
 
   const written = await writeGoalPlatformDurationContractReport(report, { outputDir: path.join(root, "out") });
   const markdown = await fs.readFile(written.markdownPath, "utf8");
 
-  assert.match(markdown, /forza-platform-trim: 45\.133s -> 44\.8s/);
+  assert.match(markdown, /forza-platform-trim: 61\.133s -> 59\.8s/);
 });

@@ -14,7 +14,7 @@ const {
   parseArgs: parseGoalPlatformVariantArgs,
 } = require("../../tools/goal-platform-variant-materializer");
 
-async function makePackage(root, id = "ig-overlong", durationS = 47.2) {
+async function makePackage(root, id = "ig-overlong", durationS = 61.2) {
   const artifactDir = path.join(root, id);
   await fs.ensureDir(artifactDir);
   await fs.outputFile(path.join(artifactDir, "visual_v4_render.mp4"), Buffer.alloc(2000, 1));
@@ -31,8 +31,8 @@ async function makePackage(root, id = "ig-overlong", durationS = 47.2) {
     publish_status: "GREEN",
     outputs: {
       instagram_reels: {
-        publish_duration_seconds: { min: 15, max: 45 },
-        duration_seconds: { min: 25, max: 45 },
+        publish_duration_seconds: { min: 15, max: 60 },
+        duration_seconds: { min: 25, max: 60 },
       },
       youtube_shorts: {
         publish_duration_seconds: { min: 15, max: 60 },
@@ -47,7 +47,7 @@ async function makePackage(root, id = "ig-overlong", durationS = 47.2) {
       "Hook caption.",
       "",
       "2",
-      "00:00:44,500 --> 00:00:47,000",
+      "00:00:59,500 --> 00:01:01,000",
       "Tail caption.",
       "",
     ].join("\n"),
@@ -65,11 +65,11 @@ test("platform variant materializer creates probe-backed overlong platform varia
     variantRenderer: async ({ outputPath }) => {
       await fs.outputFile(outputPath, Buffer.alloc(2200, 2));
     },
-    probeDuration: async () => 44.8,
+    probeDuration: async () => 59.8,
   });
 
-  assert.equal(report.summary.variant_job_count, 1);
-  assert.equal(report.summary.materialized_count, 1);
+  assert.equal(report.summary.variant_job_count, 2);
+  assert.equal(report.summary.materialized_count, 2);
   assert.equal(report.summary.failed_count, 0);
   assert.equal(report.safety.no_publish_triggered, true);
   assert.equal(report.safety.no_db_mutation, true);
@@ -77,20 +77,26 @@ test("platform variant materializer creates probe-backed overlong platform varia
   const manifest = await fs.readJson(path.join(storyPackage.artifact_dir, "platform_publish_manifest.json"));
   const instagram = manifest.outputs.instagram_reels;
 
-  assert.equal(instagram.technical_duration_seconds, 44.8);
+  assert.equal(instagram.technical_duration_seconds, 59.8);
   assert.match(instagram.variant_video_path, /visual_v4_render_instagram_reels\.mp4$/);
   assert.match(instagram.variant_captions_path, /captions_instagram_reels\.srt$/);
   assert.equal(instagram.platform_variant_render.status, "ready");
   assert.equal(await fs.pathExists(instagram.variant_video_path), true);
   assert.equal(await fs.pathExists(instagram.variant_captions_path), true);
   const captions = await fs.readFile(instagram.variant_captions_path, "utf8");
-  assert.match(captions, /00:00:44,500 --> 00:00:44,800/);
-  assert.doesNotMatch(captions, /00:00:47,000/);
+  assert.match(captions, /00:00:59,500 --> 00:00:59,800/);
+  assert.doesNotMatch(captions, /00:01:01,000/);
+
+  const youtube = manifest.outputs.youtube_shorts;
+  assert.equal(youtube.technical_duration_seconds, 59.8);
+  assert.match(youtube.variant_video_path, /visual_v4_render_youtube_shorts\.mp4$/);
+  assert.equal(youtube.platform_variant_render.status, "ready");
+  assert.equal(await fs.pathExists(youtube.variant_video_path), true);
 });
 
 test("platform variant materializer writes resolvable variant paths for relative artifact dirs", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-platform-variant-relative-"));
-  const storyPackage = await makePackage(root, "ig-relative-dir", 47.2);
+  const storyPackage = await makePackage(root, "ig-relative-dir", 61.2);
   const relativeArtifactDir = path.relative(process.cwd(), storyPackage.artifact_dir);
 
   const report = await materializeGoalPlatformVariants({
@@ -99,11 +105,11 @@ test("platform variant materializer writes resolvable variant paths for relative
     variantRenderer: async ({ outputPath }) => {
       await fs.outputFile(outputPath, Buffer.alloc(2200, 2));
     },
-    probeDuration: async () => 44.8,
+    probeDuration: async () => 59.8,
   });
 
-  assert.equal(report.summary.variant_job_count, 1);
-  assert.equal(report.summary.materialized_count, 1);
+  assert.equal(report.summary.variant_job_count, 2);
+  assert.equal(report.summary.materialized_count, 2);
 
   const manifest = await fs.readJson(path.join(storyPackage.artifact_dir, "platform_publish_manifest.json"));
   const instagram = manifest.outputs.instagram_reels;
@@ -112,11 +118,17 @@ test("platform variant materializer writes resolvable variant paths for relative
   assert.equal(path.isAbsolute(instagram.platform_variant_render.output_path), true);
   assert.equal(await fs.pathExists(instagram.variant_video_path), true);
   assert.equal(await fs.pathExists(instagram.platform_variant_render.output_path), true);
+
+  const youtube = manifest.outputs.youtube_shorts;
+  assert.equal(path.isAbsolute(youtube.variant_video_path), true);
+  assert.equal(path.isAbsolute(youtube.platform_variant_render.output_path), true);
+  assert.equal(await fs.pathExists(youtube.variant_video_path), true);
+  assert.equal(await fs.pathExists(youtube.platform_variant_render.output_path), true);
 });
 
 test("platform variant materializer accepts scheduler bridge artifact dirs", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-platform-variant-bridge-"));
-  const storyPackage = await makePackage(root, "ig-bridge-dir", 46.4);
+  const storyPackage = await makePackage(root, "ig-bridge-dir", 61.4);
 
   const report = await materializeGoalPlatformVariants({
     storyPackages: [
@@ -127,21 +139,26 @@ test("platform variant materializer accepts scheduler bridge artifact dirs", asy
     ],
     generatedAt: "2026-06-16T21:20:00.000Z",
     variantRenderer: async ({ outputPath, targetDurationS }) => {
-      assert.equal(targetDurationS, 44.8);
+      assert.equal(targetDurationS, 59.8);
       await fs.outputFile(outputPath, Buffer.alloc(2300, 2));
     },
-    probeDuration: async () => 44.8,
+    probeDuration: async () => 59.8,
   });
 
   assert.equal(report.summary.blocked_count, 0);
-  assert.equal(report.summary.variant_job_count, 1);
-  assert.equal(report.summary.materialized_count, 1);
+  assert.equal(report.summary.variant_job_count, 2);
+  assert.equal(report.summary.materialized_count, 2);
 
   const manifest = await fs.readJson(path.join(storyPackage.artifact_dir, "platform_publish_manifest.json"));
   const instagram = manifest.outputs.instagram_reels;
   assert.match(instagram.variant_video_path, /visual_v4_render_instagram_reels\.mp4$/);
-  assert.equal(instagram.platform_variant_render.source_duration_s, 46.4);
-  assert.equal(instagram.platform_variant_render.duration_s, 44.8);
+  assert.equal(instagram.platform_variant_render.source_duration_s, 61.4);
+  assert.equal(instagram.platform_variant_render.duration_s, 59.8);
+
+  const youtube = manifest.outputs.youtube_shorts;
+  assert.match(youtube.variant_video_path, /visual_v4_render_youtube_shorts\.mp4$/);
+  assert.equal(youtube.platform_variant_render.source_duration_s, 61.4);
+  assert.equal(youtube.platform_variant_render.duration_s, 59.8);
 });
 
 test("platform variant materializer leaves in-window renders alone", async () => {
@@ -186,15 +203,15 @@ test("platform variant materializer refreshes stale in-window platform variants"
     publish_status: "GREEN",
     outputs: {
       instagram_reels: {
-        publish_duration_seconds: { min: 15, max: 45 },
+        publish_duration_seconds: { min: 15, max: 60 },
         variant_video_path: oldVariantPath,
         variant_captions_path: oldCaptionsPath,
-        technical_duration_seconds: 44.8,
+        technical_duration_seconds: 59.8,
         platform_variant_render: {
           status: "ready",
           output_path: oldVariantPath,
           captions_path: oldCaptionsPath,
-          duration_s: 44.8,
+          duration_s: 59.8,
           source_duration_s: 47.04,
           generated_at: "2026-05-27T13:19:04.119Z",
         },
@@ -236,7 +253,7 @@ test("platform variant materializer refreshes stale variant captions without rer
     publish_status: "GREEN",
     outputs: {
       instagram_reels: {
-        publish_duration_seconds: { min: 15, max: 45 },
+        publish_duration_seconds: { min: 15, max: 60 },
         variant_video_path: variantVideoPath,
         variant_captions_path: variantCaptionsPath,
         technical_duration_seconds: 39.2,

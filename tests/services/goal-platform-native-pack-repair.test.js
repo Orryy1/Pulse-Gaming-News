@@ -31,7 +31,7 @@ async function legacyArtifact() {
     outputs: {
       youtube_shorts: { duration_seconds: { min: 35, max: 60 }, cta: "Follow for more." },
       tiktok: { duration_seconds: { min: 61, max: 90 }, cta: "Follow for more." },
-      instagram_reels: { duration_seconds: { min: 25, max: 45 } },
+      instagram_reels: { duration_seconds: { min: 25, max: 60 } },
       facebook_reels: { duration_seconds: { min: 35, max: 60 } },
       x: { duration_seconds: { min: 25, max: 60 } },
     },

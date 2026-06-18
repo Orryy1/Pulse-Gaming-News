@@ -684,6 +684,29 @@ test("next publish report treats governed retention-short V4 rows as publish-rea
   assert.ok(report.candidates[0].reasons.includes("retention_short_target_window"));
 });
 
+test("next publish report treats clearer 50-60s retention shorts as publish-ready", () => {
+  const report = buildNextPublishCandidatesReport(
+    [
+      baseStory({
+        id: "v4_retention_short_clearer_story",
+        title: "Gears E-Day Has A 130GB Problem",
+        auto_approved: true,
+        duration_seconds: 51.7,
+        duration_lane: "pulse_retention_short",
+        allow_retention_short_video: true,
+        render_lane: "visual_v4_production",
+        render_quality_class: "premium",
+      }),
+    ],
+    { analyticsText, generatedAt: "2026-06-18T20:00:00.000Z" },
+  );
+
+  assert.equal(report.excluded.length, 0);
+  assert.equal(report.candidates[0].id, "v4_retention_short_clearer_story");
+  assert.equal(report.candidates[0].status, "publish_ready");
+  assert.ok(report.candidates[0].reasons.includes("retention_short_target_window"));
+});
+
 test("next publish report treats normal production V4 bridge rows as publish-ready from 35 to 60 seconds", () => {
   const report = buildNextPublishCandidatesReport(
     [

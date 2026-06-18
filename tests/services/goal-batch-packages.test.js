@@ -867,6 +867,22 @@ test("goal batch packages can fill audit candidates from revenue paths without m
   assert.equal(stories[1].full_script, "");
 });
 
+test("goal batch package revenue fallback can be disabled for targeted repair runs", () => {
+  const stories = augmentStoriesWithRevenuePaths(
+    [{ id: "target", title: "Target Story" }],
+    {
+      top_paths: [
+        { story_id: "target", title: "Target Story" },
+        { story_id: "unrelated", title: "Unrelated Story" },
+      ],
+    },
+    3,
+    { fillRevenuePaths: false },
+  );
+
+  assert.deepEqual(stories.map((story) => story.id), ["target"]);
+});
+
 test("goal batch packages hydrate revenue stubs from per-story commercial manifests", () => {
   const stories = augmentStoriesWithRevenuePaths(
     [],

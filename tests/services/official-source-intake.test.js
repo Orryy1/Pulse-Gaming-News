@@ -207,6 +207,63 @@ test("official source intake accepts recommended official site and storefront al
   assert.ok(report.accepted_references.every((reference) => reference.segment_validation_eligible === false));
 });
 
+test("official source intake accepts formal official titles for short canonical story labels", () => {
+  const report = buildOfficialSourceIntakeReport({
+    stories: [
+      story({
+        id: "gta-cover",
+        canonical_subject: "GTA 6",
+        canonical_game: "GTA 6",
+        selected_title: "GTA 6 Just Got More Expensive",
+        canonical_title:
+          "GTA 6 pre-orders open next week, and to celebrate Rockstar has revealed its official cover art",
+        full_script:
+          "GTA 6 just turned cover art into a preorder watch. Rockstar revealed key art while players wait for store-page details.",
+      }),
+      story({
+        id: "garfield-trailer",
+        canonical_subject: "Garfield",
+        canonical_game: "Garfield",
+        canonical_title:
+          "Garfield - Escape From Monday gameplay trailer teases the terror of The Curse of the Spinach Lasagna",
+        full_script:
+          "Garfield just showed the part trailers usually hide: how it plays. The new trailer shows real gameplay.",
+      }),
+    ],
+    entries: [
+      officialEntry({
+        story_id: "gta-cover",
+        entity: "Grand Theft Auto VI",
+        official_source_url: "https://www.rockstargames.com/VI",
+        source_title: "Grand Theft Auto VI official site",
+        source_owner: "Rockstar Games official website",
+        source_type: "official_game_website_media_page",
+        source_family: "rockstar_gta_vi_official_site_20260618",
+        evidence_of_officialness: "Official Rockstar Games page for Grand Theft Auto VI.",
+        entity_match_notes: "The page is Rockstar's official Grand Theft Auto VI page.",
+      }),
+      officialEntry({
+        story_id: "garfield-trailer",
+        entity: "Garfield - Escape from Monday",
+        official_source_url: "https://store.steampowered.com/app/3932790/Garfield__Escape_from_Monday/",
+        source_title: "Garfield - Escape from Monday on Steam",
+        source_owner: "Steam storefront for Microids / OSome Studio",
+        source_type: "platform_storefront",
+        source_family: "steam_garfield_escape_from_monday_storefront_20260618",
+        evidence_of_officialness: "Official Steam product storefront listing Microids as publisher.",
+        entity_match_notes: "The storefront is for Garfield - Escape from Monday.",
+      }),
+    ],
+  });
+
+  assert.equal(report.summary.accepted, 2);
+  assert.equal(report.summary.rejected, 0);
+  assert.deepEqual(
+    report.accepted_references.map((reference) => reference.entity),
+    ["Grand Theft Auto VI", "Garfield - Escape from Monday"],
+  );
+});
+
 test("official source intake accepts official social direct video only with strict evidence", () => {
   const report = buildOfficialSourceIntakeReport({
     stories: [

@@ -320,6 +320,34 @@ test("official trailer resolver does not use broad context games as canonical-st
   assert.ok(!plan.search_queries.includes("GTA official trailer"));
 });
 
+test("official trailer resolver rejects broad franchise Steam assets when canonical title names a specific game", async () => {
+  const plan = await buildOfficialTrailerReferencePlan(
+    baseStory({
+      canonical_subject: "Garfield",
+      canonical_game: "Garfield",
+      selected_title: "Garfield Gameplay Check",
+      canonical_title:
+        "Garfield - Escape From Monday Gameplay Trailer Teases the Terror of The Curse of the Spinach Lasagna",
+      full_script:
+        "Garfield just showed the part trailers usually hide: how it plays. The new Garfield - Escape from Monday trailer shows real gameplay.",
+      game_images: [verifiedSteamAsset("Garfield", "362930", "Garfield Kart")],
+    }),
+    {
+      steamLookup: async () => {
+        throw new Error("wrong broad Garfield Kart app must not be looked up for Escape from Monday");
+      },
+    },
+  );
+
+  assert.deepEqual(plan.target_entities, ["Garfield - Escape From Monday"]);
+  assert.deepEqual(plan.verified_store_targets, []);
+  assert.deepEqual(plan.references, []);
+  assert.deepEqual(plan.missing_target_entities, ["Garfield - Escape From Monday"]);
+  assert.equal(plan.motion_reference_readiness, "official_search_required");
+  assert.ok(plan.search_queries.includes("Garfield - Escape From Monday official trailer"));
+  assert.ok(!plan.search_queries.includes("Garfield Kart official trailer"));
+});
+
 test("official trailer resolver still accepts GTA store movies for canonical GTA stories", async () => {
   const plan = await buildOfficialTrailerReferencePlan(
     baseStory({

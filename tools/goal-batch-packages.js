@@ -205,7 +205,9 @@ async function main(argv = process.argv.slice(2)) {
     useDbStories: args.dbStories,
     storyIds: args.storyIds,
   });
-  const stories = augmentStoriesWithRevenuePaths(selectedStories, revenuePathsWithManifests, args.limit);
+  const stories = augmentStoriesWithRevenuePaths(selectedStories, revenuePathsWithManifests, args.limit, {
+    fillRevenuePaths: args.storyIds.length === 0,
+  });
   const batch = buildGoalBatchPackages({
     stories,
     limit: args.limit,

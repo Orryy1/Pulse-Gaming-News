@@ -15,6 +15,9 @@ const { lintScript } = require("../../lib/services/script-lint");
 const {
   classifyShortScriptRuntime,
 } = require("../../lib/services/short-runtime-planner");
+const {
+  buildViralScriptIntelligence,
+} = require("../../lib/viral-script-intelligence");
 
 const LOCAL_PROFILE = {
   provider: "local",
@@ -341,6 +344,87 @@ test("source-bound fallback turns subscription access into a concrete player-deb
     { requireCtaField: true, requireFullScriptCta: true },
   );
   assert.equal(coherence.result, "pass", coherence.failures.join(", "));
+});
+
+test("source-bound fallback turns generic fresh trailer stories into concrete viral-ready scripts", () => {
+  const story = {
+    id: "rss_gta6_cover_art",
+    title: "GTA 6 Cover Art and Preorders Have Fans Watching Rockstar Again",
+    source_type: "rss",
+    subreddit: "GameSpot",
+    article_url: "https://www.gamespot.com/articles/gta-6-cover-art-and-preorders/",
+    source_name: "GameSpot",
+  };
+
+  const script = buildSourceBoundFallbackScript(story, {
+    sourceName: "GameSpot",
+    runtimeProfile: {
+      provider: "local",
+      secondsPerWord: 0.35,
+      minWords: 175,
+      maxWords: 214,
+      aimMin: 185,
+      aimMax: 205,
+    },
+    sourceMaterial:
+      "GameSpot reports Rockstar revealed new GTA 6 cover art on YouTube, with Jason and Lucia in the key art while fans are waiting for preorders and the next store listing update.",
+  });
+
+  assert.ok(script);
+  assert.match(script.full_script, /^GTA 6\b/);
+  assert.match(script.full_script, /cover art|preorders|Jason|Lucia|Rockstar/i);
+  assert.match(script.full_script, /Follow Pulse Gaming so you never miss a beat\.$/);
+  assert.doesNotMatch(
+    script.full_script,
+    /player-facing detail|separating from the noise|reason to exist beyond repeating the feed|fades into the feed|stronger short keeps|watchlist/i,
+  );
+
+  const quality = buildViralScriptIntelligence({
+    story: { ...story, source_name: "GameSpot" },
+    script: script.full_script,
+  });
+  assert.equal(quality.verdict, "viral_ready", JSON.stringify(quality, null, 2));
+  assert.ok(quality.viral_score >= 75, JSON.stringify(quality, null, 2));
+});
+
+test("source-bound fallback treats system patch notes as concrete player-impact scripts", () => {
+  const story = {
+    id: "rss_switch2_patch",
+    title: "Nintendo Switch 2 System Update 22.5.0 Available - Here Are the Patch Notes",
+    source_type: "rss",
+    subreddit: "IGN",
+    article_url: "https://www.ign.com/articles/nintendo-switch-2-system-update-2250-patch-notes",
+    source_name: "IGN",
+  };
+
+  const script = buildSourceBoundFallbackScript(story, {
+    sourceName: "IGN",
+    runtimeProfile: {
+      provider: "local",
+      secondsPerWord: 0.35,
+      minWords: 175,
+      maxWords: 214,
+      aimMin: 185,
+      aimMax: 205,
+    },
+    sourceMaterial:
+      "IGN reports Nintendo Switch 2 system update 22.5.0 is available now, with patch notes covering the latest console firmware update.",
+  });
+
+  assert.ok(script);
+  assert.match(script.full_script, /^Nintendo Switch 2\b/);
+  assert.match(script.full_script, /22\.5\.0|patch notes|console|download|stable/i);
+  assert.doesNotMatch(
+    script.full_script,
+    /player-facing detail|separating from the noise|reason to exist beyond repeating the feed|watchlist|clear date, platform detail or gameplay proof/i,
+  );
+
+  const quality = buildViralScriptIntelligence({
+    story: { ...story, source_name: "IGN" },
+    script: script.full_script,
+  });
+  assert.equal(quality.verdict, "viral_ready", JSON.stringify(quality, null, 2));
+  assert.ok(quality.viral_score >= 75, JSON.stringify(quality, null, 2));
 });
 
 test("source-bound fallback source does not carry internal analyst-note phrases", () => {

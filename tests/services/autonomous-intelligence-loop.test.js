@@ -29,6 +29,7 @@ test("scheduler registers the full autonomous intelligence loop", () => {
   assert.equal(schedule("safe_auto_repair_runner_2h")?.kind, "safe_auto_repair_runner");
   assert.equal(schedule("safe_auto_repair_runner_2h")?.cron_expr, "35 * * * *");
   assert.equal(schedule("safe_auto_repair_runner_2h")?.payload.limit, 8);
+  assert.equal(schedule("autonomous_feedback_monitor_30m")?.payload.enqueue_followups, true);
 
   assert.equal(typeof handlers.candidate_supply_monitor, "function");
   assert.equal(typeof handlers.competitor_forensics_lab, "function");
@@ -174,6 +175,121 @@ test("candidate supply monitor enqueues fresh intake and repair when runway has 
     assert.equal(enqueued[1].idempotency_key, "candidate_supply_fresh_review_script_repair:2026-06-17:08");
     assert.equal(enqueued[2].kind, "safe_auto_repair_runner");
     assert.equal(enqueued[2].payload.reason, "candidate_supply_monitor_reserve_refill");
+  } finally {
+    for (const [cachePath, entry] of originalCache.entries()) {
+      if (entry) require.cache[cachePath] = entry;
+      else delete require.cache[cachePath];
+    }
+  }
+});
+
+test("autonomous feedback monitor enqueues safe follow-ups for operational feedback", async () => {
+  const jobHandlersPath = require.resolve("../../lib/job-handlers");
+  const feedbackMonitorPath = require.resolve("../../lib/ops/autonomous-feedback-monitor");
+  const originalCache = new Map([
+    [jobHandlersPath, require.cache[jobHandlersPath]],
+    [feedbackMonitorPath, require.cache[feedbackMonitorPath]],
+  ]);
+  const enqueued = [];
+
+  try {
+    require.cache[feedbackMonitorPath] = {
+      id: feedbackMonitorPath,
+      filename: feedbackMonitorPath,
+      loaded: true,
+      exports: {
+        formatAutonomousFeedbackDiscord() {
+          return "feedback discord";
+        },
+        async runAutonomousFeedbackMonitor() {
+          return {
+            generated_at: "2026-06-18T12:20:00.000Z",
+            verdict: "amber",
+            current_action: "repair_transcript_audience_blockers",
+            runtime: {
+              auto_publish: true,
+              use_job_queue: "true",
+              scheduler_active: true,
+              dispatch_mode: "queue",
+            },
+            scheduler: {
+              next_safe_publish_at_utc: "2026-06-18T14:00:00.000Z",
+              selected_action: "story1:youtube_shorts",
+            },
+            candidate_buffer: {
+              ready_candidates: 1,
+              source_safe_candidates: 1,
+              v4_ready_candidates: 1,
+              warnings: ["ready_candidates_below_target:1/10"],
+            },
+            publish_runway_feedback: {
+              repairable_backlog: 9,
+              live_publish_candidates: 1,
+            },
+            discord_feedback: {
+              real_blocker_count: 0,
+              items: [],
+            },
+            ingested_discord_feedback: {
+              summary: {
+                actionable_count: 1,
+                blocking_count: 1,
+              },
+            },
+            transcript_audience_feedback: {
+              summary: {
+                rewrite_required: 91,
+                current_blocking_count: 2,
+              },
+            },
+            post_window_feedback: {
+              anomaly_count: 1,
+            },
+            market_intelligence: {
+              candidate_supply: {
+                verdict: "amber",
+              },
+            },
+          };
+        },
+      },
+    };
+    delete require.cache[jobHandlersPath];
+
+    const { handlers: mockedHandlers } = require("../../lib/job-handlers");
+    const result = await mockedHandlers.autonomous_feedback_monitor(
+      {
+        channel_id: "pulse-gaming",
+        payload: {
+          post_discord: false,
+          enqueue_followups: true,
+          repair_limit: 8,
+          fresh_review_script_repair_limit: 6,
+        },
+      },
+      {
+        log() {},
+        repos: {
+          jobs: {
+            enqueue(job) {
+              enqueued.push(job);
+              return { id: enqueued.length };
+            },
+          },
+        },
+      },
+    );
+
+    assert.equal(result.followups_enqueued.length, 3);
+    assert.deepEqual(enqueued.map((item) => item.kind), [
+      "candidate_supply_monitor",
+      "fresh_review_script_repair",
+      "safe_auto_repair_runner",
+    ]);
+    assert.equal(enqueued[0].payload.reason, "autonomous_feedback_monitor_candidate_supply_refill");
+    assert.equal(enqueued[1].payload.reason, "autonomous_feedback_monitor_transcript_feedback");
+    assert.equal(enqueued[2].payload.reason, "autonomous_feedback_monitor_safe_repair");
+    assert.equal(enqueued[2].idempotency_key, "autonomous_feedback_safe_repair:2026-06-18:12");
   } finally {
     for (const [cachePath, entry] of originalCache.entries()) {
       if (entry) require.cache[cachePath] = entry;

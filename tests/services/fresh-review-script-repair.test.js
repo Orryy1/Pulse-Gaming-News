@@ -13,10 +13,10 @@ const NOW = "2026-06-17T09:00:00.000Z";
 
 function row(overrides = {}) {
   return {
-    story_id: "rss_hellraiser",
-    title: "Hellraiser Revival Gets October Release Date",
-    url: "https://www.eurogamer.net/hellraiser-revival-release-date",
-    article_url: "https://www.eurogamer.net/hellraiser-revival-release-date",
+    story_id: "rss_gears",
+    title: "Gears of War E-Day PC Specs Revealed",
+    url: "https://www.pcgamer.com/games/action/gears-of-war-e-day-pc-specs",
+    article_url: "https://www.pcgamer.com/games/action/gears-of-war-e-day-pc-specs",
     source_type: "rss",
     timestamp: "2026-06-16T12:00:00.000Z",
     created_at: "2026-06-16T12:00:00.000Z",
@@ -43,7 +43,7 @@ test("fresh review script repair selects current source-backed script-quality bl
   ], { now: NOW, limit: 10 });
 
   assert.deepEqual(selected.map((item) => item.story_id), [
-    "rss_hellraiser",
+    "rss_gears",
     "rss_word_count",
   ]);
 
@@ -54,12 +54,26 @@ test("fresh review script repair selects current source-backed script-quality bl
   assert.equal(plan.source_bound_rewrite_work_orders[0].db_mutation_required, false);
   assert.match(
     plan.source_bound_rewrite_work_orders[0].recommended_command,
-    /^npm run ops:reprocess-script-failures -- --story-id rss_hellraiser --force-story --source-bound-only --dry-run --json$/,
+    /^npm run ops:reprocess-script-failures -- --story-id rss_gears --force-story --source-bound-only --dry-run --json$/,
   );
   assert.equal(
     commandSafety(plan.source_bound_rewrite_work_orders[0].recommended_command).safe,
     true,
   );
+});
+
+test("fresh review script repair excludes off-topic entertainment feed noise", () => {
+  const selected = selectFreshReviewScriptRepairRows([
+    row({ story_id: "fresh_gaming" }),
+    row({
+      story_id: "movie_noise",
+      title: "Jim Carrey Returning For Grinch Sequel 25 Years After The Original",
+      url: "https://kotaku.com/jim-carrey-returning-for-grinch-sequel-25-years-after-the-original-2000708170",
+      article_url: "https://kotaku.com/jim-carrey-returning-for-grinch-sequel-25-years-after-the-original-2000708170",
+    }),
+  ], { now: NOW, limit: 10 });
+
+  assert.deepEqual(selected.map((item) => item.story_id), ["fresh_gaming"]);
 });
 
 test("fresh review script repair excludes stale, non-script, published and reddit-only rows", () => {

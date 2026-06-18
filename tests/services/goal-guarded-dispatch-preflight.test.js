@@ -316,6 +316,38 @@ test("guarded dispatch preflight rejects stale approvals missing from current st
   assert.equal(report.guarded_dispatch_plan.ready_for_guarded_dispatch, false);
 });
 
+test("guarded dispatch preflight holds stale approvals when current strict dry-run has ready actions", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-dispatch-stale-held-"));
+  const staleMedia = await makeMedia(root, "stale-story");
+  const readyMedia = await makeMedia(root, "ready-story");
+  const staleAction = approvedAction(staleMedia, {
+    story_id: "stale-story",
+    title: "Steam Next Fest Turns Demos Into A Trust Fight",
+  });
+  const readyAction = approvedAction(readyMedia, {
+    story_id: "ready-story",
+    title: "Gears E-Day Has A 130GB Problem",
+  });
+  const platformMatrix = platformStatusMatrix();
+  platformMatrix.platforms.youtube_shorts.planned_story_ids = ["ready-story"];
+
+  const report = buildGuardedDispatchPreflight({
+    approvalGateReport: approvalGateReport(readyMedia, [staleAction, readyAction]),
+    strictDryRunPlan: strictDryRunPlan(readyMedia, [readyAction]),
+    platformStatusMatrix: platformMatrix,
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.summary.dispatch_ready_action_count, 1);
+  assert.equal(report.summary.blocked_action_count, 0);
+  assert.equal(report.summary.held_action_count, 1);
+  assert.equal(report.held_actions[0].story_id, "stale-story");
+  assert.equal(report.held_actions[0].reason, "stale_approval_not_in_current_strict_dry_run");
+  assert.ok(report.held_actions[0].blockers.includes("approved_action_missing_from_current_strict_dry_run"));
+  assert.ok(report.advisory.includes("stale_operator_approved_actions_held_outside_current_dispatch_scope"));
+  assert.equal(report.guarded_dispatch_plan.ready_for_guarded_dispatch, true);
+});
+
 test("guarded dispatch preflight ignores approvals for already-published platforms", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-dispatch-already-published-"));
   const media = await makeMedia(root);

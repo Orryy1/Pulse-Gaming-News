@@ -292,6 +292,58 @@ test("selectReprocessableScriptFailureStories can force explicit unpublished sto
   assert.equal(rows[0].script_failure_reprocess_reason, "explicit_story_reprocess");
 });
 
+test("selectReprocessableScriptFailureStories excludes advertiser-unsafe repair rows", () => {
+  const rows = selectReprocessableScriptFailureStories({
+    forceStoryIds: true,
+    storyIds: ["unsafe-crude", "safe-story"],
+    stories: [
+      {
+        id: "unsafe-crude",
+        title:
+          "Dispatch tackles Nintendo Switch censorship requirements where the dong should be",
+        source_type: "rss",
+        subreddit: "PC Gamer",
+        script_review_reason: "Hook too long",
+      },
+      {
+        id: "safe-story",
+        title: "Forza Horizon 6 gets a fresh Steam player-count update",
+        source_type: "rss",
+        subreddit: "GamesRadar",
+        script_review_reason: "Hook too long",
+      },
+    ],
+  });
+
+  assert.deepEqual(rows.map((row) => row.id), ["safe-story"]);
+});
+
+test("isPersistableScriptReady refuses advertiser-unsafe source titles", () => {
+  assert.equal(
+    isPersistableScriptReady({
+      script_generation_status: "script_ready",
+      title:
+        "Dispatch tackles Nintendo Switch censorship requirements where the dong should be",
+      source_type: "rss",
+      subreddit: "PC Gamer",
+      full_script:
+        "Dispatch just ran into a platform-censorship problem on Nintendo Switch. " +
+        "PC Gamer reports the PC game update changed visual details to meet console requirements. " +
+        "That matters because players often treat ports as the same game until one platform starts asking for edits. " +
+        "The useful split is clear: this is not a gameplay balance change, it is a platform rules story. " +
+        "For players, the question is whether the Switch version still feels like the same release after the edits. " +
+        "If the port keeps the joke intact, the censorship argument gets smaller. " +
+        "If it feels compromised, the platform becomes part of the review. " +
+        "Follow Pulse Gaming so you never miss a beat.",
+      cta: "Follow Pulse Gaming so you never miss a beat.",
+      word_count: 118,
+      script_source: "source_bound_fallback",
+      format_route: "flash_short",
+    }),
+    false,
+  );
+});
+
 test("classifyReprocessedStory separates script-ready from still-review rows", () => {
   assert.deepEqual(classifyReprocessedStory({ full_script: "A real script", word_count: 3 }), {
     status: "script_ready",
@@ -612,6 +664,29 @@ test("source-bound-only reprocess builds a clean local repair row", async () => 
   assert.equal(rows[0].exported_path, null);
   assert.doesNotMatch(rows[0].full_script, /,\./);
   assert.match(rows[0].full_script, /GamesRadar reports/);
+});
+
+test("source-bound-only reprocess replaces stale briefing route with short route", async () => {
+  const { parseArgs, reprocessCandidate } = require("../../tools/reprocess-script-failures");
+  const rows = await reprocessCandidate(
+    {
+      id: "stale_briefing_route",
+      title:
+        "Forza Horizon 6 immediately beats its predecessor's all-time Steam record with 130,000 concurrent players",
+      source_type: "reddit",
+      subreddit: "pcgaming",
+      article_url: "https://www.gamesradar.com/example",
+      format_route: "review_or_briefing",
+      runtime_route: "review_or_briefing",
+    },
+    parseArgs(["--source-bound-only"]),
+  );
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].script_generation_status, "script_ready");
+  assert.equal(rows[0].format_route, "flash_short");
+  assert.equal(rows[0].runtime_route, "flash_short");
+  assert.equal(classifyReprocessedStory(rows[0]).status, "script_ready");
 });
 
 test("source-bound-only reprocess repairs Bungie active-development narration without review-score drift", async () => {

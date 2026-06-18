@@ -198,6 +198,17 @@ test("Absolute unsafe term (child abuse) — hard-stopped regardless of context"
   assert.ok(r.hard_stops.includes("advertiser_unfriendly_language"));
 });
 
+test("Crude sexual anatomy wording is hard-stopped even when the story is gaming-related", () => {
+  const r = score({
+    title:
+      "Dispatch tackles Nintendo Switch censorship requirements with an update where the dong should be",
+    body:
+      "The PC game update discusses platform censorship requirements and a console release.",
+  });
+  assert.equal(r.breakdown.advertiser_safety, 0);
+  assert.ok(r.hard_stops.includes("advertiser_unfriendly_language"));
+});
+
 // -------- Partial credit: ambiguous term, no gaming OR harm context --------
 
 test("Floating ambiguous term without gaming OR harm context -> partial credit, no hard-stop", () => {

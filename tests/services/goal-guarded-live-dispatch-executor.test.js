@@ -911,6 +911,60 @@ test("selectNextGuardedLiveAction skips stale source-age actions and advances to
   );
 });
 
+test("selectNextGuardedLiveAction uses canonical source age before DB touch timestamps", async (t) => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-canonical-source-age-"));
+  t.after(() => fs.remove(tmp));
+  const staleCanonicalPath = path.join(tmp, "stale-canonical.json");
+  await fs.writeJson(staleCanonicalPath, {
+    story_id: "stale-crosspost",
+    selected_title: "Beastro Turns Deckbuilding Into A Game Pass Test",
+    primary_source: "Xbox Wire",
+    primary_source_url: "https://news.xbox.com/en-us/example",
+    source_published_at: "2026-06-11T00:00:00.000Z",
+    narration_script:
+      "Beastro is the Game Pass test for players who normally avoid card games. Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  const selection = await selectNextGuardedLiveAction({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("instagram_reels", {
+          action_id: "stale-crosspost:instagram_reels",
+          story_id: "stale-crosspost",
+          canonical_manifest_path: staleCanonicalPath,
+        }),
+        action("youtube_shorts", {
+          action_id: "fresh-story:youtube_shorts",
+          story_id: "fresh-story",
+        }),
+      ],
+    }),
+    stories: [
+      story({
+        id: "stale-crosspost",
+        title: "Beastro Has A Cozy Deckbuilding Test",
+        timestamp: "2026-06-18T07:00:00.000Z",
+      }),
+      story({
+        id: "fresh-story",
+        title: "Gears E-Day Has A 130GB Problem",
+        timestamp: "2026-06-16T13:00:00.000Z",
+      }),
+    ],
+    runActionQualityGate: passActionQualityGate,
+    actionQualityGateOptions: {
+      now: "2026-06-18T07:30:00.000Z",
+      maxSourceAgeHours: 168,
+    },
+  });
+
+  assert.equal(selection.exhausted, false);
+  assert.equal(selection.action_id, "fresh-story:youtube_shorts");
+  assert.equal(selection.skipped_actions[0].reason, "stale_source_age");
+  assert.equal(selection.skipped_actions[0].checks.source_freshness.source_timestamp, "2026-06-11T00:00:00.000Z");
+  assert.ok(selection.skipped_actions[0].blockers.includes("source_age_exceeds_limit"));
+});
+
 test("guarded live dispatch executor blocks explicit live actions that fail last-second quality", async () => {
   let uploadCalls = 0;
   let upsertCalls = 0;
@@ -1089,7 +1143,7 @@ test("guarded live dispatch executor hydrates canonical claim evidence before pu
     canonical_title: "Halo: Campaign Evolved Shows The Real Remake Test",
     primary_source: "Xbox Wire",
     primary_source_url: "https://news.xbox.com/en-us/2026/06/10/halo-campaign-evolved-hands-on-demo-2/",
-    source_published_at: "2026-06-10T00:00:00.000Z",
+    source_published_at: "2026-06-18T00:00:00.000Z",
     narration_script:
       "Halo Campaign Evolved's remake debate finally has a real stress test. Xbox Wire says Halo Studios showed Assault on the Control Room hands-on. The remake launches July 28, with early access July 23 for Premium Edition owners. Follow Pulse Gaming so you never miss a beat.",
     full_script:

@@ -24,6 +24,37 @@ test("classifies Discord feedback about wrong footage, stretched TTS and confusi
   assert.equal(item.severity, "high");
 });
 
+test("classifies Discord bot operations reports as actionable feedback jobs", () => {
+  const report = buildDiscordFeedbackIngestionReport({
+    generatedAt: "2026-06-18T12:50:00.000Z",
+    messages: [
+      {
+        id: "bot-publish-held",
+        timestamp: "2026-06-18T12:46:00.000Z",
+        author: { username: "Pulse Gaming", bot: true },
+        content:
+          "Pulse Gaming Publish Held (job #47698)\nPublish held before upload.\nReason: publish_window_watchdog_red\nSafe: no\nBlockers: publish_readiness: local_restart_readiness: public script-validation fallback rows need repair before a clean resume",
+      },
+      {
+        id: "bot-supply",
+        timestamp: "2026-06-18T12:46:30.000Z",
+        author: { username: "Pulse Gaming", bot: true },
+        content:
+          "Pulse Candidate Supply Monitor\nStatus: AMBER\nGREEN-ready: 1/10\nDurable GREEN: 1/10\nWarnings: green_ready_candidates_below_target:1/10; source_safe_candidates_below_target:1/6",
+      },
+    ],
+  });
+
+  assert.equal(report.summary.actionable_count, 2);
+  assert.equal(report.summary.blocking_count, 1);
+  assert.deepEqual(report.items[0].categories, ["publish_stalled", "readiness_blocked"]);
+  assert.equal(report.items[0].state, "operational_feedback_blocker");
+  assert.equal(report.items[0].blocks_publishing, true);
+  assert.deepEqual(report.items[1].categories, ["candidate_supply_low"]);
+  assert.equal(report.items[1].state, "operational_feedback_job");
+  assert.equal(report.items[1].blocks_publishing, false);
+});
+
 test("builds a blocking ingestion report when recent feedback targets selected story", () => {
   const report = buildDiscordFeedbackIngestionReport({
     generatedAt: "2026-06-17T10:20:00.000Z",
@@ -214,4 +245,112 @@ test("discovers feedback, suggestions and video-drops by default", async () => {
   assert.equal(calls.some((url) => url.includes("/channels/feedback-1/messages")), true);
   assert.equal(calls.some((url) => url.includes("/channels/suggestions-1/messages")), true);
   assert.equal(calls.some((url) => url.includes("/channels/drops-1/messages")), true);
+});
+
+test("reports when the outbound Discord webhook target is not readable by feedback ingestion", async () => {
+  const webhookUrl = "https://discord.com/api/webhooks/123456/redacted";
+  const report = await fetchDiscordChannelMessages({
+    env: {
+      DISCORD_BOT_TOKEN: "present",
+      DISCORD_WEBHOOK_URL: webhookUrl,
+      DISCORD_GUILD_ID: "configured-guild",
+    },
+    fetchImpl: async (url) => {
+      if (url === webhookUrl) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: "webhook-1",
+            name: "Pulse Gaming",
+            guild_id: "webhook-guild",
+            channel_id: "pulse-channel",
+          }),
+        };
+      }
+      if (url.endsWith("/users/@me/guilds")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [{ id: "configured-guild", name: "Public Community" }],
+        };
+      }
+      if (url.endsWith("/guilds/configured-guild/channels")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [{ id: "feedback-1", name: "feedback", type: 0 }],
+        };
+      }
+      if (url.includes("/channels/feedback-1/messages")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [],
+        };
+      }
+      return { ok: false, status: 404, statusText: "not found", json: async () => ({}) };
+    },
+  });
+
+  assert.equal(report.capability.status, "loaded_with_feedback_channel_gap");
+  assert.equal(report.capability.webhook_target.channel_id, "pulse-channel");
+  assert.equal(report.capability.webhook_target.matches_configured_guild, false);
+  assert.equal(report.capability.webhook_channel_discovered, false);
+  assert.equal(report.capability.feedback_gap, "webhook_channel_not_readable_by_bot_token");
+  assert.match(report.capability.operator_actions[0], /DISCORD_FEEDBACK_CHANNEL_ID/);
+});
+
+test("Discord feedback ingestion retries message reads after 429 Retry-After", async () => {
+  const calls = [];
+  const slept = [];
+  let messageReadAttempts = 0;
+  const report = await fetchDiscordChannelMessages({
+    env: { DISCORD_BOT_TOKEN: "present" },
+    sleepMs: async (ms) => {
+      slept.push(ms);
+    },
+    fetchImpl: async (url) => {
+      calls.push(url);
+      if (url.endsWith("/users/@me/guilds")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [{ id: "guild-1", name: "Pulse Gaming" }],
+        };
+      }
+      if (url.endsWith("/guilds/guild-1/channels")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [{ id: "feedback-1", name: "feedback", type: 0 }],
+        };
+      }
+      if (url.includes("/channels/feedback-1/messages")) {
+        messageReadAttempts += 1;
+        if (messageReadAttempts === 1) {
+          return {
+            ok: false,
+            status: 429,
+            statusText: "Too Many Requests",
+            headers: { get: (name) => (String(name).toLowerCase() === "retry-after" ? "0.01" : null) },
+            json: async () => ({ retry_after: 0.01 }),
+          };
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [{ id: "m1", content: "latest short transcript is confusing", timestamp: "2026-06-18T10:13:00.000Z" }],
+        };
+      }
+      return { ok: false, status: 404, statusText: "not found", json: async () => ({}) };
+    },
+  });
+
+  assert.equal(report.capability.status, "loaded");
+  assert.equal(report.messages.length, 1);
+  assert.equal(messageReadAttempts, 2);
+  assert.deepEqual(slept, [10]);
+  assert.equal(report.capability.rate_limit_retries, 1);
+  assert.equal(calls.some((url) => url.includes("/channels/feedback-1/messages")), true);
 });

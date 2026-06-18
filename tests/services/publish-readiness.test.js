@@ -2815,6 +2815,7 @@ test("pillarFinalVoiceAudit: active clean voice rows stay green while quarantine
     const pillar = pr.pillarFinalVoiceAudit({
       auditPath,
       localTestManifestPath: manifestPath,
+      strictDryRunPlanPath: path.join(dir, "missing_dry_run_publish_plan.json"),
       now: Date.parse("2026-05-31T10:30:00.000Z"),
     });
 
@@ -2823,6 +2824,88 @@ test("pillarFinalVoiceAudit: active clean voice rows stay green while quarantine
     assert.match(pillar.reason, /quarantined_review=1/);
     assert.equal(pillar.raw.active_pass_count, 1);
     assert.equal(pillar.raw.quarantined_review_count, 1);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("pillarFinalVoiceAudit: strict dry-run active paths override stale local-test manifest rows", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-final-voice-dry-run-green-"));
+  const auditPath = path.join(dir, "final_voice_audit.json");
+  const manifestPath = path.join(dir, "local_test_video_manifest.json");
+  const planPath = path.join(dir, "dry_run_publish_plan.json");
+  const currentVideo = path.join(dir, "current", "visual_v4_render.mp4");
+  const staleVideo = path.join(dir, "stale", "visual_v4_render.mp4");
+  try {
+    fs.mkdirSync(path.dirname(currentVideo), { recursive: true });
+    fs.mkdirSync(path.dirname(staleVideo), { recursive: true });
+    fs.writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        videos: [{ story_id: "stale-story", video_path: staleVideo }],
+      }),
+    );
+    fs.writeFileSync(
+      planPath,
+      JSON.stringify({
+        safety: {
+          no_publish_triggered: true,
+          no_network_uploads: true,
+          no_db_mutation: true,
+          no_oauth_or_token_change: true,
+          dry_run_only: true,
+        },
+        actions: [
+          {
+            story_id: "current-story",
+            action: "would_publish",
+            platform: "youtube_shorts",
+            video_path: currentVideo,
+          },
+        ],
+      }),
+    );
+    fs.writeFileSync(
+      auditPath,
+      JSON.stringify({
+        generated_at: "2026-05-31T10:00:00.000Z",
+        rows: [
+          {
+            story_id: "current-story",
+            mp4_path: currentVideo,
+            verdict: "pass",
+            blockers: [],
+            warnings: [],
+          },
+          {
+            story_id: "stale-story",
+            mp4_path: staleVideo,
+            verdict: "reject",
+            blockers: ["local_voice_mastering_missing"],
+            warnings: [],
+          },
+        ],
+        safety: {
+          read_only: true,
+          mutates_media: false,
+          mutates_production_db: false,
+          mutates_tokens: false,
+          posts_to_platforms: false,
+        },
+      }),
+    );
+
+    const pillar = pr.pillarFinalVoiceAudit({
+      auditPath,
+      localTestManifestPath: manifestPath,
+      strictDryRunPlanPath: planPath,
+      now: Date.parse("2026-05-31T10:30:00.000Z"),
+    });
+
+    assert.equal(pillar.verdict, "green");
+    assert.equal(pillar.raw.active_scope_source, "strict_dry_run_plan");
+    assert.equal(pillar.raw.active_pass_count, 1);
+    assert.equal(pillar.raw.quarantined_reject_count, 1);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -2867,6 +2950,7 @@ test("pillarFinalVoiceAudit: active voice reject is red", () => {
     const pillar = pr.pillarFinalVoiceAudit({
       auditPath,
       localTestManifestPath: manifestPath,
+      strictDryRunPlanPath: path.join(dir, "missing_dry_run_publish_plan.json"),
       now: Date.parse("2026-05-31T10:30:00.000Z"),
     });
 

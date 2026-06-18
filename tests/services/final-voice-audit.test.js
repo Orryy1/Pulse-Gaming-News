@@ -19,6 +19,8 @@ const {
   listMp4s,
   defaultOutDir,
   listAuditMp4s,
+  listStrictDryRunPlanMp4s,
+  mergeAuditFilesWithActivePaths,
 } = require("../../tools/final-voice-audit");
 
 test("final voice audit marks legacy MP4s without approved voice evidence as not reusable", () => {
@@ -94,6 +96,44 @@ test("final voice audit report is readable and does not mutate media", () => {
   const md = renderFinalVoiceAuditMarkdown(report);
   assert.match(md, /Final Voice Audit/);
   assert.match(md, /approved_voice_metadata_missing/);
+});
+
+test("final voice audit headline verdict follows active manifest rows while keeping old debt visible", () => {
+  const activeVideo = "D:/pulse-data/media/output/proof/fresh_gta6/visual_v4_render.mp4";
+  const oldVideo = "D:/pulse-data/media/output/final/rss_old_bad.mp4";
+  const report = buildFinalVoiceAudit({
+    files: [activeVideo, oldVideo],
+    activeVideoPaths: [activeVideo],
+    reportsByStoryId: {
+      fresh_gta6: {
+        narration: {
+          provider: "elevenlabs",
+          source: "elevenlabs-production-path",
+          audioPath: "D:/pulse-data/media/output/audio/fresh_gta6.mp3",
+          acoustic: { medianPitchHz: 118 },
+          transcript: "Rockstar just made GTA 6 feel real again. Follow Pulse Gaming so you never miss a beat.",
+        },
+      },
+      rss_old_bad: {
+        narration: {
+          provider: "local",
+          source: "local-production-voxcpm",
+          audioPath: "D:/pulse-data/media/output/audio/rss_old_bad.mp3",
+          acoustic: { medianPitchHz: 58 },
+          transcript: "Follow Pulse Gaming so you never miss a beat.",
+        },
+      },
+    },
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.readiness_scope, "active_manifest");
+  assert.equal(report.active_counts.pass, 1);
+  assert.equal(report.active_counts.reject, 0);
+  assert.equal(report.quarantined_counts.reject, 1);
+  const md = renderFinalVoiceAuditMarkdown(report);
+  assert.match(md, /Readiness scope: active_manifest/);
+  assert.match(md, /Quarantined debt: pass=0 review=0 reject=1 skip=0/);
 });
 
 test("final voice audit does not report GREEN when no MP4s were inspected", () => {
@@ -630,6 +670,37 @@ test("final voice audit CLI includes active local proof manifest videos", async 
 
   assert.ok(files.includes(productionMp4));
   assert.ok(files.includes(activeMp4));
+});
+
+test("final voice audit CLI can source active videos from strict dry-run plan", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "final-voice-dry-run-active-"));
+  const activeMp4 = path.join(dir, "proof", "story", "visual_v4_render.mp4");
+  const blockedMp4 = path.join(dir, "proof", "blocked", "visual_v4_render.mp4");
+  const planPath = path.join(dir, "dry_run_publish_plan.json");
+  await fs.ensureDir(path.dirname(activeMp4));
+  await fs.ensureDir(path.dirname(blockedMp4));
+  await fs.writeFile(activeMp4, "active");
+  await fs.writeFile(blockedMp4, "blocked");
+  await fs.writeJson(planPath, {
+    safety: { live_publish_attempted: false, production_db_mutated: false },
+    actions: [
+      { action: "would_publish", platform: "youtube_shorts", video_path: activeMp4 },
+      { action: "blocked", platform: "youtube_shorts", video_path: blockedMp4 },
+    ],
+  });
+
+  const files = await listStrictDryRunPlanMp4s(planPath);
+
+  assert.deepEqual(files, [activeMp4]);
+});
+
+test("final voice audit CLI inspects strict dry-run active videos even when normal discovery misses them", () => {
+  const discovered = ["D:/pulse-data/media/output/final/old.mp4"];
+  const active = ["D:/pulse-data/media/output/proof/current/visual_v4_render.mp4"];
+
+  const files = mergeAuditFilesWithActivePaths(discovered, active);
+
+  assert.deepEqual(files, [...discovered, ...active]);
 });
 
 test("final voice audit CLI defaults to the control-tower artefact directory", () => {

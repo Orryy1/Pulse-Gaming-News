@@ -118,6 +118,9 @@ test("candidate supply monitor enqueues fresh intake and repair when runway has 
         candidateSupplyMonitorNeedsFreshIntake() {
           return true;
         },
+        candidateSupplyMonitorNeedsTranscriptRepair() {
+          return false;
+        },
         formatCandidateSupplyMonitorDiscord() {
           return "candidate monitor";
         },

@@ -214,6 +214,57 @@ test("candidate supply monitor treats covered windows without reserve as actiona
   assert.match(formatCandidateSupplyMonitorDiscord(report), /Warnings:/);
 });
 
+test("candidate supply report treats current transcript backlog as refill pressure", () => {
+  const now = new Date("2026-06-16T22:00:00.000Z");
+  const candidateReport = {
+    generated_at: now.toISOString(),
+    totals: { stories_seen: 5, returned: 5, pending_audio: 0 },
+    candidates: Array.from({ length: 5 }, (_, index) => candidate(`ready-${index + 1}`)),
+  };
+  const transcriptAudienceReport = {
+    generated_at: now.toISOString(),
+    summary: { total: 2, pass: 0, rewrite_required: 2 },
+    stories: [
+      {
+        story_id: "ready-1",
+        title: "Nintendo Confirms Switch 2 Story ready-1",
+        verdict: "rewrite_required",
+        blockers: ["mass_audience:abstract_payoff"],
+        viral_score: 52,
+      },
+      {
+        story_id: "historical-old",
+        title: "Historical Old Story",
+        verdict: "rewrite_required",
+        blockers: ["mass_audience:unclear_referents"],
+        viral_score: 48,
+      },
+    ],
+  };
+
+  const report = buildCandidateSupplyReport({
+    stories: [],
+    candidateReport,
+    transcriptAudienceReport,
+    channelConfig: {},
+    now,
+  });
+
+  assert.equal(report.summary.green_ready_candidates, 5);
+  assert.equal(report.summary.transcript_audience_rewrite_required, 2);
+  assert.equal(report.summary.transcript_backlog_current_candidates, 1);
+  assert.equal(report.summary.transcript_backlog_ready_candidates, 1);
+  assert.equal(report.summary.transcript_clean_green_ready_candidates, 4);
+  assert.ok(report.warnings.includes("transcript_backlog_current_candidates:1"));
+  assert.ok(report.warnings.includes("transcript_clean_green_ready_candidates_below_target:4/10"));
+  assert.equal(report.transcript_backlog.current_candidates[0].story_id, "ready-1");
+  assert.equal(candidateSupplyMonitorNeedsRepair(report), true);
+  assert.equal(candidateSupplyMonitorNeedsFreshIntake(report), true);
+  assert.equal(report.next_action, "repair_transcript_backlog_and_refill_green_candidate_buffer");
+  assert.match(formatCandidateSupplyMarkdown(report), /Transcript Backlog/);
+  assert.match(formatCandidateSupplyMonitorDiscord(report), /Transcript backlog: 1 current \| clean GREEN 4\/10/);
+});
+
 test("candidate supply monitor does not trigger fresh intake when runway has reserve", () => {
   const now = new Date("2026-06-16T22:00:00.000Z");
   const candidateReport = {

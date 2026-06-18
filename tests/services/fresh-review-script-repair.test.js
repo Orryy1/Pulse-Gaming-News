@@ -95,3 +95,53 @@ test("fresh review script repair excludes stale, non-script, published and reddi
 
   assert.deepEqual(selected.map((item) => item.story_id), ["fresh_good"]);
 });
+
+test("fresh review script repair turns transcript backlog into safe rewrite work orders", () => {
+  const plan = buildFreshReviewScriptRepairPlan({
+    rows: [],
+    now: NOW,
+    candidateReport: {
+      candidates: [
+        {
+          id: "fresh_gears_eday_pc_specs_20260616",
+          title: "Gears Of War E-Day PC Specs Are A Storage Warning",
+          status: "publish_ready",
+          score: 92,
+          source_manifest: {
+            primary_source: {
+              name: "PC Gamer",
+              url: "https://www.pcgamer.com/gears-e-day-pc-specs",
+              published_at: "2026-06-16T09:00:00.000Z",
+            },
+          },
+        },
+      ],
+    },
+    transcriptAudienceReport: {
+      generated_at: NOW,
+      summary: { total: 1, pass: 0, rewrite_required: 1 },
+      stories: [
+        {
+          story_id: "fresh_gears_eday_pc_specs_20260616",
+          title: "Gears Of War E-Day PC Specs Are A Storage Warning",
+          verdict: "rewrite_required",
+          blockers: ["mass_audience:abstract_payoff", "mass_audience:unclear_referents"],
+          viral_score: 55,
+        },
+      ],
+    },
+  });
+
+  assert.equal(plan.summary.selected_count, 1);
+  assert.equal(plan.summary.transcript_backlog_selected_count, 1);
+  assert.equal(plan.source_bound_rewrite_work_orders[0].blocker_type, "transcript_audience_rewrite_required");
+  assert.equal(plan.source_bound_rewrite_work_orders[0].repair_lane, "source_bound_script_rewrite");
+  assert.match(
+    plan.source_bound_rewrite_work_orders[0].recommended_command,
+    /^npm run ops:reprocess-script-failures -- --story-id fresh_gears_eday_pc_specs_20260616 --force-story --source-bound-only --dry-run --json$/,
+  );
+  assert.equal(
+    commandSafety(plan.source_bound_rewrite_work_orders[0].recommended_command).safe,
+    true,
+  );
+});

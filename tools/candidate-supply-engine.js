@@ -76,9 +76,28 @@ async function main(argv = process.argv) {
 
   const channelConfig = require("../channels/pulse-gaming");
   const { report: candidateReport, stories } = await buildFreshCandidateReport({ limit: args.limit });
+  let transcriptAudienceReport = null;
+  try {
+    const {
+      auditGeneratedTranscripts,
+      writeTranscriptAudienceAudit,
+    } = require("../lib/ops/transcript-audience-audit");
+    transcriptAudienceReport = await auditGeneratedTranscripts({ root: ROOT });
+    await writeTranscriptAudienceAudit(transcriptAudienceReport, {
+      outputDir: path.join(ROOT, "output", "transcript-audience-audit"),
+    });
+  } catch (err) {
+    transcriptAudienceReport = {
+      generated_at: new Date().toISOString(),
+      summary: { total: 0, pass: 0, rewrite_required: 0 },
+      stories: [],
+      error: err.message || "transcript_audience_audit_failed",
+    };
+  }
   const report = buildCandidateSupplyReport({
     stories,
     candidateReport,
+    transcriptAudienceReport,
     channelConfig,
     now: new Date(),
   });

@@ -61,8 +61,37 @@ async function runFreshReviewScriptRepair({
     maxAgeHours,
     limit: Math.max(40, Number(limit || 6) * 10),
   });
+  let transcriptAudienceReport = null;
+  let candidateReport = {};
+  try {
+    const {
+      auditGeneratedTranscripts,
+      writeTranscriptAudienceAudit,
+    } = require("../lib/ops/transcript-audience-audit");
+    transcriptAudienceReport = await auditGeneratedTranscripts({ root: ROOT });
+    await writeTranscriptAudienceAudit(transcriptAudienceReport, {
+      outputDir: path.join(ROOT, "output", "transcript-audience-audit"),
+    });
+  } catch (err) {
+    transcriptAudienceReport = {
+      generated_at: now instanceof Date ? now.toISOString() : new Date(now).toISOString(),
+      summary: { total: 0, pass: 0, rewrite_required: 0 },
+      stories: [],
+      error: err.message || "transcript_audience_audit_failed",
+    };
+  }
+  try {
+    const candidateReportPath = path.join(ROOT, "test", "output", "next_publish_candidates.json");
+    if (await fs.pathExists(candidateReportPath)) {
+      candidateReport = await fs.readJson(candidateReportPath);
+    }
+  } catch {
+    candidateReport = {};
+  }
   const plan = buildFreshReviewScriptRepairPlan({
     rows,
+    transcriptAudienceReport,
+    candidateReport,
     now,
     maxAgeHours,
     minScore,

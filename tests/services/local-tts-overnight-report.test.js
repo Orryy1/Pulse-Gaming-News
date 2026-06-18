@@ -248,13 +248,28 @@ test("local TTS overnight report creates a local-only recovery plan for short pr
     ],
   );
   assert.equal(report.recovery_plan.blocked_by_voice_quality, false);
+  assert.equal(report.autonomous_recovery.status, "ready_for_local_tts_retry_preflight");
+  assert.equal(report.autonomous_recovery.safe_to_run_local_tts_retry, false);
+  assert.equal(report.autonomous_recovery.safe_to_run_local_tts_retry_preflight, true);
+  assert.equal(report.autonomous_recovery.safe_retry_work_order_count, 2);
+  assert.equal(report.autonomous_recovery.retry_preflight_work_order_count, 2);
+  assert.equal(report.autonomous_recovery.retry_apply_ready_work_order_count, 0);
+  assert.equal(report.autonomous_recovery.operator_required_work_order_count, 1);
+  assert.deepEqual(report.autonomous_recovery.safe_retry_story_ids, ["rss_reset", "rss_timeout"]);
   assert.match(report.recovery_plan.commands[0], /ops:local-media-repair -- --dry-run/);
   assert.match(report.recovery_plan.commands[1], /ops:local-script-extension -- --dry-run/);
+  assert.equal(
+    report.recovery_plan.commands.some((command) => /--apply-local-audio/.test(command)),
+    false,
+  );
   assert.match(markdown, /## Local Recovery Plan/);
   assert.match(markdown, /## Superseded Failed Attempts/);
   assert.match(markdown, /extend_script_story_ids=rss_short/);
   assert.match(markdown, /retry_tts_story_ids=rss_reset, rss_timeout/);
   assert.match(markdown, /## Recovery Work Orders/);
+  assert.match(markdown, /autonomous_status=ready_for_local_tts_retry_preflight/);
+  assert.match(markdown, /safe_retry_work_orders=2/);
+  assert.match(markdown, /retry_preflight_work_orders=2/);
   assert.match(markdown, /local_tts_retry:rss_reset/);
   assert.match(markdown, /preflight: `npm run ops:local-script-extension -- --story-id rss_reset --dry-run`/);
   assert.match(markdown, /apply: `npm run ops:local-script-extension -- --story-id rss_reset --apply-local-audio --apply-limit 1`/);

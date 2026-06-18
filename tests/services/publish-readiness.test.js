@@ -3193,3 +3193,72 @@ test("summariseRecentFailedCandidates: excludes repaired public rows from active
   assert.equal(summary.recent_count, 1);
   assert.deepEqual(summary.ids, ["active-failure"]);
 });
+
+test("buildPublishReadinessReport: recent TTS transport failures surface local retry recovery", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-publish-readiness-tts-recovery-"));
+  const outputDir = path.join(dir, "test", "output");
+  fs.mkdirSync(outputDir, { recursive: true });
+  const ttsPath = path.join(outputDir, "local_tts_overnight_report.json");
+  try {
+    fs.writeFileSync(
+      ttsPath,
+      JSON.stringify({
+        verdict: "AMBER",
+        doctor: {
+          verdict: "green",
+          local_ready: true,
+          voice: { alias: "liam", loaded: true, ref_resolved: true },
+        },
+        autonomous_recovery: {
+          status: "ready_for_local_tts_retry_preflight",
+          safe_to_run_local_tts_retry: false,
+          safe_to_run_local_tts_retry_preflight: true,
+          safe_retry_work_order_count: 4,
+          retry_preflight_work_order_count: 4,
+          retry_apply_ready_work_order_count: 0,
+          operator_required_work_order_count: 0,
+          safe_retry_story_ids: ["tts-one", "tts-two", "tts-three", "tts-four"],
+        },
+        recovery_plan: {
+          retry_tts_story_ids: ["tts-one", "tts-two", "tts-three", "tts-four"],
+          work_orders: [
+            { story_id: "tts-one", repair_lane: "local_tts_retry", operator_approval_required: false },
+            { story_id: "tts-two", repair_lane: "local_tts_retry", operator_approval_required: false },
+            { story_id: "tts-three", repair_lane: "local_tts_retry", operator_approval_required: false },
+            { story_id: "tts-four", repair_lane: "local_tts_retry", operator_approval_required: false },
+          ],
+        },
+      }),
+      "utf8",
+    );
+
+    const report = await pr.buildPublishReadinessReport({
+      skipOperationalPillars: true,
+      cwd: dir,
+      now: Date.parse("2026-06-18T12:00:00.000Z"),
+      db: {
+        async getStories() {
+          return ["tts-one", "tts-two", "tts-three", "tts-four", "tts-five"].map((id, index) => ({
+            id,
+            title: `TTS recovery candidate ${index + 1}`,
+            qa_failed: true,
+            qa_failures: ["audio_generation_failed:server_down"],
+            qa_failed_at: "2026-06-18T11:00:00.000Z",
+          }));
+        },
+      },
+      env: {},
+    });
+
+    const pillar = report.pillars.recent_failed_candidates;
+    assert.equal(pillar.verdict, "amber");
+    assert.equal(pillar.raw.local_tts_recovery.status, "ready_for_local_tts_retry_preflight");
+    assert.equal(pillar.raw.local_tts_recovery.current_local_tts_ready, true);
+    assert.equal(pillar.raw.local_tts_recovery.safe_retry_work_order_count, 4);
+    assert.equal(pillar.raw.local_tts_recovery.retry_preflight_work_order_count, 4);
+    assert.match(pillar.reason, /local_tts_recovery=ready_for_local_tts_retry_preflight/);
+    assert.match(pillar.reason, /retry_preflight_work_orders=4/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

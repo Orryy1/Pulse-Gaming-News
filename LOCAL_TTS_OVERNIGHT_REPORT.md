@@ -1,6 +1,6 @@
 # Local TTS Overnight Report
 
-Generated: 2026-06-07T23:05:32.887Z
+Generated: 2026-06-18T21:40:01.591Z
 Verdict: AMBER
 Expected local voice: pulse-sleepy-liam-20260502
 Local proof preferred duration: 64-70s preferred, 61-75s accepted
@@ -63,6 +63,12 @@ Local proof preferred duration: 64-70s preferred, 61-75s accepted
 
 ## Local Recovery Plan
 - local_only=true
+- autonomous_status=ready_for_local_tts_retry_preflight
+- safe_to_run_local_tts_retry=false
+- safe_retry_work_orders=6
+- retry_preflight_work_orders=6
+- retry_apply_ready_work_orders=0
+- operator_required_work_orders=7
 - extend_script_story_ids=rss_c4cabfc862af7b64, 1tb3i1r, 1t186u4, 1tk1lpr, 1tkzdfq, 1tayii3
 - shorten_script_story_ids=1thnwdq
 - retry_tts_story_ids=1tbdx3b, 1t186u4, 1tgr15g, 1tk1lpr, 1tkzdfq, 1te1oq7
@@ -70,7 +76,6 @@ Local proof preferred duration: 64-70s preferred, 61-75s accepted
 - commands:
   - `npm run ops:local-media-repair -- --dry-run`
   - `npm run ops:local-script-extension -- --dry-run`
-  - `npm run ops:local-script-extension -- --apply-local-audio --apply-limit 3`
   - `npm run tts:overnight-report`
 - notes:
   - duration_too_short proofs should be repaired by local script extension before another Studio V2 proof render

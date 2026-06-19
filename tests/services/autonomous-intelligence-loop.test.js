@@ -253,11 +253,16 @@ test("candidate supply monitor enqueues fresh intake and repair when runway has 
 test("fresh production refill handler builds live-RSS local proof packages", async () => {
   const jobHandlersPath = require.resolve("../../lib/job-handlers");
   const goalBatchPath = require.resolve("../../tools/goal-batch-packages");
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-"));
+  const outDir = path.join(tmp, "goal-proof-batch");
+  const contractOutDir = path.join(tmp, "goal-contract");
+  const artifactDir = path.join(outDir, "fresh_xbox_story");
   const originalCache = new Map([
     [jobHandlersPath, require.cache[jobHandlersPath]],
     [goalBatchPath, require.cache[goalBatchPath]],
   ]);
   let capturedArgs = null;
+  const childCalls = [];
 
   try {
     require.cache[goalBatchPath] = {
@@ -267,6 +272,90 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       exports: {
         async main(args) {
           capturedArgs = args;
+          await fs.mkdir(artifactDir, { recursive: true });
+          await fs.mkdir(contractOutDir, { recursive: true });
+          await fs.writeFile(
+            path.join(artifactDir, "canonical_story_manifest.json"),
+            JSON.stringify({
+              story_id: "fresh_xbox_story",
+              canonical_subject: "Halo Campaign Evolved",
+              canonical_game: "Halo Campaign Evolved",
+              canonical_title: "Halo Campaign Evolved Demo Lands",
+              selected_title: "Halo Campaign Evolved Demo Lands",
+              primary_source: "Xbox Wire",
+              primary_source_url: "https://news.xbox.com/en-us/2026/06/19/halo-campaign-evolved-demo/",
+              source_published_at: "Fri, 19 Jun 2026 09:00:00 +0000",
+              narration_script:
+                "Halo Campaign Evolved just turned its demo into the real Xbox test. Xbox Wire says players can try the campaign slice today. Follow Pulse Gaming so you never miss a beat.",
+            }),
+          );
+          await fs.writeFile(
+            path.join(artifactDir, "source_manifest.json"),
+            JSON.stringify({
+              story_id: "fresh_xbox_story",
+              primary_source: {
+                name: "Xbox Wire",
+                url: "https://news.xbox.com/en-us/2026/06/19/halo-campaign-evolved-demo/",
+                type: "rss",
+                published_at: "Fri, 19 Jun 2026 09:00:00 +0000",
+                age_hours: 1,
+              },
+              freshness_gate: "pass",
+              coherence_gate: "pass",
+              blockers: [],
+            }),
+          );
+          await fs.writeFile(
+            path.join(contractOutDir, "story-packages.json"),
+            JSON.stringify([
+              {
+                story_id: "fresh_xbox_story",
+                artifact_dir: artifactDir,
+                verdict: "RED",
+                blockers: ["footage:v4_motion_blocked", "director:director_blocked"],
+              },
+              {
+                story_id: "fresh_gamespot_story",
+                artifact_dir: path.join(outDir, "fresh_gamespot_story"),
+                verdict: "RED",
+                blockers: ["footage:v4_motion_blocked", "director:director_blocked"],
+              },
+            ]),
+          );
+          const gamespotDir = path.join(outDir, "fresh_gamespot_story");
+          await fs.mkdir(gamespotDir, { recursive: true });
+          await fs.writeFile(
+            path.join(gamespotDir, "canonical_story_manifest.json"),
+            JSON.stringify({
+              story_id: "fresh_gamespot_story",
+              canonical_subject: "Steam Next Fest June 2026",
+              canonical_game: "Steam Next Fest June 2026",
+              canonical_title: "Steam Next Fest June 2026: Best Demos",
+              selected_title: "Steam Next Fest June 2026: Best Demos",
+              primary_source: "GameSpot",
+              primary_source_url:
+                "https://www.gamespot.com/articles/steam-next-fest-june-2026-25-of-the-best-demos-you-can-play-right-now/",
+              source_published_at: "Fri, 19 Jun 2026 09:00:00 +0000",
+              narration_script:
+                "Steam Next Fest has a demo problem players can actually test today. Follow Pulse Gaming so you never miss a beat.",
+            }),
+          );
+          await fs.writeFile(
+            path.join(gamespotDir, "source_manifest.json"),
+            JSON.stringify({
+              story_id: "fresh_gamespot_story",
+              primary_source: {
+                name: "GameSpot",
+                url: "https://www.gamespot.com/articles/steam-next-fest-june-2026-25-of-the-best-demos-you-can-play-right-now/",
+                type: "rss",
+                published_at: "Fri, 19 Jun 2026 09:00:00 +0000",
+                age_hours: 1,
+              },
+              freshness_gate: "pass",
+              coherence_gate: "pass",
+              blockers: [],
+            }),
+          );
           return {
             batch: {
               summary: {
@@ -276,8 +365,8 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
               },
             },
             outputs: {
-              storyPackagesPath: "output/goal-contract/story-packages.json",
-              batchReportPath: "output/goal-contract/story-packages-report.json",
+              storyPackagesPath: path.join(contractOutDir, "story-packages.json"),
+              batchReportPath: path.join(contractOutDir, "story-packages-report.json"),
             },
           };
         },
@@ -292,11 +381,17 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
         payload: {
           limit: 12,
           rss_per_feed: 4,
-          out_dir: "output/fresh-green-refill-test/goal-proof-batch",
-          contract_out_dir: "output/goal-contract",
+          out_dir: outDir,
+          contract_out_dir: contractOutDir,
         },
       },
-      { log() {} },
+      {
+        log() {},
+        async runNodeJobChildProcess(options) {
+          childCalls.push(options);
+          return { ok: true, stdout_tail: "ok", stderr_tail: "" };
+        },
+      },
     );
 
     assert.deepEqual(capturedArgs, [
@@ -306,9 +401,9 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       "--limit",
       "12",
       "--out-dir",
-      "output/fresh-green-refill-test/goal-proof-batch",
+      outDir,
       "--contract-out-dir",
-      "output/goal-contract",
+      contractOutDir,
     ]);
     assert.equal(result.status, "completed");
     assert.equal(result.story_count, 12);
@@ -316,12 +411,35 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     assert.equal(result.red_count, 10);
     assert.equal(result.safety.local_only, true);
     assert.equal(result.safety.no_publish, true);
-    assert.equal(result.outputs.storyPackagesPath, "output/goal-contract/story-packages.json");
+    assert.equal(result.outputs.storyPackagesPath, path.join(contractOutDir, "story-packages.json"));
+    assert.equal(result.repair_evidence.status, "generated");
+    assert.equal(result.repair_evidence.official_source_entries_count, 1);
+    assert.equal(result.repair_evidence.child_processes.length, 4);
+    assert.ok(
+      childCalls.some((call) => call.args[0] === "tools/studio-v4-motion-pack.js"),
+      "expected fresh refill to create a V4 motion-pack repair index",
+    );
+    assert.ok(
+      childCalls.some((call) => call.args[0] === "tools/studio-v4-source-family-acquisition.js"),
+      "expected fresh refill to create a source-family repair report",
+    );
+    assert.ok(
+      childCalls.some((call) => call.args[0] === "tools/official-direct-media-discovery.js"),
+      "expected fresh refill to probe official source pages for direct media",
+    );
+    assert.ok(
+      childCalls.some((call) => call.args[0] === "tools/official-trailer-reference-resolver.js"),
+      "expected fresh refill to create trailer reference evidence",
+    );
+    const repairReport = JSON.parse(await fs.readFile(result.repair_evidence.report_path, "utf8"));
+    assert.equal(repairReport.summary.official_source_entries_count, 1);
+    assert.equal(repairReport.safety.no_publish, true);
   } finally {
     for (const [cachePath, entry] of originalCache.entries()) {
       if (entry) require.cache[cachePath] = entry;
       else delete require.cache[cachePath];
     }
+    await fs.rm(tmp, { recursive: true, force: true });
   }
 });
 

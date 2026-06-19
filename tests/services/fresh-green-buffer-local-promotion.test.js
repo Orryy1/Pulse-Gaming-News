@@ -10,6 +10,7 @@ const {
   buildFreshGreenBufferLocalPromotionReport,
   writeFreshGreenBufferLocalPromotionArtifacts,
 } = require("../../lib/fresh-green-buffer-local-promotion");
+const mediaHousePrivate = require("../../lib/pulse-media-house-score")._private;
 const { parseArgs } = require("../../tools/fresh-green-buffer-local-promotion");
 const packageJson = require("../../package.json");
 
@@ -76,13 +77,14 @@ test("fresh buffer promotion writes local package work orders without publish or
     ),
   );
   assert.equal(canonical.public_title, "Halo: Campaign Evolved Shows The Real Remake Test");
-  assert.match(canonical.description, /Xbox Wire says Halo: Campaign Evolved/);
+  assert.match(canonical.description, /Halo: Campaign Evolved has a public demo test/i);
+  assert.match(canonical.description, /Source: Xbox Wire\./);
   assert.equal(canonical.public_copy.title, "Halo: Campaign Evolved Shows The Real Remake Test");
 
   const storyPackages = JSON.parse(fs.readFileSync(written.storyPackages, "utf8"));
   assert.equal(storyPackages[0].verdict, "ready");
   assert.equal(storyPackages[0].status, "ready_for_render_proof");
-  assert.match(storyPackages[0].description, /Xbox Wire says Halo: Campaign Evolved/);
+  assert.match(storyPackages[0].description, /Halo: Campaign Evolved has a public demo test/i);
   assert.deepEqual(storyPackages[0].blockers, []);
 });
 
@@ -274,6 +276,206 @@ test("fresh buffer promotion rewrites weak coherent demo copy before packaging",
   assert.doesNotMatch(canonical.full_script, /\bhands-on demo beat\b/i);
   assert.match(canonical.public_title, /Demo/i);
   assert.match(canonical.full_script, /PlayStation Blog/i);
+});
+
+test("fresh buffer promotion packages fresh source claims as attention-led public metadata", async () => {
+  const generatedAt = "2026-06-19T20:10:00.000Z";
+  const report = buildFreshGreenBufferLocalPromotionReport({
+    stories: [
+      draftStory({
+        id: "fresh_xbox_end_of_abyss_20260619",
+        title: "End of Abyss Hands-On Shows The Little Nightmares Team's New Risk",
+        canonical_subject: "End of Abyss",
+        canonical_game: "End of Abyss",
+        selected_title: "End of Abyss Has A Horror Trust Problem",
+        primary_source: {
+          name: "Xbox Wire",
+          url: "https://news.xbox.com/en-us/2026/06/19/end-of-abyss-combat-exploration-hands-on/",
+          type: "official_platform_news",
+        },
+        primary_source_url: "https://news.xbox.com/en-us/2026/06/19/end-of-abyss-combat-exploration-hands-on/",
+        source_published_at: "2026-06-19T00:00:00.000Z",
+        confirmed_claims: [
+          "Xbox Wire says End of Abyss is an atmospheric top-down 3D twin-stick shooter Metroidvania from Section 9 Interactive.",
+          "Xbox Wire says the studio was co-founded by leads from Tarsier Studios, known for Little Nightmares and Reanimal.",
+          "Xbox Wire says End of Abyss comes to Xbox Series X|S on October 1, 2026.",
+        ],
+        trailer_references: [
+          {
+            label: "End of Abyss official release date trailer",
+            url: "https://www.youtube.com/watch?v=Sytee6i3M9E",
+            source_family: "end_of_abyss_official_release_date_trailer",
+            source_type: "official_trailer",
+          },
+        ],
+        thumbnail_headline: "HORROR TRUST TEST",
+        narration_script:
+          "End of Abyss just gave horror fans a cleaner question than another creepy trailer. Xbox Wire says the top-down Metroidvania comes from Section 9 Interactive, a new studio with former Tarsier leads behind Little Nightmares and Reanimal. That legacy buys attention, not trust. The real test is whether the camera angle can still make players feel trapped, exposed and curious enough to keep pushing deeper. Follow Pulse Gaming so you never miss a beat.",
+      }),
+    ],
+    generatedAt,
+  });
+
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "fresh-buffer-attention-metadata-"));
+  const written = await writeFreshGreenBufferLocalPromotionArtifacts(report, { outputDir: outDir });
+  const canonical = JSON.parse(
+    fs.readFileSync(
+      path.join(outDir, "packages", "fresh_xbox_end_of_abyss_20260619", "canonical_story_manifest.json"),
+      "utf8",
+    ),
+  );
+  const platformManifest = {
+    outputs: {
+      youtube_shorts: {
+        title: canonical.public_title,
+        description: canonical.description,
+        cover_frame: { headline: canonical.thumbnail_headline },
+      },
+    },
+  };
+
+  assert.doesNotMatch(canonical.description, /^Xbox Wire says/i);
+  assert.match(canonical.description, /\bhorror trust test\b/i);
+  assert.equal(mediaHousePrivate.platformCopyTooPlain(platformManifest), false);
+  assert.equal(mediaHousePrivate.platformTitlesTooPlain(platformManifest, canonical), false);
+  assert.equal(mediaHousePrivate.weakFirstFrameOrThumbnailCopy(canonical, platformManifest), false);
+
+  const storyPackages = JSON.parse(fs.readFileSync(written.storyPackages, "utf8"));
+  assert.equal(storyPackages[0].description, canonical.description);
+  assert.equal(storyPackages[0].trailer_references[0].source_family, "end_of_abyss_official_release_date_trailer");
+});
+
+test("fresh buffer promotion keeps sandbox-control and expansion stories on the correct angle", async () => {
+  const generatedAt = "2026-06-19T20:30:00.000Z";
+  const report = buildFreshGreenBufferLocalPromotionReport({
+    stories: [
+      draftStory({
+        id: "fresh_sea_custom_seas",
+        title: "Sea of Thieves Just Handed Players The Keys",
+        canonical_subject: "Sea of Thieves",
+        canonical_game: "Sea of Thieves",
+        selected_title: "Sea of Thieves Just Handed Players The Keys",
+        primary_source: {
+          name: "Xbox Wire",
+          url: "https://news.xbox.com/en-us/2026/06/19/sea-of-thieves-custom-seas-update-details/",
+          type: "official_platform_news",
+        },
+        source_published_at: "2026-06-19T00:00:00.000Z",
+        confirmed_claims: [
+          "Xbox Wire says Sea of Thieves Season 20 adds Custom Seas, a private sandbox with creative tools and rule controls.",
+        ],
+        narration_script:
+          "Sea of Thieves just changed the argument from content to control. Xbox Wire says Custom Seas lets players set rules around creatures, time of day and weapons. Follow Pulse Gaming so you never miss a beat.",
+      }),
+      draftStory({
+        id: "fresh_dave_jungle",
+        title: "Dave the Diver Just Became Bigger Than DLC",
+        canonical_subject: "Dave the Diver",
+        canonical_game: "Dave the Diver",
+        selected_title: "Dave the Diver Just Became Bigger Than DLC",
+        primary_source: {
+          name: "Xbox Wire",
+          url: "https://news.xbox.com/en-us/2026/06/18/dave-the-diver-in-the-jungle-out-now/",
+          type: "official_platform_news",
+        },
+        source_published_at: "2026-06-18T00:00:00.000Z",
+        confirmed_claims: [
+          "Xbox Wire says Dave the Diver: In the Jungle is available now with up to 10 hours of playable content, new wildlife, new ingredients and Bancho Grill.",
+        ],
+        narration_script:
+          "Dave the Diver just released the kind of DLC that starts sounding like a sequel. Xbox Wire says In the Jungle adds up to 10 hours of content. Follow Pulse Gaming so you never miss a beat.",
+      }),
+    ],
+    generatedAt,
+  });
+
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "fresh-buffer-angle-metadata-"));
+  const written = await writeFreshGreenBufferLocalPromotionArtifacts(report, { outputDir: outDir });
+  const storyPackages = JSON.parse(fs.readFileSync(written.storyPackages, "utf8"));
+  const sea = storyPackages.find((row) => row.story_id === "fresh_sea_custom_seas");
+  const dave = storyPackages.find((row) => row.story_id === "fresh_dave_jungle");
+
+  assert.match(sea.description, /\b(?:control|sandbox|rules|player-made)\b/i);
+  assert.doesNotMatch(sea.description, /More content only matters/i);
+  assert.match(dave.description, /\b(?:DLC|expansion|bigger|worth returning|new zone)\b/i);
+  assert.doesNotMatch(dave.description, /playable slice|demo test/i);
+});
+
+test("fresh buffer promotion prioritises free-access and playable-demo angles over incidental horror or DLC terms", async () => {
+  const generatedAt = "2026-06-19T20:45:00.000Z";
+  const report = buildFreshGreenBufferLocalPromotionReport({
+    stories: [
+      draftStory({
+        id: "fresh_free_play_days",
+        title: "Xbox Free Play Days Has One Weekend Test",
+        canonical_subject: "Xbox Free Play Days",
+        canonical_game: "Xbox Free Play Days",
+        selected_title: "Xbox Free Play Days Has One Weekend Test",
+        primary_source: {
+          name: "Xbox Wire",
+          url: "https://news.xbox.com/en-us/2026/06/18/free-play-days-06-18-2026/",
+          type: "official_platform_news",
+        },
+        source_published_at: "2026-06-18T00:00:00.000Z",
+        confirmed_claims: [
+          "Xbox Wire says Dead by Daylight is free to play for all players, while PGA Tour 2K25, Two Point Museum and Assetto Corsa are available for Xbox Game Pass members during Free Play Days.",
+        ],
+        narration_script:
+          "Xbox Free Play Days has one weekend test. The question is not just what is free, but what earns an install after Sunday. Follow Pulse Gaming so you never miss a beat.",
+      }),
+      draftStory({
+        id: "fresh_granblue_demo",
+        title: "Granblue Fantasy Has A Demo Trust Test",
+        canonical_subject: "Granblue Fantasy: Relink",
+        canonical_game: "Granblue Fantasy: Relink",
+        selected_title: "Granblue Fantasy Has A Demo Trust Test",
+        primary_source: {
+          name: "PlayStation Blog",
+          url: "https://blog.playstation.com/2026/06/18/granblue-fantasy-relink-endless-ragnarok-hands-on-report-demo-available-today/",
+          type: "official_platform_news",
+        },
+        source_published_at: "2026-06-18T00:00:00.000Z",
+        confirmed_claims: [
+          "PlayStation Blog says Endless Ragnarok adds new characters and a new story arc, and a playable demo of the main game is available now.",
+        ],
+        narration_script:
+          "Granblue Fantasy has a playable demo now, which gives players a cleaner test than another expansion feature list. Follow Pulse Gaming so you never miss a beat.",
+      }),
+      draftStory({
+        id: "fresh_ubisoft_trial",
+        title: "Ubisoft Plus Has A Five-Day Trust Test",
+        canonical_subject: "Ubisoft Plus",
+        canonical_game: "Ubisoft Plus",
+        selected_title: "Ubisoft Plus Has A Five-Day Trust Test",
+        primary_source: {
+          name: "Ubisoft News",
+          url: "https://news.ubisoft.com/en-us/article/7e8YHQ8EGbHe89eOu4ySGy/ubisoft-free-trial-from-june-1823-what-you-need-to-know",
+          type: "official_publisher_news",
+        },
+        source_published_at: "2026-06-18T00:00:00.000Z",
+        confirmed_claims: [
+          "Ubisoft News says Ubisoft+ Premium has a free trial from June 18 to June 23 with premium editions, DLC and bonus content.",
+        ],
+        narration_script:
+          "Ubisoft Plus just became a five-day value test, because a free trial only works if one game grabs players before renewal. Follow Pulse Gaming so you never miss a beat.",
+      }),
+    ],
+    generatedAt,
+  });
+
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "fresh-buffer-priority-metadata-"));
+  const written = await writeFreshGreenBufferLocalPromotionArtifacts(report, { outputDir: outDir });
+  const storyPackages = JSON.parse(fs.readFileSync(written.storyPackages, "utf8"));
+  const freePlay = storyPackages.find((row) => row.story_id === "fresh_free_play_days");
+  const granblue = storyPackages.find((row) => row.story_id === "fresh_granblue_demo");
+  const ubisoft = storyPackages.find((row) => row.story_id === "fresh_ubisoft_trial");
+
+  assert.match(freePlay.description, /\b(?:free|weekend|install|after Sunday)\b/i);
+  assert.doesNotMatch(freePlay.description, /horror trust test/i);
+  assert.match(granblue.description, /\b(?:demo|playable|before launch|trust)\b/i);
+  assert.doesNotMatch(granblue.description, /DLC sounds big/i);
+  assert.match(ubisoft.description, /\b(?:free trial|five-day|subscription|renewal|value)\b/i);
+  assert.doesNotMatch(ubisoft.description, /DLC sounds big/i);
 });
 
 test("fresh buffer promotion removes stale package directories before writing current packages", async () => {

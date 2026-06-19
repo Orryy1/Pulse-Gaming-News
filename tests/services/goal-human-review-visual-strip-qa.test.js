@@ -206,6 +206,42 @@ test("visual strip QA warns on borderline edge text risk before obvious cutoff",
   assert.equal(report.visual_repair_work_order.summary.safe_text_margin_rerender_count, 1);
 });
 
+test("visual strip QA ignores branded dark edge masks without text-cutoff evidence", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-strip-qa-edge-mask-"));
+  const framePath = path.join(dir, "frame.jpg");
+  await fs.writeFile(framePath, "fake image bytes");
+  const stripReport = visualStripReport({ framePath });
+  stripReport.cards[0].thumbnail_headline = "STEAM DEMO FIGHT";
+  const report = await buildHumanReviewVisualStripQaReport({
+    visualStripReport: stripReport,
+    generatedAt: "2026-06-19T23:05:00.000Z",
+    analyseFrame: async () => ({
+      width: 360,
+      height: 640,
+      prescan: {
+        edge_density: 0.13,
+        dark_pixel_ratio: 0.2,
+        bright_pixel_ratio: 0.34,
+        saturation_mean: 0.47,
+        text_overlay_likelihood: 0.01,
+        white_text_on_dark_likelihood: 0,
+      },
+      border: {
+        text_cutoff_risk_score: 0.63,
+        edge_touch_ratio: 0.21,
+        bright_edge_ratio: 0.048,
+        dark_edge_ratio: 0.27,
+      },
+    }),
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.summary.risk_card_count, 0);
+  assert.equal(report.summary.frame_warning_count, 0);
+  assert.equal(report.cards[0].verdict, "GREEN");
+  assert.ok(!report.cards[0].risk_reasons.includes("possible_edge_text_cutoff"));
+});
+
 test("visual strip QA emits executable production render jobs when flagged cards have final render evidence", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-strip-qa-render-job-"));
   const artifactDir = path.join(dir, "story-one");

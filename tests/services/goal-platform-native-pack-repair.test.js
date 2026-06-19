@@ -484,6 +484,7 @@ test("platform-native pack repair refreshes stale cover headlines", async () => 
     thumbnail_headline: "GEARS OF WAR",
     thumbnail_text: "GEARS OF WAR",
     suggested_thumbnail_text: "GEARS OF WAR",
+    first_frame_text: "GEARS OF WAR",
     first_spoken_line: "Gears of War E-Day just made its PC pitch very simple.",
     narration_script:
       "Gears of War E-Day just made its PC pitch very simple. The question is whether a 130 gig install is now normal for a campaign-first blockbuster.",
@@ -533,6 +534,7 @@ test("platform-native pack repair refreshes stale cover headlines", async () => 
   assert.equal(repairedCanonical.thumbnail_headline, "GEARS E-DAY 130GB TEST");
   assert.equal(repairedCanonical.thumbnail_text, "GEARS E-DAY 130GB TEST");
   assert.equal(repairedCanonical.suggested_thumbnail_text, "GEARS E-DAY 130GB TEST");
+  assert.equal(repairedCanonical.first_frame_text, "GEARS E-DAY 130GB TEST");
   const score = await fs.readJson(path.join(artifactDir, "pulse_media_house_score.json"));
   assert.ok(!score.hard_failures.includes("media_house:first_frame_or_thumbnail_not_attention_led"));
   assert.equal(applied.repairs[0].backup_files.canonical_story_manifest.endsWith("canonical_story_manifest.json"), true);

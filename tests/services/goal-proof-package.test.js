@@ -262,6 +262,7 @@ test("goal proof package turns source-admin copy into attention-led Shorts packa
   assert.doesNotMatch(outputs.youtube_shorts.description, /Confirmed Drop|Sources and related links/i);
   assert.match(outputs.youtube_shorts.description, /trust test|wishlists|weak controls/i);
   assert.notEqual(outputs.youtube_shorts.cover_frame.headline, "STEAM NEXT FEST");
+  assert.equal(outputs.youtube_shorts.cover_frame.headline, "STEAM DEMO FIGHT");
   assert.doesNotMatch(outputs.youtube_shorts.cover_frame.headline, /\b(?:MAKE|HAS|TO|INTO|WITH)$/i);
   assert.equal(mediaHousePrivate.platformCopyTooPlain(pack.platform_publish_manifest), false);
   assert.equal(

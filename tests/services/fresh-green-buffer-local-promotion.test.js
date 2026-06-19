@@ -308,7 +308,7 @@ test("fresh buffer promotion packages fresh source claims as attention-led publi
             source_type: "official_trailer",
           },
         ],
-        thumbnail_headline: "HORROR TRUST TEST",
+        thumbnail_headline: "HORROR CAMERA RISK",
         narration_script:
           "End of Abyss just gave horror fans a cleaner question than another creepy trailer. Xbox Wire says the top-down Metroidvania comes from Section 9 Interactive, a new studio with former Tarsier leads behind Little Nightmares and Reanimal. That legacy buys attention, not trust. The real test is whether the camera angle can still make players feel trapped, exposed and curious enough to keep pushing deeper. Follow Pulse Gaming so you never miss a beat.",
       }),

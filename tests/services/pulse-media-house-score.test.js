@@ -233,7 +233,7 @@ test("feed-stop Shorts descriptions with concrete viewer stakes pass the attenti
       firstLine: "Steam Next Fest is the moment a PC game stops hiding behind trailers.",
       description:
         "Steam Next Fest is turning demos into a public trust test for PC games. The best trailer may get attention, but the demo players remember is the one that wins the week. Source: Steam.",
-      cover: "STEAM NEXT FEST TRUST TEST",
+      cover: "STEAM DEMO FIGHT",
     },
     {
       title: "Gears E-Day Has A 130GB Problem",
@@ -267,6 +267,32 @@ test("feed-stop Shorts descriptions with concrete viewer stakes pass the attenti
     assert.ok(!report.hard_failures.includes("media_house:platform_copy_too_plain"), story.title);
     assert.ok(!report.hard_failures.includes("media_house:first_frame_or_thumbnail_not_attention_led"), story.title);
   }
+});
+
+test("proof-card thumbnail text fails when it lacks instant viewer stakes", () => {
+  const report = buildPulseMediaHouseScore(strongStory({
+    canonical: {
+      ...strongStory().canonical,
+      selected_title: "Steam Next Fest Turns Demos Into A Trust Fight",
+      canonical_subject: "Steam Next Fest",
+      first_spoken_line: "Steam Next Fest is the moment a PC game stops hiding behind trailers.",
+      thumbnail_headline: "STEAM NEXT FEST TRUST TEST",
+    },
+    platformManifest: {
+      outputs: {
+        youtube_shorts: {
+          title: "Steam Next Fest Turns Demos Into A Trust Fight",
+          description:
+            "Steam Next Fest is turning demos into a public trust test for PC games. The best trailer may get attention, but the demo players remember is the one that wins the week. Source: Steam.",
+          cover_frame: { headline: "STEAM NEXT FEST TRUST TEST" },
+        },
+      },
+    },
+  }));
+
+  assert.equal(report.verdict, "RED");
+  assert.ok(report.hard_failures.includes("media_house:first_frame_or_thumbnail_not_attention_led"));
+  assert.equal(report.shorts_attention_report.status, "blocked");
 });
 
 test("valid but mild platform descriptions fail when they lack a viewer stake", () => {

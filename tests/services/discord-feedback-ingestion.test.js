@@ -301,6 +301,33 @@ test("reports when the outbound Discord webhook target is not readable by feedba
   assert.match(report.capability.operator_actions[0], /DISCORD_FEEDBACK_CHANNEL_ID/);
 });
 
+test("builds ingestion health and missed-cycle alerts for webhook channel gaps", () => {
+  const report = buildDiscordFeedbackIngestionReport({
+    capability: {
+      status: "loaded_with_feedback_channel_gap",
+      channel_count: 4,
+      messages_returned: 50,
+      webhook_channel_discovered: false,
+      feedback_gap: "webhook_channel_not_readable_by_bot_token",
+      operator_actions: [
+        "Set DISCORD_FEEDBACK_CHANNEL_ID to webhook-channel with a bot token that can read it.",
+      ],
+      rate_limit_retries: 1,
+    },
+    messages: [],
+  });
+
+  assert.equal(report.ingestion_health.status, "amber");
+  assert.equal(report.ingestion_health.can_read_operational_alerts, false);
+  assert.equal(report.ingestion_health.rate_limit_retries, 1);
+  assert.deepEqual(report.ingestion_health.missed_cycle_alerts, [
+    "discord_ingestion_loaded_with_feedback_channel_gap",
+    "webhook_channel_not_readable_by_bot_token",
+    "operational_alert_channel_not_ingested",
+  ]);
+  assert.match(report.ingestion_health.operator_actions[0], /DISCORD_FEEDBACK_CHANNEL_ID/);
+});
+
 test("Discord feedback ingestion retries message reads after 429 Retry-After", async () => {
   const calls = [];
   const slept = [];

@@ -238,6 +238,65 @@ test("applyEnabledPlatformAutoPublishReadinessScope: scheduler-ready approvals d
   assert.equal(scoped.pillars.strict_dry_run_control.raw.blocked_story_count_still_visible, 9);
 });
 
+test("applyEnabledPlatformAutoPublishReadinessScope: guarded handoff holds non-selected platform-variant dry-run blockers", () => {
+  const pillars = {
+    strict_dry_run_control: {
+      verdict: "red",
+      reason: "strict_dry_run_blocked",
+      raw: {
+        safety_intact: true,
+        ready_for_unattended_publish: false,
+        ready_story_count: 3,
+        blocked_story_count: 5,
+        platform_publish_now_action_count: 5,
+        platform_deferred_action_count: 12,
+        blocked_action_count: 1,
+        blocked_actions_platform_variant_only: true,
+        human_review_required_action_count: 5,
+        live_publish_allowed_action_count: 0,
+        reviewable_enabled_action_count: 5,
+      },
+    },
+    human_review_approval_gate: {
+      verdict: "green",
+      raw: {
+        approved_action_count: 2,
+        invalid_decision_count: 0,
+        guarded_dispatch_eligible: true,
+      },
+    },
+    guarded_dispatch_preflight: {
+      verdict: "green",
+      raw: {
+        dispatch_ready_action_count: 2,
+        blocked_action_count: 0,
+        safety_blocker_count: 0,
+        ready_for_guarded_dispatch: true,
+      },
+    },
+    guarded_dispatch_executor_preflight: {
+      verdict: "green",
+      raw: {
+        handoff_ready_action_count: 2,
+        blocked_selected_action_count: 0,
+        ready_for_live_executor_handoff: true,
+      },
+    },
+  };
+
+  const scoped = pr.applyEnabledPlatformAutoPublishReadinessScope(pillars);
+
+  assert.equal(scoped.scope.name, "enabled_platform_guarded_handoff");
+  assert.equal(scoped.scope.guard_ready, true);
+  assert.ok(scoped.scope.overridden_pillars.includes("strict_dry_run_control"));
+  assert.equal(scoped.pillars.strict_dry_run_control.verdict, "amber");
+  assert.equal(
+    scoped.pillars.strict_dry_run_control.reason,
+    "non_selected_candidate_blockers_held_by_guarded_scheduler_scope",
+  );
+  assert.equal(scoped.pillars.strict_dry_run_control.raw.blocked_action_count_still_visible, 1);
+});
+
 test("applyEnabledPlatformAutoPublishReadinessScope: core platform credential gaps stay amber", () => {
   const pillars = {
     human_review_approval_gate: {
@@ -2165,7 +2224,10 @@ test("pillarStrictDryRunControl: amber when only non-review platform variants ar
             story_id: "story-one",
             platform: "instagram_reels",
             action: "blocked",
-            blockers: ["platform_variant_stale_after_render:instagram_reels"],
+            blockers: [
+              "platform_variant_stale_after_render:instagram_reels",
+              "platform_variant_source_duration_mismatch:instagram_reels",
+            ],
             live_execution_gate: "blocked",
             live_publish_allowed_from_dry_run: false,
           },
@@ -2190,6 +2252,7 @@ test("pillarStrictDryRunControl: amber when only non-review platform variants ar
     assert.equal(pillar.reason, "human_review_ready_with_platform_variant_blockers");
     assert.equal(pillar.raw.live_publish_allowed_action_count, 0);
     assert.deepEqual(pillar.raw.blocked_action_reason_groups, [
+      { reason: "platform_variant_source_duration_mismatch:instagram_reels", count: 1 },
       { reason: "platform_variant_stale_after_render:instagram_reels", count: 1 },
       { reason: "platform_variant_stale_after_render:tiktok", count: 1 },
     ]);

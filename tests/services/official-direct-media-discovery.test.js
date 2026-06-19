@@ -79,6 +79,66 @@ test("direct-media discovery trims HTML-encoded Steam trailer manifest URLs", ()
   assert.ok(urls.every((item) => !/[\"<>]|&quot;/.test(item.url)));
 });
 
+test("direct-media discovery accepts same-app Steam trailer manifests with generic media names", async () => {
+  const report = await buildOfficialDirectMediaDiscoveryReport({
+    entries: [
+      {
+        story_id: "elliot-gap",
+        entity: "The Adventures of Elliot: The Millennium Tales",
+        source_family: "steam_adventures_of_elliot_millennium_tales_storefront",
+        source_type: "platform_storefront",
+        source_owner: "Steam storefront for The Adventures of Elliot: The Millennium Tales",
+        official_source_url:
+          "https://store.steampowered.com/app/3483510/The_Adventures_of_Elliot_The_Millennium_Tales/",
+      },
+    ],
+    fetchText: async () => ({
+      ok: true,
+      status: 200,
+      text: `
+        &quot;hlsManifest&quot;:&quot;https://video.fastly.steamstatic.com/store_trailers/3483510/632943268/ab5efa5d538a2c90f09927047b2df6199cf5e9d6/1780277626/hls_264_master.m3u8?t=1781798240&quot;
+      `,
+    }),
+    probeMedia: async () => ({ duration_seconds: 94, width: 1920, height: 1080 }),
+  });
+
+  assert.equal(report.summary.discovered, 1);
+  assert.equal(report.rows[0].status, "direct_media_found");
+  assert.equal(report.rows[0].entity_mismatch_candidate_count, 0);
+  assert.equal(
+    report.rows[0].direct_media_url,
+    "https://video.fastly.steamstatic.com/store_trailers/3483510/632943268/ab5efa5d538a2c90f09927047b2df6199cf5e9d6/1780277626/hls_264_master.m3u8?t=1781798240",
+  );
+});
+
+test("direct-media discovery rejects Steam trailer manifests from a different app id", async () => {
+  const report = await buildOfficialDirectMediaDiscoveryReport({
+    entries: [
+      {
+        story_id: "elliot-gap",
+        entity: "The Adventures of Elliot: The Millennium Tales",
+        source_family: "steam_adventures_of_elliot_millennium_tales_storefront",
+        source_type: "platform_storefront",
+        source_owner: "Steam storefront for The Adventures of Elliot: The Millennium Tales",
+        official_source_url:
+          "https://store.steampowered.com/app/3483510/The_Adventures_of_Elliot_The_Millennium_Tales/",
+      },
+    ],
+    fetchText: async () => ({
+      ok: true,
+      status: 200,
+      text: `
+        &quot;hlsManifest&quot;:&quot;https://video.fastly.steamstatic.com/store_trailers/4394810/123456789/hash/1780277626/hls_264_master.m3u8?t=1781798240&quot;
+      `,
+    }),
+    probeMedia: async () => ({ duration_seconds: 94, width: 1920, height: 1080 }),
+  });
+
+  assert.equal(report.summary.discovered, 0);
+  assert.equal(report.rows[0].status, "no_direct_media_found");
+  assert.equal(report.rows[0].rejection_reason, "entity_mismatch_direct_media_candidates");
+});
+
 test("direct-media discovery expands Nintendo Cloudinary H264 poster URLs into mp4 candidates", () => {
   const urls = discoverDirectMediaUrlsFromText({
     baseUrl: "https://www.nintendo.com/us/store/products/super-mario-rpg-switch/",

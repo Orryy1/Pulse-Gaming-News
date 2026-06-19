@@ -92,6 +92,7 @@ function readyJob(storyId, artifactDir, overrides = {}) {
     evidence: {
       narration_audio_path: path.join(artifactDir, "audio.mp3"),
       word_timestamps_path: path.join(artifactDir, "timestamps.json"),
+      word_timestamp_source: "local_whisper_word_alignment",
       materialised_motion_clip_count: 5,
       distinct_motion_family_count: 5,
       materialised_motion_clip_paths: [
@@ -185,6 +186,8 @@ test("goal production render materializer renders ready jobs and writes a final 
   assert.equal(calls[0].story.primary_source, "GameSpot");
   assert.equal(calls[0].story.audio_path, path.join(artifactDir, "audio.mp3"));
   assert.equal(calls[0].story.timestamps_path, path.join(artifactDir, "timestamps.json"));
+  assert.equal(calls[0].story.word_timestamp_source, "local_whisper_word_alignment");
+  assert.equal(calls[0].story.word_timestamp_alignment_required, "local_whisper_word_alignment");
   assert.deepEqual(calls[0].story.video_clips, [
     path.join(artifactDir, "clip-1.mp4"),
     path.join(artifactDir, "clip-2.mp4"),

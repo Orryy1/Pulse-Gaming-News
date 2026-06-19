@@ -658,6 +658,24 @@ test("Studio V4 proof renderer accepts strict local Whisper timestamps for revie
   assert.equal(result.local_timing_strict, true);
 });
 
+test("Studio V4 proof renderer accepts strict timestamp source supplied by render story", () => {
+  const result = validateProofTimestampPayload(
+    {
+      meta: {
+        provider: "local",
+      },
+      words: [
+        { word: "Hades", start: 0, end: 0.2 },
+        { word: "sequel", start: 0.24, end: 0.5 },
+      ],
+    },
+    { wordTimestampSource: "local_whisper_word_alignment" },
+  );
+
+  assert.equal(result.word_timestamp_source, "local_whisper_word_alignment");
+  assert.equal(result.local_timing_strict, true);
+});
+
 test("Studio V4 proof renderer blocks review MP4s with mid-render voice jumps", () => {
   assert.equal(typeof assertProofAudioSegmentLoudness, "function");
 

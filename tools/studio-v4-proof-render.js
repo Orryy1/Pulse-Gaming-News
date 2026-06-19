@@ -641,12 +641,14 @@ function timestampPayloadMeta(payload = {}) {
   return {};
 }
 
-function validateProofTimestampPayload(payload = {}) {
+function validateProofTimestampPayload(payload = {}, options = {}) {
   const meta = timestampPayloadMeta(payload);
   const source = String(
     meta.wordTimestampSource ||
       meta.word_timestamp_source ||
       payload.wordTimestampSource ||
+      options.wordTimestampSource ||
+      options.word_timestamp_source ||
       "",
   ).trim();
   const provider = String(
@@ -1082,7 +1084,9 @@ async function renderProof({ storyJson, output }) {
   });
   const assPath = path.join(TEST_OUT, `${story.id || "story"}_studio_v4_proof.ass`);
   const timestampData = await fs.readJson(timestampsPath);
-  const timestampValidation = validateProofTimestampPayload(timestampData);
+  const timestampValidation = validateProofTimestampPayload(timestampData, {
+    wordTimestampSource: story.word_timestamp_source,
+  });
   const scriptText = renderNarrationScriptText(story);
   const words = prepareSubtitleWords({
     words: subtitleWordsFromTimestampPayload(timestampData),

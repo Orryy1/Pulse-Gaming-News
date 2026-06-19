@@ -8,11 +8,13 @@ const {
   buildOfficialSourceWatchlist,
   candidateSupplyMonitorNeedsFreshIntake,
   candidateSupplyMonitorNeedsRepair,
+  buildMotionCapacityIndex,
   fingerprintTitle,
   formatCandidateSupplyMonitorDiscord,
   formatCandidateSupplyMarkdown,
   shouldNotifyCandidateSupplyMonitor,
 } = require("../../lib/ops/candidate-supply");
+const { parseArgs } = require("../../tools/candidate-supply-engine");
 
 function candidate(id, overrides = {}) {
   return {
@@ -56,6 +58,23 @@ test("fingerprintTitle dedupes outlet variants of the same story", () => {
     fingerprintTitle("Nintendo confirms a Switch 2 gameplay trailer"),
     fingerprintTitle("Nintendo confirmed Switch 2 gameplay trailer"),
   );
+});
+
+test("candidate supply CLI accepts repeatable motion-capacity reports", () => {
+  const args = parseArgs([
+    "node",
+    "tools/candidate-supply-engine.js",
+    "--source-family-acquisition-report",
+    "output/source-family.json",
+    "--motion-pack-report=output/motion-packs.json",
+    "--source-deficit-report",
+    "output/source-deficit.json",
+  ]);
+
+  assert.equal(args.motionCapacityReports.length, 3);
+  assert.ok(args.motionCapacityReports[0].endsWith("output\\source-family.json"));
+  assert.ok(args.motionCapacityReports[1].endsWith("output\\motion-packs.json"));
+  assert.ok(args.motionCapacityReports[2].endsWith("output\\source-deficit.json"));
 });
 
 test("buildCandidateSupplyReport scores supply, dedupes stories and enforces green-ready targets", () => {
@@ -296,4 +315,208 @@ test("candidate supply monitor does not trigger fresh intake when runway has res
   assert.equal(report.candidate_buffer.publish_window_runway.status, "covered_with_reserve");
   assert.equal(candidateSupplyMonitorNeedsRepair(report), false);
   assert.equal(candidateSupplyMonitorNeedsFreshIntake(report), false);
+});
+
+test("buildCandidateSupplyReport surfaces motion-capacity repair lanes for fresh blocked stories", () => {
+  const now = new Date("2026-06-19T02:00:00.000Z");
+  const stories = [
+    {
+      id: "motion-close",
+      title: "EA Sports FC 26 Adds A Game Pass Trial",
+      source_type: "rss",
+      subreddit: "Xbox Wire",
+      url: "https://news.xbox.com/en-us/2026/06/18/ea-sports-fc-26-game-pass/",
+      timestamp: "2026-06-18T12:00:00.000Z",
+    },
+    {
+      id: "operator-needed",
+      title: "Granblue Fantasy Relink Demo Gets A Test",
+      source_type: "rss",
+      subreddit: "PlayStation Blog",
+      url: "https://blog.playstation.com/2026/06/18/granblue-fantasy-relink-demo/",
+      timestamp: "2026-06-18T12:30:00.000Z",
+    },
+    {
+      id: "ready-one",
+      title: "Nintendo Confirms Switch 2 Story ready-one",
+      source_type: "rss",
+      subreddit: "IGN",
+      url: "https://www.ign.com/articles/ready-one",
+      timestamp: "2026-06-18T13:00:00.000Z",
+    },
+  ];
+  const candidateReport = {
+    generated_at: now.toISOString(),
+    totals: { stories_seen: 2, returned: 2, pending_audio: 0 },
+    candidates: [
+      candidate("motion-close", {
+        title: "EA Sports FC 26 Adds A Game Pass Trial",
+        status: "review",
+        reasons: ["preflight_qa_blocked"],
+        source: { source_type: "rss", exported_path: "" },
+        preflight_qa: {
+          status: "blocked",
+          blockers: ["footage:v4_motion_blocked"],
+        },
+      }),
+      candidate("operator-needed", {
+        title: "Granblue Fantasy Relink Demo Gets A Test",
+        status: "review",
+        reasons: ["preflight_qa_blocked"],
+        source: { source_type: "rss", exported_path: "" },
+        preflight_qa: {
+          status: "blocked",
+          blockers: ["footage:v4_motion_blocked"],
+        },
+      }),
+      candidate("ready-one", {
+        score: 0,
+        source_manifest: {
+          primary_source: {
+            name: "IGN",
+            url: "https://www.ign.com/articles/ready-one",
+            published_at: "2026-06-18T13:00:00.000Z",
+          },
+          source_age_policy_hours: 168,
+        },
+        preflight_qa: {
+          status: "pass",
+          blockers: [],
+          checks: {
+            source_age: {
+              result: "pass",
+              evidence: {
+                source_published_at: "2026-06-18T13:00:00.000Z",
+                policy_hours: 168,
+              },
+            },
+          },
+        },
+      }),
+    ],
+  };
+  const motionCapacityReports = [
+    {
+      rows: [
+        {
+          story_id: "motion-close",
+          readiness_status: "v4_motion_blocked",
+          blockers: ["distinct_motion_families_minimum_not_met"],
+          current_motion_clips: 8,
+          current_motion_families: 3,
+          required_motion_clips: 5,
+          required_motion_families: 4,
+          missing_motion_clips: 0,
+          missing_motion_families: 1,
+          acquisition_counts: {
+            direct_media_ready: 2,
+            licence_or_operator_required: 0,
+          },
+          source_family_candidates: [{ source_family: "ea_official_trial_trailer" }],
+        },
+        {
+          story_id: "operator-needed",
+          readiness_status: "v4_motion_blocked",
+          blockers: ["actual_motion_clip_minimum_not_met", "distinct_motion_families_minimum_not_met"],
+          current_motion_clips: 4,
+          current_motion_families: 3,
+          required_motion_clips: 5,
+          required_motion_families: 4,
+          missing_motion_clips: 1,
+          missing_motion_families: 1,
+          governed_visual_plan: { operator_approval_required: true },
+          acquisition_counts: {
+            direct_media_ready: 0,
+            licence_or_operator_required: 1,
+          },
+        },
+      ],
+    },
+  ];
+
+  const report = buildCandidateSupplyReport({
+    stories,
+    candidateReport,
+    motionCapacityReports,
+    channelConfig: {},
+    now,
+    targets: {
+      greenReadyCandidates: 5,
+      sourceSafeCandidates: 2,
+      v4ReadyCandidates: 2,
+      freshSourceBackedStories: 3,
+    },
+  });
+
+  const index = buildMotionCapacityIndex(motionCapacityReports);
+  assert.equal(index.get("motion-close").repair_priority, "high");
+  assert.equal(index.get("operator-needed").operator_required, true);
+  assert.equal(report.summary.motion_capacity_repairable_candidates, 1);
+  assert.equal(report.summary.motion_capacity_operator_required_candidates, 1);
+  assert.equal(report.summary.motion_capacity_near_ready_candidates, 1);
+  const repairableScorecard = report.priority_scorecards.find((item) => item.story_id === "motion-close");
+  assert.equal(repairableScorecard.motion_capacity.repair_priority, "high");
+  assert.ok(report.warnings.includes("motion_repairable_candidates_available:1"));
+  assert.equal(report.next_action, "promote_motion_repairable_candidates_with_official_direct_media");
+  assert.match(formatCandidateSupplyMarkdown(report), /Motion Capacity/);
+  assert.match(formatCandidateSupplyMonitorDiscord(report), /Motion repairable: 1/);
+});
+
+test("motion-capacity merge keeps latest blocking validation evidence authoritative", () => {
+  const index = buildMotionCapacityIndex([
+    {
+      rows: [
+        {
+          story_id: "planet-crafter",
+          readiness_status: "v4_motion_blocked",
+          current_motion_clips: 3,
+          current_motion_families: 1,
+          required_motion_clips: 5,
+          required_motion_families: 4,
+          missing_motion_clips: 2,
+          missing_motion_families: 3,
+          acquisition_counts: {
+            direct_media_ready: 1,
+            licence_or_operator_required: 0,
+          },
+        },
+      ],
+    },
+    {
+      rows: [
+        {
+          story_id: "planet-crafter",
+          readiness_status: "v4_motion_blocked",
+          blockers: ["actual_motion_clip_minimum_not_met", "distinct_motion_families_minimum_not_met"],
+          current_motion_clips: 0,
+          current_motion_families: 0,
+          required_motion_clips: 5,
+          required_motion_families: 4,
+          missing_motion_clips: 5,
+          missing_motion_families: 4,
+          acquisition_counts: {
+            direct_media_ready: 1,
+            licence_or_operator_required: 0,
+          },
+          required_acquisitions: [
+            {
+              direct_media_url: "https://example.invalid/planet-crafter.m3u8",
+              segment_validation_status: "validation_failed",
+            },
+          ],
+        },
+      ],
+    },
+  ]);
+
+  const capacity = index.get("planet-crafter");
+  assert.equal(capacity.current_motion_clips, 0);
+  assert.equal(capacity.current_motion_families, 0);
+  assert.equal(capacity.missing_motion_clips, 5);
+  assert.equal(capacity.missing_motion_families, 4);
+  assert.equal(capacity.motion_ready, false);
+  assert.equal(capacity.near_ready, false);
+  assert.equal(capacity.repairable, false);
+  assert.equal(capacity.direct_media_ready, 1);
+  assert.equal(capacity.actionable_direct_media_ready, 0);
 });

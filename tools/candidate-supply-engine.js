@@ -16,7 +16,7 @@ const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "output", "candidate-supply");
 
 function parseArgs(argv = process.argv) {
-  const args = { json: false, outDir: OUT, limit: 30, help: false };
+  const args = { json: false, outDir: OUT, limit: 30, help: false, motionCapacityReports: [] };
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--json") args.json = true;
@@ -25,9 +25,52 @@ function parseArgs(argv = process.argv) {
     else if (arg.startsWith("--out-dir=")) args.outDir = path.resolve(ROOT, arg.slice("--out-dir=".length));
     else if (arg === "--limit") args.limit = Number(argv[++i] || args.limit);
     else if (arg.startsWith("--limit=")) args.limit = Number(arg.slice("--limit=".length));
+    else if (
+      arg === "--motion-capacity-report" ||
+      arg === "--source-family-acquisition-report" ||
+      arg === "--motion-pack-report" ||
+      arg === "--source-deficit-report"
+    ) {
+      const reportPath = argv[++i] || "";
+      if (reportPath) args.motionCapacityReports.push(path.resolve(ROOT, reportPath));
+    } else if (arg.startsWith("--motion-capacity-report=")) {
+      args.motionCapacityReports.push(path.resolve(ROOT, arg.slice("--motion-capacity-report=".length)));
+    } else if (arg.startsWith("--source-family-acquisition-report=")) {
+      args.motionCapacityReports.push(path.resolve(ROOT, arg.slice("--source-family-acquisition-report=".length)));
+    } else if (arg.startsWith("--motion-pack-report=")) {
+      args.motionCapacityReports.push(path.resolve(ROOT, arg.slice("--motion-pack-report=".length)));
+    } else if (arg.startsWith("--source-deficit-report=")) {
+      args.motionCapacityReports.push(path.resolve(ROOT, arg.slice("--source-deficit-report=".length)));
+    }
   }
   if (!Number.isFinite(args.limit) || args.limit <= 0) args.limit = 30;
   return args;
+}
+
+async function readMotionCapacityReports(reportPaths = []) {
+  const reports = [];
+  for (const reportPath of reportPaths) {
+    if (!reportPath) continue;
+    if (!(await fs.pathExists(reportPath))) {
+      reports.push({
+        rows: [],
+        read_error: "motion_capacity_report_not_found",
+        path: reportPath,
+      });
+      continue;
+    }
+    try {
+      const report = await fs.readJson(reportPath);
+      reports.push({ ...report, path: report.path || reportPath });
+    } catch (err) {
+      reports.push({
+        rows: [],
+        read_error: err.message || "motion_capacity_report_read_failed",
+        path: reportPath,
+      });
+    }
+  }
+  return reports;
 }
 
 async function buildFreshCandidateReport({ limit = 30 } = {}) {
@@ -70,7 +113,14 @@ async function buildFreshCandidateReport({ limit = 30 } = {}) {
 async function main(argv = process.argv) {
   const args = parseArgs(argv);
   if (args.help) {
-    process.stdout.write("Usage: node tools/candidate-supply-engine.js [--json] [--limit N] [--out-dir DIR]\n");
+    process.stdout.write([
+      "Usage: node tools/candidate-supply-engine.js [--json] [--limit N] [--out-dir DIR]",
+      "       [--motion-capacity-report PATH]",
+      "       [--source-family-acquisition-report PATH]",
+      "       [--motion-pack-report PATH]",
+      "       [--source-deficit-report PATH]",
+      "",
+    ].join("\n"));
     return { exitCode: 0 };
   }
 
@@ -94,10 +144,12 @@ async function main(argv = process.argv) {
       error: err.message || "transcript_audience_audit_failed",
     };
   }
+  const motionCapacityReports = await readMotionCapacityReports(args.motionCapacityReports);
   const report = buildCandidateSupplyReport({
     stories,
     candidateReport,
     transcriptAudienceReport,
+    motionCapacityReports,
     channelConfig,
     now: new Date(),
   });
@@ -132,4 +184,5 @@ module.exports = {
   buildFreshCandidateReport,
   main,
   parseArgs,
+  readMotionCapacityReports,
 };

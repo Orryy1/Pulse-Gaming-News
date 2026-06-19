@@ -114,6 +114,49 @@ test("weak hook fails", () => {
   assert.ok(report.hard_failures.includes("media_house:first_3_seconds_weak"));
 });
 
+test("plain platform descriptions fail the media-house gate", () => {
+  const report = buildPulseMediaHouseScore(strongStory({
+    platformManifest: {
+      outputs: {
+        youtube_shorts: {
+          title: "Forza Horizon 6 Just Broke Xbox's Steam Ceiling",
+          description: "Forza Horizon 6: Confirmed Drop. Source: PC Gamer. Sources and related links: /p/forza",
+          cover_frame: { headline: "STEAM CEILING BROKEN" },
+        },
+        instagram_reels: {
+          caption: "Forza Horizon 6: Confirmed Drop. Full source list is on the story page.",
+        },
+      },
+    },
+  }));
+
+  assert.equal(report.verdict, "RED");
+  assert.ok(report.hard_failures.includes("media_house:platform_copy_too_plain"));
+});
+
+test("subject-only or dangling thumbnail text fails the media-house gate", () => {
+  const base = strongStory();
+  const report = buildPulseMediaHouseScore(strongStory({
+    canonical: {
+      ...base.canonical,
+      first_frame_text: "Forza Horizon 6",
+      thumbnail_headline: "FORZA HORIZON 6 HAS TO MAKE",
+    },
+    platformManifest: {
+      outputs: {
+        youtube_shorts: {
+          title: "Forza Horizon 6 Just Broke Xbox's Steam Ceiling",
+          description: "Forza Horizon 6 just put Xbox's PC strategy under pressure before launch.",
+          cover_frame: { headline: "FORZA HORIZON 6 HAS TO MAKE" },
+        },
+      },
+    },
+  }));
+
+  assert.equal(report.verdict, "RED");
+  assert.ok(report.hard_failures.includes("media_house:first_frame_or_thumbnail_not_attention_led"));
+});
+
 test("copied competitor style fails", () => {
   const report = buildPulseMediaHouseScore(strongStory({
     competitorSimilarity: { max_similarity_score: 0.92, closest_channel: "IGN", copied_template_risk: true },

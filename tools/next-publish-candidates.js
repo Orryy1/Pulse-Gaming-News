@@ -1054,6 +1054,7 @@ function combinePreflightQa({
   bridgeMotionGovernance,
   aggregateBenchmark,
   scriptScorecard,
+  mediaHouse,
 } = {}) {
   const checks = {
     ...(sourceAge ? { source_age: summariseQaResult(sourceAge) } : {}),
@@ -1073,14 +1074,14 @@ function combinePreflightQa({
   if (bridgeMotionGovernance) checks.bridge_motion_governance = summariseQaResult(bridgeMotionGovernance);
   if (aggregateBenchmark) checks.aggregate_benchmark = summariseQaResult(aggregateBenchmark);
   if (scriptScorecard) checks.script_scorecard = summariseQaResult(scriptScorecard);
+  if (mediaHouse) checks.media_house = summariseQaResult(mediaHouse);
   const blockers = [];
   const warnings = [];
 
   for (const [name, check] of Object.entries(checks)) {
     if (check.result === "fail") {
-      blockers.push(
-        `${name}:${check.failures[0] || check.reason || "failed"}`,
-      );
+      const failures = check.failures.length ? check.failures : [check.reason || "failed"];
+      blockers.push(...failures.map((failure) => `${name}:${failure}`));
     } else if (check.result === "warn") {
       warnings.push(`${name}:${check.warnings[0] || "warning"}`);
     } else if (check.result === "skip") {
@@ -3282,6 +3283,55 @@ function incidentGuardPreflightForStory(story = {}) {
   };
 }
 
+function mediaHousePreflightForStory(story = {}) {
+  const { buildPulseMediaHouseScore } = require("../lib/pulse-media-house-score");
+  const score = buildPulseMediaHouseScore({
+    story_id: cleanText(story.id || story.story_id),
+    canonical: {
+      ...publicCopyManifestForStory(story),
+      id: cleanText(story.id || story.story_id),
+      story_id: cleanText(story.id || story.story_id),
+      first_frame_text: cleanText(story.first_frame_text || story.cover_frame_text),
+      thumbnail_headline: cleanText(
+        story.suggested_thumbnail_text ||
+          story.thumbnail_text ||
+          story.thumbnail_headline ||
+          story.cover_headline,
+      ),
+      suggested_thumbnail_text: cleanText(story.suggested_thumbnail_text),
+    },
+    scriptScorecard: objectValue(story.script_scorecard || story.scriptScorecard, {}),
+    visualQuality: objectValue(story.visual_quality_report || story.visualQualityReport, {}),
+    director: objectValue(story.director_beat_map || story.visual_v4_director_plan || story.director_plan, {}),
+    audio: objectValue(story.audio_manifest || story.audio, {}),
+    loudness: objectValue(story.audio_segment_loudness_report || story.loudness_report, {}),
+    affiliate: objectValue(story.affiliate_link_manifest || story.affiliate, {}),
+    platformManifest: objectValue(story.platform_publish_manifest || story.platformManifest, {}),
+    benchmark: objectValue(story.benchmark_report || story.media_house_benchmark || story.benchmarkReport, {}),
+    uniqueness: objectValue(story.uniqueness_report || story.uniqueness, {}),
+    competitorSimilarity: objectValue(story.competitor_similarity_report || story.competitorSimilarity, {}),
+    footageEmpireV2: objectValue(story.footage_empire_v2 || story.footageEmpireV2 || story.footage_empire, {}),
+  });
+  const failures = asArray(score.hard_failures).map((failure) =>
+    cleanText(failure).replace(/^media_house:/, ""),
+  );
+  return {
+    result: failures.length ? "fail" : "pass",
+    failures,
+    warnings: asArray(score.warnings),
+    evidence: {
+      verdict: score.verdict,
+      overall_media_house_score: score.scores?.overall_media_house_score ?? null,
+      title_strength_score: score.scores?.title_strength_score ?? null,
+      first_frame_score: score.scores?.first_frame_score ?? null,
+      first_3_seconds_score: score.scores?.first_3_seconds_score ?? null,
+      competitor_parity_score: score.scores?.competitor_parity_score ?? null,
+      competitor_surpass_score: score.scores?.competitor_surpass_score ?? null,
+      hard_failures: score.hard_failures,
+    },
+  };
+}
+
 async function runPreflightQaForStory(story = {}, opts = {}) {
   const {
     runContentQa = require("../lib/services/content-qa").runContentQa,
@@ -3309,6 +3359,7 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
     runBridgeMotionGovernanceQa = bridgeMotionGovernancePreflightForStory,
     runAggregateBenchmarkQa = aggregateBenchmarkPreflightForStory,
     runScriptScorecardQa = scriptScorecardPreflightForStory,
+    runMediaHouseQa = mediaHousePreflightForStory,
   } = opts;
 
   try {
@@ -3362,6 +3413,10 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
       ? await runAggregateBenchmarkQa(cloneStoryForPreflight(story), opts)
       : null;
     const scriptScorecard = await runScriptScorecardQa(cloneStoryForPreflight(story), opts);
+    const mediaHouseInput = objectValue(story.platform_publish_manifest || story.platformManifest, {});
+    const mediaHouse = opts.mediaHouseQaEnabled === true && Object.keys(mediaHouseInput).length
+      ? await runMediaHouseQa(cloneStoryForPreflight(story), opts)
+      : null;
     return combinePreflightQa({
       sourceAge,
       content,
@@ -3379,6 +3434,7 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
       bridgeMotionGovernance,
       aggregateBenchmark,
       scriptScorecard,
+      mediaHouse,
     });
   } catch (err) {
     return {
@@ -3972,10 +4028,12 @@ async function runCli(argv = process.argv) {
     await attachPreflightQa(report, mergedStories, {
       bridgeMotionGovernanceEvidence,
       upstreamBenchmarkReport,
+      mediaHouseQaEnabled: true,
     });
     await attachStoryPreflight(report, mergedStories, args.storyId, {
       bridgeMotionGovernanceEvidence,
       upstreamBenchmarkReport,
+      mediaHouseQaEnabled: true,
     });
   }
   const markdown = formatNextPublishCandidatesMarkdown(report);
@@ -4023,6 +4081,7 @@ module.exports = {
   existingPublicPlatformFields,
   filterStoriesByStoryId,
   mergeBridgeCandidates,
+  mediaHousePreflightForStory,
   parseArgs,
   readBridgeCandidateManifest,
   readBridgeCandidates,

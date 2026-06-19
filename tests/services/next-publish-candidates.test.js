@@ -1453,6 +1453,99 @@ test("preflight public copy preserves confirmed claims for specific detail check
   assert.equal(preflight.status, "pass");
 });
 
+test("preflight blocks media-house attention failures", async () => {
+  const preflight = await runPreflightQaForStory(
+    baseStory({
+      id: "plain_attention_pack",
+      title: "Steam Next Fest Turns Demos Into A Trust Fight",
+      selected_title: "Steam Next Fest Turns Demos Into A Trust Fight",
+      canonical_subject: "Steam Next Fest",
+      first_spoken_line: "Steam Next Fest is the moment a PC game stops hiding behind trailers.",
+      first_frame_text: "STEAM NEXT FEST",
+      thumbnail_headline: "STEAM NEXT FEST",
+      full_script:
+        "Steam Next Fest is the moment a PC game stops hiding behind trailers. The catch is that a demo exposes controls, performance and whether the first mechanic feels good. Follow Pulse Gaming so you never miss a beat.",
+      platform_publish_manifest: {
+        outputs: {
+          youtube_shorts: {
+            title: "Steam Next Fest Turns Demos Into A Trust Fight",
+            description: "Steam Next Fest: Confirmed Drop. Source: Steam. Sources and related links: /p/steam",
+            cover_frame: { headline: "STEAM NEXT FEST" },
+          },
+        },
+      },
+      visual_quality_report: {
+        result: "pass",
+        scores: {
+          motion_density_score: 92,
+          first_3_seconds_hook_score: 90,
+          source_lock_quality_score: 88,
+          caption_legibility_score: 92,
+          card_hierarchy_score: 86,
+          transition_energy_score: 88,
+          sfx_impact_score: 84,
+          rights_risk_score: 96,
+          media_house_polish_score: 90,
+        },
+        visual_evidence_profile: {
+          generated_only_motion_deck: false,
+          motion_asset_count: 8,
+          real_media_family_count: 4,
+          blockers: [],
+        },
+        failures: [],
+      },
+      director_beat_map: {
+        shot_plan: [{ id: "hook", kind: "hook_slam", startS: 0, durationS: 1.2 }],
+        transition_plan: { planned: [{ family: "impact_cut" }], max_same_family_run: 1 },
+        sound_transition_plan: {
+          sfx: {
+            cue_count: 6,
+            max_same_family_run: 1,
+            cues: [{ family: "impact", atS: 0 }],
+            mastering: { duck_under_narration: true, narration_priority: true },
+          },
+        },
+        caption_policy: { avoid_lower_third_collisions: true },
+      },
+      audio_manifest: {
+        voice_status: "materialized",
+        word_timestamp_count: 60,
+        mix_rules: { narration_priority: true },
+      },
+    }),
+    {
+      mediaHouseQaEnabled: true,
+      runSourceAgeQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+      runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVoiceQualityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVisualEntityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+      runBridgeMotionGovernanceQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runAggregateBenchmarkQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runScriptScorecardQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    },
+  );
+
+  assert.equal(preflight.status, "blocked");
+  assert.ok(
+    preflight.blockers.includes("media_house:platform_copy_too_plain"),
+    JSON.stringify(preflight, null, 2),
+  );
+  assert.ok(
+    preflight.blockers.includes("media_house:first_frame_or_thumbnail_not_attention_led"),
+    JSON.stringify(preflight, null, 2),
+  );
+});
+
 test("bridge preflight blocks stale bridge duration metadata against current render manifest", async (t) => {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-bridge-stale-"));
   t.after(() => fs.remove(tmpDir));

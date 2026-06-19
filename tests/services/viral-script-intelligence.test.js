@@ -167,6 +167,31 @@ test("viral script intelligence accepts concrete horror gameplay stakes", () => 
   assert.deepEqual(result.blockers, []);
 });
 
+test("viral script intelligence accepts Steam demo stakes when player choice is explicit", () => {
+  const script =
+    "Steam Next Fest is the moment a PC game stops hiding behind trailers. " +
+    "From June 15 to 22, Valve is putting demos in players' hands, and that changes the stakes fast. " +
+    "A demo exposes what marketing can dodge: controls, performance, tutorials and whether the first mechanic feels good. " +
+    "For a small studio, one strong demo can turn wishlists into word of mouth. " +
+    "A clumsy opening can make players forget the game before reviews even land. " +
+    "So should developers show an unfinished slice and risk the backlash, or stay quiet until launch? " +
+    "If players try several demos and remember yours, you have already won the week. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "steam-next-fest-demo-stakes",
+      title: "Steam Next Fest Turns Demos Into A Trust Fight",
+      source_name: "Steam",
+    },
+    script,
+  });
+
+  assert.equal(result.verdict, "viral_ready", JSON.stringify(result, null, 2));
+  assert.ok(result.viral_score >= 85, JSON.stringify(result.scores));
+  assert.deepEqual(result.blockers, []);
+});
+
 test("viral script intelligence scores review-spread curiosity beats above the publish threshold", () => {
   const script =
     "Forza Horizon 6 just got the score Xbox needed before launch. " +

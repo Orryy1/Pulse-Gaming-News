@@ -20,6 +20,7 @@ const {
   main: runPublicCopyRepairCli,
 } = require("../../tools/goal-public-copy-repair");
 const { evaluateGoalPublicCopy } = require("../../lib/goal-public-copy-qa");
+const { buildPulseMediaHouseScore } = require("../../lib/pulse-media-house-score");
 const { runScriptCoherenceQa } = require("../../lib/script-coherence-qa");
 const { buildViralScriptIntelligence } = require("../../lib/viral-script-intelligence");
 
@@ -306,6 +307,7 @@ test("public copy repair gives Gears E-Day specs stories a clearer player-impact
     { generatedAt: "2026-06-18T09:30:00.000Z" },
   );
 
+  assert.equal(repaired.manifest.selected_title, "Gears E-Day Has A 130GB Problem");
   assert.match(repaired.manifest.narration_script, /^Gears of War E-Day just turned PC specs into the story\./);
   assert.match(repaired.manifest.narration_script, /PC Gamer says/);
   assert.match(repaired.manifest.narration_script, /130 GB SSD install/);
@@ -359,17 +361,31 @@ test("public copy repair can force a quality rewrite for clean Gears E-Day specs
     forceQualityRewriteStoryIds: ["fresh_gears_eday_pc_specs_20260616"],
   });
   const updated = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+  const platformManifest = await fs.readJson(path.join(artifactDir, "platform_publish_manifest.json"));
   const srt = await fs.readFile(path.join(artifactDir, "captions.srt"), "utf8");
   const workbench = buildAudioRegenerationWorkbench(report, {
     localTts: { ready: true, verdict: "green" },
   });
   const renderWorkOrder = await buildProductionRerenderWorkOrder(report);
+  const mediaHouseScore = buildPulseMediaHouseScore({
+    story_id: "fresh_gears_eday_pc_specs_20260616",
+    canonical: updated,
+    platformManifest,
+  });
 
   assert.equal(report.summary.changed_count, 1);
   assert.equal(report.changed[0].status, "quality_rewrite_pending_audio_rerender");
   assert.equal(report.changed[0].public_copy_regeneration_pending, true);
   assert.match(updated.narration_script, /^Gears of War E-Day just turned PC specs into the story\./);
   assert.match(updated.narration_script, /E-Day has to make 130 GB feel like weight, not bloat\./);
+  assert.doesNotMatch(
+    platformManifest.outputs.youtube_shorts.description,
+    /^PC Gamer reports Gears of War E-Day PC requirements list a 130 GB SSD install\. Source: PC Gamer\.$/,
+  );
+  assert.ok(
+    !mediaHouseScore.hard_failures.includes("media_house:platform_copy_too_plain"),
+    mediaHouseScore.hard_failures.join(", "),
+  );
   assert.match(srt, /RTX 2060-era/);
   assert.match(srt, /2026/);
   assert.deepEqual(workbench.jobs.map((job) => job.story_id), ["fresh_gears_eday_pc_specs_20260616"]);

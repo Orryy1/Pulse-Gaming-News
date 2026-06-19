@@ -1257,6 +1257,101 @@ test("goal audio materializer aligns hyphenated script words when Whisper splits
   assert.deepEqual(timestamps.words.slice(2, 4).map((word) => word.word), ["first", "party"]);
 });
 
+test("goal audio materializer accepts hyphenated title words split in the opening", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-opening-hyphen-"));
+  const script = "Gears of War E-Day just turned PC specs into the story.";
+  const artifactDir = await makePackage(root, "story-opening-hyphen", {
+    selected_title: "Gears E-Day Has A 130GB Problem",
+    narration_script: script,
+  });
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    workbenchReport: {
+      local_tts: { verdict: "green", ready: true },
+      jobs: [workbenchJob("story-opening-hyphen", artifactDir)],
+    },
+    generatedAt: "2026-06-19T09:20:00.000Z",
+    alignmentMode: "whisper",
+    alignWordsWithAudio: async () => ({
+      ok: true,
+      source: "local_whisper_word_alignment",
+      model: "tiny.en",
+      transcript: "Gears of War E Day just turned PC specs into the story.",
+      words: [
+        { word: "Gears", start: 0.06, end: 0.282 },
+        { word: "of", start: 0.322, end: 0.362 },
+        { word: "War", start: 0.403, end: 0.564 },
+        { word: "E", start: 0.664, end: 0.745 },
+        { word: "Day", start: 0.765, end: 0.946 },
+        { word: "just", start: 1.006, end: 1.187 },
+        { word: "turned", start: 1.208, end: 1.429 },
+        { word: "PC", start: 1.489, end: 1.831 },
+        { word: "specs", start: 1.872, end: 2.194 },
+        { word: "into", start: 2.234, end: 2.395 },
+        { word: "the", start: 2.435, end: 2.516 },
+        { word: "story.", start: 2.536, end: 2.878 },
+      ],
+    }),
+    generateTtsForStory: async ({ text, outputPath }) => {
+      const audioPath = path.join(root, outputPath);
+      await fs.outputFile(audioPath, Buffer.alloc(4096, 1));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignment(text),
+      });
+      return { ok: true };
+    },
+  });
+
+  assert.equal(report.summary.materialized_count, 1);
+  const timestamps = await fs.readJson(path.join(root, "output", "audio", "story-opening-hyphen_timestamps.json"));
+  assert.equal(timestamps.meta.wordTimestampSource, "local_whisper_word_alignment");
+  assert.equal(timestamps.meta.timestampWhisperAlignment.script_opening_covered, true);
+  assert.equal(timestamps.meta.timestampWhisperAlignment.script_inserted_actual_word_count, 0);
+  assert.deepEqual(timestamps.words.slice(3, 5).map((word) => word.word), ["E", "Day"]);
+});
+
+test("goal audio materializer keeps the real opening match on long repeated title scripts", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-long-opening-"));
+  const script = "Gears of War E-Day just turned PC specs into the story. PC Gamer says the requirements list a 130 GB SSD install, with RTX 2060-era hardware as the minimum floor. That is normal for a 2026 blockbuster. The catch is not the number. It is what players have to delete before launch night. A 130 GB install means clearing space, waiting through the preload and hoping the campaign earns that footprint. That is the trade-off for Xbox: if E-Day looks expensive because the levels are dense, cinematic and brutal, the size becomes part of the promise. If the opening hours feel padded, storage becomes the first complaint. E-Day has to make 130 GB feel like weight, not bloat. Follow Pulse Gaming so you never miss a beat.";
+  const transcript = "Gears of War E Day just turned PC specs into the story. PC Gamer says the requirements list a 130 GB SSD install, with RTX twenty sixty era hardware as the minimum floor. That is normal for a twenty twenty six blockbuster. The catch is not the number. It is what players have to delete before launch night. A 130 GB install means clearing space, waiting through the preload and hoping the campaign earns that footprint. That is the trade off for Xbox. If E Day looks expensive because the levels are dense, cinematic and brutal, the size becomes part of the promise. If the opening hours feel padded, storage becomes the first complaint. E Day has to make 130 gigabytes feel like weight, not bloat. Follow Pulse Gaming so you never miss a beat.";
+  const artifactDir = await makePackage(root, "story-long-opening-hyphen", {
+    selected_title: "Gears E-Day Has A 130GB Problem",
+    narration_script: script,
+  });
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    workbenchReport: {
+      local_tts: { verdict: "green", ready: true },
+      jobs: [workbenchJob("story-long-opening-hyphen", artifactDir)],
+    },
+    generatedAt: "2026-06-19T09:32:00.000Z",
+    alignmentMode: "whisper",
+    alignWordsWithAudio: async () => ({
+      ok: true,
+      source: "local_whisper_word_alignment",
+      model: "small.en",
+      transcript,
+      words: whisperWordsFromScript(transcript),
+    }),
+    generateTtsForStory: async ({ text, outputPath }) => {
+      const audioPath = path.join(root, outputPath);
+      await fs.outputFile(audioPath, Buffer.alloc(4096, 1));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignment(text),
+      });
+      return { ok: true };
+    },
+  });
+
+  assert.equal(report.summary.materialized_count, 1);
+  const timestamps = await fs.readJson(path.join(root, "output", "audio", "story-long-opening-hyphen_timestamps.json"));
+  assert.equal(timestamps.meta.wordTimestampSource, "local_whisper_word_alignment");
+  assert.equal(timestamps.meta.timestampWhisperAlignment.script_opening_covered, true);
+  assert.equal(timestamps.words.slice(0, 6).map((word) => word.word).join(" "), "Gears of War E Day just");
+});
+
 test("goal audio materializer prefers local Whisper word alignment when configured", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-whisper-"));
   const script = "Hades II lands on console.";

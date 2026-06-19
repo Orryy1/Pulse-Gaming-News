@@ -2902,6 +2902,49 @@ test("render input work order routes commercial disclosure incidents to disclosu
   assert.ok(workOrder.jobs[0].blockers.includes("commercial_deal_disclosure_missing"));
 });
 
+test("render input work order maps local cutover missing_input blockers to repair actions", () => {
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-06-19T04:50:00.000Z",
+      queue: [],
+      blocked: [
+        {
+          story_id: "fresh-local-story",
+          title: "Fresh Local Story",
+          artifact_dir: "C:/repo/output/autonomy-loop/fresh-local-story",
+          status: "blocked",
+          blockers: [
+            "missing_input:director_beat_map.json",
+            "missing_input:rights_ledger.json",
+            "missing_input:benchmark_report.json",
+            "missing_input:visual_quality_report.json",
+            "missing_input:sfx_manifest.json",
+            "missing_input:platform_publish_manifest.json",
+            "missing_input:publish_verdict.json",
+            "missing_input:captions.srt",
+            "missing_input:visual_v4_render.mp4",
+          ],
+        },
+      ],
+    },
+    generatedAt: "2026-06-19T04:51:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.story_count, 1);
+  assert.equal(workOrder.summary.blocked_on_render_inputs_count, 1);
+  const actionIds = workOrder.jobs[0].actions.map((action) => action.action_id);
+  assert.ok(actionIds.includes("generate_final_narration_audio_and_word_timestamps"));
+  assert.ok(actionIds.includes("materialise_validated_real_motion_clips"));
+  assert.ok(actionIds.includes("repair_rights_ledger_evidence"));
+  assert.ok(actionIds.includes("repair_sound_design_benchmark"));
+  assert.ok(actionIds.includes("repair_aggregate_benchmark"));
+  assert.ok(actionIds.includes("materialise_final_mp4"));
+  assert.ok(actionIds.includes("generate_caption_file"));
+  assert.ok(actionIds.includes("repair_render_manifest"));
+  assert.ok(workOrder.jobs[0].blockers.includes("final_narration_audio_missing"));
+  assert.ok(workOrder.jobs[0].blockers.includes("materialised_motion_clips_missing"));
+});
+
 test("render input work order writes JSON and Markdown reports", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-render-input-workorder-"));
   const workOrder = buildGoalRenderInputWorkOrder({

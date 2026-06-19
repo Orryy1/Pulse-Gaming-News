@@ -1721,7 +1721,7 @@ test("goal audio materializer retries Whisper when mid-script ASR insertions exc
   }
 });
 
-test("goal audio materializer accepts tiny ASR insertions on long high-coverage Whisper alignment", async () => {
+test("goal audio materializer blocks tiny ASR insertions even on long high-coverage Whisper alignment", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-whisper-long-insertions-"));
   const script = [
     "Nintendo Professor Lawsuit Just Got Weird.",
@@ -1778,14 +1778,11 @@ test("goal audio materializer accepts tiny ASR insertions on long high-coverage 
     },
   });
 
-  assert.equal(report.summary.materialized_count, 1);
-  assert.equal(report.summary.failed_count, 0);
-  const timestamps = await fs.readJson(
-    path.join(root, "output", "audio", "story-whisper-long-insertions_timestamps.json"),
-  );
-  assert.equal(timestamps.meta.wordTimestampSource, "local_whisper_word_alignment");
-  assert.equal(timestamps.meta.timestampWhisperAlignment.script_inserted_actual_word_count, 3);
-  assert.equal(timestamps.words.length, expectedWords.length);
+  assert.equal(report.summary.materialized_count, 0);
+  assert.equal(report.summary.failed_count, 1);
+  assert.match(report.jobs[0].error, /local_whisper_word_alignment_failed/);
+  assert.equal(await fs.pathExists(path.join(root, "output", "audio", "story-whisper-long-insertions.mp3")), false);
+  assert.equal(await fs.pathExists(path.join(root, "output", "audio", "story-whisper-long-insertions_timestamps.json")), false);
 });
 
 test("goal audio materializer uses configured stronger Whisper fallbacks before rejecting clean speech", async () => {

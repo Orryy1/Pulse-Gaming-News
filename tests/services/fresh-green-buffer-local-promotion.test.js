@@ -98,3 +98,95 @@ test("fresh buffer promotion CLI is registered and defaults to overnight output"
   assert.match(args.storiesPath, /fresh_source_intake_stories\.json$/);
   assert.match(args.outDir, /overnight-fresh-green-buffer$/);
 });
+
+test("fresh buffer promotion compacts headline-style subjects into the named game", async () => {
+  const generatedAt = "2026-06-19T04:00:00.000Z";
+  const report = buildFreshGreenBufferLocalPromotionReport({
+    stories: [
+      draftStory({
+        id: "rss_gta6_launch_countdown",
+        title: "Here's How I Know We Are Entering The GTA 6 Launch Endgame",
+        canonical_subject: "Here's How I Know We Are Entering The GTA 6 Launch Endgame",
+        canonical_game: "",
+        selected_title: "GTA 6 May Finally Be In Launch Countdown Mode",
+        primary_source: {
+          name: "Kotaku",
+          url: "https://kotaku.com/gta-6-launch-endgame-2026",
+          type: "trusted_editorial_source",
+        },
+        primary_source_url: "https://kotaku.com/gta-6-launch-endgame-2026",
+        source_published_at: "2026-06-18T12:00:00.000Z",
+        confirmed_claims: [
+          "Kotaku argues Rockstar is entering the GTA 6 launch endgame as store and marketing signals shift.",
+        ],
+        thumbnail_headline: "GTA 6 COUNTDOWN",
+        narration_script:
+          "GTA 6 may finally be shifting from delay fear to launch countdown. Kotaku argues Rockstar is entering the launch endgame as store and marketing signals shift. Follow Pulse Gaming so you never miss a beat.",
+      }),
+    ],
+    generatedAt,
+  });
+
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "fresh-buffer-subject-"));
+  const written = await writeFreshGreenBufferLocalPromotionArtifacts(report, { outputDir: outDir });
+  const packageDir = path.join(outDir, "packages", "rss_gta6_launch_countdown");
+
+  const canonical = JSON.parse(
+    fs.readFileSync(path.join(packageDir, "canonical_story_manifest.json"), "utf8"),
+  );
+  assert.equal(canonical.canonical_subject, "GTA 6");
+  assert.equal(canonical.canonical_game, "GTA 6");
+  assert.match(canonical.first_spoken_line, /^GTA 6\b/);
+
+  const storyPackages = JSON.parse(fs.readFileSync(written.storyPackages, "utf8"));
+  assert.equal(storyPackages[0].canonical_subject, "GTA 6");
+  assert.equal(storyPackages[0].canonical_game, "GTA 6");
+});
+
+test("fresh buffer promotion uses selected title over long source headline when multiple games are named", async () => {
+  const generatedAt = "2026-06-19T05:00:00.000Z";
+  const report = buildFreshGreenBufferLocalPromotionReport({
+    stories: [
+      draftStory({
+        id: "rss_gta5_free_upgrade",
+        title:
+          "As GTA Online readies for another large update, and GTA 6 approaches, Rockstar offers free upgrades to GTA 5 on PS5 and Xbox Series S/X",
+        canonical_subject:
+          "As GTA Online readies for another large update, and GTA 6 approaches, Rockstar offers free upgrades to GTA 5 on PS5 and Xbox Series S/X",
+        canonical_game:
+          "As GTA Online readies for another large update, and GTA 6 approaches, Rockstar offers free upgrades to GTA 5 on PS5 and Xbox Series S/X",
+        selected_title: "GTA 5's Free Upgrade Runway",
+        primary_source: {
+          name: "Eurogamer",
+          url: "https://www.eurogamer.net/gta-5-free-ps5-xbox-series-x-s-upgrade",
+          type: "trusted_editorial_source",
+        },
+        primary_source_url: "https://www.eurogamer.net/gta-5-free-ps5-xbox-series-x-s-upgrade",
+        source_published_at: "2026-06-18T13:08:06.000Z",
+        confirmed_claims: [
+          "Eurogamer says Rockstar is giving GTA 5 players on PS4 and Xbox One a free upgrade to PS5 and Xbox Series X/S.",
+        ],
+        thumbnail_headline: "FREE UPGRADE",
+        narration_script:
+          "GTA 5 just became Rockstar's current-gen waiting room. Eurogamer reports Rockstar is giving GTA 5 players on PS4 and Xbox One a free upgrade to PS5 and Xbox Series X/S as GTA Online gears up again and GTA 6 approaches. Follow Pulse Gaming so you never miss a beat.",
+      }),
+    ],
+    generatedAt,
+  });
+
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "fresh-buffer-mixed-subject-"));
+  const written = await writeFreshGreenBufferLocalPromotionArtifacts(report, { outputDir: outDir });
+  const canonical = JSON.parse(
+    fs.readFileSync(
+      path.join(outDir, "packages", "rss_gta5_free_upgrade", "canonical_story_manifest.json"),
+      "utf8",
+    ),
+  );
+  assert.equal(canonical.canonical_subject, "GTA 5");
+  assert.equal(canonical.canonical_game, "GTA 5");
+  assert.match(canonical.first_spoken_line, /^GTA 5\b/);
+
+  const storyPackages = JSON.parse(fs.readFileSync(written.storyPackages, "utf8"));
+  assert.equal(storyPackages[0].canonical_subject, "GTA 5");
+  assert.equal(storyPackages[0].canonical_game, "GTA 5");
+});

@@ -18,6 +18,9 @@ const {
 const {
   buildViralScriptIntelligence,
 } = require("../../lib/viral-script-intelligence");
+const {
+  evaluateGoalPublicCopy,
+} = require("../../lib/goal-public-copy-qa");
 
 const LOCAL_PROFILE = {
   provider: "local",
@@ -27,6 +30,34 @@ const LOCAL_PROFILE = {
   aimMin: 216,
   aimMax: 238,
 };
+
+const SHORT_LOCAL_PROFILE = {
+  provider: "local",
+  secondsPerWord: 0.35,
+  minWords: 175,
+  maxWords: 214,
+  aimMin: 185,
+  aimMax: 205,
+};
+
+function publicCopyQaForScript({ story, script, canonicalSubject, sourceName }) {
+  const firstLine = script.full_script.split(/(?<=[.!?])\s+/).find(Boolean) || "";
+  return evaluateGoalPublicCopy({
+    canonical_subject: canonicalSubject,
+    canonical_game: canonicalSubject,
+    selected_title: script.suggested_title || canonicalSubject,
+    short_title: script.suggested_title || canonicalSubject,
+    thumbnail_headline: script.suggested_thumbnail_text || canonicalSubject,
+    description: `${firstLine} Source: ${sourceName}.`,
+    first_spoken_line: firstLine,
+    narration_script: script.full_script,
+    full_script: script.full_script,
+    tts_script: script.full_script,
+    primary_source: sourceName,
+    primary_source_url: story.article_url || story.url,
+    confirmed_claims: [story.title],
+  });
+}
 
 const SOURCE = fs.readFileSync(
   path.join(__dirname, "..", "..", "lib", "source-bound-script-writer.js"),
@@ -39,6 +70,9 @@ const EDITORIAL_ANGLE_SOURCE = fs.readFileSync(
 
 const INSTRUCTION_LIKE_PUBLIC_SCRIPT_RE =
   /core detail plainly|keep the claim tight|anything outside the report|outside the narration|outside the script|fake certainty|question is practical|what players can actually do with it|source line|decision filter|useful version is narrow|if the source is right|useful take is not blind hype|headline is only the doorway|listing or patch|how players read the next trailer/i;
+const MASS_AUDIENCE_SCAFFOLD_RE =
+  /\b(?:useful|practical|there is a catch|the catch is|simple:|real test|real question|smart question|smarter play|real win|useful debate|useful split|useful choice|useful comparison|useful takeaway|useful bit|practical read|practical move)\b/i;
+const MOJIBAKE_RE = /(?:â€“|â€”|â€˜|â€™|â€œ|â€|PokÃ©mon)/;
 
 test("source-bound fallback builds a validated Forza script from an article-backed Reddit story", () => {
   const story = {
@@ -176,6 +210,27 @@ test("source-bound fallback does not narrate editorial instructions", () => {
   assert.match(script.full_script, /Resident Evil Requiem/i);
   assert.match(script.full_script, /IGN/i);
   assert.doesNotMatch(script.full_script, INSTRUCTION_LIKE_PUBLIC_SCRIPT_RE);
+});
+
+test("source-bound fallback does not misroute gameplay previews as review-score scripts", () => {
+  const story = {
+    id: "resident_evil_requiem_preview",
+    title: "Resident Evil Requiem shows new first-person gameplay in latest preview",
+    source_type: "reddit",
+    subreddit: "Games",
+    article_url:
+      "https://www.ign.com/articles/resident-evil-requiem-preview-first-person-gameplay",
+  };
+
+  const script = buildSourceBoundFallbackScript(story, {
+    runtimeProfile: LOCAL_PROFILE,
+    sourceMaterial:
+      "IGN reports Resident Evil Requiem has new first-person gameplay footage, with a closer look at exploration, lighting and survival-horror pacing.",
+  });
+
+  assert.ok(script);
+  assert.match(script.full_script, /gameplay|footage|movement|camera|controller/i);
+  assert.doesNotMatch(script.full_script, /score|critic badge|review conversation|Metacritic/i);
 });
 
 test("source-bound fallback treats Bungie active-development reports as a live-service trust story", () => {
@@ -394,6 +449,41 @@ test("source-bound fallback turns subscription access into a concrete player-deb
   assert.equal(coherence.result, "pass", coherence.failures.join(", "));
 });
 
+test("source-bound fallback keeps non-GTA subscription access scripts on the named game", () => {
+  const story = {
+    id: "rss_a4b5c10c9b4d8018",
+    title: "EA SPORTS FC 26 Is Now on EA Play",
+    source_type: "rss",
+    article_url: "https://news.xbox.com/en-us/2026/06/18/ea-play-fc-26/",
+  };
+
+  const script = buildSourceBoundFallbackScript(story, {
+    runtimeProfile: {
+      provider: "local",
+      secondsPerWord: 0.35,
+      minWords: 175,
+      maxWords: 214,
+      aimMin: 185,
+      aimMax: 205,
+    },
+    sourceMaterial:
+      "Xbox Wire reports EA SPORTS FC 26 is now available through EA Play, giving subscribers a lower-friction way to try the football game before deciding whether to buy.",
+  });
+
+  assert.ok(script);
+  assert.match(script.full_script, /^EA SPORTS FC 26\b/);
+  assert.match(script.full_script, /Xbox Wire reports/i);
+  assert.match(script.full_script, /EA Play/i);
+  assert.match(script.full_script, /subscription|try|buy|download/i);
+  assert.doesNotMatch(script.full_script, /GTA|Los Santos|Rockstar|sequel marketing|GTA Online/i);
+
+  const coherence = runScriptCoherenceQa(
+    { ...story, ...script },
+    { requireCtaField: true, requireFullScriptCta: true },
+  );
+  assert.equal(coherence.result, "pass", coherence.failures.join(", "));
+});
+
 test("source-bound fallback turns generic fresh trailer stories into concrete viral-ready scripts", () => {
   const story = {
     id: "rss_gta6_cover_art",
@@ -501,6 +591,85 @@ test("source-bound fallback turns GTA 5 free upgrade stories into concrete curre
     /new detail players should clock|player-facing detail|separating from the noise|reason to exist beyond repeating the feed|fades into the feed|stronger short keeps|watchlist/i,
   );
   assert.match(script.full_script, /Follow Pulse Gaming so you never miss a beat\.$/);
+});
+
+test("source-bound fallback turns PlayStation Blog hands-on demo stories into concrete try-before-launch scripts", () => {
+  const story = {
+    id: "rss_ef48a283a91d0f8f",
+    title: "Granblue Fantasy: Relink - Endless Ragnarok hands-on report, demo available today",
+    source_type: "rss",
+    article_url:
+      "https://blog.playstation.com/2026/06/18/granblue-fantasy-relink-endless-ragnarok-hands-on-report-demo-available-today/",
+  };
+
+  const script = buildSourceBoundFallbackScript(story, {
+    runtimeProfile: {
+      provider: "local",
+      secondsPerWord: 0.35,
+      minWords: 175,
+      maxWords: 214,
+      aimMin: 185,
+      aimMax: 205,
+    },
+    sourceMaterial:
+      "Set to touch down on PlayStation 5 and PlayStation 4 on Thursday, July 9, Granblue Fantasy: Relink - Endless Ragnarok is a massive new expansion built to significantly evolve the high-flying action RPG. At a recent press event, PlayStation Blog had the chance to experience the demo.",
+  });
+
+  assert.ok(script);
+  assert.match(script.full_script, /^Granblue Fantasy\b/);
+  assert.match(script.full_script, /PlayStation Blog reports/i);
+  assert.match(script.full_script, /demo|hands-on|July 9|PS5|PlayStation 5/i);
+  assert.match(script.full_script, /try|judge|controller|expansion|combat/i);
+  assert.doesNotMatch(script.full_script, /subscription|GTA|Los Santos|warm-up act/i);
+  assert.doesNotMatch(script.full_script, /the real question is/i);
+  assert.match(script.full_script, /Follow Pulse Gaming so you never miss a beat\.$/);
+
+  const coherence = runScriptCoherenceQa(
+    { ...story, ...script },
+    { requireCtaField: true, requireFullScriptCta: true },
+  );
+  assert.equal(coherence.result, "pass", coherence.failures.join(", "));
+});
+
+test("source-bound fallback turns Xbox Wire exploration-combat previews into specific player-decision scripts", () => {
+  const story = {
+    id: "rss_83a2384dad72273d",
+    title:
+      "How The Adventures of Elliot: The Millennium Tales Balances Exploration, Combat, and Discovery",
+    source_type: "rss",
+    article_url:
+      "https://news.xbox.com/en-us/2026/06/18/the-adventures-of-elliot-exploration-combat-discovery/",
+  };
+
+  const script = buildSourceBoundFallbackScript(story, {
+    runtimeProfile: {
+      provider: "local",
+      secondsPerWord: 0.35,
+      minWords: 175,
+      maxWords: 214,
+      aimMin: 185,
+      aimMax: 205,
+    },
+    sourceMaterial:
+      "Xbox Wire explains how The Adventures of Elliot: The Millennium Tales balances exploration, combat and discovery, with players reading whether the throwback RPG loop has enough modern pace.",
+  });
+
+  assert.ok(script);
+  assert.match(script.full_script, /^The Adventures of Elliot\b/);
+  assert.match(script.full_script, /Xbox Wire reports/i);
+  assert.match(script.full_script, /exploration|combat|discovery|RPG|pace/i);
+  assert.match(script.full_script, /loop|judge|players/i);
+  assert.doesNotMatch(script.full_script, /subscription|GTA|Los Santos|warm-up act/i);
+  assert.ok(
+    (script.full_script.match(/The Adventures of Elliot/g) || []).length <= 2,
+    script.full_script,
+  );
+
+  const coherence = runScriptCoherenceQa(
+    { ...story, ...script },
+    { requireCtaField: true, requireFullScriptCta: true },
+  );
+  assert.equal(coherence.result, "pass", coherence.failures.join(", "));
 });
 
 test("source-bound fallback turns Ocarina viewership stories into a debate about demand, not generic update filler", () => {
@@ -671,6 +840,269 @@ test("source-bound fallback source does not carry internal analyst-note phrases"
   );
 });
 
+test("source-bound fallback turns Dave the Diver DLC into concrete player impact", () => {
+  const script = buildSourceBoundFallbackScript(
+    {
+      id: "rss_dave_jungle_dlc",
+      title: "Why You Should Follow Dave the Diver to the Jungle in New DLC Today",
+      source_type: "rss",
+      subreddit: "Xbox Wire",
+      article_url: "https://news.xbox.com/en-us/2026/06/18/dave-the-diver-in-the-jungle-out-now/",
+    },
+    {
+      sourceName: "Xbox Wire",
+      runtimeProfile: {
+        provider: "local",
+        secondsPerWord: 0.35,
+        minWords: 175,
+        maxWords: 214,
+        aimMin: 185,
+        aimMax: 205,
+      },
+      sourceMaterial:
+        "Xbox Wire reports Dave the Diver goes to the jungle in new DLC available today, with a new biome, new creatures and a reason to return after the main game.",
+    },
+  );
+
+  assert.ok(script);
+  assert.match(script.full_script, /^Dave the Diver\b/);
+  assert.match(script.full_script, /jungle|DLC|available today|out today/i);
+  assert.match(script.full_script, /return|reinstall|come back/i);
+  assert.doesNotMatch(
+    script.full_script,
+    /one concrete player question|fresh .* update|proof still needs to arrive|new detail players should clock/i,
+  );
+
+  const quality = buildViralScriptIntelligence({
+    story: { id: "rss_dave_jungle_dlc", title: "Why You Should Follow Dave the Diver to the Jungle in New DLC Today", source_name: "Xbox Wire" },
+    script: script.full_script,
+  });
+  assert.equal(quality.verdict, "viral_ready", JSON.stringify(quality, null, 2));
+});
+
+test("source-bound fallback makes Xbox Free Play Days practical without generic filler", () => {
+  const script = buildSourceBoundFallbackScript(
+    {
+      id: "rss_free_play_days_20260618",
+      title: "Free Play Days - PGA Tour 2K25, Two Point Museum, Assetto Corsa and Dead by Daylight",
+      source_type: "rss",
+      subreddit: "Xbox Wire",
+      article_url: "https://news.xbox.com/en-us/2026/06/18/free-play-days-06-18-2026/",
+    },
+    {
+      sourceName: "Xbox Wire",
+      runtimeProfile: {
+        provider: "local",
+        secondsPerWord: 0.35,
+        minWords: 175,
+        maxWords: 214,
+        aimMin: 185,
+        aimMax: 205,
+      },
+      sourceMaterial:
+        "Xbox Wire reports Free Play Days includes PGA Tour 2K25, Two Point Museum, Assetto Corsa and Dead by Daylight for a limited weekend trial window.",
+    },
+  );
+
+  assert.ok(script);
+  assert.match(script.full_script, /^Free Play Days\b/);
+  assert.match(script.full_script, /PGA Tour 2K25|Two Point Museum|Assetto Corsa|Dead by Daylight/i);
+  assert.match(script.full_script, /weekend|trial|download|try/i);
+  assert.doesNotMatch(
+    script.full_script,
+    /one concrete player question|fresh .* update|proof still needs to arrive|new detail players should clock/i,
+  );
+
+  const quality = buildViralScriptIntelligence({
+    story: { id: "rss_free_play_days_20260618", title: "Free Play Days - PGA Tour 2K25, Two Point Museum, Assetto Corsa and Dead by Daylight", source_name: "Xbox Wire" },
+    script: script.full_script,
+  });
+  assert.equal(quality.verdict, "viral_ready", JSON.stringify(quality, null, 2));
+});
+
+test("source-bound promoted fresh lanes pass goal public-copy QA", () => {
+  const cases = [
+    {
+      canonicalSubject: "EA SPORTS FC 26",
+      sourceName: "Xbox Wire",
+      story: {
+        id: "rss_ea_fc_26_ea_play",
+        title: "EA SPORTS FC 26 Is Now on EA Play",
+        source_type: "rss",
+        subreddit: "Xbox Wire",
+        article_url: "https://news.xbox.com/en-us/2026/06/18/ea-play-fc-26/",
+      },
+      sourceMaterial: "Xbox Wire reports EA SPORTS FC 26 is now available through EA Play.",
+    },
+    {
+      canonicalSubject: "Garfield",
+      sourceName: "IGN",
+      story: {
+        id: "rss_garfield_gameplay",
+        title: "Garfield - Escape From Monday Gameplay Trailer Teases the Terror of The Curse of the Spinach Lasagna",
+        source_type: "rss",
+        subreddit: "IGN",
+        article_url: "https://www.ign.com/articles/garfield-escape-from-monday-gameplay-trailer",
+      },
+      sourceMaterial: "IGN reports a Garfield gameplay trailer shows platforming, camera movement and repeated gameplay beats.",
+    },
+    {
+      canonicalSubject: "GTA 5",
+      sourceName: "Eurogamer",
+      story: {
+        id: "rss_gta5_upgrade",
+        title: "Rockstar offers free upgrades to GTA 5 on PS5 and Xbox Series X/S as GTA 6 approaches",
+        source_type: "rss",
+        subreddit: "Eurogamer",
+        article_url: "https://www.eurogamer.net/gta-5-free-ps5-xbox-series-x-s-upgrade",
+      },
+      sourceMaterial: "Eurogamer reports GTA 5 players on PS4 and Xbox One can upgrade to PS5 and Xbox Series X/S free as GTA Online updates and GTA 6 approaches.",
+    },
+    {
+      canonicalSubject: "Dave the Diver",
+      sourceName: "Xbox Wire",
+      story: {
+        id: "rss_dave_jungle_dlc",
+        title: "Why You Should Follow Dave the Diver to the Jungle in New DLC Today",
+        source_type: "rss",
+        subreddit: "Xbox Wire",
+        article_url: "https://news.xbox.com/en-us/2026/06/18/dave-the-diver-in-the-jungle-out-now/",
+      },
+      sourceMaterial: "Xbox Wire reports Dave the Diver goes to the jungle in new DLC available today, with a new biome, new creatures and a reason to return after the main game.",
+    },
+    {
+      canonicalSubject: "Hellraiser: Revival",
+      sourceName: "Eurogamer",
+      story: {
+        id: "rss_hellraiser_date",
+        title: "Hellraiser: Revival hooks a release date with trailer full of Doom-like glory kills and otherworldly powers",
+        source_type: "rss",
+        subreddit: "Eurogamer",
+        article_url: "https://www.eurogamer.net/hellraiser-revival-release-date-trailer",
+      },
+      sourceMaterial: "Eurogamer reports Hellraiser: Revival launches on 8th October, 2026, with a new trailer showing combat and otherworldly powers.",
+    },
+    {
+      canonicalSubject: "Nintendo Switch 2",
+      sourceName: "IGN",
+      story: {
+        id: "rss_switch2_patch",
+        title: "Nintendo Switch 2 System Update 22.5.0 Available - Here Are the Patch Notes",
+        source_type: "rss",
+        subreddit: "IGN",
+        article_url: "https://www.ign.com/articles/nintendo-switch-2-system-update-2250-patch-notes",
+      },
+      sourceMaterial: "IGN reports Nintendo Switch 2 system update 22.5.0 is available now, with patch notes covering the latest console firmware update.",
+    },
+    {
+      canonicalSubject: "GTA 6",
+      sourceName: "Forbes",
+      story: {
+        id: "rss_gta6_launch_endgame",
+        title: "Here's How I Know We Are Entering Rockstar's End Game For Launching GTA 6",
+        source_type: "rss",
+        subreddit: "Forbes",
+        article_url: "https://www.forbes.com/sites/paultassi/2026/06/18/gta-6-launch-endgame/",
+      },
+      sourceMaterial:
+        "Forbes argues Rockstar is entering the endgame for launching GTA 6, and says another delay now looks less likely while official preorder and edition details remain missing.",
+    },
+  ];
+
+  for (const item of cases) {
+    const script = buildSourceBoundFallbackScript(item.story, {
+      sourceName: item.sourceName,
+      runtimeProfile: SHORT_LOCAL_PROFILE,
+      sourceMaterial: item.sourceMaterial,
+    });
+    assert.ok(script, item.story.id);
+    const qa = publicCopyQaForScript({
+      story: item.story,
+      script,
+      canonicalSubject: item.canonicalSubject,
+      sourceName: item.sourceName,
+    });
+    assert.equal(qa.verdict, "pass", `${item.story.id} ${JSON.stringify(qa, null, 2)}`);
+  }
+});
+
+test("source-bound promoted fresh lanes avoid template scaffolding and mojibake", () => {
+  const cases = [
+    {
+      story: {
+        id: "rss_ea_fc_26_ea_play",
+        title: "EA SPORTS FC 26 Is Now on EA Play",
+        source_type: "rss",
+        subreddit: "Xbox Wire",
+        article_url: "https://news.xbox.com/en-us/2026/06/18/ea-play-fc-26/",
+      },
+      sourceName: "Xbox Wire",
+      sourceMaterial: "Xbox Wire reports EA SPORTS FC 26 is now available through EA Play.",
+    },
+    {
+      story: {
+        id: "rss_adventures_of_elliot_preview",
+        title: "How The Adventures of Elliot: The Millennium Tales Balances Exploration, Combat, and Discovery",
+        source_type: "rss",
+        subreddit: "Xbox Wire",
+        article_url:
+          "https://news.xbox.com/en-us/2026/06/18/the-adventures-of-elliot-exploration-combat-discovery/",
+      },
+      sourceName: "Xbox Wire",
+      sourceMaterial:
+        "Xbox Wire reports The Adventures of Elliot is framed around exploration, combat and discovery in a new RPG preview.",
+    },
+    {
+      story: {
+        id: "rss_gta6_preorder",
+        title: "7 Burning Questions for the GTA 6 Pre-Order Launch",
+        source_type: "rss",
+        subreddit: "IGN",
+        article_url: "https://www.ign.com/articles/7-burning-questions-for-the-gta-6-pre-order-launch",
+      },
+      sourceName: "IGN",
+      sourceMaterial:
+        "IGN reports Rockstar confirmed GTA 6 preorders launch on June 25, with editions, bonuses, price and platform details still missing.",
+    },
+    {
+      story: {
+        id: "rss_free_play_days_20260618",
+        title: "Free Play Days - PGA Tour 2K25, Two Point Museum, Assetto Corsa and Dead by Daylight",
+        source_type: "rss",
+        subreddit: "Xbox Wire",
+        article_url: "https://news.xbox.com/en-us/2026/06/18/free-play-days-06-18-2026/",
+      },
+      sourceName: "Xbox Wire",
+      sourceMaterial:
+        "Xbox Wire reports Free Play Days includes PGA Tour 2K25, Two Point Museum, Assetto Corsa and Dead by Daylight for a limited weekend trial window.",
+    },
+    {
+      story: {
+        id: "rss_dave_jungle_dlc",
+        title: "Why You Should Follow Dave the Diver to the Jungle in New DLC Today",
+        source_type: "rss",
+        subreddit: "Xbox Wire",
+        article_url: "https://news.xbox.com/en-us/2026/06/18/dave-the-diver-in-the-jungle-out-now/",
+      },
+      sourceName: "Xbox Wire",
+      sourceMaterial:
+        "Xbox Wire reports Dave the Diver goes to the jungle in new DLC available today, with a new biome, new creatures and a reason to return after the main game.",
+    },
+  ];
+
+  for (const item of cases) {
+    const script = buildSourceBoundFallbackScript(item.story, {
+      sourceName: item.sourceName,
+      runtimeProfile: SHORT_LOCAL_PROFILE,
+      sourceMaterial: item.sourceMaterial,
+    });
+    assert.ok(script, item.story.id);
+    assert.doesNotMatch(script.full_script, MASS_AUDIENCE_SCAFFOLD_RE, item.story.id);
+    assert.doesNotMatch(script.full_script, MOJIBAKE_RE, item.story.id);
+    assert.equal(script.cta, "Follow Pulse Gaming so you never miss a beat.");
+  }
+});
+
 test("sourceNameFromUrl gives readable publisher names", () => {
   assert.equal(
     sourceNameFromUrl("https://www.rockpapershotgun.com/example"),
@@ -679,6 +1111,8 @@ test("sourceNameFromUrl gives readable publisher names", () => {
   assert.equal(sourceNameFromUrl("https://twistedvoxel.com/example"), "Twisted Voxel");
   assert.equal(sourceNameFromUrl("https://www.pcgamer.com/example"), "PC Gamer");
   assert.equal(sourceNameFromUrl("https://www.gamespot.com/articles/example/"), "GameSpot");
+  assert.equal(sourceNameFromUrl("https://blog.playstation.com/example"), "PlayStation Blog");
+  assert.equal(sourceNameFromUrl("https://news.xbox.com/en-us/example"), "Xbox Wire");
   assert.equal(sourceNameFromUrl("https://youtu.be/PGqkjDoyI8o"), "YouTube");
   assert.equal(sourceNameFromUrl("https://www.youtube.com/watch?v=LBxjH-lZjEo"), "YouTube");
 });

@@ -32,6 +32,10 @@ const SOURCE = fs.readFileSync(
   path.join(__dirname, "..", "..", "lib", "source-bound-script-writer.js"),
   "utf8",
 );
+const EDITORIAL_ANGLE_SOURCE = fs.readFileSync(
+  path.join(__dirname, "..", "..", "lib", "editorial-angle-engine.js"),
+  "utf8",
+);
 
 const INSTRUCTION_LIKE_PUBLIC_SCRIPT_RE =
   /core detail plainly|keep the claim tight|anything outside the report|outside the narration|outside the script|fake certainty|question is practical|what players can actually do with it|source line|decision filter|useful version is narrow|if the source is right|useful take is not blind hype|headline is only the doorway|listing or patch|how players read the next trailer/i;
@@ -431,6 +435,191 @@ test("source-bound fallback turns generic fresh trailer stories into concrete vi
   assert.ok(quality.viral_score >= 75, JSON.stringify(quality, null, 2));
 });
 
+test("source-bound fallback turns GTA 6 preorder launch stories into concrete buying-decision scripts", () => {
+  const story = {
+    id: "rss_3830b2720b250551",
+    title: "7 Burning Questions for the GTA 6 Pre-Order Launch",
+    source_type: "rss",
+    subreddit: "IGN",
+    article_url: "https://www.ign.com/articles/gta-6-pre-order-launch-burning-questions",
+  };
+
+  const script = buildSourceBoundFallbackScript(story, {
+    sourceName: "IGN",
+    runtimeProfile: {
+      provider: "local",
+      secondsPerWord: 0.35,
+      minWords: 175,
+      maxWords: 214,
+      aimMin: 185,
+      aimMax: 205,
+    },
+    sourceMaterial:
+      "GTA 6 is alive. IGN says Rockstar has confirmed that pre-orders launch on June 25, with players still waiting for editions, bonuses and price details.",
+  });
+
+  assert.ok(script);
+  assert.match(script.full_script, /^GTA 6\b/);
+  assert.match(script.full_script, /pre-?orders|June 25|editions|price|buying/i);
+  assert.doesNotMatch(script.full_script, /cover art|delay fear|endgame|end game/i);
+  assert.doesNotMatch(
+    script.full_script,
+    /new detail players should clock|player-facing detail|separating from the noise|reason to exist beyond repeating the feed|fades into the feed|stronger short keeps|watchlist/i,
+  );
+});
+
+test("source-bound fallback turns GTA 5 free upgrade stories into concrete current-gen runway scripts", () => {
+  const story = {
+    id: "rss_46d4ac46639fcfea",
+    title:
+      "As GTA Online readies for another large update, and GTA 6 approaches, Rockstar offers free upgrades to GTA 5 on PS5 and Xbox Series S/X",
+    source_type: "rss",
+    subreddit: "Eurogamer",
+    article_url: "https://www.eurogamer.net/gta-5-free-ps5-xbox-series-x-s-upgrade",
+  };
+
+  const script = buildSourceBoundFallbackScript(story, {
+    sourceName: "Eurogamer",
+    runtimeProfile: {
+      provider: "local",
+      secondsPerWord: 0.35,
+      minWords: 175,
+      maxWords: 214,
+      aimMin: 185,
+      aimMax: 205,
+    },
+    sourceMaterial:
+      "Eurogamer reports Rockstar Games is giving GTA 5 players on PS4 or Xbox One a free upgrade to GTA 5 on PS5 or Xbox Series X/S as GTA Online readies another large update and GTA 6 approaches.",
+  });
+
+  assert.ok(script);
+  assert.match(script.full_script, /^GTA 5\b/);
+  assert.match(script.full_script, /free upgrade|PS5|Xbox Series X\/S|GTA 6/i);
+  assert.match(script.full_script, /current-gen|old players|warm-up|waiting room/i);
+  assert.doesNotMatch(
+    script.full_script,
+    /new detail players should clock|player-facing detail|separating from the noise|reason to exist beyond repeating the feed|fades into the feed|stronger short keeps|watchlist/i,
+  );
+  assert.match(script.full_script, /Follow Pulse Gaming so you never miss a beat\.$/);
+});
+
+test("source-bound fallback turns Ocarina viewership stories into a debate about demand, not generic update filler", () => {
+  const story = {
+    id: "rss_e784dee5af18e23f",
+    title:
+      "Nintendo's latest Direct was reportedly 2026's most-watched Summer Game Fest showcase, and Zelda: Ocarina of Time's remake was the most-viewed trailer",
+    source_type: "rss",
+    subreddit: "Eurogamer",
+    article_url: "https://www.eurogamer.net/nintendo-direct-june-2026-zelda-ocarina-of-time",
+  };
+
+  const script = buildSourceBoundFallbackScript(story, {
+    sourceName: "Eurogamer",
+    runtimeProfile: {
+      provider: "local",
+      secondsPerWord: 0.35,
+      minWords: 175,
+      maxWords: 214,
+      aimMin: 185,
+      aimMax: 205,
+    },
+    sourceMaterial:
+      "Eurogamer reports June's Nintendo Direct was 2026's most-watched Summer Game Fest showcase, while The Legend of Zelda: Ocarina of Time's remake was the most-viewed trailer.",
+  });
+
+  assert.ok(script);
+  assert.match(script.full_script, /^Ocarina of Time\b/);
+  assert.match(script.full_script, /Nintendo Direct|most-watched|most-viewed trailer|Summer Game Fest/i);
+  assert.match(script.full_script, /demand|remake|pressure|expectations/i);
+  assert.doesNotMatch(script.full_script, /Ocarina of Time's has/i);
+  assert.doesNotMatch(
+    script.full_script,
+    /new detail players should clock|player-facing detail|separating from the noise|reason to exist beyond repeating the feed|fades into the feed|stronger short keeps|watchlist/i,
+  );
+
+  const quality = buildViralScriptIntelligence({
+    story: { ...story, source_name: "Eurogamer" },
+    script: script.full_script,
+  });
+  assert.equal(quality.verdict, "viral_ready", JSON.stringify(quality, null, 2));
+});
+
+test("source-bound fallback treats hidden Ocarina remake descriptions as cautious evidence, not a confirmed remake script", () => {
+  const story = {
+    id: "rss_5a2b699b2d65a5bc",
+    title:
+      "Nintendo Removes Hidden The Legend of Zelda: Ocarina of Time Switch 2 Description That Suggested It's a Faithful Remake",
+    source_type: "rss",
+    subreddit: "IGN",
+    article_url:
+      "https://www.ign.com/articles/nintendo-removes-hidden-the-legend-of-zelda-ocarina-of-time-switch-2-description-that-suggested-its-a-faithful-remake",
+  };
+
+  const script = buildSourceBoundFallbackScript(story, {
+    sourceName: "IGN",
+    runtimeProfile: {
+      provider: "local",
+      secondsPerWord: 0.35,
+      minWords: 175,
+      maxWords: 214,
+      aimMin: 185,
+      aimMax: 205,
+    },
+    sourceMaterial:
+      "IGN reports Nintendo removed a hidden description for The Legend of Zelda: Ocarina of Time on Switch 2 that fans say suggested a faithful update of the N64 original.",
+  });
+
+  assert.ok(script);
+  assert.match(script.full_script, /^Ocarina of Time\b/);
+  assert.match(script.full_script, /hidden description|removed|Switch 2|faithful|N64/i);
+  assert.match(script.full_script, /not confirmation|does not confirm|cautious/i);
+  assert.doesNotMatch(script.full_script, /Nintendo Removes Hidden The Legend of Zelda/i);
+  assert.doesNotMatch(
+    script.full_script,
+    /new detail players should clock|player-facing detail|separating from the noise|reason to exist beyond repeating the feed|fades into the feed|stronger short keeps|watchlist/i,
+  );
+
+  const quality = buildViralScriptIntelligence({
+    story: { ...story, source_name: "IGN" },
+    script: script.full_script,
+  });
+  assert.equal(quality.verdict, "viral_ready", JSON.stringify(quality, null, 2));
+});
+
+test("source-bound fallback turns GTA 6 launch endgame columns into cautious rollout scripts", () => {
+  const story = {
+    id: "rss_9709766057f774ad",
+    title: "Here's How I Know We Are Entering Rockstar's End Game For Launching GTA 6",
+    source_type: "rss",
+    subreddit: "Kotaku",
+    article_url:
+      "https://kotaku.com/heres-how-i-know-we-are-entering-rockstars-end-game-for-launching-gta-6-2000708079",
+  };
+
+  const script = buildSourceBoundFallbackScript(story, {
+    sourceName: "Kotaku",
+    runtimeProfile: {
+      provider: "local",
+      secondsPerWord: 0.35,
+      minWords: 175,
+      maxWords: 214,
+      aimMin: 185,
+      aimMax: 205,
+    },
+    sourceMaterial:
+      "Kotaku says if you were worried about another GTA 6 delay, you can probably stop worrying because Rockstar is entering its end game for launching GTA 6.",
+  });
+
+  assert.ok(script);
+  assert.match(script.full_script, /^GTA 6\b/);
+  assert.match(script.full_script, /Rockstar|launch|delay|rollout/i);
+  assert.match(script.full_script, /not proof|does not prove|cautious/i);
+  assert.doesNotMatch(
+    script.full_script,
+    /new detail players should clock|player-facing detail|separating from the noise|reason to exist beyond repeating the feed|fades into the feed|stronger short keeps|watchlist/i,
+  );
+});
+
 test("source-bound fallback treats system patch notes as concrete player-impact scripts", () => {
   const story = {
     id: "rss_switch2_patch",
@@ -474,7 +663,11 @@ test("source-bound fallback treats system patch notes as concrete player-impact 
 test("source-bound fallback source does not carry internal analyst-note phrases", () => {
   assert.doesNotMatch(
     SOURCE,
-    /source-backed update|not a blank cheque|not a blank check|invent extra details|named source confirms|wait-and-see column|Reddit reaction into evidence|core detail plainly|keep the claim tight|anything outside the report|fake certainty|what players can actually do with it|player-facing detail|separating from the noise|reason to exist beyond repeating the feed|fades into the feed|stronger short keeps/i,
+    /source-backed update|not a blank cheque|not a blank check|invent extra details|named source confirms|wait-and-see column|Reddit reaction into evidence|core detail plainly|keep the claim tight|anything outside the report|fake certainty|what players can actually do with it|player-facing detail|separating from the noise|reason to exist beyond repeating the feed|fades into the feed|stronger short keeps|watchlist/i,
+  );
+  assert.doesNotMatch(
+    EDITORIAL_ANGLE_SOURCE,
+    /source-backed update|not a blank cheque|not a blank check|invent extra details|named source confirms|wait-and-see column|Reddit reaction into evidence|core detail plainly|keep the claim tight|anything outside the report|fake certainty|what players can actually do with it|player-facing detail|separating from the noise|reason to exist beyond repeating the feed|fades into the feed|stronger short keeps|watchlist/i,
   );
 });
 

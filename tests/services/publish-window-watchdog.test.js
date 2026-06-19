@@ -173,6 +173,49 @@ test("publish window watchdog warns when executor handoff cannot cover the next 
   assert.equal(watchdogNeedsRunwayRepair(report), true);
 });
 
+test("publish window watchdog blocks catch-up-only handoff when no YouTube Shorts action can cover the window", () => {
+  const report = buildPublishWindowWatchdogReport({
+    generatedAt: "2026-06-19T08:55:00.000Z",
+    windowLabel: "publish_morning",
+    runtimeSentinel: {
+      verdict: "green",
+      blockers: [],
+      scheduler_window_readiness: {
+        safe_to_observe_next_window: true,
+        hold_scheduler_or_dispatch: false,
+        next_action: "observe_guarded_scheduler_window",
+      },
+      scheduler_proof: {
+        enabled_dry_run_action_count: 4,
+        executor_handoff_action_count: 4,
+        enabled_dry_run_story_count: 2,
+        executor_handoff_story_count: 2,
+        enabled_dry_run_youtube_action_count: 0,
+        executor_handoff_youtube_action_count: 0,
+        enabled_dry_run_youtube_story_count: 0,
+        executor_handoff_youtube_story_count: 0,
+        missing_from_executor_count: 0,
+      },
+    },
+    publishReadiness: {
+      overall_verdict: "green",
+      blockers: [],
+      next_action: "Guarded enabled-platform dispatch is ready.",
+      readiness_scope: { name: "enabled_platform_guarded_handoff", guard_ready: true },
+    },
+    queueReport: {
+      verdict: "pass",
+      blockers: [],
+    },
+  });
+
+  assert.equal(report.verdict, "red");
+  assert.equal(report.safe_to_publish_window, false);
+  assert.equal(report.youtube_shorts_runway.covered_publish_windows_24h, 0);
+  assert.ok(report.blockers.includes("youtube_shorts_runway: no_youtube_shorts_handoff_actions_for_publish_window"));
+  assert.equal(watchdogNeedsRunwayRepair(report), true);
+});
+
 test("publish window watchdog recognises stale executor handoff as refreshable", () => {
   const report = buildPublishWindowWatchdogReport({
     generatedAt: "2026-06-17T15:55:00.000Z",

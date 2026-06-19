@@ -138,6 +138,17 @@ const DEFAULT_BREAKING_KEYWORDS = [
   "update",
 ];
 
+const OFFICIAL_RSS_SOURCES = new Set([
+  "playstation blog",
+  "xbox wire",
+  "nintendo news",
+  "steam news",
+]);
+
+function isOfficialRssSource(sourceName) {
+  return OFFICIAL_RSS_SOURCES.has(String(sourceName || "").trim().toLowerCase());
+}
+
 function similarity(a, b) {
   const wordsA = a.toLowerCase().split(/\s+/);
   const wordsB = b.toLowerCase().split(/\s+/);
@@ -154,6 +165,7 @@ function scoreBreakingValue(
   numComments,
   breakingKeywords,
   trendingTopics,
+  sourceContext = {},
 ) {
   let breakingScore = 0;
   const lower = title.toLowerCase();
@@ -170,6 +182,13 @@ function scoreBreakingValue(
   // Trending topic boost (0-40 points)
   if (trendingTopics && trendingTopics.length > 0) {
     breakingScore += getTrendingBoost(title, trendingTopics);
+  }
+
+  if (sourceContext.sourceType === "rss" && isOfficialRssSource(sourceContext.sourceName)) {
+    breakingScore += 35;
+    if (/(?:demo|hands-on|hands on|trailer|gameplay|launch|available today|release date|update)/i.test(title)) {
+      breakingScore += 15;
+    }
   }
 
   return breakingScore;
@@ -979,6 +998,10 @@ async function hunt() {
       post.num_comments,
       BREAKING_KEYWORDS,
       trendingTopics,
+      {
+        sourceType: post.source_type,
+        sourceName: post.subreddit,
+      },
     );
 
     // Historical performance boost (0-30 points) from analytics

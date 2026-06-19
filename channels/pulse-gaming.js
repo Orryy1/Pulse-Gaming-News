@@ -59,6 +59,9 @@ module.exports = {
     "gaming",
   ],
   rssFeeds: [
+    { name: "PlayStation Blog", url: "https://blog.playstation.com/feed/" },
+    { name: "Xbox Wire", url: "https://news.xbox.com/en-us/feed/" },
+    { name: "Steam News", url: "https://store.steampowered.com/feeds/news.xml" },
     { name: "IGN", url: "https://feeds.feedburner.com/ign/all" },
     { name: "GameSpot", url: "https://www.gamespot.com/feeds/mashup/" },
     { name: "Eurogamer", url: "https://www.eurogamer.net/feed" },

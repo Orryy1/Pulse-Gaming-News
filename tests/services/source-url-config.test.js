@@ -12,6 +12,14 @@ test("Pulse Gaming RSS feed config uses the current The Verge games feed", () =>
   assert.doesNotMatch(feed.url, /\/games\/rss\/index\.xml$/);
 });
 
+test("Pulse Gaming RSS intake scans current official platform feeds", () => {
+  const feedsByName = new Map(pulseGaming.rssFeeds.map((feed) => [feed.name, feed]));
+
+  assert.equal(feedsByName.get("PlayStation Blog")?.url, "https://blog.playstation.com/feed/");
+  assert.equal(feedsByName.get("Xbox Wire")?.url, "https://news.xbox.com/en-us/feed/");
+  assert.equal(feedsByName.get("Steam News")?.url, "https://store.steampowered.com/feeds/news.xml");
+});
+
 test("Google Trends gaming source uses the current trending RSS endpoint", () => {
   assert.equal(
     TRENDING_SOURCE_URLS.googleGaming,

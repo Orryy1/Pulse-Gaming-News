@@ -93,6 +93,88 @@ test("platform-native pack repair upgrades legacy candidate artefacts with backu
   assert.equal(await fs.pathExists(path.join(storyPackages[0].artifact_dir, "threads_publish_pack.json")), true);
 });
 
+test("platform-native pack repair refreshes stale media-house score artefacts", async () => {
+  const { storyPackages, root } = await legacyArtifact();
+  const artifactDir = storyPackages[0].artifact_dir;
+  await fs.writeJson(path.join(artifactDir, "pulse_media_house_score.json"), {
+    story_id: "story-native",
+    verdict: "RED",
+    status: "fail",
+    scores: {
+      title_strength_score: 42,
+      first_frame_score: 38,
+      overall_media_house_score: 60,
+    },
+    hard_failures: [
+      "media_house:platform_copy_too_plain",
+      "media_house:first_frame_or_thumbnail_not_attention_led",
+    ],
+  });
+
+  const applied = await repairPlatformNativePacks({
+    storyPackages,
+    generatedAt: "2026-06-19T18:55:00.000Z",
+    apply: true,
+    backupRoot: path.join(root, "backups-media-house"),
+  });
+
+  assert.equal(applied.summary.repaired_count, 1);
+  const score = await fs.readJson(path.join(artifactDir, "pulse_media_house_score.json"));
+  assert.equal(score.generated_at, "2026-06-19T18:55:00.000Z");
+  assert.notEqual(score.scores.title_strength_score, 42);
+  assert.notEqual(score.scores.first_frame_score, 38);
+  assert.ok(score.scores.first_frame_score > 0);
+  assert.ok(!score.hard_failures.includes("media_house:first_frame_or_thumbnail_not_attention_led"));
+  assert.ok(applied.repairs[0].repaired_files.includes(path.join(artifactDir, "pulse_media_house_score.json")));
+  assert.equal(await fs.pathExists(applied.repairs[0].backup_files.pulse_media_house_score), true);
+});
+
+test("platform-native pack repair refreshes stale media-house score even when packs are already native", async () => {
+  const { storyPackages, root } = await legacyArtifact();
+  const firstPass = await repairPlatformNativePacks({
+    storyPackages,
+    generatedAt: "2026-06-19T19:00:00.000Z",
+    apply: true,
+    backupRoot: path.join(root, "backups-first-pass"),
+  });
+  assert.equal(firstPass.summary.repaired_count, 1);
+
+  const artifactDir = storyPackages[0].artifact_dir;
+  await fs.writeJson(path.join(artifactDir, "pulse_media_house_score.json"), {
+    story_id: "story-native",
+    generated_at: "2026-06-19T18:00:00.000Z",
+    verdict: "RED",
+    status: "fail",
+    scores: {
+      title_strength_score: 42,
+      first_frame_score: 38,
+      overall_media_house_score: 60,
+    },
+    hard_failures: ["media_house:first_frame_or_thumbnail_not_attention_led"],
+  });
+
+  const dryRun = await repairPlatformNativePacks({
+    storyPackages,
+    generatedAt: "2026-06-19T19:01:00.000Z",
+    apply: false,
+  });
+  assert.equal(dryRun.summary.repairable_count, 1);
+  assert.equal(dryRun.items[0].media_house_score_stale, true);
+
+  const applied = await repairPlatformNativePacks({
+    storyPackages,
+    generatedAt: "2026-06-19T19:02:00.000Z",
+    apply: true,
+    backupRoot: path.join(root, "backups-media-house-only"),
+  });
+
+  assert.equal(applied.summary.repaired_count, 1);
+  const score = await fs.readJson(path.join(artifactDir, "pulse_media_house_score.json"));
+  assert.equal(score.generated_at, "2026-06-19T19:02:00.000Z");
+  assert.notEqual(score.scores.first_frame_score, 38);
+  assert.ok(!score.hard_failures.includes("media_house:first_frame_or_thumbnail_not_attention_led"));
+});
+
 test("platform-native pack repair creates missing platform manifests when target copy passes", async () => {
   const { storyPackages, root } = await legacyArtifact();
   const artifactDir = storyPackages[0].artifact_dir;
@@ -367,6 +449,8 @@ test("platform-native pack repair refreshes stale cover headlines", async () => 
     selected_title: "Gears E-Day Has A 130GB Problem",
     canonical_title: "Gears E-Day Has A 130GB Problem",
     thumbnail_headline: "GEARS OF WAR",
+    thumbnail_text: "GEARS OF WAR",
+    suggested_thumbnail_text: "GEARS OF WAR",
     first_spoken_line: "Gears of War E-Day just made its PC pitch very simple.",
     narration_script:
       "Gears of War E-Day just made its PC pitch very simple. The question is whether a 130 gig install is now normal for a campaign-first blockbuster.",
@@ -414,6 +498,10 @@ test("platform-native pack repair refreshes stale cover headlines", async () => 
   assert.match(repaired.outputs.tiktok.caption, /asking players for 130 GB|storage into part of the launch pitch/i);
   const repairedCanonical = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
   assert.equal(repairedCanonical.thumbnail_headline, "GEARS E-DAY 130GB TEST");
+  assert.equal(repairedCanonical.thumbnail_text, "GEARS E-DAY 130GB TEST");
+  assert.equal(repairedCanonical.suggested_thumbnail_text, "GEARS E-DAY 130GB TEST");
+  const score = await fs.readJson(path.join(artifactDir, "pulse_media_house_score.json"));
+  assert.ok(!score.hard_failures.includes("media_house:first_frame_or_thumbnail_not_attention_led"));
   assert.equal(applied.repairs[0].backup_files.canonical_story_manifest.endsWith("canonical_story_manifest.json"), true);
 });
 

@@ -311,6 +311,37 @@ test("autonomous feedback alerts on completed publish jobs with no newer platfor
   assert.equal(report.verdict, "red");
 });
 
+test("autonomous feedback accepts platform evidence written during a completed publish job", () => {
+  const report = buildAutonomousFeedbackReport({
+    generatedAt: "2026-06-19T09:20:00.000Z",
+    normalOperationsReport: normalOps(),
+    recentJobs: [
+      {
+        id: 49431,
+        kind: "publish",
+        status: "done",
+        created_at: "2026-06-19T09:00:00.000Z",
+        updated_at: "2026-06-19T09:01:13.000Z",
+        completed_at: "2026-06-19T09:01:13.000Z",
+      },
+    ],
+    platformPosts: [
+      {
+        story_id: "fresh_gta6_release_reconfirm_20260616",
+        platform: "facebook_reel",
+        status: "published",
+        external_id: "1510187686692156",
+        created_at: "2026-06-19T09:01:12.000Z",
+        updated_at: "2026-06-19T09:01:12.000Z",
+        published_at: "2026-06-19T09:01:12.000Z",
+      },
+    ],
+  });
+
+  assert.equal(report.post_window_feedback.anomaly_count, 0);
+  assert.equal(report.verdict, "amber");
+});
+
 test("recent jobs loader reads current jobs schema without requiring legacy result_summary column", async () => {
   const reposPath = require.resolve("../../lib/repositories");
   const monitorPath = require.resolve("../../lib/ops/autonomous-feedback-monitor");
@@ -422,6 +453,54 @@ test("autonomous feedback prefers current guarded dispatch action over stale sch
   );
 });
 
+test("autonomous feedback prefers a fresh guarded action over residual cross-post catch-up", () => {
+  const report = buildAutonomousFeedbackReport({
+    generatedAt: "2026-06-19T09:25:00.000Z",
+    normalOperationsReport: normalOps({
+      guarded_selection: {
+        action_id: "fresh_gta6_release_reconfirm_20260616:facebook_reels",
+        exhausted: false,
+      },
+    }),
+    guardedDispatchPreflightReport: {
+      verdict: "GREEN",
+      dispatch_ready_actions: [
+        {
+          story_id: "fresh_gta6_release_reconfirm_20260616",
+          platform: "facebook_reels",
+          title: "GTA 6 Delay Raises The November Test",
+        },
+        {
+          story_id: "fresh_gears_eday_pc_specs_20260616",
+          platform: "instagram_reels",
+          title: "Gears E-Day Has To Make Xbox Feel Dangerous",
+        },
+      ],
+    },
+    platformPosts: [
+      {
+        story_id: "fresh_gta6_release_reconfirm_20260616",
+        platform: "youtube_shorts",
+        status: "published",
+        external_id: "uZ_Xwo23d7k",
+        published_at: "2026-06-18T14:00:00.000Z",
+      },
+      {
+        story_id: "fresh_gta6_release_reconfirm_20260616",
+        platform: "instagram_reels",
+        status: "published",
+        external_id: "17948103933192700",
+        published_at: "2026-06-18T16:01:00.000Z",
+      },
+    ],
+  });
+
+  assert.equal(
+    report.scheduler.selected_action,
+    "fresh_gears_eday_pc_specs_20260616:instagram_reels",
+  );
+});
+
 test("autonomous feedback treats current TTS and caption materialisation failures as blockers", () => {
   const report = buildAutonomousFeedbackReport({
     generatedAt: "2026-06-16T17:00:00.000Z",
@@ -499,6 +578,45 @@ test("autonomous feedback supersedes stale TTS failures when current preflight p
     ),
   );
   assert.match(formatAutonomousFeedbackDiscord(report), /TTS\/captions: 0 failed materialisations/);
+});
+
+test("autonomous feedback does not block current guarded window for non-selected TTS failures", () => {
+  const report = buildAutonomousFeedbackReport({
+    generatedAt: "2026-06-19T09:45:00.000Z",
+    normalOperationsReport: normalOps({
+      guarded_selection: {
+        action_id: "fresh_steam_next_fest_demo_discovery_20260616:youtube_shorts",
+        exhausted: false,
+      },
+    }),
+    guardedDispatchPreflightReport: {
+      verdict: "GREEN",
+      dispatch_ready_actions: [
+        {
+          story_id: "fresh_steam_next_fest_demo_discovery_20260616",
+          platform: "youtube_shorts",
+          title: "Steam Next Fest Turns Demos Into A Trust Fight",
+        },
+      ],
+    },
+    ttsCaptionReport: {
+      generated_at: "2026-06-16T16:44:24.195Z",
+      jobs: [
+        {
+          story_id: "fresh_xbox_beastro_20260611",
+          title: "Beastro Has A Cozy Deckbuilding Test",
+          status: "failed",
+          error: "local_whisper_word_alignment_failed",
+        },
+      ],
+    },
+  });
+
+  assert.notEqual(report.current_action, "repair_tts_caption_blockers");
+  assert.equal(report.tts_caption_feedback.failed_count, 0);
+  assert.equal(report.tts_caption_feedback.superseded_count, 1);
+  assert.equal(report.tts_caption_feedback.blocks_publishing, false);
+  assert.ok(!report.blockers.includes("tts_caption:fresh_xbox_beastro_20260611:caption_alignment_failed"));
 });
 
 test("autonomous feedback supersedes stale TTS failures when newer story proof artefacts pass", async () => {

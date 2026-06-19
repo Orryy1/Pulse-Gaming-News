@@ -179,7 +179,7 @@ test("Studio V4 source-family acquisition turns a blocked motion pack into exact
 
   const row = report.rows[0];
   assert.equal(row.story_id, "forza-gap");
-  assert.deepEqual(row.source_proof_covered_target_entities, []);
+  assert.deepEqual(row.source_proof_covered_target_entities, ["Forza Horizon 6"]);
   assert.deepEqual(row.source_proof_missing_target_entities, []);
   assert.equal(row.current_motion_families, 1);
   assert.equal(row.required_motion_families, 6);
@@ -217,6 +217,68 @@ test("Studio V4 source-family acquisition turns a blocked motion pack into exact
   assert.match(
     row.safe_next_commands[1].command,
     /--input test\/output\/official_direct_media_intake_template\.json/,
+  );
+});
+
+test("Studio V4 source-family acquisition uses accepted trusted references as source-family candidates", () => {
+  const report = buildStudioV4SourceFamilyAcquisitionReport({
+    motionPackReports: [
+      motionPack({
+        trusted_source_pipeline: {
+          references_found: 0,
+          intake_queue: [],
+        },
+      }),
+    ],
+    trustedFootageReport: {
+      accepted_references: [
+        {
+          story_id: "forza-gap",
+          entity: "Forza Horizon 6",
+          source_id: "steam-fh6-second-trailer",
+          display_name: "Steam - Forza Horizon 6 gameplay deep dive",
+          source_type: "steam_storefront_video_reference",
+          source_family: "steam_forza_horizon_6_gameplay_deep_dive",
+          source_tier: "official",
+          source_url:
+            "https://video.akamai.steamstatic.com/store_trailers/2483190/2222/hash/hls_264_master.m3u8",
+          reference_page_url: "https://store.steampowered.com/app/2483190/",
+          source_url_kind: "hls_manifest",
+          segment_validation_eligible: true,
+          allowed_render_use: "reference_only_by_default",
+          rights_risk_class: "official_reference_only",
+          evidence_of_officialness: "Steam app page matched Forza Horizon 6.",
+        },
+      ],
+    },
+    referenceReport: {
+      plans: [
+        {
+          story_id: "forza-gap",
+          title: "Forza Horizon 6 Steam Peak Exposes Xbox's Early-Access Bet",
+          target_entities: ["Forza Horizon 6"],
+          planned_searches: [],
+        },
+      ],
+    },
+    generatedAt: "2026-06-19T20:45:00.000Z",
+  });
+
+  const candidate = report.rows[0].source_family_candidates.find(
+    (item) => item.source_family === "steam_forza_horizon_6_gameplay_deep_dive",
+  );
+
+  assert.ok(candidate);
+  assert.equal(candidate.status, "ready_for_frame_plan");
+  assert.equal(candidate.source_origin, "trusted_footage_registry");
+  assert.deepEqual(report.rows[0].source_proof_covered_target_entities, ["Forza Horizon 6"]);
+  assert.deepEqual(report.rows[0].source_proof_missing_target_entities, []);
+  assert.equal(report.summary.source_proof_covered_story_count, 1);
+  assert.equal(report.summary.source_family_candidates, 1);
+  assert.equal(report.summary.source_intake_template_entries, 1);
+  assert.equal(
+    report.source_intake_template.entries[0].direct_media_url_if_available,
+    "https://video.akamai.steamstatic.com/store_trailers/2483190/2222/hash/hls_264_master.m3u8",
   );
 });
 
@@ -2377,4 +2439,44 @@ test("Studio V4 source-family acquisition blocks product subject mismatches befo
   assert.equal(row.official_search_actions[0].entity, "Steam Controller");
   assert.ok(row.canonical_entity_repair_blockers.includes("canonical_subject_title_mismatch"));
   assert.equal(report.canonical_entity_repair_template.entries[0].suggested_repaired_entity, "Steam Controller");
+});
+
+test("Studio V4 source-family acquisition does not replace a game subject with a platform mention", () => {
+  const report = buildStudioV4SourceFamilyAcquisitionReport({
+    motionPackReports: [
+      motionPack({
+        story_id: "planet-crafter-ps5",
+        title: "The Planet Crafter launches on PS5 July 21",
+        canonical_subject: "The Planet Crafter",
+        canonical_game: "The Planet Crafter",
+        trusted_source_pipeline: { intake_queue: [] },
+        clips: [],
+        motion_budget: {
+          required_motion_scenes: 5,
+          available_motion_clips: 0,
+          required_distinct_families: 4,
+          available_distinct_families: 0,
+        },
+      }),
+    ],
+    trustedFootageReport: {
+      accepted_references: [
+        {
+          story_id: "planet-crafter-ps5",
+          entity: "The Planet Crafter",
+          source_family: "steam_the_planet_crafter_console_trailer",
+          source_url:
+            "https://video.akamai.steamstatic.com/store_trailers/1284190/console/hls_264_master.m3u8",
+          source_url_kind: "hls_manifest",
+          segment_validation_eligible: true,
+        },
+      ],
+    },
+    generatedAt: "2026-06-19T21:05:00.000Z",
+  });
+
+  const row = report.rows[0];
+  assert.equal(row.primary_story_entity, "The Planet Crafter");
+  assert.deepEqual(row.canonical_entity_repair_blockers, []);
+  assert.equal(report.canonical_entity_repair_template.entries.length, 0);
 });

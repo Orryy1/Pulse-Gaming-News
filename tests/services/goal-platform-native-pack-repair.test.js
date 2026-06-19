@@ -201,11 +201,10 @@ test("platform-native pack repair exposes target media-house and attention block
   });
 
   assert.equal(dryRun.items[0].target_media_house_verdict, "RED");
+  assert.ok(!dryRun.items[0].target_media_house_hard_failures.includes("media_house:title_lacks_curiosity_gap"));
+  assert.ok(!dryRun.items[0].target_shorts_attention_blockers.includes("title_lacks_curiosity_gap"));
   assert.ok(
-    dryRun.items[0].target_media_house_hard_failures.includes("media_house:title_lacks_curiosity_gap"),
-  );
-  assert.ok(
-    dryRun.items[0].target_shorts_attention_blockers.includes("title_lacks_curiosity_gap"),
+    dryRun.items[0].target_media_house_hard_failures.includes("media_house:visuals_look_templated"),
   );
 });
 

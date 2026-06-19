@@ -352,6 +352,39 @@ test("goal proof package does not turn article boilerplate into Shorts descripti
   );
 });
 
+test("goal proof package repairs weak RSS titles into attention-led Shorts packaging", () => {
+  const story = greenStory();
+  story.id = "steam-deck-rss-title-repair-pack";
+  story.canonical_subject = "Steam Deck";
+  story.canonical_game = "Steam Deck";
+  story.canonical_angle = "reservation timing makes the price worth checking now";
+  story.public_title = "If You Haven't Reserved Steam Deck Yet, The Price Just Changed";
+  story.title = "If You Haven't Reserved Steam Deck Yet, The Price Just Changed";
+  story.suggested_thumbnail_text = "IF YOU HAVEN'T";
+  story.primary_source = "GameSpot";
+  story.source_name = "GameSpot";
+  story.description =
+    "Steam Deck reservations are open again, but the useful part is whether the current price makes waiting more expensive.";
+  story.full_script =
+    "Steam Deck just turned a reservation reminder into a price timing problem. If you were waiting, the useful question is whether holding off still saves money or just leaves you behind the next wave. Follow Pulse Gaming so you never miss a beat.";
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-06-19T20:05:00.000Z",
+  });
+
+  const manifest = pack.platform_publish_manifest;
+  const youtube = manifest.outputs.youtube_shorts;
+  assert.doesNotMatch(youtube.title, /^if you haven'?t\b/i);
+  assert.match(youtube.title, /Steam Deck/i);
+  assert.match(youtube.title, /\b(?:price|problem|timing|risk|test)\b/i);
+  assert.doesNotMatch(youtube.cover_frame.headline, /^IF YOU HAVEN'?T\b/i);
+  assert.match(youtube.cover_frame.headline, /\b(?:PRICE|RISK|TEST|PROBLEM)\b/i);
+  assert.equal(mediaHousePrivate.platformTitlesTooPlain(manifest, pack.canonical_story_manifest), false);
+  assert.equal(mediaHousePrivate.weakFirstFrameOrThumbnailCopy(pack.canonical_story_manifest, manifest), false);
+});
+
 test("goal proof package writes grammatical descriptions for predicate-style angles", () => {
   const story = greenStory();
   story.id = "planet-crafter-predicate-angle-pack";

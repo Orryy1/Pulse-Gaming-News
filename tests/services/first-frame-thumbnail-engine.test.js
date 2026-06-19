@@ -137,3 +137,76 @@ test("buildFirstFrameThumbnailReport creates repair backlog for blocked candidat
   assert.match(md, /First Frame/);
   assert.match(md, /story-bad/);
 });
+
+test("scoreFirstFrameThumbnailStory prefers platform-native cover headline over stale canonical thumbnail text", () => {
+  const report = scoreFirstFrameThumbnailStory({
+    story: {
+      id: "story-native-cover",
+      title: "Gears E-Day Has A 130GB Problem",
+      status: "publish_ready",
+      source: {
+        exported_path: "output/goal-proof/batch/story-native-cover/visual_v4_render.mp4",
+      },
+    },
+    canonicalManifest: {
+      canonical_subject: "Gears of War: E-Day",
+      selected_title: "Gears E-Day Has To Make Xbox Feel Dangerous",
+      thumbnail_headline: "GEARS E-DAY HAS TO MAKE",
+      primary_source: "PC Gamer",
+    },
+    platformManifest: {
+      youtube: {
+        title: "Gears E-Day Has To Make Xbox Feel Dangerous",
+        cover_frame: { headline: "GEARS E-DAY 130GB TEST" },
+      },
+      instagram: {
+        title: "Gears E-Day Has To Make Xbox Feel Dangerous",
+        cover_frame: { headline: "GEARS E-DAY 130GB TEST" },
+      },
+      facebook: {
+        title: "Gears E-Day Has To Make Xbox Feel Dangerous",
+        cover_frame: { headline: "GEARS E-DAY 130GB TEST" },
+      },
+    },
+  });
+
+  assert.equal(report.mobile_readability.text, "GEARS E-DAY 130GB TEST");
+  assert.equal(report.platform_cover_matrix.ready_enabled_platforms, 3);
+  assert.equal(report.verdict, "green");
+  assert.deepEqual(report.blockers, []);
+});
+
+test("scoreFirstFrameThumbnailStory reuses shared platform cover headline for Facebook packages", () => {
+  const report = scoreFirstFrameThumbnailStory({
+    story: {
+      id: "story-facebook-shared-cover",
+      title: "Steam Next Fest Turns Demos Into A Trust Fight",
+      status: "publish_ready",
+      source: {
+        exported_path: "output/goal-proof/batch/story-facebook-shared-cover/visual_v4_render.mp4",
+      },
+    },
+    canonicalManifest: {
+      canonical_subject: "Steam Next Fest",
+      selected_title: "Steam Next Fest Turns Demos Into A Trust Fight",
+      thumbnail_headline: "STEAM NEXT FEST TRUST TEST",
+      primary_source: "Steam",
+    },
+    platformManifest: {
+      youtube: {
+        title: "Steam Next Fest Turns Demos Into A Trust Fight",
+        cover_frame: { headline: "STEAM NEXT FEST TRUST TEST" },
+      },
+      instagram: {
+        title: "Steam Next Fest Turns Demos Into A Trust Fight",
+        cover_frame: { headline: "STEAM NEXT FEST TRUST TEST" },
+      },
+      facebook: {
+        page_caption: "Steam Next Fest is turning demos into a public trust test for PC games.",
+      },
+    },
+  });
+
+  assert.equal(report.platform_cover_matrix.ready_enabled_platforms, 3);
+  assert.equal(report.verdict, "green");
+});

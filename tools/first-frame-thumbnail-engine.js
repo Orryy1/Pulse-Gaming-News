@@ -50,16 +50,26 @@ async function readJsonIfExists(filePath, fallback = {}) {
   return fs.readJson(filePath);
 }
 
-async function readCanonicalManifest(storyId) {
-  const filePath = path.join(
-    ROOT,
-    "output",
-    "goal-proof",
-    "batch",
-    storyId,
-    "canonical_story_manifest.json",
-  );
-  return readJsonIfExists(filePath, {});
+function proofDirForCandidate(candidate = {}) {
+  const exportedPath =
+    candidate?.source?.exported_path ||
+    candidate?.source?.video_path ||
+    candidate?.exported_path ||
+    candidate?.video_path;
+  if (!exportedPath) return null;
+  return path.dirname(path.resolve(ROOT, exportedPath));
+}
+
+async function readManifestFromCandidate(candidate, fileName) {
+  const proofDir = proofDirForCandidate(candidate);
+  const candidates = [];
+  if (proofDir) candidates.push(path.join(proofDir, fileName));
+  const id = candidate?.id || candidate?.story_id || candidate?.storyId;
+  if (id) candidates.push(path.join(ROOT, "output", "goal-proof", "batch", id, fileName));
+  for (const filePath of candidates) {
+    if (await fs.pathExists(filePath)) return fs.readJson(filePath);
+  }
+  return {};
 }
 
 async function loadInputs(args) {
@@ -78,11 +88,16 @@ async function loadInputs(args) {
       })
     : [];
   const canonicalManifests = {};
+  const platformManifests = {};
   for (const candidate of candidates) {
     if (!candidate?.id) continue;
-    canonicalManifests[candidate.id] = await readCanonicalManifest(candidate.id);
+    canonicalManifests[candidate.id] = await readManifestFromCandidate(candidate, "canonical_story_manifest.json");
+    const publishManifest = await readManifestFromCandidate(candidate, "platform_publish_manifest.json");
+    platformManifests[candidate.id] = Object.keys(publishManifest).length
+      ? publishManifest
+      : await readManifestFromCandidate(candidate, "platform_variant_scorecard.json");
   }
-  return { candidates, actions, canonicalManifests };
+  return { candidates, actions, canonicalManifests, platformManifests };
 }
 
 async function main() {

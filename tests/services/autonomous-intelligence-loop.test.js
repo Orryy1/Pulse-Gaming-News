@@ -1,6 +1,9 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs/promises");
+const os = require("node:os");
+const path = require("node:path");
 const test = require("node:test");
 
 const { DEFAULT_SCHEDULES } = require("../../lib/scheduler");
@@ -29,6 +32,10 @@ test("scheduler registers the full autonomous intelligence loop", () => {
   assert.equal(schedule("safe_auto_repair_runner_2h")?.kind, "safe_auto_repair_runner");
   assert.equal(schedule("safe_auto_repair_runner_2h")?.cron_expr, "35 * * * *");
   assert.equal(schedule("safe_auto_repair_runner_2h")?.payload.limit, 8);
+  assert.equal(schedule("local_tts_doctor_hourly")?.kind, "local_tts_doctor");
+  assert.equal(schedule("local_tts_doctor_hourly")?.cron_expr, "25 * * * *");
+  assert.equal(schedule("local_tts_doctor_hourly")?.payload.restart, true);
+  assert.equal(schedule("local_tts_doctor_hourly")?.payload.prewarm, true);
   assert.equal(schedule("autonomous_feedback_monitor_30m")?.payload.enqueue_followups, true);
 
   assert.equal(typeof handlers.candidate_supply_monitor, "function");
@@ -36,7 +43,46 @@ test("scheduler registers the full autonomous intelligence loop", () => {
   assert.equal(typeof handlers.competitor_quality_gate, "function");
   assert.equal(typeof handlers.commercial_learning_loop, "function");
   assert.equal(typeof handlers.safe_auto_repair_runner, "function");
+  assert.equal(typeof handlers.local_tts_doctor, "function");
   assert.equal(typeof handlers.fresh_review_script_repair, "function");
+});
+
+test("local TTS doctor handler restarts and prewarms through a safe child process", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-local-tts-doctor-"));
+  const reportPath = path.join(tmp, "local_tts_doctor.json");
+  await fs.writeFile(reportPath, JSON.stringify({
+    verdict: "green",
+    action: "restart_and_prewarm",
+    after: { status: { ready: true, phase: "ready" } },
+    started: { pid: 12345 },
+    prewarm: { ok: true },
+    gpu: { ok: true },
+  }));
+
+  let captured = null;
+  const result = await handlers.local_tts_doctor(
+    { payload: { restart: true, prewarm: true, result_path: reportPath } },
+    {
+      log() {},
+      async runNodeJobChildProcess(options) {
+        captured = options;
+        return { ok: true, stdout_tail: "doctor ok", stderr_tail: "" };
+      },
+    },
+  );
+
+  assert.deepEqual(captured.args, [
+    "tools/local-tts-doctor.js",
+    "--json",
+    "--restart",
+    "--prewarm",
+  ]);
+  assert.equal(captured.childKind, "local_tts_doctor");
+  assert.equal(result.status, "green");
+  assert.equal(result.ready, true);
+  assert.equal(result.started_pid, 12345);
+  assert.equal(result.prewarm_ok, true);
+  assert.equal(result.gpu_ok, true);
 });
 
 test("candidate supply monitor enqueues fresh intake and repair when runway has no reserve", async () => {

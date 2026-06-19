@@ -408,7 +408,244 @@ test("goal proof package writes grammatical descriptions for predicate-style ang
 
   const description = pack.platform_publish_manifest.outputs.youtube_shorts.description;
   assert.doesNotMatch(description, /useful question behind the headline:\s+is/i);
-  assert.match(description, /^The Planet Crafter is about to find out whether its survival loop works on PS5\./i);
+  assert.match(description, /^The Planet Crafter/i);
+  assert.equal(mediaHousePrivate.platformTitlesTooPlain(pack.platform_publish_manifest, pack.canonical_story_manifest), false);
+  assert.equal(mediaHousePrivate.platformCopyTooPlain(pack.platform_publish_manifest), false);
+  assert.equal(mediaHousePrivate.weakFirstFrameOrThumbnailCopy(pack.canonical_story_manifest, pack.platform_publish_manifest), false);
+});
+
+test("goal proof package turns demo news into attention-led Shorts copy", () => {
+  const story = greenStory();
+  story.id = "granblue-demo-attention-pack";
+  story.canonical_subject = "Granblue Fantasy Relink";
+  story.canonical_game = "Granblue Fantasy Relink";
+  story.public_title = "Granblue Fantasy Relink Gets A New Demo";
+  story.title = "Granblue Fantasy Relink Gets A New Demo";
+  story.suggested_thumbnail_text = "GRANBLUE FANTASY RELINK DEMO";
+  story.primary_source = "PlayStation Blog";
+  story.source_name = "PlayStation Blog";
+  story.description =
+    "A new playable demo lets players try Granblue Fantasy Relink before launch on PlayStation.";
+  story.full_script =
+    "Granblue Fantasy Relink has a new playable demo, but this is not just trailer hype. The demo is where the combat either wins trust fast or exposes the problem before launch. Follow Pulse Gaming so you never miss a beat.";
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-06-19T20:15:00.000Z",
+  });
+
+  const youtube = pack.platform_publish_manifest.outputs.youtube_shorts;
+  assert.match(youtube.title, /Granblue Fantasy/i);
+  assert.match(youtube.title, /\bDemo Trust Test\b/i);
+  assert.doesNotMatch(youtube.title, /\bPS5 Survival Risk\b/i);
+  assert.match(youtube.description, /\b(?:trust|problem|before launch|test)\b/i);
+  assert.doesNotMatch(youtube.cover_frame.headline, /^GRANBLUE FANTASY RELINK DEMO$/i);
+  assert.equal(mediaHousePrivate.platformTitlesTooPlain(pack.platform_publish_manifest, pack.canonical_story_manifest), false);
+  assert.equal(mediaHousePrivate.platformCopyTooPlain(pack.platform_publish_manifest), false);
+  assert.equal(mediaHousePrivate.weakFirstFrameOrThumbnailCopy(pack.canonical_story_manifest, pack.platform_publish_manifest), false);
+});
+
+test("goal proof package does not misclassify PlayStation strategy stories as survival news", () => {
+  const story = greenStory();
+  story.id = "playstation-strategy-attention-pack";
+  story.canonical_subject = "PlayStation";
+  story.canonical_game = "PlayStation";
+  story.canonical_angle = "a first-party PC launch focus changed in Sony's latest business document";
+  story.public_title = "PlayStation Just Changed Its PC Launch Signal";
+  story.title = "PlayStation Just Changed Its PC Launch Signal";
+  story.suggested_thumbnail_text = "PLAYSTATION PC SHIFT";
+  story.primary_source = "IGN";
+  story.source_name = "IGN";
+  story.description =
+    "Analysis of a new PlayStation business document highlighted an official change to Sony's multiplatform release strategy, with PC no longer described as part of the first-party launch focus.";
+  story.full_script =
+    "PlayStation just changed the PC signal in its own business language. That does not kill PC ports, but it does change what fans should expect at launch. Follow Pulse Gaming so you never miss a beat.";
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-06-19T20:25:00.000Z",
+  });
+
+  const youtube = pack.platform_publish_manifest.outputs.youtube_shorts;
+  assert.doesNotMatch(youtube.title, /\bPS5 Survival Risk\b/i);
+  assert.doesNotMatch(youtube.cover_frame.headline, /\bPS5 SURVIVAL RISK\b/i);
+  assert.match(youtube.title, /\bPC Port Trust Problem\b/i);
+  assert.match(youtube.cover_frame.headline, /\bPLAYSTATION PC\b/i);
+  assert.match(youtube.description, /\bPC port trust problem\b/i);
+  assert.equal(mediaHousePrivate.platformTitlesTooPlain(pack.platform_publish_manifest, pack.canonical_story_manifest), false);
+  assert.equal(mediaHousePrivate.platformCopyTooPlain(pack.platform_publish_manifest), false);
+});
+
+test("goal proof package repairs dangling thumbnail fragments", () => {
+  const story = greenStory();
+  story.id = "dave-diver-dangling-cover-pack";
+  story.canonical_subject = "Dave The Diver";
+  story.canonical_game = "Dave The Diver";
+  story.canonical_angle = "a new update gives players a reason to return";
+  story.public_title = "Dave The Diver Gets A New Update";
+  story.title = "Dave The Diver Gets A New Update";
+  story.suggested_thumbnail_text = "DAVE THE DIVER WHY YOU";
+  story.primary_source = "Xbox Wire";
+  story.source_name = "Xbox Wire";
+  story.description =
+    "Dave The Diver is getting a new update, but the real test is whether it gives players a reason to return.";
+  story.full_script =
+    "Dave The Diver is getting more content, but the real test is whether it gives players a reason to come back now. Follow Pulse Gaming so you never miss a beat.";
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-06-19T20:30:00.000Z",
+  });
+
+  const headline = pack.platform_publish_manifest.outputs.youtube_shorts.cover_frame.headline;
+  assert.doesNotMatch(headline, /\bWHY YOU$/i);
+  assert.equal(mediaHousePrivate.weakFirstFrameOrThumbnailCopy(pack.canonical_story_manifest, pack.platform_publish_manifest), false);
+});
+
+test("goal proof package gives retro preview stories a player-stakes description", () => {
+  const story = greenStory();
+  story.id = "elliot-retro-preview-copy-pack";
+  story.canonical_subject = "The Adventures Of Elliot";
+  story.canonical_game = "The Adventures Of Elliot";
+  story.canonical_angle = "source_locked_update";
+  story.public_title = "Elliot Is Square Enix's Retro Test";
+  story.title = "How The Adventures of Elliot: The Millennium Tales Balances Exploration, Combat, and Discovery";
+  story.primary_source = "Xbox Wire";
+  story.source_name = "Xbox Wire";
+  story.description =
+    "The post How The Adventures of Elliot: The Millennium Tales Balances Exploration, Combat, and Discovery appeared first on XBOX Wire.";
+  story.full_script =
+    "The Adventures Of Elliot is making Square Enix's retro pitch more specific. Xbox Wire breaks down how exploration, combat and discovery are meant to work together. Follow Pulse Gaming so you never miss a beat.";
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-06-19T20:35:00.000Z",
+  });
+
+  const description = pack.platform_publish_manifest.outputs.youtube_shorts.description;
+  assert.match(description, /\b(?:retro|trust|problem|combat|exploration)\b/i);
+  assert.equal(mediaHousePrivate.platformCopyTooPlain(pack.platform_publish_manifest), false);
+});
+
+test("goal proof package gives Free Play Days roundups a free-access risk description", () => {
+  const story = greenStory();
+  story.id = "free-play-days-copy-pack";
+  story.canonical_subject = "Free Play Days";
+  story.canonical_game = "Free Play Days";
+  story.canonical_angle = "PGA Tour 2K25, Two Point Museum, Assetto Corsa and Dead by Daylight are in the latest free access window";
+  story.public_title = "Free Play Days Adds Four Games";
+  story.title = "Free Play Days - PGA Tour 2K25, Two Point Museum, Assetto Corsa and Dead by Daylight";
+  story.primary_source = "Xbox Wire";
+  story.source_name = "Xbox Wire";
+  story.description =
+    "The post Free Play Days - PGA Tour 2K25, Two Point Museum, Assetto Corsa and Dead by Daylight appeared first on XBOX Wire.";
+  story.full_script =
+    "Free Play Days has four games in the window, but free only matters if one of them is worth keeping installed. Follow Pulse Gaming so you never miss a beat.";
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-06-19T20:40:00.000Z",
+  });
+
+  const description = pack.platform_publish_manifest.outputs.youtube_shorts.description;
+  assert.match(description, /\b(?:free|risk|worth keeping|trial|tonight)\b/i);
+  assert.equal(mediaHousePrivate.platformCopyTooPlain(pack.platform_publish_manifest), false);
+});
+
+test("goal proof package repairs generic canonical subjects before platform packaging", () => {
+  const story = greenStory();
+  story.id = "ninja-theory-generic-subject-pack";
+  story.canonical_subject = "This Game";
+  story.canonical_game = "This Game";
+  story.canonical_angle = "source_locked_update";
+  story.public_title = "This Game Now Has A Real Question";
+  story.title = "How Ninja Theory Paved A Way For The Elden Ring Movie";
+  story.primary_source = "GameSpot";
+  story.source_name = "GameSpot";
+  story.description =
+    "Ninja Theory helped shape Hollywood storytelling around game-like action, and that matters again because the Elden Ring movie is now being judged by players.";
+  story.full_script =
+    "Ninja Theory is back in the conversation because its cinematic game work now hangs over the Elden Ring movie. Follow Pulse Gaming so you never miss a beat.";
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-06-19T20:45:00.000Z",
+  });
+
+  const youtube = pack.platform_publish_manifest.outputs.youtube_shorts;
+  assert.equal(pack.canonical_story_manifest.canonical_subject, "Ninja Theory");
+  assert.doesNotMatch(youtube.title, /\bThis Game\b/i);
+  assert.doesNotMatch(youtube.description, /\bThis Game\b/i);
+  assert.equal(mediaHousePrivate.platformTitlesTooPlain(pack.platform_publish_manifest, pack.canonical_story_manifest), false);
+  assert.equal(mediaHousePrivate.platformCopyTooPlain(pack.platform_publish_manifest), false);
+});
+
+test("goal proof package extracts Steam Controller from reservation headlines", () => {
+  const story = greenStory();
+  story.id = "steam-controller-reservation-pack";
+  story.canonical_subject = "If You Haven't Reserved Steam";
+  story.canonical_game = "If You Haven't Reserved Steam";
+  story.canonical_angle = "source_locked_update";
+  story.public_title = "If You Haven't Reserved Steam Just Changed The Watchlist";
+  story.title = "If You Haven't Reserved A Steam Controller Yet, You'll Have To Wait Until Next Year";
+  story.primary_source = "GameSpot";
+  story.source_name = "GameSpot";
+  story.description =
+    "Valve says new Steam Controller orders will not be fulfilled until 2027 at the earliest after demand outweighed supply.";
+  story.full_script =
+    "Steam Controller demand just turned into a waiting list problem. Follow Pulse Gaming so you never miss a beat.";
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-06-19T20:55:00.000Z",
+  });
+
+  const youtube = pack.platform_publish_manifest.outputs.youtube_shorts;
+  assert.equal(pack.canonical_story_manifest.canonical_subject, "Steam Controller");
+  assert.doesNotMatch(youtube.title, /Hollywood/i);
+  assert.doesNotMatch(youtube.description, /Hollywood/i);
+  assert.match(youtube.cover_frame.headline, /STEAM CONTROLLER/i);
+  assert.match(youtube.title, /\b(?:Steam Controller|wait|risk|problem|timing)\b/i);
+  assert.equal(mediaHousePrivate.platformTitlesTooPlain(pack.platform_publish_manifest, pack.canonical_story_manifest), false);
+  assert.equal(mediaHousePrivate.platformCopyTooPlain(pack.platform_publish_manifest), false);
+});
+
+test("goal proof package repairs overlong possessive subjects before platform packaging", () => {
+  const story = greenStory();
+  story.id = "pragmata-overlong-subject-pack";
+  story.canonical_subject = "Pragmata's development team included group";
+  story.canonical_game = "Pragmata's development team included group";
+  story.canonical_angle = "source_locked_update";
+  story.public_title = "Pragmata's Development Team Included Group Is Worth Watching Again";
+  story.title =
+    "Pragmata's development team included a group of women known as the Diana Police to capture Diana's child-like innocence";
+  story.primary_source = "Eurogamer";
+  story.source_name = "Eurogamer";
+  story.description =
+    "Capcom's long-in-the-works space game Pragmata finally showed more of Diana and Hugh, but the real test is whether the character work makes players trust the story.";
+  story.full_script =
+    "Pragmata is being judged on more than sci-fi combat now. The character work around Diana is either the thing that makes players care or the detail that feels overexplained. Follow Pulse Gaming so you never miss a beat.";
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-06-19T20:50:00.000Z",
+  });
+
+  const youtube = pack.platform_publish_manifest.outputs.youtube_shorts;
+  assert.equal(pack.canonical_story_manifest.canonical_subject, "Pragmata");
+  assert.doesNotMatch(youtube.title, /development team included group/i);
+  assert.doesNotMatch(youtube.description, /development team included group/i);
+  assert.doesNotMatch(youtube.description, /useful question behind the headline|^'s\b/i);
+  assert.equal(mediaHousePrivate.platformTitlesTooPlain(pack.platform_publish_manifest, pack.canonical_story_manifest), false);
+  assert.equal(mediaHousePrivate.platformCopyTooPlain(pack.platform_publish_manifest), false);
 });
 
 test("goal proof package blocks long article-list excerpts in platform descriptions", () => {

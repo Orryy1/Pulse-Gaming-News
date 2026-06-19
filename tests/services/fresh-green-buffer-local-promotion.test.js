@@ -232,6 +232,50 @@ test("fresh buffer promotion rebuilds stale failing narration before packaging",
   assert.match(canonical.full_script, /blunt test is this: does the gameplay stay fun/i);
 });
 
+test("fresh buffer promotion rewrites weak coherent demo copy before packaging", async () => {
+  const generatedAt = "2026-06-19T08:45:00.000Z";
+  const report = buildFreshGreenBufferLocalPromotionReport({
+    stories: [
+      draftStory({
+        id: "rss_granblue_demo",
+        title: "Granblue Fantasy: Relink - Endless Ragnarok hands-on report, demo available today",
+        selected_title: "Granblue Fantasy Demo Test",
+        canonical_subject: "Granblue Fantasy",
+        canonical_game: "Granblue Fantasy",
+        primary_source: {
+          name: "PlayStation Blog",
+          url: "https://blog.playstation.com/2026/06/18/granblue-fantasy-relink-endless-ragnarok-hands-on-report-demo-available-today/",
+          type: "official_platform_news",
+        },
+        primary_source_url:
+          "https://blog.playstation.com/2026/06/18/granblue-fantasy-relink-endless-ragnarok-hands-on-report-demo-available-today/",
+        source_published_at: "2026-06-18T12:00:08.000Z",
+        confirmed_claims: [
+          "PlayStation Blog reports Granblue Fantasy: Relink - Endless Ragnarok has a playable demo available today on PS5 and PS4 ahead of launch.",
+        ],
+        thumbnail_headline: "DEMO TEST",
+        narration_script:
+          "Granblue Fantasy just gave players the test most previews skip: a demo. PlayStation Blog reports Granblue Fantasy has a hands-on demo beat before launch on PS5 and PS4, giving players a way to judge the expansion early. Follow Pulse Gaming so you never miss a beat.",
+      }),
+    ],
+    generatedAt,
+  });
+
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "fresh-buffer-demo-copy-"));
+  await writeFreshGreenBufferLocalPromotionArtifacts(report, { outputDir: outDir });
+  const canonical = JSON.parse(
+    fs.readFileSync(path.join(outDir, "packages", "rss_granblue_demo", "canonical_story_manifest.json"), "utf8"),
+  );
+
+  assert.equal(canonical.script_coherence_result, "pass");
+  assert.equal(canonical.public_copy_repaired_at, generatedAt);
+  assert.match(canonical.public_copy_repair_reason, /weak_public_copy_pattern/);
+  assert.doesNotMatch(canonical.public_title, /\bDemo Test\b/i);
+  assert.doesNotMatch(canonical.full_script, /\bhands-on demo beat\b/i);
+  assert.match(canonical.public_title, /Demo/i);
+  assert.match(canonical.full_script, /PlayStation Blog/i);
+});
+
 test("fresh buffer promotion removes stale package directories before writing current packages", async () => {
   const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "fresh-buffer-stale-packages-"));
   fs.mkdirSync(path.join(outDir, "packages", "stale_story"), { recursive: true });

@@ -152,6 +152,41 @@ test("angle-first script does not read like a public copy instruction sheet", ()
   assert.doesNotMatch(script.full_script, INSTRUCTION_LIKE_PUBLIC_SCRIPT_RE);
 });
 
+test("hands-on demo angle uses a concrete player-facing title and plain narration", () => {
+  const story = {
+    id: "rss_granblue_demo",
+    title: "Granblue Fantasy: Relink - Endless Ragnarok hands-on report, demo available today",
+    source_type: "rss",
+    article_url:
+      "https://blog.playstation.com/2026/06/18/granblue-fantasy-relink-endless-ragnarok-hands-on-report-demo-available-today/",
+  };
+  const sourceMaterial =
+    "PlayStation Blog reports Granblue Fantasy: Relink - Endless Ragnarok has a playable demo available today on PS5 and PS4, ahead of its launch. " +
+    "The hands-on report focuses on combat feel, action-RPG pacing, bosses and how the expansion plays rather than only listing features.";
+
+  const angle = buildEditorialAngle(story, {
+    sourceMaterial,
+    sourceName: "PlayStation Blog",
+  });
+
+  assert.equal(angle.lane, "hands_on_demo");
+  assert.match(angle.title, /Granblue Fantasy/i);
+  assert.match(angle.title, /Demo/i);
+  assert.doesNotMatch(angle.title, /\bDemo Test\b/i);
+  assert.doesNotMatch(angle.sourceLine, /\bbeat\b/i);
+
+  const script = buildAngleFirstScript(story, {
+    sourceMaterial,
+    sourceName: "PlayStation Blog",
+    runtimeProfile: LOCAL_PROFILE,
+  });
+
+  assert.match(script.full_script, /Granblue Fantasy/i);
+  assert.match(script.full_script, /PlayStation Blog/i);
+  assert.doesNotMatch(script.full_script, /\bhands-on demo beat\b/i);
+  assert.doesNotMatch(script.full_script, /\bDemo Test\b/i);
+});
+
 test("script lint blocks boring source-bound recap language", () => {
   const boring =
     "Forza Horizon 6 just grabbed the year's top review-score slot. " +

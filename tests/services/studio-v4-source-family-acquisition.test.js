@@ -220,6 +220,65 @@ test("Studio V4 source-family acquisition turns a blocked motion pack into exact
   );
 });
 
+test("Studio V4 source-family acquisition uses story package official motion references as intake candidates", () => {
+  const report = buildStudioV4SourceFamilyAcquisitionReport({
+    motionPackReports: [
+      motionPack({
+        story_id: "end-of-abyss-fresh",
+        title: "End of Abyss Has A Horror Trust Problem",
+        canonical_subject: "End of Abyss",
+        canonical_game: "End of Abyss",
+        clips: [],
+        motion_budget: {
+          required_motion_scenes: 5,
+          available_motion_clips: 0,
+          required_distinct_families: 4,
+          available_distinct_families: 0,
+        },
+        trusted_source_pipeline: { references_found: 0, intake_queue: [] },
+        official_motion_references: [
+          {
+            title: "End of Abyss official trailer",
+            entity: "End of Abyss",
+            source_family: "xbox_wire_end_of_abyss_official_trailer",
+            source_url: "https://www.youtube.com/watch?v=Sytee6i3M9E",
+            reference_url: "https://news.xbox.com/en-us/2026/06/19/end-of-abyss/",
+            source_url_kind: "youtube_watch",
+            evidence_of_officialness: "Xbox Wire listed this official trailer with the story package.",
+          },
+        ],
+        trailer_references: [
+          {
+            title: "End of Abyss Xbox Wire article",
+            entity: "End of Abyss",
+            source_family: "xbox_wire_end_of_abyss_article",
+            source_url: "https://news.xbox.com/en-us/2026/06/19/end-of-abyss/",
+            source_url_kind: "html_or_unknown_page",
+          },
+        ],
+      }),
+    ],
+    trustedFootageReport: { story_candidates: [], accepted_sources: [] },
+    referenceReport: { plans: [] },
+    generatedAt: "2026-06-20T00:00:00.000Z",
+  });
+
+  const row = report.rows[0];
+  const families = row.source_family_candidates.map((candidate) => candidate.source_family);
+  assert.ok(families.includes("xbox_wire_end_of_abyss_official_trailer"));
+  assert.ok(families.includes("xbox_wire_end_of_abyss_article"));
+  assert.equal(report.summary.source_intake_template_entries, 2);
+  assert.equal(report.summary.official_search_actions, 0);
+
+  const trailerEntry = report.source_intake_template.entries.find(
+    (entry) => entry.source_family === "xbox_wire_end_of_abyss_official_trailer",
+  );
+  assert.equal(trailerEntry.entity, "End of Abyss");
+  assert.equal(trailerEntry.official_source_url, "https://news.xbox.com/en-us/2026/06/19/end-of-abyss/");
+  assert.equal(trailerEntry.direct_media_url_if_available, "");
+  assert.match(trailerEntry.evidence_of_officialness, /Xbox Wire listed/);
+});
+
 test("Studio V4 source-family acquisition uses accepted trusted references as source-family candidates", () => {
   const report = buildStudioV4SourceFamilyAcquisitionReport({
     motionPackReports: [
@@ -1698,6 +1757,65 @@ test("Studio V4 source-family acquisition hydrates raw motion packs from canonic
     row.official_search_actions[0].query,
     "The Expanse: Osiris Reborn official gameplay trailer",
   );
+});
+
+test("Studio V4 source-family acquisition hydration carries package official motion references", () => {
+  const hydrated = hydrateMotionPacksWithCanonicalManifests(
+    [
+      motionPack({
+        story_id: "end-of-abyss-fresh",
+        title: null,
+        canonical_subject: "",
+        canonical_game: "",
+        clips: [],
+        motion_budget: {
+          required_motion_scenes: 5,
+          available_motion_clips: 0,
+          required_distinct_families: 4,
+          available_distinct_families: 0,
+        },
+        trusted_source_pipeline: { references_found: 0, intake_queue: [] },
+      }),
+    ],
+    new Map([
+      [
+        "end-of-abyss-fresh",
+        {
+          story_id: "end-of-abyss-fresh",
+          selected_title: "End of Abyss Has A Horror Trust Problem",
+          canonical_subject: "End of Abyss",
+          canonical_game: "End of Abyss",
+          official_motion_references: [
+            {
+              label: "End of Abyss official release date trailer",
+              url: "https://www.youtube.com/watch?v=Sytee6i3M9E",
+              source_family: "end_of_abyss_official_release_date_trailer",
+              source_type: "official_trailer",
+            },
+          ],
+          trailer_references: [
+            {
+              label: "End of Abyss Xbox Wire article",
+              url: "https://news.xbox.com/en-us/2026/06/19/end-of-abyss/",
+              source_family: "end_of_abyss_xbox_wire_article",
+              source_type: "official_article",
+            },
+          ],
+        },
+      ],
+    ]),
+  );
+
+  const report = buildStudioV4SourceFamilyAcquisitionReport({
+    motionPackReports: hydrated,
+    trustedFootageReport: { story_candidates: [], accepted_sources: [] },
+    referenceReport: { plans: [] },
+  });
+
+  assert.equal(hydrated[0].official_motion_references.length, 1);
+  assert.equal(hydrated[0].trailer_references.length, 1);
+  assert.equal(report.summary.source_intake_template_entries, 2);
+  assert.equal(report.summary.official_search_actions, 0);
 });
 
 test("Studio V4 source-family acquisition markdown and CLI are operator-safe", () => {

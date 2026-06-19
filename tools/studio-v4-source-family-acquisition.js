@@ -307,6 +307,12 @@ function hydrateMotionPacksWithCanonicalManifests(motionPackReports = [], canoni
       canonical_platforms: manifest.canonical_platforms || pack.canonical_platforms,
       primary_source: firstText(manifest.primary_source, pack.primary_source),
       primary_source_url: firstText(manifest.primary_source_url, pack.primary_source_url),
+      official_motion_references: asArray(manifest.official_motion_references).length
+        ? manifest.official_motion_references
+        : pack.official_motion_references,
+      trailer_references: asArray(manifest.trailer_references).length
+        ? manifest.trailer_references
+        : pack.trailer_references,
       canonical_manifest_hydration: {
         source: "goal_story_package",
         manifest_path: manifest.__manifest_path || null,
@@ -327,13 +333,13 @@ async function loadCanonicalManifestsFromStoryPackages(args) {
     const storyId = storyIdFrom(pkg);
     if (!storyId) continue;
     if (pkg.canonical_story_manifest && typeof pkg.canonical_story_manifest === "object") {
-      manifests.set(storyId, { ...pkg.canonical_story_manifest, __manifest_path: null });
+      manifests.set(storyId, { ...pkg, ...pkg.canonical_story_manifest, __manifest_path: null });
       continue;
     }
     const manifestPath = manifestPathForPackage(pkg, args);
     const manifest = await readJsonIfExists(manifestPath, null);
     if (!manifest) continue;
-    manifests.set(storyId, { ...manifest, __manifest_path: manifestPath });
+    manifests.set(storyId, { ...pkg, ...manifest, __manifest_path: manifestPath });
   }
 
   return manifests;

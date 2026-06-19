@@ -14,6 +14,7 @@ const OUT = path.join(ROOT, "test", "output");
 const mediaPaths = require("../lib/media-paths");
 const {
   applyLocalTtsPublishRefresh,
+  buildLocalTtsRerenderOnlyPlan,
   buildLocalTtsPublishRefreshPlan,
   renderLocalTtsPublishRefreshMarkdown,
 } = require("../lib/ops/local-tts-publish-refresh");
@@ -40,6 +41,7 @@ function parseArgs(argv) {
     limit: null,
     applyLocal: false,
     rerender: false,
+    rerenderOnly: false,
     allowPublishedRepair: false,
     outDir: OUT,
   };
@@ -70,12 +72,70 @@ function parseArgs(argv) {
       args.applyLocal = false;
     } else if (arg === "--rerender") {
       args.rerender = true;
+    } else if (arg === "--rerender-only") {
+      args.rerenderOnly = true;
     } else if (arg === "--allow-published-repair") {
       args.allowPublishedRepair = true;
     }
   }
   args.storyIds = [...new Set(args.storyIds.filter(Boolean))];
   return args;
+}
+
+async function rerenderStories({ storyIds, outDir, db, generatedAt = new Date().toISOString() } = {}) {
+  const ids = (storyIds || []).map((id) => String(id).trim()).filter(Boolean);
+  if (!ids.length) {
+    throw new Error("rerender requires at least one explicit story id");
+  }
+
+  const previousIds = process.env.PRODUCE_STORY_IDS;
+  const previousLimit = process.env.PRODUCE_STORY_LIMIT;
+  process.env.PRODUCE_STORY_IDS = ids.join(",");
+  delete process.env.PRODUCE_STORY_LIMIT;
+  console.log(`[local-tts-publish-refresh] rerendering selected stories: ${ids.join(",")}`);
+  try {
+    const assemble = require("../assemble");
+    await assemble();
+  } finally {
+    if (previousIds === undefined) delete process.env.PRODUCE_STORY_IDS;
+    else process.env.PRODUCE_STORY_IDS = previousIds;
+    if (previousLimit === undefined) delete process.env.PRODUCE_STORY_LIMIT;
+    else process.env.PRODUCE_STORY_LIMIT = previousLimit;
+  }
+
+  const afterStories = await db.getStories();
+  const rerenderRows = [];
+  for (const storyId of ids) {
+    const story = afterStories.find((row) => row.id === storyId);
+    rerenderRows.push({
+      story_id: storyId,
+      exported_path: story?.exported_path || null,
+      final_duration_seconds: story?.duration_seconds ?? null,
+      audio_duration_seconds: story?.audio_duration ?? null,
+      final_exists: story?.exported_path
+        ? Boolean(await mediaPaths.resolveExisting(story.exported_path))
+        : false,
+      final_probe_seconds: story?.exported_path ? await ffprobeDuration(story.exported_path) : null,
+      qa_failed: story?.qa_failed === true,
+      publish_status: story?.publish_status || null,
+      publish_error: story?.publish_error || null,
+    });
+  }
+  const rerenderReport = {
+    schema_version: 1,
+    generated_at: generatedAt,
+    rows: rerenderRows,
+    safety: {
+      local_only: true,
+      posts_to_platforms: false,
+      mutates_tokens: false,
+      mutates_railway_env: false,
+      clears_platform_ids: false,
+    },
+  };
+  const rerenderPaths = await writeReport(outDir, "local_tts_publish_refresh_rerender", rerenderReport);
+  console.log(`[local-tts-publish-refresh] rerender_md=${path.relative(ROOT, rerenderPaths.mdPath)}`);
+  return rerenderReport;
 }
 
 async function ffprobeDuration(file) {
@@ -138,6 +198,29 @@ async function main() {
   const db = require("../lib/db");
   const outDir = path.resolve(args.outDir || OUT);
   const stories = await db.getStories();
+  if (args.rerenderOnly) {
+    if (!args.storyIds.length) {
+      throw new Error("--rerender-only requires explicit --story id(s)");
+    }
+    const plan = await buildLocalTtsRerenderOnlyPlan({
+      stories,
+      storyIds: args.storyIds,
+    });
+    const planPaths = await writeReport(outDir, "local_tts_publish_refresh_rerender_plan", plan);
+    console.log(
+      `[local-tts-publish-refresh] rerender_plan rerenderable=${plan.counts.rerenderable} blocked=${plan.counts.blocked}`,
+    );
+    console.log(`[local-tts-publish-refresh] rerender_plan_md=${path.relative(ROOT, planPaths.mdPath)}`);
+    if (plan.counts.blocked > 0) {
+      throw new Error("rerender-only plan has blockers; refusing to rerender");
+    }
+    await rerenderStories({
+      storyIds: plan.items.map((item) => item.story_id),
+      outDir,
+      db,
+    });
+    return;
+  }
   const localTtsProofReports = await loadLocalTtsProofReports({ outDir });
   const selected = args.storyIds.length
     ? stories.filter((story) => args.storyIds.includes(String(story.id)))
@@ -221,51 +304,11 @@ async function main() {
   console.log(`[local-tts-publish-refresh] apply_md=${path.relative(ROOT, applyPaths.mdPath)}`);
 
   if (args.rerender && applyReport.applied.length) {
-    const ids = applyReport.applied.map((item) => item.story_id).join(",");
-    const previousIds = process.env.PRODUCE_STORY_IDS;
-    const previousLimit = process.env.PRODUCE_STORY_LIMIT;
-    process.env.PRODUCE_STORY_IDS = ids;
-    delete process.env.PRODUCE_STORY_LIMIT;
-    console.log(`[local-tts-publish-refresh] rerendering selected stories: ${ids}`);
-    const assemble = require("../assemble");
-    await assemble();
-    if (previousIds === undefined) delete process.env.PRODUCE_STORY_IDS;
-    else process.env.PRODUCE_STORY_IDS = previousIds;
-    if (previousLimit === undefined) delete process.env.PRODUCE_STORY_LIMIT;
-    else process.env.PRODUCE_STORY_LIMIT = previousLimit;
-
-    const afterStories = await db.getStories();
-    const rerenderRows = [];
-    for (const item of applyReport.applied) {
-      const story = afterStories.find((row) => row.id === item.story_id);
-      rerenderRows.push({
-        story_id: item.story_id,
-        exported_path: story?.exported_path || null,
-        final_duration_seconds: story?.duration_seconds ?? null,
-        audio_duration_seconds: story?.audio_duration ?? null,
-        final_exists: story?.exported_path
-          ? Boolean(await mediaPaths.resolveExisting(story.exported_path))
-          : false,
-        final_probe_seconds: story?.exported_path ? await ffprobeDuration(story.exported_path) : null,
-        qa_failed: story?.qa_failed === true,
-        publish_status: story?.publish_status || null,
-        publish_error: story?.publish_error || null,
-      });
-    }
-    const rerenderReport = {
-      schema_version: 1,
-      generated_at: new Date().toISOString(),
-      rows: rerenderRows,
-      safety: {
-        local_only: true,
-        posts_to_platforms: false,
-        mutates_tokens: false,
-        mutates_railway_env: false,
-        clears_platform_ids: false,
-      },
-    };
-    const rerenderPaths = await writeReport(outDir, "local_tts_publish_refresh_rerender", rerenderReport);
-    console.log(`[local-tts-publish-refresh] rerender_md=${path.relative(ROOT, rerenderPaths.mdPath)}`);
+    await rerenderStories({
+      storyIds: applyReport.applied.map((item) => item.story_id),
+      outDir,
+      db,
+    });
   }
 }
 
@@ -280,5 +323,7 @@ module.exports = {
   backupLocalTtsPublishRefreshDb,
   buildLocalTtsPublishRefreshDbBackupPath,
   main,
+  parseArgs,
+  rerenderStories,
   safeDbBackupTimestamp,
 };

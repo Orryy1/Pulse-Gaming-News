@@ -8,6 +8,7 @@ const path = require("node:path");
 
 const {
   applyLocalTtsPublishRefresh,
+  buildLocalTtsRerenderOnlyPlan,
   buildLocalTtsPublishRefreshPlan,
   clearStoryForLocalRerender,
   inspectTimestampPayload,
@@ -18,6 +19,7 @@ const {
 const {
   backupLocalTtsPublishRefreshDb,
   buildLocalTtsPublishRefreshDbBackupPath,
+  parseArgs,
 } = require("../../tools/local-tts-publish-refresh");
 
 function alignmentFor(text, duration) {
@@ -248,6 +250,71 @@ test("local TTS publish refresh can be explicitly allowed for published local me
 
   assert.equal(plan.counts.refreshable, 1);
   assert.equal(plan.items[0].action, "refresh_audio_and_rerender");
+});
+
+test("local TTS publish refresh can resume rerender without regenerating audio", async () => {
+  const existing = new Set([
+    "output/audio/story_resume.mp3",
+    "output/audio/story_resume_timestamps.json",
+  ]);
+  const plan = await buildLocalTtsRerenderOnlyPlan({
+    stories: [
+      {
+        id: "story_resume",
+        title: "GTA cover art reveal",
+        approved: true,
+        image_path: "output/images/story_resume.png",
+        audio_path: "output/audio/story_resume.mp3",
+        exported_path: null,
+        qa_failed: false,
+        local_tts_publish_refresh: {
+          audio_path: "output/audio/story_resume.mp3",
+        },
+      },
+      {
+        id: "story_live",
+        title: "Already public",
+        approved: true,
+        image_path: "output/images/story_live.png",
+        audio_path: "output/audio/story_live.mp3",
+        youtube_post_id: "yt123",
+      },
+    ],
+    storyIds: ["story_resume", "story_live", "missing_story"],
+    pathExists: async (file) => existing.has(file),
+  });
+
+  assert.equal(plan.mode, "rerender_only");
+  assert.equal(plan.counts.rerenderable, 1);
+  assert.equal(plan.counts.blocked, 2);
+  assert.equal(plan.items.find((item) => item.story_id === "story_resume").action, "rerender_video_local");
+  assert.deepEqual(
+    plan.items.find((item) => item.story_id === "story_live").blockers,
+    ["already_has_platform_ids", "audio_file_missing", "word_timestamps_missing"],
+  );
+  assert.deepEqual(
+    plan.items.find((item) => item.story_id === "missing_story").blockers,
+    ["story_not_found"],
+  );
+  assert.equal(plan.safety.regenerates_audio, false);
+  assert.equal(plan.safety.posts_to_platforms, false);
+});
+
+test("local TTS publish refresh CLI parses rerender-only resume flag", () => {
+  const args = parseArgs([
+    "node",
+    "tools/local-tts-publish-refresh.js",
+    "--story-id",
+    "story_a,story_b",
+    "--rerender-only",
+    "--out-dir",
+    "test/output/resume",
+  ]);
+
+  assert.deepEqual(args.storyIds, ["story_a", "story_b"]);
+  assert.equal(args.rerenderOnly, true);
+  assert.equal(args.applyLocal, false);
+  assert.equal(args.outDir, "test/output/resume");
 });
 
 test("local TTS publish refresh clears only render state, not platform IDs", () => {

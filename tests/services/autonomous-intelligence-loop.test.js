@@ -24,7 +24,10 @@ test("scheduler registers the full autonomous intelligence loop", () => {
   assert.equal(schedule("candidate_supply_monitor_2h")?.payload.enqueue_repair_on_amber, true);
   assert.equal(schedule("candidate_supply_monitor_2h")?.payload.enqueue_hunt_on_runway_gap, true);
   assert.equal(schedule("candidate_supply_monitor_2h")?.payload.enqueue_fresh_review_script_repair, true);
+  assert.equal(schedule("candidate_supply_monitor_2h")?.payload.enqueue_fresh_production_refill, true);
   assert.equal(schedule("candidate_supply_monitor_2h")?.payload.fresh_review_script_repair_limit, 6);
+  assert.equal(schedule("candidate_supply_monitor_2h")?.payload.fresh_production_refill_limit, 12);
+  assert.equal(schedule("candidate_supply_monitor_2h")?.payload.fresh_production_refill_rss_per_feed, 4);
   assert.equal(schedule("candidate_supply_monitor_2h")?.payload.repair_limit, 10);
   assert.equal(schedule("competitor_forensics_daily")?.kind, "competitor_forensics_lab");
   assert.equal(schedule("competitor_quality_gate_daily")?.kind, "competitor_quality_gate");
@@ -45,6 +48,7 @@ test("scheduler registers the full autonomous intelligence loop", () => {
   assert.equal(typeof handlers.safe_auto_repair_runner, "function");
   assert.equal(typeof handlers.local_tts_doctor, "function");
   assert.equal(typeof handlers.fresh_review_script_repair, "function");
+  assert.equal(typeof handlers.fresh_production_refill, "function");
 });
 
 test("local TTS doctor handler restarts and prewarms through a safe child process", async () => {
@@ -190,7 +194,10 @@ test("candidate supply monitor enqueues fresh intake and repair when runway has 
           enqueue_repair_on_amber: true,
           enqueue_hunt_on_runway_gap: true,
           enqueue_fresh_review_script_repair: true,
+          enqueue_fresh_production_refill: true,
           fresh_review_script_repair_limit: 6,
+          fresh_production_refill_limit: 12,
+          fresh_production_refill_rss_per_feed: 4,
           repair_limit: 10,
         },
       },
@@ -211,7 +218,8 @@ test("candidate supply monitor enqueues fresh intake and repair when runway has 
     assert.equal(result.repair_enqueued, true);
     assert.equal(result.fresh_intake_enqueued, true);
     assert.equal(result.fresh_review_script_repair_enqueued, true);
-    assert.equal(enqueued.length, 3);
+    assert.equal(result.fresh_production_refill_enqueued, true);
+    assert.equal(enqueued.length, 4);
     assert.equal(enqueued[0].kind, "hunt");
     assert.equal(enqueued[0].payload.reason, "candidate_supply_monitor_fresh_intake");
     assert.equal(enqueued[0].idempotency_key, "candidate_supply_hunt:2026-06-17:08");
@@ -219,8 +227,96 @@ test("candidate supply monitor enqueues fresh intake and repair when runway has 
     assert.equal(enqueued[1].payload.reason, "candidate_supply_monitor_fresh_review_script_repair");
     assert.equal(enqueued[1].payload.limit, 6);
     assert.equal(enqueued[1].idempotency_key, "candidate_supply_fresh_review_script_repair:2026-06-17:08");
-    assert.equal(enqueued[2].kind, "safe_auto_repair_runner");
-    assert.equal(enqueued[2].payload.reason, "candidate_supply_monitor_reserve_refill");
+    assert.equal(enqueued[2].kind, "fresh_production_refill");
+    assert.equal(enqueued[2].payload.reason, "candidate_supply_monitor_fresh_production_refill");
+    assert.equal(enqueued[2].payload.limit, 12);
+    assert.equal(enqueued[2].payload.rss_per_feed, 4);
+    assert.equal(
+      enqueued[2].payload.out_dir,
+      "output/candidate-supply/fresh-production-refill/2026-06-17-08/goal-proof-batch",
+    );
+    assert.equal(
+      enqueued[2].payload.contract_out_dir,
+      "output/candidate-supply/fresh-production-refill/2026-06-17-08/goal-contract",
+    );
+    assert.equal(enqueued[2].idempotency_key, "candidate_supply_fresh_production_refill:2026-06-17:08");
+    assert.equal(enqueued[3].kind, "safe_auto_repair_runner");
+    assert.equal(enqueued[3].payload.reason, "candidate_supply_monitor_reserve_refill");
+  } finally {
+    for (const [cachePath, entry] of originalCache.entries()) {
+      if (entry) require.cache[cachePath] = entry;
+      else delete require.cache[cachePath];
+    }
+  }
+});
+
+test("fresh production refill handler builds live-RSS local proof packages", async () => {
+  const jobHandlersPath = require.resolve("../../lib/job-handlers");
+  const goalBatchPath = require.resolve("../../tools/goal-batch-packages");
+  const originalCache = new Map([
+    [jobHandlersPath, require.cache[jobHandlersPath]],
+    [goalBatchPath, require.cache[goalBatchPath]],
+  ]);
+  let capturedArgs = null;
+
+  try {
+    require.cache[goalBatchPath] = {
+      id: goalBatchPath,
+      filename: goalBatchPath,
+      loaded: true,
+      exports: {
+        async main(args) {
+          capturedArgs = args;
+          return {
+            batch: {
+              summary: {
+                story_count: 12,
+                green_count: 2,
+                red_count: 10,
+              },
+            },
+            outputs: {
+              storyPackagesPath: "output/goal-contract/story-packages.json",
+              batchReportPath: "output/goal-contract/story-packages-report.json",
+            },
+          };
+        },
+      },
+    };
+    delete require.cache[jobHandlersPath];
+
+    const { handlers: mockedHandlers } = require("../../lib/job-handlers");
+    const result = await mockedHandlers.fresh_production_refill(
+      {
+        channel_id: "pulse-gaming",
+        payload: {
+          limit: 12,
+          rss_per_feed: 4,
+          out_dir: "output/fresh-green-refill-test/goal-proof-batch",
+          contract_out_dir: "output/goal-contract",
+        },
+      },
+      { log() {} },
+    );
+
+    assert.deepEqual(capturedArgs, [
+      "--live-rss",
+      "--rss-per-feed",
+      "4",
+      "--limit",
+      "12",
+      "--out-dir",
+      "output/fresh-green-refill-test/goal-proof-batch",
+      "--contract-out-dir",
+      "output/goal-contract",
+    ]);
+    assert.equal(result.status, "completed");
+    assert.equal(result.story_count, 12);
+    assert.equal(result.green_count, 2);
+    assert.equal(result.red_count, 10);
+    assert.equal(result.safety.local_only, true);
+    assert.equal(result.safety.no_publish, true);
+    assert.equal(result.outputs.storyPackagesPath, "output/goal-contract/story-packages.json");
   } finally {
     for (const [cachePath, entry] of originalCache.entries()) {
       if (entry) require.cache[cachePath] = entry;

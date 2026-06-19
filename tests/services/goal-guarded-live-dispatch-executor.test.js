@@ -707,6 +707,47 @@ test("selectNextGuardedLiveAction skips platforms already published in structure
   assert.equal(selection.skipped_actions[0].evidence_source, "platform_posts");
 });
 
+test("selectNextGuardedLiveAction prioritises a fresh story over residual cross-post catch-up", async () => {
+  const selection = await selectNextGuardedLiveAction({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("instagram_reels"),
+        action("youtube_shorts", {
+          action_id: "fresh-story:youtube_shorts",
+          story_id: "fresh-story",
+          video_path: "output/final/fresh-story/youtube_shorts.mp4",
+          platform_publish_manifest_path: "output/final/fresh-story/youtube_shorts.json",
+        }),
+        action("facebook_reels", {
+          action_id: "fresh-story:facebook_reels",
+          story_id: "fresh-story",
+          video_path: "output/final/fresh-story/facebook_reels.mp4",
+          platform_publish_manifest_path: "output/final/fresh-story/facebook_reels.json",
+        }),
+      ],
+    }),
+    stories: [
+      story({
+        youtube_post_id: "yt_existing",
+        instagram_media_id: null,
+        facebook_post_id: null,
+      }),
+      story({
+        id: "fresh-story",
+        title: "Steam Next Fest Turns Demos Into A Trust Fight",
+        youtube_post_id: null,
+        instagram_media_id: null,
+        facebook_post_id: null,
+      }),
+    ],
+    runActionQualityGate: passActionQualityGate,
+  });
+
+  assert.equal(selection.exhausted, false);
+  assert.equal(selection.action_id, "fresh-story:youtube_shorts");
+  assert.equal(selection.priority.reason, "fresh_story_youtube_first");
+});
+
 test("selectNextGuardedLiveAction skips previous hard platform failures", async () => {
   const selection = await selectNextGuardedLiveAction({
     executorPlan: executorPlan({

@@ -148,6 +148,56 @@ test("plain platform descriptions fail the media-house gate", () => {
   assert.ok(report.hard_failures.includes("media_house:platform_copy_too_plain"));
 });
 
+test("plain Shorts titles fail even when source and subject are present", () => {
+  const report = buildPulseMediaHouseScore(strongStory({
+    canonical: {
+      ...strongStory().canonical,
+      selected_title: "Forza Horizon 6 Scores 84 On PC Gamer",
+    },
+    platformManifest: {
+      outputs: {
+        youtube_shorts: {
+          title: "Forza Horizon 6 Scores 84 On PC Gamer",
+          description:
+            "Forza Horizon 6 now has a review score players will use in the Xbox argument before launch.",
+          cover_frame: { headline: "FORZA REVIEW SCORE" },
+        },
+      },
+    },
+  }));
+
+  assert.equal(report.verdict, "RED");
+  assert.ok(report.hard_failures.includes("media_house:title_lacks_curiosity_gap"));
+  assert.ok(report.hard_failures.includes("media_house:platform_title_too_plain"));
+  assert.equal(report.shorts_attention_report.status, "blocked");
+});
+
+test("stakes-led Shorts titles and covers pass the attention gate", () => {
+  const report = buildPulseMediaHouseScore(strongStory({
+    canonical: {
+      ...strongStory().canonical,
+      selected_title: "Gears E-Day Has A 130GB Problem",
+      canonical_subject: "Gears of War: E-Day",
+      first_spoken_line: "Gears of War E-Day just turned storage into part of the launch pitch.",
+      thumbnail_headline: "GEARS E-DAY 130GB TEST",
+    },
+    platformManifest: {
+      outputs: {
+        youtube_shorts: {
+          title: "Gears E-Day Has A 130GB Problem",
+          description:
+            "Gears of War E-Day just turned a 130 GB install into the first real PC launch question.",
+          cover_frame: { headline: "GEARS E-DAY 130GB TEST" },
+        },
+      },
+    },
+  }));
+
+  assert.equal(report.shorts_attention_report.status, "pass");
+  assert.ok(!report.hard_failures.includes("media_house:title_lacks_curiosity_gap"));
+  assert.ok(!report.hard_failures.includes("media_house:platform_title_too_plain"));
+});
+
 test("subject-only or dangling thumbnail text fails the media-house gate", () => {
   const base = strongStory();
   const report = buildPulseMediaHouseScore(strongStory({

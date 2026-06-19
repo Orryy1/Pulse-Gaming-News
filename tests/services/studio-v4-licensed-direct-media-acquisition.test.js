@@ -183,6 +183,106 @@ test("licensed direct media CLI row normaliser reads official discovery output t
   assert.match(rows[0].direct_media_url_if_available, /hls_264_master\.m3u8$/);
 });
 
+test("licensed direct media CLI row normaliser prefers expanded official discovery templates", () => {
+  const rows = rowsFromPayload({
+    schema_version: 1,
+    execution_mode: "official_direct_media_discovery",
+    rows: [
+      {
+        story_id: "dave-jungle",
+        source_family: "dave_jungle_xbox_storefront",
+        direct_media_url: "https://cdn.xbox.com/dave/main.m3u8",
+      },
+    ],
+    output_template: {
+      entries: [
+        {
+          story_id: "dave-jungle",
+          source_family: "dave_jungle_xbox_storefront",
+          direct_media_url_if_available: "https://cdn.xbox.com/dave/main.m3u8",
+        },
+        {
+          story_id: "dave-jungle",
+          source_family: "dave_jungle_xbox_storefront__media_02_bonus",
+          direct_media_url_if_available: "https://cdn.xbox.com/dave/bonus.m3u8",
+        },
+      ],
+    },
+  });
+
+  assert.equal(rows.length, 2);
+  assert.deepEqual(
+    rows.map((row) => row.source_family),
+    ["dave_jungle_xbox_storefront", "dave_jungle_xbox_storefront__media_02_bonus"],
+  );
+});
+
+test("licensed direct media lane preserves expanded official direct-media candidates", () => {
+  const report = buildLicensedDirectMediaAcquisitionReport({
+    sourceFamilyReport: sourceFamilyReport({
+      story_id: "dave-jungle",
+      entity: "Dave the Diver",
+      source_family: "dave_jungle_xbox_storefront",
+      source_type: "official_platform_product_page",
+      source_owner: "Xbox Store",
+      official_source_url: "https://www.xbox.com/games/store/dave",
+      source_url_kind: "official_platform_product_page",
+      segment_validation_eligible: false,
+    }),
+    directMediaReport: {
+      schema_version: 1,
+      execution_mode: "official_direct_media_discovery",
+      rows: [
+        {
+          story_id: "dave-jungle",
+          entity: "Dave the Diver",
+          source_family: "dave_jungle_xbox_storefront",
+          direct_media_url: "https://cdn.xbox.com/dave/main.m3u8",
+          source_url_kind: "hls_manifest",
+          source_duration_s: 87,
+        },
+      ],
+      output_template: {
+        entries: [
+          {
+            story_id: "dave-jungle",
+            entity: "Dave the Diver",
+            source_family: "dave_jungle_xbox_storefront",
+            source_type: "official_platform_product_page",
+            source_owner: "Xbox Store",
+            official_source_url: "https://www.xbox.com/games/store/dave",
+            direct_media_url_if_available: "https://cdn.xbox.com/dave/main.m3u8",
+            source_url_kind: "hls_manifest",
+            source_duration_s: 87,
+          },
+          {
+            story_id: "dave-jungle",
+            entity: "Dave the Diver",
+            source_family: "dave_jungle_xbox_storefront__media_02_bonus",
+            source_type: "official_platform_product_page",
+            source_owner: "Xbox Store",
+            official_source_url: "https://www.xbox.com/games/store/dave",
+            direct_media_url_if_available: "https://cdn.xbox.com/dave/bonus.m3u8",
+            source_url_kind: "hls_manifest",
+            source_duration_s: 48,
+          },
+        ],
+      },
+    },
+    generatedAt: GENERATED_AT,
+  });
+
+  assert.equal(report.summary.render_ready_sources, 2);
+  assert.deepEqual(
+    report.render_ready_sources.map((row) => row.source_family),
+    ["dave_jungle_xbox_storefront", "dave_jungle_xbox_storefront_media_02_bonus"],
+  );
+  assert.deepEqual(
+    report.accepted_references.map((row) => row.source_url),
+    ["https://cdn.xbox.com/dave/main.m3u8", "https://cdn.xbox.com/dave/bonus.m3u8"],
+  );
+});
+
 test("licensed direct media lane accepts CLI-filtered official discovery output templates", () => {
   const officialDiscovery = {
     schema_version: 1,

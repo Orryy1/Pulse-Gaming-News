@@ -82,6 +82,13 @@ async function readJsonIfExists(filePath, fallback = {}) {
 
 function rowsFromPayload(payload = {}) {
   if (Array.isArray(payload)) return payload;
+  if (
+    payload?.execution_mode === "official_direct_media_discovery" &&
+    Array.isArray(payload.output_template?.entries) &&
+    payload.output_template.entries.length
+  ) {
+    return payload.output_template.entries;
+  }
   if (Array.isArray(payload.entries) && payload.entries.length) return payload.entries;
   if (Array.isArray(payload.items) && payload.items.length) return payload.items;
   if (Array.isArray(payload.rows) && payload.rows.length) return payload.rows;

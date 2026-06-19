@@ -13,6 +13,7 @@ const {
 } = require("../../lib/controlled-frame-extraction-plan");
 const {
   loadStories,
+  loadMotionPlans,
   shouldRebuildMotionPlansFromReferences,
 } = require("../../tools/controlled-frame-extraction-plan");
 
@@ -679,6 +680,79 @@ test("Controlled Frame Extraction Plan rebuilds stale motion plans when trailer 
     }),
     true,
   );
+});
+
+test("Controlled Frame Extraction CLI story-json mode ignores stale default motion reports", async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-frame-plan-story-json-"));
+  const storyPath = path.join(tempDir, "stories.json");
+  const trailerPath = path.join(tempDir, "trailer_references.json");
+  const defaultMotionPath = path.join(__dirname, "..", "..", "test", "output", "motion_acquisition_v1.json");
+  const backupPath = path.join(tempDir, "motion_acquisition_v1.backup.json");
+  const hadDefaultMotionReport = await fs.pathExists(defaultMotionPath);
+
+  if (hadDefaultMotionReport) {
+    await fs.copy(defaultMotionPath, backupPath);
+  }
+
+  try {
+    await fs.ensureDir(path.dirname(defaultMotionPath));
+    await fs.writeJson(
+      defaultMotionPath,
+      {
+        plans: [
+          {
+            story_id: "stale_default_story",
+            motion_readiness: "reference_ready_for_local_frame_plan",
+            existing_references: [reference("Stale Game")],
+          },
+        ],
+      },
+      { spaces: 2 },
+    );
+
+    await fs.writeJson(storyPath, [
+      {
+        id: "fresh_story_json_candidate",
+        title: "Fresh Candidate Has Official Motion",
+        game_title: "Fresh Game",
+        timestamp: "2026-06-19T10:00:00.000Z",
+      },
+    ]);
+    await fs.writeJson(trailerPath, {
+      plans: [
+        {
+          story_id: "fresh_story_json_candidate",
+          references: [reference("Fresh Game")],
+        },
+      ],
+    });
+
+    const result = await loadMotionPlans({
+      fixture: false,
+      storyId: null,
+      storyJsonPath: storyPath,
+      allApproved: false,
+      limit: 5,
+      motionReport: null,
+      trailerReferences: trailerPath,
+      noTrailerReferences: false,
+    });
+
+    assert.equal(result.mode, "story_json");
+    assert.equal(result.motionReportSource, null);
+    assert.deepEqual(
+      result.plans.map((plan) => plan.story_id),
+      ["fresh_story_json_candidate"],
+    );
+    assert.equal(result.plans[0].existing_references.length, 1);
+  } finally {
+    if (hadDefaultMotionReport) {
+      await fs.copy(backupPath, defaultMotionPath);
+    } else {
+      await fs.remove(defaultMotionPath);
+    }
+    await fs.remove(tempDir);
+  }
 });
 
 test("Controlled Frame Extraction report emits valid JSON and readable Markdown", () => {

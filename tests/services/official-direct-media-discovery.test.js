@@ -57,6 +57,20 @@ test("direct-media discovery extracts validation-eligible video URLs from offici
   assert.equal(urls[1].source_url_kind, "hls_manifest");
 });
 
+test("direct-media discovery extracts unicode-escaped official HLS URLs", () => {
+  const urls = discoverDirectMediaUrlsFromText({
+    baseUrl: "https://news.xbox.com/en-us/2026/06/19/end-of-abyss-combat-exploration-hands-on/",
+    text: `{
+      "contentUrl":"https\\u003a\\u002f\\u002fcdn.trailers.xboxservices.com\\u002ftrailers\\u002f00000000-0000-0000-0000-000000000000\\u002fis\\u002fcontent\\u002fmicrosoftassets\\u002fEnd-of-Abyss-AVS.m3u8\\u003fpackagedStreaming\\u003dtrue\\u0026playbackPolicy\\u003dDirect"
+    }`,
+  });
+
+  assert.deepEqual(urls.map((item) => item.url), [
+    "https://cdn.trailers.xboxservices.com/trailers/00000000-0000-0000-0000-000000000000/is/content/microsoftassets/End-of-Abyss-AVS.m3u8?packagedStreaming=true&playbackPolicy=Direct",
+  ]);
+  assert.equal(urls[0].source_url_kind, "hls_manifest");
+});
+
 test("direct-media discovery trims HTML-encoded Steam trailer manifest URLs", () => {
   const urls = discoverDirectMediaUrlsFromText({
     baseUrl: "https://store.steampowered.com/app/353370/Steam_Controller",

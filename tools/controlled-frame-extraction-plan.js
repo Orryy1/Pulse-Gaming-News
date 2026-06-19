@@ -212,7 +212,10 @@ function shouldRebuildMotionPlansFromReferences({
 async function loadMotionPlans(args) {
   const explicitMotionPath = args.motionReport ? path.resolve(ROOT, args.motionReport) : null;
   const trailerReferenceReport = await loadTrailerReferenceReport(args);
-  const defaultReport = !args.fixture ? await readJsonIfExists(explicitMotionPath || DEFAULT_MOTION_REPORT) : null;
+  const shouldReadMotionReport = !args.fixture && (explicitMotionPath || !args.storyJsonPath);
+  const defaultReport = shouldReadMotionReport
+    ? await readJsonIfExists(explicitMotionPath || DEFAULT_MOTION_REPORT)
+    : null;
   if (defaultReport && Array.isArray(defaultReport.plans)) {
     const plans = args.storyId
       ? defaultReport.plans.filter((plan) => plan.story_id === args.storyId)

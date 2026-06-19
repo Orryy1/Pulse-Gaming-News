@@ -234,6 +234,83 @@ test("segment validator accepts licensed direct-media acquisition reports as ref
   assert.equal(refs[0].provenance.provider, "licensed_direct_media_acquisition");
 });
 
+test("segment validator preserves official product-page type for approved platform-store media", async () => {
+  const approvedMediaUrl =
+    "https://vulcan.dl.playstation.net/img/rnd/202605/1208/granblue-demo.mp4";
+  const licensedReport = {
+    execution_mode: "visual_v4_licensed_direct_media_acquisition",
+    accepted_references: [
+      {
+        story_id: "granblue-demo-product",
+        entity: "Granblue Fantasy: Relink - Endless Ragnarok Demo",
+        source_family: "playstation_store_granblue_demo",
+        source_type: "licensed_direct_media_url",
+        provider: "licensed_direct_media_acquisition",
+        source_url: approvedMediaUrl,
+        reference_url: "https://store.playstation.com/en-us/product/UP5460-PPSA35115_00-GBRELINKERDEMO01",
+        official_source_url: "https://store.playstation.com/en-us/product/UP5460-PPSA35115_00-GBRELINKERDEMO01",
+        source_url_kind: "direct_video",
+        source_duration_s: 104.92,
+        segment_validation_eligible: true,
+        access_mode: "",
+        rights_gate: "",
+        rights_risk_class: "official_direct_media",
+        provenance: {
+          access_mode: "approved_direct_media_url",
+          rights_gate: "official_source",
+        },
+      },
+    ],
+  };
+
+  const refs = buildClipRefsFromReport({}, licensedReport, "granblue-demo-product", {
+    includeExploratoryWindows: true,
+    exploratoryStartSeconds: [72],
+    candidateWindowsPerSource: 1,
+    maxSegments: 1,
+  });
+
+  assert.equal(refs.length, 1);
+  assert.equal(refs[0].sourceType, "official_platform_product_page");
+  assert.equal(refs[0].path, approvedMediaUrl);
+
+  let call = 0;
+  const report = await runOfficialTrailerSegmentValidation(refs, {
+    applyLocal: true,
+    outputRoot: tempOutputRoot("platform-store-product-page-media"),
+    extractor: fakeExtractor,
+    inspectFrame: async (outputPath) => {
+      call += 1;
+      return {
+        ...passingQa(outputPath),
+        content_hash: `platform-store-product-${call}`,
+        gameplay_action_score: 83,
+        gameplay_action_candidate: true,
+        prescan: {
+          likely_is_logo: false,
+          text_overlay_likelihood: 0.02,
+          white_text_on_dark_likelihood: 0.03,
+          edge_density: 0.18,
+          saturation_mean: 0.62,
+          dark_pixel_ratio: 0.24,
+          bright_pixel_ratio: 0.05,
+          letterbox_bar_ratio: 0,
+        },
+        visual_taste: {
+          verdict: "pass",
+          reason: "taste_passed",
+          score: 90,
+          tags: ["gameplay_candidate", "product_motion"],
+        },
+      };
+    },
+  });
+
+  assert.equal(report.summary.segments_validated, 1);
+  assert.equal(report.segments[0].validation_reason, "official_product_motion_samples_passed");
+  assert.equal(report.segments[0].segment_motion_class, "official_product_motion");
+});
+
 test("segment validator does not preflight-block ultra-short official direct media windows", async () => {
   const licensedReport = {
     execution_mode: "visual_v4_licensed_direct_media_acquisition",

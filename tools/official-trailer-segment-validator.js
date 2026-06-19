@@ -227,6 +227,55 @@ function referenceRowsFromLicensedDirectMediaReport(report = {}) {
   return rows.filter((row) => row && typeof row === "object");
 }
 
+function officialProductPageUrl(row = {}) {
+  const url = String(
+    row.official_source_url ||
+      row.reference_url ||
+      row.canonical_source_url ||
+      row.product_page_url ||
+      "",
+  ).trim();
+  if (!url) return "";
+  return /(?:store\.playstation\.com\/|xbox\.com\/[^?#]*\/games\/store\/|store\.steampowered\.com\/app\/|nintendo\.com\/[^?#]*(?:store\/products|games\/detail)\/|epicgames\.com\/store\/)/i.test(
+    url,
+  )
+    ? url
+    : "";
+}
+
+function sourceTypeForLicensedDirectMediaReference(row = {}) {
+  const provenance = row.provenance || {};
+  const explicit = String(row.source_type || row.sourceType || "").trim();
+  if (/official_platform_product_page/i.test(explicit)) return "official_platform_product_page";
+  const productPageUrl = officialProductPageUrl(row);
+  const officialEvidence = [
+    row.rights_gate,
+    row.rightsGate,
+    row.access_mode,
+    row.accessMode,
+    row.source_tier,
+    row.sourceTier,
+    row.status,
+    row.rights_risk_class,
+    row.rightsRiskClass,
+    provenance.rights_gate,
+    provenance.rightsGate,
+    provenance.access_mode,
+    provenance.accessMode,
+    provenance.rights_risk_class,
+    provenance.rightsRiskClass,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  const officialSource =
+    /\bofficial_source\b/.test(officialEvidence) ||
+    /\bapproved_direct_media_url\b/.test(officialEvidence) ||
+    /\bofficial\b/.test(officialEvidence);
+  if (productPageUrl && officialSource) return "official_platform_product_page";
+  return explicit || "licensed_direct_media_url";
+}
+
 function normaliseLicensedDirectMediaReference(row = {}) {
   const sourceUrl = String(
     row.source_url ||
@@ -239,6 +288,7 @@ function normaliseLicensedDirectMediaReference(row = {}) {
   const urlKind = mediaSourceUrlKindFields(sourceUrl);
   const segmentEligible =
     row.segment_validation_eligible !== false && urlKind.segment_validation_eligible === true;
+  const sourceType = sourceTypeForLicensedDirectMediaReference(row);
   return {
     ...row,
     source_url: sourceUrl,
@@ -249,7 +299,7 @@ function normaliseLicensedDirectMediaReference(row = {}) {
       : row.segment_validation_ineligible_reason ||
         urlKind.segment_validation_ineligible_reason ||
         "segment_source_url_not_direct_media",
-    source_type: row.source_type || "licensed_direct_media_url",
+    source_type: sourceType,
     provider: row.provider || "licensed_direct_media_acquisition",
     downloads_allowed: false,
     allowed_render_use: row.allowed_render_use || "official_direct_media_segment_candidate",
@@ -257,6 +307,8 @@ function normaliseLicensedDirectMediaReference(row = {}) {
     provenance: {
       ...(row.provenance || {}),
       source: row.provenance?.source || "visual_v4_licensed_direct_media_acquisition",
+      original_source_type: row.source_type || row.sourceType || null,
+      official_product_page_url: officialProductPageUrl(row) || null,
       source_url_kind: row.source_url_kind || urlKind.source_url_kind,
       segment_validation_eligible: segmentEligible,
     },

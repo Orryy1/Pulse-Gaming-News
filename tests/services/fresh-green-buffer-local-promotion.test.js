@@ -190,3 +190,60 @@ test("fresh buffer promotion uses selected title over long source headline when 
   assert.equal(storyPackages[0].canonical_subject, "GTA 5");
   assert.equal(storyPackages[0].canonical_game, "GTA 5");
 });
+
+test("fresh buffer promotion rebuilds stale failing narration before packaging", async () => {
+  const generatedAt = "2026-06-19T06:45:00.000Z";
+  const report = buildFreshGreenBufferLocalPromotionReport({
+    stories: [
+      draftStory({
+        id: "rss_garfield_gameplay",
+        title:
+          "Garfield - Escape From Monday Gameplay Trailer Teases the Terror of The Curse of the Spinach Lasagna",
+        canonical_subject: "Garfield",
+        canonical_game: "Garfield",
+        selected_title: "Garfield Gameplay Check",
+        primary_source: {
+          name: "IGN",
+          url: "https://www.ign.com/articles/garfield-escape-from-monday-gameplay-trailer",
+          type: "trusted_editorial_source",
+        },
+        primary_source_url: "https://www.ign.com/articles/garfield-escape-from-monday-gameplay-trailer",
+        source_published_at: "2026-06-18T12:00:00.000Z",
+        confirmed_claims: [
+          "IGN reports a Garfield gameplay trailer shows platforming, camera movement and repeated gameplay beats.",
+        ],
+        narration_script:
+          "Garfield just showed real gameplay. For players, repeated play matters more than one perfect trailer a perfect trailer moment. That gives fans something sharper to argue about than whether the licence is famous enough. Follow Pulse Gaming so you never miss a beat.",
+      }),
+    ],
+    generatedAt,
+  });
+
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "fresh-buffer-script-repair-"));
+  await writeFreshGreenBufferLocalPromotionArtifacts(report, { outputDir: outDir });
+  const canonical = JSON.parse(
+    fs.readFileSync(path.join(outDir, "packages", "rss_garfield_gameplay", "canonical_story_manifest.json"), "utf8"),
+  );
+
+  assert.equal(canonical.script_coherence_result, "pass");
+  assert.equal(canonical.public_copy_repaired_at, generatedAt);
+  assert.match(canonical.public_copy_repair_reason, /repeated_near_phrase|public_narration_meta_language/);
+  assert.doesNotMatch(canonical.full_script, /perfect trailer a perfect trailer|something sharper to argue/i);
+  assert.match(canonical.full_script, /blunt test is this: does the gameplay stay fun/i);
+});
+
+test("fresh buffer promotion removes stale package directories before writing current packages", async () => {
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "fresh-buffer-stale-packages-"));
+  fs.mkdirSync(path.join(outDir, "packages", "stale_story"), { recursive: true });
+  fs.writeFileSync(path.join(outDir, "packages", "stale_story", "canonical_story_manifest.json"), "{}", "utf8");
+
+  const report = buildFreshGreenBufferLocalPromotionReport({
+    stories: [draftStory({ id: "current_story" })],
+    generatedAt: "2026-06-19T07:00:00.000Z",
+  });
+
+  await writeFreshGreenBufferLocalPromotionArtifacts(report, { outputDir: outDir });
+
+  assert.equal(fs.existsSync(path.join(outDir, "packages", "stale_story")), false);
+  assert.equal(fs.existsSync(path.join(outDir, "packages", "current_story")), true);
+});

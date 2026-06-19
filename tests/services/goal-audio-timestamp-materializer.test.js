@@ -2218,6 +2218,14 @@ test("goal audio materializer uses ElevenLabs fallback selected by the workbench
       ],
     },
     generatedAt: "2026-05-22T06:01:00.000Z",
+    alignmentMode: "whisper",
+    alignWordsWithAudio: async ({ scriptText }) => ({
+      ok: true,
+      source: "local_whisper_word_alignment",
+      model: "tiny.en",
+      transcript: scriptText,
+      words: whisperWordsFromScript(scriptText),
+    }),
     generateTtsForStory: async ({ text, outputPath, provider }) => {
       calls.push({ text, outputPath, provider });
       const audioPath = path.join(root, outputPath);
@@ -2241,7 +2249,50 @@ test("goal audio materializer uses ElevenLabs fallback selected by the workbench
   assert.equal(manifest.safety.local_only, false);
   assert.equal(manifest.safety.external_tts_provider_used, "elevenlabs");
   const timestamps = await fs.readJson(path.join(root, "output", "audio", "story-elevenlabs_timestamps.json"));
-  assert.equal(timestamps.meta.wordTimestampSource, "elevenlabs_alignment_normalised");
+  assert.equal(timestamps.meta.wordTimestampSource, "local_whisper_word_alignment");
+  assert.equal(timestamps.meta.timestampWhisperAlignment.script_inserted_actual_word_count, 0);
+});
+
+test("goal audio materializer rejects ElevenLabs output when strict Whisper verification fails", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-elevenlabs-strict-fail-"));
+  const artifactDir = await makePackage(root, "story-elevenlabs-strict-fail");
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    provider: "elevenlabs",
+    workbenchReport: {
+      elevenlabs_tts: { provider: "elevenlabs", ready: true, configured: true },
+      jobs: [
+        {
+          ...workbenchJob("story-elevenlabs-strict-fail", artifactDir),
+          tts_provider: "elevenlabs",
+        },
+      ],
+    },
+    generatedAt: "2026-06-19T06:30:00.000Z",
+    alignmentMode: "whisper",
+    alignWordsWithAudio: async () => ({
+      ok: false,
+      error: "whisper_alignment_failed",
+    }),
+    generateTtsForStory: async ({ text, outputPath }) => {
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 1));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignment(text),
+      });
+      return { ok: true };
+    },
+  });
+
+  assert.equal(report.summary.failed_count, 1);
+  assert.equal(report.summary.materialized_count, 0);
+  assert.equal(report.jobs[0].status, "failed");
+  assert.match(report.jobs[0].error, /local_whisper_word_alignment_failed/);
+  assert.equal(await fs.pathExists(path.join(root, "output", "audio", "story-elevenlabs-strict-fail.mp3")), false);
+  assert.equal(
+    await fs.pathExists(path.join(root, "output", "audio", "story-elevenlabs-strict-fail_timestamps.json")),
+    false,
+  );
 });
 
 test("goal audio materializer adds ElevenLabs narration to the rights ledger", async () => {

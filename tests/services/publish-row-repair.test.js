@@ -94,6 +94,28 @@ test("classifyPublishRowIssue: repaired script-validation fallback rows are ambe
   );
 });
 
+test("classifyPublishRowIssue: repaired script-validation rows with prior QA errors stay amber", () => {
+  const row = classifyPublishRowIssue({
+    id: "bad_public_with_prior_error",
+    title: "Script failed but old QA error is preserved",
+    publish_status: "failed",
+    qa_failed: true,
+    publish_error:
+      "script_validation_review_required_public_row_repair: qa_blocked: audio_duration_too_long",
+    published_at: "2026-05-14T02:00:00.000Z",
+    instagram_media_id: "ig_123",
+    script_review_reason: "script_validation_review_required",
+    body: "Script validation failed. Manual review required before production.",
+  });
+
+  assert.equal(row.severity, "amber");
+  assert.deepEqual(row.issues, [
+    "failed_row_with_platform_ids",
+    "repaired_script_validation_public_row",
+  ]);
+  assert.equal(row.apply_status, "already_applied");
+});
+
 test("classifyPublishRowIssue: public platform IDs without publish timestamps are amber metadata repairs", () => {
   const row = classifyPublishRowIssue({
     id: "missing_publish_time",
@@ -266,6 +288,7 @@ test("buildScriptFallbackRepairUpdates marks only red public fallback rows and k
     now: "2026-05-15T00:10:00.000Z",
     rows: [
       { story_id: "bad", issues: ["public_script_validation_fallback"] },
+      { story_id: "bad_with_error", issues: ["public_script_validation_fallback"] },
       { story_id: "amber", issues: ["failed_row_with_platform_ids"] },
     ],
     stories: [
@@ -277,6 +300,13 @@ test("buildScriptFallbackRepairUpdates marks only red public fallback rows and k
         full_script: "Script validation failed. Manual review required before production.",
       },
       {
+        id: "bad_with_error",
+        published_at: "2026-05-14T22:01:00.000Z",
+        youtube_post_id: "yt_bad_with_error",
+        publish_error: "qa_blocked: audio_duration_too_long",
+        full_script: "Script validation failed. Manual review required before production.",
+      },
+      {
         id: "amber",
         publish_status: "failed",
         youtube_post_id: "yt_amber",
@@ -284,13 +314,18 @@ test("buildScriptFallbackRepairUpdates marks only red public fallback rows and k
     ],
   });
 
-  assert.equal(updates.counts.applied, 1);
+  assert.equal(updates.counts.applied, 2);
   assert.equal(updates.applied[0].story_id, "bad");
   assert.equal(updates.applied[0].next.publish_status, "failed");
   assert.equal(updates.applied[0].next.qa_failed, true);
   assert.equal(updates.applied[0].next.youtube_post_id, "yt_bad");
   assert.equal(updates.applied[0].next.instagram_media_id, "ig_bad");
   assert.equal(updates.applied[0].next.public_row_repair.platform_ids_preserved, true);
+  assert.match(
+    updates.applied[1].next.publish_error,
+    /^script_validation_review_required_public_row_repair: qa_blocked: audio_duration_too_long$/,
+  );
+  assert.equal(updates.applied[1].next.youtube_post_id, "yt_bad_with_error");
 });
 
 test("applyPublishRowRepairPlan persists targeted updates and reports skipped rows", async () => {

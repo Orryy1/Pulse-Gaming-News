@@ -73,6 +73,51 @@ test("script coherence still catches true repeated sentences inside full_script"
   );
 });
 
+test("script coherence catches repeated near-phrases inside one sentence", () => {
+  const qa = runScriptCoherenceQa(
+    {
+      title: "Garfield Gameplay Trailer Shows Real Gameplay",
+      source_type: "rss",
+      subreddit: "IGN",
+      cta: "Follow Pulse Gaming so you never miss a beat",
+      full_script:
+        "Garfield just showed real gameplay. For players, repeated play matters more than one perfect trailer a perfect trailer moment. Follow Pulse Gaming so you never miss a beat.",
+    },
+    {
+      requireCtaField: true,
+      requireFullScriptCta: true,
+    },
+  );
+
+  assert.equal(qa.result, "fail");
+  assert.ok(
+    qa.failures.includes("script_coherence:repeated_near_phrase:perfect trailer"),
+    qa.failures.join(", "),
+  );
+});
+
+test("script coherence allows repeated number words in spoken prices", () => {
+  const qa = runScriptCoherenceQa(
+    {
+      title: "Nintendo Switch 2 Bundle Gets A Price",
+      source_type: "rss",
+      subreddit: "Nintendo",
+      cta: "Follow Pulse Gaming so you never miss a beat",
+      full_script:
+        "Nintendo just made the Switch 2 bundle easier to judge. Nintendo says the Choose Your Game Bundle launches in early June for four hundred and ninety nine dollars and ninety nine cents. The important part is the download code, because buyers can choose the game that actually fits their house. Follow Pulse Gaming so you never miss a beat.",
+    },
+    {
+      requireCtaField: true,
+      requireFullScriptCta: true,
+    },
+  );
+
+  assert.ok(
+    !qa.failures.some((failure) => failure.includes("repeated_near_phrase")),
+    `unexpected near-repeat failure: ${qa.failures.join(", ")}`,
+  );
+});
+
 test("script coherence requires the spoken script itself to contain the exact CTA", () => {
   const qa = runScriptCoherenceQa(
     {

@@ -297,6 +297,71 @@ test("applyEnabledPlatformAutoPublishReadinessScope: guarded handoff holds non-s
   assert.equal(scoped.pillars.strict_dry_run_control.raw.blocked_action_count_still_visible, 1);
 });
 
+test("applyEnabledPlatformAutoPublishReadinessScope: executor handoff keeps non-selected guarded blockers advisory", () => {
+  const pillars = {
+    strict_dry_run_control: {
+      verdict: "red",
+      reason: "strict_dry_run_blocked",
+      raw: {
+        safety_intact: true,
+        ready_for_unattended_publish: false,
+        ready_story_count: 2,
+        blocked_story_count: 5,
+        platform_publish_now_action_count: 4,
+        platform_deferred_action_count: 8,
+        blocked_action_count: 1,
+        human_review_required_action_count: 4,
+        live_publish_allowed_action_count: 0,
+        reviewable_enabled_action_count: 4,
+      },
+    },
+    human_review_approval_gate: {
+      verdict: "green",
+      raw: {
+        approved_action_count: 6,
+        invalid_decision_count: 0,
+        guarded_dispatch_eligible: true,
+      },
+    },
+    guarded_dispatch_preflight: {
+      verdict: "red",
+      reason: "guarded_dispatch_preflight_blocked",
+      raw: {
+        dispatch_ready_action_count: 3,
+        blocked_action_count: 2,
+        held_action_count: 1,
+        safety_blocker_count: 0,
+        ready_for_guarded_dispatch: false,
+      },
+    },
+    guarded_dispatch_executor_preflight: {
+      verdict: "green",
+      raw: {
+        dispatch_ready_action_count: 3,
+        selected_action_count: 3,
+        handoff_ready_action_count: 3,
+        blocked_selected_action_count: 0,
+        ready_for_live_executor_handoff: true,
+      },
+    },
+  };
+
+  const scoped = pr.applyEnabledPlatformAutoPublishReadinessScope(pillars);
+
+  assert.equal(scoped.scope.name, "enabled_platform_guarded_handoff");
+  assert.equal(scoped.scope.guard_ready, true);
+  assert.ok(scoped.scope.overridden_pillars.includes("strict_dry_run_control"));
+  assert.ok(scoped.scope.overridden_pillars.includes("guarded_dispatch_preflight"));
+  assert.equal(scoped.pillars.strict_dry_run_control.verdict, "amber");
+  assert.equal(scoped.pillars.guarded_dispatch_preflight.verdict, "amber");
+  assert.equal(
+    scoped.pillars.guarded_dispatch_preflight.reason,
+    "non_selected_guarded_preflight_blockers_held_by_executor_handoff",
+  );
+  assert.equal(scoped.pillars.guarded_dispatch_preflight.raw.blocked_action_count_still_visible, 2);
+  assert.equal(scoped.pillars.guarded_dispatch_preflight.raw.held_action_count_still_visible, 1);
+});
+
 test("applyEnabledPlatformAutoPublishReadinessScope: core platform credential gaps stay amber", () => {
   const pillars = {
     human_review_approval_gate: {

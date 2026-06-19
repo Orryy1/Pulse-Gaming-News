@@ -810,6 +810,71 @@ test("goal batch packages keep fresh cover headlines subject-safe and avoid weak
   assert.doesNotMatch(alien.short_title, /Just Got A New Signal/i);
 });
 
+test("goal batch packages generate viewer-facing scripts for current official RSS proof stories", () => {
+  const batch = buildGoalBatchPackages({
+    stories: [
+      {
+        id: "rss_granblue_demo",
+        title: "Granblue Fantasy: Relink - Endless Ragnarok hands-on report, demo available today",
+        source_type: "rss",
+        freshness_gate: "pass",
+        primary_source: {
+          name: "PlayStation Blog",
+          url: "https://blog.playstation.com/2026/06/18/granblue-fantasy-relink-endless-ragnarok-hands-on-report-demo-available-today/",
+          type: "official_platform",
+        },
+        source_published_at: "2026-06-18T12:00:08.000Z",
+      },
+      {
+        id: "rss_ea_fc_26_ea_play",
+        title: "EA SPORTS FC 26 Is Now on EA Play",
+        source_type: "rss",
+        freshness_gate: "pass",
+        primary_source: {
+          name: "Xbox Wire",
+          url: "https://news.xbox.com/en-us/2026/06/18/ea-play-fc-26/",
+          type: "official_platform",
+        },
+        source_published_at: "2026-06-18T17:00:00.000Z",
+      },
+      {
+        id: "rss_dave_diver_jungle",
+        title: "Why You Should Follow Dave the Diver to the Jungle in New DLC Today",
+        source_type: "rss",
+        freshness_gate: "pass",
+        primary_source: {
+          name: "Xbox Wire",
+          url: "https://news.xbox.com/en-us/2026/06/18/dave-the-diver-in-the-jungle-out-now/",
+          type: "official_platform",
+        },
+        source_published_at: "2026-06-18T14:00:00.000Z",
+      },
+      {
+        id: "rss_planet_crafter_ps5",
+        title: "The Planet Crafter launches on PS5 July 21",
+        source_type: "rss",
+        freshness_gate: "pass",
+        primary_source: {
+          name: "PlayStation Blog",
+          url: "https://blog.playstation.com/2026/06/16/the-planet-crafter-launches-on-ps5-july-21/",
+          type: "official_platform",
+        },
+        source_published_at: "2026-06-16T13:00:13.000Z",
+      },
+    ],
+    generatedAt: "2026-06-19T01:20:00.000Z",
+  });
+
+  for (const pack of batch.packages) {
+    const manifest = pack.canonical_story_manifest;
+    const script = manifest.narration_script || manifest.full_script || "";
+    assert.equal(pack.script_scorecard.verdict, "viral_ready", `${manifest.story_id}: ${pack.script_scorecard.blockers}`);
+    assert.doesNotMatch(manifest.short_title, /Just Got A New Signal|New Reason To Watch|Real Question/i);
+    assert.doesNotMatch(script, /should stay in review|source says|the hook is|the signal is|for fans to argue about|PlayStation Blog says .*hands-on report|Xbox Wire says .*Is Now on EA Play/i);
+    assert.match(script, /Follow Pulse Gaming so you never miss a beat\.$/);
+  }
+});
+
 test("goal batch packages avoid double-prefixing distinctive thumbnail subject tokens", () => {
   const prepared = prepareStoryForGoalProof({
     id: "fresh_ps_resident_evil_veronica_20260608",
@@ -1180,7 +1245,9 @@ test("goal batch package generic RSS fallback stays review-held instead of prete
     /picked up a player-facing detail|important bit is whether|gap to watch|new signal|new reason to watch/i,
   );
   assert.match(prepared.full_script, /Eurogamer/i);
-  assert.match(prepared.full_script, /review/i);
+  assert.doesNotMatch(prepared.full_script, /review-held|should stay in review|sharper player consequence/i);
+  assert.match(prepared.full_script, /RPG Maker forums/i);
+  assert.match(prepared.full_script, /players|creators|community/i);
 });
 
 test("goal batch package does not turn article-description fragments into narration subjects", () => {
@@ -1199,7 +1266,8 @@ test("goal batch package does not turn article-description fragments into narrat
     prepared.full_script,
     /Hide-and-seek game where you paint just blinked|Hide-and-seek game where you paint should stay/i,
   );
-  assert.match(prepared.full_script, /should stay in review/i);
+  assert.doesNotMatch(prepared.full_script, /should stay in review|sharper player consequence|review-held/i);
+  assert.match(prepared.full_script, /This Game/i);
 });
 
 test("goal batch package extracts named subjects from awkward feed headlines", () => {

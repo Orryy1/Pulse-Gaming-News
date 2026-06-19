@@ -8,6 +8,7 @@ const {
   characterAlignmentToSubtitleWords,
   effectiveVisualTimelineDuration,
   inspectSubtitleTimingWords,
+  mergeSubtitleWordsForDisplay,
   planLegacySegmentDuration,
   selectSubtitleScriptText,
 } = require("../../assemble");
@@ -109,6 +110,43 @@ test("subtitle script fallback prefers the actual TTS transcript over stale stor
 test("assemble ASS timestamp formatter carries rounded centiseconds across minute boundaries", () => {
   assert.equal(assTime(59.999), "0:01:00.00");
   assert.equal(assTime(119.999), "0:02:00.00");
+});
+
+test("subtitle display merge keeps gaming names readable", () => {
+  const words = [
+    { text: "G", start: 0, end: 0.1 },
+    { text: "T", start: 0.1, end: 0.2 },
+    { text: "A", start: 0.2, end: 0.3 },
+    { text: "five", start: 0.3, end: 0.5 },
+    { text: "and", start: 0.5, end: 0.6 },
+    { text: "GTA", start: 0.6, end: 0.75 },
+    { text: "six.", start: 0.75, end: 1 },
+    { text: "PlayStation", start: 1, end: 1.3 },
+    { text: "Five", start: 1.3, end: 1.5 },
+  ];
+
+  const merged = mergeSubtitleWordsForDisplay(words).map((word) => word.text);
+
+  assert.deepEqual(merged, ["GTA 5", "and", "GTA 6.", "PlayStation 5"]);
+});
+
+test("subtitle display merge converts spoken modern years without rewriting ordinary numbers", () => {
+  const words = [
+    { text: "twenty", start: 0, end: 0.1 },
+    { text: "twenty", start: 0.1, end: 0.2 },
+    { text: "six", start: 0.2, end: 0.3 },
+    { text: "has", start: 0.3, end: 0.4 },
+    { text: "twenty", start: 0.4, end: 0.5 },
+    { text: "six", start: 0.5, end: 0.6 },
+    { text: "demos", start: 0.6, end: 0.8 },
+    { text: "twenty", start: 0.8, end: 0.9 },
+    { text: "twenty", start: 0.9, end: 1 },
+    { text: "seven.", start: 1, end: 1.1 },
+  ];
+
+  const merged = mergeSubtitleWordsForDisplay(words).map((word) => word.text);
+
+  assert.deepEqual(merged, ["2026", "has", "twenty", "six", "demos", "2027."]);
 });
 
 test("legacy multi-image segment planner covers narration after xfade overlap", () => {

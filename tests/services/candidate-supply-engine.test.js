@@ -250,11 +250,15 @@ test("candidate supply report treats current transcript backlog as refill pressu
     now,
   });
 
-  assert.equal(report.summary.green_ready_candidates, 5);
+  assert.equal(report.summary.green_ready_candidates, 4);
+  assert.equal(report.summary.raw_preflight_green_ready_candidates, 5);
   assert.equal(report.summary.transcript_audience_rewrite_required, 2);
   assert.equal(report.summary.transcript_backlog_current_candidates, 1);
   assert.equal(report.summary.transcript_backlog_ready_candidates, 1);
   assert.equal(report.summary.transcript_clean_green_ready_candidates, 4);
+  assert.equal(report.summary.green_ready_candidates, report.summary.transcript_clean_green_ready_candidates);
+  assert.equal(report.priority_scorecards.find((item) => item.story_id === "ready-1").clean_green, false);
+  assert.equal(report.priority_scorecards.find((item) => item.story_id === "ready-2").clean_green, true);
   assert.ok(report.warnings.includes("transcript_backlog_current_candidates:1"));
   assert.ok(report.warnings.includes("transcript_clean_green_ready_candidates_below_target:4/10"));
   assert.equal(report.transcript_backlog.current_candidates[0].story_id, "ready-1");
@@ -262,7 +266,8 @@ test("candidate supply report treats current transcript backlog as refill pressu
   assert.equal(candidateSupplyMonitorNeedsFreshIntake(report), true);
   assert.equal(report.next_action, "repair_transcript_backlog_and_refill_green_candidate_buffer");
   assert.match(formatCandidateSupplyMarkdown(report), /Transcript Backlog/);
-  assert.match(formatCandidateSupplyMonitorDiscord(report), /Transcript backlog: 1 current \| clean GREEN 4\/10/);
+  assert.match(formatCandidateSupplyMonitorDiscord(report), /Clean GREEN: 4\/10 \(raw preflight 5; transcript-held 1\)/);
+  assert.doesNotMatch(formatCandidateSupplyMonitorDiscord(report), /^GREEN-ready: 5\/10/m);
 });
 
 test("candidate supply monitor does not trigger fresh intake when runway has reserve", () => {

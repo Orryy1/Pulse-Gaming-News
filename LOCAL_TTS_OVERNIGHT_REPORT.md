@@ -1,6 +1,6 @@
 # Local TTS Overnight Report
 
-Generated: 2026-06-19T11:52:29.593Z
+Generated: 2026-06-19T12:38:23.028Z
 Verdict: AMBER
 Expected local voice: pulse-sleepy-liam-20260502
 Local proof preferred duration: 64-70s preferred, 61-75s accepted
@@ -10,8 +10,8 @@ Local proof preferred duration: 64-70s preferred, 61-75s accepted
 - reason=local TTS is ready with the accepted voice loaded
 
 ## Proof Batch
-- applied=30 voice_ready=16 rejected=9 skipped=6 superseded=8
-- failures=duration_too_short:8, duration_too_long:1, connection_reset:2, tts_timeout:4
+- applied=30 voice_ready=16 rejected=9 skipped=7 superseded=8
+- failures=duration_too_short:8, duration_too_long:1, tts_timeout:5, connection_reset:2
 - superseded_failures=duration_too_short:4, duration_too_long:1, tts_timeout:2, connection_reset:1
 
 ## Voice-Ready MP3s
@@ -44,6 +44,7 @@ Local proof preferred duration: 64-70s preferred, 61-75s accepted
 - 1tayii3: source=local_script_extension | reject_duration_too_short (duration_too_short)
 
 ## Skipped
+- rss_46d4ac46639fcfea: generate_tts_failed (tts_timeout) | server reset recorded
 - 1tbdx3b: generate_tts_failed (connection_reset) | server reset recorded
 - 1t186u4: generate_tts_failed (tts_timeout) | server reset recorded
 - 1tgr15g: generate_tts_failed (tts_timeout) | server reset recorded
@@ -65,13 +66,13 @@ Local proof preferred duration: 64-70s preferred, 61-75s accepted
 - local_only=true
 - autonomous_status=ready_for_local_tts_retry_preflight
 - safe_to_run_local_tts_retry=false
-- safe_retry_work_orders=6
-- retry_preflight_work_orders=6
+- safe_retry_work_orders=7
+- retry_preflight_work_orders=7
 - retry_apply_ready_work_orders=0
 - operator_required_work_orders=7
 - extend_script_story_ids=rss_c4cabfc862af7b64, 1tb3i1r, 1t186u4, 1tk1lpr, 1tkzdfq, 1tayii3
 - shorten_script_story_ids=1thnwdq
-- retry_tts_story_ids=1tbdx3b, 1t186u4, 1tgr15g, 1tk1lpr, 1tkzdfq, 1te1oq7
+- retry_tts_story_ids=rss_46d4ac46639fcfea, 1tbdx3b, 1t186u4, 1tgr15g, 1tk1lpr, 1tkzdfq, 1te1oq7
 - blocked_by_voice_quality=false
 - commands:
   - `npm run ops:local-media-repair -- --dry-run`
@@ -103,6 +104,11 @@ Local proof preferred duration: 64-70s preferred, 61-75s accepted
 - local_audio_duration_repair:1thnwdq: duration_too_long via local_audio_duration_repair
   - command: `npm run ops:reprocess-script-failures -- --story-id 1thnwdq --force-story --source-bound-only --dry-run --json`
   - validate: `npm run ops:local-script-extension -- --story-id 1thnwdq --dry-run`
+- local_tts_retry:rss_46d4ac46639fcfea: local_tts_transport_failure via local_tts_retry
+  - preflight: `npm run ops:local-script-extension -- --story-id rss_46d4ac46639fcfea --dry-run`
+  - command: `npm run ops:local-script-extension -- --story-id rss_46d4ac46639fcfea --dry-run`
+  - apply: `npm run ops:local-script-extension -- --story-id rss_46d4ac46639fcfea --apply-local-audio --apply-limit 1`
+  - validate: `npm run tts:overnight-report -- --json`
 - local_tts_retry:1tbdx3b: local_tts_transport_failure via local_tts_retry
   - preflight: `npm run ops:local-script-extension -- --story-id 1tbdx3b --dry-run`
   - command: `npm run ops:local-script-extension -- --story-id 1tbdx3b --dry-run`

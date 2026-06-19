@@ -745,6 +745,10 @@ test("selectNextGuardedLiveAction prioritises a fresh story over residual cross-
 
   assert.equal(selection.exhausted, false);
   assert.equal(selection.action_id, "fresh-story:youtube_shorts");
+  assert.deepEqual(selection.selected_action_ids, [
+    "fresh-story:youtube_shorts",
+    "fresh-story:facebook_reels",
+  ]);
   assert.equal(selection.priority.reason, "fresh_story_youtube_first");
 });
 
@@ -1427,7 +1431,13 @@ test("guarded live dispatch executor CLI writes dry-run reports and package scri
 test("scheduler publish handler uses guarded executor when live guarded auto-publish is armed", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-live-handler-"));
   const planPath = path.join(root, "guarded_dispatch_executor_plan.json");
-  await fs.writeJson(planPath, executorPlan(), { spaces: 2 });
+  await fs.writeJson(planPath, executorPlan({
+    handoff_ready_actions: [
+      action("youtube_shorts"),
+      action("instagram_reels"),
+      action("facebook_reels"),
+    ],
+  }), { spaces: 2 });
 
   const jobHandlersPath = require.resolve("../../lib/job-handlers");
   const executorPath = require.resolve("../../lib/goal-guarded-live-dispatch-executor");
@@ -1466,19 +1476,29 @@ test("scheduler publish handler uses guarded executor when live guarded auto-pub
         async selectNextGuardedLiveAction({ executorPlan: plan, stories }) {
           selected = true;
           assert.equal(plan.ready_for_live_executor_handoff, true);
+          assert.equal(plan.handoff_ready_actions.length, 3);
           assert.equal(stories[0].id, "story-one");
           return {
             exhausted: false,
             action_id: "story-one:youtube_shorts",
             action: plan.handoff_ready_actions[0],
+            selected_action_ids: [
+              "story-one:youtube_shorts",
+              "story-one:instagram_reels",
+              "story-one:facebook_reels",
+            ],
             skipped_actions: [],
           };
         },
         async runGuardedLiveDispatchExecutor(options) {
           executed = true;
           assert.equal(options.apply, true);
-          assert.deepEqual(options.actionIds, ["story-one:youtube_shorts"]);
-          assert.equal(options.maxActions, 1);
+          assert.deepEqual(options.actionIds, [
+            "story-one:youtube_shorts",
+            "story-one:instagram_reels",
+            "story-one:facebook_reels",
+          ]);
+          assert.equal(options.maxActions, 3);
           return {
             verdict: "GREEN",
             actions: [
@@ -1489,11 +1509,25 @@ test("scheduler publish handler uses guarded executor when live guarded auto-pub
                 outcome: "new_upload",
                 external_id: "yt_1",
               },
+              {
+                action_id: "story-one:instagram_reels",
+                story_id: "story-one",
+                platform: "instagram_reels",
+                outcome: "new_upload",
+                external_id: "ig_1",
+              },
+              {
+                action_id: "story-one:facebook_reels",
+                story_id: "story-one",
+                platform: "facebook_reels",
+                outcome: "new_upload",
+                external_id: "fb_1",
+              },
             ],
             blocked_actions: [],
             summary: {
-              upload_attempt_count: 1,
-              db_mutation_count: 1,
+              upload_attempt_count: 3,
+              db_mutation_count: 3,
             },
           };
         },
@@ -1552,6 +1586,16 @@ test("scheduler publish handler uses guarded executor when live guarded auto-pub
     assert.equal(result.guarded_live_dispatch, true);
     assert.equal(result.status, "green");
     assert.equal(result.action_id, "story-one:youtube_shorts");
+    assert.deepEqual(result.action_ids, [
+      "story-one:youtube_shorts",
+      "story-one:instagram_reels",
+      "story-one:facebook_reels",
+    ]);
+    assert.deepEqual(result.platforms, [
+      "youtube_shorts",
+      "instagram_reels",
+      "facebook_reels",
+    ]);
     assert.equal(result.outcome, "new_upload");
   } finally {
     for (const [id, entry] of originalCache.entries()) {

@@ -1457,24 +1457,34 @@ test("scheduler publish handler uses guarded executor when live guarded auto-pub
     AUTO_PUBLISH: process.env.AUTO_PUBLISH,
     PULSE_GUARDED_LIVE_DISPATCH_ENABLED: process.env.PULSE_GUARDED_LIVE_DISPATCH_ENABLED,
     PULSE_EMERGENCY_KILL_SWITCH: process.env.PULSE_EMERGENCY_KILL_SWITCH,
+    PULSE_EMERGENCY_KILL_SWITCH_CLEAR: process.env.PULSE_EMERGENCY_KILL_SWITCH_CLEAR,
     PULSE_GUARDED_EXECUTOR_PLAN_PATH: process.env.PULSE_GUARDED_EXECUTOR_PLAN_PATH,
+    PULSE_GUARDED_DISPATCH_PLAN_PATH: process.env.PULSE_GUARDED_DISPATCH_PLAN_PATH,
   };
 
   let selected = false;
   let executed = false;
+  const platformPosts = {
+    getByStoryPlatform() {
+      return null;
+    },
+  };
   try {
     process.env.AUTO_PUBLISH = "true";
     process.env.PULSE_GUARDED_LIVE_DISPATCH_ENABLED = "true";
-    process.env.PULSE_EMERGENCY_KILL_SWITCH = "clear";
+    delete process.env.PULSE_EMERGENCY_KILL_SWITCH;
+    process.env.PULSE_EMERGENCY_KILL_SWITCH_CLEAR = "true";
     process.env.PULSE_GUARDED_EXECUTOR_PLAN_PATH = planPath;
+    process.env.PULSE_GUARDED_DISPATCH_PLAN_PATH = path.join(root, "missing_guarded_dispatch_plan.json");
 
     require.cache[executorPath] = {
       id: executorPath,
       filename: executorPath,
       loaded: true,
       exports: {
-        async selectNextGuardedLiveAction({ executorPlan: plan, stories }) {
+        async selectNextGuardedLiveAction({ executorPlan: plan, stories, platformPosts: selectorPlatformPosts }) {
           selected = true;
+          assert.equal(selectorPlatformPosts, platformPosts);
           assert.equal(plan.ready_for_live_executor_handoff, true);
           assert.equal(plan.handoff_ready_actions.length, 3);
           assert.equal(stories[0].id, "story-one");
@@ -1493,6 +1503,7 @@ test("scheduler publish handler uses guarded executor when live guarded auto-pub
         async runGuardedLiveDispatchExecutor(options) {
           executed = true;
           assert.equal(options.apply, true);
+          assert.equal(options.platformPosts, platformPosts);
           assert.deepEqual(options.actionIds, [
             "story-one:youtube_shorts",
             "story-one:instagram_reels",
@@ -1541,6 +1552,7 @@ test("scheduler publish handler uses guarded executor when live guarded auto-pub
       filename: dbPath,
       loaded: true,
       exports: {
+        platformPosts,
         async getStories() {
           return [story()];
         },

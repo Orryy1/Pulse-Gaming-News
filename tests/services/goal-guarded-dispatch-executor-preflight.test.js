@@ -198,6 +198,25 @@ test("executor preflight can explicitly hand off the full dispatch-ready runway"
   assert.equal(report.safe_to_publish_boolean, false);
 });
 
+test("executor preflight accepts runtime sentinel kill-switch clear flag", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-executor-clear-flag-"));
+  const files = await evidenceFiles(root);
+  const report = buildGuardedDispatchExecutorPreflight({
+    guardedDispatchPlan: guardedDispatchPlan(files),
+    platformStatusMatrix: platformStatusMatrix(),
+    selectedActionIds: ["story-one:youtube_shorts"],
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH_CLEAR: "true",
+    },
+    generatedAt: "2026-05-31T19:05:00.000Z",
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.summary.handoff_ready_action_count, 1);
+  assert.equal(report.executor_state.emergency_kill_switch_state, "clear");
+});
+
 test("executor preflight rejects selected actions when executor is not armed or kill switch is not clear", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-executor-unarmed-"));
   const files = await evidenceFiles(root);

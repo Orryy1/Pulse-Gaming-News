@@ -148,6 +148,25 @@ test("plain platform descriptions fail the media-house gate", () => {
   assert.ok(report.hard_failures.includes("media_house:platform_copy_too_plain"));
 });
 
+test("generic platform descriptions fail even without source-admin boilerplate", () => {
+  const report = buildPulseMediaHouseScore(strongStory({
+    platformManifest: {
+      outputs: {
+        youtube_shorts: {
+          title: "Forza Horizon 6 Just Broke Xbox's Steam Ceiling",
+          description:
+            "Forza Horizon 6 has a new trailer and fans are talking about the game this week.",
+          cover_frame: { headline: "STEAM CEILING BROKEN" },
+        },
+      },
+    },
+  }));
+
+  assert.equal(report.verdict, "RED");
+  assert.ok(report.hard_failures.includes("media_house:platform_copy_too_plain"));
+  assert.equal(report.shorts_attention_report.status, "blocked");
+});
+
 test("plain Shorts titles fail even when source and subject are present", () => {
   const report = buildPulseMediaHouseScore(strongStory({
     canonical: {

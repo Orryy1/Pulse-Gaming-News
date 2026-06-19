@@ -171,6 +171,48 @@ test("exploratory refs include licensed direct media references from official in
   assert.equal(refs[0].provenance.source_duration_s, 45);
 });
 
+test("exploratory refs include official social direct video references from trusted intake", () => {
+  const refs = buildExploratoryClipRefs(
+    {
+      plans: [],
+    },
+    "story-1",
+    {
+      referenceReport: {
+        plans: [
+          {
+            story_id: "story-1",
+            references: [
+              {
+                source_url: "https://video.twimg.com/ext_tw_video/123/pu/vid/avc1/1280x720/forza.mp4",
+                source_type: "official_social_media_video",
+                source_family: "forza_horizon_official_x_lowlands_video",
+                entity: "Forza Horizon 6",
+                source_duration_s: 27.71,
+                downloads_allowed: false,
+                segment_validation_eligible: true,
+                provider: "trusted_footage_registry",
+                allowed_render_use: "official_social_direct_motion_candidate",
+                rights_risk_class: "official_social_direct_media",
+              },
+            ],
+          },
+        ],
+      },
+      exploratoryStartSeconds: [8, 14],
+    },
+  );
+
+  assert.ok(refs.length >= 2);
+  assert.ok(refs.every((ref) => ref.path.includes("video.twimg.com/ext_tw_video/123")));
+  assert.ok(refs.every((ref) => ref.sourceType === "official_social_media_video"));
+  assert.ok(refs.every((ref) => ref.sourceFamily === "forza_horizon_official_x_lowlands_video"));
+  assert.ok(refs.every((ref) => ref.sourceDurationS === 27.71));
+  assert.ok(refs.every((ref) => ref.provenance.reference_report_source === true));
+  assert.ok(refs.every((ref) => ref.provenance.source_url_kind === "direct_video"));
+  assert.ok(refs.every((ref) => ref.provenance.segment_validation_eligible === true));
+});
+
 test("exploratory refs use source-relative windows for short licensed direct media", () => {
   const refs = buildExploratoryClipRefs(
     {

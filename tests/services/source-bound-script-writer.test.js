@@ -108,6 +108,50 @@ test("source-bound fallback does not inject Steam player-count context into Forz
   assert.equal(coherence.result, "pass", coherence.failures.join(", "));
 });
 
+test("source-bound fallback turns Forza free-car updates into concrete live-service value scripts", () => {
+  const story = {
+    id: "rss_9c02586434dedbd9",
+    title: "Next Batch of Free Cars Confirmed for Forza Horizon 6",
+    source_type: "rss",
+    subreddit: "IGN",
+    article_url: "https://www.ign.com/articles/next-batch-of-free-cars-confirmed-for-forza-horizon-6",
+  };
+
+  const script = buildSourceBoundFallbackScript(story, {
+    runtimeProfile: LOCAL_PROFILE,
+    sourceName: "IGN",
+    sourceMaterial:
+      "IGN reports the Horizon Playlist Series 2, dubbed Horizon Decades, will run from June 18 to July 16, adding a bunch of free cars to Forza Horizon 6.",
+  });
+
+  assert.ok(script);
+  assert.match(script.full_script, /^Forza Horizon 6\b/);
+  assert.match(script.full_script, /IGN reports/i);
+  assert.match(script.full_script, /free cars/i);
+  assert.match(script.full_script, /Horizon Decades|Series 2|June 18|July 16/i);
+  assert.match(script.full_script, /reason to come back|weekly habit|live-service/i);
+  assert.doesNotMatch(script.full_script, /Metacritic|review score|Steam peak|Premium Edition|GTA|subscription/i);
+  assert.doesNotMatch(
+    script.full_script,
+    /player-facing detail|separating from the noise|reason to exist beyond repeating the feed|watchlist|stronger short keeps|fades into the feed|something specific to judge/i,
+  );
+  assert.match(script.full_script, /Follow Pulse Gaming so you never miss a beat\.$/);
+  assert.ok(script.word_count >= LOCAL_PROFILE.minWords && script.word_count <= LOCAL_PROFILE.maxWords);
+
+  const coherence = runScriptCoherenceQa(
+    { ...story, ...script },
+    { requireCtaField: true, requireFullScriptCta: true },
+  );
+  assert.equal(coherence.result, "pass", coherence.failures.join(", "));
+
+  const quality = buildViralScriptIntelligence({
+    story: { ...story, source_name: "IGN" },
+    script: script.full_script,
+  });
+  assert.equal(quality.verdict, "viral_ready", JSON.stringify(quality, null, 2));
+  assert.ok(quality.viral_score >= 75, JSON.stringify(quality, null, 2));
+});
+
 test("source-bound fallback does not narrate editorial instructions", () => {
   const story = {
     id: "resident_evil_requiem_preview",

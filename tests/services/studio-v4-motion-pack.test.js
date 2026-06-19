@@ -95,6 +95,7 @@ function segment({
   recommendedStart = null,
   recommendedDuration = null,
   validationReason = null,
+  samples = null,
 } = {}) {
   return {
     story_id: storyId,
@@ -120,11 +121,12 @@ function segment({
     trim_recommended: trimRecommended,
     recommended_media_start_s: recommendedStart,
     recommended_duration_s: recommendedDuration,
-    samples: [
-      { local_path: `test/output/${storyId}/${family}-${index}-a.jpg` },
-      { local_path: `test/output/${storyId}/${family}-${index}-b.jpg` },
-      { local_path: `test/output/${storyId}/${family}-${index}-c.jpg` },
-    ],
+    samples:
+      samples || [
+        { local_path: `test/output/${storyId}/${family}-${index}-a.jpg` },
+        { local_path: `test/output/${storyId}/${family}-${index}-b.jpg` },
+        { local_path: `test/output/${storyId}/${family}-${index}-c.jpg` },
+      ],
   };
 }
 
@@ -886,6 +888,55 @@ test("Visual V4 motion pack rejects promo-card source families as fake motion", 
         candidate.source_family === "forza_horizon_official_x_fh6_legend_video" &&
         candidate.reason === "promo_card_source_family",
     ),
+  );
+});
+
+test("Visual V4 motion pack accepts legend-labelled official social clips when samples prove gameplay motion", () => {
+  const family = "forza_horizon_official_x_fh6_legend_video";
+  const pack = buildVisualV4MotionPack({
+    story: forzaStory(),
+    trustedFootageReport: trustedReport("forza-v4-pack", ["steam", "xbox", family, "ign"]),
+    segmentValidationReport: segmentReport([
+      segment({ family: "steam", index: 1 }),
+      segment({ family: "xbox", index: 2 }),
+      segment({
+        family,
+        index: 3,
+        sourceType: "official_social_media_video",
+        sourceUrl: "https://video.twimg.com/amplify_video/legend/vid/avc1/1920x1080/gameplay.mp4?tag=16",
+        referenceTitle: "Forza Horizon official X - FH6 Horizon Legend video reference",
+        actionScore: 86,
+        samples: [
+          {
+            local_path: "test/output/forza/legend-a.jpg",
+            status: "accepted",
+            qa: { visual_taste: { tags: ["detail_rich", "gameplay_candidate"] } },
+          },
+          {
+            local_path: "test/output/forza/legend-b.jpg",
+            status: "accepted",
+            qa: { visual_taste: { tags: ["colourful", "gameplay_candidate"] } },
+          },
+          {
+            local_path: "test/output/forza/legend-c.jpg",
+            status: "accepted",
+            qa: { gameplay_action_candidate: true, visual_taste: { tags: ["gameplay_candidate"] } },
+          },
+        ],
+      }),
+    ]),
+    generatedAt: "2026-05-19T10:05:00.000Z",
+  });
+
+  assert.ok(
+    pack.clips.some((clip) => clip.source_family === family),
+    JSON.stringify(pack.rejected_candidates, null, 2),
+  );
+  assert.equal(
+    pack.rejected_candidates.some(
+      (candidate) => candidate.source_family === family && candidate.reason === "promo_card_source_family",
+    ),
+    false,
   );
 });
 

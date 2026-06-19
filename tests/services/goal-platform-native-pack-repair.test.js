@@ -175,6 +175,40 @@ test("platform-native pack repair refreshes stale media-house score even when pa
   assert.ok(!score.hard_failures.includes("media_house:first_frame_or_thumbnail_not_attention_led"));
 });
 
+test("platform-native pack repair exposes target media-house and attention blockers", async () => {
+  const { storyPackages } = await legacyArtifact();
+  const artifactDir = storyPackages[0].artifact_dir;
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "plain-score-story",
+    canonical_subject: "Forza Horizon 6",
+    canonical_game: "Forza Horizon 6",
+    canonical_angle: "review score creates a weak Xbox argument before launch",
+    selected_title: "Forza Horizon 6 Scores 84 On PC Gamer",
+    canonical_title: "Forza Horizon 6 Scores 84 On PC Gamer",
+    thumbnail_headline: "FORZA REVIEW SCORE",
+    first_spoken_line: "Forza Horizon 6 now has a score Xbox fans will argue over.",
+    narration_script:
+      "Forza Horizon 6 now has a score Xbox fans will argue over. The question is whether one review number changes the launch conversation. Follow Pulse Gaming so you never miss a beat.",
+    primary_source: "PC Gamer",
+    description:
+      "Forza Horizon 6 now has a review score players will use in the Xbox argument before launch. Source: PC Gamer.",
+  });
+
+  const dryRun = await repairPlatformNativePacks({
+    storyPackages,
+    generatedAt: "2026-06-19T20:10:00.000Z",
+    apply: false,
+  });
+
+  assert.equal(dryRun.items[0].target_media_house_verdict, "RED");
+  assert.ok(
+    dryRun.items[0].target_media_house_hard_failures.includes("media_house:title_lacks_curiosity_gap"),
+  );
+  assert.ok(
+    dryRun.items[0].target_shorts_attention_blockers.includes("title_lacks_curiosity_gap"),
+  );
+});
+
 test("platform-native pack repair creates missing platform manifests when target copy passes", async () => {
   const { storyPackages, root } = await legacyArtifact();
   const artifactDir = storyPackages[0].artifact_dir;

@@ -18,6 +18,7 @@ const {
   selectStoriesForGoalBatch,
 } = require("../../tools/goal-batch-packages");
 const { evaluateGoalPublicCopy } = require("../../lib/goal-public-copy-qa");
+const { buildViralScriptIntelligence } = require("../../lib/viral-script-intelligence");
 
 function licensedSfxAssets() {
   return [
@@ -397,6 +398,78 @@ test("goal batch package proof preparation does not revive weak scaffold narrati
     /finally has something (?:concrete|specific) to judge|concrete detail players can argue|floating headline|platform, price or gameplay detail/i,
   );
   assert.match(prepared.full_script, /Follow Pulse Gaming so you never miss a beat\./);
+});
+
+test("goal batch package proof preparation writes concrete scripts for fresh refill categories", () => {
+  const cases = [
+    {
+      story: {
+        id: "rss_sea_of_thieves_custom_seas",
+        title: "Sea of Thieves is Handing Players the Keys to the Seas",
+        canonical_subject: "Sea of Thieves",
+        canonical_game: "Sea of Thieves",
+        source_type: "rss",
+        source_name: "Xbox Wire",
+        article_url: "https://news.xbox.com/en-us/2026/06/19/sea-of-thieves-custom-seas-update-details/",
+        full_script:
+          "Sea of Thieves needs one cleaner proof point before the hype is worth trusting. Xbox Wire says Sea of Thieves is Handing Players the Keys to the Seas.",
+      },
+      required: [/Custom Seas|keys to the seas/i, /private|rules|server/i, /sandbox|crew/i],
+    },
+    {
+      story: {
+        id: "rss_ps_plus_leaving_july",
+        title: "Here's What's Leaving the PS Plus Library in July 2026",
+        canonical_subject: "PlayStation Plus",
+        canonical_game: "PlayStation Plus",
+        source_type: "rss",
+        source_name: "IGN",
+        article_url: "https://www.ign.com/articles/heres-whats-leaving-the-ps-plus-library-in-july-2026",
+        full_script:
+          "PlayStation Plus needs one cleaner proof point before the hype is worth trusting. IGN says Here's What's Leaving the PS Plus Library in July 2026.",
+      },
+      required: [/PlayStation Plus/i, /leaving|library/i, /finish|download|save file|backlog/i],
+    },
+    {
+      story: {
+        id: "rss_xbox_exclusive_label",
+        title: "Xbox's Confusing Exclusivity Criteria Now Aided by 'EXCLUSIVE' Label on Console Dashboard",
+        canonical_subject: "Xbox",
+        canonical_game: "Xbox",
+        source_type: "rss",
+        source_name: "IGN",
+        article_url:
+          "https://www.ign.com/articles/xboxs-confusing-exclusivity-criteria-now-aided-by-exclusive-label-on-console-dashboard",
+        full_script:
+          "Xbox needs one cleaner proof point before the hype is worth trusting. IGN says Xbox's confusing exclusivity criteria now has an EXCLUSIVE label.",
+      },
+      required: [/exclusive label|dashboard/i, /confusing|clarity|promise/i, /PlayStation|PC|console/i],
+    },
+  ];
+
+  for (const item of cases) {
+    const prepared = prepareStoryForGoalProof(item.story, { allowOwnedMotionFallback: true });
+    assert.doesNotMatch(
+      prepared.full_script,
+      /needs one cleaner proof point|source is real|missing detail|treat it as early movement|wait for the proof/i,
+    );
+    for (const required of item.required) assert.match(prepared.full_script, required);
+    assert.match(prepared.full_script, /Follow Pulse Gaming so you never miss a beat\./);
+    assert.equal(evaluateGoalPublicCopy({
+      ...prepared,
+      selected_title: prepared.public_title,
+      thumbnail_headline: prepared.thumbnail_headline,
+      narration_script: prepared.full_script,
+      first_spoken_line: prepared.first_spoken_line,
+    }).verdict, "pass");
+    assert.equal(
+      buildViralScriptIntelligence({
+        story: { ...prepared, title: prepared.public_title },
+        script: prepared.full_script,
+      }).verdict,
+      "viral_ready",
+    );
+  }
 });
 
 test("goal batch package proof preparation rejects cross-story contaminated scripts", () => {

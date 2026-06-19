@@ -389,6 +389,37 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
         log() {},
         async runNodeJobChildProcess(options) {
           childCalls.push(options);
+          if (options.args[0] === "tools/official-direct-media-discovery.js") {
+            const templateIndex = options.args.indexOf("--output-template");
+            const templatePath = templateIndex >= 0 ? options.args[templateIndex + 1] : null;
+            if (templatePath) {
+              await fs.writeFile(
+                templatePath,
+                JSON.stringify({
+                  schema_version: 1,
+                  entries: [
+                    {
+                      story_id: "fresh_xbox_story",
+                      entity: "Halo Campaign Evolved",
+                      source_type: "official_game_site_news_page",
+                      official_source_url: "https://news.xbox.com/en-us/2026/06/19/halo-campaign-evolved-demo/",
+                      direct_media_url_if_available:
+                        "https://assets.xbox.com/halo-campaign-evolved/gameplay-trailer.mp4",
+                      source_title: "Halo Campaign Evolved official gameplay trailer",
+                      source_owner: "Xbox Wire official source",
+                      source_family: "xbox_wire_halo_campaign_evolved_fresh_xbox_story",
+                      evidence_of_officialness:
+                        "Xbox Wire is the official platform source recorded in this story package source manifest.",
+                      entity_match_notes:
+                        "Story entity is Halo Campaign Evolved; direct media URL and official source concern the same story.",
+                      source_duration_s: 62,
+                      downloads_allowed: false,
+                    },
+                  ],
+                }),
+              );
+            }
+          }
           return { ok: true, stdout_tail: "ok", stderr_tail: "" };
         },
       },
@@ -431,8 +462,19 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       childCalls.some((call) => call.args[0] === "tools/official-trailer-reference-resolver.js"),
       "expected fresh refill to create trailer reference evidence",
     );
+    const trailerReferenceCall = childCalls.find(
+      (call) => call.args[0] === "tools/official-trailer-reference-resolver.js",
+    );
+    const intakeArgIndex = trailerReferenceCall.args.indexOf("--official-source-intake-report");
+    assert.match(
+      trailerReferenceCall.args[intakeArgIndex + 1],
+      /official_direct_media_intake_report\.json$/,
+      "expected trailer resolver to consume the direct-media intake report, not the article-only intake report",
+    );
     const repairReport = JSON.parse(await fs.readFile(result.repair_evidence.report_path, "utf8"));
     assert.equal(repairReport.summary.official_source_entries_count, 1);
+    assert.equal(repairReport.summary.direct_media_intake_accepted_count, 1);
+    assert.match(repairReport.outputs.direct_media_intake_report, /official_direct_media_intake_report\.json$/);
     assert.equal(repairReport.safety.no_publish, true);
   } finally {
     for (const [cachePath, entry] of originalCache.entries()) {

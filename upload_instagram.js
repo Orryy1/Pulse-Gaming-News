@@ -48,6 +48,31 @@ const SECRET_PATTERNS = [
   /([?&](?:access_token|token|client_secret|api_key)=)[^&\s]+/gi,
 ];
 
+function cleanText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function buildInstagramReelCaption(story = {}, channelOverride = null) {
+  const { getChannel } = require("./channels");
+  const { getBestTitle } = require("./ab_titles");
+  const channel = channelOverride || getChannel();
+  const publicTitle = getBestTitle(story);
+  const nativeCaption = cleanText(story.instagram_caption || story.platform_caption);
+  let caption = nativeCaption || `${publicTitle}\n\n${safePublicExcerpt(story.full_script, 500)}`;
+  const tags = (channel.hashtags || [])
+    .map((h) => h.replace("#Shorts", "#reels"))
+    .join(" ");
+  const tagLine = `${tags} #viral #explore`.trim();
+  if (tagLine && !/#(?:reels|viral|explore)\b/i.test(caption)) {
+    caption += `\n\n${tagLine}`;
+  }
+  if (normaliseAffiliateLinks(story).length > 0 && !/related gear links/i.test(caption)) {
+    caption += `\n\nRelated gear links in bio | Source: ${formatStorySource(story)}`;
+  }
+  if (caption.length > 2200) caption = caption.substring(0, 2197) + "...";
+  return caption;
+}
+
 /*
   Instagram Reels via Facebook Graph API
   Docs: https://developers.facebook.com/docs/instagram-platform/content-publishing/
@@ -295,21 +320,7 @@ async function uploadReel(story) {
         publicTitle,
       });
 
-      // Build caption - channel-aware hashtags
-      const { getChannel } = require("./channels");
-      const channel = getChannel();
-      let caption = publicTitle;
-      caption += "\n\n" + safePublicExcerpt(story.full_script, 500);
-      const tags = (channel.hashtags || [])
-        .map((h) => h.replace("#Shorts", "#reels"))
-        .join(" ");
-      caption += "\n\n" + tags + " #viral #explore";
-      if (normaliseAffiliateLinks(story).length > 0) {
-        caption += `\n\nRelated gear links in bio | Source: ${formatStorySource(story)}`;
-      }
-
-      // Trim to Instagram's 2200 char limit
-      if (caption.length > 2200) caption = caption.substring(0, 2197) + "...";
+      const caption = buildInstagramReelCaption(story);
 
       // Seed token from env on first run so auto-refresh can work
       await seedTokenFromEnv();
@@ -519,15 +530,7 @@ async function uploadReelViaUrl(story) {
   // strips the extension and still finds the story by id.
   const videoUrl = `${publicBaseUrl}/api/download/${story.id}.mp4`;
 
-  const { getChannel } = require("./channels");
-  const channel = getChannel();
-  let caption = publicTitle;
-  caption += "\n\n" + safePublicExcerpt(story.full_script, 500);
-  const tags = (channel.hashtags || [])
-    .map((h) => h.replace("#Shorts", "#reels"))
-    .join(" ");
-  caption += "\n\n" + tags + " #viral #explore";
-  if (caption.length > 2200) caption = caption.substring(0, 2197) + "...";
+  const caption = buildInstagramReelCaption(story);
 
   console.log(`[instagram] URL fallback: creating container with ${videoUrl}`);
 
@@ -740,6 +743,7 @@ module.exports = {
   uploadShort,
   uploadAll,
   uploadStoryImage,
+  buildInstagramReelCaption,
   getAccessToken,
   refreshToken,
   seedTokenFromEnv,

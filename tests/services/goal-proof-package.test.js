@@ -292,6 +292,127 @@ test("goal proof package keeps hyphenated game titles clean in cover headlines",
   });
 
   assert.equal(pack.platform_publish_manifest.outputs.youtube_shorts.cover_frame.headline, "GEARS E-DAY 130GB TEST");
+  assert.match(
+    pack.platform_publish_manifest.outputs.youtube_shorts.description,
+    /asking players for 130 GB|storage into part of the launch pitch/i,
+  );
+  assert.doesNotMatch(
+    pack.platform_publish_manifest.outputs.youtube_shorts.description,
+    /^Gears of War E-Day PC requirements list a 130 GB SSD install\. Source: PC Gamer\.$/i,
+  );
+  assert.equal(
+    mediaHousePrivate.platformCopyTooPlain({
+      outputs: {
+        youtube_shorts: {
+          description: "Gears of War E-Day PC requirements list a 130 GB SSD install. Source: PC Gamer.",
+        },
+      },
+    }),
+    true,
+  );
+});
+
+test("goal proof package does not turn article boilerplate into Shorts descriptions", () => {
+  const story = greenStory();
+  story.id = "ea-play-boilerplate-attention-pack";
+  story.canonical_subject = "EA SPORTS FC 26";
+  story.canonical_game = "EA SPORTS FC 26";
+  story.canonical_angle = "The post EA SPORTS FC 26 Is Now on EA Play appeared first on XBOX Wire.";
+  story.public_title = "EA SPORTS FC 26 Is Now On EA Play";
+  story.title = "EA SPORTS FC 26 Is Now On EA Play";
+  story.suggested_thumbnail_text = "EA PLAY TEST";
+  story.primary_source = "Xbox Wire";
+  story.source_name = "Xbox Wire";
+  story.description =
+    "The post EA SPORTS FC 26 Is Now on EA Play appeared first on XBOX Wire. [&#8230;]";
+  story.full_script =
+    "EA SPORTS FC 26 just changed the pitch on Xbox. The question is whether EA Play makes it feel like a low-risk trial or just another subscription filler slot. Follow Pulse Gaming so you never miss a beat.";
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-06-19T15:45:00.000Z",
+  });
+
+  const description = pack.platform_publish_manifest.outputs.youtube_shorts.description;
+  assert.doesNotMatch(description, /appeared first|&#8230;/i);
+  assert.match(description, /Source: Xbox Wire\.$/i);
+  assert.match(description, /subscription|worth trying|EA Play/i);
+  assert.equal(mediaHousePrivate.platformCopyTooPlain(pack.platform_publish_manifest), false);
+  assert.equal(
+    mediaHousePrivate.platformCopyTooPlain({
+      outputs: {
+        youtube_shorts: {
+          description:
+            "The post EA SPORTS FC 26 Is Now on EA Play appeared first on XBOX Wire. Source: Xbox Wire.",
+        },
+      },
+    }),
+    true,
+  );
+});
+
+test("goal proof package writes grammatical descriptions for predicate-style angles", () => {
+  const story = greenStory();
+  story.id = "planet-crafter-predicate-angle-pack";
+  story.canonical_subject = "The Planet Crafter";
+  story.canonical_game = "The Planet Crafter";
+  story.canonical_angle = "is about to find out whether its survival loop works on PS5";
+  story.public_title = "The Planet Crafter Is Testing PS5 Survival Fans";
+  story.title = "The Planet Crafter Is Testing PS5 Survival Fans";
+  story.primary_source = "PlayStation Blog";
+  story.source_name = "PlayStation Blog";
+  story.description =
+    "Hello! I'm Amélie from Miju Games. We're so excited for you to finally get to try our survival game The Planet Crafter when it launches on PS5 next month.&#160;";
+  story.full_script =
+    "The Planet Crafter is about to test whether its chill survival loop works on PS5. Follow Pulse Gaming so you never miss a beat.";
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-06-19T15:55:00.000Z",
+  });
+
+  const description = pack.platform_publish_manifest.outputs.youtube_shorts.description;
+  assert.doesNotMatch(description, /useful question behind the headline:\s+is/i);
+  assert.match(description, /^The Planet Crafter is about to find out whether its survival loop works on PS5\./i);
+});
+
+test("goal proof package blocks long article-list excerpts in platform descriptions", () => {
+  const story = greenStory();
+  story.id = "steam-next-fest-long-excerpt-pack";
+  story.canonical_subject = "Steam Next Fest";
+  story.canonical_game = "Steam Next Fest";
+  story.canonical_angle = "June demos are creating choice overload";
+  story.public_title = "Steam Next Fest Has A Demo Overload Problem";
+  story.title = "Steam Next Fest Has A Demo Overload Problem";
+  story.primary_source = "GameSpot";
+  story.source_name = "GameSpot";
+  story.description =
+    "We're spoiled for choice these days when it comes to video games, with hundreds of new titles released each month. What should you play? What's worth a roll of the dice? Duskfade https://youtu.be/example See on Steam Burn-9 https://youtu.be/example See on Steam Read more.";
+  story.full_script =
+    "Steam Next Fest has a discovery problem now. Thousands of demos sound exciting, but the real story is whether players can spot the few games worth their time. Follow Pulse Gaming so you never miss a beat.";
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-06-19T16:00:00.000Z",
+  });
+
+  const description = pack.platform_publish_manifest.outputs.youtube_shorts.description;
+  assert.doesNotMatch(description, /https?:|See on Steam|Read more/i);
+  assert.match(description, /trailers stop doing the work|playable slice|wishlists/i);
+  assert.equal(
+    mediaHousePrivate.platformCopyTooPlain({
+      outputs: {
+        youtube_shorts: {
+          description:
+            "We're spoiled for choice these days when it comes to video games. Duskfade https://youtu.be/example See on Steam Burn-9 https://youtu.be/example See on Steam Read more. Source: GameSpot.",
+        },
+      },
+    }),
+    true,
+  );
 });
 
 test("goal proof package records a story-format signature for anti-spam variation", () => {

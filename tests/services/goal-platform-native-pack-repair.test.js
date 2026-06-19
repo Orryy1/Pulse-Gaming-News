@@ -366,7 +366,7 @@ test("platform-native pack repair refreshes stale cover headlines", async () => 
     canonical_angle: "PC requirements list a 130 GB SSD install",
     selected_title: "Gears E-Day Has A 130GB Problem",
     canonical_title: "Gears E-Day Has A 130GB Problem",
-    thumbnail_headline: "GEARS WAR E-DAY 130GB TEST",
+    thumbnail_headline: "GEARS OF WAR",
     first_spoken_line: "Gears of War E-Day just made its PC pitch very simple.",
     narration_script:
       "Gears of War E-Day just made its PC pitch very simple. The question is whether a 130 gig install is now normal for a campaign-first blockbuster.",
@@ -388,6 +388,7 @@ test("platform-native pack repair refreshes stale cover headlines", async () => 
   const manifest = await fs.readJson(manifestPath);
   manifest.platform_native_evidence.verdict = "pass";
   manifest.outputs.youtube_shorts.cover_frame.headline = "GEARS WAR E-DAY 130GB TEST";
+  manifest.outputs.tiktok.caption = "Gears of War E-Day just made its PC pitch very simple. Source: PC Gamer.";
   await fs.writeJson(manifestPath, manifest, { spaces: 2 });
 
   const dryRun = await repairPlatformNativePacks({
@@ -410,6 +411,10 @@ test("platform-native pack repair refreshes stale cover headlines", async () => 
   assert.equal(applied.summary.repaired_count, 1);
   const repaired = await fs.readJson(manifestPath);
   assert.equal(repaired.outputs.youtube_shorts.cover_frame.headline, "GEARS E-DAY 130GB TEST");
+  assert.match(repaired.outputs.tiktok.caption, /asking players for 130 GB|storage into part of the launch pitch/i);
+  const repairedCanonical = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+  assert.equal(repairedCanonical.thumbnail_headline, "GEARS E-DAY 130GB TEST");
+  assert.equal(applied.repairs[0].backup_files.canonical_story_manifest.endsWith("canonical_story_manifest.json"), true);
 });
 
 test("platform-native repair derives Facebook Reels duration from render manifest", async () => {

@@ -472,6 +472,82 @@ test("goal dry-run publisher defers externally blocked or operator-disabled plat
   assert.ok(plan.actions.every((action) => action.no_network_upload === true));
 });
 
+test("goal dry-run publisher uses platform-native attention copy on final actions", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-platform-native-copy-"));
+  const storyPackage = await makeStoryPackage(root);
+  const manifestPath = path.join(storyPackage.artifact_dir, "platform_publish_manifest.json");
+  const manifest = await fs.readJson(manifestPath);
+  manifest.outputs.youtube_shorts = {
+    ...manifest.outputs.youtube_shorts,
+    title: "Forza Horizon 6 Puts Xbox's PC Bet Under Pressure",
+    description:
+      "Forza Horizon 6 just turned Xbox's PC strategy into something players can judge before launch. The useful question is whether Steam changes the audience or just moves the same fans around. Source: Eurogamer.",
+    cover_frame: { headline: "FORZA PC BET TEST" },
+  };
+  manifest.outputs.instagram_reels = {
+    ...manifest.outputs.instagram_reels,
+    caption:
+      "Forza Horizon 6 just turned Xbox's PC strategy into something players can judge before launch. The useful question is whether Steam changes the audience or just moves the same fans around. Source: Eurogamer.",
+    cover_frame: { headline: "FORZA PC BET TEST" },
+  };
+  manifest.outputs.facebook_reels = {
+    ...manifest.outputs.facebook_reels,
+    page_caption:
+      "Forza Horizon 6 just turned Xbox's PC strategy into something players can judge before launch. The useful question is whether Steam changes the audience or just moves the same fans around. Source: Eurogamer. More context: /p/forza",
+  };
+  manifest.outputs.x = {
+    post_text: "Forza Horizon 6 has a new source-safe gaming angle. Source: Eurogamer.",
+  };
+  manifest.outputs.threads = {
+    post_text: "Forza Horizon 6 has a new source-safe gaming angle. Source: Eurogamer.",
+  };
+  manifest.outputs.pinterest = {
+    pin_description:
+      "Forza Horizon 6: forza Horizon 6 has a new source-safe gaming angle. Sources, related links and safer buying routes are on the story page.",
+  };
+  await fs.writeJson(manifestPath, manifest, { spaces: 2 });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-19T15:55:00.000Z",
+    platformOperationalConfig: {
+      youtube: { state: "enabled", reason: "core_upload_path" },
+      instagram_reel: { state: "enabled", reason: "graph_credentials_present" },
+      facebook_reel: { state: "enabled", reason: "facebook_reels_enabled" },
+      tiktok: { state: "disabled", reason: "operator_disabled" },
+      twitter: { state: "disabled", reason: "operator_disabled" },
+      threads: { state: "disabled", reason: "operator_disabled" },
+      pinterest: { state: "disabled", reason: "operator_disabled" },
+    },
+  });
+
+  const youtube = plan.actions.find((action) => action.platform === "youtube_shorts");
+  const instagram = plan.actions.find((action) => action.platform === "instagram_reels");
+  const facebook = plan.actions.find((action) => action.platform === "facebook_reels");
+  const x = plan.actions.find((action) => action.platform === "x");
+  const threads = plan.actions.find((action) => action.platform === "threads");
+  const pinterest = plan.actions.find((action) => action.platform === "pinterest");
+
+  assert.match(youtube.description, /PC strategy/);
+  assert.equal(youtube.caption, youtube.description);
+  assert.equal(youtube.cover_headline, "FORZA PC BET TEST");
+  assert.match(instagram.description, /whether Steam changes the audience/);
+  assert.equal(instagram.caption, instagram.description);
+  assert.equal(instagram.cover_headline, "FORZA PC BET TEST");
+  assert.match(facebook.description, /More context: \/p\/forza/);
+  assert.equal(facebook.page_caption, facebook.description);
+  assert.match(x.description, /PC strategy/);
+  assert.match(threads.description, /PC strategy/);
+  assert.match(pinterest.description, /PC strategy/);
+  assert.equal(facebook.cover_headline, "FORZA PC BET TEST");
+  assert.doesNotMatch(youtube.description, /source-safe gaming angle/i);
+  assert.doesNotMatch(instagram.description, /source-safe gaming angle/i);
+  assert.doesNotMatch(facebook.description, /source-safe gaming angle/i);
+  assert.doesNotMatch(x.description, /source-safe gaming angle/i);
+  assert.doesNotMatch(threads.description, /source-safe gaming angle/i);
+  assert.doesNotMatch(pinterest.description, /source-safe gaming angle/i);
+});
+
 test("goal dry-run publisher treats disabled-platform duration misses as deferred warnings", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-disabled-duration-"));
   const storyPackage = await makeStoryPackage(

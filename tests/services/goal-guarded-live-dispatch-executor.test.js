@@ -180,7 +180,15 @@ test("guarded live dispatch executor applies only the selected Instagram action 
     executorPlan: executorPlan({
       handoff_ready_actions: [
         action("youtube_shorts"),
-        action("instagram_reels"),
+        action("instagram_reels", {
+          description:
+            "Forza Horizon 6 just turned Xbox's PC strategy into something players can judge before launch.",
+          caption:
+            "Forza Horizon 6 just turned Xbox's PC strategy into something players can judge before launch. Source: Eurogamer.",
+          page_caption:
+            "Forza Horizon 6 just turned Xbox's PC strategy into something players can judge before launch. More context: /p/forza",
+          cover_headline: "FORZA PC BET TEST",
+        }),
         action("facebook_reels"),
       ],
     }),
@@ -202,6 +210,17 @@ test("guarded live dispatch executor applies only the selected Instagram action 
         uploadShort: async (uploadedStory) => {
           instagramCalls += 1;
           assert.equal(uploadedStory.exported_path, "output/final/story-one/instagram_reels.mp4");
+          assert.equal(
+            uploadedStory.description,
+            "Forza Horizon 6 just turned Xbox's PC strategy into something players can judge before launch.",
+          );
+          assert.equal(
+            uploadedStory.platform_caption,
+            "Forza Horizon 6 just turned Xbox's PC strategy into something players can judge before launch. Source: Eurogamer.",
+          );
+          assert.equal(uploadedStory.instagram_caption, uploadedStory.platform_caption);
+          assert.equal(uploadedStory.facebook_page_caption, "Forza Horizon 6 just turned Xbox's PC strategy into something players can judge before launch. More context: /p/forza");
+          assert.equal(uploadedStory.suggested_thumbnail_text, "FORZA PC BET TEST");
           return { platform: "instagram", mediaId: "ig_media_1" };
         },
       },

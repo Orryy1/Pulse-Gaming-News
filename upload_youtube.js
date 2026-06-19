@@ -46,6 +46,10 @@ function youtubeRequestOptions(env = process.env) {
   return { timeout: getYoutubeUploadTimeoutMs(env) };
 }
 
+function cleanText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
 function useEnvRefreshToken(oauth2Client, reason = "env_refresh_token") {
   const refreshToken = process.env.YOUTUBE_REFRESH_TOKEN;
   if (!refreshToken) return false;
@@ -243,7 +247,15 @@ function buildMetadata(story) {
   const descLines = [];
 
   // --- Section 1: Keyword-rich summary (most SEO weight - first 200 chars indexed) ---
-  if (story.full_script) {
+  const platformDescription = cleanText(
+    story.youtube_description ||
+      story.platform_description ||
+      story.platform_caption ||
+      story.description,
+  );
+  if (platformDescription) {
+    descLines.push(safePublicExcerpt(platformDescription, 300));
+  } else if (story.full_script) {
     descLines.push(safePublicExcerpt(story.full_script, 300));
   } else {
     descLines.push(story.title);

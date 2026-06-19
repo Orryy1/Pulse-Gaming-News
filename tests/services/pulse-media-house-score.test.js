@@ -101,6 +101,20 @@ test("generic title fails", () => {
   assert.ok(report.hard_failures.includes("media_house:generic_title"));
 });
 
+test("template social titles fail even when they contain a named platform", () => {
+  for (const selectedTitle of [
+    "PlayStation Just Got A New Signal",
+    "This Game Now Has A Real Question",
+    "Pragmata's development team included group Is Worth Watching Again",
+  ]) {
+    const report = buildPulseMediaHouseScore(strongStory({
+      canonical: { ...strongStory().canonical, selected_title: selectedTitle },
+    }));
+    assert.equal(report.verdict, "RED", selectedTitle);
+    assert.ok(report.hard_failures.includes("media_house:generic_title"), selectedTitle);
+  }
+});
+
 test("weak hook fails", () => {
   const base = strongStory();
   const report = buildPulseMediaHouseScore(strongStory({
@@ -155,6 +169,43 @@ test("subject-only or dangling thumbnail text fails the media-house gate", () =>
 
   assert.equal(report.verdict, "RED");
   assert.ok(report.hard_failures.includes("media_house:first_frame_or_thumbnail_not_attention_led"));
+});
+
+test("placeholder cover text fails even when the title is acceptable", () => {
+  for (const headline of ["EA SPORTS FC STORY TEST", "IF YOU HAVEN'T"]) {
+    const report = buildPulseMediaHouseScore(strongStory({
+      platformManifest: {
+        outputs: {
+          youtube_shorts: {
+            title: "EA Sports FC 26 Just Became Easier To Trial",
+            description:
+              "EA SPORTS FC 26 just moved into a subscription, which changes the pitch from full-price risk to worth trying tonight. Source: Xbox Wire.",
+            cover_frame: { headline },
+          },
+        },
+      },
+    }));
+    assert.equal(report.verdict, "RED", headline);
+    assert.ok(report.hard_failures.includes("media_house:first_frame_or_thumbnail_not_attention_led"), headline);
+  }
+});
+
+test("article-length platform descriptions fail the media-house gate", () => {
+  const report = buildPulseMediaHouseScore(strongStory({
+    platformManifest: {
+      outputs: {
+        youtube_shorts: {
+          title: "Steam Next Fest Has A Demo Overload Problem",
+          description:
+            "We're spoiled for choice these days when it comes to video games. Duskfade https://youtu.be/example See on Steam. Burn-9 https://youtu.be/example See on Steam. Read more. Source: GameSpot.",
+          cover_frame: { headline: "STEAM NEXT FEST DEMO TEST" },
+        },
+      },
+    },
+  }));
+
+  assert.equal(report.verdict, "RED");
+  assert.ok(report.hard_failures.includes("media_house:platform_copy_too_plain"));
 });
 
 test("copied competitor style fails", () => {

@@ -43,6 +43,32 @@ function resolveTokenPath() {
   return resolveFacebookTokenPath();
 }
 
+function cleanText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function buildFacebookReelDescription(story = {}) {
+  const nativeDescription = cleanText(
+    story.facebook_page_caption ||
+      story.platform_caption ||
+      story.facebook_caption ||
+      story.description,
+  );
+  let description = nativeDescription;
+  if (!description) {
+    description =
+      story.suggested_title || story.suggested_thumbnail_text || story.title;
+    description += "\n\n" + safePublicExcerpt(story.full_script, 300);
+  }
+  if (!/#gamingnews\b/i.test(description)) {
+    description +=
+      "\n\n#gaming #gamingnews #gamingleaks #gamingcommunity #reels";
+  }
+  if (description.length > 2000)
+    description = description.substring(0, 1997) + "...";
+  return description;
+}
+
 async function getAccessToken() {
   // Prefer env var (persists across Railway deploys, token files get wiped)
   if (process.env.FACEBOOK_PAGE_TOKEN) return process.env.FACEBOOK_PAGE_TOKEN;
@@ -91,14 +117,7 @@ async function uploadReel(story) {
       const publicBaseUrl = getPublicUrl();
       const videoUrl = `${publicBaseUrl}/api/download/${story.id}.mp4`;
 
-      // Build description
-      let description =
-        story.suggested_title || story.suggested_thumbnail_text || story.title;
-      description += "\n\n" + safePublicExcerpt(story.full_script, 300);
-      description +=
-        "\n\n#gaming #gamingnews #gamingleaks #gamingcommunity #reels";
-      if (description.length > 2000)
-        description = description.substring(0, 1997) + "...";
+      const description = buildFacebookReelDescription(story);
 
       console.log(
         `[facebook] Uploading Reel: "${(story.title || "").substring(0, 50)}..."`,
@@ -333,12 +352,7 @@ async function uploadReelViaUrl(story) {
   const publicBaseUrl = getPublicUrl();
   const videoUrl = `${publicBaseUrl}/api/download/${story.id}.mp4`;
 
-  let description =
-    story.suggested_title || story.suggested_thumbnail_text || story.title;
-  description += "\n\n" + safePublicExcerpt(story.full_script, 300);
-  description += "\n\n#gaming #gamingnews #gamingleaks #gamingcommunity #reels";
-  if (description.length > 2000)
-    description = description.substring(0, 1997) + "...";
+  const description = buildFacebookReelDescription(story);
 
   console.log(`[facebook] URL fallback: posting Reel via ${videoUrl}`);
 
@@ -518,6 +532,7 @@ module.exports = {
   uploadShort,
   uploadAll,
   uploadStoryImage,
+  buildFacebookReelDescription,
   getAccessToken,
   resolveTokenPath,
   // Exported for unit-testing the decision logic without mocking axios.

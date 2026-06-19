@@ -268,6 +268,44 @@ test("segment validator does not preflight-block ultra-short official direct med
   assert.equal(report.segments.some((segment) => segment.validation_reason === "segment_starts_in_trailer_intro_or_rating_window"), false);
 });
 
+test("segment validator builds safe windows for five-second approved direct media", () => {
+  const approvedMediaUrl =
+    "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/2483190/extras/forza-official-extra.webm?t=1781815797";
+  const licensedReport = {
+    execution_mode: "visual_v4_licensed_direct_media_acquisition",
+    accepted_references: [
+      {
+        story_id: "forza-short-store-extra",
+        entity: "Forza Horizon 6",
+        source_family: "steam_forza_short_extra",
+        source_type: "licensed_direct_media_url",
+        provider: "licensed_direct_media_acquisition",
+        approved_media_url: approvedMediaUrl,
+        source_url_kind: "direct_video",
+        source_duration_s: 5.04,
+        segment_validation_eligible: true,
+        rights_risk_class: "official_direct_media",
+      },
+    ],
+  };
+
+  const refs = buildClipRefsFromReport({}, licensedReport, "forza-short-store-extra", {
+    includeExploratoryWindows: true,
+    exploratoryStartSeconds: [0, 1, 2, 3, 4, 5],
+    candidateWindowsPerSource: 4,
+    maxSegments: 8,
+  });
+
+  assert.ok(refs.length >= 1);
+  assert.equal(refs[0].path, approvedMediaUrl);
+  assert.equal(refs[0].sourceType, "licensed_direct_media_url");
+  assert.equal(refs[0].provenance.source_url_kind, "direct_video");
+  assert.ok(
+    refs.every((ref) => ref.mediaStartS + 4.15 < 5.04),
+    "sample offsets should stay inside the five-second source",
+  );
+});
+
 test("segment validator CLI balances batch clip refs across stories before segment caps", () => {
   const refs = [
     clip({ story_id: "story-a", storyId: "story-a", mediaStartS: 36 }),

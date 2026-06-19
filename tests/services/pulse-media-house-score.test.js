@@ -71,8 +71,16 @@ function strongStory(overrides = {}) {
     },
     platformManifest: {
       outputs: {
-        youtube_shorts: { title: "Forza Horizon 6 Just Broke Xbox's Steam Ceiling" },
-        tiktok: { caption: "Forza Horizon 6 just changed the Steam argument." },
+        youtube_shorts: {
+          title: "Forza Horizon 6 Just Broke Xbox's Steam Ceiling",
+          description:
+            "Forza Horizon 6 just turned Xbox's PC pitch into a Steam audience test before launch. Players now get to judge whether the next racer can grow beyond Game Pass. Source: Eurogamer.",
+          cover_frame: { headline: "STEAM CEILING BROKEN" },
+        },
+        tiktok: {
+          caption:
+            "Forza Horizon 6 just turned Xbox's PC pitch into a Steam audience test before launch. Players now get to judge whether the next racer can grow beyond Game Pass. Source: Eurogamer.",
+        },
       },
     },
     uniqueness: { verdict: "pass", failures: [] },
@@ -217,6 +225,69 @@ test("stakes-led Shorts titles and covers pass the attention gate", () => {
   assert.ok(!report.hard_failures.includes("media_house:platform_title_too_plain"));
 });
 
+test("feed-stop Shorts descriptions with concrete viewer stakes pass the attention gate", () => {
+  for (const story of [
+    {
+      title: "Steam Next Fest Turns Demos Into A Trust Fight",
+      subject: "Steam Next Fest",
+      firstLine: "Steam Next Fest is the moment a PC game stops hiding behind trailers.",
+      description:
+        "Steam Next Fest is turning demos into a public trust test for PC games. The best trailer may get attention, but the demo players remember is the one that wins the week. Source: Steam.",
+      cover: "STEAM NEXT FEST TRUST TEST",
+    },
+    {
+      title: "Gears E-Day Has A 130GB Problem",
+      subject: "Gears of War: E-Day",
+      firstLine: "Gears of War E-Day just turned PC specs into the story.",
+      description:
+        "Gears of War: E-Day is asking players for 130 GB before the campaign even starts. That turns storage into part of the launch pitch. Source: PC Gamer.",
+      cover: "GEARS E-DAY 130GB TEST",
+    },
+  ]) {
+    const report = buildPulseMediaHouseScore(strongStory({
+      canonical: {
+        ...strongStory().canonical,
+        selected_title: story.title,
+        canonical_subject: story.subject,
+        first_spoken_line: story.firstLine,
+        thumbnail_headline: story.cover,
+      },
+      platformManifest: {
+        outputs: {
+          youtube_shorts: {
+            title: story.title,
+            description: story.description,
+            cover_frame: { headline: story.cover },
+          },
+        },
+      },
+    }));
+
+    assert.equal(report.shorts_attention_report.status, "pass", story.title);
+    assert.ok(!report.hard_failures.includes("media_house:platform_copy_too_plain"), story.title);
+    assert.ok(!report.hard_failures.includes("media_house:first_frame_or_thumbnail_not_attention_led"), story.title);
+  }
+});
+
+test("valid but mild platform descriptions fail when they lack a viewer stake", () => {
+  const report = buildPulseMediaHouseScore(strongStory({
+    platformManifest: {
+      outputs: {
+        youtube_shorts: {
+          title: "Forza Horizon 6 Just Broke Xbox's Steam Ceiling",
+          description:
+            "Forza Horizon 6 has a useful source-backed update. The useful question is what it means for players next. Source: Eurogamer.",
+          cover_frame: { headline: "STEAM CEILING BROKEN" },
+        },
+      },
+    },
+  }));
+
+  assert.equal(report.verdict, "RED");
+  assert.ok(report.hard_failures.includes("media_house:platform_copy_too_plain"));
+  assert.equal(report.shorts_attention_report.status, "blocked");
+});
+
 test("subject-only or dangling thumbnail text fails the media-house gate", () => {
   const base = strongStory();
   const report = buildPulseMediaHouseScore(strongStory({
@@ -231,6 +302,28 @@ test("subject-only or dangling thumbnail text fails the media-house gate", () =>
           title: "Forza Horizon 6 Just Broke Xbox's Steam Ceiling",
           description: "Forza Horizon 6 just put Xbox's PC strategy under pressure before launch.",
           cover_frame: { headline: "FORZA HORIZON 6 HAS TO MAKE" },
+        },
+      },
+    },
+  }));
+
+  assert.equal(report.verdict, "RED");
+  assert.ok(report.hard_failures.includes("media_house:first_frame_or_thumbnail_not_attention_led"));
+});
+
+test("generic update thumbnails fail even when the title is acceptable", () => {
+  const report = buildPulseMediaHouseScore(strongStory({
+    canonical: {
+      ...strongStory().canonical,
+      thumbnail_headline: "NINJA GAIDEN UPDATE",
+    },
+    platformManifest: {
+      outputs: {
+        youtube_shorts: {
+          title: "Ninja Gaiden 4 Just Put Xbox's Action Bet Under Pressure",
+          description:
+            "Ninja Gaiden 4 just turned Xbox's action pitch into something players can judge before launch. Source: Xbox Wire.",
+          cover_frame: { headline: "NINJA GAIDEN UPDATE" },
         },
       },
     },

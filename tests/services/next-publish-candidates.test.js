@@ -3511,6 +3511,101 @@ test("attachPreflightQa blocks final bridge candidates with no curiosity marker"
   assert.equal(report.candidates[0].preflight_qa.checks.script_scorecard.result, "fail");
 });
 
+test("media-house preflight scores current artifact platform manifest over stale bridge copy", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-current-platform-manifest-preflight-"));
+  await fs.writeJson(path.join(tmp, "platform_publish_manifest.json"), {
+    publish_status: "GREEN",
+    platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts"] },
+    outputs: {
+      youtube_shorts: {
+        title: "Gears E-Day Has A 130GB Problem",
+        description:
+          "Gears of War: E-Day is asking players for 130 GB before the campaign even starts. That turns storage into part of the launch pitch. Source: PC Gamer.",
+        cover_frame: { headline: "GEARS E-DAY 130GB TEST" },
+      },
+      instagram_reels: {
+        caption:
+          "Gears of War: E-Day is asking players for 130 GB before the campaign even starts. That turns storage into part of the launch pitch. Source: PC Gamer.",
+        cover_frame: { headline: "GEARS E-DAY 130GB TEST" },
+      },
+    },
+  });
+
+  const preflight = await runPreflightQaForStory(
+    baseStory({
+      id: "fresh_gears_eday_pc_specs_20260616",
+      title: "Gears E-Day Has A 130GB Problem",
+      selected_title: "Gears E-Day Has A 130GB Problem",
+      canonical_subject: "Gears of War: E-Day",
+      first_spoken_line: "Gears of War E-Day just turned PC specs into the story.",
+      description: "Gears of War E-Day PC requirements list a 130 GB SSD install. Source: PC Gamer.",
+      full_script:
+        "Gears of War E-Day just turned PC specs into the story. PC Gamer says the requirements list a 130 GB SSD install. The catch is what players have to delete before launch night. Follow Pulse Gaming so you never miss a beat.",
+      thumbnail_headline: "GEARS E-DAY 130GB TEST",
+      suggested_thumbnail_text: "GEARS E-DAY 130GB TEST",
+      scheduler_bridge_source: "goal_production_cutover",
+      scheduler_bridge_artifact_dir: tmp,
+      platform_publish_manifest: {
+        publish_status: "GREEN",
+        platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts"] },
+        outputs: {
+          youtube_shorts: {
+            title: "Gears E-Day Has A 130GB Problem",
+            description: "Gears of War E-Day PC requirements list a 130 GB SSD install. Source: PC Gamer.",
+            cover_frame: { headline: "GEARS E-DAY 130GB TEST" },
+          },
+        },
+      },
+      script_scorecard: { verdict: "viral_ready", viral_score: 91, blockers: [] },
+      audio_manifest: {
+        voice_status: "materialized",
+        word_timestamp_count: 120,
+        mix_rules: { narration_priority: true },
+      },
+      visual_v4_director_plan: {
+        shot_plan: [
+          { id: "hook", kind: "hook_slam", startS: 0, durationS: 1.2 },
+          { id: "proof", kind: "motion_clip", startS: 0.25, durationS: 2.8 },
+          { id: "source", kind: "source_lock", startS: 2.7, durationS: 1.4 },
+        ],
+        transition_plan: { planned: [{ family: "impact_cut" }, { family: "source_wipe" }], max_same_family_run: 1 },
+        sound_transition_plan: {
+          sfx: {
+            cue_count: 7,
+            max_same_family_run: 1,
+            cues: [{ family: "impact", atS: 0 }, { family: "whoosh", atS: 0.35 }],
+            mastering: { duck_under_narration: true, narration_priority: true },
+          },
+        },
+      },
+      sfx_manifest: bridgeSfxEvidence(),
+      ...bridgeVisualEvidence("Gears of War: E-Day"),
+      rights_ledger: [{ asset_id: "gears-current-platform-manifest" }],
+    }),
+    {
+      mediaHouseQaEnabled: true,
+      runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+      runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVoiceQualityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVisualEntityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+      runBridgeMotionGovernanceQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runAggregateBenchmarkQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runScriptScorecardQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    },
+  );
+
+  assert.equal(preflight.checks.media_house.result, "pass");
+  assert.equal(preflight.status, "pass");
+});
+
 test("attachPreflightQa blocks local-clone narration when word timestamps are not ASR aligned", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-timestamp-preflight-"));
   const timestampsPath = path.join(tmp, "local_silence_timestamps.json");

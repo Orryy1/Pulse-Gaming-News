@@ -2899,6 +2899,26 @@ function cloneStoryForPreflight(story = {}) {
   }
 }
 
+async function readBridgeArtifactJson(story = {}, fileName = "") {
+  const artifactDir = cleanText(
+    story.scheduler_bridge_artifact_dir || story.artifact_dir || story.output_dir || story.package_dir,
+  );
+  if (!artifactDir || !fileName) return null;
+  const filePath = path.resolve(artifactDir, fileName);
+  try {
+    return await fs.readJson(filePath);
+  } catch {
+    return null;
+  }
+}
+
+async function platformManifestForMediaHousePreflight(story = {}) {
+  const embedded = objectValue(story.platform_publish_manifest || story.platformManifest, {});
+  const artifact = await readBridgeArtifactJson(story, "platform_publish_manifest.json");
+  if (artifact && typeof artifact === "object" && Object.keys(artifact).length) return artifact;
+  return embedded;
+}
+
 function cleanText(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
 }
@@ -3283,8 +3303,9 @@ function incidentGuardPreflightForStory(story = {}) {
   };
 }
 
-function mediaHousePreflightForStory(story = {}) {
+async function mediaHousePreflightForStory(story = {}) {
   const { buildPulseMediaHouseScore } = require("../lib/pulse-media-house-score");
+  const platformManifest = await platformManifestForMediaHousePreflight(story);
   const score = buildPulseMediaHouseScore({
     story_id: cleanText(story.id || story.story_id),
     canonical: {
@@ -3306,7 +3327,7 @@ function mediaHousePreflightForStory(story = {}) {
     audio: objectValue(story.audio_manifest || story.audio, {}),
     loudness: objectValue(story.audio_segment_loudness_report || story.loudness_report, {}),
     affiliate: objectValue(story.affiliate_link_manifest || story.affiliate, {}),
-    platformManifest: objectValue(story.platform_publish_manifest || story.platformManifest, {}),
+    platformManifest,
     benchmark: objectValue(story.benchmark_report || story.media_house_benchmark || story.benchmarkReport, {}),
     uniqueness: objectValue(story.uniqueness_report || story.uniqueness, {}),
     competitorSimilarity: objectValue(story.competitor_similarity_report || story.competitorSimilarity, {}),
@@ -3413,7 +3434,7 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
       ? await runAggregateBenchmarkQa(cloneStoryForPreflight(story), opts)
       : null;
     const scriptScorecard = await runScriptScorecardQa(cloneStoryForPreflight(story), opts);
-    const mediaHouseInput = objectValue(story.platform_publish_manifest || story.platformManifest, {});
+    const mediaHouseInput = await platformManifestForMediaHousePreflight(story);
     const mediaHouse = opts.mediaHouseQaEnabled === true && Object.keys(mediaHouseInput).length
       ? await runMediaHouseQa(cloneStoryForPreflight(story), opts)
       : null;

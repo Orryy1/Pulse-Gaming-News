@@ -21,6 +21,17 @@ test("local live primary runtime launcher supports explicit safe restart", () =>
   assert.match(script, /Stop-Process -Id \$pidToStop -Force/);
 });
 
+test("local live primary runtime launcher auto-recovers stale matching server runtime", () => {
+  const script = fs.readFileSync(SCRIPT_PATH, "utf8");
+
+  assert.match(script, /Invoke-RestMethod/);
+  assert.match(script, /existing_listener_stale_restart/);
+  assert.match(script, /existing_listener_noop_current/);
+  assert.match(script, /\$Restart = \$true/);
+  assert.match(script, /commit_sha/);
+  assert.match(script, /branch/);
+});
+
 test("local live primary runtime launcher preserves guarded queue runtime env", () => {
   const script = fs.readFileSync(SCRIPT_PATH, "utf8");
 

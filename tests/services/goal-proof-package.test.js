@@ -11,6 +11,7 @@ const {
   writeGoalProofPackageArtifacts,
 } = require("../../lib/goal-proof-package");
 const { buildAffiliateLinkManifest } = require("../../lib/commercial-intelligence-engine");
+const { _private: mediaHousePrivate } = require("../../lib/pulse-media-house-score");
 
 const story = require("../../test/fixtures/goal/mixtape-governance-story.json");
 const rightsLedger = require("../../test/fixtures/goal/mixtape-rights-ledger.json");
@@ -233,6 +234,64 @@ test("goal proof package proves each social pack is platform-native rather than 
     normalise(pack.x_publish_pack.source_safe_post),
     normalise(pack.threads_publish_pack.discussion_post),
   );
+});
+
+test("goal proof package turns source-admin copy into attention-led Shorts packaging", () => {
+  const story = greenStory();
+  story.id = "steam-next-fest-attention-pack";
+  story.canonical_subject = "Steam Next Fest";
+  story.canonical_game = "Steam Next Fest";
+  story.canonical_angle = "Confirmed Drop";
+  story.public_title = "Steam Next Fest Turns Demos Into A Trust Fight";
+  story.title = "Steam Next Fest Turns Demos Into A Trust Fight";
+  story.suggested_thumbnail_text = "STEAM NEXT FEST";
+  story.primary_source = "Steam";
+  story.source_name = "Steam";
+  story.description =
+    "Steam Next Fest is turning demos into a public trust test for PC games. One playable slice can win wishlists or expose weak controls before launch.";
+  story.full_script =
+    "Steam Next Fest is the moment a PC game stops hiding behind trailers. A demo exposes what marketing can dodge: controls, performance and whether the first mechanic feels good. Follow Pulse Gaming so you never miss a beat.";
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-06-19T14:10:00.000Z",
+  });
+
+  const outputs = pack.platform_publish_manifest.outputs;
+  assert.doesNotMatch(outputs.youtube_shorts.description, /Confirmed Drop|Sources and related links/i);
+  assert.match(outputs.youtube_shorts.description, /trust test|wishlists|weak controls/i);
+  assert.notEqual(outputs.youtube_shorts.cover_frame.headline, "STEAM NEXT FEST");
+  assert.doesNotMatch(outputs.youtube_shorts.cover_frame.headline, /\b(?:MAKE|HAS|TO|INTO|WITH)$/i);
+  assert.equal(mediaHousePrivate.platformCopyTooPlain(pack.platform_publish_manifest), false);
+  assert.equal(
+    mediaHousePrivate.weakFirstFrameOrThumbnailCopy({}, pack.platform_publish_manifest),
+    false,
+  );
+});
+
+test("goal proof package keeps hyphenated game titles clean in cover headlines", () => {
+  const story = greenStory();
+  story.id = "gears-e-day-attention-pack";
+  story.canonical_subject = "Gears of War E-Day";
+  story.canonical_game = "Gears of War E-Day";
+  story.canonical_angle = "PC requirements list a 130 GB SSD install";
+  story.public_title = "Gears E-Day Has A 130GB Problem";
+  story.title = "Gears E-Day Has A 130GB Problem";
+  story.suggested_thumbnail_text = "GEARS OF WAR";
+  story.primary_source = "PC Gamer";
+  story.source_name = "PC Gamer";
+  story.description = "Gears of War E-Day PC requirements list a 130 GB SSD install.";
+  story.full_script =
+    "Gears of War E-Day just made its PC pitch very simple. The question is not only whether your rig can run it, but whether a 130 gig install is now normal for a campaign-first blockbuster. Follow Pulse Gaming so you never miss a beat.";
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-06-19T14:20:00.000Z",
+  });
+
+  assert.equal(pack.platform_publish_manifest.outputs.youtube_shorts.cover_frame.headline, "GEARS E-DAY 130GB TEST");
 });
 
 test("goal proof package records a story-format signature for anti-spam variation", () => {

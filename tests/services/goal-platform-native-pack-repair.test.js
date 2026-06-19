@@ -356,6 +356,62 @@ test("platform-native pack repair refreshes stale affiliate disclosure and landi
   assert.match(repaired.outputs.youtube_shorts.profile_or_landing_page_cta, /story-native-clean/);
 });
 
+test("platform-native pack repair refreshes stale cover headlines", async () => {
+  const { storyPackages, root } = await legacyArtifact();
+  const artifactDir = storyPackages[0].artifact_dir;
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "gears-e-day-cover",
+    canonical_subject: "Gears of War: E-Day",
+    canonical_game: "Gears of War: E-Day",
+    canonical_angle: "PC requirements list a 130 GB SSD install",
+    selected_title: "Gears E-Day Has A 130GB Problem",
+    canonical_title: "Gears E-Day Has A 130GB Problem",
+    thumbnail_headline: "GEARS WAR E-DAY 130GB TEST",
+    first_spoken_line: "Gears of War E-Day just made its PC pitch very simple.",
+    narration_script:
+      "Gears of War E-Day just made its PC pitch very simple. The question is whether a 130 gig install is now normal for a campaign-first blockbuster.",
+    primary_source: "PC Gamer",
+    description: "Gears of War E-Day PC requirements list a 130 GB SSD install. Source: PC Gamer.",
+  });
+  await fs.writeJson(path.join(artifactDir, "render_manifest.json"), {
+    rendered_duration_s: 52.2,
+  });
+
+  await repairPlatformNativePacks({
+    storyPackages,
+    generatedAt: "2026-06-19T14:45:00.000Z",
+    apply: true,
+    backupRoot: path.join(root, "backups-native-baseline"),
+  });
+
+  const manifestPath = path.join(artifactDir, "platform_publish_manifest.json");
+  const manifest = await fs.readJson(manifestPath);
+  manifest.platform_native_evidence.verdict = "pass";
+  manifest.outputs.youtube_shorts.cover_frame.headline = "GEARS WAR E-DAY 130GB TEST";
+  await fs.writeJson(manifestPath, manifest, { spaces: 2 });
+
+  const dryRun = await repairPlatformNativePacks({
+    storyPackages,
+    generatedAt: "2026-06-19T14:46:00.000Z",
+    apply: false,
+  });
+
+  assert.equal(dryRun.summary.repairable_count, 1);
+  assert.equal(dryRun.items[0].affiliate_output_stale, true);
+  assert.equal(dryRun.items[0].target_affiliate_output.youtube_cover_headline, "GEARS E-DAY 130GB TEST");
+
+  const applied = await repairPlatformNativePacks({
+    storyPackages,
+    generatedAt: "2026-06-19T14:47:00.000Z",
+    apply: true,
+    backupRoot: path.join(root, "backups-cover-headline"),
+  });
+
+  assert.equal(applied.summary.repaired_count, 1);
+  const repaired = await fs.readJson(manifestPath);
+  assert.equal(repaired.outputs.youtube_shorts.cover_frame.headline, "GEARS E-DAY 130GB TEST");
+});
+
 test("platform-native repair derives Facebook Reels duration from render manifest", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-platform-native-repair-"));
   const artifactDir = path.join(tmp, "story");

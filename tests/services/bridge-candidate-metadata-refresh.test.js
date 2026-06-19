@@ -62,6 +62,7 @@ test("bridge candidate metadata refresh updates stale duration from current mani
     audio_duration: 50.64,
     video_duration_seconds: 50.975,
     final_duration_seconds: 50.975,
+    platform_manifest_refreshed: false,
   });
   assert.equal(report.safety.no_db_mutation, true);
   assert.equal(report.safety.no_publish_triggered, true);
@@ -71,6 +72,61 @@ test("bridge candidate metadata refresh updates stale duration from current mani
   assert.equal(updated.scheduler_bridge_candidates[0].audio_duration, 50.64);
   assert.equal(updated.scheduler_bridge_candidates[0].bridge_metadata_refresh_source, "current_render_audio_manifests");
   assert.equal(updated.scheduler_bridge_candidates[1].duration_seconds, 42);
+});
+
+test("bridge candidate metadata refresh updates embedded platform manifest from artefacts", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-bridge-platform-refresh-"));
+  const artifactDir = path.join(root, "story-a");
+  await fs.ensureDir(artifactDir);
+  await fs.writeJson(path.join(artifactDir, "render_manifest.json"), { duration_seconds: 41.2 });
+  await fs.writeJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+    outputs: {
+      youtube_shorts: {
+        title: "Steam Next Fest Turns Demos Into A Trust Fight",
+        description:
+          "Steam Next Fest is turning demos into a public trust test for PC games. Source: Steam.",
+        cover_frame: { headline: "STEAM NEXT FEST TRUST TEST" },
+      },
+    },
+  });
+  const bridgePath = path.join(root, "scheduler_bridge_candidates.json");
+  await fs.writeJson(bridgePath, {
+    scheduler_bridge_candidates: [
+      {
+        id: "story_a",
+        scheduler_bridge_artifact_dir: artifactDir,
+        duration_seconds: 40,
+        platform_publish_manifest: {
+          outputs: {
+            youtube_shorts: {
+              description:
+                "Steam Next Fest: Confirmed Drop. Source: Steam. Sources and related links: /p/steam",
+              cover_frame: { headline: "STEAM NEXT FEST" },
+            },
+          },
+        },
+      },
+    ],
+  });
+
+  const report = await refreshBridgeCandidateMetadata({
+    bridgePath,
+    storyIds: ["story_a"],
+    generatedAt: "2026-06-19T14:20:00.000Z",
+    apply: true,
+  });
+
+  assert.equal(report.summary.refreshed_count, 1);
+  assert.equal(report.rows[0].after.platform_manifest_refreshed, true);
+  const updated = await fs.readJson(bridgePath);
+  const output = updated.scheduler_bridge_candidates[0].platform_publish_manifest.outputs.youtube_shorts;
+  assert.match(output.description, /public trust test/i);
+  assert.doesNotMatch(output.description, /Confirmed Drop|Sources and related links/i);
+  assert.equal(output.cover_frame.headline, "STEAM NEXT FEST TRUST TEST");
+  assert.equal(
+    updated.scheduler_bridge_candidates[0].bridge_metadata_refresh_platform_manifest_path,
+    path.join(artifactDir, "platform_publish_manifest.json"),
+  );
 });
 
 test("bridge candidate metadata refresh dry-run leaves bridge file unchanged", async () => {

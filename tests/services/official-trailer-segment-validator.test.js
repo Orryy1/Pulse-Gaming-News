@@ -234,6 +234,45 @@ test("segment validator accepts licensed direct-media acquisition reports as ref
   assert.equal(refs[0].provenance.provider, "licensed_direct_media_acquisition");
 });
 
+test("segment validator accepts official game-site news pages with direct media", () => {
+  const referenceReport = {
+    plans: [
+      {
+        story_id: "granblue-ps-blog",
+        references: [
+          {
+            story_id: "granblue-ps-blog",
+            entity: "Granblue Fantasy: Relink",
+            source_family: "playstation_blog_granblue_relink_demo",
+            source_type: "official_game_site_news_page",
+            provider: "official_intake",
+            source_url:
+              "https://vulcan.dl.playstation.net/img/rnd/202606/1802/granblue-relink-demo.mp4",
+            source_url_kind: "direct_video",
+            source_duration_s: 104.92,
+            segment_validation_eligible: true,
+            rights_risk_class: "official_reference_only",
+            downloads_allowed: false,
+          },
+        ],
+      },
+    ],
+  };
+
+  const refs = buildClipRefsFromReport({}, referenceReport, "granblue-ps-blog", {
+    includeExploratoryWindows: true,
+    exploratoryStartSeconds: [36],
+    candidateWindowsPerSource: 1,
+    maxSegments: 1,
+  });
+
+  assert.equal(refs.length, 1);
+  assert.equal(refs[0].story_id, "granblue-ps-blog");
+  assert.equal(refs[0].sourceType, "official_game_site_news_page");
+  assert.equal(refs[0].path, referenceReport.plans[0].references[0].source_url);
+  assert.equal(refs[0].provenance.provider, "official_intake");
+});
+
 test("segment validator preserves official product-page type for approved platform-store media", async () => {
   const approvedMediaUrl =
     "https://vulcan.dl.playstation.net/img/rnd/202605/1208/granblue-demo.mp4";

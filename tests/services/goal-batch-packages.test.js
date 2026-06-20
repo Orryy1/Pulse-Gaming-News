@@ -199,6 +199,35 @@ test("goal batch packages carry SFX inventory rights into governance", () => {
   );
 });
 
+test("goal batch packages hydrate shared licensed SFX evidence before director scoring", () => {
+  const ready = greenStory("shared-sfx-one");
+  delete ready.sfx_asset_inventory;
+  delete ready.sfx_assets;
+  delete ready.sfx_rights_ledger;
+
+  const sharedSfxAssets = licensedSfxAssets();
+  const sharedSfxRights = sharedSfxAssets.map((asset) => ({
+    ...asset,
+    asset_type: "sfx",
+    allowed_platforms: ["youtube", "tiktok", "instagram", "facebook", "x", "threads", "pinterest"],
+    risk_score: 0.08,
+    evidence_file: `rights/${asset.asset_id}.json`,
+  }));
+  const batch = buildGoalBatchPackages({
+    stories: [ready],
+    rightsLedgerByStory: { [ready.id]: rightsFor({ ...ready, sfx_asset_inventory: [] }) },
+    sfxAssetInventory: sharedSfxAssets,
+    sfxRightsLedger: sharedSfxRights,
+    generatedAt: "2026-05-21T20:05:00.000Z",
+  });
+
+  assert.equal(batch.story_packages[0].verdict, "GREEN");
+  assert.equal(batch.packages[0].director_beat_map.readiness.status, "director_ready");
+  assert.equal(batch.packages[0].sfx_source_plan.readiness.status, "pass");
+  assert.deepEqual(batch.packages[0].sfx_source_plan.covered_roles, ["impact", "sub_hit", "transition", "ui_tick"]);
+  assert.equal(batch.packages[0].publish_verdict.verdict, "GREEN");
+});
+
 test("goal proof package publish verdict turns RED when transcript scorecard blocks", () => {
   const story = {
     ...greenStory("weak-transcript"),
@@ -296,6 +325,18 @@ test("goal batch CLI can select repaired live DB stories for governed packaging"
   });
 
   assert.deepEqual(selected.map((story) => story.id), ["rss_story", "1tkik53"]);
+});
+
+test("goal batch CLI parses shared SFX evidence paths", () => {
+  const args = parseGoalBatchArgs([
+    "--sfx-assets",
+    "output/goal-contract/sfx_asset_inventory.json",
+    "--sfx-rights-ledger",
+    "output/goal-contract/sfx_rights_ledger.json",
+  ]);
+
+  assert.equal(args.sfxAssetsPath, "output/goal-contract/sfx_asset_inventory.json");
+  assert.equal(args.sfxRightsLedgerPath, "output/goal-contract/sfx_rights_ledger.json");
 });
 
 test("goal batch package proof preparation rewrites source-backed fallback narration before QA", () => {
@@ -1258,6 +1299,64 @@ test("goal batch packages hydrate existing Visual V4 motion packs instead of usi
   assert.equal(pack.footage_inventory.motion_inventory.accepted_local_clips[0].source_type, "official_trailer_segment");
   assert.equal(pack.acceptance_entry.verdict, "GREEN");
   assert.equal(batch.summary.green_count, 1);
+});
+
+test("goal batch packages create rights records for restored official V4 motion clips", () => {
+  const story = {
+    id: "granblue-official-restore",
+    title: "Granblue Fantasy: Relink Demo Is The Real Proof",
+    suggested_title: "Granblue Fantasy: Relink Demo Is The Real Proof",
+    canonical_subject: "Granblue Fantasy: Relink",
+    source_name: "PlayStation Blog",
+    source_type: "rss",
+    article_url: "https://blog.playstation.com/2026/06/18/granblue-fantasy-relink-endless-ragnarok-hands-on-report-demo-available-today/",
+    audio_path: "output/audio/granblue-official-restore.mp3",
+    sfx_asset_inventory: licensedSfxAssets(),
+    sfx_rights_ledger: licensedSfxAssets().map((asset) => ({
+      ...asset,
+      asset_type: "sfx",
+      allowed_platforms: ["youtube", "tiktok", "instagram", "facebook", "x", "threads", "pinterest"],
+      risk_score: 0.08,
+      evidence_file: `rights/${asset.asset_id}.json`,
+    })),
+    full_script:
+      "Granblue Fantasy Relink has one proof point players can judge immediately: the demo. PlayStation Blog says Endless Ragnarok adds a new story arc, playable characters and a solo endgame mode. The useful question is whether that demo makes lapsed players reinstall before launch. If it feels generous, this becomes a smart comeback. If it feels thin, the expansion has a trust problem before day one. Follow Pulse Gaming so you never miss a beat.",
+  };
+  const clips = Array.from({ length: 5 }, (_, index) => ({
+    id: `granblue-official-window-${index + 1}`,
+    type: "motion_clip",
+    source_family: `playstation_blog_granblue_window_${index + 1}`,
+    base_source_family: "playstation_blog_granblue",
+    path: `C:\\media\\granblue-window-${index + 1}.mp4`,
+    local_materialized_path: `C:\\media\\granblue-window-${index + 1}.mp4`,
+    source_url: "https://vulcan.dl.playstation.net/img/rnd/202606/1802/granblue.mp4",
+    source_type: "official_game_site_news_page",
+    source_url_kind: "direct_video",
+    rights_risk_class: "official_direct_media",
+    allowed_render_use: "official_direct_media_segment_candidate",
+    durationS: 3.1,
+    validated: true,
+    segmentValidationPassed: true,
+  }));
+  const motionPack = {
+    readiness: { status: "v4_motion_ready", blockers: [] },
+    clips,
+    handoff: { visual_v4_local_motion_clips: clips },
+  };
+
+  const batch = buildGoalBatchPackages({
+    stories: [story],
+    motionPackByStory: { [story.id]: motionPack },
+    generatedAt: "2026-06-20T10:10:00.000Z",
+  });
+
+  const pack = batch.packages[0];
+  assert.equal(pack.rights_ledger.verdict, "pass");
+  const restoredRights = pack.rights_ledger.records.filter(
+    (record) => record.source_type === "official_game_site_news_page",
+  );
+  assert.equal(new Set(restoredRights.map((record) => record.asset_id)).size, 5);
+  assert.equal(pack.acceptance_entry.verdict, "GREEN");
 });
 
 test("goal batch packages rewrite generic one-detail proof titles before publishing packs", () => {

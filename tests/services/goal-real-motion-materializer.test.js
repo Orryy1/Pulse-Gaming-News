@@ -1294,13 +1294,101 @@ test("real motion materializer can use validated segment reports to repair a dir
   assert.equal(report.summary.materialized_story_count, 1);
   assert.equal(report.jobs[0].repair_scope, "direct_video_gap_only");
   assert.equal(report.jobs[0].direct_video_motion_clip_count, 5);
-  assert.equal(report.jobs[0].direct_video_motion_family_count, 2);
+  assert.equal(report.jobs[0].direct_video_motion_family_count, 5);
 
   const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
   assert.equal(materialised.direct_video_motion_asset_count, 5);
-  assert.equal(materialised.direct_video_motion_family_count, 2);
+  assert.equal(materialised.direct_video_motion_family_count, 5);
   assert.equal(materialised.clips.filter((clip) => clip.media_kind === "direct_video").length, 5);
   assert.equal(materialised.clips.filter((clip) => clip.media_kind === "owned_motion").length, 4);
+});
+
+test("real motion materializer counts validated official segment windows as distinct motion families", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-segment-window-families-"));
+  const storyId = "granblue-official-window-families";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  await fs.ensureDir(artifactDir);
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: [],
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    motion_inventory: {
+      accepted_local_clips: [],
+      production_motion_clips: [],
+      distinct_source_families: [],
+    },
+  });
+  const sourceUrl =
+    "https://vulcan.dl.playstation.net/img/rnd/202606/1802/granblue-relink-demo.mp4";
+  const segmentValidationReport = {
+    segments: Array.from({ length: 5 }, (_, index) => ({
+      story_id: storyId,
+      status: "validated",
+      segment_validated: true,
+      allowed_for_flash_lane: true,
+      validation_reason: "segment_samples_passed",
+      segment_motion_class: "gameplay_action",
+      action_score: 82,
+      source_url: sourceUrl,
+      source_type: "official_game_site_news_page",
+      source_url_kind: "direct_video",
+      provider: "official_intake",
+      entity: "Granblue Fantasy: Relink",
+      source_family: "playstation_blog_granblue_relink_demo",
+      media_start_s: 36 + index * 6,
+      duration_s: 5,
+      source_duration_s: 104.92,
+      rights_risk_class: "official_direct_media",
+      allowed_render_use: "official_direct_media_segment_candidate",
+      provenance: {
+        source: "official_trailer_segment_validator",
+      },
+    })),
+  };
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: {
+      jobs: [
+        {
+          story_id: storyId,
+          artifact_dir: artifactDir,
+          blockers: ["visual_evidence:direct_video_motion_missing"],
+          actions: [
+            {
+              action_id: "materialise_validated_real_motion_clips",
+              reason_codes: ["visual_evidence:direct_video_motion_missing"],
+            },
+          ],
+        },
+      ],
+    },
+    segmentValidationReport,
+    generatedAt: "2026-06-20T09:45:00.000Z",
+    maxClips: 5,
+    execFileSync: (bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 8));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 1);
+  assert.equal(report.jobs[0].distinct_motion_family_count, 5);
+  assert.equal(report.jobs[0].direct_video_motion_family_count, 5);
+
+  const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
+  assert.equal(materialised.distinct_motion_family_count, 5);
+  assert.equal(materialised.direct_video_motion_family_count, 5);
+  assert.equal(new Set(materialised.clips.map((clip) => clip.source_family)).size, 5);
+  assert.ok(
+    materialised.clips.every((clip) =>
+      clip.base_source_family === "playstation_blog_granblue_relink_demo" &&
+      clip.provenance?.base_source_family === "playstation_blog_granblue_relink_demo",
+    ),
+  );
 });
 
 test("real motion materializer reconciles stale owned-motion distinct family budgets after real media repair", async () => {

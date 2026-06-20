@@ -31,6 +31,8 @@ function parseArgs(argv = process.argv.slice(2)) {
     revenuePathsFile: path.join(ROOT, "output", "revenue", "revenue-paths.json"),
     v4MotionPackDir: path.join(ROOT, "output", "studio-v4", "motion-packs"),
     videoCacheDir: path.join(ROOT, "output", "video_cache"),
+    sfxAssetsPath: "",
+    sfxRightsLedgerPath: "",
     limit: 30,
     outDir: path.join(ROOT, "output", "goal-proof", "batch"),
     contractOutDir: path.join(ROOT, "output", "goal-contract"),
@@ -48,6 +50,8 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--revenue-paths") args.revenuePathsFile = argv[++i] || args.revenuePathsFile;
     else if (arg === "--v4-motion-pack-dir") args.v4MotionPackDir = argv[++i] || args.v4MotionPackDir;
     else if (arg === "--video-cache-dir") args.videoCacheDir = argv[++i] || args.videoCacheDir;
+    else if (arg === "--sfx-assets") args.sfxAssetsPath = argv[++i] || "";
+    else if (arg === "--sfx-rights-ledger") args.sfxRightsLedgerPath = argv[++i] || "";
     else if (arg === "--limit") args.limit = Number(argv[++i] || args.limit);
     else if (arg === "--out-dir") args.outDir = argv[++i] || args.outDir;
     else if (arg === "--contract-out-dir") args.contractOutDir = argv[++i] || args.contractOutDir;
@@ -77,6 +81,8 @@ function usage() {
     "  --revenue-paths <path>      Optional audit-candidate fallback when fewer than --limit stories exist",
     "  --v4-motion-pack-dir <dir>  Hydrates existing Visual V4 gameplay/trailer motion packs",
     "  --video-cache-dir <dir>      Resolves already-materialised V4 clips from local cache",
+    "  --sfx-assets <path>          Optional retained licensed SFX asset inventory JSON",
+    "  --sfx-rights-ledger <path>   Optional retained licensed SFX rights ledger JSON",
     "  --limit <n>                 Defaults to 30",
     "  --out-dir <dir>",
     "  --contract-out-dir <dir>",
@@ -171,6 +177,13 @@ async function loadRevenueManifestByStory(revenuePathsFile) {
   return out;
 }
 
+async function readJsonIfPresent(filePath, fallback) {
+  if (!filePath) return fallback;
+  const resolved = path.resolve(filePath);
+  if (!(await fs.pathExists(resolved))) return fallback;
+  return fs.readJson(resolved);
+}
+
 async function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
   if (args.help) {
@@ -198,6 +211,8 @@ async function main(argv = process.argv.slice(2)) {
     })),
   };
   const motionPackByStory = await loadMotionPackByStory(args.v4MotionPackDir);
+  const sfxAssetInventory = await readJsonIfPresent(args.sfxAssetsPath, []);
+  const sfxRightsLedger = await readJsonIfPresent(args.sfxRightsLedgerPath, []);
   const selectedStories = selectStoriesForGoalBatch({
     baseStories,
     dbStories,
@@ -212,6 +227,8 @@ async function main(argv = process.argv.slice(2)) {
     stories,
     limit: args.limit,
     motionPackByStory,
+    sfxAssetInventory,
+    sfxRightsLedger,
     videoCacheDir: path.resolve(args.videoCacheDir),
     generatedAt: args.generatedAt || new Date().toISOString(),
   });

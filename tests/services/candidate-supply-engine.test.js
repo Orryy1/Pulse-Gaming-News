@@ -443,6 +443,136 @@ test("candidate supply report treats current transcript backlog as refill pressu
   assert.doesNotMatch(formatCandidateSupplyMonitorDiscord(report), /^GREEN-ready: 5\/10/m);
 });
 
+test("candidate supply report exposes Shorts attention readiness and metadata blockers", () => {
+  const now = new Date("2026-06-20T09:00:00.000Z");
+  const candidateReport = {
+    generated_at: now.toISOString(),
+    totals: { stories_seen: 4, returned: 4, pending_audio: 0 },
+    candidates: [
+      candidate("attention-standout", {
+        title: "Gears E-Day Has A 130GB Problem",
+        preflight_qa: {
+          status: "pass",
+          blockers: [],
+          checks: {
+            media_house: {
+              result: "pass",
+              evidence: {
+                verdict: "GREEN",
+                shorts_feed_competition_report: { status: "standout", score: 88 },
+                shorts_attention_report: { status: "pass" },
+              },
+            },
+          },
+        },
+      }),
+      candidate("attention-pass", {
+        title: "Steam Next Fest Turns Demos Into A Trust Fight",
+        preflight_qa: {
+          status: "pass",
+          blockers: [],
+          checks: {
+            media_house: {
+              result: "pass",
+              evidence: {
+                verdict: "GREEN",
+                shorts_feed_competition_report: { status: "pass", score: 76 },
+                shorts_attention_report: { status: "pass" },
+              },
+            },
+          },
+        },
+      }),
+      candidate("weak-platform-copy", {
+        title: "Alien Isolation 2 Has One Horror Risk",
+        status: "review",
+        reasons: ["preflight_qa_blocked"],
+        preflight_qa: {
+          status: "blocked",
+          blockers: ["media_house:platform_copy_too_plain", "media_house:shorts_feed_competition_weak"],
+          checks: {
+            media_house: {
+              result: "fail",
+              evidence: {
+                verdict: "RED",
+                hard_failures: [
+                  "media_house:platform_copy_too_plain",
+                  "media_house:shorts_feed_competition_weak",
+                ],
+                shorts_feed_competition_report: {
+                  status: "blocked",
+                  blockers: ["feed_description_lacks_specific_payoff"],
+                },
+              },
+            },
+          },
+        },
+      }),
+      candidate("weak-cover", {
+        title: "Stranger Than Heaven Has RGG Combat Risk",
+        status: "review",
+        reasons: ["preflight_qa_blocked"],
+        preflight_qa: {
+          status: "blocked",
+          blockers: [
+            "media_house:first_frame_or_thumbnail_not_attention_led",
+            "media_house:shorts_feed_competition_weak",
+          ],
+          checks: {
+            media_house: {
+              result: "fail",
+              evidence: {
+                verdict: "RED",
+                hard_failures: [
+                  "media_house:first_frame_or_thumbnail_not_attention_led",
+                  "media_house:shorts_feed_competition_weak",
+                ],
+                shorts_attention_report: {
+                  status: "blocked",
+                  blockers: ["first_frame_or_thumbnail_not_attention_led"],
+                },
+              },
+            },
+          },
+        },
+      }),
+    ],
+  };
+
+  const report = buildCandidateSupplyReport({
+    stories: [],
+    candidateReport,
+    channelConfig: {},
+    now,
+    targets: {
+      greenReadyCandidates: 4,
+      sourceSafeCandidates: 2,
+      v4ReadyCandidates: 2,
+      freshSourceBackedStories: 0,
+      publishWindows24h: 2,
+    },
+  });
+
+  assert.equal(report.summary.shorts_attention_ready_candidates, 2);
+  assert.equal(report.summary.shorts_feed_standout_candidates, 1);
+  assert.equal(report.summary.metadata_attention_blocked_candidates, 2);
+  assert.equal(report.summary.platform_copy_blocked_candidates, 1);
+  assert.equal(report.summary.thumbnail_attention_blocked_candidates, 1);
+  assert.equal(report.summary.shorts_feed_competition_blocked_candidates, 2);
+  assert.ok(report.warnings.includes("shorts_attention_ready_candidates_below_target:2/4"));
+  assert.equal(report.shorts_attention.blocked_examples[0].story_id, "weak-platform-copy");
+  assert.deepEqual(report.priority_scorecards.find((item) => item.story_id === "attention-standout").shorts_attention, {
+    status: "pass",
+    feed_status: "standout",
+    feed_score: 88,
+    blockers: [],
+  });
+  assert.match(formatCandidateSupplyMarkdown(report), /Shorts attention-ready candidates: 2\/4/);
+  assert.match(formatCandidateSupplyMarkdown(report), /Metadata attention blockers: 2/);
+  assert.match(formatCandidateSupplyMonitorDiscord(report), /Shorts attention: ready 2\/4 \| standout 1 \| blocked 2/);
+  assert.equal(candidateSupplyMonitorNeedsRepair(report), true);
+});
+
 test("candidate supply monitor does not trigger fresh intake when runway has reserve", () => {
   const now = new Date("2026-06-16T22:00:00.000Z");
   const candidateReport = {

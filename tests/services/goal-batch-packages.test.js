@@ -1018,6 +1018,42 @@ test("goal batch packages generate viewer-facing scripts for current official RS
     assert.doesNotMatch(script, /should stay in review|source says|the hook is|the signal is|for fans to argue about|PlayStation Blog says .*hands-on report|Xbox Wire says .*Is Now on EA Play/i);
     assert.match(script, /Follow Pulse Gaming so you never miss a beat\.$/);
   }
+
+  const granblue = batch.packages.find((pack) => pack.canonical_story_manifest.story_id === "rss_granblue_demo");
+  assert.equal(granblue.youtube_publish_pack.cover_frame.headline, "RELINK PLAYABLE DEMO");
+  assert.ok(!granblue.platform_publish_manifest.platform_native_evidence.failures.some(
+    (failure) => failure.reason === "weak_cover_headline",
+  ));
+});
+
+test("goal batch package proof preparation replaces article excerpt descriptions with Shorts payoff copy", () => {
+  const prepared = prepareStoryForGoalProof({
+    id: "rss_granblue_demo_excerpt",
+    title: "Granblue Fantasy: Relink - Endless Ragnarok hands-on report, demo available today",
+    source_type: "rss",
+    freshness_gate: "pass",
+    canonical_subject: "Granblue Fantasy: Relink",
+    canonical_game: "Granblue Fantasy: Relink",
+    primary_source: {
+      name: "PlayStation Blog",
+      url: "https://blog.playstation.com/2026/06/18/granblue-fantasy-relink-endless-ragnarok-hands-on-report-demo-available-today/",
+      type: "official_platform",
+    },
+    source_published_at: "2026-06-18T12:00:08.000Z",
+    confirmed_claims: [
+      "PlayStation Blog says Granblue Fantasy: Relink - Endless Ragnarok has a playable demo available ahead of launch.",
+    ],
+    description:
+      "Set to touch down on PlayStation 5 and PlayStation 4 on Thursday, July 9, Granblue Fantasy: Relink - Endless Ragnarok is a massive new expansion built to significantly evolve the high-flying action RPG that first captivated players in 2024.",
+    full_script:
+      "Granblue Fantasy: Relink just made its next update much harder to ignore. PlayStation Blog says Endless Ragnarok now has a playable demo after a new hands-on preview. Players can try the combat rhythm, party builds and boss pressure, then decide whether the grind is worth coming back for. If the demo makes the endgame loop feel sharper, Relink gets a second wind. Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  assert.doesNotMatch(prepared.description, /Set to touch down|massive new expansion|captivated players in 2024/i);
+  assert.match(prepared.description, /^Granblue Fantasy: Relink just made its next update much harder to ignore\./);
+  assert.match(prepared.description, /Players can try the combat rhythm/i);
+  assert.match(prepared.description, /second wind/i);
+  assert.match(prepared.description, /Source: PlayStation Blog\.$/);
 });
 
 test("goal batch packages avoid double-prefixing distinctive thumbnail subject tokens", () => {

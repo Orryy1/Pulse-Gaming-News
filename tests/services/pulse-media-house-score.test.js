@@ -243,6 +243,22 @@ test("feed-stop Shorts descriptions with concrete viewer stakes pass the attenti
         "Gears of War: E-Day is asking players for 130 GB before the campaign even starts. That turns storage into part of the launch pitch. Source: PC Gamer.",
       cover: "GEARS E-DAY 130GB TEST",
     },
+    {
+      title: "Granblue Fantasy: Relink Demo Is The Real Proof",
+      subject: "Granblue Fantasy: Relink",
+      firstLine: "Granblue Fantasy: Relink has one proof point players can judge immediately: the demo.",
+      description:
+        "Granblue Fantasy: Relink has one proof point players can judge immediately: the demo. It can win wishlists fast or expose the problem before launch. Source: PlayStation Blog.",
+      cover: "RELINK PLAYABLE DEMO",
+    },
+    {
+      title: "Ghost at Dawn Has A Jump-Scare Risk",
+      subject: "Ghost at Dawn",
+      firstLine: "Ghost at Dawn is selling horror without leaning on jump scares.",
+      description:
+        "Ghost at Dawn is selling horror without leaning on jump scares. Players have to judge whether the choices feel personal, because atmosphere matters more than monsters here. Source: Xbox Wire.",
+      cover: "GHOST AT DAWN JUMP SCARE RISK",
+    },
   ]) {
     const report = buildPulseMediaHouseScore(strongStory({
       canonical: {

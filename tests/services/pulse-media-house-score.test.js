@@ -334,6 +334,41 @@ test("template-fatigue Shorts packaging fails the feed-competition gate", () => 
   assert.ok(report.hard_failures.includes("media_house:shorts_feed_competition_weak"));
 });
 
+test("game sequel numbers do not rescue trust-template Shorts packaging", () => {
+  const report = buildPulseMediaHouseScore(strongStory({
+    canonical: {
+      ...strongStory().canonical,
+      selected_title: "Guild Wars 3 Has A Player Trust Test",
+      canonical_subject: "Guild Wars 3",
+      first_spoken_line: "Guild Wars 3 has one new detail players are watching.",
+      thumbnail_headline: "GUILD WARS 3 TRUST PROBLEM",
+    },
+    platformManifest: {
+      outputs: {
+        youtube_shorts: {
+          title: "Guild Wars 3 Has A Player Trust Test",
+          description:
+            "Guild Wars 3 has a real source detail, but not enough practical consequence for a strong Pulse short yet. Source: PC Gamer.",
+          cover_frame: { headline: "GUILD WARS 3 TRUST PROBLEM" },
+        },
+        instagram_reels: {
+          caption:
+            "Guild Wars 3 has a real source detail, but not enough practical consequence for a strong Pulse short yet. Source: PC Gamer.",
+          cover_frame: { headline: "GUILD WARS 3 TRUST PROBLEM" },
+        },
+      },
+    },
+  }));
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.shorts_feed_competition_report.status, "blocked");
+  assert.ok(report.shorts_feed_competition_report.blockers.includes("feed_title_template_fatigue"));
+  assert.ok(report.shorts_feed_competition_report.blockers.includes("feed_cover_too_abstract"));
+  assert.ok(report.hard_failures.includes("media_house:platform_copy_too_plain"));
+  assert.ok(report.hard_failures.includes("media_house:first_frame_or_thumbnail_not_attention_led"));
+  assert.ok(report.hard_failures.includes("media_house:shorts_feed_competition_weak"));
+});
+
 test("proof-card thumbnail text fails when it lacks instant viewer stakes", () => {
   const report = buildPulseMediaHouseScore(strongStory({
     canonical: {

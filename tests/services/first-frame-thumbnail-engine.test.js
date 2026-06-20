@@ -30,6 +30,13 @@ test("analyseCoverText flags repeated and dangling mobile-cover copy", () => {
   assert.ok(result.blockers.includes("cover_text_dangling_or_truncated"));
 });
 
+test("analyseCoverText flags abstract trust-problem covers without a concrete stake", () => {
+  const result = analyseCoverText("GUILD WARS 3 TRUST PROBLEM");
+
+  assert.equal(result.verdict, "fail");
+  assert.ok(result.blockers.includes("cover_text_too_abstract"));
+});
+
 test("scoreFirstFrameThumbnailStory passes clean mobile-readable platform covers", () => {
   const report = scoreFirstFrameThumbnailStory({
     story: {
@@ -189,17 +196,17 @@ test("scoreFirstFrameThumbnailStory reuses shared platform cover headline for Fa
     canonicalManifest: {
       canonical_subject: "Steam Next Fest",
       selected_title: "Steam Next Fest Turns Demos Into A Trust Fight",
-      thumbnail_headline: "STEAM NEXT FEST TRUST TEST",
+      thumbnail_headline: "STEAM DEMO FIGHT",
       primary_source: "Steam",
     },
     platformManifest: {
       youtube: {
         title: "Steam Next Fest Turns Demos Into A Trust Fight",
-        cover_frame: { headline: "STEAM NEXT FEST TRUST TEST" },
+        cover_frame: { headline: "STEAM DEMO FIGHT" },
       },
       instagram: {
         title: "Steam Next Fest Turns Demos Into A Trust Fight",
-        cover_frame: { headline: "STEAM NEXT FEST TRUST TEST" },
+        cover_frame: { headline: "STEAM DEMO FIGHT" },
       },
       facebook: {
         page_caption: "Steam Next Fest is turning demos into a public trust test for PC games.",

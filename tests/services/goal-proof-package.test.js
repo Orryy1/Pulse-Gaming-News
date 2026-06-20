@@ -227,6 +227,8 @@ test("goal proof package proves each social pack is platform-native rather than 
   );
   assert.equal(evidence.blind_duplicate_pairs.length, 0);
   assert.equal(pack.platform_variant_scorecard.platform_native_evidence.verdict, "pass");
+  assert.doesNotMatch(pack.youtube_publish_pack.description, /useful question behind the headline/i);
+  assert.match(pack.youtube_publish_pack.description, /paid early access|Steam demand|cheaper launch wave/i);
   assert.equal(pack.tiktok_publish_pack.commercial_content_setting_recommendation, "not_required_unless_brand_or_product_promoted");
   assert.equal(pack.instagram_publish_pack.carousel_companion.required, true);
   assert.equal(pack.pinterest_publish_pack.landing_page_required, true);
@@ -647,6 +649,36 @@ test("goal proof package repairs overlong possessive subjects before platform pa
   assert.doesNotMatch(youtube.description, /useful question behind the headline|^'s\b/i);
   assert.equal(mediaHousePrivate.platformTitlesTooPlain(pack.platform_publish_manifest, pack.canonical_story_manifest), false);
   assert.equal(mediaHousePrivate.platformCopyTooPlain(pack.platform_publish_manifest), false);
+});
+
+test("goal proof package marks generic trust-template packs as non-native evidence", () => {
+  const story = greenStory();
+  story.id = "guild-wars-generic-trust-template-pack";
+  story.canonical_subject = "Guild Wars 3";
+  story.canonical_game = "Guild Wars 3";
+  story.canonical_angle = "source_locked_update";
+  story.public_title = "Guild Wars 3 Has A Player Trust Test";
+  story.title = "Guild Wars 3 Has A Player Trust Test";
+  story.primary_source = "PC Gamer";
+  story.source_name = "PC Gamer";
+  story.description =
+    "Guild Wars 3 has a real source detail, but not enough practical consequence for a strong Pulse short yet.";
+  story.full_script =
+    "Guild Wars 3 has one new detail players are watching. Follow Pulse Gaming so you never miss a beat.";
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-06-20T01:20:00.000Z",
+  });
+
+  const evidence = pack.platform_publish_manifest.platform_native_evidence;
+  assert.equal(evidence.verdict, "fail");
+  assert.ok(evidence.failures.some((failure) => failure.reason === "weak_platform_title"));
+  assert.ok(evidence.failures.some((failure) => failure.reason === "weak_cover_headline"));
+  assert.ok(
+    evidence.failures.some((failure) => failure.reason === "internal_review_language_in_public_copy"),
+  );
 });
 
 test("goal proof package blocks long article-list excerpts in platform descriptions", () => {

@@ -40,7 +40,20 @@ function candidate(id, overrides = {}) {
       },
       source_age_policy_hours: 168,
     },
-    preflight_qa: { status: "pass", blockers: [] },
+    preflight_qa: {
+      status: "pass",
+      blockers: [],
+      checks: {
+        media_house: {
+          result: "pass",
+          evidence: {
+            verdict: "GREEN",
+            shorts_feed_competition_report: { status: "standout", score: 88 },
+            shorts_attention_report: { status: "pass" },
+          },
+        },
+      },
+    },
     ...overrides,
   };
 }
@@ -202,6 +215,14 @@ test("buildCandidateSupplyReport uses bridge source-age evidence for near-expiry
               evidence: {
                 source_published_at: "2026-06-10T00:00:00.000Z",
                 policy_hours: 168,
+              },
+            },
+            media_house: {
+              result: "pass",
+              evidence: {
+                verdict: "GREEN",
+                shorts_feed_competition_report: { status: "standout", score: 86 },
+                shorts_attention_report: { status: "pass" },
               },
             },
           },
@@ -439,7 +460,7 @@ test("candidate supply report treats current transcript backlog as refill pressu
   assert.equal(candidateSupplyMonitorNeedsFreshIntake(report), true);
   assert.equal(report.next_action, "repair_transcript_backlog_and_refill_green_candidate_buffer");
   assert.match(formatCandidateSupplyMarkdown(report), /Transcript Backlog/);
-  assert.match(formatCandidateSupplyMonitorDiscord(report), /Clean GREEN: 4\/10 \(raw preflight 5; transcript-held 1\)/);
+  assert.match(formatCandidateSupplyMonitorDiscord(report), /Clean GREEN: 4\/10 \(raw preflight 5; transcript-held 1; attention-held 0\)/);
   assert.doesNotMatch(formatCandidateSupplyMonitorDiscord(report), /^GREEN-ready: 5\/10/m);
 });
 
@@ -573,6 +594,158 @@ test("candidate supply report exposes Shorts attention readiness and metadata bl
   assert.equal(candidateSupplyMonitorNeedsRepair(report), true);
 });
 
+test("candidate supply clean GREEN requires Shorts feed standout packaging", () => {
+  const now = new Date("2026-06-20T09:00:00.000Z");
+  const candidateReport = {
+    generated_at: now.toISOString(),
+    totals: { stories_seen: 2, returned: 2, pending_audio: 0 },
+    candidates: [
+      candidate("standout-package", {
+        title: "Gears E-Day Has A 130GB Problem",
+        source_manifest: {
+          primary_source: {
+            name: "IGN",
+            url: "https://www.ign.com/articles/standout-package",
+            published_at: "2026-06-20T08:00:00.000Z",
+          },
+          source_age_policy_hours: 168,
+        },
+        preflight_qa: {
+          status: "pass",
+          blockers: [],
+          checks: {
+            media_house: {
+              result: "pass",
+              evidence: {
+                verdict: "GREEN",
+                shorts_feed_competition_report: { status: "standout", score: 88 },
+                shorts_attention_report: { status: "pass" },
+              },
+            },
+          },
+        },
+      }),
+      candidate("ordinary-package", {
+        title: "Steam Next Fest Turns Demos Into A Trust Fight",
+        source_manifest: {
+          primary_source: {
+            name: "IGN",
+            url: "https://www.ign.com/articles/ordinary-package",
+            published_at: "2026-06-20T08:00:00.000Z",
+          },
+          source_age_policy_hours: 168,
+        },
+        preflight_qa: {
+          status: "pass",
+          blockers: [],
+          checks: {
+            media_house: {
+              result: "pass",
+              evidence: {
+                verdict: "GREEN",
+                shorts_feed_competition_report: { status: "pass", score: 76 },
+                shorts_attention_report: { status: "pass" },
+              },
+            },
+          },
+        },
+      }),
+    ],
+  };
+
+  const report = buildCandidateSupplyReport({
+    stories: [],
+    candidateReport,
+    channelConfig: {},
+    now,
+    targets: {
+      greenReadyCandidates: 2,
+      sourceSafeCandidates: 1,
+      v4ReadyCandidates: 1,
+      freshSourceBackedStories: 0,
+      publishWindows24h: 2,
+    },
+  });
+
+  assert.equal(report.summary.raw_preflight_green_ready_candidates, 2);
+  assert.equal(report.summary.transcript_clean_green_ready_candidates, 2);
+  assert.equal(report.summary.shorts_attention_ready_candidates, 2);
+  assert.equal(report.summary.shorts_feed_standout_candidates, 1);
+  assert.equal(report.summary.green_ready_candidates, 1);
+  assert.equal(report.summary.fresh_youtube_upload_candidates, 1);
+  assert.equal(report.summary.durable_green_ready_candidates, 1);
+  assert.equal(report.priority_scorecards.find((item) => item.story_id === "standout-package").clean_green, true);
+  assert.equal(report.priority_scorecards.find((item) => item.story_id === "ordinary-package").clean_green, false);
+  assert.ok(report.warnings.includes("green_ready_candidates_below_target:1/2"));
+  assert.ok(report.warnings.includes("fresh_youtube_upload_candidates_below_window_target:1/2"));
+  assert.match(formatCandidateSupplyMarkdown(report), /Clean GREEN-ready candidates: 1\/2/);
+  assert.match(formatCandidateSupplyMonitorDiscord(report), /Clean GREEN: 1\/2 \(raw preflight 2; transcript-held 0; attention-held 1\)/);
+});
+
+test("candidate supply infers Shorts feed standout from legacy media-house score evidence", () => {
+  const now = new Date("2026-06-20T09:00:00.000Z");
+  const report = buildCandidateSupplyReport({
+    stories: [],
+    candidateReport: {
+      generated_at: now.toISOString(),
+      totals: { stories_seen: 1, returned: 1, pending_audio: 0 },
+      candidates: [
+        candidate("legacy-score-standout", {
+          title: "Gears E-Day Has A 130GB Problem",
+          source_manifest: {
+            primary_source: {
+              name: "PC Gamer",
+              url: "https://www.pcgamer.com/gears-eday-pc-specs",
+              published_at: "2026-06-20T08:00:00.000Z",
+            },
+            source_age_policy_hours: 168,
+          },
+          preflight_qa: {
+            status: "pass",
+            blockers: [],
+            checks: {
+              media_house: {
+                result: "pass",
+                failures: [],
+                warnings: [],
+                evidence: {
+                  verdict: "GREEN",
+                  overall_media_house_score: 93,
+                  title_strength_score: 100,
+                  first_frame_score: 100,
+                  first_3_seconds_score: 100,
+                  competitor_parity_score: 97,
+                  competitor_surpass_score: 93,
+                  hard_failures: [],
+                },
+              },
+            },
+          },
+        }),
+      ],
+    },
+    channelConfig: {},
+    now,
+    targets: {
+      greenReadyCandidates: 1,
+      sourceSafeCandidates: 1,
+      v4ReadyCandidates: 1,
+      freshSourceBackedStories: 0,
+      publishWindows24h: 1,
+    },
+  });
+
+  assert.equal(report.summary.shorts_feed_standout_candidates, 1);
+  assert.equal(report.summary.green_ready_candidates, 1);
+  assert.equal(report.summary.fresh_youtube_upload_candidates, 1);
+  assert.deepEqual(report.priority_scorecards[0].shorts_attention, {
+    status: "pass",
+    feed_status: "standout",
+    feed_score: 93,
+    blockers: [],
+  });
+});
+
 test("candidate supply monitor does not trigger fresh intake when runway has reserve", () => {
   const now = new Date("2026-06-16T22:00:00.000Z");
   const candidateReport = {
@@ -672,6 +845,14 @@ test("buildCandidateSupplyReport surfaces motion-capacity repair lanes for fresh
               evidence: {
                 source_published_at: "2026-06-18T13:00:00.000Z",
                 policy_hours: 168,
+              },
+            },
+            media_house: {
+              result: "pass",
+              evidence: {
+                verdict: "GREEN",
+                shorts_feed_competition_report: { status: "standout", score: 86 },
+                shorts_attention_report: { status: "pass" },
               },
             },
           },

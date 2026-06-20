@@ -1226,6 +1226,46 @@ test("goal proof package surfaces native Shorts title description and cover fail
   assert.equal(pack.publish_verdict.can_auto_publish, false);
 });
 
+test("goal proof package writes media-house score and blocks weak Shorts packaging", async () => {
+  const badCopyStory = greenStory();
+  badCopyStory.id = "weak-shorts-feed-packaging";
+  badCopyStory.canonical_subject = "Path of Exile 2";
+  badCopyStory.canonical_game = "Path of Exile 2";
+  badCopyStory.title = "Path of Exile 2 Has A Loot Economy Problem";
+  badCopyStory.public_title = badCopyStory.title;
+  badCopyStory.suggested_thumbnail_text = "PATH EXILE 2 LOOT ECONOMY";
+  badCopyStory.description =
+    "Path of Exile 2 needs one concrete player-facing detail before it becomes more than a feed item.";
+  badCopyStory.full_script =
+    "Path of Exile 2 has one update players are watching. Follow Pulse Gaming so you never miss a beat.";
+  badCopyStory.source_name = "PC Gamer";
+  badCopyStory.primary_source = "PC Gamer";
+
+  const pack = buildGoalProofPackage({
+    story: badCopyStory,
+    rightsLedger: rightsForGreenStory(badCopyStory),
+    generatedAt: "2026-06-20T13:30:00.000Z",
+  });
+
+  assert.equal(pack.pulse_media_house_score.verdict, "RED");
+  assert.ok(
+    pack.pulse_media_house_score.hard_failures.includes("media_house:shorts_feed_competition_weak"),
+    JSON.stringify(pack.pulse_media_house_score, null, 2),
+  );
+  assert.ok(
+    pack.publish_verdict.reason_codes.includes("media_house:shorts_feed_competition_weak"),
+    JSON.stringify(pack.publish_verdict, null, 2),
+  );
+  assert.ok(
+    pack.acceptance_entry.blockers.includes("media_house:shorts_feed_competition_weak"),
+    JSON.stringify(pack.acceptance_entry, null, 2),
+  );
+
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-media-house-pack-"));
+  await writeGoalProofPackageArtifacts(pack, { outputDir: tmp });
+  assert.ok(await fs.pathExists(path.join(tmp, "pulse_media_house_score.json")));
+});
+
 test("goal proof package writes goal-named artefacts", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-proof-"));
   const pack = buildGoalProofPackage({

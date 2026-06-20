@@ -1380,6 +1380,53 @@ test("bridge preflight blocks source evidence older than seven days without appr
   assert.equal(preflight.checks.source_age.evidence.policy_hours, 168);
 });
 
+test("attachPreflightQa quarantines stale bridge backlog rows from normal review", async () => {
+  const story = baseStory({
+    id: "stale_source_bridge_queue",
+    title: "Hot Wheels Infinite Rush Could Be Toy-Car Forza",
+    selected_title: "Hot Wheels Infinite Rush Could Be Toy-Car Forza",
+    canonical_subject: "Hot Wheels Infinite Rush",
+    first_spoken_line: "Hot Wheels Infinite Rush sounds like a toy advert until the details kick in.",
+    description: "Xbox Wire revealed Hot Wheels Infinite Rush. Source: Xbox Wire.",
+    full_script:
+      "Hot Wheels Infinite Rush sounds like a toy advert until the details kick in. Xbox Wire says the racer is built around four open islands.",
+    source_published_at: "2026-06-05T00:00:00.000Z",
+    scheduler_bridge_source: "goal_production_cutover",
+  });
+  const report = buildNextPublishCandidatesReport([story], {
+    generatedAt: "2026-06-12T10:30:00.000Z",
+  });
+
+  await attachPreflightQa(report, [story], {
+    nowMs: Date.parse("2026-06-12T10:30:00.000Z"),
+    runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+    runBridgeMotionGovernanceQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAggregateBenchmarkQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runScriptScorecardQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+  });
+
+  assert.equal(report.candidates[0].status, "review");
+  assert.deepEqual(report.candidates[0].scheduler_quarantine, {
+    status: "held",
+    reason: "source_age_exceeds_policy",
+    lane: "stale_source_backlog",
+    safe_next_action: "replace_with_fresh_source_or_operator_approve_evergreen",
+  });
+  assert.ok(report.candidates[0].reasons.includes("scheduler_quarantine_stale_source"));
+  assert.equal(report.preflight_qa.scheduler_quarantined, 1);
+  assert.deepEqual(report.preflight_qa.scheduler_quarantine_reasons, {
+    source_age_exceeds_policy: 1,
+  });
+});
+
 test("bridge preflight keeps operator-approved evergreen stale sources as warnings", async () => {
   const preflight = await runPreflightQaForStory(
     baseStory({

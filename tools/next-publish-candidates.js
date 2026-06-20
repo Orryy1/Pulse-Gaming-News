@@ -3496,10 +3496,25 @@ async function attachPreflightQa(report = {}, stories = [], opts = {}) {
       candidate.status = "review";
       candidate.penalties = [...new Set([...(candidate.penalties || []), "preflight_qa_blocked"])];
       candidate.reasons = [...new Set([...(candidate.reasons || []), "preflight_qa_blocked"])];
+      if (Array.isArray(preflight.blockers) && preflight.blockers.includes("source_age:source_age_exceeds_policy")) {
+        candidate.scheduler_quarantine = {
+          status: "held",
+          reason: "source_age_exceeds_policy",
+          lane: "stale_source_backlog",
+          safe_next_action: "replace_with_fresh_source_or_operator_approve_evergreen",
+        };
+        candidate.reasons = [...new Set([...(candidate.reasons || []), "scheduler_quarantine_stale_source"])];
+      }
     } else {
       candidate.reasons = [...new Set([...(candidate.reasons || []), `preflight_qa_${preflight.status}`])];
     }
   }
+  const schedulerQuarantined = candidates.filter((candidate) => candidate.scheduler_quarantine?.status === "held");
+  const schedulerQuarantineReasons = schedulerQuarantined.reduce((acc, candidate) => {
+    const reason = candidate.scheduler_quarantine?.reason || "unknown";
+    acc[reason] = (acc[reason] || 0) + 1;
+    return acc;
+  }, {});
   report.preflight_qa = {
     enabled: true,
     mode: "read_only",
@@ -3507,6 +3522,8 @@ async function attachPreflightQa(report = {}, stories = [], opts = {}) {
     blocked: candidates.filter((candidate) => candidate.preflight_qa?.status === "blocked").length,
     warning: candidates.filter((candidate) => candidate.preflight_qa?.status === "warn").length,
     pass: candidates.filter((candidate) => candidate.preflight_qa?.status === "pass").length,
+    scheduler_quarantined: schedulerQuarantined.length,
+    scheduler_quarantine_reasons: schedulerQuarantineReasons,
     bridge_motion_governance: bridgeMotionGovernanceEvidenceSummary(
       opts.bridgeMotionGovernanceEvidence || {},
     ),

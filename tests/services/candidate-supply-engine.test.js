@@ -208,6 +208,72 @@ test("buildCandidateSupplyReport uses bridge source-age evidence for near-expiry
   assert.match(formatCandidateSupplyMarkdown(report), /Durable GREEN-ready candidates: 0\/1/);
 });
 
+test("buildCandidateSupplyReport surfaces scheduler-quarantined stale backlog", () => {
+  const now = new Date("2026-06-20T09:00:00.000Z");
+  const candidateReport = {
+    generated_at: now.toISOString(),
+    totals: { stories_seen: 2, returned: 2, pending_audio: 0 },
+    candidates: [
+      candidate("ready-one", {
+        source_manifest: {
+          primary_source: {
+            name: "IGN",
+            url: "https://www.ign.com/articles/ready-one",
+            published_at: "2026-06-20T08:00:00.000Z",
+          },
+          source_age_policy_hours: 168,
+        },
+      }),
+      candidate("stale-held", {
+        title: "Old Showcase Story Still Needs Review",
+        status: "review",
+        reasons: ["preflight_qa_blocked", "scheduler_quarantine_stale_source"],
+        scheduler_quarantine: {
+          status: "held",
+          reason: "source_age_exceeds_policy",
+          lane: "stale_source_backlog",
+          safe_next_action: "replace_with_fresh_source_or_operator_approve_evergreen",
+        },
+        preflight_qa: {
+          status: "blocked",
+          blockers: ["source_age:source_age_exceeds_policy"],
+          checks: {
+            source_age: {
+              result: "fail",
+              failures: ["source_age_exceeds_policy"],
+              evidence: {
+                source_published_at: "2026-06-10T00:00:00.000Z",
+                policy_hours: 168,
+              },
+            },
+          },
+        },
+      }),
+    ],
+  };
+
+  const report = buildCandidateSupplyReport({
+    stories: [],
+    candidateReport,
+    channelConfig: {},
+    now,
+    targets: {
+      greenReadyCandidates: 2,
+      sourceSafeCandidates: 1,
+      v4ReadyCandidates: 1,
+      freshSourceBackedStories: 0,
+    },
+  });
+
+  assert.equal(report.summary.scheduler_quarantined_candidates, 1);
+  assert.deepEqual(report.summary.scheduler_quarantine_reasons, {
+    source_age_exceeds_policy: 1,
+  });
+  assert.ok(report.warnings.includes("scheduler_quarantined_stale_backlog:1"));
+  assert.match(formatCandidateSupplyMarkdown(report), /Scheduler-quarantined stale backlog: 1/);
+  assert.match(formatCandidateSupplyMonitorDiscord(report), /Quarantined stale backlog: 1/);
+});
+
 test("candidate supply monitor treats covered windows without reserve as actionable AMBER", () => {
   const now = new Date("2026-06-16T22:00:00.000Z");
   const candidateReport = {

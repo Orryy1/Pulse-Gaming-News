@@ -349,6 +349,38 @@ test("goal batch package proof preparation avoids source-backed fallback claim w
   assert.match(prepared.full_script, /Hades II/i);
 });
 
+test("goal batch package proof preparation avoids internal review fallback copy for thin fresh RSS stories", () => {
+  const story = {
+    ...greenStory("vesper-thin-rss"),
+    id: "vesper-thin-rss",
+    canonical_subject: "Vesper Underground",
+    canonical_game: "Vesper Underground",
+    canonical_angle: "source_locked_update",
+    title: "Vesper Underground",
+    suggested_title: "Vesper Underground",
+    public_title: "Vesper Underground Has A Player Trust Test",
+    primary_source: "PlayStation Blog",
+    source_name: "PlayStation Blog",
+    article_url: "https://blog.playstation.com/2026/06/19/vesper-underground/",
+    full_script: "clean read",
+    description: "A short source-backed update for Vesper Underground.",
+  };
+
+  const prepared = prepareStoryForGoalProof(story, { allowOwnedMotionFallback: true });
+  const pack = buildGoalProofPackage({
+    story: prepared,
+    rightsLedger: rightsFor(prepared),
+    generatedAt: "2026-06-20T01:10:00.000Z",
+  });
+  const youtube = pack.platform_publish_manifest.outputs.youtube_shorts;
+
+  assert.doesNotMatch(prepared.full_script, /real source detail|not enough practical consequence|strong Pulse short/i);
+  assert.doesNotMatch(youtube.title, /player trust test/i);
+  assert.doesNotMatch(youtube.description, /real source detail|not enough practical consequence|strong Pulse short/i);
+  assert.match(youtube.title, /Vesper Underground/i);
+  assert.match(youtube.description, /Vesper Underground/i);
+});
+
 test("goal batch package proof preparation repairs generic DB subjects before script QA", () => {
   const prepared = prepareStoryForGoalProof({
     id: "1tkik53",

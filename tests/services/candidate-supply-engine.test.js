@@ -299,6 +299,48 @@ test("candidate supply monitor treats covered windows without reserve as actiona
   assert.match(formatCandidateSupplyMonitorDiscord(report), /Warnings:/);
 });
 
+test("candidate supply monitor separates fresh YouTube runway from platform catch-up candidates", () => {
+  const now = new Date("2026-06-20T09:00:00.000Z");
+  const candidateReport = {
+    generated_at: now.toISOString(),
+    totals: { stories_seen: 5, returned: 5, pending_audio: 0 },
+    candidates: Array.from({ length: 5 }, (_, index) => candidate(`catchup-${index + 1}`, {
+      source: {
+        source_type: "rss",
+        exported_path: `output/goal-proof/batch/catchup-${index + 1}/visual_v4_render.mp4`,
+        already_published_platforms: ["youtube_shorts"],
+        missing_enabled_platforms: ["instagram_reels", "facebook_reels"],
+      },
+    })),
+  };
+
+  const report = buildCandidateSupplyReport({
+    stories: [],
+    candidateReport,
+    channelConfig: {},
+    now,
+    targets: {
+      greenReadyCandidates: 5,
+      sourceSafeCandidates: 5,
+      v4ReadyCandidates: 3,
+      freshSourceBackedStories: 0,
+    },
+  });
+
+  assert.equal(report.summary.green_ready_candidates, 5);
+  assert.equal(report.summary.fresh_youtube_upload_candidates, 0);
+  assert.equal(report.summary.catch_up_only_green_candidates, 5);
+  assert.equal(report.youtube_upload_runway.covered_publish_windows_24h, 0);
+  assert.equal(report.youtube_upload_runway.uncovered_publish_windows_24h, 5);
+  assert.equal(report.verdict, "red");
+  assert.ok(report.blockers.includes("fresh_youtube_upload_candidate_buffer_empty"));
+  assert.ok(report.warnings.includes("fresh_youtube_upload_candidates_below_window_target:0/5"));
+  assert.equal(candidateSupplyMonitorNeedsRepair(report), true);
+  assert.equal(candidateSupplyMonitorNeedsFreshIntake(report), true);
+  assert.match(formatCandidateSupplyMarkdown(report), /Fresh YouTube-ready candidates: 0\/5/);
+  assert.match(formatCandidateSupplyMonitorDiscord(report), /Fresh YouTube-ready: 0\/5/);
+});
+
 test("candidate supply report treats current transcript backlog as refill pressure", () => {
   const now = new Date("2026-06-16T22:00:00.000Z");
   const candidateReport = {

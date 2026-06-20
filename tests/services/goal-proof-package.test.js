@@ -440,9 +440,11 @@ test("goal proof package turns demo news into attention-led Shorts copy", () => 
 
   const youtube = pack.platform_publish_manifest.outputs.youtube_shorts;
   assert.match(youtube.title, /Granblue Fantasy/i);
-  assert.match(youtube.title, /\bDemo Trust Test\b/i);
+  assert.match(youtube.title, /\bDemo Is The Real Proof\b/i);
+  assert.doesNotMatch(youtube.title, /\bDemo Trust Test\b/i);
   assert.doesNotMatch(youtube.title, /\bPS5 Survival Risk\b/i);
-  assert.match(youtube.description, /\b(?:trust|problem|before launch|test)\b/i);
+  assert.match(youtube.description, /\b(?:proof|problem|before launch|demo)\b/i);
+  assert.doesNotMatch(youtube.description, /\bDemo Trust Test\b/i);
   assert.doesNotMatch(youtube.cover_frame.headline, /^GRANBLUE FANTASY RELINK DEMO$/i);
   assert.equal(mediaHousePrivate.platformTitlesTooPlain(pack.platform_publish_manifest, pack.canonical_story_manifest), false);
   assert.equal(mediaHousePrivate.platformCopyTooPlain(pack.platform_publish_manifest), false);
@@ -674,8 +676,42 @@ test("goal proof package marks generic trust-template packs as non-native eviden
 
   const evidence = pack.platform_publish_manifest.platform_native_evidence;
   assert.equal(evidence.verdict, "fail");
+  assert.doesNotMatch(pack.youtube_publish_pack.title, /player trust test/i);
+  assert.doesNotMatch(
+    pack.platform_publish_manifest.outputs.youtube_shorts.cover_frame.headline,
+    /player trust test/i,
+  );
+  assert.match(pack.youtube_publish_pack.title, /Guild Wars 3/i);
+  assert.ok(
+    evidence.failures.some((failure) => failure.reason === "internal_review_language_in_public_copy"),
+  );
+});
+
+test("goal proof package blocks generic split-player fallback packaging", () => {
+  const story = greenStory();
+  story.id = "vesper-underground-generic-split-player-pack";
+  story.canonical_subject = "Vesper Underground";
+  story.canonical_game = "Vesper Underground";
+  story.canonical_angle = "source_locked_update";
+  story.public_title = "Vesper Underground";
+  story.title = "Vesper Underground";
+  story.primary_source = "PlayStation Blog";
+  story.source_name = "PlayStation Blog";
+  story.description =
+    "Vesper Underground needs one concrete player-facing detail before it becomes more than a feed item.";
+  story.full_script =
+    "Vesper Underground has one update players are watching. Follow Pulse Gaming so you never miss a beat.";
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-06-20T01:45:00.000Z",
+  });
+
+  const evidence = pack.platform_publish_manifest.platform_native_evidence;
+  assert.equal(evidence.verdict, "fail");
+  assert.match(pack.youtube_publish_pack.title, /Vesper Underground/i);
   assert.ok(evidence.failures.some((failure) => failure.reason === "weak_platform_title"));
-  assert.ok(evidence.failures.some((failure) => failure.reason === "weak_cover_headline"));
   assert.ok(
     evidence.failures.some((failure) => failure.reason === "internal_review_language_in_public_copy"),
   );

@@ -292,6 +292,60 @@ test("direct-media discovery follows bounded same-origin official media pages", 
   );
 });
 
+test("direct-media discovery follows trusted official storefront links from article pages", async () => {
+  const report = await buildOfficialDirectMediaDiscoveryReport({
+    entries: [
+      {
+        story_id: "sea-gap",
+        entity: "Sea of Thieves",
+        source_family: "xbox_wire_sea_of_thieves",
+        official_source_url: "https://news.xbox.com/en-us/2026/06/19/sea-of-thieves-custom-seas-update-details/",
+        direct_media_url_if_available: "",
+      },
+    ],
+    generatedAt: "2026-06-20T02:50:00.000Z",
+    fetchText: async (url) => {
+      if (url === "https://news.xbox.com/en-us/2026/06/19/sea-of-thieves-custom-seas-update-details/") {
+        return {
+          ok: true,
+          status: 200,
+          text: `
+            <a href="https://store.steampowered.com/app/1172620/Sea_of_Thieves_2025_Edition/">Sea of Thieves on Steam</a>
+            <a href="https://store.steampowered.com/app/999999/Unrelated_Game/">Unrelated Game</a>
+          `,
+        };
+      }
+      if (url === "https://store.steampowered.com/app/1172620/Sea_of_Thieves_2025_Edition/") {
+        return {
+          ok: true,
+          status: 200,
+          text: `
+            &quot;hlsManifest&quot;:&quot;https://video.fastly.steamstatic.com/store_trailers/1172620/123456/hash/1780277626/hls_264_master.m3u8?t=1781798240&quot;
+          `,
+        };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    },
+    probeMedia: async () => ({ duration_seconds: 68, width: 1920, height: 1080 }),
+  });
+
+  assert.equal(report.summary.discovered, 1);
+  assert.equal(report.rows[0].status, "direct_media_found");
+  assert.equal(report.rows[0].discovery_source, "trusted_official_linked_media_page");
+  assert.equal(
+    report.rows[0].discovered_page_url,
+    "https://store.steampowered.com/app/1172620/Sea_of_Thieves_2025_Edition/",
+  );
+  assert.equal(
+    report.rows[0].direct_media_url,
+    "https://video.fastly.steamstatic.com/store_trailers/1172620/123456/hash/1780277626/hls_264_master.m3u8?t=1781798240",
+  );
+  assert.equal(
+    report.output_template.entries[0].direct_media_url_if_available,
+    "https://video.fastly.steamstatic.com/store_trailers/1172620/123456/hash/1780277626/hls_264_master.m3u8?t=1781798240",
+  );
+});
+
 test("direct-media discovery can expand multiple official media candidates for intake", async () => {
   const report = await buildOfficialDirectMediaDiscoveryReport({
     entries: [

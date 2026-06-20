@@ -317,6 +317,41 @@ test("standout Shorts packaging records a feed-competition report", () => {
   assert.ok(!report.hard_failures.includes("media_house:shorts_feed_competition_weak"));
 });
 
+test("attention reports use current platform-native copy when canonical copy is stale", () => {
+  const report = buildPulseMediaHouseScore(strongStory({
+    canonical: {
+      ...strongStory().canonical,
+      selected_title: "Granblue Fantasy: Relink Demo Is The Real Proof",
+      canonical_subject: "Granblue Fantasy: Relink",
+      first_spoken_line: "Granblue Fantasy Relink just gave players proof most updates never give them.",
+      thumbnail_headline: "RELINK PLAYABLE DEMO",
+    },
+    platformManifest: {
+      outputs: {
+        youtube_shorts: {
+          title: "Granblue Relink Demo Has A Reinstall Catch",
+          description:
+            "Granblue Fantasy: Relink has a playable Endless Ragnarok demo, not just another trailer. The catch is whether lapsed players feel enough combat snap to reinstall before losing another weekend. Source: PlayStation Blog.",
+          cover_frame: { headline: "RELINK REINSTALL CATCH" },
+        },
+        instagram_reels: {
+          title: "Granblue Relink Demo Has A Reinstall Catch",
+          caption:
+            "Granblue Fantasy: Relink has a playable Endless Ragnarok demo, not just another trailer. The catch is whether lapsed players feel enough combat snap to reinstall before losing another weekend. Source: PlayStation Blog.",
+          cover_frame: { headline: "RELINK REINSTALL CATCH" },
+        },
+      },
+    },
+  }));
+
+  assert.equal(report.shorts_attention_report.title, "Granblue Relink Demo Has A Reinstall Catch");
+  assert.deepEqual(report.shorts_attention_report.platform_titles, ["Granblue Relink Demo Has A Reinstall Catch"]);
+  assert.deepEqual(report.shorts_attention_report.first_frame_or_thumbnail_copy, ["RELINK REINSTALL CATCH"]);
+  assert.equal(report.shorts_feed_competition_report.title, "Granblue Relink Demo Has A Reinstall Catch");
+  assert.deepEqual(report.shorts_feed_competition_report.first_frame_or_thumbnail_copy, ["RELINK REINSTALL CATCH"]);
+  assert.equal(report.shorts_feed_competition_report.status, "standout");
+});
+
 test("template-fatigue Shorts packaging fails the feed-competition gate", () => {
   const report = buildPulseMediaHouseScore(strongStory({
     canonical: {

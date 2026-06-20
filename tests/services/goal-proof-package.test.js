@@ -1017,6 +1017,45 @@ test("goal proof package keeps incomplete packages out of GREEN acceptance", () 
   assert.ok(pack.acceptance_entry.blockers.includes("footage:v4_motion_blocked"));
 });
 
+test("goal proof package surfaces native Shorts title description and cover failures in publish blockers", () => {
+  const badCopyStory = greenStory();
+  badCopyStory.id = "guild-wars-native-copy-failure";
+  badCopyStory.canonical_subject = "Guild Wars 3";
+  badCopyStory.canonical_game = "Guild Wars 3";
+  badCopyStory.canonical_angle =
+    "Guild Wars 3 needs one concrete player-facing detail before it becomes more than a feed item.";
+  badCopyStory.title = "Guild Wars 3 Has An MMO Identity Fight";
+  badCopyStory.suggested_title = badCopyStory.title;
+  badCopyStory.public_title = badCopyStory.title;
+  badCopyStory.suggested_thumbnail_text = "GUILD WARS 3 MMO IDENTITY";
+  badCopyStory.description =
+    "Guild Wars 3 needs one concrete player-facing detail before it becomes more than a feed item.";
+  badCopyStory.source_name = "PC Gamer";
+  badCopyStory.primary_source = "PC Gamer";
+  badCopyStory.source_card_label = "PC Gamer";
+  badCopyStory.thumbnail_source_label = "PC Gamer";
+  badCopyStory.article_url = "https://www.pcgamer.com/guild-wars-3-identity";
+
+  const pack = buildGoalProofPackage({
+    story: badCopyStory,
+    rightsLedger: rightsForGreenStory(badCopyStory),
+    generatedAt: "2026-06-20T12:15:00.000Z",
+  });
+
+  assert.equal(pack.platform_publish_manifest.platform_native_evidence.verdict, "fail");
+  assert.ok(
+    pack.publish_verdict.reason_codes.includes(
+      "platform_native:youtube_shorts:internal_review_language_in_public_copy",
+    ),
+  );
+  assert.ok(
+    pack.acceptance_entry.blockers.includes(
+      "platform_native:youtube_shorts:internal_review_language_in_public_copy",
+    ),
+  );
+  assert.equal(pack.publish_verdict.can_auto_publish, false);
+});
+
 test("goal proof package writes goal-named artefacts", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-proof-"));
   const pack = buildGoalProofPackage({

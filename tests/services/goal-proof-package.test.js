@@ -531,16 +531,74 @@ test("goal proof package gives retro preview stories a player-stakes description
     generatedAt: "2026-06-19T20:35:00.000Z",
   });
 
+  const youtube = pack.platform_publish_manifest.outputs.youtube_shorts;
   const description = pack.platform_publish_manifest.outputs.youtube_shorts.description;
+  assert.equal(youtube.title, "The Adventures Of Elliot Has A Combat Discovery Test");
+  assert.equal(youtube.cover_frame.headline, "ELLIOT COMBAT TEST");
   assert.match(description, /\b(?:retro|trust|problem|combat|exploration)\b/i);
+  assert.equal(mediaHousePrivate.platformTitlesTooPlain(pack.platform_publish_manifest, pack.canonical_story_manifest), false);
+  assert.equal(mediaHousePrivate.weakFirstFrameOrThumbnailCopy(pack.canonical_story_manifest, pack.platform_publish_manifest), false);
   assert.equal(mediaHousePrivate.platformCopyTooPlain(pack.platform_publish_manifest), false);
+});
+
+test("goal proof package gives OG season and dark action previews concrete story hooks", () => {
+  const cases = [
+    {
+      id: "fortnite-og-map-pack",
+      subject: "Fortnite OG Season 9",
+      description:
+        "Fortnite OG Season 9 has a start time, OG Pass, live events and map changes for players coming back to Chapter 1.",
+      expectedTitle: "Fortnite OG Season 9 Has A Map Change Test",
+      expectedCover: "FORTNITE OG MAP TEST",
+    },
+    {
+      id: "end-of-abyss-combat-pack",
+      subject: "End of Abyss",
+      description:
+        "End of Abyss mixes exploration, combat and Little Nightmare pressure inside a hostile facility where readability matters.",
+      expectedTitle: "End of Abyss Has A Combat Readability Test",
+      expectedCover: "ABYSS COMBAT TEST",
+    },
+  ];
+
+  for (const item of cases) {
+    const story = greenStory();
+    story.id = item.id;
+    story.canonical_subject = item.subject;
+    story.canonical_game = item.subject;
+    story.canonical_angle = "source_locked_update";
+    story.public_title = item.subject;
+    story.title = item.subject;
+    story.suggested_thumbnail_text = `WHY ${item.subject.toUpperCase()} COULD SPLIT PLAYERS`;
+    story.primary_source = "Xbox Wire";
+    story.source_name = "Xbox Wire";
+    story.description = item.description;
+    story.full_script =
+      `${item.subject} has a concrete player-facing update now. Xbox Wire gives enough detail for players to judge whether it is worth another look. The useful question is whether that specific change creates real momentum, or just another update people scroll past. Follow Pulse Gaming so you never miss a beat.`;
+
+    const pack = buildGoalProofPackage({
+      story,
+      rightsLedger: rightsForGreenStory(story),
+      generatedAt: "2026-06-20T12:50:00.000Z",
+    });
+
+    const evidence = pack.platform_publish_manifest.platform_native_evidence;
+    const youtube = pack.platform_publish_manifest.outputs.youtube_shorts;
+    assert.equal(youtube.title, item.expectedTitle);
+    assert.equal(youtube.cover_frame.headline, item.expectedCover);
+    assert.equal(
+      evidence.failures.some((failure) => failure.platform === "youtube_shorts"),
+      false,
+      item.id,
+    );
+  }
 });
 
 test("goal proof package gives Free Play Days roundups a free-access risk description", () => {
   const story = greenStory();
   story.id = "free-play-days-copy-pack";
-  story.canonical_subject = "Free Play Days";
-  story.canonical_game = "Free Play Days";
+  story.canonical_subject = "Free Play Days - PGA";
+  story.canonical_game = "Free Play Days - PGA";
   story.canonical_angle = "PGA Tour 2K25, Two Point Museum, Assetto Corsa and Dead by Daylight are in the latest free access window";
   story.public_title = "Free Play Days Adds Four Games";
   story.title = "Free Play Days - PGA Tour 2K25, Two Point Museum, Assetto Corsa and Dead by Daylight";
@@ -557,9 +615,51 @@ test("goal proof package gives Free Play Days roundups a free-access risk descri
     generatedAt: "2026-06-19T20:40:00.000Z",
   });
 
+  const youtube = pack.platform_publish_manifest.outputs.youtube_shorts;
+  const evidence = pack.platform_publish_manifest.platform_native_evidence;
+  assert.equal(pack.canonical_story_manifest.canonical_subject, "Free Play Days");
+  assert.equal(youtube.title, "Free Play Days Has A Free-Access Risk");
+  assert.equal(youtube.cover_frame.headline, "FREE PLAY DAYS FREE RISK");
   const description = pack.platform_publish_manifest.outputs.youtube_shorts.description;
   assert.match(description, /\b(?:free|risk|worth keeping|trial|tonight)\b/i);
+  assert.equal(
+    evidence.failures.some((failure) => failure.platform === "youtube_shorts"),
+    false,
+  );
   assert.equal(mediaHousePrivate.platformCopyTooPlain(pack.platform_publish_manifest), false);
+});
+
+test("goal proof package normalises conversational GTA 6 source headlines before cover packaging", () => {
+  const story = greenStory();
+  story.id = "gta-6-demo-source-pack";
+  story.canonical_subject = "I Hope GTA 6";
+  story.canonical_game = "I Hope GTA 6";
+  story.canonical_angle = "developer quote about a playable demo becoming the proof point";
+  story.public_title = "I Hope GTA 6 Demo Is The Real Proof";
+  story.title = "I Hope GTA 6 Demo Is The Real Proof";
+  story.suggested_thumbnail_text = "I HOPE GTA TRUST PROBLEM";
+  story.primary_source = "GameSpot";
+  story.source_name = "GameSpot";
+  story.description =
+    "GameSpot reported a developer quote about hoping GTA 6 has a playable demo before launch.";
+  story.full_script =
+    "GTA 6 has one proof point players can judge immediately: the demo. It can win wishlists fast or expose the problem before launch. Follow Pulse Gaming so you never miss a beat.";
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-06-20T13:05:00.000Z",
+  });
+
+  const youtube = pack.platform_publish_manifest.outputs.youtube_shorts;
+  const evidence = pack.platform_publish_manifest.platform_native_evidence;
+  assert.equal(pack.canonical_story_manifest.canonical_subject, "GTA 6");
+  assert.equal(youtube.title, "GTA 6 Demo Is The Real Proof");
+  assert.equal(youtube.cover_frame.headline, "GTA 6 DEMO RISK");
+  assert.equal(
+    evidence.failures.some((failure) => failure.platform === "youtube_shorts"),
+    false,
+  );
 });
 
 test("goal proof package repairs generic canonical subjects before platform packaging", () => {
@@ -805,6 +905,76 @@ test("goal proof package repairs sentence-style cover headlines into compact sto
     evidence.failures.map((failure) => failure.reason).join("\n"),
     /weak_cover_headline|plain_platform_description|weak_platform_title/,
   );
+});
+
+test("goal proof package gives current platform and content stories concrete stop-scroll titles", () => {
+  const cases = [
+    {
+      id: "planet-crafter-ps5-pack",
+      subject: "The Planet Crafter",
+      source: "PlayStation Blog",
+      description: "The Planet Crafter launches on PS5 on July 21, bringing its survival terraforming loop to console players.",
+      expectedTitle: "The Planet Crafter Lands On PS5",
+      expectedCover: "PLANET CRAFTER PS5",
+    },
+    {
+      id: "fc-26-ea-play-pack",
+      subject: "EA SPORTS FC 26",
+      source: "Xbox Wire",
+      description: "EA SPORTS FC 26 is now available through EA Play for football fans who skipped the full-price launch.",
+      expectedTitle: "EA SPORTS FC 26 Just Hit EA Play",
+      expectedCover: "FC 26 EA PLAY",
+    },
+    {
+      id: "dave-diver-jungle-pack",
+      subject: "Dave The Diver",
+      source: "Xbox Wire",
+      description: "Dave The Diver's In The Jungle DLC is out now, adding a new biome to the dive, serve and upgrade loop.",
+      expectedTitle: "Dave The Diver Just Hit The Jungle",
+      expectedCover: "DAVE DIVER JUNGLE",
+    },
+  ];
+
+  for (const item of cases) {
+    const story = greenStory();
+    story.id = item.id;
+    story.canonical_subject = item.subject;
+    story.canonical_game = item.subject;
+    story.canonical_angle = "source_locked_update";
+    story.public_title = item.subject;
+    story.title = item.subject;
+    story.suggested_thumbnail_text = `WHY ${item.subject.toUpperCase()} COULD SPLIT PLAYERS`;
+    story.primary_source = item.source;
+    story.source_name = item.source;
+    story.description = item.description;
+    story.full_script =
+      `${item.subject} has a concrete player-facing update now. ${item.source} gives enough detail for players to judge whether it is worth another look. The useful question is whether that specific change creates real momentum, or just another update people scroll past. Follow Pulse Gaming so you never miss a beat.`;
+
+    const pack = buildGoalProofPackage({
+      story,
+      rightsLedger: rightsForGreenStory(story),
+      generatedAt: "2026-06-20T12:35:00.000Z",
+    });
+
+    const evidence = pack.platform_publish_manifest.platform_native_evidence;
+    const youtube = pack.platform_publish_manifest.outputs.youtube_shorts;
+    assert.equal(youtube.title, item.expectedTitle);
+    assert.equal(youtube.cover_frame.headline, item.expectedCover);
+    assert.equal(
+      evidence.failures.some(
+        (failure) => failure.platform === "youtube_shorts" && failure.reason === "weak_platform_title",
+      ),
+      false,
+      item.id,
+    );
+    assert.equal(
+      evidence.failures.some(
+        (failure) => failure.platform === "youtube_shorts" && failure.reason === "weak_cover_headline",
+      ),
+      false,
+      item.id,
+    );
+  }
 });
 
 test("goal proof package blocks long article-list excerpts in platform descriptions", () => {

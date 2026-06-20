@@ -62,6 +62,55 @@ test("RSS proof ingest rejects broad roundups and avoids bad fallback subjects",
     false,
   );
   assert.equal(
+    _private.isGamingProofItem({
+      title: "Next Week on Xbox: New Games for June 22 to 26",
+      description: "A calendar roundup of dozens of upcoming games.",
+    }),
+    false,
+  );
+  assert.equal(
+    _private.isGamingProofItem({
+      title: "Best Fantasy Games To Escape Into This Weekend",
+      description: "Our evergreen list of fantasy games to play now.",
+    }),
+    false,
+  );
+  assert.equal(
+    _private.isGamingProofItem({
+      title: "Best PS5 Games In 2026",
+      description: "A regularly updated list of PS5 games.",
+    }),
+    false,
+  );
+  assert.equal(
+    _private.isGamingProofItem({
+      title: "Take-Two's ex-AI boss says generative AI hype is poisoning the well",
+      description: "An executive industry interview without a specific player-facing game update.",
+    }),
+    false,
+  );
+  assert.equal(
+    _private.isGamingProofItem({
+      title: "Official PlayStation Podcast Episode 544: Vesper Underground",
+      description: "Podcast episode notes without direct gameplay, trailer or release evidence.",
+    }),
+    false,
+  );
+  assert.equal(
+    _private.isGamingProofItem({
+      title: "Sea of Thieves Custom Seas Update Details Revealed",
+      description: "Rare explains the new custom seas update for players.",
+    }),
+    true,
+  );
+  assert.equal(
+    _private.isGamingProofItem({
+      title: "Granblue Fantasy: Relink Endless Ragnarok Demo Available Today",
+      description: "A playable demo and hands-on details for the action RPG.",
+    }),
+    true,
+  );
+  assert.equal(
     _private.titleSubjectFallback(
       "\"Honestly difficult to imagine a path forward with it\" - licensed Paranormal Activity horror game technically done for good",
     ),
@@ -110,10 +159,62 @@ test("RSS proof ingest extracts useful game subjects from long article titles", 
     "Epic Games Store",
   );
   assert.equal(
+    _private.titleSubjectFallback(
+      "Path of Exile 2 director says players exploiting system to become in-game millionaires ruined Christmas for me",
+    ),
+    "Path of Exile 2",
+  );
+  assert.equal(
+    _private.titleSubjectFallback(
+      "Nobody needs to grind for 100 hours to see how Path of Exile 2 has redefined the action RPG loot hunt",
+    ),
+    "Path of Exile 2",
+  );
+  assert.equal(
+    _private.titleSubjectFallback("PUBG has GenAI team mates now capable of intelligent decision-making"),
+    "PUBG",
+  );
+  assert.equal(
+    _private.titleSubjectFallback("Steam Controller reservation update high demand"),
+    "Steam Controller",
+  );
+  assert.equal(
     _private.isGamingProofItem({
       title: "Today’s Top Deals: Borderlands 4 for PS5, office chair and headphones",
     }),
     false,
+  );
+});
+
+test("RSS proof ingest prefers clean game and product subjects over manifest fragments", () => {
+  const stories = buildRssProofStories([
+    {
+      title: "Steam Controller reservation update high demand",
+      url: "https://www.eurogamer.net/steam-controller-reservation-update-high-demand",
+      source_name: "Eurogamer",
+      description: "Steam Controller reservations are seeing high demand.",
+      timestamp: "2026-06-20T01:00:00.000Z",
+    },
+    {
+      title: "PUBG has GenAI team mates now capable of intelligent decision-making",
+      url: "https://www.rockpapershotgun.com/pubg-genai-team-mates",
+      source_name: "RockPaperShotgun",
+      description: "PUBG is testing GenAI teammates.",
+      timestamp: "2026-06-20T01:00:00.000Z",
+    },
+    {
+      title:
+        "Nobody needs to grind for 100 hours to see how Path of Exile 2 has redefined the action RPG loot hunt",
+      url: "https://www.pcgamer.com/path-of-exile-2-loot-hunt",
+      source_name: "PCGamer",
+      description: "Path of Exile 2 changes the ARPG loot hunt.",
+      timestamp: "2026-06-20T01:00:00.000Z",
+    },
+  ]);
+
+  assert.deepEqual(
+    stories.map((story) => story.canonical_subject),
+    ["Steam Controller", "PUBG", "Path of Exile 2"],
   );
 });
 

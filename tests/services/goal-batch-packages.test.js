@@ -915,6 +915,46 @@ test("goal batch packages keep fresh cover headlines subject-safe and avoid weak
   assert.doesNotMatch(alien.short_title, /Just Got A New Signal/i);
 });
 
+test("goal batch packages repair fragment subjects before public packaging", () => {
+  const rows = [
+    {
+      id: "steam-controller-fragment",
+      title: "Steam Controller demand just got a reservation update after high demand",
+      canonical_subject: "Steam Controller demand",
+      canonical_game: "Steam Controller demand",
+      source_type: "rss",
+      source_name: "Eurogamer",
+      article_url: "https://www.eurogamer.net/steam-controller-reservation-update-high-demand",
+      full_script:
+        "Steam Controller demand just turned into a waiting list problem. Eurogamer reports high reservation demand after the update. Follow Pulse Gaming so you never miss a beat.",
+    },
+    {
+      id: "pubg-now-fragment",
+      title: "PUBG now has GenAI team mates capable of intelligent decision-making",
+      canonical_subject: "PUBG now",
+      canonical_game: "PUBG now",
+      source_type: "rss",
+      source_name: "RockPaperShotgun",
+      article_url: "https://www.rockpapershotgun.com/pubg-genai-team-mates",
+      full_script:
+        "PUBG now has GenAI team mates that change the squad fantasy. Rock Paper Shotgun reports the new AI teammate detail. Follow Pulse Gaming so you never miss a beat.",
+    },
+  ];
+
+  const batch = buildGoalBatchPackages({
+    stories: rows,
+    generatedAt: "2026-06-20T03:00:00.000Z",
+  });
+
+  const subjects = batch.packages.map((pack) => pack.canonical_story_manifest.canonical_subject);
+  const titles = batch.packages.map((pack) => pack.youtube_publish_pack.title);
+  assert.deepEqual(subjects, ["Steam Controller", "PUBG"]);
+  assert.match(titles[0], /Steam Controller/i);
+  assert.doesNotMatch(titles[0], /Steam Controller demand/i);
+  assert.match(titles[1], /PUBG Has An AI Teammate Risk/i);
+  assert.doesNotMatch(titles[1], /PUBG now/i);
+});
+
 test("goal batch packages generate viewer-facing scripts for current official RSS proof stories", () => {
   const batch = buildGoalBatchPackages({
     stories: [

@@ -717,6 +717,63 @@ test("goal proof package blocks generic split-player fallback packaging", () => 
   );
 });
 
+test("goal proof package rewrites current high-interest stories away from split-player fallbacks", () => {
+  const cases = [
+    {
+      id: "guild-wars-mmo-identity-pack",
+      subject: "Guild Wars 3",
+      description:
+        "Guild Wars 3 is significantly more of an MMO than the first game, but ArenaNet says all three games can coexist as different experiences.",
+      expectedTitle: /Guild Wars 3 Has An MMO Identity Fight/i,
+      expectedCover: /MMO IDENTITY/i,
+    },
+    {
+      id: "path-economy-pack",
+      subject: "Path of Exile 2",
+      description:
+        "Path of Exile 2's director says players exploiting a system to become in-game millionaires ruined Christmas for the team.",
+      expectedTitle: /Path of Exile 2 Has A Loot Economy Problem/i,
+      expectedCover: /LOOT ECONOMY/i,
+    },
+    {
+      id: "pubg-ai-teammate-pack",
+      subject: "PUBG",
+      publicTitle: "PUBG Just Changed The Watchlist",
+      description:
+        "PUBG has GenAI team mates now capable of intelligent decision-making, while Krafton is also working on bots for the military.",
+      expectedTitle: /PUBG Has An AI Teammate Risk/i,
+      expectedCover: /AI TEAMMATE/i,
+    },
+  ];
+
+  for (const item of cases) {
+    const story = greenStory(item.id);
+    story.canonical_subject = item.subject;
+    story.canonical_game = item.subject;
+    story.canonical_angle = "source_locked_update";
+    story.public_title = item.publicTitle || item.subject;
+    story.title = item.publicTitle || item.subject;
+    story.suggested_thumbnail_text = `WHY ${item.subject.toUpperCase()} COULD SPLIT PLAYERS`;
+    story.primary_source = "PC Gamer";
+    story.source_name = "PC Gamer";
+    story.description = item.description;
+    story.full_script =
+      `${item.subject} has a player-facing update that changes the debate around what comes next. PC Gamer reports the detail with enough specificity to judge the risk. The useful question is whether this improves the game or exposes a bigger trust problem. Follow Pulse Gaming so you never miss a beat.`;
+
+    const pack = buildGoalProofPackage({
+      story,
+      rightsLedger: rightsForGreenStory(story),
+      generatedAt: "2026-06-20T02:55:00.000Z",
+    });
+
+    const youtube = pack.platform_publish_manifest.outputs.youtube_shorts;
+    assert.match(youtube.title, item.expectedTitle);
+    assert.match(youtube.cover_frame.headline, item.expectedCover);
+    assert.doesNotMatch(youtube.title, /Could Split Players/i);
+    assert.doesNotMatch(youtube.cover_frame.headline, /COULD SPLIT PLAYERS/i);
+  }
+});
+
 test("goal proof package repairs sentence-style cover headlines into compact stop-scroll hooks", () => {
   const story = greenStory();
   story.id = "sea-of-thieves-sentence-cover-pack";

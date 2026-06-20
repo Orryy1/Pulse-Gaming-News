@@ -852,6 +852,85 @@ test("Visual V4 motion pack recognises licensed direct-media acquisition rows as
   );
 });
 
+test("Visual V4 motion pack accepts refreshed RSS ids for same-entity official direct media", () => {
+  const mediaUrl =
+    "https://vulcan.dl.playstation.net/img/rnd/202606/1802/granblue-relink-endless-ragnarok.mp4";
+  const pack = buildVisualV4MotionPack({
+    story: forzaStory({
+      id: "rss_current_granblue",
+      title: "Granblue Fantasy: Relink Demo Is The Real Proof",
+      suggested_title: "Granblue Fantasy: Relink Demo Is The Real Proof",
+      suggested_thumbnail_text: "GRANBLUE FANTASY RELINK DEMO RISK",
+      canonical_subject: "Granblue Fantasy: Relink",
+      canonical_game: "Granblue Fantasy: Relink",
+      full_script:
+        "Granblue Fantasy: Relink has a playable demo, which gives players a real test before they spend time on the new expansion.",
+    }),
+    trustedFootageReport: {
+      rows: [
+        {
+          story_id: "rss_old_granblue",
+          entity: "Granblue Fantasy: Relink",
+          source_family: "playstation_store_granblue_relink_endless_ragnarok",
+          source_type: "official_platform_product_page",
+          source_owner: "PlayStation",
+          source_tier: "official_platform_storefront",
+          status: "ready_for_segment_validation",
+          access_mode: "approved_direct_media_url",
+          rights_gate: "official_source",
+          official_source_url: "https://www.playstation.com/games/granblue-fantasy-relink/",
+          approved_media_url: mediaUrl,
+          source_url_kind: "direct_video",
+          segment_validation_eligible: true,
+        },
+      ],
+    },
+    segmentValidationReport: segmentReport([
+      segment({
+        family: "playstation_store_granblue_relink_endless_ragnarok",
+        storyId: "rss_old_granblue",
+        entity: "Granblue Fantasy: Relink",
+        sourceUrl: mediaUrl,
+        sourceType: "licensed_direct_media_url",
+        referenceTitle: "Granblue Fantasy: Relink Endless Ragnarok demo trailer",
+        validationReason: "segment_samples_passed",
+      }),
+    ]),
+    generatedAt: "2026-06-20T03:30:00.000Z",
+  });
+
+  assert.equal(pack.clips.length, 1);
+  assert.equal(pack.clips[0].provenance.story_id, "rss_old_granblue");
+  assert.equal(pack.rejected_candidates.some((candidate) => candidate.reason === "story_id_mismatch"), false);
+  assert.equal(pack.trusted_source_pipeline.references_found, 1);
+});
+
+test("Visual V4 motion pack still rejects mismatched refreshed ids for unrelated entities", () => {
+  const pack = buildVisualV4MotionPack({
+    story: forzaStory({
+      id: "rss_current_granblue",
+      title: "Granblue Fantasy: Relink Demo Is The Real Proof",
+      suggested_title: "Granblue Fantasy: Relink Demo Is The Real Proof",
+      canonical_subject: "Granblue Fantasy: Relink",
+      canonical_game: "Granblue Fantasy: Relink",
+    }),
+    trustedFootageReport: { rows: [] },
+    segmentValidationReport: segmentReport([
+      segment({
+        family: "playstation_store_unrelated_racing_game",
+        storyId: "rss_old_unrelated",
+        entity: "Unrelated Racing Game",
+        sourceType: "licensed_direct_media_url",
+        referenceTitle: "Unrelated Racing Game trailer",
+      }),
+    ]),
+    generatedAt: "2026-06-20T03:30:00.000Z",
+  });
+
+  assert.equal(pack.clips.length, 0);
+  assert.ok(pack.rejected_candidates.some((candidate) => candidate.reason === "story_id_mismatch"));
+});
+
 test("Visual V4 motion pack rejects promo-card source families as fake motion", () => {
   const families = [
     "steam",

@@ -717,6 +717,39 @@ test("goal proof package blocks generic split-player fallback packaging", () => 
   );
 });
 
+test("goal proof package repairs sentence-style cover headlines into compact stop-scroll hooks", () => {
+  const story = greenStory();
+  story.id = "sea-of-thieves-sentence-cover-pack";
+  story.canonical_subject = "Sea of Thieves";
+  story.canonical_game = "Sea of Thieves";
+  story.canonical_angle = "source_locked_update";
+  story.public_title = "Sea of Thieves";
+  story.title = "Sea of Thieves";
+  story.suggested_thumbnail_text = "WHY SEA OF THIEVES COULD SPLIT PLAYERS";
+  story.primary_source = "Xbox Wire";
+  story.source_name = "Xbox Wire";
+  story.description = "Sea of Thieves is testing a risky idea: safer seas.";
+  story.full_script =
+    "Sea of Thieves is testing a risky idea with safer seas. The player question is whether that makes the game easier to enter or splits the community around risk. Follow Pulse Gaming so you never miss a beat.";
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-06-20T02:25:00.000Z",
+  });
+
+  const evidence = pack.platform_publish_manifest.platform_native_evidence;
+  const youtube = pack.platform_publish_manifest.outputs.youtube_shorts;
+  assert.equal(evidence.verdict, "pass");
+  assert.equal(youtube.title, "Sea of Thieves Has A Safer Seas Risk");
+  assert.equal(youtube.cover_frame.headline, "SAFER SEAS RISK");
+  assert.doesNotMatch(youtube.cover_frame.headline, /^WHY SEA OF THIEVES COULD SPLIT PLAYERS$/i);
+  assert.doesNotMatch(
+    evidence.failures.map((failure) => failure.reason).join("\n"),
+    /weak_cover_headline|plain_platform_description|weak_platform_title/,
+  );
+});
+
 test("goal proof package blocks long article-list excerpts in platform descriptions", () => {
   const story = greenStory();
   story.id = "steam-next-fest-long-excerpt-pack";

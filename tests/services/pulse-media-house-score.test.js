@@ -269,6 +269,71 @@ test("feed-stop Shorts descriptions with concrete viewer stakes pass the attenti
   }
 });
 
+test("standout Shorts packaging records a feed-competition report", () => {
+  const report = buildPulseMediaHouseScore(strongStory({
+    canonical: {
+      ...strongStory().canonical,
+      selected_title: "Gears E-Day Has A 130GB Problem",
+      canonical_subject: "Gears of War: E-Day",
+      first_spoken_line: "Gears of War E-Day just turned PC specs into the story.",
+      thumbnail_headline: "GEARS E-DAY 130GB TEST",
+    },
+    platformManifest: {
+      outputs: {
+        youtube_shorts: {
+          title: "Gears E-Day Has A 130GB Problem",
+          description:
+            "Gears of War: E-Day is asking players for 130 GB before the campaign even starts. That turns storage into part of the launch pitch. Source: PC Gamer.",
+          cover_frame: { headline: "GEARS E-DAY 130GB TEST" },
+        },
+        instagram_reels: {
+          caption:
+            "Gears of War: E-Day is asking players for 130 GB before the campaign even starts. That turns storage into part of the launch pitch. Source: PC Gamer.",
+          cover_frame: { headline: "GEARS E-DAY 130GB TEST" },
+        },
+      },
+    },
+  }));
+
+  assert.equal(report.shorts_feed_competition_report.status, "standout");
+  assert.ok(report.shorts_feed_competition_report.score >= 82);
+  assert.deepEqual(report.shorts_feed_competition_report.blockers, []);
+  assert.ok(!report.hard_failures.includes("media_house:shorts_feed_competition_weak"));
+});
+
+test("template-fatigue Shorts packaging fails the feed-competition gate", () => {
+  const report = buildPulseMediaHouseScore(strongStory({
+    canonical: {
+      ...strongStory().canonical,
+      selected_title: "Halo Campaign Evolved Has One Player Trust Test",
+      canonical_subject: "Halo Campaign Evolved",
+      first_spoken_line: "Halo Campaign Evolved now has something players can judge before launch.",
+      thumbnail_headline: "HALO PLAYER TEST",
+    },
+    platformManifest: {
+      outputs: {
+        youtube_shorts: {
+          title: "Halo Campaign Evolved Has One Player Trust Test",
+          description:
+            "Halo Campaign Evolved has one player trust test before launch. Players get to judge whether the remake changes what Xbox can sell next. Source: Xbox Wire.",
+          cover_frame: { headline: "HALO PLAYER TEST" },
+        },
+        instagram_reels: {
+          caption:
+            "Halo Campaign Evolved has one player trust test before launch. Players get to judge whether the remake changes what Xbox can sell next. Source: Xbox Wire.",
+          cover_frame: { headline: "HALO PLAYER TEST" },
+        },
+      },
+    },
+  }));
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.shorts_feed_competition_report.status, "blocked");
+  assert.ok(report.shorts_feed_competition_report.blockers.includes("feed_title_template_fatigue"));
+  assert.ok(report.shorts_feed_competition_report.blockers.includes("feed_cover_too_abstract"));
+  assert.ok(report.hard_failures.includes("media_house:shorts_feed_competition_weak"));
+});
+
 test("proof-card thumbnail text fails when it lacks instant viewer stakes", () => {
   const report = buildPulseMediaHouseScore(strongStory({
     canonical: {

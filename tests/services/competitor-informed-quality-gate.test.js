@@ -96,8 +96,16 @@ async function makeGateStory(root, storyId, overrides = {}) {
   await fs.outputJson(path.join(artifactDir, "platform_publish_manifest.json"), overrides.platformManifest || {
     publish_status: "GREEN",
     outputs: {
-      youtube_shorts: { title: "Forza Horizon 6 Just Broke Xbox's Steam Ceiling" },
-      tiktok: { caption: "Forza Horizon 6 just changed the Steam argument." },
+      youtube_shorts: {
+        title: "Forza Horizon 6 Just Broke Xbox's Steam Ceiling",
+        description:
+          "Forza Horizon 6 just turned Xbox's PC pitch into a Steam audience test before launch. Players now get to judge whether the next racer can grow beyond Game Pass. Source: Steam.",
+        cover_frame: { headline: "STEAM CEILING BROKEN" },
+      },
+      tiktok: {
+        caption:
+          "Forza Horizon 6 just turned Xbox's PC pitch into a Steam audience test before launch. Players now get to judge whether the next racer can grow beyond Game Pass. Source: Steam.",
+      },
     },
   });
   await fs.outputJson(path.join(artifactDir, "benchmark_report.json"), overrides.benchmark || passGate({ result: "pass" }));

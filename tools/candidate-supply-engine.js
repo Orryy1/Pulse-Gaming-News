@@ -106,6 +106,7 @@ async function buildFreshCandidateReport({ limit = 30 } = {}) {
       sourceFamilyAcquisitionReport,
     },
     upstreamBenchmarkReport,
+    mediaHouseQaEnabled: true,
   });
   return { report, stories };
 }

@@ -14,7 +14,12 @@ const {
   formatCandidateSupplyMarkdown,
   shouldNotifyCandidateSupplyMonitor,
 } = require("../../lib/ops/candidate-supply");
-const { parseArgs } = require("../../tools/candidate-supply-engine");
+const {
+  buildFreshCandidateReport,
+  parseArgs,
+} = require("../../tools/candidate-supply-engine");
+const nextCandidates = require("../../tools/next-publish-candidates");
+const db = require("../../lib/db");
 
 function candidate(id, overrides = {}) {
   return {
@@ -75,6 +80,47 @@ test("candidate supply CLI accepts repeatable motion-capacity reports", () => {
   assert.ok(args.motionCapacityReports[0].endsWith("output\\source-family.json"));
   assert.ok(args.motionCapacityReports[1].endsWith("output\\motion-packs.json"));
   assert.ok(args.motionCapacityReports[2].endsWith("output\\source-deficit.json"));
+});
+
+test("fresh candidate report enables media-house preflight for supply monitor truth", async (t) => {
+  const original = {
+    getStories: db.getStories,
+    readBridgeCandidateManifest: nextCandidates.readBridgeCandidateManifest,
+    readOptionalJson: nextCandidates.readOptionalJson,
+    selectCandidateSourceStories: nextCandidates.selectCandidateSourceStories,
+    buildNextPublishCandidatesReport: nextCandidates.buildNextPublishCandidatesReport,
+    attachPreflightQa: nextCandidates.attachPreflightQa,
+  };
+  t.after(() => {
+    Object.assign(db, { getStories: original.getStories });
+    Object.assign(nextCandidates, {
+      readBridgeCandidateManifest: original.readBridgeCandidateManifest,
+      readOptionalJson: original.readOptionalJson,
+      selectCandidateSourceStories: original.selectCandidateSourceStories,
+      buildNextPublishCandidatesReport: original.buildNextPublishCandidatesReport,
+      attachPreflightQa: original.attachPreflightQa,
+    });
+  });
+
+  let attachedOptions = null;
+  db.getStories = async () => [candidate("weak_pack")];
+  nextCandidates.readBridgeCandidateManifest = async () => ({ candidates: [], candidate_count: 0 });
+  nextCandidates.readOptionalJson = async () => ({});
+  nextCandidates.selectCandidateSourceStories = ({ liveStories, bridgeManifest }) => ({
+    stories: liveStories,
+    bridge_manifest: bridgeManifest,
+  });
+  nextCandidates.buildNextPublishCandidatesReport = (stories) => ({
+    candidates: stories.map((story) => ({ id: story.id, status: "publish_ready" })),
+  });
+  nextCandidates.attachPreflightQa = async (report, stories, options) => {
+    attachedOptions = options;
+    report.preflight_qa = { enabled: true, mode: "read_only" };
+  };
+
+  await buildFreshCandidateReport({ limit: 5 });
+
+  assert.equal(attachedOptions.mediaHouseQaEnabled, true);
 });
 
 test("buildCandidateSupplyReport scores supply, dedupes stories and enforces green-ready targets", () => {

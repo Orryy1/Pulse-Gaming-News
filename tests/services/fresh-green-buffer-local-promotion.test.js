@@ -82,10 +82,16 @@ test("fresh buffer promotion writes local package work orders without publish or
   assert.equal(canonical.public_copy.title, "Halo: Campaign Evolved Shows The Real Remake Test");
 
   const storyPackages = JSON.parse(fs.readFileSync(written.storyPackages, "utf8"));
-  assert.equal(storyPackages[0].verdict, "ready");
-  assert.equal(storyPackages[0].status, "ready_for_render_proof");
+  assert.equal(storyPackages[0].verdict, "local_proof_pending");
+  assert.equal(storyPackages[0].status, "needs_media_house_render_proof");
+  assert.equal(storyPackages[0].publishable, false);
+  assert.equal(storyPackages[0].scheduler_green, false);
+  assert.equal(storyPackages[0].counted_as_green, false);
+  assert.ok(storyPackages[0].blockers.includes("missing_media_house_quality_gate_pass"));
+  assert.ok(storyPackages[0].blockers.includes("missing_visual_v4_final_render"));
   assert.match(storyPackages[0].description, /Halo: Campaign Evolved has a public demo test/i);
-  assert.deepEqual(storyPackages[0].blockers, []);
+  assert.ok(storyPackages[0].blockers.includes("not_scheduler_green"));
+  assert.ok(storyPackages[0].blockers.includes("missing_scheduler_preflight_pass"));
 });
 
 test("fresh buffer promotion CLI is registered and defaults to overnight output", () => {

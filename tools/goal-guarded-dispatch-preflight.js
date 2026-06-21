@@ -71,6 +71,13 @@ async function readOptionalJson(filePath) {
   return fs.readJson(filePath);
 }
 
+async function firstExistingJson(paths = []) {
+  for (const filePath of paths) {
+    if (filePath && await fs.pathExists(filePath)) return fs.readJson(filePath);
+  }
+  return null;
+}
+
 async function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
   if (args.help) {
@@ -87,15 +94,20 @@ async function main(argv = process.argv.slice(2)) {
   const platformStatusMatrixPath = args.platformStatusMatrixPath
     ? path.resolve(root, args.platformStatusMatrixPath)
     : path.join(root, "output", "goal-contract", "platform_status_matrix.json");
-  const transcriptAudienceReportPath = args.transcriptAudienceReportPath
-    ? path.resolve(root, args.transcriptAudienceReportPath)
-    : path.join(root, "output", "transcript-audience-audit", "transcript_audience_audit.json");
+  const transcriptAudienceReportPaths = args.transcriptAudienceReportPath
+    ? [path.resolve(root, args.transcriptAudienceReportPath)]
+    : [
+        path.join(root, "output", "goal-contract", "transcript_audience_audit.json"),
+        path.join(root, "output", "transcript-audience-audit", "transcript_audience_audit.json"),
+      ];
 
   const report = buildGuardedDispatchPreflight({
     approvalGateReport: await readJson(approvalGateReportPath, "human review approval gate report"),
     strictDryRunPlan: await readJson(strictDryRunPlanPath, "strict dry-run plan"),
     platformStatusMatrix: await readJson(platformStatusMatrixPath, "platform status matrix"),
-    transcriptAudienceReport: await readOptionalJson(transcriptAudienceReportPath),
+    transcriptAudienceReport: args.transcriptAudienceReportPath
+      ? await readOptionalJson(transcriptAudienceReportPaths[0])
+      : await firstExistingJson(transcriptAudienceReportPaths),
     generatedAt: args.generatedAt || new Date().toISOString(),
   });
   const artefacts = await writeGuardedDispatchPreflight(report, {
@@ -114,6 +126,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  firstExistingJson,
   main,
   parseArgs,
 };

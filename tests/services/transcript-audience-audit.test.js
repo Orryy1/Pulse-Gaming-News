@@ -2,6 +2,7 @@
 
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
+const { spawnSync } = require("node:child_process");
 const fs = require("fs-extra");
 const os = require("node:os");
 const path = require("node:path");
@@ -10,6 +11,8 @@ const {
   auditGeneratedTranscripts,
   renderTranscriptAudienceAuditMarkdown,
 } = require("../../lib/ops/transcript-audience-audit");
+
+const ROOT = path.resolve(__dirname, "..", "..");
 
 async function withTempDir(fn) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-transcript-audit-"));
@@ -255,6 +258,118 @@ test("transcript audience audit includes current fresh proof batch folders", asy
 
     assert.equal(report.summary.total, 2);
     assert.ok(report.stories.some((story) => story.story_id === "fresh_current_story"));
+  });
+});
+
+test("transcript audience audit can target an explicit current artifact dir", async () => {
+  await withTempDir(async (root) => {
+    await writeStory(
+      root,
+      "stale_story",
+      "Stale Story Needs A Rewrite",
+      "Stale Story has a signal problem. This matters because the update changes the wider conversation around trust and timing. Follow Pulse Gaming so you never miss a beat.",
+      "Xbox Wire",
+    );
+    const currentDir = path.join(root, "output", "goal-contract", "current-package", "fresh_story");
+    await fs.ensureDir(currentDir);
+    await fs.writeJson(path.join(currentDir, "canonical_story_manifest.json"), {
+      story_id: "fresh_story",
+      selected_title: "Fresh Story Adds A Downloadable Demo",
+      primary_source: "Xbox Wire",
+      narration_script:
+        "Fresh Story just gave players a real download instead of another trailer. Xbox Wire says the demo is live on Xbox and PC, with co-op missions, a boss fight and a July release date. That matters because players can test the combat today instead of waiting for previews. Follow Pulse Gaming so you never miss a beat.",
+    });
+
+    const report = await auditGeneratedTranscripts({ root, artifactDirs: [currentDir] });
+
+    assert.equal(report.summary.total, 1);
+    assert.equal(report.stories[0].story_id, "fresh_story");
+    assert.equal(path.resolve(report.stories[0].artifact_dir), path.resolve(currentDir));
+  });
+});
+
+test("transcript audience audit CLI writes explicit current artifact reports", async () => {
+  await withTempDir(async (root) => {
+    const currentDir = path.join(root, "current-package", "fresh_story");
+    const outDir = path.join(root, "audit-out");
+    await fs.ensureDir(currentDir);
+    await fs.writeJson(path.join(currentDir, "canonical_story_manifest.json"), {
+      story_id: "fresh_story",
+      selected_title: "Fresh Story Adds A Downloadable Demo",
+      primary_source: "Xbox Wire",
+      narration_script:
+        "Fresh Story just gave players a real download instead of another trailer. Xbox Wire says the demo is live on Xbox and PC, with co-op missions, a boss fight and a July release date. That matters because players can test the combat today instead of waiting for previews. Follow Pulse Gaming so you never miss a beat.",
+    });
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        path.join(ROOT, "tools", "transcript-audience-audit.js"),
+        "--artifact-dir",
+        currentDir,
+        "--output-dir",
+        outDir,
+        "--json",
+      ],
+      { cwd: root, encoding: "utf8", env: { ...process.env } },
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.summary.total, 1);
+    assert.equal(parsed.stories[0].story_id, "fresh_story");
+    assert.equal(await fs.pathExists(path.join(outDir, "transcript_audience_audit.json")), true);
+  });
+});
+
+test("transcript audience audit includes current goal-contract proof batches", async () => {
+  await withTempDir(async (root) => {
+    const staleDir = path.join(
+      root,
+      "output",
+      "candidate-supply",
+      "fresh-production-refill",
+      "stale",
+      "goal-proof-batch",
+      "sea-story",
+    );
+    await fs.ensureDir(staleDir);
+    await fs.writeJson(path.join(staleDir, "canonical_story_manifest.json"), {
+      story_id: "sea-story",
+      selected_title: "Sea Of Thieves Just Got A New Signal",
+      primary_source: "Xbox Wire",
+      narration_script:
+        "Sea of Thieves has a signal problem. This matters because the update changes the wider conversation around trust. Follow Pulse Gaming so you never miss a beat.",
+    });
+
+    const activeDir = path.join(
+      root,
+      "output",
+      "goal-contract",
+      "fresh-refill-copyfix",
+      "goal-proof-batch",
+      "sea-story",
+    );
+    await fs.ensureDir(activeDir);
+    await fs.writeJson(path.join(activeDir, "canonical_story_manifest.json"), {
+      story_id: "sea-story",
+      selected_title: "Sea of Thieves Custom Seas Could Split Crews",
+      primary_source: "Xbox Wire",
+      narration_script:
+        "Sea of Thieves just made its biggest social gamble in years. Xbox Wire says Season 20's Custom Seas lets crews build private sessions, set rules, spawn treasure and enemies, change loadouts and assign up to 24 players. That sounds perfect for streamers, training runs and players who hate being ambushed. But it cuts into what makes Sea of Thieves electric: strangers can ruin your plan at any second. If the best nights go private, public servers could feel quieter and less dangerous. Players get control, but the shared ocean loses chaos. That is the trade-off. That risk turns Rare's best creator tool into Sea of Thieves' biggest community split. Follow Pulse Gaming so you never miss a beat.",
+    });
+    await fs.writeJson(path.join(activeDir, "source_manifest.json"), {
+      primary_source: { name: "Xbox Wire", url: "https://example.test/sea-of-thieves" },
+    });
+
+    const report = await auditGeneratedTranscripts({ root });
+    const active = report.stories.find((story) =>
+      story.story_id === "sea-story" &&
+      story.artifact_dir.replace(/\\/g, "/").includes("output/goal-contract/fresh-refill-copyfix"),
+    );
+
+    assert.ok(active, "expected active goal-contract transcript row");
+    assert.equal(active.verdict, "pass");
   });
 });
 

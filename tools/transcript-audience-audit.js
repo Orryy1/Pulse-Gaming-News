@@ -9,12 +9,21 @@ const {
 } = require("../lib/ops/transcript-audience-audit");
 
 function parseArgs(argv = process.argv.slice(2)) {
-  const args = { json: false, outputDir: path.join(process.cwd(), "output", "transcript-audience-audit") };
+  const args = {
+    json: false,
+    outputDir: path.join(process.cwd(), "output", "transcript-audience-audit"),
+    artifactDirs: [],
+    batchDirs: [],
+  };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--json") args.json = true;
     else if (arg === "--output-dir") {
       args.outputDir = path.resolve(argv[++i] || args.outputDir);
+    } else if (arg === "--artifact-dir") {
+      args.artifactDirs.push(path.resolve(argv[++i] || ""));
+    } else if (arg === "--batch-dir") {
+      args.batchDirs.push(path.resolve(argv[++i] || ""));
     }
   }
   return args;
@@ -22,7 +31,11 @@ function parseArgs(argv = process.argv.slice(2)) {
 
 async function main() {
   const args = parseArgs();
-  const report = await auditGeneratedTranscripts({ root: process.cwd() });
+  const report = await auditGeneratedTranscripts({
+    root: process.cwd(),
+    artifactDirs: args.artifactDirs,
+    batchDirs: args.batchDirs.length ? args.batchDirs : null,
+  });
   const artefacts = await writeTranscriptAudienceAudit(report, { outputDir: args.outputDir });
   if (args.json) {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);

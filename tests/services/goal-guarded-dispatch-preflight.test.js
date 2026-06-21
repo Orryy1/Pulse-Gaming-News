@@ -564,3 +564,45 @@ test("guarded dispatch preflight CLI is registered and emits clean JSON", async 
   const pkg = await fs.readJson(path.join(ROOT, "package.json"));
   assert.equal(pkg.scripts["ops:goal-guarded-dispatch-preflight"], "node tools/goal-guarded-dispatch-preflight.js");
 });
+
+test("guarded dispatch preflight CLI prefers current goal-contract transcript audit by default", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-dispatch-default-transcript-"));
+  const media = await makeMedia(root);
+  const goalDir = path.join(root, "output", "goal-contract");
+  const staleDir = path.join(root, "output", "transcript-audience-audit");
+  const outDir = path.join(root, "out");
+  await fs.ensureDir(goalDir);
+  await fs.ensureDir(staleDir);
+  await fs.writeJson(path.join(goalDir, "human_review_approval_gate_report.json"), approvalGateReport(media), { spaces: 2 });
+  await fs.writeJson(path.join(goalDir, "dry_run_publish_plan.json"), strictDryRunPlan(media), { spaces: 2 });
+  await fs.writeJson(path.join(goalDir, "platform_status_matrix.json"), platformStatusMatrix(), { spaces: 2 });
+  await fs.writeJson(path.join(goalDir, "transcript_audience_audit.json"), transcriptAudienceReport(), { spaces: 2 });
+  await fs.writeJson(
+    path.join(staleDir, "transcript_audience_audit.json"),
+    transcriptAudienceReport("rewrite_required", ["mass_audience:low_concrete_detail"]),
+    { spaces: 2 },
+  );
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      "tools/goal-guarded-dispatch-preflight.js",
+      "--root",
+      root,
+      "--out-dir",
+      outDir,
+      "--json",
+    ],
+    {
+      cwd: ROOT,
+      encoding: "utf8",
+      env: { ...process.env },
+    },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.verdict, "GREEN");
+  assert.equal(parsed.summary.dispatch_ready_action_count, 1);
+  assert.equal(parsed.summary.transcript_held_action_count, 0);
+});

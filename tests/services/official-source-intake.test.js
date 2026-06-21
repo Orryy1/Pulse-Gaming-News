@@ -15,7 +15,7 @@ const {
   buildOfficialTrailerReferencePlan,
   buildOfficialTrailerReferenceReport,
 } = require("../../lib/official-trailer-reference-resolver");
-const { parseArgs } = require("../../tools/official-source-intake");
+const { parseArgs, storiesFromPayload } = require("../../tools/official-source-intake");
 const packageJson = require("../../package.json");
 
 function story(overrides = {}) {
@@ -800,4 +800,190 @@ test("official source intake CLI filters governed story_id with --story-id", asy
   assert.equal(report.summary.accepted, 1);
   assert.equal(report.summary.rejected, 0);
   assert.equal(report.accepted_references[0].story_id, "package_story_zero_company");
+});
+
+test("official source intake CLI accepts goal package story JSON payloads", async () => {
+  const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "pulse-official-source-goal-package-"));
+  const storyPath = path.join(dir, "story-packages.json");
+  const inputPath = path.join(dir, "official-sources.json");
+  const outputJson = path.join(dir, "report.json");
+  const outputMd = path.join(dir, "report.md");
+
+  fs.writeFileSync(
+    storyPath,
+    JSON.stringify({
+      packages: [
+        {
+          story_id: "rss_granblue",
+          artifact_dir: "output/example/rss_granblue",
+          canonical_story_manifest: {
+            story_id: "rss_granblue",
+            canonical_subject: "Granblue Fantasy: Relink",
+            canonical_game: "Granblue Fantasy: Relink",
+            selected_title: "Granblue Relink Demo Has A Reinstall Catch",
+            narration_script:
+              "Granblue Fantasy: Relink has a fresh demo angle, and the official Steam page is only being used as source-safe visual evidence.",
+          },
+        },
+      ],
+    }),
+  );
+  fs.writeFileSync(
+    inputPath,
+    JSON.stringify([
+      officialEntry({
+        story_id: "rss_granblue",
+        entity: "Granblue Fantasy: Relink",
+        official_source_url: "https://store.steampowered.com/app/881020/Granblue_Fantasy_Relink/",
+        direct_media_url_if_available:
+          "https://video.fastly.steamstatic.com/store_trailers/881020/769005/hash/hls_264_master.m3u8",
+        source_type: "platform_storefront",
+        source_family: "steam_881020_granblue_fantasy_relink",
+        source_owner: "Steam storefront for Granblue Fantasy: Relink",
+        source_title: "Granblue Fantasy: Relink",
+        evidence_of_officialness: "Steam official app page for Granblue Fantasy: Relink.",
+        entity_match_notes: "The Steam app title names Granblue Fantasy: Relink.",
+      }),
+    ]),
+  );
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      "tools/official-source-intake.js",
+      "--story-json",
+      storyPath,
+      "--input",
+      inputPath,
+      "--output-json",
+      outputJson,
+      "--output-md",
+      outputMd,
+      "--json",
+    ],
+    {
+      cwd: path.join(__dirname, "..", ".."),
+      encoding: "utf8",
+    },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(fs.readFileSync(outputJson, "utf8"));
+  assert.equal(report.summary.stories, 1);
+  assert.equal(report.summary.accepted, 1);
+  assert.equal(report.summary.rejected, 0);
+  assert.equal(report.accepted_references[0].story_id, "rss_granblue");
+});
+
+test("official source intake CLI hydrates goal package artifact directories", async () => {
+  const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "pulse-official-source-artifact-dir-"));
+  const artifactDir = path.join(dir, "goal-proof-batch", "rss_halo");
+  const storyPath = path.join(dir, "story-packages.json");
+  const inputPath = path.join(dir, "official-sources.json");
+  const outputJson = path.join(dir, "report.json");
+  const outputMd = path.join(dir, "report.md");
+  await fs.promises.mkdir(artifactDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(artifactDir, "canonical_story_manifest.json"),
+    JSON.stringify({
+      story_id: "rss_halo",
+      canonical_subject: "Halo: Campaign Evolved",
+      canonical_game: "Halo",
+      selected_title: "Why Halo: Campaign Evolved Could Split Players",
+      narration_script:
+        "Halo: Campaign Evolved has official storefront media for source-safe motion validation.",
+    }),
+  );
+  fs.writeFileSync(
+    storyPath,
+    JSON.stringify([
+      {
+        story_id: "rss_halo",
+        verdict: "RED",
+        artifact_dir: artifactDir,
+      },
+    ]),
+  );
+  fs.writeFileSync(
+    inputPath,
+    JSON.stringify([
+      officialEntry({
+        story_id: "rss_halo",
+        entity: "Halo: Campaign Evolved",
+        official_source_url: "https://store.steampowered.com/app/2806050/Halo_Campaign_Evolved/",
+        direct_media_url_if_available:
+          "https://video.fastly.steamstatic.com/store_trailers/2806050/1326798026/hash/hls_264_master.m3u8",
+        source_type: "platform_storefront",
+        source_family: "steam_2806050_halo_campaign_evolved",
+        source_owner: "Steam storefront for Halo: Campaign Evolved",
+        source_title: "Halo: Campaign Evolved",
+        evidence_of_officialness: "Steam official app page for Halo: Campaign Evolved.",
+        entity_match_notes: "The Steam app title names Halo: Campaign Evolved.",
+      }),
+    ]),
+  );
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      "tools/official-source-intake.js",
+      "--story-json",
+      storyPath,
+      "--input",
+      inputPath,
+      "--output-json",
+      outputJson,
+      "--output-md",
+      outputMd,
+      "--json",
+    ],
+    {
+      cwd: path.join(__dirname, "..", ".."),
+      encoding: "utf8",
+    },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(fs.readFileSync(outputJson, "utf8"));
+  assert.equal(report.summary.stories, 1);
+  assert.equal(report.summary.accepted, 1);
+  assert.equal(report.summary.rejected, 0);
+  assert.equal(report.accepted_references[0].story_id, "rss_halo");
+});
+
+test("official source intake story payload helper hydrates package manifests", () => {
+  const rows = storiesFromPayload({
+    packages: [
+      {
+        story_id: "outer",
+        canonical_story_manifest: {
+          story_id: "inner",
+          canonical_subject: "Halo: Campaign Evolved",
+        },
+      },
+    ],
+  });
+
+  assert.deepEqual(rows, [
+    {
+      story_id: "inner",
+      canonical_story_manifest: {
+        story_id: "inner",
+        canonical_subject: "Halo: Campaign Evolved",
+      },
+      canonical_subject: "Halo: Campaign Evolved",
+    },
+  ]);
+
+  const arrayRows = storiesFromPayload([
+    {
+      story_id: "outer-array",
+      canonical_story_manifest: {
+        story_id: "inner-array",
+        canonical_subject: "Granblue Fantasy: Relink",
+      },
+    },
+  ]);
+  assert.equal(arrayRows[0].story_id, "inner-array");
+  assert.equal(arrayRows[0].canonical_subject, "Granblue Fantasy: Relink");
 });

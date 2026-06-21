@@ -40,6 +40,36 @@ test("guarded-dispatch reconciliation CLI preserves explicit operator environmen
 
   assert.doesNotMatch(src, /dotenv["']\)\.config\(\{\s*quiet:\s*true,\s*override:\s*true\s*\}\)/);
   assert.match(src, /dotenv["']\)\.config\(\{\s*quiet:\s*true\s*\}\)/);
+  assert.match(
+    src,
+    /const runtimeEnv = \{ \.\.\.process\.env \}/,
+    "runtime sentinel should receive an immutable env snapshot",
+  );
+  assert.match(
+    src,
+    /const runtimeSentinel = await buildRuntimeOwnershipSentinelFromEnvironment\(\{\s*cwd: ROOT,\s*env: runtimeEnv,\s*schedulerProof:/,
+    "reconciliation should run sentinel first with scheduler handoff proof",
+  );
+  assert.doesNotMatch(
+    src,
+    /Promise\.all\(\[\s*buildRuntimeOwnershipSentinelFromEnvironment/,
+    "runtime sentinel should not race heavier readiness checks",
+  );
+  assert.match(
+    src,
+    /const publishReadiness = await buildPublishReadinessReport\(\{ root: ROOT \}\)/,
+    "publish readiness should run outside the queue/cadence race",
+  );
+  const afterReadiness = src.slice(
+    src.indexOf("const publishReadiness = await buildPublishReadinessReport"),
+  );
+  const queueCadenceBatch = afterReadiness.match(
+    /const \[queueInspect, publishCadence\] = await Promise\.all\(\[([\s\S]*?)\]\)/,
+  );
+  assert.ok(queueCadenceBatch, "queue/cadence checks should share a bounded batch");
+  assert.doesNotMatch(queueCadenceBatch[1], /buildPublishReadinessReport/);
+  assert.match(queueCadenceBatch[1], /buildQueueReport\(\)/);
+  assert.match(queueCadenceBatch[1], /buildPublishCadenceReportFromDb/);
 });
 
 test("reconciliation treats legacy YouTube result as terminal even when platform_posts row is missing", async () => {

@@ -131,6 +131,16 @@ test("summariseCandidate extracts studio, forensic and loudness signals", () => 
     studioReport: {
       verdict: { lane: "pass", greenHits: 13, amberTrips: 3, redTrips: 0 },
       runtime: { durationS: 55.432, sizeBytes: 1000 },
+      premiumLane: {
+        verdict: "pass",
+        hyperframesCardCount: 4,
+        hyperframesPremiumShellGate: {
+          verdict: "pass",
+          passCount: 4,
+          requiredPassCount: 4,
+          blockers: [],
+        },
+      },
       auto: {
         sourceDiversity: { value: 0.88, grade: "green" },
         clipDominance: { value: 0.75, grade: "green" },
@@ -154,6 +164,8 @@ test("summariseCandidate extracts studio, forensic and loudness signals", () => 
   assert.equal(summary.forensic.audioRecurrence, "pass");
   assert.equal(summary.loudness.integratedLufs, -24.2);
   assert.equal(summary.channelId, "pulse-gaming");
+  assert.equal(summary.studio.premiumShellVerdict, "pass");
+  assert.equal(summary.studio.premiumShellPassCount, 4);
   assert.equal(summary.seo.present, true);
   assert.equal(summary.seo.validationCount, 0);
   assert.equal(summary.seo.hasPinnedComment, true);
@@ -197,6 +209,7 @@ test("rankCandidate rewards visible editorial grammar and full HF card lane", ()
       beatAwarenessRatio: 0.8,
       grammarKinds: ["punch-pair-cross-clip"],
       hyperframesCardCount: 4,
+      premiumShellVerdict: "fail",
     },
     forensic: {
       failCount: 0,
@@ -208,14 +221,23 @@ test("rankCandidate rewards visible editorial grammar and full HF card lane", ()
     loudness: { integratedLufs: -24 },
     seo: { present: true, validationCount: 0 },
   };
+  const shellPassed = {
+    ...base,
+    studio: {
+      ...base.studio,
+      premiumShellVerdict: "pass",
+    },
+  };
   const richer = {
     ...base,
     studio: {
       ...base.studio,
+      premiumShellVerdict: "pass",
       clipDominance: 0.75,
       grammarKinds: ["punch-pair-cross-clip", "freeze-frame"],
     },
   };
+  assert.ok(rankCandidate(shellPassed) > rankCandidate(base));
   assert.ok(rankCandidate(richer) > rankCandidate(base));
 });
 

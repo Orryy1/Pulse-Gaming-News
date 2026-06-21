@@ -35,6 +35,8 @@ function canonical(overrides = {}) {
     durationIntegrity: "green",
     hyperframesCardCount: 5,
     premiumLaneVerdict: "pass",
+    premiumShellVerdict: "pass",
+    premiumShellPassCount: 5,
     heroMomentCount: 0,
     heroMoments: [],
     heroOverlayApplied: false,
@@ -71,7 +73,16 @@ test("normaliseGateCandidate extracts summary and report signals", () => {
         captionGapsOver2s: { value: 0 },
       },
       heroMoments: { momentCount: 2, overlayApplied: true, moments: [] },
-      premiumLane: { verdict: "pass", hyperframesCardCount: 4 },
+      premiumLane: {
+        verdict: "pass",
+        hyperframesCardCount: 4,
+        hyperframesPremiumShellGate: {
+          verdict: "pass",
+          passCount: 4,
+          requiredPassCount: 4,
+          blockers: [],
+        },
+      },
     },
   });
   assert.equal(result.score, 91);
@@ -80,6 +91,8 @@ test("normaliseGateCandidate extracts summary and report signals", () => {
   assert.equal(result.subtitleDensity, "pass");
   assert.equal(result.heroMomentCount, 2);
   assert.equal(result.heroOverlayApplied, true);
+  assert.equal(result.premiumShellVerdict, "pass");
+  assert.equal(result.premiumShellPassCount, 4);
 });
 
 test("gate passes the current canonical when hero moments are not required", () => {
@@ -91,6 +104,46 @@ test("gate passes the current canonical when hero moments are not required", () 
   });
   assert.equal(report.verdict, "pass");
   assert.equal(report.hardFailReasons.length, 0);
+});
+
+test("gate rejects partial HyperFrames premium lanes", () => {
+  const c = canonical();
+  const candidate = canonical({
+    key: "story:three-hf-cards",
+    hyperframesCardCount: 3,
+    premiumLaneVerdict: "partial",
+    premiumAssetsMissing: true,
+  });
+  const report = evaluateStudioRejectionGate({
+    candidate,
+    canonical: c,
+    requireHeroMoments: false,
+  });
+
+  assert.equal(report.verdict, "reject");
+  assert.ok(report.hardFailReasons.some((reason) => reason.code === "premium_assets_missing"));
+  assert.ok(!report.greenSignals.includes("premium_card_lane_pass"));
+});
+
+test("gate rejects HyperFrames card lanes without premium-shell proof", () => {
+  const c = canonical();
+  const candidate = canonical({
+    key: "story:hf-cards-no-shell",
+    hyperframesCardCount: 4,
+    premiumLaneVerdict: "pass",
+    premiumShellVerdict: "fail",
+    premiumShellPassCount: 3,
+    premiumShellBlockers: ["source:hyperframes_inspect_skipped"],
+  });
+  const report = evaluateStudioRejectionGate({
+    candidate,
+    canonical: c,
+    requireHeroMoments: false,
+  });
+
+  assert.equal(report.verdict, "reject");
+  assert.ok(report.hardFailReasons.some((reason) => reason.code === "premium_shell_missing"));
+  assert.ok(!report.greenSignals.includes("premium_shell_pass"));
 });
 
 test("gate rejects V2.1 candidates without meaningful hero moments", () => {

@@ -80,6 +80,7 @@ const {
 } = require("../lib/studio/v2/scene-grammar-v2");
 const {
   applyPremiumCardLaneV2,
+  MIN_PREMIUM_HYPERFRAMES_CARDS,
 } = require("../lib/studio/v2/premium-card-lane-v2");
 const {
   buildSoundLayerV2,
@@ -760,7 +761,7 @@ function replaceFallbackReleaseCardsWithMotion({
     .filter((clipPath) => /\.(mp4|mov|m4v|webm)$/i.test(String(clipPath || "")));
   const replacements = [];
 
-  if (!enabled || hyperframesCardCount < 3 || clipPaths.length === 0) {
+  if (!enabled || hyperframesCardCount < MIN_PREMIUM_HYPERFRAMES_CARDS || clipPaths.length === 0) {
     return { scenes: out, replacements };
   }
 
@@ -1432,6 +1433,11 @@ async function main() {
   console.log(
     `       HF cards: ${lane.premiumLane.hyperframesCardCount} attached · verdict ${lane.premiumLane.verdict}`,
   );
+  if (lane.premiumLane.hyperframesPremiumShellGate) {
+    console.log(
+      `       HF shell: ${lane.premiumLane.hyperframesPremiumShellGate.passCount}/${lane.premiumLane.hyperframesPremiumShellGate.requiredPassCount} · verdict ${lane.premiumLane.hyperframesPremiumShellGate.verdict}`,
+    );
+  }
   for (const d of lane.premiumLane.decisions) {
     console.log(`         - ${d.scene} (${d.type}) → ${d.renderer}`);
   }

@@ -24,6 +24,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     limit: 0,
     provider: "auto",
     alignmentMode: "whisper",
+    ttsRate: null,
     storyIds: [],
     inspectOnly: false,
     normalProduction: false,
@@ -48,6 +49,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--generated-at") args.generatedAt = argv[++i] || null;
     else if (arg === "--limit") args.limit = Number(argv[++i] || 0);
     else if (arg === "--provider") args.provider = argv[++i] || args.provider;
+    else if (arg === "--tts-rate") args.ttsRate = Number(argv[++i] || 0) || null;
     else if (arg === "--alignment") args.alignmentMode = argv[++i] || args.alignmentMode;
     else if (arg === "--story-id") {
       const storyId = argv[++i];
@@ -76,6 +78,7 @@ function usage() {
     "  --limit <n>            Repair at most n stories; 0 means all candidates",
     "  --story-id <id>        Repair only this story; repeatable",
     "  --provider <auto|local|elevenlabs>  Narration provider preference for regenerated audio",
+    "  --tts-rate <number>  Explicit speaking-rate override for regenerated narration",
     "  --alignment <whisper|silence|auto|off>  Word timestamp alignment mode; default whisper for CLI repairs",
     "  --normal-production    Use the 35-59s normal production repair work order",
     "  --inspect-only         Do not regenerate audio or render; write a pending report",
@@ -99,6 +102,7 @@ async function main(argv = process.argv.slice(2)) {
     storyIds: args.storyIds,
     provider: args.provider,
     alignmentMode: args.alignmentMode,
+    ttsRate: args.ttsRate,
     inspectOnly: args.inspectOnly,
   });
   const written = await writeDurationVariantRepairReport(report, {

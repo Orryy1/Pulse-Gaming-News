@@ -352,6 +352,40 @@ test("attention reports use current platform-native copy when canonical copy is 
   assert.equal(report.shorts_feed_competition_report.status, "standout");
 });
 
+test("Custom Seas packaging counts as concrete feed detail instead of abstract player-test copy", () => {
+  const report = buildPulseMediaHouseScore(strongStory({
+    canonical: {
+      ...strongStory().canonical,
+      selected_title: "Sea of Thieves Custom Seas Could Split Crews",
+      canonical_subject: "Sea of Thieves",
+      first_spoken_line: "Sea of Thieves just made its biggest social gamble in years.",
+      thumbnail_headline: "CUSTOM SEAS RISK",
+    },
+    platformManifest: {
+      outputs: {
+        youtube_shorts: {
+          title: "Sea of Thieves Custom Seas Could Split Crews",
+          description:
+            "Sea of Thieves is adding Custom Seas, a private mode where players can set their own rules. That helps events and training, but it could drain the public seas that make the game dangerous. Source: Xbox Wire.",
+          cover_frame: { headline: "CUSTOM SEAS RISK" },
+        },
+        instagram_reels: {
+          title: "Sea of Thieves Custom Seas Could Split Crews",
+          caption:
+            "Sea of Thieves is adding Custom Seas, a private mode where players can set their own rules. That helps events and training, but it could drain the public seas that make the game dangerous. Source: Xbox Wire.",
+          cover_frame: { headline: "CUSTOM SEAS RISK" },
+        },
+      },
+    },
+  }));
+
+  assert.equal(report.shorts_attention_report.title, "Sea of Thieves Custom Seas Could Split Crews");
+  assert.deepEqual(report.shorts_feed_competition_report.first_frame_or_thumbnail_copy, ["CUSTOM SEAS RISK"]);
+  assert.equal(report.shorts_feed_competition_report.status, "standout");
+  assert.ok(!report.hard_failures.includes("media_house:first_frame_or_thumbnail_not_attention_led"));
+  assert.ok(!report.hard_failures.includes("media_house:shorts_feed_competition_weak"));
+});
+
 test("template-fatigue Shorts packaging fails the feed-competition gate", () => {
   const report = buildPulseMediaHouseScore(strongStory({
     canonical: {

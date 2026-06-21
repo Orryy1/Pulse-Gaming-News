@@ -3211,6 +3211,56 @@ test("visual entity preflight accepts compact GTA 6 source-family aliases", asyn
   assert.match(result.evidence.direct_motion_assets[0].provenance_text, /gta6/);
 });
 
+test("visual entity preflight treats generic segment sidecar families as opaque when bridge provenance names the subject", async () => {
+  const clipPath = path.join(
+    "test",
+    "output",
+    "next-publish-candidates-generic-segment-sidecar",
+    "sea_of_thieves_v4_clip_1_segment_direct_motion_1.mp4",
+  );
+  await fs.ensureDir(path.dirname(clipPath));
+  await fs.writeFile(clipPath, "placeholder");
+  await fs.writeJson(`${clipPath}.json`, {
+    schema_version: 1,
+    source_url: "https://video.akamai.steamstatic.com/store_trailers/1172620/204445374/8f7db9a51493a2e0111ef3e17cd81141ee101d1c/1773669773/hls_264_master.m3u8?t=1775747049",
+    source_family: "segment_source_family_1_window_8_96_5",
+    rights_basis: "official_direct_media",
+  });
+
+  const result = await visualEntityPreflightForStory(
+    baseStory({
+      id: "sea_of_thieves_custom_seas",
+      title: "Sea of Thieves Custom Seas Could Split Crews",
+      canonical_subject: "Sea of Thieves",
+      canonical_game: "Sea of Thieves",
+      scheduler_bridge_source: "local_bridge_candidate_upsert",
+      visual_v4_bridge_video_clips: [
+        {
+          id: "segment_direct_motion_1",
+          path: clipPath,
+          source_url: "https://video.akamai.steamstatic.com/store_trailers/1172620/204445374/8f7db9a51493a2e0111ef3e17cd81141ee101d1c/1773669773/hls_264_master.m3u8?t=1775747049",
+          source_family: "Sea of Thieves official Steam trailer segment",
+          source_title: "Sea of Thieves",
+          entity: "Sea of Thieves",
+          entities: ["Sea of Thieves"],
+          source_type: "steam_movie",
+          media_kind: "direct_video",
+          rights_basis: "official_direct_media",
+        },
+      ],
+      video_clips: [clipPath],
+      rights_ledger: {
+        verdict: "pass",
+        assets: [],
+      },
+    }),
+  );
+
+  assert.equal(result.result, "pass");
+  assert.ok(!result.failures.includes("direct_motion_subject_mismatch"));
+  assert.match(result.evidence.direct_motion_assets[0].provenance_text, /sea of thieves/);
+});
+
 test("attachPreflightQa blocks direct motion when cache sidecar source does not match the subject", async () => {
   const clipPath = path.join(
     "test",

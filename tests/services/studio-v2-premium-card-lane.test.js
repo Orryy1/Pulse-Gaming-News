@@ -9,7 +9,9 @@ const path = require("node:path");
 const { SCENE_TYPES } = require("../../lib/scene-composer");
 const {
   applyPremiumCardLaneV2,
+  MIN_PREMIUM_HYPERFRAMES_CARDS,
   resolveCardAssetsV2,
+  shellSidecarPathForCard,
 } = require("../../lib/studio/v2/premium-card-lane-v2");
 
 function cardScenes() {
@@ -20,6 +22,36 @@ function cardScenes() {
     { type: SCENE_TYPES.CARD_TAKEAWAY, label: "card_takeaway", duration: 4 },
     { type: SCENE_TYPES.CARD_TIMELINE, label: "card_timeline", duration: 4 },
   ];
+}
+
+async function writePassingShellSidecar(cardPath, { storyId, kind, channelId = "pulse-gaming" }) {
+  await fs.writeJson(
+    shellSidecarPathForCard(cardPath),
+    {
+      schema_version: 1,
+      generated_at: new Date().toISOString(),
+      story_id: storyId,
+      card_kind: kind,
+      channel_id: channelId,
+      output_path: cardPath,
+      project_dir: "experiments/mock",
+      hyperframes_premium_shell: {
+        status: "pass",
+        story_id: storyId,
+        card_kind: kind,
+        channel_id: channelId,
+        checks: {
+          lint: { status: "pass" },
+          validate: { status: "pass" },
+          inspect: { status: "pass", skipped: false },
+          render: { status: "pass" },
+        },
+        visual_identity: { status: "pass" },
+        animation_contract: { status: "pass" },
+      },
+    },
+    { spaces: 2 },
+  );
 }
 
 test("premium card lane v2 refuses generic HyperFrames cards by default", async () => {
@@ -82,6 +114,102 @@ test("premium card lane v2 attaches only story-specific cards", async () => {
     assert.ok(
       result.premiumLane.decisions.some(
         (decision) => decision.cardSource === "story-specific",
+      ),
+    );
+  } finally {
+    await fs.remove(root).catch(() => {});
+  }
+});
+
+test("premium card lane v2 requires four story-specific HyperFrames cards to pass", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-hf-threshold-"));
+  try {
+    const outDir = path.join(root, "test", "output");
+    await fs.ensureDir(outDir);
+    for (const kind of ["source", "context", "quote"]) {
+      await fs.writeFile(path.join(outDir, `hf_${kind}_card_story-1.mp4`), "story");
+    }
+
+    const threeCardResult = applyPremiumCardLaneV2({
+      scenes: cardScenes(),
+      story: { id: "story-1", title: "Pokemon Go" },
+      root,
+      channelId: "pulse-gaming",
+    });
+
+    assert.equal(MIN_PREMIUM_HYPERFRAMES_CARDS, 4);
+    assert.equal(threeCardResult.premiumLane.hyperframesCardCount, 3);
+    assert.equal(threeCardResult.premiumLane.verdict, "partial");
+
+    await fs.writeFile(path.join(outDir, "hf_takeaway_card_story-1.mp4"), "story");
+    const fourCardsNoShellResult = applyPremiumCardLaneV2({
+      scenes: cardScenes(),
+      story: { id: "story-1", title: "Pokemon Go" },
+      root,
+      channelId: "pulse-gaming",
+    });
+
+    assert.equal(fourCardsNoShellResult.premiumLane.hyperframesCardCount, 4);
+    assert.equal(fourCardsNoShellResult.premiumLane.verdict, "partial");
+    assert.ok(
+      fourCardsNoShellResult.premiumLane.hyperframesPremiumShellGate.blockers.some(
+        (blocker) => blocker.includes("hyperframes_premium_shell_sidecar_missing"),
+      ),
+    );
+
+    for (const kind of ["source", "context", "quote", "takeaway"]) {
+      await writePassingShellSidecar(path.join(outDir, `hf_${kind}_card_story-1.mp4`), {
+        storyId: "story-1",
+        kind,
+      });
+    }
+    const fourCardResult = applyPremiumCardLaneV2({
+      scenes: cardScenes(),
+      story: { id: "story-1", title: "Pokemon Go" },
+      root,
+      channelId: "pulse-gaming",
+    });
+
+    assert.equal(fourCardResult.premiumLane.verdict, "pass");
+    assert.equal(fourCardResult.premiumLane.premiumShellPassCount, 4);
+    assert.equal(fourCardResult.premiumLane.hyperframesPremiumShellGate.verdict, "pass");
+  } finally {
+    await fs.remove(root).catch(() => {});
+  }
+});
+
+test("premium card lane v2 rejects shells when HyperFrames inspect was skipped", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-hf-shell-skip-"));
+  try {
+    const outDir = path.join(root, "test", "output");
+    await fs.ensureDir(outDir);
+    for (const kind of ["source", "context", "quote", "takeaway"]) {
+      const cardPath = path.join(outDir, `hf_${kind}_card_story-1.mp4`);
+      await fs.writeFile(cardPath, "story");
+      await writePassingShellSidecar(cardPath, { storyId: "story-1", kind });
+    }
+    const sourceSidecar = shellSidecarPathForCard(
+      path.join(outDir, "hf_source_card_story-1.mp4"),
+    );
+    const shell = await fs.readJson(sourceSidecar);
+    shell.hyperframes_premium_shell.status = "fail";
+    shell.hyperframes_premium_shell.checks.inspect = {
+      status: "skipped",
+      skipped: true,
+    };
+    await fs.writeJson(sourceSidecar, shell, { spaces: 2 });
+
+    const result = applyPremiumCardLaneV2({
+      scenes: cardScenes(),
+      story: { id: "story-1", title: "Pokemon Go" },
+      root,
+      channelId: "pulse-gaming",
+    });
+
+    assert.equal(result.premiumLane.verdict, "partial");
+    assert.ok(
+      result.premiumLane.hyperframesPremiumShellGate.blockers.includes(
+        "source:hyperframes_inspect_skipped",
       ),
     );
   } finally {

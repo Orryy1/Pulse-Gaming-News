@@ -27,6 +27,28 @@ test("dominantVerdict: red wins over everything", () => {
   assert.equal(pr.dominantVerdict(["green", "red", "unknown"]), "red");
 });
 
+test("buildPublishReadinessReport runs local restart outside parallel operational probes", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "..", "..", "lib", "ops", "publish-readiness.js"),
+    "utf8",
+  );
+  const block = source.match(/async function buildPublishReadinessReport[\s\S]*?const rawPillars = \{/);
+
+  assert.ok(block, "buildPublishReadinessReport block should exist");
+  assert.match(
+    block[0],
+    /lr = await pillarLocalRestartReadiness\(\{ env, now \}\)/,
+    "local restart health should be checked before the parallel pillar batch",
+  );
+  const parallelBatch = block[0].match(/\[[^\]]*sd[\s\S]*?\] = await Promise\.all\(\[([\s\S]*?)\]\)/);
+  assert.ok(parallelBatch, "parallel pillar batch should exist");
+  assert.doesNotMatch(
+    parallelBatch[1],
+    /pillarLocalRestartReadiness/,
+    "local restart should not race other operational checks",
+  );
+});
+
 test("dominantVerdict: amber wins over green when no red", () => {
   assert.equal(pr.dominantVerdict(["green", "amber"]), "amber");
 });

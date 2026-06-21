@@ -93,6 +93,60 @@ function localStoryId(story) {
   return String(story?.id || story?.story_id || story?.storyId || "").trim();
 }
 
+function storiesFromPayload(payload) {
+  if (!payload) return [];
+  const rows = Array.isArray(payload)
+    ? payload
+    : typeof payload === "object"
+      ? Array.isArray(payload.packages)
+        ? payload.packages
+        : Array.isArray(payload.story_packages)
+          ? payload.story_packages
+          : Array.isArray(payload.stories)
+            ? payload.stories
+            : Array.isArray(payload.items)
+              ? payload.items
+              : Array.isArray(payload.entries)
+                ? payload.entries
+                : [payload]
+      : [];
+  return rows.map((row) => {
+    if (row?.canonical_story_manifest && typeof row.canonical_story_manifest === "object") {
+      return { ...row, ...row.canonical_story_manifest };
+    }
+    return row;
+  });
+}
+
+async function hydrateStoriesFromArtifactDirs(rows = []) {
+  const out = [];
+  for (const row of rows) {
+    if (!row || typeof row !== "object") {
+      out.push(row);
+      continue;
+    }
+    if (row.canonical_story_manifest && typeof row.canonical_story_manifest === "object") {
+      out.push(row);
+      continue;
+    }
+    const artifactDir = row.artifact_dir || row.artifactDir || row.artefact_dir;
+    if (!artifactDir) {
+      out.push(row);
+      continue;
+    }
+    const manifestPath = path.join(path.resolve(ROOT, artifactDir), "canonical_story_manifest.json");
+    try {
+      if (await fs.pathExists(manifestPath)) {
+        const manifest = await fs.readJson(manifestPath);
+        out.push({ ...row, ...manifest, canonical_story_manifest: manifest });
+        continue;
+      }
+    } catch {}
+    out.push(row);
+  }
+  return out;
+}
+
 async function loadStories(args) {
   if (args.fixture) {
     const stories = buildDemoStories();
@@ -102,7 +156,7 @@ async function loadStories(args) {
   if (args.storyJsonPath) {
     const storyJsonPath = path.resolve(ROOT, args.storyJsonPath);
     const parsed = await fs.readJson(storyJsonPath);
-    const rows = (Array.isArray(parsed) ? parsed : [parsed]).map(normaliseStory);
+    const rows = (await hydrateStoriesFromArtifactDirs(storiesFromPayload(parsed))).map(normaliseStory);
     const selected = args.storyId ? rows.filter((story) => localStoryId(story) === args.storyId) : rows;
     if (selected.length === 0) {
       throw new Error(`story JSON did not contain requested story id: ${args.storyId}`);
@@ -161,4 +215,5 @@ if (require.main === module) {
 
 module.exports = {
   parseArgs,
+  storiesFromPayload,
 };

@@ -9,6 +9,7 @@ const test = require("node:test");
 const {
   augmentStoriesWithRevenuePaths,
   buildGoalBatchPackages,
+  clipsFromVisualV4MotionPack,
   prepareStoryForGoalProof,
   writeGoalBatchPackages,
 } = require("../../lib/goal-batch-packages");
@@ -166,6 +167,68 @@ test("goal batch packages summarise GREEN and blocked story packages honestly", 
   assert.equal(batch.summary.green_count, 1);
   assert.equal(batch.story_packages[0].verdict, "GREEN");
   assert.equal(batch.story_packages[1].verdict, "RED");
+});
+
+test("goal batch packages hydrate cached HLS motion clips from visual V4 motion packs", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "goal-batch-cache-"));
+  try {
+    const storyId = "steam-hls-story";
+    const sourceUrl =
+      "https://video.akamai.steamstatic.com/store_trailers/1145350/695850/hash/hls_264_master.m3u8?t=1715021703";
+    const localMp4 = path.join(tempDir, `${storyId}_v4_clip_1_hls.mp4`);
+    fs.writeFileSync(localMp4, "not-a-real-video-for-hydration-test");
+    fs.writeJsonSync(`${localMp4}.json`, {
+      source_url: sourceUrl,
+      media_start_s: 36,
+      duration_s: 5,
+    });
+
+    const clips = clipsFromVisualV4MotionPack(
+      {
+        readiness: { status: "v4_motion_ready" },
+        clips: [
+          {
+            id: "steam-hls-window",
+            type: "motion_clip",
+            source_family: "steam_1145350_hls_window",
+            path: sourceUrl,
+            source_url: sourceUrl,
+            source_kind: "hls_manifest",
+            source_url_kind: "hls_manifest",
+            source_type: "official_platform_product_page",
+            mediaStartS: 36,
+            durationS: 5,
+            validated: true,
+            segmentValidationPassed: true,
+          },
+          {
+            id: "uncached-hls-window",
+            type: "motion_clip",
+            source_family: "steam_1145350_uncached_hls_window",
+            path: sourceUrl,
+            source_url: sourceUrl,
+            source_kind: "hls_manifest",
+            source_url_kind: "hls_manifest",
+            source_type: "official_platform_product_page",
+            mediaStartS: 54,
+            durationS: 5,
+            validated: true,
+            segmentValidationPassed: true,
+          },
+        ],
+      },
+      { storyId, videoCacheDir: tempDir },
+    );
+
+    assert.equal(clips.length, 1);
+    assert.equal(clips[0].id, "steam-hls-window");
+    assert.equal(clips[0].path, localMp4);
+    assert.equal(clips[0].source_url, sourceUrl);
+    assert.equal(clips[0].local_materialized_path, localMp4);
+    assert.equal(clips[0].source_restore.local_cache_hit, true);
+  } finally {
+    fs.removeSync(tempDir);
+  }
 });
 
 test("goal batch packages carry SFX inventory rights into governance", () => {
@@ -422,6 +485,74 @@ test("goal batch package proof preparation avoids internal review fallback copy 
   assert.match(youtube.description, /Vesper Underground/i);
 });
 
+test("goal batch package proof preparation rewrites thin fresh RSS scripts into specific viewer copy", () => {
+  const prepared = prepareStoryForGoalProof(
+    {
+      id: "rss_ai_stigma_reviews",
+      canonical_subject: "AI stigma on Steam",
+      canonical_game: "AI stigma on Steam",
+      title:
+        "Data analyst finds 'AI stigma' on Steam can reduce the number of reviews a game gets by around 53%",
+      source_type: "rss",
+      source_name: "PC Gamer",
+      primary_source: "PC Gamer",
+      article_url: "https://www.pcgamer.com/games/ai-stigma-steam-review-count-analysis",
+      confirmed_claims: [
+        "PC Gamer says a data analyst found games disclosing AI content on Steam can receive around 53% fewer reviews.",
+      ],
+      description:
+        "A data analyst found an AI stigma on Steam can reduce review volume by around 53%, with the reviews those games do receive skewing more negative.",
+      full_script: "clean read",
+    },
+    { allowOwnedMotionFallback: true },
+  );
+
+  const publicCopy = [
+    prepared.public_title,
+    prepared.full_script,
+    prepared.description,
+  ].join("\n");
+
+  assert.match(publicCopy, /AI stigma|Steam|53%|reviews/i);
+  assert.doesNotMatch(
+    publicCopy,
+    /needs one concrete player-facing detail|more than a feed item|the useful question|footage, release timing, price|next proof|stays a watch item|Price Timing Risk/i,
+  );
+});
+
+test("goal batch package proof preparation extracts AI stigma subject from article attribution headlines", () => {
+  const prepared = prepareStoryForGoalProof(
+    {
+      id: "rss_ai_stigma_attribution_title",
+      canonical_subject: "Data analyst finds 'AI stigma'",
+      canonical_game: "Data analyst finds 'AI stigma'",
+      selected_title: "AI stigma on Steam Has A Review Momentum Problem",
+      title:
+        "Data analyst finds 'AI stigma' on Steam can reduce the number of reviews a game gets by around 53%",
+      source_type: "rss",
+      source_name: "PC Gamer",
+      primary_source: "PC Gamer",
+      article_url: "https://www.pcgamer.com/games/ai-stigma-steam-review-count-analysis",
+      confirmed_claims: [
+        "PC Gamer says a data analyst found games disclosing AI content on Steam can receive around 53% fewer reviews.",
+      ],
+      description:
+        "A data analyst found an AI stigma on Steam can reduce review volume by around 53%, with the reviews those games do receive skewing more negative.",
+      full_script: "clean read",
+    },
+    { allowOwnedMotionFallback: true },
+  );
+
+  assert.equal(prepared.canonical_subject, "AI stigma on Steam");
+  assert.equal(prepared.public_title, "Steam's AI Label Has A Review Problem");
+  assert.doesNotMatch(prepared.public_title, /Data analyst finds/i);
+  assert.match(prepared.full_script, /AI labels on Steam|53% fewer reviews/i);
+
+  const pack = buildGoalProofPackage({ story: prepared });
+  assert.equal(pack.youtube_publish_pack.title, "Steam's AI Label Has A Review Problem");
+  assert.equal(pack.canonical_story_manifest.public_title, "Steam's AI Label Has A Review Problem");
+});
+
 test("goal batch package proof preparation repairs generic DB subjects before script QA", () => {
   const prepared = prepareStoryForGoalProof({
     id: "1tkik53",
@@ -543,6 +674,28 @@ test("goal batch package proof preparation writes concrete scripts for fresh ref
       "viral_ready",
     );
   }
+});
+
+test("goal batch package proof preparation quarantines malformed generated refill titles", () => {
+  const prepared = prepareStoryForGoalProof({
+    id: "rss_bad_refill_title",
+    title: 'Brendan "PlayerUnknown" Greene "moves forward Has A Price Timing Risk',
+    source_type: "rss",
+    source_name: "Major Gaming Outlet",
+    article_url: "https://example.com/gaming/bad-refill-title",
+    freshness_gate: "pass",
+    full_script:
+      'Brendan "PlayerUnknown" Greene "moves forward Has A Price Timing Risk. Major Gaming Outlet says this is a developing story. Follow Pulse Gaming so you never miss a beat.',
+  });
+
+  assert.equal(prepared.canonical_subject, "This Game");
+  assert.doesNotMatch(prepared.public_title, /moves forward|Price Timing Risk|PlayerUnknown/i);
+  assert.match(prepared.full_script, /needs a clearer name before the take is worth trusting/i);
+  assert.doesNotMatch(prepared.full_script, /just changed the value question/i);
+
+  const pack = buildGoalProofPackage({ story: prepared });
+  assert.equal(pack.script_scorecard.verdict, "rewrite_required");
+  assert.ok(pack.acceptance_entry.blockers.includes("script:rewrite_required"));
 });
 
 test("goal batch package proof preparation rejects cross-story contaminated scripts", () => {

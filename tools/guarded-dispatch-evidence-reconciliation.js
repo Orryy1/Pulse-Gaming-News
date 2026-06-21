@@ -68,19 +68,35 @@ async function main() {
   const stories = await db.getStories();
   const story = stories.find((item) => item.id === args.storyId) || null;
   const platformRows = listPlatformPosts(sqlite);
-  const executorPlanPath = path.join(ROOT, "output", "goal-contract", "guarded_dispatch_executor_plan.json");
-  const executorPlan = await readJsonIfExists(executorPlanPath);
+  const goalContractDir = path.join(ROOT, "output", "goal-contract");
+  const runtimeEnv = { ...process.env };
+  const dryRunPlanPath = path.join(goalContractDir, "dry_run_publish_plan.json");
+  const guardedDispatchPlanPath = path.join(goalContractDir, "guarded_dispatch_plan.json");
+  const executorPlanPath = path.join(goalContractDir, "guarded_dispatch_executor_plan.json");
+  const [dryRunPlan, guardedDispatchPlan, executorPlan] = await Promise.all([
+    readJsonIfExists(dryRunPlanPath),
+    readJsonIfExists(guardedDispatchPlanPath),
+    readJsonIfExists(executorPlanPath),
+  ]);
   const selector = await selectNextGuardedLiveAction({
     executorPlan,
     stories,
     allowedPlatforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
   });
 
-  const [runtimeSentinel, queueInspect, publishCadence, publishReadiness] = await Promise.all([
-    buildRuntimeOwnershipSentinelFromEnvironment(),
+  const runtimeSentinel = await buildRuntimeOwnershipSentinelFromEnvironment({
+    cwd: ROOT,
+    env: runtimeEnv,
+    schedulerProof: {
+      dryRunPlan,
+      guardedDispatchPlan,
+      executorPlan,
+    },
+  });
+  const publishReadiness = await buildPublishReadinessReport({ root: ROOT });
+  const [queueInspect, publishCadence] = await Promise.all([
     buildQueueReport(),
     buildPublishCadenceReportFromDb({ db: sqlite, windowHours: 24 }),
-    buildPublishReadinessReport({ root: ROOT }),
   ]);
 
   const report = buildGuardedDispatchEvidenceReconciliationReport({

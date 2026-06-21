@@ -18,6 +18,9 @@ const {
   pickQuoteFontSize,
   quoteLayoutClass,
 } = require("../lib/studio/v2/quote-fit");
+const {
+  shellSidecarPathForCard,
+} = require("../lib/studio/v2/premium-card-lane-v2");
 
 const ROOT = path.resolve(__dirname, "..");
 const TEST_OUT = path.join(ROOT, "test", "output");
@@ -448,6 +451,133 @@ function runHyperframes(args, cwd) {
     cwd,
     stdio: "inherit",
   });
+  return {
+    status: "pass",
+    command,
+    cwd: path.relative(ROOT, cwd).replace(/\\/g, "/"),
+  };
+}
+
+function relPath(filePath) {
+  return filePath ? path.relative(ROOT, filePath).replace(/\\/g, "/") : null;
+}
+
+function countMatches(value, pattern) {
+  return (String(value || "").match(pattern) || []).length;
+}
+
+async function inspectPremiumShellProject({ projectDir, kind, storyId }) {
+  const htmlPath = path.join(projectDir, "index.html");
+  const hyperframesConfigPath = path.join(projectDir, "hyperframes.json");
+  const backdropPath = path.join(projectDir, "assets", "backdrop.jpg");
+  const html = (await fs.pathExists(htmlPath))
+    ? await fs.readFile(htmlPath, "utf8")
+    : "";
+  const visualBlockers = [];
+  const animationBlockers = [];
+
+  if (!(await fs.pathExists(hyperframesConfigPath))) {
+    visualBlockers.push("hyperframes_config_missing");
+  }
+  if (!html.includes('data-composition-id="main"')) {
+    visualBlockers.push("main_composition_missing");
+  }
+  if (!/width=1080,\s*height=1920/.test(html)) {
+    visualBlockers.push("vertical_reel_viewport_missing");
+  }
+  if (!html.includes('data-track-index="0"')) {
+    visualBlockers.push("tracked_clip_missing");
+  }
+  if (!(await fs.pathExists(backdropPath))) {
+    visualBlockers.push("backdrop_asset_missing");
+  }
+
+  if (!/window\.__timelines/.test(html)) {
+    animationBlockers.push("hyperframes_timeline_registry_missing");
+  }
+  if (!/gsap\.timeline\s*\([\s\S]*paused:\s*true/.test(html)) {
+    animationBlockers.push("paused_gsap_timeline_missing");
+  }
+  if (countMatches(html, /\.to\s*\(/g) < 2) {
+    animationBlockers.push("entrance_animation_steps_too_thin");
+  }
+  if (!html.includes("window.__timelines[\"main\"]")) {
+    animationBlockers.push("main_timeline_not_registered");
+  }
+
+  return {
+    visual_identity: {
+      status: visualBlockers.length ? "fail" : "pass",
+      blockers: visualBlockers,
+      evidence: {
+        story_id: storyId,
+        card_kind: kind,
+        html_path: relPath(htmlPath),
+        hyperframes_config_path: relPath(hyperframesConfigPath),
+        backdrop_path: relPath(backdropPath),
+        vertical_reel_viewport: /width=1080,\s*height=1920/.test(html),
+        tracked_clip: html.includes('data-track-index="0"'),
+      },
+    },
+    animation_contract: {
+      status: animationBlockers.length ? "fail" : "pass",
+      blockers: animationBlockers,
+      evidence: {
+        timeline_registry: /window\.__timelines/.test(html),
+        paused_gsap_timeline: /gsap\.timeline\s*\([\s\S]*paused:\s*true/.test(html),
+        entrance_animation_steps: countMatches(html, /\.to\s*\(/g),
+        single_card_transition_contract: "not_applicable_single_composition",
+      },
+    },
+  };
+}
+
+async function writeHyperframesPremiumShellEvidence({
+  kind,
+  storyId,
+  channelId,
+  projectDir,
+  outPath,
+  checks,
+} = {}) {
+  const projectEvidence = await inspectPremiumShellProject({
+    projectDir,
+    kind,
+    storyId,
+  });
+  const blockers = [
+    ...Object.entries(checks || {}).flatMap(([name, check]) =>
+      check?.status === "pass" ? [] : [`hyperframes_${name}_not_passed`],
+    ),
+    ...(projectEvidence.visual_identity.blockers || []),
+    ...(projectEvidence.animation_contract.blockers || []),
+  ];
+  if (checks?.inspect?.skipped === true) blockers.push("hyperframes_inspect_skipped");
+
+  const shell = {
+    schema_version: 1,
+    generated_at: new Date().toISOString(),
+    story_id: storyId,
+    card_kind: kind,
+    channel_id: channelId,
+    output_path: relPath(outPath),
+    project_dir: relPath(projectDir),
+    hyperframes_premium_shell: {
+      status: blockers.length ? "fail" : "pass",
+      shell_type: "story_specific_card",
+      story_id: storyId,
+      card_kind: kind,
+      channel_id: channelId,
+      output_path: relPath(outPath),
+      project_dir: relPath(projectDir),
+      checks,
+      ...projectEvidence,
+      blockers,
+    },
+  };
+  const sidecarPath = shellSidecarPathForCard(outPath);
+  await fs.writeJson(sidecarPath, shell, { spaces: 2 });
+  return { sidecarPath, shell };
 }
 
 async function buildProjectForCard({
@@ -512,14 +642,23 @@ async function buildProjectForCard({
 async function renderCard({ kind, storyId, channelId, projectDir, inspect }) {
   await fs.ensureDir(TEST_OUT);
   const outPath = path.join(TEST_OUT, outputNameForCard(kind, storyId, channelId));
+  const checks = {};
   console.log(`[story-cards] lint ${path.basename(projectDir)}`);
-  runHyperframes(["lint"], projectDir);
+  checks.lint = runHyperframes(["lint"], projectDir);
+  console.log(`[story-cards] validate ${path.basename(projectDir)}`);
+  checks.validate = runHyperframes(["validate"], projectDir);
   if (inspect) {
     console.log(`[story-cards] inspect ${path.basename(projectDir)}`);
-    runHyperframes(
+    checks.inspect = runHyperframes(
       ["inspect", ".", "--samples", "3", "--timeout", "10000", "--max-issues", "20"],
       projectDir,
     );
+  } else {
+    checks.inspect = {
+      status: "skipped",
+      skipped: true,
+      reason: "inspect_disabled",
+    };
   }
   console.log(
     `[story-cards] render ${path.basename(projectDir)} -> ${path.relative(
@@ -527,11 +666,23 @@ async function renderCard({ kind, storyId, channelId, projectDir, inspect }) {
       outPath,
     )}`,
   );
-  runHyperframes(
+  checks.render = runHyperframes(
     ["render", ".", "-o", outPath, "-f", "30", "-q", "standard"],
     projectDir,
   );
-  return outPath;
+  const shellEvidence = await writeHyperframesPremiumShellEvidence({
+    kind,
+    storyId,
+    channelId,
+    projectDir,
+    outPath,
+    checks,
+  });
+  return {
+    outPath,
+    shellEvidencePath: shellEvidence.sidecarPath,
+    shellEvidence: shellEvidence.shell,
+  };
 }
 
 async function buildStoryCards({
@@ -563,13 +714,16 @@ async function buildStoryCards({
       outPath: path.join(TEST_OUT, outputNameForCard(kind, id, channelId)),
     };
     if (render) {
-      outputs[kind].outPath = await renderCard({
+      const rendered = await renderCard({
         kind,
         storyId: id,
         channelId,
         projectDir,
         inspect,
       });
+      outputs[kind].outPath = rendered.outPath;
+      outputs[kind].shellEvidencePath = rendered.shellEvidencePath;
+      outputs[kind].shellEvidence = rendered.shellEvidence;
     }
   }
 
@@ -621,9 +775,11 @@ if (require.main === module) {
 module.exports = {
   buildStoryCards,
   buildStoryCardSpecs,
+  writeHyperframesPremiumShellEvidence,
   clampQuoteText,
   quoteLayoutClass,
   applySpecToTemplate,
+  inspectPremiumShellProject,
   outputNameForCard,
   pickStoryBackdrop,
 };

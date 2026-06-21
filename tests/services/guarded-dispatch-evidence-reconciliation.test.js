@@ -1,6 +1,8 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const test = require("node:test");
 
 const {
@@ -10,6 +12,14 @@ const {
 const {
   selectNextGuardedLiveAction,
 } = require("../../lib/goal-guarded-live-dispatch-executor");
+
+const TOOL_PATH = path.resolve(
+  __dirname,
+  "..",
+  "..",
+  "tools",
+  "guarded-dispatch-evidence-reconciliation.js",
+);
 
 async function passActionQualityGate() {
   return { result: "pass", blockers: [], checks: {} };
@@ -24,6 +34,13 @@ function action(storyId, platform, overrides = {}) {
     ...overrides,
   };
 }
+
+test("guarded-dispatch reconciliation CLI preserves explicit operator environment over .env", () => {
+  const src = fs.readFileSync(TOOL_PATH, "utf8");
+
+  assert.doesNotMatch(src, /dotenv["']\)\.config\(\{\s*quiet:\s*true,\s*override:\s*true\s*\}\)/);
+  assert.match(src, /dotenv["']\)\.config\(\{\s*quiet:\s*true\s*\}\)/);
+});
 
 test("reconciliation treats legacy YouTube result as terminal even when platform_posts row is missing", async () => {
   const stories = [

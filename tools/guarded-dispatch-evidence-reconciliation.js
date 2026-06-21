@@ -3,7 +3,7 @@
 
 const fs = require("fs-extra");
 const path = require("node:path");
-require("dotenv").config({ quiet: true, override: true });
+require("dotenv").config({ quiet: true });
 
 const db = require("../lib/db");
 const { buildQueueReport } = require("../lib/ops/queue-inspect");

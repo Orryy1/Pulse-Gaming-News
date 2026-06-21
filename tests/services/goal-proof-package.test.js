@@ -594,6 +594,37 @@ test("goal proof package gives OG season and dark action previews concrete story
   }
 });
 
+test("goal proof package gives Sea of Thieves Custom Seas a concrete split-risk hook", () => {
+  const story = greenStory();
+  story.id = "sea-custom-seas-pack";
+  story.canonical_subject = "Sea of Thieves";
+  story.canonical_game = "Sea of Thieves";
+  story.canonical_angle = "Custom Seas lets crews create private sessions with their own rules";
+  story.public_title = "Why Sea of Thieves Could Split Players";
+  story.title = "Sea of Thieves Custom Seas Update Details Revealed";
+  story.suggested_thumbnail_text = "SEA THIEVES PLAYER TEST";
+  story.primary_source = "Xbox Wire";
+  story.source_name = "Xbox Wire";
+  story.description =
+    "Xbox Wire says Sea of Thieves Custom Seas lets crews create private sessions with rule controls for events, training and friend groups.";
+  story.full_script =
+    "Sea of Thieves just made its biggest social gamble in years. Xbox Wire says Custom Seas will let crews create private sessions with their own rules. That sounds perfect for story nights, training runs and players who hate being ambushed. Follow Pulse Gaming so you never miss a beat.";
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-06-21T18:25:00.000Z",
+  });
+
+  const youtube = pack.platform_publish_manifest.outputs.youtube_shorts;
+  assert.equal(youtube.title, "Sea of Thieves Custom Seas Could Split Crews");
+  assert.equal(youtube.cover_frame.headline, "SEA OF THIEVES CUSTOM SEAS");
+  assert.match(youtube.description, /Custom Seas, a private mode where players can set their own rules/i);
+  assert.equal(mediaHousePrivate.platformTitlesTooPlain(pack.platform_publish_manifest, pack.canonical_story_manifest), false);
+  assert.equal(mediaHousePrivate.weakFirstFrameOrThumbnailCopy(pack.canonical_story_manifest, pack.platform_publish_manifest), false);
+  assert.equal(mediaHousePrivate.platformCopyTooPlain(pack.platform_publish_manifest), false);
+});
+
 test("goal proof package gives Free Play Days roundups a free-access risk description", () => {
   const story = greenStory();
   story.id = "free-play-days-copy-pack";
@@ -814,6 +845,34 @@ test("goal proof package blocks generic split-player fallback packaging", () => 
   assert.ok(evidence.failures.some((failure) => failure.reason === "weak_platform_title"));
   assert.ok(
     evidence.failures.some((failure) => failure.reason === "internal_review_language_in_public_copy"),
+  );
+});
+
+test("goal proof package does not infer price risk from generic scaffold evidence", () => {
+  const story = greenStory();
+  story.id = "doom-composer-generic-price-scaffold";
+  story.canonical_subject = "Doom Composer";
+  story.canonical_game = "Doom Composer";
+  story.title = "Doom soundtrack composer Bobby Prince dies aged 81";
+  story.public_title = "Doom soundtrack composer Bobby Prince dies aged 81";
+  story.source_name = "Eurogamer";
+  story.primary_source = "Eurogamer";
+  story.description =
+    "Doom soundtrack composer Bobby Prince dies aged 81. The useful question is what players, creators or the wider community can actually judge next: footage, release timing, price, platform access or a feature that changes how the game feels.";
+  story.full_script =
+    "Doom soundtrack composer Bobby Prince dies aged 81. The useful question is what players, creators or the wider community can actually judge next: footage, release timing, price, platform access or a feature that changes how the game feels. Follow Pulse Gaming so you never miss a beat.";
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-06-21T18:40:00.000Z",
+  });
+
+  assert.doesNotMatch(pack.youtube_publish_pack.title, /Price Timing Risk/i);
+  assert.ok(
+    pack.platform_publish_manifest.platform_native_evidence.failures.some(
+      (failure) => failure.reason === "internal_review_language_in_public_copy",
+    ),
   );
 });
 

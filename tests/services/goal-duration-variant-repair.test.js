@@ -304,6 +304,8 @@ test("duration variant repair restores canonical script when audio regeneration 
   const after = await fs.readJson(canonicalPath);
   assert.equal(report.summary.failed_count, 1);
   assert.match(report.jobs[0].error, /simulated_tts_failure/);
+  assert.equal(report.jobs[0].audio_failure.provider, "local");
+  assert.match(report.jobs[0].audio_failure.error, /simulated_tts_failure/);
   assert.equal(after.narration_script, before.narration_script);
   assert.equal(after.duration_variant_repaired_at, before.duration_variant_repaired_at);
 });
@@ -589,6 +591,113 @@ test("normal duration repair trusts stale-duration blocker over old render manif
   assert.ok(report.jobs[0].repaired_word_count >= 116, audioCalls[0]);
   assert.equal(audioCalls.length, 1);
   assert.equal(renderCalls.length, 1);
+});
+
+test("duration variant repair regenerates fast cadence narration with a safer speaking rate", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-duration-fast-cadence-"));
+  const longerSourceSafeScript = [
+    "Sea of Thieves just made its biggest social gamble in years.",
+    "Xbox Wire says Custom Seas will let crews create private sessions with their own rules.",
+    "That sounds perfect for story nights, training runs, events and players who hate being ambushed.",
+    "But it also pokes the thing that makes Sea of Thieves electric: anyone can ruin your plan at any second.",
+    "If too many players leave public seas, the world gets safer but flatter.",
+    "If Rare nails it, friend groups win.",
+    "That is the fault line Rare has to manage.",
+    "The trade-off is brutal.",
+    "Private crews help friend groups, but they can drain danger from the public world.",
+    "Follow Pulse Gaming so you never miss a beat.",
+  ].join(" ");
+  const artifactDir = await makePackage(root, "sea-fast-cadence", {
+    canonical: {
+      canonical_subject: "Sea of Thieves",
+      canonical_game: "Sea of Thieves",
+      selected_title: "Sea of Thieves Custom Seas Could Split Crews",
+      thumbnail_headline: "SEA OF THIEVES CUSTOM SEAS",
+      first_spoken_line: "Sea of Thieves just made its biggest social gamble in years.",
+      narration_script:
+        "Sea of Thieves just made its biggest social gamble in years. Xbox Wire reports Sea of Thieves is Handing Players the Keys to the Seas. The trade-off is brutal. Private crews help friend groups, but they can drain danger from the public world. If public seas get quieter, the game gets safer but flatter. Rare has to give private crews freedom without making the shared ocean feel empty. Follow Pulse Gaming so you never miss a beat.",
+      primary_source: "Xbox Wire",
+      source_card_label: "Xbox Wire",
+      confirmed_claims: [
+        "Sea of Thieves is Handing Players the Keys to the Seas",
+      ],
+      duration_variant_repaired_at: "2026-06-21T19:15:34.256Z",
+      duration_variant_repair_strategy: NORMAL_PRODUCTION_REPAIR_STRATEGY,
+      duration_variant_extension: {
+        original_word_count: simpleWordCount(longerSourceSafeScript),
+        repaired_word_count: 77,
+      },
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "coherence_report.json"), {
+    verdict: "pass",
+    manifest: {
+      narration_script: longerSourceSafeScript,
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "render_manifest.json"), {
+    story_id: "sea-fast-cadence",
+    renderer: "visual_v4_production",
+    final_publish_render: true,
+    rendered_duration_s: 40.171,
+  });
+
+  const audioCalls = [];
+  const renderCalls = [];
+  const report = await materializeDurationVariantRepairs({
+    workspaceRoot: root,
+    generatedAt: "2026-05-23T08:10:00.000Z",
+    workOrder: {
+      jobs: [
+        {
+          ...workOrderJob("sea-fast-cadence", artifactDir),
+          current_duration_s: 40.171,
+          target_duration_seconds: { min: 35, max: 59 },
+          source_blockers: ["voice_cadence:wpm_too_fast"],
+        },
+      ],
+    },
+    provider: "elevenlabs",
+    alignmentMode: "off",
+    generateTtsForStory: async ({ text, outputPath, rate, provider }) => {
+      audioCalls.push({ text, outputPath, rate, provider });
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 9));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignment(text),
+      });
+    },
+    renderProof: async ({ storyJson, output }) => {
+      const story = await fs.readJson(storyJson);
+      renderCalls.push(story);
+      await fs.outputFile(output, Buffer.alloc(8192, 10));
+      return {
+        story_id: story.id,
+        output,
+        clips: story.video_clips.length,
+        rendered_duration_s: 43.9,
+        size_bytes: 8192,
+      };
+    },
+  });
+
+  assert.equal(audioCalls.length, 1);
+  assert.equal(audioCalls[0].provider, "elevenlabs");
+  assert.equal(audioCalls[0].rate, 0.92);
+  assert.ok(simpleWordCount(audioCalls[0].text) >= 98, audioCalls[0].text);
+  assert.match(audioCalls[0].text, /Season 20'?s Custom Seas/i);
+  assert.match(audioCalls[0].text, /24 players/i);
+  assert.match(audioCalls[0].text, /spawn treasure and enemies/i);
+  assert.match(audioCalls[0].text, /biggest community split/i);
+  assert.doesNotMatch(audioCalls[0].text, /Players get calmer sessions/i);
+  const scorecard = buildViralScriptIntelligence({
+    story: { id: "sea-fast-cadence", title: "Sea of Thieves Custom Seas Could Split Crews", source_name: "Xbox Wire" },
+    script: audioCalls[0].text,
+  });
+  assert.ok(!scorecard.blockers.includes("missing_relatable_stakes"), JSON.stringify(scorecard));
+  assert.equal(renderCalls.length, 1);
+  assert.equal(report.summary.repaired_count, 1);
+  assert.equal(report.jobs[0].tts_rate, 0.92);
+  assert.equal(report.safety.external_tts_provider_used, "elevenlabs");
 });
 
 test("duration variant repair reruns existing repairs with noncanonical protected brand names", async () => {
@@ -1836,6 +1945,39 @@ test("duration variant repair can regenerate normal production narration with El
   assert.equal(audioManifest.safety.external_tts_provider_used, "elevenlabs");
 });
 
+test("duration variant repair reports failed ElevenLabs audio attempts truthfully", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-duration-elevenlabs-fail-"));
+  const artifactDir = await makePackage(root, "elevenlabs-normal-fail");
+
+  const report = await materializeDurationVariantRepairs({
+    workspaceRoot: root,
+    generatedAt: "2026-05-23T08:05:00.000Z",
+    provider: "elevenlabs",
+    alignmentMode: "whisper",
+    workOrder: {
+      jobs: [
+        {
+          ...workOrderJob("elevenlabs-normal-fail", artifactDir),
+          current_duration_s: 23.7,
+          target_duration_seconds: { min: 35, max: 59 },
+        },
+      ],
+    },
+    generateTtsForStory: async ({ text, outputPath }) => {
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 11));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignment(text),
+      });
+    },
+  });
+
+  assert.equal(report.summary.failed_count, 1);
+  assert.equal(report.jobs[0].audio_failure.provider, "elevenlabs");
+  assert.equal(report.safety.local_audio_only, false);
+  assert.equal(report.safety.external_tts_provider_used, "elevenlabs");
+  assert.equal(report.safety.no_network_uploads, false);
+});
+
 test("duration variant repair recognises rights-approved screenshot-derived motion clips", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-duration-screenshot-motion-"));
   const artifactDir = await makePackage(root, "screenshot-motion-floor");
@@ -2798,6 +2940,52 @@ test("duration variant repair adds a real curiosity marker to Stranger Than Heav
   assert.match(repair.script, /awkward catch|real catch|the catch/i);
   assert.ok(!scorecard.warnings.includes("no_curiosity_marker"), JSON.stringify(scorecard, null, 2));
   assert.doesNotMatch(repair.script, /hook has to|next beat should|public output/i);
+});
+
+test("duration variant repair adds a trade-off marker to private-session social mode scripts", () => {
+  const repair = extendScriptToTarget(
+    {
+      canonical_subject: "Sea of Thieves",
+      canonical_game: "Sea of Thieves",
+      selected_title: "Sea of Thieves Custom Seas Could Split Crews",
+      narration_script:
+        "Sea of Thieves just made its biggest social gamble in years. Xbox Wire says Custom Seas will let crews create private sessions with their own rules. That sounds perfect for story nights, training runs, events and players who hate being ambushed. But it also pokes the thing that makes Sea of Thieves electric: anyone can ruin your plan at any second. If too many players leave public seas, the world gets safer but flatter. If Rare nails it, friend groups win. If not, it splits the ocean in two. Follow Pulse Gaming so you never miss a beat.",
+      primary_source: "Xbox Wire",
+      source_card_label: "Xbox Wire",
+      confirmed_claims: ["Xbox Wire says Custom Seas will let crews create private sessions with their own rules."],
+    },
+    {
+      repair_lane: "normal_production_content_signal_repair",
+      current_duration_s: 36.27,
+      target_duration_seconds: { min: 35, max: 59 },
+      provider: "elevenlabs",
+      source_blockers: [
+        "preflight_qa_blocked:script_scorecard:no_curiosity_marker",
+        "preflight_qa_blocked:script_scorecard:missing_story_specific_payoff",
+      ],
+    },
+  );
+
+  const scorecard = buildViralScriptIntelligence({
+    story: {
+      id: "sea-custom-seas-curiosity-repair",
+      title: "Sea of Thieves Custom Seas Could Split Crews",
+      source_name: "Xbox Wire",
+    },
+    script: repair.script,
+  });
+
+  assert.match(repair.script, /Season 20 is not just adding a private lobby|Season 20'?s Custom Seas/i);
+  assert.match(repair.script, /24 (?:players|pirates)/i);
+  assert.match(repair.script, /Silver scoreboards|spawn treasure and enemies/i);
+  assert.match(repair.script, /public seas could start feeling emptier|public seas could feel quieter|public servers could feel quieter|biggest community split/i);
+  assert.doesNotMatch(repair.script, /The trade-off is brutal/i);
+  assert.doesNotMatch(repair.script, /That risk could split the player base\./);
+  assert.doesNotMatch(repair.script, /give private crews freedom/i);
+  assert.doesNotMatch(repair.script, /If not, it splits the ocean in two/i);
+  assert.doesNotMatch(repair.script, /has to survive players now|patch notes/i);
+  assert.ok(scorecard.scores.curiosity_gap >= 70, JSON.stringify(scorecard, null, 2));
+  assert.ok(!scorecard.warnings.includes("no_curiosity_marker"), JSON.stringify(scorecard, null, 2));
 });
 
 test("duration variant repair compacts Stranger showcase scripts without generic reveal-catch padding", () => {

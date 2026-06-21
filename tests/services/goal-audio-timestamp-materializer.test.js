@@ -555,7 +555,7 @@ test("goal audio materializer keeps production local TTS as a single take unless
   assert.equal(calls.length, 1);
   assert.match(calls[0].text, /^Beastrow's Xbox launch is not just cosy background noise\./);
   assert.match(calls[0].text, /Beastrow becomes a repeatable comfort game/);
-  assert.equal(calls[0].outputPath, "output/audio/story-single-take.mp3");
+  assert.match(calls[0].outputPath, /output[\\/]audio[\\/]\.staging[\\/]story-single-take_/);
   const timestamps = await fs.readJson(path.join(root, "output", "audio", "story-single-take_timestamps.json"));
   assert.notEqual(timestamps.meta.segmentedLocalTtsMaterialized, true);
   assert.equal(timestamps.meta.segment_count, undefined);
@@ -1512,6 +1512,80 @@ test("goal audio materializer rolls back generated local audio when strict Whisp
   );
 });
 
+test("goal audio materializer stages strict Whisper regeneration before replacing canonical audio", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-whisper-staging-"));
+  const storyId = "story-whisper-staged";
+  const script =
+    "Sea of Thieves just made its biggest social gamble in years. That risk could split the player base. Follow Pulse Gaming so you never miss a beat.";
+  const artifactDir = await makePackage(root, storyId, {
+    selected_title: "Sea Of Thieves Custom Seas Could Split Crews",
+    narration_script: script,
+    duration_variant_repaired_at: "2026-06-21T18:30:00.000Z",
+  });
+  const canonicalAudioPath = path.join(root, "output", "audio", `${storyId}.mp3`);
+  const canonicalTimestampPath = path.join(root, "output", "audio", `${storyId}_timestamps.json`);
+  await fs.outputFile(canonicalAudioPath, Buffer.alloc(2048, 1));
+  await fs.outputJson(canonicalTimestampPath, {
+    words: [{ word: "Old", start: 0, end: 0.2 }],
+    meta: { transcript: "Old accepted narration." },
+  });
+  const oldAudio = await fs.readFile(canonicalAudioPath);
+  const calls = [];
+  const alignmentAudioPaths = [];
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    workbenchReport: {
+      local_tts: { verdict: "green", ready: true },
+      elevenlabs_tts: { verdict: "green", ready: true },
+      jobs: [
+        {
+          ...workbenchJob(storyId, artifactDir),
+          tts_provider: "elevenlabs",
+          status: "requires_audio_timestamp_generation",
+          audio: { usable: false, reason: "voice_cadence_repaired" },
+          timestamps: {
+            usable: false,
+            reason: "voice_cadence_repaired",
+            requires_audio_regeneration: true,
+          },
+        },
+      ],
+    },
+    generatedAt: "2026-06-21T18:35:00.000Z",
+    alignmentMode: "whisper",
+    alignWordsWithAudio: async ({ audioPath }) => {
+      alignmentAudioPaths.push(audioPath);
+      return {
+        ok: false,
+        source: "local_whisper_word_alignment",
+        model: "tiny.en",
+        error: "script_coverage_below_threshold",
+      };
+    },
+    generateTtsForStory: async ({ text, outputPath }) => {
+      calls.push({ text, outputPath });
+      assert.match(outputPath, /output[\\/]audio[\\/]\.staging[\\/]/);
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 2));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignment(text),
+      });
+      return { ok: true };
+    },
+  });
+
+  assert.equal(report.summary.materialized_count, 0);
+  assert.equal(report.summary.failed_count, 1);
+  assert.match(report.jobs[0].error, /local_whisper_word_alignment_failed/);
+  assert.equal(calls.length, 1);
+  assert.equal(alignmentAudioPaths.length, 1);
+  assert.match(alignmentAudioPaths[0], /[\\/]output[\\/]audio[\\/]\.staging[\\/]/);
+  assert.deepEqual(await fs.readFile(canonicalAudioPath), oldAudio);
+  const canonicalTimestamps = await fs.readJson(canonicalTimestampPath);
+  assert.equal(canonicalTimestamps.meta.transcript, "Old accepted narration.");
+  assert.equal(await fs.pathExists(path.join(root, "output", "audio", ".staging")), false);
+});
+
 test("goal audio materializer blocks inserted Whisper words instead of hiding them", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-whisper-reconcile-"));
   const script =
@@ -2382,7 +2456,10 @@ test("goal audio materializer rejects ElevenLabs output when strict Whisper veri
   assert.equal(report.summary.failed_count, 1);
   assert.equal(report.summary.materialized_count, 0);
   assert.equal(report.jobs[0].status, "failed");
+  assert.equal(report.jobs[0].provider, "elevenlabs");
   assert.match(report.jobs[0].error, /local_whisper_word_alignment_failed/);
+  assert.equal(report.safety.local_tts_only, false);
+  assert.equal(report.safety.external_tts_provider_used, "elevenlabs");
   assert.equal(await fs.pathExists(path.join(root, "output", "audio", "story-elevenlabs-strict-fail.mp3")), false);
   assert.equal(
     await fs.pathExists(path.join(root, "output", "audio", "story-elevenlabs-strict-fail_timestamps.json")),
@@ -2956,7 +3033,7 @@ test("goal audio materializer promotes fresh generated workspace audio over stal
       promoteGeneratedMediaRoot: true,
       alignmentMode: "whisper",
       alignWordsWithAudio: async ({ audioPath, scriptText }) => {
-        assert.equal(path.resolve(audioPath), path.resolve(mediaAudioPath));
+        assert.match(audioPath, /[\\/]output[\\/]audio[\\/]\.staging[\\/]/);
         assert.equal((await fs.stat(audioPath)).size, 4096);
         return {
           ok: true,
@@ -2980,6 +3057,7 @@ test("goal audio materializer promotes fresh generated workspace audio over stal
     const timestamps = await fs.readJson(mediaTimestampPath);
     assert.equal(timestamps.meta.wordTimestampSource, "local_whisper_word_alignment");
     assert.equal(timestamps.words.length, script.split(/\s+/).length);
+    assert.equal(await fs.pathExists(path.join(mediaRoot, "output", "audio", ".staging")), false);
   } finally {
     if (originalMediaRoot === undefined) delete process.env.MEDIA_ROOT;
     else process.env.MEDIA_ROOT = originalMediaRoot;

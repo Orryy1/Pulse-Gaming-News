@@ -330,6 +330,38 @@ test("guarded dispatch preflight keeps clean actions ready while holding weak tr
   assert.equal(report.held_actions[0].story_id, "story-one");
 });
 
+test("guarded dispatch preflight uses transcript row for current artifact when duplicate story ids exist", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-dispatch-transcript-duplicates-"));
+  const media = await makeMedia(root, "story-one");
+  const staleDir = path.join(root, "old-story-one");
+  const report = buildGuardedDispatchPreflight({
+    approvalGateReport: approvalGateReport(media),
+    strictDryRunPlan: strictDryRunPlan(media),
+    platformStatusMatrix: platformStatusMatrix(),
+    transcriptAudienceReport: transcriptAudienceRows([
+      {
+        story_id: "story-one",
+        title: "Sea of Thieves Custom Seas Could Split Crews",
+        artifact_dir: media.dir,
+        verdict: "pass",
+        blockers: [],
+      },
+      {
+        story_id: "story-one",
+        title: "Sea of Thieves Has A Stale Transcript",
+        artifact_dir: staleDir,
+        verdict: "rewrite_required",
+        blockers: ["mass_audience:low_concrete_detail"],
+      },
+    ]),
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.summary.dispatch_ready_action_count, 1);
+  assert.equal(report.summary.held_action_count, 0);
+  assert.equal(report.dispatch_ready_actions[0].story_id, "story-one");
+});
+
 test("guarded dispatch preflight rejects approved actions for disabled or deferred platforms", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-dispatch-disabled-"));
   const media = await makeMedia(root);

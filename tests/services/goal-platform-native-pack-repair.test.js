@@ -93,6 +93,61 @@ test("platform-native pack repair upgrades legacy candidate artefacts with backu
   assert.equal(await fs.pathExists(path.join(storyPackages[0].artifact_dir, "threads_publish_pack.json")), true);
 });
 
+test("platform-native pack repair clears stale RED publish status after GREEN governance", async () => {
+  const { storyPackages, root } = await legacyArtifact();
+  const artifactDir = storyPackages[0].artifact_dir;
+
+  const firstPass = await repairPlatformNativePacks({
+    storyPackages,
+    generatedAt: "2026-06-21T20:50:00.000Z",
+    apply: true,
+    backupRoot: path.join(root, "backups-first-pass"),
+  });
+  assert.equal(firstPass.summary.repaired_count, 1);
+
+  const manifestPath = path.join(artifactDir, "platform_publish_manifest.json");
+  const manifest = await fs.readJson(manifestPath);
+  await fs.writeJson(
+    manifestPath,
+    {
+      ...manifest,
+      publish_status: "RED",
+      stale_reason: "older package verdict before refreshed governance",
+    },
+    { spaces: 2 },
+  );
+  await fs.writeJson(path.join(artifactDir, "publish_verdict.json"), {
+    verdict: "GREEN",
+    can_auto_publish: true,
+    reason_codes: [],
+  });
+
+  const dryRun = await repairPlatformNativePacks({
+    storyPackages,
+    generatedAt: "2026-06-21T20:51:00.000Z",
+    apply: false,
+  });
+
+  assert.equal(dryRun.summary.repairable_count, 1);
+  assert.equal(dryRun.items[0].current_publish_status, "RED");
+  assert.equal(dryRun.items[0].target_publish_status, "GREEN");
+  assert.equal(dryRun.items[0].publish_status_stale, true);
+
+  const applied = await repairPlatformNativePacks({
+    storyPackages,
+    generatedAt: "2026-06-21T20:52:00.000Z",
+    apply: true,
+    backupRoot: path.join(root, "backups-stale-red-status"),
+  });
+
+  assert.equal(applied.summary.repaired_count, 1);
+  const repaired = await fs.readJson(manifestPath);
+  assert.equal(repaired.publish_status, "GREEN");
+  assert.equal(repaired.platform_native_evidence.verdict, "pass");
+  assert.equal(repaired.no_publish_triggered, true);
+  assert.equal(await fs.pathExists(applied.repairs[0].backup_files.platform_publish_manifest), true);
+});
+
 test("platform-native pack repair refreshes stale media-house score artefacts", async () => {
   const { storyPackages, root } = await legacyArtifact();
   const artifactDir = storyPackages[0].artifact_dir;

@@ -93,6 +93,7 @@
     "ops:goal-human-review-approval": "node tools/goal-human-review-approval-gate.js",
     "ops:goal-guarded-dispatch-preflight": "node tools/goal-guarded-dispatch-preflight.js",
     "ops:goal-guarded-dispatch-executor-preflight": "node tools/goal-guarded-dispatch-executor-preflight.js",
+    "ops:goal-control-pack": "node tools/goal-control-pack.js",
     "ops:goal-guarded-story-card-handoff": "node tools/goal-guarded-story-card-handoff.js",
     "ops:goal-guarded-live-dispatch": "node tools/goal-guarded-live-dispatch-executor.js",
     "ops:goal-local-proof-review": "node tools/goal-local-proof-review-lane.js",

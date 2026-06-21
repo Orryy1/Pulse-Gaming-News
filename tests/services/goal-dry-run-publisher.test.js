@@ -436,15 +436,14 @@ test("goal dry-run publisher defers externally blocked or operator-disabled plat
   assert.equal(plan.summary.planned_action_count, 7);
   assert.equal(plan.summary.platform_publish_now_action_count, 3);
   assert.equal(plan.summary.platform_enabled_dry_run_action_count, 3);
-  assert.equal(plan.summary.human_review_required_action_count, 3);
+  assert.equal(plan.summary.human_review_required_action_count, 0);
   assert.equal(plan.summary.live_publish_allowed_action_count, 0);
   assert.equal(plan.summary.platform_deferred_action_count, 4);
   assert.equal(plan.overall_verdict, "AMBER");
   assert.equal(plan.ready_for_unattended_publish, false);
   assert.ok(plan.readiness_reasons.includes("platform_actions_deferred_until_enabled"));
-  assert.ok(plan.readiness_reasons.includes("enabled_platform_actions_require_human_review"));
   assert.equal(plan.safe_publish_plan.live_publish_allowed_from_this_plan, false);
-  assert.equal(plan.safe_publish_plan.required_next_step, "operator_human_review_for_enabled_actions");
+  assert.equal(plan.safe_publish_plan.required_next_step, "run_guarded_dispatch_preflight_for_enabled_actions");
 
   const tiktok = plan.actions.find((action) => action.platform === "tiktok");
   const x = plan.actions.find((action) => action.platform === "x");
@@ -452,11 +451,11 @@ test("goal dry-run publisher defers externally blocked or operator-disabled plat
 
   assert.equal(enabledActions.length, 3);
   assert.ok(enabledActions.every((action) => action.live_publish_allowed_from_dry_run === false));
-  assert.ok(enabledActions.every((action) => action.requires_human_review_before_live_publish === true));
-  assert.ok(enabledActions.every((action) => action.live_execution_gate === "operator_human_review_required"));
+  assert.ok(enabledActions.every((action) => action.requires_human_review_before_live_publish === false));
+  assert.ok(enabledActions.every((action) => action.live_execution_gate === "guarded_dispatch_ready"));
   assert.deepEqual(
     plan.platform_status_matrix.platforms.youtube_shorts.live_execution_gate_reasons,
-    ["platform_actions_deferred_until_enabled", "enabled_platform_actions_require_human_review"],
+    [],
   );
 
   assert.equal(tiktok.action, "would_queue_when_enabled");
@@ -470,6 +469,39 @@ test("goal dry-run publisher defers externally blocked or operator-disabled plat
   assert.equal(plan.actions.find((action) => action.platform === "threads").action, "would_queue_when_enabled");
   assert.equal(plan.actions.find((action) => action.platform === "pinterest").action, "would_queue_when_enabled");
   assert.ok(plan.actions.every((action) => action.no_network_upload === true));
+});
+
+test("goal dry-run publisher marks clean enabled actions ready for guarded dispatch when unrelated platforms are deferred", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-guarded-ready-"));
+  const storyPackage = await makeStoryPackage(root);
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-21T17:55:00.000Z",
+    platformOperationalConfig: {
+      youtube: { state: "enabled", reason: "core_upload_path" },
+      tiktok: { state: "needs_credentials", reason: "tiktok_local_token_refresh_or_sync_required" },
+      instagram_reel: { state: "enabled", reason: "graph_credentials_present" },
+      facebook_reel: { state: "enabled", reason: "facebook_reels_enabled" },
+      twitter: { state: "disabled", reason: "x_optional_disabled" },
+      threads: { state: "disabled", reason: "threads_not_configured" },
+      pinterest: { state: "disabled", reason: "pinterest_not_configured" },
+    },
+  });
+
+  const enabledActions = plan.actions.filter((action) => action.action === "would_publish");
+  assert.equal(plan.overall_verdict, "AMBER");
+  assert.equal(enabledActions.length, 3);
+  assert.equal(plan.summary.human_review_required_action_count, 0);
+  assert.equal(plan.safe_publish_plan.human_review_required_action_count, 0);
+  assert.equal(plan.safe_publish_plan.guarded_dispatch_ready_action_count, 3);
+  assert.equal(plan.safe_publish_plan.required_next_step, "run_guarded_dispatch_preflight_for_enabled_actions");
+  assert.ok(enabledActions.every((action) => action.requires_human_review_before_live_publish === false));
+  assert.ok(enabledActions.every((action) => action.live_execution_gate === "guarded_dispatch_ready"));
+  assert.ok(enabledActions.every((action) => action.requires_guarded_dispatch_command === true));
+  assert.ok(enabledActions.every((action) => action.requires_enabled_platform_recheck === true));
+  assert.ok(enabledActions.every((action) => action.canonical_manifest_path.endsWith("canonical_story_manifest.json")));
+  assert.ok(enabledActions.every((action) => action.platform_publish_manifest_path.endsWith("platform_publish_manifest.json")));
 });
 
 test("goal dry-run publisher uses platform-native attention copy on final actions", async () => {
@@ -609,7 +641,7 @@ test("goal dry-run markdown separates enabled actions from deferred platform ena
   assert.equal(plan.summary.platform_deferred_action_count, 4);
   assert.doesNotMatch(markdown, /^Planned actions:/m);
   assert.match(markdown, /^Candidate platform actions \(enabled \+ deferred\): 7$/m);
-  assert.match(markdown, /^Enabled actions requiring human review: 3$/m);
+  assert.match(markdown, /^Enabled actions requiring human review: 0$/m);
   assert.match(markdown, /^Deferred until platform enablement: 4$/m);
   assert.match(markdown, /^Live publish actions allowed by this dry run: 0$/m);
 });

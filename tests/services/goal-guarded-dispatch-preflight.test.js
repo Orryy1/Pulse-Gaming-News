@@ -228,6 +228,51 @@ test("guarded dispatch preflight passes only enabled-platform actions still pres
   assert.equal(report.safety.no_network_uploads, true);
 });
 
+test("guarded dispatch preflight accepts autonomous GREEN dry-run actions without operator decisions", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-dispatch-auto-green-"));
+  const media = await makeMedia(root);
+  const dryRunAction = {
+    story_id: "story-one",
+    platform: "youtube_shorts",
+    action: "would_publish",
+    title: "Forza Horizon 6 Exposes Xbox's Steam Bet",
+    video_path: media.videoPath,
+    captions_path: media.captionsPath,
+    cover_frame_source: media.videoPath,
+    canonical_manifest_path: media.canonicalPath,
+    platform_publish_manifest_path: media.platformManifestPath,
+    platform_enabled: true,
+    live_publish_allowed_from_dry_run: false,
+    requires_human_review_before_live_publish: false,
+    live_execution_gate: "guarded_dispatch_ready",
+    autonomous_green_lit_by_dry_run: true,
+    requires_guarded_dispatch_command: true,
+    requires_enabled_platform_recheck: true,
+  };
+
+  const report = buildGuardedDispatchPreflight({
+    approvalGateReport: approvalGateReport(media, []),
+    strictDryRunPlan: {
+      ...strictDryRunPlan(media, []),
+      overall_verdict: "AMBER",
+      actions: [dryRunAction],
+    },
+    platformStatusMatrix: platformStatusMatrix(),
+    transcriptAudienceReport: transcriptAudienceReport(),
+    generatedAt: "2026-06-21T17:58:00.000Z",
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.summary.approved_action_count, 0);
+  assert.equal(report.summary.autonomous_dry_run_action_count, 1);
+  assert.equal(report.summary.dispatch_ready_action_count, 1);
+  assert.equal(report.dispatch_ready_actions[0].story_id, "story-one");
+  assert.equal(report.dispatch_ready_actions[0].platform, "youtube_shorts");
+  assert.equal(report.dispatch_ready_actions[0].operator, "autonomous_green_dry_run");
+  assert.equal(report.guarded_dispatch_plan.ready_for_guarded_dispatch, true);
+  assert.equal(report.guarded_dispatch_plan.live_publish_allowed_from_this_tool, false);
+});
+
 test("guarded dispatch preflight holds rewrite-required transcript audience rows", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-dispatch-transcript-"));
   const media = await makeMedia(root);

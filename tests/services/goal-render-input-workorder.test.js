@@ -1720,6 +1720,51 @@ test("render input work order routes short final renders to normal-duration repa
   assert.match(action.recommended_command, /--story-id short-final-render/);
 });
 
+test("render input work order rerenders stale short finals when fresh audio fingerprints no longer match", () => {
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-06-22T23:05:00.000Z",
+      queue: [
+        blockedQueueItem({
+          story_id: "fresh-audio-stale-short-render",
+          title: "Granblue Fantasy: Relink Demo Is The Real Proof",
+          force_final_render: true,
+          render_input_status: "ready_for_final_render_job",
+          render_input_blockers: [],
+          blockers: ["normal_production_duration_below_quality_floor:32"],
+          rendered_duration_s: 32.48,
+          render_input_evidence: {
+            narration_audio_path: "D:/pulse-data/media/output/audio/fresh-audio-stale-short-render.mp3",
+            word_timestamps_path: "D:/pulse-data/media/output/audio/fresh-audio-stale-short-render_timestamps.json",
+            narration_audio_sha256: "fresh-audio-sha",
+            word_timestamps_sha256: "fresh-timestamps-sha",
+            materialised_motion_clip_count: 8,
+            distinct_motion_family_count: 5,
+            real_visual_motion_clip_count: 8,
+            real_visual_motion_family_count: 5,
+            word_timestamp_source: "local_whisper_word_alignment",
+            selected_render_input_motion_ready: true,
+            audio_fingerprint_matches_render: false,
+            word_timestamps_fingerprint_matches_render: false,
+          },
+        }),
+      ],
+    },
+    generatedAt: "2026-06-22T23:06:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.ready_for_final_render_job_count, 1);
+  assert.equal(workOrder.summary.normal_duration_repair_jobs, 0);
+  const job = workOrder.jobs.find((entry) => entry.story_id === "fresh-audio-stale-short-render");
+  assert.equal(job.status, "ready_for_final_render_job");
+  assert.ok(!job.blockers.includes("normal_production_duration_below_quality_floor:32"));
+  assert.deepEqual(
+    job.actions.map((action) => action.action_id),
+    ["run_visual_v4_production_render"],
+  );
+  assert.equal(job.actions[0].force, true);
+});
+
 test("render input work order does not reintroduce stale dry-run blockers after fresh cutover", () => {
   const workOrder = buildGoalRenderInputWorkOrder({
     cutoverPlan: {

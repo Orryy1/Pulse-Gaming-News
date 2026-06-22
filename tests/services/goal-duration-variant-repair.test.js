@@ -12,6 +12,7 @@ const {
   extendScriptToTarget,
   materializeDurationVariantRepairs,
   renderDurationVariantRepairMarkdown,
+  tinyDurationTailPaddingPlan,
   writeDurationVariantRepairReport,
 } = require("../../lib/goal-duration-variant-repair");
 const { evaluateGoalPublicCopy } = require("../../lib/goal-public-copy-qa");
@@ -142,6 +143,40 @@ function assertDurationRepairPublicCopyPass(canonical, job = {}) {
   );
   return repair;
 }
+
+test("normal duration ceiling repair keeps Halo account-friction scripts on the actual story", () => {
+  const canonical = {
+    story_id: "halo-account-catch",
+    canonical_subject: "Halo: Campaign Evolved",
+    canonical_game: "Halo: Campaign Evolved",
+    selected_title: "Halo's PS5 Account Catch",
+    primary_source: "Eurogamer",
+    description:
+      "Halo: Campaign Evolved on PS5 now has an Xbox account catch. Check it before you buy, because one extra sign-in can turn split-screen co-op from an easy nostalgia play into setup friction. Source: Eurogamer.",
+    confirmed_claims: [
+      "Eurogamer reports Halo: Campaign Evolved PS5 players will need an Xbox account and gamertag to play, plus PS Plus for split-screen co-op.",
+    ],
+    first_spoken_line: "Halo on PS5 just picked up a very Xbox-shaped requirement.",
+    narration_script:
+      "Halo on PS5 just picked up a very Xbox-shaped requirement. Eurogamer reports Halo: Campaign Evolved PS5 players will need an Xbox account and gamertag to play, plus PS Plus for split-screen co-op. That matters because this is not just a normal port note; PlayStation players are still being pulled through Xbox identity inside the game. For fans, the issue is friction. A remake can open the door to a bigger audience, but extra account steps can make that welcome feel awkward fast. This does not mean the PS5 version is cancelled or weaker; it means the access rules need to be understood before people buy. If you are playing on PS5, check the account requirement and co-op rules before assuming it works like a normal PlayStation release. The awkward part is that Halo going wider should feel simple, but account rules can make the first setup feel like platform politics. Cross-platform releases live or die on friction; one extra sign-in can change the mood before the first mission loads. If Xbox makes the setup painless, Halo gets a cleaner cross-platform moment; if not, the first fight starts before the campaign does. Follow Pulse Gaming so you never miss a beat.",
+  };
+
+  const repair = extendScriptToTarget(canonical, {
+    repair_lane: "normal_production_duration_ceiling",
+    current_duration_s: 72.771,
+    target_duration_seconds: { min: 35, max: 59 },
+  });
+
+  assert.match(repair.script, /^Halo on PS5 just picked up a very Xbox-shaped requirement\./);
+  assert.equal((repair.script.match(/Eurogamer reports/g) || []).length, 1);
+  assert.match(repair.script, /Xbox account and gamertag/);
+  assert.match(repair.script, /PS Plus/);
+  assert.match(repair.script, /split-screen co-op/);
+  assert.match(repair.script, /Check the account and PS Plus rules before you buy/);
+  assert.doesNotMatch(repair.script, /pistol rhythm|muscle memory|old players/i);
+  assert.ok(simpleWordCount(repair.script) <= 132, repair.script);
+  assert.ok(repair.removed_word_count > 0);
+});
 
 test("normal duration repair holds Dragonwilds when update source lacks concrete proof", () => {
   const canonical = {
@@ -380,6 +415,109 @@ test("duration variant repair skips stale work-order rows that already have a ta
   assert.equal(report.summary.failed_count, 0);
   assert.equal(report.summary.skipped_existing_count + report.summary.caption_repaired_count, 1);
   assert.match(report.jobs[0].status, /^(skipped_existing_duration_repair|captions_repaired_existing_duration_repair)$/);
+});
+
+test("normal duration repair tail-pads existing clean renders with tiny underflow", async () => {
+  assert.deepEqual(
+    tinyDurationTailPaddingPlan({ rendered_duration_s: 34.876 }, { min: 35, max: 59 }),
+    {
+      current_duration_s: 34.876,
+      min_duration_s: 35,
+      target_duration_s: 35.25,
+      underflow_seconds: 0.124,
+      padding_seconds: 0.374,
+    },
+  );
+  assert.equal(tinyDurationTailPaddingPlan({ rendered_duration_s: 33.2 }, { min: 35, max: 59 }), null);
+
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-duration-tail-pad-"));
+  const artifactDir = await makePackage(root, "gta-tail-pad", {
+    canonical: {
+      canonical_subject: "GTA 6",
+      canonical_game: "GTA 6",
+      selected_title: "GTA 6 Preorders Have A Price Risk",
+      thumbnail_headline: "GTA 6 PRICE RISK",
+      first_spoken_line: "GTA 6 preorders just became a real buying decision.",
+      narration_script:
+        "GTA 6 preorders just became a real buying decision. GameSpot reports Rockstar confirmed GTA 6 preorders begin on June 25, while price, editions and bonuses still need checking. The risk is not whether GTA 6 will be huge; it is whether the first store page makes the value clear. Price, editions and bonuses decide whether fans buy early, wait or argue about the premium version. That turns the first store page into a real buy, wait or skip argument. Follow Pulse Gaming so you never miss a beat.",
+      full_script:
+        "GTA 6 preorders just became a real buying decision. GameSpot reports Rockstar confirmed GTA 6 preorders begin on June 25, while price, editions and bonuses still need checking. The risk is not whether GTA 6 will be huge; it is whether the first store page makes the value clear. Price, editions and bonuses decide whether fans buy early, wait or argue about the premium version. That turns the first store page into a real buy, wait or skip argument. Follow Pulse Gaming so you never miss a beat.",
+      tts_script:
+        "GTA 6 preorders just became a real buying decision. GameSpot reports Rockstar confirmed GTA 6 preorders begin on June 25, while price, editions and bonuses still need checking. The risk is not whether GTA 6 will be huge; it is whether the first store page makes the value clear. Price, editions and bonuses decide whether fans buy early, wait or argue about the premium version. That turns the first store page into a real buy, wait or skip argument. Follow Pulse Gaming so you never miss a beat.",
+      primary_source: "GameSpot",
+      source_card_label: "GameSpot",
+      confirmed_claims: [
+        "GameSpot reports Rockstar confirmed GTA 6 preorders begin on June 25, while price, editions and bonuses still need checking.",
+      ],
+      duration_variant_repaired_at: "2026-06-22T16:47:06.752Z",
+      duration_variant_repair_strategy: NORMAL_PRODUCTION_REPAIR_STRATEGY,
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "render_manifest.json"), {
+    story_id: "gta-tail-pad",
+    renderer: "visual_v4_production",
+    output: "visual_v4_render.mp4",
+    output_path: path.join(artifactDir, "visual_v4_render.mp4"),
+    final_publish_render: true,
+    rendered_duration_s: 34.876,
+  });
+  await fs.outputFile(path.join(artifactDir, "visual_v4_render.mp4"), Buffer.alloc(8192, 9));
+
+  const padCalls = [];
+  const report = await materializeDurationVariantRepairs({
+    workspaceRoot: root,
+    generatedAt: "2026-06-22T17:00:00.000Z",
+    workOrder: {
+      jobs: [
+        {
+          ...workOrderJob("gta-tail-pad", artifactDir),
+          title: "GTA 6 Preorders Have A Price Risk",
+          current_duration_s: 34.876,
+          target_duration_seconds: { min: 35, max: 59 },
+          repair_lane: "normal_production_duration_floor",
+          source_blockers: ["normal_production_duration_below_quality_floor:34.876"],
+        },
+      ],
+    },
+    provider: "elevenlabs",
+    generateTtsForStory: async () => {
+      throw new Error("audio must not rerun for tiny tail padding");
+    },
+    renderProof: async () => {
+      throw new Error("render must not rerun for tiny tail padding");
+    },
+    padRenderTail: async ({ artifactDir: paddedArtifactDir, renderManifest, plan }) => {
+      padCalls.push(plan);
+      const updated = {
+        ...renderManifest,
+        rendered_duration_s: 35.25,
+        duration_s: 35.25,
+        video_duration_s: 35.25,
+        duration_tail_padded_at: "2026-06-22T17:00:00.000Z",
+        duration_tail_padding_seconds: plan.padding_seconds,
+      };
+      await fs.writeJson(path.join(paddedArtifactDir, "render_manifest.json"), updated, { spaces: 2 });
+      return {
+        status: "padded",
+        renderManifest: updated,
+        padding_seconds: plan.padding_seconds,
+        output_path: updated.output_path,
+      };
+    },
+  });
+
+  assert.equal(report.summary.repaired_count, 1);
+  assert.equal(report.summary.failed_count, 0);
+  assert.equal(report.jobs[0].status, "repaired");
+  assert.equal(report.jobs[0].render_status, "tail_padded_existing_render");
+  assert.equal(report.jobs[0].duration_tail_padding_seconds, 0.374);
+  assert.equal(padCalls.length, 1);
+  const renderManifest = await fs.readJson(path.join(artifactDir, "render_manifest.json"));
+  assert.equal(renderManifest.rendered_duration_s, 35.25);
+  const platformManifest = await fs.readJson(path.join(artifactDir, "platform_publish_manifest.json"));
+  assert.equal(platformManifest.duration_contract_strategy, NORMAL_PRODUCTION_REPAIR_STRATEGY);
+  assert.equal(platformManifest.rendered_duration_s, 35.25);
+  assert.deepEqual(platformManifest.outputs.youtube_shorts.duration_warnings, []);
 });
 
 test("duration variant repair does not churn safe gameplay-source claims into short warning renders", async () => {
@@ -2820,6 +2958,60 @@ test("duration variant repair tightens showcase stories without adding deal fill
   assert.match(repair.script, /Follow Pulse Gaming/);
   assert.doesNotMatch(repair.script, /Xbox reports Xbox showed/i);
   assert.doesNotMatch(repair.script, /Before you spend|buy now|price check|deal is still active/i);
+});
+
+test("duration variant repair tightens GTA preorder risk stories without deal filler", () => {
+  const overlongScript = [
+    "GTA 6 preorders just became a real buying decision.",
+    "GameSpot reports Rockstar has confirmed GTA 6 preorders launch on June 25, while players still wait for editions, bonuses and price details.",
+    "That matters because the preorder page is where hype becomes a wallet choice, not just another trailer conversation.",
+    "The first store details can reveal which platforms Rockstar is pushing hardest, what extras are being used to tempt early buyers and how much the preorder premium version costs.",
+    "A preorder date does not prove new gameplay is coming that day, and it does not mean every version will be worth buying.",
+    "Separate the confirmed preorder timing from the missing price details, bonus details and platform details before locking money in.",
+    "That is also where impulse buying gets risky, because a preorder button can arrive before the clearest value comparison does.",
+    "The question is not whether GTA 6 will be huge; it is which version actually makes sense to buy first.",
+    "If the store page lands cleanly, GTA 6 finally shifts from anticipation into the first real buy, wait or skip argument.",
+    "Follow Pulse Gaming so you never miss a beat.",
+  ].join(" ");
+
+  const repair = extendScriptToTarget(
+    {
+      story_id: "rss_e2b3643dbce03eaf",
+      canonical_subject: "GTA 6",
+      canonical_game: "GTA 6",
+      selected_title: "GTA 6 Preorders Have A Price Risk",
+      narration_script: overlongScript,
+      full_script: overlongScript,
+      tts_script: overlongScript,
+      description:
+        "GTA 6 preorders start June 25, but players still need the price, editions and bonuses before locking money in. Source: GameSpot.",
+      primary_source: "GameSpot",
+      confirmed_claims: [
+        "GameSpot reports GTA 6's leaked prices are probably bogus, reliable insider says.",
+      ],
+    },
+    {
+      repair_lane: "normal_production_duration_ceiling",
+      current_duration_s: 70.403,
+      duration_reduction_required_seconds: 11.403,
+      target_duration_seconds: { min: 35, max: 59 },
+    },
+  );
+  const scorecard = buildViralScriptIntelligence({
+    story: { id: "rss_e2b3643dbce03eaf", title: "GTA 6 Preorders Have A Price Risk", source_name: "GameSpot" },
+    script: repair.script,
+  });
+
+  assert.ok(repair.repaired_word_count < repair.original_word_count);
+  assert.ok(repair.repaired_word_count >= 85, repair.script);
+  assert.ok(repair.repaired_word_count <= 135, repair.script);
+  assert.match(repair.script, /GTA 6 preorders/i);
+  assert.match(repair.script, /June 25/i);
+  assert.match(repair.script, /price, editions and bonuses|premium version|wallet test/i);
+  assert.match(repair.script, /Follow Pulse Gaming/);
+  assert.doesNotMatch(repair.script, /cheap enough|retailer|stock, region and condition|full price|discount|deal is live/i);
+  assert.equal(scorecard.verdict, "viral_ready", JSON.stringify({ repair, scorecard }, null, 2));
+  assert.deepEqual(scorecard.blockers, [], JSON.stringify({ repair, scorecard }, null, 2));
 });
 
 test("duration variant repair strips meta edit instructions from gameplay scripts", () => {

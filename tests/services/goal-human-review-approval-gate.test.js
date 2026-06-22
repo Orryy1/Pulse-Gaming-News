@@ -635,6 +635,70 @@ test("approval gate rejects stale operator approvals when reviewed artefact fing
   assert.equal(report.summary.approved_action_count, 0);
 });
 
+test("approval gate ignores stale review evidence when current strict dry-run made the story autonomous green", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-human-review-stale-auto-green-"));
+  const packet = await reviewPacketWithProof(root);
+  const reviewedFingerprints = fingerprintMap(packet.artefacts);
+  await fs.writeFile(packet.artefacts.video_path, "video-v2-after-review");
+
+  const report = buildHumanReviewApprovalGate({
+    humanReviewQueue: humanReviewQueue(packet),
+    reviewPacketManifest: reviewPacketManifest(packet),
+    strictDryRunPlan: {
+      mode: "DRY_RUN_PUBLISH",
+      actions: [
+        {
+          action: "would_publish",
+          story_id: packet.story_id,
+          platform: "youtube_shorts",
+          title: packet.title,
+          video_path: packet.artefacts.video_path,
+          captions_path: packet.artefacts.captions_path,
+          cover_frame_source: packet.artefacts.first_frame_source,
+          platform_enabled: true,
+          live_publish_allowed_from_dry_run: false,
+          requires_human_review_before_live_publish: false,
+          live_execution_gate: "guarded_dispatch_ready",
+          autonomous_green_lit_by_dry_run: true,
+          requires_guarded_dispatch_command: true,
+          requires_enabled_platform_recheck: true,
+          blockers: [],
+          warnings: [],
+        },
+      ],
+      safety: {
+        no_publish_triggered: true,
+        no_network_uploads: true,
+        no_db_mutation: true,
+        no_oauth_or_token_change: true,
+        dry_run_only: true,
+      },
+    },
+    operatorDecisionLog: {
+      mode: "HUMAN_REVIEW_DECISION_LOG",
+      decisions: [
+        decision({
+          reviewed_artefact_fingerprints: reviewedFingerprints,
+        }),
+      ],
+      safety: {
+        no_live_publish_from_log: true,
+        no_network_uploads: true,
+        no_db_mutation: true,
+        no_oauth_or_token_change: true,
+      },
+    },
+  });
+
+  assert.equal(report.verdict, "AMBER");
+  assert.equal(report.summary.invalid_decision_count, 0);
+  assert.equal(report.summary.ignored_stale_decision_count, 1);
+  assert.equal(report.summary.approved_action_count, 0);
+  assert.deepEqual(report.blocked_decisions, []);
+  assert.equal(report.ignored_stale_decisions[0].reason, "stale_decision_superseded_by_autonomous_green_dry_run");
+  assert.ok(report.advisory.includes("stale_operator_decisions_ignored"));
+});
+
 test("approval gate writes machine-readable reports and operator markdown", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-human-review-approval-"));
   const packet = await reviewPacketWithProof(root);

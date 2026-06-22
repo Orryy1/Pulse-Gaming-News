@@ -202,6 +202,160 @@ test("controlled restart pack accepts autonomous guarded-dispatch-ready enabled 
   });
 });
 
+test("controlled restart pack accepts partial enabled dispatch when other enabled platforms already posted", async () => {
+  await withTempDir(async (root) => {
+    const id = "partial-enabled-story";
+    await writeStory(root, id, "Cyberpunk 2077 Trust Debt Lands", {
+      subject: "Cyberpunk 2077",
+      source: "PC Gamer",
+      thumbnail: "CYBERPUNK TRUST DEBT",
+    });
+
+    const report = await buildControlledRestartPack({
+      root,
+      generatedAt: "2026-06-22T15:55:00.000Z",
+      candidateLimit: 1,
+      candidateReport: {
+        candidates: [
+          {
+            id,
+            title: "Cyberpunk 2077 Trust Debt Lands",
+            status: "publish_ready",
+            score: 105,
+            duration_seconds: 58,
+            source: {
+              exported_path: path.join(root, "output", "goal-proof", "batch", id, "visual_v4_render.mp4"),
+              already_published_platforms: ["instagram_reels", "facebook_reels"],
+              missing_enabled_platforms: ["youtube_shorts"],
+            },
+            preflight_qa: {
+              status: "pass",
+              blockers: [],
+              warnings: [],
+              checks: {
+                timestamp_alignment: {
+                  result: "pass",
+                  evidence: { source: "local_whisper_word_alignment" },
+                },
+              },
+            },
+          },
+        ],
+      },
+      strictDryRunPlan: {
+        overall_verdict: "AMBER",
+        ready_stories: [
+          {
+            story_id: id,
+            already_published_platforms: ["instagram_reels", "facebook_reels"],
+            missing_enabled_platforms: ["youtube_shorts"],
+          },
+        ],
+        actions: [
+          guardedDispatchAction(id, "youtube_shorts"),
+          action(id, "tiktok", false),
+          action(id, "x", false),
+          action(id, "threads", false),
+          action(id, "pinterest", false),
+        ],
+      },
+    });
+
+    assert.deepEqual(report.selected_restart_candidates.map((candidate) => candidate.story_id), [id]);
+    assert.deepEqual(report.selected_restart_candidates[0].dispatch_enabled_platforms, ["youtube_shorts"]);
+    assert.deepEqual(report.selected_restart_candidates[0].already_published_enabled_platforms, [
+      "instagram_reels",
+      "facebook_reels",
+    ]);
+    assert.equal(report.guarded_dispatch_plan.actions.length, 1);
+    assert.equal(report.guarded_dispatch_plan.actions[0].platform, "youtube_shorts");
+    assert.match(
+      report.selected_restart_candidates[0].operator_commands.apply_after_review,
+      /--approved-platforms youtube_shorts\b/,
+    );
+  });
+});
+
+test("controlled restart pack trusts verified post-render motion evidence when anti-repeat compacts clip rows", async () => {
+  await withTempDir(async (root) => {
+    const id = "compacted-motion-story";
+    await writeStory(root, id, "Cyberpunk 2077 Trust Debt Lands", {
+      subject: "Cyberpunk 2077",
+      source: "PC Gamer",
+      thumbnail: "CYBERPUNK TRUST DEBT",
+      clips: 7,
+    });
+    const dir = path.join(root, "output", "goal-proof", "batch", id);
+    await fs.writeJson(path.join(dir, "visual_quality_report.json"), {
+      result: "pass",
+      scores: { motion_density_score: 100, first_3_seconds_hook_score: 100 },
+      visual_evidence_profile: {
+        asset_count: 8,
+        motion_asset_count: 8,
+        real_motion_asset_count: 8,
+        direct_video_motion_asset_count: 8,
+        direct_video_motion_family_count: 7,
+        generated_only_motion_deck: false,
+        blockers: [],
+      },
+    });
+    await fs.writeJson(path.join(dir, "benchmark_report.json"), {
+      result: "pass",
+      visual_evidence_profile: {
+        motion_asset_count: 8,
+        direct_video_motion_asset_count: 8,
+        direct_video_motion_family_count: 7,
+        generated_only_motion_deck: false,
+        blockers: [],
+      },
+    });
+
+    const report = await buildControlledRestartPack({
+      root,
+      generatedAt: "2026-06-22T15:56:00.000Z",
+      candidateLimit: 1,
+      candidateReport: {
+        candidates: [
+          {
+            id,
+            title: "Cyberpunk 2077 Trust Debt Lands",
+            status: "publish_ready",
+            score: 105,
+            duration_seconds: 58,
+            source: {
+              exported_path: path.join(dir, "visual_v4_render.mp4"),
+            },
+            preflight_qa: {
+              status: "pass",
+              blockers: [],
+              warnings: [],
+              checks: {
+                timestamp_alignment: {
+                  result: "pass",
+                  evidence: { source: "local_whisper_word_alignment" },
+                },
+              },
+            },
+          },
+        ],
+      },
+      strictDryRunPlan: {
+        overall_verdict: "AMBER",
+        actions: [
+          guardedDispatchAction(id, "youtube_shorts"),
+          guardedDispatchAction(id, "instagram_reels"),
+          guardedDispatchAction(id, "facebook_reels"),
+          action(id, "tiktok", false),
+        ],
+      },
+    });
+
+    assert.deepEqual(report.selected_restart_candidates.map((candidate) => candidate.story_id), [id]);
+    assert.equal(report.selected_restart_candidates[0].render_status.motion.materialised_count, 8);
+    assert.equal(report.selected_restart_candidates[0].render_status.motion.passes, true);
+  });
+});
+
 test("controlled restart pack workspace prefers scheduler report overlapping current dry-run", async () => {
   await withTempDir(async (root) => {
     const id = "current-dry-run-story";
@@ -527,7 +681,7 @@ test("controlled restart pack selects three clean enabled-platform candidates an
       "controlled_restart_pack.json",
       "selected_restart_candidates.json",
       "operator_approval_checklist.md",
-      "guarded_dispatch_plan.json",
+      "controlled_restart_guarded_dispatch_plan.json",
       "platform_deferred_actions.json",
       "live_gate_change_plan.md",
       "post_restart_verification_checklist.md",
@@ -535,6 +689,39 @@ test("controlled restart pack selects three clean enabled-platform candidates an
     ]) {
       assert.equal(await fs.pathExists(artefacts[required]), true, required);
     }
+  });
+});
+
+test("controlled restart pack does not overwrite executor guarded dispatch plan", async () => {
+  await withTempDir(async (root) => {
+    const report = {
+      controlled_restart_pack_markdown: "# Controlled Restart\n",
+      selected_restart_candidates: [],
+      operator_approval_checklist: { markdown: "" },
+      guarded_dispatch_plan: {
+        mode: "CONTROLLED_RESTART_GUARDED_DISPATCH_PLAN",
+        actions: [{ story_id: "story-a", platform: "youtube_shorts" }],
+      },
+      platform_deferred_actions: { actions: [] },
+      live_gate_change_plan_markdown: "",
+      post_restart_verification_checklist_markdown: "",
+      scheduled_task_cleanup_plan_markdown: "",
+    };
+    const outputDir = path.join(root, "output", "controlled-restart");
+    const existingExecutorPlan = {
+      mode: "GUARDED_DISPATCH_PLAN",
+      dispatch_ready_actions: [{ story_id: "keep-me", platform: "youtube_shorts" }],
+    };
+    await fs.ensureDir(outputDir);
+    await fs.writeJson(path.join(outputDir, "guarded_dispatch_plan.json"), existingExecutorPlan, { spaces: 2 });
+
+    const artefacts = await writeControlledRestartPack(report, { outputDir });
+    const retainedExecutorPlan = await fs.readJson(path.join(outputDir, "guarded_dispatch_plan.json"));
+    const restartPlan = await fs.readJson(artefacts["controlled_restart_guarded_dispatch_plan.json"]);
+
+    assert.deepEqual(retainedExecutorPlan, existingExecutorPlan);
+    assert.equal(restartPlan.mode, "CONTROLLED_RESTART_GUARDED_DISPATCH_PLAN");
+    assert.equal(restartPlan.actions[0].story_id, "story-a");
   });
 });
 

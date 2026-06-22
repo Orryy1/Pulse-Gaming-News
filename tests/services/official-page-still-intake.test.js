@@ -72,3 +72,42 @@ test("official page still intake extracts first-party Xbox product images as acc
   assert.ok(report.accepted_references.every((reference) => reference.source_type === "official_press_kit_stills"));
   assert.ok(report.accepted_references.every((reference) => reference.downloads_allowed === false));
 });
+
+test("official page still intake resolves same-site Rockstar relative image assets", () => {
+  const story = {
+    story_id: "rss_e2b3643dbce03eaf",
+    id: "rss_e2b3643dbce03eaf",
+    canonical_subject: "Grand Theft Auto VI",
+    canonical_game: "Grand Theft Auto VI",
+    selected_title: "GTA 6 Preorders Begin June 25",
+    title: "GTA 6 Preorders Begin June 25",
+    primary_source: "Rockstar Games",
+    primary_source_url: "https://www.rockstargames.com/VI/media",
+  };
+  const html = `
+    <script>
+      self.__next_f.push(["/VI/_next/static/media/hero.0q5-tr6h86ai7.jpg?akim=1&imdensity=1&imwidth=1600"]);
+      self.__next_f.push(["/VI/_next/static/media/hero.0q5-tr6h86ai7.jpg?akim=1&imdensity=1&imwidth=3840"]);
+      self.__next_f.push(["https://media.rockstargames.com/VI/screenshots/GTAVI_Screenshot_1920x1080.jpg"]);
+      self.__next_f.push(["https://example.com/GTAVI_wrong_host_3840x2160.jpg"]);
+    </script>
+  `;
+
+  const entries = buildOfficialPageStillIntakeEntries({
+    story,
+    pageUrl: "https://www.rockstargames.com/VI/media",
+    html,
+    maxAssets: 4,
+    generatedAt: "2026-06-22T15:30:00.000Z",
+  });
+
+  assert.equal(entries.length, 2);
+  assert.ok(entries.some((entry) =>
+    entry.official_source_url ===
+      "https://www.rockstargames.com/VI/_next/static/media/hero.0q5-tr6h86ai7.jpg?akim=1&imdensity=1&imwidth=3840",
+  ));
+  assert.ok(!entries.some((entry) => /imwidth=1600/.test(entry.official_source_url)));
+  assert.ok(entries.some((entry) => entry.official_source_url.includes("media.rockstargames.com/VI/screenshots/")));
+  assert.ok(entries.every((entry) => entry.entity === "Grand Theft Auto VI"));
+  assert.ok(entries.every((entry) => entry.source_owner === "Grand Theft Auto VI product page"));
+});

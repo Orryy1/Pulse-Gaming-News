@@ -16,7 +16,14 @@ const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "output", "candidate-supply");
 
 function parseArgs(argv = process.argv) {
-  const args = { json: false, outDir: OUT, limit: 30, help: false, motionCapacityReports: [] };
+  const args = {
+    json: false,
+    outDir: OUT,
+    limit: 30,
+    help: false,
+    motionCapacityReports: [],
+    guardedLiveDispatchExecutorReportPath: path.join(ROOT, "output", "goal-contract", "guarded_live_dispatch_executor_report.json"),
+  };
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--json") args.json = true;
@@ -41,6 +48,14 @@ function parseArgs(argv = process.argv) {
       args.motionCapacityReports.push(path.resolve(ROOT, arg.slice("--motion-pack-report=".length)));
     } else if (arg.startsWith("--source-deficit-report=")) {
       args.motionCapacityReports.push(path.resolve(ROOT, arg.slice("--source-deficit-report=".length)));
+    } else if (arg === "--guarded-live-dispatch-report" || arg === "--executor-report") {
+      args.guardedLiveDispatchExecutorReportPath = path.resolve(ROOT, argv[++i] || "");
+    } else if (arg.startsWith("--guarded-live-dispatch-report=")) {
+      args.guardedLiveDispatchExecutorReportPath = path.resolve(ROOT, arg.slice("--guarded-live-dispatch-report=".length));
+    } else if (arg.startsWith("--executor-report=")) {
+      args.guardedLiveDispatchExecutorReportPath = path.resolve(ROOT, arg.slice("--executor-report=".length));
+    } else if (arg === "--no-guarded-live-dispatch-report" || arg === "--no-executor-report") {
+      args.guardedLiveDispatchExecutorReportPath = "";
     }
   }
   if (!Number.isFinite(args.limit) || args.limit <= 0) args.limit = 30;
@@ -120,6 +135,8 @@ async function main(argv = process.argv) {
       "       [--source-family-acquisition-report PATH]",
       "       [--motion-pack-report PATH]",
       "       [--source-deficit-report PATH]",
+      "       [--guarded-live-dispatch-report PATH]",
+      "       [--no-guarded-live-dispatch-report]",
       "",
     ].join("\n"));
     return { exitCode: 0 };
@@ -146,11 +163,15 @@ async function main(argv = process.argv) {
     };
   }
   const motionCapacityReports = await readMotionCapacityReports(args.motionCapacityReports);
+  const guardedLiveDispatchExecutorReport = await nextCandidates.readOptionalJson(
+    args.guardedLiveDispatchExecutorReportPath,
+  );
   const report = buildCandidateSupplyReport({
     stories,
     candidateReport,
     transcriptAudienceReport,
     motionCapacityReports,
+    guardedLiveDispatchExecutorReport,
     channelConfig,
     now: new Date(),
   });

@@ -487,6 +487,11 @@ function countMatches(value, pattern) {
   return (String(value || "").match(pattern) || []).length;
 }
 
+function countTimelineAnimationSteps(html = "") {
+  return countMatches(html, /\b(?:tl|timeline)\.(?:to|from|fromTo)\s*\(/g) +
+    countMatches(html, /\bgsap\.(?:to|from|fromTo)\s*\(/g);
+}
+
 async function inspectPremiumShellProject({ projectDir, kind, storyId }) {
   const htmlPath = path.join(projectDir, "index.html");
   const hyperframesConfigPath = path.join(projectDir, "hyperframes.json");
@@ -519,7 +524,8 @@ async function inspectPremiumShellProject({ projectDir, kind, storyId }) {
   if (!/gsap\.timeline\s*\([\s\S]*paused:\s*true/.test(html)) {
     animationBlockers.push("paused_gsap_timeline_missing");
   }
-  if (countMatches(html, /\.to\s*\(/g) < 2) {
+  const timelineAnimationSteps = countTimelineAnimationSteps(html);
+  if (timelineAnimationSteps < 2) {
     animationBlockers.push("entrance_animation_steps_too_thin");
   }
   if (!html.includes("window.__timelines[\"main\"]")) {
@@ -546,7 +552,9 @@ async function inspectPremiumShellProject({ projectDir, kind, storyId }) {
       evidence: {
         timeline_registry: /window\.__timelines/.test(html),
         paused_gsap_timeline: /gsap\.timeline\s*\([\s\S]*paused:\s*true/.test(html),
-        entrance_animation_steps: countMatches(html, /\.to\s*\(/g),
+        main_timeline_registered: html.includes("window.__timelines[\"main\"]"),
+        entrance_animation_steps: timelineAnimationSteps,
+        timeline_animation_steps: timelineAnimationSteps,
         single_card_transition_contract: "not_applicable_single_composition",
       },
     },

@@ -137,6 +137,14 @@ test("buildPlatformPerformance separates measured YouTube from under-instrumente
   assert.equal(report.platforms.instagram_reels.performance_signal, "traction_signal_under_instrumented");
   assert.equal(report.platforms.facebook_reels.measurement_status, "no_metric_snapshots");
   assert.equal(report.platforms.facebook_reels.performance_signal, "published_but_unverified_distribution");
+  assert.equal(report.platform_growth_plan.verdict, "amber");
+  assert.equal(report.platform_growth_plan.scheduler_policy, "keep_guarded_multiplatform_enabled");
+  assert.equal(report.platform_growth_plan.youtube_recovery_contract.required, true);
+  assert.equal(report.platform_growth_plan.instagram_growth_contract.priority, "growth_lane");
+  assert.equal(report.platform_growth_plan.facebook_reels_contract.priority, "measurement_probe_lane");
+  assert.ok(report.platform_growth_plan.production_priorities.includes("instagram_reels_native_first_frame"));
+  assert.ok(report.platform_growth_plan.production_priorities.includes("youtube_shorts_title_hook_rescue"));
+  assert.ok(report.platform_growth_plan.operator_actions.includes("sync_meta_insights_permissions"));
   assert.ok(report.next_actions.includes("Repair Meta Reels insights ingestion before treating local Instagram/Facebook zero-view counters as truth."));
 });
 

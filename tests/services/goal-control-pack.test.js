@@ -300,6 +300,74 @@ test("goal control pack preserves guarded-plan zero after stale dry-run actions 
   }
 });
 
+test("goal control pack surfaces approval commands when selected restart candidates only need decisions", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-control-pack-approval-pending-"));
+  try {
+    const outDir = path.join(root, "output", "goal-contract");
+    await writeFixture(outDir);
+    await fs.writeJson(path.join(outDir, "publish_readiness_report.json"), {
+      overall_verdict: "red",
+      blockers: ["guarded_dispatch_executor_preflight: guarded_dispatch_executor_preflight_blocked"],
+      readiness_scope: {
+        name: "all_platforms",
+        guard_ready: false,
+      },
+      next_action: "Do not publish until red blockers cleared.",
+    });
+    await fs.writeJson(path.join(outDir, "human_review_approval_gate_report.json"), {
+      verdict: "AMBER",
+      summary: { pending_review_packet_count: 1 },
+    });
+    await fs.writeJson(path.join(outDir, "guarded_dispatch_executor_plan.json"), {
+      ready_for_live_executor_handoff: false,
+      handoff_ready_action_count: 0,
+      blocked_selected_action_count: 0,
+      handoff_ready_actions: [],
+      blocked_selected_actions: [],
+      required_next_step: "record_operator_approved_actions_before_guarded_dispatch",
+    });
+    await fs.writeJson(path.join(outDir, "controlled_restart_pack.json"), {
+      schema_version: 1,
+      generated_at: "2026-06-22T17:09:16.868Z",
+      mode: "CONTROLLED_RESTART_RELEASE_MANAGEMENT",
+      verdict: "AMBER",
+      operator_can_manually_approve_now: true,
+      blockers: [],
+      selected_restart_candidates: [
+        {
+          story_id: "story-1",
+          title: "Only Approval Left",
+          dispatch_enabled_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+          operator_commands: {
+            dry_run:
+              "npm run ops:goal-record-operator-decision -- --story story-1 --approved-platforms youtube_shorts,instagram_reels,facebook_reels --json",
+            apply_after_review:
+              "npm run ops:goal-record-operator-decision -- --story story-1 --approved-platforms youtube_shorts,instagram_reels,facebook_reels --json --apply",
+          },
+        },
+      ],
+    });
+
+    const pack = await buildGoalControlPack({
+      root,
+      outDir,
+      generatedAt: "2026-06-22T17:15:00.000Z",
+    });
+
+    assert.equal(pack.current_readiness_report.approval_pending.pending, true);
+    assert.equal(pack.current_readiness_report.approval_pending.enabled_action_count, 3);
+    assert.match(pack.current_readiness_report.next_action, /Record the pending operator approval decisions/);
+    assert.equal(pack.operator_approval_pack.exact_next_command, null);
+    assert.equal(pack.operator_approval_pack.exact_approval_commands.length, 1);
+    assert.match(pack.operator_approval_pack.exact_approval_commands[0], /goal-record-operator-decision/);
+    assert.match(pack.markdown.operator_approval_pack, /Approval Commands/);
+    assert.match(pack.markdown.next_actions, /goal-record-operator-decision/);
+    assert.doesNotMatch(pack.markdown.next_actions, /Refresh fresh GREEN candidate supply/);
+  } finally {
+    await fs.remove(root).catch(() => {});
+  }
+});
+
 test("goal control pack blocks handoff when controlled restart pack is red", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-control-pack-restart-red-"));
   try {

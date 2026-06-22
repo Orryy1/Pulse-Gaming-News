@@ -159,10 +159,24 @@ function segmentValidationEvidenceFile(name = "") {
   return lower.endsWith(".json") && lower.startsWith("official_trailer_segment_validation");
 }
 
-async function readJsonReports(paths = []) {
+function evidenceLoadWarning(filePath = "", error = {}) {
+  return {
+    path: path.resolve(filePath),
+    error: cleanText(error.message || error),
+  };
+}
+
+async function readJsonReports(paths = [], { strict = false, warnings = [] } = {}) {
   const reports = [];
   for (const reportPath of paths) {
-    const report = await readJsonIfPresent(path.resolve(reportPath), null);
+    let report = null;
+    try {
+      report = await readJsonIfPresent(path.resolve(reportPath), null);
+    } catch (error) {
+      if (strict) throw error;
+      warnings.push(evidenceLoadWarning(reportPath, error));
+      continue;
+    }
     if (report) reports.push(report);
   }
   return reports;
@@ -330,18 +344,25 @@ async function main(argv = process.argv.slice(2)) {
   const incidentGuardReport = shouldLoadDefaultIncidentGuard
     ? await readJsonIfPresent(path.resolve(args.incidentGuardPath), null)
     : null;
+  const evidenceLoadWarnings = [];
   const sourceFamilyReportPaths = args.sourceFamilyAcquisitionPath
     ? [args.sourceFamilyAcquisitionPath]
     : args.autoDiscoverRepairEvidence && (usingDefaultCutoverPath || args.sourceFamilyEvidenceDirExplicit)
       ? await discoverJsonFiles(args.sourceFamilyEvidenceDir, sourceFamilyEvidenceFile)
       : [];
-  const sourceFamilyAcquisitionReport = mergeSourceFamilyReports(await readJsonReports(sourceFamilyReportPaths));
+  const sourceFamilyAcquisitionReport = mergeSourceFamilyReports(await readJsonReports(sourceFamilyReportPaths, {
+    strict: Boolean(args.sourceFamilyAcquisitionPath),
+    warnings: evidenceLoadWarnings,
+  }));
   const segmentValidationPaths = args.segmentValidationPaths.length
     ? args.segmentValidationPaths
     : args.autoDiscoverRepairEvidence && (usingDefaultCutoverPath || args.segmentValidationDirExplicit)
       ? await discoverJsonFiles(args.segmentValidationDir, segmentValidationEvidenceFile)
       : [];
-  const segmentValidationReports = await readJsonReports(segmentValidationPaths);
+  const segmentValidationReports = await readJsonReports(segmentValidationPaths, {
+    strict: args.segmentValidationPaths.length > 0,
+    warnings: evidenceLoadWarnings,
+  });
   const shouldLoadDefaultRealMotion =
     args.realMotionMaterializationExplicit || usingDefaultCutoverPath;
   const realMotionMaterializationReport = shouldLoadDefaultRealMotion
@@ -358,6 +379,16 @@ async function main(argv = process.argv.slice(2)) {
     generatedAt: args.generatedAt || new Date().toISOString(),
   });
   workOrder = filterGoalRenderInputWorkOrderByStoryIds(workOrder, args.storyIds);
+  if (evidenceLoadWarnings.length) {
+    workOrder = {
+      ...workOrder,
+      summary: {
+        ...(workOrder.summary || {}),
+        evidence_load_warning_count: evidenceLoadWarnings.length,
+      },
+      evidence_load_warnings: evidenceLoadWarnings,
+    };
+  }
   if (args.dryRun) {
     workOrder = {
       ...workOrder,

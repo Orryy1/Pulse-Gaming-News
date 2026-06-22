@@ -322,6 +322,8 @@ async function makeStoryPackage(
   return {
     story_id: id,
     verdict,
+    already_published_platforms: options.alreadyPublishedPlatforms || [],
+    missing_enabled_platforms: options.missingEnabledPlatforms || [],
     artefacts: [
       "canonical_story_manifest.json",
       "visual_v4_render.mp4",
@@ -2456,6 +2458,62 @@ test("goal dry-run publisher skips stale bridge candidates whose enabled platfor
     "facebook_reels",
   ]);
   assert.ok(plan.readiness_reasons.includes("no_enabled_platform_publish_actions"));
+});
+
+test("goal dry-run publisher skips enabled platforms terminal duplicate-blocked by prior guarded execution", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-terminal-duplicate-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "terminal-duplicate-story",
+    "GREEN",
+    "GTA 6 Preorders Have A Price Risk",
+    {
+      canonicalSubject: "GTA 6",
+      alreadyPublishedPlatforms: ["instagram_reels", "facebook_reels"],
+      missingEnabledPlatforms: ["youtube_shorts"],
+    },
+  );
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-22T18:15:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+    candidatePreflightReport: {
+      candidates: [
+        {
+          id: "terminal-duplicate-story",
+          status: "publish_ready",
+          preflight_qa: { status: "pass", blockers: [], warnings: [] },
+        },
+      ],
+    },
+    guardedLiveDispatchExecutorReport: {
+      blocked_actions: [
+        {
+          story_id: "terminal-duplicate-story",
+          platform: "youtube_shorts",
+          outcome: "duplicate_blocked",
+          blockers: ["duplicate_blocked"],
+        },
+      ],
+    },
+  });
+
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.skipped_story_count, 1);
+  assert.equal(plan.summary.planned_action_count, 0);
+  assert.equal(
+    plan.skipped_stories[0].status,
+    "enabled_platforms_already_public_or_terminal_duplicate",
+  );
+  assert.deepEqual(plan.skipped_stories[0].already_published_platforms, [
+    "instagram_reels",
+    "facebook_reels",
+  ]);
+  assert.deepEqual(plan.skipped_stories[0].terminal_duplicate_blocked_platforms, [
+    "youtube_shorts",
+  ]);
+  assert.equal(plan.summary.terminal_duplicate_evidence_loaded, true);
 });
 
 test("goal dry-run publisher skips already-public enabled platforms before missing scheduler preflight", async () => {

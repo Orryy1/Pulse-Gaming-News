@@ -536,6 +536,37 @@ test("guarded dispatch preflight ignores live DB published evidence when strict 
   assert.equal(report.guarded_dispatch_plan.required_next_step, "refresh_candidate_supply_and_strict_dry_run_after_published_actions");
 });
 
+test("guarded dispatch preflight ignores prior terminal duplicate actions instead of poisoning fresh dispatch", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-dispatch-terminal-dupe-"));
+  const media = await makeMedia(root);
+  const report = buildGuardedDispatchPreflight({
+    approvalGateReport: approvalGateReport(media),
+    strictDryRunPlan: strictDryRunPlan(media),
+    platformStatusMatrix: platformStatusMatrix(),
+    guardedLiveDispatchExecutorReport: {
+      mode: "GUARDED_LIVE_DISPATCH_EXECUTOR",
+      apply: true,
+      blocked_actions: [
+        {
+          action_id: "story-one:youtube_shorts",
+          story_id: "story-one",
+          platform: "youtube_shorts",
+          outcome: "duplicate_blocked",
+          blockers: ["duplicate_blocked"],
+        },
+      ],
+    },
+  });
+
+  assert.equal(report.verdict, "AMBER");
+  assert.equal(report.summary.dispatch_ready_action_count, 0);
+  assert.equal(report.summary.blocked_action_count, 0);
+  assert.equal(report.summary.ignored_terminal_duplicate_action_count, 1);
+  assert.equal(report.ignored_terminal_duplicate_actions[0].story_id, "story-one");
+  assert.equal(report.guarded_dispatch_plan.ready_for_guarded_dispatch, false);
+  assert.equal(report.guarded_dispatch_plan.required_next_step, "refresh_candidate_supply_and_strict_dry_run_after_published_actions");
+});
+
 test("guarded dispatch preflight rejects media path drift and missing media", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-dispatch-media-"));
   const media = await makeMedia(root);
@@ -670,6 +701,121 @@ test("guarded dispatch preflight CLI prefers current goal-contract transcript au
   assert.equal(parsed.verdict, "GREEN");
   assert.equal(parsed.summary.dispatch_ready_action_count, 1);
   assert.equal(parsed.summary.transcript_held_action_count, 0);
+});
+
+test("guarded dispatch preflight CLI skips stale transcript audit missing current dry-run stories", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-dispatch-stale-transcript-"));
+  const media = await makeMedia(root);
+  const goalDir = path.join(root, "output", "goal-contract");
+  const fallbackDir = path.join(root, "output", "transcript-audience-audit");
+  const outDir = path.join(root, "out");
+  await fs.ensureDir(goalDir);
+  await fs.ensureDir(fallbackDir);
+  await fs.writeJson(path.join(goalDir, "human_review_approval_gate_report.json"), approvalGateReport(media), { spaces: 2 });
+  await fs.writeJson(path.join(goalDir, "dry_run_publish_plan.json"), strictDryRunPlan(media), { spaces: 2 });
+  await fs.writeJson(path.join(goalDir, "platform_status_matrix.json"), platformStatusMatrix(), { spaces: 2 });
+  await fs.writeJson(
+    path.join(goalDir, "transcript_audience_audit.json"),
+    transcriptAudienceRows([
+      {
+        story_id: "stale-story",
+        title: "Old Story No Longer In Strict Dry Run",
+        verdict: "pass",
+        blockers: [],
+      },
+    ]),
+    { spaces: 2 },
+  );
+  await fs.writeJson(path.join(fallbackDir, "transcript_audience_audit.json"), transcriptAudienceReport(), { spaces: 2 });
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      "tools/goal-guarded-dispatch-preflight.js",
+      "--root",
+      root,
+      "--out-dir",
+      outDir,
+      "--json",
+    ],
+    {
+      cwd: ROOT,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PULSE_SKIP_DOTENV: "true",
+        USE_SQLITE: "false",
+        SQLITE_DB_PATH: "",
+      },
+    },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.verdict, "GREEN");
+  assert.equal(parsed.summary.dispatch_ready_action_count, 1);
+  assert.equal(parsed.summary.transcript_held_action_count, 0);
+  assert.deepEqual(parsed.held_actions, []);
+});
+
+test("guarded dispatch preflight ignores stale terminal duplicate approvals outside current strict dry-run", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-dispatch-stale-duplicate-"));
+  const oldMedia = await makeMedia(root, "old-duplicate");
+  const currentMedia = await makeMedia(root, "current-ready");
+  const oldAction = approvedAction(oldMedia, {
+    story_id: "old-duplicate",
+    title: "Cyberpunk 2077's Trust Debt",
+  });
+  const currentAction = approvedAction(currentMedia, {
+    story_id: "current-ready",
+    title: "GTA 6 Preorders Have A Price Risk",
+  });
+  const report = buildGuardedDispatchPreflight({
+    approvalGateReport: approvalGateReport(currentMedia, [oldAction, currentAction]),
+    strictDryRunPlan: strictDryRunPlan(currentMedia, [currentAction]),
+    platformStatusMatrix: {
+      ...platformStatusMatrix(),
+      platforms: {
+        youtube_shorts: {
+          ...platformStatusMatrix().platforms.youtube_shorts,
+          planned_story_ids: ["current-ready"],
+        },
+      },
+    },
+    transcriptAudienceReport: {
+      schema_version: 1,
+      generated_at: "2026-06-22T18:20:00.000Z",
+      stories: [
+        {
+          story_id: "current-ready",
+          artifact_dir: currentMedia.dir,
+          verdict: "pass",
+          blockers: [],
+        },
+      ],
+    },
+    guardedLiveDispatchExecutorReport: {
+      blocked_actions: [
+        {
+          story_id: "old-duplicate",
+          platform: "youtube_shorts",
+          title: "Cyberpunk 2077's Trust Debt",
+          outcome: "duplicate_blocked",
+          blockers: ["duplicate_blocked"],
+        },
+      ],
+    },
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.summary.dispatch_ready_action_count, 1);
+  assert.equal(report.summary.blocked_action_count, 0);
+  assert.equal(report.summary.ignored_terminal_duplicate_action_count, 1);
+  assert.equal(report.ignored_terminal_duplicate_actions[0].story_id, "old-duplicate");
+  assert.deepEqual(
+    report.guarded_dispatch_plan.dispatch_ready_actions.map((action) => action.story_id),
+    ["current-ready"],
+  );
 });
 
 test("guarded dispatch preflight CLI reads platform_posts as read-only duplicate evidence", async () => {

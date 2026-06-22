@@ -168,7 +168,7 @@ test("Studio V4 overlay chain adds temporal grain to prevent static-frame holds"
     fontOpt: "font='Arial'",
   });
 
-  assert.match(chain, /noise=alls=2:allf=t\+u/);
+  assert.match(chain, /noise=alls=10:allf=t\+u/);
   assert.match(chain, /trim=duration=42\.000,setpts=PTS-STARTPTS\[out\]/);
 });
 
@@ -1267,4 +1267,32 @@ test("Studio V4 overlay chain avoids duplicate story cards over owned generated 
   assert.doesNotMatch(chain, /PROOF BEAT|PLAYER READ/);
   assert.doesNotMatch(chain, /x=50:y=248:w=980/);
   assert.doesNotMatch(chain, /x=64:y=520:w=956/);
+});
+
+test("Studio V4 overlay chain suppresses only the opening card during first-frame repair", () => {
+  const chain = buildOverlayChain({
+    story: {
+      canonical_subject: "GTA 6",
+      primary_source: "Rockstar",
+      first_frame_text: "GTA 6 PRICE RISK",
+      thumbnail_headline: "GTA 6 PRICE RISK",
+      proof_card_primary: "PREORDER WINDOW",
+      proof_card_secondary: "PRICE RISK",
+      visual_repair_lane: "visual_first_frame_rerender",
+      suppress_opening_story_cards: true,
+    },
+    inputLabel: "base",
+    outputLabel: "overlayBase",
+    durationS: 24,
+    fontOpt: "font='Arial'",
+  });
+
+  assert.doesNotMatch(chain, /PULSE VERIFIED/);
+  assert.doesNotMatch(chain, /drawtext=text='SOURCE LOCK\s+ROCKSTAR'.*between\(t,0,3\.3\)/);
+  assert.doesNotMatch(chain, /color=0x111827@0\.58:t=fill:enable='between\(t,0,3\.3\)'/);
+  assert.doesNotMatch(chain, /drawtext=text='GTA 6 PRICE RISK'.*between\(t,0,3\.3\)/);
+  assert.match(chain, /drawtext=text='GTA 6 PRICE RISK'.*between\(t,4\.0,8\.4\)/);
+  assert.match(chain, /PROOF BEAT/);
+  assert.match(chain, /PLAYER READ/);
+  assert.match(chain, /PULSE GAMING/);
 });

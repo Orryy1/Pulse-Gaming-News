@@ -1702,6 +1702,7 @@ const OPAQUE_SIDECAR_PROVENANCE_TOKENS = new Set([
   "steamstatic",
   "trailers",
   "true",
+  "url",
   "video",
   "uploads",
   "window",

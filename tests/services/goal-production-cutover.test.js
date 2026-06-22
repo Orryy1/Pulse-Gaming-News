@@ -1105,6 +1105,12 @@ test("production cutover refreshes scheduler caption SRT from word timestamps", 
     narration_audio_path: path.join(artifactDir, "narration.mp3"),
     word_timestamps_path: timestampsPath,
   });
+  await fs.outputJson(path.join(artifactDir, "voice_quality_report.json"), {
+    generated_at: "2026-05-23T20:14:00.000Z",
+    verdict: "PASS",
+    word_timestamp_count: 8,
+    blockers: [],
+  });
   await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
     motion_inventory: { accepted_local_clips: clips },
   });
@@ -1131,6 +1137,11 @@ test("production cutover refreshes scheduler caption SRT from word timestamps", 
   assert.doesNotMatch(captions, /Paul Skaming|00:00:04,040 --> 00:00:04,480\nGaming|00:00:00,000 --> 00:00:01,000\nForza/);
   const captionManifest = await fs.readJson(path.join(artifactDir, "caption_manifest.json"));
   assert.equal(captionManifest.timing_source, "word_timestamps");
+  assert.equal(captionManifest.generated_at, "2026-05-23T20:14:00.000Z");
+  assert.equal(
+    captionManifest.generated_at_source,
+    "preserved_voice_quality_timestamp_for_same_word_timestamps",
+  );
   assert.equal(plan.scheduler_bridge.candidates[0].caption_path, path.join(artifactDir, "captions.srt"));
 });
 
@@ -1294,6 +1305,47 @@ test("production cutover requeues duration-repaired final renders until the MP4 
   assert.equal(plan.queue[0].status, "needs_final_render");
   assert.equal(plan.queue[0].force_final_render, true);
   assert.ok(plan.queue[0].blockers.includes("duration_variant_newer_than_render"));
+  assert.equal(plan.scheduler_bridge.candidate_count, 0);
+});
+
+test("production cutover blocks final HyperFrames renders without passing premium-shell proof", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-hf-shell-"));
+  const storyPackage = await makeCutoverPackage(root, "hf-shell-final", {
+    finalPublishRender: true,
+    renderer: "visual_v4_production",
+    visualTier: "production_v4_motion",
+    subject: "Monster Hunter Stories",
+    title: "Monster Hunter Stories Gets A Premium Shell",
+  });
+  const artifactDir = storyPackage.artifact_dir;
+  const renderManifestPath = path.join(artifactDir, "render_manifest.json");
+  await fs.writeJson(
+    renderManifestPath,
+    {
+      ...(await fs.readJson(renderManifestPath)),
+      rendererSplit: "ffmpeg-backbone-story-specific-hyperframes-cards",
+      hyperframesCardCount: 4,
+      hyperframesPremiumShellGate: {
+        verdict: "fail",
+        passCount: 3,
+        requiredPassCount: 4,
+        blockers: ["source:hyperframes_inspect_skipped"],
+      },
+    },
+    { spaces: 2 },
+  );
+
+  const plan = await buildProductionRenderCutoverPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-22T16:05:00.000Z",
+  });
+
+  assert.equal(plan.summary.ready_final_render_count, 0);
+  assert.equal(plan.summary.blocked_count, 1);
+  assert.ok(plan.blocked[0].blockers.includes("hyperframes_premium_shell_not_passed"));
+  assert.ok(plan.blocked[0].blockers.includes("hyperframes_premium_shell_verdict:fail"));
+  assert.ok(plan.blocked[0].blockers.includes("hyperframes_premium_shell_pass_count_below_required:3/4"));
+  assert.ok(plan.blocked[0].blockers.includes("hyperframes_premium_shell:source:hyperframes_inspect_skipped"));
   assert.equal(plan.scheduler_bridge.candidate_count, 0);
 });
 
@@ -3521,6 +3573,91 @@ test("production cutover emits scheduler bridge candidates for ready final rende
   assert.equal(candidate.footage_inventory.motion_inventory.production_motion_clips.length, 1);
   assert.match(candidate.description, /Forza Horizon 6/);
   assert.match(candidate.description, /SteamDB/);
+});
+
+test("production cutover scheduler bridge prefers the active artifact render over a stale copied manifest path", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-active-render-"));
+  const staleRoot = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-stale-render-"));
+  const ready = await makeCutoverPackage(root, "copied-render-story", {
+    finalPublishRender: true,
+    renderer: "visual_v4_production",
+    visualTier: "production_v4_motion",
+  });
+  const artifactDir = ready.artifact_dir;
+  const staleOutputPath = path.join(staleRoot, "visual_v4_render.mp4");
+  await fs.outputFile(staleOutputPath, Buffer.alloc(2000, 8));
+  const renderManifestPath = path.join(artifactDir, "render_manifest.json");
+  const renderManifest = await fs.readJson(renderManifestPath);
+  await fs.outputJson(renderManifestPath, {
+    ...renderManifest,
+    output_path: staleOutputPath,
+    rendered_duration_s: 44.4,
+    clips: 8,
+  });
+
+  const plan = await buildProductionRenderCutoverPlan({
+    storyPackages: [ready],
+    generatedAt: "2026-05-22T03:31:00.000Z",
+  });
+
+  assert.equal(plan.summary.scheduler_bridge_candidate_count, 1);
+  const candidate = plan.scheduler_bridge.candidates[0];
+  assert.equal(candidate.exported_path, path.join(artifactDir, "visual_v4_render.mp4"));
+  assert.notEqual(candidate.exported_path, staleOutputPath);
+});
+
+test("production cutover carries rights-ledger source owners into selected render clips", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-selected-owner-"));
+  const ready = await makeCutoverPackage(root, "halo-selected-owner", {
+    finalPublishRender: true,
+    renderer: "visual_v4_production",
+    visualTier: "production_v4_motion",
+    subject: "Halo: Campaign Evolved",
+    title: "Halo's PS5 Account Catch",
+  });
+  const artifactDir = ready.artifact_dir;
+  const clipPath = path.join(artifactDir, "halo-selected.mp4");
+  const sourceUrl =
+    "https://video.akamai.steamstatic.com/store_trailers/2806050/example/hls_264_master.m3u8?t=1781050956";
+  await fs.outputFile(clipPath, Buffer.alloc(3000, 7));
+  await fs.outputJson(path.join(artifactDir, "visual_v4_render_story.json"), {
+    visual_v4_bridge_video_clips: [
+      {
+        id: "motion_clip_02",
+        path: clipPath,
+        source_url: sourceUrl,
+        source_type: "steam_movie",
+        media_kind: "direct_video",
+        source_family: "url:https://video.akamai.steamstatic.com/store_trailers/2806050/example/hls_264_master.m3u8_window_42_40_5",
+        validated: true,
+      },
+    ],
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), [
+    {
+      asset_id: "halo-selected-owner-motion",
+      path: clipPath,
+      source_url: sourceUrl,
+      source_type: "steam_movie",
+      source_owner: "Halo: Campaign Evolved",
+      source_title: "Halo: Campaign Evolved Steam trailer",
+      media_kind: "direct_video",
+      licence_basis: "official_reference_transformative_short",
+      rights_risk_class: "official_reference_only",
+      commercial_use_allowed: true,
+      approval_status: "approved",
+    },
+  ]);
+
+  const plan = await buildProductionRenderCutoverPlan({
+    storyPackages: [ready],
+    generatedAt: "2026-05-22T03:32:00.000Z",
+  });
+
+  assert.equal(plan.summary.scheduler_bridge_candidate_count, 1);
+  const clip = plan.scheduler_bridge.candidates[0].video_clips[0];
+  assert.equal(clip.source_owner, "Halo: Campaign Evolved");
+  assert.match(clip.source_family, /^halo_campaign_evolved_/);
 });
 
 test("production cutover preserves normal production duration lane in bridge candidates", async () => {

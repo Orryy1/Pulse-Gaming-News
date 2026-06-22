@@ -1533,6 +1533,33 @@ test("Studio V4 source-family acquisition repairs Halo PS5 stories to Halo rathe
   );
 });
 
+test("Studio V4 source-family acquisition accepts already repaired Halo PS5 canonical entity", () => {
+  const report = buildStudioV4SourceFamilyAcquisitionReport({
+    motionPackReports: [
+      motionPack({
+        story_id: "halo-ps5-account-catch",
+        title: "Halo's PS5 Account Catch",
+        canonical_subject: "Halo: Campaign Evolved",
+        canonical_game: "Halo: Campaign Evolved",
+        clips: [],
+        motion_budget: {
+          required_motion_scenes: 5,
+          available_motion_clips: 0,
+          required_distinct_families: 4,
+          available_distinct_families: 0,
+        },
+        trusted_source_pipeline: { references_found: 0, intake_queue: [] },
+      }),
+    ],
+    trustedFootageReport: { accepted_sources: [], story_candidates: [] },
+    referenceReport: { plans: [] },
+  });
+
+  const row = report.rows[0];
+  assert.deepEqual(row.canonical_entity_repair_blockers, []);
+  assert.equal(report.canonical_entity_repair_template.entries.length, 0);
+});
+
 test("Studio V4 source-family acquisition filters planned searches to the canonical story entity", () => {
   const report = buildStudioV4SourceFamilyAcquisitionReport({
     motionPackReports: [

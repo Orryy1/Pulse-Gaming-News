@@ -208,13 +208,14 @@ test("fresh buffer promotion compacts headline-style subjects into the named gam
 test("fresh buffer promotion maps current-news title subjects to source-search entities", async () => {
   const generatedAt = "2026-06-22T06:00:00.000Z";
   const cases = [
-    ["rss_black_ops", "Black Ops Classics Face A Price Test", "Black Ops 1 and 2 just turned nostalgia into a price test.", "Call of Duty: Black Ops"],
-    ["rss_ocarina", "Ocarina's Remake Pressure", "Ocarina of Time just made Nintendo's remake demand impossible to ignore.", "Ocarina of Time"],
-    ["rss_cyberpunk", "Cyberpunk 2077's Trust Debt", "CD Projekt Red is still paying for Cyberpunk 2077's launch.", "Cyberpunk 2077"],
-    ["rss_xbox", "Xbox's Strategy Trust Problem", "An original Xbox insider just made the brand problem sound painfully simple.", "Xbox"],
+    ["rss_black_ops", "Black Ops Classics Face A Price Test", "Black Ops 1 and 2 just turned nostalgia into a price test.", "Call of Duty: Black Ops", "IGN reports Call of Duty: Black Ops 1 and 2 listings have fans watching port prices."],
+    ["rss_ocarina", "Ocarina's Remake Pressure", "Ocarina of Time just made Nintendo's remake demand impossible to ignore.", "Ocarina of Time", "Eurogamer reports Nintendo removed an Ocarina of Time Switch 2 description."],
+    ["rss_cyberpunk", "Cyberpunk 2077's Trust Debt", "CD Projekt Red is still paying for Cyberpunk 2077's launch.", "Cyberpunk 2077", "IGN reports Cyberpunk 2077 has a new update detail."],
+    ["rss_xbox", "Xbox's Strategy Trust Problem", "An original Xbox insider just made the brand problem sound painfully simple.", "Xbox", "Kotaku reports a founding Xbox figure says early console-business fears still matter."],
+    ["rss_halo_ps5", "Halo's PS5 Account Catch", "Halo on PS5 just picked up a very Xbox-shaped requirement.", "Halo: Campaign Evolved", "Eurogamer reports Halo: Campaign Evolved PS5 players will require an Xbox account and gamertag."],
   ];
   const report = buildFreshGreenBufferLocalPromotionReport({
-    stories: cases.map(([id, title, script]) =>
+    stories: cases.map(([id, title, script, , claim]) =>
       draftStory({
         id,
         title,
@@ -222,6 +223,7 @@ test("fresh buffer promotion maps current-news title subjects to source-search e
         canonical_subject: title,
         canonical_game: title,
         narration_script: `${script} Follow Pulse Gaming so you never miss a beat.`,
+        confirmed_claims: [claim],
       }),
     ),
     generatedAt,

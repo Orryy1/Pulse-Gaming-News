@@ -416,6 +416,61 @@ test("buildRenderHealthSummary: bridge visual evidence uses the shared direct-vi
   assert.deepEqual(r.bridge.visual_evidence.direct_video_gap_story_ids, []);
 });
 
+test("buildRenderHealthSummary: generic Steam HLS sidecars do not create subject mismatches", async () => {
+  const clipPath = path.join(
+    "test",
+    "output",
+    "render-health-steam-hls-sidecar",
+    "rss_cyberpunk_v4_clip_1_segment_direct_motion_1.mp4",
+  );
+  await fs.ensureDir(path.dirname(clipPath));
+  await fs.writeJson(`${clipPath}.json`, {
+    schema_version: 1,
+    render_signature: "studio_v4_clip_materializer_accurate_seek_v2",
+    story_id: "rss_cyberpunk",
+    clip_id: "segment_direct_motion_1",
+    source_family: "segment_source_family_1_window_36_5",
+    entity: "",
+    source_type: "steam_movie",
+    source_url_kind: "hls_manifest",
+    provider: "steam",
+    source_url: "https://video.akamai.steamstatic.com/store_trailers/1091500/637422/hash/hls_264_master.m3u8",
+  });
+
+  const r = digest.buildRenderHealthSummary([], {
+    bridgeCandidates: [
+      {
+        id: "cyberpunk-steam-hls",
+        title: "Cyberpunk 2077 Trust Debt Lands",
+        canonical_subject: "Cyberpunk 2077",
+        approved_at: new Date().toISOString(),
+        render_quality_class: "premium",
+        render_lane: "visual_v4_production",
+        qa_visual_count: 8,
+        visual_v4_bridge_video_clips: [
+          {
+            id: "direct-1",
+            path: clipPath,
+            source_url: "https://video.akamai.steamstatic.com/store_trailers/1091500/637422/hash/hls_264_master.m3u8",
+            source_type: "steam_movie",
+            source_url_kind: "hls_manifest",
+            source_kind: "hls_manifest",
+            rights_basis: "official_direct_media",
+            licence_basis: "official_reference_transformative_editorial_use",
+            approval_status: "approved_for_transformative_editorial_use",
+            counts_towards_motion_readiness: true,
+            source_family: "segment_source_family_1_window_36_5",
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.equal(r.bridge.visual_evidence.direct_video_motion_count, 1);
+  assert.equal(r.bridge.visual_evidence.direct_video_subject_mismatch_count, 0);
+  assert.deepEqual(r.bridge.visual_evidence.direct_video_gap_story_ids, []);
+});
+
 test("buildRenderHealthSummary: sidecar subject mismatches do not count as healthy direct video", async () => {
   const clipPath = path.join(
     "test",

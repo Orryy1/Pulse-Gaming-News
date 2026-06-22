@@ -21,6 +21,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     strictDryRunPlanPath: null,
     platformStatusMatrixPath: null,
     transcriptAudienceReportPath: null,
+    guardedLiveDispatchExecutorReportPath: null,
     outDir: path.join(process.cwd(), "output", "goal-contract"),
     generatedAt: null,
     json: false,
@@ -33,6 +34,9 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--strict-dry-run-plan") args.strictDryRunPlanPath = argv[++i] || "";
     else if (arg === "--platform-status-matrix") args.platformStatusMatrixPath = argv[++i] || "";
     else if (arg === "--transcript-audience-report") args.transcriptAudienceReportPath = argv[++i] || "";
+    else if (arg === "--guarded-live-dispatch-report" || arg === "--executor-report") {
+      args.guardedLiveDispatchExecutorReportPath = argv[++i] || "";
+    }
     else if (arg === "--out-dir") args.outDir = argv[++i] || args.outDir;
     else if (arg === "--generated-at") args.generatedAt = argv[++i] || null;
     else if (arg === "--json") args.json = true;
@@ -52,6 +56,7 @@ function usage() {
     "  --strict-dry-run-plan <path>     dry_run_publish_plan.json",
     "  --platform-status-matrix <path>  platform_status_matrix.json",
     "  --transcript-audience-report <path> transcript_audience_audit.json",
+    "  --guarded-live-dispatch-report <path> guarded_live_dispatch_executor_report.json",
     "  --out-dir <dir>                  Output directory",
     "  --generated-at <iso>             Fixed timestamp",
     "  --json                           Print JSON",
@@ -71,11 +76,45 @@ async function readOptionalJson(filePath) {
   return fs.readJson(filePath);
 }
 
-async function firstExistingJson(paths = []) {
+function cleanStoryIds(values = []) {
+  return Array.from(new Set(
+    values
+      .map((value) => clean(value))
+      .filter(Boolean),
+  ));
+}
+
+function storyIdsFromStrictDryRunPlan(plan = {}) {
+  return cleanStoryIds([
+    ...((Array.isArray(plan.actions) ? plan.actions : [])
+      .filter((action) => clean(action.action) === "would_publish")
+      .map((action) => action.story_id || action.id)),
+    ...((Array.isArray(plan.ready_stories) ? plan.ready_stories : [])
+      .map((story) => story.story_id || story.id)),
+  ]);
+}
+
+function transcriptAudienceStoryIds(report = {}) {
+  return new Set(cleanStoryIds((Array.isArray(report.stories) ? report.stories : [])
+    .map((story) => story.story_id || story.id)));
+}
+
+function transcriptAudienceReportCoversStories(report = {}, storyIds = []) {
+  const required = cleanStoryIds(storyIds);
+  if (!required.length) return true;
+  const present = transcriptAudienceStoryIds(report);
+  return required.every((storyId) => present.has(storyId));
+}
+
+async function firstExistingJson(paths = [], { requiredStoryIds = [] } = {}) {
+  const existing = [];
   for (const filePath of paths) {
-    if (filePath && await fs.pathExists(filePath)) return fs.readJson(filePath);
+    if (!filePath || !await fs.pathExists(filePath)) continue;
+    const report = await fs.readJson(filePath);
+    existing.push(report);
+    if (transcriptAudienceReportCoversStories(report, requiredStoryIds)) return report;
   }
-  return null;
+  return existing[0] || null;
 }
 
 function clean(value) {
@@ -215,15 +254,22 @@ async function main(argv = process.argv.slice(2)) {
         path.join(root, "output", "goal-contract", "transcript_audience_audit.json"),
         path.join(root, "output", "transcript-audience-audit", "transcript_audience_audit.json"),
       ];
+  const guardedLiveDispatchExecutorReportPath = args.guardedLiveDispatchExecutorReportPath
+    ? path.resolve(root, args.guardedLiveDispatchExecutorReportPath)
+    : path.join(root, "output", "goal-contract", "guarded_live_dispatch_executor_report.json");
 
+  const strictDryRunPlan = await readJson(strictDryRunPlanPath, "strict dry-run plan");
   const publishedEvidence = readPublishedPlatformEvidenceFromSqlite();
   const report = buildGuardedDispatchPreflight({
     approvalGateReport: await readJson(approvalGateReportPath, "human review approval gate report"),
-    strictDryRunPlan: await readJson(strictDryRunPlanPath, "strict dry-run plan"),
+    strictDryRunPlan,
     platformStatusMatrix: await readJson(platformStatusMatrixPath, "platform status matrix"),
     transcriptAudienceReport: args.transcriptAudienceReportPath
       ? await readOptionalJson(transcriptAudienceReportPaths[0])
-      : await firstExistingJson(transcriptAudienceReportPaths),
+      : await firstExistingJson(transcriptAudienceReportPaths, {
+        requiredStoryIds: storyIdsFromStrictDryRunPlan(strictDryRunPlan),
+      }),
+    guardedLiveDispatchExecutorReport: await readOptionalJson(guardedLiveDispatchExecutorReportPath),
     publishedPlatformEvidence: publishedEvidence.rows,
     publishedPlatformEvidenceError: publishedEvidence.error,
     generatedAt: args.generatedAt || new Date().toISOString(),
@@ -248,4 +294,6 @@ module.exports = {
   main,
   parseArgs,
   readPublishedPlatformEvidenceFromSqlite,
+  storyIdsFromStrictDryRunPlan,
+  transcriptAudienceReportCoversStories,
 };

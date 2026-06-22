@@ -46,6 +46,54 @@ async function writePassingShellSidecar(cardPath, { storyId, kind, channelId = "
           inspect: { status: "pass", skipped: false },
           render: { status: "pass" },
         },
+        visual_identity: {
+          status: "pass",
+          evidence: {
+            html_path: "experiments/mock/index.html",
+            hyperframes_config_path: "experiments/mock/hyperframes.json",
+            backdrop_path: "experiments/mock/assets/backdrop.jpg",
+            vertical_reel_viewport: true,
+            tracked_clip: true,
+          },
+        },
+        animation_contract: {
+          status: "pass",
+          evidence: {
+            timeline_registry: true,
+            paused_gsap_timeline: true,
+            main_timeline_registered: true,
+            entrance_animation_steps: 3,
+            timeline_animation_steps: 3,
+          },
+        },
+      },
+    },
+    { spaces: 2 },
+  );
+}
+
+async function writeStatusOnlyShellSidecar(cardPath, { storyId, kind, channelId = "pulse-gaming" }) {
+  await fs.writeJson(
+    shellSidecarPathForCard(cardPath),
+    {
+      schema_version: 1,
+      generated_at: new Date().toISOString(),
+      story_id: storyId,
+      card_kind: kind,
+      channel_id: channelId,
+      output_path: cardPath,
+      project_dir: "experiments/mock",
+      hyperframes_premium_shell: {
+        status: "pass",
+        story_id: storyId,
+        card_kind: kind,
+        channel_id: channelId,
+        checks: {
+          lint: { status: "pass" },
+          validate: { status: "pass" },
+          inspect: { status: "pass", skipped: false },
+          render: { status: "pass" },
+        },
         visual_identity: { status: "pass" },
         animation_contract: { status: "pass" },
       },
@@ -210,6 +258,45 @@ test("premium card lane v2 rejects shells when HyperFrames inspect was skipped",
     assert.ok(
       result.premiumLane.hyperframesPremiumShellGate.blockers.includes(
         "source:hyperframes_inspect_skipped",
+      ),
+    );
+  } finally {
+    await fs.remove(root).catch(() => {});
+  }
+});
+
+test("premium card lane v2 rejects status-only shell sidecars without concrete proof", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-hf-shell-empty-proof-"));
+  try {
+    const outDir = path.join(root, "test", "output");
+    await fs.ensureDir(outDir);
+    for (const kind of ["source", "context", "quote", "takeaway"]) {
+      const cardPath = path.join(outDir, `hf_${kind}_card_story-1.mp4`);
+      await fs.writeFile(cardPath, "story");
+      await writeStatusOnlyShellSidecar(cardPath, { storyId: "story-1", kind });
+    }
+
+    const result = applyPremiumCardLaneV2({
+      scenes: cardScenes(),
+      story: { id: "story-1", title: "Pokemon Go" },
+      root,
+      channelId: "pulse-gaming",
+    });
+
+    assert.equal(result.premiumLane.verdict, "partial");
+    assert.ok(
+      result.premiumLane.hyperframesPremiumShellGate.blockers.includes(
+        "source:hyperframes_visual_identity_evidence_incomplete",
+      ),
+    );
+    assert.ok(
+      result.premiumLane.hyperframesPremiumShellGate.blockers.includes(
+        "source:hyperframes_main_timeline_not_proven",
+      ),
+    );
+    assert.ok(
+      result.premiumLane.hyperframesPremiumShellGate.blockers.includes(
+        "source:hyperframes_animation_steps_too_thin",
       ),
     );
   } finally {

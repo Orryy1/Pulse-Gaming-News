@@ -125,6 +125,47 @@ test("direct-media discovery accepts same-app Steam trailer manifests with gener
   );
 });
 
+test("direct-media discovery accepts official GTA VI compact-title media", async () => {
+  const report = await buildOfficialDirectMediaDiscoveryReport({
+    entries: [
+      {
+        story_id: "gta-vi-preorders",
+        entity: "Grand Theft Auto VI",
+        source_family: "rockstar_gta_vi_official_site",
+        source_type: "official_game_website_media_page",
+        source_owner: "Rockstar Games",
+        official_source_url: "https://www.rockstargames.com/VI/",
+      },
+    ],
+    fetchText: async (url) => {
+      if (url === "https://www.rockstargames.com/VI/") {
+        return {
+          ok: true,
+          status: 200,
+          text: '<a href="https://www.rockstargames.com/VI/media">Media</a>',
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        text: '<source src="https://media.rockstargames.com/VI/downloads/videos/GTAVI_Official_Cover_Art_Landscape/GTAVI_Official_Cover_Art_Landscape.mp4">',
+      };
+    },
+    probeMedia: async (url) => {
+      assert.equal(
+        url,
+        "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Official_Cover_Art_Landscape/GTAVI_Official_Cover_Art_Landscape.mp4",
+      );
+      return { duration_seconds: 32.67, width: 3840, height: 2160 };
+    },
+  });
+
+  assert.equal(report.summary.discovered, 1);
+  assert.equal(report.rows[0].status, "direct_media_found");
+  assert.equal(report.rows[0].entity_mismatch_candidate_count, 0);
+  assert.equal(report.rows[0].source_duration_s, 32.67);
+});
+
 test("direct-media discovery rejects Steam trailer manifests from a different app id", async () => {
   const report = await buildOfficialDirectMediaDiscoveryReport({
     entries: [

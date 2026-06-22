@@ -411,6 +411,64 @@ test("candidate supply monitor separates fresh YouTube runway from platform catc
   assert.match(formatCandidateSupplyMonitorDiscord(report), /Fresh YouTube-ready: 0\/5/);
 });
 
+test("candidate supply excludes terminal duplicate-blocked enabled actions from green runway", () => {
+  const now = new Date("2026-06-22T18:00:00.000Z");
+  const candidateReport = {
+    generated_at: now.toISOString(),
+    totals: { stories_seen: 1, returned: 1, pending_audio: 0 },
+    candidates: [
+      candidate("terminal-duplicate-youtube", {
+        title: "Cyberpunk 2077's Trust Debt",
+        source: {
+          source_type: "rss",
+          exported_path: "output/goal-proof/batch/terminal-duplicate-youtube/visual_v4_render.mp4",
+          already_published_platforms: ["instagram_reels", "facebook_reels"],
+          missing_enabled_platforms: ["youtube_shorts"],
+        },
+      }),
+    ],
+  };
+
+  const report = buildCandidateSupplyReport({
+    stories: [],
+    candidateReport,
+    guardedLiveDispatchExecutorReport: {
+      blocked_actions: [
+        {
+          story_id: "terminal-duplicate-youtube",
+          platform: "youtube_shorts",
+          outcome: "duplicate_blocked",
+          error: "duplicate_blocked: Similar to existing: \"Cyberpunk 2077's Trust Debt\"",
+          blockers: ["duplicate_blocked"],
+        },
+      ],
+    },
+    channelConfig: {},
+    now,
+    targets: {
+      greenReadyCandidates: 1,
+      sourceSafeCandidates: 1,
+      v4ReadyCandidates: 1,
+      freshSourceBackedStories: 0,
+      publishWindows24h: 1,
+    },
+  });
+
+  assert.equal(report.summary.raw_preflight_green_ready_candidates, 1);
+  assert.equal(report.summary.terminal_duplicate_blocked_action_count, 1);
+  assert.equal(report.summary.terminal_duplicate_platform_blocked_candidate_count, 1);
+  assert.equal(report.summary.green_ready_candidates, 0);
+  assert.equal(report.summary.fresh_youtube_upload_candidates, 0);
+  assert.equal(report.summary.catch_up_only_green_candidates, 0);
+  assert.ok(report.blockers.includes("green_ready_candidate_buffer_empty"));
+  assert.ok(report.blockers.includes("fresh_youtube_upload_candidate_buffer_empty"));
+  assert.ok(report.warnings.includes("terminal_duplicate_blocked_actions_present:1"));
+  const scorecard = report.priority_scorecards.find((item) => item.story_id === "terminal-duplicate-youtube");
+  assert.equal(scorecard.clean_green, false);
+  assert.deepEqual(scorecard.terminal_duplicate_blocked_platforms, ["youtube_shorts"]);
+  assert.match(formatCandidateSupplyMonitorDiscord(report), /terminal duplicate-held 1/);
+});
+
 test("candidate supply report treats current transcript backlog as refill pressure", () => {
   const now = new Date("2026-06-16T22:00:00.000Z");
   const candidateReport = {

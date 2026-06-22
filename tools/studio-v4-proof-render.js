@@ -36,6 +36,7 @@ const FPS = 30;
 const XFADE_S = 0.25;
 const DEFAULT_DIRECT_CLIP_MAX_VISIBLE_DWELL_S = 1.5;
 const DEFAULT_DIRECT_CLIP_MAX_SCENES = 40;
+const OVERLAY_ANTI_FREEZE_NOISE_STRENGTH = 10;
 const FRAME_WIDTH_PX = 1080;
 const FRAME_HEIGHT_PX = 1920;
 const SAFE_RIGHT_PX = 42;
@@ -980,7 +981,11 @@ function drawtextLinesForBlock(block, { fontOpt, fontcolor, enable, shadow = tru
 function buildOverlayChain({ story, inputLabel, outputLabel, durationS, fontOpt }) {
   const layout = buildOverlayLayout({ story });
   const blockById = Object.fromEntries(layout.text_blocks.map((block) => [block.id, block]));
-  const suppressStoryCards = usesOwnedGeneratedMotionDeck(story);
+  const suppressAllStoryCards = usesOwnedGeneratedMotionDeck(story);
+  const suppressOpeningStoryCard =
+    suppressAllStoryCards ||
+    story.suppress_opening_story_cards === true ||
+    String(story.visual_repair_lane || "").trim() === "visual_first_frame_rerender";
   const safeMarginMode = story.render_safe_text_margins === true;
   const sideMaskWidth = safeMarginMode ? 72 : 44;
   const sideMaskAlpha = safeMarginMode ? "0.80" : "0.72";
@@ -997,7 +1002,7 @@ function buildOverlayChain({ story, inputLabel, outputLabel, durationS, fontOpt 
     `drawbox=x=${accentRailX}:y='mod(t*240\\,1920)-420':w=3:h=420:color=0x38BDF8@0.34:t=fill`,
     `drawbox=x='-260+mod(t*520\\,1540)':y=0:w=210:h=ih:color=white@0.055:t=fill`,
     `drawbox=x='940-mod(t*340\\,1220)':y=0:w=92:h=ih:color=0xFF6B1A@0.055:t=fill`,
-    ...(suppressStoryCards ? [] : [
+    ...(suppressOpeningStoryCard ? [] : [
     `drawbox=x=${openingCardX}:y=${openingCardY}:w=${openingCardW}:h=${openingCardH}:color=0x111827@0.58:t=fill:enable='between(t,0,3.3)'`,
     `drawbox=x=${openingCardX}:y=${openingCardY}:w=${openingCardW}:h=${openingCardH}:color=0x0B0F19@0.18:t=fill:enable='between(t,0,3.3)'`,
     `drawbox=x=${openingCardX}:y=${openingCardY}:w=${openingCardW}:h=${openingCardH}:color=0xF8FAFC@0.16:t=2:enable='between(t,0,3.3)'`,
@@ -1010,6 +1015,8 @@ function buildOverlayChain({ story, inputLabel, outputLabel, durationS, fontOpt 
     ...drawtextLinesForBlock(blockById.top_source_lock, { fontOpt, fontcolor: "0xFFB15C", enable: "between(t,0,3.3)", shadow: false }),
     `drawbox=x='${openingCardX + 24}+mod(t*380\\,760)':y=${openingCardY + 12}:w=92:h=${openingCardH - 24}:color=white@0.046:t=fill:enable='between(t,0,3.3)'`,
     ...drawtextLinesForBlock(blockById.hook_card, { fontOpt, fontcolor: "white", enable: "between(t,0,3.3)" }),
+    ]),
+    ...(suppressAllStoryCards ? [] : [
     `drawbox=x=64:y=520:w=956:h=222:color=0x0B0F19@0.48:t=fill:enable='between(t,4.0,8.4)'`,
     `drawbox=x=64:y=520:w=956:h=222:color=0xF8FAFC@0.16:t=2:enable='between(t,4.0,8.4)'`,
     `drawbox=x=64:y=520:w=956:h=4:color=white@0.22:t=fill:enable='between(t,4.0,8.4)'`,
@@ -1028,7 +1035,7 @@ function buildOverlayChain({ story, inputLabel, outputLabel, durationS, fontOpt 
     ...drawtextLinesForBlock(blockById.proof_secondary, { fontOpt, fontcolor: "white", enable: "between(t,16.0,19.3)" }),
     ]),
     `drawtext=text='PULSE GAMING':${fontOpt}:fontcolor=white@0.78:fontsize=28:x=w-tw-42:y=h-92:shadowcolor=black@0.70:shadowx=2:shadowy=2`,
-    `noise=alls=2:allf=t+u`,
+    `noise=alls=${OVERLAY_ANTI_FREEZE_NOISE_STRENGTH}:allf=t+u`,
     `trim=duration=${Number(durationS).toFixed(3)},setpts=PTS-STARTPTS[${outputLabel}]`,
   ].join(",");
 }

@@ -1336,6 +1336,115 @@ test("public copy repair produces script-score-safe rewrites for scheduler-block
   }
 });
 
+test("public copy package repair creates missing script scorecards before scheduler preflight", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-public-copy-missing-scorecard-"));
+  const artifactDir = path.join(root, "batch", "gta6");
+  await fs.ensureDir(artifactDir);
+  const script =
+    "GTA 6 preorders just became a real buying decision. GameSpot reports Rockstar has confirmed GTA 6 preorders launch on June 25, while players still wait for editions, bonuses and price details. That matters because the preorder page is where hype becomes a wallet choice, not just another trailer conversation. The first store details can reveal which platforms Rockstar is pushing hardest, what extras are being used to tempt early buyers and how much the preorder premium version costs. A preorder date does not prove new gameplay is coming that day, and it does not mean every version will be worth buying. Separate the confirmed preorder timing from the missing price details, bonus details and platform details before locking money in. That is also where impulse buying gets risky, because a preorder button can arrive before the clearest value comparison does. The question is not whether GTA 6 will be huge; it is which version actually makes sense to buy first. If the store page lands cleanly, GTA 6 finally shifts from anticipation into the first real buy, wait or skip argument. Follow Pulse Gaming so you never miss a beat.";
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "gta6-scorecard",
+    canonical_subject: "GTA 6",
+    canonical_game: "GTA 6",
+    selected_title: "GTA 6 Preorders Have A Price Risk",
+    short_title: "GTA 6 Preorders Have A Price Risk",
+    first_spoken_line: "GTA 6 preorders just became a real buying decision.",
+    primary_source: "GameSpot",
+    source_card_label: "GameSpot",
+    confirmed_claims: [
+      "GameSpot reports Rockstar has confirmed GTA 6 preorders launch on June 25.",
+    ],
+    narration_script: script,
+    full_script: script,
+    tts_script: script,
+    description:
+      "GTA 6 preorders start June 25, but players still need the price, editions and bonuses before locking money in. Source: GameSpot.",
+    thumbnail_headline: "GTA 6 PRICE RISK",
+    thumbnail_text: "GTA 6 PRICE RISK",
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+    outputs: {
+      youtube_shorts: {
+        title: "GTA 6 Preorders Have A Price Risk",
+        description:
+          "GTA 6 preorders start June 25, but players still need the price, editions and bonuses before locking money in. Source: GameSpot.",
+      },
+    },
+  }, { spaces: 2 });
+
+  const report = await repairGoalPublicCopyPackages({
+    storyPackages: [{ story_id: "gta6-scorecard", artifact_dir: artifactDir }],
+    generatedAt: "2026-06-22T17:40:00.000Z",
+  });
+
+  assert.equal(report.summary.changed_count, 1, JSON.stringify(report, null, 2));
+  assert.equal(report.changed[0].status, "script_scorecard_refreshed");
+  assert.equal(report.changed[0].public_copy_regeneration_pending, false);
+  const savedScorecard = await fs.readJson(path.join(artifactDir, "script_scorecard.json"));
+  assert.equal(savedScorecard.verdict, "viral_ready", JSON.stringify(savedScorecard, null, 2));
+  assert.deepEqual(savedScorecard.blockers, [], JSON.stringify(savedScorecard, null, 2));
+  assert.ok(savedScorecard.viral_score >= 75, JSON.stringify(savedScorecard, null, 2));
+});
+
+test("public copy package repair keeps GTA preorder platform copy out of deal filler", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-public-copy-gta-platform-"));
+  const artifactDir = path.join(root, "batch", "gta6-platform");
+  await fs.ensureDir(artifactDir);
+  const script =
+    "GTA 6 preorders just became a real buying decision. GameSpot reports Rockstar confirmed GTA 6 preorders begin on June 25, while price, editions and bonuses still need checking. The risk is not whether GTA 6 will be huge; it is whether the first store page makes the value clear. Price, editions and bonuses decide whether fans buy early, wait or argue about the premium version. That turns the first store page into a real buy, wait or skip argument. Follow Pulse Gaming so you never miss a beat.";
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "gta6-platform",
+    canonical_subject: "GTA 6",
+    canonical_game: "GTA 6",
+    selected_title: "GTA 6 Preorders Have A Price Risk",
+    short_title: "GTA 6 Preorders Have A Price Risk",
+    first_spoken_line: "GTA 6 preorders just became a real buying decision.",
+    primary_source: "GameSpot",
+    source_card_label: "GameSpot",
+    confirmed_claims: [
+      "GameSpot reports Rockstar confirmed GTA 6 preorders begin on June 25.",
+    ],
+    narration_script: script,
+    full_script: script,
+    tts_script: script,
+    description:
+      "GTA 6 preorders start June 25, but players still need the price, editions and bonuses before locking money in. That turns hype into a buy, wait or skip decision. Source: GameSpot.",
+    thumbnail_headline: "GTA 6 PRICE RISK",
+    thumbnail_text: "GTA 6 PRICE RISK",
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "script_scorecard.json"), {
+    verdict: "viral_ready",
+    viral_score: 90,
+    blockers: [],
+    warnings: [],
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+    outputs: {
+      youtube_shorts: {
+        title: "GTA 6: source_locked_update",
+        description: "GTA 6: source_locked_update. Source: GameSpot.",
+      },
+      instagram_reels: {
+        caption: "GTA 6: source_locked_update. Source: GameSpot.",
+      },
+      facebook_reels: {
+        page_caption: "GTA 6: source_locked_update. Source: GameSpot.",
+      },
+    },
+  }, { spaces: 2 });
+
+  const report = await repairGoalPublicCopyPackages({
+    storyPackages: [{ story_id: "gta6-platform", artifact_dir: artifactDir }],
+    generatedAt: "2026-06-22T17:45:00.000Z",
+  });
+
+  assert.equal(report.changed[0].status, "platform_pack_synced", JSON.stringify(report, null, 2));
+  const platformManifest = await fs.readJson(path.join(artifactDir, "platform_publish_manifest.json"));
+  const platformCopy = JSON.stringify(platformManifest.outputs);
+  assert.match(platformManifest.outputs.youtube_shorts.description, /price, editions and bonuses decide/i);
+  assert.doesNotMatch(platformCopy, /saving|deal|discount|source_locked_update/i);
+});
+
 test("public copy package repair refreshes stale script scorecards before scheduler preflight", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-public-copy-script-score-"));
   const artifactDir = path.join(root, "batch", "v-rising");

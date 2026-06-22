@@ -13,7 +13,12 @@ const {
 const {
   buildStudioV4CanonicalPacket,
 } = require("../../lib/studio/v4/canonical-policy");
-const { normaliseStory, parseArgs } = require("../../tools/studio-v4-motion-pack");
+const {
+  mergePreviousMotionPacks,
+  normaliseStory,
+  parseArgs,
+  previousMotionPackFromFootageInventory,
+} = require("../../tools/studio-v4-motion-pack");
 const packageJson = require("../../package.json");
 
 function forzaStory(overrides = {}) {
@@ -1890,4 +1895,97 @@ test("Visual V4 motion pack CLI hydrates sparse cutover package rows from canoni
   assert.equal(story.game_title, "Star Wars Zero Company");
   assert.equal(story.primary_entity, "Star Wars Zero Company");
   assert.equal(story.full_script, "Star Wars Zero Company is trying to be more than Star Wars XCOM.");
+});
+
+test("Visual V4 motion pack counts owned explainer clips from package footage inventory", () => {
+  const story = {
+    id: "halo-ps5-account-catch",
+    title: "Halo's PS5 Account Catch",
+    canonical_subject: "Halo: Campaign Evolved",
+    canonical_game: "Halo: Campaign Evolved",
+    full_script:
+      "Halo on PS5 has an Xbox account requirement, and players should know the setup friction before they buy.",
+  };
+  const footageInventory = {
+    motion_inventory: {
+      accepted_local_clips: Array.from({ length: 5 }, (_, index) => ({
+        id: `halo-owned-motion-${index + 1}`,
+        source_family: `halo_owned_motion_${index + 1}`,
+        motion_family: `halo_owned_motion_${index + 1}`,
+        path: `C:\\media\\halo-owned-motion-${index + 1}.mp4`,
+        local_materialized_path: `C:\\media\\halo-owned-motion-${index + 1}.mp4`,
+        source_url: `local://pulse-generated-motion/halo-ps5-account-catch/${index + 1}`,
+        source_type: "internally_generated_motion_graphic",
+        media_kind: "owned_explainer_motion",
+        rights_basis: "owned_generated_editorial_motion_graphic",
+        licence_basis: "owned_generated_editorial_motion_graphic",
+        allowed_use: "finished_editorial_video_only",
+        durationS: 2.8,
+        validated: true,
+        counts_towards_motion_readiness: true,
+      })),
+    },
+  };
+
+  const pack = buildVisualV4MotionPack({
+    story,
+    trustedFootageReport: {
+      accepted_sources: [
+        {
+          source_id: "xbox-official-youtube",
+          display_name: "Xbox official YouTube",
+          source_tier: "official",
+          source_family: "xbox_official_youtube",
+          reference_url: "https://www.youtube.com/@Xbox",
+          entities: ["Halo"],
+          allowed_render_use: "reference_only_by_default",
+          rights_risk_class: "official_reference_only",
+        },
+      ],
+    },
+    previousMotionPack: previousMotionPackFromFootageInventory(story, footageInventory),
+    segmentValidationReport: segmentReport([]),
+    generatedAt: "2026-06-22T19:58:00.000Z",
+  });
+
+  assert.equal(pack.readiness.status, "v4_motion_ready");
+  assert.equal(pack.motion_budget.product_motion_story, false);
+  assert.equal(pack.clips.length, 5);
+  assert.equal(pack.motion_budget.available_motion_clips, 5);
+  assert.equal(pack.motion_budget.available_distinct_families, 5);
+  assert.ok(pack.clips.every((clip) => clip.provenance.segment_motion_class === "owned_explainer_motion"));
+  assert.ok(pack.clips.every((clip) => clip.source_url_kind === "local_video_file"));
+  assert.ok(pack.clips.every((clip) => clip.allowed_render_use === "finished_editorial_video_only"));
+  assert.ok(pack.clips.every((clip) => clip.rights_risk_class === "owned_generated_motion"));
+  assert.ok(pack.clips.every((clip) => clip.licence_basis === "owned_generated_editorial_motion_graphic"));
+});
+
+test("Visual V4 motion pack previous-pack merge lets fresh inventory override stale clip metadata", () => {
+  const merged = mergePreviousMotionPacks(
+    {
+      clips: [
+        {
+          id: "owned-clip-1",
+          source_family: "owned_family",
+          path: "C:\\media\\owned-clip-1.mp4",
+          rights_risk_class: "official_reference_only",
+        },
+      ],
+    },
+    {
+      clips: [
+        {
+          id: "owned-clip-1",
+          source_family: "owned_family",
+          path: "C:\\media\\owned-clip-1.mp4",
+          rights_risk_class: "owned_generated_motion",
+          licence_basis: "owned_generated_editorial_motion_graphic",
+        },
+      ],
+    },
+  );
+
+  assert.equal(merged.clips.length, 1);
+  assert.equal(merged.clips[0].rights_risk_class, "owned_generated_motion");
+  assert.equal(merged.clips[0].licence_basis, "owned_generated_editorial_motion_graphic");
 });

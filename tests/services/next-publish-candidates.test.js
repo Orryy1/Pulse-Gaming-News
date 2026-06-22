@@ -3412,6 +3412,69 @@ test("visual entity preflight accepts Steam direct motion when rights ledger own
   assert.match(result.evidence.direct_motion_assets[0].provenance_text, /cyberpunk 2077/);
 });
 
+test("visual entity preflight accepts URL-prefixed opaque sidecars when rights owner names the subject", async () => {
+  const clipPath = path.join(
+    "test",
+    "output",
+    "next-publish-candidates-url-prefixed-sidecar-owner",
+    "halo_campaign_evolved_v4_clip_1_segment_direct_motion_1.mp4",
+  );
+  const steamUrl =
+    "https://video.akamai.steamstatic.com/store_trailers/2806050/1673450740/ed598dc7526249e6bd74f53732f9a6ecf71f8063/1780963408/hls_264_master.m3u8?t=1781050956";
+  await fs.ensureDir(path.dirname(clipPath));
+  await fs.writeFile(clipPath, "placeholder");
+  await fs.writeJson(`${clipPath}.json`, {
+    schema_version: 1,
+    source_url: steamUrl,
+    source_family: `url:${steamUrl}_window_42_40_5`,
+    rights_basis: "official_direct_media",
+  });
+
+  const result = await visualEntityPreflightForStory(
+    baseStory({
+      id: "rss_692aa314ed95e930",
+      title: "Halo's PS5 Account Catch",
+      canonical_subject: "Halo: Campaign Evolved",
+      canonical_game: "Halo: Campaign Evolved",
+      primary_source_url:
+        "https://www.eurogamer.net/halo-campaign-evolved-ps5-xbox-account-gamertag-requirement",
+      scheduler_bridge_source: "goal_production_cutover",
+      visual_v4_bridge_video_clips: [
+        {
+          id: "segment_direct_motion_1",
+          path: clipPath,
+          source_url: steamUrl,
+          source_family: `halo_campaign_evolved_url:${steamUrl}_window_42_40_5`,
+          source_type: "steam_movie",
+          media_kind: "direct_video",
+          rights_basis: "official_direct_media",
+        },
+      ],
+      video_clips: [clipPath],
+      rights_ledger: {
+        verdict: "pass",
+        assets: [
+          {
+            id: "segment_direct_motion_1",
+            path: clipPath,
+            source_url: steamUrl,
+            source_owner: "Halo: Campaign Evolved",
+            source_title: "Halo: Campaign Evolved Official Trailer",
+            source_type: "steam_movie",
+            media_kind: "direct_video",
+            licence_basis: "official_direct_media",
+            approval_status: "approved_for_transformative_editorial_use",
+          },
+        ],
+      },
+    }),
+  );
+
+  assert.equal(result.result, "pass");
+  assert.ok(!result.failures.includes("direct_motion_subject_mismatch"));
+  assert.match(result.evidence.direct_motion_assets[0].provenance_text, /halo/);
+});
+
 test("visual entity preflight blocks Steam direct motion when rights ledger owner names another subject", async () => {
   const clipPath = path.join(
     "test",

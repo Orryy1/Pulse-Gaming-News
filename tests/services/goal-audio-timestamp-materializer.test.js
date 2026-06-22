@@ -22,11 +22,15 @@ const ACCEPTED_SLEEPY_LIAM = {
 };
 
 function charAlignment(text) {
+  return charAlignmentWithStep(text, 0.05);
+}
+
+function charAlignmentWithStep(text, step = 0.05) {
   const characters = [...text];
   return {
     characters,
-    character_start_times_seconds: characters.map((_, index) => index * 0.05),
-    character_end_times_seconds: characters.map((_, index) => index * 0.05 + 0.04),
+    character_start_times_seconds: characters.map((_, index) => index * step),
+    character_end_times_seconds: characters.map((_, index) => index * step + Math.max(0.04, step - 0.01)),
   };
 }
 
@@ -124,7 +128,7 @@ test("goal audio materializer passes an explicit TTS rate to narration generatio
       calls.push({ text, outputPath, rate, provider });
       await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 1));
       await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
-        alignment: charAlignment(text),
+        alignment: charAlignmentWithStep(text, 0.07),
       });
       return { ok: true };
     },
@@ -299,6 +303,69 @@ test("goal audio materializer promotes workbench ready pairs without forced TTS 
   assert.equal(manifest.timestamp_whisper_alignment.script_inserted_actual_word_count, 0);
 });
 
+test("goal audio materializer trusts strict ready pairs with harmless transcript formatting drift", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-ready-format-drift-"));
+  const script =
+    "If Activision prices this cleanly, it gets an easy goodwill win; if not, the backlash writes itself before launch.";
+  const transcript =
+    "If Activision prices this cleanly, it gets an easy Goodwill win. If not, the backlash writes itself before launch.";
+  const artifactDir = await makePackage(root, "story-ready-format-drift", {
+    selected_title: "Black Ops Classics Face A Price Test",
+    narration_script: script,
+  });
+  const audioPath = path.join(root, "output", "audio", "story-ready-format-drift.mp3");
+  const timestampPath = path.join(root, "output", "audio", "story-ready-format-drift_timestamps.json");
+  await fs.outputFile(audioPath, Buffer.alloc(4096, 1));
+  await fs.outputJson(timestampPath, {
+    words: whisperWordsFromScript(transcript),
+    meta: {
+      transcript,
+      wordTimestampSource: "local_whisper_word_alignment",
+      timestampWhisperAlignment: {
+        repaired: true,
+        script_inserted_actual_word_count: 0,
+        script_trailing_actual_word_count: 0,
+      },
+    },
+  });
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    provider: "elevenlabs",
+    alignmentMode: "whisper",
+    workbenchReport: {
+      local_tts: { verdict: "green", ready: true },
+      elevenlabs_tts: { provider: "elevenlabs", ready: true, configured: true },
+      jobs: [
+        {
+          ...workbenchJob("story-ready-format-drift", artifactDir),
+          status: "ready_audio_timestamp_pair",
+          missing: [],
+          audio: { path: audioPath, exists: true, usable: true },
+          timestamps: {
+            path: timestampPath,
+            exists: true,
+            usable: true,
+            word_count: script.split(/\s+/).length,
+          },
+        },
+      ],
+    },
+    generatedAt: "2026-06-22T18:40:00.000Z",
+    alignWordsWithAudio: async () => {
+      throw new Error("should not rerun Whisper for harmless transcript formatting drift");
+    },
+    generateTtsForStory: async () => {
+      throw new Error("should not regenerate workbench-ready audio");
+    },
+  });
+
+  assert.equal(report.summary.candidate_count, 1);
+  assert.equal(report.summary.skipped_existing_count, 1);
+  assert.equal(report.summary.materialized_count, 0);
+  assert.equal(report.jobs[0].status, "skipped_existing_ready_pair");
+});
+
 test("goal audio materializer syncs canonical narration metadata after public-copy repair", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-canonical-sync-"));
   const repairedScript = "The Expanse finally showed real gameplay.";
@@ -325,7 +392,7 @@ test("goal audio materializer syncs canonical narration metadata after public-co
     generateTtsForStory: async ({ text, outputPath }) => {
       await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 1));
       await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
-        alignment: charAlignment(text),
+        alignment: charAlignmentWithStep(text, 0.07),
       });
       return { ok: true };
     },
@@ -373,7 +440,7 @@ test("goal audio materializer refreshes stale narration and caption manifests af
     generateTtsForStory: async ({ text, outputPath }) => {
       await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 1));
       await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
-        alignment: charAlignment(text),
+        alignment: charAlignmentWithStep(text, 0.07),
       });
       return { ok: true };
     },
@@ -384,6 +451,10 @@ test("goal audio materializer refreshes stale narration and caption manifests af
   assert.equal(narration.transcript, "Hades two finally has a PlayStation and Xbox date.");
   assert.equal(narration.final_transcript, "Hades two finally has a PlayStation and Xbox date.");
   assert.equal(narration.word_timestamp_source, "local_alignment_normalised");
+  assert.equal(narration.status, "ready");
+  assert.deepEqual(narration.blockers, []);
+  assert.equal(narration.checks.narration_audio_present, true);
+  assert.equal(narration.checks.narration_audio_usable, true);
   assert.doesNotMatch(narration.transcript, /Hades, two/);
 
   const captions = await fs.readJson(path.join(artifactDir, "caption_manifest.json"));
@@ -391,10 +462,23 @@ test("goal audio materializer refreshes stale narration and caption manifests af
   assert.equal(captions.word_timestamp_source, "local_alignment_normalised");
   assert.equal(captions.transcript, "Hades two finally has a PlayStation and Xbox date.");
   assert.equal(captions.caption_srt_path, path.join(artifactDir, "captions.srt"));
+  assert.equal(captions.status, "ready");
+  assert.deepEqual(captions.blockers, []);
+  assert.equal(captions.checks.caption_file_present, true);
+  assert.equal(captions.checks.captions_well_formed, true);
   const srt = await fs.readFile(path.join(artifactDir, "captions.srt"), "utf8");
   assert.match(srt, /Hades II finally/);
   assert.match(srt, /has a PlayStation/);
   assert.doesNotMatch(srt, /stale caption|Hades, two/);
+
+  const voiceQuality = await fs.readJson(path.join(artifactDir, "voice_quality_report.json"));
+  assert.equal(voiceQuality.generated_at, "2026-05-22T06:00:50.000Z");
+  assert.equal(voiceQuality.verdict, "PASS");
+  assert.deepEqual(voiceQuality.blockers, []);
+  assert.equal(voiceQuality.checks.narration_audio_present, true);
+  assert.equal(voiceQuality.checks.narration_audio_usable, true);
+  assert.equal(voiceQuality.checks.captions_well_formed, true);
+  assert.equal(voiceQuality.word_timestamp_count, script.split(/\s+/).length);
 });
 
 test("goal audio materializer separates spoken TTS text from display captions", async () => {
@@ -1307,6 +1391,30 @@ test("goal audio materializer aligns GTA sequel numbers in spoken form while pre
   assert.equal(timestamps.meta.transcript, "G T A five just became the G T A six waiting room.");
   assert.equal(timestamps.meta.wordTimestampSource, "local_whisper_word_alignment");
   assert.equal(timestamps.meta.timestampWhisperAlignment.script_inserted_actual_word_count, 0);
+});
+
+test("goal audio materializer coverage treats compact and split outlet/game phrases as same words", () => {
+  const scriptText = "GameSpot says G T A six preorders open today, wait or skip.";
+  const words = [
+    { word: "Game", start: 0, end: 0.18 },
+    { word: "Spot", start: 0.18, end: 0.36 },
+    { word: "says", start: 0.38, end: 0.52 },
+    { word: "GTA", start: 0.54, end: 0.74 },
+    { word: "six", start: 0.76, end: 0.94 },
+    { word: "pre", start: 0.96, end: 1.08 },
+    { word: "order", start: 1.08, end: 1.24 },
+    { word: "open", start: 1.26, end: 1.44 },
+    { word: "today,", start: 1.46, end: 1.7 },
+    { word: "weight", start: 1.72, end: 1.94 },
+    { word: "or", start: 1.96, end: 2.04 },
+    { word: "skip.", start: 2.06, end: 2.3 },
+  ];
+
+  const coverage = _testables.analyseWhisperScriptCoverage({ words, scriptText });
+
+  assert.equal(coverage.ok, true);
+  assert.equal(coverage.inserted_actual_word_count, 0);
+  assert.equal(coverage.unmatched_expected_word_count, 0);
 });
 
 test("goal audio materializer aligns hyphenated script words when Whisper splits them", async () => {
@@ -2648,6 +2756,50 @@ test("goal audio materializer can use ElevenLabs readiness from environment when
   assert.equal(report.elevenlabs_tts.ready, true);
   assert.equal(report.elevenlabs_tts.secret_values_exposed, false);
   assert.equal(report.safety.external_tts_provider_used, "elevenlabs");
+});
+
+test("goal audio materializer recomputes ElevenLabs readiness when explicit provider overrides stale workbench", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-stale-elevenlabs-"));
+  const artifactDir = await makePackage(root, "story-stale-elevenlabs");
+  const calls = [];
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    workbenchReport: {
+      local_tts: { verdict: "green", ready: true },
+      elevenlabs_tts: {
+        provider: "elevenlabs",
+        ready: false,
+        allowed: false,
+        configured: true,
+        missing: [],
+        reason: "external ElevenLabs generation requires --provider elevenlabs; local clone is default",
+      },
+      provider_preference: "auto",
+      jobs: [workbenchJob("story-stale-elevenlabs", artifactDir)],
+    },
+    provider: "elevenlabs",
+    ttsEnv: {
+      ELEVENLABS_API_KEY: "test-key",
+      ELEVENLABS_VOICE_ID: "test-voice",
+    },
+    generatedAt: "2026-05-22T06:02:40.000Z",
+    generateTtsForStory: async ({ text, outputPath, provider }) => {
+      calls.push({ text, outputPath, provider });
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 1));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignment(text),
+      });
+      return { ok: true };
+    },
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].provider, "elevenlabs");
+  assert.equal(report.summary.materialized_count, 1);
+  assert.equal(report.elevenlabs_tts.ready, true);
+  assert.equal(report.elevenlabs_tts.allowed, true);
+  assert.equal(report.elevenlabs_tts.secret_values_exposed, false);
 });
 
 test("goal audio materializer honours explicit local provider over workbench ElevenLabs fallback", async () => {

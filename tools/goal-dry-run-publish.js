@@ -27,6 +27,8 @@ function parseArgs(argv = process.argv.slice(2)) {
     repairWorkOrderPath: null,
     antiSpamReportPath: null,
     publishedPlatformEvidencePath: null,
+    guardedLiveDispatchExecutorReportPath: null,
+    guardedLiveDispatchExecutorReportDefaultEnabled: true,
     motionPackRoot: null,
     requireSchedulerPreflight: true,
     outDir: path.join(process.cwd(), "output", "goal-contract"),
@@ -45,6 +47,14 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--repair-work-order") args.repairWorkOrderPath = argv[++i] || "";
     else if (arg === "--anti-spam-report") args.antiSpamReportPath = argv[++i] || "";
     else if (arg === "--published-platform-evidence") args.publishedPlatformEvidencePath = argv[++i] || "";
+    else if (arg === "--guarded-live-dispatch-report" || arg === "--executor-report") {
+      args.guardedLiveDispatchExecutorReportPath = argv[++i] || "";
+      args.guardedLiveDispatchExecutorReportDefaultEnabled = true;
+    }
+    else if (arg === "--no-guarded-live-dispatch-report" || arg === "--no-executor-report") {
+      args.guardedLiveDispatchExecutorReportPath = null;
+      args.guardedLiveDispatchExecutorReportDefaultEnabled = false;
+    }
     else if (arg === "--motion-pack-root") args.motionPackRoot = argv[++i] || "";
     else if (arg === "--no-scheduler-preflight") args.requireSchedulerPreflight = false;
     else if (arg === "--out-dir") args.outDir = argv[++i] || args.outDir;
@@ -68,6 +78,8 @@ function usage() {
     "  --repair-work-order <path> Render input repair work order",
     "  --anti-spam-report <path>  Goal20 anti-spam readiness report",
     "  --published-platform-evidence <path> Optional read-only published platform evidence JSON",
+    "  --guarded-live-dispatch-report <path> Prior guarded executor report for terminal duplicate holds",
+    "  --no-guarded-live-dispatch-report Ignore prior guarded executor report",
     "  --motion-pack-root <dir>  Story-scoped V4 motion pack manifest directory",
     "  --no-scheduler-preflight  Diagnostic mode only; do not require scheduler preflight evidence",
     "  --out-dir <dir>           Output directory",
@@ -211,6 +223,19 @@ async function readAntiSpamReport(root, explicitPath = null) {
   const candidates = explicitPath
     ? [path.resolve(root, explicitPath)]
     : [path.join(root, "output", "goal-20", "goal20_readiness_report.json")];
+  for (const filePath of candidates) {
+    if (!(await fs.pathExists(filePath))) continue;
+    return fs.readJson(filePath);
+  }
+  return null;
+}
+
+async function readGuardedLiveDispatchExecutorReport(root, explicitPath = null, defaultEnabled = true) {
+  const candidates = explicitPath
+    ? [path.resolve(root, explicitPath)]
+    : defaultEnabled
+      ? [path.join(root, "output", "goal-contract", "guarded_live_dispatch_executor_report.json")]
+      : [];
   for (const filePath of candidates) {
     if (!(await fs.pathExists(filePath))) continue;
     return fs.readJson(filePath);
@@ -503,12 +528,24 @@ async function main(argv = process.argv.slice(2)) {
     return { help: true };
   }
   const root = path.resolve(args.root);
-  const [storyPackages, candidatePreflightReport, platformOperationalConfig, repairWorkOrder, upstreamAntiSpamReport] = await Promise.all([
+  const [
+    storyPackages,
+    candidatePreflightReport,
+    platformOperationalConfig,
+    repairWorkOrder,
+    upstreamAntiSpamReport,
+    guardedLiveDispatchExecutorReport,
+  ] = await Promise.all([
     readStoryPackages(root, args.storyPackagesPath),
     readCandidateReport(root, args.candidateReportPath),
     readPlatformOperationalConfig(root, args.platformStatusPath),
     readRepairWorkOrder(root, args.repairWorkOrderPath),
     readAntiSpamReport(root, args.antiSpamReportPath),
+    readGuardedLiveDispatchExecutorReport(
+      root,
+      args.guardedLiveDispatchExecutorReportPath,
+      args.guardedLiveDispatchExecutorReportDefaultEnabled,
+    ),
   ]);
   const mergedStoryPackages = mergePreflightCandidateStoryPackages(
     storyPackages,
@@ -528,6 +565,7 @@ async function main(argv = process.argv.slice(2)) {
     repairWorkOrder,
     upstreamAntiSpamReport,
     publishedPlatformEvidence,
+    guardedLiveDispatchExecutorReport,
     motionPackRoot: path.resolve(root, args.motionPackRoot || path.join("output", "studio-v4", "motion-packs")),
     generatedAt: args.generatedAt || new Date().toISOString(),
   });
@@ -552,6 +590,7 @@ module.exports = {
   readPlatformOperationalConfig,
   readRepairWorkOrder,
   readAntiSpamReport,
+  readGuardedLiveDispatchExecutorReport,
   readStoryPackages,
   readPublishedPlatformEvidence,
   buildPublishedPlatformEvidence,

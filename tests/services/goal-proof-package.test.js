@@ -1242,6 +1242,38 @@ test("goal proof package keeps subject parity and grammar for mascot kart deriva
   assert.doesNotMatch(outputs.pinterest.pin_description, /:\s+is\s+/i);
 });
 
+test("goal proof package does not rewrite unrelated nostalgia copy into Diddy framing", () => {
+  const story = greenStory();
+  story.id = "halo-ps5-account-proof";
+  story.canonical_subject = "Halo: Campaign Evolved";
+  story.canonical_game = "Halo: Campaign Evolved";
+  story.title = "Halo's PS5 Account Catch";
+  story.suggested_title = story.title;
+  story.public_title = story.title;
+  story.suggested_thumbnail_text = "PS5 ACCOUNT CATCH";
+  story.description =
+    "Halo: Campaign Evolved on PS5 now has an Xbox account catch. Check it before you buy, because one extra sign-in can turn split-screen co-op from an easy nostalgia play into setup friction. Source: Eurogamer.";
+  story.full_script =
+    "Halo: Campaign Evolved has a PS5 catch players should know before they buy. Eurogamer reports the campaign is coming to PlayStation, but an Xbox account is still part of the setup. That matters because split-screen nostalgia only works if the setup feels painless. Follow Pulse Gaming so you never miss a beat.";
+  story.source_name = "Eurogamer";
+  story.primary_source = "Eurogamer";
+  story.source_card_label = "Eurogamer";
+  story.thumbnail_source_label = "Eurogamer";
+  story.article_url = "https://www.eurogamer.net/halo-campaign-evolved-ps5-xbox-account";
+  story.primary_source_url = story.article_url;
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-06-22T00:25:00.000Z",
+  });
+
+  const outputs = pack.platform_publish_manifest.outputs;
+  assert.doesNotMatch(outputs.youtube_shorts.cover_frame.headline, /DIDDY/i);
+  assert.doesNotMatch(outputs.instagram_reels.cover_frame.headline, /DIDDY/i);
+  assert.doesNotMatch(JSON.stringify(outputs.facebook_reels), /DIDDY/i);
+});
+
 test("goal proof package carries landing-page attribution into publish packs", () => {
   const story = greenStory();
   story.affiliate_link_manifest = buildAffiliateLinkManifest({

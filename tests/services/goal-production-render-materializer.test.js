@@ -363,6 +363,46 @@ test("goal production render materializer passes visual safe-margin repair inten
   assert.deepEqual(calls[0].visual_repair_blocker_types, ["possible_edge_text_cutoff"]);
 });
 
+test("goal production render materializer passes first-frame repair intent to renderer", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-first-frame-"));
+  const artifactDir = await makePackage(root, "first-frame-rerender");
+  const calls = [];
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: {
+      jobs: [
+        readyJob("first-frame-rerender", artifactDir, {
+          repair_lane: "visual_first_frame_rerender",
+          blocker_types: ["weak_first_frame_visual_taste:white_text_on_dark_card"],
+        }),
+      ],
+    },
+    generatedAt: "2026-06-22T17:25:00.000Z",
+    force: true,
+    renderProof: async ({ storyJson, output }) => {
+      const story = await fs.readJson(storyJson);
+      calls.push(story);
+      await fs.outputFile(output, Buffer.alloc(4096, 22));
+      return {
+        story_id: story.id,
+        output,
+        clips: story.video_clips.length,
+        rendered_duration_s: 24,
+        size_bytes: 4096,
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1);
+  assert.equal(calls[0].render_safe_text_margins, false);
+  assert.equal(calls[0].suppress_opening_story_cards, true);
+  assert.equal(calls[0].visual_repair_lane, "visual_first_frame_rerender");
+  assert.deepEqual(calls[0].visual_repair_blocker_types, [
+    "weak_first_frame_visual_taste:white_text_on_dark_card",
+  ]);
+});
+
 test("goal production render materializer rotates risky opener only for visual safe-margin repair", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-opener-rotation-"));
   const normalArtifactDir = await makePackage(root, "normal-opener-order");

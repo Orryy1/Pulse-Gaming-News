@@ -40,6 +40,34 @@ async function makePackage(root, storyId = "pokemon-go-official-stills") {
   return { storyId, artifactDir };
 }
 
+async function makeFreshGoalContractPackage(root, storyId = "gta-vi-official-stills") {
+  const artifactDir = path.join(root, "output", "goal-contract", "fresh-green-buffer-local-promotion-20260622", "packages", storyId);
+  await fs.ensureDir(artifactDir);
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: storyId,
+    canonical_subject: "Grand Theft Auto VI",
+    canonical_game: "Grand Theft Auto VI",
+    selected_title: "GTA 6 Preorders Begin June 25",
+    primary_source: "Rockstar Games",
+    primary_source_url: "https://www.rockstargames.com/VI/media",
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "rights_ledger.json"), {
+    story_id: storyId,
+    verdict: "fail",
+    failures: ["rights:no_rights_record"],
+    records: [],
+    assets: [],
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    motion_inventory: {
+      accepted_local_clips: [],
+      production_motion_clips: [],
+    },
+  }, { spaces: 2 });
+  return { storyId, artifactDir };
+}
+
 function intakeReport(storyId) {
   return {
     schema_version: 1,
@@ -99,6 +127,27 @@ test("official still visual repair writes rights-backed visual stills for real-m
   const footage = await fs.readJson(path.join(artifactDir, "footage_inventory.json"));
   assert.equal(footage.visual_asset_inventory.accepted_official_stills.length, 5);
   assert.equal(footage.motion_inventory.official_still_visual_candidates_added_count, 5);
+});
+
+test("official still visual repair discovers current goal-contract package layout", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-official-stills-fresh-"));
+  const { storyId, artifactDir } = await makeFreshGoalContractPackage(root);
+
+  const report = await repairGoalOfficialStillVisuals({
+    root,
+    intakeReport: intakeReport(storyId),
+    storyIds: [storyId],
+    generatedAt: "2026-06-22T15:35:00.000Z",
+    fetchImage: async () => ({
+      buffer: Buffer.alloc(4096, 22),
+      contentType: "image/jpeg",
+    }),
+  });
+
+  assert.equal(report.summary.repaired_story_count, 1);
+  assert.equal(report.jobs[0].artifact_dir, artifactDir);
+  const rights = await fs.readJson(path.join(artifactDir, "rights_ledger.json"));
+  assert.equal(rights.records.length, 5);
 });
 
 test("official still visual repair rejects unsafe still URLs before fetch", async () => {

@@ -248,6 +248,40 @@ test("normal duration repair work order routes cutover duration-floor queue entr
   assert.equal(workOrder.source_cutover_generated_at, "2026-05-27T01:05:00.000Z");
 });
 
+test("normal duration repair work order routes cutover-ready overlong renders by manifest duration", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-normal-duration-cutover-ready-overlong-"));
+  const artifactDir = await makeArtifact(root, "cutover-ready-long-story", 70.403);
+
+  const workOrder = await buildNormalDurationRepairWorkOrder({
+    generatedAt: "2026-06-22T16:45:00.000Z",
+    dryRunPlan: {
+      generated_at: "2026-06-22T16:39:46.659Z",
+      blocked_stories: [],
+      held_stories: [],
+    },
+    cutoverPlan: {
+      generated_at: "2026-06-22T16:33:08.017Z",
+      ready: [
+        {
+          story_id: "cutover-ready-long-story",
+          artifact_dir: artifactDir,
+          status: "ready_for_dry_run_publish",
+          blockers: [],
+        },
+      ],
+    },
+  });
+
+  assert.equal(workOrder.summary.cutover_ready_story_count, 1);
+  assert.equal(workOrder.summary.repair_required_count, 1);
+  assert.equal(workOrder.summary.skipped_count, 0);
+  assert.equal(workOrder.jobs[0].story_id, "cutover-ready-long-story");
+  assert.equal(workOrder.jobs[0].repair_lane, "normal_production_duration_ceiling");
+  assert.equal(workOrder.jobs[0].current_duration_s, 70.403);
+  assert.equal(workOrder.jobs[0].duration_reduction_required_seconds, 11.403);
+  assert.deepEqual(workOrder.jobs[0].source_blockers, []);
+});
+
 test("normal duration repair work order prefers fresh cutover rerender jobs over stale held blockers", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-normal-duration-cutover-rerender-"));
   const artifactDir = await makeArtifact(root, "fresh-cutover-short", 15.04);

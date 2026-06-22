@@ -477,3 +477,52 @@ test("Footage Empire uses a narrower product-motion budget for hardware accessor
   assert.equal(plan.motion_budget.available_official_product_motion_families, 2);
   assert.ok(plan.readiness.warnings.includes("product_story_limited_motion_budget_requires_premium_owned_motion"));
 });
+
+test("Footage Empire does not treat platform account friction as product motion just because PS5 and buy appear", () => {
+  const story = {
+    id: "halo-ps5-account-catch",
+    canonical_subject: "Halo: Campaign Evolved",
+    canonical_game: "Halo: Campaign Evolved",
+    title: "Halo's PS5 Account Catch",
+    suggested_thumbnail_text: "PS5 CATCH",
+    source_name: "Eurogamer",
+    full_script:
+      "Halo on PS5 just picked up a very Xbox-shaped requirement. Eurogamer reports Halo: Campaign Evolved PS5 players will need an Xbox account and gamertag to play, plus PS Plus for split-screen co-op. The access rules need to be understood before people buy.",
+  };
+  const trustedFootageReport = {
+    accepted_sources: [
+      {
+        source_id: "xbox-official-youtube",
+        display_name: "Xbox official YouTube",
+        source_tier: "official",
+        source_family: "xbox_official_youtube",
+        reference_url: "https://www.youtube.com/@Xbox",
+        entities: ["Halo"],
+        autonomous_motion_candidate: true,
+        allowed_render_use: "reference_only_by_default",
+        rights_risk_class: "official_reference_only",
+      },
+    ],
+  };
+  const localMotionClips = Array.from({ length: 5 }, (_, index) => ({
+    id: `halo-owned-motion-${index + 1}`,
+    source_family: `halo_owned_motion_${index + 1}`,
+    path: `C:\\media\\halo-owned-motion-${index + 1}.mp4`,
+    source_type: "internally_generated_motion_graphic",
+    rights_risk_class: "owned_generated_motion",
+    durationS: 2.8,
+    validated: true,
+    counts_towards_motion_readiness: true,
+  }));
+
+  const plan = buildFootageEmpirePlan({ story, trustedFootageReport, localMotionClips });
+
+  assert.equal(plan.motion_budget.product_motion_story, false);
+  assert.equal(plan.motion_budget.requires_premium_owned_motion, false);
+  assert.equal(plan.motion_budget.required_official_product_motion_scenes, 0);
+  assert.equal(plan.motion_budget.available_motion_clips, 5);
+  assert.equal(plan.motion_budget.available_distinct_families, 5);
+  assert.equal(plan.readiness.status, "v4_motion_ready");
+  assert.ok(!plan.readiness.blockers.includes("official_product_motion_clip_minimum_not_met"));
+  assert.ok(!plan.readiness.blockers.includes("official_product_motion_family_minimum_not_met"));
+});

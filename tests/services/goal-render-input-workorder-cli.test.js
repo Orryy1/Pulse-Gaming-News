@@ -114,6 +114,10 @@ test("goal render input work-order CLI auto-discovers repair evidence reports", 
       validation_reason: index % 2 ? "segment_lacks_gameplay_action_samples" : "segment_contains_low_detail_frame",
     })),
   });
+  await fs.outputFile(
+    path.join(segmentDir, "official_trailer_segment_validation_story_stale_polluted.json"),
+    "[dotenv@17.2.1] injecting env\n{\"segments\":[]}",
+  );
   await fs.outputJson(realMotionPath, {
     jobs: [
       {
@@ -155,6 +159,8 @@ test("goal render input work-order CLI auto-discovers repair evidence reports", 
   assert.equal(action.auto_repairable, false);
   assert.equal(action.dead_end_blocker, true);
   assert.equal(result.workOrder.summary.dead_end_blocker_jobs, 1);
+  assert.equal(result.workOrder.summary.evidence_load_warning_count, 1);
+  assert.match(result.workOrder.evidence_load_warnings[0].path, /official_trailer_segment_validation_story_stale_polluted\.json$/);
 });
 
 test("goal render input work-order CLI includes strict dry-run blocked candidates", async () => {

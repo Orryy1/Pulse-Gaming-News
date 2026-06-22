@@ -140,6 +140,128 @@ function normaliseStory(row) {
   };
 }
 
+function asArray(value) {
+  return Array.isArray(value) ? value.filter(Boolean) : [];
+}
+
+function cleanText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function storyArtifactDir(story = {}) {
+  const artifactDir = cleanText(story.artifact_dir || story.artifactDir || story.output_dir || story.package_dir);
+  return artifactDir ? path.resolve(ROOT, artifactDir) : "";
+}
+
+function isOwnedGeneratedMotionClip(clip = {}) {
+  const text = [
+    clip.media_kind,
+    clip.mediaKind,
+    clip.source_type,
+    clip.sourceType,
+    clip.source_kind,
+    clip.sourceKind,
+    clip.rights_risk_class,
+    clip.rightsRiskClass,
+    clip.licence_basis,
+    clip.license_basis,
+    clip.source_url,
+    clip.sourceUrl,
+  ]
+    .map(cleanText)
+    .join(" ")
+    .toLowerCase();
+  return (
+    text.includes("owned_explainer_motion") ||
+    text.includes("internally_generated_motion_graphic") ||
+    text.includes("owned_generated_motion") ||
+    text.includes("owned_generated_editorial_motion_graphic") ||
+    text.includes("pulse-generated-motion")
+  );
+}
+
+function ownedMotionClipsFromFootageInventory(footageInventory = {}) {
+  return [
+    ...asArray(footageInventory.motion_inventory?.accepted_local_clips),
+    ...asArray(footageInventory.motion_inventory?.production_motion_clips),
+    ...asArray(footageInventory.accepted_local_clips),
+    ...asArray(footageInventory.production_motion_clips),
+  ].filter((clip) => (
+    isOwnedGeneratedMotionClip(clip) &&
+    clip.counts_towards_motion_readiness !== false &&
+    clip.validated !== false
+  ));
+}
+
+function previousMotionPackFromFootageInventory(story = {}, footageInventory = {}) {
+  const storyId = cleanText(story.id || story.story_id);
+  const clips = ownedMotionClipsFromFootageInventory(footageInventory).map((clip, index) => ({
+    ...clip,
+    id: cleanText(clip.id || clip.asset_id || `owned-explainer-${index + 1}`),
+    mediaStartS: Number.isFinite(Number(clip.mediaStartS ?? clip.media_start_s))
+      ? Number(clip.mediaStartS ?? clip.media_start_s)
+      : 0,
+    durationS: Number.isFinite(Number(clip.durationS ?? clip.duration_s ?? clip.duration))
+      ? Number(clip.durationS ?? clip.duration_s ?? clip.duration)
+      : 2.8,
+    validated: true,
+    segmentValidationPassed: true,
+    allowed_for_flash_lane: true,
+    provenance: {
+      ...(clip.provenance || {}),
+      source_report: "footage_inventory_owned_motion",
+      story_id: storyId || clip.provenance?.story_id || null,
+      segment_validated: true,
+      allowed_for_flash_lane: true,
+      validation_reason: "owned_explainer_motion_materialized",
+      segment_motion_class: "owned_explainer_motion",
+      segment_action_score: Number(clip.action_score || clip.provenance?.segment_action_score || 72),
+    },
+  }));
+  return {
+    schema_version: 1,
+    source: "footage_inventory_owned_motion",
+    story_id: storyId || null,
+    clips,
+  };
+}
+
+function mergePreviousMotionPacks(...packs) {
+  const clips = [];
+  const byKey = new Map();
+  for (const pack of packs) {
+    for (const clip of asArray(pack?.clips)) {
+      const key = cleanText(
+        clip.id ||
+          clip.asset_id ||
+          clip.local_materialized_path ||
+          clip.localMaterializedPath ||
+          clip.path ||
+          clip.source_url ||
+          clip.sourceUrl,
+      );
+      if (!key) continue;
+      if (byKey.has(key)) {
+        clips[byKey.get(key)] = {
+          ...clip,
+          provenance: {
+            ...(clips[byKey.get(key)].provenance || {}),
+            ...(clip.provenance || {}),
+          },
+        };
+      } else {
+        byKey.set(key, clips.length);
+        clips.push(clip);
+      }
+    }
+  }
+  return {
+    schema_version: 1,
+    source: "merged_previous_motion_pack",
+    clips,
+  };
+}
+
 async function loadStories(args) {
   if (args.stories) {
     const payload = await fs.readJson(path.resolve(ROOT, args.stories));
@@ -200,11 +322,22 @@ function safeName(value) {
 
 async function loadPreviousMotionPack(args, story, outDir) {
   if (args.preserveExisting === false) return {};
+  const artifactDir = storyArtifactDir(story);
+  const footageInventory = artifactDir
+    ? await readJsonIfExists(path.join(artifactDir, "footage_inventory.json"), {})
+    : {};
+  const inventoryMotionPack = previousMotionPackFromFootageInventory(story, footageInventory);
   if (args.previousMotionPack) {
-    return readJsonIfExists(args.previousMotionPack, {});
+    return mergePreviousMotionPacks(
+      await readJsonIfExists(args.previousMotionPack, {}),
+      inventoryMotionPack,
+    );
   }
   const base = safeName(story.id || story.story_id);
-  return readJsonIfExists(path.join(outDir, `${base}_motion_pack_manifest.json`), {});
+  return mergePreviousMotionPacks(
+    await readJsonIfExists(path.join(outDir, `${base}_motion_pack_manifest.json`), {}),
+    inventoryMotionPack,
+  );
 }
 
 function renderIndexMarkdown(index) {
@@ -311,6 +444,9 @@ if (require.main === module) {
 }
 
 module.exports = {
+  mergePreviousMotionPacks,
   normaliseStory,
+  ownedMotionClipsFromFootageInventory,
   parseArgs,
+  previousMotionPackFromFootageInventory,
 };

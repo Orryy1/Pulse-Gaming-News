@@ -140,6 +140,7 @@ async function makeStoryPackage(
     render_quality_class: options.renderQualityClass || "premium",
     visual_count: options.visualCount || 8,
     rendered_duration_s: options.renderedDurationS,
+    ...(options.renderManifestPatch || {}),
   });
   const visualScores = {
     motion_density_score: options.motionDensityScore ?? 92,
@@ -412,6 +413,51 @@ test("goal dry-run publisher blocks renders whose mixed SFX do not match the app
   assert.equal(plan.overall_verdict, "RED");
   assert.equal(plan.summary.ready_story_count, 0);
   assert.ok(plan.blocked_stories[0].blockers.includes("sfx_render_asset_mismatch"));
+});
+
+test("goal dry-run publisher blocks HyperFrames premium renders without shell proof", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-hf-shell-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "hf-shell-fail",
+    "GREEN",
+    "Forza Horizon 6 Exposes Xbox's Steam Bet",
+    {
+      renderManifestPatch: {
+        premiumLane: {
+          rendererSplit: "ffmpeg-backbone-story-specific-hyperframes-cards",
+          verdict: "pass",
+          hyperframesCardCount: 4,
+          hyperframesPremiumShellGate: {
+            verdict: "fail",
+            passCount: 3,
+            requiredPassCount: 4,
+            blockers: ["source:hyperframes_inspect_skipped"],
+          },
+        },
+      },
+    },
+  );
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-21T22:30:00.000Z",
+    platformOperationalConfig: {
+      youtube: { state: "enabled", reason: "core_upload_path" },
+      instagram_reel: { state: "enabled", reason: "graph_credentials_present" },
+      facebook_reel: { state: "enabled", reason: "facebook_reels_enabled" },
+    },
+  });
+
+  assert.equal(plan.overall_verdict, "RED");
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 1);
+  assert.ok(plan.blocked_stories[0].blockers.includes("hyperframes_premium_shell_not_passed"));
+  assert.ok(
+    plan.blocked_stories[0].blockers.includes(
+      "hyperframes_premium_shell:source:hyperframes_inspect_skipped",
+    ),
+  );
 });
 
 test("goal dry-run publisher defers externally blocked or operator-disabled platforms without blocking the story", async () => {

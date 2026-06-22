@@ -131,6 +131,21 @@ test("executor preflight stays AMBER when no dispatch-ready actions exist", () =
   assert.equal(report.safety.no_network_uploads, true);
 });
 
+test("executor preflight carries forward empty guarded-plan refresh next step", () => {
+  const plan = emptyGuardedDispatchPlan();
+  plan.required_next_step = "refresh_candidate_supply_and_strict_dry_run_after_published_actions";
+  const report = buildGuardedDispatchExecutorPreflight({
+    guardedDispatchPlan: plan,
+    platformStatusMatrix: platformStatusMatrix(),
+    selectedActionIds: [],
+    env: {},
+    generatedAt: "2026-06-21T22:45:00.000Z",
+  });
+
+  assert.equal(report.verdict, "AMBER");
+  assert.equal(report.executor_plan.required_next_step, "refresh_candidate_supply_and_strict_dry_run_after_published_actions");
+});
+
 test("executor preflight requires explicit action ids before any handoff", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-executor-no-selection-"));
   const files = await evidenceFiles(root);

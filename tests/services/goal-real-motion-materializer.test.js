@@ -132,6 +132,8 @@ test("real motion materializer CLI accepts repeatable story-id filters", () => {
     "story-b",
     "--segment-report",
     "test/output/segments.json",
+    "--artifact-root",
+    "output/candidate-supply/fresh-refill/goal-proof-batch",
     "--limit",
     "2",
     "--refresh-ready",
@@ -139,6 +141,7 @@ test("real motion materializer CLI accepts repeatable story-id filters", () => {
 
   assert.deepEqual(args.storyIds, ["story-a", "story-b"]);
   assert.equal(args.segmentReportPath, "test/output/segments.json");
+  assert.equal(args.artifactRoot, "output/candidate-supply/fresh-refill/goal-proof-batch");
   assert.equal(args.limit, 2);
   assert.equal(args.refreshReady, true);
 });
@@ -1301,6 +1304,83 @@ test("real motion materializer can use validated segment reports to repair a dir
   assert.equal(materialised.direct_video_motion_family_count, 5);
   assert.equal(materialised.clips.filter((clip) => clip.media_kind === "direct_video").length, 5);
   assert.equal(materialised.clips.filter((clip) => clip.media_kind === "owned_motion").length, 4);
+});
+
+test("real motion materializer can synthesize jobs from segment reports and an artifact root", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-segment-artifact-root-"));
+  const storyId = "fresh-refill-yooka";
+  const artifactRoot = path.join(root, "output", "candidate-supply", "fresh-refill", "goal-proof-batch");
+  const artifactDir = path.join(artifactRoot, storyId);
+  await fs.ensureDir(artifactDir);
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: [],
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    motion_inventory: {
+      accepted_local_clips: [],
+      production_motion_clips: [],
+      distinct_source_families: [],
+    },
+  });
+  const sourceUrl =
+    "https://video.fastly.steamstatic.com/store_trailers/3348210/1321458709/hash/hls_264_master.m3u8";
+  const segmentValidationReport = {
+    segments: Array.from({ length: 5 }, (_, index) => ({
+      story_id: storyId,
+      status: "validated",
+      segment_validated: true,
+      allowed_for_flash_lane: true,
+      validation_reason: "segment_samples_passed",
+      segment_motion_class: "gameplay_action",
+      action_score: 82 + index,
+      source_url: sourceUrl,
+      source_type: "platform_storefront",
+      source_url_kind: "hls_manifest",
+      provider: "official_intake",
+      entity: "Super Yooka-Laylee Kart",
+      source_family: "steam_3348210_super_yooka_laylee_kart",
+      media_start_s: 36 + index * 6,
+      duration_s: 5,
+      source_duration_s: 72,
+      rights_risk_class: "official_direct_media",
+      allowed_render_use: "official_direct_media_segment_candidate",
+      provenance: {
+        source: "official_trailer_segment_validation",
+      },
+    })),
+  };
+
+  const starts = [];
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: { jobs: [] },
+    storyIds: [storyId],
+    artifactRoot,
+    segmentValidationReport,
+    minClips: 5,
+    minFamilies: 1,
+    maxClips: 5,
+    generatedAt: "2026-06-21T23:30:00.000Z",
+    execFileSync: (bin, args) => {
+      starts.push(args[args.indexOf("-ss") + 1]);
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, starts.length));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
+  });
+
+  assert.equal(report.summary.candidate_count, 1);
+  assert.equal(report.summary.materialized_story_count, 1);
+  assert.equal(report.jobs[0].story_id, storyId);
+  assert.equal(report.jobs[0].artifact_dir, artifactDir);
+  assert.equal(report.jobs[0].direct_video_motion_clip_count, 5);
+  assert.equal(
+    await fs.pathExists(path.join(root, "output", "studio-v4", "motion-packs", `${storyId}_motion_pack_manifest.json`)),
+    true,
+  );
+  assert.deepEqual(starts, ["36", "42", "48", "54", "60"]);
 });
 
 test("real motion materializer counts validated official segment windows as distinct motion families", async () => {

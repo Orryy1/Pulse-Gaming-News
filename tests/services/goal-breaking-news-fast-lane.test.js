@@ -5,10 +5,13 @@ const assert = require("node:assert/strict");
 const path = require("node:path");
 const os = require("node:os");
 const { spawnSync } = require("node:child_process");
+const Database = require("better-sqlite3");
 const fs = require("fs-extra");
 
 const {
+  buildBreakingNewsCandidateQueue,
   buildGoalBreakingNewsFastLanePlan,
+  storyHasPublicPlatformId,
   writeGoalBreakingNewsFastLanePlan,
 } = require("../../lib/goal-breaking-news-fast-lane");
 
@@ -197,6 +200,25 @@ test("breaking fast lane treats ready_now assumed-enabled platforms as reviewabl
 
   assert.equal(plan.fast_publish_pack.publish_now_platforms.includes("threads"), true);
   assert.equal(plan.fast_publish_pack.deferred_platforms.includes("x"), true);
+});
+
+test("breaking fast lane candidate queue rejects already-published stories", () => {
+  const story = officialStory({ youtube_post_id: "yt_existing" });
+  const queue = buildBreakingNewsCandidateQueue({
+    reviewQueue: {
+      review_items: [{ story_id: story.story_id, story }],
+    },
+    platformState: {
+      platforms: {
+        threads: { operational_state: "ready" },
+      },
+    },
+  });
+
+  assert.equal(storyHasPublicPlatformId(story), true);
+  assert.equal(queue.verdict, "RED");
+  assert.equal(queue.eligible_candidate_count, 0);
+  assert.equal(queue.candidates[0].rejection_reasons.includes("already_has_public_platform_id"), true);
 });
 
 test("breaking fast lane public post text does not leak internal production language", async () => {
@@ -401,4 +423,114 @@ test("breaking fast lane CLI can auto-select a current source-safe review candid
   assert.equal(stdout.safety.no_network_uploads, true);
   assert.equal(await fs.pathExists(path.join(outDir, "breaking_news_candidate_queue.json")), true);
   assert.equal(await fs.pathExists(path.join(outDir, "fast_publish_pack.json")), true);
+});
+
+test("breaking fast lane CLI auto-select skips SQLite-published review candidates", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-breaking-fast-lane-db-skip-"));
+  const storyDir = path.join(root, "stories");
+  const outDir = path.join(root, "out");
+  const dbPath = path.join(root, "pulse.db");
+  await fs.ensureDir(storyDir);
+
+  const publishedStory = officialStory({
+    story_id: "published-fast-story",
+    selected_title: "PlayStation Locks A Published State Of Play",
+    source_confidence_score: 99,
+  });
+  const freshStory = officialStory({
+    story_id: "fresh-fast-story",
+    selected_title: "Xbox Locks A Fresh Showcase Date",
+    canonical_subject: "Xbox Showcase",
+    canonical_game: "Xbox Showcase",
+    canonical_company: "Xbox",
+    first_spoken_line: "Xbox just put a fresh showcase back on the calendar.",
+    source_confidence_score: 92,
+    primary_source: {
+      name: "Xbox Wire",
+      url: "https://news.xbox.com/fresh-showcase",
+      type: "official",
+      reliability: "official",
+    },
+    official_source: {
+      name: "Xbox Wire",
+      url: "https://news.xbox.com/fresh-showcase",
+    },
+  });
+  const publishedPath = path.join(storyDir, "published.json");
+  const freshPath = path.join(storyDir, "fresh.json");
+  const queuePath = path.join(root, "human_review_queue.json");
+  const platformPath = path.join(root, "platform_state.json");
+
+  await fs.writeJson(publishedPath, publishedStory, { spaces: 2 });
+  await fs.writeJson(freshPath, freshStory, { spaces: 2 });
+  await fs.writeJson(queuePath, {
+    review_items: [
+      {
+        story_id: publishedStory.story_id,
+        evidence: { canonical_manifest_path: publishedPath },
+        enabled_review_platforms: ["instagram_reels", "facebook_reels"],
+      },
+      {
+        story_id: freshStory.story_id,
+        evidence: { canonical_manifest_path: freshPath },
+        enabled_review_platforms: ["instagram_reels", "facebook_reels"],
+      },
+    ],
+  }, { spaces: 2 });
+  await fs.writeJson(platformPath, {
+    platforms: {
+      threads: { operational_state: "ready" },
+      instagram_reels: { operational_state: "ready" },
+      facebook_reels: { operational_state: "ready" },
+    },
+  }, { spaces: 2 });
+
+  const sqlite = new Database(dbPath);
+  sqlite.exec(`
+    CREATE TABLE platform_posts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      story_id TEXT,
+      platform TEXT,
+      external_id TEXT,
+      status TEXT
+    );
+    INSERT INTO platform_posts (story_id, platform, external_id, status)
+    VALUES ('published-fast-story', 'youtube', 'yt_existing', 'published');
+  `);
+  sqlite.close();
+
+  const cli = spawnSync(
+    process.execPath,
+    [
+      "tools/goal-breaking-news-fast-lane.js",
+      "--auto-select-current",
+      "--human-review-queue",
+      queuePath,
+      "--platform-state",
+      platformPath,
+      "--out-dir",
+      outDir,
+      "--json",
+    ],
+    {
+      cwd: path.resolve(__dirname, "../.."),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PULSE_SKIP_DOTENV: "true",
+        USE_SQLITE: "true",
+        SQLITE_DB_PATH: dbPath,
+      },
+    },
+  );
+
+  assert.equal(cli.status, 0, cli.stderr);
+  const stdout = JSON.parse(cli.stdout);
+  assert.equal(stdout.breaking_news_manifest.story_id, "fresh-fast-story");
+  assert.equal(stdout.breaking_news_candidate_queue.selected_story_id, "fresh-fast-story");
+  const publishedCandidate = stdout.breaking_news_candidate_queue.candidates.find(
+    (candidate) => candidate.story_id === "published-fast-story",
+  );
+  assert.equal(publishedCandidate.eligible_for_fast_lane, false);
+  assert.equal(publishedCandidate.rejection_reasons.includes("already_has_public_platform_id"), true);
 });

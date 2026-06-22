@@ -2,6 +2,7 @@
 
 const assert = require("node:assert/strict");
 const { spawnSync } = require("node:child_process");
+const Database = require("better-sqlite3");
 const fs = require("fs-extra");
 const os = require("node:os");
 const path = require("node:path");
@@ -451,6 +452,7 @@ test("guarded dispatch preflight ignores approvals for already-published platfor
   assert.equal(report.ignored_already_published_actions[0].reason, "already_published_platform_action");
   assert.ok(report.advisory.includes("approved_already_published_actions_ignored"));
   assert.equal(report.guarded_dispatch_plan.ready_for_guarded_dispatch, false);
+  assert.equal(report.guarded_dispatch_plan.required_next_step, "refresh_candidate_supply_and_strict_dry_run_after_published_actions");
 });
 
 test("guarded dispatch preflight ignores already-published platforms even if strict dry-run still includes them", async () => {
@@ -479,6 +481,59 @@ test("guarded dispatch preflight ignores already-published platforms even if str
   assert.equal(report.ignored_already_published_actions[0].story_id, "story-one");
   assert.equal(report.ignored_already_published_actions[0].platform, "youtube_shorts");
   assert.equal(report.ignored_already_published_actions[0].reason, "already_published_platform_action");
+  assert.equal(report.guarded_dispatch_plan.required_next_step, "refresh_candidate_supply_and_strict_dry_run_after_published_actions");
+});
+
+test("guarded dispatch preflight ignores live DB published evidence when strict dry-run is stale", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-dispatch-live-published-"));
+  const media = await makeMedia(root);
+  const dryRunAction = {
+    story_id: "story-one",
+    platform: "youtube_shorts",
+    action: "would_publish",
+    title: "Forza Horizon 6 Exposes Xbox's Steam Bet",
+    video_path: media.videoPath,
+    captions_path: media.captionsPath,
+    cover_frame_source: media.videoPath,
+    canonical_manifest_path: media.canonicalPath,
+    platform_publish_manifest_path: media.platformManifestPath,
+    platform_enabled: true,
+    live_publish_allowed_from_dry_run: false,
+    requires_human_review_before_live_publish: false,
+    live_execution_gate: "guarded_dispatch_ready",
+    autonomous_green_lit_by_dry_run: true,
+    requires_guarded_dispatch_command: true,
+    requires_enabled_platform_recheck: true,
+    blockers: [],
+    warnings: [],
+  };
+
+  const report = buildGuardedDispatchPreflight({
+    approvalGateReport: approvalGateReport(media, []),
+    strictDryRunPlan: {
+      ...strictDryRunPlan(media, []),
+      actions: [dryRunAction],
+    },
+    platformStatusMatrix: platformStatusMatrix(),
+    transcriptAudienceReport: transcriptAudienceReport(),
+    publishedPlatformEvidence: [
+      {
+        story_id: "story-one",
+        platform: "youtube",
+        status: "published",
+        external_id: "yt_structured",
+      },
+    ],
+  });
+
+  assert.equal(report.verdict, "AMBER");
+  assert.equal(report.summary.dispatch_ready_action_count, 0);
+  assert.equal(report.summary.ignored_already_published_action_count, 1);
+  assert.equal(report.ignored_already_published_actions[0].story_id, "story-one");
+  assert.equal(report.ignored_already_published_actions[0].platform, "youtube_shorts");
+  assert.equal(report.ignored_already_published_actions[0].reason, "already_published_platform_action");
+  assert.ok(report.advisory.includes("already_published_actions_ignored"));
+  assert.equal(report.guarded_dispatch_plan.required_next_step, "refresh_candidate_supply_and_strict_dry_run_after_published_actions");
 });
 
 test("guarded dispatch preflight rejects media path drift and missing media", async () => {
@@ -551,7 +606,12 @@ test("guarded dispatch preflight CLI is registered and emits clean JSON", async 
     {
       cwd: ROOT,
       encoding: "utf8",
-      env: { ...process.env },
+      env: {
+        ...process.env,
+        PULSE_SKIP_DOTENV: "true",
+        USE_SQLITE: "false",
+        SQLITE_DB_PATH: "",
+      },
     },
   );
 
@@ -596,7 +656,12 @@ test("guarded dispatch preflight CLI prefers current goal-contract transcript au
     {
       cwd: ROOT,
       encoding: "utf8",
-      env: { ...process.env },
+      env: {
+        ...process.env,
+        PULSE_SKIP_DOTENV: "true",
+        USE_SQLITE: "false",
+        SQLITE_DB_PATH: "",
+      },
     },
   );
 
@@ -605,4 +670,91 @@ test("guarded dispatch preflight CLI prefers current goal-contract transcript au
   assert.equal(parsed.verdict, "GREEN");
   assert.equal(parsed.summary.dispatch_ready_action_count, 1);
   assert.equal(parsed.summary.transcript_held_action_count, 0);
+});
+
+test("guarded dispatch preflight CLI reads platform_posts as read-only duplicate evidence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-dispatch-db-published-"));
+  const media = await makeMedia(root);
+  const goalDir = path.join(root, "output", "goal-contract");
+  const outDir = path.join(root, "out");
+  const dbPath = path.join(root, "pulse.db");
+  await fs.ensureDir(goalDir);
+  await fs.writeJson(path.join(goalDir, "human_review_approval_gate_report.json"), approvalGateReport(media, []), { spaces: 2 });
+  await fs.writeJson(
+    path.join(goalDir, "dry_run_publish_plan.json"),
+    {
+      ...strictDryRunPlan(media, []),
+      actions: [
+        {
+          story_id: "story-one",
+          platform: "youtube_shorts",
+          action: "would_publish",
+          title: "Forza Horizon 6 Exposes Xbox's Steam Bet",
+          video_path: media.videoPath,
+          captions_path: media.captionsPath,
+          cover_frame_source: media.videoPath,
+          canonical_manifest_path: media.canonicalPath,
+          platform_publish_manifest_path: media.platformManifestPath,
+          platform_enabled: true,
+          live_publish_allowed_from_dry_run: false,
+          requires_human_review_before_live_publish: false,
+          live_execution_gate: "guarded_dispatch_ready",
+          autonomous_green_lit_by_dry_run: true,
+          requires_guarded_dispatch_command: true,
+          requires_enabled_platform_recheck: true,
+          blockers: [],
+          warnings: [],
+        },
+      ],
+    },
+    { spaces: 2 },
+  );
+  await fs.writeJson(path.join(goalDir, "platform_status_matrix.json"), platformStatusMatrix(), { spaces: 2 });
+  await fs.writeJson(path.join(goalDir, "transcript_audience_audit.json"), transcriptAudienceReport(), { spaces: 2 });
+
+  const sqlite = new Database(dbPath);
+  sqlite.exec(`
+    CREATE TABLE platform_posts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      story_id TEXT,
+      platform TEXT,
+      external_id TEXT,
+      external_url TEXT,
+      status TEXT,
+      published_at TEXT,
+      updated_at TEXT
+    );
+    INSERT INTO platform_posts (story_id, platform, external_id, status, published_at)
+    VALUES ('story-one', 'youtube', 'yt_structured', 'published', '2026-06-21T22:31:36.624Z');
+  `);
+  sqlite.close();
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      "tools/goal-guarded-dispatch-preflight.js",
+      "--root",
+      root,
+      "--out-dir",
+      outDir,
+      "--json",
+    ],
+    {
+      cwd: ROOT,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PULSE_SKIP_DOTENV: "true",
+        USE_SQLITE: "true",
+        SQLITE_DB_PATH: dbPath,
+      },
+    },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.verdict, "AMBER");
+  assert.equal(parsed.summary.dispatch_ready_action_count, 0);
+  assert.equal(parsed.summary.ignored_already_published_action_count, 1);
+  assert.equal(parsed.ignored_already_published_actions[0].platform, "youtube_shorts");
 });

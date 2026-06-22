@@ -1,10 +1,21 @@
 #!/usr/bin/env node
 "use strict";
 
-require("dotenv").config({ quiet: true });
-
 const path = require("node:path");
 const fs = require("fs-extra");
+
+function clean(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function truthy(value) {
+  return /^(true|1|yes|on)$/i.test(clean(value));
+}
+
+if (!truthy(process.env.PULSE_SKIP_DOTENV)) {
+  require("dotenv").config({ quiet: true });
+}
+
 const {
   buildBreakingNewsCandidateQueue,
   buildBreakingNewsFastLaneOverview,
@@ -55,10 +66,6 @@ async function readJsonIfPresent(filePath, fallback = {}) {
   return fs.readJson(filePath);
 }
 
-function clean(value) {
-  return String(value || "").replace(/\s+/g, " ").trim();
-}
-
 async function loadStoriesFromHumanReviewQueue(queue = {}) {
   const storiesById = {};
   for (const item of Array.isArray(queue.review_items) ? queue.review_items : []) {
@@ -69,6 +76,64 @@ async function loadStoriesFromHumanReviewQueue(queue = {}) {
     storiesById[storyId] = await fs.readJson(manifestPath);
   }
   return storiesById;
+}
+
+function sqliteEvidenceEnabled(env = process.env) {
+  return truthy(env.USE_SQLITE) || !!clean(env.SQLITE_DB_PATH);
+}
+
+function readPublishedStoryIdsFromSqlite(storyIds = [], env = process.env) {
+  const ids = Array.from(new Set(storyIds.map(clean).filter(Boolean)));
+  if (!ids.length || !sqliteEvidenceEnabled(env)) return [];
+  let dbPath = "";
+  let sqlite = null;
+  try {
+    dbPath = require("../lib/db").resolveDbPath();
+    if (!dbPath || !fs.existsSync(dbPath)) return [];
+    const Database = require("better-sqlite3");
+    sqlite = new Database(dbPath, { readonly: true, fileMustExist: true });
+    const placeholders = ids.map(() => "?").join(",");
+    const published = new Set();
+    const platformTable = sqlite
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'platform_posts'")
+      .get();
+    if (platformTable) {
+      for (const row of sqlite
+        .prepare(
+          `SELECT DISTINCT story_id
+             FROM platform_posts
+            WHERE status = 'published'
+              AND story_id IN (${placeholders})`,
+        )
+        .all(...ids)) {
+        published.add(clean(row.story_id));
+      }
+    }
+    const storiesTable = sqlite
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'stories'")
+      .get();
+    if (storiesTable) {
+      for (const row of sqlite
+        .prepare(
+          `SELECT id
+             FROM stories
+            WHERE id IN (${placeholders})
+              AND (
+                youtube_post_id IS NOT NULL OR youtube_url IS NOT NULL OR
+                instagram_media_id IS NOT NULL OR facebook_post_id IS NOT NULL OR
+                tiktok_post_id IS NOT NULL OR twitter_post_id IS NOT NULL
+              )`,
+        )
+        .all(...ids)) {
+        published.add(clean(row.id));
+      }
+    }
+    return [...published];
+  } catch {
+    return [];
+  } finally {
+    if (sqlite) sqlite.close();
+  }
 }
 
 async function main(argv = process.argv.slice(2)) {
@@ -89,7 +154,15 @@ async function main(argv = process.argv.slice(2)) {
         : "");
     const reviewQueue = await readJsonIfPresent(humanReviewQueuePath, { review_items: [] });
     const storiesById = await loadStoriesFromHumanReviewQueue(reviewQueue);
-    const candidateQueue = buildBreakingNewsCandidateQueue({ reviewQueue, storiesById, platformState });
+    const queueStoryIds = (Array.isArray(reviewQueue.review_items) ? reviewQueue.review_items : [])
+      .map((item) => clean(item.story_id || item.id));
+    const publishedStoryIds = readPublishedStoryIdsFromSqlite(queueStoryIds);
+    const candidateQueue = buildBreakingNewsCandidateQueue({
+      reviewQueue,
+      storiesById,
+      platformState,
+      publishedStoryIds,
+    });
     const selectedStoryId = candidateQueue.selected_story_id;
     if (!selectedStoryId) {
       const overview = buildBreakingNewsFastLaneOverview({ platformState });
@@ -138,4 +211,5 @@ if (require.main === module) {
 module.exports = {
   main,
   parseArgs,
+  readPublishedStoryIdsFromSqlite,
 };

@@ -1165,6 +1165,18 @@ test("goal batch packages generate viewer-facing scripts for current official RS
         source_published_at: "2026-06-18T12:00:08.000Z",
       },
       {
+        id: "rss_super_yooka_kart_preview",
+        title: "Super Yooka-Laylee Kart Preview: Ex-Rare Devs Take Aim at Reviving the Spirit of Diddy Kong Racing",
+        source_type: "rss",
+        freshness_gate: "pass",
+        primary_source: {
+          name: "IGN",
+          url: "https://www.ign.com/articles/super-yooka-laylee-kart-preview-ex-rare-devs-take-aim-at-reviving-the-spirit-of-diddy-kong-racing",
+          type: "gaming_press",
+        },
+        source_published_at: "2026-06-21T19:00:00.000Z",
+      },
+      {
         id: "rss_ea_fc_26_ea_play",
         title: "EA SPORTS FC 26 Is Now on EA Play",
         source_type: "rss",
@@ -1218,6 +1230,24 @@ test("goal batch packages generate viewer-facing scripts for current official RS
   assert.ok(!granblue.platform_publish_manifest.platform_native_evidence.failures.some(
     (failure) => failure.reason === "weak_cover_headline",
   ));
+
+  const yooka = batch.packages.find((pack) => pack.canonical_story_manifest.story_id === "rss_super_yooka_kart_preview");
+  assert.equal(yooka.youtube_publish_pack.title, "Yooka-Laylee Kart Has A Diddy Kong Risk");
+  assert.match(yooka.canonical_story_manifest.narration_script, /Diddy Kong Racing worked because it felt like an adventure/i);
+  assert.match(yooka.canonical_story_manifest.narration_script, /The catch is handling/i);
+  assert.match(yooka.canonical_story_manifest.narration_script, /If the handling has bite/i);
+  assert.match(yooka.canonical_story_manifest.description, /handling proves nostalgia/i);
+  assert.ok(
+    yooka.claim_inventory.confirmed.some((claim) => /handling[\s\S]*proves[\s\S]*nostalgia/i.test(claim)),
+    JSON.stringify(yooka.claim_inventory),
+  );
+  assert.doesNotMatch(yooka.canonical_story_manifest.narration_script, /finally judge|specifics on screen|trust at launch/i);
+  assert.ok(!yooka.script_scorecard.warnings.includes("no_curiosity_marker"), JSON.stringify(yooka.script_scorecard));
+  assert.ok(!yooka.platform_publish_manifest.platform_native_evidence.failures.some(
+    (failure) => failure.reason === "plain_platform_description",
+  ));
+  assert.ok(!yooka.pulse_media_house_score.hard_failures.includes("media_house:platform_copy_too_plain"));
+  assert.ok(!yooka.pulse_media_house_score.hard_failures.includes("media_house:shorts_feed_competition_weak"));
 });
 
 test("goal batch package proof preparation replaces article excerpt descriptions with Shorts payoff copy", () => {

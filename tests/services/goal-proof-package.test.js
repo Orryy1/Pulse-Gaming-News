@@ -1206,6 +1206,42 @@ test("goal proof package never exposes internal source-lock placeholders in soci
   assert.match(pack.x_publish_pack.concise_news_post, /Switch 2 route/i);
 });
 
+test("goal proof package keeps subject parity and grammar for mascot kart derivative packs", () => {
+  const story = greenStory();
+  story.id = "super-yooka-kart-proof";
+  story.canonical_subject = "Super Yooka-Laylee Kart";
+  story.canonical_game = "Super Yooka-Laylee Kart";
+  story.title = "Yooka-Laylee Kart Has A Diddy Kong Risk";
+  story.suggested_title = story.title;
+  story.public_title = story.title;
+  story.suggested_thumbnail_text = "DIDDY KONG RISK";
+  story.description =
+    "Super Yooka-Laylee Kart is chasing one dangerous Diddy Kong Racing comparison, so players need to decide whether to wishlist it now or wait until the handling proves nostalgia is not doing the work.";
+  story.full_script =
+    "Super Yooka-Laylee Kart is going after one of racing's most dangerous comparisons. IGN says ex-Rare developers are aiming to revive the spirit of Diddy Kong Racing. The catch is handling: if the karting feels floaty, the comparison eats it alive. Follow Pulse Gaming so you never miss a beat.";
+  story.source_name = "IGN";
+  story.primary_source = "IGN";
+  story.source_card_label = "IGN";
+  story.thumbnail_source_label = "IGN";
+  story.article_url =
+    "https://www.ign.com/articles/super-yooka-laylee-kart-preview-ex-rare-devs-take-aim-at-reviving-the-spirit-of-diddy-kong-racing";
+  story.primary_source_url = story.article_url;
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-06-22T00:20:00.000Z",
+  });
+
+  const outputs = pack.platform_publish_manifest.outputs;
+  assert.equal(outputs.youtube_shorts.cover_frame.headline, "YOOKA-LAYLEE KART DIDDY RISK");
+  assert.equal(outputs.instagram_reels.cover_frame.subject, "Super Yooka-Laylee Kart");
+  assert.equal(outputs.instagram_reels.cover_frame.headline, "YOOKA-LAYLEE KART DIDDY RISK");
+  assert.doesNotMatch(outputs.facebook_reels.explanatory_framing, /\bbecause\s+is\b/i);
+  assert.doesNotMatch(outputs.x.hot_take_post, /:\s+is\s+/i);
+  assert.doesNotMatch(outputs.pinterest.pin_description, /:\s+is\s+/i);
+});
+
 test("goal proof package carries landing-page attribution into publish packs", () => {
   const story = greenStory();
   story.affiliate_link_manifest = buildAffiliateLinkManifest({

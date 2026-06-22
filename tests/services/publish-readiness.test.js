@@ -1031,6 +1031,68 @@ test("pillarRenderMetadata blocks active HyperFrames premium renders without she
   }
 });
 
+test("pillarRenderMetadata blocks HyperFrames shell failures nested in render_manifest", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-render-metadata-hf-shell-nested-"));
+  const planPath = path.join(dir, "dry_run_publish_plan.json");
+  const bridgePath = path.join(dir, "scheduler_bridge_candidates.json");
+  try {
+    fs.writeFileSync(
+      planPath,
+      JSON.stringify({
+        generated_at: "2026-06-01T00:00:00.000Z",
+        ready_stories: [{ story_id: "active-hf-nested" }],
+        safety: {
+          no_publish_triggered: true,
+          no_network_uploads: true,
+          no_db_mutation: true,
+          no_oauth_or_token_change: true,
+          dry_run_only: true,
+        },
+      }),
+    );
+    fs.writeFileSync(
+      bridgePath,
+      JSON.stringify([
+        {
+          id: "active-hf-nested",
+          title: "Nested HyperFrames Story",
+          exported_path: "C:/renders/active-hf-nested.mp4",
+          render_lane: "visual_v4_production",
+          render_quality_class: "premium",
+          render_manifest: {
+            premiumLane: {
+              rendererSplit: "ffmpeg-backbone-story-specific-hyperframes-cards",
+              verdict: "pass",
+              hyperframesCardCount: 4,
+              hyperframesPremiumShellGate: {
+                verdict: "fail",
+                passCount: 3,
+                requiredPassCount: 4,
+                blockers: ["source:hyperframes_validate_not_passed"],
+              },
+            },
+          },
+        },
+      ]),
+    );
+
+    const pillar = pr.pillarRenderMetadata({
+      strictDryRunPlanPath: planPath,
+      schedulerBridgeCandidatesPath: bridgePath,
+      stories: [],
+    });
+
+    assert.equal(pillar.verdict, "red");
+    assert.equal(pillar.reason, "active_hyperframes_premium_shell_not_passed:1");
+    assert.deepEqual(
+      pillar.raw.active_hyperframes_premium_shell_blockers[0].blockers,
+      ["source:hyperframes_validate_not_passed"],
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("pillarRenderMetadata accepts active HyperFrames premium renders with passing shell proof", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-render-metadata-hf-shell-green-"));
   const planPath = path.join(dir, "dry_run_publish_plan.json");

@@ -16,6 +16,7 @@ const {
   hydrateMotionPacksWithCanonicalManifests,
   mergeReferenceReports,
   parseArgs,
+  synthesiseMotionPacksFromWorkOrder,
   commandPathsFromArgs,
 } = require("../../tools/studio-v4-source-family-acquisition");
 const packageJson = require("../../package.json");
@@ -1756,6 +1757,145 @@ test("Studio V4 source-family acquisition hydrates raw motion packs from canonic
   assert.equal(
     row.official_search_actions[0].query,
     "The Expanse: Osiris Reborn official gameplay trailer",
+  );
+});
+
+test("Studio V4 source-family acquisition synthesises packs for direct-video render work orders", () => {
+  const workOrder = {
+    schema_version: 1,
+    jobs: [
+      {
+        story_id: "expanse-gap",
+        status: "blocked_on_render_inputs",
+        blockers: ["visual_evidence:direct_video_motion_missing"],
+        actions: [
+          {
+            action_id: "materialise_validated_real_motion_clips",
+            repair_lane: "additional_direct_video_motion_required",
+            status: "operator_required",
+            exact_missing_input:
+              "at least 5 direct-video motion clips from official or licensed gameplay/trailer sources",
+          },
+        ],
+      },
+    ],
+  };
+  const synthetic = synthesiseMotionPacksFromWorkOrder({
+    motionPackReports: [],
+    canonicalManifestsByStoryId: new Map([
+      [
+        "expanse-gap",
+        {
+          story_id: "expanse-gap",
+          selected_title: "The Expanse Shows Real Gameplay",
+          canonical_subject: "The Expanse: Osiris Reborn",
+          canonical_game: "The Expanse: Osiris Reborn",
+          canonical_company: "Owlcat Games",
+          primary_source: "PC Gamer",
+          primary_source_url: "https://www.pcgamer.com/games/the-expanse-osiris-reborn",
+        },
+      ],
+    ]),
+    workOrder,
+  });
+  const report = buildStudioV4SourceFamilyAcquisitionReport({
+    motionPackReports: synthetic,
+    trustedFootageReport: { story_candidates: [], accepted_sources: [] },
+    referenceReport: { plans: [] },
+    directVideoEnrichmentWorkOrder: workOrder,
+  });
+
+  assert.equal(synthetic.length, 1);
+  assert.equal(synthetic[0].synthetic_from_render_input_work_order, true);
+  assert.equal(report.summary.stories_needing_acquisition, 1);
+  assert.equal(report.summary.direct_video_enrichment_stories, 1);
+  assert.equal(report.summary.official_search_actions, 1);
+  assert.equal(
+    report.rows[0].official_search_actions[0].query,
+    "The Expanse: Osiris Reborn official gameplay trailer",
+  );
+});
+
+test("Studio V4 source-family acquisition flags title-shaped canonical entities before source search", () => {
+  const report = buildStudioV4SourceFamilyAcquisitionReport({
+    motionPackReports: [
+      motionPack({
+        story_id: "black-ops-price",
+        title: "Black Ops Classics Face A Price Test Just Got More Expensive",
+        canonical_subject: "Black Ops Classics Face A Price Test",
+        canonical_game: "Black Ops Classics Face A Price Test",
+        clips: [],
+        trusted_source_pipeline: { references_found: 0, intake_queue: [] },
+        motion_budget: {
+          required_motion_scenes: 5,
+          available_motion_clips: 0,
+          required_distinct_families: 4,
+          available_distinct_families: 0,
+        },
+      }),
+      motionPack({
+        story_id: "cyberpunk-trust",
+        title: "Cyberpunk 2077's Trust Debt",
+        canonical_subject: "CD Projekt Red",
+        canonical_game: "CD Projekt Red",
+        clips: [],
+        trusted_source_pipeline: { references_found: 0, intake_queue: [] },
+        motion_budget: {
+          required_motion_scenes: 5,
+          available_motion_clips: 0,
+          required_distinct_families: 4,
+          available_distinct_families: 0,
+        },
+      }),
+      motionPack({
+        story_id: "hellraiser-date",
+        title: "Hellraiser: Revival Gets A Date",
+        canonical_subject: "Hellraiser",
+        canonical_game: "Hellraiser",
+        clips: [],
+        trusted_source_pipeline: { references_found: 0, intake_queue: [] },
+        motion_budget: {
+          required_motion_scenes: 5,
+          available_motion_clips: 0,
+          required_distinct_families: 4,
+          available_distinct_families: 0,
+        },
+      }),
+    ],
+    trustedFootageReport: { story_candidates: [], accepted_sources: [] },
+    referenceReport: { plans: [] },
+  });
+
+  const rows = Object.fromEntries(report.rows.map((row) => [row.story_id, row]));
+  assert.ok(
+    rows["black-ops-price"].canonical_entity_repair_blockers.includes(
+      "title_shaped_primary_entity",
+    ),
+  );
+  assert.ok(
+    rows["cyberpunk-trust"].canonical_entity_repair_blockers.includes(
+      "canonical_subject_title_mismatch",
+    ),
+  );
+  assert.ok(
+    rows["hellraiser-date"].canonical_entity_repair_blockers.includes(
+      "canonical_subject_title_mismatch",
+    ),
+  );
+  assert.equal(report.acquisition_runway.status, "canonical_entity_repair_required");
+  assert.ok(
+    report.canonical_entity_repair_template.entries.some(
+      (entry) =>
+        entry.story_id === "cyberpunk-trust" &&
+        entry.suggested_repaired_entity === "Cyberpunk 2077",
+    ),
+  );
+  assert.ok(
+    report.canonical_entity_repair_template.entries.some(
+      (entry) =>
+        entry.story_id === "hellraiser-date" &&
+        entry.suggested_repaired_entity === "Hellraiser: Revival",
+    ),
   );
 });
 

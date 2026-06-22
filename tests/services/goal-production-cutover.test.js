@@ -1793,6 +1793,60 @@ test("production cutover explains missing final-render inputs on queued proof it
   assert.equal(plan.queue[0].render_input_evidence.materialised_motion_clip_count, 0);
 });
 
+test("production cutover queues local proof packages when repaired audio evidence exists", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-local-audio-repaired-"));
+  const storyPackage = await makeCutoverPackage(root, "local-proof-audio-repaired");
+  const artifactDir = storyPackage.artifact_dir;
+  const resolvedAudioPath = path.join(root, "media", "local-proof-audio-repaired.mp3");
+  const resolvedTimestampsPath = path.join(root, "media", "local-proof-audio-repaired_timestamps.json");
+  await fs.outputFile(resolvedAudioPath, Buffer.alloc(5000, 2));
+  await fs.outputJson(resolvedTimestampsPath, {
+    words: [
+      { word: "Forza", start: 0, end: 0.4 },
+      { word: "moves", start: 0.4, end: 0.8 },
+    ],
+    meta: { wordTimestampSource: "local_whisper_word_alignment" },
+  });
+  await fs.remove(path.join(artifactDir, "visual_v4_render.mp4"));
+  await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), {
+    story_id: "local-proof-audio-repaired",
+    voice_status: "materialized",
+    resolved_narration_audio_path: resolvedAudioPath,
+    resolved_word_timestamps_path: resolvedTimestampsPath,
+    word_timestamp_source: "local_whisper_word_alignment",
+  });
+  Object.assign(storyPackage, {
+    verdict: "local_proof_pending",
+    local_promotion_only: true,
+    blockers: [
+      "not_scheduler_green",
+      "missing_fresh_audio_and_word_timestamps",
+      "missing_validated_official_direct_motion",
+      "missing_visual_v4_final_render",
+      "missing_media_house_quality_gate_pass",
+      "missing_scheduler_preflight_pass",
+      "missing_strict_dry_run_pass",
+    ],
+  });
+
+  const plan = await buildProductionRenderCutoverPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-22T00:20:00.000Z",
+  });
+
+  assert.equal(plan.summary.queued_final_render_count, 1);
+  assert.equal(plan.summary.blocked_count, 0);
+  assert.equal(plan.queue[0].status, "needs_final_render");
+  assert.ok(!plan.queue[0].blockers.some((blocker) => blocker.includes("missing_fresh_audio")));
+  assert.ok(!plan.queue[0].blockers.some((blocker) => blocker.includes("local_proof_pending")));
+  assert.equal(plan.queue[0].render_input_status, "blocked");
+  assert.ok(!plan.queue[0].render_input_blockers.includes("final_narration_audio_missing"));
+  assert.ok(!plan.queue[0].render_input_blockers.includes("word_timestamps_missing"));
+  assert.ok(plan.queue[0].render_input_blockers.includes("missing_render_input:footage_inventory.json"));
+  assert.equal(plan.queue[0].render_input_evidence.narration_audio_path, resolvedAudioPath);
+  assert.equal(plan.queue[0].render_input_evidence.word_timestamps_path, resolvedTimestampsPath);
+});
+
 test("production cutover marks queued proof item ready for a final render job when inputs exist", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-inputs-ready-"));
   const storyPackage = await makeCutoverPackage(root, "input-ready-story");
@@ -2433,6 +2487,63 @@ test("production cutover requeues final renders when TTS pronunciation policy ma
   assert.ok(plan.queue[0].render_input_blockers.includes("final_narration_audio_stale_after_pronunciation_repair"));
   assert.ok(plan.queue[0].render_input_blockers.includes("word_timestamps_stale_after_pronunciation_repair"));
   assert.equal(plan.queue[0].render_input_evidence.tts_pronunciation_expected_transcript, "Hades two finally has a console date players can plan around.");
+});
+
+test("production cutover accepts harmless spoken-number TTS normalisation", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-pronunciation-numbers-"));
+  const storyPackage = await makeCutoverPackage(root, "spoken-number-fresh-story", {
+    finalPublishRender: true,
+    renderer: "visual_v4_production",
+    visualTier: "production_v4_motion",
+    subject: "Cyberpunk 2077",
+    title: "Cyberpunk 2077 Still Has A Trust Test",
+  });
+  const artifactDir = storyPackage.artifact_dir;
+  const audioPath = path.join(artifactDir, "narration.mp3");
+  const timestampsPath = path.join(artifactDir, "narration_timestamps.json");
+  const script = "Cyberpunk 2077 is still a trust test in 2026.";
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "spoken-number-fresh-story",
+    canonical_subject: "Cyberpunk 2077",
+    selected_title: "Cyberpunk 2077 Still Has A Trust Test",
+    narration_script: script,
+    first_spoken_line: script,
+    description: "Cyberpunk 2077 is still a trust test. Source: PC Gamer.",
+    primary_source: "PC Gamer",
+  });
+  await fs.outputFile(audioPath, Buffer.alloc(4000, 2));
+  await fs.outputJson(timestampsPath, {
+    words: [
+      { word: "Cyberpunk", start: 0, end: 0.4 },
+      { word: "2077", start: 0.4, end: 0.8 },
+      { word: "is", start: 0.8, end: 1.0 },
+      { word: "still", start: 1.0, end: 1.2 },
+      { word: "a", start: 1.2, end: 1.3 },
+      { word: "trust", start: 1.3, end: 1.6 },
+      { word: "test", start: 1.6, end: 1.9 },
+      { word: "in", start: 1.9, end: 2.1 },
+      { word: "2026", start: 2.1, end: 2.5 },
+    ],
+    meta: {
+      transcript: "Cyberpunk 2077 is still a trust test in 2026.",
+      wordTimestampSource: "local_whisper_word_alignment",
+      timestampWhisperAlignment: { repaired: true },
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), {
+    narration_audio_path: audioPath,
+    word_timestamps_path: timestampsPath,
+    voice_provider: "local_tts",
+  });
+
+  const plan = await buildProductionRenderCutoverPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-05-26T07:55:30.000Z",
+  });
+
+  assert.equal(plan.summary.queued_final_render_count, 0);
+  assert.equal(plan.summary.ready_final_render_count, 1);
+  assert.equal(plan.validation_report[0].render_input_evidence.tts_pronunciation_expected_transcript, undefined);
 });
 
 test("production cutover requeues final renders when ASR word timestamps contain semantic misrecognitions", async () => {

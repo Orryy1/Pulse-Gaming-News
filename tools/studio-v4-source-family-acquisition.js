@@ -234,12 +234,27 @@ function cleanText(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
 }
 
+function normaliseMatchText(value) {
+  return cleanText(value)
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function firstText(...values) {
   for (const value of values) {
     const text = cleanText(value);
     if (text) return text;
   }
   return "";
+}
+
+function numberOrZero(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
 }
 
 function asArray(value) {
@@ -321,6 +336,145 @@ function hydrateMotionPacksWithCanonicalManifests(motionPackReports = [], canoni
       },
     };
   });
+}
+
+function workOrderJobText(job = {}) {
+  return normaliseMatchText(
+    [
+      job.repair_lane,
+      job.blocker_type,
+      job.exact_missing_input,
+      ...asArray(job.blockers),
+      ...asArray(job.actions).flatMap((action) => [
+        action.action_id,
+        action.repair_lane,
+        action.status,
+        action.exact_missing_input,
+        ...asArray(action.reason_codes),
+        ...asArray(action.output_expectations),
+        ...asArray(action.allowed_routes),
+      ]),
+    ].join(" "),
+  );
+}
+
+function workOrderJobNeedsDirectVideoMotion(job = {}) {
+  const text = workOrderJobText(job);
+  return [
+    "direct video enrichment",
+    "direct video motion missing",
+    "direct video motion clips",
+    "additional direct video motion required",
+    "materialise validated real motion clips",
+    "official direct video sources",
+    "licensed gameplay trailer sources",
+  ].some((phrase) => text.includes(phrase));
+}
+
+function manifestForStoryId(canonicalManifestsByStoryId, storyId) {
+  if (!storyId || !canonicalManifestsByStoryId) return null;
+  if (canonicalManifestsByStoryId instanceof Map) {
+    return canonicalManifestsByStoryId.get(storyId) || null;
+  }
+  return canonicalManifestsByStoryId[storyId] || null;
+}
+
+function workOrderEvidence(job = {}) {
+  const actionEvidence = asArray(job.actions)
+    .map((action) => action.evidence)
+    .find((evidence) => evidence && typeof evidence === "object");
+  return {
+    ...(job.evidence && typeof job.evidence === "object" ? job.evidence : {}),
+    ...(actionEvidence || {}),
+  };
+}
+
+function workOrderBlockers(job = {}) {
+  const blockers = [
+    ...asArray(job.blockers),
+    ...asArray(job.actions).flatMap((action) => action.reason_codes),
+  ].map(cleanText).filter(Boolean);
+  return Array.from(new Set(blockers));
+}
+
+function buildSyntheticMotionPackFromWorkOrder(job = {}, manifest = {}) {
+  const storyId = storyIdFrom(job);
+  const evidence = workOrderEvidence(job);
+  const requiredMotionScenes = Math.max(
+    5,
+    numberOrZero(evidence.direct_video_motion_clip_floor),
+    numberOrZero(evidence.real_visual_motion_clip_floor),
+  );
+  return {
+    schema_version: 1,
+    story_id: storyId,
+    title: firstText(
+      manifest?.selected_title,
+      manifest?.canonical_title,
+      manifest?.title,
+      job.title,
+      storyId,
+    ),
+    artifact_dir: firstText(job.artifact_dir, job.artifactDir, manifest?.artifact_dir, manifest?.artifactDir),
+    canonical_subject: firstText(manifest?.canonical_subject, job.canonical_subject),
+    canonical_game: firstText(manifest?.canonical_game, job.canonical_game, job.game),
+    canonical_company: firstText(manifest?.canonical_company, job.canonical_company),
+    canonical_people: manifest?.canonical_people || job.canonical_people,
+    canonical_platforms: manifest?.canonical_platforms || job.canonical_platforms,
+    primary_source: firstText(manifest?.primary_source, job.primary_source),
+    primary_source_url: firstText(manifest?.primary_source_url, job.primary_source_url),
+    official_motion_references: asArray(manifest?.official_motion_references),
+    trailer_references: asArray(manifest?.trailer_references),
+    readiness: {
+      status: "v4_motion_blocked",
+      blockers: workOrderBlockers(job),
+      warnings: [],
+    },
+    motion_budget: {
+      required_motion_scenes: requiredMotionScenes,
+      available_motion_clips: Math.max(
+        0,
+        numberOrZero(evidence.materialised_motion_clip_count),
+        numberOrZero(evidence.direct_video_motion_asset_count),
+        numberOrZero(evidence.real_visual_motion_clip_count),
+      ),
+      required_distinct_families: Math.max(4, Math.min(requiredMotionScenes, 4)),
+      available_distinct_families: Math.max(
+        0,
+        numberOrZero(evidence.distinct_motion_family_count),
+        numberOrZero(evidence.direct_video_motion_family_count),
+      ),
+    },
+    clips: [],
+    trusted_source_pipeline: {
+      references_found: 0,
+      intake_queue: [],
+    },
+    direct_video_enrichment_requested: true,
+    synthetic_from_render_input_work_order: true,
+    synthetic_source: "render_input_work_order",
+  };
+}
+
+function synthesiseMotionPacksFromWorkOrder({
+  motionPackReports = [],
+  canonicalManifestsByStoryId = new Map(),
+  canonicalManifests = canonicalManifestsByStoryId,
+  workOrder = {},
+} = {}) {
+  const packs = [...asArray(motionPackReports)];
+  const existingStoryIds = new Set(packs.map(storyIdFrom).filter(Boolean));
+  for (const job of asArray(workOrder.jobs)) {
+    const storyId = storyIdFrom(job);
+    if (!storyId || existingStoryIds.has(storyId)) continue;
+    if (!workOrderJobNeedsDirectVideoMotion(job)) continue;
+    packs.push(buildSyntheticMotionPackFromWorkOrder(
+      job,
+      manifestForStoryId(canonicalManifests, storyId) || {},
+    ));
+    existingStoryIds.add(storyId);
+  }
+  return packs;
 }
 
 async function loadCanonicalManifestsFromStoryPackages(args) {
@@ -504,8 +658,13 @@ async function main() {
   const trustedFootageReport = await loadTrustedReport(args);
   const referenceReport = await loadReferenceReport(args);
   const directVideoEnrichmentWorkOrder = await loadDirectVideoEnrichmentWorkOrder(args);
-  const report = buildStudioV4SourceFamilyAcquisitionReport({
+  const acquisitionMotionPackReports = synthesiseMotionPacksFromWorkOrder({
     motionPackReports: hydratedMotionPackReports,
+    canonicalManifests,
+    workOrder: directVideoEnrichmentWorkOrder,
+  });
+  const report = buildStudioV4SourceFamilyAcquisitionReport({
+    motionPackReports: acquisitionMotionPackReports,
     trustedFootageReport,
     referenceReport,
     directVideoEnrichmentWorkOrder,
@@ -529,6 +688,7 @@ if (require.main === module) {
 
 module.exports = {
   hydrateMotionPacksWithCanonicalManifests,
+  synthesiseMotionPacksFromWorkOrder,
   mergeReferenceReports,
   parseArgs,
   storyIdFilterSet,

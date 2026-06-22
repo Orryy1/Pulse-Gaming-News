@@ -76,6 +76,20 @@ test("fresh review script repair excludes off-topic entertainment feed noise", (
   assert.deepEqual(selected.map((item) => item.story_id), ["fresh_gaming"]);
 });
 
+test("fresh review script repair excludes commerce deals roundups from editorial refill", () => {
+  const selected = selectFreshReviewScriptRepairRows([
+    row({ story_id: "fresh_good" }),
+    row({
+      story_id: "deals_roundup",
+      title: "The Best Deals Today: AirPods Pro 3, Tears of the Kingdom Switch 2 Edition, Nioh 3, and More",
+      url: "https://www.ign.com/articles/best-deals-for-june-21-2026",
+      article_url: "https://www.ign.com/articles/best-deals-for-june-21-2026",
+    }),
+  ], { now: NOW, limit: 10 });
+
+  assert.deepEqual(selected.map((item) => item.story_id), ["fresh_good"]);
+});
+
 test("fresh review script repair excludes stale, non-script, published and reddit-only rows", () => {
   const selected = selectFreshReviewScriptRepairRows([
     row({ story_id: "fresh_good" }),

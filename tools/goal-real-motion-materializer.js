@@ -17,6 +17,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     workOrderPath: path.join(ROOT, "output", "goal-contract", "render_input_work_order.json"),
     outDir: path.join(ROOT, "output", "goal-contract"),
     root: ROOT,
+    artifactRoot: "",
     segmentReportPath: null,
     generatedAt: null,
     limit: 0,
@@ -33,6 +34,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     if (arg === "--work-order") args.workOrderPath = argv[++i] || args.workOrderPath;
     else if (arg === "--out-dir" || arg === "--output-dir") args.outDir = argv[++i] || args.outDir;
     else if (arg === "--root") args.root = argv[++i] || args.root;
+    else if (arg === "--artifact-root") args.artifactRoot = argv[++i] || args.artifactRoot;
     else if (arg === "--segment-report" || arg === "--segment-validation-report") {
       args.segmentReportPath = argv[++i] || null;
     }
@@ -61,6 +63,7 @@ function usage() {
     "  --work-order <path>     Render input work-order JSON",
     "  --out-dir <dir>         Output report directory",
     "  --root <dir>            Workspace root",
+    "  --artifact-root <dir>   Artifact root for segment-report-only fresh packages",
     "  --segment-report <path> Read validated direct-video segments as repair candidates",
     "  --limit <n>             Process at most n stories",
     "  --story-id <id>         Process only the matching story; repeatable",
@@ -92,6 +95,7 @@ async function main(argv = process.argv.slice(2)) {
     minFamilies: args.minFamilies,
     maxClips: args.maxClips,
     segmentValidationReport,
+    artifactRoot: args.artifactRoot,
     includeReadyStories: args.refreshReady,
   });
   const written = await writeGoalRealMotionReport(report, {

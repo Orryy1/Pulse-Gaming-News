@@ -720,6 +720,21 @@ test("goal public copy QA blocks unanchored review-score language", () => {
   assert.ok(report.failures.includes("public_copy:unanchored_review_score_language"));
 });
 
+test("goal public copy QA allows negated review-score comparisons", () => {
+  const report = evaluateGoalPublicCopy({
+    canonical_subject: "Ocarina of Time",
+    selected_title: "Ocarina's Remake Pressure",
+    first_spoken_line: "Ocarina of Time just made Nintendo's remake demand impossible to ignore.",
+    narration_script:
+      "Ocarina of Time just made Nintendo's remake demand impossible to ignore. Eurogamer reports the Ocarina of Time remake trailer was the most-viewed clip. That matters because viewership is not a review score; it is a demand signal from players telling Nintendo which nostalgia bet carries the most pressure.",
+    description: "Ocarina of Time has a major trailer demand signal. Source: Eurogamer.",
+    confirmed_claims: ["Eurogamer reports the Ocarina of Time remake trailer was the most-viewed clip."],
+  });
+
+  assert.equal(report.verdict, "pass");
+  assert.ok(!report.failures.includes("public_copy:unanchored_review_score_language"));
+});
+
 test("goal public copy QA blocks source-process and operator-advice residue", () => {
   const report = evaluateGoalPublicCopy({
     canonical_subject: "Dawn of War 4",

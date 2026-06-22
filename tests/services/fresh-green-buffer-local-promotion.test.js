@@ -67,6 +67,7 @@ test("fresh buffer promotion writes local package work orders without publish or
 
   assert.ok(fs.existsSync(written.reportJson));
   assert.ok(fs.existsSync(written.reportMd));
+  assert.ok(fs.existsSync(written.renderInputWorkOrder));
   assert.ok(fs.existsSync(path.join(outDir, "packages", "fresh_xbox_halo_campaign_evolved_demo_20260610", "canonical_story_manifest.json")));
   assert.ok(fs.existsSync(path.join(outDir, "packages", "fresh_xbox_halo_campaign_evolved_demo_20260610", "render_readiness_work_order.json")));
 
@@ -92,6 +93,31 @@ test("fresh buffer promotion writes local package work orders without publish or
   assert.match(storyPackages[0].description, /Halo: Campaign Evolved has a public demo test/i);
   assert.ok(storyPackages[0].blockers.includes("not_scheduler_green"));
   assert.ok(storyPackages[0].blockers.includes("missing_scheduler_preflight_pass"));
+
+  const renderInputWorkOrder = JSON.parse(fs.readFileSync(written.renderInputWorkOrder, "utf8"));
+  assert.equal(renderInputWorkOrder.mode, "LOCAL_RENDER_INPUT_WORK_ORDER");
+  assert.equal(renderInputWorkOrder.summary.story_count, 1);
+  assert.equal(renderInputWorkOrder.summary.ready_for_final_render_job_count, 0);
+  assert.equal(renderInputWorkOrder.summary.blocked_on_render_inputs_count, 1);
+  assert.equal(renderInputWorkOrder.summary.audio_timestamp_jobs, 1);
+  assert.equal(renderInputWorkOrder.summary.real_motion_materialisation_jobs, 1);
+  assert.equal(renderInputWorkOrder.summary.final_mp4_repair_jobs, 1);
+  assert.equal(renderInputWorkOrder.summary.caption_repair_jobs, 1);
+  assert.equal(renderInputWorkOrder.jobs[0].status, "blocked_on_render_inputs");
+  assert.equal(renderInputWorkOrder.jobs[0].artifact_dir, storyPackages[0].artifact_dir);
+  assert.deepEqual(
+    renderInputWorkOrder.jobs[0].actions.map((action) => action.action_id),
+    [
+      "generate_final_narration_audio_and_word_timestamps",
+      "materialise_validated_real_motion_clips",
+      "materialise_final_mp4",
+      "generate_caption_file",
+      "repair_render_manifest",
+      "repair_audio_manifest",
+    ],
+  );
+  assert.equal(renderInputWorkOrder.safety.no_publish_triggered, true);
+  assert.equal(renderInputWorkOrder.safety.no_db_mutation, true);
 });
 
 test("fresh buffer promotion CLI is registered and defaults to overnight output", () => {

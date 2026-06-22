@@ -288,6 +288,33 @@ test("transcript audience audit can target an explicit current artifact dir", as
   });
 });
 
+test("transcript audience audit counts kart handling and track details as concrete", async () => {
+  await withTempDir(async (root) => {
+    const currentDir = path.join(root, "output", "goal-contract", "current-package", "yooka");
+    await fs.ensureDir(currentDir);
+    await fs.writeJson(path.join(currentDir, "canonical_story_manifest.json"), {
+      story_id: "yooka",
+      selected_title: "Yooka-Laylee Kart Has A Diddy Kong Risk",
+      canonical_subject: "Super Yooka-Laylee Kart",
+      primary_source: "IGN",
+      narration_script:
+        "Super Yooka Laylee Kart is going after one of racing's most dangerous comparisons. IGN says ex Rare developers are aiming to revive the spirit of Diddy Kong Racing. That is bigger than a cute mascot pitch. Diddy Kong Racing worked because it felt like an adventure first and a racer second. The catch is handling. Players have to decide whether to wishlist this as a real kart rival, or wait until the handling proves nostalgia is not doing all the work. That is the pressure on Playtonic now. Tracks, items and character charm have to feel like discovery, not cosplay. If the handling has bite, this becomes a serious nostalgia upset. If it feels floaty, the comparison eats it alive. Follow Pulse Gaming so you never miss a beat.",
+    });
+    await fs.writeJson(path.join(currentDir, "source_manifest.json"), {
+      primary_source: { name: "IGN", url: "https://example.test/yooka" },
+    });
+
+    const report = await auditGeneratedTranscripts({ root, artifactDirs: [currentDir] });
+
+    assert.equal(report.summary.total, 1);
+    assert.equal(report.summary.pass, 1);
+    const row = report.stories[0];
+    assert.equal(row.verdict, "pass");
+    assert.equal(row.mass_audience.concrete_detail_count >= 3, true);
+    assert.equal(row.mass_audience.warnings.includes("mass_audience:title_subject_not_obvious"), false);
+  });
+});
+
 test("transcript audience audit CLI writes explicit current artifact reports", async () => {
   await withTempDir(async (root) => {
     const currentDir = path.join(root, "current-package", "fresh_story");

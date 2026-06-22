@@ -78,6 +78,121 @@ async function firstExistingJson(paths = []) {
   return null;
 }
 
+function clean(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function truthy(value) {
+  return /^(true|1|yes|on)$/i.test(clean(value));
+}
+
+function sqliteEvidenceEnabled(env = process.env) {
+  return truthy(env.USE_SQLITE) || !!clean(env.SQLITE_DB_PATH);
+}
+
+function sqliteTableExists(db, tableName) {
+  return !!db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+    .get(tableName);
+}
+
+function readPublishedPlatformEvidenceFromSqlite(env = process.env) {
+  if (!sqliteEvidenceEnabled(env)) return { rows: [], error: null };
+  let dbPath = "";
+  try {
+    dbPath = require("../lib/db").resolveDbPath();
+  } catch (err) {
+    return { rows: [], error: `sqlite_path_resolve_failed:${err.message}` };
+  }
+  if (!dbPath || !fs.existsSync(dbPath)) {
+    return { rows: [], error: `sqlite_db_missing:${dbPath || "unknown"}` };
+  }
+
+  let sqlite = null;
+  try {
+    const Database = require("better-sqlite3");
+    sqlite = new Database(dbPath, { readonly: true, fileMustExist: true });
+    const rows = [];
+
+    if (sqliteTableExists(sqlite, "platform_posts")) {
+      rows.push(
+        ...sqlite
+          .prepare(
+            `SELECT story_id, platform, external_id, external_url, status, published_at, updated_at
+               FROM platform_posts
+              WHERE status = 'published'`,
+          )
+          .all()
+          .map((row) => ({ ...row, evidence_source: "platform_posts" })),
+      );
+    }
+
+    if (sqliteTableExists(sqlite, "stories")) {
+      const storyRows = sqlite
+        .prepare(
+          `SELECT id, youtube_post_id, youtube_url, instagram_media_id, facebook_post_id,
+                  tiktok_post_id, twitter_post_id
+             FROM stories`,
+        )
+        .all();
+      for (const row of storyRows) {
+        if (clean(row.youtube_post_id)) {
+          rows.push({
+            story_id: row.id,
+            platform: "youtube",
+            external_id: row.youtube_post_id,
+            external_url: row.youtube_url || null,
+            status: "published",
+            evidence_source: "stories.youtube_post_id",
+          });
+        }
+        if (clean(row.instagram_media_id)) {
+          rows.push({
+            story_id: row.id,
+            platform: "instagram_reel",
+            external_id: row.instagram_media_id,
+            status: "published",
+            evidence_source: "stories.instagram_media_id",
+          });
+        }
+        if (clean(row.facebook_post_id)) {
+          rows.push({
+            story_id: row.id,
+            platform: "facebook_reel",
+            external_id: row.facebook_post_id,
+            status: "published",
+            evidence_source: "stories.facebook_post_id",
+          });
+        }
+        if (clean(row.tiktok_post_id)) {
+          rows.push({
+            story_id: row.id,
+            platform: "tiktok",
+            external_id: row.tiktok_post_id,
+            status: "published",
+            evidence_source: "stories.tiktok_post_id",
+          });
+        }
+        if (clean(row.twitter_post_id)) {
+          rows.push({
+            story_id: row.id,
+            platform: "twitter_video",
+            external_id: row.twitter_post_id,
+            status: "published",
+            evidence_source: "stories.twitter_post_id",
+          });
+        }
+      }
+    }
+
+    return { rows, error: null };
+  } catch (err) {
+    return { rows: [], error: `sqlite_published_platform_evidence_failed:${err.message}` };
+  } finally {
+    if (sqlite) sqlite.close();
+  }
+}
+
 async function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
   if (args.help) {
@@ -101,6 +216,7 @@ async function main(argv = process.argv.slice(2)) {
         path.join(root, "output", "transcript-audience-audit", "transcript_audience_audit.json"),
       ];
 
+  const publishedEvidence = readPublishedPlatformEvidenceFromSqlite();
   const report = buildGuardedDispatchPreflight({
     approvalGateReport: await readJson(approvalGateReportPath, "human review approval gate report"),
     strictDryRunPlan: await readJson(strictDryRunPlanPath, "strict dry-run plan"),
@@ -108,6 +224,8 @@ async function main(argv = process.argv.slice(2)) {
     transcriptAudienceReport: args.transcriptAudienceReportPath
       ? await readOptionalJson(transcriptAudienceReportPaths[0])
       : await firstExistingJson(transcriptAudienceReportPaths),
+    publishedPlatformEvidence: publishedEvidence.rows,
+    publishedPlatformEvidenceError: publishedEvidence.error,
     generatedAt: args.generatedAt || new Date().toISOString(),
   });
   const artefacts = await writeGuardedDispatchPreflight(report, {
@@ -129,4 +247,5 @@ module.exports = {
   firstExistingJson,
   main,
   parseArgs,
+  readPublishedPlatformEvidenceFromSqlite,
 };

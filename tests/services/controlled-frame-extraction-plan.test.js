@@ -391,6 +391,39 @@ test("Controlled Frame Extraction Plan accepts trusted Steam storefront video re
   assert.equal(plan.target_frames[0].source_type, "steam_storefront_video_reference");
 });
 
+test("Controlled Frame Extraction Plan accepts official intake platform storefront HLS media", () => {
+  const plan = buildControlledFrameExtractionPlan(
+    motionPlan({
+      story_id: "gothic-storefront-media",
+      existing_references: [
+        {
+          source_type: "platform_storefront",
+          provider: "official_intake",
+          source_url:
+            "https://video.fastly.steamstatic.com/store_trailers/1297900/838021560/hash/1780406928/hls_264_master.m3u8",
+          reference_page_url: "https://store.steampowered.com/app/1297900/Gothic_1_Remake/",
+          source_url_kind: "hls_manifest",
+          segment_validation_eligible: true,
+          entity: "Gothic 1 Remake",
+          movie_name: "Gothic 1 Remake official Steam trailer",
+          source_verified: true,
+          downloads_allowed: false,
+          source_duration_s: 79.4,
+          rights_risk_class: "official_reference_only",
+          allowed_render_use: "reference_only_by_default",
+        },
+      ],
+    }),
+    { maxReferences: 1, maxTargetFrames: 4 },
+  );
+
+  assert.equal(plan.selected_references.length, 1);
+  assert.equal(plan.selected_references[0].source_type, "platform_storefront");
+  assert.equal(plan.target_frames.length, 4);
+  assert.equal(plan.target_frames[0].source_url_kind, "hls_manifest");
+  assert.equal(plan.target_frames[0].segment_validation_eligible, true);
+});
+
 test("Controlled Frame Extraction Plan accepts direct media discovered from official pages", () => {
   const plan = buildControlledFrameExtractionPlan(
     motionPlan({

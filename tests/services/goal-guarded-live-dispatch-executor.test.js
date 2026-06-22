@@ -268,6 +268,75 @@ test("guarded live dispatch executor applies only the selected Instagram action 
   ]);
 });
 
+test("guarded live dispatch executor does not report GREEN when one selected enabled platform duplicate-blocks", async () => {
+  const persistedStories = [];
+  const generatedAt = "2026-06-22T14:00:00.000Z";
+
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("youtube_shorts"),
+        action("instagram_reels"),
+        action("facebook_reels"),
+      ],
+    }),
+    stories: [story()],
+    actionIds: [
+      "story-one:youtube_shorts",
+      "story-one:instagram_reels",
+      "story-one:facebook_reels",
+    ],
+    apply: true,
+    maxActions: 3,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+    uploaders: {
+      youtube_shorts: {
+        uploadShort: async () => ({
+          blocked: true,
+          reason: "Similar to existing: Cyberpunk 2077's Trust Debt",
+        }),
+      },
+      instagram_reels: {
+        uploadShort: async () => ({ platform: "instagram", mediaId: "ig_ok_1" }),
+      },
+      facebook_reels: {
+        uploadShort: async () => ({ platform: "facebook", videoId: "fb_ok_1" }),
+      },
+    },
+    db: {
+      upsertStory: async (nextStory) => {
+        persistedStories.push({ ...nextStory });
+      },
+    },
+    platformPosts: {
+      ensurePending(storyId, platform, options = {}) {
+        return { id: `${storyId}:${platform}:${options.idempotencyKey}` };
+      },
+      markPublished() {},
+    },
+    runActionQualityGate: passActionQualityGate,
+    generatedAt,
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.ready_for_live_dispatch_boolean, false);
+  assert.equal(report.summary.selected_action_count, 3);
+  assert.equal(report.summary.completed_action_count, 2);
+  assert.equal(report.summary.blocked_action_count, 1);
+  assert.equal(report.summary.upload_attempt_count, 2);
+  assert.equal(report.summary.db_mutation_count, 3);
+  assert.deepEqual(report.actions.map((item) => item.outcome), ["new_upload", "new_upload"]);
+  assert.equal(report.blocked_actions[0].action_id, "story-one:youtube_shorts");
+  assert.equal(report.blocked_actions[0].outcome, "duplicate_blocked");
+  assert.deepEqual(report.blocked_actions[0].blockers, ["duplicate_blocked"]);
+  assert.match(report.blocked_actions[0].error, /Similar to existing/);
+  assert.equal(report.required_next_step, "repair_guarded_live_dispatch_blockers");
+  assert.equal(persistedStories.length, 3);
+});
+
 test("guarded live dispatch executor posts Discord handoff alerts after a new guarded upload", async () => {
   const persistedSnapshots = [];
   const discordCalls = [];

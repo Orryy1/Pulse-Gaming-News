@@ -10,6 +10,7 @@ const {
   buildDiscordOperationsSummary,
   buildSchedulerWindowReadiness,
   buildNormalOperationsReport,
+  buildPlatformPerformance,
   formatDailyStudioReportMarkdown,
   formatNormalOperationsMarkdown,
   formatSchedulerWindowReadinessMarkdown,
@@ -110,6 +111,65 @@ async function buildFreshCandidateReport({ limit = 20 } = {}) {
     upstreamBenchmarkReport,
   });
   return report;
+}
+
+async function buildPlatformPerformanceReport() {
+  const dbModule = require("../lib/db");
+  const dbPath = process.env.SQLITE_DB_PATH || process.env.PULSE_DB_PATH || dbModule.DB_PATH;
+  if (!dbPath || !(await fs.pathExists(dbPath))) {
+    return buildPlatformPerformance({
+      platformPosts: [],
+      metricSnapshots: [],
+    });
+  }
+
+  const Database = require("better-sqlite3");
+  const sqlite = new Database(dbPath, { readonly: true, fileMustExist: true });
+  try {
+    const hasPlatformPosts = sqlite
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='platform_posts'")
+      .get();
+    const hasMetricSnapshots = sqlite
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='platform_metric_snapshots'")
+      .get();
+    const platformPosts = hasPlatformPosts
+      ? sqlite
+          .prepare(
+            `SELECT story_id, platform, status, external_id, views, likes, comments, shares, stats_fetched_at, published_at, created_at, updated_at
+             FROM platform_posts
+             WHERE platform IN ('youtube', 'youtube_shorts', 'instagram_reel', 'instagram_reels', 'facebook_reel', 'facebook_reels')
+             ORDER BY COALESCE(published_at, updated_at, created_at) DESC
+             LIMIT 300`,
+          )
+          .all()
+      : [];
+    const metricSnapshots = hasMetricSnapshots
+      ? sqlite
+          .prepare(
+            `WITH latest AS (
+               SELECT story_id, platform, MAX(snapshot_at) AS latest_snapshot_at
+               FROM platform_metric_snapshots
+               WHERE platform IN ('youtube', 'youtube_shorts', 'instagram', 'instagram_reel', 'instagram_reels', 'facebook', 'facebook_reel', 'facebook_reels')
+               GROUP BY story_id, platform
+             )
+             SELECT p.story_id, p.platform, p.external_id, p.snapshot_at, p.views, p.likes, p.comments, p.shares, p.retention_percent
+             FROM platform_metric_snapshots p
+             JOIN latest
+               ON latest.story_id = p.story_id
+              AND latest.platform = p.platform
+              AND latest.latest_snapshot_at = p.snapshot_at
+             ORDER BY p.snapshot_at DESC
+             LIMIT 300`,
+          )
+          .all()
+      : [];
+    return buildPlatformPerformance({
+      platformPosts,
+      metricSnapshots,
+    });
+  } finally {
+    sqlite.close();
+  }
 }
 
 function candidateBufferReport(report) {
@@ -214,6 +274,7 @@ async function main() {
     platformReport,
     candidateReport,
     guardedSelection,
+    platformPerformanceReport,
   ] = await Promise.all([
     buildPublishReadinessReport(),
     buildQueueReport(),
@@ -223,6 +284,7 @@ async function main() {
       readJsonIfExists(path.join(ROOT, "test", "output", "next_publish_candidates.json")),
     ),
     buildGuardedSelection(),
+    buildPlatformPerformanceReport(),
   ]);
   const localRestartReport = await buildLocalRestartReadiness({ cwd: ROOT, cadenceReport });
   const runtimeSentinelReport = await buildRuntimeOwnershipSentinelFromEnvironment({
@@ -239,6 +301,7 @@ async function main() {
     platformReport,
     candidateReport,
     guardedSelection,
+    platformPerformanceReport,
   });
   const markdown = formatNormalOperationsMarkdown(report);
   const candidate = candidateBufferReport(report);
@@ -259,6 +322,7 @@ async function main() {
     fs.writeJson(path.join(outDir, "candidate_buffer_report.json"), candidate, { spaces: 2 }),
     fs.writeFile(path.join(outDir, "candidate_buffer_report.md"), formatCandidateBufferMarkdown(candidate), "utf8"),
     fs.writeJson(path.join(outDir, "runtime_ownership_status.json"), report.layers?.runtime_ownership || {}, { spaces: 2 }),
+    fs.writeJson(path.join(outDir, "platform_performance_report.json"), report.layers?.platform_performance || {}, { spaces: 2 }),
     fs.writeJson(path.join(outDir, "post_window_verification.json"), postWindow, { spaces: 2 }),
     fs.writeFile(path.join(outDir, "post_window_verification.md"), formatPostWindowMarkdown(postWindow), "utf8"),
     fs.writeJson(path.join(outDir, "scheduler_window_readiness.json"), schedulerWindow, { spaces: 2 }),
@@ -284,6 +348,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  buildPlatformPerformanceReport,
   candidateBufferReport,
   formatCandidateBufferMarkdown,
   formatNextDayPlanMarkdown,

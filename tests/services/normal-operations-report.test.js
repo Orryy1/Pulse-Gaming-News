@@ -8,6 +8,7 @@ const {
   buildCandidateBuffer,
   buildDiscordOperationsSummary,
   buildNormalOperationsReport,
+  buildPlatformPerformance,
   buildRuntimeOwnership,
   buildSchedulerWindowReadiness,
   formatNormalOperationsMarkdown,
@@ -112,6 +113,31 @@ test("buildCandidateBuffer flags an empty buffer red", () => {
   assert.equal(report.verdict, "red");
   assert.ok(report.blockers.includes("candidate_buffer_empty"));
   assert.equal(report.publish_window_runway.ready_for_next_24h_boolean, false);
+});
+
+test("buildPlatformPerformance separates measured YouTube from under-instrumented Meta channels", () => {
+  const report = buildPlatformPerformance({
+    generatedAt: "2026-06-22T13:30:00.000Z",
+    platformPosts: [
+      { platform: "youtube", status: "published", stats_fetched_at: null, published_at: "2026-06-22 10:00:00" },
+      { platform: "instagram_reel", status: "published", stats_fetched_at: null, published_at: "2026-06-22 10:01:00" },
+      { platform: "facebook_reel", status: "published", stats_fetched_at: null, published_at: "2026-06-22 10:02:00" },
+    ],
+    metricSnapshots: [
+      { story_id: "story-a", platform: "youtube", views: 320, likes: 4, comments: 1, snapshot_at: "2026-06-22T12:00:00.000Z" },
+      { story_id: "story-b", platform: "youtube", views: 640, likes: 10, comments: 2, snapshot_at: "2026-06-22T12:00:00.000Z" },
+      { story_id: "story-a", platform: "instagram", views: 0, likes: 18, comments: 2, snapshot_at: "2026-06-22T12:00:00.000Z" },
+    ],
+  });
+
+  assert.equal(report.verdict, "amber");
+  assert.equal(report.platforms.youtube_shorts.measurement_status, "measured");
+  assert.equal(report.platforms.youtube_shorts.performance_signal, "needs_title_hook_and_first_frame_iteration");
+  assert.equal(report.platforms.instagram_reels.measurement_status, "engagement_without_play_counts");
+  assert.equal(report.platforms.instagram_reels.performance_signal, "traction_signal_under_instrumented");
+  assert.equal(report.platforms.facebook_reels.measurement_status, "no_metric_snapshots");
+  assert.equal(report.platforms.facebook_reels.performance_signal, "published_but_unverified_distribution");
+  assert.ok(report.next_actions.includes("Repair Meta Reels insights ingestion before treating local Instagram/Facebook zero-view counters as truth."));
 });
 
 test("buildRuntimeOwnership requires current public primary queue runtime", () => {
@@ -222,14 +248,30 @@ test("buildNormalOperationsReport composes a newsroom operations verdict", () =>
       candidates: Array.from({ length: 10 }, (_, index) => candidate(`story-${index + 1}`)),
     },
     guardedSelection: { action_id: "story-1:youtube_shorts", exhausted: false, skipped_actions: [] },
+    platformPerformanceReport: {
+      verdict: "amber",
+      platform_strategy: {
+        primary_learning_platform: "youtube_shorts",
+        traction_signal_platform: "instagram_reels",
+        verification_platform: "facebook_reels",
+      },
+      platforms: {
+        youtube_shorts: { performance_signal: "needs_title_hook_and_first_frame_iteration" },
+        instagram_reels: { performance_signal: "traction_signal_under_instrumented" },
+        facebook_reels: { performance_signal: "published_but_unverified_distribution" },
+      },
+      next_actions: ["Repair Meta Reels insights ingestion."],
+    },
   });
 
   assert.equal(report.overall_verdict, "amber");
   assert.equal(report.operating_posture, "normal_operations");
   assert.equal(report.layers.candidate_buffer.verdict, "green");
   assert.equal(report.layers.runtime_ownership.verdict, "green");
+  assert.equal(report.layers.platform_performance.platform_strategy.traction_signal_platform, "instagram_reels");
   assert.ok(report.next_actions.some((action) => action.includes("story-1:youtube_shorts")));
   assert.match(formatNormalOperationsMarkdown(report), /Normal Operations Report/);
+  assert.match(formatNormalOperationsMarkdown(report), /Platform Performance/);
 });
 
 test("buildDailyStudioReport turns normal operations into an operator handoff", () => {

@@ -71,6 +71,7 @@
     "ops:social-platforms": "node tools/social-platform-operations.js",
     "ops:analytics-doctor": "node tools/analytics-capability-doctor.js",
     "ops:youtube-analytics-packet": "node tools/youtube-analytics-ingestion-packet.js",
+    "ops:meta-reels-insights": "node tools/meta-reels-insights-packet.js",
     "ops:retention-intelligence": "node tools/retention-intelligence.js",
     "ops:learning-loop": "node tools/continuous-learning-loop.js",
     "ops:commercial-learning": "node tools/commercial-learning-loop.js",

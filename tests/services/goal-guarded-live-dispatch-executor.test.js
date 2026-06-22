@@ -1029,6 +1029,58 @@ test("selectNextGuardedLiveAction uses canonical source age before DB touch time
   assert.ok(selection.skipped_actions[0].blockers.includes("source_age_exceeds_limit"));
 });
 
+test("selectNextGuardedLiveAction treats a clean canonical package as source of truth over stale DB script review state", async (t) => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-canonical-script-state-"));
+  t.after(() => fs.remove(tmp));
+  const canonicalPath = path.join(tmp, "canonical.json");
+  await fs.writeJson(canonicalPath, {
+    story_id: "repaired-story",
+    selected_title: "Cyberpunk 2077's Trust Debt",
+    primary_source: "PC Gamer",
+    primary_source_url: "https://www.pcgamer.com/games/rpg/cyberpunk-2077-trust-debt",
+    source_published_at: "2026-06-22T09:00:00.000Z",
+    narration_script:
+      "Cyberpunk 2077 still has one problem CD Projekt Red cannot patch. The studio says some players may never fully trust it again after launch. That matters because the sequel is not just selling a new city. It is selling proof that the old promises finally mean something. Follow Pulse Gaming so you never miss a beat.",
+    thumbnail_text: "TRUST DEBT",
+  });
+
+  const selection = await selectNextGuardedLiveAction({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("youtube_shorts", {
+          action_id: "repaired-story:youtube_shorts",
+          story_id: "repaired-story",
+          canonical_manifest_path: canonicalPath,
+        }),
+      ],
+    }),
+    stories: [
+      story({
+        id: "repaired-story",
+        title: "Old weak backlog title",
+        script_generation_status: "review_required",
+        script_review_reason: "script_validation_review_required",
+        full_script: "the hook here is weak internal QA language",
+      }),
+    ],
+    runActionQualityGate: async ({ story: hydratedStory }) => {
+      assert.equal(hydratedStory.script_generation_status, "approved");
+      assert.equal(hydratedStory.script_review_reason, "");
+      assert.match(hydratedStory.full_script, /Cyberpunk 2077 still has one problem/);
+      assert.doesNotMatch(hydratedStory.full_script, /the hook here is/i);
+      return passActionQualityGate();
+    },
+    actionQualityGateOptions: {
+      now: "2026-06-22T10:00:00.000Z",
+      maxSourceAgeHours: 168,
+    },
+  });
+
+  assert.equal(selection.exhausted, false);
+  assert.equal(selection.action_id, "repaired-story:youtube_shorts");
+  assert.equal(selection.skipped_actions.length, 0);
+});
+
 test("guarded live dispatch executor blocks explicit live actions that fail last-second quality", async () => {
   let uploadCalls = 0;
   let upsertCalls = 0;

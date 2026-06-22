@@ -1,7 +1,10 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const os = require("node:os");
+const path = require("node:path");
 const test = require("node:test");
+const fs = require("fs-extra");
 
 const {
   buildCandidateSupplyReport,
@@ -462,6 +465,122 @@ test("candidate supply report treats current transcript backlog as refill pressu
   assert.match(formatCandidateSupplyMarkdown(report), /Transcript Backlog/);
   assert.match(formatCandidateSupplyMonitorDiscord(report), /Clean GREEN: 4\/10 \(raw preflight 5; transcript-held 1; attention-held 0\)/);
   assert.doesNotMatch(formatCandidateSupplyMonitorDiscord(report), /^GREEN-ready: 5\/10/m);
+});
+
+test("candidate supply ignores stale transcript backlog when the current artifact passes audience audit", async (t) => {
+  const now = new Date("2026-06-21T23:00:00.000Z");
+  const artifactDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-current-candidate-"));
+  t.after(async () => {
+    await fs.remove(artifactDir);
+  });
+
+  const script =
+    "Super Yooka-Laylee Kart is going after one of racing's most dangerous comparisons. " +
+    "IGN says ex-Rare developers are aiming to revive the spirit of Diddy Kong Racing. " +
+    "That is bigger than a cute mascot pitch. Diddy Kong Racing worked because it felt like an adventure first and a racer second. " +
+    "The catch is handling. Players have to decide whether to wishlist this as a real kart rival, or wait until the handling proves nostalgia is not doing all the work. " +
+    "That is the pressure on Playtonic now. Tracks, items and character charm have to feel like discovery, not cosplay. " +
+    "If the handling has bite, this becomes a serious nostalgia upset. If it feels floaty, the comparison eats it alive. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+  const videoPath = path.join(artifactDir, "visual_v4_render.mp4");
+  await fs.outputFile(videoPath, "fake mp4 bytes");
+  await fs.writeJson(
+    path.join(artifactDir, "canonical_story_manifest.json"),
+    {
+      story_id: "ready-current",
+      canonical_subject: "Super Yooka-Laylee Kart",
+      title: "Yooka-Laylee Kart Has A Diddy Kong Risk",
+      selected_title: "Yooka-Laylee Kart Has A Diddy Kong Risk",
+      primary_source: "IGN",
+      source_type: "rss",
+      narration_script: script,
+      tts_script: script,
+    },
+    { spaces: 2 },
+  );
+  await fs.writeJson(
+    path.join(artifactDir, "narration_manifest.json"),
+    {
+      status: "ready",
+      final_transcript: script,
+    },
+    { spaces: 2 },
+  );
+  await fs.writeJson(
+    path.join(artifactDir, "script_scorecard.json"),
+    {
+      verdict: "viral_ready",
+      viral_score: 90,
+      blockers: [],
+    },
+    { spaces: 2 },
+  );
+
+  const candidateReport = {
+    generated_at: now.toISOString(),
+    totals: { stories_seen: 1, returned: 1, pending_audio: 0 },
+    candidates: [
+      candidate("ready-current", {
+        title: "Yooka-Laylee Kart Has A Diddy Kong Risk",
+        source: {
+          source_type: "rss",
+          exported_path: videoPath,
+        },
+        source_manifest: {
+          primary_source: {
+            name: "IGN",
+            url: "https://www.ign.com/articles/super-yooka-laylee-kart-preview",
+            published_at: "2026-06-21T19:00:00.000Z",
+          },
+          source_age_policy_hours: 168,
+        },
+      }),
+    ],
+  };
+  const transcriptAudienceReport = {
+    generated_at: now.toISOString(),
+    summary: { total: 1, pass: 0, rewrite_required: 1 },
+    stories: [
+      {
+        story_id: "ready-current",
+        title: "Old Yooka Draft",
+        verdict: "rewrite_required",
+        blockers: ["missing_story_specific_payoff"],
+        viral_score: 48,
+      },
+    ],
+  };
+
+  const report = buildCandidateSupplyReport({
+    stories: [],
+    candidateReport,
+    transcriptAudienceReport,
+    channelConfig: {},
+    now,
+    targets: {
+      greenReadyCandidates: 1,
+      sourceSafeCandidates: 1,
+      v4ReadyCandidates: 1,
+      freshSourceBackedStories: 0,
+      publishWindows24h: 1,
+    },
+  });
+
+  assert.equal(report.summary.raw_preflight_green_ready_candidates, 1);
+  assert.equal(report.summary.transcript_backlog_current_candidates, 0);
+  assert.equal(report.summary.transcript_backlog_ready_candidates, 0);
+  assert.equal(report.summary.transcript_audience_rewrite_required, 0);
+  assert.equal(report.summary.transcript_clean_green_ready_candidates, 1);
+  assert.equal(report.summary.green_ready_candidates, 1);
+  assert.equal(report.summary.fresh_youtube_upload_candidates, 1);
+  assert.equal(report.transcript_backlog.summary.current_candidate_artifact_audit_count, 1);
+  assert.equal(report.transcript_backlog.summary.current_candidate_artifact_pass_count, 1);
+  assert.equal(report.transcript_backlog.summary.stale_transcript_rewrite_suppressed_count, 1);
+  assert.equal(report.transcript_backlog.current_candidates.length, 0);
+  const scorecard = report.priority_scorecards.find((item) => item.story_id === "ready-current");
+  assert.equal(scorecard.clean_green, true);
+  assert.deepEqual(scorecard.transcript_audience.blockers, []);
+  assert.doesNotMatch(formatCandidateSupplyMonitorDiscord(report), /transcript-held 1/);
 });
 
 test("candidate supply report exposes Shorts attention readiness and metadata blockers", () => {

@@ -8,6 +8,7 @@ const test = require("node:test");
 
 const {
   buildStorySfxManifest,
+  discoverPackageEntries,
   mergeRightsRecords,
   repairGoalSfxEvidence,
 } = require("../../lib/goal-sfx-evidence-repair");
@@ -68,6 +69,48 @@ test("goal SFX evidence repair stamps story packages and merges SFX rights recor
     "sonniss-impact-01",
   ]);
   assert.equal(report.safety.no_db_mutation, true);
+});
+
+test("goal SFX evidence repair can target one exact package root", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-sfx-repair-exact-package-"));
+  const packageDir = path.join(root, "output", "goal-proof", "batch", "story-one");
+  const siblingDir = path.join(root, "output", "goal-proof", "batch", "story-two");
+  await fs.outputJson(path.join(packageDir, "canonical_story_manifest.json"), { story_id: "story-one" });
+  await fs.outputJson(path.join(packageDir, "audio_manifest.json"), { sfx_cue_count: 2 });
+  await fs.outputJson(path.join(packageDir, "rights_ledger.json"), {
+    records: [{ asset_id: "clip-1", asset_type: "video" }],
+  });
+  await fs.outputJson(path.join(siblingDir, "canonical_story_manifest.json"), { story_id: "story-two" });
+  await fs.outputJson(path.join(root, "output", "goal-contract", "story-packages.json"), [
+    { story_id: "story-two", artifact_dir: siblingDir },
+  ]);
+  await fs.outputJson(path.join(root, "output", "goal-contract", "sfx_source_plan.json"), passSourcePlan());
+  await fs.outputJson(path.join(root, "output", "goal-contract", "sfx_rights_ledger.json"), {
+    records: [
+      {
+        asset_id: "sonniss-impact-01",
+        asset_type: "sfx",
+        role: "impact",
+        commercial_use_allowed: true,
+        approval_status: "approved_for_commercial_editorial_use",
+      },
+    ],
+  });
+
+  const entries = await discoverPackageEntries({ root, packageRoot: packageDir });
+  assert.deepEqual(entries, [{ story_id: "story-one", artifact_dir: packageDir }]);
+
+  const report = await repairGoalSfxEvidence({
+    root,
+    packageRoot: packageDir,
+    generatedAt: "2026-05-23T19:47:00.000Z",
+  });
+
+  assert.equal(report.readiness.status, "pass");
+  assert.equal(report.summary.package_count, 1);
+  assert.equal(report.summary.repaired_count, 1);
+  assert.equal(await fs.pathExists(path.join(packageDir, "sfx_manifest.json")), true);
+  assert.equal(await fs.pathExists(path.join(siblingDir, "sfx_manifest.json")), false);
 });
 
 test("goal SFX evidence repair prefers package-scoped Epidemic SFX assets from rights-ledger assets", async () => {

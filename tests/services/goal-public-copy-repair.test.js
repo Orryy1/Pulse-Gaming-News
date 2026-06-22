@@ -393,6 +393,262 @@ test("public copy repair can force a quality rewrite for clean Gears E-Day specs
   assert.equal(renderWorkOrder.summary.ready_for_final_render_job_count, 1);
 });
 
+test("public copy repair can force a quality rewrite for Hellraiser release-date packages", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-copy-hellraiser-quality-rewrite-"));
+  const artifactDir = path.join(root, "story");
+  await fs.ensureDir(artifactDir);
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "rss_cb82aef32f0c73e9",
+    canonical_subject: "Hellraiser: Revival",
+    canonical_game: "Hellraiser: Revival",
+    canonical_title: "Hellraiser: Revival Gets A Date",
+    selected_title: "Hellraiser: Revival Gets A Date",
+    short_title: "Hellraiser: Revival Gets A Date",
+    thumbnail_headline: "HELLRAISER: REVIVAL GETS A DATE",
+    first_spoken_line: "Hellraiser: Revival Gets A Date.",
+    narration_script:
+      "Hellraiser: Revival Gets A Date. Eurogamer reports Hellraiser: Revival hooks a release date with trailer full of Doom-like glory kills and otherworldly powers. The catch is whether Hellraiser still has weight when the trailer stops jumping between money shots. Now players can see the pace, camera and combat instead of reading another announcement. Follow Pulse Gaming so you never miss a beat.",
+    description:
+      "Eurogamer reports Hellraiser: Revival hooks a release date with trailer full of Doom-like glory kills and otherworldly powers. Source: Eurogamer.",
+    primary_source: "Eurogamer",
+    source_card_label: "Eurogamer",
+    confirmed_claims: [
+      "Hellraiser: Revival is set for October 8, 2026 on PS5, Xbox Series X/S and PC after a new trailer.",
+    ],
+  });
+  await fs.outputJson(path.join(artifactDir, "visual_v4_render_story.json"), {
+    video_clips: ["clip-a.mp4", "clip-b.mp4"],
+  });
+  await fs.outputJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+    outputs: {
+      youtube_shorts: {
+        title: "Hellraiser: Revival Gets A Date",
+        description:
+          "Eurogamer reports Hellraiser: Revival hooks a release date with trailer full of Doom-like glory kills and otherworldly powers. Source: Eurogamer.",
+      },
+    },
+  });
+
+  const report = await repairGoalPublicCopyPackages({
+    storyPackages: [{ story_id: "rss_cb82aef32f0c73e9", artifact_dir: artifactDir }],
+    generatedAt: "2026-06-22T10:15:00.000Z",
+    forceQualityRewriteStoryIds: ["rss_cb82aef32f0c73e9"],
+  });
+  const updated = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+  const platformManifest = await fs.readJson(path.join(artifactDir, "platform_publish_manifest.json"));
+  const srt = await fs.readFile(path.join(artifactDir, "captions.srt"), "utf8");
+  const workbench = buildAudioRegenerationWorkbench(report, {
+    localTts: { ready: true, verdict: "green" },
+  });
+  const renderWorkOrder = await buildProductionRerenderWorkOrder(report);
+  const mediaHouseScore = buildPulseMediaHouseScore({
+    story_id: "rss_cb82aef32f0c73e9",
+    canonical: updated,
+    platformManifest,
+  });
+
+  assert.equal(report.summary.changed_count, 1, JSON.stringify(report, null, 2));
+  assert.equal(report.changed[0].status, "quality_rewrite_pending_audio_rerender");
+  const savedScorecard = await fs.readJson(path.join(artifactDir, "script_scorecard.json"));
+  assert.equal(updated.selected_title, "Hellraiser: Revival's October Date Is A Risk");
+  assert.equal(updated.first_spoken_line, "Hellraiser: Revival picked October 8, and that is brave for all the wrong reasons.");
+  assert.match(updated.description, /October 8, 2026/);
+  assert.match(updated.narration_script, /Genesis Configuration/);
+  assert.match(updated.narration_script, /If the box power lands/);
+  assert.match(updated.narration_script, /Xbox Series X and S/);
+  assert.doesNotMatch(updated.narration_script, /X\/S/);
+  assert.doesNotMatch(updated.narration_script, /judging whether Hellraiser can be nasty; they are judging whether/);
+  assert.doesNotMatch(updated.narration_script, /^Hellraiser: Revival Gets A Date\./);
+  assert.equal(savedScorecard.verdict, "viral_ready", JSON.stringify(savedScorecard, null, 2));
+  assert.deepEqual(savedScorecard.blockers, [], JSON.stringify(savedScorecard, null, 2));
+  assert.ok(savedScorecard.viral_score >= 85, JSON.stringify(savedScorecard, null, 2));
+  assert.match(platformManifest.outputs.youtube_shorts.title, /October Date Is A Risk/);
+  assert.match(platformManifest.outputs.youtube_shorts.description, /combat, puzzle box powers and Labyrinth chase/);
+  assert.ok(
+    !mediaHouseScore.hard_failures.includes("media_house:platform_title_too_plain"),
+    mediaHouseScore.hard_failures.join(", "),
+  );
+  assert.ok(
+    !mediaHouseScore.hard_failures.includes("media_house:platform_copy_too_plain"),
+    mediaHouseScore.hard_failures.join(", "),
+  );
+  assert.match(srt, /October 8/);
+  assert.match(srt, /Genesis Configuration/);
+  assert.deepEqual(workbench.jobs.map((job) => job.story_id), ["rss_cb82aef32f0c73e9"]);
+  assert.deepEqual(renderWorkOrder.jobs.map((job) => job.story_id), ["rss_cb82aef32f0c73e9"]);
+  assert.equal(renderWorkOrder.summary.ready_for_final_render_job_count, 1);
+});
+
+test("public copy repair can force a quality rewrite for Cyberpunk trust-debt packages", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-copy-cyberpunk-quality-rewrite-"));
+  const artifactDir = path.join(root, "story");
+  await fs.ensureDir(artifactDir);
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "rss_4921d15c5d54b86d",
+    canonical_subject: "Cyberpunk 2077",
+    canonical_game: "Cyberpunk 2077",
+    canonical_title: "Cyberpunk 2077's Trust Debt",
+    selected_title: "Cyberpunk 2077's Trust Debt",
+    short_title: "Cyberpunk 2077's Trust Debt",
+    thumbnail_headline: "CYBERPUNK TRUST DEBT",
+    first_spoken_line: "CD Projekt Red is still paying for Cyberpunk 2077's launch.",
+    narration_script:
+      "CD Projekt Red is still paying for Cyberpunk 2077's launch. PC Gamer reports a CD Projekt Red boss believes some players may have lost faith indefinitely after Cyberpunk 2077's disastrous release. The next thing to watch is whether the official follow-up gives players a clear date, platform detail or gameplay proof. Follow Pulse Gaming so you never miss a beat.",
+    description:
+      "Cyberpunk 2077 has an expansion trust test now. The DLC sounds big, but players need to know whether the new zone feels worth returning for. Source: PC Gamer.",
+    primary_source: "PC Gamer",
+    source_card_label: "PC Gamer",
+    primary_source_url:
+      "https://www.pcgamer.com/games/rpg/cd-projekt-red-boss-believes-some-fans-were-forever-burned-by-cyberpunk-2077s-disastrous-launch-im-convinced-that-we-lost-the-faith-of-some-people-indefinitely/",
+    confirmed_claims: [
+      "PC Gamer reports CD Projekt Red boss believes some fans were forever burned by Cyberpunk 2077's disastrous launch: 'I'm convinced that we lost the faith of some people indefinitely'.",
+    ],
+  });
+  await fs.outputJson(path.join(artifactDir, "visual_v4_render_story.json"), {
+    video_clips: ["clip-a.mp4", "clip-b.mp4"],
+  });
+  await fs.outputJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+    outputs: {
+      youtube_shorts: {
+        title: "Cyberpunk 2077's Trust Debt",
+        description:
+          "Cyberpunk 2077 has an expansion trust test now. Source: PC Gamer.",
+      },
+    },
+  });
+
+  const report = await repairGoalPublicCopyPackages({
+    storyPackages: [{ story_id: "rss_4921d15c5d54b86d", artifact_dir: artifactDir }],
+    generatedAt: "2026-06-22T11:00:00.000Z",
+    forceQualityRewriteStoryIds: ["rss_4921d15c5d54b86d"],
+  });
+  const updated = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+  const savedScorecard = await fs.readJson(path.join(artifactDir, "script_scorecard.json"));
+  const platformManifest = await fs.readJson(path.join(artifactDir, "platform_publish_manifest.json"));
+  const copyQa = evaluateGoalPublicCopy(updated);
+
+  assert.equal(report.summary.changed_count, 1, JSON.stringify(report, null, 2));
+  assert.equal(report.changed[0].status, "quality_rewrite_pending_audio_rerender");
+  assert.equal(copyQa.verdict, "pass", copyQa.failures.join(", "));
+  assert.equal(updated.first_spoken_line, "Cyberpunk 2077's biggest launch problem is not bugs anymore.");
+  assert.match(updated.narration_script, /lost their faith indefinitely/);
+  assert.match(updated.narration_script, /before trust comes back/);
+  assert.match(updated.narration_script, /day one memory/);
+  assert.match(updated.narration_script, /The risk is that a great trailer can still look suspicious/);
+  assert.match(updated.narration_script, /If it promises too much again, Cyberpunk becomes the warning label/);
+  assert.doesNotMatch(updated.narration_script, /The next thing to watch/i);
+  assert.doesNotMatch(updated.narration_script, /before the hype does the talking|day-one|overpromises/);
+  assert.equal(savedScorecard.verdict, "viral_ready", JSON.stringify(savedScorecard, null, 2));
+  assert.deepEqual(savedScorecard.blockers, [], JSON.stringify(savedScorecard, null, 2));
+  assert.deepEqual(savedScorecard.warnings, [], JSON.stringify(savedScorecard, null, 2));
+  assert.ok(savedScorecard.viral_score >= 85, JSON.stringify(savedScorecard, null, 2));
+  assert.match(platformManifest.outputs.youtube_shorts.description, /warning label|trust test|recovery arc/i);
+});
+
+test("public copy repair can force a quality rewrite for Ghost at Dawn feed-competition packages", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-copy-ghost-at-dawn-quality-rewrite-"));
+  const artifactDir = path.join(root, "story");
+  await fs.ensureDir(artifactDir);
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "rss_ba849c6ab11e475c",
+    canonical_subject: "Ghost at Dawn",
+    canonical_game: "Ghost at Dawn",
+    canonical_title: "Ghost at Dawn Has A Jump-Scare Risk",
+    selected_title: "Ghost at Dawn Has A Jump-Scare Risk",
+    short_title: "Ghost at Dawn Has A Jump-Scare Risk",
+    title_candidates: [
+      "Ghost At Dawn Turns Fear Into A Choice",
+      "Ghost at Dawn is about Fear, Empathy, and Questionable Choices",
+    ],
+    thumbnail_headline: "GHOST AT DAWN JUMP SCARE RISK",
+    first_spoken_line: "Ghost at Dawn is selling horror on something more interesting than jump scares.",
+    narration_script:
+      "Ghost at Dawn is selling horror on something more interesting than jump scares. Xbox Wire says the game is built around fear, empathy and questionable choices. Players have to decide whether those choices feel personal, because horror games are easy to market with monsters and much harder to make memorable with regret. If those choices actually change how the story feels, Ghost at Dawn has a hook. If not, it risks becoming another eerie trailer with no bite. Follow Pulse Gaming so you never miss a beat.",
+    description:
+      "Ghost at Dawn is selling horror without leaning on jump scares. Players have to judge whether the choices feel personal, because atmosphere matters more than monsters here. Source: Xbox Wire.",
+    primary_source: "Xbox Wire",
+    source_card_label: "Xbox Wire",
+    primary_source_url: "https://news.xbox.com/en-us/2026/06/19/ghost-at-dawn-is-about-fear-empathy/",
+    confirmed_claims: [
+      "Ghost at Dawn is about Fear, Empathy, and Questionable Choices",
+    ],
+  });
+  await fs.outputJson(path.join(artifactDir, "visual_v4_render_story.json"), {
+    video_clips: ["clip-a.mp4", "clip-b.mp4"],
+  });
+  await fs.outputJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+    outputs: {
+      youtube_shorts: {
+        title: "Ghost at Dawn Has A Jump-Scare Risk",
+        description:
+          "Ghost at Dawn is selling horror without leaning on jump scares. Players have to judge whether the choices feel personal, because atmosphere matters more than monsters here. Source: Xbox Wire.",
+        cover_frame: { headline: "GHOST AT DAWN JUMP SCARE RISK" },
+      },
+      instagram_reels: {
+        caption:
+          "Ghost at Dawn is selling horror without leaning on jump scares. Players have to judge whether the choices feel personal, because atmosphere matters more than monsters here. Source: Xbox Wire.",
+        cover_frame: { headline: "GHOST AT DAWN JUMP SCARE RISK" },
+      },
+    },
+  });
+
+  const report = await repairGoalPublicCopyPackages({
+    storyPackages: [{ story_id: "rss_ba849c6ab11e475c", artifact_dir: artifactDir }],
+    generatedAt: "2026-06-22T11:15:00.000Z",
+    forceQualityRewriteStoryIds: ["rss_ba849c6ab11e475c"],
+  });
+  const updated = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+  const platformManifest = await fs.readJson(path.join(artifactDir, "platform_publish_manifest.json"));
+
+  assert.equal(report.summary.changed_count, 1, JSON.stringify(report, null, 2));
+  assert.equal(report.changed[0].status, "quality_rewrite_pending_audio_rerender");
+
+  const srt = await fs.readFile(path.join(artifactDir, "captions.srt"), "utf8");
+  const workbench = buildAudioRegenerationWorkbench(report, {
+    elevenlabsTts: { ready: true, verdict: "green" },
+    providerPreference: "elevenlabs",
+  });
+  const renderWorkOrder = await buildProductionRerenderWorkOrder(report);
+  const mediaHouseScore = buildPulseMediaHouseScore({
+    story_id: "rss_ba849c6ab11e475c",
+    canonical: updated,
+    platformManifest,
+  });
+
+  const savedScorecard = await fs.readJson(path.join(artifactDir, "script_scorecard.json"));
+  assert.equal(updated.selected_title, "Ghost at Dawn Turns Choices Into Horror");
+  assert.equal(updated.title, "Ghost at Dawn Turns Choices Into Horror");
+  assert.equal(updated.public_title, "Ghost at Dawn Turns Choices Into Horror");
+  assert.equal(updated.thumbnail_headline, "GHOST CHOICES RISK");
+  assert.equal(updated.suggested_thumbnail_text, "GHOST CHOICES RISK");
+  assert.equal(updated.first_frame_text, "GHOST CHOICES RISK");
+  assert.equal(updated.first_spoken_line, "Ghost at Dawn is trying to make player choices scarier than jump scares.");
+  assert.match(updated.description, /trailer is selling horror through player choices/i);
+  assert.match(updated.description, /campaign memorable/i);
+  assert.match(updated.narration_script, /fear, empathy and questionable choices/i);
+  assert.match(updated.narration_script, /If that lands, it sticks/i);
+  assert.doesNotMatch(updated.narration_script, /the horror becomes personal|choices barely matter|personal horror is the payoff|scare follows players/i);
+  assert.doesNotMatch(updated.narration_script, /has a hook|eerie trailer with no bite/i);
+  assert.equal(savedScorecard.verdict, "viral_ready", JSON.stringify(savedScorecard, null, 2));
+  assert.deepEqual(savedScorecard.blockers, [], JSON.stringify(savedScorecard, null, 2));
+  assert.match(platformManifest.outputs.youtube_shorts.title, /Choices Into Horror/);
+  assert.match(platformManifest.outputs.youtube_shorts.description, /player choices/i);
+  assert.equal(platformManifest.outputs.youtube_shorts.cover_frame.headline, "GHOST CHOICES RISK");
+  assert.ok(
+    ["pass", "standout"].includes(mediaHouseScore.shorts_feed_competition_report.status),
+    mediaHouseScore.shorts_feed_competition_report.status,
+  );
+  assert.deepEqual(mediaHouseScore.shorts_feed_competition_report.blockers, []);
+  assert.ok(
+    !mediaHouseScore.hard_failures.includes("media_house:shorts_feed_competition_weak"),
+    mediaHouseScore.hard_failures.join(", "),
+  );
+  assert.match(srt, /player choices/);
+  assert.deepEqual(workbench.jobs.map((job) => job.tts_provider), ["elevenlabs"]);
+  assert.deepEqual(renderWorkOrder.jobs.map((job) => job.story_id), ["rss_ba849c6ab11e475c"]);
+  assert.equal(renderWorkOrder.summary.ready_for_final_render_job_count, 1);
+});
+
 test("public copy repair turns a quote fragment Kickstarter story into usable copy", () => {
   const repaired = repairGoalPublicCopyManifest(
     {

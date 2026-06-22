@@ -1634,6 +1634,15 @@ function visualAssetProvenanceText(asset = {}) {
     asset.family,
     asset.trusted_footage_source_id,
     asset.source_id,
+    asset.source_owner,
+    asset.asset_owner,
+    asset.owner,
+    asset.publisher,
+    asset.developer,
+    asset.product_title,
+    asset.app_title,
+    asset.app_name,
+    asset.game_title,
     asset.entity,
     ...asArray(asset.entities),
     asset.source_title,
@@ -3134,6 +3143,55 @@ function sourceUrlValue(value) {
   return cleanText(value);
 }
 
+function sourceUrlFamilyKey(value = "") {
+  const text = cleanText(value);
+  if (!text) return "";
+  try {
+    const url = new URL(text);
+    url.search = "";
+    url.hash = "";
+    return `url:${url.toString().toLowerCase()}`;
+  } catch {
+    return "";
+  }
+}
+
+function directMotionReadinessFamily(clip = {}, index = 0) {
+  if (typeof clip === "string") return path.basename(cleanText(clip), path.extname(cleanText(clip)));
+  const sourceKey = sourceUrlFamilyKey(
+    clip.source_url ||
+      clip.url ||
+      clip.original_source_url ||
+      clip.reference_url ||
+      clip.source,
+  );
+  const mediaKind = cleanText(clip.media_kind || clip.source_url_kind || clip.source_kind || clip.source_type).toLowerCase();
+  const directMotion =
+    mediaKind.includes("direct_video") ||
+    mediaKind.includes("hls_manifest") ||
+    mediaKind.includes("dash_manifest") ||
+    mediaKind.includes("official_platform_product_page") ||
+    mediaKind.includes("licensed_direct_media") ||
+    /\.(?:mp4|mov|webm|mkv)(?:$|[?#])/i.test(cleanText(clip.path || clip.media_path || clip.local_path || clip.source_url || clip.url));
+  if (directMotion && sourceKey) return sourceKey;
+  const baseFamily = cleanText(
+    clip.base_source_family ||
+      clip.original_source_family ||
+      clip.provenance?.base_source_family ||
+      clip.provenance?.source_family,
+  );
+  if (baseFamily) return baseFamily;
+  if (sourceKey) return sourceKey;
+  return cleanText(
+    clip.source_family ||
+      clip.motion_family ||
+      clip.visual_family ||
+      clip.family ||
+      clip.id ||
+      `motion_family_${index + 1}`,
+  );
+}
+
 function sourceLooksEditoriallyVerified(story = {}) {
   const sourceName = sourceNameValue(story.primary_source || story.source_card_label || story.official_source);
   const sourceUrl =
@@ -3180,21 +3238,20 @@ function uniqueMotionFamilies(story = {}) {
   ];
   return new Set(
     clips
-      .map((clip) =>
-        typeof clip === "string"
-          ? path.basename(clip, path.extname(clip))
-          : cleanText(clip.source_family || clip.motion_family || clip.family || clip.id),
-      )
+      .map((clip, index) => directMotionReadinessFamily(clip, index))
       .filter(Boolean),
   );
 }
 
 function incidentGuardFileEvidenceForStory(story = {}) {
+  const clipRows = [
+    ...asArray(story.video_clips),
+    ...asArray(story.visual_v4_bridge_video_clips),
+  ];
   const families = uniqueMotionFamilies(story);
   const clipCount = Math.max(
     Number(story.visual_v4_render_bridge_clip_count || 0),
-    asArray(story.video_clips).length,
-    asArray(story.visual_v4_bridge_video_clips).length,
+    clipRows.length,
   );
   const rightsRecords = rightsLedgerRecords(story.rights_ledger || story.rights_records);
   return {
@@ -3208,7 +3265,9 @@ function incidentGuardFileEvidenceForStory(story = {}) {
         Number(story.word_timestamp_count) > 0,
     ),
     materialised_motion_ready: clipCount >= 3,
-    distinct_motion_families_ready: families.size >= 3 || Number(story.distinct_motion_family_count) >= 3,
+    distinct_motion_families_ready:
+      families.size >= 3 ||
+      (clipRows.length === 0 && Number(story.distinct_motion_family_count) >= 3),
     rights_ledger_ready: rightsRecords.length > 0,
   };
 }

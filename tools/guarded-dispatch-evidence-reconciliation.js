@@ -27,6 +27,7 @@ function parseArgs(argv) {
   const args = {
     json: false,
     outDir: DEFAULT_OUT,
+    goalContractDir: path.join(ROOT, "output", "goal-contract"),
     storyId: "1s4j81q",
     actionId: "1s4j81q:youtube_shorts",
     expectedYoutubeId: "U4XB3MEaCg0",
@@ -37,6 +38,10 @@ function parseArgs(argv) {
     if (arg === "--json") args.json = true;
     else if (arg === "--out-dir") args.outDir = path.resolve(ROOT, argv[++i] || args.outDir);
     else if (arg.startsWith("--out-dir=")) args.outDir = path.resolve(ROOT, arg.slice("--out-dir=".length));
+    else if (arg === "--goal-contract-dir") args.goalContractDir = path.resolve(ROOT, argv[++i] || args.goalContractDir);
+    else if (arg.startsWith("--goal-contract-dir=")) {
+      args.goalContractDir = path.resolve(ROOT, arg.slice("--goal-contract-dir=".length));
+    }
     else if (arg === "--story-id") args.storyId = argv[++i] || args.storyId;
     else if (arg.startsWith("--story-id=")) args.storyId = arg.slice("--story-id=".length);
     else if (arg === "--action-id") args.actionId = argv[++i] || args.actionId;
@@ -68,7 +73,7 @@ async function main() {
   const stories = await db.getStories();
   const story = stories.find((item) => item.id === args.storyId) || null;
   const platformRows = listPlatformPosts(sqlite);
-  const goalContractDir = path.join(ROOT, "output", "goal-contract");
+  const goalContractDir = args.goalContractDir;
   const runtimeEnv = { ...process.env };
   const dryRunPlanPath = path.join(goalContractDir, "dry_run_publish_plan.json");
   const guardedDispatchPlanPath = path.join(goalContractDir, "guarded_dispatch_plan.json");

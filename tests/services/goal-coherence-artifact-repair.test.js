@@ -119,6 +119,37 @@ test("coherence artifact repair targets quarantined public-output report rows", 
   assert.equal(report.rows[0].repaired_report_result, "pass");
 });
 
+test("coherence artifact repair creates missing reports from the current canonical manifest", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-coherence-artifact-missing-"));
+  const artifactDir = await makeCoherenceArtifactFixture(root, "missing-coherence-story");
+  await fs.remove(path.join(artifactDir, "coherence_report.json"));
+
+  const report = await repairCoherenceArtifacts({
+    dryRunPlan: {
+      blocked_stories: [
+        {
+          story_id: "missing-coherence-story",
+          artifact_dir: artifactDir,
+          blockers: [
+            "missing_artefact:coherence_report.json",
+            "coherence_report_missing_public_copy_manifest",
+          ],
+        },
+      ],
+    },
+    generatedAt: "2026-06-22T02:35:00.000Z",
+    apply: true,
+  });
+
+  assert.equal(report.summary.target_count, 1);
+  assert.equal(report.summary.written_count, 1);
+  assert.equal(report.summary.freshness_pass_count, 1);
+  assert.equal(await fs.pathExists(path.join(artifactDir, "coherence_report.json")), true);
+  const repaired = await fs.readJson(path.join(artifactDir, "coherence_report.json"));
+  assert.equal(repaired.result, "pass");
+  assert.equal(repaired.manifest.selected_title, "Forza Horizon 6 Exposes Xbox's Steam Bet");
+});
+
 test("coherence artifact repair refuses to greenlight stale render snapshots", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-coherence-artifact-stale-render-"));
   const artifactDir = await makeCoherenceArtifactFixture(root, "stale-render-story");

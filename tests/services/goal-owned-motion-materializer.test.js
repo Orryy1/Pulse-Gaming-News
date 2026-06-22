@@ -543,6 +543,110 @@ test("owned motion materializer synthesises support deck when existing inventory
   assert.equal(materialised.clips.every((clip) => clip.source_type === "internally_generated_motion_graphic"), true);
 });
 
+test("owned motion materializer preserves existing official direct-video clips when adding support deck", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-owned-explainer-merge-direct-video-"));
+  const artifactDir = path.join(root, "ghost-package");
+  await fs.ensureDir(artifactDir);
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "ghost-package",
+    canonical_subject: "Ghost at Dawn",
+    selected_title: "Ghost at Dawn Has A Jump-Scare Risk",
+    thumbnail_headline: "JUMP-SCARE RISK",
+    first_spoken_line: "Ghost at Dawn is not just another haunted-house trailer.",
+    confirmed_claims: ["Ghost at Dawn is listed on Xbox Wire and PlayStation Store."],
+    primary_source: "Xbox Wire",
+    source_card_label: "Xbox Wire",
+    primary_source_url: "https://news.xbox.com/en-us/2026/06/19/ghost-at-dawn-is-about-fear-empathy/",
+  });
+  const directClips = Array.from({ length: 5 }, (_, index) => ({
+    id: `ghost-direct-${index + 1}`,
+    source_family: `ghost_direct_window_${index + 1}`,
+    motion_family: `ghost_direct_window_${index + 1}`,
+    visual_family: `ghost_direct_window_${index + 1}`,
+    path: path.join(root, "video-cache", `ghost-direct-${index + 1}.mp4`),
+    local_materialized_path: path.join(root, "video-cache", `ghost-direct-${index + 1}.mp4`),
+    source_url: "https://vulcan.dl.playstation.net/img/rnd/202501/1101/ghost.mp4",
+    source_type: "licensed_direct_media_url",
+    media_kind: "direct_video",
+    rights_basis: "official_direct_media",
+    counts_towards_motion_readiness: true,
+    durationS: 5,
+    validated: true,
+    materialized: true,
+  }));
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: "ghost-package",
+    motion_inventory: {
+      accepted_local_clips: directClips,
+      production_motion_clips: directClips,
+      direct_video_motion_asset_count: 5,
+      direct_video_motion_family_count: 5,
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    story_id: "ghost-package",
+    status: "ready",
+    clips: directClips,
+    materialised_clips: directClips,
+    clip_count: directClips.length,
+    distinct_motion_family_count: directClips.length,
+    direct_video_motion_asset_count: directClips.length,
+    direct_video_motion_family_count: directClips.length,
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), { records: [] });
+
+  const calls = [];
+  const report = await materializeGoalOwnedMotionClips({
+    root,
+    workOrder: {
+      jobs: [
+        {
+          story_id: "ghost-package",
+          title: "Ghost at Dawn Has A Jump-Scare Risk",
+          artifact_dir: artifactDir,
+          actions: [
+            {
+              action_id: "materialise_owned_generated_motion_clips",
+              repair_lane: "owned_generated_explainer_motion_materialisation",
+            },
+          ],
+        },
+      ],
+    },
+    generatedAt: "2026-06-22T05:00:00.000Z",
+    execFileSync: (bin, args) => {
+      calls.push({ bin, args });
+      fs.outputFileSync(args[args.length - 1], Buffer.alloc(4096, calls.length));
+    },
+    ffprobeDuration: () => 2.8,
+  });
+
+  assert.equal(report.summary.materialized_clip_count, 13);
+  assert.equal(calls.length, 13);
+
+  const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
+  assert.equal(materialised.status, "ready");
+  assert.equal(materialised.clip_count, 18);
+  assert.equal(materialised.direct_video_motion_asset_count, 5);
+  assert.equal(materialised.clips.filter((clip) => clip.media_kind === "direct_video").length, 5);
+  assert.equal(
+    materialised.clips.filter((clip) => clip.source_type === "internally_generated_motion_graphic").length,
+    13,
+  );
+  assert.ok(materialised.clips.some((clip) => clip.id === "ghost-direct-1"));
+  assert.ok(materialised.clips.some((clip) => clip.asset_class === "branded_wipe"));
+
+  const footage = await fs.readJson(path.join(artifactDir, "footage_inventory.json"));
+  assert.equal(footage.motion_inventory.accepted_local_clips.length, 18);
+  assert.equal(footage.motion_inventory.production_motion_clips.length, 18);
+  assert.equal(footage.motion_inventory.direct_video_motion_asset_count, 5);
+  assert.equal(footage.motion_budget.required_motion_scenes, 18);
+
+  const ownedManifest = await fs.readJson(path.join(artifactDir, "owned_motion_manifest.json"));
+  assert.equal(ownedManifest.summary.asset_count, 13);
+  assert.equal(ownedManifest.assets.every((asset) => asset.source_type === "internally_generated_motion_graphic"), true);
+});
+
 test("owned motion materializer refresh expands thin owned explainer decks to the full motion pack", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-owned-motion-refresh-expand-"));
   const artifactDir = path.join(root, "thin-owned");

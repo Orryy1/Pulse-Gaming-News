@@ -939,6 +939,59 @@ test("real motion materializer writes local clips, motion manifests and explicit
   assert.equal(footage.motion_inventory.accepted_local_clips.length, 5);
 });
 
+test("real motion materializer bootstraps missing rights ledger from validated official segments", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-segment-rights-"));
+  const job = await makePackage(root, "hellraiser-segment-motion");
+  await fs.remove(path.join(job.artifact_dir, "rights_ledger.json"));
+  const calls = [];
+  const segmentValidationReport = {
+    segments: Array.from({ length: 5 }, (_, index) => ({
+      story_id: job.story_id,
+      status: "validated",
+      segment_validated: true,
+      allowed_for_flash_lane: true,
+      source_url:
+        "https://video.fastly.steamstatic.com/store_trailers/1551980/965080935/hash/hls_264_master.m3u8",
+      source_url_kind: "hls_manifest",
+      source_type: "licensed_direct_media_url",
+      source_family: "steam_1551980_clive_barker_s_hellraiser_revival",
+      provider: "official_intake",
+      entity: "Hellraiser: Revival",
+      media_start_s: 36 + index * 4,
+      duration_s: 5,
+      source_duration_s: 81.7,
+      validation_reason: "official_storefront_cinematic_motion_samples_passed",
+    })),
+  };
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-06-22T01:20:00.000Z",
+    segmentValidationReport,
+    execFileSync: (bin, args) => {
+      calls.push({ bin, args });
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 8));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0);
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.equal(report.summary.materialized_clip_count, 0);
+  assert.equal(report.jobs[0].materialized_count, 5);
+  assert.equal(report.jobs[0].distinct_motion_family_count, 1);
+  assert.ok(report.jobs[0].blockers.includes("real_motion_family_minimum_not_met"));
+  assert.equal(calls.length, 5);
+
+  const partial = await fs.readJson(path.join(job.artifact_dir, "partial_real_motion_evidence.json"));
+  assert.equal(partial.status, "blocked");
+  assert.equal(partial.distinct_motion_family_count, 1);
+  assert.equal(partial.direct_video_motion_family_count, 1);
+  assert.equal(await fs.pathExists(path.join(job.artifact_dir, "materialised_motion_clips.json")), false);
+});
+
 test("real motion materializer turns rights-recorded screenshots into motion clips", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-stills-"));
   const storyId = "steam-still-motion";
@@ -1297,11 +1350,11 @@ test("real motion materializer can use validated segment reports to repair a dir
   assert.equal(report.summary.materialized_story_count, 1);
   assert.equal(report.jobs[0].repair_scope, "direct_video_gap_only");
   assert.equal(report.jobs[0].direct_video_motion_clip_count, 5);
-  assert.equal(report.jobs[0].direct_video_motion_family_count, 5);
+  assert.equal(report.jobs[0].direct_video_motion_family_count, 1);
 
   const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
   assert.equal(materialised.direct_video_motion_asset_count, 5);
-  assert.equal(materialised.direct_video_motion_family_count, 5);
+  assert.equal(materialised.direct_video_motion_family_count, 1);
   assert.equal(materialised.clips.filter((clip) => clip.media_kind === "direct_video").length, 5);
   assert.equal(materialised.clips.filter((clip) => clip.media_kind === "owned_motion").length, 4);
 });
@@ -1383,7 +1436,7 @@ test("real motion materializer can synthesize jobs from segment reports and an a
   assert.deepEqual(starts, ["36", "42", "48", "54", "60"]);
 });
 
-test("real motion materializer counts validated official segment windows as distinct motion families", async () => {
+test("real motion materializer blocks repeated windows from one direct video source", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-segment-window-families-"));
   const storyId = "granblue-official-window-families";
   const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
@@ -1455,16 +1508,21 @@ test("real motion materializer counts validated official segment windows as dist
     ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
   });
 
-  assert.equal(report.summary.materialized_story_count, 1);
-  assert.equal(report.jobs[0].distinct_motion_family_count, 5);
-  assert.equal(report.jobs[0].direct_video_motion_family_count, 5);
+  assert.equal(report.summary.materialized_story_count, 0);
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.equal(report.jobs[0].materialized_count, 5);
+  assert.equal(report.jobs[0].distinct_motion_family_count, 1);
+  assert.equal(report.jobs[0].direct_video_motion_family_count, 1);
+  assert.ok(report.jobs[0].blockers.includes("real_motion_family_minimum_not_met"));
+  assert.equal(await fs.pathExists(path.join(artifactDir, "materialised_motion_clips.json")), false);
 
-  const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
-  assert.equal(materialised.distinct_motion_family_count, 5);
-  assert.equal(materialised.direct_video_motion_family_count, 5);
-  assert.equal(new Set(materialised.clips.map((clip) => clip.source_family)).size, 5);
+  const partial = await fs.readJson(path.join(artifactDir, "partial_real_motion_evidence.json"));
+  assert.equal(partial.status, "blocked");
+  assert.equal(partial.not_publishable, true);
+  assert.equal(partial.distinct_motion_family_count, 1);
+  assert.equal(partial.direct_video_motion_family_count, 1);
   assert.ok(
-    materialised.clips.every((clip) =>
+    partial.clips.every((clip) =>
       clip.base_source_family === "playstation_blog_granblue_relink_demo" &&
       clip.provenance?.base_source_family === "playstation_blog_granblue_relink_demo",
     ),
@@ -1476,15 +1534,13 @@ test("real motion materializer reconciles stale owned-motion distinct family bud
   const storyId = "pokemon-budget-reconcile";
   const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
   await fs.ensureDir(artifactDir);
-  const sourceUrl =
-    "https://fserveu20221222.blob.core.windows.net/files/Pokemon/2016/11/clip.mp4?sv=2026-02-06";
   const assets = Array.from({ length: 6 }, (_, index) => ({
     id: `${storyId}-direct-${index + 1}`,
     type: "motion_clip",
     kind: "video",
     source_family: `pokemon_go_official_family_${(index % 4) + 1}`,
-    path: sourceUrl,
-    source_url: sourceUrl,
+    path: `https://fserveu20221222.blob.core.windows.net/files/Pokemon/2016/11/clip-${(index % 4) + 1}.mp4?sv=2026-02-06`,
+    source_url: `https://fserveu20221222.blob.core.windows.net/files/Pokemon/2016/11/clip-${(index % 4) + 1}.mp4?sv=2026-02-06`,
     source_kind: "direct_video",
     source_url_kind: "direct_video",
     source_type: "licensed_direct_media_url",

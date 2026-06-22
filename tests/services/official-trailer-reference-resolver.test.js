@@ -499,6 +499,92 @@ test("official trailer resolver derives Steam motion targets from repaired right
   assert.equal(plan.references[0].source_url_kind, "direct_video");
 });
 
+test("official trailer resolver derives Steam motion targets from accepted official intake storefront refs", async () => {
+  const plan = await buildOfficialTrailerReferencePlan(
+    baseStory({
+      id: "cyberpunk-gap",
+      title: "Cyberpunk 2077's Trust Debt",
+      canonical_subject: "Cyberpunk 2077",
+      canonical_game: "Cyberpunk 2077",
+      full_script: "Cyberpunk 2077 is becoming a trust test for CD Projekt.",
+    }),
+    {
+      officialSourceIntakeReport: {
+        accepted_references: [
+          {
+            story_id: "cyberpunk-gap",
+            source_type: "platform_storefront",
+            provider: "official_intake",
+            source_url: "https://store.steampowered.com/app/1091500/Cyberpunk_2077/",
+            movie_name: "Cyberpunk 2077",
+            entity: "Cyberpunk 2077",
+            source_family: "steam_1091500_cyberpunk_2077",
+            source_owner: "Steam storefront for Cyberpunk 2077",
+            source_verified: true,
+          },
+        ],
+      },
+      steamLookup: async (appId) => ({
+        appId,
+        success: true,
+        title: "Cyberpunk 2077",
+        movies: [
+          {
+            id: 99,
+            name: "Cyberpunk 2077 Launch Trailer",
+            hls_h264:
+              "https://video.akamai.steamstatic.com/store_trailers/1091500/99/cyberpunk/hls_264_master.m3u8",
+          },
+        ],
+      }),
+    },
+  );
+
+  assert.equal(plan.motion_reference_readiness, "official_reference_found");
+  assert.equal(plan.verified_store_targets.length, 1);
+  assert.equal(plan.verified_store_targets[0].store_app_id, "1091500");
+  assert.equal(plan.verified_store_targets[0].entity, "Cyberpunk 2077");
+  assert.ok(plan.references.some((reference) => reference.provider === "steam"));
+  assert.ok(plan.references.some((reference) => reference.provider === "official_intake"));
+  assert.equal(plan.segment_validation_reference_counts.eligible, 1);
+});
+
+test("official trailer resolver ignores mismatched official intake Steam storefront refs", async () => {
+  const plan = await buildOfficialTrailerReferencePlan(
+    baseStory({
+      id: "halo-gap",
+      title: "Halo's Campaign Test",
+      canonical_subject: "Halo: Campaign Evolved",
+      canonical_game: "Halo: Campaign Evolved",
+      full_script: "Halo: Campaign Evolved needs its own official footage.",
+    }),
+    {
+      officialSourceIntakeReport: {
+        accepted_references: [
+          {
+            story_id: "halo-gap",
+            source_type: "platform_storefront",
+            provider: "official_intake",
+            source_url: "https://store.steampowered.com/app/1091500/Cyberpunk_2077/",
+            movie_name: "Cyberpunk 2077",
+            entity: "Cyberpunk 2077",
+            source_family: "steam_1091500_cyberpunk_2077",
+            source_owner: "Steam storefront for Cyberpunk 2077",
+            source_verified: true,
+          },
+        ],
+      },
+      steamLookup: async () => {
+        throw new Error("mismatched official intake storefront must not be looked up");
+      },
+    },
+  );
+
+  assert.deepEqual(plan.verified_store_targets, []);
+  assert.equal(plan.motion_reference_readiness, "official_search_required");
+  assert.ok(plan.blockers.includes("no_verified_store_motion_target"));
+});
+
 test("official trailer resolver treats governed Steam CDN rights rows as storefront reference targets", async () => {
   const plan = await buildOfficialTrailerReferencePlan(
     baseStory({

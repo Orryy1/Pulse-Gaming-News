@@ -19,6 +19,7 @@ const {
   readPlatformOperationalConfig,
   readRepairWorkOrder,
   readStoryPackages,
+  readPublishedPlatformEvidence,
   mergePreflightCandidateStoryPackages,
 } = require("../../tools/goal-dry-run-publish");
 const { currentRenderPolicyManifest } = require("../../lib/studio/v4/render-policy");
@@ -39,6 +40,18 @@ function allPlatformsEnabled() {
     twitter: { state: "enabled", reason: "test_enabled" },
     threads: { state: "enabled", reason: "test_enabled" },
     pinterest: { state: "enabled", reason: "test_enabled" },
+  };
+}
+
+function enabledCorePlatformsOnly() {
+  return {
+    youtube: { state: "enabled", reason: "core_upload_path" },
+    instagram_reel: { state: "enabled", reason: "graph_credentials_present" },
+    facebook_reel: { state: "enabled", reason: "facebook_reels_enabled" },
+    tiktok: { state: "needs_credentials", reason: "operator_token_setup_required" },
+    twitter: { state: "disabled", reason: "operator_disabled" },
+    threads: { state: "disabled", reason: "operator_disabled" },
+    pinterest: { state: "disabled", reason: "operator_disabled" },
   };
 }
 
@@ -108,6 +121,7 @@ async function makeStoryPackage(
   await fs.outputJson(path.join(artifactDir, "platform_publish_manifest.json"), {
     story_id: id,
     publish_status: verdict,
+    can_auto_publish: verdict === "GREEN",
     platform_native_evidence: {
       verdict: "pass",
       checked_platforms: ["youtube_shorts", "tiktok", "instagram_reels", "facebook_reels", "x", "threads", "pinterest"],
@@ -1304,6 +1318,60 @@ test("goal dry-run publisher requires scheduler preflight pass when a candidate 
   );
 });
 
+test("goal dry-run publisher accepts statusless cutover bridge candidates only with complete publish-ready evidence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-cutover-bridge-"));
+  const readyPackage = await makeStoryPackage(root, "cutover-ready", "GREEN", "Forza Horizon 6 Exposes Xbox's Steam Bet");
+  const incompletePackage = await makeStoryPackage(root, "cutover-incomplete", "GREEN", "State Of Play Has One Catch");
+
+  const cutoverCandidate = (id, overrides = {}) => ({
+    id,
+    approved: true,
+    auto_approved: true,
+    publish_status: null,
+    qa_failed: false,
+    qa_failures: [],
+    video_qa_failures: [],
+    content_qa_failures: [],
+    governance_publish_status: "GREEN",
+    visual_v4_render_bridge_status: "ready_for_live_cutover",
+    visual_v4_render_bridge_clip_count: 12,
+    render_lane: "visual_v4_production",
+    render_quality_class: "premium",
+    exported_path: path.join(root, id, "visual_v4_render.mp4"),
+    caption_path: path.join(root, id, "captions.srt"),
+    manual_caption_generated: true,
+    clean_manual_captions: true,
+    subtitle_timing_source: "timestamps",
+    platform_publish_manifest: { publish_status: "GREEN", can_auto_publish: true },
+    publish_verdict: { verdict: "GREEN", can_auto_publish: true },
+    publish_manifest: { publish_status: "GREEN", can_auto_publish: true },
+    benchmark_report: { result: "pass", failures: [] },
+    visual_quality_report: { result: "pass", failures: [] },
+    ...overrides,
+  });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [readyPackage, incompletePackage],
+    generatedAt: "2026-05-22T07:05:00.000Z",
+    candidatePreflightReport: {
+      candidates: [
+        cutoverCandidate("cutover-ready"),
+        cutoverCandidate("cutover-incomplete", {
+          platform_publish_manifest: { publish_status: "GREEN", can_auto_publish: false },
+        }),
+      ],
+    },
+  });
+
+  const ready = plan.ready_stories.find((story) => story.story_id === "cutover-ready");
+  const blocked = plan.blocked_stories.find((story) => story.story_id === "cutover-incomplete");
+  assert.ok(ready);
+  assert.equal(plan.summary.ready_story_count, 1);
+  assert.equal(plan.summary.preflight_checked_story_count, 2);
+  assert.ok(blocked.blockers.includes("preflight_candidate_not_publish_ready:unknown"));
+  assert.ok(blocked.blockers.includes("preflight_qa_missing"));
+});
+
 test("goal dry-run publisher deduplicates repeated story blockers in reports", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-dedupe-blockers-"));
   const storyPackage = await makeStoryPackage(root, "duplicate-blockers", "GREEN", "Forza Horizon 6 Reaches Steam");
@@ -2267,6 +2335,136 @@ test("goal dry-run publisher skips already-published platforms but keeps missing
   assert.deepEqual(plan.ready_stories[0].missing_enabled_platforms, ["instagram_reels", "facebook_reels"]);
 });
 
+test("goal dry-run publisher skips stale bridge candidates whose enabled platforms are already public locally", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-local-published-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "local-published-story",
+    "GREEN",
+    "Hellraiser Revival Has An October Risk",
+  );
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-22T03:15:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+    candidatePreflightReport: {
+      candidates: [
+        {
+          id: "local-published-story",
+          status: "publish_ready",
+          preflight_qa: { status: "pass", blockers: [], warnings: [] },
+        },
+      ],
+    },
+    publishedPlatformEvidence: {
+      by_story_id: {
+        "local-published-story": {
+          already_published_platforms: [
+            "youtube_shorts",
+            "instagram_reels",
+            "facebook_reels",
+          ],
+        },
+      },
+    },
+  });
+
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.skipped_story_count, 1);
+  assert.equal(plan.summary.platform_publish_now_action_count, 0);
+  assert.equal(plan.summary.planned_action_count, 0);
+  assert.equal(plan.skipped_stories[0].status, "enabled_platforms_already_public");
+  assert.equal(
+    plan.skipped_stories[0].reason,
+    "enabled_platforms_already_published:youtube_shorts,instagram_reels,facebook_reels",
+  );
+  assert.deepEqual(plan.skipped_stories[0].already_published_platforms, [
+    "youtube_shorts",
+    "instagram_reels",
+    "facebook_reels",
+  ]);
+  assert.ok(plan.readiness_reasons.includes("no_enabled_platform_publish_actions"));
+});
+
+test("goal dry-run publisher skips already-public enabled platforms before missing scheduler preflight", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-published-no-preflight-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "published-no-preflight-story",
+    "GREEN",
+    "Hellraiser Revival Has An October Risk",
+  );
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-22T03:24:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+    candidatePreflightReport: { candidates: [] },
+    requireSchedulerPreflight: true,
+    publishedPlatformEvidence: {
+      by_story_id: {
+        "published-no-preflight-story": {
+          already_published_platforms: [
+            "youtube_shorts",
+            "instagram_reels",
+            "facebook_reels",
+          ],
+        },
+      },
+    },
+  });
+
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 0);
+  assert.equal(plan.summary.skipped_story_count, 1);
+  assert.equal(plan.summary.planned_action_count, 0);
+  assert.equal(plan.skipped_stories[0].status, "enabled_platforms_already_public");
+  assert.ok(!JSON.stringify(plan).includes("preflight_candidate_missing"));
+  assert.equal(plan.safe_publish_plan.required_next_step, "rebuild_fresh_green_candidate_buffer");
+});
+
+test("goal dry-run CLI reads published platform evidence from local SQLite in read-only mode", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-published-db-"));
+  await fs.ensureDir(path.join(root, "data"));
+  const Database = require("better-sqlite3");
+  const db = new Database(path.join(root, "data", "pulse.db"));
+  db.exec(`
+    CREATE TABLE platform_posts (
+      story_id TEXT,
+      platform TEXT,
+      external_id TEXT,
+      external_url TEXT,
+      status TEXT,
+      published_at TEXT
+    );
+  `);
+  const insert = db.prepare(`
+    INSERT INTO platform_posts (story_id, platform, external_id, external_url, status, published_at)
+    VALUES (?, ?, ?, ?, 'published', '2026-06-22T02:52:24.000Z')
+  `);
+  insert.run("posted-story", "youtube", "yt-123", "https://youtube.com/shorts/yt-123");
+  insert.run("posted-story", "instagram_reel", "ig-123", null);
+  insert.run("posted-story", "facebook_reel", "fb-123", null);
+  db.close();
+
+  const previousSqliteDbPath = process.env.SQLITE_DB_PATH;
+  delete process.env.SQLITE_DB_PATH;
+  let evidence;
+  try {
+    evidence = await readPublishedPlatformEvidence(root, [{ story_id: "posted-story" }]);
+  } finally {
+    if (previousSqliteDbPath == null) delete process.env.SQLITE_DB_PATH;
+    else process.env.SQLITE_DB_PATH = previousSqliteDbPath;
+  }
+
+  assert.equal(evidence.source, "read_only_local_sqlite_publication_evidence");
+  assert.deepEqual(
+    evidence.by_story_id["posted-story"].already_published_platforms,
+    ["youtube_shorts", "instagram_reels", "facebook_reels"],
+  );
+});
+
 test("goal dry-run publisher ignores stale visual-source defers after newer rights-backed final render evidence", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-stale-visual-source-"));
   const storyPackage = await makeStoryPackage(
@@ -2382,6 +2580,39 @@ test("goal dry-run publisher blocks stale on-disk public coherence reports", asy
   );
 });
 
+test("goal dry-run publisher ignores stale local-proof transition blockers after package GREEN evidence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-promoted-local-proof-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "promoted-local-proof",
+    "GREEN",
+    "Hellraiser: Revival's October Date Is A Risk",
+    { canonicalSubject: "Hellraiser: Revival" },
+  );
+  storyPackage.verdict = "local_proof_pending";
+  storyPackage.status = "needs_media_house_render_proof";
+  storyPackage.blockers = [
+    "not_scheduler_green",
+    "missing_fresh_audio_and_word_timestamps",
+    "missing_validated_official_direct_motion",
+    "missing_visual_v4_final_render",
+    "missing_media_house_quality_gate_pass",
+    "missing_scheduler_preflight_pass",
+    "missing_strict_dry_run_pass",
+  ];
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-22T02:30:00.000Z",
+    platformOperationalConfig: allPlatformsEnabled(),
+  });
+
+  assert.equal(plan.summary.ready_story_count, 1);
+  assert.equal(plan.summary.blocked_story_count, 0);
+  assert.equal(plan.overall_verdict, "GREEN");
+  assert.equal(plan.summary.platform_publish_now_action_count, 7);
+});
+
 test("goal dry-run publisher blocks packages with weak first-frame visual evidence", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-visual-qa-weak-"));
   const storyPackage = await makeStoryPackage(root, "visual-qa-weak", "GREEN", "Boltgun 2 Leaves The Corridors", {
@@ -2447,6 +2678,76 @@ test("goal dry-run publisher blocks generated-only orange-card motion decks", as
   assert.equal(plan.summary.blocked_story_count, 1);
   assert.ok(plan.blocked_stories[0].blockers.includes("visual_evidence:generated_only_motion_deck"));
   assert.ok(plan.blocked_stories[0].blockers.includes("visual_evidence:no_real_visual_media_asset"));
+});
+
+test("goal dry-run publisher blocks repeated direct-video windows from one source URL", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-repeated-direct-motion-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "repeated-direct-window-story",
+    "GREEN",
+    "Sea Of Thieves Custom Seas Could Split Crews",
+    { canonicalSubject: "Sea of Thieves" },
+  );
+  const artifactDir = storyPackage.artifact_dir;
+  const sourceUrl =
+    "https://video.fastly.steamstatic.com/store_trailers/1172620/418022350/hash/hls_264_master.m3u8?t=1720000000";
+  const clips = Array.from({ length: 5 }, (_, index) => ({
+    id: `repeated-direct-window-story-segment-${index + 1}`,
+    path: `motion/sea-of-thieves-window-${index + 1}.mp4`,
+    source_url: sourceUrl,
+    source_type: "official_platform_product_page",
+    media_kind: "direct_video",
+    source_url_kind: "hls_manifest",
+    source_family: `steam_1172620_sea_of_thieves_window_${index + 1}`,
+    motion_family: `steam_1172620_sea_of_thieves_window_${index + 1}`,
+    rights_risk_class: "official_reference_transformative_editorial_use",
+    licence_basis: "official_reference_transformative_editorial_use",
+    commercial_use_allowed: true,
+    approval_status: "approved_for_transformative_editorial_use",
+    counts_towards_motion_readiness: true,
+    materialized: true,
+  }));
+  await Promise.all(
+    clips.map((clip) => fs.outputFile(path.join(artifactDir, clip.path), Buffer.alloc(1600, 4))),
+  );
+  await fs.outputJson(path.join(artifactDir, "visual_v4_render_story.json"), {
+    id: "repeated-direct-window-story",
+    video_clips: clips,
+    visual_v4_bridge_video_clips: clips,
+  });
+  await fs.outputJson(path.join(artifactDir, "owned_motion_manifest.json"), {
+    status: "ready",
+    materialised_clips: clips,
+    distinct_motion_families: clips.map((clip) => clip.motion_family),
+  });
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips,
+    distinct_motion_family_count: clips.length,
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: clips.map((clip) => ({
+      ...clip,
+      asset_type: "direct_video_motion_clip",
+      allowed_platforms: ["youtube", "tiktok", "instagram", "facebook", "x", "threads", "pinterest"],
+    })),
+  });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-22T12:25:00.000Z",
+  });
+
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 1);
+  assert.ok(plan.blocked_stories[0].blockers.includes("incident:distinct_motion_families_missing"));
+  assert.ok(
+    plan.blocked_stories[0].blockers.includes(
+      "visual_evidence:insufficient_real_visual_source_families",
+    ),
+  );
 });
 
 test("goal dry-run publisher blocks owned explainer decks unless a verified source exception is recorded", async () => {

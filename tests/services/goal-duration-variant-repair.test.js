@@ -700,6 +700,110 @@ test("duration variant repair regenerates fast cadence narration with a safer sp
   assert.equal(report.safety.external_tts_provider_used, "elevenlabs");
 });
 
+test("duration variant repair preserves dense fast-cadence scripts instead of appending extra copy", () => {
+  const script = [
+    "Hellraiser: Revival picked October 8, and that is brave for all the wrong reasons.",
+    "Eurogamer says the new trailer locks the game for PS5, Xbox Series X/S and PC, with Saber leaning hard into Pinhead, the Genesis Configuration and first-person gore.",
+    "That timing is smart because horror fans will look twice in October, but it also raises the bar.",
+    "Players are not judging whether Hellraiser can be nasty; they are judging whether the combat, puzzle box powers and chase through the Labyrinth can stay tense after the trailer cuts stop doing the work.",
+    "If the box power lands, this could be the rare licensed horror game that earns the name.",
+    "If it feels like Doom with chains, the date only makes the disappointment louder.",
+    "Follow Pulse Gaming so you never miss a beat.",
+  ].join(" ");
+
+  const repair = extendScriptToTarget(
+    {
+      story_id: "hellraiser-fast-cadence",
+      canonical_subject: "Hellraiser: Revival",
+      canonical_game: "Hellraiser: Revival",
+      selected_title: "Hellraiser: Revival's October Date Is A Risk",
+      thumbnail_headline: "HELLRAISER OCTOBER RISK",
+      first_spoken_line: "Hellraiser: Revival picked October 8, and that is brave for all the wrong reasons.",
+      narration_script: script,
+      full_script: script,
+      tts_script: script,
+      primary_source: "Eurogamer",
+      source_card_label: "Eurogamer",
+      confirmed_claims: [
+        "Hellraiser: Revival is set for October 8, 2026 on PS5, Xbox Series X/S and PC after a new trailer.",
+      ],
+    },
+    {
+      repair_lane: "voice_cadence_compaction",
+      current_duration_s: 43.78,
+      target_duration_seconds: { min: 35, max: 59 },
+      source_blockers: ["voice_cadence:wpm_too_fast"],
+    },
+  );
+
+  assert.equal(repair.appended_word_count, 0);
+  assert.equal(repair.repaired_word_count, simpleWordCount(script));
+  assert.doesNotMatch(repair.script, /One reveal cannot settle the game/i);
+});
+
+test("voice cadence repair preserves an existing platform-native thumbnail headline", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-duration-thumbnail-preserve-"));
+  const ghostScript =
+    "Ghost at Dawn is trying to make player choices scarier than jump scares. Xbox Wire says the game is about fear, empathy and questionable choices, which is a sharper pitch than another trailer full of loud corridor scares. The useful proof is in the campaign: whether those choices change how players read the haunting, or just decorate normal horror scenes. That is where this gets interesting, because a monster can make you jump once, but a bad decision can follow you through the whole game. If that lands, it sticks. If player decisions barely matter, the atmosphere has to carry everything by itself. That is the argument: personal guilt is scarier than noise only if the game actually remembers what players did. Follow Pulse Gaming so you never miss a beat.";
+  const artifactDir = await makePackage(root, "ghost-cadence-thumbnail", {
+    canonical: {
+      canonical_subject: "Ghost at Dawn",
+      canonical_game: "Ghost at Dawn",
+      selected_title: "Ghost at Dawn Turns Choices Into Horror",
+      thumbnail_headline: "GHOST CHOICES RISK",
+      thumbnail_text: "GHOST CHOICES RISK",
+      suggested_thumbnail_text: "GHOST CHOICES RISK",
+      first_frame_text: "GHOST CHOICES RISK",
+      platform_native_thumbnail_repaired_at: "2026-06-22T04:33:44.661Z",
+      first_spoken_line: "Ghost at Dawn is trying to make player choices scarier than jump scares.",
+      narration_script: ghostScript,
+      full_script: ghostScript,
+      tts_script: ghostScript,
+      primary_source: "Xbox Wire",
+      confirmed_claims: ["Ghost at Dawn is about fear, empathy and questionable choices."],
+    },
+  });
+
+  const report = await materializeDurationVariantRepairs({
+    workspaceRoot: root,
+    generatedAt: "2026-06-22T04:50:00.000Z",
+    workOrder: {
+      jobs: [
+        {
+          ...workOrderJob("ghost-cadence-thumbnail", artifactDir),
+          title: "Ghost at Dawn Turns Choices Into Horror",
+          current_duration_s: 44.367,
+          target_duration_seconds: { min: 35, max: 59 },
+          repair_lane: "voice_cadence_compaction",
+          source_blockers: ["voice_cadence:wpm_too_fast"],
+        },
+      ],
+    },
+    provider: "elevenlabs",
+    alignmentMode: "off",
+    generateTtsForStory: async ({ text, outputPath }) => {
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 9));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignment(text),
+      });
+    },
+    renderProof: async ({ output }) => {
+      await fs.outputFile(output, Buffer.alloc(8192, 10));
+      return {
+        output,
+        clips: 2,
+        rendered_duration_s: 51,
+        size_bytes: 8192,
+      };
+    },
+  });
+
+  assert.equal(report.summary.repaired_count, 1);
+  const repaired = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+  assert.equal(repaired.thumbnail_headline, "GHOST CHOICES RISK");
+  assert.equal(repaired.thumbnail_text, "GHOST CHOICES RISK");
+});
+
 test("duration variant repair reruns existing repairs with noncanonical protected brand names", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-duration-protected-brand-"));
   const artifactDir = await makePackage(root, "pokemon-duration-brand", {

@@ -1512,7 +1512,7 @@ test("goal batch packages create rights records for restored official V4 motion 
     base_source_family: "playstation_blog_granblue",
     path: `C:\\media\\granblue-window-${index + 1}.mp4`,
     local_materialized_path: `C:\\media\\granblue-window-${index + 1}.mp4`,
-    source_url: "https://vulcan.dl.playstation.net/img/rnd/202606/1802/granblue.mp4",
+    source_url: `https://vulcan.dl.playstation.net/img/rnd/202606/1802/granblue-${index + 1}.mp4`,
     source_type: "official_game_site_news_page",
     source_url_kind: "direct_video",
     rights_risk_class: "official_direct_media",

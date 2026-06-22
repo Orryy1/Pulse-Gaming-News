@@ -1232,6 +1232,74 @@ test("official trailer segment validator labels clean storefront cinematic motio
   assert.ok(report.segments[0].action_score >= 62);
 });
 
+test("official trailer segment validator accepts entity-matched licensed Steam cinematic motion", async () => {
+  const outputRoot = tempOutputRoot("official-licensed-steam-storefront-cinematic-motion");
+  await cleanTempRoot(outputRoot);
+  let call = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        path: "https://video.fastly.steamstatic.com/store_trailers/1551980/965080935/hash/hls_264_master.m3u8",
+        sourceType: "licensed_direct_media_url",
+        sourceFamily: "steam_1551980_clive_barker_s_hellraiser_revival",
+        source_family: "steam_1551980_clive_barker_s_hellraiser_revival",
+        sourceDurationS: 81.7,
+        mediaStartS: 68,
+        entity: "Hellraiser: Revival",
+        provenance: {
+          requires_segment_validation: true,
+          segment_validated: false,
+          allowed_for_flash_lane: false,
+          source_owner: "Steam storefront for Clive Barker's Hellraiser: Revival",
+          reference_url:
+            "https://store.steampowered.com/app/1551980/Clive_Barker's_Hellraiser_Revival/",
+        },
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: fakeExtractor,
+      inspectFrame: async (outputPath) => {
+        call += 1;
+        const samples = [
+          { edge_density: 0.092, saturation_mean: 0.59, dark_pixel_ratio: 0.11, score: 88.4 },
+          { edge_density: 0.121, saturation_mean: 0.63, dark_pixel_ratio: 0.52, score: 90 },
+          { edge_density: 0.086, saturation_mean: 0.4, dark_pixel_ratio: 0.45, score: 86 },
+        ];
+        const sample = samples[call - 1] || samples[0];
+        return {
+          ...passingQa(outputPath),
+          content_hash: `hellraiser-licensed-cinematic-${call}`,
+          prescan: {
+            likely_is_logo: false,
+            text_overlay_likelihood: 0,
+            white_text_on_dark_likelihood: 0,
+            edge_density: sample.edge_density,
+            saturation_mean: sample.saturation_mean,
+            dark_pixel_ratio: sample.dark_pixel_ratio,
+            bright_pixel_ratio: 0.01,
+            letterbox_bar_ratio: 0,
+          },
+          visual_taste: {
+            verdict: "pass",
+            reason: "taste_passed",
+            score: sample.score,
+            tags: ["colourful"],
+          },
+        };
+      },
+    },
+  );
+
+  assert.equal(report.summary.segments_validated, 1);
+  assert.equal(report.segments[0].validation_reason, "official_storefront_cinematic_motion_samples_passed");
+  assert.equal(report.segments[0].segment_motion_class, "official_storefront_cinematic_motion");
+  assert.equal(report.segments[0].allowed_for_flash_lane, true);
+  assert.equal(report.segments[0].action_sample_count, 0);
+});
+
 test("official trailer segment validator accepts short muted high-detail storefront cinematic motion", async () => {
   const outputRoot = tempOutputRoot("official-steam-muted-cinematic-motion");
   await cleanTempRoot(outputRoot);

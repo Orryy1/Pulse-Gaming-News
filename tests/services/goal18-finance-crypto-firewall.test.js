@@ -148,6 +148,36 @@ test("Goal 18 preserves Goal 17 blockers while direct finance checks pass", asyn
   assert.equal(report.compliance_required_actions.safety.no_publish_action, true);
 });
 
+test("Goal 18 accepts package policy evidence when Goal 17 direct checks passed but upstream was blocked", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal18-package-policy-proof-"));
+  const story = await makeStoryPackage(root, "story-package-policy");
+
+  const report = await buildGoal18FinanceCryptoFirewall({
+    storyPackages: [story],
+    upstreamPolicyReport: {
+      stories: [{
+        story_id: "story-package-policy",
+        status: "blocked",
+        direct_policy_status: "pass",
+        direct_policy_blockers: [],
+        blockers: [
+          "upstream:goal16_landing_page_engine_blocked",
+          "upstream:goal15_affiliate_intelligence_missing",
+        ],
+      }],
+    },
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-06-22T02:30:00.000Z",
+  });
+
+  assert.equal(report.verdict, "PASS");
+  assert.equal(report.summary.finance_crypto_ready_story_count, 1);
+  assert.equal(report.stories[0].upstream_status, "ready");
+  assert.deepEqual(report.stories[0].upstream_blockers, []);
+  assert.equal(report.stories[0].source_material.upstream_policy_satisfied_by_package_evidence, true);
+});
+
 test("Goal 18 excludes upstream-skipped stories from active firewall blockers", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal18-skipped-"));
   const readyStory = await makeStoryPackage(root, "story-ready");

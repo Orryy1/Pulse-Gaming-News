@@ -125,6 +125,155 @@ function action(storyId, platform, enabled = true) {
   };
 }
 
+function guardedDispatchAction(storyId, platform) {
+  return {
+    story_id: storyId,
+    platform,
+    action: "would_publish",
+    platform_enabled: true,
+    requires_human_review_before_live_publish: false,
+    live_execution_gate: "guarded_dispatch_ready",
+    autonomous_green_lit_by_dry_run: true,
+    requires_guarded_dispatch_command: true,
+    requires_enabled_platform_recheck: true,
+    blockers: [],
+    warnings: [],
+  };
+}
+
+test("controlled restart pack accepts autonomous guarded-dispatch-ready enabled actions", async () => {
+  await withTempDir(async (root) => {
+    const id = "guarded-ready-story";
+    await writeStory(root, id, "Ghost At Dawn Turns Choices Into Horror", {
+      subject: "Ghost At Dawn",
+      source: "Xbox Wire",
+      thumbnail: "GHOST CHOICES RISK",
+      script:
+        "Ghost at Dawn is trying to make player choices scarier than jump scares. Xbox Wire says the game is about fear, empathy and questionable choices, which is a sharper pitch than another trailer full of loud corridor scares. The useful proof is in the campaign: whether those choices change how players read the haunting, or just decorate normal horror scenes. That is where this gets interesting, because a monster can make you jump once, but a bad decision can follow you through the whole game. If that lands, it sticks. If player decisions barely matter, the atmosphere has to carry everything by itself. Follow Pulse Gaming so you never miss a beat.",
+    });
+
+    const report = await buildControlledRestartPack({
+      root,
+      generatedAt: "2026-06-22T05:10:00.000Z",
+      candidateLimit: 1,
+      candidateReport: {
+        candidates: [
+          {
+            id,
+            title: "Ghost At Dawn Turns Choices Into Horror",
+            status: "publish_ready",
+            score: 86,
+            duration_seconds: 51,
+            source: {
+              exported_path: path.join(root, "output", "goal-proof", "batch", id, "visual_v4_render.mp4"),
+            },
+            preflight_qa: {
+              status: "pass",
+              blockers: [],
+              warnings: [],
+              checks: {
+                timestamp_alignment: {
+                  result: "pass",
+                  evidence: { source: "local_whisper_word_alignment" },
+                },
+              },
+            },
+          },
+        ],
+      },
+      strictDryRunPlan: {
+        overall_verdict: "AMBER",
+        actions: [
+          guardedDispatchAction(id, "youtube_shorts"),
+          guardedDispatchAction(id, "instagram_reels"),
+          guardedDispatchAction(id, "facebook_reels"),
+          action(id, "tiktok", false),
+          action(id, "x", false),
+          action(id, "threads", false),
+          action(id, "pinterest", false),
+        ],
+      },
+    });
+
+    assert.deepEqual(report.selected_restart_candidates.map((candidate) => candidate.story_id), [id]);
+    assert.equal(report.rejected_restart_candidates.length, 0);
+    assert.equal(report.operator_can_manually_approve_now, true);
+  });
+});
+
+test("controlled restart pack rejects HyperFrames candidates without passing premium-shell proof", async () => {
+  await withTempDir(async (root) => {
+    const id = "hyperframes-shell-missing";
+    await writeStory(root, id, "HyperFrames Story Needs Shell Proof", {
+      subject: "HyperFrames Story",
+      source: "Xbox Wire",
+      thumbnail: "SHELL PROOF NEEDED",
+    });
+    const artifactDir = path.join(root, "output", "goal-proof", "batch", id);
+    await fs.writeJson(path.join(artifactDir, "render_manifest.json"), {
+      renderer: "visual_v4_production",
+      rendererSplit: "ffmpeg-backbone-story-specific-hyperframes-cards",
+      final_publish_render: true,
+      output_path: path.join(artifactDir, "visual_v4_render.mp4"),
+      rendered_duration_s: 44,
+      hyperframesCardCount: 4,
+      hyperframesPremiumShellGate: {
+        verdict: "fail",
+        passCount: 3,
+        requiredPassCount: 4,
+        blockers: ["source:hyperframes_inspect_skipped"],
+      },
+      render_invocation_mode: "final_production_render",
+    });
+
+    const report = await buildControlledRestartPack({
+      root,
+      generatedAt: "2026-06-22T05:20:00.000Z",
+      candidateLimit: 1,
+      candidateReport: {
+        candidates: [
+          {
+            id,
+            title: "HyperFrames Story Needs Shell Proof",
+            status: "publish_ready",
+            score: 100,
+            duration_seconds: 44,
+            source: {
+              exported_path: path.join(artifactDir, "visual_v4_render.mp4"),
+            },
+            preflight_qa: {
+              status: "pass",
+              blockers: [],
+              warnings: [],
+              checks: {
+                timestamp_alignment: {
+                  result: "pass",
+                  evidence: { source: "local_whisper_word_alignment" },
+                },
+              },
+            },
+          },
+        ],
+      },
+      strictDryRunPlan: {
+        overall_verdict: "AMBER",
+        actions: [
+          guardedDispatchAction(id, "youtube_shorts"),
+          guardedDispatchAction(id, "instagram_reels"),
+          guardedDispatchAction(id, "facebook_reels"),
+          action(id, "tiktok", false),
+        ],
+      },
+      platformStatusMatrix: {},
+    });
+
+    assert.deepEqual(report.selected_restart_candidates.map((candidate) => candidate.story_id), []);
+    const rejected = report.rejected_restart_candidates.find((candidate) => candidate.story_id === id);
+    assert.ok(rejected, "candidate should be rejected");
+    assert.ok(rejected.blockers.includes("hyperframes_premium_shell_not_passed"));
+  });
+});
+
 test("controlled restart pack selects three clean enabled-platform candidates and defers disabled platforms", async () => {
   await withTempDir(async (root) => {
     const ids = ["story-a", "story-b", "story-c", "story-d"];

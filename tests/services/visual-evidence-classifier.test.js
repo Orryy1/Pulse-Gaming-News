@@ -28,6 +28,31 @@ test("counts materialised Steam HLS trailer clips as direct-video motion evidenc
   assert.equal(profile.direct_video_motion_family_count, 1);
 });
 
+test("counts repeated windows from one direct-video URL as one motion family", () => {
+  const sourceUrl =
+    "https://video.fastly.steamstatic.com/store_trailers/1172620/418022350/hash/hls_264_master.m3u8?t=1720000000";
+  const profile = visualEvidenceProfile({
+    footageInventory: {
+      motion_inventory: {
+        production_motion_clips: Array.from({ length: 5 }, (_, index) => ({
+          id: `sea-of-thieves-window-${index + 1}`,
+          path: `C:\\repo\\output\\video_cache\\sea_of_thieves_window_${index + 1}.mp4`,
+          source_url: sourceUrl,
+          source_type: "official_platform_product_page",
+          media_kind: "direct_video",
+          source_url_kind: "hls_manifest",
+          source_family: `steam_1172620_sea_of_thieves_window_${index + 1}`,
+        })),
+      },
+    },
+  });
+
+  assert.equal(profile.direct_video_motion_asset_count, 5);
+  assert.equal(profile.direct_video_motion_family_count, 1);
+  assert.equal(profile.real_media_family_count, 1);
+  assert.ok(profile.blockers.includes("visual_evidence:insufficient_real_visual_source_families"));
+});
+
 test("does not count screenshot-derived local MP4s as direct-video motion evidence", () => {
   const profile = visualEvidenceProfile({
     footageInventory: {

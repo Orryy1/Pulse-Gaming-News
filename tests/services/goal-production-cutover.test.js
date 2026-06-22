@@ -2546,6 +2546,62 @@ test("production cutover accepts harmless spoken-number TTS normalisation", asyn
   assert.equal(plan.validation_report[0].render_input_evidence.tts_pronunciation_expected_transcript, undefined);
 });
 
+test("production cutover accepts PS5 acronym TTS pronunciation normalisation", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-pronunciation-ps5-"));
+  const storyPackage = await makeCutoverPackage(root, "ps5-pronunciation-fresh-story", {
+    finalPublishRender: true,
+    renderer: "visual_v4_production",
+    visualTier: "production_v4_motion",
+    subject: "Hellraiser: Revival",
+    title: "Hellraiser Revival Sets A PS5 Date",
+  });
+  const artifactDir = storyPackage.artifact_dir;
+  const audioPath = path.join(artifactDir, "narration.mp3");
+  const timestampsPath = path.join(artifactDir, "narration_timestamps.json");
+  const script = "Hellraiser: Revival is coming to PS5 in 2026.";
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "ps5-pronunciation-fresh-story",
+    canonical_subject: "Hellraiser: Revival",
+    selected_title: "Hellraiser Revival Sets A PS5 Date",
+    narration_script: script,
+    first_spoken_line: script,
+    description: "Hellraiser: Revival is coming to PS5. Source: Eurogamer.",
+    primary_source: "Eurogamer",
+  });
+  await fs.outputFile(audioPath, Buffer.alloc(4000, 2));
+  await fs.outputJson(timestampsPath, {
+    words: [
+      { word: "Hellraiser", start: 0, end: 0.4 },
+      { word: "Revival", start: 0.4, end: 0.8 },
+      { word: "is", start: 0.8, end: 1.0 },
+      { word: "coming", start: 1.0, end: 1.3 },
+      { word: "to", start: 1.3, end: 1.4 },
+      { word: "PS5", start: 1.4, end: 1.8 },
+      { word: "in", start: 1.8, end: 2.0 },
+      { word: "2026", start: 2.0, end: 2.4 },
+    ],
+    meta: {
+      transcript: "Hellraiser: Revival is coming to PS5 in 2026.",
+      wordTimestampSource: "local_whisper_word_alignment",
+      timestampWhisperAlignment: { repaired: true },
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), {
+    narration_audio_path: audioPath,
+    word_timestamps_path: timestampsPath,
+    voice_provider: "local_tts",
+  });
+
+  const plan = await buildProductionRenderCutoverPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-22T02:40:00.000Z",
+  });
+
+  assert.equal(plan.summary.queued_final_render_count, 0);
+  assert.equal(plan.summary.ready_final_render_count, 1);
+  assert.equal(plan.validation_report[0].render_input_evidence.tts_pronunciation_expected_transcript, undefined);
+});
+
 test("production cutover requeues final renders when ASR word timestamps contain semantic misrecognitions", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-asr-semantic-drift-"));
   const storyPackage = await makeCutoverPackage(root, "asr-semantic-drift-story", {
@@ -3925,6 +3981,47 @@ test("production cutover refreshes stale RED control-tower verdicts for clean fi
     generatedAt: "2026-05-23T07:20:00.000Z",
   });
 
+  const candidate = plan.scheduler_bridge.candidates[0];
+  assert.equal(candidate.publish_verdict.verdict, "GREEN");
+  assert.equal(candidate.publish_verdict.can_auto_publish, true);
+  assert.equal(candidate.platform_publish_manifest.publish_status, "GREEN");
+  assert.deepEqual(candidate.publish_verdict.reason_codes, []);
+  assert.equal((await fs.readJson(path.join(artifactDir, "publish_verdict.json"))).verdict, "GREEN");
+  assert.equal((await fs.readJson(path.join(artifactDir, "platform_publish_manifest.json"))).publish_status, "GREEN");
+});
+
+test("production cutover creates missing control-tower verdicts for clean final renders", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-missing-verdict-"));
+  const ready = await makeCutoverPackage(root, "missing-verdict-story", {
+    finalPublishRender: true,
+    renderer: "visual_v4_production",
+    visualTier: "production_v4_motion",
+    subject: "Forza Horizon 6",
+    title: "Forza Horizon 6 Just Broke Xbox's Steam Ceiling",
+  });
+  const artifactDir = ready.artifact_dir;
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "missing-verdict-story",
+    canonical_subject: "Forza Horizon 6",
+    canonical_game: "Forza Horizon 6",
+    canonical_angle: "Steam demand changed the Xbox launch story",
+    primary_source: "IGN",
+    selected_title: "Forza Horizon 6 Just Broke Xbox's Steam Ceiling",
+    thumbnail_headline: "FORZA BROKE STEAM",
+    first_spoken_line: "Forza Horizon 6 just broke the Xbox ceiling that usually matters on Steam.",
+    narration_script:
+      "Forza Horizon 6 just broke the Xbox ceiling that usually matters on Steam. IGN says the Steam launch is changing how the game is being judged. Follow Pulse Gaming so you never miss a beat.",
+    description: "Forza Horizon 6 has a Steam attention spike. Source: IGN.",
+    source_card_label: "IGN",
+  });
+  await fs.remove(path.join(artifactDir, "publish_verdict.json"));
+
+  const plan = await buildProductionRenderCutoverPlan({
+    storyPackages: [ready],
+    generatedAt: "2026-05-23T07:24:00.000Z",
+  });
+
+  assert.equal(plan.ready.length, 1, JSON.stringify(plan.blocked, null, 2));
   const candidate = plan.scheduler_bridge.candidates[0];
   assert.equal(candidate.publish_verdict.verdict, "GREEN");
   assert.equal(candidate.publish_verdict.can_auto_publish, true);

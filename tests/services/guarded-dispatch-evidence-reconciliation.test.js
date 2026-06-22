@@ -47,6 +47,16 @@ test("guarded-dispatch reconciliation CLI preserves explicit operator environmen
   );
   assert.match(
     src,
+    /--goal-contract-dir/,
+    "reconciliation should support scoped guarded-dispatch artefact directories",
+  );
+  assert.match(
+    src,
+    /const goalContractDir = args\.goalContractDir/,
+    "reconciliation should not be hardcoded to the root goal-contract directory",
+  );
+  assert.match(
+    src,
     /const runtimeSentinel = await buildRuntimeOwnershipSentinelFromEnvironment\(\{\s*cwd: ROOT,\s*env: runtimeEnv,\s*schedulerProof:/,
     "reconciliation should run sentinel first with scheduler handoff proof",
   );
@@ -237,6 +247,73 @@ test("reconciliation allows scheduler-window scope without a preselected executo
   );
   assert.equal(report.verdict, "partial");
   assert.equal(report.summary.target_structured_evidence_gap, true);
+});
+
+test("reconciliation treats a scoped executor plan consumed by published actions as terminal", () => {
+  const story = {
+    id: "published-story",
+    title: "Published Story",
+    youtube_post_id: "yt_done",
+    youtube_url: "https://youtube.com/shorts/yt_done",
+    published_at: "2026-06-22T03:17:30.109Z",
+  };
+  const report = buildGuardedDispatchEvidenceReconciliationReport({
+    story,
+    stories: [story],
+    platformRows: [
+      {
+        story_id: "published-story",
+        platform: "youtube",
+        status: "published",
+        external_id: "yt_done",
+      },
+    ],
+    selector: {
+      exhausted: true,
+      action_id: null,
+      action: null,
+      reason: "no_unpublished_guarded_actions",
+      skipped_actions: [
+        {
+          action_id: "published-story:youtube_shorts",
+          story_id: "published-story",
+          platform: "youtube_shorts",
+          reason: "already_published",
+          external_id: "yt_done",
+        },
+        {
+          action_id: "published-story:instagram_reels",
+          story_id: "published-story",
+          platform: "instagram_reels",
+          reason: "already_published",
+          external_id: "ig_done",
+        },
+      ],
+    },
+    runtimeSentinel: {
+      verdict: "green",
+      scheduler_window_readiness: { safe_to_observe_next_window: true },
+    },
+    queueInspect: { verdict: "review" },
+    publishCadence: {
+      verdict: "amber",
+      next_safe_publish: { next_safe_publish_at_utc: "2026-06-22T09:00:00.000Z" },
+    },
+    publishReadiness: { overall_verdict: "amber" },
+    storyId: "published-story",
+    actionId: "published-story:youtube_shorts",
+    expectedYoutubeId: "yt_done",
+  });
+
+  assert.equal(report.partial_youtube_evidence.retry_risk, false);
+  assert.equal(report.partial_youtube_evidence.platform_posts_structured_gap, false);
+  assert.equal(report.next_window_scheduler_verification.scoped_executor_plan_already_consumed, true);
+  assert.equal(
+    report.next_window_scheduler_verification.blockers.includes("no_next_guarded_live_action"),
+    false,
+  );
+  assert.equal(report.next_window_scheduler_verification.safe_to_observe_next_window, true);
+  assert.equal(report.verdict, "pass");
 });
 
 test("platform_posts integrity separates aggregate historical gaps from target gaps", () => {

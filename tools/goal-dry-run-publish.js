@@ -10,6 +10,7 @@ if (!/^(true|1|yes|on)$/i.test(String(process.env.PULSE_SKIP_DOTENV || ""))) {
 
 const {
   buildGoalDryRunPublishPlan,
+  normalizePlatformKey,
   renderGoalDryRunPublishPlanMarkdown,
   writeGoalDryRunPublishPlan,
 } = require("../lib/goal-dry-run-publisher");
@@ -25,6 +26,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     platformStatusPath: null,
     repairWorkOrderPath: null,
     antiSpamReportPath: null,
+    publishedPlatformEvidencePath: null,
     motionPackRoot: null,
     requireSchedulerPreflight: true,
     outDir: path.join(process.cwd(), "output", "goal-contract"),
@@ -42,6 +44,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--platform-status") args.platformStatusPath = argv[++i] || "";
     else if (arg === "--repair-work-order") args.repairWorkOrderPath = argv[++i] || "";
     else if (arg === "--anti-spam-report") args.antiSpamReportPath = argv[++i] || "";
+    else if (arg === "--published-platform-evidence") args.publishedPlatformEvidencePath = argv[++i] || "";
     else if (arg === "--motion-pack-root") args.motionPackRoot = argv[++i] || "";
     else if (arg === "--no-scheduler-preflight") args.requireSchedulerPreflight = false;
     else if (arg === "--out-dir") args.outDir = argv[++i] || args.outDir;
@@ -64,6 +67,7 @@ function usage() {
     "  --platform-status <path>  Platform operational status report",
     "  --repair-work-order <path> Render input repair work order",
     "  --anti-spam-report <path>  Goal20 anti-spam readiness report",
+    "  --published-platform-evidence <path> Optional read-only published platform evidence JSON",
     "  --motion-pack-root <dir>  Story-scoped V4 motion pack manifest directory",
     "  --no-scheduler-preflight  Diagnostic mode only; do not require scheduler preflight evidence",
     "  --out-dir <dir>           Output directory",
@@ -363,6 +367,135 @@ function mergePreflightCandidateStoryPackages(storyPackages = [], candidatePrefl
   return merged;
 }
 
+function storyIdsFromPackages(storyPackages = []) {
+  return uniqueCleanStrings(
+    asArray(storyPackages).map((story) => story?.story_id || story?.id),
+  );
+}
+
+function addPublishedPlatformEvidence(byStoryId, storyId, platform, evidence = {}) {
+  const id = cleanText(storyId);
+  const key = normalizePlatformKey(platform);
+  if (!id || !key) return;
+  if (!byStoryId[id]) {
+    byStoryId[id] = {
+      story_id: id,
+      already_published_platforms: [],
+      rows: [],
+    };
+  }
+  byStoryId[id].already_published_platforms = uniqueCleanStrings([
+    ...asArray(byStoryId[id].already_published_platforms),
+    key,
+  ]);
+  byStoryId[id].rows.push({
+    platform: key,
+    source_platform: cleanText(platform),
+    external_id: cleanText(evidence.external_id),
+    external_url: cleanText(evidence.external_url),
+    published_at: cleanText(evidence.published_at),
+    source: cleanText(evidence.source || "platform_posts"),
+  });
+}
+
+function buildPublishedPlatformEvidence({ platformPostRows = [], legacyStoryRows = [], source = "" } = {}) {
+  const byStoryId = {};
+  for (const row of asArray(platformPostRows)) {
+    addPublishedPlatformEvidence(byStoryId, row.story_id, row.platform, {
+      external_id: row.external_id,
+      external_url: row.external_url,
+      published_at: row.published_at,
+      source: "platform_posts",
+    });
+  }
+  const legacyFieldMap = {
+    youtube_post_id: "youtube_shorts",
+    youtube_url: "youtube_shorts",
+    instagram_media_id: "instagram_reels",
+    facebook_post_id: "facebook_reels",
+    tiktok_post_id: "tiktok",
+    twitter_post_id: "x",
+  };
+  for (const row of asArray(legacyStoryRows)) {
+    for (const [field, platform] of Object.entries(legacyFieldMap)) {
+      if (!cleanText(row?.[field])) continue;
+      addPublishedPlatformEvidence(byStoryId, row.story_id || row.id, platform, {
+        external_id: row[field],
+        source: `stories.${field}`,
+      });
+    }
+  }
+  return {
+    schema_version: 1,
+    source: source || "read_only_platform_publication_evidence",
+    by_story_id: byStoryId,
+    story_count: Object.keys(byStoryId).length,
+  };
+}
+
+function resolveLocalSqlitePath(root) {
+  const fromEnv = cleanText(process.env.SQLITE_DB_PATH);
+  if (fromEnv) return path.isAbsolute(fromEnv) ? fromEnv : path.resolve(root, fromEnv);
+  return path.join(root, "data", "pulse.db");
+}
+
+async function readPublishedPlatformEvidence(root, storyPackages = [], explicitPath = null) {
+  if (explicitPath) {
+    const filePath = path.resolve(root, explicitPath);
+    if (!(await fs.pathExists(filePath))) return null;
+    return fs.readJson(filePath);
+  }
+  const storyIds = storyIdsFromPackages(storyPackages);
+  if (!storyIds.length) return null;
+  const dbPath = resolveLocalSqlitePath(root);
+  if (!(await fs.pathExists(dbPath))) return null;
+  let Database = null;
+  try {
+    Database = require("better-sqlite3");
+  } catch {
+    return null;
+  }
+  const placeholders = storyIds.map(() => "?").join(",");
+  const db = new Database(dbPath, { readonly: true, fileMustExist: true });
+  try {
+    let platformPostRows = [];
+    let legacyStoryRows = [];
+    try {
+      platformPostRows = db.prepare(`
+        SELECT story_id, platform, external_id, external_url, status, published_at
+        FROM platform_posts
+        WHERE status = 'published'
+          AND external_id IS NOT NULL
+          AND story_id IN (${placeholders})
+      `).all(...storyIds);
+    } catch (err) {
+      if (!/no such table|no such column/i.test(err.message)) throw err;
+    }
+    try {
+      legacyStoryRows = db.prepare(`
+        SELECT id AS story_id,
+               youtube_post_id,
+               youtube_url,
+               instagram_media_id,
+               facebook_post_id,
+               tiktok_post_id,
+               twitter_post_id
+        FROM stories
+        WHERE id IN (${placeholders})
+      `).all(...storyIds);
+    } catch (err) {
+      if (!/no such table|no such column/i.test(err.message)) throw err;
+    }
+    return buildPublishedPlatformEvidence({
+      platformPostRows,
+      legacyStoryRows,
+      source: "read_only_local_sqlite_publication_evidence",
+    });
+  } finally {
+    db.close();
+  }
+}
+
 async function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
   if (args.help) {
@@ -382,6 +515,11 @@ async function main(argv = process.argv.slice(2)) {
     candidatePreflightReport,
     root,
   );
+  const publishedPlatformEvidence = await readPublishedPlatformEvidence(
+    root,
+    mergedStoryPackages,
+    args.publishedPlatformEvidencePath,
+  );
   const plan = await buildGoalDryRunPublishPlan({
     storyPackages: mergedStoryPackages,
     candidatePreflightReport,
@@ -389,6 +527,7 @@ async function main(argv = process.argv.slice(2)) {
     platformOperationalConfig,
     repairWorkOrder,
     upstreamAntiSpamReport,
+    publishedPlatformEvidence,
     motionPackRoot: path.resolve(root, args.motionPackRoot || path.join("output", "studio-v4", "motion-packs")),
     generatedAt: args.generatedAt || new Date().toISOString(),
   });
@@ -414,6 +553,8 @@ module.exports = {
   readRepairWorkOrder,
   readAntiSpamReport,
   readStoryPackages,
+  readPublishedPlatformEvidence,
+  buildPublishedPlatformEvidence,
   mergePreflightCandidateStoryPackages,
   platformStatusMatrixToOperational,
   platformReadinessDoctorToOperational,

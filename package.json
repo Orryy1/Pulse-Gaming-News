@@ -149,6 +149,7 @@
     "ops:goal-tiktok-creator-rewards-variant": "node tools/goal-tiktok-creator-rewards-variant-materializer.js",
     "ops:goal-landing-attribution-repair": "node tools/goal-landing-attribution-repair.js",
     "ops:goal-commercial-disclosure-repair": "node tools/goal-commercial-disclosure-repair.js",
+    "ops:goal-control-tower-evidence-repair": "node tools/goal-control-tower-evidence-repair.js",
     "ops:goal-duration-variant-repair": "node tools/goal-duration-variant-repair.js",
     "ops:goal-normal-duration-repair-workorder": "node tools/goal-normal-duration-repair-workorder.js",
     "ops:goal-normal-duration-repair": "node tools/goal-duration-variant-repair.js --normal-production",

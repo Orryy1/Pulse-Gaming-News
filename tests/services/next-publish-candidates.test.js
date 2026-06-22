@@ -166,7 +166,7 @@ function directVideoFixture(storyId = "bridge_direct_video_resolved") {
   const clips = Array.from({ length: 5 }, (_, index) => ({
     id: `${storyId}-direct-${index + 1}`,
     path: `output/video_cache/${storyId}-direct-${index + 1}.mp4`,
-    source_url: "https://video.fastly.steamstatic.com/store_trailers/353370/37301/hls_264_master.m3u8",
+    source_url: `https://video.fastly.steamstatic.com/store_trailers/353370/${37301 + index}/hls_264_master.m3u8`,
     source_type: "official_platform_product_page",
     media_kind: "direct_video",
     source_url_kind: "hls_manifest",
@@ -2585,6 +2585,102 @@ test("bridge preflight blocks screenshot-derived-only motion decks", async () =>
   assert.ok(preflight.blockers.includes("incident_guard:visual_evidence:direct_video_motion_missing"));
 });
 
+test("bridge preflight blocks repeated direct-video windows from one source URL", async () => {
+  const scores = {
+    motion_density_score: 92,
+    first_3_seconds_hook_score: 88,
+    source_lock_quality_score: 86,
+    caption_legibility_score: 94,
+    card_hierarchy_score: 84,
+    media_house_polish_score: 90,
+  };
+  const sourceUrl =
+    "https://video.fastly.steamstatic.com/store_trailers/1172620/418022350/hash/hls_264_master.m3u8?t=1720000000";
+  const clips = Array.from({ length: 5 }, (_, index) => ({
+    id: `bridge-sea-window-${index + 1}`,
+    path: `output/video_cache/bridge-sea-window-${index + 1}.mp4`,
+    source_url: sourceUrl,
+    source_type: "official_platform_product_page",
+    media_kind: "direct_video",
+    source_url_kind: "hls_manifest",
+    source_family: `steam_1172620_sea_of_thieves_window_${index + 1}`,
+    motion_family: `steam_1172620_sea_of_thieves_window_${index + 1}`,
+    rights_risk_class: "official_reference_transformative_editorial_use",
+    licence_basis: "official_reference_transformative_editorial_use",
+    commercial_use_allowed: true,
+    approval_status: "approved_for_transformative_editorial_use",
+  }));
+  const preflight = await runPreflightQaForStory(
+    baseStory({
+      id: "bridge_repeated_direct_windows",
+      title: "Sea Of Thieves Custom Seas Could Split Crews",
+      selected_title: "Sea Of Thieves Custom Seas Could Split Crews",
+      canonical_subject: "Sea of Thieves",
+      first_spoken_line: "Sea of Thieves just made private crews a bigger argument.",
+      description: "Rare showed the Custom Seas update for Sea of Thieves. Source: Xbox Wire.",
+      full_script:
+        "Sea of Thieves just made private crews a bigger argument. Xbox Wire showed the Custom Seas update, but this package repeats one source video too often.",
+      scheduler_bridge_source: "goal_production_cutover",
+      render_lane: "visual_v4_production",
+      render_quality_class: "premium",
+      qa_visual_count: 5,
+      visual_v4_render_bridge_clip_count: 5,
+      exported_path: "D:/pulse-data/media/output/final/bridge_repeated_direct_windows.mp4",
+      audio_path: "D:/pulse-data/media/output/audio/bridge_repeated_direct_windows.mp3",
+      timestamps_path: "D:/pulse-data/media/output/audio/bridge_repeated_direct_windows_timestamps.json",
+      manual_caption_path: "D:/pulse-data/media/output/captions/bridge_repeated_direct_windows.srt",
+      primary_source: "Xbox Wire",
+      primary_source_url: "https://news.xbox.com/en-us/2026/06/22/sea-of-thieves-custom-seas/",
+      discovery_source: "Xbox Wire",
+      publish_verdict: { verdict: "GREEN" },
+      platform_publish_manifest: {
+        publish_status: "GREEN",
+        platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts"] },
+        outputs: {
+          youtube_shorts: { title: "Sea Of Thieves Custom Seas Could Split Crews" },
+        },
+      },
+      visual_quality_report: {
+        result: "pass",
+        scores,
+        frame_rules: {
+          first_frame_subject: "Sea of Thieves",
+          first_frame_text: "CUSTOM SEAS SPLIT",
+          source_locks_readable: true,
+        },
+        failures: [],
+      },
+      media_house_benchmark: {
+        result: "pass",
+        scores,
+        failures: [],
+      },
+      sfx_manifest: bridgeSfxEvidence(),
+      rights_ledger: clips.map((clip) => ({
+        ...clip,
+        asset_type: "direct_video_motion_clip",
+        allowed_use: "transformative_editorial_reference",
+      })),
+      visual_v4_bridge_video_clips: clips,
+      video_clips: clips,
+    }),
+    {
+      runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    },
+  );
+
+  assert.equal(preflight.status, "blocked");
+  assert.ok(preflight.blockers.includes("incident_guard:incident:distinct_motion_families_missing"));
+  assert.ok(
+    preflight.blockers.includes(
+      "incident_guard:visual_evidence:insufficient_real_visual_source_families",
+    ),
+  );
+});
+
 test("attachPreflightQa marks candidates with read-only QA evidence", async () => {
   const stories = [
     baseStory({ id: "qa_pass", title: "Nintendo confirms a Switch 2 price outcome" }),
@@ -3259,6 +3355,116 @@ test("visual entity preflight treats generic segment sidecar families as opaque 
   assert.equal(result.result, "pass");
   assert.ok(!result.failures.includes("direct_motion_subject_mismatch"));
   assert.match(result.evidence.direct_motion_assets[0].provenance_text, /sea of thieves/);
+});
+
+test("visual entity preflight accepts Steam direct motion when rights ledger owner names the subject", async () => {
+  const clipPath = path.join(
+    "test",
+    "output",
+    "next-publish-candidates-steam-rights-owner",
+    "cyberpunk_2077_v4_clip_1_segment_direct_motion_1.mp4",
+  );
+  const steamUrl =
+    "https://video.akamai.steamstatic.com/store_trailers/1091500/204040882/8a8e80c2c7/hls_264_master.m3u8?t=1770408778";
+
+  const result = await visualEntityPreflightForStory(
+    baseStory({
+      id: "rss_4921d15c5d54b86d",
+      title: "Cyberpunk 2077's Trust Debt",
+      canonical_subject: "Cyberpunk 2077",
+      canonical_game: "Cyberpunk 2077",
+      primary_source_url:
+        "https://www.pcgamer.com/games/rpg/cyberpunk-2077s-boss-says-cdpr-may-have-lost-some-players-forever/",
+      scheduler_bridge_source: "goal_production_cutover",
+      visual_v4_bridge_video_clips: [
+        {
+          id: "segment_direct_motion_1",
+          path: clipPath,
+          source_url: steamUrl,
+          source_family: "segment_source_family_1_window_0_6",
+          source_type: "steam_movie",
+          media_kind: "direct_video",
+          rights_basis: "official_direct_media",
+        },
+      ],
+      video_clips: [clipPath],
+      rights_ledger: {
+        verdict: "pass",
+        assets: [
+          {
+            id: "segment_direct_motion_1",
+            path: clipPath,
+            source_url: steamUrl,
+            source_owner: "Cyberpunk 2077",
+            source_title: "Cyberpunk 2077 Official Trailer",
+            source_type: "steam_movie",
+            media_kind: "direct_video",
+            licence_basis: "official_direct_media",
+            approval_status: "approved_for_transformative_editorial_use",
+          },
+        ],
+      },
+    }),
+  );
+
+  assert.equal(result.result, "pass");
+  assert.ok(!result.failures.includes("direct_motion_subject_mismatch"));
+  assert.match(result.evidence.direct_motion_assets[0].provenance_text, /cyberpunk 2077/);
+});
+
+test("visual entity preflight blocks Steam direct motion when rights ledger owner names another subject", async () => {
+  const clipPath = path.join(
+    "test",
+    "output",
+    "next-publish-candidates-steam-rights-owner-mismatch",
+    "cyberpunk_2077_v4_clip_1_segment_direct_motion_1.mp4",
+  );
+  const steamUrl =
+    "https://video.akamai.steamstatic.com/store_trailers/1091500/204040882/8a8e80c2c7/hls_264_master.m3u8?t=1770408778";
+
+  const result = await visualEntityPreflightForStory(
+    baseStory({
+      id: "rss_4921d15c5d54b86d",
+      title: "Cyberpunk 2077's Trust Debt",
+      canonical_subject: "Cyberpunk 2077",
+      canonical_game: "Cyberpunk 2077",
+      primary_source_url:
+        "https://www.pcgamer.com/games/rpg/cyberpunk-2077s-boss-says-cdpr-may-have-lost-some-players-forever/",
+      scheduler_bridge_source: "goal_production_cutover",
+      visual_v4_bridge_video_clips: [
+        {
+          id: "segment_direct_motion_1",
+          path: clipPath,
+          source_url: steamUrl,
+          source_family: "segment_source_family_1_window_0_6",
+          source_type: "steam_movie",
+          media_kind: "direct_video",
+          rights_basis: "official_direct_media",
+        },
+      ],
+      video_clips: [clipPath],
+      rights_ledger: {
+        verdict: "pass",
+        assets: [
+          {
+            id: "segment_direct_motion_1",
+            path: clipPath,
+            source_url: steamUrl,
+            source_owner: "The Witcher 4",
+            source_title: "The Witcher 4 Official Trailer",
+            source_type: "steam_movie",
+            media_kind: "direct_video",
+            licence_basis: "official_direct_media",
+            approval_status: "approved_for_transformative_editorial_use",
+          },
+        ],
+      },
+    }),
+  );
+
+  assert.equal(result.result, "fail");
+  assert.ok(result.failures.includes("direct_motion_subject_mismatch"));
+  assert.match(result.evidence.mismatched_motion_assets[0].provenance_text, /witcher 4/);
 });
 
 test("attachPreflightQa blocks direct motion when cache sidecar source does not match the subject", async () => {

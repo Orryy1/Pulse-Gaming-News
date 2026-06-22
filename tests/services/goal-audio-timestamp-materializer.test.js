@@ -196,6 +196,70 @@ test("goal audio materializer force-regenerates a workbench ready pair", async (
   assert.equal(report.jobs[0].provider, "elevenlabs");
 });
 
+test("goal audio materializer promotes workbench ready pairs without forced TTS regeneration", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-ready-promote-"));
+  const script = "Star Fox just got a sharper Switch 2 camera deal.";
+  const artifactDir = await makePackage(root, "story-ready-promote", {
+    selected_title: "Star Fox Deal Has One Catch",
+    narration_script: script,
+  });
+  const audioPath = path.join(root, "output", "audio", "story-ready-promote.mp3");
+  const timestampPath = path.join(root, "output", "audio", "story-ready-promote_timestamps.json");
+  await fs.outputFile(audioPath, Buffer.alloc(4096, 1));
+  await fs.outputJson(timestampPath, {
+    words: whisperWordsFromScript(script),
+    meta: {
+      transcript: script,
+      wordTimestampSource: "local_whisper_word_alignment",
+      timestampWhisperAlignment: {
+        repaired: true,
+        script_inserted_actual_word_count: 0,
+        script_trailing_actual_word_count: 0,
+      },
+    },
+  });
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    provider: "elevenlabs",
+    alignmentMode: "whisper",
+    workbenchReport: {
+      local_tts: { verdict: "green", ready: true },
+      elevenlabs_tts: { provider: "elevenlabs", ready: true, configured: true },
+      jobs: [
+        {
+          ...workbenchJob("story-ready-promote", artifactDir),
+          status: "ready_audio_timestamp_pair",
+          missing: [],
+          audio: { path: audioPath, exists: true, usable: true },
+          timestamps: {
+            path: timestampPath,
+            exists: true,
+            usable: true,
+            word_count: script.split(/\s+/).length,
+          },
+        },
+      ],
+    },
+    generatedAt: "2026-05-22T06:00:30.000Z",
+    generateTtsForStory: async () => {
+      throw new Error("should not regenerate workbench-ready audio");
+    },
+  });
+
+  assert.equal(report.summary.candidate_count, 1);
+  assert.equal(report.summary.skipped_existing_count, 1);
+  assert.equal(report.summary.materialized_count, 0);
+  assert.equal(report.jobs[0].status, "skipped_existing_ready_pair");
+  assert.equal(report.safety.no_tts_generation_triggered, true);
+  assert.equal(report.safety.external_tts_provider_used, null);
+  const manifest = await fs.readJson(path.join(artifactDir, "audio_manifest.json"));
+  assert.equal(manifest.voice_provider, "existing");
+  assert.equal(manifest.word_timestamp_source, "local_whisper_word_alignment");
+  assert.equal(manifest.safety.no_publishing_side_effects, true);
+  assert.equal(manifest.timestamp_whisper_alignment.script_inserted_actual_word_count, 0);
+});
+
 test("goal audio materializer syncs canonical narration metadata after public-copy repair", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-canonical-sync-"));
   const repairedScript = "The Expanse finally showed real gameplay.";

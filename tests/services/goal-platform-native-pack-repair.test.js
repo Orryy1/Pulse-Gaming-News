@@ -148,6 +148,118 @@ test("platform-native pack repair clears stale RED publish status after GREEN go
   assert.equal(await fs.pathExists(applied.repairs[0].backup_files.platform_publish_manifest), true);
 });
 
+test("platform-native pack repair stamps GREEN publish controls from final render and media-house pass", async () => {
+  const { storyPackages, root } = await legacyArtifact();
+  const artifactDir = storyPackages[0].artifact_dir;
+  storyPackages[0].verdict = "local_proof_pending";
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "story-native",
+    canonical_subject: "Hellraiser: Revival",
+    canonical_game: "Hellraiser: Revival",
+    canonical_angle: "October timing raises the bar for a licensed horror game",
+    selected_title: "Hellraiser: Revival's October Date Is A Risk",
+    canonical_title: "Hellraiser: Revival's October Date Is A Risk",
+    title: "Hellraiser: Revival's October Date Is A Risk",
+    public_title: "Hellraiser: Revival's October Date Is A Risk",
+    thumbnail_headline: "HELLRAISER OCTOBER RISK",
+    thumbnail_text: "HELLRAISER OCTOBER RISK",
+    suggested_thumbnail_text: "HELLRAISER OCTOBER RISK",
+    first_frame_text: "HELLRAISER OCTOBER RISK",
+    first_spoken_line: "Hellraiser: Revival picked October 8, and that is brave for all the wrong reasons.",
+    narration_script:
+      "Hellraiser: Revival picked October 8, and that is brave for all the wrong reasons. Eurogamer says the new trailer locks the game for PS5, Xbox Series X/S and PC, with Saber leaning hard into Pinhead, the Genesis Configuration and first-person gore. That timing is smart because horror fans will look twice in October, but it also raises the bar. Players are not judging whether Hellraiser can be nasty. They are judging whether the combat, the puzzle box powers and the Labyrinth tension can hold up when the licence stops doing the work. If the box power lands, this could be October's weird wildcard. If it feels stiff, the date becomes the problem. Follow Pulse Gaming so you never miss a beat.",
+    description:
+      "Hellraiser: Revival is set for October 8, 2026 on PS5, Xbox Series X/S and PC after a new trailer. Source: Eurogamer.",
+    primary_source: "Eurogamer",
+    primary_source_url: "https://www.eurogamer.net/hellraiser-revival-release-date-trailer",
+  });
+  await fs.writeJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+    outputs: {},
+    platform_native_evidence: { verdict: "missing" },
+  });
+  await fs.writeJson(path.join(artifactDir, "affiliate_link_manifest.json"), {});
+  await fs.writeJson(path.join(artifactDir, "render_manifest.json"), {
+    final_publish_render: true,
+    output: "visual_v4_render.mp4",
+    rendered_duration_s: 43.5,
+  });
+  await fs.writeJson(path.join(artifactDir, "script_scorecard.json"), {
+    verdict: "viral_ready",
+    viral_score: 90,
+    blockers: [],
+    warnings: [],
+  });
+  await fs.writeJson(path.join(artifactDir, "visual_quality_report.json"), {
+    result: "pass",
+    failures: [],
+    scores: {
+      motion_density_score: 75,
+      first_3_seconds_hook_score: 100,
+      source_lock_quality_score: 100,
+      caption_legibility_score: 100,
+      card_hierarchy_score: 85,
+      transition_energy_score: 89,
+      sfx_impact_score: 100,
+      rights_risk_score: 100,
+      stale_wording_risk: 0,
+      media_house_polish_score: 93,
+    },
+  });
+  await fs.writeJson(path.join(artifactDir, "director_beat_map.json"), {
+    readiness: { status: "director_ready", blockers: [] },
+    shot_plan: [{ id: "hook", kind: "motion_clip" }],
+  });
+  await fs.writeJson(path.join(artifactDir, "audio_manifest.json"), {
+    voice_status: "materialized",
+    word_timestamp_count: 120,
+  });
+  await fs.writeJson(path.join(artifactDir, "audio_segment_loudness_report.json"), { status: "pass", failures: [] });
+  await fs.writeJson(path.join(artifactDir, "benchmark_report.json"), {
+    result: "pass",
+    failures: [],
+    scores: {
+      motion_density_score: 75,
+      first_3_seconds_hook_score: 100,
+      source_lock_quality_score: 100,
+      caption_legibility_score: 100,
+      card_hierarchy_score: 85,
+      transition_energy_score: 89,
+      sfx_impact_score: 100,
+      rights_risk_score: 100,
+      stale_wording_risk: 0,
+      media_house_polish_score: 93,
+    },
+  });
+  await fs.writeJson(path.join(artifactDir, "landing_page_manifest.json"), {
+    landing_page_slug: "hellraiser-revival-rss-cb82aef32f0c73e9",
+  });
+
+  const dryRun = await repairPlatformNativePacks({
+    storyPackages,
+    generatedAt: "2026-06-22T02:05:00.000Z",
+    apply: false,
+  });
+
+  assert.equal(dryRun.summary.repairable_count, 1);
+  assert.equal(dryRun.items[0].target_native_verdict, "pass");
+  assert.equal(dryRun.items[0].target_publish_status, "GREEN");
+  assert.equal(dryRun.items[0].target_can_auto_publish, true);
+  assert.equal(dryRun.items[0].can_auto_publish_stale, true);
+
+  const applied = await repairPlatformNativePacks({
+    storyPackages,
+    generatedAt: "2026-06-22T02:06:00.000Z",
+    apply: true,
+    backupRoot: path.join(root, "backups-final-media-house"),
+  });
+
+  assert.equal(applied.summary.repaired_count, 1);
+  const repaired = await fs.readJson(path.join(artifactDir, "platform_publish_manifest.json"));
+  assert.equal(repaired.publish_status, "GREEN");
+  assert.equal(repaired.can_auto_publish, true);
+  assert.equal(repaired.platform_native_evidence.verdict, "pass");
+});
+
 test("platform-native pack repair refreshes stale media-house score artefacts", async () => {
   const { storyPackages, root } = await legacyArtifact();
   const artifactDir = storyPackages[0].artifact_dir;
@@ -593,6 +705,247 @@ test("platform-native pack repair refreshes stale cover headlines", async () => 
   const score = await fs.readJson(path.join(artifactDir, "pulse_media_house_score.json"));
   assert.ok(!score.hard_failures.includes("media_house:first_frame_or_thumbnail_not_attention_led"));
   assert.equal(applied.repairs[0].backup_files.canonical_story_manifest.endsWith("canonical_story_manifest.json"), true);
+});
+
+test("platform-native pack repair preserves repaired Ghost choice-led cover copy", async () => {
+  const { storyPackages } = await legacyArtifact();
+  const artifactDir = storyPackages[0].artifact_dir;
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "rss_ba849c6ab11e475c",
+    canonical_subject: "Ghost at Dawn",
+    canonical_game: "Ghost at Dawn",
+    canonical_angle: "uses fear, empathy and questionable choices instead of simple jump scares",
+    selected_title: "Ghost at Dawn Turns Choices Into Horror",
+    canonical_title: "Ghost at Dawn Turns Choices Into Horror",
+    title: "Ghost at Dawn Turns Choices Into Horror",
+    public_title: "Ghost at Dawn Turns Choices Into Horror",
+    thumbnail_headline: "GHOST CHOICES RISK",
+    thumbnail_text: "GHOST CHOICES RISK",
+    suggested_thumbnail_text: "GHOST CHOICES RISK",
+    first_frame_text: "GHOST CHOICES RISK",
+    first_spoken_line: "Ghost at Dawn is trying to make player choices scarier than jump scares.",
+    narration_script:
+      "Ghost at Dawn is trying to make player choices scarier than jump scares. Xbox Wire says the game is built around fear, empathy and questionable choices, with the trailer pushing atmosphere over simple monster reveals. That is the hook: if your decisions actually change the dread, this becomes more than another horror short. If that lands, it sticks. Follow Pulse Gaming so you never miss a beat.",
+    description:
+      "Ghost at Dawn's trailer is selling horror through player choices, fear and empathy. Source: Xbox Wire.",
+    primary_source: { name: "Xbox Wire", url: "https://news.xbox.com/en-us/2026/06/19/ghost-at-dawn-is-about-fear-empathy/" },
+  });
+  await fs.writeJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+    schema_version: 1,
+    story_id: "rss_ba849c6ab11e475c",
+    publish_status: "RED",
+    outputs: {
+      youtube_shorts: {
+        title: "Ghost at Dawn Turns Choices Into Horror",
+        description: "Ghost at Dawn's trailer is selling horror through player choices, fear and empathy. Source: Xbox Wire.",
+        cover_frame: { headline: "GHOST CHOICES RISK", subject: "Ghost at Dawn", source_label: "Xbox Wire" },
+      },
+      instagram_reels: {
+        caption: "Ghost at Dawn's trailer is selling horror through player choices, fear and empathy. Source: Xbox Wire.",
+        cover_frame: { headline: "GHOST CHOICES RISK", subject: "Ghost at Dawn", source_label: "Xbox Wire" },
+      },
+      facebook_reels: {
+        page_caption: "Ghost at Dawn's trailer is selling horror through player choices, fear and empathy. Source: Xbox Wire.",
+        explanatory_framing: "Ghost at Dawn matters because its player choices are the horror risk.",
+      },
+    },
+    platform_native_evidence: { verdict: "pass", platforms: [{ platform: "youtube_shorts", status: "pass" }] },
+  });
+  await fs.writeJson(path.join(artifactDir, "render_manifest.json"), {
+    final_publish_render: true,
+    output: "visual_v4_render.mp4",
+    rendered_duration_s: 44.367,
+  });
+  await fs.writeJson(path.join(artifactDir, "script_scorecard.json"), {
+    verdict: "viral_ready",
+    viral_score: 91,
+    blockers: [],
+    warnings: [],
+  });
+  await fs.writeJson(path.join(artifactDir, "visual_quality_report.json"), {
+    result: "pass",
+    failures: [],
+    scores: {
+      motion_density_score: 100,
+      first_3_seconds_hook_score: 88,
+      source_lock_quality_score: 100,
+      caption_legibility_score: 100,
+      card_hierarchy_score: 85,
+      transition_energy_score: 94,
+      sfx_impact_score: 100,
+      rights_risk_score: 100,
+      stale_wording_risk: 0,
+      media_house_polish_score: 95,
+    },
+  });
+  await fs.writeJson(path.join(artifactDir, "director_beat_map.json"), {
+    readiness: { status: "director_ready", blockers: [] },
+    shot_plan: [{ id: "hook", kind: "motion_clip", start_s: 0.1 }],
+  });
+  await fs.writeJson(path.join(artifactDir, "audio_manifest.json"), {
+    voice_status: "materialized",
+    word_timestamp_count: 131,
+  });
+  await fs.writeJson(path.join(artifactDir, "audio_segment_loudness_report.json"), { status: "pass", failures: [] });
+  await fs.writeJson(path.join(artifactDir, "benchmark_report.json"), {
+    result: "pass",
+    failures: [],
+    scores: {
+      motion_density_score: 100,
+      first_3_seconds_hook_score: 88,
+      source_lock_quality_score: 100,
+      caption_legibility_score: 100,
+      card_hierarchy_score: 85,
+      transition_energy_score: 94,
+      sfx_impact_score: 100,
+      rights_risk_score: 100,
+      stale_wording_risk: 0,
+      media_house_polish_score: 95,
+    },
+  });
+  await fs.writeJson(path.join(artifactDir, "affiliate_link_manifest.json"), {});
+  await fs.writeJson(path.join(artifactDir, "landing_page_manifest.json"), {
+    landing_page_slug: "ghost-at-dawn-choices-horror",
+    landing_page_route: "/p/ghost-at-dawn-choices-horror",
+  });
+  await fs.writeJson(path.join(artifactDir, "pulse_media_house_score.json"), {
+    verdict: "RED",
+    status: "fail",
+    hard_failures: ["media_house:shorts_feed_competition_weak"],
+  });
+
+  const dryRun = await repairPlatformNativePacks({
+    storyPackages,
+    generatedAt: "2026-06-22T05:40:00.000Z",
+    apply: false,
+  });
+
+  assert.equal(dryRun.summary.repairable_count, 1);
+  assert.equal(dryRun.items[0].target_affiliate_output.youtube_cover_headline, "GHOST CHOICES RISK");
+  assert.ok(!dryRun.items[0].target_media_house_hard_failures.includes("media_house:shorts_feed_competition_weak"));
+});
+
+test("platform-native pack repair gives Cyberpunk trust stories feed-competitive captions", async () => {
+  const { storyPackages } = await legacyArtifact();
+  const artifactDir = storyPackages[0].artifact_dir;
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "rss_4921d15c5d54b86d",
+    canonical_subject: "Cyberpunk 2077",
+    canonical_game: "Cyberpunk 2077",
+    selected_title: "Cyberpunk 2077's Trust Debt",
+    canonical_title: "Cyberpunk 2077's Trust Debt",
+    title: "Cyberpunk 2077's Trust Debt",
+    public_title: "Cyberpunk 2077's Trust Debt",
+    thumbnail_headline: "CYBERPUNK TRUST DEBT",
+    thumbnail_text: "CYBERPUNK TRUST DEBT",
+    suggested_thumbnail_text: "CYBERPUNK TRUST DEBT",
+    first_frame_text: "CYBERPUNK TRUST DEBT",
+    first_spoken_line: "Cyberpunk 2077's biggest launch problem is not bugs anymore.",
+    narration_script:
+      "Cyberpunk 2077's biggest launch problem is not bugs anymore. PC Gamer reports a CD Projekt Red boss believes some fans were burned so badly by the original launch that the studio may have lost their faith indefinitely. The risk is that a great trailer can still look suspicious if players think the studio is selling belief before proof. If it promises too much again, Cyberpunk becomes the warning label on every new trailer. Follow Pulse Gaming so you never miss a beat.",
+    description:
+      "CD Projekt Red boss believes some fans were forever burned by Cyberpunk 2077's disastrous launch: 'I'm convinced that we lost the faith of some people indefinitely'. Source: PC Gamer.",
+    primary_source: "PC Gamer",
+    confirmed_claims: [
+      "PC Gamer reports CD Projekt Red boss believes some fans were forever burned by Cyberpunk 2077's disastrous launch.",
+    ],
+  });
+  await fs.writeJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+    schema_version: 1,
+    story_id: "rss_4921d15c5d54b86d",
+    publish_status: "RED",
+    outputs: {
+      youtube_shorts: {
+        title: "Cyberpunk 2077's Trust Debt",
+        description:
+          "CD Projekt Red boss believes some fans were forever burned by Cyberpunk 2077's disastrous launch. Source: PC Gamer.",
+        cover_frame: { headline: "CYBERPUNK TRUST DEBT", subject: "Cyberpunk 2077", source_label: "PC Gamer" },
+      },
+      instagram_reels: {
+        caption:
+          "CD Projekt Red boss believes some fans were forever burned by Cyberpunk 2077's disastrous launch. Source: PC Gamer.",
+        cover_frame: { headline: "CYBERPUNK TRUST DEBT", subject: "Cyberpunk 2077", source_label: "PC Gamer" },
+      },
+      facebook_reels: {
+        page_caption:
+          "CD Projekt Red boss believes some fans were forever burned by Cyberpunk 2077's disastrous launch. Source: PC Gamer.",
+      },
+    },
+    platform_native_evidence: { verdict: "pass", platforms: [{ platform: "youtube_shorts", status: "pass" }] },
+  });
+  await fs.writeJson(path.join(artifactDir, "render_manifest.json"), {
+    final_publish_render: true,
+    output: "visual_v4_render.mp4",
+    rendered_duration_s: 57.4,
+  });
+  await fs.writeJson(path.join(artifactDir, "script_scorecard.json"), {
+    verdict: "viral_ready",
+    viral_score: 94,
+    blockers: [],
+    warnings: [],
+  });
+  await fs.writeJson(path.join(artifactDir, "visual_quality_report.json"), {
+    result: "pass",
+    failures: [],
+    scores: {
+      motion_density_score: 100,
+      first_3_seconds_hook_score: 100,
+      source_lock_quality_score: 100,
+      caption_legibility_score: 100,
+      card_hierarchy_score: 85,
+      transition_energy_score: 94,
+      sfx_impact_score: 100,
+      rights_risk_score: 100,
+      stale_wording_risk: 0,
+      media_house_polish_score: 95,
+    },
+  });
+  await fs.writeJson(path.join(artifactDir, "director_beat_map.json"), {
+    readiness: { status: "director_ready", blockers: [] },
+    shot_plan: [{ id: "hook", kind: "motion_clip", start_s: 0.1 }],
+  });
+  await fs.writeJson(path.join(artifactDir, "audio_manifest.json"), {
+    voice_status: "materialized",
+    word_timestamp_count: 172,
+  });
+  await fs.writeJson(path.join(artifactDir, "audio_segment_loudness_report.json"), { status: "pass", failures: [] });
+  await fs.writeJson(path.join(artifactDir, "benchmark_report.json"), {
+    result: "pass",
+    failures: [],
+    scores: {
+      motion_density_score: 100,
+      first_3_seconds_hook_score: 100,
+      source_lock_quality_score: 100,
+      caption_legibility_score: 100,
+      card_hierarchy_score: 85,
+      transition_energy_score: 94,
+      sfx_impact_score: 100,
+      rights_risk_score: 100,
+      stale_wording_risk: 0,
+      media_house_polish_score: 95,
+    },
+  });
+  await fs.writeJson(path.join(artifactDir, "affiliate_link_manifest.json"), {});
+  await fs.writeJson(path.join(artifactDir, "landing_page_manifest.json"), {
+    landing_page_slug: "cyberpunk-2077-trust-debt",
+    landing_page_route: "/p/cyberpunk-2077-trust-debt",
+  });
+  await fs.writeJson(path.join(artifactDir, "pulse_media_house_score.json"), {
+    verdict: "RED",
+    status: "fail",
+    hard_failures: ["media_house:platform_copy_too_plain"],
+  });
+
+  const dryRun = await repairPlatformNativePacks({
+    storyPackages,
+    generatedAt: "2026-06-22T06:25:00.000Z",
+    apply: false,
+  });
+
+  assert.equal(dryRun.summary.repairable_count, 1);
+  assert.match(dryRun.items[0].target_affiliate_output.youtube_description_route, /gameplay proof before hype/i);
+  assert.ok(!dryRun.items[0].target_media_house_hard_failures.includes("media_house:platform_copy_too_plain"));
+  assert.ok(!dryRun.items[0].target_media_house_hard_failures.includes("media_house:shorts_feed_competition_weak"));
 });
 
 test("platform-native repair derives Facebook Reels duration from render manifest", async () => {

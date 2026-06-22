@@ -177,6 +177,44 @@ test("fresh buffer promotion compacts headline-style subjects into the named gam
   assert.equal(storyPackages[0].canonical_game, "GTA 6");
 });
 
+test("fresh buffer promotion maps current-news title subjects to source-search entities", async () => {
+  const generatedAt = "2026-06-22T06:00:00.000Z";
+  const cases = [
+    ["rss_black_ops", "Black Ops Classics Face A Price Test", "Black Ops 1 and 2 just turned nostalgia into a price test.", "Call of Duty: Black Ops"],
+    ["rss_ocarina", "Ocarina's Remake Pressure", "Ocarina of Time just made Nintendo's remake demand impossible to ignore.", "Ocarina of Time"],
+    ["rss_cyberpunk", "Cyberpunk 2077's Trust Debt", "CD Projekt Red is still paying for Cyberpunk 2077's launch.", "Cyberpunk 2077"],
+    ["rss_xbox", "Xbox's Strategy Trust Problem", "An original Xbox insider just made the brand problem sound painfully simple.", "Xbox"],
+  ];
+  const report = buildFreshGreenBufferLocalPromotionReport({
+    stories: cases.map(([id, title, script]) =>
+      draftStory({
+        id,
+        title,
+        selected_title: title,
+        canonical_subject: title,
+        canonical_game: title,
+        narration_script: `${script} Follow Pulse Gaming so you never miss a beat.`,
+      }),
+    ),
+    generatedAt,
+  });
+
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "fresh-buffer-current-subjects-"));
+  const written = await writeFreshGreenBufferLocalPromotionArtifacts(report, { outputDir: outDir });
+  const storyPackages = JSON.parse(fs.readFileSync(written.storyPackages, "utf8"));
+
+  for (const [id, , , expected] of cases) {
+    const canonical = JSON.parse(
+      fs.readFileSync(path.join(outDir, "packages", id, "canonical_story_manifest.json"), "utf8"),
+    );
+    assert.equal(canonical.canonical_subject, expected);
+    assert.equal(canonical.canonical_game, expected);
+    const storyPackage = storyPackages.find((item) => item.story_id === id);
+    assert.equal(storyPackage.canonical_subject, expected);
+    assert.equal(storyPackage.canonical_game, expected);
+  }
+});
+
 test("fresh buffer promotion uses selected title over long source headline when multiple games are named", async () => {
   const generatedAt = "2026-06-19T05:00:00.000Z";
   const report = buildFreshGreenBufferLocalPromotionReport({
